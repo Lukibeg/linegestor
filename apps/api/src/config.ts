@@ -2,8 +2,15 @@
  * Configuração do servidor, lida das variáveis de ambiente (.env).
  * Se algo essencial faltar, o servidor nem sobe — melhor falhar cedo do que descobrir em produção.
  */
-import 'dotenv/config';
+import { config as loadEnv } from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+
+// Lê o .env da raiz do projeto (e o da pasta atual, se existir)
+const here = path.dirname(fileURLToPath(import.meta.url));
+loadEnv({ path: path.resolve(here, '../../../.env') });
+loadEnv();
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),

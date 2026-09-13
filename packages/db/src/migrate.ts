@@ -2,7 +2,7 @@
  * Aplica no banco todas as migrações da pasta `drizzle/` que ainda não foram aplicadas.
  * É o comando que roda em toda publicação (homologação e produção) antes de subir a API.
  */
-import 'dotenv/config';
+import './env.js';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';

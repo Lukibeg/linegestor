@@ -9,7 +9,7 @@
  *
  * Variáveis opcionais: SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD, SEED_ADMIN_NAME
  */
-import 'dotenv/config';
+import './env.js';
 import argon2 from 'argon2';
 import { eq, sql } from 'drizzle-orm';
 import {
