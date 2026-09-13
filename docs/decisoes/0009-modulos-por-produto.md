@@ -10,4 +10,4 @@
 - **Não existe valor mensal por produto.** Custo só em aparelhos e circuitos ("links"), que é o que a empresa acompanha hoje.
 - Na importação de CSV, `fop2` e `omniboard` na coluna de produtos viram automaticamente módulos do LinePBX — assim o CSV do Nexus entra sem retrabalho.
 
-**Consequência.** A lista de clientes pode filtrar e mostrar módulos ("quem tem NPS?"). Tabelas: `product_modules` (catálogo) e `subscription_modules` (o que cada cliente tem ligado); `fop2_settings` e `omniboard_settings` apontam para `subscription_modules`.
+**Consequência.** A lista de clientes pode filtrar por módulo ("quem tem NPS?") e **cada módulo é uma coluna própria** na visão em tabela — dá para ver só "LinePBX › FOP2", com a data em que foi ativado, sem trazer os outros módulos junto. Tabelas: `product_modules` (catálogo) e `subscription_modules` (o que cada cliente tem ligado); `fop2_settings` e `omniboard_settings` apontam para `subscription_modules`.

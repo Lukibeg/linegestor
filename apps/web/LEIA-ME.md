@@ -13,7 +13,7 @@ Como está organizado:
 - `src/components/ui/` — peças reutilizáveis: botão, campo, tabela, modal, chip, aviso, campo de senha com "revelar"…
 - `src/components/layout/` — a moldura: menu lateral (recolhível para só ícones), barra superior, busca global (Ctrl+K).
 - `src/pages/` — uma pasta por área do menu: painel, clientes, circuitos (com a aba Numeração, que vem de `dids/`), inventario, dados, admin.
-  - `clientes/Lista.tsx` — a lista tem um seletor de **colunas** (qualquer detalhe do cliente pode virar coluna; a escolha fica no navegador).
+  - `clientes/Lista.tsx` — a lista tem um seletor de **colunas**: qualquer detalhe do cliente vira coluna, inclusive **cada módulo separadamente** ("LinePBX › FOP2"), e a escolha fica guardada no navegador.
   - `clientes/Ficha.tsx` — produtos e, dentro deles, os **módulos** (ligar, ajustar, desligar).
 - `src/styles.css` — as cores e fontes (tema claro e escuro).
 

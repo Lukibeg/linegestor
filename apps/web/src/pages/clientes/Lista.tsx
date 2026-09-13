@@ -1,12 +1,12 @@
 /**
  * Lista de clientes: cards ou tabela, busca, filtro por produto e por módulo (qualquer/todos), arquivados.
- * Na tabela, a pessoa escolhe quais colunas quer ver (qualquer detalhe do cliente: ativação por produto,
- * módulos, IP do LinePBX, hospedagem…). A escolha fica guardada no navegador.
+ * Na tabela, a pessoa escolhe quais colunas quer ver: qualquer detalhe do cliente, a data de ativação de
+ * cada produto e CADA MÓDULO como sua própria coluna. A escolha fica guardada no navegador.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Columns3, ExternalLink, LayoutGrid, List, Plus, Puzzle, RotateCcw, Terminal } from 'lucide-react';
+import { Check, Columns3, ExternalLink, LayoutGrid, List, Plus, Puzzle, RotateCcw, Terminal } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { ClientListItem, Product } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
@@ -17,12 +17,21 @@ import { ClienteForm } from './Form.js';
 
 // ---------- Colunas disponíveis na tabela ----------
 
-type Coluna = { id: string; label: string; grupo: string; align?: 'right'; render: (c: ClientListItem) => ReactNode };
+type Coluna = {
+  id: string;
+  /** o que aparece no cabeçalho da tabela */
+  label: string;
+  /** o que aparece no painel "Colunas" (quando o grupo já diz o resto) */
+  labelCurto?: string;
+  grupo: string;
+  align?: 'right';
+  render: (c: ClientListItem) => ReactNode;
+};
 
 const PADRAO = ['tradeName', 'legalName', 'cnpj', 'products', 'didCount', 'deviceCount'];
 const STORAGE = 'gestor.clientes.colunas';
 
-/** As colunas fixas + uma por produto ("ativado em") e uma por produto com módulos ("módulos de…"). */
+/** As colunas fixas + uma por produto ("ativado em") + UMA POR MÓDULO (cada módulo vira sua própria coluna). */
 function montarColunas(produtos: Product[]): Coluna[] {
   const fixas: Coluna[] = [
     { id: 'tradeName', label: 'Nome fantasia', grupo: 'Cliente', render: (c) => <span className="flex items-center gap-2 font-medium"><LogoCliente src={logoSrc(c.logoUrl)} nome={c.tradeName} tamanho={24} />{c.tradeName} {c.archived && <Chip tone="muted">arquivado</Chip>}</span> },
@@ -32,7 +41,7 @@ function montarColunas(produtos: Product[]): Coluna[] {
     { id: 'createdAt', label: 'Cadastrado em', grupo: 'Cliente', render: (c) => <span className="tnum whitespace-nowrap">{data(c.createdAt)}</span> },
     { id: 'updatedAt', label: 'Última alteração', grupo: 'Cliente', render: (c) => <span className="text-muted">{relativo(c.updatedAt)}</span> },
     { id: 'products', label: 'Produtos', grupo: 'Produtos', render: (c) => <div className="flex flex-wrap gap-1">{c.products.map((p) => <Chip key={p.code} color={p.color}>{p.name}</Chip>)}{!c.products.length && <span className="text-muted">—</span>}</div> },
-    { id: 'modules', label: 'Módulos (todos)', grupo: 'Produtos', render: (c) => { const ms = c.products.flatMap((p) => p.modules.map((m) => ({ ...m, color: p.color, product: p.name }))); return ms.length ? <div className="flex flex-wrap gap-1">{ms.map((m) => <Chip key={m.product + m.code} color={m.color} title={`${m.product} › ${m.name}`}>{m.name}</Chip>)}</div> : <span className="text-muted">—</span>; } },
+    { id: 'modules', label: 'Módulos', labelCurto: 'Todos os módulos, num campo só', grupo: 'Produtos', render: (c) => { const ms = c.products.flatMap((p) => p.modules.map((m) => ({ ...m, color: p.color, product: p.name }))); return ms.length ? <div className="flex flex-wrap gap-1">{ms.map((m) => <Chip key={m.product + m.code} color={m.color} title={`${m.product} › ${m.name}`}>{m.name}</Chip>)}</div> : <span className="text-muted">—</span>; } },
     { id: 'hosting', label: 'Hospedagem', grupo: 'Servidor LinePBX', render: (c) => c.server?.hostingName ?? <span className="text-muted">—</span> },
     { id: 'domain', label: 'Endereço (domínio)', grupo: 'Servidor LinePBX', render: (c) => c.server?.domain ? <span className="font-mono text-[12.5px]">{c.server.domain}</span> : <span className="text-muted">—</span> },
     { id: 'serverIp', label: 'IP do servidor', grupo: 'Servidor LinePBX', render: (c) => c.server?.serverIp ? <span className="font-mono text-[12.5px] tnum">{c.server.serverIp}</span> : <span className="text-muted">—</span> },
@@ -41,15 +50,32 @@ function montarColunas(produtos: Product[]): Coluna[] {
     { id: 'deviceCount', label: 'Aparelhos', grupo: 'Contagens', align: 'right', render: (c) => <span className="tnum">{c.deviceCount}</span> },
     { id: 'links', label: 'Atalhos', grupo: 'Contagens', render: (c) => <Atalhos c={c} /> },
   ];
+  // Para cada produto: a data de ativação dele + UMA COLUNA PARA CADA MÓDULO.
+  // Assim dá para escolher "LinePBX › FOP2" sozinho, sem trazer os outros módulos junto.
   const porProduto: Coluna[] = produtos.flatMap((p) => {
     const cols: Coluna[] = [{
-      id: `ativacao:${p.code}`, label: `${p.name} — ativado em`, grupo: 'Ativação por produto',
+      id: `ativacao:${p.code}`, label: `${p.name} — ativado em`, labelCurto: p.name, grupo: 'Ativado em (por produto)',
       render: (c) => { const s = c.products.find((x) => x.code === p.code); return s ? <span className="tnum whitespace-nowrap">{data(s.activatedAt)}</span> : <span className="text-muted">—</span>; },
     }];
-    if (p.modules.length) cols.push({
-      id: `modulos:${p.code}`, label: `Módulos do ${p.name}`, grupo: 'Módulos por produto',
-      render: (c) => { const s = c.products.find((x) => x.code === p.code); return s ? (s.modules.length ? <div className="flex flex-wrap gap-1">{s.modules.map((m) => <Chip key={m.code} color={p.color} title={m.activatedAt ? `ligado em ${data(m.activatedAt)}` : undefined}>{m.name}</Chip>)}</div> : <span className="text-muted">nenhum</span>) : <span className="text-muted">—</span>; },
-    });
+    for (const m of p.modules.filter((x) => x.active)) {
+      cols.push({
+        id: `modulo:${p.code}:${m.code}`,
+        label: `${p.name} › ${m.name}`,
+        labelCurto: m.name,
+        grupo: `Módulos do ${p.name}`,
+        render: (c) => {
+          const s = c.products.find((x) => x.code === p.code);
+          if (!s) return <span className="text-muted" title={`Não assina ${p.name}`}>—</span>;
+          const ativo = s.modules.find((x) => x.code === m.code);
+          if (!ativo) return <span className="text-muted">não</span>;
+          return (
+            <span className="inline-flex items-center gap-1 whitespace-nowrap" style={{ color: p.color }} title={`${m.name} ativo${ativo.activatedAt ? ` desde ${data(ativo.activatedAt)}` : ''}`}>
+              <Check size={14} />{ativo.activatedAt ? <span className="tnum text-[12px] opacity-80">{data(ativo.activatedAt)}</span> : 'sim'}
+            </span>
+          );
+        },
+      });
+    }
     return cols;
   });
   return [...fixas, ...porProduto];
@@ -92,7 +118,7 @@ function SeletorColunas({ colunas, ids, setIds, restaurar }: { colunas: Coluna[]
           <div className="flex flex-col gap-0.5">
             {cols.map((c) => (
               <label key={c.id} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded hover:bg-surface-2 cursor-pointer">
-                <input type="checkbox" id={`col-${c.id}`} checked={ids.includes(c.id)} onChange={() => toggle(c.id)} /> {c.label}
+                <input type="checkbox" id={`col-${c.id}`} checked={ids.includes(c.id)} onChange={() => toggle(c.id)} /> {c.labelCurto ?? c.label}
               </label>
             ))}
           </div>
