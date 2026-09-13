@@ -7,11 +7,15 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from 'fastify-type-provider-zod';
+import fastifyStatic from '@fastify/static';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createDb, type Db } from '@gestor/db';
 import { loadConfig, type Config } from './config.js';
 import { SecretsVault } from './services/secrets.js';
 import * as audit from './services/audit.js';
-import { registerErrorHandler } from './plugins/errors.js';
+import { notFoundJson, registerErrorHandler } from './plugins/errors.js';
 import authPlugin from './plugins/auth.js';
 import openapiPlugin from './plugins/openapi.js';
 import authRoutes from './routes/auth.js';
@@ -57,17 +61,28 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
   await app.register(authPlugin);
   await app.register(openapiPlugin);
 
-  app.get('/health', { schema: { hide: true } }, async () => ({ ok: true }));
+  // Toda a API vive sob /api — assim a interface pode ser servida na raiz pelo mesmo servidor.
+  await app.register(async (api) => {
+    api.get('/health', { schema: { hide: true } }, async () => ({ ok: true }));
+    await api.register(authRoutes, { prefix: '/auth' });
+    await api.register(secretRoutes, { prefix: '/secrets' });
+    await api.register(clientRoutes, { prefix: '/clients' });
+    await api.register(circuitRoutes, { prefix: '/circuits' });
+    await api.register(didRoutes, { prefix: '/dids' });
+    await api.register(inventoryRoutes, { prefix: '/inventory' });
+    await api.register(dashboardRoutes, { prefix: '/dashboard' });
+    await api.register(dataRoutes, { prefix: '/data' });
+    await api.register(adminRoutes, { prefix: '/admin' });
+  }, { prefix: '/api' });
 
-  await app.register(authRoutes, { prefix: '/auth' });
-  await app.register(secretRoutes, { prefix: '/secrets' });
-  await app.register(clientRoutes, { prefix: '/clients' });
-  await app.register(circuitRoutes, { prefix: '/circuits' });
-  await app.register(didRoutes, { prefix: '/dids' });
-  await app.register(inventoryRoutes, { prefix: '/inventory' });
-  await app.register(dashboardRoutes, { prefix: '/dashboard' });
-  await app.register(dataRoutes, { prefix: '/data' });
-  await app.register(adminRoutes, { prefix: '/admin' });
+  // Em produção, a própria API serve a interface (apps/web/dist) e devolve o index.html para qualquer rota que não seja /api
+  const webDist = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
+  const serveWeb = config.NODE_ENV === 'production' && fs.existsSync(webDist);
+  if (serveWeb) await app.register(fastifyStatic, { root: webDist, prefix: '/', wildcard: false });
+  app.setNotFoundHandler((req, reply) => {
+    if (!serveWeb || req.url.startsWith('/api')) return notFoundJson(reply);
+    return reply.sendFile('index.html');
+  });
 
   return app;
 }

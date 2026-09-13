@@ -7,8 +7,8 @@ afterAll(async () => { await app.close(); });
 
 describe('sessão', () => {
   it('recusa senha errada com a mesma mensagem de usuário inexistente', async () => {
-    const a = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'admin@gestor.local', password: 'errada' } });
-    const b = await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'ninguem@x.com', password: 'errada' } });
+    const a = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'admin@gestor.local', password: 'errada' } });
+    const b = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'ninguem@x.com', password: 'errada' } });
     expect(a.statusCode).toBe(401);
     expect(b.statusCode).toBe(401);
     expect(a.json().error).toBe(b.json().error);
@@ -27,12 +27,12 @@ describe('sessão', () => {
   });
 
   it('sem login, rotas protegidas respondem 401', async () => {
-    const r = await app.inject({ method: 'GET', url: '/clients' });
+    const r = await app.inject({ method: 'GET', url: '/api/clients' });
     expect(r.statusCode).toBe(401);
   });
 
   it('a página de documentação existe', async () => {
-    const r = await app.inject({ method: 'GET', url: '/docs/json' });
+    const r = await app.inject({ method: 'GET', url: '/api/docs/json' });
     expect(r.statusCode).toBe(200);
     expect(r.json().info.title).toContain('Gestor');
   });

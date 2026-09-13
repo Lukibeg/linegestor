@@ -49,7 +49,7 @@ export class Session {
   cookie = '';
   constructor(private app: App) {}
   async login(email = 'admin@gestor.local', password = 'SenhaDeTeste!123') {
-    const res = await this.app.inject({ method: 'POST', url: '/auth/login', payload: { email, password } });
+    const res = await this.app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password } });
     if (res.statusCode !== 200) throw new Error(`login falhou: ${res.body}`);
     const set = res.headers['set-cookie'];
     const raw = Array.isArray(set) ? set[0] : set;
@@ -57,7 +57,7 @@ export class Session {
     return res.json();
   }
   req(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', url: string, payload?: unknown) {
-    return this.app.inject({ method, url, payload: payload as any, headers: { cookie: this.cookie } });
+    return this.app.inject({ method, url: '/api' + url, payload: payload as any, headers: { cookie: this.cookie } });
   }
   get(url: string) { return this.req('GET', url); }
   post(url: string, payload?: unknown) { return this.req('POST', url, payload); }

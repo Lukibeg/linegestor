@@ -2,7 +2,7 @@
  * Erros do sistema, com nome e código HTTP. As rotas e serviços lançam estes erros;
  * o tratador no fim do arquivo transforma qualquer um deles numa resposta em português.
  */
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { ZodError } from 'zod';
 import { hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 
@@ -46,6 +46,9 @@ export function registerErrorHandler(app: FastifyInstance) {
     req.log.error(err);
     return reply.status(500).send({ error: 'Erro interno. Já foi registrado; tente de novo em instantes.', details: null });
   });
+}
 
-  app.setNotFoundHandler((_req, reply) => reply.status(404).send({ error: 'Endereço não existe', details: null }));
+/** Resposta padrão para endereço inexistente (usada pelo app.ts, que decide se há interface a servir). */
+export function notFoundJson(reply: FastifyReply) {
+  return reply.status(404).send({ error: 'Endereço não existe', details: null });
 }

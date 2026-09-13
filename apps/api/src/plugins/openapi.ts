@@ -1,5 +1,5 @@
 /**
- * Documentação viva da API em /docs: lista toda operação, com os campos que aceita e devolve.
+ * Documentação viva da API em /api/docs: lista toda operação, com os campos que aceita e devolve.
  * É gerada a partir dos próprios schemas das rotas — se a rota muda, a página muda.
  */
 import fp from 'fastify-plugin';
@@ -31,5 +31,5 @@ export default fp(async (app) => {
     },
     transform: jsonSchemaTransform,
   });
-  await app.register(swaggerUi, { routePrefix: '/docs', uiConfig: { docExpansion: 'list', deepLinking: true } });
+  await app.register(swaggerUi, { routePrefix: '/api/docs', uiConfig: { docExpansion: 'list', deepLinking: true } });
 });

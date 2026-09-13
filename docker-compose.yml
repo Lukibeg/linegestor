@@ -1,0 +1,25 @@
+# Para rodar em um servidor próprio (VPS) com um comando: docker compose up -d
+# Banco + sistema. Preencha as variáveis num arquivo .env ao lado.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+      POSTGRES_DB: gestor
+    volumes: ['gestor_db:/var/lib/postgresql/data']
+    healthcheck: { test: ['CMD-SHELL', 'pg_isready -U postgres'], interval: 5s, retries: 10 }
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/gestor
+      SECRETS_MASTER_KEY: ${SECRETS_MASTER_KEY:?defina SECRETS_MASTER_KEY no .env}
+      SESSION_SECRET: ${SESSION_SECRET:?defina SESSION_SECRET no .env}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3333}
+      NODE_ENV: production
+      PORT: 3333
+    ports: ['3333:3333']
+volumes:
+  gestor_db:

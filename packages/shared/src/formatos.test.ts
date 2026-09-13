@@ -1,41 +1,61 @@
+/**
+ * Testes dos formatos de dado. Cada bloco confere uma regra que a tela e o servidor usam:
+ * se alguém mudar o jeito de limpar um CNPJ ou gerar uma faixa de DIDs, isto avisa.
+ */
 import { describe, expect, it } from 'vitest';
-import { cnpjFormatado, cnpjValido, didFormatado, gerarFaixaDids, macFormatado, macValido, paraCentavos, reais } from './formatos.js';
+import {
+  cnpjFormatado, cnpjLimpo, cnpjValido,
+  didFormatado, didLimpo, didValido, gerarFaixaDids,
+  macFormatado, macLimpo, macValido,
+  paraCentavos, reais,
+} from './formatos.js';
 
 describe('CNPJ', () => {
-  it('formata 14 dígitos', () => {
-    expect(cnpjFormatado('11222333000181')).toBe('11.222.333/0001-81');
+  it('limpa e formata', () => {
+    expect(cnpjLimpo('22.333.444/0001-81')).toBe('22333444000181');
+    expect(cnpjFormatado('22333444000181')).toBe('22.333.444/0001-81');
   });
-  it('valida dígito verificador', () => {
-    expect(cnpjValido('11.222.333/0001-81')).toBe(true);
-    expect(cnpjValido('11222333000182')).toBe(false);
-    expect(cnpjValido('00000000000000')).toBe(false);
+  it('valida os dígitos verificadores', () => {
+    expect(cnpjValido('22.333.444/0001-81')).toBe(true);
+    expect(cnpjValido('22333444000182')).toBe(false);
+    expect(cnpjValido('11111111111111')).toBe(false);
+    expect(cnpjValido('123')).toBe(false);
   });
 });
 
 describe('DID', () => {
-  it('formata fixo, móvel e 0800', () => {
+  it('limpa, formata e valida', () => {
+    expect(didLimpo('(71) 3020-1234')).toBe('7130201234');
     expect(didFormatado('7130201234')).toBe('(71) 3020-1234');
     expect(didFormatado('71930201234')).toBe('(71) 93020-1234');
     expect(didFormatado('08001234567')).toBe('0800 123 4567');
+    expect(didValido('7130201234')).toBe(true);
+    expect(didValido('713020')).toBe(false);
   });
-  it('gera faixa preservando zeros à esquerda', () => {
-    expect(gerarFaixaDids('7130201298', 3)).toEqual(['7130201298', '7130201299', '7130201300']);
-    expect(gerarFaixaDids('0800123456', 2)).toEqual(['0800123456', '0800123457']);
+  it('gera faixas preservando zeros à esquerda', () => {
+    expect(gerarFaixaDids('7130201200', 3)).toEqual(['7130201200', '7130201201', '7130201202']);
+    expect(gerarFaixaDids('08000000098', 3)).toEqual(['08000000098', '08000000099', '08000000100']);
+    expect(gerarFaixaDids('7130201200', 0)).toEqual([]);
   });
 });
 
 describe('MAC', () => {
-  it('normaliza e formata', () => {
-    expect(macFormatado('00-0b-82-a1-b2-c3')).toBe('00:0B:82:A1:B2:C3');
-    expect(macValido('000B82A1B2C3')).toBe(true);
-    expect(macValido('000B82A1B2')).toBe(false);
+  it('guarda em 12 hexadecimais maiúsculos e exibe com dois-pontos', () => {
+    expect(macLimpo('00:0b:82-a1_b2 c3')).toBe('000B82A1B2C3');
+    expect(macFormatado('000B82A1B2C3')).toBe('00:0B:82:A1:B2:C3');
+    expect(macValido('00:0B:82:A1:B2:C3')).toBe(true);
+    expect(macValido('00:0B:82')).toBe(false);
   });
 });
 
 describe('Dinheiro', () => {
-  it('converte texto brasileiro para centavos e volta', () => {
+  it('converte entre centavos e texto', () => {
     expect(paraCentavos('1.234,56')).toBe(123456);
-    expect(paraCentavos('603.38')).toBe(60338);
-    expect(reais(60338)).toMatch(/603,38/);
+    expect(paraCentavos('1234.56')).toBe(123456);
+    expect(paraCentavos('R$ 99,90')).toBe(9990);
+    expect(paraCentavos(12.34)).toBe(1234);
+    expect(paraCentavos('abc')).toBe(0);
+    expect(reais(null)).toBe('—');
+    expect(reais(123456).replace(/ /g, ' ')).toBe('R$ 1.234,56');
   });
 });
