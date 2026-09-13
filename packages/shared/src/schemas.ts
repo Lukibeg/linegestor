@@ -119,11 +119,33 @@ export const ModuloCatalogoSchema = z.object({
   sortOrder: z.number().int().optional(),
 });
 
+/**
+ * Envio da logo do cliente: a imagem vem embutida no próprio pedido, como "data:image/png;base64,...".
+ * A interface já reduz a imagem antes de enviar; aqui só conferimos tipo e tamanho.
+ */
+export const LogoGravarSchema = z.object({
+  dataUrl: z
+    .string()
+    .max(700_000, 'Imagem muito grande (máximo 512 KB). Escolha uma imagem menor.')
+    .regex(/^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,[A-Za-z0-9+/=]+$/, 'Formato não suportado. Use PNG, JPG, WEBP ou SVG.'),
+});
+
 // ---------- Circuitos ----------
+
+/**
+ * Número chave (ou "número piloto"): o número principal do feixe junto à operadora.
+ * Guardamos só os dígitos quando parece um telefone; qualquer outro formato fica como foi digitado.
+ */
+export const NumeroChaveSchema = z
+  .string()
+  .trim()
+  .max(40)
+  .transform((v) => (didValido(didLimpo(v)) ? didLimpo(v) : v));
 
 export const CircuitoGravarSchema = z.object({
   name: z.string().trim().min(1).max(120),
-  code: z.string().trim().min(1, 'Código do circuito é obrigatório').max(40),
+  code: z.string().trim().min(1, 'O N° do circuito é obrigatório').max(40),
+  keyNumber: NumeroChaveSchema.nullable().optional(),
   carrierId: IdSchema.nullable().optional(),
   channels: z.coerce.number().int().min(0).max(10000),
   ownerClientId: IdSchema.nullable().optional(),
@@ -135,6 +157,14 @@ export const CircuitoGravarSchema = z.object({
   notes: z.string().max(5000).nullable().optional(),
 });
 export const CircuitoAtualizarSchema = CircuitoGravarSchema.partial();
+
+/** Filtros da tela de Circuitos. Os mesmos valem para os cartões de resumo no topo. */
+export const CircuitoListarSchema = PaginacaoSchema.extend({
+  q: z.string().trim().max(120).optional(),
+  carrierId: IdSchema.optional(),
+  /** titular (quem detém o contrato junto à operadora) */
+  ownerClientId: IdSchema.optional(),
+});
 
 // ---------- DIDs ----------
 
@@ -274,6 +304,8 @@ export type AssinaturaGravar = z.infer<typeof AssinaturaGravarSchema>;
 export type ModuloGravar = z.infer<typeof ModuloGravarSchema>;
 export type ModuloCatalogo = z.infer<typeof ModuloCatalogoSchema>;
 export type CircuitoGravar = z.infer<typeof CircuitoGravarSchema>;
+export type CircuitoListar = z.infer<typeof CircuitoListarSchema>;
+export type LogoGravar = z.infer<typeof LogoGravarSchema>;
 export type DidListar = z.infer<typeof DidListarSchema>;
 export type DidCriarFaixa = z.infer<typeof DidCriarFaixaSchema>;
 export type DidEditarEmMassa = z.infer<typeof DidEditarEmMassaSchema>;

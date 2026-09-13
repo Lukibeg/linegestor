@@ -6,11 +6,11 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Archive, ExternalLink, Pencil, Terminal, Trash2 } from 'lucide-react';
-import { api } from '../../api/index.js';
+import { api, logoSrc } from '../../api/index.js';
 import type { ClientFull, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, mensagemErro, Modal, Spinner, Vazio, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, LogoCliente, mensagemErro, Modal, Spinner, Vazio, useToast } from '../../components/ui/index.js';
 import { cnpjFormatado, condicaoCor, condicaoNome, data, MODALIDADES, relativo } from '../../lib/format.js';
 import { ClienteForm } from './Form.js';
 
@@ -39,7 +39,7 @@ export function ClienteFicha() {
 
   return (
     <Pagina
-      titulo={<span className="flex items-center gap-2">{c.tradeName}{c.archived && <Chip tone="muted">arquivado</Chip>}</span>}
+      titulo={<span className="flex items-center gap-2"><LogoCliente src={logoSrc(c.logoUrl)} nome={c.tradeName} tamanho={30} />{c.tradeName}{c.archived && <Chip tone="muted">arquivado</Chip>}</span>}
       sub={<span>{c.legalName} · <span className="font-mono">{cnpjFormatado(c.cnpj)}</span></span>}
       acoes={<>
         {c.links.web && <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary"><ExternalLink size={15} /> Abrir</a>}
@@ -94,7 +94,7 @@ function Geral({ c }: { c: ClientFull }) {
       <div className="flex flex-col gap-3">
         <div className="card p-4"><div className="eyebrow">DIDs em uso</div><div className="font-display text-2xl font-semibold tnum">{c.didCount}</div></div>
         <div className="card p-4"><div className="eyebrow">Aparelhos com o cliente</div><div className="font-display text-2xl font-semibold tnum">{c.deviceCount}</div></div>
-        <div className="card p-4"><div className="eyebrow">Módulos ligados</div><div className="font-display text-2xl font-semibold tnum">{ativos.reduce((a, s) => a + s.modules.filter((m) => m.active).length, 0)}</div><div className="text-muted text-[12px]">Omniboard, FOP2, NPS, dashboard de filas…</div></div>
+        <div className="card p-4"><div className="eyebrow">Módulos ativos</div><div className="font-display text-2xl font-semibold tnum">{ativos.reduce((a, s) => a + s.modules.filter((m) => m.active).length, 0)}</div><div className="text-muted text-[12px]">Omniboard, FOP2, NPS, dashboard de filas…</div></div>
         <div className="card p-4 text-[12.5px] text-muted">Cadastrado em {data(c.createdAt)} · atualizado {relativo(c.updatedAt)}</div>
       </div>
     </div>
@@ -111,14 +111,14 @@ function Produtos({ c }: { c: ClientFull }) {
   const { can } = useAuth();
   const atualizar = () => Promise.all([qc.invalidateQueries({ queryKey: ['client', c.id] }), qc.invalidateQueries({ queryKey: ['clients'] })]);
   const encerrar = async (code: string) => { try { await api.clients.endSubscription(c.id, code); await atualizar(); toast.push('ok', 'Produto encerrado (histórico mantido)'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
-  const desligarModulo = async (p: Product, m: ProductModule) => { try { await api.clients.endModule(c.id, p.code, m.code); await atualizar(); toast.push('ok', `${m.name} desligado (histórico mantido)`); } catch (e) { toast.push('erro', mensagemErro(e)); } };
-  const ligarModulo = async (p: Product, m: ProductModule) => {
+  const desativarModulo = async (p: Product, m: ProductModule) => { try { await api.clients.endModule(c.id, p.code, m.code); await atualizar(); toast.push('ok', `${m.name} desativado (histórico mantido)`); } catch (e) { toast.push('erro', mensagemErro(e)); } };
+  const ativarModulo = async (p: Product, m: ProductModule) => {
     if (m.hasSettings) { setEditandoModulo({ product: p, module: m }); return; }
-    try { await api.clients.upsertModule(c.id, { productCode: p.code, moduleCode: m.code }); await atualizar(); toast.push('ok', `${m.name} ligado em ${p.name}`); } catch (e) { toast.push('erro', mensagemErro(e)); }
+    try { await api.clients.upsertModule(c.id, { productCode: p.code, moduleCode: m.code }); await atualizar(); toast.push('ok', `${m.name} ativado em ${p.name}`); } catch (e) { toast.push('erro', mensagemErro(e)); }
   };
   return (
     <div>
-      <p className="text-sm text-muted mb-3">Clique num produto para marcar ou ajustar. Dentro de cada produto ativo, ligue os <b>módulos</b> que o cliente usa. Desmarcar não apaga: fica registrado quando terminou.</p>
+      <p className="text-sm text-muted mb-3">Clique num produto para marcar ou ajustar. Dentro de cada produto ativo, ative os <b>módulos</b> que o cliente usa. Desmarcar não apaga: fica registrado quando terminou.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {prods.data?.filter((p) => p.active).map((p) => {
           const s = c.subscriptions.find((x) => x.productCode === p.code);
@@ -136,19 +136,19 @@ function Produtos({ c }: { c: ClientFull }) {
                   <ul className="flex flex-col gap-1">
                     {modulos.map((m) => {
                       const sm = s?.modules.find((x) => x.moduleCode === m.code);
-                      const ligado = on && !!sm?.active;
+                      const ativo = on && !!sm?.active;
                       return (
                         <li key={m.code} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px]">
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${ligado ? 'bg-ok' : 'bg-line-strong'}`} aria-hidden />
-                          <span className={ligado ? 'font-medium' : 'text-muted'} title={m.description ?? undefined}>{m.name}</span>
-                          {ligado && sm?.activatedAt && <span className="text-muted whitespace-nowrap">desde {data(sm.activatedAt)}</span>}
-                          {!ligado && sm && sm.deactivatedAt && <span className="text-muted">desligado {data(sm.deactivatedAt)}</span>}
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${ativo ? 'bg-ok' : 'bg-line-strong'}`} aria-hidden />
+                          <span className={ativo ? 'font-medium' : 'text-muted'} title={m.description ?? undefined}>{m.name}</span>
+                          {ativo && sm?.activatedAt && <span className="text-muted whitespace-nowrap">desde {data(sm.activatedAt)}</span>}
+                          {!ativo && sm && sm.deactivatedAt && <span className="text-muted whitespace-nowrap">desativado em {data(sm.deactivatedAt)}</span>}
                           {on && can('records.write') && (
                             <span className="ml-auto flex gap-1">
-                              {ligado ? (<>
+                              {ativo ? (<>
                                 {m.hasSettings && <button className="btn-ghost btn-sm" onClick={() => setEditandoModulo({ product: p, module: m })}>Ajustar</button>}
-                                <button className="btn-ghost btn-sm text-muted" onClick={() => desligarModulo(p, m)}>Desligar</button>
-                              </>) : <button className="btn-secondary btn-sm" onClick={() => ligarModulo(p, m)}>Ligar</button>}
+                                <button className="btn-ghost btn-sm text-muted" onClick={() => desativarModulo(p, m)}>Desativar</button>
+                              </>) : <button className="btn-secondary btn-sm" onClick={() => ativarModulo(p, m)}>Ativar</button>}
                             </span>
                           )}
                         </li>
@@ -227,7 +227,7 @@ function ProdutoForm({ c, code, sub, onClose }: { c: ClientFull; code: string; s
   );
 }
 
-/** Ligar/ajustar um módulo dentro de um produto. FOP2 e Omniboard têm campos próprios; os demais só data e anotações. */
+/** Ativar/ajustar um módulo dentro de um produto. FOP2 e Omniboard têm campos próprios; os demais só data e anotações. */
 function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; product: Product; module: ProductModule; sm?: SubscriptionModule; onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -252,10 +252,10 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
     <Campo label={label}><CampoSegredo secretId={st[key]?.secretId ?? null} hasSecret={!!st[key]?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={(v) => setSenhas({ ...senhas, [key]: v })} /></Campo>
   );
   return (
-    <Modal open onClose={onClose} lateral largura="max-w-lg" titulo={<span className="flex items-center gap-2">{sm?.active ? 'Ajustar' : 'Ligar'} <Chip color={product.color}>{product.name} › {module.name}</Chip></span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
+    <Modal open onClose={onClose} lateral largura="max-w-lg" titulo={<span className="flex items-center gap-2">{sm?.active ? 'Ajustar' : 'Ativar'} <Chip color={product.color}>{product.name} › {module.name}</Chip></span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
       <div className="flex flex-col gap-3">
         {module.description && <p className="text-sm text-muted">{module.description}</p>}
-        <Campo label="Ligado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
+        <Campo label="Ativado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
         {module.code === 'fop2' && <Campo label="Ramal / usuário admin do FOP2" dica="usado para o acesso rápido"><input className="input font-mono" value={f.adminExtension} onChange={(e) => setF({ ...f, adminExtension: e.target.value })} /></Campo>}
         {module.code === 'omniboard' && (<>
           <Campo label="E-mail do administrador"><input className="input" value={f.adminLogin} onChange={(e) => setF({ ...f, adminLogin: e.target.value })} /></Campo>

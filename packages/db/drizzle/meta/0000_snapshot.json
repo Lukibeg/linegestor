@@ -1,5 +1,5 @@
 {
-  "id": "6d1e8c08-3553-48a4-b2d8-d62526c5316e",
+  "id": "478383bb-8785-4ee6-ad4a-ed49df18e57d",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -326,6 +326,12 @@
           "notNull": true,
           "default": 0
         },
+        "key_number": {
+          "name": "key_number",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "owner_client_id": {
           "name": "owner_client_id",
           "type": "text",
@@ -474,6 +480,65 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.client_logos": {
+      "name": "client_logos",
+      "schema": "",
+      "columns": {
+        "client_id": {
+          "name": "client_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data_base64": {
+          "name": "data_base64",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "size_bytes": {
+          "name": "size_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "client_logos_client_id_clients_id_fk": {
+          "name": "client_logos_client_id_clients_id_fk",
+          "tableFrom": "client_logos",
+          "tableTo": "clients",
+          "columnsFrom": [
+            "client_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.clients": {
       "name": "clients",
       "schema": "",
@@ -501,12 +566,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "logo_url": {
-          "name": "logo_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "archived": {
           "name": "archived",

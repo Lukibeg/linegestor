@@ -1,7 +1,7 @@
 /** Clientes e assinaturas de produto. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema, ModuloGravarSchema } from '@gestor/shared';
+import { AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema, LogoGravarSchema, ModuloGravarSchema } from '@gestor/shared';
 import * as clientsSvc from '../services/clients.js';
 import * as didsSvc from '../services/dids.js';
 import * as inv from '../services/inventory.js';
@@ -79,6 +79,27 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const row = await clientsSvc.deactivateModule(app.db, req.params.id, req.params.productCode, req.params.moduleCode);
       await app.audit(req, { action: 'unsubscribe', entityType: 'subscription_module', entityId: row.id, summary: `Desligou o módulo ${row.moduleName} (${row.productName}) no cliente ${req.params.id}` });
+      return clientsSvc.get(app.db, req.params.id);
+    });
+
+  // ---- logo (aparece no cartão do cliente) ----
+  app.get('/:id/logo', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'A imagem da logo do cliente', params: Id } },
+    async (req, reply) => {
+      const { mimeType, buffer, updatedAt } = await clientsSvc.readLogo(app.db, req.params.id);
+      return reply.header('Content-Type', mimeType).header('Cache-Control', 'private, max-age=86400').header('Last-Modified', updatedAt.toUTCString()).send(buffer);
+    });
+
+  app.put('/:id/logo', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Enviar/trocar a logo (imagem embutida em base64, até 512 KB)', params: Id, body: LogoGravarSchema } },
+    async (req) => {
+      const r = await clientsSvc.saveLogo(app.db, req.params.id, req.body.dataUrl);
+      await app.audit(req, { action: 'update', entityType: 'client', entityId: req.params.id, summary: `Trocou a logo de ${r.clientName}` });
+      return clientsSvc.get(app.db, req.params.id);
+    });
+
+  app.delete('/:id/logo', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Remover a logo', params: Id } },
+    async (req) => {
+      const r = await clientsSvc.removeLogo(app.db, req.params.id);
+      await app.audit(req, { action: 'update', entityType: 'client', entityId: req.params.id, summary: `Removeu a logo de ${r.clientName}` });
       return clientsSvc.get(app.db, req.params.id);
     });
 

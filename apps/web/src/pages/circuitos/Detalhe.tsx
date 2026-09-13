@@ -21,7 +21,7 @@ export function CircuitoDetalhe() {
   const c = q.data;
   const doDelete = async () => { setBusy(true); try { await api.circuits.remove(c.id); toast.push('ok', 'Circuito foi para a lixeira'); await qc.invalidateQueries({ queryKey: ['circuits'] }); nav('/circuitos'); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } };
   return (
-    <Pagina titulo={c.name} sub={<span>{c.carrierName ?? 'sem operadora'} · código <span className="font-mono">{c.code}</span>{c.ownerName ? ` · titular: ${c.ownerName}` : ''}</span>} acoes={<>
+    <Pagina titulo={c.name} sub={<span>{c.carrierName ?? 'sem operadora'} · N° <span className="font-mono">{c.code}</span>{c.keyNumber ? <> · número chave <span className="font-mono tnum">{didFormatado(c.keyNumber)}</span></> : null}{c.ownerName ? ` · titular: ${c.ownerName}` : ''}</span>} acoes={<>
       <Can permission="dids.assign"><button className="btn-primary" onClick={() => setFaixa(true)}><Plus size={15} /> Criar faixa de DIDs</button></Can>
       <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button></Can>
       <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)} title="Mandar para a lixeira"><Trash2 size={15} /></button></Can>
@@ -36,6 +36,9 @@ export function CircuitoDetalhe() {
         <div className="card p-4">
           <div className="eyebrow mb-2">Tronco</div>
           <dl className="grid grid-cols-[130px_1fr] gap-y-1.5 text-sm">
+            <dt className="text-muted">N° do circuito</dt><dd className="font-mono tnum">{c.code}</dd>
+            <dt className="text-muted">Número chave</dt><dd className="font-mono tnum">{c.keyNumber ? didFormatado(c.keyNumber) : '—'}</dd>
+            <dt className="text-muted">Titular</dt><dd>{c.ownerName ?? '—'}</dd>
             <dt className="text-muted">IP da operadora</dt><dd className="font-mono">{c.signalingIp ?? '—'}</dd>
             <dt className="text-muted">IP de autenticação</dt><dd className="font-mono">{c.authIp ?? '—'}</dd>
             <dt className="text-muted">Usuário</dt><dd className="font-mono">{c.authUsername ?? '—'}</dd>

@@ -12,7 +12,7 @@
  */
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import {
-  clients, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, type Db,
+  clientLogos, clients, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, type Db,
 } from '@gestor/db';
 import type { AssinaturaGravar, ClienteAtualizar, ClienteCriar, ClienteListar, ModuloGravar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
@@ -23,7 +23,9 @@ import type { SecretsVault } from './secrets.js';
  * (data de ativação de cada produto, módulos ligados, servidor do LinePBX, contagens).
  */
 export type ClientListItem = {
-  id: string; tradeName: string; legalName: string; cnpj: string; logoUrl: string | null; archived: boolean; isInternal: boolean;
+  id: string; tradeName: string; legalName: string; cnpj: string; archived: boolean; isInternal: boolean;
+  /** Caminho da logo RELATIVO à API ("clients/<id>/logo?v=…"), ou nulo quando não há logo */
+  logoUrl: string | null;
   notes: string | null; createdAt: Date; updatedAt: Date;
   products: Array<{ code: string; name: string; color: string; activatedAt: Date | null; modules: Array<{ code: string; name: string; activatedAt: Date | null }> }>;
   server: { hostingName: string | null; serverIp: string | null; domain: string | null; sshUser: string | null; sshPort: number | null } | null;
@@ -105,6 +107,7 @@ async function enrich(db: Db, rows: (typeof clients.$inferSelect)[]): Promise<Cl
     .orderBy(asc(productModules.sortOrder));
   const lps = await db.select({ s: linepbxSettings, hostingName: hostingProviders.name }).from(linepbxSettings).leftJoin(hostingProviders, eq(hostingProviders.id, linepbxSettings.hostingId))
     .where(inArray(linepbxSettings.subscriptionId, subs.filter((s) => s.code === 'linepbx').map((s) => s.subId).concat(['-'])));
+  const logos = await db.select({ clientId: clientLogos.clientId, updatedAt: clientLogos.updatedAt }).from(clientLogos).where(inArray(clientLogos.clientId, ids));
   const didCounts = await db.select({ clientId: dids.clientId, n: sql<number>`count(*)` }).from(dids).where(and(inArray(dids.clientId, ids), isNull(dids.deletedAt))).groupBy(dids.clientId);
   const devCounts = await db.select({ clientId: devices.clientId, n: sql<number>`count(*)` }).from(devices).where(and(inArray(devices.clientId, ids), isNull(devices.deletedAt))).groupBy(devices.clientId);
   return rows.map((r) => {
@@ -114,7 +117,8 @@ async function enrich(db: Db, rows: (typeof clients.$inferSelect)[]): Promise<Cl
     const productsOut = mine.map((s) => ({ code: s.code, name: s.name, color: s.color, activatedAt: s.activatedAt, modules: mods.filter((m) => m.subId === s.subId).map((m) => ({ code: m.code, name: m.name, activatedAt: m.activatedAt })) }));
     const hasFop2 = productsOut.some((p) => p.code === 'linepbx' && p.modules.some((m) => m.code === 'fop2'));
     return {
-      id: r.id, tradeName: r.tradeName, legalName: r.legalName, cnpj: r.cnpj, logoUrl: r.logoUrl, archived: r.archived, isInternal: r.isInternal,
+      id: r.id, tradeName: r.tradeName, legalName: r.legalName, cnpj: r.cnpj, archived: r.archived, isInternal: r.isInternal,
+      logoUrl: logoPath(r.id, logos.find((l) => l.clientId === r.id)?.updatedAt),
       notes: r.notes, createdAt: r.createdAt, updatedAt: r.updatedAt,
       products: productsOut,
       server: lp ? { hostingName: lp.hostingName ?? null, serverIp: lp.s.serverIp, domain: lp.s.domain, sshUser: lp.s.sshUser, sshPort: lp.s.sshPort } : null,
@@ -179,8 +183,10 @@ export async function get(db: Db, id: string) {
   const hasFop2 = !!lpActive?.modules.some((m) => m.moduleCode === 'fop2' && m.active);
   const [didC] = await db.select({ n: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, id), isNull(dids.deletedAt)));
   const [devC] = await db.select({ n: sql<number>`count(*)` }).from(devices).where(and(eq(devices.clientId, id), isNull(devices.deletedAt)));
+  const [logo] = await db.select({ updatedAt: clientLogos.updatedAt }).from(clientLogos).where(eq(clientLogos.clientId, id));
   return {
     ...row,
+    logoUrl: logoPath(id, logo?.updatedAt),
     subscriptions: enriched,
     links: buildLinks(lpRow, hasFop2),
     didCount: Number(didC?.n ?? 0),
@@ -338,4 +344,43 @@ export async function options(db: Db, opts: { includeInternal?: boolean; product
     rows = rows.filter((r) => allowed.has(r.id));
   }
   return rows;
+}
+
+// ---------- Logo ----------
+
+/**
+ * O endereço da logo, relativo à API ("clients/<id>/logo?v=…").
+ * O `v` muda a cada troca de imagem, para o navegador não mostrar a antiga do cache.
+ */
+function logoPath(clientId: string, updatedAt?: Date | null) {
+  return updatedAt ? `clients/${clientId}/logo?v=${updatedAt.getTime()}` : null;
+}
+
+/** Guarda (ou substitui) a logo do cliente. Recebe a imagem embutida como "data:...;base64,...". */
+export async function saveLogo(db: Db, clientId: string, dataUrl: string) {
+  const [client] = await db.select({ id: clients.id, name: clients.tradeName }).from(clients).where(eq(clients.id, clientId));
+  if (!client) throw new NotFound('Cliente');
+  const m = /^data:(image\/[a-z+]+);base64,(.+)$/.exec(dataUrl);
+  if (!m) throw new BadRequest('Imagem em formato inesperado');
+  const [, mimeType, base64] = m as unknown as [string, string, string];
+  const sizeBytes = Math.floor((base64.length * 3) / 4);
+  if (sizeBytes > 512 * 1024) throw new BadRequest('Imagem muito grande (máximo 512 KB)');
+  const vals = { mimeType, dataBase64: base64, sizeBytes, updatedAt: new Date() };
+  await db.insert(clientLogos).values({ clientId, ...vals }).onConflictDoUpdate({ target: clientLogos.clientId, set: vals });
+  return { clientName: client.name, sizeBytes };
+}
+
+/** Lê a logo para o servidor devolvê-la como imagem. */
+export async function readLogo(db: Db, clientId: string) {
+  const [row] = await db.select().from(clientLogos).where(eq(clientLogos.clientId, clientId));
+  if (!row) throw new NotFound('Logo');
+  return { mimeType: row.mimeType, buffer: Buffer.from(row.dataBase64, 'base64'), updatedAt: row.updatedAt };
+}
+
+/** Remove a logo (o cliente volta a aparecer com as iniciais). */
+export async function removeLogo(db: Db, clientId: string) {
+  const [row] = await db.delete(clientLogos).where(eq(clientLogos.clientId, clientId)).returning();
+  if (!row) throw new NotFound('Logo');
+  const [client] = await db.select({ name: clients.tradeName }).from(clients).where(eq(clients.id, clientId));
+  return { clientName: client?.name ?? clientId };
 }

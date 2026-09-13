@@ -149,3 +149,29 @@ describe('permissões', () => {
     expect(r.json().error).toMatch(/único administrador/);
   });
 });
+
+describe('logo do cliente', () => {
+  // 1x1 PNG transparente — o menor arquivo possível, só para exercitar o caminho
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  it('envia, serve como imagem e remove', async () => {
+    const id = (await s.get('/clients?q=aurora')).json().items[0].id;
+    expect((await s.get('/clients?q=aurora')).json().items[0].logoUrl).toBeNull();
+
+    const r = await s.put(`/clients/${id}/logo`, { dataUrl: png });
+    expect(r.statusCode).toBe(200);
+    const comLogo = (await s.get('/clients?q=aurora')).json().items[0];
+    expect(comLogo.logoUrl).toContain(`clients/${id}/logo?v=`);
+
+    const img = await s.get(`/clients/${id}/logo`);
+    expect(img.statusCode).toBe(200);
+    expect(img.headers['content-type']).toBe('image/png');
+    expect(img.rawPayload.length).toBeGreaterThan(50);
+
+    expect((await s.put(`/clients/${id}/logo`, { dataUrl: 'data:text/html;base64,AAAA' })).statusCode).toBe(400);
+
+    await s.del(`/clients/${id}/logo`);
+    expect((await s.get('/clients?q=aurora')).json().items[0].logoUrl).toBeNull();
+    expect((await s.get(`/clients/${id}/logo`)).statusCode).toBe(404);
+  });
+});

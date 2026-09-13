@@ -11,7 +11,7 @@
  */
 import { ALL_PERMISSIONS, DEFAULT_ROLES, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, didFormatado, didLimpo, gerarFaixaDids, macFormatado, macLimpo, MODALIDADES } from '@gestor/shared';
 import type { Api } from './index.js';
-import { ApiError, type AuditItem, type Circuit, type ClientFull, type ClientListItem, type Device, type Did, type DeviceModel, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type AuditItem, type Circuit, type ClientFull, type ClientListItem, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -25,7 +25,7 @@ type Sub = { id: string; clientId: string; productCode: string; activatedAt: str
 /** Um módulo ligado numa assinatura (ex.: FOP2 dentro do LinePBX do cliente X). */
 type SubMod = { id: string; subscriptionId: string; moduleId: string; activatedAt: string | null; deactivatedAt: string | null; notes: string | null; settings: Record<string, any> };
 type ModRow = ProductModule & { productId: string };
-type CircuitRow = { id: string; name: string; code: string; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; deletedAt: string | null };
+type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; deletedAt: string | null };
 type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; note: string | null; deletedAt: string | null };
 type ModelRow = { id: string; code: string; name: string; categoryId: string | null; tracking: 'serializado' | 'granel'; imageUrl: string | null; deletedAt: string | null };
 type DeviceRow = { id: string; modelId: string; mac: string; macSecondary: string | null; tag: string | null; clientId: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
@@ -64,6 +64,15 @@ function seed() {
   S.carriers = ['ALGAR', 'VC1'].map((n) => ({ id: 'car' + n, name: n, active: true }));
   S.hostings = ['Local', 'Nuvem (Local)', 'Vultr', 'AWS', 'Contabo', 'Hetzner', 'Outro'].map((n) => ({ id: 'h' + n.replace(/\W/g, ''), name: n, active: true }));
   S.categories = ['Telefone IP', 'Periférico', 'ATA', 'Gateway', 'Switch', 'Outro'].map((n) => ({ id: 'cat' + n.replace(/\W/g, ''), name: n, active: true }));
+  /** Logos fictícias da demonstração: um quadrado com as iniciais, desenhado em SVG. */
+  const logoFake = (iniciais: string, cor: string) =>
+    'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" rx="18" fill="${cor}"/><text x="48" y="62" font-family="Verdana,sans-serif" font-size="38" font-weight="bold" fill="#fff" text-anchor="middle">${iniciais}</text></svg>`);
+  const logos: Record<string, string> = {
+    'Clínica Aurora': logoFake('CA', '#0E7490'),
+    'Hospital Vale Verde': logoFake('VV', '#15803D'),
+    'Supermercado Bom Preço': logoFake('BP', '#B91C1C'),
+    'Distribuidora Norte': logoFake('DN', '#1D4ED8'),
+  };
   const mk = (t: string, l: string, cnpj: string, extra: Partial<Client> = {}): Client => ({ id: id(), tradeName: t, legalName: l, cnpj, logoUrl: null, archived: false, isInternal: false, internalCode: null, notes: null, deletedAt: null, createdAt: daysAgo(400), updatedAt: daysAgo(10), ...extra });
   const ingline = mk('Ingline Systems', 'Ingline Systems', '00000000000191', { isInternal: true, internalCode: 'ingline' });
   const voicenet = mk('VoiceNet', 'VoiceNet Telecom', '00000000000272', { isInternal: true, internalCode: 'voicenet' });
@@ -82,7 +91,7 @@ function seed() {
   S.clients = [ingline, voicenet];
   const byName: Record<string, string> = {};
   defs.forEach(([t, l, cnpj, prods, mods, host, dom, ip], i) => {
-    const c = mk(t, l, cnpj, { archived: i === 8 });
+    const c = mk(t, l, cnpj, { archived: i === 8, logoUrl: logos[t] ?? null });
     S.clients.push(c); byName[t] = c.id;
     prods.forEach((code, j) => {
       const settings: Record<string, any> = {};
@@ -108,7 +117,7 @@ function seed() {
   for (const [name, code, car, ch, base, qty, value, assign] of circ) {
     const sec = id(); S.secrets.set(sec, { label: `Senha do tronco — ${name}`, value: 'Trk#' + code });
     const cid = id();
-    S.circuits.push({ id: cid, name, code, carrierId: 'car' + car, channels: ch, ownerClientId: voicenet.id, monthlyValueCents: value, signalingIp: '203.0.113.1', authIp: '198.51.100.1', authUsername: 'tr' + code, authPasswordSecretId: sec, notes: null, deletedAt: null });
+    S.circuits.push({ id: cid, name, code, keyNumber: base, carrierId: 'car' + car, channels: ch, ownerClientId: voicenet.id, monthlyValueCents: value, signalingIp: '203.0.113.1', authIp: '198.51.100.1', authUsername: 'tr' + code, authPasswordSecretId: sec, notes: null, deletedAt: null });
     gerarFaixaDids(base, qty).forEach((n, i) => {
       const a = (assign as readonly (readonly [string, number, number])[]).find((x) => i >= x[1] && i < x[2]);
       S.dids.push({ id: id(), number: n, circuitId: cid, clientId: a ? byName[a[0]]! : null, ownerClientId: voicenet.id, note: a && i % 9 === 0 ? 'principal' : null, deletedAt: null });
@@ -182,7 +191,7 @@ const fullClient = (idc: string): ClientFull => {
 };
 const shapeCircuit = (c: CircuitRow): Circuit => {
   const ds = S.dids.filter((d) => d.circuitId === c.id && !d.deletedAt); const assigned = ds.filter((d) => d.clientId).length;
-  return { id: c.id, name: c.name, code: c.code, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned } };
+  return { id: c.id, name: c.name, code: c.code, keyNumber: c.keyNumber, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned } };
 };
 const shapeDid = (d: DidRow): Did => { const c = S.circuits.find((x) => x.id === d.circuitId); return { id: d.id, number: d.number, numberFormatted: didFormatado(d.number), free: !d.clientId, circuitId: d.circuitId, circuitName: c?.name ?? null, circuitCode: c?.code ?? null, carrierName: S.carriers.find((x) => x.id === c?.carrierId)?.name ?? null, clientId: d.clientId, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null, ownerClientId: d.ownerClientId, ownerName: S.clients.find((x) => x.id === d.ownerClientId)?.tradeName ?? null, note: d.note }; };
 const shapeModel = (m: ModelRow): DeviceModel => {
@@ -202,6 +211,14 @@ const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, c
 const paginate = <T,>(items: T[], q: Record<string, unknown>) => { const page = Number(q.page ?? 1), pageSize = Number(q.pageSize ?? 50); return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }; };
 const me = (u: UserRow): Me => { const r = S.roles.find((x) => x.id === u.roleId)!; return { id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: r.name, roleKey: r.key, permissions: r.permissions }; };
 const hasEquip = (cid: string) => activeSubs(cid).some((s) => s.productCode === 'equipamentos');
+/** Os filtros da tela de Circuitos — os mesmos para a lista e para os cartões do topo. */
+const filtrarCircuitos = (q: Record<string, unknown>) => {
+  const t = String(q.q ?? '').toLowerCase();
+  return S.circuits.filter((c) => !c.deletedAt
+    && (!q.carrierId || c.carrierId === q.carrierId)
+    && (!q.ownerClientId || c.ownerClientId === q.ownerClientId)
+    && (!t || c.name.toLowerCase().includes(t) || c.code.includes(t) || (c.keyNumber ?? '').includes(t)));
+};
 const filterDids = (q: Record<string, unknown>) => S.dids.filter((d) => !d.deletedAt).filter((d) => (!q.q || d.number.includes(String(q.q).replace(/\D/g, ''))) && (!q.circuitId || (q.circuitId === 'none' ? !d.circuitId : d.circuitId === q.circuitId)) && (!q.clientId || (q.clientId === 'free' ? !d.clientId : d.clientId === q.clientId)) && (!q.ownerClientId || d.ownerClientId === q.ownerClientId));
 
 // ---------------- a API ----------------
@@ -300,17 +317,42 @@ export const demoApi: Api = {
     async dids(idc) { await wait(); return paginate(S.dids.filter((d) => d.clientId === idc && !d.deletedAt).map(shapeDid), { pageSize: 500 }); },
     async devices(idc) { await wait(); return { devices: paginate(S.devices.filter((d) => d.clientId === idc && !d.deletedAt).map((d) => shapeDevice(d)), { pageSize: 500 }), bulk: S.bulk.filter((b) => b.clientId === idc && b.quantity > 0).map((b) => ({ ...b, modelName: S.models.find((m) => m.id === b.modelId)?.name ?? '?', clientName: S.clients.find((x) => x.id === idc)?.tradeName ?? null })) }; },
     async history(idc) { await wait(); requirePerm('audit.read'); return paginate(S.audit.filter((a) => a.entityId === idc), { pageSize: 100 }); },
+    async saveLogo(idc, dataUrl) {
+      await wait(200); requirePerm('records.write');
+      const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente');
+      if (!/^data:image\//.test(dataUrl)) throw bad('Formato não suportado. Use PNG, JPG, WEBP ou SVG.');
+      if (dataUrl.length > 700_000) throw bad('Imagem muito grande (máximo 512 KB).');
+      c.logoUrl = dataUrl; c.updatedAt = now();
+      audit('update', 'client', `Trocou a logo de ${c.tradeName}`, c.id);
+      return fullClient(idc);
+    },
+    async removeLogo(idc) {
+      await wait(); requirePerm('records.write');
+      const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente');
+      if (!c.logoUrl) throw notFound('Logo');
+      c.logoUrl = null; c.updatedAt = now();
+      audit('update', 'client', `Removeu a logo de ${c.tradeName}`, c.id);
+      return fullClient(idc);
+    },
   },
   secrets: {
     async reveal(sid, password) { await wait(250); requirePerm('secrets.reveal'); if (password !== S.me!.password) throw new ApiError(401, 'Senha incorreta'); const s = S.secrets.get(sid); if (!s) throw notFound('Segredo'); audit('reveal_secret', 'secret', `${S.me!.name} revelou "${s.label}"`, sid); return { label: s.label, value: s.value, visibleForSeconds: 30 }; },
   },
   circuits: {
-    async list(q) { await wait(); requirePerm('records.read'); const t = String(q.q ?? '').toLowerCase(); return paginate(S.circuits.filter((c) => !c.deletedAt && (!q.carrierId || c.carrierId === q.carrierId) && (!t || c.name.toLowerCase().includes(t) || c.code.includes(t))).sort((a, b) => a.name.localeCompare(b.name)).map(shapeCircuit), q); },
-    async summary() { await wait(60); requirePerm('records.read'); const cs = S.circuits.filter((c) => !c.deletedAt); const ds = S.dids.filter((d) => !d.deletedAt); const assigned = ds.filter((d) => d.clientId).length; return { circuits: cs.length, channels: cs.reduce((a, c) => a + c.channels, 0), monthlyValueCents: cs.reduce((a, c) => a + (c.monthlyValueCents ?? 0), 0), dids: { total: ds.length, assigned, free: ds.length - assigned, noCircuit: ds.filter((d) => !d.circuitId).length } }; },
+    async list(q) { await wait(); requirePerm('records.read'); return paginate(filtrarCircuitos(q).sort((a, b) => a.name.localeCompare(b.name)).map(shapeCircuit), q); },
+    async summary(q = {}) {
+      await wait(60); requirePerm('records.read');
+      const cs = filtrarCircuitos(q);
+      const filtrado = !!(q.q || q.carrierId || q.ownerClientId);
+      const ids = new Set(cs.map((c) => c.id));
+      const ds = S.dids.filter((d) => !d.deletedAt && (!filtrado || (d.circuitId && ids.has(d.circuitId))));
+      const assigned = ds.filter((d) => d.clientId).length;
+      return { circuits: cs.length, channels: cs.reduce((a, c) => a + c.channels, 0), monthlyValueCents: cs.reduce((a, c) => a + (c.monthlyValueCents ?? 0), 0), dids: { total: ds.length, assigned, free: ds.length - assigned, noCircuit: ds.filter((d) => !d.circuitId).length } };
+    },
     async options() { await wait(50); return S.circuits.filter((c) => !c.deletedAt).map((c) => ({ id: c.id, name: c.name, code: c.code, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null })); },
     async get(idc) { await wait(); requirePerm('records.read'); const c = S.circuits.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Circuito'); return shapeCircuit(c); },
-    async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, signalingIp: (d.signalingIp as string) ?? null, authIp: (d.authIp as string) ?? null, authUsername: (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
-    async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); for (const k of ['name', 'code', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'signalingIp', 'authIp', 'authUsername', 'notes'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
+    async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), keyNumber: (d.keyNumber as string) ?? null, carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, signalingIp: (d.signalingIp as string) ?? null, authIp: (d.authIp as string) ?? null, authUsername: (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
+    async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); for (const k of ['name', 'code', 'keyNumber', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'signalingIp', 'authIp', 'authUsername', 'notes'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
     async remove(idc) { await wait(); requirePerm('records.delete'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); const n = S.dids.filter((d) => d.circuitId === idc && !d.deletedAt).length; if (n) throw bad(`Este circuito ainda tem ${n} DIDs. Mova-os para outro circuito antes de excluir.`); c.deletedAt = now(); audit('delete', 'circuit', `Mandou o circuito ${c.name} para a lixeira`, c.id); return { ok: true }; },
     async createRange(idc, d) { return demoApi.dids.createRange({ ...d, circuitId: idc }); },
   },
@@ -323,6 +365,24 @@ export const demoApi: Api = {
     async bulkDelete(ids) { await wait(); requirePerm('records.delete'); let n = 0; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { x.deletedAt = now(); n++; } audit('bulk_delete', 'did', `Mandou ${n} DID(s) para a lixeira`); return { affected: n }; },
   },
   inventory: {
+    async summary(q = {}): Promise<InventorySummary> {
+      await wait(60); requirePerm('records.read');
+      const t = String(q.q ?? '').toLowerCase(); const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase();
+      const filtrado = !!(q.q || q.modelId || q.clientId || q.condition);
+      const devs = S.devices.filter((d) => !d.deletedAt
+        && (!q.modelId || d.modelId === q.modelId)
+        && (!q.clientId || (q.clientId === 'stock' ? !d.clientId : d.clientId === q.clientId))
+        && (!q.condition || d.condition === q.condition)
+        && (!t || (hex && d.mac.includes(hex)) || (d.tag ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.location ?? '').toLowerCase().includes(t)));
+      const granel = q.q || q.condition ? [] : S.bulk.filter((b) => (!q.modelId || b.modelId === q.modelId) && (!q.clientId || (q.clientId === 'stock' ? !b.clientId : b.clientId === q.clientId)));
+      return {
+        inStock: devs.filter((d) => !d.clientId && ['ativo', 'manutencao'].includes(d.condition)).length + granel.filter((b) => !b.clientId).reduce((a, b) => a + b.quantity, 0),
+        withClients: devs.filter((d) => d.clientId && !['vendido', 'baixado'].includes(d.condition)).length + granel.filter((b) => b.clientId).reduce((a, b) => a + b.quantity, 0),
+        maintenance: devs.filter((d) => d.condition === 'manutencao').length,
+        valueWithClientsCents: devs.filter((d) => d.clientId && ['locacao', 'comodato'].includes(d.currentModality ?? '') && !['vendido', 'baixado'].includes(d.condition)).reduce((a, d) => a + (d.valueCents ?? 0), 0),
+        filtrado,
+      };
+    },
     async models(q) { await wait(); requirePerm('records.read'); const t = String(q?.q ?? '').toLowerCase(); return S.models.filter((m) => !m.deletedAt && (!t || m.name.toLowerCase().includes(t) || m.code.includes(t)) && (!q?.categoryId || m.categoryId === q.categoryId)).map(shapeModel); },
     async createModel(d) { await wait(); requirePerm('records.write'); if (S.models.some((m) => m.code === d.code)) throw bad('Já existe um modelo com este código'); const m: ModelRow = { id: id(), code: String(d.code), name: String(d.name), categoryId: (d.categoryId as string) ?? null, tracking: d.tracking as any, imageUrl: null, deletedAt: null }; S.models.push(m); audit('create', 'deviceModel', `Cadastrou o modelo ${m.name}`, m.id); return shapeModel(m); },
     async updateModel(idm, d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo'); for (const k of ['code', 'name', 'categoryId'] as const) if (d[k] !== undefined) (m as any)[k] = d[k]; audit('update', 'deviceModel', `Editou o modelo ${m.name}`, m.id); return shapeModel(m); },

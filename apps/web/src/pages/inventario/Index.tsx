@@ -18,10 +18,21 @@ export function Inventario() {
   const aba = (sp.get('aba') ?? 'aparelhos') as Aba;
   const [mover, setMover] = useState(false);
   const models = useQuery({ queryKey: ['models'], queryFn: () => api.inventory.models() });
-  const tot = models.data?.reduce((a, m) => ({ inStock: a.inStock + m.counts.inStock, withClients: a.withClients + m.counts.withClients, maint: a.maint + m.counts.maintenance }), { inStock: 0, withClients: 0, maint: 0 });
+  // os cartões do topo seguem os MESMOS filtros da aba Aparelhos
+  const filtros = aba === 'aparelhos'
+    ? { q: sp.get('q') ?? '', modelId: sp.get('modelo') ?? '', clientId: sp.get('cliente') ?? '', condition: sp.get('condicao') ?? '' }
+    : {};
+  const resumo = useQuery({ queryKey: ['inventory', 'summary', filtros], queryFn: () => api.inventory.summary(filtros) });
+  const r = resumo.data;
   return (
     <Pagina titulo="Inventário" sub="Aparelhos identificados pelo MAC; itens a granel contados por quantidade." acoes={<Can permission="devices.move"><button className="btn-primary" onClick={() => setMover(true)}><ArrowLeftRight size={16} /> Movimentar aparelhos</button></Can>}>
-      {tot && <div className="grid gap-3 grid-cols-3 mb-5"><Kpi label="Em estoque" valor={tot.inStock} tone="ok" /><Kpi label="Com clientes" valor={tot.withClients} tone="accent" /><Kpi label="Em manutenção" valor={tot.maint} tone={tot.maint ? 'signal' : 'neutral'} /></div>}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-5">
+        <Kpi label={r?.filtrado ? 'Em estoque (filtrado)' : 'Em estoque'} valor={r ? r.inStock : '…'} tone="ok" />
+        <Kpi label="Com clientes" valor={r ? r.withClients : '…'} tone="accent" />
+        <Kpi label="Em manutenção" valor={r ? r.maintenance : '…'} tone={r?.maintenance ? 'signal' : 'neutral'} />
+        <Kpi label="Valor locado" valor={r ? reais(r.valueWithClientsCents) : '…'} sub="aparelhos em locação ou comodato" />
+      </div>
+      {r?.filtrado && <p className="text-[12.5px] text-muted -mt-3 mb-4">Os cartões acima estão somando apenas o que o filtro deixou passar. <button className="link" onClick={() => setSp({ aba: 'aparelhos' }, { replace: true })}>limpar filtros</button></p>}
       <Abas atual={aba} onChange={(a) => { const n = new URLSearchParams(); n.set('aba', a); setSp(n, { replace: true }); }} abas={[{ id: 'aparelhos', label: 'Aparelhos' }, { id: 'modelos', label: 'Modelos' }, { id: 'movimentacoes', label: 'Movimentações' }]} />
       {aba === 'aparelhos' && <Aparelhos models={models.data ?? []} />}
       {aba === 'modelos' && <Modelos models={models.data ?? []} loading={models.isLoading} />}
@@ -79,7 +90,7 @@ function AparelhoForm({ open, onClose, models }: { open: boolean; onClose: () =>
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const qc = useQueryClient(); const toast = useToast();
   useEffect(() => { if (open) { setErr(''); setF({ modelId: models[0]?.id ?? '', mac: '', tag: '', valueCents: '', ip: '', location: '', note: '' }); } }, [open, models]);
-  const save = async () => { setBusy(true); setErr(''); try { await api.inventory.createDevice({ modelId: f.modelId, mac: f.mac, tag: f.tag || null, valueCents: f.valueCents ? paraCentavos(f.valueCents) : null, ip: f.ip || null, location: f.location || null, note: f.note || null }); await qc.invalidateQueries({ queryKey: ['devices'] }); await qc.invalidateQueries({ queryKey: ['models'] }); toast.push('ok', 'Aparelho cadastrado no estoque'); onClose(); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
+  const save = async () => { setBusy(true); setErr(''); try { await api.inventory.createDevice({ modelId: f.modelId, mac: f.mac, tag: f.tag || null, valueCents: f.valueCents ? paraCentavos(f.valueCents) : null, ip: f.ip || null, location: f.location || null, note: f.note || null }); await qc.invalidateQueries({ queryKey: ['devices'] }); await qc.invalidateQueries({ queryKey: ['models'] }); await qc.invalidateQueries({ queryKey: ['inventory'] }); toast.push('ok', 'Aparelho cadastrado no estoque'); onClose(); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
   return (
     <Modal open={open} onClose={onClose} titulo="Cadastrar aparelho" rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.modelId || !macValido(f.mac)} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Cadastrar'}</button></>}>
       <div className="flex flex-col gap-3">
@@ -104,7 +115,7 @@ function Modelos({ models, loading }: { models: DeviceModel[]; loading: boolean 
   const qc = useQueryClient(); const toast = useToast();
   const [f, setF] = useState({ code: '', name: '', categoryId: '', tracking: 'serializado' }); const [delta, setDelta] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const save = async () => { setBusy(true); setErr(''); try { await api.inventory.createModel({ ...f, categoryId: f.categoryId || null }); await qc.invalidateQueries({ queryKey: ['models'] }); toast.push('ok', 'Modelo cadastrado'); setNovo(false); setF({ code: '', name: '', categoryId: '', tracking: 'serializado' }); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
-  const ajustar = async () => { if (!ajuste) return; setBusy(true); setErr(''); try { await api.inventory.adjustStock({ modelId: ajuste.id, delta: Number(delta) }); await qc.invalidateQueries({ queryKey: ['models'] }); await qc.invalidateQueries({ queryKey: ['stock'] }); toast.push('ok', 'Estoque ajustado'); setAjuste(null); setDelta(''); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
+  const ajustar = async () => { if (!ajuste) return; setBusy(true); setErr(''); try { await api.inventory.adjustStock({ modelId: ajuste.id, delta: Number(delta) }); await qc.invalidateQueries({ queryKey: ['models'] }); await qc.invalidateQueries({ queryKey: ['stock'] }); await qc.invalidateQueries({ queryKey: ['inventory'] }); toast.push('ok', 'Estoque ajustado'); setAjuste(null); setDelta(''); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
   if (loading) return <Carregando />;
   return (
     <div>

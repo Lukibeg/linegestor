@@ -13,7 +13,9 @@ export type ClientProduct = ProductChip & { activatedAt: string | null; modules:
 export type ClientServer = { hostingName: string | null; serverIp: string | null; domain: string | null; sshUser: string | null; sshPort: number | null };
 
 export type ClientListItem = {
-  id: string; tradeName: string; legalName: string; cnpj: string; logoUrl: string | null; archived: boolean; isInternal: boolean;
+  id: string; tradeName: string; legalName: string; cnpj: string; archived: boolean; isInternal: boolean;
+  /** Endereço da logo: caminho relativo à API, ou nulo. Use `logoSrc()` para montar o src da imagem. */
+  logoUrl: string | null;
   notes: string | null; createdAt: string; updatedAt: string;
   products: ClientProduct[]; server: ClientServer | null; links: Links; didCount: number; deviceCount: number;
 };
@@ -31,12 +33,14 @@ export type Subscription = {
 export type ClientFull = ClientListItem & { subscriptions: Subscription[] };
 
 export type Circuit = {
-  id: string; name: string; code: string; carrierId: string | null; carrierName: string | null; channels: number;
+  id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; carrierName: string | null; channels: number;
   ownerClientId: string | null; ownerName: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null;
   authUsername: string | null; authPassword: SecretRef; notes: string | null; dids: { total: number; assigned: number; free: number };
 };
-/** Os cartões no topo da tela de Circuitos. */
+/** Os cartões no topo da tela de Circuitos (obedecem aos mesmos filtros da lista). */
 export type CircuitSummary = { circuits: number; channels: number; monthlyValueCents: number; dids: { total: number; assigned: number; free: number; noCircuit: number } };
+/** Os cartões no topo do Inventário (obedecem aos mesmos filtros da lista). */
+export type InventorySummary = { inStock: number; withClients: number; maintenance: number; valueWithClientsCents: number; filtrado: boolean };
 
 export type Did = {
   id: string; number: string; numberFormatted: string; free: boolean; circuitId: string | null; circuitName: string | null; circuitCode: string | null; carrierName: string | null;

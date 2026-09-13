@@ -10,7 +10,7 @@ import { Campo, Chip, Modal, Spinner, mensagemErro, useToast } from '../../compo
 
 const ENTIDADES = [
   { id: 'clients', nome: 'Clientes', colunas: 'cnpj; nome_fantasia; razao_social; produtos (separados por |); modulos (produto:modulo, ex.: linepbx:fop2); dominio; ip_servidor; usuario_ssh; porta_ssh; senha_ssh; hospedagem; observacoes', regra: 'CNPJ que já existe → atualiza. CNPJ novo → cria. Coluna de senha vazia → mantém a senha atual. "fop2" e "omniboard" na coluna produtos viram módulos do LinePBX.' },
-  { id: 'circuits', nome: 'Circuitos', colunas: 'nome; codigo; operadora; canais; ip; ip_pbx; usuario_auth; senha_auth; valor; titular; observacoes', regra: 'Código + operadora que já existem → atualiza. Senão → cria.' },
+  { id: 'circuits', nome: 'Circuitos', colunas: 'nome; n_circuito; numero_chave; operadora; canais; ip; ip_pbx; usuario_auth; senha_auth; valor; titular; observacoes', regra: 'N° do circuito + operadora que já existem → atualiza. Senão → cria.' },
   { id: 'dids', nome: 'DIDs', colunas: 'numero; circuito (código ou nome); cliente (CNPJ ou nome, ou "livre"); titular; observacao', regra: 'Número que já existe → atualiza circuito/cliente. Número novo → cria.' },
 ];
 

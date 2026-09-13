@@ -22,6 +22,8 @@ export type Api = {
     upsertSubscription(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
     endSubscription(id: string, code: string): Promise<T.ClientFull>;
     upsertModule(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
+    saveLogo(id: string, dataUrl: string): Promise<T.ClientFull>;
+    removeLogo(id: string): Promise<T.ClientFull>;
     endModule(id: string, productCode: string, moduleCode: string): Promise<T.ClientFull>;
     dids(id: string): Promise<T.Page<T.Did>>;
     devices(id: string): Promise<{ devices: T.Page<T.Device>; bulk: T.BulkStock[] }>;
@@ -30,7 +32,7 @@ export type Api = {
   secrets: { reveal(id: string, password: string): Promise<{ label: string; value: string; visibleForSeconds: number }> };
   circuits: {
     list(q: Record<string, unknown>): Promise<T.Page<T.Circuit>>;
-    summary(): Promise<T.CircuitSummary>;
+    summary(q?: Record<string, unknown>): Promise<T.CircuitSummary>;
     options(): Promise<Array<{ id: string; name: string; code: string; carrierName: string | null }>>;
     get(id: string): Promise<T.Circuit>;
     create(d: Record<string, unknown>): Promise<T.Circuit>;
@@ -47,6 +49,7 @@ export type Api = {
     bulkDelete(ids: string[]): Promise<{ affected: number }>;
   };
   inventory: {
+    summary(q?: Record<string, unknown>): Promise<T.InventorySummary>;
     models(q?: Record<string, unknown>): Promise<T.DeviceModel[]>;
     createModel(d: Record<string, unknown>): Promise<T.DeviceModel>;
     updateModel(id: string, d: Record<string, unknown>): Promise<T.DeviceModel>;
@@ -89,6 +92,19 @@ export type Api = {
 };
 
 export const IS_DEMO = import.meta.env.VITE_DEMO === '1';
+
+/** Onde a API vive. Em produção é o mesmo endereço do site, sob /api. */
+export const API_BASE = import.meta.env.VITE_API_URL ?? '/api';
+
+/**
+ * Monta o endereço da imagem da logo: o servidor devolve um caminho relativo à API
+ * ("clients/<id>/logo?v=…"); a demonstração devolve a imagem embutida ("data:…").
+ */
+export function logoSrc(logoUrl: string | null | undefined): string | null {
+  if (!logoUrl) return null;
+  if (/^(data:|blob:|https?:)/.test(logoUrl)) return logoUrl;
+  return `${API_BASE}/${logoUrl.replace(/^\//, '')}`;
+}
 
 let apiImpl: Api;
 if (IS_DEMO) {

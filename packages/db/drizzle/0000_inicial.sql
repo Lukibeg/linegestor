@@ -33,6 +33,7 @@ CREATE TABLE "circuits" (
 	"code" text NOT NULL,
 	"carrier_id" text,
 	"channels" integer DEFAULT 0 NOT NULL,
+	"key_number" text,
 	"owner_client_id" text,
 	"monthly_value_cents" integer,
 	"signaling_ip" text,
@@ -45,12 +46,19 @@ CREATE TABLE "circuits" (
 	"deleted_at" timestamp with time zone
 );
 --> statement-breakpoint
+CREATE TABLE "client_logos" (
+	"client_id" text PRIMARY KEY NOT NULL,
+	"mime_type" text NOT NULL,
+	"data_base64" text NOT NULL,
+	"size_bytes" integer DEFAULT 0 NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "clients" (
 	"id" text PRIMARY KEY NOT NULL,
 	"trade_name" text NOT NULL,
 	"legal_name" text NOT NULL,
 	"cnpj" text NOT NULL,
-	"logo_url" text,
 	"archived" boolean DEFAULT false NOT NULL,
 	"is_internal" boolean DEFAULT false NOT NULL,
 	"internal_code" text,
@@ -261,6 +269,7 @@ ALTER TABLE "bulk_stock" ADD CONSTRAINT "bulk_stock_client_id_clients_id_fk" FOR
 ALTER TABLE "circuits" ADD CONSTRAINT "circuits_carrier_id_carriers_id_fk" FOREIGN KEY ("carrier_id") REFERENCES "public"."carriers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "circuits" ADD CONSTRAINT "circuits_owner_client_id_clients_id_fk" FOREIGN KEY ("owner_client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "circuits" ADD CONSTRAINT "circuits_auth_password_secret_id_secrets_id_fk" FOREIGN KEY ("auth_password_secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "client_logos" ADD CONSTRAINT "client_logos_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "device_models" ADD CONSTRAINT "device_models_category_id_device_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."device_categories"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "device_movement_items" ADD CONSTRAINT "device_movement_items_movement_id_device_movements_id_fk" FOREIGN KEY ("movement_id") REFERENCES "public"."device_movements"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "device_movement_items" ADD CONSTRAINT "device_movement_items_model_id_device_models_id_fk" FOREIGN KEY ("model_id") REFERENCES "public"."device_models"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

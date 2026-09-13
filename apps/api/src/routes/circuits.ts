@@ -1,17 +1,18 @@
 /** Circuitos. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CircuitoAtualizarSchema, CircuitoGravarSchema, DidCriarFaixaSchema, PaginacaoSchema } from '@gestor/shared';
+import { CircuitoAtualizarSchema, CircuitoGravarSchema, CircuitoListarSchema, DidCriarFaixaSchema, PaginacaoSchema } from '@gestor/shared';
 import * as svc from '../services/circuits.js';
 import * as didsSvc from '../services/dids.js';
 
 const Id = z.object({ id: z.string() });
 
 const routes: FastifyPluginAsyncZod = async (app) => {
-  app.get('/', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Listar circuitos com ocupação (DIDs, livres, canais)', querystring: PaginacaoSchema.extend({ q: z.string().optional(), carrierId: z.string().optional() }) } },
+  app.get('/', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Listar circuitos com ocupação (busca, operadora, titular)', querystring: CircuitoListarSchema } },
     async (req) => svc.list(app.db, req.query));
 
-  app.get('/summary', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Resumo: circuitos, canais, valor mensal somado e numeração (total, em uso, livre, sem circuito)' } }, async () => svc.summary(app.db));
+  app.get('/summary', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Resumo (circuitos, canais, valor mensal, numeração) com os MESMOS filtros da lista', querystring: CircuitoListarSchema.partial() } },
+    async (req) => svc.summary(app.db, req.query));
 
   app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Lista curta para seletores' } }, async () => svc.options(app.db));
 

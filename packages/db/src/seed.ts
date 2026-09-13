@@ -135,10 +135,10 @@ if (demo) {
 
     // circuitos e DIDs
     const circuitDefs = [
-      { name: '071 Principal', code: '09802603', carrier: 'ALGAR', channels: 30, base: '7130200000', qty: 120, value: 60338 },
-      { name: '071 Hospitalar', code: '010241793', carrier: 'ALGAR', channels: 60, base: '7132170000', qty: 200, value: 120000 },
-      { name: 'Link - Distribuidora Norte', code: '73169', carrier: 'VC1', channels: 5, base: '7131720000', qty: 12, value: 25000 },
-      { name: 'Link - Aurora', code: '94234', carrier: 'VC1', channels: 2, base: '7130396100', qty: 4, value: 9900 },
+      { name: '071 Principal', code: '09802603', carrier: 'ALGAR', channels: 30, base: '7130200000', qty: 120, value: 60338, key: '7130200000' },
+      { name: '071 Hospitalar', code: '010241793', carrier: 'ALGAR', channels: 60, base: '7132170000', qty: 200, value: 120000, key: '7132170000' },
+      { name: 'Link - Distribuidora Norte', code: '73169', carrier: 'VC1', channels: 5, base: '7131720000', qty: 12, value: 25000, key: '7131720000' },
+      { name: 'Link - Aurora', code: '94234', carrier: 'VC1', channels: 2, base: '7130396100', qty: 4, value: 9900, key: '7130396100' },
     ];
     const assign = [
       ['071 Principal', 'Supermercado Bom Preço', 0, 40],
@@ -149,7 +149,7 @@ if (demo) {
     ] as const;
     for (const c of circuitDefs) {
       const cid = newId();
-      await db.insert(s.circuits).values({ id: cid, name: c.name, code: c.code, carrierId: carriers[c.carrier]!, channels: c.channels, ownerClientId: voicenet!.id, monthlyValueCents: c.value, signalingIp: '203.0.113.1', authIp: '198.51.100.1' });
+      await db.insert(s.circuits).values({ id: cid, name: c.name, code: c.code, keyNumber: c.key, carrierId: carriers[c.carrier]!, channels: c.channels, ownerClientId: voicenet!.id, monthlyValueCents: c.value, signalingIp: '203.0.113.1', authIp: '198.51.100.1' });
       const nums = gerarFaixaDids(c.base, c.qty);
       const rows = nums.map((n, i) => {
         const a = assign.find((x) => x[0] === c.name && i >= x[2] && i < x[3]);

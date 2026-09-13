@@ -3,15 +3,15 @@
  * Na tabela, a pessoa escolhe quais colunas quer ver (qualquer detalhe do cliente: ativação por produto,
  * módulos, IP do LinePBX, hospedagem…). A escolha fica guardada no navegador.
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Columns3, ExternalLink, LayoutGrid, List, Plus, RotateCcw, Terminal } from 'lucide-react';
-import { api } from '../../api/index.js';
+import { Columns3, ExternalLink, LayoutGrid, List, Plus, Puzzle, RotateCcw, Terminal } from 'lucide-react';
+import { api, logoSrc } from '../../api/index.js';
 import type { ClientListItem, Product } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can } from '../../lib/auth.js';
-import { Carregando, Chip, Paginacao, Toggle, Vazio } from '../../components/ui/index.js';
+import { Carregando, Chip, LogoCliente, Paginacao, Popover, Toggle, Vazio } from '../../components/ui/index.js';
 import { cnpjFormatado, data, relativo } from '../../lib/format.js';
 import { ClienteForm } from './Form.js';
 
@@ -25,7 +25,7 @@ const STORAGE = 'gestor.clientes.colunas';
 /** As colunas fixas + uma por produto ("ativado em") e uma por produto com módulos ("módulos de…"). */
 function montarColunas(produtos: Product[]): Coluna[] {
   const fixas: Coluna[] = [
-    { id: 'tradeName', label: 'Nome fantasia', grupo: 'Cliente', render: (c) => <span className="font-medium">{c.tradeName} {c.archived && <Chip tone="muted">arquivado</Chip>}</span> },
+    { id: 'tradeName', label: 'Nome fantasia', grupo: 'Cliente', render: (c) => <span className="flex items-center gap-2 font-medium"><LogoCliente src={logoSrc(c.logoUrl)} nome={c.tradeName} tamanho={24} />{c.tradeName} {c.archived && <Chip tone="muted">arquivado</Chip>}</span> },
     { id: 'legalName', label: 'Razão social', grupo: 'Cliente', render: (c) => <span className="text-ink-2">{c.legalName}</span> },
     { id: 'cnpj', label: 'CNPJ', grupo: 'Cliente', render: (c) => <span className="font-mono text-[12.5px] tnum whitespace-nowrap">{cnpjFormatado(c.cnpj)}</span> },
     { id: 'notes', label: 'Anotações', grupo: 'Cliente', render: (c) => <span className="text-muted block max-w-[280px] truncate" title={c.notes ?? ''}>{c.notes ?? '—'}</span> },
@@ -55,13 +55,16 @@ function montarColunas(produtos: Product[]): Coluna[] {
   return [...fixas, ...porProduto];
 }
 
+/**
+ * Os dois atalhos do cartão: **Abrir** leva ao endereço do servidor no navegador e
+ * **SSH** abre o PuTTY no computador (ver docs/guia-de-uso/ssh-com-putty.md).
+ */
 function Atalhos({ c }: { c: ClientListItem }) {
-  if (!c.links.web) return <span className="text-muted italic">servidor não configurado</span>;
+  if (!c.links.web) return <span className="text-muted italic text-[12.5px]">servidor não configurado</span>;
   return (
     <span className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-      <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary btn-sm"><ExternalLink size={13} /> abrir</a>
-      {c.links.ssh && <a href={c.links.ssh} className="btn-secondary btn-sm"><Terminal size={13} /> SSH</a>}
-      {c.links.fop2 && <a href={c.links.fop2} target="_blank" rel="noreferrer" className="btn-secondary btn-sm">FOP2</a>}
+      <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary btn-sm" title={c.links.web}><ExternalLink size={13} /> Abrir</a>
+      {c.links.ssh && <a href={c.links.ssh} className="btn-secondary btn-sm" title={`${c.links.ssh} — abre o PuTTY`}><Terminal size={13} /> SSH</a>}
     </span>
   );
 }
@@ -75,41 +78,58 @@ function useColunasEscolhidas() {
 
 /** O painel "Colunas": marca e desmarca o que aparece na tabela, agrupado por assunto. */
 function SeletorColunas({ colunas, ids, setIds, restaurar }: { colunas: Coluna[]; ids: string[]; setIds: (v: string[]) => void; restaurar: () => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [open]);
   const grupos = useMemo(() => { const g = new Map<string, Coluna[]>(); for (const c of colunas) g.set(c.grupo, [...(g.get(c.grupo) ?? []), c]); return [...g.entries()]; }, [colunas]);
   const toggle = (id: string) => setIds(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
   return (
-    <div className="relative" ref={ref}>
-      <button className="btn-secondary btn-sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}><Columns3 size={15} /> Colunas <span className="text-muted tnum">({ids.length})</span></button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 z-30 card p-3 w-[320px] max-h-[70vh] overflow-y-auto shadow-lg">
-          <div className="flex items-center justify-between mb-2">
-            <span className="eyebrow">O que aparece na tabela</span>
-            <button className="btn-ghost btn-sm text-muted" onClick={restaurar} title="Voltar às colunas padrão"><RotateCcw size={13} /> padrão</button>
+    <Popover botao={() => <><Columns3 size={15} /> Colunas <span className="text-muted tnum">({ids.length})</span></>}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="eyebrow">O que aparece na tabela</span>
+        <button className="btn-ghost btn-sm text-muted" onClick={restaurar} title="Voltar às colunas padrão"><RotateCcw size={13} /> padrão</button>
+      </div>
+      {grupos.map(([grupo, cols]) => (
+        <div key={grupo} className="mb-3 last:mb-0">
+          <div className="text-[11.5px] uppercase tracking-wide text-muted mb-1">{grupo}</div>
+          <div className="flex flex-col gap-0.5">
+            {cols.map((c) => (
+              <label key={c.id} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded hover:bg-surface-2 cursor-pointer">
+                <input type="checkbox" id={`col-${c.id}`} checked={ids.includes(c.id)} onChange={() => toggle(c.id)} /> {c.label}
+              </label>
+            ))}
           </div>
-          {grupos.map(([grupo, cols]) => (
-            <div key={grupo} className="mb-3 last:mb-0">
-              <div className="text-[11.5px] uppercase tracking-wide text-muted mb-1">{grupo}</div>
-              <div className="flex flex-col gap-0.5">
-                {cols.map((c) => (
-                  <label key={c.id} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded hover:bg-surface-2 cursor-pointer">
-                    <input type="checkbox" id={`col-${c.id}`} checked={ids.includes(c.id)} onChange={() => toggle(c.id)} /> {c.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-          <p className="text-[11.5px] text-muted mt-2 border-t border-line pt-2">A escolha fica guardada neste navegador. Arraste a tabela para o lado se ficar larga.</p>
         </div>
-      )}
-    </div>
+      ))}
+      <p className="text-[11.5px] text-muted mt-2 border-t border-line pt-2">A escolha fica guardada neste navegador. Arraste a tabela para o lado se ficar larga.</p>
+    </Popover>
+  );
+}
+
+/**
+ * O filtro de módulos: lista TODOS os módulos do catálogo, agrupados por produto.
+ * Independe de o produto estar selecionado acima — dá para procurar "quem tem NPS?" direto.
+ */
+function FiltroModulos({ produtos, escolhidos, onChange }: { produtos: Product[]; escolhidos: string[]; onChange: (v: string[]) => void }) {
+  const comModulos = produtos.filter((p) => p.modules.some((m) => m.active));
+  if (!comModulos.length) return null;
+  const toggle = (k: string) => onChange(escolhidos.includes(k) ? escolhidos.filter((x) => x !== k) : [...escolhidos, k]);
+  return (
+    <Popover largura="w-[280px]" botao={() => <><Puzzle size={15} /> Módulos {escolhidos.length > 0 && <span className="text-accent tnum">({escolhidos.length})</span>}</>}>
+      <div className="flex items-center justify-between mb-2">
+        <span className="eyebrow">Filtrar por módulo</span>
+        {escolhidos.length > 0 && <button className="btn-ghost btn-sm text-muted" onClick={() => onChange([])}>limpar</button>}
+      </div>
+      {comModulos.map((p) => (
+        <div key={p.code} className="mb-3 last:mb-0">
+          <div className="text-[11.5px] uppercase tracking-wide mb-1" style={{ color: p.color }}>{p.name}</div>
+          <div className="flex flex-col gap-0.5">
+            {p.modules.filter((m) => m.active).map((m) => (
+              <label key={m.code} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded hover:bg-surface-2 cursor-pointer" title={m.description ?? undefined}>
+                <input type="checkbox" id={`mod-${p.code}-${m.code}`} checked={escolhidos.includes(`${p.code}:${m.code}`)} onChange={() => toggle(`${p.code}:${m.code}`)} /> {m.name}
+              </label>
+            ))}
+          </div>
+        </div>
+      ))}
+    </Popover>
   );
 }
 
@@ -134,8 +154,14 @@ export function ClientesLista() {
   const lista = useQuery({ queryKey: ['clients', q, produtos, modulos, mode, arquivados, page], queryFn: () => api.clients.list({ q, products: produtos, modules: modulos, mode, includeArchived: arquivados, page, pageSize: 24 }) });
   const colunas = useMemo(() => montarColunas(prods.data?.filter((p) => p.active) ?? []), [prods.data]);
   const visiveis = colunas.filter((c) => colunasEscolhidas.ids.includes(c.id));
-  // módulos filtráveis: só dos produtos selecionados no filtro
-  const modulosFiltraveis = (prods.data ?? []).filter((p) => produtos.includes(p.code) && p.modules.length).flatMap((p) => p.modules.filter((m) => m.active).map((m) => ({ key: `${p.code}:${m.code}`, label: `${p.name} › ${m.name}`, color: p.color })));
+  const ativos = prods.data?.filter((p) => p.active) ?? [];
+  /** Nome bonito de cada módulo escolhido, para os chips embaixo do filtro. */
+  const modulosEscolhidos = modulos.map((k) => {
+    const [pc, mc] = k.split(':');
+    const p = ativos.find((x) => x.code === pc);
+    const m = p?.modules.find((x) => x.code === mc);
+    return { key: k, label: m ? `${p!.name} › ${m.name}` : k, color: p?.color };
+  });
 
   return (
     <Pagina titulo="Clientes" sub={lista.data ? `${lista.data.total} cliente(s)` : ' '} acoes={<Can permission="records.write"><button className="btn-primary" onClick={() => setNovo(true)}><Plus size={16} /> Novo cliente</button></Can>}>
@@ -145,7 +171,7 @@ export function ClientesLista() {
           <div className="flex flex-wrap gap-1">
             {prods.data?.filter((p) => p.active).map((p) => {
               const on = produtos.includes(p.code);
-              return <button key={p.code} onClick={() => { set('produtos', on ? produtos.filter((x) => x !== p.code) : [...produtos, p.code]); if (on) set('modulos', modulos.filter((m) => !m.startsWith(p.code + ':'))); }} className={`chip border transition-colors ${on ? 'border-transparent' : 'border-line bg-transparent text-ink-2'}`} style={on ? { background: p.color + '22', color: p.color } : undefined}>{p.name}</button>;
+              return <button key={p.code} onClick={() => set('produtos', on ? produtos.filter((x) => x !== p.code) : [...produtos, p.code])} className={`chip border transition-colors ${on ? 'border-transparent' : 'border-line bg-transparent text-ink-2'}`} style={on ? { background: p.color + '22', color: p.color } : undefined}>{p.name}</button>;
             })}
           </div>
           {produtos.length + modulos.length > 1 && (
@@ -156,6 +182,7 @@ export function ClientesLista() {
           )}
           <div className="ml-auto flex items-center gap-3">
             <Toggle checked={arquivados} onChange={(v) => set('arquivados', v ? '1' : null)} label="arquivados" />
+            <FiltroModulos produtos={ativos} escolhidos={modulos} onChange={(v) => set('modulos', v)} />
             {view === 'tabela' && <SeletorColunas colunas={colunas} {...colunasEscolhidas} />}
             <div className="flex rounded-lg border border-line overflow-hidden">
               <button className={`px-2 py-1.5 ${view === 'cards' ? 'bg-accent-soft text-accent-ink' : 'text-muted'}`} onClick={() => set('ver', null)} title="Cards"><LayoutGrid size={16} /></button>
@@ -163,13 +190,12 @@ export function ClientesLista() {
             </div>
           </div>
         </div>
-        {modulosFiltraveis.length > 0 && (
+        {modulosEscolhidos.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 text-[12.5px]">
             <span className="text-muted mr-1">módulos:</span>
-            {modulosFiltraveis.map((m) => {
-              const on = modulos.includes(m.key);
-              return <button key={m.key} onClick={() => set('modulos', on ? modulos.filter((x) => x !== m.key) : [...modulos, m.key])} className={`chip border transition-colors ${on ? 'border-transparent' : 'border-line bg-transparent text-ink-2'}`} style={on ? { background: m.color + '22', color: m.color } : undefined}>{m.label}</button>;
-            })}
+            {modulosEscolhidos.map((m) => (
+              <button key={m.key} onClick={() => set('modulos', modulos.filter((x) => x !== m.key))} className="chip border border-transparent" style={m.color ? { background: m.color + '22', color: m.color } : undefined} title="clique para tirar este filtro">{m.label} ×</button>
+            ))}
           </div>
         )}
       </div>
@@ -195,15 +221,11 @@ export function ClientesLista() {
           {lista.data.items.map((c) => (
             <Link key={c.id} to={`/clientes/${c.id}`} className="card p-4 hover:border-accent transition-colors flex flex-col gap-3">
               <div className="flex items-start gap-3">
-                <span className="w-10 h-10 rounded-lg bg-surface-2 flex items-center justify-center font-display font-semibold text-ink-2 shrink-0">{c.tradeName.slice(0, 2).toUpperCase()}</span>
+                <LogoCliente src={logoSrc(c.logoUrl)} nome={c.tradeName} tamanho={44} />
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold truncate">{c.tradeName} {c.archived && <Chip tone="muted">arquivado</Chip>}</div>
                   <div className="text-muted text-[12.5px] truncate">{c.legalName}</div>
                 </div>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {c.products.map((p) => <Chip key={p.code} color={p.color} title={p.modules.length ? `módulos: ${p.modules.map((m) => m.name).join(', ')}` : undefined}>{p.name}{p.modules.length > 0 && <span className="opacity-70"> +{p.modules.length}</span>}</Chip>)}
-                {c.products.length === 0 && <span className="text-muted text-[12px]">sem produtos</span>}
               </div>
               <div className="flex items-center gap-2 text-[12.5px] mt-auto">
                 <Atalhos c={c} />

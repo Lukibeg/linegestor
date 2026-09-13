@@ -58,6 +58,14 @@ describe('inventário', () => {
     const painel = (await s.get('/dashboard')).json();
     expect(painel.devices.withClients).toBe(1);
     expect(painel.devices.valueWithClientsCents).toBe(45000);
+
+    // os cartões do topo do Inventário seguem os filtros da lista
+    const geral = (await s.get('/inventory/summary')).json();
+    expect(geral).toMatchObject({ withClients: 1, filtrado: false });
+    const soEstoque = (await s.get('/inventory/summary?clientId=stock')).json();
+    expect(soEstoque).toMatchObject({ withClients: 0, filtrado: true });
+    const porModelo = (await s.get(`/inventory/summary?modelId=${modelId}`)).json();
+    expect(porModelo.withClients).toBe(1);
   });
 
   it('granel: entrada no estoque, saída para cliente, saldo insuficiente', async () => {

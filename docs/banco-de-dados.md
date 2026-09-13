@@ -9,6 +9,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 ## Índice
 
 - [clients](#clients) — Uma linha por empresa.
+- [client_logos](#client_logos) — A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo).
 - [products](#products) — Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
 - [product_modules](#product_modules) — Catálogo de MÓDULOS: partes opcionais dentro de um produto.
 - [subscriptions](#subscriptions) — "O cliente X assina o produto Y." Uma linha por par cliente × produto.
@@ -48,7 +49,6 @@ Uma linha por empresa. Inclui também as organizações internas do grupo (Ingli
 | `trade_name` | texto | Nome fantasia — o nome pelo qual a equipe chama o cliente | obrigatório |
 | `legal_name` | texto | Razão social — o nome jurídico | obrigatório |
 | `cnpj` | texto | CNPJ com 14 dígitos, sem pontuação. Único no sistema. | obrigatório |
-| `logo_url` | texto | Caminho da imagem do logo (arquivo guardado fora do banco) | — |
 | `archived` | sim/não | Arquivado = some da lista padrão, mas não é apagado (era "ocultar" no Nexus) | obrigatório · padrão: false |
 | `is_internal` | sim/não | Organização do próprio grupo (Ingline, VoiceNet). Não conta como cliente nos indicadores. | obrigatório · padrão: false |
 | `internal_code` | texto | Código curto para as internas ("ingline", "voicenet"); nulo para clientes | — |
@@ -56,6 +56,13 @@ Uma linha por empresa. Inclui também as organizações internas do grupo (Ingli
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando foi mandado para a lixeira | — |
+
+## client_logos
+
+A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo). Fica em tabela separada para não pesar as consultas de lista: a imagem só é lida quando alguém a exibe. A interface reduz a imagem antes de enviar; o servidor recusa acima de 512 KB.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
 
 ## products
 
@@ -164,6 +171,7 @@ Um circuito (feixe) contratado junto a uma operadora. Agrupa DIDs e tem um limit
 | `code` | texto | Código do circuito na operadora | obrigatório |
 | `carrier_id` | texto | — | liga com **carriers** |
 | `channels` | número inteiro | Canais = chamadas simultâneas que o feixe suporta | obrigatório · padrão: 0 |
+| `key_number` | texto | Número chave (número piloto): o número principal do feixe junto à operadora | — |
 | `owner_client_id` | texto | Titular do circuito: quem detém o contrato com a operadora (normalmente VoiceNet) | liga com **clients** |
 | `monthly_value_cents` | número inteiro | Custo/valor mensal do feixe, em centavos | — |
 | `signaling_ip` | texto | IP da operadora (sinalização) | — |

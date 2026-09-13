@@ -41,8 +41,6 @@ export const clients = pgTable(
     legalName: text('legal_name').notNull(),
     /** CNPJ com 14 dígitos, sem pontuação. Único no sistema. */
     cnpj: text('cnpj').notNull(),
-    /** Caminho da imagem do logo (arquivo guardado fora do banco) */
-    logoUrl: text('logo_url'),
     /** Arquivado = some da lista padrão, mas não é apagado (era "ocultar" no Nexus) */
     archived: boolean('archived').notNull().default(false),
     /** Organização do próprio grupo (Ingline, VoiceNet). Não conta como cliente nos indicadores. */
@@ -62,6 +60,22 @@ export const clients = pgTable(
     index('clients_trade_name_idx').on(t.tradeName),
   ],
 );
+
+/**
+ * A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo).
+ * Fica em tabela separada para não pesar as consultas de lista: a imagem só é lida quando alguém a exibe.
+ * A interface reduz a imagem antes de enviar; o servidor recusa acima de 512 KB.
+ */
+export const clientLogos = pgTable('client_logos', {
+  clientId: text('client_id').primaryKey().references(() => clients.id, { onDelete: 'cascade' }),
+  /** Tipo da imagem: image/png, image/jpeg, image/webp, image/svg+xml */
+  mimeType: text('mime_type').notNull(),
+  /** A imagem em base64 (sem o prefixo "data:") */
+  dataBase64: text('data_base64').notNull(),
+  /** Tamanho aproximado em bytes, para exibir e limitar */
+  sizeBytes: integer('size_bytes').notNull().default(0),
+  updatedAt: updatedAt(),
+});
 
 /** Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração). */
 export const products = pgTable('products', {
@@ -222,6 +236,8 @@ export const circuits = pgTable(
     carrierId: text('carrier_id').references(() => carriers.id),
     /** Canais = chamadas simultâneas que o feixe suporta */
     channels: integer('channels').notNull().default(0),
+    /** Número chave (número piloto): o número principal do feixe junto à operadora */
+    keyNumber: text('key_number'),
     /** Titular do circuito: quem detém o contrato com a operadora (normalmente VoiceNet) */
     ownerClientId: text('owner_client_id').references(() => clients.id),
     /** Custo/valor mensal do feixe, em centavos */
@@ -475,6 +491,9 @@ export const auditLog = pgTable(
 // RELAÇÕES (para consultas com "traga junto")
 // ---------------------------------------------------------------------
 
+export const clientLogosRelations = relations(clientLogos, ({ one }) => ({
+  client: one(clients, { fields: [clientLogos.clientId], references: [clients.id] }),
+}));
 export const clientsRelations = relations(clients, ({ many }) => ({
   subscriptions: many(subscriptions),
   didsInUse: many(dids, { relationName: 'didClient' }),

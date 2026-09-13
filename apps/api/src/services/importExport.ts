@@ -32,9 +32,10 @@ const ALIASES: Record<Entity, Record<string, string[]>> = {
     sshPassword: ['senha_ssh', 'ssh_password'], hosting: ['hospedagem', 'hosting', 'pbx_hosting'],
   },
   circuits: {
-    id: ['id'], name: ['nome', 'name'], code: ['codigo', 'code', 'circuito', 'circuit'], carrier: ['operadora', 'carrier'], channels: ['canais', 'channels'],
+    id: ['id'], name: ['nome', 'name'], code: ['n_circuito', 'numero_circuito', 'codigo', 'code', 'circuito', 'circuit'], carrier: ['operadora', 'carrier'], channels: ['canais', 'channels'],
     signalingIp: ['ip', 'signaling_ip', 'ip_operadora'], authIp: ['ip_pbx', 'auth_ip', 'ip_autenticacao'], authUsername: ['usuario_auth', 'auth_username', 'usuario'],
     authPassword: ['senha_auth', 'auth_password', 'senha'], monthlyValue: ['valor', 'monthly_value', 'valor_mensal'], owner: ['titular', 'dono', 'owner', 'proprietario'], notes: ['observacoes', 'notes'],
+    keyNumber: ['numero_chave', 'num_chave', 'key_number', 'numero_piloto'],
   },
   dids: {
     number: ['numero', 'number', 'did', 'linha'], circuit: ['circuito', 'circuit', 'circuit_code', 'codigo_circuito'], client: ['cliente', 'client', 'locacao', 'cnpj_cliente', 'client_cnpj'],
@@ -145,6 +146,7 @@ async function planCircuits(db: Db, raw: Record<string, string>[]): Promise<Plan
     const data = {
       targetId: target?.id, name, code, carrierId: carrier?.id, channels, signalingIp: pick(r, 'circuits', 'signalingIp'), authIp: pick(r, 'circuits', 'authIp'),
       authUsername: pick(r, 'circuits', 'authUsername'), authPassword: pick(r, 'circuits', 'authPassword'), monthlyValueCents: valueRaw ? paraCentavos(valueRaw) : undefined,
+      keyNumber: pick(r, 'circuits', 'keyNumber'),
       ownerClientId: owner?.id, notes: pick(r, 'circuits', 'notes'),
     };
     return { line: i + 2, action: errors.length ? 'error' : target ? 'update' : 'create', key: name ?? target?.name ?? code ?? '?', errors, data };
@@ -225,11 +227,11 @@ export async function apply(db: Db, vault: SecretsVault, p: Plan, userId: string
         if (d.targetId) {
           const [cur] = await tx.select().from(circuits).where(eq(circuits.id, d.targetId));
           const set: Record<string, unknown> = { updatedAt: new Date(), authPasswordSecretId: await secret(cur?.authPasswordSecretId) };
-          for (const k of ['name', 'carrierId', 'channels', 'signalingIp', 'authIp', 'authUsername', 'monthlyValueCents', 'ownerClientId', 'notes']) if (d[k] !== undefined) set[k] = d[k];
+          for (const k of ['name', 'carrierId', 'channels', 'signalingIp', 'authIp', 'authUsername', 'monthlyValueCents', 'ownerClientId', 'notes', 'keyNumber']) if (d[k] !== undefined) set[k] = d[k];
           await tx.update(circuits).set(set).where(eq(circuits.id, d.targetId));
           updated++;
         } else {
-          await tx.insert(circuits).values({ id: newId(), name: d.name, code: d.code, carrierId: d.carrierId ?? null, channels: d.channels ?? 0, signalingIp: d.signalingIp ?? null, authIp: d.authIp ?? null, authUsername: d.authUsername ?? null, monthlyValueCents: d.monthlyValueCents ?? null, ownerClientId: d.ownerClientId ?? null, notes: d.notes ?? null, authPasswordSecretId: await secret(null) });
+          await tx.insert(circuits).values({ id: newId(), name: d.name, code: d.code, keyNumber: d.keyNumber ?? null, carrierId: d.carrierId ?? null, channels: d.channels ?? 0, signalingIp: d.signalingIp ?? null, authIp: d.authIp ?? null, authUsername: d.authUsername ?? null, monthlyValueCents: d.monthlyValueCents ?? null, ownerClientId: d.ownerClientId ?? null, notes: d.notes ?? null, authPasswordSecretId: await secret(null) });
           created++;
         }
       }
@@ -289,7 +291,7 @@ export async function exportCsv(db: Db, vault: SecretsVault, entity: Entity, wit
     const out = [];
     for (const r of rows) {
       out.push({
-        id: r.c.id, nome: r.c.name, codigo: r.c.code, operadora: r.carrierName ?? '', canais: r.c.channels, ip: r.c.signalingIp ?? '', ip_pbx: r.c.authIp ?? '', usuario_auth: r.c.authUsername ?? '',
+        id: r.c.id, nome: r.c.name, n_circuito: r.c.code, numero_chave: r.c.keyNumber ?? '', operadora: r.carrierName ?? '', canais: r.c.channels, ip: r.c.signalingIp ?? '', ip_pbx: r.c.authIp ?? '', usuario_auth: r.c.authUsername ?? '',
         ...(withSecrets ? { senha_auth: r.c.authPasswordSecretId ? (await vault.read(db, r.c.authPasswordSecretId))?.value ?? '' : '' } : {}),
         valor: r.c.monthlyValueCents != null ? (r.c.monthlyValueCents / 100).toFixed(2).replace('.', ',') : '', titular: r.ownerName ?? '', observacoes: r.c.notes ?? '',
       });

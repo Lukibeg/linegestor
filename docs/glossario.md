@@ -18,6 +18,7 @@
 | **DID** | Um número telefônico ("linha" no Nexus). Pertence a um circuito, é usado por um cliente (ou está livre) e tem um titular (normalmente VoiceNet). |
 | **Livre** | DID sem cliente. |
 | **Titular** | Quem detém o DID ou circuito junto à operadora (normalmente VoiceNet). Era "dono" nas primeiras versões. |
+| **Número chave** | O número piloto do feixe junto à operadora — o principal da faixa. Fica no cadastro do circuito. |
 | **Módulo** | Parte opcional dentro de um produto: Omniboard, FOP2 e NPS dentro do LinePBX; Dashboard de filas e NPS dentro do LineChat. O cliente assina o produto e liga os módulos que usa. |
 | **Modelo** | Um tipo de aparelho (Grandstream GXP1610, Headset Genérico…). |
 | **Serializado** | Modelo contado um a um, cada unidade com MAC. |

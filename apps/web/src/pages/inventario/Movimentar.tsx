@@ -39,7 +39,7 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
     try {
       const r = await api.inventory.move({ modality, toClientId: devolucao ? null : toClientId, newCondition: newCondition || null, valueCents: valor ? paraCentavos(valor) : null, note: note || null, items: items.map((i) => ('deviceId' in i ? { deviceId: i.deviceId } : { modelId: i.modelId, quantity: i.quantity, fromClientId: i.fromClientId })) });
       toast.push('ok', `${MODALIDADES[modality]} de ${r.quantity} item(ns) registrada`);
-      await Promise.all(['devices', 'models', 'stock', 'movements', 'dashboard', 'client-devices', 'device'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+      await Promise.all(['devices', 'models', 'stock', 'movements', 'dashboard', 'client-devices', 'device', 'inventory'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
       onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };

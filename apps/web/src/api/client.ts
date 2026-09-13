@@ -4,9 +4,7 @@
  * qualquer erro numa `ApiError` com a mensagem em português que o servidor devolveu.
  */
 import { ApiError } from './types.js';
-import type { Api } from './index.js';
-
-const BASE = import.meta.env.VITE_API_URL ?? '/api';
+import { API_BASE as BASE, type Api } from './index.js';
 
 async function http<T>(method: string, path: string, body?: unknown, raw = false): Promise<T> {
   const res = await fetch(BASE + path, {
@@ -53,6 +51,8 @@ export const realApi: Api = {
     upsertSubscription: (id, d) => http('PUT', `/clients/${id}/subscriptions`, d),
     endSubscription: (id, code) => http('DELETE', `/clients/${id}/subscriptions/${code}`),
     upsertModule: (id, d) => http('PUT', `/clients/${id}/modules`, d),
+    saveLogo: (id, dataUrl) => http('PUT', `/clients/${id}/logo`, { dataUrl }),
+    removeLogo: (id) => http('DELETE', `/clients/${id}/logo`),
     endModule: (id, productCode, moduleCode) => http('DELETE', `/clients/${id}/modules/${productCode}/${moduleCode}`),
     dids: (id) => http('GET', `/clients/${id}/dids`),
     devices: (id) => http('GET', `/clients/${id}/devices`),
@@ -61,7 +61,7 @@ export const realApi: Api = {
   secrets: { reveal: (id, password) => http('POST', `/secrets/${id}/reveal`, { password }) },
   circuits: {
     list: (q) => http('GET', `/circuits${qs(q)}`),
-    summary: () => http('GET', '/circuits/summary'),
+    summary: (q) => http('GET', `/circuits/summary${qs(q ?? {})}`),
     options: () => http('GET', '/circuits/options'),
     get: (id) => http('GET', `/circuits/${id}`),
     create: (d) => http('POST', '/circuits', d),
@@ -78,6 +78,7 @@ export const realApi: Api = {
     bulkDelete: (ids) => http('POST', '/dids/bulk-delete', { ids }),
   },
   inventory: {
+    summary: (q) => http('GET', `/inventory/summary${qs(q ?? {})}`),
     models: (q) => http('GET', `/inventory/models${qs(q ?? {})}`),
     createModel: (d) => http('POST', '/inventory/models', d),
     updateModel: (id, d) => http('PATCH', `/inventory/models/${id}`, d),

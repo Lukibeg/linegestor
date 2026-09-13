@@ -2,9 +2,9 @@
  * Circuitos (feixes). Cada um traz a ocupação: quantos DIDs tem, quantos estão com cliente,
  * quantos estão livres, e quantos canais suporta.
  */
-import { and, asc, eq, ilike, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { carriers, circuits, clients, dids, newId, type Db } from '@gestor/db';
-import type { CircuitoGravar } from '@gestor/shared';
+import type { CircuitoGravar, CircuitoListar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 
@@ -23,7 +23,7 @@ const occupancy = (db: Db) =>
 function shape(r: any) {
   const total = Number(r.total ?? 0), assigned = Number(r.assigned ?? 0);
   return {
-    id: r.id, name: r.name, code: r.code, carrierId: r.carrierId, carrierName: r.carrierName ?? null, channels: r.channels,
+    id: r.id, name: r.name, code: r.code, keyNumber: r.keyNumber ?? null, carrierId: r.carrierId, carrierName: r.carrierName ?? null, channels: r.channels,
     ownerClientId: r.ownerClientId, ownerName: r.ownerName ?? null, monthlyValueCents: r.monthlyValueCents,
     signalingIp: r.signalingIp, authIp: r.authIp, authUsername: r.authUsername,
     authPassword: { hasSecret: !!r.authPasswordSecretId, secretId: r.authPasswordSecretId ?? null },
@@ -32,14 +32,24 @@ function shape(r: any) {
   };
 }
 
-/** Resumo para os cartões no topo da tela: quantos circuitos, canais, valor mensal somado e a numeração inteira. */
-export async function summary(db: Db) {
+/**
+ * Resumo para os cartões no topo da tela: quantos circuitos, canais, valor mensal somado e a numeração.
+ * Aceita os mesmos filtros da lista: filtrou por operadora ou titular, os cartões acompanham.
+ */
+export async function summary(db: Db, q: Partial<CircuitoListar> = {}) {
+  const filtrado = !!(q.q || q.carrierId || q.ownerClientId);
+  const where = and(...filtros(q));
   const [c] = await db
     .select({ circuits: sql<number>`count(*)`, channels: sql<number>`coalesce(sum(${circuits.channels}), 0)`, monthlyValueCents: sql<number>`coalesce(sum(${circuits.monthlyValueCents}), 0)` })
-    .from(circuits).where(isNull(circuits.deletedAt));
+    .from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(where);
+  // a numeração acompanha o mesmo filtro: só os DIDs dos circuitos que sobraram
+  const idsFiltrados = db.select({ id: circuits.id }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(where);
+  const didWhere = filtrado
+    ? and(isNull(dids.deletedAt), inArray(dids.circuitId, idsFiltrados))
+    : isNull(dids.deletedAt);
   const [d] = await db
     .select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})`, noCircuit: sql<number>`count(*) filter (where ${dids.circuitId} is null)` })
-    .from(dids).where(isNull(dids.deletedAt));
+    .from(dids).where(didWhere);
   const total = Number(d?.total ?? 0), assigned = Number(d?.assigned ?? 0);
   return {
     circuits: Number(c?.circuits ?? 0),
@@ -49,15 +59,25 @@ export async function summary(db: Db) {
   };
 }
 
-export async function list(db: Db, q: { q?: string; carrierId?: string; page: number; pageSize: number }) {
-  const occ = occupancy(db);
+/**
+ * Os filtros da tela (busca, operadora, titular) viram condições de SQL.
+ * A MESMA função alimenta a lista e os cartões de resumo — por isso os números do topo
+ * sempre batem com o que está na tabela abaixo.
+ */
+function filtros(q: Partial<CircuitoListar>): SQL[] {
   const conds: SQL[] = [isNull(circuits.deletedAt)];
   if (q.carrierId) conds.push(eq(circuits.carrierId, q.carrierId));
-  if (q.q) conds.push(or(ilike(circuits.name, `%${q.q}%`), ilike(circuits.code, `%${q.q}%`), ilike(carriers.name, `%${q.q}%`))!);
-  const where = and(...conds);
+  if (q.ownerClientId) conds.push(eq(circuits.ownerClientId, q.ownerClientId));
+  if (q.q) conds.push(or(ilike(circuits.name, `%${q.q}%`), ilike(circuits.code, `%${q.q}%`), ilike(circuits.keyNumber, `%${q.q}%`), ilike(carriers.name, `%${q.q}%`))!);
+  return conds;
+}
+
+export async function list(db: Db, q: CircuitoListar) {
+  const occ = occupancy(db);
+  const where = and(...filtros(q));
   const base = db
     .select({
-      id: circuits.id, name: circuits.name, code: circuits.code, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
+      id: circuits.id, name: circuits.name, code: circuits.code, keyNumber: circuits.keyNumber, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
       ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, signalingIp: circuits.signalingIp,
       authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes,
       createdAt: circuits.createdAt, updatedAt: circuits.updatedAt, deletedAt: circuits.deletedAt, total: occ.total, assigned: occ.assigned,
@@ -76,7 +96,7 @@ export async function get(db: Db, id: string) {
   const occ = occupancy(db);
   const [row] = await db
     .select({
-      id: circuits.id, name: circuits.name, code: circuits.code, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
+      id: circuits.id, name: circuits.name, code: circuits.code, keyNumber: circuits.keyNumber, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
       ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, signalingIp: circuits.signalingIp,
       authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes,
       createdAt: circuits.createdAt, updatedAt: circuits.updatedAt, deletedAt: circuits.deletedAt, total: occ.total, assigned: occ.assigned,

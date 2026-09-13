@@ -221,3 +221,105 @@ export function Copiar({ texto, titulo = 'Copiar' }: { texto: string; titulo?: s
   const toast = useToast();
   return <button type="button" className="btn-ghost btn-sm text-muted" title={titulo} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(texto); toast.push('ok', 'Copiado'); }}><Copy size={13} /></button>;
 }
+
+/**
+ * Um painel que abre abaixo de um botão e fecha ao clicar fora ou apertar Esc.
+ * Usado pelo seletor de colunas e pelo filtro de módulos.
+ */
+export function Popover({ botao, children, largura = 'w-[320px]' }: { botao: (aberto: boolean) => ReactNode; children: ReactNode; largura?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const clique = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', clique);
+    document.addEventListener('keydown', tecla);
+    return () => { document.removeEventListener('mousedown', clique); document.removeEventListener('keydown', tecla); };
+  }, [open]);
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" className="btn-secondary btn-sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{botao(open)}</button>
+      {open && <div className="absolute right-0 top-full mt-1 z-30 card p-3 max-h-[70vh] overflow-y-auto shadow-lg" style={{ boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}>{<div className={largura}>{children}</div>}</div>}
+    </div>
+  );
+}
+
+/**
+ * A marca do cliente: a logo enviada, ou as iniciais do nome quando não há logo.
+ * `tamanho` é a medida do quadrado em pixels.
+ */
+export function LogoCliente({ src, nome, tamanho = 40, className = '' }: { src: string | null; nome: string; tamanho?: number; className?: string }) {
+  const [erro, setErro] = useState(false);
+  const estilo = { width: tamanho, height: tamanho, fontSize: Math.round(tamanho / 2.6) };
+  if (src && !erro) {
+    return <img src={src} alt={`Logo de ${nome}`} loading="lazy" onError={() => setErro(true)} style={estilo} className={`rounded-lg object-contain bg-white border border-line shrink-0 ${className}`} />;
+  }
+  const iniciais = nome.replace(/[^\p{L}\p{N} ]/gu, '').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]!.toUpperCase()).join('') || '?';
+  return <span aria-hidden style={estilo} className={`rounded-lg bg-surface-2 flex items-center justify-center font-display font-semibold text-ink-2 shrink-0 ${className}`}>{iniciais}</span>;
+}
+
+/**
+ * Campo para escolher a logo: mostra a imagem atual, aceita arquivo ou "arraste aqui",
+ * e REDUZ a imagem no próprio navegador (máx. 512 px) antes de mandar para o servidor.
+ * Assim nenhuma foto de 5 MB sai do computador da pessoa.
+ */
+export function CampoLogo({ atual, nome, onEscolher, onRemover }: { atual: string | null; nome: string; onEscolher: (dataUrl: string) => void; onRemover?: () => void }) {
+  const [erro, setErro] = useState('');
+  const [arrastando, setArrastando] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+
+  const processar = async (file?: File | null) => {
+    setErro('');
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return setErro('Escolha um arquivo de imagem (PNG, JPG, WEBP ou SVG).');
+    if (file.type === 'image/svg+xml') {
+      if (file.size > 400_000) return setErro('SVG muito grande (máximo 400 KB).');
+      const txt = await file.text();
+      return onEscolher(`data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(txt)))}`);
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise<HTMLImageElement>((ok, falhou) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => falhou(new Error('imagem inválida')); i.src = url; });
+      const max = 512;
+      const escala = Math.min(1, max / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.width * escala));
+      canvas.height = Math.max(1, Math.round(img.height * escala));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return setErro('Não foi possível preparar a imagem neste navegador.');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // PNG preserva fundo transparente; se ficar grande demais, cai para JPEG
+      let out = canvas.toDataURL('image/png');
+      if (out.length > 500_000) out = canvas.toDataURL('image/jpeg', 0.85);
+      if (out.length > 700_000) return setErro('Imagem muito grande mesmo depois de reduzir. Tente outra.');
+      onEscolher(out);
+    } catch {
+      setErro('Não foi possível ler esta imagem.');
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  return (
+    <div>
+      <div
+        className={`flex items-center gap-3 rounded-xl border border-dashed p-3 transition-colors ${arrastando ? 'border-accent bg-accent-soft' : 'border-line'}`}
+        onDragOver={(e) => { e.preventDefault(); setArrastando(true); }}
+        onDragLeave={() => setArrastando(false)}
+        onDrop={(e) => { e.preventDefault(); setArrastando(false); void processar(e.dataTransfer.files?.[0]); }}
+      >
+        <LogoCliente src={atual} nome={nome || '?'} tamanho={56} />
+        <div className="flex-1 min-w-0">
+          <div className="flex gap-2">
+            <button type="button" className="btn-secondary btn-sm" onClick={() => input.current?.click()}>{atual ? 'Trocar imagem' : 'Escolher imagem'}</button>
+            {atual && onRemover && <button type="button" className="btn-ghost btn-sm text-muted" onClick={onRemover}>Remover</button>}
+          </div>
+          <p className="text-[12px] text-muted mt-1">PNG, JPG, WEBP ou SVG. A imagem é reduzida automaticamente; pode arrastar o arquivo até aqui.</p>
+        </div>
+        <input ref={input} id="logo-arquivo" type="file" accept="image/*" className="hidden" onChange={(e) => { void processar(e.target.files?.[0]); e.target.value = ''; }} />
+      </div>
+      {erro && <div className="text-bad text-sm mt-1">{erro}</div>}
+    </div>
+  );
+}

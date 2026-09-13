@@ -17,6 +17,10 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.delete('/models/:id', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Inventário'], summary: 'Mandar modelo para a lixeira', params: Id } },
     async (req) => { const row = await svc.deleteModel(app.db, req.params.id); await app.audit(req, { action: 'delete', entityType: 'deviceModel', entityId: row.id, summary: `Mandou o modelo ${row.name} para a lixeira` }); return { ok: true }; });
 
+  // ---- resumo (os cartões do topo, com os mesmos filtros da lista) ----
+  app.get('/summary', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Resumo do inventário (em estoque, com clientes, em manutenção, valor locado) com os MESMOS filtros da lista', querystring: z.object({ q: z.string().optional(), modelId: z.string().optional(), clientId: z.string().optional(), condition: z.string().optional() }) } },
+    async (req) => svc.summary(app.db, req.query as any));
+
   // ---- aparelhos ----
   app.get('/devices', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Aparelhos serializados (por MAC)', querystring: PaginacaoSchema.extend({ q: z.string().optional(), modelId: z.string().optional(), clientId: z.string().optional(), condition: z.string().optional(), includeRetired: z.coerce.boolean().default(false) }) } },
     async (req) => svc.listDevices(app.db, req.query as any));

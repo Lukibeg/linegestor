@@ -81,7 +81,13 @@ export async function deleteModel(db: Db, id: string) {
 
 // ---------- Aparelhos serializados ----------
 
-export async function listDevices(db: Db, q: { q?: string; modelId?: string; clientId?: string | 'stock'; condition?: string; includeRetired?: boolean; page: number; pageSize: number }) {
+export type FiltroAparelhos = { q?: string; modelId?: string; clientId?: string | 'stock'; condition?: string; includeRetired?: boolean };
+
+/**
+ * Os filtros da aba Aparelhos viram condições de SQL. A MESMA função alimenta a lista e os
+ * cartões de resumo do topo — filtrou por modelo ou cliente, os números acompanham.
+ */
+function filtrosAparelhos(q: FiltroAparelhos): SQL[] {
   const conds: SQL[] = [isNull(devices.deletedAt)];
   if (q.modelId) conds.push(eq(devices.modelId, q.modelId));
   if (q.clientId === 'stock') conds.push(isNull(devices.clientId));
@@ -92,7 +98,45 @@ export async function listDevices(db: Db, q: { q?: string; modelId?: string; cli
     const mac = q.q.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
     conds.push(or(mac ? ilike(devices.mac, `%${mac}%`) : sql`false`, ilike(devices.tag, `%${q.q}%`), ilike(devices.ip, `%${q.q}%`), ilike(devices.location, `%${q.q}%`))!);
   }
-  const where = and(...conds);
+  return conds;
+}
+
+/**
+ * Resumo do inventário para os cartões do topo: em estoque, com clientes, em manutenção e
+ * o valor dos aparelhos que estão com clientes. Respeita os mesmos filtros da lista.
+ * Itens a granel só entram quando não há filtro de aparelho específico (eles não têm MAC nem condição).
+ */
+export async function summary(db: Db, q: FiltroAparelhos = {}) {
+  const semFiltro = !q.q && !q.modelId && !q.clientId && !q.condition;
+  const base = filtrosAparelhos({ ...q, condition: undefined, includeRetired: true });
+  const [d] = await db
+    .select({
+      inStock: sql<number>`count(*) filter (where ${devices.clientId} is null and ${devices.condition} in ('ativo','manutencao'))`,
+      withClients: sql<number>`count(*) filter (where ${devices.clientId} is not null and ${devices.condition} not in ('vendido','baixado'))`,
+      maintenance: sql<number>`count(*) filter (where ${devices.condition} = 'manutencao')`,
+      valueWithClients: sql<number>`coalesce(sum(${devices.valueCents}) filter (where ${devices.clientId} is not null and ${devices.currentModality} in ('locacao','comodato') and ${devices.condition} not in ('vendido','baixado')),0)`,
+    })
+    .from(devices).where(and(...base));
+  const bulkConds: SQL[] = [];
+  if (q.modelId) bulkConds.push(eq(bulkStock.modelId, q.modelId));
+  if (q.clientId === 'stock') bulkConds.push(isNull(bulkStock.clientId));
+  else if (q.clientId) bulkConds.push(eq(bulkStock.clientId, q.clientId));
+  const [b] = q.q || q.condition
+    ? [undefined]
+    : await db
+        .select({ inStock: sql<number>`coalesce(sum(${bulkStock.quantity}) filter (where ${bulkStock.clientId} is null),0)`, withClients: sql<number>`coalesce(sum(${bulkStock.quantity}) filter (where ${bulkStock.clientId} is not null),0)` })
+        .from(bulkStock).where(bulkConds.length ? and(...bulkConds) : undefined);
+  return {
+    inStock: Number(d?.inStock ?? 0) + Number(b?.inStock ?? 0),
+    withClients: Number(d?.withClients ?? 0) + Number(b?.withClients ?? 0),
+    maintenance: Number(d?.maintenance ?? 0),
+    valueWithClientsCents: Number(d?.valueWithClients ?? 0),
+    filtrado: !semFiltro,
+  };
+}
+
+export async function listDevices(db: Db, q: FiltroAparelhos & { page: number; pageSize: number }) {
+  const where = and(...filtrosAparelhos(q));
   const rows = await db
     .select({ d: devices, modelName: deviceModels.name, modelCode: deviceModels.code, clientName: clients.tradeName })
     .from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId)).leftJoin(clients, eq(clients.id, devices.clientId))

@@ -24,6 +24,31 @@ describe('circuitos', () => {
     expect(c.dids).toEqual({ total: 0, assigned: 0, free: 0 });
     expect(JSON.stringify(c)).not.toContain('senha-do-tronco');
   });
+
+  it('guarda o número chave só com dígitos', async () => {
+    await s.patch(`/circuits/${circuitId}`, { keyNumber: '(71) 3020-1200' });
+    expect((await s.get(`/circuits/${circuitId}`)).json().keyNumber).toBe('7130201200');
+  });
+
+  it('o resumo do topo obedece aos mesmos filtros da lista (operadora e titular)', async () => {
+    const carriers = (await s.get('/admin/catalogs/carriers')).json();
+    const voicenet = (await s.get('/clients/options?includeInternal=true')).json().find((c: any) => c.internalCode === 'voicenet');
+    await s.post('/circuits', { name: 'Feixe VC1', code: '77777', carrierId: carriers[1].id, channels: 5, monthlyValueCents: 10000, ownerClientId: voicenet.id });
+
+    const tudo = (await s.get('/circuits/summary')).json();
+    expect(tudo.circuits).toBe(2);
+    expect(tudo.channels).toBe(35);
+
+    const soVc1 = (await s.get(`/circuits/summary?carrierId=${carriers[1].id}`)).json();
+    expect(soVc1.circuits).toBe(1);
+    expect(soVc1.channels).toBe(5);
+    expect(soVc1.monthlyValueCents).toBe(10000);
+    expect(soVc1.dids.total).toBe(0); // o feixe novo ainda não tem numeração
+
+    const porTitular = (await s.get(`/circuits/summary?ownerClientId=${voicenet.id}`)).json();
+    expect(porTitular.circuits).toBe(1);
+    expect((await s.get(`/circuits?ownerClientId=${voicenet.id}`)).json().total).toBe(1);
+  });
 });
 
 describe('DIDs', () => {
