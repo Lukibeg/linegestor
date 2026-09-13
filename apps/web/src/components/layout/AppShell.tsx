@@ -3,10 +3,9 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Menu, Moon, Search, Settings, Sun, Upload, UserRound, X } from 'lucide-react';
+import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Menu, Moon, Settings, Sun, Upload, UserRound, X } from 'lucide-react';
 import { useAuth } from '../../lib/auth.js';
 import { IS_DEMO } from '../../api/index.js';
-import { GlobalSearch } from './GlobalSearch.js';
 import { Logotipo, Simbolo } from '../Marca.js';
 
 const NAV = [
@@ -39,15 +38,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout, can } = useAuth();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState(false);
   const { theme, toggle } = useTheme();
   const { collapsed, toggle: toggleSidebar } = useSidebar();
-
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearch(true); } };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, []);
 
   const items = NAV.filter((n) => (Array.isArray(n.perm) ? n.perm.some(can) : can(n.perm)));
   // no celular o menu é sempre completo (abre por cima); no desktop pode ficar só com ícones
@@ -89,9 +81,6 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="h-14 sticky top-0 z-20 bg-bg backdrop-blur border-b border-line flex items-center gap-2 px-4">
           <button className="md:hidden btn-ghost btn-sm" onClick={() => setOpen(true)} aria-label="Abrir menu"><Menu size={18} /></button>
-          <button onClick={() => setSearch(true)} className="flex items-center gap-2 input max-w-md text-muted text-left cursor-text">
-            <Search size={15} /> <span className="flex-1">Buscar cliente, número, circuito ou MAC…</span> <span className="kbd hidden sm:inline">Ctrl K</span>
-          </button>
           <div className="ml-auto flex items-center gap-1">
             {collapsed && <span className="hidden md:inline text-[12px] text-muted mr-1">{user?.name}</span>}
             <button className="btn-ghost btn-sm" onClick={toggle} title="Tema claro/escuro">{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
@@ -100,7 +89,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <main className="flex-1 px-4 md:px-6 py-5 max-w-[1400px] w-full mx-auto">{children}</main>
       </div>
-      <GlobalSearch open={search} onClose={() => setSearch(false)} />
     </div>
   );
 }

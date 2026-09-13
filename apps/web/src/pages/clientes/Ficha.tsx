@@ -45,7 +45,6 @@ export function ClienteFicha() {
       acoes={<>
         {c.links.web && <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary"><ExternalLink size={15} /> Abrir</a>}
         {c.links.ssh && can('access.use') && <a href={c.links.ssh} className="btn-secondary"><Terminal size={15} /> SSH</a>}
-        {c.links.fop2 && can('access.use') && <a href={c.links.fop2} target="_blank" rel="noreferrer" className="btn-secondary">FOP2</a>}
         <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button><button className="btn-ghost" onClick={toggleArchive}><Archive size={15} /> {c.archived ? 'Desarquivar' : 'Arquivar'}</button></Can>
         <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)}><Trash2 size={15} /></button></Can>
       </>}
@@ -81,22 +80,20 @@ function Geral({ c }: { c: ClientFull }) {
           })}
           {!ativos.length && <span className="text-muted text-sm">Nenhum produto marcado ainda.</span>}
         </div>
-        <div className="eyebrow mb-2">Servidor (LinePBX)</div>
-        {lp ? (
-          <dl className="grid grid-cols-[120px_1fr] gap-y-1.5 text-sm">
-            <dt className="text-muted">Hospedagem</dt><dd>{lp.hostingName ?? '—'}</dd>
-            <dt className="text-muted">Endereço</dt><dd className="font-mono">{lp.domain ?? '—'}</dd>
-            <dt className="text-muted">IP</dt><dd className="font-mono">{lp.serverIp ?? '—'}</dd>
-            <dt className="text-muted">SSH</dt><dd className="font-mono">{lp.sshUser ? `${lp.sshUser}@ porta ${lp.sshPort ?? 22}` : '—'}</dd>
-          </dl>
-        ) : <div className="text-muted text-sm">Este cliente não tem LinePBX.</div>}
+        {/* Endereço, IP e SSH ficam na aba Acessos — aqui só o que situa o cliente.
+            Sem LinePBX, o bloco do servidor simplesmente não aparece. */}
+        {lp && <div className="eyebrow mb-2">Servidor (LinePBX)</div>}
+        <dl className="grid grid-cols-[120px_1fr] gap-y-1.5 text-sm">
+          {lp && <><dt className="text-muted">Hospedagem</dt><dd>{lp.hostingName ?? '—'}</dd></>}
+          <dt className="text-muted">Implantado em</dt>
+          <dd>{data(c.createdAt)} <span className="text-muted">· atualizado {relativo(c.updatedAt)}</span></dd>
+        </dl>
         {c.notes && <><div className="eyebrow mt-4 mb-1">Anotações</div><p className="text-sm whitespace-pre-wrap">{c.notes}</p></>}
       </div>
       <div className="flex flex-col gap-3">
         <div className="card p-4"><div className="eyebrow">DIDs em uso</div><div className="font-display text-2xl font-semibold tnum">{c.didCount}</div></div>
         <div className="card p-4"><div className="eyebrow">Aparelhos com o cliente</div><div className="font-display text-2xl font-semibold tnum">{c.deviceCount}</div></div>
         <div className="card p-4"><div className="eyebrow">Módulos ativos</div><div className="font-display text-2xl font-semibold tnum">{ativos.reduce((a, s) => a + s.modules.filter((m) => m.active).length, 0)}</div><div className="text-muted text-[12px]">Omniboard, FOP2, NPS, dashboard de filas…</div></div>
-        <div className="card p-4 text-[12.5px] text-muted">Cadastrado em {data(c.createdAt)} · atualizado {relativo(c.updatedAt)}</div>
       </div>
     </div>
   );
