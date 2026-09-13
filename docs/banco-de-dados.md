@@ -228,7 +228,6 @@ Um aparelho serializado, identificado pelo MAC (decisão V7).
 | `model_id` | texto | — | obrigatório · liga com **deviceModels** |
 | `mac` | texto | MAC principal, 12 hexadecimais maiúsculos sem separador. Único. | obrigatório |
 | `mac_secondary` | texto | Segundo MAC (Wi-Fi, por exemplo), se houver | — |
-| `tag` | texto | Etiqueta/patrimônio interno opcional (o "N001" do Nexus) | — |
 | `client_id` | texto | Atribuído a: nulo = no estoque; preenchido = com este cliente | liga com **clients** |
 | `unit` | texto | Unidade do cliente onde o aparelho está (filial, loja, andar): "Loja Simões Filho" | — |
 | `current_modality` | texto | Como chegou ao cliente atual: locacao | venda | comodato (nulo se em estoque) | — |

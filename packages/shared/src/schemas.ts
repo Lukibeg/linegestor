@@ -230,7 +230,6 @@ export const AparelhoGravarSchema = z.object({
   modelId: IdSchema,
   mac: MacSchema,
   macSecondary: MacSchema.nullable().optional(),
-  tag: z.string().trim().max(40).nullable().optional(),
   /** Unidade do cliente (filial, loja, andar) onde o aparelho está */
   unit: z.string().trim().max(120).nullable().optional(),
   condition: z.enum(['ativo', 'manutencao', 'baixado', 'vendido']).default('ativo'),

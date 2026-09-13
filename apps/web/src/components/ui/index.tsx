@@ -229,18 +229,56 @@ export function Copiar({ texto, titulo = 'Copiar' }: { texto: string; titulo?: s
 export function Popover({ botao, children, largura = 'w-[320px]' }: { botao: (aberto: boolean) => ReactNode; children: ReactNode; largura?: string }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const painel = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
   useEffect(() => {
     if (!open) return;
     const clique = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
     const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    // O painel fica preso à tela, nunca metade dele para fora: se não couber à direita,
+    // encosta na borda; se não couber embaixo, abre para cima; e sempre rola por dentro.
+    const posicionar = () => {
+      const b = ref.current?.getBoundingClientRect();
+      const p = painel.current?.getBoundingClientRect();
+      if (!b) return;
+      const margem = 8;
+      const larg = p?.width ?? 320;
+      const alt = painel.current?.scrollHeight ?? p?.height ?? 320; // altura natural, antes de cortar
+      const espacoAbaixo = window.innerHeight - b.bottom - margem;
+      const espacoAcima = b.top - margem;
+      const paraCima = espacoAbaixo < Math.min(alt, 220) && espacoAcima > espacoAbaixo;
+      const left = Math.max(margem, Math.min(b.right - larg, window.innerWidth - larg - margem));
+      // abrindo para cima, prendemos pela base (assim nunca sobra pedaço fora da tela embaixo)
+      const altura = Math.max(140, (paraCima ? espacoAcima : espacoAbaixo) - 4);
+      setPos(paraCima
+        ? { left, bottom: Math.max(margem, window.innerHeight - b.top + 4), maxHeight: altura }
+        : { left, top: Math.max(margem, Math.min(b.bottom + 4, window.innerHeight - margem - altura)), maxHeight: altura });
+    };
+    posicionar();
+    const alvo = { passive: true } as AddEventListenerOptions;
     document.addEventListener('mousedown', clique);
     document.addEventListener('keydown', tecla);
-    return () => { document.removeEventListener('mousedown', clique); document.removeEventListener('keydown', tecla); };
+    window.addEventListener('resize', posicionar, alvo);
+    window.addEventListener('scroll', posicionar, true);
+    return () => {
+      document.removeEventListener('mousedown', clique);
+      document.removeEventListener('keydown', tecla);
+      window.removeEventListener('resize', posicionar);
+      window.removeEventListener('scroll', posicionar, true);
+    };
   }, [open]);
   return (
     <div className="relative" ref={ref}>
-      <button type="button" className="btn-secondary btn-sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}>{botao(open)}</button>
-      {open && <div className="absolute right-0 top-full mt-1 z-30 card p-3 max-h-[70vh] overflow-y-auto shadow-lg" style={{ boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}>{<div className={largura}>{children}</div>}</div>}
+      <button type="button" className="btn-secondary btn-sm" onClick={() => { setPos(null); setOpen((o) => !o); }} aria-expanded={open}>{botao(open)}</button>
+      {open && (
+        <div
+          ref={painel}
+          className="fixed z-40 card p-3 overflow-y-auto shadow-lg"
+          style={{ left: pos?.left ?? -9999, top: pos?.top, bottom: pos?.bottom, maxHeight: pos?.maxHeight ?? 320, maxWidth: 'calc(100vw - 16px)', visibility: pos ? 'visible' : 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}
+        >
+          <div className={`${largura} max-w-full`}>{children}</div>
+        </div>
+      )}
     </div>
   );
 }

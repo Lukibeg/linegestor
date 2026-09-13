@@ -52,7 +52,7 @@ export type DeviceModel = {
   counts: { total: number; inStock: number; withClients: number; sold: number; maintenance: number; retired: number };
 };
 export type Device = {
-  id: string; modelId: string; modelName: string; modelCode: string; mac: string; macFormatted: string; macSecondary: string | null; tag: string | null;
+  id: string; modelId: string; modelName: string; modelCode: string; mac: string; macFormatted: string; macSecondary: string | null;
   clientId: string | null; clientName: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null;
   history?: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; newCondition: string | null; note: string | null; userName: string; createdAt: string }>;
 };
@@ -76,7 +76,7 @@ export type SearchResult = {
   clients: Array<{ id: string; name: string; legalName: string; cnpj: string }>;
   dids: Array<{ id: string; number: string; numberFormatted: string; clientName: string | null; circuitName: string | null }>;
   circuits: Array<{ id: string; name: string; code: string; carrierName: string | null }>;
-  devices: Array<{ id: string; mac: string; macFormatted: string; tag: string | null; modelName: string; clientName: string | null }>;
+  devices: Array<{ id: string; mac: string; macFormatted: string; unit: string | null; modelName: string; clientName: string | null }>;
 };
 
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number; free?: number };

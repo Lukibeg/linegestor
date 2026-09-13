@@ -322,8 +322,6 @@ export const devices = pgTable(
     mac: text('mac').notNull(),
     /** Segundo MAC (Wi-Fi, por exemplo), se houver */
     macSecondary: text('mac_secondary'),
-    /** Etiqueta/patrimônio interno opcional (o "N001" do Nexus) */
-    tag: text('tag'),
     /** Atribuído a: nulo = no estoque; preenchido = com este cliente */
     clientId: text('client_id').references(() => clients.id),
     /** Unidade do cliente onde o aparelho está (filial, loja, andar): "Loja Simões Filho" */

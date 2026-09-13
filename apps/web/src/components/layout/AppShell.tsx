@@ -55,14 +55,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-full flex">
       {/* menu lateral */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-60 ${collapsed ? 'md:w-16' : 'md:w-60'} bg-surface border-r border-line flex flex-col transition-[transform,width] duration-200 md:translate-x-0 md:static ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-60 ${collapsed ? 'md:w-16' : 'md:w-60'} bg-surface border-r border-line flex flex-col transition-[transform,width] duration-200 md:translate-x-0 md:sticky md:inset-y-auto md:top-0 md:h-screen ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className={`h-14 flex items-center gap-2 px-4 border-b border-line ${collapsed ? 'md:justify-center md:px-0' : ''}`}>
           <span className="w-7 h-7 rounded-lg bg-accent text-white font-display font-bold flex items-center justify-center text-sm shrink-0" title="Ingline Systems Gestor">G</span>
           <span className={`font-display font-semibold ${hide}`}>Gestor</span>
           {IS_DEMO && <span className={`chip bg-signal-soft text-signal ml-auto ${hide}`}>demo</span>}
           <button className="md:hidden ml-auto btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="Fechar menu"><X size={16} /></button>
         </div>
-        <nav className="p-2 flex flex-col gap-0.5 flex-1">
+        <nav className="p-2 flex flex-col gap-0.5 flex-1 min-h-0 overflow-y-auto">
           {items.map((n) => (
             <NavLink key={n.to} to={n.to} end={n.end} onClick={() => setOpen(false)} title={collapsed ? n.label : undefined}
               className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium ${collapsed ? 'md:justify-center md:px-0' : ''} ${isActive ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>

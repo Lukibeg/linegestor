@@ -12,8 +12,8 @@ beforeAll(async () => {
   modelId = (await s.post('/inventory/models', { code: 'gxp1610', name: 'Grandstream GXP1610', categoryId: cats.find((c: any) => c.name === 'Telefone IP').id, tracking: 'serializado' })).json().id;
   headsetId = (await s.post('/inventory/models', { code: 'headset', name: 'Headset Genérico', categoryId: cats.find((c: any) => c.name === 'Periférico').id, tracking: 'granel' })).json().id;
   clientId = (await s.post('/clients', { tradeName: 'Hospital Vale Verde', legalName: 'Assoc. Vale Verde', cnpj: '33.444.555/0001-81' })).json().id;
-  devA = (await s.post('/inventory/devices', { modelId, mac: '00:0b:82:a1:b2:c3', tag: 'N001', valueCents: 45000 })).json().id;
-  devB = (await s.post('/inventory/devices', { modelId, mac: '00-0B-82-A1-B2-C4', tag: 'N002', valueCents: 45000 })).json().id;
+  devA = (await s.post('/inventory/devices', { modelId, mac: '00:0b:82:a1:b2:c3', valueCents: 45000 })).json().id;
+  devB = (await s.post('/inventory/devices', { modelId, mac: '00-0B-82-A1-B2-C4', valueCents: 45000 })).json().id;
 });
 afterAll(async () => { await app.close(); });
 

@@ -97,7 +97,7 @@ function filtrosAparelhos(q: FiltroAparelhos): SQL[] {
   else if (!q.includeRetired) conds.push(sql`${devices.condition} not in ('baixado','vendido')`);
   if (q.q) {
     const mac = q.q.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
-    conds.push(or(mac ? ilike(devices.mac, `%${mac}%`) : sql`false`, ilike(devices.tag, `%${q.q}%`), ilike(devices.ip, `%${q.q}%`), ilike(devices.unit, `%${q.q}%`), ilike(devices.location, `%${q.q}%`))!);
+    conds.push(or(mac ? ilike(devices.mac, `%${mac}%`) : sql`false`, ilike(devices.ip, `%${q.q}%`), ilike(devices.unit, `%${q.q}%`), ilike(devices.location, `%${q.q}%`))!);
   }
   return conds;
 }
@@ -141,7 +141,6 @@ function ordenacaoAparelhos(q: { sort?: string; dir?: string }) {
   const dir = q.dir === 'desc' ? sql`desc` : sql`asc`;
   const colunas: Record<string, SQL> = {
     mac: sql`${devices.mac}`,
-    tag: sql`${devices.tag}`,
     modelName: sql`lower(${deviceModels.name})`,
     clientName: sql`lower(${clients.tradeName})`,
     currentModality: sql`${devices.currentModality}`,

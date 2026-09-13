@@ -113,7 +113,6 @@ CREATE TABLE "devices" (
 	"model_id" text NOT NULL,
 	"mac" text NOT NULL,
 	"mac_secondary" text,
-	"tag" text,
 	"client_id" text,
 	"unit" text,
 	"current_modality" text,

@@ -174,8 +174,8 @@ if (demo) {
       ['Home Care Viver Bem', 4, ['Sede']],
     ];
     let n = 0;
-    for (const [cli, q, unidades] of locados) for (let i = 0; i < q; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), tag: 'N' + String(n + 1).padStart(3, '0'), clientId: clientIds[cli]!, unit: unidades[i % unidades.length]!, currentModality: 'locacao', condition: 'ativo', valueCents: 45000 });
-    for (let i = 0; i < 12; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), tag: 'N' + String(n + 1).padStart(3, '0'), condition: i === 11 ? 'manutencao' : 'ativo', valueCents: 45000 });
+    for (const [cli, q, unidades] of locados) for (let i = 0; i < q; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), clientId: clientIds[cli]!, unit: unidades[i % unidades.length]!, currentModality: 'locacao', condition: 'ativo', valueCents: 45000 });
+    for (let i = 0; i < 12; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), condition: i === 11 ? 'manutencao' : 'ativo', valueCents: 45000 });
     for (let i = 0; i < 3; i++, n++) devs.push({ id: newId(), modelId: mTip, mac: ('1C61B4' + (0x200000 + n).toString(16).toUpperCase().slice(-6)), condition: 'ativo', valueCents: 38000 });
     await db.insert(s.devices).values(devs);
     await db.insert(s.bulkStock).values([

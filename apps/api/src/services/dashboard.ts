@@ -96,8 +96,8 @@ export async function search(db: Db, term: string) {
     db.select({ id: circuits.id, name: circuits.name, code: circuits.code, carrierName: carriers.name }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId))
       .where(and(isNull(circuits.deletedAt), or(ilike(circuits.name, like), ilike(circuits.code, like)))).limit(8),
     hex.length >= 4 || t.length >= 2
-      ? db.select({ id: devices.id, mac: devices.mac, tag: devices.tag, modelName: deviceModels.name, clientName: clients.tradeName }).from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId)).leftJoin(clients, eq(clients.id, devices.clientId))
-          .where(and(isNull(devices.deletedAt), or(hex.length >= 4 ? ilike(devices.mac, `%${hex}%`) : sql`false`, ilike(devices.tag, like)))).limit(8)
+      ? db.select({ id: devices.id, mac: devices.mac, unit: devices.unit, modelName: deviceModels.name, clientName: clients.tradeName }).from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId)).leftJoin(clients, eq(clients.id, devices.clientId))
+          .where(and(isNull(devices.deletedAt), or(hex.length >= 4 ? ilike(devices.mac, `%${hex}%`) : sql`false`, ilike(devices.unit, like)))).limit(8)
       : Promise.resolve([]),
   ]);
   return {

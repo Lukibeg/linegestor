@@ -1,5 +1,5 @@
 {
-  "id": "acca165e-118b-4ba2-abd7-79c601a7ec25",
+  "id": "5b18260e-e311-4b2f-afef-cf0f8d1861d0",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1031,12 +1031,6 @@
         },
         "mac_secondary": {
           "name": "mac_secondary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "tag": {
-          "name": "tag",
           "type": "text",
           "primaryKey": false,
           "notNull": false
