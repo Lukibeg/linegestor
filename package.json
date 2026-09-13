@@ -1,0 +1,28 @@
+{
+  "name": "gestor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ingline Systems Gestor — cadastro central de clientes, produtos, numeração (DIDs) e equipamentos.",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "db:migrate": "pnpm --filter @gestor/db migrate",
+    "db:seed": "pnpm --filter @gestor/db seed",
+    "db:docs": "pnpm --filter @gestor/db docs:gen"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "argon2",
+      "esbuild",
+      "prisma"
+    ]
+  }
+}
