@@ -3,7 +3,8 @@
  *
  * Uso: `const db = createDb(process.env.DATABASE_URL)`; depois `db.select().from(schema.clients)`.
  */
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzle, type NodePgQueryResultHKT } from 'drizzle-orm/node-postgres';
+import type { PgDatabase } from 'drizzle-orm/pg-core';
 import pg from 'pg';
 import * as schema from './schema.js';
 
@@ -11,7 +12,8 @@ export * as schema from './schema.js';
 export * from './schema.js';
 export { newId } from './id.js';
 
-export type Db = ReturnType<typeof createDb>['db'];
+/** Tipo do banco usado pelos serviços. Aceita tanto a conexão normal quanto uma transação (`db.transaction`). */
+export type Db = PgDatabase<NodePgQueryResultHKT, typeof schema>;
 
 export function createDb(connectionString: string) {
   const pool = new pg.Pool({ connectionString, max: 10 });

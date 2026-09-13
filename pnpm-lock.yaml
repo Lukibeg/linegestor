@@ -55,12 +55,21 @@ importers:
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
+      drizzle-orm:
+        specifier: ^0.38.3
+        version: 0.38.4(@prisma/client@6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3))(@types/pg@8.23.1)(@types/react@18.3.31)(pg@8.23.0)(prisma@6.19.3(typescript@5.9.3))(react@18.3.1)
       fastify:
         specifier: ^5.2.0
         version: 5.12.4
+      fastify-plugin:
+        specifier: ^5.0.1
+        version: 5.1.0
       fastify-type-provider-zod:
         specifier: ^4.0.2
         version: 4.0.2(fastify@5.12.4)(zod@3.25.76)
+      pg:
+        specifier: ^8.13.1
+        version: 8.23.0
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -71,6 +80,9 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.20.2
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
       pino-pretty:
         specifier: ^13.0.0
         version: 13.1.3

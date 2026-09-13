@@ -93,13 +93,13 @@ if (demo) {
 
     const demoClients = [
       { t: 'Clínica Aurora', l: 'Clínica Aurora Serviços Médicos LTDA', cnpj: '11222333000181', p: ['linepbx', 'fop2', 'voicenet'], host: 'Vultr', dom: 'aurora.linepbx.com.br', ip: '203.0.113.10' },
-      { t: 'Distribuidora Norte', l: 'Norte Comércio e Distribuição LTDA', cnpj: '22333444000105', p: ['linepbx', 'voicenet', 'linechat', 'equipamentos'], host: 'Local', dom: null, ip: '192.0.2.50' },
-      { t: 'Hospital Vale Verde', l: 'Associação Hospitalar Vale Verde', cnpj: '33444555000120', p: ['linepbx', 'fop2', 'omniboard', 'linereports', 'voicenet', 'equipamentos'], host: 'Hetzner', dom: 'valeverde.linepbx.com.br', ip: '198.51.100.7' },
-      { t: 'Escritório Prado & Lima', l: 'Prado e Lima Advogados Associados', cnpj: '44555666000148', p: ['voicenet', 'linechat'], host: null, dom: null, ip: null },
-      { t: 'Supermercado Bom Preço', l: 'Bom Preço Supermercados LTDA', cnpj: '55666777000162', p: ['linepbx', 'fop2', 'voicenet', 'equipamentos'], host: 'Nuvem (Local)', dom: 'bompreco.linepbx.com.br', ip: '203.0.113.88' },
-      { t: 'Laboratório Exame Certo', l: 'Exame Certo Análises Clínicas LTDA', cnpj: '66777888000187', p: ['linepbx', 'voicenet'], host: 'AWS', dom: 'exame.linepbx.com.br', ip: '203.0.113.121' },
-      { t: 'Construtora Horizonte', l: 'Horizonte Engenharia e Construções S.A.', cnpj: '77888999000101', p: ['voicenet'], host: null, dom: null, ip: null },
-      { t: 'Home Care Viver Bem', l: 'Viver Bem Atenção Domiciliar LTDA', cnpj: '88999000000116', p: ['linepbx', 'omniboard', 'voicenet', 'linechat', 'equipamentos'], host: 'Vultr', dom: 'viverbem.linepbx.com.br', ip: '203.0.113.200' },
+      { t: 'Distribuidora Norte', l: 'Norte Comércio e Distribuição LTDA', cnpj: '22333444000181', p: ['linepbx', 'voicenet', 'linechat', 'equipamentos'], host: 'Local', dom: null, ip: '192.0.2.50' },
+      { t: 'Hospital Vale Verde', l: 'Associação Hospitalar Vale Verde', cnpj: '33444555000181', p: ['linepbx', 'fop2', 'omniboard', 'linereports', 'voicenet', 'equipamentos'], host: 'Hetzner', dom: 'valeverde.linepbx.com.br', ip: '198.51.100.7' },
+      { t: 'Escritório Prado & Lima', l: 'Prado e Lima Advogados Associados', cnpj: '44555666000181', p: ['voicenet', 'linechat'], host: null, dom: null, ip: null },
+      { t: 'Supermercado Bom Preço', l: 'Bom Preço Supermercados LTDA', cnpj: '55666777000181', p: ['linepbx', 'fop2', 'voicenet', 'equipamentos'], host: 'Nuvem (Local)', dom: 'bompreco.linepbx.com.br', ip: '203.0.113.88' },
+      { t: 'Laboratório Exame Certo', l: 'Exame Certo Análises Clínicas LTDA', cnpj: '66777888000181', p: ['linepbx', 'voicenet'], host: 'AWS', dom: 'exame.linepbx.com.br', ip: '203.0.113.121' },
+      { t: 'Construtora Horizonte', l: 'Horizonte Engenharia e Construções S.A.', cnpj: '77888999000181', p: ['voicenet'], host: null, dom: null, ip: null },
+      { t: 'Home Care Viver Bem', l: 'Viver Bem Atenção Domiciliar LTDA', cnpj: '88999000000198', p: ['linepbx', 'omniboard', 'voicenet', 'linechat', 'equipamentos'], host: 'Vultr', dom: 'viverbem.linepbx.com.br', ip: '203.0.113.200' },
     ];
 
     const clientIds: Record<string, string> = {};
