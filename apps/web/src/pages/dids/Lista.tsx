@@ -6,10 +6,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { api } from '../../api/index.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Campo, Carregando, Chip, Confirmar, Copiar, Modal, Paginacao, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { FaixaForm } from '../circuitos/Detalhe.js';
 
 type Acao = 'circuito' | 'cliente' | 'liberar' | 'observacao' | 'excluir';
@@ -24,13 +25,13 @@ export function DidsRedirect() {
 export function Numeracao() {
   const [sp, setSp] = useSearchParams();
   const q = sp.get('q') ?? ''; const circuito = sp.get('circuito') ?? ''; const cliente = sp.get('cliente') ?? ''; const page = Number(sp.get('p') ?? 1);
-  const sort = sp.get('ord') ?? 'number'; const dir = sp.get('dir') ?? 'asc';
+  const o = useOrdenacao('number');
   const pageSize = 100;
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
   const limpar = () => setSp({ aba: 'numeracao' }, { replace: true });
   const filtro = { q, circuitId: circuito, clientId: cliente };
   const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
-  const lista = useQuery({ queryKey: ['dids', filtro, page, sort, dir], queryFn: () => api.dids.list({ ...filtro, page, pageSize, sort, dir }) });
+  const lista = useQuery({ queryKey: ['dids', filtro, page, o.ord, o.dir], queryFn: () => api.dids.list({ ...filtro, page, pageSize, sort: o.ord, dir: o.dir }) });
   const circuits = useQuery({ queryKey: ['circuit-options'], queryFn: api.circuits.options });
   const clients = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options() });
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -42,8 +43,6 @@ export function Numeracao() {
   const allOnPage = items.length > 0 && items.every((d) => sel.has(d.id));
   const togglePage = () => setSel((s) => { const n = new Set(s); if (allOnPage) items.forEach((d) => n.delete(d.id)); else items.forEach((d) => n.add(d.id)); return n; });
   const selectAllFiltered = async () => { const r = await api.dids.ids(filtro); setSel(new Set(r.ids)); toast.push('info', `${r.ids.length} DIDs selecionados (todos os filtrados)`); };
-  const toggleSort = (col: string) => { if (sort === col) set('dir', dir === 'asc' ? 'desc' : 'asc'); else { set('ord', col); set('dir', 'asc'); } };
-  const Th = ({ col, children }: { col: string; children: React.ReactNode }) => <th className="cursor-pointer select-none" onClick={() => toggleSort(col)}><span className="inline-flex items-center gap-1">{children}{sort === col && (dir === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}</span></th>;
 
   const done = async (msg: string) => { setAcao(null); setSel(new Set()); toast.push('ok', msg); await qc.invalidateQueries({ queryKey: ['dids'] }); await qc.invalidateQueries({ queryKey: ['circuits'] }); await qc.invalidateQueries({ queryKey: ['dashboard'] }); };
 
@@ -77,7 +76,7 @@ export function Numeracao() {
         <div className="card overflow-x-auto"><table className="table">
           <thead><tr>
             {can('dids.assign') && <th className="w-8"><input type="checkbox" checked={allOnPage} onChange={togglePage} aria-label="Selecionar página" /></th>}
-            <Th col="number">Número</Th><th>Operadora</th><Th col="circuit">Circuito</Th><Th col="client">Cliente</Th><Th col="owner">Titular</Th><Th col="note">Observação</Th>
+            <Th o={o} col="number">Número</Th><Th o={o} col="carrier">Operadora</Th><Th o={o} col="circuit">Circuito</Th><Th o={o} col="client">Cliente</Th><Th o={o} col="owner">Titular</Th><Th o={o} col="note">Observação</Th>
           </tr></thead>
           <tbody>{items.map((d) => (
             <tr key={d.id} className={sel.has(d.id) ? 'bg-accent-soft' : ''}>

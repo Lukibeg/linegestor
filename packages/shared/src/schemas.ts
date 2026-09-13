@@ -14,7 +14,18 @@ export const IdSchema = z.string().min(1);
 
 export const PaginacaoSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  pageSize: z.coerce.number().int().min(1).max(500).default(50),
+});
+
+/**
+ * Ordenação de tabela: `sort` é o nome da coluna (o mesmo id que a tela usa) e `dir` o sentido.
+ * Aceita qualquer texto porque algumas colunas são criadas na hora (ex.: "modulo:linepbx:fop2");
+ * o servidor ignora o que não conhece e volta para a ordem padrão daquela tela.
+ */
+export const OrdenacaoSchema = z.object({
+  sort: z.string().trim().max(60).optional(),
+  /** sem valor = cada tela usa o sentido natural dela (nomes crescendo, datas decrescendo) */
+  dir: z.enum(['asc', 'desc']).optional(),
 });
 
 export const CnpjSchema = z
@@ -52,7 +63,7 @@ export const ClienteCriarSchema = z.object({
 });
 export const ClienteAtualizarSchema = ClienteCriarSchema.partial();
 
-export const ClienteListarSchema = PaginacaoSchema.extend({
+export const ClienteListarSchema = PaginacaoSchema.merge(OrdenacaoSchema).extend({
   q: z.string().trim().max(120).optional(),
   /** códigos de produto para filtrar */
   products: z.union([z.string(), z.array(z.string())]).optional().transform((v) => (v == null ? [] : Array.isArray(v) ? v : [v])),
@@ -159,7 +170,7 @@ export const CircuitoGravarSchema = z.object({
 export const CircuitoAtualizarSchema = CircuitoGravarSchema.partial();
 
 /** Filtros da tela de Circuitos. Os mesmos valem para os cartões de resumo no topo. */
-export const CircuitoListarSchema = PaginacaoSchema.extend({
+export const CircuitoListarSchema = PaginacaoSchema.merge(OrdenacaoSchema).extend({
   q: z.string().trim().max(120).optional(),
   carrierId: IdSchema.optional(),
   /** titular (quem detém o contrato junto à operadora) */
@@ -173,8 +184,8 @@ export const DidListarSchema = PaginacaoSchema.extend({
   circuitId: z.union([IdSchema, z.literal('none')]).optional(),
   clientId: z.union([IdSchema, z.literal('free')]).optional(),
   ownerClientId: IdSchema.optional(),
-  sort: z.enum(['number', 'circuit', 'client', 'owner', 'note']).default('number'),
-  dir: z.enum(['asc', 'desc']).default('asc'),
+  sort: z.string().trim().max(60).optional(),
+  dir: z.enum(['asc', 'desc']).optional(),
 });
 
 export const DidCriarFaixaSchema = z.object({
@@ -288,7 +299,7 @@ export const ImportacaoSchema = z.object({
   delimiter: z.enum([';', ',', '\t']).default(';'),
 });
 
-export const AuditoriaListarSchema = PaginacaoSchema.extend({
+export const AuditoriaListarSchema = PaginacaoSchema.merge(OrdenacaoSchema).extend({
   entityType: z.string().optional(),
   entityId: z.string().optional(),
   userId: z.string().optional(),
@@ -305,6 +316,7 @@ export type ModuloGravar = z.infer<typeof ModuloGravarSchema>;
 export type ModuloCatalogo = z.infer<typeof ModuloCatalogoSchema>;
 export type CircuitoGravar = z.infer<typeof CircuitoGravarSchema>;
 export type CircuitoListar = z.infer<typeof CircuitoListarSchema>;
+export type Ordenacao = z.infer<typeof OrdenacaoSchema>;
 export type LogoGravar = z.infer<typeof LogoGravarSchema>;
 export type DidListar = z.infer<typeof DidListarSchema>;
 export type DidCriarFaixa = z.infer<typeof DidCriarFaixaSchema>;

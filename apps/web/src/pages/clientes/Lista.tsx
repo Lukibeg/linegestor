@@ -13,6 +13,7 @@ import { Pagina } from '../../components/layout/AppShell.js';
 import { Can } from '../../lib/auth.js';
 import { Carregando, Chip, LogoCliente, Paginacao, Popover, Toggle, Vazio } from '../../components/ui/index.js';
 import { cnpjFormatado, data, relativo } from '../../lib/format.js';
+import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { ClienteForm } from './Form.js';
 
 // ---------- Colunas disponíveis na tabela ----------
@@ -25,6 +26,8 @@ type Coluna = {
   labelCurto?: string;
   grupo: string;
   align?: 'right';
+  /** false = coluna sem sentido para ordenar (ex.: os botões de atalho) */
+  ordenavel?: boolean;
   render: (c: ClientListItem) => ReactNode;
 };
 
@@ -48,7 +51,7 @@ function montarColunas(produtos: Product[]): Coluna[] {
     { id: 'ssh', label: 'SSH (usuário e porta)', grupo: 'Servidor LinePBX', render: (c) => c.server?.sshUser ? <span className="font-mono text-[12.5px]">{c.server.sshUser}@ :{c.server.sshPort ?? 22}</span> : <span className="text-muted">—</span> },
     { id: 'didCount', label: 'DIDs', grupo: 'Contagens', align: 'right', render: (c) => <span className="tnum">{c.didCount}</span> },
     { id: 'deviceCount', label: 'Aparelhos', grupo: 'Contagens', align: 'right', render: (c) => <span className="tnum">{c.deviceCount}</span> },
-    { id: 'links', label: 'Atalhos', grupo: 'Contagens', render: (c) => <Atalhos c={c} /> },
+    { id: 'links', label: 'Atalhos', grupo: 'Contagens', ordenavel: false, render: (c) => <Atalhos c={c} /> },
   ];
   // Para cada produto: a data de ativação dele + UMA COLUNA PARA CADA MÓDULO.
   // Assim dá para escolher "LinePBX › FOP2" sozinho, sem trazer os outros módulos junto.
@@ -180,11 +183,12 @@ export function ClientesLista() {
   const page = Number(sp.get('p') ?? 1);
   const [novo, setNovo] = useState(false);
   const colunasEscolhidas = useColunasEscolhidas();
+  const o = useOrdenacao('tradeName');
 
   const set = (k: string, v: string | string[] | null) => { const n = new URLSearchParams(sp); n.delete(k); if (Array.isArray(v)) v.forEach((x) => n.append(k, x)); else if (v) n.set(k, v); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
 
   const prods = useQuery({ queryKey: ['products'], queryFn: api.admin.products });
-  const lista = useQuery({ queryKey: ['clients', q, produtos, modulos, mode, arquivados, page], queryFn: () => api.clients.list({ q, products: produtos, modules: modulos, mode, includeArchived: arquivados, page, pageSize: 24 }) });
+  const lista = useQuery({ queryKey: ['clients', q, produtos, modulos, mode, arquivados, page, o.ord, o.dir], queryFn: () => api.clients.list({ q, products: produtos, modules: modulos, mode, includeArchived: arquivados, page, pageSize: 24, sort: o.ord, dir: o.dir }) });
   const colunas = useMemo(() => montarColunas(prods.data?.filter((p) => p.active) ?? []), [prods.data]);
   const visiveis = colunas.filter((c) => colunasEscolhidas.ids.includes(c.id));
   const ativos = prods.data?.filter((p) => p.active) ?? [];
@@ -244,7 +248,9 @@ export function ClientesLista() {
       ) : view === 'tabela' ? (
         <div className="card overflow-x-auto">
           <table className="table">
-            <thead><tr>{visiveis.map((c) => <th key={c.id} className={c.align === 'right' ? 'text-right' : ''}>{c.label}</th>)}</tr></thead>
+            <thead><tr>{visiveis.map((c) => (c.ordenavel === false
+              ? <th key={c.id} className={c.align === 'right' ? 'text-right' : ''}>{c.label}</th>
+              : <Th key={c.id} o={o} col={c.id} align={c.align}>{c.label}</Th>))}</tr></thead>
             <tbody>
               {lista.data.items.map((c) => (
                 <tr key={c.id} className="cursor-pointer" onClick={() => nav(`/clientes/${c.id}`)}>

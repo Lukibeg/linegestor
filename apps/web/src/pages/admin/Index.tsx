@@ -9,6 +9,7 @@ import { Pagina } from '../../components/layout/AppShell.js';
 import { useAuth } from '../../lib/auth.js';
 import { Campo, Carregando, Chip, Modal, Paginacao, Spinner, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { data, relativo } from '../../lib/format.js';
+import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 
 export function Admin() {
   const { can } = useAuth();
@@ -30,6 +31,7 @@ export function Admin() {
 
 function Usuarios() {
   const q = useQuery({ queryKey: ['users'], queryFn: api.admin.users }); const roles = useQuery({ queryKey: ['roles'], queryFn: api.admin.roles });
+  const o = useOrdenacaoLocal('name');
   const [edit, setEdit] = useState<User | null | 'novo'>(null); const [f, setF] = useState<Record<string, any>>({}); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const qc = useQueryClient(); const toast = useToast();
   useEffect(() => { if (edit === 'novo') setF({ name: '', email: '', password: '', roleId: roles.data?.[0]?.id ?? '', active: true }); else if (edit) setF({ name: edit.name, email: edit.email, password: '', roleId: edit.roleId, active: edit.active }); setErr(''); }, [edit, roles.data]);
@@ -38,8 +40,8 @@ function Usuarios() {
   return (
     <div>
       <div className="flex justify-end mb-3"><button className="btn-primary btn-sm" onClick={() => setEdit('novo')}><Plus size={14} /> Novo usuário</button></div>
-      <div className="card overflow-x-auto"><table className="table"><thead><tr><th>Nome</th><th>E-mail</th><th>Papel</th><th>Situação</th><th>Último acesso</th><th /></tr></thead>
-        <tbody>{q.data?.map((u) => <tr key={u.id}><td className="font-medium">{u.name}</td><td className="text-ink-2">{u.email}</td><td><Chip tone="accent">{u.roleName}</Chip></td><td>{u.active ? <Chip tone="ok">ativo</Chip> : <Chip tone="muted">desativado</Chip>}</td><td className="text-muted">{u.lastLoginAt ? relativo(u.lastLoginAt) : 'nunca'}</td><td className="text-right"><button className="btn-ghost btn-sm" onClick={() => setEdit(u)}>Editar</button></td></tr>)}</tbody></table></div>
+      <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="name">Nome</Th><Th o={o} col="email">E-mail</Th><Th o={o} col="roleName">Papel</Th><Th o={o} col="active">Situação</Th><Th o={o} col="lastLoginAt">Último acesso</Th><th /></tr></thead>
+        <tbody>{ordenarLista(q.data ?? [], o, { name: (u) => u.name, email: (u) => u.email, roleName: (u) => u.roleName, active: (u) => (u.active ? 1 : 0), lastLoginAt: (u) => u.lastLoginAt }).map((u) => <tr key={u.id}><td className="font-medium">{u.name}</td><td className="text-ink-2">{u.email}</td><td><Chip tone="accent">{u.roleName}</Chip></td><td>{u.active ? <Chip tone="ok">ativo</Chip> : <Chip tone="muted">desativado</Chip>}</td><td className="text-muted">{u.lastLoginAt ? relativo(u.lastLoginAt) : 'nunca'}</td><td className="text-right"><button className="btn-ghost btn-sm" onClick={() => setEdit(u)}>Editar</button></td></tr>)}</tbody></table></div>
       <Modal open={!!edit} onClose={() => setEdit(null)} titulo={edit === 'novo' ? 'Novo usuário' : 'Editar usuário'} rodape={<><button className="btn-secondary" onClick={() => setEdit(null)}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name || !f.email || (edit === 'novo' && (f.password?.length ?? 0) < 10)} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
         <div className="flex flex-col gap-3">
           <Campo label="Nome"><input className="input" value={f.name ?? ''} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Campo>
@@ -159,7 +161,8 @@ function ModuloCatalogoForm({ product, onClose }: { product: Product; onClose: (
 
 function Auditoria() {
   const [page, setPage] = useState(1); const [action, setAction] = useState(''); const [entityType, setEntityType] = useState('');
-  const q = useQuery({ queryKey: ['audit', page, action, entityType], queryFn: () => api.admin.audit({ page, pageSize: 50, action, entityType }) });
+  const o = useOrdenacao('createdAt', 'desc');
+  const q = useQuery({ queryKey: ['audit', page, action, entityType, o.ord, o.dir], queryFn: () => api.admin.audit({ page, pageSize: 50, action, entityType, sort: o.ord, dir: o.dir }) });
   const acoes = ['create', 'update', 'delete', 'restore', 'bulk_update', 'bulk_create', 'bulk_delete', 'movement', 'reveal_secret', 'import', 'export', 'export_secrets', 'login', 'login_failed', 'subscribe', 'unsubscribe'];
   return (
     <div>
@@ -168,7 +171,15 @@ function Auditoria() {
         <select className="input w-auto" value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }}><option value="">Todos os tipos</option>{['client', 'subscription', 'circuit', 'did', 'device', 'deviceModel', 'deviceMovement', 'secret', 'user', 'role'].map((t) => <option key={t} value={t}>{t}</option>)}</select>
       </div>
       {q.isLoading ? <Carregando /> : !q.data?.items.length ? <Vazio titulo="Nada registrado" /> : (
-        <div className="card"><ul>{q.data.items.map((a) => <li key={a.id} className="px-4 py-2.5 border-b border-line last:border-0 text-sm flex flex-wrap gap-x-3 gap-y-0.5"><span className="text-muted tnum w-32 shrink-0">{data(a.createdAt, true)}</span><Chip tone={/secret|delete|export_secrets/.test(a.action) ? 'signal' : 'neutral'}>{a.action}</Chip><span className="flex-1 min-w-[200px]">{a.summary}</span><span className="text-muted">{a.userName ?? 'sistema'}</span></li>)}</ul></div>
+        <div className="card overflow-x-auto"><table className="table">
+          <thead><tr><Th o={o} col="createdAt">Quando</Th><Th o={o} col="action">Ação</Th><Th o={o} col="summary">O que aconteceu</Th><Th o={o} col="userName">Quem</Th></tr></thead>
+          <tbody>{q.data.items.map((a) => (
+            <tr key={a.id}>
+              <td className="text-muted tnum whitespace-nowrap">{data(a.createdAt, true)}</td>
+              <td><Chip tone={/secret|delete|export_secrets/.test(a.action) ? 'signal' : 'neutral'}>{a.action}</Chip></td>
+              <td>{a.summary}</td>
+              <td className="text-muted whitespace-nowrap">{a.userName ?? 'sistema'}</td>
+            </tr>))}</tbody></table></div>
       )}
       {q.data && <Paginacao page={page} pageSize={50} total={q.data.total} onChange={setPage} />}
     </div>
@@ -178,8 +189,9 @@ function Auditoria() {
 function Lixeira() {
   const q = useQuery({ queryKey: ['trash'], queryFn: api.admin.trash }); const qc = useQueryClient(); const toast = useToast();
   const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho' };
+  const o = useOrdenacaoLocal('deletedAt', 'desc');
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;
   if (!q.data?.length) return <Vazio titulo="Lixeira vazia" texto="Tudo que for excluído aparece aqui e pode ser restaurado." />;
-  return <div className="card"><table className="table"><thead><tr><th>Tipo</th><th>Registro</th><th>Excluído em</th><th /></tr></thead><tbody>{q.data.map((t) => <tr key={t.type + t.id}><td><Chip tone="neutral">{nomes[t.type] ?? t.type}</Chip></td><td className="font-medium">{t.label}</td><td className="text-muted tnum">{data(t.deletedAt, true)}</td><td className="text-right"><button className="btn-secondary btn-sm" onClick={() => restore(t.type, t.id)}>Restaurar</button></td></tr>)}</tbody></table></div>;
+  return <div className="card"><table className="table"><thead><tr><Th o={o} col="type">Tipo</Th><Th o={o} col="label">Registro</Th><Th o={o} col="deletedAt">Excluído em</Th><th /></tr></thead><tbody>{ordenarLista(q.data, o, { type: (t) => nomes[t.type] ?? t.type, label: (t) => t.label, deletedAt: (t) => t.deletedAt }).map((t) => <tr key={t.type + t.id}><td><Chip tone="neutral">{nomes[t.type] ?? t.type}</Chip></td><td className="font-medium">{t.label}</td><td className="text-muted tnum">{data(t.deletedAt, true)}</td><td className="text-right"><button className="btn-secondary btn-sm" onClick={() => restore(t.type, t.id)}>Restaurar</button></td></tr>)}</tbody></table></div>;
 }

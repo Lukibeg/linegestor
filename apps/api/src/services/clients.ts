@@ -46,6 +46,72 @@ export function buildLinks(lp?: { domain: string | null; serverIp: string | null
   };
 }
 
+/**
+ * Traduz "ordenar por esta coluna" em ORDER BY.
+ * O nome da coluna é o mesmo id que a tela usa, inclusive os criados na hora
+ * ("ativacao:linepbx", "modulo:linepbx:fop2"). O que não for reconhecido cai no nome fantasia.
+ * Vazio vai sempre para o fim (NULLS LAST), em qualquer sentido.
+ */
+function ordenacaoClientes(db: Db, q: ClienteListar) {
+  const dir = q.dir === 'desc' ? sql`desc` : sql`asc`;
+  const k = q.sort ?? 'tradeName';
+
+  /** Um pedaço do LinePBX ativo do cliente (hospedagem, domínio, IP, usuário SSH). */
+  const doLinePbx = (campo: SQL) => sql`(${db
+    .select({ v: campo })
+    .from(subscriptions)
+    .innerJoin(products, eq(products.id, subscriptions.productId))
+    .leftJoin(linepbxSettings, eq(linepbxSettings.subscriptionId, subscriptions.id))
+    .leftJoin(hostingProviders, eq(hostingProviders.id, linepbxSettings.hostingId))
+    .where(and(eq(subscriptions.clientId, clients.id), eq(products.code, 'linepbx'), isNull(subscriptions.deactivatedAt)))
+    .limit(1)})`;
+
+  const contar = (tabela: 'dids' | 'devices') => (tabela === 'dids'
+    ? sql`(${db.select({ v: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, clients.id), isNull(dids.deletedAt)))})`
+    : sql`(${db.select({ v: sql<number>`count(*)` }).from(devices).where(and(eq(devices.clientId, clients.id), isNull(devices.deletedAt)))})`);
+
+  let campo: SQL;
+  if (k === 'legalName') campo = sql`lower(${clients.legalName})`;
+  else if (k === 'cnpj') campo = sql`${clients.cnpj}`;
+  else if (k === 'notes') campo = sql`lower(${clients.notes})`;
+  else if (k === 'createdAt') campo = sql`${clients.createdAt}`;
+  else if (k === 'updatedAt') campo = sql`${clients.updatedAt}`;
+  else if (k === 'didCount') campo = contar('dids');
+  else if (k === 'deviceCount') campo = contar('devices');
+  else if (k === 'products') campo = sql`(${db.select({ v: sql<number>`count(*)` }).from(subscriptions).where(and(eq(subscriptions.clientId, clients.id), isNull(subscriptions.deactivatedAt)))})`;
+  else if (k === 'modules') campo = sql`(${db
+    .select({ v: sql<number>`count(*)` })
+    .from(subscriptionModules)
+    .innerJoin(subscriptions, eq(subscriptions.id, subscriptionModules.subscriptionId))
+    .where(and(eq(subscriptions.clientId, clients.id), isNull(subscriptions.deactivatedAt), isNull(subscriptionModules.deactivatedAt)))})`;
+  else if (k === 'hosting') campo = doLinePbx(sql`lower(${hostingProviders.name})`);
+  else if (k === 'domain') campo = doLinePbx(sql`lower(${linepbxSettings.domain})`);
+  else if (k === 'serverIp') campo = doLinePbx(sql`${linepbxSettings.serverIp}`);
+  else if (k === 'ssh') campo = doLinePbx(sql`lower(${linepbxSettings.sshUser})`);
+  else if (k.startsWith('ativacao:')) {
+    const code = k.slice('ativacao:'.length);
+    campo = sql`(${db
+      .select({ v: subscriptions.activatedAt })
+      .from(subscriptions)
+      .innerJoin(products, eq(products.id, subscriptions.productId))
+      .where(and(eq(subscriptions.clientId, clients.id), eq(products.code, code), isNull(subscriptions.deactivatedAt)))
+      .limit(1)})`;
+  } else if (k.startsWith('modulo:')) {
+    const [, pCode = '', mCode = ''] = k.split(':');
+    campo = sql`(${db
+      .select({ v: subscriptionModules.activatedAt })
+      .from(subscriptionModules)
+      .innerJoin(subscriptions, eq(subscriptions.id, subscriptionModules.subscriptionId))
+      .innerJoin(products, eq(products.id, subscriptions.productId))
+      .innerJoin(productModules, eq(productModules.id, subscriptionModules.moduleId))
+      .where(and(eq(subscriptions.clientId, clients.id), eq(products.code, pCode), eq(productModules.code, mCode), isNull(subscriptions.deactivatedAt), isNull(subscriptionModules.deactivatedAt)))
+      .limit(1)})`;
+  } else campo = sql`lower(${clients.tradeName})`;
+
+  // desempate sempre pelo nome fantasia, para a ordem não "dançar" entre páginas
+  return sql`${campo} ${dir} nulls last, lower(${clients.tradeName}) asc`;
+}
+
 export async function list(db: Db, q: ClienteListar & { includeInternal?: boolean }) {
   const conds: SQL[] = [isNull(clients.deletedAt)];
   if (!q.includeArchived) conds.push(eq(clients.archived, false));
@@ -84,7 +150,7 @@ export async function list(db: Db, q: ClienteListar & { includeInternal?: boolea
     conds.push(inArray(clients.id, matched));
   }
   const where = and(...conds);
-  const rows = await db.select().from(clients).where(where).orderBy(asc(clients.tradeName)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
+  const rows = await db.select().from(clients).where(where).orderBy(ordenacaoClientes(db, q)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
   const [c] = await db.select({ n: sql<number>`count(*)` }).from(clients).where(where);
   const items = await enrich(db, rows);
   return { items, total: Number(c?.n ?? 0), page: q.page, pageSize: q.pageSize };

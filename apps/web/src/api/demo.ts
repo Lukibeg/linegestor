@@ -208,6 +208,26 @@ const shapeDevice = (d: DeviceRow, withHistory = false): Device => {
 };
 const shapeMov = (mv: MovRow): Movement => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromClientId: mv.fromClientId, fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toClientId: mv.toClientId, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, newCondition: mv.newCondition, valueCents: mv.valueCents, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt, items: Object.values(mv.items.reduce((acc, i) => { const k = i.modelId; acc[k] = acc[k] ?? { modelName: S.models.find((m) => m.id === k)?.name ?? '?', quantity: 0 }; acc[k]!.quantity += i.quantity; return acc; }, {} as Record<string, { modelName: string; quantity: number }>)) });
 const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active, modules: S.modules.filter((m) => m.productId === p.id).sort((a, b) => a.sortOrder - b.sortOrder).map(({ productId: _p, ...m }) => m) });
+/**
+ * Ordenação da demonstração: mesma ideia do servidor — vazio sempre no fim,
+ * texto comparado em português e o que não for reconhecido cai na coluna padrão.
+ */
+function ordenar<T>(itens: T[], q: Record<string, unknown>, padrao: string, valores: Record<string, (x: T) => any>, dirPadrao: 'asc' | 'desc' = 'asc') {
+  const chave = String(q.sort ?? padrao);
+  const pegar = valores[chave] ?? valores[padrao]!;
+  const sinal = (q.dir ?? dirPadrao) === 'desc' ? -1 : 1;
+  return [...itens].sort((a, b) => {
+    const va = pegar(a), vb = pegar(b);
+    const vazioA = va === null || va === undefined || va === '';
+    const vazioB = vb === null || vb === undefined || vb === '';
+    if (vazioA && vazioB) return 0;
+    if (vazioA) return 1;
+    if (vazioB) return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * sinal;
+    return String(va).localeCompare(String(vb), 'pt-BR', { numeric: true, sensitivity: 'base' }) * sinal;
+  });
+}
+
 const paginate = <T,>(items: T[], q: Record<string, unknown>) => { const page = Number(q.page ?? 1), pageSize = Number(q.pageSize ?? 50); return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }; };
 const me = (u: UserRow): Me => { const r = S.roles.find((x) => x.id === u.roleId)!; return { id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: r.name, roleKey: r.key, permissions: r.permissions }; };
 const hasEquip = (cid: string) => activeSubs(cid).some((s) => s.productCode === 'equipamentos');
@@ -272,8 +292,19 @@ export const demoApi: Api = {
         .filter((c) => !term || c.tradeName.toLowerCase().includes(term) || c.legalName.toLowerCase().includes(term) || (digits && c.cnpj.includes(digits)))
         .filter((c) => { if (!prods.length) return true; const have = activeSubs(c.id).map((s) => s.productCode); return mode === 'and' ? prods.every((p) => have.includes(p)) : prods.some((p) => have.includes(p)); })
         .filter((c) => { if (!mods.length) return true; const test = (pm: string) => { const [p, m] = pm.split(':'); return hasMod(c.id, p!, m!); }; return mode === 'and' ? mods.every(test) : mods.some(test); })
-        .sort((a, b) => a.tradeName.localeCompare(b.tradeName)).map(listItem);
-      return paginate(items, q);
+        .map(listItem);
+      const doProduto = (c: ClientListItem, code: string) => c.products.find((p) => p.code === code);
+      const valores: Record<string, (c: ClientListItem) => any> = {
+        tradeName: (c) => c.tradeName, legalName: (c) => c.legalName, cnpj: (c) => c.cnpj, notes: (c) => c.notes,
+        createdAt: (c) => c.createdAt, updatedAt: (c) => c.updatedAt,
+        didCount: (c) => c.didCount, deviceCount: (c) => c.deviceCount,
+        products: (c) => c.products.length, modules: (c) => c.products.reduce((a, p) => a + p.modules.length, 0),
+        hosting: (c) => c.server?.hostingName, domain: (c) => c.server?.domain, serverIp: (c) => c.server?.serverIp, ssh: (c) => c.server?.sshUser,
+      };
+      const chave = String(q.sort ?? 'tradeName');
+      if (chave.startsWith('ativacao:')) valores[chave] = (c) => doProduto(c, chave.slice(9))?.activatedAt;
+      if (chave.startsWith('modulo:')) { const [, pc = '', mc = ''] = chave.split(':'); valores[chave] = (c) => doProduto(c, pc)?.modules.find((m) => m.code === mc)?.activatedAt; }
+      return paginate(ordenar(items, q, 'tradeName', valores), q);
     },
     async options(q) { await wait(50); return S.clients.filter((c) => !c.deletedAt && !c.archived && (q?.includeInternal || !c.isInternal) && (!q?.productCode || activeSubs(c.id).some((s) => s.productCode === q.productCode))).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode })); },
     async get(idc) { await wait(); requirePerm('records.read'); return fullClient(idc); },
@@ -339,7 +370,15 @@ export const demoApi: Api = {
     async reveal(sid, password) { await wait(250); requirePerm('secrets.reveal'); if (password !== S.me!.password) throw new ApiError(401, 'Senha incorreta'); const s = S.secrets.get(sid); if (!s) throw notFound('Segredo'); audit('reveal_secret', 'secret', `${S.me!.name} revelou "${s.label}"`, sid); return { label: s.label, value: s.value, visibleForSeconds: 30 }; },
   },
   circuits: {
-    async list(q) { await wait(); requirePerm('records.read'); return paginate(filtrarCircuitos(q).sort((a, b) => a.name.localeCompare(b.name)).map(shapeCircuit), q); },
+    async list(q) {
+      await wait(); requirePerm('records.read');
+      const items = filtrarCircuitos(q).map(shapeCircuit);
+      return paginate(ordenar(items, q, 'name', {
+        name: (c) => c.name, code: (c) => c.code, keyNumber: (c) => c.keyNumber, carrierName: (c) => c.carrierName, ownerName: (c) => c.ownerName,
+        channels: (c) => c.channels, total: (c) => c.dids.total, free: (c) => c.dids.free,
+        uso: (c) => (c.dids.total ? c.dids.assigned / c.dids.total : -1), monthlyValueCents: (c) => c.monthlyValueCents,
+      }), q);
+    },
     async summary(q = {}) {
       await wait(60); requirePerm('records.read');
       const cs = filtrarCircuitos(q);
@@ -357,7 +396,14 @@ export const demoApi: Api = {
     async createRange(idc, d) { return demoApi.dids.createRange({ ...d, circuitId: idc }); },
   },
   dids: {
-    async list(q) { await wait(); requirePerm('records.read'); let items = filterDids(q).map(shapeDid); const sort = String(q.sort ?? 'number'); const dir = q.dir === 'desc' ? -1 : 1; const key = ({ number: 'number', circuit: 'circuitName', client: 'clientName', owner: 'ownerName', note: 'note' } as any)[sort] ?? 'number'; items.sort((a: any, b: any) => String(a[key] ?? '').localeCompare(String(b[key] ?? '')) * dir || a.number.localeCompare(b.number)); const p = paginate(items, q); return { ...p, free: items.filter((d) => d.free).length }; },
+    async list(q) {
+      await wait(); requirePerm('records.read');
+      const items = ordenar(filterDids(q).map(shapeDid), q, 'number', {
+        number: (d) => d.number, carrier: (d) => d.carrierName, circuit: (d) => d.circuitName, client: (d) => d.clientName, owner: (d) => d.ownerName, note: (d) => d.note,
+      });
+      const p = paginate(items, q);
+      return { ...p, free: items.filter((d) => d.free).length };
+    },
     async ids(q) { await wait(50); return { ids: filterDids(q).slice(0, 5000).map((d) => d.id) }; },
     async createRange(d) { await wait(); requirePerm('dids.assign'); const nums = gerarFaixaDids(didLimpo(String(d.baseNumber)), Number(d.quantity)); const ex = nums.filter((n) => S.dids.some((x) => x.number === n)); if (ex.length) throw bad(`${ex.length} número(s) já existem: ${ex.slice(0, 5).map(didFormatado).join(', ')}`); nums.forEach((n) => S.dids.push({ id: id(), number: n, circuitId: (d.circuitId as string) ?? null, clientId: (d.clientId as string) ?? null, ownerClientId: (d.ownerClientId as string) ?? S.clients.find((c) => c.internalCode === 'voicenet')!.id, note: (d.note as string) ?? null, deletedAt: null })); audit('bulk_create', 'did', `Criou ${nums.length} DIDs (${nums[0]}–${nums[nums.length - 1]})`); return { created: nums.length, first: nums[0]!, last: nums[nums.length - 1]! }; },
     async update(idd, d) { await wait(); requirePerm('dids.assign'); const x = S.dids.find((r) => r.id === idd); if (!x) throw notFound('DID'); for (const k of ['circuitId', 'clientId', 'ownerClientId', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; audit('update', 'did', `Editou o DID ${x.number}`, x.id); return shapeDid(x); },
@@ -387,14 +433,23 @@ export const demoApi: Api = {
     async createModel(d) { await wait(); requirePerm('records.write'); if (S.models.some((m) => m.code === d.code)) throw bad('Já existe um modelo com este código'); const m: ModelRow = { id: id(), code: String(d.code), name: String(d.name), categoryId: (d.categoryId as string) ?? null, tracking: d.tracking as any, imageUrl: null, deletedAt: null }; S.models.push(m); audit('create', 'deviceModel', `Cadastrou o modelo ${m.name}`, m.id); return shapeModel(m); },
     async updateModel(idm, d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo'); for (const k of ['code', 'name', 'categoryId'] as const) if (d[k] !== undefined) (m as any)[k] = d[k]; audit('update', 'deviceModel', `Editou o modelo ${m.name}`, m.id); return shapeModel(m); },
     async removeModel(idm) { await wait(); requirePerm('records.delete'); const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo'); if (S.devices.some((d) => d.modelId === idm && !d.deletedAt)) throw bad('Este modelo ainda tem aparelhos cadastrados'); m.deletedAt = now(); return { ok: true }; },
-    async devices(q) { await wait(); requirePerm('records.read'); const t = String(q.q ?? '').toLowerCase(); const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase(); const items = S.devices.filter((d) => !d.deletedAt && (!q.modelId || d.modelId === q.modelId) && (!q.clientId || (q.clientId === 'stock' ? !d.clientId : d.clientId === q.clientId)) && (q.condition ? d.condition === q.condition : (q.includeRetired ? true : !['baixado', 'vendido'].includes(d.condition))) && (!t || (hex && d.mac.includes(hex)) || (d.tag ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.location ?? '').toLowerCase().includes(t))).map((d) => shapeDevice(d)).sort((a, b) => a.modelName.localeCompare(b.modelName) || (a.tag ?? a.mac).localeCompare(b.tag ?? b.mac)); return paginate(items, q); },
+    async devices(q) { await wait(); requirePerm('records.read'); const t = String(q.q ?? '').toLowerCase(); const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase(); const items = S.devices.filter((d) => !d.deletedAt && (!q.modelId || d.modelId === q.modelId) && (!q.clientId || (q.clientId === 'stock' ? !d.clientId : d.clientId === q.clientId)) && (q.condition ? d.condition === q.condition : (q.includeRetired ? true : !['baixado', 'vendido'].includes(d.condition))) && (!t || (hex && d.mac.includes(hex)) || (d.tag ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.location ?? '').toLowerCase().includes(t))).map((d) => shapeDevice(d));
+      return paginate(ordenar(items, q, 'modelName', {
+        mac: (d) => d.mac, tag: (d) => d.tag, modelName: (d) => d.modelName, clientName: (d) => d.clientName,
+        currentModality: (d) => d.currentModality, condition: (d) => d.condition, ip: (d) => d.ip, location: (d) => d.location, valueCents: (d) => d.valueCents,
+      }), q);
+    },
     async device(idd) { await wait(); requirePerm('records.read'); const d = S.devices.find((x) => x.id === idd); if (!d) throw notFound('Aparelho'); return shapeDevice(d, true); },
     async createDevice(d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === d.modelId); if (!m) throw notFound('Modelo'); if (m.tracking !== 'serializado') throw bad('Este modelo é contado a granel; use "ajustar estoque"'); const mac = macLimpo(String(d.mac)); if (mac.length !== 12) throw new ApiError(400, 'Dados inválidos', [{ field: 'mac', message: 'MAC precisa ter 12 caracteres hexadecimais' }]); if (S.devices.some((x) => x.mac === mac)) throw bad(`Já existe um aparelho com o MAC ${macFormatado(mac)}`); const row: DeviceRow = { id: id(), modelId: m.id, mac, macSecondary: d.macSecondary ? macLimpo(String(d.macSecondary)) : null, tag: (d.tag as string) ?? null, clientId: null, currentModality: null, condition: String(d.condition ?? 'ativo'), valueCents: (d.valueCents as number) ?? null, ip: (d.ip as string) ?? null, location: (d.location as string) ?? null, note: (d.note as string) ?? null, deletedAt: null, createdAt: now() }; S.devices.push(row); audit('create', 'device', `Cadastrou o aparelho ${macFormatado(mac)}`, row.id); return shapeDevice(row, true); },
     async updateDevice(idd, d) { await wait(); requirePerm('records.write'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); for (const k of ['tag', 'condition', 'valueCents', 'ip', 'location', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; if (d.mac) x.mac = macLimpo(String(d.mac)); audit('update', 'device', `Editou o aparelho ${macFormatado(x.mac)}`, x.id); return shapeDevice(x, true); },
     async removeDevice(idd) { await wait(); requirePerm('records.delete'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); x.deletedAt = now(); audit('delete', 'device', `Mandou o aparelho ${macFormatado(x.mac)} para a lixeira`, x.id); return { ok: true }; },
     async stock(modelId) { await wait(); return S.bulk.filter((b) => b.quantity !== 0 && (!modelId || b.modelId === modelId)).map((b) => ({ ...b, modelName: S.models.find((m) => m.id === b.modelId)?.name ?? '?', clientName: S.clients.find((c) => c.id === b.clientId)?.tradeName ?? null })); },
     async adjustStock(d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === d.modelId); if (!m) throw notFound('Modelo'); if (m.tracking !== 'granel') throw bad('Este modelo é serializado; cadastre cada unidade pelo MAC'); let row = S.bulk.find((b) => b.modelId === d.modelId && !b.clientId); if (!row) { row = { id: id(), modelId: d.modelId, clientId: null, modality: 'estoque', quantity: 0 }; S.bulk.push(row); } if (row.quantity + d.delta < 0) throw bad(`Saldo insuficiente: tem ${row.quantity}`); row.quantity += d.delta; audit('stock_adjust', 'deviceModel', `${d.delta > 0 ? 'Entrada' : 'Baixa'} de ${Math.abs(d.delta)} no estoque a granel`, m.id); return demoApi.inventory.stock(d.modelId); },
-    async movements(q) { await wait(); requirePerm('records.read'); const items = [...S.movements].filter((m) => (!q.modality || m.modality === q.modality) && (!q.clientId || m.fromClientId === q.clientId || m.toClientId === q.clientId) && (!q.from || m.createdAt >= String(q.from)) && (!q.to || m.createdAt <= String(q.to) + 'T23:59:59')).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(shapeMov); return paginate(items, q); },
+    async movements(q) { await wait(); requirePerm('records.read'); const items = [...S.movements].filter((m) => (!q.modality || m.modality === q.modality) && (!q.clientId || m.fromClientId === q.clientId || m.toClientId === q.clientId) && (!q.from || m.createdAt >= String(q.from)) && (!q.to || m.createdAt <= String(q.to) + 'T23:59:59')).map(shapeMov);
+      return paginate(ordenar(items, q, 'createdAt', {
+        createdAt: (m) => m.createdAt, modality: (m) => m.modalityName, fromName: (m) => m.fromName, toName: (m) => m.toName, userName: (m) => m.userName,
+      }, 'desc'), q);
+    },
     async move(d) {
       await wait(250); requirePerm('devices.move');
       const modality = String(d.modality); const to = (d.toClientId as string | null) ?? null;
@@ -438,7 +493,13 @@ export const demoApi: Api = {
     async products() { await wait(40); return S.products.map(shapeProduct); },
     async updateProduct(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); for (const k of ['name', 'color', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (p as any)[k] = d[k]; return shapeProduct(p); },
     async upsertModule(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); const code = String(d.code); if (!/^[a-z0-9_]+$/.test(code)) throw new ApiError(400, 'Dados inválidos', [{ field: 'code', message: 'Use só letras minúsculas, números e _' }]); let m = S.modules.find((x) => x.productId === p.id && x.code === code); if (!m) { m = { id: id(), productId: p.id, code, name: String(d.name), description: (d.description as string) ?? null, hasSettings: false, sortOrder: 99, active: true }; S.modules.push(m); audit('create', 'product_module', `Criou o módulo ${m.name} em ${p.name}`, m.id); } else { for (const k of ['name', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (m as any)[k] = d[k]; audit('update', 'product_module', `Editou o módulo ${m.name} em ${p.name}`, m.id); } const { productId: _p, ...out } = m; return out; },
-    async audit(q) { await wait(); requirePerm('audit.read'); return paginate(S.audit.filter((a) => (!q.action || a.action === q.action) && (!q.entityType || a.entityType === q.entityType) && (!q.userId || a.userId === q.userId)), q); },
+    async audit(q) {
+      await wait(); requirePerm('audit.read');
+      const items = S.audit.filter((a) => (!q.action || a.action === q.action) && (!q.entityType || a.entityType === q.entityType) && (!q.userId || a.userId === q.userId));
+      return paginate(ordenar(items, q, 'createdAt', {
+        createdAt: (a) => a.createdAt, action: (a) => a.action, entityType: (a) => a.entityType, summary: (a) => a.summary, userName: (a) => a.userName,
+      }, 'desc'), q);
+    },
     async trash() { await wait(); requirePerm('records.delete'); return [...S.clients.filter((c) => c.deletedAt).map((c) => ({ type: 'client', id: c.id, label: c.tradeName, deletedAt: c.deletedAt! })), ...S.circuits.filter((c) => c.deletedAt).map((c) => ({ type: 'circuit', id: c.id, label: c.name, deletedAt: c.deletedAt! })), ...S.dids.filter((c) => c.deletedAt).map((c) => ({ type: 'did', id: c.id, label: didFormatado(c.number), deletedAt: c.deletedAt! })), ...S.devices.filter((c) => c.deletedAt).map((c) => ({ type: 'device', id: c.id, label: macFormatado(c.mac), deletedAt: c.deletedAt! }))].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)); },
     async restore(type, idr) { await wait(); requirePerm('records.delete'); const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : S.devices; const it = list.find((x) => x.id === idr); if (!it) throw notFound(); it.deletedAt = null; audit('restore', type, `Restaurou ${it.tradeName ?? it.name ?? it.number ?? it.mac} da lixeira`, idr); return { ok: true }; },
   },

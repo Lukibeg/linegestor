@@ -72,6 +72,25 @@ function filtros(q: Partial<CircuitoListar>): SQL[] {
   return conds;
 }
 
+/** Ordenação da tabela de circuitos — o id da coluna na tela vira ORDER BY aqui. */
+function ordenacaoCircuitos(q: CircuitoListar, occ: ReturnType<typeof occupancy>) {
+  const dir = q.dir === 'desc' ? sql`desc` : sql`asc`;
+  const colunas: Record<string, SQL> = {
+    name: sql`lower(${circuits.name})`,
+    code: sql`${circuits.code}`,
+    keyNumber: sql`${circuits.keyNumber}`,
+    carrierName: sql`lower(${carriers.name})`,
+    ownerName: sql`lower(${clients.tradeName})`,
+    channels: sql`${circuits.channels}`,
+    total: sql`coalesce(${occ.total}, 0)`,
+    free: sql`coalesce(${occ.total}, 0) - coalesce(${occ.assigned}, 0)`,
+    uso: sql`case when coalesce(${occ.total}, 0) = 0 then -1 else coalesce(${occ.assigned}, 0)::float / ${occ.total} end`,
+    monthlyValueCents: sql`${circuits.monthlyValueCents}`,
+  };
+  const campo = colunas[q.sort ?? 'name'] ?? colunas.name!;
+  return sql`${campo} ${dir} nulls last, lower(${circuits.name}) asc`;
+}
+
 export async function list(db: Db, q: CircuitoListar) {
   const occ = occupancy(db);
   const where = and(...filtros(q));
@@ -87,7 +106,7 @@ export async function list(db: Db, q: CircuitoListar) {
     .leftJoin(clients, eq(clients.id, circuits.ownerClientId))
     .leftJoin(occ, eq(occ.circuitId, circuits.id))
     .where(where);
-  const rows = await base.orderBy(asc(circuits.name)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
+  const rows = await base.orderBy(ordenacaoCircuitos(q, occ)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
   const [c] = await db.select({ n: sql<number>`count(*)` }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(where);
   return { items: rows.map(shape), total: Number(c?.n ?? 0), page: q.page, pageSize: q.pageSize };
 }

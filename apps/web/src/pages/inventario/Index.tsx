@@ -9,6 +9,7 @@ import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Abas, Campo, Carregando, Chip, Kpi, Modal, Paginacao, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { condicaoCor, condicaoNome, CONDICOES_APARELHO, data, macFormatado, macValido, MODALIDADES, paraCentavos, reais } from '../../lib/format.js';
+import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { Movimentar } from './Movimentar.js';
 
 type Aba = 'aparelhos' | 'modelos' | 'movimentacoes';
@@ -49,9 +50,12 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
   const [novo, setNovo] = useState(false);
   const clients = useQuery({ queryKey: ['client-options', 'equip'], queryFn: () => api.clients.options({ productCode: 'equipamentos' }) });
-  const lista = useQuery({ queryKey: ['devices', q, modelId, clientId, condition, page], queryFn: () => api.inventory.devices({ q, modelId, clientId, condition, includeRetired: !!condition, page, pageSize: 50 }) });
+  const o = useOrdenacao('modelName');
+  const lista = useQuery({ queryKey: ['devices', q, modelId, clientId, condition, page, o.ord, o.dir], queryFn: () => api.inventory.devices({ q, modelId, clientId, condition, includeRetired: !!condition, page, pageSize: 50, sort: o.ord, dir: o.dir }) });
   const stock = useQuery({ queryKey: ['stock'], queryFn: () => api.inventory.stock() });
   const granel = stock.data?.filter((b) => b.quantity > 0) ?? [];
+  const og = useOrdenacaoLocal('modelName');
+  const granelOrdenado = ordenarLista(granel, og, { modelName: (b) => b.modelName, clientName: (b) => b.clientName, modality: (b) => b.modality, quantity: (b) => b.quantity });
   return (
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2 items-center">
@@ -64,7 +68,10 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
       </div>
       {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum aparelho" texto="Cadastre aparelhos pelo MAC ou ajuste os filtros." /> : (
         <div className="card overflow-x-auto"><table className="table">
-          <thead><tr><th>MAC</th><th>Etiqueta</th><th>Modelo</th><th>Onde está</th><th>Como</th><th>Condição</th><th>IP</th><th className="text-right">Valor</th></tr></thead>
+          <thead><tr>
+            <Th o={o} col="mac">MAC</Th><Th o={o} col="tag">Etiqueta</Th><Th o={o} col="modelName">Modelo</Th><Th o={o} col="clientName">Onde está</Th>
+            <Th o={o} col="currentModality">Como</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="ip">IP</Th><Th o={o} col="valueCents" align="right">Valor</Th>
+          </tr></thead>
           <tbody>{lista.data.items.map((d) => (
             <tr key={d.id} className="cursor-pointer" onClick={() => nav(`/inventario/aparelhos/${d.id}`)}>
               <td className="font-mono">{d.macFormatted}</td><td className="font-mono text-muted">{d.tag ?? '—'}</td><td>{d.modelName}</td>
@@ -77,8 +84,8 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
       {lista.data && <Paginacao page={page} pageSize={50} total={lista.data.total} onChange={(p) => set('p', String(p))} />}
       {granel.length > 0 && (
         <div className="card mt-4"><div className="px-4 py-3 border-b border-line font-display font-semibold">Itens a granel</div>
-          <table className="table"><thead><tr><th>Modelo</th><th>Onde</th><th>Como</th><th className="text-right">Quantidade</th></tr></thead>
-            <tbody>{granel.map((b) => <tr key={b.id}><td>{b.modelName}</td><td>{b.clientId ? <Link className="link" to={`/clientes/${b.clientId}`}>{b.clientName}</Link> : <Chip tone="ok">estoque</Chip>}</td><td className="text-muted">{b.modality === 'estoque' ? '—' : (MODALIDADES as any)[b.modality]}</td><td className="text-right tnum font-mono">{b.quantity}</td></tr>)}</tbody></table></div>
+          <table className="table"><thead><tr><Th o={og} col="modelName">Modelo</Th><Th o={og} col="clientName">Onde</Th><Th o={og} col="modality">Como</Th><Th o={og} col="quantity" align="right">Quantidade</Th></tr></thead>
+            <tbody>{granelOrdenado.map((b) => <tr key={b.id}><td>{b.modelName}</td><td>{b.clientId ? <Link className="link" to={`/clientes/${b.clientId}`}>{b.clientName}</Link> : <Chip tone="ok">estoque</Chip>}</td><td className="text-muted">{b.modality === 'estoque' ? '—' : (MODALIDADES as any)[b.modality]}</td><td className="text-right tnum font-mono">{b.quantity}</td></tr>)}</tbody></table></div>
       )}
       <AparelhoForm open={novo} onClose={() => setNovo(false)} models={models.filter((m) => m.tracking === 'serializado')} />
     </div>
@@ -113,8 +120,17 @@ function Modelos({ models, loading }: { models: DeviceModel[]; loading: boolean 
   const [novo, setNovo] = useState(false); const [ajuste, setAjuste] = useState<DeviceModel | null>(null);
   const cats = useQuery({ queryKey: ['catalog', 'categories'], queryFn: () => api.admin.catalog('categories') });
   const qc = useQueryClient(); const toast = useToast();
-  const [f, setF] = useState({ code: '', name: '', categoryId: '', tracking: 'serializado' }); const [delta, setDelta] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
-  const save = async () => { setBusy(true); setErr(''); try { await api.inventory.createModel({ ...f, categoryId: f.categoryId || null }); await qc.invalidateQueries({ queryKey: ['models'] }); toast.push('ok', 'Modelo cadastrado'); setNovo(false); setF({ code: '', name: '', categoryId: '', tracking: 'serializado' }); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
+  const [f, setF] = useState({ name: '', categoryId: '', semMac: false }); const [delta, setDelta] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      // o "código" é só o identificador interno: sai do nome do modelo, sem a pessoa precisar digitar
+      const code = f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+      await api.inventory.createModel({ code, name: f.name.trim(), categoryId: f.categoryId || null, tracking: f.semMac ? 'granel' : 'serializado' });
+      await qc.invalidateQueries({ queryKey: ['models'] });
+      toast.push('ok', 'Modelo cadastrado'); setNovo(false); setF({ name: '', categoryId: '', semMac: false });
+    } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
   const ajustar = async () => { if (!ajuste) return; setBusy(true); setErr(''); try { await api.inventory.adjustStock({ modelId: ajuste.id, delta: Number(delta) }); await qc.invalidateQueries({ queryKey: ['models'] }); await qc.invalidateQueries({ queryKey: ['stock'] }); await qc.invalidateQueries({ queryKey: ['inventory'] }); toast.push('ok', 'Estoque ajustado'); setAjuste(null); setDelta(''); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
   if (loading) return <Carregando />;
   return (
@@ -123,7 +139,7 @@ function Modelos({ models, loading }: { models: DeviceModel[]; loading: boolean 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {models.map((m) => (
           <div key={m.id} className="card p-4 flex flex-col gap-2">
-            <div className="flex items-start justify-between gap-2"><div><div className="font-semibold">{m.name}</div><div className="font-mono text-[12px] text-muted">{m.code}</div></div><div className="flex gap-1"><Chip tone="neutral">{m.categoryName ?? 'sem categoria'}</Chip><Chip tone={m.tracking === 'granel' ? 'signal' : 'accent'}>{m.tracking}</Chip></div></div>
+            <div className="flex items-start justify-between gap-2"><div><div className="font-semibold">{m.name}</div><div className="font-mono text-[12px] text-muted">{m.code}</div></div><div className="flex gap-1"><Chip tone="neutral">{m.categoryName ?? 'sem categoria'}</Chip><Chip tone={m.tracking === 'granel' ? 'signal' : 'accent'}>{m.tracking === 'granel' ? 'sem MAC' : 'por MAC'}</Chip></div></div>
             <div className="grid grid-cols-3 gap-2 text-center mt-1">
               <div className="rounded-lg bg-surface-2 p-2"><div className="font-display text-lg font-semibold tnum">{m.counts.inStock}</div><div className="text-[11px] text-muted">estoque</div></div>
               <div className="rounded-lg bg-surface-2 p-2"><div className="font-display text-lg font-semibold tnum">{m.counts.withClients}</div><div className="text-[11px] text-muted">com clientes</div></div>
@@ -135,11 +151,17 @@ function Modelos({ models, loading }: { models: DeviceModel[]; loading: boolean 
         ))}
         {!models.length && <Vazio titulo="Nenhum modelo" texto="Cadastre o primeiro modelo de aparelho." />}
       </div>
-      <Modal open={novo} onClose={() => setNovo(false)} titulo="Cadastrar modelo" rodape={<><button className="btn-secondary" onClick={() => setNovo(false)}>Cancelar</button><button className="btn-primary" disabled={busy || !f.code || !f.name} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Cadastrar'}</button></>}>
+      <Modal open={novo} onClose={() => setNovo(false)} titulo="Cadastrar modelo" rodape={<><button className="btn-secondary" onClick={() => setNovo(false)}>Cancelar</button><button className="btn-primary" disabled={busy || f.name.trim().length < 2} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Cadastrar'}</button></>}>
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-2 gap-3"><Campo label="Código"><input className="input font-mono" placeholder="gxp1610" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })} autoFocus /></Campo><Campo label="Nome"><input className="input" placeholder="Grandstream GXP1610" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} /></Campo></div>
+          <Campo label="Modelo"><input className="input" placeholder="Grandstream GXP1610" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Campo>
           <Campo label="Categoria"><select className="input" value={f.categoryId} onChange={(e) => setF({ ...f, categoryId: e.target.value })}><option value="">—</option>{cats.data?.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>
-          <Campo label="Como contar" dica={f.tracking === 'serializado' ? 'cada unidade tem MAC e linha própria' : 'só a quantidade importa (headsets, cabos…)'}><select className="input" value={f.tracking} onChange={(e) => setF({ ...f, tracking: e.target.value })}><option value="serializado">Serializado (um a um, por MAC)</option><option value="granel">Granel (por quantidade)</option></select></Campo>
+          <label className="flex items-start gap-2 text-sm cursor-pointer rounded-lg border border-line p-3">
+            <input type="checkbox" id="modelo-sem-mac" className="mt-0.5" checked={f.semMac} onChange={(e) => setF({ ...f, semMac: e.target.checked })} />
+            <span>
+              <b>Não se aplica MAC</b>
+              <span className="block text-[12.5px] text-muted">Marque para headset, cabo e afins: o sistema conta só a quantidade em estoque, sem cadastrar um a um. Sem marcar, cada unidade entra pelo MAC.</span>
+            </span>
+          </label>
           {err && <div className="text-bad text-sm">{err}</div>}
         </div>
       </Modal>
@@ -157,7 +179,8 @@ function Movimentacoes() {
   const modality = sp.get('modalidade') ?? ''; const clientId = sp.get('cliente') ?? ''; const from = sp.get('de') ?? ''; const to = sp.get('ate') ?? ''; const page = Number(sp.get('p') ?? 1);
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
   const clients = useQuery({ queryKey: ['client-options', 'equip'], queryFn: () => api.clients.options({ productCode: 'equipamentos' }) });
-  const lista = useQuery({ queryKey: ['movements', modality, clientId, from, to, page], queryFn: () => api.inventory.movements({ modality, clientId, from: from || undefined, to: to || undefined, page, pageSize: 50 }) });
+  const o = useOrdenacao('createdAt', 'desc');
+  const lista = useQuery({ queryKey: ['movements', modality, clientId, from, to, page, o.ord, o.dir], queryFn: () => api.inventory.movements({ modality, clientId, from: from || undefined, to: to || undefined, page, pageSize: 50, sort: o.ord, dir: o.dir }) });
   return (
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2">
@@ -166,7 +189,7 @@ function Movimentacoes() {
         <input type="date" className="input w-auto" value={from} onChange={(e) => set('de', e.target.value || null)} /><input type="date" className="input w-auto" value={to} onChange={(e) => set('ate', e.target.value || null)} />
       </div>
       {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhuma movimentação" /> : (
-        <div className="card overflow-x-auto"><table className="table"><thead><tr><th>Quando</th><th>Modalidade</th><th>De</th><th>Para</th><th>Itens</th><th>Condição</th><th className="text-right">Valor</th><th>Por</th></tr></thead>
+        <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="createdAt">Quando</Th><Th o={o} col="modality">Modalidade</Th><Th o={o} col="fromName">De</Th><Th o={o} col="toName">Para</Th><th>Itens</th><th>Condição</th><th className="text-right">Valor</th><Th o={o} col="userName">Por</Th></tr></thead>
           <tbody>{lista.data.items.map((m) => (
             <tr key={m.id}><td className="tnum whitespace-nowrap">{data(m.createdAt, true)}</td><td><Chip tone={m.modality === 'devolucao' ? 'neutral' : m.modality === 'venda' ? 'accent' : m.modality === 'comodato' ? 'signal' : 'ok'}>{m.modalityName}</Chip></td>
               <td>{m.fromClientId ? <Link className="link" to={`/clientes/${m.fromClientId}`}>{m.fromName}</Link> : 'Estoque'}</td><td>{m.toClientId ? <Link className="link" to={`/clientes/${m.toClientId}`}>{m.toName}</Link> : 'Estoque'}</td>

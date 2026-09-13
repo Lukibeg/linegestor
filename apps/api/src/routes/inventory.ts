@@ -1,7 +1,7 @@
 /** Inventário: modelos, aparelhos, estoque a granel, movimentações. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AparelhoAtualizarSchema, AparelhoGravarSchema, EstoqueGranelAjustarSchema, MODALIDADES, ModeloGravarSchema, MovimentacaoCriarSchema, PaginacaoSchema } from '@gestor/shared';
+import { AparelhoAtualizarSchema, AparelhoGravarSchema, EstoqueGranelAjustarSchema, MODALIDADES, ModeloGravarSchema, MovimentacaoCriarSchema, OrdenacaoSchema, PaginacaoSchema } from '@gestor/shared';
 import * as svc from '../services/inventory.js';
 
 const Id = z.object({ id: z.string() });
@@ -22,7 +22,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => svc.summary(app.db, req.query as any));
 
   // ---- aparelhos ----
-  app.get('/devices', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Aparelhos serializados (por MAC)', querystring: PaginacaoSchema.extend({ q: z.string().optional(), modelId: z.string().optional(), clientId: z.string().optional(), condition: z.string().optional(), includeRetired: z.coerce.boolean().default(false) }) } },
+  app.get('/devices', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Aparelhos serializados (por MAC)', querystring: PaginacaoSchema.merge(OrdenacaoSchema).extend({ q: z.string().optional(), modelId: z.string().optional(), clientId: z.string().optional(), condition: z.string().optional(), includeRetired: z.coerce.boolean().default(false) }) } },
     async (req) => svc.listDevices(app.db, req.query as any));
   app.get('/devices/:id', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Um aparelho com o histórico de movimentações', params: Id } }, async (req) => svc.getDevice(app.db, req.params.id));
   app.post('/devices', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Inventário'], summary: 'Cadastrar aparelho (entra no estoque)', body: AparelhoGravarSchema } },
@@ -40,7 +40,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => { const r = await svc.adjustStock(app.db, req.body.modelId, req.body.delta); await app.audit(req, { action: 'stock_adjust', entityType: 'deviceModel', entityId: req.body.modelId, summary: `${req.body.delta > 0 ? 'Entrada' : 'Baixa'} de ${Math.abs(req.body.delta)} no estoque a granel${req.body.note ? ` (${req.body.note})` : ''}` }); return r; });
 
   // ---- movimentações ----
-  app.get('/movements', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Histórico de movimentações', querystring: PaginacaoSchema.extend({ modality: z.string().optional(), clientId: z.string().optional(), from: z.coerce.date().optional(), to: z.coerce.date().optional() }) } },
+  app.get('/movements', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Histórico de movimentações', querystring: PaginacaoSchema.merge(OrdenacaoSchema).extend({ modality: z.string().optional(), clientId: z.string().optional(), from: z.coerce.date().optional(), to: z.coerce.date().optional() }) } },
     async (req) => svc.listMovements(app.db, req.query));
   app.post('/movements', { preHandler: app.requirePermission('devices.move'), schema: { tags: ['Inventário'], summary: 'Movimentar aparelhos (locação, venda, comodato, devolução)', body: MovimentacaoCriarSchema } },
     async (req, reply) => {

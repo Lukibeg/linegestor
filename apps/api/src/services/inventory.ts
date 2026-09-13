@@ -135,12 +135,31 @@ export async function summary(db: Db, q: FiltroAparelhos = {}) {
   };
 }
 
-export async function listDevices(db: Db, q: FiltroAparelhos & { page: number; pageSize: number }) {
+/** Ordenação da tabela de aparelhos. */
+function ordenacaoAparelhos(q: { sort?: string; dir?: string }) {
+  const dir = q.dir === 'desc' ? sql`desc` : sql`asc`;
+  const colunas: Record<string, SQL> = {
+    mac: sql`${devices.mac}`,
+    tag: sql`${devices.tag}`,
+    modelName: sql`lower(${deviceModels.name})`,
+    clientName: sql`lower(${clients.tradeName})`,
+    currentModality: sql`${devices.currentModality}`,
+    condition: sql`${devices.condition}`,
+    ip: sql`${devices.ip}`,
+    location: sql`lower(${devices.location})`,
+    valueCents: sql`${devices.valueCents}`,
+    createdAt: sql`${devices.createdAt}`,
+  };
+  const campo = colunas[q.sort ?? 'modelName'] ?? colunas.modelName!;
+  return sql`${campo} ${dir} nulls last, ${devices.mac} asc`;
+}
+
+export async function listDevices(db: Db, q: FiltroAparelhos & { page: number; pageSize: number; sort?: string; dir?: string }) {
   const where = and(...filtrosAparelhos(q));
   const rows = await db
     .select({ d: devices, modelName: deviceModels.name, modelCode: deviceModels.code, clientName: clients.tradeName })
     .from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId)).leftJoin(clients, eq(clients.id, devices.clientId))
-    .where(where).orderBy(asc(deviceModels.name), asc(devices.tag), asc(devices.mac)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
+    .where(where).orderBy(ordenacaoAparelhos(q)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
   const [c] = await db.select({ n: sql<number>`count(*)` }).from(devices).where(where);
   return { items: rows.map((r) => ({ ...r.d, macFormatted: macFormatado(r.d.mac), modelName: r.modelName, modelCode: r.modelCode, clientName: r.clientName })), total: Number(c?.n ?? 0), page: q.page, pageSize: q.pageSize };
 }
@@ -278,7 +297,21 @@ export async function createMovement(db: Db, data: MovimentacaoCriar, userId: st
   });
 }
 
-export async function listMovements(db: Db, q: { modality?: string; clientId?: string; from?: Date; to?: Date; page: number; pageSize: number }) {
+/** Ordenação do histórico de movimentações (padrão: mais recentes primeiro). */
+function ordenacaoMovimentacoes(q: { sort?: string; dir?: string }, fromC: ReturnType<typeof alias<typeof clients, string>>, toC: ReturnType<typeof alias<typeof clients, string>>) {
+  const dir = q.dir === 'asc' ? sql`asc` : sql`desc`;
+  const colunas: Record<string, SQL> = {
+    createdAt: sql`${deviceMovements.createdAt}`,
+    modality: sql`${deviceMovements.modality}`,
+    fromName: sql`lower(${fromC.tradeName})`,
+    toName: sql`lower(${toC.tradeName})`,
+    userName: sql`lower(${users.name})`,
+  };
+  const campo = colunas[q.sort ?? 'createdAt'] ?? colunas.createdAt!;
+  return sql`${campo} ${dir} nulls last, ${deviceMovements.createdAt} desc`;
+}
+
+export async function listMovements(db: Db, q: { modality?: string; clientId?: string; from?: Date; to?: Date; page: number; pageSize: number; sort?: string; dir?: string }) {
   const fromC = alias(clients, 'from'), toC = alias(clients, 'to');
   const conds: SQL[] = [];
   if (q.modality) conds.push(eq(deviceMovements.modality, q.modality));
@@ -289,7 +322,7 @@ export async function listMovements(db: Db, q: { modality?: string; clientId?: s
   const rows = await db
     .select({ id: deviceMovements.id, modality: deviceMovements.modality, fromClientId: deviceMovements.fromClientId, fromName: fromC.tradeName, toClientId: deviceMovements.toClientId, toName: toC.tradeName, newCondition: deviceMovements.newCondition, valueCents: deviceMovements.valueCents, note: deviceMovements.note, userName: users.name, createdAt: deviceMovements.createdAt })
     .from(deviceMovements).leftJoin(fromC, eq(fromC.id, deviceMovements.fromClientId)).leftJoin(toC, eq(toC.id, deviceMovements.toClientId)).innerJoin(users, eq(users.id, deviceMovements.userId))
-    .where(where).orderBy(desc(deviceMovements.createdAt)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
+    .where(where).orderBy(ordenacaoMovimentacoes(q, fromC, toC)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
   const ids = rows.map((r) => r.id).concat(['-']);
   const items = await db
     .select({ movementId: deviceMovementItems.movementId, modelName: deviceModels.name, quantity: sql<number>`sum(${deviceMovementItems.quantity})` })

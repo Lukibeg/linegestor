@@ -5,7 +5,7 @@
  * conta quantos foram afetados e registra na auditoria com esse número. Não existe "aplica em tudo que está filtrado".
  */
 import { and, asc, desc, eq, ilike, inArray, isNull, sql, type SQL } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
+import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { carriers, circuits, clients, dids, newId, type Db } from '@gestor/db';
 import { didFormatado, gerarFaixaDids, type DidCriarFaixa, type DidEditarEmMassa, type DidListar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
@@ -39,8 +39,12 @@ export async function list(db: Db, q: DidListar) {
   else if (q.clientId) conds.push(eq(dids.clientId, q.clientId));
   if (q.ownerClientId) conds.push(eq(dids.ownerClientId, q.ownerClientId));
   const where = and(...conds);
-  const sortCol = { number: dids.number, circuit: circuits.name, client: clients.tradeName, owner: owner.tradeName, note: dids.note }[q.sort];
-  const rows = await baseSelect(db).where(where).orderBy(q.dir === 'desc' ? desc(sortCol) : asc(sortCol), asc(dids.number)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
+  // ordenar por qualquer coluna da tabela; o que não for reconhecido cai no número
+  const colunas: Record<string, SQL | PgColumn> = {
+    number: dids.number, circuit: circuits.name, carrier: carriers.name, client: clients.tradeName, owner: owner.tradeName, note: dids.note,
+  };
+  const sortCol = colunas[q.sort ?? 'number'] ?? dids.number;
+  const rows = await baseSelect(db).where(where).orderBy(sql`${sortCol} ${q.dir === 'desc' ? sql`desc` : sql`asc`} nulls last`, asc(dids.number)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
   const [c] = await db.select({ n: sql<number>`count(*)`, free: sql<number>`count(*) filter (where ${dids.clientId} is null)` }).from(dids).where(where);
   return { items: rows.map(shape), total: Number(c?.n ?? 0), free: Number(c?.free ?? 0), page: q.page, pageSize: q.pageSize };
 }

@@ -12,6 +12,7 @@ import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Abas, Campo, CampoSegredo, Carregando, Kpi, Modal, Ocupacao, Paginacao, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { didFormatado, paraCentavos, reais } from '../../lib/format.js';
+import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { Numeracao } from '../dids/Lista.js';
 
 type Aba = 'circuitos' | 'numeracao';
@@ -24,13 +25,14 @@ export function CircuitosLista() {
   const filtros = { q, carrierId, ownerClientId };
   const temFiltro = !!(q || carrierId || ownerClientId);
   const [novo, setNovo] = useState(false);
+  const o = useOrdenacao('name');
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
   const trocarAba = (a: Aba) => setSp(a === 'numeracao' ? { aba: 'numeracao' } : {}, { replace: true });
   const carriers = useQuery({ queryKey: ['catalog', 'carriers'], queryFn: () => api.admin.catalog('carriers') });
   const titulares = useQuery({ queryKey: ['client-options', 'internal'], queryFn: () => api.clients.options({ includeInternal: true }) });
   // os cartões do topo usam os MESMOS filtros da lista
   const resumo = useQuery({ queryKey: ['circuits', 'summary', filtros], queryFn: () => api.circuits.summary(filtros) });
-  const lista = useQuery({ queryKey: ['circuits', filtros, page], queryFn: () => api.circuits.list({ ...filtros, page, pageSize: 50 }), enabled: aba === 'circuitos' });
+  const lista = useQuery({ queryKey: ['circuits', filtros, page, o.ord, o.dir], queryFn: () => api.circuits.list({ ...filtros, page, pageSize: 50, sort: o.ord, dir: o.dir }), enabled: aba === 'circuitos' });
   const r = resumo.data;
   return (
     <Pagina titulo="Circuitos e DIDs" sub="Feixes contratados junto às operadoras e toda a numeração." acoes={aba === 'circuitos' ? <Can permission="records.write"><button className="btn-primary" onClick={() => setNovo(true)}><Plus size={16} /> Novo circuito</button></Can> : undefined}>
@@ -49,11 +51,15 @@ export function CircuitosLista() {
         <div className="card p-3 mb-4 flex flex-wrap gap-2">
           <input className="input max-w-xs" placeholder="Buscar por nome, N° do circuito ou operadora" value={q} onChange={(e) => set('q', e.target.value)} />
           <select className="input w-auto" value={carrierId} onChange={(e) => set('operadora', e.target.value || null)}><option value="">Todas as operadoras</option>{carriers.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-          <select className="input w-auto" value={ownerClientId} onChange={(e) => set('titular', e.target.value || null)}><option value="">Todos os titulares</option>{titulares.data?.map((o) => <option key={o.id} value={o.id}>{o.name}{o.isInternal ? ' (interna)' : ''}</option>)}</select>
+          <select className="input w-auto" value={ownerClientId} onChange={(e) => set('titular', e.target.value || null)}><option value="">Todos os titulares</option>{titulares.data?.map((t) => <option key={t.id} value={t.id}>{t.name}{t.isInternal ? ' (interna)' : ''}</option>)}</select>
         </div>
         {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum circuito" texto="Cadastre o feixe contratado junto à operadora." /> : (
           <div className="card overflow-x-auto"><table className="table">
-            <thead><tr><th>Nome</th><th>Operadora</th><th>N° do circuito</th><th>Número chave</th><th>Titular</th><th className="text-right">Canais</th><th className="text-right">DIDs</th><th className="text-right">Livres</th><th>Em uso</th><th className="text-right">Valor/mês</th></tr></thead>
+            <thead><tr>
+              <Th o={o} col="name">Nome</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="code">N° do circuito</Th><Th o={o} col="keyNumber">Número chave</Th>
+              <Th o={o} col="ownerName">Titular</Th><Th o={o} col="channels" align="right">Canais</Th><Th o={o} col="total" align="right">DIDs</Th>
+              <Th o={o} col="free" align="right">Livres</Th><Th o={o} col="uso">Em uso</Th><Th o={o} col="monthlyValueCents" align="right">Valor/mês</Th>
+            </tr></thead>
             <tbody>{lista.data.items.map((c) => (
               <tr key={c.id} className="cursor-pointer" onClick={() => nav(`/circuitos/${c.id}`)}>
                 <td className="font-medium">{c.name}</td><td>{c.carrierName ?? '—'}</td><td className="font-mono tnum">{c.code}</td><td className="font-mono tnum whitespace-nowrap">{c.keyNumber ? didFormatado(c.keyNumber) : <span className="text-muted">—</span>}</td><td className="text-ink-2">{c.ownerName ?? '—'}</td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.dids.total}</td><td className="text-right tnum">{c.dids.free}</td><td><Ocupacao total={c.dids.total} assigned={c.dids.assigned} /></td><td className="text-right tnum">{reais(c.monthlyValueCents)}</td>

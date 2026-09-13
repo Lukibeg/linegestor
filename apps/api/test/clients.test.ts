@@ -175,3 +175,36 @@ describe('logo do cliente', () => {
     expect((await s.get(`/clients/${id}/logo`)).statusCode).toBe(404);
   });
 });
+
+describe('ordenação da lista', () => {
+  it('ordena por qualquer coluna, inclusive por módulo, com vazios no fim', async () => {
+    // Aurora tem LinePBX; damos a ela uma hospedagem. "Só Voz" (arquivada) não tem LinePBX nenhum.
+    const hostings = (await s.get('/admin/catalogs/hostings')).json();
+    const vultr = hostings.find((h: any) => h.name === 'Vultr');
+    const id = (await s.get('/clients?q=aurora')).json().items[0].id;
+    await s.put(`/clients/${id}/subscriptions`, { productCode: 'linepbx', settings: { hostingId: vultr.id } });
+
+    const todos = '&includeArchived=true';
+    const porNome = (await s.get(`/clients?sort=tradeName&dir=asc${todos}`)).json().items.map((c: any) => c.tradeName);
+    expect(porNome.length).toBeGreaterThan(1);
+    expect(porNome).toEqual([...porNome].sort((a: string, b: string) => a.localeCompare(b)));
+    const porNomeDesc = (await s.get(`/clients?sort=tradeName&dir=desc${todos}`)).json().items.map((c: any) => c.tradeName);
+    expect(porNomeDesc).toEqual([...porNome].reverse());
+
+    // hospedagem: quem tem vem primeiro, quem não tem vai para o fim (nos dois sentidos)
+    const asc = (await s.get(`/clients?sort=hosting&dir=asc${todos}`)).json().items;
+    expect(asc[0].server?.hostingName).toBe('Vultr');
+    expect(asc[asc.length - 1].server?.hostingName ?? null).toBeNull();
+    const desc = (await s.get(`/clients?sort=hosting&dir=desc${todos}`)).json().items;
+    expect(desc[desc.length - 1].server?.hostingName ?? null).toBeNull();
+
+    // por contagem e por módulo (data de ativação) não quebram e trazem todo mundo
+    expect((await s.get(`/clients?sort=didCount&dir=desc${todos}`)).json().items.length).toBe(porNome.length);
+    const porModulo = (await s.get(`/clients?sort=modulo:linepbx:fop2&dir=asc${todos}`)).json().items;
+    expect(porModulo[0].products.find((p: any) => p.code === 'linepbx')?.modules.some((m: any) => m.code === 'fop2')).toBe(true);
+    expect(porModulo[porModulo.length - 1].products.find((p: any) => p.code === 'linepbx')?.modules?.length ?? 0).toBe(0);
+
+    // coluna desconhecida não derruba: volta para a ordem padrão
+    expect((await s.get('/clients?sort=inventado')).statusCode).toBe(200);
+  });
+});

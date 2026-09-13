@@ -12,6 +12,7 @@ import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, LogoCliente, mensagemErro, Modal, Spinner, Vazio, useToast } from '../../components/ui/index.js';
 import { cnpjFormatado, condicaoCor, condicaoNome, data, MODALIDADES, relativo } from '../../lib/format.js';
+import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { ClienteForm } from './Form.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'acessos' | 'historico';
@@ -272,13 +273,14 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
 // ---------- DIDs ----------
 function Dids({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
+  const o = useOrdenacaoLocal('numberFormatted');
   if (q.isLoading) return <Carregando />;
   const items = q.data?.items ?? [];
   if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
   return (
     <div className="card overflow-x-auto">
-      <table className="table"><thead><tr><th>Número</th><th>Operadora</th><th>Circuito</th><th>Titular</th><th>Observação</th></tr></thead>
-        <tbody>{items.map((d) => <tr key={d.id}><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
+      <table className="table"><thead><tr><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
+        <tbody>{ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, note: (d) => d.note }).map((d) => <tr key={d.id}><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
       <div className="px-3 py-2 text-[12.5px] text-muted border-t border-line"><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div>
     </div>
   );
@@ -287,6 +289,7 @@ function Dids({ c }: { c: ClientFull }) {
 // ---------- Equipamentos ----------
 function Equipamentos({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-devices', c.id], queryFn: () => api.clients.devices(c.id) });
+  const o = useOrdenacaoLocal('modelName');
   const temProduto = c.subscriptions.some((s) => s.productCode === 'equipamentos' && s.active);
   if (q.isLoading) return <Carregando />;
   const devs = q.data?.devices.items ?? []; const bulk = q.data?.bulk ?? [];
@@ -294,8 +297,8 @@ function Equipamentos({ c }: { c: ClientFull }) {
   return (
     <div className="flex flex-col gap-3">
       {devs.length > 0 && (
-        <div className="card overflow-x-auto"><table className="table"><thead><tr><th>Modelo</th><th>MAC</th><th>Etiqueta</th><th>Como</th><th>Condição</th><th>IP</th><th>Local</th></tr></thead>
-          <tbody>{devs.map((d) => <tr key={d.id}><td>{d.modelName}</td><td className="font-mono"><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.macFormatted}</Link></td><td className="font-mono">{d.tag ?? '—'}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="font-mono">{d.ip ?? '—'}</td><td className="text-muted">{d.location ?? '—'}</td></tr>)}</tbody></table></div>
+        <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="modelName">Modelo</Th><Th o={o} col="mac">MAC</Th><Th o={o} col="tag">Etiqueta</Th><Th o={o} col="currentModality">Como</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="ip">IP</Th><Th o={o} col="location">Local</Th></tr></thead>
+          <tbody>{ordenarLista(devs, o, { modelName: (d) => d.modelName, mac: (d) => d.mac, tag: (d) => d.tag, currentModality: (d) => d.currentModality, condition: (d) => d.condition, ip: (d) => d.ip, location: (d) => d.location }).map((d) => <tr key={d.id}><td>{d.modelName}</td><td className="font-mono"><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.macFormatted}</Link></td><td className="font-mono">{d.tag ?? '—'}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="font-mono">{d.ip ?? '—'}</td><td className="text-muted">{d.location ?? '—'}</td></tr>)}</tbody></table></div>
       )}
       {bulk.length > 0 && (
         <div className="card p-4"><div className="eyebrow mb-2">Itens a granel</div><ul className="text-sm">{bulk.map((b) => <li key={b.id} className="flex justify-between py-1 border-b border-line last:border-0"><span>{b.modelName} <span className="text-muted">· {(MODALIDADES as any)[b.modality] ?? b.modality}</span></span><span className="font-mono tnum">{b.quantity}</span></li>)}</ul></div>
