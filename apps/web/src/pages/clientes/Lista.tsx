@@ -1,12 +1,12 @@
 /**
- * Lista de clientes: cards ou tabela, busca, filtro por produto e por módulo (qualquer/todos), arquivados.
+ * Lista de clientes: cards ou tabela, busca, filtros em botão (Produtos e Módulos, com "qualquer um/todos"), arquivados.
  * Na tabela, a pessoa escolhe quais colunas quer ver: qualquer detalhe do cliente, a data de ativação de
  * cada produto e CADA MÓDULO como sua própria coluna. A escolha fica guardada no navegador.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, Columns3, ExternalLink, LayoutGrid, List, Plus, Puzzle, RotateCcw, Terminal } from 'lucide-react';
+import { Check, Columns3, ExternalLink, LayoutGrid, List, Package, Plus, Puzzle, RotateCcw, Terminal } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { ClientListItem, Product } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
@@ -130,26 +130,33 @@ function SeletorColunas({ colunas, ids, setIds, restaurar }: { colunas: Coluna[]
 }
 
 /**
- * O filtro de módulos: lista TODOS os módulos do catálogo, agrupados por produto.
- * Independe de o produto estar selecionado acima — dá para procurar "quem tem NPS?" direto.
+ * O filtro em botão, usado igual para **Produtos** e para **Módulos**: abre um painel com
+ * caixas de marcar. Os módulos vêm agrupados por produto; os produtos, numa lista só.
+ * Uma peça só para os dois, para as duas ficarem sempre com a mesma cara.
  */
-function FiltroModulos({ produtos, escolhidos, onChange }: { produtos: Product[]; escolhidos: string[]; onChange: (v: string[]) => void }) {
-  const comModulos = produtos.filter((p) => p.modules.some((m) => m.active));
-  if (!comModulos.length) return null;
+type OpcaoFiltro = { key: string; label: string; cor?: string; dica?: string };
+type GrupoFiltro = { titulo?: string; cor?: string; opcoes: OpcaoFiltro[] };
+
+function FiltroEmBotao({ icone: Icone, nome, grupos, escolhidos, onChange, largura = 'w-[280px]' }: {
+  icone: typeof Puzzle; nome: string; grupos: GrupoFiltro[]; escolhidos: string[]; onChange: (v: string[]) => void; largura?: string;
+}) {
+  if (!grupos.some((g) => g.opcoes.length)) return null;
   const toggle = (k: string) => onChange(escolhidos.includes(k) ? escolhidos.filter((x) => x !== k) : [...escolhidos, k]);
   return (
-    <Popover largura="w-[280px]" botao={() => <><Puzzle size={15} /> Módulos {escolhidos.length > 0 && <span className="text-accent tnum">({escolhidos.length})</span>}</>}>
+    <Popover largura={largura} botao={() => <><Icone size={15} /> {nome} {escolhidos.length > 0 && <span className="text-accent tnum">({escolhidos.length})</span>}</>}>
       <div className="flex items-center justify-between mb-2">
-        <span className="eyebrow">Filtrar por módulo</span>
+        <span className="eyebrow">Filtrar por {nome.toLowerCase()}</span>
         {escolhidos.length > 0 && <button className="btn-ghost btn-sm text-muted" onClick={() => onChange([])}>limpar</button>}
       </div>
-      {comModulos.map((p) => (
-        <div key={p.code} className="mb-3 last:mb-0">
-          <div className="text-[11.5px] uppercase tracking-wide mb-1" style={{ color: p.color }}>{p.name}</div>
+      {grupos.map((g, i) => (
+        <div key={g.titulo ?? i} className="mb-3 last:mb-0">
+          {g.titulo && <div className="text-[11.5px] uppercase tracking-wide mb-1" style={{ color: g.cor }}>{g.titulo}</div>}
           <div className="flex flex-col gap-0.5">
-            {p.modules.filter((m) => m.active).map((m) => (
-              <label key={m.code} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded hover:bg-surface-2 cursor-pointer" title={m.description ?? undefined}>
-                <input type="checkbox" id={`mod-${p.code}-${m.code}`} checked={escolhidos.includes(`${p.code}:${m.code}`)} onChange={() => toggle(`${p.code}:${m.code}`)} /> {m.name}
+            {g.opcoes.map((o) => (
+              <label key={o.key} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded hover:bg-surface-2 cursor-pointer" title={o.dica}>
+                <input type="checkbox" id={`filtro-${o.key.replace(/[^a-z0-9]/gi, '-')}`} checked={escolhidos.includes(o.key)} onChange={() => toggle(o.key)} />
+                {o.cor ? <span className="w-2 h-2 rounded-full shrink-0" style={{ background: o.cor }} aria-hidden /> : null}
+                {o.label}
               </label>
             ))}
           </div>
@@ -181,34 +188,39 @@ export function ClientesLista() {
   const colunas = useMemo(() => montarColunas(prods.data?.filter((p) => p.active) ?? []), [prods.data]);
   const visiveis = colunas.filter((c) => colunasEscolhidas.ids.includes(c.id));
   const ativos = prods.data?.filter((p) => p.active) ?? [];
-  /** Nome bonito de cada módulo escolhido, para os chips embaixo do filtro. */
-  const modulosEscolhidos = modulos.map((k) => {
-    const [pc, mc] = k.split(':');
-    const p = ativos.find((x) => x.code === pc);
-    const m = p?.modules.find((x) => x.code === mc);
-    return { key: k, label: m ? `${p!.name} › ${m.name}` : k, color: p?.color };
-  });
+  /** As opções dos dois botões de filtro. */
+  const gruposProdutos: GrupoFiltro[] = [{ opcoes: ativos.map((p) => ({ key: p.code, label: p.name, cor: p.color, dica: p.description ?? undefined })) }];
+  const gruposModulos: GrupoFiltro[] = ativos
+    .filter((p) => p.modules.some((m) => m.active))
+    .map((p) => ({ titulo: p.name, cor: p.color, opcoes: p.modules.filter((m) => m.active).map((m) => ({ key: `${p.code}:${m.code}`, label: m.name, dica: m.description ?? undefined })) }));
+
+  /** O que está filtrado agora, em chips — clicar tira o filtro. */
+  const escolhidos = [
+    ...produtos.map((code) => { const p = ativos.find((x) => x.code === code); return { key: code, tipo: 'produtos' as const, label: p?.name ?? code, cor: p?.color }; }),
+    ...modulos.map((k) => {
+      const [pc, mc] = k.split(':');
+      const p = ativos.find((x) => x.code === pc);
+      const m = p?.modules.find((x) => x.code === mc);
+      return { key: k, tipo: 'modulos' as const, label: m ? `${p!.name} › ${m.name}` : k, cor: p?.color };
+    }),
+  ];
+  const tirar = (e: (typeof escolhidos)[number]) => set(e.tipo, (e.tipo === 'produtos' ? produtos : modulos).filter((x) => x !== e.key));
 
   return (
     <Pagina titulo="Clientes" sub={lista.data ? `${lista.data.total} cliente(s)` : ' '} acoes={<Can permission="records.write"><button className="btn-primary" onClick={() => setNovo(true)}><Plus size={16} /> Novo cliente</button></Can>}>
       <div className="card p-3 mb-4 flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <input className="input max-w-xs" placeholder="Buscar por nome ou CNPJ" value={q} onChange={(e) => set('q', e.target.value)} />
-          <div className="flex flex-wrap gap-1">
-            {prods.data?.filter((p) => p.active).map((p) => {
-              const on = produtos.includes(p.code);
-              return <button key={p.code} onClick={() => set('produtos', on ? produtos.filter((x) => x !== p.code) : [...produtos, p.code])} className={`chip border transition-colors ${on ? 'border-transparent' : 'border-line bg-transparent text-ink-2'}`} style={on ? { background: p.color + '22', color: p.color } : undefined}>{p.name}</button>;
-            })}
-          </div>
-          {produtos.length + modulos.length > 1 && (
-            <select className="input w-auto" value={mode} onChange={(e) => set('modo', e.target.value)}>
+          <FiltroEmBotao icone={Package} nome="Produtos" grupos={gruposProdutos} escolhidos={produtos} onChange={(v) => set('produtos', v)} />
+          <FiltroEmBotao icone={Puzzle} nome="Módulos" grupos={gruposModulos} escolhidos={modulos} onChange={(v) => set('modulos', v)} />
+          {escolhidos.length > 1 && (
+            <select className="input w-auto" value={mode} onChange={(e) => set('modo', e.target.value)} title="Como combinar os filtros escolhidos">
               <option value="or">tem qualquer um</option>
               <option value="and">tem todos</option>
             </select>
           )}
           <div className="ml-auto flex items-center gap-3">
             <Toggle checked={arquivados} onChange={(v) => set('arquivados', v ? '1' : null)} label="arquivados" />
-            <FiltroModulos produtos={ativos} escolhidos={modulos} onChange={(v) => set('modulos', v)} />
             {view === 'tabela' && <SeletorColunas colunas={colunas} {...colunasEscolhidas} />}
             <div className="flex rounded-lg border border-line overflow-hidden">
               <button className={`px-2 py-1.5 ${view === 'cards' ? 'bg-accent-soft text-accent-ink' : 'text-muted'}`} onClick={() => set('ver', null)} title="Cards"><LayoutGrid size={16} /></button>
@@ -216,12 +228,13 @@ export function ClientesLista() {
             </div>
           </div>
         </div>
-        {modulosEscolhidos.length > 0 && (
+        {escolhidos.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 text-[12.5px]">
-            <span className="text-muted mr-1">módulos:</span>
-            {modulosEscolhidos.map((m) => (
-              <button key={m.key} onClick={() => set('modulos', modulos.filter((x) => x !== m.key))} className="chip border border-transparent" style={m.color ? { background: m.color + '22', color: m.color } : undefined} title="clique para tirar este filtro">{m.label} ×</button>
+            <span className="text-muted mr-1">filtrando por:</span>
+            {escolhidos.map((e) => (
+              <button key={e.tipo + e.key} onClick={() => tirar(e)} className="chip border border-transparent" style={e.cor ? { background: e.cor + '22', color: e.cor } : undefined} title="clique para tirar este filtro">{e.label} ×</button>
             ))}
+            <button className="btn-ghost btn-sm text-muted" onClick={() => { const n = new URLSearchParams(sp); n.delete('produtos'); n.delete('modulos'); n.delete('p'); setSp(n, { replace: true }); }}>limpar tudo</button>
           </div>
         )}
       </div>
