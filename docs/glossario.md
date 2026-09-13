@@ -39,3 +39,17 @@
 | **Auditoria** | O registro de quem fez o quê, em qual registro, quando. |
 | **Papel** | Conjunto de permissões de um usuário (Leitor, Operador, Técnico, Administrador). |
 | **Homologação** | Ambiente de teste, idêntico ao de produção, para experimentar sem risco. |
+
+## Palavras da hospedagem
+
+| Termo | O que significa |
+|---|---|
+| **VPS** | Um computador alugado num centro de dados, ligado 24 h. "Servidor virtual privado". |
+| **Contêiner (Docker)** | Um programa empacotado com tudo de que precisa para rodar. Sobe igual em qualquer máquina. |
+| **Porta** | O "número da sala" onde um programa atende. O site é a 443 (HTTPS); o banco, a 5432. Fechar uma porta é trancar aquela sala para quem vem de fora. |
+| **Proxy reverso** | O porteiro do prédio: é o único endereço que aparece para a rua. Recebe a visita, confere, e leva até a sala certa lá dentro. Quem chega nunca fala direto com quem está dentro. |
+| **Caddy** | O proxy reverso que escolhemos. Faz o papel de porteiro e ainda cuida sozinho do certificado do cadeado (HTTPS) — pede, instala e renova sem ninguém lembrar. |
+| **Certificado / HTTPS** | O cadeado do navegador. Garante que ninguém no caminho lê ou troca o que passa entre o computador da pessoa e o servidor. |
+| **Let's Encrypt** | Quem emite esses certificados de graça. O Caddy conversa com ele automaticamente. |
+| **Firewall** | A porta da rua do servidor: decide quais portas aceitam visita. No nosso caso, só SSH, 80 e 443. |
+| **SSH** | O jeito de entrar no servidor pelo terminal. No nosso caso, só com chave — senha não funciona. |

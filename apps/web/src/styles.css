@@ -62,3 +62,15 @@ input, select, textarea, button { font: inherit; }
   .table tbody tr:hover { @apply bg-surface-2; }
   .link { @apply text-accent hover:underline; }
 }
+
+/* ---------- A marca: cada tema mostra a arte certa ---------- */
+/* A versão de fundo escuro fica guardada até o tema escuro aparecer. */
+.marca-escuro { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .marca-claro { display: none; }
+  :root:not([data-theme='light']) .marca-escuro { display: inline; }
+}
+:root[data-theme='dark'] .marca-claro { display: none; }
+:root[data-theme='dark'] .marca-escuro { display: inline; }
+:root[data-theme='light'] .marca-claro { display: inline; }
+:root[data-theme='light'] .marca-escuro { display: none; }

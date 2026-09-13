@@ -7,6 +7,7 @@ import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, LayoutDashboard, 
 import { useAuth } from '../../lib/auth.js';
 import { IS_DEMO } from '../../api/index.js';
 import { GlobalSearch } from './GlobalSearch.js';
+import { Logotipo, Simbolo } from '../Marca.js';
 
 const NAV = [
   { to: '/', label: 'Painel', icon: LayoutDashboard, perm: 'records.read', end: true },
@@ -57,8 +58,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* menu lateral */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-60 ${collapsed ? 'md:w-16' : 'md:w-60'} bg-surface border-r border-line flex flex-col transition-[transform,width] duration-200 md:translate-x-0 md:sticky md:inset-y-auto md:top-0 md:h-screen ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className={`h-14 flex items-center gap-2 px-4 border-b border-line ${collapsed ? 'md:justify-center md:px-0' : ''}`}>
-          <span className="w-7 h-7 rounded-lg bg-accent text-white font-display font-bold flex items-center justify-center text-[11px] tracking-tight shrink-0" title="Ingline Gestão">IG</span>
-          <span className={`font-display font-semibold ${hide}`}>Ingline Gestão</span>
+          {/* no celular o menu é sempre largo, então mostra o logotipo inteiro */}
+          {collapsed ? <><Logotipo altura={26} className="md:hidden" /><Simbolo tamanho={26} className="hidden md:block md:mx-auto" /></> : <Logotipo altura={26} />}
           {IS_DEMO && <span className={`chip bg-signal-soft text-signal ml-auto ${hide}`}>demo</span>}
           <button className="md:hidden ml-auto btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="Fechar menu"><X size={16} /></button>
         </div>

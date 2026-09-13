@@ -4,6 +4,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.js';
 import { IS_DEMO } from '../api/index.js';
 import { mensagemErro, Spinner } from '../components/ui/index.js';
+import { Logotipo } from '../components/Marca.js';
 
 export function Entrar() {
   const { user, login, loading } = useAuth();
@@ -23,9 +24,8 @@ export function Entrar() {
   return (
     <div className="min-h-full flex items-center justify-center p-4 bg-bg">
       <div className="w-full max-w-sm">
-        <div className="flex items-center gap-2 mb-6 justify-center">
-          <span className="w-9 h-9 rounded-lg bg-accent text-white font-display font-bold flex items-center justify-center">G</span>
-          <div><div className="font-display font-semibold text-lg leading-tight">Ingline Gestão</div><div className="text-muted text-[12px] leading-tight">Ingline Systems</div></div>
+        <div className="flex justify-center mb-7">
+          <Logotipo altura={62} />
         </div>
         <form onSubmit={submit} className="card p-6 flex flex-col gap-4">
           <div><label className="label" htmlFor="email">E-mail</label><input id="email" className="input" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus /></div>
