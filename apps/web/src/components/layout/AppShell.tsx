@@ -3,7 +3,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Menu, Moon, Search, Settings, Sun, Upload, X } from 'lucide-react';
+import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Menu, Moon, Search, Settings, Sun, Upload, UserRound, X } from 'lucide-react';
 import { useAuth } from '../../lib/auth.js';
 import { IS_DEMO } from '../../api/index.js';
 import { GlobalSearch } from './GlobalSearch.js';
@@ -71,10 +71,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className={`p-3 border-t border-line text-[12px] text-muted ${hide}`}>
-          <div className="font-semibold text-ink-2 truncate">{user?.name}</div>
-          <div className="truncate">{user?.roleName}</div>
-        </div>
+        <NavLink to="/conta" onClick={() => setOpen(false)} title={collapsed ? 'Minha conta' : undefined}
+          className={({ isActive }) => `p-3 border-t border-line text-[12px] flex items-center gap-2 ${collapsed ? 'md:justify-center' : ''} ${isActive ? 'bg-accent-soft text-accent-ink' : 'text-muted hover:bg-surface-2'}`}>
+          <UserRound size={16} className="shrink-0" />
+          <span className={`min-w-0 ${hide}`}>
+            <span className="font-semibold text-ink-2 truncate block">{user?.name}</span>
+            <span className="truncate block">{user?.roleName}</span>
+          </span>
+        </NavLink>
         <button className="hidden md:flex items-center justify-center gap-2 h-10 border-t border-line text-muted hover:text-ink hover:bg-surface-2 text-[12px]" onClick={toggleSidebar} title={collapsed ? 'Expandir menu' : 'Recolher menu'} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
           {collapsed ? <ChevronsRight size={16} /> : <><ChevronsLeft size={16} /> Recolher menu</>}
         </button>

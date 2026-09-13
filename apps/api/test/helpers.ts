@@ -54,7 +54,20 @@ export class Session {
     const set = res.headers['set-cookie'];
     const raw = Array.isArray(set) ? set[0] : set;
     this.cookie = raw!.split(';')[0]!;
-    return res.json();
+    const body = res.json();
+    // com verificação em duas etapas, o login devolve { needsCode: true } e a sessão fica pendente
+    return body.user ?? body;
+  }
+
+  /** Segunda etapa: manda o código de 6 dígitos (ou um de recuperação). */
+  async codigo(code: string) {
+    const res = await this.app.inject({ method: 'POST', url: '/api/auth/login/code', payload: { code }, headers: { cookie: this.cookie } });
+    if (res.statusCode === 200) {
+      const set = res.headers['set-cookie'];
+      const raw = Array.isArray(set) ? set[0] : set;
+      if (raw) this.cookie = raw.split(';')[0]!;
+    }
+    return res;
   }
   req(method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE', url: string, payload?: unknown) {
     return this.app.inject({ method, url: '/api' + url, payload: payload as any, headers: { cookie: this.cookie } });

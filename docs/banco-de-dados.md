@@ -303,6 +303,7 @@ Sessão de login (cookie). Expira sozinha.
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
 | `expires_at` | data e hora | — | obrigatório |
+| `pending_totp` | sim/não | true = entrou com a senha certa, mas ainda falta o código de 6 dígitos. Não vale como login. | obrigatório · padrão: false |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `ip` | texto | — | — |
 | `user_agent` | texto | — | — |

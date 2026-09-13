@@ -1,5 +1,5 @@
 {
-  "id": "5b18260e-e311-4b2f-afef-cf0f8d1861d0",
+  "id": "12e8a9ec-6272-401a-aaca-8ce494f8f9a3",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1939,6 +1939,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "pending_totp": {
+          "name": "pending_totp",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -2323,6 +2330,24 @@
         "last_login_at": {
           "name": "last_login_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "totp_secret": {
+          "name": "totp_secret",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "totp_enabled_at": {
+          "name": "totp_enabled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "totp_recovery": {
+          "name": "totp_recovery",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

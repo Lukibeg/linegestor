@@ -37,8 +37,12 @@ export const realApi: Api = {
   auth: {
     me: () => http('GET', '/auth/me'),
     login: (email, password) => http('POST', '/auth/login', { email, password }),
+    loginCode: (code) => http('POST', '/auth/login/code', { code }),
     logout: () => http('POST', '/auth/logout'),
     changePassword: (currentPassword, newPassword) => http('POST', '/auth/change-password', { currentPassword, newPassword }),
+    twoFactorSetup: () => http('POST', '/auth/two-factor/setup'),
+    twoFactorEnable: (code) => http('POST', '/auth/two-factor/enable', { code }),
+    twoFactorDisable: (password) => http('POST', '/auth/two-factor/disable', { password }),
   },
   dashboard: { summary: () => http('GET', '/dashboard'), search: (q) => http('GET', `/dashboard/search${qs({ q })}`) },
   clients: {

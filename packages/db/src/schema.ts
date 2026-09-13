@@ -422,6 +422,16 @@ export const users = pgTable('users', {
   active: boolean('active').notNull().default(true),
   /** Última vez que entrou */
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  /**
+   * Verificação em duas etapas (o código de 6 dígitos do celular).
+   * `totpSecret` guarda o segredo CIFRADO com a chave-mestra, no formato "iv:tag:texto".
+   * Enquanto `totpEnabledAt` for nulo, o segredo é só um rascunho: foi gerado, mas a pessoa
+   * ainda não confirmou com um código, então o login continua só com senha.
+   */
+  totpSecret: text('totp_secret'),
+  totpEnabledAt: timestamp('totp_enabled_at', { withTimezone: true }),
+  /** Códigos de recuperação ainda não usados, guardados como hash (JSON de strings) */
+  totpRecovery: text('totp_recovery'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -433,6 +443,8 @@ export const sessions = pgTable(
     id: id(),
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    /** true = entrou com a senha certa, mas ainda falta o código de 6 dígitos. Não vale como login. */
+    pendingTotp: boolean('pending_totp').notNull().default(false),
     createdAt: createdAt(),
     ip: text('ip'),
     userAgent: text('user_agent'),

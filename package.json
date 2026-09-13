@@ -15,6 +15,7 @@
     "db:migrate": "pnpm --filter @gestor/db migrate",
     "db:seed": "pnpm --filter @gestor/db seed",
     "db:seed:demo": "pnpm --filter @gestor/db seed:demo",
+    "db:2fa-off": "pnpm --filter @gestor/db 2fa-off",
     "db:docs": "pnpm --filter @gestor/db docs:gen"
   },
   "pnpm": {

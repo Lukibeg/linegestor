@@ -7,9 +7,14 @@ import type * as T from './types.js';
 export type Api = {
   auth: {
     me(): Promise<T.Me>;
-    login(email: string, password: string): Promise<T.Me>;
+    login(email: string, password: string): Promise<T.Entrada>;
+    /** Segunda etapa: o código do aplicativo, ou um código de recuperação. */
+    loginCode(code: string): Promise<T.Me>;
     logout(): Promise<{ ok: boolean }>;
     changePassword(currentPassword: string, newPassword: string): Promise<{ ok: boolean }>;
+    twoFactorSetup(): Promise<{ secret: string; uri: string; qrSvg: string }>;
+    twoFactorEnable(code: string): Promise<{ recovery: string[] }>;
+    twoFactorDisable(password: string): Promise<{ ok: boolean }>;
   };
   dashboard: { summary(): Promise<T.Dashboard>; search(q: string): Promise<T.SearchResult> };
   clients: {

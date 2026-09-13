@@ -2,7 +2,9 @@
  * Formatos dos dados que a interface recebe do servidor.
  * Espelham as respostas de apps/api. Se a API mudar, muda aqui — e o TypeScript aponta cada tela afetada.
  */
-export type Me = { id: string; name: string; email: string; roleId: string; roleName: string; roleKey: string | null; permissions: string[] };
+export type Me = { id: string; name: string; email: string; roleId: string; roleName: string; roleKey: string | null; permissions: string[]; twoFactor: boolean; recoveryLeft: number };
+/** Resposta da entrada: ou entrou, ou falta o código de 6 dígitos. */
+export type Entrada = { needsCode: boolean; user: Me | null };
 
 export type ProductChip = { code: string; name: string; color: string };
 export type Links = { web: string | null; ssh: string | null; fop2: string | null };

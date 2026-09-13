@@ -6,7 +6,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { api } from '../api/index.js';
 import type { Me } from '../api/types.js';
 
-type Ctx = { user: Me | null; loading: boolean; login: (email: string, password: string) => Promise<void>; logout: () => Promise<void>; can: (p: string) => boolean; refresh: () => Promise<void> };
+type Ctx = {
+  user: Me | null; loading: boolean;
+  /** Devolve true quando ainda falta o código de 6 dígitos. */
+  login: (email: string, password: string) => Promise<boolean>;
+  entrarComCodigo: (code: string) => Promise<void>;
+  logout: () => Promise<void>; can: (p: string) => boolean; refresh: () => Promise<void>;
+};
 const AuthCtx = createContext<Ctx>(null!);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -16,7 +22,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void refresh(); }, [refresh]);
   const value = useMemo<Ctx>(() => ({
     user, loading, refresh,
-    login: async (email, password) => { setUser(await api.auth.login(email, password)); },
+    login: async (email, password) => {
+      const r = await api.auth.login(email, password);
+      if (r.needsCode) return true;
+      setUser(r.user);
+      return false;
+    },
+    entrarComCodigo: async (code) => { setUser(await api.auth.loginCode(code)); },
     logout: async () => { await api.auth.logout(); setUser(null); },
     can: (p) => !!user?.permissions.includes(p),
   }), [user, loading, refresh]);

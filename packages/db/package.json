@@ -14,6 +14,7 @@
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
     "seed:demo": "tsx src/seed.ts --demo",
+    "2fa-off": "tsx src/desligar-2fa.ts",
     "typecheck": "tsc --noEmit",
     "test": "echo 'sem testes próprios: o banco é exercitado pelos testes da API'",
     "docs:gen": "tsx scripts/gerar-docs-banco.ts"

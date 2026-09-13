@@ -31,7 +31,7 @@ type ModelRow = { id: string; code: string; name: string; categoryId: string | n
 type DeviceRow = { id: string; modelId: string; mac: string; macSecondary: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
 type Bulk = { id: string; modelId: string; clientId: string | null; modality: string; quantity: number };
 type MovRow = { id: string; modality: string; fromClientId: string | null; toClientId: string | null; newCondition: string | null; valueCents: number | null; note: string | null; userId: string; createdAt: string; items: Array<{ modelId: string; deviceId: string | null; quantity: number }> };
-type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null };
+type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[] };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
 
 const S = {
@@ -235,7 +235,14 @@ function ordenar<T>(itens: T[], q: Record<string, unknown>, padrao: string, valo
 }
 
 const paginate = <T,>(items: T[], q: Record<string, unknown>) => { const page = Number(q.page ?? 1), pageSize = Number(q.pageSize ?? 50); return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }; };
-const me = (u: UserRow): Me => { const r = S.roles.find((x) => x.id === u.roleId)!; return { id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: r.name, roleKey: r.key, permissions: r.permissions }; };
+const me = (u: UserRow): Me => { const r = S.roles.find((x) => x.id === u.roleId)!; return { id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: r.name, roleKey: r.key, permissions: r.permissions, twoFactor: !!u.totpOn, recoveryLeft: u.recovery?.length ?? 0 }; };
+
+/**
+ * Duas etapas na demonstração: o mesmo fluxo de telas, sem criptografia de verdade.
+ * O "segredo" é fixo e qualquer código de 6 dígitos passa — é uma prévia, não o sistema.
+ */
+let esperandoCodigo: UserRow | null = null;
+const QR_DEMO = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/><path fill="#000" d="M1 1h7v7h-7zM10 1h2v1h-2zM14 1h1v3h-1zM17 1h2v2h-2zM21 1h7v7h-7zM2 2h5v5h-5zM22 2h5v5h-5zM3 3h3v3h-3zM11 3h2v2h-2zM23 3h3v3h-3zM10 5h1v2h-1zM16 5h3v1h-3zM13 6h2v2h-2zM18 6h1v3h-1zM10 9h3v1h-3zM15 9h2v1h-2zM20 9h3v1h-3zM1 10h2v1h-2zM5 10h4v1h-4zM13 10h1v2h-1zM17 10h2v1h-2zM24 10h4v1h-4zM3 11h2v2h-2zM9 11h2v2h-2zM15 11h1v3h-1zM20 11h2v1h-2zM26 11h2v2h-2zM1 12h1v3h-1zM6 12h3v1h-3zM12 12h2v1h-2zM18 12h3v1h-3zM23 12h2v2h-2zM4 13h3v1h-3zM10 13h1v3h-1zM17 13h1v3h-1zM21 13h2v2h-2zM2 14h3v1h-3zM8 14h1v3h-1zM13 14h3v1h-3zM19 14h1v3h-1zM25 14h3v1h-3zM5 15h2v2h-2zM12 15h1v3h-1zM15 15h2v1h-2zM22 15h2v2h-2zM1 16h3v1h-3zM14 16h1v3h-1zM20 16h3v1h-3zM26 16h2v2h-2zM3 17h2v2h-2zM9 17h2v1h-2zM16 17h2v1h-2zM24 17h2v1h-2zM10 18h3v1h-3zM18 18h3v1h-3zM21 18h1v3h-1zM1 20h7v7h-7zM10 20h2v1h-2zM14 20h3v1h-3zM19 20h2v1h-2zM23 20h2v2h-2zM2 21h5v5h-5zM12 21h1v3h-1zM17 21h2v2h-2zM26 21h2v2h-2zM3 22h3v3h-3zM10 22h1v3h-1zM14 22h2v1h-2zM20 22h2v1h-2zM24 22h2v2h-2zM13 23h1v3h-1zM16 23h1v3h-1zM19 23h2v2h-2zM11 24h2v1h-2zM22 24h3v1h-3zM10 25h1v2h-1zM14 25h3v1h-3zM18 25h1v3h-1zM21 25h2v2h-2zM25 25h3v2h-3zM12 26h2v1h-2zM16 26h1v2h-1zM20 26h1v2h-1z"/></svg>';
 const hasEquip = (cid: string) => activeSubs(cid).some((s) => s.productCode === 'equipamentos');
 /** Os filtros da tela de Circuitos — os mesmos para a lista e para os cartões do topo. */
 const filtrarCircuitos = (q: Record<string, unknown>) => {
@@ -251,8 +258,45 @@ const filterDids = (q: Record<string, unknown>) => S.dids.filter((d) => !d.delet
 export const demoApi: Api = {
   auth: {
     async me() { await wait(50); if (!S.me) throw new ApiError(401, 'Faça login para continuar'); return me(S.me); },
-    async login(email, password) { await wait(300); const u = S.users.find((x) => x.email === email.toLowerCase() && x.active); if (!u || password !== u.password) throw new ApiError(401, 'E-mail ou senha incorretos (na demonstração, a senha é "demo")'); S.me = u; u.lastLoginAt = now(); audit('login', 'user', `${u.name} entrou`, u.id); return me(u); },
-    async logout() { if (S.me) audit('logout', 'user', `${S.me.name} saiu`, S.me.id); S.me = null; return { ok: true }; },
+    async login(email, password) {
+      await wait(300);
+      const u = S.users.find((x) => x.email === email.toLowerCase() && x.active);
+      if (!u || password !== u.password) throw new ApiError(401, 'E-mail ou senha incorretos (na demonstração, a senha é "demo")');
+      if (u.totpOn) { esperandoCodigo = u; return { needsCode: true, user: null }; }
+      S.me = u; u.lastLoginAt = now(); audit('login', 'user', `${u.name} entrou`, u.id);
+      return { needsCode: false, user: me(u) };
+    },
+    async loginCode(code) {
+      await wait(250);
+      const u = esperandoCodigo;
+      if (!u) throw new ApiError(401, 'Entre com e-mail e senha primeiro');
+      const limpo = (code ?? '').trim().toUpperCase();
+      const recuperacao = u.recovery?.includes(limpo);
+      if (!/^\d{6}$/.test(limpo) && !recuperacao) throw new ApiError(401, 'Código incorreto. Confira o aplicativo e tente de novo.');
+      if (recuperacao) u.recovery = (u.recovery ?? []).filter((c) => c !== limpo);
+      esperandoCodigo = null; S.me = u; u.lastLoginAt = now();
+      audit('login', 'user', `${u.name} entrou (com verificação em duas etapas)`, u.id);
+      return me(u);
+    },
+    async twoFactorSetup() { await wait(200); if (!S.me) throw new ApiError(401, 'Faça login'); S.me.totpSecret = 'DEMODEMODEMODEMODEMODEMODEMODEMO'; return { secret: S.me.totpSecret, uri: 'otpauth://totp/Ingline%20Gest%C3%A3o', qrSvg: QR_DEMO }; },
+    async twoFactorEnable(code) {
+      await wait(250);
+      if (!S.me) throw new ApiError(401, 'Faça login');
+      if (!/^\d{6}$/.test((code ?? '').trim())) throw new ApiError(400, 'Código incorreto. O relógio do celular está certo?');
+      S.me.totpOn = true;
+      S.me.recovery = Array.from({ length: 10 }, () => `${Math.random().toString(36).slice(2, 7).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`);
+      audit('two_factor_on', 'user', `${S.me.name} ligou a verificação em duas etapas`, S.me.id);
+      return { recovery: S.me.recovery };
+    },
+    async twoFactorDisable(password) {
+      await wait(250);
+      if (!S.me) throw new ApiError(401, 'Faça login');
+      if (password !== S.me.password) throw new ApiError(401, 'Senha incorreta');
+      S.me.totpOn = false; S.me.totpSecret = null; S.me.recovery = [];
+      audit('two_factor_off', 'user', `${S.me.name} desligou a verificação em duas etapas`, S.me.id);
+      return { ok: true };
+    },
+    async logout() { if (S.me) audit('logout', 'user', `${S.me.name} saiu`, S.me.id); S.me = null; esperandoCodigo = null; return { ok: true }; },
     async changePassword(cur, nw) { if (!S.me) throw new ApiError(401, 'Faça login'); if (cur !== S.me.password) throw new ApiError(401, 'Senha atual incorreta'); S.me.password = nw; return { ok: true }; },
   },
   dashboard: {

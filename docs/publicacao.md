@@ -85,13 +85,23 @@ o DNS já esteja apontando para o servidor.
 
 ---
 
-## 4. Backup (configure no mesmo dia)
+## 4. Backup e vigia (configure no mesmo dia)
 
 ```bash
 crontab -e
 # backup todo dia às 3h da manhã
 0 3 * * * cd /opt/gestao && ./scripts/backup.sh >> /var/log/gestao-backup.log 2>&1
+# toda segunda, às 3h30, prova que o backup presta: restaura num banco descartável e confere
+30 3 * * 1 cd /opt/gestao && ./scripts/verificar-backup.sh >> /var/log/gestao-backup.log 2>&1
+# de 5 em 5 minutos, confere se o sistema respondeu
+*/5 * * * * cd /opt/gestao && ./scripts/monitorar.sh >> /var/log/gestao-monitor.log 2>&1
 ```
+
+Preencha `ALERTA_URL` no `.env` com um endereço que aceite POST (ntfy.sh, webhook do Slack ou do
+Discord, healthchecks.io) e os avisos chegam no celular. Como o monitor roda **dentro** do servidor,
+ele não avisa se o servidor inteiro cair — para isso, ponha também um monitor de fora
+(UptimeRobot ou Better Stack, ambos com plano grátis) apontando para
+`https://gestao.inglinesystems.com.br/api/health`.
 
 Guarda 14 diários e 8 semanais em `/opt/gestao/backups`. Para mandar uma cópia **para fora do
 servidor** (o que de fato protege contra perder o servidor inteiro), instale o `rclone`, configure um
@@ -162,7 +172,18 @@ banco local e teste ali. Nunca o contrário.
 | Senhas guardadas | Cifradas com AES-256-GCM; a chave fica no `.env`, nunca no banco |
 | Quem pode o quê | 4 papéis e 14 permissões; toda ação sensível fica na auditoria |
 | Dados | Nada é apagado de verdade (lixeira); exportação com senhas só em ZIP com senha e auditada |
+| Entrada (2ª etapa) | Código de 6 dígitos do celular (TOTP), opcional por pessoa, com códigos de recuperação |
+| Contêiner | Roda como usuário sem poderes, nunca como root |
 | Servidor | Atualizações de segurança automáticas, SSH só por chave, fail2ban |
+
+### Se alguém perder o celular com a verificação em duas etapas
+
+Primeiro, um dos códigos de recuperação entra no lugar dos 6 dígitos. Se eles também tiverem sumido,
+quem tem acesso ao servidor desliga a verificação daquela conta:
+
+```bash
+docker compose -f docker-compose.prod.yml exec app pnpm db:2fa-off fulano@ingline.com.br
+```
 
 O que **você** precisa manter: a `SECRETS_MASTER_KEY` guardada fora do servidor, o backup remoto
 ligado, e a restauração testada de vez em quando.

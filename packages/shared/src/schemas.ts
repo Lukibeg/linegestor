@@ -274,6 +274,16 @@ export const LoginSchema = z.object({
   password: z.string().min(1, 'Informe a senha'),
 });
 
+/** O código de 6 dígitos do aplicativo — ou um código de recuperação, no formato ABCDE-12345. */
+export const CodigoSegundaEtapaSchema = z.object({
+  code: z.string().trim().min(6, 'Informe o código').max(20),
+});
+
+/** Desligar a verificação em duas etapas exige digitar a própria senha de novo. */
+export const DesligarSegundaEtapaSchema = z.object({
+  password: z.string().min(1, 'Informe a sua senha'),
+});
+
 export const UsuarioCriarSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.string().trim().toLowerCase().email(),
@@ -328,5 +338,6 @@ export type ModeloGravar = z.infer<typeof ModeloGravarSchema>;
 export type AparelhoGravar = z.infer<typeof AparelhoGravarSchema>;
 export type MovimentacaoCriar = z.infer<typeof MovimentacaoCriarSchema>;
 export type Login = z.infer<typeof LoginSchema>;
+export type CodigoSegundaEtapa = z.infer<typeof CodigoSegundaEtapaSchema>;
 export type UsuarioCriar = z.infer<typeof UsuarioCriarSchema>;
 export type Importacao = z.infer<typeof ImportacaoSchema>;

@@ -217,6 +217,7 @@ CREATE TABLE "sessions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"expires_at" timestamp with time zone NOT NULL,
+	"pending_totp" boolean DEFAULT false NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"ip" text,
 	"user_agent" text
@@ -258,6 +259,9 @@ CREATE TABLE "users" (
 	"role_id" text NOT NULL,
 	"active" boolean DEFAULT true NOT NULL,
 	"last_login_at" timestamp with time zone,
+	"totp_secret" text,
+	"totp_enabled_at" timestamp with time zone,
+	"totp_recovery" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "users_email_unique" UNIQUE("email")

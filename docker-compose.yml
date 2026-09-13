@@ -8,13 +8,13 @@
 # Produção é outro arquivo: docker-compose.prod.yml.
 services:
   db:
-    image: postgres:16
+    image: postgres:18
     restart: unless-stopped
     environment:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-gestor_dev}
       POSTGRES_DB: gestor_dev
     ports: ['127.0.0.1:5432:5432']
-    volumes: ['gestao_db_dev:/var/lib/postgresql/data']
+    volumes: ['gestao_db_dev:/var/lib/postgresql']
     healthcheck: { test: ['CMD-SHELL', 'pg_isready -U postgres'], interval: 5s, retries: 10 }
   app:
     build: .
