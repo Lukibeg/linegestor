@@ -93,7 +93,7 @@ for (const raw of lines) {
   }
 }
 
-let md = `# Banco de dados — o que o Gestor guarda\n\n> Gerado automaticamente a partir de \`packages/db/src/schema.ts\` por \`pnpm db:docs\`. **Não edite à mão**: edite o comentário no schema e gere de novo.\n\n`;
+let md = `# Banco de dados — o que o Ingline Gestão guarda\n\n> Gerado automaticamente a partir de \`packages/db/src/schema.ts\` por \`pnpm db:docs\`. **Não edite à mão**: edite o comentário no schema e gere de novo.\n\n`;
 md += `Cada seção é uma tabela (pense numa planilha com colunas fixas). "Liga com" indica que a coluna guarda o identificador de uma linha de outra tabela — é assim que as tabelas se relacionam.\n\n`;
 md += `Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com dígitos/hexadecimais · \`deleted_at\` preenchido = lixeira · senhas só na tabela **secrets**, cifradas.\n\n`;
 md += `## Índice\n\n` + tables.map((t) => `- [${t.sqlName}](#${t.sqlName}) — ${(t.desc.match(/^.*?[.!?](?=\s|$)/)?.[0] ?? t.desc)}`).join('\n') + '\n\n';

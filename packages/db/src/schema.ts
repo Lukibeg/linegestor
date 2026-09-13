@@ -1,6 +1,6 @@
 /**
  * =====================================================================
- *  Ingline Systems Gestor — definição do banco de dados
+ *  Ingline Gestão — definição do banco de dados
  *
  *  Como ler: cada `pgTable` é uma tabela. Cada linha dentro dela é uma coluna.
  *  O comentário logo acima explica o que aquilo guarda — em português, para quem não programa.

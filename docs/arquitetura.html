@@ -1,4 +1,4 @@
-<title>Arquitetura do Gestor</title>
+<title>Arquitetura do Ingline Gestão</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 :root{
@@ -123,8 +123,8 @@ td.c,th.c{text-align:center}
 
 <div class="wrap">
 <header class="top">
-  <div class="eyebrow">Ingline Systems Gestor · Fase 2</div>
-  <h1>Arquitetura do Gestor</h1>
+  <div class="eyebrow">Ingline Gestão · Fase 2</div>
+  <h1>Arquitetura do Ingline Gestão</h1>
   <p class="lede">O desenho do sistema novo antes de qualquer código: o que ele é, quais telas terá, como o banco de dados fica organizado, quem pode fazer o quê e com que tecnologias vai ser construído.</p>
   <div class="meta">
     <span><span class="pill">Para sua aprovação</span></span>
@@ -158,11 +158,11 @@ td.c,th.c{text-align:center}
   <h2>O que o sistema é</h2>
   <p class="sub">Um único lugar que responde, para cada cliente: o que ele contratou, onde está o servidor dele, quais números são dele e quais aparelhos estão com ele.</p>
   <figure>
-    <svg viewBox="0 0 960 330" role="img" aria-label="O Gestor no centro, ligado a três frentes: clientes e produtos, numeração da operadora VoiceNet, e equipamentos locados">
+    <svg viewBox="0 0 960 330" role="img" aria-label="O sistema no centro, ligado a três frentes: clientes e produtos, numeração da operadora VoiceNet, e equipamentos locados">
       <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
       <!-- center -->
       <rect x="380" y="115" width="200" height="100" rx="12" class="sv-acc"/>
-      <text x="480" y="155" text-anchor="middle" class="sv-t h acc">Gestor</text>
+      <text x="480" y="155" text-anchor="middle" class="sv-t h acc">Ingline Gestão</text>
       <text x="480" y="176" text-anchor="middle" class="sv-t s">cadastro central + acesso operacional</text>
       <text x="480" y="193" text-anchor="middle" class="sv-t s">usado pela equipe da Ingline</text>
       <!-- left: clientes e produtos -->
@@ -258,7 +258,7 @@ td.c,th.c{text-align:center}
       <li>Importar CSV aplica na hora, sem revisão</li>
       <li>Todo usuário pode tudo</li>
     </ul></div>
-    <div class="v2"><div class="lab">Gestor (v2)</div><ul>
+    <div class="v2"><div class="lab">Ingline Gestão (v2)</div><ul>
       <li>Painel com o que precisa de atenção: circuitos cheios, DIDs livres, aparelhos parados, inconsistências</li>
       <li>Ficha do cliente é uma página com abas e link próprio</li>
       <li>Senha fica no cofre: mascarada, "revelar" pede confirmação e fica registrado</li>
@@ -276,7 +276,7 @@ td.c,th.c{text-align:center}
   <h2>DIDs em massa: o ponto mais delicado</h2>
   <p class="sub">A operação mais perigosa do Nexus, redesenhada. A diferença está em <em>quando</em> o sistema conta os registros e mostra o número para você.</p>
   <figure>
-    <svg viewBox="0 0 960 300" role="img" aria-label="Comparação: no Nexus, filtrar e salvar atinge tudo filtrado sem mostrar quantos; no Gestor, marcar, ver o contador, confirmar com o número exato e poder desfazer">
+    <svg viewBox="0 0 960 300" role="img" aria-label="Comparação: no Nexus, filtrar e salvar atinge tudo filtrado sem mostrar quantos; no Ingline Gestão, marcar, ver o contador, confirmar com o número exato e poder desfazer">
       <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
       <!-- Nexus row -->
       <text x="20" y="40" class="sv-t m" style="fill:var(--nexus)">NEXUS HOJE</text>
@@ -289,7 +289,7 @@ td.c,th.c{text-align:center}
       <rect x="595" y="52" width="340" height="56" rx="8" class="sv-bad"/><text x="765" y="76" text-anchor="middle" class="sv-t b bad">Atinge TUDO que estava filtrado</text><text x="765" y="94" text-anchor="middle" class="sv-t s">sem dizer quantos · sem desfazer · filtro esquecido = 1.569</text>
       <!-- divider -->
       <line x1="20" y1="140" x2="940" y2="140" class="sv-l faint dash"/>
-      <!-- Gestor row -->
+      <!-- Ingline Gestão row -->
       <text x="20" y="172" class="sv-t m acc">GESTOR</text>
       <rect x="20" y="184" width="150" height="56" rx="8" class="sv-acc"/><text x="95" y="208" text-anchor="middle" class="sv-t b">Marca as caixas</text><text x="95" y="226" text-anchor="middle" class="sv-t s">ou "todos os filtrados"</text>
       <path d="M170,212 L215,212" class="sv-l acc" marker-end="url(#ar3)"/>
@@ -559,7 +559,7 @@ td.c,th.c{text-align:center}
     <div class="d"><h4>3. Valor mensal por produto assinado</h4><p>O Nexus tem valor no circuito e no aparelho, mas não no produto. Com um campo opcional "valor mensal" em cada assinatura, o painel passa a mostrar quanto cada cliente representa.</p><p class="sug"><b>Sugestão:</b> incluir já na v2 como campo opcional. Não é faturamento — é visibilidade.</p></div>
     <div class="d"><h4>4. Ingline Systems e VoiceNet no cadastro</h4><p>Os DIDs e circuitos têm um "titular" (era "dono"), e hoje é sempre "Ingline Systems". Você disse que a operadora é a VoiceNet. Proposta: ambas existem como <b>organizações internas</b> (marcadas como "própria"), e o titular padrão de DIDs passa a ser VoiceNet.</p><p class="sug"><b>Sugestão:</b> VoiceNet como titular da numeração; Ingline como dona dos aparelhos.</p></div>
     <div class="d"><h4>5. Onde hospedar</h4><p>Plataforma gerenciada (Railway/Render + banco gerenciado) ou servidor próprio na Vultr/Hetzner. Comparação na seção "Como chega ao ar".</p><p class="sug"><b>Sugestão:</b> gerenciada — sem desenvolvedor na equipe, quanto menos servidor para cuidar, melhor. Migrar para VPS depois é possível.</p></div>
-    <div class="d"><h4>6. Nome curto na interface</h4><p>O nome completo é "Ingline Systems Gestor". No menu e na aba do navegador cabe algo mais curto.</p><p class="sug"><b>Sugestão:</b> <b>Gestor</b>, com o logo da Ingline ao lado.</p></div>
+    <div class="d"><h4>6. Nome do sistema</h4><p>Decidido em 13/09/2026: o sistema se chama <b>Ingline Gestão</b> — é o nome que aparece no menu, na aba do navegador e na tela de entrada.</p><p class="sug"><b>Marca:</b> selo <b>IG</b> ao lado do nome; recolhido, só o selo.</p></div>
     <div class="d"><h4>7. Rótulos dos DIDs</h4><p>O Nexus chama de "Locação" o cliente que usa o número — confunde com locação de aparelho. Proposta: <b>Cliente</b> (quem usa) e <b>Titular</b> (quem detém). "Livre" continua sendo "sem cliente".</p><p class="sug"><b>Sugestão:</b> aceitar; "Locação" fica reservado para equipamentos.</p></div>
     <div class="d"><h4>8. Entrar no sistema</h4><p>E-mail e senha, com bloqueio após tentativas erradas. Opcional: <b>código de verificação</b> no celular (2 fatores) — protege contra senha vazada.</p><p class="sug"><b>Sugestão:</b> e-mail + senha na v2; 2 fatores obrigatório só para Administrador, opcional para os demais.</p></div>
     <div class="d"><h4>9. "Ocultar cliente" vira "Arquivar"</h4><p>Mesmo comportamento (some da lista, não é apagado), nome mais claro. Cliente arquivado aparece com um filtro e pode ser desarquivado.</p><p class="sug"><b>Sugestão:</b> aceitar.</p></div>

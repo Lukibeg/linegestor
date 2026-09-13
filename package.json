@@ -2,7 +2,7 @@
   "name": "gestor",
   "private": true,
   "version": "0.1.0",
-  "description": "Ingline Systems Gestor — cadastro central de clientes, produtos, numeração (DIDs) e equipamentos.",
+  "description": "Ingline Gestão — cadastro central de clientes, produtos, numeração (DIDs) e equipamentos.",
   "packageManager": "pnpm@10.28.0",
   "engines": {
     "node": ">=22"

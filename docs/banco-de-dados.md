@@ -1,4 +1,4 @@
-# Banco de dados — o que o Gestor guarda
+# Banco de dados — o que o Ingline Gestão guarda
 
 > Gerado automaticamente a partir de `packages/db/src/schema.ts` por `pnpm db:docs`. **Não edite à mão**: edite o comentário no schema e gere de novo.
 

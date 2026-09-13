@@ -34,6 +34,6 @@ describe('sessão', () => {
   it('a página de documentação existe', async () => {
     const r = await app.inject({ method: 'GET', url: '/api/docs/json' });
     expect(r.statusCode).toBe(200);
-    expect(r.json().info.title).toContain('Gestor');
+    expect(r.json().info.title).toContain('Ingline Gestão');
   });
 });

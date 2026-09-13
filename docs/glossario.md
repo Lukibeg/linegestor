@@ -1,6 +1,6 @@
 # Glossário
 
-| Termo | O que significa no Gestor |
+| Termo | O que significa no Ingline Gestão |
 |---|---|
 | **Cliente** | Empresa atendida pela Ingline. Também as organizações internas (Ingline Systems, VoiceNet), marcadas como "internas", porque aparecem como donas de DIDs e aparelhos. |
 | **Produto** | Um dos itens do portfólio que o cliente pode assinar: LinePBX, FOP2, Omniboard, LineReports, LineChat, SZChat, VoiceNet, Equipamentos. |
@@ -23,7 +23,7 @@
 | **Modelo** | Um tipo de aparelho (Grandstream GXP1610, Headset Genérico…). |
 | **Serializado** | Modelo contado um a um, cada unidade com MAC. |
 | **Granel** | Modelo contado por quantidade (headsets, cabos), sem identidade por unidade. |
-| **MAC** | Endereço físico único de fábrica de um aparelho de rede (ex.: 00:0B:82:A1:B2:C3). Identifica o aparelho no Gestor. |
+| **MAC** | Endereço físico único de fábrica de um aparelho de rede (ex.: 00:0B:82:A1:B2:C3). Identifica o aparelho no sistema. |
 | **Condição** | Estado do aparelho: Ativo, Em manutenção, Baixado, Vendido. |
 | **Unidade** | A filial, loja ou setor do cliente onde o aparelho está ("Loja Simões Filho"). Preenchida ao entregar; some quando o aparelho volta para o estoque. |
 | **Atribuído a** | O cliente com quem o aparelho está. Vazio = estoque. Era "onde está" nas primeiras versões. |

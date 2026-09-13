@@ -11,7 +11,7 @@ export default fp(async (app) => {
   await app.register(swagger, {
     openapi: {
       info: {
-        title: 'Ingline Systems Gestor — API',
+        title: 'Ingline Gestão — API',
         description:
           'Todas as operações do servidor. Cada grupo corresponde a uma área da interface. ' +
           'Para chamar qualquer operação (exceto login) é preciso estar logado; o cookie de sessão é enviado automaticamente pelo navegador.',

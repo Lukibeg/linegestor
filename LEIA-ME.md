@@ -1,4 +1,4 @@
-# Ingline Systems Gestor
+# Ingline Gestão
 
 Cadastro central da Ingline Systems: **clientes e produtos assinados**, **servidores e acessos**, **numeração (circuitos e DIDs)** e **equipamentos**. Substitui o Nexus.
 
