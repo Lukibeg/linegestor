@@ -103,9 +103,10 @@ ele não avisa se o servidor inteiro cair — para isso, ponha também um monito
 (UptimeRobot ou Better Stack, ambos com plano grátis) apontando para
 `https://gestao.inglinesystems.com.br/api/health`.
 
-Guarda 14 diários e 8 semanais em `/opt/gestao/backups`. Para mandar uma cópia **para fora do
-servidor** (o que de fato protege contra perder o servidor inteiro), instale o `rclone`, configure um
-destino — Backblaze B2, S3, Google Drive — e preencha `BACKUP_REMOTO` no `.env`.
+Guarda 14 diários e 8 semanais em `/opt/gestao/backups`. A cópia **para fora do servidor** — que é o
+que de fato protege contra perder o servidor inteiro — vai para uma pasta do **Google Drive da
+empresa**: o passo a passo está em [`guia-de-uso/backup-no-google-drive.md`](guia-de-uso/backup-no-google-drive.md).
+Sem isso, o backup só protege contra engano, não contra pane.
 
 **Teste a restauração uma vez por trimestre:**
 

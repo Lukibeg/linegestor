@@ -45,3 +45,13 @@ TypeScript 7) ficam para depois que o sistema estiver no ar e estável — é mo
 **Consequência.** O que sobrou de risco conhecido: um servidor só (uma pane de máquina derruba o
 sistema até alguém restaurar noutro), e o backup remoto depende de você ligar o `rclone`. Nenhum dos
 dois é resolvível com código — são decisões de custo e de rotina.
+
+**Adendo (backup para fora do servidor).** O destino escolhido foi o **Google Drive da empresa**,
+via `rclone`, sem cifrar o arquivo antes de subir. O que isso significa, dito claramente: o arquivo
+diário contém a base em texto (clientes, CNPJs, DIDs, IPs), então **a pasta do Drive não pode ser
+compartilhada com ninguém** — ela é tão sensível quanto o próprio banco. As senhas guardadas no cofre
+são a exceção: continuam cifradas dentro do arquivo, e a chave que as abre (`SECRETS_MASTER_KEY`)
+mora no `.env`, que não entra no backup. Lá fora as cópias com mais de 60 dias são apagadas sozinhas;
+no servidor a regra continua 14 diárias + 8 semanais. Se a cópia falhar, o backup local é feito do
+mesmo jeito e sai um aviso no `ALERTA_URL`. Passo a passo em
+`docs/guia-de-uso/backup-no-google-drive.md`.

@@ -14,4 +14,7 @@
 10. Exportar para backup
 11. Administração: usuários, papéis, catálogos, auditoria, lixeira
 
-Ver também: [Fazer o botão "SSH" abrir o PuTTY](ssh-com-putty.md) — configuração de uma vez por computador.
+## Guias que já existem
+
+- [Fazer o botão "SSH" abrir o PuTTY](ssh-com-putty.md) — configuração de uma vez por computador.
+- [Mandar o backup para o Google Drive da empresa](backup-no-google-drive.md) — configuração de uma vez, na instalação do servidor.
