@@ -1,6 +1,6 @@
 /**
  * Ficha do cliente: uma página com endereço próprio e abas.
- * Visão geral · Produtos · DIDs · Equipamentos · Acessos · Histórico
+ * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Histórico
  */
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -51,15 +51,15 @@ export function ClienteFicha() {
       </>}
     >
       <Abas atual={aba} onChange={(a) => setSp({ aba: a }, { replace: true })} abas={[
-        { id: 'geral', label: 'Visão geral' }, { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> },
+        { id: 'geral', label: 'Visão geral' }, { id: 'acessos', label: 'Acessos' },
         { id: 'dids', label: <>DIDs <span className="text-muted">({c.didCount})</span></> }, { id: 'equipamentos', label: <>Equipamentos <span className="text-muted">({c.deviceCount})</span></> },
-        { id: 'acessos', label: 'Acessos' }, ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
+        { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> }, ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
       ]} />
       {aba === 'geral' && <Geral c={c} />}
-      {aba === 'produtos' && <Produtos c={c} />}
+      {aba === 'acessos' && <Acessos c={c} />}
       {aba === 'dids' && <Dids c={c} />}
       {aba === 'equipamentos' && <Equipamentos c={c} />}
-      {aba === 'acessos' && <Acessos c={c} />}
+      {aba === 'produtos' && <Produtos c={c} />}
       {aba === 'historico' && <Historico c={c} />}
       <ClienteForm open={editar} onClose={() => setEditar(false)} cliente={c} onSaved={() => setEditar(false)} />
       <Confirmar open={excluir} onClose={() => setExcluir(false)} onConfirm={doDelete} loading={busy} perigoso digitar={c.tradeName} titulo="Mandar para a lixeira" botao="Mandar para a lixeira" texto={<>O cliente <b>{c.tradeName}</b> sai de todas as listas. Os {c.didCount} DIDs continuam alocados a ele e os {c.deviceCount} aparelhos continuam registrados — nada é apagado. Dá para restaurar em Administração → Lixeira.</>} />
