@@ -1,0 +1,55 @@
+# Produção num servidor próprio (VPS): banco + sistema + porta de entrada com HTTPS.
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Diferenças para o docker-compose.yml (que é o de desenvolvimento):
+#  - nem o banco nem o sistema abrem porta para a internet; só o Caddy (80/443) é alcançável
+#  - o Caddy cuida do certificado HTTPS sozinho, usando o DOMINIO do .env
+#  - tudo reinicia sozinho se o servidor reiniciar
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?defina DB_PASSWORD no .env}
+      POSTGRES_DB: gestao
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck: { test: ['CMD-SHELL', 'pg_isready -U postgres'], interval: 5s, retries: 10 }
+    networks: [interna]
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD}@db:5432/gestao
+      SECRETS_MASTER_KEY: ${SECRETS_MASTER_KEY:?defina SECRETS_MASTER_KEY no .env}
+      SESSION_SECRET: ${SESSION_SECRET:?defina SESSION_SECRET no .env}
+      WEB_ORIGIN: https://${DOMINIO:?defina DOMINIO no .env}
+      NODE_ENV: production
+      PORT: 3333
+    networks: [interna]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    environment:
+      DOMINIO: ${DOMINIO}
+    ports: ['80:80', '443:443', '443:443/udp']
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_log:/var/log/caddy
+    networks: [interna]
+
+volumes:
+  db:
+  caddy_data:
+  caddy_config:
+  caddy_log:
+
+networks:
+  interna:

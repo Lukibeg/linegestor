@@ -1,0 +1,31 @@
+# Porta de entrada do Ingline Gestão.
+# O Caddy resolve HTTPS sozinho (certificado Let's Encrypt, renovação automática),
+# manda todo http para https e põe os cabeçalhos de segurança na frente do sistema.
+# O nome do domínio vem do .env (DOMINIO=gestao.inglinesystems.com.br).
+
+{$DOMINIO} {
+	encode zstd gzip
+
+	header {
+		# navegador só volta por https neste domínio, por 1 ano
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# nada de adivinhar tipo de arquivo, nem abrir o sistema dentro de um iframe de terceiros
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+		-Server
+	}
+
+	reverse_proxy app:3333 {
+		health_uri /api/health
+		health_interval 30s
+	}
+
+	log {
+		output file /var/log/caddy/acesso.log {
+			roll_size 20mb
+			roll_keep 10
+		}
+	}
+}

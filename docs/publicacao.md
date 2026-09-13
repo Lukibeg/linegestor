@@ -1,52 +1,168 @@
-# Como o sistema chega ao ar
+# Como o Ingline Gestão chega ao ar
 
-Dois ambientes, idênticos: **homologação** (para testar) e **produção** (para valer). O caminho é sempre o mesmo:
+Dois lugares, um sistema:
 
 ```
-Claude escreve → GitHub → testes rodam → homologação → você testa e aprova → produção
+sua máquina (desenvolvimento)  →  GitHub (guarda o código e roda os testes)  →  VPS (produção)
 ```
 
-## O que precisa existir antes
+**Desenvolvimento** é onde se mexe: banco de brincadeira, dados fictícios, pode quebrar à vontade.
+**Produção** é o `https://gestao.inglinesystems.com.br`, com os dados de verdade — nada entra nele
+sem ter passado pelos testes automáticos e por um teste seu na máquina local.
 
-| O quê | Quem cria | Para quê |
+---
+
+## 1. O que precisa existir antes
+
+| O quê | Quem cria | Observação |
 |---|---|---|
-| Conta no **GitHub** e um repositório `gestor` | Você | Guardar o código com histórico; rodar os testes automáticos |
-| Hospedagem (Railway **ou** Render **ou** VPS) | Você | Onde o sistema roda |
-| Banco PostgreSQL | Vem com a hospedagem | Os dados |
-| Subdomínio `gestor.inglinesystems.com.br` (e `teste.gestor.…`) | Você, no DNS | Endereço |
+| Conta no **GitHub** e repositório privado `ingline-gestao` | Você | Guarda o código e roda os testes a cada mudança |
+| **VPS** Ubuntu 24.04 — 2 vCPU, 4 GB RAM, 60 GB disco | Você | Vultr ou Hetzner. Com 2 GB também roda, mas a compilação fica apertada (o preparo do servidor já cria 2 GB de swap) |
+| **Chave SSH** sua no servidor | Você, ao criar o VPS | Nunca senha: o preparo desliga o acesso por senha |
+| Registro **DNS** `gestao.inglinesystems.com.br` → IP do VPS | Você, no painel do domínio | Um registro `A`. Só depois disso o HTTPS consegue ser emitido |
+| **Gerenciador de senhas** da empresa | Você | Para guardar `SECRETS_MASTER_KEY`, `SESSION_SECRET` e `DB_PASSWORD` fora do servidor |
 
-## Variáveis de ambiente (as "chaves" do sistema)
+> Eu não crio contas nem digito senhas por você — essas etapas são suas. Todo o resto é comando pronto.
 
-Definidas no painel da hospedagem, nunca no código:
+---
 
-| Variável | O que é |
-|---|---|
-| `DATABASE_URL` | Endereço do banco (a hospedagem fornece) |
-| `SECRETS_MASTER_KEY` | Chave que cifra as senhas guardadas. Gere uma vez: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Guarde cópia fora do servidor.** |
-| `SESSION_SECRET` | Assina o cookie de login. Qualquer texto longo aleatório. |
-| `WEB_ORIGIN` | Endereço do site (ex.: `https://gestor.inglinesystems.com.br`) |
-| `NODE_ENV` | `production` |
-| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Só na primeira carga: o primeiro administrador |
+## 2. Preparar o servidor (uma vez)
 
-## Opção A — Plataforma gerenciada (recomendada)
-
-**Railway:** conectar o repositório → ele lê `railway.json` e o `Dockerfile` → adicionar um PostgreSQL no projeto → preencher as variáveis → deploy. Rodar uma vez `pnpm db:seed` no console do serviço para criar o administrador.
-
-**Render:** "New → Blueprint" apontando para o repositório → ele lê `render.yaml` (cria o serviço e o banco) → preencher `SECRETS_MASTER_KEY` e `WEB_ORIGIN` → deploy → rodar `pnpm db:seed` uma vez no shell do serviço.
-
-Homologação = um segundo serviço apontando para a mesma origem, com banco próprio e `WEB_ORIGIN` de teste.
-
-## Opção B — Servidor próprio (VPS)
+Entre no VPS recém-criado como `root` e rode:
 
 ```bash
-git clone <repositório> gestor && cd gestor
-cp .env.example .env         # DB_PASSWORD, SECRETS_MASTER_KEY, SESSION_SECRET, WEB_ORIGIN
-docker compose up -d         # sobe banco + sistema em :3333
-docker compose exec app pnpm --filter @gestor/db seed
+apt-get update && apt-get install -y git
+git clone https://github.com/<sua-conta>/ingline-gestao.git /opt/gestao
+bash /opt/gestao/scripts/preparar-servidor.sh
 ```
 
-Coloque um proxy com HTTPS na frente (Caddy resolve com 3 linhas). Backup: `docker compose exec db pg_dump -U postgres gestor > backup.sql` num cron diário, copiado para fora do servidor.
+O que esse script deixa pronto:
 
-## Backup
+- **atualizações de segurança automáticas** (`unattended-upgrades`)
+- **firewall fechado**: só entram SSH (22), HTTP (80) e HTTPS (443)
+- **SSH só por chave** — senha desligada, root sem senha
+- **fail2ban**, que bloqueia quem fica tentando entrar
+- **Docker** e 2 GB de memória de troca
+- um usuário **`gestao`** sem poderes de root para o dia a dia
 
-Plataforma gerenciada: ativar o backup diário do banco no painel. VPS: `pg_dump` diário + cópia para outro lugar (S3, outro servidor). **Teste a restauração** uma vez por trimestre — backup que nunca foi restaurado não é backup.
+Depois disso, saia do root e entre como `gestao`.
+
+---
+
+## 3. Configurar e subir (uma vez)
+
+```bash
+sudo chown -R gestao:gestao /opt/gestao
+cd /opt/gestao
+cp .env.example .env && chmod 600 .env
+nano .env      # descomente o bloco de produção e preencha
+```
+
+No `.env` de produção:
+
+| Variável | O que pôr |
+|---|---|
+| `NODE_ENV` | `production` |
+| `DOMINIO` | `gestao.inglinesystems.com.br` |
+| `DB_PASSWORD` | senha longa e aleatória do PostgreSQL interno |
+| `SECRETS_MASTER_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — **guarde cópia no gerenciador de senhas** |
+| `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | seu e-mail e uma senha forte, só para a primeira carga |
+
+Então:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d      # banco + sistema + HTTPS
+docker compose -f docker-compose.prod.yml exec app pnpm db:seed
+```
+
+O `db:seed` cria os catálogos (produtos, módulos, operadoras, papéis) e o primeiro administrador.
+Entre em `https://gestao.inglinesystems.com.br`, **troque a senha** e apague as duas linhas
+`SEED_ADMIN_*` do `.env`.
+
+O certificado HTTPS é emitido sozinho pelo Caddy no primeiro acesso e renovado sozinho — desde que
+o DNS já esteja apontando para o servidor.
+
+---
+
+## 4. Backup (configure no mesmo dia)
+
+```bash
+crontab -e
+# backup todo dia às 3h da manhã
+0 3 * * * cd /opt/gestao && ./scripts/backup.sh >> /var/log/gestao-backup.log 2>&1
+```
+
+Guarda 14 diários e 8 semanais em `/opt/gestao/backups`. Para mandar uma cópia **para fora do
+servidor** (o que de fato protege contra perder o servidor inteiro), instale o `rclone`, configure um
+destino — Backblaze B2, S3, Google Drive — e preencha `BACKUP_REMOTO` no `.env`.
+
+**Teste a restauração uma vez por trimestre:**
+
+```bash
+./scripts/restaurar.sh backups/gestao-<data>.sql.gz
+```
+
+Backup que nunca foi restaurado não é backup.
+
+---
+
+## 5. O dia a dia: publicar uma versão nova
+
+Na sua máquina, com a mudança testada:
+
+```bash
+pnpm typecheck && pnpm test     # o GitHub roda isso de novo sozinho
+git push
+```
+
+No servidor:
+
+```bash
+cd /opt/gestao && ./scripts/publicar.sh
+```
+
+O `publicar.sh` faz backup antes, baixa o código, reconstrói, aplica as migrações do banco e só
+considera pronto quando o sistema responde. Se não responder, ele mostra o registro e diz como
+voltar à versão anterior (`git reset --hard HEAD~1 && ./scripts/publicar.sh`).
+
+---
+
+## 6. Testar na sua máquina antes
+
+Com Docker:
+
+```bash
+cp .env.example .env    # bloco de desenvolvimento; preencha as duas chaves
+docker compose up -d                                # http://localhost:3333
+docker compose exec app pnpm db:seed:demo           # catálogos + dados fictícios
+```
+
+Sem Docker (PostgreSQL instalado na máquina):
+
+```bash
+pnpm install
+pnpm db:migrate && pnpm db:seed:demo
+pnpm dev                # API em :3333, interface em :5173
+```
+
+Para ensaiar uma mudança grande com os dados de verdade: traga um backup de produção, restaure num
+banco local e teste ali. Nunca o contrário.
+
+---
+
+## 7. Segurança — o que já está de pé
+
+| Camada | Como está |
+|---|---|
+| Rede | Firewall fechado; nem o banco nem a API abrem porta para a internet — só o Caddy |
+| Transporte | HTTPS obrigatório, certificado automático, HSTS de 1 ano |
+| Cabeçalhos | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` |
+| Entrada | Acesso por sessão em cookie assinado e `httpOnly`; limite de tentativas de login |
+| Senhas guardadas | Cifradas com AES-256-GCM; a chave fica no `.env`, nunca no banco |
+| Quem pode o quê | 4 papéis e 14 permissões; toda ação sensível fica na auditoria |
+| Dados | Nada é apagado de verdade (lixeira); exportação com senhas só em ZIP com senha e auditada |
+| Servidor | Atualizações de segurança automáticas, SSH só por chave, fail2ban |
+
+O que **você** precisa manter: a `SECRETS_MASTER_KEY` guardada fora do servidor, o backup remoto
+ligado, e a restauração testada de vez em quando.
