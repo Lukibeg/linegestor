@@ -29,7 +29,7 @@ export type ClientListItem = {
   /** Endereço da logo: caminho relativo à API, ou nulo. Use `logoSrc()` para montar o src da imagem. */
   logoUrl: string | null;
   notes: string | null; createdAt: string; updatedAt: string;
-  products: ClientProduct[]; server: ClientServer | null; links: Links; didCount: number; deviceCount: number;
+  products: ClientProduct[]; server: ClientServer | null; links: Links; didCount: number; deviceCount: number; deviceValueCents: number;
 };
 export type SecretRef = { hasSecret: boolean; secretId: string | null };
 /** Um módulo ligado dentro de um produto do cliente (ex.: FOP2 dentro do LinePBX). */

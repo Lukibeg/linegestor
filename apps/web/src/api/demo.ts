@@ -108,16 +108,23 @@ function seed() {
     prods.forEach((code, j) => {
       const settings: Record<string, any> = {};
       if (code === 'linepbx') { const sec = id(); S.secrets.set(sec, { label: `Senha SSH do LinePBX — ${t}`, value: 'Ssh#' + cnpj.slice(0, 5) }); Object.assign(settings, { hostingId: host ? 'h' + host.replace(/\W/g, '') : null, hostingName: host, serverIp: ip, domain: dom, sshUser: 'root', sshPort: 22, sshPasswordSecretId: sec }); }
-      const sub: Sub = { id: id(), clientId: c.id, productCode: code, activatedAt: daysAgo(500 - i * 30 - j * 7), deactivatedAt: null, notes: code === 'linepbx' && i === 2 ? 'Gravação de chamadas contratada' : null, settings };
+      // o produto entra primeiro; os módulos vêm depois, em intervalos diferentes — é assim
+      // que acontece na vida real, e é o que a linha do tempo da ficha mostra
+      const diasDoProduto = 500 - i * 30 - j * 45;
+      const sub: Sub = { id: id(), clientId: c.id, productCode: code, activatedAt: daysAgo(diasDoProduto), deactivatedAt: null, notes: code === 'linepbx' && i === 2 ? 'Gravação de chamadas contratada' : null, settings };
       S.subs.push(sub);
       mods.filter((m) => m.startsWith(code + ':')).forEach((pm, k) => {
         const mcode = pm.split(':')[1]!; const mod = S.modules.find((m) => m.productId === 'p' + code && m.code === mcode)!;
         const ms: Record<string, any> = {};
         if (mcode === 'fop2') ms.adminExtension = '1000';
         if (mcode === 'omniboard') { const a = id(), d = id(); S.secrets.set(a, { label: `Senha admin do Omniboard — ${t}`, value: 'Omni#2026' }); S.secrets.set(d, { label: `Senha padrão de usuário do Omniboard — ${t}`, value: 'Bemvindo1' }); Object.assign(ms, { adminLogin: `admin@${t.toLowerCase().replace(/\W+/g, '')}.com.br`, adminPasswordSecretId: a, userDefaultPasswordSecretId: d }); }
-        S.subMods.push({ id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: daysAgo(400 - i * 20 - k * 30), deactivatedAt: null, notes: null, settings: ms });
+        S.subMods.push({ id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: daysAgo(Math.max(3, diasDoProduto - 40 - k * 75)), deactivatedAt: null, notes: null, settings: ms });
       });
     });
+    // o cliente existe antes do primeiro produto: a ficha mostra "implantado em" e a linha do
+    // tempo logo abaixo, e ficaria estranho o produto ser mais velho que o próprio cliente
+    const primeira = S.subs.filter((x) => x.clientId === c.id).map((x) => x.activatedAt!).sort()[0];
+    if (primeira) c.createdAt = daysAgo(Math.round((Date.now() - new Date(primeira).getTime()) / 86400000) + 12);
   });
   const circ = [
     ['071 Principal', '09802603', 'ALGAR', 30, '7130200000', 120, 60338, [['Supermercado Bom Preço', 0, 40], ['Laboratório Exame Certo', 40, 70]]],
@@ -187,7 +194,9 @@ const listItem = (c: Client): ClientListItem => {
     notes: c.notes, createdAt: c.createdAt, updatedAt: c.updatedAt,
     products: activeSubs(c.id).sort((a, b) => prodMeta(a.productCode).sortOrder - prodMeta(b.productCode).sortOrder).map((s) => { const p = prodMeta(s.productCode); return { code: p.code, name: p.name, color: p.color, activatedAt: s.activatedAt, modules: activeMods(s.id).map((m) => ({ code: modMeta(m.moduleId).code, name: modMeta(m.moduleId).name, activatedAt: m.activatedAt })) }; }),
     server: lp ? { hostingName: S.hostings.find((h) => h.id === lp.hostingId)?.name ?? null, serverIp: lp.serverIp ?? null, domain: lp.domain ?? null, sshUser: lp.sshUser ?? null, sshPort: lp.sshPort ?? null } : null,
-    links: links(c.id), didCount: S.dids.filter((d) => d.clientId === c.id && !d.deletedAt).length, deviceCount: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.condition !== 'vendido').length,
+    links: links(c.id), didCount: S.dids.filter((d) => d.clientId === c.id && !d.deletedAt).length,
+    deviceCount: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.condition !== 'vendido').length,
+    deviceValueCents: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.condition !== 'vendido').reduce((a, d) => a + (d.valueCents ?? 0), 0),
   };
 };
 const shapeSubMod = (m: SubMod): SubscriptionModule => {

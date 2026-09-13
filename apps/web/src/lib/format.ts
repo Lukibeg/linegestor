@@ -18,6 +18,23 @@ export function relativo(iso: string): string {
   return data(iso);
 }
 
+/**
+ * Quanto tempo separa dois momentos, em palavras: "no mesmo dia", "12 dias depois",
+ * "3 meses depois". Serve para a linha do tempo da implantação, onde o que interessa
+ * não é a data em si, mas o intervalo entre uma etapa e a seguinte.
+ */
+export function intervalo(anterior: string, atual: string): string {
+  const dias = Math.round((new Date(atual).getTime() - new Date(anterior).getTime()) / 86400000);
+  if (dias <= 0) return 'no mesmo dia';
+  if (dias === 1) return '1 dia depois';
+  if (dias < 30) return `${dias} dias depois`;
+  const meses = Math.round(dias / 30.44);
+  if (meses < 12) return `${meses} ${meses === 1 ? 'mês' : 'meses'} depois`;
+  const anos = Math.floor(meses / 12);
+  const resto = meses % 12;
+  return `${anos} ${anos === 1 ? 'ano' : 'anos'}${resto ? ` e ${resto} ${resto === 1 ? 'mês' : 'meses'}` : ''} depois`;
+}
+
 export function plural(n: number, um: string, varios: string): string {
   return `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`;
 }

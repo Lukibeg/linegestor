@@ -30,7 +30,7 @@ export type ClientListItem = {
   products: Array<{ code: string; name: string; color: string; activatedAt: Date | null; modules: Array<{ code: string; name: string; activatedAt: Date | null }> }>;
   server: { hostingName: string | null; serverIp: string | null; domain: string | null; sshUser: string | null; sshPort: number | null } | null;
   links: { web: string | null; ssh: string | null; fop2: string | null };
-  didCount: number; deviceCount: number;
+  didCount: number; deviceCount: number; deviceValueCents: number;
 };
 
 /** Monta os atalhos de acesso. Sem senha na URL — decisão de segurança S2. */
@@ -175,7 +175,8 @@ async function enrich(db: Db, rows: (typeof clients.$inferSelect)[]): Promise<Cl
     .where(inArray(linepbxSettings.subscriptionId, subs.filter((s) => s.code === 'linepbx').map((s) => s.subId).concat(['-'])));
   const logos = await db.select({ clientId: clientLogos.clientId, updatedAt: clientLogos.updatedAt }).from(clientLogos).where(inArray(clientLogos.clientId, ids));
   const didCounts = await db.select({ clientId: dids.clientId, n: sql<number>`count(*)` }).from(dids).where(and(inArray(dids.clientId, ids), isNull(dids.deletedAt))).groupBy(dids.clientId);
-  const devCounts = await db.select({ clientId: devices.clientId, n: sql<number>`count(*)` }).from(devices).where(and(inArray(devices.clientId, ids), isNull(devices.deletedAt))).groupBy(devices.clientId);
+  // contagem e valor dos aparelhos com cada cliente (só os identificados por MAC têm valor próprio)
+  const devCounts = await db.select({ clientId: devices.clientId, n: sql<number>`count(*)`, v: sql<number>`coalesce(sum(${devices.valueCents}), 0)` }).from(devices).where(and(inArray(devices.clientId, ids), isNull(devices.deletedAt))).groupBy(devices.clientId);
   return rows.map((r) => {
     const mine = subs.filter((s) => s.clientId === r.id);
     const lpSub = mine.find((s) => s.code === 'linepbx');
@@ -191,6 +192,7 @@ async function enrich(db: Db, rows: (typeof clients.$inferSelect)[]): Promise<Cl
       links: buildLinks(lp?.s ?? null, hasFop2),
       didCount: Number(didCounts.find((d) => d.clientId === r.id)?.n ?? 0),
       deviceCount: Number(devCounts.find((d) => d.clientId === r.id)?.n ?? 0),
+      deviceValueCents: Number(devCounts.find((d) => d.clientId === r.id)?.v ?? 0),
     };
   });
 }
@@ -248,7 +250,7 @@ export async function get(db: Db, id: string) {
   const lpRow = lpActive ? lps.find((l) => l.s.subscriptionId === lpActive.id)?.s ?? null : null;
   const hasFop2 = !!lpActive?.modules.some((m) => m.moduleCode === 'fop2' && m.active);
   const [didC] = await db.select({ n: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, id), isNull(dids.deletedAt)));
-  const [devC] = await db.select({ n: sql<number>`count(*)` }).from(devices).where(and(eq(devices.clientId, id), isNull(devices.deletedAt)));
+  const [devC] = await db.select({ n: sql<number>`count(*)`, v: sql<number>`coalesce(sum(${devices.valueCents}), 0)` }).from(devices).where(and(eq(devices.clientId, id), isNull(devices.deletedAt)));
   const [logo] = await db.select({ updatedAt: clientLogos.updatedAt }).from(clientLogos).where(eq(clientLogos.clientId, id));
   return {
     ...row,
@@ -257,6 +259,7 @@ export async function get(db: Db, id: string) {
     links: buildLinks(lpRow, hasFop2),
     didCount: Number(didC?.n ?? 0),
     deviceCount: Number(devC?.n ?? 0),
+    deviceValueCents: Number(devC?.v ?? 0),
   };
 }
 

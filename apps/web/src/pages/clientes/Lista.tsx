@@ -188,6 +188,16 @@ export function ClientesLista() {
                 <div className="min-w-0 flex-1">
                   <div className="font-semibold truncate">{c.tradeName} {c.archived && <Chip tone="muted">arquivado</Chip>}</div>
                   <div className="text-muted text-[12.5px] truncate">{c.legalName}</div>
+                  {/* os produtos em miniatura: só os nomes, na cor de cada um, sem fundo nem moldura */}
+                  {c.products.length > 0 && (
+                    <div className="text-[11px] leading-[1.5] mt-1 flex flex-wrap gap-x-1.5" title={c.products.map((p) => p.name).join(' · ')}>
+                      {c.products.map((p, i) => (
+                        <span key={p.code} style={{ color: p.color }} className="font-medium whitespace-nowrap">
+                          {p.name}{i < c.products.length - 1 && <span className="text-line-strong ml-1.5" aria-hidden>·</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2 text-[12.5px] mt-auto">
