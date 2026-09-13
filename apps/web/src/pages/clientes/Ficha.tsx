@@ -7,11 +7,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Archive, ExternalLink, Pencil, Terminal, Trash2 } from 'lucide-react';
 import { api } from '../../api/index.js';
-import type { ClientFull, Subscription } from '../../api/types.js';
+import type { ClientFull, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, mensagemErro, Modal, Spinner, Vazio, useToast } from '../../components/ui/index.js';
-import { cnpjFormatado, condicaoCor, condicaoNome, data, MODALIDADES, paraCentavos, reais, relativo } from '../../lib/format.js';
+import { cnpjFormatado, condicaoCor, condicaoNome, data, MODALIDADES, relativo } from '../../lib/format.js';
 import { ClienteForm } from './Form.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'acessos' | 'historico';
@@ -69,12 +69,17 @@ export function ClienteFicha() {
 function Geral({ c }: { c: ClientFull }) {
   const ativos = c.subscriptions.filter((s) => s.active);
   const lp = ativos.find((s) => s.productCode === 'linepbx')?.settings;
-  const mensal = ativos.reduce((a, s) => a + (s.monthlyValueCents ?? 0), 0);
   return (
     <div className="grid gap-4 md:grid-cols-3">
       <div className="card p-4 md:col-span-2">
-        <div className="eyebrow mb-2">Produtos ativos</div>
-        <div className="flex flex-wrap gap-1.5 mb-4">{ativos.map((s) => <Chip key={s.id} color={s.color}>{s.productName}</Chip>)}{!ativos.length && <span className="text-muted text-sm">Nenhum produto marcado ainda.</span>}</div>
+        <div className="eyebrow mb-2">Produtos ativos e seus módulos</div>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {ativos.map((s) => {
+            const mods = s.modules.filter((m) => m.active);
+            return <span key={s.id} className="inline-flex items-center gap-1"><Chip color={s.color}>{s.productName}</Chip>{mods.map((m) => <Chip key={m.id} color={s.color} className="opacity-80" title={`módulo do ${s.productName}`}>› {m.moduleName}</Chip>)}</span>;
+          })}
+          {!ativos.length && <span className="text-muted text-sm">Nenhum produto marcado ainda.</span>}
+        </div>
         <div className="eyebrow mb-2">Servidor (LinePBX)</div>
         {lp ? (
           <dl className="grid grid-cols-[120px_1fr] gap-y-1.5 text-sm">
@@ -89,34 +94,69 @@ function Geral({ c }: { c: ClientFull }) {
       <div className="flex flex-col gap-3">
         <div className="card p-4"><div className="eyebrow">DIDs em uso</div><div className="font-display text-2xl font-semibold tnum">{c.didCount}</div></div>
         <div className="card p-4"><div className="eyebrow">Aparelhos com o cliente</div><div className="font-display text-2xl font-semibold tnum">{c.deviceCount}</div></div>
-        <div className="card p-4"><div className="eyebrow">Valor mensal (produtos)</div><div className="font-display text-2xl font-semibold tnum">{mensal ? reais(mensal) : '—'}</div><div className="text-muted text-[12px]">soma dos valores informados por produto</div></div>
+        <div className="card p-4"><div className="eyebrow">Módulos ligados</div><div className="font-display text-2xl font-semibold tnum">{ativos.reduce((a, s) => a + s.modules.filter((m) => m.active).length, 0)}</div><div className="text-muted text-[12px]">Omniboard, FOP2, NPS, dashboard de filas…</div></div>
         <div className="card p-4 text-[12.5px] text-muted">Cadastrado em {data(c.createdAt)} · atualizado {relativo(c.updatedAt)}</div>
       </div>
     </div>
   );
 }
 
-// ---------- Produtos ----------
+// ---------- Produtos e módulos ----------
 function Produtos({ c }: { c: ClientFull }) {
   const prods = useQuery({ queryKey: ['products'], queryFn: api.admin.products });
   const [editando, setEditando] = useState<string | null>(null);
+  const [editandoModulo, setEditandoModulo] = useState<{ product: Product; module: ProductModule } | null>(null);
   const qc = useQueryClient();
   const toast = useToast();
   const { can } = useAuth();
-  const encerrar = async (code: string) => { try { await api.clients.endSubscription(c.id, code); await qc.invalidateQueries({ queryKey: ['client', c.id] }); toast.push('ok', 'Produto encerrado (histórico mantido)'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
+  const atualizar = () => Promise.all([qc.invalidateQueries({ queryKey: ['client', c.id] }), qc.invalidateQueries({ queryKey: ['clients'] })]);
+  const encerrar = async (code: string) => { try { await api.clients.endSubscription(c.id, code); await atualizar(); toast.push('ok', 'Produto encerrado (histórico mantido)'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
+  const desligarModulo = async (p: Product, m: ProductModule) => { try { await api.clients.endModule(c.id, p.code, m.code); await atualizar(); toast.push('ok', `${m.name} desligado (histórico mantido)`); } catch (e) { toast.push('erro', mensagemErro(e)); } };
+  const ligarModulo = async (p: Product, m: ProductModule) => {
+    if (m.hasSettings) { setEditandoModulo({ product: p, module: m }); return; }
+    try { await api.clients.upsertModule(c.id, { productCode: p.code, moduleCode: m.code }); await atualizar(); toast.push('ok', `${m.name} ligado em ${p.name}`); } catch (e) { toast.push('erro', mensagemErro(e)); }
+  };
   return (
     <div>
-      <p className="text-sm text-muted mb-3">Clique num produto para marcar ou ajustar. Desmarcar não apaga: fica registrado quando terminou.</p>
+      <p className="text-sm text-muted mb-3">Clique num produto para marcar ou ajustar. Dentro de cada produto ativo, ligue os <b>módulos</b> que o cliente usa. Desmarcar não apaga: fica registrado quando terminou.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {prods.data?.filter((p) => p.active).map((p) => {
           const s = c.subscriptions.find((x) => x.productCode === p.code);
           const on = !!s?.active;
+          const modulos = p.modules.filter((m) => m.active);
           return (
             <div key={p.code} className={`card p-4 flex flex-col gap-2 ${on ? '' : 'opacity-70'}`} style={on ? { borderColor: p.color } : undefined}>
               <div className="flex items-center justify-between"><Chip color={p.color}>{p.name}</Chip>{on ? <span className="text-ok text-[12px] font-semibold">ativo</span> : s ? <span className="text-muted text-[12px]">encerrado em {data(s.deactivatedAt)}</span> : <span className="text-muted text-[12px]">não assina</span>}</div>
               <div className="text-[12.5px] text-muted">{p.description}</div>
-              {on && s && <div className="text-[12.5px]">desde {data(s.activatedAt)}{s.monthlyValueCents ? ` · ${reais(s.monthlyValueCents)}/mês` : ''}</div>}
+              {on && s && <div className="text-[12.5px]">desde {data(s.activatedAt)}</div>}
               {on && s?.notes && <div className="text-[12.5px] text-ink-2 italic truncate" title={s.notes}>{s.notes}</div>}
+              {modulos.length > 0 && (
+                <div className="mt-1 border-t border-line pt-2">
+                  <div className="eyebrow mb-1">Módulos</div>
+                  <ul className="flex flex-col gap-1">
+                    {modulos.map((m) => {
+                      const sm = s?.modules.find((x) => x.moduleCode === m.code);
+                      const ligado = on && !!sm?.active;
+                      return (
+                        <li key={m.code} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px]">
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${ligado ? 'bg-ok' : 'bg-line-strong'}`} aria-hidden />
+                          <span className={ligado ? 'font-medium' : 'text-muted'} title={m.description ?? undefined}>{m.name}</span>
+                          {ligado && sm?.activatedAt && <span className="text-muted whitespace-nowrap">desde {data(sm.activatedAt)}</span>}
+                          {!ligado && sm && sm.deactivatedAt && <span className="text-muted">desligado {data(sm.deactivatedAt)}</span>}
+                          {on && can('records.write') && (
+                            <span className="ml-auto flex gap-1">
+                              {ligado ? (<>
+                                {m.hasSettings && <button className="btn-ghost btn-sm" onClick={() => setEditandoModulo({ product: p, module: m })}>Ajustar</button>}
+                                <button className="btn-ghost btn-sm text-muted" onClick={() => desligarModulo(p, m)}>Desligar</button>
+                              </>) : <button className="btn-secondary btn-sm" onClick={() => ligarModulo(p, m)}>Ligar</button>}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
               {can('records.write') && (
                 <div className="flex gap-2 mt-auto pt-1">
                   <button className="btn-secondary btn-sm" onClick={() => setEditando(p.code)}>{on ? 'Ajustar' : 'Marcar'}</button>
@@ -128,6 +168,7 @@ function Produtos({ c }: { c: ClientFull }) {
         })}
       </div>
       {editando && <ProdutoForm c={c} code={editando} sub={c.subscriptions.find((x) => x.productCode === editando)} onClose={() => setEditando(null)} />}
+      {editandoModulo && <ModuloForm c={c} product={editandoModulo.product} module={editandoModulo.module} sm={c.subscriptions.find((x) => x.productCode === editandoModulo.product.code)?.modules.find((x) => x.moduleCode === editandoModulo.module.code)} onClose={() => setEditandoModulo(null)} />}
     </div>
   );
 }
@@ -138,35 +179,30 @@ function ProdutoForm({ c, code, sub, onClose }: { c: ClientFull; code: string; s
   const { can } = useAuth();
   const hostings = useQuery({ queryKey: ['catalog', 'hostings'], queryFn: () => api.admin.catalog('hostings'), enabled: code === 'linepbx' });
   const st = sub?.settings ?? {};
-  const [f, setF] = useState<Record<string, any>>({ activatedAt: sub?.activatedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), monthlyValue: sub?.monthlyValueCents != null ? (sub.monthlyValueCents / 100).toFixed(2).replace('.', ',') : '', notes: sub?.notes ?? '', hostingId: st.hostingId ?? '', serverIp: st.serverIp ?? '', domain: st.domain ?? '', sshUser: st.sshUser ?? '', sshPort: st.sshPort ?? 22, adminExtension: st.adminExtension ?? '', adminLogin: st.adminLogin ?? '' });
+  const [f, setF] = useState<Record<string, any>>({ activatedAt: sub?.activatedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), notes: sub?.notes ?? '', hostingId: st.hostingId ?? '', serverIp: st.serverIp ?? '', domain: st.domain ?? '', sshUser: st.sshUser ?? '', sshPort: st.sshPort ?? 22, adminLogin: st.adminLogin ?? '' });
   const [senhas, setSenhas] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const nome = { linepbx: 'LinePBX', fop2: 'FOP2', omniboard: 'Omniboard', szchat: 'SZChat', linereports: 'LineReports', linechat: 'LineChat', voicenet: 'VoiceNet', equipamentos: 'Equipamentos' }[code] ?? code;
+  const nome = { linepbx: 'LinePBX', szchat: 'SZChat', linereports: 'LineReports', linechat: 'LineChat', voicenet: 'VoiceNet', equipamentos: 'Equipamentos' }[code] ?? code;
   const podeServidor = can('servers.write');
   const save = async () => {
     setBusy(true); setErr('');
     try {
       const settings: Record<string, unknown> = {};
       if (code === 'linepbx' && podeServidor) Object.assign(settings, { hostingId: f.hostingId || null, serverIp: f.serverIp || null, domain: f.domain || null, sshUser: f.sshUser || null, sshPort: Number(f.sshPort) || 22, ...(senhas.sshPassword ? { sshPassword: senhas.sshPassword } : {}) });
-      if (code === 'fop2') settings.adminExtension = f.adminExtension || null;
-      if (code === 'omniboard') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}), ...(senhas.userDefaultPassword ? { userDefaultPassword: senhas.userDefaultPassword } : {}) });
       if (code === 'szchat') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}) });
-      await api.clients.upsertSubscription(c.id, { productCode: code, activatedAt: f.activatedAt ? new Date(f.activatedAt).toISOString() : null, monthlyValueCents: f.monthlyValue ? paraCentavos(f.monthlyValue) : null, notes: f.notes || null, settings });
+      await api.clients.upsertSubscription(c.id, { productCode: code, activatedAt: f.activatedAt ? new Date(f.activatedAt).toISOString() : null, notes: f.notes || null, settings });
       await qc.invalidateQueries({ queryKey: ['client', c.id] }); await qc.invalidateQueries({ queryKey: ['clients'] });
       toast.push('ok', `${nome} salvo`); onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
-  const seg = (key: 'sshPassword' | 'adminPassword' | 'userDefaultPassword', label: string) => (
+  const seg = (key: 'sshPassword' | 'adminPassword', label: string) => (
     <Campo label={label}><CampoSegredo secretId={st[key]?.secretId ?? null} hasSecret={!!st[key]?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={(v) => setSenhas({ ...senhas, [key]: v })} /></Campo>
   );
   return (
     <Modal open onClose={onClose} lateral largura="max-w-xl" titulo={<span className="flex items-center gap-2">{sub?.active ? 'Ajustar' : 'Marcar'} <Chip color={sub?.color}>{nome}</Chip> em {c.tradeName}</span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
       <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-2 gap-3">
-          <Campo label="Ativado em"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
-          <Campo label="Valor mensal (R$)" dica="opcional"><input className="input tnum" placeholder="0,00" value={f.monthlyValue} onChange={(e) => setF({ ...f, monthlyValue: e.target.value })} /></Campo>
-        </div>
+        <Campo label="Ativado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
         {code === 'linepbx' && (
           <fieldset className="card p-3 flex flex-col gap-3" disabled={!podeServidor}>
             <legend className="eyebrow px-1">Servidor {!podeServidor && '· somente leitura (sem permissão)'}</legend>
@@ -180,13 +216,53 @@ function ProdutoForm({ c, code, sub, onClose }: { c: ClientFull; code: string; s
             {seg('sshPassword', 'Senha SSH')}
           </fieldset>
         )}
-        {code === 'fop2' && <Campo label="Ramal / usuário admin do FOP2" dica="usado para o acesso rápido"><input className="input font-mono" value={f.adminExtension} onChange={(e) => setF({ ...f, adminExtension: e.target.value })} /></Campo>}
-        {(code === 'omniboard' || code === 'szchat') && (<>
+        {code === 'szchat' && (<>
           <Campo label="E-mail do administrador"><input className="input" value={f.adminLogin} onChange={(e) => setF({ ...f, adminLogin: e.target.value })} /></Campo>
           {seg('adminPassword', 'Senha do administrador')}
-          {code === 'omniboard' && seg('userDefaultPassword', 'Senha padrão de usuário novo')}
         </>)}
-        <Campo label="Anotações deste produto" dica={code === 'linepbx' ? 'configurações, acessos, VPN…' : code === 'fop2' ? 'regras internas, módulos pagos, personalizações…' : code === 'equipamentos' ? 'contratos, termos…' : 'regras internas, informações…'}><textarea className="input" rows={4} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Campo>
+        <Campo label="Anotações deste produto" dica={code === 'linepbx' ? 'configurações, acessos, VPN…' : code === 'equipamentos' ? 'contratos, termos…' : 'regras internas, informações…'}><textarea className="input" rows={4} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Campo>
+        {err && <div className="text-bad text-sm">{err}</div>}
+      </div>
+    </Modal>
+  );
+}
+
+/** Ligar/ajustar um módulo dentro de um produto. FOP2 e Omniboard têm campos próprios; os demais só data e anotações. */
+function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; product: Product; module: ProductModule; sm?: SubscriptionModule; onClose: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const { can } = useAuth();
+  const st = sm?.settings ?? {};
+  const [f, setF] = useState<Record<string, any>>({ activatedAt: sm?.activatedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), notes: sm?.notes ?? '', adminExtension: st.adminExtension ?? '', adminLogin: st.adminLogin ?? '' });
+  const [senhas, setSenhas] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      const settings: Record<string, unknown> = {};
+      if (module.code === 'fop2') settings.adminExtension = f.adminExtension || null;
+      if (module.code === 'omniboard') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}), ...(senhas.userDefaultPassword ? { userDefaultPassword: senhas.userDefaultPassword } : {}) });
+      await api.clients.upsertModule(c.id, { productCode: product.code, moduleCode: module.code, activatedAt: f.activatedAt ? new Date(f.activatedAt).toISOString() : null, notes: f.notes || null, settings });
+      await qc.invalidateQueries({ queryKey: ['client', c.id] }); await qc.invalidateQueries({ queryKey: ['clients'] });
+      toast.push('ok', `${module.name} salvo`); onClose();
+    } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
+  const seg = (key: 'adminPassword' | 'userDefaultPassword', label: string) => (
+    <Campo label={label}><CampoSegredo secretId={st[key]?.secretId ?? null} hasSecret={!!st[key]?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={(v) => setSenhas({ ...senhas, [key]: v })} /></Campo>
+  );
+  return (
+    <Modal open onClose={onClose} lateral largura="max-w-lg" titulo={<span className="flex items-center gap-2">{sm?.active ? 'Ajustar' : 'Ligar'} <Chip color={product.color}>{product.name} › {module.name}</Chip></span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
+      <div className="flex flex-col gap-3">
+        {module.description && <p className="text-sm text-muted">{module.description}</p>}
+        <Campo label="Ligado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
+        {module.code === 'fop2' && <Campo label="Ramal / usuário admin do FOP2" dica="usado para o acesso rápido"><input className="input font-mono" value={f.adminExtension} onChange={(e) => setF({ ...f, adminExtension: e.target.value })} /></Campo>}
+        {module.code === 'omniboard' && (<>
+          <Campo label="E-mail do administrador"><input className="input" value={f.adminLogin} onChange={(e) => setF({ ...f, adminLogin: e.target.value })} /></Campo>
+          {seg('adminPassword', 'Senha do administrador')}
+          {seg('userDefaultPassword', 'Senha padrão de usuário novo')}
+        </>)}
+        <Campo label="Anotações deste módulo" dica="regras internas, personalizações…"><textarea className="input" rows={3} value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Campo>
         {err && <div className="text-bad text-sm">{err}</div>}
       </div>
     </Modal>
@@ -198,12 +274,12 @@ function Dids({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
   if (q.isLoading) return <Carregando />;
   const items = q.data?.items ?? [];
-  if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números na tela DIDs, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/dids?cliente=free">Ver DIDs livres</Link>} />;
+  if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
   return (
     <div className="card overflow-x-auto">
-      <table className="table"><thead><tr><th>Número</th><th>Operadora</th><th>Circuito</th><th>Dono</th><th>Observação</th></tr></thead>
+      <table className="table"><thead><tr><th>Número</th><th>Operadora</th><th>Circuito</th><th>Titular</th><th>Observação</th></tr></thead>
         <tbody>{items.map((d) => <tr key={d.id}><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
-      <div className="px-3 py-2 text-[12.5px] text-muted border-t border-line"><Link className="link" to={`/dids?cliente=${c.id}`}>Abrir na tela DIDs</Link> para editar em massa.</div>
+      <div className="px-3 py-2 text-[12.5px] text-muted border-t border-line"><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div>
     </div>
   );
 }
@@ -232,17 +308,18 @@ function Equipamentos({ c }: { c: ClientFull }) {
 function Acessos({ c }: { c: ClientFull }) {
   const { can } = useAuth();
   const lp = c.subscriptions.find((s) => s.productCode === 'linepbx' && s.active);
-  const om = c.subscriptions.find((s) => s.productCode === 'omniboard' && s.active);
   const sz = c.subscriptions.find((s) => s.productCode === 'szchat' && s.active);
-  const f2 = c.subscriptions.find((s) => s.productCode === 'fop2' && s.active);
-  if (!lp && !om && !sz && !f2) return <Vazio titulo="Sem acessos cadastrados" texto="Os acessos aparecem quando o cliente tem LinePBX, FOP2, Omniboard ou SZChat." />;
+  // FOP2 e Omniboard são módulos do LinePBX
+  const f2 = lp ? lp.modules.find((m) => m.moduleCode === 'fop2' && m.active) : undefined;
+  const om = lp ? lp.modules.find((m) => m.moduleCode === 'omniboard' && m.active) : undefined;
+  if (!lp && !sz) return <Vazio titulo="Sem acessos cadastrados" texto="Os acessos aparecem quando o cliente tem LinePBX (e seus módulos FOP2 e Omniboard) ou SZChat." />;
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX</Chip>{c.links.web && <a className="link text-sm" href={c.links.web} target="_blank" rel="noreferrer">abrir interface ↗</a>}</div>
         <dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Endereço</dt><dd className="font-mono">{lp.settings?.domain ?? '—'}</dd><dt className="text-muted">IP</dt><dd className="font-mono">{lp.settings?.serverIp ?? '—'}</dd><dt className="text-muted">SSH</dt><dd className="font-mono">{c.links.ssh ?? '—'}</dd></dl>
         <Campo label="Senha SSH"><CampoSegredo secretId={lp.settings?.sshPassword?.secretId ?? null} hasSecret={!!lp.settings?.sshPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo></div>}
-      {f2 && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={f2.color}>FOP2</Chip>{c.links.fop2 && <a className="link text-sm" href={c.links.fop2} target="_blank" rel="noreferrer">abrir painel ↗</a>}</div><dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Ramal admin</dt><dd className="font-mono">{f2.settings?.adminExtension ?? '—'}</dd></dl><p className="text-[12px] text-muted">O link do FOP2 nunca carrega senha na URL.</p></div>}
-      {om && <div className="card p-4 flex flex-col gap-3"><Chip color={om.color}>Omniboard</Chip><dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{om.settings?.adminLogin ?? '—'}</dd></dl>
+      {f2 && lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX › FOP2</Chip>{c.links.fop2 && <a className="link text-sm" href={c.links.fop2} target="_blank" rel="noreferrer">abrir painel ↗</a>}</div><dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Ramal admin</dt><dd className="font-mono">{f2.settings?.adminExtension ?? '—'}</dd></dl><p className="text-[12px] text-muted">O link do FOP2 nunca carrega senha na URL.</p></div>}
+      {om && lp && <div className="card p-4 flex flex-col gap-3"><Chip color={lp.color}>LinePBX › Omniboard</Chip><dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{om.settings?.adminLogin ?? '—'}</dd></dl>
         <Campo label="Senha admin"><CampoSegredo secretId={om.settings?.adminPassword?.secretId ?? null} hasSecret={!!om.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
         <Campo label="Senha padrão de usuário"><CampoSegredo secretId={om.settings?.userDefaultPassword?.secretId ?? null} hasSecret={!!om.settings?.userDefaultPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo></div>}
       {sz && <div className="card p-4 flex flex-col gap-3"><Chip color={sz.color}>SZChat</Chip><dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{sz.settings?.adminLogin ?? '—'}</dd></dl>

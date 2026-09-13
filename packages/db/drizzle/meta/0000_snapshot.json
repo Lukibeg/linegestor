@@ -1,5 +1,5 @@
 {
-  "id": "7f851c9f-9e6a-4339-a15c-c421a12b5af5",
+  "id": "6d1e8c08-3553-48a4-b2d8-d62526c5316e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1301,8 +1301,8 @@
       "name": "fop2_settings",
       "schema": "",
       "columns": {
-        "subscription_id": {
-          "name": "subscription_id",
+        "subscription_module_id": {
+          "name": "subscription_module_id",
           "type": "text",
           "primaryKey": true,
           "notNull": true
@@ -1316,12 +1316,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "fop2_settings_subscription_id_subscriptions_id_fk": {
-          "name": "fop2_settings_subscription_id_subscriptions_id_fk",
+        "fop2_settings_subscription_module_id_subscription_modules_id_fk": {
+          "name": "fop2_settings_subscription_module_id_subscription_modules_id_fk",
           "tableFrom": "fop2_settings",
-          "tableTo": "subscriptions",
+          "tableTo": "subscription_modules",
           "columnsFrom": [
-            "subscription_id"
+            "subscription_module_id"
           ],
           "columnsTo": [
             "id"
@@ -1476,8 +1476,8 @@
       "name": "omniboard_settings",
       "schema": "",
       "columns": {
-        "subscription_id": {
-          "name": "subscription_id",
+        "subscription_module_id": {
+          "name": "subscription_module_id",
           "type": "text",
           "primaryKey": true,
           "notNull": true
@@ -1503,12 +1503,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "omniboard_settings_subscription_id_subscriptions_id_fk": {
-          "name": "omniboard_settings_subscription_id_subscriptions_id_fk",
+        "omniboard_settings_subscription_module_id_subscription_modules_id_fk": {
+          "name": "omniboard_settings_subscription_module_id_subscription_modules_id_fk",
           "tableFrom": "omniboard_settings",
-          "tableTo": "subscriptions",
+          "tableTo": "subscription_modules",
           "columnsFrom": [
-            "subscription_id"
+            "subscription_module_id"
           ],
           "columnsTo": [
             "id"
@@ -1540,6 +1540,106 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.product_modules": {
+      "name": "product_modules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "product_id": {
+          "name": "product_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "has_settings": {
+          "name": "has_settings",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "sort_order": {
+          "name": "sort_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {
+        "product_modules_product_code_uq": {
+          "name": "product_modules_product_code_uq",
+          "columns": [
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "product_modules_product_id_products_id_fk": {
+          "name": "product_modules_product_id_products_id_fk",
+          "tableFrom": "product_modules",
+          "tableTo": "products",
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -1838,6 +1938,118 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.subscription_modules": {
+      "name": "subscription_modules",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "subscription_id": {
+          "name": "subscription_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module_id": {
+          "name": "module_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "activated_at": {
+          "name": "activated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "deactivated_at": {
+          "name": "deactivated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "subscription_modules_sub_module_uq": {
+          "name": "subscription_modules_sub_module_uq",
+          "columns": [
+            {
+              "expression": "subscription_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "module_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "subscription_modules_subscription_id_subscriptions_id_fk": {
+          "name": "subscription_modules_subscription_id_subscriptions_id_fk",
+          "tableFrom": "subscription_modules",
+          "tableTo": "subscriptions",
+          "columnsFrom": [
+            "subscription_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "subscription_modules_module_id_product_modules_id_fk": {
+          "name": "subscription_modules_module_id_product_modules_id_fk",
+          "tableFrom": "subscription_modules",
+          "tableTo": "product_modules",
+          "columnsFrom": [
+            "module_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.subscriptions": {
       "name": "subscriptions",
       "schema": "",
@@ -1869,12 +2081,6 @@
         "deactivated_at": {
           "name": "deactivated_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "monthly_value_cents": {
-          "name": "monthly_value_cents",
-          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },

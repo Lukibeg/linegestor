@@ -1,74 +1,194 @@
-/** Lista de clientes: cards ou tabela, busca, filtro por produto (qualquer/todos), arquivados. */
-import { useState } from 'react';
+/**
+ * Lista de clientes: cards ou tabela, busca, filtro por produto e por módulo (qualquer/todos), arquivados.
+ * Na tabela, a pessoa escolhe quais colunas quer ver (qualquer detalhe do cliente: ativação por produto,
+ * módulos, IP do LinePBX, hospedagem…). A escolha fica guardada no navegador.
+ */
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ExternalLink, LayoutGrid, List, Plus, Terminal } from 'lucide-react';
+import { Columns3, ExternalLink, LayoutGrid, List, Plus, RotateCcw, Terminal } from 'lucide-react';
 import { api } from '../../api/index.js';
+import type { ClientListItem, Product } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can } from '../../lib/auth.js';
 import { Carregando, Chip, Paginacao, Toggle, Vazio } from '../../components/ui/index.js';
-import { cnpjFormatado } from '../../lib/format.js';
+import { cnpjFormatado, data, relativo } from '../../lib/format.js';
 import { ClienteForm } from './Form.js';
+
+// ---------- Colunas disponíveis na tabela ----------
+
+type Coluna = { id: string; label: string; grupo: string; align?: 'right'; render: (c: ClientListItem) => ReactNode };
+
+const PADRAO = ['tradeName', 'legalName', 'cnpj', 'products', 'didCount', 'deviceCount'];
+const STORAGE = 'gestor.clientes.colunas';
+
+/** As colunas fixas + uma por produto ("ativado em") e uma por produto com módulos ("módulos de…"). */
+function montarColunas(produtos: Product[]): Coluna[] {
+  const fixas: Coluna[] = [
+    { id: 'tradeName', label: 'Nome fantasia', grupo: 'Cliente', render: (c) => <span className="font-medium">{c.tradeName} {c.archived && <Chip tone="muted">arquivado</Chip>}</span> },
+    { id: 'legalName', label: 'Razão social', grupo: 'Cliente', render: (c) => <span className="text-ink-2">{c.legalName}</span> },
+    { id: 'cnpj', label: 'CNPJ', grupo: 'Cliente', render: (c) => <span className="font-mono text-[12.5px] tnum whitespace-nowrap">{cnpjFormatado(c.cnpj)}</span> },
+    { id: 'notes', label: 'Anotações', grupo: 'Cliente', render: (c) => <span className="text-muted block max-w-[280px] truncate" title={c.notes ?? ''}>{c.notes ?? '—'}</span> },
+    { id: 'createdAt', label: 'Cadastrado em', grupo: 'Cliente', render: (c) => <span className="tnum whitespace-nowrap">{data(c.createdAt)}</span> },
+    { id: 'updatedAt', label: 'Última alteração', grupo: 'Cliente', render: (c) => <span className="text-muted">{relativo(c.updatedAt)}</span> },
+    { id: 'products', label: 'Produtos', grupo: 'Produtos', render: (c) => <div className="flex flex-wrap gap-1">{c.products.map((p) => <Chip key={p.code} color={p.color}>{p.name}</Chip>)}{!c.products.length && <span className="text-muted">—</span>}</div> },
+    { id: 'modules', label: 'Módulos (todos)', grupo: 'Produtos', render: (c) => { const ms = c.products.flatMap((p) => p.modules.map((m) => ({ ...m, color: p.color, product: p.name }))); return ms.length ? <div className="flex flex-wrap gap-1">{ms.map((m) => <Chip key={m.product + m.code} color={m.color} title={`${m.product} › ${m.name}`}>{m.name}</Chip>)}</div> : <span className="text-muted">—</span>; } },
+    { id: 'hosting', label: 'Hospedagem', grupo: 'Servidor LinePBX', render: (c) => c.server?.hostingName ?? <span className="text-muted">—</span> },
+    { id: 'domain', label: 'Endereço (domínio)', grupo: 'Servidor LinePBX', render: (c) => c.server?.domain ? <span className="font-mono text-[12.5px]">{c.server.domain}</span> : <span className="text-muted">—</span> },
+    { id: 'serverIp', label: 'IP do servidor', grupo: 'Servidor LinePBX', render: (c) => c.server?.serverIp ? <span className="font-mono text-[12.5px] tnum">{c.server.serverIp}</span> : <span className="text-muted">—</span> },
+    { id: 'ssh', label: 'SSH (usuário e porta)', grupo: 'Servidor LinePBX', render: (c) => c.server?.sshUser ? <span className="font-mono text-[12.5px]">{c.server.sshUser}@ :{c.server.sshPort ?? 22}</span> : <span className="text-muted">—</span> },
+    { id: 'didCount', label: 'DIDs', grupo: 'Contagens', align: 'right', render: (c) => <span className="tnum">{c.didCount}</span> },
+    { id: 'deviceCount', label: 'Aparelhos', grupo: 'Contagens', align: 'right', render: (c) => <span className="tnum">{c.deviceCount}</span> },
+    { id: 'links', label: 'Atalhos', grupo: 'Contagens', render: (c) => <Atalhos c={c} /> },
+  ];
+  const porProduto: Coluna[] = produtos.flatMap((p) => {
+    const cols: Coluna[] = [{
+      id: `ativacao:${p.code}`, label: `${p.name} — ativado em`, grupo: 'Ativação por produto',
+      render: (c) => { const s = c.products.find((x) => x.code === p.code); return s ? <span className="tnum whitespace-nowrap">{data(s.activatedAt)}</span> : <span className="text-muted">—</span>; },
+    }];
+    if (p.modules.length) cols.push({
+      id: `modulos:${p.code}`, label: `Módulos do ${p.name}`, grupo: 'Módulos por produto',
+      render: (c) => { const s = c.products.find((x) => x.code === p.code); return s ? (s.modules.length ? <div className="flex flex-wrap gap-1">{s.modules.map((m) => <Chip key={m.code} color={p.color} title={m.activatedAt ? `ligado em ${data(m.activatedAt)}` : undefined}>{m.name}</Chip>)}</div> : <span className="text-muted">nenhum</span>) : <span className="text-muted">—</span>; },
+    });
+    return cols;
+  });
+  return [...fixas, ...porProduto];
+}
+
+function Atalhos({ c }: { c: ClientListItem }) {
+  if (!c.links.web) return <span className="text-muted italic">servidor não configurado</span>;
+  return (
+    <span className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+      <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary btn-sm"><ExternalLink size={13} /> abrir</a>
+      {c.links.ssh && <a href={c.links.ssh} className="btn-secondary btn-sm"><Terminal size={13} /> SSH</a>}
+      {c.links.fop2 && <a href={c.links.fop2} target="_blank" rel="noreferrer" className="btn-secondary btn-sm">FOP2</a>}
+    </span>
+  );
+}
+
+/** Guarda no navegador quais colunas a pessoa escolheu. */
+function useColunasEscolhidas() {
+  const [ids, setIds] = useState<string[]>(() => { try { const v = localStorage.getItem(STORAGE); return v ? (JSON.parse(v) as string[]) : PADRAO; } catch { return PADRAO; } });
+  useEffect(() => { try { localStorage.setItem(STORAGE, JSON.stringify(ids)); } catch { /* sem storage */ } }, [ids]);
+  return { ids, setIds, restaurar: () => setIds(PADRAO) };
+}
+
+/** O painel "Colunas": marca e desmarca o que aparece na tabela, agrupado por assunto. */
+function SeletorColunas({ colunas, ids, setIds, restaurar }: { colunas: Coluna[]; ids: string[]; setIds: (v: string[]) => void; restaurar: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const grupos = useMemo(() => { const g = new Map<string, Coluna[]>(); for (const c of colunas) g.set(c.grupo, [...(g.get(c.grupo) ?? []), c]); return [...g.entries()]; }, [colunas]);
+  const toggle = (id: string) => setIds(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
+  return (
+    <div className="relative" ref={ref}>
+      <button className="btn-secondary btn-sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}><Columns3 size={15} /> Colunas <span className="text-muted tnum">({ids.length})</span></button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 card p-3 w-[320px] max-h-[70vh] overflow-y-auto shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="eyebrow">O que aparece na tabela</span>
+            <button className="btn-ghost btn-sm text-muted" onClick={restaurar} title="Voltar às colunas padrão"><RotateCcw size={13} /> padrão</button>
+          </div>
+          {grupos.map(([grupo, cols]) => (
+            <div key={grupo} className="mb-3 last:mb-0">
+              <div className="text-[11.5px] uppercase tracking-wide text-muted mb-1">{grupo}</div>
+              <div className="flex flex-col gap-0.5">
+                {cols.map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded hover:bg-surface-2 cursor-pointer">
+                    <input type="checkbox" id={`col-${c.id}`} checked={ids.includes(c.id)} onChange={() => toggle(c.id)} /> {c.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+          <p className="text-[11.5px] text-muted mt-2 border-t border-line pt-2">A escolha fica guardada neste navegador. Arraste a tabela para o lado se ficar larga.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- Tela ----------
 
 export function ClientesLista() {
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
   const q = sp.get('q') ?? '';
   const produtos = sp.getAll('produtos');
+  const modulos = sp.getAll('modulos');
   const mode = (sp.get('modo') ?? 'or') as 'or' | 'and';
   const arquivados = sp.get('arquivados') === '1';
   const view = sp.get('ver') ?? 'cards';
   const page = Number(sp.get('p') ?? 1);
   const [novo, setNovo] = useState(false);
+  const colunasEscolhidas = useColunasEscolhidas();
 
   const set = (k: string, v: string | string[] | null) => { const n = new URLSearchParams(sp); n.delete(k); if (Array.isArray(v)) v.forEach((x) => n.append(k, x)); else if (v) n.set(k, v); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
 
   const prods = useQuery({ queryKey: ['products'], queryFn: api.admin.products });
-  const lista = useQuery({ queryKey: ['clients', q, produtos, mode, arquivados, page], queryFn: () => api.clients.list({ q, products: produtos, mode, includeArchived: arquivados, page, pageSize: 24 }) });
+  const lista = useQuery({ queryKey: ['clients', q, produtos, modulos, mode, arquivados, page], queryFn: () => api.clients.list({ q, products: produtos, modules: modulos, mode, includeArchived: arquivados, page, pageSize: 24 }) });
+  const colunas = useMemo(() => montarColunas(prods.data?.filter((p) => p.active) ?? []), [prods.data]);
+  const visiveis = colunas.filter((c) => colunasEscolhidas.ids.includes(c.id));
+  // módulos filtráveis: só dos produtos selecionados no filtro
+  const modulosFiltraveis = (prods.data ?? []).filter((p) => produtos.includes(p.code) && p.modules.length).flatMap((p) => p.modules.filter((m) => m.active).map((m) => ({ key: `${p.code}:${m.code}`, label: `${p.name} › ${m.name}`, color: p.color })));
 
   return (
     <Pagina titulo="Clientes" sub={lista.data ? `${lista.data.total} cliente(s)` : ' '} acoes={<Can permission="records.write"><button className="btn-primary" onClick={() => setNovo(true)}><Plus size={16} /> Novo cliente</button></Can>}>
-      <div className="card p-3 mb-4 flex flex-wrap items-center gap-2">
-        <input className="input max-w-xs" placeholder="Buscar por nome ou CNPJ" value={q} onChange={(e) => set('q', e.target.value)} />
-        <div className="flex flex-wrap gap-1">
-          {prods.data?.filter((p) => p.active).map((p) => {
-            const on = produtos.includes(p.code);
-            return <button key={p.code} onClick={() => set('produtos', on ? produtos.filter((x) => x !== p.code) : [...produtos, p.code])} className={`chip border transition-colors ${on ? 'border-transparent' : 'border-line bg-transparent text-ink-2'}`} style={on ? { background: p.color + '22', color: p.color } : undefined}>{p.name}</button>;
-          })}
-        </div>
-        {produtos.length > 1 && (
-          <select className="input w-auto" value={mode} onChange={(e) => set('modo', e.target.value)}>
-            <option value="or">tem qualquer um</option>
-            <option value="and">tem todos</option>
-          </select>
-        )}
-        <div className="ml-auto flex items-center gap-3">
-          <Toggle checked={arquivados} onChange={(v) => set('arquivados', v ? '1' : null)} label="arquivados" />
-          <div className="flex rounded-lg border border-line overflow-hidden">
-            <button className={`px-2 py-1.5 ${view === 'cards' ? 'bg-accent-soft text-accent-ink' : 'text-muted'}`} onClick={() => set('ver', null)} title="Cards"><LayoutGrid size={16} /></button>
-            <button className={`px-2 py-1.5 ${view === 'tabela' ? 'bg-accent-soft text-accent-ink' : 'text-muted'}`} onClick={() => set('ver', 'tabela')} title="Tabela"><List size={16} /></button>
+      <div className="card p-3 mb-4 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <input className="input max-w-xs" placeholder="Buscar por nome ou CNPJ" value={q} onChange={(e) => set('q', e.target.value)} />
+          <div className="flex flex-wrap gap-1">
+            {prods.data?.filter((p) => p.active).map((p) => {
+              const on = produtos.includes(p.code);
+              return <button key={p.code} onClick={() => { set('produtos', on ? produtos.filter((x) => x !== p.code) : [...produtos, p.code]); if (on) set('modulos', modulos.filter((m) => !m.startsWith(p.code + ':'))); }} className={`chip border transition-colors ${on ? 'border-transparent' : 'border-line bg-transparent text-ink-2'}`} style={on ? { background: p.color + '22', color: p.color } : undefined}>{p.name}</button>;
+            })}
+          </div>
+          {produtos.length + modulos.length > 1 && (
+            <select className="input w-auto" value={mode} onChange={(e) => set('modo', e.target.value)}>
+              <option value="or">tem qualquer um</option>
+              <option value="and">tem todos</option>
+            </select>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            <Toggle checked={arquivados} onChange={(v) => set('arquivados', v ? '1' : null)} label="arquivados" />
+            {view === 'tabela' && <SeletorColunas colunas={colunas} {...colunasEscolhidas} />}
+            <div className="flex rounded-lg border border-line overflow-hidden">
+              <button className={`px-2 py-1.5 ${view === 'cards' ? 'bg-accent-soft text-accent-ink' : 'text-muted'}`} onClick={() => set('ver', null)} title="Cards"><LayoutGrid size={16} /></button>
+              <button className={`px-2 py-1.5 ${view === 'tabela' ? 'bg-accent-soft text-accent-ink' : 'text-muted'}`} onClick={() => set('ver', 'tabela')} title="Tabela"><List size={16} /></button>
+            </div>
           </div>
         </div>
+        {modulosFiltraveis.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1 text-[12.5px]">
+            <span className="text-muted mr-1">módulos:</span>
+            {modulosFiltraveis.map((m) => {
+              const on = modulos.includes(m.key);
+              return <button key={m.key} onClick={() => set('modulos', on ? modulos.filter((x) => x !== m.key) : [...modulos, m.key])} className={`chip border transition-colors ${on ? 'border-transparent' : 'border-line bg-transparent text-ink-2'}`} style={on ? { background: m.color + '22', color: m.color } : undefined}>{m.label}</button>;
+            })}
+          </div>
+        )}
       </div>
 
       {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? (
-        <Vazio titulo="Nenhum cliente encontrado" texto={q || produtos.length ? 'Tente outra busca ou limpe os filtros.' : 'Cadastre o primeiro cliente para começar.'} acao={<Can permission="records.write"><button className="btn-primary" onClick={() => setNovo(true)}><Plus size={16} /> Novo cliente</button></Can>} />
+        <Vazio titulo="Nenhum cliente encontrado" texto={q || produtos.length || modulos.length ? 'Tente outra busca ou limpe os filtros.' : 'Cadastre o primeiro cliente para começar.'} acao={<Can permission="records.write"><button className="btn-primary" onClick={() => setNovo(true)}><Plus size={16} /> Novo cliente</button></Can>} />
       ) : view === 'tabela' ? (
         <div className="card overflow-x-auto">
           <table className="table">
-            <thead><tr><th>Nome fantasia</th><th>Razão social</th><th>CNPJ</th><th>Produtos</th><th className="text-right">DIDs</th><th className="text-right">Aparelhos</th></tr></thead>
+            <thead><tr>{visiveis.map((c) => <th key={c.id} className={c.align === 'right' ? 'text-right' : ''}>{c.label}</th>)}</tr></thead>
             <tbody>
               {lista.data.items.map((c) => (
                 <tr key={c.id} className="cursor-pointer" onClick={() => nav(`/clientes/${c.id}`)}>
-                  <td className="font-medium">{c.tradeName} {c.archived && <Chip tone="muted">arquivado</Chip>}</td>
-                  <td className="text-ink-2">{c.legalName}</td>
-                  <td className="font-mono text-[12.5px] tnum">{cnpjFormatado(c.cnpj)}</td>
-                  <td><div className="flex flex-wrap gap-1">{c.products.map((p) => <Chip key={p.code} color={p.color}>{p.name}</Chip>)}</div></td>
-                  <td className="text-right tnum">{c.didCount}</td><td className="text-right tnum">{c.deviceCount}</td>
+                  {visiveis.map((col) => <td key={col.id} className={col.align === 'right' ? 'text-right' : ''}>{col.render(c)}</td>)}
                 </tr>
               ))}
             </tbody>
           </table>
+          {!visiveis.length && <div className="p-4 text-sm text-muted">Nenhuma coluna escolhida — use o botão "Colunas".</div>}
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -81,15 +201,12 @@ export function ClientesLista() {
                   <div className="text-muted text-[12.5px] truncate">{c.legalName}</div>
                 </div>
               </div>
-              <div className="flex flex-wrap gap-1">{c.products.map((p) => <Chip key={p.code} color={p.color}>{p.name}</Chip>)}{c.products.length === 0 && <span className="text-muted text-[12px]">sem produtos</span>}</div>
+              <div className="flex flex-wrap gap-1">
+                {c.products.map((p) => <Chip key={p.code} color={p.color} title={p.modules.length ? `módulos: ${p.modules.map((m) => m.name).join(', ')}` : undefined}>{p.name}{p.modules.length > 0 && <span className="opacity-70"> +{p.modules.length}</span>}</Chip>)}
+                {c.products.length === 0 && <span className="text-muted text-[12px]">sem produtos</span>}
+              </div>
               <div className="flex items-center gap-2 text-[12.5px] mt-auto">
-                {c.links.web ? (
-                  <>
-                    <a onClick={(e) => e.stopPropagation()} href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary btn-sm"><ExternalLink size={13} /> abrir</a>
-                    {c.links.ssh && <a onClick={(e) => e.stopPropagation()} href={c.links.ssh} className="btn-secondary btn-sm"><Terminal size={13} /> SSH</a>}
-                    {c.links.fop2 && <a onClick={(e) => e.stopPropagation()} href={c.links.fop2} target="_blank" rel="noreferrer" className="btn-secondary btn-sm">FOP2</a>}
-                  </>
-                ) : <span className="text-muted italic">servidor não configurado</span>}
+                <Atalhos c={c} />
                 <span className="ml-auto text-muted tnum">{c.didCount} DIDs · {c.deviceCount} aparelhos</span>
               </div>
             </Link>

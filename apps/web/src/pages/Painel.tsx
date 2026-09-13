@@ -25,10 +25,10 @@ export function Painel() {
           <div className="flex items-center justify-between mb-3"><h2 className="font-display font-semibold">Ocupação dos circuitos</h2><Link to="/circuitos" className="link text-sm">todos</Link></div>
           {d.circuits.length === 0 ? <div className="text-muted text-sm">Nenhum circuito cadastrado.</div> : (
             <table className="table">
-              <thead><tr><th>Circuito</th><th className="text-right">Canais</th><th className="text-right">DIDs</th><th className="text-right">Livres</th><th>DIDs por canal</th></tr></thead>
+              <thead><tr><th>Circuito</th><th className="text-right">Canais</th><th className="text-right">DIDs</th><th className="text-right">Livres</th><th>Em uso</th></tr></thead>
               <tbody>
                 {d.circuits.slice(0, 8).map((c) => (
-                  <tr key={c.id}><td><Link className="link" to={`/circuitos/${c.id}`}>{c.name}</Link> <span className="text-muted text-[12px]">{c.carrierName}</span></td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.total}</td><td className="text-right tnum">{c.free}</td><td><Ocupacao total={c.total} channels={c.channels} /></td></tr>
+                  <tr key={c.id}><td><Link className="link" to={`/circuitos/${c.id}`}>{c.name}</Link> <span className="text-muted text-[12px]">{c.carrierName}</span></td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.total}</td><td className="text-right tnum">{c.free}</td><td><Ocupacao total={c.total} assigned={c.assigned} /></td></tr>
                 ))}
               </tbody>
             </table>

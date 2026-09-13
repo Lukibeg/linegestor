@@ -1,7 +1,7 @@
 /** Clientes e assinaturas de produto. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema } from '@gestor/shared';
+import { AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema, ModuloGravarSchema } from '@gestor/shared';
 import * as clientsSvc from '../services/clients.js';
 import * as didsSvc from '../services/dids.js';
 import * as inv from '../services/inventory.js';
@@ -65,6 +65,20 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const row = await clientsSvc.deactivateSubscription(app.db, req.params.id, req.params.productCode);
       await app.audit(req, { action: 'unsubscribe', entityType: 'subscription', entityId: row.id, summary: `Encerrou o produto ${req.params.productCode} no cliente ${req.params.id}` });
+      return clientsSvc.get(app.db, req.params.id);
+    });
+
+  app.put('/:id/modules', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Ligar/ajustar um módulo de um produto do cliente (ex.: FOP2 dentro do LinePBX)', params: Id, body: ModuloGravarSchema } },
+    async (req) => {
+      const r = await clientsSvc.upsertModule(app.db, app.vault, req.params.id, req.body, req.user!.id);
+      await app.audit(req, { action: r.created ? 'subscribe' : 'update', entityType: 'subscription_module', entityId: r.subscriptionModuleId, summary: `${r.created ? 'Ligou' : 'Ajustou'} o módulo ${r.moduleName} (${r.productName}) no cliente ${req.params.id}`, after: { ...req.body, settings: req.body.settings ?? {} } });
+      return clientsSvc.get(app.db, req.params.id);
+    });
+
+  app.delete('/:id/modules/:productCode/:moduleCode', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Desligar um módulo (mantém histórico)', params: Id.extend({ productCode: z.string(), moduleCode: z.string() }) } },
+    async (req) => {
+      const row = await clientsSvc.deactivateModule(app.db, req.params.id, req.params.productCode, req.params.moduleCode);
+      await app.audit(req, { action: 'unsubscribe', entityType: 'subscription_module', entityId: row.id, summary: `Desligou o módulo ${row.moduleName} (${row.productName}) no cliente ${req.params.id}` });
       return clientsSvc.get(app.db, req.params.id);
     });
 

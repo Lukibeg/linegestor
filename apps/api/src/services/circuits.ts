@@ -29,8 +29,23 @@ function shape(r: any) {
     authPassword: { hasSecret: !!r.authPasswordSecretId, secretId: r.authPasswordSecretId ?? null },
     notes: r.notes, createdAt: r.createdAt, updatedAt: r.updatedAt, deletedAt: r.deletedAt,
     dids: { total, assigned, free: total - assigned },
-    /** DIDs por canal — acima de ~10 costuma indicar feixe saturado; 0 canais com DIDs é inconsistência */
-    ratio: r.channels > 0 ? Math.round((total / r.channels) * 10) / 10 : null,
+  };
+}
+
+/** Resumo para os cartões no topo da tela: quantos circuitos, canais, valor mensal somado e a numeração inteira. */
+export async function summary(db: Db) {
+  const [c] = await db
+    .select({ circuits: sql<number>`count(*)`, channels: sql<number>`coalesce(sum(${circuits.channels}), 0)`, monthlyValueCents: sql<number>`coalesce(sum(${circuits.monthlyValueCents}), 0)` })
+    .from(circuits).where(isNull(circuits.deletedAt));
+  const [d] = await db
+    .select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})`, noCircuit: sql<number>`count(*) filter (where ${dids.circuitId} is null)` })
+    .from(dids).where(isNull(dids.deletedAt));
+  const total = Number(d?.total ?? 0), assigned = Number(d?.assigned ?? 0);
+  return {
+    circuits: Number(c?.circuits ?? 0),
+    channels: Number(c?.channels ?? 0),
+    monthlyValueCents: Number(c?.monthlyValueCents ?? 0),
+    dids: { total, assigned, free: total - assigned, noCircuit: Number(d?.noCircuit ?? 0) },
   };
 }
 

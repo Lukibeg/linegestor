@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { Plus } from 'lucide-react';
 import { api } from '../../api/index.js';
-import type { Role, User } from '../../api/types.js';
+import type { Product, ProductModule, Role, User } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { useAuth } from '../../lib/auth.js';
 import { Campo, Carregando, Chip, Modal, Paginacao, Spinner, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
@@ -101,13 +101,59 @@ function Catalogo({ tipo, nome, novo, setNovo, onAdd }: { tipo: string; nome: st
   );
 }
 
+/** Produtos e, dentro de cada um, seus módulos (Omniboard, FOP2, NPS…). Módulos novos podem ser criados aqui. */
 function Produtos() {
   const q = useQuery({ queryKey: ['products'], queryFn: api.admin.products }); const qc = useQueryClient(); const toast = useToast();
+  const [novoModulo, setNovoModulo] = useState<Product | null>(null);
   const upd = async (id: string, d: Record<string, unknown>) => { try { await api.admin.updateProduct(id, d); await qc.invalidateQueries({ queryKey: ['products'] }); } catch (e) { toast.push('erro', mensagemErro(e)); } };
+  const updModulo = async (p: Product, m: ProductModule, d: Record<string, unknown>) => { try { await api.admin.upsertModule(p.id, { code: m.code, name: m.name, ...d }); await qc.invalidateQueries({ queryKey: ['products'] }); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;
   return (
-    <div className="card overflow-x-auto"><table className="table"><thead><tr><th>Produto</th><th>Código</th><th>Descrição</th><th>Cor</th><th>Config. própria</th><th>Ativo</th></tr></thead>
-      <tbody>{q.data?.map((p) => <tr key={p.id}><td><Chip color={p.color}>{p.name}</Chip></td><td className="font-mono text-muted">{p.code}</td><td className="text-ink-2 text-[13px]">{p.description}</td><td><input type="color" value={p.color} onChange={(e) => upd(p.id, { color: e.target.value })} className="w-8 h-6 border-0 bg-transparent cursor-pointer" /></td><td>{p.hasSettings ? 'sim' : '—'}</td><td><Toggle checked={p.active} onChange={(v) => upd(p.id, { active: v })} /></td></tr>)}</tbody></table></div>
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted">Um <b>produto</b> é o que o cliente assina. Um <b>módulo</b> é uma parte opcional dentro do produto (FOP2 e Omniboard dentro do LinePBX; Dashboard de filas dentro do LineChat). Desativar esconde das telas sem apagar histórico.</p>
+      {q.data?.map((p) => (
+        <div key={p.id} className="card">
+          <div className="p-3 flex flex-wrap items-center gap-3 border-b border-line">
+            <Chip color={p.color}>{p.name}</Chip>
+            <span className="font-mono text-muted text-[12.5px]">{p.code}</span>
+            <span className="text-ink-2 text-[13px] flex-1 min-w-[200px]">{p.description}</span>
+            <label className="flex items-center gap-1 text-[12.5px] text-muted">cor <input type="color" value={p.color} onChange={(e) => upd(p.id, { color: e.target.value })} className="w-8 h-6 border-0 bg-transparent cursor-pointer" /></label>
+            {p.hasSettings && <span className="text-[12px] text-muted">config. própria</span>}
+            <Toggle checked={p.active} onChange={(v) => upd(p.id, { active: v })} label="ativo" />
+          </div>
+          <div className="p-3">
+            <div className="flex items-center justify-between mb-2"><span className="eyebrow">Módulos</span><button className="btn-ghost btn-sm" onClick={() => setNovoModulo(p)}><Plus size={14} /> novo módulo</button></div>
+            {p.modules.length === 0 ? <div className="text-muted text-[12.5px]">Este produto não tem módulos.</div> : (
+              <table className="table"><thead><tr><th>Módulo</th><th>Código</th><th>Descrição</th><th>Config. própria</th><th>Ativo</th></tr></thead>
+                <tbody>{p.modules.map((m) => <tr key={m.id}><td className="font-medium">{m.name}</td><td className="font-mono text-muted">{m.code}</td><td className="text-ink-2 text-[13px]">{m.description}</td><td>{m.hasSettings ? 'sim' : '—'}</td><td><Toggle checked={m.active} onChange={(v) => updModulo(p, m, { active: v })} /></td></tr>)}</tbody></table>
+            )}
+          </div>
+        </div>
+      ))}
+      {novoModulo && <ModuloCatalogoForm product={novoModulo} onClose={() => setNovoModulo(null)} />}
+    </div>
+  );
+}
+
+function ModuloCatalogoForm({ product, onClose }: { product: Product; onClose: () => void }) {
+  const qc = useQueryClient(); const toast = useToast();
+  const [f, setF] = useState({ name: '', code: '', description: '' });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const code = f.code || f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const save = async () => {
+    setBusy(true); setErr('');
+    try { await api.admin.upsertModule(product.id, { name: f.name, code, description: f.description || null }); await qc.invalidateQueries({ queryKey: ['products'] }); toast.push('ok', `Módulo ${f.name} criado em ${product.name}`); onClose(); }
+    catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Modal open onClose={onClose} titulo={<span className="flex items-center gap-2">Novo módulo em <Chip color={product.color}>{product.name}</Chip></span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Criar'}</button></>}>
+      <div className="flex flex-col gap-3">
+        <Campo label="Nome"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus placeholder="ex.: Gravação de chamadas" /></Campo>
+        <Campo label="Código" dica="gerado do nome; só letras minúsculas, números e _"><input className="input font-mono" value={code} onChange={(e) => setF({ ...f, code: e.target.value })} /></Campo>
+        <Campo label="Descrição" dica="uma frase"><input className="input" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Campo>
+        {err && <div className="text-bad text-sm">{err}</div>}
+      </div>
+    </Modal>
   );
 }
 

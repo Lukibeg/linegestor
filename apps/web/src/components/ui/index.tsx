@@ -204,15 +204,14 @@ export function Kpi({ label, valor, sub, tone = 'neutral' }: { label: string; va
   );
 }
 
-/** Barra de ocupação (DIDs ÷ canais). */
-export function Ocupacao({ total, channels }: { total: number; channels: number }) {
-  const ratio = channels > 0 ? Math.round((total / channels) * 10) / 10 : null;
-  const pct = ratio === null ? 100 : Math.min(100, (ratio / 12) * 100);
-  const tone = ratio === null ? (total > 0 ? 'bg-bad' : 'bg-line-strong') : ratio >= 10 ? 'bg-signal' : 'bg-ok';
+/** Barra de uso da numeração: quantos DIDs do circuito estão com cliente (em uso) e quantos estão livres. */
+export function Ocupacao({ total, assigned }: { total: number; assigned: number }) {
+  const pct = total > 0 ? Math.round((assigned / total) * 100) : 0;
+  const tone = total === 0 ? 'bg-line-strong' : pct >= 90 ? 'bg-signal' : 'bg-ok';
   return (
-    <div className="flex items-center gap-2 min-w-[140px]" title={ratio === null ? 'sem canais' : `${ratio} DIDs por canal`}>
+    <div className="flex items-center gap-2 min-w-[140px]" title={total === 0 ? 'sem DIDs' : `${assigned} de ${total} em uso · ${total - assigned} livres`}>
       <div className="flex-1 h-2 rounded-full bg-surface-2 overflow-hidden"><div className={`h-full ${tone}`} style={{ width: `${pct}%` }} /></div>
-      <span className="font-mono text-[11.5px] text-muted tnum w-14 text-right">{ratio === null ? '—' : `${ratio}/canal`}</span>
+      <span className="font-mono text-[11.5px] text-muted tnum w-12 text-right">{total === 0 ? '—' : `${pct}%`}</span>
     </div>
   );
 }

@@ -2,7 +2,7 @@
  * Carga inicial do banco ("seed").
  *
  * Idempotente: pode rodar quantas vezes quiser — o que já existe não é duplicado.
- * Cria: os 8 produtos, operadoras, hospedagens, categorias, os 4 papéis, as organizações
+ * Cria: os produtos e seus módulos, operadoras, hospedagens, categorias, os 4 papéis, as organizações
  * internas (Ingline Systems e VoiceNet) e o primeiro administrador.
  *
  * Com `--demo`, cria também clientes, circuitos, DIDs e aparelhos FICTÍCIOS para testar a interface.
@@ -13,7 +13,7 @@ import './env.js';
 import argon2 from 'argon2';
 import { eq, sql } from 'drizzle-orm';
 import {
-  CATEGORIAS_APARELHO_INICIAIS, DEFAULT_ROLES, HOSPEDAGENS_INICIAIS, OPERADORAS_INICIAIS, ORGANIZACOES_INTERNAS, PRODUTOS_INICIAIS,
+  CATEGORIAS_APARELHO_INICIAIS, DEFAULT_ROLES, HOSPEDAGENS_INICIAIS, MODULOS_INICIAIS, OPERADORAS_INICIAIS, ORGANIZACOES_INTERNAS, PRODUTOS_INICIAIS,
   gerarFaixaDids,
 } from '@gestor/shared';
 import { createDb } from './index.js';
@@ -42,6 +42,13 @@ for (const [i, p] of PRODUTOS_INICIAIS.entries()) {
     .insert(s.products)
     .values({ id: newId(), code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: i })
     .onConflictDoUpdate({ target: s.products.code, set: { name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: i } });
+}
+const productIdByCode = Object.fromEntries((await db.select({ id: s.products.id, code: s.products.code }).from(s.products)).map((p) => [p.code, p.id]));
+for (const [i, m] of MODULOS_INICIAIS.entries()) {
+  await db
+    .insert(s.productModules)
+    .values({ id: newId(), productId: productIdByCode[m.product]!, code: m.code, name: m.name, description: m.description, hasSettings: m.hasSettings, sortOrder: i })
+    .onConflictDoUpdate({ target: [s.productModules.productId, s.productModules.code], set: { name: m.name, description: m.description, hasSettings: m.hasSettings, sortOrder: i } });
 }
 for (const n of OPERADORAS_INICIAIS) await upsertByName(s.carriers, n);
 for (const n of HOSPEDAGENS_INICIAIS) await upsertByName(s.hostingProviders, n);
@@ -91,16 +98,18 @@ if (demo) {
     const [voicenet] = await db.select().from(s.clients).where(eq(s.clients.internalCode, 'voicenet'));
     const admin = (await db.select().from(s.users).where(eq(s.users.email, adminEmail)))[0]!;
 
+    // p = produtos · m = módulos ligados (produto:modulo)
     const demoClients = [
-      { t: 'Clínica Aurora', l: 'Clínica Aurora Serviços Médicos LTDA', cnpj: '11222333000181', p: ['linepbx', 'fop2', 'voicenet'], host: 'Vultr', dom: 'aurora.linepbx.com.br', ip: '203.0.113.10' },
-      { t: 'Distribuidora Norte', l: 'Norte Comércio e Distribuição LTDA', cnpj: '22333444000181', p: ['linepbx', 'voicenet', 'linechat', 'equipamentos'], host: 'Local', dom: null, ip: '192.0.2.50' },
-      { t: 'Hospital Vale Verde', l: 'Associação Hospitalar Vale Verde', cnpj: '33444555000181', p: ['linepbx', 'fop2', 'omniboard', 'linereports', 'voicenet', 'equipamentos'], host: 'Hetzner', dom: 'valeverde.linepbx.com.br', ip: '198.51.100.7' },
-      { t: 'Escritório Prado & Lima', l: 'Prado e Lima Advogados Associados', cnpj: '44555666000181', p: ['voicenet', 'linechat'], host: null, dom: null, ip: null },
-      { t: 'Supermercado Bom Preço', l: 'Bom Preço Supermercados LTDA', cnpj: '55666777000181', p: ['linepbx', 'fop2', 'voicenet', 'equipamentos'], host: 'Nuvem (Local)', dom: 'bompreco.linepbx.com.br', ip: '203.0.113.88' },
-      { t: 'Laboratório Exame Certo', l: 'Exame Certo Análises Clínicas LTDA', cnpj: '66777888000181', p: ['linepbx', 'voicenet'], host: 'AWS', dom: 'exame.linepbx.com.br', ip: '203.0.113.121' },
-      { t: 'Construtora Horizonte', l: 'Horizonte Engenharia e Construções S.A.', cnpj: '77888999000181', p: ['voicenet'], host: null, dom: null, ip: null },
-      { t: 'Home Care Viver Bem', l: 'Viver Bem Atenção Domiciliar LTDA', cnpj: '88999000000198', p: ['linepbx', 'omniboard', 'voicenet', 'linechat', 'equipamentos'], host: 'Vultr', dom: 'viverbem.linepbx.com.br', ip: '203.0.113.200' },
+      { t: 'Clínica Aurora', l: 'Clínica Aurora Serviços Médicos LTDA', cnpj: '11222333000181', p: ['linepbx', 'voicenet'], m: ['linepbx:fop2'], host: 'Vultr', dom: 'aurora.linepbx.com.br', ip: '203.0.113.10' },
+      { t: 'Distribuidora Norte', l: 'Norte Comércio e Distribuição LTDA', cnpj: '22333444000181', p: ['linepbx', 'voicenet', 'linechat', 'equipamentos'], m: ['linechat:dashboard_filas'], host: 'Local', dom: null, ip: '192.0.2.50' },
+      { t: 'Hospital Vale Verde', l: 'Associação Hospitalar Vale Verde', cnpj: '33444555000181', p: ['linepbx', 'linereports', 'voicenet', 'equipamentos'], m: ['linepbx:fop2', 'linepbx:omniboard', 'linepbx:nps'], host: 'Hetzner', dom: 'valeverde.linepbx.com.br', ip: '198.51.100.7' },
+      { t: 'Escritório Prado & Lima', l: 'Prado e Lima Advogados Associados', cnpj: '44555666000181', p: ['voicenet', 'linechat'], m: ['linechat:nps'], host: null, dom: null, ip: null },
+      { t: 'Supermercado Bom Preço', l: 'Bom Preço Supermercados LTDA', cnpj: '55666777000181', p: ['linepbx', 'voicenet', 'equipamentos'], m: ['linepbx:fop2'], host: 'Nuvem (Local)', dom: 'bompreco.linepbx.com.br', ip: '203.0.113.88' },
+      { t: 'Laboratório Exame Certo', l: 'Exame Certo Análises Clínicas LTDA', cnpj: '66777888000181', p: ['linepbx', 'voicenet'], m: [], host: 'AWS', dom: 'exame.linepbx.com.br', ip: '203.0.113.121' },
+      { t: 'Construtora Horizonte', l: 'Horizonte Engenharia e Construções S.A.', cnpj: '77888999000181', p: ['voicenet'], m: [], host: null, dom: null, ip: null },
+      { t: 'Home Care Viver Bem', l: 'Viver Bem Atenção Domiciliar LTDA', cnpj: '88999000000198', p: ['linepbx', 'voicenet', 'linechat', 'equipamentos'], m: ['linepbx:omniboard', 'linechat:dashboard_filas', 'linechat:nps'], host: 'Vultr', dom: 'viverbem.linepbx.com.br', ip: '203.0.113.200' },
     ];
+    const modules = await db.select({ id: s.productModules.id, code: s.productModules.code, productId: s.productModules.productId }).from(s.productModules);
 
     const clientIds: Record<string, string> = {};
     for (const c of demoClients) {
@@ -113,8 +122,14 @@ if (demo) {
         if (code === 'linepbx') {
           await db.insert(s.linepbxSettings).values({ subscriptionId: sid, hostingId: c.host ? hostings[c.host]! : null, serverIp: c.ip, domain: c.dom, sshUser: 'root', sshPort: 22 });
         }
-        if (code === 'fop2') await db.insert(s.fop2Settings).values({ subscriptionId: sid, adminExtension: '1000' });
-        if (code === 'omniboard') await db.insert(s.omniboardSettings).values({ subscriptionId: sid, adminLogin: 'admin@' + c.t.toLowerCase().replace(/\W+/g, '') + '.com.br' });
+        for (const pm of c.m.filter((x) => x.startsWith(code + ':'))) {
+          const mcode = pm.split(':')[1]!;
+          const mod = modules.find((x) => x.productId === prod[code] && x.code === mcode)!;
+          const smid = newId();
+          await db.insert(s.subscriptionModules).values({ id: smid, subscriptionId: sid, moduleId: mod.id, activatedAt: new Date(2024, 4 + c.m.indexOf(pm), 1) });
+          if (mcode === 'fop2') await db.insert(s.fop2Settings).values({ subscriptionModuleId: smid, adminExtension: '1000' });
+          if (mcode === 'omniboard') await db.insert(s.omniboardSettings).values({ subscriptionModuleId: smid, adminLogin: 'admin@' + c.t.toLowerCase().replace(/\W+/g, '') + '.com.br' });
+        }
       }
     }
 

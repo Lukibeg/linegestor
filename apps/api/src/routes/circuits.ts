@@ -11,6 +11,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Listar circuitos com ocupação (DIDs, livres, canais)', querystring: PaginacaoSchema.extend({ q: z.string().optional(), carrierId: z.string().optional() }) } },
     async (req) => svc.list(app.db, req.query));
 
+  app.get('/summary', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Resumo: circuitos, canais, valor mensal somado e numeração (total, em uso, livre, sem circuito)' } }, async () => svc.summary(app.db));
+
   app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Lista curta para seletores' } }, async () => svc.options(app.db));
 
   app.get('/:id', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Detalhe do circuito', params: Id } }, async (req) => svc.get(app.db, req.params.id));

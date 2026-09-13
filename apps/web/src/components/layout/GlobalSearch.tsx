@@ -22,7 +22,7 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
 
   if (!open) return null;
   const go = (path: string) => { onClose(); nav(path); };
-  const first = res && ((res.clients[0] && `/clientes/${res.clients[0].id}`) || (res.dids[0] && `/dids?q=${res.dids[0].number}`) || (res.circuits[0] && `/circuitos/${res.circuits[0].id}`) || (res.devices[0] && `/inventario/aparelhos/${res.devices[0].id}`));
+  const first = res && ((res.clients[0] && `/clientes/${res.clients[0].id}`) || (res.dids[0] && `/circuitos?aba=numeracao&q=${res.dids[0].number}`) || (res.circuits[0] && `/circuitos/${res.circuits[0].id}`) || (res.devices[0] && `/inventario/aparelhos/${res.devices[0].id}`));
   const total = res ? res.clients.length + res.dids.length + res.circuits.length + res.devices.length : 0;
 
   return (
@@ -38,7 +38,7 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
             : res && (
               <div className="py-1">
                 <Grupo titulo="Clientes" icon={Building2} items={res.clients.map((c) => ({ key: c.id, main: c.name, sub: `${c.legalName} · ${cnpjFormatado(c.cnpj)}`, go: () => go(`/clientes/${c.id}`) }))} />
-                <Grupo titulo="DIDs" icon={Hash} items={res.dids.map((d) => ({ key: d.id, main: d.numberFormatted, sub: `${d.clientName ?? 'livre'} · ${d.circuitName ?? 'sem circuito'}`, go: () => go(`/dids?q=${d.number}`) }))} />
+                <Grupo titulo="DIDs" icon={Hash} items={res.dids.map((d) => ({ key: d.id, main: d.numberFormatted, sub: `${d.clientName ?? 'livre'} · ${d.circuitName ?? 'sem circuito'}`, go: () => go(`/circuitos?aba=numeracao&q=${d.number}`) }))} />
                 <Grupo titulo="Circuitos" icon={Cable} items={res.circuits.map((c) => ({ key: c.id, main: c.name, sub: `${c.code} · ${c.carrierName ?? ''}`, go: () => go(`/circuitos/${c.id}`) }))} />
                 <Grupo titulo="Aparelhos" icon={Smartphone} items={res.devices.map((d) => ({ key: d.id, main: `${d.macFormatted}${d.tag ? ` · ${d.tag}` : ''}`, sub: `${d.modelName} · ${d.clientName ?? 'estoque'}`, go: () => go(`/inventario/aparelhos/${d.id}`) }))} />
               </div>

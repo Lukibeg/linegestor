@@ -11,8 +11,8 @@ describe('importar / exportar', () => {
     await s.post('/clients', { tradeName: 'Existente', legalName: 'Existente LTDA', cnpj: '11.222.333/0001-81' });
     const csv = [
       'cnpj;nome_fantasia;razao_social;produtos;dominio;ip_servidor;usuario_ssh;senha_ssh',
-      '11.222.333/0001-81;Existente Renomeado;Existente LTDA;linepbx|voicenet;ex.linepbx.com.br;203.0.113.5;root;abc123',
-      '22.333.444/0001-81;Novo Cliente;Novo LTDA;voicenet;;;;',
+      '11.222.333/0001-81;Existente Renomeado;Existente LTDA;linepbx|fop2|voicenet;ex.linepbx.com.br;203.0.113.5;root;abc123',
+      '22.333.444/0001-81;Novo Cliente;Novo LTDA;voicenet|linechat:nps;;;;',
       '99.999.999/9999-99;Errado;Errado LTDA;;;;;',
     ].join('\n');
     const p = await s.post('/data/import/preview', { entity: 'clients', csv, delimiter: ';' });
@@ -34,7 +34,16 @@ describe('importar / exportar', () => {
     const ex = list.items.find((c: any) => c.cnpj === '11222333000181');
     expect(ex.tradeName).toBe('Existente Renomeado');
     expect(ex.products.map((p: any) => p.code).sort()).toEqual(['linepbx', 'voicenet']);
+    // "fop2" no CSV do Nexus vira o módulo FOP2 dentro do LinePBX
+    expect(ex.products.find((p: any) => p.code === 'linepbx').modules.map((m: any) => m.code)).toEqual(['fop2']);
     expect(ex.links.ssh).toBe('ssh://root@203.0.113.5:22');
+    const novo = list.items.find((c: any) => c.cnpj === '22333444000181');
+    expect(novo.products.map((p: any) => p.code).sort()).toEqual(['linechat', 'voicenet']);
+    expect(novo.products.find((p: any) => p.code === 'linechat').modules.map((m: any) => m.code)).toEqual(['nps']);
+    // exportação traz a coluna de módulos
+    const exp = await s.get('/data/export/clients');
+    expect(exp.body).toContain('modulos');
+    expect(exp.body).toContain('linepbx:fop2');
   });
 
   it('importa DIDs apontando cliente por CNPJ e circuito por código', async () => {

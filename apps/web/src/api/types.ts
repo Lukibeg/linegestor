@@ -7,23 +7,36 @@ export type Me = { id: string; name: string; email: string; roleId: string; role
 export type ProductChip = { code: string; name: string; color: string };
 export type Links = { web: string | null; ssh: string | null; fop2: string | null };
 
+/** Um produto do cliente como aparece na lista: com data de ativação e os módulos ligados. */
+export type ClientProduct = ProductChip & { activatedAt: string | null; modules: Array<{ code: string; name: string; activatedAt: string | null }> };
+/** Servidor do LinePBX (só os dados que podem virar coluna; senha nunca vem aqui). */
+export type ClientServer = { hostingName: string | null; serverIp: string | null; domain: string | null; sshUser: string | null; sshPort: number | null };
+
 export type ClientListItem = {
   id: string; tradeName: string; legalName: string; cnpj: string; logoUrl: string | null; archived: boolean; isInternal: boolean;
-  products: ProductChip[]; links: Links; didCount: number; deviceCount: number;
+  notes: string | null; createdAt: string; updatedAt: string;
+  products: ClientProduct[]; server: ClientServer | null; links: Links; didCount: number; deviceCount: number;
 };
 export type SecretRef = { hasSecret: boolean; secretId: string | null };
+/** Um módulo ligado dentro de um produto do cliente (ex.: FOP2 dentro do LinePBX). */
+export type SubscriptionModule = {
+  id: string; moduleCode: string; moduleName: string; hasSettings: boolean; active: boolean;
+  activatedAt: string | null; deactivatedAt: string | null; notes: string | null; settings: Record<string, any> | null;
+};
 export type Subscription = {
   id: string; productCode: string; productName: string; color: string; hasSettings: boolean; active: boolean;
-  activatedAt: string | null; deactivatedAt: string | null; monthlyValueCents: number | null; notes: string | null;
-  settings: Record<string, any> | null;
+  activatedAt: string | null; deactivatedAt: string | null; notes: string | null;
+  settings: Record<string, any> | null; modules: SubscriptionModule[];
 };
-export type ClientFull = ClientListItem & { notes: string | null; subscriptions: Subscription[]; createdAt: string; updatedAt: string };
+export type ClientFull = ClientListItem & { subscriptions: Subscription[] };
 
 export type Circuit = {
   id: string; name: string; code: string; carrierId: string | null; carrierName: string | null; channels: number;
   ownerClientId: string | null; ownerName: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null;
-  authUsername: string | null; authPassword: SecretRef; notes: string | null; dids: { total: number; assigned: number; free: number }; ratio: number | null;
+  authUsername: string | null; authPassword: SecretRef; notes: string | null; dids: { total: number; assigned: number; free: number };
 };
+/** Os cartões no topo da tela de Circuitos. */
+export type CircuitSummary = { circuits: number; channels: number; monthlyValueCents: number; dids: { total: number; assigned: number; free: number; noCircuit: number } };
 
 export type Did = {
   id: string; number: string; numberFormatted: string; free: boolean; circuitId: string | null; circuitName: string | null; circuitCode: string | null; carrierName: string | null;
@@ -48,7 +61,7 @@ export type Movement = {
 export type Dashboard = {
   clients: { active: number; byProduct: Array<ProductChip & { n: number }> };
   dids: { total: number; assigned: number; free: number; noCircuit: number };
-  circuits: Array<{ id: string; name: string; carrierName: string | null; channels: number; total: number; assigned: number; free: number; ratio: number | null }>;
+  circuits: Array<{ id: string; name: string; carrierName: string | null; channels: number; total: number; assigned: number; free: number }>;
   devices: { inStock: number; withClients: number; maintenance: number; valueWithClientsCents: number };
   alerts: Array<{ kind: string; severity: 'warning' | 'critical'; message: string; count: number; link: string }>;
   recentMovements: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; userName: string; createdAt: string }>;
@@ -65,7 +78,8 @@ export type SearchResult = {
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number; free?: number };
 export type Option = { id: string; name: string; isInternal?: boolean; internalCode?: string | null };
 export type CatalogItem = { id: string; name: string; active: boolean };
-export type Product = { id: string; code: string; name: string; color: string; description: string | null; hasSettings: boolean; sortOrder: number; active: boolean };
+export type ProductModule = { id: string; code: string; name: string; description: string | null; hasSettings: boolean; sortOrder: number; active: boolean };
+export type Product = { id: string; code: string; name: string; color: string; description: string | null; hasSettings: boolean; sortOrder: number; active: boolean; modules: ProductModule[] };
 export type User = { id: string; name: string; email: string; active: boolean; roleId: string; roleName: string; lastLoginAt: string | null };
 export type Role = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean; userCount: number };
 export type AuditItem = { id: string; action: string; entityType: string; entityId: string | null; summary: string; before: unknown; after: unknown; userName: string | null; createdAt: string };

@@ -1,9 +1,9 @@
 /**
- * A moldura de todas as telas: menu lateral, barra superior com busca global (Ctrl+K), usuário e tema.
+ * A moldura de todas as telas: menu lateral (recolhível para só ícones), barra superior com busca global (Ctrl+K), usuário e tema.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Boxes, Building2, Cable, Hash, LayoutDashboard, LogOut, Menu, Moon, Search, Settings, Sun, Upload, X } from 'lucide-react';
+import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Menu, Moon, Search, Settings, Sun, Upload, X } from 'lucide-react';
 import { useAuth } from '../../lib/auth.js';
 import { IS_DEMO } from '../../api/index.js';
 import { GlobalSearch } from './GlobalSearch.js';
@@ -11,8 +11,7 @@ import { GlobalSearch } from './GlobalSearch.js';
 const NAV = [
   { to: '/', label: 'Painel', icon: LayoutDashboard, perm: 'records.read', end: true },
   { to: '/clientes', label: 'Clientes', icon: Building2, perm: 'records.read' },
-  { to: '/circuitos', label: 'Circuitos', icon: Cable, perm: 'records.read' },
-  { to: '/dids', label: 'DIDs', icon: Hash, perm: 'records.read' },
+  { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
   { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
   { to: '/dados', label: 'Importar / Exportar', icon: Upload, perm: ['data.import', 'data.export'] },
   { to: '/admin', label: 'Administração', icon: Settings, perm: ['admin.manage', 'audit.read', 'records.delete'] },
@@ -28,12 +27,20 @@ function useTheme() {
   return { theme, toggle: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')) };
 }
 
+/** O menu lateral lembra se está recolhido (só ícones) ou aberto, por navegador. */
+function useSidebar() {
+  const [collapsed, setCollapsed] = useState<boolean>(() => { try { return localStorage.getItem('gestor.menu') === 'recolhido'; } catch { return false; } });
+  useEffect(() => { try { localStorage.setItem('gestor.menu', collapsed ? 'recolhido' : 'aberto'); } catch { /* sem storage */ } }, [collapsed]);
+  return { collapsed, toggle: () => setCollapsed((c) => !c) };
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout, can } = useAuth();
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(false);
   const { theme, toggle } = useTheme();
+  const { collapsed, toggle: toggleSidebar } = useSidebar();
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setSearch(true); } };
@@ -42,28 +49,34 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   const items = NAV.filter((n) => (Array.isArray(n.perm) ? n.perm.some(can) : can(n.perm)));
+  // no celular o menu é sempre completo (abre por cima); no desktop pode ficar só com ícones
+  const hide = collapsed ? 'md:hidden' : '';
 
   return (
     <div className="min-h-full flex">
       {/* menu lateral */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-60 bg-surface border-r border-line flex flex-col transition-transform md:translate-x-0 md:static ${open ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="h-14 flex items-center gap-2 px-4 border-b border-line">
-          <span className="w-7 h-7 rounded-lg bg-accent text-white font-display font-bold flex items-center justify-center text-sm">G</span>
-          <span className="font-display font-semibold">Gestor</span>
-          {IS_DEMO && <span className="chip bg-signal-soft text-signal ml-auto">demo</span>}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-60 ${collapsed ? 'md:w-16' : 'md:w-60'} bg-surface border-r border-line flex flex-col transition-[transform,width] duration-200 md:translate-x-0 md:static ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className={`h-14 flex items-center gap-2 px-4 border-b border-line ${collapsed ? 'md:justify-center md:px-0' : ''}`}>
+          <span className="w-7 h-7 rounded-lg bg-accent text-white font-display font-bold flex items-center justify-center text-sm shrink-0" title="Ingline Systems Gestor">G</span>
+          <span className={`font-display font-semibold ${hide}`}>Gestor</span>
+          {IS_DEMO && <span className={`chip bg-signal-soft text-signal ml-auto ${hide}`}>demo</span>}
           <button className="md:hidden ml-auto btn-ghost btn-sm" onClick={() => setOpen(false)} aria-label="Fechar menu"><X size={16} /></button>
         </div>
         <nav className="p-2 flex flex-col gap-0.5 flex-1">
           {items.map((n) => (
-            <NavLink key={n.to} to={n.to} end={n.end} onClick={() => setOpen(false)} className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium ${isActive ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
-              <n.icon size={17} /> {n.label}
+            <NavLink key={n.to} to={n.to} end={n.end} onClick={() => setOpen(false)} title={collapsed ? n.label : undefined}
+              className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium ${collapsed ? 'md:justify-center md:px-0' : ''} ${isActive ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
+              <n.icon size={17} className="shrink-0" /> <span className={hide}>{n.label}</span>
             </NavLink>
           ))}
         </nav>
-        <div className="p-3 border-t border-line text-[12px] text-muted">
+        <div className={`p-3 border-t border-line text-[12px] text-muted ${hide}`}>
           <div className="font-semibold text-ink-2 truncate">{user?.name}</div>
           <div className="truncate">{user?.roleName}</div>
         </div>
+        <button className="hidden md:flex items-center justify-center gap-2 h-10 border-t border-line text-muted hover:text-ink hover:bg-surface-2 text-[12px]" onClick={toggleSidebar} title={collapsed ? 'Expandir menu' : 'Recolher menu'} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
+          {collapsed ? <ChevronsRight size={16} /> : <><ChevronsLeft size={16} /> Recolher menu</>}
+        </button>
       </aside>
       {open && <div className="fixed inset-0 bg-black/30 z-30 md:hidden" onClick={() => setOpen(false)} />}
 
@@ -75,6 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Search size={15} /> <span className="flex-1">Buscar cliente, número, circuito ou MAC…</span> <span className="kbd hidden sm:inline">Ctrl K</span>
           </button>
           <div className="ml-auto flex items-center gap-1">
+            {collapsed && <span className="hidden md:inline text-[12px] text-muted mr-1">{user?.name}</span>}
             <button className="btn-ghost btn-sm" onClick={toggle} title="Tema claro/escuro">{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
             <button className="btn-ghost btn-sm" onClick={async () => { await logout(); nav('/entrar'); }} title="Sair"><LogOut size={16} /></button>
           </div>

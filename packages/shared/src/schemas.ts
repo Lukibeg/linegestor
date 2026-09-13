@@ -58,6 +58,8 @@ export const ClienteListarSchema = PaginacaoSchema.extend({
   products: z.union([z.string(), z.array(z.string())]).optional().transform((v) => (v == null ? [] : Array.isArray(v) ? v : [v])),
   /** "or" = tem qualquer um dos produtos · "and" = tem todos */
   mode: z.enum(['or', 'and']).default('or'),
+  /** módulos para filtrar, no formato "produto:modulo" (ex.: "linepbx:fop2"); segue o mesmo modo */
+  modules: z.union([z.string(), z.array(z.string())]).optional().transform((v) => (v == null ? [] : Array.isArray(v) ? v : [v])),
   includeArchived: z.coerce.boolean().default(false),
 });
 
@@ -85,15 +87,36 @@ export const SzchatSettingsSchema = z.object({
   adminPassword: SenhaEntradaSchema.optional(),
 });
 
+/**
+ * Marcar/ajustar um produto no cliente. Não existe valor mensal por produto:
+ * por decisão do negócio, só aparelhos e circuitos têm custo registrado.
+ */
 export const AssinaturaGravarSchema = z.object({
   productCode: z.string().min(1),
   activatedAt: z.coerce.date().nullable().optional(),
   deactivatedAt: z.coerce.date().nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
-  monthlyValueCents: CentavosSchema.nullable().optional(),
-  settings: z
-    .union([LinePbxSettingsSchema, Fop2SettingsSchema, OmniboardSettingsSchema, SzchatSettingsSchema, z.object({})])
-    .optional(),
+  settings: z.union([LinePbxSettingsSchema, SzchatSettingsSchema, z.object({})]).optional(),
+});
+
+/** Ligar/ajustar um MÓDULO dentro de um produto que o cliente já assina (ex.: FOP2 dentro do LinePBX). */
+export const ModuloGravarSchema = z.object({
+  productCode: z.string().min(1),
+  moduleCode: z.string().min(1),
+  activatedAt: z.coerce.date().nullable().optional(),
+  deactivatedAt: z.coerce.date().nullable().optional(),
+  notes: z.string().max(5000).nullable().optional(),
+  settings: z.union([Fop2SettingsSchema, OmniboardSettingsSchema, z.object({})]).optional(),
+});
+
+/** Administração: criar ou editar um módulo do catálogo de um produto. */
+export const ModuloCatalogoSchema = z.object({
+  code: z.string().trim().min(1).max(40).regex(/^[a-z0-9_]+$/, 'Use só letras minúsculas, números e _'),
+  name: z.string().trim().min(1).max(80),
+  description: z.string().max(300).nullable().optional(),
+  hasSettings: z.boolean().optional(),
+  active: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
 });
 
 // ---------- Circuitos ----------
@@ -248,6 +271,8 @@ export type ClienteCriar = z.infer<typeof ClienteCriarSchema>;
 export type ClienteAtualizar = z.infer<typeof ClienteAtualizarSchema>;
 export type ClienteListar = z.infer<typeof ClienteListarSchema>;
 export type AssinaturaGravar = z.infer<typeof AssinaturaGravarSchema>;
+export type ModuloGravar = z.infer<typeof ModuloGravarSchema>;
+export type ModuloCatalogo = z.infer<typeof ModuloCatalogoSchema>;
 export type CircuitoGravar = z.infer<typeof CircuitoGravarSchema>;
 export type DidListar = z.infer<typeof DidListarSchema>;
 export type DidCriarFaixa = z.infer<typeof DidCriarFaixaSchema>;

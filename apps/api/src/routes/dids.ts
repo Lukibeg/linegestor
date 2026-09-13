@@ -22,7 +22,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return reply.status(201).send(r);
     });
 
-  app.patch('/:id', { preHandler: app.requirePermission('dids.assign'), schema: { tags: ['DIDs'], summary: 'Editar um DID (circuito, cliente, dono, observação)', params: Id, body: DidAtualizarSchema } },
+  app.patch('/:id', { preHandler: app.requirePermission('dids.assign'), schema: { tags: ['DIDs'], summary: 'Editar um DID (circuito, cliente, titular, observação)', params: Id, body: DidAtualizarSchema } },
     async (req) => {
       const { before, after } = await svc.update(app.db, req.params.id, req.body);
       await app.audit(req, { action: 'update', entityType: 'did', entityId: after.id, summary: `Editou o DID ${after.number}`, before, after });

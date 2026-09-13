@@ -31,14 +31,22 @@ describe('clientes', () => {
       settings: { domain: 'aurora.linepbx.com.br', serverIp: '203.0.113.10', sshUser: 'root', sshPort: 22, sshPassword: 'segredo-muito-secreto' },
     });
     expect(r.statusCode).toBe(200);
-    await s.put(`/clients/${id}/subscriptions`, { productCode: 'fop2', settings: { adminExtension: '1000' } });
+    // FOP2 é um módulo do LinePBX
+    const m = await s.put(`/clients/${id}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', settings: { adminExtension: '1000' } });
+    expect(m.statusCode).toBe(200);
     const ficha = (await s.get(`/clients/${id}`)).json();
     const lp = ficha.subscriptions.find((x: any) => x.productCode === 'linepbx');
     expect(lp.settings.sshPassword.hasSecret).toBe(true);
+    expect(lp.modules.map((x: any) => x.moduleCode)).toEqual(['fop2']);
+    expect(lp.modules[0].settings.adminExtension).toBe('1000');
     expect(JSON.stringify(ficha)).not.toContain('segredo-muito-secreto');
     expect(ficha.links.web).toBe('https://aurora.linepbx.com.br');
     expect(ficha.links.ssh).toBe('ssh://root@203.0.113.10:22');
     expect(ficha.links.fop2).toBe('https://aurora.linepbx.com.br/fop2/');
+    // a lista traz os detalhes que viram colunas: ativação, módulos, servidor
+    const item = (await s.get('/clients?q=aurora')).json().items[0];
+    expect(item.server.serverIp).toBe('203.0.113.10');
+    expect(item.products.find((p: any) => p.code === 'linepbx').modules[0].name).toBe('FOP2');
 
     // revelar exige confirmar a senha e fica na auditoria
     const sid = lp.settings.sshPassword.secretId;
@@ -58,25 +66,50 @@ describe('clientes', () => {
     expect(again.settings.sshPassword.secretId).toBe(sid);
   });
 
-  it('filtra por produtos em modo OU e E', async () => {
+  it('módulo só liga dentro de produto que o cliente assina', async () => {
+    const id = (await s.get('/clients?q=aurora')).json().items[0].id;
+    const r = await s.put(`/clients/${id}/modules`, { productCode: 'linechat', moduleCode: 'nps' });
+    expect(r.statusCode).toBe(400);
+    expect(r.json().error).toMatch(/Marque o produto LineChat/);
+    const inexistente = await s.put(`/clients/${id}/modules`, { productCode: 'linepbx', moduleCode: 'xyz' });
+    expect(inexistente.statusCode).toBe(404);
+  });
+
+  it('filtra por produtos e módulos em modo OU e E', async () => {
     await s.post('/clients', { tradeName: 'Só Voz', legalName: 'Só Voz LTDA', cnpj: '22.333.444/0001-81' });
     const voz = (await s.get('/clients?q=voz')).json().items[0].id;
     await s.put(`/clients/${voz}/subscriptions`, { productCode: 'voicenet' });
     const ou = (await s.get('/clients?products=linepbx&products=voicenet&mode=or')).json();
-    const e = (await s.get('/clients?products=linepbx&products=fop2&mode=and')).json();
+    const e = (await s.get('/clients?products=linepbx&products=voicenet&mode=and')).json();
     expect(ou.total).toBe(2);
-    expect(e.total).toBe(1);
-    expect(e.items[0].tradeName).toBe('Clínica Aurora');
+    expect(e.total).toBe(0);
+    const comFop2 = (await s.get('/clients?modules=linepbx:fop2')).json();
+    expect(comFop2.total).toBe(1);
+    expect(comFop2.items[0].tradeName).toBe('Clínica Aurora');
+    expect((await s.get('/clients?modules=linepbx:nps')).json().total).toBe(0);
   });
 
-  it('encerra um produto mantendo o histórico', async () => {
+  it('desliga um módulo e encerra um produto mantendo o histórico', async () => {
     const id = (await s.get('/clients?q=aurora')).json().items[0].id;
-    const r = await s.del(`/clients/${id}/subscriptions/fop2`);
+    const r = await s.del(`/clients/${id}/modules/linepbx/fop2`);
     expect(r.statusCode).toBe(200);
-    const fop2 = r.json().subscriptions.find((x: any) => x.productCode === 'fop2');
-    expect(fop2.active).toBe(false);
-    expect(fop2.deactivatedAt).toBeTruthy();
+    const lp = r.json().subscriptions.find((x: any) => x.productCode === 'linepbx');
+    expect(lp.modules[0].active).toBe(false);
+    expect(lp.modules[0].deactivatedAt).toBeTruthy();
     expect(r.json().links.fop2).toBeNull();
+    // desligar de novo: não há módulo ligado
+    expect((await s.del(`/clients/${id}/modules/linepbx/fop2`)).statusCode).toBe(404);
+    // religar mantém a configuração antiga
+    const again = (await s.put(`/clients/${id}/modules`, { productCode: 'linepbx', moduleCode: 'fop2' })).json();
+    expect(again.subscriptions.find((x: any) => x.productCode === 'linepbx').modules[0].settings.adminExtension).toBe('1000');
+    expect(again.links.fop2).toBe('https://aurora.linepbx.com.br/fop2/');
+    // encerrar o produto inteiro
+    const end = await s.del(`/clients/${id}/subscriptions/linepbx`);
+    const ended = end.json().subscriptions.find((x: any) => x.productCode === 'linepbx');
+    expect(ended.active).toBe(false);
+    expect(end.json().links.web).toBeNull();
+    // e marcar de novo para os testes seguintes
+    await s.put(`/clients/${id}/subscriptions`, { productCode: 'linepbx' });
   });
 
   it('arquiva, manda para a lixeira e restaura', async () => {

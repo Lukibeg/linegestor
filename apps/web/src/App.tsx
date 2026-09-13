@@ -13,7 +13,7 @@ import { ClientesLista } from './pages/clientes/Lista.js';
 import { ClienteFicha } from './pages/clientes/Ficha.js';
 import { CircuitosLista } from './pages/circuitos/Lista.js';
 import { CircuitoDetalhe } from './pages/circuitos/Detalhe.js';
-import { DidsLista } from './pages/dids/Lista.js';
+import { DidsRedirect } from './pages/dids/Lista.js';
 import { Inventario } from './pages/inventario/Index.js';
 import { AparelhoDetalhe } from './pages/inventario/Aparelho.js';
 import { Dados } from './pages/dados/Index.js';
@@ -40,7 +40,8 @@ export function App() {
             <Route path="/clientes/:id" element={<Protegido><ClienteFicha /></Protegido>} />
             <Route path="/circuitos" element={<Protegido><CircuitosLista /></Protegido>} />
             <Route path="/circuitos/:id" element={<Protegido><CircuitoDetalhe /></Protegido>} />
-            <Route path="/dids" element={<Protegido><DidsLista /></Protegido>} />
+            {/* endereço antigo: a Numeração agora é uma aba de Circuitos */}
+            <Route path="/dids" element={<DidsRedirect />} />
             <Route path="/inventario" element={<Protegido><Inventario /></Protegido>} />
             <Route path="/inventario/aparelhos/:id" element={<Protegido><AparelhoDetalhe /></Protegido>} />
             <Route path="/dados" element={<Protegido><Dados /></Protegido>} />

@@ -21,17 +21,16 @@ export function CircuitoDetalhe() {
   const c = q.data;
   const doDelete = async () => { setBusy(true); try { await api.circuits.remove(c.id); toast.push('ok', 'Circuito foi para a lixeira'); await qc.invalidateQueries({ queryKey: ['circuits'] }); nav('/circuitos'); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } };
   return (
-    <Pagina titulo={c.name} sub={<span>{c.carrierName ?? 'sem operadora'} · código <span className="font-mono">{c.code}</span>{c.ownerName ? ` · dono: ${c.ownerName}` : ''}</span>} acoes={<>
+    <Pagina titulo={c.name} sub={<span>{c.carrierName ?? 'sem operadora'} · código <span className="font-mono">{c.code}</span>{c.ownerName ? ` · titular: ${c.ownerName}` : ''}</span>} acoes={<>
       <Can permission="dids.assign"><button className="btn-primary" onClick={() => setFaixa(true)}><Plus size={15} /> Criar faixa de DIDs</button></Can>
       <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button></Can>
       <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)} title="Mandar para a lixeira"><Trash2 size={15} /></button></Can>
     </>}>
-      <div className="grid gap-3 grid-cols-2 lg:grid-cols-5 mb-5">
-        <Kpi label="Canais" valor={c.channels} sub="chamadas simultâneas" />
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-5">
+        <Kpi label="Canais" valor={c.channels} sub="chamadas simultâneas" tone={c.channels === 0 && c.dids.total > 0 ? 'bad' : 'neutral'} />
         <Kpi label="DIDs" valor={c.dids.total} tone="accent" />
         <Kpi label="Em uso" valor={c.dids.assigned} />
         <Kpi label="Livres" valor={c.dids.free} tone={c.dids.free === 0 && c.dids.total > 0 ? 'signal' : 'ok'} />
-        <Kpi label="DIDs por canal" valor={c.ratio ?? '—'} tone={c.ratio !== null && c.ratio >= 10 ? 'signal' : c.channels === 0 && c.dids.total > 0 ? 'bad' : 'neutral'} sub={c.channels === 0 && c.dids.total > 0 ? 'sem canais cadastrados' : c.ratio !== null && c.ratio >= 10 ? 'possível saturação' : undefined} />
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="card p-4">
@@ -46,12 +45,12 @@ export function CircuitoDetalhe() {
           {c.notes && <p className="text-sm mt-3 whitespace-pre-wrap text-ink-2">{c.notes}</p>}
         </div>
         <div className="card lg:col-span-2 overflow-x-auto">
-          <div className="px-4 py-3 border-b border-line flex items-center justify-between"><span className="font-display font-semibold">DIDs deste circuito</span><Link className="link text-sm" to={`/dids?circuito=${c.id}`}>abrir na tela DIDs para editar em massa</Link></div>
+          <div className="px-4 py-3 border-b border-line flex items-center justify-between"><span className="font-display font-semibold">DIDs deste circuito</span><Link className="link text-sm" to={`/circuitos?aba=numeracao&circuito=${c.id}`}>abrir na Numeração para editar em massa</Link></div>
           {dids.isLoading ? <Carregando /> : !dids.data?.items.length ? <div className="p-6 text-muted text-sm">Nenhum DID ainda. Crie uma faixa.</div> : (
-            <table className="table"><thead><tr><th>Número</th><th>Cliente</th><th>Dono</th><th>Observação</th></tr></thead>
+            <table className="table"><thead><tr><th>Número</th><th>Cliente</th><th>Titular</th><th>Observação</th></tr></thead>
               <tbody>{dids.data.items.map((d) => <tr key={d.id}><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <span className="chip bg-ok-soft text-ok">livre</span>}</td><td className="text-muted">{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
           )}
-          {dids.data && dids.data.total > 200 && <div className="px-4 py-2 text-[12.5px] text-muted border-t border-line">Mostrando 200 de {dids.data.total}. Use a tela DIDs para ver todos.</div>}
+          {dids.data && dids.data.total > 200 && <div className="px-4 py-2 text-[12.5px] text-muted border-t border-line">Mostrando 200 de {dids.data.total}. Use a Numeração para ver todos.</div>}
         </div>
       </div>
       <CircuitoForm open={editar} onClose={() => setEditar(false)} circuito={c} onSaved={() => setEditar(false)} />

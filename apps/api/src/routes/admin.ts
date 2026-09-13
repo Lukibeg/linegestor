@@ -1,7 +1,7 @@
 /** Administração: usuários, papéis, catálogos, produtos, auditoria, lixeira. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AuditoriaListarSchema, CatalogoItemSchema, PapelGravarSchema, UsuarioAtualizarSchema, UsuarioCriarSchema } from '@gestor/shared';
+import { AuditoriaListarSchema, CatalogoItemSchema, ModuloCatalogoSchema, PapelGravarSchema, UsuarioAtualizarSchema, UsuarioCriarSchema } from '@gestor/shared';
 import * as svc from '../services/admin.js';
 import * as audit from '../services/audit.js';
 import * as clientsSvc from '../services/clients.js';
@@ -40,6 +40,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/products', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Administração'], summary: 'Produtos do portfólio' } }, async () => svc.listProducts(app.db));
   app.patch('/products/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Editar produto (nome, cor, descrição, ativo, ordem)', params: Id, body: z.object({ name: z.string().min(1).optional(), color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), description: z.string().nullable().optional(), active: z.boolean().optional(), sortOrder: z.number().int().optional() }) } },
     async (req) => { const row = await svc.updateProduct(app.db, req.params.id, req.body); await app.audit(req, { action: 'update', entityType: 'product', entityId: row.id, summary: `Editou o produto ${row.name}` }); return row; });
+
+  app.put('/products/:id/modules', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Criar/editar um módulo de um produto', params: Id, body: ModuloCatalogoSchema } },
+    async (req) => { const row = await svc.upsertModule(app.db, req.params.id, req.body); await app.audit(req, { action: row.created ? 'create' : 'update', entityType: 'product_module', entityId: row.id, summary: `${row.created ? 'Criou' : 'Editou'} o módulo ${row.name} em ${row.productName}` }); return row; });
 
   // ---- auditoria ----
   app.get('/audit', { preHandler: app.requirePermission('audit.read'), schema: { tags: ['Administração'], summary: 'Auditoria: quem fez o quê', querystring: AuditoriaListarSchema } }, async (req) => audit.list(app.db, req.query));

@@ -1,25 +1,33 @@
 /**
- * DIDs: lista com filtros, seleção por caixa, "selecionar todos os filtrados", barra de ação em massa
- * e confirmação que declara o número exato de registros afetados.
+ * Numeração (todos os DIDs de todos os circuitos): lista com filtros, seleção por caixa,
+ * "selecionar todos os filtrados", barra de ação em massa e confirmação que declara o número exato
+ * de registros afetados. Vive como aba dentro de Circuitos; o endereço antigo /dids redireciona para lá.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
 import { api } from '../../api/index.js';
-import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Campo, Carregando, Chip, Confirmar, Copiar, Modal, Paginacao, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { FaixaForm } from '../circuitos/Detalhe.js';
 
 type Acao = 'circuito' | 'cliente' | 'liberar' | 'observacao' | 'excluir';
 
-export function DidsLista() {
+/** O endereço antigo (/dids?…) continua funcionando: manda para Circuitos › Numeração com os mesmos filtros. */
+export function DidsRedirect() {
+  const [sp] = useSearchParams();
+  const n = new URLSearchParams(sp); n.set('aba', 'numeracao');
+  return <Navigate to={`/circuitos?${n.toString()}`} replace />;
+}
+
+export function Numeracao() {
   const [sp, setSp] = useSearchParams();
   const q = sp.get('q') ?? ''; const circuito = sp.get('circuito') ?? ''; const cliente = sp.get('cliente') ?? ''; const page = Number(sp.get('p') ?? 1);
   const sort = sp.get('ord') ?? 'number'; const dir = sp.get('dir') ?? 'asc';
   const pageSize = 100;
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
+  const limpar = () => setSp({ aba: 'numeracao' }, { replace: true });
   const filtro = { q, circuitId: circuito, clientId: cliente };
   const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
   const lista = useQuery({ queryKey: ['dids', filtro, page, sort, dir], queryFn: () => api.dids.list({ ...filtro, page, pageSize, sort, dir }) });
@@ -40,12 +48,14 @@ export function DidsLista() {
   const done = async (msg: string) => { setAcao(null); setSel(new Set()); toast.push('ok', msg); await qc.invalidateQueries({ queryKey: ['dids'] }); await qc.invalidateQueries({ queryKey: ['circuits'] }); await qc.invalidateQueries({ queryKey: ['dashboard'] }); };
 
   return (
-    <Pagina titulo="DIDs" sub={lista.data ? `${lista.data.total.toLocaleString('pt-BR')} número(s)${lista.data.free !== undefined ? ` · ${lista.data.free} livres` : ''}` : ' '} acoes={<Can permission="dids.assign"><button className="btn-primary" onClick={() => setFaixa(true)}><Plus size={16} /> Criar faixa</button></Can>}>
+    <div>
       <div className="card p-3 mb-4 flex flex-wrap gap-2 items-center">
         <input className="input max-w-[200px] font-mono" placeholder="número (só dígitos)" value={q} onChange={(e) => set('q', e.target.value)} />
         <select className="input w-auto" value={circuito} onChange={(e) => set('circuito', e.target.value || null)}><option value="">Todos os circuitos</option><option value="none">Sem circuito</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         <select className="input w-auto" value={cliente} onChange={(e) => set('cliente', e.target.value || null)}><option value="">Todos os clientes</option><option value="free">Livres</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-        {(q || circuito || cliente) && <button className="btn-ghost btn-sm" onClick={() => setSp({}, { replace: true })}><X size={14} /> limpar</button>}
+        {(q || circuito || cliente) && <button className="btn-ghost btn-sm" onClick={limpar}><X size={14} /> limpar</button>}
+        <span className="text-muted text-[12.5px] ml-1">{lista.data ? `${lista.data.total.toLocaleString('pt-BR')} número(s)${lista.data.free !== undefined ? ` · ${lista.data.free} livres` : ''}` : ''}</span>
+        <span className="ml-auto"><Can permission="dids.assign"><button className="btn-primary btn-sm" onClick={() => setFaixa(true)}><Plus size={15} /> Criar faixa</button></Can></span>
       </div>
 
       {/* barra de seleção */}
@@ -67,7 +77,7 @@ export function DidsLista() {
         <div className="card overflow-x-auto"><table className="table">
           <thead><tr>
             {can('dids.assign') && <th className="w-8"><input type="checkbox" checked={allOnPage} onChange={togglePage} aria-label="Selecionar página" /></th>}
-            <Th col="number">Número</Th><th>Operadora</th><Th col="circuit">Circuito</Th><Th col="client">Cliente</Th><Th col="owner">Dono</Th><Th col="note">Observação</Th>
+            <Th col="number">Número</Th><th>Operadora</th><Th col="circuit">Circuito</Th><Th col="client">Cliente</Th><Th col="owner">Titular</Th><Th col="note">Observação</Th>
           </tr></thead>
           <tbody>{items.map((d) => (
             <tr key={d.id} className={sel.has(d.id) ? 'bg-accent-soft' : ''}>
@@ -84,8 +94,8 @@ export function DidsLista() {
 
       {acao && acao !== 'excluir' && <AcaoMassa acao={acao} ids={[...sel]} onClose={() => setAcao(null)} onDone={done} circuits={circuits.data ?? []} clients={clients.data ?? []} />}
       <ConfirmarExcluir open={acao === 'excluir'} ids={[...sel]} onClose={() => setAcao(null)} onDone={done} />
-      <FaixaForm open={faixa} onClose={() => setFaixa(false)} onDone={() => { setFaixa(false); void qc.invalidateQueries({ queryKey: ['dids'] }); }} />
-    </Pagina>
+      <FaixaForm open={faixa} onClose={() => setFaixa(false)} onDone={() => { setFaixa(false); void qc.invalidateQueries({ queryKey: ['dids'] }); void qc.invalidateQueries({ queryKey: ['circuits'] }); }} />
+    </div>
   );
 }
 

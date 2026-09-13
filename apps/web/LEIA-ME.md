@@ -11,8 +11,10 @@ Como está organizado:
   - `index.ts` — escolhe uma das duas. `hooks.ts` — os "ganchos" que as telas usam para carregar e gravar dados.
 - `src/lib/auth.tsx` — quem está logado e o que pode (`<Can permission="...">` esconde o que a pessoa não pode fazer).
 - `src/components/ui/` — peças reutilizáveis: botão, campo, tabela, modal, chip, aviso, campo de senha com "revelar"…
-- `src/components/layout/` — a moldura: menu lateral, barra superior, busca global (Ctrl+K).
-- `src/pages/` — uma pasta por área do menu: painel, clientes, circuitos, dids, inventario, dados, admin.
+- `src/components/layout/` — a moldura: menu lateral (recolhível para só ícones), barra superior, busca global (Ctrl+K).
+- `src/pages/` — uma pasta por área do menu: painel, clientes, circuitos (com a aba Numeração, que vem de `dids/`), inventario, dados, admin.
+  - `clientes/Lista.tsx` — a lista tem um seletor de **colunas** (qualquer detalhe do cliente pode virar coluna; a escolha fica no navegador).
+  - `clientes/Ficha.tsx` — produtos e, dentro deles, os **módulos** (ligar, ajustar, desligar).
 - `src/styles.css` — as cores e fontes (tema claro e escuro).
 
 Comandos:

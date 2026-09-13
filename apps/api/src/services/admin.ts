@@ -9,8 +9,8 @@
  */
 import argon2 from 'argon2';
 import { and, asc, eq, isNotNull, ne, sql } from 'drizzle-orm';
-import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, newId, products, roles, users, type Db } from '@gestor/db';
-import { ALL_PERMISSIONS, PERMISSIONS, type UsuarioCriar } from '@gestor/shared';
+import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, newId, productModules, products, roles, users, type Db } from '@gestor/db';
+import { ALL_PERMISSIONS, PERMISSIONS, type ModuloCatalogo, type UsuarioCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 
 // ---------- Usuários ----------
@@ -121,8 +121,24 @@ export async function updateCatalogItem(db: Db, type: CatalogType, id: string, d
   return row;
 }
 
+/** Produtos com seus módulos (o catálogo inteiro, para a Administração e para a ficha do cliente). */
 export async function listProducts(db: Db) {
-  return db.select().from(products).orderBy(asc(products.sortOrder));
+  const rows = await db.select().from(products).orderBy(asc(products.sortOrder));
+  const mods = await db.select().from(productModules).orderBy(asc(productModules.sortOrder));
+  return rows.map((p) => ({ ...p, modules: mods.filter((m) => m.productId === p.id).map(({ productId: _p, ...m }) => m) }));
+}
+
+/** Cria ou atualiza um módulo dentro de um produto (o código identifica o módulo dentro do produto). */
+export async function upsertModule(db: Db, productId: string, data: ModuloCatalogo) {
+  const [product] = await db.select().from(products).where(eq(products.id, productId));
+  if (!product) throw new NotFound('Produto');
+  const [cur] = await db.select().from(productModules).where(and(eq(productModules.productId, productId), eq(productModules.code, data.code)));
+  if (cur) {
+    const [row] = await db.update(productModules).set({ name: data.name, description: data.description ?? cur.description, hasSettings: data.hasSettings ?? cur.hasSettings, active: data.active ?? cur.active, sortOrder: data.sortOrder ?? cur.sortOrder }).where(eq(productModules.id, cur.id)).returning();
+    return { ...row!, productName: product.name, created: false };
+  }
+  const [row] = await db.insert(productModules).values({ id: newId(), productId, code: data.code, name: data.name, description: data.description ?? null, hasSettings: data.hasSettings ?? false, active: data.active ?? true, sortOrder: data.sortOrder ?? 99 }).returning();
+  return { ...row!, productName: product.name, created: true };
 }
 export async function updateProduct(db: Db, id: string, data: { name?: string; color?: string; description?: string | null; active?: boolean; sortOrder?: number }) {
   const [row] = await db.update(products).set(data).where(eq(products.id, id)).returning();

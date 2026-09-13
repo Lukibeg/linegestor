@@ -177,7 +177,7 @@ td.c,th.c{text-align:center}
       <text x="155" y="216" text-anchor="middle" class="sv-t h">Numeração (VoiceNet)</text>
       <text x="155" y="238" text-anchor="middle" class="sv-t s">37 circuitos · 1.569 DIDs</text>
       <text x="155" y="256" text-anchor="middle" class="sv-t s">operadoras ALGAR e VC1</text>
-      <text x="155" y="274" text-anchor="middle" class="sv-t s">quem usa cada número · quem é dono</text>
+      <text x="155" y="274" text-anchor="middle" class="sv-t s">quem usa cada número · quem é titular</text>
       <!-- right: equipamentos -->
       <rect x="690" y="110" width="230" height="110" rx="10" class="sv-box"/>
       <text x="805" y="136" text-anchor="middle" class="sv-t h">Equipamentos</text>
@@ -328,12 +328,12 @@ td.c,th.c{text-align:center}
       <path d="M190,190 L230,120" class="sv-l dash" marker-end="url(#ar4)"/><text x="195" y="150" class="sv-t s">detalha</text>
       <rect x="392" y="160" width="60" height="50" rx="8" class="sv-box"/><text x="422" y="182" text-anchor="middle" class="sv-t s">hosting</text><text x="422" y="196" text-anchor="middle" class="sv-t s">catálogo</text>
       <!-- numeração group -->
-      <rect x="40" y="340" width="150" height="80" rx="8" class="sv-box"/><text x="115" y="364" text-anchor="middle" class="sv-t b">circuits</text><text x="115" y="382" text-anchor="middle" class="sv-t s">nome, código, canais</text><text x="115" y="398" text-anchor="middle" class="sv-t s">IPs, valor, dono</text>
-      <rect x="230" y="340" width="150" height="80" rx="8" class="sv-acc"/><text x="305" y="364" text-anchor="middle" class="sv-t b acc">dids</text><text x="305" y="382" text-anchor="middle" class="sv-t m">(71) 3XXX-XXXX</text><text x="305" y="398" text-anchor="middle" class="sv-t s">circuito · usa · dono</text>
+      <rect x="40" y="340" width="150" height="80" rx="8" class="sv-box"/><text x="115" y="364" text-anchor="middle" class="sv-t b">circuits</text><text x="115" y="382" text-anchor="middle" class="sv-t s">nome, código, canais</text><text x="115" y="398" text-anchor="middle" class="sv-t s">IPs, valor, titular</text>
+      <rect x="230" y="340" width="150" height="80" rx="8" class="sv-acc"/><text x="305" y="364" text-anchor="middle" class="sv-t b acc">dids</text><text x="305" y="382" text-anchor="middle" class="sv-t m">(71) 3XXX-XXXX</text><text x="305" y="398" text-anchor="middle" class="sv-t s">circuito · usa · titular</text>
       <rect x="40" y="450" width="150" height="50" rx="8" class="sv-box"/><text x="115" y="472" text-anchor="middle" class="sv-t b">carriers</text><text x="115" y="488" text-anchor="middle" class="sv-t s">ALGAR, VC1 …</text>
       <path d="M190,380 L230,380" class="sv-l" marker-end="url(#ar4)"/><text x="210" y="373" text-anchor="middle" class="sv-t s">agrupa</text>
       <path d="M115,450 L115,420" class="sv-l" marker-end="url(#ar4)"/>
-      <path d="M305,340 C305,290 200,290 150,250" class="sv-l acc dash" marker-end="url(#ar4)"/><text x="248" y="290" class="sv-t s acc">quem usa · quem é dono</text>
+      <path d="M305,340 C305,290 200,290 150,250" class="sv-l acc dash" marker-end="url(#ar4)"/><text x="248" y="290" class="sv-t s acc">quem usa · quem é titular</text>
       <!-- inventário -->
       <rect x="520" y="60" width="140" height="70" rx="8" class="sv-box"/><text x="590" y="84" text-anchor="middle" class="sv-t b">device_models</text><text x="590" y="102" text-anchor="middle" class="sv-t s">código, nome</text><text x="590" y="118" text-anchor="middle" class="sv-t s">serializado | granel</text>
       <rect x="690" y="60" width="140" height="70" rx="8" class="sv-acc"/><text x="760" y="84" text-anchor="middle" class="sv-t b acc">devices</text><text x="760" y="102" text-anchor="middle" class="sv-t m">MAC 00:0B:82:…</text><text x="760" y="118" text-anchor="middle" class="sv-t s">condição, onde está</text>
@@ -354,18 +354,18 @@ td.c,th.c{text-align:center}
       <text x="892" y="426" text-anchor="middle" class="sv-t s sig">← senhas de SSH, Omniboard,</text>
       <text x="892" y="440" text-anchor="middle" class="sv-t s sig">SZChat e de tronco vivem aqui</text>
     </svg>
-    <figcaption><b>Vinte tabelas, quatro grupos.</b> As duas em destaque azul (<code>clients</code>, <code>dids</code>, <code>devices</code>) são onde a operação vive. As laranjas guardam o que exige cuidado: senhas e movimentações. Cada tabela terá, no código, uma frase em português explicando o que guarda — e cada coluna também.</figcaption>
+    <figcaption><b>Vinte e quatro tabelas, quatro grupos.</b> As duas em destaque azul (<code>clients</code>, <code>dids</code>, <code>devices</code>) são onde a operação vive. As laranjas guardam o que exige cuidado: senhas e movimentações. Cada tabela terá, no código, uma frase em português explicando o que guarda — e cada coluna também.</figcaption>
   </figure>
 
   <h3>Cada tabela em uma frase</h3>
   <div class="grid">
     <div class="card"><h4>clients</h4><p>Uma linha por empresa atendida. Nome fantasia, razão social, CNPJ, logo. "Ocultar" vira <b>arquivar</b>. Nunca é apagada de verdade — vai para a lixeira.</p></div>
-    <div class="card"><h4>products</h4><p>Catálogo dos 8 produtos, gerenciável pela tela de Administração. Cada um com cor própria para os chips.</p></div>
+    <div class="card"><h4>products · product_modules</h4><p>Catálogo dos 6 produtos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos) e dos <b>módulos</b> dentro deles (LinePBX → Omniboard, FOP2, NPS · LineChat → Dashboard de filas, NPS). Gerenciável pela Administração; cada produto com cor própria para os chips.</p></div>
     <div class="card"><h4>subscriptions</h4><p>Cliente X assina produto Y desde tal data. Guarda também <b>quando deixou de assinar</b> — o Nexus perde isso. Valor mensal opcional.</p></div>
-    <div class="card"><h4>linepbx / fop2 / omniboard / szchat _settings</h4><p>Só os 4 produtos que têm campos próprios ganham uma tabela pequena cada. Os outros 4 só precisam de data e anotações. Produto novo com campos próprios = tabela nova, sem mexer nas outras.</p></div>
+    <div class="card"><h4>subscription_modules · linepbx / szchat / fop2 / omniboard _settings</h4><p>O que cada cliente tem ligado dentro de cada produto. Só quem tem campos próprios ganha uma tabela pequena: LinePBX e SZChat (produtos), FOP2 e Omniboard (módulos). Os demais só precisam de data e anotações.</p></div>
     <div class="card"><h4>hosting_providers · carriers · device_categories</h4><p>Catálogos: Local, Vultr, AWS… / ALGAR, VC1… / Telefone IP, Periférico… Deixam de ser texto livre; você gerencia a lista.</p></div>
-    <div class="card"><h4>circuits</h4><p>Os feixes: nome, código da operadora, canais, IPs, credenciais do tronco (no cofre), valor mensal, dono.</p></div>
-    <div class="card"><h4>dids</h4><p>Cada número. Aponta para o circuito, para o <b>cliente que usa</b> e para o <b>dono</b> (VoiceNet, quase sempre). Sem cliente = livre.</p></div>
+    <div class="card"><h4>circuits</h4><p>Os feixes: nome, código da operadora, canais, IPs, credenciais do tronco (no cofre), valor mensal, titular.</p></div>
+    <div class="card"><h4>dids</h4><p>Cada número. Aponta para o circuito, para o <b>cliente que usa</b> e para o <b>titular</b> (VoiceNet, quase sempre). Sem cliente = livre.</p></div>
     <div class="card"><h4>device_models</h4><p>Grandstream GXP1610, Headset Genérico… com categoria e se é <b>serializado</b> (um a um) ou <b>granel</b> (por quantidade).</p></div>
     <div class="card"><h4>devices</h4><p>Um aparelho serializado por linha, identificado pelo <b>MAC</b>. Condição, valor, IP, local físico, com quem está.</p></div>
     <div class="card"><h4>bulk_stock</h4><p>Para granel: "Headset Genérico · Estoque · 28" e "Headset Genérico · Cliente A · 4". Saldo por lugar.</p></div>
@@ -557,10 +557,10 @@ td.c,th.c{text-align:center}
     <div class="d"><h4>1. O que substitui "Indeterminado" no aparelho</h4><p>Hoje o Nexus mistura duas coisas: <em>onde</em> o aparelho está e <em>em que estado</em>. Proposta: separar. <b>Onde:</b> Estoque ou Cliente X (vem da última movimentação). <b>Condição:</b> Ativo · Em manutenção · Baixado.</p><p class="sug"><b>Sugestão:</b> aceitar os três estados; "Em manutenção" cobre o caso do aparelho que voltou com defeito.</p></div>
     <div class="d"><h4>2. Aparelho vendido continua no inventário?</h4><p>Se você vende um telefone ao cliente, ele deixa de ser seu. Proposta: a venda vira uma movimentação e o aparelho recebe condição <b>Vendido</b> — sai das contagens de estoque e locado, mas o histórico dele fica.</p><p class="sug"><b>Sugestão:</b> manter o registro, nunca apagar — quem vendeu, para quem, por quanto.</p></div>
     <div class="d"><h4>3. Valor mensal por produto assinado</h4><p>O Nexus tem valor no circuito e no aparelho, mas não no produto. Com um campo opcional "valor mensal" em cada assinatura, o painel passa a mostrar quanto cada cliente representa.</p><p class="sug"><b>Sugestão:</b> incluir já na v2 como campo opcional. Não é faturamento — é visibilidade.</p></div>
-    <div class="d"><h4>4. Ingline Systems e VoiceNet no cadastro</h4><p>Os DIDs e circuitos têm um "dono", e hoje é sempre "Ingline Systems". Você disse que a operadora é a VoiceNet. Proposta: ambas existem como <b>organizações internas</b> (marcadas como "própria"), e o dono padrão de DIDs passa a ser VoiceNet.</p><p class="sug"><b>Sugestão:</b> VoiceNet como dona de numeração; Ingline como dona de aparelhos.</p></div>
+    <div class="d"><h4>4. Ingline Systems e VoiceNet no cadastro</h4><p>Os DIDs e circuitos têm um "titular" (era "dono"), e hoje é sempre "Ingline Systems". Você disse que a operadora é a VoiceNet. Proposta: ambas existem como <b>organizações internas</b> (marcadas como "própria"), e o titular padrão de DIDs passa a ser VoiceNet.</p><p class="sug"><b>Sugestão:</b> VoiceNet como titular da numeração; Ingline como dona dos aparelhos.</p></div>
     <div class="d"><h4>5. Onde hospedar</h4><p>Plataforma gerenciada (Railway/Render + banco gerenciado) ou servidor próprio na Vultr/Hetzner. Comparação na seção "Como chega ao ar".</p><p class="sug"><b>Sugestão:</b> gerenciada — sem desenvolvedor na equipe, quanto menos servidor para cuidar, melhor. Migrar para VPS depois é possível.</p></div>
     <div class="d"><h4>6. Nome curto na interface</h4><p>O nome completo é "Ingline Systems Gestor". No menu e na aba do navegador cabe algo mais curto.</p><p class="sug"><b>Sugestão:</b> <b>Gestor</b>, com o logo da Ingline ao lado.</p></div>
-    <div class="d"><h4>7. Rótulos dos DIDs</h4><p>O Nexus chama de "Locação" o cliente que usa o número — confunde com locação de aparelho. Proposta: <b>Cliente</b> (quem usa) e <b>Dono</b> (quem detém). "Livre" continua sendo "sem cliente".</p><p class="sug"><b>Sugestão:</b> aceitar; "Locação" fica reservado para equipamentos.</p></div>
+    <div class="d"><h4>7. Rótulos dos DIDs</h4><p>O Nexus chama de "Locação" o cliente que usa o número — confunde com locação de aparelho. Proposta: <b>Cliente</b> (quem usa) e <b>Titular</b> (quem detém). "Livre" continua sendo "sem cliente".</p><p class="sug"><b>Sugestão:</b> aceitar; "Locação" fica reservado para equipamentos.</p></div>
     <div class="d"><h4>8. Entrar no sistema</h4><p>E-mail e senha, com bloqueio após tentativas erradas. Opcional: <b>código de verificação</b> no celular (2 fatores) — protege contra senha vazada.</p><p class="sug"><b>Sugestão:</b> e-mail + senha na v2; 2 fatores obrigatório só para Administrador, opcional para os demais.</p></div>
     <div class="d"><h4>9. "Ocultar cliente" vira "Arquivar"</h4><p>Mesmo comportamento (some da lista, não é apagado), nome mais claro. Cliente arquivado aparece com um filtro e pode ser desarquivado.</p><p class="sug"><b>Sugestão:</b> aceitar.</p></div>
     <div class="d"><h4>10. Exportar com senhas (V5)</h4><p>Você quer o CSV de circuitos com a senha do tronco. Proposta: opção separada só para Administrador, com confirmação, registro na auditoria, e arquivo entregue em <b>ZIP protegido por senha</b>.</p><p class="sug"><b>Sugestão:</b> aceitar o ZIP protegido. Se preferir CSV aberto mesmo, eu faço — mas fica registrado que foi escolha consciente.</p></div>

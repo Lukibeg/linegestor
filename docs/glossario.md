@@ -15,9 +15,10 @@
 | **Equipamentos** | Marca que o cliente pode receber aparelhos. Sem esse produto, não se movimenta aparelho para ele. |
 | **Circuito** | Feixe contratado junto a uma operadora (ALGAR, VC1…). Agrupa DIDs e tem um número de canais. |
 | **Canal** | Uma chamada simultânea. Um circuito de 30 canais atende 30 ligações ao mesmo tempo. |
-| **DID** | Um número telefônico ("linha" no Nexus). Pertence a um circuito, é usado por um cliente (ou está livre) e tem um dono (normalmente VoiceNet). |
+| **DID** | Um número telefônico ("linha" no Nexus). Pertence a um circuito, é usado por um cliente (ou está livre) e tem um titular (normalmente VoiceNet). |
 | **Livre** | DID sem cliente. |
-| **Dono** | Quem detém o DID ou circuito junto à operadora. |
+| **Titular** | Quem detém o DID ou circuito junto à operadora (normalmente VoiceNet). Era "dono" nas primeiras versões. |
+| **Módulo** | Parte opcional dentro de um produto: Omniboard, FOP2 e NPS dentro do LinePBX; Dashboard de filas e NPS dentro do LineChat. O cliente assina o produto e liga os módulos que usa. |
 | **Modelo** | Um tipo de aparelho (Grandstream GXP1610, Headset Genérico…). |
 | **Serializado** | Modelo contado um a um, cada unidade com MAC. |
 | **Granel** | Modelo contado por quantidade (headsets, cabos), sem identidade por unidade. |

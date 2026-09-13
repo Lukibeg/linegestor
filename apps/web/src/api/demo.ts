@@ -9,9 +9,9 @@
  * Entrar: qualquer um destes e-mails com a senha "demo":
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
-import { ALL_PERMISSIONS, DEFAULT_ROLES, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, didFormatado, didLimpo, gerarFaixaDids, macFormatado, macLimpo, MODALIDADES } from '@gestor/shared';
+import { ALL_PERMISSIONS, DEFAULT_ROLES, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, didFormatado, didLimpo, gerarFaixaDids, macFormatado, macLimpo, MODALIDADES } from '@gestor/shared';
 import type { Api } from './index.js';
-import { ApiError, type AuditItem, type Circuit, type ClientFull, type ClientListItem, type Device, type Did, type DeviceModel, type Me, type Movement } from './types.js';
+import { ApiError, type AuditItem, type Circuit, type ClientFull, type ClientListItem, type Device, type Did, type DeviceModel, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -21,7 +21,10 @@ const daysAgo = (d: number, h = 10) => { const x = new Date(); x.setDate(x.getDa
 
 // ---------------- estado ----------------
 type Client = { id: string; tradeName: string; legalName: string; cnpj: string; logoUrl: string | null; archived: boolean; isInternal: boolean; internalCode: string | null; notes: string | null; deletedAt: string | null; createdAt: string; updatedAt: string };
-type Sub = { id: string; clientId: string; productCode: string; activatedAt: string | null; deactivatedAt: string | null; monthlyValueCents: number | null; notes: string | null; settings: Record<string, any> };
+type Sub = { id: string; clientId: string; productCode: string; activatedAt: string | null; deactivatedAt: string | null; notes: string | null; settings: Record<string, any> };
+/** Um módulo ligado numa assinatura (ex.: FOP2 dentro do LinePBX do cliente X). */
+type SubMod = { id: string; subscriptionId: string; moduleId: string; activatedAt: string | null; deactivatedAt: string | null; notes: string | null; settings: Record<string, any> };
+type ModRow = ProductModule & { productId: string };
 type CircuitRow = { id: string; name: string; code: string; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; deletedAt: string | null };
 type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; note: string | null; deletedAt: string | null };
 type ModelRow = { id: string; code: string; name: string; categoryId: string | null; tracking: 'serializado' | 'granel'; imageUrl: string | null; deletedAt: string | null };
@@ -36,6 +39,8 @@ const S = {
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
   carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[],
   products: PRODUTOS_INICIAIS.map((p, i) => ({ id: 'p' + p.code, ...p, description: p.description as string | null, sortOrder: i, active: true })),
+  modules: MODULOS_INICIAIS.map((m, i) => ({ id: 'm' + m.product + '_' + m.code, productId: 'p' + m.product, code: m.code, name: m.name, description: m.description as string | null, hasSettings: m.hasSettings, sortOrder: i, active: true })) as ModRow[],
+  subMods: [] as SubMod[],
   audit: [] as (AuditItem & { userId: string | null })[],
   me: null as UserRow | null,
 };
@@ -62,28 +67,35 @@ function seed() {
   const mk = (t: string, l: string, cnpj: string, extra: Partial<Client> = {}): Client => ({ id: id(), tradeName: t, legalName: l, cnpj, logoUrl: null, archived: false, isInternal: false, internalCode: null, notes: null, deletedAt: null, createdAt: daysAgo(400), updatedAt: daysAgo(10), ...extra });
   const ingline = mk('Ingline Systems', 'Ingline Systems', '00000000000191', { isInternal: true, internalCode: 'ingline' });
   const voicenet = mk('VoiceNet', 'VoiceNet Telecom', '00000000000272', { isInternal: true, internalCode: 'voicenet' });
-  const defs: Array<[string, string, string, string[], string | null, string | null, string | null]> = [
-    ['Clínica Aurora', 'Clínica Aurora Serviços Médicos LTDA', '11222333000181', ['linepbx', 'fop2', 'voicenet'], 'Vultr', 'aurora.linepbx.com.br', '203.0.113.10'],
-    ['Distribuidora Norte', 'Norte Comércio e Distribuição LTDA', '22333444000181', ['linepbx', 'voicenet', 'linechat', 'equipamentos'], 'Local', null, '192.0.2.50'],
-    ['Hospital Vale Verde', 'Associação Hospitalar Vale Verde', '33444555000181', ['linepbx', 'fop2', 'omniboard', 'linereports', 'voicenet', 'equipamentos'], 'Hetzner', 'valeverde.linepbx.com.br', '198.51.100.7'],
-    ['Escritório Prado & Lima', 'Prado e Lima Advogados Associados', '44555666000181', ['voicenet', 'linechat'], null, null, null],
-    ['Supermercado Bom Preço', 'Bom Preço Supermercados LTDA', '55666777000181', ['linepbx', 'fop2', 'voicenet', 'equipamentos'], 'Nuvem (Local)', 'bompreco.linepbx.com.br', '203.0.113.88'],
-    ['Laboratório Exame Certo', 'Exame Certo Análises Clínicas LTDA', '66777888000181', ['linepbx', 'voicenet'], 'AWS', 'exame.linepbx.com.br', '203.0.113.121'],
-    ['Construtora Horizonte', 'Horizonte Engenharia e Construções S.A.', '77888999000181', ['voicenet'], null, null, null],
-    ['Home Care Viver Bem', 'Viver Bem Atenção Domiciliar LTDA', '88999000000198', ['linepbx', 'omniboard', 'voicenet', 'linechat', 'equipamentos'], 'Vultr', 'viverbem.linepbx.com.br', '203.0.113.200'],
-    ['Farmácia Central (arquivada)', 'Central Farma LTDA', '99000111000105', ['voicenet'], null, null, null],
+  // [nome, razão social, cnpj, produtos, módulos (produto:modulo), hospedagem, domínio, ip]
+  const defs: Array<[string, string, string, string[], string[], string | null, string | null, string | null]> = [
+    ['Clínica Aurora', 'Clínica Aurora Serviços Médicos LTDA', '11222333000181', ['linepbx', 'voicenet'], ['linepbx:fop2'], 'Vultr', 'aurora.linepbx.com.br', '203.0.113.10'],
+    ['Distribuidora Norte', 'Norte Comércio e Distribuição LTDA', '22333444000181', ['linepbx', 'voicenet', 'linechat', 'equipamentos'], ['linechat:dashboard_filas'], 'Local', null, '192.0.2.50'],
+    ['Hospital Vale Verde', 'Associação Hospitalar Vale Verde', '33444555000181', ['linepbx', 'linereports', 'voicenet', 'equipamentos'], ['linepbx:fop2', 'linepbx:omniboard', 'linepbx:nps'], 'Hetzner', 'valeverde.linepbx.com.br', '198.51.100.7'],
+    ['Escritório Prado & Lima', 'Prado e Lima Advogados Associados', '44555666000181', ['voicenet', 'linechat'], ['linechat:nps'], null, null, null],
+    ['Supermercado Bom Preço', 'Bom Preço Supermercados LTDA', '55666777000181', ['linepbx', 'voicenet', 'equipamentos'], ['linepbx:fop2'], 'Nuvem (Local)', 'bompreco.linepbx.com.br', '203.0.113.88'],
+    ['Laboratório Exame Certo', 'Exame Certo Análises Clínicas LTDA', '66777888000181', ['linepbx', 'voicenet'], [], 'AWS', 'exame.linepbx.com.br', '203.0.113.121'],
+    ['Construtora Horizonte', 'Horizonte Engenharia e Construções S.A.', '77888999000181', ['voicenet'], [], null, null, null],
+    ['Home Care Viver Bem', 'Viver Bem Atenção Domiciliar LTDA', '88999000000198', ['linepbx', 'voicenet', 'linechat', 'equipamentos'], ['linepbx:omniboard', 'linechat:dashboard_filas', 'linechat:nps'], 'Vultr', 'viverbem.linepbx.com.br', '203.0.113.200'],
+    ['Farmácia Central (arquivada)', 'Central Farma LTDA', '99000111000105', ['voicenet'], [], null, null, null],
   ];
   S.clients = [ingline, voicenet];
   const byName: Record<string, string> = {};
-  defs.forEach(([t, l, cnpj, prods, host, dom, ip], i) => {
+  defs.forEach(([t, l, cnpj, prods, mods, host, dom, ip], i) => {
     const c = mk(t, l, cnpj, { archived: i === 8 });
     S.clients.push(c); byName[t] = c.id;
     prods.forEach((code, j) => {
       const settings: Record<string, any> = {};
       if (code === 'linepbx') { const sec = id(); S.secrets.set(sec, { label: `Senha SSH do LinePBX — ${t}`, value: 'Ssh#' + cnpj.slice(0, 5) }); Object.assign(settings, { hostingId: host ? 'h' + host.replace(/\W/g, '') : null, hostingName: host, serverIp: ip, domain: dom, sshUser: 'root', sshPort: 22, sshPasswordSecretId: sec }); }
-      if (code === 'fop2') settings.adminExtension = '1000';
-      if (code === 'omniboard') { const a = id(), d = id(); S.secrets.set(a, { label: `Senha admin do Omniboard — ${t}`, value: 'Omni#2026' }); S.secrets.set(d, { label: `Senha padrão de usuário do Omniboard — ${t}`, value: 'Bemvindo1' }); Object.assign(settings, { adminLogin: `admin@${t.toLowerCase().replace(/\W+/g, '')}.com.br`, adminPasswordSecretId: a, userDefaultPasswordSecretId: d }); }
-      S.subs.push({ id: id(), clientId: c.id, productCode: code, activatedAt: daysAgo(500 - i * 30 - j * 7), deactivatedAt: null, monthlyValueCents: code === 'linepbx' ? 89000 : code === 'voicenet' ? 35000 : null, notes: code === 'fop2' ? 'Módulo de gravação pago' : null, settings });
+      const sub: Sub = { id: id(), clientId: c.id, productCode: code, activatedAt: daysAgo(500 - i * 30 - j * 7), deactivatedAt: null, notes: code === 'linepbx' && i === 2 ? 'Gravação de chamadas contratada' : null, settings };
+      S.subs.push(sub);
+      mods.filter((m) => m.startsWith(code + ':')).forEach((pm, k) => {
+        const mcode = pm.split(':')[1]!; const mod = S.modules.find((m) => m.productId === 'p' + code && m.code === mcode)!;
+        const ms: Record<string, any> = {};
+        if (mcode === 'fop2') ms.adminExtension = '1000';
+        if (mcode === 'omniboard') { const a = id(), d = id(); S.secrets.set(a, { label: `Senha admin do Omniboard — ${t}`, value: 'Omni#2026' }); S.secrets.set(d, { label: `Senha padrão de usuário do Omniboard — ${t}`, value: 'Bemvindo1' }); Object.assign(ms, { adminLogin: `admin@${t.toLowerCase().replace(/\W+/g, '')}.com.br`, adminPasswordSecretId: a, userDefaultPasswordSecretId: d }); }
+        S.subMods.push({ id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: daysAgo(400 - i * 20 - k * 30), deactivatedAt: null, notes: null, settings: ms });
+      });
     });
   });
   const circ = [
@@ -130,33 +142,47 @@ seed();
 // ---------------- ajudantes ----------------
 const prodMeta = (code: string) => S.products.find((p) => p.code === code)!;
 const activeSubs = (cid: string) => S.subs.filter((s) => s.clientId === cid && !s.deactivatedAt);
+const modMeta = (mid: string) => S.modules.find((m) => m.id === mid)!;
+/** Módulos ligados numa assinatura (ordenados como no catálogo). */
+const activeMods = (subId: string) => S.subMods.filter((m) => m.subscriptionId === subId && !m.deactivatedAt).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder);
+const hasMod = (cid: string, product: string, mod: string) => { const s = activeSubs(cid).find((x) => x.productCode === product); return !!s && activeMods(s.id).some((m) => modMeta(m.moduleId).code === mod); };
 const links = (cid: string) => {
   const lp = activeSubs(cid).find((s) => s.productCode === 'linepbx')?.settings;
   const host = lp?.domain || lp?.serverIp;
   if (!lp || !host) return { web: null, ssh: null, fop2: null };
-  return { web: `https://${host}`, ssh: lp.sshUser ? `ssh://${lp.sshUser}@${lp.serverIp || lp.domain}:${lp.sshPort ?? 22}` : null, fop2: activeSubs(cid).some((s) => s.productCode === 'fop2') ? `https://${host}/fop2/` : null };
+  return { web: `https://${host}`, ssh: lp.sshUser ? `ssh://${lp.sshUser}@${lp.serverIp || lp.domain}:${lp.sshPort ?? 22}` : null, fop2: hasMod(cid, 'linepbx', 'fop2') ? `https://${host}/fop2/` : null };
 };
-const listItem = (c: Client): ClientListItem => ({
-  id: c.id, tradeName: c.tradeName, legalName: c.legalName, cnpj: c.cnpj, logoUrl: c.logoUrl, archived: c.archived, isInternal: c.isInternal,
-  products: activeSubs(c.id).map((s) => prodMeta(s.productCode)).sort((a, b) => a.sortOrder - b.sortOrder).map((p) => ({ code: p.code, name: p.name, color: p.color })),
-  links: links(c.id), didCount: S.dids.filter((d) => d.clientId === c.id && !d.deletedAt).length, deviceCount: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.condition !== 'vendido').length,
-});
 const secretRef = (sid: string | null | undefined) => ({ hasSecret: !!sid, secretId: sid ?? null });
+const listItem = (c: Client): ClientListItem => {
+  const lp = activeSubs(c.id).find((s) => s.productCode === 'linepbx')?.settings;
+  return {
+    id: c.id, tradeName: c.tradeName, legalName: c.legalName, cnpj: c.cnpj, logoUrl: c.logoUrl, archived: c.archived, isInternal: c.isInternal,
+    notes: c.notes, createdAt: c.createdAt, updatedAt: c.updatedAt,
+    products: activeSubs(c.id).sort((a, b) => prodMeta(a.productCode).sortOrder - prodMeta(b.productCode).sortOrder).map((s) => { const p = prodMeta(s.productCode); return { code: p.code, name: p.name, color: p.color, activatedAt: s.activatedAt, modules: activeMods(s.id).map((m) => ({ code: modMeta(m.moduleId).code, name: modMeta(m.moduleId).name, activatedAt: m.activatedAt })) }; }),
+    server: lp ? { hostingName: S.hostings.find((h) => h.id === lp.hostingId)?.name ?? null, serverIp: lp.serverIp ?? null, domain: lp.domain ?? null, sshUser: lp.sshUser ?? null, sshPort: lp.sshPort ?? null } : null,
+    links: links(c.id), didCount: S.dids.filter((d) => d.clientId === c.id && !d.deletedAt).length, deviceCount: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.condition !== 'vendido').length,
+  };
+};
+const shapeSubMod = (m: SubMod): SubscriptionModule => {
+  const meta = modMeta(m.moduleId); const st = m.settings; let settings: Record<string, any> | null = null;
+  if (meta.code === 'fop2') settings = { adminExtension: st.adminExtension ?? null };
+  else if (meta.code === 'omniboard') settings = { adminLogin: st.adminLogin ?? null, adminPassword: secretRef(st.adminPasswordSecretId), userDefaultPassword: secretRef(st.userDefaultPasswordSecretId) };
+  return { id: m.id, moduleCode: meta.code, moduleName: meta.name, hasSettings: meta.hasSettings, active: !m.deactivatedAt, activatedAt: m.activatedAt, deactivatedAt: m.deactivatedAt, notes: m.notes, settings };
+};
 const fullClient = (idc: string): ClientFull => {
   const c = S.clients.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Cliente');
-  const subs = S.subs.filter((s) => s.clientId === idc).map((s) => {
+  const subs: Subscription[] = S.subs.filter((s) => s.clientId === idc).map((s) => {
     const p = prodMeta(s.productCode); const st = s.settings; let settings: Record<string, any> | null = null;
     if (s.productCode === 'linepbx') settings = { hostingId: st.hostingId, hostingName: S.hostings.find((h) => h.id === st.hostingId)?.name ?? null, serverIp: st.serverIp, domain: st.domain, sshUser: st.sshUser, sshPort: st.sshPort, sshPassword: secretRef(st.sshPasswordSecretId) };
-    else if (s.productCode === 'fop2') settings = { adminExtension: st.adminExtension ?? null };
-    else if (s.productCode === 'omniboard') settings = { adminLogin: st.adminLogin ?? null, adminPassword: secretRef(st.adminPasswordSecretId), userDefaultPassword: secretRef(st.userDefaultPasswordSecretId) };
     else if (s.productCode === 'szchat') settings = { adminLogin: st.adminLogin ?? null, adminPassword: secretRef(st.adminPasswordSecretId) };
-    return { id: s.id, productCode: s.productCode, productName: p.name, color: p.color, hasSettings: p.hasSettings, active: !s.deactivatedAt, activatedAt: s.activatedAt, deactivatedAt: s.deactivatedAt, monthlyValueCents: s.monthlyValueCents, notes: s.notes, settings, sortOrder: p.sortOrder };
-  }).sort((a, b) => a.sortOrder - b.sortOrder);
-  return { ...listItem(c), notes: c.notes, subscriptions: subs, createdAt: c.createdAt, updatedAt: c.updatedAt };
+    const modules = S.subMods.filter((m) => m.subscriptionId === s.id).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder).map(shapeSubMod);
+    return { id: s.id, productCode: s.productCode, productName: p.name, color: p.color, hasSettings: p.hasSettings, active: !s.deactivatedAt, activatedAt: s.activatedAt, deactivatedAt: s.deactivatedAt, notes: s.notes, settings, modules, sortOrder: p.sortOrder };
+  }).sort((a: any, b: any) => a.sortOrder - b.sortOrder);
+  return { ...listItem(c), subscriptions: subs };
 };
 const shapeCircuit = (c: CircuitRow): Circuit => {
   const ds = S.dids.filter((d) => d.circuitId === c.id && !d.deletedAt); const assigned = ds.filter((d) => d.clientId).length;
-  return { id: c.id, name: c.name, code: c.code, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned }, ratio: c.channels > 0 ? Math.round((ds.length / c.channels) * 10) / 10 : null };
+  return { id: c.id, name: c.name, code: c.code, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned } };
 };
 const shapeDid = (d: DidRow): Did => { const c = S.circuits.find((x) => x.id === d.circuitId); return { id: d.id, number: d.number, numberFormatted: didFormatado(d.number), free: !d.clientId, circuitId: d.circuitId, circuitName: c?.name ?? null, circuitCode: c?.code ?? null, carrierName: S.carriers.find((x) => x.id === c?.carrierId)?.name ?? null, clientId: d.clientId, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null, ownerClientId: d.ownerClientId, ownerName: S.clients.find((x) => x.id === d.ownerClientId)?.tradeName ?? null, note: d.note }; };
 const shapeModel = (m: ModelRow): DeviceModel => {
@@ -172,6 +198,7 @@ const shapeDevice = (d: DeviceRow, withHistory = false): Device => {
   return base;
 };
 const shapeMov = (mv: MovRow): Movement => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromClientId: mv.fromClientId, fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toClientId: mv.toClientId, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, newCondition: mv.newCondition, valueCents: mv.valueCents, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt, items: Object.values(mv.items.reduce((acc, i) => { const k = i.modelId; acc[k] = acc[k] ?? { modelName: S.models.find((m) => m.id === k)?.name ?? '?', quantity: 0 }; acc[k]!.quantity += i.quantity; return acc; }, {} as Record<string, { modelName: string; quantity: number }>)) });
+const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active, modules: S.modules.filter((m) => m.productId === p.id).sort((a, b) => a.sortOrder - b.sortOrder).map(({ productId: _p, ...m }) => m) });
 const paginate = <T,>(items: T[], q: Record<string, unknown>) => { const page = Number(q.page ?? 1), pageSize = Number(q.pageSize ?? 50); return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }; };
 const me = (u: UserRow): Me => { const r = S.roles.find((x) => x.id === u.roleId)!; return { id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: r.name, roleKey: r.key, permissions: r.permissions }; };
 const hasEquip = (cid: string) => activeSubs(cid).some((s) => s.productCode === 'equipamentos');
@@ -190,14 +217,13 @@ export const demoApi: Api = {
       await wait(); requirePerm('records.read');
       const active = S.clients.filter((c) => !c.deletedAt && !c.archived && !c.isInternal);
       const ds = S.dids.filter((d) => !d.deletedAt);
-      const circuits = S.circuits.filter((c) => !c.deletedAt).map(shapeCircuit).map((c) => ({ id: c.id, name: c.name, carrierName: c.carrierName, channels: c.channels, total: c.dids.total, assigned: c.dids.assigned, free: c.dids.free, ratio: c.ratio })).sort((a, b) => (b.ratio ?? -1) - (a.ratio ?? -1));
+      const circuits = S.circuits.filter((c) => !c.deletedAt).map(shapeCircuit).map((c) => ({ id: c.id, name: c.name, carrierName: c.carrierName, channels: c.channels, total: c.dids.total, assigned: c.dids.assigned, free: c.dids.free })).sort((a, b) => b.total - a.total);
       const dev = S.devices.filter((d) => !d.deletedAt);
       const alerts: any[] = [];
       const lpNo = active.filter((c) => activeSubs(c.id).some((s) => s.productCode === 'linepbx' && !(s.settings.domain || s.settings.serverIp))).length; if (lpNo) alerts.push({ kind: 'linepbx_sem_endereco', severity: 'warning', message: 'Clientes com LinePBX sem endereço do servidor', count: lpNo, link: '/clientes?produtos=linepbx' });
-      const didNo = new Set(ds.filter((d) => d.clientId && !activeSubs(d.clientId).some((s) => s.productCode === 'voicenet')).map((d) => d.clientId)).size; if (didNo) alerts.push({ kind: 'did_sem_voicenet', severity: 'warning', message: 'Clientes com DIDs alocados mas sem o produto VoiceNet', count: didNo, link: '/dids' });
-      const sat = circuits.filter((c) => c.channels > 0 && (c.ratio ?? 0) >= 10).length; if (sat) alerts.push({ kind: 'circuito_saturado', severity: 'warning', message: 'Circuitos com 10+ DIDs por canal', count: sat, link: '/circuitos' });
+      const didNo = new Set(ds.filter((d) => d.clientId && !activeSubs(d.clientId).some((s) => s.productCode === 'voicenet')).map((d) => d.clientId)).size; if (didNo) alerts.push({ kind: 'did_sem_voicenet', severity: 'warning', message: 'Clientes com DIDs alocados mas sem o produto VoiceNet', count: didNo, link: '/circuitos?aba=numeracao' });
       const zero = circuits.filter((c) => c.channels === 0 && c.total > 0).length; if (zero) alerts.push({ kind: 'circuito_sem_canais', severity: 'critical', message: 'Circuitos com DIDs mas 0 canais cadastrados', count: zero, link: '/circuitos' });
-      const noC = ds.filter((d) => !d.circuitId).length; if (noC) alerts.push({ kind: 'did_sem_circuito', severity: 'warning', message: 'DIDs sem circuito', count: noC, link: '/dids?circuito=none' });
+      const noC = ds.filter((d) => !d.circuitId).length; if (noC) alerts.push({ kind: 'did_sem_circuito', severity: 'warning', message: 'DIDs sem circuito', count: noC, link: '/circuitos?aba=numeracao&circuito=none' });
       const man = dev.filter((d) => d.condition === 'manutencao').length; if (man) alerts.push({ kind: 'aparelho_manutencao', severity: 'warning', message: 'Aparelhos em manutenção', count: man, link: '/inventario?condicao=manutencao' });
       return {
         clients: { active: active.length, byProduct: S.products.map((p) => ({ code: p.code, name: p.name, color: p.color, n: active.filter((c) => activeSubs(c.id).some((s) => s.productCode === p.code)).length })) },
@@ -224,10 +250,11 @@ export const demoApi: Api = {
     async list(q) {
       await wait(); requirePerm('records.read');
       const term = String(q.q ?? '').toLowerCase(); const digits = term.replace(/\D/g, '');
-      const prods = ([] as string[]).concat((q.products as any) ?? []); const mode = q.mode ?? 'or';
+      const prods = ([] as string[]).concat((q.products as any) ?? []); const mods = ([] as string[]).concat((q.modules as any) ?? []); const mode = q.mode ?? 'or';
       const items = S.clients.filter((c) => !c.deletedAt && !c.isInternal && (q.includeArchived === true || q.includeArchived === 'true' || !c.archived))
         .filter((c) => !term || c.tradeName.toLowerCase().includes(term) || c.legalName.toLowerCase().includes(term) || (digits && c.cnpj.includes(digits)))
         .filter((c) => { if (!prods.length) return true; const have = activeSubs(c.id).map((s) => s.productCode); return mode === 'and' ? prods.every((p) => have.includes(p)) : prods.some((p) => have.includes(p)); })
+        .filter((c) => { if (!mods.length) return true; const test = (pm: string) => { const [p, m] = pm.split(':'); return hasMod(c.id, p!, m!); }; return mode === 'and' ? mods.every(test) : mods.some(test); })
         .sort((a, b) => a.tradeName.localeCompare(b.tradeName)).map(listItem);
       return paginate(items, q);
     },
@@ -241,12 +268,33 @@ export const demoApi: Api = {
       const st = (d.settings as Record<string, any>) ?? {};
       if (['serverIp', 'domain', 'sshUser', 'sshPort', 'sshPassword', 'hostingId'].some((k) => k in st)) requirePerm('servers.write');
       let s = S.subs.find((x) => x.clientId === idc && x.productCode === d.productCode);
-      if (!s) { s = { id: id(), clientId: idc, productCode: String(d.productCode), activatedAt: now(), deactivatedAt: null, monthlyValueCents: null, notes: null, settings: {} }; S.subs.push(s); }
-      s.deactivatedAt = null; if (d.activatedAt !== undefined) s.activatedAt = d.activatedAt as string; if (d.notes !== undefined) s.notes = d.notes as string; if (d.monthlyValueCents !== undefined) s.monthlyValueCents = d.monthlyValueCents as number;
+      if (!S.products.some((p) => p.code === d.productCode)) throw notFound(`Produto "${d.productCode}"`);
+      if (!s) { s = { id: id(), clientId: idc, productCode: String(d.productCode), activatedAt: now(), deactivatedAt: null, notes: null, settings: {} }; S.subs.push(s); }
+      s.deactivatedAt = null; if (d.activatedAt !== undefined) s.activatedAt = d.activatedAt as string; if (d.notes !== undefined) s.notes = d.notes as string;
       const saveSecret = (key: string, label: string) => { if (st[key]) { const sid = s!.settings[key + 'SecretId'] ?? id(); S.secrets.set(sid, { label: `${label} — ${c.tradeName}`, value: st[key] }); s!.settings[key + 'SecretId'] = sid; } };
       for (const [k, v] of Object.entries(st)) if (!/password/i.test(k)) s.settings[k] = v;
-      saveSecret('sshPassword', 'Senha SSH do LinePBX'); saveSecret('adminPassword', 'Senha admin'); saveSecret('userDefaultPassword', 'Senha padrão de usuário');
+      saveSecret('sshPassword', 'Senha SSH do LinePBX'); saveSecret('adminPassword', 'Senha admin do SZChat');
       audit('update', 'subscription', `Atualizou o produto ${d.productCode} no cliente ${c.tradeName}`, s.id); return fullClient(idc);
+    },
+    async upsertModule(idc, d) {
+      await wait(); requirePerm('records.write'); const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente');
+      const p = S.products.find((x) => x.code === d.productCode); if (!p) throw notFound(`Produto "${d.productCode}"`);
+      const mod = S.modules.find((m) => m.productId === p.id && m.code === d.moduleCode); if (!mod) throw notFound(`Módulo "${d.moduleCode}" do produto ${p.name}`);
+      const sub = activeSubs(idc).find((x) => x.productCode === p.code); if (!sub) throw bad(`Marque o produto ${p.name} no cliente antes de ligar o módulo ${mod.name}`);
+      let m = S.subMods.find((x) => x.subscriptionId === sub.id && x.moduleId === mod.id);
+      if (!m) { m = { id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: now(), deactivatedAt: null, notes: null, settings: {} }; S.subMods.push(m); }
+      m.deactivatedAt = null; if (d.activatedAt !== undefined) m.activatedAt = d.activatedAt as string; if (d.notes !== undefined) m.notes = d.notes as string;
+      const st = (d.settings as Record<string, any>) ?? {};
+      for (const [k, v] of Object.entries(st)) if (!/password/i.test(k)) m.settings[k] = v;
+      const saveSecret = (key: string, label: string) => { if (st[key]) { const sid = m!.settings[key + 'SecretId'] ?? id(); S.secrets.set(sid, { label: `${label} — ${c.tradeName}`, value: st[key] }); m!.settings[key + 'SecretId'] = sid; } };
+      saveSecret('adminPassword', 'Senha admin do Omniboard'); saveSecret('userDefaultPassword', 'Senha padrão de usuário do Omniboard');
+      audit('update', 'subscription_module', `Ligou/ajustou o módulo ${mod.name} (${p.name}) no cliente ${c.tradeName}`, m.id); return fullClient(idc);
+    },
+    async endModule(idc, productCode, moduleCode) {
+      await wait(); requirePerm('records.write'); const sub = S.subs.find((x) => x.clientId === idc && x.productCode === productCode); if (!sub) throw notFound('Assinatura');
+      const mod = S.modules.find((x) => x.productId === 'p' + productCode && x.code === moduleCode); if (!mod) throw notFound('Módulo');
+      const m = S.subMods.find((x) => x.subscriptionId === sub.id && x.moduleId === mod.id && !x.deactivatedAt); if (!m) throw notFound('Módulo ligado');
+      m.deactivatedAt = now(); audit('unsubscribe', 'subscription_module', `Desligou o módulo ${mod.name} (${prodMeta(productCode).name}) no cliente ${idc}`, m.id); return fullClient(idc);
     },
     async endSubscription(idc, code) { await wait(); requirePerm('records.write'); const s = S.subs.find((x) => x.clientId === idc && x.productCode === code && !x.deactivatedAt); if (!s) throw notFound('Assinatura ativa'); s.deactivatedAt = now(); audit('unsubscribe', 'subscription', `Encerrou o produto ${code} no cliente ${idc}`, s.id); return fullClient(idc); },
     async dids(idc) { await wait(); return paginate(S.dids.filter((d) => d.clientId === idc && !d.deletedAt).map(shapeDid), { pageSize: 500 }); },
@@ -258,6 +306,7 @@ export const demoApi: Api = {
   },
   circuits: {
     async list(q) { await wait(); requirePerm('records.read'); const t = String(q.q ?? '').toLowerCase(); return paginate(S.circuits.filter((c) => !c.deletedAt && (!q.carrierId || c.carrierId === q.carrierId) && (!t || c.name.toLowerCase().includes(t) || c.code.includes(t))).sort((a, b) => a.name.localeCompare(b.name)).map(shapeCircuit), q); },
+    async summary() { await wait(60); requirePerm('records.read'); const cs = S.circuits.filter((c) => !c.deletedAt); const ds = S.dids.filter((d) => !d.deletedAt); const assigned = ds.filter((d) => d.clientId).length; return { circuits: cs.length, channels: cs.reduce((a, c) => a + c.channels, 0), monthlyValueCents: cs.reduce((a, c) => a + (c.monthlyValueCents ?? 0), 0), dids: { total: ds.length, assigned, free: ds.length - assigned, noCircuit: ds.filter((d) => !d.circuitId).length } }; },
     async options() { await wait(50); return S.circuits.filter((c) => !c.deletedAt).map((c) => ({ id: c.id, name: c.name, code: c.code, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null })); },
     async get(idc) { await wait(); requirePerm('records.read'); const c = S.circuits.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Circuito'); return shapeCircuit(c); },
     async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, signalingIp: (d.signalingIp as string) ?? null, authIp: (d.authIp as string) ?? null, authUsername: (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
@@ -326,8 +375,9 @@ export const demoApi: Api = {
     async catalog(type) { await wait(40); return (type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories).slice().sort((a, b) => a.name.localeCompare(b.name)); },
     async createCatalogItem(type, name) { await wait(); requirePerm('admin.manage'); const list = type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories; if (list.some((x) => x.name.toLowerCase() === name.toLowerCase())) throw bad('Já existe um item com esse nome'); const it = { id: id(), name, active: true }; list.push(it); audit('create', `catalog:${type}`, `Adicionou "${name}" ao catálogo ${type}`, it.id); return it; },
     async updateCatalogItem(type, idi, d) { await wait(); requirePerm('admin.manage'); const list = type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories; const it = list.find((x) => x.id === idi); if (!it) throw notFound('Item'); if (d.name !== undefined) it.name = String(d.name); if (d.active !== undefined) it.active = Boolean(d.active); return it; },
-    async products() { await wait(40); return S.products.map((p) => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active })); },
-    async updateProduct(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); for (const k of ['name', 'color', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (p as any)[k] = d[k]; return { id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active }; },
+    async products() { await wait(40); return S.products.map(shapeProduct); },
+    async updateProduct(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); for (const k of ['name', 'color', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (p as any)[k] = d[k]; return shapeProduct(p); },
+    async upsertModule(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); const code = String(d.code); if (!/^[a-z0-9_]+$/.test(code)) throw new ApiError(400, 'Dados inválidos', [{ field: 'code', message: 'Use só letras minúsculas, números e _' }]); let m = S.modules.find((x) => x.productId === p.id && x.code === code); if (!m) { m = { id: id(), productId: p.id, code, name: String(d.name), description: (d.description as string) ?? null, hasSettings: false, sortOrder: 99, active: true }; S.modules.push(m); audit('create', 'product_module', `Criou o módulo ${m.name} em ${p.name}`, m.id); } else { for (const k of ['name', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (m as any)[k] = d[k]; audit('update', 'product_module', `Editou o módulo ${m.name} em ${p.name}`, m.id); } const { productId: _p, ...out } = m; return out; },
     async audit(q) { await wait(); requirePerm('audit.read'); return paginate(S.audit.filter((a) => (!q.action || a.action === q.action) && (!q.entityType || a.entityType === q.entityType) && (!q.userId || a.userId === q.userId)), q); },
     async trash() { await wait(); requirePerm('records.delete'); return [...S.clients.filter((c) => c.deletedAt).map((c) => ({ type: 'client', id: c.id, label: c.tradeName, deletedAt: c.deletedAt! })), ...S.circuits.filter((c) => c.deletedAt).map((c) => ({ type: 'circuit', id: c.id, label: c.name, deletedAt: c.deletedAt! })), ...S.dids.filter((c) => c.deletedAt).map((c) => ({ type: 'did', id: c.id, label: didFormatado(c.number), deletedAt: c.deletedAt! })), ...S.devices.filter((c) => c.deletedAt).map((c) => ({ type: 'device', id: c.id, label: macFormatado(c.mac), deletedAt: c.deletedAt! }))].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)); },
     async restore(type, idr) { await wait(); requirePerm('records.delete'); const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : S.devices; const it = list.find((x) => x.id === idr); if (!it) throw notFound(); it.deletedAt = null; audit('restore', type, `Restaurou ${it.tradeName ?? it.name ?? it.number ?? it.mac} da lixeira`, idr); return { ok: true }; },

@@ -21,6 +21,8 @@ export type Api = {
     remove(id: string): Promise<{ ok: boolean }>;
     upsertSubscription(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
     endSubscription(id: string, code: string): Promise<T.ClientFull>;
+    upsertModule(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
+    endModule(id: string, productCode: string, moduleCode: string): Promise<T.ClientFull>;
     dids(id: string): Promise<T.Page<T.Did>>;
     devices(id: string): Promise<{ devices: T.Page<T.Device>; bulk: T.BulkStock[] }>;
     history(id: string): Promise<T.Page<T.AuditItem>>;
@@ -28,6 +30,7 @@ export type Api = {
   secrets: { reveal(id: string, password: string): Promise<{ label: string; value: string; visibleForSeconds: number }> };
   circuits: {
     list(q: Record<string, unknown>): Promise<T.Page<T.Circuit>>;
+    summary(): Promise<T.CircuitSummary>;
     options(): Promise<Array<{ id: string; name: string; code: string; carrierName: string | null }>>;
     get(id: string): Promise<T.Circuit>;
     create(d: Record<string, unknown>): Promise<T.Circuit>;
@@ -78,6 +81,7 @@ export type Api = {
     updateCatalogItem(type: string, id: string, d: Record<string, unknown>): Promise<T.CatalogItem>;
     products(): Promise<T.Product[]>;
     updateProduct(id: string, d: Record<string, unknown>): Promise<T.Product>;
+    upsertModule(productId: string, d: Record<string, unknown>): Promise<T.ProductModule>;
     audit(q: Record<string, unknown>): Promise<T.Page<T.AuditItem>>;
     trash(): Promise<T.TrashItem[]>;
     restore(type: string, id: string): Promise<{ ok: boolean }>;

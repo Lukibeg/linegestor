@@ -9,11 +9,13 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 ## Índice
 
 - [clients](#clients) — Uma linha por empresa.
-- [products](#products) — Catálogo dos produtos vendidos (os 8 do portfólio, gerenciável pela Administração).
+- [products](#products) — Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
+- [product_modules](#product_modules) — Catálogo de MÓDULOS: partes opcionais dentro de um produto.
 - [subscriptions](#subscriptions) — "O cliente X assina o produto Y." Uma linha por par cliente × produto.
 - [linepbx_settings](#linepbx_settings) — Configuração própria do LinePBX: onde está o servidor e como acessá-lo.
-- [fop2_settings](#fop2_settings) — Configuração própria do FOP2.
-- [omniboard_settings](#omniboard_settings) — Configuração própria do Omniboard (call center).
+- [subscription_modules](#subscription_modules) — "Na assinatura X, o módulo Y está ligado." Uma linha por par assinatura × módulo.
+- [fop2_settings](#fop2_settings) — Configuração própria do módulo FOP2 (dentro do LinePBX).
+- [omniboard_settings](#omniboard_settings) — Configuração própria do módulo Omniboard (call center, dentro do LinePBX).
 - [szchat_settings](#szchat_settings) — Configuração própria do SZChat (legado Fortics).
 - [hosting_providers](#hosting_providers) — Catálogo: onde um servidor pode estar hospedado (Local, Vultr, AWS, Contabo, Hetzner...).
 - [carriers](#carriers) — Catálogo: operadoras que fornecem circuitos (ALGAR, VC1...).
@@ -38,7 +40,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 
 ## clients
 
-Uma linha por empresa. Inclui também as organizações internas do grupo (Ingline Systems, VoiceNet), marcadas com `isInternal`, porque elas aparecem como "dono" de DIDs, circuitos e aparelhos.
+Uma linha por empresa. Inclui também as organizações internas do grupo (Ingline Systems, VoiceNet), marcadas com `isInternal`, porque elas aparecem como "titular" de DIDs, circuitos e aparelhos.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
@@ -57,10 +59,24 @@ Uma linha por empresa. Inclui também as organizações internas do grupo (Ingli
 
 ## products
 
-Catálogo dos produtos vendidos (os 8 do portfólio, gerenciável pela Administração).
+Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+
+## product_modules
+
+Catálogo de MÓDULOS: partes opcionais dentro de um produto. LinePBX tem Omniboard, FOP2 e NPS; LineChat tem Dashboard de filas e NPS. Gerenciável pela Administração.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `code` | texto | Identificador estável dentro do produto ("fop2", "nps"…) | obrigatório |
+| `name` | texto | Nome exibido | obrigatório |
+| `description` | texto | Uma frase explicando o módulo | — |
+| `has_settings` | sim/não | Tem configuração própria? (FOP2: ramal admin · Omniboard: login e senhas) | obrigatório · padrão: false |
+| `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
+| `active` | sim/não | — | obrigatório · padrão: true |
 
 ## subscriptions
 
@@ -72,8 +88,7 @@ Catálogo dos produtos vendidos (os 8 do portfólio, gerenciável pela Administr
 | `product_id` | texto | — | obrigatório · liga com **products** |
 | `activated_at` | data e hora | Data em que o produto foi ativado para o cliente | — |
 | `deactivated_at` | data e hora | Preenchido quando o cliente deixou de assinar. Nulo = ativa. | — |
-| `monthly_value_cents` | número inteiro | Valor mensal cobrado, em centavos (opcional) | — |
-| `notes` | texto | Anotações do produto para este cliente (regras internas, módulos pagos, contratos...) | — |
+| `notes` | texto | Anotações do produto para este cliente (regras internas, contratos...) | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 
@@ -84,16 +99,30 @@ Configuração própria do LinePBX: onde está o servidor e como acessá-lo.
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 
+## subscription_modules
+
+"Na assinatura X, o módulo Y está ligado." Uma linha por par assinatura × módulo. Só faz sentido dentro de um produto que o cliente assina (o servidor confere).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `module_id` | texto | — | obrigatório · liga com **productModules** |
+| `activated_at` | data e hora | Quando o módulo foi ligado para o cliente | — |
+| `deactivated_at` | data e hora | Preenchido quando foi desligado. Nulo = ligado. | — |
+| `notes` | texto | Anotações do módulo para este cliente | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+
 ## fop2_settings
 
-Configuração própria do FOP2.
+Configuração própria do módulo FOP2 (dentro do LinePBX).
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 
 ## omniboard_settings
 
-Configuração própria do Omniboard (call center).
+Configuração própria do módulo Omniboard (call center, dentro do LinePBX).
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
@@ -135,7 +164,7 @@ Um circuito (feixe) contratado junto a uma operadora. Agrupa DIDs e tem um limit
 | `code` | texto | Código do circuito na operadora | obrigatório |
 | `carrier_id` | texto | — | liga com **carriers** |
 | `channels` | número inteiro | Canais = chamadas simultâneas que o feixe suporta | obrigatório · padrão: 0 |
-| `owner_client_id` | texto | Quem detém o circuito (normalmente VoiceNet) | liga com **clients** |
+| `owner_client_id` | texto | Titular do circuito: quem detém o contrato com a operadora (normalmente VoiceNet) | liga com **clients** |
 | `monthly_value_cents` | número inteiro | Custo/valor mensal do feixe, em centavos | — |
 | `signaling_ip` | texto | IP da operadora (sinalização) | — |
 | `auth_ip` | texto | IP de autenticação ("IP PBX" no Nexus) | — |
@@ -156,7 +185,7 @@ Um número telefônico. "Linha" no Nexus; DID aqui (decisão V2).
 | `number` | texto | Número só com dígitos (DDD + 8 ou 9). Único. | obrigatório |
 | `circuit_id` | texto | Circuito ao qual pertence. Nulo = "sem circuito". | liga com **circuits** |
 | `client_id` | texto | Cliente que USA o número. Nulo = livre. | liga com **clients** |
-| `owner_client_id` | texto | Quem DETÉM o número junto à operadora (normalmente VoiceNet) | liga com **clients** |
+| `owner_client_id` | texto | Titular: quem DETÉM o número junto à operadora (normalmente VoiceNet) | liga com **clients** |
 | `note` | texto | Observação curta | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |

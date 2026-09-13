@@ -131,7 +131,7 @@ CREATE TABLE "dids" (
 );
 --> statement-breakpoint
 CREATE TABLE "fop2_settings" (
-	"subscription_id" text PRIMARY KEY NOT NULL,
+	"subscription_module_id" text PRIMARY KEY NOT NULL,
 	"admin_extension" text
 );
 --> statement-breakpoint
@@ -153,10 +153,21 @@ CREATE TABLE "linepbx_settings" (
 );
 --> statement-breakpoint
 CREATE TABLE "omniboard_settings" (
-	"subscription_id" text PRIMARY KEY NOT NULL,
+	"subscription_module_id" text PRIMARY KEY NOT NULL,
 	"admin_login" text,
 	"admin_password_secret_id" text,
 	"user_default_password_secret_id" text
+);
+--> statement-breakpoint
+CREATE TABLE "product_modules" (
+	"id" text PRIMARY KEY NOT NULL,
+	"product_id" text NOT NULL,
+	"code" text NOT NULL,
+	"name" text NOT NULL,
+	"description" text,
+	"has_settings" boolean DEFAULT false NOT NULL,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"active" boolean DEFAULT true NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "products" (
@@ -203,13 +214,23 @@ CREATE TABLE "sessions" (
 	"user_agent" text
 );
 --> statement-breakpoint
+CREATE TABLE "subscription_modules" (
+	"id" text PRIMARY KEY NOT NULL,
+	"subscription_id" text NOT NULL,
+	"module_id" text NOT NULL,
+	"activated_at" timestamp with time zone,
+	"deactivated_at" timestamp with time zone,
+	"notes" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "subscriptions" (
 	"id" text PRIMARY KEY NOT NULL,
 	"client_id" text NOT NULL,
 	"product_id" text NOT NULL,
 	"activated_at" timestamp with time zone,
 	"deactivated_at" timestamp with time zone,
-	"monthly_value_cents" integer,
 	"notes" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -252,14 +273,17 @@ ALTER TABLE "devices" ADD CONSTRAINT "devices_client_id_clients_id_fk" FOREIGN K
 ALTER TABLE "dids" ADD CONSTRAINT "dids_circuit_id_circuits_id_fk" FOREIGN KEY ("circuit_id") REFERENCES "public"."circuits"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "dids" ADD CONSTRAINT "dids_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "dids" ADD CONSTRAINT "dids_owner_client_id_clients_id_fk" FOREIGN KEY ("owner_client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "fop2_settings" ADD CONSTRAINT "fop2_settings_subscription_id_subscriptions_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."subscriptions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "fop2_settings" ADD CONSTRAINT "fop2_settings_subscription_module_id_subscription_modules_id_fk" FOREIGN KEY ("subscription_module_id") REFERENCES "public"."subscription_modules"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "linepbx_settings" ADD CONSTRAINT "linepbx_settings_subscription_id_subscriptions_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."subscriptions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "linepbx_settings" ADD CONSTRAINT "linepbx_settings_hosting_id_hosting_providers_id_fk" FOREIGN KEY ("hosting_id") REFERENCES "public"."hosting_providers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "linepbx_settings" ADD CONSTRAINT "linepbx_settings_ssh_password_secret_id_secrets_id_fk" FOREIGN KEY ("ssh_password_secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "omniboard_settings" ADD CONSTRAINT "omniboard_settings_subscription_id_subscriptions_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."subscriptions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "omniboard_settings" ADD CONSTRAINT "omniboard_settings_subscription_module_id_subscription_modules_id_fk" FOREIGN KEY ("subscription_module_id") REFERENCES "public"."subscription_modules"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "omniboard_settings" ADD CONSTRAINT "omniboard_settings_admin_password_secret_id_secrets_id_fk" FOREIGN KEY ("admin_password_secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "omniboard_settings" ADD CONSTRAINT "omniboard_settings_user_default_password_secret_id_secrets_id_fk" FOREIGN KEY ("user_default_password_secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "product_modules" ADD CONSTRAINT "product_modules_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "subscription_modules" ADD CONSTRAINT "subscription_modules_subscription_id_subscriptions_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."subscriptions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "subscription_modules" ADD CONSTRAINT "subscription_modules_module_id_product_modules_id_fk" FOREIGN KEY ("module_id") REFERENCES "public"."product_modules"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "szchat_settings" ADD CONSTRAINT "szchat_settings_subscription_id_subscriptions_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."subscriptions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -282,5 +306,7 @@ CREATE UNIQUE INDEX "dids_number_uq" ON "dids" USING btree ("number");--> statem
 CREATE INDEX "dids_circuit_idx" ON "dids" USING btree ("circuit_id");--> statement-breakpoint
 CREATE INDEX "dids_client_idx" ON "dids" USING btree ("client_id");--> statement-breakpoint
 CREATE INDEX "dids_deleted_idx" ON "dids" USING btree ("deleted_at");--> statement-breakpoint
+CREATE UNIQUE INDEX "product_modules_product_code_uq" ON "product_modules" USING btree ("product_id","code");--> statement-breakpoint
 CREATE INDEX "sessions_user_idx" ON "sessions" USING btree ("user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "subscription_modules_sub_module_uq" ON "subscription_modules" USING btree ("subscription_id","module_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "subscriptions_client_product_uq" ON "subscriptions" USING btree ("client_id","product_id");

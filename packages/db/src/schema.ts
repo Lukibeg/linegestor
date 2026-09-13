@@ -29,7 +29,7 @@ const deletedAt = () => timestamp('deleted_at', { withTimezone: true });
 
 /**
  * Uma linha por empresa. Inclui também as organizações internas do grupo (Ingline Systems, VoiceNet),
- * marcadas com `isInternal`, porque elas aparecem como "dono" de DIDs, circuitos e aparelhos.
+ * marcadas com `isInternal`, porque elas aparecem como "titular" de DIDs, circuitos e aparelhos.
  */
 export const clients = pgTable(
   'clients',
@@ -63,7 +63,7 @@ export const clients = pgTable(
   ],
 );
 
-/** Catálogo dos produtos vendidos (os 8 do portfólio, gerenciável pela Administração). */
+/** Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração). */
 export const products = pgTable('products', {
   id: id(),
   /** Identificador estável usado no código ("linepbx", "fop2"...) */
@@ -74,12 +74,35 @@ export const products = pgTable('products', {
   color: text('color').notNull().default('#2457D6'),
   /** Uma frase explicando o produto */
   description: text('description'),
-  /** Tem uma tabela de configuração própria? (LinePBX, FOP2, Omniboard, SZChat) */
+  /** Tem uma tabela de configuração própria? (LinePBX, SZChat) */
   hasSettings: boolean('has_settings').notNull().default(false),
   /** Ordem nos chips e menus */
   sortOrder: integer('sort_order').notNull().default(0),
   active: boolean('active').notNull().default(true),
 });
+
+/**
+ * Catálogo de MÓDULOS: partes opcionais dentro de um produto.
+ * LinePBX tem Omniboard, FOP2 e NPS; LineChat tem Dashboard de filas e NPS. Gerenciável pela Administração.
+ */
+export const productModules = pgTable(
+  'product_modules',
+  {
+    id: id(),
+    productId: text('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+    /** Identificador estável dentro do produto ("fop2", "nps"…) */
+    code: text('code').notNull(),
+    /** Nome exibido */
+    name: text('name').notNull(),
+    /** Uma frase explicando o módulo */
+    description: text('description'),
+    /** Tem configuração própria? (FOP2: ramal admin · Omniboard: login e senhas) */
+    hasSettings: boolean('has_settings').notNull().default(false),
+    sortOrder: integer('sort_order').notNull().default(0),
+    active: boolean('active').notNull().default(true),
+  },
+  (t) => [uniqueIndex('product_modules_product_code_uq').on(t.productId, t.code)],
+);
 
 /**
  * "O cliente X assina o produto Y." Uma linha por par cliente × produto.
@@ -95,9 +118,7 @@ export const subscriptions = pgTable(
     activatedAt: timestamp('activated_at', { withTimezone: true }),
     /** Preenchido quando o cliente deixou de assinar. Nulo = ativa. */
     deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
-    /** Valor mensal cobrado, em centavos (opcional) */
-    monthlyValueCents: integer('monthly_value_cents'),
-    /** Anotações do produto para este cliente (regras internas, módulos pagos, contratos...) */
+    /** Anotações do produto para este cliente (regras internas, contratos...) */
     notes: text('notes'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -122,16 +143,38 @@ export const linepbxSettings = pgTable('linepbx_settings', {
   sshPasswordSecretId: text('ssh_password_secret_id').references(() => secrets.id),
 });
 
-/** Configuração própria do FOP2. */
+/**
+ * "Na assinatura X, o módulo Y está ligado." Uma linha por par assinatura × módulo.
+ * Só faz sentido dentro de um produto que o cliente assina (o servidor confere).
+ */
+export const subscriptionModules = pgTable(
+  'subscription_modules',
+  {
+    id: id(),
+    subscriptionId: text('subscription_id').notNull().references(() => subscriptions.id, { onDelete: 'cascade' }),
+    moduleId: text('module_id').notNull().references(() => productModules.id),
+    /** Quando o módulo foi ligado para o cliente */
+    activatedAt: timestamp('activated_at', { withTimezone: true }),
+    /** Preenchido quando foi desligado. Nulo = ligado. */
+    deactivatedAt: timestamp('deactivated_at', { withTimezone: true }),
+    /** Anotações do módulo para este cliente */
+    notes: text('notes'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('subscription_modules_sub_module_uq').on(t.subscriptionId, t.moduleId)],
+);
+
+/** Configuração própria do módulo FOP2 (dentro do LinePBX). */
 export const fop2Settings = pgTable('fop2_settings', {
-  subscriptionId: text('subscription_id').primaryKey().references(() => subscriptions.id, { onDelete: 'cascade' }),
+  subscriptionModuleId: text('subscription_module_id').primaryKey().references(() => subscriptionModules.id, { onDelete: 'cascade' }),
   /** Ramal/usuário do FOP2 usado para o acesso rápido */
   adminExtension: text('admin_extension'),
 });
 
-/** Configuração própria do Omniboard (call center). */
+/** Configuração própria do módulo Omniboard (call center, dentro do LinePBX). */
 export const omniboardSettings = pgTable('omniboard_settings', {
-  subscriptionId: text('subscription_id').primaryKey().references(() => subscriptions.id, { onDelete: 'cascade' }),
+  subscriptionModuleId: text('subscription_module_id').primaryKey().references(() => subscriptionModules.id, { onDelete: 'cascade' }),
   /** E-mail do administrador */
   adminLogin: text('admin_login'),
   /** Senha do administrador — no cofre */
@@ -179,7 +222,7 @@ export const circuits = pgTable(
     carrierId: text('carrier_id').references(() => carriers.id),
     /** Canais = chamadas simultâneas que o feixe suporta */
     channels: integer('channels').notNull().default(0),
-    /** Quem detém o circuito (normalmente VoiceNet) */
+    /** Titular do circuito: quem detém o contrato com a operadora (normalmente VoiceNet) */
     ownerClientId: text('owner_client_id').references(() => clients.id),
     /** Custo/valor mensal do feixe, em centavos */
     monthlyValueCents: integer('monthly_value_cents'),
@@ -210,7 +253,7 @@ export const dids = pgTable(
     circuitId: text('circuit_id').references(() => circuits.id),
     /** Cliente que USA o número. Nulo = livre. */
     clientId: text('client_id').references(() => clients.id),
-    /** Quem DETÉM o número junto à operadora (normalmente VoiceNet) */
+    /** Titular: quem DETÉM o número junto à operadora (normalmente VoiceNet) */
     ownerClientId: text('owner_client_id').references(() => clients.id),
     /** Observação curta */
     note: text('note'),
@@ -438,13 +481,25 @@ export const clientsRelations = relations(clients, ({ many }) => ({
   devices: many(devices),
 }));
 
-export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+export const productsRelations = relations(products, ({ many }) => ({
+  modules: many(productModules),
+  subscriptions: many(subscriptions),
+}));
+export const productModulesRelations = relations(productModules, ({ one }) => ({
+  product: one(products, { fields: [productModules.productId], references: [products.id] }),
+}));
+export const subscriptionsRelations = relations(subscriptions, ({ one, many }) => ({
   client: one(clients, { fields: [subscriptions.clientId], references: [clients.id] }),
   product: one(products, { fields: [subscriptions.productId], references: [products.id] }),
   linepbx: one(linepbxSettings, { fields: [subscriptions.id], references: [linepbxSettings.subscriptionId] }),
-  fop2: one(fop2Settings, { fields: [subscriptions.id], references: [fop2Settings.subscriptionId] }),
-  omniboard: one(omniboardSettings, { fields: [subscriptions.id], references: [omniboardSettings.subscriptionId] }),
   szchat: one(szchatSettings, { fields: [subscriptions.id], references: [szchatSettings.subscriptionId] }),
+  modules: many(subscriptionModules),
+}));
+export const subscriptionModulesRelations = relations(subscriptionModules, ({ one }) => ({
+  subscription: one(subscriptions, { fields: [subscriptionModules.subscriptionId], references: [subscriptions.id] }),
+  module: one(productModules, { fields: [subscriptionModules.moduleId], references: [productModules.id] }),
+  fop2: one(fop2Settings, { fields: [subscriptionModules.id], references: [fop2Settings.subscriptionModuleId] }),
+  omniboard: one(omniboardSettings, { fields: [subscriptionModules.id], references: [omniboardSettings.subscriptionModuleId] }),
 }));
 
 export const linepbxRelations = relations(linepbxSettings, ({ one }) => ({
