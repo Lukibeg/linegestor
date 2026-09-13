@@ -1,0 +1,23 @@
+# apps/web — a interface (o que a equipe vê e usa)
+
+Feita em React + TypeScript + Tailwind. Conversa com o servidor (`apps/api`) por HTTP; nunca acessa o banco direto.
+
+Como está organizado:
+
+- `src/main.tsx` — ponto de partida. `src/App.tsx` — o mapa de rotas (qual URL abre qual tela).
+- `src/api/` — a "ponte" para o servidor:
+  - `client.ts` — como falar com a API de verdade.
+  - `demo.ts` — uma API **de mentira, em memória**, com dados fictícios. Usada para publicar uma prévia clicável sem servidor (`pnpm build:demo`).
+  - `index.ts` — escolhe uma das duas. `hooks.ts` — os "ganchos" que as telas usam para carregar e gravar dados.
+- `src/lib/auth.tsx` — quem está logado e o que pode (`<Can permission="...">` esconde o que a pessoa não pode fazer).
+- `src/components/ui/` — peças reutilizáveis: botão, campo, tabela, modal, chip, aviso, campo de senha com "revelar"…
+- `src/components/layout/` — a moldura: menu lateral, barra superior, busca global (Ctrl+K).
+- `src/pages/` — uma pasta por área do menu: painel, clientes, circuitos, dids, inventario, dados, admin.
+- `src/styles.css` — as cores e fontes (tema claro e escuro).
+
+Comandos:
+```
+pnpm dev          # abre em http://localhost:5173 (precisa da API rodando em :3333)
+pnpm build        # gera a versão de produção em dist/
+pnpm build:demo   # gera a prévia sem servidor em dist-demo/
+```
