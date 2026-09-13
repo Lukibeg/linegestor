@@ -98,6 +98,14 @@ export const realApi: Api = {
     move: (d) => http('POST', '/inventory/movements', d),
     units: (clientId) => http('GET', `/inventory/units${qs({ clientId })}`),
   },
+  settings: {
+    backup: () => http('GET', '/settings/backup'),
+    saveBackup: (d) => http('PUT', '/settings/backup', d),
+    testBackup: () => http('POST', '/settings/backup/test'),
+    alerts: () => http('GET', '/settings/alerts'),
+    saveAlerts: (d) => http('PUT', '/settings/alerts', d),
+    testAlerts: () => http('POST', '/settings/alerts/test'),
+  },
   data: {
     preview: (d) => http('POST', '/data/import/preview', d),
     apply: (d) => http('POST', '/data/import/apply', d),

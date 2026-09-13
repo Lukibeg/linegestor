@@ -30,6 +30,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [device_movement_items](#device_movement_items) — Um item da movimentação: ou um aparelho serializado (deviceId) ou uma quantidade de um modelo a granel.
 - [roles](#roles) — Um papel = um nome + uma lista de permissões (ver packages/shared/src/permissoes.ts).
 - [users](#users) — Quem entra no sistema.
+- [settings](#settings) — AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), em vez de mexer em arquivo no servidor.
 - [sessions](#sessions) — Sessão de login (cookie).
 - [secrets](#secrets) — O COFRE.
 - [audit_log](#audit_log) — Quem fez o quê, em qual registro, quando — com o antes e o depois.
@@ -291,6 +292,13 @@ Um papel = um nome + uma lista de permissões (ver packages/shared/src/permissoe
 ## users
 
 Quem entra no sistema.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+
+## settings
+
+AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), em vez de mexer em arquivo no servidor. Uma linha por assunto: 'backup' e 'avisos'. - `value` guarda o que NÃO é segredo (pasta do Drive, endereço do aviso, se está ligado, e o resultado do último envio), em JSON - `secretId` aponta para o cofre, onde mora o que é segredo: a chave da conta de serviço do Google e o token da API de avisos
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|

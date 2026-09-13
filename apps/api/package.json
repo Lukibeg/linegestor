@@ -7,6 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc --noEmit",
     "start": "tsx src/server.ts",
+    "enviar-backup": "tsx src/tools/enviar-backup.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

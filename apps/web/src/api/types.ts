@@ -6,6 +6,16 @@ export type Me = { id: string; name: string; email: string; roleId: string; role
 /** Resposta da entrada: ou entrou, ou falta o código de 6 dígitos. */
 export type Entrada = { needsCode: boolean; user: Me | null };
 
+/** Administração › Ajustes */
+export type AjustesBackup = {
+  ativo: boolean; pasta: string; pastaId: string; contaDeServico: string;
+  ultimoEnvioEm: string | null; ultimoEnvioOk: boolean | null; ultimoEnvioMsg: string | null; temChave: boolean;
+};
+export type AjustesAvisos = {
+  ativo: boolean; url: string; metodo: 'POST' | 'GET'; cabecalhos: string; corpo: string;
+  ultimoTesteEm: string | null; ultimoTesteOk: boolean | null; ultimoTesteMsg: string | null; temToken: boolean;
+};
+
 export type ProductChip = { code: string; name: string; color: string };
 export type Links = { web: string | null; ssh: string | null; fop2: string | null };
 

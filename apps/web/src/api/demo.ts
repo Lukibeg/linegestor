@@ -37,6 +37,18 @@ type RoleRow = { id: string; key: string | null; name: string; description: stri
 const S = {
   clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], bulk: [] as Bulk[], movements: [] as MovRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
+  ajustesBackup: {
+    ativo: false, pasta: 'Backups › Ingline Gestão', pastaId: '', contaDeServico: '',
+    ultimoEnvioEm: null as string | null, ultimoEnvioOk: null as boolean | null, ultimoEnvioMsg: null as string | null, temChave: false,
+  },
+  ajustesAvisos: {
+    ativo: false,
+    url: '',
+    metodo: 'POST' as 'POST' | 'GET',
+    cabecalhos: '{\n  "Content-Type": "application/json",\n  "Authorization": "Bearer {{token}}"\n}',
+    corpo: '{\n  "numero": "5571999999999",\n  "mensagem": "{{mensagem}}"\n}',
+    ultimoTesteEm: null as string | null, ultimoTesteOk: null as boolean | null, ultimoTesteMsg: null as string | null, temToken: false,
+  },
   carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[],
   products: PRODUTOS_INICIAIS.map((p, i) => ({ id: 'p' + p.code, ...p, description: p.description as string | null, sortOrder: i, active: true })),
   modules: MODULOS_INICIAIS.map((m, i) => ({ id: 'm' + m.product + '_' + m.code, productId: 'p' + m.product, code: m.code, name: m.name, description: m.description as string | null, hasSettings: m.hasSettings, sortOrder: i, active: true })) as ModRow[],
@@ -521,6 +533,41 @@ export const demoApi: Api = {
       const mv: MovRow = { id: id(), modality, fromClientId: from ?? null, toClientId: to, newCondition: (d.newCondition as string) ?? null, valueCents: (d.valueCents as number) ?? null, note: (d.note as string) ?? null, userId: S.me!.id, createdAt: now(), items: out };
       S.movements.push(mv); audit('movement', 'deviceMovement', `${(MODALIDADES as any)[modality]} de ${qty} aparelho(s)${to ? ' para ' + S.clients.find((c) => c.id === to)?.tradeName : ' para o estoque'}`, mv.id);
       return { id: mv.id, items: out.length, quantity: qty };
+    },
+  },
+  /**
+   * Ajustes na demonstração: as telas funcionam e guardam o que você digitar, mas nada é
+   * enviado para lugar nenhum — o "testar" finge que deu certo. É prévia, não o sistema.
+   */
+  settings: {
+    async backup() { await wait(); requirePerm('admin.manage'); return S.ajustesBackup; },
+    async saveBackup(d) {
+      await wait(200); requirePerm('admin.manage');
+      S.ajustesBackup = { ...S.ajustesBackup, ativo: d.ativo, pasta: d.pasta, pastaId: d.pastaId, temChave: S.ajustesBackup.temChave || !!d.chaveJson };
+      if (d.chaveJson) { try { S.ajustesBackup.contaDeServico = String(JSON.parse(d.chaveJson).client_email ?? ''); } catch { /* ignora */ } }
+      audit('settings_backup', 'settings', `${S.me?.name} mexeu nos ajustes do backup`, 'backup');
+      return S.ajustesBackup;
+    },
+    async testBackup() {
+      await wait(700); requirePerm('admin.manage');
+      const ok = S.ajustesBackup.temChave && !!S.ajustesBackup.pastaId;
+      const mensagem = ok ? 'Na demonstração nada é enviado de verdade — no sistema instalado, aqui apareceria a pasta encontrada e o arquivo de teste.' : 'Falta a chave da conta de serviço ou o id da pasta.';
+      S.ajustesBackup = { ...S.ajustesBackup, ultimoEnvioEm: now(), ultimoEnvioOk: ok, ultimoEnvioMsg: mensagem };
+      return { ok, mensagem };
+    },
+    async alerts() { await wait(); requirePerm('admin.manage'); return S.ajustesAvisos; },
+    async saveAlerts(d) {
+      await wait(200); requirePerm('admin.manage');
+      S.ajustesAvisos = { ...S.ajustesAvisos, ativo: d.ativo, url: d.url, metodo: d.metodo, cabecalhos: d.cabecalhos, corpo: d.corpo, temToken: S.ajustesAvisos.temToken || !!d.token };
+      audit('settings_alerts', 'settings', `${S.me?.name} mexeu nos ajustes de aviso`, 'avisos');
+      return S.ajustesAvisos;
+    },
+    async testAlerts() {
+      await wait(700); requirePerm('admin.manage');
+      const ok = !!S.ajustesAvisos.url;
+      const mensagem = ok ? 'Na demonstração nada sai daqui — no sistema instalado, a mensagem chegaria no WhatsApp pelo LineChat.' : 'Informe o endereço (URL) da API de avisos.';
+      S.ajustesAvisos = { ...S.ajustesAvisos, ultimoTesteEm: now(), ultimoTesteOk: ok, ultimoTesteMsg: mensagem };
+      return { ok, mensagem };
     },
   },
   data: {

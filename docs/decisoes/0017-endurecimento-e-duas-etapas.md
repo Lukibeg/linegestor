@@ -47,7 +47,7 @@ sistema até alguém restaurar noutro), e o backup remoto depende de você ligar
 dois é resolvível com código — são decisões de custo e de rotina.
 
 **Adendo (backup para fora do servidor).** O destino escolhido foi o **Google Drive da empresa**,
-via `rclone`, sem cifrar o arquivo antes de subir. O que isso significa, dito claramente: o arquivo
+sem cifrar o arquivo antes de subir. O que isso significa, dito claramente: o arquivo
 diário contém a base em texto (clientes, CNPJs, DIDs, IPs), então **a pasta do Drive não pode ser
 compartilhada com ninguém** — ela é tão sensível quanto o próprio banco. As senhas guardadas no cofre
 são a exceção: continuam cifradas dentro do arquivo, e a chave que as abre (`SECRETS_MASTER_KEY`)

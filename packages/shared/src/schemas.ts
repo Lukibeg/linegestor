@@ -279,6 +279,26 @@ export const CodigoSegundaEtapaSchema = z.object({
   code: z.string().trim().min(6, 'Informe o código').max(20),
 });
 
+/** Ajustes › Backup no Google Drive. A chave só vem quando a pessoa envia um arquivo novo. */
+export const AjustesBackupSchema = z.object({
+  ativo: z.boolean(),
+  pasta: z.string().trim().max(200).default(''),
+  pastaId: z.string().trim().max(200),
+  /** Conteúdo do arquivo JSON da conta de serviço; vazio = manter a chave que já está guardada */
+  chaveJson: z.string().max(20000).optional(),
+});
+
+/** Ajustes › Avisos. Qualquer API que aceite uma chamada HTTP serve — inclusive a do LineChat. */
+export const AjustesAvisosSchema = z.object({
+  ativo: z.boolean(),
+  url: z.string().trim().max(500),
+  metodo: z.enum(['POST', 'GET']).default('POST'),
+  cabecalhos: z.string().max(4000).default('{}'),
+  corpo: z.string().max(4000).default(''),
+  /** Token da API; vazio = manter o que já está guardado */
+  token: z.string().max(2000).optional(),
+});
+
 /** Desligar a verificação em duas etapas exige digitar a própria senha de novo. */
 export const DesligarSegundaEtapaSchema = z.object({
   password: z.string().min(1, 'Informe a sua senha'),

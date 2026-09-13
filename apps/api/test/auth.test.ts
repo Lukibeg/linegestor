@@ -87,3 +87,42 @@ describe('verificação em duas etapas', () => {
     expect((await s.get('/auth/me')).json()).toMatchObject({ twoFactor: false });
   });
 });
+
+describe('ajustes (backup e avisos)', () => {
+  it('guarda a chave do Drive e o token no cofre, sem devolvê-los', async () => {
+    const s = new Session(app);
+    await s.login();
+
+    // começa vazio
+    expect((await s.get('/settings/backup')).json()).toMatchObject({ ativo: false, temChave: false });
+
+    // chave inválida é recusada com uma explicação em português
+    const ruim = await s.put('/settings/backup', { ativo: true, pasta: 'x', pastaId: 'abc', chaveJson: '{"type":"outro"}' });
+    expect(ruim.statusCode).toBeGreaterThanOrEqual(400);
+
+    const chave = JSON.stringify({ type: 'service_account', client_email: 'robo@projeto.iam.gserviceaccount.com', private_key: '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n' });
+    const salvo = await s.put('/settings/backup', { ativo: true, pasta: 'Backups', pastaId: 'ID-DA-PASTA', chaveJson: chave });
+    expect(salvo.statusCode).toBe(200);
+    expect(salvo.json()).toMatchObject({ ativo: true, pastaId: 'ID-DA-PASTA', temChave: true, contaDeServico: 'robo@projeto.iam.gserviceaccount.com' });
+    // a chave NUNCA volta na resposta
+    expect(JSON.stringify(salvo.json())).not.toContain('BEGIN PRIVATE KEY');
+
+    // salvar de novo sem mandar a chave mantém a que já estava lá
+    const denovo = await s.put('/settings/backup', { ativo: false, pasta: 'Backups', pastaId: 'ID-DA-PASTA' });
+    expect(denovo.json()).toMatchObject({ ativo: false, temChave: true });
+
+    // avisos: o token some da resposta do mesmo jeito
+    const avisos = await s.put('/settings/alerts', { ativo: true, url: 'https://linechat.exemplo/api', metodo: 'POST', cabecalhos: '{"Authorization":"Bearer {{token}}"}', corpo: '{"mensagem":"{{mensagem}}"}', token: 'segredo-do-linechat' });
+    expect(avisos.json()).toMatchObject({ ativo: true, temToken: true });
+    expect(JSON.stringify(avisos.json())).not.toContain('segredo-do-linechat');
+
+    // quem não administra não chega perto
+    const papeis = (await s.get('/admin/roles')).json();
+    const leitorRole = papeis.find((r: any) => r.key === 'leitor');
+    const leitor = new Session(app);
+    await s.post('/admin/users', { name: 'Leitora', email: 'leitora@gestor.local', password: 'SenhaDeTeste!123', roleId: leitorRole.id });
+    await leitor.login('leitora@gestor.local', 'SenhaDeTeste!123');
+    expect((await leitor.get('/settings/backup')).statusCode).toBe(403);
+    expect((await leitor.put('/settings/alerts', { ativo: false, url: '', metodo: 'POST', cabecalhos: '{}', corpo: '' })).statusCode).toBe(403);
+  });
+});

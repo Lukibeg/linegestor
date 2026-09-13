@@ -436,6 +436,24 @@ export const users = pgTable('users', {
   updatedAt: updatedAt(),
 });
 
+/**
+ * AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), em vez de
+ * mexer em arquivo no servidor. Uma linha por assunto: 'backup' e 'avisos'.
+ *
+ *  - `value` guarda o que NÃO é segredo (pasta do Drive, endereço do aviso, se está ligado,
+ *    e o resultado do último envio), em JSON
+ *  - `secretId` aponta para o cofre, onde mora o que é segredo: a chave da conta de serviço
+ *    do Google e o token da API de avisos
+ */
+export const settings = pgTable('settings', {
+  /** 'backup' | 'avisos' */
+  id: text('id').primaryKey(),
+  value: text('value').notNull().default('{}'),
+  secretId: text('secret_id').references(() => secrets.id),
+  updatedAt: updatedAt(),
+  updatedBy: text('updated_by').references(() => users.id),
+});
+
 /** Sessão de login (cookie). Expira sozinha. */
 export const sessions = pgTable(
   'sessions',

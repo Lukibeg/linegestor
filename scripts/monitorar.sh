@@ -3,8 +3,8 @@
 #
 #   */5 * * * * cd /opt/gestao && ./scripts/monitorar.sh >> /var/log/gestao-monitor.log 2>&1
 #
-# Se não responder duas vezes seguidas, tenta levantar de novo e avisa em ALERTA_URL
-# (ntfy.sh, webhook do Slack/Discord, healthchecks.io — qualquer endereço que aceite POST).
+# Se não responder duas vezes seguidas, tenta levantar de novo e avisa pelo caminho
+# configurado em Administração › Ajustes › Avisos (no nosso caso, WhatsApp pelo LineChat).
 #
 # Importante: isto roda DENTRO do servidor, então não avisa se o servidor inteiro cair.
 # Para isso, use também um monitor de fora (UptimeRobot, Better Stack — ambos têm plano grátis)
@@ -19,7 +19,7 @@ ENDERECO="https://${DOMINIO:-localhost}/api/health"
 
 avisar() {
   echo "[$(date '+%F %T')] $1"
-  [[ -n "${ALERTA_URL:-}" ]] && curl -fsS -m 10 -H 'Content-Type: text/plain' -d "Ingline Gestão: $1" "$ALERTA_URL" >/dev/null 2>&1
+  ./scripts/avisar.sh "Ingline Gestão: $1" >/dev/null 2>&1
   return 0
 }
 

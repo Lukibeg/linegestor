@@ -4,9 +4,11 @@
 #   ./scripts/backup.sh
 #
 # Guarda em backups/ um arquivo comprimido por dia. Mantém 14 diários e 8 semanais
-# (os de domingo). Se BACKUP_REMOTO estiver no .env, manda uma cópia para fora do
-# servidor com rclone — backup que só existe no mesmo servidor não protege de nada.
-# Lá fora, apaga sozinho o que passou de 60 dias, para a pasta não crescer sem fim.
+# (os de domingo). Em seguida pede ao próprio sistema que mande uma cópia para o Google
+# Drive — backup que só existe no mesmo servidor não protege de nada.
+#
+# Para onde vai, com qual conta e em qual pasta é coisa que se preenche na TELA
+# (Administração › Ajustes), não aqui. Este script não sabe de senha nenhuma.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [[ -f .env ]] && set -a && . ./.env && set +a
@@ -24,13 +26,6 @@ echo "Backup: $ARQ ($(du -h "$ARQ" | cut -f1))"
 find "$DESTINO" -name 'gestao-*.sql.gz' ! -name '*-semanal.sql.gz' -mtime +14 -delete
 find "$DESTINO" -name 'gestao-*-semanal.sql.gz' -mtime +56 -delete
 
-if [[ -n "${BACKUP_REMOTO:-}" ]]; then
-  echo "Copiando para $BACKUP_REMOTO"
-  if rclone copy "$ARQ" "$BACKUP_REMOTO" --quiet; then
-    # limpeza lá fora: --drive-use-trash=false para não ficar entulhando a lixeira do Drive
-    rclone delete "$BACKUP_REMOTO" --min-age 60d --drive-use-trash=false --quiet || true
-  else
-    echo "ATENÇÃO: a cópia para $BACKUP_REMOTO falhou — o backup local está feito, mas não saiu do servidor" >&2
-    [[ -n "${ALERTA_URL:-}" ]] && curl -fsS -m 10 -d "Ingline Gestão · backup: a cópia para fora do servidor falhou" "$ALERTA_URL" >/dev/null 2>&1
-  fi
-fi
+# manda para o Google Drive (o sistema lê os ajustes da tela e guarda o resultado lá também)
+docker compose -f docker-compose.prod.yml exec -T app pnpm enviar-backup "/backups/$(basename "$ARQ")" || \
+  ./scripts/avisar.sh "o backup local foi feito, mas o envio para o Google Drive não rodou" || true

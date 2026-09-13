@@ -29,6 +29,13 @@ services:
       WEB_ORIGIN: https://${DOMINIO:?defina DOMINIO no .env}
       NODE_ENV: production
       PORT: 3333
+      # onde o sistema escreve a cópia dos ajustes para o vigia que roda fora dele
+      CONFIG_DIR: /dados
+    volumes:
+      # os backups, para o sistema conseguir mandá-los ao Google Drive
+      - ./backups:/backups
+      # a cópia dos ajustes de aviso, lida pelo monitorar.sh lá de fora
+      - ./config:/dados
     networks: [interna]
 
   caddy:

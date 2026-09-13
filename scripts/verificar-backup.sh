@@ -4,7 +4,8 @@
 #
 #   30 3 * * 1 cd /opt/gestao && ./scripts/verificar-backup.sh >> /var/log/gestao-backup.log 2>&1
 #
-# Avisa em ALERTA_URL se o backup não existir, não abrir, ou vier vazio.
+# Avisa pelo caminho configurado em Administração › Ajustes se o backup não existir,
+# não abrir, ou vier vazio.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 [[ -f .env ]] && set -a && . ./.env && set +a
@@ -15,7 +16,7 @@ ULTIMO=$(ls -t "${BACKUP_DIR:-./backups}"/gestao-*.sql.gz 2>/dev/null | head -1)
 
 avisar() {
   echo "[$(date '+%F %T')] $1"
-  [[ -n "${ALERTA_URL:-}" ]] && curl -fsS -m 10 -H 'Content-Type: text/plain' -d "Ingline Gestão · backup: $1" "$ALERTA_URL" >/dev/null 2>&1
+  ./scripts/avisar.sh "Ingline Gestão · backup: $1" >/dev/null 2>&1
   return 0
 }
 limpar() { $COMPOSE exec -T db psql -U postgres -q -c "DROP DATABASE IF EXISTS $TESTE;" >/dev/null 2>&1; }

@@ -27,6 +27,7 @@ import adminRoutes from './routes/admin.js';
 import dataRoutes from './routes/data.js';
 import dashboardRoutes from './routes/dashboard.js';
 import secretRoutes from './routes/secrets.js';
+import settingsRoutes from './routes/settings.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -73,6 +74,7 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
     await api.register(dashboardRoutes, { prefix: '/dashboard' });
     await api.register(dataRoutes, { prefix: '/data' });
     await api.register(adminRoutes, { prefix: '/admin' });
+    await api.register(settingsRoutes, { prefix: '/settings' });
   }, { prefix: '/api' });
 
   // Em produção, a própria API serve a interface (apps/web/dist) e devolve o index.html para qualquer rota que não seja /api

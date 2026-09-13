@@ -223,6 +223,14 @@ CREATE TABLE "sessions" (
 	"user_agent" text
 );
 --> statement-breakpoint
+CREATE TABLE "settings" (
+	"id" text PRIMARY KEY NOT NULL,
+	"value" text DEFAULT '{}' NOT NULL,
+	"secret_id" text,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_by" text
+);
+--> statement-breakpoint
 CREATE TABLE "subscription_modules" (
 	"id" text PRIMARY KEY NOT NULL,
 	"subscription_id" text NOT NULL,
@@ -295,6 +303,8 @@ ALTER TABLE "omniboard_settings" ADD CONSTRAINT "omniboard_settings_admin_passwo
 ALTER TABLE "omniboard_settings" ADD CONSTRAINT "omniboard_settings_user_default_password_secret_id_secrets_id_fk" FOREIGN KEY ("user_default_password_secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "product_modules" ADD CONSTRAINT "product_modules_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "settings" ADD CONSTRAINT "settings_secret_id_secrets_id_fk" FOREIGN KEY ("secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "settings" ADD CONSTRAINT "settings_updated_by_users_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "subscription_modules" ADD CONSTRAINT "subscription_modules_subscription_id_subscriptions_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."subscriptions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "subscription_modules" ADD CONSTRAINT "subscription_modules_module_id_product_modules_id_fk" FOREIGN KEY ("module_id") REFERENCES "public"."product_modules"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

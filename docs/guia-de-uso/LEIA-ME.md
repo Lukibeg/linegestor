@@ -17,4 +17,5 @@
 ## Guias que já existem
 
 - [Fazer o botão "SSH" abrir o PuTTY](ssh-com-putty.md) — configuração de uma vez por computador.
-- [Mandar o backup para o Google Drive da empresa](backup-no-google-drive.md) — configuração de uma vez, na instalação do servidor.
+- [Mandar o backup para o Google Drive da empresa](backup-no-google-drive.md) — conta de serviço do Google, feito uma vez.
+- [Receber os avisos do sistema no WhatsApp](avisos-no-whatsapp.md) — ligar a API do LineChat na tela de Ajustes.

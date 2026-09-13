@@ -72,6 +72,7 @@ No `.env` de produção:
 Então:
 
 ```bash
+mkdir -p backups config && chmod 700 backups config
 docker compose -f docker-compose.prod.yml up -d      # banco + sistema + HTTPS
 docker compose -f docker-compose.prod.yml exec app pnpm db:seed
 ```
@@ -97,16 +98,16 @@ crontab -e
 */5 * * * * cd /opt/gestao && ./scripts/monitorar.sh >> /var/log/gestao-monitor.log 2>&1
 ```
 
-Preencha `ALERTA_URL` no `.env` com um endereço que aceite POST (ntfy.sh, webhook do Slack ou do
-Discord, healthchecks.io) e os avisos chegam no celular. Como o monitor roda **dentro** do servidor,
+**Para onde o backup sobe e para onde vão os avisos se preenche na tela**, em
+`Administração › Ajustes` — não aqui. Dois guias cobrem o passo a passo:
+[backup no Google Drive](guia-de-uso/backup-no-google-drive.md) e
+[avisos no WhatsApp](guia-de-uso/avisos-no-whatsapp.md). Como o vigia roda **dentro** do servidor,
 ele não avisa se o servidor inteiro cair — para isso, ponha também um monitor de fora
 (UptimeRobot ou Better Stack, ambos com plano grátis) apontando para
 `https://gestao.inglinesystems.com.br/api/health`.
 
-Guarda 14 diários e 8 semanais em `/opt/gestao/backups`. A cópia **para fora do servidor** — que é o
-que de fato protege contra perder o servidor inteiro — vai para uma pasta do **Google Drive da
-empresa**: o passo a passo está em [`guia-de-uso/backup-no-google-drive.md`](guia-de-uso/backup-no-google-drive.md).
-Sem isso, o backup só protege contra engano, não contra pane.
+Guarda 14 diários e 8 semanais em `/opt/gestao/backups`, e manda cada um para a pasta do Google
+Drive configurada na tela. Sem essa segunda parte, o backup só protege contra engano, não contra pane.
 
 **Teste a restauração uma vez por trimestre:**
 

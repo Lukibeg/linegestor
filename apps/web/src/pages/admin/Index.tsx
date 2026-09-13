@@ -1,4 +1,4 @@
-/** Administração: Usuários · Papéis · Catálogos · Produtos · Auditoria · Lixeira. */
+/** Administração: Usuários · Papéis · Catálogos · Produtos · Ajustes · Auditoria · Lixeira. */
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
@@ -10,11 +10,12 @@ import { useAuth } from '../../lib/auth.js';
 import { Campo, Carregando, Chip, Modal, Paginacao, Spinner, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { data, relativo } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
+import { Ajustes } from './Ajustes.js';
 
 export function Admin() {
   const { can } = useAuth();
   const links = [
-    ...(can('admin.manage') ? [{ to: 'usuarios', label: 'Usuários' }, { to: 'papeis', label: 'Papéis' }, { to: 'catalogos', label: 'Catálogos' }, { to: 'produtos', label: 'Produtos' }] : []),
+    ...(can('admin.manage') ? [{ to: 'usuarios', label: 'Usuários' }, { to: 'papeis', label: 'Papéis' }, { to: 'catalogos', label: 'Catálogos' }, { to: 'produtos', label: 'Produtos' }, { to: 'ajustes', label: 'Ajustes' }] : []),
     ...(can('audit.read') ? [{ to: 'auditoria', label: 'Auditoria' }] : []),
     ...(can('records.delete') ? [{ to: 'lixeira', label: 'Lixeira' }] : []),
   ];
@@ -23,7 +24,7 @@ export function Admin() {
       <div className="flex gap-1 border-b border-line mb-4 overflow-x-auto">{links.map((l) => <NavLink key={l.to} to={l.to} className={({ isActive }) => `px-3 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${isActive ? 'border-accent text-accent' : 'border-transparent text-ink-2'}`}>{l.label}</NavLink>)}</div>
       <Routes>
         <Route index element={<Navigate to={links[0]?.to ?? '/'} replace />} />
-        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
+        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="ajustes" element={<Ajustes />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
       </Routes>
     </Pagina>
   );

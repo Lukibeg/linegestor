@@ -71,6 +71,14 @@ export type Api = {
     /** Unidades já usadas (para sugerir no formulário). */
     units(clientId?: string): Promise<string[]>;
   };
+  settings: {
+    backup(): Promise<T.AjustesBackup>;
+    saveBackup(d: { ativo: boolean; pasta: string; pastaId: string; chaveJson?: string }): Promise<T.AjustesBackup>;
+    testBackup(): Promise<{ ok: boolean; mensagem: string }>;
+    alerts(): Promise<T.AjustesAvisos>;
+    saveAlerts(d: { ativo: boolean; url: string; metodo: 'POST' | 'GET'; cabecalhos: string; corpo: string; token?: string }): Promise<T.AjustesAvisos>;
+    testAlerts(): Promise<{ ok: boolean; mensagem: string }>;
+  };
   data: {
     preview(d: { entity: string; csv: string; delimiter: string }): Promise<T.ImportPlan>;
     apply(d: { entity: string; csv: string; delimiter: string }): Promise<{ created: number; updated: number }>;

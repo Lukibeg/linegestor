@@ -9,6 +9,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 COMPOSE="docker compose -f docker-compose.prod.yml"
 
+# as duas pastas que o sistema enxerga por dentro (backups e a cópia dos ajustes de aviso)
+mkdir -p backups config && chmod 700 backups config
+
 echo "==> 1/5 Backup antes de mexer"
 ./scripts/backup.sh
 
