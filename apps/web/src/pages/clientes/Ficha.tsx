@@ -92,8 +92,7 @@ function Geral({ c }: { c: ClientFull }) {
       </div>
       <div className="flex flex-col gap-3">
         <div className="card p-4"><div className="eyebrow">DIDs em uso</div><div className="font-display text-2xl font-semibold tnum">{c.didCount}</div></div>
-        <div className="card p-4"><div className="eyebrow">Aparelhos com o cliente</div><div className="font-display text-2xl font-semibold tnum">{c.deviceCount}</div></div>
-        <div className="card p-4"><div className="eyebrow">Módulos ativos</div><div className="font-display text-2xl font-semibold tnum">{ativos.reduce((a, s) => a + s.modules.filter((m) => m.active).length, 0)}</div><div className="text-muted text-[12px]">Omniboard, FOP2, NPS, dashboard de filas…</div></div>
+        <div className="card p-4"><div className="eyebrow">Equipamentos locados</div><div className="font-display text-2xl font-semibold tnum">{c.deviceCount}</div></div>
       </div>
     </div>
   );
