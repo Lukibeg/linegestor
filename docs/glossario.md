@@ -25,6 +25,9 @@
 | **Granel** | Modelo contado por quantidade (headsets, cabos), sem identidade por unidade. |
 | **MAC** | Endereço físico único de fábrica de um aparelho de rede (ex.: 00:0B:82:A1:B2:C3). Identifica o aparelho no Gestor. |
 | **Condição** | Estado do aparelho: Ativo, Em manutenção, Baixado, Vendido. |
+| **Unidade** | A filial, loja ou setor do cliente onde o aparelho está ("Loja Simões Filho"). Preenchida ao entregar; some quando o aparelho volta para o estoque. |
+| **Atribuído a** | O cliente com quem o aparelho está. Vazio = estoque. Era "onde está" nas primeiras versões. |
+| **Modalidade** | Como o aparelho está com o cliente: locação, comodato ou venda. Era "como" nas primeiras versões. |
 | **Movimentação** | Locação, venda, comodato ou devolução de aparelhos. Registra de onde, para onde, quantos, quem e quando. |
 | **Locação** | Aparelho emprestado mediante pagamento; continua da Ingline. |
 | **Comodato** | Aparelho emprestado sem cobrança; continua da Ingline. |

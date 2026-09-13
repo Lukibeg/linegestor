@@ -74,7 +74,13 @@ function Papeis() {
         <div className="flex flex-col gap-3">
           <Campo label="Nome"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} disabled={!!edit && edit !== 'novo' && edit.isSystem} /></Campo>
           <Campo label="Descrição"><input className="input" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Campo>
-          <div className="eyebrow">Permissões</div>
+          <div className="flex items-center justify-between">
+            <span className="eyebrow">Permissões</span>
+            <span className="flex gap-1">
+              <button className="btn-ghost btn-sm" onClick={() => setF({ ...f, permissions: (perms.data ?? []).map((p) => p.key) })}>tudo</button>
+              <button className="btn-ghost btn-sm" onClick={() => setF({ ...f, permissions: [] })}>nada</button>
+            </span>
+          </div>
           <div className="flex flex-col gap-1.5">{perms.data?.map((p) => <label key={p.key} className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={f.permissions.includes(p.key)} disabled={!!edit && edit !== 'novo' && edit.key === 'administrador'} onChange={(e) => setF({ ...f, permissions: e.target.checked ? [...f.permissions, p.key] : f.permissions.filter((x) => x !== p.key) })} /><span>{p.label} <span className="font-mono text-[11px] text-muted">{p.key}</span></span></label>)}</div>
           {err && <div className="text-bad text-sm">{err}</div>}
         </div>

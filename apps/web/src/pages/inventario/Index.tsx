@@ -4,12 +4,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowLeftRight, Plus } from 'lucide-react';
 import { api } from '../../api/index.js';
-import type { DeviceModel } from '../../api/types.js';
+import type { Device, DeviceModel } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Abas, Campo, Carregando, Chip, Kpi, Modal, Paginacao, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { condicaoCor, condicaoNome, CONDICOES_APARELHO, data, macFormatado, macValido, MODALIDADES, paraCentavos, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
+import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
 import { Movimentar } from './Movimentar.js';
 
 type Aba = 'aparelhos' | 'modelos' | 'movimentacoes';
@@ -43,6 +44,23 @@ export function Inventario() {
   );
 }
 
+/** As colunas da tabela de aparelhos. A pessoa escolhe quais quer ver (botão "Colunas"). */
+function colunasAparelhos(): Coluna<Device>[] {
+  return [
+    { id: 'mac', label: 'MAC', grupo: 'Aparelho', render: (d) => <span className="font-mono whitespace-nowrap">{d.macFormatted}</span> },
+    { id: 'modelName', label: 'Modelo', grupo: 'Aparelho', render: (d) => d.modelName },
+    { id: 'condition', label: 'Condição', grupo: 'Aparelho', render: (d) => <Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip> },
+    { id: 'valueCents', label: 'Valor', grupo: 'Aparelho', align: 'right', render: (d) => <span className="tnum">{reais(d.valueCents)}</span> },
+    { id: 'clientName', label: 'Atribuído a', grupo: 'Onde está', render: (d) => (d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`} onClick={(e) => e.stopPropagation()}>{d.clientName}</Link> : <Chip tone="ok">estoque</Chip>) },
+    { id: 'unit', label: 'Unidade', grupo: 'Onde está', render: (d) => d.unit ?? <span className="text-muted">—</span> },
+    { id: 'currentModality', label: 'Modalidade', grupo: 'Onde está', render: (d) => <span className="text-muted">{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</span> },
+    { id: 'location', label: 'Local físico', grupo: 'Onde está', render: (d) => <span className="text-muted">{d.location ?? '—'}</span> },
+    { id: 'ip', label: 'IP', grupo: 'Rede e anotações', render: (d) => <span className="font-mono text-muted">{d.ip ?? '—'}</span> },
+    { id: 'note', label: 'Anotação', grupo: 'Rede e anotações', render: (d) => <span className="text-muted block max-w-[260px] truncate" title={d.note ?? ''}>{d.note ?? '—'}</span> },
+  ];
+}
+const COLUNAS_APARELHOS_PADRAO = ['mac', 'modelName', 'clientName', 'unit', 'currentModality', 'condition', 'ip', 'valueCents'];
+
 function Aparelhos({ models }: { models: DeviceModel[] }) {
   const [sp, setSp] = useSearchParams();
   const nav = useNavigate();
@@ -51,6 +69,9 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
   const [novo, setNovo] = useState(false);
   const clients = useQuery({ queryKey: ['client-options', 'equip'], queryFn: () => api.clients.options({ productCode: 'equipamentos' }) });
   const o = useOrdenacao('modelName');
+  const escolha = useColunasEscolhidas('gestor.aparelhos.colunas', COLUNAS_APARELHOS_PADRAO);
+  const colunas = colunasAparelhos();
+  const visiveis = colunas.filter((c) => escolha.ids.includes(c.id));
   const lista = useQuery({ queryKey: ['devices', q, modelId, clientId, condition, page, o.ord, o.dir], queryFn: () => api.inventory.devices({ q, modelId, clientId, condition, includeRetired: !!condition, page, pageSize: 50, sort: o.ord, dir: o.dir }) });
   const stock = useQuery({ queryKey: ['stock'], queryFn: () => api.inventory.stock() });
   const granel = stock.data?.filter((b) => b.quantity > 0) ?? [];
@@ -59,32 +80,28 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
   return (
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2 items-center">
-        <input className="input max-w-[220px] font-mono" placeholder="MAC, etiqueta, IP ou local" value={q} onChange={(e) => set('q', e.target.value)} />
+        <input className="input max-w-[220px] font-mono" placeholder="MAC, unidade, IP ou local" value={q} onChange={(e) => set('q', e.target.value)} />
         <select className="input w-auto" value={modelId} onChange={(e) => set('modelo', e.target.value || null)}><option value="">Todos os modelos</option>{models.filter((m) => m.tracking === 'serializado').map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
         <select className="input w-auto" value={clientId} onChange={(e) => set('cliente', e.target.value || null)}><option value="">Estoque e clientes</option><option value="stock">Só estoque</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         <select className="input w-auto" value={condition} onChange={(e) => set('condicao', e.target.value || null)}><option value="">Ativos e em manutenção</option>{Object.entries(CONDICOES_APARELHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <span className="flex-1" />
+        <SeletorColunas colunas={colunas} escolha={escolha} />
         <Can permission="records.write"><button className="btn-secondary btn-sm" onClick={() => setNovo(true)}><Plus size={14} /> Cadastrar aparelho</button></Can>
       </div>
       {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum aparelho" texto="Cadastre aparelhos pelo MAC ou ajuste os filtros." /> : (
         <div className="card overflow-x-auto"><table className="table">
-          <thead><tr>
-            <Th o={o} col="mac">MAC</Th><Th o={o} col="tag">Etiqueta</Th><Th o={o} col="modelName">Modelo</Th><Th o={o} col="clientName">Onde está</Th>
-            <Th o={o} col="currentModality">Como</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="ip">IP</Th><Th o={o} col="valueCents" align="right">Valor</Th>
-          </tr></thead>
+          <thead><tr>{visiveis.map((c) => <Th key={c.id} o={o} col={c.id} align={c.align}>{c.label}</Th>)}</tr></thead>
           <tbody>{lista.data.items.map((d) => (
             <tr key={d.id} className="cursor-pointer" onClick={() => nav(`/inventario/aparelhos/${d.id}`)}>
-              <td className="font-mono">{d.macFormatted}</td><td className="font-mono text-muted">{d.tag ?? '—'}</td><td>{d.modelName}</td>
-              <td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`} onClick={(e) => e.stopPropagation()}>{d.clientName}</Link> : <Chip tone="ok">estoque</Chip>}</td>
-              <td className="text-muted">{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td>
-              <td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td>
-              <td className="font-mono text-muted">{d.ip ?? '—'}</td><td className="text-right tnum">{reais(d.valueCents)}</td>
-            </tr>))}</tbody></table></div>
+              {visiveis.map((col) => <td key={col.id} className={col.align === 'right' ? 'text-right' : ''}>{col.render(d)}</td>)}
+            </tr>))}</tbody></table>
+          {!visiveis.length && <div className="p-4 text-sm text-muted">Nenhuma coluna escolhida — use o botão "Colunas".</div>}
+        </div>
       )}
       {lista.data && <Paginacao page={page} pageSize={50} total={lista.data.total} onChange={(p) => set('p', String(p))} />}
       {granel.length > 0 && (
         <div className="card mt-4"><div className="px-4 py-3 border-b border-line font-display font-semibold">Itens a granel</div>
-          <table className="table"><thead><tr><Th o={og} col="modelName">Modelo</Th><Th o={og} col="clientName">Onde</Th><Th o={og} col="modality">Como</Th><Th o={og} col="quantity" align="right">Quantidade</Th></tr></thead>
+          <table className="table"><thead><tr><Th o={og} col="modelName">Modelo</Th><Th o={og} col="clientName">Atribuído a</Th><Th o={og} col="modality">Modalidade</Th><Th o={og} col="quantity" align="right">Quantidade</Th></tr></thead>
             <tbody>{granelOrdenado.map((b) => <tr key={b.id}><td>{b.modelName}</td><td>{b.clientId ? <Link className="link" to={`/clientes/${b.clientId}`}>{b.clientName}</Link> : <Chip tone="ok">estoque</Chip>}</td><td className="text-muted">{b.modality === 'estoque' ? '—' : (MODALIDADES as any)[b.modality]}</td><td className="text-right tnum font-mono">{b.quantity}</td></tr>)}</tbody></table></div>
       )}
       <AparelhoForm open={novo} onClose={() => setNovo(false)} models={models.filter((m) => m.tracking === 'serializado')} />
@@ -93,18 +110,17 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
 }
 
 function AparelhoForm({ open, onClose, models }: { open: boolean; onClose: () => void; models: DeviceModel[] }) {
-  const [f, setF] = useState({ modelId: '', mac: '', tag: '', valueCents: '', ip: '', location: '', note: '' });
+  const [f, setF] = useState({ modelId: '', mac: '', valueCents: '', ip: '', location: '', note: '' });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const qc = useQueryClient(); const toast = useToast();
-  useEffect(() => { if (open) { setErr(''); setF({ modelId: models[0]?.id ?? '', mac: '', tag: '', valueCents: '', ip: '', location: '', note: '' }); } }, [open, models]);
-  const save = async () => { setBusy(true); setErr(''); try { await api.inventory.createDevice({ modelId: f.modelId, mac: f.mac, tag: f.tag || null, valueCents: f.valueCents ? paraCentavos(f.valueCents) : null, ip: f.ip || null, location: f.location || null, note: f.note || null }); await qc.invalidateQueries({ queryKey: ['devices'] }); await qc.invalidateQueries({ queryKey: ['models'] }); await qc.invalidateQueries({ queryKey: ['inventory'] }); toast.push('ok', 'Aparelho cadastrado no estoque'); onClose(); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
+  useEffect(() => { if (open) { setErr(''); setF({ modelId: models[0]?.id ?? '', mac: '', valueCents: '', ip: '', location: '', note: '' }); } }, [open, models]);
+  const save = async () => { setBusy(true); setErr(''); try { await api.inventory.createDevice({ modelId: f.modelId, mac: f.mac, valueCents: f.valueCents ? paraCentavos(f.valueCents) : null, ip: f.ip || null, location: f.location || null, note: f.note || null }); await qc.invalidateQueries({ queryKey: ['devices'] }); await qc.invalidateQueries({ queryKey: ['models'] }); await qc.invalidateQueries({ queryKey: ['inventory'] }); toast.push('ok', 'Aparelho cadastrado no estoque'); onClose(); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
   return (
     <Modal open={open} onClose={onClose} titulo="Cadastrar aparelho" rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.modelId || !macValido(f.mac)} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Cadastrar'}</button></>}>
       <div className="flex flex-col gap-3">
         <Campo label="Modelo"><select className="input" value={f.modelId} onChange={(e) => setF({ ...f, modelId: e.target.value })}>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Campo>
         <Campo label="MAC" erro={f.mac && !macValido(f.mac) ? 'precisa ter 12 caracteres hexadecimais' : undefined} dica="está na etiqueta atrás do aparelho"><input className="input font-mono" placeholder="00:0B:82:A1:B2:C3" value={f.mac} onChange={(e) => setF({ ...f, mac: e.target.value })} onBlur={() => macValido(f.mac) && setF({ ...f, mac: macFormatado(f.mac) })} autoFocus /></Campo>
         <div className="grid grid-cols-2 gap-3">
-          <Campo label="Etiqueta interna" dica="opcional"><input className="input font-mono" placeholder="N001" value={f.tag} onChange={(e) => setF({ ...f, tag: e.target.value })} /></Campo>
           <Campo label="Valor (R$)"><input className="input tnum" placeholder="0,00" value={f.valueCents} onChange={(e) => setF({ ...f, valueCents: e.target.value })} /></Campo>
           <Campo label="IP"><input className="input font-mono" value={f.ip} onChange={(e) => setF({ ...f, ip: e.target.value })} /></Campo>
           <Campo label="Local físico"><input className="input" placeholder="Prateleira B" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} /></Campo>

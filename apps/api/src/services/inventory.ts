@@ -2,7 +2,8 @@
  * Inventário: modelos, aparelhos serializados (por MAC), estoque a granel e movimentações.
  *
  * Regras que vivem aqui:
- *  - serializado: cada unidade é uma linha em `devices`, com MAC único; "onde está" = clientId (nulo = estoque)
+ *  - serializado: cada unidade é uma linha em `devices`, com MAC único; "atribuído a" = clientId (nulo = estoque)
+ *  - `unit` é a unidade do cliente (filial/loja) onde o aparelho está; volta a ficar vazia quando ele retorna ao estoque
  *  - granel: saldo por (modelo, lugar, modalidade) em `bulk_stock`
  *  - só se movimenta aparelho PARA um cliente que assina o produto Equipamentos (regra R22, confirmada)
  *  - venda: o aparelho fica com condição "vendido" — sai das contagens de estoque/locado, mas o histórico permanece
@@ -96,7 +97,7 @@ function filtrosAparelhos(q: FiltroAparelhos): SQL[] {
   else if (!q.includeRetired) conds.push(sql`${devices.condition} not in ('baixado','vendido')`);
   if (q.q) {
     const mac = q.q.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
-    conds.push(or(mac ? ilike(devices.mac, `%${mac}%`) : sql`false`, ilike(devices.tag, `%${q.q}%`), ilike(devices.ip, `%${q.q}%`), ilike(devices.location, `%${q.q}%`))!);
+    conds.push(or(mac ? ilike(devices.mac, `%${mac}%`) : sql`false`, ilike(devices.tag, `%${q.q}%`), ilike(devices.ip, `%${q.q}%`), ilike(devices.unit, `%${q.q}%`), ilike(devices.location, `%${q.q}%`))!);
   }
   return conds;
 }
@@ -146,6 +147,7 @@ function ordenacaoAparelhos(q: { sort?: string; dir?: string }) {
     currentModality: sql`${devices.currentModality}`,
     condition: sql`${devices.condition}`,
     ip: sql`${devices.ip}`,
+    unit: sql`lower(${devices.unit})`,
     location: sql`lower(${devices.location})`,
     valueCents: sql`${devices.valueCents}`,
     createdAt: sql`${devices.createdAt}`,
@@ -208,6 +210,16 @@ export async function restoreDevice(db: Db, id: string) {
   return row;
 }
 
+/** As unidades (filiais) já digitadas — a interface sugere estas para não haver dez grafias da mesma loja. */
+export async function listUnits(db: Db, clientId?: string) {
+  const rows = await db
+    .selectDistinct({ unit: devices.unit })
+    .from(devices)
+    .where(and(isNull(devices.deletedAt), sql`${devices.unit} is not null and ${devices.unit} <> ''`, clientId ? eq(devices.clientId, clientId) : undefined))
+    .orderBy(asc(devices.unit));
+  return rows.map((r) => r.unit!).filter(Boolean);
+}
+
 // ---------- Estoque a granel ----------
 
 export async function listBulk(db: Db, modelId?: string) {
@@ -265,7 +277,10 @@ export async function createMovement(db: Db, data: MovimentacaoCriar, userId: st
         if (fromClientId === undefined) fromClientId = d.clientId;
         const condition = data.newCondition ?? (data.modality === 'venda' ? 'vendido' : d.condition);
         await tx.update(devices).set({
-          clientId: data.toClientId, currentModality: data.toClientId ? data.modality : null, condition, updatedAt: new Date(),
+          clientId: data.toClientId, currentModality: data.toClientId ? data.modality : null, condition,
+          // a unidade só faz sentido quando o aparelho está com um cliente; voltando ao estoque, limpa
+          unit: data.toClientId ? data.unit ?? d.unit ?? null : null,
+          updatedAt: new Date(),
         }).where(eq(devices.id, d.id));
         items.push({ id: newId(), movementId, modelId: d.modelId, deviceId: d.id, quantity: 1 });
       } else {

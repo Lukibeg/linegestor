@@ -34,6 +34,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.post('/devices/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Inventário'], summary: 'Restaurar aparelho', params: Id } },
     async (req) => { const row = await svc.restoreDevice(app.db, req.params.id); await app.audit(req, { action: 'restore', entityType: 'device', entityId: row.id, summary: `Restaurou o aparelho ${row.mac}` }); return svc.getDevice(app.db, row.id); });
 
+  app.get('/units', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Unidades (filiais/lojas) já usadas — para sugerir no formulário', querystring: z.object({ clientId: z.string().optional() }) } },
+    async (req) => svc.listUnits(app.db, req.query.clientId));
+
   // ---- granel ----
   app.get('/stock', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Saldos a granel por modelo e lugar', querystring: z.object({ modelId: z.string().optional() }) } }, async (req) => svc.listBulk(app.db, req.query.modelId));
   app.post('/stock/adjust', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Inventário'], summary: 'Entrada (+) ou baixa (−) de itens a granel no estoque', body: EstoqueGranelAjustarSchema } },

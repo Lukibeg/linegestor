@@ -3,40 +3,29 @@
  * Na tabela, a pessoa escolhe quais colunas quer ver: qualquer detalhe do cliente, a data de ativação de
  * cada produto e CADA MÓDULO como sua própria coluna. A escolha fica guardada no navegador.
  */
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, Columns3, ExternalLink, LayoutGrid, List, Package, Plus, Puzzle, RotateCcw, Terminal } from 'lucide-react';
+import { Check, ExternalLink, LayoutGrid, List, Package, Plus, Puzzle, Terminal } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { ClientListItem, Product } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can } from '../../lib/auth.js';
-import { Carregando, Chip, LogoCliente, Paginacao, Popover, Toggle, Vazio } from '../../components/ui/index.js';
+import { Carregando, Chip, LogoCliente, Paginacao, Toggle, Vazio } from '../../components/ui/index.js';
 import { cnpjFormatado, data, relativo } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
+import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
+import { FiltroEmBotao, type GrupoFiltro } from '../../lib/filtros.js';
 import { ClienteForm } from './Form.js';
 
 // ---------- Colunas disponíveis na tabela ----------
-
-type Coluna = {
-  id: string;
-  /** o que aparece no cabeçalho da tabela */
-  label: string;
-  /** o que aparece no painel "Colunas" (quando o grupo já diz o resto) */
-  labelCurto?: string;
-  grupo: string;
-  align?: 'right';
-  /** false = coluna sem sentido para ordenar (ex.: os botões de atalho) */
-  ordenavel?: boolean;
-  render: (c: ClientListItem) => ReactNode;
-};
 
 const PADRAO = ['tradeName', 'legalName', 'cnpj', 'products', 'didCount', 'deviceCount'];
 const STORAGE = 'gestor.clientes.colunas';
 
 /** As colunas fixas + uma por produto ("ativado em") + UMA POR MÓDULO (cada módulo vira sua própria coluna). */
-function montarColunas(produtos: Product[]): Coluna[] {
-  const fixas: Coluna[] = [
+function montarColunas(produtos: Product[]): Coluna<ClientListItem>[] {
+  const fixas: Coluna<ClientListItem>[] = [
     { id: 'tradeName', label: 'Nome fantasia', grupo: 'Cliente', render: (c) => <span className="flex items-center gap-2 font-medium"><LogoCliente src={logoSrc(c.logoUrl)} nome={c.tradeName} tamanho={24} />{c.tradeName} {c.archived && <Chip tone="muted">arquivado</Chip>}</span> },
     { id: 'legalName', label: 'Razão social', grupo: 'Cliente', render: (c) => <span className="text-ink-2">{c.legalName}</span> },
     { id: 'cnpj', label: 'CNPJ', grupo: 'Cliente', render: (c) => <span className="font-mono text-[12.5px] tnum whitespace-nowrap">{cnpjFormatado(c.cnpj)}</span> },
@@ -55,8 +44,8 @@ function montarColunas(produtos: Product[]): Coluna[] {
   ];
   // Para cada produto: a data de ativação dele + UMA COLUNA PARA CADA MÓDULO.
   // Assim dá para escolher "LinePBX › FOP2" sozinho, sem trazer os outros módulos junto.
-  const porProduto: Coluna[] = produtos.flatMap((p) => {
-    const cols: Coluna[] = [{
+  const porProduto: Coluna<ClientListItem>[] = produtos.flatMap((p) => {
+    const cols: Coluna<ClientListItem>[] = [{
       id: `ativacao:${p.code}`, label: `${p.name} — ativado em`, labelCurto: p.name, grupo: 'Ativado em (por produto)',
       render: (c) => { const s = c.products.find((x) => x.code === p.code); return s ? <span className="tnum whitespace-nowrap">{data(s.activatedAt)}</span> : <span className="text-muted">—</span>; },
     }];
@@ -98,77 +87,6 @@ function Atalhos({ c }: { c: ClientListItem }) {
   );
 }
 
-/** Guarda no navegador quais colunas a pessoa escolheu. */
-function useColunasEscolhidas() {
-  const [ids, setIds] = useState<string[]>(() => { try { const v = localStorage.getItem(STORAGE); return v ? (JSON.parse(v) as string[]) : PADRAO; } catch { return PADRAO; } });
-  useEffect(() => { try { localStorage.setItem(STORAGE, JSON.stringify(ids)); } catch { /* sem storage */ } }, [ids]);
-  return { ids, setIds, restaurar: () => setIds(PADRAO) };
-}
-
-/** O painel "Colunas": marca e desmarca o que aparece na tabela, agrupado por assunto. */
-function SeletorColunas({ colunas, ids, setIds, restaurar }: { colunas: Coluna[]; ids: string[]; setIds: (v: string[]) => void; restaurar: () => void }) {
-  const grupos = useMemo(() => { const g = new Map<string, Coluna[]>(); for (const c of colunas) g.set(c.grupo, [...(g.get(c.grupo) ?? []), c]); return [...g.entries()]; }, [colunas]);
-  const toggle = (id: string) => setIds(ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]);
-  return (
-    <Popover botao={() => <><Columns3 size={15} /> Colunas <span className="text-muted tnum">({ids.length})</span></>}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="eyebrow">O que aparece na tabela</span>
-        <button className="btn-ghost btn-sm text-muted" onClick={restaurar} title="Voltar às colunas padrão"><RotateCcw size={13} /> padrão</button>
-      </div>
-      {grupos.map(([grupo, cols]) => (
-        <div key={grupo} className="mb-3 last:mb-0">
-          <div className="text-[11.5px] uppercase tracking-wide text-muted mb-1">{grupo}</div>
-          <div className="flex flex-col gap-0.5">
-            {cols.map((c) => (
-              <label key={c.id} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded hover:bg-surface-2 cursor-pointer">
-                <input type="checkbox" id={`col-${c.id}`} checked={ids.includes(c.id)} onChange={() => toggle(c.id)} /> {c.labelCurto ?? c.label}
-              </label>
-            ))}
-          </div>
-        </div>
-      ))}
-      <p className="text-[11.5px] text-muted mt-2 border-t border-line pt-2">A escolha fica guardada neste navegador. Arraste a tabela para o lado se ficar larga.</p>
-    </Popover>
-  );
-}
-
-/**
- * O filtro em botão, usado igual para **Produtos** e para **Módulos**: abre um painel com
- * caixas de marcar. Os módulos vêm agrupados por produto; os produtos, numa lista só.
- * Uma peça só para os dois, para as duas ficarem sempre com a mesma cara.
- */
-type OpcaoFiltro = { key: string; label: string; cor?: string; dica?: string };
-type GrupoFiltro = { titulo?: string; cor?: string; opcoes: OpcaoFiltro[] };
-
-function FiltroEmBotao({ icone: Icone, nome, grupos, escolhidos, onChange, largura = 'w-[280px]' }: {
-  icone: typeof Puzzle; nome: string; grupos: GrupoFiltro[]; escolhidos: string[]; onChange: (v: string[]) => void; largura?: string;
-}) {
-  if (!grupos.some((g) => g.opcoes.length)) return null;
-  const toggle = (k: string) => onChange(escolhidos.includes(k) ? escolhidos.filter((x) => x !== k) : [...escolhidos, k]);
-  return (
-    <Popover largura={largura} botao={() => <><Icone size={15} /> {nome} {escolhidos.length > 0 && <span className="text-accent tnum">({escolhidos.length})</span>}</>}>
-      <div className="flex items-center justify-between mb-2">
-        <span className="eyebrow">Filtrar por {nome.toLowerCase()}</span>
-        {escolhidos.length > 0 && <button className="btn-ghost btn-sm text-muted" onClick={() => onChange([])}>limpar</button>}
-      </div>
-      {grupos.map((g, i) => (
-        <div key={g.titulo ?? i} className="mb-3 last:mb-0">
-          {g.titulo && <div className="text-[11.5px] uppercase tracking-wide mb-1" style={{ color: g.cor }}>{g.titulo}</div>}
-          <div className="flex flex-col gap-0.5">
-            {g.opcoes.map((o) => (
-              <label key={o.key} className="flex items-center gap-2 text-sm px-1.5 py-1 rounded hover:bg-surface-2 cursor-pointer" title={o.dica}>
-                <input type="checkbox" id={`filtro-${o.key.replace(/[^a-z0-9]/gi, '-')}`} checked={escolhidos.includes(o.key)} onChange={() => toggle(o.key)} />
-                {o.cor ? <span className="w-2 h-2 rounded-full shrink-0" style={{ background: o.cor }} aria-hidden /> : null}
-                {o.label}
-              </label>
-            ))}
-          </div>
-        </div>
-      ))}
-    </Popover>
-  );
-}
-
 // ---------- Tela ----------
 
 export function ClientesLista() {
@@ -182,7 +100,7 @@ export function ClientesLista() {
   const view = sp.get('ver') ?? 'cards';
   const page = Number(sp.get('p') ?? 1);
   const [novo, setNovo] = useState(false);
-  const colunasEscolhidas = useColunasEscolhidas();
+  const colunasEscolhidas = useColunasEscolhidas(STORAGE, PADRAO);
   const o = useOrdenacao('tradeName');
 
   const set = (k: string, v: string | string[] | null) => { const n = new URLSearchParams(sp); n.delete(k); if (Array.isArray(v)) v.forEach((x) => n.append(k, x)); else if (v) n.set(k, v); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
@@ -225,7 +143,7 @@ export function ClientesLista() {
           )}
           <div className="ml-auto flex items-center gap-3">
             <Toggle checked={arquivados} onChange={(v) => set('arquivados', v ? '1' : null)} label="arquivados" />
-            {view === 'tabela' && <SeletorColunas colunas={colunas} {...colunasEscolhidas} />}
+            {view === 'tabela' && <SeletorColunas colunas={colunas} escolha={colunasEscolhidas} />}
             <div className="flex rounded-lg border border-line overflow-hidden">
               <button className={`px-2 py-1.5 ${view === 'cards' ? 'bg-accent-soft text-accent-ink' : 'text-muted'}`} onClick={() => set('ver', null)} title="Cards"><LayoutGrid size={16} /></button>
               <button className={`px-2 py-1.5 ${view === 'tabela' ? 'bg-accent-soft text-accent-ink' : 'text-muted'}`} onClick={() => set('ver', 'tabela')} title="Tabela"><List size={16} /></button>

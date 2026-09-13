@@ -115,6 +115,7 @@ CREATE TABLE "devices" (
 	"mac_secondary" text,
 	"tag" text,
 	"client_id" text,
+	"unit" text,
 	"current_modality" text,
 	"condition" text DEFAULT 'ativo' NOT NULL,
 	"value_cents" integer,

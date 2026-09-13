@@ -40,7 +40,7 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
                 <Grupo titulo="Clientes" icon={Building2} items={res.clients.map((c) => ({ key: c.id, main: c.name, sub: `${c.legalName} · ${cnpjFormatado(c.cnpj)}`, go: () => go(`/clientes/${c.id}`) }))} />
                 <Grupo titulo="DIDs" icon={Hash} items={res.dids.map((d) => ({ key: d.id, main: d.numberFormatted, sub: `${d.clientName ?? 'livre'} · ${d.circuitName ?? 'sem circuito'}`, go: () => go(`/circuitos?aba=numeracao&q=${d.number}`) }))} />
                 <Grupo titulo="Circuitos" icon={Cable} items={res.circuits.map((c) => ({ key: c.id, main: c.name, sub: `${c.code} · ${c.carrierName ?? ''}`, go: () => go(`/circuitos/${c.id}`) }))} />
-                <Grupo titulo="Aparelhos" icon={Smartphone} items={res.devices.map((d) => ({ key: d.id, main: `${d.macFormatted}${d.tag ? ` · ${d.tag}` : ''}`, sub: `${d.modelName} · ${d.clientName ?? 'estoque'}`, go: () => go(`/inventario/aparelhos/${d.id}`) }))} />
+                <Grupo titulo="Aparelhos" icon={Smartphone} items={res.devices.map((d) => ({ key: d.id, main: d.macFormatted, sub: `${d.modelName} · ${d.clientName ?? 'estoque'}`, go: () => go(`/inventario/aparelhos/${d.id}`) }))} />
               </div>
             )}
         </div>

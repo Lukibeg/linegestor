@@ -324,8 +324,10 @@ export const devices = pgTable(
     macSecondary: text('mac_secondary'),
     /** Etiqueta/patrimônio interno opcional (o "N001" do Nexus) */
     tag: text('tag'),
-    /** Onde está: nulo = no estoque; preenchido = com este cliente */
+    /** Atribuído a: nulo = no estoque; preenchido = com este cliente */
     clientId: text('client_id').references(() => clients.id),
+    /** Unidade do cliente onde o aparelho está (filial, loja, andar): "Loja Simões Filho" */
+    unit: text('unit'),
     /** Como chegou ao cliente atual: locacao | venda | comodato (nulo se em estoque) */
     currentModality: text('current_modality'),
     /** ativo | manutencao | baixado | vendido (decisão V6: sem "indeterminado") */

@@ -92,6 +92,7 @@ export const realApi: Api = {
     adjustStock: (d) => http('POST', '/inventory/stock/adjust', d),
     movements: (q) => http('GET', `/inventory/movements${qs(q)}`),
     move: (d) => http('POST', '/inventory/movements', d),
+    units: (clientId) => http('GET', `/inventory/units${qs({ clientId })}`),
   },
   data: {
     preview: (d) => http('POST', '/data/import/preview', d),

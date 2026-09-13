@@ -166,9 +166,15 @@ if (demo) {
       { id: mTip, code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: cats['Telefone IP']!, tracking: 'serializado' },
     ]);
     const devs: (typeof s.devices.$inferInsert)[] = [];
-    const locados: Array<[string, number]> = [['Hospital Vale Verde', 20], ['Distribuidora Norte', 8], ['Supermercado Bom Preço', 6], ['Home Care Viver Bem', 4]];
+    // [cliente, quantidade, unidades onde ficam os aparelhos]
+    const locados: Array<[string, number, string[]]> = [
+      ['Hospital Vale Verde', 20, ['Unidade Centro', 'Unidade Pituba']],
+      ['Distribuidora Norte', 8, ['Matriz Ramiro Campelo', 'Loja Simões Filho']],
+      ['Supermercado Bom Preço', 6, ['Loja Simões Filho']],
+      ['Home Care Viver Bem', 4, ['Sede']],
+    ];
     let n = 0;
-    for (const [cli, q] of locados) for (let i = 0; i < q; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), tag: 'N' + String(n + 1).padStart(3, '0'), clientId: clientIds[cli]!, currentModality: 'locacao', condition: 'ativo', valueCents: 45000 });
+    for (const [cli, q, unidades] of locados) for (let i = 0; i < q; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), tag: 'N' + String(n + 1).padStart(3, '0'), clientId: clientIds[cli]!, unit: unidades[i % unidades.length]!, currentModality: 'locacao', condition: 'ativo', valueCents: 45000 });
     for (let i = 0; i < 12; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), tag: 'N' + String(n + 1).padStart(3, '0'), condition: i === 11 ? 'manutencao' : 'ativo', valueCents: 45000 });
     for (let i = 0; i < 3; i++, n++) devs.push({ id: newId(), modelId: mTip, mac: ('1C61B4' + (0x200000 + n).toString(16).toUpperCase().slice(-6)), condition: 'ativo', valueCents: 38000 });
     await db.insert(s.devices).values(devs);
@@ -177,7 +183,7 @@ if (demo) {
       { id: newId(), modelId: mHs, clientId: clientIds['Hospital Vale Verde']!, modality: 'locacao', quantity: 4 },
     ]);
     // movimentações de exemplo (uma por cliente com aparelho)
-    for (const [cli, q] of locados) {
+    for (const [cli] of locados) {
       const mid = newId();
       await db.insert(s.deviceMovements).values({ id: mid, modality: 'locacao', fromClientId: null, toClientId: clientIds[cli]!, newCondition: 'ativo', userId: admin.id, createdAt: new Date(2026, 7, 10 + locados.findIndex((x) => x[0] === cli)) });
       const items = devs.filter((d) => d.clientId === clientIds[cli]).map((d) => ({ id: newId(), movementId: mid, modelId: mGx, deviceId: d.id!, quantity: 1 }));

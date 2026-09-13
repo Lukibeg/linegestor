@@ -14,16 +14,17 @@ export function AparelhoDetalhe() {
   const { id = '' } = useParams();
   const nav = useNavigate(); const qc = useQueryClient(); const toast = useToast();
   const q = useQuery({ queryKey: ['device', id], queryFn: () => api.inventory.device(id) });
+  const unidades = useQuery({ queryKey: ['inventory', 'units'], queryFn: () => api.inventory.units() });
   const [editar, setEditar] = useState(false); const [mover, setMover] = useState(false); const [excluir, setExcluir] = useState(false); const [busy, setBusy] = useState(false);
   const [f, setF] = useState<Record<string, any>>({}); const [err, setErr] = useState('');
-  useEffect(() => { if (q.data) setF({ tag: q.data.tag ?? '', condition: q.data.condition, valueCents: q.data.valueCents != null ? (q.data.valueCents / 100).toFixed(2).replace('.', ',') : '', ip: q.data.ip ?? '', location: q.data.location ?? '', note: q.data.note ?? '' }); }, [q.data]);
+  useEffect(() => { if (q.data) setF({ unit: q.data.unit ?? '', condition: q.data.condition, valueCents: q.data.valueCents != null ? (q.data.valueCents / 100).toFixed(2).replace('.', ',') : '', ip: q.data.ip ?? '', location: q.data.location ?? '', note: q.data.note ?? '' }); }, [q.data]);
   if (q.isLoading) return <Carregando />;
   if (!q.data) return <Vazio titulo="Aparelho não encontrado" acao={<Link className="btn-secondary" to="/inventario">Voltar</Link>} />;
   const d = q.data;
-  const save = async () => { setBusy(true); setErr(''); try { await api.inventory.updateDevice(d.id, { tag: f.tag || null, condition: f.condition, valueCents: f.valueCents ? paraCentavos(f.valueCents) : null, ip: f.ip || null, location: f.location || null, note: f.note || null }); await qc.invalidateQueries({ queryKey: ['device', id] }); await qc.invalidateQueries({ queryKey: ['devices'] }); toast.push('ok', 'Aparelho atualizado'); setEditar(false); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
+  const save = async () => { setBusy(true); setErr(''); try { await api.inventory.updateDevice(d.id, { unit: d.clientId ? f.unit || null : null, condition: f.condition, valueCents: f.valueCents ? paraCentavos(f.valueCents) : null, ip: f.ip || null, location: f.location || null, note: f.note || null }); await qc.invalidateQueries({ queryKey: ['device', id] }); await qc.invalidateQueries({ queryKey: ['devices'] }); toast.push('ok', 'Aparelho atualizado'); setEditar(false); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
   const doDelete = async () => { setBusy(true); try { await api.inventory.removeDevice(d.id); toast.push('ok', 'Aparelho foi para a lixeira'); nav('/inventario'); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } };
   return (
-    <Pagina titulo={<span className="font-mono">{d.macFormatted}</span>} sub={<span>{d.modelName}{d.tag ? ` · etiqueta ${d.tag}` : ''}</span>} acoes={<>
+    <Pagina titulo={<span className="font-mono">{d.macFormatted}</span>} sub={<span>{d.modelName}{d.unit ? ` · ${d.unit}` : ''}</span>} acoes={<>
       <Can permission="devices.move">{d.condition !== 'vendido' && <button className="btn-primary" onClick={() => setMover(true)}><ArrowLeftRight size={15} /> {d.clientId ? 'Devolver / mover' : 'Movimentar'}</button>}</Can>
       <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button></Can>
       <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)}><Trash2 size={15} /></button></Can>
@@ -31,8 +32,9 @@ export function AparelhoDetalhe() {
       <div className="grid gap-4 md:grid-cols-3">
         <div className="card p-4 md:col-span-1">
           <dl className="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
-            <dt className="text-muted">Onde está</dt><dd>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <Chip tone="ok">estoque</Chip>}</dd>
-            <dt className="text-muted">Como</dt><dd>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</dd>
+            <dt className="text-muted">Atribuído a</dt><dd>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <Chip tone="ok">estoque</Chip>}</dd>
+            {d.clientId && <><dt className="text-muted">Unidade</dt><dd>{d.unit ?? <span className="text-muted">—</span>}</dd></>}
+            <dt className="text-muted">Modalidade</dt><dd>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</dd>
             <dt className="text-muted">Condição</dt><dd><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></dd>
             <dt className="text-muted">Valor</dt><dd className="tnum">{reais(d.valueCents)}</dd>
             <dt className="text-muted">IP</dt><dd className="font-mono">{d.ip ?? '—'}</dd>
@@ -50,7 +52,7 @@ export function AparelhoDetalhe() {
       </div>
       <Modal open={editar} onClose={() => setEditar(false)} titulo="Editar aparelho" rodape={<><button className="btn-secondary" onClick={() => setEditar(false)}>Cancelar</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
         <div className="grid grid-cols-2 gap-3">
-          <Campo label="Etiqueta interna"><input className="input font-mono" value={f.tag ?? ''} onChange={(e) => setF({ ...f, tag: e.target.value })} /></Campo>
+          {d.clientId && <Campo label="Unidade" dica="filial/loja onde o aparelho está"><input className="input" list="unidades-conhecidas" placeholder="Loja Simões Filho" value={f.unit ?? ''} onChange={(e) => setF({ ...f, unit: e.target.value })} /><datalist id="unidades-conhecidas">{(unidades.data ?? []).map((u) => <option key={u} value={u} />)}</datalist></Campo>}
           <Campo label="Condição"><select className="input" value={f.condition ?? 'ativo'} onChange={(e) => setF({ ...f, condition: e.target.value })}>{Object.entries(CONDICOES_APARELHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Campo>
           <Campo label="Valor (R$)"><input className="input tnum" value={f.valueCents ?? ''} onChange={(e) => setF({ ...f, valueCents: e.target.value })} /></Campo>
           <Campo label="IP"><input className="input font-mono" value={f.ip ?? ''} onChange={(e) => setF({ ...f, ip: e.target.value })} /></Campo>

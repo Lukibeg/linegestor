@@ -231,6 +231,8 @@ export const AparelhoGravarSchema = z.object({
   mac: MacSchema,
   macSecondary: MacSchema.nullable().optional(),
   tag: z.string().trim().max(40).nullable().optional(),
+  /** Unidade do cliente (filial, loja, andar) onde o aparelho está */
+  unit: z.string().trim().max(120).nullable().optional(),
   condition: z.enum(['ativo', 'manutencao', 'baixado', 'vendido']).default('ativo'),
   valueCents: CentavosSchema.nullable().optional(),
   ip: z.string().trim().max(64).nullable().optional(),
@@ -261,6 +263,8 @@ export const MovimentacaoCriarSchema = z.object({
     )
     .min(1, 'Adicione pelo menos um aparelho'),
   valueCents: CentavosSchema.nullable().optional(),
+  /** Unidade do cliente de destino (filial, loja): vale para todos os aparelhos desta movimentação */
+  unit: z.string().trim().max(120).nullable().optional(),
   note: z.string().max(2000).nullable().optional(),
 });
 

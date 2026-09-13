@@ -63,6 +63,8 @@ export type Api = {
     adjustStock(d: { modelId: string; delta: number; note?: string }): Promise<T.BulkStock[]>;
     movements(q: Record<string, unknown>): Promise<T.Page<T.Movement>>;
     move(d: Record<string, unknown>): Promise<{ id: string; items: number; quantity: number }>;
+    /** Unidades já usadas (para sugerir no formulário). */
+    units(clientId?: string): Promise<string[]>;
   };
   data: {
     preview(d: { entity: string; csv: string; delimiter: string }): Promise<T.ImportPlan>;

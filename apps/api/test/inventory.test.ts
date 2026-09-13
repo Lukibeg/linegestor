@@ -34,19 +34,23 @@ describe('inventário', () => {
 
   it('loca, registra o autor, devolve e vende', async () => {
     await s.put(`/clients/${clientId}/subscriptions`, { productCode: 'equipamentos' });
-    const loc = await s.post('/inventory/movements', { modality: 'locacao', toClientId: clientId, items: [{ deviceId: devA }, { deviceId: devB }] });
+    const loc = await s.post('/inventory/movements', { modality: 'locacao', toClientId: clientId, unit: 'Loja Simões Filho', items: [{ deviceId: devA }, { deviceId: devB }] });
     expect(loc.statusCode).toBe(201);
     expect(loc.json().quantity).toBe(2);
     const d = (await s.get(`/inventory/devices/${devA}`)).json();
     expect(d.clientId).toBe(clientId);
     expect(d.currentModality).toBe('locacao');
+    expect(d.unit).toBe('Loja Simões Filho');
+    expect((await s.get('/inventory/units')).json()).toContain('Loja Simões Filho');
     expect(d.history[0].userName).toBe('Administrador');
     const models = (await s.get('/inventory/models')).json();
     expect(models.find((m: any) => m.id === modelId).counts).toMatchObject({ inStock: 0, withClients: 2 });
 
     const dev = await s.post('/inventory/movements', { modality: 'devolucao', toClientId: null, items: [{ deviceId: devA }] });
     expect(dev.statusCode).toBe(201);
-    expect((await s.get(`/inventory/devices/${devA}`)).json().clientId).toBeNull();
+    const devolvido = (await s.get(`/inventory/devices/${devA}`)).json();
+    expect(devolvido.clientId).toBeNull();
+    expect(devolvido.unit).toBeNull(); // volta pro estoque: a unidade some
 
     const venda = await s.post('/inventory/movements', { modality: 'venda', toClientId: clientId, items: [{ deviceId: devA }], valueCents: 39000 });
     expect(venda.statusCode).toBe(201);

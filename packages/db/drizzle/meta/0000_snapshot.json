@@ -1,5 +1,5 @@
 {
-  "id": "478383bb-8785-4ee6-ad4a-ed49df18e57d",
+  "id": "acca165e-118b-4ba2-abd7-79c601a7ec25",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -1043,6 +1043,12 @@
         },
         "client_id": {
           "name": "client_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "unit": {
+          "name": "unit",
           "type": "text",
           "primaryKey": false,
           "notNull": false

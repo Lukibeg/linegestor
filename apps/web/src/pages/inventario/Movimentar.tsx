@@ -17,6 +17,7 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
   const [toClientId, setTo] = useState('');
   const [fromClientId, setFrom] = useState('');
   const [newCondition, setCond] = useState('');
+  const [unit, setUnit] = useState('');
   const [valor, setValor] = useState(''); const [note, setNote] = useState('');
   const [items, setItems] = useState<Item[]>([]);
   const [busca, setBusca] = useState(''); const [qtd, setQtd] = useState<Record<string, number>>({});
@@ -29,15 +30,16 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
   const origem = devolucao ? (fromClientId || undefined) : 'stock';
   const devices = useQuery({ queryKey: ['devices-pick', origem, busca], queryFn: () => api.inventory.devices({ q: busca, clientId: origem, page: 1, pageSize: 30 }), enabled: open && (!devolucao || !!fromClientId) });
   const stock = useQuery({ queryKey: ['stock'], queryFn: () => api.inventory.stock(), enabled: open });
-  useEffect(() => { if (open) { setErr(''); setItems(preset?.devices?.map((d) => ({ deviceId: d.id, label: `${d.modelName} · ${d.macFormatted}` })) ?? []); setBusca(''); setQtd({}); setValor(''); setNote(''); setCond(''); setTo(''); setFrom(preset?.devices?.[0]?.clientId ?? ''); if (preset?.devices?.[0]?.clientId) setModality('devolucao'); } }, [open, preset]);
+  const unidades = useQuery({ queryKey: ['inventory', 'units', toClientId], queryFn: () => api.inventory.units(toClientId || undefined), enabled: open && !devolucao });
+  useEffect(() => { if (open) { setErr(''); setItems(preset?.devices?.map((d) => ({ deviceId: d.id, label: `${d.modelName} · ${d.macFormatted}` })) ?? []); setBusca(''); setQtd({}); setValor(''); setNote(''); setCond(''); setUnit(''); setTo(''); setFrom(preset?.devices?.[0]?.clientId ?? ''); if (preset?.devices?.[0]?.clientId) setModality('devolucao'); } }, [open, preset]);
   const granel = useMemo(() => (models.data ?? []).filter((m) => m.tracking === 'granel').map((m) => ({ ...m, disponivel: (stock.data ?? []).filter((b) => b.modelId === m.id && (devolucao ? b.clientId === fromClientId : !b.clientId)).reduce((a, b) => a + b.quantity, 0) })), [models.data, stock.data, devolucao, fromClientId]);
   const total = items.reduce((a, i) => a + ('quantity' in i ? i.quantity : 1), 0);
-  const addDevice = (d: Device) => { if (items.some((i) => 'deviceId' in i && i.deviceId === d.id)) return; setItems([...items, { deviceId: d.id, label: `${d.modelName} · ${d.macFormatted}${d.tag ? ` · ${d.tag}` : ''}` }]); };
+  const addDevice = (d: Device) => { if (items.some((i) => 'deviceId' in i && i.deviceId === d.id)) return; setItems([...items, { deviceId: d.id, label: `${d.modelName} · ${d.macFormatted}` }]); };
   const addBulk = (modelId: string, label: string) => { const q = qtd[modelId] ?? 0; if (q <= 0) return; setItems([...items.filter((i) => !('modelId' in i) || i.modelId !== modelId), { modelId, label, quantity: q, fromClientId: devolucao ? fromClientId : null }]); };
   const run = async () => {
     setBusy(true); setErr('');
     try {
-      const r = await api.inventory.move({ modality, toClientId: devolucao ? null : toClientId, newCondition: newCondition || null, valueCents: valor ? paraCentavos(valor) : null, note: note || null, items: items.map((i) => ('deviceId' in i ? { deviceId: i.deviceId } : { modelId: i.modelId, quantity: i.quantity, fromClientId: i.fromClientId })) });
+      const r = await api.inventory.move({ modality, toClientId: devolucao ? null : toClientId, newCondition: newCondition || null, unit: devolucao ? null : unit || null, valueCents: valor ? paraCentavos(valor) : null, note: note || null, items: items.map((i) => ('deviceId' in i ? { deviceId: i.deviceId } : { modelId: i.modelId, quantity: i.quantity, fromClientId: i.fromClientId })) });
       toast.push('ok', `${MODALIDADES[modality]} de ${r.quantity} item(ns) registrada`);
       await Promise.all(['devices', 'models', 'stock', 'movements', 'dashboard', 'client-devices', 'device', 'inventory'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
       onClose();
@@ -54,6 +56,7 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
             : <Campo label="Cliente de destino" dica="só clientes que assinam Equipamentos"><select className="input" value={toClientId} onChange={(e) => setTo(e.target.value)}><option value="">Selecione…</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>}
           <Campo label="Nova condição" dica={modality === 'venda' ? 'venda marca como "vendido" automaticamente' : 'vazio = manter'}><select className="input" value={newCondition} onChange={(e) => setCond(e.target.value)}><option value="">manter atual</option>{Object.entries(CONDICOES_APARELHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Campo>
           <Campo label="Valor (R$)" dica="da venda ou do contrato, opcional"><input className="input tnum" placeholder="0,00" value={valor} onChange={(e) => setValor(e.target.value)} /></Campo>
+          {!devolucao && <Campo label="Unidade do cliente" dica="filial/loja onde o aparelho vai ficar, opcional" className="col-span-2"><input className="input" list="unidades-mov" placeholder="Loja Simões Filho" value={unit} onChange={(e) => setUnit(e.target.value)} /><datalist id="unidades-mov">{(unidades.data ?? []).map((u) => <option key={u} value={u} />)}</datalist></Campo>}
         </div>
 
         <div className="card p-3">
@@ -65,10 +68,10 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
 
         <div>
           <div className="eyebrow mb-2">Serializados {devolucao ? 'com o cliente' : 'no estoque'}</div>
-          <input className="input font-mono mb-2" placeholder="filtrar por MAC ou etiqueta" value={busca} onChange={(e) => setBusca(e.target.value)} disabled={devolucao && !fromClientId} />
+          <input className="input font-mono mb-2" placeholder="filtrar por MAC, unidade ou local" value={busca} onChange={(e) => setBusca(e.target.value)} disabled={devolucao && !fromClientId} />
           <div className="max-h-52 overflow-y-auto border border-line rounded-lg">
             {devolucao && !fromClientId ? <div className="p-3 text-muted text-sm">Escolha o cliente que está devolvendo.</div> : !devices.data?.items.length ? <div className="p-3 text-muted text-sm">Nenhum aparelho disponível.</div> : devices.data.items.map((d) => (
-              <button key={d.id} type="button" onClick={() => addDevice(d)} disabled={items.some((i) => 'deviceId' in i && i.deviceId === d.id)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-2 disabled:opacity-40 flex justify-between"><span><span className="font-mono">{d.macFormatted}</span> <span className="text-muted">{d.tag}</span></span><span className="text-muted">{d.modelName}</span></button>
+              <button key={d.id} type="button" onClick={() => addDevice(d)} disabled={items.some((i) => 'deviceId' in i && i.deviceId === d.id)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-surface-2 disabled:opacity-40 flex justify-between"><span><span className="font-mono">{d.macFormatted}</span> <span className="text-muted">{d.unit}</span></span><span className="text-muted">{d.modelName}</span></button>
             ))}
           </div>
         </div>

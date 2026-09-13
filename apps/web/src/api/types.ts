@@ -53,7 +53,7 @@ export type DeviceModel = {
 };
 export type Device = {
   id: string; modelId: string; modelName: string; modelCode: string; mac: string; macFormatted: string; macSecondary: string | null; tag: string | null;
-  clientId: string | null; clientName: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null;
+  clientId: string | null; clientName: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null;
   history?: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; newCondition: string | null; note: string | null; userName: string; createdAt: string }>;
 };
 export type BulkStock = { id: string; modelId: string; modelName: string; clientId: string | null; clientName: string | null; modality: string; quantity: number };
