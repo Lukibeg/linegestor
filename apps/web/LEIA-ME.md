@@ -23,3 +23,19 @@ pnpm dev          # abre em http://localhost:5173 (precisa da API rodando em :33
 pnpm build        # gera a versão de produção em dist/
 pnpm build:demo   # gera a prévia sem servidor em dist-demo/
 ```
+
+## Publicar a prévia (artefato)
+
+`pnpm build:demo` gera `dist-demo/`, com nomes de arquivo que mudam a cada build
+(`index-XXXX.js`, `index-XXXX.css`, `demo-XXXX.js`, `types-XXXX.js` e as imagens).
+
+Ao publicar, **todos** os arquivos que o `index.html` e o bundle referenciam precisam ir
+junto — inclusive os pedaços que só aparecem dentro do JS, como `demo-XXXX.js`. Publicar
+só o `index-*.js` e esquecer o `demo-*.js` deixa a tela em branco, sem erro visível.
+
+Confira antes de publicar:
+
+```bash
+ls dist-demo/assets
+grep -o 'demo-[A-Za-z0-9_-]*\.js' dist-demo/assets/index-*.js | sort -u
+```
