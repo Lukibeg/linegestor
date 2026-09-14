@@ -10,7 +10,7 @@ Quem precisa de "quem está na Vultr?" ou "quem ativou o FOP2 primeiro?" tinha q
   a ordem vale para a lista inteira, não só para a página que está na tela. A coluna escolhida fica no endereço
   (`?ord=…&dir=…`), então dá para guardar nos favoritos ou mandar o link para alguém.
 - Nas tabelas pequenas, que vêm de uma vez só (usuários, lixeira, DIDs e equipamentos dentro da ficha do cliente,
-  itens a granel), a ordenação acontece na própria tela — mesmo visual, mesma regra de vazio no fim.
+  aparelhos de um cliente), a ordenação acontece na própria tela — mesmo visual, mesma regra de vazio no fim.
 - Colunas criadas na hora também ordenam: "ativado em" de cada produto e cada módulo (pela data em que foi ativado).
 - Datas e quantidades começam do maior para o menor no primeiro clique; textos começam de A a Z.
 

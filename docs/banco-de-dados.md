@@ -24,10 +24,9 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [dids](#dids) — Um número telefônico.
 - [device_categories](#device_categories) — Catálogo: categoria de aparelho (Telefone IP, Periférico, ATA...).
 - [device_models](#device_models) — Um modelo de aparelho (ex.: Grandstream GXP1610).
-- [devices](#devices) — Um aparelho serializado, identificado pelo MAC (decisão V7).
-- [bulk_stock](#bulk_stock) — Saldo de itens a granel por lugar: "Headset Genérico · Estoque · 28", "Headset Genérico · Cliente A · 4".
+- [devices](#devices) — Um aparelho.
 - [device_movements](#device_movements) — Cabeçalho de uma movimentação: de onde, para onde, por quê, quem, quando.
-- [device_movement_items](#device_movement_items) — Um item da movimentação: ou um aparelho serializado (deviceId) ou uma quantidade de um modelo a granel.
+- [device_movement_items](#device_movement_items) — Um aparelho dentro de uma movimentação.
 - [roles](#roles) — Um papel = um nome + uma lista de permissões (ver packages/shared/src/permissoes.ts).
 - [users](#users) — Quem entra no sistema.
 - [settings](#settings) — AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), em vez de mexer em arquivo no servidor.
@@ -221,18 +220,18 @@ Um modelo de aparelho (ex.: Grandstream GXP1610). Diz se é contado um a um ou p
 
 ## devices
 
-Um aparelho serializado, identificado pelo MAC (decisão V7).
+Um aparelho. Cada unidade é uma linha, sempre — inclusive as que não têm MAC (headset, cabo). O MAC identifica quem tem; quem não tem fica nulo e a tela mostra "não aplicável". Não existe contagem por quantidade: é um por linha, sem exceção.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
 | `model_id` | texto | — | obrigatório · liga com **deviceModels** |
-| `mac` | texto | MAC principal, 12 hexadecimais maiúsculos sem separador. Único. | obrigatório |
+| `mac` | texto | MAC principal, 12 hexadecimais maiúsculos sem separador. Único quando existe; nulo em quem não tem MAC. | — |
 | `mac_secondary` | texto | Segundo MAC (Wi-Fi, por exemplo), se houver | — |
 | `client_id` | texto | Atribuído a: nulo = no estoque; preenchido = com este cliente | liga com **clients** |
 | `unit` | texto | Unidade do cliente onde o aparelho está (filial, loja, andar): "Loja Simões Filho" | — |
 | `current_modality` | texto | Como chegou ao cliente atual: locacao | venda | comodato (nulo se em estoque) | — |
-| `condition` | texto | ativo | manutencao | baixado | vendido (decisão V6: sem "indeterminado") | obrigatório · padrão: 'ativo' |
+| `condition` | texto | ativo | inativo. Vendido não é condição: sai da modalidade da última movimentação. | obrigatório · padrão: 'ativo' |
 | `value_cents` | número inteiro | Valor do aparelho em centavos (alimenta "valor total locado") | — |
 | `ip` | texto | IP configurado no aparelho, se houver | — |
 | `location` | texto | Onde fisicamente está ("Rack 3 · Sala 2") | — |
@@ -240,19 +239,6 @@ Um aparelho serializado, identificado pelo MAC (decisão V7).
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
-
-## bulk_stock
-
-Saldo de itens a granel por lugar: "Headset Genérico · Estoque · 28", "Headset Genérico · Cliente A · 4".
-
-| Coluna | Tipo | O que guarda | Regras |
-|---|---|---|---|
-| `id` | texto | Identificador único da linha | chave primária |
-| `model_id` | texto | — | obrigatório · liga com **deviceModels** |
-| `client_id` | texto | Nulo = estoque; preenchido = com o cliente | liga com **clients** |
-| `modality` | texto | Como chegou ao cliente (locacao | venda | comodato); "estoque" quando no estoque | obrigatório · padrão: 'estoque' |
-| `quantity` | número inteiro | — | obrigatório · padrão: 0 |
-| `updated_at` | data e hora | Última alteração | — |
 
 ## device_movements
 
@@ -272,7 +258,7 @@ Cabeçalho de uma movimentação: de onde, para onde, por quê, quem, quando. Nu
 
 ## device_movement_items
 
-Um item da movimentação: ou um aparelho serializado (deviceId) ou uma quantidade de um modelo a granel.
+Um aparelho dentro de uma movimentação. Uma linha por aparelho — a quantidade é o número de linhas.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|

@@ -56,7 +56,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       if (type === 'client') label = (await clientsSvc.restore(app.db, id)).tradeName;
       else if (type === 'circuit') label = (await circuitsSvc.restore(app.db, id)).name;
       else if (type === 'did') label = (await didsSvc.restore(app.db, id)).number;
-      else if (type === 'device') label = (await inv.restoreDevice(app.db, id)).mac;
+      else if (type === 'device') label = (await inv.restoreDevice(app.db, id)).mac ?? id;
       else throw new BadRequest('Restauração de modelo ainda não disponível');
       await app.audit(req, { action: 'restore', entityType: type, entityId: id, summary: `Restaurou ${label} da lixeira` });
       return { ok: true };

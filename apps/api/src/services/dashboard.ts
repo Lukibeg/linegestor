@@ -6,7 +6,7 @@
  */
 import { and, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { auditLog, bulkStock, carriers, circuits, clients, deviceModels, deviceMovements, devices, dids, linepbxSettings, products, subscriptions, users, type Db } from '@gestor/db';
+import { auditLog, carriers, circuits, clients, deviceModels, deviceMovements, devices, dids, linepbxSettings, products, subscriptions, users, type Db } from '@gestor/db';
 import { didFormatado, macFormatado, MODALIDADES } from '@gestor/shared';
 
 export async function summary(db: Db) {
@@ -26,13 +26,13 @@ export async function summary(db: Db) {
     .where(isNull(circuits.deletedAt)).groupBy(circuits.id, carriers.name);
   const circuitsView = occ.map((c) => ({ ...c, total: Number(c.total), assigned: Number(c.assigned), free: Number(c.total) - Number(c.assigned) }));
 
+  // vendido não conta: já não é nosso
   const [dev] = await db.select({
-    inStock: sql<number>`count(*) filter (where ${devices.clientId} is null and ${devices.condition} in ('ativo','manutencao'))`,
-    withClients: sql<number>`count(*) filter (where ${devices.clientId} is not null and ${devices.condition} not in ('vendido','baixado'))`,
-    maintenance: sql<number>`count(*) filter (where ${devices.condition} = 'manutencao')`,
-    valueWithClients: sql<number>`coalesce(sum(${devices.valueCents}) filter (where ${devices.clientId} is not null and ${devices.currentModality} in ('locacao','comodato') and ${devices.condition} not in ('vendido','baixado')),0)`,
+    inStock: sql<number>`count(*) filter (where ${devices.clientId} is null)`,
+    withClients: sql<number>`count(*) filter (where ${devices.clientId} is not null and coalesce(${devices.currentModality}, '') <> 'venda')`,
+    inactive: sql<number>`count(*) filter (where ${devices.condition} = 'inativo')`,
+    valueWithClients: sql<number>`coalesce(sum(${devices.valueCents}) filter (where ${devices.clientId} is not null and ${devices.currentModality} in ('locacao','comodato')),0)`,
   }).from(devices).where(isNull(devices.deletedAt));
-  const [bulk] = await db.select({ inStock: sql<number>`coalesce(sum(${bulkStock.quantity}) filter (where ${bulkStock.clientId} is null),0)`, withClients: sql<number>`coalesce(sum(${bulkStock.quantity}) filter (where ${bulkStock.clientId} is not null),0)` }).from(bulkStock);
 
   // ---- alertas de consistência ----
   const alerts: Array<{ kind: string; severity: 'warning' | 'critical'; message: string; count: number; link: string }> = [];
@@ -54,7 +54,7 @@ export async function summary(db: Db) {
   const zeroChannels = circuitsView.filter((c) => c.channels === 0 && c.total > 0);
   if (zeroChannels.length) alerts.push({ kind: 'circuito_sem_canais', severity: 'critical', message: 'Circuitos com DIDs mas 0 canais cadastrados', count: zeroChannels.length, link: '/circuitos' });
   if (Number(d?.noCircuit ?? 0)) alerts.push({ kind: 'did_sem_circuito', severity: 'warning', message: 'DIDs sem circuito', count: Number(d!.noCircuit), link: '/circuitos?aba=numeracao&circuito=none' });
-  if (Number(dev?.maintenance ?? 0)) alerts.push({ kind: 'aparelho_manutencao', severity: 'warning', message: 'Aparelhos em manutenção', count: Number(dev!.maintenance), link: '/inventario?condicao=manutencao' });
+  if (Number(dev?.inactive ?? 0)) alerts.push({ kind: 'aparelho_inativo', severity: 'warning', message: 'Aparelhos inativos', count: Number(dev!.inactive), link: '/inventario?condicao=inativo' });
 
   const fromC = alias(clients, 'from'), toC = alias(clients, 'to');
   const recentMovements = await db
@@ -70,8 +70,8 @@ export async function summary(db: Db) {
     dids: { total: Number(d?.total ?? 0), assigned: Number(d?.assigned ?? 0), free: Number(d?.total ?? 0) - Number(d?.assigned ?? 0), noCircuit: Number(d?.noCircuit ?? 0) },
     circuits: circuitsView.sort((a, b) => b.total - a.total),
     devices: {
-      inStock: Number(dev?.inStock ?? 0) + Number(bulk?.inStock ?? 0), withClients: Number(dev?.withClients ?? 0) + Number(bulk?.withClients ?? 0),
-      maintenance: Number(dev?.maintenance ?? 0), valueWithClientsCents: Number(dev?.valueWithClients ?? 0),
+      inStock: Number(dev?.inStock ?? 0), withClients: Number(dev?.withClients ?? 0),
+      inactive: Number(dev?.inactive ?? 0), valueWithClientsCents: Number(dev?.valueWithClients ?? 0),
     },
     alerts,
     recentMovements: recentMovements.map((m) => ({ ...m, modalityName: (MODALIDADES as any)[m.modality] ?? m.modality })),

@@ -25,7 +25,7 @@ export function AparelhoDetalhe() {
   const doDelete = async () => { setBusy(true); try { await api.inventory.removeDevice(d.id); toast.push('ok', 'Aparelho foi para a lixeira'); nav('/inventario'); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } };
   return (
     <Pagina titulo={<span className="font-mono">{d.macFormatted}</span>} sub={<span>{d.modelName}{d.unit ? ` · ${d.unit}` : ''}</span>} acoes={<>
-      <Can permission="devices.move">{d.condition !== 'vendido' && <button className="btn-primary" onClick={() => setMover(true)}><ArrowLeftRight size={15} /> {d.clientId ? 'Devolver / mover' : 'Movimentar'}</button>}</Can>
+      <Can permission="devices.move">{d.currentModality !== 'venda' && <button className="btn-primary" onClick={() => setMover(true)}><ArrowLeftRight size={15} /> {d.clientId ? 'Devolver / mover' : 'Movimentar'}</button>}</Can>
       <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button></Can>
       <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)}><Trash2 size={15} /></button></Can>
     </>}>

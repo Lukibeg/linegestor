@@ -21,17 +21,16 @@
 | **Número chave** | O número piloto do feixe junto à operadora — o principal da faixa. Fica no cadastro do circuito. |
 | **Módulo** | Parte opcional dentro de um produto: Omniboard, FOP2 e NPS dentro do LinePBX; Dashboard de filas e NPS dentro do LineChat. O cliente assina o produto e liga os módulos que usa. |
 | **Modelo** | Um tipo de aparelho (Grandstream GXP1610, Headset Genérico…). |
-| **Serializado** | Modelo contado um a um, cada unidade com MAC. |
-| **Granel** | Modelo contado por quantidade (headsets, cabos), sem identidade por unidade. |
 | **MAC** | Endereço físico único de fábrica de um aparelho de rede (ex.: 00:0B:82:A1:B2:C3). Identifica o aparelho no sistema. |
-| **Condição** | Estado do aparelho: Ativo, Em manutenção, Baixado, Vendido. |
+| **Não aplicável (MAC)** | Aparelho que não tem MAC — headset, cabo, fonte. Continua sendo uma linha por unidade; só o campo MAC fica vazio, e a tela mostra "não aplicável". |
+| **Condição** | Estado do aparelho: Ativo ou Inativo. Inativo é o que não pode ser entregue (quebrado, em conserto, sucateado). |
 | **Unidade** | A filial, loja ou setor do cliente onde o aparelho está ("Loja Simões Filho"). Preenchida ao entregar; some quando o aparelho volta para o estoque. |
 | **Atribuído a** | O cliente com quem o aparelho está. Vazio = estoque. Era "onde está" nas primeiras versões. |
 | **Modalidade** | Como o aparelho está com o cliente: locação, comodato ou venda. Era "como" nas primeiras versões. |
 | **Movimentação** | Locação, venda, comodato ou devolução de aparelhos. Registra de onde, para onde, quantos, quem e quando. |
 | **Locação** | Aparelho emprestado mediante pagamento; continua da Ingline. |
 | **Comodato** | Aparelho emprestado sem cobrança; continua da Ingline. |
-| **Venda** | Aparelho passa a ser do cliente; fica com condição "Vendido" no histórico. |
+| **Venda** | Aparelho passa a ser do cliente. Fica com modalidade "Venda" e sai das contagens do estoque — já não é nosso. |
 | **Devolução** | Aparelho volta do cliente para o estoque. |
 | **Arquivar** | Tirar um cliente da lista sem apagar ("ocultar" no Nexus). |
 | **Lixeira** | Onde ficam os registros excluídos, prontos para restaurar. |

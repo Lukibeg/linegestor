@@ -1,6 +1,6 @@
 /** Formatação para exibição. Reaproveita as regras do pacote compartilhado. */
 export { cnpjFormatado, didFormatado, macFormatado, reais, paraCentavos, cnpjValido, macValido, didValido } from '@gestor/shared';
-export { MODALIDADES, CONDICOES_APARELHO, CONTABILIZACOES } from '@gestor/shared';
+export { MODALIDADES, CONDICOES_APARELHO } from '@gestor/shared';
 
 export function data(iso: string | null | undefined, comHora = false): string {
   if (!iso) return '—';
@@ -23,8 +23,20 @@ export function relativo(iso: string): string {
  * "3 meses depois". Serve para a linha do tempo da implantação, onde o que interessa
  * não é a data em si, mas o intervalo entre uma etapa e a seguinte.
  */
+/**
+ * O dia (no fuso de quem está olhando) de um instante ISO — "2026-01-05T02:00:00Z" no Brasil
+ * é dia 04, não 05. Serve de chave para juntar na mesma linha o que aconteceu no mesmo dia.
+ */
+export function diaLocal(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Distância entre dois dias no formato de `diaLocal`. Mesmo dia não gera texto. */
 export function intervalo(anterior: string, atual: string): string {
-  const dias = Math.round((new Date(atual).getTime() - new Date(anterior).getTime()) / 86400000);
+  const ymd = (s: string) => { const [a, m, d] = s.split('-').map(Number); return new Date(a!, (m ?? 1) - 1, d ?? 1).getTime(); };
+  const dias = Math.round((ymd(atual) - ymd(anterior)) / 86400000);
   if (dias <= 0) return 'no mesmo dia';
   if (dias === 1) return '1 dia depois';
   if (dias < 30) return `${dias} dias depois`;
@@ -40,5 +52,5 @@ export function plural(n: number, um: string, varios: string): string {
 }
 
 /** Nome da condição do aparelho para exibição. */
-export const condicaoNome: Record<string, string> = { ativo: 'Ativo', manutencao: 'Em manutenção', baixado: 'Baixado', vendido: 'Vendido' };
-export const condicaoCor: Record<string, string> = { ativo: 'ok', manutencao: 'signal', baixado: 'muted', vendido: 'accent' };
+export const condicaoNome: Record<string, string> = { ativo: 'Ativo', inativo: 'Inativo' };
+export const condicaoCor: Record<string, string> = { ativo: 'ok', inativo: 'muted' };

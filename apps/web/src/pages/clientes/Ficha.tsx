@@ -11,7 +11,7 @@ import type { ClientFull, Product, ProductModule, Subscription, SubscriptionModu
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, LogoCliente, mensagemErro, Modal, Spinner, Vazio, useToast } from '../../components/ui/index.js';
-import { cnpjFormatado, condicaoCor, condicaoNome, data, intervalo, MODALIDADES, reais, relativo } from '../../lib/format.js';
+import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, intervalo, MODALIDADES, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { ClienteForm } from './Form.js';
 
@@ -68,31 +68,26 @@ export function ClienteFicha() {
 
 function Geral({ c }: { c: ClientFull }) {
   const ativos = c.subscriptions.filter((s) => s.active);
-  const lp = ativos.find((s) => s.productCode === 'linepbx')?.settings;
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <div className="card p-4 md:col-span-2">
-        <div className="eyebrow mb-2">Produtos ativos e seus módulos</div>
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {ativos.map((s) => {
-            const mods = s.modules.filter((m) => m.active);
-            return <span key={s.id} className="inline-flex items-center gap-1"><Chip color={s.color}>{s.productName}</Chip>{mods.map((m) => <Chip key={m.id} color={s.color} className="opacity-80" title={`módulo do ${s.productName}`}>› {m.moduleName}</Chip>)}</span>;
-          })}
-          {!ativos.length && <span className="text-muted text-sm">Nenhum produto marcado ainda.</span>}
+    <div className="grid gap-4 md:grid-cols-3 items-start">
+      <div className="md:col-span-2 flex flex-col gap-4">
+        <div className="card p-4">
+          <div className="eyebrow mb-2">Produtos ativos e seus módulos</div>
+          <div className="flex flex-wrap gap-1.5">
+            {ativos.map((s) => {
+              const mods = s.modules.filter((m) => m.active);
+              return <span key={s.id} className="inline-flex items-center gap-1"><Chip color={s.color}>{s.productName}</Chip>{mods.map((m) => <Chip key={m.id} color={s.color} className="opacity-80" title={`módulo do ${s.productName}`}>› {m.moduleName}</Chip>)}</span>;
+            })}
+            {!ativos.length && <span className="text-muted text-sm">Nenhum produto marcado ainda.</span>}
+          </div>
+          {/* Servidor, endereço, IP e SSH ficam na aba Acessos; as datas de implantação,
+              na linha do tempo logo abaixo. Aqui só os produtos e o que o cliente anotou. */}
+          {c.notes && <><div className="eyebrow mt-4 mb-1">Anotações</div><p className="text-sm whitespace-pre-wrap">{c.notes}</p></>}
         </div>
-        {/* Endereço, IP e SSH ficam na aba Acessos — aqui só o que situa o cliente.
-            Sem LinePBX, o bloco do servidor simplesmente não aparece. */}
-        {lp && <div className="eyebrow mb-2">Servidor (LinePBX)</div>}
-        <dl className="grid grid-cols-[120px_1fr] gap-y-1.5 text-sm">
-          {lp && <><dt className="text-muted">Hospedagem</dt><dd>{lp.hostingName ?? '—'}</dd></>}
-          <dt className="text-muted">Implantado em</dt>
-          <dd>{data(c.createdAt)} <span className="text-muted">· atualizado {relativo(c.updatedAt)}</span></dd>
-        </dl>
-        {c.notes && <><div className="eyebrow mt-4 mb-1">Anotações</div><p className="text-sm whitespace-pre-wrap">{c.notes}</p></>}
-      </div>
-      <div className="card p-4 md:col-span-2 md:order-3">
-        <div className="eyebrow mb-3">Linha do tempo da implantação</div>
-        <LinhaDoTempo c={c} />
+        <div className="card p-4">
+          <div className="eyebrow mb-3">Linha do tempo da implantação</div>
+          <LinhaDoTempo c={c} />
+        </div>
       </div>
       <div className="flex flex-col gap-3">
         <div className="card p-4"><div className="eyebrow">DIDs em uso</div><div className="font-display text-2xl font-semibold tnum">{c.didCount}</div></div>
@@ -111,37 +106,54 @@ function Geral({ c }: { c: ClientFull }) {
  * As datas vêm do campo "Ativado em" de cada produto e módulo, em Produtos.
  */
 function LinhaDoTempo({ c }: { c: ClientFull }) {
-  type Evento = { quando: string | null; cor: string; titulo: string; fim: boolean };
-  const eventos = useMemo(() => {
-    const lista: Evento[] = [];
+  type Evento = { cor: string; titulo: string; fim: boolean };
+  type Dia = { dia: string | null; quando: string | null; eventos: Evento[] };
+
+  /** Tudo que aconteceu no mesmo dia vira uma linha só — ligar três coisas de uma vez
+   *  é um marco, não três. Só dias diferentes ganham o "X depois". */
+  const dias = useMemo(() => {
+    const porDia = new Map<string, Dia>();
+    const add = (quando: string | null, ev: Evento) => {
+      const chave = quando ? diaLocal(quando) : 'sem-data';
+      const atual = porDia.get(chave) ?? { dia: quando ? chave : null, quando, eventos: [] };
+      atual.eventos.push(ev);
+      porDia.set(chave, atual);
+    };
     for (const s of c.subscriptions) {
-      if (s.active) lista.push({ quando: s.activatedAt, cor: s.color, titulo: s.productName, fim: false });
-      else if (s.deactivatedAt) lista.push({ quando: s.deactivatedAt, cor: s.color, titulo: `${s.productName} — encerrado`, fim: true });
+      if (s.active) add(s.activatedAt, { cor: s.color, titulo: s.productName, fim: false });
+      else if (s.deactivatedAt) add(s.deactivatedAt, { cor: s.color, titulo: `${s.productName} — encerrado`, fim: true });
       for (const m of s.modules) {
-        if (m.active) lista.push({ quando: m.activatedAt, cor: s.color, titulo: `${s.productName} › ${m.moduleName}`, fim: false });
-        else if (m.deactivatedAt) lista.push({ quando: m.deactivatedAt, cor: s.color, titulo: `${s.productName} › ${m.moduleName} — desativado`, fim: true });
+        if (m.active) add(m.activatedAt, { cor: s.color, titulo: `${s.productName} › ${m.moduleName}`, fim: false });
+        else if (m.deactivatedAt) add(m.deactivatedAt, { cor: s.color, titulo: `${s.productName} › ${m.moduleName} — desativado`, fim: true });
       }
     }
     // sem data vai para o fim da lista, não para 1970
-    return lista.sort((a, b) => (a.quando ?? '9999').localeCompare(b.quando ?? '9999'));
+    return [...porDia.values()].sort((a, b) => (a.dia ?? '9999').localeCompare(b.dia ?? '9999'));
   }, [c.subscriptions]);
 
-  if (!eventos.length) return <p className="text-muted text-sm">Nenhum produto marcado ainda. Marque na aba Produtos e a linha do tempo se monta sozinha.</p>;
+  if (!dias.length) return <p className="text-muted text-sm">Nenhum produto marcado ainda. Marque na aba Produtos e a linha do tempo se monta sozinha.</p>;
 
   let anterior: string | null = null;
   return (
     <ol className="ml-1">
-      {eventos.map((ev, i) => {
-        const desde = ev.quando && anterior ? intervalo(anterior, ev.quando) : null;
-        if (ev.quando) anterior = ev.quando;
-        const ultimo = i === eventos.length - 1;
+      {dias.map((g, i) => {
+        const desde = g.dia && anterior && anterior !== g.dia ? intervalo(anterior, g.dia) : null;
+        if (g.dia) anterior = g.dia;
+        const ultimo = i === dias.length - 1;
+        const cor = g.eventos.find((e) => !e.fim)?.cor ?? g.eventos[0]!.cor;
         return (
-          <li key={`${ev.titulo}-${i}`} className={`relative pl-5 ${ultimo ? '' : 'pb-3.5 border-l'} border-line`}>
-            <span className="absolute -left-[4.5px] top-[5px] w-2.5 h-2.5 rounded-full ring-[3px] ring-surface" style={{ background: ev.fim ? 'var(--line-strong)' : ev.cor }} aria-hidden />
+          <li key={g.dia ?? 'sem-data'} className={`relative pl-5 ${ultimo ? '' : 'pb-3.5 border-l'} border-line`}>
+            <span className="absolute -left-[4.5px] top-[5px] w-2.5 h-2.5 rounded-full ring-[3px] ring-surface" style={{ background: g.eventos.every((e) => e.fim) ? 'var(--line-strong)' : cor }} aria-hidden />
             <div className="flex flex-wrap items-baseline gap-x-2 -mt-[3px]">
-              <span className="font-mono text-[12.5px] text-muted tnum w-[74px] shrink-0">{ev.quando ? data(ev.quando) : 'sem data'}</span>
-              <span className={`text-sm ${ev.fim ? 'text-muted line-through decoration-1' : ''}`}>{ev.titulo}</span>
-              {desde && desde !== 'no mesmo dia' && <span className="text-[12px] text-muted">· {desde}</span>}
+              <span className="font-mono text-[12.5px] text-muted tnum w-[74px] shrink-0">{g.quando ? data(g.quando) : 'sem data'}</span>
+              <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 min-w-0">
+                {g.eventos.map((ev, k) => (
+                  <span key={`${ev.titulo}-${k}`} className={`text-sm ${ev.fim ? 'text-muted line-through decoration-1' : ''}`}>
+                    {k > 0 && <span className="text-muted mr-1.5 no-underline">·</span>}{ev.titulo}
+                  </span>
+                ))}
+              </span>
+              {desde && <span className="text-[12px] text-muted">· {desde}</span>}
             </div>
           </li>
         );
@@ -337,44 +349,56 @@ function Dids({ c }: { c: ClientFull }) {
 // ---------- Equipamentos ----------
 
 /**
- * O que este cliente tem de equipamento: primeiro o resumo (quanto, de que modelos e
- * quanto vale), depois a tabela com cada aparelho.
+ * O que este cliente tem de equipamento: primeiro o resumo (quanto, de que modelos e quanto
+ * vale cada grupo), depois a tabela com cada aparelho.
  *
- * O valor sai do que está cadastrado em cada aparelho, no Inventário. Itens a granel
- * (headset, cabo) entram na contagem mas não no valor — eles não têm preço por unidade.
+ * O valor é o que está cadastrado em cada aparelho, no Inventário — por isso a soma daqui
+ * bate com a da Visão geral.
  */
 function Equipamentos({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-devices', c.id], queryFn: () => api.clients.devices(c.id) });
   const o = useOrdenacaoLocal('modelName');
   const temProduto = c.subscriptions.some((s) => s.productCode === 'equipamentos' && s.active);
-  const devs = q.data?.devices.items ?? []; const bulk = q.data?.bulk ?? [];
+  const devs = q.data?.devices.items ?? [];
 
   const resumo = useMemo(() => {
-    const porModelo = new Map<string, number>();
-    for (const d of devs) porModelo.set(d.modelName, (porModelo.get(d.modelName) ?? 0) + 1);
-    for (const b of bulk) porModelo.set(b.modelName, (porModelo.get(b.modelName) ?? 0) + b.quantity);
-    const valor = devs.reduce((a, d) => a + (d.valueCents ?? 0), 0);
+    const porModelo = new Map<string, { qtd: number; valor: number }>();
+    for (const d of devs) {
+      const atual = porModelo.get(d.modelName) ?? { qtd: 0, valor: 0 };
+      porModelo.set(d.modelName, { qtd: atual.qtd + 1, valor: atual.valor + (d.valueCents ?? 0) });
+    }
     return {
-      modelos: [...porModelo.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR')),
-      total: devs.length + bulk.reduce((a, b) => a + b.quantity, 0),
-      valor,
+      modelos: [...porModelo.entries()].sort((a, b) => b[1].qtd - a[1].qtd || a[0].localeCompare(b[0], 'pt-BR')),
+      total: devs.length,
+      valor: devs.reduce((a, d) => a + (d.valueCents ?? 0), 0),
       semValor: devs.filter((d) => d.valueCents == null).length,
     };
-  }, [devs, bulk]);
+  }, [devs]);
 
   if (q.isLoading) return <Carregando />;
-  if (!devs.length && !bulk.length) return <Vazio titulo="Nenhum aparelho com este cliente" texto={temProduto ? 'Use "Movimentar aparelhos" no Inventário para locar, vender ou emprestar.' : 'Para movimentar aparelhos para este cliente, marque o produto Equipamentos na aba Produtos.'} acao={<Link className="btn-secondary" to="/inventario">Ir para o Inventário</Link>} />;
+  if (!devs.length) return <Vazio titulo="Nenhum aparelho com este cliente" texto={temProduto ? 'Use "Movimentar aparelhos" no Inventário para locar, vender ou emprestar.' : 'Para movimentar aparelhos para este cliente, marque o produto Equipamentos na aba Produtos.'} acao={<Link className="btn-secondary" to="/inventario">Ir para o Inventário</Link>} />;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="card p-4 lg:col-span-2">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="card p-4">
           <div className="eyebrow mb-2">Por modelo</div>
           <ul className="text-sm flex flex-col gap-1">
-            {resumo.modelos.map(([nome, qtd]) => (
+            {resumo.modelos.map(([nome, x]) => (
               <li key={nome} className="flex justify-between gap-3 items-baseline">
                 <span className="truncate">{nome}</span>
-                <span className="font-mono tnum text-muted whitespace-nowrap">{qtd} und</span>
+                <span className="font-mono tnum text-muted whitespace-nowrap">{x.qtd} und</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="card p-4">
+          <div className="eyebrow mb-2">Valor por modelo</div>
+          <ul className="text-sm flex flex-col gap-1">
+            {resumo.modelos.map(([nome, x]) => (
+              <li key={nome} className="flex justify-between gap-3 items-baseline">
+                <span className="truncate">{nome}</span>
+                <span className="tnum text-muted whitespace-nowrap">{reais(x.valor)}</span>
               </li>
             ))}
           </ul>
@@ -382,7 +406,6 @@ function Equipamentos({ c }: { c: ClientFull }) {
         <div className="card p-4">
           <div className="eyebrow">Total de equipamentos</div>
           <div className="font-display text-2xl font-semibold tnum">{resumo.total}</div>
-          {bulk.length > 0 && <div className="text-muted text-[12px]">{devs.length} por MAC · {resumo.total - devs.length} a granel</div>}
         </div>
         <div className="card p-4">
           <div className="eyebrow">Valor dos equipamentos</div>
@@ -393,13 +416,8 @@ function Equipamentos({ c }: { c: ClientFull }) {
         </div>
       </div>
 
-      {devs.length > 0 && (
-        <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="modelName">Modelo</Th><Th o={o} col="mac">MAC</Th><Th o={o} col="unit">Unidade</Th><Th o={o} col="currentModality">Modalidade</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="valueCents" align="right">Valor</Th><Th o={o} col="ip">IP</Th><Th o={o} col="location">Local</Th></tr></thead>
-          <tbody>{ordenarLista(devs, o, { modelName: (d) => d.modelName, mac: (d) => d.mac, unit: (d) => d.unit, currentModality: (d) => d.currentModality, condition: (d) => d.condition, valueCents: (d) => d.valueCents, ip: (d) => d.ip, location: (d) => d.location }).map((d) => <tr key={d.id}><td>{d.modelName}</td><td className="font-mono"><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.macFormatted}</Link></td><td>{d.unit ?? <span className="text-muted">—</span>}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="text-right tnum">{d.valueCents != null ? reais(d.valueCents) : <span className="text-muted">—</span>}</td><td className="font-mono">{d.ip ?? '—'}</td><td className="text-muted">{d.location ?? '—'}</td></tr>)}</tbody></table></div>
-      )}
-      {bulk.length > 0 && (
-        <div className="card p-4"><div className="eyebrow mb-2">Itens a granel</div><ul className="text-sm">{bulk.map((b) => <li key={b.id} className="flex justify-between py-1 border-b border-line last:border-0"><span>{b.modelName} <span className="text-muted">· {(MODALIDADES as any)[b.modality] ?? b.modality}</span></span><span className="font-mono tnum">{b.quantity}</span></li>)}</ul></div>
-      )}
+      <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="modelName">Modelo</Th><Th o={o} col="mac">MAC</Th><Th o={o} col="unit">Unidade</Th><Th o={o} col="currentModality">Modalidade</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="valueCents" align="right">Valor</Th><Th o={o} col="ip">IP</Th><Th o={o} col="location">Local</Th></tr></thead>
+        <tbody>{ordenarLista(devs, o, { modelName: (d) => d.modelName, mac: (d) => d.mac, unit: (d) => d.unit, currentModality: (d) => d.currentModality, condition: (d) => d.condition, valueCents: (d) => d.valueCents, ip: (d) => d.ip, location: (d) => d.location }).map((d) => <tr key={d.id}><td>{d.modelName}</td><td className="font-mono"><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.mac ? d.macFormatted : <span className="text-muted font-sans text-[13px]">não aplicável</span>}</Link></td><td>{d.unit ?? <span className="text-muted">—</span>}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="text-right tnum">{d.valueCents != null ? reais(d.valueCents) : <span className="text-muted">—</span>}</td><td className="font-mono">{d.ip ?? '—'}</td><td className="text-muted">{d.location ?? '—'}</td></tr>)}</tbody></table></div>
     </div>
   );
 }

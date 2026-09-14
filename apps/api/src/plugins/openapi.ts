@@ -22,7 +22,7 @@ export default fp(async (app) => {
         { name: 'Clientes', description: 'Cadastro de clientes e produtos assinados' },
         { name: 'Circuitos', description: 'Feixes contratados junto às operadoras' },
         { name: 'DIDs', description: 'Numeração: alocar, liberar, criar faixas, editar em massa' },
-        { name: 'Inventário', description: 'Modelos, aparelhos, estoque a granel e movimentações' },
+        { name: 'Inventário', description: 'Modelos, aparelhos e movimentações' },
         { name: 'Painel', description: 'Indicadores e busca global' },
         { name: 'Dados', description: 'Importar e exportar CSV' },
         { name: 'Segredos', description: 'Revelar senhas guardadas (com registro)' },

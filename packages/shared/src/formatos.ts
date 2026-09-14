@@ -80,7 +80,12 @@ export function macLimpo(v: string): string {
 }
 
 /** 000B82A1B2C3 → 00:0B:82:A1:B2:C3 */
-export function macFormatado(v: string): string {
+/**
+ * MAC em grupos de dois, do jeito que aparece na etiqueta do aparelho.
+ * Aparelho sem MAC (headset, cabo) devolve "não aplicável" — é caso normal, não erro.
+ */
+export function macFormatado(v: string | null | undefined): string {
+  if (!v) return 'não aplicável';
   const m = macLimpo(v);
   if (m.length !== 12) return v;
   return m.match(/.{2}/g)!.join(':');

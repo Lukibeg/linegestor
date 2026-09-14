@@ -14,7 +14,7 @@ gestor/
 │   ├── arquitetura.html     ← o desenho do sistema (telas, banco, papéis, senhas, tecnologias)
 │   ├── banco-de-dados.md    ← cada tabela e cada coluna explicada (gerado do próprio banco)
 │   ├── decisoes/            ← uma página por decisão importante e o porquê
-│   ├── glossario.md         ← DID, circuito, canal, granel, comodato… o que cada termo significa aqui
+│   ├── glossario.md         ← DID, circuito, canal, comodato, modalidade… o que cada termo significa aqui
 │   └── guia-de-uso/         ← como fazer cada tarefa (para a equipe)
 ├── apps/
 │   ├── web/                 ← a interface (o que a equipe vê)        → apps/web/LEIA-ME.md

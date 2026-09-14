@@ -52,7 +52,7 @@ export type Circuit = {
 /** Os cartões no topo da tela de Circuitos (obedecem aos mesmos filtros da lista). */
 export type CircuitSummary = { circuits: number; channels: number; monthlyValueCents: number; dids: { total: number; assigned: number; free: number; noCircuit: number } };
 /** Os cartões no topo do Inventário (obedecem aos mesmos filtros da lista). */
-export type InventorySummary = { inStock: number; withClients: number; maintenance: number; valueWithClientsCents: number; filtrado: boolean };
+export type InventorySummary = { inStock: number; withClients: number; inactive: number; valueWithClientsCents: number; filtrado: boolean };
 
 export type Did = {
   id: string; number: string; numberFormatted: string; free: boolean; circuitId: string | null; circuitName: string | null; circuitCode: string | null; carrierName: string | null;
@@ -60,25 +60,25 @@ export type Did = {
 };
 
 export type DeviceModel = {
-  id: string; code: string; name: string; categoryId: string | null; categoryName: string | null; tracking: 'serializado' | 'granel'; imageUrl: string | null;
-  counts: { total: number; inStock: number; withClients: number; sold: number; maintenance: number; retired: number };
+  id: string; code: string; name: string; categoryId: string | null; categoryName: string | null; imageUrl: string | null;
+  counts: { total: number; inStock: number; withClients: number; sold: number; inactive: number };
 };
 export type Device = {
-  id: string; modelId: string; modelName: string; modelCode: string; mac: string; macFormatted: string; macSecondary: string | null;
+  /** `mac` é nulo em aparelho sem MAC; `macFormatted` já vem como "não aplicável" nesse caso */
+  id: string; modelId: string; modelName: string; modelCode: string; mac: string | null; macFormatted: string; macSecondary: string | null;
   clientId: string | null; clientName: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null;
   history?: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; newCondition: string | null; note: string | null; userName: string; createdAt: string }>;
 };
-export type BulkStock = { id: string; modelId: string; modelName: string; clientId: string | null; clientName: string | null; modality: string; quantity: number };
 export type Movement = {
   id: string; modality: string; modalityName: string; fromClientId: string | null; fromName: string | null; toClientId: string | null; toName: string | null;
-  newCondition: string | null; valueCents: number | null; note: string | null; userName: string; createdAt: string; items: Array<{ modelName: string; quantity: number }>;
+  newCondition: string | null; note: string | null; userName: string; createdAt: string; items: Array<{ modelName: string; quantity: number }>;
 };
 
 export type Dashboard = {
   clients: { active: number; byProduct: Array<ProductChip & { n: number }> };
   dids: { total: number; assigned: number; free: number; noCircuit: number };
   circuits: Array<{ id: string; name: string; carrierName: string | null; channels: number; total: number; assigned: number; free: number }>;
-  devices: { inStock: number; withClients: number; maintenance: number; valueWithClientsCents: number };
+  devices: { inStock: number; withClients: number; inactive: number; valueWithClientsCents: number };
   alerts: Array<{ kind: string; severity: 'warning' | 'critical'; message: string; count: number; link: string }>;
   recentMovements: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; userName: string; createdAt: string }>;
   recentAudit: Array<{ id: string; action: string; summary: string; userName: string | null; createdAt: string }>;
@@ -88,7 +88,7 @@ export type SearchResult = {
   clients: Array<{ id: string; name: string; legalName: string; cnpj: string }>;
   dids: Array<{ id: string; number: string; numberFormatted: string; clientName: string | null; circuitName: string | null }>;
   circuits: Array<{ id: string; name: string; code: string; carrierName: string | null }>;
-  devices: Array<{ id: string; mac: string; macFormatted: string; unit: string | null; modelName: string; clientName: string | null }>;
+  devices: Array<{ id: string; mac: string | null; macFormatted: string; unit: string | null; modelName: string; clientName: string | null }>;
 };
 
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number; free?: number };

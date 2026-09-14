@@ -27,15 +27,14 @@ type SubMod = { id: string; subscriptionId: string; moduleId: string; activatedA
 type ModRow = ProductModule & { productId: string };
 type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; deletedAt: string | null };
 type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; note: string | null; deletedAt: string | null };
-type ModelRow = { id: string; code: string; name: string; categoryId: string | null; tracking: 'serializado' | 'granel'; imageUrl: string | null; deletedAt: string | null };
-type DeviceRow = { id: string; modelId: string; mac: string; macSecondary: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
-type Bulk = { id: string; modelId: string; clientId: string | null; modality: string; quantity: number };
-type MovRow = { id: string; modality: string; fromClientId: string | null; toClientId: string | null; newCondition: string | null; valueCents: number | null; note: string | null; userId: string; createdAt: string; items: Array<{ modelId: string; deviceId: string | null; quantity: number }> };
+type ModelRow = { id: string; code: string; name: string; categoryId: string | null; imageUrl: string | null; deletedAt: string | null };
+type DeviceRow = { id: string; modelId: string; mac: string | null; macSecondary: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
+type MovRow = { id: string; modality: string; fromClientId: string | null; toClientId: string | null; newCondition: string | null; note: string | null; userId: string; createdAt: string; items: Array<{ modelId: string; deviceId: string }> };
 type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[] };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
 
 const S = {
-  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], bulk: [] as Bulk[], movements: [] as MovRow[],
+  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
   ajustesBackup: {
     ativo: false, pasta: 'Backups › Ingline Gestão', pastaId: '', contaDeServico: '',
@@ -109,8 +108,11 @@ function seed() {
       const settings: Record<string, any> = {};
       if (code === 'linepbx') { const sec = id(); S.secrets.set(sec, { label: `Senha SSH do LinePBX — ${t}`, value: 'Ssh#' + cnpj.slice(0, 5) }); Object.assign(settings, { hostingId: host ? 'h' + host.replace(/\W/g, '') : null, hostingName: host, serverIp: ip, domain: dom, sshUser: 'root', sshPort: 22, sshPasswordSecretId: sec }); }
       // o produto entra primeiro; os módulos vêm depois, em intervalos diferentes — é assim
-      // que acontece na vida real, e é o que a linha do tempo da ficha mostra
+      // que acontece na vida real, e é o que a linha do tempo da ficha mostra.
+      // O Hospital Vale Verde é o contra-exemplo de propósito: ligou o LinePBX e os três
+      // módulos no mesmo dia, para a linha do tempo ter um caso de "tudo junto numa linha".
       const diasDoProduto = 500 - i * 30 - j * 45;
+      const tudoJunto = i === 2 && code === 'linepbx';
       const sub: Sub = { id: id(), clientId: c.id, productCode: code, activatedAt: daysAgo(diasDoProduto), deactivatedAt: null, notes: code === 'linepbx' && i === 2 ? 'Gravação de chamadas contratada' : null, settings };
       S.subs.push(sub);
       mods.filter((m) => m.startsWith(code + ':')).forEach((pm, k) => {
@@ -118,7 +120,7 @@ function seed() {
         const ms: Record<string, any> = {};
         if (mcode === 'fop2') ms.adminExtension = '1000';
         if (mcode === 'omniboard') { const a = id(), d = id(); S.secrets.set(a, { label: `Senha admin do Omniboard — ${t}`, value: 'Omni#2026' }); S.secrets.set(d, { label: `Senha padrão de usuário do Omniboard — ${t}`, value: 'Bemvindo1' }); Object.assign(ms, { adminLogin: `admin@${t.toLowerCase().replace(/\W+/g, '')}.com.br`, adminPasswordSecretId: a, userDefaultPasswordSecretId: d }); }
-        S.subMods.push({ id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: daysAgo(Math.max(3, diasDoProduto - 40 - k * 75)), deactivatedAt: null, notes: null, settings: ms });
+        S.subMods.push({ id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: daysAgo(tudoJunto ? diasDoProduto : Math.max(3, diasDoProduto - 40 - k * 75), tudoJunto ? 11 + k : 10), deactivatedAt: null, notes: null, settings: ms });
       });
     });
     // o cliente existe antes do primeiro produto: a ficha mostra "implantado em" e a linha do
@@ -148,22 +150,28 @@ function seed() {
     'Supermercado Bom Preço': ['Loja Centro', 'Loja Simões Filho'],
     'Home Care Viver Bem': ['Sede'],
   };
-  const mGx: ModelRow = { id: id(), code: 'gxp1610', name: 'Grandstream GXP1610', categoryId: 'catTelefoneIP', tracking: 'serializado', imageUrl: null, deletedAt: null };
-  const mHs: ModelRow = { id: id(), code: 'headset', name: 'Headset Genérico', categoryId: 'catPeriferico', tracking: 'granel', imageUrl: null, deletedAt: null };
-  const mTip: ModelRow = { id: id(), code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: 'catTelefoneIP', tracking: 'serializado', imageUrl: null, deletedAt: null };
+  const mGx: ModelRow = { id: id(), code: 'gxp1610', name: 'Grandstream GXP1610', categoryId: 'catTelefoneIP', imageUrl: null, deletedAt: null };
+  const catPerif = S.categories.find((c) => c.name === 'Periférico')!.id;
+  const mHs: ModelRow = { id: id(), code: 'headset', name: 'Headset Genérico', categoryId: catPerif, imageUrl: null, deletedAt: null };
+  const mTip: ModelRow = { id: id(), code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: 'catTelefoneIP', imageUrl: null, deletedAt: null };
   S.models = [mGx, mHs, mTip];
   let n = 0;
   const locados: Array<[string, number, number]> = [['Hospital Vale Verde', 20, 30], ['Distribuidora Norte', 8, 20], ['Supermercado Bom Preço', 6, 12], ['Home Care Viver Bem', 4, 5]];
   for (const [cli, q, d] of locados) {
     const mid = id();
     const items: MovRow['items'] = [];
-    for (let i = 0; i < q; i++, n++) { const dev: DeviceRow = { id: id(), modelId: mGx.id, mac: '000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6), macSecondary: null, clientId: byName[cli]!, unit: UNIDADES_DEMO[cli]?.[i % (UNIDADES_DEMO[cli]!.length)] ?? null, currentModality: 'locacao', condition: 'ativo', valueCents: 45000, ip: `10.0.${n % 4}.${20 + n}`, location: null, note: null, deletedAt: null, createdAt: daysAgo(d + 3) }; S.devices.push(dev); items.push({ modelId: mGx.id, deviceId: dev.id, quantity: 1 }); }
-    S.movements.push({ id: mid, modality: 'locacao', fromClientId: null, toClientId: byName[cli]!, newCondition: 'ativo', valueCents: null, note: null, userId: 'u2', createdAt: daysAgo(d), items });
+    for (let i = 0; i < q; i++, n++) { const dev: DeviceRow = { id: id(), modelId: mGx.id, mac: '000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6), macSecondary: null, clientId: byName[cli]!, unit: UNIDADES_DEMO[cli]?.[i % (UNIDADES_DEMO[cli]!.length)] ?? null, currentModality: 'locacao', condition: 'ativo', valueCents: 45000, ip: `10.0.${n % 4}.${20 + n}`, location: null, note: null, deletedAt: null, createdAt: daysAgo(d + 3) }; S.devices.push(dev); items.push({ modelId: mGx.id, deviceId: dev.id }); }
+    S.movements.push({ id: mid, modality: 'locacao', fromClientId: null, toClientId: byName[cli]!, newCondition: 'ativo', note: null, userId: 'u2', createdAt: daysAgo(d), items });
   }
-  for (let i = 0; i < 12; i++, n++) S.devices.push({ id: id(), modelId: mGx.id, mac: '000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6), macSecondary: null, clientId: null, unit: null, currentModality: null, condition: i === 11 ? 'manutencao' : 'ativo', valueCents: 45000, ip: null, location: 'Estoque · Prateleira B', note: i === 11 ? 'Tela piscando; aguardando peça' : null, deletedAt: null, createdAt: daysAgo(60) });
+  for (let i = 0; i < 12; i++, n++) S.devices.push({ id: id(), modelId: mGx.id, mac: '000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6), macSecondary: null, clientId: null, unit: null, currentModality: null, condition: i === 11 ? 'inativo' : 'ativo', valueCents: 45000, ip: null, location: 'Estoque · Prateleira B', note: i === 11 ? 'Tela piscando; aguardando peça' : null, deletedAt: null, createdAt: daysAgo(60) });
   for (let i = 0; i < 3; i++, n++) S.devices.push({ id: id(), modelId: mTip.id, mac: '1C61B4' + (0x200000 + n).toString(16).toUpperCase().slice(-6), macSecondary: null, clientId: null, unit: null, currentModality: null, condition: 'ativo', valueCents: 38000, ip: null, location: 'Estoque · Prateleira A', note: null, deletedAt: null, createdAt: daysAgo(20) });
-  S.bulk = [{ id: id(), modelId: mHs.id, clientId: null, modality: 'estoque', quantity: 28 }, { id: id(), modelId: mHs.id, clientId: byName['Hospital Vale Verde']!, modality: 'locacao', quantity: 4 }];
-  S.movements.push({ id: id(), modality: 'locacao', fromClientId: null, toClientId: byName['Hospital Vale Verde']!, newCondition: null, valueCents: null, note: 'Headsets para o call center', userId: 'u3', createdAt: daysAgo(2, 14), items: [{ modelId: mHs.id, deviceId: null, quantity: 4 }] });
+  // headset não tem MAC: cada unidade é uma linha, com o campo vazio
+  for (let i = 0; i < 28; i++) S.devices.push({ id: id(), modelId: mHs.id, mac: null, macSecondary: null, clientId: null, unit: null, currentModality: null, condition: 'ativo', valueCents: 9000, ip: null, location: 'Estoque · Prateleira A', note: null, deletedAt: null, createdAt: daysAgo(70) });
+  const headsetsLocados = Array.from({ length: 4 }, () => {
+    const dev: DeviceRow = { id: id(), modelId: mHs.id, mac: null, macSecondary: null, clientId: byName['Hospital Vale Verde']!, unit: 'Matriz · Ramiro Campelo', currentModality: 'locacao', condition: 'ativo', valueCents: 9000, ip: null, location: null, note: null, deletedAt: null, createdAt: daysAgo(5) };
+    S.devices.push(dev); return dev;
+  });
+  S.movements.push({ id: id(), modality: 'locacao', fromClientId: null, toClientId: byName['Hospital Vale Verde']!, newCondition: null, note: 'Headsets para o call center', userId: 'u3', createdAt: daysAgo(2, 14), items: headsetsLocados.map((d) => ({ modelId: mHs.id, deviceId: d.id })) });
   S.audit = [
     { id: id(), action: 'bulk_update', entityType: 'did', entityId: null, summary: 'Alterou 40 DID(s): cliente → Supermercado Bom Preço', before: null, after: null, userName: 'Lúcio Andrade', userId: 'u2', createdAt: daysAgo(1, 16) },
     { id: id(), action: 'reveal_secret', entityType: 'secret', entityId: null, summary: 'Lúcio Andrade revelou "Senha SSH do LinePBX — Clínica Aurora"', before: null, after: null, userName: 'Lúcio Andrade', userId: 'u2', createdAt: daysAgo(1, 11) },
@@ -195,8 +203,8 @@ const listItem = (c: Client): ClientListItem => {
     products: activeSubs(c.id).sort((a, b) => prodMeta(a.productCode).sortOrder - prodMeta(b.productCode).sortOrder).map((s) => { const p = prodMeta(s.productCode); return { code: p.code, name: p.name, color: p.color, activatedAt: s.activatedAt, modules: activeMods(s.id).map((m) => ({ code: modMeta(m.moduleId).code, name: modMeta(m.moduleId).name, activatedAt: m.activatedAt })) }; }),
     server: lp ? { hostingName: S.hostings.find((h) => h.id === lp.hostingId)?.name ?? null, serverIp: lp.serverIp ?? null, domain: lp.domain ?? null, sshUser: lp.sshUser ?? null, sshPort: lp.sshPort ?? null } : null,
     links: links(c.id), didCount: S.dids.filter((d) => d.clientId === c.id && !d.deletedAt).length,
-    deviceCount: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.condition !== 'vendido').length,
-    deviceValueCents: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.condition !== 'vendido').reduce((a, d) => a + (d.valueCents ?? 0), 0),
+    deviceCount: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.currentModality !== 'venda').length,
+    deviceValueCents: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.currentModality !== 'venda').reduce((a, d) => a + (d.valueCents ?? 0), 0),
   };
 };
 const shapeSubMod = (m: SubMod): SubscriptionModule => {
@@ -223,9 +231,9 @@ const shapeCircuit = (c: CircuitRow): Circuit => {
 const shapeDid = (d: DidRow): Did => { const c = S.circuits.find((x) => x.id === d.circuitId); return { id: d.id, number: d.number, numberFormatted: didFormatado(d.number), free: !d.clientId, circuitId: d.circuitId, circuitName: c?.name ?? null, circuitCode: c?.code ?? null, carrierName: S.carriers.find((x) => x.id === c?.carrierId)?.name ?? null, clientId: d.clientId, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null, ownerClientId: d.ownerClientId, ownerName: S.clients.find((x) => x.id === d.ownerClientId)?.tradeName ?? null, note: d.note }; };
 const shapeModel = (m: ModelRow): DeviceModel => {
   const ds = S.devices.filter((d) => d.modelId === m.id && !d.deletedAt);
-  const inStock = m.tracking === 'granel' ? S.bulk.filter((b) => b.modelId === m.id && !b.clientId).reduce((a, b) => a + b.quantity, 0) : ds.filter((d) => !d.clientId && ['ativo', 'manutencao'].includes(d.condition)).length;
-  const withClients = m.tracking === 'granel' ? S.bulk.filter((b) => b.modelId === m.id && b.clientId).reduce((a, b) => a + b.quantity, 0) : ds.filter((d) => d.clientId && !['vendido', 'baixado'].includes(d.condition)).length;
-  return { ...m, categoryName: S.categories.find((c) => c.id === m.categoryId)?.name ?? null, counts: { total: inStock + withClients, inStock, withClients, sold: ds.filter((d) => d.condition === 'vendido').length, maintenance: ds.filter((d) => d.condition === 'manutencao').length, retired: ds.filter((d) => d.condition === 'baixado').length } };
+  const inStock = ds.filter((d) => !d.clientId).length;
+  const withClients = ds.filter((d) => d.clientId && d.currentModality !== 'venda').length;
+  return { ...m, categoryName: S.categories.find((c) => c.id === m.categoryId)?.name ?? null, counts: { total: inStock + withClients, inStock, withClients, sold: ds.filter((d) => d.currentModality === 'venda').length, inactive: ds.filter((d) => d.condition === 'inativo').length } };
 };
 const shapeDevice = (d: DeviceRow, withHistory = false): Device => {
   const m = S.models.find((x) => x.id === d.modelId)!;
@@ -233,7 +241,7 @@ const shapeDevice = (d: DeviceRow, withHistory = false): Device => {
   if (withHistory) base.history = S.movements.filter((mv) => mv.items.some((i) => i.deviceId === d.id)).map((mv) => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return base;
 };
-const shapeMov = (mv: MovRow): Movement => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromClientId: mv.fromClientId, fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toClientId: mv.toClientId, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, newCondition: mv.newCondition, valueCents: mv.valueCents, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt, items: Object.values(mv.items.reduce((acc, i) => { const k = i.modelId; acc[k] = acc[k] ?? { modelName: S.models.find((m) => m.id === k)?.name ?? '?', quantity: 0 }; acc[k]!.quantity += i.quantity; return acc; }, {} as Record<string, { modelName: string; quantity: number }>)) });
+const shapeMov = (mv: MovRow): Movement => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromClientId: mv.fromClientId, fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toClientId: mv.toClientId, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt, items: Object.values(mv.items.reduce((acc, i) => { const k = i.modelId; acc[k] = acc[k] ?? { modelName: S.models.find((m) => m.id === k)?.name ?? '?', quantity: 0 }; acc[k]!.quantity += 1; return acc; }, {} as Record<string, { modelName: string; quantity: number }>)) });
 const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active, modules: S.modules.filter((m) => m.productId === p.id).sort((a, b) => a.sortOrder - b.sortOrder).map(({ productId: _p, ...m }) => m) });
 /**
  * Ordenação da demonstração: mesma ideia do servidor — vazio sempre no fim,
@@ -332,12 +340,17 @@ export const demoApi: Api = {
       const didNo = new Set(ds.filter((d) => d.clientId && !activeSubs(d.clientId).some((s) => s.productCode === 'voicenet')).map((d) => d.clientId)).size; if (didNo) alerts.push({ kind: 'did_sem_voicenet', severity: 'warning', message: 'Clientes com DIDs alocados mas sem o produto VoiceNet', count: didNo, link: '/circuitos?aba=numeracao' });
       const zero = circuits.filter((c) => c.channels === 0 && c.total > 0).length; if (zero) alerts.push({ kind: 'circuito_sem_canais', severity: 'critical', message: 'Circuitos com DIDs mas 0 canais cadastrados', count: zero, link: '/circuitos' });
       const noC = ds.filter((d) => !d.circuitId).length; if (noC) alerts.push({ kind: 'did_sem_circuito', severity: 'warning', message: 'DIDs sem circuito', count: noC, link: '/circuitos?aba=numeracao&circuito=none' });
-      const man = dev.filter((d) => d.condition === 'manutencao').length; if (man) alerts.push({ kind: 'aparelho_manutencao', severity: 'warning', message: 'Aparelhos em manutenção', count: man, link: '/inventario?condicao=manutencao' });
+      const inativos = dev.filter((d) => d.condition === 'inativo').length; if (inativos) alerts.push({ kind: 'aparelho_inativo', severity: 'warning', message: 'Aparelhos inativos', count: inativos, link: '/inventario?condicao=inativo' });
       return {
         clients: { active: active.length, byProduct: S.products.map((p) => ({ code: p.code, name: p.name, color: p.color, n: active.filter((c) => activeSubs(c.id).some((s) => s.productCode === p.code)).length })) },
         dids: { total: ds.length, assigned: ds.filter((d) => d.clientId).length, free: ds.filter((d) => !d.clientId).length, noCircuit: noC },
         circuits,
-        devices: { inStock: dev.filter((d) => !d.clientId && ['ativo', 'manutencao'].includes(d.condition)).length + S.bulk.filter((b) => !b.clientId).reduce((a, b) => a + b.quantity, 0), withClients: dev.filter((d) => d.clientId && !['vendido', 'baixado'].includes(d.condition)).length + S.bulk.filter((b) => b.clientId).reduce((a, b) => a + b.quantity, 0), maintenance: man, valueWithClientsCents: dev.filter((d) => d.clientId && ['locacao', 'comodato'].includes(d.currentModality ?? '') && !['vendido', 'baixado'].includes(d.condition)).reduce((a, d) => a + (d.valueCents ?? 0), 0) },
+        devices: {
+          inStock: dev.filter((d) => !d.clientId).length,
+          withClients: dev.filter((d) => d.clientId && d.currentModality !== 'venda').length,
+          inactive: inativos,
+          valueWithClientsCents: dev.filter((d) => d.clientId && ['locacao', 'comodato'].includes(d.currentModality ?? '')).reduce((a, d) => a + (d.valueCents ?? 0), 0),
+        },
         alerts,
         recentMovements: [...S.movements].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6).map((m) => ({ id: m.id, modality: m.modality, modalityName: (MODALIDADES as any)[m.modality], fromName: S.clients.find((x) => x.id === m.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === m.toClientId)?.tradeName ?? null, userName: S.users.find((u) => u.id === m.userId)?.name ?? '?', createdAt: m.createdAt })),
         recentAudit: S.audit.filter((a) => !['login', 'logout'].includes(a.action)).slice(0, 8),
@@ -350,7 +363,7 @@ export const demoApi: Api = {
         clients: S.clients.filter((c) => !c.deletedAt && !c.isInternal && (c.tradeName.toLowerCase().includes(t) || c.legalName.toLowerCase().includes(t) || (digits && c.cnpj.includes(digits)))).slice(0, 8).map((c) => ({ id: c.id, name: c.tradeName, legalName: c.legalName, cnpj: c.cnpj })),
         dids: digits.length >= 3 ? S.dids.filter((d) => !d.deletedAt && d.number.includes(digits)).slice(0, 8).map((d) => { const s = shapeDid(d); return { id: d.id, number: d.number, numberFormatted: s.numberFormatted, clientName: s.clientName, circuitName: s.circuitName }; }) : [],
         circuits: S.circuits.filter((c) => !c.deletedAt && (c.name.toLowerCase().includes(t) || c.code.includes(t))).slice(0, 8).map((c) => ({ id: c.id, name: c.name, code: c.code, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null })),
-        devices: S.devices.filter((d) => !d.deletedAt && ((hex.length >= 4 && d.mac.includes(hex)) || (d.unit ?? '').toLowerCase().includes(t))).slice(0, 8).map((d) => ({ id: d.id, mac: d.mac, macFormatted: macFormatado(d.mac), unit: d.unit, modelName: S.models.find((m) => m.id === d.modelId)?.name ?? '?', clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null })),
+        devices: S.devices.filter((d) => !d.deletedAt && ((hex.length >= 4 && (d.mac ?? '').includes(hex)) || (d.unit ?? '').toLowerCase().includes(t))).slice(0, 8).map((d) => ({ id: d.id, mac: d.mac, macFormatted: macFormatado(d.mac), unit: d.unit, modelName: S.models.find((m) => m.id === d.modelId)?.name ?? '?', clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null })),
       };
     },
   },
@@ -417,7 +430,7 @@ export const demoApi: Api = {
     },
     async endSubscription(idc, code) { await wait(); requirePerm('records.write'); const s = S.subs.find((x) => x.clientId === idc && x.productCode === code && !x.deactivatedAt); if (!s) throw notFound('Assinatura ativa'); s.deactivatedAt = now(); audit('unsubscribe', 'subscription', `Encerrou o produto ${code} no cliente ${idc}`, s.id); return fullClient(idc); },
     async dids(idc) { await wait(); return paginate(S.dids.filter((d) => d.clientId === idc && !d.deletedAt).map(shapeDid), { pageSize: 500 }); },
-    async devices(idc) { await wait(); return { devices: paginate(S.devices.filter((d) => d.clientId === idc && !d.deletedAt).map((d) => shapeDevice(d)), { pageSize: 500 }), bulk: S.bulk.filter((b) => b.clientId === idc && b.quantity > 0).map((b) => ({ ...b, modelName: S.models.find((m) => m.id === b.modelId)?.name ?? '?', clientName: S.clients.find((x) => x.id === idc)?.tradeName ?? null })) }; },
+    async devices(idc) { await wait(); return { devices: paginate(S.devices.filter((d) => d.clientId === idc && !d.deletedAt).map((d) => shapeDevice(d)), { pageSize: 500 }) }; },
     async history(idc) { await wait(); requirePerm('audit.read'); return paginate(S.audit.filter((a) => a.entityId === idc), { pageSize: 100 }); },
     async saveLogo(idc, dataUrl) {
       await wait(200); requirePerm('records.write');
@@ -486,36 +499,34 @@ export const demoApi: Api = {
       await wait(60); requirePerm('records.read');
       const t = String(q.q ?? '').toLowerCase(); const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase();
       const filtrado = !!(q.q || q.modelId || q.clientId || q.condition);
+      // vendido não entra na conta: já não é nosso (mesma regra do servidor)
       const devs = S.devices.filter((d) => !d.deletedAt
+        && (d.currentModality ?? '') !== 'venda'
         && (!q.modelId || d.modelId === q.modelId)
         && (!q.clientId || (q.clientId === 'stock' ? !d.clientId : d.clientId === q.clientId))
-        && (!q.condition || d.condition === q.condition)
-        && (!t || (hex && d.mac.includes(hex)) || (d.unit ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.location ?? '').toLowerCase().includes(t)));
-      const granel = q.q || q.condition ? [] : S.bulk.filter((b) => (!q.modelId || b.modelId === q.modelId) && (!q.clientId || (q.clientId === 'stock' ? !b.clientId : b.clientId === q.clientId)));
+        && (!t || (hex && (d.mac ?? '').includes(hex)) || (d.unit ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.location ?? '').toLowerCase().includes(t)));
       return {
-        inStock: devs.filter((d) => !d.clientId && ['ativo', 'manutencao'].includes(d.condition)).length + granel.filter((b) => !b.clientId).reduce((a, b) => a + b.quantity, 0),
-        withClients: devs.filter((d) => d.clientId && !['vendido', 'baixado'].includes(d.condition)).length + granel.filter((b) => b.clientId).reduce((a, b) => a + b.quantity, 0),
-        maintenance: devs.filter((d) => d.condition === 'manutencao').length,
-        valueWithClientsCents: devs.filter((d) => d.clientId && ['locacao', 'comodato'].includes(d.currentModality ?? '') && !['vendido', 'baixado'].includes(d.condition)).reduce((a, d) => a + (d.valueCents ?? 0), 0),
+        inStock: devs.filter((d) => !d.clientId).length,
+        withClients: devs.filter((d) => d.clientId).length,
+        inactive: devs.filter((d) => d.condition === 'inativo').length,
+        valueWithClientsCents: devs.filter((d) => d.clientId && ['locacao', 'comodato'].includes(d.currentModality ?? '')).reduce((a, d) => a + (d.valueCents ?? 0), 0),
         filtrado,
       };
     },
     async models(q) { await wait(); requirePerm('records.read'); const t = String(q?.q ?? '').toLowerCase(); return S.models.filter((m) => !m.deletedAt && (!t || m.name.toLowerCase().includes(t) || m.code.includes(t)) && (!q?.categoryId || m.categoryId === q.categoryId)).map(shapeModel); },
-    async createModel(d) { await wait(); requirePerm('records.write'); if (S.models.some((m) => m.code === d.code)) throw bad('Já existe um modelo com este código'); const m: ModelRow = { id: id(), code: String(d.code), name: String(d.name), categoryId: (d.categoryId as string) ?? null, tracking: d.tracking as any, imageUrl: null, deletedAt: null }; S.models.push(m); audit('create', 'deviceModel', `Cadastrou o modelo ${m.name}`, m.id); return shapeModel(m); },
+    async createModel(d) { await wait(); requirePerm('records.write'); if (S.models.some((m) => m.code === d.code)) throw bad('Já existe um modelo com este código'); const m: ModelRow = { id: id(), code: String(d.code), name: String(d.name), categoryId: (d.categoryId as string) ?? null, imageUrl: null, deletedAt: null }; S.models.push(m); audit('create', 'deviceModel', `Cadastrou o modelo ${m.name}`, m.id); return shapeModel(m); },
     async updateModel(idm, d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo'); for (const k of ['code', 'name', 'categoryId'] as const) if (d[k] !== undefined) (m as any)[k] = d[k]; audit('update', 'deviceModel', `Editou o modelo ${m.name}`, m.id); return shapeModel(m); },
     async removeModel(idm) { await wait(); requirePerm('records.delete'); const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo'); if (S.devices.some((d) => d.modelId === idm && !d.deletedAt)) throw bad('Este modelo ainda tem aparelhos cadastrados'); m.deletedAt = now(); return { ok: true }; },
-    async devices(q) { await wait(); requirePerm('records.read'); const t = String(q.q ?? '').toLowerCase(); const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase(); const items = S.devices.filter((d) => !d.deletedAt && (!q.modelId || d.modelId === q.modelId) && (!q.clientId || (q.clientId === 'stock' ? !d.clientId : d.clientId === q.clientId)) && (q.condition ? d.condition === q.condition : (q.includeRetired ? true : !['baixado', 'vendido'].includes(d.condition))) && (!t || (hex && d.mac.includes(hex)) || (d.unit ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.location ?? '').toLowerCase().includes(t))).map((d) => shapeDevice(d));
+    async devices(q) { await wait(); requirePerm('records.read'); const t = String(q.q ?? '').toLowerCase(); const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase(); const items = S.devices.filter((d) => !d.deletedAt && (!q.modelId || d.modelId === q.modelId) && (!q.clientId || (q.clientId === 'stock' ? !d.clientId : d.clientId === q.clientId)) && (!q.condition || d.condition === q.condition) && (q.includeSold || (d.currentModality ?? '') !== 'venda') && (!t || (hex && (d.mac ?? '').includes(hex)) || (d.unit ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.location ?? '').toLowerCase().includes(t))).map((d) => shapeDevice(d));
       return paginate(ordenar(items, q, 'modelName', {
         mac: (d) => d.mac, unit: (d) => d.unit, modelName: (d) => d.modelName, clientName: (d) => d.clientName,
         currentModality: (d) => d.currentModality, condition: (d) => d.condition, ip: (d) => d.ip, location: (d) => d.location, valueCents: (d) => d.valueCents,
       }), q);
     },
     async device(idd) { await wait(); requirePerm('records.read'); const d = S.devices.find((x) => x.id === idd); if (!d) throw notFound('Aparelho'); return shapeDevice(d, true); },
-    async createDevice(d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === d.modelId); if (!m) throw notFound('Modelo'); if (m.tracking !== 'serializado') throw bad('Este modelo é contado a granel; use "ajustar estoque"'); const mac = macLimpo(String(d.mac)); if (mac.length !== 12) throw new ApiError(400, 'Dados inválidos', [{ field: 'mac', message: 'MAC precisa ter 12 caracteres hexadecimais' }]); if (S.devices.some((x) => x.mac === mac)) throw bad(`Já existe um aparelho com o MAC ${macFormatado(mac)}`); const row: DeviceRow = { id: id(), modelId: m.id, mac, macSecondary: d.macSecondary ? macLimpo(String(d.macSecondary)) : null, clientId: null, unit: null, currentModality: null, condition: String(d.condition ?? 'ativo'), valueCents: (d.valueCents as number) ?? null, ip: (d.ip as string) ?? null, location: (d.location as string) ?? null, note: (d.note as string) ?? null, deletedAt: null, createdAt: now() }; S.devices.push(row); audit('create', 'device', `Cadastrou o aparelho ${macFormatado(mac)}`, row.id); return shapeDevice(row, true); },
-    async updateDevice(idd, d) { await wait(); requirePerm('records.write'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); for (const k of ['unit', 'condition', 'valueCents', 'ip', 'location', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; if (d.mac) x.mac = macLimpo(String(d.mac)); audit('update', 'device', `Editou o aparelho ${macFormatado(x.mac)}`, x.id); return shapeDevice(x, true); },
+    async createDevice(d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === d.modelId); if (!m) throw notFound('Modelo'); const mac = d.mac ? macLimpo(String(d.mac)) : null; if (mac !== null && mac.length !== 12) throw new ApiError(400, 'Dados inválidos', [{ field: 'mac', message: 'MAC precisa ter 12 caracteres hexadecimais' }]); if (mac && S.devices.some((x) => x.mac === mac)) throw bad(`Já existe um aparelho com o MAC ${macFormatado(mac)}`); const row: DeviceRow = { id: id(), modelId: m.id, mac, macSecondary: d.macSecondary ? macLimpo(String(d.macSecondary)) : null, clientId: null, unit: null, currentModality: null, condition: String(d.condition ?? 'ativo'), valueCents: (d.valueCents as number) ?? null, ip: (d.ip as string) ?? null, location: (d.location as string) ?? null, note: (d.note as string) ?? null, deletedAt: null, createdAt: now() }; S.devices.push(row); audit('create', 'device', `Cadastrou ${mac ? 'o aparelho ' + macFormatado(mac) : 'um ' + m.name}`, row.id); return shapeDevice(row, true); },
+    async updateDevice(idd, d) { await wait(); requirePerm('records.write'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); for (const k of ['unit', 'condition', 'valueCents', 'ip', 'location', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; if (d.mac !== undefined) x.mac = d.mac ? macLimpo(String(d.mac)) : null; audit('update', 'device', `Editou o aparelho ${macFormatado(x.mac)}`, x.id); return shapeDevice(x, true); },
     async removeDevice(idd) { await wait(); requirePerm('records.delete'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); x.deletedAt = now(); audit('delete', 'device', `Mandou o aparelho ${macFormatado(x.mac)} para a lixeira`, x.id); return { ok: true }; },
-    async stock(modelId) { await wait(); return S.bulk.filter((b) => b.quantity !== 0 && (!modelId || b.modelId === modelId)).map((b) => ({ ...b, modelName: S.models.find((m) => m.id === b.modelId)?.name ?? '?', clientName: S.clients.find((c) => c.id === b.clientId)?.tradeName ?? null })); },
-    async adjustStock(d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === d.modelId); if (!m) throw notFound('Modelo'); if (m.tracking !== 'granel') throw bad('Este modelo é serializado; cadastre cada unidade pelo MAC'); let row = S.bulk.find((b) => b.modelId === d.modelId && !b.clientId); if (!row) { row = { id: id(), modelId: d.modelId, clientId: null, modality: 'estoque', quantity: 0 }; S.bulk.push(row); } if (row.quantity + d.delta < 0) throw bad(`Saldo insuficiente: tem ${row.quantity}`); row.quantity += d.delta; audit('stock_adjust', 'deviceModel', `${d.delta > 0 ? 'Entrada' : 'Baixa'} de ${Math.abs(d.delta)} no estoque a granel`, m.id); return demoApi.inventory.stock(d.modelId); },
     async units(clientId) { await wait(); const us = S.devices.filter((d) => !d.deletedAt && d.unit && (!clientId || d.clientId === clientId)).map((d) => d.unit!); return [...new Set(us)].sort((a, b) => a.localeCompare(b, 'pt-BR')); },
     async movements(q) { await wait(); requirePerm('records.read'); const items = [...S.movements].filter((m) => (!q.modality || m.modality === q.modality) && (!q.clientId || m.fromClientId === q.clientId || m.toClientId === q.clientId) && (!q.from || m.createdAt >= String(q.from)) && (!q.to || m.createdAt <= String(q.to) + 'T23:59:59')).map(shapeMov);
       return paginate(ordenar(items, q, 'createdAt', {
@@ -528,18 +539,25 @@ export const demoApi: Api = {
       if (modality === 'devolucao' && to) throw bad('Devolução vai sempre para o estoque (destino vazio)');
       if (modality !== 'devolucao' && !to) throw bad('Informe o cliente de destino');
       if (to && !hasEquip(to)) throw bad(`"${S.clients.find((c) => c.id === to)?.tradeName}" não assina o produto Equipamentos. Marque o produto na ficha do cliente antes de movimentar aparelhos.`);
-      const items = d.items as Array<any>; if (!items?.length) throw bad('Adicione pelo menos um aparelho');
+      const items = d.items as Array<{ deviceId: string }>; if (!items?.length) throw bad('Adicione pelo menos um aparelho');
       let from: string | null | undefined; const out: MovRow['items'] = []; let qty = 0;
       // primeiro valida tudo, depois aplica (imita a transação do servidor)
       for (const it of items) {
-        if (it.deviceId) { const dev = S.devices.find((x) => x.id === it.deviceId && !x.deletedAt); if (!dev) throw notFound('Aparelho'); if (dev.condition === 'vendido') throw bad(`O aparelho ${macFormatado(dev.mac)} já foi vendido`); if (modality === 'devolucao' && !dev.clientId) throw bad(`O aparelho ${macFormatado(dev.mac)} já está no estoque`); }
-        else { const m = S.models.find((x) => x.id === it.modelId); if (!m) throw notFound('Modelo'); if (m.tracking !== 'granel') throw bad(`"${m.name}" é serializado: escolha os aparelhos pelo MAC`); const origin = it.fromClientId ?? null; const have = S.bulk.filter((b) => b.modelId === m.id && (b.clientId ?? null) === origin).reduce((a, b) => a + b.quantity, 0); if (have < it.quantity) throw bad(`Saldo insuficiente de "${m.name}" ${origin ? 'com o cliente' : 'no estoque'}: tem ${have}, pediu ${it.quantity}`); }
+        const dev = S.devices.find((x) => x.id === it.deviceId && !x.deletedAt); if (!dev) throw notFound('Aparelho');
+        const nome = dev.mac ? macFormatado(dev.mac) : 'sem MAC';
+        if (dev.currentModality === 'venda') throw bad(`O aparelho ${nome} já foi vendido`);
+        if (modality === 'devolucao' && !dev.clientId) throw bad(`O aparelho ${nome} já está no estoque`);
       }
       for (const it of items) {
-        if (it.deviceId) { const dev = S.devices.find((x) => x.id === it.deviceId)!; if (from === undefined) from = dev.clientId; dev.clientId = to; dev.unit = to ? ((d.unit as string | null) ?? dev.unit ?? null) : null; dev.currentModality = to ? modality : null; dev.condition = (d.newCondition as string) ?? (modality === 'venda' ? 'vendido' : dev.condition); out.push({ modelId: dev.modelId, deviceId: dev.id, quantity: 1 }); qty++; }
-        else { const origin = it.fromClientId ?? null; if (from === undefined) from = origin; let rem = it.quantity; for (const b of S.bulk.filter((b) => b.modelId === it.modelId && (b.clientId ?? null) === origin && b.quantity > 0)) { const take = Math.min(b.quantity, rem); b.quantity -= take; rem -= take; if (!rem) break; } const destMod = to ? modality : 'estoque'; let dest = S.bulk.find((b) => b.modelId === it.modelId && (b.clientId ?? null) === to && b.modality === destMod); if (!dest) { dest = { id: id(), modelId: it.modelId, clientId: to, modality: destMod, quantity: 0 }; S.bulk.push(dest); } dest.quantity += it.quantity; out.push({ modelId: it.modelId, deviceId: null, quantity: it.quantity }); qty += it.quantity; }
+        const dev = S.devices.find((x) => x.id === it.deviceId)!;
+        if (from === undefined) from = dev.clientId;
+        dev.clientId = to;
+        dev.unit = to ? ((d.unit as string | null) ?? dev.unit ?? null) : null;
+        dev.currentModality = to ? modality : null;
+        dev.condition = (d.newCondition as string) ?? dev.condition;
+        out.push({ modelId: dev.modelId, deviceId: dev.id }); qty++;
       }
-      const mv: MovRow = { id: id(), modality, fromClientId: from ?? null, toClientId: to, newCondition: (d.newCondition as string) ?? null, valueCents: (d.valueCents as number) ?? null, note: (d.note as string) ?? null, userId: S.me!.id, createdAt: now(), items: out };
+      const mv: MovRow = { id: id(), modality, fromClientId: from ?? null, toClientId: to, newCondition: (d.newCondition as string) ?? null, note: (d.note as string) ?? null, userId: S.me!.id, createdAt: now(), items: out };
       S.movements.push(mv); audit('movement', 'deviceMovement', `${(MODALIDADES as any)[modality]} de ${qty} aparelho(s)${to ? ' para ' + S.clients.find((c) => c.id === to)?.tradeName : ' para o estoque'}`, mv.id);
       return { id: mv.id, items: out.length, quantity: qty };
     },

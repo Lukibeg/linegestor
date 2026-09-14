@@ -222,17 +222,17 @@ export const ModeloGravarSchema = z.object({
   code: z.string().trim().min(1).max(40),
   name: z.string().trim().min(1).max(120),
   categoryId: IdSchema.nullable().optional(),
-  tracking: z.enum(['serializado', 'granel']),
   imageUrl: z.string().max(500).nullable().optional(),
 });
 
 export const AparelhoGravarSchema = z.object({
   modelId: IdSchema,
-  mac: MacSchema,
+  /** Nulo em aparelho sem MAC (headset, cabo): a tela mostra "não aplicável". */
+  mac: MacSchema.nullable().optional(),
   macSecondary: MacSchema.nullable().optional(),
   /** Unidade do cliente (filial, loja, andar) onde o aparelho está */
   unit: z.string().trim().max(120).nullable().optional(),
-  condition: z.enum(['ativo', 'manutencao', 'baixado', 'vendido']).default('ativo'),
+  condition: z.enum(['ativo', 'inativo']).default('ativo'),
   valueCents: CentavosSchema.nullable().optional(),
   ip: z.string().trim().max(64).nullable().optional(),
   location: z.string().trim().max(120).nullable().optional(),
@@ -240,28 +240,13 @@ export const AparelhoGravarSchema = z.object({
 });
 export const AparelhoAtualizarSchema = AparelhoGravarSchema.partial().omit({ modelId: true });
 
-export const EstoqueGranelAjustarSchema = z.object({
-  modelId: IdSchema,
-  /** positivo = entrada de estoque, negativo = baixa */
-  delta: z.coerce.number().int().refine((n) => n !== 0, 'Informe uma quantidade'),
-  note: z.string().max(500).optional(),
-});
-
 export const MovimentacaoCriarSchema = z.object({
   modality: z.enum(['locacao', 'venda', 'comodato', 'devolucao']),
   /** destino: estoque ou cliente */
   toClientId: IdSchema.nullable(),
   /** condição a aplicar nos aparelhos movidos; null = manter */
-  newCondition: z.enum(['ativo', 'manutencao', 'baixado', 'vendido']).nullable().optional(),
-  items: z
-    .array(
-      z.union([
-        z.object({ deviceId: IdSchema }),
-        z.object({ modelId: IdSchema, quantity: z.coerce.number().int().min(1), fromClientId: IdSchema.nullable().optional() }),
-      ]),
-    )
-    .min(1, 'Adicione pelo menos um aparelho'),
-  valueCents: CentavosSchema.nullable().optional(),
+  newCondition: z.enum(['ativo', 'inativo']).nullable().optional(),
+  items: z.array(z.object({ deviceId: IdSchema })).min(1, 'Adicione pelo menos um aparelho'),
   /** Unidade do cliente de destino (filial, loja): vale para todos os aparelhos desta movimentação */
   unit: z.string().trim().max(120).nullable().optional(),
   note: z.string().max(2000).nullable().optional(),

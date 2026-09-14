@@ -107,7 +107,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => didsSvc.list(app.db, { ...req.query, clientId: req.params.id, sort: 'number', dir: 'asc' }));
 
   app.get('/:id/devices', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Aparelhos com o cliente', params: Id } },
-    async (req) => ({ devices: await inv.listDevices(app.db, { clientId: req.params.id, page: 1, pageSize: 500 }), bulk: (await inv.listBulk(app.db)).filter((b) => b.clientId === req.params.id) }));
+    async (req) => ({ devices: await inv.listDevices(app.db, { clientId: req.params.id, page: 1, pageSize: 500 }) }));
 
   app.get('/:id/history', { preHandler: app.requirePermission('audit.read'), schema: { tags: ['Clientes'], summary: 'Histórico (auditoria) do cliente', params: Id } },
     async (req) => audit.list(app.db, { page: 1, pageSize: 100, entityId: req.params.id }));

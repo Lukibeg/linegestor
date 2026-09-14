@@ -10,5 +10,8 @@
   sistema conta só a quantidade em estoque. Sem marcar, cada unidade entra pelo MAC — que é o caso normal.
 - Nos cartões de modelo, os rótulos viraram **por MAC** e **sem MAC**.
 
-**Consequência.** Menos campo para preencher e nenhuma palavra técnica. Por dentro nada mudou: `tracking` continua
-sendo `serializado` ou `granel`.
+**Consequência.** Menos campo para preencher e nenhuma palavra técnica.
+
+**Atualizado na [0019](0019-uma-linha-por-aparelho.md)** (set/2026): a caixa "Não se aplica MAC" saiu do cadastro do
+**modelo** e passou para o cadastro do **aparelho** — o mesmo modelo pode ter unidade com e sem MAC, e a decisão é de
+cada unidade. A coluna `tracking` (`serializado`/`granel`) deixou de existir.

@@ -31,7 +31,7 @@ export type Api = {
     removeLogo(id: string): Promise<T.ClientFull>;
     endModule(id: string, productCode: string, moduleCode: string): Promise<T.ClientFull>;
     dids(id: string): Promise<T.Page<T.Did>>;
-    devices(id: string): Promise<{ devices: T.Page<T.Device>; bulk: T.BulkStock[] }>;
+    devices(id: string): Promise<{ devices: T.Page<T.Device> }>;
     history(id: string): Promise<T.Page<T.AuditItem>>;
   };
   secrets: { reveal(id: string, password: string): Promise<{ label: string; value: string; visibleForSeconds: number }> };
@@ -64,8 +64,6 @@ export type Api = {
     createDevice(d: Record<string, unknown>): Promise<T.Device>;
     updateDevice(id: string, d: Record<string, unknown>): Promise<T.Device>;
     removeDevice(id: string): Promise<{ ok: boolean }>;
-    stock(modelId?: string): Promise<T.BulkStock[]>;
-    adjustStock(d: { modelId: string; delta: number; note?: string }): Promise<T.BulkStock[]>;
     movements(q: Record<string, unknown>): Promise<T.Page<T.Movement>>;
     move(d: Record<string, unknown>): Promise<{ id: string; items: number; quantity: number }>;
     /** Unidades já usadas (para sugerir no formulário). */

@@ -304,22 +304,24 @@ export const deviceModels = pgTable('device_models', {
   /** Nome exibido */
   name: text('name').notNull(),
   categoryId: text('category_id').references(() => deviceCategories.id),
-  /** "serializado" = cada unidade tem MAC e linha própria · "granel" = contado por quantidade */
-  tracking: text('tracking').notNull(),
   imageUrl: text('image_url'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
   deletedAt: deletedAt(),
 });
 
-/** Um aparelho serializado, identificado pelo MAC (decisão V7). */
+/**
+ * Um aparelho. Cada unidade é uma linha, sempre — inclusive as que não têm MAC
+ * (headset, cabo). O MAC identifica quem tem; quem não tem fica nulo e a tela mostra
+ * "não aplicável". Não existe contagem por quantidade: é um por linha, sem exceção.
+ */
 export const devices = pgTable(
   'devices',
   {
     id: id(),
     modelId: text('model_id').notNull().references(() => deviceModels.id),
-    /** MAC principal, 12 hexadecimais maiúsculos sem separador. Único. */
-    mac: text('mac').notNull(),
+    /** MAC principal, 12 hexadecimais maiúsculos sem separador. Único quando existe; nulo em quem não tem MAC. */
+    mac: text('mac'),
     /** Segundo MAC (Wi-Fi, por exemplo), se houver */
     macSecondary: text('mac_secondary'),
     /** Atribuído a: nulo = no estoque; preenchido = com este cliente */
@@ -328,7 +330,7 @@ export const devices = pgTable(
     unit: text('unit'),
     /** Como chegou ao cliente atual: locacao | venda | comodato (nulo se em estoque) */
     currentModality: text('current_modality'),
-    /** ativo | manutencao | baixado | vendido (decisão V6: sem "indeterminado") */
+    /** ativo | inativo. Vendido não é condição: sai da modalidade da última movimentação. */
     condition: text('condition').notNull().default('ativo'),
     /** Valor do aparelho em centavos (alimenta "valor total locado") */
     valueCents: integer('value_cents'),
@@ -345,20 +347,6 @@ export const devices = pgTable(
 );
 
 /** Saldo de itens a granel por lugar: "Headset Genérico · Estoque · 28", "Headset Genérico · Cliente A · 4". */
-export const bulkStock = pgTable(
-  'bulk_stock',
-  {
-    id: id(),
-    modelId: text('model_id').notNull().references(() => deviceModels.id),
-    /** Nulo = estoque; preenchido = com o cliente */
-    clientId: text('client_id').references(() => clients.id),
-    /** Como chegou ao cliente (locacao | venda | comodato); "estoque" quando no estoque */
-    modality: text('modality').notNull().default('estoque'),
-    quantity: integer('quantity').notNull().default(0),
-    updatedAt: updatedAt(),
-  },
-  (t) => [uniqueIndex('bulk_stock_uq').on(t.modelId, t.clientId, t.modality)],
-);
 
 /** Cabeçalho de uma movimentação: de onde, para onde, por quê, quem, quando. Nunca é editada. */
 export const deviceMovements = pgTable(
@@ -383,15 +371,12 @@ export const deviceMovements = pgTable(
   (t) => [index('device_movements_created_idx').on(t.createdAt)],
 );
 
-/** Um item da movimentação: ou um aparelho serializado (deviceId) ou uma quantidade de um modelo a granel. */
+/** Um aparelho dentro de uma movimentação. Uma linha por aparelho — a quantidade é o número de linhas. */
 export const deviceMovementItems = pgTable('device_movement_items', {
   id: id(),
   movementId: text('movement_id').notNull().references(() => deviceMovements.id, { onDelete: 'cascade' }),
   modelId: text('model_id').notNull().references(() => deviceModels.id),
-  /** Preenchido para serializado */
-  deviceId: text('device_id').references(() => devices.id),
-  /** 1 para serializado; N para granel */
-  quantity: integer('quantity').notNull().default(1),
+  deviceId: text('device_id').notNull().references(() => devices.id),
 });
 
 // ---------------------------------------------------------------------
@@ -570,17 +555,11 @@ export const didsRelations = relations(dids, ({ one }) => ({
 export const deviceModelsRelations = relations(deviceModels, ({ one, many }) => ({
   category: one(deviceCategories, { fields: [deviceModels.categoryId], references: [deviceCategories.id] }),
   devices: many(devices),
-  bulk: many(bulkStock),
 }));
 
 export const devicesRelations = relations(devices, ({ one }) => ({
   model: one(deviceModels, { fields: [devices.modelId], references: [deviceModels.id] }),
   client: one(clients, { fields: [devices.clientId], references: [clients.id] }),
-}));
-
-export const bulkStockRelations = relations(bulkStock, ({ one }) => ({
-  model: one(deviceModels, { fields: [bulkStock.modelId], references: [deviceModels.id] }),
-  client: one(clients, { fields: [bulkStock.clientId], references: [clients.id] }),
 }));
 
 export const deviceMovementsRelations = relations(deviceMovements, ({ one, many }) => ({

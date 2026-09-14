@@ -1,5 +1,5 @@
 {
-  "id": "b4259a0b-2076-43a9-8ea6-9e95f8fa7baf",
+  "id": "a8266e35-3e4d-4d26-97e0-4f91ea9c67c3",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -130,113 +130,6 @@
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.bulk_stock": {
-      "name": "bulk_stock",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "model_id": {
-          "name": "model_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "client_id": {
-          "name": "client_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "modality": {
-          "name": "modality",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'estoque'"
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "bulk_stock_uq": {
-          "name": "bulk_stock_uq",
-          "columns": [
-            {
-              "expression": "model_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "client_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "modality",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "bulk_stock_model_id_device_models_id_fk": {
-          "name": "bulk_stock_model_id_device_models_id_fk",
-          "tableFrom": "bulk_stock",
-          "tableTo": "device_models",
-          "columnsFrom": [
-            "model_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "bulk_stock_client_id_clients_id_fk": {
-          "name": "bulk_stock_client_id_clients_id_fk",
-          "tableFrom": "bulk_stock",
-          "tableTo": "clients",
-          "columnsFrom": [
-            "client_id"
           ],
           "columnsTo": [
             "id"
@@ -736,12 +629,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "tracking": {
-          "name": "tracking",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "image_url": {
           "name": "image_url",
           "type": "text",
@@ -825,14 +712,7 @@
           "name": "device_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "quantity": {
-          "name": "quantity",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
+          "notNull": true
         }
       },
       "indexes": {},
@@ -1027,7 +907,7 @@
           "name": "mac",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "mac_secondary": {
           "name": "mac_secondary",

@@ -47,20 +47,16 @@ export const MODALIDADES = {
 export type Modalidade = keyof typeof MODALIDADES;
 
 /** Condição do aparelho (decisão V6: não existe "Indeterminado"). */
+/**
+ * Em que estado o aparelho está. Só dois: ou serve, ou não serve.
+ * "Vendido" não é condição — sai da modalidade da última movimentação, porque um aparelho
+ * vendido pode estar perfeitamente ativo, só que já não é nosso.
+ */
 export const CONDICOES_APARELHO = {
   ativo: 'Ativo',
-  manutencao: 'Em manutenção',
-  baixado: 'Baixado',
-  vendido: 'Vendido',
+  inativo: 'Inativo',
 } as const;
 export type CondicaoAparelho = keyof typeof CONDICOES_APARELHO;
-
-/** Como um modelo é contado. */
-export const CONTABILIZACOES = {
-  serializado: 'Serializado (um a um, por MAC)',
-  granel: 'Granel (por quantidade)',
-} as const;
-export type Contabilizacao = keyof typeof CONTABILIZACOES;
 
 /** Organizações internas do grupo (decisão 4 da arquitetura). */
 export const ORGANIZACOES_INTERNAS = [

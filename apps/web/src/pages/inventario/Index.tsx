@@ -27,11 +27,11 @@ export function Inventario() {
   const resumo = useQuery({ queryKey: ['inventory', 'summary', filtros], queryFn: () => api.inventory.summary(filtros) });
   const r = resumo.data;
   return (
-    <Pagina titulo="Inventário" sub="Aparelhos identificados pelo MAC; itens a granel contados por quantidade." acoes={<Can permission="devices.move"><button className="btn-primary" onClick={() => setMover(true)}><ArrowLeftRight size={16} /> Movimentar aparelhos</button></Can>}>
+    <Pagina titulo="Inventário" sub="Cada unidade é uma linha. Quem tem MAC é identificado por ele; quem não tem fica como não aplicável." acoes={<Can permission="devices.move"><button className="btn-primary" onClick={() => setMover(true)}><ArrowLeftRight size={16} /> Movimentar aparelhos</button></Can>}>
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-5">
         <Kpi label={r?.filtrado ? 'Em estoque (filtrado)' : 'Em estoque'} valor={r ? r.inStock : '…'} tone="ok" />
         <Kpi label="Com clientes" valor={r ? r.withClients : '…'} tone="accent" />
-        <Kpi label="Em manutenção" valor={r ? r.maintenance : '…'} tone={r?.maintenance ? 'signal' : 'neutral'} />
+        <Kpi label="Inativos" valor={r ? r.inactive : '…'} tone={r?.inactive ? 'signal' : 'neutral'} />
         <Kpi label="Valor locado" valor={r ? reais(r.valueWithClientsCents) : '…'} sub="aparelhos em locação ou comodato" />
       </div>
       {r?.filtrado && <p className="text-[12.5px] text-muted -mt-3 mb-4">Os cartões acima estão somando apenas o que o filtro deixou passar. <button className="link" onClick={() => setSp({ aba: 'aparelhos' }, { replace: true })}>limpar filtros</button></p>}
@@ -47,7 +47,7 @@ export function Inventario() {
 /** As colunas da tabela de aparelhos. A pessoa escolhe quais quer ver (botão "Colunas"). */
 function colunasAparelhos(): Coluna<Device>[] {
   return [
-    { id: 'mac', label: 'MAC', grupo: 'Aparelho', render: (d) => <span className="font-mono whitespace-nowrap">{d.macFormatted}</span> },
+    { id: 'mac', label: 'MAC', grupo: 'Aparelho', render: (d) => d.mac ? <span className="font-mono whitespace-nowrap">{d.macFormatted}</span> : <span className="text-muted text-[13px]">não aplicável</span> },
     { id: 'modelName', label: 'Modelo', grupo: 'Aparelho', render: (d) => d.modelName },
     { id: 'condition', label: 'Condição', grupo: 'Aparelho', render: (d) => <Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip> },
     { id: 'valueCents', label: 'Valor', grupo: 'Aparelho', align: 'right', render: (d) => <span className="tnum">{reais(d.valueCents)}</span> },
@@ -72,23 +72,19 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
   const escolha = useColunasEscolhidas('gestor.aparelhos.colunas', COLUNAS_APARELHOS_PADRAO);
   const colunas = colunasAparelhos();
   const visiveis = colunas.filter((c) => escolha.ids.includes(c.id));
-  const lista = useQuery({ queryKey: ['devices', q, modelId, clientId, condition, page, o.ord, o.dir], queryFn: () => api.inventory.devices({ q, modelId, clientId, condition, includeRetired: !!condition, page, pageSize: 50, sort: o.ord, dir: o.dir }) });
-  const stock = useQuery({ queryKey: ['stock'], queryFn: () => api.inventory.stock() });
-  const granel = stock.data?.filter((b) => b.quantity > 0) ?? [];
-  const og = useOrdenacaoLocal('modelName');
-  const granelOrdenado = ordenarLista(granel, og, { modelName: (b) => b.modelName, clientName: (b) => b.clientName, modality: (b) => b.modality, quantity: (b) => b.quantity });
+  const lista = useQuery({ queryKey: ['devices', q, modelId, clientId, condition, page, o.ord, o.dir], queryFn: () => api.inventory.devices({ q, modelId, clientId, condition, page, pageSize: 50, sort: o.ord, dir: o.dir }) });
   return (
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2 items-center">
         <input className="input max-w-[220px] font-mono" placeholder="MAC, unidade, IP ou local" value={q} onChange={(e) => set('q', e.target.value)} />
-        <select className="input w-auto" value={modelId} onChange={(e) => set('modelo', e.target.value || null)}><option value="">Todos os modelos</option>{models.filter((m) => m.tracking === 'serializado').map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+        <select className="input w-auto" value={modelId} onChange={(e) => set('modelo', e.target.value || null)}><option value="">Todos os modelos</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
         <select className="input w-auto" value={clientId} onChange={(e) => set('cliente', e.target.value || null)}><option value="">Estoque e clientes</option><option value="stock">Só estoque</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-        <select className="input w-auto" value={condition} onChange={(e) => set('condicao', e.target.value || null)}><option value="">Ativos e em manutenção</option>{Object.entries(CONDICOES_APARELHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
+        <select className="input w-auto" value={condition} onChange={(e) => set('condicao', e.target.value || null)}><option value="">Ativos e inativos</option>{Object.entries(CONDICOES_APARELHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <span className="flex-1" />
         <SeletorColunas colunas={colunas} escolha={escolha} />
         <Can permission="records.write"><button className="btn-secondary btn-sm" onClick={() => setNovo(true)}><Plus size={14} /> Cadastrar aparelho</button></Can>
       </div>
-      {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum aparelho" texto="Cadastre aparelhos pelo MAC ou ajuste os filtros." /> : (
+      {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum aparelho" texto="Cadastre um aparelho ou ajuste os filtros." /> : (
         <div className="card overflow-x-auto"><table className="table">
           <thead><tr>{visiveis.map((c) => <Th key={c.id} o={o} col={c.id} align={c.align}>{c.label}</Th>)}</tr></thead>
           <tbody>{lista.data.items.map((d) => (
@@ -99,30 +95,56 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
         </div>
       )}
       {lista.data && <Paginacao page={page} pageSize={50} total={lista.data.total} onChange={(p) => set('p', String(p))} />}
-      {granel.length > 0 && (
-        <div className="card mt-4"><div className="px-4 py-3 border-b border-line font-display font-semibold">Itens a granel</div>
-          <table className="table"><thead><tr><Th o={og} col="modelName">Modelo</Th><Th o={og} col="clientName">Atribuído a</Th><Th o={og} col="modality">Modalidade</Th><Th o={og} col="quantity" align="right">Quantidade</Th></tr></thead>
-            <tbody>{granelOrdenado.map((b) => <tr key={b.id}><td>{b.modelName}</td><td>{b.clientId ? <Link className="link" to={`/clientes/${b.clientId}`}>{b.clientName}</Link> : <Chip tone="ok">estoque</Chip>}</td><td className="text-muted">{b.modality === 'estoque' ? '—' : (MODALIDADES as any)[b.modality]}</td><td className="text-right tnum font-mono">{b.quantity}</td></tr>)}</tbody></table></div>
-      )}
-      <AparelhoForm open={novo} onClose={() => setNovo(false)} models={models.filter((m) => m.tracking === 'serializado')} />
+      <AparelhoForm open={novo} onClose={() => setNovo(false)} models={models} />
     </div>
   );
 }
 
+/**
+ * Cadastro de um aparelho. O MAC é o normal, mas headset, cabo e afins não têm — daí a
+ * caixa "não se aplica": marcando, o campo some e o aparelho entra sem MAC.
+ * Cadastrar vários iguais de uma vez é comum (10 headsets), então tem "quantidade".
+ */
 function AparelhoForm({ open, onClose, models }: { open: boolean; onClose: () => void; models: DeviceModel[] }) {
-  const [f, setF] = useState({ modelId: '', mac: '', valueCents: '', ip: '', location: '', note: '' });
+  const vazio = { modelId: '', mac: '', semMac: false, quantidade: '1', valueCents: '', ip: '', location: '', note: '' };
+  const [f, setF] = useState(vazio);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const qc = useQueryClient(); const toast = useToast();
-  useEffect(() => { if (open) { setErr(''); setF({ modelId: models[0]?.id ?? '', mac: '', valueCents: '', ip: '', location: '', note: '' }); } }, [open, models]);
-  const save = async () => { setBusy(true); setErr(''); try { await api.inventory.createDevice({ modelId: f.modelId, mac: f.mac, valueCents: f.valueCents ? paraCentavos(f.valueCents) : null, ip: f.ip || null, location: f.location || null, note: f.note || null }); await qc.invalidateQueries({ queryKey: ['devices'] }); await qc.invalidateQueries({ queryKey: ['models'] }); await qc.invalidateQueries({ queryKey: ['inventory'] }); toast.push('ok', 'Aparelho cadastrado no estoque'); onClose(); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
+  useEffect(() => { if (open) { setErr(''); setF({ ...vazio, modelId: models[0]?.id ?? '' }); } }, [open, models]);
+  const quantos = Math.max(1, Math.min(200, Number(f.quantidade) || 1));
+  const podeSalvar = !!f.modelId && (f.semMac ? true : macValido(f.mac));
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      const base = { modelId: f.modelId, valueCents: f.valueCents ? paraCentavos(f.valueCents) : null, ip: f.ip || null, location: f.location || null, note: f.note || null };
+      // sem MAC dá para cadastrar vários de uma vez; com MAC é sempre um, porque cada um é único
+      if (f.semMac) for (let i = 0; i < quantos; i++) await api.inventory.createDevice({ ...base, mac: null });
+      else await api.inventory.createDevice({ ...base, mac: f.mac });
+      await Promise.all(['devices', 'models', 'inventory'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+      toast.push('ok', f.semMac && quantos > 1 ? `${quantos} aparelhos cadastrados no estoque` : 'Aparelho cadastrado no estoque');
+      onClose();
+    } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
   return (
-    <Modal open={open} onClose={onClose} titulo="Cadastrar aparelho" rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.modelId || !macValido(f.mac)} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Cadastrar'}</button></>}>
+    <Modal open={open} onClose={onClose} titulo="Cadastrar aparelho" rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !podeSalvar} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Cadastrar'}</button></>}>
       <div className="flex flex-col gap-3">
         <Campo label="Modelo"><select className="input" value={f.modelId} onChange={(e) => setF({ ...f, modelId: e.target.value })}>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select></Campo>
-        <Campo label="MAC" erro={f.mac && !macValido(f.mac) ? 'precisa ter 12 caracteres hexadecimais' : undefined} dica="está na etiqueta atrás do aparelho"><input className="input font-mono" placeholder="00:0B:82:A1:B2:C3" value={f.mac} onChange={(e) => setF({ ...f, mac: e.target.value })} onBlur={() => macValido(f.mac) && setF({ ...f, mac: macFormatado(f.mac) })} autoFocus /></Campo>
+        {!f.semMac && (
+          <Campo label="MAC" erro={f.mac && !macValido(f.mac) ? 'precisa ter 12 caracteres hexadecimais' : undefined} dica="está na etiqueta atrás do aparelho">
+            <input className="input font-mono" placeholder="00:0B:82:A1:B2:C3" value={f.mac} onChange={(e) => setF({ ...f, mac: e.target.value })} onBlur={() => macValido(f.mac) && setF({ ...f, mac: macFormatado(f.mac) })} autoFocus />
+          </Campo>
+        )}
+        <label className="flex items-start gap-2 text-sm cursor-pointer">
+          <input type="checkbox" id="aparelho-sem-mac" className="mt-0.5" checked={f.semMac} onChange={(e) => setF({ ...f, semMac: e.target.checked, mac: '' })} />
+          <span>
+            <b>Não se aplica MAC</b>
+            <span className="text-muted block text-[12.5px]">Para headset, cabo e coisas que não são de rede. O aparelho continua tendo linha, valor e histórico — só não tem MAC.</span>
+          </span>
+        </label>
         <div className="grid grid-cols-2 gap-3">
-          <Campo label="Valor (R$)"><input className="input tnum" placeholder="0,00" value={f.valueCents} onChange={(e) => setF({ ...f, valueCents: e.target.value })} /></Campo>
-          <Campo label="IP"><input className="input font-mono" value={f.ip} onChange={(e) => setF({ ...f, ip: e.target.value })} /></Campo>
+          {f.semMac && <Campo label="Quantidade" dica="cadastra este tanto de unidades iguais"><input className="input tnum" type="number" min={1} max={200} value={f.quantidade} onChange={(e) => setF({ ...f, quantidade: e.target.value })} /></Campo>}
+          <Campo label="Valor (R$)" dica="é este valor que soma no cliente"><input className="input tnum" placeholder="0,00" value={f.valueCents} onChange={(e) => setF({ ...f, valueCents: e.target.value })} /></Campo>
+          {!f.semMac && <Campo label="IP"><input className="input font-mono" value={f.ip} onChange={(e) => setF({ ...f, ip: e.target.value })} /></Campo>}
           <Campo label="Local físico"><input className="input" placeholder="Prateleira B" value={f.location} onChange={(e) => setF({ ...f, location: e.target.value })} /></Campo>
         </div>
         <Campo label="Anotação"><textarea className="input" rows={2} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Campo>
@@ -133,21 +155,20 @@ function AparelhoForm({ open, onClose, models }: { open: boolean; onClose: () =>
 }
 
 function Modelos({ models, loading }: { models: DeviceModel[]; loading: boolean }) {
-  const [novo, setNovo] = useState(false); const [ajuste, setAjuste] = useState<DeviceModel | null>(null);
+  const [novo, setNovo] = useState(false);
   const cats = useQuery({ queryKey: ['catalog', 'categories'], queryFn: () => api.admin.catalog('categories') });
   const qc = useQueryClient(); const toast = useToast();
-  const [f, setF] = useState({ name: '', categoryId: '', semMac: false }); const [delta, setDelta] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [f, setF] = useState({ name: '', categoryId: '' }); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const save = async () => {
     setBusy(true); setErr('');
     try {
       // o "código" é só o identificador interno: sai do nome do modelo, sem a pessoa precisar digitar
       const code = f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
-      await api.inventory.createModel({ code, name: f.name.trim(), categoryId: f.categoryId || null, tracking: f.semMac ? 'granel' : 'serializado' });
+      await api.inventory.createModel({ code, name: f.name.trim(), categoryId: f.categoryId || null });
       await qc.invalidateQueries({ queryKey: ['models'] });
-      toast.push('ok', 'Modelo cadastrado'); setNovo(false); setF({ name: '', categoryId: '', semMac: false });
+      toast.push('ok', 'Modelo cadastrado'); setNovo(false); setF({ name: '', categoryId: '' });
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
-  const ajustar = async () => { if (!ajuste) return; setBusy(true); setErr(''); try { await api.inventory.adjustStock({ modelId: ajuste.id, delta: Number(delta) }); await qc.invalidateQueries({ queryKey: ['models'] }); await qc.invalidateQueries({ queryKey: ['stock'] }); await qc.invalidateQueries({ queryKey: ['inventory'] }); toast.push('ok', 'Estoque ajustado'); setAjuste(null); setDelta(''); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
   if (loading) return <Carregando />;
   return (
     <div>
@@ -155,14 +176,13 @@ function Modelos({ models, loading }: { models: DeviceModel[]; loading: boolean 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {models.map((m) => (
           <div key={m.id} className="card p-4 flex flex-col gap-2">
-            <div className="flex items-start justify-between gap-2"><div><div className="font-semibold">{m.name}</div><div className="font-mono text-[12px] text-muted">{m.code}</div></div><div className="flex gap-1"><Chip tone="neutral">{m.categoryName ?? 'sem categoria'}</Chip><Chip tone={m.tracking === 'granel' ? 'signal' : 'accent'}>{m.tracking === 'granel' ? 'sem MAC' : 'por MAC'}</Chip></div></div>
+            <div className="flex items-start justify-between gap-2"><div><div className="font-semibold">{m.name}</div><div className="font-mono text-[12px] text-muted">{m.code}</div></div><Chip tone="neutral">{m.categoryName ?? 'sem categoria'}</Chip></div>
             <div className="grid grid-cols-3 gap-2 text-center mt-1">
               <div className="rounded-lg bg-surface-2 p-2"><div className="font-display text-lg font-semibold tnum">{m.counts.inStock}</div><div className="text-[11px] text-muted">estoque</div></div>
               <div className="rounded-lg bg-surface-2 p-2"><div className="font-display text-lg font-semibold tnum">{m.counts.withClients}</div><div className="text-[11px] text-muted">com clientes</div></div>
-              <div className="rounded-lg bg-surface-2 p-2"><div className="font-display text-lg font-semibold tnum">{m.counts.maintenance}</div><div className="text-[11px] text-muted">manutenção</div></div>
+              <div className="rounded-lg bg-surface-2 p-2"><div className="font-display text-lg font-semibold tnum">{m.counts.inactive}</div><div className="text-[11px] text-muted">inativos</div></div>
             </div>
-            {(m.counts.sold > 0 || m.counts.retired > 0) && <div className="text-[12px] text-muted">{m.counts.sold} vendido(s) · {m.counts.retired} baixado(s)</div>}
-            {m.tracking === 'granel' && <Can permission="records.write"><button className="btn-secondary btn-sm mt-auto" onClick={() => { setAjuste(m); setErr(''); }}>Entrada / baixa no estoque</button></Can>}
+            {m.counts.sold > 0 && <div className="text-[12px] text-muted">{m.counts.sold} vendido(s)</div>}
           </div>
         ))}
         {!models.length && <Vazio titulo="Nenhum modelo" texto="Cadastre o primeiro modelo de aparelho." />}
@@ -171,20 +191,9 @@ function Modelos({ models, loading }: { models: DeviceModel[]; loading: boolean 
         <div className="flex flex-col gap-3">
           <Campo label="Modelo"><input className="input" placeholder="Grandstream GXP1610" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Campo>
           <Campo label="Categoria"><select className="input" value={f.categoryId} onChange={(e) => setF({ ...f, categoryId: e.target.value })}><option value="">—</option>{cats.data?.filter((c) => c.active).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>
-          <label className="flex items-start gap-2 text-sm cursor-pointer rounded-lg border border-line p-3">
-            <input type="checkbox" id="modelo-sem-mac" className="mt-0.5" checked={f.semMac} onChange={(e) => setF({ ...f, semMac: e.target.checked })} />
-            <span>
-              <b>Não se aplica MAC</b>
-              <span className="block text-[12.5px] text-muted">Marque para headset, cabo e afins: o sistema conta só a quantidade em estoque, sem cadastrar um a um. Sem marcar, cada unidade entra pelo MAC.</span>
-            </span>
-          </label>
+          <p className="text-[12.5px] text-muted">Se este modelo não tem MAC (headset, cabo), isso se marca na hora de cadastrar cada aparelho — aqui é só o nome e a categoria.</p>
           {err && <div className="text-bad text-sm">{err}</div>}
         </div>
-      </Modal>
-      <Modal open={!!ajuste} onClose={() => setAjuste(null)} titulo={`Estoque de ${ajuste?.name}`} rodape={<><button className="btn-secondary" onClick={() => setAjuste(null)}>Cancelar</button><button className="btn-primary" disabled={busy || !Number(delta)} onClick={ajustar}>{busy ? <Spinner className="text-white" /> : 'Aplicar'}</button></>}>
-        <p className="text-sm text-ink-2 mb-3">Em estoque hoje: <b className="tnum">{ajuste?.counts.inStock}</b>. Informe um número positivo para entrada ou negativo para baixa.</p>
-        <Campo label="Quantidade (+ entrada / − baixa)"><input type="number" className="input tnum" value={delta} onChange={(e) => setDelta(e.target.value)} autoFocus /></Campo>
-        {err && <div className="text-bad text-sm mt-2">{err}</div>}
       </Modal>
     </div>
   );
@@ -205,11 +214,11 @@ function Movimentacoes() {
         <input type="date" className="input w-auto" value={from} onChange={(e) => set('de', e.target.value || null)} /><input type="date" className="input w-auto" value={to} onChange={(e) => set('ate', e.target.value || null)} />
       </div>
       {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhuma movimentação" /> : (
-        <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="createdAt">Quando</Th><Th o={o} col="modality">Modalidade</Th><Th o={o} col="fromName">De</Th><Th o={o} col="toName">Para</Th><th>Itens</th><th>Condição</th><th className="text-right">Valor</th><Th o={o} col="userName">Por</Th></tr></thead>
+        <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="createdAt">Quando</Th><Th o={o} col="modality">Modalidade</Th><Th o={o} col="fromName">De</Th><Th o={o} col="toName">Para</Th><th>Itens</th><th>Condição</th><Th o={o} col="userName">Por</Th></tr></thead>
           <tbody>{lista.data.items.map((m) => (
             <tr key={m.id}><td className="tnum whitespace-nowrap">{data(m.createdAt, true)}</td><td><Chip tone={m.modality === 'devolucao' ? 'neutral' : m.modality === 'venda' ? 'accent' : m.modality === 'comodato' ? 'signal' : 'ok'}>{m.modalityName}</Chip></td>
               <td>{m.fromClientId ? <Link className="link" to={`/clientes/${m.fromClientId}`}>{m.fromName}</Link> : 'Estoque'}</td><td>{m.toClientId ? <Link className="link" to={`/clientes/${m.toClientId}`}>{m.toName}</Link> : 'Estoque'}</td>
-              <td>{m.items.map((i) => `${i.quantity}× ${i.modelName}`).join(', ')}</td><td className="text-muted">{m.newCondition ? condicaoNome[m.newCondition] : '—'}</td><td className="text-right tnum">{reais(m.valueCents)}</td><td className="text-muted">{m.userName}</td></tr>))}</tbody></table></div>
+              <td>{m.items.map((i) => `${i.quantity}× ${i.modelName}`).join(', ')}</td><td className="text-muted">{m.newCondition ? condicaoNome[m.newCondition] : '—'}</td><td className="text-muted">{m.userName}</td></tr>))}</tbody></table></div>
       )}
       {lista.data && <Paginacao page={page} pageSize={50} total={lista.data.total} onChange={(p) => set('p', String(p))} />}
     </div>

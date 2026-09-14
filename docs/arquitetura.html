@@ -335,14 +335,12 @@ td.c,th.c{text-align:center}
       <path d="M115,450 L115,420" class="sv-l" marker-end="url(#ar4)"/>
       <path d="M305,340 C305,290 200,290 150,250" class="sv-l acc dash" marker-end="url(#ar4)"/><text x="248" y="290" class="sv-t s acc">quem usa · quem é titular</text>
       <!-- inventário -->
-      <rect x="520" y="60" width="140" height="70" rx="8" class="sv-box"/><text x="590" y="84" text-anchor="middle" class="sv-t b">device_models</text><text x="590" y="102" text-anchor="middle" class="sv-t s">código, nome</text><text x="590" y="118" text-anchor="middle" class="sv-t s">serializado | granel</text>
-      <rect x="690" y="60" width="140" height="70" rx="8" class="sv-acc"/><text x="760" y="84" text-anchor="middle" class="sv-t b acc">devices</text><text x="760" y="102" text-anchor="middle" class="sv-t m">MAC 00:0B:82:…</text><text x="760" y="118" text-anchor="middle" class="sv-t s">condição, onde está</text>
-      <rect x="860" y="60" width="105" height="70" rx="8" class="sv-box"/><text x="912" y="84" text-anchor="middle" class="sv-t b">bulk_stock</text><text x="912" y="102" text-anchor="middle" class="sv-t s">granel:</text><text x="912" y="118" text-anchor="middle" class="sv-t s">modelo × lugar × qtd</text>
+      <rect x="520" y="60" width="140" height="70" rx="8" class="sv-box"/><text x="590" y="84" text-anchor="middle" class="sv-t b">device_models</text><text x="590" y="102" text-anchor="middle" class="sv-t s">GXP1610, Headset…</text><text x="590" y="118" text-anchor="middle" class="sv-t s">nome, categoria</text>
+      <rect x="690" y="60" width="140" height="70" rx="8" class="sv-acc"/><text x="760" y="84" text-anchor="middle" class="sv-t b acc">devices</text><text x="760" y="102" text-anchor="middle" class="sv-t m">MAC 00:0B:82:…</text><text x="760" y="118" text-anchor="middle" class="sv-t s">ou "não aplicável"</text>
       <rect x="600" y="160" width="230" height="70" rx="8" class="sv-sig"/><text x="715" y="184" text-anchor="middle" class="sv-t b sig">device_movements</text><text x="715" y="202" text-anchor="middle" class="sv-t s">locação · venda · comodato · devolução</text><text x="715" y="218" text-anchor="middle" class="sv-t s">de → para · qtd · quem · quando</text>
       <rect x="515" y="160" width="72" height="50" rx="8" class="sv-box"/><text x="551" y="182" text-anchor="middle" class="sv-t s">categorias</text><text x="551" y="196" text-anchor="middle" class="sv-t s">catálogo</text>
       <path d="M660,95 L690,95" class="sv-l" marker-end="url(#ar4)"/>
       <path d="M760,130 L740,160" class="sv-l" marker-end="url(#ar4)"/>
-      <path d="M912,130 L820,160" class="sv-l" marker-end="url(#ar4)"/>
       <path d="M600,195 C560,240 400,260 190,130" class="sv-l dash" marker-end="url(#ar4)"/><text x="400" y="235" text-anchor="middle" class="sv-t s">está com o cliente</text>
       <!-- segurança -->
       <rect x="520" y="340" width="130" height="70" rx="8" class="sv-box"/><text x="585" y="364" text-anchor="middle" class="sv-t b">users</text><text x="585" y="382" text-anchor="middle" class="sv-t s">nome, e-mail</text><text x="585" y="398" text-anchor="middle" class="sv-t s">papel</text>
@@ -366,9 +364,8 @@ td.c,th.c{text-align:center}
     <div class="card"><h4>hosting_providers · carriers · device_categories</h4><p>Catálogos: Local, Vultr, AWS… / ALGAR, VC1… / Telefone IP, Periférico… Deixam de ser texto livre; você gerencia a lista.</p></div>
     <div class="card"><h4>circuits</h4><p>Os feixes: nome, código da operadora, canais, IPs, credenciais do tronco (no cofre), valor mensal, titular.</p></div>
     <div class="card"><h4>dids</h4><p>Cada número. Aponta para o circuito, para o <b>cliente que usa</b> e para o <b>titular</b> (VoiceNet, quase sempre). Sem cliente = livre.</p></div>
-    <div class="card"><h4>device_models</h4><p>Grandstream GXP1610, Headset Genérico… com categoria e se é <b>serializado</b> (um a um) ou <b>granel</b> (por quantidade).</p></div>
-    <div class="card"><h4>devices</h4><p>Um aparelho serializado por linha, identificado pelo <b>MAC</b>. Condição, valor, IP, local físico, com quem está.</p></div>
-    <div class="card"><h4>bulk_stock</h4><p>Para granel: "Headset Genérico · Estoque · 28" e "Headset Genérico · Cliente A · 4". Saldo por lugar.</p></div>
+    <div class="card"><h4>device_models</h4><p>Grandstream GXP1610, Headset Genérico… com categoria. O modelo é só o tipo do aparelho; quantidade nenhuma mora aqui.</p></div>
+    <div class="card"><h4>devices</h4><p><b>Uma linha por aparelho</b>, sempre. Quem tem MAC é identificado por ele; headset e cabo ficam com o MAC vazio e a tela mostra "não aplicável". Condição (ativo/inativo), valor, IP, local, com quem está.</p></div>
     <div class="card"><h4>device_movements</h4><p>Cada locação, venda, comodato ou devolução: de onde, para onde, quantos, valor, quem fez, quando. Nunca é editada.</p></div>
     <div class="card"><h4>users · roles · permissions</h4><p>Quem entra no sistema, com qual papel, e o que cada papel pode. Ver a matriz abaixo.</p></div>
     <div class="card"><h4>secrets</h4><p>Toda senha do sistema mora aqui, cifrada. As outras tabelas só guardam "a senha é o segredo nº 87". A chave para decifrar fica fora do banco.</p></div>
@@ -537,7 +534,7 @@ td.c,th.c{text-align:center}
         <text x="70" y="118" class="sv-t m">arquitetura.html</text><text x="230" y="118" class="sv-t">esta página, sempre atualizada</text>
         <text x="70" y="140" class="sv-t m">banco-de-dados.md</text><text x="230" y="140" class="sv-t">cada tabela e cada coluna com uma frase; gerado a partir do próprio banco, não fica desatualizado</text>
         <text x="70" y="162" class="sv-t m">decisoes/</text><text x="230" y="162" class="sv-t">uma página curta por decisão: "por que MAC e não número sequencial", "por que PostgreSQL"</text>
-        <text x="70" y="184" class="sv-t m">glossario.md</text><text x="230" y="184" class="sv-t">DID, circuito, canal, granel, comodato… o significado que cada termo tem aqui</text>
+        <text x="70" y="184" class="sv-t m">glossario.md</text><text x="230" y="184" class="sv-t">DID, circuito, canal, comodato… o significado que cada termo tem aqui</text>
         <text x="70" y="206" class="sv-t m">guia-de-uso/</text><text x="230" y="206" class="sv-t">para a equipe: como fazer cada tarefa, com prints</text>
         <text x="50" y="236" class="sv-t m b">web/  api/  db/</text><text x="230" y="236" class="sv-t">cada pasta de código começa com um <tspan class="m">LEIA-ME.md</tspan> dizendo o que ela faz e o que tem dentro</text>
         <text x="50" y="266" class="sv-t m b">api → /api/docs</text><text x="230" y="266" class="sv-t">página no ar listando toda operação que o servidor faz ("criar cliente", "alocar DID"…), com exemplo</text>

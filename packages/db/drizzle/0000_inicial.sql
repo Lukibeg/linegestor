@@ -11,15 +11,6 @@ CREATE TABLE "audit_log" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "bulk_stock" (
-	"id" text PRIMARY KEY NOT NULL,
-	"model_id" text NOT NULL,
-	"client_id" text,
-	"modality" text DEFAULT 'estoque' NOT NULL,
-	"quantity" integer DEFAULT 0 NOT NULL,
-	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
-);
---> statement-breakpoint
 CREATE TABLE "carriers" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
@@ -80,7 +71,6 @@ CREATE TABLE "device_models" (
 	"code" text NOT NULL,
 	"name" text NOT NULL,
 	"category_id" text,
-	"tracking" text NOT NULL,
 	"image_url" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -92,8 +82,7 @@ CREATE TABLE "device_movement_items" (
 	"id" text PRIMARY KEY NOT NULL,
 	"movement_id" text NOT NULL,
 	"model_id" text NOT NULL,
-	"device_id" text,
-	"quantity" integer DEFAULT 1 NOT NULL
+	"device_id" text NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "device_movements" (
@@ -111,7 +100,7 @@ CREATE TABLE "device_movements" (
 CREATE TABLE "devices" (
 	"id" text PRIMARY KEY NOT NULL,
 	"model_id" text NOT NULL,
-	"mac" text NOT NULL,
+	"mac" text,
 	"mac_secondary" text,
 	"client_id" text,
 	"unit" text,
@@ -276,8 +265,6 @@ CREATE TABLE "users" (
 );
 --> statement-breakpoint
 ALTER TABLE "audit_log" ADD CONSTRAINT "audit_log_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "bulk_stock" ADD CONSTRAINT "bulk_stock_model_id_device_models_id_fk" FOREIGN KEY ("model_id") REFERENCES "public"."device_models"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "bulk_stock" ADD CONSTRAINT "bulk_stock_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "circuits" ADD CONSTRAINT "circuits_carrier_id_carriers_id_fk" FOREIGN KEY ("carrier_id") REFERENCES "public"."carriers"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "circuits" ADD CONSTRAINT "circuits_owner_client_id_clients_id_fk" FOREIGN KEY ("owner_client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "circuits" ADD CONSTRAINT "circuits_auth_password_secret_id_secrets_id_fk" FOREIGN KEY ("auth_password_secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -315,7 +302,6 @@ ALTER TABLE "users" ADD CONSTRAINT "users_role_id_roles_id_fk" FOREIGN KEY ("rol
 CREATE INDEX "audit_entity_idx" ON "audit_log" USING btree ("entity_type","entity_id");--> statement-breakpoint
 CREATE INDEX "audit_user_idx" ON "audit_log" USING btree ("user_id");--> statement-breakpoint
 CREATE INDEX "audit_created_idx" ON "audit_log" USING btree ("created_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "bulk_stock_uq" ON "bulk_stock" USING btree ("model_id","client_id","modality");--> statement-breakpoint
 CREATE UNIQUE INDEX "circuits_code_carrier_uq" ON "circuits" USING btree ("code","carrier_id");--> statement-breakpoint
 CREATE INDEX "circuits_name_idx" ON "circuits" USING btree ("name");--> statement-breakpoint
 CREATE UNIQUE INDEX "clients_cnpj_uq" ON "clients" USING btree ("cnpj");--> statement-breakpoint

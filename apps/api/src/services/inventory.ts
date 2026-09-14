@@ -1,18 +1,23 @@
 /**
- * Inventário: modelos, aparelhos serializados (por MAC), estoque a granel e movimentações.
+ * Inventário: modelos, aparelhos e movimentações.
  *
  * Regras que vivem aqui:
- *  - serializado: cada unidade é uma linha em `devices`, com MAC único; "atribuído a" = clientId (nulo = estoque)
- *  - `unit` é a unidade do cliente (filial/loja) onde o aparelho está; volta a ficar vazia quando ele retorna ao estoque
- *  - granel: saldo por (modelo, lugar, modalidade) em `bulk_stock`
- *  - só se movimenta aparelho PARA um cliente que assina o produto Equipamentos (regra R22, confirmada)
- *  - venda: o aparelho fica com condição "vendido" — sai das contagens de estoque/locado, mas o histórico permanece
- *  - devolução: destino é sempre o estoque
- *  - toda movimentação é uma transação: ou grava tudo (cabeçalho, itens, saldos) ou nada
+ *  - **cada unidade é uma linha** em `devices`, sempre. Quem tem MAC é identificado por ele;
+ *    quem não tem (headset, cabo) fica com o MAC vazio e a tela mostra "não aplicável".
+ *    Não existe contagem por quantidade.
+ *  - "atribuído a" = `clientId` (nulo = está no nosso estoque)
+ *  - `unit` é a unidade do cliente (filial/loja) onde o aparelho está; volta a ficar vazia
+ *    quando ele retorna ao estoque
+ *  - **condição é só ativo ou inativo.** "Vendido" não é condição: é quem tem a última
+ *    movimentação em `venda` (`currentModality = 'venda'`) — o aparelho pode estar ativo,
+ *    só que já não é nosso
+ *  - só se movimenta aparelho PARA um cliente que assina o produto Equipamentos (regra R22)
+ *  - devolução: destino é sempre o estoque — é assim que o aparelho volta do cliente
+ *  - toda movimentação é uma transação: ou grava tudo (cabeçalho e itens) ou nada
  */
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { bulkStock, clients, deviceCategories, deviceModels, deviceMovementItems, deviceMovements, devices, newId, users, type Db } from '@gestor/db';
+import { clients, deviceCategories, deviceModels, deviceMovementItems, deviceMovements, devices, newId, users, type Db } from '@gestor/db';
 import { macFormatado, MODALIDADES, type AparelhoGravar, type ModeloGravar, type MovimentacaoCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import { idsWithProduct } from './clients.js';
@@ -32,25 +37,19 @@ export async function listModels(db: Db, q: { q?: string; categoryId?: string; i
   const devAgg = await db
     .select({
       modelId: devices.modelId,
-      total: sql<number>`count(*) filter (where ${devices.condition} <> 'vendido')`,
-      inStock: sql<number>`count(*) filter (where ${devices.clientId} is null and ${devices.condition} in ('ativo','manutencao'))`,
-      withClients: sql<number>`count(*) filter (where ${devices.clientId} is not null and ${devices.condition} <> 'vendido' and ${devices.condition} <> 'baixado')`,
-      sold: sql<number>`count(*) filter (where ${devices.condition} = 'vendido')`,
-      maintenance: sql<number>`count(*) filter (where ${devices.condition} = 'manutencao')`,
-      retired: sql<number>`count(*) filter (where ${devices.condition} = 'baixado')`,
+      inStock: sql<number>`count(*) filter (where ${devices.clientId} is null)`,
+      withClients: sql<number>`count(*) filter (where ${devices.clientId} is not null and coalesce(${devices.currentModality}, '') <> 'venda')`,
+      sold: sql<number>`count(*) filter (where ${devices.currentModality} = 'venda')`,
+      inactive: sql<number>`count(*) filter (where ${devices.condition} = 'inativo')`,
     })
     .from(devices).where(and(inArray(devices.modelId, ids), isNull(devices.deletedAt))).groupBy(devices.modelId);
-  const bulkAgg = await db
-    .select({ modelId: bulkStock.modelId, inStock: sql<number>`sum(${bulkStock.quantity}) filter (where ${bulkStock.clientId} is null)`, withClients: sql<number>`sum(${bulkStock.quantity}) filter (where ${bulkStock.clientId} is not null)` })
-    .from(bulkStock).where(inArray(bulkStock.modelId, ids)).groupBy(bulkStock.modelId);
   return rows.map((r) => {
     const d = devAgg.find((x) => x.modelId === r.m.id);
-    const b = bulkAgg.find((x) => x.modelId === r.m.id);
-    const inStock = Number(r.m.tracking === 'granel' ? b?.inStock ?? 0 : d?.inStock ?? 0);
-    const withClients = Number(r.m.tracking === 'granel' ? b?.withClients ?? 0 : d?.withClients ?? 0);
+    const inStock = Number(d?.inStock ?? 0);
+    const withClients = Number(d?.withClients ?? 0);
     return {
       ...r.m, categoryName: r.categoryName,
-      counts: { total: inStock + withClients, inStock, withClients, sold: Number(d?.sold ?? 0), maintenance: Number(d?.maintenance ?? 0), retired: Number(d?.retired ?? 0) },
+      counts: { total: inStock + withClients, inStock, withClients, sold: Number(d?.sold ?? 0), inactive: Number(d?.inactive ?? 0) },
     };
   });
 }
@@ -64,11 +63,6 @@ export async function createModel(db: Db, data: ModeloGravar) {
 export async function updateModel(db: Db, id: string, data: Partial<ModeloGravar>) {
   const [before] = await db.select().from(deviceModels).where(eq(deviceModels.id, id));
   if (!before) throw new NotFound('Modelo');
-  if (data.tracking && data.tracking !== before.tracking) {
-    const [n] = await db.select({ n: sql<number>`count(*)` }).from(devices).where(and(eq(devices.modelId, id), isNull(devices.deletedAt)));
-    const [b] = await db.select({ n: sql<number>`coalesce(sum(${bulkStock.quantity}),0)` }).from(bulkStock).where(eq(bulkStock.modelId, id));
-    if (Number(n?.n ?? 0) > 0 || Number(b?.n ?? 0) > 0) throw new BadRequest('Não dá para mudar a contabilização de um modelo que já tem aparelhos');
-  }
   const [after] = await db.update(deviceModels).set({ ...data, updatedAt: new Date() }).where(eq(deviceModels.id, id)).returning();
   return { before, after: after! };
 }
@@ -80,9 +74,9 @@ export async function deleteModel(db: Db, id: string) {
   return row;
 }
 
-// ---------- Aparelhos serializados ----------
+// ---------- Aparelhos ----------
 
-export type FiltroAparelhos = { q?: string; modelId?: string; clientId?: string | 'stock'; condition?: string; includeRetired?: boolean };
+export type FiltroAparelhos = { q?: string; modelId?: string; clientId?: string | 'stock'; condition?: string; includeSold?: boolean };
 
 /**
  * Os filtros da aba Aparelhos viram condições de SQL. A MESMA função alimenta a lista e os
@@ -94,7 +88,8 @@ function filtrosAparelhos(q: FiltroAparelhos): SQL[] {
   if (q.clientId === 'stock') conds.push(isNull(devices.clientId));
   else if (q.clientId) conds.push(eq(devices.clientId, q.clientId));
   if (q.condition) conds.push(eq(devices.condition, q.condition));
-  else if (!q.includeRetired) conds.push(sql`${devices.condition} not in ('baixado','vendido')`);
+  // vendido já não é nosso: fica fora da lista, a menos que se peça
+  if (!q.includeSold) conds.push(sql`coalesce(${devices.currentModality}, '') <> 'venda'`);
   if (q.q) {
     const mac = q.q.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
     conds.push(or(mac ? ilike(devices.mac, `%${mac}%`) : sql`false`, ilike(devices.ip, `%${q.q}%`), ilike(devices.unit, `%${q.q}%`), ilike(devices.location, `%${q.q}%`))!);
@@ -103,34 +98,25 @@ function filtrosAparelhos(q: FiltroAparelhos): SQL[] {
 }
 
 /**
- * Resumo do inventário para os cartões do topo: em estoque, com clientes, em manutenção e
- * o valor dos aparelhos que estão com clientes. Respeita os mesmos filtros da lista.
- * Itens a granel só entram quando não há filtro de aparelho específico (eles não têm MAC nem condição).
+ * Resumo do inventário para os cartões do topo: em estoque, com clientes, inativos e o valor
+ * dos aparelhos que estão com clientes. Respeita os mesmos filtros da lista — filtrou por
+ * modelo ou cliente, os números acompanham.
  */
 export async function summary(db: Db, q: FiltroAparelhos = {}) {
   const semFiltro = !q.q && !q.modelId && !q.clientId && !q.condition;
-  const base = filtrosAparelhos({ ...q, condition: undefined, includeRetired: true });
+  const base = filtrosAparelhos({ ...q, condition: undefined });
   const [d] = await db
     .select({
-      inStock: sql<number>`count(*) filter (where ${devices.clientId} is null and ${devices.condition} in ('ativo','manutencao'))`,
-      withClients: sql<number>`count(*) filter (where ${devices.clientId} is not null and ${devices.condition} not in ('vendido','baixado'))`,
-      maintenance: sql<number>`count(*) filter (where ${devices.condition} = 'manutencao')`,
-      valueWithClients: sql<number>`coalesce(sum(${devices.valueCents}) filter (where ${devices.clientId} is not null and ${devices.currentModality} in ('locacao','comodato') and ${devices.condition} not in ('vendido','baixado')),0)`,
+      inStock: sql<number>`count(*) filter (where ${devices.clientId} is null)`,
+      withClients: sql<number>`count(*) filter (where ${devices.clientId} is not null)`,
+      inactive: sql<number>`count(*) filter (where ${devices.condition} = 'inativo')`,
+      valueWithClients: sql<number>`coalesce(sum(${devices.valueCents}) filter (where ${devices.clientId} is not null and ${devices.currentModality} in ('locacao','comodato')),0)`,
     })
     .from(devices).where(and(...base));
-  const bulkConds: SQL[] = [];
-  if (q.modelId) bulkConds.push(eq(bulkStock.modelId, q.modelId));
-  if (q.clientId === 'stock') bulkConds.push(isNull(bulkStock.clientId));
-  else if (q.clientId) bulkConds.push(eq(bulkStock.clientId, q.clientId));
-  const [b] = q.q || q.condition
-    ? [undefined]
-    : await db
-        .select({ inStock: sql<number>`coalesce(sum(${bulkStock.quantity}) filter (where ${bulkStock.clientId} is null),0)`, withClients: sql<number>`coalesce(sum(${bulkStock.quantity}) filter (where ${bulkStock.clientId} is not null),0)` })
-        .from(bulkStock).where(bulkConds.length ? and(...bulkConds) : undefined);
   return {
-    inStock: Number(d?.inStock ?? 0) + Number(b?.inStock ?? 0),
-    withClients: Number(d?.withClients ?? 0) + Number(b?.withClients ?? 0),
-    maintenance: Number(d?.maintenance ?? 0),
+    inStock: Number(d?.inStock ?? 0),
+    withClients: Number(d?.withClients ?? 0),
+    inactive: Number(d?.inactive ?? 0),
     valueWithClientsCents: Number(d?.valueWithClients ?? 0),
     filtrado: !semFiltro,
   };
@@ -167,7 +153,7 @@ export async function listDevices(db: Db, q: FiltroAparelhos & { page: number; p
 
 export async function getDevice(db: Db, id: string) {
   const [r] = await db
-    .select({ d: devices, modelName: deviceModels.name, modelCode: deviceModels.code, tracking: deviceModels.tracking, clientName: clients.tradeName })
+    .select({ d: devices, modelName: deviceModels.name, modelCode: deviceModels.code, clientName: clients.tradeName })
     .from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId)).leftJoin(clients, eq(clients.id, devices.clientId)).where(eq(devices.id, id));
   if (!r) throw new NotFound('Aparelho');
   const from = alias(clients, 'from'), to = alias(clients, 'to');
@@ -182,10 +168,12 @@ export async function getDevice(db: Db, id: string) {
 export async function createDevice(db: Db, data: AparelhoGravar) {
   const [model] = await db.select().from(deviceModels).where(eq(deviceModels.id, data.modelId));
   if (!model) throw new NotFound('Modelo');
-  if (model.tracking !== 'serializado') throw new BadRequest('Este modelo é contado a granel; use "ajustar estoque" em vez de cadastrar unidade');
-  const [dup] = await db.select({ id: devices.id }).from(devices).where(eq(devices.mac, data.mac));
-  if (dup) throw new BadRequest(`Já existe um aparelho com o MAC ${macFormatado(data.mac)}`);
-  const [row] = await db.insert(devices).values({ id: newId(), ...data }).returning();
+  // sem MAC é caso normal (headset, cabo): só checa duplicidade quando há MAC
+  if (data.mac) {
+    const [dup] = await db.select({ id: devices.id }).from(devices).where(eq(devices.mac, data.mac));
+    if (dup) throw new BadRequest(`Já existe um aparelho com o MAC ${macFormatado(data.mac)}`);
+  }
+  const [row] = await db.insert(devices).values({ id: newId(), ...data, mac: data.mac ?? null }).returning();
   return row!;
 }
 export async function updateDevice(db: Db, id: string, data: Partial<AparelhoGravar>) {
@@ -219,36 +207,6 @@ export async function listUnits(db: Db, clientId?: string) {
   return rows.map((r) => r.unit!).filter(Boolean);
 }
 
-// ---------- Estoque a granel ----------
-
-export async function listBulk(db: Db, modelId?: string) {
-  return db
-    .select({ id: bulkStock.id, modelId: bulkStock.modelId, modelName: deviceModels.name, clientId: bulkStock.clientId, clientName: clients.tradeName, modality: bulkStock.modality, quantity: bulkStock.quantity, updatedAt: bulkStock.updatedAt })
-    .from(bulkStock).innerJoin(deviceModels, eq(deviceModels.id, bulkStock.modelId)).leftJoin(clients, eq(clients.id, bulkStock.clientId))
-    .where(and(modelId ? eq(bulkStock.modelId, modelId) : undefined, sql`${bulkStock.quantity} <> 0`))
-    .orderBy(asc(deviceModels.name), asc(clients.tradeName));
-}
-
-/** Soma `delta` ao saldo de (modelo, cliente, modalidade). Cria a linha se não existir. Nunca deixa negativo. */
-async function adjustBulk(db: Db, modelId: string, clientId: string | null, modality: string, delta: number) {
-  const [row] = await db.select().from(bulkStock).where(and(eq(bulkStock.modelId, modelId), clientId ? eq(bulkStock.clientId, clientId) : isNull(bulkStock.clientId), eq(bulkStock.modality, modality)));
-  const next = (row?.quantity ?? 0) + delta;
-  if (next < 0) {
-    const [m] = await db.select({ name: deviceModels.name }).from(deviceModels).where(eq(deviceModels.id, modelId));
-    throw new BadRequest(`Saldo insuficiente de "${m?.name}" ${clientId ? 'com o cliente' : 'no estoque'}: tem ${row?.quantity ?? 0}, pediu ${-delta}`);
-  }
-  if (row) await db.update(bulkStock).set({ quantity: next, updatedAt: new Date() }).where(eq(bulkStock.id, row.id));
-  else await db.insert(bulkStock).values({ id: newId(), modelId, clientId, modality, quantity: next });
-}
-
-export async function adjustStock(db: Db, modelId: string, delta: number) {
-  const [model] = await db.select().from(deviceModels).where(eq(deviceModels.id, modelId));
-  if (!model) throw new NotFound('Modelo');
-  if (model.tracking !== 'granel') throw new BadRequest('Este modelo é serializado; cadastre cada unidade pelo MAC');
-  await adjustBulk(db, modelId, null, 'estoque', delta);
-  return listBulk(db, modelId);
-}
-
 // ---------- Movimentações ----------
 
 export async function createMovement(db: Db, data: MovimentacaoCriar, userId: string) {
@@ -268,46 +226,26 @@ export async function createMovement(db: Db, data: MovimentacaoCriar, userId: st
     const items: (typeof deviceMovementItems.$inferInsert)[] = [];
 
     for (const it of data.items) {
-      if ('deviceId' in it) {
-        const [d] = await tx.select().from(devices).where(and(eq(devices.id, it.deviceId), isNull(devices.deletedAt)));
-        if (!d) throw new NotFound('Aparelho');
-        if (d.condition === 'vendido') throw new BadRequest(`O aparelho ${macFormatado(d.mac)} já foi vendido`);
-        if (data.modality === 'devolucao' && !d.clientId) throw new BadRequest(`O aparelho ${macFormatado(d.mac)} já está no estoque`);
-        if (fromClientId === undefined) fromClientId = d.clientId;
-        const condition = data.newCondition ?? (data.modality === 'venda' ? 'vendido' : d.condition);
-        await tx.update(devices).set({
-          clientId: data.toClientId, currentModality: data.toClientId ? data.modality : null, condition,
-          // a unidade só faz sentido quando o aparelho está com um cliente; voltando ao estoque, limpa
-          unit: data.toClientId ? data.unit ?? d.unit ?? null : null,
-          updatedAt: new Date(),
-        }).where(eq(devices.id, d.id));
-        items.push({ id: newId(), movementId, modelId: d.modelId, deviceId: d.id, quantity: 1 });
-      } else {
-        const [m] = await tx.select().from(deviceModels).where(eq(deviceModels.id, it.modelId));
-        if (!m) throw new NotFound('Modelo');
-        if (m.tracking !== 'granel') throw new BadRequest(`"${m.name}" é serializado: escolha os aparelhos pelo MAC`);
-        const origin = it.fromClientId ?? null;
-        if (fromClientId === undefined) fromClientId = origin;
-        // sai da origem
-        if (origin) {
-          // com cliente: saldo pode estar sob qualquer modalidade; tiramos da que tiver saldo
-          const rows = await tx.select().from(bulkStock).where(and(eq(bulkStock.modelId, m.id), eq(bulkStock.clientId, origin), sql`${bulkStock.quantity} > 0`)).orderBy(desc(bulkStock.quantity));
-          let remaining = it.quantity;
-          for (const r of rows) { if (remaining <= 0) break; const take = Math.min(r.quantity, remaining); await adjustBulk(tx, m.id, origin, r.modality, -take); remaining -= take; }
-          if (remaining > 0) throw new BadRequest(`Saldo insuficiente de "${m.name}" com o cliente: faltam ${remaining}`);
-        } else {
-          await adjustBulk(tx, m.id, null, 'estoque', -it.quantity);
-        }
-        // entra no destino
-        await adjustBulk(tx, m.id, data.toClientId, data.toClientId ? data.modality : 'estoque', it.quantity);
-        items.push({ id: newId(), movementId, modelId: m.id, deviceId: null, quantity: it.quantity });
-      }
+      const [d] = await tx.select().from(devices).where(and(eq(devices.id, it.deviceId), isNull(devices.deletedAt)));
+      if (!d) throw new NotFound('Aparelho');
+      const nome = d.mac ? macFormatado(d.mac) : 'sem MAC';
+      if (d.currentModality === 'venda') throw new BadRequest(`O aparelho ${nome} já foi vendido`);
+      if (data.modality === 'devolucao' && !d.clientId) throw new BadRequest(`O aparelho ${nome} já está no estoque`);
+      if (fromClientId === undefined) fromClientId = d.clientId;
+      await tx.update(devices).set({
+        clientId: data.toClientId,
+        currentModality: data.toClientId ? data.modality : null,
+        condition: data.newCondition ?? d.condition,
+        // a unidade só faz sentido quando o aparelho está com um cliente; voltando ao estoque, limpa
+        unit: data.toClientId ? data.unit ?? d.unit ?? null : null,
+        updatedAt: new Date(),
+      }).where(eq(devices.id, d.id));
+      items.push({ id: newId(), movementId, modelId: d.modelId, deviceId: d.id });
     }
 
-    await tx.insert(deviceMovements).values({ id: movementId, modality: data.modality, fromClientId: fromClientId ?? null, toClientId: data.toClientId, newCondition: data.newCondition ?? null, valueCents: data.valueCents ?? null, note: data.note ?? null, userId });
+    await tx.insert(deviceMovements).values({ id: movementId, modality: data.modality, fromClientId: fromClientId ?? null, toClientId: data.toClientId, newCondition: data.newCondition ?? null, note: data.note ?? null, userId });
     await tx.insert(deviceMovementItems).values(items);
-    const qty = items.reduce((a, i) => a + (i.quantity ?? 1), 0);
-    return { id: movementId, items: items.length, quantity: qty, fromClientId: fromClientId ?? null };
+    return { id: movementId, items: items.length, quantity: items.length, fromClientId: fromClientId ?? null };
   });
 }
 
@@ -334,12 +272,12 @@ export async function listMovements(db: Db, q: { modality?: string; clientId?: s
   if (q.to) conds.push(lte(deviceMovements.createdAt, q.to));
   const where = conds.length ? and(...conds) : undefined;
   const rows = await db
-    .select({ id: deviceMovements.id, modality: deviceMovements.modality, fromClientId: deviceMovements.fromClientId, fromName: fromC.tradeName, toClientId: deviceMovements.toClientId, toName: toC.tradeName, newCondition: deviceMovements.newCondition, valueCents: deviceMovements.valueCents, note: deviceMovements.note, userName: users.name, createdAt: deviceMovements.createdAt })
+    .select({ id: deviceMovements.id, modality: deviceMovements.modality, fromClientId: deviceMovements.fromClientId, fromName: fromC.tradeName, toClientId: deviceMovements.toClientId, toName: toC.tradeName, newCondition: deviceMovements.newCondition, note: deviceMovements.note, userName: users.name, createdAt: deviceMovements.createdAt })
     .from(deviceMovements).leftJoin(fromC, eq(fromC.id, deviceMovements.fromClientId)).leftJoin(toC, eq(toC.id, deviceMovements.toClientId)).innerJoin(users, eq(users.id, deviceMovements.userId))
     .where(where).orderBy(ordenacaoMovimentacoes(q, fromC, toC)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
   const ids = rows.map((r) => r.id).concat(['-']);
   const items = await db
-    .select({ movementId: deviceMovementItems.movementId, modelName: deviceModels.name, quantity: sql<number>`sum(${deviceMovementItems.quantity})` })
+    .select({ movementId: deviceMovementItems.movementId, modelName: deviceModels.name, quantity: sql<number>`count(*)` })
     .from(deviceMovementItems).innerJoin(deviceModels, eq(deviceModels.id, deviceMovementItems.modelId)).where(inArray(deviceMovementItems.movementId, ids)).groupBy(deviceMovementItems.movementId, deviceModels.name);
   const [c] = await db.select({ n: sql<number>`count(*)` }).from(deviceMovements).where(where);
   return {

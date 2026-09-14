@@ -38,7 +38,7 @@ export async function makeApp(): Promise<App> {
 
 export async function resetDb(app: App) {
   await app.db.execute(sql`
-    TRUNCATE TABLE audit_log, sessions, device_movement_items, device_movements, bulk_stock, devices, device_models, device_categories,
+    TRUNCATE TABLE audit_log, sessions, device_movement_items, device_movements, devices, device_models, device_categories,
       dids, circuits, carriers, linepbx_settings, fop2_settings, omniboard_settings, szchat_settings, subscription_modules, subscriptions, product_modules, products,
       hosting_providers, settings, secrets, users, roles, client_logos, clients RESTART IDENTITY CASCADE
   `);
