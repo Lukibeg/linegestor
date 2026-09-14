@@ -16,6 +16,7 @@ import { cnpjFormatado, data, relativo } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
 import { FiltroEmBotao, type GrupoFiltro } from '../../lib/filtros.js';
+import { useLembrarFiltros } from '../../lib/voltar.js';
 import { ClienteForm } from './Form.js';
 
 // ---------- Colunas disponíveis na tabela ----------
@@ -91,6 +92,7 @@ function Atalhos({ c }: { c: ClientListItem }) {
 
 export function ClientesLista() {
   const [sp, setSp] = useSearchParams();
+  useLembrarFiltros('/clientes'); // para o botão Voltar da ficha trazer estes filtros de volta
   const nav = useNavigate();
   const q = sp.get('q') ?? '';
   const produtos = sp.getAll('produtos');

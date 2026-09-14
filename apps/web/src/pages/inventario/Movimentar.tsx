@@ -27,7 +27,8 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
   const qc = useQueryClient(); const toast = useToast();
 
   const clients = useQuery({ queryKey: ['client-options', 'equip'], queryFn: () => api.clients.options({ productCode: 'equipamentos' }), enabled: open });
-  const allClients = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options(), enabled: open });
+  // na devolução só faz sentido oferecer quem está com aparelho nosso agora
+  const comAparelho = useQuery({ queryKey: ['client-options', 'com-aparelho'], queryFn: () => api.clients.options({ withDevices: true }), enabled: open });
   const models = useQuery({ queryKey: ['models'], queryFn: () => api.inventory.models(), enabled: open });
   const devolucao = modality === 'devolucao';
   const origem = devolucao ? (fromClientId || undefined) : 'stock';
@@ -78,7 +79,7 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
             </select>
           </Campo>
           {devolucao
-            ? <Campo label="Devolvido por (cliente)"><select className="input" value={fromClientId} onChange={(e) => { setFrom(e.target.value); setEscolhidos([]); }}><option value="">Selecione…</option>{allClients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>
+            ? <Campo label="Devolvido por (cliente)" dica="só clientes que estão com aparelho nosso"><select className="input" value={fromClientId} onChange={(e) => { setFrom(e.target.value); setEscolhidos([]); }}><option value="">{comAparelho.data && !comAparelho.data.length ? 'Nenhum cliente está com aparelho' : 'Selecione…'}</option>{comAparelho.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>
             : <Campo label="Cliente de destino" dica="só clientes que assinam Equipamentos"><select className="input" value={toClientId} onChange={(e) => setTo(e.target.value)}><option value="">Selecione…</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>}
           <Campo label="Condição" dica="vazio = manter como está">
             <select className="input" value={newCondition} onChange={(e) => setCond(e.target.value)}>

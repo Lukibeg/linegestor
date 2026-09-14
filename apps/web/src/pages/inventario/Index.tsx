@@ -12,11 +12,13 @@ import { condicaoCor, condicaoNome, CONDICOES_APARELHO, data, macFormatado, macV
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
 import { Movimentar } from './Movimentar.js';
+import { useLembrarFiltros } from '../../lib/voltar.js';
 
 type Aba = 'aparelhos' | 'modelos' | 'movimentacoes';
 
 export function Inventario() {
   const [sp, setSp] = useSearchParams();
+  useLembrarFiltros('/inventario'); // o botão Voltar da ficha do aparelho traz estes filtros de volta
   const aba = (sp.get('aba') ?? 'aparelhos') as Aba;
   const [mover, setMover] = useState(false);
   const models = useQuery({ queryKey: ['models'], queryFn: () => api.inventory.models() });

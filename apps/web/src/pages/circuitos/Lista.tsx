@@ -13,12 +13,14 @@ import { Can, useAuth } from '../../lib/auth.js';
 import { Abas, Campo, CampoSegredo, Carregando, Kpi, Modal, Ocupacao, Paginacao, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { didFormatado, paraCentavos, reais } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
+import { useLembrarFiltros } from '../../lib/voltar.js';
 import { Numeracao } from '../dids/Lista.js';
 
 type Aba = 'circuitos' | 'numeracao';
 
 export function CircuitosLista() {
   const [sp, setSp] = useSearchParams();
+  useLembrarFiltros('/circuitos'); // o botão Voltar do detalhe traz estes filtros de volta
   const nav = useNavigate();
   const aba = (sp.get('aba') === 'numeracao' ? 'numeracao' : 'circuitos') as Aba;
   const q = sp.get('q') ?? ''; const carrierId = sp.get('operadora') ?? ''; const ownerClientId = sp.get('titular') ?? ''; const page = Number(sp.get('p') ?? 1);

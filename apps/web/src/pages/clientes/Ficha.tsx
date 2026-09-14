@@ -13,6 +13,7 @@ import { Can, useAuth } from '../../lib/auth.js';
 import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, LogoCliente, mensagemErro, Modal, Spinner, Vazio, useToast } from '../../components/ui/index.js';
 import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, intervalo, MODALIDADES, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
+import { paraALista, Voltar } from '../../lib/voltar.js';
 import { ClienteForm } from './Form.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'acessos' | 'historico';
@@ -31,15 +32,16 @@ export function ClienteFicha() {
   const [busy, setBusy] = useState(false);
 
   if (q.isLoading) return <Carregando />;
-  if (q.isError || !q.data) return <Vazio titulo="Cliente não encontrado" acao={<Link className="btn-secondary" to="/clientes">Voltar</Link>} />;
+  if (q.isError || !q.data) return <Vazio titulo="Cliente não encontrado" acao={<Link className="btn-secondary" to={paraALista('/clientes')}>Voltar</Link>} />;
   const c = q.data;
   const ativos = c.subscriptions.filter((s) => s.active);
 
-  const doDelete = async () => { setBusy(true); try { await api.clients.remove(c.id); toast.push('ok', `${c.tradeName} foi para a lixeira`); await qc.invalidateQueries({ queryKey: ['clients'] }); nav('/clientes'); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } };
+  const doDelete = async () => { setBusy(true); try { await api.clients.remove(c.id); toast.push('ok', `${c.tradeName} foi para a lixeira`); await qc.invalidateQueries({ queryKey: ['clients'] }); nav(paraALista('/clientes')); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } };
   const toggleArchive = async () => { try { await api.clients.update(c.id, { archived: !c.archived }); await qc.invalidateQueries({ queryKey: ['client', id] }); toast.push('ok', c.archived ? 'Cliente desarquivado' : 'Cliente arquivado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
 
   return (
     <Pagina
+      voltar={<Voltar rota="/clientes" texto="Todos os clientes" />}
       titulo={<span className="flex items-center gap-2"><LogoCliente src={logoSrc(c.logoUrl)} nome={c.tradeName} tamanho={30} />{c.tradeName}{c.archived && <Chip tone="muted">arquivado</Chip>}</span>}
       sub={<span>{c.legalName} · <span className="font-mono">{cnpjFormatado(c.cnpj)}</span></span>}
       acoes={<>

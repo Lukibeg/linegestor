@@ -9,6 +9,7 @@ import { Can } from '../../lib/auth.js';
 import { Campo, Carregando, Chip, Confirmar, Modal, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { condicaoCor, condicaoNome, CONDICOES_APARELHO, data, MODALIDADES, paraCentavos, reais } from '../../lib/format.js';
 import { Movimentar } from './Movimentar.js';
+import { Voltar } from '../../lib/voltar.js';
 
 export function AparelhoDetalhe() {
   const { id = '' } = useParams();
@@ -24,7 +25,7 @@ export function AparelhoDetalhe() {
   const save = async () => { setBusy(true); setErr(''); try { await api.inventory.updateDevice(d.id, { unit: d.clientId ? f.unit || null : null, condition: f.condition, valueCents: f.valueCents ? paraCentavos(f.valueCents) : null, ip: f.ip || null, location: f.location || null, note: f.note || null }); await qc.invalidateQueries({ queryKey: ['device', id] }); await qc.invalidateQueries({ queryKey: ['devices'] }); toast.push('ok', 'Aparelho atualizado'); setEditar(false); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
   const doDelete = async () => { setBusy(true); try { await api.inventory.removeDevice(d.id); toast.push('ok', 'Aparelho foi para a lixeira'); nav('/inventario'); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } };
   return (
-    <Pagina titulo={<span className="font-mono">{d.macFormatted}</span>} sub={<span>{d.modelName}{d.unit ? ` · ${d.unit}` : ''}</span>} acoes={<>
+    <Pagina voltar={<Voltar rota="/inventario" texto="Voltar ao inventário" />} titulo={<span className="font-mono">{d.macFormatted}</span>} sub={<span>{d.modelName}{d.unit ? ` · ${d.unit}` : ''}</span>} acoes={<>
       <Can permission="devices.move">{d.currentModality !== 'venda' && <button className="btn-primary" onClick={() => setMover(true)}><ArrowLeftRight size={15} /> {d.clientId ? 'Devolver / mover' : 'Movimentar'}</button>}</Can>
       <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button></Can>
       <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)}><Trash2 size={15} /></button></Can>

@@ -13,7 +13,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Listar clientes (busca, filtro por produtos AND/OR, arquivados)', querystring: ClienteListarSchema.extend({ includeInternal: z.coerce.boolean().default(false) }) } },
     async (req) => clientsSvc.list(app.db, req.query));
 
-  app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Lista curta (id + nome) para seletores', querystring: z.object({ includeInternal: z.coerce.boolean().default(false), productCode: z.string().optional() }) } },
+  app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Lista curta (id + nome) para seletores; withDevices=true traz só quem está com aparelho nosso', querystring: z.object({ includeInternal: z.coerce.boolean().default(false), productCode: z.string().optional(), withDevices: z.coerce.boolean().default(false) }) } },
     async (req) => clientsSvc.options(app.db, req.query));
 
   app.get('/:id', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Ficha completa do cliente', params: Id } },

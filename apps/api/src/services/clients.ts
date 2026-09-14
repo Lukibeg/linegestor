@@ -403,14 +403,28 @@ export async function idsWithProduct(db: Db, productCode: string): Promise<Set<s
   return new Set(rows.map((r) => r.id));
 }
 
+/**
+ * Clientes que hoje estão com pelo menos um aparelho nosso (usado na devolução: não adianta
+ * oferecer quem não tem nada para devolver). Vendido não conta — já não é nosso.
+ */
+export async function idsWithDevices(db: Db): Promise<Set<string>> {
+  const rows = await db.selectDistinct({ id: devices.clientId }).from(devices)
+    .where(and(isNull(devices.deletedAt), sql`${devices.clientId} is not null`, sql`coalesce(${devices.currentModality}, '') <> 'venda'`));
+  return new Set(rows.map((r) => r.id!).filter(Boolean));
+}
+
 /** Lista curta (id + nome) para preencher seletores. */
-export async function options(db: Db, opts: { includeInternal?: boolean; productCode?: string } = {}) {
+export async function options(db: Db, opts: { includeInternal?: boolean; productCode?: string; withDevices?: boolean } = {}) {
   const conds: SQL[] = [isNull(clients.deletedAt), eq(clients.archived, false)];
   if (!opts.includeInternal) conds.push(eq(clients.isInternal, false));
   let rows = await db.select({ id: clients.id, name: clients.tradeName, isInternal: clients.isInternal, internalCode: clients.internalCode }).from(clients).where(and(...conds)).orderBy(desc(clients.isInternal), asc(clients.tradeName));
   if (opts.productCode) {
     const allowed = await idsWithProduct(db, opts.productCode);
     rows = rows.filter((r) => allowed.has(r.id));
+  }
+  if (opts.withDevices) {
+    const comAparelho = await idsWithDevices(db);
+    rows = rows.filter((r) => comAparelho.has(r.id));
   }
   return rows;
 }

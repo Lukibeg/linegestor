@@ -93,11 +93,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
 }
 
-export function Pagina({ titulo, sub, acoes, children }: { titulo: ReactNode; sub?: ReactNode; acoes?: ReactNode; children: ReactNode }) {
+export function Pagina({ titulo, sub, acoes, voltar, children }: { titulo: ReactNode; sub?: ReactNode; acoes?: ReactNode; voltar?: ReactNode; children: ReactNode }) {
   return (
     <div>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
         <div>
+          {voltar && <div className="mb-1.5">{voltar}</div>}
           <h1 className="font-display text-xl font-semibold">{titulo}</h1>
           {sub && <div className="text-muted text-sm mt-0.5">{sub}</div>}
         </div>

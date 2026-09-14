@@ -89,6 +89,13 @@ describe('inventário', () => {
     expect(porModelo.withClients).toBe(1);
   });
 
+  it('a lista de "devolvido por" só traz quem está com aparelho nosso', async () => {
+    const outro = (await s.post('/clients', { tradeName: 'Padaria do Zé', legalName: 'Zé Panificadora ME', cnpj: '12.345.678/0001-95' })).json().id;
+    const nomes = (await s.get('/clients/options?withDevices=true')).json().map((c: any) => c.id);
+    expect(nomes).toContain(clientId);      // está com aparelhos
+    expect(nomes).not.toContain(outro);     // não tem nada nosso
+  });
+
   it('devolve do cliente para o estoque também sem MAC, e marca inativo', async () => {
     const ida = await s.post('/inventory/movements', { modality: 'comodato', toClientId: clientId, unit: 'Matriz', items: [{ deviceId: headA }] });
     expect(ida.statusCode).toBe(201);

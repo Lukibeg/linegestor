@@ -19,7 +19,7 @@ export type Api = {
   dashboard: { summary(): Promise<T.Dashboard>; search(q: string): Promise<T.SearchResult> };
   clients: {
     list(q: Record<string, unknown>): Promise<T.Page<T.ClientListItem>>;
-    options(q?: { includeInternal?: boolean; productCode?: string }): Promise<T.Option[]>;
+    options(q?: { includeInternal?: boolean; productCode?: string; withDevices?: boolean }): Promise<T.Option[]>;
     get(id: string): Promise<T.ClientFull>;
     create(d: Record<string, unknown>): Promise<T.ClientFull>;
     update(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
