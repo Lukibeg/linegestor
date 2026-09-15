@@ -25,7 +25,7 @@ type Sub = { id: string; clientId: string; productCode: string; activatedAt: str
 /** Um módulo ligado numa assinatura (ex.: FOP2 dentro do LinePBX do cliente X). */
 type SubMod = { id: string; subscriptionId: string; moduleId: string; activatedAt: string | null; deactivatedAt: string | null; notes: string | null; settings: Record<string, any> };
 type ModRow = ProductModule & { productId: string };
-type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; deletedAt: string | null };
+type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; thirdParty: boolean; deletedAt: string | null };
 type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; note: string | null; deletedAt: string | null };
 type ModelRow = { id: string; code: string; name: string; categoryId: string | null; imageUrl: string | null; deletedAt: string | null };
 type DeviceRow = { id: string; modelId: string; mac: string | null; macSecondary: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
@@ -72,7 +72,7 @@ function seed() {
     { id: 'u3', name: 'Marina Costa', email: 'operador@gestor.local', password: 'demo', roleId: 'roperador', active: true, lastLoginAt: daysAgo(2) },
     { id: 'u4', name: 'Paulo Reis', email: 'leitor@gestor.local', password: 'demo', roleId: 'rleitor', active: true, lastLoginAt: null },
   ];
-  S.carriers = ['ALGAR', 'VC1'].map((n) => ({ id: 'car' + n, name: n, active: true }));
+  S.carriers = ['ALGAR', 'VC1', 'Vivo'].map((n) => ({ id: 'car' + n, name: n, active: true }));
   S.hostings = ['Local', 'Nuvem (Local)', 'Vultr', 'AWS', 'Contabo', 'Hetzner', 'Outro'].map((n) => ({ id: 'h' + n.replace(/\W/g, ''), name: n, active: true }));
   S.categories = ['Telefone IP', 'Periférico', 'ATA', 'Gateway', 'Switch', 'Outro'].map((n) => ({ id: 'cat' + n.replace(/\W/g, ''), name: n, active: true }));
   /** Logos fictícias da demonstração: um quadrado com as iniciais, desenhado em SVG. */
@@ -128,20 +128,24 @@ function seed() {
     const primeira = S.subs.filter((x) => x.clientId === c.id).map((x) => x.activatedAt!).sort()[0];
     if (primeira) c.createdAt = daysAgo(Math.round((Date.now() - new Date(primeira).getTime()) / 86400000) + 12);
   });
+  // O último é um LINK DE TERCEIRO: o tronco que o Hospital contratou direto da Vivo. Fica
+  // registrado (é útil saber a numeração dele), mas só aparece com o interruptor ligado.
   const circ = [
-    ['071 Principal', '09802603', 'ALGAR', 30, '7130200000', 120, 60338, [['Supermercado Bom Preço', 0, 40], ['Laboratório Exame Certo', 40, 70]]],
-    ['071 Hospitalar', '010241793', 'ALGAR', 60, '7132170000', 200, 120000, [['Hospital Vale Verde', 0, 150]]],
-    ['Link - Distribuidora Norte', '73169', 'VC1', 5, '7131720000', 12, 25000, [['Distribuidora Norte', 0, 12]]],
-    ['Link - Aurora', '94234', 'VC1', 2, '7130396100', 4, 9900, [['Clínica Aurora', 0, 4]]],
-    ['Feixe Reserva', '88001', 'VC1', 0, '7135550000', 10, 5000, []],
+    ['071 Principal', '09802603', 'ALGAR', 30, '7130200000', 120, 60338, [['Supermercado Bom Preço', 0, 40], ['Laboratório Exame Certo', 40, 70]], false, null],
+    ['071 Hospitalar', '010241793', 'ALGAR', 60, '7132170000', 200, 120000, [['Hospital Vale Verde', 0, 150]], false, null],
+    ['Link - Distribuidora Norte', '73169', 'VC1', 5, '7131720000', 12, 25000, [['Distribuidora Norte', 0, 12]], false, null],
+    ['Link - Aurora', '94234', 'VC1', 2, '7130396100', 4, 9900, [['Clínica Aurora', 0, 4]], false, null],
+    ['Feixe Reserva', '88001', 'VC1', 0, '7135550000', 10, 5000, [], false, null],
+    ['Vivo - Hospital Vale Verde', '55210', 'Vivo', 10, '7134440000', 20, 0, [['Hospital Vale Verde', 0, 20]], true, 'Hospital Vale Verde'],
   ] as const;
-  for (const [name, code, car, ch, base, qty, value, assign] of circ) {
+  for (const [name, code, car, ch, base, qty, value, assign, terceiro, titular] of circ) {
     const sec = id(); S.secrets.set(sec, { label: `Senha do tronco — ${name}`, value: 'Trk#' + code });
     const cid = id();
-    S.circuits.push({ id: cid, name, code, keyNumber: base, carrierId: 'car' + car, channels: ch, ownerClientId: voicenet.id, monthlyValueCents: value, signalingIp: '203.0.113.1', authIp: '198.51.100.1', authUsername: 'tr' + code, authPasswordSecretId: sec, notes: null, deletedAt: null });
+    const dono = titular ? byName[titular]! : voicenet.id;
+    S.circuits.push({ id: cid, name, code, keyNumber: base, carrierId: 'car' + car, channels: ch, ownerClientId: dono, monthlyValueCents: value || null, signalingIp: '203.0.113.1', authIp: '198.51.100.1', authUsername: 'tr' + code, authPasswordSecretId: sec, notes: terceiro ? 'Tronco contratado pelo próprio cliente; registrado aqui só para referência.' : null, thirdParty: terceiro, deletedAt: null });
     gerarFaixaDids(base, qty).forEach((n, i) => {
       const a = (assign as readonly (readonly [string, number, number])[]).find((x) => i >= x[1] && i < x[2]);
-      S.dids.push({ id: id(), number: n, circuitId: cid, clientId: a ? byName[a[0]]! : null, ownerClientId: voicenet.id, note: a && i % 9 === 0 ? 'principal' : null, deletedAt: null });
+      S.dids.push({ id: id(), number: n, circuitId: cid, clientId: a ? byName[a[0]]! : null, ownerClientId: dono, note: a && i % 9 === 0 ? 'principal' : null, deletedAt: null });
     });
   }
   const UNIDADES_DEMO: Record<string, string[]> = {
@@ -226,9 +230,9 @@ const fullClient = (idc: string): ClientFull => {
 };
 const shapeCircuit = (c: CircuitRow): Circuit => {
   const ds = S.dids.filter((d) => d.circuitId === c.id && !d.deletedAt); const assigned = ds.filter((d) => d.clientId).length;
-  return { id: c.id, name: c.name, code: c.code, keyNumber: c.keyNumber, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned } };
+  return { id: c.id, name: c.name, code: c.code, keyNumber: c.keyNumber, thirdParty: c.thirdParty, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned } };
 };
-const shapeDid = (d: DidRow): Did => { const c = S.circuits.find((x) => x.id === d.circuitId); return { id: d.id, number: d.number, numberFormatted: didFormatado(d.number), free: !d.clientId, circuitId: d.circuitId, circuitName: c?.name ?? null, circuitCode: c?.code ?? null, carrierName: S.carriers.find((x) => x.id === c?.carrierId)?.name ?? null, clientId: d.clientId, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null, ownerClientId: d.ownerClientId, ownerName: S.clients.find((x) => x.id === d.ownerClientId)?.tradeName ?? null, note: d.note }; };
+const shapeDid = (d: DidRow): Did => { const c = S.circuits.find((x) => x.id === d.circuitId); return { id: d.id, number: d.number, numberFormatted: didFormatado(d.number), free: !d.clientId, circuitId: d.circuitId, circuitName: c?.name ?? null, circuitCode: c?.code ?? null, carrierName: S.carriers.find((x) => x.id === c?.carrierId)?.name ?? null, clientId: d.clientId, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null, ownerClientId: d.ownerClientId, ownerName: S.clients.find((x) => x.id === d.ownerClientId)?.tradeName ?? null, note: d.note, thirdParty: ehTerceiro(d.circuitId) }; };
 const shapeModel = (m: ModelRow): DeviceModel => {
   const ds = S.devices.filter((d) => d.modelId === m.id && !d.deletedAt);
   const inStock = ds.filter((d) => !d.clientId).length;
@@ -274,14 +278,18 @@ let esperandoCodigo: UserRow | null = null;
 const QR_DEMO = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/><path fill="#000" d="M1 1h7v7h-7zM10 1h2v1h-2zM14 1h1v3h-1zM17 1h2v2h-2zM21 1h7v7h-7zM2 2h5v5h-5zM22 2h5v5h-5zM3 3h3v3h-3zM11 3h2v2h-2zM23 3h3v3h-3zM10 5h1v2h-1zM16 5h3v1h-3zM13 6h2v2h-2zM18 6h1v3h-1zM10 9h3v1h-3zM15 9h2v1h-2zM20 9h3v1h-3zM1 10h2v1h-2zM5 10h4v1h-4zM13 10h1v2h-1zM17 10h2v1h-2zM24 10h4v1h-4zM3 11h2v2h-2zM9 11h2v2h-2zM15 11h1v3h-1zM20 11h2v1h-2zM26 11h2v2h-2zM1 12h1v3h-1zM6 12h3v1h-3zM12 12h2v1h-2zM18 12h3v1h-3zM23 12h2v2h-2zM4 13h3v1h-3zM10 13h1v3h-1zM17 13h1v3h-1zM21 13h2v2h-2zM2 14h3v1h-3zM8 14h1v3h-1zM13 14h3v1h-3zM19 14h1v3h-1zM25 14h3v1h-3zM5 15h2v2h-2zM12 15h1v3h-1zM15 15h2v1h-2zM22 15h2v2h-2zM1 16h3v1h-3zM14 16h1v3h-1zM20 16h3v1h-3zM26 16h2v2h-2zM3 17h2v2h-2zM9 17h2v1h-2zM16 17h2v1h-2zM24 17h2v1h-2zM10 18h3v1h-3zM18 18h3v1h-3zM21 18h1v3h-1zM1 20h7v7h-7zM10 20h2v1h-2zM14 20h3v1h-3zM19 20h2v1h-2zM23 20h2v2h-2zM2 21h5v5h-5zM12 21h1v3h-1zM17 21h2v2h-2zM26 21h2v2h-2zM3 22h3v3h-3zM10 22h1v3h-1zM14 22h2v1h-2zM20 22h2v1h-2zM24 22h2v2h-2zM13 23h1v3h-1zM16 23h1v3h-1zM19 23h2v2h-2zM11 24h2v1h-2zM22 24h3v1h-3zM10 25h1v2h-1zM14 25h3v1h-3zM18 25h1v3h-1zM21 25h2v2h-2zM25 25h3v2h-3zM12 26h2v1h-2zM16 26h1v2h-1zM20 26h1v2h-1z"/></svg>';
 const hasEquip = (cid: string) => activeSubs(cid).some((s) => s.productCode === 'equipamentos');
 /** Os filtros da tela de Circuitos — os mesmos para a lista e para os cartões do topo. */
+/** Link de terceiro (tronco do próprio cliente) só entra com o interruptor ligado. */
+const ligado = (v: unknown) => v === true || v === 'true' || v === 1 || v === '1';
 const filtrarCircuitos = (q: Record<string, unknown>) => {
   const t = String(q.q ?? '').toLowerCase();
   return S.circuits.filter((c) => !c.deletedAt
+    && (ligado(q.includeThirdParty) || !c.thirdParty)
     && (!q.carrierId || c.carrierId === q.carrierId)
     && (!q.ownerClientId || c.ownerClientId === q.ownerClientId)
     && (!t || c.name.toLowerCase().includes(t) || c.code.includes(t) || (c.keyNumber ?? '').includes(t)));
 };
-const filterDids = (q: Record<string, unknown>) => S.dids.filter((d) => !d.deletedAt).filter((d) => (!q.q || d.number.includes(String(q.q).replace(/\D/g, ''))) && (!q.circuitId || (q.circuitId === 'none' ? !d.circuitId : d.circuitId === q.circuitId)) && (!q.clientId || (q.clientId === 'free' ? !d.clientId : d.clientId === q.clientId)) && (!q.ownerClientId || d.ownerClientId === q.ownerClientId));
+const ehTerceiro = (circuitId: string | null) => !!S.circuits.find((c) => c.id === circuitId)?.thirdParty;
+const filterDids = (q: Record<string, unknown>) => S.dids.filter((d) => !d.deletedAt).filter((d) => (ligado(q.includeThirdParty) || !ehTerceiro(d.circuitId))).filter((d) => (!q.q || d.number.includes(String(q.q).replace(/\D/g, ''))) && (!q.circuitId || (q.circuitId === 'none' ? !d.circuitId : d.circuitId === q.circuitId)) && (!q.clientId || (q.clientId === 'free' ? !d.clientId : d.clientId === q.clientId)) && (!q.ownerClientId || d.ownerClientId === q.ownerClientId));
 
 // ---------------- a API ----------------
 export const demoApi: Api = {
@@ -332,8 +340,8 @@ export const demoApi: Api = {
     async summary() {
       await wait(); requirePerm('records.read');
       const active = S.clients.filter((c) => !c.deletedAt && !c.archived && !c.isInternal);
-      const ds = S.dids.filter((d) => !d.deletedAt);
-      const circuits = S.circuits.filter((c) => !c.deletedAt).map(shapeCircuit).map((c) => ({ id: c.id, name: c.name, carrierName: c.carrierName, channels: c.channels, total: c.dids.total, assigned: c.dids.assigned, free: c.dids.free })).sort((a, b) => b.total - a.total);
+      const ds = S.dids.filter((d) => !d.deletedAt && !ehTerceiro(d.circuitId)); // o painel é o controle da VoiceNet
+      const circuits = S.circuits.filter((c) => !c.deletedAt && !c.thirdParty).map(shapeCircuit).map((c) => ({ id: c.id, name: c.name, carrierName: c.carrierName, channels: c.channels, total: c.dids.total, assigned: c.dids.assigned, free: c.dids.free })).sort((a, b) => b.total - a.total);
       const dev = S.devices.filter((d) => !d.deletedAt);
       const alerts: any[] = [];
       const lpNo = active.filter((c) => activeSubs(c.id).some((s) => s.productCode === 'linepbx' && !(s.settings.domain || s.settings.serverIp))).length; if (lpNo) alerts.push({ kind: 'linepbx_sem_endereco', severity: 'warning', message: 'Clientes com LinePBX sem endereço do servidor', count: lpNo, link: '/clientes?produtos=linepbx' });
@@ -468,14 +476,16 @@ export const demoApi: Api = {
       const cs = filtrarCircuitos(q);
       const filtrado = !!(q.q || q.carrierId || q.ownerClientId);
       const ids = new Set(cs.map((c) => c.id));
-      const ds = S.dids.filter((d) => !d.deletedAt && (!filtrado || (d.circuitId && ids.has(d.circuitId))));
+      // com filtro, só os DIDs dos circuitos que sobraram; sem filtro, esses mais os órfãos.
+      // Nos dois casos os de terceiro ficam fora, porque já saíram de `cs`.
+      const ds = S.dids.filter((d) => !d.deletedAt && (d.circuitId ? ids.has(d.circuitId) : !filtrado));
       const assigned = ds.filter((d) => d.clientId).length;
       return { circuits: cs.length, channels: cs.reduce((a, c) => a + c.channels, 0), monthlyValueCents: cs.reduce((a, c) => a + (c.monthlyValueCents ?? 0), 0), dids: { total: ds.length, assigned, free: ds.length - assigned, noCircuit: ds.filter((d) => !d.circuitId).length } };
     },
     async options() { await wait(50); return S.circuits.filter((c) => !c.deletedAt).map((c) => ({ id: c.id, name: c.name, code: c.code, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null })); },
     async get(idc) { await wait(); requirePerm('records.read'); const c = S.circuits.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Circuito'); return shapeCircuit(c); },
-    async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), keyNumber: (d.keyNumber as string) ?? null, carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, signalingIp: (d.signalingIp as string) ?? null, authIp: (d.authIp as string) ?? null, authUsername: (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
-    async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); for (const k of ['name', 'code', 'keyNumber', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'signalingIp', 'authIp', 'authUsername', 'notes'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
+    async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), keyNumber: (d.keyNumber as string) ?? null, carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, signalingIp: (d.signalingIp as string) ?? null, authIp: (d.authIp as string) ?? null, authUsername: (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, thirdParty: !!d.thirdParty, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
+    async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); for (const k of ['name', 'code', 'keyNumber', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'signalingIp', 'authIp', 'authUsername', 'notes', 'thirdParty'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
     async remove(idc) { await wait(); requirePerm('records.delete'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); const n = S.dids.filter((d) => d.circuitId === idc && !d.deletedAt).length; if (n) throw bad(`Este circuito ainda tem ${n} DIDs. Mova-os para outro circuito antes de excluir.`); c.deletedAt = now(); audit('delete', 'circuit', `Mandou o circuito ${c.name} para a lixeira`, c.id); return { ok: true }; },
     async createRange(idc, d) { return demoApi.dids.createRange({ ...d, circuitId: idc }); },
   },

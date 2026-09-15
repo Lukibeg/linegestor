@@ -23,7 +23,7 @@ const occupancy = (db: Db) =>
 function shape(r: any) {
   const total = Number(r.total ?? 0), assigned = Number(r.assigned ?? 0);
   return {
-    id: r.id, name: r.name, code: r.code, keyNumber: r.keyNumber ?? null, carrierId: r.carrierId, carrierName: r.carrierName ?? null, channels: r.channels,
+    id: r.id, name: r.name, code: r.code, keyNumber: r.keyNumber ?? null, carrierId: r.carrierId, carrierName: r.carrierName ?? null, channels: r.channels, thirdParty: !!r.thirdParty,
     ownerClientId: r.ownerClientId, ownerName: r.ownerName ?? null, monthlyValueCents: r.monthlyValueCents,
     signalingIp: r.signalingIp, authIp: r.authIp, authUsername: r.authUsername,
     authPassword: { hasSecret: !!r.authPasswordSecretId, secretId: r.authPasswordSecretId ?? null },
@@ -44,9 +44,13 @@ export async function summary(db: Db, q: Partial<CircuitoListar> = {}) {
     .from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(where);
   // a numeração acompanha o mesmo filtro: só os DIDs dos circuitos que sobraram
   const idsFiltrados = db.select({ id: circuits.id }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(where);
-  const didWhere = filtrado
-    ? and(isNull(dids.deletedAt), inArray(dids.circuitId, idsFiltrados))
-    : isNull(dids.deletedAt);
+  // Com filtro na tela, só os DIDs dos circuitos que sobraram. Sem filtro, esses mais os órfãos
+  // ("DIDs sem circuito"), que não pertencem a circuito nenhum e precisam aparecer no cartão.
+  // Em ambos os casos os de terceiros ficam de fora, porque já saíram de `idsFiltrados`.
+  const didWhere = and(
+    isNull(dids.deletedAt),
+    filtrado ? inArray(dids.circuitId, idsFiltrados) : or(inArray(dids.circuitId, idsFiltrados), isNull(dids.circuitId))!,
+  );
   const [d] = await db
     .select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})`, noCircuit: sql<number>`count(*) filter (where ${dids.circuitId} is null)` })
     .from(dids).where(didWhere);
@@ -66,6 +70,8 @@ export async function summary(db: Db, q: Partial<CircuitoListar> = {}) {
  */
 function filtros(q: Partial<CircuitoListar>): SQL[] {
   const conds: SQL[] = [isNull(circuits.deletedAt)];
+  // o que não é da VoiceNet só entra quando alguém liga o interruptor
+  if (!q.includeThirdParty) conds.push(eq(circuits.thirdParty, false));
   if (q.carrierId) conds.push(eq(circuits.carrierId, q.carrierId));
   if (q.ownerClientId) conds.push(eq(circuits.ownerClientId, q.ownerClientId));
   if (q.q) conds.push(or(ilike(circuits.name, `%${q.q}%`), ilike(circuits.code, `%${q.q}%`), ilike(circuits.keyNumber, `%${q.q}%`), ilike(carriers.name, `%${q.q}%`))!);
@@ -98,7 +104,7 @@ export async function list(db: Db, q: CircuitoListar) {
     .select({
       id: circuits.id, name: circuits.name, code: circuits.code, keyNumber: circuits.keyNumber, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
       ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, signalingIp: circuits.signalingIp,
-      authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes,
+      authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes, thirdParty: circuits.thirdParty,
       createdAt: circuits.createdAt, updatedAt: circuits.updatedAt, deletedAt: circuits.deletedAt, total: occ.total, assigned: occ.assigned,
     })
     .from(circuits)
@@ -117,7 +123,7 @@ export async function get(db: Db, id: string) {
     .select({
       id: circuits.id, name: circuits.name, code: circuits.code, keyNumber: circuits.keyNumber, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
       ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, signalingIp: circuits.signalingIp,
-      authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes,
+      authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes, thirdParty: circuits.thirdParty,
       createdAt: circuits.createdAt, updatedAt: circuits.updatedAt, deletedAt: circuits.deletedAt, total: occ.total, assigned: occ.assigned,
     })
     .from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).leftJoin(clients, eq(clients.id, circuits.ownerClientId)).leftJoin(occ, eq(occ.circuitId, circuits.id))

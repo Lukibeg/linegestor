@@ -48,6 +48,8 @@ export type Circuit = {
   id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; carrierName: string | null; channels: number;
   ownerClientId: string | null; ownerName: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null;
   authUsername: string | null; authPassword: SecretRef; notes: string | null; dids: { total: number; assigned: number; free: number };
+  /** true = tronco do próprio cliente, com outra operadora. Só aparece com "links de terceiros" ligado. */
+  thirdParty: boolean;
 };
 /** Os cartões no topo da tela de Circuitos (obedecem aos mesmos filtros da lista). */
 export type CircuitSummary = { circuits: number; channels: number; monthlyValueCents: number; dids: { total: number; assigned: number; free: number; noCircuit: number } };
@@ -57,6 +59,8 @@ export type InventorySummary = { inStock: number; withClients: number; inactive:
 export type Did = {
   id: string; number: string; numberFormatted: string; free: boolean; circuitId: string | null; circuitName: string | null; circuitCode: string | null; carrierName: string | null;
   clientId: string | null; clientName: string | null; ownerClientId: string | null; ownerName: string | null; note: string | null;
+  /** o circuito deste número não é da VoiceNet */
+  thirdParty?: boolean;
 };
 
 export type DeviceModel = {

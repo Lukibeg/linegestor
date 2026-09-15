@@ -104,7 +104,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     });
 
   app.get('/:id/dids', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'DIDs do cliente', params: Id, querystring: z.object({ page: z.coerce.number().default(1), pageSize: z.coerce.number().default(100) }) } },
-    async (req) => didsSvc.list(app.db, { ...req.query, clientId: req.params.id, sort: 'number', dir: 'asc' }));
+    // na ficha do cliente a pergunta é "o que este cliente tem": o tronco dele com outra operadora entra
+    async (req) => didsSvc.list(app.db, { ...req.query, clientId: req.params.id, includeThirdParty: true, sort: 'number', dir: 'asc' }));
 
   app.get('/:id/devices', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Aparelhos com o cliente', params: Id } },
     async (req) => ({ devices: await inv.listDevices(app.db, { clientId: req.params.id, page: 1, pageSize: 500 }) }));

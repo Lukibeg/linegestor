@@ -343,7 +343,7 @@ function Dids({ c }: { c: ClientFull }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
-        <tbody>{ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, note: (d) => d.note }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
+        <tbody>{ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, note: (d) => d.note }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
       <div className="px-3 py-2 text-[12.5px] text-muted border-t border-line"><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div>
     </div>
   );
@@ -362,7 +362,37 @@ function Equipamentos({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-devices', c.id], queryFn: () => api.clients.devices(c.id) });
   const o = useOrdenacaoLocal('modelName');
   const temProduto = c.subscriptions.some((s) => s.productCode === 'equipamentos' && s.active);
-  const devs = q.data?.devices.items ?? [];
+  const todos = q.data?.devices.items ?? [];
+
+  // Cliente grande chega a dezenas de aparelhos: sem filtro, achar "os da Loja Centro" vira rolagem.
+  // A lista vem inteira do servidor, então o filtro acontece aqui mesmo, na hora.
+  const [busca, setBusca] = useState('');
+  const [fModelo, setFModelo] = useState('');
+  const [fUnidade, setFUnidade] = useState('');
+  const [fModalidade, setFModalidade] = useState('');
+  const [fCondicao, setFCondicao] = useState('');
+
+  const opcoes = useMemo(() => ({
+    modelos: [...new Set(todos.map((d) => d.modelName))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    unidades: [...new Set(todos.map((d) => d.unit).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    modalidades: [...new Set(todos.map((d) => d.currentModality).filter(Boolean) as string[])],
+    condicoes: [...new Set(todos.map((d) => d.condition))],
+  }), [todos]);
+
+  const devs = useMemo(() => {
+    const t = busca.trim().toLowerCase();
+    const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase();
+    return todos.filter((d) => (!fModelo || d.modelName === fModelo)
+      && (!fUnidade || d.unit === fUnidade)
+      && (!fModalidade || d.currentModality === fModalidade)
+      && (!fCondicao || d.condition === fCondicao)
+      && (!t || (!!hex && (d.mac ?? '').includes(hex)) || (d.unit ?? '').toLowerCase().includes(t)
+        || d.modelName.toLowerCase().includes(t) || (d.ip ?? '').includes(t)
+        || (d.location ?? '').toLowerCase().includes(t) || (d.note ?? '').toLowerCase().includes(t)));
+  }, [todos, busca, fModelo, fUnidade, fModalidade, fCondicao]);
+
+  const filtrado = devs.length !== todos.length;
+  const limpar = () => { setBusca(''); setFModelo(''); setFUnidade(''); setFModalidade(''); setFCondicao(''); };
 
   const resumo = useMemo(() => {
     const porModelo = new Map<string, { qtd: number; valor: number }>();
@@ -379,13 +409,21 @@ function Equipamentos({ c }: { c: ClientFull }) {
   }, [devs]);
 
   if (q.isLoading) return <Carregando />;
-  if (!devs.length) return <Vazio titulo="Nenhum aparelho com este cliente" texto={temProduto ? 'Use "Movimentar aparelhos" no Inventário para locar, vender ou emprestar.' : 'Para movimentar aparelhos para este cliente, marque o produto Equipamentos na aba Produtos.'} acao={<Link className="btn-secondary" to="/inventario">Ir para o Inventário</Link>} />;
+  if (!todos.length) return <Vazio titulo="Nenhum aparelho com este cliente" texto={temProduto ? 'Use "Movimentar aparelhos" no Inventário para locar, vender ou emprestar.' : 'Para movimentar aparelhos para este cliente, marque o produto Equipamentos na aba Produtos.'} acao={<Link className="btn-secondary" to="/inventario">Ir para o Inventário</Link>} />;
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="card p-3 flex flex-wrap gap-2 items-center">
+        <input className="input max-w-[220px] font-mono" placeholder="MAC, unidade, modelo, IP…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <select className="input w-auto" value={fModelo} onChange={(e) => setFModelo(e.target.value)}><option value="">Todos os modelos</option>{opcoes.modelos.map((m) => <option key={m} value={m}>{m}</option>)}</select>
+        {opcoes.unidades.length > 0 && <select className="input w-auto" value={fUnidade} onChange={(e) => setFUnidade(e.target.value)}><option value="">Todas as unidades</option>{opcoes.unidades.map((u) => <option key={u} value={u}>{u}</option>)}</select>}
+        <select className="input w-auto" value={fModalidade} onChange={(e) => setFModalidade(e.target.value)}><option value="">Todas as modalidades</option>{opcoes.modalidades.map((m) => <option key={m} value={m}>{(MODALIDADES as any)[m] ?? m}</option>)}</select>
+        {opcoes.condicoes.length > 1 && <select className="input w-auto" value={fCondicao} onChange={(e) => setFCondicao(e.target.value)}><option value="">Ativos e inativos</option>{opcoes.condicoes.map((k) => <option key={k} value={k}>{condicaoNome[k] ?? k}</option>)}</select>}
+        {filtrado && <button className="btn-ghost btn-sm text-muted" onClick={limpar}>limpar filtros</button>}
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="card p-4">
-          <div className="eyebrow mb-2">Por modelo</div>
+          <div className="eyebrow mb-2">Por modelo{filtrado && <span className="text-muted"> · filtrado</span>}</div>
           <ul className="text-sm flex flex-col gap-1">
             {resumo.modelos.map(([nome, x]) => (
               <li key={nome} className="flex justify-between gap-3 items-baseline">
@@ -396,7 +434,7 @@ function Equipamentos({ c }: { c: ClientFull }) {
           </ul>
         </div>
         <div className="card p-4">
-          <div className="eyebrow mb-2">Valor por modelo</div>
+          <div className="eyebrow mb-2">Valor por modelo{filtrado && <span className="text-muted"> · filtrado</span>}</div>
           <ul className="text-sm flex flex-col gap-1">
             {resumo.modelos.map(([nome, x]) => (
               <li key={nome} className="flex justify-between gap-3 items-baseline">
@@ -409,9 +447,10 @@ function Equipamentos({ c }: { c: ClientFull }) {
         <div className="card p-4">
           <div className="eyebrow">Total de equipamentos</div>
           <div className="font-display text-2xl font-semibold tnum">{resumo.total}</div>
+          {filtrado && <div className="text-muted text-[12px] tnum">de {todos.length} com o cliente</div>}
         </div>
         <div className="card p-4">
-          <div className="eyebrow">Valor dos equipamentos</div>
+          <div className="eyebrow">Valor dos equipamentos{filtrado && <span className="text-muted"> · filtrado</span>}</div>
           <div className="font-display text-2xl font-semibold tnum">{reais(resumo.valor)}</div>
           <div className="text-muted text-[12px]">
             {resumo.semValor > 0 ? `${resumo.semValor} aparelho(s) sem valor cadastrado` : 'soma do valor de cada aparelho'}
@@ -420,12 +459,26 @@ function Equipamentos({ c }: { c: ClientFull }) {
       </div>
 
       <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><Th o={o} col="modelName">Modelo</Th><Th o={o} col="mac">MAC</Th><Th o={o} col="unit">Unidade</Th><Th o={o} col="currentModality">Modalidade</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="valueCents" align="right">Valor</Th><Th o={o} col="ip">IP</Th><Th o={o} col="location">Local</Th></tr></thead>
-        <tbody>{ordenarLista(devs, o, { modelName: (d) => d.modelName, mac: (d) => d.mac, unit: (d) => d.unit, currentModality: (d) => d.currentModality, condition: (d) => d.condition, valueCents: (d) => d.valueCents, ip: (d) => d.ip, location: (d) => d.location }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td>{d.modelName}</td><td className="font-mono"><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.mac ? d.macFormatted : <span className="text-muted font-sans text-[13px]">não aplicável</span>}</Link></td><td>{d.unit ?? <span className="text-muted">—</span>}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="text-right tnum">{d.valueCents != null ? reais(d.valueCents) : <span className="text-muted">—</span>}</td><td className="font-mono">{d.ip ?? '—'}</td><td className="text-muted">{d.location ?? '—'}</td></tr>)}</tbody></table></div>
+        <tbody>{ordenarLista(devs, o, { modelName: (d) => d.modelName, mac: (d) => d.mac, unit: (d) => d.unit, currentModality: (d) => d.currentModality, condition: (d) => d.condition, valueCents: (d) => d.valueCents, ip: (d) => d.ip, location: (d) => d.location }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td>{d.modelName}</td><td className="font-mono"><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.mac ? d.macFormatted : <span className="text-muted font-sans text-[13px]">não aplicável</span>}</Link></td><td>{d.unit ?? <span className="text-muted">—</span>}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="text-right tnum">{d.valueCents != null ? reais(d.valueCents) : <span className="text-muted">—</span>}</td><td className="font-mono">{d.ip ?? '—'}</td><td className="text-muted">{d.location ?? '—'}</td></tr>)}</tbody></table>
+        {!devs.length && <div className="p-4 text-sm text-muted">Nenhum aparelho com esses filtros. <button className="link" onClick={limpar}>limpar filtros</button></div>}
+      </div>
     </div>
   );
 }
 
 // ---------- Acessos ----------
+
+/** A anotação daquele produto/módulo, se houver. Vem do campo "Anotações" da aba Produtos. */
+function Anotacao({ texto }: { texto: string | null }) {
+  if (!texto) return null;
+  return (
+    <div>
+      <div className="eyebrow mb-1">Anotação</div>
+      <p className="text-sm whitespace-pre-wrap text-ink-2">{texto}</p>
+    </div>
+  );
+}
+
 function Acessos({ c }: { c: ClientFull }) {
   const { can } = useAuth();
   const lp = c.subscriptions.find((s) => s.productCode === 'linepbx' && s.active);
@@ -436,15 +489,28 @@ function Acessos({ c }: { c: ClientFull }) {
   if (!lp && !sz) return <Vazio titulo="Sem acessos cadastrados" texto="Os acessos aparecem quando o cliente tem LinePBX (e seus módulos FOP2 e Omniboard) ou SZChat." />;
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      {lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX</Chip>{c.links.web && <a className="link text-sm" href={c.links.web} target="_blank" rel="noreferrer">abrir interface ↗</a>}</div>
-        <dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Endereço</dt><dd className="font-mono">{lp.settings?.domain ?? '—'}</dd><dt className="text-muted">IP</dt><dd className="font-mono">{lp.settings?.serverIp ?? '—'}</dd><dt className="text-muted">SSH</dt><dd className="font-mono">{c.links.ssh ?? '—'}</dd></dl>
-        <Campo label="Senha SSH"><CampoSegredo secretId={lp.settings?.sshPassword?.secretId ?? null} hasSecret={!!lp.settings?.sshPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo></div>}
-      {f2 && lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX › FOP2</Chip>{c.links.fop2 && <a className="link text-sm" href={c.links.fop2} target="_blank" rel="noreferrer">abrir painel ↗</a>}</div><dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Ramal admin</dt><dd className="font-mono">{f2.settings?.adminExtension ?? '—'}</dd></dl><p className="text-[12px] text-muted">O link do FOP2 nunca carrega senha na URL.</p></div>}
-      {om && lp && <div className="card p-4 flex flex-col gap-3"><Chip color={lp.color}>LinePBX › Omniboard</Chip><dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{om.settings?.adminLogin ?? '—'}</dd></dl>
+      {lp && (
+        <div className="card p-4 flex flex-col gap-3">
+          <div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX</Chip>{c.links.web && <a className="link text-sm" href={c.links.web} target="_blank" rel="noreferrer">abrir interface ↗</a>}</div>
+          {/* usuário e porta em campos próprios: na hora de abrir o PuTTY é isso que se digita,
+              e a linha ssh:// inteira só serve para quem clica no atalho do topo */}
+          <dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm">
+            <dt className="text-muted">Hospedagem</dt><dd>{lp.settings?.hostingName ?? '—'}</dd>
+            <dt className="text-muted">Endereço</dt><dd className="font-mono break-all">{lp.settings?.domain ?? '—'}</dd>
+            <dt className="text-muted">IP</dt><dd className="font-mono">{lp.settings?.serverIp ?? '—'}</dd>
+            <dt className="text-muted">Usuário SSH</dt><dd className="font-mono">{lp.settings?.sshUser ?? '—'}</dd>
+            <dt className="text-muted">Porta SSH</dt><dd className="font-mono tnum">{lp.settings?.sshPort ?? '—'}</dd>
+          </dl>
+          <Campo label="Senha SSH"><CampoSegredo secretId={lp.settings?.sshPassword?.secretId ?? null} hasSecret={!!lp.settings?.sshPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
+          <Anotacao texto={lp.notes} />
+        </div>
+      )}
+      {f2 && lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX › FOP2</Chip>{c.links.fop2 && <a className="link text-sm" href={c.links.fop2} target="_blank" rel="noreferrer">abrir painel ↗</a>}</div><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Ramal admin</dt><dd className="font-mono">{f2.settings?.adminExtension ?? '—'}</dd></dl><p className="text-[12px] text-muted">O link do FOP2 nunca carrega senha na URL.</p><Anotacao texto={f2.notes} /></div>}
+      {om && lp && <div className="card p-4 flex flex-col gap-3"><Chip color={lp.color}>LinePBX › Omniboard</Chip><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{om.settings?.adminLogin ?? '—'}</dd></dl>
         <Campo label="Senha admin"><CampoSegredo secretId={om.settings?.adminPassword?.secretId ?? null} hasSecret={!!om.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
-        <Campo label="Senha padrão de usuário"><CampoSegredo secretId={om.settings?.userDefaultPassword?.secretId ?? null} hasSecret={!!om.settings?.userDefaultPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo></div>}
-      {sz && <div className="card p-4 flex flex-col gap-3"><Chip color={sz.color}>SZChat</Chip><dl className="grid grid-cols-[90px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{sz.settings?.adminLogin ?? '—'}</dd></dl>
-        <Campo label="Senha admin"><CampoSegredo secretId={sz.settings?.adminPassword?.secretId ?? null} hasSecret={!!sz.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo></div>}
+        <Campo label="Senha padrão de usuário"><CampoSegredo secretId={om.settings?.userDefaultPassword?.secretId ?? null} hasSecret={!!om.settings?.userDefaultPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo><Anotacao texto={om.notes} /></div>}
+      {sz && <div className="card p-4 flex flex-col gap-3"><Chip color={sz.color}>SZChat</Chip><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{sz.settings?.adminLogin ?? '—'}</dd></dl>
+        <Campo label="Senha admin"><CampoSegredo secretId={sz.settings?.adminPassword?.secretId ?? null} hasSecret={!!sz.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo><Anotacao texto={sz.notes} /></div>}
     </div>
   );
 }

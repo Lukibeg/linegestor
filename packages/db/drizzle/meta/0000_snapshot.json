@@ -1,5 +1,5 @@
 {
-  "id": "a8266e35-3e4d-4d26-97e0-4f91ea9c67c3",
+  "id": "01b9362d-50e0-4dda-83ac-31246801e7c1",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -230,6 +230,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "third_party": {
+          "name": "third_party",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "monthly_value_cents": {
           "name": "monthly_value_cents",

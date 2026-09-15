@@ -19,7 +19,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/:id', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Detalhe do circuito', params: Id } }, async (req) => svc.get(app.db, req.params.id));
 
   app.get('/:id/dids', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'DIDs do circuito', params: Id, querystring: PaginacaoSchema } },
-    async (req) => didsSvc.list(app.db, { ...req.query, circuitId: req.params.id, sort: 'number', dir: 'asc' }));
+    // dentro de um circuito, mostra os números dele — inclusive se for um link de terceiro
+    async (req) => didsSvc.list(app.db, { ...req.query, circuitId: req.params.id, includeThirdParty: true, sort: 'number', dir: 'asc' }));
 
   app.post('/', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Circuitos'], summary: 'Criar circuito', body: CircuitoGravarSchema } },
     async (req, reply) => {

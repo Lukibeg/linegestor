@@ -10,7 +10,7 @@ import { api } from '../../api/index.js';
 import type { Circuit } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Kpi, Modal, Ocupacao, Paginacao, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, Kpi, Modal, Ocupacao, Paginacao, Spinner, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { didFormatado, paraCentavos, reais } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
@@ -25,13 +25,22 @@ export function CircuitosLista() {
   const nav = useNavigate();
   const aba = (sp.get('aba') === 'numeracao' ? 'numeracao' : 'circuitos') as Aba;
   const q = sp.get('q') ?? ''; const carrierId = sp.get('operadora') ?? ''; const ownerClientId = sp.get('titular') ?? ''; const page = Number(sp.get('p') ?? 1);
+  // o interruptor dos links de terceiros vale para as DUAS abas e fica no endereço, como os filtros
+  const terceiros = sp.get('terceiros') === '1';
   const numero = contarDe(page, 50); // a contagem segue pela lista toda, não recomeça a cada página
-  const filtros = { q, carrierId, ownerClientId };
+  const filtros = { q, carrierId, ownerClientId, includeThirdParty: terceiros };
   const temFiltro = !!(q || carrierId || ownerClientId);
   const [novo, setNovo] = useState(false);
   const o = useOrdenacao('name');
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
-  const trocarAba = (a: Aba) => setSp(a === 'numeracao' ? { aba: 'numeracao' } : {}, { replace: true });
+  // trocar de aba limpa os filtros (são outros em cada uma), mas o interruptor dos terceiros
+  // é modo de exibição, não filtro: ele atravessa as duas abas
+  const trocarAba = (a: Aba) => {
+    const n = new URLSearchParams();
+    if (a === 'numeracao') n.set('aba', 'numeracao');
+    if (terceiros) n.set('terceiros', '1');
+    setSp(n, { replace: true });
+  };
   const carriers = useQuery({ queryKey: ['catalog', 'carriers'], queryFn: () => api.admin.catalog('carriers') });
   const titulares = useQuery({ queryKey: ['client-options', 'internal'], queryFn: () => api.clients.options({ includeInternal: true }) });
   // os cartões do topo usam os MESMOS filtros da lista
@@ -56,6 +65,8 @@ export function CircuitosLista() {
           <input className="input max-w-xs" placeholder="Buscar por nome, N° do circuito ou operadora" value={q} onChange={(e) => set('q', e.target.value)} />
           <select className="input w-auto" value={carrierId} onChange={(e) => set('operadora', e.target.value || null)}><option value="">Todas as operadoras</option>{carriers.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
           <select className="input w-auto" value={ownerClientId} onChange={(e) => set('titular', e.target.value || null)}><option value="">Todos os titulares</option>{titulares.data?.map((t) => <option key={t.id} value={t.id}>{t.name}{t.isInternal ? ' (interna)' : ''}</option>)}</select>
+          <span className="flex-1" />
+          <Toggle checked={terceiros} onChange={(v) => set('terceiros', v ? '1' : null)} label="Habilitar links de terceiros" />
         </div>
         {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum circuito" texto="Cadastre o feixe contratado junto à operadora." /> : (
           <div className="card overflow-x-auto"><table className="table">
@@ -66,7 +77,7 @@ export function CircuitosLista() {
             </tr></thead>
             <tbody>{lista.data.items.map((c, i) => (
               <tr key={c.id} className="cursor-pointer" onClick={() => nav(`/circuitos/${c.id}`)}>
-                <TdN n={numero(i)} /><td className="font-medium">{c.name}</td><td>{c.carrierName ?? '—'}</td><td className="font-mono tnum">{c.code}</td><td className="font-mono tnum whitespace-nowrap">{c.keyNumber ? didFormatado(c.keyNumber) : <span className="text-muted">—</span>}</td><td className="text-ink-2">{c.ownerName ?? '—'}</td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.dids.total}</td><td className="text-right tnum">{c.dids.free}</td><td><Ocupacao total={c.dids.total} assigned={c.dids.assigned} /></td><td className="text-right tnum">{reais(c.monthlyValueCents)}</td>
+                <TdN n={numero(i)} /><td className="font-medium">{c.name} {c.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</td><td>{c.carrierName ?? '—'}</td><td className="font-mono tnum">{c.code}</td><td className="font-mono tnum whitespace-nowrap">{c.keyNumber ? didFormatado(c.keyNumber) : <span className="text-muted">—</span>}</td><td className="text-ink-2">{c.ownerName ?? '—'}</td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.dids.total}</td><td className="text-right tnum">{c.dids.free}</td><td><Ocupacao total={c.dids.total} assigned={c.dids.assigned} /></td><td className="text-right tnum">{reais(c.monthlyValueCents)}</td>
               </tr>))}</tbody></table></div>
         )}
         {lista.data && <Paginacao page={page} pageSize={50} total={lista.data.total} onChange={(p) => set('p', String(p))} />}
@@ -84,11 +95,11 @@ export function CircuitoForm({ open, onClose, onSaved, circuito }: { open: boole
   const [f, setF] = useState<Record<string, any>>({});
   const [senha, setSenha] = useState('');
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
-  useEffect(() => { if (open) { setErr(''); setSenha(''); setF(circuito ? { name: circuito.name, code: circuito.code, keyNumber: circuito.keyNumber ? didFormatado(circuito.keyNumber) : '', carrierId: circuito.carrierId ?? '', channels: circuito.channels, ownerClientId: circuito.ownerClientId ?? '', monthlyValue: circuito.monthlyValueCents != null ? (circuito.monthlyValueCents / 100).toFixed(2).replace('.', ',') : '', signalingIp: circuito.signalingIp ?? '', authIp: circuito.authIp ?? '', authUsername: circuito.authUsername ?? '', notes: circuito.notes ?? '' } : { name: '', code: '', keyNumber: '', carrierId: '', channels: 0, ownerClientId: owners.data?.find((o) => o.internalCode === 'voicenet')?.id ?? '', monthlyValue: '', signalingIp: '', authIp: '', authUsername: '', notes: '' }); } }, [open, circuito, owners.data]);
+  useEffect(() => { if (open) { setErr(''); setSenha(''); setF(circuito ? { name: circuito.name, code: circuito.code, keyNumber: circuito.keyNumber ? didFormatado(circuito.keyNumber) : '', carrierId: circuito.carrierId ?? '', channels: circuito.channels, ownerClientId: circuito.ownerClientId ?? '', monthlyValue: circuito.monthlyValueCents != null ? (circuito.monthlyValueCents / 100).toFixed(2).replace('.', ',') : '', signalingIp: circuito.signalingIp ?? '', authIp: circuito.authIp ?? '', authUsername: circuito.authUsername ?? '', notes: circuito.notes ?? '', thirdParty: circuito.thirdParty } : { name: '', code: '', keyNumber: '', carrierId: '', channels: 0, ownerClientId: owners.data?.find((o) => o.internalCode === 'voicenet')?.id ?? '', monthlyValue: '', signalingIp: '', authIp: '', authUsername: '', notes: '', thirdParty: false }); } }, [open, circuito, owners.data]);
   const save = async () => {
     setBusy(true); setErr('');
     try {
-      const body = { name: f.name, code: f.code, keyNumber: f.keyNumber || null, carrierId: f.carrierId || null, channels: Number(f.channels) || 0, ownerClientId: f.ownerClientId || null, monthlyValueCents: f.monthlyValue ? paraCentavos(f.monthlyValue) : null, signalingIp: f.signalingIp || null, authIp: f.authIp || null, authUsername: f.authUsername || null, notes: f.notes || null, ...(senha ? { authPassword: senha } : {}) };
+      const body = { name: f.name, code: f.code, keyNumber: f.keyNumber || null, carrierId: f.carrierId || null, channels: Number(f.channels) || 0, ownerClientId: f.ownerClientId || null, monthlyValueCents: f.monthlyValue ? paraCentavos(f.monthlyValue) : null, signalingIp: f.signalingIp || null, authIp: f.authIp || null, authUsername: f.authUsername || null, notes: f.notes || null, thirdParty: !!f.thirdParty, ...(senha ? { authPassword: senha } : {}) };
       const r = circuito ? await api.circuits.update(circuito.id, body) : await api.circuits.create(body);
       await qc.invalidateQueries({ queryKey: ['circuits'] }); await qc.invalidateQueries({ queryKey: ['circuit', r.id] });
       toast.push('ok', circuito ? 'Circuito atualizado' : 'Circuito criado'); onSaved(r);
@@ -105,6 +116,14 @@ export function CircuitoForm({ open, onClose, onSaved, circuito }: { open: boole
           <Campo label="Canais (chamadas simultâneas)"><input type="number" min={0} className="input tnum" value={f.channels ?? 0} onChange={(e) => setF({ ...f, channels: e.target.value })} /></Campo>
           <Campo label="Valor mensal (R$)"><input className="input tnum" placeholder="0,00" value={f.monthlyValue ?? ''} onChange={(e) => setF({ ...f, monthlyValue: e.target.value })} /></Campo>
           <Campo label="Titular" dica="quem detém o contrato com a operadora (normalmente VoiceNet)" className="col-span-2"><select className="input" value={f.ownerClientId ?? ''} onChange={(e) => setF({ ...f, ownerClientId: e.target.value })}><option value="">—</option>{owners.data?.map((o) => <option key={o.id} value={o.id}>{o.name}{o.isInternal ? ' (interna)' : ''}</option>)}</select></Campo>
+          {/* o tronco que o próprio cliente contratou: guardar é útil, mas não pode poluir o controle da VoiceNet */}
+          <label className="col-span-2 flex items-start gap-2 text-sm cursor-pointer">
+            <input type="checkbox" className="mt-0.5" checked={!!f.thirdParty} onChange={(e) => setF({ ...f, thirdParty: e.target.checked })} />
+            <span>
+              <span className="font-semibold">Link de terceiro (não é da VoiceNet)</span>
+              <span className="block text-muted text-[12.5px]">Marque quando o tronco for do próprio cliente, com outra operadora. Ele e os números dele ficam fora das listas, dos cartões e do painel — só aparecem quando alguém liga "Habilitar links de terceiros".</span>
+            </span>
+          </label>
         </div>
         <fieldset className="card p-3 flex flex-col gap-3" disabled={!can('servers.write')}>
           <legend className="eyebrow px-1">Tronco (autenticação) {!can('servers.write') && '· somente leitura'}</legend>

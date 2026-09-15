@@ -11,6 +11,9 @@ import { didFormatado, macFormatado, MODALIDADES } from '@gestor/shared';
 
 export async function summary(db: Db) {
   const activeClient = and(isNull(clients.deletedAt), eq(clients.archived, false), eq(clients.isInternal, false));
+  // O painel é o controle da VoiceNet: link de terceiro (tronco que o cliente contratou de outra
+  // operadora) fica de fora de tudo aqui, senão polui os números e inventa inconsistência.
+  const semTerceiro = sql`(${dids.circuitId} is null or ${dids.circuitId} not in (select ${circuits.id} from ${circuits} where ${circuits.thirdParty} = true))`;
 
   const [cl] = await db.select({ n: sql<number>`count(*)` }).from(clients).where(activeClient);
   const byProduct = await db
@@ -18,12 +21,12 @@ export async function summary(db: Db) {
     .from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId)).innerJoin(clients, eq(clients.id, subscriptions.clientId))
     .where(and(isNull(subscriptions.deactivatedAt), activeClient)).groupBy(products.code, products.name, products.color, products.sortOrder).orderBy(products.sortOrder);
 
-  const [d] = await db.select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})`, noCircuit: sql<number>`count(*) filter (where ${dids.circuitId} is null)` }).from(dids).where(isNull(dids.deletedAt));
+  const [d] = await db.select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})`, noCircuit: sql<number>`count(*) filter (where ${dids.circuitId} is null)` }).from(dids).where(and(isNull(dids.deletedAt), semTerceiro));
 
   const occ = await db
     .select({ id: circuits.id, name: circuits.name, carrierName: carriers.name, channels: circuits.channels, total: sql<number>`count(${dids.id})`, assigned: sql<number>`count(${dids.clientId})` })
     .from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).leftJoin(dids, and(eq(dids.circuitId, circuits.id), isNull(dids.deletedAt)))
-    .where(isNull(circuits.deletedAt)).groupBy(circuits.id, carriers.name);
+    .where(and(isNull(circuits.deletedAt), eq(circuits.thirdParty, false))).groupBy(circuits.id, carriers.name);
   const circuitsView = occ.map((c) => ({ ...c, total: Number(c.total), assigned: Number(c.assigned), free: Number(c.total) - Number(c.assigned) }));
 
   // vendido não conta: já não é nosso
@@ -44,7 +47,8 @@ export async function summary(db: Db) {
   if (Number(lpNoAddr[0]?.n ?? 0)) alerts.push({ kind: 'linepbx_sem_endereco', severity: 'warning', message: 'Clientes com LinePBX sem endereço do servidor', count: Number(lpNoAddr[0]!.n), link: '/clientes?produtos=linepbx' });
 
   const voiceIds = db.select({ id: subscriptions.clientId }).from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId)).where(and(eq(products.code, 'voicenet'), isNull(subscriptions.deactivatedAt)));
-  const [didNoVoice] = await db.select({ n: sql<number>`count(distinct ${dids.clientId})` }).from(dids).where(and(isNull(dids.deletedAt), sql`${dids.clientId} is not null`, sql`${dids.clientId} not in ${voiceIds}`));
+  // o cliente com tronco próprio não é inconsistência: por isso o filtro de terceiro entra aqui também
+  const [didNoVoice] = await db.select({ n: sql<number>`count(distinct ${dids.clientId})` }).from(dids).where(and(isNull(dids.deletedAt), semTerceiro, sql`${dids.clientId} is not null`, sql`${dids.clientId} not in ${voiceIds}`));
   if (Number(didNoVoice?.n ?? 0)) alerts.push({ kind: 'did_sem_voicenet', severity: 'warning', message: 'Clientes com DIDs alocados mas sem o produto VoiceNet', count: Number(didNoVoice!.n), link: '/circuitos?aba=numeracao' });
 
   const equipIds = db.select({ id: subscriptions.clientId }).from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId)).where(and(eq(products.code, 'equipamentos'), isNull(subscriptions.deactivatedAt)));

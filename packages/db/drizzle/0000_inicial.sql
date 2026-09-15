@@ -26,6 +26,7 @@ CREATE TABLE "circuits" (
 	"channels" integer DEFAULT 0 NOT NULL,
 	"key_number" text,
 	"owner_client_id" text,
+	"third_party" boolean DEFAULT false NOT NULL,
 	"monthly_value_cents" integer,
 	"signaling_ip" text,
 	"auth_ip" text,

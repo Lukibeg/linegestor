@@ -240,6 +240,12 @@ export const circuits = pgTable(
     keyNumber: text('key_number'),
     /** Titular do circuito: quem detém o contrato com a operadora (normalmente VoiceNet) */
     ownerClientId: text('owner_client_id').references(() => clients.id),
+    /**
+     * Circuito que NÃO é da VoiceNet: o tronco que o próprio cliente contratou de outra operadora.
+     * Guardar é útil (dá para saber a numeração dele), mas polui o controle da VoiceNet — por isso
+     * fica fora das listas, dos cartões e do painel até alguém ligar "links de terceiros".
+     */
+    thirdParty: boolean('third_party').notNull().default(false),
     /** Custo/valor mensal do feixe, em centavos */
     monthlyValueCents: integer('monthly_value_cents'),
     /** IP da operadora (sinalização) */

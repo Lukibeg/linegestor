@@ -99,3 +99,41 @@ describe('DIDs', () => {
     expect((await s.del(`/circuits/${circuitId}`)).statusCode).toBe(200);
   });
 });
+
+describe('links de terceiros', () => {
+  it('circuito de terceiro e seus DIDs somem das listas até alguém ligar o interruptor', async () => {
+    const cliente = (await s.post('/clients', { tradeName: 'Padaria do Zé', legalName: 'Zé Panificadora ME', cnpj: '12.345.678/0001-95' })).json().id;
+    const proprio = (await s.post('/circuits', { name: 'Vivo - Padaria', code: '99001', channels: 4, ownerClientId: cliente, thirdParty: true })).json();
+    expect(proprio.thirdParty).toBe(true);
+    await s.post('/dids/range', { baseNumber: '(71) 4000-0000', quantity: 5, circuitId: proprio.id, clientId: cliente });
+
+    // lista de circuitos: fora por padrão, dentro com o interruptor
+    const semTerceiros = (await s.get('/circuits')).json();
+    expect(semTerceiros.items.map((c: any) => c.id)).not.toContain(proprio.id);
+    expect((await s.get('/circuits?includeThirdParty=true')).json().items.map((c: any) => c.id)).toContain(proprio.id);
+
+    // numeração: idem, e o "selecionar todos os filtrados" segue a mesma regra
+    const numeros = (await s.get('/dids?pageSize=500')).json();
+    expect(numeros.items.some((d: any) => d.circuitId === proprio.id)).toBe(false);
+    const comTerceiros = (await s.get('/dids?pageSize=500&includeThirdParty=true')).json();
+    expect(comTerceiros.items.filter((d: any) => d.circuitId === proprio.id)).toHaveLength(5);
+    expect(comTerceiros.items.find((d: any) => d.circuitId === proprio.id).thirdParty).toBe(true);
+    expect((await s.get('/dids/ids')).json().ids.length).toBeLessThan((await s.get('/dids/ids?includeThirdParty=true')).json().ids.length);
+
+    // os cartões do topo acompanham
+    expect((await s.get('/circuits/summary')).json().dids.total).toBe(numeros.total);
+
+    // o painel é o controle da VoiceNet: nem os números nem a inconsistência "DID sem VoiceNet"
+    const painel = (await s.get('/dashboard')).json();
+    expect(painel.dids.total).toBe(numeros.total);
+    expect(painel.circuits.map((c: any) => c.id)).not.toContain(proprio.id);
+    expect(painel.alerts.find((a: any) => a.kind === 'did_sem_voicenet')).toBeUndefined();
+
+    // mas na ficha do cliente os números dele aparecem, marcados
+    const doCliente = (await s.get(`/clients/${cliente}/dids`)).json();
+    expect(doCliente.items).toHaveLength(5);
+    expect(doCliente.items[0].thirdParty).toBe(true);
+    // e dentro do próprio circuito também
+    expect((await s.get(`/circuits/${proprio.id}/dids`)).json().items).toHaveLength(5);
+  });
+});

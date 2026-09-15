@@ -17,6 +17,7 @@ function baseSelect(db: Db) {
     .select({
       id: dids.id, number: dids.number, circuitId: dids.circuitId, circuitName: circuits.name, circuitCode: circuits.code, carrierName: carriers.name,
       clientId: dids.clientId, clientName: clients.tradeName, ownerClientId: dids.ownerClientId, ownerName: owner.tradeName, note: dids.note,
+      thirdParty: circuits.thirdParty,
       createdAt: dids.createdAt, updatedAt: dids.updatedAt,
     })
     .from(dids)
@@ -27,10 +28,15 @@ function baseSelect(db: Db) {
 }
 
 function shape(r: any) {
-  return { ...r, numberFormatted: didFormatado(r.number), free: !r.clientId };
+  return { ...r, numberFormatted: didFormatado(r.number), free: !r.clientId, thirdParty: !!r.thirdParty };
 }
 
-export async function list(db: Db, q: DidListar) {
+
+/**
+ * Os filtros da tela viram condições de SQL. A MESMA função alimenta a lista e o
+ * "selecionar todos os filtrados", para o número que aparece ser exatamente o que vai ser alterado.
+ */
+function filtros(q: Partial<DidListar>): SQL[] {
   const conds: SQL[] = [isNull(dids.deletedAt)];
   if (q.q) conds.push(ilike(dids.number, `%${q.q.replace(/\D/g, '')}%`));
   if (q.circuitId === 'none') conds.push(isNull(dids.circuitId));
@@ -38,7 +44,16 @@ export async function list(db: Db, q: DidListar) {
   if (q.clientId === 'free') conds.push(isNull(dids.clientId));
   else if (q.clientId) conds.push(eq(dids.clientId, q.clientId));
   if (q.ownerClientId) conds.push(eq(dids.ownerClientId, q.ownerClientId));
-  const where = and(...conds);
+  // número de tronco que não é da VoiceNet só aparece com o interruptor ligado.
+  // O `is null` é necessário: DID sem circuito não é de terceiro, e `not in` com nulo some com ele.
+  if (!q.includeThirdParty) {
+    conds.push(sql`(${dids.circuitId} is null or ${dids.circuitId} not in (select ${circuits.id} from ${circuits} where ${circuits.thirdParty} = true))`);
+  }
+  return conds;
+}
+
+export async function list(db: Db, q: DidListar) {
+  const where = and(...filtros(q));
   // ordenar por qualquer coluna da tabela; o que não for reconhecido cai no número
   const colunas: Record<string, SQL | PgColumn> = {
     number: dids.number, circuit: circuits.name, carrier: carriers.name, client: clients.tradeName, owner: owner.tradeName, note: dids.note,
@@ -51,14 +66,7 @@ export async function list(db: Db, q: DidListar) {
 
 /** Todos os ids que batem com um filtro — usado pela interface para "selecionar todos os filtrados" com número exato. */
 export async function idsMatching(db: Db, q: Omit<DidListar, 'page' | 'pageSize' | 'sort' | 'dir'>) {
-  const conds: SQL[] = [isNull(dids.deletedAt)];
-  if (q.q) conds.push(ilike(dids.number, `%${q.q.replace(/\D/g, '')}%`));
-  if (q.circuitId === 'none') conds.push(isNull(dids.circuitId));
-  else if (q.circuitId) conds.push(eq(dids.circuitId, q.circuitId));
-  if (q.clientId === 'free') conds.push(isNull(dids.clientId));
-  else if (q.clientId) conds.push(eq(dids.clientId, q.clientId));
-  if (q.ownerClientId) conds.push(eq(dids.ownerClientId, q.ownerClientId));
-  const rows = await db.select({ id: dids.id }).from(dids).where(and(...conds)).limit(5000);
+  const rows = await db.select({ id: dids.id }).from(dids).where(and(...filtros(q))).limit(5000);
   return rows.map((r) => r.id);
 }
 

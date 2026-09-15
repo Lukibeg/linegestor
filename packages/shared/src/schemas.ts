@@ -166,6 +166,8 @@ export const CircuitoGravarSchema = z.object({
   authUsername: z.string().trim().max(120).nullable().optional(),
   authPassword: SenhaEntradaSchema.optional(),
   notes: z.string().max(5000).nullable().optional(),
+  /** true = tronco do próprio cliente, com outra operadora. Fica fora das listas até se pedir. */
+  thirdParty: z.coerce.boolean().optional(),
 });
 export const CircuitoAtualizarSchema = CircuitoGravarSchema.partial();
 
@@ -175,6 +177,8 @@ export const CircuitoListarSchema = PaginacaoSchema.merge(OrdenacaoSchema).exten
   carrierId: IdSchema.optional(),
   /** titular (quem detém o contrato junto à operadora) */
   ownerClientId: IdSchema.optional(),
+  /** ligar o interruptor "links de terceiros" traz também o que não é da VoiceNet */
+  includeThirdParty: z.coerce.boolean().default(false),
 });
 
 // ---------- DIDs ----------
@@ -184,6 +188,8 @@ export const DidListarSchema = PaginacaoSchema.extend({
   circuitId: z.union([IdSchema, z.literal('none')]).optional(),
   clientId: z.union([IdSchema, z.literal('free')]).optional(),
   ownerClientId: IdSchema.optional(),
+  /** o mesmo interruptor da lista de circuitos: sem ele, número de terceiro não aparece */
+  includeThirdParty: z.coerce.boolean().default(false),
   sort: z.string().trim().max(60).optional(),
   dir: z.enum(['asc', 'desc']).optional(),
 });
