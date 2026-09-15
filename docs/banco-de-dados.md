@@ -173,6 +173,7 @@ Um circuito (feixe) contratado junto a uma operadora. Agrupa DIDs e tem um limit
 | `channels` | número inteiro | Canais = chamadas simultâneas que o feixe suporta | obrigatório · padrão: 0 |
 | `key_number` | texto | Número chave (número piloto): o número principal do feixe junto à operadora | — |
 | `owner_client_id` | texto | Titular do circuito: quem detém o contrato com a operadora (normalmente VoiceNet) | liga com **clients** |
+| `third_party` | sim/não | Circuito que NÃO é da VoiceNet: o tronco que o próprio cliente contratou de outra operadora. Guardar é útil (dá para saber a numeração dele), mas polui o controle da VoiceNet — por isso fica fora das listas, dos cartões e do painel até alguém ligar "links de terceiros". | obrigatório · padrão: false |
 | `monthly_value_cents` | número inteiro | Custo/valor mensal do feixe, em centavos | — |
 | `signaling_ip` | texto | IP da operadora (sinalização) | — |
 | `auth_ip` | texto | IP de autenticação ("IP PBX" no Nexus) | — |
