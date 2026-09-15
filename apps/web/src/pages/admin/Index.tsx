@@ -11,6 +11,7 @@ import { Campo, Carregando, Chip, Modal, Paginacao, Spinner, Toggle, Vazio, mens
 import { data, relativo } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { Ajustes } from './Ajustes.js';
+import { contar, contarDe, TdN, ThN } from '../../lib/contagem.js';
 
 export function Admin() {
   const { can } = useAuth();
@@ -41,8 +42,8 @@ function Usuarios() {
   return (
     <div>
       <div className="flex justify-end mb-3"><button className="btn-primary btn-sm" onClick={() => setEdit('novo')}><Plus size={14} /> Novo usuário</button></div>
-      <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="name">Nome</Th><Th o={o} col="email">E-mail</Th><Th o={o} col="roleName">Papel</Th><Th o={o} col="active">Situação</Th><Th o={o} col="lastLoginAt">Último acesso</Th><th /></tr></thead>
-        <tbody>{ordenarLista(q.data ?? [], o, { name: (u) => u.name, email: (u) => u.email, roleName: (u) => u.roleName, active: (u) => (u.active ? 1 : 0), lastLoginAt: (u) => u.lastLoginAt }).map((u) => <tr key={u.id}><td className="font-medium">{u.name}</td><td className="text-ink-2">{u.email}</td><td><Chip tone="accent">{u.roleName}</Chip></td><td>{u.active ? <Chip tone="ok">ativo</Chip> : <Chip tone="muted">desativado</Chip>}</td><td className="text-muted">{u.lastLoginAt ? relativo(u.lastLoginAt) : 'nunca'}</td><td className="text-right"><button className="btn-ghost btn-sm" onClick={() => setEdit(u)}>Editar</button></td></tr>)}</tbody></table></div>
+      <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><Th o={o} col="name">Nome</Th><Th o={o} col="email">E-mail</Th><Th o={o} col="roleName">Papel</Th><Th o={o} col="active">Situação</Th><Th o={o} col="lastLoginAt">Último acesso</Th><th /></tr></thead>
+        <tbody>{ordenarLista(q.data ?? [], o, { name: (u) => u.name, email: (u) => u.email, roleName: (u) => u.roleName, active: (u) => (u.active ? 1 : 0), lastLoginAt: (u) => u.lastLoginAt }).map((u, i) => <tr key={u.id}><TdN n={contar(i)} /><td className="font-medium">{u.name}</td><td className="text-ink-2">{u.email}</td><td><Chip tone="accent">{u.roleName}</Chip></td><td>{u.active ? <Chip tone="ok">ativo</Chip> : <Chip tone="muted">desativado</Chip>}</td><td className="text-muted">{u.lastLoginAt ? relativo(u.lastLoginAt) : 'nunca'}</td><td className="text-right"><button className="btn-ghost btn-sm" onClick={() => setEdit(u)}>Editar</button></td></tr>)}</tbody></table></div>
       <Modal open={!!edit} onClose={() => setEdit(null)} titulo={edit === 'novo' ? 'Novo usuário' : 'Editar usuário'} rodape={<><button className="btn-secondary" onClick={() => setEdit(null)}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name || !f.email || (edit === 'novo' && (f.password?.length ?? 0) < 10)} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
         <div className="flex flex-col gap-3">
           <Campo label="Nome"><input className="input" value={f.name ?? ''} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Campo>
@@ -69,8 +70,8 @@ function Papeis() {
     <div>
       <p className="text-sm text-muted mb-3">Um papel é uma lista de permissões. Os quatro do sistema não podem ser apagados; você pode criar outros marcando caixinhas.</p>
       <div className="flex justify-end mb-3"><button className="btn-primary btn-sm" onClick={() => setEdit('novo')}><Plus size={14} /> Novo papel</button></div>
-      <div className="card overflow-x-auto"><table className="table"><thead><tr><th>Papel</th>{perms.data?.map((p) => <th key={p.key} className="text-center text-[10.5px] font-normal leading-tight max-w-[80px]" title={p.label}>{p.label.split(' ').slice(0, 3).join(' ')}</th>)}<th /></tr></thead>
-        <tbody>{roles.data?.map((r) => <tr key={r.id}><td><div className="font-medium">{r.name} {r.isSystem && <Chip tone="muted">sistema</Chip>}</div><div className="text-[12px] text-muted">{r.userCount} usuário(s)</div></td>{perms.data?.map((p) => <td key={p.key} className="text-center">{r.permissions.includes(p.key) ? <span className="inline-block w-3 h-3 rounded-full bg-ok" /> : <span className="inline-block w-3 h-3 rounded-full border border-line-strong" />}</td>)}<td className="text-right whitespace-nowrap"><button className="btn-ghost btn-sm" onClick={() => setEdit(r)}>Editar</button>{!r.isSystem && <button className="btn-ghost btn-sm text-bad" onClick={() => remove(r)}>Apagar</button>}</td></tr>)}</tbody></table></div>
+      <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><th>Papel</th>{perms.data?.map((p) => <th key={p.key} className="text-center text-[10.5px] font-normal leading-tight max-w-[80px]" title={p.label}>{p.label.split(' ').slice(0, 3).join(' ')}</th>)}<th /></tr></thead>
+        <tbody>{roles.data?.map((r, i) => <tr key={r.id}><TdN n={contar(i)} /><td><div className="font-medium">{r.name} {r.isSystem && <Chip tone="muted">sistema</Chip>}</div><div className="text-[12px] text-muted">{r.userCount} usuário(s)</div></td>{perms.data?.map((p) => <td key={p.key} className="text-center">{r.permissions.includes(p.key) ? <span className="inline-block w-3 h-3 rounded-full bg-ok" /> : <span className="inline-block w-3 h-3 rounded-full border border-line-strong" />}</td>)}<td className="text-right whitespace-nowrap"><button className="btn-ghost btn-sm" onClick={() => setEdit(r)}>Editar</button>{!r.isSystem && <button className="btn-ghost btn-sm text-bad" onClick={() => remove(r)}>Apagar</button>}</td></tr>)}</tbody></table></div>
       <Modal open={!!edit} onClose={() => setEdit(null)} titulo={edit === 'novo' ? 'Novo papel' : `Editar ${(edit as Role)?.name}`} rodape={<><button className="btn-secondary" onClick={() => setEdit(null)}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
         <div className="flex flex-col gap-3">
           <Campo label="Nome"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} disabled={!!edit && edit !== 'novo' && edit.isSystem} /></Campo>
@@ -133,8 +134,8 @@ function Produtos() {
           <div className="p-3">
             <div className="flex items-center justify-between mb-2"><span className="eyebrow">Módulos</span><button className="btn-ghost btn-sm" onClick={() => setNovoModulo(p)}><Plus size={14} /> novo módulo</button></div>
             {p.modules.length === 0 ? <div className="text-muted text-[12.5px]">Este produto não tem módulos.</div> : (
-              <table className="table"><thead><tr><th>Módulo</th><th>Código</th><th>Descrição</th><th>Config. própria</th><th>Ativo</th></tr></thead>
-                <tbody>{p.modules.map((m) => <tr key={m.id}><td className="font-medium">{m.name}</td><td className="font-mono text-muted">{m.code}</td><td className="text-ink-2 text-[13px]">{m.description}</td><td>{m.hasSettings ? 'sim' : '—'}</td><td><Toggle checked={m.active} onChange={(v) => updModulo(p, m, { active: v })} /></td></tr>)}</tbody></table>
+              <table className="table"><thead><tr><ThN /><th>Módulo</th><th>Código</th><th>Descrição</th><th>Config. própria</th><th>Ativo</th></tr></thead>
+                <tbody>{p.modules.map((m, i) => <tr key={m.id}><TdN n={contar(i)} /><td className="font-medium">{m.name}</td><td className="font-mono text-muted">{m.code}</td><td className="text-ink-2 text-[13px]">{m.description}</td><td>{m.hasSettings ? 'sim' : '—'}</td><td><Toggle checked={m.active} onChange={(v) => updModulo(p, m, { active: v })} /></td></tr>)}</tbody></table>
             )}
           </div>
         </div>
@@ -171,6 +172,7 @@ function Auditoria() {
   const o = useOrdenacao('createdAt', 'desc');
   const q = useQuery({ queryKey: ['audit', page, action, entityType, o.ord, o.dir], queryFn: () => api.admin.audit({ page, pageSize: 50, action, entityType, sort: o.ord, dir: o.dir }) });
   const acoes = ['create', 'update', 'delete', 'restore', 'bulk_update', 'bulk_create', 'bulk_delete', 'movement', 'reveal_secret', 'import', 'export', 'export_secrets', 'login', 'login_failed', 'subscribe', 'unsubscribe'];
+  const numero = contarDe(page, 50); // a contagem segue pela lista toda, não recomeça a cada página
   return (
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2">
@@ -179,9 +181,10 @@ function Auditoria() {
       </div>
       {q.isLoading ? <Carregando /> : !q.data?.items.length ? <Vazio titulo="Nada registrado" /> : (
         <div className="card overflow-x-auto"><table className="table">
-          <thead><tr><Th o={o} col="createdAt">Quando</Th><Th o={o} col="action">Ação</Th><Th o={o} col="summary">O que aconteceu</Th><Th o={o} col="userName">Quem</Th></tr></thead>
-          <tbody>{q.data.items.map((a) => (
+          <thead><tr><ThN /><Th o={o} col="createdAt">Quando</Th><Th o={o} col="action">Ação</Th><Th o={o} col="summary">O que aconteceu</Th><Th o={o} col="userName">Quem</Th></tr></thead>
+          <tbody>{q.data.items.map((a, i) => (
             <tr key={a.id}>
+              <TdN n={numero(i)} />
               <td className="text-muted tnum whitespace-nowrap">{data(a.createdAt, true)}</td>
               <td><Chip tone={/secret|delete|export_secrets/.test(a.action) ? 'signal' : 'neutral'}>{a.action}</Chip></td>
               <td>{a.summary}</td>
@@ -200,5 +203,5 @@ function Lixeira() {
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;
   if (!q.data?.length) return <Vazio titulo="Lixeira vazia" texto="Tudo que for excluído aparece aqui e pode ser restaurado." />;
-  return <div className="card"><table className="table"><thead><tr><Th o={o} col="type">Tipo</Th><Th o={o} col="label">Registro</Th><Th o={o} col="deletedAt">Excluído em</Th><th /></tr></thead><tbody>{ordenarLista(q.data, o, { type: (t) => nomes[t.type] ?? t.type, label: (t) => t.label, deletedAt: (t) => t.deletedAt }).map((t) => <tr key={t.type + t.id}><td><Chip tone="neutral">{nomes[t.type] ?? t.type}</Chip></td><td className="font-medium">{t.label}</td><td className="text-muted tnum">{data(t.deletedAt, true)}</td><td className="text-right"><button className="btn-secondary btn-sm" onClick={() => restore(t.type, t.id)}>Restaurar</button></td></tr>)}</tbody></table></div>;
+  return <div className="card"><table className="table"><thead><tr><ThN /><Th o={o} col="type">Tipo</Th><Th o={o} col="label">Registro</Th><Th o={o} col="deletedAt">Excluído em</Th><th /></tr></thead><tbody>{ordenarLista(q.data, o, { type: (t) => nomes[t.type] ?? t.type, label: (t) => t.label, deletedAt: (t) => t.deletedAt }).map((t, i) => <tr key={t.type + t.id}><TdN n={contar(i)} /><td><Chip tone="neutral">{nomes[t.type] ?? t.type}</Chip></td><td className="font-medium">{t.label}</td><td className="text-muted tnum">{data(t.deletedAt, true)}</td><td className="text-right"><button className="btn-secondary btn-sm" onClick={() => restore(t.type, t.id)}>Restaurar</button></td></tr>)}</tbody></table></div>;
 }

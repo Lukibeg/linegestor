@@ -14,6 +14,7 @@ import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, LogoCliente, me
 import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, intervalo, MODALIDADES, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { paraALista, Voltar } from '../../lib/voltar.js';
+import { contar, TdN, ThN } from '../../lib/contagem.js';
 import { ClienteForm } from './Form.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'acessos' | 'historico';
@@ -341,8 +342,8 @@ function Dids({ c }: { c: ClientFull }) {
   if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
   return (
     <div className="card overflow-x-auto">
-      <table className="table"><thead><tr><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
-        <tbody>{ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, note: (d) => d.note }).map((d) => <tr key={d.id}><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
+      <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
+        <tbody>{ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, note: (d) => d.note }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
       <div className="px-3 py-2 text-[12.5px] text-muted border-t border-line"><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div>
     </div>
   );
@@ -418,8 +419,8 @@ function Equipamentos({ c }: { c: ClientFull }) {
         </div>
       </div>
 
-      <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="modelName">Modelo</Th><Th o={o} col="mac">MAC</Th><Th o={o} col="unit">Unidade</Th><Th o={o} col="currentModality">Modalidade</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="valueCents" align="right">Valor</Th><Th o={o} col="ip">IP</Th><Th o={o} col="location">Local</Th></tr></thead>
-        <tbody>{ordenarLista(devs, o, { modelName: (d) => d.modelName, mac: (d) => d.mac, unit: (d) => d.unit, currentModality: (d) => d.currentModality, condition: (d) => d.condition, valueCents: (d) => d.valueCents, ip: (d) => d.ip, location: (d) => d.location }).map((d) => <tr key={d.id}><td>{d.modelName}</td><td className="font-mono"><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.mac ? d.macFormatted : <span className="text-muted font-sans text-[13px]">não aplicável</span>}</Link></td><td>{d.unit ?? <span className="text-muted">—</span>}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="text-right tnum">{d.valueCents != null ? reais(d.valueCents) : <span className="text-muted">—</span>}</td><td className="font-mono">{d.ip ?? '—'}</td><td className="text-muted">{d.location ?? '—'}</td></tr>)}</tbody></table></div>
+      <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><Th o={o} col="modelName">Modelo</Th><Th o={o} col="mac">MAC</Th><Th o={o} col="unit">Unidade</Th><Th o={o} col="currentModality">Modalidade</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="valueCents" align="right">Valor</Th><Th o={o} col="ip">IP</Th><Th o={o} col="location">Local</Th></tr></thead>
+        <tbody>{ordenarLista(devs, o, { modelName: (d) => d.modelName, mac: (d) => d.mac, unit: (d) => d.unit, currentModality: (d) => d.currentModality, condition: (d) => d.condition, valueCents: (d) => d.valueCents, ip: (d) => d.ip, location: (d) => d.location }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td>{d.modelName}</td><td className="font-mono"><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.mac ? d.macFormatted : <span className="text-muted font-sans text-[13px]">não aplicável</span>}</Link></td><td>{d.unit ?? <span className="text-muted">—</span>}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="text-right tnum">{d.valueCents != null ? reais(d.valueCents) : <span className="text-muted">—</span>}</td><td className="font-mono">{d.ip ?? '—'}</td><td className="text-muted">{d.location ?? '—'}</td></tr>)}</tbody></table></div>
     </div>
   );
 }

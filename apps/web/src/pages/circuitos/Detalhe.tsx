@@ -11,6 +11,7 @@ import { didFormatado, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { CircuitoForm } from './Lista.js';
 import { Voltar } from '../../lib/voltar.js';
+import { contar, TdN, ThN } from '../../lib/contagem.js';
 
 export function CircuitoDetalhe() {
   const { id = '' } = useParams();
@@ -53,8 +54,8 @@ export function CircuitoDetalhe() {
         <div className="card lg:col-span-2 overflow-x-auto">
           <div className="px-4 py-3 border-b border-line flex items-center justify-between"><span className="font-display font-semibold">DIDs deste circuito</span><Link className="link text-sm" to={`/circuitos?aba=numeracao&circuito=${c.id}`}>abrir na Numeração para editar em massa</Link></div>
           {dids.isLoading ? <Carregando /> : !dids.data?.items.length ? <div className="p-6 text-muted text-sm">Nenhum DID ainda. Crie uma faixa.</div> : (
-            <table className="table"><thead><tr><Th o={o} col="number">Número</Th><Th o={o} col="clientName">Cliente</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
-              <tbody>{ordenarLista(dids.data.items, o, { number: (d) => d.number, clientName: (d) => d.clientName, ownerName: (d) => d.ownerName, note: (d) => d.note }).map((d) => <tr key={d.id}><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <span className="chip bg-ok-soft text-ok">livre</span>}</td><td className="text-muted">{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
+            <table className="table"><thead><tr><ThN /><Th o={o} col="number">Número</Th><Th o={o} col="clientName">Cliente</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
+              <tbody>{ordenarLista(dids.data.items, o, { number: (d) => d.number, clientName: (d) => d.clientName, ownerName: (d) => d.ownerName, note: (d) => d.note }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <span className="chip bg-ok-soft text-ok">livre</span>}</td><td className="text-muted">{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
           )}
           {dids.data && dids.data.total > 200 && <div className="px-4 py-2 text-[12.5px] text-muted border-t border-line">Mostrando 200 de {dids.data.total}. Use a Numeração para ver todos.</div>}
         </div>

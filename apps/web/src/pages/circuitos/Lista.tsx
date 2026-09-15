@@ -14,6 +14,7 @@ import { Abas, Campo, CampoSegredo, Carregando, Kpi, Modal, Ocupacao, Paginacao,
 import { didFormatado, paraCentavos, reais } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
+import { contarDe, TdN, ThN } from '../../lib/contagem.js';
 import { Numeracao } from '../dids/Lista.js';
 
 type Aba = 'circuitos' | 'numeracao';
@@ -24,6 +25,7 @@ export function CircuitosLista() {
   const nav = useNavigate();
   const aba = (sp.get('aba') === 'numeracao' ? 'numeracao' : 'circuitos') as Aba;
   const q = sp.get('q') ?? ''; const carrierId = sp.get('operadora') ?? ''; const ownerClientId = sp.get('titular') ?? ''; const page = Number(sp.get('p') ?? 1);
+  const numero = contarDe(page, 50); // a contagem segue pela lista toda, não recomeça a cada página
   const filtros = { q, carrierId, ownerClientId };
   const temFiltro = !!(q || carrierId || ownerClientId);
   const [novo, setNovo] = useState(false);
@@ -58,13 +60,13 @@ export function CircuitosLista() {
         {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum circuito" texto="Cadastre o feixe contratado junto à operadora." /> : (
           <div className="card overflow-x-auto"><table className="table">
             <thead><tr>
-              <Th o={o} col="name">Nome</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="code">N° do circuito</Th><Th o={o} col="keyNumber">Número chave</Th>
+              <ThN /><Th o={o} col="name">Nome</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="code">N° do circuito</Th><Th o={o} col="keyNumber">Número chave</Th>
               <Th o={o} col="ownerName">Titular</Th><Th o={o} col="channels" align="right">Canais</Th><Th o={o} col="total" align="right">DIDs</Th>
               <Th o={o} col="free" align="right">Livres</Th><Th o={o} col="uso">Em uso</Th><Th o={o} col="monthlyValueCents" align="right">Valor/mês</Th>
             </tr></thead>
-            <tbody>{lista.data.items.map((c) => (
+            <tbody>{lista.data.items.map((c, i) => (
               <tr key={c.id} className="cursor-pointer" onClick={() => nav(`/circuitos/${c.id}`)}>
-                <td className="font-medium">{c.name}</td><td>{c.carrierName ?? '—'}</td><td className="font-mono tnum">{c.code}</td><td className="font-mono tnum whitespace-nowrap">{c.keyNumber ? didFormatado(c.keyNumber) : <span className="text-muted">—</span>}</td><td className="text-ink-2">{c.ownerName ?? '—'}</td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.dids.total}</td><td className="text-right tnum">{c.dids.free}</td><td><Ocupacao total={c.dids.total} assigned={c.dids.assigned} /></td><td className="text-right tnum">{reais(c.monthlyValueCents)}</td>
+                <TdN n={numero(i)} /><td className="font-medium">{c.name}</td><td>{c.carrierName ?? '—'}</td><td className="font-mono tnum">{c.code}</td><td className="font-mono tnum whitespace-nowrap">{c.keyNumber ? didFormatado(c.keyNumber) : <span className="text-muted">—</span>}</td><td className="text-ink-2">{c.ownerName ?? '—'}</td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.dids.total}</td><td className="text-right tnum">{c.dids.free}</td><td><Ocupacao total={c.dids.total} assigned={c.dids.assigned} /></td><td className="text-right tnum">{reais(c.monthlyValueCents)}</td>
               </tr>))}</tbody></table></div>
         )}
         {lista.data && <Paginacao page={page} pageSize={50} total={lista.data.total} onChange={(p) => set('p', String(p))} />}

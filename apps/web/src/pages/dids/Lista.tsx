@@ -12,6 +12,7 @@ import { Can, useAuth } from '../../lib/auth.js';
 import { Campo, Carregando, Chip, Confirmar, Copiar, Modal, Paginacao, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { FaixaForm } from '../circuitos/Detalhe.js';
+import { contarDe, TdN, ThN } from '../../lib/contagem.js';
 
 type Acao = 'circuito' | 'cliente' | 'liberar' | 'observacao' | 'excluir';
 
@@ -27,6 +28,7 @@ export function Numeracao() {
   const q = sp.get('q') ?? ''; const circuito = sp.get('circuito') ?? ''; const cliente = sp.get('cliente') ?? ''; const page = Number(sp.get('p') ?? 1);
   const o = useOrdenacao('number');
   const pageSize = 100;
+  const numero = contarDe(page, pageSize); // a contagem segue pela lista toda, não recomeça a cada página
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
   const limpar = () => setSp({ aba: 'numeracao' }, { replace: true });
   const filtro = { q, circuitId: circuito, clientId: cliente };
@@ -76,11 +78,12 @@ export function Numeracao() {
         <div className="card overflow-x-auto"><table className="table">
           <thead><tr>
             {can('dids.assign') && <th className="w-8"><input type="checkbox" checked={allOnPage} onChange={togglePage} aria-label="Selecionar página" /></th>}
-            <Th o={o} col="number">Número</Th><Th o={o} col="carrier">Operadora</Th><Th o={o} col="circuit">Circuito</Th><Th o={o} col="client">Cliente</Th><Th o={o} col="owner">Titular</Th><Th o={o} col="note">Observação</Th>
+            <ThN /><Th o={o} col="number">Número</Th><Th o={o} col="carrier">Operadora</Th><Th o={o} col="circuit">Circuito</Th><Th o={o} col="client">Cliente</Th><Th o={o} col="owner">Titular</Th><Th o={o} col="note">Observação</Th>
           </tr></thead>
-          <tbody>{items.map((d) => (
+          <tbody>{items.map((d, i) => (
             <tr key={d.id} className={sel.has(d.id) ? 'bg-accent-soft' : ''}>
               {can('dids.assign') && <td><input type="checkbox" checked={sel.has(d.id)} onChange={() => setSel((s) => { const n = new Set(s); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n; })} aria-label={`Selecionar ${d.numberFormatted}`} /></td>}
+              <TdN n={numero(i)} />
               <td className="font-mono tnum whitespace-nowrap">{d.numberFormatted} <Copiar texto={d.number} titulo="Copiar número" /></td>
               <td>{d.carrierName ?? '—'}</td>
               <td>{d.circuitId ? <Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link> : <span className="text-muted">sem circuito</span>}</td>

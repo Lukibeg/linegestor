@@ -17,6 +17,7 @@ import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
 import { FiltroEmBotao, type GrupoFiltro } from '../../lib/filtros.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
+import { contarDe, TdN, ThN } from '../../lib/contagem.js';
 import { ClienteForm } from './Form.js';
 
 // ---------- Colunas disponíveis na tabela ----------
@@ -105,6 +106,7 @@ export function ClientesLista() {
   const colunasEscolhidas = useColunasEscolhidas(STORAGE, PADRAO);
   const o = useOrdenacao('tradeName');
 
+  const numero = contarDe(page, 24); // a contagem segue pela lista toda, não recomeça a cada página
   const set = (k: string, v: string | string[] | null) => { const n = new URLSearchParams(sp); n.delete(k); if (Array.isArray(v)) v.forEach((x) => n.append(k, x)); else if (v) n.set(k, v); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
 
   const prods = useQuery({ queryKey: ['products'], queryFn: api.admin.products });
@@ -168,12 +170,13 @@ export function ClientesLista() {
       ) : view === 'tabela' ? (
         <div className="card overflow-x-auto">
           <table className="table">
-            <thead><tr>{visiveis.map((c) => (c.ordenavel === false
+            <thead><tr><ThN />{visiveis.map((c) => (c.ordenavel === false
               ? <th key={c.id} className={c.align === 'right' ? 'text-right' : ''}>{c.label}</th>
               : <Th key={c.id} o={o} col={c.id} align={c.align}>{c.label}</Th>))}</tr></thead>
             <tbody>
-              {lista.data.items.map((c) => (
+              {lista.data.items.map((c, i) => (
                 <tr key={c.id} className="cursor-pointer" onClick={() => nav(`/clientes/${c.id}`)}>
+                  <TdN n={numero(i)} />
                   {visiveis.map((col) => <td key={col.id} className={col.align === 'right' ? 'text-right' : ''}>{col.render(c)}</td>)}
                 </tr>
               ))}

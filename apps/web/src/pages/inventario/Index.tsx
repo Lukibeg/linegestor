@@ -13,6 +13,7 @@ import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ord
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
 import { Movimentar } from './Movimentar.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
+import { contarDe, TdN, ThN } from '../../lib/contagem.js';
 
 type Aba = 'aparelhos' | 'modelos' | 'movimentacoes';
 
@@ -75,6 +76,7 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
   const colunas = colunasAparelhos();
   const visiveis = colunas.filter((c) => escolha.ids.includes(c.id));
   const lista = useQuery({ queryKey: ['devices', q, modelId, clientId, condition, page, o.ord, o.dir], queryFn: () => api.inventory.devices({ q, modelId, clientId, condition, page, pageSize: 50, sort: o.ord, dir: o.dir }) });
+  const numero = contarDe(page, 50); // a contagem segue pela lista toda, não recomeça a cada página
   return (
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2 items-center">
@@ -88,9 +90,10 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
       </div>
       {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum aparelho" texto="Cadastre um aparelho ou ajuste os filtros." /> : (
         <div className="card overflow-x-auto"><table className="table">
-          <thead><tr>{visiveis.map((c) => <Th key={c.id} o={o} col={c.id} align={c.align}>{c.label}</Th>)}</tr></thead>
-          <tbody>{lista.data.items.map((d) => (
+          <thead><tr><ThN />{visiveis.map((c) => <Th key={c.id} o={o} col={c.id} align={c.align}>{c.label}</Th>)}</tr></thead>
+          <tbody>{lista.data.items.map((d, i) => (
             <tr key={d.id} className="cursor-pointer" onClick={() => nav(`/inventario/aparelhos/${d.id}`)}>
+              <TdN n={numero(i)} />
               {visiveis.map((col) => <td key={col.id} className={col.align === 'right' ? 'text-right' : ''}>{col.render(d)}</td>)}
             </tr>))}</tbody></table>
           {!visiveis.length && <div className="p-4 text-sm text-muted">Nenhuma coluna escolhida — use o botão "Colunas".</div>}
@@ -208,6 +211,7 @@ function Movimentacoes() {
   const clients = useQuery({ queryKey: ['client-options', 'equip'], queryFn: () => api.clients.options({ productCode: 'equipamentos' }) });
   const o = useOrdenacao('createdAt', 'desc');
   const lista = useQuery({ queryKey: ['movements', modality, clientId, from, to, page, o.ord, o.dir], queryFn: () => api.inventory.movements({ modality, clientId, from: from || undefined, to: to || undefined, page, pageSize: 50, sort: o.ord, dir: o.dir }) });
+  const numero = contarDe(page, 50); // a contagem segue pela lista toda, não recomeça a cada página
   return (
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2">
@@ -216,9 +220,9 @@ function Movimentacoes() {
         <input type="date" className="input w-auto" value={from} onChange={(e) => set('de', e.target.value || null)} /><input type="date" className="input w-auto" value={to} onChange={(e) => set('ate', e.target.value || null)} />
       </div>
       {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhuma movimentação" /> : (
-        <div className="card overflow-x-auto"><table className="table"><thead><tr><Th o={o} col="createdAt">Quando</Th><Th o={o} col="modality">Modalidade</Th><Th o={o} col="fromName">De</Th><Th o={o} col="toName">Para</Th><th>Itens</th><th>Condição</th><Th o={o} col="userName">Por</Th></tr></thead>
-          <tbody>{lista.data.items.map((m) => (
-            <tr key={m.id}><td className="tnum whitespace-nowrap">{data(m.createdAt, true)}</td><td><Chip tone={m.modality === 'devolucao' ? 'neutral' : m.modality === 'venda' ? 'accent' : m.modality === 'comodato' ? 'signal' : 'ok'}>{m.modalityName}</Chip></td>
+        <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><Th o={o} col="createdAt">Quando</Th><Th o={o} col="modality">Modalidade</Th><Th o={o} col="fromName">De</Th><Th o={o} col="toName">Para</Th><th>Itens</th><th>Condição</th><Th o={o} col="userName">Por</Th></tr></thead>
+          <tbody>{lista.data.items.map((m, i) => (
+            <tr key={m.id}><TdN n={numero(i)} /><td className="tnum whitespace-nowrap">{data(m.createdAt, true)}</td><td><Chip tone={m.modality === 'devolucao' ? 'neutral' : m.modality === 'venda' ? 'accent' : m.modality === 'comodato' ? 'signal' : 'ok'}>{m.modalityName}</Chip></td>
               <td>{m.fromClientId ? <Link className="link" to={`/clientes/${m.fromClientId}`}>{m.fromName}</Link> : 'Estoque'}</td><td>{m.toClientId ? <Link className="link" to={`/clientes/${m.toClientId}`}>{m.toName}</Link> : 'Estoque'}</td>
               <td>{m.items.map((i) => `${i.quantity}× ${i.modelName}`).join(', ')}</td><td className="text-muted">{m.newCondition ? condicaoNome[m.newCondition] : '—'}</td><td className="text-muted">{m.userName}</td></tr>))}</tbody></table></div>
       )}
