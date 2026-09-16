@@ -1,0 +1,32 @@
+# Ambiente de DESENVOLVIMENTO na sua máquina: banco + sistema com um comando.
+#
+#   docker compose up -d
+#   docker compose exec app pnpm db:seed:demo     # catálogos + dados fictícios
+#
+# O sistema fica em http://localhost:3333 e o banco em localhost:5432 (só da sua máquina),
+# para você também poder rodar `pnpm dev` fora do Docker se preferir.
+# Produção é outro arquivo: docker-compose.prod.yml.
+services:
+  db:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-gestor_dev}
+      POSTGRES_DB: gestor_dev
+    ports: ['127.0.0.1:5432:5432']
+    volumes: ['gestao_db_dev:/var/lib/postgresql']
+    healthcheck: { test: ['CMD-SHELL', 'pg_isready -U postgres'], interval: 5s, retries: 10 }
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-gestor_dev}@db:5432/gestor_dev
+      SECRETS_MASTER_KEY: ${SECRETS_MASTER_KEY:?defina SECRETS_MASTER_KEY no .env}
+      SESSION_SECRET: ${SESSION_SECRET:?defina SESSION_SECRET no .env}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3333}
+      NODE_ENV: production
+      PORT: 3333
+    ports: ['127.0.0.1:3333:3333']
+volumes:
+  gestao_db_dev:

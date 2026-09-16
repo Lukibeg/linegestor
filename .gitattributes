@@ -1,0 +1,7 @@
+# Tudo com fim de linha LF no repositório, mesmo editando no Windows:
+# os scripts e o Caddyfile rodam no servidor Linux e quebram com CRLF.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

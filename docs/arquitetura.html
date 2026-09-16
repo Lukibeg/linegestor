@@ -1,0 +1,569 @@
+<title>Arquitetura do Ingline Gestão</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F5F7FA; --surface:#FFFFFF; --surface-2:#EEF2F7; --line:#D9E0E9; --line-strong:#B7C2D0;
+  --ink:#141C26; --ink-2:#3D4A5A; --muted:#6B7A8C;
+  --accent:#2457D6; --accent-soft:#E3EAFB; --accent-ink:#1A3FA0;
+  --signal:#D9781F; --signal-soft:#FBEBD9;
+  --ok:#1F8F62; --ok-soft:#DDF3E8; --bad:#C93B3B; --bad-soft:#F9E0E0;
+  --nexus:#8A94A3; --nexus-soft:#E9EDF2;
+  --display:'Sora',system-ui,sans-serif; --body:'Public Sans',system-ui,sans-serif; --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#0E131A; --surface:#161D27; --surface-2:#1E2734; --line:#2A3542; --line-strong:#3C4A5B;
+  --ink:#E8EEF5; --ink-2:#C0CAD6; --muted:#8C9AAB;
+  --accent:#6C9BFF; --accent-soft:#1B2A4D; --accent-ink:#A9C3FF;
+  --signal:#F0A052; --signal-soft:#3A2A14;
+  --ok:#3FBF8A; --ok-soft:#153125; --bad:#F06A6A; --bad-soft:#3A1A1A;
+  --nexus:#8C9AAB; --nexus-soft:#232C38;
+}}
+:root[data-theme="dark"]{
+  --bg:#0E131A; --surface:#161D27; --surface-2:#1E2734; --line:#2A3542; --line-strong:#3C4A5B;
+  --ink:#E8EEF5; --ink-2:#C0CAD6; --muted:#8C9AAB;
+  --accent:#6C9BFF; --accent-soft:#1B2A4D; --accent-ink:#A9C3FF;
+  --signal:#F0A052; --signal-soft:#3A2A14;
+  --ok:#3FBF8A; --ok-soft:#153125; --bad:#F06A6A; --bad-soft:#3A1A1A;
+  --nexus:#8C9AAB; --nexus-soft:#232C38;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55;padding-block:0 80px;padding-inline:16px}
+a{color:var(--accent)}
+.wrap{max-width:1080px;margin:0 auto}
+header.top{padding-block:40px 24px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(28px,4vw,40px);line-height:1.1;margin:8px 0 12px;text-wrap:balance;letter-spacing:-.01em}
+.lede{font-size:18px;color:var(--ink-2);max-width:62ch;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:18px;font-size:14px;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600;background:var(--signal-soft);color:var(--signal)}
+.layout{display:grid;grid-template-columns:200px minmax(0,1fr);gap:40px;align-items:start}
+nav.index{position:sticky;top:20px;font-size:14px}
+nav.index ol{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+nav.index a{display:block;padding:6px 10px;border-radius:6px;color:var(--ink-2);text-decoration:none;border-left:2px solid transparent}
+nav.index a:hover{background:var(--surface-2);color:var(--ink)}
+nav.index .idx-title{font-family:var(--display);font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 10px 8px}
+main{min-width:0}
+section{padding-block:40px;border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:0}
+h2{font-family:var(--display);font-weight:600;font-size:clamp(22px,3vw,28px);line-height:1.2;margin:0 0 6px;text-wrap:balance}
+h3{font-family:var(--display);font-weight:600;font-size:17px;margin:28px 0 8px}
+.sub{color:var(--muted);margin:0 0 20px;max-width:62ch}
+p{max-width:65ch}
+figure{margin:20px 0;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px}
+figure svg{display:block;max-width:100%;height:auto;color:var(--ink)}
+figcaption{font-size:14px;color:var(--muted);margin-top:12px;max-width:70ch}
+figcaption b{color:var(--ink);font-weight:600}
+.scroll{overflow-x:auto}
+/* SVG helpers */
+.sv-box{fill:var(--surface);stroke:var(--line-strong);stroke-width:1.2}
+.sv-box2{fill:var(--surface-2);stroke:var(--line-strong);stroke-width:1.2}
+.sv-acc{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.4}
+.sv-acc-fill{fill:var(--accent)}
+.sv-sig{fill:var(--signal-soft);stroke:var(--signal);stroke-width:1.4}
+.sv-sig-fill{fill:var(--signal)}
+.sv-ok{fill:var(--ok-soft);stroke:var(--ok);stroke-width:1.4}
+.sv-bad{fill:var(--bad-soft);stroke:var(--bad);stroke-width:1.4}
+.sv-nx{fill:var(--nexus-soft);stroke:var(--nexus);stroke-width:1.2;stroke-dasharray:4 3}
+.sv-t{font-family:var(--body);font-size:12.5px;fill:var(--ink)}
+.sv-t.b{font-weight:600}
+.sv-t.s{font-size:11px;fill:var(--muted)}
+.sv-t.m{font-family:var(--mono);font-size:11px}
+.sv-t.h{font-family:var(--display);font-size:13px;font-weight:600}
+.sv-t.acc{fill:var(--accent-ink)}
+.sv-t.sig{fill:var(--signal)}
+.sv-t.ok{fill:var(--ok)}
+.sv-t.bad{fill:var(--bad)}
+.sv-t.inv{fill:#fff}
+.sv-l{stroke:var(--ink-2);stroke-width:1.3;fill:none}
+.sv-l.acc{stroke:var(--accent)}
+.sv-l.sig{stroke:var(--signal)}
+.sv-l.dash{stroke-dasharray:4 3}
+.sv-l.faint{stroke:var(--line-strong)}
+/* cards */
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin:16px 0}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.card h4{margin:0 0 4px;font-family:var(--display);font-size:15px;font-weight:600}
+.card p{margin:0;font-size:14px;color:var(--ink-2)}
+.card .k{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 7px;border-radius:5px;background:var(--surface-2);color:var(--ink-2);margin-right:4px}
+.tag.acc{background:var(--accent-soft);color:var(--accent-ink)}
+.tag.sig{background:var(--signal-soft);color:var(--signal)}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}
+/* before/after */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0}
+.ba>div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.ba .lab{font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px}
+.ba .nx .lab{color:var(--nexus)} .ba .v2 .lab{color:var(--accent)}
+.ba ul{margin:0;padding-left:18px;font-size:14.5px;color:var(--ink-2)} .ba li{margin:4px 0}
+/* matrix */
+table{border-collapse:collapse;width:100%;font-size:14px;background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-family:var(--display);font-size:13px;font-weight:600;background:var(--surface-2)}
+tr:last-child td{border-bottom:0}
+td.c,th.c{text-align:center}
+.dot{display:inline-block;width:14px;height:14px;border-radius:50%;background:var(--ok);vertical-align:middle}
+.dot.no{background:transparent;border:1.5px solid var(--line-strong)}
+.dot.aud{background:var(--signal)}
+.legend{display:flex;flex-wrap:wrap;gap:16px;font-size:13px;color:var(--muted);margin-top:10px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+/* decisions */
+.dec{display:grid;gap:12px;margin-top:16px}
+.dec .d{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--signal);border-radius:10px;padding:14px 16px}
+.dec .d h4{margin:0 0 6px;font-family:var(--display);font-size:15px;font-weight:600}
+.dec .d p{margin:0;font-size:14.5px;color:var(--ink-2)}
+.dec .d .sug{margin-top:8px;font-size:14px}
+.dec .d .sug b{color:var(--signal)}
+.note{background:var(--accent-soft);border-radius:10px;padding:12px 16px;font-size:14.5px;color:var(--accent-ink);margin:16px 0;max-width:70ch}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+@media (max-width:820px){.layout{grid-template-columns:1fr}nav.index{position:static;margin-bottom:8px}.ba{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:no-preference){a{transition:background .15s}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div class="eyebrow">Ingline Gestão · Fase 2</div>
+  <h1>Arquitetura do Ingline Gestão</h1>
+  <p class="lede">O desenho do sistema novo antes de qualquer código: o que ele é, quais telas terá, como o banco de dados fica organizado, quem pode fazer o quê e com que tecnologias vai ser construído.</p>
+  <div class="meta">
+    <span><span class="pill">Para sua aprovação</span></span>
+    <span>Versão <b>1</b> · 13/09/2026</span>
+    <span>Substitui o <b>Nexus v1.3.1</b></span>
+    <span>Base: mapeamento da Fase 1 · decisões V1–V9</span>
+  </div>
+</header>
+
+<div class="layout">
+<nav class="index" aria-label="Seções">
+  <div class="idx-title">Nesta página</div>
+  <ol>
+    <li><a href="#mapa">O que o sistema é</a></li>
+    <li><a href="#telas">As telas</a></li>
+    <li><a href="#dids">DIDs em massa</a></li>
+    <li><a href="#banco">O banco de dados</a></li>
+    <li><a href="#papeis">Quem pode o quê</a></li>
+    <li><a href="#senhas">Como as senhas ficam</a></li>
+    <li><a href="#stack">As tecnologias</a></li>
+    <li><a href="#ar">Como chega ao ar</a></li>
+    <li><a href="#docs">Documentação para leigo</a></li>
+    <li><a href="#decisoes">Decisões que preciso de você</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<!-- ============ 1. MAPA ============ -->
+<section id="mapa">
+  <h2>O que o sistema é</h2>
+  <p class="sub">Um único lugar que responde, para cada cliente: o que ele contratou, onde está o servidor dele, quais números são dele e quais aparelhos estão com ele.</p>
+  <figure>
+    <svg viewBox="0 0 960 330" role="img" aria-label="O sistema no centro, ligado a três frentes: clientes e produtos, numeração da operadora VoiceNet, e equipamentos locados">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+      <!-- center -->
+      <rect x="380" y="115" width="200" height="100" rx="12" class="sv-acc"/>
+      <text x="480" y="155" text-anchor="middle" class="sv-t h acc">Ingline Gestão</text>
+      <text x="480" y="176" text-anchor="middle" class="sv-t s">cadastro central + acesso operacional</text>
+      <text x="480" y="193" text-anchor="middle" class="sv-t s">usado pela equipe da Ingline</text>
+      <!-- left: clientes e produtos -->
+      <rect x="40" y="30" width="230" height="110" rx="10" class="sv-box"/>
+      <text x="155" y="56" text-anchor="middle" class="sv-t h">Clientes e produtos</text>
+      <text x="155" y="78" text-anchor="middle" class="sv-t s">47 empresas · 6 produtos + módulos</text>
+      <text x="155" y="96" text-anchor="middle" class="sv-t s">LinePBX · FOP2 · Omniboard · LineReports</text>
+      <text x="155" y="112" text-anchor="middle" class="sv-t s">LineChat · SZChat · VoiceNet · Equipamentos</text>
+      <text x="155" y="130" text-anchor="middle" class="sv-t s">servidor, hospedagem, acessos</text>
+      <!-- left bottom: numeração -->
+      <rect x="40" y="190" width="230" height="110" rx="10" class="sv-box"/>
+      <text x="155" y="216" text-anchor="middle" class="sv-t h">Numeração (VoiceNet)</text>
+      <text x="155" y="238" text-anchor="middle" class="sv-t s">37 circuitos · 1.569 DIDs</text>
+      <text x="155" y="256" text-anchor="middle" class="sv-t s">operadoras ALGAR e VC1</text>
+      <text x="155" y="274" text-anchor="middle" class="sv-t s">quem usa cada número · quem é titular</text>
+      <!-- right: equipamentos -->
+      <rect x="690" y="110" width="230" height="110" rx="10" class="sv-box"/>
+      <text x="805" y="136" text-anchor="middle" class="sv-t h">Equipamentos</text>
+      <text x="805" y="158" text-anchor="middle" class="sv-t s">76 aparelhos · 3 modelos</text>
+      <text x="805" y="176" text-anchor="middle" class="sv-t s">identificados pelo MAC</text>
+      <text x="805" y="194" text-anchor="middle" class="sv-t s">locação · venda · comodato</text>
+      <!-- arrows -->
+      <path d="M270,85 C330,85 330,140 380,140" class="sv-l" marker-end="url(#ar)"/>
+      <text x="318" y="102" class="sv-t s">assina</text>
+      <path d="M270,245 C330,245 330,190 380,190" class="sv-l" marker-end="url(#ar)"/>
+      <text x="318" y="238" class="sv-t s">usa DIDs</text>
+      <path d="M580,165 L690,165" class="sv-l" marker-end="url(#ar)"/>
+      <text x="635" y="158" text-anchor="middle" class="sv-t s">recebe aparelhos</text>
+      <!-- bottom band: quem usa -->
+      <rect x="380" y="260" width="200" height="44" rx="8" class="sv-box2"/>
+      <text x="480" y="279" text-anchor="middle" class="sv-t b">Suporte · Provisionamento · Comercial</text>
+      <text x="480" y="295" text-anchor="middle" class="sv-t s">com papéis e permissões diferentes</text>
+      <path d="M480,260 L480,215" class="sv-l dash faint" marker-end="url(#ar)"/>
+    </svg>
+    <figcaption><b>Três frentes, um cadastro.</b> O cliente é o centro: tudo o mais (produtos, números, aparelhos) se pendura nele. Os números são os do Nexus hoje; a v2 nasce preparada para dez vezes isso.</figcaption>
+  </figure>
+  <div class="note">O que <b>não</b> muda: os 24 objetivos e os 184 itens do checklist de paridade da Fase 1 continuam sendo o contrato. O que muda é a forma — telas, fluxos e estrutura foram redesenhados, não copiados.</div>
+</section>
+
+<!-- ============ 2. TELAS ============ -->
+<section id="telas">
+  <h2>As telas</h2>
+  <p class="sub">Sete áreas no menu lateral. Cada cliente, circuito e aparelho ganha uma página com endereço próprio, que dá para mandar por link.</p>
+  <figure>
+    <svg viewBox="0 0 960 420" role="img" aria-label="Mapa de navegação: menu lateral com Painel, Clientes, Circuitos, DIDs, Inventário, Importar e exportar, Administração; cada um abre suas subtelas">
+      <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+      <!-- sidebar -->
+      <rect x="20" y="20" width="180" height="380" rx="10" class="sv-box2"/>
+      <text x="36" y="44" class="sv-t s">MENU</text>
+      <g>
+        <rect x="30" y="56" width="160" height="30" rx="6" class="sv-acc"/><text x="42" y="76" class="sv-t b acc">Painel</text>
+        <rect x="30" y="94" width="160" height="30" rx="6" class="sv-box"/><text x="42" y="114" class="sv-t b">Clientes</text>
+        <rect x="30" y="132" width="160" height="30" rx="6" class="sv-box"/><text x="42" y="152" class="sv-t b">Circuitos</text>
+        <rect x="30" y="170" width="160" height="30" rx="6" class="sv-box"/><text x="42" y="190" class="sv-t b">DIDs</text>
+        <rect x="30" y="208" width="160" height="30" rx="6" class="sv-box"/><text x="42" y="228" class="sv-t b">Inventário</text>
+        <rect x="30" y="246" width="160" height="30" rx="6" class="sv-box"/><text x="42" y="266" class="sv-t b">Importar / Exportar</text>
+        <rect x="30" y="284" width="160" height="30" rx="6" class="sv-box"/><text x="42" y="304" class="sv-t b">Administração</text>
+        <rect x="30" y="340" width="160" height="30" rx="6" class="sv-sig"/><text x="42" y="360" class="sv-t b sig">Busca global  Ctrl+K</text>
+      </g>
+      <!-- subscreens -->
+      <g>
+        <text x="230" y="76" class="sv-t">indicadores · alertas de consistência · últimas movimentações</text>
+        <text x="230" y="114" class="sv-t">lista (cards ou tabela) →</text>
+        <rect x="392" y="98" width="540" height="24" rx="6" class="sv-acc"/>
+        <text x="402" y="114" class="sv-t acc">Ficha do cliente: Visão geral · Produtos · DIDs · Equipamentos · Acessos · Histórico</text>
+        <text x="230" y="152" class="sv-t">lista com ocupação (DIDs ÷ canais) →</text>
+        <rect x="470" y="136" width="300" height="24" rx="6" class="sv-acc"/>
+        <text x="480" y="152" class="sv-t acc">Circuito: dados · DIDs dele · criar faixa</text>
+        <text x="230" y="190" class="sv-t">lista com seleção por caixa → barra de ação em massa → confirmação com o número exato</text>
+        <text x="230" y="228" class="sv-t">Aparelhos (por MAC) · Modelos · Movimentações →</text>
+        <rect x="560" y="212" width="200" height="24" rx="6" class="sv-acc"/>
+        <text x="570" y="228" class="sv-t acc">Movimentar: locação · venda · comodato</text>
+        <text x="230" y="266" class="sv-t">clientes · circuitos · DIDs — com pré-visualização antes de aplicar</text>
+        <text x="230" y="304" class="sv-t">Usuários · Papéis · Catálogos · Auditoria · Lixeira</text>
+        <text x="230" y="360" class="sv-t s">digita um número, um nome ou um MAC e acha em qualquer lugar</text>
+      </g>
+      <!-- url note -->
+      <rect x="230" y="380" width="700" height="24" rx="6" class="sv-box"/>
+      <text x="240" y="396" class="sv-t m">gestor.inglinesystems.com.br/clientes/42   ·   /circuitos/7   ·   /inventario/aparelhos/00:0B:82:…</text>
+    </svg>
+    <figcaption><b>Cada coisa tem endereço.</b> O Nexus tem 5 páginas e o resto vive em janelas sem link. Aqui, um colega pode receber "olha esse cliente" como um link e abrir direto no lugar certo.</figcaption>
+  </figure>
+
+  <h3>O que muda em relação ao Nexus</h3>
+  <div class="ba">
+    <div class="nx"><div class="lab">Nexus hoje</div><ul>
+      <li>Dashboard = lista de clientes; nenhum indicador</li>
+      <li>Ficha do cliente numa janela lateral sem endereço</li>
+      <li>Senha aparece em campo de texto normal</li>
+      <li>"Linhas" — e a edição em massa pega tudo que está filtrado</li>
+      <li>Aparelho identificado por N001 (provisório)</li>
+      <li>Só "Locação" como tipo de movimentação</li>
+      <li>Importar CSV aplica na hora, sem revisão</li>
+      <li>Todo usuário pode tudo</li>
+    </ul></div>
+    <div class="v2"><div class="lab">Ingline Gestão (v2)</div><ul>
+      <li>Painel com o que precisa de atenção: circuitos cheios, DIDs livres, aparelhos parados, inconsistências</li>
+      <li>Ficha do cliente é uma página com abas e link próprio</li>
+      <li>Senha fica no cofre: mascarada, "revelar" pede confirmação e fica registrado</li>
+      <li>"DIDs" — você marca os que quer, vê "312 selecionados" e confirma</li>
+      <li>Aparelho identificado pelo MAC (etiqueta interna opcional)</li>
+      <li>Locação, venda, comodato e devolução</li>
+      <li>Importar mostra antes: "12 novos, 35 atualizados, 2 com erro" → você confirma</li>
+      <li>Quatro papéis; cada um vê e faz só o que deve</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ============ 3. DIDs ============ -->
+<section id="dids">
+  <h2>DIDs em massa: o ponto mais delicado</h2>
+  <p class="sub">A operação mais perigosa do Nexus, redesenhada. A diferença está em <em>quando</em> o sistema conta os registros e mostra o número para você.</p>
+  <figure>
+    <svg viewBox="0 0 960 300" role="img" aria-label="Comparação: no Nexus, filtrar e salvar atinge tudo filtrado sem mostrar quantos; no Ingline Gestão, marcar, ver o contador, confirmar com o número exato e poder desfazer">
+      <defs><marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+      <!-- Nexus row -->
+      <text x="20" y="40" class="sv-t m" style="fill:var(--nexus)">NEXUS HOJE</text>
+      <rect x="20" y="52" width="150" height="56" rx="8" class="sv-nx"/><text x="95" y="76" text-anchor="middle" class="sv-t b">Filtra a lista</text><text x="95" y="94" text-anchor="middle" class="sv-t s">ex.: circuito "071 Antigo"</text>
+      <path d="M170,80 L215,80" class="sv-l" marker-end="url(#ar3)"/>
+      <rect x="215" y="52" width="170" height="56" rx="8" class="sv-nx"/><text x="300" y="76" text-anchor="middle" class="sv-t b">Painel "Editar"</text><text x="300" y="94" text-anchor="middle" class="sv-t s">sempre aberto no topo</text>
+      <path d="M385,80 L430,80" class="sv-l" marker-end="url(#ar3)"/>
+      <rect x="430" y="52" width="120" height="56" rx="8" class="sv-nx"/><text x="490" y="86" text-anchor="middle" class="sv-t b">Salvar</text>
+      <path d="M550,80 L595,80" class="sv-l" marker-end="url(#ar3)"/>
+      <rect x="595" y="52" width="340" height="56" rx="8" class="sv-bad"/><text x="765" y="76" text-anchor="middle" class="sv-t b bad">Atinge TUDO que estava filtrado</text><text x="765" y="94" text-anchor="middle" class="sv-t s">sem dizer quantos · sem desfazer · filtro esquecido = 1.569</text>
+      <!-- divider -->
+      <line x1="20" y1="140" x2="940" y2="140" class="sv-l faint dash"/>
+      <!-- Ingline Gestão row -->
+      <text x="20" y="172" class="sv-t m acc">GESTOR</text>
+      <rect x="20" y="184" width="150" height="56" rx="8" class="sv-acc"/><text x="95" y="208" text-anchor="middle" class="sv-t b">Marca as caixas</text><text x="95" y="226" text-anchor="middle" class="sv-t s">ou "todos os filtrados"</text>
+      <path d="M170,212 L215,212" class="sv-l acc" marker-end="url(#ar3)"/>
+      <rect x="215" y="184" width="170" height="56" rx="8" class="sv-acc"/><text x="300" y="208" text-anchor="middle" class="sv-t b">Barra aparece</text><text x="300" y="226" text-anchor="middle" class="sv-t m">312 selecionados</text>
+      <path d="M385,212 L430,212" class="sv-l acc" marker-end="url(#ar3)"/>
+      <rect x="430" y="184" width="150" height="56" rx="8" class="sv-acc"/><text x="505" y="208" text-anchor="middle" class="sv-t b">Escolhe a ação</text><text x="505" y="226" text-anchor="middle" class="sv-t s">circuito · cliente · liberar</text>
+      <path d="M580,212 L625,212" class="sv-l acc" marker-end="url(#ar3)"/>
+      <rect x="625" y="184" width="170" height="56" rx="8" class="sv-sig"/><text x="710" y="208" text-anchor="middle" class="sv-t b sig">Confirma</text><text x="710" y="226" text-anchor="middle" class="sv-t s">"Alterar 312 DIDs?"</text>
+      <path d="M795,212 L840,212" class="sv-l acc" marker-end="url(#ar3)"/>
+      <rect x="840" y="184" width="100" height="56" rx="8" class="sv-ok"/><text x="890" y="208" text-anchor="middle" class="sv-t b ok">Aplica</text><text x="890" y="226" text-anchor="middle" class="sv-t s">+ Desfazer</text>
+      <text x="480" y="278" text-anchor="middle" class="sv-t s">Toda alteração em massa fica no histórico com quem fez, quando e quantos registros.</text>
+    </svg>
+    <figcaption><b>Mesmo poder, sem surpresa.</b> Continua possível mudar centenas de DIDs de uma vez — é uma necessidade real. Só que agora você vê o número antes, confirma, e pode voltar atrás.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 4. BANCO ============ -->
+<section id="banco">
+  <h2>O banco de dados</h2>
+  <p class="sub">Banco relacional (decisão V4): um conjunto de tabelas, cada uma como uma planilha com colunas fixas, ligadas entre si por chaves. Abaixo, as 20 tabelas em quatro grupos.</p>
+  <figure class="scroll">
+    <svg viewBox="0 0 1000 560" role="img" aria-label="Diagrama das tabelas em quatro grupos: clientes e produtos, numeração, inventário e segurança, com as ligações entre elas">
+      <defs><marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+      <!-- group boxes -->
+      <rect x="20" y="20" width="440" height="250" rx="12" class="sv-box2"/><text x="36" y="44" class="sv-t h">Clientes e produtos</text>
+      <rect x="20" y="300" width="440" height="240" rx="12" class="sv-box2"/><text x="36" y="324" class="sv-t h">Numeração</text>
+      <rect x="500" y="20" width="480" height="250" rx="12" class="sv-box2"/><text x="516" y="44" class="sv-t h">Inventário</text>
+      <rect x="500" y="300" width="480" height="240" rx="12" class="sv-box2"/><text x="516" y="324" class="sv-t h">Segurança e histórico</text>
+      <!-- clientes group -->
+      <rect x="40" y="60" width="150" height="70" rx="8" class="sv-acc"/><text x="115" y="84" text-anchor="middle" class="sv-t b acc">clients</text><text x="115" y="102" text-anchor="middle" class="sv-t s">nome, razão, CNPJ</text><text x="115" y="118" text-anchor="middle" class="sv-t s">logo, arquivado</text>
+      <rect x="230" y="60" width="150" height="70" rx="8" class="sv-box"/><text x="305" y="84" text-anchor="middle" class="sv-t b">subscriptions</text><text x="305" y="102" text-anchor="middle" class="sv-t s">cliente × produto</text><text x="305" y="118" text-anchor="middle" class="sv-t s">ativado em, valor</text>
+      <rect x="230" y="160" width="150" height="50" rx="8" class="sv-box"/><text x="305" y="182" text-anchor="middle" class="sv-t b">products</text><text x="305" y="198" text-anchor="middle" class="sv-t s">catálogo + módulos</text>
+      <rect x="40" y="160" width="150" height="90" rx="8" class="sv-box"/><text x="115" y="182" text-anchor="middle" class="sv-t b">*_settings</text><text x="115" y="198" text-anchor="middle" class="sv-t s">linepbx · fop2</text><text x="115" y="212" text-anchor="middle" class="sv-t s">omniboard · szchat</text><text x="115" y="228" text-anchor="middle" class="sv-t s">campos próprios de cada produto</text>
+      <path d="M190,95 L230,95" class="sv-l" marker-end="url(#ar4)"/><text x="210" y="88" text-anchor="middle" class="sv-t s">assina</text>
+      <path d="M305,160 L305,130" class="sv-l" marker-end="url(#ar4)"/>
+      <path d="M190,190 L230,120" class="sv-l dash" marker-end="url(#ar4)"/><text x="195" y="150" class="sv-t s">detalha</text>
+      <rect x="392" y="160" width="60" height="50" rx="8" class="sv-box"/><text x="422" y="182" text-anchor="middle" class="sv-t s">hosting</text><text x="422" y="196" text-anchor="middle" class="sv-t s">catálogo</text>
+      <!-- numeração group -->
+      <rect x="40" y="340" width="150" height="80" rx="8" class="sv-box"/><text x="115" y="364" text-anchor="middle" class="sv-t b">circuits</text><text x="115" y="382" text-anchor="middle" class="sv-t s">nome, código, canais</text><text x="115" y="398" text-anchor="middle" class="sv-t s">IPs, valor, titular</text>
+      <rect x="230" y="340" width="150" height="80" rx="8" class="sv-acc"/><text x="305" y="364" text-anchor="middle" class="sv-t b acc">dids</text><text x="305" y="382" text-anchor="middle" class="sv-t m">(71) 3XXX-XXXX</text><text x="305" y="398" text-anchor="middle" class="sv-t s">circuito · usa · titular</text>
+      <rect x="40" y="450" width="150" height="50" rx="8" class="sv-box"/><text x="115" y="472" text-anchor="middle" class="sv-t b">carriers</text><text x="115" y="488" text-anchor="middle" class="sv-t s">ALGAR, VC1 …</text>
+      <path d="M190,380 L230,380" class="sv-l" marker-end="url(#ar4)"/><text x="210" y="373" text-anchor="middle" class="sv-t s">agrupa</text>
+      <path d="M115,450 L115,420" class="sv-l" marker-end="url(#ar4)"/>
+      <path d="M305,340 C305,290 200,290 150,250" class="sv-l acc dash" marker-end="url(#ar4)"/><text x="248" y="290" class="sv-t s acc">quem usa · quem é titular</text>
+      <!-- inventário -->
+      <rect x="520" y="60" width="140" height="70" rx="8" class="sv-box"/><text x="590" y="84" text-anchor="middle" class="sv-t b">device_models</text><text x="590" y="102" text-anchor="middle" class="sv-t s">GXP1610, Headset…</text><text x="590" y="118" text-anchor="middle" class="sv-t s">nome, categoria</text>
+      <rect x="690" y="60" width="140" height="70" rx="8" class="sv-acc"/><text x="760" y="84" text-anchor="middle" class="sv-t b acc">devices</text><text x="760" y="102" text-anchor="middle" class="sv-t m">MAC 00:0B:82:…</text><text x="760" y="118" text-anchor="middle" class="sv-t s">ou "não aplicável"</text>
+      <rect x="600" y="160" width="230" height="70" rx="8" class="sv-sig"/><text x="715" y="184" text-anchor="middle" class="sv-t b sig">device_movements</text><text x="715" y="202" text-anchor="middle" class="sv-t s">locação · venda · comodato · devolução</text><text x="715" y="218" text-anchor="middle" class="sv-t s">de → para · qtd · quem · quando</text>
+      <rect x="515" y="160" width="72" height="50" rx="8" class="sv-box"/><text x="551" y="182" text-anchor="middle" class="sv-t s">categorias</text><text x="551" y="196" text-anchor="middle" class="sv-t s">catálogo</text>
+      <path d="M660,95 L690,95" class="sv-l" marker-end="url(#ar4)"/>
+      <path d="M760,130 L740,160" class="sv-l" marker-end="url(#ar4)"/>
+      <path d="M600,195 C560,240 400,260 190,130" class="sv-l dash" marker-end="url(#ar4)"/><text x="400" y="235" text-anchor="middle" class="sv-t s">está com o cliente</text>
+      <!-- segurança -->
+      <rect x="520" y="340" width="130" height="70" rx="8" class="sv-box"/><text x="585" y="364" text-anchor="middle" class="sv-t b">users</text><text x="585" y="382" text-anchor="middle" class="sv-t s">nome, e-mail</text><text x="585" y="398" text-anchor="middle" class="sv-t s">papel</text>
+      <rect x="670" y="340" width="130" height="70" rx="8" class="sv-box"/><text x="735" y="364" text-anchor="middle" class="sv-t b">roles</text><text x="735" y="382" text-anchor="middle" class="sv-t s">+ permissions</text><text x="735" y="398" text-anchor="middle" class="sv-t s">o que cada papel pode</text>
+      <rect x="820" y="340" width="145" height="70" rx="8" class="sv-sig"/><text x="892" y="364" text-anchor="middle" class="sv-t b sig">secrets</text><text x="892" y="382" text-anchor="middle" class="sv-t s">toda senha do sistema</text><text x="892" y="398" text-anchor="middle" class="sv-t s">cifrada · chave fora do banco</text>
+      <rect x="520" y="440" width="280" height="70" rx="8" class="sv-box"/><text x="660" y="464" text-anchor="middle" class="sv-t b">audit_log</text><text x="660" y="482" text-anchor="middle" class="sv-t s">quem fez o quê, em qual registro, quando</text><text x="660" y="498" text-anchor="middle" class="sv-t s">antes e depois de cada mudança</text>
+      <rect x="820" y="452" width="145" height="58" rx="8" class="sv-box"/><text x="892" y="476" text-anchor="middle" class="sv-t b">sessions</text><text x="892" y="494" text-anchor="middle" class="sv-t s">quem está logado</text>
+      <path d="M650,375 L670,375" class="sv-l" marker-end="url(#ar4)"/>
+      <text x="892" y="426" text-anchor="middle" class="sv-t s sig">← senhas de SSH, Omniboard,</text>
+      <text x="892" y="440" text-anchor="middle" class="sv-t s sig">SZChat e de tronco vivem aqui</text>
+    </svg>
+    <figcaption><b>Vinte e quatro tabelas, quatro grupos.</b> As duas em destaque azul (<code>clients</code>, <code>dids</code>, <code>devices</code>) são onde a operação vive. As laranjas guardam o que exige cuidado: senhas e movimentações. Cada tabela terá, no código, uma frase em português explicando o que guarda — e cada coluna também.</figcaption>
+  </figure>
+
+  <h3>Cada tabela em uma frase</h3>
+  <div class="grid">
+    <div class="card"><h4>clients</h4><p>Uma linha por empresa atendida. Nome fantasia, razão social, CNPJ, logo. "Ocultar" vira <b>arquivar</b>. Nunca é apagada de verdade — vai para a lixeira.</p></div>
+    <div class="card"><h4>products · product_modules</h4><p>Catálogo dos 6 produtos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos) e dos <b>módulos</b> dentro deles (LinePBX → Omniboard, FOP2, NPS · LineChat → Dashboard de filas, NPS). Gerenciável pela Administração; cada produto com cor própria para os chips.</p></div>
+    <div class="card"><h4>subscriptions</h4><p>Cliente X assina produto Y desde tal data. Guarda também <b>quando deixou de assinar</b> — o Nexus perde isso. Valor mensal opcional.</p></div>
+    <div class="card"><h4>subscription_modules · linepbx / szchat / fop2 / omniboard _settings</h4><p>O que cada cliente tem ligado dentro de cada produto. Só quem tem campos próprios ganha uma tabela pequena: LinePBX e SZChat (produtos), FOP2 e Omniboard (módulos). Os demais só precisam de data e anotações.</p></div>
+    <div class="card"><h4>hosting_providers · carriers · device_categories</h4><p>Catálogos: Local, Vultr, AWS… / ALGAR, VC1… / Telefone IP, Periférico… Deixam de ser texto livre; você gerencia a lista.</p></div>
+    <div class="card"><h4>circuits</h4><p>Os feixes: nome, código da operadora, canais, IPs, credenciais do tronco (no cofre), valor mensal, titular.</p></div>
+    <div class="card"><h4>dids</h4><p>Cada número. Aponta para o circuito, para o <b>cliente que usa</b> e para o <b>titular</b> (VoiceNet, quase sempre). Sem cliente = livre.</p></div>
+    <div class="card"><h4>device_models</h4><p>Grandstream GXP1610, Headset Genérico… com categoria. O modelo é só o tipo do aparelho; quantidade nenhuma mora aqui.</p></div>
+    <div class="card"><h4>devices</h4><p><b>Uma linha por aparelho</b>, sempre. Quem tem MAC é identificado por ele; headset e cabo ficam com o MAC vazio e a tela mostra "não aplicável". Condição (ativo/inativo), valor, IP, local, com quem está.</p></div>
+    <div class="card"><h4>device_movements</h4><p>Cada locação, venda, comodato ou devolução: de onde, para onde, quantos, valor, quem fez, quando. Nunca é editada.</p></div>
+    <div class="card"><h4>users · roles · permissions</h4><p>Quem entra no sistema, com qual papel, e o que cada papel pode. Ver a matriz abaixo.</p></div>
+    <div class="card"><h4>secrets</h4><p>Toda senha do sistema mora aqui, cifrada. As outras tabelas só guardam "a senha é o segredo nº 87". A chave para decifrar fica fora do banco.</p></div>
+    <div class="card"><h4>audit_log</h4><p>Quem fez o quê, em qual registro, quando, com o antes e o depois. Inclui "revelou a senha X". Consultável na Administração.</p></div>
+  </div>
+</section>
+
+<!-- ============ 5. PAPÉIS ============ -->
+<section id="papeis">
+  <h2>Quem pode o quê</h2>
+  <p class="sub">Quatro papéis (decisão V1). Cada linha é uma ação; cada coluna, um papel. Bolinha verde = pode. Laranja = pode, mas fica registrado na auditoria com destaque.</p>
+  <div class="scroll">
+  <table>
+    <thead><tr><th>Ação</th><th class="c">Leitor</th><th class="c">Operador</th><th class="c">Técnico</th><th class="c">Administrador</th></tr></thead>
+    <tbody>
+      <tr><td>Ver clientes, circuitos, DIDs, inventário</td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td></tr>
+      <tr><td>Usar os atalhos de acesso (web, SSH, FOP2)</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td></tr>
+      <tr><td>Editar anotações e observações</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td></tr>
+      <tr><td>Alocar / liberar DIDs, inclusive em massa</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td></tr>
+      <tr><td>Movimentar aparelhos (locar, vender, devolver)</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td></tr>
+      <tr><td>Criar e editar clientes, produtos assinados, circuitos</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td></tr>
+      <tr><td>Editar dados de servidor (IP, domínio, SSH)</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td></tr>
+      <tr><td><b>Revelar uma senha</b></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot aud"></span></td><td class="c"><span class="dot aud"></span></td></tr>
+      <tr><td>Excluir (mandar para a lixeira) e restaurar</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot aud"></span></td></tr>
+      <tr><td>Importar CSV</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot aud"></span></td></tr>
+      <tr><td>Exportar CSV sem senhas</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td></tr>
+      <tr><td><b>Exportar com senhas</b> (decisão V5)</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot aud"></span></td></tr>
+      <tr><td>Gerenciar usuários, papéis e catálogos</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot"></span></td></tr>
+      <tr><td>Ver a auditoria</td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot no"></span></td><td class="c"><span class="dot"></span></td><td class="c"><span class="dot"></span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="legend"><span><span class="dot"></span> pode</span><span><span class="dot aud"></span> pode, com registro destacado na auditoria</span><span><span class="dot no"></span> não pode</span></div>
+  <p style="margin-top:16px;font-size:14.5px;color:var(--ink-2)">Por dentro, cada bolinha é uma <b>permissão</b> com nome (ex.: <code class="tag">secrets.reveal</code>, <code class="tag">dids.bulk_edit</code>) e um papel é só uma lista delas. Criar um quinto papel um dia — "Financeiro", por exemplo — é marcar caixinhas na tela de Administração, não escrever código.</p>
+</section>
+
+<!-- ============ 6. SENHAS ============ -->
+<section id="senhas">
+  <h2>Como as senhas ficam</h2>
+  <p class="sub">O maior risco do Nexus, resolvido na estrutura. Uma senha nunca está "no banco" de forma legível; ela está cifrada, e a chave que abre fica em outro lugar.</p>
+  <figure>
+    <svg viewBox="0 0 960 300" role="img" aria-label="Fluxo de revelar uma senha: técnico clica revelar, confirma a própria senha, o servidor verifica a permissão, busca o segredo cifrado no banco, decifra com a chave que fica fora do banco, registra na auditoria e mostra por 30 segundos">
+      <defs><marker id="ar5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+      <!-- actors -->
+      <rect x="20" y="40" width="150" height="60" rx="8" class="sv-box"/><text x="95" y="66" text-anchor="middle" class="sv-t b">Técnico</text><text x="95" y="84" text-anchor="middle" class="sv-t s">na ficha do cliente</text>
+      <rect x="230" y="40" width="200" height="60" rx="8" class="sv-acc"/><text x="330" y="66" text-anchor="middle" class="sv-t b acc">Servidor (API)</text><text x="330" y="84" text-anchor="middle" class="sv-t s">aplica as regras</text>
+      <rect x="500" y="40" width="180" height="60" rx="8" class="sv-box"/><text x="590" y="66" text-anchor="middle" class="sv-t b">Banco</text><text x="590" y="84" text-anchor="middle" class="sv-t m">secrets: ••••cifrado••••</text>
+      <rect x="750" y="40" width="190" height="60" rx="8" class="sv-sig"/><text x="845" y="66" text-anchor="middle" class="sv-t b sig">Chave-mestra</text><text x="845" y="84" text-anchor="middle" class="sv-t s">fora do banco, só o servidor lê</text>
+      <!-- steps -->
+      <text x="20" y="140" class="sv-t m s">1</text><text x="40" y="140" class="sv-t">Clica em <tspan class="b">Revelar</tspan> e digita a própria senha de novo</text>
+      <path d="M95,100 L95,150 L230,150" class="sv-l" marker-end="url(#ar5)"/>
+      <text x="245" y="180" class="sv-t m s">2</text><text x="265" y="180" class="sv-t">Tem permissão <tspan class="m">secrets.reveal</tspan>? Se não, para aqui.</text>
+      <text x="245" y="205" class="sv-t m s">3</text><text x="265" y="205" class="sv-t">Busca o segredo cifrado</text>
+      <path d="M430,200 L500,200 L590,200 L590,100" class="sv-l dash" marker-end="url(#ar5)"/>
+      <text x="245" y="230" class="sv-t m s">4</text><text x="265" y="230" class="sv-t">Decifra com a chave-mestra</text>
+      <path d="M430,226 L740,226 L845,226 L845,100" class="sv-l sig dash" marker-end="url(#ar5)"/>
+      <text x="245" y="255" class="sv-t m s">5</text><text x="265" y="255" class="sv-t">Grava na auditoria: <tspan class="m">Fulano revelou senha SSH do cliente 42, 13/09 14:02</tspan></text>
+      <text x="245" y="280" class="sv-t m s">6</text><text x="265" y="280" class="sv-t">Devolve a senha; a tela mostra por 30 s e volta a mascarar</text>
+      <path d="M230,280 L95,280 L95,100" class="sv-l acc" marker-end="url(#ar5)"/>
+    </svg>
+    <figcaption><b>Vazar o banco não vaza as senhas.</b> Sem a chave-mestra, a tabela <code>secrets</code> é ruído. E cada revelação deixa rastro: dá para saber quem viu qual senha e quando.</figcaption>
+  </figure>
+  <div class="grid">
+    <div class="card"><h4>No formulário</h4><p>Campo mascarado. Botões: <b>Revelar</b> (30 s), <b>Copiar</b> (sem mostrar), <b>Trocar</b>. Nunca <code>type="text"</code>.</p></div>
+    <div class="card"><h4>Nos links de acesso rápido</h4><p>O botão FOP2 nunca carrega senha na URL. Se o acesso automático for necessário, o servidor faz a entrada por trás, sem expor nada.</p></div>
+    <div class="card"><h4>Na exportação (V5)</h4><p>CSV normal sai sem senhas. "Exportar com senhas" só para Administrador, com confirmação, registro, e o arquivo sai num ZIP protegido por senha.</p></div>
+    <div class="card"><h4>Na importação</h4><p>Coluna de senha vazia = mantém a atual (mesma regra que o Nexus já usa para clientes).</p></div>
+  </div>
+</section>
+
+<!-- ============ 7. STACK ============ -->
+<section id="stack">
+  <h2>As tecnologias</h2>
+  <p class="sub">Critério único: popular e sem surpresa. Qualquer desenvolvedor do mercado reconhece cada peça — e você não fica preso a mim.</p>
+  <figure>
+    <svg viewBox="0 0 960 380" role="img" aria-label="Camadas: navegador com React e TypeScript; API em Node com Fastify e Zod, documentada em OpenAPI; Prisma; PostgreSQL. Ao lado, cofre de segredos e auditoria. Abaixo, GitHub, testes, homologação e produção">
+      <defs><marker id="ar6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+      <!-- browser -->
+      <rect x="40" y="30" width="560" height="70" rx="10" class="sv-box"/>
+      <text x="56" y="54" class="sv-t h">No navegador — o que você vê</text>
+      <text x="56" y="76" class="sv-t"><tspan class="b">React</tspan> monta as telas · <tspan class="b">TypeScript</tspan> confere os dados antes de rodar · <tspan class="b">Tailwind</tspan> dá o visual</text>
+      <text x="56" y="92" class="sv-t s">tabelas grandes com paginação e rolagem virtual: nunca mais 1.570 linhas de uma vez</text>
+      <path d="M320,100 L320,130" class="sv-l" marker-end="url(#ar6)"/><text x="335" y="120" class="sv-t s">HTTPS · pedidos tipados</text>
+      <!-- api -->
+      <rect x="40" y="130" width="560" height="80" rx="10" class="sv-acc"/>
+      <text x="56" y="154" class="sv-t h acc">No servidor — as regras</text>
+      <text x="56" y="176" class="sv-t"><tspan class="b">Node.js</tspan> + <tspan class="b">TypeScript</tspan> · <tspan class="b">Fastify</tspan> recebe os pedidos · <tspan class="b">Zod</tspan> valida cada dado que entra</text>
+      <text x="56" y="194" class="sv-t s">toda operação documentada automaticamente numa página (OpenAPI) — dá para ler o "cardápio" inteiro sem abrir código</text>
+      <path d="M320,210 L320,240" class="sv-l" marker-end="url(#ar6)"/><text x="335" y="230" class="sv-t s"><tspan class="b">Prisma</tspan> traduz tabelas em código e versiona cada mudança do banco</text>
+      <!-- db -->
+      <rect x="40" y="240" width="560" height="60" rx="10" class="sv-box"/>
+      <text x="56" y="264" class="sv-t h">No banco — os dados</text>
+      <text x="56" y="286" class="sv-t"><tspan class="b">PostgreSQL</tspan> · relacional, gratuito, o mais usado do mundo para isto · backup diário automático</text>
+      <!-- side boxes -->
+      <rect x="640" y="130" width="300" height="80" rx="10" class="sv-sig"/>
+      <text x="656" y="154" class="sv-t h sig">Cofre de segredos</text>
+      <text x="656" y="176" class="sv-t s">cifragem AES-256 dentro do servidor;</text>
+      <text x="656" y="192" class="sv-t s">chave-mestra em variável de ambiente</text>
+      <path d="M600,170 L640,170" class="sv-l sig dash" marker-end="url(#ar6)"/>
+      <rect x="640" y="240" width="300" height="60" rx="10" class="sv-box"/>
+      <text x="656" y="264" class="sv-t h">Auditoria + registro de erros</text>
+      <text x="656" y="286" class="sv-t s">toda mudança e todo erro ficam registrados</text>
+      <path d="M600,270 L640,270" class="sv-l dash" marker-end="url(#ar6)"/>
+      <!-- bottom -->
+      <text x="40" y="340" class="sv-t s">Tudo isso vive num único repositório no <tspan class="b">GitHub</tspan>: pastas <tspan class="m">web/</tspan> (navegador), <tspan class="m">api/</tspan> (servidor), <tspan class="m">db/</tspan> (banco) e <tspan class="m">docs/</tspan> (documentação em português).</text>
+      <text x="40" y="362" class="sv-t s">Testes automáticos: <tspan class="b">Vitest</tspan> (regras) e <tspan class="b">Playwright</tspan> (clica nas telas como uma pessoa).</text>
+    </svg>
+    <figcaption><b>Três camadas e dois guardiões.</b> Navegador, servidor e banco conversam em linha reta; cofre e auditoria ficam ao lado do servidor, que é o único que toca neles.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 8. AO AR ============ -->
+<section id="ar">
+  <h2>Como o sistema chega ao ar</h2>
+  <p class="sub">Dois ambientes idênticos: um para você testar, outro para valer. Nada chega ao segundo sem passar pelo primeiro e pelo seu ok.</p>
+  <figure>
+    <svg viewBox="0 0 960 220" role="img" aria-label="Pipeline: eu escrevo o código, vai para o GitHub, os testes automáticos rodam, publica em homologação, você testa e aprova, publica em produção; backup diário do banco de produção">
+      <defs><marker id="ar7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+      <rect x="20" y="50" width="130" height="60" rx="8" class="sv-box"/><text x="85" y="76" text-anchor="middle" class="sv-t b">Claude escreve</text><text x="85" y="94" text-anchor="middle" class="sv-t s">um módulo por vez</text>
+      <path d="M150,80 L185,80" class="sv-l" marker-end="url(#ar7)"/>
+      <rect x="185" y="50" width="120" height="60" rx="8" class="sv-box"/><text x="245" y="76" text-anchor="middle" class="sv-t b">GitHub</text><text x="245" y="94" text-anchor="middle" class="sv-t s">histórico de tudo</text>
+      <path d="M305,80 L340,80" class="sv-l" marker-end="url(#ar7)"/>
+      <rect x="340" y="50" width="130" height="60" rx="8" class="sv-box"/><text x="405" y="76" text-anchor="middle" class="sv-t b">Testes rodam</text><text x="405" y="94" text-anchor="middle" class="sv-t s">falhou? não passa</text>
+      <path d="M470,80 L505,80" class="sv-l" marker-end="url(#ar7)"/>
+      <rect x="505" y="50" width="150" height="60" rx="8" class="sv-acc"/><text x="580" y="76" text-anchor="middle" class="sv-t b acc">Homologação</text><text x="580" y="94" text-anchor="middle" class="sv-t m">teste.gestor.…</text>
+      <path d="M655,80 L690,80" class="sv-l" marker-end="url(#ar7)"/>
+      <rect x="690" y="50" width="110" height="60" rx="8" class="sv-sig"/><text x="745" y="76" text-anchor="middle" class="sv-t b sig">Você testa</text><text x="745" y="94" text-anchor="middle" class="sv-t s">e aprova</text>
+      <path d="M800,80 L835,80" class="sv-l" marker-end="url(#ar7)"/>
+      <rect x="835" y="50" width="110" height="60" rx="8" class="sv-ok"/><text x="890" y="76" text-anchor="middle" class="sv-t b ok">Produção</text><text x="890" y="94" text-anchor="middle" class="sv-t m">gestor.…</text>
+      <!-- backup -->
+      <path d="M890,110 L890,150" class="sv-l dash" marker-end="url(#ar7)"/>
+      <rect x="790" y="150" width="155" height="44" rx="8" class="sv-box2"/><text x="867" y="169" text-anchor="middle" class="sv-t b">Backup diário</text><text x="867" y="185" text-anchor="middle" class="sv-t s">com teste de restauração</text>
+      <!-- reprova loop -->
+      <path d="M745,110 L745,150 L85,150 L85,110" class="sv-l sig dash" marker-end="url(#ar7)"/>
+      <text x="415" y="145" text-anchor="middle" class="sv-t s sig">reprovou? volta para ajuste</text>
+    </svg>
+    <figcaption><b>O caminho é sempre o mesmo, do primeiro módulo à última melhoria.</b> Você só encosta na etapa laranja.</figcaption>
+  </figure>
+  <h3>Onde vai rodar — duas opções</h3>
+  <div class="ba">
+    <div class="v2"><div class="lab">Plataforma gerenciada · recomendada</div><ul>
+      <li>Ex.: Railway ou Render para o sistema + banco PostgreSQL gerenciado (Neon, Supabase ou o da própria plataforma)</li>
+      <li>Eles cuidam de atualização, reinício, escala, backup do banco</li>
+      <li>Você não administra servidor nenhum</li>
+      <li>Custo aproximado para começar: <b>US$ 0–30/mês</b> (confirmo os valores atuais quando você escolher)</li>
+    </ul></div>
+    <div class="nx"><div class="lab">Servidor próprio (VPS)</div><ul>
+      <li>Vultr ou Hetzner, que vocês já usam para os clientes</li>
+      <li>Mais controle, custo um pouco menor (<b>US$ 10–20/mês</b>)</li>
+      <li>Alguém precisa aplicar atualizações de segurança, cuidar de backup e de reinício</li>
+      <li>Faz sentido se a equipe já mantém os servidores dos clientes e prefere tudo no mesmo lugar</li>
+    </ul></div>
+  </div>
+</section>
+
+<!-- ============ 9. DOCS ============ -->
+<section id="docs">
+  <h2>Documentação para quem não programa</h2>
+  <p class="sub">Requisito seu, tratado como parte do produto. Você abre a pasta do projeto e entende o que é cada coisa — sem ler código.</p>
+  <figure>
+    <svg viewBox="0 0 960 330" role="img" aria-label="Estrutura de pastas do projeto com o que cada documento explica">
+      <g class="sv-t m">
+        <text x="30" y="40" class="sv-t m b">gestor/</text>
+        <text x="50" y="66" class="sv-t m b">LEIA-ME.md</text><text x="230" y="66" class="sv-t">"Como ler este projeto": o mapa das pastas, em português, primeira coisa que qualquer pessoa vê</text>
+        <text x="50" y="96" class="sv-t m b">docs/</text>
+        <text x="70" y="118" class="sv-t m">arquitetura.html</text><text x="230" y="118" class="sv-t">esta página, sempre atualizada</text>
+        <text x="70" y="140" class="sv-t m">banco-de-dados.md</text><text x="230" y="140" class="sv-t">cada tabela e cada coluna com uma frase; gerado a partir do próprio banco, não fica desatualizado</text>
+        <text x="70" y="162" class="sv-t m">decisoes/</text><text x="230" y="162" class="sv-t">uma página curta por decisão: "por que MAC e não número sequencial", "por que PostgreSQL"</text>
+        <text x="70" y="184" class="sv-t m">glossario.md</text><text x="230" y="184" class="sv-t">DID, circuito, canal, comodato… o significado que cada termo tem aqui</text>
+        <text x="70" y="206" class="sv-t m">guia-de-uso/</text><text x="230" y="206" class="sv-t">para a equipe: como fazer cada tarefa, com prints</text>
+        <text x="50" y="236" class="sv-t m b">web/  api/  db/</text><text x="230" y="236" class="sv-t">cada pasta de código começa com um <tspan class="m">LEIA-ME.md</tspan> dizendo o que ela faz e o que tem dentro</text>
+        <text x="50" y="266" class="sv-t m b">api → /api/docs</text><text x="230" y="266" class="sv-t">página no ar listando toda operação que o servidor faz ("criar cliente", "alocar DID"…), com exemplo</text>
+        <text x="50" y="296" class="sv-t m b">dentro do código</text><text x="230" y="296" class="sv-t">comentários em português explicam o <tspan class="b">porquê</tspan> de cada regra, não só o quê</text>
+      </g>
+      <rect x="20" y="20" width="920" height="292" rx="10" fill="none" class="sv-l faint"/>
+    </svg>
+    <figcaption><b>Documentação que não envelhece.</b> A do banco e a da API são geradas do próprio sistema — se o código muda, elas mudam junto. As decisões ficam escritas para o próximo desenvolvedor não ter que adivinhar.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 10. DECISÕES ============ -->
+<section id="decisoes">
+  <h2>Decisões que preciso de você</h2>
+  <p class="sub">Dez pontos que a arquitetura não pode decidir sozinha. Cada um vem com a minha sugestão — se concordar com todas, basta dizer "aceito as sugestões".</p>
+  <div class="dec">
+    <div class="d"><h4>1. O que substitui "Indeterminado" no aparelho</h4><p>Hoje o Nexus mistura duas coisas: <em>onde</em> o aparelho está e <em>em que estado</em>. Proposta: separar. <b>Onde:</b> Estoque ou Cliente X (vem da última movimentação). <b>Condição:</b> Ativo · Em manutenção · Baixado.</p><p class="sug"><b>Sugestão:</b> aceitar os três estados; "Em manutenção" cobre o caso do aparelho que voltou com defeito.</p></div>
+    <div class="d"><h4>2. Aparelho vendido continua no inventário?</h4><p>Se você vende um telefone ao cliente, ele deixa de ser seu. Proposta: a venda vira uma movimentação e o aparelho recebe condição <b>Vendido</b> — sai das contagens de estoque e locado, mas o histórico dele fica.</p><p class="sug"><b>Sugestão:</b> manter o registro, nunca apagar — quem vendeu, para quem, por quanto.</p></div>
+    <div class="d"><h4>3. Valor mensal por produto assinado</h4><p>O Nexus tem valor no circuito e no aparelho, mas não no produto. Com um campo opcional "valor mensal" em cada assinatura, o painel passa a mostrar quanto cada cliente representa.</p><p class="sug"><b>Sugestão:</b> incluir já na v2 como campo opcional. Não é faturamento — é visibilidade.</p></div>
+    <div class="d"><h4>4. Ingline Systems e VoiceNet no cadastro</h4><p>Os DIDs e circuitos têm um "titular" (era "dono"), e hoje é sempre "Ingline Systems". Você disse que a operadora é a VoiceNet. Proposta: ambas existem como <b>organizações internas</b> (marcadas como "própria"), e o titular padrão de DIDs passa a ser VoiceNet.</p><p class="sug"><b>Sugestão:</b> VoiceNet como titular da numeração; Ingline como dona dos aparelhos.</p></div>
+    <div class="d"><h4>5. Onde hospedar</h4><p>Plataforma gerenciada (Railway/Render + banco gerenciado) ou servidor próprio na Vultr/Hetzner. Comparação na seção "Como chega ao ar".</p><p class="sug"><b>Sugestão:</b> gerenciada — sem desenvolvedor na equipe, quanto menos servidor para cuidar, melhor. Migrar para VPS depois é possível.</p></div>
+    <div class="d"><h4>6. Nome do sistema</h4><p>Decidido em 13/09/2026: o sistema se chama <b>Ingline Gestão</b> — é o nome que aparece no menu, na aba do navegador e na tela de entrada.</p><p class="sug"><b>Marca:</b> selo <b>IG</b> ao lado do nome; recolhido, só o selo.</p></div>
+    <div class="d"><h4>7. Rótulos dos DIDs</h4><p>O Nexus chama de "Locação" o cliente que usa o número — confunde com locação de aparelho. Proposta: <b>Cliente</b> (quem usa) e <b>Titular</b> (quem detém). "Livre" continua sendo "sem cliente".</p><p class="sug"><b>Sugestão:</b> aceitar; "Locação" fica reservado para equipamentos.</p></div>
+    <div class="d"><h4>8. Entrar no sistema</h4><p>E-mail e senha, com bloqueio após tentativas erradas. Opcional: <b>código de verificação</b> no celular (2 fatores) — protege contra senha vazada.</p><p class="sug"><b>Sugestão:</b> e-mail + senha na v2; 2 fatores obrigatório só para Administrador, opcional para os demais.</p></div>
+    <div class="d"><h4>9. "Ocultar cliente" vira "Arquivar"</h4><p>Mesmo comportamento (some da lista, não é apagado), nome mais claro. Cliente arquivado aparece com um filtro e pode ser desarquivado.</p><p class="sug"><b>Sugestão:</b> aceitar.</p></div>
+    <div class="d"><h4>10. Exportar com senhas (V5)</h4><p>Você quer o CSV de circuitos com a senha do tronco. Proposta: opção separada só para Administrador, com confirmação, registro na auditoria, e arquivo entregue em <b>ZIP protegido por senha</b>.</p><p class="sug"><b>Sugestão:</b> aceitar o ZIP protegido. Se preferir CSV aberto mesmo, eu faço — mas fica registrado que foi escolha consciente.</p></div>
+  </div>
+</section>
+
+</main>
+</div>
+</div>

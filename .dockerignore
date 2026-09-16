@@ -1,0 +1,15 @@
+# O que NÃO entra na imagem do sistema.
+# O .env (chaves) e os backups ficam só no servidor: a imagem nunca deve carregá-los.
+.env
+.env.*
+!.env.example
+backups
+config
+node_modules
+**/node_modules
+**/dist
+apps/web/dist-demo
+coverage
+*.log
+.git
+.github

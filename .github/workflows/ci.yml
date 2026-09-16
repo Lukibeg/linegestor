@@ -1,0 +1,29 @@
+# Rotina automática do GitHub: a cada mudança, instala, verifica os tipos e roda os testes
+# contra um PostgreSQL de verdade. Se algo falhar, a mudança aparece como reprovada.
+name: Testes
+on: [push, pull_request]
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: gestor_dev, POSTGRES_DB: gestor_test }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:gestor_dev@localhost:5432/gestor_test
+          DATABASE_URL: postgresql://postgres:gestor_dev@localhost:5432/gestor_test
+          SECRETS_MASTER_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+          SESSION_SECRET: segredo-de-teste-bem-longo-1234567890
+      - run: pnpm --filter @gestor/web build

@@ -1,0 +1,12 @@
+node_modules
+dist
+.env
+.env.*
+!.env.example
+coverage
+*.log
+.DS_Store
+apps/web/dist-demo
+backups/
+# cópia dos ajustes de aviso gravada pelo sistema no servidor (tem o token da API de avisos)
+config/
