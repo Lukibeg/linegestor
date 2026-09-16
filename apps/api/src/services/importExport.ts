@@ -11,7 +11,7 @@
  */
 import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import archiver from 'archiver';
 import { randomBytes } from 'node:crypto';
 import { carriers, circuits, clients, dids, hostingProviders, linepbxSettings, newId, productModules, products, subscriptionModules, subscriptions, type Db } from '@gestor/db';
@@ -56,6 +56,33 @@ function pick(row: Record<string, string>, entity: Entity, field: string): strin
   return undefined;
 }
 
+/**
+ * Datas de ativação por produto/módulo, em colunas próprias: `ativacao_linepbx`, `ativacao_voicenet`,
+ * `ativacao_linepbx:fop2`. É assim que a linha do tempo da implantação vem do Nexus.
+ * Aceita 31/12/2025 e 2025-12-31.
+ */
+function dataBr(v: string): Date | null {
+  const t = v.trim();
+  let m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
+  if (m) { const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])); return isNaN(+d) || d.getMonth() !== Number(m[2]) - 1 ? null : d; }
+  m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+  if (m) { const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])); return isNaN(+d) || d.getMonth() !== Number(m[2]) - 1 ? null : d; }
+  return null;
+}
+
+function datasDeAtivacao(row: Record<string, string>): { datas: Record<string, Date>; invalidas: string[]; codigos: string[] } {
+  const datas: Record<string, Date> = {}, invalidas: string[] = [], codigos: string[] = [];
+  for (const [k, v] of Object.entries(row)) {
+    const m = /^(?:ativacao|ativado_em|activation)_(.+)$/.exec(k);
+    if (!m || !v || !v.trim()) continue;
+    const codigo = m[1]!;
+    codigos.push(codigo);
+    const d = dataBr(v);
+    if (d) datas[codigo] = d; else invalidas.push(`${k} ("${v}")`);
+  }
+  return { datas, invalidas, codigos };
+}
+
 export type PlanRow = { line: number; action: 'create' | 'update' | 'error' | 'skip'; key: string; errors: string[]; data: Record<string, unknown> };
 export type Plan = { entity: Entity; rows: PlanRow[]; summary: { create: number; update: number; error: number; skip: number; total: number } };
 
@@ -78,6 +105,10 @@ export async function plan(db: Db, entity: Entity, csv: string, delimiter: strin
 async function planClients(db: Db, raw: Record<string, string>[]): Promise<Plan> {
   const existing = await db.select({ id: clients.id, cnpj: clients.cnpj, tradeName: clients.tradeName }).from(clients).where(isNull(clients.deletedAt));
   const byId = new Map(existing.map((c) => [c.id, c])), byCnpj = new Map(existing.map((c) => [c.cnpj, c]));
+  // CNPJ é único no banco INCLUSIVE na lixeira: sem este aviso a gravação estouraria com erro de chave
+  const naLixeira = new Map((await db.select({ cnpj: clients.cnpj, tradeName: clients.tradeName }).from(clients).where(isNotNull(clients.deletedAt))).map((c) => [c.cnpj, c.tradeName]));
+  const hostings = (await db.select({ name: hostingProviders.name }).from(hostingProviders)).map((h) => h.name);
+  const hostingByNorm = new Map(hostings.map((n) => [norm(n), n]));
   const prodCodes = new Set((await db.select({ code: products.code }).from(products)).map((p) => p.code));
   const modPairs = new Set((await db.select({ p: products.code, m: productModules.code }).from(productModules).innerJoin(products, eq(products.id, productModules.productId))).map((x) => `${x.p}:${x.m}`));
   // Compatibilidade com o Nexus: lá FOP2 e Omniboard eram "produtos"; aqui são módulos do LinePBX
@@ -96,6 +127,7 @@ async function planClients(db: Db, raw: Record<string, string>[]): Promise<Plan>
     seen.add(cnpj);
     const target = id ? byId.get(id) : byCnpj.get(cnpj);
     if (id && !byId.get(id)) errors.push(`id "${id}" não existe`);
+    if (!target && naLixeira.has(cnpj)) errors.push(`Este CNPJ já existe na lixeira ("${naLixeira.get(cnpj)}"). Restaure o cliente em Administração → Lixeira e importe de novo`);
     if (!target && !tradeName) errors.push('Nome fantasia vazio (obrigatório para criar)');
     if (!target && !legalName) errors.push('Razão social vazia (obrigatória para criar)');
     const rawProds = (pick(r, 'clients', 'products') ?? '').split(/[|,]/).map((p) => norm(p)).filter(Boolean);
@@ -108,12 +140,20 @@ async function planClients(db: Db, raw: Record<string, string>[]): Promise<Plan>
     if (badProd.length) errors.push(`Produtos desconhecidos: ${badProd.join(', ')}`);
     const badMod = modList.filter((m) => !modPairs.has(m));
     if (badMod.length) errors.push(`Módulos desconhecidos: ${badMod.join(', ')} (formato produto:modulo, ex.: linepbx:fop2)`);
+    const hostingRaw = pick(r, 'clients', 'hosting');
+    const hosting = hostingRaw ? hostingByNorm.get(norm(hostingRaw)) : undefined;
+    if (hostingRaw && !hosting) errors.push(`Hospedagem desconhecida: ${hostingRaw} (cadastre em Administração → Catálogos, ou use uma destas: ${hostings.join(', ')})`);
+    const { datas, invalidas, codigos } = datasDeAtivacao(r);
+    if (invalidas.length) errors.push(`Data de ativação inválida em ${invalidas.join(', ')} — use 31/12/2025 ou 2025-12-31`);
+    const semMarca = codigos.filter((c) => !prodList.includes(c) && !modList.includes(c));
+    if (semMarca.length) errors.push(`Data de ativação de ${semMarca.join(', ')}, mas o produto/módulo não está nas colunas produtos/modulos`);
     const archivedRaw = pick(r, 'clients', 'archived');
     const data = {
       targetId: target?.id, cnpj, tradeName, legalName, notes: pick(r, 'clients', 'notes'),
       archived: archivedRaw === undefined ? undefined : /^(1|sim|true|s|yes)$/i.test(archivedRaw),
       products: prodList, modules: [...new Set(modList)], domain: pick(r, 'clients', 'domain'), serverIp: pick(r, 'clients', 'serverIp'), sshUser: pick(r, 'clients', 'sshUser'),
-      sshPort: pick(r, 'clients', 'sshPort'), sshPassword: pick(r, 'clients', 'sshPassword'), hosting: pick(r, 'clients', 'hosting'),
+      sshPort: pick(r, 'clients', 'sshPort'), sshPassword: pick(r, 'clients', 'sshPassword'), hosting,
+      datas,
     };
     return { line, action: errors.length ? 'error' : target ? 'update' : 'create', key: tradeName ?? target?.tradeName ?? cnpj, errors, data };
   });
@@ -194,6 +234,7 @@ export async function apply(db: Db, vault: SecretsVault, p: Plan, userId: string
       for (const r of p.rows) {
         const d = r.data as any;
         let id = d.targetId as string | undefined;
+        const criando = !id;
         if (id) {
           const set: Record<string, unknown> = { updatedAt: new Date() };
           if (d.tradeName) set.tradeName = d.tradeName;
@@ -207,17 +248,21 @@ export async function apply(db: Db, vault: SecretsVault, p: Plan, userId: string
           await tx.insert(clients).values({ id, cnpj: d.cnpj, tradeName: d.tradeName, legalName: d.legalName, notes: d.notes ?? null, archived: d.archived ?? false });
           created++;
         }
+        const datas = (d.datas ?? {}) as Record<string, Date>;
+        // Cliente novo sem data no arquivo: fica SEM data (o Nexus nem sempre tinha), em vez de
+        // carimbar o dia da importação. Cliente que já existia mantém a data que já estava lá.
+        const semData = criando ? null : undefined;
         for (const code of d.products as string[]) {
           const settings: Record<string, unknown> = {};
           if (code === 'linepbx') {
             const h = d.hosting ? hostings.find((x) => norm(x.name) === norm(d.hosting)) : undefined;
             Object.assign(settings, { hostingId: h?.id, domain: d.domain, serverIp: d.serverIp, sshUser: d.sshUser, sshPort: d.sshPort ? Number(d.sshPort) : undefined, sshPassword: d.sshPassword || undefined });
           }
-          await clientsSvc.upsertSubscription(tx, vault, id, { productCode: code, settings }, userId);
+          await clientsSvc.upsertSubscription(tx, vault, id, { productCode: code, settings, activatedAt: datas[code] ?? semData }, userId);
         }
         for (const pm of (d.modules ?? []) as string[]) {
           const [productCode, moduleCode] = pm.split(':') as [string, string];
-          await clientsSvc.upsertModule(tx, vault, id, { productCode, moduleCode }, userId);
+          await clientsSvc.upsertModule(tx, vault, id, { productCode, moduleCode, activatedAt: datas[pm] ?? semData }, userId);
         }
       }
     } else if (p.entity === 'circuits') {

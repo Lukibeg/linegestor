@@ -32,10 +32,22 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 export const useToast = () => useContext(ToastCtx);
 
-/** Mensagem legível para qualquer erro. */
+/**
+ * Mensagem legível para qualquer erro.
+ * `details` nem sempre é uma lista de campos: em erro de chave única o servidor manda um texto.
+ * Por isso tratamos os dois formatos — antes, um texto fazia esta função quebrar e a tela
+ * ficava sem mostrar erro nenhum (parecia que o botão não tinha feito nada).
+ */
 export function mensagemErro(e: unknown): string {
-  if (e instanceof ApiError) return e.details?.length ? `${e.message}: ${e.details.map((d) => `${d.field} — ${d.message}`).join('; ')}` : e.message;
-  if (e instanceof Error) return e.message;
+  try {
+    if (e instanceof ApiError) {
+      const d: unknown = e.details;
+      if (Array.isArray(d) && d.length) return `${e.message}: ${d.map((x: any) => `${x?.field ?? '(geral)'} — ${x?.message ?? x}`).join('; ')}`;
+      if (typeof d === 'string' && d.trim()) return `${e.message} (${d.trim()})`;
+      return e.message;
+    }
+    if (e instanceof Error) return e.message;
+  } catch { /* nunca deixar a formatação do erro esconder o erro */ }
   return 'Algo deu errado';
 }
 

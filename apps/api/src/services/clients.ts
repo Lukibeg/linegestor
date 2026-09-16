@@ -305,7 +305,9 @@ export async function upsertSubscription(db: Db, vault: SecretsVault, clientId: 
   if (!product) throw new NotFound(`Produto "${data.productCode}"`);
 
   const [existing] = await db.select().from(subscriptions).where(and(eq(subscriptions.clientId, clientId), eq(subscriptions.productId, product.id)));
-  const common = { activatedAt: data.activatedAt ?? existing?.activatedAt ?? new Date(), deactivatedAt: data.deactivatedAt === undefined ? null : data.deactivatedAt, notes: data.notes ?? existing?.notes ?? null };
+  // `null` explícito = "não sabemos a data" (vem da importação do Nexus, que nem sempre a tinha);
+  // ausente = mantém a que já existia, ou hoje na primeira vez.
+  const common = { activatedAt: data.activatedAt === null ? null : data.activatedAt ?? existing?.activatedAt ?? new Date(), deactivatedAt: data.deactivatedAt === undefined ? null : data.deactivatedAt, notes: data.notes ?? existing?.notes ?? null };
   let subId = existing?.id;
   if (existing) {
     await db.update(subscriptions).set({ ...common, updatedAt: new Date() }).where(eq(subscriptions.id, existing.id));
@@ -348,7 +350,7 @@ export async function upsertModule(db: Db, vault: SecretsVault, clientId: string
   if (!sub) throw new BadRequest(`Marque o produto ${product.name} no cliente antes de ligar o módulo ${mod.name}`);
 
   const [existing] = await db.select().from(subscriptionModules).where(and(eq(subscriptionModules.subscriptionId, sub.id), eq(subscriptionModules.moduleId, mod.id)));
-  const common = { activatedAt: data.activatedAt ?? existing?.activatedAt ?? new Date(), deactivatedAt: data.deactivatedAt === undefined ? null : data.deactivatedAt, notes: data.notes ?? existing?.notes ?? null };
+  const common = { activatedAt: data.activatedAt === null ? null : data.activatedAt ?? existing?.activatedAt ?? new Date(), deactivatedAt: data.deactivatedAt === undefined ? null : data.deactivatedAt, notes: data.notes ?? existing?.notes ?? null };
   let smId = existing?.id;
   if (existing) await db.update(subscriptionModules).set({ ...common, updatedAt: new Date() }).where(eq(subscriptionModules.id, existing.id));
   else { smId = newId(); await db.insert(subscriptionModules).values({ id: smId, subscriptionId: sub.id, moduleId: mod.id, ...common }); }

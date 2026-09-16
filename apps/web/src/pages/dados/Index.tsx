@@ -18,13 +18,26 @@ export function Dados() {
   const { can } = useAuth();
   const toast = useToast(); const qc = useQueryClient();
   const [entity, setEntity] = useState('clients'); const [delimiter, setDelim] = useState(';'); const [csv, setCsv] = useState(''); const [fileName, setFileName] = useState('');
-  const [plan, setPlan] = useState<ImportPlan | null>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const [plan, setPlan] = useState<ImportPlan | null>(null); const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [feito, setFeito] = useState('');
   const [secretsFor, setSecretsFor] = useState<string | null>(null); const [pw, setPw] = useState(''); const [zipPw, setZipPw] = useState('');
   const ent = ENTIDADES.find((e) => e.id === entity)!;
 
-  const onFile = (file: File) => { setFileName(file.name); file.text().then((t) => { setCsv(t); setPlan(null); if (t.includes('\t')) setDelim('\t'); else if ((t.split('\n')[0]?.split(',').length ?? 0) > (t.split('\n')[0]?.split(';').length ?? 0)) setDelim(','); else setDelim(';'); }); };
-  const preview = async () => { setBusy(true); setErr(''); try { setPlan(await api.data.preview({ entity, csv, delimiter })); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
-  const apply = async () => { setBusy(true); setErr(''); try { const r = await api.data.apply({ entity, csv, delimiter }); toast.push('ok', `Importado: ${r.created} criado(s), ${r.updated} atualizado(s)`); setPlan(null); setCsv(''); setFileName(''); await qc.invalidateQueries(); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
+  const onFile = (file: File) => { setFileName(file.name); setErr(''); setFeito(''); file.text().then((t) => { setCsv(t); setPlan(null); if (t.includes('\t')) setDelim('\t'); else if ((t.split('\n')[0]?.split(',').length ?? 0) > (t.split('\n')[0]?.split(';').length ?? 0)) setDelim(','); else setDelim(';'); }); };
+  const preview = async () => { setBusy(true); setErr(''); setFeito(''); try { setPlan(await api.data.preview({ entity, csv, delimiter })); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
+  // O resultado também fica escrito na tela (não só no aviso que some), porque a pessoa está
+  // olhando para o botão, lá embaixo, e precisa ver ali mesmo se deu certo ou o que deu errado.
+  const apply = async () => {
+    setBusy(true); setErr(''); setFeito('');
+    try {
+      const r = await api.data.apply({ entity, csv, delimiter });
+      const texto = `Importado: ${r.created} criado(s), ${r.updated} atualizado(s)`;
+      toast.push('ok', texto); setFeito(texto);
+      setPlan(null); setCsv(''); setFileName('');
+      await qc.invalidateQueries();
+    } catch (e) {
+      setErr(mensagemErro(e));
+    } finally { setBusy(false); }
+  };
   const exportSecrets = async () => { if (!secretsFor) return; setBusy(true); setErr(''); try { const r = await api.data.exportWithSecrets(secretsFor, pw); setZipPw(r.zipPassword); const url = URL.createObjectURL(r.blob); const a = document.createElement('a'); a.href = url; a.download = r.filename; a.click(); URL.revokeObjectURL(url); setPw(''); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
 
   return (
@@ -41,14 +54,16 @@ export function Dados() {
             </div>
             {csv && <div className="text-[12.5px] text-muted">{fileName} · {csv.split(/\r?\n/).filter(Boolean).length - 1} linha(s) de dados</div>}
             <div className="flex gap-2"><button className="btn-primary" disabled={!csv || busy} onClick={preview}>{busy && !plan ? <Spinner className="text-white" /> : 'Pré-visualizar'}</button></div>
-            {err && <div className="text-bad text-sm">{err}</div>}
+            {!plan && err && <div className="card bg-bad-soft border-bad p-3 text-bad text-sm">{err}</div>}
+            {feito && <div className="card bg-ok-soft border-ok p-3 text-ok text-sm">{feito}</div>}
             {plan && (
               <div className="border-t border-line pt-3">
                 <div className="flex flex-wrap gap-2 mb-2"><Chip tone="ok">{plan.summary.create} novo(s)</Chip><Chip tone="accent">{plan.summary.update} atualização(ões)</Chip><Chip tone={plan.summary.error ? 'bad' : 'muted'}>{plan.summary.error} erro(s)</Chip></div>
                 <div className="max-h-64 overflow-y-auto border border-line rounded-lg text-[12.5px]">
                   {plan.rows.map((r) => <div key={r.line} className={`px-3 py-1.5 border-b border-line last:border-0 flex gap-2 ${r.action === 'error' ? 'bg-bad-soft' : ''}`}><span className="text-muted tnum w-12 shrink-0">L{r.line}</span><span className={`w-16 shrink-0 font-semibold ${r.action === 'create' ? 'text-ok' : r.action === 'update' ? 'text-accent' : 'text-bad'}`}>{r.action === 'create' ? 'criar' : r.action === 'update' ? 'atualizar' : 'erro'}</span><span className="truncate">{r.key}</span>{r.errors.length > 0 && <span className="text-bad ml-auto text-right">{r.errors.join('; ')}</span>}</div>)}
                 </div>
-                {plan.summary.error > 0 ? <p className="text-bad text-sm mt-2">Corrija as linhas com erro no arquivo e envie de novo. Nada foi gravado.</p> : <button className="btn-primary mt-3" disabled={busy} onClick={apply}>{busy ? <Spinner className="text-white" /> : `Aplicar (${plan.summary.create + plan.summary.update} linha(s))`}</button>}
+                {err && <div className="card bg-bad-soft border-bad p-3 text-bad text-sm mt-3">Nada foi gravado. {err}</div>}
+                {plan.summary.error > 0 ? <p className="text-bad text-sm mt-2">Corrija as linhas com erro no arquivo e envie de novo. Nada foi gravado.</p> : <button className="btn-primary mt-3" disabled={busy} onClick={apply}>{busy ? <><Spinner className="text-white" /> Aplicando…</> : `Aplicar (${plan.summary.create + plan.summary.update} linha(s))`}</button>}
               </div>
             )}
           </section>

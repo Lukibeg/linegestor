@@ -60,6 +60,38 @@ describe('importar / exportar', () => {
     expect(dids.items[0].clientName).toBe('Existente Renomeado');
   });
 
+  it('data de ativação vem do CSV, hospedagem errada e CNPJ na lixeira viram erro na prévia', async () => {
+    const csv = [
+      'cnpj;nome_fantasia;razao_social;produtos;modulos;hospedagem;ativacao_linepbx;ativacao_linepbx:fop2',
+      '33.444.555/0001-81;Com Datas;Com Datas LTDA;linepbx;linepbx:fop2;Vultr;23/12/2025;10/01/2026',
+    ].join('\n');
+    const p = (await s.post('/data/import/preview', { entity: 'clients', csv, delimiter: ';' })).json();
+    expect(p.summary).toMatchObject({ create: 1, error: 0 });
+    expect((await s.post('/data/import/apply', { entity: 'clients', csv, delimiter: ';' })).statusCode).toBe(200);
+    const cliente = (await s.get('/clients')).json().items.find((c: any) => c.cnpj === '33444555000181');
+    const detalhe = (await s.get(`/clients/${cliente.id}`)).json();
+    const lp = detalhe.subscriptions.find((x: any) => x.productCode === 'linepbx');
+    expect(String(lp.activatedAt).slice(0, 10)).toBe('2025-12-23');
+    expect(String(lp.modules.find((m: any) => m.moduleCode === 'fop2').activatedAt).slice(0, 10)).toBe('2026-01-10');
+    expect(lp.settings.hostingName).toBe('Vultr');
+
+    // hospedagem fora do catálogo e data sem sentido não passam da prévia
+    const ruim = [
+      'cnpj;nome_fantasia;razao_social;produtos;hospedagem;ativacao_linepbx',
+      '44.555.666/0001-81;Ruim;Ruim LTDA;linepbx;Vultur;31/31/2025',
+    ].join('\n');
+    const pr = (await s.post('/data/import/preview', { entity: 'clients', csv: ruim, delimiter: ';' })).json();
+    expect(pr.summary.error).toBe(1);
+    expect(pr.rows[0].errors.join(' ')).toMatch(/Hospedagem desconhecida/);
+    expect(pr.rows[0].errors.join(' ')).toMatch(/Data de ativação inválida/);
+
+    // CNPJ que está na lixeira: avisa em vez de estourar erro de chave única na gravação
+    await s.del(`/clients/${cliente.id}`);
+    const pl = (await s.post('/data/import/preview', { entity: 'clients', csv, delimiter: ';' })).json();
+    expect(pl.summary.error).toBe(1);
+    expect(pl.rows[0].errors[0]).toMatch(/lixeira/);
+  });
+
   it('exporta CSV sem senhas; com senhas exige permissão, senha e sai como ZIP', async () => {
     const r = await s.get('/data/export/clients');
     expect(r.statusCode).toBe(200);

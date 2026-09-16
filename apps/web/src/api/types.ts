@@ -107,5 +107,6 @@ export type TrashItem = { type: string; id: string; label: string; deletedAt: st
 export type ImportPlan = { entity: string; rows: Array<{ line: number; action: 'create' | 'update' | 'error' | 'skip'; key: string; errors: string[] }>; summary: { create: number; update: number; error: number; skip: number; total: number } };
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string, public details: Array<{ field: string; message: string }> | null = null) { super(message); }
+  /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */
+  constructor(public status: number, message: string, public details: Array<{ field: string; message: string }> | string | null = null) { super(message); }
 }
