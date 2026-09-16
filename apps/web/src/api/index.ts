@@ -3,6 +3,7 @@
  * Em produção ela aponta para o servidor (client.ts); na prévia publicada aponta para a versão de mentira (demo.ts).
  */
 import type * as T from './types.js';
+import { API_BASE } from './base.js';
 
 export type Api = {
   auth: {
@@ -106,8 +107,7 @@ export type Api = {
 
 export const IS_DEMO = import.meta.env.VITE_DEMO === '1';
 
-/** Onde a API vive. Em produção é o mesmo endereço do site, sob /api. */
-export const API_BASE = import.meta.env.VITE_API_URL ?? '/api';
+export { API_BASE };
 
 /**
  * Monta o endereço da imagem da logo: o servidor devolve um caminho relativo à API

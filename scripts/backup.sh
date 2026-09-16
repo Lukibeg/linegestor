@@ -19,6 +19,8 @@ ARQ="$DESTINO/gestao-$(date +%Y-%m-%d-%H%M).sql.gz"
 
 docker compose -f docker-compose.prod.yml exec -T db pg_dump -U postgres --clean --if-exists gestao | gzip -9 > "$ARQ"
 chmod 600 "$ARQ"
+# 1000 = usuário "node" dentro do contêiner, que precisa ler o arquivo para mandá-lo ao Drive
+chown 1000:1000 "$ARQ" 2>/dev/null || true
 echo "Backup: $ARQ ($(du -h "$ARQ" | cut -f1))"
 
 # guarda os de domingo como semanais, apaga o resto do que é antigo

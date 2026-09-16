@@ -31,7 +31,10 @@ ufw --force enable
 
 echo "==> SSH somente por chave (senha desligada)"
 install -d -m 700 /etc/ssh/sshd_config.d
-cat > /etc/ssh/sshd_config.d/99-gestao.conf <<'CFG'
+# "01-": no sshd vale o PRIMEIRO valor lido, e os provedores (Vultr, Hetzner) deixam um
+# 50-cloud-init.conf com PasswordAuthentication yes. Com "99-" a senha continuaria ligada.
+rm -f /etc/ssh/sshd_config.d/99-gestao.conf
+cat > /etc/ssh/sshd_config.d/01-gestao.conf <<'CFG'
 PasswordAuthentication no
 PermitRootLogin prohibit-password
 KbdInteractiveAuthentication no

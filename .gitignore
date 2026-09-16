@@ -8,3 +8,5 @@ coverage
 .DS_Store
 apps/web/dist-demo
 backups/
+# cópia dos ajustes de aviso gravada pelo sistema no servidor (tem o token da API de avisos)
+config/

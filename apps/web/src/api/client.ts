@@ -4,7 +4,8 @@
  * qualquer erro numa `ApiError` com a mensagem em português que o servidor devolveu.
  */
 import { ApiError } from './types.js';
-import { API_BASE as BASE, type Api } from './index.js';
+import { API_BASE as BASE } from './base.js';
+import type { Api } from './index.js';
 
 async function http<T>(method: string, path: string, body?: unknown, raw = false): Promise<T> {
   const res = await fetch(BASE + path, {
