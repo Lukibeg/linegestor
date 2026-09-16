@@ -67,19 +67,22 @@ No `.env` de produção:
 | `DB_PASSWORD` | senha longa e aleatória do PostgreSQL interno |
 | `SECRETS_MASTER_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` — **guarde cópia no gerenciador de senhas** |
 | `SESSION_SECRET` | `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` |
-| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | seu e-mail e uma senha forte, só para a primeira carga |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | **deixe de fora.** O `criar-admin.sh` pergunta na hora, sem a senha passar por arquivo |
 
 Então:
 
 ```bash
 mkdir -p backups config && chmod 700 backups config
 docker compose -f docker-compose.prod.yml up -d      # banco + sistema + HTTPS
-docker compose -f docker-compose.prod.yml exec app pnpm db:seed
+./scripts/criar-admin.sh                             # pergunta e-mail e senha na hora
 ```
 
-O `db:seed` cria os catálogos (produtos, módulos, operadoras, papéis) e o primeiro administrador.
-Entre em `https://gestao.inglinesystems.com.br`, **troque a senha** e apague as duas linhas
-`SEED_ADMIN_*` do `.env`.
+O `criar-admin.sh` carrega os catálogos (produtos, módulos, operadoras, papéis) e cria o primeiro
+administrador. Ele **pergunta a senha na hora**, escondida: ela não entra no `.env`, não fica no
+histórico do terminal e não vai para o backup — só o hash Argon2 fica no banco. Por isso as linhas
+`SEED_ADMIN_*` do `.env` podem continuar comentadas.
+
+Entre em `https://gestao.inglinesystems.com.br` e **ligue a verificação em duas etapas** na sua conta.
 
 O certificado HTTPS é emitido sozinho pelo Caddy no primeiro acesso e renovado sozinho — desde que
 o DNS já esteja apontando para o servidor.
