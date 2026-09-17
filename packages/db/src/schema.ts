@@ -77,6 +77,30 @@ export const clientLogos = pgTable('client_logos', {
   updatedAt: updatedAt(),
 });
 
+/**
+ * As UNIDADES de um cliente: matriz, filiais, lojas, andares. Todo cliente tem a "Matriz",
+ * criada sozinha; as outras se cadastram na ficha do cliente. É daqui que sai a lista de
+ * unidades na hora de movimentar aparelhos.
+ * O aparelho guarda o NOME da unidade (`devices.unit`); renomear aqui renomeia nos aparelhos.
+ */
+export const clientUnits = pgTable(
+  'client_units',
+  {
+    id: id(),
+    clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+    /** Nome da unidade: "Matriz", "Loja Simões Filho" */
+    name: text('name').notNull(),
+    /** A matriz: existe em todo cliente, é a unidade padrão e não pode ser removida */
+    isMain: boolean('is_main').notNull().default(false),
+    /** Endereço ou referência, opcional */
+    note: text('note'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('client_units_client_idx').on(t.clientId)],
+);
+
 /** Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração). */
 export const products = pgTable('products', {
   id: id(),
@@ -93,6 +117,11 @@ export const products = pgTable('products', {
   /** Ordem nos chips e menus */
   sortOrder: integer('sort_order').notNull().default(0),
   active: boolean('active').notNull().default(true),
+  /**
+   * Preenchido quando o produto foi para a lixeira. Some das fichas, dos filtros e dos cartões,
+   * mas as assinaturas ficam guardadas e voltam se o produto for restaurado.
+   */
+  deletedAt: deletedAt(),
 });
 
 /**
@@ -149,11 +178,14 @@ export const linepbxSettings = pgTable('linepbx_settings', {
   serverIp: text('server_ip'),
   /** Endereço web (domínio) — alimenta o atalho "abrir" e o link do FOP2 */
   domain: text('domain'),
-  /** Usuário do SSH */
+  /**
+   * Usuário do SSH — NÃO É MAIS USADO pela tela: cada técnico entra com o próprio usuário
+   * (ver `users.sshUser`). Fica guardado para não perder o que veio do Nexus.
+   */
   sshUser: text('ssh_user'),
   /** Porta do SSH (22 por padrão) */
   sshPort: integer('ssh_port').default(22),
-  /** Senha do SSH — aponta para o cofre, nunca fica aqui */
+  /** Senha do SSH (no cofre) — também fora da tela, pelo mesmo motivo do usuário */
   sshPasswordSecretId: text('ssh_password_secret_id').references(() => secrets.id),
 });
 
@@ -310,10 +342,25 @@ export const deviceModels = pgTable('device_models', {
   /** Nome exibido */
   name: text('name').notNull(),
   categoryId: text('category_id').references(() => deviceCategories.id),
+  /** Endereço de imagem externa (não usado: a foto fica em `device_model_images`) */
   imageUrl: text('image_url'),
+  /**
+   * Valor de cada unidade deste modelo, em centavos. É o valor que soma no cliente — o
+   * aparelho só tem valor próprio quando foi cadastrado diferente do modelo.
+   */
+  valueCents: integer('value_cents'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
   deletedAt: deletedAt(),
+});
+
+/** A foto do modelo, no próprio banco (como a logo do cliente). Reduzida no navegador antes de subir. */
+export const deviceModelImages = pgTable('device_model_images', {
+  modelId: text('model_id').primaryKey().references(() => deviceModels.id, { onDelete: 'cascade' }),
+  mimeType: text('mime_type').notNull(),
+  dataBase64: text('data_base64').notNull(),
+  sizeBytes: integer('size_bytes').notNull().default(0),
+  updatedAt: updatedAt(),
 });
 
 /**
@@ -330,6 +377,11 @@ export const devices = pgTable(
     mac: text('mac'),
     /** Segundo MAC (Wi-Fi, por exemplo), se houver */
     macSecondary: text('mac_secondary'),
+    /**
+     * Número de série (N/S), para o aparelho que não tem MAC mas tem etiqueta de série.
+     * Não se repete dentro do mesmo modelo.
+     */
+    serialNumber: text('serial_number'),
     /** Atribuído a: nulo = no estoque; preenchido = com este cliente */
     clientId: text('client_id').references(() => clients.id),
     /** Unidade do cliente onde o aparelho está (filial, loja, andar): "Loja Simões Filho" */
@@ -338,21 +390,19 @@ export const devices = pgTable(
     currentModality: text('current_modality'),
     /** ativo | inativo. Vendido não é condição: sai da modalidade da última movimentação. */
     condition: text('condition').notNull().default('ativo'),
-    /** Valor do aparelho em centavos (alimenta "valor total locado") */
+    /** Valor PRÓPRIO do aparelho em centavos. Vazio = vale o valor do modelo (o caso normal). */
     valueCents: integer('value_cents'),
     /** IP configurado no aparelho, se houver */
     ip: text('ip'),
-    /** Onde fisicamente está ("Rack 3 · Sala 2") */
+    /** Onde fisicamente estava ("Prateleira B"). Saiu da tela; fica guardado para não perder o que já foi digitado. */
     location: text('location'),
     note: text('note'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: deletedAt(),
   },
-  (t) => [uniqueIndex('devices_mac_uq').on(t.mac), index('devices_model_idx').on(t.modelId), index('devices_client_idx').on(t.clientId)],
+  (t) => [uniqueIndex('devices_mac_uq').on(t.mac), index('devices_model_idx').on(t.modelId), index('devices_client_idx').on(t.clientId), index('devices_serial_idx').on(t.serialNumber)],
 );
-
-/** Saldo de itens a granel por lugar: "Headset Genérico · Estoque · 28", "Headset Genérico · Cliente A · 4". */
 
 /** Cabeçalho de uma movimentação: de onde, para onde, por quê, quem, quando. Nunca é editada. */
 export const deviceMovements = pgTable(
@@ -367,6 +417,8 @@ export const deviceMovements = pgTable(
     toClientId: text('to_client_id').references(() => clients.id),
     /** Condição aplicada aos aparelhos nesta movimentação (nulo = manteve) */
     newCondition: text('new_condition'),
+    /** Unidade do cliente de destino para onde os aparelhos foram (nulo na devolução) */
+    unit: text('unit'),
     /** Valor total da movimentação em centavos (venda, por exemplo) */
     valueCents: integer('value_cents'),
     note: text('note'),
@@ -411,6 +463,11 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   roleId: text('role_id').notNull().references(() => roles.id),
   active: boolean('active').notNull().default(true),
+  /**
+   * O usuário SSH desta pessoa. Cada técnico tem o seu, e é o mesmo em todos os servidores —
+   * por isso mora aqui, e não no cliente. O atalho "SSH" da ficha usa este usuário.
+   */
+  sshUser: text('ssh_user'),
   /** Última vez que entrou */
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   /**
@@ -515,8 +572,12 @@ export const auditLog = pgTable(
 export const clientLogosRelations = relations(clientLogos, ({ one }) => ({
   client: one(clients, { fields: [clientLogos.clientId], references: [clients.id] }),
 }));
+export const clientUnitsRelations = relations(clientUnits, ({ one }) => ({
+  client: one(clients, { fields: [clientUnits.clientId], references: [clients.id] }),
+}));
 export const clientsRelations = relations(clients, ({ many }) => ({
   subscriptions: many(subscriptions),
+  units: many(clientUnits),
   didsInUse: many(dids, { relationName: 'didClient' }),
   devices: many(devices),
 }));

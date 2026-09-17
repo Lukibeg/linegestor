@@ -8,6 +8,13 @@
       "when": 1789501155932,
       "tag": "0000_inicial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789607858581,
+      "tag": "0001_unidades_fotos_valores",
+      "breakpoints": true
     }
   ]
 }

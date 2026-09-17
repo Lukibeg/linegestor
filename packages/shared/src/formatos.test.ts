@@ -8,6 +8,7 @@ import {
   didFormatado, didLimpo, didValido, gerarFaixaDids,
   macFormatado, macLimpo, macValido,
   paraCentavos, reais,
+  consertarAcentos, diaAoMeioDia, diaParaIso, identificacaoAparelho, lerLista, serieLimpa,
 } from './formatos.js';
 
 describe('CNPJ', () => {
@@ -56,6 +57,28 @@ describe('Dinheiro', () => {
     expect(paraCentavos(12.34)).toBe(1234);
     expect(paraCentavos('abc')).toBe(0);
     expect(reais(null)).toBe('—');
+  });
+  it('conserta acento embaralhado e deixa o resto em paz', () => {
+    const embaralhar = (s: string) => Array.from(new TextEncoder().encode(s), (b) => String.fromCharCode(b)).join('');
+    expect(consertarAcentos(embaralhar('Gefpel-Auto Peças'))).toBe('Gefpel-Auto Peças');
+    expect(consertarAcentos(embaralhar('Clínica Olhar Bem'))).toBe('Clínica Olhar Bem');
+    expect(consertarAcentos(embaralhar('Consef Ábaco'))).toBe('Consef Ábaco');
+    expect(consertarAcentos('SÃO PAULO')).toBe('SÃO PAULO');
+    expect(consertarAcentos('Clínica normal')).toBe('Clínica normal');
+  });
+  it('data de calendário vai para o meio-dia; horário de verdade fica', () => {
+    expect(diaAoMeioDia(new Date('2025-11-03')).toISOString()).toBe('2025-11-03T12:00:00.000Z');
+    expect(diaAoMeioDia(new Date('2025-11-03T14:22:10Z')).toISOString()).toBe('2025-11-03T14:22:10.000Z');
+    expect(diaAoMeioDia(null)).toBeNull();
+    expect(diaParaIso('2025-11-03')).toBe('2025-11-03T12:00:00.000Z');
+    expect(diaParaIso('')).toBeNull();
+  });
+  it('lê lista colada e identifica o aparelho', () => {
+    expect(lerLista('AA:BB\n cc-dd ; ee,ff\t\n')).toEqual(['AA:BB', 'cc-dd', 'ee', 'ff']);
+    expect(identificacaoAparelho({ mac: '000B82A1B2C3' })).toEqual({ tipo: 'mac', texto: '00:0B:82:A1:B2:C3' });
+    expect(identificacaoAparelho({ mac: null, serialNumber: 'SN123' })).toEqual({ tipo: 'serie', texto: 'SN123' });
+    expect(identificacaoAparelho({})).toEqual({ tipo: 'nenhum', texto: 'não aplicável' });
+    expect(serieLimpa(' ab12 cd ')).toBe('AB12CD');
     expect(reais(123456).replace(/ /g, ' ')).toBe('R$ 1.234,56');
   });
 });

@@ -26,7 +26,7 @@ async function http<T>(method: string, path: string, body?: unknown, raw = false
 const qs = (o: Record<string, unknown>) => {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(o)) {
-    if (v === undefined || v === null || v === '') continue;
+    if (v === undefined || v === null || v === '' || v === false) continue;
     if (Array.isArray(v)) v.forEach((x) => p.append(k, String(x)));
     else p.set(k, String(v));
   }
@@ -44,6 +44,7 @@ export const realApi: Api = {
     twoFactorSetup: () => http('POST', '/auth/two-factor/setup'),
     twoFactorEnable: (code) => http('POST', '/auth/two-factor/enable', { code }),
     twoFactorDisable: (password) => http('POST', '/auth/two-factor/disable', { password }),
+    updateMe: (d) => http('PATCH', '/auth/me', d),
   },
   dashboard: { summary: () => http('GET', '/dashboard'), search: (q) => http('GET', `/dashboard/search${qs({ q })}`) },
   clients: {
@@ -62,12 +63,17 @@ export const realApi: Api = {
     dids: (id) => http('GET', `/clients/${id}/dids`),
     devices: (id) => http('GET', `/clients/${id}/devices`),
     history: (id) => http('GET', `/clients/${id}/history`),
+    units: (id) => http('GET', `/clients/${id}/units`),
+    createUnit: (id, d) => http('POST', `/clients/${id}/units`, d),
+    updateUnit: (id, unitId, d) => http('PATCH', `/clients/${id}/units/${unitId}`, d),
+    removeUnit: (id, unitId) => http('DELETE', `/clients/${id}/units/${unitId}`),
   },
   secrets: { reveal: (id, password) => http('POST', `/secrets/${id}/reveal`, { password }) },
   circuits: {
     list: (q) => http('GET', `/circuits${qs(q)}`),
     summary: (q) => http('GET', `/circuits/summary${qs(q ?? {})}`),
     options: () => http('GET', '/circuits/options'),
+    owners: (includeThirdParty) => http('GET', `/circuits/owners${qs({ includeThirdParty: includeThirdParty ? 'true' : undefined })}`),
     get: (id) => http('GET', `/circuits/${id}`),
     create: (d) => http('POST', '/circuits', d),
     update: (id, d) => http('PATCH', `/circuits/${id}`, d),
@@ -88,9 +94,12 @@ export const realApi: Api = {
     createModel: (d) => http('POST', '/inventory/models', d),
     updateModel: (id, d) => http('PATCH', `/inventory/models/${id}`, d),
     removeModel: (id) => http('DELETE', `/inventory/models/${id}`),
+    saveModelImage: (id, dataUrl) => http('PUT', `/inventory/models/${id}/image`, { dataUrl }),
+    removeModelImage: (id) => http('DELETE', `/inventory/models/${id}/image`),
     devices: (q) => http('GET', `/inventory/devices${qs(q)}`),
     device: (id) => http('GET', `/inventory/devices/${id}`),
     createDevice: (d) => http('POST', '/inventory/devices', d),
+    createDevices: (d) => http('POST', '/inventory/devices/bulk', d),
     updateDevice: (id, d) => http('PATCH', `/inventory/devices/${id}`, d),
     removeDevice: (id) => http('DELETE', `/inventory/devices/${id}`),
     movements: (q) => http('GET', `/inventory/movements${qs(q)}`),
@@ -127,7 +136,9 @@ export const realApi: Api = {
     createCatalogItem: (type, name) => http('POST', `/admin/catalogs/${type}`, { name }),
     updateCatalogItem: (type, id, d) => http('PATCH', `/admin/catalogs/${type}/${id}`, d),
     products: () => http('GET', '/admin/products'),
+    createProduct: (d) => http('POST', '/admin/products', d),
     updateProduct: (id, d) => http('PATCH', `/admin/products/${id}`, d),
+    removeProduct: (id) => http('DELETE', `/admin/products/${id}`),
     upsertModule: (productId, d) => http('PUT', `/admin/products/${productId}/modules`, d),
     audit: (q) => http('GET', `/admin/audit${qs(q)}`),
     trash: () => http('GET', '/admin/trash'),

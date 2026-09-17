@@ -41,7 +41,8 @@ describe('clientes', () => {
     expect(lp.modules[0].settings.adminExtension).toBe('1000');
     expect(JSON.stringify(ficha)).not.toContain('segredo-muito-secreto');
     expect(ficha.links.web).toBe('https://aurora.linepbx.com.br');
-    expect(ficha.links.ssh).toBe('ssh://root@203.0.113.10:22');
+    // o atalho SSH sai sem usuário: cada técnico usa o seu (Minha conta)
+    expect(ficha.links.ssh).toBe('ssh://203.0.113.10:22');
     expect(ficha.links.fop2).toBe('https://aurora.linepbx.com.br/fop2/');
     // a lista traz os detalhes que viram colunas: ativação, módulos, servidor
     const item = (await s.get('/clients?q=aurora')).json().items[0];

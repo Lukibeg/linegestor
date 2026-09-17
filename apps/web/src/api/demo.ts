@@ -9,15 +9,17 @@
  * Entrar: qualquer um destes e-mails com a senha "demo":
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
-import { ALL_PERMISSIONS, DEFAULT_ROLES, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, didFormatado, didLimpo, gerarFaixaDids, macFormatado, macLimpo, MODALIDADES } from '@gestor/shared';
+import { ALL_PERMISSIONS, DEFAULT_ROLES, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import type { Api } from './index.js';
-import { ApiError, type AuditItem, type Circuit, type ClientFull, type ClientListItem, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type AuditItem, type Circuit, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
 const id = () => 'demo' + (seq++).toString(36);
 const now = () => new Date().toISOString();
 const daysAgo = (d: number, h = 10) => { const x = new Date(); x.setDate(x.getDate() - d); x.setHours(h, 0, 0, 0); return x.toISOString(); };
+/** Data de calendário: guardada ao meio-dia UTC, como no servidor (não "volta um dia" no Brasil). */
+const dia = (v: unknown) => { if (v == null || v === '') return null; const d = new Date(String(v)); return Number.isNaN(d.getTime()) ? null : diaAoMeioDia(d).toISOString(); };
 
 // ---------------- estado ----------------
 type Client = { id: string; tradeName: string; legalName: string; cnpj: string; logoUrl: string | null; archived: boolean; isInternal: boolean; internalCode: string | null; notes: string | null; deletedAt: string | null; createdAt: string; updatedAt: string };
@@ -27,14 +29,16 @@ type SubMod = { id: string; subscriptionId: string; moduleId: string; activatedA
 type ModRow = ProductModule & { productId: string };
 type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; thirdParty: boolean; deletedAt: string | null };
 type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; note: string | null; deletedAt: string | null };
-type ModelRow = { id: string; code: string; name: string; categoryId: string | null; imageUrl: string | null; deletedAt: string | null };
-type DeviceRow = { id: string; modelId: string; mac: string | null; macSecondary: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
-type MovRow = { id: string; modality: string; fromClientId: string | null; toClientId: string | null; newCondition: string | null; note: string | null; userId: string; createdAt: string; items: Array<{ modelId: string; deviceId: string }> };
-type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[] };
+/** `image` é a foto embutida ("data:…"), como a logo do cliente na demonstração */
+type ModelRow = { id: string; code: string; name: string; categoryId: string | null; image: string | null; valueCents: number | null; deletedAt: string | null };
+type DeviceRow = { id: string; modelId: string; mac: string | null; macSecondary: string | null; serialNumber: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
+type MovRow = { id: string; modality: string; fromClientId: string | null; toClientId: string | null; unit: string | null; newCondition: string | null; note: string | null; userId: string; createdAt: string; items: Array<{ modelId: string; deviceId: string }> };
+type UnitRow = { id: string; clientId: string; name: string; isMain: boolean; note: string | null; createdAt: string; deletedAt: string | null };
+type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
 
 const S = {
-  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[],
+  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], units: [] as UnitRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
   ajustesBackup: {
     ativo: false, pasta: 'Backups › Ingline Gestão', pastaId: '', contaDeServico: '',
@@ -49,7 +53,7 @@ const S = {
     ultimoTesteEm: null as string | null, ultimoTesteOk: null as boolean | null, ultimoTesteMsg: null as string | null, temToken: false,
   },
   carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[],
-  products: PRODUTOS_INICIAIS.map((p, i) => ({ id: 'p' + p.code, ...p, description: p.description as string | null, sortOrder: i, active: true })),
+  products: PRODUTOS_INICIAIS.map((p, i) => ({ id: 'p' + p.code, code: p.code as string, name: p.name as string, color: p.color as string, hasSettings: p.hasSettings as boolean, description: p.description as string | null, sortOrder: i, active: true, deletedAt: null as string | null })),
   modules: MODULOS_INICIAIS.map((m, i) => ({ id: 'm' + m.product + '_' + m.code, productId: 'p' + m.product, code: m.code, name: m.name, description: m.description as string | null, hasSettings: m.hasSettings, sortOrder: i, active: true })) as ModRow[],
   subMods: [] as SubMod[],
   audit: [] as (AuditItem & { userId: string | null })[],
@@ -63,12 +67,19 @@ const notFound = (w = 'Registro') => new ApiError(404, `${w} não encontrado`);
 const bad = (m: string) => new ApiError(400, m);
 function requirePerm(p: string) { if (!S.me) throw new ApiError(401, 'Faça login para continuar'); const r = S.roles.find((x) => x.id === S.me!.roleId)!; if (!r.permissions.includes(p)) throw new ApiError(403, `Esta ação exige a permissão "${p}"`); }
 
+// ---------------- fotos dos modelos (desenhos simples, só para a prévia) ----------------
+const svg = (conteudo: string) => 'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="160" height="120" viewBox="0 0 160 120">${conteudo}</svg>`);
+/** Um telefone de mesa genérico: base, fone e teclado. */
+const FOTO_TELEFONE = (cor: string) => svg(`<rect x="34" y="40" width="96" height="62" rx="10" fill="${cor}"/><rect x="18" y="28" width="22" height="78" rx="11" fill="${cor}" stroke="#555" stroke-width="2"/><rect x="50" y="48" width="44" height="18" rx="3" fill="#9FC4E8"/>${Array.from({ length: 9 }, (_, i) => `<circle cx="${60 + (i % 3) * 12}" cy="${76 + Math.floor(i / 3) * 8}" r="3" fill="#D1D5DB"/>`).join('')}<rect x="102" y="50" width="20" height="4" rx="2" fill="#6B7280"/><rect x="102" y="58" width="20" height="4" rx="2" fill="#6B7280"/>`);
+/** Um headset genérico: arco e duas conchas com microfone. */
+const FOTO_HEADSET = svg(`<path d="M44 72 Q44 22 80 22 Q116 22 116 72" fill="none" stroke="#374151" stroke-width="8" stroke-linecap="round"/><rect x="34" y="62" width="20" height="32" rx="8" fill="#1F2937"/><rect x="106" y="62" width="20" height="32" rx="8" fill="#1F2937"/><path d="M44 94 Q52 108 76 106" fill="none" stroke="#374151" stroke-width="4" stroke-linecap="round"/><circle cx="78" cy="106" r="5" fill="#111827"/>`);
+
 // ---------------- carga inicial ----------------
 function seed() {
   S.roles = DEFAULT_ROLES.map((r) => ({ id: 'r' + r.key, key: r.key, name: r.name, description: r.description, permissions: [...r.permissions], isSystem: true }));
   S.users = [
-    { id: 'u1', name: 'Luan França', email: 'admin@gestor.local', password: 'demo', roleId: 'radministrador', active: true, lastLoginAt: daysAgo(0, 8) },
-    { id: 'u2', name: 'Lúcio Andrade', email: 'tecnico@gestor.local', password: 'demo', roleId: 'rtecnico', active: true, lastLoginAt: daysAgo(1) },
+    { id: 'u1', name: 'Luan França', email: 'admin@gestor.local', password: 'demo', roleId: 'radministrador', active: true, lastLoginAt: daysAgo(0, 8), sshUser: 'luan' },
+    { id: 'u2', name: 'Lúcio Andrade', email: 'tecnico@gestor.local', password: 'demo', roleId: 'rtecnico', active: true, lastLoginAt: daysAgo(1), sshUser: 'lucio' },
     { id: 'u3', name: 'Marina Costa', email: 'operador@gestor.local', password: 'demo', roleId: 'roperador', active: true, lastLoginAt: daysAgo(2) },
     { id: 'u4', name: 'Paulo Reis', email: 'leitor@gestor.local', password: 'demo', roleId: 'rleitor', active: true, lastLoginAt: null },
   ];
@@ -100,13 +111,16 @@ function seed() {
     ['Farmácia Central (arquivada)', 'Central Farma LTDA', '99000111000105', ['voicenet'], [], null, null, null],
   ];
   S.clients = [ingline, voicenet];
+  // todo cliente tem a Matriz
+  const matriz = (c: Client) => S.units.push({ id: id(), clientId: c.id, name: 'Matriz', isMain: true, note: null, createdAt: c.createdAt, deletedAt: null });
+  matriz(ingline); matriz(voicenet);
   const byName: Record<string, string> = {};
   defs.forEach(([t, l, cnpj, prods, mods, host, dom, ip], i) => {
     const c = mk(t, l, cnpj, { archived: i === 8, logoUrl: logos[t] ?? null });
-    S.clients.push(c); byName[t] = c.id;
+    S.clients.push(c); byName[t] = c.id; matriz(c);
     prods.forEach((code, j) => {
       const settings: Record<string, any> = {};
-      if (code === 'linepbx') { const sec = id(); S.secrets.set(sec, { label: `Senha SSH do LinePBX — ${t}`, value: 'Ssh#' + cnpj.slice(0, 5) }); Object.assign(settings, { hostingId: host ? 'h' + host.replace(/\W/g, '') : null, hostingName: host, serverIp: ip, domain: dom, sshUser: 'root', sshPort: 22, sshPasswordSecretId: sec }); }
+      if (code === 'linepbx') Object.assign(settings, { hostingId: host ? 'h' + host.replace(/\W/g, '') : null, hostingName: host, serverIp: ip, domain: dom, sshPort: 22 });
       // o produto entra primeiro; os módulos vêm depois, em intervalos diferentes — é assim
       // que acontece na vida real, e é o que a linha do tempo da ficha mostra.
       // O Hospital Vale Verde é o contra-exemplo de propósito: ligou o LinePBX e os três
@@ -149,33 +163,46 @@ function seed() {
     });
   }
   const UNIDADES_DEMO: Record<string, string[]> = {
-    'Hospital Vale Verde': ['Matriz · Ramiro Campelo', 'Unidade Simões Filho', 'Ambulatório Centro'],
+    'Hospital Vale Verde': ['Matriz', 'Unidade Simões Filho', 'Ambulatório Centro'],
     'Distribuidora Norte': ['Matriz', 'CD Feira de Santana'],
     'Supermercado Bom Preço': ['Loja Centro', 'Loja Simões Filho'],
     'Home Care Viver Bem': ['Sede'],
   };
-  const mGx: ModelRow = { id: id(), code: 'gxp1610', name: 'Grandstream GXP1610', categoryId: 'catTelefoneIP', imageUrl: null, deletedAt: null };
+  // as unidades usadas nos aparelhos ficam cadastradas nos clientes (a Matriz já existe)
+  for (const [cli, nomes] of Object.entries(UNIDADES_DEMO)) {
+    for (const nome of nomes) if (nome !== 'Matriz') S.units.push({ id: id(), clientId: byName[cli]!, name: nome, isMain: false, note: null, createdAt: daysAgo(90), deletedAt: null });
+  }
   const catPerif = S.categories.find((c) => c.name === 'Periférico')!.id;
-  const mHs: ModelRow = { id: id(), code: 'headset', name: 'Headset Genérico', categoryId: catPerif, imageUrl: null, deletedAt: null };
-  const mTip: ModelRow = { id: id(), code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: 'catTelefoneIP', imageUrl: null, deletedAt: null };
-  S.models = [mGx, mHs, mTip];
+  // o valor é do modelo; a foto é um desenho simples, só para a prévia
+  const mGx: ModelRow = { id: id(), code: 'gxp1610', name: 'Grandstream GXP1610', categoryId: 'catTelefoneIP', image: FOTO_TELEFONE('#2B2F36'), valueCents: 45000, deletedAt: null };
+  const mHs: ModelRow = { id: id(), code: 'headset', name: 'Headset Genérico', categoryId: catPerif, image: FOTO_HEADSET, valueCents: 9000, deletedAt: null };
+  const mTip: ModelRow = { id: id(), code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: 'catTelefoneIP', image: FOTO_TELEFONE('#1F2937'), valueCents: 38000, deletedAt: null };
+  const mDect: ModelRow = { id: id(), code: 'dp722', name: 'Grandstream DP722', categoryId: 'catTelefoneIP', image: null, valueCents: 33900, deletedAt: null };
+  S.models = [mGx, mHs, mTip, mDect];
+  const dev = (x: Partial<DeviceRow> & { modelId: string }): DeviceRow => ({ id: id(), mac: null, macSecondary: null, serialNumber: null, clientId: null, unit: null, currentModality: null, condition: 'ativo', valueCents: null, ip: null, location: null, note: null, deletedAt: null, createdAt: daysAgo(60), ...x });
   let n = 0;
   const locados: Array<[string, number, number]> = [['Hospital Vale Verde', 20, 30], ['Distribuidora Norte', 8, 20], ['Supermercado Bom Preço', 6, 12], ['Home Care Viver Bem', 4, 5]];
   for (const [cli, q, d] of locados) {
-    const mid = id();
     const items: MovRow['items'] = [];
-    for (let i = 0; i < q; i++, n++) { const dev: DeviceRow = { id: id(), modelId: mGx.id, mac: '000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6), macSecondary: null, clientId: byName[cli]!, unit: UNIDADES_DEMO[cli]?.[i % (UNIDADES_DEMO[cli]!.length)] ?? null, currentModality: 'locacao', condition: 'ativo', valueCents: 45000, ip: `10.0.${n % 4}.${20 + n}`, location: null, note: null, deletedAt: null, createdAt: daysAgo(d + 3) }; S.devices.push(dev); items.push({ modelId: mGx.id, deviceId: dev.id }); }
-    S.movements.push({ id: mid, modality: 'locacao', fromClientId: null, toClientId: byName[cli]!, newCondition: 'ativo', note: null, userId: 'u2', createdAt: daysAgo(d), items });
+    const unidades = UNIDADES_DEMO[cli] ?? ['Matriz'];
+    for (let i = 0; i < q; i++, n++) {
+      const x = dev({ modelId: mGx.id, mac: '000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6), clientId: byName[cli]!, unit: unidades[i % unidades.length]!, currentModality: 'locacao', ip: `10.0.${n % 4}.${20 + n}`, createdAt: daysAgo(d + 3) });
+      S.devices.push(x); items.push({ modelId: mGx.id, deviceId: x.id });
+    }
+    S.movements.push({ id: id(), modality: 'locacao', fromClientId: null, toClientId: byName[cli]!, unit: unidades[0]!, newCondition: 'ativo', note: null, userId: 'u2', createdAt: daysAgo(d), items });
   }
-  for (let i = 0; i < 12; i++, n++) S.devices.push({ id: id(), modelId: mGx.id, mac: '000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6), macSecondary: null, clientId: null, unit: null, currentModality: null, condition: i === 11 ? 'inativo' : 'ativo', valueCents: 45000, ip: null, location: 'Estoque · Prateleira B', note: i === 11 ? 'Tela piscando; aguardando peça' : null, deletedAt: null, createdAt: daysAgo(60) });
-  for (let i = 0; i < 3; i++, n++) S.devices.push({ id: id(), modelId: mTip.id, mac: '1C61B4' + (0x200000 + n).toString(16).toUpperCase().slice(-6), macSecondary: null, clientId: null, unit: null, currentModality: null, condition: 'ativo', valueCents: 38000, ip: null, location: 'Estoque · Prateleira A', note: null, deletedAt: null, createdAt: daysAgo(20) });
-  // headset não tem MAC: cada unidade é uma linha, com o campo vazio
-  for (let i = 0; i < 28; i++) S.devices.push({ id: id(), modelId: mHs.id, mac: null, macSecondary: null, clientId: null, unit: null, currentModality: null, condition: 'ativo', valueCents: 9000, ip: null, location: 'Estoque · Prateleira A', note: null, deletedAt: null, createdAt: daysAgo(70) });
+  for (let i = 0; i < 12; i++, n++) S.devices.push(dev({ modelId: mGx.id, mac: '000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6), condition: i === 11 ? 'inativo' : 'ativo', note: i === 11 ? 'Tela piscando; aguardando peça' : null }));
+  // um TIP 125i com valor próprio, diferente do modelo, para mostrar a diferença
+  for (let i = 0; i < 3; i++, n++) S.devices.push(dev({ modelId: mTip.id, mac: '1C61B4' + (0x200000 + n).toString(16).toUpperCase().slice(-6), valueCents: i === 0 ? 35000 : null, createdAt: daysAgo(20) }));
+  // o DECT sem fio se identifica pelo número de série
+  for (let i = 0; i < 2; i++) S.devices.push(dev({ modelId: mDect.id, serialNumber: `DP722SN00${i + 41}`, createdAt: daysAgo(15) }));
+  // headset não tem MAC: cada unidade é uma linha; alguns têm número de série, outros nada
+  for (let i = 0; i < 28; i++) S.devices.push(dev({ modelId: mHs.id, serialNumber: i < 6 ? `HS2026${String(i + 1).padStart(4, '0')}` : null, createdAt: daysAgo(70) }));
   const headsetsLocados = Array.from({ length: 4 }, () => {
-    const dev: DeviceRow = { id: id(), modelId: mHs.id, mac: null, macSecondary: null, clientId: byName['Hospital Vale Verde']!, unit: 'Matriz · Ramiro Campelo', currentModality: 'locacao', condition: 'ativo', valueCents: 9000, ip: null, location: null, note: null, deletedAt: null, createdAt: daysAgo(5) };
-    S.devices.push(dev); return dev;
+    const x = dev({ modelId: mHs.id, clientId: byName['Hospital Vale Verde']!, unit: 'Matriz', currentModality: 'locacao', createdAt: daysAgo(5) });
+    S.devices.push(x); return x;
   });
-  S.movements.push({ id: id(), modality: 'locacao', fromClientId: null, toClientId: byName['Hospital Vale Verde']!, newCondition: null, note: 'Headsets para o call center', userId: 'u3', createdAt: daysAgo(2, 14), items: headsetsLocados.map((d) => ({ modelId: mHs.id, deviceId: d.id })) });
+  S.movements.push({ id: id(), modality: 'locacao', fromClientId: null, toClientId: byName['Hospital Vale Verde']!, unit: 'Matriz', newCondition: null, note: 'Headsets para o call center', userId: 'u3', createdAt: daysAgo(2, 14), items: headsetsLocados.map((d) => ({ modelId: mHs.id, deviceId: d.id })) });
   S.audit = [
     { id: id(), action: 'bulk_update', entityType: 'did', entityId: null, summary: 'Alterou 40 DID(s): cliente → Supermercado Bom Preço', before: null, after: null, userName: 'Lúcio Andrade', userId: 'u2', createdAt: daysAgo(1, 16) },
     { id: id(), action: 'reveal_secret', entityType: 'secret', entityId: null, summary: 'Lúcio Andrade revelou "Senha SSH do LinePBX — Clínica Aurora"', before: null, after: null, userName: 'Lúcio Andrade', userId: 'u2', createdAt: daysAgo(1, 11) },
@@ -187,7 +214,18 @@ seed();
 
 // ---------------- ajudantes ----------------
 const prodMeta = (code: string) => S.products.find((p) => p.code === code)!;
-const activeSubs = (cid: string) => S.subs.filter((s) => s.clientId === cid && !s.deactivatedAt);
+/** produto na lixeira some das telas (a assinatura fica guardada) */
+const produtoVivo = (code: string) => !prodMeta(code)?.deletedAt;
+const activeSubs = (cid: string) => S.subs.filter((s) => s.clientId === cid && !s.deactivatedAt && produtoVivo(s.productCode));
+const modeloDe = (d: DeviceRow) => S.models.find((m) => m.id === d.modelId)!;
+/** o valor que vale: o próprio do aparelho, ou o do modelo */
+const valorDe = (d: DeviceRow) => d.valueCents ?? modeloDe(d).valueCents;
+const PROTEGIDOS = ['linepbx', 'voicenet', 'equipamentos'];
+/** Garante a Matriz do cliente e devolve as unidades dele (a Matriz primeiro). */
+const unidadesDe = (cid: string) => {
+  if (!S.units.some((u) => u.clientId === cid && u.isMain && !u.deletedAt)) S.units.push({ id: id(), clientId: cid, name: 'Matriz', isMain: true, note: null, createdAt: now(), deletedAt: null });
+  return S.units.filter((u) => u.clientId === cid && !u.deletedAt).sort((a, b) => Number(b.isMain) - Number(a.isMain) || a.name.localeCompare(b.name, 'pt-BR'));
+};
 const modMeta = (mid: string) => S.modules.find((m) => m.id === mid)!;
 /** Módulos ligados numa assinatura (ordenados como no catálogo). */
 const activeMods = (subId: string) => S.subMods.filter((m) => m.subscriptionId === subId && !m.deactivatedAt).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder);
@@ -196,7 +234,8 @@ const links = (cid: string) => {
   const lp = activeSubs(cid).find((s) => s.productCode === 'linepbx')?.settings;
   const host = lp?.domain || lp?.serverIp;
   if (!lp || !host) return { web: null, ssh: null, fop2: null };
-  return { web: `https://${host}`, ssh: lp.sshUser ? `ssh://${lp.sshUser}@${lp.serverIp || lp.domain}:${lp.sshPort ?? 22}` : null, fop2: hasMod(cid, 'linepbx', 'fop2') ? `https://${host}/fop2/` : null };
+  // sem usuário: a tela encaixa o usuário SSH de quem está usando (Minha conta)
+  return { web: `https://${host}`, ssh: `ssh://${lp.serverIp || lp.domain}:${lp.sshPort ?? 22}`, fop2: hasMod(cid, 'linepbx', 'fop2') ? `https://${host}/fop2/` : null };
 };
 const secretRef = (sid: string | null | undefined) => ({ hasSecret: !!sid, secretId: sid ?? null });
 const listItem = (c: Client): ClientListItem => {
@@ -205,10 +244,10 @@ const listItem = (c: Client): ClientListItem => {
     id: c.id, tradeName: c.tradeName, legalName: c.legalName, cnpj: c.cnpj, logoUrl: c.logoUrl, archived: c.archived, isInternal: c.isInternal,
     notes: c.notes, createdAt: c.createdAt, updatedAt: c.updatedAt,
     products: activeSubs(c.id).sort((a, b) => prodMeta(a.productCode).sortOrder - prodMeta(b.productCode).sortOrder).map((s) => { const p = prodMeta(s.productCode); return { code: p.code, name: p.name, color: p.color, activatedAt: s.activatedAt, modules: activeMods(s.id).map((m) => ({ code: modMeta(m.moduleId).code, name: modMeta(m.moduleId).name, activatedAt: m.activatedAt })) }; }),
-    server: lp ? { hostingName: S.hostings.find((h) => h.id === lp.hostingId)?.name ?? null, serverIp: lp.serverIp ?? null, domain: lp.domain ?? null, sshUser: lp.sshUser ?? null, sshPort: lp.sshPort ?? null } : null,
+    server: lp ? { hostingName: S.hostings.find((h) => h.id === lp.hostingId)?.name ?? null, serverIp: lp.serverIp ?? null, domain: lp.domain ?? null, sshPort: lp.sshPort ?? null } : null,
     links: links(c.id), didCount: S.dids.filter((d) => d.clientId === c.id && !d.deletedAt).length,
     deviceCount: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.currentModality !== 'venda').length,
-    deviceValueCents: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.currentModality !== 'venda').reduce((a, d) => a + (d.valueCents ?? 0), 0),
+    deviceValueCents: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.currentModality !== 'venda').reduce((a, d) => a + (valorDe(d) ?? 0), 0),
   };
 };
 const shapeSubMod = (m: SubMod): SubscriptionModule => {
@@ -219,14 +258,14 @@ const shapeSubMod = (m: SubMod): SubscriptionModule => {
 };
 const fullClient = (idc: string): ClientFull => {
   const c = S.clients.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Cliente');
-  const subs: Subscription[] = S.subs.filter((s) => s.clientId === idc).map((s) => {
+  const subs: Subscription[] = S.subs.filter((s) => s.clientId === idc && produtoVivo(s.productCode)).map((s) => {
     const p = prodMeta(s.productCode); const st = s.settings; let settings: Record<string, any> | null = null;
-    if (s.productCode === 'linepbx') settings = { hostingId: st.hostingId, hostingName: S.hostings.find((h) => h.id === st.hostingId)?.name ?? null, serverIp: st.serverIp, domain: st.domain, sshUser: st.sshUser, sshPort: st.sshPort, sshPassword: secretRef(st.sshPasswordSecretId) };
+    if (s.productCode === 'linepbx') settings = { hostingId: st.hostingId, hostingName: S.hostings.find((h) => h.id === st.hostingId)?.name ?? null, serverIp: st.serverIp, domain: st.domain, sshPort: st.sshPort };
     else if (s.productCode === 'szchat') settings = { adminLogin: st.adminLogin ?? null, adminPassword: secretRef(st.adminPasswordSecretId) };
     const modules = S.subMods.filter((m) => m.subscriptionId === s.id).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder).map(shapeSubMod);
     return { id: s.id, productCode: s.productCode, productName: p.name, color: p.color, hasSettings: p.hasSettings, active: !s.deactivatedAt, activatedAt: s.activatedAt, deactivatedAt: s.deactivatedAt, notes: s.notes, settings, modules, sortOrder: p.sortOrder };
   }).sort((a: any, b: any) => a.sortOrder - b.sortOrder);
-  return { ...listItem(c), subscriptions: subs };
+  return { ...listItem(c), subscriptions: subs, unitCount: unidadesDe(idc).length };
 };
 const shapeCircuit = (c: CircuitRow): Circuit => {
   const ds = S.dids.filter((d) => d.circuitId === c.id && !d.deletedAt); const assigned = ds.filter((d) => d.clientId).length;
@@ -237,16 +276,26 @@ const shapeModel = (m: ModelRow): DeviceModel => {
   const ds = S.devices.filter((d) => d.modelId === m.id && !d.deletedAt);
   const inStock = ds.filter((d) => !d.clientId).length;
   const withClients = ds.filter((d) => d.clientId && d.currentModality !== 'venda').length;
-  return { ...m, categoryName: S.categories.find((c) => c.id === m.categoryId)?.name ?? null, counts: { total: inStock + withClients, inStock, withClients, sold: ds.filter((d) => d.currentModality === 'venda').length, inactive: ds.filter((d) => d.condition === 'inativo').length } };
+  return { id: m.id, code: m.code, name: m.name, categoryId: m.categoryId, imageUrl: m.image, valueCents: m.valueCents, categoryName: S.categories.find((c) => c.id === m.categoryId)?.name ?? null, counts: { total: inStock + withClients, inStock, withClients, sold: ds.filter((d) => d.currentModality === 'venda').length, inactive: ds.filter((d) => d.condition === 'inativo').length, ownValue: ds.filter((d) => d.valueCents != null).length } };
 };
 const shapeDevice = (d: DeviceRow, withHistory = false): Device => {
-  const m = S.models.find((x) => x.id === d.modelId)!;
-  const base: Device = { ...d, macFormatted: macFormatado(d.mac), modelName: m.name, modelCode: m.code, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null };
-  if (withHistory) base.history = S.movements.filter((mv) => mv.items.some((i) => i.deviceId === d.id)).map((mv) => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const m = modeloDe(d);
+  const ident = identificacaoAparelho(d);
+  const base: Device = { ...d, macFormatted: macFormatado(d.mac), identificacao: ident.texto, identificacaoTipo: ident.tipo, valueCents: valorDe(d), ownValueCents: d.valueCents, modelValueCents: m.valueCents, modelImageUrl: m.image, modelName: m.name, modelCode: m.code, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null };
+  if (withHistory) base.history = S.movements.filter((mv) => mv.items.some((i) => i.deviceId === d.id)).map((mv) => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, unit: mv.unit, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return base;
 };
-const shapeMov = (mv: MovRow): Movement => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromClientId: mv.fromClientId, fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toClientId: mv.toClientId, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt, items: Object.values(mv.items.reduce((acc, i) => { const k = i.modelId; acc[k] = acc[k] ?? { modelName: S.models.find((m) => m.id === k)?.name ?? '?', quantity: 0 }; acc[k]!.quantity += 1; return acc; }, {} as Record<string, { modelName: string; quantity: number }>)) });
-const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active, modules: S.modules.filter((m) => m.productId === p.id).sort((a, b) => a.sortOrder - b.sortOrder).map(({ productId: _p, ...m }) => m) });
+const shapeMov = (mv: MovRow): Movement => ({
+  id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromClientId: mv.fromClientId, fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toClientId: mv.toClientId, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, unit: mv.unit, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt,
+  items: Object.values(mv.items.reduce((acc, i) => { const k = i.modelId; acc[k] = acc[k] ?? { modelName: S.models.find((m) => m.id === k)?.name ?? '?', quantity: 0 }; acc[k]!.quantity += 1; return acc; }, {} as Record<string, { modelName: string; quantity: number }>)),
+  devices: mv.items.map((i) => { const d = S.devices.find((x) => x.id === i.deviceId)!; return { id: d.id, modelName: modeloDe(d).name, identificacao: identificacaoAparelho(d).texto }; }),
+});
+const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active, protegido: PROTEGIDOS.includes(p.code), activeClients: new Set(S.subs.filter((x) => x.productCode === p.code && !x.deactivatedAt && S.clients.some((c) => c.id === x.clientId && !c.deletedAt)).map((x) => x.clientId)).size, modules: S.modules.filter((m) => m.productId === p.id).sort((a, b) => a.sortOrder - b.sortOrder).map(({ productId: _p, ...m }) => m) });
+const shapeUnit = (u: UnitRow): ClientUnit => {
+  const ds = S.devices.filter((d) => d.clientId === u.clientId && !d.deletedAt);
+  const n = ds.filter((d) => (d.unit ?? '').trim().toLowerCase() === u.name.toLowerCase()).length + (u.isMain ? ds.filter((d) => !(d.unit ?? '').trim()).length : 0);
+  return { id: u.id, name: u.name, isMain: u.isMain, note: u.note, createdAt: u.createdAt, deviceCount: n };
+};
 /**
  * Ordenação da demonstração: mesma ideia do servidor — vazio sempre no fim,
  * texto comparado em português e o que não for reconhecido cai na coluna padrão.
@@ -268,7 +317,7 @@ function ordenar<T>(itens: T[], q: Record<string, unknown>, padrao: string, valo
 }
 
 const paginate = <T,>(items: T[], q: Record<string, unknown>) => { const page = Number(q.page ?? 1), pageSize = Number(q.pageSize ?? 50); return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }; };
-const me = (u: UserRow): Me => { const r = S.roles.find((x) => x.id === u.roleId)!; return { id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: r.name, roleKey: r.key, permissions: r.permissions, twoFactor: !!u.totpOn, recoveryLeft: u.recovery?.length ?? 0 }; };
+const me = (u: UserRow): Me => { const r = S.roles.find((x) => x.id === u.roleId)!; return { id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: r.name, roleKey: r.key, permissions: r.permissions, twoFactor: !!u.totpOn, recoveryLeft: u.recovery?.length ?? 0, sshUser: u.sshUser ?? null }; };
 
 /**
  * Duas etapas na demonstração: o mesmo fluxo de telas, sem criptografia de verdade.
@@ -290,6 +339,17 @@ const filtrarCircuitos = (q: Record<string, unknown>) => {
 };
 const ehTerceiro = (circuitId: string | null) => !!S.circuits.find((c) => c.id === circuitId)?.thirdParty;
 const filterDids = (q: Record<string, unknown>) => S.dids.filter((d) => !d.deletedAt).filter((d) => (ligado(q.includeThirdParty) || !ehTerceiro(d.circuitId))).filter((d) => (!q.q || d.number.includes(String(q.q).replace(/\D/g, ''))) && (!q.circuitId || (q.circuitId === 'none' ? !d.circuitId : d.circuitId === q.circuitId)) && (!q.clientId || (q.clientId === 'free' ? !d.clientId : d.clientId === q.clientId)) && (!q.ownerClientId || d.ownerClientId === q.ownerClientId));
+
+/** Os filtros da aba Aparelhos (os mesmos da lista e dos cartões). clientId: stock | clients | um id. */
+const filtrarAparelhos = (q: Record<string, unknown>) => {
+  const t = String(q.q ?? '').toLowerCase(); const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase(); const serie = serieLimpa(t);
+  return S.devices.filter((d) => !d.deletedAt
+    && (!q.modelId || d.modelId === q.modelId)
+    && (!q.clientId || (q.clientId === 'stock' ? !d.clientId : q.clientId === 'clients' ? !!d.clientId : d.clientId === q.clientId))
+    && (!q.condition || d.condition === q.condition)
+    && (ligado(q.includeSold) || (d.currentModality ?? '') !== 'venda')
+    && (!t || (hex.length >= 4 && (d.mac ?? '').includes(hex)) || (!!serie && (d.serialNumber ?? '').includes(serie)) || (d.unit ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.note ?? '').toLowerCase().includes(t)));
+};
 
 // ---------------- a API ----------------
 export const demoApi: Api = {
@@ -335,6 +395,14 @@ export const demoApi: Api = {
     },
     async logout() { if (S.me) audit('logout', 'user', `${S.me.name} saiu`, S.me.id); S.me = null; esperandoCodigo = null; return { ok: true }; },
     async changePassword(cur, nw) { if (!S.me) throw new ApiError(401, 'Faça login'); if (cur !== S.me.password) throw new ApiError(401, 'Senha atual incorreta'); S.me.password = nw; return { ok: true }; },
+    async updateMe(d) {
+      await wait(); if (!S.me) throw new ApiError(401, 'Faça login');
+      const v = (d.sshUser ?? '').trim();
+      if (v && !/^[A-Za-z0-9._-]+$/.test(v)) throw new ApiError(400, 'Dados inválidos', [{ field: 'sshUser', message: 'Use só letras, números, ponto, hífen e _' }]);
+      S.me.sshUser = v || null;
+      audit('update', 'user', `${S.me.name} ${v ? `definiu o próprio usuário SSH (${v})` : 'tirou o próprio usuário SSH'}`, S.me.id);
+      return me(S.me);
+    },
   },
   dashboard: {
     async summary() {
@@ -350,14 +418,14 @@ export const demoApi: Api = {
       const noC = ds.filter((d) => !d.circuitId).length; if (noC) alerts.push({ kind: 'did_sem_circuito', severity: 'warning', message: 'DIDs sem circuito', count: noC, link: '/circuitos?aba=numeracao&circuito=none' });
       const inativos = dev.filter((d) => d.condition === 'inativo').length; if (inativos) alerts.push({ kind: 'aparelho_inativo', severity: 'warning', message: 'Aparelhos inativos', count: inativos, link: '/inventario?condicao=inativo' });
       return {
-        clients: { active: active.length, byProduct: S.products.map((p) => ({ code: p.code, name: p.name, color: p.color, n: active.filter((c) => activeSubs(c.id).some((s) => s.productCode === p.code)).length })) },
+        clients: { active: active.length, byProduct: S.products.filter((p) => !p.deletedAt).map((p) => ({ code: p.code, name: p.name, color: p.color, n: active.filter((c) => activeSubs(c.id).some((s) => s.productCode === p.code)).length })) },
         dids: { total: ds.length, assigned: ds.filter((d) => d.clientId).length, free: ds.filter((d) => !d.clientId).length, noCircuit: noC },
         circuits,
         devices: {
           inStock: dev.filter((d) => !d.clientId).length,
           withClients: dev.filter((d) => d.clientId && d.currentModality !== 'venda').length,
           inactive: inativos,
-          valueWithClientsCents: dev.filter((d) => d.clientId && ['locacao', 'comodato'].includes(d.currentModality ?? '')).reduce((a, d) => a + (d.valueCents ?? 0), 0),
+          valueWithClientsCents: dev.filter((d) => d.clientId && ['locacao', 'comodato'].includes(d.currentModality ?? '')).reduce((a, d) => a + (valorDe(d) ?? 0), 0),
         },
         alerts,
         recentMovements: [...S.movements].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6).map((m) => ({ id: m.id, modality: m.modality, modalityName: (MODALIDADES as any)[m.modality], fromName: S.clients.find((x) => x.id === m.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === m.toClientId)?.tradeName ?? null, userName: S.users.find((u) => u.id === m.userId)?.name ?? '?', createdAt: m.createdAt })),
@@ -371,7 +439,7 @@ export const demoApi: Api = {
         clients: S.clients.filter((c) => !c.deletedAt && !c.isInternal && (c.tradeName.toLowerCase().includes(t) || c.legalName.toLowerCase().includes(t) || (digits && c.cnpj.includes(digits)))).slice(0, 8).map((c) => ({ id: c.id, name: c.tradeName, legalName: c.legalName, cnpj: c.cnpj })),
         dids: digits.length >= 3 ? S.dids.filter((d) => !d.deletedAt && d.number.includes(digits)).slice(0, 8).map((d) => { const s = shapeDid(d); return { id: d.id, number: d.number, numberFormatted: s.numberFormatted, clientName: s.clientName, circuitName: s.circuitName }; }) : [],
         circuits: S.circuits.filter((c) => !c.deletedAt && (c.name.toLowerCase().includes(t) || c.code.includes(t))).slice(0, 8).map((c) => ({ id: c.id, name: c.name, code: c.code, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null })),
-        devices: S.devices.filter((d) => !d.deletedAt && ((hex.length >= 4 && (d.mac ?? '').includes(hex)) || (d.unit ?? '').toLowerCase().includes(t))).slice(0, 8).map((d) => ({ id: d.id, mac: d.mac, macFormatted: macFormatado(d.mac), unit: d.unit, modelName: S.models.find((m) => m.id === d.modelId)?.name ?? '?', clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null })),
+        devices: S.devices.filter((d) => !d.deletedAt && ((hex.length >= 4 && (d.mac ?? '').includes(hex)) || (d.serialNumber ?? '').toLowerCase().includes(t.replace(/\s/g, '')) || (d.unit ?? '').toLowerCase().includes(t))).slice(0, 8).map((d) => ({ id: d.id, mac: d.mac, serialNumber: d.serialNumber, macFormatted: d.mac ? macFormatado(d.mac) : d.serialNumber ? `N/S ${d.serialNumber}` : 'sem identificação', unit: d.unit, modelName: S.models.find((m) => m.id === d.modelId)?.name ?? '?', clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null })),
       };
     },
   },
@@ -391,7 +459,7 @@ export const demoApi: Api = {
         createdAt: (c) => c.createdAt, updatedAt: (c) => c.updatedAt,
         didCount: (c) => c.didCount, deviceCount: (c) => c.deviceCount,
         products: (c) => c.products.length, modules: (c) => c.products.reduce((a, p) => a + p.modules.length, 0),
-        hosting: (c) => c.server?.hostingName, domain: (c) => c.server?.domain, serverIp: (c) => c.server?.serverIp, ssh: (c) => c.server?.sshUser,
+        hosting: (c) => c.server?.hostingName, domain: (c) => c.server?.domain, serverIp: (c) => c.server?.serverIp, ssh: (c) => c.server?.sshPort,
       };
       const chave = String(q.sort ?? 'tradeName');
       if (chave.startsWith('ativacao:')) valores[chave] = (c) => doProduto(c, chave.slice(9))?.activatedAt;
@@ -400,20 +468,20 @@ export const demoApi: Api = {
     },
     async options(q) { await wait(50); return S.clients.filter((c) => !c.deletedAt && !c.archived && (q?.includeInternal || !c.isInternal) && (!q?.productCode || activeSubs(c.id).some((s) => s.productCode === q.productCode)) && (!q?.withDevices || S.devices.some((d) => !d.deletedAt && d.clientId === c.id && d.currentModality !== 'venda'))).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode })); },
     async get(idc) { await wait(); requirePerm('records.read'); return fullClient(idc); },
-    async create(d) { await wait(); requirePerm('records.write'); const cnpj = cnpjLimpo(String(d.cnpj ?? '')); if (!cnpjValido(cnpj)) throw new ApiError(400, 'Dados inválidos', [{ field: 'cnpj', message: 'CNPJ inválido (dígito verificador não confere)' }]); if (S.clients.some((c) => c.cnpj === cnpj)) throw bad('Já existe um cliente com este CNPJ'); const c: Client = { id: id(), tradeName: String(d.tradeName), legalName: String(d.legalName), cnpj, logoUrl: null, archived: false, isInternal: false, internalCode: null, notes: (d.notes as string) ?? null, deletedAt: null, createdAt: now(), updatedAt: now() }; S.clients.push(c); audit('create', 'client', `Criou o cliente ${c.tradeName}`, c.id); return fullClient(c.id); },
+    async create(d) { await wait(); requirePerm('records.write'); const cnpj = cnpjLimpo(String(d.cnpj ?? '')); if (!cnpjValido(cnpj)) throw new ApiError(400, 'Dados inválidos', [{ field: 'cnpj', message: 'CNPJ inválido (dígito verificador não confere)' }]); if (S.clients.some((c) => c.cnpj === cnpj)) throw bad('Já existe um cliente com este CNPJ'); const c: Client = { id: id(), tradeName: String(d.tradeName), legalName: String(d.legalName), cnpj, logoUrl: null, archived: false, isInternal: false, internalCode: null, notes: (d.notes as string) ?? null, deletedAt: null, createdAt: now(), updatedAt: now() }; S.clients.push(c); unidadesDe(c.id); audit('create', 'client', `Criou o cliente ${c.tradeName}`, c.id); return fullClient(c.id); },
     async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente'); if (d.cnpj) { const cn = cnpjLimpo(String(d.cnpj)); if (!cnpjValido(cn)) throw new ApiError(400, 'Dados inválidos', [{ field: 'cnpj', message: 'CNPJ inválido' }]); c.cnpj = cn; } for (const k of ['tradeName', 'legalName', 'notes', 'archived'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; c.updatedAt = now(); audit('update', 'client', `${S.me!.name} ${d.archived === true ? 'arquivou' : d.archived === false ? 'desarquivou' : 'editou'} o cliente ${c.tradeName}`, c.id); return fullClient(c.id); },
     async remove(idc) { await wait(); requirePerm('records.delete'); const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente'); c.deletedAt = now(); audit('delete', 'client', `Mandou o cliente ${c.tradeName} para a lixeira`, c.id); return { ok: true }; },
     async upsertSubscription(idc, d) {
       await wait(); requirePerm('records.write'); const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente');
       const st = (d.settings as Record<string, any>) ?? {};
-      if (['serverIp', 'domain', 'sshUser', 'sshPort', 'sshPassword', 'hostingId'].some((k) => k in st)) requirePerm('servers.write');
+      if (['serverIp', 'domain', 'sshPort', 'hostingId'].some((k) => k in st)) requirePerm('servers.write');
       let s = S.subs.find((x) => x.clientId === idc && x.productCode === d.productCode);
-      if (!S.products.some((p) => p.code === d.productCode)) throw notFound(`Produto "${d.productCode}"`);
+      if (!S.products.some((p) => p.code === d.productCode && !p.deletedAt)) throw notFound(`Produto "${d.productCode}"`);
       if (!s) { s = { id: id(), clientId: idc, productCode: String(d.productCode), activatedAt: now(), deactivatedAt: null, notes: null, settings: {} }; S.subs.push(s); }
-      s.deactivatedAt = null; if (d.activatedAt !== undefined) s.activatedAt = d.activatedAt as string; if (d.notes !== undefined) s.notes = d.notes as string;
+      s.deactivatedAt = null; if (d.activatedAt !== undefined) s.activatedAt = dia(d.activatedAt); if (d.notes !== undefined) s.notes = d.notes as string;
       const saveSecret = (key: string, label: string) => { if (st[key]) { const sid = s!.settings[key + 'SecretId'] ?? id(); S.secrets.set(sid, { label: `${label} — ${c.tradeName}`, value: st[key] }); s!.settings[key + 'SecretId'] = sid; } };
       for (const [k, v] of Object.entries(st)) if (!/password/i.test(k)) s.settings[k] = v;
-      saveSecret('sshPassword', 'Senha SSH do LinePBX'); saveSecret('adminPassword', 'Senha admin do SZChat');
+      saveSecret('adminPassword', 'Senha admin do SZChat');
       audit('update', 'subscription', `Atualizou o produto ${d.productCode} no cliente ${c.tradeName}`, s.id); return fullClient(idc);
     },
     async upsertModule(idc, d) {
@@ -423,7 +491,7 @@ export const demoApi: Api = {
       const sub = activeSubs(idc).find((x) => x.productCode === p.code); if (!sub) throw bad(`Marque o produto ${p.name} no cliente antes de ligar o módulo ${mod.name}`);
       let m = S.subMods.find((x) => x.subscriptionId === sub.id && x.moduleId === mod.id);
       if (!m) { m = { id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: now(), deactivatedAt: null, notes: null, settings: {} }; S.subMods.push(m); }
-      m.deactivatedAt = null; if (d.activatedAt !== undefined) m.activatedAt = d.activatedAt as string; if (d.notes !== undefined) m.notes = d.notes as string;
+      m.deactivatedAt = null; if (d.activatedAt !== undefined) m.activatedAt = dia(d.activatedAt); if (d.notes !== undefined) m.notes = d.notes as string;
       const st = (d.settings as Record<string, any>) ?? {};
       for (const [k, v] of Object.entries(st)) if (!/password/i.test(k)) m.settings[k] = v;
       const saveSecret = (key: string, label: string) => { if (st[key]) { const sid = m!.settings[key + 'SecretId'] ?? id(); S.secrets.set(sid, { label: `${label} — ${c.tradeName}`, value: st[key] }); m!.settings[key + 'SecretId'] = sid; } };
@@ -437,8 +505,38 @@ export const demoApi: Api = {
       m.deactivatedAt = now(); audit('unsubscribe', 'subscription_module', `Desligou o módulo ${mod.name} (${prodMeta(productCode).name}) no cliente ${idc}`, m.id); return fullClient(idc);
     },
     async endSubscription(idc, code) { await wait(); requirePerm('records.write'); const s = S.subs.find((x) => x.clientId === idc && x.productCode === code && !x.deactivatedAt); if (!s) throw notFound('Assinatura ativa'); s.deactivatedAt = now(); audit('unsubscribe', 'subscription', `Encerrou o produto ${code} no cliente ${idc}`, s.id); return fullClient(idc); },
-    async dids(idc) { await wait(); return paginate(S.dids.filter((d) => d.clientId === idc && !d.deletedAt).map(shapeDid), { pageSize: 500 }); },
-    async devices(idc) { await wait(); return { devices: paginate(S.devices.filter((d) => d.clientId === idc && !d.deletedAt).map((d) => shapeDevice(d)), { pageSize: 500 }) }; },
+    async dids(idc) { await wait(); return paginate(S.dids.filter((d) => d.clientId === idc && !d.deletedAt).map(shapeDid), { pageSize: 100000 }); },
+    async devices(idc) { await wait(); return { devices: paginate(S.devices.filter((d) => d.clientId === idc && !d.deletedAt && d.currentModality !== 'venda').map((d) => shapeDevice(d)), { pageSize: 100000 }) }; },
+    async units(idc) { await wait(60); requirePerm('records.read'); return unidadesDe(idc).map(shapeUnit); },
+    async createUnit(idc, d) {
+      await wait(); requirePerm('records.write');
+      const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente');
+      const nome = String(d.name ?? '').trim(); if (!nome) throw new ApiError(400, 'Dados inválidos', [{ field: 'name', message: 'Informe o nome da unidade' }]);
+      if (unidadesDe(idc).some((u) => u.name.toLowerCase() === nome.toLowerCase())) throw bad(`Já existe a unidade "${nome}" neste cliente`);
+      const u: UnitRow = { id: id(), clientId: idc, name: nome, isMain: false, note: d.note ?? null, createdAt: now(), deletedAt: null };
+      S.units.push(u); audit('create', 'client', `Cadastrou a unidade "${nome}" em ${c.tradeName}`, idc);
+      return shapeUnit(u);
+    },
+    async updateUnit(idc, unitId, d) {
+      await wait(); requirePerm('records.write');
+      const u = S.units.find((x) => x.id === unitId && x.clientId === idc && !x.deletedAt); if (!u) throw notFound('Unidade');
+      const nome = String(d.name ?? '').trim(); if (!nome) throw new ApiError(400, 'Dados inválidos', [{ field: 'name', message: 'Informe o nome da unidade' }]);
+      if (unidadesDe(idc).some((x) => x.id !== unitId && x.name.toLowerCase() === nome.toLowerCase())) throw bad(`Já existe a unidade "${nome}" neste cliente`);
+      const antigo = u.name;
+      // os aparelhos da unidade acompanham o nome novo
+      if (antigo !== nome) for (const dv of S.devices) if (dv.clientId === idc && (dv.unit ?? '').trim().toLowerCase() === antigo.toLowerCase()) dv.unit = nome;
+      u.name = nome; if (d.note !== undefined) u.note = d.note ?? null;
+      audit('update', 'client', antigo === nome ? `Editou a unidade "${nome}"` : `Renomeou a unidade "${antigo}" para "${nome}"`, idc);
+      return shapeUnit(u);
+    },
+    async removeUnit(idc, unitId) {
+      await wait(); requirePerm('records.write');
+      const u = S.units.find((x) => x.id === unitId && x.clientId === idc && !x.deletedAt); if (!u) throw notFound('Unidade');
+      if (u.isMain) throw bad('A Matriz é a unidade padrão do cliente e não pode ser removida. Se quiser, renomeie.');
+      const n = shapeUnit(u).deviceCount; if (n) throw bad(`A unidade "${u.name}" ainda tem ${n} aparelho(s). Mova-os para outra unidade antes de remover.`);
+      u.deletedAt = now(); audit('delete', 'client', `Removeu a unidade "${u.name}"`, idc);
+      return { ok: true };
+    },
     async history(idc) { await wait(); requirePerm('audit.read'); return paginate(S.audit.filter((a) => a.entityId === idc), { pageSize: 100 }); },
     async saveLogo(idc, dataUrl) {
       await wait(200); requirePerm('records.write');
@@ -483,6 +581,12 @@ export const demoApi: Api = {
       return { circuits: cs.length, channels: cs.reduce((a, c) => a + c.channels, 0), monthlyValueCents: cs.reduce((a, c) => a + (c.monthlyValueCents ?? 0), 0), dids: { total: ds.length, assigned, free: ds.length - assigned, noCircuit: ds.filter((d) => !d.circuitId).length } };
     },
     async options() { await wait(50); return S.circuits.filter((c) => !c.deletedAt).map((c) => ({ id: c.id, name: c.name, code: c.code, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null })); },
+    async owners(includeThirdParty) {
+      await wait(50);
+      // só quem é titular de algum circuito da lista
+      const ids = new Set(S.circuits.filter((c) => !c.deletedAt && c.ownerClientId && (includeThirdParty || !c.thirdParty)).map((c) => c.ownerClientId!));
+      return S.clients.filter((c) => ids.has(c.id)).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode }));
+    },
     async get(idc) { await wait(); requirePerm('records.read'); const c = S.circuits.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Circuito'); return shapeCircuit(c); },
     async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), keyNumber: (d.keyNumber as string) ?? null, carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, signalingIp: (d.signalingIp as string) ?? null, authIp: (d.authIp as string) ?? null, authUsername: (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, thirdParty: !!d.thirdParty, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
     async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); for (const k of ['name', 'code', 'keyNumber', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'signalingIp', 'authIp', 'authUsername', 'notes', 'thirdParty'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
@@ -507,40 +611,108 @@ export const demoApi: Api = {
   inventory: {
     async summary(q = {}): Promise<InventorySummary> {
       await wait(60); requirePerm('records.read');
-      const t = String(q.q ?? '').toLowerCase(); const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase();
       const filtrado = !!(q.q || q.modelId || q.clientId || q.condition);
       // vendido não entra na conta: já não é nosso (mesma regra do servidor)
-      const devs = S.devices.filter((d) => !d.deletedAt
-        && (d.currentModality ?? '') !== 'venda'
-        && (!q.modelId || d.modelId === q.modelId)
-        && (!q.clientId || (q.clientId === 'stock' ? !d.clientId : d.clientId === q.clientId))
-        && (!t || (hex && (d.mac ?? '').includes(hex)) || (d.unit ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.location ?? '').toLowerCase().includes(t)));
+      const devs = filtrarAparelhos({ ...q, condition: undefined });
       return {
         inStock: devs.filter((d) => !d.clientId).length,
         withClients: devs.filter((d) => d.clientId).length,
         inactive: devs.filter((d) => d.condition === 'inativo').length,
-        valueWithClientsCents: devs.filter((d) => d.clientId && ['locacao', 'comodato'].includes(d.currentModality ?? '')).reduce((a, d) => a + (d.valueCents ?? 0), 0),
+        valueWithClientsCents: devs.filter((d) => d.clientId && ['locacao', 'comodato'].includes(d.currentModality ?? '')).reduce((a, d) => a + (valorDe(d) ?? 0), 0),
         filtrado,
       };
     },
-    async models(q) { await wait(); requirePerm('records.read'); const t = String(q?.q ?? '').toLowerCase(); return S.models.filter((m) => !m.deletedAt && (!t || m.name.toLowerCase().includes(t) || m.code.includes(t)) && (!q?.categoryId || m.categoryId === q.categoryId)).map(shapeModel); },
-    async createModel(d) { await wait(); requirePerm('records.write'); if (S.models.some((m) => m.code === d.code)) throw bad('Já existe um modelo com este código'); const m: ModelRow = { id: id(), code: String(d.code), name: String(d.name), categoryId: (d.categoryId as string) ?? null, imageUrl: null, deletedAt: null }; S.models.push(m); audit('create', 'deviceModel', `Cadastrou o modelo ${m.name}`, m.id); return shapeModel(m); },
-    async updateModel(idm, d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo'); for (const k of ['code', 'name', 'categoryId'] as const) if (d[k] !== undefined) (m as any)[k] = d[k]; audit('update', 'deviceModel', `Editou o modelo ${m.name}`, m.id); return shapeModel(m); },
-    async removeModel(idm) { await wait(); requirePerm('records.delete'); const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo'); if (S.devices.some((d) => d.modelId === idm && !d.deletedAt)) throw bad('Este modelo ainda tem aparelhos cadastrados'); m.deletedAt = now(); return { ok: true }; },
-    async devices(q) { await wait(); requirePerm('records.read'); const t = String(q.q ?? '').toLowerCase(); const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase(); const items = S.devices.filter((d) => !d.deletedAt && (!q.modelId || d.modelId === q.modelId) && (!q.clientId || (q.clientId === 'stock' ? !d.clientId : d.clientId === q.clientId)) && (!q.condition || d.condition === q.condition) && (q.includeSold || (d.currentModality ?? '') !== 'venda') && (!t || (hex && (d.mac ?? '').includes(hex)) || (d.unit ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.location ?? '').toLowerCase().includes(t))).map((d) => shapeDevice(d));
+    async models(q) { await wait(); requirePerm('records.read'); const t = String(q?.q ?? '').toLowerCase(); return S.models.filter((m) => !m.deletedAt && (!t || m.name.toLowerCase().includes(t) || m.code.includes(t)) && (!q?.categoryId || m.categoryId === q.categoryId)).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map(shapeModel); },
+    async createModel(d) { await wait(); requirePerm('records.write'); if (S.models.some((m) => m.code === d.code)) throw bad('Já existe um modelo com este código'); const m: ModelRow = { id: id(), code: String(d.code), name: String(d.name), categoryId: (d.categoryId as string) ?? null, image: null, valueCents: (d.valueCents as number) ?? null, deletedAt: null }; S.models.push(m); audit('create', 'deviceModel', `Cadastrou o modelo ${m.name}${m.valueCents != null ? ` (${reais(m.valueCents)})` : ''}`, m.id); return shapeModel(m); },
+    async updateModel(idm, d) {
+      await wait(); requirePerm('records.write');
+      const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo');
+      const antes = m.valueCents;
+      for (const k of ['code', 'name', 'categoryId', 'valueCents'] as const) if (d[k] !== undefined) (m as any)[k] = d[k];
+      let igualados = 0;
+      if (d.aplicarValorATodos) for (const x of S.devices) if (x.modelId === idm && x.valueCents != null) { x.valueCents = null; igualados++; }
+      audit('update', 'deviceModel', `Editou o modelo ${m.name}${antes !== m.valueCents ? `: valor ${reais(antes)} → ${reais(m.valueCents)}` : ''}${igualados ? ` (${igualados} aparelho(s) passaram a usar o valor do modelo)` : ''}`, m.id);
+      return shapeModel(m);
+    },
+    async removeModel(idm) { await wait(); requirePerm('records.delete'); const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo'); if (S.devices.some((d) => d.modelId === idm && !d.deletedAt)) throw bad('Este modelo ainda tem aparelhos cadastrados'); m.deletedAt = now(); audit('delete', 'deviceModel', `Mandou o modelo ${m.name} para a lixeira`, m.id); return { ok: true }; },
+    async saveModelImage(idm, dataUrl) {
+      await wait(200); requirePerm('records.write');
+      const m = S.models.find((x) => x.id === idm); if (!m) throw notFound('Modelo');
+      if (!/^data:image\//.test(dataUrl)) throw bad('Formato não suportado. Use PNG, JPG, WEBP ou SVG.');
+      if (dataUrl.length > 700_000) throw bad('Imagem muito grande (máximo 512 KB).');
+      m.image = dataUrl; audit('update', 'deviceModel', `Trocou a foto do modelo ${m.name}`, m.id);
+      return { ok: true };
+    },
+    async removeModelImage(idm) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === idm); if (!m?.image) throw notFound('Foto'); m.image = null; audit('update', 'deviceModel', `Removeu a foto do modelo ${m.name}`, m.id); return { ok: true }; },
+    async devices(q) {
+      await wait(); requirePerm('records.read');
+      const items = filtrarAparelhos(q).map((d) => shapeDevice(d));
       return paginate(ordenar(items, q, 'modelName', {
-        mac: (d) => d.mac, unit: (d) => d.unit, modelName: (d) => d.modelName, clientName: (d) => d.clientName,
-        currentModality: (d) => d.currentModality, condition: (d) => d.condition, ip: (d) => d.ip, location: (d) => d.location, valueCents: (d) => d.valueCents,
+        mac: (d) => d.mac ?? d.serialNumber, unit: (d) => d.unit, modelName: (d) => d.modelName, clientName: (d) => d.clientName, note: (d) => d.note,
+        currentModality: (d) => d.currentModality, condition: (d) => d.condition, ip: (d) => d.ip, valueCents: (d) => d.valueCents,
       }), q);
     },
     async device(idd) { await wait(); requirePerm('records.read'); const d = S.devices.find((x) => x.id === idd); if (!d) throw notFound('Aparelho'); return shapeDevice(d, true); },
-    async createDevice(d) { await wait(); requirePerm('records.write'); const m = S.models.find((x) => x.id === d.modelId); if (!m) throw notFound('Modelo'); const mac = d.mac ? macLimpo(String(d.mac)) : null; if (mac !== null && mac.length !== 12) throw new ApiError(400, 'Dados inválidos', [{ field: 'mac', message: 'MAC precisa ter 12 caracteres hexadecimais' }]); if (mac && S.devices.some((x) => x.mac === mac)) throw bad(`Já existe um aparelho com o MAC ${macFormatado(mac)}`); const row: DeviceRow = { id: id(), modelId: m.id, mac, macSecondary: d.macSecondary ? macLimpo(String(d.macSecondary)) : null, clientId: null, unit: null, currentModality: null, condition: String(d.condition ?? 'ativo'), valueCents: (d.valueCents as number) ?? null, ip: (d.ip as string) ?? null, location: (d.location as string) ?? null, note: (d.note as string) ?? null, deletedAt: null, createdAt: now() }; S.devices.push(row); audit('create', 'device', `Cadastrou ${mac ? 'o aparelho ' + macFormatado(mac) : 'um ' + m.name}`, row.id); return shapeDevice(row, true); },
-    async updateDevice(idd, d) { await wait(); requirePerm('records.write'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); for (const k of ['unit', 'condition', 'valueCents', 'ip', 'location', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; if (d.mac !== undefined) x.mac = d.mac ? macLimpo(String(d.mac)) : null; audit('update', 'device', `Editou o aparelho ${macFormatado(x.mac)}`, x.id); return shapeDevice(x, true); },
-    async removeDevice(idd) { await wait(); requirePerm('records.delete'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); x.deletedAt = now(); audit('delete', 'device', `Mandou o aparelho ${macFormatado(x.mac)} para a lixeira`, x.id); return { ok: true }; },
+    async createDevice(d) {
+      await wait(); requirePerm('records.write');
+      const m = S.models.find((x) => x.id === d.modelId); if (!m) throw notFound('Modelo');
+      const mac = d.mac ? macLimpo(String(d.mac)) : null;
+      if (mac !== null && mac.length !== 12) throw new ApiError(400, 'Dados inválidos', [{ field: 'mac', message: 'MAC precisa ter 12 caracteres hexadecimais' }]);
+      if (mac && S.devices.some((x) => x.mac === mac)) throw bad(`Já existe um aparelho com o MAC ${macFormatado(mac)}`);
+      const serie = d.serialNumber ? serieLimpa(String(d.serialNumber)) : null;
+      if (serie && S.devices.some((x) => x.modelId === m.id && !x.deletedAt && x.serialNumber === serie)) throw bad(`Já existe um aparelho deste modelo com o N/S ${serie}`);
+      const row: DeviceRow = { id: id(), modelId: m.id, mac, macSecondary: null, serialNumber: serie, clientId: null, unit: null, currentModality: null, condition: String(d.condition ?? 'ativo'), valueCents: (d.valueCents as number) ?? null, ip: (d.ip as string) ?? null, location: null, note: (d.note as string) ?? null, deletedAt: null, createdAt: now() };
+      S.devices.push(row); audit('create', 'device', `Cadastrou o aparelho ${identificacaoAparelho(row).texto} (${m.name})`, row.id); return shapeDevice(row, true);
+    },
+    async createDevices(d) {
+      await wait(300); requirePerm('records.write');
+      const m = S.models.find((x) => x.id === d.modelId && !x.deletedAt); if (!m) throw notFound('Modelo');
+      const base = { modelId: m.id, condition: d.condition ?? 'ativo', note: d.note ?? null };
+      const novo = (x: Partial<DeviceRow>): DeviceRow => ({ id: id(), mac: null, macSecondary: null, serialNumber: null, clientId: null, unit: null, currentModality: null, valueCents: null, ip: null, location: null, deletedAt: null, createdAt: now(), ...base, ...x });
+      if (d.tipo === 'nenhum') {
+        const n = Number(d.quantidade ?? 0); if (n < 1) throw bad('Informe quantos aparelhos cadastrar');
+        for (let i = 0; i < n; i++) S.devices.push(novo({}));
+        audit('bulk_create', 'device', `Cadastrou ${n} aparelho(s) ${m.name} sem identificação`, m.id);
+        return { created: n, modelName: m.name, tipo: d.tipo };
+      }
+      const valores = d.valores ?? [];
+      const problemas: string[] = []; const vistos = new Set<string>();
+      for (const v of valores) {
+        const limpo = d.tipo === 'mac' ? macLimpo(v) : serieLimpa(v);
+        if (d.tipo === 'mac' && !macValido(limpo)) problemas.push(`${v}: MAC inválido (precisa ter 12 caracteres hexadecimais)`);
+        else if (d.tipo === 'serie' && limpo.length < 2) problemas.push(`${v}: número de série inválido`);
+        else if (vistos.has(limpo)) problemas.push(`${v}: repetido na lista`);
+        else if (d.tipo === 'mac' ? S.devices.some((x) => x.mac === limpo) : S.devices.some((x) => x.modelId === m.id && !x.deletedAt && x.serialNumber === limpo)) problemas.push(`${d.tipo === 'mac' ? macFormatado(limpo) : limpo}: já está cadastrado`);
+        vistos.add(limpo);
+      }
+      if (!vistos.size) throw bad(d.tipo === 'mac' ? 'Cole pelo menos um MAC' : 'Cole pelo menos um número de série');
+      if (problemas.length) throw new ApiError(400, `Nada foi cadastrado: ${problemas.length} item(ns) com problema. Corrija e envie de novo.`, problemas.join('\n'));
+      for (const v of vistos) S.devices.push(novo(d.tipo === 'mac' ? { mac: v } : { serialNumber: v }));
+      audit('bulk_create', 'device', `Cadastrou ${vistos.size} aparelho(s) ${m.name} ${d.tipo === 'mac' ? 'por MAC' : 'por número de série'}`, m.id);
+      return { created: vistos.size, modelName: m.name, tipo: d.tipo };
+    },
+    async updateDevice(idd, d) {
+      await wait(); requirePerm('records.write');
+      const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho');
+      if (d.mac !== undefined) {
+        const mac = d.mac ? macLimpo(String(d.mac)) : null;
+        if (mac && mac.length !== 12) throw new ApiError(400, 'Dados inválidos', [{ field: 'mac', message: 'MAC precisa ter 12 caracteres hexadecimais' }]);
+        if (mac && S.devices.some((o) => o.id !== idd && o.mac === mac)) throw bad('Já existe um aparelho com este MAC');
+        x.mac = mac;
+      }
+      if (d.serialNumber !== undefined) {
+        const serie = d.serialNumber ? serieLimpa(String(d.serialNumber)) : null;
+        if (serie && S.devices.some((o) => o.id !== idd && o.modelId === x.modelId && !o.deletedAt && o.serialNumber === serie)) throw bad(`Já existe um aparelho deste modelo com o N/S ${serie}`);
+        x.serialNumber = serie;
+      }
+      for (const k of ['unit', 'condition', 'valueCents', 'ip', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k];
+      audit('update', 'device', `Editou o aparelho ${identificacaoAparelho(x).texto}`, x.id); return shapeDevice(x, true);
+    },
+    async removeDevice(idd) { await wait(); requirePerm('records.delete'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); x.deletedAt = now(); audit('delete', 'device', `Mandou o aparelho ${identificacaoAparelho(x).texto} para a lixeira`, x.id); return { ok: true }; },
     async units(clientId) { await wait(); const us = S.devices.filter((d) => !d.deletedAt && d.unit && (!clientId || d.clientId === clientId)).map((d) => d.unit!); return [...new Set(us)].sort((a, b) => a.localeCompare(b, 'pt-BR')); },
     async movements(q) { await wait(); requirePerm('records.read'); const items = [...S.movements].filter((m) => (!q.modality || m.modality === q.modality) && (!q.clientId || m.fromClientId === q.clientId || m.toClientId === q.clientId) && (!q.from || m.createdAt >= String(q.from)) && (!q.to || m.createdAt <= String(q.to) + 'T23:59:59')).map(shapeMov);
       return paginate(ordenar(items, q, 'createdAt', {
-        createdAt: (m) => m.createdAt, modality: (m) => m.modalityName, fromName: (m) => m.fromName, toName: (m) => m.toName, userName: (m) => m.userName,
+        createdAt: (m) => m.createdAt, modality: (m) => m.modalityName, fromName: (m) => m.fromName, toName: (m) => m.toName, unit: (m) => m.unit, userName: (m) => m.userName,
       }, 'desc'), q);
     },
     async move(d) {
@@ -554,21 +726,30 @@ export const demoApi: Api = {
       // primeiro valida tudo, depois aplica (imita a transação do servidor)
       for (const it of items) {
         const dev = S.devices.find((x) => x.id === it.deviceId && !x.deletedAt); if (!dev) throw notFound('Aparelho');
-        const nome = dev.mac ? macFormatado(dev.mac) : 'sem MAC';
+        const nome = identificacaoAparelho(dev).texto;
         if (dev.currentModality === 'venda') throw bad(`O aparelho ${nome} já foi vendido`);
         if (modality === 'devolucao' && !dev.clientId) throw bad(`O aparelho ${nome} já está no estoque`);
+      }
+      // a unidade escolhida entra na lista do cliente; sem escolha, vai para a Matriz
+      let unidade: string | null = null;
+      if (to) {
+        const lista = unidadesDe(to);
+        const pedida = String(d.unit ?? '').trim();
+        const achou = pedida ? lista.find((u) => u.name.toLowerCase() === pedida.toLowerCase()) : lista.find((u) => u.isMain);
+        if (achou) unidade = achou.name;
+        else { S.units.push({ id: id(), clientId: to, name: pedida, isMain: false, note: null, createdAt: now(), deletedAt: null }); unidade = pedida; }
       }
       for (const it of items) {
         const dev = S.devices.find((x) => x.id === it.deviceId)!;
         if (from === undefined) from = dev.clientId;
         dev.clientId = to;
-        dev.unit = to ? ((d.unit as string | null) ?? dev.unit ?? null) : null;
+        dev.unit = unidade;
         dev.currentModality = to ? modality : null;
         dev.condition = (d.newCondition as string) ?? dev.condition;
         out.push({ modelId: dev.modelId, deviceId: dev.id }); qty++;
       }
-      const mv: MovRow = { id: id(), modality, fromClientId: from ?? null, toClientId: to, newCondition: (d.newCondition as string) ?? null, note: (d.note as string) ?? null, userId: S.me!.id, createdAt: now(), items: out };
-      S.movements.push(mv); audit('movement', 'deviceMovement', `${(MODALIDADES as any)[modality]} de ${qty} aparelho(s)${to ? ' para ' + S.clients.find((c) => c.id === to)?.tradeName : ' para o estoque'}`, mv.id);
+      const mv: MovRow = { id: id(), modality, fromClientId: from ?? null, toClientId: to, unit: unidade, newCondition: (d.newCondition as string) ?? null, note: (d.note as string) ?? null, userId: S.me!.id, createdAt: now(), items: out };
+      S.movements.push(mv); audit('movement', 'deviceMovement', `${(MODALIDADES as any)[modality]} de ${qty} aparelho(s)${to ? ` para ${S.clients.find((c) => c.id === to)?.tradeName}${unidade ? ` (unidade ${unidade})` : ''}` : ' para o estoque'}`, mv.id);
       return { id: mv.id, items: out.length, quantity: qty };
     },
   },
@@ -625,7 +806,25 @@ export const demoApi: Api = {
     async catalog(type) { await wait(40); return (type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories).slice().sort((a, b) => a.name.localeCompare(b.name)); },
     async createCatalogItem(type, name) { await wait(); requirePerm('admin.manage'); const list = type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories; if (list.some((x) => x.name.toLowerCase() === name.toLowerCase())) throw bad('Já existe um item com esse nome'); const it = { id: id(), name, active: true }; list.push(it); audit('create', `catalog:${type}`, `Adicionou "${name}" ao catálogo ${type}`, it.id); return it; },
     async updateCatalogItem(type, idi, d) { await wait(); requirePerm('admin.manage'); const list = type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories; const it = list.find((x) => x.id === idi); if (!it) throw notFound('Item'); if (d.name !== undefined) it.name = String(d.name); if (d.active !== undefined) it.active = Boolean(d.active); return it; },
-    async products() { await wait(40); return S.products.map(shapeProduct); },
+    async products() { await wait(40); return S.products.filter((p) => !p.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map(shapeProduct); },
+    async createProduct(d) {
+      await wait(); requirePerm('admin.manage');
+      const code = String(d.code ?? '').trim();
+      if (!/^[a-z0-9_]+$/.test(code)) throw new ApiError(400, 'Dados inválidos', [{ field: 'code', message: 'Use só letras minúsculas, números e _' }]);
+      const dup = S.products.find((p) => p.code === code);
+      if (dup) throw bad(dup.deletedAt ? `O código "${code}" é do produto ${dup.name}, que está na lixeira. Restaure-o em Lixeira ou use outro código.` : `Já existe um produto com o código "${code}"`);
+      const p = { id: 'p' + code, code, name: String(d.name), color: d.color || '#2457D6', description: d.description ?? null, hasSettings: false, sortOrder: Math.max(0, ...S.products.map((x) => x.sortOrder)) + 1, active: true, deletedAt: null as string | null };
+      S.products.push(p); audit('create', 'product', `Criou o produto ${p.name}`, p.id);
+      return shapeProduct(p);
+    },
+    async removeProduct(idp) {
+      await wait(); requirePerm('admin.manage');
+      const p = S.products.find((x) => x.id === idp && !x.deletedAt); if (!p) throw notFound('Produto');
+      if (PROTEGIDOS.includes(p.code)) throw bad(`O ${p.name} não pode ser excluído: o sistema depende dele. Se não quiser vê-lo, desligue o "ativo".`);
+      const n = shapeProduct(p).activeClients;
+      p.deletedAt = now(); audit('delete', 'product', `Mandou o produto ${p.name} para a lixeira (${n} cliente(s) assinavam)`, p.id);
+      return { ok: true };
+    },
     async updateProduct(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); for (const k of ['name', 'color', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (p as any)[k] = d[k]; return shapeProduct(p); },
     async upsertModule(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); const code = String(d.code); if (!/^[a-z0-9_]+$/.test(code)) throw new ApiError(400, 'Dados inválidos', [{ field: 'code', message: 'Use só letras minúsculas, números e _' }]); let m = S.modules.find((x) => x.productId === p.id && x.code === code); if (!m) { m = { id: id(), productId: p.id, code, name: String(d.name), description: (d.description as string) ?? null, hasSettings: false, sortOrder: 99, active: true }; S.modules.push(m); audit('create', 'product_module', `Criou o módulo ${m.name} em ${p.name}`, m.id); } else { for (const k of ['name', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (m as any)[k] = d[k]; audit('update', 'product_module', `Editou o módulo ${m.name} em ${p.name}`, m.id); } const { productId: _p, ...out } = m; return out; },
     async audit(q) {
@@ -635,7 +834,24 @@ export const demoApi: Api = {
         createdAt: (a) => a.createdAt, action: (a) => a.action, entityType: (a) => a.entityType, summary: (a) => a.summary, userName: (a) => a.userName,
       }, 'desc'), q);
     },
-    async trash() { await wait(); requirePerm('records.delete'); return [...S.clients.filter((c) => c.deletedAt).map((c) => ({ type: 'client', id: c.id, label: c.tradeName, deletedAt: c.deletedAt! })), ...S.circuits.filter((c) => c.deletedAt).map((c) => ({ type: 'circuit', id: c.id, label: c.name, deletedAt: c.deletedAt! })), ...S.dids.filter((c) => c.deletedAt).map((c) => ({ type: 'did', id: c.id, label: didFormatado(c.number), deletedAt: c.deletedAt! })), ...S.devices.filter((c) => c.deletedAt).map((c) => ({ type: 'device', id: c.id, label: macFormatado(c.mac), deletedAt: c.deletedAt! }))].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt)); },
-    async restore(type, idr) { await wait(); requirePerm('records.delete'); const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : S.devices; const it = list.find((x) => x.id === idr); if (!it) throw notFound(); it.deletedAt = null; audit('restore', type, `Restaurou ${it.tradeName ?? it.name ?? it.number ?? it.mac} da lixeira`, idr); return { ok: true }; },
+    async trash() {
+      await wait(); requirePerm('records.delete');
+      return [
+        ...S.clients.filter((c) => c.deletedAt).map((c) => ({ type: 'client', id: c.id, label: c.tradeName, deletedAt: c.deletedAt! })),
+        ...S.circuits.filter((c) => c.deletedAt).map((c) => ({ type: 'circuit', id: c.id, label: c.name, deletedAt: c.deletedAt! })),
+        ...S.dids.filter((c) => c.deletedAt).map((c) => ({ type: 'did', id: c.id, label: didFormatado(c.number), deletedAt: c.deletedAt! })),
+        ...S.devices.filter((c) => c.deletedAt).map((c) => ({ type: 'device', id: c.id, label: `${modeloDe(c).name} · ${identificacaoAparelho(c).texto}`, deletedAt: c.deletedAt! })),
+        ...S.models.filter((c) => c.deletedAt).map((c) => ({ type: 'deviceModel', id: c.id, label: c.name, deletedAt: c.deletedAt! })),
+        ...S.products.filter((c) => c.deletedAt).map((c) => ({ type: 'product', id: c.id, label: c.name, deletedAt: c.deletedAt! })),
+      ].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+    },
+    async restore(type, idr) {
+      await wait(); requirePerm('records.delete');
+      const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : S.devices;
+      const it = list.find((x) => x.id === idr); if (!it) throw notFound();
+      it.deletedAt = null;
+      const nome = it.tradeName ?? it.name ?? it.number ?? (type === 'device' ? identificacaoAparelho(it).texto : idr);
+      audit('restore', type, `Restaurou ${nome} da lixeira`, idr); return { ok: true };
+    },
   },
 };

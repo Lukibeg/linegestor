@@ -9,12 +9,14 @@
  *  - marcar um produto cria a assinatura; desmarcar NÃO apaga: preenche `deactivatedAt` (histórico)
  *  - módulos (Omniboard, FOP2, NPS…) só podem ser ligados dentro de um produto que o cliente assina
  *  - senhas nunca entram nas tabelas: vão para o cofre e a tabela guarda só o id do segredo
+ *  - produto na lixeira some da ficha e da lista (a assinatura fica guardada)
+ *  - todo cliente tem a unidade "Matriz"; as outras se cadastram na ficha
  */
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import {
-  clientLogos, clients, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, type Db,
+  clientLogos, clients, clientUnits, deviceModels, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, type Db,
 } from '@gestor/db';
-import type { AssinaturaGravar, ClienteAtualizar, ClienteCriar, ClienteListar, ModuloGravar } from '@gestor/shared';
+import type { AssinaturaGravar, ClienteAtualizar, ClienteCriar, ClienteListar, ModuloGravar, UnidadeGravar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 
@@ -28,23 +30,30 @@ export type ClientListItem = {
   logoUrl: string | null;
   notes: string | null; createdAt: Date; updatedAt: Date;
   products: Array<{ code: string; name: string; color: string; activatedAt: Date | null; modules: Array<{ code: string; name: string; activatedAt: Date | null }> }>;
-  server: { hostingName: string | null; serverIp: string | null; domain: string | null; sshUser: string | null; sshPort: number | null } | null;
+  server: { hostingName: string | null; serverIp: string | null; domain: string | null; sshPort: number | null } | null;
   links: { web: string | null; ssh: string | null; fop2: string | null };
   didCount: number; deviceCount: number; deviceValueCents: number;
 };
 
-/** Monta os atalhos de acesso. Sem senha na URL — decisão de segurança S2. */
-export function buildLinks(lp?: { domain: string | null; serverIp: string | null; sshUser: string | null; sshPort: number | null } | null, hasFop2 = false) {
+/**
+ * Monta os atalhos de acesso. Sem senha na URL — decisão de segurança S2.
+ * O atalho SSH sai SEM usuário: cada técnico tem o seu (Minha conta), e a tela o encaixa
+ * na hora de abrir — "ssh://servidor:22" vira "ssh://lucas@servidor:22".
+ */
+export function buildLinks(lp?: { domain: string | null; serverIp: string | null; sshPort: number | null } | null, hasFop2 = false) {
   if (!lp) return { web: null, ssh: null, fop2: null };
   const host = lp.domain || lp.serverIp;
   if (!host) return { web: null, ssh: null, fop2: null };
   const sshHost = lp.serverIp || lp.domain;
   return {
     web: `https://${host}`,
-    ssh: lp.sshUser ? `ssh://${lp.sshUser}@${sshHost}:${lp.sshPort ?? 22}` : null,
+    ssh: `ssh://${sshHost}:${lp.sshPort ?? 22}`,
     fop2: hasFop2 ? `https://${host}/fop2/` : null,
   };
 }
+
+/** Valor que soma no cliente: o do aparelho, se ele tiver um próprio; senão o do modelo. */
+export const valorDoAparelho = sql<number>`coalesce(${devices.valueCents}, ${deviceModels.valueCents})`;
 
 /**
  * Traduz "ordenar por esta coluna" em ORDER BY.
@@ -87,7 +96,7 @@ function ordenacaoClientes(db: Db, q: ClienteListar) {
   else if (k === 'hosting') campo = doLinePbx(sql`lower(${hostingProviders.name})`);
   else if (k === 'domain') campo = doLinePbx(sql`lower(${linepbxSettings.domain})`);
   else if (k === 'serverIp') campo = doLinePbx(sql`${linepbxSettings.serverIp}`);
-  else if (k === 'ssh') campo = doLinePbx(sql`lower(${linepbxSettings.sshUser})`);
+  else if (k === 'ssh') campo = doLinePbx(sql`${linepbxSettings.sshPort}`);
   else if (k.startsWith('ativacao:')) {
     const code = k.slice('ativacao:'.length);
     campo = sql`(${db
@@ -163,7 +172,7 @@ async function enrich(db: Db, rows: (typeof clients.$inferSelect)[]): Promise<Cl
   const subs = await db
     .select({ clientId: subscriptions.clientId, subId: subscriptions.id, code: products.code, name: products.name, color: products.color, sort: products.sortOrder, activatedAt: subscriptions.activatedAt })
     .from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId))
-    .where(and(inArray(subscriptions.clientId, ids), isNull(subscriptions.deactivatedAt)))
+    .where(and(inArray(subscriptions.clientId, ids), isNull(subscriptions.deactivatedAt), isNull(products.deletedAt)))
     .orderBy(asc(products.sortOrder));
   const subIds = subs.map((s) => s.subId).concat(['-']);
   const mods = await db
@@ -175,8 +184,10 @@ async function enrich(db: Db, rows: (typeof clients.$inferSelect)[]): Promise<Cl
     .where(inArray(linepbxSettings.subscriptionId, subs.filter((s) => s.code === 'linepbx').map((s) => s.subId).concat(['-'])));
   const logos = await db.select({ clientId: clientLogos.clientId, updatedAt: clientLogos.updatedAt }).from(clientLogos).where(inArray(clientLogos.clientId, ids));
   const didCounts = await db.select({ clientId: dids.clientId, n: sql<number>`count(*)` }).from(dids).where(and(inArray(dids.clientId, ids), isNull(dids.deletedAt))).groupBy(dids.clientId);
-  // contagem e valor dos aparelhos com cada cliente (só os identificados por MAC têm valor próprio)
-  const devCounts = await db.select({ clientId: devices.clientId, n: sql<number>`count(*)`, v: sql<number>`coalesce(sum(${devices.valueCents}), 0)` }).from(devices).where(and(inArray(devices.clientId, ids), isNull(devices.deletedAt))).groupBy(devices.clientId);
+  // contagem e valor dos aparelhos com cada cliente (valor próprio do aparelho, ou o do modelo)
+  const devCounts = await db.select({ clientId: devices.clientId, n: sql<number>`count(*)`, v: sql<number>`coalesce(sum(${valorDoAparelho}), 0)` })
+    .from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
+    .where(and(inArray(devices.clientId, ids), isNull(devices.deletedAt), sql`coalesce(${devices.currentModality}, '') <> 'venda'`)).groupBy(devices.clientId);
   return rows.map((r) => {
     const mine = subs.filter((s) => s.clientId === r.id);
     const lpSub = mine.find((s) => s.code === 'linepbx');
@@ -188,7 +199,7 @@ async function enrich(db: Db, rows: (typeof clients.$inferSelect)[]): Promise<Cl
       logoUrl: logoPath(r.id, logos.find((l) => l.clientId === r.id)?.updatedAt),
       notes: r.notes, createdAt: r.createdAt, updatedAt: r.updatedAt,
       products: productsOut,
-      server: lp ? { hostingName: lp.hostingName ?? null, serverIp: lp.s.serverIp, domain: lp.s.domain, sshUser: lp.s.sshUser, sshPort: lp.s.sshPort } : null,
+      server: lp ? { hostingName: lp.hostingName ?? null, serverIp: lp.s.serverIp, domain: lp.s.domain, sshPort: lp.s.sshPort } : null,
       links: buildLinks(lp?.s ?? null, hasFop2),
       didCount: Number(didCounts.find((d) => d.clientId === r.id)?.n ?? 0),
       deviceCount: Number(devCounts.find((d) => d.clientId === r.id)?.n ?? 0),
@@ -207,7 +218,7 @@ export async function get(db: Db, id: string) {
       activatedAt: subscriptions.activatedAt, deactivatedAt: subscriptions.deactivatedAt, notes: subscriptions.notes, sort: products.sortOrder,
     })
     .from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId))
-    .where(eq(subscriptions.clientId, id)).orderBy(asc(products.sortOrder));
+    .where(and(eq(subscriptions.clientId, id), isNull(products.deletedAt))).orderBy(asc(products.sortOrder));
   const subIds = subs.map((s) => s.id).concat(['-']);
   const mods = await db
     .select({
@@ -250,7 +261,10 @@ export async function get(db: Db, id: string) {
   const lpRow = lpActive ? lps.find((l) => l.s.subscriptionId === lpActive.id)?.s ?? null : null;
   const hasFop2 = !!lpActive?.modules.some((m) => m.moduleCode === 'fop2' && m.active);
   const [didC] = await db.select({ n: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, id), isNull(dids.deletedAt)));
-  const [devC] = await db.select({ n: sql<number>`count(*)`, v: sql<number>`coalesce(sum(${devices.valueCents}), 0)` }).from(devices).where(and(eq(devices.clientId, id), isNull(devices.deletedAt)));
+  const [devC] = await db.select({ n: sql<number>`count(*)`, v: sql<number>`coalesce(sum(${valorDoAparelho}), 0)` })
+    .from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
+    .where(and(eq(devices.clientId, id), isNull(devices.deletedAt), sql`coalesce(${devices.currentModality}, '') <> 'venda'`));
+  const [unC] = await db.select({ n: sql<number>`count(*)` }).from(clientUnits).where(and(eq(clientUnits.clientId, id), isNull(clientUnits.deletedAt)));
   const [logo] = await db.select({ updatedAt: clientLogos.updatedAt }).from(clientLogos).where(eq(clientLogos.clientId, id));
   return {
     ...row,
@@ -260,6 +274,8 @@ export async function get(db: Db, id: string) {
     didCount: Number(didC?.n ?? 0),
     deviceCount: Number(devC?.n ?? 0),
     deviceValueCents: Number(devC?.v ?? 0),
+    // todo cliente tem ao menos a Matriz (criada na primeira vez que alguém olha as unidades)
+    unitCount: Math.max(1, Number(unC?.n ?? 0)),
   };
 }
 
@@ -268,6 +284,7 @@ export async function create(db: Db, data: ClienteCriar) {
   if (exists) throw new BadRequest('Já existe um cliente com este CNPJ');
   const id = newId();
   const [row] = await db.insert(clients).values({ id, ...data }).returning();
+  await garantirMatriz(db, id);
   return row!;
 }
 
@@ -429,6 +446,94 @@ export async function options(db: Db, opts: { includeInternal?: boolean; product
     rows = rows.filter((r) => comAparelho.has(r.id));
   }
   return rows;
+}
+
+// ---------- Unidades ----------
+
+/** Nome padrão da unidade principal, que todo cliente tem. */
+export const MATRIZ = 'Matriz';
+
+/** Cria a Matriz do cliente, se ainda não existir. */
+export async function garantirMatriz(db: Db, clientId: string) {
+  const [tem] = await db.select({ id: clientUnits.id }).from(clientUnits).where(and(eq(clientUnits.clientId, clientId), eq(clientUnits.isMain, true), isNull(clientUnits.deletedAt))).limit(1);
+  if (!tem) await db.insert(clientUnits).values({ id: newId(), clientId, name: MATRIZ, isMain: true });
+}
+
+/** As unidades do cliente, com a Matriz primeiro e quantos aparelhos cada uma tem. */
+export async function listUnits(db: Db, clientId: string) {
+  const [client] = await db.select({ id: clients.id }).from(clients).where(eq(clients.id, clientId));
+  if (!client) throw new NotFound('Cliente');
+  await garantirMatriz(db, clientId);
+  const rows = await db.select().from(clientUnits).where(and(eq(clientUnits.clientId, clientId), isNull(clientUnits.deletedAt)))
+    .orderBy(desc(clientUnits.isMain), sql`lower(${clientUnits.name})`);
+  const cont = await db.select({ unit: devices.unit, n: sql<number>`count(*)` }).from(devices)
+    .where(and(eq(devices.clientId, clientId), isNull(devices.deletedAt))).groupBy(devices.unit);
+  const porNome = new Map(cont.map((c) => [(c.unit ?? '').trim().toLowerCase(), Number(c.n)]));
+  // aparelho com o cliente mas sem unidade marcada conta na Matriz, que é a padrão
+  const semUnidade = porNome.get('') ?? 0;
+  return rows.map((u) => ({
+    id: u.id, name: u.name, isMain: u.isMain, note: u.note, createdAt: u.createdAt,
+    deviceCount: (porNome.get(u.name.trim().toLowerCase()) ?? 0) + (u.isMain ? semUnidade : 0),
+  }));
+}
+
+async function nomeLivre(db: Db, clientId: string, name: string, exceto?: string) {
+  const [dup] = await db.select({ id: clientUnits.id }).from(clientUnits)
+    .where(and(eq(clientUnits.clientId, clientId), isNull(clientUnits.deletedAt), sql`lower(${clientUnits.name}) = lower(${name})`)).limit(1);
+  if (dup && dup.id !== exceto) throw new BadRequest(`Já existe a unidade "${name}" neste cliente`);
+}
+
+export async function createUnit(db: Db, clientId: string, data: UnidadeGravar) {
+  const [client] = await db.select({ id: clients.id, name: clients.tradeName }).from(clients).where(eq(clients.id, clientId));
+  if (!client) throw new NotFound('Cliente');
+  await garantirMatriz(db, clientId);
+  await nomeLivre(db, clientId, data.name);
+  const [row] = await db.insert(clientUnits).values({ id: newId(), clientId, name: data.name, note: data.note ?? null }).returning();
+  return { ...row!, clientName: client.name };
+}
+
+/**
+ * Garante que a unidade exista no cliente (usada na movimentação: o que se escolhe ali entra
+ * na lista do cliente). Devolve o nome como está cadastrado.
+ */
+export async function unidadeDoCliente(db: Db, clientId: string, name: string | null | undefined): Promise<string> {
+  await garantirMatriz(db, clientId);
+  const nome = (name ?? '').trim();
+  if (!nome) return MATRIZ;
+  const [achou] = await db.select({ name: clientUnits.name }).from(clientUnits)
+    .where(and(eq(clientUnits.clientId, clientId), isNull(clientUnits.deletedAt), sql`lower(${clientUnits.name}) = lower(${nome})`)).limit(1);
+  if (achou) return achou.name;
+  await db.insert(clientUnits).values({ id: newId(), clientId, name: nome });
+  return nome;
+}
+
+/** Renomeia a unidade — e leva o nome novo para os aparelhos que estão nela. */
+export async function updateUnit(db: Db, clientId: string, unitId: string, data: UnidadeGravar) {
+  const [cur] = await db.select().from(clientUnits).where(and(eq(clientUnits.id, unitId), eq(clientUnits.clientId, clientId), isNull(clientUnits.deletedAt)));
+  if (!cur) throw new NotFound('Unidade');
+  await nomeLivre(db, clientId, data.name, unitId);
+  return db.transaction(async (tx) => {
+    const [row] = await tx.update(clientUnits).set({ name: data.name, note: data.note === undefined ? cur.note : data.note, updatedAt: new Date() }).where(eq(clientUnits.id, unitId)).returning();
+    let movidos = 0;
+    if (data.name !== cur.name) {
+      const r = await tx.update(devices).set({ unit: data.name, updatedAt: new Date() })
+        .where(and(eq(devices.clientId, clientId), sql`lower(trim(${devices.unit})) = lower(${cur.name})`)).returning({ id: devices.id });
+      movidos = r.length;
+    }
+    return { before: cur, after: row!, movidos };
+  });
+}
+
+/** Tira a unidade da lista. A Matriz não sai, e unidade com aparelho também não. */
+export async function removeUnit(db: Db, clientId: string, unitId: string) {
+  const [cur] = await db.select().from(clientUnits).where(and(eq(clientUnits.id, unitId), eq(clientUnits.clientId, clientId), isNull(clientUnits.deletedAt)));
+  if (!cur) throw new NotFound('Unidade');
+  if (cur.isMain) throw new BadRequest('A Matriz é a unidade padrão do cliente e não pode ser removida. Se quiser, renomeie.');
+  const [n] = await db.select({ n: sql<number>`count(*)` }).from(devices)
+    .where(and(eq(devices.clientId, clientId), isNull(devices.deletedAt), sql`lower(trim(${devices.unit})) = lower(${cur.name})`));
+  if (Number(n?.n ?? 0) > 0) throw new BadRequest(`A unidade "${cur.name}" ainda tem ${n!.n} aparelho(s). Mova-os para outra unidade antes de remover.`);
+  const [row] = await db.update(clientUnits).set({ deletedAt: new Date() }).where(eq(clientUnits.id, unitId)).returning();
+  return row!;
 }
 
 // ---------- Logo ----------

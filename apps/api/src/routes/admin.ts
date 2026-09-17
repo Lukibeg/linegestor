@@ -1,7 +1,7 @@
 /** Administração: usuários, papéis, catálogos, produtos, auditoria, lixeira. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AuditoriaListarSchema, CatalogoItemSchema, ModuloCatalogoSchema, PapelGravarSchema, UsuarioAtualizarSchema, UsuarioCriarSchema } from '@gestor/shared';
+import { AuditoriaListarSchema, CatalogoItemSchema, ModuloCatalogoSchema, PapelGravarSchema, ProdutoCriarSchema, UsuarioAtualizarSchema, UsuarioCriarSchema } from '@gestor/shared';
 import * as svc from '../services/admin.js';
 import * as audit from '../services/audit.js';
 import * as clientsSvc from '../services/clients.js';
@@ -41,6 +41,11 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.patch('/products/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Editar produto (nome, cor, descrição, ativo, ordem)', params: Id, body: z.object({ name: z.string().min(1).optional(), color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), description: z.string().nullable().optional(), active: z.boolean().optional(), sortOrder: z.number().int().optional() }) } },
     async (req) => { const row = await svc.updateProduct(app.db, req.params.id, req.body); await app.audit(req, { action: 'update', entityType: 'product', entityId: row.id, summary: `Editou o produto ${row.name}` }); return row; });
 
+  app.post('/products', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Criar produto no portfólio', body: ProdutoCriarSchema } },
+    async (req, reply) => { const row = await svc.createProduct(app.db, req.body); await app.audit(req, { action: 'create', entityType: 'product', entityId: row.id, summary: `Criou o produto ${row.name}`, after: row }); return reply.status(201).send(row); });
+  app.delete('/products/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Mandar produto para a lixeira (as assinaturas ficam guardadas)', params: Id } },
+    async (req) => { const row = await svc.deleteProduct(app.db, req.params.id); await app.audit(req, { action: 'delete', entityType: 'product', entityId: row.id, summary: `Mandou o produto ${row.name} para a lixeira (${row.activeClients} cliente(s) assinavam)` }); return { ok: true }; });
+
   app.put('/products/:id/modules', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Criar/editar um módulo de um produto', params: Id, body: ModuloCatalogoSchema } },
     async (req) => { const row = await svc.upsertModule(app.db, req.params.id, req.body); await app.audit(req, { action: row.created ? 'create' : 'update', entityType: 'product_module', entityId: row.id, summary: `${row.created ? 'Criou' : 'Editou'} o módulo ${row.name} em ${row.productName}` }); return row; });
 
@@ -49,15 +54,17 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---- lixeira ----
   app.get('/trash', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'O que está na lixeira' } }, async () => svc.listTrash(app.db));
-  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device']), id: z.string() }) } },
+  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product']), id: z.string() }) } },
     async (req) => {
       const { type, id } = req.params;
       let label = id;
       if (type === 'client') label = (await clientsSvc.restore(app.db, id)).tradeName;
       else if (type === 'circuit') label = (await circuitsSvc.restore(app.db, id)).name;
       else if (type === 'did') label = (await didsSvc.restore(app.db, id)).number;
-      else if (type === 'device') label = (await inv.restoreDevice(app.db, id)).mac ?? id;
-      else throw new BadRequest('Restauração de modelo ainda não disponível');
+      else if (type === 'device') label = inv.nomeAparelho(await inv.restoreDevice(app.db, id), id);
+      else if (type === 'deviceModel') label = (await inv.restoreModel(app.db, id)).name;
+      else if (type === 'product') label = (await svc.restoreProduct(app.db, id)).name;
+      else throw new BadRequest('Tipo desconhecido');
       await app.audit(req, { action: 'restore', entityType: type, entityId: id, summary: `Restaurou ${label} da lixeira` });
       return { ok: true };
     });

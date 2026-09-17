@@ -1,7 +1,7 @@
 /** Clientes e assinaturas de produto. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema, LogoGravarSchema, ModuloGravarSchema } from '@gestor/shared';
+import { AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema, LogoGravarSchema, ModuloGravarSchema, SEM_LIMITE, UnidadeGravarSchema, Booleano } from '@gestor/shared';
 import * as clientsSvc from '../services/clients.js';
 import * as didsSvc from '../services/dids.js';
 import * as inv from '../services/inventory.js';
@@ -10,10 +10,10 @@ import * as audit from '../services/audit.js';
 const Id = z.object({ id: z.string() });
 
 const routes: FastifyPluginAsyncZod = async (app) => {
-  app.get('/', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Listar clientes (busca, filtro por produtos AND/OR, arquivados)', querystring: ClienteListarSchema.extend({ includeInternal: z.coerce.boolean().default(false) }) } },
+  app.get('/', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Listar clientes (busca, filtro por produtos AND/OR, arquivados)', querystring: ClienteListarSchema.extend({ includeInternal: Booleano.default(false) }) } },
     async (req) => clientsSvc.list(app.db, req.query));
 
-  app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Lista curta (id + nome) para seletores; withDevices=true traz só quem está com aparelho nosso', querystring: z.object({ includeInternal: z.coerce.boolean().default(false), productCode: z.string().optional(), withDevices: z.coerce.boolean().default(false) }) } },
+  app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Lista curta (id + nome) para seletores; withDevices=true traz só quem está com aparelho nosso', querystring: z.object({ includeInternal: Booleano.default(false), productCode: z.string().optional(), withDevices: Booleano.default(false) }) } },
     async (req) => clientsSvc.options(app.db, req.query));
 
   app.get('/:id', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Ficha completa do cliente', params: Id } },
@@ -103,12 +103,39 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return clientsSvc.get(app.db, req.params.id);
     });
 
-  app.get('/:id/dids', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'DIDs do cliente', params: Id, querystring: z.object({ page: z.coerce.number().default(1), pageSize: z.coerce.number().default(100) }) } },
+  // a ficha mostra TODOS os números do cliente (a tela pagina, mas sempre deixa ver tudo)
+  app.get('/:id/dids', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'DIDs do cliente (todos)', params: Id, querystring: z.object({ page: z.coerce.number().default(1), pageSize: z.coerce.number().max(SEM_LIMITE).default(SEM_LIMITE) }) } },
     // na ficha do cliente a pergunta é "o que este cliente tem": o tronco dele com outra operadora entra
     async (req) => didsSvc.list(app.db, { ...req.query, clientId: req.params.id, includeThirdParty: true, sort: 'number', dir: 'asc' }));
 
-  app.get('/:id/devices', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Aparelhos com o cliente', params: Id } },
-    async (req) => ({ devices: await inv.listDevices(app.db, { clientId: req.params.id, page: 1, pageSize: 500 }) }));
+  app.get('/:id/devices', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Aparelhos com o cliente (todos)', params: Id } },
+    async (req) => ({ devices: await inv.listDevices(app.db, { clientId: req.params.id, page: 1, pageSize: SEM_LIMITE }) }));
+
+  // ---- unidades (matriz, filiais, lojas) ----
+  app.get('/:id/units', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Unidades do cliente (a Matriz sempre existe)', params: Id } },
+    async (req) => clientsSvc.listUnits(app.db, req.params.id));
+
+  app.post('/:id/units', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Cadastrar unidade', params: Id, body: UnidadeGravarSchema } },
+    async (req, reply) => {
+      const row = await clientsSvc.createUnit(app.db, req.params.id, req.body);
+      await app.audit(req, { action: 'create', entityType: 'client', entityId: req.params.id, summary: `Cadastrou a unidade "${row.name}" em ${row.clientName}`, after: row });
+      return reply.status(201).send(row);
+    });
+
+  app.patch('/:id/units/:unitId', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Renomear unidade (os aparelhos dela acompanham)', params: Id.extend({ unitId: z.string() }), body: UnidadeGravarSchema } },
+    async (req) => {
+      const r = await clientsSvc.updateUnit(app.db, req.params.id, req.params.unitId, req.body);
+      const extra = r.movidos ? ` (${r.movidos} aparelho(s) acompanharam)` : '';
+      await app.audit(req, { action: 'update', entityType: 'client', entityId: req.params.id, summary: r.before.name === r.after.name ? `Editou a unidade "${r.after.name}"` : `Renomeou a unidade "${r.before.name}" para "${r.after.name}"${extra}`, before: r.before, after: r.after });
+      return r.after;
+    });
+
+  app.delete('/:id/units/:unitId', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Remover unidade (só sem aparelhos; a Matriz não sai)', params: Id.extend({ unitId: z.string() }) } },
+    async (req) => {
+      const row = await clientsSvc.removeUnit(app.db, req.params.id, req.params.unitId);
+      await app.audit(req, { action: 'delete', entityType: 'client', entityId: req.params.id, summary: `Removeu a unidade "${row.name}"` });
+      return { ok: true };
+    });
 
   app.get('/:id/history', { preHandler: app.requirePermission('audit.read'), schema: { tags: ['Clientes'], summary: 'Histórico (auditoria) do cliente', params: Id } },
     async (req) => audit.list(app.db, { page: 1, pageSize: 100, entityId: req.params.id }));

@@ -10,7 +10,7 @@ import { api } from '../../api/index.js';
 import type { Circuit } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Chip, Kpi, Modal, Ocupacao, Paginacao, Spinner, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, Kpi, Modal, Ocupacao, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { didFormatado, paraCentavos, reais } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
@@ -27,7 +27,9 @@ export function CircuitosLista() {
   const q = sp.get('q') ?? ''; const carrierId = sp.get('operadora') ?? ''; const ownerClientId = sp.get('titular') ?? ''; const page = Number(sp.get('p') ?? 1);
   // o interruptor dos links de terceiros vale para as DUAS abas e fica no endereço, como os filtros
   const terceiros = sp.get('terceiros') === '1';
-  const numero = contarDe(page, 50); // a contagem segue pela lista toda, não recomeça a cada página
+  const tudo = sp.get('tudo') === '1';
+  const tamanho = tudo ? TODOS : 50;
+  const numero = contarDe(tudo ? 1 : page, tamanho); // a contagem segue pela lista toda, não recomeça a cada página
   const filtros = { q, carrierId, ownerClientId, includeThirdParty: terceiros };
   const temFiltro = !!(q || carrierId || ownerClientId);
   const [novo, setNovo] = useState(false);
@@ -42,10 +44,11 @@ export function CircuitosLista() {
     setSp(n, { replace: true });
   };
   const carriers = useQuery({ queryKey: ['catalog', 'carriers'], queryFn: () => api.admin.catalog('carriers') });
-  const titulares = useQuery({ queryKey: ['client-options', 'internal'], queryFn: () => api.clients.options({ includeInternal: true }) });
+  // só quem é titular de algum circuito da lista (com o interruptor, entram os de links de terceiros)
+  const titulares = useQuery({ queryKey: ['circuit-owners', terceiros], queryFn: () => api.circuits.owners(terceiros) });
   // os cartões do topo usam os MESMOS filtros da lista
   const resumo = useQuery({ queryKey: ['circuits', 'summary', filtros], queryFn: () => api.circuits.summary(filtros) });
-  const lista = useQuery({ queryKey: ['circuits', filtros, page, o.ord, o.dir], queryFn: () => api.circuits.list({ ...filtros, page, pageSize: 50, sort: o.ord, dir: o.dir }), enabled: aba === 'circuitos' });
+  const lista = useQuery({ queryKey: ['circuits', filtros, page, tudo, o.ord, o.dir], queryFn: () => api.circuits.list({ ...filtros, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }), enabled: aba === 'circuitos' });
   const r = resumo.data;
   return (
     <Pagina titulo="Circuitos e DIDs" sub="Feixes contratados junto às operadoras e toda a numeração." acoes={aba === 'circuitos' ? <Can permission="records.write"><button className="btn-primary" onClick={() => setNovo(true)}><Plus size={16} /> Novo circuito</button></Can> : undefined}>
@@ -80,7 +83,7 @@ export function CircuitosLista() {
                 <TdN n={numero(i)} /><td className="font-medium">{c.name} {c.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</td><td>{c.carrierName ?? '—'}</td><td className="font-mono tnum">{c.code}</td><td className="font-mono tnum whitespace-nowrap">{c.keyNumber ? didFormatado(c.keyNumber) : <span className="text-muted">—</span>}</td><td className="text-ink-2">{c.ownerName ?? '—'}</td><td className="text-right tnum">{c.channels}</td><td className="text-right tnum">{c.dids.total}</td><td className="text-right tnum">{c.dids.free}</td><td><Ocupacao total={c.dids.total} assigned={c.dids.assigned} /></td><td className="text-right tnum">{reais(c.monthlyValueCents)}</td>
               </tr>))}</tbody></table></div>
         )}
-        {lista.data && <Paginacao page={page} pageSize={50} total={lista.data.total} onChange={(p) => set('p', String(p))} />}
+        {lista.data && <Paginacao page={page} pageSize={50} total={lista.data.total} onChange={(p) => set('p', String(p))} tudo={tudo} onTudo={(v) => set('tudo', v ? '1' : null)} />}
       </>)}
       <CircuitoForm open={novo} onClose={() => setNovo(false)} onSaved={(c) => { setNovo(false); nav(`/circuitos/${c.id}`); }} />
     </Pagina>
@@ -89,6 +92,7 @@ export function CircuitosLista() {
 
 export function CircuitoForm({ open, onClose, onSaved, circuito }: { open: boolean; onClose: () => void; onSaved: (c: Circuit) => void; circuito?: Circuit }) {
   const carriers = useQuery({ queryKey: ['catalog', 'carriers'], queryFn: () => api.admin.catalog('carriers'), enabled: open });
+  // no cadastro, qualquer cliente pode virar titular (é aqui que ele passa a ter um circuito)
   const owners = useQuery({ queryKey: ['client-options', 'internal'], queryFn: () => api.clients.options({ includeInternal: true }), enabled: open });
   const { can } = useAuth();
   const qc = useQueryClient(); const toast = useToast();
@@ -101,7 +105,7 @@ export function CircuitoForm({ open, onClose, onSaved, circuito }: { open: boole
     try {
       const body = { name: f.name, code: f.code, keyNumber: f.keyNumber || null, carrierId: f.carrierId || null, channels: Number(f.channels) || 0, ownerClientId: f.ownerClientId || null, monthlyValueCents: f.monthlyValue ? paraCentavos(f.monthlyValue) : null, signalingIp: f.signalingIp || null, authIp: f.authIp || null, authUsername: f.authUsername || null, notes: f.notes || null, thirdParty: !!f.thirdParty, ...(senha ? { authPassword: senha } : {}) };
       const r = circuito ? await api.circuits.update(circuito.id, body) : await api.circuits.create(body);
-      await qc.invalidateQueries({ queryKey: ['circuits'] }); await qc.invalidateQueries({ queryKey: ['circuit', r.id] });
+      await qc.invalidateQueries({ queryKey: ['circuits'] }); await qc.invalidateQueries({ queryKey: ['circuit', r.id] }); await qc.invalidateQueries({ queryKey: ['circuit-owners'] });
       toast.push('ok', circuito ? 'Circuito atualizado' : 'Circuito criado'); onSaved(r);
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };

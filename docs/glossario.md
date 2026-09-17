@@ -23,9 +23,12 @@
 | **Módulo** | Parte opcional dentro de um produto: Omniboard, FOP2 e NPS dentro do LinePBX; Dashboard de filas e NPS dentro do LineChat. O cliente assina o produto e liga os módulos que usa. |
 | **Modelo** | Um tipo de aparelho (Grandstream GXP1610, Headset Genérico…). |
 | **MAC** | Endereço físico único de fábrica de um aparelho de rede (ex.: 00:0B:82:A1:B2:C3). Identifica o aparelho no sistema. |
-| **Não aplicável (MAC)** | Aparelho que não tem MAC — headset, cabo, fonte. Continua sendo uma linha por unidade; só o campo MAC fica vazio, e a tela mostra "não aplicável". |
+| **N/S (número de série)** | A identificação de fábrica de quem não tem MAC mas tem etiqueta de série. Não se repete dentro do mesmo modelo. A coluna "MAC / N/S" mostra o MAC ou, sem ele, o N/S. |
+| **Não aplicável (MAC)** | Aparelho que não tem MAC nem N/S — headset, cabo, fonte. Continua sendo uma linha por unidade; a tela mostra "não aplicável". |
+| **Valor do modelo** | Quanto vale cada unidade daquele modelo. É o valor que soma no cliente; o aparelho só tem valor próprio quando é diferente. |
 | **Condição** | Estado do aparelho: Ativo ou Inativo. Inativo é o que não pode ser entregue (quebrado, em conserto, sucateado). |
-| **Unidade** | A filial, loja ou setor do cliente onde o aparelho está ("Loja Simões Filho"). Preenchida ao entregar; some quando o aparelho volta para o estoque. |
+| **Unidade** | A filial, loja ou setor do cliente onde o aparelho está ("Loja Simões Filho"). As unidades são cadastradas na ficha do cliente; escolhida ao entregar; some quando o aparelho volta para o estoque. |
+| **Matriz** | A unidade padrão que todo cliente tem. Aparelho entregue sem unidade escolhida fica nela. Não pode ser removida, só renomeada. |
 | **Atribuído a** | O cliente com quem o aparelho está. Vazio = estoque. Era "onde está" nas primeiras versões. |
 | **Modalidade** | Como o aparelho está com o cliente: locação, comodato ou venda. Era "como" nas primeiras versões. |
 | **Movimentação** | Locação, venda, comodato ou devolução de aparelhos. Registra de onde, para onde, quantos, quem e quando. |

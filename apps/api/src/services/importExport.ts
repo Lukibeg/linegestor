@@ -15,7 +15,7 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import archiver from 'archiver';
 import { randomBytes } from 'node:crypto';
 import { carriers, circuits, clients, dids, hostingProviders, linepbxSettings, newId, productModules, products, subscriptionModules, subscriptions, type Db } from '@gestor/db';
-import { cnpjLimpo, cnpjValido, didLimpo, didValido, paraCentavos } from '@gestor/shared';
+import { cnpjLimpo, cnpjValido, consertarAcentos, didLimpo, didValido, paraCentavos } from '@gestor/shared';
 import { BadRequest } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 import * as clientsSvc from './clients.js';
@@ -45,7 +45,9 @@ const ALIASES: Record<Entity, Record<string, string[]>> = {
 
 function readRows(csv: string, delimiter: string): Record<string, string>[] {
   try {
-    return parse(csv, { delimiter, columns: (h: string[]) => h.map(norm), bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true });
+    // cada célula passa pelo conserto de acentos: arquivo salvo em UTF-8 e reaberto como
+    // Latin-1 no caminho chega com "PeÃ§as" no lugar de "Peças"
+    return parse(csv, { delimiter, columns: (h: string[]) => h.map((x) => norm(consertarAcentos(x))), bom: true, trim: true, skip_empty_lines: true, relax_column_count: true, relax_quotes: true, cast: (v: string) => consertarAcentos(v) });
   } catch (e: any) {
     throw new BadRequest(`Não consegui ler o CSV: ${e.message}. Confira o separador.`);
   }
@@ -63,10 +65,12 @@ function pick(row: Record<string, string>, entity: Entity, field: string): strin
  */
 function dataBr(v: string): Date | null {
   const t = v.trim();
+  // meio-dia UTC: é o mesmo dia em qualquer fuso do Brasil (meia-noite UTC ainda é o dia anterior aqui)
+  const dia = (a: number, m: number, d: number) => { const x = new Date(Date.UTC(a, m - 1, d, 12)); return isNaN(+x) || x.getUTCMonth() !== m - 1 ? null : x; };
   let m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
-  if (m) { const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1])); return isNaN(+d) || d.getMonth() !== Number(m[2]) - 1 ? null : d; }
+  if (m) return dia(Number(m[3]), Number(m[2]), Number(m[1]));
   m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
-  if (m) { const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])); return isNaN(+d) || d.getMonth() !== Number(m[2]) - 1 ? null : d; }
+  if (m) return dia(Number(m[1]), Number(m[2]), Number(m[3]));
   return null;
 }
 

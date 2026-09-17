@@ -1,7 +1,7 @@
 /** Circuitos. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { CircuitoAtualizarSchema, CircuitoGravarSchema, CircuitoListarSchema, DidCriarFaixaSchema, PaginacaoSchema } from '@gestor/shared';
+import { CircuitoAtualizarSchema, CircuitoGravarSchema, CircuitoListarSchema, DidCriarFaixaSchema, PaginacaoSchema, Booleano } from '@gestor/shared';
 import * as svc from '../services/circuits.js';
 import * as didsSvc from '../services/dids.js';
 
@@ -13,6 +13,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.get('/summary', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Resumo (circuitos, canais, valor mensal, numeração) com os MESMOS filtros da lista', querystring: CircuitoListarSchema.partial() } },
     async (req) => svc.summary(app.db, req.query));
+
+  app.get('/owners', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Titulares que têm pelo menos um circuito (para o filtro)', querystring: z.object({ includeThirdParty: Booleano.default(false) }) } },
+    async (req) => svc.owners(app.db, req.query.includeThirdParty));
 
   app.get('/options', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Circuitos'], summary: 'Lista curta para seletores' } }, async () => svc.options(app.db));
 

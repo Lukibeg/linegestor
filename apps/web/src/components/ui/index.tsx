@@ -4,6 +4,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, Check, Copy, Eye, EyeOff, Info, Loader2, X } from 'lucide-react';
+import { SEM_LIMITE } from '@gestor/shared';
 import { ApiError } from '../../api/types.js';
 
 // ---------- Avisos (toast) ----------
@@ -166,9 +167,10 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
               {podeRevelar && (shown ? <button type="button" className="btn-ghost btn-sm" onClick={() => setShown(null)} title="Ocultar"><EyeOff size={14} /></button> : <button type="button" className="btn-ghost btn-sm" onClick={() => setAsking(true)} title="Revelar (fica registrado)"><Eye size={14} /></button>)}
             </span>
           </div>
-        ) : <div className="input text-muted italic">sem senha guardada</div>}
+        ) : !onChangeNovo && <span className="text-muted text-sm">não cadastrada</span>}
       </div>
-      {onChangeNovo && <input type="password" autoComplete="new-password" className="input mt-2" placeholder={placeholder} onChange={(e) => onChangeNovo(e.target.value)} />}
+      {/* no formulário: sem senha guardada, é só o campo para digitar — nada de caixa "vazia" em cima */}
+      {onChangeNovo && <input type="password" autoComplete="new-password" className={`input ${hasSecret ? 'mt-2' : ''}`} placeholder={hasSecret ? placeholder : 'digite a senha'} onChange={(e) => onChangeNovo(e.target.value)} />}
       <Modal open={asking} onClose={() => setAsking(false)} titulo="Revelar senha" rodape={<><button className="btn-secondary" onClick={() => setAsking(false)}>Cancelar</button><button className="btn-primary" disabled={!pw || busy} onClick={reveal}>{busy ? <Spinner className="text-white" /> : 'Revelar por 30 s'}</button></>}>
         <p className="text-sm text-ink-2 mb-3">Confirme a <b>sua</b> senha. A revelação fica registrada na auditoria com seu nome, data e hora.</p>
         <input type="password" className="input" placeholder="sua senha" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && reveal()} autoFocus />
@@ -179,19 +181,57 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
 }
 
 // ---------- Paginação ----------
-export function Paginacao({ page, pageSize, total, onChange }: { page: number; pageSize: number; total: number; onChange: (p: number) => void }) {
+
+/** Tamanho de página que traz a lista inteira ("Ver tudo"). */
+export const TODOS = SEM_LIMITE;
+
+/**
+ * Rodapé de lista com páginas. A paginação existe só para a tela abrir rápido: nenhuma lista
+ * esconde linhas. Por isso, sempre que houver mais de uma página, aparece o **Ver tudo**, que
+ * mostra a lista inteira de uma vez; e com tudo na tela, **Voltar a paginar**.
+ */
+export function Paginacao({ page, pageSize, total, onChange, tudo = false, onTudo }: { page: number; pageSize: number; total: number; onChange: (p: number) => void; tudo?: boolean; onTudo?: (v: boolean) => void }) {
+  if (tudo) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted mt-3">
+        <span className="tnum">Mostrando todos os {total.toLocaleString('pt-BR')}</span>
+        {onTudo && <button className="btn-secondary btn-sm" onClick={() => onTudo(false)}>Voltar a paginar</button>}
+      </div>
+    );
+  }
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (pages <= 1) return null;
   return (
-    <div className="flex items-center justify-between text-sm text-muted mt-3">
+    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted mt-3">
       <span className="tnum">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} de {total.toLocaleString('pt-BR')}</span>
-      <div className="flex gap-1">
+      <div className="flex flex-wrap gap-1 items-center">
         <button className="btn-secondary btn-sm" disabled={page <= 1} onClick={() => onChange(page - 1)}>Anterior</button>
         <span className="px-2 py-1.5 tnum">{page} / {pages}</span>
         <button className="btn-secondary btn-sm" disabled={page >= pages} onClick={() => onChange(page + 1)}>Próxima</button>
+        {onTudo && <button className="btn-primary btn-sm ml-1" onClick={() => onTudo(true)}>Ver tudo ({total.toLocaleString('pt-BR')})</button>}
       </div>
     </div>
   );
+}
+
+/**
+ * Paginação feita na própria tela, para listas que já vêm inteiras do servidor (DIDs de um
+ * circuito, aparelhos de um cliente). Mesmo comportamento: páginas + "Ver tudo".
+ */
+export function usePaginaLocal<T>(itens: T[], tamanho = 100) {
+  const [page, setPage] = useState(1);
+  const [tudo, setTudo] = useState(false);
+  const pages = Math.max(1, Math.ceil(itens.length / tamanho));
+  // filtro que encolhe a lista não pode deixar a pessoa numa página que não existe mais
+  useEffect(() => { if (page > pages) setPage(pages); }, [page, pages]);
+  const visiveis = tudo ? itens : itens.slice((page - 1) * tamanho, page * tamanho);
+  const inicio = tudo ? 0 : (page - 1) * tamanho;
+  return {
+    visiveis,
+    /** número da linha na lista inteira (coluna #) */
+    numero: (i: number) => inicio + i + 1,
+    rodape: <Paginacao page={page} pageSize={tamanho} total={itens.length} onChange={setPage} tudo={tudo} onTudo={(v) => { setTudo(v); setPage(1); }} />,
+  };
 }
 
 export function Abas<T extends string>({ abas, atual, onChange }: { abas: Array<{ id: T; label: ReactNode }>; atual: T; onChange: (t: T) => void }) {
@@ -314,7 +354,7 @@ export function LogoCliente({ src, nome, tamanho = 40, className = '' }: { src: 
  * e REDUZ a imagem no próprio navegador (máx. 512 px) antes de mandar para o servidor.
  * Assim nenhuma foto de 5 MB sai do computador da pessoa.
  */
-export function CampoLogo({ atual, nome, onEscolher, onRemover }: { atual: string | null; nome: string; onEscolher: (dataUrl: string) => void; onRemover?: () => void }) {
+export function CampoLogo({ atual, nome, onEscolher, onRemover, previa }: { atual: string | null; nome: string; onEscolher: (dataUrl: string) => void; onRemover?: () => void; previa?: ReactNode }) {
   const [erro, setErro] = useState('');
   const [arrastando, setArrastando] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -359,7 +399,7 @@ export function CampoLogo({ atual, nome, onEscolher, onRemover }: { atual: strin
         onDragLeave={() => setArrastando(false)}
         onDrop={(e) => { e.preventDefault(); setArrastando(false); void processar(e.dataTransfer.files?.[0]); }}
       >
-        <LogoCliente src={atual} nome={nome || '?'} tamanho={56} />
+        {previa ?? <LogoCliente src={atual} nome={nome || '?'} tamanho={56} />}
         <div className="flex-1 min-w-0">
           <div className="flex gap-2">
             <button type="button" className="btn-secondary btn-sm" onClick={() => input.current?.click()}>{atual ? 'Trocar imagem' : 'Escolher imagem'}</button>
@@ -367,9 +407,37 @@ export function CampoLogo({ atual, nome, onEscolher, onRemover }: { atual: strin
           </div>
           <p className="text-[12px] text-muted mt-1">PNG, JPG, WEBP ou SVG. A imagem é reduzida automaticamente; pode arrastar o arquivo até aqui.</p>
         </div>
-        <input ref={input} id="logo-arquivo" type="file" accept="image/*" className="hidden" onChange={(e) => { void processar(e.target.files?.[0]); e.target.value = ''; }} />
+        <input ref={input} type="file" accept="image/*" className="hidden" data-campo-imagem onChange={(e) => { void processar(e.target.files?.[0]); e.target.value = ''; }} />
       </div>
       {erro && <div className="text-bad text-sm mt-1">{erro}</div>}
     </div>
   );
 }
+
+/**
+ * A foto de um modelo de aparelho, num quadro de fundo claro (como no Nexus). Sem foto, mostra
+ * a inicial do modelo. `altura` é a altura do quadro em pixels; a largura acompanha o espaço.
+ */
+export function FotoModelo({ src, nome, altura = 110, className = '' }: { src: string | null; nome: string; altura?: number; className?: string }) {
+  const [erro, setErro] = useState(false);
+  if (src && !erro) {
+    return (
+      <div style={{ height: altura }} className={`bg-white rounded-lg flex items-center justify-center overflow-hidden ${className}`}>
+        <img src={src} alt={`Foto do ${nome}`} loading="lazy" onError={() => setErro(true)} className="max-h-full max-w-full object-contain" />
+      </div>
+    );
+  }
+  return (
+    <div style={{ height: altura, fontSize: Math.round(altura / 2.8) }} aria-hidden className={`bg-surface-2 rounded-lg flex items-center justify-center font-display font-semibold text-muted ${className}`}>
+      {(nome.trim()[0] ?? '?').toUpperCase()}
+    </div>
+  );
+}
+
+/** MAC, ou N/S (com a etiqueta), ou "não aplicável" — igual em toda tabela de aparelhos. */
+export function Identificacao({ d }: { d: { identificacao: string; identificacaoTipo: 'mac' | 'serie' | 'nenhum' } }) {
+  if (d.identificacaoTipo === 'mac') return <span className="font-mono whitespace-nowrap">{d.identificacao}</span>;
+  if (d.identificacaoTipo === 'serie') return <span className="font-mono whitespace-nowrap"><span className="text-muted font-sans text-[11px] mr-1">N/S</span>{d.identificacao}</span>;
+  return <span className="text-muted text-[13px]">não aplicável</span>;
+}
+

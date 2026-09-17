@@ -7,7 +7,7 @@ import { api } from '../../api/index.js';
 import type { Product, ProductModule, Role, User } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { useAuth } from '../../lib/auth.js';
-import { Campo, Carregando, Chip, Modal, Paginacao, Spinner, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Campo, Carregando, Chip, Confirmar, Modal, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { data, relativo } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { Ajustes } from './Ajustes.js';
@@ -111,16 +111,34 @@ function Catalogo({ tipo, nome, novo, setNovo, onAdd }: { tipo: string; nome: st
   );
 }
 
-/** Produtos e, dentro de cada um, seus módulos (Omniboard, FOP2, NPS…). Módulos novos podem ser criados aqui. */
+/**
+ * Produtos e, dentro de cada um, seus módulos (Omniboard, FOP2, NPS…).
+ * Aqui se cria produto novo, módulo novo, e se exclui produto (vai para a lixeira).
+ */
 function Produtos() {
   const q = useQuery({ queryKey: ['products'], queryFn: api.admin.products }); const qc = useQueryClient(); const toast = useToast();
   const [novoModulo, setNovoModulo] = useState<Product | null>(null);
+  const [novoProduto, setNovoProduto] = useState(false);
+  const [excluir, setExcluir] = useState<Product | null>(null);
+  const [busy, setBusy] = useState(false);
+  const doExcluir = async () => {
+    if (!excluir) return;
+    setBusy(true);
+    try {
+      await api.admin.removeProduct(excluir.id);
+      await Promise.all(['products', 'clients', 'client', 'trash', 'dashboard'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+      toast.push('ok', `${excluir.name} foi para a lixeira`); setExcluir(null);
+    } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); }
+  };
   const upd = async (id: string, d: Record<string, unknown>) => { try { await api.admin.updateProduct(id, d); await qc.invalidateQueries({ queryKey: ['products'] }); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   const updModulo = async (p: Product, m: ProductModule, d: Record<string, unknown>) => { try { await api.admin.upsertModule(p.id, { code: m.code, name: m.name, ...d }); await qc.invalidateQueries({ queryKey: ['products'] }); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted">Um <b>produto</b> é o que o cliente assina. Um <b>módulo</b> é uma parte opcional dentro do produto (FOP2 e Omniboard dentro do LinePBX; Dashboard de filas dentro do LineChat). Desativar esconde das telas sem apagar histórico.</p>
+      <div className="flex flex-wrap items-start gap-3">
+        <p className="text-sm text-muted flex-1 min-w-[260px]">Um <b>produto</b> é o que o cliente assina. Um <b>módulo</b> é uma parte opcional dentro do produto (FOP2 e Omniboard dentro do LinePBX; Dashboard de filas dentro do LineChat). Desativar esconde das telas sem apagar histórico; excluir manda para a lixeira.</p>
+        <button className="btn-primary btn-sm" onClick={() => setNovoProduto(true)}><Plus size={14} /> Novo produto</button>
+      </div>
       {q.data?.map((p) => (
         <div key={p.id} className="card">
           <div className="p-3 flex flex-wrap items-center gap-3 border-b border-line">
@@ -129,7 +147,11 @@ function Produtos() {
             <span className="text-ink-2 text-[13px] flex-1 min-w-[200px]">{p.description}</span>
             <label className="flex items-center gap-1 text-[12.5px] text-muted">cor <input type="color" value={p.color} onChange={(e) => upd(p.id, { color: e.target.value })} className="w-8 h-6 border-0 bg-transparent cursor-pointer" /></label>
             {p.hasSettings && <span className="text-[12px] text-muted">config. própria</span>}
+            {p.activeClients != null && <span className="text-[12px] text-muted tnum">{p.activeClients} cliente(s)</span>}
             <Toggle checked={p.active} onChange={(v) => upd(p.id, { active: v })} label="ativo" />
+            {p.protegido
+              ? <span className="text-[11.5px] text-muted" title="O sistema depende deste produto. Se não quiser vê-lo, desligue o ativo.">do sistema</span>
+              : <button className="btn-ghost btn-sm text-bad" onClick={() => setExcluir(p)} aria-label={`Excluir ${p.name}`}>Excluir</button>}
           </div>
           <div className="p-3">
             <div className="flex items-center justify-between mb-2"><span className="eyebrow">Módulos</span><button className="btn-ghost btn-sm" onClick={() => setNovoModulo(p)}><Plus size={14} /> novo módulo</button></div>
@@ -141,7 +163,37 @@ function Produtos() {
         </div>
       ))}
       {novoModulo && <ModuloCatalogoForm product={novoModulo} onClose={() => setNovoModulo(null)} />}
+      {novoProduto && <ProdutoCatalogoForm onClose={() => setNovoProduto(false)} />}
+      <Confirmar open={!!excluir} onClose={() => setExcluir(null)} onConfirm={doExcluir} loading={busy} perigoso digitar={excluir && (excluir.activeClients ?? 0) > 0 ? excluir.name : undefined} titulo="Excluir produto" botao="Mandar para a lixeira"
+        texto={<>O produto <b>{excluir?.name}</b> some das fichas, dos filtros e dos cartões.{(excluir?.activeClients ?? 0) > 0 && <> Hoje <b>{excluir?.activeClients} cliente(s)</b> assinam: as assinaturas ficam guardadas e voltam se você restaurar o produto.</>} Dá para restaurar em Administração → Lixeira.</>} />
     </div>
+  );
+}
+
+/** Um produto novo no portfólio. O código sai do nome; a cor é a do chip nas telas. */
+function ProdutoCatalogoForm({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient(); const toast = useToast();
+  const [f, setF] = useState({ name: '', code: '', color: '#2457D6', description: '' });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const code = f.code || f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  const save = async () => {
+    setBusy(true); setErr('');
+    try { await api.admin.createProduct({ name: f.name.trim(), code, color: f.color, description: f.description.trim() || null }); await qc.invalidateQueries({ queryKey: ['products'] }); toast.push('ok', `Produto ${f.name} criado`); onClose(); }
+    catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Modal open onClose={onClose} titulo="Novo produto" rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name.trim() || !code} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Criar'}</button></>}>
+      <div className="flex flex-col gap-3">
+        <Campo label="Nome"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus placeholder="ex.: LineBot" /></Campo>
+        <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
+          <Campo label="Código" dica="gerado do nome; só letras minúsculas, números e _"><input className="input font-mono" value={code} onChange={(e) => setF({ ...f, code: e.target.value })} /></Campo>
+          <Campo label="Cor"><input type="color" className="h-[38px] w-14 border border-line rounded-lg bg-transparent cursor-pointer" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} /></Campo>
+        </div>
+        <Campo label="Descrição" dica="uma frase"><input className="input" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Campo>
+        <div className="text-[12.5px] text-muted flex items-center gap-2">Vai aparecer assim: <Chip color={f.color}>{f.name || 'Produto'}</Chip></div>
+        {err && <div className="text-bad text-sm">{err}</div>}
+      </div>
+    </Modal>
   );
 }
 
@@ -168,16 +220,16 @@ function ModuloCatalogoForm({ product, onClose }: { product: Product; onClose: (
 }
 
 function Auditoria() {
-  const [page, setPage] = useState(1); const [action, setAction] = useState(''); const [entityType, setEntityType] = useState('');
+  const [page, setPage] = useState(1); const [action, setAction] = useState(''); const [entityType, setEntityType] = useState(''); const [tudo, setTudo] = useState(false);
   const o = useOrdenacao('createdAt', 'desc');
-  const q = useQuery({ queryKey: ['audit', page, action, entityType, o.ord, o.dir], queryFn: () => api.admin.audit({ page, pageSize: 50, action, entityType, sort: o.ord, dir: o.dir }) });
+  const q = useQuery({ queryKey: ['audit', page, tudo, action, entityType, o.ord, o.dir], queryFn: () => api.admin.audit({ page: tudo ? 1 : page, pageSize: tudo ? TODOS : 50, action, entityType, sort: o.ord, dir: o.dir }) });
   const acoes = ['create', 'update', 'delete', 'restore', 'bulk_update', 'bulk_create', 'bulk_delete', 'movement', 'reveal_secret', 'import', 'export', 'export_secrets', 'login', 'login_failed', 'subscribe', 'unsubscribe'];
-  const numero = contarDe(page, 50); // a contagem segue pela lista toda, não recomeça a cada página
+  const numero = contarDe(tudo ? 1 : page, 50); // a contagem segue pela lista toda, não recomeça a cada página
   return (
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2">
         <select className="input w-auto" value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }}><option value="">Todas as ações</option>{acoes.map((a) => <option key={a} value={a}>{a}</option>)}</select>
-        <select className="input w-auto" value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }}><option value="">Todos os tipos</option>{['client', 'subscription', 'circuit', 'did', 'device', 'deviceModel', 'deviceMovement', 'secret', 'user', 'role'].map((t) => <option key={t} value={t}>{t}</option>)}</select>
+        <select className="input w-auto" value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }}><option value="">Todos os tipos</option>{['client', 'subscription', 'product', 'circuit', 'did', 'device', 'deviceModel', 'deviceMovement', 'secret', 'user', 'role'].map((t) => <option key={t} value={t}>{t}</option>)}</select>
       </div>
       {q.isLoading ? <Carregando /> : !q.data?.items.length ? <Vazio titulo="Nada registrado" /> : (
         <div className="card overflow-x-auto"><table className="table">
@@ -191,14 +243,14 @@ function Auditoria() {
               <td className="text-muted whitespace-nowrap">{a.userName ?? 'sistema'}</td>
             </tr>))}</tbody></table></div>
       )}
-      {q.data && <Paginacao page={page} pageSize={50} total={q.data.total} onChange={setPage} />}
+      {q.data && <Paginacao page={page} pageSize={50} total={q.data.total} onChange={setPage} tudo={tudo} onTudo={(v) => { setTudo(v); setPage(1); }} />}
     </div>
   );
 }
 
 function Lixeira() {
   const q = useQuery({ queryKey: ['trash'], queryFn: api.admin.trash }); const qc = useQueryClient(); const toast = useToast();
-  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho' };
+  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto' };
   const o = useOrdenacaoLocal('deletedAt', 'desc');
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;

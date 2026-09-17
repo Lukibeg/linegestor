@@ -16,6 +16,8 @@ export type Api = {
     twoFactorSetup(): Promise<{ secret: string; uri: string; qrSvg: string }>;
     twoFactorEnable(code: string): Promise<{ recovery: string[] }>;
     twoFactorDisable(password: string): Promise<{ ok: boolean }>;
+    /** Ajustar a própria conta (o usuário SSH) */
+    updateMe(d: { sshUser: string | null }): Promise<T.Me>;
   };
   dashboard: { summary(): Promise<T.Dashboard>; search(q: string): Promise<T.SearchResult> };
   clients: {
@@ -34,12 +36,18 @@ export type Api = {
     dids(id: string): Promise<T.Page<T.Did>>;
     devices(id: string): Promise<{ devices: T.Page<T.Device> }>;
     history(id: string): Promise<T.Page<T.AuditItem>>;
+    units(id: string): Promise<T.ClientUnit[]>;
+    createUnit(id: string, d: { name: string; note?: string | null }): Promise<T.ClientUnit>;
+    updateUnit(id: string, unitId: string, d: { name: string; note?: string | null }): Promise<T.ClientUnit>;
+    removeUnit(id: string, unitId: string): Promise<{ ok: boolean }>;
   };
   secrets: { reveal(id: string, password: string): Promise<{ label: string; value: string; visibleForSeconds: number }> };
   circuits: {
     list(q: Record<string, unknown>): Promise<T.Page<T.Circuit>>;
     summary(q?: Record<string, unknown>): Promise<T.CircuitSummary>;
     options(): Promise<Array<{ id: string; name: string; code: string; carrierName: string | null }>>;
+    /** Quem é titular de pelo menos um circuito (para o filtro "Titular") */
+    owners(includeThirdParty: boolean): Promise<T.Option[]>;
     get(id: string): Promise<T.Circuit>;
     create(d: Record<string, unknown>): Promise<T.Circuit>;
     update(id: string, d: Record<string, unknown>): Promise<T.Circuit>;
@@ -60,9 +68,13 @@ export type Api = {
     createModel(d: Record<string, unknown>): Promise<T.DeviceModel>;
     updateModel(id: string, d: Record<string, unknown>): Promise<T.DeviceModel>;
     removeModel(id: string): Promise<{ ok: boolean }>;
+    saveModelImage(id: string, dataUrl: string): Promise<{ ok: boolean }>;
+    removeModelImage(id: string): Promise<{ ok: boolean }>;
     devices(q: Record<string, unknown>): Promise<T.Page<T.Device>>;
     device(id: string): Promise<T.Device>;
     createDevice(d: Record<string, unknown>): Promise<T.Device>;
+    /** Vários de uma vez: lista de MACs, de números de série, ou uma quantidade sem identificação */
+    createDevices(d: { modelId: string; tipo: 'mac' | 'serie' | 'nenhum'; valores?: string[]; quantidade?: number; condition?: string; note?: string | null }): Promise<T.CadastroEmMassa>;
     updateDevice(id: string, d: Record<string, unknown>): Promise<T.Device>;
     removeDevice(id: string): Promise<{ ok: boolean }>;
     movements(q: Record<string, unknown>): Promise<T.Page<T.Movement>>;
@@ -97,7 +109,9 @@ export type Api = {
     createCatalogItem(type: string, name: string): Promise<T.CatalogItem>;
     updateCatalogItem(type: string, id: string, d: Record<string, unknown>): Promise<T.CatalogItem>;
     products(): Promise<T.Product[]>;
+    createProduct(d: { code: string; name: string; color: string; description?: string | null }): Promise<T.Product>;
     updateProduct(id: string, d: Record<string, unknown>): Promise<T.Product>;
+    removeProduct(id: string): Promise<{ ok: boolean }>;
     upsertModule(productId: string, d: Record<string, unknown>): Promise<T.ProductModule>;
     audit(q: Record<string, unknown>): Promise<T.Page<T.AuditItem>>;
     trash(): Promise<T.TrashItem[]>;
@@ -110,8 +124,8 @@ export const IS_DEMO = import.meta.env.VITE_DEMO === '1';
 export { API_BASE };
 
 /**
- * Monta o endereço da imagem da logo: o servidor devolve um caminho relativo à API
- * ("clients/<id>/logo?v=…"); a demonstração devolve a imagem embutida ("data:…").
+ * Monta o endereço de uma imagem (logo do cliente, foto do modelo): o servidor devolve um
+ * caminho relativo à API ("clients/<id>/logo?v=…"); a demonstração devolve a imagem embutida ("data:…").
  */
 export function logoSrc(logoUrl: string | null | undefined): string | null {
   if (!logoUrl) return null;

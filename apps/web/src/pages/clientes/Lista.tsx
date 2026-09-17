@@ -10,9 +10,9 @@ import { Check, ExternalLink, LayoutGrid, List, Package, Plus, Puzzle, Terminal 
 import { api, logoSrc } from '../../api/index.js';
 import type { ClientListItem, Product } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
-import { Can } from '../../lib/auth.js';
-import { Carregando, Chip, LogoCliente, Paginacao, Toggle, Vazio } from '../../components/ui/index.js';
-import { cnpjFormatado, data, relativo } from '../../lib/format.js';
+import { Can, useAuth } from '../../lib/auth.js';
+import { Carregando, Chip, LogoCliente, Paginacao, TODOS, Toggle, Vazio } from '../../components/ui/index.js';
+import { cnpjFormatado, data, linkSsh, relativo } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
 import { FiltroEmBotao, type GrupoFiltro } from '../../lib/filtros.js';
@@ -39,7 +39,7 @@ function montarColunas(produtos: Product[]): Coluna<ClientListItem>[] {
     { id: 'hosting', label: 'Hospedagem', grupo: 'Servidor LinePBX', render: (c) => c.server?.hostingName ?? <span className="text-muted">—</span> },
     { id: 'domain', label: 'Endereço (domínio)', grupo: 'Servidor LinePBX', render: (c) => c.server?.domain ? <span className="font-mono text-[12.5px]">{c.server.domain}</span> : <span className="text-muted">—</span> },
     { id: 'serverIp', label: 'IP do servidor', grupo: 'Servidor LinePBX', render: (c) => c.server?.serverIp ? <span className="font-mono text-[12.5px] tnum">{c.server.serverIp}</span> : <span className="text-muted">—</span> },
-    { id: 'ssh', label: 'SSH (usuário e porta)', grupo: 'Servidor LinePBX', render: (c) => c.server?.sshUser ? <span className="font-mono text-[12.5px]">{c.server.sshUser}@ :{c.server.sshPort ?? 22}</span> : <span className="text-muted">—</span> },
+    { id: 'ssh', label: 'Porta SSH', grupo: 'Servidor LinePBX', render: (c) => c.server && (c.server.domain || c.server.serverIp) ? <span className="font-mono text-[12.5px] tnum">{c.server.sshPort ?? 22}</span> : <span className="text-muted">—</span> },
     { id: 'didCount', label: 'DIDs', grupo: 'Contagens', align: 'right', render: (c) => <span className="tnum">{c.didCount}</span> },
     { id: 'deviceCount', label: 'Aparelhos', grupo: 'Contagens', align: 'right', render: (c) => <span className="tnum">{c.deviceCount}</span> },
     { id: 'links', label: 'Atalhos', grupo: 'Contagens', ordenavel: false, render: (c) => <Atalhos c={c} /> },
@@ -80,11 +80,14 @@ function montarColunas(produtos: Product[]): Coluna<ClientListItem>[] {
  * **SSH** abre o PuTTY no computador (ver docs/guia-de-uso/ssh-com-putty.md).
  */
 function Atalhos({ c }: { c: ClientListItem }) {
+  const { user } = useAuth();
   if (!c.links.web) return <span className="text-muted italic text-[12.5px]">servidor não configurado</span>;
+  // o usuário do SSH é o de quem está usando o sistema (Minha conta), não do cliente
+  const ssh = linkSsh(c.links.ssh, user?.sshUser);
   return (
     <span className="flex gap-1" onClick={(e) => e.stopPropagation()}>
       <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary btn-sm" title={c.links.web}><ExternalLink size={13} /> Abrir</a>
-      {c.links.ssh && <a href={c.links.ssh} className="btn-secondary btn-sm" title={`${c.links.ssh} — abre o PuTTY`}><Terminal size={13} /> SSH</a>}
+      {ssh && <a href={ssh} className="btn-secondary btn-sm" title={`${ssh} — abre o PuTTY`}><Terminal size={13} /> SSH</a>}
     </span>
   );
 }
@@ -102,15 +105,17 @@ export function ClientesLista() {
   const arquivados = sp.get('arquivados') === '1';
   const view = sp.get('ver') ?? 'cards';
   const page = Number(sp.get('p') ?? 1);
+  const tudo = sp.get('tudo') === '1';
+  const tamanho = tudo ? TODOS : 24;
   const [novo, setNovo] = useState(false);
   const colunasEscolhidas = useColunasEscolhidas(STORAGE, PADRAO);
   const o = useOrdenacao('tradeName');
 
-  const numero = contarDe(page, 24); // a contagem segue pela lista toda, não recomeça a cada página
+  const numero = contarDe(tudo ? 1 : page, tamanho); // a contagem segue pela lista toda, não recomeça a cada página
   const set = (k: string, v: string | string[] | null) => { const n = new URLSearchParams(sp); n.delete(k); if (Array.isArray(v)) v.forEach((x) => n.append(k, x)); else if (v) n.set(k, v); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
 
   const prods = useQuery({ queryKey: ['products'], queryFn: api.admin.products });
-  const lista = useQuery({ queryKey: ['clients', q, produtos, modulos, mode, arquivados, page, o.ord, o.dir], queryFn: () => api.clients.list({ q, products: produtos, modules: modulos, mode, includeArchived: arquivados, page, pageSize: 24, sort: o.ord, dir: o.dir }) });
+  const lista = useQuery({ queryKey: ['clients', q, produtos, modulos, mode, arquivados, page, tudo, o.ord, o.dir], queryFn: () => api.clients.list({ q, products: produtos, modules: modulos, mode, includeArchived: arquivados, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }) });
   const colunas = useMemo(() => montarColunas(prods.data?.filter((p) => p.active) ?? []), [prods.data]);
   const visiveis = colunas.filter((c) => colunasEscolhidas.ids.includes(c.id));
   const ativos = prods.data?.filter((p) => p.active) ?? [];
@@ -213,7 +218,7 @@ export function ClientesLista() {
           ))}
         </div>
       )}
-      {lista.data && <Paginacao page={page} pageSize={24} total={lista.data.total} onChange={(p) => set('p', String(p))} />}
+      {lista.data && <Paginacao page={page} pageSize={24} total={lista.data.total} onChange={(p) => set('p', String(p))} tudo={tudo} onTudo={(v) => set('tudo', v ? '1' : null)} />}
       <ClienteForm open={novo} onClose={() => setNovo(false)} onSaved={(c) => { setNovo(false); nav(`/clientes/${c.id}`); }} />
     </Pagina>
   );

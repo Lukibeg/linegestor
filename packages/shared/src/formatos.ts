@@ -111,3 +111,68 @@ export function paraCentavos(v: string | number): number {
   const n = Number(normalizado);
   return Number.isFinite(n) ? Math.round(n * 100) : 0;
 }
+
+// ---------- Número de série ----------
+
+/** N/S como está na etiqueta, sem espaços e em maiúsculas: " ab12 cd " → "AB12CD" */
+export function serieLimpa(v: string | null | undefined): string {
+  return (v ?? '').replace(/\s+/g, '').toUpperCase();
+}
+
+/**
+ * Como o aparelho se identifica numa tabela: o MAC, se tiver; senão o número de série;
+ * senão "não aplicável" (headset, cabo).
+ */
+export function identificacaoAparelho(d: { mac?: string | null; serialNumber?: string | null }): { tipo: 'mac' | 'serie' | 'nenhum'; texto: string } {
+  if (d.mac) return { tipo: 'mac', texto: macFormatado(d.mac) };
+  if (d.serialNumber) return { tipo: 'serie', texto: d.serialNumber };
+  return { tipo: 'nenhum', texto: 'não aplicável' };
+}
+
+/**
+ * Uma lista colada pela pessoa (um por linha, ou separados por vírgula, ponto e vírgula,
+ * tabulação ou espaço) vira uma lista limpa, sem vazios. A ordem é mantida.
+ */
+export function lerLista(texto: string): string[] {
+  return (texto ?? '').split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
+}
+
+// ---------- Datas ----------
+
+/**
+ * Uma data escolhida num calendário ("3 de novembro") chega como meia-noite em UTC — que no
+ * Brasil ainda é dia 2. Guardamos ao MEIO-DIA UTC, que é o mesmo dia em qualquer fuso do país.
+ * Horários que não são meia-noite exata (um "agora", por exemplo) ficam como estão.
+ */
+export function diaAoMeioDia(d: Date): Date;
+export function diaAoMeioDia(d: Date | null | undefined): Date | null | undefined;
+export function diaAoMeioDia(d: Date | null | undefined): Date | null | undefined {
+  if (!d || Number.isNaN(d.getTime())) return d;
+  if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0 && d.getUTCMilliseconds() === 0) {
+    return new Date(d.getTime() + 12 * 60 * 60 * 1000);
+  }
+  return d;
+}
+
+/** "2025-11-03" (o valor de um campo de data) → o instante que o servidor guarda: meio-dia UTC daquele dia. */
+export function diaParaIso(dia: string): string | null {
+  return /^\d{4}-\d{2}-\d{2}$/.test(dia) ? `${dia}T12:00:00.000Z` : null;
+}
+
+// ---------- Acentos embaralhados ----------
+
+/**
+ * Conserta o texto que foi salvo em UTF-8 e lido como Latin-1 no caminho ("PeÃ§as" vira "Peças").
+ * Só age no padrão típico (Ã ou Â seguidos de um caractere entre U+0080 e U+00BF) e só se a
+ * conversão der um texto válido — "SÃO PAULO" fica como está.
+ */
+export function consertarAcentos(v: string): string {
+  if (!v || !/[ÃÂ][-¿]/.test(v)) return v;
+  const codigos = Array.from(v, (c) => c.codePointAt(0)!);
+  if (codigos.some((c) => c > 255)) return v;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(codigos));
+  } catch {
+    return v;
+  }
+}

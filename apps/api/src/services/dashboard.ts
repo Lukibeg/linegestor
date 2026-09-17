@@ -19,7 +19,7 @@ export async function summary(db: Db) {
   const byProduct = await db
     .select({ code: products.code, name: products.name, color: products.color, n: sql<number>`count(distinct ${subscriptions.clientId})` })
     .from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId)).innerJoin(clients, eq(clients.id, subscriptions.clientId))
-    .where(and(isNull(subscriptions.deactivatedAt), activeClient)).groupBy(products.code, products.name, products.color, products.sortOrder).orderBy(products.sortOrder);
+    .where(and(isNull(subscriptions.deactivatedAt), activeClient, isNull(products.deletedAt))).groupBy(products.code, products.name, products.color, products.sortOrder).orderBy(products.sortOrder);
 
   const [d] = await db.select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})`, noCircuit: sql<number>`count(*) filter (where ${dids.circuitId} is null)` }).from(dids).where(and(isNull(dids.deletedAt), semTerceiro));
 
@@ -34,8 +34,8 @@ export async function summary(db: Db) {
     inStock: sql<number>`count(*) filter (where ${devices.clientId} is null)`,
     withClients: sql<number>`count(*) filter (where ${devices.clientId} is not null and coalesce(${devices.currentModality}, '') <> 'venda')`,
     inactive: sql<number>`count(*) filter (where ${devices.condition} = 'inativo')`,
-    valueWithClients: sql<number>`coalesce(sum(${devices.valueCents}) filter (where ${devices.clientId} is not null and ${devices.currentModality} in ('locacao','comodato')),0)`,
-  }).from(devices).where(isNull(devices.deletedAt));
+    valueWithClients: sql<number>`coalesce(sum(coalesce(${devices.valueCents}, ${deviceModels.valueCents})) filter (where ${devices.clientId} is not null and ${devices.currentModality} in ('locacao','comodato')),0)`,
+  }).from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId)).where(isNull(devices.deletedAt));
 
   // ---- alertas de consistência ----
   const alerts: Array<{ kind: string; severity: 'warning' | 'critical'; message: string; count: number; link: string }> = [];
@@ -100,14 +100,14 @@ export async function search(db: Db, term: string) {
     db.select({ id: circuits.id, name: circuits.name, code: circuits.code, carrierName: carriers.name }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId))
       .where(and(isNull(circuits.deletedAt), or(ilike(circuits.name, like), ilike(circuits.code, like)))).limit(8),
     hex.length >= 4 || t.length >= 2
-      ? db.select({ id: devices.id, mac: devices.mac, unit: devices.unit, modelName: deviceModels.name, clientName: clients.tradeName }).from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId)).leftJoin(clients, eq(clients.id, devices.clientId))
-          .where(and(isNull(devices.deletedAt), or(hex.length >= 4 ? ilike(devices.mac, `%${hex}%`) : sql`false`, ilike(devices.unit, like)))).limit(8)
+      ? db.select({ id: devices.id, mac: devices.mac, serialNumber: devices.serialNumber, unit: devices.unit, modelName: deviceModels.name, clientName: clients.tradeName }).from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId)).leftJoin(clients, eq(clients.id, devices.clientId))
+          .where(and(isNull(devices.deletedAt), or(hex.length >= 4 ? ilike(devices.mac, `%${hex}%`) : sql`false`, ilike(devices.serialNumber, like), ilike(devices.unit, like)))).limit(8)
       : Promise.resolve([]),
   ]);
   return {
     clients: cl,
     dids: dd.map((x) => ({ ...x, numberFormatted: didFormatado(x.number) })),
     circuits: cc,
-    devices: dv.map((x) => ({ ...x, macFormatted: macFormatado(x.mac) })),
+    devices: dv.map((x) => ({ ...x, macFormatted: x.mac ? macFormatado(x.mac) : x.serialNumber ? `N/S ${x.serialNumber}` : 'sem identificação' })),
   };
 }

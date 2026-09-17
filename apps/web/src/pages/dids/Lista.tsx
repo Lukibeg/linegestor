@@ -9,7 +9,7 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { Plus, X } from 'lucide-react';
 import { api } from '../../api/index.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Campo, Carregando, Chip, Confirmar, Copiar, Modal, Paginacao, Spinner, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Campo, Carregando, Chip, Confirmar, Copiar, Modal, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { FaixaForm } from '../circuitos/Detalhe.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
@@ -29,14 +29,16 @@ export function Numeracao() {
   // o mesmo interruptor da aba Circuitos (mora no endereço, então vale para as duas)
   const terceiros = sp.get('terceiros') === '1';
   const o = useOrdenacao('number');
+  const tudo = sp.get('tudo') === '1';
   const pageSize = 100;
-  const numero = contarDe(page, pageSize); // a contagem segue pela lista toda, não recomeça a cada página
+  const tamanho = tudo ? TODOS : pageSize;
+  const numero = contarDe(tudo ? 1 : page, tamanho); // a contagem segue pela lista toda, não recomeça a cada página
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
   // "limpar" tira os filtros, não o modo de exibição: o interruptor dos terceiros fica como está
-  const limpar = () => setSp(terceiros ? { aba: 'numeracao', terceiros: '1' } : { aba: 'numeracao' }, { replace: true });
+  const limpar = () => setSp({ aba: 'numeracao', ...(terceiros ? { terceiros: '1' } : {}), ...(tudo ? { tudo: '1' } : {}) }, { replace: true });
   const filtro = { q, circuitId: circuito, clientId: cliente, includeThirdParty: terceiros };
   const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
-  const lista = useQuery({ queryKey: ['dids', filtro, page, o.ord, o.dir], queryFn: () => api.dids.list({ ...filtro, page, pageSize, sort: o.ord, dir: o.dir }) });
+  const lista = useQuery({ queryKey: ['dids', filtro, page, tudo, o.ord, o.dir], queryFn: () => api.dids.list({ ...filtro, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }) });
   const circuits = useQuery({ queryKey: ['circuit-options'], queryFn: api.circuits.options });
   const clients = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options() });
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -96,7 +98,7 @@ export function Numeracao() {
               <td className="text-muted">{d.note}</td>
             </tr>))}</tbody></table></div>
       )}
-      {lista.data && <Paginacao page={page} pageSize={pageSize} total={lista.data.total} onChange={(p) => set('p', String(p))} />}
+      {lista.data && <Paginacao page={page} pageSize={pageSize} total={lista.data.total} onChange={(p) => set('p', String(p))} tudo={tudo} onTudo={(v) => set('tudo', v ? '1' : null)} />}
 
       {acao && acao !== 'excluir' && <AcaoMassa acao={acao} ids={[...sel]} onClose={() => setAcao(null)} onDone={done} circuits={circuits.data ?? []} clients={clients.data ?? []} />}
       <ConfirmarExcluir open={acao === 'excluir'} ids={[...sel]} onClose={() => setAcao(null)} onDone={done} />

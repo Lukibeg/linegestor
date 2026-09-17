@@ -10,6 +10,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 
 - [clients](#clients) — Uma linha por empresa.
 - [client_logos](#client_logos) — A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo).
+- [client_units](#client_units) — As UNIDADES de um cliente: matriz, filiais, lojas, andares.
 - [products](#products) — Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
 - [product_modules](#product_modules) — Catálogo de MÓDULOS: partes opcionais dentro de um produto.
 - [subscriptions](#subscriptions) — "O cliente X assina o produto Y." Uma linha por par cliente × produto.
@@ -24,6 +25,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [dids](#dids) — Um número telefônico.
 - [device_categories](#device_categories) — Catálogo: categoria de aparelho (Telefone IP, Periférico, ATA...).
 - [device_models](#device_models) — Um modelo de aparelho (ex.: Grandstream GXP1610).
+- [device_model_images](#device_model_images) — A foto do modelo, no próprio banco (como a logo do cliente).
 - [devices](#devices) — Um aparelho.
 - [device_movements](#device_movements) — Cabeçalho de uma movimentação: de onde, para onde, por quê, quem, quando.
 - [device_movement_items](#device_movement_items) — Um aparelho dentro de uma movimentação.
@@ -63,6 +65,20 @@ A logo do cliente, guardada no próprio banco (uma linha por cliente que tem log
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+
+## client_units
+
+As UNIDADES de um cliente: matriz, filiais, lojas, andares. Todo cliente tem a "Matriz", criada sozinha; as outras se cadastram na ficha do cliente. É daqui que sai a lista de unidades na hora de movimentar aparelhos. O aparelho guarda o NOME da unidade (`devices.unit`); renomear aqui renomeia nos aparelhos.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | Nome da unidade: "Matriz", "Loja Simões Filho" | obrigatório |
+| `is_main` | sim/não | A matriz: existe em todo cliente, é a unidade padrão e não pode ser removida | obrigatório · padrão: false |
+| `note` | texto | Endereço ou referência, opcional | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 
 ## products
 
@@ -219,6 +235,13 @@ Um modelo de aparelho (ex.: Grandstream GXP1610). Diz se é contado um a um ou p
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 
+## device_model_images
+
+A foto do modelo, no próprio banco (como a logo do cliente). Reduzida no navegador antes de subir.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+
 ## devices
 
 Um aparelho. Cada unidade é uma linha, sempre — inclusive as que não têm MAC (headset, cabo). O MAC identifica quem tem; quem não tem fica nulo e a tela mostra "não aplicável". Não existe contagem por quantidade: é um por linha, sem exceção.
@@ -229,13 +252,14 @@ Um aparelho. Cada unidade é uma linha, sempre — inclusive as que não têm MA
 | `model_id` | texto | — | obrigatório · liga com **deviceModels** |
 | `mac` | texto | MAC principal, 12 hexadecimais maiúsculos sem separador. Único quando existe; nulo em quem não tem MAC. | — |
 | `mac_secondary` | texto | Segundo MAC (Wi-Fi, por exemplo), se houver | — |
+| `serial_number` | texto | Número de série (N/S), para o aparelho que não tem MAC mas tem etiqueta de série. Não se repete dentro do mesmo modelo. | — |
 | `client_id` | texto | Atribuído a: nulo = no estoque; preenchido = com este cliente | liga com **clients** |
 | `unit` | texto | Unidade do cliente onde o aparelho está (filial, loja, andar): "Loja Simões Filho" | — |
 | `current_modality` | texto | Como chegou ao cliente atual: locacao | venda | comodato (nulo se em estoque) | — |
 | `condition` | texto | ativo | inativo. Vendido não é condição: sai da modalidade da última movimentação. | obrigatório · padrão: 'ativo' |
-| `value_cents` | número inteiro | Valor do aparelho em centavos (alimenta "valor total locado") | — |
+| `value_cents` | número inteiro | Valor PRÓPRIO do aparelho em centavos. Vazio = vale o valor do modelo (o caso normal). | — |
 | `ip` | texto | IP configurado no aparelho, se houver | — |
-| `location` | texto | Onde fisicamente está ("Rack 3 · Sala 2") | — |
+| `location` | texto | Onde fisicamente estava ("Prateleira B"). Saiu da tela; fica guardado para não perder o que já foi digitado. | — |
 | `note` | texto | — | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
@@ -252,6 +276,7 @@ Cabeçalho de uma movimentação: de onde, para onde, por quê, quem, quando. Nu
 | `from_client_id` | texto | Origem: nulo = estoque | liga com **clients** |
 | `to_client_id` | texto | Destino: nulo = estoque | liga com **clients** |
 | `new_condition` | texto | Condição aplicada aos aparelhos nesta movimentação (nulo = manteve) | — |
+| `unit` | texto | Unidade do cliente de destino para onde os aparelhos foram (nulo na devolução) | — |
 | `value_cents` | número inteiro | Valor total da movimentação em centavos (venda, por exemplo) | — |
 | `note` | texto | — | — |
 | `user_id` | texto | Quem executou | obrigatório · liga com **users** |

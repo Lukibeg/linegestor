@@ -164,6 +164,20 @@ export async function restore(db: Db, id: string) {
   return row;
 }
 
+/**
+ * Quem aparece no filtro "Titular": só quem é titular de pelo menos um circuito que está na
+ * lista. Sem o interruptor dos links de terceiros, o titular de um link de terceiro não entra.
+ */
+export async function owners(db: Db, includeThirdParty = false) {
+  const conds: SQL[] = [isNull(circuits.deletedAt), sql`${circuits.ownerClientId} is not null`];
+  if (!includeThirdParty) conds.push(eq(circuits.thirdParty, false));
+  const rows = await db
+    .selectDistinct({ id: clients.id, name: clients.tradeName, isInternal: clients.isInternal, internalCode: clients.internalCode })
+    .from(circuits).innerJoin(clients, eq(clients.id, circuits.ownerClientId))
+    .where(and(...conds));
+  return rows.sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.name.localeCompare(b.name, 'pt-BR'));
+}
+
 export async function options(db: Db) {
   return db.select({ id: circuits.id, name: circuits.name, code: circuits.code, carrierName: carriers.name }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(isNull(circuits.deletedAt)).orderBy(asc(circuits.name));
 }

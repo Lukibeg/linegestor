@@ -6,20 +6,23 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { api } from '../../api/index.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Campo, CampoSegredo, Carregando, Chip, Confirmar, Kpi, Modal, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Campo, CampoSegredo, Carregando, Chip, Confirmar, Kpi, Modal, Spinner, TODOS, usePaginaLocal, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { didFormatado, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { CircuitoForm } from './Lista.js';
 import { Voltar } from '../../lib/voltar.js';
-import { contar, TdN, ThN } from '../../lib/contagem.js';
+import { TdN, ThN } from '../../lib/contagem.js';
 
 export function CircuitoDetalhe() {
   const { id = '' } = useParams();
   const nav = useNavigate(); const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
   const q = useQuery({ queryKey: ['circuit', id], queryFn: () => api.circuits.get(id) });
-  const dids = useQuery({ queryKey: ['circuit-dids', id], queryFn: () => api.dids.list({ circuitId: id, pageSize: 200 }) });
+  // todos os números do circuito, sem limite: a tela pagina de 100 em 100 e sempre deixa "ver tudo"
+  const dids = useQuery({ queryKey: ['circuit-dids', id], queryFn: () => api.dids.list({ circuitId: id, includeThirdParty: true, page: 1, pageSize: TODOS }) });
   const [editar, setEditar] = useState(false); const [faixa, setFaixa] = useState(false); const [excluir, setExcluir] = useState(false); const [busy, setBusy] = useState(false);
   const o = useOrdenacaoLocal('number');
+  const ordenados = ordenarLista(dids.data?.items ?? [], o, { number: (d) => d.number, clientName: (d) => d.clientName, ownerName: (d) => d.ownerName, note: (d) => d.note });
+  const pg = usePaginaLocal(ordenados, 100);
   if (q.isLoading) return <Carregando />;
   if (!q.data) return <Vazio titulo="Circuito não encontrado" acao={<Link className="btn-secondary" to="/circuitos">Voltar</Link>} />;
   const c = q.data;
@@ -55,9 +58,9 @@ export function CircuitoDetalhe() {
           <div className="px-4 py-3 border-b border-line flex items-center justify-between"><span className="font-display font-semibold">DIDs deste circuito</span><Link className="link text-sm" to={`/circuitos?aba=numeracao&circuito=${c.id}`}>abrir na Numeração para editar em massa</Link></div>
           {dids.isLoading ? <Carregando /> : !dids.data?.items.length ? <div className="p-6 text-muted text-sm">Nenhum DID ainda. Crie uma faixa.</div> : (
             <table className="table"><thead><tr><ThN /><Th o={o} col="number">Número</Th><Th o={o} col="clientName">Cliente</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
-              <tbody>{ordenarLista(dids.data.items, o, { number: (d) => d.number, clientName: (d) => d.clientName, ownerName: (d) => d.ownerName, note: (d) => d.note }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <span className="chip bg-ok-soft text-ok">livre</span>}</td><td className="text-muted">{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
+              <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <span className="chip bg-ok-soft text-ok">livre</span>}</td><td className="text-muted">{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
           )}
-          {dids.data && dids.data.total > 200 && <div className="px-4 py-2 text-[12.5px] text-muted border-t border-line">Mostrando 200 de {dids.data.total}. Use a Numeração para ver todos.</div>}
+          {!!dids.data?.items.length && <div className="px-4 pb-3">{pg.rodape}</div>}
         </div>
       </div>
       <CircuitoForm open={editar} onClose={() => setEditar(false)} circuito={c} onSaved={() => setEditar(false)} />

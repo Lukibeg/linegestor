@@ -36,7 +36,7 @@ describe('importar / exportar', () => {
     expect(ex.products.map((p: any) => p.code).sort()).toEqual(['linepbx', 'voicenet']);
     // "fop2" no CSV do Nexus vira o módulo FOP2 dentro do LinePBX
     expect(ex.products.find((p: any) => p.code === 'linepbx').modules.map((m: any) => m.code)).toEqual(['fop2']);
-    expect(ex.links.ssh).toBe('ssh://root@203.0.113.5:22');
+    expect(ex.links.ssh).toBe('ssh://203.0.113.5:22');
     const novo = list.items.find((c: any) => c.cnpj === '22333444000181');
     expect(novo.products.map((p: any) => p.code).sort()).toEqual(['linechat', 'voicenet']);
     expect(novo.products.find((p: any) => p.code === 'linechat').modules.map((m: any) => m.code)).toEqual(['nps']);

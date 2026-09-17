@@ -6,16 +6,31 @@
  * para avisar a pessoa antes de enviar. Uma regra, escrita uma vez.
  */
 import { z } from 'zod';
-import { cnpjLimpo, cnpjValido, didLimpo, didValido, macLimpo, macValido } from './formatos.js';
+import { cnpjLimpo, cnpjValido, diaAoMeioDia, didLimpo, didValido, macLimpo, macValido, serieLimpa } from './formatos.js';
 
 // ---------- Blocos reutilizáveis ----------
 
 export const IdSchema = z.string().min(1);
 
+/**
+ * Sim/não vindo do endereço (?terceiros=false). `Booleano` NÃO serve: para ele o texto
+ * "false" é verdadeiro (texto não vazio). Aqui só "true", "1" e o próprio `true` contam como sim.
+ */
+export const Booleano = z.preprocess((v) => v === true || v === 'true' || v === '1' || v === 1, z.boolean());
+
+/**
+ * "Ver tudo": a tela pede este tamanho de página para trazer a lista inteira de uma vez.
+ * Nenhuma lista do sistema esconde linhas — a paginação é só para abrir rápido.
+ */
+export const SEM_LIMITE = 100_000;
+
 export const PaginacaoSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(500).default(50),
+  pageSize: z.coerce.number().int().min(1).max(SEM_LIMITE).default(50),
 });
+
+/** Data vinda de um campo de calendário: guardada ao meio-dia UTC, para não "voltar um dia" no Brasil. */
+const DiaSchema = z.coerce.date().transform((d) => diaAoMeioDia(d));
 
 /**
  * Ordenação de tabela: `sort` é o nome da coluna (o mesmo id que a tela usa) e `dir` o sentido.
@@ -71,7 +86,7 @@ export const ClienteListarSchema = PaginacaoSchema.merge(OrdenacaoSchema).extend
   mode: z.enum(['or', 'and']).default('or'),
   /** módulos para filtrar, no formato "produto:modulo" (ex.: "linepbx:fop2"); segue o mesmo modo */
   modules: z.union([z.string(), z.array(z.string())]).optional().transform((v) => (v == null ? [] : Array.isArray(v) ? v : [v])),
-  includeArchived: z.coerce.boolean().default(false),
+  includeArchived: Booleano.default(false),
 });
 
 // ---------- Assinaturas (cliente × produto) ----------
@@ -80,6 +95,7 @@ export const LinePbxSettingsSchema = z.object({
   hostingId: IdSchema.nullable().optional(),
   serverIp: z.string().trim().max(64).nullable().optional(),
   domain: z.string().trim().max(200).nullable().optional(),
+  /** Não aparece mais na tela (cada técnico usa o próprio usuário); aceito só por compatibilidade */
   sshUser: z.string().trim().max(64).nullable().optional(),
   sshPort: z.coerce.number().int().min(1).max(65535).nullable().optional(),
   /** só na gravação; "" ou ausente = mantém a senha atual */
@@ -104,8 +120,8 @@ export const SzchatSettingsSchema = z.object({
  */
 export const AssinaturaGravarSchema = z.object({
   productCode: z.string().min(1),
-  activatedAt: z.coerce.date().nullable().optional(),
-  deactivatedAt: z.coerce.date().nullable().optional(),
+  activatedAt: DiaSchema.nullable().optional(),
+  deactivatedAt: DiaSchema.nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
   settings: z.union([LinePbxSettingsSchema, SzchatSettingsSchema, z.object({})]).optional(),
 });
@@ -114,8 +130,8 @@ export const AssinaturaGravarSchema = z.object({
 export const ModuloGravarSchema = z.object({
   productCode: z.string().min(1),
   moduleCode: z.string().min(1),
-  activatedAt: z.coerce.date().nullable().optional(),
-  deactivatedAt: z.coerce.date().nullable().optional(),
+  activatedAt: DiaSchema.nullable().optional(),
+  deactivatedAt: DiaSchema.nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
   settings: z.union([Fop2SettingsSchema, OmniboardSettingsSchema, z.object({})]).optional(),
 });
@@ -128,6 +144,20 @@ export const ModuloCatalogoSchema = z.object({
   hasSettings: z.boolean().optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
+});
+
+/** Administração: criar um produto novo no portfólio. */
+export const ProdutoCriarSchema = z.object({
+  code: z.string().trim().min(1).max(40).regex(/^[a-z0-9_]+$/, 'Use só letras minúsculas, números e _'),
+  name: z.string().trim().min(1).max(80),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Cor no formato #RRGGBB').default('#2457D6'),
+  description: z.string().trim().max(300).nullable().optional(),
+});
+
+/** Uma unidade do cliente (matriz, filial, loja). */
+export const UnidadeGravarSchema = z.object({
+  name: z.string().trim().min(1, 'Informe o nome da unidade').max(120),
+  note: z.string().trim().max(500).nullable().optional(),
 });
 
 /**
@@ -167,7 +197,7 @@ export const CircuitoGravarSchema = z.object({
   authPassword: SenhaEntradaSchema.optional(),
   notes: z.string().max(5000).nullable().optional(),
   /** true = tronco do próprio cliente, com outra operadora. Fica fora das listas até se pedir. */
-  thirdParty: z.coerce.boolean().optional(),
+  thirdParty: Booleano.optional(),
 });
 export const CircuitoAtualizarSchema = CircuitoGravarSchema.partial();
 
@@ -178,7 +208,7 @@ export const CircuitoListarSchema = PaginacaoSchema.merge(OrdenacaoSchema).exten
   /** titular (quem detém o contrato junto à operadora) */
   ownerClientId: IdSchema.optional(),
   /** ligar o interruptor "links de terceiros" traz também o que não é da VoiceNet */
-  includeThirdParty: z.coerce.boolean().default(false),
+  includeThirdParty: Booleano.default(false),
 });
 
 // ---------- DIDs ----------
@@ -189,7 +219,7 @@ export const DidListarSchema = PaginacaoSchema.extend({
   clientId: z.union([IdSchema, z.literal('free')]).optional(),
   ownerClientId: IdSchema.optional(),
   /** o mesmo interruptor da lista de circuitos: sem ele, número de terceiro não aparece */
-  includeThirdParty: z.coerce.boolean().default(false),
+  includeThirdParty: Booleano.default(false),
   sort: z.string().trim().max(60).optional(),
   dir: z.enum(['asc', 'desc']).optional(),
 });
@@ -229,22 +259,50 @@ export const ModeloGravarSchema = z.object({
   name: z.string().trim().min(1).max(120),
   categoryId: IdSchema.nullable().optional(),
   imageUrl: z.string().max(500).nullable().optional(),
+  /** Valor de cada unidade deste modelo (centavos). É o que soma no cliente. */
+  valueCents: CentavosSchema.nullable().optional(),
 });
+export const ModeloAtualizarSchema = ModeloGravarSchema.partial().extend({
+  /** true = todos os aparelhos deste modelo passam a usar o valor do modelo (some o valor próprio) */
+  aplicarValorATodos: z.boolean().optional(),
+});
+
+/** Número de série como está na etiqueta (sem espaços, maiúsculas). */
+export const SerieSchema = z.string().transform(serieLimpa).refine((v) => v.length >= 2 && v.length <= 80, 'Número de série precisa ter de 2 a 80 caracteres');
 
 export const AparelhoGravarSchema = z.object({
   modelId: IdSchema,
-  /** Nulo em aparelho sem MAC (headset, cabo): a tela mostra "não aplicável". */
+  /** Nulo em aparelho sem MAC (headset, cabo): a tela mostra o N/S, ou "não aplicável". */
   mac: MacSchema.nullable().optional(),
   macSecondary: MacSchema.nullable().optional(),
+  /** Número de série, para quem não tem MAC mas tem etiqueta de série */
+  serialNumber: SerieSchema.nullable().optional(),
   /** Unidade do cliente (filial, loja, andar) onde o aparelho está */
   unit: z.string().trim().max(120).nullable().optional(),
   condition: z.enum(['ativo', 'inativo']).default('ativo'),
+  /** Valor próprio. Vazio = vale o valor do modelo (o normal). */
   valueCents: CentavosSchema.nullable().optional(),
   ip: z.string().trim().max(64).nullable().optional(),
+  /** Saiu da tela; aceito só por compatibilidade */
   location: z.string().trim().max(120).nullable().optional(),
   note: z.string().max(2000).nullable().optional(),
 });
 export const AparelhoAtualizarSchema = AparelhoGravarSchema.partial().omit({ modelId: true });
+
+/**
+ * Cadastro em massa: uma lista colada de MACs ou de números de série (um aparelho por item),
+ * ou uma quantidade de aparelhos sem identificação (headset, cabo). Grava tudo ou nada.
+ */
+export const AparelhosEmMassaSchema = z.object({
+  modelId: IdSchema,
+  tipo: z.enum(['mac', 'serie', 'nenhum']),
+  /** MACs ou números de série, um por aparelho (quando tipo for mac ou serie) */
+  valores: z.array(z.string().trim().min(1)).max(2000, 'No máximo 2.000 aparelhos por vez').default([]),
+  /** quantos aparelhos sem identificação (quando tipo for nenhum) */
+  quantidade: z.coerce.number().int().min(1).max(2000, 'No máximo 2.000 aparelhos por vez').optional(),
+  condition: z.enum(['ativo', 'inativo']).default('ativo'),
+  note: z.string().max(2000).nullable().optional(),
+});
 
 export const MovimentacaoCriarSchema = z.object({
   modality: z.enum(['locacao', 'venda', 'comodato', 'devolucao']),
@@ -293,6 +351,12 @@ export const AjustesAvisosSchema = z.object({
 /** Desligar a verificação em duas etapas exige digitar a própria senha de novo. */
 export const DesligarSegundaEtapaSchema = z.object({
   password: z.string().min(1, 'Informe a sua senha'),
+});
+
+/** Minha conta: o que cada pessoa ajusta em si mesma. */
+export const MinhaContaSchema = z.object({
+  /** O seu usuário SSH (o mesmo em todos os servidores). Vazio = sem usuário no atalho. */
+  sshUser: z.string().trim().max(64).regex(/^[A-Za-z0-9._-]*$/, 'Use só letras, números, ponto, hífen e _').nullable(),
 });
 
 export const UsuarioCriarSchema = z.object({
@@ -346,6 +410,10 @@ export type DidListar = z.infer<typeof DidListarSchema>;
 export type DidCriarFaixa = z.infer<typeof DidCriarFaixaSchema>;
 export type DidEditarEmMassa = z.infer<typeof DidEditarEmMassaSchema>;
 export type ModeloGravar = z.infer<typeof ModeloGravarSchema>;
+export type ModeloAtualizar = z.infer<typeof ModeloAtualizarSchema>;
+export type AparelhosEmMassa = z.infer<typeof AparelhosEmMassaSchema>;
+export type ProdutoCriar = z.infer<typeof ProdutoCriarSchema>;
+export type UnidadeGravar = z.infer<typeof UnidadeGravarSchema>;
 export type AparelhoGravar = z.infer<typeof AparelhoGravarSchema>;
 export type MovimentacaoCriar = z.infer<typeof MovimentacaoCriarSchema>;
 export type Login = z.infer<typeof LoginSchema>;

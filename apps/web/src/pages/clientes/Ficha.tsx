@@ -1,23 +1,23 @@
 /**
  * Ficha do cliente: uma página com endereço próprio e abas.
- * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Histórico
+ * Visão geral · Acessos · DIDs · Equipamentos · Unidades · Produtos · Histórico
  */
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Archive, ExternalLink, Pencil, Terminal, Trash2 } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, ExternalLink, Pencil, Plus, Star, Terminal, Trash2 } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
-import type { ClientFull, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
+import type { ClientFull, ClientUnit, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, LogoCliente, mensagemErro, Modal, Spinner, Vazio, useToast } from '../../components/ui/index.js';
-import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, intervalo, MODALIDADES, reais } from '../../lib/format.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, Identificacao, LogoCliente, mensagemErro, Modal, Spinner, usePaginaLocal, Vazio, useToast } from '../../components/ui/index.js';
+import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, diaParaIso, hojeCampoData, intervalo, linkSsh, MODALIDADES, paraCampoData, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { paraALista, Voltar } from '../../lib/voltar.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
 import { ClienteForm } from './Form.js';
 
-type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'acessos' | 'historico';
+type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'historico';
 
 export function ClienteFicha() {
   const { id = '' } = useParams();
@@ -26,7 +26,7 @@ export function ClienteFicha() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const q = useQuery({ queryKey: ['client', id], queryFn: () => api.clients.get(id) });
   const [editar, setEditar] = useState(false);
   const [excluir, setExcluir] = useState(false);
@@ -47,7 +47,7 @@ export function ClienteFicha() {
       sub={<span>{c.legalName} · <span className="font-mono">{cnpjFormatado(c.cnpj)}</span></span>}
       acoes={<>
         {c.links.web && <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary"><ExternalLink size={15} /> Abrir</a>}
-        {c.links.ssh && can('access.use') && <a href={c.links.ssh} className="btn-secondary"><Terminal size={15} /> SSH</a>}
+        {c.links.ssh && can('access.use') && <a href={linkSsh(c.links.ssh, user?.sshUser)!} className="btn-secondary" title={user?.sshUser ? `Abre o PuTTY como ${user.sshUser}` : 'Abre o PuTTY. Dica: defina o seu usuário SSH em Minha conta para ele já vir preenchido.'}><Terminal size={15} /> SSH</a>}
         <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button><button className="btn-ghost" onClick={toggleArchive}><Archive size={15} /> {c.archived ? 'Desarquivar' : 'Arquivar'}</button></Can>
         <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)}><Trash2 size={15} /></button></Can>
       </>}
@@ -55,12 +55,14 @@ export function ClienteFicha() {
       <Abas atual={aba} onChange={(a) => setSp({ aba: a }, { replace: true })} abas={[
         { id: 'geral', label: 'Visão geral' }, { id: 'acessos', label: 'Acessos' },
         { id: 'dids', label: <>DIDs <span className="text-muted">({c.didCount})</span></> }, { id: 'equipamentos', label: <>Equipamentos <span className="text-muted">({c.deviceCount})</span></> },
+        { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> },
         { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> }, ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
       ]} />
       {aba === 'geral' && <Geral c={c} />}
       {aba === 'acessos' && <Acessos c={c} />}
       {aba === 'dids' && <Dids c={c} />}
       {aba === 'equipamentos' && <Equipamentos c={c} />}
+      {aba === 'unidades' && <Unidades c={c} />}
       {aba === 'produtos' && <Produtos c={c} />}
       {aba === 'historico' && <Historico c={c} />}
       <ClienteForm open={editar} onClose={() => setEditar(false)} cliente={c} onSaved={() => setEditar(false)} />
@@ -176,10 +178,8 @@ function Produtos({ c }: { c: ClientFull }) {
   const atualizar = () => Promise.all([qc.invalidateQueries({ queryKey: ['client', c.id] }), qc.invalidateQueries({ queryKey: ['clients'] })]);
   const encerrar = async (code: string) => { try { await api.clients.endSubscription(c.id, code); await atualizar(); toast.push('ok', 'Produto encerrado (histórico mantido)'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   const desativarModulo = async (p: Product, m: ProductModule) => { try { await api.clients.endModule(c.id, p.code, m.code); await atualizar(); toast.push('ok', `${m.name} desativado (histórico mantido)`); } catch (e) { toast.push('erro', mensagemErro(e)); } };
-  const ativarModulo = async (p: Product, m: ProductModule) => {
-    if (m.hasSettings) { setEditandoModulo({ product: p, module: m }); return; }
-    try { await api.clients.upsertModule(c.id, { productCode: p.code, moduleCode: m.code }); await atualizar(); toast.push('ok', `${m.name} ativado em ${p.name}`); } catch (e) { toast.push('erro', mensagemErro(e)); }
-  };
+  // ativar abre o formulário sempre: é ali que se escolhe a data em que o módulo entrou
+  const ativarModulo = (p: Product, m: ProductModule) => setEditandoModulo({ product: p, module: m });
   return (
     <div>
       <p className="text-sm text-muted mb-3">Clique num produto para marcar ou ajustar. Dentro de cada produto ativo, ative os <b>módulos</b> que o cliente usa. Desmarcar não apaga: fica registrado quando terminou.</p>
@@ -210,7 +210,7 @@ function Produtos({ c }: { c: ClientFull }) {
                           {on && can('records.write') && (
                             <span className="ml-auto flex gap-1">
                               {ativo ? (<>
-                                {m.hasSettings && <button className="btn-ghost btn-sm" onClick={() => setEditandoModulo({ product: p, module: m })}>Ajustar</button>}
+                                <button className="btn-ghost btn-sm" onClick={() => setEditandoModulo({ product: p, module: m })} title="data de ativação, anotações e configuração">Ajustar</button>
                                 <button className="btn-ghost btn-sm text-muted" onClick={() => desativarModulo(p, m)}>Desativar</button>
                               </>) : <button className="btn-secondary btn-sm" onClick={() => ativarModulo(p, m)}>Ativar</button>}
                             </span>
@@ -243,24 +243,26 @@ function ProdutoForm({ c, code, sub, onClose }: { c: ClientFull; code: string; s
   const { can } = useAuth();
   const hostings = useQuery({ queryKey: ['catalog', 'hostings'], queryFn: () => api.admin.catalog('hostings'), enabled: code === 'linepbx' });
   const st = sub?.settings ?? {};
-  const [f, setF] = useState<Record<string, any>>({ activatedAt: sub?.activatedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), notes: sub?.notes ?? '', hostingId: st.hostingId ?? '', serverIp: st.serverIp ?? '', domain: st.domain ?? '', sshUser: st.sshUser ?? '', sshPort: st.sshPort ?? 22, adminLogin: st.adminLogin ?? '' });
+  // a data mostrada é a do fuso de quem olha (antes pegava o dia em UTC e "voltava um dia")
+  const [f, setF] = useState<Record<string, any>>({ activatedAt: sub?.activatedAt ? paraCampoData(sub.activatedAt) : hojeCampoData(), notes: sub?.notes ?? '', hostingId: st.hostingId ?? '', serverIp: st.serverIp ?? '', domain: st.domain ?? '', sshPort: st.sshPort ?? 22, adminLogin: st.adminLogin ?? '' });
   const [senhas, setSenhas] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const nome = { linepbx: 'LinePBX', szchat: 'SZChat', linereports: 'LineReports', linechat: 'LineChat', voicenet: 'VoiceNet', equipamentos: 'Equipamentos' }[code] ?? code;
+  const prods = useQuery({ queryKey: ['products'], queryFn: api.admin.products });
+  const nome = prods.data?.find((p) => p.code === code)?.name ?? code;
   const podeServidor = can('servers.write');
   const save = async () => {
     setBusy(true); setErr('');
     try {
       const settings: Record<string, unknown> = {};
-      if (code === 'linepbx' && podeServidor) Object.assign(settings, { hostingId: f.hostingId || null, serverIp: f.serverIp || null, domain: f.domain || null, sshUser: f.sshUser || null, sshPort: Number(f.sshPort) || 22, ...(senhas.sshPassword ? { sshPassword: senhas.sshPassword } : {}) });
+      if (code === 'linepbx' && podeServidor) Object.assign(settings, { hostingId: f.hostingId || null, serverIp: f.serverIp || null, domain: f.domain || null, sshPort: Number(f.sshPort) || 22 });
       if (code === 'szchat') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}) });
-      await api.clients.upsertSubscription(c.id, { productCode: code, activatedAt: f.activatedAt ? new Date(f.activatedAt).toISOString() : null, notes: f.notes || null, settings });
+      await api.clients.upsertSubscription(c.id, { productCode: code, activatedAt: f.activatedAt ? diaParaIso(f.activatedAt) : null, notes: f.notes || null, settings });
       await qc.invalidateQueries({ queryKey: ['client', c.id] }); await qc.invalidateQueries({ queryKey: ['clients'] });
       toast.push('ok', `${nome} salvo`); onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
-  const seg = (key: 'sshPassword' | 'adminPassword', label: string) => (
+  const seg = (key: 'adminPassword', label: string) => (
     <Campo label={label}><CampoSegredo secretId={st[key]?.secretId ?? null} hasSecret={!!st[key]?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={(v) => setSenhas({ ...senhas, [key]: v })} /></Campo>
   );
   return (
@@ -274,10 +276,10 @@ function ProdutoForm({ c, code, sub, onClose }: { c: ClientFull; code: string; s
             <div className="grid grid-cols-2 gap-3">
               <Campo label="Endereço (domínio)"><input className="input font-mono" placeholder="cliente.linepbx.com.br" value={f.domain} onChange={(e) => setF({ ...f, domain: e.target.value })} /></Campo>
               <Campo label="IP do servidor"><input className="input font-mono" placeholder="0.0.0.0" value={f.serverIp} onChange={(e) => setF({ ...f, serverIp: e.target.value })} /></Campo>
-              <Campo label="Usuário SSH"><input className="input font-mono" placeholder="root" value={f.sshUser} onChange={(e) => setF({ ...f, sshUser: e.target.value })} /></Campo>
               <Campo label="Porta SSH"><input className="input font-mono tnum" value={f.sshPort} onChange={(e) => setF({ ...f, sshPort: e.target.value })} /></Campo>
             </div>
-            {seg('sshPassword', 'Senha SSH')}
+            {/* usuário e senha do SSH não ficam no cliente: cada técnico usa o seu, que é o mesmo em todos os servidores */}
+            <p className="text-[12.5px] text-muted">Usuário e senha do SSH são de cada técnico, não do cliente. O seu usuário fica em <Link className="link" to="/conta">Minha conta</Link>.</p>
           </fieldset>
         )}
         {code === 'szchat' && (<>
@@ -297,7 +299,7 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
   const toast = useToast();
   const { can } = useAuth();
   const st = sm?.settings ?? {};
-  const [f, setF] = useState<Record<string, any>>({ activatedAt: sm?.activatedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10), notes: sm?.notes ?? '', adminExtension: st.adminExtension ?? '', adminLogin: st.adminLogin ?? '' });
+  const [f, setF] = useState<Record<string, any>>({ activatedAt: sm?.activatedAt ? paraCampoData(sm.activatedAt) : hojeCampoData(), notes: sm?.notes ?? '', adminExtension: st.adminExtension ?? '', adminLogin: st.adminLogin ?? '' });
   const [senhas, setSenhas] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -307,7 +309,7 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
       const settings: Record<string, unknown> = {};
       if (module.code === 'fop2') settings.adminExtension = f.adminExtension || null;
       if (module.code === 'omniboard') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}), ...(senhas.userDefaultPassword ? { userDefaultPassword: senhas.userDefaultPassword } : {}) });
-      await api.clients.upsertModule(c.id, { productCode: product.code, moduleCode: module.code, activatedAt: f.activatedAt ? new Date(f.activatedAt).toISOString() : null, notes: f.notes || null, settings });
+      await api.clients.upsertModule(c.id, { productCode: product.code, moduleCode: module.code, activatedAt: f.activatedAt ? diaParaIso(f.activatedAt) : null, notes: f.notes || null, settings });
       await qc.invalidateQueries({ queryKey: ['client', c.id] }); await qc.invalidateQueries({ queryKey: ['clients'] });
       toast.push('ok', `${module.name} salvo`); onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
@@ -316,7 +318,7 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
     <Campo label={label}><CampoSegredo secretId={st[key]?.secretId ?? null} hasSecret={!!st[key]?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={(v) => setSenhas({ ...senhas, [key]: v })} /></Campo>
   );
   return (
-    <Modal open onClose={onClose} lateral largura="max-w-lg" titulo={<span className="flex items-center gap-2">{sm?.active ? 'Ajustar' : 'Ativar'} <Chip color={product.color}>{product.name} › {module.name}</Chip></span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
+    <Modal open onClose={onClose} lateral largura="max-w-lg" titulo={<span className="flex items-center gap-2">{sm?.active ? 'Ajustar' : 'Ativar'} <Chip color={product.color}>{product.name} › {module.name}</Chip></span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? <Spinner className="text-white" /> : sm?.active ? 'Salvar' : 'Ativar'}</button></>}>
       <div className="flex flex-col gap-3">
         {module.description && <p className="text-sm text-muted">{module.description}</p>}
         <Campo label="Ativado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
@@ -337,14 +339,16 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
 function Dids({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
   const o = useOrdenacaoLocal('numberFormatted');
-  if (q.isLoading) return <Carregando />;
   const items = q.data?.items ?? [];
+  const ordenados = ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, note: (d) => d.note });
+  const pg = usePaginaLocal(ordenados, 100);
+  if (q.isLoading) return <Carregando />;
   if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
   return (
     <div className="card overflow-x-auto">
       <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
-        <tbody>{ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, note: (d) => d.note }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
-      <div className="px-3 py-2 text-[12.5px] text-muted border-t border-line"><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div>
+        <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
+      <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted"><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div></div>
     </div>
   );
 }
@@ -352,13 +356,28 @@ function Dids({ c }: { c: ClientFull }) {
 // ---------- Equipamentos ----------
 
 /**
- * O que este cliente tem de equipamento: primeiro o resumo (quanto, de que modelos e quanto
- * vale cada grupo), depois a tabela com cada aparelho.
+ * O que este cliente tem de equipamento, em duas vistas:
+ *  - **Aparelhos**: o resumo (quanto, de que modelos e quanto vale cada grupo) e a tabela
+ *  - **Movimentações**: tudo o que entrou e saiu deste cliente, com os aparelhos de cada vez
  *
- * O valor é o que está cadastrado em cada aparelho, no Inventário — por isso a soma daqui
- * bate com a da Visão geral.
+ * O valor de cada aparelho é o do modelo (ou o próprio, quando foi cadastrado diferente) —
+ * por isso a soma daqui bate com a da Visão geral.
  */
 function Equipamentos({ c }: { c: ClientFull }) {
+  const [vista, setVista] = useState<'aparelhos' | 'movimentacoes'>('aparelhos');
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="inline-flex self-start rounded-lg border border-line p-0.5 bg-surface" role="tablist">
+        {([['aparelhos', `Aparelhos (${c.deviceCount})`], ['movimentacoes', 'Movimentações']] as const).map(([id, rotulo]) => (
+          <button key={id} role="tab" aria-selected={vista === id} onClick={() => setVista(id)} className={`px-3 py-1.5 text-sm font-semibold rounded-md ${vista === id ? 'bg-accent text-white' : 'text-ink-2 hover:text-ink'}`}>{rotulo}</button>
+        ))}
+      </div>
+      {vista === 'aparelhos' ? <AparelhosDoCliente c={c} /> : <MovimentacoesDoCliente c={c} />}
+    </div>
+  );
+}
+
+function AparelhosDoCliente({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-devices', c.id], queryFn: () => api.clients.devices(c.id) });
   const o = useOrdenacaoLocal('modelName');
   const temProduto = c.subscriptions.some((s) => s.productCode === 'equipamentos' && s.active);
@@ -386,9 +405,9 @@ function Equipamentos({ c }: { c: ClientFull }) {
       && (!fUnidade || d.unit === fUnidade)
       && (!fModalidade || d.currentModality === fModalidade)
       && (!fCondicao || d.condition === fCondicao)
-      && (!t || (!!hex && (d.mac ?? '').includes(hex)) || (d.unit ?? '').toLowerCase().includes(t)
-        || d.modelName.toLowerCase().includes(t) || (d.ip ?? '').includes(t)
-        || (d.location ?? '').toLowerCase().includes(t) || (d.note ?? '').toLowerCase().includes(t)));
+      && (!t || (hex.length >= 2 && (d.mac ?? '').includes(hex)) || (d.serialNumber ?? '').toLowerCase().includes(t.replace(/\s/g, ''))
+        || (d.unit ?? '').toLowerCase().includes(t) || d.modelName.toLowerCase().includes(t) || (d.ip ?? '').includes(t)
+        || (d.note ?? '').toLowerCase().includes(t)));
   }, [todos, busca, fModelo, fUnidade, fModalidade, fCondicao]);
 
   const filtrado = devs.length !== todos.length;
@@ -408,13 +427,16 @@ function Equipamentos({ c }: { c: ClientFull }) {
     };
   }, [devs]);
 
+  const ordenados = ordenarLista(devs, o, { modelName: (d) => d.modelName, mac: (d) => d.mac ?? d.serialNumber, unit: (d) => d.unit, currentModality: (d) => d.currentModality, condition: (d) => d.condition, valueCents: (d) => d.valueCents, ip: (d) => d.ip });
+  const pg = usePaginaLocal(ordenados, 100);
+
   if (q.isLoading) return <Carregando />;
   if (!todos.length) return <Vazio titulo="Nenhum aparelho com este cliente" texto={temProduto ? 'Use "Movimentar aparelhos" no Inventário para locar, vender ou emprestar.' : 'Para movimentar aparelhos para este cliente, marque o produto Equipamentos na aba Produtos.'} acao={<Link className="btn-secondary" to="/inventario">Ir para o Inventário</Link>} />;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="card p-3 flex flex-wrap gap-2 items-center">
-        <input className="input max-w-[220px] font-mono" placeholder="MAC, unidade, modelo, IP…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <input className="input max-w-[220px] font-mono" placeholder="MAC, N/S, unidade, modelo, IP…" value={busca} onChange={(e) => setBusca(e.target.value)} />
         <select className="input w-auto" value={fModelo} onChange={(e) => setFModelo(e.target.value)}><option value="">Todos os modelos</option>{opcoes.modelos.map((m) => <option key={m} value={m}>{m}</option>)}</select>
         {opcoes.unidades.length > 0 && <select className="input w-auto" value={fUnidade} onChange={(e) => setFUnidade(e.target.value)}><option value="">Todas as unidades</option>{opcoes.unidades.map((u) => <option key={u} value={u}>{u}</option>)}</select>}
         <select className="input w-auto" value={fModalidade} onChange={(e) => setFModalidade(e.target.value)}><option value="">Todas as modalidades</option>{opcoes.modalidades.map((m) => <option key={m} value={m}>{(MODALIDADES as any)[m] ?? m}</option>)}</select>
@@ -453,16 +475,148 @@ function Equipamentos({ c }: { c: ClientFull }) {
           <div className="eyebrow">Valor dos equipamentos{filtrado && <span className="text-muted"> · filtrado</span>}</div>
           <div className="font-display text-2xl font-semibold tnum">{reais(resumo.valor)}</div>
           <div className="text-muted text-[12px]">
-            {resumo.semValor > 0 ? `${resumo.semValor} aparelho(s) sem valor cadastrado` : 'soma do valor de cada aparelho'}
+            {resumo.semValor > 0 ? <>{resumo.semValor} aparelho(s) sem valor — cadastre o valor no <Link className="link" to="/inventario?aba=modelos">modelo</Link></> : 'o valor de cada aparelho vem do modelo'}
           </div>
         </div>
       </div>
 
-      <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><Th o={o} col="modelName">Modelo</Th><Th o={o} col="mac">MAC</Th><Th o={o} col="unit">Unidade</Th><Th o={o} col="currentModality">Modalidade</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="valueCents" align="right">Valor</Th><Th o={o} col="ip">IP</Th><Th o={o} col="location">Local</Th></tr></thead>
-        <tbody>{ordenarLista(devs, o, { modelName: (d) => d.modelName, mac: (d) => d.mac, unit: (d) => d.unit, currentModality: (d) => d.currentModality, condition: (d) => d.condition, valueCents: (d) => d.valueCents, ip: (d) => d.ip, location: (d) => d.location }).map((d, i) => <tr key={d.id}><TdN n={contar(i)} /><td>{d.modelName}</td><td className="font-mono"><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.mac ? d.macFormatted : <span className="text-muted font-sans text-[13px]">não aplicável</span>}</Link></td><td>{d.unit ?? <span className="text-muted">—</span>}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="text-right tnum">{d.valueCents != null ? reais(d.valueCents) : <span className="text-muted">—</span>}</td><td className="font-mono">{d.ip ?? '—'}</td><td className="text-muted">{d.location ?? '—'}</td></tr>)}</tbody></table>
+      <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><Th o={o} col="modelName">Modelo</Th><Th o={o} col="mac">MAC / N/S</Th><Th o={o} col="unit">Unidade</Th><Th o={o} col="currentModality">Modalidade</Th><Th o={o} col="condition">Condição</Th><Th o={o} col="valueCents" align="right">Valor</Th><Th o={o} col="ip">IP</Th></tr></thead>
+        <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td>{d.modelName}</td><td><Link className="link" to={`/inventario/aparelhos/${d.id}`}><Identificacao d={d} /></Link></td><td>{d.unit ?? <span className="text-muted">Matriz</span>}</td><td>{d.currentModality ? (MODALIDADES as any)[d.currentModality] : '—'}</td><td><Chip tone={condicaoCor[d.condition] as any}>{condicaoNome[d.condition] ?? d.condition}</Chip></td><td className="text-right tnum">{d.valueCents != null ? reais(d.valueCents) : <span className="text-muted">—</span>}</td><td className="font-mono">{d.ip ?? '—'}</td></tr>)}</tbody></table>
         {!devs.length && <div className="p-4 text-sm text-muted">Nenhum aparelho com esses filtros. <button className="link" onClick={limpar}>limpar filtros</button></div>}
+        <div className="px-3 pb-3">{pg.rodape}</div>
       </div>
     </div>
+  );
+}
+
+/** Tudo o que entrou e saiu deste cliente. Clicar na linha mostra quais aparelhos foram. */
+function MovimentacoesDoCliente({ c }: { c: ClientFull }) {
+  const q = useQuery({ queryKey: ['movements', 'cliente', c.id], queryFn: () => api.inventory.movements({ clientId: c.id, page: 1, pageSize: 100000 }) });
+  const [aberta, setAberta] = useState<string | null>(null);
+  const itens = q.data?.items ?? [];
+  const pg = usePaginaLocal(itens, 50);
+  if (q.isLoading) return <Carregando />;
+  if (!itens.length) return <Vazio titulo="Nenhuma movimentação com este cliente" texto="Locações, vendas, comodatos e devoluções aparecem aqui assim que acontecerem." />;
+  return (
+    <div className="card overflow-x-auto">
+      <table className="table">
+        <thead><tr><th className="w-6" /><ThN /><th>Quando</th><th>Modalidade</th><th>De</th><th>Para</th><th>Unidade</th><th>Itens</th><th>Por</th></tr></thead>
+        <tbody>{pg.visiveis.map((m, i) => {
+          const entrou = m.toClientId === c.id;
+          const abrir = aberta === m.id;
+          return (
+            <Fragment key={m.id}>
+              <tr className="cursor-pointer" onClick={() => setAberta(abrir ? null : m.id)} aria-expanded={abrir}>
+                <td className="text-muted">{abrir ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</td>
+                <TdN n={pg.numero(i)} />
+                <td className="tnum whitespace-nowrap">{data(m.createdAt, true)}</td>
+                <td><Chip tone={m.modality === 'devolucao' ? 'neutral' : m.modality === 'venda' ? 'accent' : m.modality === 'comodato' ? 'signal' : 'ok'}>{m.modalityName}</Chip></td>
+                <td className={entrou ? 'text-muted' : ''}>{m.fromName ?? 'Estoque'}</td>
+                <td className={entrou ? '' : 'text-muted'}>{m.toName ?? 'Estoque'}</td>
+                <td>{m.unit ?? <span className="text-muted">—</span>}</td>
+                <td>{m.items.map((x) => `${x.quantity}× ${x.modelName}`).join(', ')}</td>
+                <td className="text-muted whitespace-nowrap">{m.userName}</td>
+              </tr>
+              {abrir && (
+                <tr className="bg-surface-2">
+                  <td />
+                  <td colSpan={8} className="py-2">
+                    <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+                      {m.devices.map((d) => <li key={d.id}><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.identificacao}</Link> <span className="text-muted">· {d.modelName}</span></li>)}
+                    </ul>
+                    {m.note && <p className="text-muted italic text-[12.5px] mt-1">{m.note}</p>}
+                  </td>
+                </tr>
+              )}
+            </Fragment>
+          );
+        })}</tbody>
+      </table>
+      <div className="px-3 pb-3">{pg.rodape}</div>
+    </div>
+  );
+}
+
+// ---------- Unidades ----------
+
+/**
+ * As unidades do cliente (Matriz, filiais, lojas). Todo cliente tem a Matriz, que é a padrão.
+ * É desta lista que sai a escolha de unidade na hora de movimentar aparelhos.
+ */
+function Unidades({ c }: { c: ClientFull }) {
+  const q = useQuery({ queryKey: ['client-units', c.id], queryFn: () => api.clients.units(c.id) });
+  const qc = useQueryClient(); const toast = useToast();
+  const [nova, setNova] = useState('');
+  const [editando, setEditando] = useState<ClientUnit | null>(null);
+  const [remover, setRemover] = useState<ClientUnit | null>(null);
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const atualizar = () => Promise.all(['client-units', 'client', 'client-devices', 'devices'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+  const adicionar = async () => {
+    setBusy(true); setErr('');
+    try { await api.clients.createUnit(c.id, { name: nova.trim() }); setNova(''); await atualizar(); toast.push('ok', 'Unidade cadastrada'); }
+    catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
+  const tirar = async () => {
+    if (!remover) return;
+    setBusy(true);
+    try { await api.clients.removeUnit(c.id, remover.id); setRemover(null); await atualizar(); toast.push('ok', 'Unidade removida'); }
+    catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); }
+  };
+  if (q.isLoading) return <Carregando />;
+  const unidades = q.data ?? [];
+  return (
+    <div className="grid gap-4 md:grid-cols-3 items-start">
+      <div className="card overflow-x-auto md:col-span-2">
+        <table className="table">
+          <thead><tr><ThN /><th>Unidade</th><th>Observação</th><th className="text-right">Aparelhos</th><th /></tr></thead>
+          <tbody>{unidades.map((u, i) => (
+            <tr key={u.id}>
+              <TdN n={contar(i)} />
+              <td className="font-medium"><span className="inline-flex items-center gap-1.5">{u.name}{u.isMain && <Chip tone="accent" title="Unidade padrão: todo cliente tem"><Star size={11} /> padrão</Chip>}</span></td>
+              <td className="text-muted">{u.note ?? '—'}</td>
+              <td className="text-right tnum">{u.deviceCount}</td>
+              <td className="text-right whitespace-nowrap">
+                <Can permission="records.write">
+                  <button className="btn-ghost btn-sm" onClick={() => setEditando(u)}>Editar</button>
+                  {!u.isMain && <button className="btn-ghost btn-sm text-muted" onClick={() => setRemover(u)} disabled={u.deviceCount > 0} title={u.deviceCount > 0 ? 'Tem aparelhos: mova-os antes de remover' : 'Remover'}><Trash2 size={14} /></button>}
+                </Can>
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+      <Can permission="records.write">
+        <div className="card p-4 flex flex-col gap-3">
+          <div className="eyebrow">Nova unidade</div>
+          <Campo label="Nome" dica="filial, loja, andar, ambulatório…"><input className="input" placeholder="Loja Simões Filho" value={nova} onChange={(e) => setNova(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && nova.trim() && adicionar()} /></Campo>
+          <button className="btn-primary self-start" disabled={busy || !nova.trim()} onClick={adicionar}>{busy ? <Spinner className="text-white" /> : <><Plus size={15} /> Cadastrar</>}</button>
+          {err && <div className="text-bad text-sm">{err}</div>}
+          <p className="text-[12.5px] text-muted">A <b>Matriz</b> existe em todo cliente e é a unidade padrão: aparelho movimentado sem unidade escolhida fica nela.</p>
+        </div>
+      </Can>
+      {editando && <UnidadeForm c={c} u={editando} onClose={() => setEditando(null)} onSaved={async () => { setEditando(null); await atualizar(); }} />}
+      <Confirmar open={!!remover} onClose={() => setRemover(null)} onConfirm={tirar} loading={busy} titulo="Remover unidade" botao="Remover" texto={<>A unidade <b>{remover?.name}</b> sai da lista de {c.tradeName}. O histórico das movimentações continua mostrando o nome dela.</>} />
+    </div>
+  );
+}
+
+function UnidadeForm({ c, u, onClose, onSaved }: { c: ClientFull; u: ClientUnit; onClose: () => void; onSaved: () => void }) {
+  const toast = useToast();
+  const [f, setF] = useState({ name: u.name, note: u.note ?? '' });
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const save = async () => {
+    setBusy(true); setErr('');
+    try { await api.clients.updateUnit(c.id, u.id, { name: f.name.trim(), note: f.note.trim() || null }); toast.push('ok', 'Unidade salva'); onSaved(); }
+    catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Modal open onClose={onClose} titulo={`Editar unidade ${u.name}`} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name.trim()} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
+      <div className="flex flex-col gap-3">
+        <Campo label="Nome" dica={u.deviceCount > 0 ? `os ${u.deviceCount} aparelho(s) desta unidade acompanham o nome novo` : undefined}><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Campo>
+        <Campo label="Observação" dica="endereço, referência…"><input className="input" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Campo>
+        {err && <div className="text-bad text-sm">{err}</div>}
+      </div>
+    </Modal>
   );
 }
 
@@ -480,28 +634,28 @@ function Anotacao({ texto }: { texto: string | null }) {
 }
 
 function Acessos({ c }: { c: ClientFull }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const lp = c.subscriptions.find((s) => s.productCode === 'linepbx' && s.active);
   const sz = c.subscriptions.find((s) => s.productCode === 'szchat' && s.active);
   // FOP2 e Omniboard são módulos do LinePBX
   const f2 = lp ? lp.modules.find((m) => m.moduleCode === 'fop2' && m.active) : undefined;
   const om = lp ? lp.modules.find((m) => m.moduleCode === 'omniboard' && m.active) : undefined;
   if (!lp && !sz) return <Vazio titulo="Sem acessos cadastrados" texto="Os acessos aparecem quando o cliente tem LinePBX (e seus módulos FOP2 e Omniboard) ou SZChat." />;
+  const ssh = linkSsh(c.links.ssh, user?.sshUser);
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {lp && (
         <div className="card p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX</Chip>{c.links.web && <a className="link text-sm" href={c.links.web} target="_blank" rel="noreferrer">abrir interface ↗</a>}</div>
-          {/* usuário e porta em campos próprios: na hora de abrir o PuTTY é isso que se digita,
-              e a linha ssh:// inteira só serve para quem clica no atalho do topo */}
+          {/* usuário e senha do SSH são de cada técnico (o mesmo em todo servidor), não do cliente */}
           <dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm">
             <dt className="text-muted">Hospedagem</dt><dd>{lp.settings?.hostingName ?? '—'}</dd>
             <dt className="text-muted">Endereço</dt><dd className="font-mono break-all">{lp.settings?.domain ?? '—'}</dd>
             <dt className="text-muted">IP</dt><dd className="font-mono">{lp.settings?.serverIp ?? '—'}</dd>
-            <dt className="text-muted">Usuário SSH</dt><dd className="font-mono">{lp.settings?.sshUser ?? '—'}</dd>
             <dt className="text-muted">Porta SSH</dt><dd className="font-mono tnum">{lp.settings?.sshPort ?? '—'}</dd>
+            <dt className="text-muted">Usuário SSH</dt><dd>{user?.sshUser ? <span className="font-mono">{user.sshUser} <span className="font-sans text-muted text-[12px]">(o seu)</span></span> : <Link className="link text-[13px]" to="/conta">defina o seu em Minha conta</Link>}</dd>
           </dl>
-          <Campo label="Senha SSH"><CampoSegredo secretId={lp.settings?.sshPassword?.secretId ?? null} hasSecret={!!lp.settings?.sshPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
+          {ssh && can('access.use') && <a className="btn-secondary btn-sm self-start" href={ssh}><Terminal size={13} /> Abrir SSH</a>}
           <Anotacao texto={lp.notes} />
         </div>
       )}
@@ -514,6 +668,7 @@ function Acessos({ c }: { c: ClientFull }) {
     </div>
   );
 }
+
 
 // ---------- Histórico ----------
 function Historico({ c }: { c: ClientFull }) {

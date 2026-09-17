@@ -2,7 +2,11 @@
  * Formatos dos dados que a interface recebe do servidor.
  * Espelham as respostas de apps/api. Se a API mudar, muda aqui — e o TypeScript aponta cada tela afetada.
  */
-export type Me = { id: string; name: string; email: string; roleId: string; roleName: string; roleKey: string | null; permissions: string[]; twoFactor: boolean; recoveryLeft: number };
+export type Me = {
+  id: string; name: string; email: string; roleId: string; roleName: string; roleKey: string | null; permissions: string[]; twoFactor: boolean; recoveryLeft: number;
+  /** O usuário SSH desta pessoa: entra no atalho "SSH" das fichas */
+  sshUser: string | null;
+};
 /** Resposta da entrada: ou entrou, ou falta o código de 6 dígitos. */
 export type Entrada = { needsCode: boolean; user: Me | null };
 
@@ -22,7 +26,7 @@ export type Links = { web: string | null; ssh: string | null; fop2: string | nul
 /** Um produto do cliente como aparece na lista: com data de ativação e os módulos ligados. */
 export type ClientProduct = ProductChip & { activatedAt: string | null; modules: Array<{ code: string; name: string; activatedAt: string | null }> };
 /** Servidor do LinePBX (só os dados que podem virar coluna; senha nunca vem aqui). */
-export type ClientServer = { hostingName: string | null; serverIp: string | null; domain: string | null; sshUser: string | null; sshPort: number | null };
+export type ClientServer = { hostingName: string | null; serverIp: string | null; domain: string | null; sshPort: number | null };
 
 export type ClientListItem = {
   id: string; tradeName: string; legalName: string; cnpj: string; archived: boolean; isInternal: boolean;
@@ -42,7 +46,9 @@ export type Subscription = {
   activatedAt: string | null; deactivatedAt: string | null; notes: string | null;
   settings: Record<string, any> | null; modules: SubscriptionModule[];
 };
-export type ClientFull = ClientListItem & { subscriptions: Subscription[] };
+export type ClientFull = ClientListItem & { subscriptions: Subscription[]; unitCount: number };
+/** Uma unidade do cliente (Matriz, filial, loja). */
+export type ClientUnit = { id: string; name: string; isMain: boolean; note: string | null; createdAt: string; deviceCount: number };
 
 export type Circuit = {
   id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; carrierName: string | null; channels: number;
@@ -64,18 +70,35 @@ export type Did = {
 };
 
 export type DeviceModel = {
-  id: string; code: string; name: string; categoryId: string | null; categoryName: string | null; imageUrl: string | null;
-  counts: { total: number; inStock: number; withClients: number; sold: number; inactive: number };
+  id: string; code: string; name: string; categoryId: string | null; categoryName: string | null;
+  /** Caminho da foto relativo à API (use `logoSrc()`), ou nulo */
+  imageUrl: string | null;
+  /** Valor de cada unidade deste modelo, em centavos */
+  valueCents: number | null;
+  /** `ownValue` = quantos aparelhos têm valor próprio, diferente do modelo */
+  counts: { total: number; inStock: number; withClients: number; sold: number; inactive: number; ownValue: number };
 };
 export type Device = {
-  /** `mac` é nulo em aparelho sem MAC; `macFormatted` já vem como "não aplicável" nesse caso */
+  /** `mac` é nulo em aparelho sem MAC; `identificacao` já vem pronta: MAC, N/S ou "não aplicável" */
   id: string; modelId: string; modelName: string; modelCode: string; mac: string | null; macFormatted: string; macSecondary: string | null;
-  clientId: string | null; clientName: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null;
-  history?: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; newCondition: string | null; note: string | null; userName: string; createdAt: string }>;
+  serialNumber: string | null; identificacao: string; identificacaoTipo: 'mac' | 'serie' | 'nenhum';
+  clientId: string | null; clientName: string | null; unit: string | null; currentModality: string | null; condition: string;
+  /** o valor que vale: o próprio, ou o do modelo */
+  valueCents: number | null;
+  /** só o valor próprio (vazio = usa o do modelo) */
+  ownValueCents: number | null;
+  modelValueCents: number | null;
+  modelImageUrl: string | null;
+  ip: string | null; location: string | null; note: string | null;
+  history?: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; unit: string | null; newCondition: string | null; note: string | null; userName: string; createdAt: string }>;
 };
 export type Movement = {
   id: string; modality: string; modalityName: string; fromClientId: string | null; fromName: string | null; toClientId: string | null; toName: string | null;
+  /** unidade do cliente de destino */
+  unit: string | null;
   newCondition: string | null; note: string | null; userName: string; createdAt: string; items: Array<{ modelName: string; quantity: number }>;
+  /** cada aparelho desta movimentação */
+  devices: Array<{ id: string; modelName: string; identificacao: string }>;
 };
 
 export type Dashboard = {
@@ -92,14 +115,22 @@ export type SearchResult = {
   clients: Array<{ id: string; name: string; legalName: string; cnpj: string }>;
   dids: Array<{ id: string; number: string; numberFormatted: string; clientName: string | null; circuitName: string | null }>;
   circuits: Array<{ id: string; name: string; code: string; carrierName: string | null }>;
-  devices: Array<{ id: string; mac: string | null; macFormatted: string; unit: string | null; modelName: string; clientName: string | null }>;
+  devices: Array<{ id: string; mac: string | null; serialNumber?: string | null; macFormatted: string; unit: string | null; modelName: string; clientName: string | null }>;
 };
 
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number; free?: number };
 export type Option = { id: string; name: string; isInternal?: boolean; internalCode?: string | null };
+/** Resposta do cadastro em massa */
+export type CadastroEmMassa = { created: number; modelName: string; tipo: 'mac' | 'serie' | 'nenhum' };
 export type CatalogItem = { id: string; name: string; active: boolean };
 export type ProductModule = { id: string; code: string; name: string; description: string | null; hasSettings: boolean; sortOrder: number; active: boolean };
-export type Product = { id: string; code: string; name: string; color: string; description: string | null; hasSettings: boolean; sortOrder: number; active: boolean; modules: ProductModule[] };
+export type Product = {
+  id: string; code: string; name: string; color: string; description: string | null; hasSettings: boolean; sortOrder: number; active: boolean; modules: ProductModule[];
+  /** o sistema depende dele (LinePBX, VoiceNet, Equipamentos): não pode ser excluído */
+  protegido?: boolean;
+  /** quantos clientes assinam hoje */
+  activeClients?: number;
+};
 export type User = { id: string; name: string; email: string; active: boolean; roleId: string; roleName: string; lastLoginAt: string | null };
 export type Role = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean; userCount: number };
 export type AuditItem = { id: string; action: string; entityType: string; entityId: string | null; summary: string; before: unknown; after: unknown; userName: string | null; createdAt: string };

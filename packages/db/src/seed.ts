@@ -116,17 +116,19 @@ if (demo) {
       const cid = newId();
       clientIds[c.t] = cid;
       await db.insert(s.clients).values({ id: cid, tradeName: c.t, legalName: c.l, cnpj: c.cnpj });
+      await db.insert(s.clientUnits).values({ id: newId(), clientId: cid, name: 'Matriz', isMain: true });
       for (const code of c.p) {
         const sid = newId();
-        await db.insert(s.subscriptions).values({ id: sid, clientId: cid, productId: prod[code]!, activatedAt: new Date(2024, 2 + c.p.indexOf(code), 15) });
+        // datas ao meio-dia UTC: é o mesmo dia em qualquer fuso do Brasil
+        await db.insert(s.subscriptions).values({ id: sid, clientId: cid, productId: prod[code]!, activatedAt: new Date(Date.UTC(2024, 2 + c.p.indexOf(code), 15, 12)) });
         if (code === 'linepbx') {
-          await db.insert(s.linepbxSettings).values({ subscriptionId: sid, hostingId: c.host ? hostings[c.host]! : null, serverIp: c.ip, domain: c.dom, sshUser: 'root', sshPort: 22 });
+          await db.insert(s.linepbxSettings).values({ subscriptionId: sid, hostingId: c.host ? hostings[c.host]! : null, serverIp: c.ip, domain: c.dom, sshPort: 22 });
         }
         for (const pm of c.m.filter((x) => x.startsWith(code + ':'))) {
           const mcode = pm.split(':')[1]!;
           const mod = modules.find((x) => x.productId === prod[code] && x.code === mcode)!;
           const smid = newId();
-          await db.insert(s.subscriptionModules).values({ id: smid, subscriptionId: sid, moduleId: mod.id, activatedAt: new Date(2024, 4 + c.m.indexOf(pm), 1) });
+          await db.insert(s.subscriptionModules).values({ id: smid, subscriptionId: sid, moduleId: mod.id, activatedAt: new Date(Date.UTC(2024, 4 + c.m.indexOf(pm), 1, 12)) });
           if (mcode === 'fop2') await db.insert(s.fop2Settings).values({ subscriptionModuleId: smid, adminExtension: '1000' });
           if (mcode === 'omniboard') await db.insert(s.omniboardSettings).values({ subscriptionModuleId: smid, adminLogin: 'admin@' + c.t.toLowerCase().replace(/\W+/g, '') + '.com.br' });
         }
@@ -161,9 +163,9 @@ if (demo) {
     // inventário
     const mGx = newId(), mHs = newId(), mTip = newId();
     await db.insert(s.deviceModels).values([
-      { id: mGx, code: 'gxp1610', name: 'Grandstream GXP1610', categoryId: cats['Telefone IP']! },
-      { id: mHs, code: 'headset', name: 'Headset Genérico', categoryId: cats['Periférico']! },
-      { id: mTip, code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: cats['Telefone IP']! },
+      { id: mGx, code: 'gxp1610', name: 'Grandstream GXP1610', categoryId: cats['Telefone IP']!, valueCents: 45000 },
+      { id: mHs, code: 'headset', name: 'Headset Genérico', categoryId: cats['Periférico']!, valueCents: 9000 },
+      { id: mTip, code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: cats['Telefone IP']!, valueCents: 38000 },
     ]);
     const devs: (typeof s.devices.$inferInsert)[] = [];
     // [cliente, quantidade, unidades onde ficam os aparelhos]
@@ -174,17 +176,22 @@ if (demo) {
       ['Home Care Viver Bem', 4, ['Sede']],
     ];
     let n = 0;
-    for (const [cli, q, unidades] of locados) for (let i = 0; i < q; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), clientId: clientIds[cli]!, unit: unidades[i % unidades.length]!, currentModality: 'locacao', condition: 'ativo', valueCents: 45000 });
-    for (let i = 0; i < 12; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), condition: i === 11 ? 'inativo' : 'ativo', valueCents: 45000 });
-    for (let i = 0; i < 3; i++, n++) devs.push({ id: newId(), modelId: mTip, mac: ('1C61B4' + (0x200000 + n).toString(16).toUpperCase().slice(-6)), condition: 'ativo', valueCents: 38000 });
-    // headset não tem MAC: cada unidade é uma linha com o MAC vazio
-    for (let i = 0; i < 28; i++) devs.push({ id: newId(), modelId: mHs, mac: null, condition: 'ativo', valueCents: 9000 });
-    for (let i = 0; i < 4; i++) devs.push({ id: newId(), modelId: mHs, mac: null, clientId: clientIds['Hospital Vale Verde']!, unit: 'Unidade Centro', currentModality: 'locacao', condition: 'ativo', valueCents: 9000 });
+    for (const [cli, q, unidades] of locados) for (let i = 0; i < q; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), clientId: clientIds[cli]!, unit: unidades[i % unidades.length]!, currentModality: 'locacao', condition: 'ativo' });
+    for (let i = 0; i < 12; i++, n++) devs.push({ id: newId(), modelId: mGx, mac: ('000B82' + (0x100000 + n).toString(16).toUpperCase().slice(-6)), condition: i === 11 ? 'inativo' : 'ativo' });
+    // o valor é do modelo; só este TIP 125i tem valor próprio, para mostrar a diferença
+    for (let i = 0; i < 3; i++, n++) devs.push({ id: newId(), modelId: mTip, mac: ('1C61B4' + (0x200000 + n).toString(16).toUpperCase().slice(-6)), condition: 'ativo', valueCents: i === 0 ? 35000 : null });
+    // headset não tem MAC: cada unidade é uma linha com o MAC vazio; alguns têm número de série
+    for (let i = 0; i < 28; i++) devs.push({ id: newId(), modelId: mHs, mac: null, serialNumber: i < 6 ? `HS2026${String(i + 1).padStart(4, '0')}` : null, condition: 'ativo' });
+    for (let i = 0; i < 4; i++) devs.push({ id: newId(), modelId: mHs, mac: null, clientId: clientIds['Hospital Vale Verde']!, unit: 'Unidade Centro', currentModality: 'locacao', condition: 'ativo' });
     await db.insert(s.devices).values(devs);
+    // as unidades usadas nos aparelhos ficam cadastradas nos clientes
+    for (const [cli, , unidades] of locados) {
+      await db.insert(s.clientUnits).values([...new Set(unidades)].map((u) => ({ id: newId(), clientId: clientIds[cli]!, name: u })));
+    }
     // movimentações de exemplo (uma por cliente com aparelho)
     for (const [cli] of locados) {
       const mid = newId();
-      await db.insert(s.deviceMovements).values({ id: mid, modality: 'locacao', fromClientId: null, toClientId: clientIds[cli]!, newCondition: 'ativo', userId: admin.id, createdAt: new Date(2026, 7, 10 + locados.findIndex((x) => x[0] === cli)) });
+      await db.insert(s.deviceMovements).values({ id: mid, modality: 'locacao', fromClientId: null, toClientId: clientIds[cli]!, unit: locados.find((x) => x[0] === cli)![2][0]!, newCondition: 'ativo', userId: admin.id, createdAt: new Date(2026, 7, 10 + locados.findIndex((x) => x[0] === cli)) });
       const items = devs.filter((d) => d.clientId === clientIds[cli]).map((d) => ({ id: newId(), movementId: mid, modelId: d.modelId!, deviceId: d.id! }));
       await db.insert(s.deviceMovementItems).values(items);
     }

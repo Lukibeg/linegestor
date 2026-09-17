@@ -5,7 +5,7 @@ import argon2 from 'argon2';
 import qrcode from 'qrcode';
 import { eq } from 'drizzle-orm';
 import { roles, users } from '@gestor/db';
-import { CodigoSegundaEtapaSchema, DesligarSegundaEtapaSchema, LoginSchema } from '@gestor/shared';
+import { CodigoSegundaEtapaSchema, DesligarSegundaEtapaSchema, LoginSchema, MinhaContaSchema } from '@gestor/shared';
 import { BadRequest, Unauthorized } from '../plugins/errors.js';
 import * as duasEtapas from '../services/twofactor.js';
 
@@ -14,6 +14,8 @@ const MeSchema = z.object({
   /** Se esta conta usa o código de 6 dígitos, e quantos códigos de recuperação sobraram */
   twoFactor: z.boolean().default(false),
   recoveryLeft: z.number().default(0),
+  /** O usuário SSH desta pessoa, que entra no atalho "SSH" das fichas */
+  sshUser: z.string().nullable().default(null),
 });
 
 /**
@@ -23,9 +25,10 @@ const MeSchema = z.object({
  */
 const EntradaSchema = z.object({ needsCode: z.boolean(), user: MeSchema.nullable() });
 
-const comoMe = (u: { id: string; name: string; email: string; roleId: string; roleName: string; roleKey: string | null; permissions: string[]; totpEnabledAt?: Date | null; totpRecovery?: string | null }) => ({
+const comoMe = (u: { id: string; name: string; email: string; roleId: string; roleName: string; roleKey: string | null; permissions: string[]; totpEnabledAt?: Date | null; totpRecovery?: string | null; sshUser?: string | null }) => ({
   id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: u.roleName, roleKey: u.roleKey, permissions: u.permissions,
   twoFactor: !!u.totpEnabledAt, recoveryLeft: duasEtapas.quantosRestam(u.totpRecovery ?? null),
+  sshUser: u.sshUser ?? null,
 });
 
 const routes: FastifyPluginAsyncZod = async (app) => {
@@ -34,7 +37,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     schema: { tags: ['Sessão'], summary: 'Entrar com e-mail e senha', body: LoginSchema, response: { 200: EntradaSchema } },
   }, async (req, reply) => {
     const [u] = await app.db
-      .select({ id: users.id, name: users.name, email: users.email, passwordHash: users.passwordHash, active: users.active, roleId: users.roleId, roleName: roles.name, roleKey: roles.key, permissions: roles.permissions, totpEnabledAt: users.totpEnabledAt, totpRecovery: users.totpRecovery })
+      .select({ id: users.id, name: users.name, email: users.email, passwordHash: users.passwordHash, active: users.active, roleId: users.roleId, roleName: roles.name, roleKey: roles.key, permissions: roles.permissions, totpEnabledAt: users.totpEnabledAt, totpRecovery: users.totpRecovery, sshUser: users.sshUser })
       .from(users).innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.email, req.body.email)).limit(1);
     // mesma mensagem para "não existe" e "senha errada": não revelar quais e-mails existem
     if (!u || !u.active || !(await argon2.verify(u.passwordHash, req.body.password))) {
@@ -65,7 +68,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     }
     await app.confirmSession(req);
     const [u] = await app.db
-      .select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, roleName: roles.name, roleKey: roles.key, permissions: roles.permissions, totpEnabledAt: users.totpEnabledAt, totpRecovery: users.totpRecovery })
+      .select({ id: users.id, name: users.name, email: users.email, roleId: users.roleId, roleName: roles.name, roleKey: roles.key, permissions: roles.permissions, totpEnabledAt: users.totpEnabledAt, totpRecovery: users.totpRecovery, sshUser: users.sshUser })
       .from(users).innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.id, pendente)).limit(1);
     if (!u) throw new Unauthorized();
     await app.db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, u.id));
@@ -85,8 +88,19 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.get('/me', { schema: { tags: ['Sessão'], summary: 'Quem está logado e o que pode fazer', response: { 200: MeSchema } } }, async (req) => {
     if (!req.user) throw new Unauthorized();
-    const [u] = await app.db.select({ totpEnabledAt: users.totpEnabledAt, totpRecovery: users.totpRecovery }).from(users).where(eq(users.id, req.user.id)).limit(1);
+    const [u] = await app.db.select({ totpEnabledAt: users.totpEnabledAt, totpRecovery: users.totpRecovery, sshUser: users.sshUser }).from(users).where(eq(users.id, req.user.id)).limit(1);
     return comoMe({ ...req.user, ...u });
+  });
+
+  app.patch('/me', {
+    preHandler: app.requireLogin,
+    schema: { tags: ['Sessão'], summary: 'Ajustar a própria conta (usuário SSH)', body: MinhaContaSchema, response: { 200: MeSchema } },
+  }, async (req) => {
+    const sshUser = req.body.sshUser?.trim() || null;
+    await app.db.update(users).set({ sshUser, updatedAt: new Date() }).where(eq(users.id, req.user!.id));
+    await app.audit(req, { action: 'update', entityType: 'user', entityId: req.user!.id, summary: `${req.user!.name} ${sshUser ? `definiu o próprio usuário SSH (${sshUser})` : 'tirou o próprio usuário SSH'}` });
+    const [u] = await app.db.select({ totpEnabledAt: users.totpEnabledAt, totpRecovery: users.totpRecovery, sshUser: users.sshUser }).from(users).where(eq(users.id, req.user!.id)).limit(1);
+    return comoMe({ ...req.user!, ...u });
   });
 
   // ---------- verificação em duas etapas, na própria conta ----------
