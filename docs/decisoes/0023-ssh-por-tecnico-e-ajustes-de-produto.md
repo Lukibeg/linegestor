@@ -2,6 +2,8 @@
 
 ## Usuário e senha do SSH saem do cliente
 
+> **Revisto pela 0024:** o botão SSH saiu de vez, e com ele o "Seu usuário SSH" de Minha conta.
+
 Cada técnico entra nos servidores com **o próprio usuário**, o mesmo em todos. Guardar usuário e
 senha SSH por cliente não fazia sentido. Agora:
 

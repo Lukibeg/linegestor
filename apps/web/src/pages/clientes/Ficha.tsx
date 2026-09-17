@@ -1,17 +1,17 @@
 /**
  * Ficha do cliente: uma página com endereço próprio e abas.
- * Visão geral · Acessos · DIDs · Equipamentos · Unidades · Produtos · Histórico
+ * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Unidades · Histórico
  */
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Archive, ChevronDown, ChevronRight, ExternalLink, Pencil, Plus, Star, Terminal, Trash2 } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, ExternalLink, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { ClientFull, ClientUnit, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, Identificacao, LogoCliente, mensagemErro, Modal, Spinner, usePaginaLocal, Vazio, useToast } from '../../components/ui/index.js';
-import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, diaParaIso, hojeCampoData, intervalo, linkSsh, MODALIDADES, paraCampoData, reais } from '../../lib/format.js';
+import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, diaParaIso, hojeCampoData, intervalo, MODALIDADES, paraCampoData, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { paraALista, Voltar } from '../../lib/voltar.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
@@ -26,7 +26,7 @@ export function ClienteFicha() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
-  const { can, user } = useAuth();
+  const { can } = useAuth();
   const q = useQuery({ queryKey: ['client', id], queryFn: () => api.clients.get(id) });
   const [editar, setEditar] = useState(false);
   const [excluir, setExcluir] = useState(false);
@@ -47,7 +47,6 @@ export function ClienteFicha() {
       sub={<span>{c.legalName} · <span className="font-mono">{cnpjFormatado(c.cnpj)}</span></span>}
       acoes={<>
         {c.links.web && <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary"><ExternalLink size={15} /> Abrir</a>}
-        {c.links.ssh && can('access.use') && <a href={linkSsh(c.links.ssh, user?.sshUser)!} className="btn-secondary" title={user?.sshUser ? `Abre o PuTTY como ${user.sshUser}` : 'Abre o PuTTY. Dica: defina o seu usuário SSH em Minha conta para ele já vir preenchido.'}><Terminal size={15} /> SSH</a>}
         <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button><button className="btn-ghost" onClick={toggleArchive}><Archive size={15} /> {c.archived ? 'Desarquivar' : 'Arquivar'}</button></Can>
         <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)}><Trash2 size={15} /></button></Can>
       </>}
@@ -55,15 +54,15 @@ export function ClienteFicha() {
       <Abas atual={aba} onChange={(a) => setSp({ aba: a }, { replace: true })} abas={[
         { id: 'geral', label: 'Visão geral' }, { id: 'acessos', label: 'Acessos' },
         { id: 'dids', label: <>DIDs <span className="text-muted">({c.didCount})</span></> }, { id: 'equipamentos', label: <>Equipamentos <span className="text-muted">({c.deviceCount})</span></> },
-        { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> },
-        { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> }, ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
+        { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> },
+        { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> }, ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
       ]} />
       {aba === 'geral' && <Geral c={c} />}
       {aba === 'acessos' && <Acessos c={c} />}
       {aba === 'dids' && <Dids c={c} />}
       {aba === 'equipamentos' && <Equipamentos c={c} />}
-      {aba === 'unidades' && <Unidades c={c} />}
       {aba === 'produtos' && <Produtos c={c} />}
+      {aba === 'unidades' && <Unidades c={c} />}
       {aba === 'historico' && <Historico c={c} />}
       <ClienteForm open={editar} onClose={() => setEditar(false)} cliente={c} onSaved={() => setEditar(false)} />
       <Confirmar open={excluir} onClose={() => setExcluir(false)} onConfirm={doDelete} loading={busy} perigoso digitar={c.tradeName} titulo="Mandar para a lixeira" botao="Mandar para a lixeira" texto={<>O cliente <b>{c.tradeName}</b> sai de todas as listas. Os {c.didCount} DIDs continuam alocados a ele e os {c.deviceCount} aparelhos continuam registrados — nada é apagado. Dá para restaurar em Administração → Lixeira.</>} />
@@ -279,7 +278,7 @@ function ProdutoForm({ c, code, sub, onClose }: { c: ClientFull; code: string; s
               <Campo label="Porta SSH"><input className="input font-mono tnum" value={f.sshPort} onChange={(e) => setF({ ...f, sshPort: e.target.value })} /></Campo>
             </div>
             {/* usuário e senha do SSH não ficam no cliente: cada técnico usa o seu, que é o mesmo em todos os servidores */}
-            <p className="text-[12.5px] text-muted">Usuário e senha do SSH são de cada técnico, não do cliente. O seu usuário fica em <Link className="link" to="/conta">Minha conta</Link>.</p>
+            <p className="text-[12.5px] text-muted">Usuário e senha do SSH são de cada técnico, não do cliente.</p>
           </fieldset>
         )}
         {code === 'szchat' && (<>
@@ -634,28 +633,26 @@ function Anotacao({ texto }: { texto: string | null }) {
 }
 
 function Acessos({ c }: { c: ClientFull }) {
-  const { can, user } = useAuth();
+  const { can } = useAuth();
   const lp = c.subscriptions.find((s) => s.productCode === 'linepbx' && s.active);
   const sz = c.subscriptions.find((s) => s.productCode === 'szchat' && s.active);
   // FOP2 e Omniboard são módulos do LinePBX
   const f2 = lp ? lp.modules.find((m) => m.moduleCode === 'fop2' && m.active) : undefined;
   const om = lp ? lp.modules.find((m) => m.moduleCode === 'omniboard' && m.active) : undefined;
   if (!lp && !sz) return <Vazio titulo="Sem acessos cadastrados" texto="Os acessos aparecem quando o cliente tem LinePBX (e seus módulos FOP2 e Omniboard) ou SZChat." />;
-  const ssh = linkSsh(c.links.ssh, user?.sshUser);
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {lp && (
         <div className="card p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX</Chip>{c.links.web && <a className="link text-sm" href={c.links.web} target="_blank" rel="noreferrer">abrir interface ↗</a>}</div>
-          {/* usuário e senha do SSH são de cada técnico (o mesmo em todo servidor), não do cliente */}
+          {/* usuário e senha do SSH são de cada técnico (o mesmo em todo servidor), não do cliente;
+              fica só a porta, que é do servidor */}
           <dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm">
             <dt className="text-muted">Hospedagem</dt><dd>{lp.settings?.hostingName ?? '—'}</dd>
             <dt className="text-muted">Endereço</dt><dd className="font-mono break-all">{lp.settings?.domain ?? '—'}</dd>
             <dt className="text-muted">IP</dt><dd className="font-mono">{lp.settings?.serverIp ?? '—'}</dd>
             <dt className="text-muted">Porta SSH</dt><dd className="font-mono tnum">{lp.settings?.sshPort ?? '—'}</dd>
-            <dt className="text-muted">Usuário SSH</dt><dd>{user?.sshUser ? <span className="font-mono">{user.sshUser} <span className="font-sans text-muted text-[12px]">(o seu)</span></span> : <Link className="link text-[13px]" to="/conta">defina o seu em Minha conta</Link>}</dd>
           </dl>
-          {ssh && can('access.use') && <a className="btn-secondary btn-sm self-start" href={ssh}><Terminal size={13} /> Abrir SSH</a>}
           <Anotacao texto={lp.notes} />
         </div>
       )}

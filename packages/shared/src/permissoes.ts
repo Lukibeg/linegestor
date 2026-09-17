@@ -9,12 +9,12 @@
 
 export const PERMISSIONS = {
   'records.read': 'Ver clientes, circuitos, DIDs e inventário',
-  'access.use': 'Usar os atalhos de acesso (web, SSH, FOP2)',
+  'access.use': 'Usar os atalhos de acesso (web, FOP2)',
   'notes.edit': 'Editar anotações e observações',
   'dids.assign': 'Alocar e liberar DIDs, inclusive em massa',
   'devices.move': 'Movimentar aparelhos (locar, vender, emprestar, devolver)',
   'records.write': 'Criar e editar clientes, produtos assinados e circuitos',
-  'servers.write': 'Editar dados de servidor (IP, domínio, SSH)',
+  'servers.write': 'Editar dados de servidor (IP, domínio, porta SSH)',
   'secrets.reveal': 'Revelar uma senha guardada (fica registrado)',
   'records.delete': 'Excluir (mandar para a lixeira) e restaurar',
   'data.import': 'Importar CSV',

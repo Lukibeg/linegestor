@@ -65,16 +65,6 @@ export function hojeCampoData(): string {
   return diaLocal(new Date().toISOString());
 }
 
-/**
- * O atalho SSH vem do servidor sem usuário ("ssh://servidor:22"); aqui entra o usuário SSH
- * de quem está usando o sistema (Minha conta), e vira "ssh://lucas@servidor:22".
- */
-export function linkSsh(link: string | null | undefined, usuario: string | null | undefined): string | null {
-  if (!link) return null;
-  if (!usuario || link.includes('@')) return link;
-  return link.replace(/^ssh:\/\//, `ssh://${encodeURIComponent(usuario)}@`);
-}
-
 /** Centavos → texto para campo de valor ("358,80"), ou vazio. */
 export function centavosParaCampo(c: number | null | undefined): string {
   return c != null ? (c / 100).toFixed(2).replace('.', ',') : '';

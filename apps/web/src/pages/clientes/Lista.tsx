@@ -6,13 +6,13 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, ExternalLink, LayoutGrid, List, Package, Plus, Puzzle, Terminal } from 'lucide-react';
+import { Check, ExternalLink, LayoutGrid, List, Package, Plus, Puzzle } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { ClientListItem, Product } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
-import { Can, useAuth } from '../../lib/auth.js';
+import { Can } from '../../lib/auth.js';
 import { Carregando, Chip, LogoCliente, Paginacao, TODOS, Toggle, Vazio } from '../../components/ui/index.js';
-import { cnpjFormatado, data, linkSsh, relativo } from '../../lib/format.js';
+import { cnpjFormatado, data, relativo } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
 import { FiltroEmBotao, type GrupoFiltro } from '../../lib/filtros.js';
@@ -76,18 +76,14 @@ function montarColunas(produtos: Product[]): Coluna<ClientListItem>[] {
 }
 
 /**
- * Os dois atalhos do cartão: **Abrir** leva ao endereço do servidor no navegador e
- * **SSH** abre o PuTTY no computador (ver docs/guia-de-uso/ssh-com-putty.md).
+ * O atalho do cartão: **Abrir** leva ao endereço do servidor no navegador.
+ * (O botão SSH saiu a pedido do Luan — decisão 0024.)
  */
 function Atalhos({ c }: { c: ClientListItem }) {
-  const { user } = useAuth();
   if (!c.links.web) return <span className="text-muted italic text-[12.5px]">servidor não configurado</span>;
-  // o usuário do SSH é o de quem está usando o sistema (Minha conta), não do cliente
-  const ssh = linkSsh(c.links.ssh, user?.sshUser);
   return (
     <span className="flex gap-1" onClick={(e) => e.stopPropagation()}>
       <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary btn-sm" title={c.links.web}><ExternalLink size={13} /> Abrir</a>
-      {ssh && <a href={ssh} className="btn-secondary btn-sm" title={`${ssh} — abre o PuTTY`}><Terminal size={13} /> SSH</a>}
     </span>
   );
 }

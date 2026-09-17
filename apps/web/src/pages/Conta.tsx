@@ -1,9 +1,9 @@
 /**
- * Minha conta: trocar a própria senha, ligar a verificação em duas etapas e dizer qual é o
- * seu usuário SSH. Cada pessoa cuida da sua — ninguém mexe na de outra por aqui.
+ * Minha conta: trocar a própria senha e ligar a verificação em duas etapas.
+ * Cada pessoa cuida da sua — ninguém mexe na de outra por aqui.
  */
 import { useState } from 'react';
-import { KeyRound, ShieldCheck, ShieldOff, Smartphone, Terminal } from 'lucide-react';
+import { KeyRound, ShieldCheck, ShieldOff, Smartphone } from 'lucide-react';
 import { api } from '../api/index.js';
 import { useAuth } from '../lib/auth.js';
 import { Pagina } from '../components/layout/AppShell.js';
@@ -17,43 +17,8 @@ export function Conta() {
       <div className="grid gap-4 md:grid-cols-2 items-start">
         <DuasEtapas ligado={user.twoFactor} restam={user.recoveryLeft} aoMudar={refresh} />
         <TrocarSenha />
-        <UsuarioSsh atual={user.sshUser} aoMudar={refresh} />
       </div>
     </Pagina>
-  );
-}
-
-// ---------- usuário SSH ----------
-
-/**
- * Cada técnico tem o próprio usuário SSH, o mesmo em todos os servidores. Guardado aqui, ele
- * entra sozinho no botão "SSH" de qualquer cliente: o PuTTY já abre pedindo só a senha.
- */
-function UsuarioSsh({ atual, aoMudar }: { atual: string | null; aoMudar: () => Promise<void> }) {
-  const toast = useToast();
-  const [v, setV] = useState(atual ?? '');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const salvar = async () => {
-    setBusy(true); setErr('');
-    try { await api.auth.updateMe({ sshUser: v.trim() || null }); await aoMudar(); toast.push('ok', v.trim() ? 'Usuário SSH salvo' : 'Usuário SSH removido'); }
-    catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
-  };
-  return (
-    <div className="card p-5">
-      <div className="flex items-start gap-3">
-        <span className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${atual ? 'bg-ok-soft text-ok' : 'bg-surface-2 text-muted'}`}><Terminal size={18} /></span>
-        <div className="flex-1 min-w-0">
-          <h2 className="font-display font-semibold">Seu usuário SSH</h2>
-          <p className="text-sm text-ink-2 mt-1">É o usuário com que você entra nos servidores — o mesmo em todos. Com ele aqui, o botão <b>SSH</b> das fichas já abre o PuTTY com o seu usuário. A senha continua só com você.</p>
-          <div className="flex gap-2 mt-3 max-w-sm">
-            <input className="input font-mono" placeholder="ex.: lucas" value={v} onChange={(e) => setV(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && salvar()} aria-label="Seu usuário SSH" />
-            <button className="btn-primary" disabled={busy || (v.trim() || null) === atual} onClick={salvar}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button>
-          </div>
-          {err && <div className="text-bad text-sm mt-2">{err}</div>}
-        </div>
-      </div>
-    </div>
   );
 }
 
