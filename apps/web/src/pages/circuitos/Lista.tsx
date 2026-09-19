@@ -16,7 +16,6 @@ import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
 import { Numeracao } from '../dids/Lista.js';
-import { BarrasRanking } from '../../components/graficos.js';
 
 type Aba = 'circuitos' | 'numeracao';
 
@@ -73,34 +72,6 @@ export function CircuitosLista() {
           <span className="flex-1" />
           <Toggle checked={terceiros} onChange={(v) => set('terceiros', v ? '1' : null)} label="Habilitar links de terceiros" />
         </div>
-        {/* quem está mais cheio: a ocupação de numeração, do mais apertado para o mais folgado */}
-        {(lista.data?.items.filter((c) => c.dids.total > 0).length ?? 0) > 1 && (
-          <section className="card p-4 mb-4">
-            <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-              <h2 className="font-display font-semibold">Quem está mais cheio</h2>
-              <span className="text-[12px] text-muted">% da numeração já com cliente. Clique para abrir o circuito.</span>
-            </div>
-            <BarrasRanking
-              larguraRotulo="w-[190px]"
-              maximo={100}
-              formatar={(v) => `${v}%`}
-              acao={(id) => nav(`/circuitos/${id}`)}
-              dados={(lista.data?.items ?? [])
-                .filter((c) => c.dids.total > 0)
-                .map((c) => ({
-                  id: c.id,
-                  valor: Math.round((c.dids.assigned / c.dids.total) * 100),
-                  // a mesma leitura da coluna "Ocupação" da tabela: perto do limite acende
-                  tom: (c.dids.assigned / c.dids.total >= 0.9 ? 'signal' : 'ok') as 'signal' | 'ok',
-                  rotulo: c.name,
-                  titulo: `${c.dids.assigned} de ${c.dids.total} com cliente · ${c.dids.free} livre(s) · ${c.channels} canais`,
-                }))
-                .sort((a, b) => b.valor - a.valor)
-                .slice(0, 10)}
-            />
-          </section>
-        )}
-
         {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhum circuito" texto="Cadastre o feixe contratado junto à operadora." /> : (
           <div className="card overflow-x-auto"><table className="table">
             <thead><tr>
