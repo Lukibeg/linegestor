@@ -36,6 +36,11 @@ export function ProjetoFicha() {
   const [aberto, setAberto] = useState<string | null>(null);
   const [travando, setTravando] = useState<ClienteDoProjeto | null>(null);
   const [tirar, setTirar] = useState<ClienteDoProjeto | null>(null);
+  /** Como mostrar "Como está cada passo": cartões (números grandes) ou barras (proporção). */
+  const [visao, setVisao] = useState<'cartoes' | 'barras'>(() => {
+    try { return localStorage.getItem('gestor.projeto.passos') === 'barras' ? 'barras' : 'cartoes'; } catch { return 'cartoes'; }
+  });
+  useEffect(() => { try { localStorage.setItem('gestor.projeto.passos', visao); } catch { /* sem storage */ } }, [visao]);
 
   const alternarEtapa = (stepId: string, valor: string) =>
     setFiltro((f) => (f?.tipo === 'etapa' && f.stepId === stepId && f.valor === valor ? null : { tipo: 'etapa', stepId, valor }));
@@ -115,45 +120,74 @@ export function ProjetoFicha() {
       {/* ---------- como está cada passo ---------- */}
       {r.porEtapa.length > 0 && r.total > 0 && (
         <section className="card p-4 mt-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
             <h2 className="font-display font-semibold">Como está cada passo</h2>
-            <span className="text-[12px] text-muted">Clique num número para ver só esses clientes.</span>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] text-muted hidden sm:inline">Clique num número para ver só esses clientes.</span>
+              {/* dois jeitos de ler a mesma coisa: cartões (números grandes) ou barras (proporção) */}
+              <div className="flex rounded-lg border border-line overflow-hidden">
+                {(['cartoes', 'barras'] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setVisao(v)}
+                    className={`px-2 py-1 text-[12px] ${visao === v ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-muted hover:bg-surface-2'}`}>
+                    {v === 'cartoes' ? 'Cartões' : 'Barras'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-          <div className="flex flex-col gap-3">
+
+          <div className={visao === 'cartoes' ? 'flex flex-col gap-4' : 'flex flex-col gap-3'}>
             {r.porEtapa.map((e) => (
               <div key={e.stepId}>
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1.5">
                   <span className="text-sm font-semibold">{e.title}</span>
                   <span className="text-[12px] text-muted tnum">{e.resolvidas} de {e.total} resolvido(s)</span>
                 </div>
 
-                {/* a barra: uma faixa por opção, na cor dela */}
-                <div className="flex h-2.5 rounded-full overflow-hidden bg-surface-2 my-1.5">
-                  {e.faixas.filter((f) => f.n > 0).map((f) => (
-                    <button
-                      key={f.valor || 'vazio'}
-                      type="button"
-                      onClick={() => alternarEtapa(e.stepId, f.valor)}
-                      style={{ width: `${(f.n / Math.max(e.total, 1)) * 100}%` }}
-                      className={`h-full ${FAIXA[f.tone]} hover:opacity-80`}
-                      title={`${f.label}: ${f.n}`}
-                      aria-label={`${e.title} — ${f.label}: ${f.n}`}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex flex-wrap gap-1.5">
-                  {e.faixas.map((f) => {
-                    const ativo = filtro?.tipo === 'etapa' && filtro.stepId === e.stepId && filtro.valor === f.valor;
-                    return (
-                      <button key={f.valor || 'vazio'} type="button" onClick={() => alternarEtapa(e.stepId, f.valor)}
-                        className={`rounded-full px-2 py-0.5 text-[12px] border ${ativo ? 'ring-2 ring-accent' : ''} ${f.n === 0 ? 'opacity-50' : ''} ${CHIP_SELECT[f.tone]}`}
-                        title={f.conclui ? 'Esta opção resolve a etapa' : 'Esta opção deixa a etapa em aberto'}>
-                        {f.label}{f.conclui ? ' ✓' : ''} <b className="tnum">{f.n}</b>
-                      </button>
-                    );
-                  })}
-                </div>
+                {visao === 'cartoes' ? (
+                  /* um cartão por opção: o número grande, o rótulo embaixo, ✓ nas que resolvem */
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                    {e.faixas.map((f) => (
+                      <Numero
+                        key={f.valor || 'vazio'}
+                        valor={f.n}
+                        tone={f.n === 0 ? 'muted' : f.tone}
+                        label={<span className="flex items-center gap-1">{f.label}{f.conclui && <span className="text-ok" title="resolve a etapa">✓</span>}</span>}
+                        ativo={filtro?.tipo === 'etapa' && filtro.stepId === e.stepId && filtro.valor === f.valor}
+                        onClick={() => alternarEtapa(e.stepId, f.valor)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <>
+                    {/* a barra: uma faixa por opção, na cor dela */}
+                    <div className="flex h-2.5 rounded-full overflow-hidden bg-surface-2 mb-1.5">
+                      {e.faixas.filter((f) => f.n > 0).map((f) => (
+                        <button
+                          key={f.valor || 'vazio'}
+                          type="button"
+                          onClick={() => alternarEtapa(e.stepId, f.valor)}
+                          style={{ width: `${(f.n / Math.max(e.total, 1)) * 100}%` }}
+                          className={`h-full ${FAIXA[f.tone]} hover:opacity-80`}
+                          title={`${f.label}: ${f.n}`}
+                          aria-label={`${e.title} — ${f.label}: ${f.n}`}
+                        />
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {e.faixas.map((f) => {
+                        const ativo = filtro?.tipo === 'etapa' && filtro.stepId === e.stepId && filtro.valor === f.valor;
+                        return (
+                          <button key={f.valor || 'vazio'} type="button" onClick={() => alternarEtapa(e.stepId, f.valor)}
+                            className={`rounded-full px-2 py-0.5 text-[12px] border ${ativo ? 'ring-2 ring-accent' : ''} ${f.n === 0 ? 'opacity-50' : ''} ${CHIP_SELECT[f.tone]}`}
+                            title={f.conclui ? 'Esta opção resolve a etapa' : 'Esta opção deixa a etapa em aberto'}>
+                            {f.label}{f.conclui ? ' ✓' : ''} <b className="tnum">{f.n}</b>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>

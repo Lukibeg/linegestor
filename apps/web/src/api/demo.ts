@@ -735,20 +735,17 @@ export const demoApi: Api = {
       const didNo = new Set(ds.filter((d) => d.clientId && !activeSubs(d.clientId).some((s) => s.productCode === 'voicenet')).map((d) => d.clientId)).size; if (didNo) alerts.push({ kind: 'did_sem_voicenet', severity: 'warning', message: 'Clientes com DIDs alocados mas sem o produto VoiceNet', count: didNo, link: '/circuitos?aba=numeracao' });
       const zero = circuits.filter((c) => c.channels === 0 && c.total > 0).length; if (zero) alerts.push({ kind: 'circuito_sem_canais', severity: 'critical', message: 'Circuitos com DIDs mas 0 canais cadastrados', count: zero, link: '/circuitos' });
       const inativos = dev.filter((d) => d.condition === 'inativo').length; if (inativos) alerts.push({ kind: 'aparelho_inativo', severity: 'warning', message: 'Aparelhos inativos', count: inativos, link: '/inventario?condicao=inativo' });
-      // os últimos 6 meses de movimentação, mês a mês (o gráfico do Painel)
-      const agora = new Date();
-      const movimentacoesPorMes = Array.from({ length: 6 }, (_, k) => {
-        const d0 = new Date(agora.getFullYear(), agora.getMonth() - (5 - k), 1);
-        const mes = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}`;
-        const doMes = S.movements.filter((m) => m.createdAt.slice(0, 7) === mes);
-        const porModalidade = Object.entries(
-          doMes.reduce<Record<string, number>>((a, m) => ({ ...a, [m.modality]: (a[m.modality] ?? 0) + 1 }), {}),
-        ).map(([modality, n]) => ({ modality, nome: (MODALIDADES as any)[modality] ?? modality, n })).sort((a, b) => b.n - a.n);
-        return { mes, total: doMes.length, porModalidade };
-      });
+      // quem está com mais valor nosso na mão (locação + comodato), para o gráfico do Painel
+      const porCliente = new Map<string, { clientId: string; nome: string; n: number; valorCents: number }>();
+      for (const d0 of dev.filter((x) => x.clientId && ['locacao', 'comodato'].includes(x.currentModality ?? ''))) {
+        const atual = porCliente.get(d0.clientId!) ?? { clientId: d0.clientId!, nome: S.clients.find((c) => c.id === d0.clientId)?.tradeName ?? '?', n: 0, valorCents: 0 };
+        atual.n += 1; atual.valorCents += valorDe(d0) ?? 0;
+        porCliente.set(d0.clientId!, atual);
+      }
+      const valorPorCliente = [...porCliente.values()].sort((a, b) => b.valorCents - a.valorCents).slice(0, 8);
 
       return {
-        movimentacoesPorMes,
+        valorPorCliente,
         clients: { active: active.length, byProduct: S.products.filter((p) => !p.deletedAt).map((p) => ({ code: p.code, name: p.name, color: p.color, n: active.filter((c) => activeSubs(c.id).some((s) => s.productCode === p.code)).length })) },
         dids: { total: ds.length, assigned: ds.filter((d) => d.clientId).length, free: ds.filter((d) => !d.clientId).length },
         circuits,

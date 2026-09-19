@@ -17,6 +17,7 @@ import { paraALista, Voltar } from '../../lib/voltar.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
 import { ClienteForm } from './Form.js';
 import { ChipSituacao } from '../projetos/partes.js';
+import { BarrasRanking } from '../../components/graficos.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'historico';
 
@@ -470,25 +471,19 @@ function AparelhosDoCliente({ c }: { c: ClientFull }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="card p-4">
           <div className="eyebrow mb-2">Por modelo{filtrado && <span className="text-muted"> · filtrado</span>}</div>
-          <ul className="text-sm flex flex-col gap-1">
-            {resumo.modelos.map(([nome, x]) => (
-              <li key={nome} className="flex justify-between gap-3 items-baseline">
-                <span className="truncate">{nome}</span>
-                <span className="font-mono tnum text-muted whitespace-nowrap">{x.qtd} und</span>
-              </li>
-            ))}
-          </ul>
+          <BarrasRanking
+            larguraRotulo="w-[150px]"
+            acao={(nome) => setFModelo(fModelo === nome ? '' : nome)}
+            dados={resumo.modelos.map(([nome, x]) => ({ id: nome, rotulo: nome, valor: x.qtd, titulo: `${x.qtd} aparelho(s) · ${reais(x.valor)}` }))}
+          />
         </div>
         <div className="card p-4">
           <div className="eyebrow mb-2">Valor por modelo{filtrado && <span className="text-muted"> · filtrado</span>}</div>
-          <ul className="text-sm flex flex-col gap-1">
-            {resumo.modelos.map(([nome, x]) => (
-              <li key={nome} className="flex justify-between gap-3 items-baseline">
-                <span className="truncate">{nome}</span>
-                <span className="tnum text-muted whitespace-nowrap">{reais(x.valor)}</span>
-              </li>
-            ))}
-          </ul>
+          <BarrasRanking
+            larguraRotulo="w-[150px]"
+            formatar={(v) => reais(v * 100)}
+            dados={[...resumo.modelos].sort((a, b) => b[1].valor - a[1].valor).map(([nome, x]) => ({ id: nome, rotulo: nome, valor: Math.round(x.valor / 100), titulo: `${x.qtd} aparelho(s) · ${reais(x.valor)}` }))}
+          />
         </div>
         <div className="card p-4">
           <div className="eyebrow">Total de equipamentos</div>

@@ -4,15 +4,17 @@
 de rosquinhas coloridas que ninguém lê — ou puxar uma biblioteca de 300 KB para desenhar quatro
 barras.
 
-**Decisão.** Um kit próprio, em `apps/web/src/components/graficos.tsx`, com **três formas e só três**,
-porque são as três perguntas que a operação faz:
+**Decisão.** Um kit próprio, em `apps/web/src/components/graficos.tsx`, com **duas formas**, porque
+são as perguntas que a operação faz:
 
-- **`BarrasTempo`** — "como foi cada mês?". Uma barra por mês; passar o mouse mostra a divisão
-  (Locação 3 · Devolução 1) embaixo, sem poluir o desenho.
 - **`BarrasRanking`** — "quem são os maiores?". Barras deitadas, já ordenadas, nome à esquerda e
-  número à direita.
+  número à direita. Clicável: leva para a lista já filtrada.
 - **`Proporcao`** — "quanto de um, quanto do outro?". Uma barra dividida, com os rótulos e os
   números logo abaixo.
+
+Uma terceira, `BarrasTempo` (uma barra por mês), foi feita e **descartada na primeira olhada**: o
+Luan não gostou, e o número que ela mostrava — quantas movimentações no mês — não muda decisão
+nenhuma no dia seguinte. Ficou a lição: gráfico que não responde pergunta de trabalho sai.
 
 **Uma cor por gráfico.** A identidade vem do rótulo escrito ao lado, não da cor — assim ninguém
 precisa distinguir verde de laranja para entender (e quem não distingue lê igual). Onde há duas ou
@@ -23,15 +25,21 @@ As cores saem das variáveis do tema (`--accent`, `--ok`, `--signal`), então o 
 sozinho, e o SVG/HTML é feito à mão: **nenhuma dependência nova**, nada baixado de fora — o que
 importa porque a prévia publicada não alcança CDN.
 
-**Onde entraram.** No **Painel**: "Movimentação dos últimos 6 meses" (barras), "Numeração" e
-"Aparelhos" (proporção) e "Clientes por produto" (ranking, clicável — leva para a lista já filtrada).
-Na ficha do **projeto**, "Como está cada passo" usa a mesma linguagem.
+**Onde entraram.**
+
+- **Painel**: "Valor nosso na mão do cliente" (quem está com mais aparelho nosso em locação e
+  comodato — venda não conta, porque o aparelho vendido não é mais nosso) e "Clientes por produto".
+- **Inventário**: "Parque por modelo" — os dez modelos com mais unidades; clicar filtra a lista.
+- **Circuitos**: "Quem está mais cheio" — % da numeração já com cliente, do mais apertado para o
+  mais folgado, com a mesma cor da coluna Ocupação (acende perto do limite). É o aviso antes de
+  estourar.
+- **Ficha do cliente**, aba Equipamentos: "Por modelo" e "Valor por modelo" viraram barras; clicar
+  numa filtra a lista de aparelhos.
+- Na ficha do **projeto**, "Como está cada passo" usa a mesma linguagem, com dois formatos à
+  escolha (cartões ou barras) que ficam gravados no navegador.
 
 **Consequências.**
 
-- O `/dashboard` passou a devolver `movimentacoesPorMes`: sempre 6 meses, o mais recente por último,
-  cada um com o total e a divisão por modalidade (mês sem movimento vem zerado, para o gráfico não
-  "pular" meses).
-- A prévia ganhou movimentações em meses anteriores — sem isso o gráfico aparecia quase vazio e
-  parecia defeito.
-- 1 teste novo cobre a forma do dado do gráfico (6 meses, soma bate com a divisão).
+- O `/dashboard` passou a devolver `valorPorCliente`: os oito clientes com mais valor nosso na mão.
+  Os outros gráficos não pediram nada ao servidor — saem de dados que a tela já carregava.
+- 1 teste novo cobre esse dado (soma certa, venda de fora).

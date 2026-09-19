@@ -15,6 +15,7 @@ import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/col
 import { Movimentar } from './Movimentar.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
+import { BarrasRanking } from '../../components/graficos.js';
 
 type Aba = 'aparelhos' | 'modelos' | 'movimentacoes';
 
@@ -39,6 +40,28 @@ export function Inventario() {
         <Kpi label="Valor locado" valor={r ? reais(r.valueWithClientsCents) : '…'} sub="aparelhos em locação ou comodato" />
       </div>
       {r?.filtrado && <p className="text-[12.5px] text-muted -mt-3 mb-4">Os cartões acima estão somando apenas o que o filtro deixou passar. <button className="link" onClick={() => setSp({ aba: 'aparelhos' }, { replace: true })}>limpar filtros</button></p>}
+      {/* o retrato do parque: os modelos com mais aparelhos e onde eles estão */}
+      {aba !== 'movimentacoes' && (models.data ?? []).length > 0 && (
+        <section className="card p-4 mb-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+            <h2 className="font-display font-semibold">Parque por modelo</h2>
+            <span className="text-[12px] text-muted">Clique num modelo para ver só os aparelhos dele.</span>
+          </div>
+          <BarrasRanking
+            larguraRotulo="w-[190px]"
+            acao={(modelId) => setSp({ aba: 'aparelhos', modelId }, { replace: true })}
+            dados={[...(models.data ?? [])]
+              .filter((m) => m.counts.total > 0)
+              .sort((a, b) => b.counts.total - a.counts.total)
+              .slice(0, 10)
+              .map((m) => ({
+                id: m.id, valor: m.counts.total, rotulo: m.name,
+                titulo: `${m.counts.inStock} em estoque · ${m.counts.withClients} com clientes${m.counts.sold ? ` · ${m.counts.sold} vendido(s)` : ''}`,
+              }))}
+          />
+        </section>
+      )}
+
       <Abas atual={aba} onChange={(a) => { const n = new URLSearchParams(); n.set('aba', a); setSp(n, { replace: true }); }} abas={[{ id: 'aparelhos', label: 'Aparelhos' }, { id: 'modelos', label: 'Modelos' }, { id: 'movimentacoes', label: 'Movimentações' }]} />
       {aba === 'aparelhos' && <Aparelhos models={models.data ?? []} />}
       {aba === 'modelos' && <Modelos models={models.data ?? []} loading={models.isLoading} />}

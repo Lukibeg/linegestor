@@ -8,14 +8,7 @@ import { Carregando, Chip, Kpi, Ocupacao } from '../components/ui/index.js';
 import { reais, relativo } from '../lib/format.js';
 import { contar, TdN, ThN } from '../lib/contagem.js';
 import { Andamento } from './projetos/partes.js';
-import { BarrasRanking, BarrasTempo, Proporcao } from '../components/graficos.js';
-
-/** "2026-09" → "set/26", que é como a gente fala. */
-function mesCurto(mes: string) {
-  const [ano, m] = mes.split('-');
-  const nomes = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-  return `${nomes[Number(m) - 1] ?? m}/${ano!.slice(2)}`;
-}
+import { BarrasRanking } from '../components/graficos.js';
 
 export function Painel() {
   const nav = useNavigate();
@@ -32,40 +25,6 @@ export function Painel() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 mt-5">
-        <section className="card p-4 lg:col-span-2 min-w-0">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-display font-semibold">Movimentação dos últimos 6 meses</h2>
-            <Link to="/inventario?aba=movimentacoes" className="link text-sm">todas</Link>
-          </div>
-          <BarrasTempo
-            unidade="movimentação(ões)"
-            vazio="Nenhuma movimentação registrada ainda."
-            dados={d.movimentacoesPorMes.map((m) => ({
-              rotulo: mesCurto(m.mes),
-              valor: m.total,
-              detalhe: m.porModalidade.map((x) => ({ nome: x.nome, n: x.n })),
-            }))}
-          />
-        </section>
-
-        <section className="card p-4 flex flex-col gap-4">
-          <div>
-            <div className="flex items-center justify-between mb-2"><h2 className="font-display font-semibold">Numeração</h2><Link to="/circuitos?aba=numeracao" className="link text-sm">ver</Link></div>
-            <Proporcao partes={[
-              { id: 'uso', rotulo: 'Com cliente', n: d.dids.assigned, cor: 'accent' },
-              { id: 'livre', rotulo: 'Livres', n: d.dids.free, cor: 'ok' },
-            ]} />
-          </div>
-          <div>
-            <div className="flex items-center justify-between mb-2"><h2 className="font-display font-semibold">Aparelhos</h2><Link to="/inventario" className="link text-sm">ver</Link></div>
-            <Proporcao partes={[
-              { id: 'clientes', rotulo: 'Com clientes', n: d.devices.withClients, cor: 'accent' },
-              { id: 'estoque', rotulo: 'Em estoque', n: d.devices.inStock, cor: 'ok' },
-              { id: 'inativos', rotulo: 'Inativos', n: d.devices.inactive, cor: 'signal' },
-            ]} />
-          </div>
-        </section>
-
         <section className="card p-4 lg:col-span-2 min-w-0 overflow-x-auto">
           <div className="flex items-center justify-between mb-3"><h2 className="font-display font-semibold">Ocupação dos circuitos</h2><Link to="/circuitos" className="link text-sm">todos</Link></div>
           {d.circuits.length === 0 ? <div className="text-muted text-sm">Nenhum circuito cadastrado.</div> : (
@@ -117,6 +76,20 @@ export function Painel() {
               )}
             </>
           )}
+        </section>
+
+        <section className="card p-4">
+          <div className="flex items-center justify-between mb-3"><h2 className="font-display font-semibold">Valor nosso na mão do cliente</h2><Link to="/inventario" className="link text-sm">inventário</Link></div>
+          <BarrasRanking
+            vazio="Nenhum aparelho locado ou em comodato."
+            acao={(clientId) => nav(`/clientes/${clientId}?aba=equipamentos`)}
+            dados={d.valorPorCliente.map((c) => ({
+              id: c.clientId, valor: Math.round(c.valorCents / 100), rotulo: c.nome,
+              titulo: `${c.n} aparelho(s) · ${reais(c.valorCents)}`,
+            }))}
+            formatar={(v) => reais(v * 100)}
+          />
+          <p className="text-[12px] text-muted mt-2">Locação e comodato somados; venda não conta.</p>
         </section>
 
         <section className="card p-4">

@@ -70,36 +70,27 @@ export async function summary(db: Db) {
     .from(auditLog).leftJoin(users, eq(users.id, auditLog.userId)).where(sql`${auditLog.action} not in ('login','logout','login_failed')`).orderBy(desc(auditLog.createdAt)).limit(8);
 
   /**
-   * Movimentação dos últimos 6 meses, mês a mês: o total e a divisão por modalidade.
-   * É o gráfico do Painel — mostra se o mês está parado ou corrido sem ninguém contar na mão.
+   * Os clientes com mais valor nosso na mão (locação e comodato somados).
+   * É a pergunta "quem está com o nosso dinheiro em aparelho?", que ninguém consegue responder
+   * olhando lista. Venda não entra: o aparelho vendido não é mais nosso.
    */
-  const porMes = await db
+  const valorPorCliente = await db
     .select({
-      mes: sql<string>`to_char(date_trunc('month', ${deviceMovements.createdAt}), 'YYYY-MM')`,
-      modality: deviceMovements.modality,
+      clientId: clients.id,
+      nome: clients.tradeName,
       n: sql<number>`count(*)::int`,
+      valorCents: sql<number>`coalesce(sum(coalesce(${devices.valueCents}, ${deviceModels.valueCents}, 0)), 0)::int`,
     })
-    .from(deviceMovements)
-    .where(sql`${deviceMovements.createdAt} >= date_trunc('month', now()) - interval '5 months'`)
-    .groupBy(sql`1`, deviceMovements.modality);
-
-  const meses: Array<{ mes: string; total: number; porModalidade: Array<{ modality: string; nome: string; n: number }> }> = [];
-  const hoje = new Date();
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - i, 1));
-    const mes = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-    const doMes = porMes.filter((x) => x.mes === mes);
-    meses.push({
-      mes,
-      total: doMes.reduce((a, x) => a + Number(x.n), 0),
-      porModalidade: doMes
-        .map((x) => ({ modality: x.modality, nome: (MODALIDADES as Record<string, string>)[x.modality] ?? x.modality, n: Number(x.n) }))
-        .sort((a, b) => b.n - a.n),
-    });
-  }
+    .from(devices)
+    .innerJoin(clients, eq(clients.id, devices.clientId))
+    .innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
+    .where(sql`${devices.deletedAt} is null and ${devices.currentModality} in ('locacao','comodato')`)
+    .groupBy(clients.id, clients.tradeName)
+    .orderBy(sql`4 desc`)
+    .limit(8);
 
   return {
-    movimentacoesPorMes: meses,
+    valorPorCliente: valorPorCliente.map((x) => ({ ...x, n: Number(x.n), valorCents: Number(x.valorCents) })),
     clients: { active: Number(cl?.n ?? 0), byProduct: byProduct.map((p) => ({ ...p, n: Number(p.n) })) },
     dids: { total: Number(d?.total ?? 0), assigned: Number(d?.assigned ?? 0), free: Number(d?.total ?? 0) - Number(d?.assigned ?? 0) },
     circuits: circuitsView.sort((a, b) => b.total - a.total),

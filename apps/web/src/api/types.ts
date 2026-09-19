@@ -111,8 +111,8 @@ export type Movement = {
 };
 
 export type Dashboard = {
-  /** Os últimos 6 meses de movimentação, para o gráfico do Painel */
-  movimentacoesPorMes: Array<{ mes: string; total: number; porModalidade: Array<{ modality: string; nome: string; n: number }> }>;
+  /** Quem está com mais valor nosso na mão (locação + comodato), para o gráfico do Painel */
+  valorPorCliente: Array<{ clientId: string; nome: string; n: number; valorCents: number }>;
   clients: { active: number; byProduct: Array<ProductChip & { n: number }> };
   dids: { total: number; assigned: number; free: number };
   circuits: Array<{ id: string; name: string; carrierName: string | null; channels: number; total: number; assigned: number; free: number }>;
