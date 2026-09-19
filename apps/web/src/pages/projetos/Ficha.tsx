@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CalendarClock, Check, MessageSquare, Paperclip, Pencil, Plus, Trash2, UserRound } from 'lucide-react';
+import { ArrowLeft, CalendarClock, Check, Copy, MessageSquare, Pencil, Plus, Trash2, UserRound } from 'lucide-react';
 import { api } from '../../api/index.js';
 import type { ClienteDoProjeto, Projeto, SituacaoProjeto } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
@@ -17,7 +17,7 @@ import { data, relativo } from '../../lib/format.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
 import { EscolherClientes } from './EscolherClientes.js';
 import { ProjetoForm } from './Form.js';
-import { Andamento, ChipSituacao, Numero, SITUACAO } from './partes.js';
+import { Andamento, ChipSituacao, CHIP_SELECT, Numero, SITUACAO } from './partes.js';
 import { Anexos, Comentarios } from './Conversa.js';
 
 export function ProjetoFicha() {
@@ -42,8 +42,13 @@ export function ProjetoFicha() {
   const salvar = useMutation({ mutationFn: (d: Record<string, unknown>) => api.projetos.atualizar(id, d), onSuccess: () => { recarregar(); qc.invalidateQueries({ queryKey: ['projetos'] }); setEditar(false); toast.push('ok', 'Projeto salvo'); }, onError: erro });
   const addClientes = useMutation({ mutationFn: (ids: string[]) => api.projetos.addClientes(id, ids), onSuccess: () => { recarregar(); setIncluir(false); toast.push('ok', 'Clientes acrescentados'); }, onError: erro });
   const removerCliente = useMutation({ mutationFn: (linhaId: string) => api.projetos.removerCliente(id, linhaId), onSuccess: () => { recarregar(); setTirar(null); toast.push('ok', 'Cliente tirado do projeto'); }, onError: erro });
-  const marcar = useMutation({ mutationFn: (v: { linhaId: string; stepId: string; feito: boolean }) => api.projetos.marcar(id, v.linhaId, v.stepId, v.feito), onSuccess: recarregar, onError: erro });
+  const marcar = useMutation({ mutationFn: (v: { linhaId: string; stepId: string; d: { feito?: boolean; valor?: string | null } }) => api.projetos.marcar(id, v.linhaId, v.stepId, v.d), onSuccess: recarregar, onError: erro });
   const linha = useMutation({ mutationFn: (v: { linhaId: string; d: Record<string, unknown> }) => api.projetos.linha(id, v.linhaId, v.d), onSuccess: () => { recarregar(); setTravando(null); }, onError: erro });
+  const duplicar = useMutation({
+    mutationFn: () => api.projetos.duplicar(id),
+    onSuccess: (novo) => { qc.invalidateQueries({ queryKey: ['projetos'] }); toast.push('ok', 'Projeto duplicado — a lista e as etapas vieram junto, zeradas'); navigate(`/projetos/${novo.id}`); },
+    onError: erro,
+  });
   const apagar = useMutation({ mutationFn: () => api.projetos.remover(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['projetos'] }); toast.push('ok', 'Projeto na lixeira'); navigate('/projetos'); }, onError: erro });
 
   const p = q.data;
@@ -67,6 +72,9 @@ export function ProjetoFicha() {
             ? <button className="btn-secondary" onClick={() => salvar.mutate({ status: 'concluido' })}><Check size={15} /> Encerrar projeto</button>
             : <button className="btn-secondary" onClick={() => salvar.mutate({ status: 'aberto' })}>Reabrir</button>}
           <button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button>
+          <button className="btn-ghost" disabled={duplicar.isPending} onClick={() => duplicar.mutate()} title="Cria outro projeto com as mesmas etapas e a mesma lista de clientes, tudo zerado">
+            {duplicar.isPending ? <Spinner /> : <Copy size={15} />} Duplicar
+          </button>
           <button className="btn-ghost text-bad" onClick={() => setExcluir(true)} aria-label="Mandar para a lixeira"><Trash2 size={15} /></button>
         </div>
       ) : undefined}
@@ -125,7 +133,7 @@ export function ProjetoFicha() {
                 <tr>
                   <ThN />
                   <th>Cliente</th>
-                  {p.etapas.map((e) => <th key={e.id} className="text-center whitespace-nowrap">{e.title}</th>)}
+                  {p.etapas.map((e) => <th key={e.id} className={`whitespace-nowrap ${e.kind === 'escolha' ? '' : 'text-center'}`}>{e.title}</th>)}
                   <th>Situação</th>
                   <th>Responsável</th>
                   <th />
@@ -135,7 +143,7 @@ export function ProjetoFicha() {
                 {clientes.map((c, i) => (
                   <Linha key={c.id} c={c} i={i} p={p}
                     pessoas={pessoas.data ?? []}
-                    onMarcar={(stepId, feito) => marcar.mutate({ linhaId: c.id, stepId, feito })}
+                    onMarcar={(stepId, d) => marcar.mutate({ linhaId: c.id, stepId, d })}
                     onSituacao={(status) => status === 'travado' ? setTravando(c) : linha.mutate({ linhaId: c.id, d: { status } })}
                     onResponsavel={(assigneeId) => linha.mutate({ linhaId: c.id, d: { assigneeId: assigneeId || null } })}
                     onAbrir={() => setAberto(aberto === c.id ? null : c.id)}
@@ -145,6 +153,22 @@ export function ProjetoFicha() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {p.etapas.some((e) => e.kind === 'escolha') && (
+          <div className="px-4 pb-4 pt-3 flex flex-col gap-1.5 border-t border-line">
+            {p.etapas.filter((e) => e.kind === 'escolha').map((e) => (
+              <div key={e.id} className="flex flex-wrap items-center gap-1.5 text-[12px]">
+                <span className="text-muted w-[170px] shrink-0 truncate">{e.title}</span>
+                {e.options.map((o) => (
+                  <Chip key={o.id} tone={o.tone} title={o.conclui ? 'Esta opção resolve a etapa' : 'Esta opção deixa a etapa em aberto'}>
+                    {o.label}{o.conclui ? ' ✓' : ''}
+                  </Chip>
+                ))}
+              </div>
+            ))}
+            <span className="text-[11.5px] text-muted mt-0.5">✓ = a opção resolve a etapa e conta no andamento.</span>
           </div>
         )}
       </section>
@@ -179,18 +203,24 @@ export function ProjetoFicha() {
 /** Uma linha da tabela: as caixinhas das etapas, a situação, o responsável e a conversa daquele cliente. */
 function Linha({ c, i, p, pessoas, onMarcar, onSituacao, onResponsavel, onAbrir, onTirar, aberto }: {
   c: ClienteDoProjeto; i: number; p: Projeto; pessoas: Array<{ id: string; name: string }>;
-  onMarcar: (stepId: string, feito: boolean) => void;
+  onMarcar: (stepId: string, d: { feito?: boolean; valor?: string | null }) => void;
   onSituacao: (status: SituacaoProjeto) => void;
   onResponsavel: (id: string) => void;
   onAbrir: () => void; onTirar: () => void; aberto: boolean;
 }) {
   const podeMexer = p.podeTrabalhar && p.status === 'aberto';
   const fora = c.status === 'nao_se_aplica';
-  // a caixinha muda na hora; quando a resposta chega, a marca de verdade assume o lugar
-  const [otimista, setOtimista] = useState<Record<string, boolean>>({});
+  /**
+   * A marca muda na hora e a resposta do servidor assume o lugar depois.
+   * Guarda texto: o id da opção escolhida, ou "sim"/"" na caixinha.
+   */
+  const [otimista, setOtimista] = useState<Record<string, string>>({});
   useEffect(() => {
     setOtimista((o) => {
-      const resto = Object.fromEntries(Object.entries(o).filter(([stepId, feito]) => feito !== c.feitas.some((f) => f.stepId === stepId)));
+      const resto = Object.fromEntries(Object.entries(o).filter(([stepId, valor]) => {
+        const f = c.feitas.find((x) => x.stepId === stepId);
+        return (f ? f.valor ?? 'sim' : '') !== valor;
+      }));
       return Object.keys(resto).length === Object.keys(o).length ? o : resto;
     });
   }, [c.feitas]);
@@ -206,16 +236,40 @@ function Linha({ c, i, p, pessoas, onMarcar, onSituacao, onResponsavel, onAbrir,
         </td>
         {p.etapas.map((e) => {
           const feita = c.feitas.find((f) => f.stepId === e.id);
-          const marcada = otimista[e.id] ?? !!feita;
+          const quando = feita ? `${feita.quem ?? 'alguém'} em ${data(feita.doneAt)}` : null;
+
+          // lista de opções: um seletor com a cor da opção escolhida
+          if (e.kind === 'escolha') {
+            const escolhido = otimista[e.id] ?? feita?.valor ?? '';
+            const opcao = e.options.find((o) => o.id === escolhido);
+            return (
+              <td key={e.id}>
+                {podeMexer && !fora ? (
+                  <select
+                    className={`input input-sm w-[190px] ${opcao ? CHIP_SELECT[opcao.tone] : ''}`}
+                    value={escolhido}
+                    onChange={(ev) => { setOtimista((o) => ({ ...o, [e.id]: ev.target.value })); onMarcar(e.id, { valor: ev.target.value || null }); }}
+                    aria-label={`${e.title} — ${c.clientName}`}
+                    title={quando ? `${e.title}: ${quando}` : e.title}
+                  >
+                    <option value="">—</option>
+                    {e.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select>
+                ) : opcao ? <Chip tone={opcao.tone} title={quando ?? undefined}>{opcao.label}</Chip> : <span className="text-muted">—</span>}
+              </td>
+            );
+          }
+
+          const marcada = otimista[e.id] === undefined ? !!feita : otimista[e.id] === 'sim';
           return (
             <td key={e.id} className="text-center">
               <input
                 type="checkbox"
                 checked={marcada}
                 disabled={!podeMexer || fora}
-                onChange={(ev) => { setOtimista((o) => ({ ...o, [e.id]: ev.target.checked })); onMarcar(e.id, ev.target.checked); }}
+                onChange={(ev) => { setOtimista((o) => ({ ...o, [e.id]: ev.target.checked ? 'sim' : '' })); onMarcar(e.id, { feito: ev.target.checked }); }}
                 aria-label={`${e.title} — ${c.clientName}`}
-                title={feita ? `${e.title}: ${feita.quem ?? 'alguém'} em ${data(feita.doneAt)}` : fora ? 'Este cliente está como "não se aplica"' : e.title}
+                title={quando ? `${e.title}: ${quando}` : fora ? 'Este cliente está como "não se aplica"' : e.title}
               />
             </td>
           );
@@ -271,4 +325,3 @@ function Travar({ cliente, onClose, onConfirmar, salvando }: { cliente: ClienteD
   );
 }
 
-export { Paperclip };

@@ -172,13 +172,19 @@ export type LeiturasNovidade = { version: string; title: string; publishedAt: st
 export type SituacaoProjeto = 'pendente' | 'andamento' | 'travado' | 'concluido' | 'nao_se_aplica';
 export type ContagemProjeto = Record<SituacaoProjeto, number>;
 
-export type EtapaProjeto = { id: string; title: string; sortOrder: number };
+/** Uma cor de opção, as mesmas do resto do sistema. */
+export type CorOpcao = 'neutral' | 'accent' | 'ok' | 'signal' | 'bad' | 'muted';
+/** Uma opção de etapa em lista. `conclui` = escolher esta opção resolve a etapa. */
+export type OpcaoEtapa = { id: string; label: string; tone: CorOpcao; conclui: boolean };
+/** Uma etapa (coluna): caixinha (feito/não feito) ou lista de opções coloridas. */
+export type EtapaProjeto = { id: string; title: string; kind: 'check' | 'escolha'; options: OpcaoEtapa[]; sortOrder: number };
 /** Uma linha da lista: o cliente dentro do projeto, com as etapas que já marcaram nele. */
 export type ClienteDoProjeto = {
   id: string; clientId: string; clientName: string; arquivado: boolean;
   assigneeId: string | null; assigneeName: string | null;
   status: SituacaoProjeto; blockedReason: string | null; doneAt: string | null;
-  feitas: Array<{ stepId: string; doneAt: string; quem: string | null }>;
+  /** o que está marcado em cada etapa; `valor` é o id da opção, nas etapas de lista */
+  feitas: Array<{ stepId: string; valor: string | null; doneAt: string; quem: string | null }>;
 };
 export type ComentarioProjeto = { id: string; projectClientId: string | null; body: string; autor: string; userId: string | null; createdAt: string };
 export type AnexoProjeto = { id: string; projectClientId: string | null; fileName: string; mimeType: string; sizeBytes: number; createdAt: string; quem: string };

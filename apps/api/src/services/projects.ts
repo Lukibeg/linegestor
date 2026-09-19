@@ -3,7 +3,10 @@
  * ("trocar o áudio da URA de todos os clientes com PBX").
  *
  * Regras que vivem aqui:
- *  - as **etapas são as mesmas para todo cliente** da lista; o andamento é a conta das marcas
+ *  - as **etapas são as mesmas para todo cliente** da lista; o andamento é a conta das resolvidas
+ *  - uma etapa é uma **caixinha** (feito/não feito) ou uma **lista de opções** coloridas; na lista,
+ *    só as opções marcadas como "resolve a etapa" fecham aquela coluna (é o "Sem necessidade" e o
+ *    "Configuração realizada" da planilha contando como resolvido, e o "Pendente" não)
  *  - a situação de cada cliente **anda sozinha**: marcou a primeira etapa → em andamento;
  *    marcou todas → concluído; desmarcou alguma → volta para em andamento (ou pendente)
  *  - **travado** e **não se aplica** são escolhas de gente: o sistema não tira nem põe sozinho,
@@ -17,7 +20,7 @@ import {
   clients, newId, projectAttachments, projectChecks, projectClients, projectComments, projectSteps, projects, users,
   type Db,
 } from '@gestor/db';
-import type { ProjetoAtualizar, ProjetoGravar, ProjetoLinha, SituacaoProjeto } from '@gestor/shared';
+import type { EtapaProjeto, ProjetoAtualizar, ProjetoGravar, ProjetoLinha, SituacaoProjeto } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 
 /** O tamanho máximo de um anexo, já em bytes do arquivo (não do texto base64). */
@@ -27,6 +30,18 @@ export const LIMITE_ANEXO_BYTES = 10 * 1024 * 1024;
 const FECHADAS: SituacaoProjeto[] = ['concluido', 'nao_se_aplica'];
 /** Situações que a pessoa escolhe e o sistema não desfaz sozinho. */
 const MANUAIS: SituacaoProjeto[] = ['travado', 'nao_se_aplica'];
+
+type LinhaEtapa = typeof projectSteps.$inferSelect;
+
+/**
+ * Aquela etapa, naquele cliente, está resolvida?
+ * Caixinha: basta existir a marca. Lista: a opção escolhida precisa ser uma que "resolve".
+ */
+export function etapaResolvida(etapa: Pick<LinhaEtapa, 'kind' | 'options'>, marca?: { value: string | null } | null) {
+  if (!marca) return false;
+  if (etapa.kind !== 'escolha') return true;
+  return (etapa.options ?? []).some((o) => o.id === marca.value && o.conclui);
+}
 
 async function projetoOu404(db: Db, id: string) {
   const [row] = await db.select().from(projects).where(and(eq(projects.id, id), isNull(projects.deletedAt)));
@@ -55,11 +70,12 @@ function situacaoPelasMarcas(atual: SituacaoProjeto, marcadas: number, totalEtap
 async function recalcular(db: Db, linhaId: string) {
   const [linha] = await db.select().from(projectClients).where(eq(projectClients.id, linhaId));
   if (!linha) throw new BadRequest('Este cliente não está no projeto');
-  const [etapasRow, marcasRow] = await Promise.all([
-    db.select({ n: sql<number>`count(*)::int` }).from(projectSteps).where(eq(projectSteps.projectId, linha.projectId)),
-    db.select({ n: sql<number>`count(*)::int` }).from(projectChecks).where(eq(projectChecks.projectClientId, linhaId)),
+  const [etapas, marcas] = await Promise.all([
+    db.select().from(projectSteps).where(eq(projectSteps.projectId, linha.projectId)),
+    db.select().from(projectChecks).where(eq(projectChecks.projectClientId, linhaId)),
   ]);
-  const status = situacaoPelasMarcas(linha.status as SituacaoProjeto, marcasRow[0]?.n ?? 0, etapasRow[0]?.n ?? 0);
+  const resolvidas = etapas.filter((e) => etapaResolvida(e, marcas.find((m) => m.stepId === e.id))).length;
+  const status = situacaoPelasMarcas(linha.status as SituacaoProjeto, resolvidas, etapas.length);
   if (status === linha.status) return linha;
   const [nova] = await db.update(projectClients)
     .set({ status, doneAt: FECHADAS.includes(status) ? new Date() : null, updatedAt: new Date() })
@@ -167,12 +183,12 @@ export async function get(db: Db, id: string) {
     id: p.id, name: p.name, goal: p.goal, status: p.status, dueDate: p.dueDate,
     ownerId: p.ownerId, ownerName: owner[0]?.name ?? null, closedAt: p.closedAt,
     createdAt: p.createdAt, updatedAt: p.updatedAt,
-    etapas: etapas.map((e) => ({ id: e.id, title: e.title, sortOrder: e.sortOrder })),
+    etapas: etapas.map((e) => ({ id: e.id, title: e.title, kind: e.kind, options: e.options ?? [], sortOrder: e.sortOrder })),
     clientes: linhas.map(({ l, clientName, arquivado, assigneeName }) => ({
       id: l.id, clientId: l.clientId, clientName, arquivado,
       assigneeId: l.assigneeId, assigneeName: assigneeName ?? null,
       status: l.status, blockedReason: l.blockedReason, doneAt: l.doneAt,
-      feitas: marcas.filter((m) => m.c.projectClientId === l.id).map((m) => ({ stepId: m.c.stepId, doneAt: m.c.doneAt, quem: m.quem ?? null })),
+      feitas: marcas.filter((m) => m.c.projectClientId === l.id).map((m) => ({ stepId: m.c.stepId, valor: m.c.value, doneAt: m.c.doneAt, quem: m.quem ?? null })),
     })),
     comentarios: comentarios.map(({ c, autor }) => ({
       id: c.id, projectClientId: c.projectClientId, body: c.body, autor: autor ?? 'sistema', userId: c.userId, createdAt: c.createdAt,
@@ -181,7 +197,7 @@ export async function get(db: Db, id: string) {
     resumo: {
       total, faltam, contagem,
       andamento: total ? Math.round((fechadas / total) * 100) : 0,
-      etapasFeitas: marcas.length,
+      etapasFeitas: linhas.reduce((a, { l }) => a + etapas.filter((e) => etapaResolvida(e, marcas.find((m) => m.c.projectClientId === l.id && m.c.stepId === e.id)?.c)).length, 0),
       etapasTotais: total * etapas.length,
       atrasado: atrasado(p, faltam),
       porResponsavel: [...porResponsavel.values()].sort((a, b) => (b.total - b.fechados) - (a.total - a.fechados) || a.nome.localeCompare(b.nome)),
@@ -233,17 +249,36 @@ export async function resumoDoPainel(db: Db, limite = 4) {
 // Escrita
 // ---------------------------------------------------------------------
 
+/**
+ * Opções com id estável. A opção que chega sem `id` ganha um; a que já tinha mantém o dele,
+ * para o rótulo poder mudar sem perder o que os clientes já tinham escolhido.
+ */
+function comIds(options: EtapaProjeto['options']) {
+  return (options ?? []).map((o) => ({ id: o.id ?? newId(), label: o.label, tone: o.tone, conclui: o.conclui }));
+}
+
 /** Grava as etapas na ordem recebida. Etapa sem `id` nasce; a que sumiu da lista é apagada (com as marcas). */
-async function gravarEtapas(db: Db, projectId: string, etapas: Array<{ id?: string; title: string }>) {
+async function gravarEtapas(db: Db, projectId: string, etapas: EtapaProjeto[]) {
   const atuais = await db.select().from(projectSteps).where(eq(projectSteps.projectId, projectId));
   const mantidos = new Set(etapas.map((e) => e.id).filter(Boolean) as string[]);
   const sumiram = atuais.filter((a) => !mantidos.has(a.id)).map((a) => a.id);
   if (sumiram.length) await db.delete(projectSteps).where(inArray(projectSteps.id, sumiram));
   for (const [i, e] of etapas.entries()) {
+    const options = e.kind === 'escolha' ? comIds(e.options) : [];
     if (e.id && atuais.some((a) => a.id === e.id)) {
-      await db.update(projectSteps).set({ title: e.title, sortOrder: i }).where(eq(projectSteps.id, e.id));
+      await db.update(projectSteps).set({ title: e.title, kind: e.kind, options, sortOrder: i }).where(eq(projectSteps.id, e.id));
+      // opção que deixou de existir: a escolha de quem a usava vira "sem escolha"
+      if (e.kind === 'escolha') {
+        const vivas = new Set(options.map((o) => o.id));
+        const marcas = await db.select({ id: projectChecks.id, value: projectChecks.value }).from(projectChecks).where(eq(projectChecks.stepId, e.id));
+        const orfas = marcas.filter((m) => !m.value || !vivas.has(m.value)).map((m) => m.id);
+        if (orfas.length) await db.delete(projectChecks).where(inArray(projectChecks.id, orfas));
+      } else {
+        // virou caixinha: o que estava escolhido some (não há opção para guardar)
+        if (atuais.find((a) => a.id === e.id)?.kind === 'escolha') await db.delete(projectChecks).where(eq(projectChecks.stepId, e.id));
+      }
     } else {
-      await db.insert(projectSteps).values({ id: newId(), projectId, title: e.title, sortOrder: i });
+      await db.insert(projectSteps).values({ id: newId(), projectId, title: e.title, kind: e.kind, options, sortOrder: i });
     }
   }
 }
@@ -332,12 +367,17 @@ export async function setLinha(db: Db, id: string, projectClientId: string, d: P
   if (d.status === 'concluido') {
     // "concluído" à mão = tudo feito: completa as etapas que faltavam
     const [etapas, marcadas] = await Promise.all([
-      db.select({ id: projectSteps.id }).from(projectSteps).where(eq(projectSteps.projectId, id)),
-      db.select({ stepId: projectChecks.stepId }).from(projectChecks).where(eq(projectChecks.projectClientId, projectClientId)),
+      db.select().from(projectSteps).where(eq(projectSteps.projectId, id)),
+      db.select().from(projectChecks).where(eq(projectChecks.projectClientId, projectClientId)),
     ]);
-    const faltando = etapas.filter((e) => !marcadas.some((m) => m.stepId === e.id));
-    if (faltando.length) {
-      await db.insert(projectChecks).values(faltando.map((e) => ({ id: newId(), projectClientId, stepId: e.id, doneById: userId ?? null })))
+    for (const e of etapas) {
+      const marca = marcadas.find((m) => m.stepId === e.id);
+      if (etapaResolvida(e, marca)) continue;
+      // na lista, "concluído" escolhe a primeira opção que resolve a etapa
+      const value = e.kind === 'escolha' ? ((e.options ?? []).find((o) => o.conclui)?.id ?? null) : null;
+      if (e.kind === 'escolha' && !value) continue;
+      if (marca) await db.update(projectChecks).set({ value, doneById: userId ?? null, doneAt: new Date() }).where(eq(projectChecks.id, marca.id));
+      else await db.insert(projectChecks).values({ id: newId(), projectClientId, stepId: e.id, value, doneById: userId ?? null })
         .onConflictDoNothing({ target: [projectChecks.projectClientId, projectChecks.stepId] });
     }
   }
@@ -347,18 +387,35 @@ export async function setLinha(db: Db, id: string, projectClientId: string, d: P
   return { linha: final, clientName: cliente?.name ?? 'cliente' };
 }
 
-/** Marcar (ou desmarcar) uma etapa de um cliente. A situação da linha se ajusta sozinha. */
-export async function marcar(db: Db, id: string, projectClientId: string, stepId: string, feito: boolean, userId: string) {
+/**
+ * Mexer numa etapa de um cliente: `feito` na caixinha, `valor` (o id da opção) na lista.
+ * A situação da linha se ajusta sozinha depois.
+ */
+export async function marcar(db: Db, id: string, projectClientId: string, stepId: string, d: { feito?: boolean; valor?: string | null }, userId: string) {
   const linha = await linhaOu404(db, id, projectClientId);
   const [etapa] = await db.select().from(projectSteps).where(and(eq(projectSteps.id, stepId), eq(projectSteps.projectId, id)));
   if (!etapa) throw new BadRequest('Etapa não encontrada neste projeto');
   if (linha.status === 'nao_se_aplica') throw new BadRequest('Este cliente está marcado como "não se aplica". Tire essa marca para trabalhar nele.');
 
-  if (feito) {
-    await db.insert(projectChecks).values({ id: newId(), projectClientId, stepId, doneById: userId })
-      .onConflictDoNothing({ target: [projectChecks.projectClientId, projectChecks.stepId] });
-  } else {
+  const escolha = etapa.kind === 'escolha';
+  if (escolha && d.valor === undefined) throw new BadRequest(`"${etapa.title}" é uma lista de opções: escolha uma.`);
+  if (!escolha && d.feito === undefined) throw new BadRequest(`"${etapa.title}" é uma caixinha: diga se está feito.`);
+
+  const limpar = escolha ? d.valor === null : d.feito === false;
+  if (limpar) {
     await db.delete(projectChecks).where(and(eq(projectChecks.projectClientId, projectClientId), eq(projectChecks.stepId, stepId)));
+  } else {
+    let value: string | null = null;
+    if (escolha) {
+      const opcao = (etapa.options ?? []).find((o) => o.id === d.valor);
+      if (!opcao) throw new BadRequest('Essa opção não existe nesta etapa');
+      value = opcao.id;
+    }
+    const [atual] = await db.select({ id: projectChecks.id }).from(projectChecks)
+      .where(and(eq(projectChecks.projectClientId, projectClientId), eq(projectChecks.stepId, stepId)));
+    if (atual) await db.update(projectChecks).set({ value, doneById: userId, doneAt: new Date() }).where(eq(projectChecks.id, atual.id));
+    else await db.insert(projectChecks).values({ id: newId(), projectClientId, stepId, value, doneById: userId })
+      .onConflictDoNothing({ target: [projectChecks.projectClientId, projectChecks.stepId] });
   }
   const [cliente] = await db.select({ name: clients.tradeName }).from(clients).where(eq(clients.id, linha.clientId));
   return { linha: await recalcular(db, projectClientId), etapa, clientName: cliente?.name ?? 'cliente' };
@@ -415,6 +472,30 @@ export async function apagarAnexo(db: Db, id: string, attachmentId: string, user
   if (row.uploadedById !== userId && !podeGerenciar) throw new BadRequest('Só quem anexou (ou quem gerencia o projeto) pode tirar este anexo');
   await db.update(projectAttachments).set({ deletedAt: new Date() }).where(eq(projectAttachments.id, attachmentId));
   return row;
+}
+
+/**
+ * Duplicar: mesmas etapas (com as opções) e a mesma lista de clientes, tudo zerado.
+ * É o que salva o que se repete — o feriado do mês que vem é o feriado deste mês, em branco.
+ */
+export async function duplicar(db: Db, id: string, nome?: string) {
+  const antigo = await projetoOu404(db, id);
+  const [etapas, linhas] = await Promise.all([
+    db.select().from(projectSteps).where(eq(projectSteps.projectId, id)).orderBy(asc(projectSteps.sortOrder)),
+    db.select().from(projectClients).where(eq(projectClients.projectId, id)),
+  ]);
+  const [novo] = await db.insert(projects).values({
+    id: newId(), name: nome?.trim() || `${antigo.name} (cópia)`, goal: antigo.goal,
+    dueDate: null, ownerId: antigo.ownerId, status: 'aberto',
+  }).returning();
+  if (etapas.length) {
+    await db.insert(projectSteps).values(etapas.map((e) => ({ id: newId(), projectId: novo!.id, title: e.title, kind: e.kind, options: e.options, sortOrder: e.sortOrder })));
+  }
+  if (linhas.length) {
+    // os clientes voltam pendentes, com o mesmo responsável — o trabalho é que recomeça
+    await db.insert(projectClients).values(linhas.map((l) => ({ id: newId(), projectId: novo!.id, clientId: l.clientId, assigneeId: l.assigneeId, status: 'pendente' as const })));
+  }
+  return get(db, novo!.id);
 }
 
 export async function softDelete(db: Db, id: string) {

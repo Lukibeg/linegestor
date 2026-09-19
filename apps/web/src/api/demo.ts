@@ -12,7 +12,7 @@
 import { ALL_PERMISSIONS, DEFAULT_ROLES, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
-import { ApiError, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Projeto, type ProjetoResumo, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -45,9 +45,9 @@ type NetRow = { clientId: string; ipAddress: string | null; subnetMask: string |
 type NotaRow = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null; items: Array<{ id: string; kind: NovidadeItem['kind']; title: string; text: string | null; imagem: string | null }> };
 /** Projetos na demonstração: o projeto, as etapas, a lista de clientes e o que já foi marcado. */
 type ProjRow = { id: string; name: string; goal: string | null; status: 'aberto' | 'concluido' | 'cancelado'; dueDate: string | null; ownerId: string | null; closedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null };
-type StepRow = { id: string; projectId: string; title: string; sortOrder: number };
+type StepRow = { id: string; projectId: string; title: string; kind: 'check' | 'escolha'; options: OpcaoEtapa[]; sortOrder: number };
 type PClientRow = { id: string; projectId: string; clientId: string; assigneeId: string | null; status: SituacaoProjeto; blockedReason: string | null; doneAt: string | null };
-type CheckRow = { projectClientId: string; stepId: string; doneById: string | null; doneAt: string };
+type CheckRow = { projectClientId: string; stepId: string; value: string | null; doneById: string | null; doneAt: string };
 type PCommentRow = { id: string; projectId: string; projectClientId: string | null; userId: string | null; body: string; createdAt: string; deletedAt: string | null };
 type PFileRow = { id: string; projectId: string; projectClientId: string | null; fileName: string; mimeType: string; sizeBytes: number; conteudo: string; uploadedById: string | null; createdAt: string; deletedAt: string | null };
 
@@ -95,6 +95,144 @@ const FOTO_TELEFONE = (cor: string) => svg(`<rect x="34" y="40" width="96" heigh
 const FOTO_HEADSET = svg(`<path d="M44 72 Q44 22 80 22 Q116 22 116 72" fill="none" stroke="#374151" stroke-width="8" stroke-linecap="round"/><rect x="34" y="62" width="20" height="32" rx="8" fill="#1F2937"/><rect x="106" y="62" width="20" height="32" rx="8" fill="#1F2937"/><path d="M44 94 Q52 108 76 106" fill="none" stroke="#374151" stroke-width="4" stroke-linecap="round"/><circle cx="78" cy="106" r="5" fill="#111827"/>`);
 
 // ---------------- carga inicial ----------------
+// ---------------- projetos ----------------
+const temPerm = (perm: string) => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes(perm) ?? false);
+const projetosVivos = () => S.projetos.filter((p) => !p.deletedAt);
+const projetoOu404 = (idp: string) => { const p = projetosVivos().find((x) => x.id === idp); if (!p) throw notFound('Projeto'); return p; };
+const linhaOu404 = (projectId: string, linhaId: string) => { const l = S.projClientes.find((x) => x.id === linhaId && x.projectId === projectId); if (!l) throw bad('Este cliente não está no projeto'); return l; };
+const FECHADAS_DEMO: SituacaoProjeto[] = ['concluido', 'nao_se_aplica'];
+/** Caixinha: basta a marca existir. Lista: a opção escolhida precisa ser uma que "resolve". */
+const resolvida = (e: StepRow, m?: CheckRow) => !!m && (e.kind !== 'escolha' || (e.options ?? []).some((o) => o.id === m.value && o.conclui));
+const MANUAIS_DEMO: SituacaoProjeto[] = ['travado', 'nao_se_aplica'];
+
+/** A situação anda sozinha conforme as marcas — menos em "travado" e "não se aplica". */
+function recalcular(l: PClientRow) {
+  if (MANUAIS_DEMO.includes(l.status)) return l;
+  const etapas = S.etapas.filter((e) => e.projectId === l.projectId);
+  const feitas = etapas.filter((e) => resolvida(e, S.marcas.find((m) => m.projectClientId === l.id && m.stepId === e.id))).length;
+  l.status = etapas.length > 0 && feitas >= etapas.length ? 'concluido' : feitas > 0 ? 'andamento' : 'pendente';
+  l.doneAt = l.status === 'concluido' ? now() : null;
+  return l;
+}
+
+function gravarEtapas(projectId: string, etapas: EtapaProjeto[]) {
+  const mantidos = new Set(etapas.map((e) => e.id).filter(Boolean) as string[]);
+  const sumiram = S.etapas.filter((e) => e.projectId === projectId && !mantidos.has(e.id)).map((e) => e.id);
+  S.etapas = S.etapas.filter((e) => e.projectId !== projectId || mantidos.has(e.id));
+  S.marcas = S.marcas.filter((m) => !sumiram.includes(m.stepId));
+  etapas.forEach((e, i) => {
+    const kind = e.kind ?? 'check';
+    // opção sem id ganha um; a que já tinha mantém o dele (trocar o rótulo não perde a escolha)
+    const options: OpcaoEtapa[] = kind === 'escolha' ? (e.options ?? []).map((o) => ({ id: o.id ?? id(), label: o.label, tone: o.tone, conclui: o.conclui })) : [];
+    const atual = e.id ? S.etapas.find((x) => x.id === e.id) : null;
+    if (atual) {
+      const virou = atual.kind !== kind;
+      atual.title = e.title; atual.kind = kind; atual.options = options; atual.sortOrder = i;
+      const vivas = new Set(options.map((o) => o.id));
+      // opção apagada (ou mudou de tipo): a escolha de quem estava nela some
+      S.marcas = S.marcas.filter((m) => m.stepId !== atual.id || (!virou && (kind !== 'escolha' || (!!m.value && vivas.has(m.value)))));
+    } else {
+      S.etapas.push({ id: id(), projectId, title: e.title, kind, options, sortOrder: i });
+    }
+  });
+}
+
+/** Quem já está na lista é ignorado: não duplica nem zera o que já foi feito. */
+function entrarNaLista(projectId: string, clientIds: string[], assigneeId: string | null = null) {
+  let n = 0;
+  for (const clientId of [...new Set(clientIds)]) {
+    if (!S.clients.some((c) => c.id === clientId && !c.deletedAt)) continue;
+    if (S.projClientes.some((x) => x.projectId === projectId && x.clientId === clientId)) continue;
+    S.projClientes.push({ id: id(), projectId, clientId, assigneeId, status: 'pendente', blockedReason: null, doneAt: null });
+    n++;
+  }
+  return n;
+}
+
+const zeradoDemo = (): Record<SituacaoProjeto, number> => ({ pendente: 0, andamento: 0, travado: 0, concluido: 0, nao_se_aplica: 0 });
+function contarLinhas(projectId: string) {
+  const linhas = S.projClientes.filter((x) => x.projectId === projectId);
+  const contagem = zeradoDemo();
+  for (const l of linhas) contagem[l.status] += 1;
+  const total = linhas.length;
+  const fechadas = contagem.concluido + contagem.nao_se_aplica;
+  return { linhas, contagem, total, fechadas, faltam: total - fechadas, andamento: total ? Math.round((fechadas / total) * 100) : 0 };
+}
+const atrasadoDemo = (p: ProjRow, faltam: number) => p.status === 'aberto' && !!p.dueDate && faltam > 0 && p.dueDate < new Date().toISOString().slice(0, 10);
+
+function resumoProjeto(p: ProjRow): ProjetoResumo {
+  const c = contarLinhas(p.id);
+  return {
+    id: p.id, name: p.name, goal: p.goal, status: p.status, dueDate: p.dueDate,
+    ownerId: p.ownerId, ownerName: S.users.find((u) => u.id === p.ownerId)?.name ?? null,
+    closedAt: p.closedAt, createdAt: p.createdAt, updatedAt: p.updatedAt,
+    etapas: S.etapas.filter((e) => e.projectId === p.id).length,
+    total: c.total, faltam: c.faltam, contagem: c.contagem, andamento: c.andamento, atrasado: atrasadoDemo(p, c.faltam),
+  };
+}
+
+function projetoCompleto(p: ProjRow): Projeto {
+  const c = contarLinhas(p.id);
+  const etapas = S.etapas.filter((e) => e.projectId === p.id).sort((a, b) => a.sortOrder - b.sortOrder);
+  const porResponsavel = new Map<string, { id: string | null; nome: string; total: number; fechados: number; travados: number }>();
+  for (const l of c.linhas) {
+    const chave = l.assigneeId ?? 'sem';
+    const atual = porResponsavel.get(chave) ?? { id: l.assigneeId, nome: S.users.find((u) => u.id === l.assigneeId)?.name ?? 'Sem responsável', total: 0, fechados: 0, travados: 0 };
+    atual.total += 1;
+    if (FECHADAS_DEMO.includes(l.status)) atual.fechados += 1;
+    if (l.status === 'travado') atual.travados += 1;
+    porResponsavel.set(chave, atual);
+  }
+  const etapasFeitas = c.linhas.reduce((a, l) => a + etapas.filter((e) => resolvida(e, S.marcas.find((m) => m.projectClientId === l.id && m.stepId === e.id))).length, 0);
+  return {
+    id: p.id, name: p.name, goal: p.goal, status: p.status, dueDate: p.dueDate,
+    ownerId: p.ownerId, ownerName: S.users.find((u) => u.id === p.ownerId)?.name ?? null,
+    closedAt: p.closedAt, createdAt: p.createdAt, updatedAt: p.updatedAt,
+    etapas: etapas.map((e) => ({ id: e.id, title: e.title, kind: e.kind, options: e.options ?? [], sortOrder: e.sortOrder })),
+    clientes: c.linhas
+      .map((l) => {
+        const cli = S.clients.find((x) => x.id === l.clientId)!;
+        return {
+          id: l.id, clientId: l.clientId, clientName: cli?.tradeName ?? '?', arquivado: !!cli?.archived,
+          assigneeId: l.assigneeId, assigneeName: S.users.find((u) => u.id === l.assigneeId)?.name ?? null,
+          status: l.status, blockedReason: l.blockedReason, doneAt: l.doneAt,
+          feitas: S.marcas.filter((m) => m.projectClientId === l.id).map((m) => ({ stepId: m.stepId, valor: m.value, doneAt: m.doneAt, quem: S.users.find((u) => u.id === m.doneById)?.name ?? null })),
+        };
+      })
+      .sort((a, b) => a.clientName.localeCompare(b.clientName, 'pt-BR')),
+    comentarios: S.projComentarios.filter((x) => x.projectId === p.id && !x.deletedAt)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((x) => ({ id: x.id, projectClientId: x.projectClientId, body: x.body, autor: S.users.find((u) => u.id === x.userId)?.name ?? 'sistema', userId: x.userId, createdAt: x.createdAt })),
+    anexos: S.projAnexos.filter((x) => x.projectId === p.id && !x.deletedAt)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((x) => ({ id: x.id, projectClientId: x.projectClientId, fileName: x.fileName, mimeType: x.mimeType, sizeBytes: x.sizeBytes, createdAt: x.createdAt, quem: S.users.find((u) => u.id === x.uploadedById)?.name ?? 'sistema' })),
+    resumo: {
+      total: c.total, faltam: c.faltam, contagem: c.contagem, andamento: c.andamento,
+      etapasFeitas, etapasTotais: c.total * etapas.length, atrasado: atrasadoDemo(p, c.faltam),
+      porResponsavel: [...porResponsavel.values()].sort((a, b) => (b.total - b.fechados) - (a.total - a.fechados) || a.nome.localeCompare(b.nome, 'pt-BR')),
+    },
+    podeTrabalhar: temPerm('projects.work'), podeGerenciar: temPerm('projects.manage'),
+  };
+}
+
+/** Os projetos de um cliente (a aba da ficha dele). */
+function projetosDoCliente(clientId: string): ProjetoDoCliente[] {
+  return S.projClientes
+    .filter((l) => l.clientId === clientId)
+    .flatMap<ProjetoDoCliente>((l) => {
+      const p = projetosVivos().find((x) => x.id === l.projectId);
+      if (!p) return [];
+      return [{
+        projectClientId: l.id, projectId: p.id, name: p.name, projectStatus: p.status, dueDate: p.dueDate,
+        status: l.status, blockedReason: l.blockedReason, assigneeId: l.assigneeId,
+        assigneeName: S.users.find((u) => u.id === l.assigneeId)?.name ?? null,
+        feitas: S.etapas.filter((e) => e.projectId === p.id && resolvida(e, S.marcas.find((m) => m.projectClientId === l.id && m.stepId === e.id))).length,
+        etapas: S.etapas.filter((e) => e.projectId === p.id).length,
+      }];
+    });
+}
+
+
 function seed() {
   S.roles = DEFAULT_ROLES.map((r) => ({ id: 'r' + r.key, key: r.key, name: r.name, description: r.description, permissions: [...r.permissions], isSystem: true }));
   S.users = [
@@ -251,7 +389,7 @@ function seed() {
   };
   S.projetos = [proj];
   S.etapas = ['Gravar o áudio', 'Subir no PBX', 'Testar com o cliente', 'Avisar que está no ar']
-    .map((title, i) => ({ id: `st${i + 1}`, projectId: proj.id, title, sortOrder: i }));
+    .map((title, i) => ({ id: `st${i + 1}`, projectId: proj.id, title, kind: 'check' as const, options: [], sortOrder: i }));
 
   const naLista: Array<[string, string | null, SituacaoProjeto, number, string | null]> = [
     // cliente, responsável, situação, etapas já feitas, motivo do travamento
@@ -270,8 +408,48 @@ function seed() {
       blockedReason: motivo, doneAt: status === 'concluido' || status === 'nao_se_aplica' ? daysAgo(2) : null,
     };
     S.projClientes.push(linha);
-    for (let i = 0; i < feitas; i++) S.marcas.push({ projectClientId: linha.id, stepId: `st${i + 1}`, doneById: assigneeId, doneAt: daysAgo(10 - i * 2) });
+    for (let i = 0; i < feitas; i++) S.marcas.push({ projectClientId: linha.id, stepId: `st${i + 1}`, value: null, doneById: assigneeId, doneAt: daysAgo(10 - i * 2) });
   }
+  // ---- o segundo projeto: o feriado, com colunas de opções coloridas (como a planilha) ----
+  const fer: ProjRow = {
+    id: 'proj2', name: 'Feriado de 12 de outubro',
+    goal: 'Avisar o cliente, subir o áudio de feriado na URA e travar o bot com a mensagem de que o atendimento volta no dia seguinte.',
+    status: 'aberto', dueDate: emDias(9), ownerId: 'u1', closedAt: null,
+    createdAt: daysAgo(4), updatedAt: daysAgo(0, 9), deletedAt: null,
+  };
+  S.projetos.push(fer);
+  const opc = (label: string, tone: OpcaoEtapa['tone'], conclui = false): OpcaoEtapa => ({ id: id(), label, tone, conclui });
+  const contato = [opc('Sem necessidade', 'muted', true), opc('Pendente envio', 'bad'), opc('Mensagem enviada', 'signal'), opc('Cliente confirmou', 'ok', true)];
+  const audio = [opc('Sem necessidade', 'muted', true), opc('Aguardando áudio', 'bad'), opc('Áudio recebido', 'signal'), opc('Configurado na URA', 'ok', true)];
+  const bot = [opc('Sem necessidade', 'muted', true), opc('Pendente', 'bad'), opc('Travado com aviso', 'ok', true)];
+  S.etapas.push(
+    { id: 'fe1', projectId: fer.id, title: 'Contato com o cliente', kind: 'escolha', options: contato, sortOrder: 0 },
+    { id: 'fe2', projectId: fer.id, title: 'Áudio do feriado', kind: 'escolha', options: audio, sortOrder: 1 },
+    { id: 'fe3', projectId: fer.id, title: 'Travamento do bot', kind: 'escolha', options: bot, sortOrder: 2 },
+    { id: 'fe4', projectId: fer.id, title: 'Voltar ao normal no dia seguinte', kind: 'check', options: [], sortOrder: 3 },
+  );
+  const noFeriado: Array<[string, string | null, Array<number | null>]> = [
+    // cliente, responsável, opção escolhida em cada coluna (índice na lista, ou null = em branco)
+    ['Hospital Vale Verde', 'u2', [3, 3, 2, null]],
+    ['Clínica Aurora', 'u2', [2, 1, 1, null]],
+    ['Supermercado Bom Preço', 'u3', [1, 1, null, null]],
+    ['Distribuidora Norte', 'u3', [0, 0, 0, null]],
+    ['Home Care Viver Bem', null, [null, null, null, null]],
+    ['Transportes Litoral', 'u2', [3, 3, 2, null]],
+  ];
+  for (const [nome, assigneeId, escolhas] of noFeriado) {
+    const clientId = byName[nome];
+    if (!clientId) continue;
+    const linha: PClientRow = { id: 'fc' + S.projClientes.length, projectId: fer.id, clientId, assigneeId, status: 'pendente', blockedReason: null, doneAt: null };
+    S.projClientes.push(linha);
+    [contato, audio, bot].forEach((lista, k) => {
+      const escolhido = escolhas[k];
+      if (escolhido == null) return;
+      S.marcas.push({ projectClientId: linha.id, stepId: `fe${k + 1}`, value: lista[escolhido]!.id, doneById: assigneeId, doneAt: daysAgo(3 - k) });
+    });
+    recalcular(linha);
+  }
+
   S.projComentarios = [
     { id: id(), projectId: proj.id, projectClientId: null, userId: 'u1', body: 'A locução final está anexada aqui. Usem esse arquivo, não o da pasta antiga.', createdAt: daysAgo(11), deletedAt: null },
     { id: id(), projectId: proj.id, projectClientId: 'pc2', userId: 'u3', body: 'Liguei duas vezes, ficaram de retornar. Travei para não segurar a lista.', createdAt: daysAgo(3), deletedAt: null },
@@ -450,131 +628,6 @@ function aplicarItens(n: NotaRow, itens?: Array<Record<string, any>>) {
   });
 }
 const notasVivas = () => S.notas.filter((n) => !n.deletedAt);
-// ---------------- projetos ----------------
-const temPerm = (perm: string) => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes(perm) ?? false);
-const projetosVivos = () => S.projetos.filter((p) => !p.deletedAt);
-const projetoOu404 = (idp: string) => { const p = projetosVivos().find((x) => x.id === idp); if (!p) throw notFound('Projeto'); return p; };
-const linhaOu404 = (projectId: string, linhaId: string) => { const l = S.projClientes.find((x) => x.id === linhaId && x.projectId === projectId); if (!l) throw bad('Este cliente não está no projeto'); return l; };
-const FECHADAS_DEMO: SituacaoProjeto[] = ['concluido', 'nao_se_aplica'];
-const MANUAIS_DEMO: SituacaoProjeto[] = ['travado', 'nao_se_aplica'];
-
-/** A situação anda sozinha conforme as marcas — menos em "travado" e "não se aplica". */
-function recalcular(l: PClientRow) {
-  if (MANUAIS_DEMO.includes(l.status)) return l;
-  const etapas = S.etapas.filter((e) => e.projectId === l.projectId).length;
-  const marcadas = S.marcas.filter((m) => m.projectClientId === l.id).length;
-  l.status = etapas > 0 && marcadas >= etapas ? 'concluido' : marcadas > 0 ? 'andamento' : 'pendente';
-  l.doneAt = l.status === 'concluido' ? now() : null;
-  return l;
-}
-
-function gravarEtapas(projectId: string, etapas: Array<{ id?: string; title: string }>) {
-  const mantidos = new Set(etapas.map((e) => e.id).filter(Boolean) as string[]);
-  const sumiram = S.etapas.filter((e) => e.projectId === projectId && !mantidos.has(e.id)).map((e) => e.id);
-  S.etapas = S.etapas.filter((e) => e.projectId !== projectId || mantidos.has(e.id));
-  S.marcas = S.marcas.filter((m) => !sumiram.includes(m.stepId));
-  etapas.forEach((e, i) => {
-    const atual = e.id ? S.etapas.find((x) => x.id === e.id) : null;
-    if (atual) { atual.title = e.title; atual.sortOrder = i; }
-    else S.etapas.push({ id: id(), projectId, title: e.title, sortOrder: i });
-  });
-}
-
-/** Quem já está na lista é ignorado: não duplica nem zera o que já foi feito. */
-function entrarNaLista(projectId: string, clientIds: string[], assigneeId: string | null = null) {
-  let n = 0;
-  for (const clientId of [...new Set(clientIds)]) {
-    if (!S.clients.some((c) => c.id === clientId && !c.deletedAt)) continue;
-    if (S.projClientes.some((x) => x.projectId === projectId && x.clientId === clientId)) continue;
-    S.projClientes.push({ id: id(), projectId, clientId, assigneeId, status: 'pendente', blockedReason: null, doneAt: null });
-    n++;
-  }
-  return n;
-}
-
-const zeradoDemo = (): Record<SituacaoProjeto, number> => ({ pendente: 0, andamento: 0, travado: 0, concluido: 0, nao_se_aplica: 0 });
-function contarLinhas(projectId: string) {
-  const linhas = S.projClientes.filter((x) => x.projectId === projectId);
-  const contagem = zeradoDemo();
-  for (const l of linhas) contagem[l.status] += 1;
-  const total = linhas.length;
-  const fechadas = contagem.concluido + contagem.nao_se_aplica;
-  return { linhas, contagem, total, fechadas, faltam: total - fechadas, andamento: total ? Math.round((fechadas / total) * 100) : 0 };
-}
-const atrasadoDemo = (p: ProjRow, faltam: number) => p.status === 'aberto' && !!p.dueDate && faltam > 0 && p.dueDate < new Date().toISOString().slice(0, 10);
-
-function resumoProjeto(p: ProjRow): ProjetoResumo {
-  const c = contarLinhas(p.id);
-  return {
-    id: p.id, name: p.name, goal: p.goal, status: p.status, dueDate: p.dueDate,
-    ownerId: p.ownerId, ownerName: S.users.find((u) => u.id === p.ownerId)?.name ?? null,
-    closedAt: p.closedAt, createdAt: p.createdAt, updatedAt: p.updatedAt,
-    etapas: S.etapas.filter((e) => e.projectId === p.id).length,
-    total: c.total, faltam: c.faltam, contagem: c.contagem, andamento: c.andamento, atrasado: atrasadoDemo(p, c.faltam),
-  };
-}
-
-function projetoCompleto(p: ProjRow): Projeto {
-  const c = contarLinhas(p.id);
-  const etapas = S.etapas.filter((e) => e.projectId === p.id).sort((a, b) => a.sortOrder - b.sortOrder);
-  const porResponsavel = new Map<string, { id: string | null; nome: string; total: number; fechados: number; travados: number }>();
-  for (const l of c.linhas) {
-    const chave = l.assigneeId ?? 'sem';
-    const atual = porResponsavel.get(chave) ?? { id: l.assigneeId, nome: S.users.find((u) => u.id === l.assigneeId)?.name ?? 'Sem responsável', total: 0, fechados: 0, travados: 0 };
-    atual.total += 1;
-    if (FECHADAS_DEMO.includes(l.status)) atual.fechados += 1;
-    if (l.status === 'travado') atual.travados += 1;
-    porResponsavel.set(chave, atual);
-  }
-  const marcas = S.marcas.filter((m) => c.linhas.some((l) => l.id === m.projectClientId));
-  return {
-    id: p.id, name: p.name, goal: p.goal, status: p.status, dueDate: p.dueDate,
-    ownerId: p.ownerId, ownerName: S.users.find((u) => u.id === p.ownerId)?.name ?? null,
-    closedAt: p.closedAt, createdAt: p.createdAt, updatedAt: p.updatedAt,
-    etapas: etapas.map((e) => ({ id: e.id, title: e.title, sortOrder: e.sortOrder })),
-    clientes: c.linhas
-      .map((l) => {
-        const cli = S.clients.find((x) => x.id === l.clientId)!;
-        return {
-          id: l.id, clientId: l.clientId, clientName: cli?.tradeName ?? '?', arquivado: !!cli?.archived,
-          assigneeId: l.assigneeId, assigneeName: S.users.find((u) => u.id === l.assigneeId)?.name ?? null,
-          status: l.status, blockedReason: l.blockedReason, doneAt: l.doneAt,
-          feitas: S.marcas.filter((m) => m.projectClientId === l.id).map((m) => ({ stepId: m.stepId, doneAt: m.doneAt, quem: S.users.find((u) => u.id === m.doneById)?.name ?? null })),
-        };
-      })
-      .sort((a, b) => a.clientName.localeCompare(b.clientName, 'pt-BR')),
-    comentarios: S.projComentarios.filter((x) => x.projectId === p.id && !x.deletedAt)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .map((x) => ({ id: x.id, projectClientId: x.projectClientId, body: x.body, autor: S.users.find((u) => u.id === x.userId)?.name ?? 'sistema', userId: x.userId, createdAt: x.createdAt })),
-    anexos: S.projAnexos.filter((x) => x.projectId === p.id && !x.deletedAt)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .map((x) => ({ id: x.id, projectClientId: x.projectClientId, fileName: x.fileName, mimeType: x.mimeType, sizeBytes: x.sizeBytes, createdAt: x.createdAt, quem: S.users.find((u) => u.id === x.uploadedById)?.name ?? 'sistema' })),
-    resumo: {
-      total: c.total, faltam: c.faltam, contagem: c.contagem, andamento: c.andamento,
-      etapasFeitas: marcas.length, etapasTotais: c.total * etapas.length, atrasado: atrasadoDemo(p, c.faltam),
-      porResponsavel: [...porResponsavel.values()].sort((a, b) => (b.total - b.fechados) - (a.total - a.fechados) || a.nome.localeCompare(b.nome, 'pt-BR')),
-    },
-    podeTrabalhar: temPerm('projects.work'), podeGerenciar: temPerm('projects.manage'),
-  };
-}
-
-/** Os projetos de um cliente (a aba da ficha dele). */
-function projetosDoCliente(clientId: string): ProjetoDoCliente[] {
-  return S.projClientes
-    .filter((l) => l.clientId === clientId)
-    .flatMap<ProjetoDoCliente>((l) => {
-      const p = projetosVivos().find((x) => x.id === l.projectId);
-      if (!p) return [];
-      return [{
-        projectClientId: l.id, projectId: p.id, name: p.name, projectStatus: p.status, dueDate: p.dueDate,
-        status: l.status, blockedReason: l.blockedReason, assigneeId: l.assigneeId,
-        assigneeName: S.users.find((u) => u.id === l.assigneeId)?.name ?? null,
-        feitas: S.marcas.filter((m) => m.projectClientId === l.id).length,
-        etapas: S.etapas.filter((e) => e.projectId === p.id).length,
-      }];
-    });
-}
-
 const podeEditarNovidades = () => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes('admin.manage') ?? false);
 const shapeNota = (n: NotaRow): Novidade => ({
   id: n.id, version: n.version, title: n.title, summary: n.summary, publishedAt: n.publishedAt, createdAt: n.createdAt, updatedAt: n.updatedAt,
@@ -1169,7 +1222,7 @@ export const demoApi: Api = {
         createdAt: now(), updatedAt: now(), deletedAt: null,
       };
       S.projetos.push(p);
-      gravarEtapas(p.id, (d.etapas as Array<{ id?: string; title: string }>) ?? []);
+      gravarEtapas(p.id, (d.etapas as EtapaProjeto[]) ?? []);
       entrarNaLista(p.id, (d.clientIds as string[]) ?? []);
       audit('create', 'project', `Criou o projeto "${p.name}" com ${S.projClientes.filter((x) => x.projectId === p.id).length} cliente(s)`, p.id);
       return projetoCompleto(p);
@@ -1183,13 +1236,24 @@ export const demoApi: Api = {
       if (d.ownerId !== undefined) p.ownerId = (d.ownerId as string) || null;
       if (d.status !== undefined) { p.status = d.status as ProjRow['status']; p.closedAt = p.status === 'aberto' ? null : now(); }
       if (d.etapas !== undefined) {
-        gravarEtapas(p.id, d.etapas as Array<{ id?: string; title: string }>);
+        gravarEtapas(p.id, d.etapas as EtapaProjeto[]);
         for (const l of S.projClientes.filter((x) => x.projectId === p.id)) recalcular(l);
       }
       if (d.clientIds !== undefined) entrarNaLista(p.id, d.clientIds as string[]);
       p.updatedAt = now();
       audit('update', 'project', `Editou o projeto "${p.name}"`, p.id);
       return projetoCompleto(p);
+    },
+    async duplicar(idp, name) {
+      await wait(); requirePerm('projects.manage');
+      const antigo = projetoOu404(idp);
+      const novo: ProjRow = { ...antigo, id: id(), name: name?.trim() || `${antigo.name} (cópia)`, dueDate: null, status: 'aberto', closedAt: null, createdAt: now(), updatedAt: now(), deletedAt: null };
+      S.projetos.push(novo);
+      for (const e of S.etapas.filter((x) => x.projectId === antigo.id)) S.etapas.push({ ...e, id: id(), projectId: novo.id, options: (e.options ?? []).map((o) => ({ ...o })) });
+      // os clientes voltam pendentes, com o mesmo responsável — o trabalho é que recomeça
+      for (const l of S.projClientes.filter((x) => x.projectId === antigo.id)) S.projClientes.push({ id: id(), projectId: novo.id, clientId: l.clientId, assigneeId: l.assigneeId, status: 'pendente', blockedReason: null, doneAt: null });
+      audit('create', 'project', `Duplicou um projeto em "${novo.name}"`, novo.id);
+      return projetoCompleto(novo);
     },
     async remover(idp) { await wait(); requirePerm('projects.manage'); const p = projetoOu404(idp); p.deletedAt = now(); audit('delete', 'project', `Mandou o projeto "${p.name}" para a lixeira`, p.id); return { ok: true }; },
     async addClientes(idp, clientIds, assigneeId) {
@@ -1225,8 +1289,14 @@ export const demoApi: Api = {
         l.doneAt = status === 'concluido' || status === 'nao_se_aplica' ? now() : null;
         if (status === 'concluido') {
           // "concluído" à mão = tudo feito: completa as etapas que faltavam
+          // (na lista, escolhendo a primeira opção que resolve a etapa)
           for (const e of S.etapas.filter((x) => x.projectId === p.id)) {
-            if (!S.marcas.some((m) => m.projectClientId === l.id && m.stepId === e.id)) S.marcas.push({ projectClientId: l.id, stepId: e.id, doneById: S.me!.id, doneAt: now() });
+            const marca = S.marcas.find((m) => m.projectClientId === l.id && m.stepId === e.id);
+            if (resolvida(e, marca)) continue;
+            const value = e.kind === 'escolha' ? ((e.options ?? []).find((o) => o.conclui)?.id ?? null) : null;
+            if (e.kind === 'escolha' && !value) continue;
+            if (marca) { marca.value = value; marca.doneById = S.me!.id; marca.doneAt = now(); }
+            else S.marcas.push({ projectClientId: l.id, stepId: e.id, value, doneById: S.me!.id, doneAt: now() });
           }
         }
         if (status !== 'travado' && status !== 'nao_se_aplica') recalcular(l);
@@ -1235,22 +1305,37 @@ export const demoApi: Api = {
       audit('update', 'project', `${nome}: ${d.status ? `situação → ${l.status}` : 'trocou o responsável'}`, p.id);
       return l;
     },
-    async marcar(idp, linhaId, stepId, feito) {
+    async marcar(idp, linhaId, stepId, d) {
       await wait(60); requirePerm('projects.work');
       const p = projetoOu404(idp);
       const l = linhaOu404(p.id, linhaId);
       const etapa = S.etapas.find((e) => e.id === stepId && e.projectId === p.id);
       if (!etapa) throw bad('Etapa não encontrada neste projeto');
       if (l.status === 'nao_se_aplica') throw bad('Este cliente está marcado como "não se aplica". Tire essa marca para trabalhar nele.');
-      if (feito) {
-        if (!S.marcas.some((m) => m.projectClientId === linhaId && m.stepId === stepId)) S.marcas.push({ projectClientId: linhaId, stepId, doneById: S.me!.id, doneAt: now() });
-      } else {
+
+      const escolha = etapa.kind === 'escolha';
+      if (escolha && d.valor === undefined) throw bad(`"${etapa.title}" é uma lista de opções: escolha uma.`);
+      if (!escolha && d.feito === undefined) throw bad(`"${etapa.title}" é uma caixinha: diga se está feito.`);
+      const limpar = escolha ? d.valor === null : d.feito === false;
+
+      if (limpar) {
         S.marcas = S.marcas.filter((m) => !(m.projectClientId === linhaId && m.stepId === stepId));
+      } else {
+        let value: string | null = null;
+        if (escolha) {
+          const opcao = (etapa.options ?? []).find((o) => o.id === d.valor);
+          if (!opcao) throw bad('Essa opção não existe nesta etapa');
+          value = opcao.id;
+        }
+        const atual = S.marcas.find((m) => m.projectClientId === linhaId && m.stepId === stepId);
+        if (atual) { atual.value = value; atual.doneById = S.me!.id; atual.doneAt = now(); }
+        else S.marcas.push({ projectClientId: linhaId, stepId, value, doneById: S.me!.id, doneAt: now() });
       }
       recalcular(l);
       p.updatedAt = now();
       const nome = S.clients.find((c) => c.id === l.clientId)?.tradeName ?? 'cliente';
-      audit('update', 'project', `${feito ? 'Marcou' : 'Desmarcou'} "${etapa.title}" de ${nome}`, p.id);
+      const rotulo = escolha ? (etapa.options ?? []).find((o) => o.id === d.valor)?.label ?? 'nada' : null;
+      audit('update', 'project', rotulo !== null ? `${nome}: "${etapa.title}" → ${rotulo}` : `${d.feito ? 'Marcou' : 'Desmarcou'} "${etapa.title}" de ${nome}`, p.id);
       return l;
     },
     async comentar(idp, body, projectClientId) {

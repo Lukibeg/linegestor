@@ -53,10 +53,13 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   // ---- trabalhar no projeto: marcar etapas, situação, comentar, anexar ----
   app.post('/:id/clientes/:linhaId/etapas/:stepId', { preHandler: app.requirePermission('projects.work'), schema: { tags: ['Projetos'], summary: 'Marcar ou desmarcar uma etapa de um cliente', params: Marca, body: ProjetoMarcarSchema } },
     async (req) => {
-      const r = await svc.marcar(app.db, req.params.id, req.params.linhaId, req.params.stepId, req.body.feito, req.user!.id);
+      const r = await svc.marcar(app.db, req.params.id, req.params.linhaId, req.params.stepId, req.body, req.user!.id);
+      const opcao = r.etapa.kind === 'escolha' ? (r.etapa.options ?? []).find((o) => o.id === req.body.valor)?.label ?? 'nada' : null;
       await app.audit(req, {
         action: 'update', entityType: 'project', entityId: req.params.id,
-        summary: `${req.body.feito ? 'Marcou' : 'Desmarcou'} "${r.etapa.title}" de ${r.clientName}`,
+        summary: opcao !== null
+          ? `${r.clientName}: "${r.etapa.title}" → ${opcao}`
+          : `${req.body.feito ? 'Marcou' : 'Desmarcou'} "${r.etapa.title}" de ${r.clientName}`,
       });
       return r.linha;
     });
@@ -104,6 +107,13 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req, reply) => {
       const p = await svc.create(app.db, req.body);
       await app.audit(req, { action: 'create', entityType: 'project', entityId: p.id, summary: `Criou o projeto "${p.name}" com ${p.clientes.length} cliente(s)` });
+      return reply.status(201).send(p);
+    });
+
+  app.post('/:id/duplicar', { preHandler: app.requirePermission('projects.manage'), schema: { tags: ['Projetos'], summary: 'Duplicar o projeto: mesmas etapas e a mesma lista, tudo zerado', params: Id, body: z.object({ name: z.string().trim().max(160).optional() }) } },
+    async (req, reply) => {
+      const p = await svc.duplicar(app.db, req.params.id, req.body.name);
+      await app.audit(req, { action: 'create', entityType: 'project', entityId: p.id, summary: `Duplicou um projeto em "${p.name}"` });
       return reply.status(201).send(p);
     });
 

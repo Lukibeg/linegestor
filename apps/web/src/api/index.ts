@@ -127,7 +127,9 @@ export type Api = {
     removerCliente(id: string, linhaId: string): Promise<{ ok: boolean }>;
     /** Trocar responsável ou situação de um cliente no projeto */
     linha(id: string, linhaId: string, d: Record<string, unknown>): Promise<unknown>;
-    marcar(id: string, linhaId: string, stepId: string, feito: boolean): Promise<unknown>;
+    /** caixinha: `{ feito }`; lista: `{ valor }` (o id da opção, ou null para limpar) */
+    marcar(id: string, linhaId: string, stepId: string, d: { feito?: boolean; valor?: string | null }): Promise<unknown>;
+    duplicar(id: string, name?: string): Promise<T.Projeto>;
     comentar(id: string, body: string, projectClientId?: string | null): Promise<unknown>;
     apagarComentario(id: string, commentId: string): Promise<{ ok: boolean }>;
     anexar(id: string, d: { fileName: string; conteudo: string; projectClientId?: string | null }): Promise<T.AnexoProjeto>;

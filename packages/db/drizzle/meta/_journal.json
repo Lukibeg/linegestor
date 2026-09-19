@@ -36,6 +36,13 @@
       "when": 1789841161320,
       "tag": "0004_projetos",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789843674617,
+      "tag": "0005_etapas_com_opcoes",
+      "breakpoints": true
     }
   ]
 }

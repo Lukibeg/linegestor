@@ -736,14 +736,31 @@ export const projects = pgTable(
   (t) => [index('projects_status_idx').on(t.status)],
 );
 
-/** Uma etapa do projeto. Vale para todos os clientes da lista, na mesma ordem. */
+/**
+ * Uma etapa (coluna) do projeto. Vale para todos os clientes da lista, na mesma ordem.
+ *
+ * São dois tipos:
+ *  - **caixinha** (`check`): feito ou não feito, o caso mais comum;
+ *  - **lista de opções** (`escolha`): a pessoa escolhe um rótulo colorido
+ *    ("Sem necessidade · Pendente · Mensagem enviada · Configuração realizada"),
+ *    como as colunas de situação que a equipe já usava na planilha.
+ *
+ * As opções ficam em `options`: `[{ id, label, tone, conclui }]`. `tone` é a cor
+ * (as mesmas do sistema) e `conclui` diz se aquela opção **fecha** a etapa — é o que
+ * faz "Sem necessidade" e "Configuração realizada" contarem como resolvido, e
+ * "Pendente" não. O `id` é estável: trocar o rótulo não perde o que já foi escolhido.
+ */
 export const projectSteps = pgTable(
   'project_steps',
   {
     id: id(),
     projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-    /** O que fazer ("Gravar o áudio", "Subir no PBX", "Testar com o cliente") */
+    /** O que fazer ("Gravar o áudio") ou o nome da coluna ("Situação do contato") */
     title: text('title').notNull(),
+    /** check = caixinha · escolha = lista de opções */
+    kind: text('kind').notNull().default('check'),
+    /** As opções, quando `kind` é "escolha" */
+    options: jsonb('options').$type<Array<{ id: string; label: string; tone: string; conclui: boolean }>>().notNull().default([]),
     sortOrder: integer('sort_order').notNull().default(0),
   },
   (t) => [index('project_steps_project_idx').on(t.projectId)],
@@ -780,13 +797,21 @@ export const projectClients = pgTable(
   ],
 );
 
-/** "A etapa X do cliente Y já foi feita, por fulano, em tal dia." Sem linha = ainda não foi. */
+/**
+ * O que foi marcado numa etapa, para um cliente: "fulano marcou, em tal dia".
+ * Sem linha = ainda não mexeram naquela etapa.
+ *
+ * Em etapa de **caixinha**, a linha existir já quer dizer "feito" e `value` fica nulo.
+ * Em **lista de opções**, `value` guarda o id da opção escolhida.
+ */
 export const projectChecks = pgTable(
   'project_checks',
   {
     id: id(),
     projectClientId: text('project_client_id').notNull().references(() => projectClients.id, { onDelete: 'cascade' }),
     stepId: text('step_id').notNull().references(() => projectSteps.id, { onDelete: 'cascade' }),
+    /** O id da opção escolhida (só em etapa de lista); nulo na caixinha */
+    value: text('value'),
     doneById: text('done_by_id').references(() => users.id),
     doneAt: timestamp('done_at', { withTimezone: true }).notNull().defaultNow(),
   },

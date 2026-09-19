@@ -468,11 +468,41 @@ export const SituacaoProjetoSchema = z.enum(SITUACOES_PROJETO);
 /** Data-alvo como o campo de calendário manda: "AAAA-MM-DD", guardada como texto (não tem hora). */
 const DiaTextoSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida');
 
-/** Uma etapa. Sem `id` é nova; com `id`, é a que já existe (mantém as marcas de quem já fez). */
-export const EtapaProjetoSchema = z.object({
-  id: IdSchema.optional(),
-  title: z.string().trim().min(1, 'Dê um nome à etapa').max(160),
+/** As cores que uma opção pode ter (as mesmas do resto do sistema). */
+export const CORES_OPCAO = ['neutral', 'accent', 'ok', 'signal', 'bad', 'muted'] as const;
+
+/**
+ * Uma opção de uma etapa do tipo lista ("Pendente", "Mensagem enviada", …).
+ * `conclui` diz se escolher esta opção **fecha** a etapa — é o que faz "Sem necessidade" e
+ * "Configuração realizada" contarem como resolvido, e "Pendente" não.
+ * O `id` é estável: trocar o rótulo não perde o que já foi escolhido.
+ */
+export const OpcaoEtapaSchema = z.object({
+  id: z.string().trim().min(1).max(40).optional(),
+  label: z.string().trim().min(1, 'Dê um nome à opção').max(60),
+  tone: z.enum(CORES_OPCAO).default('neutral'),
+  conclui: z.boolean().default(false),
 });
+
+/**
+ * Uma etapa (coluna) do projeto. Sem `id` é nova; com `id`, é a que já existe
+ * (mantém o que já foi marcado). `kind` escolhe entre caixinha e lista de opções.
+ */
+export const EtapaProjetoSchema = z
+  .object({
+    id: IdSchema.optional(),
+    title: z.string().trim().min(1, 'Dê um nome à etapa').max(160),
+    kind: z.enum(['check', 'escolha']).default('check'),
+    options: z.array(OpcaoEtapaSchema).max(12, 'No máximo 12 opções por etapa').default([]),
+  })
+  .refine((e) => e.kind !== 'escolha' || e.options.length >= 2, {
+    message: 'Uma etapa de lista precisa de ao menos duas opções',
+    path: ['options'],
+  })
+  .refine((e) => e.kind !== 'escolha' || e.options.some((o) => o.conclui), {
+    message: 'Marque ao menos uma opção como "resolve a etapa" — senão ela nunca fecha',
+    path: ['options'],
+  });
 
 export const ProjetoGravarSchema = z.object({
   name: z.string().trim().min(1, 'Dê um nome ao projeto').max(160),
@@ -506,7 +536,16 @@ export const ProjetoLinhaSchema = z
     path: ['blockedReason'],
   });
 
-export const ProjetoMarcarSchema = z.object({ feito: z.boolean() });
+/**
+ * Mexer numa etapa de um cliente: `feito` na caixinha, `valor` (o id da opção) na lista.
+ * `valor: null` limpa a escolha.
+ */
+export const ProjetoMarcarSchema = z
+  .object({
+    feito: z.boolean().optional(),
+    valor: z.string().trim().max(40).nullable().optional(),
+  })
+  .refine((v) => v.feito !== undefined || v.valor !== undefined, { message: 'Diga o que marcar' });
 
 export const ProjetoComentarioSchema = z.object({
   body: z.string().trim().min(1, 'Escreva o comentário').max(4000),
@@ -580,3 +619,5 @@ export type ProjetoGravar = z.infer<typeof ProjetoGravarSchema>;
 export type ProjetoAtualizar = z.infer<typeof ProjetoAtualizarSchema>;
 export type ProjetoLinha = z.infer<typeof ProjetoLinhaSchema>;
 export type ProjetoAnexo = z.infer<typeof ProjetoAnexoSchema>;
+export type EtapaProjeto = z.infer<typeof EtapaProjetoSchema>;
+export type OpcaoEtapa = z.infer<typeof OpcaoEtapaSchema>;

@@ -56,3 +56,42 @@ de cada cliente. O nome foi escolha do Luan (a alternativa era "Campanhas").
 
 **O que ficou de fora, de propósito.** Etapas diferentes por cliente (o painel deixaria de comparar),
 lista por unidade, prazo por linha e notificação de cobrança. Se fizerem falta no uso, a gente põe.
+
+## Depois: a etapa também pode ser uma lista de opções
+
+**Contexto.** O Luan mostrou a planilha que a equipe usa hoje: cada cliente é uma linha e cada
+coluna é um **rótulo colorido** escolhido numa lista ("Sem necessidade · Pendente envio mensagem ·
+Mensagem enviada · Aguardando configuração · Configuração realizada"). O caso que trouxe isso à
+tona foi o **feriado**: gravar e subir o áudio de feriado na URA de cada cliente e travar o bot com
+o aviso de que o atendimento volta no dia seguinte. Caixinha de "feito" não dá conta: entre
+"não comecei" e "está no ar" existem passos que a equipe precisa enxergar de longe, pela cor.
+
+**Decisão.** A etapa passa a ter **tipo**: `check` (a caixinha) ou `escolha` (a lista).
+
+- A lista guarda as opções em `project_steps.options` — `[{ id, label, tone, conclui }]` — e a
+  escolha de cada cliente vai em `project_checks.value`. O `id` da opção é estável: **trocar o
+  rótulo não perde o que os clientes já escolheram**; tirar a opção limpa a escolha de quem estava
+  nela (e a linha reabre).
+- **`conclui` é o que faz a conta fechar.** Uma opção marcada como "resolve" fecha aquela coluna;
+  as outras deixam em aberto. É assim que "Sem necessidade" e "Configuração realizada" contam como
+  resolvido e "Pendente" não — sem isso, o andamento seria adivinhação. Uma etapa de lista sem duas
+  opções, ou sem nenhuma que resolva, é recusada na criação: ela nunca fecharia.
+- **Cores**: as seis do sistema (cinza, azul, verde, amarelo, vermelho, apagado). O seletor da
+  tabela ganha a cor da opção escolhida, e abaixo da tabela fica a legenda de cada coluna, com um
+  ✓ nas opções que resolvem.
+- Marcar **"concluído" à mão** agora também escolhe, em cada coluna de lista, a primeira opção que
+  resolve — a tabela não pode contradizer a situação.
+- **Duplicar projeto**: mesmas etapas, mesmas opções e a mesma lista de clientes, tudo zerado e sem
+  prazo. O feriado do mês que vem é o feriado deste mês, em branco — era isso ou refazer tudo à mão
+  toda vez.
+
+**Consequências.**
+
+- Migração `0005_etapas_com_opcoes.sql`: `project_steps.kind`, `project_steps.options` e
+  `project_checks.value`. Nada muda para quem já tinha etapas — elas nascem `check`, como eram.
+- O endpoint de marcar aceita `{ feito }` na caixinha e `{ valor }` na lista, e recusa o contrário
+  (uma caixinha não recebe opção, uma lista não recebe "feito").
+- A prévia ganhou um segundo projeto de exemplo, "Feriado de 12 de outubro", com as colunas
+  Contato · Áudio do feriado · Travamento do bot (listas) e "Voltar ao normal" (caixinha).
+- 4 testes novos (18 no arquivo, 85 no total) cobrem o que resolve e o que não resolve, renomear
+  opção sem perder escolha, tirar opção, a recusa da lista mal formada e a duplicação.

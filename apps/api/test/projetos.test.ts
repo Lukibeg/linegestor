@@ -292,3 +292,131 @@ describe('tirar da lista e encerrar', () => {
     expect((await s.get(`/projects/${projetoId}`)).statusCode).toBe(200);
   });
 });
+
+describe('etapa em lista de opções (o rótulo colorido da planilha)', () => {
+  it('só as opções que "resolvem" fecham a etapa; trocar o rótulo preserva a escolha; tirar a opção limpa', async () => {
+    const r = await s.post('/projects', {
+      name: 'Feriado de 12 de outubro',
+      goal: 'Áudio de feriado e bot travado com aviso.',
+      etapas: [
+        {
+          title: 'Áudio do feriado', kind: 'escolha',
+          options: [
+            { label: 'Sem necessidade', tone: 'muted', conclui: true },
+            { label: 'Aguardando áudio', tone: 'bad', conclui: false },
+            { label: 'Configurado na URA', tone: 'ok', conclui: true },
+          ],
+        },
+        { title: 'Voltar ao normal', kind: 'check' },
+      ],
+      clientIds: [clientes[0]!.id],
+    });
+    expect(r.statusCode).toBe(201);
+    const p1 = r.json();
+    const [audio, voltar] = p1.etapas;
+    const linha = p1.clientes[0].id;
+    expect(audio.kind).toBe('escolha');
+    expect(audio.options).toHaveLength(3);
+    expect(audio.options[0].id).toBeTruthy();
+
+    const marcar = (stepId: string, corpo: Record<string, unknown>) => operador.post(`/projects/${p1.id}/clientes/${linha}/etapas/${stepId}`, corpo);
+
+    // a caixinha não aceita "valor", e a lista não aceita "feito"
+    expect((await marcar(audio.id, { feito: true })).statusCode).toBe(400);
+    expect((await marcar(voltar.id, { valor: audio.options[0].id })).statusCode).toBe(400);
+    expect((await marcar(audio.id, { valor: 'nao-existe' })).statusCode).toBe(400);
+
+    // "Aguardando áudio" não resolve: a linha só sai de pendente quando algo fecha
+    expect((await marcar(audio.id, { valor: audio.options[1].id })).json().status).toBe('pendente');
+    // "Configurado na URA" resolve
+    expect((await marcar(audio.id, { valor: audio.options[2].id })).json().status).toBe('andamento');
+    // com a caixinha marcada, fecha tudo
+    expect((await marcar(voltar.id, { feito: true })).json().status).toBe('concluido');
+    // limpar a escolha reabre
+    expect((await marcar(audio.id, { valor: null })).json().status).toBe('andamento');
+    await marcar(audio.id, { valor: audio.options[2].id });
+
+    // renomear o rótulo (mesmo id) preserva a escolha
+    const renomeado = await s.patch(`/projects/${p1.id}`, {
+      etapas: [
+        { id: audio.id, title: 'Áudio do feriado', kind: 'escolha', options: [
+          { ...audio.options[0] }, { ...audio.options[1] },
+          { ...audio.options[2], label: 'Áudio já está no ar' },
+        ] },
+        { id: voltar.id, title: voltar.title, kind: 'check' },
+      ],
+    });
+    const depois = renomeado.json();
+    expect(depois.clientes[0].status).toBe('concluido');
+    expect(depois.clientes[0].feitas.find((f: any) => f.stepId === audio.id).valor).toBe(audio.options[2].id);
+    expect(depois.etapas[0].options[2].label).toBe('Áudio já está no ar');
+
+    // tirar a opção escolhida limpa a marca daquele cliente
+    const semAOpcao = await s.patch(`/projects/${p1.id}`, {
+      etapas: [
+        { id: audio.id, title: 'Áudio do feriado', kind: 'escolha', options: [{ ...audio.options[0] }, { ...audio.options[1] }] },
+        { id: voltar.id, title: voltar.title, kind: 'check' },
+      ],
+    });
+    expect(semAOpcao.json().clientes[0].feitas.some((f: any) => f.stepId === audio.id)).toBe(false);
+    expect(semAOpcao.json().clientes[0].status).toBe('andamento');
+
+    await s.del(`/projects/${p1.id}`);
+  });
+
+  it('lista sem duas opções, ou sem nenhuma que resolva, é recusada', async () => {
+    const poucas = await s.post('/projects', { name: 'x', etapas: [{ title: 'Só uma', kind: 'escolha', options: [{ label: 'Única', tone: 'ok', conclui: true }] }] });
+    expect(poucas.statusCode).toBe(400);
+    const semFim = await s.post('/projects', { name: 'y', etapas: [{ title: 'Nunca fecha', kind: 'escolha', options: [{ label: 'A', tone: 'bad', conclui: false }, { label: 'B', tone: 'signal', conclui: false }] }] });
+    expect(semFim.statusCode).toBe(400);
+  });
+
+  it('marcar "concluído" à mão escolhe a opção que resolve', async () => {
+    const p2 = (await s.post('/projects', {
+      name: 'Feriado seguinte',
+      etapas: [{ title: 'Bot', kind: 'escolha', options: [{ label: 'Pendente', tone: 'bad', conclui: false }, { label: 'Travado com aviso', tone: 'ok', conclui: true }] }],
+      clientIds: [clientes[1]!.id],
+    })).json();
+    const linha = p2.clientes[0].id;
+    const fechou = await s.patch(`/projects/${p2.id}/clientes/${linha}`, { status: 'concluido' });
+    expect(fechou.json().status).toBe('concluido');
+    const depois = (await s.get(`/projects/${p2.id}`)).json();
+    expect(depois.clientes[0].feitas[0].valor).toBe(p2.etapas[0].options[1].id);
+    await s.del(`/projects/${p2.id}`);
+  });
+});
+
+describe('duplicar', () => {
+  it('leva etapas, opções e a lista de clientes, tudo zerado e sem prazo', async () => {
+    const original = (await s.post('/projects', {
+      name: 'Feriado de novembro',
+      dueDate: '2026-11-15',
+      etapas: [
+        { title: 'Áudio', kind: 'escolha', options: [{ label: 'Pendente', tone: 'bad', conclui: false }, { label: 'No ar', tone: 'ok', conclui: true }] },
+        { title: 'Avisar', kind: 'check' },
+      ],
+      clientIds: [clientes[0]!.id, clientes[1]!.id],
+    })).json();
+    const linha = original.clientes[0].id;
+    await s.post(`/projects/${original.id}/clientes/${linha}/etapas/${original.etapas[1].id}`, { feito: true });
+
+    const copia = await s.post(`/projects/${original.id}/duplicar`, { name: 'Feriado de dezembro' });
+    expect(copia.statusCode).toBe(201);
+    const c = copia.json();
+    expect(c.name).toBe('Feriado de dezembro');
+    expect(c.id).not.toBe(original.id);
+    expect(c.dueDate).toBeNull();
+    expect(c.etapas.map((e: any) => e.title)).toEqual(['Áudio', 'Avisar']);
+    expect(c.etapas[0].options.map((o: any) => o.label)).toEqual(['Pendente', 'No ar']);
+    expect(c.clientes).toHaveLength(2);
+    expect(c.clientes.every((x: any) => x.status === 'pendente')).toBe(true);
+    expect(c.resumo.etapasFeitas).toBe(0);
+    // o original continua intacto
+    expect((await s.get(`/projects/${original.id}`)).json().resumo.etapasFeitas).toBe(1);
+    // quem não gerencia não duplica
+    expect((await operador.post(`/projects/${original.id}/duplicar`, {})).statusCode).toBe(403);
+
+    await s.del(`/projects/${c.id}`);
+    await s.del(`/projects/${original.id}`);
+  });
+});

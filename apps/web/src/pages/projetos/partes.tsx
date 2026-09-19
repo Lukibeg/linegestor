@@ -1,7 +1,7 @@
 /** Pedaços que a lista, a ficha do projeto e a ficha do cliente usam em comum. */
 import type { ReactNode } from 'react';
 import { Chip } from '../../components/ui/index.js';
-import type { SituacaoProjeto } from '../../api/types.js';
+import type { CorOpcao, EtapaProjeto, OpcaoEtapa, SituacaoProjeto } from '../../api/types.js';
 
 /** O rótulo e a cor de cada situação. "Não se aplica" fecha a linha sem contar como trabalho feito. */
 export const SITUACAO: Record<SituacaoProjeto, { rotulo: string; tone: 'neutral' | 'accent' | 'signal' | 'ok' | 'muted' }> = {
@@ -51,3 +51,34 @@ export function tamanho(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
 }
+
+/** As cores que uma opção pode ter, com nome de gente (é isto que aparece no editor). */
+export const CORES: Array<{ id: CorOpcao; nome: string }> = [
+  { id: 'neutral', nome: 'Cinza' },
+  { id: 'accent', nome: 'Azul' },
+  { id: 'ok', nome: 'Verde' },
+  { id: 'signal', nome: 'Amarelo' },
+  { id: 'bad', nome: 'Vermelho' },
+  { id: 'muted', nome: 'Apagado' },
+];
+
+/** Aquela etapa está resolvida para este cliente? Na lista, só as opções que "resolvem" fecham. */
+export function etapaResolvida(etapa: EtapaProjeto, marca?: { valor: string | null } | null) {
+  if (!marca) return false;
+  if (etapa.kind !== 'escolha') return true;
+  return etapa.options.some((o) => o.id === marca.valor && o.conclui);
+}
+
+/** A opção escolhida, se houver. */
+export const opcaoDe = (etapa: EtapaProjeto, marca?: { valor: string | null } | null): OpcaoEtapa | undefined =>
+  etapa.options.find((o) => o.id === marca?.valor);
+
+/** A cor do seletor quando há opção escolhida — o mesmo visual do chip, num `<select>`. */
+export const CHIP_SELECT: Record<CorOpcao, string> = {
+  neutral: 'bg-surface-2 text-ink-2 border-line-strong',
+  accent: 'bg-accent-soft text-accent-ink border-accent',
+  ok: 'bg-ok-soft text-ok border-ok',
+  signal: 'bg-signal-soft text-signal border-signal',
+  bad: 'bg-bad-soft text-bad border-bad',
+  muted: 'bg-surface-2 text-muted border-line',
+};
