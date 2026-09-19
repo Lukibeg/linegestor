@@ -452,7 +452,7 @@ export const NovidadeItemSchema = z.object({
 
 /** A nota inteira: cabeçalho + os itens, na ordem em que aparecem. */
 export const NovidadeGravarSchema = z.object({
-  version: z.string().trim().min(1, 'Informe a versão (ex.: rodada-24)').max(60).regex(/^[a-z0-9._-]+$/, 'Use só letras minúsculas, números, ponto, hífen e _'),
+  version: z.string().trim().min(1, 'Informe o número do patch (ex.: 1.3)').max(60).regex(/^[a-z0-9._-]+$/, 'Use só letras minúsculas, números, ponto, hífen e _'),
   title: z.string().trim().min(1, 'Dê um título à nota').max(160),
   summary: z.string().trim().max(500).nullable().optional(),
   items: z.array(NovidadeItemSchema).max(60, 'No máximo 60 itens por nota').default([]),

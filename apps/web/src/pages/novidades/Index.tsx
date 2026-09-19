@@ -1,23 +1,23 @@
 /**
- * Novidades: o "o que mudou" de cada publicação.
+ * Novidades: o "o que mudou" de cada publicação (cada **patch**).
  *
- *  - **Pop-up no login** (`NovidadesPopup`, montado na moldura): a nota mais recente abre uma vez,
- *    em cartões, um item por vez. Fechar sem marcar não conta — ela volta no próximo login.
- *    Só some de vez quando a pessoa marca "Li e entendi" no último cartão.
- *  - **Página Novidades** (`NovidadesPagina`): o histórico, para reler quando quiser.
+ *  - **Pop-up no login** (`NovidadesPopup`, montado na moldura): o patch mais recente abre e é
+ *    **leitura obrigatória** — não dá para fechar, adiar nem clicar fora. A pessoa passa por
+ *    todos os cartões e marca "Li e entendi"; só então a janela sai e ela volta ao sistema.
+ *  - **Página Novidades** (`NovidadesPagina`): cada patch numa pasta, para reler quando quiser.
  *
- * Quem entra pela primeira vez não leva as notas antigas na cara: só a mais recente abre.
+ * Quem entra pela primeira vez não leva os patches antigos na cara: só o mais recente abre.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Folder, FolderOpen, Sparkles } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { Novidade, NovidadeItem } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { useAuth } from '../../lib/auth.js';
 import { Carregando, Chip, Modal, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
-import { data, relativo } from '../../lib/format.js';
+import { data, patch, relativo } from '../../lib/format.js';
 
 /** O rótulo e a cor de cada tipo de item. "Atenção" é mudança de regra: muda o jeito de trabalhar. */
 export const TIPO_NOVIDADE: Record<NovidadeItem['kind'], { rotulo: string; tone: 'accent' | 'ok' | 'neutral' | 'signal' }> = {
@@ -55,7 +55,7 @@ function Cartao({ item }: { item: NovidadeItem }) {
   );
 }
 
-/** Um item como linha (a lista, na página e no "ver tudo de uma vez"). */
+/** Um item como linha (a lista, na pasta do histórico e no "ver tudo de uma vez"). */
 function Linha({ item }: { item: NovidadeItem }) {
   return (
     <li className="flex flex-col sm:flex-row gap-3 py-3 border-b border-line last:border-0">
@@ -69,7 +69,7 @@ function Linha({ item }: { item: NovidadeItem }) {
   );
 }
 
-// ---------- Pop-up do login ----------
+// ---------- Pop-up do login (leitura obrigatória) ----------
 
 export function NovidadesPopup() {
   const { user } = useAuth();
@@ -78,15 +78,32 @@ export function NovidadesPopup() {
   const q = useQuery({ queryKey: ['novidade-pendente'], queryFn: () => api.novidades.pendente(), enabled: !!user, staleTime: 5 * 60_000 });
   const [i, setI] = useState(0);
   const [lido, setLido] = useState(false);
-  const [adiado, setAdiado] = useState(false);
   const [lista, setLista] = useState(false);
+  const [vistos, setVistos] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const rolagem = useRef<HTMLUListElement>(null);
   const nota = q.data ?? null;
-  // trocou de nota (ou de pessoa): recomeça do primeiro cartão
-  useEffect(() => { setI(0); setLido(false); setLista(false); }, [nota?.id]);
+  const itens = useMemo(() => nota?.items ?? [], [nota]);
 
-  if (!nota || adiado || !nota.items.length) return null;
-  const itens = nota.items;
+  // trocou de patch (ou de pessoa): recomeça do primeiro cartão
+  useEffect(() => { setI(0); setLido(false); setLista(false); setVistos([]); }, [nota?.id]);
+  // o cartão que está na tela conta como visto
+  useEffect(() => {
+    const atual = itens[i];
+    if (!lista && atual) setVistos((v) => (v.includes(atual.id) ? v : [...v, atual.id]));
+  }, [i, lista, itens]);
+
+  /** No "ver tudo de uma vez", chegar ao fim da lista vale por ter passado pelos cartões. */
+  const conferirFim = useCallback(() => {
+    const el = rolagem.current;
+    if (!el) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 32) setVistos(itens.map((it) => it.id));
+  }, [itens]);
+  useEffect(() => { if (lista) conferirFim(); }, [lista, conferirFim]);
+
+  if (!nota || !itens.length) return null;
+  const faltam = itens.filter((it) => !vistos.includes(it.id)).length;
+  const podeMarcar = faltam === 0;
   const ultimo = i >= itens.length - 1;
   const item = itens[Math.min(i, itens.length - 1)]!;
 
@@ -99,45 +116,43 @@ export function NovidadesPopup() {
     } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); }
   };
 
+  const concluirBotao = (
+    <>
+      <label className={`flex items-center gap-2 text-sm mr-2 ${podeMarcar ? 'cursor-pointer' : 'text-muted cursor-not-allowed'}`} title={podeMarcar ? undefined : 'Passe por todos os cartões primeiro'}>
+        <input type="checkbox" checked={lido} disabled={!podeMarcar} onChange={(e) => setLido(e.target.checked)} /> Li e entendi
+      </label>
+      <button className="btn-primary" disabled={!lido || !podeMarcar || busy} onClick={concluir}>{busy ? <Spinner className="text-white" /> : 'Concluir'}</button>
+    </>
+  );
+
   return (
     <Modal
       open
-      onClose={() => setAdiado(true)}
+      fechavel={false}
+      onClose={() => {}}
       largura="max-w-3xl"
       titulo={
         <span className="flex flex-wrap items-center gap-2">
           <Sparkles size={16} className="text-accent" />
           Novidades do sistema
-          <Chip tone="accent">{nota.version}</Chip>
+          <Chip tone="accent">{patch(nota.version)}</Chip>
           {nota.publishedAt && <span className="text-muted text-[12.5px] font-normal">{data(nota.publishedAt)}</span>}
         </span>
       }
       rodape={
-        <>
-          <button className="btn-ghost text-muted mr-auto" onClick={() => setAdiado(true)} title="A nota volta a abrir no próximo acesso">Ver depois</button>
-          {lista ? (
-            <>
-              <label className="flex items-center gap-2 text-sm cursor-pointer mr-2">
-                <input type="checkbox" checked={lido} onChange={(e) => setLido(e.target.checked)} /> Li e entendi
-              </label>
-              <button className="btn-primary" disabled={!lido || busy} onClick={concluir}>{busy ? <Spinner className="text-white" /> : 'Concluir'}</button>
-            </>
-          ) : (
+        lista || ultimo ? (
+          lista ? concluirBotao : (
             <>
               <button className="btn-secondary" disabled={i === 0} onClick={() => setI(i - 1)}><ChevronLeft size={15} /> Anterior</button>
-              {!ultimo ? (
-                <button className="btn-primary" onClick={() => setI(i + 1)}>Próxima <ChevronRight size={15} /></button>
-              ) : (
-                <>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer mr-2">
-                    <input type="checkbox" checked={lido} onChange={(e) => setLido(e.target.checked)} /> Li e entendi
-                  </label>
-                  <button className="btn-primary" disabled={!lido || busy} onClick={concluir}>{busy ? <Spinner className="text-white" /> : 'Concluir'}</button>
-                </>
-              )}
+              {concluirBotao}
             </>
-          )}
-        </>
+          )
+        ) : (
+          <>
+            <button className="btn-secondary" disabled={i === 0} onClick={() => setI(i - 1)}><ChevronLeft size={15} /> Anterior</button>
+            <button className="btn-primary" onClick={() => setI(i + 1)}>Próxima <ChevronRight size={15} /></button>
+          </>
+        )
       }
     >
       <div className="flex flex-col gap-4">
@@ -150,36 +165,86 @@ export function NovidadesPopup() {
         </div>
 
         {lista ? (
-          <ul className="max-h-[60vh] overflow-y-auto pr-1">{itens.map((it) => <Linha key={it.id} item={it} />)}</ul>
+          <ul ref={rolagem} onScroll={conferirFim} className="max-h-[60vh] overflow-y-auto pr-1">{itens.map((it) => <Linha key={it.id} item={it} />)}</ul>
         ) : (
           <>
             <Cartao item={item} />
-            {/* onde estou: bolinhas clicáveis + "3 de 8" */}
+            {/* onde estou: bolinhas clicáveis (as que faltam ficam vazias) + "3 de 8" */}
             <div className="flex items-center justify-between gap-3">
               <div className="flex flex-wrap gap-1.5">
                 {itens.map((it, k) => (
                   <button key={it.id} onClick={() => setI(k)} aria-label={`Ir para ${it.title}`} title={it.title}
-                    className={`h-2 rounded-full transition-all ${k === i ? 'w-5 bg-accent' : 'w-2 bg-line-strong hover:bg-muted'}`} />
+                    className={`h-2 rounded-full transition-all ${k === i ? 'w-5 bg-accent' : vistos.includes(it.id) ? 'w-2 bg-line-strong hover:bg-muted' : 'w-2 bg-transparent border border-line-strong hover:bg-muted'}`} />
                 ))}
               </div>
               <span className="text-[12.5px] text-muted tnum shrink-0">{i + 1} de {itens.length}</span>
             </div>
           </>
         )}
-        {ultimo && !lido && !lista && <p className="text-[12px] text-muted">Marque "Li e entendi" para esta nota não abrir de novo.</p>}
+        <p className="text-[12px] text-muted">
+          {podeMarcar
+            ? 'Marque "Li e entendi" para voltar ao sistema.'
+            : lista
+              ? 'Role até o fim da lista para poder marcar que leu.'
+              : `Leitura obrigatória: ${faltam === 1 ? 'falta 1 cartão' : `faltam ${faltam} cartões`} para você poder marcar que leu.`}
+        </p>
       </div>
     </Modal>
   );
 }
 
-// ---------- Página ----------
+// ---------- Página: uma pasta por patch ----------
+
+function Pasta({ nota, aberta, alternar, marcar, marcando, podeEditar }: {
+  nota: Novidade; aberta: boolean; alternar: () => void; marcar: () => void; marcando: boolean; podeEditar: boolean;
+}) {
+  return (
+    <div className="card overflow-hidden">
+      <button type="button" onClick={alternar} aria-expanded={aberta} className="w-full text-left p-4 flex flex-wrap items-start gap-3 hover:bg-surface-2">
+        {aberta ? <FolderOpen size={20} className="text-accent shrink-0 mt-0.5" /> : <Folder size={20} className="text-muted shrink-0 mt-0.5" />}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip tone="accent">{patch(nota.version)}</Chip>
+            {!nota.publishedAt && <Chip tone="muted">rascunho</Chip>}
+            {nota.publishedAt && !nota.lida && <Chip tone="signal">não lida</Chip>}
+            <span className="text-muted text-[12.5px]">
+              {nota.items.length} {nota.items.length === 1 ? 'novidade' : 'novidades'}
+              {nota.publishedAt ? ` · publicado ${relativo(nota.publishedAt)}` : ' · ainda não publicado'}
+            </span>
+          </div>
+          <h2 className="font-display text-lg font-semibold mt-1">{nota.title}</h2>
+          {nota.summary && <p className="text-sm text-muted">{nota.summary}</p>}
+        </div>
+        <ChevronDown size={18} className={`text-muted shrink-0 mt-1 transition-transform ${aberta ? 'rotate-180' : ''}`} />
+      </button>
+
+      {aberta && (
+        <div className="px-4 pb-4 border-t border-line pt-1">
+          <ul>{nota.items.map((it) => <Linha key={it.id} item={it} />)}</ul>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-3">
+            {podeEditar && nota.publishedAt
+              ? <span className="text-[12px] text-muted">{nota.leituras} de {nota.pessoas} pessoa(s) já leram · <Link className="link" to="/admin/novidades">acompanhar</Link></span>
+              : <span />}
+            {nota.publishedAt && !nota.lida && (
+              <button className="btn-secondary btn-sm" disabled={marcando} onClick={marcar}>{marcando ? <Spinner /> : 'Marcar como lida'}</button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function NovidadesPagina() {
   const q = useQuery({ queryKey: ['novidades'], queryFn: () => api.novidades.lista() });
   const qc = useQueryClient();
   const toast = useToast();
   const [marcando, setMarcando] = useState<string | null>(null);
+  const [abertas, setAbertas] = useState<string[]>([]);
   const notas = useMemo(() => (q.data?.items ?? []).filter((n) => n.publishedAt || q.data?.podeEditar), [q.data]);
+  // a pasta mais recente já vem aberta; as outras, fechadas
+  const primeira = notas[0]?.id;
+  useEffect(() => { if (primeira) setAbertas((a) => (a.length ? a : [primeira])); }, [primeira]);
 
   const marcar = async (n: Novidade) => {
     setMarcando(n.id);
@@ -193,35 +258,17 @@ export function NovidadesPagina() {
   return (
     <Pagina
       titulo="Novidades"
-      sub="O que mudou no sistema a cada publicação. A mais recente abre sozinha no login até você marcar que leu."
+      sub="Cada patch numa pasta: abra para ver o que mudou. O mais recente abre sozinho no login e é leitura obrigatória."
       acoes={q.data?.podeEditar ? <Link className="btn-secondary" to="/admin/novidades">Escrever novidades</Link> : undefined}
     >
       {!notas.length ? (
         <Vazio titulo="Nenhuma novidade ainda" texto="Quando o sistema for atualizado, o que mudou aparece aqui." />
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           {notas.map((n) => (
-            <div key={n.id} className="card p-4 flex flex-col gap-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Chip tone="accent">{n.version}</Chip>
-                    {!n.publishedAt && <Chip tone="muted">rascunho</Chip>}
-                    {n.publishedAt && !n.lida && <Chip tone="signal">não lida</Chip>}
-                    <span className="text-muted text-[12.5px]">{n.publishedAt ? `publicada ${relativo(n.publishedAt)}` : 'ainda não publicada'}</span>
-                  </div>
-                  <h2 className="font-display text-lg font-semibold mt-1">{n.title}</h2>
-                  {n.summary && <p className="text-sm text-muted">{n.summary}</p>}
-                </div>
-                {n.publishedAt && !n.lida && (
-                  <button className="btn-secondary btn-sm" disabled={marcando === n.id} onClick={() => marcar(n)}>{marcando === n.id ? <Spinner /> : 'Marcar como lida'}</button>
-                )}
-              </div>
-              <ul>{n.items.map((it) => <Linha key={it.id} item={it} />)}</ul>
-              {q.data?.podeEditar && n.publishedAt && (
-                <div className="text-[12px] text-muted">{n.leituras} de {n.pessoas} pessoa(s) já leram · <Link className="link" to="/admin/novidades">acompanhar</Link></div>
-              )}
-            </div>
+            <Pasta key={n.id} nota={n} aberta={abertas.includes(n.id)}
+              alternar={() => setAbertas((a) => (a.includes(n.id) ? a.filter((x) => x !== n.id) : [...a, n.id]))}
+              marcar={() => marcar(n)} marcando={marcando === n.id} podeEditar={!!q.data?.podeEditar} />
           ))}
         </div>
       )}

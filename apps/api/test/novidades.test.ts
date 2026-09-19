@@ -29,7 +29,7 @@ afterAll(async () => { await app.close(); });
 describe('rascunho e publicação', () => {
   it('a nota nasce rascunho, não aparece para ninguém, e publicar exige ao menos um item', async () => {
     const r = await s.post('/release-notes', {
-      version: 'rodada-23',
+      version: '1.2',
       title: 'Login padrão por modelo, DIDs com circuito e mais',
       summary: 'O que mudou nesta publicação.',
       items: [],
@@ -63,7 +63,7 @@ describe('rascunho e publicação', () => {
     expect(pub.json().publishedAt).not.toBeNull();
 
     const pend = (await operador.get('/release-notes/pending')).json();
-    expect(pend.version).toBe('rodada-23');
+    expect(pend.version).toBe('1.2');
     expect(pend.items).toHaveLength(2);
     expect(pend.items[0].kind).toBe('atencao');
     // o print vem como endereço, não como imagem embutida
@@ -87,7 +87,7 @@ describe('"Li e entendi"', () => {
     expect(hist[0].lida).toBe(true);
 
     // quem ainda não marcou continua vendo
-    expect((await s.get('/release-notes/pending')).json().version).toBe('rodada-23');
+    expect((await s.get('/release-notes/pending')).json().version).toBe('1.2');
 
     await operador.post(`/release-notes/${noteId}/read`);
     const quem = (await s.get(`/release-notes/${noteId}/reads`)).json();
@@ -105,7 +105,7 @@ describe('"Li e entendi"', () => {
 describe('só a mais recente abre no login', () => {
   it('quem entra depois de várias versões vê só a última; as outras ficam no histórico', async () => {
     const nova = (await s.post('/release-notes', {
-      version: 'rodada-24',
+      version: '1.3',
       title: 'Novidades ficam registradas no sistema',
       items: [{ kind: 'novo', title: 'Esta tela', text: 'É esta aqui.' }],
     })).json();
@@ -113,17 +113,17 @@ describe('só a mais recente abre no login', () => {
 
     // a Marina já tinha lido a 23; agora só a 24 abre
     const pend = (await operador.get('/release-notes/pending')).json();
-    expect(pend.version).toBe('rodada-24');
+    expect(pend.version).toBe('1.3');
     await operador.post(`/release-notes/${nova.id}/read`);
     expect((await operador.get('/release-notes/pending')).json()).toBeNull();
 
     // o administrador nunca leu a 23: mesmo assim, o que abre é a mais recente
-    expect((await s.get('/release-notes/pending')).json().version).toBe('rodada-24');
+    expect((await s.get('/release-notes/pending')).json().version).toBe('1.3');
     await s.post(`/release-notes/${nova.id}/read`);
     expect((await s.get('/release-notes/pending')).json()).toBeNull();
 
     const hist = (await s.get('/release-notes')).json().items;
-    expect(hist.map((n: any) => n.version)).toEqual(['rodada-24', 'rodada-23']);
+    expect(hist.map((n: any) => n.version)).toEqual(['1.3', '1.2']);
     expect(hist[0].leituras).toBe(2);
     expect(hist[0].pessoas).toBe(2);
   });
@@ -131,7 +131,7 @@ describe('só a mais recente abre no login', () => {
 
 describe('edição', () => {
   it('troca, reordena e apaga itens; a versão não se repete', async () => {
-    const antes = (await s.get('/release-notes')).json().items.find((n: any) => n.version === 'rodada-23');
+    const antes = (await s.get('/release-notes')).json().items.find((n: any) => n.version === '1.2');
     const [primeiro] = antes.items;
     const r = await s.patch(`/release-notes/${noteId}`, {
       title: 'Título novo',
@@ -141,12 +141,12 @@ describe('edição', () => {
       ],
     });
     expect(r.statusCode).toBe(200);
-    const depois = (await s.get('/release-notes')).json().items.find((n: any) => n.version === 'rodada-23');
+    const depois = (await s.get('/release-notes')).json().items.find((n: any) => n.version === '1.2');
     expect(depois.title).toBe('Título novo');
     expect(depois.items.map((i: any) => i.title)).toEqual(['Item que entrou na frente', primeiro.title]);
     expect(depois.items[1].text).toBe('Texto ajustado');
     expect(depois.items[1].imageUrl).toBeNull(); // o print foi tirado
-    expect((await s.post('/release-notes', { version: 'rodada-24', title: 'Repetida' })).statusCode).toBe(400);
+    expect((await s.post('/release-notes', { version: '1.3', title: 'Repetida' })).statusCode).toBe(400);
   });
 
   it('só quem administra edita; a equipe lê', async () => {
@@ -160,9 +160,9 @@ describe('nota escrita em arquivo (a que vem pronta na publicação)', () => {
   it('lê o arquivo da rodada 23, importa uma vez só e já publica', async () => {
     const { lerNota } = await import('../src/tools/importar-novidades.js');
     const svc = await import('../src/services/releaseNotes.js');
-    const nota = await lerNota(new URL('../../../docs/novidades/rodada-23.md', import.meta.url).pathname);
+    const nota = await lerNota(new URL('../../../docs/novidades/1.2.md', import.meta.url).pathname);
 
-    expect(nota.version).toBe('rodada-23');
+    expect(nota.version).toBe('1.2');
     expect(nota.items.length).toBeGreaterThan(5);
     // o primeiro item é uma mudança de regra, com print embutido
     expect(nota.items[0]!.kind).toBe('atencao');
@@ -172,17 +172,23 @@ describe('nota escrita em arquivo (a que vem pronta na publicação)', () => {
     // item sem print continua válido
     expect(nota.items.some((i) => !i.imagem)).toBe(true);
 
-    // a versão "rodada-23" já existe neste teste: a importação não duplica nem estraga o que está lá
+    // a versão "1.2" já existe neste teste: a importação não duplica nem estraga o que está lá
     const r = await svc.importar(app.db, nota);
     expect(r.criada).toBe(false);
 
     // uma versão que ainda não existe entra publicada, pronta para abrir no login
-    const outra = await svc.importar(app.db, { ...nota, version: 'rodada-23-copia' });
+    const outra = await svc.importar(app.db, { ...nota, version: '1.2-copia' });
     expect(outra.criada).toBe(true);
-    const guardada = (await s.get('/release-notes')).json().items.find((n: any) => n.version === 'rodada-23-copia');
+    const guardada = (await s.get('/release-notes')).json().items.find((n: any) => n.version === '1.2-copia');
     expect(guardada.publishedAt).not.toBeNull();
     expect(guardada.items).toHaveLength(nota.items.length);
     expect(guardada.items[0].imageUrl).toMatch(/release-notes\/items\/.+\/image/);
     await s.del(`/release-notes/${guardada.id}`);
+  });
+
+  it('os patches entram em ordem de número, não de letra ("1.2" antes de "1.10")', async () => {
+    const { compararVersoes } = await import('../src/tools/importar-novidades.js');
+    expect(['1.10.md', '1.2.md', '1.3.md'].sort(compararVersoes)).toEqual(['1.2.md', '1.3.md', '1.10.md']);
+    expect(compararVersoes('2.0', '1.9')).toBeGreaterThan(0);
   });
 });

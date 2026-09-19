@@ -14,9 +14,21 @@ const raiz = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pasta = join(raiz, 'docs/novidades');
 const MIMES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
 
+/** "1.2" antes de "1.10": compara número a número, não letra a letra. */
+const compararVersoes = (a, b) => {
+  const partes = (v) => v.replace(/\.md$/, '').split(/[._-]/).map((x) => (/^\d+$/.test(x) ? Number(x) : x));
+  const pa = partes(a), pb = partes(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? 0, y = pb[i] ?? 0;
+    if (x === y) continue;
+    return typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y));
+  }
+  return 0;
+};
+
 const arquivo = process.argv[2]
   ? resolve(process.argv[2])
-  : join(pasta, (await readdir(pasta)).filter((f) => f.endsWith('.md')).sort().pop());
+  : join(pasta, (await readdir(pasta)).filter((f) => f.endsWith('.md')).sort(compararVersoes).pop());
 
 const texto = await readFile(arquivo, 'utf8');
 const [, cabecalho, corpo] = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(texto);

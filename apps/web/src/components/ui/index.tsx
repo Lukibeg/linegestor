@@ -97,21 +97,21 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
 }
 
 // ---------- Modal / painel lateral ----------
-export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-w-lg', lateral = false }: { open: boolean; onClose: () => void; titulo: ReactNode; children: ReactNode; rodape?: ReactNode; largura?: string; lateral?: boolean }) {
+export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-w-lg', lateral = false, fechavel = true }: { open: boolean; onClose: () => void; titulo: ReactNode; children: ReactNode; rodape?: ReactNode; largura?: string; lateral?: boolean; /** `false` tranca a janela: sem X, sem Esc, sem clicar fora (a pessoa precisa concluir o que está ali). */ fechavel?: boolean }) {
   useEffect(() => {
-    if (!open) return;
+    if (!open || !fechavel) return;
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [open, onClose]);
+  }, [open, onClose, fechavel]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={fechavel ? onClose : undefined} />
       <div className={lateral ? `relative ml-auto h-full w-full ${largura} bg-surface border-l border-line shadow-2xl flex flex-col` : `relative m-auto w-[calc(100%-32px)] ${largura} bg-surface border border-line rounded-xl shadow-2xl flex flex-col max-h-[calc(100vh-32px)]`}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-line">
           <h3 className="font-display font-semibold text-[15px]">{titulo}</h3>
-          <button type="button" onClick={onClose} className="btn-ghost btn-sm" aria-label="Fechar"><X size={16} /></button>
+          {fechavel && <button type="button" onClick={onClose} className="btn-ghost btn-sm" aria-label="Fechar"><X size={16} /></button>}
         </div>
         <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
         {rodape && <div className="px-5 py-3 border-t border-line flex flex-wrap items-center justify-end gap-2 bg-surface-2 rounded-b-xl">{rodape}</div>}

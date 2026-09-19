@@ -10,7 +10,7 @@ import { ArrowDown, ArrowUp, Eye, Plus, Trash2 } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { Novidade, NovidadeItem } from '../../api/types.js';
 import { Campo, CampoLogo, Carregando, Chip, Confirmar, Modal, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
-import { data, relativo } from '../../lib/format.js';
+import { data, patch, relativo } from '../../lib/format.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
 import { TIPO_NOVIDADE } from '../novidades/Index.js';
 
@@ -49,20 +49,21 @@ export function Novidades() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start gap-3">
         <p className="text-sm text-muted flex-1 min-w-[260px]">
-          Cada nota é uma versão do sistema. Ela nasce como <b>rascunho</b>; ao <b>publicar</b>, abre uma vez no login de cada
-          pessoa e só para de abrir quando ela marca "Li e entendi". A cada rodada eu já deixo a nota pronta aqui — você revisa e publica.
+          Cada <b>patch</b> é uma publicação do sistema (1.2, 1.3, …). Ele nasce como <b>rascunho</b>; ao <b>publicar</b>, abre no
+          login de cada pessoa como <b>leitura obrigatória</b> — a janela só sai quando ela passa por todos os cartões e marca
+          "Li e entendi". A cada publicação eu já deixo o patch pronto aqui — você revisa e publica.
         </p>
-        <button className="btn-primary btn-sm" onClick={() => setEditar('nova')}><Plus size={14} /> Nova nota</button>
+        <button className="btn-primary btn-sm" onClick={() => setEditar('nova')}><Plus size={14} /> Novo patch</button>
       </div>
 
-      {!notas.length ? <Vazio titulo="Nenhuma nota ainda" texto="Escreva a primeira para contar à equipe o que mudou." /> : (
+      {!notas.length ? <Vazio titulo="Nenhum patch ainda" texto="Escreva o primeiro para contar à equipe o que mudou." /> : (
         <div className="card overflow-x-auto">
           <table className="table">
-            <thead><tr><ThN /><th>Versão</th><th>Título</th><th>Itens</th><th>Situação</th><th>Leitura</th><th /></tr></thead>
+            <thead><tr><ThN /><th>Patch</th><th>Título</th><th>Itens</th><th>Situação</th><th>Leitura</th><th /></tr></thead>
             <tbody>{notas.map((n, i) => (
               <tr key={n.id}>
                 <TdN n={contar(i)} />
-                <td><Chip tone="accent">{n.version}</Chip></td>
+                <td><Chip tone="accent">{patch(n.version)}</Chip></td>
                 <td className="font-medium max-w-[320px] truncate" title={n.title}>{n.title}</td>
                 <td className="tnum">{n.items.length}</td>
                 <td className="whitespace-nowrap">{n.publishedAt ? <span className="text-ok text-[12.5px] font-semibold">publicada <span className="text-muted font-normal">{data(n.publishedAt)}</span></span> : <Chip tone="muted">rascunho</Chip>}</td>
@@ -70,7 +71,7 @@ export function Novidades() {
                 <td className="text-right whitespace-nowrap">
                   <button className="btn-ghost btn-sm" onClick={() => setEditar(n)}>Editar</button>
                   <button className="btn-ghost btn-sm" onClick={() => setPublicar({ nota: n, ligar: !n.publishedAt })}>{n.publishedAt ? 'Despublicar' : 'Publicar'}</button>
-                  <button className="btn-ghost btn-sm text-bad" onClick={() => setExcluir(n)} aria-label={`Excluir ${n.version}`}><Trash2 size={14} /></button>
+                  <button className="btn-ghost btn-sm text-bad" onClick={() => setExcluir(n)} aria-label={`Excluir ${patch(n.version)}`}><Trash2 size={14} /></button>
                 </td>
               </tr>
             ))}</tbody>
@@ -83,8 +84,8 @@ export function Novidades() {
       <Confirmar open={!!publicar} onClose={() => setPublicar(null)} onConfirm={doPublicar} loading={busy}
         titulo={publicar?.ligar ? 'Publicar novidades' : 'Voltar para rascunho'} botao={publicar?.ligar ? 'Publicar para todos' : 'Voltar para rascunho'}
         texto={publicar?.ligar
-          ? <>A nota <b>{publicar?.nota.version}</b> vai abrir no próximo acesso de <b>cada pessoa</b> do sistema, e só para de abrir quando cada uma marcar "Li e entendi".</>
-          : <>A nota <b>{publicar?.nota.version}</b> sai do ar e volta a ser rascunho. Quem já leu não vê mais nada; quem não leu também não verá.</>} />
+          ? <>O <b>{publicar ? patch(publicar.nota.version) : ''}</b> vai abrir no próximo acesso de <b>cada pessoa</b> do sistema, e só para de abrir quando cada uma marcar "Li e entendi".</>
+          : <>O <b>{publicar ? patch(publicar.nota.version) : ''}</b> sai do ar e volta a ser rascunho. Quem já leu não vê mais nada; quem não leu também não verá.</>} />
       <Confirmar open={!!excluir} onClose={() => setExcluir(null)} onConfirm={doExcluir} loading={busy} perigoso titulo="Excluir nota" botao="Mandar para a lixeira"
         texto={<>A nota <b>{excluir?.title}</b> sai das telas. Dá para restaurar em Administração → Lixeira.</>} />
     </div>
@@ -97,7 +98,7 @@ function QuemLeu({ nota, onClose }: { nota: Novidade; onClose: () => void }) {
   const pessoas = q.data?.pessoas ?? [];
   const leram = pessoas.filter((p) => p.readAt);
   return (
-    <Modal open onClose={onClose} titulo={<span className="flex items-center gap-2">Quem leu <Chip tone="accent">{nota.version}</Chip></span>} rodape={<button className="btn-secondary" onClick={onClose}>Fechar</button>}>
+    <Modal open onClose={onClose} titulo={<span className="flex items-center gap-2">Quem leu <Chip tone="accent">{patch(nota.version)}</Chip></span>} rodape={<button className="btn-secondary" onClick={onClose}>Fechar</button>}>
       {q.isLoading ? <Carregando /> : (
         <div className="flex flex-col gap-3">
           <div className="text-sm"><b className="tnum">{leram.length}</b> de <b className="tnum">{pessoas.length}</b> pessoa(s) já leram.</div>
@@ -118,9 +119,8 @@ function QuemLeu({ nota, onClose }: { nota: Novidade; onClose: () => void }) {
 /** Escrever a nota: cabeçalho e os cartões, na ordem em que a equipe vai ver. */
 function NotaForm({ nota, onClose, onSaved }: { nota?: Novidade; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const hoje = new Date();
   const [f, setF] = useState({
-    version: nota?.version ?? `rodada-${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`,
+    version: nota?.version ?? '',
     title: nota?.title ?? '',
     summary: nota?.summary ?? '',
   });
@@ -155,11 +155,11 @@ function NotaForm({ nota, onClose, onSaved }: { nota?: Novidade; onClose: () => 
 
   const podeSalvar = !!f.version.trim() && !!f.title.trim() && itens.every((i) => i.title.trim());
   return (
-    <Modal open onClose={onClose} lateral largura="max-w-3xl" titulo={nota ? `Editar ${nota.version}` : 'Nova nota de novidades'}
+    <Modal open onClose={onClose} lateral largura="max-w-3xl" titulo={nota ? `Editar ${patch(nota.version)}` : 'Novo patch'}
       rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !podeSalvar} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3">
-          <Campo label="Versão" dica="ex.: rodada-24"><input className="input font-mono" autoComplete="off" value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} /></Campo>
+          <Campo label="Patch" dica="o número da publicação, ex.: 1.3"><input className="input font-mono" autoComplete="off" value={f.version} onChange={(e) => setF({ ...f, version: e.target.value })} /></Campo>
           <Campo label="Título"><input className="input" autoComplete="off" placeholder="O que mudou nesta publicação" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} autoFocus /></Campo>
         </div>
         <Campo label="Resumo" dica="uma frase, aparece abaixo do título"><input className="input" autoComplete="off" value={f.summary} onChange={(e) => setF({ ...f, summary: e.target.value })} /></Campo>

@@ -69,3 +69,11 @@ export function hojeCampoData(): string {
 export function centavosParaCampo(c: number | null | undefined): string {
   return c != null ? (c / 100).toFixed(2).replace('.', ',') : '';
 }
+
+/**
+ * O nome de uma publicação na tela: "1.2" vira **Patch 1.2**.
+ * Versões escritas por extenso (uma nota antiga, um aviso avulso) continuam como estão.
+ */
+export function patch(version: string): string {
+  return /^\d/.test(version) ? `Patch ${version}` : version;
+}

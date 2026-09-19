@@ -2,20 +2,20 @@
  * Importa as notas de novidades escritas em `docs/novidades/*.md` para o banco.
  *
  * Roda sozinho na publicação (o contêiner chama depois das migrações), e pode rodar quantas
- * vezes quiser: nota cuja **versão** já existe é ignorada. Assim a nota de cada rodada chega
+ * vezes quiser: nota cuja **versão** já existe é ignorada. Assim a nota de cada patch chega
  * pronta e publicada, e quem administra continua podendo editá-la pela tela.
  *
- * O formato do arquivo (ver `docs/novidades/rodada-23.md`):
+ * O formato do arquivo (ver `docs/novidades/1.2.md`):
  *
  *     ---
- *     versao: rodada-23
+ *     versao: 1.2
  *     titulo: O que mudou
  *     resumo: Uma frase.
  *     ---
  *
  *     ## novo · Título do item
  *     Duas ou três linhas.
- *     ![](rodada-23/print.jpg)
+ *     ![](1.2/print.jpg)
  */
 import { readFile, readdir } from 'node:fs/promises';
 import { dirname, extname, join, resolve } from 'node:path';
@@ -31,6 +31,22 @@ const PASTA = process.argv[2] ? resolve(process.argv[2]) : resolve(aqui, '../../
 
 const TIPOS = ['novo', 'melhorou', 'corrigido', 'atencao'] as const;
 const MIMES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
+
+/**
+ * Ordena "1.2" antes de "1.10" (comparando número a número, não letra a letra).
+ * Importar em ordem importa: o último importado é o que abre no login.
+ */
+export function compararVersoes(a: string, b: string): number {
+  const partes = (v: string) => v.replace(/\.md$/, '').split(/[._-]/).map((x) => (/^\d+$/.test(x) ? Number(x) : x));
+  const pa = partes(a); const pb = partes(b);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const x = pa[i] ?? 0; const y = pb[i] ?? 0;
+    if (x === y) continue;
+    if (typeof x === 'number' && typeof y === 'number') return x - y;
+    return String(x).localeCompare(String(y));
+  }
+  return 0;
+}
 
 /** Lê o arquivo e devolve a nota no formato que o servidor grava. */
 export async function lerNota(caminho: string): Promise<NovidadeGravar> {
@@ -79,7 +95,7 @@ export async function lerNota(caminho: string): Promise<NovidadeGravar> {
 async function principal() {
   let arquivos: string[];
   try {
-    arquivos = (await readdir(PASTA)).filter((f) => f.endsWith('.md')).sort();
+    arquivos = (await readdir(PASTA)).filter((f) => f.endsWith('.md')).sort(compararVersoes);
   } catch {
     console.log(`Novidades: nada a importar (pasta ${PASTA} não existe).`);
     return;
