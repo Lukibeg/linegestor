@@ -10,13 +10,15 @@
  *  - módulos (Omniboard, FOP2, NPS…) só podem ser ligados dentro de um produto que o cliente assina
  *  - senhas nunca entram nas tabelas: vão para o cofre e a tabela guarda só o id do segredo
  *  - produto na lixeira some da ficha e da lista (a assinatura fica guardada)
- *  - todo cliente tem a unidade "Matriz"; as outras se cadastram na ficha
+ *  - todo cliente tem a unidade "Matriz"; as outras se cadastram na ficha (com endereço e IP fixo de saída)
+ *  - o cliente tem uma configuração de rede padrão para os aparelhos e um login e senha padrão
+ *    por modelo de aparelho; toda senha vai para o cofre
  */
 import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import {
-  clientLogos, clients, clientUnits, deviceModels, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, type Db,
+  clientDeviceLogins, clientLogos, clientNetworkSettings, clients, clientUnits, deviceModels, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, type Db,
 } from '@gestor/db';
-import type { AssinaturaGravar, ClienteAtualizar, ClienteCriar, ClienteListar, ModuloGravar, UnidadeGravar } from '@gestor/shared';
+import type { AssinaturaGravar, ClienteAtualizar, ClienteCriar, ClienteListar, LoginModeloGravar, ModuloGravar, RedePadrao, UnidadeGravar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 
@@ -234,7 +236,6 @@ export async function get(db: Db, id: string) {
     db.select().from(fop2Settings).where(inArray(fop2Settings.subscriptionModuleId, modIds)),
     db.select().from(omniboardSettings).where(inArray(omniboardSettings.subscriptionModuleId, modIds)),
   ]);
-  const secretRef = (sid: string | null) => ({ hasSecret: !!sid, secretId: sid });
   const enriched = subs.map((s) => {
     let settings: Record<string, unknown> | null = null;
     if (s.productCode === 'linepbx') {
@@ -248,7 +249,7 @@ export async function get(db: Db, id: string) {
       let ms: Record<string, unknown> | null = null;
       if (m.moduleCode === 'fop2') {
         const f = f2s.find((x) => x.subscriptionModuleId === m.id);
-        if (f) ms = { adminExtension: f.adminExtension };
+        if (f) ms = { adminExtension: f.adminExtension, defaultUserPassword: secretRef(f.defaultUserPasswordSecretId) };
       } else if (m.moduleCode === 'omniboard') {
         const o = oms.find((x) => x.subscriptionModuleId === m.id);
         if (o) ms = { adminLogin: o.adminLogin, adminPassword: secretRef(o.adminPasswordSecretId), userDefaultPassword: secretRef(o.userDefaultPasswordSecretId) };
@@ -266,10 +267,16 @@ export async function get(db: Db, id: string) {
     .where(and(eq(devices.clientId, id), isNull(devices.deletedAt), sql`coalesce(${devices.currentModality}, '') <> 'venda'`));
   const [unC] = await db.select({ n: sql<number>`count(*)` }).from(clientUnits).where(and(eq(clientUnits.clientId, id), isNull(clientUnits.deletedAt)));
   const [logo] = await db.select({ updatedAt: clientLogos.updatedAt }).from(clientLogos).where(eq(clientLogos.clientId, id));
+  const [rede] = await db.select().from(clientNetworkSettings).where(eq(clientNetworkSettings.clientId, id));
+  const logins = await listDeviceLogins(db, id);
   return {
     ...row,
     logoUrl: logoPath(id, logo?.updatedAt),
     subscriptions: enriched,
+    // a configuração de rede padrão dos aparelhos (aba Equipamentos); a senha só diz se existe
+    network: rede ? { ipAddress: rede.ipAddress, subnetMask: rede.subnetMask, defaultRouter: rede.defaultRouter, dns1: rede.dns1, dns2: rede.dns2, note: rede.note, wirelessPassword: secretRef(rede.wirelessPasswordSecretId), updatedAt: rede.updatedAt } : null,
+    // login e senha padrão por modelo de aparelho (mesma seção da rede padrão)
+    deviceLogins: logins,
     links: buildLinks(lpRow, hasFop2),
     didCount: Number(didC?.n ?? 0),
     deviceCount: Number(devC?.n ?? 0),
@@ -377,7 +384,8 @@ export async function upsertModule(db: Db, vault: SecretsVault, clientId: string
 
   if (mod.code === 'fop2') {
     const [cur] = await db.select().from(fop2Settings).where(eq(fop2Settings.subscriptionModuleId, id));
-    const vals = { adminExtension: st.adminExtension ?? cur?.adminExtension ?? null };
+    const defSecret = st.defaultUserPassword ? await vault.save(db, { existingId: cur?.defaultUserPasswordSecretId, label: label('Senha do usuário padrão do FOP2'), plain: st.defaultUserPassword, userId }) : cur?.defaultUserPasswordSecretId ?? null;
+    const vals = { adminExtension: st.adminExtension ?? cur?.adminExtension ?? null, defaultUserPasswordSecretId: defSecret };
     if (cur) await db.update(fop2Settings).set(vals).where(eq(fop2Settings.subscriptionModuleId, id));
     else await db.insert(fop2Settings).values({ subscriptionModuleId: id, ...vals });
   } else if (mod.code === 'omniboard') {
@@ -472,7 +480,7 @@ export async function listUnits(db: Db, clientId: string) {
   // aparelho com o cliente mas sem unidade marcada conta na Matriz, que é a padrão
   const semUnidade = porNome.get('') ?? 0;
   return rows.map((u) => ({
-    id: u.id, name: u.name, isMain: u.isMain, note: u.note, createdAt: u.createdAt,
+    id: u.id, name: u.name, isMain: u.isMain, address: u.address, egressIp: u.egressIp, note: u.note, createdAt: u.createdAt,
     deviceCount: (porNome.get(u.name.trim().toLowerCase()) ?? 0) + (u.isMain ? semUnidade : 0),
   }));
 }
@@ -488,7 +496,7 @@ export async function createUnit(db: Db, clientId: string, data: UnidadeGravar) 
   if (!client) throw new NotFound('Cliente');
   await garantirMatriz(db, clientId);
   await nomeLivre(db, clientId, data.name);
-  const [row] = await db.insert(clientUnits).values({ id: newId(), clientId, name: data.name, note: data.note ?? null }).returning();
+  const [row] = await db.insert(clientUnits).values({ id: newId(), clientId, name: data.name, address: data.address ?? null, egressIp: data.egressIp ?? null, note: data.note ?? null }).returning();
   return { ...row!, clientName: client.name };
 }
 
@@ -513,7 +521,13 @@ export async function updateUnit(db: Db, clientId: string, unitId: string, data:
   if (!cur) throw new NotFound('Unidade');
   await nomeLivre(db, clientId, data.name, unitId);
   return db.transaction(async (tx) => {
-    const [row] = await tx.update(clientUnits).set({ name: data.name, note: data.note === undefined ? cur.note : data.note, updatedAt: new Date() }).where(eq(clientUnits.id, unitId)).returning();
+    const [row] = await tx.update(clientUnits).set({
+      name: data.name,
+      address: data.address === undefined ? cur.address : data.address,
+      egressIp: data.egressIp === undefined ? cur.egressIp : data.egressIp,
+      note: data.note === undefined ? cur.note : data.note,
+      updatedAt: new Date(),
+    }).where(eq(clientUnits.id, unitId)).returning();
     let movidos = 0;
     if (data.name !== cur.name) {
       const r = await tx.update(devices).set({ unit: data.name, updatedAt: new Date() })
@@ -534,6 +548,68 @@ export async function removeUnit(db: Db, clientId: string, unitId: string) {
   if (Number(n?.n ?? 0) > 0) throw new BadRequest(`A unidade "${cur.name}" ainda tem ${n!.n} aparelho(s). Mova-os para outra unidade antes de remover.`);
   const [row] = await db.update(clientUnits).set({ deletedAt: new Date() }).where(eq(clientUnits.id, unitId)).returning();
   return row!;
+}
+
+// ---------- Login e senha padrão por modelo de aparelho ----------
+
+const secretRef = (sid: string | null) => ({ hasSecret: !!sid, secretId: sid });
+
+async function clienteOu404(db: Db, clientId: string) {
+  const [client] = await db.select({ id: clients.id, name: clients.tradeName }).from(clients).where(eq(clients.id, clientId));
+  if (!client) throw new NotFound('Cliente');
+  return client;
+}
+
+/** Os logins padrão do cliente, um por modelo, em ordem de nome do modelo. A senha só diz se existe. */
+export async function listDeviceLogins(db: Db, clientId: string) {
+  const rows = await db.select({ l: clientDeviceLogins, modelName: deviceModels.name })
+    .from(clientDeviceLogins).innerJoin(deviceModels, eq(deviceModels.id, clientDeviceLogins.modelId))
+    .where(and(eq(clientDeviceLogins.clientId, clientId), isNull(clientDeviceLogins.deletedAt))).orderBy(sql`lower(${deviceModels.name})`);
+  return rows.map((r) => ({ id: r.l.id, modelId: r.l.modelId, modelName: r.modelName, username: r.l.username, password: secretRef(r.l.passwordSecretId), note: r.l.note, updatedAt: r.l.updatedAt }));
+}
+
+/** Grava (cria ou atualiza) o login padrão de um modelo no cliente: um só por modelo. */
+export async function saveDeviceLogin(db: Db, vault: SecretsVault, clientId: string, data: LoginModeloGravar, userId: string) {
+  const client = await clienteOu404(db, clientId);
+  const [model] = await db.select({ id: deviceModels.id, name: deviceModels.name }).from(deviceModels).where(and(eq(deviceModels.id, data.modelId), isNull(deviceModels.deletedAt)));
+  if (!model) throw new NotFound('Modelo');
+  const [cur] = await db.select().from(clientDeviceLogins).where(and(eq(clientDeviceLogins.clientId, clientId), eq(clientDeviceLogins.modelId, model.id), isNull(clientDeviceLogins.deletedAt)));
+  const { password, ...rest } = data;
+  const secretId = password ? await vault.save(db, { existingId: cur?.passwordSecretId, label: `Senha padrão ${model.name} — ${client.name}`, plain: password, userId }) : cur?.passwordSecretId ?? null;
+  const vals = { username: rest.username === undefined ? cur?.username ?? null : rest.username, note: rest.note === undefined ? cur?.note ?? null : rest.note, passwordSecretId: secretId, updatedAt: new Date() };
+  if (cur) await db.update(clientDeviceLogins).set(vals).where(eq(clientDeviceLogins.id, cur.id));
+  else await db.insert(clientDeviceLogins).values({ id: newId(), clientId, modelId: model.id, ...vals });
+  return { clientName: client.name, modelName: model.name, created: !cur, senhaTrocada: !!password };
+}
+
+/** Tira o login padrão daquele modelo (marca como excluído; a senha continua no cofre, sem ninguém apontar para ela). */
+export async function removeDeviceLogin(db: Db, clientId: string, loginId: string) {
+  const client = await clienteOu404(db, clientId);
+  const [row] = await db.update(clientDeviceLogins).set({ deletedAt: new Date() }).where(and(eq(clientDeviceLogins.id, loginId), eq(clientDeviceLogins.clientId, clientId), isNull(clientDeviceLogins.deletedAt))).returning();
+  if (!row) throw new NotFound('Login padrão');
+  const [model] = await db.select({ name: deviceModels.name }).from(deviceModels).where(eq(deviceModels.id, row.modelId));
+  return { clientName: client.name, modelName: model?.name ?? row.modelId };
+}
+
+// ---------- Configuração de rede padrão ----------
+
+/** Grava (cria ou atualiza) a rede padrão dos aparelhos do cliente. A senha do ramal sem fio vai para o cofre. */
+export async function saveNetwork(db: Db, vault: SecretsVault, clientId: string, data: RedePadrao, userId: string) {
+  const client = await clienteOu404(db, clientId);
+  const [cur] = await db.select().from(clientNetworkSettings).where(eq(clientNetworkSettings.clientId, clientId));
+  const { wirelessPassword, ...rest } = data;
+  const secretId = wirelessPassword ? await vault.save(db, { existingId: cur?.wirelessPasswordSecretId, label: `Senha do ramal sem fio — ${client.name}`, plain: wirelessPassword, userId }) : cur?.wirelessPasswordSecretId ?? null;
+  const vals = {
+    ipAddress: rest.ipAddress === undefined ? cur?.ipAddress ?? null : rest.ipAddress,
+    subnetMask: rest.subnetMask === undefined ? cur?.subnetMask ?? null : rest.subnetMask,
+    defaultRouter: rest.defaultRouter === undefined ? cur?.defaultRouter ?? null : rest.defaultRouter,
+    dns1: rest.dns1 === undefined ? cur?.dns1 ?? null : rest.dns1,
+    dns2: rest.dns2 === undefined ? cur?.dns2 ?? null : rest.dns2,
+    note: rest.note === undefined ? cur?.note ?? null : rest.note,
+    wirelessPasswordSecretId: secretId, updatedAt: new Date(),
+  };
+  await db.insert(clientNetworkSettings).values({ clientId, ...vals }).onConflictDoUpdate({ target: clientNetworkSettings.clientId, set: vals });
+  return { clientName: client.name, before: cur ?? null };
 }
 
 // ---------- Logo ----------

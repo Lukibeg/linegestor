@@ -37,9 +37,14 @@ export type Api = {
     devices(id: string): Promise<{ devices: T.Page<T.Device> }>;
     history(id: string): Promise<T.Page<T.AuditItem>>;
     units(id: string): Promise<T.ClientUnit[]>;
-    createUnit(id: string, d: { name: string; note?: string | null }): Promise<T.ClientUnit>;
-    updateUnit(id: string, unitId: string, d: { name: string; note?: string | null }): Promise<T.ClientUnit>;
+    createUnit(id: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
+    updateUnit(id: string, unitId: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
     removeUnit(id: string, unitId: string): Promise<{ ok: boolean }>;
+    /** Login e senha padrão dos aparelhos, por modelo (um por modelo; gravar de novo atualiza) */
+    saveDeviceLogin(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
+    removeDeviceLogin(id: string, loginId: string): Promise<T.ClientFull>;
+    /** Rede padrão dos aparelhos (IP, máscara, gateway, DNS, senha do ramal sem fio) */
+    saveNetwork(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
   };
   secrets: { reveal(id: string, password: string): Promise<{ label: string; value: string; visibleForSeconds: number }> };
   circuits: {

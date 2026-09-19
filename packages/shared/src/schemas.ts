@@ -103,6 +103,8 @@ export const LinePbxSettingsSchema = z.object({
 });
 export const Fop2SettingsSchema = z.object({
   adminExtension: z.string().trim().max(64).nullable().optional(),
+  /** Senha do usuário padrão do FOP2 — só na gravação; ausente = mantém */
+  defaultUserPassword: SenhaEntradaSchema.optional(),
 });
 export const OmniboardSettingsSchema = z.object({
   adminLogin: z.string().trim().max(200).nullable().optional(),
@@ -154,10 +156,42 @@ export const ProdutoCriarSchema = z.object({
   description: z.string().trim().max(300).nullable().optional(),
 });
 
-/** Uma unidade do cliente (matriz, filial, loja). */
+/** Um endereço IP (v4) como a pessoa digita; vazio vira nulo. */
+const IpSchema = z
+  .string()
+  .trim()
+  .max(64)
+  .refine((v) => !v || /^\d{1,3}(\.\d{1,3}){3}$/.test(v), 'IP inválido (ex.: 10.20.0.1)')
+  .transform((v) => v || null);
+
+/** Uma unidade do cliente (matriz, filial, loja): nome, endereço e o IP fixo de saída da rede dela. */
 export const UnidadeGravarSchema = z.object({
   name: z.string().trim().min(1, 'Informe o nome da unidade').max(120),
+  address: z.string().trim().max(300).nullable().optional(),
+  /** o IP fixo de saída da internet desta unidade (o que a operadora e o servidor enxergam) */
+  egressIp: IpSchema.nullable().optional(),
   note: z.string().trim().max(500).nullable().optional(),
+});
+
+/** Login e senha padrão dos aparelhos de um MODELO no cliente (todos os GXP1610 dele usam o mesmo). */
+export const LoginModeloGravarSchema = z.object({
+  modelId: IdSchema,
+  username: z.string().trim().max(120).nullable().optional(),
+  /** só na gravação; ausente = mantém a senha atual */
+  password: SenhaEntradaSchema.optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+/** Configuração de rede padrão dos aparelhos do cliente (o que se digita nos telefones). */
+export const RedePadraoSchema = z.object({
+  ipAddress: z.string().trim().max(64).nullable().optional(),
+  subnetMask: IpSchema.nullable().optional(),
+  defaultRouter: IpSchema.nullable().optional(),
+  dns1: IpSchema.nullable().optional(),
+  dns2: IpSchema.nullable().optional(),
+  /** senha do ramal sem fio — só na gravação; ausente = mantém */
+  wirelessPassword: SenhaEntradaSchema.optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
 });
 
 /**
@@ -191,6 +225,8 @@ export const CircuitoGravarSchema = z.object({
   channels: z.coerce.number().int().min(0).max(10000),
   ownerClientId: IdSchema.nullable().optional(),
   monthlyValueCents: CentavosSchema.nullable().optional(),
+  /** por IP (IP da operadora + IP do PBX) ou por login e senha do tronco */
+  authType: z.enum(['ip', 'login']).default('ip'),
   signalingIp: z.string().trim().max(64).nullable().optional(),
   authIp: z.string().trim().max(200).nullable().optional(),
   authUsername: z.string().trim().max(120).nullable().optional(),
@@ -215,19 +251,22 @@ export const CircuitoListarSchema = PaginacaoSchema.merge(OrdenacaoSchema).exten
 
 export const DidListarSchema = PaginacaoSchema.extend({
   q: z.string().trim().max(40).optional(),
-  circuitId: z.union([IdSchema, z.literal('none')]).optional(),
+  circuitId: IdSchema.optional(),
   clientId: z.union([IdSchema, z.literal('free')]).optional(),
   ownerClientId: IdSchema.optional(),
+  /** só os marcados como em uso (true) ou como não usados (false) */
+  inUse: z.enum(['true', 'false']).optional(),
   /** o mesmo interruptor da lista de circuitos: sem ele, número de terceiro não aparece */
   includeThirdParty: Booleano.default(false),
   sort: z.string().trim().max(60).optional(),
   dir: z.enum(['asc', 'desc']).optional(),
 });
 
+/** Todo DID nasce dentro de um circuito: não existe "DID sem circuito". */
 export const DidCriarFaixaSchema = z.object({
   baseNumber: DidNumeroSchema,
   quantity: z.coerce.number().int().min(1).max(1000, 'No máximo 1.000 números por vez'),
-  circuitId: IdSchema.nullable().optional(),
+  circuitId: IdSchema.min(1, 'Escolha o circuito'),
   clientId: IdSchema.nullable().optional(),
   ownerClientId: IdSchema.nullable().optional(),
   note: z.string().max(500).nullable().optional(),
@@ -238,17 +277,21 @@ export const DidEditarEmMassaSchema = z.object({
   ids: z.array(IdSchema).min(1).max(5000),
   set: z
     .object({
-      circuitId: IdSchema.nullable().optional(),
+      /** mudar de circuito — sempre para um circuito, nunca para "nenhum" */
+      circuitId: IdSchema.optional(),
       clientId: IdSchema.nullable().optional(),
+      /** marcar como em uso / não usado */
+      inUse: z.boolean().optional(),
       note: z.string().max(500).nullable().optional(),
     })
     .refine((s) => Object.keys(s).length > 0, 'Escolha pelo menos um campo para alterar'),
 });
 
 export const DidAtualizarSchema = z.object({
-  circuitId: IdSchema.nullable().optional(),
+  circuitId: IdSchema.optional(),
   clientId: IdSchema.nullable().optional(),
   ownerClientId: IdSchema.nullable().optional(),
+  inUse: z.boolean().optional(),
   note: z.string().max(500).nullable().optional(),
 });
 
@@ -414,6 +457,8 @@ export type ModeloAtualizar = z.infer<typeof ModeloAtualizarSchema>;
 export type AparelhosEmMassa = z.infer<typeof AparelhosEmMassaSchema>;
 export type ProdutoCriar = z.infer<typeof ProdutoCriarSchema>;
 export type UnidadeGravar = z.infer<typeof UnidadeGravarSchema>;
+export type LoginModeloGravar = z.infer<typeof LoginModeloGravarSchema>;
+export type RedePadrao = z.infer<typeof RedePadraoSchema>;
 export type AparelhoGravar = z.infer<typeof AparelhoGravarSchema>;
 export type MovimentacaoCriar = z.infer<typeof MovimentacaoCriarSchema>;
 export type Login = z.infer<typeof LoginSchema>;

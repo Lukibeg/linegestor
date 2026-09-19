@@ -111,13 +111,22 @@ export async function listCatalog(db: Db, type: CatalogType) {
   const t = CATALOGS[type];
   return db.select().from(t).orderBy(asc(t.name));
 }
+/** Nome de item de catálogo não se repete (sem diferenciar maiúsculas). */
+async function nomeDeCatalogoLivre(db: Db, type: CatalogType, name: string, exceto?: string) {
+  const t = CATALOGS[type];
+  const [dup] = await db.select({ id: t.id }).from(t).where(sql`lower(${t.name}) = lower(${name})`).limit(1);
+  if (dup && dup.id !== exceto) throw new BadRequest(`Já existe "${name}" neste catálogo`);
+}
 export async function createCatalogItem(db: Db, type: CatalogType, name: string) {
   const t = CATALOGS[type];
+  await nomeDeCatalogoLivre(db, type, name);
   const [row] = await db.insert(t).values({ id: newId(), name }).returning();
   return row!;
 }
+/** Renomear vale para quem já usa o item: operadora, hospedagem e categoria são ligadas por id, então o nome novo aparece em todo lugar. */
 export async function updateCatalogItem(db: Db, type: CatalogType, id: string, data: { name?: string; active?: boolean }) {
   const t = CATALOGS[type];
+  if (data.name) await nomeDeCatalogoLivre(db, type, data.name, id);
   const [row] = await db.update(t).set(data).where(eq(t.id, id)).returning();
   if (!row) throw new NotFound('Item');
   return row;

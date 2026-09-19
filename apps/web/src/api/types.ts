@@ -46,25 +46,34 @@ export type Subscription = {
   activatedAt: string | null; deactivatedAt: string | null; notes: string | null;
   settings: Record<string, any> | null; modules: SubscriptionModule[];
 };
-export type ClientFull = ClientListItem & { subscriptions: Subscription[]; unitCount: number };
-/** Uma unidade do cliente (Matriz, filial, loja). */
-export type ClientUnit = { id: string; name: string; isMain: boolean; note: string | null; createdAt: string; deviceCount: number };
+/** Configuração de rede padrão dos aparelhos do cliente (aba Equipamentos). A senha do ramal sem fio só diz se existe. */
+export type ClientNetwork = { ipAddress: string | null; subnetMask: string | null; defaultRouter: string | null; dns1: string | null; dns2: string | null; note: string | null; wirelessPassword: SecretRef; updatedAt: string };
+/** Login e senha padrão dos aparelhos de um MODELO no cliente (todos os GXP1610 dele usam o mesmo). A senha só diz se existe. */
+export type ClientDeviceLogin = { id: string; modelId: string; modelName: string; username: string | null; password: SecretRef; note: string | null; updatedAt: string };
+export type ClientFull = ClientListItem & { subscriptions: Subscription[]; unitCount: number; network: ClientNetwork | null; deviceLogins: ClientDeviceLogin[] };
+/** Uma unidade do cliente (Matriz, filial, loja), com endereço e o IP fixo de saída da rede dela. */
+export type ClientUnit = { id: string; name: string; isMain: boolean; address: string | null; egressIp: string | null; note: string | null; createdAt: string; deviceCount: number };
 
 export type Circuit = {
   id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; carrierName: string | null; channels: number;
-  ownerClientId: string | null; ownerName: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null;
+  ownerClientId: string | null; ownerName: string | null; monthlyValueCents: number | null;
+  /** por IP (IP da operadora + IP do PBX) ou por login e senha do tronco */
+  authType: 'ip' | 'login';
+  signalingIp: string | null; authIp: string | null;
   authUsername: string | null; authPassword: SecretRef; notes: string | null; dids: { total: number; assigned: number; free: number };
   /** true = tronco do próprio cliente, com outra operadora. Só aparece com "links de terceiros" ligado. */
   thirdParty: boolean;
 };
 /** Os cartões no topo da tela de Circuitos (obedecem aos mesmos filtros da lista). */
-export type CircuitSummary = { circuits: number; channels: number; monthlyValueCents: number; dids: { total: number; assigned: number; free: number; noCircuit: number } };
+export type CircuitSummary = { circuits: number; channels: number; monthlyValueCents: number; dids: { total: number; assigned: number; free: number } };
 /** Os cartões no topo do Inventário (obedecem aos mesmos filtros da lista). */
 export type InventorySummary = { inStock: number; withClients: number; inactive: number; valueWithClientsCents: number; filtrado: boolean };
 
 export type Did = {
   id: string; number: string; numberFormatted: string; free: boolean; circuitId: string | null; circuitName: string | null; circuitCode: string | null; carrierName: string | null;
   clientId: string | null; clientName: string | null; ownerClientId: string | null; ownerName: string | null; note: string | null;
+  /** o número está em uso no cliente (só faz sentido com cliente; livre é sempre false) */
+  inUse: boolean;
   /** o circuito deste número não é da VoiceNet */
   thirdParty?: boolean;
 };
@@ -103,7 +112,7 @@ export type Movement = {
 
 export type Dashboard = {
   clients: { active: number; byProduct: Array<ProductChip & { n: number }> };
-  dids: { total: number; assigned: number; free: number; noCircuit: number };
+  dids: { total: number; assigned: number; free: number };
   circuits: Array<{ id: string; name: string; carrierName: string | null; channels: number; total: number; assigned: number; free: number }>;
   devices: { inStock: number; withClients: number; inactive: number; valueWithClientsCents: number };
   alerts: Array<{ kind: string; severity: 'warning' | 'critical'; message: string; count: number; link: string }>;

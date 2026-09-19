@@ -67,6 +67,9 @@ export const realApi: Api = {
     createUnit: (id, d) => http('POST', `/clients/${id}/units`, d),
     updateUnit: (id, unitId, d) => http('PATCH', `/clients/${id}/units/${unitId}`, d),
     removeUnit: (id, unitId) => http('DELETE', `/clients/${id}/units/${unitId}`),
+    saveDeviceLogin: (id, d) => http('PUT', `/clients/${id}/device-logins`, d),
+    removeDeviceLogin: (id, loginId) => http('DELETE', `/clients/${id}/device-logins/${loginId}`),
+    saveNetwork: (id, d) => http('PUT', `/clients/${id}/network`, d),
   },
   secrets: { reveal: (id, password) => http('POST', `/secrets/${id}/reveal`, { password }) },
   circuits: {

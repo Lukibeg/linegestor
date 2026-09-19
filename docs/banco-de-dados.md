@@ -11,6 +11,8 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [clients](#clients) — Uma linha por empresa.
 - [client_logos](#client_logos) — A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo).
 - [client_units](#client_units) — As UNIDADES de um cliente: matriz, filiais, lojas, andares.
+- [client_device_logins](#client_device_logins) — LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente entram com o mesmo login e senha; os DP722, com outro.
+- [client_network_settings](#client_network_settings) — CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita nos telefones na hora de configurar (IP, máscara, gateway, DNS) e a senha do ramal sem fio.
 - [products](#products) — Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
 - [product_modules](#product_modules) — Catálogo de MÓDULOS: partes opcionais dentro de um produto.
 - [subscriptions](#subscriptions) — "O cliente X assina o produto Y." Uma linha por par cliente × produto.
@@ -75,10 +77,34 @@ As UNIDADES de um cliente: matriz, filiais, lojas, andares. Todo cliente tem a "
 | `id` | texto | Identificador único da linha | chave primária |
 | `name` | texto | Nome da unidade: "Matriz", "Loja Simões Filho" | obrigatório |
 | `is_main` | sim/não | A matriz: existe em todo cliente, é a unidade padrão e não pode ser removida | obrigatório · padrão: false |
-| `note` | texto | Endereço ou referência, opcional | — |
+| `address` | texto | Endereço da unidade (rua, número, bairro, cidade) | — |
+| `egress_ip` | texto | IP fixo de saída da rede desta unidade — o IP que chega ao servidor quando os ramais registram | — |
+| `note` | texto | Observação ou referência, opcional | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## client_device_logins
+
+LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente entram com o mesmo login e senha; os DP722, com outro. Uma linha por cliente × modelo. A senha nunca fica aqui — vai para o cofre (`secrets`). Faz par com a rede padrão.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `model_id` | texto | O modelo de aparelho a que este login se aplica | obrigatório · liga com **deviceModels** |
+| `username` | texto | Usuário/login padrão (admin, user…) | — |
+| `password_secret_id` | texto | Senha padrão — no cofre | liga com **secrets** |
+| `note` | texto | — | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## client_network_settings
+
+CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita nos telefones na hora de configurar (IP, máscara, gateway, DNS) e a senha do ramal sem fio. Uma linha por cliente.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
 
 ## products
 
@@ -191,9 +217,10 @@ Um circuito (feixe) contratado junto a uma operadora. Agrupa DIDs e tem um limit
 | `owner_client_id` | texto | Titular do circuito: quem detém o contrato com a operadora (normalmente VoiceNet) | liga com **clients** |
 | `third_party` | sim/não | Circuito que NÃO é da VoiceNet: o tronco que o próprio cliente contratou de outra operadora. Guardar é útil (dá para saber a numeração dele), mas polui o controle da VoiceNet — por isso fica fora das listas, dos cartões e do painel até alguém ligar "links de terceiros". | obrigatório · padrão: false |
 | `monthly_value_cents` | número inteiro | Custo/valor mensal do feixe, em centavos | — |
+| `auth_type` | texto | Como o tronco se autentica na operadora: - `ip`: pelo IP — basta o IP da operadora e o IP do PBX - `login`: por login e senha do tronco | obrigatório · padrão: 'ip' |
 | `signaling_ip` | texto | IP da operadora (sinalização) | — |
-| `auth_ip` | texto | IP de autenticação ("IP PBX" no Nexus) | — |
-| `auth_username` | texto | Usuário de autenticação do tronco | — |
+| `auth_ip` | texto | IP do PBX que a operadora autoriza (só na autenticação por IP; "IP PBX" no Nexus) | — |
+| `auth_username` | texto | Login do tronco (só na autenticação por login e senha) | — |
 | `auth_password_secret_id` | texto | Senha de autenticação do tronco — no cofre | liga com **secrets** |
 | `notes` | texto | — | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
@@ -208,9 +235,10 @@ Um número telefônico. "Linha" no Nexus; DID aqui (decisão V2).
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
 | `number` | texto | Número só com dígitos (DDD + 8 ou 9). Único. | obrigatório |
-| `circuit_id` | texto | Circuito ao qual pertence. Nulo = "sem circuito". | liga com **circuits** |
+| `circuit_id` | texto | Circuito ao qual pertence. Todo DID nasce dentro de um circuito (o servidor exige); a coluna continua aceitando nulo só por causa de registros antigos. | liga com **circuits** |
 | `client_id` | texto | Cliente que USA o número. Nulo = livre. | liga com **clients** |
 | `owner_client_id` | texto | Titular: quem DETÉM o número junto à operadora (normalmente VoiceNet) | liga com **clients** |
+| `in_use` | sim/não | O número está EM USO no cliente? Alocar não é usar: o DID entra no cliente como "não usado" e alguém marca "em uso" quando ele passa a atender. Só faz sentido com cliente (livre = false). | obrigatório · padrão: false |
 | `note` | texto | Observação curta | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |

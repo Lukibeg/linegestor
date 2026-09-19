@@ -5,12 +5,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Archive, ChevronDown, ChevronRight, ExternalLink, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, ExternalLink, Network, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
-import type { ClientFull, ClientUnit, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
+import type { ClientDeviceLogin, ClientFull, ClientUnit, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, Identificacao, LogoCliente, mensagemErro, Modal, Spinner, usePaginaLocal, Vazio, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, Identificacao, InputIp, LogoCliente, mensagemErro, Modal, Spinner, usePaginaLocal, Vazio, useToast } from '../../components/ui/index.js';
 import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, diaParaIso, hojeCampoData, intervalo, MODALIDADES, paraCampoData, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { paraALista, Voltar } from '../../lib/voltar.js';
@@ -306,14 +306,14 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
     setBusy(true); setErr('');
     try {
       const settings: Record<string, unknown> = {};
-      if (module.code === 'fop2') settings.adminExtension = f.adminExtension || null;
+      if (module.code === 'fop2') Object.assign(settings, { adminExtension: f.adminExtension || null, ...(senhas.defaultUserPassword ? { defaultUserPassword: senhas.defaultUserPassword } : {}) });
       if (module.code === 'omniboard') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}), ...(senhas.userDefaultPassword ? { userDefaultPassword: senhas.userDefaultPassword } : {}) });
       await api.clients.upsertModule(c.id, { productCode: product.code, moduleCode: module.code, activatedAt: f.activatedAt ? diaParaIso(f.activatedAt) : null, notes: f.notes || null, settings });
       await qc.invalidateQueries({ queryKey: ['client', c.id] }); await qc.invalidateQueries({ queryKey: ['clients'] });
       toast.push('ok', `${module.name} salvo`); onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
-  const seg = (key: 'adminPassword' | 'userDefaultPassword', label: string) => (
+  const seg = (key: 'adminPassword' | 'userDefaultPassword' | 'defaultUserPassword', label: string) => (
     <Campo label={label}><CampoSegredo secretId={st[key]?.secretId ?? null} hasSecret={!!st[key]?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={(v) => setSenhas({ ...senhas, [key]: v })} /></Campo>
   );
   return (
@@ -321,7 +321,10 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
       <div className="flex flex-col gap-3">
         {module.description && <p className="text-sm text-muted">{module.description}</p>}
         <Campo label="Ativado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
-        {module.code === 'fop2' && <Campo label="Ramal / usuário admin do FOP2" dica="usado para o acesso rápido"><input className="input font-mono" value={f.adminExtension} onChange={(e) => setF({ ...f, adminExtension: e.target.value })} /></Campo>}
+        {module.code === 'fop2' && (<>
+          <Campo label="Ramal / usuário admin do FOP2" dica="usado para o acesso rápido"><input className="input font-mono" autoComplete="off" value={f.adminExtension} onChange={(e) => setF({ ...f, adminExtension: e.target.value })} /></Campo>
+          {seg('defaultUserPassword', 'Senha do usuário padrão do FOP2')}
+        </>)}
         {module.code === 'omniboard' && (<>
           <Campo label="E-mail do administrador"><input className="input" value={f.adminLogin} onChange={(e) => setF({ ...f, adminLogin: e.target.value })} /></Campo>
           {seg('adminPassword', 'Senha do administrador')}
@@ -335,21 +338,42 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
 }
 
 // ---------- DIDs ----------
+/**
+ * Os números do cliente, com a marca **em uso / não usado**: o número pode estar alocado ao
+ * cliente e ainda não estar em uso (reservado, aguardando configuração). Clicar na marca alterna.
+ */
 function Dids({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
+  const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
   const o = useOrdenacaoLocal('numberFormatted');
   const items = q.data?.items ?? [];
-  const ordenados = ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, note: (d) => d.note });
+  const ordenados = ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, inUse: (d) => (d.inUse ? 1 : 0), note: (d) => d.note });
   const pg = usePaginaLocal(ordenados, 100);
+  const [mudando, setMudando] = useState<string | null>(null);
+  const alternar = async (id: string, inUse: boolean) => {
+    setMudando(id);
+    try { await api.dids.update(id, { inUse }); await Promise.all([qc.invalidateQueries({ queryKey: ['client-dids', c.id] }), qc.invalidateQueries({ queryKey: ['dids'] })]); }
+    catch (e) { toast.push('erro', mensagemErro(e)); } finally { setMudando(null); }
+  };
   if (q.isLoading) return <Carregando />;
   if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
+  const emUso = items.filter((d) => d.inUse).length;
   return (
     <div className="card overflow-x-auto">
-      <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
-        <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">sem circuito</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
-      <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted"><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div></div>
+      <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
+        <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum">{d.numberFormatted}</td>
+          <td><UsoDid inUse={d.inUse} podeMudar={can('dids.assign')} mudando={mudando === d.id} onChange={(v) => alternar(d.id, v)} /></td>
+          <td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
+      <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted flex flex-wrap gap-x-3"><span className="tnum">{emUso} em uso · {items.length - emUso} não usado(s)</span><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div></div>
     </div>
   );
+}
+
+/** A marca "em uso" / "não usado" de um número. Com permissão, vira um botão que alterna. */
+export function UsoDid({ inUse, podeMudar, mudando, onChange }: { inUse: boolean; podeMudar: boolean; mudando?: boolean; onChange?: (v: boolean) => void }) {
+  const chip = <Chip tone={inUse ? 'ok' : 'signal'} title={inUse ? 'O cliente usa este número' : 'Alocado ao cliente, mas ainda não está em uso'}>{inUse ? 'em uso' : 'não usado'}</Chip>;
+  if (!podeMudar || !onChange) return chip;
+  return <button type="button" className={`inline-flex ${mudando ? 'opacity-50' : ''}`} disabled={mudando} onClick={(e) => { e.stopPropagation(); onChange(!inUse); }} title={inUse ? 'Clique para marcar como não usado' : 'Clique para marcar como em uso'} aria-label={inUse ? 'Marcar como não usado' : 'Marcar como em uso'}>{chip}</button>;
 }
 
 // ---------- Equipamentos ----------
@@ -366,6 +390,7 @@ function Equipamentos({ c }: { c: ClientFull }) {
   const [vista, setVista] = useState<'aparelhos' | 'movimentacoes'>('aparelhos');
   return (
     <div className="flex flex-col gap-3">
+      <RedePadrao c={c} />
       <div className="inline-flex self-start rounded-lg border border-line p-0.5 bg-surface" role="tablist">
         {([['aparelhos', `Aparelhos (${c.deviceCount})`], ['movimentacoes', 'Movimentações']] as const).map(([id, rotulo]) => (
           <button key={id} role="tab" aria-selected={vista === id} onClick={() => setVista(id)} className={`px-3 py-1.5 text-sm font-semibold rounded-md ${vista === id ? 'bg-accent text-white' : 'text-ink-2 hover:text-ink'}`}>{rotulo}</button>
@@ -387,13 +412,11 @@ function AparelhosDoCliente({ c }: { c: ClientFull }) {
   const [busca, setBusca] = useState('');
   const [fModelo, setFModelo] = useState('');
   const [fUnidade, setFUnidade] = useState('');
-  const [fModalidade, setFModalidade] = useState('');
   const [fCondicao, setFCondicao] = useState('');
 
   const opcoes = useMemo(() => ({
     modelos: [...new Set(todos.map((d) => d.modelName))].sort((a, b) => a.localeCompare(b, 'pt-BR')),
     unidades: [...new Set(todos.map((d) => d.unit).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, 'pt-BR')),
-    modalidades: [...new Set(todos.map((d) => d.currentModality).filter(Boolean) as string[])],
     condicoes: [...new Set(todos.map((d) => d.condition))],
   }), [todos]);
 
@@ -402,15 +425,14 @@ function AparelhosDoCliente({ c }: { c: ClientFull }) {
     const hex = t.replace(/[^0-9a-f]/g, '').toUpperCase();
     return todos.filter((d) => (!fModelo || d.modelName === fModelo)
       && (!fUnidade || d.unit === fUnidade)
-      && (!fModalidade || d.currentModality === fModalidade)
       && (!fCondicao || d.condition === fCondicao)
       && (!t || (hex.length >= 2 && (d.mac ?? '').includes(hex)) || (d.serialNumber ?? '').toLowerCase().includes(t.replace(/\s/g, ''))
         || (d.unit ?? '').toLowerCase().includes(t) || d.modelName.toLowerCase().includes(t) || (d.ip ?? '').includes(t)
         || (d.note ?? '').toLowerCase().includes(t)));
-  }, [todos, busca, fModelo, fUnidade, fModalidade, fCondicao]);
+  }, [todos, busca, fModelo, fUnidade, fCondicao]);
 
   const filtrado = devs.length !== todos.length;
-  const limpar = () => { setBusca(''); setFModelo(''); setFUnidade(''); setFModalidade(''); setFCondicao(''); };
+  const limpar = () => { setBusca(''); setFModelo(''); setFUnidade(''); setFCondicao(''); };
 
   const resumo = useMemo(() => {
     const porModelo = new Map<string, { qtd: number; valor: number }>();
@@ -438,7 +460,7 @@ function AparelhosDoCliente({ c }: { c: ClientFull }) {
         <input className="input max-w-[220px] font-mono" placeholder="MAC, N/S, unidade, modelo, IP…" value={busca} onChange={(e) => setBusca(e.target.value)} />
         <select className="input w-auto" value={fModelo} onChange={(e) => setFModelo(e.target.value)}><option value="">Todos os modelos</option>{opcoes.modelos.map((m) => <option key={m} value={m}>{m}</option>)}</select>
         {opcoes.unidades.length > 0 && <select className="input w-auto" value={fUnidade} onChange={(e) => setFUnidade(e.target.value)}><option value="">Todas as unidades</option>{opcoes.unidades.map((u) => <option key={u} value={u}>{u}</option>)}</select>}
-        <select className="input w-auto" value={fModalidade} onChange={(e) => setFModalidade(e.target.value)}><option value="">Todas as modalidades</option>{opcoes.modalidades.map((m) => <option key={m} value={m}>{(MODALIDADES as any)[m] ?? m}</option>)}</select>
+        {/* o filtro de modalidade saiu a pedido do Luan (rodada 23); a coluna continua na tabela */}
         {opcoes.condicoes.length > 1 && <select className="input w-auto" value={fCondicao} onChange={(e) => setFCondicao(e.target.value)}><option value="">Ativos e inativos</option>{opcoes.condicoes.map((k) => <option key={k} value={k}>{condicaoNome[k] ?? k}</option>)}</select>}
         {filtrado && <button className="btn-ghost btn-sm text-muted" onClick={limpar}>limpar filtros</button>}
       </div>
@@ -536,6 +558,155 @@ function MovimentacoesDoCliente({ c }: { c: ClientFull }) {
   );
 }
 
+// ---------- Rede padrão dos aparelhos ----------
+
+/**
+ * O que a equipe digita nos telefones deste cliente na hora de configurar: IP, máscara,
+ * roteador padrão, DNS e a senha do ramal sem fio (no cofre). Fica no topo de Equipamentos
+ * porque é ali que quem vai instalar um aparelho procura.
+ */
+function RedePadrao({ c }: { c: ClientFull }) {
+  const { can } = useAuth();
+  const [editar, setEditar] = useState(false);
+  const n = c.network;
+  const linha = (rotulo: string, valor: string | null | undefined) => (<><dt className="text-muted">{rotulo}</dt><dd className="font-mono tnum">{valor || <span className="text-muted">—</span>}</dd></>);
+  return (
+    <div className="card p-4 flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="eyebrow inline-flex items-center gap-1.5"><Network size={13} /> Rede padrão dos aparelhos</span>
+        <Can permission="records.write"><button className="btn-secondary btn-sm" onClick={() => setEditar(true)}><Pencil size={13} /> {n ? 'Editar' : 'Preencher'}</button></Can>
+      </div>
+      <p className="text-[12.5px] text-muted -mt-1">Vale para <b>todos os aparelhos</b> deste cliente: é o que a equipe digita nos telefones na hora de configurar.</p>
+      {!n ? <p className="text-sm text-muted">Nenhuma configuração padrão ainda. Preencha IP, máscara, roteador e DNS.</p> : (
+        <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+          <dl className="grid grid-cols-[120px_1fr] gap-y-1 text-sm">{linha('IP Address', n.ipAddress)}{linha('Subnet Mask', n.subnetMask)}</dl>
+          <dl className="grid grid-cols-[120px_1fr] gap-y-1 text-sm">{linha('Default Router', n.defaultRouter)}{linha('DNS 1', n.dns1)}{linha('DNS 2', n.dns2)}</dl>
+          <div><Campo label="Senha do ramal sem fio"><CampoSegredo secretId={n.wirelessPassword.secretId} hasSecret={n.wirelessPassword.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo></div>
+          {n.note && <p className="text-[12.5px] text-ink-2 whitespace-pre-wrap sm:col-span-2 lg:col-span-3">{n.note}</p>}
+        </div>
+      )}
+      <LoginsPadrao c={c} />
+      {editar && <RedePadraoForm c={c} onClose={() => setEditar(false)} />}
+    </div>
+  );
+}
+
+/**
+ * Login e senha padrão dos aparelhos, POR MODELO: todos os GXP1610 do cliente entram com o
+ * mesmo login e senha; os DP722, com outro. Fica junto da rede padrão porque é a mesma
+ * informação de "como configurar um aparelho deste cliente".
+ */
+function LoginsPadrao({ c }: { c: ClientFull }) {
+  const { can } = useAuth();
+  const qc = useQueryClient(); const toast = useToast();
+  const [form, setForm] = useState<ClientDeviceLogin | 'novo' | null>(null);
+  const [remover, setRemover] = useState<ClientDeviceLogin | null>(null);
+  const [busy, setBusy] = useState(false);
+  const logins = c.deviceLogins ?? [];
+  const tirar = async () => {
+    if (!remover) return;
+    setBusy(true);
+    try { await api.clients.removeDeviceLogin(c.id, remover.id); setRemover(null); await qc.invalidateQueries({ queryKey: ['client', c.id] }); toast.push('ok', 'Login padrão removido'); }
+    catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); }
+  };
+  return (
+    <div className="border-t border-line pt-3 flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="eyebrow">Login e senha padrão por modelo</span>
+        <Can permission="records.write"><button className="btn-secondary btn-sm" onClick={() => setForm('novo')}><Plus size={13} /> Adicionar modelo</button></Can>
+      </div>
+      {!logins.length ? <p className="text-sm text-muted">Nenhum ainda. Cadastre o login e a senha com que os aparelhos de cada modelo entram (ex.: todos os GXP1610 deste cliente).</p> : (
+        <div className="overflow-x-auto"><table className="table">
+          <thead><tr><th>Modelo</th><th>Login</th><th>Senha</th><th>Anotação</th><th /></tr></thead>
+          <tbody>{logins.map((l) => (
+            <tr key={l.id}>
+              <td className="font-medium whitespace-nowrap">{l.modelName}</td>
+              <td className="font-mono">{l.username || <span className="text-muted">—</span>}</td>
+              <td className="min-w-[220px]"><CampoSegredo secretId={l.password.secretId} hasSecret={l.password.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></td>
+              <td className="text-muted text-[12.5px]">{l.note ?? '—'}</td>
+              <td className="text-right whitespace-nowrap"><Can permission="records.write"><button className="btn-ghost btn-sm" onClick={() => setForm(l)} title="Editar"><Pencil size={13} /></button><button className="btn-ghost btn-sm text-muted" onClick={() => setRemover(l)} title="Remover"><Trash2 size={13} /></button></Can></td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {form && <LoginPadraoForm c={c} l={form === 'novo' ? undefined : form} onClose={() => setForm(null)} />}
+      <Confirmar open={!!remover} onClose={() => setRemover(null)} onConfirm={tirar} loading={busy} titulo="Remover login padrão" botao="Remover" texto={<>O login padrão dos <b>{remover?.modelName}</b> sai da ficha de {c.tradeName}. Fica registrado no histórico.</>} />
+    </div>
+  );
+}
+
+function LoginPadraoForm({ c, l, onClose }: { c: ClientFull; l?: ClientDeviceLogin; onClose: () => void }) {
+  const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
+  const models = useQuery({ queryKey: ['models'], queryFn: () => api.inventory.models() });
+  const jaTem = new Set((c.deviceLogins ?? []).map((x) => x.modelId));
+  const [f, setF] = useState({ modelId: l?.modelId ?? '', username: l?.username ?? '', note: l?.note ?? '' });
+  const [senha, setSenha] = useState('');
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      await api.clients.saveDeviceLogin(c.id, { modelId: f.modelId, username: f.username.trim() || null, note: f.note.trim() || null, ...(senha ? { password: senha } : {}) });
+      await qc.invalidateQueries({ queryKey: ['client', c.id] });
+      toast.push('ok', 'Login padrão salvo'); onClose();
+    } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Modal open onClose={onClose} titulo={l ? `Login padrão · ${l.modelName}` : `Login padrão por modelo · ${c.tradeName}`} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.modelId} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-muted">Vale para todos os aparelhos deste modelo neste cliente.</p>
+        <Campo label="Modelo">
+          {l ? <input className="input" value={l.modelName} disabled /> : (
+            <select className="input" value={f.modelId} onChange={(e) => setF({ ...f, modelId: e.target.value })} autoFocus>
+              <option value="">Escolha o modelo…</option>
+              {models.data?.map((m) => <option key={m.id} value={m.id} disabled={jaTem.has(m.id)}>{m.name}{jaTem.has(m.id) ? ' (já cadastrado)' : ''}</option>)}
+            </select>
+          )}
+        </Campo>
+        <Campo label="Login"><input className="input font-mono" autoComplete="off" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} /></Campo>
+        <Campo label="Senha"><CampoSegredo secretId={l?.password.secretId ?? null} hasSecret={!!l?.password.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={setSenha} /></Campo>
+        <Campo label="Anotação"><input className="input" autoComplete="off" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Campo>
+        {err && <div className="text-bad text-sm">{err}</div>}
+      </div>
+    </Modal>
+  );
+}
+
+function RedePadraoForm({ c, onClose }: { c: ClientFull; onClose: () => void }) {
+  const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
+  const n = c.network;
+  const [f, setF] = useState({ ipAddress: n?.ipAddress ?? '', subnetMask: n?.subnetMask ?? '255.255.255.0', defaultRouter: n?.defaultRouter ?? '', dns1: n?.dns1 ?? '8.8.8.8', dns2: n?.dns2 ?? '8.8.4.4', note: n?.note ?? '' });
+  const [senha, setSenha] = useState('');
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      await api.clients.saveNetwork(c.id, { ipAddress: f.ipAddress.trim() || null, subnetMask: f.subnetMask.trim() || null, defaultRouter: f.defaultRouter.trim() || null, dns1: f.dns1.trim() || null, dns2: f.dns2.trim() || null, note: f.note.trim() || null, ...(senha ? { wirelessPassword: senha } : {}) });
+      await qc.invalidateQueries({ queryKey: ['client', c.id] });
+      toast.push('ok', 'Rede padrão salva'); onClose();
+    } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
+  // os pontos entram sozinhos: "19216801" vira "192.168.0.1"
+  const campo = (k: keyof typeof f, label: string, placeholder: string) => <Campo label={label}><InputIp placeholder={placeholder} value={f[k]} onChange={(v) => setF({ ...f, [k]: v })} /></Campo>;
+  return (
+    <Modal open onClose={onClose} titulo={`Rede padrão dos aparelhos · ${c.tradeName}`} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-muted">Vale para todos os aparelhos deste cliente. Cada aparelho ainda pode ter o IP próprio na ficha dele.</p>
+        <div className="grid grid-cols-2 gap-3">
+          {campo('ipAddress', 'IP Address', '10.20.0.77')}
+          {campo('subnetMask', 'Subnet Mask', '255.255.255.0')}
+          {campo('defaultRouter', 'Default Router', '10.20.0.1')}
+          <span />
+          {campo('dns1', 'DNS 1', '8.8.8.8')}
+          {campo('dns2', 'DNS 2', '8.8.4.4')}
+        </div>
+        <Campo label="Senha do ramal sem fio"><CampoSegredo secretId={n?.wirelessPassword.secretId ?? null} hasSecret={!!n?.wirelessPassword.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={setSenha} /></Campo>
+        <Campo label="Anotações" dica="VLAN, provisionamento, particularidades…"><textarea className="input" rows={2} autoComplete="off" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Campo>
+        {err && <div className="text-bad text-sm">{err}</div>}
+      </div>
+    </Modal>
+  );
+}
+
 // ---------- Unidades ----------
 
 /**
@@ -546,13 +717,15 @@ function Unidades({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-units', c.id], queryFn: () => api.clients.units(c.id) });
   const qc = useQueryClient(); const toast = useToast();
   const [nova, setNova] = useState('');
+  const [novoEndereco, setNovoEndereco] = useState('');
+  const [novoIp, setNovoIp] = useState('');
   const [editando, setEditando] = useState<ClientUnit | null>(null);
   const [remover, setRemover] = useState<ClientUnit | null>(null);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const atualizar = () => Promise.all(['client-units', 'client', 'client-devices', 'devices'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
   const adicionar = async () => {
     setBusy(true); setErr('');
-    try { await api.clients.createUnit(c.id, { name: nova.trim() }); setNova(''); await atualizar(); toast.push('ok', 'Unidade cadastrada'); }
+    try { await api.clients.createUnit(c.id, { name: nova.trim(), address: novoEndereco.trim() || null, egressIp: novoIp.trim() || null }); setNova(''); setNovoEndereco(''); setNovoIp(''); await atualizar(); toast.push('ok', 'Unidade cadastrada'); }
     catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
   const tirar = async () => {
@@ -567,11 +740,13 @@ function Unidades({ c }: { c: ClientFull }) {
     <div className="grid gap-4 md:grid-cols-3 items-start">
       <div className="card overflow-x-auto md:col-span-2">
         <table className="table">
-          <thead><tr><ThN /><th>Unidade</th><th>Observação</th><th className="text-right">Aparelhos</th><th /></tr></thead>
+          <thead><tr><ThN /><th>Unidade</th><th>Endereço</th><th>IP fixo de saída</th><th>Observação</th><th className="text-right">Aparelhos</th><th /></tr></thead>
           <tbody>{unidades.map((u, i) => (
             <tr key={u.id}>
               <TdN n={contar(i)} />
               <td className="font-medium"><span className="inline-flex items-center gap-1.5">{u.name}{u.isMain && <Chip tone="accent" title="Unidade padrão: todo cliente tem"><Star size={11} /> padrão</Chip>}</span></td>
+              <td className="text-ink-2 max-w-[280px]">{u.address ?? <span className="text-muted">—</span>}</td>
+              <td className="font-mono tnum">{u.egressIp ?? <span className="text-muted">—</span>}</td>
               <td className="text-muted">{u.note ?? '—'}</td>
               <td className="text-right tnum">{u.deviceCount}</td>
               <td className="text-right whitespace-nowrap">
@@ -588,6 +763,8 @@ function Unidades({ c }: { c: ClientFull }) {
         <div className="card p-4 flex flex-col gap-3">
           <div className="eyebrow">Nova unidade</div>
           <Campo label="Nome" dica="filial, loja, andar, ambulatório…"><input className="input" placeholder="Loja Simões Filho" value={nova} onChange={(e) => setNova(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && nova.trim() && adicionar()} /></Campo>
+          <Campo label="Endereço"><input className="input" autoComplete="off" placeholder="Rua, número, bairro, cidade" value={novoEndereco} onChange={(e) => setNovoEndereco(e.target.value)} /></Campo>
+          <Campo label="IP fixo de saída" dica="o IP da internet desta unidade (o que chega ao servidor)"><InputIp placeholder="200.180.10.5" value={novoIp} onChange={setNovoIp} /></Campo>
           <button className="btn-primary self-start" disabled={busy || !nova.trim()} onClick={adicionar}>{busy ? <Spinner className="text-white" /> : <><Plus size={15} /> Cadastrar</>}</button>
           {err && <div className="text-bad text-sm">{err}</div>}
           <p className="text-[12.5px] text-muted">A <b>Matriz</b> existe em todo cliente e é a unidade padrão: aparelho movimentado sem unidade escolhida fica nela.</p>
@@ -601,18 +778,20 @@ function Unidades({ c }: { c: ClientFull }) {
 
 function UnidadeForm({ c, u, onClose, onSaved }: { c: ClientFull; u: ClientUnit; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
-  const [f, setF] = useState({ name: u.name, note: u.note ?? '' });
+  const [f, setF] = useState({ name: u.name, address: u.address ?? '', egressIp: u.egressIp ?? '', note: u.note ?? '' });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const save = async () => {
     setBusy(true); setErr('');
-    try { await api.clients.updateUnit(c.id, u.id, { name: f.name.trim(), note: f.note.trim() || null }); toast.push('ok', 'Unidade salva'); onSaved(); }
+    try { await api.clients.updateUnit(c.id, u.id, { name: f.name.trim(), address: f.address.trim() || null, egressIp: f.egressIp.trim() || null, note: f.note.trim() || null }); toast.push('ok', 'Unidade salva'); onSaved(); }
     catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
   return (
     <Modal open onClose={onClose} titulo={`Editar unidade ${u.name}`} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name.trim()} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
       <div className="flex flex-col gap-3">
         <Campo label="Nome" dica={u.deviceCount > 0 ? `os ${u.deviceCount} aparelho(s) desta unidade acompanham o nome novo` : undefined}><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Campo>
-        <Campo label="Observação" dica="endereço, referência…"><input className="input" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Campo>
+        <Campo label="Endereço"><input className="input" autoComplete="off" placeholder="Rua, número, bairro, cidade" value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} /></Campo>
+        <Campo label="IP fixo de saída" dica="o IP da internet desta unidade (o que chega ao servidor)"><InputIp placeholder="200.180.10.5" value={f.egressIp} onChange={(v) => setF({ ...f, egressIp: v })} /></Campo>
+        <Campo label="Observação" dica="referência, horário, contato…"><input className="input" autoComplete="off" value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Campo>
         {err && <div className="text-bad text-sm">{err}</div>}
       </div>
     </Modal>
@@ -639,7 +818,7 @@ function Acessos({ c }: { c: ClientFull }) {
   // FOP2 e Omniboard são módulos do LinePBX
   const f2 = lp ? lp.modules.find((m) => m.moduleCode === 'fop2' && m.active) : undefined;
   const om = lp ? lp.modules.find((m) => m.moduleCode === 'omniboard' && m.active) : undefined;
-  if (!lp && !sz) return <Vazio titulo="Sem acessos cadastrados" texto="Os acessos aparecem quando o cliente tem LinePBX (e seus módulos FOP2 e Omniboard) ou SZChat." />;
+  if (!lp && !sz) return <Vazio titulo="Sem acessos cadastrados" texto="Os acessos aparecem quando o cliente tem LinePBX (e seus módulos FOP2 e Omniboard) ou SZChat. O login padrão dos aparelhos fica em Equipamentos." />;
   return (
     <div className="grid gap-4 md:grid-cols-2">
       {lp && (
@@ -656,7 +835,9 @@ function Acessos({ c }: { c: ClientFull }) {
           <Anotacao texto={lp.notes} />
         </div>
       )}
-      {f2 && lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX › FOP2</Chip>{c.links.fop2 && <a className="link text-sm" href={c.links.fop2} target="_blank" rel="noreferrer">abrir painel ↗</a>}</div><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Ramal admin</dt><dd className="font-mono">{f2.settings?.adminExtension ?? '—'}</dd></dl><p className="text-[12px] text-muted">O link do FOP2 nunca carrega senha na URL.</p><Anotacao texto={f2.notes} /></div>}
+      {f2 && lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX › FOP2</Chip>{c.links.fop2 && <a className="link text-sm" href={c.links.fop2} target="_blank" rel="noreferrer">abrir painel ↗</a>}</div><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Ramal admin</dt><dd className="font-mono">{f2.settings?.adminExtension ?? '—'}</dd></dl>
+        <Campo label="Senha do usuário padrão"><CampoSegredo secretId={f2.settings?.defaultUserPassword?.secretId ?? null} hasSecret={!!f2.settings?.defaultUserPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
+        <p className="text-[12px] text-muted">O link do FOP2 nunca carrega senha na URL.</p><Anotacao texto={f2.notes} /></div>}
       {om && lp && <div className="card p-4 flex flex-col gap-3"><Chip color={lp.color}>LinePBX › Omniboard</Chip><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{om.settings?.adminLogin ?? '—'}</dd></dl>
         <Campo label="Senha admin"><CampoSegredo secretId={om.settings?.adminPassword?.secretId ?? null} hasSecret={!!om.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
         <Campo label="Senha padrão de usuário"><CampoSegredo secretId={om.settings?.userDefaultPassword?.secretId ?? null} hasSecret={!!om.settings?.userDefaultPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo><Anotacao texto={om.notes} /></div>}
@@ -665,7 +846,6 @@ function Acessos({ c }: { c: ClientFull }) {
     </div>
   );
 }
-
 
 // ---------- Histórico ----------
 function Historico({ c }: { c: ClientFull }) {

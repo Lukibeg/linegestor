@@ -176,3 +176,29 @@ export function consertarAcentos(v: string): string {
     return v;
   }
 }
+
+/**
+ * Máscara de IP enquanto a pessoa digita: "19216801" vira "192.168.0.1".
+ * Regra: um octeto fecha (ganha ponto) quando não cabe mais dígito nele — três dígitos,
+ * dois dígitos que passariam de 255 com mais um, ou um "0" (octeto não começa com zero).
+ * Um ponto digitado à mão também fecha o octeto. Só os quatro primeiros octetos contam.
+ */
+export function formatarIp(v: string): string {
+  const octetos: string[] = [];
+  let atual = '';
+  const fechar = () => { if (atual) { octetos.push(atual); atual = ''; } };
+  for (const ch of v) {
+    if (octetos.length === 4) break;
+    if (ch === '.') { fechar(); continue; }
+    if (!/\d/.test(ch)) continue;
+    atual += ch;
+    if (atual.length === 3 || atual === '0' || (atual.length === 2 && Number(atual + '0') > 255)) {
+      fechar();
+    }
+  }
+  if (atual && octetos.length < 4) octetos.push(atual);
+  const texto = octetos.slice(0, 4).join('.');
+  // ponto digitado à mão no fim fica ("10." → o próximo dígito começa outro octeto): sem isso,
+  // "10.1.1.0" viraria "101.1.0" porque o ponto sumiria assim que fosse digitado
+  return v.endsWith('.') && !atual && octetos.length > 0 && octetos.length < 4 ? `${texto}.` : texto;
+}

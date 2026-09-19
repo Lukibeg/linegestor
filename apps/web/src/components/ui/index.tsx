@@ -2,9 +2,9 @@
  * Peças de interface reutilizáveis. Cada uma é pequena e faz uma coisa só.
  * Todas usam as cores do tema (styles.css), então funcionam no claro e no escuro.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { AlertTriangle, Check, Copy, Eye, EyeOff, Info, Loader2, X } from 'lucide-react';
-import { SEM_LIMITE } from '@gestor/shared';
+import { formatarIp, SEM_LIMITE } from '@gestor/shared';
 import { ApiError } from '../../api/types.js';
 
 // ---------- Avisos (toast) ----------
@@ -178,6 +178,16 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
       </Modal>
     </div>
   );
+}
+
+// ---------- Campo de IP com máscara ----------
+
+/**
+ * Campo de IP que põe os pontos sozinho: digitar "19216801" vira "192.168.0.1".
+ * Um ponto digitado à mão também fecha o octeto (para "10.20.0.77", que a máscara sozinha não adivinha).
+ */
+export function InputIp({ value, onChange, className = '', ...rest }: { value: string; onChange: (v: string) => void } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+  return <input {...rest} className={`input font-mono tnum ${className}`} inputMode="decimal" autoComplete="off" value={value} onChange={(e) => onChange(formatarIp(e.target.value))} />;
 }
 
 // ---------- Paginação ----------

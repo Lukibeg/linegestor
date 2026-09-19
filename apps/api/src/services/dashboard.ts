@@ -21,7 +21,7 @@ export async function summary(db: Db) {
     .from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId)).innerJoin(clients, eq(clients.id, subscriptions.clientId))
     .where(and(isNull(subscriptions.deactivatedAt), activeClient, isNull(products.deletedAt))).groupBy(products.code, products.name, products.color, products.sortOrder).orderBy(products.sortOrder);
 
-  const [d] = await db.select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})`, noCircuit: sql<number>`count(*) filter (where ${dids.circuitId} is null)` }).from(dids).where(and(isNull(dids.deletedAt), semTerceiro));
+  const [d] = await db.select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})` }).from(dids).where(and(isNull(dids.deletedAt), semTerceiro));
 
   const occ = await db
     .select({ id: circuits.id, name: circuits.name, carrierName: carriers.name, channels: circuits.channels, total: sql<number>`count(${dids.id})`, assigned: sql<number>`count(${dids.clientId})` })
@@ -57,7 +57,6 @@ export async function summary(db: Db) {
 
   const zeroChannels = circuitsView.filter((c) => c.channels === 0 && c.total > 0);
   if (zeroChannels.length) alerts.push({ kind: 'circuito_sem_canais', severity: 'critical', message: 'Circuitos com DIDs mas 0 canais cadastrados', count: zeroChannels.length, link: '/circuitos' });
-  if (Number(d?.noCircuit ?? 0)) alerts.push({ kind: 'did_sem_circuito', severity: 'warning', message: 'DIDs sem circuito', count: Number(d!.noCircuit), link: '/circuitos?aba=numeracao&circuito=none' });
   if (Number(dev?.inactive ?? 0)) alerts.push({ kind: 'aparelho_inativo', severity: 'warning', message: 'Aparelhos inativos', count: Number(dev!.inactive), link: '/inventario?condicao=inativo' });
 
   const fromC = alias(clients, 'from'), toC = alias(clients, 'to');
@@ -71,7 +70,7 @@ export async function summary(db: Db) {
 
   return {
     clients: { active: Number(cl?.n ?? 0), byProduct: byProduct.map((p) => ({ ...p, n: Number(p.n) })) },
-    dids: { total: Number(d?.total ?? 0), assigned: Number(d?.assigned ?? 0), free: Number(d?.total ?? 0) - Number(d?.assigned ?? 0), noCircuit: Number(d?.noCircuit ?? 0) },
+    dids: { total: Number(d?.total ?? 0), assigned: Number(d?.assigned ?? 0), free: Number(d?.total ?? 0) - Number(d?.assigned ?? 0) },
     circuits: circuitsView.sort((a, b) => b.total - a.total),
     devices: {
       inStock: Number(dev?.inStock ?? 0), withClients: Number(dev?.withClients ?? 0),

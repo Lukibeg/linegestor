@@ -92,7 +92,11 @@ export const clientUnits = pgTable(
     name: text('name').notNull(),
     /** A matriz: existe em todo cliente, é a unidade padrão e não pode ser removida */
     isMain: boolean('is_main').notNull().default(false),
-    /** Endereço ou referência, opcional */
+    /** Endereço da unidade (rua, número, bairro, cidade) */
+    address: text('address'),
+    /** IP fixo de saída da rede desta unidade — o IP que chega ao servidor quando os ramais registram */
+    egressIp: text('egress_ip'),
+    /** Observação ou referência, opcional */
     note: text('note'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -100,6 +104,52 @@ export const clientUnits = pgTable(
   },
   (t) => [index('client_units_client_idx').on(t.clientId)],
 );
+
+/**
+ * LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente
+ * entram com o mesmo login e senha; os DP722, com outro. Uma linha por cliente × modelo.
+ * A senha nunca fica aqui — vai para o cofre (`secrets`). Faz par com a rede padrão.
+ */
+export const clientDeviceLogins = pgTable(
+  'client_device_logins',
+  {
+    id: id(),
+    clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+    /** O modelo de aparelho a que este login se aplica */
+    modelId: text('model_id').notNull().references(() => deviceModels.id),
+    /** Usuário/login padrão (admin, user…) */
+    username: text('username'),
+    /** Senha padrão — no cofre */
+    passwordSecretId: text('password_secret_id').references(() => secrets.id),
+    note: text('note'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('client_device_logins_client_idx').on(t.clientId)],
+);
+
+/**
+ * CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita nos telefones
+ * na hora de configurar (IP, máscara, gateway, DNS) e a senha do ramal sem fio. Uma linha por cliente.
+ */
+export const clientNetworkSettings = pgTable('client_network_settings', {
+  clientId: text('client_id').primaryKey().references(() => clients.id, { onDelete: 'cascade' }),
+  /** IP padrão (ou o primeiro da faixa usada nos aparelhos) */
+  ipAddress: text('ip_address'),
+  /** Máscara de sub-rede (255.255.255.0) */
+  subnetMask: text('subnet_mask'),
+  /** Roteador padrão (gateway) */
+  defaultRouter: text('default_router'),
+  /** DNS primário */
+  dns1: text('dns1'),
+  /** DNS secundário */
+  dns2: text('dns2'),
+  /** Senha do ramal sem fio (DECT/Wi-Fi) — no cofre */
+  wirelessPasswordSecretId: text('wireless_password_secret_id').references(() => secrets.id),
+  note: text('note'),
+  updatedAt: updatedAt(),
+});
 
 /** Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração). */
 export const products = pgTable('products', {
@@ -216,6 +266,8 @@ export const fop2Settings = pgTable('fop2_settings', {
   subscriptionModuleId: text('subscription_module_id').primaryKey().references(() => subscriptionModules.id, { onDelete: 'cascade' }),
   /** Ramal/usuário do FOP2 usado para o acesso rápido */
   adminExtension: text('admin_extension'),
+  /** Senha do usuário padrão do FOP2 — no cofre */
+  defaultUserPasswordSecretId: text('default_user_password_secret_id').references(() => secrets.id),
 });
 
 /** Configuração própria do módulo Omniboard (call center, dentro do LinePBX). */
@@ -280,11 +332,17 @@ export const circuits = pgTable(
     thirdParty: boolean('third_party').notNull().default(false),
     /** Custo/valor mensal do feixe, em centavos */
     monthlyValueCents: integer('monthly_value_cents'),
+    /**
+     * Como o tronco se autentica na operadora:
+     *  - `ip`: pelo IP — basta o IP da operadora e o IP do PBX
+     *  - `login`: por login e senha do tronco
+     */
+    authType: text('auth_type').notNull().default('ip'),
     /** IP da operadora (sinalização) */
     signalingIp: text('signaling_ip'),
-    /** IP de autenticação ("IP PBX" no Nexus) */
+    /** IP do PBX que a operadora autoriza (só na autenticação por IP; "IP PBX" no Nexus) */
     authIp: text('auth_ip'),
-    /** Usuário de autenticação do tronco */
+    /** Login do tronco (só na autenticação por login e senha) */
     authUsername: text('auth_username'),
     /** Senha de autenticação do tronco — no cofre */
     authPasswordSecretId: text('auth_password_secret_id').references(() => secrets.id),
@@ -303,12 +361,20 @@ export const dids = pgTable(
     id: id(),
     /** Número só com dígitos (DDD + 8 ou 9). Único. */
     number: text('number').notNull(),
-    /** Circuito ao qual pertence. Nulo = "sem circuito". */
+    /**
+     * Circuito ao qual pertence. Todo DID nasce dentro de um circuito (o servidor exige);
+     * a coluna continua aceitando nulo só por causa de registros antigos.
+     */
     circuitId: text('circuit_id').references(() => circuits.id),
     /** Cliente que USA o número. Nulo = livre. */
     clientId: text('client_id').references(() => clients.id),
     /** Titular: quem DETÉM o número junto à operadora (normalmente VoiceNet) */
     ownerClientId: text('owner_client_id').references(() => clients.id),
+    /**
+     * O número está EM USO no cliente? Alocar não é usar: o DID entra no cliente como "não usado"
+     * e alguém marca "em uso" quando ele passa a atender. Só faz sentido com cliente (livre = false).
+     */
+    inUse: boolean('in_use').notNull().default(false),
     /** Observação curta */
     note: text('note'),
     createdAt: createdAt(),
@@ -575,9 +641,18 @@ export const clientLogosRelations = relations(clientLogos, ({ one }) => ({
 export const clientUnitsRelations = relations(clientUnits, ({ one }) => ({
   client: one(clients, { fields: [clientUnits.clientId], references: [clients.id] }),
 }));
-export const clientsRelations = relations(clients, ({ many }) => ({
+export const clientDeviceLoginsRelations = relations(clientDeviceLogins, ({ one }) => ({
+  client: one(clients, { fields: [clientDeviceLogins.clientId], references: [clients.id] }),
+  model: one(deviceModels, { fields: [clientDeviceLogins.modelId], references: [deviceModels.id] }),
+}));
+export const clientNetworkSettingsRelations = relations(clientNetworkSettings, ({ one }) => ({
+  client: one(clients, { fields: [clientNetworkSettings.clientId], references: [clients.id] }),
+}));
+export const clientsRelations = relations(clients, ({ many, one }) => ({
   subscriptions: many(subscriptions),
   units: many(clientUnits),
+  deviceLogins: many(clientDeviceLogins),
+  network: one(clientNetworkSettings, { fields: [clients.id], references: [clientNetworkSettings.clientId] }),
   didsInUse: many(dids, { relationName: 'didClient' }),
   devices: many(devices),
 }));

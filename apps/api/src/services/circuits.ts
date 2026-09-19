@@ -25,7 +25,7 @@ function shape(r: any) {
   return {
     id: r.id, name: r.name, code: r.code, keyNumber: r.keyNumber ?? null, carrierId: r.carrierId, carrierName: r.carrierName ?? null, channels: r.channels, thirdParty: !!r.thirdParty,
     ownerClientId: r.ownerClientId, ownerName: r.ownerName ?? null, monthlyValueCents: r.monthlyValueCents,
-    signalingIp: r.signalingIp, authIp: r.authIp, authUsername: r.authUsername,
+    authType: r.authType === 'login' ? 'login' : 'ip', signalingIp: r.signalingIp, authIp: r.authIp, authUsername: r.authUsername,
     authPassword: { hasSecret: !!r.authPasswordSecretId, secretId: r.authPasswordSecretId ?? null },
     notes: r.notes, createdAt: r.createdAt, updatedAt: r.updatedAt, deletedAt: r.deletedAt,
     dids: { total, assigned, free: total - assigned },
@@ -37,29 +37,22 @@ function shape(r: any) {
  * Aceita os mesmos filtros da lista: filtrou por operadora ou titular, os cartões acompanham.
  */
 export async function summary(db: Db, q: Partial<CircuitoListar> = {}) {
-  const filtrado = !!(q.q || q.carrierId || q.ownerClientId);
   const where = and(...filtros(q));
   const [c] = await db
     .select({ circuits: sql<number>`count(*)`, channels: sql<number>`coalesce(sum(${circuits.channels}), 0)`, monthlyValueCents: sql<number>`coalesce(sum(${circuits.monthlyValueCents}), 0)` })
     .from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(where);
   // a numeração acompanha o mesmo filtro: só os DIDs dos circuitos que sobraram
+  // (os de terceiros já ficaram fora, porque saíram de `idsFiltrados`)
   const idsFiltrados = db.select({ id: circuits.id }).from(circuits).leftJoin(carriers, eq(carriers.id, circuits.carrierId)).where(where);
-  // Com filtro na tela, só os DIDs dos circuitos que sobraram. Sem filtro, esses mais os órfãos
-  // ("DIDs sem circuito"), que não pertencem a circuito nenhum e precisam aparecer no cartão.
-  // Em ambos os casos os de terceiros ficam de fora, porque já saíram de `idsFiltrados`.
-  const didWhere = and(
-    isNull(dids.deletedAt),
-    filtrado ? inArray(dids.circuitId, idsFiltrados) : or(inArray(dids.circuitId, idsFiltrados), isNull(dids.circuitId))!,
-  );
   const [d] = await db
-    .select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})`, noCircuit: sql<number>`count(*) filter (where ${dids.circuitId} is null)` })
-    .from(dids).where(didWhere);
+    .select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})` })
+    .from(dids).where(and(isNull(dids.deletedAt), inArray(dids.circuitId, idsFiltrados)));
   const total = Number(d?.total ?? 0), assigned = Number(d?.assigned ?? 0);
   return {
     circuits: Number(c?.circuits ?? 0),
     channels: Number(c?.channels ?? 0),
     monthlyValueCents: Number(c?.monthlyValueCents ?? 0),
-    dids: { total, assigned, free: total - assigned, noCircuit: Number(d?.noCircuit ?? 0) },
+    dids: { total, assigned, free: total - assigned },
   };
 }
 
@@ -103,7 +96,7 @@ export async function list(db: Db, q: CircuitoListar) {
   const base = db
     .select({
       id: circuits.id, name: circuits.name, code: circuits.code, keyNumber: circuits.keyNumber, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
-      ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, signalingIp: circuits.signalingIp,
+      ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, authType: circuits.authType, signalingIp: circuits.signalingIp,
       authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes, thirdParty: circuits.thirdParty,
       createdAt: circuits.createdAt, updatedAt: circuits.updatedAt, deletedAt: circuits.deletedAt, total: occ.total, assigned: occ.assigned,
     })
@@ -122,7 +115,7 @@ export async function get(db: Db, id: string) {
   const [row] = await db
     .select({
       id: circuits.id, name: circuits.name, code: circuits.code, keyNumber: circuits.keyNumber, carrierId: circuits.carrierId, carrierName: carriers.name, channels: circuits.channels,
-      ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, signalingIp: circuits.signalingIp,
+      ownerClientId: circuits.ownerClientId, ownerName: clients.tradeName, monthlyValueCents: circuits.monthlyValueCents, authType: circuits.authType, signalingIp: circuits.signalingIp,
       authIp: circuits.authIp, authUsername: circuits.authUsername, authPasswordSecretId: circuits.authPasswordSecretId, notes: circuits.notes, thirdParty: circuits.thirdParty,
       createdAt: circuits.createdAt, updatedAt: circuits.updatedAt, deletedAt: circuits.deletedAt, total: occ.total, assigned: occ.assigned,
     })
@@ -132,8 +125,18 @@ export async function get(db: Db, id: string) {
   return shape(row);
 }
 
+/**
+ * O que não pertence ao tipo de autenticação escolhido é limpo: por IP não tem login;
+ * por login não tem "IP do PBX". A senha do cofre fica guardada (não se apaga segredo à toa).
+ */
+function porTipo<T extends { authType?: 'ip' | 'login'; authIp?: string | null; authUsername?: string | null }>(data: T): T {
+  if (data.authType === 'ip') return { ...data, authUsername: null };
+  if (data.authType === 'login') return { ...data, authIp: null };
+  return data;
+}
+
 export async function create(db: Db, vault: SecretsVault, data: CircuitoGravar, userId: string) {
-  const { authPassword, ...rest } = data;
+  const { authPassword, ...rest } = porTipo(data);
   const [dup] = await db.select({ id: circuits.id }).from(circuits).where(and(eq(circuits.code, data.code), data.carrierId ? eq(circuits.carrierId, data.carrierId) : isNull(circuits.carrierId), isNull(circuits.deletedAt)));
   if (dup) throw new BadRequest('Já existe um circuito com este código nesta operadora');
   const id = newId();
@@ -145,7 +148,7 @@ export async function create(db: Db, vault: SecretsVault, data: CircuitoGravar, 
 export async function update(db: Db, vault: SecretsVault, id: string, data: Partial<CircuitoGravar>, userId: string) {
   const [before] = await db.select().from(circuits).where(eq(circuits.id, id));
   if (!before) throw new NotFound('Circuito');
-  const { authPassword, ...rest } = data;
+  const { authPassword, ...rest } = porTipo(data);
   const secretId = authPassword ? await vault.save(db, { existingId: before.authPasswordSecretId, label: `Senha do tronco — ${data.name ?? before.name}`, plain: authPassword, userId }) : before.authPasswordSecretId;
   const [after] = await db.update(circuits).set({ ...rest, authPasswordSecretId: secretId, updatedAt: new Date() }).where(eq(circuits.id, id)).returning();
   return { before, after: after! };
@@ -153,7 +156,7 @@ export async function update(db: Db, vault: SecretsVault, id: string, data: Part
 
 export async function softDelete(db: Db, id: string) {
   const [n] = await db.select({ n: sql<number>`count(*)` }).from(dids).where(and(eq(dids.circuitId, id), isNull(dids.deletedAt)));
-  if (Number(n?.n ?? 0) > 0) throw new BadRequest(`Este circuito ainda tem ${n!.n} DIDs. Mova-os para outro circuito (ou para "sem circuito") antes de excluir.`);
+  if (Number(n?.n ?? 0) > 0) throw new BadRequest(`Este circuito ainda tem ${n!.n} DIDs. Mova-os para outro circuito antes de excluir.`);
   const [row] = await db.update(circuits).set({ deletedAt: new Date() }).where(and(eq(circuits.id, id), isNull(circuits.deletedAt))).returning();
   if (!row) throw new NotFound('Circuito');
   return row;

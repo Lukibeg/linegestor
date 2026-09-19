@@ -15,6 +15,13 @@
       "when": 1789607858581,
       "tag": "0001_unidades_fotos_valores",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789834132049,
+      "tag": "0002_rodada23",
+      "breakpoints": true
     }
   ]
 }

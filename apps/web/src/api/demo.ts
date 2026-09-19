@@ -11,7 +11,7 @@
  */
 import { ALL_PERMISSIONS, DEFAULT_ROLES, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import type { Api } from './index.js';
-import { ApiError, type AuditItem, type Circuit, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type AuditItem, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -27,18 +27,22 @@ type Sub = { id: string; clientId: string; productCode: string; activatedAt: str
 /** Um módulo ligado numa assinatura (ex.: FOP2 dentro do LinePBX do cliente X). */
 type SubMod = { id: string; subscriptionId: string; moduleId: string; activatedAt: string | null; deactivatedAt: string | null; notes: string | null; settings: Record<string, any> };
 type ModRow = ProductModule & { productId: string };
-type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; thirdParty: boolean; deletedAt: string | null };
-type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; note: string | null; deletedAt: string | null };
+type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; authType: 'ip' | 'login'; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; thirdParty: boolean; deletedAt: string | null };
+type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; inUse: boolean; note: string | null; deletedAt: string | null };
 /** `image` é a foto embutida ("data:…"), como a logo do cliente na demonstração */
 type ModelRow = { id: string; code: string; name: string; categoryId: string | null; image: string | null; valueCents: number | null; deletedAt: string | null };
 type DeviceRow = { id: string; modelId: string; mac: string | null; macSecondary: string | null; serialNumber: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
 type MovRow = { id: string; modality: string; fromClientId: string | null; toClientId: string | null; unit: string | null; newCondition: string | null; note: string | null; userId: string; createdAt: string; items: Array<{ modelId: string; deviceId: string }> };
-type UnitRow = { id: string; clientId: string; name: string; isMain: boolean; note: string | null; createdAt: string; deletedAt: string | null };
+type UnitRow = { id: string; clientId: string; name: string; isMain: boolean; address: string | null; egressIp: string | null; note: string | null; createdAt: string; deletedAt: string | null };
+/** Login e senha padrão dos aparelhos de um modelo no cliente (a senha mora em `S.secrets`) */
+type LoginRow = { id: string; clientId: string; modelId: string; username: string | null; passwordSecretId: string | null; note: string | null; updatedAt: string; deletedAt: string | null };
+/** Rede padrão dos aparelhos do cliente */
+type NetRow = { clientId: string; ipAddress: string | null; subnetMask: string | null; defaultRouter: string | null; dns1: string | null; dns2: string | null; wirelessPasswordSecretId: string | null; note: string | null; updatedAt: string };
 type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
 
 const S = {
-  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], units: [] as UnitRow[],
+  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], units: [] as UnitRow[], deviceLogins: [] as LoginRow[], networks: [] as NetRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
   ajustesBackup: {
     ativo: false, pasta: 'Backups › Ingline Gestão', pastaId: '', contaDeServico: '',
@@ -112,7 +116,7 @@ function seed() {
   ];
   S.clients = [ingline, voicenet];
   // todo cliente tem a Matriz
-  const matriz = (c: Client) => S.units.push({ id: id(), clientId: c.id, name: 'Matriz', isMain: true, note: null, createdAt: c.createdAt, deletedAt: null });
+  const matriz = (c: Client) => S.units.push({ id: id(), clientId: c.id, name: 'Matriz', isMain: true, address: null, egressIp: null, note: null, createdAt: c.createdAt, deletedAt: null });
   matriz(ingline); matriz(voicenet);
   const byName: Record<string, string> = {};
   defs.forEach(([t, l, cnpj, prods, mods, host, dom, ip], i) => {
@@ -132,7 +136,7 @@ function seed() {
       mods.filter((m) => m.startsWith(code + ':')).forEach((pm, k) => {
         const mcode = pm.split(':')[1]!; const mod = S.modules.find((m) => m.productId === 'p' + code && m.code === mcode)!;
         const ms: Record<string, any> = {};
-        if (mcode === 'fop2') ms.adminExtension = '1000';
+        if (mcode === 'fop2') { const f = id(); S.secrets.set(f, { label: `Senha do usuário padrão do FOP2 — ${t}`, value: 'fop2#2026' }); Object.assign(ms, { adminExtension: '1000', defaultUserPasswordSecretId: f }); }
         if (mcode === 'omniboard') { const a = id(), d = id(); S.secrets.set(a, { label: `Senha admin do Omniboard — ${t}`, value: 'Omni#2026' }); S.secrets.set(d, { label: `Senha padrão de usuário do Omniboard — ${t}`, value: 'Bemvindo1' }); Object.assign(ms, { adminLogin: `admin@${t.toLowerCase().replace(/\W+/g, '')}.com.br`, adminPasswordSecretId: a, userDefaultPasswordSecretId: d }); }
         S.subMods.push({ id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: daysAgo(tudoJunto ? diasDoProduto : Math.max(3, diasDoProduto - 40 - k * 75), tudoJunto ? 11 + k : 10), deactivatedAt: null, notes: null, settings: ms });
       });
@@ -156,10 +160,13 @@ function seed() {
     const sec = id(); S.secrets.set(sec, { label: `Senha do tronco — ${name}`, value: 'Trk#' + code });
     const cid = id();
     const dono = titular ? byName[titular]! : voicenet.id;
-    S.circuits.push({ id: cid, name, code, keyNumber: base, carrierId: 'car' + car, channels: ch, ownerClientId: dono, monthlyValueCents: value || null, signalingIp: '203.0.113.1', authIp: '198.51.100.1', authUsername: 'tr' + code, authPasswordSecretId: sec, notes: terceiro ? 'Tronco contratado pelo próprio cliente; registrado aqui só para referência.' : null, thirdParty: terceiro, deletedAt: null });
+    // o primeiro feixe autentica por login e senha; os demais, por IP (o caso comum)
+    const porLogin = name === '071 Principal';
+    S.circuits.push({ id: cid, name, code, keyNumber: base, carrierId: 'car' + car, channels: ch, ownerClientId: dono, monthlyValueCents: value || null, authType: porLogin ? 'login' : 'ip', signalingIp: '203.0.113.1', authIp: porLogin ? null : '198.51.100.1', authUsername: porLogin ? 'tr' + code : null, authPasswordSecretId: sec, notes: terceiro ? 'Tronco contratado pelo próprio cliente; registrado aqui só para referência.' : null, thirdParty: terceiro, deletedAt: null });
     gerarFaixaDids(base, qty).forEach((n, i) => {
       const a = (assign as readonly (readonly [string, number, number])[]).find((x) => i >= x[1] && i < x[2]);
-      S.dids.push({ id: id(), number: n, circuitId: cid, clientId: a ? byName[a[0]]! : null, ownerClientId: dono, note: a && i % 9 === 0 ? 'principal' : null, deletedAt: null });
+      // uns poucos números alocados ficam como "não usados" (reservados), para a marca aparecer nas telas
+      S.dids.push({ id: id(), number: n, circuitId: cid, clientId: a ? byName[a[0]]! : null, ownerClientId: dono, inUse: !!a && i % 7 !== 3, note: a && i % 9 === 0 ? 'principal' : null, deletedAt: null });
     });
   }
   const UNIDADES_DEMO: Record<string, string[]> = {
@@ -170,8 +177,14 @@ function seed() {
   };
   // as unidades usadas nos aparelhos ficam cadastradas nos clientes (a Matriz já existe)
   for (const [cli, nomes] of Object.entries(UNIDADES_DEMO)) {
-    for (const nome of nomes) if (nome !== 'Matriz') S.units.push({ id: id(), clientId: byName[cli]!, name: nome, isMain: false, note: null, createdAt: daysAgo(90), deletedAt: null });
+    for (const nome of nomes) if (nome !== 'Matriz') S.units.push({ id: id(), clientId: byName[cli]!, name: nome, isMain: false, address: nome === 'Unidade Simões Filho' ? 'Av. Eixo Urbano Central, 1200 — Simões Filho/BA' : null, egressIp: nome === 'Unidade Simões Filho' ? '200.180.10.5' : null, note: null, createdAt: daysAgo(90), deletedAt: null });
   }
+  // a Matriz do Hospital tem endereço e IP fixo de saída, para a tela ter um exemplo preenchido
+  const matrizHosp = S.units.find((u) => u.clientId === byName['Hospital Vale Verde'] && u.isMain)!;
+  matrizHosp.address = 'Rua das Hortênsias, 45 — Salvador/BA'; matrizHosp.egressIp = '177.10.20.30';
+  // rede padrão de um cliente, como exemplo (o login padrão por modelo entra depois dos modelos)
+  const secWifi = id(); S.secrets.set(secWifi, { label: 'Senha do ramal sem fio — Hospital Vale Verde', value: 'linepbx_hvv@2026' });
+  S.networks.push({ clientId: byName['Hospital Vale Verde']!, ipAddress: '10.20.0.77', subnetMask: '255.255.255.0', defaultRouter: '10.20.0.1', dns1: '8.8.8.8', dns2: '8.8.4.4', wirelessPasswordSecretId: secWifi, note: null, updatedAt: daysAgo(30) });
   const catPerif = S.categories.find((c) => c.name === 'Periférico')!.id;
   // o valor é do modelo; a foto é um desenho simples, só para a prévia
   const mGx: ModelRow = { id: id(), code: 'gxp1610', name: 'Grandstream GXP1610', categoryId: 'catTelefoneIP', image: FOTO_TELEFONE('#2B2F36'), valueCents: 45000, deletedAt: null };
@@ -179,6 +192,10 @@ function seed() {
   const mTip: ModelRow = { id: id(), code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: 'catTelefoneIP', image: FOTO_TELEFONE('#1F2937'), valueCents: 38000, deletedAt: null };
   const mDect: ModelRow = { id: id(), code: 'dp722', name: 'Grandstream DP722', categoryId: 'catTelefoneIP', image: null, valueCents: 33900, deletedAt: null };
   S.models = [mGx, mHs, mTip, mDect];
+  // login e senha padrão por modelo no Hospital: todos os GXP1610 entram com admin; os DP722 com outro
+  const secGx = id(); S.secrets.set(secGx, { label: 'Senha padrão Grandstream GXP1610 — Hospital Vale Verde', value: 'gxp#hvv2026' });
+  S.deviceLogins.push({ id: id(), clientId: byName['Hospital Vale Verde']!, modelId: mGx.id, username: 'admin', passwordSecretId: secGx, note: null, updatedAt: daysAgo(30), deletedAt: null });
+  S.deviceLogins.push({ id: id(), clientId: byName['Hospital Vale Verde']!, modelId: mDect.id, username: 'user', passwordSecretId: null, note: 'sem senha ainda', updatedAt: daysAgo(30), deletedAt: null });
   const dev = (x: Partial<DeviceRow> & { modelId: string }): DeviceRow => ({ id: id(), mac: null, macSecondary: null, serialNumber: null, clientId: null, unit: null, currentModality: null, condition: 'ativo', valueCents: null, ip: null, location: null, note: null, deletedAt: null, createdAt: daysAgo(60), ...x });
   let n = 0;
   const locados: Array<[string, number, number]> = [['Hospital Vale Verde', 20, 30], ['Distribuidora Norte', 8, 20], ['Supermercado Bom Preço', 6, 12], ['Home Care Viver Bem', 4, 5]];
@@ -223,7 +240,7 @@ const valorDe = (d: DeviceRow) => d.valueCents ?? modeloDe(d).valueCents;
 const PROTEGIDOS = ['linepbx', 'voicenet', 'equipamentos'];
 /** Garante a Matriz do cliente e devolve as unidades dele (a Matriz primeiro). */
 const unidadesDe = (cid: string) => {
-  if (!S.units.some((u) => u.clientId === cid && u.isMain && !u.deletedAt)) S.units.push({ id: id(), clientId: cid, name: 'Matriz', isMain: true, note: null, createdAt: now(), deletedAt: null });
+  if (!S.units.some((u) => u.clientId === cid && u.isMain && !u.deletedAt)) S.units.push({ id: id(), clientId: cid, name: 'Matriz', isMain: true, address: null, egressIp: null, note: null, createdAt: now(), deletedAt: null });
   return S.units.filter((u) => u.clientId === cid && !u.deletedAt).sort((a, b) => Number(b.isMain) - Number(a.isMain) || a.name.localeCompare(b.name, 'pt-BR'));
 };
 const modMeta = (mid: string) => S.modules.find((m) => m.id === mid)!;
@@ -252,7 +269,7 @@ const listItem = (c: Client): ClientListItem => {
 };
 const shapeSubMod = (m: SubMod): SubscriptionModule => {
   const meta = modMeta(m.moduleId); const st = m.settings; let settings: Record<string, any> | null = null;
-  if (meta.code === 'fop2') settings = { adminExtension: st.adminExtension ?? null };
+  if (meta.code === 'fop2') settings = { adminExtension: st.adminExtension ?? null, defaultUserPassword: secretRef(st.defaultUserPasswordSecretId) };
   else if (meta.code === 'omniboard') settings = { adminLogin: st.adminLogin ?? null, adminPassword: secretRef(st.adminPasswordSecretId), userDefaultPassword: secretRef(st.userDefaultPasswordSecretId) };
   return { id: m.id, moduleCode: meta.code, moduleName: meta.name, hasSettings: meta.hasSettings, active: !m.deactivatedAt, activatedAt: m.activatedAt, deactivatedAt: m.deactivatedAt, notes: m.notes, settings };
 };
@@ -265,13 +282,18 @@ const fullClient = (idc: string): ClientFull => {
     const modules = S.subMods.filter((m) => m.subscriptionId === s.id).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder).map(shapeSubMod);
     return { id: s.id, productCode: s.productCode, productName: p.name, color: p.color, hasSettings: p.hasSettings, active: !s.deactivatedAt, activatedAt: s.activatedAt, deactivatedAt: s.deactivatedAt, notes: s.notes, settings, modules, sortOrder: p.sortOrder };
   }).sort((a: any, b: any) => a.sortOrder - b.sortOrder);
-  return { ...listItem(c), subscriptions: subs, unitCount: unidadesDe(idc).length };
+  const net = S.networks.find((n) => n.clientId === idc);
+  return {
+    ...listItem(c), subscriptions: subs, unitCount: unidadesDe(idc).length,
+    network: net ? { ipAddress: net.ipAddress, subnetMask: net.subnetMask, defaultRouter: net.defaultRouter, dns1: net.dns1, dns2: net.dns2, note: net.note, wirelessPassword: secretRef(net.wirelessPasswordSecretId), updatedAt: net.updatedAt } : null,
+    deviceLogins: S.deviceLogins.filter((k) => k.clientId === idc && !k.deletedAt).map(shapeLogin).sort((a, b) => a.modelName.localeCompare(b.modelName, 'pt-BR')),
+  };
 };
 const shapeCircuit = (c: CircuitRow): Circuit => {
   const ds = S.dids.filter((d) => d.circuitId === c.id && !d.deletedAt); const assigned = ds.filter((d) => d.clientId).length;
-  return { id: c.id, name: c.name, code: c.code, keyNumber: c.keyNumber, thirdParty: c.thirdParty, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned } };
+  return { id: c.id, name: c.name, code: c.code, keyNumber: c.keyNumber, thirdParty: c.thirdParty, carrierId: c.carrierId, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null, channels: c.channels, ownerClientId: c.ownerClientId, ownerName: S.clients.find((x) => x.id === c.ownerClientId)?.tradeName ?? null, monthlyValueCents: c.monthlyValueCents, authType: c.authType, signalingIp: c.signalingIp, authIp: c.authIp, authUsername: c.authUsername, authPassword: secretRef(c.authPasswordSecretId), notes: c.notes, dids: { total: ds.length, assigned, free: ds.length - assigned } };
 };
-const shapeDid = (d: DidRow): Did => { const c = S.circuits.find((x) => x.id === d.circuitId); return { id: d.id, number: d.number, numberFormatted: didFormatado(d.number), free: !d.clientId, circuitId: d.circuitId, circuitName: c?.name ?? null, circuitCode: c?.code ?? null, carrierName: S.carriers.find((x) => x.id === c?.carrierId)?.name ?? null, clientId: d.clientId, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null, ownerClientId: d.ownerClientId, ownerName: S.clients.find((x) => x.id === d.ownerClientId)?.tradeName ?? null, note: d.note, thirdParty: ehTerceiro(d.circuitId) }; };
+const shapeDid = (d: DidRow): Did => { const c = S.circuits.find((x) => x.id === d.circuitId); return { id: d.id, number: d.number, numberFormatted: didFormatado(d.number), free: !d.clientId, circuitId: d.circuitId, circuitName: c?.name ?? null, circuitCode: c?.code ?? null, carrierName: S.carriers.find((x) => x.id === c?.carrierId)?.name ?? null, clientId: d.clientId, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null, ownerClientId: d.ownerClientId, ownerName: S.clients.find((x) => x.id === d.ownerClientId)?.tradeName ?? null, inUse: !!d.clientId && d.inUse, note: d.note, thirdParty: ehTerceiro(d.circuitId) }; };
 const shapeModel = (m: ModelRow): DeviceModel => {
   const ds = S.devices.filter((d) => d.modelId === m.id && !d.deletedAt);
   const inStock = ds.filter((d) => !d.clientId).length;
@@ -294,7 +316,11 @@ const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, c
 const shapeUnit = (u: UnitRow): ClientUnit => {
   const ds = S.devices.filter((d) => d.clientId === u.clientId && !d.deletedAt);
   const n = ds.filter((d) => (d.unit ?? '').trim().toLowerCase() === u.name.toLowerCase()).length + (u.isMain ? ds.filter((d) => !(d.unit ?? '').trim()).length : 0);
-  return { id: u.id, name: u.name, isMain: u.isMain, note: u.note, createdAt: u.createdAt, deviceCount: n };
+  return { id: u.id, name: u.name, isMain: u.isMain, address: u.address, egressIp: u.egressIp, note: u.note, createdAt: u.createdAt, deviceCount: n };
+};
+const shapeLogin = (k: LoginRow): ClientDeviceLogin => ({ id: k.id, modelId: k.modelId, modelName: S.models.find((m) => m.id === k.modelId)?.name ?? '?', username: k.username, password: secretRef(k.passwordSecretId), note: k.note, updatedAt: k.updatedAt });
+/** IP v4 como o servidor aceita; vazio vira nulo */
+const ipOuErro = (v: unknown, campo: string) => { const t = String(v ?? '').trim(); if (!t) return null; if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(t)) throw new ApiError(400, 'Dados inválidos', [{ field: campo, message: 'IP inválido (ex.: 10.20.0.1)' }]); return t;
 };
 /**
  * Ordenação da demonstração: mesma ideia do servidor — vazio sempre no fim,
@@ -338,7 +364,9 @@ const filtrarCircuitos = (q: Record<string, unknown>) => {
     && (!t || c.name.toLowerCase().includes(t) || c.code.includes(t) || (c.keyNumber ?? '').includes(t)));
 };
 const ehTerceiro = (circuitId: string | null) => !!S.circuits.find((c) => c.id === circuitId)?.thirdParty;
-const filterDids = (q: Record<string, unknown>) => S.dids.filter((d) => !d.deletedAt).filter((d) => (ligado(q.includeThirdParty) || !ehTerceiro(d.circuitId))).filter((d) => (!q.q || d.number.includes(String(q.q).replace(/\D/g, ''))) && (!q.circuitId || (q.circuitId === 'none' ? !d.circuitId : d.circuitId === q.circuitId)) && (!q.clientId || (q.clientId === 'free' ? !d.clientId : d.clientId === q.clientId)) && (!q.ownerClientId || d.ownerClientId === q.ownerClientId));
+const filterDids = (q: Record<string, unknown>) => S.dids.filter((d) => !d.deletedAt).filter((d) => (ligado(q.includeThirdParty) || !ehTerceiro(d.circuitId))).filter((d) => (!q.q || d.number.includes(String(q.q).replace(/\D/g, ''))) && (!q.circuitId || d.circuitId === q.circuitId) && (!q.clientId || (q.clientId === 'free' ? !d.clientId : d.clientId === q.clientId)) && (!q.ownerClientId || d.ownerClientId === q.ownerClientId)
+  // em uso / não usado só faz sentido com cliente: número livre não entra em nenhum dos dois
+  && (q.inUse === undefined || q.inUse === '' || (!!d.clientId && d.inUse === (q.inUse === 'true' || q.inUse === true))));
 
 /** Os filtros da aba Aparelhos (os mesmos da lista e dos cartões). clientId: stock | clients | um id. */
 const filtrarAparelhos = (q: Record<string, unknown>) => {
@@ -415,11 +443,10 @@ export const demoApi: Api = {
       const lpNo = active.filter((c) => activeSubs(c.id).some((s) => s.productCode === 'linepbx' && !(s.settings.domain || s.settings.serverIp))).length; if (lpNo) alerts.push({ kind: 'linepbx_sem_endereco', severity: 'warning', message: 'Clientes com LinePBX sem endereço do servidor', count: lpNo, link: '/clientes?produtos=linepbx' });
       const didNo = new Set(ds.filter((d) => d.clientId && !activeSubs(d.clientId).some((s) => s.productCode === 'voicenet')).map((d) => d.clientId)).size; if (didNo) alerts.push({ kind: 'did_sem_voicenet', severity: 'warning', message: 'Clientes com DIDs alocados mas sem o produto VoiceNet', count: didNo, link: '/circuitos?aba=numeracao' });
       const zero = circuits.filter((c) => c.channels === 0 && c.total > 0).length; if (zero) alerts.push({ kind: 'circuito_sem_canais', severity: 'critical', message: 'Circuitos com DIDs mas 0 canais cadastrados', count: zero, link: '/circuitos' });
-      const noC = ds.filter((d) => !d.circuitId).length; if (noC) alerts.push({ kind: 'did_sem_circuito', severity: 'warning', message: 'DIDs sem circuito', count: noC, link: '/circuitos?aba=numeracao&circuito=none' });
       const inativos = dev.filter((d) => d.condition === 'inativo').length; if (inativos) alerts.push({ kind: 'aparelho_inativo', severity: 'warning', message: 'Aparelhos inativos', count: inativos, link: '/inventario?condicao=inativo' });
       return {
         clients: { active: active.length, byProduct: S.products.filter((p) => !p.deletedAt).map((p) => ({ code: p.code, name: p.name, color: p.color, n: active.filter((c) => activeSubs(c.id).some((s) => s.productCode === p.code)).length })) },
-        dids: { total: ds.length, assigned: ds.filter((d) => d.clientId).length, free: ds.filter((d) => !d.clientId).length, noCircuit: noC },
+        dids: { total: ds.length, assigned: ds.filter((d) => d.clientId).length, free: ds.filter((d) => !d.clientId).length },
         circuits,
         devices: {
           inStock: dev.filter((d) => !d.clientId).length,
@@ -495,7 +522,7 @@ export const demoApi: Api = {
       const st = (d.settings as Record<string, any>) ?? {};
       for (const [k, v] of Object.entries(st)) if (!/password/i.test(k)) m.settings[k] = v;
       const saveSecret = (key: string, label: string) => { if (st[key]) { const sid = m!.settings[key + 'SecretId'] ?? id(); S.secrets.set(sid, { label: `${label} — ${c.tradeName}`, value: st[key] }); m!.settings[key + 'SecretId'] = sid; } };
-      saveSecret('adminPassword', 'Senha admin do Omniboard'); saveSecret('userDefaultPassword', 'Senha padrão de usuário do Omniboard');
+      saveSecret('adminPassword', 'Senha admin do Omniboard'); saveSecret('userDefaultPassword', 'Senha padrão de usuário do Omniboard'); saveSecret('defaultUserPassword', 'Senha do usuário padrão do FOP2');
       audit('update', 'subscription_module', `Ligou/ajustou o módulo ${mod.name} (${p.name}) no cliente ${c.tradeName}`, m.id); return fullClient(idc);
     },
     async endModule(idc, productCode, moduleCode) {
@@ -513,7 +540,7 @@ export const demoApi: Api = {
       const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente');
       const nome = String(d.name ?? '').trim(); if (!nome) throw new ApiError(400, 'Dados inválidos', [{ field: 'name', message: 'Informe o nome da unidade' }]);
       if (unidadesDe(idc).some((u) => u.name.toLowerCase() === nome.toLowerCase())) throw bad(`Já existe a unidade "${nome}" neste cliente`);
-      const u: UnitRow = { id: id(), clientId: idc, name: nome, isMain: false, note: d.note ?? null, createdAt: now(), deletedAt: null };
+      const u: UnitRow = { id: id(), clientId: idc, name: nome, isMain: false, address: (d.address as string) ?? null, egressIp: ipOuErro(d.egressIp, 'egressIp'), note: d.note ?? null, createdAt: now(), deletedAt: null };
       S.units.push(u); audit('create', 'client', `Cadastrou a unidade "${nome}" em ${c.tradeName}`, idc);
       return shapeUnit(u);
     },
@@ -525,7 +552,7 @@ export const demoApi: Api = {
       const antigo = u.name;
       // os aparelhos da unidade acompanham o nome novo
       if (antigo !== nome) for (const dv of S.devices) if (dv.clientId === idc && (dv.unit ?? '').trim().toLowerCase() === antigo.toLowerCase()) dv.unit = nome;
-      u.name = nome; if (d.note !== undefined) u.note = d.note ?? null;
+      u.name = nome; if (d.note !== undefined) u.note = d.note ?? null; if (d.address !== undefined) u.address = (d.address as string) ?? null; if (d.egressIp !== undefined) u.egressIp = ipOuErro(d.egressIp, 'egressIp');
       audit('update', 'client', antigo === nome ? `Editou a unidade "${nome}"` : `Renomeou a unidade "${antigo}" para "${nome}"`, idc);
       return shapeUnit(u);
     },
@@ -536,6 +563,37 @@ export const demoApi: Api = {
       const n = shapeUnit(u).deviceCount; if (n) throw bad(`A unidade "${u.name}" ainda tem ${n} aparelho(s). Mova-os para outra unidade antes de remover.`);
       u.deletedAt = now(); audit('delete', 'client', `Removeu a unidade "${u.name}"`, idc);
       return { ok: true };
+    },
+    async saveDeviceLogin(idc, d) {
+      await wait(); requirePerm('records.write');
+      const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente');
+      const m = S.models.find((x) => x.id === d.modelId && !x.deletedAt); if (!m) throw notFound('Modelo');
+      // um login por modelo: gravar de novo atualiza a linha que já existe
+      let k = S.deviceLogins.find((x) => x.clientId === idc && x.modelId === m.id && !x.deletedAt);
+      if (!k) { k = { id: id(), clientId: idc, modelId: m.id, username: null, passwordSecretId: null, note: null, updatedAt: now(), deletedAt: null }; S.deviceLogins.push(k); }
+      if (d.username !== undefined) k.username = (d.username as string) ?? null;
+      if (d.note !== undefined) k.note = (d.note as string) ?? null;
+      if (d.password) { const sid = k.passwordSecretId ?? id(); S.secrets.set(sid, { label: `Senha padrão ${m.name} — ${c.tradeName}`, value: String(d.password) }); k.passwordSecretId = sid; }
+      k.updatedAt = now(); audit('update', 'client', `Alterou o login padrão dos ${m.name} de ${c.tradeName}${d.password ? ' (senha trocada)' : ''}`, idc);
+      return fullClient(idc);
+    },
+    async removeDeviceLogin(idc, loginId) {
+      await wait(); requirePerm('records.write');
+      const k = S.deviceLogins.find((x) => x.id === loginId && x.clientId === idc && !x.deletedAt); if (!k) throw notFound('Login padrão');
+      k.deletedAt = now(); audit('delete', 'client', `Removeu o login padrão dos ${S.models.find((m) => m.id === k.modelId)?.name ?? '?'}`, idc);
+      return fullClient(idc);
+    },
+    async saveNetwork(idc, d) {
+      await wait(); requirePerm('records.write');
+      const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente');
+      let n = S.networks.find((x) => x.clientId === idc);
+      if (!n) { n = { clientId: idc, ipAddress: null, subnetMask: null, defaultRouter: null, dns1: null, dns2: null, wirelessPasswordSecretId: null, note: null, updatedAt: now() }; S.networks.push(n); }
+      if (d.ipAddress !== undefined) n.ipAddress = (d.ipAddress as string) ?? null;
+      for (const f of ['subnetMask', 'defaultRouter', 'dns1', 'dns2'] as const) if (d[f] !== undefined) n[f] = ipOuErro(d[f], f);
+      if (d.note !== undefined) n.note = (d.note as string) ?? null;
+      if (d.wirelessPassword) { const sid = n.wirelessPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do ramal sem fio — ${c.tradeName}`, value: String(d.wirelessPassword) }); n.wirelessPasswordSecretId = sid; }
+      n.updatedAt = now(); audit('update', 'client', `Alterou a rede padrão dos aparelhos de ${c.tradeName}${d.wirelessPassword ? ' (senha do ramal sem fio trocada)' : ''}`, idc);
+      return fullClient(idc);
     },
     async history(idc) { await wait(); requirePerm('audit.read'); return paginate(S.audit.filter((a) => a.entityId === idc), { pageSize: 100 }); },
     async saveLogo(idc, dataUrl) {
@@ -572,13 +630,11 @@ export const demoApi: Api = {
     async summary(q = {}) {
       await wait(60); requirePerm('records.read');
       const cs = filtrarCircuitos(q);
-      const filtrado = !!(q.q || q.carrierId || q.ownerClientId);
       const ids = new Set(cs.map((c) => c.id));
-      // com filtro, só os DIDs dos circuitos que sobraram; sem filtro, esses mais os órfãos.
-      // Nos dois casos os de terceiro ficam fora, porque já saíram de `cs`.
-      const ds = S.dids.filter((d) => !d.deletedAt && (d.circuitId ? ids.has(d.circuitId) : !filtrado));
+      // só os DIDs dos circuitos que sobraram (os de terceiro já saíram de `cs`)
+      const ds = S.dids.filter((d) => !d.deletedAt && !!d.circuitId && ids.has(d.circuitId));
       const assigned = ds.filter((d) => d.clientId).length;
-      return { circuits: cs.length, channels: cs.reduce((a, c) => a + c.channels, 0), monthlyValueCents: cs.reduce((a, c) => a + (c.monthlyValueCents ?? 0), 0), dids: { total: ds.length, assigned, free: ds.length - assigned, noCircuit: ds.filter((d) => !d.circuitId).length } };
+      return { circuits: cs.length, channels: cs.reduce((a, c) => a + c.channels, 0), monthlyValueCents: cs.reduce((a, c) => a + (c.monthlyValueCents ?? 0), 0), dids: { total: ds.length, assigned, free: ds.length - assigned } };
     },
     async options() { await wait(50); return S.circuits.filter((c) => !c.deletedAt).map((c) => ({ id: c.id, name: c.name, code: c.code, carrierName: S.carriers.find((x) => x.id === c.carrierId)?.name ?? null })); },
     async owners(includeThirdParty) {
@@ -588,8 +644,8 @@ export const demoApi: Api = {
       return S.clients.filter((c) => ids.has(c.id)).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode }));
     },
     async get(idc) { await wait(); requirePerm('records.read'); const c = S.circuits.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Circuito'); return shapeCircuit(c); },
-    async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), keyNumber: (d.keyNumber as string) ?? null, carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, signalingIp: (d.signalingIp as string) ?? null, authIp: (d.authIp as string) ?? null, authUsername: (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, thirdParty: !!d.thirdParty, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
-    async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); for (const k of ['name', 'code', 'keyNumber', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'signalingIp', 'authIp', 'authUsername', 'notes', 'thirdParty'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
+    async create(d) { await wait(); requirePerm('records.write'); if (S.circuits.some((c) => !c.deletedAt && c.code === d.code && (c.carrierId ?? null) === ((d.carrierId as string) ?? null))) throw bad('Já existe um circuito com este código nesta operadora'); const tipo = d.authType === 'login' ? 'login' : 'ip'; const c: CircuitRow = { id: id(), name: String(d.name), code: String(d.code), keyNumber: (d.keyNumber as string) ?? null, carrierId: (d.carrierId as string) ?? null, channels: Number(d.channels ?? 0), ownerClientId: (d.ownerClientId as string) ?? null, monthlyValueCents: (d.monthlyValueCents as number) ?? null, authType: tipo, signalingIp: (d.signalingIp as string) ?? null, authIp: tipo === 'login' ? null : (d.authIp as string) ?? null, authUsername: tipo === 'ip' ? null : (d.authUsername as string) ?? null, authPasswordSecretId: null, notes: (d.notes as string) ?? null, thirdParty: !!d.thirdParty, deletedAt: null }; if (d.authPassword) { const sid = id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } S.circuits.push(c); audit('create', 'circuit', `Criou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
+    async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); for (const k of ['name', 'code', 'keyNumber', 'carrierId', 'channels', 'ownerClientId', 'monthlyValueCents', 'authType', 'signalingIp', 'authIp', 'authUsername', 'notes', 'thirdParty'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; /* o que não é do tipo escolhido é limpo, como no servidor */ if (c.authType === 'ip') c.authUsername = null; else c.authIp = null; if (d.authPassword) { const sid = c.authPasswordSecretId ?? id(); S.secrets.set(sid, { label: `Senha do tronco — ${c.name}`, value: String(d.authPassword) }); c.authPasswordSecretId = sid; } audit('update', 'circuit', `Editou o circuito ${c.name}`, c.id); return shapeCircuit(c); },
     async remove(idc) { await wait(); requirePerm('records.delete'); const c = S.circuits.find((x) => x.id === idc); if (!c) throw notFound('Circuito'); const n = S.dids.filter((d) => d.circuitId === idc && !d.deletedAt).length; if (n) throw bad(`Este circuito ainda tem ${n} DIDs. Mova-os para outro circuito antes de excluir.`); c.deletedAt = now(); audit('delete', 'circuit', `Mandou o circuito ${c.name} para a lixeira`, c.id); return { ok: true }; },
     async createRange(idc, d) { return demoApi.dids.createRange({ ...d, circuitId: idc }); },
   },
@@ -598,14 +654,15 @@ export const demoApi: Api = {
       await wait(); requirePerm('records.read');
       const items = ordenar(filterDids(q).map(shapeDid), q, 'number', {
         number: (d) => d.number, carrier: (d) => d.carrierName, circuit: (d) => d.circuitName, client: (d) => d.clientName, owner: (d) => d.ownerName, note: (d) => d.note,
+        inUse: (d) => (d.clientId ? (d.inUse ? 1 : 0) : null),
       });
       const p = paginate(items, q);
       return { ...p, free: items.filter((d) => d.free).length };
     },
     async ids(q) { await wait(50); return { ids: filterDids(q).slice(0, 5000).map((d) => d.id) }; },
-    async createRange(d) { await wait(); requirePerm('dids.assign'); const nums = gerarFaixaDids(didLimpo(String(d.baseNumber)), Number(d.quantity)); const ex = nums.filter((n) => S.dids.some((x) => x.number === n)); if (ex.length) throw bad(`${ex.length} número(s) já existem: ${ex.slice(0, 5).map(didFormatado).join(', ')}`); nums.forEach((n) => S.dids.push({ id: id(), number: n, circuitId: (d.circuitId as string) ?? null, clientId: (d.clientId as string) ?? null, ownerClientId: (d.ownerClientId as string) ?? S.clients.find((c) => c.internalCode === 'voicenet')!.id, note: (d.note as string) ?? null, deletedAt: null })); audit('bulk_create', 'did', `Criou ${nums.length} DIDs (${nums[0]}–${nums[nums.length - 1]})`); return { created: nums.length, first: nums[0]!, last: nums[nums.length - 1]! }; },
-    async update(idd, d) { await wait(); requirePerm('dids.assign'); const x = S.dids.find((r) => r.id === idd); if (!x) throw notFound('DID'); for (const k of ['circuitId', 'clientId', 'ownerClientId', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; audit('update', 'did', `Editou o DID ${x.number}`, x.id); return shapeDid(x); },
-    async bulk(ids, set) { await wait(200); requirePerm('dids.assign'); if (!Object.keys(set).length) throw bad('Escolha pelo menos um campo para alterar'); let n = 0; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { n++; for (const k of ['circuitId', 'clientId', 'note'] as const) if (k in set) (x as any)[k] = set[k]; } const parts: string[] = []; if ('circuitId' in set) parts.push(set.circuitId ? `circuito → ${S.circuits.find((c) => c.id === set.circuitId)?.name}` : 'circuito → sem circuito'); if ('clientId' in set) parts.push(set.clientId ? `cliente → ${S.clients.find((c) => c.id === set.clientId)?.tradeName}` : 'liberados (sem cliente)'); if ('note' in set) parts.push(set.note ? `observação → "${set.note}"` : 'observação limpa'); audit('bulk_update', 'did', `Alterou ${n} DID(s): ${parts.join(', ')}`); return { affected: n }; },
+    async createRange(d) { await wait(); requirePerm('dids.assign'); if (!d.circuitId) throw new ApiError(400, 'Dados inválidos', [{ field: 'circuitId', message: 'Escolha o circuito' }]); const nums = gerarFaixaDids(didLimpo(String(d.baseNumber)), Number(d.quantity)); const ex = nums.filter((n) => S.dids.some((x) => x.number === n)); if (ex.length) throw bad(`${ex.length} número(s) já existem: ${ex.slice(0, 5).map(didFormatado).join(', ')}`); nums.forEach((n) => S.dids.push({ id: id(), number: n, circuitId: d.circuitId as string, clientId: (d.clientId as string) ?? null, inUse: false, ownerClientId: (d.ownerClientId as string) ?? S.clients.find((c) => c.internalCode === 'voicenet')!.id, note: (d.note as string) ?? null, deletedAt: null })); audit('bulk_create', 'did', `Criou ${nums.length} DIDs (${nums[0]}–${nums[nums.length - 1]})`); return { created: nums.length, first: nums[0]!, last: nums[nums.length - 1]! }; },
+    async update(idd, d) { await wait(); requirePerm('dids.assign'); const x = S.dids.find((r) => r.id === idd); if (!x) throw notFound('DID'); if (d.circuitId === null) throw bad('Todo DID pertence a um circuito'); if (d.inUse !== undefined && (d.clientId === null || (d.clientId === undefined && !x.clientId))) throw bad('Só um número com cliente pode ser marcado como em uso'); for (const k of ['circuitId', 'clientId', 'ownerClientId', 'inUse', 'note'] as const) if (d[k] !== undefined) (x as any)[k] = d[k]; /* a marca acompanha o cliente: liberou, cai; atribuiu, entra em uso */ /* alocar não é usar: trocou de cliente (ou liberou) sem dizer a marca, ela cai */ if (d.clientId !== undefined && d.inUse === undefined) x.inUse = false; if (d.clientId === null) x.inUse = false; audit('update', 'did', `Editou o DID ${x.number}`, x.id); return shapeDid(x); },
+    async bulk(ids, set) { await wait(200); requirePerm('dids.assign'); if (!Object.keys(set).length) throw bad('Escolha pelo menos um campo para alterar'); if ('circuitId' in set && !set.circuitId) throw new ApiError(400, 'Dados inválidos', [{ field: 'circuitId', message: 'Escolha o circuito' }]); let n = 0; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { /* marcar uso sem mexer no cliente só vale para quem tem cliente */ if ('inUse' in set && !('clientId' in set) && !x.clientId) continue; n++; for (const k of ['circuitId', 'clientId', 'inUse', 'note'] as const) if (k in set) (x as any)[k] = set[k]; if ('clientId' in set && !('inUse' in set)) x.inUse = false; if (set.clientId === null) x.inUse = false; } const parts: string[] = []; if (set.circuitId) parts.push(`circuito → ${S.circuits.find((c) => c.id === set.circuitId)?.name}`); if ('clientId' in set) parts.push(set.clientId ? `cliente → ${S.clients.find((c) => c.id === set.clientId)?.tradeName}` : 'liberados (sem cliente)'); if ('inUse' in set) parts.push(set.inUse ? 'marcados como em uso' : 'marcados como não usados'); if ('note' in set) parts.push(set.note ? `observação → "${set.note}"` : 'observação limpa'); audit('bulk_update', 'did', `Alterou ${n} DID(s): ${parts.join(', ')}`); return { affected: n }; },
     async bulkDelete(ids) { await wait(); requirePerm('records.delete'); let n = 0; for (const x of S.dids) if (ids.includes(x.id) && !x.deletedAt) { x.deletedAt = now(); n++; } audit('bulk_delete', 'did', `Mandou ${n} DID(s) para a lixeira`); return { affected: n }; },
   },
   inventory: {
@@ -710,7 +767,15 @@ export const demoApi: Api = {
     },
     async removeDevice(idd) { await wait(); requirePerm('records.delete'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); x.deletedAt = now(); audit('delete', 'device', `Mandou o aparelho ${identificacaoAparelho(x).texto} para a lixeira`, x.id); return { ok: true }; },
     async units(clientId) { await wait(); const us = S.devices.filter((d) => !d.deletedAt && d.unit && (!clientId || d.clientId === clientId)).map((d) => d.unit!); return [...new Set(us)].sort((a, b) => a.localeCompare(b, 'pt-BR')); },
-    async movements(q) { await wait(); requirePerm('records.read'); const items = [...S.movements].filter((m) => (!q.modality || m.modality === q.modality) && (!q.clientId || m.fromClientId === q.clientId || m.toClientId === q.clientId) && (!q.from || m.createdAt >= String(q.from)) && (!q.to || m.createdAt <= String(q.to) + 'T23:59:59')).map(shapeMov);
+    async movements(q) {
+      await wait(); requirePerm('records.read');
+      // MAC ou N/S de um aparelho: as movimentações por onde ele passou (pedaço de MAC só a partir de 4 caracteres, como na busca de aparelhos)
+      const t = String(q.q ?? '').trim(); const hex = t.replace(/[^0-9a-fA-F]/g, '').toUpperCase(); const serie = serieLimpa(t);
+      const bate = (dv: DeviceRow) => (hex.length >= 4 && (dv.mac ?? '').includes(hex)) || (!!serie && (dv.serialNumber ?? '').includes(serie));
+      const items = [...S.movements].filter((m) => (!q.modality || m.modality === q.modality) && (!q.clientId || m.fromClientId === q.clientId || m.toClientId === q.clientId)
+        && (!q.modelId || m.items.some((i) => i.modelId === q.modelId))
+        && (!t || m.items.some((i) => { const dv = S.devices.find((x) => x.id === i.deviceId); return !!dv && bate(dv); }))
+        && (!q.from || m.createdAt >= String(q.from)) && (!q.to || m.createdAt <= String(q.to) + 'T23:59:59')).map(shapeMov);
       return paginate(ordenar(items, q, 'createdAt', {
         createdAt: (m) => m.createdAt, modality: (m) => m.modalityName, fromName: (m) => m.fromName, toName: (m) => m.toName, unit: (m) => m.unit, userName: (m) => m.userName,
       }, 'desc'), q);
@@ -737,7 +802,7 @@ export const demoApi: Api = {
         const pedida = String(d.unit ?? '').trim();
         const achou = pedida ? lista.find((u) => u.name.toLowerCase() === pedida.toLowerCase()) : lista.find((u) => u.isMain);
         if (achou) unidade = achou.name;
-        else { S.units.push({ id: id(), clientId: to, name: pedida, isMain: false, note: null, createdAt: now(), deletedAt: null }); unidade = pedida; }
+        else { S.units.push({ id: id(), clientId: to, name: pedida, isMain: false, address: null, egressIp: null, note: null, createdAt: now(), deletedAt: null }); unidade = pedida; }
       }
       for (const it of items) {
         const dev = S.devices.find((x) => x.id === it.deviceId)!;
@@ -805,7 +870,7 @@ export const demoApi: Api = {
     async removeRole(idr) { await wait(); requirePerm('admin.manage'); const r = S.roles.find((x) => x.id === idr); if (!r) throw notFound('Papel'); if (r.isSystem) throw bad('Papéis do sistema não podem ser apagados'); if (S.users.some((u) => u.roleId === idr)) throw bad('Há usuários com este papel. Mude o papel deles antes.'); S.roles = S.roles.filter((x) => x.id !== idr); return { ok: true }; },
     async catalog(type) { await wait(40); return (type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories).slice().sort((a, b) => a.name.localeCompare(b.name)); },
     async createCatalogItem(type, name) { await wait(); requirePerm('admin.manage'); const list = type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories; if (list.some((x) => x.name.toLowerCase() === name.toLowerCase())) throw bad('Já existe um item com esse nome'); const it = { id: id(), name, active: true }; list.push(it); audit('create', `catalog:${type}`, `Adicionou "${name}" ao catálogo ${type}`, it.id); return it; },
-    async updateCatalogItem(type, idi, d) { await wait(); requirePerm('admin.manage'); const list = type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories; const it = list.find((x) => x.id === idi); if (!it) throw notFound('Item'); if (d.name !== undefined) it.name = String(d.name); if (d.active !== undefined) it.active = Boolean(d.active); return it; },
+    async updateCatalogItem(type, idi, d) { await wait(); requirePerm('admin.manage'); const list = type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories; const it = list.find((x) => x.id === idi); if (!it) throw notFound('Item'); if (d.name !== undefined) { const nome = String(d.name).trim(); if (list.some((x) => x.id !== idi && x.name.toLowerCase() === nome.toLowerCase())) throw bad(`Já existe "${nome}" neste catálogo`); it.name = nome; } if (d.active !== undefined) it.active = Boolean(d.active); audit('update', `catalog:${type}`, `Alterou "${it.name}" no catálogo ${type}`, it.id); return it; },
     async products() { await wait(40); return S.products.filter((p) => !p.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map(shapeProduct); },
     async createProduct(d) {
       await wait(); requirePerm('admin.manage');
