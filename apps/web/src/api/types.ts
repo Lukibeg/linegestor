@@ -146,6 +146,23 @@ export type AuditItem = { id: string; action: string; entityType: string; entity
 export type TrashItem = { type: string; id: string; label: string; deletedAt: string };
 export type ImportPlan = { entity: string; rows: Array<{ line: number; action: 'create' | 'update' | 'error' | 'skip'; key: string; errors: string[] }>; summary: { create: number; update: number; error: number; skip: number; total: number } };
 
+/** Um item (cartão) de uma nota de novidades. `imageUrl` é caminho relativo à API (use `logoSrc()`). */
+export type NovidadeItem = { id: string; kind: 'novo' | 'melhorou' | 'corrigido' | 'atencao'; title: string; text: string | null; sortOrder: number; imageUrl: string | null };
+/** Uma nota de versão. `publishedAt` nulo = rascunho (só quem administra enxerga). */
+export type Novidade = {
+  id: string; version: string; title: string; summary: string | null;
+  publishedAt: string | null; createdAt: string; updatedAt: string;
+  /** esta pessoa já marcou "Li e entendi" */
+  lida: boolean;
+  /** quantas pessoas já leram, de quantas pessoas ativas existem */
+  leituras: number; pessoas: number;
+  items: NovidadeItem[];
+};
+/** A nota que abre no login: só o necessário para o pop-up. */
+export type NovidadePendente = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; items: NovidadeItem[] };
+/** Quem já leu uma nota e quem ainda não. */
+export type LeiturasNovidade = { version: string; title: string; publishedAt: string | null; pessoas: Array<{ id: string; name: string; email: string; readAt: string | null }> };
+
 export class ApiError extends Error {
   /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */
   constructor(public status: number, message: string, public details: Array<{ field: string; message: string }> | string | null = null) { super(message); }

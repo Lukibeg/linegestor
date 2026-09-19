@@ -21,8 +21,8 @@ export function Painel() {
         <Kpi label="Alertas" valor={d.alerts.reduce((a, x) => a + x.count, 0)} tone={d.alerts.some((a) => a.severity === 'critical') ? 'bad' : d.alerts.length ? 'signal' : 'ok'} sub={d.alerts.length ? `${d.alerts.length} tipo(s)` : 'cadastro consistente'} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3 mt-5">
-        <section className="card p-4 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 mt-5">
+        <section className="card p-4 lg:col-span-2 min-w-0 overflow-x-auto">
           <div className="flex items-center justify-between mb-3"><h2 className="font-display font-semibold">Ocupação dos circuitos</h2><Link to="/circuitos" className="link text-sm">todos</Link></div>
           {d.circuits.length === 0 ? <div className="text-muted text-sm">Nenhum circuito cadastrado.</div> : (
             <table className="table">

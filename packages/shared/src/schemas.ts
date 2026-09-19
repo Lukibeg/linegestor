@@ -422,6 +422,43 @@ export const CatalogoItemSchema = z.object({
   active: z.boolean().default(true),
 });
 
+// ---------- Novidades (notas de versão) ----------
+
+/** O tipo de um item da nota: a cor e o rótulo do cartão. */
+export const TIPOS_NOVIDADE = {
+  novo: 'Novo',
+  melhorou: 'Melhorou',
+  corrigido: 'Corrigido',
+  /** mudança de regra: muda o jeito de trabalhar */
+  atencao: 'Atenção',
+} as const;
+export type TipoNovidade = keyof typeof TIPOS_NOVIDADE;
+
+/** Um item (cartão) da nota: rótulo, título, duas ou três linhas e, se houver, um print. */
+export const NovidadeItemSchema = z.object({
+  /** vazio = item novo; preenchido = o item que já existe */
+  id: IdSchema.optional(),
+  kind: z.enum(['novo', 'melhorou', 'corrigido', 'atencao']).default('novo'),
+  title: z.string().trim().min(1, 'Dê um título ao item').max(160),
+  text: z.string().trim().max(2000).nullable().optional(),
+  /** imagem embutida ("data:image/png;base64,…") para trocar o print; ausente = mantém; null = tira */
+  imagem: z
+    .string()
+    .max(2_800_000, 'Imagem muito grande (máximo 2 MB). Escolha uma imagem menor.')
+    .regex(/^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,[A-Za-z0-9+/=]+$/, 'Formato não suportado. Use PNG, JPG, WEBP ou SVG.')
+    .nullable()
+    .optional(),
+});
+
+/** A nota inteira: cabeçalho + os itens, na ordem em que aparecem. */
+export const NovidadeGravarSchema = z.object({
+  version: z.string().trim().min(1, 'Informe a versão (ex.: rodada-24)').max(60).regex(/^[a-z0-9._-]+$/, 'Use só letras minúsculas, números, ponto, hífen e _'),
+  title: z.string().trim().min(1, 'Dê um título à nota').max(160),
+  summary: z.string().trim().max(500).nullable().optional(),
+  items: z.array(NovidadeItemSchema).max(60, 'No máximo 60 itens por nota').default([]),
+});
+export const NovidadeAtualizarSchema = NovidadeGravarSchema.partial();
+
 // ---------- Importação ----------
 
 export const ImportacaoSchema = z.object({
@@ -465,3 +502,5 @@ export type Login = z.infer<typeof LoginSchema>;
 export type CodigoSegundaEtapa = z.infer<typeof CodigoSegundaEtapaSchema>;
 export type UsuarioCriar = z.infer<typeof UsuarioCriarSchema>;
 export type Importacao = z.infer<typeof ImportacaoSchema>;
+export type NovidadeGravar = z.infer<typeof NovidadeGravarSchema>;
+export type NovidadeItem = z.infer<typeof NovidadeItemSchema>;

@@ -114,7 +114,7 @@ export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-
           <button type="button" onClick={onClose} className="btn-ghost btn-sm" aria-label="Fechar"><X size={16} /></button>
         </div>
         <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
-        {rodape && <div className="px-5 py-3 border-t border-line flex justify-end gap-2 bg-surface-2 rounded-b-xl">{rodape}</div>}
+        {rodape && <div className="px-5 py-3 border-t border-line flex flex-wrap items-center justify-end gap-2 bg-surface-2 rounded-b-xl">{rodape}</div>}
       </div>
     </div>
   );
@@ -364,7 +364,7 @@ export function LogoCliente({ src, nome, tamanho = 40, className = '' }: { src: 
  * e REDUZ a imagem no próprio navegador (máx. 512 px) antes de mandar para o servidor.
  * Assim nenhuma foto de 5 MB sai do computador da pessoa.
  */
-export function CampoLogo({ atual, nome, onEscolher, onRemover, previa }: { atual: string | null; nome: string; onEscolher: (dataUrl: string) => void; onRemover?: () => void; previa?: ReactNode }) {
+export function CampoLogo({ atual, nome, onEscolher, onRemover, previa, maxPx = 512, limiteBytes = 700_000 }: { atual: string | null; nome: string; onEscolher: (dataUrl: string) => void; onRemover?: () => void; previa?: ReactNode; maxPx?: number; limiteBytes?: number }) {
   const [erro, setErro] = useState('');
   const [arrastando, setArrastando] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -381,7 +381,8 @@ export function CampoLogo({ atual, nome, onEscolher, onRemover, previa }: { atua
     const url = URL.createObjectURL(file);
     try {
       const img = await new Promise<HTMLImageElement>((ok, falhou) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => falhou(new Error('imagem inválida')); i.src = url; });
-      const max = 512;
+      // logo de cliente cabe em 512px; print de novidade precisa de mais, senão fica ilegível
+      const max = maxPx;
       const escala = Math.min(1, max / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(img.width * escala));
@@ -391,8 +392,8 @@ export function CampoLogo({ atual, nome, onEscolher, onRemover, previa }: { atua
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       // PNG preserva fundo transparente; se ficar grande demais, cai para JPEG
       let out = canvas.toDataURL('image/png');
-      if (out.length > 500_000) out = canvas.toDataURL('image/jpeg', 0.85);
-      if (out.length > 700_000) return setErro('Imagem muito grande mesmo depois de reduzir. Tente outra.');
+      if (out.length > Math.min(500_000, limiteBytes)) out = canvas.toDataURL('image/jpeg', 0.85);
+      if (out.length > limiteBytes) return setErro('Imagem muito grande mesmo depois de reduzir. Tente outra.');
       onEscolher(out);
     } catch {
       setErro('Não foi possível ler esta imagem.');

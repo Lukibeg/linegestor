@@ -11,7 +11,8 @@
  */
 import { ALL_PERMISSIONS, DEFAULT_ROLES, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import type { Api } from './index.js';
-import { ApiError, type AuditItem, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { NOTA_DEMO } from './novidades-demo.js';
+import { ApiError, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -38,12 +39,15 @@ type UnitRow = { id: string; clientId: string; name: string; isMain: boolean; ad
 type LoginRow = { id: string; clientId: string; modelId: string; username: string | null; passwordSecretId: string | null; note: string | null; updatedAt: string; deletedAt: string | null };
 /** Rede padrão dos aparelhos do cliente */
 type NetRow = { clientId: string; ipAddress: string | null; subnetMask: string | null; defaultRouter: string | null; dns1: string | null; dns2: string | null; wirelessPasswordSecretId: string | null; note: string | null; updatedAt: string };
+/** Uma nota de novidades na demonstração (a imagem fica embutida, como a logo do cliente) */
+type NotaRow = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null; items: Array<{ id: string; kind: NovidadeItem['kind']; title: string; text: string | null; imagem: string | null }> };
 type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
 
 const S = {
   clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], units: [] as UnitRow[], deviceLogins: [] as LoginRow[], networks: [] as NetRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
+  notas: [] as NotaRow[], leituras: [] as Array<{ noteId: string; userId: string; readAt: string }>,
   ajustesBackup: {
     ativo: false, pasta: 'Backups › Ingline Gestão', pastaId: '', contaDeServico: '',
     ultimoEnvioEm: null as string | null, ultimoEnvioOk: null as boolean | null, ultimoEnvioMsg: null as string | null, temChave: false,
@@ -220,6 +224,12 @@ function seed() {
     S.devices.push(x); return x;
   });
   S.movements.push({ id: id(), modality: 'locacao', fromClientId: null, toClientId: byName['Hospital Vale Verde']!, unit: 'Matriz', newCondition: null, note: 'Headsets para o call center', userId: 'u3', createdAt: daysAgo(2, 14), items: headsetsLocados.map((d) => ({ modelId: mHs.id, deviceId: d.id })) });
+  // a nota de novidades da rodada, publicada: é ela que abre no login da prévia
+  S.notas = [{
+    id: id(), version: NOTA_DEMO.version, title: NOTA_DEMO.title, summary: NOTA_DEMO.summary,
+    publishedAt: daysAgo(0, 9), createdAt: daysAgo(0, 8), updatedAt: daysAgo(0, 9), deletedAt: null,
+    items: NOTA_DEMO.items.map((i) => ({ id: id(), kind: i.kind, title: i.title, text: i.text, imagem: i.imagem ?? null })),
+  }];
   S.audit = [
     { id: id(), action: 'bulk_update', entityType: 'did', entityId: null, summary: 'Alterou 40 DID(s): cliente → Supermercado Bom Preço', before: null, after: null, userName: 'Lúcio Andrade', userId: 'u2', createdAt: daysAgo(1, 16) },
     { id: id(), action: 'reveal_secret', entityType: 'secret', entityId: null, summary: 'Lúcio Andrade revelou "Senha SSH do LinePBX — Clínica Aurora"', before: null, after: null, userName: 'Lúcio Andrade', userId: 'u2', createdAt: daysAgo(1, 11) },
@@ -378,6 +388,25 @@ const filtrarAparelhos = (q: Record<string, unknown>) => {
     && (ligado(q.includeSold) || (d.currentModality ?? '') !== 'venda')
     && (!t || (hex.length >= 4 && (d.mac ?? '').includes(hex)) || (!!serie && (d.serialNumber ?? '').includes(serie)) || (d.unit ?? '').toLowerCase().includes(t) || (d.ip ?? '').includes(t) || (d.note ?? '').toLowerCase().includes(t)));
 };
+
+/** Grava os itens da nota: com id atualiza, sem id entra, o que não veio sai (como no servidor). */
+function aplicarItens(n: NotaRow, itens?: Array<Record<string, any>>) {
+  if (!itens) return;
+  n.items = itens.map((it) => {
+    const atual = n.items.find((x) => x.id === it.id);
+    const imagem = it.imagem === null ? null : typeof it.imagem === 'string' ? it.imagem : atual?.imagem ?? null;
+    return { id: atual?.id ?? id(), kind: (it.kind ?? 'novo') as NovidadeItem['kind'], title: String(it.title), text: (it.text as string) ?? null, imagem };
+  });
+}
+const notasVivas = () => S.notas.filter((n) => !n.deletedAt);
+const podeEditarNovidades = () => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes('admin.manage') ?? false);
+const shapeNota = (n: NotaRow): Novidade => ({
+  id: n.id, version: n.version, title: n.title, summary: n.summary, publishedAt: n.publishedAt, createdAt: n.createdAt, updatedAt: n.updatedAt,
+  lida: S.leituras.some((l) => l.noteId === n.id && l.userId === S.me?.id),
+  leituras: S.leituras.filter((l) => l.noteId === n.id).length,
+  pessoas: S.users.filter((u) => u.active).length,
+  items: n.items.map((i, ordem) => ({ id: i.id, kind: i.kind, title: i.title, text: i.text, sortOrder: ordem, imageUrl: i.imagem })),
+});
 
 // ---------------- a API ----------------
 export const demoApi: Api = {
@@ -859,6 +888,79 @@ export const demoApi: Api = {
     exportUrl: (entity) => `data:text/csv;charset=utf-8,` + encodeURIComponent(entity === 'dids' ? 'numero;circuito;cliente\n' + S.dids.filter((x) => !x.deletedAt).slice(0, 50).map((x) => `${x.number};${S.circuits.find((c) => c.id === x.circuitId)?.code ?? ''};${S.clients.find((c) => c.id === x.clientId)?.cnpj ?? 'livre'}`).join('\n') : entity === 'circuits' ? 'nome;codigo;operadora;canais\n' + S.circuits.map((c) => `${c.name};${c.code};${S.carriers.find((x) => x.id === c.carrierId)?.name ?? ''};${c.channels}`).join('\n') : 'cnpj;nome_fantasia;razao_social;produtos\n' + S.clients.filter((c) => !c.isInternal && !c.deletedAt).map((c) => `${c.cnpj};${c.tradeName};${c.legalName};${activeSubs(c.id).map((s) => s.productCode).join('|')}`).join('\n')),
     async exportWithSecrets(entity, password) { await wait(400); requirePerm('data.export_secrets'); if (password !== S.me!.password) throw new ApiError(403, 'Senha incorreta'); audit('export_secrets', entity, `${S.me!.name} exportou ${entity} COM SENHAS (ZIP protegido)`); return { blob: new Blob(['(demonstração: aqui viria o ZIP protegido)'], { type: 'text/plain' }), zipPassword: 'demo-' + Math.random().toString(36).slice(2, 10), filename: `${entity}-com-senhas.zip` }; },
   },
+  novidades: {
+    async pendente(): Promise<NovidadePendente | null> {
+      await wait(60);
+      if (!S.me) return null;
+      // só a MAIS RECENTE publicada abre no login, e só enquanto não for marcada como lida
+      const nota = notasVivas().filter((n) => n.publishedAt).sort((a, b) => b.publishedAt!.localeCompare(a.publishedAt!))[0];
+      if (!nota || S.leituras.some((l) => l.noteId === nota.id && l.userId === S.me!.id)) return null;
+      const { items, ...resto } = shapeNota(nota);
+      return { id: resto.id, version: resto.version, title: resto.title, summary: resto.summary, publishedAt: resto.publishedAt, items };
+    },
+    async lista() {
+      await wait(80); requirePerm('records.read');
+      const podeEditar = podeEditarNovidades();
+      const items = notasVivas().filter((n) => podeEditar || n.publishedAt)
+        .sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt)).map(shapeNota);
+      return { items, podeEditar, naoLidas: items.filter((n) => n.publishedAt && !n.lida).length };
+    },
+    async marcarLida(idn) {
+      await wait(120);
+      const n = notasVivas().find((x) => x.id === idn); if (!n) throw notFound('Nota');
+      if (!n.publishedAt) throw bad('Esta nota ainda é um rascunho');
+      if (!S.leituras.some((l) => l.noteId === idn && l.userId === S.me!.id)) S.leituras.push({ noteId: idn, userId: S.me!.id, readAt: now() });
+      audit('update', 'releaseNote', `${S.me!.name} leu as novidades de ${n.version}`, n.id);
+      return { ok: true };
+    },
+    async leituras(idn): Promise<LeiturasNovidade> {
+      await wait(60); requirePerm('admin.manage');
+      const n = notasVivas().find((x) => x.id === idn); if (!n) throw notFound('Nota');
+      return {
+        version: n.version, title: n.title, publishedAt: n.publishedAt,
+        pessoas: S.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+          .map((u) => ({ id: u.id, name: u.name, email: u.email, readAt: S.leituras.find((l) => l.noteId === idn && l.userId === u.id)?.readAt ?? null })),
+      };
+    },
+    async criar(d) {
+      await wait(); requirePerm('admin.manage');
+      const version = String(d.version ?? '').trim();
+      if (!/^[a-z0-9._-]+$/.test(version)) throw new ApiError(400, 'Dados inválidos', [{ field: 'version', message: 'Use só letras minúsculas, números, ponto, hífen e _' }]);
+      if (S.notas.some((n) => n.version === version)) throw bad(`Já existe uma nota com a versão "${version}"`);
+      const n: NotaRow = { id: id(), version, title: String(d.title), summary: (d.summary as string) ?? null, publishedAt: null, createdAt: now(), updatedAt: now(), deletedAt: null, items: [] };
+      aplicarItens(n, d.items as any[]);
+      S.notas.push(n); audit('create', 'releaseNote', `Criou a nota de novidades ${version}`, n.id);
+      return { id: n.id };
+    },
+    async atualizar(idn, d) {
+      await wait(); requirePerm('admin.manage');
+      const n = notasVivas().find((x) => x.id === idn); if (!n) throw notFound('Nota');
+      if (d.version !== undefined) {
+        const version = String(d.version).trim();
+        if (S.notas.some((x) => x.id !== idn && x.version === version)) throw bad(`Já existe uma nota com a versão "${version}"`);
+        n.version = version;
+      }
+      if (d.title !== undefined) n.title = String(d.title);
+      if (d.summary !== undefined) n.summary = (d.summary as string) ?? null;
+      if (d.items !== undefined) aplicarItens(n, d.items as any[]);
+      n.updatedAt = now(); audit('update', 'releaseNote', `Editou a nota de novidades ${n.version}`, n.id);
+      return { id: n.id };
+    },
+    async publicar(idn, publicar) {
+      await wait(); requirePerm('admin.manage');
+      const n = notasVivas().find((x) => x.id === idn); if (!n) throw notFound('Nota');
+      if (publicar && !n.items.length) throw bad('A nota não tem nenhum item para mostrar. Acrescente ao menos um antes de publicar.');
+      n.publishedAt = publicar ? n.publishedAt ?? now() : null;
+      audit('update', 'releaseNote', publicar ? `Publicou as novidades de ${n.version} para toda a equipe` : `Voltou as novidades de ${n.version} para rascunho`, n.id);
+      return { id: n.id, publishedAt: n.publishedAt };
+    },
+    async remover(idn) {
+      await wait(); requirePerm('admin.manage');
+      const n = notasVivas().find((x) => x.id === idn); if (!n) throw notFound('Nota');
+      n.deletedAt = now(); audit('delete', 'releaseNote', `Mandou a nota de novidades ${n.version} para a lixeira`, n.id);
+      return { ok: true };
+    },
+  },
   admin: {
     async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt })); },
     async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
@@ -908,11 +1010,12 @@ export const demoApi: Api = {
         ...S.devices.filter((c) => c.deletedAt).map((c) => ({ type: 'device', id: c.id, label: `${modeloDe(c).name} · ${identificacaoAparelho(c).texto}`, deletedAt: c.deletedAt! })),
         ...S.models.filter((c) => c.deletedAt).map((c) => ({ type: 'deviceModel', id: c.id, label: c.name, deletedAt: c.deletedAt! })),
         ...S.products.filter((c) => c.deletedAt).map((c) => ({ type: 'product', id: c.id, label: c.name, deletedAt: c.deletedAt! })),
+        ...S.notas.filter((c) => c.deletedAt).map((c) => ({ type: 'releaseNote', id: c.id, label: c.title, deletedAt: c.deletedAt! })),
       ].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
     },
     async restore(type, idr) {
       await wait(); requirePerm('records.delete');
-      const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : S.devices;
+      const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'releaseNote' ? S.notas : S.devices;
       const it = list.find((x) => x.id === idr); if (!it) throw notFound();
       it.deletedAt = null;
       const nome = it.tradeName ?? it.name ?? it.number ?? (type === 'device' ? identificacaoAparelho(it).texto : idr);

@@ -126,6 +126,16 @@ export const realApi: Api = {
       return { blob: await res.blob(), zipPassword: res.headers.get('X-Zip-Password') ?? '', filename: (res.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1]) ?? `${entity}.zip` };
     },
   },
+  novidades: {
+    pendente: () => http('GET', '/release-notes/pending'),
+    lista: () => http('GET', '/release-notes'),
+    marcarLida: (id) => http('POST', `/release-notes/${id}/read`),
+    leituras: (id) => http('GET', `/release-notes/${id}/reads`),
+    criar: (d) => http('POST', '/release-notes', d),
+    atualizar: (id, d) => http('PATCH', `/release-notes/${id}`, d),
+    publicar: (id, publicar) => http('POST', `/release-notes/${id}/publish`, { publicar }),
+    remover: (id) => http('DELETE', `/release-notes/${id}`),
+  },
   admin: {
     users: () => http('GET', '/admin/users'),
     createUser: (d) => http('POST', '/admin/users', d),

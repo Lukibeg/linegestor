@@ -17,6 +17,7 @@ import { DidsRedirect } from './pages/dids/Lista.js';
 import { Inventario } from './pages/inventario/Index.js';
 import { AparelhoDetalhe } from './pages/inventario/Aparelho.js';
 import { Dados } from './pages/dados/Index.js';
+import { NovidadesPagina } from './pages/novidades/Index.js';
 import { Conta } from './pages/Conta.js';
 import { Admin } from './pages/admin/Index.js';
 
@@ -46,6 +47,7 @@ export function App() {
             <Route path="/inventario" element={<Protegido><Inventario /></Protegido>} />
             <Route path="/inventario/aparelhos/:id" element={<Protegido><AparelhoDetalhe /></Protegido>} />
             <Route path="/dados" element={<Protegido><Dados /></Protegido>} />
+            <Route path="/novidades" element={<Protegido><NovidadesPagina /></Protegido>} />
             <Route path="/conta" element={<Protegido><Conta /></Protegido>} />
             <Route path="/admin/*" element={<Protegido><Admin /></Protegido>} />
             <Route path="*" element={<Navigate to="/" replace />} />

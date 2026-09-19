@@ -22,6 +22,13 @@
       "when": 1789834132049,
       "tag": "0002_rodada23",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789835960583,
+      "tag": "0003_novidades",
+      "breakpoints": true
     }
   ]
 }

@@ -11,12 +11,13 @@ import { Campo, Carregando, Chip, Confirmar, Modal, Paginacao, Spinner, TODOS, T
 import { data, relativo } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { Ajustes } from './Ajustes.js';
+import { Novidades } from './Novidades.js';
 import { contar, contarDe, TdN, ThN } from '../../lib/contagem.js';
 
 export function Admin() {
   const { can } = useAuth();
   const links = [
-    ...(can('admin.manage') ? [{ to: 'usuarios', label: 'Usuários' }, { to: 'papeis', label: 'Papéis' }, { to: 'catalogos', label: 'Catálogos' }, { to: 'produtos', label: 'Produtos' }, { to: 'ajustes', label: 'Ajustes' }] : []),
+    ...(can('admin.manage') ? [{ to: 'usuarios', label: 'Usuários' }, { to: 'papeis', label: 'Papéis' }, { to: 'catalogos', label: 'Catálogos' }, { to: 'produtos', label: 'Produtos' }, { to: 'novidades', label: 'Novidades' }, { to: 'ajustes', label: 'Ajustes' }] : []),
     ...(can('audit.read') ? [{ to: 'auditoria', label: 'Auditoria' }] : []),
     ...(can('records.delete') ? [{ to: 'lixeira', label: 'Lixeira' }] : []),
   ];
@@ -25,7 +26,7 @@ export function Admin() {
       <div className="flex gap-1 border-b border-line mb-4 overflow-x-auto">{links.map((l) => <NavLink key={l.to} to={l.to} className={({ isActive }) => `px-3 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${isActive ? 'border-accent text-accent' : 'border-transparent text-ink-2'}`}>{l.label}</NavLink>)}</div>
       <Routes>
         <Route index element={<Navigate to={links[0]?.to ?? '/'} replace />} />
-        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="ajustes" element={<Ajustes />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
+        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="novidades" element={<Novidades />} /><Route path="ajustes" element={<Ajustes />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
       </Routes>
     </Pagina>
   );
@@ -276,7 +277,7 @@ function Auditoria() {
 
 function Lixeira() {
   const q = useQuery({ queryKey: ['trash'], queryFn: api.admin.trash }); const qc = useQueryClient(); const toast = useToast();
-  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto' };
+  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', releaseNote: 'Novidades' };
   const o = useOrdenacaoLocal('deletedAt', 'desc');
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;

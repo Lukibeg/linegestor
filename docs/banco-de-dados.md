@@ -37,6 +37,10 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [sessions](#sessions) — Sessão de login (cookie).
 - [secrets](#secrets) — O COFRE.
 - [audit_log](#audit_log) — Quem fez o quê, em qual registro, quando — com o antes e o depois.
+- [release_notes](#release_notes) — Uma NOTA DE VERSÃO ("o que mudou na rodada 23").
+- [release_note_items](#release_note_items) — Um item da nota: o cartão que a pessoa vê, um por vez.
+- [release_note_images](#release_note_images) — O print de um item, no próprio banco (como a logo do cliente e a foto do modelo).
+- [release_note_reads](#release_note_reads) — "Fulano leu a nota da rodada 23 em tal dia." Uma linha por pessoa × nota.
 
 
 ---
@@ -379,4 +383,52 @@ Quem fez o quê, em qual registro, quando — com o antes e o depois. Inclui aç
 | `after` | JSON | Estado posterior | — |
 | `ip` | texto | — | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
+
+
+---
+
+# 5. NOVIDADES (notas de versão)
+
+## release_notes
+
+Uma NOTA DE VERSÃO ("o que mudou na rodada 23"). Quando publicada, aparece uma vez para cada pessoa no login e só para de aparecer quando ela marca "Li e entendi". Rascunho = `publishedAt` nulo: ninguém vê até publicar.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `version` | texto | Identificador curto e estável da versão ("rodada-23"); é por ele que a importação evita repetir | obrigatório |
+| `title` | texto | O que aparece no topo da nota | obrigatório |
+| `summary` | texto | Uma frase resumindo a rodada | — |
+| `published_at` | data e hora | Quando foi publicada. Nulo = rascunho (só quem edita enxerga). | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## release_note_items
+
+Um item da nota: o cartão que a pessoa vê, um por vez. `kind` diz a cor e o rótulo: novo | melhorou | corrigido | atencao ("atenção" é mudança de regra, o que muda o jeito de trabalhar).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `kind` | texto | — | obrigatório · padrão: 'novo' |
+| `title` | texto | — | obrigatório |
+| `text` | texto | Duas ou três linhas explicando, em português de gente | — |
+| `sort_order` | número inteiro | Ordem em que os cartões aparecem | obrigatório · padrão: 0 |
+
+## release_note_images
+
+O print de um item, no próprio banco (como a logo do cliente e a foto do modelo).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+
+## release_note_reads
+
+"Fulano leu a nota da rodada 23 em tal dia." Uma linha por pessoa × nota.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `read_at` | data e hora | — | obrigatório |
 

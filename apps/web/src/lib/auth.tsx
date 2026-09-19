@@ -3,6 +3,7 @@
  * `useAuth()` dá o usuário atual; `<Can permission="...">` só mostra o conteúdo se a pessoa tiver a permissão.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/index.js';
 import type { Me } from '../api/types.js';
 
@@ -18,6 +19,7 @@ const AuthCtx = createContext<Ctx>(null!);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const refresh = useCallback(async () => { try { setUser(await api.auth.me()); } catch { setUser(null); } finally { setLoading(false); } }, []);
   useEffect(() => { void refresh(); }, [refresh]);
   const value = useMemo<Ctx>(() => ({
@@ -25,13 +27,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     login: async (email, password) => {
       const r = await api.auth.login(email, password);
       if (r.needsCode) return true;
+      // cada pessoa tem as suas respostas (o que já leu das novidades, o que pode ver):
+      // sem limpar, quem entra depois herda o que ficou guardado de quem saiu
+      qc.clear();
       setUser(r.user);
       return false;
     },
-    entrarComCodigo: async (code) => { setUser(await api.auth.loginCode(code)); },
-    logout: async () => { await api.auth.logout(); setUser(null); },
+    entrarComCodigo: async (code) => { const u = await api.auth.loginCode(code); qc.clear(); setUser(u); },
+    logout: async () => { await api.auth.logout(); qc.clear(); setUser(null); },
     can: (p) => !!user?.permissions.includes(p),
-  }), [user, loading, refresh]);
+  }), [user, loading, refresh, qc]);
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 

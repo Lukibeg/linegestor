@@ -5,7 +5,7 @@
  *  Como ler: cada `pgTable` é uma tabela. Cada linha dentro dela é uma coluna.
  *  O comentário logo acima explica o que aquilo guarda — em português, para quem não programa.
  *
- *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico
+ *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico · 5. Novidades
  *
  *  Convenções:
  *   - dinheiro é guardado em CENTAVOS inteiros (R$ 603,38 → 60338), sem arredondamento
@@ -631,6 +631,76 @@ export const auditLog = pgTable(
   (t) => [index('audit_entity_idx').on(t.entityType, t.entityId), index('audit_user_idx').on(t.userId), index('audit_created_idx').on(t.createdAt)],
 );
 
+
+// ---------------------------------------------------------------------
+// 5. NOVIDADES (notas de versão)
+// ---------------------------------------------------------------------
+
+/**
+ * Uma NOTA DE VERSÃO ("o que mudou na rodada 23"). Quando publicada, aparece uma vez para
+ * cada pessoa no login e só para de aparecer quando ela marca "Li e entendi".
+ * Rascunho = `publishedAt` nulo: ninguém vê até publicar.
+ */
+export const releaseNotes = pgTable(
+  'release_notes',
+  {
+    id: id(),
+    /** Identificador curto e estável da versão ("rodada-23"); é por ele que a importação evita repetir */
+    version: text('version').notNull(),
+    /** O que aparece no topo da nota */
+    title: text('title').notNull(),
+    /** Uma frase resumindo a rodada */
+    summary: text('summary'),
+    /** Quando foi publicada. Nulo = rascunho (só quem edita enxerga). */
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [uniqueIndex('release_notes_version_uq').on(t.version)],
+);
+
+/**
+ * Um item da nota: o cartão que a pessoa vê, um por vez.
+ * `kind` diz a cor e o rótulo: novo | melhorou | corrigido | atencao
+ * ("atenção" é mudança de regra, o que muda o jeito de trabalhar).
+ */
+export const releaseNoteItems = pgTable(
+  'release_note_items',
+  {
+    id: id(),
+    noteId: text('note_id').notNull().references(() => releaseNotes.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull().default('novo'),
+    title: text('title').notNull(),
+    /** Duas ou três linhas explicando, em português de gente */
+    text: text('text'),
+    /** Ordem em que os cartões aparecem */
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [index('release_note_items_note_idx').on(t.noteId)],
+);
+
+/** O print de um item, no próprio banco (como a logo do cliente e a foto do modelo). */
+export const releaseNoteImages = pgTable('release_note_images', {
+  itemId: text('item_id').primaryKey().references(() => releaseNoteItems.id, { onDelete: 'cascade' }),
+  mimeType: text('mime_type').notNull(),
+  dataBase64: text('data_base64').notNull(),
+  sizeBytes: integer('size_bytes').notNull().default(0),
+  updatedAt: updatedAt(),
+});
+
+/** "Fulano leu a nota da rodada 23 em tal dia." Uma linha por pessoa × nota. */
+export const releaseNoteReads = pgTable(
+  'release_note_reads',
+  {
+    id: id(),
+    noteId: text('note_id').notNull().references(() => releaseNotes.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('release_note_reads_note_user_uq').on(t.noteId, t.userId)],
+);
+
 // ---------------------------------------------------------------------
 // RELAÇÕES (para consultas com "traga junto")
 // ---------------------------------------------------------------------
@@ -723,4 +793,17 @@ export const usersRelations = relations(users, ({ one }) => ({
 
 export const auditLogRelations = relations(auditLog, ({ one }) => ({
   user: one(users, { fields: [auditLog.userId], references: [users.id] }),
+}));
+
+export const releaseNotesRelations = relations(releaseNotes, ({ many }) => ({
+  items: many(releaseNoteItems),
+  reads: many(releaseNoteReads),
+}));
+export const releaseNoteItemsRelations = relations(releaseNoteItems, ({ one }) => ({
+  note: one(releaseNotes, { fields: [releaseNoteItems.noteId], references: [releaseNotes.id] }),
+  image: one(releaseNoteImages, { fields: [releaseNoteItems.id], references: [releaseNoteImages.itemId] }),
+}));
+export const releaseNoteReadsRelations = relations(releaseNoteReads, ({ one }) => ({
+  note: one(releaseNotes, { fields: [releaseNoteReads.noteId], references: [releaseNotes.id] }),
+  user: one(users, { fields: [releaseNoteReads.userId], references: [users.id] }),
 }));

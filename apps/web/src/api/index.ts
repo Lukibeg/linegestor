@@ -101,6 +101,18 @@ export type Api = {
     exportUrl(entity: string): string;
     exportWithSecrets(entity: string, password: string): Promise<{ blob: Blob; zipPassword: string; filename: string }>;
   };
+  novidades: {
+    /** A nota que deve abrir no login desta pessoa (ou nada) */
+    pendente(): Promise<T.NovidadePendente | null>;
+    /** Histórico + se esta pessoa pode editar + quantas ela ainda não leu */
+    lista(): Promise<{ items: T.Novidade[]; podeEditar: boolean; naoLidas: number }>;
+    marcarLida(id: string): Promise<{ ok: boolean }>;
+    leituras(id: string): Promise<T.LeiturasNovidade>;
+    criar(d: Record<string, unknown>): Promise<{ id: string }>;
+    atualizar(id: string, d: Record<string, unknown>): Promise<{ id: string }>;
+    publicar(id: string, publicar: boolean): Promise<{ id: string; publishedAt: string | null }>;
+    remover(id: string): Promise<{ ok: boolean }>;
+  };
   admin: {
     users(): Promise<T.User[]>;
     createUser(d: Record<string, unknown>): Promise<T.User>;

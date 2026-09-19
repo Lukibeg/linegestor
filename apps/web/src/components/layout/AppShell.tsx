@@ -3,7 +3,10 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Menu, Moon, Settings, Sun, Upload, UserRound, X } from 'lucide-react';
+import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, LayoutDashboard, LogOut, Menu, Moon, Settings, Sparkles, Sun, Upload, UserRound, X } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../api/index.js';
+import { NovidadesPopup } from '../../pages/novidades/Index.js';
 import { useAuth } from '../../lib/auth.js';
 import { IS_DEMO } from '../../api/index.js';
 import { Logotipo, Simbolo } from '../Marca.js';
@@ -13,6 +16,8 @@ const NAV = [
   { to: '/clientes', label: 'Clientes', icon: Building2, perm: 'records.read' },
   { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
   { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
+  // logo abaixo dos equipamentos: o "o que mudou" de cada publicação
+  { to: '/novidades', label: 'Novidades', icon: Sparkles, perm: 'records.read' },
   { to: '/dados', label: 'Importar / Exportar', icon: Upload, perm: ['data.import', 'data.export'] },
   { to: '/admin', label: 'Administração', icon: Settings, perm: ['admin.manage', 'audit.read', 'records.delete'] },
 ];
@@ -42,6 +47,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { collapsed, toggle: toggleSidebar } = useSidebar();
 
   const items = NAV.filter((n) => (Array.isArray(n.perm) ? n.perm.some(can) : can(n.perm)));
+  // o número no menu: quantas notas de novidade esta pessoa ainda não leu
+  const novidades = useQuery({ queryKey: ['novidades'], queryFn: () => api.novidades.lista(), enabled: !!user, staleTime: 5 * 60_000 });
+  const naoLidas = novidades.data?.naoLidas ?? 0;
   // no celular o menu é sempre completo (abre por cima); no desktop pode ficar só com ícones
   const hide = collapsed ? 'md:hidden' : '';
 
@@ -60,6 +68,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             <NavLink key={n.to} to={n.to} end={n.end} onClick={() => setOpen(false)} title={collapsed ? n.label : undefined}
               className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium ${collapsed ? 'md:justify-center md:px-0' : ''} ${isActive ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
               <n.icon size={17} className="shrink-0" /> <span className={hide}>{n.label}</span>
+              {n.to === '/novidades' && naoLidas > 0 && (
+                <span className={`ml-auto tnum text-[11px] font-semibold rounded-full bg-accent text-white px-1.5 py-0.5 ${collapsed ? 'md:absolute md:ml-0 md:translate-x-4 md:-translate-y-3' : ''}`} title={`${naoLidas} novidade(s) que você ainda não leu`}>{naoLidas}</span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -89,6 +100,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <main className="flex-1 px-4 md:px-6 py-5 max-w-[1400px] w-full mx-auto">{children}</main>
       </div>
+      {/* a nota mais recente abre uma vez por pessoa, em qualquer tela */}
+      <NovidadesPopup />
     </div>
   );
 }
