@@ -82,3 +82,13 @@ export const CHIP_SELECT: Record<CorOpcao, string> = {
   bad: 'bg-bad-soft text-bad border-bad',
   muted: 'bg-surface-2 text-muted border-line',
 };
+
+/** A cor cheia de cada faixa da barra "como está cada passo". */
+export const FAIXA: Record<CorOpcao, string> = {
+  neutral: 'bg-line-strong',
+  accent: 'bg-accent',
+  ok: 'bg-ok',
+  signal: 'bg-signal',
+  bad: 'bg-bad',
+  muted: 'bg-line',
+};

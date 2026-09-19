@@ -17,7 +17,7 @@ import { data, relativo } from '../../lib/format.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
 import { EscolherClientes } from './EscolherClientes.js';
 import { ProjetoForm } from './Form.js';
-import { Andamento, ChipSituacao, CHIP_SELECT, Numero, SITUACAO } from './partes.js';
+import { Andamento, ChipSituacao, CHIP_SELECT, FAIXA, Numero, SITUACAO } from './partes.js';
 import { Anexos, Comentarios } from './Conversa.js';
 
 export function ProjetoFicha() {
@@ -26,15 +26,19 @@ export function ProjetoFicha() {
   const qc = useQueryClient();
   const toast = useToast();
   const q = useQuery({ queryKey: ['projeto', id], queryFn: () => api.projetos.get(id) });
-  const pessoas = useQuery({ queryKey: ['projeto-pessoas'], queryFn: () => api.projetos.pessoas() });
 
   const [editar, setEditar] = useState(false);
   const [incluir, setIncluir] = useState(false);
   const [excluir, setExcluir] = useState(false);
-  const [filtro, setFiltro] = useState<SituacaoProjeto | null>(null);
+  /** O filtro da tabela: por situação, ou por uma faixa de uma etapa ("quem está em Pendente envio"). */
+  type Filtro = { tipo: 'situacao'; valor: SituacaoProjeto } | { tipo: 'etapa'; stepId: string; valor: string };
+  const [filtro, setFiltro] = useState<Filtro | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
   const [travando, setTravando] = useState<ClienteDoProjeto | null>(null);
   const [tirar, setTirar] = useState<ClienteDoProjeto | null>(null);
+
+  const alternarEtapa = (stepId: string, valor: string) =>
+    setFiltro((f) => (f?.tipo === 'etapa' && f.stepId === stepId && f.valor === valor ? null : { tipo: 'etapa', stepId, valor }));
 
   const recarregar = () => qc.invalidateQueries({ queryKey: ['projeto', id] });
   const erro = (e: unknown) => toast.push('erro', mensagemErro(e));
@@ -52,7 +56,15 @@ export function ProjetoFicha() {
   const apagar = useMutation({ mutationFn: () => api.projetos.remover(id), onSuccess: () => { qc.invalidateQueries({ queryKey: ['projetos'] }); toast.push('ok', 'Projeto na lixeira'); navigate('/projetos'); }, onError: erro });
 
   const p = q.data;
-  const clientes = useMemo(() => (p?.clientes ?? []).filter((c) => !filtro || c.status === filtro), [p, filtro]);
+  const clientes = useMemo(() => (p?.clientes ?? []).filter((c) => {
+    if (!filtro) return true;
+    if (filtro.tipo === 'situacao') return c.status === filtro.valor;
+    const etapa = p?.etapas.find((e) => e.id === filtro.stepId);
+    const marca = c.feitas.find((f) => f.stepId === filtro.stepId);
+    if (!etapa) return true;
+    if (etapa.kind === 'escolha') return (marca?.valor ?? '') === filtro.valor;
+    return filtro.valor === 'feito' ? !!marca : !marca;
+  }), [p, filtro]);
 
   if (q.isLoading || !p) return <Pagina titulo="Projeto"><Carregando /></Pagina>;
   const r = p.resumo;
@@ -93,31 +105,66 @@ export function ProjetoFicha() {
           {(Object.keys(SITUACAO) as SituacaoProjeto[]).map((s) => (
             <Numero key={s} label={SITUACAO[s].rotulo} valor={r.contagem[s] ?? 0}
               tone={s === 'travado' ? 'signal' : s === 'concluido' ? 'ok' : s === 'andamento' ? 'accent' : s === 'nao_se_aplica' ? 'muted' : 'neutral'}
-              ativo={filtro === s} onClick={() => setFiltro(filtro === s ? null : s)} />
+              ativo={filtro?.tipo === 'situacao' && filtro.valor === s}
+              onClick={() => setFiltro(filtro?.tipo === 'situacao' && filtro.valor === s ? null : { tipo: 'situacao', valor: s })} />
           ))}
         </div>
 
-        {r.porResponsavel.length > 0 && (
-          <div>
-            <div className="eyebrow mb-1.5">Quanto falta para cada um</div>
-            <div className="flex flex-col gap-1.5">
-              {r.porResponsavel.map((x) => (
-                <div key={x.id ?? 'sem'} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className={`w-[180px] shrink-0 truncate ${x.id ? '' : 'text-muted italic'}`}>{x.nome}</span>
-                  <div className="flex-1 min-w-[120px]"><Andamento pct={x.total ? Math.round((x.fechados / x.total) * 100) : 0} total={x.total} faltam={x.total - x.fechados} /></div>
-                  {x.travados > 0 && <Chip tone="signal">{x.travados} travado(s)</Chip>}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </section>
+
+      {/* ---------- como está cada passo ---------- */}
+      {r.porEtapa.length > 0 && r.total > 0 && (
+        <section className="card p-4 mt-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+            <h2 className="font-display font-semibold">Como está cada passo</h2>
+            <span className="text-[12px] text-muted">Clique num número para ver só esses clientes.</span>
+          </div>
+          <div className="flex flex-col gap-3">
+            {r.porEtapa.map((e) => (
+              <div key={e.stepId}>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-sm font-semibold">{e.title}</span>
+                  <span className="text-[12px] text-muted tnum">{e.resolvidas} de {e.total} resolvido(s)</span>
+                </div>
+
+                {/* a barra: uma faixa por opção, na cor dela */}
+                <div className="flex h-2.5 rounded-full overflow-hidden bg-surface-2 my-1.5">
+                  {e.faixas.filter((f) => f.n > 0).map((f) => (
+                    <button
+                      key={f.valor || 'vazio'}
+                      type="button"
+                      onClick={() => alternarEtapa(e.stepId, f.valor)}
+                      style={{ width: `${(f.n / Math.max(e.total, 1)) * 100}%` }}
+                      className={`h-full ${FAIXA[f.tone]} hover:opacity-80`}
+                      title={`${f.label}: ${f.n}`}
+                      aria-label={`${e.title} — ${f.label}: ${f.n}`}
+                    />
+                  ))}
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {e.faixas.map((f) => {
+                    const ativo = filtro?.tipo === 'etapa' && filtro.stepId === e.stepId && filtro.valor === f.valor;
+                    return (
+                      <button key={f.valor || 'vazio'} type="button" onClick={() => alternarEtapa(e.stepId, f.valor)}
+                        className={`rounded-full px-2 py-0.5 text-[12px] border ${ativo ? 'ring-2 ring-accent' : ''} ${f.n === 0 ? 'opacity-50' : ''} ${CHIP_SELECT[f.tone]}`}
+                        title={f.conclui ? 'Esta opção resolve a etapa' : 'Esta opção deixa a etapa em aberto'}>
+                        {f.label}{f.conclui ? ' ✓' : ''} <b className="tnum">{f.n}</b>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ---------- a lista de clientes ---------- */}
       <section className="card mt-4">
         <div className="flex flex-wrap items-center justify-between gap-2 p-4 pb-2">
           <h2 className="font-display font-semibold">
-            Clientes {filtro && <button className="btn-ghost btn-sm text-muted" onClick={() => setFiltro(null)}>mostrando só: {SITUACAO[filtro].rotulo} ✕</button>}
+            Clientes {filtro && <button className="btn-ghost btn-sm text-muted" onClick={() => setFiltro(null)}>mostrando só: {rotuloDoFiltro(p, filtro)} ✕</button>}
           </h2>
           {p.podeGerenciar && p.status === 'aberto' && <button className="btn-secondary btn-sm" onClick={() => setIncluir(true)}><Plus size={14} /> Acrescentar clientes</button>}
         </div>
@@ -135,17 +182,14 @@ export function ProjetoFicha() {
                   <th>Cliente</th>
                   {p.etapas.map((e) => <th key={e.id} className={`whitespace-nowrap ${e.kind === 'escolha' ? '' : 'text-center'}`}>{e.title}</th>)}
                   <th>Situação</th>
-                  <th>Responsável</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {clientes.map((c, i) => (
                   <Linha key={c.id} c={c} i={i} p={p}
-                    pessoas={pessoas.data ?? []}
                     onMarcar={(stepId, d) => marcar.mutate({ linhaId: c.id, stepId, d })}
                     onSituacao={(status) => status === 'travado' ? setTravando(c) : linha.mutate({ linhaId: c.id, d: { status } })}
-                    onResponsavel={(assigneeId) => linha.mutate({ linhaId: c.id, d: { assigneeId: assigneeId || null } })}
                     onAbrir={() => setAberto(aberto === c.id ? null : c.id)}
                     onTirar={() => setTirar(c)}
                     aberto={aberto === c.id}
@@ -156,21 +200,6 @@ export function ProjetoFicha() {
           </div>
         )}
 
-        {p.etapas.some((e) => e.kind === 'escolha') && (
-          <div className="px-4 pb-4 pt-3 flex flex-col gap-1.5 border-t border-line">
-            {p.etapas.filter((e) => e.kind === 'escolha').map((e) => (
-              <div key={e.id} className="flex flex-wrap items-center gap-1.5 text-[12px]">
-                <span className="text-muted w-[170px] shrink-0 truncate">{e.title}</span>
-                {e.options.map((o) => (
-                  <Chip key={o.id} tone={o.tone} title={o.conclui ? 'Esta opção resolve a etapa' : 'Esta opção deixa a etapa em aberto'}>
-                    {o.label}{o.conclui ? ' ✓' : ''}
-                  </Chip>
-                ))}
-              </div>
-            ))}
-            <span className="text-[11.5px] text-muted mt-0.5">✓ = a opção resolve a etapa e conta no andamento.</span>
-          </div>
-        )}
       </section>
 
       {/* ---------- conversa e arquivos do projeto ---------- */}
@@ -201,11 +230,10 @@ export function ProjetoFicha() {
 }
 
 /** Uma linha da tabela: as caixinhas das etapas, a situação, o responsável e a conversa daquele cliente. */
-function Linha({ c, i, p, pessoas, onMarcar, onSituacao, onResponsavel, onAbrir, onTirar, aberto }: {
-  c: ClienteDoProjeto; i: number; p: Projeto; pessoas: Array<{ id: string; name: string }>;
+function Linha({ c, i, p, onMarcar, onSituacao, onAbrir, onTirar, aberto }: {
+  c: ClienteDoProjeto; i: number; p: Projeto;
   onMarcar: (stepId: string, d: { feito?: boolean; valor?: string | null }) => void;
   onSituacao: (status: SituacaoProjeto) => void;
-  onResponsavel: (id: string) => void;
   onAbrir: () => void; onTirar: () => void; aberto: boolean;
 }) {
   const podeMexer = p.podeTrabalhar && p.status === 'aberto';
@@ -281,14 +309,6 @@ function Linha({ c, i, p, pessoas, onMarcar, onSituacao, onResponsavel, onAbrir,
             </select>
           ) : <ChipSituacao status={c.status} motivo={c.blockedReason} />}
         </td>
-        <td>
-          {podeMexer ? (
-            <select className="input input-sm w-[150px]" value={c.assigneeId ?? ''} onChange={(e) => onResponsavel(e.target.value)}>
-              <option value="">sem responsável</option>
-              {pessoas.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-            </select>
-          ) : <span className={c.assigneeName ? '' : 'text-muted italic'}>{c.assigneeName ?? 'sem responsável'}</span>}
-        </td>
         <td className="text-right whitespace-nowrap">
           <button className="btn-ghost btn-sm text-muted" onClick={onAbrir} title="Comentários e anexos deste cliente">
             <MessageSquare size={14} />{conversas > 0 && <span className="tnum ml-0.5 text-[11px]">{conversas}</span>}
@@ -298,7 +318,7 @@ function Linha({ c, i, p, pessoas, onMarcar, onSituacao, onResponsavel, onAbrir,
       </tr>
       {aberto && (
         <tr>
-          <td colSpan={p.etapas.length + 5} className="bg-surface-2">
+          <td colSpan={p.etapas.length + 4} className="bg-surface-2">
             <div className="grid gap-3 md:grid-cols-2 p-2">
               <Comentarios projeto={p} linha={c} onMudou={() => { /* o pai recarrega */ }} compacto />
               <Anexos projeto={p} linha={c} onMudou={() => { /* o pai recarrega */ }} compacto />
@@ -325,3 +345,11 @@ function Travar({ cliente, onClose, onConfirmar, salvando }: { cliente: ClienteD
   );
 }
 
+/** O que está escrito no "mostrando só: …" quando há filtro. */
+function rotuloDoFiltro(p: Projeto, f: { tipo: 'situacao'; valor: SituacaoProjeto } | { tipo: 'etapa'; stepId: string; valor: string }): string {
+  if (f.tipo === 'situacao') return SITUACAO[f.valor].rotulo;
+  const etapa = p.etapas.find((e) => e.id === f.stepId);
+  if (!etapa) return 'este passo';
+  if (etapa.kind !== 'escolha') return `${etapa.title}: ${f.valor === 'feito' ? 'feito' : 'falta'}`;
+  return `${etapa.title}: ${etapa.options.find((o) => o.id === f.valor)?.label ?? 'em branco'}`;
+}

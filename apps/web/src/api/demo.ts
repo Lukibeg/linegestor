@@ -174,15 +174,27 @@ function resumoProjeto(p: ProjRow): ProjetoResumo {
 function projetoCompleto(p: ProjRow): Projeto {
   const c = contarLinhas(p.id);
   const etapas = S.etapas.filter((e) => e.projectId === p.id).sort((a, b) => a.sortOrder - b.sortOrder);
-  const porResponsavel = new Map<string, { id: string | null; nome: string; total: number; fechados: number; travados: number }>();
-  for (const l of c.linhas) {
-    const chave = l.assigneeId ?? 'sem';
-    const atual = porResponsavel.get(chave) ?? { id: l.assigneeId, nome: S.users.find((u) => u.id === l.assigneeId)?.name ?? 'Sem responsável', total: 0, fechados: 0, travados: 0 };
-    atual.total += 1;
-    if (FECHADAS_DEMO.includes(l.status)) atual.fechados += 1;
-    if (l.status === 'travado') atual.travados += 1;
-    porResponsavel.set(chave, atual);
-  }
+  /**
+   * Como está cada passo: quantos clientes em cada opção (ou feito/falta, na caixinha).
+   * É o "quantas mensagens enviadas, quantos confirmaram" — a leitura por coluna, não por cliente.
+   */
+  const porEtapa = etapas.map((e) => {
+    const marcas0 = c.linhas.map((l) => S.marcas.find((m) => m.projectClientId === l.id && m.stepId === e.id));
+    const resolvidas = marcas0.filter((m) => resolvida(e, m)).length;
+    return {
+      stepId: e.id, title: e.title, kind: e.kind,
+      total: c.total, resolvidas, faltam: c.total - resolvidas,
+      faixas: e.kind === 'escolha'
+        ? [
+            ...(e.options ?? []).map((o) => ({ valor: o.id, label: o.label, tone: o.tone, conclui: o.conclui, n: marcas0.filter((m) => m?.value === o.id).length })),
+            { valor: '', label: 'Em branco', tone: 'muted' as const, conclui: false, n: marcas0.filter((m) => !m).length },
+          ]
+        : [
+            { valor: 'feito', label: 'Feito', tone: 'ok' as const, conclui: true, n: resolvidas },
+            { valor: '', label: 'Falta', tone: 'muted' as const, conclui: false, n: c.total - resolvidas },
+          ],
+    };
+  });
   const etapasFeitas = c.linhas.reduce((a, l) => a + etapas.filter((e) => resolvida(e, S.marcas.find((m) => m.projectClientId === l.id && m.stepId === e.id))).length, 0);
   return {
     id: p.id, name: p.name, goal: p.goal, status: p.status, dueDate: p.dueDate,
@@ -209,7 +221,7 @@ function projetoCompleto(p: ProjRow): Projeto {
     resumo: {
       total: c.total, faltam: c.faltam, contagem: c.contagem, andamento: c.andamento,
       etapasFeitas, etapasTotais: c.total * etapas.length, atrasado: atrasadoDemo(p, c.faltam),
-      porResponsavel: [...porResponsavel.values()].sort((a, b) => (b.total - b.fechados) - (a.total - a.fechados) || a.nome.localeCompare(b.nome, 'pt-BR')),
+      porEtapa,
     },
     podeTrabalhar: temPerm('projects.work'), podeGerenciar: temPerm('projects.manage'),
   };
@@ -380,6 +392,27 @@ function seed() {
     publishedAt: daysAgo(0, 9), createdAt: daysAgo(0, 8), updatedAt: daysAgo(0, 9), deletedAt: null,
     items: NOTA_DEMO.items.map((i) => ({ id: id(), kind: i.kind, title: i.title, text: i.text, imagem: i.imagem ?? null })),
   }];
+  // meses anteriores com movimento, só para o gráfico do Painel ter o que mostrar
+  const avulsos = S.devices.filter((d) => !d.clientId).slice(0, 9);
+  const historico: Array<[MovRow['modality'], string, number, number]> = [
+    ['locacao', 'Clínica Aurora', 3, 128],
+    ['devolucao', 'Distribuidora Norte', 2, 96],
+    ['venda', 'Supermercado Bom Preço', 2, 64],
+    ['comodato', 'Apae', 2, 38],
+  ];
+  let corte = 0;
+  for (const [modality, cliente, quantos, dias] of historico) {
+    const itens = avulsos.slice(corte, corte + quantos); corte += quantos;
+    if (!itens.length || !byName[cliente]) continue;
+    S.movements.push({
+      id: id(), modality,
+      fromClientId: modality === 'devolucao' ? byName[cliente]! : null,
+      toClientId: modality === 'devolucao' ? null : byName[cliente]!,
+      unit: 'Matriz', newCondition: null, note: null, userId: 'u2', createdAt: daysAgo(dias),
+      items: itens.map((d) => ({ modelId: d.modelId, deviceId: d.id })),
+    });
+  }
+
   // ---- um projeto de exemplo: a troca do áudio das URAs ----
   const proj: ProjRow = {
     id: 'proj1', name: 'Áudio novo das URAs',
@@ -702,7 +735,20 @@ export const demoApi: Api = {
       const didNo = new Set(ds.filter((d) => d.clientId && !activeSubs(d.clientId).some((s) => s.productCode === 'voicenet')).map((d) => d.clientId)).size; if (didNo) alerts.push({ kind: 'did_sem_voicenet', severity: 'warning', message: 'Clientes com DIDs alocados mas sem o produto VoiceNet', count: didNo, link: '/circuitos?aba=numeracao' });
       const zero = circuits.filter((c) => c.channels === 0 && c.total > 0).length; if (zero) alerts.push({ kind: 'circuito_sem_canais', severity: 'critical', message: 'Circuitos com DIDs mas 0 canais cadastrados', count: zero, link: '/circuitos' });
       const inativos = dev.filter((d) => d.condition === 'inativo').length; if (inativos) alerts.push({ kind: 'aparelho_inativo', severity: 'warning', message: 'Aparelhos inativos', count: inativos, link: '/inventario?condicao=inativo' });
+      // os últimos 6 meses de movimentação, mês a mês (o gráfico do Painel)
+      const agora = new Date();
+      const movimentacoesPorMes = Array.from({ length: 6 }, (_, k) => {
+        const d0 = new Date(agora.getFullYear(), agora.getMonth() - (5 - k), 1);
+        const mes = `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}`;
+        const doMes = S.movements.filter((m) => m.createdAt.slice(0, 7) === mes);
+        const porModalidade = Object.entries(
+          doMes.reduce<Record<string, number>>((a, m) => ({ ...a, [m.modality]: (a[m.modality] ?? 0) + 1 }), {}),
+        ).map(([modality, n]) => ({ modality, nome: (MODALIDADES as any)[modality] ?? modality, n })).sort((a, b) => b.n - a.n);
+        return { mes, total: doMes.length, porModalidade };
+      });
+
       return {
+        movimentacoesPorMes,
         clients: { active: active.length, byProduct: S.products.filter((p) => !p.deletedAt).map((p) => ({ code: p.code, name: p.name, color: p.color, n: active.filter((c) => activeSubs(c.id).some((s) => s.productCode === p.code)).length })) },
         dids: { total: ds.length, assigned: ds.filter((d) => d.clientId).length, free: ds.filter((d) => !d.clientId).length },
         circuits,

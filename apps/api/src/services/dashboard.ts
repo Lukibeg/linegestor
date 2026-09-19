@@ -69,7 +69,37 @@ export async function summary(db: Db) {
     .select({ id: auditLog.id, action: auditLog.action, summary: auditLog.summary, userName: users.name, createdAt: auditLog.createdAt })
     .from(auditLog).leftJoin(users, eq(users.id, auditLog.userId)).where(sql`${auditLog.action} not in ('login','logout','login_failed')`).orderBy(desc(auditLog.createdAt)).limit(8);
 
+  /**
+   * Movimentação dos últimos 6 meses, mês a mês: o total e a divisão por modalidade.
+   * É o gráfico do Painel — mostra se o mês está parado ou corrido sem ninguém contar na mão.
+   */
+  const porMes = await db
+    .select({
+      mes: sql<string>`to_char(date_trunc('month', ${deviceMovements.createdAt}), 'YYYY-MM')`,
+      modality: deviceMovements.modality,
+      n: sql<number>`count(*)::int`,
+    })
+    .from(deviceMovements)
+    .where(sql`${deviceMovements.createdAt} >= date_trunc('month', now()) - interval '5 months'`)
+    .groupBy(sql`1`, deviceMovements.modality);
+
+  const meses: Array<{ mes: string; total: number; porModalidade: Array<{ modality: string; nome: string; n: number }> }> = [];
+  const hoje = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - i, 1));
+    const mes = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const doMes = porMes.filter((x) => x.mes === mes);
+    meses.push({
+      mes,
+      total: doMes.reduce((a, x) => a + Number(x.n), 0),
+      porModalidade: doMes
+        .map((x) => ({ modality: x.modality, nome: (MODALIDADES as Record<string, string>)[x.modality] ?? x.modality, n: Number(x.n) }))
+        .sort((a, b) => b.n - a.n),
+    });
+  }
+
   return {
+    movimentacoesPorMes: meses,
     clients: { active: Number(cl?.n ?? 0), byProduct: byProduct.map((p) => ({ ...p, n: Number(p.n) })) },
     dids: { total: Number(d?.total ?? 0), assigned: Number(d?.assigned ?? 0), free: Number(d?.total ?? 0) - Number(d?.assigned ?? 0) },
     circuits: circuitsView.sort((a, b) => b.total - a.total),

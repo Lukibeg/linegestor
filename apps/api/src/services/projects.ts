@@ -168,16 +168,27 @@ export async function get(db: Db, id: string) {
   const fechadas = contagem.concluido + contagem.nao_se_aplica;
   const faltam = total - fechadas;
 
-  /** Quanto falta para cada responsável — é por aqui que se sabe quem cobrar. */
-  const porResponsavel = new Map<string, { id: string | null; nome: string; total: number; fechados: number; travados: number }>();
-  for (const { l, assigneeName } of linhas) {
-    const chave = l.assigneeId ?? 'sem';
-    const atual = porResponsavel.get(chave) ?? { id: l.assigneeId, nome: assigneeName ?? 'Sem responsável', total: 0, fechados: 0, travados: 0 };
-    atual.total += 1;
-    if (FECHADAS.includes(l.status as SituacaoProjeto)) atual.fechados += 1;
-    if (l.status === 'travado') atual.travados += 1;
-    porResponsavel.set(chave, atual);
-  }
+  /**
+   * Como está cada passo: quantos clientes em cada opção (ou feito/falta, na caixinha).
+   * É o "quantas mensagens enviadas, quantos confirmaram" — a leitura por coluna, não por cliente.
+   */
+  const porEtapa = etapas.map((e) => {
+    const marcas0 = linhas.map(({ l }) => marcas.find((m) => m.c.projectClientId === l.id && m.c.stepId === e.id)?.c);
+    const resolvidas = marcas0.filter((m) => etapaResolvida(e, m)).length;
+    return {
+      stepId: e.id, title: e.title, kind: e.kind,
+      total, resolvidas, faltam: total - resolvidas,
+      faixas: e.kind === 'escolha'
+        ? [
+            ...(e.options ?? []).map((o) => ({ valor: o.id, label: o.label, tone: o.tone, conclui: o.conclui, n: marcas0.filter((m) => m?.value === o.id).length })),
+            { valor: '', label: 'Em branco', tone: 'muted', conclui: false, n: marcas0.filter((m) => !m).length },
+          ]
+        : [
+            { valor: 'feito', label: 'Feito', tone: 'ok', conclui: true, n: resolvidas },
+            { valor: '', label: 'Falta', tone: 'muted', conclui: false, n: total - resolvidas },
+          ],
+    };
+  });
 
   return {
     id: p.id, name: p.name, goal: p.goal, status: p.status, dueDate: p.dueDate,
@@ -200,7 +211,7 @@ export async function get(db: Db, id: string) {
       etapasFeitas: linhas.reduce((a, { l }) => a + etapas.filter((e) => etapaResolvida(e, marcas.find((m) => m.c.projectClientId === l.id && m.c.stepId === e.id)?.c)).length, 0),
       etapasTotais: total * etapas.length,
       atrasado: atrasado(p, faltam),
-      porResponsavel: [...porResponsavel.values()].sort((a, b) => (b.total - b.fechados) - (a.total - a.fechados) || a.nome.localeCompare(b.nome)),
+      porEtapa,
     },
   };
 }

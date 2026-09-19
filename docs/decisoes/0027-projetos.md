@@ -95,3 +95,17 @@ o aviso de que o atendimento volta no dia seguinte. Caixinha de "feito" não dá
   Contato · Áudio do feriado · Travamento do bot (listas) e "Voltar ao normal" (caixinha).
 - 4 testes novos (18 no arquivo, 85 no total) cobrem o que resolve e o que não resolve, renomear
   opção sem perder escolha, tirar opção, a recusa da lista mal formada e a duplicação.
+
+## Depois: a leitura por coluna, e o responsável só no projeto
+
+Dois ajustes pedidos nos comentários da prévia:
+
+- Saiu o **"Quanto falta para cada um"** e entrou **"Como está cada passo"**: uma linha por coluna,
+  com a barra na proporção de cada opção e os números ao lado ("Mensagem enviada 1 · Cliente
+  confirmou 1 · Em branco 1"), mais o "2 de 5 resolvido(s)". Clicar em qualquer número filtra a
+  tabela para aqueles clientes. É a leitura **por coluna** — a pergunta que a equipe faz na reunião
+  é "quantos já confirmaram?", não "quantos são do Fulano". A legenda que ficava embaixo da tabela
+  saiu: virou repetição.
+- A coluna **Responsável** saiu da tabela de clientes; por enquanto só existe o responsável do
+  projeto inteiro. O campo `assignee_id` continua no banco, sem uso na tela — se um dia fizer falta,
+  é só voltar a mostrar a coluna, sem migração e sem perder nada.

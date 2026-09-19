@@ -80,6 +80,14 @@ describe('inventário', () => {
     expect(painel.devices.withClients).toBe(1);
     expect(painel.devices.valueWithClientsCents).toBe(45000);
 
+    // o gráfico do Painel: sempre 6 meses, o mais recente por último, com a divisão por modalidade
+    expect(painel.movimentacoesPorMes).toHaveLength(6);
+    const esteMes = painel.movimentacoesPorMes[5];
+    expect(esteMes.mes).toBe(new Date().toISOString().slice(0, 7));
+    expect(esteMes.total).toBeGreaterThan(0);
+    expect(esteMes.total).toBe(esteMes.porModalidade.reduce((a: number, x: any) => a + x.n, 0));
+    expect(esteMes.porModalidade.map((x: any) => x.nome)).toContain('Locação');
+
     // os cartões do topo do Inventário seguem os filtros da lista
     const geral = (await s.get('/inventory/summary')).json();
     expect(geral).toMatchObject({ withClients: 1, filtrado: false });

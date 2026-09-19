@@ -111,6 +111,8 @@ export type Movement = {
 };
 
 export type Dashboard = {
+  /** Os últimos 6 meses de movimentação, para o gráfico do Painel */
+  movimentacoesPorMes: Array<{ mes: string; total: number; porModalidade: Array<{ modality: string; nome: string; n: number }> }>;
   clients: { active: number; byProduct: Array<ProductChip & { n: number }> };
   dids: { total: number; assigned: number; free: number };
   circuits: Array<{ id: string; name: string; carrierName: string | null; channels: number; total: number; assigned: number; free: number }>;
@@ -213,7 +215,12 @@ export type Projeto = {
   resumo: {
     total: number; faltam: number; contagem: ContagemProjeto; andamento: number;
     etapasFeitas: number; etapasTotais: number; atrasado: boolean;
-    porResponsavel: Array<{ id: string | null; nome: string; total: number; fechados: number; travados: number }>;
+    /** Como está cada passo: quantos clientes em cada opção (ou feito/falta, na caixinha) */
+    porEtapa: Array<{
+      stepId: string; title: string; kind: 'check' | 'escolha';
+      total: number; resolvidas: number; faltam: number;
+      faixas: Array<{ valor: string; label: string; tone: CorOpcao; conclui: boolean; n: number }>;
+    }>;
   };
   podeTrabalhar: boolean; podeGerenciar: boolean;
 };

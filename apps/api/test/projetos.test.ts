@@ -184,14 +184,17 @@ describe('mexer nas etapas depois que o trabalho começou', () => {
 });
 
 describe('o painel do projeto', () => {
-  it('conta por situação, por responsável, e marca o atraso só quando ainda falta gente', async () => {
-    await s.patch(`/projects/${projetoId}/clientes/${linhas['Clínica Aurora']}`, { assigneeId: (await s.get('/admin/users')).json().find((u: any) => u.email === 'marina@gestor.local').id });
+  it('conta por situação, mostra como está cada passo, e marca o atraso só quando ainda falta gente', async () => {
     const p = await proj();
 
-    const marina = p.resumo.porResponsavel.find((x: any) => x.nome === 'Marina Costa');
-    expect(marina.total).toBe(1);
-    expect(marina.fechados).toBe(0);
-    expect(p.resumo.porResponsavel.some((x: any) => x.nome === 'Sem responsável')).toBe(true);
+    // a leitura por coluna: quantos clientes em cada faixa de cada etapa
+    expect(p.resumo.porEtapa).toHaveLength(p.etapas.length);
+    const primeira = p.resumo.porEtapa[0];
+    expect(primeira.title).toBe(p.etapas[0].title);
+    expect(primeira.total).toBe(p.resumo.total);
+    expect(primeira.faixas.map((f: any) => f.label)).toEqual(['Feito', 'Falta']);
+    expect(primeira.faixas.reduce((a: number, f: any) => a + f.n, 0)).toBe(p.resumo.total);
+    expect(primeira.resolvidas + primeira.faltam).toBe(p.resumo.total);
 
     // prazo no passado, com gente devendo → atrasado
     expect((await s.patch(`/projects/${projetoId}`, { dueDate: '2020-01-01' })).json().resumo.atrasado).toBe(true);
@@ -335,6 +338,13 @@ describe('etapa em lista de opções (o rótulo colorido da planilha)', () => {
     // limpar a escolha reabre
     expect((await marcar(audio.id, { valor: null })).json().status).toBe('andamento');
     await marcar(audio.id, { valor: audio.options[2].id });
+
+    // a leitura por coluna conta quantos estão em cada opção
+    const porEtapa = (await s.get(`/projects/${p1.id}`)).json().resumo.porEtapa;
+    const coluna = porEtapa.find((x: any) => x.stepId === audio.id);
+    expect(coluna.faixas.map((f: any) => f.label)).toEqual(['Sem necessidade', 'Aguardando áudio', 'Configurado na URA', 'Em branco']);
+    expect(coluna.faixas.find((f: any) => f.label === 'Configurado na URA').n).toBe(1);
+    expect(coluna.faixas.reduce((a: number, f: any) => a + f.n, 0)).toBe(1);
 
     // renomear o rótulo (mesmo id) preserva a escolha
     const renomeado = await s.patch(`/projects/${p1.id}`, {
