@@ -12,13 +12,15 @@
 import { ALL_PERMISSIONS, DEFAULT_ROLES, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
-import { ApiError, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Projeto, type ProjetoResumo, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
 const id = () => 'demo' + (seq++).toString(36);
 const now = () => new Date().toISOString();
 const daysAgo = (d: number, h = 10) => { const x = new Date(); x.setDate(x.getDate() - d); x.setHours(h, 0, 0, 0); return x.toISOString(); };
+/** Uma data de calendário daqui a N dias, no formato "AAAA-MM-DD" (o prazo do projeto). */
+const emDias = (d: number) => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
 /** Data de calendário: guardada ao meio-dia UTC, como no servidor (não "volta um dia" no Brasil). */
 const dia = (v: unknown) => { if (v == null || v === '') return null; const d = new Date(String(v)); return Number.isNaN(d.getTime()) ? null : diaAoMeioDia(d).toISOString(); };
 
@@ -41,6 +43,14 @@ type LoginRow = { id: string; clientId: string; modelId: string; username: strin
 type NetRow = { clientId: string; ipAddress: string | null; subnetMask: string | null; defaultRouter: string | null; dns1: string | null; dns2: string | null; wirelessPasswordSecretId: string | null; note: string | null; updatedAt: string };
 /** Uma nota de novidades na demonstração (a imagem fica embutida, como a logo do cliente) */
 type NotaRow = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null; items: Array<{ id: string; kind: NovidadeItem['kind']; title: string; text: string | null; imagem: string | null }> };
+/** Projetos na demonstração: o projeto, as etapas, a lista de clientes e o que já foi marcado. */
+type ProjRow = { id: string; name: string; goal: string | null; status: 'aberto' | 'concluido' | 'cancelado'; dueDate: string | null; ownerId: string | null; closedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null };
+type StepRow = { id: string; projectId: string; title: string; sortOrder: number };
+type PClientRow = { id: string; projectId: string; clientId: string; assigneeId: string | null; status: SituacaoProjeto; blockedReason: string | null; doneAt: string | null };
+type CheckRow = { projectClientId: string; stepId: string; doneById: string | null; doneAt: string };
+type PCommentRow = { id: string; projectId: string; projectClientId: string | null; userId: string | null; body: string; createdAt: string; deletedAt: string | null };
+type PFileRow = { id: string; projectId: string; projectClientId: string | null; fileName: string; mimeType: string; sizeBytes: number; conteudo: string; uploadedById: string | null; createdAt: string; deletedAt: string | null };
+
 type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
 
@@ -48,6 +58,8 @@ const S = {
   clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], units: [] as UnitRow[], deviceLogins: [] as LoginRow[], networks: [] as NetRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
   notas: [] as NotaRow[], leituras: [] as Array<{ noteId: string; userId: string; readAt: string }>,
+  projetos: [] as ProjRow[], etapas: [] as StepRow[], projClientes: [] as PClientRow[], marcas: [] as CheckRow[],
+  projComentarios: [] as PCommentRow[], projAnexos: [] as PFileRow[],
   ajustesBackup: {
     ativo: false, pasta: 'Backups › Ingline Gestão', pastaId: '', contaDeServico: '',
     ultimoEnvioEm: null as string | null, ultimoEnvioOk: null as boolean | null, ultimoEnvioMsg: null as string | null, temChave: false,
@@ -230,6 +242,45 @@ function seed() {
     publishedAt: daysAgo(0, 9), createdAt: daysAgo(0, 8), updatedAt: daysAgo(0, 9), deletedAt: null,
     items: NOTA_DEMO.items.map((i) => ({ id: id(), kind: i.kind, title: i.title, text: i.text, imagem: i.imagem ?? null })),
   }];
+  // ---- um projeto de exemplo: a troca do áudio das URAs ----
+  const proj: ProjRow = {
+    id: 'proj1', name: 'Áudio novo das URAs',
+    goal: 'Trocar o áudio da URA de todos os clientes com LinePBX por uma gravação de estúdio. A locução já está pronta; falta subir, testar com o cliente e avisar.',
+    status: 'aberto', dueDate: emDias(21), ownerId: 'u1', closedAt: null,
+    createdAt: daysAgo(12), updatedAt: daysAgo(0, 10), deletedAt: null,
+  };
+  S.projetos = [proj];
+  S.etapas = ['Gravar o áudio', 'Subir no PBX', 'Testar com o cliente', 'Avisar que está no ar']
+    .map((title, i) => ({ id: `st${i + 1}`, projectId: proj.id, title, sortOrder: i }));
+
+  const naLista: Array<[string, string | null, SituacaoProjeto, number, string | null]> = [
+    // cliente, responsável, situação, etapas já feitas, motivo do travamento
+    ['Hospital Vale Verde', 'u2', 'concluido', 4, null],
+    ['Clínica Aurora', 'u2', 'andamento', 2, null],
+    ['Supermercado Bom Preço', 'u3', 'travado', 1, 'Cliente pediu para voltar depois do fechamento do mês.'],
+    ['Distribuidora Norte', 'u3', 'pendente', 0, null],
+    ['Home Care Viver Bem', null, 'pendente', 0, null],
+    ['Transportes Litoral', 'u2', 'nao_se_aplica', 0, null],
+  ];
+  for (const [nome, assigneeId, status, feitas, motivo] of naLista) {
+    const clientId = byName[nome];
+    if (!clientId) continue;
+    const linha: PClientRow = {
+      id: 'pc' + S.projClientes.length, projectId: proj.id, clientId, assigneeId, status,
+      blockedReason: motivo, doneAt: status === 'concluido' || status === 'nao_se_aplica' ? daysAgo(2) : null,
+    };
+    S.projClientes.push(linha);
+    for (let i = 0; i < feitas; i++) S.marcas.push({ projectClientId: linha.id, stepId: `st${i + 1}`, doneById: assigneeId, doneAt: daysAgo(10 - i * 2) });
+  }
+  S.projComentarios = [
+    { id: id(), projectId: proj.id, projectClientId: null, userId: 'u1', body: 'A locução final está anexada aqui. Usem esse arquivo, não o da pasta antiga.', createdAt: daysAgo(11), deletedAt: null },
+    { id: id(), projectId: proj.id, projectClientId: 'pc2', userId: 'u3', body: 'Liguei duas vezes, ficaram de retornar. Travei para não segurar a lista.', createdAt: daysAgo(3), deletedAt: null },
+  ];
+  S.projAnexos = [
+    { id: 'anx1', projectId: proj.id, projectClientId: null, fileName: 'ura-institucional-v3.mp3', mimeType: 'audio/mpeg', sizeBytes: 1_842_000, conteudo: 'data:audio/mpeg;base64,', uploadedById: 'u1', createdAt: daysAgo(11), deletedAt: null },
+    { id: 'anx2', projectId: proj.id, projectClientId: null, fileName: 'roteiro-da-locucao.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sizeBytes: 24_500, conteudo: 'data:application/octet-stream;base64,', uploadedById: 'u1', createdAt: daysAgo(12), deletedAt: null },
+  ];
+
   S.audit = [
     { id: id(), action: 'bulk_update', entityType: 'did', entityId: null, summary: 'Alterou 40 DID(s): cliente → Supermercado Bom Preço', before: null, after: null, userName: 'Lúcio Andrade', userId: 'u2', createdAt: daysAgo(1, 16) },
     { id: id(), action: 'reveal_secret', entityType: 'secret', entityId: null, summary: 'Lúcio Andrade revelou "Senha SSH do LinePBX — Clínica Aurora"', before: null, after: null, userName: 'Lúcio Andrade', userId: 'u2', createdAt: daysAgo(1, 11) },
@@ -399,6 +450,131 @@ function aplicarItens(n: NotaRow, itens?: Array<Record<string, any>>) {
   });
 }
 const notasVivas = () => S.notas.filter((n) => !n.deletedAt);
+// ---------------- projetos ----------------
+const temPerm = (perm: string) => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes(perm) ?? false);
+const projetosVivos = () => S.projetos.filter((p) => !p.deletedAt);
+const projetoOu404 = (idp: string) => { const p = projetosVivos().find((x) => x.id === idp); if (!p) throw notFound('Projeto'); return p; };
+const linhaOu404 = (projectId: string, linhaId: string) => { const l = S.projClientes.find((x) => x.id === linhaId && x.projectId === projectId); if (!l) throw bad('Este cliente não está no projeto'); return l; };
+const FECHADAS_DEMO: SituacaoProjeto[] = ['concluido', 'nao_se_aplica'];
+const MANUAIS_DEMO: SituacaoProjeto[] = ['travado', 'nao_se_aplica'];
+
+/** A situação anda sozinha conforme as marcas — menos em "travado" e "não se aplica". */
+function recalcular(l: PClientRow) {
+  if (MANUAIS_DEMO.includes(l.status)) return l;
+  const etapas = S.etapas.filter((e) => e.projectId === l.projectId).length;
+  const marcadas = S.marcas.filter((m) => m.projectClientId === l.id).length;
+  l.status = etapas > 0 && marcadas >= etapas ? 'concluido' : marcadas > 0 ? 'andamento' : 'pendente';
+  l.doneAt = l.status === 'concluido' ? now() : null;
+  return l;
+}
+
+function gravarEtapas(projectId: string, etapas: Array<{ id?: string; title: string }>) {
+  const mantidos = new Set(etapas.map((e) => e.id).filter(Boolean) as string[]);
+  const sumiram = S.etapas.filter((e) => e.projectId === projectId && !mantidos.has(e.id)).map((e) => e.id);
+  S.etapas = S.etapas.filter((e) => e.projectId !== projectId || mantidos.has(e.id));
+  S.marcas = S.marcas.filter((m) => !sumiram.includes(m.stepId));
+  etapas.forEach((e, i) => {
+    const atual = e.id ? S.etapas.find((x) => x.id === e.id) : null;
+    if (atual) { atual.title = e.title; atual.sortOrder = i; }
+    else S.etapas.push({ id: id(), projectId, title: e.title, sortOrder: i });
+  });
+}
+
+/** Quem já está na lista é ignorado: não duplica nem zera o que já foi feito. */
+function entrarNaLista(projectId: string, clientIds: string[], assigneeId: string | null = null) {
+  let n = 0;
+  for (const clientId of [...new Set(clientIds)]) {
+    if (!S.clients.some((c) => c.id === clientId && !c.deletedAt)) continue;
+    if (S.projClientes.some((x) => x.projectId === projectId && x.clientId === clientId)) continue;
+    S.projClientes.push({ id: id(), projectId, clientId, assigneeId, status: 'pendente', blockedReason: null, doneAt: null });
+    n++;
+  }
+  return n;
+}
+
+const zeradoDemo = (): Record<SituacaoProjeto, number> => ({ pendente: 0, andamento: 0, travado: 0, concluido: 0, nao_se_aplica: 0 });
+function contarLinhas(projectId: string) {
+  const linhas = S.projClientes.filter((x) => x.projectId === projectId);
+  const contagem = zeradoDemo();
+  for (const l of linhas) contagem[l.status] += 1;
+  const total = linhas.length;
+  const fechadas = contagem.concluido + contagem.nao_se_aplica;
+  return { linhas, contagem, total, fechadas, faltam: total - fechadas, andamento: total ? Math.round((fechadas / total) * 100) : 0 };
+}
+const atrasadoDemo = (p: ProjRow, faltam: number) => p.status === 'aberto' && !!p.dueDate && faltam > 0 && p.dueDate < new Date().toISOString().slice(0, 10);
+
+function resumoProjeto(p: ProjRow): ProjetoResumo {
+  const c = contarLinhas(p.id);
+  return {
+    id: p.id, name: p.name, goal: p.goal, status: p.status, dueDate: p.dueDate,
+    ownerId: p.ownerId, ownerName: S.users.find((u) => u.id === p.ownerId)?.name ?? null,
+    closedAt: p.closedAt, createdAt: p.createdAt, updatedAt: p.updatedAt,
+    etapas: S.etapas.filter((e) => e.projectId === p.id).length,
+    total: c.total, faltam: c.faltam, contagem: c.contagem, andamento: c.andamento, atrasado: atrasadoDemo(p, c.faltam),
+  };
+}
+
+function projetoCompleto(p: ProjRow): Projeto {
+  const c = contarLinhas(p.id);
+  const etapas = S.etapas.filter((e) => e.projectId === p.id).sort((a, b) => a.sortOrder - b.sortOrder);
+  const porResponsavel = new Map<string, { id: string | null; nome: string; total: number; fechados: number; travados: number }>();
+  for (const l of c.linhas) {
+    const chave = l.assigneeId ?? 'sem';
+    const atual = porResponsavel.get(chave) ?? { id: l.assigneeId, nome: S.users.find((u) => u.id === l.assigneeId)?.name ?? 'Sem responsável', total: 0, fechados: 0, travados: 0 };
+    atual.total += 1;
+    if (FECHADAS_DEMO.includes(l.status)) atual.fechados += 1;
+    if (l.status === 'travado') atual.travados += 1;
+    porResponsavel.set(chave, atual);
+  }
+  const marcas = S.marcas.filter((m) => c.linhas.some((l) => l.id === m.projectClientId));
+  return {
+    id: p.id, name: p.name, goal: p.goal, status: p.status, dueDate: p.dueDate,
+    ownerId: p.ownerId, ownerName: S.users.find((u) => u.id === p.ownerId)?.name ?? null,
+    closedAt: p.closedAt, createdAt: p.createdAt, updatedAt: p.updatedAt,
+    etapas: etapas.map((e) => ({ id: e.id, title: e.title, sortOrder: e.sortOrder })),
+    clientes: c.linhas
+      .map((l) => {
+        const cli = S.clients.find((x) => x.id === l.clientId)!;
+        return {
+          id: l.id, clientId: l.clientId, clientName: cli?.tradeName ?? '?', arquivado: !!cli?.archived,
+          assigneeId: l.assigneeId, assigneeName: S.users.find((u) => u.id === l.assigneeId)?.name ?? null,
+          status: l.status, blockedReason: l.blockedReason, doneAt: l.doneAt,
+          feitas: S.marcas.filter((m) => m.projectClientId === l.id).map((m) => ({ stepId: m.stepId, doneAt: m.doneAt, quem: S.users.find((u) => u.id === m.doneById)?.name ?? null })),
+        };
+      })
+      .sort((a, b) => a.clientName.localeCompare(b.clientName, 'pt-BR')),
+    comentarios: S.projComentarios.filter((x) => x.projectId === p.id && !x.deletedAt)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((x) => ({ id: x.id, projectClientId: x.projectClientId, body: x.body, autor: S.users.find((u) => u.id === x.userId)?.name ?? 'sistema', userId: x.userId, createdAt: x.createdAt })),
+    anexos: S.projAnexos.filter((x) => x.projectId === p.id && !x.deletedAt)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((x) => ({ id: x.id, projectClientId: x.projectClientId, fileName: x.fileName, mimeType: x.mimeType, sizeBytes: x.sizeBytes, createdAt: x.createdAt, quem: S.users.find((u) => u.id === x.uploadedById)?.name ?? 'sistema' })),
+    resumo: {
+      total: c.total, faltam: c.faltam, contagem: c.contagem, andamento: c.andamento,
+      etapasFeitas: marcas.length, etapasTotais: c.total * etapas.length, atrasado: atrasadoDemo(p, c.faltam),
+      porResponsavel: [...porResponsavel.values()].sort((a, b) => (b.total - b.fechados) - (a.total - a.fechados) || a.nome.localeCompare(b.nome, 'pt-BR')),
+    },
+    podeTrabalhar: temPerm('projects.work'), podeGerenciar: temPerm('projects.manage'),
+  };
+}
+
+/** Os projetos de um cliente (a aba da ficha dele). */
+function projetosDoCliente(clientId: string): ProjetoDoCliente[] {
+  return S.projClientes
+    .filter((l) => l.clientId === clientId)
+    .flatMap<ProjetoDoCliente>((l) => {
+      const p = projetosVivos().find((x) => x.id === l.projectId);
+      if (!p) return [];
+      return [{
+        projectClientId: l.id, projectId: p.id, name: p.name, projectStatus: p.status, dueDate: p.dueDate,
+        status: l.status, blockedReason: l.blockedReason, assigneeId: l.assigneeId,
+        assigneeName: S.users.find((u) => u.id === l.assigneeId)?.name ?? null,
+        feitas: S.marcas.filter((m) => m.projectClientId === l.id).length,
+        etapas: S.etapas.filter((e) => e.projectId === p.id).length,
+      }];
+    });
+}
+
 const podeEditarNovidades = () => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes('admin.manage') ?? false);
 const shapeNota = (n: NotaRow): Novidade => ({
   id: n.id, version: n.version, title: n.title, summary: n.summary, publishedAt: n.publishedAt, createdAt: n.createdAt, updatedAt: n.updatedAt,
@@ -486,6 +662,15 @@ export const demoApi: Api = {
         alerts,
         recentMovements: [...S.movements].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 6).map((m) => ({ id: m.id, modality: m.modality, modalityName: (MODALIDADES as any)[m.modality], fromName: S.clients.find((x) => x.id === m.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === m.toClientId)?.tradeName ?? null, userName: S.users.find((u) => u.id === m.userId)?.name ?? '?', createdAt: m.createdAt })),
         recentAudit: S.audit.filter((a) => !['login', 'logout'].includes(a.action)).slice(0, 8),
+        projetos: (() => {
+          const abertos = projetosVivos().filter((x) => x.status === 'aberto').map(resumoProjeto).filter((x) => x.total > 0);
+          return {
+            abertos: abertos.length,
+            atrasados: abertos.filter((x) => x.atrasado).length,
+            travados: abertos.reduce((a, x) => a + x.contagem.travado, 0),
+            items: abertos.slice(0, 4).map((x) => ({ id: x.id, name: x.name, andamento: x.andamento, faltam: x.faltam, total: x.total, atrasado: x.atrasado })),
+          };
+        })(),
       };
     },
     async search(q) {
@@ -524,6 +709,7 @@ export const demoApi: Api = {
     },
     async options(q) { await wait(50); return S.clients.filter((c) => !c.deletedAt && !c.archived && (q?.includeInternal || !c.isInternal) && (!q?.productCode || activeSubs(c.id).some((s) => s.productCode === q.productCode)) && (!q?.withDevices || S.devices.some((d) => !d.deletedAt && d.clientId === c.id && d.currentModality !== 'venda'))).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode })); },
     async get(idc) { await wait(); requirePerm('records.read'); return fullClient(idc); },
+    async projetos(idc) { await wait(60); requirePerm('records.read'); return projetosDoCliente(idc); },
     async create(d) { await wait(); requirePerm('records.write'); const cnpj = cnpjLimpo(String(d.cnpj ?? '')); if (!cnpjValido(cnpj)) throw new ApiError(400, 'Dados inválidos', [{ field: 'cnpj', message: 'CNPJ inválido (dígito verificador não confere)' }]); if (S.clients.some((c) => c.cnpj === cnpj)) throw bad('Já existe um cliente com este CNPJ'); const c: Client = { id: id(), tradeName: String(d.tradeName), legalName: String(d.legalName), cnpj, logoUrl: null, archived: false, isInternal: false, internalCode: null, notes: (d.notes as string) ?? null, deletedAt: null, createdAt: now(), updatedAt: now() }; S.clients.push(c); unidadesDe(c.id); audit('create', 'client', `Criou o cliente ${c.tradeName}`, c.id); return fullClient(c.id); },
     async update(idc, d) { await wait(); requirePerm('records.write'); const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente'); if (d.cnpj) { const cn = cnpjLimpo(String(d.cnpj)); if (!cnpjValido(cn)) throw new ApiError(400, 'Dados inválidos', [{ field: 'cnpj', message: 'CNPJ inválido' }]); c.cnpj = cn; } for (const k of ['tradeName', 'legalName', 'notes', 'archived'] as const) if (d[k] !== undefined) (c as any)[k] = d[k]; c.updatedAt = now(); audit('update', 'client', `${S.me!.name} ${d.archived === true ? 'arquivou' : d.archived === false ? 'desarquivou' : 'editou'} o cliente ${c.tradeName}`, c.id); return fullClient(c.id); },
     async remove(idc) { await wait(); requirePerm('records.delete'); const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente'); c.deletedAt = now(); audit('delete', 'client', `Mandou o cliente ${c.tradeName} para a lixeira`, c.id); return { ok: true }; },
@@ -960,6 +1146,159 @@ export const demoApi: Api = {
       n.deletedAt = now(); audit('delete', 'releaseNote', `Mandou a nota de novidades ${n.version} para a lixeira`, n.id);
       return { ok: true };
     },
+  },
+  projetos: {
+    async lista(q) {
+      await wait(80); requirePerm('records.read');
+      const status = (q?.status as string) ?? 'aberto';
+      const termo = (q?.q as string)?.trim().toLowerCase() ?? '';
+      const items = projetosVivos()
+        .filter((p) => status === 'todos' || p.status === status)
+        .filter((p) => !termo || p.name.toLowerCase().includes(termo) || (p.goal ?? '').toLowerCase().includes(termo))
+        .sort((a, b) => (b.closedAt ?? b.updatedAt).localeCompare(a.closedAt ?? a.updatedAt))
+        .map(resumoProjeto);
+      return { items, podeTrabalhar: temPerm('projects.work'), podeGerenciar: temPerm('projects.manage') };
+    },
+    async pessoas() { await wait(40); requirePerm('records.read'); return S.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((u) => ({ id: u.id, name: u.name })); },
+    async get(idp) { await wait(90); requirePerm('records.read'); return projetoCompleto(projetoOu404(idp)); },
+    async criar(d) {
+      await wait(); requirePerm('projects.manage');
+      const p: ProjRow = {
+        id: id(), name: String(d.name).trim(), goal: (d.goal as string) ?? null, status: 'aberto',
+        dueDate: (d.dueDate as string) || null, ownerId: (d.ownerId as string) || null, closedAt: null,
+        createdAt: now(), updatedAt: now(), deletedAt: null,
+      };
+      S.projetos.push(p);
+      gravarEtapas(p.id, (d.etapas as Array<{ id?: string; title: string }>) ?? []);
+      entrarNaLista(p.id, (d.clientIds as string[]) ?? []);
+      audit('create', 'project', `Criou o projeto "${p.name}" com ${S.projClientes.filter((x) => x.projectId === p.id).length} cliente(s)`, p.id);
+      return projetoCompleto(p);
+    },
+    async atualizar(idp, d) {
+      await wait(); requirePerm('projects.manage');
+      const p = projetoOu404(idp);
+      if (d.name !== undefined) p.name = String(d.name).trim();
+      if (d.goal !== undefined) p.goal = (d.goal as string) ?? null;
+      if (d.dueDate !== undefined) p.dueDate = (d.dueDate as string) || null;
+      if (d.ownerId !== undefined) p.ownerId = (d.ownerId as string) || null;
+      if (d.status !== undefined) { p.status = d.status as ProjRow['status']; p.closedAt = p.status === 'aberto' ? null : now(); }
+      if (d.etapas !== undefined) {
+        gravarEtapas(p.id, d.etapas as Array<{ id?: string; title: string }>);
+        for (const l of S.projClientes.filter((x) => x.projectId === p.id)) recalcular(l);
+      }
+      if (d.clientIds !== undefined) entrarNaLista(p.id, d.clientIds as string[]);
+      p.updatedAt = now();
+      audit('update', 'project', `Editou o projeto "${p.name}"`, p.id);
+      return projetoCompleto(p);
+    },
+    async remover(idp) { await wait(); requirePerm('projects.manage'); const p = projetoOu404(idp); p.deletedAt = now(); audit('delete', 'project', `Mandou o projeto "${p.name}" para a lixeira`, p.id); return { ok: true }; },
+    async addClientes(idp, clientIds, assigneeId) {
+      await wait(); requirePerm('projects.manage');
+      const p = projetoOu404(idp);
+      const n = entrarNaLista(p.id, clientIds, assigneeId ?? null);
+      audit('update', 'project', `Acrescentou ${n} cliente(s) ao projeto "${p.name}"`, p.id);
+      return projetoCompleto(p);
+    },
+    async removerCliente(idp, linhaId) {
+      await wait(); requirePerm('projects.manage');
+      const p = projetoOu404(idp);
+      const l = linhaOu404(p.id, linhaId);
+      const nome = S.clients.find((c) => c.id === l.clientId)?.tradeName ?? 'cliente';
+      S.projClientes = S.projClientes.filter((x) => x.id !== linhaId);
+      S.marcas = S.marcas.filter((m) => m.projectClientId !== linhaId);
+      S.projComentarios = S.projComentarios.filter((c) => c.projectClientId !== linhaId);
+      S.projAnexos = S.projAnexos.filter((a) => a.projectClientId !== linhaId);
+      audit('delete', 'project', `Tirou ${nome} do projeto`, p.id);
+      return { ok: true };
+    },
+    async linha(idp, linhaId, d) {
+      await wait(70); requirePerm('projects.work');
+      const p = projetoOu404(idp);
+      const l = linhaOu404(p.id, linhaId);
+      const nome = S.clients.find((c) => c.id === l.clientId)?.tradeName ?? 'cliente';
+      if (d.assigneeId !== undefined) l.assigneeId = (d.assigneeId as string) || null;
+      if (d.status !== undefined) {
+        const status = d.status as SituacaoProjeto;
+        if (status === 'travado' && !String(d.blockedReason ?? '').trim()) throw bad('Diga por que está travado');
+        l.status = status;
+        l.blockedReason = status === 'travado' ? String(d.blockedReason).trim() : null;
+        l.doneAt = status === 'concluido' || status === 'nao_se_aplica' ? now() : null;
+        if (status === 'concluido') {
+          // "concluído" à mão = tudo feito: completa as etapas que faltavam
+          for (const e of S.etapas.filter((x) => x.projectId === p.id)) {
+            if (!S.marcas.some((m) => m.projectClientId === l.id && m.stepId === e.id)) S.marcas.push({ projectClientId: l.id, stepId: e.id, doneById: S.me!.id, doneAt: now() });
+          }
+        }
+        if (status !== 'travado' && status !== 'nao_se_aplica') recalcular(l);
+      }
+      p.updatedAt = now();
+      audit('update', 'project', `${nome}: ${d.status ? `situação → ${l.status}` : 'trocou o responsável'}`, p.id);
+      return l;
+    },
+    async marcar(idp, linhaId, stepId, feito) {
+      await wait(60); requirePerm('projects.work');
+      const p = projetoOu404(idp);
+      const l = linhaOu404(p.id, linhaId);
+      const etapa = S.etapas.find((e) => e.id === stepId && e.projectId === p.id);
+      if (!etapa) throw bad('Etapa não encontrada neste projeto');
+      if (l.status === 'nao_se_aplica') throw bad('Este cliente está marcado como "não se aplica". Tire essa marca para trabalhar nele.');
+      if (feito) {
+        if (!S.marcas.some((m) => m.projectClientId === linhaId && m.stepId === stepId)) S.marcas.push({ projectClientId: linhaId, stepId, doneById: S.me!.id, doneAt: now() });
+      } else {
+        S.marcas = S.marcas.filter((m) => !(m.projectClientId === linhaId && m.stepId === stepId));
+      }
+      recalcular(l);
+      p.updatedAt = now();
+      const nome = S.clients.find((c) => c.id === l.clientId)?.tradeName ?? 'cliente';
+      audit('update', 'project', `${feito ? 'Marcou' : 'Desmarcou'} "${etapa.title}" de ${nome}`, p.id);
+      return l;
+    },
+    async comentar(idp, body, projectClientId) {
+      await wait(90); requirePerm('projects.work');
+      const p = projetoOu404(idp);
+      if (projectClientId) linhaOu404(p.id, projectClientId);
+      const c: PCommentRow = { id: id(), projectId: p.id, projectClientId: projectClientId ?? null, userId: S.me!.id, body: body.trim(), createdAt: now(), deletedAt: null };
+      S.projComentarios.push(c);
+      audit('create', 'project', 'Comentou no projeto', p.id);
+      return c;
+    },
+    async apagarComentario(idp, commentId) {
+      await wait(60); requirePerm('projects.work');
+      const p = projetoOu404(idp);
+      const c = S.projComentarios.find((x) => x.id === commentId && x.projectId === p.id && !x.deletedAt);
+      if (!c) throw notFound('Comentário');
+      if (c.userId !== S.me!.id && !temPerm('projects.manage')) throw bad('Só quem escreveu (ou quem gerencia o projeto) pode apagar este comentário');
+      c.deletedAt = now();
+      audit('delete', 'project', 'Apagou um comentário do projeto', p.id);
+      return { ok: true };
+    },
+    async anexar(idp, d): Promise<AnexoProjeto> {
+      await wait(250); requirePerm('projects.work');
+      const p = projetoOu404(idp);
+      if (d.projectClientId) linhaOu404(p.id, d.projectClientId);
+      const m = /^data:([^;]+);base64,(.*)$/s.exec(d.conteudo);
+      if (!m) throw bad('Não consegui ler esse arquivo');
+      const sizeBytes = Math.floor((m[2]!.length * 3) / 4);
+      if (sizeBytes > 10 * 1024 * 1024) throw bad('Arquivo muito grande (máximo 10 MB)');
+      const a: PFileRow = {
+        id: id(), projectId: p.id, projectClientId: d.projectClientId ?? null, fileName: d.fileName,
+        mimeType: m[1]!.toLowerCase(), sizeBytes, conteudo: d.conteudo, uploadedById: S.me!.id, createdAt: now(), deletedAt: null,
+      };
+      S.projAnexos.push(a);
+      audit('create', 'project', `Anexou "${a.fileName}" ao projeto`, p.id);
+      return { id: a.id, projectClientId: a.projectClientId, fileName: a.fileName, mimeType: a.mimeType, sizeBytes: a.sizeBytes, createdAt: a.createdAt, quem: S.me!.name };
+    },
+    async apagarAnexo(idp, anexoId) {
+      await wait(60); requirePerm('projects.work');
+      const p = projetoOu404(idp);
+      const a = S.projAnexos.find((x) => x.id === anexoId && x.projectId === p.id && !x.deletedAt);
+      if (!a) throw notFound('Anexo');
+      if (a.uploadedById !== S.me!.id && !temPerm('projects.manage')) throw bad('Só quem anexou (ou quem gerencia o projeto) pode tirar este anexo');
+      a.deletedAt = now();
+      audit('delete', 'project', `Tirou o anexo "${a.fileName}"`, p.id);
+      return { ok: true };
+    },
+    anexoUrl: (anexoId) => S.projAnexos.find((a) => a.id === anexoId)?.conteudo || 'data:text/plain;base64,',
   },
   admin: {
     async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt })); },

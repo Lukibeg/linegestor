@@ -11,7 +11,7 @@
  */
 import argon2 from 'argon2';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, newId, productModules, products, releaseNotes, roles, subscriptions, users, type Db } from '@gestor/db';
+import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, newId, productModules, products, projects, releaseNotes, roles, subscriptions, users, type Db } from '@gestor/db';
 import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 
@@ -193,10 +193,17 @@ export async function updateProduct(db: Db, id: string, data: { name?: string; c
   return row;
 }
 
+/** Tira o projeto da lixeira. */
+export async function restoreProject(db: Db, id: string) {
+  const [row] = await db.update(projects).set({ deletedAt: null, updatedAt: new Date() }).where(eq(projects.id, id)).returning();
+  if (!row) throw new NotFound('Projeto');
+  return row;
+}
+
 // ---------- Lixeira ----------
 
 export async function listTrash(db: Db) {
-  const [c, ci, d, dm, dv, pr, rn] = await Promise.all([
+  const [c, ci, d, dm, dv, pr, rn, pj] = await Promise.all([
     db.select({ id: clients.id, label: clients.tradeName, deletedAt: clients.deletedAt }).from(clients).where(isNotNull(clients.deletedAt)),
     db.select({ id: circuits.id, label: circuits.name, deletedAt: circuits.deletedAt }).from(circuits).where(isNotNull(circuits.deletedAt)),
     db.select({ id: dids.id, label: dids.number, deletedAt: dids.deletedAt }).from(dids).where(isNotNull(dids.deletedAt)),
@@ -204,6 +211,7 @@ export async function listTrash(db: Db) {
     db.select({ id: devices.id, mac: devices.mac, serial: devices.serialNumber, modelo: deviceModels.name, deletedAt: devices.deletedAt }).from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId)).where(isNotNull(devices.deletedAt)),
     db.select({ id: products.id, label: products.name, deletedAt: products.deletedAt }).from(products).where(isNotNull(products.deletedAt)),
     db.select({ id: releaseNotes.id, label: releaseNotes.title, deletedAt: releaseNotes.deletedAt }).from(releaseNotes).where(isNotNull(releaseNotes.deletedAt)),
+    db.select({ id: projects.id, label: projects.name, deletedAt: projects.deletedAt }).from(projects).where(isNotNull(projects.deletedAt)),
   ]);
   return [
     ...c.map((x) => ({ type: 'client', ...x })), ...ci.map((x) => ({ type: 'circuit', ...x })), ...d.map((x) => ({ type: 'did', ...x })),
@@ -211,5 +219,6 @@ export async function listTrash(db: Db) {
     ...dv.map((x) => ({ type: 'device', id: x.id, label: `${x.modelo} · ${x.mac ? macFormatado(x.mac) : x.serial ? `N/S ${x.serial}` : 'sem identificação'}`, deletedAt: x.deletedAt })),
     ...pr.map((x) => ({ type: 'product', ...x })),
     ...rn.map((x) => ({ type: 'releaseNote', ...x })),
+    ...pj.map((x) => ({ type: 'project', ...x })),
   ].sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
 }

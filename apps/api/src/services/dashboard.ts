@@ -8,6 +8,7 @@ import { and, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { auditLog, carriers, circuits, clients, deviceModels, deviceMovements, devices, dids, linepbxSettings, products, subscriptions, users, type Db } from '@gestor/db';
 import { didFormatado, macFormatado, MODALIDADES } from '@gestor/shared';
+import { resumoDoPainel } from './projects.js';
 
 export async function summary(db: Db) {
   const activeClient = and(isNull(clients.deletedAt), eq(clients.archived, false), eq(clients.isInternal, false));
@@ -79,6 +80,7 @@ export async function summary(db: Db) {
     alerts,
     recentMovements: recentMovements.map((m) => ({ ...m, modalityName: (MODALIDADES as any)[m.modality] ?? m.modality })),
     recentAudit,
+    projetos: await resumoDoPainel(db),
   };
 }
 

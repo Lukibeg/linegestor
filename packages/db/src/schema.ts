@@ -6,6 +6,7 @@
  *  O comentário logo acima explica o que aquilo guarda — em português, para quem não programa.
  *
  *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico · 5. Novidades
+ *          6. Projetos
  *
  *  Convenções:
  *   - dinheiro é guardado em CENTAVOS inteiros (R$ 603,38 → 60338), sem arredondamento
@@ -702,6 +703,137 @@ export const releaseNoteReads = pgTable(
 );
 
 // ---------------------------------------------------------------------
+// 6. PROJETOS
+// ---------------------------------------------------------------------
+
+/**
+ * Um projeto é uma tarefa que percorre VÁRIOS clientes até acabar
+ * ("trocar o áudio da URA de todos os clientes com PBX").
+ *
+ * O que define o projeto: o objetivo, o prazo e as ETAPAS — as mesmas para todo cliente da lista.
+ * Quem faz o trabalho vai marcando etapa por etapa; o andamento é contado a partir dessas marcas.
+ */
+export const projects = pgTable(
+  'projects',
+  {
+    id: id(),
+    /** Como a equipe chama o projeto ("Áudio novo das URAs") */
+    name: text('name').notNull(),
+    /** O que se quer alcançar e por quê — o que a pessoa lê antes de começar */
+    goal: text('goal'),
+    /** aberto = em andamento · concluido = acabou · cancelado = não vai acontecer */
+    status: text('status').notNull().default('aberto'),
+    /** Data-alvo do projeto inteiro (AAAA-MM-DD). Passou e ainda tem cliente aberto = atrasado. */
+    dueDate: text('due_date'),
+    /** Responsável pelo projeto como um todo (quem cobra) */
+    ownerId: text('owner_id').references(() => users.id),
+    /** Quando foi dado por encerrado */
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('projects_status_idx').on(t.status)],
+);
+
+/** Uma etapa do projeto. Vale para todos os clientes da lista, na mesma ordem. */
+export const projectSteps = pgTable(
+  'project_steps',
+  {
+    id: id(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    /** O que fazer ("Gravar o áudio", "Subir no PBX", "Testar com o cliente") */
+    title: text('title').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [index('project_steps_project_idx').on(t.projectId)],
+);
+
+/**
+ * Um cliente dentro do projeto: a linha que o técnico trabalha.
+ *
+ * `status` é a situação daquele cliente no projeto:
+ *   pendente · andamento · travado · concluido · nao_se_aplica
+ * Ela anda sozinha conforme as etapas são marcadas (primeira marca → andamento, todas → concluído);
+ * "travado" e "não se aplica" são escolhas de gente, e "travado" exige dizer o motivo.
+ */
+export const projectClients = pgTable(
+  'project_clients',
+  {
+    id: id(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+    /** Quem ficou de fazer este cliente */
+    assigneeId: text('assignee_id').references(() => users.id),
+    status: text('status').notNull().default('pendente'),
+    /** Por que está parado — obrigatório quando o status é "travado" */
+    blockedReason: text('blocked_reason'),
+    /** Quando fechou (concluído ou não se aplica) */
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('project_clients_uq').on(t.projectId, t.clientId),
+    index('project_clients_client_idx').on(t.clientId),
+    index('project_clients_assignee_idx').on(t.assigneeId),
+  ],
+);
+
+/** "A etapa X do cliente Y já foi feita, por fulano, em tal dia." Sem linha = ainda não foi. */
+export const projectChecks = pgTable(
+  'project_checks',
+  {
+    id: id(),
+    projectClientId: text('project_client_id').notNull().references(() => projectClients.id, { onDelete: 'cascade' }),
+    stepId: text('step_id').notNull().references(() => projectSteps.id, { onDelete: 'cascade' }),
+    doneById: text('done_by_id').references(() => users.id),
+    doneAt: timestamp('done_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('project_checks_uq').on(t.projectClientId, t.stepId)],
+);
+
+/**
+ * Um comentário. Sem `projectClientId` é um recado do projeto inteiro;
+ * com ele, é conversa sobre aquele cliente ("liguei, pediram para voltar semana que vem").
+ */
+export const projectComments = pgTable(
+  'project_comments',
+  {
+    id: id(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    projectClientId: text('project_client_id').references(() => projectClients.id, { onDelete: 'cascade' }),
+    userId: text('user_id').references(() => users.id),
+    body: text('body').notNull(),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('project_comments_project_idx').on(t.projectId), index('project_comments_client_idx').on(t.projectClientId)],
+);
+
+/**
+ * Um anexo: planilha, documento, print, áudio da URA — qualquer formato, até o limite da tela.
+ * Fica no próprio banco (como a logo do cliente), então entra no backup junto com o resto;
+ * por isso o limite de tamanho é baixo de propósito. `fileName` é o nome com que a pessoa baixa.
+ */
+export const projectAttachments = pgTable(
+  'project_attachments',
+  {
+    id: id(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    projectClientId: text('project_client_id').references(() => projectClients.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    dataBase64: text('data_base64').notNull(),
+    uploadedById: text('uploaded_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('project_attachments_project_idx').on(t.projectId), index('project_attachments_client_idx').on(t.projectClientId)],
+);
+
+// ---------------------------------------------------------------------
 // RELAÇÕES (para consultas com "traga junto")
 // ---------------------------------------------------------------------
 
@@ -806,4 +938,23 @@ export const releaseNoteItemsRelations = relations(releaseNoteItems, ({ one }) =
 export const releaseNoteReadsRelations = relations(releaseNoteReads, ({ one }) => ({
   note: one(releaseNotes, { fields: [releaseNoteReads.noteId], references: [releaseNotes.id] }),
   user: one(users, { fields: [releaseNoteReads.userId], references: [users.id] }),
+}));
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  owner: one(users, { fields: [projects.ownerId], references: [users.id] }),
+  steps: many(projectSteps),
+  clients: many(projectClients),
+}));
+export const projectStepsRelations = relations(projectSteps, ({ one }) => ({
+  project: one(projects, { fields: [projectSteps.projectId], references: [projects.id] }),
+}));
+export const projectClientsRelations = relations(projectClients, ({ one, many }) => ({
+  project: one(projects, { fields: [projectClients.projectId], references: [projects.id] }),
+  client: one(clients, { fields: [projectClients.clientId], references: [clients.id] }),
+  assignee: one(users, { fields: [projectClients.assigneeId], references: [users.id] }),
+  checks: many(projectChecks),
+}));
+export const projectChecksRelations = relations(projectChecks, ({ one }) => ({
+  linha: one(projectClients, { fields: [projectChecks.projectClientId], references: [projectClients.id] }),
+  step: one(projectSteps, { fields: [projectChecks.stepId], references: [projectSteps.id] }),
 }));

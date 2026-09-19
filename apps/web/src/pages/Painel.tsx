@@ -7,6 +7,7 @@ import { Pagina } from '../components/layout/AppShell.js';
 import { Carregando, Chip, Kpi, Ocupacao } from '../components/ui/index.js';
 import { reais, relativo } from '../lib/format.js';
 import { contar, TdN, ThN } from '../lib/contagem.js';
+import { Andamento } from './projetos/partes.js';
 
 export function Painel() {
   const q = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard.summary });
@@ -44,6 +45,34 @@ export function Painel() {
                 <li key={a.kind}><Link to={a.link} className={`flex items-start gap-2 p-2 rounded-lg text-sm hover:bg-surface-2 ${a.severity === 'critical' ? 'text-bad' : 'text-ink'}`}><AlertTriangle size={15} className={`mt-0.5 shrink-0 ${a.severity === 'critical' ? 'text-bad' : 'text-signal'}`} /><span className="flex-1">{a.message}</span><span className="font-mono tnum text-muted">{a.count}</span><ArrowRight size={14} className="text-muted mt-0.5" /></Link></li>
               ))}
             </ul>
+          )}
+        </section>
+
+        <section className="card p-4">
+          <div className="flex items-center justify-between mb-3"><h2 className="font-display font-semibold">Projetos</h2><Link to="/projetos" className="link text-sm">todos</Link></div>
+          {d.projetos.items.length === 0 ? <div className="text-muted text-sm">Nenhum projeto em andamento.</div> : (
+            <>
+              <ul className="flex flex-col gap-2.5">
+                {d.projetos.items.map((p) => (
+                  <li key={p.id}>
+                    <Link to={`/projetos/${p.id}`} className="block hover:bg-surface-2 rounded-lg px-2 py-1 -mx-2">
+                      <div className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className="truncate">{p.name}</span>
+                        {p.atrasado && <Chip tone="bad">atrasado</Chip>}
+                      </div>
+                      <Andamento pct={p.andamento} total={p.total} faltam={p.faltam} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {(d.projetos.travados > 0 || d.projetos.atrasados > 0) && (
+                <div className="text-[12px] text-muted mt-2">
+                  {d.projetos.atrasados > 0 && <span className="text-bad">{d.projetos.atrasados} atrasado(s)</span>}
+                  {d.projetos.atrasados > 0 && d.projetos.travados > 0 && ' · '}
+                  {d.projetos.travados > 0 && <span className="text-signal">{d.projetos.travados} cliente(s) travado(s)</span>}
+                </div>
+              )}
+            </>
           )}
         </section>
 

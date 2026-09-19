@@ -29,6 +29,13 @@
       "when": 1789835960583,
       "tag": "0003_novidades",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789841161320,
+      "tag": "0004_projetos",
+      "breakpoints": true
     }
   ]
 }

@@ -16,8 +16,9 @@ import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { paraALista, Voltar } from '../../lib/voltar.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
 import { ClienteForm } from './Form.js';
+import { ChipSituacao } from '../projetos/partes.js';
 
-type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'historico';
+type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'historico';
 
 export function ClienteFicha() {
   const { id = '' } = useParams();
@@ -55,7 +56,8 @@ export function ClienteFicha() {
         { id: 'geral', label: 'Visão geral' }, { id: 'acessos', label: 'Acessos' },
         { id: 'dids', label: <>DIDs <span className="text-muted">({c.didCount})</span></> }, { id: 'equipamentos', label: <>Equipamentos <span className="text-muted">({c.deviceCount})</span></> },
         { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> },
-        { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> }, ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
+        { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> },
+        { id: 'projetos', label: 'Projetos' }, ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
       ]} />
       {aba === 'geral' && <Geral c={c} />}
       {aba === 'acessos' && <Acessos c={c} />}
@@ -63,6 +65,7 @@ export function ClienteFicha() {
       {aba === 'equipamentos' && <Equipamentos c={c} />}
       {aba === 'produtos' && <Produtos c={c} />}
       {aba === 'unidades' && <Unidades c={c} />}
+      {aba === 'projetos' && <ProjetosDoCliente c={c} />}
       {aba === 'historico' && <Historico c={c} />}
       <ClienteForm open={editar} onClose={() => setEditar(false)} cliente={c} onSaved={() => setEditar(false)} />
       <Confirmar open={excluir} onClose={() => setExcluir(false)} onConfirm={doDelete} loading={busy} perigoso digitar={c.tradeName} titulo="Mandar para a lixeira" botao="Mandar para a lixeira" texto={<>O cliente <b>{c.tradeName}</b> sai de todas as listas. Os {c.didCount} DIDs continuam alocados a ele e os {c.deviceCount} aparelhos continuam registrados — nada é apagado. Dá para restaurar em Administração → Lixeira.</>} />
@@ -855,4 +858,36 @@ function Historico({ c }: { c: ClientFull }) {
   const items = q.data?.items ?? [];
   if (!items.length) return <Vazio titulo="Nada registrado ainda" />;
   return <div className="card"><ul>{items.map((a) => <li key={a.id} className="px-4 py-2.5 border-b border-line last:border-0 text-sm flex gap-3"><span className="text-muted tnum shrink-0 w-32">{data(a.createdAt, true)}</span><span className="flex-1">{a.summary}</span><span className="text-muted">{a.userName ?? 'sistema'}</span></li>)}</ul></div>;
+}
+
+/**
+ * Aba Projetos: de quais projetos este cliente participa e como ele está em cada um.
+ * A marcação acontece na ficha do projeto — aqui é só a visão do cliente.
+ */
+function ProjetosDoCliente({ c }: { c: ClientFull }) {
+  const q = useQuery({ queryKey: ['cliente-projetos', c.id], queryFn: () => api.clients.projetos(c.id) });
+  if (q.isLoading) return <Carregando />;
+  const items = q.data ?? [];
+  if (!items.length) return <Vazio titulo="Fora de todos os projetos" texto="Quando este cliente entrar num projeto, ele aparece aqui com o que já foi feito." />;
+  return (
+    <div className="card overflow-x-auto">
+      <table className="table">
+        <thead><tr><th>Projeto</th><th>Situação</th><th>Etapas</th><th>Responsável</th><th>Prazo</th></tr></thead>
+        <tbody>
+          {items.map((p) => (
+            <tr key={p.projectClientId}>
+              <td>
+                <Link className="link" to={`/projetos/${p.projectId}`}>{p.name}</Link>
+                {p.projectStatus !== 'aberto' && <Chip tone="muted" className="ml-2">{p.projectStatus === 'concluido' ? 'encerrado' : 'cancelado'}</Chip>}
+              </td>
+              <td><ChipSituacao status={p.status} motivo={p.blockedReason} /></td>
+              <td className="tnum">{p.feitas} de {p.etapas}</td>
+              <td className={p.assigneeName ? '' : 'text-muted italic'}>{p.assigneeName ?? 'sem responsável'}</td>
+              <td>{p.dueDate ? data(p.dueDate) : <span className="text-muted">—</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }

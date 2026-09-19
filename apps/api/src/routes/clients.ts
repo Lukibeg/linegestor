@@ -6,6 +6,7 @@ import * as clientsSvc from '../services/clients.js';
 import * as didsSvc from '../services/dids.js';
 import * as inv from '../services/inventory.js';
 import * as audit from '../services/audit.js';
+import * as projetos from '../services/projects.js';
 
 const Id = z.object({ id: z.string() });
 
@@ -112,6 +113,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => ({ devices: await inv.listDevices(app.db, { clientId: req.params.id, page: 1, pageSize: SEM_LIMITE }) }));
 
   // ---- unidades (matriz, filiais, lojas) ----
+  app.get('/:id/projetos', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Projetos de que este cliente participa', params: Id } },
+    async (req) => projetos.doCliente(app.db, req.params.id));
+
   app.get('/:id/units', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Unidades do cliente (a Matriz sempre existe)', params: Id } },
     async (req) => clientsSvc.listUnits(app.db, req.params.id));
 

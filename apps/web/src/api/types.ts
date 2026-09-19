@@ -118,6 +118,11 @@ export type Dashboard = {
   alerts: Array<{ kind: string; severity: 'warning' | 'critical'; message: string; count: number; link: string }>;
   recentMovements: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; userName: string; createdAt: string }>;
   recentAudit: Array<{ id: string; action: string; summary: string; userName: string | null; createdAt: string }>;
+  /** Como andam os projetos abertos (a faixa do Painel) */
+  projetos: {
+    abertos: number; atrasados: number; travados: number;
+    items: Array<{ id: string; name: string; andamento: number; faltam: number; total: number; atrasado: boolean }>;
+  };
 };
 
 export type SearchResult = {
@@ -162,6 +167,57 @@ export type Novidade = {
 export type NovidadePendente = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; items: NovidadeItem[] };
 /** Quem já leu uma nota e quem ainda não. */
 export type LeiturasNovidade = { version: string; title: string; publishedAt: string | null; pessoas: Array<{ id: string; name: string; email: string; readAt: string | null }> };
+
+/** As situações de um cliente dentro de um projeto. */
+export type SituacaoProjeto = 'pendente' | 'andamento' | 'travado' | 'concluido' | 'nao_se_aplica';
+export type ContagemProjeto = Record<SituacaoProjeto, number>;
+
+export type EtapaProjeto = { id: string; title: string; sortOrder: number };
+/** Uma linha da lista: o cliente dentro do projeto, com as etapas que já marcaram nele. */
+export type ClienteDoProjeto = {
+  id: string; clientId: string; clientName: string; arquivado: boolean;
+  assigneeId: string | null; assigneeName: string | null;
+  status: SituacaoProjeto; blockedReason: string | null; doneAt: string | null;
+  feitas: Array<{ stepId: string; doneAt: string; quem: string | null }>;
+};
+export type ComentarioProjeto = { id: string; projectClientId: string | null; body: string; autor: string; userId: string | null; createdAt: string };
+export type AnexoProjeto = { id: string; projectClientId: string | null; fileName: string; mimeType: string; sizeBytes: number; createdAt: string; quem: string };
+
+/** O projeto na lista: só o cabeçalho e o quanto já andou. */
+export type ProjetoResumo = {
+  id: string; name: string; goal: string | null; status: 'aberto' | 'concluido' | 'cancelado';
+  dueDate: string | null; ownerId: string | null; ownerName: string | null;
+  closedAt: string | null; createdAt: string; updatedAt: string;
+  etapas: number; total: number; faltam: number; contagem: ContagemProjeto;
+  andamento: number; atrasado: boolean;
+};
+
+/**
+ * O projeto aberto: tudo o que a ficha mostra.
+ * Os números vêm em `resumo` (na lista eles ficam soltos no cabeçalho, porque lá não há detalhe).
+ */
+export type Projeto = {
+  id: string; name: string; goal: string | null; status: 'aberto' | 'concluido' | 'cancelado';
+  dueDate: string | null; ownerId: string | null; ownerName: string | null;
+  closedAt: string | null; createdAt: string; updatedAt: string;
+  etapas: EtapaProjeto[];
+  clientes: ClienteDoProjeto[];
+  comentarios: ComentarioProjeto[];
+  anexos: AnexoProjeto[];
+  resumo: {
+    total: number; faltam: number; contagem: ContagemProjeto; andamento: number;
+    etapasFeitas: number; etapasTotais: number; atrasado: boolean;
+    porResponsavel: Array<{ id: string | null; nome: string; total: number; fechados: number; travados: number }>;
+  };
+  podeTrabalhar: boolean; podeGerenciar: boolean;
+};
+
+/** O projeto visto da ficha do cliente: onde ele está e como. */
+export type ProjetoDoCliente = {
+  projectClientId: string; projectId: string; name: string; projectStatus: string; dueDate: string | null;
+  status: SituacaoProjeto; blockedReason: string | null; assigneeId: string | null; assigneeName: string | null;
+  feitas: number; etapas: number;
+};
 
 export class ApiError extends Error {
   /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */

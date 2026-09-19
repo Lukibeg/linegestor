@@ -24,6 +24,8 @@ export type Api = {
     list(q: Record<string, unknown>): Promise<T.Page<T.ClientListItem>>;
     options(q?: { includeInternal?: boolean; productCode?: string; withDevices?: boolean }): Promise<T.Option[]>;
     get(id: string): Promise<T.ClientFull>;
+    /** Projetos de que este cliente participa (a aba da ficha) */
+    projetos(id: string): Promise<T.ProjetoDoCliente[]>;
     create(d: Record<string, unknown>): Promise<T.ClientFull>;
     update(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
     remove(id: string): Promise<{ ok: boolean }>;
@@ -112,6 +114,26 @@ export type Api = {
     atualizar(id: string, d: Record<string, unknown>): Promise<{ id: string }>;
     publicar(id: string, publicar: boolean): Promise<{ id: string; publishedAt: string | null }>;
     remover(id: string): Promise<{ ok: boolean }>;
+  };
+  projetos: {
+    lista(q?: { status?: string; q?: string }): Promise<{ items: T.ProjetoResumo[]; podeTrabalhar: boolean; podeGerenciar: boolean }>;
+    get(id: string): Promise<T.Projeto>;
+    /** Quem pode ser responsável (as pessoas ativas) */
+    pessoas(): Promise<Array<{ id: string; name: string }>>;
+    criar(d: Record<string, unknown>): Promise<T.Projeto>;
+    atualizar(id: string, d: Record<string, unknown>): Promise<T.Projeto>;
+    remover(id: string): Promise<{ ok: boolean }>;
+    addClientes(id: string, clientIds: string[], assigneeId?: string | null): Promise<T.Projeto>;
+    removerCliente(id: string, linhaId: string): Promise<{ ok: boolean }>;
+    /** Trocar responsável ou situação de um cliente no projeto */
+    linha(id: string, linhaId: string, d: Record<string, unknown>): Promise<unknown>;
+    marcar(id: string, linhaId: string, stepId: string, feito: boolean): Promise<unknown>;
+    comentar(id: string, body: string, projectClientId?: string | null): Promise<unknown>;
+    apagarComentario(id: string, commentId: string): Promise<{ ok: boolean }>;
+    anexar(id: string, d: { fileName: string; conteudo: string; projectClientId?: string | null }): Promise<T.AnexoProjeto>;
+    apagarAnexo(id: string, anexoId: string): Promise<{ ok: boolean }>;
+    /** Endereço para baixar o anexo (abre direto no navegador) */
+    anexoUrl(anexoId: string): string;
   };
   admin: {
     users(): Promise<T.User[]>;

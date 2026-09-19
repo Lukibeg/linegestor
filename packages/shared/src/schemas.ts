@@ -459,6 +459,77 @@ export const NovidadeGravarSchema = z.object({
 });
 export const NovidadeAtualizarSchema = NovidadeGravarSchema.partial();
 
+// ---------- Projetos ----------
+
+/** As situações de um cliente dentro do projeto, na ordem em que aparecem no painel. */
+export const SITUACOES_PROJETO = ['pendente', 'andamento', 'travado', 'concluido', 'nao_se_aplica'] as const;
+export const SituacaoProjetoSchema = z.enum(SITUACOES_PROJETO);
+
+/** Data-alvo como o campo de calendário manda: "AAAA-MM-DD", guardada como texto (não tem hora). */
+const DiaTextoSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida');
+
+/** Uma etapa. Sem `id` é nova; com `id`, é a que já existe (mantém as marcas de quem já fez). */
+export const EtapaProjetoSchema = z.object({
+  id: IdSchema.optional(),
+  title: z.string().trim().min(1, 'Dê um nome à etapa').max(160),
+});
+
+export const ProjetoGravarSchema = z.object({
+  name: z.string().trim().min(1, 'Dê um nome ao projeto').max(160),
+  goal: z.string().trim().max(4000).nullable().optional(),
+  dueDate: DiaTextoSchema.nullable().optional(),
+  ownerId: IdSchema.nullable().optional(),
+  etapas: z.array(EtapaProjetoSchema).max(30, 'No máximo 30 etapas por projeto').default([]),
+  /** Os clientes que entram na lista ao criar */
+  clientIds: z.array(IdSchema).max(500, 'No máximo 500 clientes por projeto').default([]),
+});
+export const ProjetoAtualizarSchema = ProjetoGravarSchema.partial().extend({
+  status: z.enum(['aberto', 'concluido', 'cancelado']).optional(),
+});
+
+/** Acrescentar clientes à lista de um projeto que já existe. */
+export const ProjetoClientesSchema = z.object({
+  clientIds: z.array(IdSchema).min(1, 'Escolha ao menos um cliente').max(500),
+  /** Responsável aplicado a todos os que entrarem agora */
+  assigneeId: IdSchema.nullable().optional(),
+});
+
+/** Mexer numa linha: trocar o responsável ou a situação. "Travado" exige o motivo. */
+export const ProjetoLinhaSchema = z
+  .object({
+    assigneeId: IdSchema.nullable().optional(),
+    status: SituacaoProjetoSchema.optional(),
+    blockedReason: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((v) => v.status !== 'travado' || !!v.blockedReason?.trim(), {
+    message: 'Diga por que está travado',
+    path: ['blockedReason'],
+  });
+
+export const ProjetoMarcarSchema = z.object({ feito: z.boolean() });
+
+export const ProjetoComentarioSchema = z.object({
+  body: z.string().trim().min(1, 'Escreva o comentário').max(4000),
+  /** Nulo = recado do projeto inteiro; preenchido = conversa sobre aquele cliente */
+  projectClientId: IdSchema.nullable().optional(),
+});
+
+/** Um anexo: qualquer formato. O conteúdo vem embutido ("data:<tipo>;base64,…"). */
+export const ProjetoAnexoSchema = z.object({
+  fileName: z.string().trim().min(1, 'O arquivo precisa de um nome').max(200),
+  projectClientId: IdSchema.nullable().optional(),
+  conteudo: z
+    .string()
+    .min(1)
+    .max(14_000_000, 'Arquivo muito grande (máximo 10 MB)')
+    .regex(/^data:[-\w.+]+\/[-\w.+]+(;[-\w.=]+)*;base64,[A-Za-z0-9+/=]+$/, 'Não consegui ler esse arquivo'),
+});
+
+export const ProjetoListarSchema = z.object({
+  status: z.enum(['aberto', 'concluido', 'cancelado', 'todos']).default('aberto'),
+  q: z.string().trim().max(120).optional(),
+});
+
 // ---------- Importação ----------
 
 export const ImportacaoSchema = z.object({
@@ -504,3 +575,8 @@ export type UsuarioCriar = z.infer<typeof UsuarioCriarSchema>;
 export type Importacao = z.infer<typeof ImportacaoSchema>;
 export type NovidadeGravar = z.infer<typeof NovidadeGravarSchema>;
 export type NovidadeItem = z.infer<typeof NovidadeItemSchema>;
+export type SituacaoProjeto = z.infer<typeof SituacaoProjetoSchema>;
+export type ProjetoGravar = z.infer<typeof ProjetoGravarSchema>;
+export type ProjetoAtualizar = z.infer<typeof ProjetoAtualizarSchema>;
+export type ProjetoLinha = z.infer<typeof ProjetoLinhaSchema>;
+export type ProjetoAnexo = z.infer<typeof ProjetoAnexoSchema>;

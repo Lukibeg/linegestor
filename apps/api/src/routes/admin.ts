@@ -55,7 +55,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---- lixeira ----
   app.get('/trash', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'O que está na lixeira' } }, async () => svc.listTrash(app.db));
-  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'releaseNote']), id: z.string() }) } },
+  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'releaseNote', 'project']), id: z.string() }) } },
     async (req) => {
       const { type, id } = req.params;
       let label = id;
@@ -66,6 +66,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       else if (type === 'deviceModel') label = (await inv.restoreModel(app.db, id)).name;
       else if (type === 'product') label = (await svc.restoreProduct(app.db, id)).name;
       else if (type === 'releaseNote') label = (await novidades.restore(app.db, id)).title;
+      else if (type === 'project') label = (await svc.restoreProject(app.db, id)).name;
       else throw new BadRequest('Tipo desconhecido');
       await app.audit(req, { action: 'restore', entityType: type, entityId: id, summary: `Restaurou ${label} da lixeira` });
       return { ok: true };
