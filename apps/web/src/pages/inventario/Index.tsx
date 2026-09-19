@@ -45,11 +45,13 @@ export function Inventario() {
         <section className="card p-4 mb-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
             <h2 className="font-display font-semibold">Parque por modelo</h2>
-            <span className="text-[12px] text-muted">Clique num modelo para ver só os aparelhos dele.</span>
+            <span className="text-[12px] text-muted">Clique numa barra para ver só esses aparelhos.</span>
           </div>
           <BarrasRanking
             larguraRotulo="w-[190px]"
+            legenda={[{ label: 'Em estoque', tom: 'ok' }, { label: 'Com clientes', tom: 'accent' }]}
             acao={(modelId) => setSp({ aba: 'aparelhos', modelId }, { replace: true })}
+            aoClicarParte={(modelId, parte) => setSp({ aba: 'aparelhos', modelId, ...(parte === 'estoque' ? { clientId: 'stock' } : {}) }, { replace: true })}
             dados={[...(models.data ?? [])]
               .filter((m) => m.counts.total > 0)
               .sort((a, b) => b.counts.total - a.counts.total)
@@ -57,6 +59,10 @@ export function Inventario() {
               .map((m) => ({
                 id: m.id, valor: m.counts.total, rotulo: m.name,
                 titulo: `${m.counts.inStock} em estoque · ${m.counts.withClients} com clientes${m.counts.sold ? ` · ${m.counts.sold} vendido(s)` : ''}`,
+                partes: [
+                  { id: 'estoque', label: 'Em estoque', n: m.counts.inStock, tom: 'ok' as const },
+                  { id: 'clientes', label: 'Com clientes', n: m.counts.withClients, tom: 'accent' as const },
+                ],
               }))}
           />
         </section>

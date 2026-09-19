@@ -29,7 +29,10 @@ importa porque a prévia publicada não alcança CDN.
 
 - **Painel**: "Valor nosso na mão do cliente" (quem está com mais aparelho nosso em locação e
   comodato — venda não conta, porque o aparelho vendido não é mais nosso) e "Clientes por produto".
-- **Inventário**: "Parque por modelo" — os dez modelos com mais unidades; clicar filtra a lista.
+- **Inventário**: "Parque por modelo" — os dez modelos com mais unidades, em **barra mista**: verde o
+  que está em estoque, azul o que está com clientes, e o total à direita. Clicar numa das partes
+  abre a lista já filtrada por modelo **e** por onde o aparelho está. Vendido não entra na barra
+  (deixou de ser nosso).
 - **Ficha do cliente**, aba Equipamentos: "Por modelo" e "Valor por modelo" viraram barras; clicar
   numa filtra a lista de aparelhos.
 - Na ficha do **projeto**, "Como está cada passo" usa a mesma linguagem, com dois formatos à
@@ -44,3 +47,7 @@ importa porque a prévia publicada não alcança CDN.
 **Dois gráficos nasceram e morreram no mesmo dia**: o de movimentações por mês e o "Quem está mais
 cheio" dos circuitos. O segundo repetia a coluna Ocupação, que já vive na tabela com barrinha e %.
 A regra que ficou: gráfico só entra se responder uma pergunta que a tela ainda não responde.
+
+`BarrasRanking` ganhou o modo **misto** para isso: cada barra pode ser dividida em partes, com a
+legenda escrita uma vez acima e um fio de fundo entre as fatias. É a mesma linguagem da barra de
+"Como está cada passo", nos projetos — que foi de onde veio o pedido.

@@ -13,12 +13,20 @@
  */
 import { useId, type ReactNode } from 'react';
 
-const TOM = { accent: 'bg-accent', ok: 'bg-ok', signal: 'bg-signal', bad: 'bg-bad' };
+const TOM = { accent: 'bg-accent', ok: 'bg-ok', signal: 'bg-signal', bad: 'bg-bad', muted: 'bg-line-strong' };
 
 /** Barras deitadas, já na ordem: para "os maiores primeiro". O nome fica à esquerda, o número à direita. */
-export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, formatar, larguraRotulo = 'w-[140px]' }: {
-  /** `tom` só quando a cor diz alguma coisa (cheio demais, por exemplo); o número fica escrito do lado de qualquer jeito */
-  dados: Array<{ id: string; rotulo: ReactNode; valor: number; titulo?: string; tom?: 'accent' | 'ok' | 'signal' | 'bad' }>;
+export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, formatar, larguraRotulo = 'w-[140px]', legenda, aoClicarParte }: {
+  /**
+   * `tom` só quando a cor diz alguma coisa (cheio demais, por exemplo).
+   * `partes` divide a barra (em estoque × com clientes, por exemplo) — a soma delas é o valor.
+   * O número fica escrito do lado de qualquer jeito.
+   */
+  dados: Array<{
+    id: string; rotulo: ReactNode; valor: number; titulo?: string;
+    tom?: 'accent' | 'ok' | 'signal' | 'bad';
+    partes?: Array<{ id: string; label: string; n: number; tom: 'accent' | 'ok' | 'signal' | 'bad' | 'muted' }>;
+  }>;
   /** força a escala (útil para comparar dois gráficos lado a lado) */
   maximo?: number;
   vazio?: string;
@@ -27,10 +35,25 @@ export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, form
   /** como escrever o número à direita (padrão: o número puro) */
   formatar?: (v: number) => string;
   larguraRotulo?: string;
+  /** a legenda das partes, escrita uma vez acima das barras */
+  legenda?: Array<{ label: string; tom: 'accent' | 'ok' | 'signal' | 'bad' | 'muted' }>;
+  /** clicar numa parte da barra (id da linha, id da parte) */
+  aoClicarParte?: (id: string, parteId: string) => void;
 }) {
   if (!dados.length) return <div className="text-muted text-sm">{vazio}</div>;
   const max = Math.max(1, maximo ?? 0, ...dados.map((d) => d.valor));
   return (
+    <>
+    {legenda && legenda.length > 0 && (
+      <div className="flex flex-wrap gap-x-4 gap-y-1 mb-2 text-[12px]">
+        {legenda.map((l) => (
+          <span key={l.label} className="flex items-center gap-1.5">
+            <span className={`h-2 w-2 rounded-full shrink-0 ${TOM[l.tom]}`} />
+            <span className="text-muted">{l.label}</span>
+          </span>
+        ))}
+      </div>
+    )}
     <ul className="flex flex-col gap-1.5">
       {dados.map((d) => {
         const Tag = acao ? 'button' : 'div';
@@ -42,8 +65,21 @@ export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, form
               title={d.titulo}
             >
               <span className={`${larguraRotulo} shrink-0 truncate text-sm`}>{d.rotulo}</span>
-              <span className="flex-1 h-2.5 rounded-full bg-surface-2 overflow-hidden">
-                <span className={`block h-full rounded-full ${TOM[d.tom ?? 'accent']}`} style={{ width: `${Math.max(d.valor ? 3 : 0, (d.valor / max) * 100)}%` }} />
+              <span className="flex-1 h-2.5 rounded-full bg-surface-2 overflow-hidden flex">
+                {d.partes?.length ? (
+                  /* barra mista: uma fatia por parte, com um fio de fundo entre elas */
+                  d.partes.filter((x) => x.n > 0).map((x) => (
+                    <span
+                      key={x.id}
+                      onClick={aoClicarParte ? (ev) => { ev.stopPropagation(); aoClicarParte(d.id, x.id); } : undefined}
+                      className={`h-full ${TOM[x.tom]} ${aoClicarParte ? 'cursor-pointer hover:opacity-80' : ''} [&+&]:border-l-2 [&+&]:border-surface`}
+                      style={{ width: `${(x.n / max) * 100}%` }}
+                      title={`${x.label}: ${x.n}`}
+                    />
+                  ))
+                ) : (
+                  <span className={`block h-full rounded-full ${TOM[d.tom ?? 'accent']}`} style={{ width: `${Math.max(d.valor ? 3 : 0, (d.valor / max) * 100)}%` }} />
+                )}
               </span>
               <span className={`${formatar ? 'w-24' : 'w-9'} text-right font-mono text-[12px] tnum text-ink-2 shrink-0`}>{formatar ? formatar(d.valor) : d.valor}</span>
             </Tag>
@@ -51,6 +87,7 @@ export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, form
         );
       })}
     </ul>
+    </>
   );
 }
 

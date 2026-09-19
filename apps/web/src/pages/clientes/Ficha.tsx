@@ -394,7 +394,6 @@ function Equipamentos({ c }: { c: ClientFull }) {
   const [vista, setVista] = useState<'aparelhos' | 'movimentacoes'>('aparelhos');
   return (
     <div className="flex flex-col gap-3">
-      <RedePadrao c={c} />
       <div className="inline-flex self-start rounded-lg border border-line p-0.5 bg-surface" role="tablist">
         {([['aparelhos', `Aparelhos (${c.deviceCount})`], ['movimentacoes', 'Movimentações']] as const).map(([id, rotulo]) => (
           <button key={id} role="tab" aria-selected={vista === id} onClick={() => setVista(id)} className={`px-3 py-1.5 text-sm font-semibold rounded-md ${vista === id ? 'bg-accent text-white' : 'text-ink-2 hover:text-ink'}`}>{rotulo}</button>
@@ -816,9 +815,19 @@ function Acessos({ c }: { c: ClientFull }) {
   // FOP2 e Omniboard são módulos do LinePBX
   const f2 = lp ? lp.modules.find((m) => m.moduleCode === 'fop2' && m.active) : undefined;
   const om = lp ? lp.modules.find((m) => m.moduleCode === 'omniboard' && m.active) : undefined;
-  if (!lp && !sz) return <Vazio titulo="Sem acessos cadastrados" texto="Os acessos aparecem quando o cliente tem LinePBX (e seus módulos FOP2 e Omniboard) ou SZChat. O login padrão dos aparelhos fica em Equipamentos." />;
+  // a rede padrão e o login dos aparelhos são acesso, não inventário: ficam aqui, mesmo que o
+  // cliente não tenha nenhum produto com servidor
+  const cabecalho = <RedePadrao c={c} />;
+  if (!lp && !sz) return (
+    <div className="flex flex-col gap-4">
+      {cabecalho}
+      <Vazio titulo="Sem acessos de sistema" texto="Os acessos de sistema aparecem quando o cliente tem LinePBX (e seus módulos FOP2 e Omniboard) ou SZChat." />
+    </div>
+  );
   return (
-    <div className="grid gap-4 md:grid-cols-2">
+    <div className="flex flex-col gap-4">
+      {cabecalho}
+      <div className="grid gap-4 md:grid-cols-2">
       {lp && (
         <div className="card p-4 flex flex-col gap-3">
           <div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX</Chip>{c.links.web && <a className="link text-sm" href={c.links.web} target="_blank" rel="noreferrer">abrir interface ↗</a>}</div>
@@ -841,6 +850,7 @@ function Acessos({ c }: { c: ClientFull }) {
         <Campo label="Senha padrão de usuário"><CampoSegredo secretId={om.settings?.userDefaultPassword?.secretId ?? null} hasSecret={!!om.settings?.userDefaultPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo><Anotacao texto={om.notes} /></div>}
       {sz && <div className="card p-4 flex flex-col gap-3"><Chip color={sz.color}>SZChat</Chip><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{sz.settings?.adminLogin ?? '—'}</dd></dl>
         <Campo label="Senha admin"><CampoSegredo secretId={sz.settings?.adminPassword?.secretId ?? null} hasSecret={!!sz.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo><Anotacao texto={sz.notes} /></div>}
+      </div>
     </div>
   );
 }
