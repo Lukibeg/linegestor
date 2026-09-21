@@ -80,6 +80,13 @@ describe('inventário', () => {
     expect(painel.devices.withClients).toBe(1);
     expect(painel.devices.valueWithClientsCents).toBe(45000);
 
+    // o gráfico do Painel: quem está com valor nosso na mão (locação e comodato; venda não conta)
+    expect(painel.valorPorCliente.length).toBeGreaterThan(0);
+    const top = painel.valorPorCliente[0];
+    expect(top.valorCents).toBe(45000);
+    expect(top.n).toBe(1);
+    expect(top.nome).toBeTruthy();
+
     // os cartões do topo do Inventário seguem os filtros da lista
     const geral = (await s.get('/inventory/summary')).json();
     expect(geral).toMatchObject({ withClients: 1, filtrado: false });

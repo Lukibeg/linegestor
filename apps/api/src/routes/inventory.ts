@@ -65,7 +65,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => svc.listUnits(app.db, req.query.clientId));
 
   // ---- movimentações ----
-  app.get('/movements', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Histórico de movimentações (com os aparelhos de cada uma)', querystring: PaginacaoSchema.merge(OrdenacaoSchema).extend({ modality: z.string().optional(), clientId: z.string().optional(), from: z.coerce.date().optional(), to: z.coerce.date().optional() }) } },
+  app.get('/movements', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Histórico de movimentações (com os aparelhos de cada uma). modelId = só as que levaram aquele modelo; q = MAC ou N/S de um aparelho', querystring: PaginacaoSchema.merge(OrdenacaoSchema).extend({ modality: z.string().optional(), clientId: z.string().optional(), modelId: z.string().optional(), q: z.string().trim().max(80).optional(), from: z.coerce.date().optional(), to: z.coerce.date().optional() }) } },
     async (req) => svc.listMovements(app.db, req.query));
   app.post('/movements', { preHandler: app.requirePermission('devices.move'), schema: { tags: ['Inventário'], summary: 'Movimentar aparelhos (locação, venda, comodato, devolução)', body: MovimentacaoCriarSchema } },
     async (req, reply) => {

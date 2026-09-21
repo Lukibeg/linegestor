@@ -9,6 +9,7 @@ import {
   macFormatado, macLimpo, macValido,
   paraCentavos, reais,
   consertarAcentos, diaAoMeioDia, diaParaIso, identificacaoAparelho, lerLista, serieLimpa,
+  formatarIp,
 } from './formatos.js';
 
 describe('CNPJ', () => {
@@ -80,5 +81,26 @@ describe('Dinheiro', () => {
     expect(identificacaoAparelho({})).toEqual({ tipo: 'nenhum', texto: 'não aplicável' });
     expect(serieLimpa(' ab12 cd ')).toBe('AB12CD');
     expect(reais(123456).replace(/ /g, ' ')).toBe('R$ 1.234,56');
+  });
+});
+
+describe('máscara de IP', () => {
+  it('põe os pontos sozinha enquanto se digita', () => {
+    expect(formatarIp('19216801')).toBe('192.168.0.1');
+    expect(formatarIp('1921681')).toBe('192.168.1');
+    expect(formatarIp('2552552550')).toBe('255.255.255.0');
+    expect(formatarIp('8.8.8.8')).toBe('8.8.8.8');
+    expect(formatarIp('10.20.0.77')).toBe('10.20.0.77');
+    expect(formatarIp('263')).toBe('26.3');
+    expect(formatarIp('1001')).toBe('100.1');
+    expect(formatarIp('192.168.0.1.5')).toBe('192.168.0.1');
+    expect(formatarIp('abc')).toBe('');
+    // ponto digitado à mão fica, para dar para escrever 10.1.1.0 dígito a dígito
+    expect(formatarIp('10.')).toBe('10.');
+    expect(formatarIp('10.1.')).toBe('10.1.');
+    expect(formatarIp('10.1.1.')).toBe('10.1.1.');
+    expect(formatarIp('10.1.1.0')).toBe('10.1.1.0');
+    expect(formatarIp('10.1.1.0.')).toBe('10.1.1.0');
+    expect(formatarIp('.')).toBe('');
   });
 });

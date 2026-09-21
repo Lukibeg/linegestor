@@ -1,11 +1,12 @@
 /** Clientes e assinaturas de produto. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema, LogoGravarSchema, ModuloGravarSchema, SEM_LIMITE, UnidadeGravarSchema, Booleano } from '@gestor/shared';
+import { AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema, LoginModeloGravarSchema, LogoGravarSchema, ModuloGravarSchema, RedePadraoSchema, SEM_LIMITE, UnidadeGravarSchema, Booleano } from '@gestor/shared';
 import * as clientsSvc from '../services/clients.js';
 import * as didsSvc from '../services/dids.js';
 import * as inv from '../services/inventory.js';
 import * as audit from '../services/audit.js';
+import * as projetos from '../services/projects.js';
 
 const Id = z.object({ id: z.string() });
 
@@ -112,6 +113,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => ({ devices: await inv.listDevices(app.db, { clientId: req.params.id, page: 1, pageSize: SEM_LIMITE }) }));
 
   // ---- unidades (matriz, filiais, lojas) ----
+  app.get('/:id/projetos', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Projetos de que este cliente participa', params: Id } },
+    async (req) => projetos.doCliente(app.db, req.params.id));
+
   app.get('/:id/units', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Unidades do cliente (a Matriz sempre existe)', params: Id } },
     async (req) => clientsSvc.listUnits(app.db, req.params.id));
 
@@ -135,6 +139,30 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       const row = await clientsSvc.removeUnit(app.db, req.params.id, req.params.unitId);
       await app.audit(req, { action: 'delete', entityType: 'client', entityId: req.params.id, summary: `Removeu a unidade "${row.name}"` });
       return { ok: true };
+    });
+
+  // ---- login e senha padrão dos aparelhos, por modelo ----
+  app.put('/:id/device-logins', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Gravar o login e senha padrão de um modelo de aparelho no cliente (um por modelo; senha vai para o cofre)', params: Id, body: LoginModeloGravarSchema } },
+    async (req) => {
+      const r = await clientsSvc.saveDeviceLogin(app.db, app.vault, req.params.id, req.body, req.user!.id);
+      await app.audit(req, { action: r.created ? 'create' : 'update', entityType: 'client', entityId: req.params.id, summary: `${r.created ? 'Cadastrou' : 'Alterou'} o login padrão dos ${r.modelName} de ${r.clientName}${r.senhaTrocada ? ' (senha trocada)' : ''}`, after: { modelId: req.body.modelId, username: req.body.username } });
+      return clientsSvc.get(app.db, req.params.id);
+    });
+
+  app.delete('/:id/device-logins/:loginId', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Remover o login padrão de um modelo', params: Id.extend({ loginId: z.string() }) } },
+    async (req) => {
+      const r = await clientsSvc.removeDeviceLogin(app.db, req.params.id, req.params.loginId);
+      await app.audit(req, { action: 'delete', entityType: 'client', entityId: req.params.id, summary: `Removeu o login padrão dos ${r.modelName} de ${r.clientName}` });
+      return clientsSvc.get(app.db, req.params.id);
+    });
+
+  // ---- configuração de rede padrão dos aparelhos ----
+  app.put('/:id/network', { preHandler: app.requirePermission('records.write'), schema: { tags: ['Clientes'], summary: 'Gravar a rede padrão dos aparelhos (IP, máscara, gateway, DNS, senha do ramal sem fio)', params: Id, body: RedePadraoSchema } },
+    async (req) => {
+      const { wirelessPassword, ...resto } = req.body;
+      const r = await clientsSvc.saveNetwork(app.db, app.vault, req.params.id, req.body, req.user!.id);
+      await app.audit(req, { action: 'update', entityType: 'client', entityId: req.params.id, summary: `Alterou a rede padrão dos aparelhos de ${r.clientName}${wirelessPassword ? ' (senha do ramal sem fio trocada)' : ''}`, before: r.before ? { ipAddress: r.before.ipAddress, subnetMask: r.before.subnetMask, defaultRouter: r.before.defaultRouter, dns1: r.before.dns1, dns2: r.before.dns2 } : null, after: resto });
+      return clientsSvc.get(app.db, req.params.id);
     });
 
   app.get('/:id/history', { preHandler: app.requirePermission('audit.read'), schema: { tags: ['Clientes'], summary: 'Histórico (auditoria) do cliente', params: Id } },

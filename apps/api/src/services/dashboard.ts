@@ -8,6 +8,7 @@ import { and, desc, eq, ilike, isNull, or, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { auditLog, carriers, circuits, clients, deviceModels, deviceMovements, devices, dids, linepbxSettings, products, subscriptions, users, type Db } from '@gestor/db';
 import { didFormatado, macFormatado, MODALIDADES } from '@gestor/shared';
+import { resumoDoPainel } from './projects.js';
 
 export async function summary(db: Db) {
   const activeClient = and(isNull(clients.deletedAt), eq(clients.archived, false), eq(clients.isInternal, false));
@@ -21,7 +22,7 @@ export async function summary(db: Db) {
     .from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId)).innerJoin(clients, eq(clients.id, subscriptions.clientId))
     .where(and(isNull(subscriptions.deactivatedAt), activeClient, isNull(products.deletedAt))).groupBy(products.code, products.name, products.color, products.sortOrder).orderBy(products.sortOrder);
 
-  const [d] = await db.select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})`, noCircuit: sql<number>`count(*) filter (where ${dids.circuitId} is null)` }).from(dids).where(and(isNull(dids.deletedAt), semTerceiro));
+  const [d] = await db.select({ total: sql<number>`count(*)`, assigned: sql<number>`count(${dids.clientId})` }).from(dids).where(and(isNull(dids.deletedAt), semTerceiro));
 
   const occ = await db
     .select({ id: circuits.id, name: circuits.name, carrierName: carriers.name, channels: circuits.channels, total: sql<number>`count(${dids.id})`, assigned: sql<number>`count(${dids.clientId})` })
@@ -57,7 +58,6 @@ export async function summary(db: Db) {
 
   const zeroChannels = circuitsView.filter((c) => c.channels === 0 && c.total > 0);
   if (zeroChannels.length) alerts.push({ kind: 'circuito_sem_canais', severity: 'critical', message: 'Circuitos com DIDs mas 0 canais cadastrados', count: zeroChannels.length, link: '/circuitos' });
-  if (Number(d?.noCircuit ?? 0)) alerts.push({ kind: 'did_sem_circuito', severity: 'warning', message: 'DIDs sem circuito', count: Number(d!.noCircuit), link: '/circuitos?aba=numeracao&circuito=none' });
   if (Number(dev?.inactive ?? 0)) alerts.push({ kind: 'aparelho_inativo', severity: 'warning', message: 'Aparelhos inativos', count: Number(dev!.inactive), link: '/inventario?condicao=inativo' });
 
   const fromC = alias(clients, 'from'), toC = alias(clients, 'to');
@@ -69,9 +69,30 @@ export async function summary(db: Db) {
     .select({ id: auditLog.id, action: auditLog.action, summary: auditLog.summary, userName: users.name, createdAt: auditLog.createdAt })
     .from(auditLog).leftJoin(users, eq(users.id, auditLog.userId)).where(sql`${auditLog.action} not in ('login','logout','login_failed')`).orderBy(desc(auditLog.createdAt)).limit(8);
 
+  /**
+   * Os clientes com mais valor nosso na mão (locação e comodato somados).
+   * É a pergunta "quem está com o nosso dinheiro em aparelho?", que ninguém consegue responder
+   * olhando lista. Venda não entra: o aparelho vendido não é mais nosso.
+   */
+  const valorPorCliente = await db
+    .select({
+      clientId: clients.id,
+      nome: clients.tradeName,
+      n: sql<number>`count(*)::int`,
+      valorCents: sql<number>`coalesce(sum(coalesce(${devices.valueCents}, ${deviceModels.valueCents}, 0)), 0)::int`,
+    })
+    .from(devices)
+    .innerJoin(clients, eq(clients.id, devices.clientId))
+    .innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
+    .where(sql`${devices.deletedAt} is null and ${devices.currentModality} in ('locacao','comodato')`)
+    .groupBy(clients.id, clients.tradeName)
+    .orderBy(sql`4 desc`)
+    .limit(8);
+
   return {
+    valorPorCliente: valorPorCliente.map((x) => ({ ...x, n: Number(x.n), valorCents: Number(x.valorCents) })),
     clients: { active: Number(cl?.n ?? 0), byProduct: byProduct.map((p) => ({ ...p, n: Number(p.n) })) },
-    dids: { total: Number(d?.total ?? 0), assigned: Number(d?.assigned ?? 0), free: Number(d?.total ?? 0) - Number(d?.assigned ?? 0), noCircuit: Number(d?.noCircuit ?? 0) },
+    dids: { total: Number(d?.total ?? 0), assigned: Number(d?.assigned ?? 0), free: Number(d?.total ?? 0) - Number(d?.assigned ?? 0) },
     circuits: circuitsView.sort((a, b) => b.total - a.total),
     devices: {
       inStock: Number(dev?.inStock ?? 0), withClients: Number(dev?.withClients ?? 0),
@@ -80,6 +101,7 @@ export async function summary(db: Db) {
     alerts,
     recentMovements: recentMovements.map((m) => ({ ...m, modalityName: (MODALIDADES as any)[m.modality] ?? m.modality })),
     recentAudit,
+    projetos: await resumoDoPainel(db),
   };
 }
 

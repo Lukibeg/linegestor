@@ -28,6 +28,8 @@ import dataRoutes from './routes/data.js';
 import dashboardRoutes from './routes/dashboard.js';
 import secretRoutes from './routes/secrets.js';
 import settingsRoutes from './routes/settings.js';
+import projectRoutes from './routes/projects.js';
+import releaseNoteRoutes from './routes/releaseNotes.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -43,6 +45,9 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
   const app = Fastify({
     logger: config.NODE_ENV === 'test' ? false : { level: config.NODE_ENV === 'production' ? 'info' : 'debug', transport: config.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined },
     trustProxy: true,
+    // o padrão do Fastify é 1 MB: pequeno demais para o CSV de importação e para um anexo de
+    // projeto (10 MB viram ~14 MB em base64). Os schemas é que limitam cada caso.
+    bodyLimit: 30 * 1024 * 1024,
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);
@@ -75,6 +80,8 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
     await api.register(dataRoutes, { prefix: '/data' });
     await api.register(adminRoutes, { prefix: '/admin' });
     await api.register(settingsRoutes, { prefix: '/settings' });
+    await api.register(releaseNoteRoutes, { prefix: '/release-notes' });
+    await api.register(projectRoutes, { prefix: '/projects' });
   }, { prefix: '/api' });
 
   // Em produção, a própria API serve a interface (apps/web/dist) e devolve o index.html para qualquer rota que não seja /api

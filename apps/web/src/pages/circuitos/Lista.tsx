@@ -10,7 +10,7 @@ import { api } from '../../api/index.js';
 import type { Circuit } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Chip, Kpi, Modal, Ocupacao, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, InputIp, Kpi, Modal, Ocupacao, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { didFormatado, paraCentavos, reais } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
@@ -56,8 +56,9 @@ export function CircuitosLista() {
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-5">
         <Kpi label={temFiltro ? 'Circuitos (filtrados)' : 'Circuitos'} valor={r ? r.circuits : '…'} sub={r ? `${r.channels.toLocaleString('pt-BR')} canais no total` : undefined} tone="accent" />
         <Kpi label="Valor mensal (circuitos)" valor={r ? reais(r.monthlyValueCents) : '…'} sub="soma do que é pago às operadoras" />
-        <Kpi label="DIDs" valor={r ? r.dids.total.toLocaleString('pt-BR') : '…'} sub={r ? `${r.dids.assigned.toLocaleString('pt-BR')} em uso · ${r.dids.free.toLocaleString('pt-BR')} livres` : undefined} tone="ok" />
-        <Kpi label="DIDs sem circuito" valor={r ? r.dids.noCircuit : '…'} sub={r && r.dids.noCircuit > 0 ? 'precisam ser ligados a um circuito' : 'tudo ligado a um circuito'} tone={r && r.dids.noCircuit > 0 ? 'signal' : 'neutral'} />
+        <Kpi label="DIDs" valor={r ? r.dids.total.toLocaleString('pt-BR') : '…'} sub={r ? `${r.dids.assigned.toLocaleString('pt-BR')} com cliente` : undefined} tone="ok" />
+        {/* "DIDs sem circuito" saiu: todo DID nasce dentro de um circuito (rodada 23) */}
+        <Kpi label="DIDs livres" valor={r ? r.dids.free.toLocaleString('pt-BR') : '…'} sub="sem cliente, prontos para alocar" tone={r && r.dids.free === 0 && r.dids.total > 0 ? 'signal' : 'neutral'} />
       </div>
       {temFiltro && <p className="text-[12.5px] text-muted -mt-3 mb-4">Os cartões acima estão somando apenas o que o filtro deixou passar. <button className="link" onClick={() => setSp(aba === 'numeracao' ? { aba: 'numeracao' } : {}, { replace: true })}>limpar filtros</button></p>}
 
@@ -76,7 +77,7 @@ export function CircuitosLista() {
             <thead><tr>
               <ThN /><Th o={o} col="name">Nome</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="code">N° do circuito</Th><Th o={o} col="keyNumber">Número chave</Th>
               <Th o={o} col="ownerName">Titular</Th><Th o={o} col="channels" align="right">Canais</Th><Th o={o} col="total" align="right">DIDs</Th>
-              <Th o={o} col="free" align="right">Livres</Th><Th o={o} col="uso">Em uso</Th><Th o={o} col="monthlyValueCents" align="right">Valor/mês</Th>
+              <Th o={o} col="free" align="right">Livres</Th><Th o={o} col="uso">Ocupação</Th><Th o={o} col="monthlyValueCents" align="right">Valor/mês</Th>
             </tr></thead>
             <tbody>{lista.data.items.map((c, i) => (
               <tr key={c.id} className="cursor-pointer" onClick={() => nav(`/circuitos/${c.id}`)}>
@@ -99,11 +100,11 @@ export function CircuitoForm({ open, onClose, onSaved, circuito }: { open: boole
   const [f, setF] = useState<Record<string, any>>({});
   const [senha, setSenha] = useState('');
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
-  useEffect(() => { if (open) { setErr(''); setSenha(''); setF(circuito ? { name: circuito.name, code: circuito.code, keyNumber: circuito.keyNumber ? didFormatado(circuito.keyNumber) : '', carrierId: circuito.carrierId ?? '', channels: circuito.channels, ownerClientId: circuito.ownerClientId ?? '', monthlyValue: circuito.monthlyValueCents != null ? (circuito.monthlyValueCents / 100).toFixed(2).replace('.', ',') : '', signalingIp: circuito.signalingIp ?? '', authIp: circuito.authIp ?? '', authUsername: circuito.authUsername ?? '', notes: circuito.notes ?? '', thirdParty: circuito.thirdParty } : { name: '', code: '', keyNumber: '', carrierId: '', channels: 0, ownerClientId: owners.data?.find((o) => o.internalCode === 'voicenet')?.id ?? '', monthlyValue: '', signalingIp: '', authIp: '', authUsername: '', notes: '', thirdParty: false }); } }, [open, circuito, owners.data]);
+  useEffect(() => { if (open) { setErr(''); setSenha(''); setF(circuito ? { name: circuito.name, code: circuito.code, keyNumber: circuito.keyNumber ? didFormatado(circuito.keyNumber) : '', carrierId: circuito.carrierId ?? '', channels: circuito.channels, ownerClientId: circuito.ownerClientId ?? '', monthlyValue: circuito.monthlyValueCents != null ? (circuito.monthlyValueCents / 100).toFixed(2).replace('.', ',') : '', authType: circuito.authType ?? 'ip', signalingIp: circuito.signalingIp ?? '', authIp: circuito.authIp ?? '', authUsername: circuito.authUsername ?? '', notes: circuito.notes ?? '', thirdParty: circuito.thirdParty } : { name: '', code: '', keyNumber: '', carrierId: '', channels: 0, ownerClientId: owners.data?.find((o) => o.internalCode === 'voicenet')?.id ?? '', monthlyValue: '', authType: 'ip', signalingIp: '', authIp: '', authUsername: '', notes: '', thirdParty: false }); } }, [open, circuito, owners.data]);
   const save = async () => {
     setBusy(true); setErr('');
     try {
-      const body = { name: f.name, code: f.code, keyNumber: f.keyNumber || null, carrierId: f.carrierId || null, channels: Number(f.channels) || 0, ownerClientId: f.ownerClientId || null, monthlyValueCents: f.monthlyValue ? paraCentavos(f.monthlyValue) : null, signalingIp: f.signalingIp || null, authIp: f.authIp || null, authUsername: f.authUsername || null, notes: f.notes || null, thirdParty: !!f.thirdParty, ...(senha ? { authPassword: senha } : {}) };
+      const body = { name: f.name, code: f.code, keyNumber: f.keyNumber || null, carrierId: f.carrierId || null, channels: Number(f.channels) || 0, ownerClientId: f.ownerClientId || null, monthlyValueCents: f.monthlyValue ? paraCentavos(f.monthlyValue) : null, authType: f.authType === 'login' ? 'login' : 'ip', signalingIp: f.signalingIp || null, authIp: f.authType === 'login' ? null : f.authIp || null, authUsername: f.authType === 'login' ? f.authUsername || null : null, notes: f.notes || null, thirdParty: !!f.thirdParty, ...(senha ? { authPassword: senha } : {}) };
       const r = circuito ? await api.circuits.update(circuito.id, body) : await api.circuits.create(body);
       await qc.invalidateQueries({ queryKey: ['circuits'] }); await qc.invalidateQueries({ queryKey: ['circuit', r.id] }); await qc.invalidateQueries({ queryKey: ['circuit-owners'] });
       toast.push('ok', circuito ? 'Circuito atualizado' : 'Circuito criado'); onSaved(r);
@@ -112,9 +113,9 @@ export function CircuitoForm({ open, onClose, onSaved, circuito }: { open: boole
   return (
     <Modal open={open} onClose={onClose} lateral largura="max-w-xl" titulo={circuito ? `Editar ${circuito.name}` : 'Novo circuito'} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name || !f.code} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
       <div className="flex flex-col gap-3">
-        <Campo label="Nome"><input className="input" value={f.name ?? ''} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Campo>
+        <Campo label="Nome"><input className="input" autoComplete="off" value={f.name ?? ''} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Campo>
         <div className="grid grid-cols-2 gap-3">
-          <Campo label="N° do circuito" dica="o número/código do feixe na operadora"><input className="input font-mono" value={f.code ?? ''} onChange={(e) => setF({ ...f, code: e.target.value })} /></Campo>
+          <Campo label="N° do circuito" dica="o número/código do feixe na operadora"><input className="input font-mono" autoComplete="off" value={f.code ?? ''} onChange={(e) => setF({ ...f, code: e.target.value })} /></Campo>
           <Campo label="Operadora"><select className="input" value={f.carrierId ?? ''} onChange={(e) => setF({ ...f, carrierId: e.target.value })}><option value="">— sem operadora —</option>{carriers.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>
           <Campo label="Número chave" dica="o número piloto do feixe"><input className="input font-mono tnum" placeholder="(71) 3020-0000" value={f.keyNumber ?? ''} onChange={(e) => setF({ ...f, keyNumber: e.target.value })} onBlur={() => setF((x) => ({ ...x, keyNumber: x.keyNumber ? didFormatado(x.keyNumber) : '' }))} /></Campo>
           <Campo label="Canais (chamadas simultâneas)"><input type="number" min={0} className="input tnum" value={f.channels ?? 0} onChange={(e) => setF({ ...f, channels: e.target.value })} /></Campo>
@@ -131,14 +132,22 @@ export function CircuitoForm({ open, onClose, onSaved, circuito }: { open: boole
         </div>
         <fieldset className="card p-3 flex flex-col gap-3" disabled={!can('servers.write')}>
           <legend className="eyebrow px-1">Tronco (autenticação) {!can('servers.write') && '· somente leitura'}</legend>
-          <div className="grid grid-cols-2 gap-3">
-            <Campo label="IP da operadora"><input className="input font-mono" value={f.signalingIp ?? ''} onChange={(e) => setF({ ...f, signalingIp: e.target.value })} /></Campo>
-            <Campo label="IP de autenticação (IP PBX)"><input className="input font-mono" value={f.authIp ?? ''} onChange={(e) => setF({ ...f, authIp: e.target.value })} /></Campo>
-            <Campo label="Usuário de autenticação"><input className="input font-mono" value={f.authUsername ?? ''} onChange={(e) => setF({ ...f, authUsername: e.target.value })} /></Campo>
+          {/* dois jeitos de o tronco se autenticar na operadora: pelo IP do PBX, ou por login e senha */}
+          <div className="grid grid-cols-2 gap-1 rounded-lg border border-line p-1" role="radiogroup" aria-label="Tipo de autenticação">
+            {([['ip', 'Por IP'], ['login', 'Por login e senha']] as const).map(([t, rotulo]) => (
+              <button key={t} type="button" role="radio" aria-checked={(f.authType ?? 'ip') === t} onClick={() => setF({ ...f, authType: t })} className={`rounded-md px-2 py-1.5 text-[13px] font-semibold ${(f.authType ?? 'ip') === t ? 'bg-accent text-white' : 'text-ink-2 hover:bg-surface-2'}`}>{rotulo}</button>
+            ))}
           </div>
-          <Campo label="Senha de autenticação"><CampoSegredo secretId={circuito?.authPassword.secretId ?? null} hasSecret={!!circuito?.authPassword.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={setSenha} /></Campo>
+          <div className="grid grid-cols-2 gap-3">
+            <Campo label="IP da operadora"><InputIp value={f.signalingIp ?? ''} onChange={(v) => setF({ ...f, signalingIp: v })} /></Campo>
+            {(f.authType ?? 'ip') === 'ip'
+              ? <Campo label="IP do PBX" dica="o IP que a operadora autoriza"><InputIp value={f.authIp ?? ''} onChange={(v) => setF({ ...f, authIp: v })} /></Campo>
+              : <Campo label="Login do tronco"><input className="input font-mono" autoComplete="off" data-lpignore="true" data-1p-ignore value={f.authUsername ?? ''} onChange={(e) => setF({ ...f, authUsername: e.target.value })} /></Campo>}
+          </div>
+          {f.authType === 'login' && <Campo label="Senha do tronco"><CampoSegredo secretId={circuito?.authPassword.secretId ?? null} hasSecret={!!circuito?.authPassword.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={setSenha} /></Campo>}
         </fieldset>
-        <Campo label="Anotações"><textarea className="input" rows={3} value={f.notes ?? ''} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Campo>
+        {/* autoComplete desligado: o navegador "adivinhava" este campo como endereço e preenchia sozinho ("address") */}
+        <Campo label="Anotações"><textarea className="input" rows={3} name="anotacoes-do-circuito" autoComplete="off" data-lpignore="true" data-1p-ignore data-bwignore value={f.notes ?? ''} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Campo>
         {err && <div className="text-bad text-sm">{err}</div>}
       </div>
     </Modal>

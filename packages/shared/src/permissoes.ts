@@ -20,6 +20,8 @@ export const PERMISSIONS = {
   'data.import': 'Importar CSV',
   'data.export': 'Exportar CSV sem senhas',
   'data.export_secrets': 'Exportar CSV com senhas (fica registrado)',
+  'projects.work': 'Trabalhar nos projetos: marcar etapas, comentar e anexar',
+  'projects.manage': 'Criar e encerrar projetos, definir etapas e a lista de clientes',
   'admin.manage': 'Gerenciar usuários, papéis e catálogos',
   'audit.read': 'Ver a auditoria',
 } as const;
@@ -42,14 +44,14 @@ export const DEFAULT_ROLES: Array<{ key: string; name: string; description: stri
     key: 'operador',
     name: 'Operador',
     description: 'Operação do dia a dia: aloca DIDs, movimenta aparelhos, anota. Sem senhas, sem exclusão, sem importação.',
-    permissions: ['records.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export'],
+    permissions: ['records.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work'],
   },
   {
     key: 'tecnico',
     name: 'Técnico',
     description: 'Tudo do Operador + edita cadastros e dados de servidor, revela senhas (com registro) e vê a auditoria.',
     permissions: [
-      'records.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export',
+      'records.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work',
       'records.write', 'servers.write', 'secrets.reveal', 'audit.read',
     ],
   },

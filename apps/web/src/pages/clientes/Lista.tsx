@@ -11,7 +11,7 @@ import { api, logoSrc } from '../../api/index.js';
 import type { ClientListItem, Product } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can } from '../../lib/auth.js';
-import { Carregando, Chip, LogoCliente, Paginacao, TODOS, Toggle, Vazio } from '../../components/ui/index.js';
+import { Carregando, Chip, LogoCliente, TODOS, Toggle, Vazio } from '../../components/ui/index.js';
 import { cnpjFormatado, data, relativo } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
@@ -100,18 +100,16 @@ export function ClientesLista() {
   const mode = (sp.get('modo') ?? 'or') as 'or' | 'and';
   const arquivados = sp.get('arquivados') === '1';
   const view = sp.get('ver') ?? 'cards';
-  const page = Number(sp.get('p') ?? 1);
-  const tudo = sp.get('tudo') === '1';
-  const tamanho = tudo ? TODOS : 24;
+  // a lista de clientes não tem páginas (pedido do Luan, rodada 23): são poucas dezenas e ele quer ver todos de uma vez
   const [novo, setNovo] = useState(false);
   const colunasEscolhidas = useColunasEscolhidas(STORAGE, PADRAO);
   const o = useOrdenacao('tradeName');
 
-  const numero = contarDe(tudo ? 1 : page, tamanho); // a contagem segue pela lista toda, não recomeça a cada página
-  const set = (k: string, v: string | string[] | null) => { const n = new URLSearchParams(sp); n.delete(k); if (Array.isArray(v)) v.forEach((x) => n.append(k, x)); else if (v) n.set(k, v); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
+  const numero = contarDe(1, TODOS);
+  const set = (k: string, v: string | string[] | null) => { const n = new URLSearchParams(sp); n.delete(k); if (Array.isArray(v)) v.forEach((x) => n.append(k, x)); else if (v) n.set(k, v); setSp(n, { replace: true }); };
 
   const prods = useQuery({ queryKey: ['products'], queryFn: api.admin.products });
-  const lista = useQuery({ queryKey: ['clients', q, produtos, modulos, mode, arquivados, page, tudo, o.ord, o.dir], queryFn: () => api.clients.list({ q, products: produtos, modules: modulos, mode, includeArchived: arquivados, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }) });
+  const lista = useQuery({ queryKey: ['clients', q, produtos, modulos, mode, arquivados, o.ord, o.dir], queryFn: () => api.clients.list({ q, products: produtos, modules: modulos, mode, includeArchived: arquivados, page: 1, pageSize: TODOS, sort: o.ord, dir: o.dir }) });
   const colunas = useMemo(() => montarColunas(prods.data?.filter((p) => p.active) ?? []), [prods.data]);
   const visiveis = colunas.filter((c) => colunasEscolhidas.ids.includes(c.id));
   const ativos = prods.data?.filter((p) => p.active) ?? [];
@@ -161,7 +159,7 @@ export function ClientesLista() {
             {escolhidos.map((e) => (
               <button key={e.tipo + e.key} onClick={() => tirar(e)} className="chip border border-transparent" style={e.cor ? { background: e.cor + '22', color: e.cor } : undefined} title="clique para tirar este filtro">{e.label} ×</button>
             ))}
-            <button className="btn-ghost btn-sm text-muted" onClick={() => { const n = new URLSearchParams(sp); n.delete('produtos'); n.delete('modulos'); n.delete('p'); setSp(n, { replace: true }); }}>limpar tudo</button>
+            <button className="btn-ghost btn-sm text-muted" onClick={() => { const n = new URLSearchParams(sp); n.delete('produtos'); n.delete('modulos'); setSp(n, { replace: true }); }}>limpar tudo</button>
           </div>
         )}
       </div>
@@ -214,7 +212,6 @@ export function ClientesLista() {
           ))}
         </div>
       )}
-      {lista.data && <Paginacao page={page} pageSize={24} total={lista.data.total} onChange={(p) => set('p', String(p))} tudo={tudo} onTudo={(v) => set('tudo', v ? '1' : null)} />}
       <ClienteForm open={novo} onClose={() => setNovo(false)} onSaved={(c) => { setNovo(false); nav(`/clientes/${c.id}`); }} />
     </Pagina>
   );

@@ -9,11 +9,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { ClipboardList, X } from 'lucide-react';
 import { api } from '../../api/index.js';
 import type { Device } from '../../api/types.js';
 import { Campo, Chip, Modal, Spinner, TODOS, mensagemErro, useToast } from '../../components/ui/index.js';
-import { CONDICOES_APARELHO, MODALIDADES } from '../../lib/format.js';
+import { CONDICOES_APARELHO, lerLista, macLimpo, MODALIDADES, serieLimpa } from '../../lib/format.js';
 
 const NOVA = '__nova__';
 
@@ -44,10 +44,20 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
     enabled: open && (!devolucao || !!fromClientId),
   });
   const unidades = useQuery({ queryKey: ['client-units', toClientId], queryFn: () => api.clients.units(toClientId), enabled: open && !devolucao && !!toClientId });
+  // para a lista colada: TODOS os aparelhos da origem, sem os filtros de busca e de modelo da tela
+  const todosDaOrigem = useQuery({
+    queryKey: ['devices-pick', origem, 'todos'],
+    queryFn: () => api.inventory.devices({ clientId: origem, page: 1, pageSize: TODOS }),
+    enabled: open && (!devolucao || !!fromClientId),
+  });
+  const [colar, setColar] = useState(false);
+  const [lista, setLista] = useState('');
+  const [resultadoLista, setResultadoLista] = useState<{ achados: number; faltando: string[]; jaEscolhidos: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setErr(''); setEscolhidos(preset?.devices ?? []); setBusca(''); setModelId(''); setNote(''); setCond(''); setUnit(''); setNovaUnidade(''); setTo('');
+    setColar(false); setLista(''); setResultadoLista(null);
     setFrom(preset?.devices?.[0]?.clientId ?? '');
     if (preset?.devices?.[0]?.clientId) setModality('devolucao');
   }, [open, preset]);
@@ -60,6 +70,27 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
   }, [unidades.data, unit]);
 
   const disponiveis = useMemo(() => (devices.data?.items ?? []).filter((d) => !escolhidos.some((e) => e.id === d.id)), [devices.data, escolhidos]);
+
+  /**
+   * A lista colada (MACs ou N/S, um por linha ou separados por vírgula/espaço) vira seleção:
+   * o que existe na origem entra; o que não existe (ou está em outro lugar) é listado para a
+   * pessoa conferir, sem barrar o resto.
+   */
+  const aplicarLista = () => {
+    const itens = lerLista(lista);
+    const todos = todosDaOrigem.data?.items ?? [];
+    const novos: Device[] = []; const faltando: string[] = []; let jaEscolhidos = 0;
+    for (const it of itens) {
+      const mac = macLimpo(it); const serie = serieLimpa(it);
+      const d = todos.find((x) => (mac.length === 12 && x.mac === mac) || (!!serie && (x.serialNumber ?? '').toUpperCase() === serie.toUpperCase()));
+      if (!d) { faltando.push(it); continue; }
+      if (escolhidos.some((e) => e.id === d.id) || novos.some((e) => e.id === d.id)) { jaEscolhidos++; continue; }
+      novos.push(d);
+    }
+    setEscolhidos([...escolhidos, ...novos]);
+    setResultadoLista({ achados: novos.length, faltando, jaEscolhidos });
+    if (!faltando.length) setLista('');
+  };
   const rotulo = (d: Device) => `${d.modelName} · ${d.identificacaoTipo === 'nenhum' ? 'sem identificação' : d.identificacaoTipo === 'serie' ? `N/S ${d.identificacao}` : d.identificacao}`;
   const unidadeFinal = unit === NOVA ? novaUnidade.trim() : unit;
 
@@ -131,7 +162,25 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
         </div>
 
         <div>
-          <div className="eyebrow mb-2">Aparelhos {devolucao ? 'com o cliente' : 'no estoque'}</div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="eyebrow">Aparelhos {devolucao ? 'com o cliente' : 'no estoque'}</span>
+            <button type="button" className={`btn-ghost btn-sm ${colar ? 'text-accent' : ''}`} onClick={() => setColar(!colar)} disabled={devolucao && !fromClientId} aria-pressed={colar}><ClipboardList size={14} /> Colar lista de MACs / N/S</button>
+          </div>
+          {colar && (
+            <div className="card p-3 mb-2 flex flex-col gap-2">
+              <textarea className="input font-mono" rows={4} placeholder={'EC:74:D7:68:58:9E\nEC:74:D7:68:58:AC\nHS-2026-0001'} value={lista} onChange={(e) => setLista(e.target.value)} autoComplete="off" autoFocus />
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" className="btn-secondary btn-sm" disabled={!lerLista(lista).length || todosDaOrigem.isLoading} onClick={aplicarLista}>Selecionar os {lerLista(lista).length || ''} da lista</button>
+                <span className="text-[12.5px] text-muted">um por linha, ou separados por vírgula ou espaço</span>
+              </div>
+              {resultadoLista && (
+                <div className="text-[12.5px] flex flex-col gap-0.5">
+                  <span className="text-ok">{resultadoLista.achados} aparelho(s) selecionado(s) pela lista{resultadoLista.jaEscolhidos ? ` · ${resultadoLista.jaEscolhidos} já estava(m) selecionado(s)` : ''}</span>
+                  {resultadoLista.faltando.length > 0 && <span className="text-bad">{resultadoLista.faltando.length} não encontrado(s) {devolucao ? 'com este cliente' : 'no estoque'}: <span className="font-mono">{resultadoLista.faltando.slice(0, 10).join(', ')}{resultadoLista.faltando.length > 10 ? '…' : ''}</span></span>}
+                </div>
+              )}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-2 mb-2">
             <select className="input sm:w-auto" value={modelId} onChange={(e) => setModelId(e.target.value)} disabled={devolucao && !fromClientId}>
               <option value="">Todos os modelos</option>
@@ -166,7 +215,7 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
           </div>
         </div>
 
-        <Campo label="Observação"><input className="input" value={note} onChange={(e) => setNote(e.target.value)} /></Campo>
+        <Campo label="Observação"><input className="input" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} /></Campo>
         {err && <div className="text-bad text-sm">{err}</div>}
       </div>
     </Modal>

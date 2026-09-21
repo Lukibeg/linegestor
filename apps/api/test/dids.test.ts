@@ -56,10 +56,13 @@ describe('DIDs', () => {
     const r = await s.post(`/circuits/${circuitId}/dids/range`, { baseNumber: '(71) 3020-1200', quantity: 50 });
     expect(r.statusCode).toBe(201);
     expect(r.json()).toEqual({ created: 50, first: '7130201200', last: '7130201249' });
-    const dup = await s.post('/dids/range', { baseNumber: '7130201240', quantity: 20 });
+    const dup = await s.post('/dids/range', { baseNumber: '7130201240', quantity: 20, circuitId });
     expect(dup.statusCode).toBe(400);
     expect(dup.json().error).toMatch(/já existem/);
     expect((await s.get('/dids')).json().total).toBe(50);
+    // todo DID nasce dentro de um circuito: faixa sem circuito é recusada
+    const semCircuito = await s.post('/dids/range', { baseNumber: '7130209000', quantity: 5 });
+    expect(semCircuito.statusCode).toBe(400);
   });
 
   it('edição em massa exige lista de ids e devolve o número exato de afetados', async () => {
@@ -91,11 +94,14 @@ describe('DIDs', () => {
     expect(first.free).toBe(true);
   });
 
-  it('não exclui circuito com DIDs; exclui depois de esvaziar', async () => {
+  it('não exclui circuito com DIDs; exclui depois de mover os DIDs para outro circuito', async () => {
     expect((await s.del(`/circuits/${circuitId}`)).statusCode).toBe(400);
     const ids = (await s.get(`/dids/ids?circuitId=${circuitId}`)).json().ids;
-    await s.post('/dids/bulk', { ids, set: { circuitId: null } });
-    expect((await s.get('/dids?circuitId=none')).json().total).toBe(50);
+    // "sem circuito" não existe mais: a edição em massa exige um circuito de destino
+    expect((await s.post('/dids/bulk', { ids, set: { circuitId: null } })).statusCode).toBe(400);
+    const outro = (await s.get('/circuits')).json().items.find((c: any) => c.id !== circuitId);
+    await s.post('/dids/bulk', { ids, set: { circuitId: outro.id } });
+    expect((await s.get(`/dids?circuitId=${outro.id}`)).json().total).toBe(50);
     expect((await s.del(`/circuits/${circuitId}`)).statusCode).toBe(200);
   });
 });

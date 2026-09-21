@@ -17,7 +17,7 @@ function baseSelect(db: Db) {
     .select({
       id: dids.id, number: dids.number, circuitId: dids.circuitId, circuitName: circuits.name, circuitCode: circuits.code, carrierName: carriers.name,
       clientId: dids.clientId, clientName: clients.tradeName, ownerClientId: dids.ownerClientId, ownerName: owner.tradeName, note: dids.note,
-      thirdParty: circuits.thirdParty,
+      inUse: dids.inUse, thirdParty: circuits.thirdParty,
       createdAt: dids.createdAt, updatedAt: dids.updatedAt,
     })
     .from(dids)
@@ -28,7 +28,8 @@ function baseSelect(db: Db) {
 }
 
 function shape(r: any) {
-  return { ...r, numberFormatted: didFormatado(r.number), free: !r.clientId, thirdParty: !!r.thirdParty };
+  // "em uso" só faz sentido com cliente: número livre nunca está em uso
+  return { ...r, numberFormatted: didFormatado(r.number), free: !r.clientId, inUse: !!r.clientId && !!r.inUse, thirdParty: !!r.thirdParty };
 }
 
 
@@ -39,10 +40,12 @@ function shape(r: any) {
 function filtros(q: Partial<DidListar>): SQL[] {
   const conds: SQL[] = [isNull(dids.deletedAt)];
   if (q.q) conds.push(ilike(dids.number, `%${q.q.replace(/\D/g, '')}%`));
-  if (q.circuitId === 'none') conds.push(isNull(dids.circuitId));
-  else if (q.circuitId) conds.push(eq(dids.circuitId, q.circuitId));
+  if (q.circuitId) conds.push(eq(dids.circuitId, q.circuitId));
   if (q.clientId === 'free') conds.push(isNull(dids.clientId));
   else if (q.clientId) conds.push(eq(dids.clientId, q.clientId));
+  // em uso = com cliente e marcado; não usado = com cliente e desmarcado (livre não entra em nenhum dos dois)
+  if (q.inUse === 'true') conds.push(and(sql`${dids.clientId} is not null`, eq(dids.inUse, true))!);
+  else if (q.inUse === 'false') conds.push(and(sql`${dids.clientId} is not null`, eq(dids.inUse, false))!);
   if (q.ownerClientId) conds.push(eq(dids.ownerClientId, q.ownerClientId));
   // número de tronco que não é da VoiceNet só aparece com o interruptor ligado.
   // O `is null` é necessário: DID sem circuito não é de terceiro, e `not in` com nulo some com ele.
@@ -57,6 +60,7 @@ export async function list(db: Db, q: DidListar) {
   // ordenar por qualquer coluna da tabela; o que não for reconhecido cai no número
   const colunas: Record<string, SQL | PgColumn> = {
     number: dids.number, circuit: circuits.name, carrier: carriers.name, client: clients.tradeName, owner: owner.tradeName, note: dids.note,
+    inUse: sql`case when ${dids.clientId} is null then null else ${dids.inUse} end`,
   };
   const sortCol = colunas[q.sort ?? 'number'] ?? dids.number;
   const rows = await baseSelect(db).where(where).orderBy(sql`${sortCol} ${q.dir === 'desc' ? sql`desc` : sql`asc`} nulls last`, asc(dids.number)).limit(q.pageSize).offset((q.page - 1) * q.pageSize);
@@ -83,25 +87,40 @@ export async function createRange(db: Db, data: DidCriarFaixa) {
   if (existing.length) {
     throw new BadRequest(`${existing.length} número(s) já existem: ${existing.slice(0, 5).map((e) => didFormatado(e.number)).join(', ')}${existing.length > 5 ? '…' : ''}`, { existing: existing.map((e) => e.number) });
   }
-  const rows = numbers.map((n) => ({ id: newId(), number: n, circuitId: data.circuitId ?? null, clientId: data.clientId ?? null, ownerClientId: data.ownerClientId ?? null, note: data.note ?? null }));
+  const rows = numbers.map((n) => ({ id: newId(), number: n, circuitId: data.circuitId, clientId: data.clientId ?? null, inUse: false, ownerClientId: data.ownerClientId ?? null, note: data.note ?? null }));
   for (let i = 0; i < rows.length; i += 500) await db.insert(dids).values(rows.slice(i, i + 500));
   return { created: rows.length, first: numbers[0]!, last: numbers[numbers.length - 1]! };
 }
 
-export async function update(db: Db, id: string, data: { circuitId?: string | null; clientId?: string | null; ownerClientId?: string | null; note?: string | null }) {
+/**
+ * Alocar não é usar: ao mudar de cliente (ou liberar) a marca "em uso" cai, e o número entra
+ * no cliente novo como "não usado" até alguém marcar — a menos que a marca venha junto.
+ */
+function usoConformeCliente(set: Record<string, unknown>) {
+  if ('clientId' in set && set.inUse === undefined) set.inUse = false;
+  if (set.clientId === null) set.inUse = false;
+  return set;
+}
+
+export async function update(db: Db, id: string, data: { circuitId?: string; clientId?: string | null; ownerClientId?: string | null; inUse?: boolean; note?: string | null }) {
   const [before] = await db.select().from(dids).where(eq(dids.id, id));
   if (!before) throw new NotFound('DID');
-  const [after] = await db.update(dids).set({ ...data, updatedAt: new Date() }).where(eq(dids.id, id)).returning();
+  if (data.inUse !== undefined && (data.clientId === null || (data.clientId === undefined && !before.clientId))) throw new BadRequest('Só um número com cliente pode ser marcado como em uso');
+  const [after] = await db.update(dids).set({ ...usoConformeCliente({ ...data }), updatedAt: new Date() }).where(eq(dids.id, id)).returning();
   return { before, after: after! };
 }
 
 /** Edição em massa por lista de ids. Devolve quantos foram afetados de fato. */
 export async function bulkUpdate(db: Db, data: DidEditarEmMassa) {
   const set: Record<string, unknown> = { updatedAt: new Date() };
-  if ('circuitId' in data.set) set.circuitId = data.set.circuitId;
+  if (data.set.circuitId) set.circuitId = data.set.circuitId;
   if ('clientId' in data.set) set.clientId = data.set.clientId;
+  if ('inUse' in data.set) set.inUse = data.set.inUse;
   if ('note' in data.set) set.note = data.set.note;
-  const rows = await db.update(dids).set(set).where(and(inArray(dids.id, data.ids), isNull(dids.deletedAt))).returning({ id: dids.id });
+  usoConformeCliente(set);
+  // marcar "em uso" sem mexer no cliente só vale para quem tem cliente: número livre fica como está
+  const soComCliente = 'inUse' in data.set && !('clientId' in data.set) ? sql`${dids.clientId} is not null` : undefined;
+  const rows = await db.update(dids).set(set).where(and(inArray(dids.id, data.ids), isNull(dids.deletedAt), soComCliente)).returning({ id: dids.id });
   return { affected: rows.length };
 }
 
@@ -119,10 +138,8 @@ export async function restore(db: Db, id: string) {
 /** Descreve uma alteração em massa em uma frase, para a auditoria. */
 export async function describeBulk(db: Db, data: DidEditarEmMassa, affected: number) {
   const parts: string[] = [];
-  if ('circuitId' in data.set) {
-    if (data.set.circuitId) { const [c] = await db.select({ name: circuits.name }).from(circuits).where(eq(circuits.id, data.set.circuitId)); parts.push(`circuito → ${c?.name ?? '?'}`); }
-    else parts.push('circuito → sem circuito');
-  }
+  if (data.set.circuitId) { const [c] = await db.select({ name: circuits.name }).from(circuits).where(eq(circuits.id, data.set.circuitId)); parts.push(`circuito → ${c?.name ?? '?'}`); }
+  if ('inUse' in data.set) parts.push(data.set.inUse ? 'marcados como em uso' : 'marcados como não usados');
   if ('clientId' in data.set) {
     if (data.set.clientId) { const [c] = await db.select({ name: clients.tradeName }).from(clients).where(eq(clients.id, data.set.clientId)); parts.push(`cliente → ${c?.name ?? '?'}`); }
     else parts.push('liberados (sem cliente)');

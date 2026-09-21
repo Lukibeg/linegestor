@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Check, Pencil, Plus, X } from 'lucide-react';
 import { api } from '../../api/index.js';
 import type { Product, ProductModule, Role, User } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
@@ -11,12 +11,13 @@ import { Campo, Carregando, Chip, Confirmar, Modal, Paginacao, Spinner, TODOS, T
 import { data, relativo } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { Ajustes } from './Ajustes.js';
+import { Novidades } from './Novidades.js';
 import { contar, contarDe, TdN, ThN } from '../../lib/contagem.js';
 
 export function Admin() {
   const { can } = useAuth();
   const links = [
-    ...(can('admin.manage') ? [{ to: 'usuarios', label: 'Usuários' }, { to: 'papeis', label: 'Papéis' }, { to: 'catalogos', label: 'Catálogos' }, { to: 'produtos', label: 'Produtos' }, { to: 'ajustes', label: 'Ajustes' }] : []),
+    ...(can('admin.manage') ? [{ to: 'usuarios', label: 'Usuários' }, { to: 'papeis', label: 'Papéis' }, { to: 'catalogos', label: 'Catálogos' }, { to: 'produtos', label: 'Produtos' }, { to: 'novidades', label: 'Novidades' }, { to: 'ajustes', label: 'Ajustes' }] : []),
     ...(can('audit.read') ? [{ to: 'auditoria', label: 'Auditoria' }] : []),
     ...(can('records.delete') ? [{ to: 'lixeira', label: 'Lixeira' }] : []),
   ];
@@ -25,7 +26,7 @@ export function Admin() {
       <div className="flex gap-1 border-b border-line mb-4 overflow-x-auto">{links.map((l) => <NavLink key={l.to} to={l.to} className={({ isActive }) => `px-3 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${isActive ? 'border-accent text-accent' : 'border-transparent text-ink-2'}`}>{l.label}</NavLink>)}</div>
       <Routes>
         <Route index element={<Navigate to={links[0]?.to ?? '/'} replace />} />
-        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="ajustes" element={<Ajustes />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
+        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="novidades" element={<Novidades />} /><Route path="ajustes" element={<Ajustes />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
       </Routes>
     </Pagina>
   );
@@ -102,11 +103,37 @@ function Catalogos() {
   );
 }
 function Catalogo({ tipo, nome, novo, setNovo, onAdd }: { tipo: string; nome: string; novo: string; setNovo: (v: string) => void; onAdd: () => void }) {
-  const q = useQuery({ queryKey: ['catalog', tipo], queryFn: () => api.admin.catalog(tipo) }); const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['catalog', tipo], queryFn: () => api.admin.catalog(tipo) }); const qc = useQueryClient(); const toast = useToast();
+  // renomear em linha: o lápis abre o campo no lugar do nome; Enter ou ✓ salva, Esc ou ✕ desiste
+  const [editando, setEditando] = useState<{ id: string; nome: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const salvar = async () => {
+    if (!editando || !editando.nome.trim()) return;
+    setBusy(true);
+    try { await api.admin.updateCatalogItem(tipo, editando.id, { name: editando.nome.trim() }); setEditando(null); await qc.invalidateQueries({ queryKey: ['catalog', tipo] }); toast.push('ok', 'Renomeado'); }
+    catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); }
+  };
   return (
     <div className="card p-4"><div className="font-display font-semibold mb-2">{nome}</div>
-      <ul className="flex flex-col gap-1 mb-3">{q.data?.map((i) => <li key={i.id} className="flex items-center justify-between text-sm"><span className={i.active ? '' : 'text-muted line-through'}>{i.name}</span><Toggle checked={i.active} onChange={async (v) => { await api.admin.updateCatalogItem(tipo, i.id, { active: v }); await qc.invalidateQueries({ queryKey: ['catalog', tipo] }); }} /></li>)}</ul>
-      <div className="flex gap-2"><input className="input" placeholder="novo item" value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && novo && onAdd()} /><button className="btn-secondary btn-sm" disabled={!novo} onClick={onAdd}>Adicionar</button></div>
+      <ul className="flex flex-col gap-1 mb-3">{q.data?.map((i) => (
+        <li key={i.id} className="flex items-center justify-between gap-2 text-sm group">
+          {editando?.id === i.id ? (
+            <span className="flex items-center gap-1 flex-1 min-w-0">
+              <input className="input py-1 text-sm" autoComplete="off" value={editando.nome} onChange={(e) => setEditando({ id: i.id, nome: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') void salvar(); if (e.key === 'Escape') setEditando(null); }} autoFocus aria-label={`Novo nome de ${i.name}`} />
+              <button className="btn-ghost btn-sm" disabled={busy || !editando.nome.trim()} onClick={salvar} title="Salvar" aria-label="Salvar nome"><Check size={14} /></button>
+              <button className="btn-ghost btn-sm text-muted" onClick={() => setEditando(null)} title="Cancelar" aria-label="Cancelar"><X size={14} /></button>
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 min-w-0">
+              <span className={`truncate ${i.active ? '' : 'text-muted line-through'}`}>{i.name}</span>
+              <button className="btn-ghost btn-sm text-muted opacity-60 group-hover:opacity-100" onClick={() => setEditando({ id: i.id, nome: i.name })} title={`Renomear ${i.name}`} aria-label={`Renomear ${i.name}`}><Pencil size={12} /></button>
+            </span>
+          )}
+          <Toggle checked={i.active} onChange={async (v) => { await api.admin.updateCatalogItem(tipo, i.id, { active: v }); await qc.invalidateQueries({ queryKey: ['catalog', tipo] }); }} />
+        </li>
+      ))}</ul>
+      <div className="flex gap-2"><input className="input" placeholder="novo item" autoComplete="off" value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && novo && onAdd()} /><button className="btn-secondary btn-sm" disabled={!novo} onClick={onAdd}>Adicionar</button></div>
+      <p className="text-[12px] text-muted mt-2">Renomear vale para todo lugar que usa o item (clientes, circuitos, modelos).</p>
     </div>
   );
 }
@@ -250,7 +277,7 @@ function Auditoria() {
 
 function Lixeira() {
   const q = useQuery({ queryKey: ['trash'], queryFn: api.admin.trash }); const qc = useQueryClient(); const toast = useToast();
-  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto' };
+  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', releaseNote: 'Novidades' };
   const o = useOrdenacaoLocal('deletedAt', 'desc');
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;

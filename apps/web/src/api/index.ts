@@ -24,6 +24,8 @@ export type Api = {
     list(q: Record<string, unknown>): Promise<T.Page<T.ClientListItem>>;
     options(q?: { includeInternal?: boolean; productCode?: string; withDevices?: boolean }): Promise<T.Option[]>;
     get(id: string): Promise<T.ClientFull>;
+    /** Projetos de que este cliente participa (a aba da ficha) */
+    projetos(id: string): Promise<T.ProjetoDoCliente[]>;
     create(d: Record<string, unknown>): Promise<T.ClientFull>;
     update(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
     remove(id: string): Promise<{ ok: boolean }>;
@@ -37,9 +39,14 @@ export type Api = {
     devices(id: string): Promise<{ devices: T.Page<T.Device> }>;
     history(id: string): Promise<T.Page<T.AuditItem>>;
     units(id: string): Promise<T.ClientUnit[]>;
-    createUnit(id: string, d: { name: string; note?: string | null }): Promise<T.ClientUnit>;
-    updateUnit(id: string, unitId: string, d: { name: string; note?: string | null }): Promise<T.ClientUnit>;
+    createUnit(id: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
+    updateUnit(id: string, unitId: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
     removeUnit(id: string, unitId: string): Promise<{ ok: boolean }>;
+    /** Login e senha padrão dos aparelhos, por modelo (um por modelo; gravar de novo atualiza) */
+    saveDeviceLogin(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
+    removeDeviceLogin(id: string, loginId: string): Promise<T.ClientFull>;
+    /** Rede padrão dos aparelhos (IP, máscara, gateway, DNS, senha do ramal sem fio) */
+    saveNetwork(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
   };
   secrets: { reveal(id: string, password: string): Promise<{ label: string; value: string; visibleForSeconds: number }> };
   circuits: {
@@ -95,6 +102,40 @@ export type Api = {
     apply(d: { entity: string; csv: string; delimiter: string }): Promise<{ created: number; updated: number }>;
     exportUrl(entity: string): string;
     exportWithSecrets(entity: string, password: string): Promise<{ blob: Blob; zipPassword: string; filename: string }>;
+  };
+  novidades: {
+    /** A nota que deve abrir no login desta pessoa (ou nada) */
+    pendente(): Promise<T.NovidadePendente | null>;
+    /** Histórico + se esta pessoa pode editar + quantas ela ainda não leu */
+    lista(): Promise<{ items: T.Novidade[]; podeEditar: boolean; naoLidas: number }>;
+    marcarLida(id: string): Promise<{ ok: boolean }>;
+    leituras(id: string): Promise<T.LeiturasNovidade>;
+    criar(d: Record<string, unknown>): Promise<{ id: string }>;
+    atualizar(id: string, d: Record<string, unknown>): Promise<{ id: string }>;
+    publicar(id: string, publicar: boolean): Promise<{ id: string; publishedAt: string | null }>;
+    remover(id: string): Promise<{ ok: boolean }>;
+  };
+  projetos: {
+    lista(q?: { status?: string; q?: string }): Promise<{ items: T.ProjetoResumo[]; podeTrabalhar: boolean; podeGerenciar: boolean }>;
+    get(id: string): Promise<T.Projeto>;
+    /** Quem pode ser responsável (as pessoas ativas) */
+    pessoas(): Promise<Array<{ id: string; name: string }>>;
+    criar(d: Record<string, unknown>): Promise<T.Projeto>;
+    atualizar(id: string, d: Record<string, unknown>): Promise<T.Projeto>;
+    remover(id: string): Promise<{ ok: boolean }>;
+    addClientes(id: string, clientIds: string[], assigneeId?: string | null): Promise<T.Projeto>;
+    removerCliente(id: string, linhaId: string): Promise<{ ok: boolean }>;
+    /** Trocar responsável ou situação de um cliente no projeto */
+    linha(id: string, linhaId: string, d: Record<string, unknown>): Promise<unknown>;
+    /** caixinha: `{ feito }`; lista: `{ valor }` (o id da opção, ou null para limpar) */
+    marcar(id: string, linhaId: string, stepId: string, d: { feito?: boolean; valor?: string | null }): Promise<unknown>;
+    duplicar(id: string, name?: string): Promise<T.Projeto>;
+    comentar(id: string, body: string, projectClientId?: string | null): Promise<unknown>;
+    apagarComentario(id: string, commentId: string): Promise<{ ok: boolean }>;
+    anexar(id: string, d: { fileName: string; conteudo: string; projectClientId?: string | null }): Promise<T.AnexoProjeto>;
+    apagarAnexo(id: string, anexoId: string): Promise<{ ok: boolean }>;
+    /** Endereço para baixar o anexo (abre direto no navegador) */
+    anexoUrl(anexoId: string): string;
   };
   admin: {
     users(): Promise<T.User[]>;

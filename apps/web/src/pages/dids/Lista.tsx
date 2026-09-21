@@ -13,8 +13,9 @@ import { Campo, Carregando, Chip, Confirmar, Copiar, Modal, Paginacao, Spinner, 
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { FaixaForm } from '../circuitos/Detalhe.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
+import { UsoDid } from '../clientes/Ficha.js';
 
-type Acao = 'circuito' | 'cliente' | 'liberar' | 'observacao' | 'excluir';
+type Acao = 'circuito' | 'cliente' | 'liberar' | 'uso' | 'observacao' | 'excluir';
 
 /** O endereço antigo (/dids?…) continua funcionando: manda para Circuitos › Numeração com os mesmos filtros. */
 export function DidsRedirect() {
@@ -25,7 +26,7 @@ export function DidsRedirect() {
 
 export function Numeracao() {
   const [sp, setSp] = useSearchParams();
-  const q = sp.get('q') ?? ''; const circuito = sp.get('circuito') ?? ''; const cliente = sp.get('cliente') ?? ''; const page = Number(sp.get('p') ?? 1);
+  const q = sp.get('q') ?? ''; const circuito = sp.get('circuito') ?? ''; const cliente = sp.get('cliente') ?? ''; const uso = sp.get('uso') ?? ''; const page = Number(sp.get('p') ?? 1);
   // o mesmo interruptor da aba Circuitos (mora no endereço, então vale para as duas)
   const terceiros = sp.get('terceiros') === '1';
   const o = useOrdenacao('number');
@@ -36,7 +37,7 @@ export function Numeracao() {
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
   // "limpar" tira os filtros, não o modo de exibição: o interruptor dos terceiros fica como está
   const limpar = () => setSp({ aba: 'numeracao', ...(terceiros ? { terceiros: '1' } : {}), ...(tudo ? { tudo: '1' } : {}) }, { replace: true });
-  const filtro = { q, circuitId: circuito, clientId: cliente, includeThirdParty: terceiros };
+  const filtro = { q, circuitId: circuito, clientId: cliente, inUse: uso || undefined, includeThirdParty: terceiros };
   const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
   const lista = useQuery({ queryKey: ['dids', filtro, page, tudo, o.ord, o.dir], queryFn: () => api.dids.list({ ...filtro, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }) });
   const circuits = useQuery({ queryKey: ['circuit-options'], queryFn: api.circuits.options });
@@ -44,7 +45,13 @@ export function Numeracao() {
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [acao, setAcao] = useState<Acao | null>(null);
   const [faixa, setFaixa] = useState(false);
-  useEffect(() => { setSel(new Set()); }, [q, circuito, cliente, terceiros]);
+  useEffect(() => { setSel(new Set()); }, [q, circuito, cliente, uso, terceiros]);
+  const [mudando, setMudando] = useState<string | null>(null);
+  const alternarUso = async (id: string, inUse: boolean) => {
+    setMudando(id);
+    try { await api.dids.update(id, { inUse }); await qc.invalidateQueries({ queryKey: ['dids'] }); await qc.invalidateQueries({ queryKey: ['client-dids'] }); }
+    catch (e) { toast.push('erro', mensagemErro(e)); } finally { setMudando(null); }
+  };
 
   const items = lista.data?.items ?? [];
   const allOnPage = items.length > 0 && items.every((d) => sel.has(d.id));
@@ -57,10 +64,12 @@ export function Numeracao() {
     <div>
       <div className="card p-3 mb-4 flex flex-wrap gap-2 items-center">
         <input className="input max-w-[200px] font-mono" placeholder="número (só dígitos)" value={q} onChange={(e) => set('q', e.target.value)} />
-        <select className="input w-auto" value={circuito} onChange={(e) => set('circuito', e.target.value || null)}><option value="">Todos os circuitos</option><option value="none">Sem circuito</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        {/* "Sem circuito" saiu do filtro: todo DID pertence a um circuito */}
+        <select className="input w-auto" value={circuito} onChange={(e) => set('circuito', e.target.value || null)}><option value="">Todos os circuitos</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         <select className="input w-auto" value={cliente} onChange={(e) => set('cliente', e.target.value || null)}><option value="">Todos os clientes</option><option value="free">Livres</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        <select className="input w-auto" value={uso} onChange={(e) => set('uso', e.target.value || null)} aria-label="Uso"><option value="">Em uso e não usados</option><option value="true">Só em uso</option><option value="false">Só não usados</option></select>
         <Toggle checked={terceiros} onChange={(v) => set('terceiros', v ? '1' : null)} label="Habilitar links de terceiros" />
-        {(q || circuito || cliente) && <button className="btn-ghost btn-sm" onClick={limpar}><X size={14} /> limpar</button>}
+        {(q || circuito || cliente || uso) && <button className="btn-ghost btn-sm" onClick={limpar}><X size={14} /> limpar</button>}
         <span className="text-muted text-[12.5px] ml-1">{lista.data ? `${lista.data.total.toLocaleString('pt-BR')} número(s)${lista.data.free !== undefined ? ` · ${lista.data.free} livres` : ''}` : ''}</span>
         <span className="ml-auto"><Can permission="dids.assign"><button className="btn-primary btn-sm" onClick={() => setFaixa(true)}><Plus size={15} /> Criar faixa</button></Can></span>
       </div>
@@ -73,6 +82,7 @@ export function Numeracao() {
           <span className="flex-1" />
           <button className="btn-secondary btn-sm" onClick={() => setAcao('cliente')}>Atribuir a cliente</button>
           <button className="btn-secondary btn-sm" onClick={() => setAcao('circuito')}>Mudar circuito</button>
+          <button className="btn-secondary btn-sm" onClick={() => setAcao('uso')}>Em uso / não usado</button>
           <button className="btn-secondary btn-sm" onClick={() => setAcao('observacao')}>Observação</button>
           <button className="btn-secondary btn-sm" onClick={() => setAcao('liberar')}>Liberar</button>
           <Can permission="records.delete"><button className="btn-ghost btn-sm text-bad" onClick={() => setAcao('excluir')}>Excluir</button></Can>
@@ -84,7 +94,7 @@ export function Numeracao() {
         <div className="card overflow-x-auto"><table className="table">
           <thead><tr>
             {can('dids.assign') && <th className="w-8"><input type="checkbox" checked={allOnPage} onChange={togglePage} aria-label="Selecionar página" /></th>}
-            <ThN /><Th o={o} col="number">Número</Th><Th o={o} col="carrier">Operadora</Th><Th o={o} col="circuit">Circuito</Th><Th o={o} col="client">Cliente</Th><Th o={o} col="owner">Titular</Th><Th o={o} col="note">Observação</Th>
+            <ThN /><Th o={o} col="number">Número</Th><Th o={o} col="carrier">Operadora</Th><Th o={o} col="circuit">Circuito</Th><Th o={o} col="client">Cliente</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="owner">Titular</Th><Th o={o} col="note">Observação</Th>
           </tr></thead>
           <tbody>{items.map((d, i) => (
             <tr key={d.id} className={sel.has(d.id) ? 'bg-accent-soft' : ''}>
@@ -92,8 +102,10 @@ export function Numeracao() {
               <TdN n={numero(i)} />
               <td className="font-mono tnum whitespace-nowrap">{d.numberFormatted} <Copiar texto={d.number} titulo="Copiar número" /></td>
               <td>{d.carrierName ?? '—'}</td>
-              <td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">sem circuito</span>}</td>
+              <td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td>
               <td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <Chip tone="ok">livre</Chip>}</td>
+              {/* a marca só faz sentido com cliente: número livre não está em uso nem "não usado" */}
+              <td>{d.clientId ? <UsoDid inUse={d.inUse} podeMudar={can('dids.assign')} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /> : <span className="text-muted">—</span>}</td>
               <td className="text-muted">{d.ownerName ?? '—'}</td>
               <td className="text-muted">{d.note}</td>
             </tr>))}</tbody></table></div>
@@ -110,14 +122,23 @@ export function Numeracao() {
 function AcaoMassa({ acao, ids, onClose, onDone, circuits, clients }: { acao: Acao; ids: string[]; onClose: () => void; onDone: (msg: string) => void; circuits: Array<{ id: string; name: string }>; clients: Array<{ id: string; name: string }> }) {
   const [valor, setValor] = useState(''); const [confirm, setConfirm] = useState(false); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const n = ids.length;
-  const titulo = { circuito: 'Mudar circuito', cliente: 'Atribuir a cliente', liberar: 'Liberar DIDs', observacao: 'Definir observação', excluir: '' }[acao];
-  const set = useMemo(() => acao === 'circuito' ? { circuitId: valor || null } : acao === 'cliente' ? { clientId: valor || null } : acao === 'liberar' ? { clientId: null } : { note: valor || null }, [acao, valor]);
-  const resumo = acao === 'circuito' ? (valor ? `mover para o circuito "${circuits.find((c) => c.id === valor)?.name}"` : 'deixar sem circuito') : acao === 'cliente' ? (valor ? `atribuir a "${clients.find((c) => c.id === valor)?.name}"` : 'deixar livres') : acao === 'liberar' ? 'liberar (ficam sem cliente)' : valor ? `definir a observação "${valor}"` : 'limpar a observação';
+  const titulo = { circuito: 'Mudar circuito', cliente: 'Atribuir a cliente', liberar: 'Liberar DIDs', uso: 'Marcar uso', observacao: 'Definir observação', excluir: '' }[acao];
+  const set = useMemo(() => acao === 'circuito' ? { circuitId: valor } : acao === 'cliente' ? { clientId: valor || null } : acao === 'liberar' ? { clientId: null } : acao === 'uso' ? { inUse: valor !== 'nao' } : { note: valor || null }, [acao, valor]);
+  const resumo = acao === 'circuito' ? `mover para o circuito "${circuits.find((c) => c.id === valor)?.name}"` : acao === 'cliente' ? (valor ? `atribuir a "${clients.find((c) => c.id === valor)?.name}"` : 'deixar livres') : acao === 'liberar' ? 'liberar (ficam sem cliente)' : acao === 'uso' ? (valor === 'nao' ? 'marcar como NÃO usados (os livres ficam como estão)' : 'marcar como EM USO (os livres ficam como estão)') : valor ? `definir a observação "${valor}"` : 'limpar a observação';
   const run = async () => { setBusy(true); setErr(''); try { const r = await api.dids.bulk(ids, set); onDone(`${r.affected} DID(s) alterado(s)`); } catch (e) { setErr(mensagemErro(e)); setConfirm(false); } finally { setBusy(false); } };
-  const precisaValor = acao === 'circuito' || acao === 'cliente';
+  // mudar de circuito exige escolher um: "sem circuito" não existe
+  const faltaValor = acao === 'circuito' && !valor;
   return (<>
-    <Modal open={!confirm} onClose={onClose} titulo={`${titulo} · ${n.toLocaleString('pt-BR')} DID(s)`} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={precisaValor && acao === 'circuito' && false} onClick={() => setConfirm(true)}>Continuar</button></>}>
-      {acao === 'circuito' && <Campo label="Novo circuito"><select className="input" value={valor} onChange={(e) => setValor(e.target.value)} autoFocus><option value="">sem circuito</option>{circuits.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>}
+    <Modal open={!confirm} onClose={onClose} titulo={`${titulo} · ${n.toLocaleString('pt-BR')} DID(s)`} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={faltaValor} onClick={() => setConfirm(true)}>Continuar</button></>}>
+      {acao === 'circuito' && <Campo label="Novo circuito" dica="todo DID pertence a um circuito"><select className="input" value={valor} onChange={(e) => setValor(e.target.value)} autoFocus><option value="">Escolha o circuito…</option>{circuits.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>}
+      {acao === 'uso' && (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-ink-2">Um número pode estar alocado ao cliente e ainda não estar em uso (reservado, aguardando configuração). Número livre não muda.</p>
+          <div className="grid grid-cols-2 gap-1 rounded-lg border border-line p-1" role="radiogroup">
+            {([['sim', 'Em uso'], ['nao', 'Não usado']] as const).map(([v, rotulo]) => <button key={v} type="button" role="radio" aria-checked={(valor || 'sim') === v} onClick={() => setValor(v)} className={`rounded-md px-2 py-1.5 text-[13px] font-semibold ${(valor || 'sim') === v ? 'bg-accent text-white' : 'text-ink-2 hover:bg-surface-2'}`}>{rotulo}</button>)}
+          </div>
+        </div>
+      )}
       {acao === 'cliente' && <Campo label="Cliente que vai usar os números"><select className="input" value={valor} onChange={(e) => setValor(e.target.value)} autoFocus><option value="">livre (sem cliente)</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>}
       {acao === 'liberar' && <p className="text-sm text-ink-2">Os {n} DIDs selecionados ficam sem cliente (livres). O circuito não muda.</p>}
       {acao === 'observacao' && <Campo label="Observação" dica="vazio = limpar"><input className="input" value={valor} onChange={(e) => setValor(e.target.value)} autoFocus /></Campo>}

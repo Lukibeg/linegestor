@@ -2,9 +2,9 @@
  * Peças de interface reutilizáveis. Cada uma é pequena e faz uma coisa só.
  * Todas usam as cores do tema (styles.css), então funcionam no claro e no escuro.
  */
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { AlertTriangle, Check, Copy, Eye, EyeOff, Info, Loader2, X } from 'lucide-react';
-import { SEM_LIMITE } from '@gestor/shared';
+import { formatarIp, SEM_LIMITE } from '@gestor/shared';
 import { ApiError } from '../../api/types.js';
 
 // ---------- Avisos (toast) ----------
@@ -97,24 +97,24 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
 }
 
 // ---------- Modal / painel lateral ----------
-export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-w-lg', lateral = false }: { open: boolean; onClose: () => void; titulo: ReactNode; children: ReactNode; rodape?: ReactNode; largura?: string; lateral?: boolean }) {
+export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-w-lg', lateral = false, fechavel = true }: { open: boolean; onClose: () => void; titulo: ReactNode; children: ReactNode; rodape?: ReactNode; largura?: string; lateral?: boolean; /** `false` tranca a janela: sem X, sem Esc, sem clicar fora (a pessoa precisa concluir o que está ali). */ fechavel?: boolean }) {
   useEffect(() => {
-    if (!open) return;
+    if (!open || !fechavel) return;
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [open, onClose]);
+  }, [open, onClose, fechavel]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={fechavel ? onClose : undefined} />
       <div className={lateral ? `relative ml-auto h-full w-full ${largura} bg-surface border-l border-line shadow-2xl flex flex-col` : `relative m-auto w-[calc(100%-32px)] ${largura} bg-surface border border-line rounded-xl shadow-2xl flex flex-col max-h-[calc(100vh-32px)]`}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-line">
           <h3 className="font-display font-semibold text-[15px]">{titulo}</h3>
-          <button type="button" onClick={onClose} className="btn-ghost btn-sm" aria-label="Fechar"><X size={16} /></button>
+          {fechavel && <button type="button" onClick={onClose} className="btn-ghost btn-sm" aria-label="Fechar"><X size={16} /></button>}
         </div>
         <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
-        {rodape && <div className="px-5 py-3 border-t border-line flex justify-end gap-2 bg-surface-2 rounded-b-xl">{rodape}</div>}
+        {rodape && <div className="px-5 py-3 border-t border-line flex flex-wrap items-center justify-end gap-2 bg-surface-2 rounded-b-xl">{rodape}</div>}
       </div>
     </div>
   );
@@ -178,6 +178,16 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
       </Modal>
     </div>
   );
+}
+
+// ---------- Campo de IP com máscara ----------
+
+/**
+ * Campo de IP que põe os pontos sozinho: digitar "19216801" vira "192.168.0.1".
+ * Um ponto digitado à mão também fecha o octeto (para "10.20.0.77", que a máscara sozinha não adivinha).
+ */
+export function InputIp({ value, onChange, className = '', ...rest }: { value: string; onChange: (v: string) => void } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+  return <input {...rest} className={`input font-mono tnum ${className}`} inputMode="decimal" autoComplete="off" value={value} onChange={(e) => onChange(formatarIp(e.target.value))} />;
 }
 
 // ---------- Paginação ----------
@@ -354,7 +364,7 @@ export function LogoCliente({ src, nome, tamanho = 40, className = '' }: { src: 
  * e REDUZ a imagem no próprio navegador (máx. 512 px) antes de mandar para o servidor.
  * Assim nenhuma foto de 5 MB sai do computador da pessoa.
  */
-export function CampoLogo({ atual, nome, onEscolher, onRemover, previa }: { atual: string | null; nome: string; onEscolher: (dataUrl: string) => void; onRemover?: () => void; previa?: ReactNode }) {
+export function CampoLogo({ atual, nome, onEscolher, onRemover, previa, maxPx = 512, limiteBytes = 700_000 }: { atual: string | null; nome: string; onEscolher: (dataUrl: string) => void; onRemover?: () => void; previa?: ReactNode; maxPx?: number; limiteBytes?: number }) {
   const [erro, setErro] = useState('');
   const [arrastando, setArrastando] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -371,7 +381,8 @@ export function CampoLogo({ atual, nome, onEscolher, onRemover, previa }: { atua
     const url = URL.createObjectURL(file);
     try {
       const img = await new Promise<HTMLImageElement>((ok, falhou) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => falhou(new Error('imagem inválida')); i.src = url; });
-      const max = 512;
+      // logo de cliente cabe em 512px; print de novidade precisa de mais, senão fica ilegível
+      const max = maxPx;
       const escala = Math.min(1, max / Math.max(img.width, img.height));
       const canvas = document.createElement('canvas');
       canvas.width = Math.max(1, Math.round(img.width * escala));
@@ -381,8 +392,8 @@ export function CampoLogo({ atual, nome, onEscolher, onRemover, previa }: { atua
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       // PNG preserva fundo transparente; se ficar grande demais, cai para JPEG
       let out = canvas.toDataURL('image/png');
-      if (out.length > 500_000) out = canvas.toDataURL('image/jpeg', 0.85);
-      if (out.length > 700_000) return setErro('Imagem muito grande mesmo depois de reduzir. Tente outra.');
+      if (out.length > Math.min(500_000, limiteBytes)) out = canvas.toDataURL('image/jpeg', 0.85);
+      if (out.length > limiteBytes) return setErro('Imagem muito grande mesmo depois de reduzir. Tente outra.');
       onEscolher(out);
     } catch {
       setErro('Não foi possível ler esta imagem.');

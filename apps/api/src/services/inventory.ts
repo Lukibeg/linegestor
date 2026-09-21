@@ -433,11 +433,26 @@ function ordenacaoMovimentacoes(q: { sort?: string; dir?: string }, fromC: Retur
   return sql`${campo} ${dir} nulls last, ${deviceMovements.createdAt} desc`;
 }
 
-export async function listMovements(db: Db, q: { modality?: string; clientId?: string; from?: Date; to?: Date; page: number; pageSize: number; sort?: string; dir?: string }) {
+/**
+ * `modelId` = só as movimentações que levaram pelo menos um aparelho daquele modelo.
+ * `q` = MAC ou N/S: as movimentações por onde aquele aparelho passou (a vida dele, em ordem).
+ */
+export async function listMovements(db: Db, q: { modality?: string; clientId?: string; modelId?: string; q?: string; from?: Date; to?: Date; page: number; pageSize: number; sort?: string; dir?: string }) {
   const fromC = alias(clients, 'from'), toC = alias(clients, 'to');
   const conds: SQL[] = [];
   if (q.modality) conds.push(eq(deviceMovements.modality, q.modality));
   if (q.clientId) conds.push(or(eq(deviceMovements.fromClientId, q.clientId), eq(deviceMovements.toClientId, q.clientId))!);
+  if (q.modelId) conds.push(inArray(deviceMovements.id, db.select({ id: deviceMovementItems.movementId }).from(deviceMovementItems).where(eq(deviceMovementItems.modelId, q.modelId))));
+  if (q.q) {
+    const mac = q.q.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+    const serie = serieLimpa(q.q);
+    const bate = or(
+      // o mesmo critério da busca de aparelhos: pedaço de MAC só a partir de 4 caracteres
+      mac.length >= 4 ? ilike(devices.mac, `%${mac}%`) : sql`false`,
+      serie ? ilike(devices.serialNumber, `%${serie}%`) : sql`false`,
+    )!;
+    conds.push(inArray(deviceMovements.id, db.select({ id: deviceMovementItems.movementId }).from(deviceMovementItems).innerJoin(devices, eq(devices.id, deviceMovementItems.deviceId)).where(bate)));
+  }
   if (q.from) conds.push(gte(deviceMovements.createdAt, q.from));
   if (q.to) conds.push(lte(deviceMovements.createdAt, q.to));
   const where = conds.length ? and(...conds) : undefined;

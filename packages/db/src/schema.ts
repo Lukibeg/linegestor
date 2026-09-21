@@ -5,7 +5,8 @@
  *  Como ler: cada `pgTable` é uma tabela. Cada linha dentro dela é uma coluna.
  *  O comentário logo acima explica o que aquilo guarda — em português, para quem não programa.
  *
- *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico
+ *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico · 5. Novidades
+ *          6. Projetos
  *
  *  Convenções:
  *   - dinheiro é guardado em CENTAVOS inteiros (R$ 603,38 → 60338), sem arredondamento
@@ -92,7 +93,11 @@ export const clientUnits = pgTable(
     name: text('name').notNull(),
     /** A matriz: existe em todo cliente, é a unidade padrão e não pode ser removida */
     isMain: boolean('is_main').notNull().default(false),
-    /** Endereço ou referência, opcional */
+    /** Endereço da unidade (rua, número, bairro, cidade) */
+    address: text('address'),
+    /** IP fixo de saída da rede desta unidade — o IP que chega ao servidor quando os ramais registram */
+    egressIp: text('egress_ip'),
+    /** Observação ou referência, opcional */
     note: text('note'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -100,6 +105,52 @@ export const clientUnits = pgTable(
   },
   (t) => [index('client_units_client_idx').on(t.clientId)],
 );
+
+/**
+ * LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente
+ * entram com o mesmo login e senha; os DP722, com outro. Uma linha por cliente × modelo.
+ * A senha nunca fica aqui — vai para o cofre (`secrets`). Faz par com a rede padrão.
+ */
+export const clientDeviceLogins = pgTable(
+  'client_device_logins',
+  {
+    id: id(),
+    clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+    /** O modelo de aparelho a que este login se aplica */
+    modelId: text('model_id').notNull().references(() => deviceModels.id),
+    /** Usuário/login padrão (admin, user…) */
+    username: text('username'),
+    /** Senha padrão — no cofre */
+    passwordSecretId: text('password_secret_id').references(() => secrets.id),
+    note: text('note'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('client_device_logins_client_idx').on(t.clientId)],
+);
+
+/**
+ * CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita nos telefones
+ * na hora de configurar (IP, máscara, gateway, DNS) e a senha do ramal sem fio. Uma linha por cliente.
+ */
+export const clientNetworkSettings = pgTable('client_network_settings', {
+  clientId: text('client_id').primaryKey().references(() => clients.id, { onDelete: 'cascade' }),
+  /** IP padrão (ou o primeiro da faixa usada nos aparelhos) */
+  ipAddress: text('ip_address'),
+  /** Máscara de sub-rede (255.255.255.0) */
+  subnetMask: text('subnet_mask'),
+  /** Roteador padrão (gateway) */
+  defaultRouter: text('default_router'),
+  /** DNS primário */
+  dns1: text('dns1'),
+  /** DNS secundário */
+  dns2: text('dns2'),
+  /** Senha do ramal sem fio (DECT/Wi-Fi) — no cofre */
+  wirelessPasswordSecretId: text('wireless_password_secret_id').references(() => secrets.id),
+  note: text('note'),
+  updatedAt: updatedAt(),
+});
 
 /** Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração). */
 export const products = pgTable('products', {
@@ -216,6 +267,8 @@ export const fop2Settings = pgTable('fop2_settings', {
   subscriptionModuleId: text('subscription_module_id').primaryKey().references(() => subscriptionModules.id, { onDelete: 'cascade' }),
   /** Ramal/usuário do FOP2 usado para o acesso rápido */
   adminExtension: text('admin_extension'),
+  /** Senha do usuário padrão do FOP2 — no cofre */
+  defaultUserPasswordSecretId: text('default_user_password_secret_id').references(() => secrets.id),
 });
 
 /** Configuração própria do módulo Omniboard (call center, dentro do LinePBX). */
@@ -280,11 +333,17 @@ export const circuits = pgTable(
     thirdParty: boolean('third_party').notNull().default(false),
     /** Custo/valor mensal do feixe, em centavos */
     monthlyValueCents: integer('monthly_value_cents'),
+    /**
+     * Como o tronco se autentica na operadora:
+     *  - `ip`: pelo IP — basta o IP da operadora e o IP do PBX
+     *  - `login`: por login e senha do tronco
+     */
+    authType: text('auth_type').notNull().default('ip'),
     /** IP da operadora (sinalização) */
     signalingIp: text('signaling_ip'),
-    /** IP de autenticação ("IP PBX" no Nexus) */
+    /** IP do PBX que a operadora autoriza (só na autenticação por IP; "IP PBX" no Nexus) */
     authIp: text('auth_ip'),
-    /** Usuário de autenticação do tronco */
+    /** Login do tronco (só na autenticação por login e senha) */
     authUsername: text('auth_username'),
     /** Senha de autenticação do tronco — no cofre */
     authPasswordSecretId: text('auth_password_secret_id').references(() => secrets.id),
@@ -303,12 +362,20 @@ export const dids = pgTable(
     id: id(),
     /** Número só com dígitos (DDD + 8 ou 9). Único. */
     number: text('number').notNull(),
-    /** Circuito ao qual pertence. Nulo = "sem circuito". */
+    /**
+     * Circuito ao qual pertence. Todo DID nasce dentro de um circuito (o servidor exige);
+     * a coluna continua aceitando nulo só por causa de registros antigos.
+     */
     circuitId: text('circuit_id').references(() => circuits.id),
     /** Cliente que USA o número. Nulo = livre. */
     clientId: text('client_id').references(() => clients.id),
     /** Titular: quem DETÉM o número junto à operadora (normalmente VoiceNet) */
     ownerClientId: text('owner_client_id').references(() => clients.id),
+    /**
+     * O número está EM USO no cliente? Alocar não é usar: o DID entra no cliente como "não usado"
+     * e alguém marca "em uso" quando ele passa a atender. Só faz sentido com cliente (livre = false).
+     */
+    inUse: boolean('in_use').notNull().default(false),
     /** Observação curta */
     note: text('note'),
     createdAt: createdAt(),
@@ -565,6 +632,232 @@ export const auditLog = pgTable(
   (t) => [index('audit_entity_idx').on(t.entityType, t.entityId), index('audit_user_idx').on(t.userId), index('audit_created_idx').on(t.createdAt)],
 );
 
+
+// ---------------------------------------------------------------------
+// 5. NOVIDADES (notas de versão)
+// ---------------------------------------------------------------------
+
+/**
+ * Uma NOTA DE VERSÃO ("o que mudou na rodada 23"). Quando publicada, aparece uma vez para
+ * cada pessoa no login e só para de aparecer quando ela marca "Li e entendi".
+ * Rascunho = `publishedAt` nulo: ninguém vê até publicar.
+ */
+export const releaseNotes = pgTable(
+  'release_notes',
+  {
+    id: id(),
+    /** Identificador curto e estável da versão ("rodada-23"); é por ele que a importação evita repetir */
+    version: text('version').notNull(),
+    /** O que aparece no topo da nota */
+    title: text('title').notNull(),
+    /** Uma frase resumindo a rodada */
+    summary: text('summary'),
+    /** Quando foi publicada. Nulo = rascunho (só quem edita enxerga). */
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [uniqueIndex('release_notes_version_uq').on(t.version)],
+);
+
+/**
+ * Um item da nota: o cartão que a pessoa vê, um por vez.
+ * `kind` diz a cor e o rótulo: novo | melhorou | corrigido | atencao
+ * ("atenção" é mudança de regra, o que muda o jeito de trabalhar).
+ */
+export const releaseNoteItems = pgTable(
+  'release_note_items',
+  {
+    id: id(),
+    noteId: text('note_id').notNull().references(() => releaseNotes.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull().default('novo'),
+    title: text('title').notNull(),
+    /** Duas ou três linhas explicando, em português de gente */
+    text: text('text'),
+    /** Ordem em que os cartões aparecem */
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [index('release_note_items_note_idx').on(t.noteId)],
+);
+
+/** O print de um item, no próprio banco (como a logo do cliente e a foto do modelo). */
+export const releaseNoteImages = pgTable('release_note_images', {
+  itemId: text('item_id').primaryKey().references(() => releaseNoteItems.id, { onDelete: 'cascade' }),
+  mimeType: text('mime_type').notNull(),
+  dataBase64: text('data_base64').notNull(),
+  sizeBytes: integer('size_bytes').notNull().default(0),
+  updatedAt: updatedAt(),
+});
+
+/** "Fulano leu a nota da rodada 23 em tal dia." Uma linha por pessoa × nota. */
+export const releaseNoteReads = pgTable(
+  'release_note_reads',
+  {
+    id: id(),
+    noteId: text('note_id').notNull().references(() => releaseNotes.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('release_note_reads_note_user_uq').on(t.noteId, t.userId)],
+);
+
+// ---------------------------------------------------------------------
+// 6. PROJETOS
+// ---------------------------------------------------------------------
+
+/**
+ * Um projeto é uma tarefa que percorre VÁRIOS clientes até acabar
+ * ("trocar o áudio da URA de todos os clientes com PBX").
+ *
+ * O que define o projeto: o objetivo, o prazo e as ETAPAS — as mesmas para todo cliente da lista.
+ * Quem faz o trabalho vai marcando etapa por etapa; o andamento é contado a partir dessas marcas.
+ */
+export const projects = pgTable(
+  'projects',
+  {
+    id: id(),
+    /** Como a equipe chama o projeto ("Áudio novo das URAs") */
+    name: text('name').notNull(),
+    /** O que se quer alcançar e por quê — o que a pessoa lê antes de começar */
+    goal: text('goal'),
+    /** aberto = em andamento · concluido = acabou · cancelado = não vai acontecer */
+    status: text('status').notNull().default('aberto'),
+    /** Data-alvo do projeto inteiro (AAAA-MM-DD). Passou e ainda tem cliente aberto = atrasado. */
+    dueDate: text('due_date'),
+    /** Responsável pelo projeto como um todo (quem cobra) */
+    ownerId: text('owner_id').references(() => users.id),
+    /** Quando foi dado por encerrado */
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('projects_status_idx').on(t.status)],
+);
+
+/**
+ * Uma etapa (coluna) do projeto. Vale para todos os clientes da lista, na mesma ordem.
+ *
+ * São dois tipos:
+ *  - **caixinha** (`check`): feito ou não feito, o caso mais comum;
+ *  - **lista de opções** (`escolha`): a pessoa escolhe um rótulo colorido
+ *    ("Sem necessidade · Pendente · Mensagem enviada · Configuração realizada"),
+ *    como as colunas de situação que a equipe já usava na planilha.
+ *
+ * As opções ficam em `options`: `[{ id, label, tone, conclui }]`. `tone` é a cor
+ * (as mesmas do sistema) e `conclui` diz se aquela opção **fecha** a etapa — é o que
+ * faz "Sem necessidade" e "Configuração realizada" contarem como resolvido, e
+ * "Pendente" não. O `id` é estável: trocar o rótulo não perde o que já foi escolhido.
+ */
+export const projectSteps = pgTable(
+  'project_steps',
+  {
+    id: id(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    /** O que fazer ("Gravar o áudio") ou o nome da coluna ("Situação do contato") */
+    title: text('title').notNull(),
+    /** check = caixinha · escolha = lista de opções */
+    kind: text('kind').notNull().default('check'),
+    /** As opções, quando `kind` é "escolha" */
+    options: jsonb('options').$type<Array<{ id: string; label: string; tone: string; conclui: boolean }>>().notNull().default([]),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (t) => [index('project_steps_project_idx').on(t.projectId)],
+);
+
+/**
+ * Um cliente dentro do projeto: a linha que o técnico trabalha.
+ *
+ * `status` é a situação daquele cliente no projeto:
+ *   pendente · andamento · travado · concluido · nao_se_aplica
+ * Ela anda sozinha conforme as etapas são marcadas (primeira marca → andamento, todas → concluído);
+ * "travado" e "não se aplica" são escolhas de gente, e "travado" exige dizer o motivo.
+ */
+export const projectClients = pgTable(
+  'project_clients',
+  {
+    id: id(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+    /** Quem ficou de fazer este cliente */
+    assigneeId: text('assignee_id').references(() => users.id),
+    status: text('status').notNull().default('pendente'),
+    /** Por que está parado — obrigatório quando o status é "travado" */
+    blockedReason: text('blocked_reason'),
+    /** Quando fechou (concluído ou não se aplica) */
+    doneAt: timestamp('done_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('project_clients_uq').on(t.projectId, t.clientId),
+    index('project_clients_client_idx').on(t.clientId),
+    index('project_clients_assignee_idx').on(t.assigneeId),
+  ],
+);
+
+/**
+ * O que foi marcado numa etapa, para um cliente: "fulano marcou, em tal dia".
+ * Sem linha = ainda não mexeram naquela etapa.
+ *
+ * Em etapa de **caixinha**, a linha existir já quer dizer "feito" e `value` fica nulo.
+ * Em **lista de opções**, `value` guarda o id da opção escolhida.
+ */
+export const projectChecks = pgTable(
+  'project_checks',
+  {
+    id: id(),
+    projectClientId: text('project_client_id').notNull().references(() => projectClients.id, { onDelete: 'cascade' }),
+    stepId: text('step_id').notNull().references(() => projectSteps.id, { onDelete: 'cascade' }),
+    /** O id da opção escolhida (só em etapa de lista); nulo na caixinha */
+    value: text('value'),
+    doneById: text('done_by_id').references(() => users.id),
+    doneAt: timestamp('done_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('project_checks_uq').on(t.projectClientId, t.stepId)],
+);
+
+/**
+ * Um comentário. Sem `projectClientId` é um recado do projeto inteiro;
+ * com ele, é conversa sobre aquele cliente ("liguei, pediram para voltar semana que vem").
+ */
+export const projectComments = pgTable(
+  'project_comments',
+  {
+    id: id(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    projectClientId: text('project_client_id').references(() => projectClients.id, { onDelete: 'cascade' }),
+    userId: text('user_id').references(() => users.id),
+    body: text('body').notNull(),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('project_comments_project_idx').on(t.projectId), index('project_comments_client_idx').on(t.projectClientId)],
+);
+
+/**
+ * Um anexo: planilha, documento, print, áudio da URA — qualquer formato, até o limite da tela.
+ * Fica no próprio banco (como a logo do cliente), então entra no backup junto com o resto;
+ * por isso o limite de tamanho é baixo de propósito. `fileName` é o nome com que a pessoa baixa.
+ */
+export const projectAttachments = pgTable(
+  'project_attachments',
+  {
+    id: id(),
+    projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+    projectClientId: text('project_client_id').references(() => projectClients.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    dataBase64: text('data_base64').notNull(),
+    uploadedById: text('uploaded_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('project_attachments_project_idx').on(t.projectId), index('project_attachments_client_idx').on(t.projectClientId)],
+);
+
 // ---------------------------------------------------------------------
 // RELAÇÕES (para consultas com "traga junto")
 // ---------------------------------------------------------------------
@@ -575,9 +868,18 @@ export const clientLogosRelations = relations(clientLogos, ({ one }) => ({
 export const clientUnitsRelations = relations(clientUnits, ({ one }) => ({
   client: one(clients, { fields: [clientUnits.clientId], references: [clients.id] }),
 }));
-export const clientsRelations = relations(clients, ({ many }) => ({
+export const clientDeviceLoginsRelations = relations(clientDeviceLogins, ({ one }) => ({
+  client: one(clients, { fields: [clientDeviceLogins.clientId], references: [clients.id] }),
+  model: one(deviceModels, { fields: [clientDeviceLogins.modelId], references: [deviceModels.id] }),
+}));
+export const clientNetworkSettingsRelations = relations(clientNetworkSettings, ({ one }) => ({
+  client: one(clients, { fields: [clientNetworkSettings.clientId], references: [clients.id] }),
+}));
+export const clientsRelations = relations(clients, ({ many, one }) => ({
   subscriptions: many(subscriptions),
   units: many(clientUnits),
+  deviceLogins: many(clientDeviceLogins),
+  network: one(clientNetworkSettings, { fields: [clients.id], references: [clientNetworkSettings.clientId] }),
   didsInUse: many(dids, { relationName: 'didClient' }),
   devices: many(devices),
 }));
@@ -648,4 +950,36 @@ export const usersRelations = relations(users, ({ one }) => ({
 
 export const auditLogRelations = relations(auditLog, ({ one }) => ({
   user: one(users, { fields: [auditLog.userId], references: [users.id] }),
+}));
+
+export const releaseNotesRelations = relations(releaseNotes, ({ many }) => ({
+  items: many(releaseNoteItems),
+  reads: many(releaseNoteReads),
+}));
+export const releaseNoteItemsRelations = relations(releaseNoteItems, ({ one }) => ({
+  note: one(releaseNotes, { fields: [releaseNoteItems.noteId], references: [releaseNotes.id] }),
+  image: one(releaseNoteImages, { fields: [releaseNoteItems.id], references: [releaseNoteImages.itemId] }),
+}));
+export const releaseNoteReadsRelations = relations(releaseNoteReads, ({ one }) => ({
+  note: one(releaseNotes, { fields: [releaseNoteReads.noteId], references: [releaseNotes.id] }),
+  user: one(users, { fields: [releaseNoteReads.userId], references: [users.id] }),
+}));
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  owner: one(users, { fields: [projects.ownerId], references: [users.id] }),
+  steps: many(projectSteps),
+  clients: many(projectClients),
+}));
+export const projectStepsRelations = relations(projectSteps, ({ one }) => ({
+  project: one(projects, { fields: [projectSteps.projectId], references: [projects.id] }),
+}));
+export const projectClientsRelations = relations(projectClients, ({ one, many }) => ({
+  project: one(projects, { fields: [projectClients.projectId], references: [projects.id] }),
+  client: one(clients, { fields: [projectClients.clientId], references: [clients.id] }),
+  assignee: one(users, { fields: [projectClients.assigneeId], references: [users.id] }),
+  checks: many(projectChecks),
+}));
+export const projectChecksRelations = relations(projectChecks, ({ one }) => ({
+  linha: one(projectClients, { fields: [projectChecks.projectClientId], references: [projectClients.id] }),
+  step: one(projectSteps, { fields: [projectChecks.stepId], references: [projectSteps.id] }),
 }));

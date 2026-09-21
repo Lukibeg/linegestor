@@ -15,6 +15,34 @@
       "when": 1789607858581,
       "tag": "0001_unidades_fotos_valores",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789834132049,
+      "tag": "0002_rodada23",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789835960583,
+      "tag": "0003_novidades",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789841161320,
+      "tag": "0004_projetos",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789843674617,
+      "tag": "0005_etapas_com_opcoes",
+      "breakpoints": true
     }
   ]
 }

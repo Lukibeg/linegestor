@@ -8,13 +8,14 @@ import type { Device, DeviceModel } from '../../api/types.js';
 import { ApiError } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can } from '../../lib/auth.js';
-import { Abas, Campo, CampoLogo, Carregando, Chip, Confirmar, FotoModelo, Identificacao, Kpi, Modal, Paginacao, Spinner, TODOS, usePaginaLocal, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoLogo, Carregando, Chip, Confirmar, FotoModelo, Identificacao, InputIp, Kpi, Modal, Paginacao, Spinner, TODOS, usePaginaLocal, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { centavosParaCampo, condicaoCor, condicaoNome, CONDICOES_APARELHO, data, lerLista, macFormatado, macLimpo, macValido, MODALIDADES, paraCentavos, reais, serieLimpa } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
 import { Movimentar } from './Movimentar.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
+import { BarrasRanking } from '../../components/graficos.js';
 
 type Aba = 'aparelhos' | 'modelos' | 'movimentacoes';
 
@@ -39,10 +40,38 @@ export function Inventario() {
         <Kpi label="Valor locado" valor={r ? reais(r.valueWithClientsCents) : '…'} sub="aparelhos em locação ou comodato" />
       </div>
       {r?.filtrado && <p className="text-[12.5px] text-muted -mt-3 mb-4">Os cartões acima estão somando apenas o que o filtro deixou passar. <button className="link" onClick={() => setSp({ aba: 'aparelhos' }, { replace: true })}>limpar filtros</button></p>}
+      {/* o retrato do parque: os modelos com mais aparelhos e onde eles estão */}
+      {aba !== 'movimentacoes' && (models.data ?? []).length > 0 && (
+        <section className="card p-4 mb-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+            <h2 className="font-display font-semibold">Parque por modelo</h2>
+            <span className="text-[12px] text-muted">Clique numa barra para ver só esses aparelhos.</span>
+          </div>
+          <BarrasRanking
+            larguraRotulo="w-[190px]"
+            legenda={[{ label: 'Em estoque', tom: 'ok' }, { label: 'Com clientes', tom: 'accent' }]}
+            acao={(modelId) => setSp({ aba: 'aparelhos', modelId }, { replace: true })}
+            aoClicarParte={(modelId, parte) => setSp({ aba: 'aparelhos', modelId, ...(parte === 'estoque' ? { clientId: 'stock' } : {}) }, { replace: true })}
+            dados={[...(models.data ?? [])]
+              .filter((m) => m.counts.total > 0)
+              .sort((a, b) => b.counts.total - a.counts.total)
+              .slice(0, 10)
+              .map((m) => ({
+                id: m.id, valor: m.counts.total, rotulo: m.name,
+                titulo: `${m.counts.inStock} em estoque · ${m.counts.withClients} com clientes${m.counts.sold ? ` · ${m.counts.sold} vendido(s)` : ''}`,
+                partes: [
+                  { id: 'estoque', label: 'Em estoque', n: m.counts.inStock, tom: 'ok' as const },
+                  { id: 'clientes', label: 'Com clientes', n: m.counts.withClients, tom: 'accent' as const },
+                ],
+              }))}
+          />
+        </section>
+      )}
+
       <Abas atual={aba} onChange={(a) => { const n = new URLSearchParams(); n.set('aba', a); setSp(n, { replace: true }); }} abas={[{ id: 'aparelhos', label: 'Aparelhos' }, { id: 'modelos', label: 'Modelos' }, { id: 'movimentacoes', label: 'Movimentações' }]} />
       {aba === 'aparelhos' && <Aparelhos models={models.data ?? []} />}
       {aba === 'modelos' && <Modelos models={models.data ?? []} loading={models.isLoading} />}
-      {aba === 'movimentacoes' && <Movimentacoes />}
+      {aba === 'movimentacoes' && <Movimentacoes models={models.data ?? []} />}
       <Movimentar open={mover} onClose={() => setMover(false)} />
     </Pagina>
   );
@@ -197,7 +226,7 @@ function AparelhoForm({ open, onClose, models, modeloInicial }: { open: boolean;
         )}
         <div className="grid grid-cols-2 gap-3">
           <Campo label="Condição"><select className="input" value={f.condition} onChange={(e) => setF({ ...f, condition: e.target.value })}>{Object.entries(CONDICOES_APARELHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Campo>
-          {umSo && f.tipo === 'mac' && <Campo label="IP"><input className="input font-mono" value={f.ip} onChange={(e) => setF({ ...f, ip: e.target.value })} onBlur={() => leitura.validos === 1 && setF((x) => ({ ...x, texto: macFormatado(leitura.itens[0]!) }))} /></Campo>}
+          {umSo && f.tipo === 'mac' && <Campo label="IP"><InputIp value={f.ip} onChange={(v) => setF({ ...f, ip: v })} onBlur={() => leitura.validos === 1 && setF((x) => ({ ...x, texto: macFormatado(leitura.itens[0]!) }))} /></Campo>}
         </div>
         <Campo label="Anotação" dica={quantos > 1 ? 'vale para todos os aparelhos desta leva' : undefined}><textarea className="input" rows={2} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></Campo>
         {err && (
@@ -374,25 +403,33 @@ function ModeloForm({ m, onClose }: { m?: DeviceModel; onClose: () => void }) {
 
 // ---------- Movimentações ----------
 
-function Movimentacoes() {
+/**
+ * O histórico de movimentações, com filtros: modalidade, cliente, **modelo** (só as que levaram
+ * aquele modelo) e a **busca por MAC ou N/S** (a vida de um aparelho específico, em ordem).
+ */
+function Movimentacoes({ models }: { models: DeviceModel[] }) {
   const [sp, setSp] = useSearchParams();
-  const modality = sp.get('modalidade') ?? ''; const clientId = sp.get('cliente') ?? ''; const from = sp.get('de') ?? ''; const to = sp.get('ate') ?? ''; const page = Number(sp.get('p') ?? 1);
+  const modality = sp.get('modalidade') ?? ''; const clientId = sp.get('cliente') ?? ''; const modelId = sp.get('modelo') ?? ''; const q = sp.get('q') ?? ''; const from = sp.get('de') ?? ''; const to = sp.get('ate') ?? ''; const page = Number(sp.get('p') ?? 1);
   const tudo = sp.get('tudo') === '1';
   const tamanho = tudo ? TODOS : 50;
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
   const clients = useQuery({ queryKey: ['client-options', 'equip'], queryFn: () => api.clients.options({ productCode: 'equipamentos' }) });
   const o = useOrdenacao('createdAt', 'desc');
   const [aberta, setAberta] = useState<string | null>(null);
-  const lista = useQuery({ queryKey: ['movements', modality, clientId, from, to, page, tudo, o.ord, o.dir], queryFn: () => api.inventory.movements({ modality, clientId, from: from || undefined, to: to || undefined, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }) });
+  const lista = useQuery({ queryKey: ['movements', modality, clientId, modelId, q, from, to, page, tudo, o.ord, o.dir], queryFn: () => api.inventory.movements({ modality, clientId, modelId, q, from: from || undefined, to: to || undefined, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }) });
+  const temFiltro = !!(modality || clientId || modelId || q || from || to);
   const numero = contarDe(tudo ? 1 : page, tamanho); // a contagem segue pela lista toda, não recomeça a cada página
   return (
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2">
         <select className="input w-auto" value={modality} onChange={(e) => set('modalidade', e.target.value || null)}><option value="">Todas as modalidades</option>{Object.entries(MODALIDADES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <select className="input w-auto" value={clientId} onChange={(e) => set('cliente', e.target.value || null)}><option value="">Todos os clientes</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        <select className="input w-auto" value={modelId} onChange={(e) => set('modelo', e.target.value || null)} aria-label="Modelo"><option value="">Todos os modelos</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+        <input className="input max-w-[220px] font-mono" placeholder="MAC ou N/S de um aparelho" value={q} onChange={(e) => set('q', e.target.value)} aria-label="Buscar aparelho" />
         <input type="date" className="input w-auto" value={from} onChange={(e) => set('de', e.target.value || null)} /><input type="date" className="input w-auto" value={to} onChange={(e) => set('ate', e.target.value || null)} />
+        {temFiltro && <button className="btn-ghost btn-sm text-muted" onClick={() => setSp({ aba: 'movimentacoes' }, { replace: true })}>limpar filtros</button>}
       </div>
-      {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhuma movimentação" /> : (
+      {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhuma movimentação" texto={temFiltro ? 'Nenhuma movimentação com esses filtros.' : undefined} /> : (
         <div className="card overflow-x-auto"><table className="table"><thead><tr><th className="w-6" /><ThN /><Th o={o} col="createdAt">Quando</Th><Th o={o} col="modality">Modalidade</Th><Th o={o} col="fromName">De</Th><Th o={o} col="toName">Para</Th><Th o={o} col="unit">Unidade</Th><th>Itens</th><th>Condição</th><Th o={o} col="userName">Por</Th></tr></thead>
           <tbody>{lista.data.items.map((m, i) => {
             const abrir = aberta === m.id;

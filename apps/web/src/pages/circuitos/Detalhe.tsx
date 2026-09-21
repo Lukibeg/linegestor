@@ -12,6 +12,7 @@ import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { CircuitoForm } from './Lista.js';
 import { Voltar } from '../../lib/voltar.js';
 import { TdN, ThN } from '../../lib/contagem.js';
+import { UsoDid } from '../clientes/Ficha.js';
 
 export function CircuitoDetalhe() {
   const { id = '' } = useParams();
@@ -21,7 +22,13 @@ export function CircuitoDetalhe() {
   const dids = useQuery({ queryKey: ['circuit-dids', id], queryFn: () => api.dids.list({ circuitId: id, includeThirdParty: true, page: 1, pageSize: TODOS }) });
   const [editar, setEditar] = useState(false); const [faixa, setFaixa] = useState(false); const [excluir, setExcluir] = useState(false); const [busy, setBusy] = useState(false);
   const o = useOrdenacaoLocal('number');
-  const ordenados = ordenarLista(dids.data?.items ?? [], o, { number: (d) => d.number, clientName: (d) => d.clientName, ownerName: (d) => d.ownerName, note: (d) => d.note });
+  const ordenados = ordenarLista(dids.data?.items ?? [], o, { number: (d) => d.number, clientName: (d) => d.clientName, inUse: (d) => (d.clientId ? (d.inUse ? 1 : 0) : null), ownerName: (d) => d.ownerName, note: (d) => d.note });
+  const [mudando, setMudando] = useState<string | null>(null);
+  const alternarUso = async (didId: string, inUse: boolean) => {
+    setMudando(didId);
+    try { await api.dids.update(didId, { inUse }); await Promise.all([qc.invalidateQueries({ queryKey: ['circuit-dids', id] }), qc.invalidateQueries({ queryKey: ['dids'] }), qc.invalidateQueries({ queryKey: ['client-dids'] })]); }
+    catch (e) { toast.push('erro', mensagemErro(e)); } finally { setMudando(null); }
+  };
   const pg = usePaginaLocal(ordenados, 100);
   if (q.isLoading) return <Carregando />;
   if (!q.data) return <Vazio titulo="Circuito não encontrado" acao={<Link className="btn-secondary" to="/circuitos">Voltar</Link>} />;
@@ -36,7 +43,7 @@ export function CircuitoDetalhe() {
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-5">
         <Kpi label="Canais" valor={c.channels} sub="chamadas simultâneas" tone={c.channels === 0 && c.dids.total > 0 ? 'bad' : 'neutral'} />
         <Kpi label="DIDs" valor={c.dids.total} tone="accent" />
-        <Kpi label="Em uso" valor={c.dids.assigned} />
+        <Kpi label="Com cliente" valor={c.dids.assigned} />
         <Kpi label="Livres" valor={c.dids.free} tone={c.dids.free === 0 && c.dids.total > 0 ? 'signal' : 'ok'} />
       </div>
       <div className="grid gap-4 lg:grid-cols-3">
@@ -46,19 +53,23 @@ export function CircuitoDetalhe() {
             <dt className="text-muted">N° do circuito</dt><dd className="font-mono tnum">{c.code}</dd>
             <dt className="text-muted">Número chave</dt><dd className="font-mono tnum">{c.keyNumber ? didFormatado(c.keyNumber) : '—'}</dd>
             <dt className="text-muted">Titular</dt><dd>{c.ownerName ?? '—'}</dd>
+            <dt className="text-muted">Autenticação</dt><dd>{c.authType === 'login' ? 'por login e senha' : 'por IP'}</dd>
             <dt className="text-muted">IP da operadora</dt><dd className="font-mono">{c.signalingIp ?? '—'}</dd>
-            <dt className="text-muted">IP de autenticação</dt><dd className="font-mono">{c.authIp ?? '—'}</dd>
-            <dt className="text-muted">Usuário</dt><dd className="font-mono">{c.authUsername ?? '—'}</dd>
+            {c.authType === 'login'
+              ? <><dt className="text-muted">Login do tronco</dt><dd className="font-mono">{c.authUsername ?? '—'}</dd></>
+              : <><dt className="text-muted">IP do PBX</dt><dd className="font-mono">{c.authIp ?? '—'}</dd></>}
             <dt className="text-muted">Valor mensal</dt><dd className="tnum">{reais(c.monthlyValueCents)}</dd>
           </dl>
-          <div className="mt-3"><Campo label="Senha de autenticação"><CampoSegredo secretId={c.authPassword.secretId} hasSecret={c.authPassword.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo></div>
+          {c.authType === 'login' && <div className="mt-3"><Campo label="Senha do tronco"><CampoSegredo secretId={c.authPassword.secretId} hasSecret={c.authPassword.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo></div>}
           {c.notes && <p className="text-sm mt-3 whitespace-pre-wrap text-ink-2">{c.notes}</p>}
         </div>
         <div className="card lg:col-span-2 overflow-x-auto">
           <div className="px-4 py-3 border-b border-line flex items-center justify-between"><span className="font-display font-semibold">DIDs deste circuito</span><Link className="link text-sm" to={`/circuitos?aba=numeracao&circuito=${c.id}`}>abrir na Numeração para editar em massa</Link></div>
           {dids.isLoading ? <Carregando /> : !dids.data?.items.length ? <div className="p-6 text-muted text-sm">Nenhum DID ainda. Crie uma faixa.</div> : (
-            <table className="table"><thead><tr><ThN /><Th o={o} col="number">Número</Th><Th o={o} col="clientName">Cliente</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
-              <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <span className="chip bg-ok-soft text-ok">livre</span>}</td><td className="text-muted">{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
+            <table className="table"><thead><tr><ThN /><Th o={o} col="number">Número</Th><Th o={o} col="clientName">Cliente</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
+              <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <span className="chip bg-ok-soft text-ok">livre</span>}</td>
+                <td>{d.clientId ? <UsoDid inUse={d.inUse} podeMudar={can('dids.assign')} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /> : <span className="text-muted">—</span>}</td>
+                <td className="text-muted">{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
           )}
           {!!dids.data?.items.length && <div className="px-4 pb-3">{pg.rodape}</div>}
         </div>
@@ -82,18 +93,19 @@ export function FaixaForm({ open, onClose, circuitId, onDone }: { open: boolean;
     setBusy(true); setErr('');
     try {
       const body = { baseNumber: f.baseNumber, quantity: Number(f.quantity), clientId: f.clientId || null };
-      const r = circuitId ? await api.circuits.createRange(circuitId, body) : await api.dids.createRange({ ...body, circuitId: f.circuitId || null });
+      const r = circuitId ? await api.circuits.createRange(circuitId, body) : await api.dids.createRange({ ...body, circuitId: f.circuitId });
       toast.push('ok', `${r.created} DIDs criados (${didFormatado(r.first)} a ${didFormatado(r.last)})`); onDone();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
   return (
-    <Modal open={open} onClose={onClose} titulo="Criar faixa de DIDs" rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || digits.length < 10 || f.quantity < 1} onClick={save}>{busy ? <Spinner className="text-white" /> : `Criar ${f.quantity || 0} DIDs`}</button></>}>
+    <Modal open={open} onClose={onClose} titulo="Criar faixa de DIDs" rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || digits.length < 10 || f.quantity < 1 || !(circuitId || f.circuitId)} onClick={save}>{busy ? <Spinner className="text-white" /> : `Criar ${f.quantity || 0} DIDs`}</button></>}>
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <Campo label="Número inicial" dica="DDD + número"><input className="input font-mono" placeholder="(71) 3020-1200" value={f.baseNumber} onChange={(e) => setF({ ...f, baseNumber: e.target.value })} autoFocus /></Campo>
           <Campo label="Quantidade" dica="até 1.000 por vez"><input type="number" min={1} max={1000} className="input tnum" value={f.quantity} onChange={(e) => setF({ ...f, quantity: Number(e.target.value) })} /></Campo>
         </div>
-        {!circuitId && <Campo label="Circuito"><select className="input" value={f.circuitId} onChange={(e) => setF({ ...f, circuitId: e.target.value })}><option value="">sem circuito</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.code}</option>)}</select></Campo>}
+        {/* todo DID nasce dentro de um circuito: sem escolher, o botão fica desligado */}
+        {!circuitId && <Campo label="Circuito" dica="obrigatório: todo DID pertence a um circuito"><select className="input" value={f.circuitId} onChange={(e) => setF({ ...f, circuitId: e.target.value })}><option value="">Escolha o circuito…</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.code}</option>)}</select></Campo>}
         <Campo label="Cliente (uso)" dica="deixe vazio para criar livres"><select className="input" value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })}><option value="">livre</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>
         {preview && <div className="card p-3 text-sm bg-accent-soft border-transparent text-accent-ink font-mono">{preview}</div>}
         {err && <div className="text-bad text-sm">{err}</div>}

@@ -213,6 +213,10 @@ async function planDids(db: Db, raw: Record<string, string>[]): Promise<Plan> {
     const circuitRaw = pick(r, 'dids', 'circuit');
     const circuit = circuitRaw ? circ.find((c) => c.code === circuitRaw.trim() || norm(c.name) === norm(circuitRaw)) : undefined;
     if (circuitRaw && !circuit) errors.push(`Circuito desconhecido: ${circuitRaw}`);
+    const targetId = existing.get(number);
+    // todo DID nasce dentro de um circuito: número novo sem circuito no arquivo é erro
+    if (!targetId && !circuit) errors.push('Informe o circuito (todo DID pertence a um circuito)');
+    if (targetId && circuitRaw !== undefined && !circuit) errors.push('O circuito não pode ficar vazio');
     const clientRaw = pick(r, 'dids', 'client');
     const isFree = !clientRaw || /^(livre|free|-)$/i.test(clientRaw);
     const client = !isFree ? findClient(clientRaw!) : undefined;
@@ -220,8 +224,7 @@ async function planDids(db: Db, raw: Record<string, string>[]): Promise<Plan> {
     const ownerRaw = pick(r, 'dids', 'owner');
     const owner = ownerRaw ? findClient(ownerRaw) : undefined;
     if (ownerRaw && !owner) errors.push(`Titular desconhecido: ${ownerRaw}`);
-    const targetId = existing.get(number);
-    const data = { targetId, number, circuitId: circuitRaw === undefined ? undefined : circuit?.id ?? null, clientId: clientRaw === undefined ? undefined : client?.id ?? null, ownerClientId: owner?.id, note: pick(r, 'dids', 'note') };
+    const data = { targetId, number, circuitId: circuit?.id, clientId: clientRaw === undefined ? undefined : client?.id ?? null, ownerClientId: owner?.id, note: pick(r, 'dids', 'note') };
     return { line: i + 2, action: errors.length ? 'error' : targetId ? 'update' : 'create', key: number, errors, data };
   });
   return summarize('dids', rows);
@@ -277,10 +280,12 @@ export async function apply(db: Db, vault: SecretsVault, p: Plan, userId: string
           const [cur] = await tx.select().from(circuits).where(eq(circuits.id, d.targetId));
           const set: Record<string, unknown> = { updatedAt: new Date(), authPasswordSecretId: await secret(cur?.authPasswordSecretId) };
           for (const k of ['name', 'carrierId', 'channels', 'signalingIp', 'authIp', 'authUsername', 'monthlyValueCents', 'ownerClientId', 'notes', 'keyNumber']) if (d[k] !== undefined) set[k] = d[k];
+          // login no arquivo = autenticação por login e senha; sem login = por IP
+          if (d.authUsername !== undefined) set.authType = d.authUsername ? 'login' : 'ip';
           await tx.update(circuits).set(set).where(eq(circuits.id, d.targetId));
           updated++;
         } else {
-          await tx.insert(circuits).values({ id: newId(), name: d.name, code: d.code, keyNumber: d.keyNumber ?? null, carrierId: d.carrierId ?? null, channels: d.channels ?? 0, signalingIp: d.signalingIp ?? null, authIp: d.authIp ?? null, authUsername: d.authUsername ?? null, monthlyValueCents: d.monthlyValueCents ?? null, ownerClientId: d.ownerClientId ?? null, notes: d.notes ?? null, authPasswordSecretId: await secret(null) });
+          await tx.insert(circuits).values({ id: newId(), name: d.name, code: d.code, keyNumber: d.keyNumber ?? null, carrierId: d.carrierId ?? null, channels: d.channels ?? 0, signalingIp: d.signalingIp ?? null, authIp: d.authIp ?? null, authUsername: d.authUsername ?? null, authType: d.authUsername ? 'login' : 'ip', monthlyValueCents: d.monthlyValueCents ?? null, ownerClientId: d.ownerClientId ?? null, notes: d.notes ?? null, authPasswordSecretId: await secret(null) });
           created++;
         }
       }
@@ -291,13 +296,13 @@ export async function apply(db: Db, vault: SecretsVault, p: Plan, userId: string
         if (d.targetId) {
           const set: Record<string, unknown> = { updatedAt: new Date() };
           if (d.circuitId !== undefined) set.circuitId = d.circuitId;
-          if (d.clientId !== undefined) set.clientId = d.clientId;
+          if (d.clientId !== undefined) { set.clientId = d.clientId; set.inUse = false; }
           if (d.ownerClientId !== undefined) set.ownerClientId = d.ownerClientId;
           if (d.note !== undefined) set.note = d.note;
           await tx.update(dids).set(set).where(eq(dids.id, d.targetId));
           updated++;
         } else {
-          inserts.push({ id: newId(), number: d.number, circuitId: d.circuitId ?? null, clientId: d.clientId ?? null, ownerClientId: d.ownerClientId ?? null, note: d.note ?? null });
+          inserts.push({ id: newId(), number: d.number, circuitId: d.circuitId, clientId: d.clientId ?? null, inUse: false, ownerClientId: d.ownerClientId ?? null, note: d.note ?? null });
           created++;
         }
       }

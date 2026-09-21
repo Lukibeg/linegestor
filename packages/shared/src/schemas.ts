@@ -103,6 +103,8 @@ export const LinePbxSettingsSchema = z.object({
 });
 export const Fop2SettingsSchema = z.object({
   adminExtension: z.string().trim().max(64).nullable().optional(),
+  /** Senha do usuário padrão do FOP2 — só na gravação; ausente = mantém */
+  defaultUserPassword: SenhaEntradaSchema.optional(),
 });
 export const OmniboardSettingsSchema = z.object({
   adminLogin: z.string().trim().max(200).nullable().optional(),
@@ -154,10 +156,42 @@ export const ProdutoCriarSchema = z.object({
   description: z.string().trim().max(300).nullable().optional(),
 });
 
-/** Uma unidade do cliente (matriz, filial, loja). */
+/** Um endereço IP (v4) como a pessoa digita; vazio vira nulo. */
+const IpSchema = z
+  .string()
+  .trim()
+  .max(64)
+  .refine((v) => !v || /^\d{1,3}(\.\d{1,3}){3}$/.test(v), 'IP inválido (ex.: 10.20.0.1)')
+  .transform((v) => v || null);
+
+/** Uma unidade do cliente (matriz, filial, loja): nome, endereço e o IP fixo de saída da rede dela. */
 export const UnidadeGravarSchema = z.object({
   name: z.string().trim().min(1, 'Informe o nome da unidade').max(120),
+  address: z.string().trim().max(300).nullable().optional(),
+  /** o IP fixo de saída da internet desta unidade (o que a operadora e o servidor enxergam) */
+  egressIp: IpSchema.nullable().optional(),
   note: z.string().trim().max(500).nullable().optional(),
+});
+
+/** Login e senha padrão dos aparelhos de um MODELO no cliente (todos os GXP1610 dele usam o mesmo). */
+export const LoginModeloGravarSchema = z.object({
+  modelId: IdSchema,
+  username: z.string().trim().max(120).nullable().optional(),
+  /** só na gravação; ausente = mantém a senha atual */
+  password: SenhaEntradaSchema.optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+/** Configuração de rede padrão dos aparelhos do cliente (o que se digita nos telefones). */
+export const RedePadraoSchema = z.object({
+  ipAddress: z.string().trim().max(64).nullable().optional(),
+  subnetMask: IpSchema.nullable().optional(),
+  defaultRouter: IpSchema.nullable().optional(),
+  dns1: IpSchema.nullable().optional(),
+  dns2: IpSchema.nullable().optional(),
+  /** senha do ramal sem fio — só na gravação; ausente = mantém */
+  wirelessPassword: SenhaEntradaSchema.optional(),
+  note: z.string().trim().max(1000).nullable().optional(),
 });
 
 /**
@@ -191,6 +225,8 @@ export const CircuitoGravarSchema = z.object({
   channels: z.coerce.number().int().min(0).max(10000),
   ownerClientId: IdSchema.nullable().optional(),
   monthlyValueCents: CentavosSchema.nullable().optional(),
+  /** por IP (IP da operadora + IP do PBX) ou por login e senha do tronco */
+  authType: z.enum(['ip', 'login']).default('ip'),
   signalingIp: z.string().trim().max(64).nullable().optional(),
   authIp: z.string().trim().max(200).nullable().optional(),
   authUsername: z.string().trim().max(120).nullable().optional(),
@@ -215,19 +251,22 @@ export const CircuitoListarSchema = PaginacaoSchema.merge(OrdenacaoSchema).exten
 
 export const DidListarSchema = PaginacaoSchema.extend({
   q: z.string().trim().max(40).optional(),
-  circuitId: z.union([IdSchema, z.literal('none')]).optional(),
+  circuitId: IdSchema.optional(),
   clientId: z.union([IdSchema, z.literal('free')]).optional(),
   ownerClientId: IdSchema.optional(),
+  /** só os marcados como em uso (true) ou como não usados (false) */
+  inUse: z.enum(['true', 'false']).optional(),
   /** o mesmo interruptor da lista de circuitos: sem ele, número de terceiro não aparece */
   includeThirdParty: Booleano.default(false),
   sort: z.string().trim().max(60).optional(),
   dir: z.enum(['asc', 'desc']).optional(),
 });
 
+/** Todo DID nasce dentro de um circuito: não existe "DID sem circuito". */
 export const DidCriarFaixaSchema = z.object({
   baseNumber: DidNumeroSchema,
   quantity: z.coerce.number().int().min(1).max(1000, 'No máximo 1.000 números por vez'),
-  circuitId: IdSchema.nullable().optional(),
+  circuitId: IdSchema.min(1, 'Escolha o circuito'),
   clientId: IdSchema.nullable().optional(),
   ownerClientId: IdSchema.nullable().optional(),
   note: z.string().max(500).nullable().optional(),
@@ -238,17 +277,21 @@ export const DidEditarEmMassaSchema = z.object({
   ids: z.array(IdSchema).min(1).max(5000),
   set: z
     .object({
-      circuitId: IdSchema.nullable().optional(),
+      /** mudar de circuito — sempre para um circuito, nunca para "nenhum" */
+      circuitId: IdSchema.optional(),
       clientId: IdSchema.nullable().optional(),
+      /** marcar como em uso / não usado */
+      inUse: z.boolean().optional(),
       note: z.string().max(500).nullable().optional(),
     })
     .refine((s) => Object.keys(s).length > 0, 'Escolha pelo menos um campo para alterar'),
 });
 
 export const DidAtualizarSchema = z.object({
-  circuitId: IdSchema.nullable().optional(),
+  circuitId: IdSchema.optional(),
   clientId: IdSchema.nullable().optional(),
   ownerClientId: IdSchema.nullable().optional(),
+  inUse: z.boolean().optional(),
   note: z.string().max(500).nullable().optional(),
 });
 
@@ -379,6 +422,153 @@ export const CatalogoItemSchema = z.object({
   active: z.boolean().default(true),
 });
 
+// ---------- Novidades (notas de versão) ----------
+
+/** O tipo de um item da nota: a cor e o rótulo do cartão. */
+export const TIPOS_NOVIDADE = {
+  novo: 'Novo',
+  melhorou: 'Melhorou',
+  corrigido: 'Corrigido',
+  /** mudança de regra: muda o jeito de trabalhar */
+  atencao: 'Atenção',
+} as const;
+export type TipoNovidade = keyof typeof TIPOS_NOVIDADE;
+
+/** Um item (cartão) da nota: rótulo, título, duas ou três linhas e, se houver, um print. */
+export const NovidadeItemSchema = z.object({
+  /** vazio = item novo; preenchido = o item que já existe */
+  id: IdSchema.optional(),
+  kind: z.enum(['novo', 'melhorou', 'corrigido', 'atencao']).default('novo'),
+  title: z.string().trim().min(1, 'Dê um título ao item').max(160),
+  text: z.string().trim().max(2000).nullable().optional(),
+  /** imagem embutida ("data:image/png;base64,…") para trocar o print; ausente = mantém; null = tira */
+  imagem: z
+    .string()
+    .max(2_800_000, 'Imagem muito grande (máximo 2 MB). Escolha uma imagem menor.')
+    .regex(/^data:image\/(png|jpeg|webp|gif|svg\+xml);base64,[A-Za-z0-9+/=]+$/, 'Formato não suportado. Use PNG, JPG, WEBP ou SVG.')
+    .nullable()
+    .optional(),
+});
+
+/** A nota inteira: cabeçalho + os itens, na ordem em que aparecem. */
+export const NovidadeGravarSchema = z.object({
+  version: z.string().trim().min(1, 'Informe o número do patch (ex.: 1.3)').max(60).regex(/^[a-z0-9._-]+$/, 'Use só letras minúsculas, números, ponto, hífen e _'),
+  title: z.string().trim().min(1, 'Dê um título à nota').max(160),
+  summary: z.string().trim().max(500).nullable().optional(),
+  items: z.array(NovidadeItemSchema).max(60, 'No máximo 60 itens por nota').default([]),
+});
+export const NovidadeAtualizarSchema = NovidadeGravarSchema.partial();
+
+// ---------- Projetos ----------
+
+/** As situações de um cliente dentro do projeto, na ordem em que aparecem no painel. */
+export const SITUACOES_PROJETO = ['pendente', 'andamento', 'travado', 'concluido', 'nao_se_aplica'] as const;
+export const SituacaoProjetoSchema = z.enum(SITUACOES_PROJETO);
+
+/** Data-alvo como o campo de calendário manda: "AAAA-MM-DD", guardada como texto (não tem hora). */
+const DiaTextoSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida');
+
+/** As cores que uma opção pode ter (as mesmas do resto do sistema). */
+export const CORES_OPCAO = ['neutral', 'accent', 'ok', 'signal', 'bad', 'muted'] as const;
+
+/**
+ * Uma opção de uma etapa do tipo lista ("Pendente", "Mensagem enviada", …).
+ * `conclui` diz se escolher esta opção **fecha** a etapa — é o que faz "Sem necessidade" e
+ * "Configuração realizada" contarem como resolvido, e "Pendente" não.
+ * O `id` é estável: trocar o rótulo não perde o que já foi escolhido.
+ */
+export const OpcaoEtapaSchema = z.object({
+  id: z.string().trim().min(1).max(40).optional(),
+  label: z.string().trim().min(1, 'Dê um nome à opção').max(60),
+  tone: z.enum(CORES_OPCAO).default('neutral'),
+  conclui: z.boolean().default(false),
+});
+
+/**
+ * Uma etapa (coluna) do projeto. Sem `id` é nova; com `id`, é a que já existe
+ * (mantém o que já foi marcado). `kind` escolhe entre caixinha e lista de opções.
+ */
+export const EtapaProjetoSchema = z
+  .object({
+    id: IdSchema.optional(),
+    title: z.string().trim().min(1, 'Dê um nome à etapa').max(160),
+    kind: z.enum(['check', 'escolha']).default('check'),
+    options: z.array(OpcaoEtapaSchema).max(12, 'No máximo 12 opções por etapa').default([]),
+  })
+  .refine((e) => e.kind !== 'escolha' || e.options.length >= 2, {
+    message: 'Uma etapa de lista precisa de ao menos duas opções',
+    path: ['options'],
+  })
+  .refine((e) => e.kind !== 'escolha' || e.options.some((o) => o.conclui), {
+    message: 'Marque ao menos uma opção como "resolve a etapa" — senão ela nunca fecha',
+    path: ['options'],
+  });
+
+export const ProjetoGravarSchema = z.object({
+  name: z.string().trim().min(1, 'Dê um nome ao projeto').max(160),
+  goal: z.string().trim().max(4000).nullable().optional(),
+  dueDate: DiaTextoSchema.nullable().optional(),
+  ownerId: IdSchema.nullable().optional(),
+  etapas: z.array(EtapaProjetoSchema).max(30, 'No máximo 30 etapas por projeto').default([]),
+  /** Os clientes que entram na lista ao criar */
+  clientIds: z.array(IdSchema).max(500, 'No máximo 500 clientes por projeto').default([]),
+});
+export const ProjetoAtualizarSchema = ProjetoGravarSchema.partial().extend({
+  status: z.enum(['aberto', 'concluido', 'cancelado']).optional(),
+});
+
+/** Acrescentar clientes à lista de um projeto que já existe. */
+export const ProjetoClientesSchema = z.object({
+  clientIds: z.array(IdSchema).min(1, 'Escolha ao menos um cliente').max(500),
+  /** Responsável aplicado a todos os que entrarem agora */
+  assigneeId: IdSchema.nullable().optional(),
+});
+
+/** Mexer numa linha: trocar o responsável ou a situação. "Travado" exige o motivo. */
+export const ProjetoLinhaSchema = z
+  .object({
+    assigneeId: IdSchema.nullable().optional(),
+    status: SituacaoProjetoSchema.optional(),
+    blockedReason: z.string().trim().max(500).nullable().optional(),
+  })
+  .refine((v) => v.status !== 'travado' || !!v.blockedReason?.trim(), {
+    message: 'Diga por que está travado',
+    path: ['blockedReason'],
+  });
+
+/**
+ * Mexer numa etapa de um cliente: `feito` na caixinha, `valor` (o id da opção) na lista.
+ * `valor: null` limpa a escolha.
+ */
+export const ProjetoMarcarSchema = z
+  .object({
+    feito: z.boolean().optional(),
+    valor: z.string().trim().max(40).nullable().optional(),
+  })
+  .refine((v) => v.feito !== undefined || v.valor !== undefined, { message: 'Diga o que marcar' });
+
+export const ProjetoComentarioSchema = z.object({
+  body: z.string().trim().min(1, 'Escreva o comentário').max(4000),
+  /** Nulo = recado do projeto inteiro; preenchido = conversa sobre aquele cliente */
+  projectClientId: IdSchema.nullable().optional(),
+});
+
+/** Um anexo: qualquer formato. O conteúdo vem embutido ("data:<tipo>;base64,…"). */
+export const ProjetoAnexoSchema = z.object({
+  fileName: z.string().trim().min(1, 'O arquivo precisa de um nome').max(200),
+  projectClientId: IdSchema.nullable().optional(),
+  conteudo: z
+    .string()
+    .min(1)
+    .max(14_000_000, 'Arquivo muito grande (máximo 10 MB)')
+    .regex(/^data:[-\w.+]+\/[-\w.+]+(;[-\w.=]+)*;base64,[A-Za-z0-9+/=]+$/, 'Não consegui ler esse arquivo'),
+});
+
+export const ProjetoListarSchema = z.object({
+  status: z.enum(['aberto', 'concluido', 'cancelado', 'todos']).default('aberto'),
+  q: z.string().trim().max(120).optional(),
+});
+
 // ---------- Importação ----------
 
 export const ImportacaoSchema = z.object({
@@ -414,9 +604,20 @@ export type ModeloAtualizar = z.infer<typeof ModeloAtualizarSchema>;
 export type AparelhosEmMassa = z.infer<typeof AparelhosEmMassaSchema>;
 export type ProdutoCriar = z.infer<typeof ProdutoCriarSchema>;
 export type UnidadeGravar = z.infer<typeof UnidadeGravarSchema>;
+export type LoginModeloGravar = z.infer<typeof LoginModeloGravarSchema>;
+export type RedePadrao = z.infer<typeof RedePadraoSchema>;
 export type AparelhoGravar = z.infer<typeof AparelhoGravarSchema>;
 export type MovimentacaoCriar = z.infer<typeof MovimentacaoCriarSchema>;
 export type Login = z.infer<typeof LoginSchema>;
 export type CodigoSegundaEtapa = z.infer<typeof CodigoSegundaEtapaSchema>;
 export type UsuarioCriar = z.infer<typeof UsuarioCriarSchema>;
 export type Importacao = z.infer<typeof ImportacaoSchema>;
+export type NovidadeGravar = z.infer<typeof NovidadeGravarSchema>;
+export type NovidadeItem = z.infer<typeof NovidadeItemSchema>;
+export type SituacaoProjeto = z.infer<typeof SituacaoProjetoSchema>;
+export type ProjetoGravar = z.infer<typeof ProjetoGravarSchema>;
+export type ProjetoAtualizar = z.infer<typeof ProjetoAtualizarSchema>;
+export type ProjetoLinha = z.infer<typeof ProjetoLinhaSchema>;
+export type ProjetoAnexo = z.infer<typeof ProjetoAnexoSchema>;
+export type EtapaProjeto = z.infer<typeof EtapaProjetoSchema>;
+export type OpcaoEtapa = z.infer<typeof OpcaoEtapaSchema>;

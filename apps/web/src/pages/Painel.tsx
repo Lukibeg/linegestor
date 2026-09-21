@@ -1,14 +1,17 @@
 /** Painel inicial: o que precisa de atenção hoje. */
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { AlertTriangle, ArrowRight } from 'lucide-react';
 import { api } from '../api/index.js';
 import { Pagina } from '../components/layout/AppShell.js';
 import { Carregando, Chip, Kpi, Ocupacao } from '../components/ui/index.js';
 import { reais, relativo } from '../lib/format.js';
 import { contar, TdN, ThN } from '../lib/contagem.js';
+import { Andamento } from './projetos/partes.js';
+import { BarrasRanking } from '../components/graficos.js';
 
 export function Painel() {
+  const nav = useNavigate();
   const q = useQuery({ queryKey: ['dashboard'], queryFn: api.dashboard.summary });
   if (q.isLoading || !q.data) return <Carregando />;
   const d = q.data;
@@ -21,8 +24,8 @@ export function Painel() {
         <Kpi label="Alertas" valor={d.alerts.reduce((a, x) => a + x.count, 0)} tone={d.alerts.some((a) => a.severity === 'critical') ? 'bad' : d.alerts.length ? 'signal' : 'ok'} sub={d.alerts.length ? `${d.alerts.length} tipo(s)` : 'cadastro consistente'} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3 mt-5">
-        <section className="card p-4 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 mt-5">
+        <section className="card p-4 lg:col-span-2 min-w-0 overflow-x-auto">
           <div className="flex items-center justify-between mb-3"><h2 className="font-display font-semibold">Ocupação dos circuitos</h2><Link to="/circuitos" className="link text-sm">todos</Link></div>
           {d.circuits.length === 0 ? <div className="text-muted text-sm">Nenhum circuito cadastrado.</div> : (
             <table className="table">
@@ -48,12 +51,56 @@ export function Painel() {
         </section>
 
         <section className="card p-4">
+          <div className="flex items-center justify-between mb-3"><h2 className="font-display font-semibold">Projetos</h2><Link to="/projetos" className="link text-sm">todos</Link></div>
+          {d.projetos.items.length === 0 ? <div className="text-muted text-sm">Nenhum projeto em andamento.</div> : (
+            <>
+              <ul className="flex flex-col gap-2.5">
+                {d.projetos.items.map((p) => (
+                  <li key={p.id}>
+                    <Link to={`/projetos/${p.id}`} className="block hover:bg-surface-2 rounded-lg px-2 py-1 -mx-2">
+                      <div className="flex items-baseline justify-between gap-2 text-sm">
+                        <span className="truncate">{p.name}</span>
+                        {p.atrasado && <Chip tone="bad">atrasado</Chip>}
+                      </div>
+                      <Andamento pct={p.andamento} total={p.total} faltam={p.faltam} />
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {(d.projetos.travados > 0 || d.projetos.atrasados > 0) && (
+                <div className="text-[12px] text-muted mt-2">
+                  {d.projetos.atrasados > 0 && <span className="text-bad">{d.projetos.atrasados} atrasado(s)</span>}
+                  {d.projetos.atrasados > 0 && d.projetos.travados > 0 && ' · '}
+                  {d.projetos.travados > 0 && <span className="text-signal">{d.projetos.travados} cliente(s) travado(s)</span>}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+
+        <section className="card p-4">
+          <div className="flex items-center justify-between mb-3"><h2 className="font-display font-semibold">Valor nosso na mão do cliente</h2><Link to="/inventario" className="link text-sm">inventário</Link></div>
+          <BarrasRanking
+            vazio="Nenhum aparelho locado ou em comodato."
+            acao={(clientId) => nav(`/clientes/${clientId}?aba=equipamentos`)}
+            dados={d.valorPorCliente.map((c) => ({
+              id: c.clientId, valor: Math.round(c.valorCents / 100), rotulo: c.nome,
+              titulo: `${c.n} aparelho(s) · ${reais(c.valorCents)}`,
+            }))}
+            formatar={(v) => reais(v * 100)}
+          />
+          <p className="text-[12px] text-muted mt-2">Locação e comodato somados; venda não conta.</p>
+        </section>
+
+        <section className="card p-4">
           <h2 className="font-display font-semibold mb-3">Clientes por produto</h2>
-          <ul className="flex flex-col gap-1.5">
-            {d.clients.byProduct.map((p) => (
-              <li key={p.code}><Link to={`/clientes?produtos=${p.code}`} className="flex items-center justify-between text-sm hover:bg-surface-2 rounded-lg px-2 py-1"><Chip color={p.color}>{p.name}</Chip><span className="font-mono tnum">{p.n}</span></Link></li>
-            ))}
-          </ul>
+          <BarrasRanking
+            acao={(code) => nav(`/clientes?produtos=${code}`)}
+            dados={[...d.clients.byProduct].sort((a, b) => b.n - a.n).map((p) => ({
+              id: p.code, valor: p.n, titulo: `${p.n} cliente(s) com ${p.name}`,
+              rotulo: <Chip color={p.color}>{p.name}</Chip>,
+            }))}
+          />
         </section>
 
         <section className="card p-4">

@@ -6,7 +6,7 @@ import { ArrowLeftRight, Pencil, Trash2 } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can } from '../../lib/auth.js';
-import { Campo, Carregando, Chip, Confirmar, FotoModelo, Modal, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Campo, Carregando, Chip, Confirmar, FotoModelo, Modal, Spinner, Vazio, mensagemErro, useToast, InputIp } from '../../components/ui/index.js';
 import { centavosParaCampo, condicaoCor, condicaoNome, CONDICOES_APARELHO, data, macFormatado, macValido, MODALIDADES, paraCentavos, reais } from '../../lib/format.js';
 import { Movimentar } from './Movimentar.js';
 import { Voltar } from '../../lib/voltar.js';
@@ -88,7 +88,7 @@ export function AparelhoDetalhe() {
           )}
           <Campo label="Condição"><select className="input" value={f.condition ?? 'ativo'} onChange={(e) => setF({ ...f, condition: e.target.value })}>{Object.entries(CONDICOES_APARELHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Campo>
           <Campo label="Valor próprio (R$)" dica={`vazio = valor do modelo${d.modelValueCents != null ? ` (${reais(d.modelValueCents)})` : ''}`}><input className="input tnum" placeholder={centavosParaCampo(d.modelValueCents) || '0,00'} value={f.valorProprio ?? ''} onChange={(e) => setF({ ...f, valorProprio: e.target.value })} /></Campo>
-          <Campo label="IP"><input className="input font-mono" value={f.ip ?? ''} onChange={(e) => setF({ ...f, ip: e.target.value })} /></Campo>
+          <Campo label="IP"><InputIp value={f.ip ?? ''} onChange={(v) => setF({ ...f, ip: v })} /></Campo>
           <Campo label="Anotação" className="col-span-2"><textarea className="input" rows={3} value={f.note ?? ''} onChange={(e) => setF({ ...f, note: e.target.value })} /></Campo>
         </div>
         {err && <div className="text-bad text-sm mt-2">{err}</div>}
