@@ -448,5 +448,4 @@ export function iniciarSincronizacaoAutomatica(app: FastifyInstance) {
   };
   const primeira = setTimeout(() => void tick(), 20_000);
   const relogio = setInterval(() => void tick(), 60_000);
-  app.addHook('onClose', async () => { clearTimeout(primeira); clearInterval(relogio); });
 }
