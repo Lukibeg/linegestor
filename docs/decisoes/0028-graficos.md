@@ -61,3 +61,8 @@ legenda escrita uma vez acima e um fio de fundo entre as fatias. É a mesma ling
 >   lista); **a legenda escreve nome, número e %** de cada fatia; as seis cores vêm do tema
 >   (`--pz-1`…`--pz-6`), sempre na mesma ordem, conferida com o validador de paleta nos dois temas
 >   (a ordem é o que mantém cada cor distinta da vizinha para quem não distingue cores).
+
+> **Complementada pela 0030 (Patch 1.3):** **o escolhido em destaque.** Quando um valor do gráfico
+> está no filtro, ele fica com a cor cheia e o resto esmaece — o gráfico continua inteiro, para dar
+> para clicar de novo e desfazer. Vale para `BarrasRanking` (com `selecionavel`), `Colunas` e `Pizza`;
+> quem clica recebe o evento junto (Ctrl ou Shift + clique soma ao filtro).

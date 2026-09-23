@@ -561,7 +561,7 @@ export const users = pgTable('users', {
  *    do Google e o token da API de avisos
  */
 export const settings = pgTable('settings', {
-  /** 'backup' | 'avisos' | 'linechat' */
+  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) */
   id: text('id').primaryKey(),
   value: text('value').notNull().default('{}'),
   secretId: text('secret_id').references(() => secrets.id),

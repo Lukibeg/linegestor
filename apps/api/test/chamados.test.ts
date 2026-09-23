@@ -13,6 +13,9 @@
  *    quase vazia (token ou painel errado), ninguém é marcado
  *  - token errado vira mensagem clara, sem derrubar nada
  *  - os números da tela batem com os filtros; quem não tem a permissão não vê
+ *  - clicar filtra: o gráfico clicado continua inteiro, com o escolhido marcado; os números de cima
+ *    e as colunas do tempo também filtram, e a tabela obedece
+ *  - a arrumação da tela vale para todos: quem vê chamados lê, só a administração arruma
  */
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -245,8 +248,12 @@ describe('a tela de Chamados', () => {
     expect(cliente.itens.reduce((a: number, x: any) => a + x.n, 0)).toBe(249);
 
     const labchecap = (await s.get('/chamados/resumo?aba=abertos&campo=cliente-71%3DLabchecap')).json();
-    expect(labchecap.total).toBeLessThan(249);
-    expect(labchecap.porCampo.find((c: any) => c.key === 'cliente-71').itens).toHaveLength(1);
+    expect(labchecap.total).toBe(125);
+    // o gráfico de cliente continua com todos (para desfazer ou escolher outro), a Labchecap marcada
+    expect(labchecap.porCampo.find((c: any) => c.key === 'cliente-71').itens.map((x: any) => [x.valor, x.n, !!x.selecionado]))
+      .toEqual([['Labchecap', 125, true], ['Grado', 124, false]]);
+    // o resto da tela obedece
+    expect(labchecap.porEtapa.reduce((a: number, x: any) => a + x.n, 0)).toBe(125);
 
     const busca = (await s.get('/chamados/lista?aba=abertos&busca=9871')).json();
     expect(busca.total).toBe(1);
@@ -279,5 +286,56 @@ describe('a tela de Chamados', () => {
     for (const k of ['leitor', 'operador', 'tecnico', 'administrador']) {
       expect(papeis.find((p: any) => p.key === k).permissions).toContain('support.read');
     }
+  });
+});
+
+describe('clicar filtra, e a arrumação da tela', () => {
+  it('número de cima e coluna do tempo clicados filtram a tela e a tabela', async () => {
+    const r = (await s.get('/chamados/resumo?aba=abertos&situacao=sem-responsavel')).json();
+    const semResp = r.kpis.find((k: any) => k.id === 'sem-responsavel');
+    expect(semResp.ativo).toBe(true);
+    expect(r.total).toBe(Number(semResp.valor));
+    // o número "de tudo" não muda com a escolha: é nele que se clica para voltar
+    expect(r.kpis.find((k: any) => k.id === 'em-aberto')).toMatchObject({ valor: '249', total: true });
+    const l = (await s.get('/chamados/lista?aba=abertos&situacao=sem-responsavel&pageSize=1000')).json();
+    expect(l.total).toBe(r.total);
+    expect(l.items.every((x: any) => !x.responsavel)).toBe(true);
+
+    const idade = (await s.get('/chamados/resumo?aba=abertos&quando=2-7')).json();
+    const faixa = idade.serie.pontos.find((p: any) => p.id === '2-7');
+    expect(faixa.selecionado).toBe(true);
+    expect(idade.total).toBe(faixa.n);
+    // as outras faixas continuam no gráfico
+    expect(idade.serie.pontos.reduce((a: number, p: any) => a + p.n, 0)).toBe(249);
+  });
+
+  it('a arrumação começa de fábrica; a administração salva, e fica na auditoria', async () => {
+    expect((await s.get('/chamados/painel')).json()).toEqual({ itens: [], atualizadoEm: null, atualizadoPor: null });
+    const itens = [
+      { id: 'campo:cliente-71', largura: 'inteira', oculto: false, forma: 'pizza' },
+      { id: 'serie', largura: 'metade', oculto: false },
+      { id: 'etiqueta', largura: 'metade', oculto: true, forma: 'barras' },
+    ];
+    const r = await s.put('/chamados/painel', { itens });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().itens).toEqual(itens);
+    expect(r.json().atualizadoEm).toBeTruthy();
+    expect(r.json().atualizadoPor).toBeTruthy();
+    const a = (await s.get('/admin/audit?action=chamados_painel')).json();
+    expect(JSON.stringify(a)).toContain('arrumou a tela de Chamados para a equipe (2 gráficos à vista, 1 escondido)');
+  });
+
+  it('gráfico repetido ou desconhecido é recusado; quem não administra lê, mas não arruma', async () => {
+    expect((await s.put('/chamados/painel', { itens: [{ id: 'etapa', largura: 'metade' }, { id: 'etapa', largura: 'inteira' }] })).statusCode).toBe(400);
+    expect((await s.put('/chamados/painel', { itens: [{ id: 'grafico-x', largura: 'metade' }] })).statusCode).toBe(400);
+
+    const leitor = (await s.get('/admin/roles')).json().find((p: any) => p.key === 'leitor');
+    await s.post('/admin/users', { name: 'Leitor dos Chamados', email: 'leitorchamados@gestor.local', password: 'SenhaDeTeste!123', roleId: leitor.id });
+    const outro = new Session(app);
+    await outro.login('leitorchamados@gestor.local', 'SenhaDeTeste!123');
+    const lido = await outro.get('/chamados/painel');
+    expect(lido.statusCode).toBe(200);
+    expect(lido.json().itens).toHaveLength(3);
+    expect((await outro.put('/chamados/painel', { itens: [] })).statusCode).toBe(403);
   });
 });

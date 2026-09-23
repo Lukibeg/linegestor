@@ -63,3 +63,8 @@ WhatsApp Oficial 241; LinePBX 207, LineChat 58 — **iguais**. (O painel salvo d
 **Consequência.** Quando o Luan conferir a tela nova, o DataWaiter e o Grafana podem ser desligados.
 O painel **Chamados** passa a ser a fonte dos números de suporte. A próxima fase usa o histórico:
 tempo em cada etapa, tempo até fechar, e ligar o campo Cliente do card ao cadastro de clientes.
+
+> **Complementada pela 0030 (ainda no Patch 1.3):** clicar em qualquer parte da tela filtra — barras,
+> fatias, colunas do tempo e números de cima —, o gráfico clicado continua inteiro com o escolhido em
+> destaque, e clicar de novo desfaz. A administração arruma a tela para a equipe toda (ordem, largura,
+> escondidos, barras ou pizza). O dia clicado no Período deixou de trocar o período: vira filtro.

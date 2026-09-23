@@ -9,6 +9,9 @@
  *  3. **Chamados do LineChat** — o token e o painel de onde a sincronização lê os chamados de
  *     suporte (o resto dessa integração mora em `linechat.ts`).
  *
+ * A mesma tabela guarda a **arrumação da tela de Chamados** (`chamados-painel`): não é uma
+ * integração, mas é um ajuste da tela que vale para a equipe toda, com quem mexeu e quando.
+ *
  * O que é segredo (a chave da conta de serviço, o token da API) vai para o cofre cifrado.
  * O resto fica em `settings.value`, em JSON.
  *
@@ -22,6 +25,7 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { secrets, settings, type Db } from '@gestor/db';
+import type { ItemPainel } from '@gestor/shared';
 import type { SecretsVault } from './secrets.js';
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? '/dados';
@@ -102,8 +106,11 @@ export const LINECHAT_PADRAO: AjustesLineChat = {
   falhasSeguidas: 0,
 };
 
-type Assunto = 'backup' | 'avisos' | 'linechat';
-const PADROES: Record<Assunto, unknown> = { backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO };
+/** A arrumação da tela de Chamados: vazia = a de fábrica (ver `montarPainel` em @gestor/shared). */
+export type AjustesPainelChamados = { itens: ItemPainel[] };
+
+type Assunto = 'backup' | 'avisos' | 'linechat' | 'chamados-painel';
+const PADROES: Record<Assunto, unknown> = { backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO, 'chamados-painel': { itens: [] } };
 
 export async function ler<T>(db: Db, assunto: Assunto): Promise<{ valor: T; secretId: string | null; temSegredo: boolean }> {
   const [row] = await db.select().from(settings).where(eq(settings.id, assunto)).limit(1);

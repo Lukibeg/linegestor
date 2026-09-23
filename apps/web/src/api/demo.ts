@@ -9,7 +9,7 @@
  * Entrar: qualquer um destes e-mails com a senha "demo":
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
-import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, camposDeLista, listarChamados, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
+import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, camposDeLista, listarChamados, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
 import { ApiError, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
@@ -79,6 +79,9 @@ const S = {
     inicioEm: null as string | null, ultimaEm: null as string | null, ultimaOk: true as boolean | null,
     ultimaMsg: 'Atualização: 0 cards lidos.' as string | null, ultimaCompletaEm: null as string | null,
   },
+  // a arrumação da tela de Chamados: no sistema fica no servidor, para todos; na prévia, na memória
+  // como o resto — dá para arrumar, sair e entrar como leitor@ para ver a mesma arrumação
+  painelChamados: { itens: [] as ItemPainel[], atualizadoEm: null as string | null, atualizadoPor: null as string | null },
   carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[],
   products: PRODUTOS_INICIAIS.map((p, i) => ({ id: 'p' + p.code, code: p.code as string, name: p.name as string, color: p.color as string, hasSettings: p.hasSettings as boolean, description: p.description as string | null, sortOrder: i, active: true, deletedAt: null as string | null })),
   modules: MODULOS_INICIAIS.map((m, i) => ({ id: 'm' + m.product + '_' + m.code, productId: 'p' + m.product, code: m.code, name: m.name, description: m.description as string | null, hasSettings: m.hasSettings, sortOrder: i, active: true })) as ModRow[],
@@ -1370,6 +1373,19 @@ export const demoApi: Api = {
       await wait(90); requirePerm('support.read');
       const { cards, ctx } = chamadosDemo();
       return listarChamados(cards, ListaChamadosSchema.parse(q), { ...ctx, agora: new Date() }, linkDemo);
+    },
+    async painel() {
+      await wait(60); requirePerm('support.read');
+      return S.painelChamados;
+    },
+    async salvarPainel(itens) {
+      await wait(250); requirePerm('admin.manage');
+      const p = PainelChamadosSchema.safeParse({ itens });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Arrumação inválida');
+      const escondidos = p.data.itens.filter((x) => x.oculto).length;
+      S.painelChamados = { itens: p.data.itens, atualizadoEm: now(), atualizadoPor: S.me?.name ?? null };
+      audit('chamados_painel', 'settings', `${S.me?.name} arrumou a tela de Chamados para a equipe (${p.data.itens.length - escondidos} gráficos à vista${escondidos ? `, ${escondidos} escondido${escondidos > 1 ? 's' : ''}` : ''})`, 'chamados-painel');
+      return S.painelChamados;
     },
   },
   data: {

@@ -15,13 +15,17 @@
  *    depende de distinguir verde de laranja (e daltônico lê igual).
  *  - eixos e grades discretos; número em cima só onde ajuda, nunca em todo ponto.
  *  - as cores saem das variáveis do tema, então o modo escuro acompanha sozinho.
+ *  - **escolhido em destaque**: quando um valor está no filtro (`selecionado`), ele fica com a cor
+ *    cheia e o resto do gráfico esmaece — o gráfico continua inteiro, para dar para clicar de
+ *    novo e desfazer, ou escolher outro. Quem clica recebe o evento junto (Ctrl ou Shift + clique
+ *    = somar ao filtro, em vez de trocar).
  */
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type MouseEvent, type ReactNode } from 'react';
 
 const TOM = { accent: 'bg-accent', ok: 'bg-ok', signal: 'bg-signal', bad: 'bg-bad', muted: 'bg-line-strong' };
 
 /** Barras deitadas, já na ordem: para "os maiores primeiro". O nome fica à esquerda, o número à direita. */
-export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, formatar, larguraRotulo = 'w-[140px]', legenda, aoClicarParte }: {
+export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, formatar, larguraRotulo = 'w-[140px]', legenda, aoClicarParte, selecionavel = false }: {
   /**
    * `tom` só quando a cor diz alguma coisa (cheio demais, por exemplo).
    * `partes` divide a barra (em estoque × com clientes, por exemplo) — a soma delas é o valor.
@@ -30,13 +34,15 @@ export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, form
   dados: Array<{
     id: string; rotulo: ReactNode; valor: number; titulo?: string;
     tom?: 'accent' | 'ok' | 'signal' | 'bad';
+    /** está no filtro: fica em destaque e o resto esmaece */
+    selecionado?: boolean;
     partes?: Array<{ id: string; label: string; n: number; tom: 'accent' | 'ok' | 'signal' | 'bad' | 'muted' }>;
   }>;
   /** força a escala (útil para comparar dois gráficos lado a lado) */
   maximo?: number;
   vazio?: string;
-  /** o que fazer ao clicar numa barra */
-  acao?: (id: string) => void;
+  /** o que fazer ao clicar numa barra (o evento vem junto: Ctrl/Shift + clique soma ao filtro) */
+  acao?: (id: string, ev: MouseEvent) => void;
   /** como escrever o número à direita (padrão: o número puro) */
   formatar?: (v: number) => string;
   larguraRotulo?: string;
@@ -44,9 +50,12 @@ export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, form
   legenda?: Array<{ label: string; tom: 'accent' | 'ok' | 'signal' | 'bad' | 'muted' }>;
   /** clicar numa parte da barra (id da linha, id da parte) */
   aoClicarParte?: (id: string, parteId: string) => void;
+  /** as barras ligam e desligam um filtro (o botão diz se está ligado) */
+  selecionavel?: boolean;
 }) {
   if (!dados.length) return <div className="text-muted text-sm">{vazio}</div>;
   const max = Math.max(1, maximo ?? 0, ...dados.map((d) => d.valor));
+  const algumEscolhido = dados.some((d) => d.selecionado);
   return (
     <>
     {legenda && legenda.length > 0 && (
@@ -65,11 +74,12 @@ export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, form
         return (
           <li key={d.id}>
             <Tag
-              {...(acao ? { type: 'button' as const, onClick: () => acao(d.id) } : {})}
-              className={`w-full text-left flex items-center gap-2 ${acao ? 'hover:bg-surface-2 rounded-lg px-1 -mx-1 py-0.5' : ''}`}
+              {...(acao ? { type: 'button' as const, onClick: (ev: MouseEvent) => acao(d.id, ev) } : {})}
+              {...(acao && selecionavel ? { 'aria-pressed': !!d.selecionado } : {})}
+              className={`w-full text-left flex items-center gap-2 transition-opacity ${acao ? 'hover:bg-surface-2 rounded-lg px-1 -mx-1 py-0.5' : ''} ${algumEscolhido && !d.selecionado ? 'opacity-40 hover:opacity-80' : ''} ${d.selecionado ? 'bg-accent-soft' : ''}`}
               title={d.titulo}
             >
-              <span className={`${larguraRotulo} shrink-0 truncate text-sm`}>{d.rotulo}</span>
+              <span className={`${larguraRotulo} shrink-0 truncate text-sm ${d.selecionado ? 'font-semibold' : ''}`}>{d.rotulo}</span>
               <span className="flex-1 h-2.5 rounded-full bg-surface-2 overflow-hidden flex">
                 {d.partes?.length ? (
                   /* barra mista: uma fatia por parte, com um fio de fundo entre elas */
@@ -136,15 +146,26 @@ export function Proporcao({ partes, total }: {
  * atual) é a mesma cor, mais forte — nunca uma cor diferente.
  */
 export function Colunas({ pontos, altura = 150, aoClicar, vazio = 'Nada no período.' }: {
-  pontos: Array<{ id: string; rotulo: string; n: number; destaque?: boolean }>;
+  /** `selecionado`: a coluna está no filtro (fica cheia; as outras esmaecem até se desfazer) */
+  pontos: Array<{ id: string; rotulo: string; n: number; destaque?: boolean; selecionado?: boolean }>;
   altura?: number;
-  /** clicar numa coluna (o id do ponto) — a tela usa para filtrar aquele dia */
-  aoClicar?: (id: string) => void;
+  /** clicar numa coluna (o id do ponto) — a tela usa para filtrar aquela hora, faixa, dia ou mês */
+  aoClicar?: (id: string, ev: MouseEvent) => void;
   vazio?: string;
 }) {
   const max = Math.max(0, ...pontos.map((p) => p.n));
   if (!pontos.length || max === 0) return <div className="text-muted text-sm py-6 text-center">{vazio}</div>;
   const comNumero = pontos.length <= 31;
+  // com algo escolhido, o destaque é o escolhido (e não mais a hora atual ou o dia de hoje)
+  const algumEscolhido = pontos.some((p) => p.selecionado);
+  const forte = (p: (typeof pontos)[number]) => (algumEscolhido ? !!p.selecionado : !!p.destaque);
+  // o rótulo da coluna escolhida sempre aparece; com muitas colunas, o vizinho cede a vez (senão os dois se atropelam)
+  const escolhidas = pontos.flatMap((p, i) => (p.selecionado ? [i] : []));
+  const comRotulo = (p: (typeof pontos)[number], i: number) => {
+    if (p.selecionado) return true;
+    if (i % passo !== 0 && i !== pontos.length - 1) return false;
+    return pontos.length <= 12 || !escolhidas.some((k) => Math.abs(k - i) === 1);
+  };
   // rótulo embaixo: todos quando cabem, senão um a cada tantos (sempre o primeiro e o último)
   const passo = pontos.length <= 16 ? 1 : Math.ceil(pontos.length / 12);
   return (
@@ -153,17 +174,19 @@ export function Colunas({ pontos, altura = 150, aoClicar, vazio = 'Nada no perí
       <div className="flex items-end gap-[3px]" style={{ height: altura }}>
         {pontos.map((p) => {
           const h = p.n ? Math.max(3, (p.n / max) * (altura - (comNumero ? 18 : 2))) : 0;
-          const Tag = aoClicar && p.n ? 'button' : 'div';
+          // coluna vazia não filtra nada — a não ser que já esteja escolhida (clicar desfaz)
+          const clicavel = !!aoClicar && (p.n > 0 || !!p.selecionado);
+          const Tag = clicavel ? 'button' : 'div';
           return (
             <Tag
               key={p.id}
-              {...(aoClicar && p.n ? { type: 'button' as const, onClick: () => aoClicar(p.id) } : {})}
-              className={`flex-1 min-w-0 h-full flex flex-col justify-end items-center group ${aoClicar && p.n ? 'cursor-pointer' : ''}`}
-              title={`${p.rotulo}: ${p.n}`}
+              {...(clicavel ? { type: 'button' as const, onClick: (ev: MouseEvent) => aoClicar!(p.id, ev), 'aria-pressed': !!p.selecionado, 'aria-label': `${p.rotulo}: ${p.n}` } : {})}
+              className={`flex-1 min-w-0 h-full flex flex-col justify-end items-center group ${clicavel ? 'cursor-pointer' : ''}`}
+              title={`${p.rotulo}: ${p.n}${clicavel ? (p.selecionado ? ' — clique para desfazer' : ' — clique para filtrar') : ''}`}
             >
-              {comNumero && p.n > 0 && <span className="text-[10.5px] tnum text-ink-2 leading-none mb-1">{p.n}</span>}
+              {comNumero && p.n > 0 && <span className={`text-[10.5px] tnum leading-none mb-1 ${algumEscolhido && !p.selecionado ? 'text-muted' : 'text-ink-2'} ${p.selecionado ? 'font-semibold' : ''}`}>{p.n}</span>}
               <span
-                className={`block w-full rounded-t bg-accent ${p.destaque ? '' : 'opacity-50'} ${aoClicar && p.n ? 'group-hover:opacity-100' : ''}`}
+                className={`block w-full rounded-t bg-accent transition-opacity ${forte(p) ? '' : algumEscolhido ? 'opacity-25' : 'opacity-50'} ${clicavel ? 'group-hover:opacity-100' : ''}`}
                 style={{ height: h }}
               />
             </Tag>
@@ -173,8 +196,8 @@ export function Colunas({ pontos, altura = 150, aoClicar, vazio = 'Nada no perí
       {/* poucas colunas: o rótulo quebra linha ("Mais de 90 dias"); muitas: um rótulo a cada tantos, sem quebrar */}
       <div className="flex gap-[3px] border-t border-line mt-0.5 pt-1 overflow-hidden">
         {pontos.map((p, i) => (
-          <span key={p.id} className={`flex-1 min-w-0 text-center text-[10.5px] leading-tight ${pontos.length <= 12 ? 'break-words' : 'whitespace-nowrap overflow-visible'} ${p.destaque ? 'text-accent font-semibold' : 'text-muted'}`}>
-            {i % passo === 0 || i === pontos.length - 1 ? p.rotulo : ''}
+          <span key={p.id} className={`flex-1 min-w-0 text-center text-[10.5px] leading-tight ${pontos.length <= 12 ? 'break-words' : 'whitespace-nowrap overflow-visible'} ${forte(p) ? 'text-accent font-semibold' : 'text-muted'}`}>
+            {comRotulo(p, i) ? p.rotulo : ''}
           </span>
         ))}
       </div>
@@ -195,7 +218,13 @@ export function Colunas({ pontos, altura = 150, aoClicar, vazio = 'Nada no perí
  *  - um fio da cor do fundo separa as fatias; passar o mouse destaca a fatia e mostra o número
  *    dela no centro; clicar filtra, como no ranking.
  */
-export type FatiaPizza = { id: string; rotulo: string; n: number; /** "não preenchido": cinza, sempre no fim */ neutro?: boolean };
+export type FatiaPizza = {
+  id: string; rotulo: string; n: number;
+  /** "não preenchido": cinza, sempre no fim */
+  neutro?: boolean;
+  /** está no filtro: fica cheia, e as outras esmaecem */
+  selecionado?: boolean;
+};
 
 const MAX_FATIAS = 6;
 const OUTROS = '__outros__';
@@ -204,13 +233,16 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
   partes: FatiaPizza[];
   /** o que o número do centro conta ("chamados"; "marcações" quando um card entra em mais de uma fatia) */
   rotuloCentro?: string;
-  aoClicar?: (id: string) => void;
+  aoClicar?: (id: string, ev: MouseEvent) => void;
   vazio?: string;
   tamanho?: number;
 }) {
   const [ativo, setAtivo] = useState<string | null>(null);
   const [verOutros, setVerOutros] = useState(false);
   const soma = partes.reduce((a, x) => a + x.n, 0);
+  // escolhido que caiu em "Outros": a lista de Outros abre sozinha, para ele aparecer
+  const escolhidoEmOutros = partes.filter((x) => !x.neutro && x.n > 0).sort((a, b) => b.n - a.n).slice(MAX_FATIAS).some((x) => x.selecionado);
+  useEffect(() => { if (escolhidoEmOutros) setVerOutros(true); }, [escolhidoEmOutros]);
   if (!soma) return <div className="text-muted text-sm">{vazio}</div>;
 
   // as maiores primeiro; o que passa de 6 é somado em "Outros"
@@ -221,9 +253,12 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
     ...reais.slice(0, MAX_FATIAS).map((x, i) => ({ ...x, cor: `var(--pz-${i + 1})` })),
     // sobrou um só: ele mesmo, em cinza (um "Outros (1)" esconderia o nome à toa)
     ...(dobradas.length === 1 ? [{ ...dobradas[0]!, cor: 'var(--pz-outros)' }] : []),
-    ...(dobradas.length > 1 ? [{ id: OUTROS, rotulo: `Outros (${dobradas.length})`, n: dobradas.reduce((a, x) => a + x.n, 0), cor: 'var(--pz-outros)', outros: true }] : []),
+    ...(dobradas.length > 1 ? [{ id: OUTROS, rotulo: `Outros (${dobradas.length})`, n: dobradas.reduce((a, x) => a + x.n, 0), cor: 'var(--pz-outros)', outros: true, selecionado: dobradas.some((x) => x.selecionado) }] : []),
     ...neutras.map((x) => ({ ...x, cor: 'var(--pz-vazio)' })),
   ];
+  const escolhidas = partes.filter((x) => x.selecionado);
+  const algumEscolhido = escolhidas.length > 0;
+  const somaEscolhida = escolhidas.reduce((a, x) => a + x.n, 0);
 
   const pct = (n: number) => { const p = (n / soma) * 100; return p > 0 && p < 1 ? '<1%' : `${Math.round(p)}%`; };
   const meio = tamanho / 2;
@@ -233,7 +268,9 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
   const fio = fatias.length > 1 ? 2 : 0; // o fio da cor do fundo entre as fatias
   let andado = 0;
   const destaque = fatias.find((f) => f.id === ativo) ?? null;
-  const clicar = (f: (typeof fatias)[number]) => { if (f.outros) setVerOutros((v) => !v); else aoClicar?.(f.id); };
+  const clicar = (f: (typeof fatias)[number], ev: MouseEvent) => { if (f.outros) setVerOutros((v) => !v); else aoClicar?.(f.id, ev); };
+  // esmaecida: outra fatia sob o mouse, ou há escolhidas e esta não é uma delas
+  const apagada = (f: (typeof fatias)[number]) => (ativo ? ativo !== f.id : algumEscolhido && !f.selecionado);
 
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
@@ -248,9 +285,9 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
               strokeDasharray={`${traco} ${volta - traco}`} strokeDashoffset={-andado}
               transform={`rotate(-90 ${meio} ${meio})`}
               className={`transition-opacity ${aoClicar || f.outros ? 'cursor-pointer' : ''}`}
-              style={{ opacity: ativo && ativo !== f.id ? 0.3 : 1 }}
+              style={{ opacity: apagada(f) ? (ativo ? 0.3 : 0.22) : 1 }}
               onMouseEnter={() => setAtivo(f.id)} onMouseLeave={() => setAtivo(null)}
-              onClick={() => clicar(f)}
+              onClick={(ev) => clicar(f, ev)}
             >
               <title>{`${f.rotulo}: ${f.n} (${pct(f.n)})`}</title>
             </circle>
@@ -258,12 +295,12 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
           andado += trecho;
           return el;
         })}
-        {/* no centro: o total — ou a fatia sob o mouse */}
+        {/* no centro: o total — a fatia sob o mouse — ou, com algo escolhido, quanto ele é do total */}
         <text x={meio} y={meio - 2} textAnchor="middle" className="fill-ink font-display font-semibold" style={{ fontSize: tamanho * 0.15 }}>
-          {destaque ? pct(destaque.n) : soma.toLocaleString('pt-BR')}
+          {destaque ? pct(destaque.n) : algumEscolhido ? somaEscolhida.toLocaleString('pt-BR') : soma.toLocaleString('pt-BR')}
         </text>
         <text x={meio} y={meio + tamanho * 0.1} textAnchor="middle" className="fill-muted" style={{ fontSize: 11 }}>
-          {destaque ? `${destaque.n.toLocaleString('pt-BR')} ${rotuloCentro}` : rotuloCentro}
+          {destaque ? `${destaque.n.toLocaleString('pt-BR')} ${rotuloCentro}` : algumEscolhido ? `de ${soma.toLocaleString('pt-BR')} ${rotuloCentro}` : rotuloCentro}
         </text>
       </svg>
 
@@ -272,13 +309,14 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
           <li key={f.id}>
             <button
               type="button"
-              className={`w-full flex items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-surface-2 ${ativo === f.id ? 'bg-surface-2' : ''}`}
+              className={`w-full flex items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-surface-2 transition-opacity ${ativo === f.id ? 'bg-surface-2' : ''} ${f.selecionado && !f.outros ? 'bg-accent-soft' : ''} ${algumEscolhido && !f.selecionado ? 'opacity-50 hover:opacity-100' : ''}`}
               onMouseEnter={() => setAtivo(f.id)} onMouseLeave={() => setAtivo(null)} onFocus={() => setAtivo(f.id)} onBlur={() => setAtivo(null)}
-              onClick={() => clicar(f)}
-              title={f.outros ? (verOutros ? 'Esconder a lista do que foi somado em Outros' : 'Ver o que foi somado em Outros') : aoClicar ? 'Clique para filtrar' : undefined}
+              onClick={(ev) => clicar(f, ev)}
+              {...(!f.outros && aoClicar ? { 'aria-pressed': !!f.selecionado } : {})}
+              title={f.outros ? (verOutros ? 'Esconder a lista do que foi somado em Outros' : 'Ver o que foi somado em Outros') : aoClicar ? (f.selecionado ? 'Clique para desfazer o filtro' : 'Clique para filtrar (Ctrl+clique soma outro)') : undefined}
             >
               <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: f.cor }} aria-hidden />
-              <span className={`flex-1 min-w-0 truncate ${f.neutro ? 'italic text-muted' : ''}`}>{f.rotulo}</span>
+              <span className={`flex-1 min-w-0 truncate ${f.neutro ? 'italic text-muted' : ''} ${f.selecionado && !f.outros ? 'font-semibold' : ''}`}>{f.rotulo}</span>
               <span className="font-mono tnum text-[12px] text-ink-2 shrink-0">{f.n.toLocaleString('pt-BR')}</span>
               <span className="w-10 text-right tnum text-[12px] text-muted shrink-0">{pct(f.n)}</span>
             </button>
@@ -286,8 +324,14 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
               <ul className="ml-5 mb-1 border-l border-line pl-2 flex flex-col">
                 {dobradas.map((d) => (
                   <li key={d.id}>
-                    <button type="button" className="w-full flex items-center gap-2 rounded-md px-1.5 py-0.5 text-left hover:bg-surface-2" onClick={() => aoClicar?.(d.id)} title={aoClicar ? 'Clique para filtrar' : undefined}>
-                      <span className="flex-1 min-w-0 truncate text-ink-2">{d.rotulo}</span>
+                    <button
+                      type="button"
+                      className={`w-full flex items-center gap-2 rounded-md px-1.5 py-0.5 text-left hover:bg-surface-2 ${d.selecionado ? 'bg-accent-soft' : algumEscolhido ? 'opacity-60 hover:opacity-100' : ''}`}
+                      onClick={(ev) => aoClicar?.(d.id, ev)}
+                      {...(aoClicar ? { 'aria-pressed': !!d.selecionado } : {})}
+                      title={aoClicar ? (d.selecionado ? 'Clique para desfazer o filtro' : 'Clique para filtrar (Ctrl+clique soma outro)') : undefined}
+                    >
+                      <span className={`flex-1 min-w-0 truncate text-ink-2 ${d.selecionado ? 'font-semibold' : ''}`}>{d.rotulo}</span>
                       <span className="font-mono tnum text-[12px] text-ink-2 shrink-0">{d.n.toLocaleString('pt-BR')}</span>
                       <span className="w-10 text-right tnum text-[12px] text-muted shrink-0">{pct(d.n)}</span>
                     </button>

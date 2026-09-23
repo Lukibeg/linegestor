@@ -8,11 +8,12 @@
  * a tela chama resumo e lista a cada clique de filtro, e não há por que ler 3 mil cards duas vezes.
  */
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { linechatCardMoves, linechatCards, linechatFields, linechatSteps, linechatTags, type Db } from '@gestor/db';
+import { linechatCardMoves, linechatCards, linechatFields, linechatSteps, linechatTags, settings, users, type Db } from '@gestor/db';
 import {
-  camposDeLista, listarChamados, resumirChamados, VAZIO,
-  type Chamado, type ContextoChamados, type FiltrosChamados, type ListaChamadosQuery,
+  camposDeLista, listarChamados, PainelChamadosSchema, resumirChamados, VAZIO,
+  type Chamado, type ContextoChamados, type FiltrosChamados, type ItemPainel, type ListaChamadosQuery,
 } from '@gestor/shared';
+import { gravar } from './integracoes.js';
 import { lerAjustes, versaoDosDados } from './linechat.js';
 
 type Leitura = { cards: Chamado[]; ctx: Omit<ContextoChamados, 'agora'>; painelId: string; appUrl: string };
@@ -96,4 +97,29 @@ export async function opcoes(db: Db) {
     responsaveis,
     vazio: VAZIO,
   };
+}
+
+// ---------- a arrumação da tela (igual para a equipe toda) ----------
+
+/**
+ * A arrumação guardada e quem mexeu por último. Vazia = a de fábrica: quem junta com os gráficos
+ * que existem hoje é a tela (`montarPainel`), porque campo novo no LineChat aparece sem ninguém
+ * precisar arrumar de novo.
+ */
+export async function lerPainel(db: Db): Promise<{ itens: ItemPainel[]; atualizadoEm: string | null; atualizadoPor: string | null }> {
+  const [row] = await db
+    .select({ value: settings.value, updatedAt: settings.updatedAt, nome: users.name })
+    .from(settings).leftJoin(users, eq(users.id, settings.updatedBy))
+    .where(eq(settings.id, 'chamados-painel')).limit(1);
+  let itens: ItemPainel[] = [];
+  if (row) {
+    // guardado estragado não derruba a tela: ela volta à arrumação de fábrica
+    try { const p = PainelChamadosSchema.safeParse(JSON.parse(row.value)); if (p.success) itens = p.data.itens; } catch { /* fica a de fábrica */ }
+  }
+  return { itens, atualizadoEm: row ? row.updatedAt.toISOString() : null, atualizadoPor: row?.nome ?? null };
+}
+
+export async function gravarPainel(db: Db, itens: ItemPainel[], userId: string) {
+  await gravar(db, 'chamados-painel', { itens }, { userId });
+  return lerPainel(db);
 }

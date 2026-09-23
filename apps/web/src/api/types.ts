@@ -45,7 +45,9 @@ export type OpcoesChamados = {
   responsaveis: string[];
   vazio: string;
 };
-export type { ResumoChamados, LinhaChamado, ItemRanking, Kpi as KpiChamados, PontoSerie } from '@gestor/shared';
+export type { ResumoChamados, LinhaChamado, ItemRanking, Kpi as KpiChamados, PontoSerie, ItemPainel, FormaGrafico } from '@gestor/shared';
+/** A arrumação da tela de Chamados, igual para a equipe toda (vazia = a de fábrica). */
+export type PainelChamados = { itens: import('@gestor/shared').ItemPainel[]; atualizadoEm: string | null; atualizadoPor: string | null };
 
 export type ProductChip = { code: string; name: string; color: string };
 export type Links = { web: string | null; ssh: string | null; fop2: string | null };

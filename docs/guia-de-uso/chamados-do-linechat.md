@@ -37,6 +37,36 @@ o que mudou. De madrugada (às 4h) ele relê o painel inteiro para conferir.
 Se a leitura ficar 15 minutos seguidos falhando, o Gestor manda **um** aviso pelo mesmo caminho dos
 avisos do sistema (o WhatsApp, se estiver configurado em Ajustes › Avisos).
 
+## Usar a tela
+
+- **Clicar filtra a tela toda**: uma barra ou fatia (um cliente, um produto, uma etapa), uma coluna
+  do gráfico do tempo (uma hora, uma faixa de idade, um dia, um mês) ou um dos números de cima
+  (vencidos, parados, sem responsável, fechados).
+- O gráfico onde você clicou **continua inteiro**, com o escolhido em destaque. **Clique de novo**
+  nele para desfazer, ou em outro para trocar. **Ctrl+clique** soma mais de um.
+- Os filtros aparecem escritos embaixo dos botões, cada um com o seu **X**; **Limpar filtros** tira
+  todos.
+- **Fechados hoje** (e **Fechados no período**) mudam a pergunta: a tela passa a mostrar o que foi
+  fechado, pela hora ou pelo dia do fechamento.
+- **Barras ou pizza**: os dois botões no canto de cada gráfico. A sua troca fica no seu navegador;
+  sem trocar, vale o jeito que a equipe arrumou.
+
+## Organizar a tela (quem administra)
+
+A arrumação vale para **a equipe toda**. Em **Chamados**, clique em **Organizar**:
+
+1. **Arraste** cada gráfico pela alça (⠿) para trocar de lugar — ou use as setas ‹ ›. Esc, no meio
+   do arrasto, devolve o gráfico para onde estava.
+2. **Metade | Inteira**: o gráfico ocupa meia linha ou a linha inteira.
+3. **Esconder**: o gráfico some para todos. No Organizar ele continua como uma tira fina, com
+   **Mostrar**, para trazer de volta.
+4. **Barras | Pizza**: o jeito que cada gráfico abre para todo mundo.
+5. **Salvar para todos**. **Cancelar** descarta; **Voltar ao padrão** traz a arrumação de fábrica
+   (ainda é preciso salvar).
+
+Os números de cima e a tabela ficam fixos. Cada arrumação salva fica na auditoria, com o antes e o
+depois.
+
 ## O que a cópia guarda
 
 - **Os chamados**, com etapa, responsável, vencimento, etiquetas e os campos do card.
