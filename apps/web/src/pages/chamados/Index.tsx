@@ -10,17 +10,21 @@
  *  - **Período** — quantos por dia, num intervalo escolhido.
  *
  * Os filtros (etapa, responsável, etiqueta e cada campo de lista do card) valem para a tela
- * inteira e ficam no endereço, como nas outras listas. Clicar numa barra filtra por ela.
+ * inteira e ficam no endereço, como nas outras listas. Clicar numa barra (ou fatia) filtra por ela.
+ *
+ * Cada gráfico de lista mostra **barras ou pizza**, à escolha de quem olha (fica guardado neste
+ * navegador). Produto, Tipo de chamado e Canal abrem em pizza, como eram no Grafana; o resto,
+ * em barras — lista longa (50 clientes, 86 assuntos) não cabe numa pizza.
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Archive, CalendarRange, ExternalLink, Filter, Headset, ListFilter, RefreshCw, Search, Tag, TriangleAlert, UserRound, X } from 'lucide-react';
+import { Archive, BarChartHorizontal, CalendarRange, ExternalLink, Filter, Headset, ListFilter, PieChart, RefreshCw, Search, Tag, TriangleAlert, UserRound, X } from 'lucide-react';
 import { api } from '../../api/index.js';
 import type { ItemRanking, LinhaChamado, OpcoesChamados, ResumoChamados } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Abas, Carregando, Chip, Kpi, Paginacao, TODOS, Toggle, Vazio } from '../../components/ui/index.js';
-import { BarrasRanking, Colunas } from '../../components/graficos.js';
+import { BarrasRanking, Colunas, Pizza } from '../../components/graficos.js';
 import { FiltroEmBotao, type GrupoFiltro } from '../../lib/filtros.js';
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
 import { ThN, TdN, contarDe } from '../../lib/contagem.js';
@@ -154,15 +158,15 @@ export function Chamados() {
 
           {/* ---------- quem e o quê ---------- */}
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2 min-w-0">
-            <Ranking titulo="Por etapa" sub="na ordem do Kanban" itens={r.porEtapa} aoClicar={(v) => acrescentar('etapa', v)} semOrdenar />
-            <Ranking titulo="Por responsável" itens={r.porResponsavel} aoClicar={(v) => acrescentar('responsavel', v)} />
+            <Ranking id="etapa" titulo="Por etapa" sub="na ordem do Kanban" itens={r.porEtapa} aoClicar={(v) => acrescentar('etapa', v)} semOrdenar />
+            <Ranking id="responsavel" titulo="Por responsável" itens={r.porResponsavel} aoClicar={(v) => acrescentar('responsavel', v)} />
             {r.porCampo.map((c) => (
               <Ranking
-                key={c.key} titulo={`Por ${c.name.toLowerCase()}`} sub={c.multiplo ? 'um card pode contar em mais de um' : undefined}
-                itens={c.itens} aoClicar={(v) => acrescentar('campo', `${c.key}=${v}`)}
+                key={c.key} id={`campo:${c.key}`} titulo={`Por ${c.name.toLowerCase()}`} sub={c.multiplo ? 'um card pode contar em mais de um' : undefined}
+                multiplo={c.multiplo} itens={c.itens} aoClicar={(v) => acrescentar('campo', `${c.key}=${v}`)}
               />
             ))}
-            <Ranking titulo="Por etiqueta" sub="um card pode ter várias" itens={r.porEtiqueta} aoClicar={(v) => acrescentar('etiqueta', v)} />
+            <Ranking id="etiqueta" titulo="Por etiqueta" sub="um card pode ter várias" multiplo itens={r.porEtiqueta} aoClicar={(v) => acrescentar('etiqueta', v)} />
           </div>
 
           {/* ---------- a tabela ---------- */}
@@ -261,31 +265,82 @@ function FiltrosAtivos({ op, sp, tirar, limpar }: { op: OpcoesChamados; sp: URLS
   );
 }
 
-/** Um ranking com os 8 maiores e o "ver todos" — nenhuma lista esconde linhas. */
-function Ranking({ titulo, sub, itens, aoClicar, semOrdenar = false }: { titulo: string; sub?: string; itens: ItemRanking[]; aoClicar: (valor: string) => void; semOrdenar?: boolean }) {
+type Forma = 'barras' | 'pizza';
+/** Os gráficos que abrem em pizza (como eram no Grafana). Chave do campo no LineChat. */
+const PIZZA_PADRAO = new Set(['campo:plataforma', 'campo:tipo-de-chamado-24', 'campo:meio-solicita-o']);
+const CHAVE_FORMAS = 'gestor.chamados.graficos';
+
+/** Barras ou pizza, por gráfico, guardado neste navegador (sem storage, só não lembra). */
+function useForma(id: string): [Forma, (f: Forma) => void] {
+  const padrao: Forma = PIZZA_PADRAO.has(id) ? 'pizza' : 'barras';
+  const [forma, setForma] = useState<Forma>(() => {
+    try { const m = JSON.parse(localStorage.getItem(CHAVE_FORMAS) ?? '{}') as Record<string, Forma>; return m[id] ?? padrao; } catch { return padrao; }
+  });
+  const mudar = (f: Forma) => {
+    setForma(f);
+    try { const m = JSON.parse(localStorage.getItem(CHAVE_FORMAS) ?? '{}') as Record<string, Forma>; m[id] = f; localStorage.setItem(CHAVE_FORMAS, JSON.stringify(m)); } catch { /* sem storage */ }
+  };
+  return [forma, mudar];
+}
+
+/**
+ * Um gráfico de lista: em barras (os 8 maiores e o "ver todos" — nenhuma lista esconde linhas) ou
+ * em pizza (as 6 maiores fatias, o resto em "Outros", que abre a lista). Clicar filtra a tela.
+ */
+function Ranking({ id, titulo, sub, itens, aoClicar, semOrdenar = false, multiplo = false }: {
+  id: string; titulo: string; sub?: string; itens: ItemRanking[]; aoClicar: (valor: string) => void; semOrdenar?: boolean;
+  /** um card conta em mais de uma fatia: a pizza soma marcações, não chamados */
+  multiplo?: boolean;
+}) {
   const [todos, setTodos] = useState(false);
+  const [forma, setForma] = useForma(id);
   const LIMITE = 8;
   const mostrar = todos || semOrdenar ? itens : itens.slice(0, LIMITE);
   const soma = itens.reduce((a, x) => a + x.n, 0);
+  const botao = (f: Forma, Icone: typeof PieChart, rotulo: string) => (
+    <button
+      type="button" onClick={() => setForma(f)} aria-pressed={forma === f} title={rotulo} aria-label={`${titulo}: ${rotulo.toLowerCase()}`}
+      className={`p-1 rounded ${forma === f ? 'bg-surface text-accent shadow-sm' : 'text-muted hover:text-ink'}`}
+    >
+      <Icone size={15} />
+    </button>
+  );
   return (
     <section className="card p-4 min-w-0">
-      <div className="flex items-baseline justify-between gap-2 mb-3">
-        <h2 className="font-display font-semibold">{titulo}</h2>
-        <span className="text-[12px] text-muted">{sub ?? (itens.length ? `${itens.length} ${itens.length === 1 ? 'valor' : 'valores'}` : '')}</span>
+      <div className="flex items-center justify-between gap-2 mb-3">
+        <div className="min-w-0">
+          <h2 className="font-display font-semibold leading-tight">{titulo}</h2>
+          <span className="text-[12px] text-muted">{sub ?? (itens.length ? `${itens.length} ${itens.length === 1 ? 'valor' : 'valores'}` : '')}</span>
+        </div>
+        <div className="flex items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 shrink-0" role="group" aria-label="Como mostrar">
+          {botao('barras', BarChartHorizontal, 'Ver em barras')}
+          {botao('pizza', PieChart, 'Ver em pizza')}
+        </div>
       </div>
-      <BarrasRanking
-        dados={mostrar.map((x) => ({
-          id: x.valor,
-          rotulo: <span className="flex items-center gap-1.5 min-w-0">{x.cor && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.cor }} aria-hidden />}<span className={`truncate ${x.valor === '__vazio__' ? 'text-muted italic' : ''}`}>{x.rotulo}</span></span>,
-          valor: x.n,
-          titulo: `${x.rotulo}: ${x.n} (${soma ? Math.round((x.n / soma) * 100) : 0}%) — clique para filtrar`,
-        }))}
-        acao={aoClicar}
-        larguraRotulo="w-[45%] sm:w-[190px]"
-        vazio="Nenhum chamado aqui."
-      />
-      {!semOrdenar && itens.length > LIMITE && (
-        <button className="btn-ghost btn-sm mt-2" onClick={() => setTodos((v) => !v)}>{todos ? 'Mostrar só os 8 maiores' : `Ver todos (${itens.length})`}</button>
+      {forma === 'pizza' ? (
+        <Pizza
+          partes={itens.map((x) => ({ id: x.valor, rotulo: x.rotulo, n: x.n, neutro: x.valor === '__vazio__' }))}
+          rotuloCentro={multiplo ? 'marcações' : itens.length ? 'chamados' : ''}
+          aoClicar={aoClicar}
+          vazio="Nenhum chamado aqui."
+        />
+      ) : (
+        <>
+          <BarrasRanking
+            dados={mostrar.map((x) => ({
+              id: x.valor,
+              rotulo: <span className="flex items-center gap-1.5 min-w-0">{x.cor && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.cor }} aria-hidden />}<span className={`truncate ${x.valor === '__vazio__' ? 'text-muted italic' : ''}`}>{x.rotulo}</span></span>,
+              valor: x.n,
+              titulo: `${x.rotulo}: ${x.n} (${soma ? Math.round((x.n / soma) * 100) : 0}%) — clique para filtrar`,
+            }))}
+            acao={aoClicar}
+            larguraRotulo="w-[45%] sm:w-[190px]"
+            vazio="Nenhum chamado aqui."
+          />
+          {!semOrdenar && itens.length > LIMITE && (
+            <button className="btn-ghost btn-sm mt-2" onClick={() => setTodos((v) => !v)}>{todos ? 'Mostrar só os 8 maiores' : `Ver todos (${itens.length})`}</button>
+          )}
+        </>
       )}
     </section>
   );

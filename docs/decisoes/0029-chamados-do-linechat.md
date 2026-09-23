@@ -48,6 +48,11 @@ Os problemas dessa montagem:
   quanto tempo estão abertos". Revê a 0028, que tinha só ranking e proporção — e onde um gráfico de
   barras por mês foi descartado. A diferença: este é o gráfico principal que a equipe já usava no
   Grafana. Mesmas regras da 0028: uma cor, o número escrito, clicável quando filtra.
+- **Pizza como opção** (pedido do Luan em 23/09, avisado de que revia a 0028): cada gráfico de lista
+  tem os botões **Barras | Pizza**, e a escolha fica guardada no navegador de cada um. Produto, Tipo
+  de chamado e Canal abrem em pizza, como eram no Grafana; o resto em barras (lista longa — 50
+  clientes, 86 assuntos — não se lê numa pizza). A pizza tem no máximo 6 fatias com cor, o resto em
+  "Outros" (que abre a lista do que foi somado), e a legenda escreve nome, número e %.
 
 **Conferência com os dados de verdade.** As contas foram rodadas sobre os 3.194 cards reais (lidos
 pela API em 23/09) e comparadas com o Grafana no mesmo recorte (01/08 a 30/08): **318 chamados**,

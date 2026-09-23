@@ -549,8 +549,43 @@ function chamadosDemo() {
   const cards: Chamado[] = [];
   const agora = Date.now();
   let numero = 3000;
-  // do mais antigo para o mais novo, como a numeração do LineChat
-  for (let d = 120; d >= 0; d--) {
+  const etapaDe = (titulo: string) => ETAPAS_DEMO.find((e) => e.title === titulo)!;
+
+  /** Um chamado inventado: a abertura, onde ele está agora e (se fechou) quando fechou. */
+  function criar(criado: Date, etapa: (typeof ETAPAS_DEMO)[number], alterado: Date, fechadoEm: Date | null, extra: { resp?: string | null; arquivado?: boolean; vence?: Date | null; estimado?: boolean } = {}) {
+    const aberto = !etapa.isFinal;
+    const resp = extra.resp !== undefined ? extra.resp : sorte() < 0.06 ? null : um(PESSOAS_DEMO);
+    const tags: string[] = [];
+    if (sorte() < 0.5) tags.push(pesado(['tag-1', 'tag-2', 'tag-3', 'tag-4'], [1, 3, 5, 4]));
+    if (sorte() < 0.25) tags.push(um(['tag-5', 'tag-6', 'tag-7']));
+    if (aberto && etapa.title === 'Stand By') tags.push('tag-8');
+    const cf: Record<string, unknown> = {
+      'cliente-71': sorte() < 0.04 ? null : pesado(clientes, clientes.map((_, i) => (i < 3 ? 6 : 2))),
+      'tipo-de-chamado-24': sorte() < 0.05 ? null : pesado(campos[1]!.options, pesoTipo),
+      plataforma: pesado(campos[2]!.options, pesoProduto),
+      'meio-solicita-o': pesado(campos[3]!.options, [8, 3, 3, 2, 1, 1]),
+      resoluttor: aberto ? null : resp ?? um(PESSOAS_DEMO),
+      assunto: um(campos[6]!.options),
+      ...(sorte() < 0.3 ? { observador: [um(PESSOAS_DEMO), um(PESSOAS_DEMO)].filter((x, i, a) => a.indexOf(x) === i) } : {}),
+    };
+    numero++;
+    const assunto = cf.assunto as string;
+    const cliente = (cf['cliente-71'] as string | null) ?? 'Interno';
+    cards.push({
+      id: `card-${numero}`, key: `IS-${numero}`, number: numero,
+      title: `${cf.plataforma} - ${cliente} - ${assunto}`, description: `Cliente relata: ${assunto.toLowerCase()}. (chamado de demonstração)`,
+      stepId: etapa.id, stepTitle: etapa.title, stepPhase: etapa.isInitial ? 'INITIAL' : etapa.isFinal ? 'FINAL' : 'INTERMEDIATE',
+      status: extra.arquivado ? 'ARCHIVED' : 'OPEN',
+      responsavel: resp,
+      createdAt: criado.toISOString(), updatedAt: alterado.toISOString(),
+      closedAt: fechadoEm?.toISOString() ?? null, closedEstimated: !!fechadoEm && !!extra.estimado,
+      dueDate: extra.vence?.toISOString() ?? null,
+      isOverdue: false, tagIds: tags, campos: cf,
+    });
+  }
+
+  // os dias que já passaram, do mais antigo para o mais novo (como a numeração do LineChat)
+  for (let d = 120; d >= 1; d--) {
     const dia = new Date(agora - d * 86_400_000);
     const semana = dia.getDay();
     const quantos = semana === 0 ? 0 : semana === 6 ? Math.floor(sorte() * 2) : 3 + Math.floor(sorte() * 5);
@@ -563,35 +598,43 @@ function chamadosDemo() {
       const etapa = aberto ? um(ETAPAS_DEMO.filter((e) => !e.isFinal)) : ETAPAS_DEMO[sorte() < 0.1 ? 9 : 10]!;
       const fechadoEm = aberto ? null : new Date(Math.min(agora - 60_000, criado.getTime() + (0.1 + sorte() * 4) * 86_400_000));
       const alterado = fechadoEm ?? new Date(Math.min(agora - 60_000, criado.getTime() + sorte() * Math.min(idade, 6) * 86_400_000));
-      const resp = sorte() < 0.06 ? null : um(PESSOAS_DEMO);
-      const tags: string[] = [];
-      if (sorte() < 0.5) tags.push(pesado(['tag-1', 'tag-2', 'tag-3', 'tag-4'], [1, 3, 5, 4]));
-      if (sorte() < 0.25) tags.push(um(['tag-5', 'tag-6', 'tag-7']));
-      if (aberto && etapa.title === 'Stand By') tags.push('tag-8');
-      const cf: Record<string, unknown> = {
-        'cliente-71': sorte() < 0.04 ? null : pesado(clientes, clientes.map((_, i) => (i < 3 ? 6 : 2))),
-        'tipo-de-chamado-24': sorte() < 0.05 ? null : pesado(campos[1]!.options, pesoTipo),
-        plataforma: pesado(campos[2]!.options, pesoProduto),
-        'meio-solicita-o': pesado(campos[3]!.options, [8, 3, 3, 2, 1, 1]),
-        resoluttor: aberto ? null : resp ?? um(PESSOAS_DEMO),
-        assunto: um(campos[6]!.options),
-        ...(sorte() < 0.3 ? { observador: [um(PESSOAS_DEMO), um(PESSOAS_DEMO)].filter((x, i, a) => a.indexOf(x) === i) } : {}),
-      };
-      numero++;
-      const assunto = cf.assunto as string;
-      const cliente = (cf['cliente-71'] as string | null) ?? 'Interno';
-      cards.push({
-        id: `card-${numero}`, key: `IS-${numero}`, number: numero,
-        title: `${cf.plataforma} - ${cliente} - ${assunto}`, description: `Cliente relata: ${assunto.toLowerCase()}. (chamado de demonstração)`,
-        stepId: etapa.id, stepTitle: etapa.title, stepPhase: etapa.isInitial ? 'INITIAL' : etapa.isFinal ? 'FINAL' : 'INTERMEDIATE',
-        status: !aberto && idade > 45 && sorte() < 0.2 ? 'ARCHIVED' : 'OPEN',
-        responsavel: resp,
-        createdAt: criado.toISOString(), updatedAt: alterado.toISOString(),
-        closedAt: fechadoEm?.toISOString() ?? null, closedEstimated: !!fechadoEm && idade > 20,
-        dueDate: aberto && sorte() < 0.35 ? new Date(criado.getTime() + (1 + sorte() * 10) * 86_400_000).toISOString() : null,
-        isOverdue: false, tagIds: tags, campos: cf,
+      criar(criado, etapa, alterado, fechadoEm, {
+        arquivado: !aberto && idade > 45 && sorte() < 0.2,
+        estimado: idade > 20,
+        vence: aberto && sorte() < 0.35 ? new Date(criado.getTime() + (1 + sorte() * 10) * 86_400_000) : null,
       });
     }
+  }
+
+  // HOJE: uns 16 chamados espalhados pelo dia até agora, para a aba Hoje ter o que mostrar a qualquer
+  // hora (antes das 7h30 a janela começa à meia-noite). Os mais antigos do dia já andaram no Kanban.
+  const inicioDoDia = new Date(agora); inicioDoDia.setHours(0, 0, 0, 0);
+  const comeco = new Date(agora); comeco.setHours(7, 30, 0, 0);
+  const de = agora - comeco.getTime() > 60 * 60_000 ? comeco.getTime() : inicioDoDia.getTime();
+  const janela = Math.max(10 * 60_000, agora - 3 * 60_000 - de);
+  const HOJE = 16;
+  for (let k = 0; k < HOJE; k++) {
+    const criado = new Date(de + janela * ((k + 0.15 + sorte() * 0.7) / HOJE));
+    const horas = (agora - criado.getTime()) / 3_600_000;
+    const r = sorte();
+    const titulo = horas > 3
+      ? (r < 0.3 ? 'Chamado Tratado Suporte' : r < 0.6 ? 'Chamado Em Tratativa N1' : r < 0.75 ? 'Chamado Pendente Suporte' : r < 0.85 ? 'Chamado Em Tratativa N2' : 'Novos Suporte')
+      : horas > 1
+        ? (r < 0.15 ? 'Chamado Tratado Suporte' : r < 0.45 ? 'Chamado Em Tratativa N1' : r < 0.65 ? 'Chamado Pendente Suporte' : 'Novos Suporte')
+        : (r < 0.7 ? 'Novos Suporte' : 'Chamado Pendente Suporte');
+    const etapa = etapaDe(titulo);
+    const fechadoEm = etapa.isFinal ? new Date(Math.min(agora - 2 * 60_000, criado.getTime() + (0.5 + sorte() * 2) * 3_600_000)) : null;
+    const alterado = fechadoEm ?? new Date(Math.min(agora - 60_000, criado.getTime() + sorte() * Math.max(0.1, horas) * 3_600_000));
+    // dois chamados da manhã, ainda abertos, com o vencimento já passado: aparecem como vencidos
+    const vence = !etapa.isFinal && horas > 4 && k < 2 ? new Date(criado.getTime() + 2 * 3_600_000) : null;
+    criar(criado, etapa, alterado, fechadoEm, { resp: etapa.isInitial && sorte() < 0.5 ? null : undefined, vence });
+  }
+
+  // e alguns chamados dos dias anteriores que foram fechados hoje (o "Fechados hoje" não fica zerado)
+  const ontemEAntes = cards.filter((c) => c.closedAt && Date.parse(c.createdAt) > agora - 5 * 86_400_000 && Date.parse(c.createdAt) < inicioDoDia.getTime());
+  for (const c of ontemEAntes.slice(0, 5)) {
+    const quando = new Date(de + sorte() * (agora - 2 * 60_000 - de)).toISOString();
+    c.closedAt = quando; c.updatedAt = quando; c.closedEstimated = false;
   }
   for (const c of cards) c.isOverdue = !!c.dueDate && Date.parse(c.dueDate) < agora && !ETAPAS_DEMO.find((e) => e.id === c.stepId)?.isFinal;
   chamadosGuardados = { cards, ctx: { etapas: ETAPAS_DEMO, campos, etiquetas: ETIQUETAS_DEMO }, movimentos: Math.round(cards.length * 0.4) };

@@ -1,19 +1,22 @@
 /**
  * Gráficos do sistema — SVG feito à mão, sem biblioteca de fora.
  *
- * Três formas, porque são as perguntas que o dia a dia faz:
+ * As formas, porque são as perguntas que o dia a dia faz:
  *  - `BarrasRanking` — "quem são os maiores?" (barras deitadas, já ordenadas)
  *  - `Proporcao`     — "quanto de um, quanto do outro?" (uma barra só, dividida)
  *  - `Colunas`       — "quanto em cada dia (ou hora)?" (colunas em pé, na ordem do tempo).
  *    Entrou com os Chamados (Patch 1.3): é o "chamados por dia" que o Grafana mostrava.
+ *  - `Pizza`         — "de quem é cada fatia do total?" (rosca). Também do Patch 1.3, a pedido
+ *    do Luan, como OPÇÃO ao ranking nos Chamados — revê a 0028, que não tinha pizza.
  *
  * Decisões que valem para todas:
- *  - **uma cor só** por gráfico. Identidade vem do rótulo escrito ao lado, não da cor — assim
- *    ninguém depende de distinguir verde de laranja (e daltônico enxerga igual).
+ *  - **uma cor só** por gráfico, menos na pizza (que precisa de uma por fatia). Mesmo lá, a
+ *    identidade vem do rótulo escrito ao lado, com o número e o %, não da cor — assim ninguém
+ *    depende de distinguir verde de laranja (e daltônico lê igual).
  *  - eixos e grades discretos; número em cima só onde ajuda, nunca em todo ponto.
  *  - as cores saem das variáveis do tema, então o modo escuro acompanha sozinho.
  */
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 const TOM = { accent: 'bg-accent', ok: 'bg-ok', signal: 'bg-signal', bad: 'bg-bad', muted: 'bg-line-strong' };
 
@@ -175,6 +178,126 @@ export function Colunas({ pontos, altura = 150, aoClicar, vazio = 'Nada no perí
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Pizza (em rosca): "de quem é cada fatia do total?".
+ *
+ * As regras que fazem a pizza ser lida, e não só olhada:
+ *  - **no máximo 6 fatias com cor**, as maiores; o resto vira **"Outros"** (cinza), que abre a
+ *    lista do que foi somado ali — nada fica escondido. O "não preenchido" é outro cinza, no fim;
+ *  - as seis cores vêm do tema (`--pz-1` a `--pz-6`), **sempre nesta ordem**: é a ordem que deixa
+ *    cada cor diferente da vizinha para quem não distingue cores (conferida com o validador de
+ *    paleta nos dois temas). Nunca se inventa uma 7ª cor;
+ *  - **a legenda escreve nome, número e %** de cada fatia — a cor só ajuda;
+ *  - um fio da cor do fundo separa as fatias; passar o mouse destaca a fatia e mostra o número
+ *    dela no centro; clicar filtra, como no ranking.
+ */
+export type FatiaPizza = { id: string; rotulo: string; n: number; /** "não preenchido": cinza, sempre no fim */ neutro?: boolean };
+
+const MAX_FATIAS = 6;
+const OUTROS = '__outros__';
+
+export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Nada aqui.', tamanho = 164 }: {
+  partes: FatiaPizza[];
+  /** o que o número do centro conta ("chamados"; "marcações" quando um card entra em mais de uma fatia) */
+  rotuloCentro?: string;
+  aoClicar?: (id: string) => void;
+  vazio?: string;
+  tamanho?: number;
+}) {
+  const [ativo, setAtivo] = useState<string | null>(null);
+  const [verOutros, setVerOutros] = useState(false);
+  const soma = partes.reduce((a, x) => a + x.n, 0);
+  if (!soma) return <div className="text-muted text-sm">{vazio}</div>;
+
+  // as maiores primeiro; o que passa de 6 é somado em "Outros"
+  const reais = partes.filter((x) => !x.neutro && x.n > 0).sort((a, b) => b.n - a.n);
+  const neutras = partes.filter((x) => x.neutro && x.n > 0);
+  const dobradas = reais.slice(MAX_FATIAS);
+  const fatias: Array<FatiaPizza & { cor: string; outros?: boolean }> = [
+    ...reais.slice(0, MAX_FATIAS).map((x, i) => ({ ...x, cor: `var(--pz-${i + 1})` })),
+    // sobrou um só: ele mesmo, em cinza (um "Outros (1)" esconderia o nome à toa)
+    ...(dobradas.length === 1 ? [{ ...dobradas[0]!, cor: 'var(--pz-outros)' }] : []),
+    ...(dobradas.length > 1 ? [{ id: OUTROS, rotulo: `Outros (${dobradas.length})`, n: dobradas.reduce((a, x) => a + x.n, 0), cor: 'var(--pz-outros)', outros: true }] : []),
+    ...neutras.map((x) => ({ ...x, cor: 'var(--pz-vazio)' })),
+  ];
+
+  const pct = (n: number) => { const p = (n / soma) * 100; return p > 0 && p < 1 ? '<1%' : `${Math.round(p)}%`; };
+  const meio = tamanho / 2;
+  const espessura = Math.round(tamanho * 0.17);
+  const raio = meio - espessura / 2 - 2;
+  const volta = 2 * Math.PI * raio;
+  const fio = fatias.length > 1 ? 2 : 0; // o fio da cor do fundo entre as fatias
+  let andado = 0;
+  const destaque = fatias.find((f) => f.id === ativo) ?? null;
+  const clicar = (f: (typeof fatias)[number]) => { if (f.outros) setVerOutros((v) => !v); else aoClicar?.(f.id); };
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+      <svg width={tamanho} height={tamanho} viewBox={`0 0 ${tamanho} ${tamanho}`} role="img" className="shrink-0"
+        aria-label={fatias.map((f) => `${f.rotulo}: ${f.n} (${pct(f.n)})`).join('; ')}>
+        {fatias.map((f) => {
+          const trecho = (f.n / soma) * volta;
+          const traco = Math.max(0.01, trecho - fio);
+          const el = (
+            <circle
+              key={f.id} cx={meio} cy={meio} r={raio} fill="none" stroke={f.cor} strokeWidth={espessura}
+              strokeDasharray={`${traco} ${volta - traco}`} strokeDashoffset={-andado}
+              transform={`rotate(-90 ${meio} ${meio})`}
+              className={`transition-opacity ${aoClicar || f.outros ? 'cursor-pointer' : ''}`}
+              style={{ opacity: ativo && ativo !== f.id ? 0.3 : 1 }}
+              onMouseEnter={() => setAtivo(f.id)} onMouseLeave={() => setAtivo(null)}
+              onClick={() => clicar(f)}
+            >
+              <title>{`${f.rotulo}: ${f.n} (${pct(f.n)})`}</title>
+            </circle>
+          );
+          andado += trecho;
+          return el;
+        })}
+        {/* no centro: o total — ou a fatia sob o mouse */}
+        <text x={meio} y={meio - 2} textAnchor="middle" className="fill-ink font-display font-semibold" style={{ fontSize: tamanho * 0.15 }}>
+          {destaque ? pct(destaque.n) : soma.toLocaleString('pt-BR')}
+        </text>
+        <text x={meio} y={meio + tamanho * 0.1} textAnchor="middle" className="fill-muted" style={{ fontSize: 11 }}>
+          {destaque ? `${destaque.n.toLocaleString('pt-BR')} ${rotuloCentro}` : rotuloCentro}
+        </text>
+      </svg>
+
+      <ul className="flex-1 min-w-[180px] flex flex-col gap-0.5 text-[13px]">
+        {fatias.map((f) => (
+          <li key={f.id}>
+            <button
+              type="button"
+              className={`w-full flex items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-surface-2 ${ativo === f.id ? 'bg-surface-2' : ''}`}
+              onMouseEnter={() => setAtivo(f.id)} onMouseLeave={() => setAtivo(null)} onFocus={() => setAtivo(f.id)} onBlur={() => setAtivo(null)}
+              onClick={() => clicar(f)}
+              title={f.outros ? (verOutros ? 'Esconder a lista do que foi somado em Outros' : 'Ver o que foi somado em Outros') : aoClicar ? 'Clique para filtrar' : undefined}
+            >
+              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: f.cor }} aria-hidden />
+              <span className={`flex-1 min-w-0 truncate ${f.neutro ? 'italic text-muted' : ''}`}>{f.rotulo}</span>
+              <span className="font-mono tnum text-[12px] text-ink-2 shrink-0">{f.n.toLocaleString('pt-BR')}</span>
+              <span className="w-10 text-right tnum text-[12px] text-muted shrink-0">{pct(f.n)}</span>
+            </button>
+            {f.outros && verOutros && (
+              <ul className="ml-5 mb-1 border-l border-line pl-2 flex flex-col">
+                {dobradas.map((d) => (
+                  <li key={d.id}>
+                    <button type="button" className="w-full flex items-center gap-2 rounded-md px-1.5 py-0.5 text-left hover:bg-surface-2" onClick={() => aoClicar?.(d.id)} title={aoClicar ? 'Clique para filtrar' : undefined}>
+                      <span className="flex-1 min-w-0 truncate text-ink-2">{d.rotulo}</span>
+                      <span className="font-mono tnum text-[12px] text-ink-2 shrink-0">{d.n.toLocaleString('pt-BR')}</span>
+                      <span className="w-10 text-right tnum text-[12px] text-muted shrink-0">{pct(d.n)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
