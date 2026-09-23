@@ -20,6 +20,7 @@ import { Dados } from './pages/dados/Index.js';
 import { NovidadesPagina } from './pages/novidades/Index.js';
 import { ProjetosLista } from './pages/projetos/Lista.js';
 import { ProjetoFicha } from './pages/projetos/Ficha.js';
+import { Chamados } from './pages/chamados/Index.js';
 import { Conta } from './pages/Conta.js';
 import { Admin } from './pages/admin/Index.js';
 
@@ -51,6 +52,7 @@ export function App() {
             <Route path="/dados" element={<Protegido><Dados /></Protegido>} />
             <Route path="/projetos" element={<Protegido><ProjetosLista /></Protegido>} />
             <Route path="/projetos/:id" element={<Protegido><ProjetoFicha /></Protegido>} />
+            <Route path="/chamados" element={<Protegido><Chamados /></Protegido>} />
             <Route path="/novidades" element={<Protegido><NovidadesPagina /></Protegido>} />
             <Route path="/conta" element={<Protegido><Conta /></Protegido>} />
             <Route path="/admin/*" element={<Protegido><Admin /></Protegido>} />

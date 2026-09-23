@@ -51,3 +51,7 @@ A regra que ficou: gráfico só entra se responder uma pergunta que a tela ainda
 `BarrasRanking` ganhou o modo **misto** para isso: cada barra pode ser dividida em partes, com a
 legenda escrita uma vez acima e um fio de fundo entre as fatias. É a mesma linguagem da barra de
 "Como está cada passo", nos projetos — que foi de onde veio o pedido.
+
+> **Revista pela 0029 (Patch 1.3):** entrou uma terceira forma, `Colunas` — colunas em pé, na ordem
+> do tempo —, para o "chamados por dia" que a equipe já usava no Grafana. Mesmas regras: uma cor, o
+> número escrito, clicável quando filtra.

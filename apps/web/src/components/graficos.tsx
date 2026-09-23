@@ -1,11 +1,13 @@
 /**
  * Gráficos do sistema — SVG feito à mão, sem biblioteca de fora.
  *
- * Duas formas, porque são as perguntas que o dia a dia faz:
+ * Três formas, porque são as perguntas que o dia a dia faz:
  *  - `BarrasRanking` — "quem são os maiores?" (barras deitadas, já ordenadas)
  *  - `Proporcao`     — "quanto de um, quanto do outro?" (uma barra só, dividida)
+ *  - `Colunas`       — "quanto em cada dia (ou hora)?" (colunas em pé, na ordem do tempo).
+ *    Entrou com os Chamados (Patch 1.3): é o "chamados por dia" que o Grafana mostrava.
  *
- * Decisões que valem para as duas:
+ * Decisões que valem para todas:
  *  - **uma cor só** por gráfico. Identidade vem do rótulo escrito ao lado, não da cor — assim
  *    ninguém depende de distinguir verde de laranja (e daltônico enxerga igual).
  *  - eixos e grades discretos; número em cima só onde ajuda, nunca em todo ponto.
@@ -117,6 +119,59 @@ export function Proporcao({ partes, total }: {
             <span className={`h-2 w-2 rounded-full shrink-0 ${PONTOS[x.cor]}`} />
             <span className="text-muted">{x.rotulo}</span>
             <b className="tnum">{x.n}</b>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Colunas em pé, na ordem do tempo: chamados por dia, por hora, por faixa de idade.
+ * O número fica escrito em cima de cada coluna quando cabe (até 31 colunas); acima disso, aparece
+ * ao passar o mouse, e o maior valor fica escrito no canto. A coluna `destaque` (hoje, a hora
+ * atual) é a mesma cor, mais forte — nunca uma cor diferente.
+ */
+export function Colunas({ pontos, altura = 150, aoClicar, vazio = 'Nada no período.' }: {
+  pontos: Array<{ id: string; rotulo: string; n: number; destaque?: boolean }>;
+  altura?: number;
+  /** clicar numa coluna (o id do ponto) — a tela usa para filtrar aquele dia */
+  aoClicar?: (id: string) => void;
+  vazio?: string;
+}) {
+  const max = Math.max(0, ...pontos.map((p) => p.n));
+  if (!pontos.length || max === 0) return <div className="text-muted text-sm py-6 text-center">{vazio}</div>;
+  const comNumero = pontos.length <= 31;
+  // rótulo embaixo: todos quando cabem, senão um a cada tantos (sempre o primeiro e o último)
+  const passo = pontos.length <= 16 ? 1 : Math.ceil(pontos.length / 12);
+  return (
+    <div>
+      {!comNumero && <div className="text-[11.5px] text-muted text-right mb-1">maior: <b className="tnum text-ink-2">{max}</b></div>}
+      <div className="flex items-end gap-[3px]" style={{ height: altura }}>
+        {pontos.map((p) => {
+          const h = p.n ? Math.max(3, (p.n / max) * (altura - (comNumero ? 18 : 2))) : 0;
+          const Tag = aoClicar && p.n ? 'button' : 'div';
+          return (
+            <Tag
+              key={p.id}
+              {...(aoClicar && p.n ? { type: 'button' as const, onClick: () => aoClicar(p.id) } : {})}
+              className={`flex-1 min-w-0 h-full flex flex-col justify-end items-center group ${aoClicar && p.n ? 'cursor-pointer' : ''}`}
+              title={`${p.rotulo}: ${p.n}`}
+            >
+              {comNumero && p.n > 0 && <span className="text-[10.5px] tnum text-ink-2 leading-none mb-1">{p.n}</span>}
+              <span
+                className={`block w-full rounded-t bg-accent ${p.destaque ? '' : 'opacity-50'} ${aoClicar && p.n ? 'group-hover:opacity-100' : ''}`}
+                style={{ height: h }}
+              />
+            </Tag>
+          );
+        })}
+      </div>
+      {/* poucas colunas: o rótulo quebra linha ("Mais de 90 dias"); muitas: um rótulo a cada tantos, sem quebrar */}
+      <div className="flex gap-[3px] border-t border-line mt-0.5 pt-1 overflow-hidden">
+        {pontos.map((p, i) => (
+          <span key={p.id} className={`flex-1 min-w-0 text-center text-[10.5px] leading-tight ${pontos.length <= 12 ? 'break-words' : 'whitespace-nowrap overflow-visible'} ${p.destaque ? 'text-accent font-semibold' : 'text-muted'}`}>
+            {i % passo === 0 || i === pontos.length - 1 ? p.rotulo : ''}
           </span>
         ))}
       </div>

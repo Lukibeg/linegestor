@@ -96,6 +96,18 @@ export type Api = {
     alerts(): Promise<T.AjustesAvisos>;
     saveAlerts(d: { ativo: boolean; url: string; metodo: 'POST' | 'GET'; cabecalhos: string; corpo: string; token?: string }): Promise<T.AjustesAvisos>;
     testAlerts(): Promise<{ ok: boolean; mensagem: string }>;
+    linechat(): Promise<T.AjustesLineChat>;
+    saveLinechat(d: { ativo: boolean; url: string; appUrl: string; painelId: string; painelNome: string; token?: string }): Promise<T.AjustesLineChat>;
+    testLinechat(): Promise<{ ok: boolean; mensagem: string }>;
+    paineisLinechat(): Promise<T.PainelLineChat[]>;
+    /** `completa` relê o painel inteiro; senão, só o que mudou desde a última vez */
+    syncLinechat(completa: boolean): Promise<T.ResultadoSincronizacao>;
+  };
+  /** Chamados de suporte: a cópia do painel do LineChat (só leitura) */
+  chamados: {
+    opcoes(): Promise<T.OpcoesChamados>;
+    resumo(q: Record<string, unknown>): Promise<T.ResumoChamados>;
+    lista(q: Record<string, unknown>): Promise<T.Page<T.LinhaChamado>>;
   };
   data: {
     preview(d: { entity: string; csv: string; delimiter: string }): Promise<T.ImportPlan>;

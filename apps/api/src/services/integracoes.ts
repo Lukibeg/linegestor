@@ -1,11 +1,13 @@
 /**
- * As duas integrações que a pessoa liga pela tela, sem mexer em arquivo no servidor:
+ * As integrações que a pessoa liga pela tela, sem mexer em arquivo no servidor:
  *
  *  1. **Backup no Google Drive** — o backup diário sobe para uma pasta do Drive da empresa,
  *     usando uma "conta de serviço" do Google (uma conta de robô, que não expira e não
  *     depende de ninguém continuar na empresa).
  *  2. **Avisos** — quando o sistema cai ou o backup falha, manda uma mensagem para um endereço
  *     que você escolhe. No nosso caso, a API do LineChat, que entrega no WhatsApp.
+ *  3. **Chamados do LineChat** — o token e o painel de onde a sincronização lê os chamados de
+ *     suporte (o resto dessa integração mora em `linechat.ts`).
  *
  * O que é segredo (a chave da conta de serviço, o token da API) vai para o cofre cifrado.
  * O resto fica em `settings.value`, em JSON.
@@ -66,11 +68,46 @@ const AVISOS_PADRAO: AjustesAvisos = {
   ultimoTesteEm: null, ultimoTesteOk: null, ultimoTesteMsg: null,
 };
 
-type Assunto = 'backup' | 'avisos';
+/**
+ * Chamados do LineChat: de onde a sincronização lê, e como foi a última vez.
+ * O token fica no cofre; aqui só o que pode aparecer na tela.
+ */
+export type AjustesLineChat = {
+  ativo: boolean;
+  /** A API (https://api.inglinechat.com.br) */
+  url: string;
+  /** Onde a equipe abre os cards (https://inglinechat.com.br) — para o link da tabela */
+  appUrl: string;
+  painelId: string;
+  painelNome: string;
+  /** A primeira sincronização completa: antes dela não há histórico de etapas, só estimativa */
+  inicioEm: string | null;
+  /** Início da última sincronização que deu certo — a próxima pede ao LineChat o que mudou desde então */
+  marcoEm: string | null;
+  ultimaEm: string | null;
+  ultimaOk: boolean | null;
+  ultimaMsg: string | null;
+  ultimaCompletaEm: string | null;
+  /** Quantas vezes seguidas falhou (para avisar uma vez, e não a cada minuto) */
+  falhasSeguidas: number;
+};
+
+export const LINECHAT_PADRAO: AjustesLineChat = {
+  ativo: false,
+  url: 'https://api.inglinechat.com.br',
+  appUrl: 'https://inglinechat.com.br',
+  painelId: '', painelNome: '',
+  inicioEm: null, marcoEm: null,
+  ultimaEm: null, ultimaOk: null, ultimaMsg: null, ultimaCompletaEm: null,
+  falhasSeguidas: 0,
+};
+
+type Assunto = 'backup' | 'avisos' | 'linechat';
+const PADROES: Record<Assunto, unknown> = { backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO };
 
 export async function ler<T>(db: Db, assunto: Assunto): Promise<{ valor: T; secretId: string | null; temSegredo: boolean }> {
   const [row] = await db.select().from(settings).where(eq(settings.id, assunto)).limit(1);
-  const padrao = (assunto === 'backup' ? BACKUP_PADRAO : AVISOS_PADRAO) as unknown as T;
+  const padrao = PADROES[assunto] as T;
   if (!row) return { valor: padrao, secretId: null, temSegredo: false };
   let valor: T;
   try { valor = { ...padrao, ...(JSON.parse(row.value) as object) } as T; } catch { valor = padrao; }

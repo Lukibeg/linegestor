@@ -3,7 +3,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, LayoutDashboard, ListChecks, LogOut, Menu, Moon, Settings, Sparkles, Sun, Upload, UserRound, X } from 'lucide-react';
+import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, ListChecks, LogOut, Menu, Moon, Settings, Sparkles, Sun, Upload, UserRound, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
 import { NovidadesPopup } from '../../pages/novidades/Index.js';
@@ -18,6 +18,8 @@ const NAV = [
   { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
   // tarefas que percorrem vários clientes
   { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
+  // os chamados de suporte, lidos do LineChat (substitui o Grafana)
+  { to: '/chamados', label: 'Chamados', icon: Headset, perm: 'support.read' },
   // logo abaixo: o "o que mudou" de cada publicação
   { to: '/novidades', label: 'Novidades', icon: Sparkles, perm: 'records.read' },
   { to: '/dados', label: 'Importar / Exportar', icon: Upload, perm: ['data.import', 'data.export'] },

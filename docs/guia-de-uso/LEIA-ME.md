@@ -18,3 +18,4 @@
 
 - [Mandar o backup para o Google Drive da empresa](backup-no-google-drive.md) — conta de serviço do Google, feito uma vez.
 - [Receber os avisos do sistema no WhatsApp](avisos-no-whatsapp.md) — ligar a API do LineChat na tela de Ajustes.
+- [Chamados do LineChat](chamados-do-linechat.md) — ligar a leitura dos chamados de suporte (o que era o Grafana) e conferir que está funcionando.

@@ -56,3 +56,6 @@
 | **Let's Encrypt** | Quem emite esses certificados de graça. O Caddy conversa com ele automaticamente. |
 | **Firewall** | A porta da rua do servidor: decide quais portas aceitam visita. No nosso caso, só SSH, 80 e 443. |
 | **SSH** | O jeito de entrar no servidor pelo terminal. No nosso caso, só com chave — senha não funciona. |
+| **Chamado** | Um card do painel de suporte no LineChat (IS-3607). É aberto e trabalhado lá; o Gestor guarda uma cópia para contar e filtrar. |
+| **Sincronização** | O Gestor pergunta ao LineChat, a cada minuto, o que mudou nos chamados e atualiza a cópia. De madrugada relê tudo para conferir. |
+| **API** | A porta de serviço de um sistema: por onde outro programa pede dados sem abrir a tela. A do LineChat entrega no máximo 100 chamados por vez. |

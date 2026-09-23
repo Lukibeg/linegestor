@@ -9,10 +9,10 @@
  * Entrar: qualquer um destes e-mails com a senha "demo":
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
-import { ALL_PERMISSIONS, DEFAULT_ROLES, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
+import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, camposDeLista, listarChamados, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
-import { ApiError, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -71,6 +71,13 @@ const S = {
     cabecalhos: '{\n  "Content-Type": "application/json",\n  "Authorization": "Bearer {{token}}"\n}',
     corpo: '{\n  "numero": "5571999999999",\n  "mensagem": "{{mensagem}}"\n}',
     ultimoTesteEm: null as string | null, ultimoTesteOk: null as boolean | null, ultimoTesteMsg: null as string | null, temToken: false,
+  },
+  // a leitura do LineChat já vem ligada na demonstração, com chamados inventados
+  ajustesLineChat: {
+    ativo: true, url: 'https://api.inglinechat.com.br', appUrl: 'https://inglinechat.com.br',
+    painelId: 'painel-demo', painelNome: 'Ingline - Suporte (demonstração)', temToken: true,
+    inicioEm: null as string | null, ultimaEm: null as string | null, ultimaOk: true as boolean | null,
+    ultimaMsg: 'Atualização: 0 cards lidos.' as string | null, ultimaCompletaEm: null as string | null,
   },
   carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[],
   products: PRODUTOS_INICIAIS.map((p, i) => ({ id: 'p' + p.code, code: p.code as string, name: p.name as string, color: p.color as string, hasSettings: p.hasSettings as boolean, description: p.description as string | null, sortOrder: i, active: true, deletedAt: null as string | null })),
@@ -500,6 +507,111 @@ function seed() {
   ];
 }
 seed();
+
+// ---------- chamados do LineChat (inventados) ----------
+//
+// Uns 600 chamados dos últimos 4 meses, no formato que a sincronização grava. Sorteio com semente
+// fixa: a prévia mostra sempre os mesmos números. As contas são as mesmas funções do servidor
+// (`@gestor/shared/chamados.ts`), então o que a tela mostra aqui é o que ela mostraria de verdade.
+
+const ETAPAS_DEMO = [
+  ['Solicitação Equipamento', false, false], ['Visita Técnica', false, false], ['Stand By', false, false],
+  ['Novos Suporte', true, false], ['Chamado Pendente Suporte', false, false], ['Chamado Em Tratativa N1', false, false],
+  ['Chamado Em Tratativa N2', false, false], ['Chamado Em Tratativa N3', false, false], ['Chamado em Observação', false, false],
+  ['Chamado Tratado Suporte', false, true], ['Chamado Validado', false, true],
+].map(([title, isInitial, isFinal], i) => ({ id: `etapa-${i + 1}`, title: title as string, position: i + 1, isInitial: isInitial as boolean, isFinal: isFinal as boolean, archived: false }));
+const ETIQUETAS_DEMO = [
+  ['P/ Crítica', 'rgb(220, 38, 38)'], ['P/ Alta', 'rgb(234, 179, 8)'], ['P/ Média', 'rgb(250, 204, 21)'], ['P/ Baixa', 'rgb(14, 165, 233)'],
+  ['NIA - CONCLUIDO', 'rgb(34, 197, 94)'], ['NIA - PREENCHER', 'rgb(88, 28, 135)'], ['NIA - ERRO', 'rgb(225, 29, 72)'],
+  ['StandBy', 'rgb(17, 24, 39)'], ['Suporte ativo', 'rgb(22, 163, 74)'], ['Acompanhamento', 'rgb(255, 153, 255)'],
+].map(([name, color], i) => ({ id: `tag-${i + 1}`, name: name!, color: color!, archived: false }));
+const PESSOAS_DEMO = ['Lúcio Andrade', 'Marina Costa', 'Bruno Teixeira', 'Camila Duarte', 'Diego Farias'];
+
+let chamadosGuardados: { cards: Chamado[]; ctx: Omit<ContextoChamados, 'agora'>; movimentos: number } | null = null;
+function chamadosDemo() {
+  if (chamadosGuardados) return chamadosGuardados;
+  let semente = 20260923;
+  const sorte = () => { semente = (semente * 1103515245 + 12345) % 2147483648; return semente / 2147483648; };
+  const um = <T,>(xs: readonly T[]) => xs[Math.floor(sorte() * xs.length)]!;
+  const clientes = S.clients.filter((c) => !c.isInternal).map((c) => c.tradeName);
+  const campos = [
+    { key: 'cliente-71', name: 'Cliente', type: 'SINGLESELECT', position: 2, options: clientes, archived: false },
+    { key: 'tipo-de-chamado-24', name: 'Tipo de chamado', type: 'SINGLESELECT', position: 3, options: ['Configuração', 'Correção', 'Dúvida Usuário', 'Falha usuário', 'Falha Sistêmica Ingline', 'Requisição', 'Treinamento', 'Dificuldade Infraestrutura Cliente'], archived: false },
+    { key: 'plataforma', name: 'Produto', type: 'SINGLESELECT', position: 5, options: ['LinePBX', 'LineChat', 'FOP2', 'Omniboard', 'LineReports', 'VoiceNet', 'Equipamento', 'Terceiros - Operadora'], archived: false },
+    { key: 'meio-solicita-o', name: 'Canal da Solicitação', type: 'SINGLESELECT', position: 6, options: ['Whatsapp Oficial', 'Voz ofical', 'Grupo Whatsapp', 'E-mail', 'Reunião remota', 'Suporte Ativo'], archived: false },
+    { key: 'resoluttor', name: 'Resolutor', type: 'SINGLESELECT', position: 7, options: PESSOAS_DEMO, archived: false },
+    { key: 'observador', name: 'Observadores', type: 'MULTISELECT', position: 8, options: PESSOAS_DEMO, archived: false },
+    { key: 'assunto', name: 'Assunto', type: 'SINGLESELECT', position: 9, options: ['Ramal sem áudio', 'Ramal não registra', 'Fila de atendimento', 'URA', 'Gravação de chamadas', 'Relatórios', 'Pausa de agente', 'Troca de aparelho', 'Chatbot', 'Criação de usuário', 'Queda de tronco', 'Portabilidade'], archived: false },
+  ];
+  const pesoTipo = [5, 4, 5, 3, 2, 3, 1, 1];
+  const pesoProduto = [9, 4, 2, 2, 1, 3, 2, 1];
+  const pesado = <T,>(xs: T[], pesos: number[]) => { const t = pesos.reduce((a, b) => a + b, 0); let r = sorte() * t; for (let i = 0; i < xs.length; i++) { r -= pesos[i] ?? 1; if (r <= 0) return xs[i]!; } return xs[0]!; };
+  const cards: Chamado[] = [];
+  const agora = Date.now();
+  let numero = 3000;
+  // do mais antigo para o mais novo, como a numeração do LineChat
+  for (let d = 120; d >= 0; d--) {
+    const dia = new Date(agora - d * 86_400_000);
+    const semana = dia.getDay();
+    const quantos = semana === 0 ? 0 : semana === 6 ? Math.floor(sorte() * 2) : 3 + Math.floor(sorte() * 5);
+    for (let k = 0; k < quantos; k++) {
+      const criado = new Date(dia); criado.setHours(8 + Math.floor(sorte() * 10), Math.floor(sorte() * 60), 0, 0);
+      if (criado.getTime() > agora) continue;
+      const idade = (agora - criado.getTime()) / 86_400_000;
+      // quanto mais antigo, mais provável que já esteja validado
+      const aberto = sorte() < (idade < 2 ? 0.8 : idade < 7 ? 0.35 : idade < 30 ? 0.08 : 0.015);
+      const etapa = aberto ? um(ETAPAS_DEMO.filter((e) => !e.isFinal)) : ETAPAS_DEMO[sorte() < 0.1 ? 9 : 10]!;
+      const fechadoEm = aberto ? null : new Date(Math.min(agora - 60_000, criado.getTime() + (0.1 + sorte() * 4) * 86_400_000));
+      const alterado = fechadoEm ?? new Date(Math.min(agora - 60_000, criado.getTime() + sorte() * Math.min(idade, 6) * 86_400_000));
+      const resp = sorte() < 0.06 ? null : um(PESSOAS_DEMO);
+      const tags: string[] = [];
+      if (sorte() < 0.5) tags.push(pesado(['tag-1', 'tag-2', 'tag-3', 'tag-4'], [1, 3, 5, 4]));
+      if (sorte() < 0.25) tags.push(um(['tag-5', 'tag-6', 'tag-7']));
+      if (aberto && etapa.title === 'Stand By') tags.push('tag-8');
+      const cf: Record<string, unknown> = {
+        'cliente-71': sorte() < 0.04 ? null : pesado(clientes, clientes.map((_, i) => (i < 3 ? 6 : 2))),
+        'tipo-de-chamado-24': sorte() < 0.05 ? null : pesado(campos[1]!.options, pesoTipo),
+        plataforma: pesado(campos[2]!.options, pesoProduto),
+        'meio-solicita-o': pesado(campos[3]!.options, [8, 3, 3, 2, 1, 1]),
+        resoluttor: aberto ? null : resp ?? um(PESSOAS_DEMO),
+        assunto: um(campos[6]!.options),
+        ...(sorte() < 0.3 ? { observador: [um(PESSOAS_DEMO), um(PESSOAS_DEMO)].filter((x, i, a) => a.indexOf(x) === i) } : {}),
+      };
+      numero++;
+      const assunto = cf.assunto as string;
+      const cliente = (cf['cliente-71'] as string | null) ?? 'Interno';
+      cards.push({
+        id: `card-${numero}`, key: `IS-${numero}`, number: numero,
+        title: `${cf.plataforma} - ${cliente} - ${assunto}`, description: `Cliente relata: ${assunto.toLowerCase()}. (chamado de demonstração)`,
+        stepId: etapa.id, stepTitle: etapa.title, stepPhase: etapa.isInitial ? 'INITIAL' : etapa.isFinal ? 'FINAL' : 'INTERMEDIATE',
+        status: !aberto && idade > 45 && sorte() < 0.2 ? 'ARCHIVED' : 'OPEN',
+        responsavel: resp,
+        createdAt: criado.toISOString(), updatedAt: alterado.toISOString(),
+        closedAt: fechadoEm?.toISOString() ?? null, closedEstimated: !!fechadoEm && idade > 20,
+        dueDate: aberto && sorte() < 0.35 ? new Date(criado.getTime() + (1 + sorte() * 10) * 86_400_000).toISOString() : null,
+        isOverdue: false, tagIds: tags, campos: cf,
+      });
+    }
+  }
+  for (const c of cards) c.isOverdue = !!c.dueDate && Date.parse(c.dueDate) < agora && !ETAPAS_DEMO.find((e) => e.id === c.stepId)?.isFinal;
+  chamadosGuardados = { cards, ctx: { etapas: ETAPAS_DEMO, campos, etiquetas: ETIQUETAS_DEMO }, movimentos: Math.round(cards.length * 0.4) };
+  const inicio = new Date(agora - 20 * 86_400_000).toISOString();
+  S.ajustesLineChat = { ...S.ajustesLineChat, inicioEm: inicio, ultimaEm: new Date(agora - 40_000).toISOString(), ultimaCompletaEm: new Date(agora - 8 * 3_600_000).toISOString(), ultimaMsg: 'Atualização: 2 cards lidos, 1 mudança de etapa.' };
+  return chamadosGuardados;
+}
+const linkDemo = (c: Chamado) => (c.key ? `https://inglinechat.com.br/panels/painel-demo/card/${c.key}` : '');
+function statusLineChatDemo(): AjustesLineChat {
+  const { cards, movimentos } = chamadosDemo();
+  const a = S.ajustesLineChat;
+  return {
+    ...a,
+    totais: { cards: cards.length, ativos: cards.filter((c) => c.status !== 'ARCHIVED').length, arquivados: cards.filter((c) => c.status === 'ARCHIVED').length, movimentos },
+    execucoes: [
+      { id: 'run2', kind: 'recente', trigger: 'agendada', startedAt: a.ultimaEm ?? now(), finishedAt: a.ultimaEm, ok: true, message: a.ultimaMsg },
+      { id: 'run1', kind: 'completa', trigger: 'agendada', startedAt: a.ultimaCompletaEm ?? now(), finishedAt: a.ultimaCompletaEm, ok: true, message: `Leitura completa: ${cards.length.toLocaleString('pt-BR')} cards lidos.` },
+    ],
+  };
+}
 
 // ---------------- ajudantes ----------------
 const prodMeta = (code: string) => S.products.find((p) => p.code === code)!;
@@ -1162,6 +1274,59 @@ export const demoApi: Api = {
       const mensagem = ok ? 'Na demonstração nada sai daqui — no sistema instalado, a mensagem chegaria no WhatsApp pelo LineChat.' : 'Informe o endereço (URL) da API de avisos.';
       S.ajustesAvisos = { ...S.ajustesAvisos, ultimoTesteEm: now(), ultimoTesteOk: ok, ultimoTesteMsg: mensagem };
       return { ok, mensagem };
+    },
+    async linechat() { await wait(); requirePerm('admin.manage'); return statusLineChatDemo(); },
+    async saveLinechat(d) {
+      await wait(200); requirePerm('admin.manage');
+      S.ajustesLineChat = { ...S.ajustesLineChat, ativo: d.ativo, url: d.url, appUrl: d.appUrl, painelId: d.painelId, painelNome: d.painelNome, temToken: S.ajustesLineChat.temToken || !!d.token };
+      audit('settings_linechat', 'settings', `${S.me?.name} ${d.ativo ? 'ligou' : 'desligou'} a leitura dos chamados do LineChat`, 'linechat');
+      return statusLineChatDemo();
+    },
+    async testLinechat() {
+      await wait(600); requirePerm('admin.manage');
+      return { ok: true, mensagem: `Na demonstração nada sai daqui — no sistema instalado, o teste diria: Token aceito. Painel "Ingline - Suporte": 11 etapas, 10 etiquetas.` };
+    },
+    async paineisLinechat() {
+      await wait(400); requirePerm('admin.manage');
+      return [
+        { id: 'painel-demo', title: 'Ingline - Suporte (demonstração)', key: 'IS', type: 'MANAGEMENT' },
+        { id: 'painel-demo-2', title: 'Ingline - Ativações (demonstração)', key: 'IA', type: 'MANAGEMENT' },
+      ];
+    },
+    async syncLinechat(completa) {
+      await wait(completa ? 1500 : 500); requirePerm('admin.manage');
+      const n = chamadosDemo().cards.length;
+      const mensagem = completa ? `Leitura completa: ${n.toLocaleString('pt-BR')} cards lidos.` : 'Atualização: nada mudou desde a última leitura.';
+      S.ajustesLineChat = { ...S.ajustesLineChat, ultimaEm: now(), ultimaOk: true, ultimaMsg: mensagem, ...(completa ? { ultimaCompletaEm: now() } : {}) };
+      audit('settings_linechat_sync', 'settings', `${S.me?.name} sincronizou os chamados do LineChat agora`, 'linechat');
+      return { ok: true, mensagem, tipo: completa ? 'completa' : 'recente', lidos: completa ? n : 0, novos: 0, movimentos: 0, removidos: 0 };
+    },
+  },
+  chamados: {
+    async opcoes() {
+      await wait(80); requirePerm('support.read');
+      const { cards, ctx, movimentos } = chamadosDemo();
+      const a = S.ajustesLineChat;
+      return {
+        configurado: a.ativo && !!a.painelId, painelId: a.painelId, painelNome: a.painelNome, appUrl: a.appUrl,
+        linkDoPainel: a.painelId ? `${a.appUrl}/panels/${a.painelId}` : null,
+        sincronizadoEm: a.ultimaEm, ultimaOk: a.ultimaOk, ultimaMsg: a.ultimaMsg, historicoDesde: a.inicioEm,
+        totalCards: cards.length, movimentosRegistrados: movimentos,
+        etapas: ctx.etapas, campos: camposDeLista(ctx.campos).map((c) => ({ key: c.key, name: c.name, multiplo: c.type === 'MULTISELECT', options: c.options })),
+        etiquetas: [...ctx.etiquetas].sort((x, y) => x.name.localeCompare(y.name, 'pt-BR')),
+        responsaveis: [...new Set(cards.map((c) => c.responsavel).filter((x): x is string => !!x))].sort((x, y) => x.localeCompare(y, 'pt-BR')),
+        vazio: VAZIO,
+      };
+    },
+    async resumo(q) {
+      await wait(90); requirePerm('support.read');
+      const { cards, ctx } = chamadosDemo();
+      return resumirChamados(cards, FiltrosChamadosSchema.parse(q), { ...ctx, agora: new Date() });
+    },
+    async lista(q) {
+      await wait(90); requirePerm('support.read');
+      const { cards, ctx } = chamadosDemo();
+      return listarChamados(cards, ListaChamadosSchema.parse(q), { ...ctx, agora: new Date() }, linkDemo);
     },
   },
   data: {

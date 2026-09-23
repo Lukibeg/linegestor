@@ -1,6 +1,6 @@
 # Ingline Gestão
 
-Cadastro central da Ingline Systems: **clientes e produtos assinados**, **servidores e acessos**, **numeração (circuitos e DIDs)** e **equipamentos**. Substitui o Nexus.
+Cadastro central da Ingline Systems: **clientes e produtos assinados**, **servidores e acessos**, **numeração (circuitos e DIDs)**, **equipamentos**, **projetos** e os **chamados de suporte** (uma cópia do painel do LineChat, no lugar do Grafana). Substitui o Nexus.
 
 > Este arquivo é a porta de entrada. Ele explica **o que é cada pasta** em português, para quem não programa.
 > A explicação visual do sistema está em `docs/arquitetura.html` (abra no navegador).
