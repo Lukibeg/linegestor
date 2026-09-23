@@ -391,6 +391,21 @@ export const AjustesAvisosSchema = z.object({
   token: z.string().max(2000).optional(),
 });
 
+/**
+ * Chamados do LineChat: de onde ler. O token vai para o cofre; vazio = manter o que já está lá.
+ * O painel é escolhido numa lista que o próprio LineChat devolve (ver /settings/linechat/paineis).
+ */
+export const AjustesLineChatSchema = z.object({
+  ativo: z.boolean(),
+  /** Endereço da API (o do LineChat é https://api.inglinechat.com.br) */
+  url: z.string().trim().url('Endereço inválido (ex.: https://api.inglinechat.com.br)').max(300),
+  /** Endereço onde a equipe abre os cards, para o link da tabela (https://inglinechat.com.br) */
+  appUrl: z.string().trim().url('Endereço inválido (ex.: https://inglinechat.com.br)').max(300),
+  painelId: z.string().trim().max(80).default(''),
+  painelNome: z.string().trim().max(200).default(''),
+  token: z.string().trim().max(2000).optional(),
+});
+
 /** Desligar a verificação em duas etapas exige digitar a própria senha de novo. */
 export const DesligarSegundaEtapaSchema = z.object({
   password: z.string().min(1, 'Informe a sua senha'),

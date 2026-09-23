@@ -41,6 +41,18 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [release_note_items](#release_note_items) — Um item da nota: o cartão que a pessoa vê, um por vez.
 - [release_note_images](#release_note_images) — O print de um item, no próprio banco (como a logo do cliente e a foto do modelo).
 - [release_note_reads](#release_note_reads) — "Fulano leu a nota da rodada 23 em tal dia." Uma linha por pessoa × nota.
+- [projects](#projects) — Um projeto é uma tarefa que percorre VÁRIOS clientes até acabar ("trocar o áudio da URA de todos os clientes com PBX").
+- [project_steps](#project_steps) — Uma etapa (coluna) do projeto.
+- [project_clients](#project_clients) — Um cliente dentro do projeto: a linha que o técnico trabalha.
+- [project_checks](#project_checks) — O que foi marcado numa etapa, para um cliente: "fulano marcou, em tal dia".
+- [project_comments](#project_comments) — Um comentário.
+- [project_attachments](#project_attachments) — Um anexo: planilha, documento, print, áudio da URA — qualquer formato, até o limite da tela.
+- [linechat_steps](#linechat_steps) — As etapas (colunas) do painel, na ordem em que aparecem no Kanban.
+- [linechat_fields](#linechat_fields) — Os campos personalizados do painel (Cliente, Produto, Assunto, Tipo de chamado…).
+- [linechat_tags](#linechat_tags) — As etiquetas do painel (P/ Alta, NIA - ERRO, StandBy…), com a cor de lá.
+- [linechat_cards](#linechat_cards) — Um chamado (card do LineChat), do jeito que ele estava na última sincronização.
+- [linechat_card_moves](#linechat_card_moves) — Cada vez que um chamado mudou de etapa.
+- [linechat_sync_runs](#linechat_sync_runs) — O registro das sincronizações: quando rodou, o que leu, o que mudou e se deu erro.
 
 
 ---
@@ -431,4 +443,180 @@ O print de um item, no próprio banco (como a logo do cliente e a foto do modelo
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
 | `read_at` | data e hora | — | obrigatório |
+
+
+---
+
+# 6. PROJETOS
+
+## projects
+
+Um projeto é uma tarefa que percorre VÁRIOS clientes até acabar ("trocar o áudio da URA de todos os clientes com PBX"). O que define o projeto: o objetivo, o prazo e as ETAPAS — as mesmas para todo cliente da lista. Quem faz o trabalho vai marcando etapa por etapa; o andamento é contado a partir dessas marcas.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | Como a equipe chama o projeto ("Áudio novo das URAs") | obrigatório |
+| `goal` | texto | O que se quer alcançar e por quê — o que a pessoa lê antes de começar | — |
+| `status` | texto | aberto = em andamento · concluido = acabou · cancelado = não vai acontecer | obrigatório · padrão: 'aberto' |
+| `due_date` | texto | Data-alvo do projeto inteiro (AAAA-MM-DD). Passou e ainda tem cliente aberto = atrasado. | — |
+| `owner_id` | texto | Responsável pelo projeto como um todo (quem cobra) | liga com **users** |
+| `closed_at` | data e hora | Quando foi dado por encerrado | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## project_steps
+
+Uma etapa (coluna) do projeto. Vale para todos os clientes da lista, na mesma ordem. São dois tipos: - **caixinha** (`check`): feito ou não feito, o caso mais comum; - **lista de opções** (`escolha`): a pessoa escolhe um rótulo colorido ("Sem necessidade · Pendente · Mensagem enviada · Configuração realizada"), como as colunas de situação que a equipe já usava na planilha. As opções ficam em `options`: `[{ id, label, tone, conclui }]`. `tone` é a cor (as mesmas do sistema) e `conclui` diz se aquela opção **fecha** a etapa — é o que faz "Sem necessidade" e "Configuração realizada" contarem como resolvido, e "Pendente" não. O `id` é estável: trocar o rótulo não perde o que já foi escolhido.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `title` | texto | O que fazer ("Gravar o áudio") ou o nome da coluna ("Situação do contato") | obrigatório |
+| `kind` | texto | check = caixinha · escolha = lista de opções | obrigatório · padrão: 'check' |
+| `options` | JSON | As opções, quando `kind` é "escolha" | obrigatório · padrão: [] |
+| `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
+
+## project_clients
+
+Um cliente dentro do projeto: a linha que o técnico trabalha. `status` é a situação daquele cliente no projeto: pendente · andamento · travado · concluido · nao_se_aplica Ela anda sozinha conforme as etapas são marcadas (primeira marca → andamento, todas → concluído); "travado" e "não se aplica" são escolhas de gente, e "travado" exige dizer o motivo.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `assignee_id` | texto | Quem ficou de fazer este cliente | liga com **users** |
+| `status` | texto | — | obrigatório · padrão: 'pendente' |
+| `blocked_reason` | texto | Por que está parado — obrigatório quando o status é "travado" | — |
+| `done_at` | data e hora | Quando fechou (concluído ou não se aplica) | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+
+## project_checks
+
+O que foi marcado numa etapa, para um cliente: "fulano marcou, em tal dia". Sem linha = ainda não mexeram naquela etapa. Em etapa de **caixinha**, a linha existir já quer dizer "feito" e `value` fica nulo. Em **lista de opções**, `value` guarda o id da opção escolhida.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `value` | texto | O id da opção escolhida (só em etapa de lista); nulo na caixinha | — |
+| `done_by_id` | texto | — | liga com **users** |
+| `done_at` | data e hora | — | obrigatório |
+
+## project_comments
+
+Um comentário. Sem `projectClientId` é um recado do projeto inteiro; com ele, é conversa sobre aquele cliente ("liguei, pediram para voltar semana que vem").
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `user_id` | texto | — | liga com **users** |
+| `body` | texto | — | obrigatório |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## project_attachments
+
+Um anexo: planilha, documento, print, áudio da URA — qualquer formato, até o limite da tela. Fica no próprio banco (como a logo do cliente), então entra no backup junto com o resto; por isso o limite de tamanho é baixo de propósito. `fileName` é o nome com que a pessoa baixa.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `file_name` | texto | — | obrigatório |
+| `mime_type` | texto | — | obrigatório |
+| `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
+| `data_base64` | texto | — | obrigatório |
+| `uploaded_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+
+---
+
+# 7. CHAMADOS DO LINECHAT
+
+## linechat_steps
+
+As etapas (colunas) do painel, na ordem em que aparecem no Kanban.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+
+## linechat_fields
+
+Os campos personalizados do painel (Cliente, Produto, Assunto, Tipo de chamado…). A tela monta um filtro e um gráfico para cada campo de lista, lendo daqui — campo novo no LineChat aparece sozinho, sem mexer no código.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+
+## linechat_tags
+
+As etiquetas do painel (P/ Alta, NIA - ERRO, StandBy…), com a cor de lá.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+
+## linechat_cards
+
+Um chamado (card do LineChat), do jeito que ele estava na última sincronização. Três momentos que a tela usa: - `createdAt` — quando o chamado foi aberto (o que o Grafana contava); - `closedAt` — quando ele chegou numa etapa final. Nos chamados que já estavam fechados antes da primeira sincronização não dá para saber a hora exata (a API não entrega o histórico): usamos a última alteração do card e marcamos `closedEstimated`; - `removedAt` — o card sumiu do LineChat (excluído lá). Some das contas, mas não é apagado.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | O id do card no LineChat | chave primária |
+| `panel_id` | texto | O painel de onde o card veio | obrigatório |
+| `number` | número inteiro | O número sequencial do card (3607) | — |
+| `key` | texto | O código que a equipe fala ("IS-3607") | — |
+| `title` | texto | — | obrigatório · padrão: '' |
+| `description` | texto | — | — |
+| `step_id` | texto | A etapa atual (nula quando o card está arquivado: o LineChat não informa) | — |
+| `step_title` | texto | O nome da etapa atual, guardado junto para a etapa apagada não virar "?" | — |
+| `step_phase` | texto | INITIAL · INTERMEDIATE · FINAL — em que ponto do fluxo a etapa está | — |
+| `status` | texto | OPEN = ativo no Kanban · ARCHIVED = arquivado lá (WON/LOST só existem em painel de vendas) | obrigatório · padrão: 'OPEN' |
+| `responsible_id` | texto | O responsável no LineChat (id e nome; nulo = sem responsável) | — |
+| `responsible_name` | texto | — | — |
+| `due_date` | data e hora | O vencimento que a equipe pôs no card | — |
+| `is_overdue` | sim/não | O LineChat diz se o card está vencido | obrigatório · padrão: false |
+| `tag_ids` | texto | As etiquetas do card (ids de `linechat_tags`) | obrigatório · padrão: [] · lista |
+| `created_at` | data e hora | Quando o chamado foi aberto no LineChat | obrigatório |
+| `updated_at` | data e hora | A última alteração do card no LineChat | obrigatório |
+| `closed_at` | data e hora | Quando chegou numa etapa final (nulo = ainda aberto, ou reaberto depois) | — |
+| `closed_estimated` | sim/não | true = `closedAt` é a última alteração do card, não a hora exata (fechado antes de sincronizarmos) | obrigatório · padrão: false |
+| `archived_at` | data e hora | Quando o card foi arquivado no LineChat (a hora em que percebemos) | — |
+| `removed_at` | data e hora | O card sumiu do LineChat na conferência completa | — |
+| `first_seen_at` | data e hora | Quando a sincronização viu este card pela primeira vez | obrigatório |
+| `last_seen_at` | data e hora | Última vez que uma conferência completa encontrou o card lá | obrigatório |
+
+## linechat_card_moves
+
+Cada vez que um chamado mudou de etapa. É o que a API do LineChat não entrega, então nós guardamos: a sincronização compara a etapa que o card tem agora com a que tinha antes. É daqui que sai o "quanto tempo ficou no N1". A primeira vez que um card aparece também vira uma linha (sem etapa de origem): - card aberto depois que a sincronização começou → a hora é a da abertura, exata; - card que já existia → não se sabe desde quando está naquela etapa: `estimated` = true.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `from_step_id` | texto | A etapa de onde saiu (nula na primeira vez que o card foi visto) | — |
+| `from_step_title` | texto | — | — |
+| `to_step_id` | texto | A etapa para onde foi | — |
+| `to_step_title` | texto | — | — |
+| `at` | data e hora | Quando a mudança aconteceu: a hora da alteração do card no LineChat | obrigatório |
+| `estimated` | sim/não | true = não sabemos a hora exata (card que já existia antes da primeira sincronização) | obrigatório · padrão: false |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+
+## linechat_sync_runs
+
+O registro das sincronizações: quando rodou, o que leu, o que mudou e se deu erro. A de minuto em minuto só vira linha quando mudou alguma coisa ou deu erro — senão seriam 1.440 linhas por dia dizendo "nada novo". Linhas com mais de 90 dias são apagadas sozinhas.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `kind` | texto | completa = leu o painel inteiro · recente = só o que mudou desde a última | obrigatório |
+| `trigger` | texto | agendada (automática) · manual (botão "Sincronizar agora") | obrigatório · padrão: 'agendada' |
+| `started_at` | data e hora | — | obrigatório |
+| `finished_at` | data e hora | — | — |
+| `ok` | sim/não | — | obrigatório · padrão: false |
+| `message` | texto | O resultado em uma frase, ou o erro | — |
+| `cards_read` | número inteiro | Quantos cards vieram do LineChat | obrigatório · padrão: 0 |
+| `cards_new` | número inteiro | Quantos eram novos | obrigatório · padrão: 0 |
+| `moves` | número inteiro | Quantos mudaram de etapa | obrigatório · padrão: 0 |
+| `cards_removed` | número inteiro | Quantos sumiram do LineChat (só na completa) | obrigatório · padrão: 0 |
+| `user_id` | texto | Quem apertou o botão (nulo na automática) | liga com **users** |
 

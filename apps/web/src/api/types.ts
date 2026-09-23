@@ -20,6 +20,35 @@ export type AjustesAvisos = {
   ultimoTesteEm: string | null; ultimoTesteOk: boolean | null; ultimoTesteMsg: string | null; temToken: boolean;
 };
 
+/** Administração › Ajustes › Chamados do LineChat. O token nunca volta: só `temToken`. */
+export type AjustesLineChat = {
+  ativo: boolean; url: string; appUrl: string; painelId: string; painelNome: string; temToken: boolean;
+  /** a primeira leitura completa: dali em diante o histórico de etapas tem hora exata */
+  inicioEm: string | null;
+  ultimaEm: string | null; ultimaOk: boolean | null; ultimaMsg: string | null; ultimaCompletaEm: string | null;
+  totais: { cards: number; ativos: number; arquivados: number; movimentos: number };
+  execucoes: Array<{ id: string; kind: string; trigger: string; startedAt: string; finishedAt: string | null; ok: boolean; message: string | null }>;
+};
+export type PainelLineChat = { id: string; title: string; key: string | null; type: string | null };
+export type ResultadoSincronizacao = { ok: boolean; mensagem: string; tipo: string; lidos: number; novos: number; movimentos: number; removidos: number };
+
+/** Chamados: o que a tela precisa para montar os filtros e dizer se a leitura está em dia. */
+export type OpcoesChamados = {
+  configurado: boolean;
+  painelId: string; painelNome: string; appUrl: string; linkDoPainel: string | null;
+  sincronizadoEm: string | null; ultimaOk: boolean | null; ultimaMsg: string | null;
+  historicoDesde: string | null;
+  totalCards: number; movimentosRegistrados: number;
+  etapas: Array<{ id: string; title: string; position: number; isInitial: boolean; isFinal: boolean }>;
+  campos: Array<{ key: string; name: string; multiplo: boolean; options: string[] }>;
+  etiquetas: Array<{ id: string; name: string; color: string | null }>;
+  responsaveis: string[];
+  vazio: string;
+};
+export type { ResumoChamados, LinhaChamado, ItemRanking, Kpi as KpiChamados, PontoSerie, ItemPainel, FormaGrafico } from '@gestor/shared';
+/** A arrumação da tela de Chamados, igual para a equipe toda (vazia = a de fábrica). */
+export type PainelChamados = { itens: import('@gestor/shared').ItemPainel[]; atualizadoEm: string | null; atualizadoPor: string | null };
+
 export type ProductChip = { code: string; name: string; color: string };
 export type Links = { web: string | null; ssh: string | null; fop2: string | null };
 

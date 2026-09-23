@@ -1,28 +1,31 @@
 /**
- * Administração › Ajustes: as duas integrações que o sistema usa para cuidar de si mesmo.
+ * Administração › Ajustes: as integrações do sistema.
  *
  *  - **Backup no Google Drive**: para onde a cópia diária sobe.
  *  - **Avisos**: para onde o sistema grita quando cai ou quando o backup falha.
+ *  - **Chamados do LineChat**: de onde vêm os chamados da tela de Chamados (o token e o painel).
  *
  * Tudo se preenche aqui, não em arquivo no servidor. Cada cartão explica o que é, o que preencher
  * e tem um botão de testar que dá a resposta na hora — nada de salvar e torcer.
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, CloudUpload, FileKey, MessageSquare, TriangleAlert, Upload } from 'lucide-react';
+import { CheckCircle2, CloudUpload, FileKey, Headset, MessageSquare, TriangleAlert, Upload } from 'lucide-react';
 import { api } from '../../api/index.js';
-import type { AjustesAvisos, AjustesBackup } from '../../api/types.js';
+import type { AjustesAvisos, AjustesBackup, AjustesLineChat, PainelLineChat } from '../../api/types.js';
 import { Campo, Carregando, Chip, Spinner, Toggle, mensagemErro, useToast } from '../../components/ui/index.js';
 import { data } from '../../lib/format.js';
 
 export function Ajustes() {
   const backup = useQuery({ queryKey: ['settings', 'backup'], queryFn: () => api.settings.backup() });
   const avisos = useQuery({ queryKey: ['settings', 'alerts'], queryFn: () => api.settings.alerts() });
-  if (backup.isLoading || avisos.isLoading) return <Carregando />;
+  const linechat = useQuery({ queryKey: ['settings', 'linechat'], queryFn: () => api.settings.linechat() });
+  if (backup.isLoading || avisos.isLoading || linechat.isLoading) return <Carregando />;
   return (
     <div className="flex flex-col gap-4 max-w-3xl">
       <CartaoBackup inicial={backup.data!} />
       <CartaoAvisos inicial={avisos.data!} />
+      <CartaoLineChat inicial={linechat.data!} />
     </div>
   );
 }
@@ -240,6 +243,124 @@ function CartaoAvisos({ inicial }: { inicial: AjustesAvisos }) {
 
       <Resultado r={res} />
       <Ultimo rotulo="Último teste" em={inicial.ultimoTesteEm} ok={inicial.ultimoTesteOk} msg={inicial.ultimoTesteMsg} />
+    </Cartao>
+  );
+}
+
+// ---------- chamados do LineChat ----------
+
+function CartaoLineChat({ inicial }: { inicial: AjustesLineChat }) {
+  const qc = useQueryClient(); const toast = useToast();
+  const [f, setF] = useState({ ativo: inicial.ativo, url: inicial.url, appUrl: inicial.appUrl, painelId: inicial.painelId, painelNome: inicial.painelNome });
+  const [token, setToken] = useState('');
+  const [paineis, setPaineis] = useState<PainelLineChat[] | null>(null);
+  const [busy, setBusy] = useState<'' | 'salvar' | 'testar' | 'paineis' | 'sync' | 'completa'>('');
+  const [res, setRes] = useState<{ ok: boolean; mensagem: string } | null>(null);
+  useEffect(() => { setF({ ativo: inicial.ativo, url: inicial.url, appUrl: inicial.appUrl, painelId: inicial.painelId, painelNome: inicial.painelNome }); }, [inicial]);
+
+  const atualizar = () => Promise.all([qc.invalidateQueries({ queryKey: ['settings', 'linechat'] }), qc.invalidateQueries({ queryKey: ['chamados'] })]);
+  const rodar = async (qual: typeof busy, fn: () => Promise<{ ok: boolean; mensagem: string } | void>) => {
+    setBusy(qual); setRes(null);
+    try { const r = await fn(); if (r) setRes(r); await atualizar(); }
+    catch (e) { setRes({ ok: false, mensagem: mensagemErro(e) }); }
+    finally { setBusy(''); }
+  };
+
+  const salvar = () => rodar('salvar', async () => {
+    await api.settings.saveLinechat({ ...f, token: token || undefined });
+    setToken('');
+    toast.push('ok', 'Ajustes do LineChat salvos');
+  });
+  const carregarPaineis = () => rodar('paineis', async () => {
+    const lista = await api.settings.paineisLinechat();
+    setPaineis(lista);
+    // o painel de suporte costuma ser o óbvio: já deixa escolhido se ainda não houver nenhum
+    if (!f.painelId) { const p = lista.find((x) => /suporte/i.test(x.title)); if (p) setF((a) => ({ ...a, painelId: p.id, painelNome: p.title })); }
+    return { ok: true, mensagem: `${lista.length} painéis encontrados. Escolha o de suporte e clique em Salvar.` };
+  });
+  const sincronizar = (completa: boolean) => rodar(completa ? 'completa' : 'sync', () => api.settings.syncLinechat(completa));
+
+  const opcoes = paineis ?? (f.painelId ? [{ id: f.painelId, title: f.painelNome || f.painelId, key: null, type: null }] : []);
+  const salvo = inicial.temToken && !!inicial.painelId;
+  const nf = (n: number) => n.toLocaleString('pt-BR');
+
+  return (
+    <Cartao icone={<Headset size={18} />} titulo="Chamados do LineChat" ligado={inicial.ativo}>
+      <Explicacao>
+        <p>
+          A tela de <b>Chamados</b> mostra os chamados de suporte que a equipe abre no LineChat — o que o Grafana
+          mostrava. O Gestor guarda uma cópia do painel: na primeira vez lê tudo, e depois, <b>a cada minuto</b>, só o
+          que mudou. De madrugada relê o painel inteiro para conferir.
+        </p>
+        <p>
+          Ao guardar a cópia, o Gestor também anota <b>cada vez que um chamado muda de etapa</b>, com a hora. O LineChat
+          não entrega esse histórico pela API; é daqui que vai sair o tempo em cada nível (N1, N2, N3). Ele vale a partir
+          da primeira leitura.
+        </p>
+        <p>
+          A chave de API se gera no LineChat, em <b>Integrações › Token</b>. Ela fica cifrada no cofre e não aparece de
+          volta na tela.
+        </p>
+      </Explicacao>
+
+      <div className="flex flex-col gap-3">
+        <label className="flex items-center gap-2.5 text-sm cursor-pointer">
+          <Toggle checked={f.ativo} onChange={(v) => setF({ ...f, ativo: v })} /> Ler os chamados do LineChat a cada minuto
+        </label>
+
+        <Campo label="Chave de API do LineChat" dica={inicial.temToken ? 'já existe uma guardada; preencha só para trocar' : 'começa com pn_ — fica cifrada no cofre'}>
+          <input className="input font-mono text-[13px]" id="linechat-token" type="password" autoComplete="off" placeholder={inicial.temToken ? '••••••••  (guardada)' : 'pn_…'} value={token} onChange={(e) => setToken(e.target.value)} />
+        </Campo>
+
+        <Campo label="Painel de onde ler" dica={inicial.temToken ? 'clique em "Buscar painéis" para ver a lista do LineChat' : 'salve a chave primeiro; depois a lista de painéis aparece aqui'}>
+          <div className="flex gap-2 flex-wrap">
+            <select className="input flex-1 min-w-[220px]" id="linechat-painel" value={f.painelId}
+              onChange={(e) => { const p = opcoes.find((x) => x.id === e.target.value); setF({ ...f, painelId: e.target.value, painelNome: p?.title ?? '' }); }}>
+              <option value="">— escolha —</option>
+              {opcoes.map((p) => <option key={p.id} value={p.id}>{p.title}{p.key ? ` (${p.key})` : ''}</option>)}
+            </select>
+            <button className="btn-secondary" disabled={!inicial.temToken || !!busy} onClick={carregarPaineis}>{busy === 'paineis' ? <Spinner /> : 'Buscar painéis'}</button>
+          </div>
+        </Campo>
+
+        <details className="text-sm">
+          <summary className="cursor-pointer text-muted">Endereços (só mude se o LineChat mudar de endereço)</summary>
+          <div className="grid gap-3 sm:grid-cols-2 mt-3">
+            <Campo label="API do LineChat"><input className="input font-mono text-[13px]" id="linechat-url" value={f.url} onChange={(e) => setF({ ...f, url: e.target.value })} /></Campo>
+            <Campo label="Onde a equipe abre os cards" dica="para o link de cada chamado"><input className="input font-mono text-[13px]" id="linechat-app" value={f.appUrl} onChange={(e) => setF({ ...f, appUrl: e.target.value })} /></Campo>
+          </div>
+        </details>
+
+        <div className="flex gap-2 flex-wrap">
+          <button className="btn-primary" disabled={!!busy} onClick={salvar}>{busy === 'salvar' ? <Spinner className="text-white" /> : 'Salvar'}</button>
+          <button className="btn-secondary" disabled={!!busy || !inicial.temToken} onClick={() => rodar('testar', () => api.settings.testLinechat())}>{busy === 'testar' ? <Spinner /> : 'Testar agora'}</button>
+          <button className="btn-secondary" disabled={!!busy || !salvo} onClick={() => sincronizar(false)} title="Busca agora o que mudou (a primeira vez lê tudo)">{busy === 'sync' ? <Spinner /> : 'Sincronizar agora'}</button>
+          <button className="btn-ghost" disabled={!!busy || !salvo} onClick={() => sincronizar(true)} title="Relê o painel inteiro — leva cerca de um minuto">{busy === 'completa' ? <><Spinner /> lendo tudo…</> : 'Reler tudo'}</button>
+        </div>
+        <p className="text-[12px] text-muted -mt-1">O teste confere a chave e o painel sem gravar nada. "Reler tudo" leva cerca de um minuto (são 100 cards por vez).</p>
+      </div>
+
+      <Resultado r={res} />
+      <Ultimo rotulo="Última leitura" em={inicial.ultimaEm} ok={inicial.ultimaOk} msg={inicial.ultimaMsg} />
+      {inicial.totais.cards > 0 && (
+        <p className="text-[12.5px] text-muted mt-1">
+          Guardados: <b className="text-ink-2 tnum">{nf(inicial.totais.cards)}</b> chamados ({nf(inicial.totais.ativos)} no Kanban, {nf(inicial.totais.arquivados)} arquivados)
+          {' '}e <b className="text-ink-2 tnum">{nf(inicial.totais.movimentos)}</b> mudanças de etapa registradas
+          {inicial.inicioEm ? <> desde {data(inicial.inicioEm, true)}</> : null}.
+        </p>
+      )}
+      {inicial.execucoes.length > 0 && (
+        <details className="mt-2 text-[12.5px]">
+          <summary className="cursor-pointer text-muted">Últimas leituras registradas</summary>
+          <ul className="mt-2 flex flex-col gap-1">
+            {inicial.execucoes.map((x) => (
+              <li key={x.id} className={x.ok ? 'text-ink-2' : 'text-bad'}>
+                <span className="tnum">{data(x.startedAt, true)}</span> · {x.kind === 'completa' ? 'completa' : 'recente'}{x.trigger === 'manual' ? ' (botão)' : ''} — {x.message}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </Cartao>
   );
 }

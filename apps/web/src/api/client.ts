@@ -117,6 +117,11 @@ export const realApi: Api = {
     alerts: () => http('GET', '/settings/alerts'),
     saveAlerts: (d) => http('PUT', '/settings/alerts', d),
     testAlerts: () => http('POST', '/settings/alerts/test'),
+    linechat: () => http('GET', '/settings/linechat'),
+    saveLinechat: (d) => http('PUT', '/settings/linechat', d),
+    testLinechat: () => http('POST', '/settings/linechat/test'),
+    paineisLinechat: () => http('GET', '/settings/linechat/paineis'),
+    syncLinechat: (completa) => http('POST', '/settings/linechat/sync', { completa }),
   },
   data: {
     preview: (d) => http('POST', '/data/import/preview', d),
@@ -136,6 +141,13 @@ export const realApi: Api = {
     atualizar: (id, d) => http('PATCH', `/release-notes/${id}`, d),
     publicar: (id, publicar) => http('POST', `/release-notes/${id}/publish`, { publicar }),
     remover: (id) => http('DELETE', `/release-notes/${id}`),
+  },
+  chamados: {
+    opcoes: () => http('GET', '/chamados/opcoes'),
+    resumo: (q) => http('GET', `/chamados/resumo${qs(q)}`),
+    lista: (q) => http('GET', `/chamados/lista${qs(q)}`),
+    painel: () => http('GET', '/chamados/painel'),
+    salvarPainel: (itens) => http('PUT', '/chamados/painel', { itens }),
   },
   projetos: {
     lista: (q) => http('GET', `/projects${qs(q ?? {})}`),

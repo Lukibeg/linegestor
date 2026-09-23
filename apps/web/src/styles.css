@@ -9,6 +9,11 @@
   --accent: #2457d6; --accent-soft: #e3eafb; --accent-ink: #1a3fa0;
   --signal: #d9781f; --signal-soft: #fbebd9;
   --ok: #1f8f62; --ok-soft: #ddf3e8; --bad: #c93b3b; --bad-soft: #f9e0e0;
+  /* fatias da pizza, NESTA ORDEM (a ordem é o que separa uma cor da vizinha para quem não
+     distingue cores; conferida com o validador de paleta, nos dois temas). Nunca inventar a 7ª:
+     o que passa de 6 vira "Outros". */
+  --pz-1: #2a78d6; --pz-2: #eb6834; --pz-3: #1baf7a; --pz-4: #eda100; --pz-5: #e87ba4; --pz-6: #008300;
+  --pz-outros: #9aa6b5; --pz-vazio: #d9e0e9;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -18,6 +23,8 @@
     --accent: #6c9bff; --accent-soft: #1b2a4d; --accent-ink: #a9c3ff;
     --signal: #f0a052; --signal-soft: #3a2a14;
     --ok: #3fbf8a; --ok-soft: #153125; --bad: #f06a6a; --bad-soft: #3a1a1a;
+    --pz-1: #3987e5; --pz-2: #d95926; --pz-3: #199e70; --pz-4: #c98500; --pz-5: #d55181; --pz-6: #008300;
+    --pz-outros: #6b7a8c; --pz-vazio: #3c4a5b;
     color-scheme: dark;
   }
 }
@@ -27,6 +34,8 @@
   --accent: #6c9bff; --accent-soft: #1b2a4d; --accent-ink: #a9c3ff;
   --signal: #f0a052; --signal-soft: #3a2a14;
   --ok: #3fbf8a; --ok-soft: #153125; --bad: #f06a6a; --bad-soft: #3a1a1a;
+  --pz-1: #3987e5; --pz-2: #d95926; --pz-3: #199e70; --pz-4: #c98500; --pz-5: #d55181; --pz-6: #008300;
+  --pz-outros: #6b7a8c; --pz-vazio: #3c4a5b;
   color-scheme: dark;
 }
 

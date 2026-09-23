@@ -254,15 +254,31 @@ export function Abas<T extends string>({ abas, atual, onChange }: { abas: Array<
   );
 }
 
-export function Kpi({ label, valor, sub, tone = 'neutral' }: { label: string; valor: ReactNode; sub?: ReactNode; tone?: 'neutral' | 'accent' | 'signal' | 'ok' | 'bad' }) {
+/**
+ * Um número de destaque. Com `onClick`, vira botão (nos Chamados, clicar filtra a tela por ele);
+ * `ativo` = é ele que está filtrando agora (fica com a borda da cor de destaque).
+ */
+export function Kpi({ label, valor, sub, tone = 'neutral', onClick, ativo = false, titulo }: {
+  label: string; valor: ReactNode; sub?: ReactNode; tone?: 'neutral' | 'accent' | 'signal' | 'ok' | 'bad';
+  onClick?: () => void; ativo?: boolean; titulo?: string;
+}) {
   const bar = { neutral: 'bg-line-strong', accent: 'bg-accent', signal: 'bg-signal', ok: 'bg-ok', bad: 'bg-bad' }[tone];
-  return (
-    <div className="card p-4 relative overflow-hidden">
+  const conteudo = (
+    <>
       <span className={`absolute left-0 top-3 bottom-3 w-1 rounded-r ${bar}`} />
       <div className="eyebrow">{label}</div>
       <div className="font-display text-2xl font-semibold tnum mt-1">{valor}</div>
       {sub && <div className="text-muted text-[12.5px] mt-0.5">{sub}</div>}
-    </div>
+    </>
+  );
+  if (!onClick) return <div className="card p-4 relative overflow-hidden" title={titulo}>{conteudo}</div>;
+  return (
+    <button
+      type="button" onClick={onClick} aria-pressed={ativo} title={titulo}
+      className={`card p-4 relative overflow-hidden text-left w-full transition hover:border-line-strong hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${ativo ? 'border-accent ring-1 ring-accent bg-accent-soft' : ''}`}
+    >
+      {conteudo}
+    </button>
   );
 }
 

@@ -6,7 +6,7 @@
  *  O comentário logo acima explica o que aquilo guarda — em português, para quem não programa.
  *
  *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico · 5. Novidades
- *          6. Projetos
+ *          6. Projetos · 7. Chamados do LineChat (cópia só de leitura, alimentada pela sincronização)
  *
  *  Convenções:
  *   - dinheiro é guardado em CENTAVOS inteiros (R$ 603,38 → 60338), sem arredondamento
@@ -561,7 +561,7 @@ export const users = pgTable('users', {
  *    do Google e o token da API de avisos
  */
 export const settings = pgTable('settings', {
-  /** 'backup' | 'avisos' */
+  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) */
   id: text('id').primaryKey(),
   value: text('value').notNull().default('{}'),
   secretId: text('secret_id').references(() => secrets.id),
@@ -856,6 +856,198 @@ export const projectAttachments = pgTable(
     deletedAt: deletedAt(),
   },
   (t) => [index('project_attachments_project_idx').on(t.projectId), index('project_attachments_client_idx').on(t.projectClientId)],
+);
+
+// ---------------------------------------------------------------------
+// 7. CHAMADOS DO LINECHAT
+// ---------------------------------------------------------------------
+//
+// Os chamados de suporte são abertos e trabalhados no LineChat (o Kanban da equipe). Estas
+// tabelas são uma CÓPIA SÓ DE LEITURA de um painel de lá, mantida pela sincronização
+// (`apps/api/src/services/linechat.ts`): a tela de Chamados lê daqui, nunca da API do LineChat
+// — a API devolve no máximo 100 cards por vez, e contar 3 mil cards a cada clique seria lento.
+//
+// Ninguém edita estas linhas pela tela. Os ids são os do próprio LineChat, para a sincronização
+// saber qual card é qual sem tabela de equivalência.
+
+/** As etapas (colunas) do painel, na ordem em que aparecem no Kanban. */
+export const linechatSteps = pgTable('linechat_steps', {
+  /** O id da etapa no LineChat */
+  id: text('id').primaryKey(),
+  /** O nome da coluna ("Chamado Em Tratativa N1") */
+  title: text('title').notNull(),
+  /** A ordem da coluna no Kanban, da esquerda para a direita */
+  position: integer('position').notNull().default(0),
+  /** Etapa onde o chamado nasce ("Novos Suporte") */
+  isInitial: boolean('is_initial').notNull().default(false),
+  /** Etapa que encerra o chamado ("Chamado Tratado", "Chamado Validado"): chegar nela = fechado */
+  isFinal: boolean('is_final').notNull().default(false),
+  /** A etapa foi arquivada ou apagada lá: continua aqui para os chamados antigos não perderem o nome */
+  archived: boolean('archived').notNull().default(false),
+  /** Última vez que a sincronização leu esta etapa */
+  syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Os campos personalizados do painel (Cliente, Produto, Assunto, Tipo de chamado…).
+ * A tela monta um filtro e um gráfico para cada campo de lista, lendo daqui — campo novo no
+ * LineChat aparece sozinho, sem mexer no código.
+ */
+export const linechatFields = pgTable('linechat_fields', {
+  /** A chave do campo no LineChat ("cliente-71", "plataforma") — é o nome dele dentro de `customFields` */
+  key: text('key').primaryKey(),
+  /** O nome que aparece na tela ("Cliente", "Produto") */
+  name: text('name').notNull(),
+  /** SINGLESELECT · MULTISELECT · TEXT · DATETIME… (o tipo que o LineChat informa) */
+  type: text('type').notNull(),
+  /** A ordem do campo no formulário do card */
+  position: integer('position').notNull().default(0),
+  /** As opções da lista, na ordem de lá (só nos campos de lista) */
+  options: jsonb('options').$type<string[]>().notNull().default([]),
+  /** O campo sumiu do painel: some dos filtros, mas o valor antigo continua nos cards */
+  archived: boolean('archived').notNull().default(false),
+  syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** As etiquetas do painel (P/ Alta, NIA - ERRO, StandBy…), com a cor de lá. */
+export const linechatTags = pgTable('linechat_tags', {
+  /** O id da etiqueta no LineChat */
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  /** A cor de fundo que o LineChat usa (ex.: "rgb(255, 153, 255)") */
+  color: text('color'),
+  archived: boolean('archived').notNull().default(false),
+  syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Um chamado (card do LineChat), do jeito que ele estava na última sincronização.
+ *
+ * Três momentos que a tela usa:
+ *  - `createdAt` — quando o chamado foi aberto (o que o Grafana contava);
+ *  - `closedAt` — quando ele chegou numa etapa final. Nos chamados que já estavam fechados antes
+ *    da primeira sincronização não dá para saber a hora exata (a API não entrega o histórico):
+ *    usamos a última alteração do card e marcamos `closedEstimated`;
+ *  - `removedAt` — o card sumiu do LineChat (excluído lá). Some das contas, mas não é apagado.
+ */
+export const linechatCards = pgTable(
+  'linechat_cards',
+  {
+    /** O id do card no LineChat */
+    id: text('id').primaryKey(),
+    /** O painel de onde o card veio */
+    panelId: text('panel_id').notNull(),
+    /** O número sequencial do card (3607) */
+    number: integer('number'),
+    /** O código que a equipe fala ("IS-3607") */
+    key: text('key'),
+    title: text('title').notNull().default(''),
+    description: text('description'),
+    /** A etapa atual (nula quando o card está arquivado: o LineChat não informa) */
+    stepId: text('step_id'),
+    /** O nome da etapa atual, guardado junto para a etapa apagada não virar "?" */
+    stepTitle: text('step_title'),
+    /** INITIAL · INTERMEDIATE · FINAL — em que ponto do fluxo a etapa está */
+    stepPhase: text('step_phase'),
+    /** OPEN = ativo no Kanban · ARCHIVED = arquivado lá (WON/LOST só existem em painel de vendas) */
+    status: text('status').notNull().default('OPEN'),
+    /** O responsável no LineChat (id e nome; nulo = sem responsável) */
+    responsibleId: text('responsible_id'),
+    responsibleName: text('responsible_name'),
+    /** O vencimento que a equipe pôs no card */
+    dueDate: timestamp('due_date', { withTimezone: true }),
+    /** O LineChat diz se o card está vencido */
+    isOverdue: boolean('is_overdue').notNull().default(false),
+    /** As etiquetas do card (ids de `linechat_tags`) */
+    tagIds: text('tag_ids').array().notNull().default([]),
+    /**
+     * Os campos personalizados, do jeito que o LineChat manda: a chave do campo → o valor
+     * (texto nos campos de escolha única, lista de textos nos de múltipla escolha).
+     */
+    customFields: jsonb('custom_fields').$type<Record<string, unknown>>().notNull().default({}),
+    /** Quando o chamado foi aberto no LineChat */
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    /** A última alteração do card no LineChat */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull(),
+    /** Quando chegou numa etapa final (nulo = ainda aberto, ou reaberto depois) */
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    /** true = `closedAt` é a última alteração do card, não a hora exata (fechado antes de sincronizarmos) */
+    closedEstimated: boolean('closed_estimated').notNull().default(false),
+    /** Quando o card foi arquivado no LineChat (a hora em que percebemos) */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /** O card sumiu do LineChat na conferência completa */
+    removedAt: timestamp('removed_at', { withTimezone: true }),
+    /** Quando a sincronização viu este card pela primeira vez */
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Última vez que uma conferência completa encontrou o card lá */
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('linechat_cards_panel_idx').on(t.panelId),
+    index('linechat_cards_created_idx').on(t.createdAt),
+    index('linechat_cards_step_idx').on(t.stepId),
+  ],
+);
+
+/**
+ * Cada vez que um chamado mudou de etapa. É o que a API do LineChat não entrega, então nós
+ * guardamos: a sincronização compara a etapa que o card tem agora com a que tinha antes.
+ * É daqui que sai o "quanto tempo ficou no N1".
+ *
+ * A primeira vez que um card aparece também vira uma linha (sem etapa de origem):
+ *  - card aberto depois que a sincronização começou → a hora é a da abertura, exata;
+ *  - card que já existia → não se sabe desde quando está naquela etapa: `estimated` = true.
+ */
+export const linechatCardMoves = pgTable(
+  'linechat_card_moves',
+  {
+    id: id(),
+    cardId: text('card_id').notNull().references(() => linechatCards.id, { onDelete: 'cascade' }),
+    /** A etapa de onde saiu (nula na primeira vez que o card foi visto) */
+    fromStepId: text('from_step_id'),
+    fromStepTitle: text('from_step_title'),
+    /** A etapa para onde foi */
+    toStepId: text('to_step_id'),
+    toStepTitle: text('to_step_title'),
+    /** Quando a mudança aconteceu: a hora da alteração do card no LineChat */
+    at: timestamp('at', { withTimezone: true }).notNull(),
+    /** true = não sabemos a hora exata (card que já existia antes da primeira sincronização) */
+    estimated: boolean('estimated').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [index('linechat_card_moves_card_idx').on(t.cardId, t.at)],
+);
+
+/**
+ * O registro das sincronizações: quando rodou, o que leu, o que mudou e se deu erro.
+ * A de minuto em minuto só vira linha quando mudou alguma coisa ou deu erro — senão seriam
+ * 1.440 linhas por dia dizendo "nada novo". Linhas com mais de 90 dias são apagadas sozinhas.
+ */
+export const linechatSyncRuns = pgTable(
+  'linechat_sync_runs',
+  {
+    id: id(),
+    /** completa = leu o painel inteiro · recente = só o que mudou desde a última */
+    kind: text('kind').notNull(),
+    /** agendada (automática) · manual (botão "Sincronizar agora") */
+    trigger: text('trigger').notNull().default('agendada'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    ok: boolean('ok').notNull().default(false),
+    /** O resultado em uma frase, ou o erro */
+    message: text('message'),
+    /** Quantos cards vieram do LineChat */
+    cardsRead: integer('cards_read').notNull().default(0),
+    /** Quantos eram novos */
+    cardsNew: integer('cards_new').notNull().default(0),
+    /** Quantos mudaram de etapa */
+    moves: integer('moves').notNull().default(0),
+    /** Quantos sumiram do LineChat (só na completa) */
+    cardsRemoved: integer('cards_removed').notNull().default(0),
+    /** Quem apertou o botão (nulo na automática) */
+    userId: text('user_id').references(() => users.id),
+  },
+  (t) => [index('linechat_sync_runs_started_idx').on(t.startedAt)],
 );
 
 // ---------------------------------------------------------------------
