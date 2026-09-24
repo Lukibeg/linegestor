@@ -10,7 +10,7 @@ import { api, logoSrc } from '../../api/index.js';
 import type { ClientDeviceLogin, ClientFull, ClientUnit, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, Identificacao, InputIp, LogoCliente, mensagemErro, Modal, Spinner, usePaginaLocal, Vazio, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, Identificacao, InputIp, LogoCliente, mensagemErro, Modal, Spinner, Toggle, usePaginaLocal, Vazio, useToast } from '../../components/ui/index.js';
 import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, diaParaIso, hojeCampoData, intervalo, MODALIDADES, paraCampoData, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { paraALista, Voltar } from '../../lib/voltar.js';
@@ -347,9 +347,13 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
  * Os números do cliente, com a marca **em uso / não usado**: o número pode estar alocado ao
  * cliente e ainda não estar em uso (reservado, aguardando configuração). Clicar na marca alterna.
  *
- * Patch 1.4: **procurar e filtrar** (número, uso, operadora, circuito, titular) sem sair da ficha —
+ * Patch 1.4: **procurar e filtrar** (número, operadora, circuito, titular) sem sair da ficha —
  * cliente grande tem 150 números — e **a observação se edita na própria linha** (clicar no texto,
  * Enter grava, Esc desiste), com a mesma permissão de alocar números.
+ *
+ * O uso é um **interruptor** ("só não usados"), no padrão do "só em aberto" dos Chamados: com
+ * duas opções só, uma lista de caixinhas era um clique a mais. Ele mostra os números que pedem
+ * atenção (alocados e ainda sem uso); os em uso são a maioria e não precisam de filtro.
  */
 function Dids({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
@@ -357,7 +361,7 @@ function Dids({ c }: { c: ClientFull }) {
   const o = useOrdenacaoLocal('numberFormatted');
   const items = q.data?.items ?? [];
   const [busca, setBusca] = useState('');
-  const [uso, setUso] = useState<string[]>([]);
+  const [soNaoUsados, setSoNaoUsados] = useState(false);
   const [operadoras, setOperadoras] = useState<string[]>([]);
   const [circuitos, setCircuitos] = useState<string[]>([]);
   const [titulares, setTitulares] = useState<string[]>([]);
@@ -375,7 +379,7 @@ function Dids({ c }: { c: ClientFull }) {
     const digitos = busca.replace(/\D/g, '');
     const texto = semAcento(busca.trim());
     return items.filter((d) => {
-      if (uso.length && !uso.includes(d.inUse ? 'sim' : 'nao')) return false;
+      if (soNaoUsados && d.inUse) return false;
       if (operadoras.length && !operadoras.includes(d.carrierName ?? SEM)) return false;
       if (circuitos.length && !circuitos.includes(d.circuitId ?? SEM)) return false;
       if (titulares.length && !titulares.includes(d.ownerClientId ?? SEM)) return false;
@@ -384,7 +388,7 @@ function Dids({ c }: { c: ClientFull }) {
       if (digitos.length >= 2 && d.number.includes(digitos)) return true;
       return semAcento(`${d.note ?? ''} ${d.circuitName ?? ''}`).includes(texto);
     });
-  }, [items, busca, uso, operadoras, circuitos, titulares]);
+  }, [items, busca, soNaoUsados, operadoras, circuitos, titulares]);
   const ordenados = ordenarLista(filtrados, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, inUse: (d) => (d.inUse ? 1 : 0), note: (d) => d.note });
   const pg = usePaginaLocal(ordenados, 100);
   const [mudando, setMudando] = useState<string | null>(null);
@@ -401,8 +405,8 @@ function Dids({ c }: { c: ClientFull }) {
   if (q.isLoading) return <Carregando />;
   if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
   const emUso = items.filter((d) => d.inUse).length;
-  const temFiltro = !!busca.trim() || uso.length > 0 || operadoras.length > 0 || circuitos.length > 0 || titulares.length > 0;
-  const limpar = () => { setBusca(''); setUso([]); setOperadoras([]); setCircuitos([]); setTitulares([]); };
+  const temFiltro = !!busca.trim() || soNaoUsados || operadoras.length > 0 || circuitos.length > 0 || titulares.length > 0;
+  const limpar = () => { setBusca(''); setSoNaoUsados(false); setOperadoras([]); setCircuitos([]); setTitulares([]); };
   const podeEditar = can('dids.assign');
   return (
     <div className="flex flex-col gap-3">
@@ -411,10 +415,13 @@ function Dids({ c }: { c: ClientFull }) {
           <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input className="input pl-8 w-[240px]" id="dids-cliente-busca" autoComplete="off" placeholder="Procurar número ou observação…" value={busca} onChange={(e) => setBusca(e.target.value)} />
         </label>
-        <FiltroEmBotao icone={Filter} nome="Uso" escolhidos={uso} onChange={setUso} grupos={[{ opcoes: [{ key: 'sim', label: 'Em uso' }, { key: 'nao', label: 'Não usado' }] }]} />
         {opcoes.operadoras.length > 1 && <FiltroEmBotao icone={Filter} nome="Operadora" escolhidos={operadoras} onChange={setOperadoras} grupos={[{ opcoes: opcoes.operadoras }]} />}
         {opcoes.circuitos.length > 1 && <FiltroEmBotao icone={Filter} nome="Circuito" escolhidos={circuitos} onChange={setCircuitos} grupos={[{ opcoes: opcoes.circuitos }]} />}
         {opcoes.titulares.length > 1 && <FiltroEmBotao icone={Filter} nome="Titular" escolhidos={titulares} onChange={setTitulares} grupos={[{ opcoes: opcoes.titulares }]} />}
+        <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Só os números alocados a este cliente que ainda não estão em uso (reservados, esperando configuração).">
+          <Toggle checked={soNaoUsados} onChange={setSoNaoUsados} />
+          só não usados <span className="text-muted tnum">({items.length - emUso})</span>
+        </label>
         {temFiltro && <button type="button" className="btn-ghost btn-sm" onClick={limpar}>Limpar filtros</button>}
         <span className="text-[12.5px] text-muted tnum ml-auto">{temFiltro ? `${filtrados.length} de ${items.length} números` : `${items.length} números`}</span>
       </div>
