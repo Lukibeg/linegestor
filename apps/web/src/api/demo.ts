@@ -315,7 +315,7 @@ function seed() {
       mods.filter((m) => m.startsWith(code + ':')).forEach((pm, k) => {
         const mcode = pm.split(':')[1]!; const mod = S.modules.find((m) => m.productId === 'p' + code && m.code === mcode)!;
         const ms: Record<string, any> = {};
-        if (mcode === 'fop2') { const f = id(); S.secrets.set(f, { label: `Senha do usuário padrão do FOP2 — ${t}`, value: 'fop2#2026' }); Object.assign(ms, { adminExtension: '1000', defaultUserPasswordSecretId: f }); }
+        if (mcode === 'fop2') { const f = id(); S.secrets.set(f, { label: `Senha do ramal admin do FOP2 — ${t}`, value: 'fop2#2026' }); Object.assign(ms, { adminExtension: '1000', adminPasswordSecretId: f }); }
         if (mcode === 'omniboard') { const a = id(), d = id(); S.secrets.set(a, { label: `Senha admin do Omniboard — ${t}`, value: 'Omni#2026' }); S.secrets.set(d, { label: `Senha padrão de usuário do Omniboard — ${t}`, value: 'Bemvindo1' }); Object.assign(ms, { adminLogin: `admin@${t.toLowerCase().replace(/\W+/g, '')}.com.br`, adminPasswordSecretId: a, userDefaultPasswordSecretId: d }); }
         S.subMods.push({ id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: daysAgo(tudoJunto ? diasDoProduto : Math.max(3, diasDoProduto - 40 - k * 75), tudoJunto ? 11 + k : 10), deactivatedAt: null, notes: null, settings: ms });
       });
@@ -710,6 +710,11 @@ const unidadesDe = (cid: string) => {
 const modMeta = (mid: string) => S.modules.find((m) => m.id === mid)!;
 /** Módulos ligados numa assinatura (ordenados como no catálogo). */
 const activeMods = (subId: string) => S.subMods.filter((m) => m.subscriptionId === subId && !m.deactivatedAt).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder);
+/** O que o cliente tem ligado: códigos dos produtos e "produto:módulo" (como o servidor, com withProducts). */
+const produtosDoCliente = (cid: string) => {
+  const subs = activeSubs(cid).slice().sort((a, b) => (S.products.find((p) => p.code === a.productCode)?.sortOrder ?? 0) - (S.products.find((p) => p.code === b.productCode)?.sortOrder ?? 0));
+  return { products: subs.map((s) => s.productCode), modules: subs.flatMap((s) => activeMods(s.id).map((m) => `${s.productCode}:${modMeta(m.moduleId).code}`)) };
+};
 const hasMod = (cid: string, product: string, mod: string) => { const s = activeSubs(cid).find((x) => x.productCode === product); return !!s && activeMods(s.id).some((m) => modMeta(m.moduleId).code === mod); };
 const links = (cid: string) => {
   const lp = activeSubs(cid).find((s) => s.productCode === 'linepbx')?.settings;
@@ -733,7 +738,7 @@ const listItem = (c: Client): ClientListItem => {
 };
 const shapeSubMod = (m: SubMod): SubscriptionModule => {
   const meta = modMeta(m.moduleId); const st = m.settings; let settings: Record<string, any> | null = null;
-  if (meta.code === 'fop2') settings = { adminExtension: st.adminExtension ?? null, defaultUserPassword: secretRef(st.defaultUserPasswordSecretId) };
+  if (meta.code === 'fop2') settings = { adminExtension: st.adminExtension ?? null, adminPassword: secretRef(st.adminPasswordSecretId) };
   else if (meta.code === 'omniboard') settings = { adminLogin: st.adminLogin ?? null, adminPassword: secretRef(st.adminPasswordSecretId), userDefaultPassword: secretRef(st.userDefaultPasswordSecretId) };
   return { id: m.id, moduleCode: meta.code, moduleName: meta.name, hasSettings: meta.hasSettings, active: !m.deactivatedAt, activatedAt: m.activatedAt, deactivatedAt: m.deactivatedAt, notes: m.notes, settings };
 };
@@ -995,7 +1000,7 @@ export const demoApi: Api = {
       if (chave.startsWith('modulo:')) { const [, pc = '', mc = ''] = chave.split(':'); valores[chave] = (c) => doProduto(c, pc)?.modules.find((m) => m.code === mc)?.activatedAt; }
       return paginate(ordenar(items, q, 'tradeName', valores), q);
     },
-    async options(q) { await wait(50); return S.clients.filter((c) => !c.deletedAt && !c.archived && (q?.includeInternal || !c.isInternal) && (!q?.productCode || activeSubs(c.id).some((s) => s.productCode === q.productCode)) && (!q?.withDevices || S.devices.some((d) => !d.deletedAt && d.clientId === c.id && d.currentModality !== 'venda'))).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode })); },
+    async options(q) { await wait(50); return S.clients.filter((c) => !c.deletedAt && !c.archived && (q?.includeInternal || !c.isInternal) && (!q?.productCode || activeSubs(c.id).some((s) => s.productCode === q.productCode)) && (!q?.withDevices || S.devices.some((d) => !d.deletedAt && d.clientId === c.id && d.currentModality !== 'venda'))).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode, ...(q?.withProducts ? produtosDoCliente(c.id) : {}) })); },
     async get(idc) { await wait(); requirePerm('records.read'); return fullClient(idc); },
     async projetos(idc) { await wait(60); requirePerm('records.read'); return projetosDoCliente(idc); },
     async create(d) { await wait(); requirePerm('records.write'); const cnpj = cnpjLimpo(String(d.cnpj ?? '')); if (!cnpjValido(cnpj)) throw new ApiError(400, 'Dados inválidos', [{ field: 'cnpj', message: 'CNPJ inválido (dígito verificador não confere)' }]); if (S.clients.some((c) => c.cnpj === cnpj)) throw bad('Já existe um cliente com este CNPJ'); const c: Client = { id: id(), tradeName: String(d.tradeName), legalName: String(d.legalName), cnpj, logoUrl: null, archived: false, isInternal: false, internalCode: null, notes: (d.notes as string) ?? null, deletedAt: null, createdAt: now(), updatedAt: now() }; S.clients.push(c); unidadesDe(c.id); audit('create', 'client', `Criou o cliente ${c.tradeName}`, c.id); return fullClient(c.id); },
@@ -1023,9 +1028,12 @@ export const demoApi: Api = {
       if (!m) { m = { id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: now(), deactivatedAt: null, notes: null, settings: {} }; S.subMods.push(m); }
       m.deactivatedAt = null; if (d.activatedAt !== undefined) m.activatedAt = dia(d.activatedAt); if (d.notes !== undefined) m.notes = d.notes as string;
       const st = (d.settings as Record<string, any>) ?? {};
-      for (const [k, v] of Object.entries(st)) if (!/password/i.test(k)) m.settings[k] = v;
+      // como o servidor: só os campos do módulo; a senha do usuário padrão do FOP2 não entra mais (1.4)
+      const CAMPOS: Record<string, string[]> = { fop2: ['adminExtension'], omniboard: ['adminLogin'] };
+      for (const [k, v] of Object.entries(st)) if ((CAMPOS[mod.code] ?? []).includes(k)) m.settings[k] = v;
       const saveSecret = (key: string, label: string) => { if (st[key]) { const sid = m!.settings[key + 'SecretId'] ?? id(); S.secrets.set(sid, { label: `${label} — ${c.tradeName}`, value: st[key] }); m!.settings[key + 'SecretId'] = sid; } };
-      saveSecret('adminPassword', 'Senha admin do Omniboard'); saveSecret('userDefaultPassword', 'Senha padrão de usuário do Omniboard'); saveSecret('defaultUserPassword', 'Senha do usuário padrão do FOP2');
+      if (mod.code === 'fop2') saveSecret('adminPassword', 'Senha do ramal admin do FOP2');
+      if (mod.code === 'omniboard') { saveSecret('adminPassword', 'Senha admin do Omniboard'); saveSecret('userDefaultPassword', 'Senha padrão de usuário do Omniboard'); }
       audit('update', 'subscription_module', `Ligou/ajustou o módulo ${mod.name} (${p.name}) no cliente ${c.tradeName}`, m.id); return fullClient(idc);
     },
     async endModule(idc, productCode, moduleCode) {

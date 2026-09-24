@@ -1,0 +1,2 @@
+ALTER TABLE "fop2_settings" ADD COLUMN "admin_password_secret_id" text;--> statement-breakpoint
+ALTER TABLE "fop2_settings" ADD CONSTRAINT "fop2_settings_admin_password_secret_id_secrets_id_fk" FOREIGN KEY ("admin_password_secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;

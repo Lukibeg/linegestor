@@ -267,7 +267,12 @@ export const fop2Settings = pgTable('fop2_settings', {
   subscriptionModuleId: text('subscription_module_id').primaryKey().references(() => subscriptionModules.id, { onDelete: 'cascade' }),
   /** Ramal/usuário do FOP2 usado para o acesso rápido */
   adminExtension: text('admin_extension'),
-  /** Senha do usuário padrão do FOP2 — no cofre */
+  /** Senha do ramal admin do FOP2 — no cofre (desde o 1.4, decisão 0032) */
+  adminPasswordSecretId: text('admin_password_secret_id').references(() => secrets.id),
+  /**
+   * Senha do usuário padrão do FOP2 — no cofre. Saiu das telas no 1.4 (decisão 0032, revendo a
+   * 0025): quem já tinha continua guardado aqui, sem aparecer; nada foi apagado.
+   */
   defaultUserPasswordSecretId: text('default_user_password_secret_id').references(() => secrets.id),
 });
 

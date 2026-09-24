@@ -2,9 +2,10 @@
  * Os pedidos da rodada de mudanças 23: login e senha de equipamentos (vários por cliente),
  * endereço e IP fixo de saída da unidade, autenticação do tronco por IP ou por login e senha,
  * DID sempre com circuito e a marca "em uso", rede padrão dos aparelhos, senha do usuário
- * padrão do FOP2, filtros de movimentação por modelo e por MAC/N/S e catálogo renomeável.
+ * padrão do FOP2 (desde o 1.4, a senha do ramal admin), filtros de movimentação por modelo e por MAC/N/S e catálogo renomeável.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sql } from 'drizzle-orm';
 import { makeApp, Session, type App } from './helpers.js';
 
 let app: App;
@@ -82,15 +83,63 @@ describe('rede padrão dos aparelhos', () => {
   });
 });
 
-describe('FOP2 com senha do usuário padrão', () => {
-  it('guarda a senha no cofre e a ficha só diz que ela existe', async () => {
+describe('FOP2: senha do ramal admin (1.4, decisão 0032, revendo a 0025)', () => {
+  it('guarda a senha do ramal admin no cofre e a ficha só diz que ela existe', async () => {
     await s.put(`/clients/${clientId}/subscriptions`, { productCode: 'linepbx' });
-    const r = await s.put(`/clients/${clientId}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', settings: { adminExtension: '1000', defaultUserPassword: 'fop2#padrao' } });
+    const r = await s.put(`/clients/${clientId}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', settings: { adminExtension: '1000', adminPassword: 'fop2#admin' } });
     expect(r.statusCode).toBe(200);
     const f2 = r.json().subscriptions.find((x: any) => x.productCode === 'linepbx').modules.find((x: any) => x.moduleCode === 'fop2');
     expect(f2.settings.adminExtension).toBe('1000');
-    expect(f2.settings.defaultUserPassword.hasSecret).toBe(true);
-    expect(JSON.stringify(r.json())).not.toContain('fop2#padrao');
+    expect(f2.settings.adminPassword.hasSecret).toBe(true);
+    expect(f2.settings).not.toHaveProperty('defaultUserPassword');
+    expect(JSON.stringify(r.json())).not.toContain('fop2#admin');
+    const revelada = await s.post(`/secrets/${f2.settings.adminPassword.secretId}/reveal`, { password: 'SenhaDeTeste!123' });
+    expect(revelada.json().value).toBe('fop2#admin');
+  });
+
+  it('a senha do usuário padrão não é mais aceita, e a que já estava guardada continua no cofre', async () => {
+    const ficha = (await s.get(`/clients/${clientId}`)).json();
+    const f2 = ficha.subscriptions.find((x: any) => x.productCode === 'linepbx').modules.find((x: any) => x.moduleCode === 'fop2');
+    // simula a senha de antes do 1.4: a coluna antiga apontando para um segredo do cofre
+    const antiga = f2.settings.adminPassword.secretId;
+    await app.db.execute(sql`update fop2_settings set default_user_password_secret_id = ${antiga} where subscription_module_id = ${f2.id}`);
+    const r = await s.put(`/clients/${clientId}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', settings: { adminExtension: '2000', defaultUserPassword: 'nao-deve-entrar' } });
+    expect(r.statusCode).toBe(200);
+    const depois = r.json().subscriptions.find((x: any) => x.productCode === 'linepbx').modules.find((x: any) => x.moduleCode === 'fop2');
+    expect(depois.settings.adminExtension).toBe('2000');
+    expect(depois.settings).not.toHaveProperty('defaultUserPassword');
+    const linha = (await app.db.execute(sql`select default_user_password_secret_id as d from fop2_settings where subscription_module_id = ${f2.id}`)) as any;
+    expect((linha.rows ?? linha)[0].d).toBe(antiga);
+    const segredos = (await app.db.execute(sql`select count(*)::int as n from secrets where label like 'Senha do usuário padrão do FOP2%'`)) as any;
+    expect((segredos.rows ?? segredos)[0].n).toBe(0);
+  });
+});
+
+describe('Omniboard e SZChat gravam login e senhas (corrigido no 1.4)', () => {
+  it('o Omniboard guarda o admin e as duas senhas', async () => {
+    const r = await s.put(`/clients/${clientId}/modules`, { productCode: 'linepbx', moduleCode: 'omniboard', settings: { adminLogin: 'admin@coutrim.com.br', adminPassword: 'omni#admin', userDefaultPassword: 'omni#padrao' } });
+    expect(r.statusCode).toBe(200);
+    const om = r.json().subscriptions.find((x: any) => x.productCode === 'linepbx').modules.find((x: any) => x.moduleCode === 'omniboard');
+    expect(om.settings.adminLogin).toBe('admin@coutrim.com.br');
+    expect(om.settings.adminPassword.hasSecret).toBe(true);
+    expect(om.settings.userDefaultPassword.hasSecret).toBe(true);
+    expect(JSON.stringify(r.json())).not.toContain('omni#');
+  });
+
+  it('o SZChat guarda o admin e a senha', async () => {
+    const r = await s.put(`/clients/${clientId}/subscriptions`, { productCode: 'szchat', settings: { adminLogin: 'admin@coutrim', adminPassword: 'sz#admin' } });
+    expect(r.statusCode).toBe(200);
+    const sz = (await s.get(`/clients/${clientId}`)).json().subscriptions.find((x: any) => x.productCode === 'szchat');
+    expect(sz.settings.adminLogin).toBe('admin@coutrim');
+    expect(sz.settings.adminPassword.hasSecret).toBe(true);
+  });
+
+  it('o LinePBX continua gravando o servidor', async () => {
+    const r = await s.put(`/clients/${clientId}/subscriptions`, { productCode: 'linepbx', settings: { domain: 'coutrim.linepbx.com.br', sshPort: 2201 } });
+    expect(r.statusCode).toBe(200);
+    const lp = (await s.get(`/clients/${clientId}`)).json().subscriptions.find((x: any) => x.productCode === 'linepbx');
+    expect(lp.settings.domain).toBe('coutrim.linepbx.com.br');
+    expect(lp.settings.sshPort).toBe(2201);
   });
 });
 

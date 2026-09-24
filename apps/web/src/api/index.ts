@@ -22,7 +22,7 @@ export type Api = {
   dashboard: { summary(): Promise<T.Dashboard>; search(q: string): Promise<T.SearchResult> };
   clients: {
     list(q: Record<string, unknown>): Promise<T.Page<T.ClientListItem>>;
-    options(q?: { includeInternal?: boolean; productCode?: string; withDevices?: boolean }): Promise<T.Option[]>;
+    options(q?: { includeInternal?: boolean; productCode?: string; withDevices?: boolean; withProducts?: boolean }): Promise<T.Option[]>;
     get(id: string): Promise<T.ClientFull>;
     /** Projetos de que este cliente participa (a aba da ficha) */
     projetos(id: string): Promise<T.ProjetoDoCliente[]>;

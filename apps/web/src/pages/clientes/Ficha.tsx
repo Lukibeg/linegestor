@@ -311,14 +311,14 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
     setBusy(true); setErr('');
     try {
       const settings: Record<string, unknown> = {};
-      if (module.code === 'fop2') Object.assign(settings, { adminExtension: f.adminExtension || null, ...(senhas.defaultUserPassword ? { defaultUserPassword: senhas.defaultUserPassword } : {}) });
+      if (module.code === 'fop2') Object.assign(settings, { adminExtension: f.adminExtension || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}) });
       if (module.code === 'omniboard') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}), ...(senhas.userDefaultPassword ? { userDefaultPassword: senhas.userDefaultPassword } : {}) });
       await api.clients.upsertModule(c.id, { productCode: product.code, moduleCode: module.code, activatedAt: f.activatedAt ? diaParaIso(f.activatedAt) : null, notes: f.notes || null, settings });
       await qc.invalidateQueries({ queryKey: ['client', c.id] }); await qc.invalidateQueries({ queryKey: ['clients'] });
       toast.push('ok', `${module.name} salvo`); onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
-  const seg = (key: 'adminPassword' | 'userDefaultPassword' | 'defaultUserPassword', label: string) => (
+  const seg = (key: 'adminPassword' | 'userDefaultPassword', label: string) => (
     <Campo label={label}><CampoSegredo secretId={st[key]?.secretId ?? null} hasSecret={!!st[key]?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={(v) => setSenhas({ ...senhas, [key]: v })} /></Campo>
   );
   return (
@@ -328,7 +328,8 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
         <Campo label="Ativado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
         {module.code === 'fop2' && (<>
           <Campo label="Ramal / usuário admin do FOP2" dica="usado para o acesso rápido"><input className="input font-mono" autoComplete="off" value={f.adminExtension} onChange={(e) => setF({ ...f, adminExtension: e.target.value })} /></Campo>
-          {seg('defaultUserPassword', 'Senha do usuário padrão do FOP2')}
+          {/* 1.4 (decisão 0032): a senha que a equipe usa é a do ramal admin; a do usuário padrão saiu (a já guardada fica no cofre) */}
+          {seg('adminPassword', 'Senha do ramal admin do FOP2')}
         </>)}
         {module.code === 'omniboard' && (<>
           <Campo label="E-mail do administrador"><input className="input" value={f.adminLogin} onChange={(e) => setF({ ...f, adminLogin: e.target.value })} /></Campo>
@@ -957,7 +958,7 @@ function Acessos({ c }: { c: ClientFull }) {
         </div>
       )}
       {f2 && lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX › FOP2</Chip>{c.links.fop2 && <a className="link text-sm" href={c.links.fop2} target="_blank" rel="noreferrer">abrir painel ↗</a>}</div><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Ramal admin</dt><dd className="font-mono">{f2.settings?.adminExtension ?? '—'}</dd></dl>
-        <Campo label="Senha do usuário padrão"><CampoSegredo secretId={f2.settings?.defaultUserPassword?.secretId ?? null} hasSecret={!!f2.settings?.defaultUserPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
+        <Campo label="Senha do ramal admin"><CampoSegredo secretId={f2.settings?.adminPassword?.secretId ?? null} hasSecret={!!f2.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
         <p className="text-[12px] text-muted">O link do FOP2 nunca carrega senha na URL.</p><Anotacao texto={f2.notes} /></div>}
       {om && lp && <div className="card p-4 flex flex-col gap-3"><Chip color={lp.color}>LinePBX › Omniboard</Chip><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{om.settings?.adminLogin ?? '—'}</dd></dl>
         <Campo label="Senha admin"><CampoSegredo secretId={om.settings?.adminPassword?.secretId ?? null} hasSecret={!!om.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>

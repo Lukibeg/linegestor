@@ -177,7 +177,7 @@ export type SearchResult = {
 };
 
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number; free?: number };
-export type Option = { id: string; name: string; isInternal?: boolean; internalCode?: string | null };
+export type Option = { id: string; name: string; isInternal?: boolean; internalCode?: string | null; /** com withProducts: códigos dos produtos ligados */ products?: string[]; /** com withProducts: "produto:módulo" ligados */ modules?: string[] };
 /** Resposta do cadastro em massa */
 export type CadastroEmMassa = { created: number; modelName: string; tipo: 'mac' | 'serie' | 'nenhum' };
 export type CatalogItem = { id: string; name: string; active: boolean };
