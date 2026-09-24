@@ -7,7 +7,8 @@
  *  - `Colunas`       — "quanto em cada dia (ou hora)?" (colunas em pé, na ordem do tempo).
  *    Entrou com os Chamados (Patch 1.3): é o "chamados por dia" que o Grafana mostrava.
  *  - `Pizza`         — "de quem é cada fatia do total?" (rosca). Também do Patch 1.3, a pedido
- *    do Luan, como OPÇÃO ao ranking nos Chamados — revê a 0028, que não tinha pizza.
+ *    do Luan, como opção ao ranking nos Chamados — revê a 0028, que não tinha pizza. No 1.4
+ *    virou o padrão dos gráficos de lista dos Chamados (as barras continuam a um clique).
  *
  * Decisões que valem para todas:
  *  - **uma cor só** por gráfico, menos na pizza (que precisa de uma por fatia). Mesmo lá, a
@@ -21,6 +22,7 @@
  *    = somar ao filtro, em vez de trocar).
  */
 import { useEffect, useId, useState, type MouseEvent, type ReactNode } from 'react';
+import { Layers } from 'lucide-react';
 
 const TOM = { accent: 'bg-accent', ok: 'bg-ok', signal: 'bg-signal', bad: 'bg-bad', muted: 'bg-line-strong' };
 
@@ -209,11 +211,16 @@ export function Colunas({ pontos, altura = 150, aoClicar, vazio = 'Nada no perí
  * Pizza (em rosca): "de quem é cada fatia do total?".
  *
  * As regras que fazem a pizza ser lida, e não só olhada:
- *  - **no máximo 6 fatias com cor**, as maiores; o resto vira **"Outros"** (cinza), que abre a
- *    lista do que foi somado ali — nada fica escondido. O "não preenchido" é outro cinza, no fim;
+ *  - **no máximo 6 fatias com cor**, as maiores; o resto vira **"Outros"** (cinza). Clicar em
+ *    "Outros" **desdobra**: a linha "Outros" some e cada valor que estava ali vira um item normal da
+ *    legenda, com a sua fatia (pedido do Luan no 1.4 — antes abria uma sublista recuada). As cores
+ *    continuam só nas 6 maiores: o que passa delas fica no cinza de "Outros", cada um com a sua
+ *    fatia, separadas por um fio fino. Nunca se inventa uma 7ª cor (sob daltonismo ela se confunde
+ *    com uma das seis); "Juntar em Outros", no fim da legenda, volta ao jeito curto;
+ *  - o "não preenchido" é outro cinza, sempre no fim;
  *  - as seis cores vêm do tema (`--pz-1` a `--pz-6`), **sempre nesta ordem**: é a ordem que deixa
  *    cada cor diferente da vizinha para quem não distingue cores (conferida com o validador de
- *    paleta nos dois temas). Nunca se inventa uma 7ª cor;
+ *    paleta nos dois temas);
  *  - **a legenda escreve nome, número e %** de cada fatia — a cor só ajuda;
  *  - um fio da cor do fundo separa as fatias; passar o mouse destaca a fatia e mostra o número
  *    dela no centro; clicar filtra, como no ranking.
@@ -224,6 +231,10 @@ export type FatiaPizza = {
   neutro?: boolean;
   /** está no filtro: fica cheia, e as outras esmaecem */
   selecionado?: boolean;
+  /** é um grupo (vários valores somados): a legenda leva a marca de grupo */
+  grupo?: boolean;
+  /** o que aparece ao passar o mouse na legenda (num grupo, o que ele junta) */
+  dica?: string;
 };
 
 const MAX_FATIAS = 6;
@@ -238,22 +249,24 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
   tamanho?: number;
 }) {
   const [ativo, setAtivo] = useState<string | null>(null);
-  const [verOutros, setVerOutros] = useState(false);
+  const [desdobrar, setDesdobrar] = useState(false);
   const soma = partes.reduce((a, x) => a + x.n, 0);
-  // escolhido que caiu em "Outros": a lista de Outros abre sozinha, para ele aparecer
-  const escolhidoEmOutros = partes.filter((x) => !x.neutro && x.n > 0).sort((a, b) => b.n - a.n).slice(MAX_FATIAS).some((x) => x.selecionado);
-  useEffect(() => { if (escolhidoEmOutros) setVerOutros(true); }, [escolhidoEmOutros]);
-  if (!soma) return <div className="text-muted text-sm">{vazio}</div>;
-
-  // as maiores primeiro; o que passa de 6 é somado em "Outros"
+  // as maiores primeiro; o que passa de 6 é somado em "Outros" (ou desdobrado, em cinza)
   const reais = partes.filter((x) => !x.neutro && x.n > 0).sort((a, b) => b.n - a.n);
   const neutras = partes.filter((x) => x.neutro && x.n > 0);
   const dobradas = reais.slice(MAX_FATIAS);
-  const fatias: Array<FatiaPizza & { cor: string; outros?: boolean }> = [
+  // escolhido que caiu em "Outros": desdobra sozinho, para ele aparecer
+  const escolhidoEmOutros = dobradas.some((x) => x.selecionado);
+  useEffect(() => { if (escolhidoEmOutros) setDesdobrar(true); }, [escolhidoEmOutros]);
+  if (!soma) return <div className="text-muted text-sm">{vazio}</div>;
+
+  const desdobrado = desdobrar && dobradas.length > 1;
+  type Fatia = FatiaPizza & { cor: string; outros?: boolean; resto?: boolean };
+  const fatias: Fatia[] = [
     ...reais.slice(0, MAX_FATIAS).map((x, i) => ({ ...x, cor: `var(--pz-${i + 1})` })),
-    // sobrou um só: ele mesmo, em cinza (um "Outros (1)" esconderia o nome à toa)
-    ...(dobradas.length === 1 ? [{ ...dobradas[0]!, cor: 'var(--pz-outros)' }] : []),
-    ...(dobradas.length > 1 ? [{ id: OUTROS, rotulo: `Outros (${dobradas.length})`, n: dobradas.reduce((a, x) => a + x.n, 0), cor: 'var(--pz-outros)', outros: true, selecionado: dobradas.some((x) => x.selecionado) }] : []),
+    // sobrou um só, ou "Outros" desdobrado: cada um com a sua fatia, no cinza de "Outros"
+    ...(dobradas.length === 1 || desdobrado ? dobradas.map((x) => ({ ...x, cor: 'var(--pz-outros)', resto: true })) : []),
+    ...(dobradas.length > 1 && !desdobrado ? [{ id: OUTROS, rotulo: `Outros (${dobradas.length})`, n: dobradas.reduce((a, x) => a + x.n, 0), cor: 'var(--pz-outros)', outros: true, selecionado: escolhidoEmOutros }] : []),
     ...neutras.map((x) => ({ ...x, cor: 'var(--pz-vazio)' })),
   ];
   const escolhidas = partes.filter((x) => x.selecionado);
@@ -265,20 +278,26 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
   const espessura = Math.round(tamanho * 0.17);
   const raio = meio - espessura / 2 - 2;
   const volta = 2 * Math.PI * raio;
-  const fio = fatias.length > 1 ? 2 : 0; // o fio da cor do fundo entre as fatias
+  // o fio da cor do fundo entre as fatias; entre dois cinzas do resto, um fio mais fino (com
+  // dezenas de fatias pequenas, o fio largo comeria a rosca)
+  const fio = (i: number) => {
+    if (fatias.length < 2) return 0;
+    const a = fatias[i]!; const b = fatias[(i + 1) % fatias.length]!;
+    return a.resto && b.resto ? 1 : 2;
+  };
   let andado = 0;
   const destaque = fatias.find((f) => f.id === ativo) ?? null;
-  const clicar = (f: (typeof fatias)[number], ev: MouseEvent) => { if (f.outros) setVerOutros((v) => !v); else aoClicar?.(f.id, ev); };
+  const clicar = (f: Fatia, ev: MouseEvent) => { if (f.outros) setDesdobrar(true); else aoClicar?.(f.id, ev); };
   // esmaecida: outra fatia sob o mouse, ou há escolhidas e esta não é uma delas
-  const apagada = (f: (typeof fatias)[number]) => (ativo ? ativo !== f.id : algumEscolhido && !f.selecionado);
+  const apagada = (f: Fatia) => (ativo ? ativo !== f.id : algumEscolhido && !f.selecionado);
 
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-      <svg width={tamanho} height={tamanho} viewBox={`0 0 ${tamanho} ${tamanho}`} role="img" className="shrink-0"
+      <svg width={tamanho} height={tamanho} viewBox={`0 0 ${tamanho} ${tamanho}`} role="img" className="shrink-0 self-start"
         aria-label={fatias.map((f) => `${f.rotulo}: ${f.n} (${pct(f.n)})`).join('; ')}>
-        {fatias.map((f) => {
+        {fatias.map((f, i) => {
           const trecho = (f.n / soma) * volta;
-          const traco = Math.max(0.01, trecho - fio);
+          const traco = Math.max(0.01, trecho - fio(i));
           const el = (
             <circle
               key={f.id} cx={meio} cy={meio} r={raio} fill="none" stroke={f.cor} strokeWidth={espessura}
@@ -304,44 +323,35 @@ export function Pizza({ partes, rotuloCentro = 'chamados', aoClicar, vazio = 'Na
         </text>
       </svg>
 
-      <ul className="flex-1 min-w-[180px] flex flex-col gap-0.5 text-[13px]">
-        {fatias.map((f) => (
-          <li key={f.id}>
-            <button
-              type="button"
-              className={`w-full flex items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-surface-2 transition-opacity ${ativo === f.id ? 'bg-surface-2' : ''} ${f.selecionado && !f.outros ? 'bg-accent-soft' : ''} ${algumEscolhido && !f.selecionado ? 'opacity-50 hover:opacity-100' : ''}`}
-              onMouseEnter={() => setAtivo(f.id)} onMouseLeave={() => setAtivo(null)} onFocus={() => setAtivo(f.id)} onBlur={() => setAtivo(null)}
-              onClick={(ev) => clicar(f, ev)}
-              {...(!f.outros && aoClicar ? { 'aria-pressed': !!f.selecionado } : {})}
-              title={f.outros ? (verOutros ? 'Esconder a lista do que foi somado em Outros' : 'Ver o que foi somado em Outros') : aoClicar ? (f.selecionado ? 'Clique para desfazer o filtro' : 'Clique para filtrar (Ctrl+clique soma outro)') : undefined}
-            >
-              <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: f.cor }} aria-hidden />
-              <span className={`flex-1 min-w-0 truncate ${f.neutro ? 'italic text-muted' : ''} ${f.selecionado && !f.outros ? 'font-semibold' : ''}`}>{f.rotulo}</span>
-              <span className="font-mono tnum text-[12px] text-ink-2 shrink-0">{f.n.toLocaleString('pt-BR')}</span>
-              <span className="w-10 text-right tnum text-[12px] text-muted shrink-0">{pct(f.n)}</span>
-            </button>
-            {f.outros && verOutros && (
-              <ul className="ml-5 mb-1 border-l border-line pl-2 flex flex-col">
-                {dobradas.map((d) => (
-                  <li key={d.id}>
-                    <button
-                      type="button"
-                      className={`w-full flex items-center gap-2 rounded-md px-1.5 py-0.5 text-left hover:bg-surface-2 ${d.selecionado ? 'bg-accent-soft' : algumEscolhido ? 'opacity-60 hover:opacity-100' : ''}`}
-                      onClick={(ev) => aoClicar?.(d.id, ev)}
-                      {...(aoClicar ? { 'aria-pressed': !!d.selecionado } : {})}
-                      title={aoClicar ? (d.selecionado ? 'Clique para desfazer o filtro' : 'Clique para filtrar (Ctrl+clique soma outro)') : undefined}
-                    >
-                      <span className={`flex-1 min-w-0 truncate text-ink-2 ${d.selecionado ? 'font-semibold' : ''}`}>{d.rotulo}</span>
-                      <span className="font-mono tnum text-[12px] text-ink-2 shrink-0">{d.n.toLocaleString('pt-BR')}</span>
-                      <span className="w-10 text-right tnum text-[12px] text-muted shrink-0">{pct(d.n)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
-      </ul>
+      <div className="flex-1 min-w-[180px]">
+        <ul className="flex flex-col gap-0.5 text-[13px]">
+          {fatias.map((f) => (
+            <li key={f.id}>
+              <button
+                type="button"
+                className={`w-full flex items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-surface-2 transition-opacity ${ativo === f.id ? 'bg-surface-2' : ''} ${f.selecionado && !f.outros ? 'bg-accent-soft' : ''} ${algumEscolhido && !f.selecionado ? 'opacity-50 hover:opacity-100' : ''}`}
+                onMouseEnter={() => setAtivo(f.id)} onMouseLeave={() => setAtivo(null)} onFocus={() => setAtivo(f.id)} onBlur={() => setAtivo(null)}
+                onClick={(ev) => clicar(f, ev)}
+                {...(!f.outros && aoClicar ? { 'aria-pressed': !!f.selecionado } : {})}
+                title={f.outros ? 'Mostrar cada um dos que foram somados em Outros' : [f.dica, aoClicar ? (f.selecionado ? 'Clique para desfazer o filtro' : 'Clique para filtrar (Ctrl+clique soma outro)') : ''].filter(Boolean).join(' — ') || undefined}
+              >
+                <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: f.cor }} aria-hidden />
+                <span className={`flex-1 min-w-0 truncate ${f.neutro ? 'italic text-muted' : ''} ${f.selecionado && !f.outros ? 'font-semibold' : ''}`}>
+                  {f.rotulo}
+                  {f.grupo && <Layers size={12} className="inline ml-1 -mt-0.5 text-muted" aria-label="grupo" />}
+                </span>
+                <span className="font-mono tnum text-[12px] text-ink-2 shrink-0">{f.n.toLocaleString('pt-BR')}</span>
+                <span className="w-10 text-right tnum text-[12px] text-muted shrink-0">{pct(f.n)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        {desdobrado && (
+          <button type="button" className="btn-ghost btn-sm mt-1 text-muted" onClick={() => setDesdobrar(false)} title="Somar de novo os menores numa fatia só">
+            Juntar os {dobradas.length} menores em Outros
+          </button>
+        )}
+      </div>
     </div>
   );
 }

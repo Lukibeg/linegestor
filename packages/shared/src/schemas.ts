@@ -483,8 +483,11 @@ export const SituacaoProjetoSchema = z.enum(SITUACOES_PROJETO);
 /** Data-alvo como o campo de calendário manda: "AAAA-MM-DD", guardada como texto (não tem hora). */
 const DiaTextoSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida');
 
-/** As cores que uma opção pode ter (as mesmas do resto do sistema). */
-export const CORES_OPCAO = ['neutral', 'accent', 'ok', 'signal', 'bad', 'muted'] as const;
+/**
+ * As cores que uma opção pode ter. As seis primeiras são as do resto do sistema; roxo, rosa,
+ * turquesa e amarelo chegaram no Patch 1.4 (pedido do Luan: mais cores para as opções).
+ */
+export const CORES_OPCAO = ['neutral', 'accent', 'ok', 'signal', 'bad', 'muted', 'roxo', 'rosa', 'turquesa', 'amarelo'] as const;
 
 /**
  * Uma opção de uma etapa do tipo lista ("Pendente", "Mensagem enviada", …).

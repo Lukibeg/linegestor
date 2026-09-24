@@ -66,3 +66,8 @@ Perguntado, ele escolheu:
 arrumação é salva por quem administra, e qualquer pedaço clicado vira filtro. Se um dia a equipe
 quiser uma arrumação por pessoa, o caminho é guardar uma arrumação por usuário que, quando existir,
 vale sobre a da equipe — o formato (`ItemPainel`) já serve para as duas.
+
+> **Complementada pela 0031 (Patch 1.4):** a arrumação ganhou os **grupos** de cada gráfico e as
+> **etapas que fecham o chamado** (e passou a ser salva com `versao: 2`; a do 1.3 volta convertida
+> para pizza). O filtro `quando` não tem mais a faixa de idade, e a situação `abertos` virou o
+> interruptor "só em aberto".

@@ -381,6 +381,18 @@ describe('etapa em lista de opções (o rótulo colorido da planilha)', () => {
     expect(semFim.statusCode).toBe(400);
   });
 
+  it('as cores novas do 1.4 (roxo, rosa, turquesa, amarelo) são aceitas; cor inventada, não', async () => {
+    const cores = await s.post('/projects', {
+      name: 'Cores novas',
+      etapas: [{ title: 'Status', kind: 'escolha', options: ['roxo', 'rosa', 'turquesa', 'amarelo'].map((tone, i) => ({ label: `Opção ${i}`, tone, conclui: i === 0 })) }],
+    });
+    expect(cores.statusCode).toBe(201);
+    expect(cores.json().etapas[0].options.map((o: any) => o.tone)).toEqual(['roxo', 'rosa', 'turquesa', 'amarelo']);
+    await s.del(`/projects/${cores.json().id}`);
+    const inventada = await s.post('/projects', { name: 'z', etapas: [{ title: 'S', kind: 'escolha', options: [{ label: 'A', tone: 'dourado', conclui: true }, { label: 'B', tone: 'ok', conclui: false }] }] });
+    expect(inventada.statusCode).toBe(400);
+  });
+
   it('marcar "concluído" à mão escolhe a opção que resolve', async () => {
     const p2 = (await s.post('/projects', {
       name: 'Feriado seguinte',

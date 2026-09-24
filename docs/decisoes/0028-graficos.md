@@ -66,3 +66,9 @@ legenda escrita uma vez acima e um fio de fundo entre as fatias. É a mesma ling
 > está no filtro, ele fica com a cor cheia e o resto esmaece — o gráfico continua inteiro, para dar
 > para clicar de novo e desfazer. Vale para `BarrasRanking` (com `selecionavel`), `Colunas` e `Pizza`;
 > quem clica recebe o evento junto (Ctrl ou Shift + clique soma ao filtro).
+
+> **Revista pela 0031 (Patch 1.4), a pedido do Luan (avisado antes):** nos Chamados a **pizza virou o
+> padrão** dos gráficos de lista (barras continua a um clique), e **"Outros" se desdobra** em itens
+> normais, cada um com a sua fatia. As cores continuam só nas 6 maiores — o resto fica no cinza de
+> "Outros"; nunca se gera uma 7ª cor. E os gráficos de lista ganharam **grupos** (várias opções num
+> ponto só, com o botão Agrupar).

@@ -69,9 +69,15 @@ export function Vazio({ titulo, texto, acao }: { titulo: string; texto?: string;
   );
 }
 
-export function Chip({ children, color, tone = 'neutral', className = '', title }: { children: ReactNode; color?: string; tone?: 'neutral' | 'accent' | 'signal' | 'ok' | 'bad' | 'muted'; className?: string; title?: string }) {
+/** Os tons de um chip: os do sistema e, desde o 1.4, as cores extras das opções dos projetos. */
+export type TomChip = 'neutral' | 'accent' | 'signal' | 'ok' | 'bad' | 'muted' | 'roxo' | 'rosa' | 'turquesa' | 'amarelo';
+
+export function Chip({ children, color, tone = 'neutral', className = '', title }: { children: ReactNode; color?: string; tone?: TomChip; className?: string; title?: string }) {
   if (color) return <span title={title} className={`chip ${className}`} style={{ background: color + '22', color }}>{children}</span>;
-  const map = { neutral: 'bg-surface-2 text-ink-2', accent: 'bg-accent-soft text-accent-ink', signal: 'bg-signal-soft text-signal', ok: 'bg-ok-soft text-ok', bad: 'bg-bad-soft text-bad', muted: 'bg-surface-2 text-muted' };
+  const map: Record<TomChip, string> = {
+    neutral: 'bg-surface-2 text-ink-2', accent: 'bg-accent-soft text-accent-ink', signal: 'bg-signal-soft text-signal', ok: 'bg-ok-soft text-ok', bad: 'bg-bad-soft text-bad', muted: 'bg-surface-2 text-muted',
+    roxo: 'bg-roxo-soft text-roxo-ink', rosa: 'bg-rosa-soft text-rosa-ink', turquesa: 'bg-turquesa-soft text-turquesa-ink', amarelo: 'bg-amarelo-soft text-amarelo-ink',
+  };
   return <span title={title} className={`chip ${map[tone]} ${className}`}>{children}</span>;
 }
 
@@ -244,11 +250,20 @@ export function usePaginaLocal<T>(itens: T[], tamanho = 100) {
   };
 }
 
+/**
+ * As abas de uma tela. A linha de baixo é uma sombra por dentro (e não uma borda), e a aba
+ * escolhida pinta o próprio traço por cima dela: assim nada passa da altura da faixa. Antes a aba
+ * descia 1px sobre a borda (`-mb-px`) e, com a rolagem lateral ligada (para caber no celular), esse
+ * pixel virava uma barrinha de rolagem vertical à toa no Windows (Patch 1.4).
+ */
+export const FAIXA_ABAS = 'flex gap-1 mb-4 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--line)]';
+export const classeAba = (ativa: boolean) => `px-3 py-2 text-sm font-semibold border-b-2 whitespace-nowrap ${ativa ? 'border-accent text-accent' : 'border-transparent text-ink-2 hover:text-ink'}`;
+
 export function Abas<T extends string>({ abas, atual, onChange }: { abas: Array<{ id: T; label: ReactNode }>; atual: T; onChange: (t: T) => void }) {
   return (
-    <div className="flex gap-1 border-b border-line mb-4 overflow-x-auto" role="tablist">
+    <div className={FAIXA_ABAS} role="tablist">
       {abas.map((a) => (
-        <button key={a.id} role="tab" aria-selected={atual === a.id} onClick={() => onChange(a.id)} className={`px-3 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${atual === a.id ? 'border-accent text-accent' : 'border-transparent text-ink-2 hover:text-ink'}`}>{a.label}</button>
+        <button key={a.id} role="tab" aria-selected={atual === a.id} onClick={() => onChange(a.id)} className={classeAba(atual === a.id)}>{a.label}</button>
       ))}
     </div>
   );

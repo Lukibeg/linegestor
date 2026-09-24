@@ -24,10 +24,33 @@ export type Coluna<T> = {
 
 export type EscolhaColunas = { ids: string[]; setIds: (v: string[]) => void; restaurar: () => void };
 
-/** Guarda no navegador quais colunas a pessoa escolheu para aquela tabela. */
-export function useColunasEscolhidas(chaveStorage: string, padrao: string[]): EscolhaColunas {
+/**
+ * Guarda no navegador quais colunas a pessoa escolheu para aquela tabela.
+ *
+ * `novas`: colunas que chegaram depois (a Descrição dos Chamados, no 1.4). Quem já tinha escolhido
+ * as colunas não as veria nunca — a escolha guardada manda. Então cada coluna nova aparece **uma
+ * vez** para essa pessoa, no lugar em que está no padrão; se ela tirar, fica tirada.
+ */
+export function useColunasEscolhidas(chaveStorage: string, padrao: string[], opcoes: { novas?: string[] } = {}): EscolhaColunas {
   const [ids, setIds] = useState<string[]>(() => {
-    try { const v = localStorage.getItem(chaveStorage); return v ? (JSON.parse(v) as string[]) : padrao; } catch { return padrao; }
+    try {
+      const v = localStorage.getItem(chaveStorage);
+      const chaveNovas = `${chaveStorage}:novas-vistas`;
+      // quem começa agora já vê o padrão com as novas: nada a acrescentar depois
+      if (!v) { if (opcoes.novas?.length) localStorage.setItem(chaveNovas, JSON.stringify(opcoes.novas)); return padrao; }
+      const guardadas = JSON.parse(v) as string[];
+      const vistas = new Set(JSON.parse(localStorage.getItem(chaveNovas) ?? '[]') as string[]);
+      const faltam = (opcoes.novas ?? []).filter((id) => !vistas.has(id) && !guardadas.includes(id));
+      if (!faltam.length) return guardadas;
+      localStorage.setItem(chaveNovas, JSON.stringify([...vistas, ...faltam]));
+      // entra logo depois da coluna que vem antes dela no padrão (ou no fim)
+      const out = [...guardadas];
+      for (const id of faltam) {
+        const antes = padrao.slice(0, Math.max(0, padrao.indexOf(id))).reverse().find((x) => out.includes(x));
+        out.splice(antes ? out.indexOf(antes) + 1 : out.length, 0, id);
+      }
+      return out;
+    } catch { return padrao; }
   });
   useEffect(() => { try { localStorage.setItem(chaveStorage, JSON.stringify(ids)); } catch { /* sem storage */ } }, [chaveStorage, ids]);
   return { ids, setIds, restaurar: () => setIds(padrao) };

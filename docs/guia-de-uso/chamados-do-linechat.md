@@ -39,17 +39,32 @@ avisos do sistema (o WhatsApp, se estiver configurado em Ajustes › Avisos).
 
 ## Usar a tela
 
+- **Duas abas**: **Hoje** (o que chegou hoje, por hora) e **Período** (as datas que você escolher,
+  com os atalhos 7 dias, 30 dias, este mês, mês passado, 12 meses e **Tudo** — desde o primeiro
+  chamado guardado).
+- **Só em aberto**: o interruptor ao lado dos filtros deixa na tela só os chamados que ainda não
+  chegaram numa etapa que fecha. Vale nas duas abas. **Período + Tudo + só em aberto** é tudo o que
+  está na mesa, de qualquer data (era a antiga aba "Em aberto", que saiu no Patch 1.4). Na aba Hoje,
+  clicar em **Em aberto agora** leva direto para lá.
 - **Clicar filtra a tela toda**: uma barra ou fatia (um cliente, um produto, uma etapa), uma coluna
-  do gráfico do tempo (uma hora, uma faixa de idade, um dia, um mês) ou um dos números de cima
-  (vencidos, parados, sem responsável, fechados).
+  do gráfico do tempo (uma hora, um dia, um mês) ou um dos números de cima (vencidos, parados, sem
+  responsável, fechados).
 - O gráfico onde você clicou **continua inteiro**, com o escolhido em destaque. **Clique de novo**
   nele para desfazer, ou em outro para trocar. **Ctrl+clique** soma mais de um.
 - Os filtros aparecem escritos embaixo dos botões, cada um com o seu **X**; **Limpar filtros** tira
-  todos.
+  todos. Um grupo inteiro aparece como um item só.
 - **Fechados hoje** (e **Fechados no período**) mudam a pergunta: a tela passa a mostrar o que foi
   fechado, pela hora ou pelo dia do fechamento.
-- **Barras ou pizza**: os dois botões no canto de cada gráfico. A sua troca fica no seu navegador;
-  sem trocar, vale o jeito que a equipe arrumou.
+- **Pizza ou barras**: os dois botões no canto de cada gráfico (desde o 1.4, todos abrem em pizza).
+  A sua troca fica no seu navegador; sem trocar, vale o jeito que a equipe arrumou.
+- **Outros**, na pizza: clicar desdobra — cada opção que estava somada ali vira um item normal, com a
+  sua fatia (em cinza: as cores ficam só nas 6 maiores). **Juntar os menores em Outros** volta.
+- **Agrupar**: nos gráficos em que a administração montou grupos (por exemplo "Ramal" = Ramal -
+  Configuração + Ramal - Criação + Ramal - Telefone Sem Serviço), o botão junta cada grupo num ponto
+  só. Clicar no grupo filtra por todas as opções dele. A sua escolha (junto ou separado) fica no seu
+  navegador.
+- **A tabela** tem a coluna **Descrição** (o começo do texto do card; o texto todo aparece ao passar
+  o mouse). As colunas se escolhem no botão **Colunas**.
 
 ## Organizar a tela (quem administra)
 
@@ -60,9 +75,15 @@ A arrumação vale para **a equipe toda**. Em **Chamados**, clique em **Organiza
 2. **Metade | Inteira**: o gráfico ocupa meia linha ou a linha inteira.
 3. **Esconder**: o gráfico some para todos. No Organizar ele continua como uma tira fina, com
    **Mostrar**, para trazer de volta.
-4. **Barras | Pizza**: o jeito que cada gráfico abre para todo mundo.
-5. **Salvar para todos**. **Cancelar** descarta; **Voltar ao padrão** traz a arrumação de fábrica
-   (ainda é preciso salvar).
+4. **Pizza | Barras**: o jeito que cada gráfico abre para todo mundo.
+5. **Grupos**: em cada gráfico, junte várias opções num ponto só. **Novo grupo** (dê um nome e marque
+   as opções) ou **Sugerir pelo começo do nome** (junta o que começa igual antes do " - "). Uma opção
+   fica num grupo só. **Abrir agrupado para a equipe** faz o gráfico já abrir com os grupos juntos.
+6. **Etapas que fecham**: quais colunas do Kanban contam como fechadas. O padrão é o do LineChat
+   (Chamado Tratado Suporte e Chamado Validado). A hora em que cada chamado fechou é refeita pelo
+   histórico de etapas.
+7. **Salvar para todos**. **Cancelar** descarta; **Voltar ao padrão** traz a ordem, a largura e a
+   pizza de fábrica — os grupos e as etapas que fecham ficam (ainda é preciso salvar).
 
 Os números de cima e a tabela ficam fixos. Cada arrumação salva fica na auditoria, com o antes e o
 depois.

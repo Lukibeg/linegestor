@@ -108,10 +108,10 @@ export type Api = {
     opcoes(): Promise<T.OpcoesChamados>;
     resumo(q: Record<string, unknown>): Promise<T.ResumoChamados>;
     lista(q: Record<string, unknown>): Promise<T.Page<T.LinhaChamado>>;
-    /** A arrumação da tela (ordem, largura, escondidos, barras ou pizza), igual para a equipe toda */
+    /** A arrumação da tela (ordem, largura, escondidos, pizza ou barras, grupos, etapas que fecham), igual para a equipe toda */
     painel(): Promise<T.PainelChamados>;
     /** Só a administração: arruma a tela para todos */
-    salvarPainel(itens: T.ItemPainel[]): Promise<T.PainelChamados>;
+    salvarPainel(p: { itens: T.ItemPainel[]; etapasFechadas: string[] | null }): Promise<T.PainelChamados>;
   };
   data: {
     preview(d: { entity: string; csv: string; delimiter: string }): Promise<T.ImportPlan>;

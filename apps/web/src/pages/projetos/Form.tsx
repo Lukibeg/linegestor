@@ -192,7 +192,7 @@ function Opcoes({ opcoes, onMudar }: { opcoes: Opcao[]; onMudar: (o: Opcao[]) =>
       {opcoes.map((o, i) => (
         <div key={o.id ?? i} className="flex flex-wrap items-center gap-1.5">
           <input className="input flex-1 min-w-[120px]" value={o.label} onChange={(e) => mexer(i, { label: e.target.value })} placeholder="Pendente envio de mensagem" />
-          <select className="input w-[104px] shrink-0" value={o.tone} onChange={(e) => mexer(i, { tone: e.target.value as CorOpcao })} aria-label="Cor">
+          <select className="input w-[124px] shrink-0" value={o.tone} onChange={(e) => mexer(i, { tone: e.target.value as CorOpcao })} aria-label="Cor">
             {CORES.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
           </select>
           <Chip tone={o.tone} className="shrink-0 max-w-[140px] truncate">{o.label.trim() || 'assim'}</Chip>

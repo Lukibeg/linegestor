@@ -68,3 +68,9 @@ tempo em cada etapa, tempo até fechar, e ligar o campo Cliente do card ao cadas
 > fatias, colunas do tempo e números de cima —, o gráfico clicado continua inteiro com o escolhido em
 > destaque, e clicar de novo desfaz. A administração arruma a tela para a equipe toda (ordem, largura,
 > escondidos, barras ou pizza). O dia clicado no Período deixou de trocar o período: vira filtro.
+
+> **Revista pela 0031 (Patch 1.4), a pedido do Luan (avisado antes):** a aba **Em aberto saiu** — virou
+> o interruptor **só em aberto**, que vale em Hoje e em Período (com o atalho **Tudo**, é o que a aba
+> mostrava). As **etapas que fecham o chamado** passam a ser escolhidas pela administração (padrão:
+> as finais do LineChat), e a hora do fechamento é refeita pelo histórico de etapas. A **pizza** é o
+> padrão de todos os gráficos de lista. A tabela ganhou a **Descrição**.
