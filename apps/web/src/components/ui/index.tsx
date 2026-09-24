@@ -145,12 +145,20 @@ export function Confirmar({ open, onClose, onConfirm, titulo, texto, botao = 'Co
 }
 
 // ---------- Campo de senha guardada (revelar / copiar) ----------
-export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onChangeNovo, placeholder = 'nova senha (deixe vazio para manter)' }: { secretId: string | null; hasSecret: boolean; onReveal: (id: string, password: string) => Promise<{ value: string; visibleForSeconds: number }>; podeRevelar: boolean; onChangeNovo?: (v: string) => void; placeholder?: string }) {
+/**
+ * Uma senha do cofre. Sem `onChangeNovo`, só mostra (mascarada, com Revelar e Copiar). Com ele, é o
+ * campo do formulário — **uma caixa só** (pedido do Luan no 1.4): com senha guardada, a caixa mostra
+ * os pontinhos e trocar é digitar ali mesmo; deixar como está mantém a atual. Revelada, a senha
+ * aparece na própria caixa por 30 s, e dá para corrigi-la ali.
+ */
+export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onChangeNovo, placeholder = 'digite para trocar' }: { secretId: string | null; hasSecret: boolean; onReveal: (id: string, password: string) => Promise<{ value: string; visibleForSeconds: number }>; podeRevelar: boolean; onChangeNovo?: (v: string) => void; placeholder?: string }) {
   const [shown, setShown] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /** o que foi digitado no formulário; null = não mexeu (mantém a senha guardada) */
+  const [novo, setNovo] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
   const toast = useToast();
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
@@ -162,26 +170,52 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
       timer.current = window.setTimeout(() => setShown(null), r.visibleForSeconds * 1000);
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
+  const botoes = hasSecret && (
+    <span className="flex items-center gap-1">
+      {shown && <button type="button" className="btn-ghost btn-sm" title="Copiar" onClick={() => { navigator.clipboard.writeText(shown); toast.push('ok', 'Copiado'); }}><Copy size={14} /></button>}
+      {podeRevelar && (shown ? <button type="button" className="btn-ghost btn-sm" onClick={() => setShown(null)} title="Ocultar"><EyeOff size={14} /></button> : <button type="button" className="btn-ghost btn-sm" onClick={() => setAsking(true)} title="Revelar (fica registrado)"><Eye size={14} /></button>)}
+    </span>
+  );
+  const janelaRevelar = (
+    <Modal open={asking} onClose={() => setAsking(false)} titulo="Revelar senha" rodape={<><button className="btn-secondary" onClick={() => setAsking(false)}>Cancelar</button><button className="btn-primary" disabled={!pw || busy} onClick={reveal}>{busy ? <Spinner className="text-white" /> : 'Revelar por 30 s'}</button></>}>
+      <p className="text-sm text-ink-2 mb-3">Confirme a <b>sua</b> senha. A revelação fica registrada na auditoria com seu nome, data e hora.</p>
+      <input type="password" className="input" placeholder="sua senha" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && reveal()} autoFocus />
+      {err && <div className="text-bad text-sm mt-2">{err}</div>}
+    </Modal>
+  );
+
+  // ---------- no formulário: uma caixa só ----------
+  if (onChangeNovo) {
+    const mostrando = novo === null && shown !== null;
+    return (
+      <div>
+        <div className="relative">
+          <input
+            type={mostrando ? 'text' : 'password'} autoComplete="new-password" className={`input font-mono text-[13px] ${hasSecret ? 'pr-20 placeholder:tracking-normal' : ''}`}
+            placeholder={hasSecret ? `•••••••••• ${placeholder}` : 'digite a senha'}
+            value={novo ?? (shown ?? '')}
+            onChange={(e) => { setNovo(e.target.value); onChangeNovo(e.target.value); }}
+            aria-label={hasSecret ? 'Senha (guardada; digite para trocar)' : 'Senha'}
+          />
+          {botoes && <span className="absolute right-1.5 top-1/2 -translate-y-1/2">{botoes}</span>}
+        </div>
+        {janelaRevelar}
+      </div>
+    );
+  }
+
+  // ---------- só mostrando (aba Acessos, fichas) ----------
   return (
     <div>
       <div className="flex items-center gap-2">
         {hasSecret ? (
           <div className="input flex items-center justify-between gap-2 font-mono text-[13px]">
             <span className={shown ? '' : 'text-muted tracking-widest'}>{shown ?? '••••••••••'}</span>
-            <span className="flex items-center gap-1">
-              {shown && <button type="button" className="btn-ghost btn-sm" title="Copiar" onClick={() => { navigator.clipboard.writeText(shown); toast.push('ok', 'Copiado'); }}><Copy size={14} /></button>}
-              {podeRevelar && (shown ? <button type="button" className="btn-ghost btn-sm" onClick={() => setShown(null)} title="Ocultar"><EyeOff size={14} /></button> : <button type="button" className="btn-ghost btn-sm" onClick={() => setAsking(true)} title="Revelar (fica registrado)"><Eye size={14} /></button>)}
-            </span>
+            {botoes}
           </div>
-        ) : !onChangeNovo && <span className="text-muted text-sm">não cadastrada</span>}
+        ) : <span className="text-muted text-sm">não cadastrada</span>}
       </div>
-      {/* no formulário: sem senha guardada, é só o campo para digitar — nada de caixa "vazia" em cima */}
-      {onChangeNovo && <input type="password" autoComplete="new-password" className={`input ${hasSecret ? 'mt-2' : ''}`} placeholder={hasSecret ? placeholder : 'digite a senha'} onChange={(e) => onChangeNovo(e.target.value)} />}
-      <Modal open={asking} onClose={() => setAsking(false)} titulo="Revelar senha" rodape={<><button className="btn-secondary" onClick={() => setAsking(false)}>Cancelar</button><button className="btn-primary" disabled={!pw || busy} onClick={reveal}>{busy ? <Spinner className="text-white" /> : 'Revelar por 30 s'}</button></>}>
-        <p className="text-sm text-ink-2 mb-3">Confirme a <b>sua</b> senha. A revelação fica registrada na auditoria com seu nome, data e hora.</p>
-        <input type="password" className="input" placeholder="sua senha" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && reveal()} autoFocus />
-        {err && <div className="text-bad text-sm mt-2">{err}</div>}
-      </Modal>
+      {janelaRevelar}
     </div>
   );
 }
