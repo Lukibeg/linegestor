@@ -9,7 +9,7 @@
  * Entrar: qualquer um destes e-mails com a senha "demo":
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
-import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, camposDeLista, listarChamados, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
+import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, VERSAO_PAINEL, camposDeLista, comFechamento, etapasDaEquipe, listarChamados, painelPadrao, primeiroDiaDe, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
 import { ApiError, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
@@ -81,7 +81,10 @@ const S = {
   },
   // a arrumação da tela de Chamados: no sistema fica no servidor, para todos; na prévia, na memória
   // como o resto — dá para arrumar, sair e entrar como leitor@ para ver a mesma arrumação
-  painelChamados: { itens: [] as ItemPainel[], atualizadoEm: null as string | null, atualizadoPor: null as string | null },
+  painelChamados: {
+    versao: VERSAO_PAINEL, itens: [] as ItemPainel[], etapasFechadas: null as string[] | null,
+    atualizadoEm: null as string | null, atualizadoPor: null as string | null,
+  },
   carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[],
   products: PRODUTOS_INICIAIS.map((p, i) => ({ id: 'p' + p.code, code: p.code as string, name: p.name as string, color: p.color as string, hasSettings: p.hasSettings as boolean, description: p.description as string | null, sortOrder: i, active: true, deletedAt: null as string | null })),
   modules: MODULOS_INICIAIS.map((m, i) => ({ id: 'm' + m.product + '_' + m.code, productId: 'p' + m.product, code: m.code, name: m.name, description: m.description as string | null, hasSettings: m.hasSettings, sortOrder: i, active: true })) as ModRow[],
@@ -312,7 +315,7 @@ function seed() {
       mods.filter((m) => m.startsWith(code + ':')).forEach((pm, k) => {
         const mcode = pm.split(':')[1]!; const mod = S.modules.find((m) => m.productId === 'p' + code && m.code === mcode)!;
         const ms: Record<string, any> = {};
-        if (mcode === 'fop2') { const f = id(); S.secrets.set(f, { label: `Senha do usuário padrão do FOP2 — ${t}`, value: 'fop2#2026' }); Object.assign(ms, { adminExtension: '1000', defaultUserPasswordSecretId: f }); }
+        if (mcode === 'fop2') { const f = id(); S.secrets.set(f, { label: `Senha do ramal admin do FOP2 — ${t}`, value: 'fop2#2026' }); Object.assign(ms, { adminExtension: '1000', adminPasswordSecretId: f }); }
         if (mcode === 'omniboard') { const a = id(), d = id(); S.secrets.set(a, { label: `Senha admin do Omniboard — ${t}`, value: 'Omni#2026' }); S.secrets.set(d, { label: `Senha padrão de usuário do Omniboard — ${t}`, value: 'Bemvindo1' }); Object.assign(ms, { adminLogin: `admin@${t.toLowerCase().replace(/\W+/g, '')}.com.br`, adminPasswordSecretId: a, userDefaultPasswordSecretId: d }); }
         S.subMods.push({ id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: daysAgo(tudoJunto ? diasDoProduto : Math.max(3, diasDoProduto - 40 - k * 75), tudoJunto ? 11 + k : 10), deactivatedAt: null, notes: null, settings: ms });
       });
@@ -529,6 +532,15 @@ const ETIQUETAS_DEMO = [
   ['StandBy', 'rgb(17, 24, 39)'], ['Suporte ativo', 'rgb(22, 163, 74)'], ['Acompanhamento', 'rgb(255, 153, 255)'],
 ].map(([name, color], i) => ({ id: `tag-${i + 1}`, name: name!, color: color!, archived: false }));
 const PESSOAS_DEMO = ['Lúcio Andrade', 'Marina Costa', 'Bruno Teixeira', 'Camila Duarte', 'Diego Farias'];
+/** Os assuntos, com o peso de cada um: parecidos com os do painel de verdade (o print do Luan, 24/09). */
+const ASSUNTOS_DEMO: Array<[string, number]> = [
+  ['Ramal - Configuração', 17], ['Ramal - Telefone Sem Serviço', 9], ['Ramal - Criação', 7], ['Tronco - Configuração Rota de Entrada/Saída', 6],
+  ['Armazenamento Lotado Server', 4], ['LinePBX - Gravação', 3], ['LineChat - Ajuste', 3], ['Linechat - Alteração Chatbot', 3],
+  ['Linechat - Criação Login', 3], ['LinePBX Web - Configuração', 3], ['Falha Infraestrutura Cliente', 2], ['LinePBX - Fila - Configuração', 2],
+  ['Omniboard - configuração', 2], ['API e Integrações', 2], ['Internos', 2], ['LinePBX - Fila - Falha', 2], ['Usuário - Dúvida', 2],
+  ['LineChat - Criação/Alteração de template', 2], ['LineChat - Disparos', 2], ['Acompanhamento', 1], ['LinePBX Web - Erro Pausa', 1],
+  ['Tronco - Queda', 1], ['URA - Ajuste', 1], ['Relatórios - Ajuste', 1],
+];
 
 let chamadosGuardados: { cards: Chamado[]; ctx: Omit<ContextoChamados, 'agora'>; movimentos: number } | null = null;
 function chamadosDemo() {
@@ -544,7 +556,7 @@ function chamadosDemo() {
     { key: 'meio-solicita-o', name: 'Canal da Solicitação', type: 'SINGLESELECT', position: 6, options: ['Whatsapp Oficial', 'Voz ofical', 'Grupo Whatsapp', 'E-mail', 'Reunião remota', 'Suporte Ativo'], archived: false },
     { key: 'resoluttor', name: 'Resolutor', type: 'SINGLESELECT', position: 7, options: PESSOAS_DEMO, archived: false },
     { key: 'observador', name: 'Observadores', type: 'MULTISELECT', position: 8, options: PESSOAS_DEMO, archived: false },
-    { key: 'assunto', name: 'Assunto', type: 'SINGLESELECT', position: 9, options: ['Ramal sem áudio', 'Ramal não registra', 'Fila de atendimento', 'URA', 'Gravação de chamadas', 'Relatórios', 'Pausa de agente', 'Troca de aparelho', 'Chatbot', 'Criação de usuário', 'Queda de tronco', 'Portabilidade'], archived: false },
+    { key: 'assunto', name: 'Assunto', type: 'SINGLESELECT', position: 9, options: ASSUNTOS_DEMO.map(([a]) => a), archived: false },
   ];
   const pesoTipo = [5, 4, 5, 3, 2, 3, 1, 1];
   const pesoProduto = [9, 4, 2, 2, 1, 3, 2, 1];
@@ -568,7 +580,7 @@ function chamadosDemo() {
       plataforma: pesado(campos[2]!.options, pesoProduto),
       'meio-solicita-o': pesado(campos[3]!.options, [8, 3, 3, 2, 1, 1]),
       resoluttor: aberto ? null : resp ?? um(PESSOAS_DEMO),
-      assunto: um(campos[6]!.options),
+      assunto: pesado(campos[6]!.options, ASSUNTOS_DEMO.map(([, peso]) => peso)),
       ...(sorte() < 0.3 ? { observador: [um(PESSOAS_DEMO), um(PESSOAS_DEMO)].filter((x, i, a) => a.indexOf(x) === i) } : {}),
     };
     numero++;
@@ -576,7 +588,8 @@ function chamadosDemo() {
     const cliente = (cf['cliente-71'] as string | null) ?? 'Interno';
     cards.push({
       id: `card-${numero}`, key: `IS-${numero}`, number: numero,
-      title: `${cf.plataforma} - ${cliente} - ${assunto}`, description: `Cliente relata: ${assunto.toLowerCase()}. (chamado de demonstração)`,
+      // a descrição vem do editor do LineChat, com marcas: a tabela mostra só o texto
+      title: `${cf.plataforma} - ${cliente} - ${assunto}`, description: `<p>Cliente relata: ${assunto.toLowerCase()}.</p><p>Chamado de <b>demonstração</b>, aberto pelo ${cf['meio-solicita-o'] as string}.</p>`,
       stepId: etapa.id, stepTitle: etapa.title, stepPhase: etapa.isInitial ? 'INITIAL' : etapa.isFinal ? 'FINAL' : 'INTERMEDIATE',
       status: extra.arquivado ? 'ARCHIVED' : 'OPEN',
       responsavel: resp,
@@ -641,9 +654,30 @@ function chamadosDemo() {
   }
   for (const c of cards) c.isOverdue = !!c.dueDate && Date.parse(c.dueDate) < agora && !ETAPAS_DEMO.find((e) => e.id === c.stepId)?.isFinal;
   chamadosGuardados = { cards, ctx: { etapas: ETAPAS_DEMO, campos, etiquetas: ETIQUETAS_DEMO }, movimentos: Math.round(cards.length * 0.4) };
+  // a prévia já vem com dois grupos no Assunto, para o botão Agrupar ter o que mostrar
+  if (!S.painelChamados.itens.length) {
+    S.painelChamados = {
+      ...S.painelChamados,
+      itens: painelPadrao(camposDeLista(campos)).map((x) => (x.id === 'campo:assunto' ? {
+        ...x,
+        agrupar: false,
+        grupos: [
+          { id: 'grupo-ramal', nome: 'Ramal', valores: ['Ramal - Configuração', 'Ramal - Telefone Sem Serviço', 'Ramal - Criação'] },
+          { id: 'grupo-linechat', nome: 'LineChat', valores: ['LineChat - Ajuste', 'Linechat - Alteração Chatbot', 'Linechat - Criação Login', 'LineChat - Criação/Alteração de template', 'LineChat - Disparos'] },
+        ],
+      } : x)),
+      atualizadoEm: new Date(agora - 2 * 3_600_000).toISOString(), atualizadoPor: 'Luan França',
+    };
+  }
   const inicio = new Date(agora - 20 * 86_400_000).toISOString();
   S.ajustesLineChat = { ...S.ajustesLineChat, inicioEm: inicio, ultimaEm: new Date(agora - 40_000).toISOString(), ultimaCompletaEm: new Date(agora - 8 * 3_600_000).toISOString(), ultimaMsg: 'Atualização: 2 cards lidos, 1 mudança de etapa.' };
   return chamadosGuardados;
+}
+/** Os chamados como o servidor os entrega: com as etapas que fecham escolhidas pela equipe. */
+function chamadosDaEquipe() {
+  const d = chamadosDemo();
+  const etapas = etapasDaEquipe(d.ctx.etapas, S.painelChamados.etapasFechadas);
+  return { ...d, cards: comFechamento(d.cards, etapas), ctx: { ...d.ctx, etapas } };
 }
 const linkDemo = (c: Chamado) => (c.key ? `https://inglinechat.com.br/panels/painel-demo/card/${c.key}` : '');
 function statusLineChatDemo(): AjustesLineChat {
@@ -676,6 +710,11 @@ const unidadesDe = (cid: string) => {
 const modMeta = (mid: string) => S.modules.find((m) => m.id === mid)!;
 /** Módulos ligados numa assinatura (ordenados como no catálogo). */
 const activeMods = (subId: string) => S.subMods.filter((m) => m.subscriptionId === subId && !m.deactivatedAt).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder);
+/** O que o cliente tem ligado: códigos dos produtos e "produto:módulo" (como o servidor, com withProducts). */
+const produtosDoCliente = (cid: string) => {
+  const subs = activeSubs(cid).slice().sort((a, b) => (S.products.find((p) => p.code === a.productCode)?.sortOrder ?? 0) - (S.products.find((p) => p.code === b.productCode)?.sortOrder ?? 0));
+  return { products: subs.map((s) => s.productCode), modules: subs.flatMap((s) => activeMods(s.id).map((m) => `${s.productCode}:${modMeta(m.moduleId).code}`)) };
+};
 const hasMod = (cid: string, product: string, mod: string) => { const s = activeSubs(cid).find((x) => x.productCode === product); return !!s && activeMods(s.id).some((m) => modMeta(m.moduleId).code === mod); };
 const links = (cid: string) => {
   const lp = activeSubs(cid).find((s) => s.productCode === 'linepbx')?.settings;
@@ -699,7 +738,7 @@ const listItem = (c: Client): ClientListItem => {
 };
 const shapeSubMod = (m: SubMod): SubscriptionModule => {
   const meta = modMeta(m.moduleId); const st = m.settings; let settings: Record<string, any> | null = null;
-  if (meta.code === 'fop2') settings = { adminExtension: st.adminExtension ?? null, defaultUserPassword: secretRef(st.defaultUserPasswordSecretId) };
+  if (meta.code === 'fop2') settings = { adminExtension: st.adminExtension ?? null, adminPassword: secretRef(st.adminPasswordSecretId) };
   else if (meta.code === 'omniboard') settings = { adminLogin: st.adminLogin ?? null, adminPassword: secretRef(st.adminPasswordSecretId), userDefaultPassword: secretRef(st.userDefaultPasswordSecretId) };
   return { id: m.id, moduleCode: meta.code, moduleName: meta.name, hasSettings: meta.hasSettings, active: !m.deactivatedAt, activatedAt: m.activatedAt, deactivatedAt: m.deactivatedAt, notes: m.notes, settings };
 };
@@ -961,7 +1000,7 @@ export const demoApi: Api = {
       if (chave.startsWith('modulo:')) { const [, pc = '', mc = ''] = chave.split(':'); valores[chave] = (c) => doProduto(c, pc)?.modules.find((m) => m.code === mc)?.activatedAt; }
       return paginate(ordenar(items, q, 'tradeName', valores), q);
     },
-    async options(q) { await wait(50); return S.clients.filter((c) => !c.deletedAt && !c.archived && (q?.includeInternal || !c.isInternal) && (!q?.productCode || activeSubs(c.id).some((s) => s.productCode === q.productCode)) && (!q?.withDevices || S.devices.some((d) => !d.deletedAt && d.clientId === c.id && d.currentModality !== 'venda'))).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode })); },
+    async options(q) { await wait(50); return S.clients.filter((c) => !c.deletedAt && !c.archived && (q?.includeInternal || !c.isInternal) && (!q?.productCode || activeSubs(c.id).some((s) => s.productCode === q.productCode)) && (!q?.withDevices || S.devices.some((d) => !d.deletedAt && d.clientId === c.id && d.currentModality !== 'venda'))).sort((a, b) => Number(b.isInternal) - Number(a.isInternal) || a.tradeName.localeCompare(b.tradeName)).map((c) => ({ id: c.id, name: c.tradeName, isInternal: c.isInternal, internalCode: c.internalCode, ...(q?.withProducts ? produtosDoCliente(c.id) : {}) })); },
     async get(idc) { await wait(); requirePerm('records.read'); return fullClient(idc); },
     async projetos(idc) { await wait(60); requirePerm('records.read'); return projetosDoCliente(idc); },
     async create(d) { await wait(); requirePerm('records.write'); const cnpj = cnpjLimpo(String(d.cnpj ?? '')); if (!cnpjValido(cnpj)) throw new ApiError(400, 'Dados inválidos', [{ field: 'cnpj', message: 'CNPJ inválido (dígito verificador não confere)' }]); if (S.clients.some((c) => c.cnpj === cnpj)) throw bad('Já existe um cliente com este CNPJ'); const c: Client = { id: id(), tradeName: String(d.tradeName), legalName: String(d.legalName), cnpj, logoUrl: null, archived: false, isInternal: false, internalCode: null, notes: (d.notes as string) ?? null, deletedAt: null, createdAt: now(), updatedAt: now() }; S.clients.push(c); unidadesDe(c.id); audit('create', 'client', `Criou o cliente ${c.tradeName}`, c.id); return fullClient(c.id); },
@@ -989,9 +1028,12 @@ export const demoApi: Api = {
       if (!m) { m = { id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: now(), deactivatedAt: null, notes: null, settings: {} }; S.subMods.push(m); }
       m.deactivatedAt = null; if (d.activatedAt !== undefined) m.activatedAt = dia(d.activatedAt); if (d.notes !== undefined) m.notes = d.notes as string;
       const st = (d.settings as Record<string, any>) ?? {};
-      for (const [k, v] of Object.entries(st)) if (!/password/i.test(k)) m.settings[k] = v;
+      // como o servidor: só os campos do módulo; a senha do usuário padrão do FOP2 não entra mais (1.4)
+      const CAMPOS: Record<string, string[]> = { fop2: ['adminExtension'], omniboard: ['adminLogin'] };
+      for (const [k, v] of Object.entries(st)) if ((CAMPOS[mod.code] ?? []).includes(k)) m.settings[k] = v;
       const saveSecret = (key: string, label: string) => { if (st[key]) { const sid = m!.settings[key + 'SecretId'] ?? id(); S.secrets.set(sid, { label: `${label} — ${c.tradeName}`, value: st[key] }); m!.settings[key + 'SecretId'] = sid; } };
-      saveSecret('adminPassword', 'Senha admin do Omniboard'); saveSecret('userDefaultPassword', 'Senha padrão de usuário do Omniboard'); saveSecret('defaultUserPassword', 'Senha do usuário padrão do FOP2');
+      if (mod.code === 'fop2') saveSecret('adminPassword', 'Senha do ramal admin do FOP2');
+      if (mod.code === 'omniboard') { saveSecret('adminPassword', 'Senha admin do Omniboard'); saveSecret('userDefaultPassword', 'Senha padrão de usuário do Omniboard'); }
       audit('update', 'subscription_module', `Ligou/ajustou o módulo ${mod.name} (${p.name}) no cliente ${c.tradeName}`, m.id); return fullClient(idc);
     },
     async endModule(idc, productCode, moduleCode) {
@@ -1351,14 +1393,16 @@ export const demoApi: Api = {
   chamados: {
     async opcoes() {
       await wait(80); requirePerm('support.read');
-      const { cards, ctx, movimentos } = chamadosDemo();
+      const { cards, ctx, movimentos } = chamadosDaEquipe();
       const a = S.ajustesLineChat;
       return {
         configurado: a.ativo && !!a.painelId, painelId: a.painelId, painelNome: a.painelNome, appUrl: a.appUrl,
         linkDoPainel: a.painelId ? `${a.appUrl}/panels/${a.painelId}` : null,
         sincronizadoEm: a.ultimaEm, ultimaOk: a.ultimaOk, ultimaMsg: a.ultimaMsg, historicoDesde: a.inicioEm,
         totalCards: cards.length, movimentosRegistrados: movimentos,
-        etapas: ctx.etapas, campos: camposDeLista(ctx.campos).map((c) => ({ key: c.key, name: c.name, multiplo: c.type === 'MULTISELECT', options: c.options })),
+        etapas: ctx.etapas.map((e) => ({ ...e, finalNoLineChat: !!ETAPAS_DEMO.find((x) => x.id === e.id)?.isFinal })),
+        primeiroDia: primeiroDiaDe(cards, new Date()),
+        campos: camposDeLista(ctx.campos).map((c) => ({ key: c.key, name: c.name, multiplo: c.type === 'MULTISELECT', options: c.options })),
         etiquetas: [...ctx.etiquetas].sort((x, y) => x.name.localeCompare(y.name, 'pt-BR')),
         responsaveis: [...new Set(cards.map((c) => c.responsavel).filter((x): x is string => !!x))].sort((x, y) => x.localeCompare(y, 'pt-BR')),
         vazio: VAZIO,
@@ -1366,25 +1410,39 @@ export const demoApi: Api = {
     },
     async resumo(q) {
       await wait(90); requirePerm('support.read');
-      const { cards, ctx } = chamadosDemo();
+      const { cards, ctx } = chamadosDaEquipe();
       return resumirChamados(cards, FiltrosChamadosSchema.parse(q), { ...ctx, agora: new Date() });
     },
     async lista(q) {
       await wait(90); requirePerm('support.read');
-      const { cards, ctx } = chamadosDemo();
+      const { cards, ctx } = chamadosDaEquipe();
       return listarChamados(cards, ListaChamadosSchema.parse(q), { ...ctx, agora: new Date() }, linkDemo);
     },
     async painel() {
       await wait(60); requirePerm('support.read');
+      chamadosDemo(); // os grupos de exemplo nascem junto com os chamados
       return S.painelChamados;
     },
-    async salvarPainel(itens) {
+    async salvarPainel(novo) {
       await wait(250); requirePerm('admin.manage');
-      const p = PainelChamadosSchema.safeParse({ itens });
+      const p = PainelChamadosSchema.safeParse({ versao: VERSAO_PAINEL, ...novo });
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Arrumação inválida');
+      // as mesmas regras do servidor: etapa que não existe não conta; a igual à do LineChat é o padrão
+      let fechadas: string[] | null = null;
+      if (p.data.etapasFechadas?.length) {
+        const validas = [...new Set(p.data.etapasFechadas)].filter((id) => ETAPAS_DEMO.some((e) => e.id === id));
+        if (!validas.length) throw bad('Marque ao menos uma etapa que fecha o chamado.');
+        const finais = ETAPAS_DEMO.filter((e) => e.isFinal).map((e) => e.id);
+        fechadas = finais.length === validas.length && finais.every((id) => validas.includes(id)) ? null : validas;
+      }
+      const antes = S.painelChamados.etapasFechadas;
       const escondidos = p.data.itens.filter((x) => x.oculto).length;
-      S.painelChamados = { itens: p.data.itens, atualizadoEm: now(), atualizadoPor: S.me?.name ?? null };
-      audit('chamados_painel', 'settings', `${S.me?.name} arrumou a tela de Chamados para a equipe (${p.data.itens.length - escondidos} gráficos à vista${escondidos ? `, ${escondidos} escondido${escondidos > 1 ? 's' : ''}` : ''})`, 'chamados-painel');
+      const grupos = p.data.itens.reduce((a, x) => a + (x.grupos?.length ?? 0), 0);
+      const partes = [`${p.data.itens.length - escondidos} gráficos à vista${escondidos ? `, ${escondidos} escondido${escondidos > 1 ? 's' : ''}` : ''}`];
+      if (grupos) partes.push(`${grupos} grupo${grupos > 1 ? 's' : ''}`);
+      if (JSON.stringify(antes) !== JSON.stringify(fechadas)) partes.push(fechadas ? 'mudou as etapas que fecham o chamado' : 'voltou às etapas finais do LineChat');
+      S.painelChamados = { versao: VERSAO_PAINEL, itens: p.data.itens, etapasFechadas: fechadas, atualizadoEm: now(), atualizadoPor: S.me?.name ?? null };
+      audit('chamados_painel', 'settings', `${S.me?.name} arrumou a tela de Chamados para a equipe (${partes.join('; ')})`, 'chamados-painel');
       return S.painelChamados;
     },
   },

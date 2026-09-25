@@ -30,9 +30,12 @@ export function Andamento({ pct, total, faltam, altura = 'h-2' }: { pct: number;
 
 /** Um número com rótulo, para o painel do projeto. */
 export function Numero({ label, valor, tone = 'neutral', onClick, ativo }: {
-  label: ReactNode; valor: number; tone?: 'neutral' | 'accent' | 'signal' | 'ok' | 'bad' | 'muted'; onClick?: () => void; ativo?: boolean;
+  label: ReactNode; valor: number; tone?: CorOpcao; onClick?: () => void; ativo?: boolean;
 }) {
-  const cor = { neutral: 'text-ink', accent: 'text-accent', signal: 'text-signal', ok: 'text-ok', bad: 'text-bad', muted: 'text-muted' }[tone];
+  const cor = ({
+    neutral: 'text-ink', accent: 'text-accent', signal: 'text-signal', ok: 'text-ok', bad: 'text-bad', muted: 'text-muted',
+    roxo: 'text-roxo-ink', rosa: 'text-rosa-ink', turquesa: 'text-turquesa-ink', amarelo: 'text-amarelo-ink',
+  } satisfies Record<CorOpcao, string>)[tone];
   const Tag = onClick ? 'button' : 'div';
   return (
     <Tag
@@ -52,13 +55,21 @@ export function tamanho(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
 }
 
-/** As cores que uma opção pode ter, com nome de gente (é isto que aparece no editor). */
+/**
+ * As cores que uma opção pode ter, com nome de gente (é isto que aparece no editor), na ordem do
+ * arco-íris. No 1.4 chegaram Turquesa, Amarelo, Rosa e Roxo — e o antigo "Amarelo" passou a se
+ * chamar **Laranja**, que é a cor que ele sempre teve (nada do que já estava escolhido muda de cor).
+ */
 export const CORES: Array<{ id: CorOpcao; nome: string }> = [
   { id: 'neutral', nome: 'Cinza' },
   { id: 'accent', nome: 'Azul' },
+  { id: 'turquesa', nome: 'Turquesa' },
   { id: 'ok', nome: 'Verde' },
-  { id: 'signal', nome: 'Amarelo' },
+  { id: 'amarelo', nome: 'Amarelo' },
+  { id: 'signal', nome: 'Laranja' },
   { id: 'bad', nome: 'Vermelho' },
+  { id: 'rosa', nome: 'Rosa' },
+  { id: 'roxo', nome: 'Roxo' },
   { id: 'muted', nome: 'Apagado' },
 ];
 
@@ -81,6 +92,10 @@ export const CHIP_SELECT: Record<CorOpcao, string> = {
   signal: 'bg-signal-soft text-signal border-signal',
   bad: 'bg-bad-soft text-bad border-bad',
   muted: 'bg-surface-2 text-muted border-line',
+  roxo: 'bg-roxo-soft text-roxo-ink border-roxo',
+  rosa: 'bg-rosa-soft text-rosa-ink border-rosa',
+  turquesa: 'bg-turquesa-soft text-turquesa-ink border-turquesa',
+  amarelo: 'bg-amarelo-soft text-amarelo-ink border-amarelo',
 };
 
 /** A cor cheia de cada faixa da barra "como está cada passo". */
@@ -91,4 +106,8 @@ export const FAIXA: Record<CorOpcao, string> = {
   signal: 'bg-signal',
   bad: 'bg-bad',
   muted: 'bg-line',
+  roxo: 'bg-roxo',
+  rosa: 'bg-rosa',
+  turquesa: 'bg-turquesa',
+  amarelo: 'bg-amarelo',
 };

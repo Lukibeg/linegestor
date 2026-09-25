@@ -90,6 +90,18 @@ describe('clientes', () => {
     expect((await s.get('/clients?modules=linepbx:nps')).json().total).toBe(0);
   });
 
+  it('options com withProducts traz os produtos e módulos ligados de cada um (Escolher clientes, 1.4)', async () => {
+    const curta = (await s.get('/clients/options')).json();
+    expect(curta[0].products).toBeUndefined();
+    const ops = (await s.get('/clients/options?withProducts=true')).json();
+    const aurora = ops.find((c: any) => c.name === 'Clínica Aurora');
+    const voz = ops.find((c: any) => c.name === 'Só Voz');
+    expect(aurora.products).toEqual(['linepbx']);
+    expect(aurora.modules).toEqual(['linepbx:fop2']);
+    expect(voz.products).toEqual(['voicenet']);
+    expect(voz.modules).toEqual([]);
+  });
+
   it('desliga um módulo e encerra um produto mantendo o histórico', async () => {
     const id = (await s.get('/clients?q=aurora')).json().items[0].id;
     const r = await s.del(`/clients/${id}/modules/linepbx/fop2`);

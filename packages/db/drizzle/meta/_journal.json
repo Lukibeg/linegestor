@@ -50,6 +50,13 @@
       "when": 1790173031515,
       "tag": "0006_chamados_linechat",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790288050172,
+      "tag": "0007_fop2_senha_admin",
+      "breakpoints": true
     }
   ]
 }

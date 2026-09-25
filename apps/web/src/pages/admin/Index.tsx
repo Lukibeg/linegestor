@@ -7,7 +7,7 @@ import { api } from '../../api/index.js';
 import type { Product, ProductModule, Role, User } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { useAuth } from '../../lib/auth.js';
-import { Campo, Carregando, Chip, Confirmar, Modal, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Campo, Carregando, Chip, classeAba, Confirmar, FAIXA_ABAS, Modal, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { data, relativo } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { Ajustes } from './Ajustes.js';
@@ -23,7 +23,7 @@ export function Admin() {
   ];
   return (
     <Pagina titulo="Administração">
-      <div className="flex gap-1 border-b border-line mb-4 overflow-x-auto">{links.map((l) => <NavLink key={l.to} to={l.to} className={({ isActive }) => `px-3 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${isActive ? 'border-accent text-accent' : 'border-transparent text-ink-2'}`}>{l.label}</NavLink>)}</div>
+      <div className={FAIXA_ABAS}>{links.map((l) => <NavLink key={l.to} to={l.to} className={({ isActive }) => classeAba(isActive)}>{l.label}</NavLink>)}</div>
       <Routes>
         <Route index element={<Navigate to={links[0]?.to ?? '/'} replace />} />
         <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="novidades" element={<Novidades />} /><Route path="ajustes" element={<Ajustes />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
@@ -183,8 +183,9 @@ function Produtos() {
           <div className="p-3">
             <div className="flex items-center justify-between mb-2"><span className="eyebrow">Módulos</span><button className="btn-ghost btn-sm" onClick={() => setNovoModulo(p)}><Plus size={14} /> novo módulo</button></div>
             {p.modules.length === 0 ? <div className="text-muted text-[12.5px]">Este produto não tem módulos.</div> : (
-              <table className="table"><thead><tr><ThN /><th>Módulo</th><th>Código</th><th>Descrição</th><th>Config. própria</th><th>Ativo</th></tr></thead>
-                <tbody>{p.modules.map((m, i) => <tr key={m.id}><TdN n={contar(i)} /><td className="font-medium">{m.name}</td><td className="font-mono text-muted">{m.code}</td><td className="text-ink-2 text-[13px]">{m.description}</td><td>{m.hasSettings ? 'sim' : '—'}</td><td><Toggle checked={m.active} onChange={(v) => updModulo(p, m, { active: v })} /></td></tr>)}</tbody></table>
+              // no celular a tabela rola dentro do cartão, e não a página inteira para o lado
+              <div className="overflow-x-auto"><table className="table"><thead><tr><ThN /><th>Módulo</th><th>Código</th><th>Descrição</th><th>Config. própria</th><th>Ativo</th></tr></thead>
+                <tbody>{p.modules.map((m, i) => <tr key={m.id}><TdN n={contar(i)} /><td className="font-medium">{m.name}</td><td className="font-mono text-muted">{m.code}</td><td className="text-ink-2 text-[13px]">{m.description}</td><td>{m.hasSettings ? 'sim' : '—'}</td><td><Toggle checked={m.active} onChange={(v) => updModulo(p, m, { active: v })} /></td></tr>)}</tbody></table></div>
             )}
           </div>
         </div>
@@ -282,5 +283,5 @@ function Lixeira() {
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;
   if (!q.data?.length) return <Vazio titulo="Lixeira vazia" texto="Tudo que for excluído aparece aqui e pode ser restaurado." />;
-  return <div className="card"><table className="table"><thead><tr><ThN /><Th o={o} col="type">Tipo</Th><Th o={o} col="label">Registro</Th><Th o={o} col="deletedAt">Excluído em</Th><th /></tr></thead><tbody>{ordenarLista(q.data, o, { type: (t) => nomes[t.type] ?? t.type, label: (t) => t.label, deletedAt: (t) => t.deletedAt }).map((t, i) => <tr key={t.type + t.id}><TdN n={contar(i)} /><td><Chip tone="neutral">{nomes[t.type] ?? t.type}</Chip></td><td className="font-medium">{t.label}</td><td className="text-muted tnum">{data(t.deletedAt, true)}</td><td className="text-right"><button className="btn-secondary btn-sm" onClick={() => restore(t.type, t.id)}>Restaurar</button></td></tr>)}</tbody></table></div>;
+  return <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><Th o={o} col="type">Tipo</Th><Th o={o} col="label">Registro</Th><Th o={o} col="deletedAt">Excluído em</Th><th /></tr></thead><tbody>{ordenarLista(q.data, o, { type: (t) => nomes[t.type] ?? t.type, label: (t) => t.label, deletedAt: (t) => t.deletedAt }).map((t, i) => <tr key={t.type + t.id}><TdN n={contar(i)} /><td><Chip tone="neutral">{nomes[t.type] ?? t.type}</Chip></td><td className="font-medium">{t.label}</td><td className="text-muted tnum">{data(t.deletedAt, true)}</td><td className="text-right"><button className="btn-secondary btn-sm" onClick={() => restore(t.type, t.id)}>Restaurar</button></td></tr>)}</tbody></table></div>;
 }

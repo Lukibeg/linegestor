@@ -7,7 +7,13 @@ import { z } from 'zod';
 import { FiltrosChamadosSchema, ItemPainelSchema, ListaChamadosSchema, PainelChamadosSchema } from '@gestor/shared';
 import * as svc from '../services/chamados.js';
 
-const Painel = z.object({ itens: z.array(ItemPainelSchema), atualizadoEm: z.string().nullable(), atualizadoPor: z.string().nullable() });
+const Painel = z.object({
+  versao: z.number(),
+  itens: z.array(ItemPainelSchema),
+  etapasFechadas: z.array(z.string()).nullable(),
+  atualizadoEm: z.string().nullable(),
+  atualizadoPor: z.string().nullable(),
+});
 
 const routes: FastifyPluginAsyncZod = async (app) => {
   const ver = { preHandler: app.requirePermission('support.read') };
@@ -16,7 +22,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.get('/resumo', {
     ...ver,
-    schema: { tags: ['Chamados'], summary: 'Os números da aba (Hoje · Em aberto · Período) com os filtros aplicados', querystring: FiltrosChamadosSchema },
+    schema: { tags: ['Chamados'], summary: 'Os números da aba (Hoje · Período), com os filtros e o "só em aberto" aplicados', querystring: FiltrosChamadosSchema },
   }, async (req) => svc.resumo(app.db, req.query));
 
   app.get('/lista', {
@@ -28,7 +34,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   // administração arruma (e fica na auditoria, com o antes e o depois).
   app.get('/painel', {
     ...ver,
-    schema: { tags: ['Chamados'], summary: 'A arrumação da tela: ordem, largura, escondidos e barras ou pizza de cada gráfico', response: { 200: Painel } },
+    schema: { tags: ['Chamados'], summary: 'A arrumação da tela: ordem, largura, escondidos, pizza ou barras, grupos de cada gráfico e as etapas que fecham o chamado', response: { 200: Painel } },
   }, async () => svc.lerPainel(app.db));
 
   app.put('/painel', {
@@ -36,12 +42,19 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     schema: { tags: ['Chamados'], summary: 'Arrumar a tela de Chamados para a equipe toda', body: PainelChamadosSchema, response: { 200: Painel } },
   }, async (req) => {
     const antes = await svc.lerPainel(app.db);
-    const depois = await svc.gravarPainel(app.db, req.body.itens, req.user!.id);
+    const depois = await svc.gravarPainel(app.db, req.body, req.user!.id);
     const escondidos = req.body.itens.filter((x) => x.oculto).length;
+    const grupos = req.body.itens.reduce((a, x) => a + (x.grupos?.length ?? 0), 0);
+    const partes = [`${req.body.itens.length - escondidos} gráficos à vista${escondidos ? `, ${escondidos} escondido${escondidos > 1 ? 's' : ''}` : ''}`];
+    if (grupos) partes.push(`${grupos} grupo${grupos > 1 ? 's' : ''}`);
+    if (JSON.stringify(antes.etapasFechadas) !== JSON.stringify(depois.etapasFechadas)) {
+      partes.push(depois.etapasFechadas ? 'mudou as etapas que fecham o chamado' : 'voltou às etapas finais do LineChat');
+    }
     await app.audit(req, {
       action: 'chamados_painel', entityType: 'settings', entityId: 'chamados-painel',
-      summary: `${req.user!.name} arrumou a tela de Chamados para a equipe (${req.body.itens.length - escondidos} gráficos à vista${escondidos ? `, ${escondidos} escondido${escondidos > 1 ? 's' : ''}` : ''})`,
-      before: antes.itens, after: req.body.itens,
+      summary: `${req.user!.name} arrumou a tela de Chamados para a equipe (${partes.join('; ')})`,
+      before: { itens: antes.itens, etapasFechadas: antes.etapasFechadas },
+      after: { itens: depois.itens, etapasFechadas: depois.etapasFechadas },
     });
     return depois;
   });

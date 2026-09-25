@@ -69,9 +69,15 @@ export function Vazio({ titulo, texto, acao }: { titulo: string; texto?: string;
   );
 }
 
-export function Chip({ children, color, tone = 'neutral', className = '', title }: { children: ReactNode; color?: string; tone?: 'neutral' | 'accent' | 'signal' | 'ok' | 'bad' | 'muted'; className?: string; title?: string }) {
+/** Os tons de um chip: os do sistema e, desde o 1.4, as cores extras das opções dos projetos. */
+export type TomChip = 'neutral' | 'accent' | 'signal' | 'ok' | 'bad' | 'muted' | 'roxo' | 'rosa' | 'turquesa' | 'amarelo';
+
+export function Chip({ children, color, tone = 'neutral', className = '', title }: { children: ReactNode; color?: string; tone?: TomChip; className?: string; title?: string }) {
   if (color) return <span title={title} className={`chip ${className}`} style={{ background: color + '22', color }}>{children}</span>;
-  const map = { neutral: 'bg-surface-2 text-ink-2', accent: 'bg-accent-soft text-accent-ink', signal: 'bg-signal-soft text-signal', ok: 'bg-ok-soft text-ok', bad: 'bg-bad-soft text-bad', muted: 'bg-surface-2 text-muted' };
+  const map: Record<TomChip, string> = {
+    neutral: 'bg-surface-2 text-ink-2', accent: 'bg-accent-soft text-accent-ink', signal: 'bg-signal-soft text-signal', ok: 'bg-ok-soft text-ok', bad: 'bg-bad-soft text-bad', muted: 'bg-surface-2 text-muted',
+    roxo: 'bg-roxo-soft text-roxo-ink', rosa: 'bg-rosa-soft text-rosa-ink', turquesa: 'bg-turquesa-soft text-turquesa-ink', amarelo: 'bg-amarelo-soft text-amarelo-ink',
+  };
   return <span title={title} className={`chip ${map[tone]} ${className}`}>{children}</span>;
 }
 
@@ -139,12 +145,20 @@ export function Confirmar({ open, onClose, onConfirm, titulo, texto, botao = 'Co
 }
 
 // ---------- Campo de senha guardada (revelar / copiar) ----------
-export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onChangeNovo, placeholder = 'nova senha (deixe vazio para manter)' }: { secretId: string | null; hasSecret: boolean; onReveal: (id: string, password: string) => Promise<{ value: string; visibleForSeconds: number }>; podeRevelar: boolean; onChangeNovo?: (v: string) => void; placeholder?: string }) {
+/**
+ * Uma senha do cofre. Sem `onChangeNovo`, só mostra (mascarada, com Revelar e Copiar). Com ele, é o
+ * campo do formulário — **uma caixa só** (pedido do Luan no 1.4): com senha guardada, a caixa mostra
+ * os pontinhos e trocar é digitar ali mesmo; deixar como está mantém a atual. Revelada, a senha
+ * aparece na própria caixa por 30 s, e dá para corrigi-la ali.
+ */
+export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onChangeNovo, placeholder = 'digite para trocar' }: { secretId: string | null; hasSecret: boolean; onReveal: (id: string, password: string) => Promise<{ value: string; visibleForSeconds: number }>; podeRevelar: boolean; onChangeNovo?: (v: string) => void; placeholder?: string }) {
   const [shown, setShown] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /** o que foi digitado no formulário; null = não mexeu (mantém a senha guardada) */
+  const [novo, setNovo] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
   const toast = useToast();
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
@@ -156,26 +170,52 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
       timer.current = window.setTimeout(() => setShown(null), r.visibleForSeconds * 1000);
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
+  const botoes = hasSecret && (
+    <span className="flex items-center gap-1">
+      {shown && <button type="button" className="btn-ghost btn-sm" title="Copiar" onClick={() => { navigator.clipboard.writeText(shown); toast.push('ok', 'Copiado'); }}><Copy size={14} /></button>}
+      {podeRevelar && (shown ? <button type="button" className="btn-ghost btn-sm" onClick={() => setShown(null)} title="Ocultar"><EyeOff size={14} /></button> : <button type="button" className="btn-ghost btn-sm" onClick={() => setAsking(true)} title="Revelar (fica registrado)"><Eye size={14} /></button>)}
+    </span>
+  );
+  const janelaRevelar = (
+    <Modal open={asking} onClose={() => setAsking(false)} titulo="Revelar senha" rodape={<><button className="btn-secondary" onClick={() => setAsking(false)}>Cancelar</button><button className="btn-primary" disabled={!pw || busy} onClick={reveal}>{busy ? <Spinner className="text-white" /> : 'Revelar por 30 s'}</button></>}>
+      <p className="text-sm text-ink-2 mb-3">Confirme a <b>sua</b> senha. A revelação fica registrada na auditoria com seu nome, data e hora.</p>
+      <input type="password" className="input" placeholder="sua senha" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && reveal()} autoFocus />
+      {err && <div className="text-bad text-sm mt-2">{err}</div>}
+    </Modal>
+  );
+
+  // ---------- no formulário: uma caixa só ----------
+  if (onChangeNovo) {
+    const mostrando = novo === null && shown !== null;
+    return (
+      <div>
+        <div className="relative">
+          <input
+            type={mostrando ? 'text' : 'password'} autoComplete="new-password" className={`input font-mono text-[13px] ${hasSecret ? 'pr-20 placeholder:tracking-normal' : ''}`}
+            placeholder={hasSecret ? `•••••••••• ${placeholder}` : 'digite a senha'}
+            value={novo ?? (shown ?? '')}
+            onChange={(e) => { setNovo(e.target.value); onChangeNovo(e.target.value); }}
+            aria-label={hasSecret ? 'Senha (guardada; digite para trocar)' : 'Senha'}
+          />
+          {botoes && <span className="absolute right-1.5 top-1/2 -translate-y-1/2">{botoes}</span>}
+        </div>
+        {janelaRevelar}
+      </div>
+    );
+  }
+
+  // ---------- só mostrando (aba Acessos, fichas) ----------
   return (
     <div>
       <div className="flex items-center gap-2">
         {hasSecret ? (
           <div className="input flex items-center justify-between gap-2 font-mono text-[13px]">
             <span className={shown ? '' : 'text-muted tracking-widest'}>{shown ?? '••••••••••'}</span>
-            <span className="flex items-center gap-1">
-              {shown && <button type="button" className="btn-ghost btn-sm" title="Copiar" onClick={() => { navigator.clipboard.writeText(shown); toast.push('ok', 'Copiado'); }}><Copy size={14} /></button>}
-              {podeRevelar && (shown ? <button type="button" className="btn-ghost btn-sm" onClick={() => setShown(null)} title="Ocultar"><EyeOff size={14} /></button> : <button type="button" className="btn-ghost btn-sm" onClick={() => setAsking(true)} title="Revelar (fica registrado)"><Eye size={14} /></button>)}
-            </span>
+            {botoes}
           </div>
-        ) : !onChangeNovo && <span className="text-muted text-sm">não cadastrada</span>}
+        ) : <span className="text-muted text-sm">não cadastrada</span>}
       </div>
-      {/* no formulário: sem senha guardada, é só o campo para digitar — nada de caixa "vazia" em cima */}
-      {onChangeNovo && <input type="password" autoComplete="new-password" className={`input ${hasSecret ? 'mt-2' : ''}`} placeholder={hasSecret ? placeholder : 'digite a senha'} onChange={(e) => onChangeNovo(e.target.value)} />}
-      <Modal open={asking} onClose={() => setAsking(false)} titulo="Revelar senha" rodape={<><button className="btn-secondary" onClick={() => setAsking(false)}>Cancelar</button><button className="btn-primary" disabled={!pw || busy} onClick={reveal}>{busy ? <Spinner className="text-white" /> : 'Revelar por 30 s'}</button></>}>
-        <p className="text-sm text-ink-2 mb-3">Confirme a <b>sua</b> senha. A revelação fica registrada na auditoria com seu nome, data e hora.</p>
-        <input type="password" className="input" placeholder="sua senha" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && reveal()} autoFocus />
-        {err && <div className="text-bad text-sm mt-2">{err}</div>}
-      </Modal>
+      {janelaRevelar}
     </div>
   );
 }
@@ -244,11 +284,20 @@ export function usePaginaLocal<T>(itens: T[], tamanho = 100) {
   };
 }
 
+/**
+ * As abas de uma tela. A linha de baixo é uma sombra por dentro (e não uma borda), e a aba
+ * escolhida pinta o próprio traço por cima dela: assim nada passa da altura da faixa. Antes a aba
+ * descia 1px sobre a borda (`-mb-px`) e, com a rolagem lateral ligada (para caber no celular), esse
+ * pixel virava uma barrinha de rolagem vertical à toa no Windows (Patch 1.4).
+ */
+export const FAIXA_ABAS = 'flex gap-1 mb-4 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--line)]';
+export const classeAba = (ativa: boolean) => `px-3 py-2 text-sm font-semibold border-b-2 whitespace-nowrap ${ativa ? 'border-accent text-accent' : 'border-transparent text-ink-2 hover:text-ink'}`;
+
 export function Abas<T extends string>({ abas, atual, onChange }: { abas: Array<{ id: T; label: ReactNode }>; atual: T; onChange: (t: T) => void }) {
   return (
-    <div className="flex gap-1 border-b border-line mb-4 overflow-x-auto" role="tablist">
+    <div className={FAIXA_ABAS} role="tablist">
       {abas.map((a) => (
-        <button key={a.id} role="tab" aria-selected={atual === a.id} onClick={() => onChange(a.id)} className={`px-3 py-2 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap ${atual === a.id ? 'border-accent text-accent' : 'border-transparent text-ink-2 hover:text-ink'}`}>{a.label}</button>
+        <button key={a.id} role="tab" aria-selected={atual === a.id} onClick={() => onChange(a.id)} className={classeAba(atual === a.id)}>{a.label}</button>
       ))}
     </div>
   );

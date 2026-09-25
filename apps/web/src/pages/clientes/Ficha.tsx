@@ -5,12 +5,12 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Archive, ChevronDown, ChevronRight, ExternalLink, Network, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, ExternalLink, Filter, Network, Pencil, Plus, Search, Star, Trash2 } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { ClientDeviceLogin, ClientFull, ClientUnit, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, Identificacao, InputIp, LogoCliente, mensagemErro, Modal, Spinner, usePaginaLocal, Vazio, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, Confirmar, Identificacao, InputIp, LogoCliente, mensagemErro, Modal, Spinner, Toggle, usePaginaLocal, Vazio, useToast } from '../../components/ui/index.js';
 import { cnpjFormatado, condicaoCor, condicaoNome, data, diaLocal, diaParaIso, hojeCampoData, intervalo, MODALIDADES, paraCampoData, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { paraALista, Voltar } from '../../lib/voltar.js';
@@ -18,6 +18,7 @@ import { contar, TdN, ThN } from '../../lib/contagem.js';
 import { ClienteForm } from './Form.js';
 import { ChipSituacao } from '../projetos/partes.js';
 import { BarrasRanking } from '../../components/graficos.js';
+import { FiltroEmBotao } from '../../lib/filtros.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'historico';
 
@@ -310,14 +311,14 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
     setBusy(true); setErr('');
     try {
       const settings: Record<string, unknown> = {};
-      if (module.code === 'fop2') Object.assign(settings, { adminExtension: f.adminExtension || null, ...(senhas.defaultUserPassword ? { defaultUserPassword: senhas.defaultUserPassword } : {}) });
+      if (module.code === 'fop2') Object.assign(settings, { adminExtension: f.adminExtension || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}) });
       if (module.code === 'omniboard') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}), ...(senhas.userDefaultPassword ? { userDefaultPassword: senhas.userDefaultPassword } : {}) });
       await api.clients.upsertModule(c.id, { productCode: product.code, moduleCode: module.code, activatedAt: f.activatedAt ? diaParaIso(f.activatedAt) : null, notes: f.notes || null, settings });
       await qc.invalidateQueries({ queryKey: ['client', c.id] }); await qc.invalidateQueries({ queryKey: ['clients'] });
       toast.push('ok', `${module.name} salvo`); onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
-  const seg = (key: 'adminPassword' | 'userDefaultPassword' | 'defaultUserPassword', label: string) => (
+  const seg = (key: 'adminPassword' | 'userDefaultPassword', label: string) => (
     <Campo label={label}><CampoSegredo secretId={st[key]?.secretId ?? null} hasSecret={!!st[key]?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={(v) => setSenhas({ ...senhas, [key]: v })} /></Campo>
   );
   return (
@@ -327,7 +328,8 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
         <Campo label="Ativado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
         {module.code === 'fop2' && (<>
           <Campo label="Ramal / usuário admin do FOP2" dica="usado para o acesso rápido"><input className="input font-mono" autoComplete="off" value={f.adminExtension} onChange={(e) => setF({ ...f, adminExtension: e.target.value })} /></Campo>
-          {seg('defaultUserPassword', 'Senha do usuário padrão do FOP2')}
+          {/* 1.4 (decisão 0032): a senha que a equipe usa é a do ramal admin; a do usuário padrão saiu (a já guardada fica no cofre) */}
+          {seg('adminPassword', 'Senha do ramal admin do FOP2')}
         </>)}
         {module.code === 'omniboard' && (<>
           <Campo label="E-mail do administrador"><input className="input" value={f.adminLogin} onChange={(e) => setF({ ...f, adminLogin: e.target.value })} /></Campo>
@@ -345,30 +347,143 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
 /**
  * Os números do cliente, com a marca **em uso / não usado**: o número pode estar alocado ao
  * cliente e ainda não estar em uso (reservado, aguardando configuração). Clicar na marca alterna.
+ *
+ * Patch 1.4: **procurar e filtrar** (número, operadora, circuito, titular) sem sair da ficha —
+ * cliente grande tem 150 números — e **a observação se edita na própria linha** (clicar no texto,
+ * Enter grava, Esc desiste), com a mesma permissão de alocar números.
+ *
+ * O uso é um **interruptor** ("só não usados"), no padrão do "só em aberto" dos Chamados: com
+ * duas opções só, uma lista de caixinhas era um clique a mais. Ele mostra os números que pedem
+ * atenção (alocados e ainda sem uso); os em uso são a maioria e não precisam de filtro.
  */
 function Dids({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
   const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
   const o = useOrdenacaoLocal('numberFormatted');
   const items = q.data?.items ?? [];
-  const ordenados = ordenarLista(items, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, inUse: (d) => (d.inUse ? 1 : 0), note: (d) => d.note });
+  const [busca, setBusca] = useState('');
+  const [soNaoUsados, setSoNaoUsados] = useState(false);
+  const [operadoras, setOperadoras] = useState<string[]>([]);
+  const [circuitos, setCircuitos] = useState<string[]>([]);
+  const [titulares, setTitulares] = useState<string[]>([]);
+  const SEM = '__sem__';
+  const opcoes = useMemo(() => {
+    const unicos = (f: (d: (typeof items)[number]) => [string, string]) => [...new Map(items.map(f)).entries()].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+    return {
+      operadoras: unicos((d) => [d.carrierName ?? SEM, d.carrierName ?? 'Sem operadora']),
+      circuitos: unicos((d) => [d.circuitId ?? SEM, d.circuitName ?? 'Sem circuito']),
+      titulares: unicos((d) => [d.ownerClientId ?? SEM, d.ownerName ?? 'Sem titular']),
+    };
+  }, [items]);
+  const semAcento = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const filtrados = useMemo(() => {
+    const digitos = busca.replace(/\D/g, '');
+    const texto = semAcento(busca.trim());
+    return items.filter((d) => {
+      if (soNaoUsados && d.inUse) return false;
+      if (operadoras.length && !operadoras.includes(d.carrierName ?? SEM)) return false;
+      if (circuitos.length && !circuitos.includes(d.circuitId ?? SEM)) return false;
+      if (titulares.length && !titulares.includes(d.ownerClientId ?? SEM)) return false;
+      if (!texto) return true;
+      // o número com ou sem DDD, com ou sem traço; ou um pedaço da observação ou do circuito
+      if (digitos.length >= 2 && d.number.includes(digitos)) return true;
+      return semAcento(`${d.note ?? ''} ${d.circuitName ?? ''}`).includes(texto);
+    });
+  }, [items, busca, soNaoUsados, operadoras, circuitos, titulares]);
+  const ordenados = ordenarLista(filtrados, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, inUse: (d) => (d.inUse ? 1 : 0), note: (d) => d.note });
   const pg = usePaginaLocal(ordenados, 100);
   const [mudando, setMudando] = useState<string | null>(null);
+  const atualizar = () => Promise.all([qc.invalidateQueries({ queryKey: ['client-dids', c.id] }), qc.invalidateQueries({ queryKey: ['dids'] })]);
   const alternar = async (id: string, inUse: boolean) => {
     setMudando(id);
-    try { await api.dids.update(id, { inUse }); await Promise.all([qc.invalidateQueries({ queryKey: ['client-dids', c.id] }), qc.invalidateQueries({ queryKey: ['dids'] })]); }
+    try { await api.dids.update(id, { inUse }); await atualizar(); }
     catch (e) { toast.push('erro', mensagemErro(e)); } finally { setMudando(null); }
+  };
+  const gravarObservacao = async (id: string, note: string | null) => {
+    await api.dids.update(id, { note });
+    await atualizar();
   };
   if (q.isLoading) return <Carregando />;
   if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
   const emUso = items.filter((d) => d.inUse).length;
+  const temFiltro = !!busca.trim() || soNaoUsados || operadoras.length > 0 || circuitos.length > 0 || titulares.length > 0;
+  const limpar = () => { setBusca(''); setSoNaoUsados(false); setOperadoras([]); setCircuitos([]); setTitulares([]); };
+  const podeEditar = can('dids.assign');
   return (
-    <div className="card overflow-x-auto">
-      <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
-        <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum">{d.numberFormatted}</td>
-          <td><UsoDid inUse={d.inUse} podeMudar={can('dids.assign')} mudando={mudando === d.id} onChange={(v) => alternar(d.id, v)} /></td>
-          <td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td><td>{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
-      <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted flex flex-wrap gap-x-3"><span className="tnum">{emUso} em uso · {items.length - emUso} não usado(s)</span><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div></div>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="relative">
+          <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+          <input className="input pl-8 w-[240px]" id="dids-cliente-busca" autoComplete="off" placeholder="Procurar número ou observação…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </label>
+        {opcoes.operadoras.length > 1 && <FiltroEmBotao icone={Filter} nome="Operadora" escolhidos={operadoras} onChange={setOperadoras} grupos={[{ opcoes: opcoes.operadoras }]} />}
+        {opcoes.circuitos.length > 1 && <FiltroEmBotao icone={Filter} nome="Circuito" escolhidos={circuitos} onChange={setCircuitos} grupos={[{ opcoes: opcoes.circuitos }]} />}
+        {opcoes.titulares.length > 1 && <FiltroEmBotao icone={Filter} nome="Titular" escolhidos={titulares} onChange={setTitulares} grupos={[{ opcoes: opcoes.titulares }]} />}
+        <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Só os números alocados a este cliente que ainda não estão em uso (reservados, esperando configuração).">
+          <Toggle checked={soNaoUsados} onChange={setSoNaoUsados} />
+          só não usados <span className="text-muted tnum">({items.length - emUso})</span>
+        </label>
+        {temFiltro && <button type="button" className="btn-ghost btn-sm" onClick={limpar}>Limpar filtros</button>}
+        <span className="text-[12.5px] text-muted tnum ml-auto">{temFiltro ? `${filtrados.length} de ${items.length} números` : `${items.length} números`}</span>
+      </div>
+      <div className="card overflow-x-auto">
+        {!filtrados.length ? <div className="text-muted text-sm p-4">Nenhum número com esses filtros. <button type="button" className="link" onClick={limpar}>Limpar filtros</button></div> : (
+          <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
+            <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum whitespace-nowrap">{d.numberFormatted}</td>
+              <td><UsoDid inUse={d.inUse} podeMudar={podeEditar} mudando={mudando === d.id} onChange={(v) => alternar(d.id, v)} /></td>
+              <td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td><td>{d.ownerName ?? '—'}</td>
+              <td className="min-w-[200px]"><Observacao nota={d.note} podeEditar={podeEditar} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td></tr>)}</tbody></table>
+        )}
+        <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted flex flex-wrap gap-x-3"><span className="tnum">{emUso} em uso · {items.length - emUso} não usado(s)</span><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div></div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A observação de um número, editável na própria linha: clicar abre o campo, **Enter** (ou sair
+ * do campo) grava, **Esc** desiste. Vazio limpa a observação. O texto novo fica na tela enquanto
+ * grava (o clique não "some"), e o erro aparece logo abaixo, na mesma linha.
+ */
+function Observacao({ nota, podeEditar, numero, gravar }: { nota: string | null; podeEditar: boolean; numero: string; gravar: (v: string | null) => Promise<void> }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(nota ?? '');
+  const [gravando, setGravando] = useState<string | null>(null);
+  const [erro, setErro] = useState('');
+  const mostrada = gravando ?? nota;
+  const concluir = async () => {
+    const novo = valor.trim();
+    setEditando(false);
+    if (novo === (nota ?? '')) return;
+    setGravando(novo); setErro('');
+    try { await gravar(novo || null); } catch (e) { setErro(mensagemErro(e)); setValor(nota ?? ''); } finally { setGravando(null); }
+  };
+  if (!podeEditar) return <span className="text-muted">{nota}</span>;
+  if (editando) {
+    return (
+      <input
+        className="input py-1 text-[13px]" autoFocus autoComplete="off" maxLength={500} value={valor} aria-label={`Observação do ${numero}`}
+        placeholder="Observação (vazio = sem observação)"
+        onChange={(e) => setValor(e.target.value)} onBlur={() => void concluir()}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void concluir(); } if (e.key === 'Escape') { setValor(nota ?? ''); setEditando(false); } }}
+      />
+    );
+  }
+  return (
+    <div>
+      <button
+        type="button" onClick={() => { setValor(nota ?? ''); setEditando(true); }}
+        className={`group w-full text-left rounded px-1 -mx-1 py-0.5 hover:bg-surface-2 inline-flex items-center gap-1.5 ${gravando !== null ? 'opacity-60' : ''}`}
+        title="Clique para editar a observação" aria-label={`Editar a observação do ${numero}`}
+      >
+        {/* vazia: um traço discreto; o convite a escrever só aparece sob o mouse (ou no foco do teclado) */}
+        {mostrada ? <span className="text-ink-2 whitespace-pre-wrap break-words">{mostrada}</span> : <>
+          <span className="text-muted group-hover:hidden group-focus-visible:hidden">—</span>
+          <span className="text-muted italic hidden group-hover:inline group-focus-visible:inline">adicionar observação</span>
+        </>}
+        {gravando !== null ? <Spinner className="shrink-0 !w-3.5 !h-3.5" /> : <Pencil size={12} className="shrink-0 text-muted opacity-0 group-hover:opacity-100" />}
+      </button>
+      {erro && <div className="text-[12px] text-bad mt-0.5">{erro}</div>}
     </div>
   );
 }
@@ -843,7 +958,7 @@ function Acessos({ c }: { c: ClientFull }) {
         </div>
       )}
       {f2 && lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX › FOP2</Chip>{c.links.fop2 && <a className="link text-sm" href={c.links.fop2} target="_blank" rel="noreferrer">abrir painel ↗</a>}</div><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Ramal admin</dt><dd className="font-mono">{f2.settings?.adminExtension ?? '—'}</dd></dl>
-        <Campo label="Senha do usuário padrão"><CampoSegredo secretId={f2.settings?.defaultUserPassword?.secretId ?? null} hasSecret={!!f2.settings?.defaultUserPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
+        <Campo label="Senha do ramal admin"><CampoSegredo secretId={f2.settings?.adminPassword?.secretId ?? null} hasSecret={!!f2.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
         <p className="text-[12px] text-muted">O link do FOP2 nunca carrega senha na URL.</p><Anotacao texto={f2.notes} /></div>}
       {om && lp && <div className="card p-4 flex flex-col gap-3"><Chip color={lp.color}>LinePBX › Omniboard</Chip><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{om.settings?.adminLogin ?? '—'}</dd></dl>
         <Campo label="Senha admin"><CampoSegredo secretId={om.settings?.adminPassword?.secretId ?? null} hasSecret={!!om.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>

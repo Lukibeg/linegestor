@@ -16,12 +16,16 @@
  *  - clicar filtra: o gráfico clicado continua inteiro, com o escolhido marcado; os números de cima
  *    e as colunas do tempo também filtram, e a tabela obedece
  *  - a arrumação da tela vale para todos: quem vê chamados lê, só a administração arruma
+ *  - (1.4) "só em aberto" no lugar da aba Em aberto; as etapas que fecham o chamado escolhidas
+ *    pela equipe mudam as contas e a hora do fechamento; grupos são validados; a descrição vem
+ *    em texto puro; a arrumação guardada no 1.3 passa a abrir em pizza
  */
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { linechatCardMoves, linechatCards } from '@gestor/db';
+import { linechatCardMoves, linechatCards, settings } from '@gestor/db';
+import { diaEmBrasilia } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 
 // ---------- o LineChat de mentira ----------
@@ -101,6 +105,9 @@ beforeAll(async () => {
   await s.login();
 });
 afterAll(async () => { await app?.close(); servidor.close(); });
+
+/** O Período inteiro com "só em aberto" ligado — o que a antiga aba Em aberto mostrava. */
+const EM_ABERTO = `aba=periodo&de=${diaEmBrasilia(new Date(Date.now() - 60 * 86_400_000))}&ate=${diaEmBrasilia(new Date())}&emAberto=true`;
 
 const salvar = (extra: Record<string, unknown> = {}) =>
   s.put('/settings/linechat', { ativo: true, url: base, appUrl: 'https://inglinechat.com.br', painelId: PAINEL, painelNome: 'Ingline - Suporte', ...extra });
@@ -240,14 +247,14 @@ describe('a tela de Chamados', () => {
     expect(o.linkDoPainel).toBe(`https://inglinechat.com.br/panels/${PAINEL}`);
   });
 
-  it('Em aberto conta fora das etapas finais; filtro por campo e busca na descrição', async () => {
-    const r = (await s.get('/chamados/resumo?aba=abertos')).json();
+  it('"só em aberto" conta fora das etapas finais; filtro por campo e busca na descrição', async () => {
+    const r = (await s.get(`/chamados/resumo?${EM_ABERTO}`)).json();
     // 250 abertos - card-10 excluído - card-4 arquivado + card-253 novo
     expect(r.total).toBe(249);
     const cliente = r.porCampo.find((c: any) => c.key === 'cliente-71');
     expect(cliente.itens.reduce((a: number, x: any) => a + x.n, 0)).toBe(249);
 
-    const labchecap = (await s.get('/chamados/resumo?aba=abertos&campo=cliente-71%3DLabchecap')).json();
+    const labchecap = (await s.get(`/chamados/resumo?${EM_ABERTO}&campo=cliente-71%3DLabchecap`)).json();
     expect(labchecap.total).toBe(125);
     // o gráfico de cliente continua com todos (para desfazer ou escolher outro), a Labchecap marcada
     expect(labchecap.porCampo.find((c: any) => c.key === 'cliente-71').itens.map((x: any) => [x.valor, x.n, !!x.selecionado]))
@@ -255,20 +262,22 @@ describe('a tela de Chamados', () => {
     // o resto da tela obedece
     expect(labchecap.porEtapa.reduce((a: number, x: any) => a + x.n, 0)).toBe(125);
 
-    const busca = (await s.get('/chamados/lista?aba=abertos&busca=9871')).json();
+    const busca = (await s.get(`/chamados/lista?${EM_ABERTO}&busca=9871`)).json();
     expect(busca.total).toBe(1);
     expect(busca.items[0].key).toBe('IS-7');
+    // a descrição vem para a tabela, em texto puro
+    expect(busca.items[0].descricao).toBe('Ramal 9871 sem áudio');
     expect(busca.items[0].link).toBe(`https://inglinechat.com.br/panels/${PAINEL}/card/IS-7`);
   });
 
   it('a tabela ordena e pagina no servidor', async () => {
-    const p1 = (await s.get('/chamados/lista?aba=abertos&sort=numero&dir=asc&pageSize=100')).json();
+    const p1 = (await s.get(`/chamados/lista?${EM_ABERTO}&sort=numero&dir=asc&pageSize=100`)).json();
     expect(p1.total).toBe(249);
     expect(p1.items).toHaveLength(100);
     expect(p1.items[0].key).toBe('IS-1');
     expect(p1.items[0].etiquetas[0].name).toBe('P/ Alta');
     expect(p1.items[0].campos.observador).toBe('Carlos, Lucio');
-    const p3 = (await s.get('/chamados/lista?aba=abertos&sort=numero&dir=asc&pageSize=100&page=3')).json();
+    const p3 = (await s.get(`/chamados/lista?${EM_ABERTO}&sort=numero&dir=asc&pageSize=100&page=3`)).json();
     expect(p3.items).toHaveLength(49);
   });
 
@@ -291,26 +300,27 @@ describe('a tela de Chamados', () => {
 
 describe('clicar filtra, e a arrumação da tela', () => {
   it('número de cima e coluna do tempo clicados filtram a tela e a tabela', async () => {
-    const r = (await s.get('/chamados/resumo?aba=abertos&situacao=sem-responsavel')).json();
+    const r = (await s.get(`/chamados/resumo?${EM_ABERTO}&situacao=sem-responsavel`)).json();
     const semResp = r.kpis.find((k: any) => k.id === 'sem-responsavel');
     expect(semResp.ativo).toBe(true);
     expect(r.total).toBe(Number(semResp.valor));
     // o número "de tudo" não muda com a escolha: é nele que se clica para voltar
     expect(r.kpis.find((k: any) => k.id === 'em-aberto')).toMatchObject({ valor: '249', total: true });
-    const l = (await s.get('/chamados/lista?aba=abertos&situacao=sem-responsavel&pageSize=1000')).json();
+    const l = (await s.get(`/chamados/lista?${EM_ABERTO}&situacao=sem-responsavel&pageSize=1000`)).json();
     expect(l.total).toBe(r.total);
     expect(l.items.every((x: any) => !x.responsavel)).toBe(true);
 
-    const idade = (await s.get('/chamados/resumo?aba=abertos&quando=2-7')).json();
-    const faixa = idade.serie.pontos.find((p: any) => p.id === '2-7');
-    expect(faixa.selecionado).toBe(true);
-    expect(idade.total).toBe(faixa.n);
-    // as outras faixas continuam no gráfico
-    expect(idade.serie.pontos.reduce((a: number, p: any) => a + p.n, 0)).toBe(249);
+    const ontem = diaEmBrasilia(new Date(Date.now() - 3 * 86_400_000));
+    const dia = (await s.get(`/chamados/resumo?${EM_ABERTO}&quando=${ontem}`)).json();
+    const coluna = dia.serie.pontos.find((p: any) => p.id === ontem);
+    expect(coluna.selecionado).toBe(true);
+    expect(dia.total).toBe(coluna.n);
+    // os outros dias continuam no gráfico
+    expect(dia.serie.pontos.reduce((a: number, p: any) => a + p.n, 0)).toBe(249);
   });
 
   it('a arrumação começa de fábrica; a administração salva, e fica na auditoria', async () => {
-    expect((await s.get('/chamados/painel')).json()).toEqual({ itens: [], atualizadoEm: null, atualizadoPor: null });
+    expect((await s.get('/chamados/painel')).json()).toEqual({ versao: 2, itens: [], etapasFechadas: null, atualizadoEm: null, atualizadoPor: null });
     const itens = [
       { id: 'campo:cliente-71', largura: 'inteira', oculto: false, forma: 'pizza' },
       { id: 'serie', largura: 'metade', oculto: false },
@@ -337,5 +347,66 @@ describe('clicar filtra, e a arrumação da tela', () => {
     expect(lido.statusCode).toBe(200);
     expect(lido.json().itens).toHaveLength(3);
     expect((await outro.put('/chamados/painel', { itens: [] })).statusCode).toBe(403);
+  });
+});
+
+describe('Patch 1.4: etapas que fecham, grupos e a arrumação antiga', () => {
+  it('opções: cada etapa diz se fecha na tela e se é final no LineChat; e o dia do chamado mais antigo', async () => {
+    const o = (await s.get('/chamados/opcoes')).json();
+    expect(o.etapas.map((e: any) => [e.id, e.isFinal, e.finalNoLineChat])).toEqual([
+      ['e-novo', false, false], ['e-n1', false, false], ['e-tratado', true, true],
+    ]);
+    expect(o.primeiroDia).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('a equipe escolhe as etapas que fecham: as contas mudam, e a volta ao padrão do LineChat vira "padrão"', async () => {
+    const itens = [{ id: 'serie', largura: 'inteira', oculto: false }];
+    const r = await s.put('/chamados/painel', { versao: 2, itens, etapasFechadas: ['e-n1', 'e-tratado'] });
+    expect(r.statusCode).toBe(200);
+    expect(r.json().etapasFechadas).toEqual(['e-n1', 'e-tratado']);
+    // só os de Novos Suporte continuam em aberto (122 dos 249)
+    const aberto = (await s.get(`/chamados/resumo?${EM_ABERTO}`)).json();
+    expect(aberto.total).toBe(122);
+    const o = (await s.get('/chamados/opcoes')).json();
+    expect(o.etapas.find((e: any) => e.id === 'e-n1')).toMatchObject({ isFinal: true, finalNoLineChat: false });
+    // quem está no N1 desde antes da primeira leitura: fechado, com a hora estimada pelo histórico
+    const n1 = (await s.get(`/chamados/lista?aba=periodo&de=2020-01-01&ate=2030-12-31&etapa=e-n1&pageSize=1000`)).json();
+    expect(n1.items.length).toBeGreaterThan(100);
+    expect(n1.items.every((x: any) => x.fechado && x.closedAt)).toBe(true);
+    const a = (await s.get('/admin/audit?action=chamados_painel')).json();
+    expect(JSON.stringify(a)).toContain('mudou as etapas que fecham o chamado');
+
+    // marcar exatamente as finais do LineChat é o mesmo que o padrão
+    const padrao = await s.put('/chamados/painel', { versao: 2, itens, etapasFechadas: ['e-tratado'] });
+    expect(padrao.json().etapasFechadas).toBeNull();
+    expect((await s.get(`/chamados/resumo?${EM_ABERTO}`)).json().total).toBe(249);
+  });
+
+  it('etapa que não existe no painel não conta; nenhuma que exista é recusado', async () => {
+    const r = await s.put('/chamados/painel', { versao: 2, itens: [], etapasFechadas: ['etapa-apagada'] });
+    expect(r.statusCode).toBe(400);
+    expect(r.json().error).toContain('ao menos uma etapa');
+  });
+
+  it('grupos: são guardados com o gráfico; opção em dois grupos é recusada', async () => {
+    const grupos = [{ id: 'g1', nome: 'Clientes grandes', valores: ['Labchecap', 'Grado'] }];
+    const ok = await s.put('/chamados/painel', { versao: 2, itens: [{ id: 'campo:cliente-71', largura: 'metade', oculto: false, forma: 'pizza', agrupar: true, grupos }] });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().itens[0]).toMatchObject({ agrupar: true, grupos });
+    expect(JSON.stringify((await s.get('/admin/audit?action=chamados_painel')).json())).toContain('1 grupo');
+    const ruim = await s.put('/chamados/painel', {
+      versao: 2,
+      itens: [{ id: 'campo:cliente-71', largura: 'metade', oculto: false, grupos: [...grupos, { id: 'g2', nome: 'Outro', valores: ['Grado', 'X'] }] }],
+    });
+    expect(ruim.statusCode).toBe(400);
+  });
+
+  it('a arrumação guardada no 1.3 (barras era o padrão) volta em pizza', async () => {
+    await app.db.update(settings).set({
+      value: JSON.stringify({ itens: [{ id: 'etapa', largura: 'metade', oculto: false, forma: 'barras' }, { id: 'serie', largura: 'inteira', oculto: false }] }),
+    }).where(eq(settings.id, 'chamados-painel'));
+    const p = (await s.get('/chamados/painel')).json();
+    expect(p.versao).toBe(2);
+    expect(p.itens.map((x: any) => x.forma ?? '-')).toEqual(['pizza', '-']);
   });
 });

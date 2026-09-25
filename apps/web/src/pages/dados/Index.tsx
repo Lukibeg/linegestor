@@ -42,13 +42,14 @@ export function Dados() {
 
   return (
     <Pagina titulo="Importar / Exportar" sub="CSV com ponto e vírgula por padrão. A importação mostra o que vai fazer antes de gravar.">
-      <div className="grid gap-4 lg:grid-cols-2">
+      {/* grid-cols-1 + min-w-0: o campo de arquivo não empurra a página para o lado no celular */}
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         <Can permission="data.import" fallback={<div className="card p-4 text-muted text-sm">Você não tem permissão para importar.</div>}>
-          <section className="card p-4 flex flex-col gap-3">
+          <section className="card p-4 flex flex-col gap-3 min-w-0">
             <h2 className="font-display font-semibold flex items-center gap-2"><FileUp size={17} /> Importar</h2>
             <div className="flex gap-1">{ENTIDADES.map((e) => <button key={e.id} onClick={() => { setEntity(e.id); setPlan(null); }} className={`chip border ${entity === e.id ? 'bg-accent-soft text-accent-ink border-transparent' : 'border-line text-ink-2 bg-transparent'}`}>{e.nome}</button>)}</div>
             <div className="text-[12.5px] text-muted"><b>Colunas aceitas:</b> {ent.colunas}<br /><b>Regra:</b> {ent.regra}</div>
-            <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-end">
               <Campo label="Arquivo CSV"><input type="file" accept=".csv,text/csv" className="input" onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} /></Campo>
               <Campo label="Separador"><select className="input" value={delimiter} onChange={(e) => setDelim(e.target.value)}><option value=";">;</option><option value=",">,</option><option value={'\t'}>TAB</option></select></Campo>
             </div>
@@ -70,7 +71,7 @@ export function Dados() {
         </Can>
 
         <Can permission="data.export" fallback={<div className="card p-4 text-muted text-sm">Você não tem permissão para exportar.</div>}>
-          <section className="card p-4 flex flex-col gap-3">
+          <section className="card p-4 flex flex-col gap-3 min-w-0">
             <h2 className="font-display font-semibold flex items-center gap-2"><Download size={17} /> Exportar</h2>
             <p className="text-[12.5px] text-muted">Sai com cabeçalho e separador ponto e vírgula, pronto para reimportar. Senhas <b>não</b> saem por aqui.</p>
             <div className="flex flex-col gap-2">{ENTIDADES.map((e) => <a key={e.id} className="btn-secondary justify-start" href={api.data.exportUrl(e.id)} download={`${e.id}.csv`}><Download size={15} /> {e.nome} (sem senhas)</a>)}</div>

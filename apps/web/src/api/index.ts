@@ -22,7 +22,7 @@ export type Api = {
   dashboard: { summary(): Promise<T.Dashboard>; search(q: string): Promise<T.SearchResult> };
   clients: {
     list(q: Record<string, unknown>): Promise<T.Page<T.ClientListItem>>;
-    options(q?: { includeInternal?: boolean; productCode?: string; withDevices?: boolean }): Promise<T.Option[]>;
+    options(q?: { includeInternal?: boolean; productCode?: string; withDevices?: boolean; withProducts?: boolean }): Promise<T.Option[]>;
     get(id: string): Promise<T.ClientFull>;
     /** Projetos de que este cliente participa (a aba da ficha) */
     projetos(id: string): Promise<T.ProjetoDoCliente[]>;
@@ -108,10 +108,10 @@ export type Api = {
     opcoes(): Promise<T.OpcoesChamados>;
     resumo(q: Record<string, unknown>): Promise<T.ResumoChamados>;
     lista(q: Record<string, unknown>): Promise<T.Page<T.LinhaChamado>>;
-    /** A arrumação da tela (ordem, largura, escondidos, barras ou pizza), igual para a equipe toda */
+    /** A arrumação da tela (ordem, largura, escondidos, pizza ou barras, grupos, etapas que fecham), igual para a equipe toda */
     painel(): Promise<T.PainelChamados>;
     /** Só a administração: arruma a tela para todos */
-    salvarPainel(itens: T.ItemPainel[]): Promise<T.PainelChamados>;
+    salvarPainel(p: { itens: T.ItemPainel[]; etapasFechadas: string[] | null }): Promise<T.PainelChamados>;
   };
   data: {
     preview(d: { entity: string; csv: string; delimiter: string }): Promise<T.ImportPlan>;

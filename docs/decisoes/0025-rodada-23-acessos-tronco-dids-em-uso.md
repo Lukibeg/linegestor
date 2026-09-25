@@ -54,3 +54,7 @@ num .docx com prints (19/09/2026). Nenhum contraria decisão anterior; dois mexe
 - Testes: `rodada23.test.ts` (11) e dois testes antigos de DIDs reescritos para a regra nova.
   58 testes da API + 10 dos formatos.
 - Exportação/importação de circuitos: login no arquivo = autenticação por login; sem login = por IP.
+
+> **Revista pela 0032 (Patch 1.4), a pedido do Luan (avisado antes):** o FOP2 passou a guardar a
+> **senha do ramal admin**, e a **senha do usuário padrão saiu** das telas e da API. As que já
+> estavam guardadas continuam no cofre (`default_user_password_secret_id` intacta), sem aparecer.

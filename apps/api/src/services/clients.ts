@@ -249,7 +249,8 @@ export async function get(db: Db, id: string) {
       let ms: Record<string, unknown> | null = null;
       if (m.moduleCode === 'fop2') {
         const f = f2s.find((x) => x.subscriptionModuleId === m.id);
-        if (f) ms = { adminExtension: f.adminExtension, defaultUserPassword: secretRef(f.defaultUserPasswordSecretId) };
+        // a senha do usuário padrão (até o 1.4) fica guardada no cofre, mas não aparece mais (decisão 0032)
+        if (f) ms = { adminExtension: f.adminExtension, adminPassword: secretRef(f.adminPasswordSecretId) };
       } else if (m.moduleCode === 'omniboard') {
         const o = oms.find((x) => x.subscriptionModuleId === m.id);
         if (o) ms = { adminLogin: o.adminLogin, adminPassword: secretRef(o.adminPasswordSecretId), userDefaultPassword: secretRef(o.userDefaultPasswordSecretId) };
@@ -384,8 +385,9 @@ export async function upsertModule(db: Db, vault: SecretsVault, clientId: string
 
   if (mod.code === 'fop2') {
     const [cur] = await db.select().from(fop2Settings).where(eq(fop2Settings.subscriptionModuleId, id));
-    const defSecret = st.defaultUserPassword ? await vault.save(db, { existingId: cur?.defaultUserPasswordSecretId, label: label('Senha do usuário padrão do FOP2'), plain: st.defaultUserPassword, userId }) : cur?.defaultUserPasswordSecretId ?? null;
-    const vals = { adminExtension: st.adminExtension ?? cur?.adminExtension ?? null, defaultUserPasswordSecretId: defSecret };
+    const adminSecret = st.adminPassword ? await vault.save(db, { existingId: cur?.adminPasswordSecretId, label: label('Senha do ramal admin do FOP2'), plain: st.adminPassword, userId }) : cur?.adminPasswordSecretId ?? null;
+    // a coluna da senha do usuário padrão não entra aqui: quem tinha, continua tendo (decisão 0032)
+    const vals = { adminExtension: st.adminExtension ?? cur?.adminExtension ?? null, adminPasswordSecretId: adminSecret };
     if (cur) await db.update(fop2Settings).set(vals).where(eq(fop2Settings.subscriptionModuleId, id));
     else await db.insert(fop2Settings).values({ subscriptionModuleId: id, ...vals });
   } else if (mod.code === 'omniboard') {
@@ -441,7 +443,7 @@ export async function idsWithDevices(db: Db): Promise<Set<string>> {
 }
 
 /** Lista curta (id + nome) para preencher seletores. */
-export async function options(db: Db, opts: { includeInternal?: boolean; productCode?: string; withDevices?: boolean } = {}) {
+export async function options(db: Db, opts: { includeInternal?: boolean; productCode?: string; withDevices?: boolean; withProducts?: boolean } = {}) {
   const conds: SQL[] = [isNull(clients.deletedAt), eq(clients.archived, false)];
   if (!opts.includeInternal) conds.push(eq(clients.isInternal, false));
   let rows = await db.select({ id: clients.id, name: clients.tradeName, isInternal: clients.isInternal, internalCode: clients.internalCode }).from(clients).where(and(...conds)).orderBy(desc(clients.isInternal), asc(clients.tradeName));
@@ -453,7 +455,39 @@ export async function options(db: Db, opts: { includeInternal?: boolean; product
     const comAparelho = await idsWithDevices(db);
     rows = rows.filter((r) => comAparelho.has(r.id));
   }
-  return rows;
+  if (!opts.withProducts) return rows;
+  // Patch 1.4: o que cada cliente tem ligado, para a janela "Escolher clientes" dos projetos
+  // cruzar produtos e módulos na hora, sem ir ao servidor a cada clique
+  const temProduto = await produtosEModulosAtivos(db);
+  return rows.map((r) => ({ ...r, products: temProduto.get(r.id)?.products ?? [], modules: temProduto.get(r.id)?.modules ?? [] }));
+}
+
+/**
+ * Os produtos (códigos) e os módulos ("produto:módulo") ligados hoje em cada cliente. Módulo só
+ * conta dentro de assinatura ativa, e produto na lixeira não conta — a mesma regra do filtro da
+ * lista de clientes.
+ */
+async function produtosEModulosAtivos(db: Db): Promise<Map<string, { products: string[]; modules: string[] }>> {
+  const subs = await db.select({ clientId: subscriptions.clientId, subId: subscriptions.id, code: products.code })
+    .from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId))
+    .where(and(isNull(subscriptions.deactivatedAt), isNull(products.deletedAt)))
+    .orderBy(asc(products.sortOrder));
+  const mods = await db.select({ subId: subscriptionModules.subscriptionId, code: productModules.code })
+    .from(subscriptionModules).innerJoin(productModules, eq(productModules.id, subscriptionModules.moduleId))
+    .where(isNull(subscriptionModules.deactivatedAt))
+    .orderBy(asc(productModules.sortOrder));
+  const porSub = new Map(subs.map((s) => [s.subId, s]));
+  const mapa = new Map<string, { products: string[]; modules: string[] }>();
+  const de = (id: string) => { let v = mapa.get(id); if (!v) mapa.set(id, (v = { products: [], modules: [] })); return v; };
+  for (const s of subs) { const v = de(s.clientId); if (!v.products.includes(s.code)) v.products.push(s.code); }
+  for (const m of mods) {
+    const s = porSub.get(m.subId);
+    if (!s) continue; // módulo de assinatura encerrada
+    const v = de(s.clientId);
+    const chave = `${s.code}:${m.code}`;
+    if (!v.modules.includes(chave)) v.modules.push(chave);
+  }
+  return mapa;
 }
 
 // ---------- Unidades ----------

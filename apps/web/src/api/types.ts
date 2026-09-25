@@ -39,15 +39,28 @@ export type OpcoesChamados = {
   sincronizadoEm: string | null; ultimaOk: boolean | null; ultimaMsg: string | null;
   historicoDesde: string | null;
   totalCards: number; movimentosRegistrados: number;
-  etapas: Array<{ id: string; title: string; position: number; isInitial: boolean; isFinal: boolean }>;
+  /** `isFinal` = fecha o chamado na tela (a escolha da equipe, em Organizar); `finalNoLineChat` = o padrão de lá */
+  etapas: Array<{ id: string; title: string; position: number; isInitial: boolean; isFinal: boolean; finalNoLineChat: boolean }>;
   campos: Array<{ key: string; name: string; multiplo: boolean; options: string[] }>;
   etiquetas: Array<{ id: string; name: string; color: string | null }>;
   responsaveis: string[];
   vazio: string;
+  /** o dia do chamado mais antigo: o começo do atalho "Tudo" do Período */
+  primeiroDia: string;
 };
-export type { ResumoChamados, LinhaChamado, ItemRanking, Kpi as KpiChamados, PontoSerie, ItemPainel, FormaGrafico } from '@gestor/shared';
-/** A arrumação da tela de Chamados, igual para a equipe toda (vazia = a de fábrica). */
-export type PainelChamados = { itens: import('@gestor/shared').ItemPainel[]; atualizadoEm: string | null; atualizadoPor: string | null };
+export type { ResumoChamados, LinhaChamado, ItemRanking, Kpi as KpiChamados, PontoSerie, ItemPainel, FormaGrafico, GrupoGrafico } from '@gestor/shared';
+/**
+ * A arrumação da tela de Chamados, igual para a equipe toda (vazia = a de fábrica): a ordem, a
+ * largura, os escondidos, pizza ou barras e os grupos de cada gráfico, e as etapas que fecham o
+ * chamado (null = as finais do LineChat).
+ */
+export type PainelChamados = {
+  versao: number;
+  itens: import('@gestor/shared').ItemPainel[];
+  etapasFechadas: string[] | null;
+  atualizadoEm: string | null;
+  atualizadoPor: string | null;
+};
 
 export type ProductChip = { code: string; name: string; color: string };
 export type Links = { web: string | null; ssh: string | null; fop2: string | null };
@@ -164,7 +177,7 @@ export type SearchResult = {
 };
 
 export type Page<T> = { items: T[]; total: number; page: number; pageSize: number; free?: number };
-export type Option = { id: string; name: string; isInternal?: boolean; internalCode?: string | null };
+export type Option = { id: string; name: string; isInternal?: boolean; internalCode?: string | null; /** com withProducts: códigos dos produtos ligados */ products?: string[]; /** com withProducts: "produto:módulo" ligados */ modules?: string[] };
 /** Resposta do cadastro em massa */
 export type CadastroEmMassa = { created: number; modelName: string; tipo: 'mac' | 'serie' | 'nenhum' };
 export type CatalogItem = { id: string; name: string; active: boolean };
@@ -204,7 +217,7 @@ export type SituacaoProjeto = 'pendente' | 'andamento' | 'travado' | 'concluido'
 export type ContagemProjeto = Record<SituacaoProjeto, number>;
 
 /** Uma cor de opção, as mesmas do resto do sistema. */
-export type CorOpcao = 'neutral' | 'accent' | 'ok' | 'signal' | 'bad' | 'muted';
+export type CorOpcao = (typeof import('@gestor/shared').CORES_OPCAO)[number];
 /** Uma opção de etapa em lista. `conclui` = escolher esta opção resolve a etapa. */
 export type OpcaoEtapa = { id: string; label: string; tone: CorOpcao; conclui: boolean };
 /** Uma etapa (coluna): caixinha (feito/não feito) ou lista de opções coloridas. */

@@ -4,10 +4,11 @@
  * Os chamados continuam sendo abertos e trabalhados no LineChat (o Kanban da equipe). Aqui é só
  * leitura: uma cópia do painel, atualizada a cada minuto, contada e filtrada.
  *
- * Três abas, porque são três perguntas diferentes:
+ * Duas abas, porque são duas perguntas diferentes:
  *  - **Hoje** — o que chegou hoje, e a que horas;
- *  - **Em aberto** — o que está na mesa agora, e há quanto tempo;
- *  - **Período** — quantos por dia, num intervalo escolhido.
+ *  - **Período** — quantos por dia, num intervalo escolhido (com o atalho **Tudo**).
+ * E o interruptor **só em aberto**, que vale nas duas. O Período inteiro com ele ligado é o que a
+ * antiga aba "Em aberto" mostrava — ela saiu no Patch 1.4, a pedido do Luan.
  *
  * Os filtros (etapa, responsável, etiqueta e cada campo de lista do card) valem para a tela
  * inteira e ficam no endereço, como nas outras listas.
@@ -18,25 +19,26 @@
  * estão em `@gestor/shared/chamados.ts` (cada gráfico é contado sem o próprio filtro).
  *
  * **A arrumação é da equipe.** Quem administra clica em **Organizar**: arrasta os gráficos pela
- * alça (ou usa as setas), escolhe metade ou a linha inteira, esconde o que não usa e decide se cada
- * um abre em barras ou pizza. Salvo, vale para todo mundo (fica no servidor). Os números de cima e
- * a tabela ficam fixos. Fora do Organizar, cada pessoa ainda pode trocar barras/pizza só para si
- * (fica no navegador dela).
+ * alça (ou usa as setas), escolhe metade ou a linha inteira, esconde o que não usa, decide se cada
+ * um abre em pizza ou barras, monta os **grupos** de cada gráfico e escolhe as **etapas que fecham
+ * o chamado**. Salvo, vale para todo mundo (fica no servidor). Os números de cima e a tabela ficam
+ * fixos. Fora do Organizar, cada pessoa ainda pode trocar pizza/barras e agrupar/separar só para
+ * si (fica no navegador dela).
  */
-import { useLayoutEffect, useMemo, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  Archive, BarChartHorizontal, CalendarRange, ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff, Filter, GripVertical, Headset,
-  LayoutGrid, ListFilter, MousePointerClick, PieChart, RefreshCw, Search, Tag, TriangleAlert, UserRound, X,
+  Archive, BarChartHorizontal, CalendarRange, CheckCircle2, ChevronLeft, ChevronRight, CircleDot, ExternalLink, Eye, EyeOff, Filter, GripVertical,
+  Headset, Layers, LayoutGrid, ListFilter, MousePointerClick, PieChart, RefreshCw, Search, Tag, TriangleAlert, UserRound, X,
 } from 'lucide-react';
 import {
-  montarPainel, painelPadrao, quandoValidos, rotuloQuando, rotuloSituacao, SITUACOES, VAZIO,
-  type AbaChamados, type SituacaoChamado,
+  agruparItens, montarPainel, painelPadrao, quandoValidos, rotuloQuando, rotuloSituacao, SITUACOES, VAZIO,
+  type AbaChamados, type GrupoGrafico, type SituacaoChamado,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
-import type { FormaGrafico, ItemPainel, ItemRanking, KpiChamados, LinhaChamado, OpcoesChamados } from '../../api/types.js';
+import type { FormaGrafico, ItemPainel, ItemRanking, KpiChamados, LinhaChamado, OpcoesChamados, ResumoChamados } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Abas, Carregando, Chip, Kpi, mensagemErro, Paginacao, TODOS, Toggle, useToast, Vazio } from '../../components/ui/index.js';
 import { BarrasRanking, Colunas, Pizza } from '../../components/graficos.js';
@@ -48,20 +50,20 @@ import { useLembrarFiltros } from '../../lib/voltar.js';
 import { useArrastar } from '../../lib/arrastar.js';
 import { useAuth } from '../../lib/auth.js';
 import { data, relativo } from '../../lib/format.js';
+import { EtapasQueFecham, GruposDoGrafico, type Candidato } from './organizar.js';
 
 type Aba = AbaChamados;
 const ABAS: Array<{ id: Aba; label: string }> = [
   { id: 'hoje', label: 'Hoje' },
-  { id: 'abertos', label: 'Em aberto' },
   { id: 'periodo', label: 'Período' },
 ];
-const NOME_ABA: Record<Aba, string> = { hoje: 'Hoje', abertos: 'Em aberto', periodo: 'Período' };
 const MULTI = ['etapa', 'responsavel', 'etiqueta', 'campo', 'quando'] as const;
 const POR_PAGINA = 50;
 
 /** AAAA-MM-DD de hoje e de n dias atrás, no fuso de quem olha (a equipe está toda em Brasília). */
 const diaLocal = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const diasAtras = (n: number) => { const d = new Date(); d.setDate(d.getDate() - n); return diaLocal(d); };
+const diaCurto = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
 
 /** Ctrl, Cmd ou Shift + clique: soma ao filtro em vez de trocar. */
 const somar = (ev: MouseEvent) => ev.ctrlKey || ev.metaKey || ev.shiftKey;
@@ -75,11 +77,24 @@ function alternar(atuais: string[], v: string, soma: boolean): string[] {
   return atuais.length === 1 && atuais[0] === v ? [] : [v];
 }
 
+/**
+ * Clicar num grupo: filtra por todos os valores dele (OU); clicar de novo desfaz. Somando, põe ou
+ * tira o grupo inteiro, sem mexer nos outros escolhidos.
+ */
+function alternarVarios(atuais: string[], vs: string[], soma: boolean): string[] {
+  const todosDentro = vs.every((v) => atuais.includes(v));
+  if (soma) return todosDentro ? atuais.filter((x) => !vs.includes(x)) : [...new Set([...atuais, ...vs])];
+  return todosDentro && atuais.length === vs.length ? [] : [...vs];
+}
+
 /** "Fechados" muda o que a hora ou o dia clicados querem dizer (fechamento, não chegada). */
 function trocarSituacao(n: URLSearchParams, s?: SituacaoChamado) {
   if ((n.get('situacao') === 'fechados') !== (s === 'fechados')) n.delete('quando');
   if (s) n.set('situacao', s); else n.delete('situacao');
 }
+
+/** O rascunho do Organizar: a arrumação dos gráficos e as etapas que fecham (null = as do LineChat). */
+type Rascunho = { itens: ItemPainel[]; etapasFechadas: string[] | null };
 
 export function Chamados() {
   useLembrarFiltros('/chamados');
@@ -88,8 +103,17 @@ export function Chamados() {
   const podeArrumar = can('admin.manage');
   const qc = useQueryClient();
   const toast = useToast();
-  const aba = (['hoje', 'abertos', 'periodo'].includes(sp.get('aba') ?? '') ? sp.get('aba') : 'hoje') as Aba;
+  // endereço antigo com a aba "Em aberto" (1.3): vira o Período com o "só em aberto" ligado
+  const abaAntiga = sp.get('aba') === 'abertos';
+  const aba: Aba = sp.get('aba') === 'periodo' || abaAntiga ? 'periodo' : 'hoje';
+  const emAberto = sp.get('emaberto') === '1' || abaAntiga;
   const situacao = (SITUACOES as readonly string[]).includes(sp.get('situacao') ?? '') ? (sp.get('situacao') as SituacaoChamado) : undefined;
+  useEffect(() => {
+    if (!abaAntiga) return;
+    const n = new URLSearchParams(sp);
+    n.set('aba', 'periodo'); n.set('emaberto', '1'); n.delete('quando');
+    setSp(n, { replace: true });
+  }, [abaAntiga, sp, setSp]);
 
   const filtros = useMemo(() => ({
     aba,
@@ -99,7 +123,8 @@ export function Chamados() {
     quando: sp.getAll('quando'), situacao,
     busca: sp.get('busca') ?? undefined,
     arquivados: sp.get('arquivados') === '1' ? 'true' : undefined,
-  }), [sp, aba, situacao]);
+    emAberto: emAberto ? 'true' : undefined,
+  }), [sp, aba, situacao, emAberto]);
   const chave = JSON.stringify(filtros);
 
   const o = useOrdenacao('aberto', 'desc');
@@ -120,22 +145,30 @@ export function Chamados() {
   const op = opcoes.data;
   const campos = useMemo(() => op?.campos ?? [], [op?.campos]);
   const salvo = useMemo(() => montarPainel(painel.data?.itens, campos), [painel.data, campos]);
+  const fechadasSalvas = painel.data?.etapasFechadas ?? null;
   /** Enquanto organiza: a arrumação sendo mexida (só vale para todos ao salvar). */
-  const [rascunho, setRascunho] = useState<ItemPainel[] | null>(null);
+  const [rascunho, setRascunho] = useState<Rascunho | null>(null);
   const organizando = rascunho !== null;
-  const itens = rascunho ?? salvo;
-  const mudou = organizando && JSON.stringify(rascunho) !== JSON.stringify(salvo);
-  /** Muda depois de salvar: os gráficos releem a escolha barras/pizza de cada pessoa. */
+  const itens = rascunho?.itens ?? salvo;
+  const mudou = organizando && JSON.stringify(rascunho) !== JSON.stringify({ itens: salvo, etapasFechadas: fechadasSalvas });
+  /** Muda depois de salvar: os gráficos releem a escolha de cada pessoa (pizza/barras, agrupar). */
   const [geracao, setGeracao] = useState(0);
   const [focar, setFocar] = useState<string | null>(null);
-  const arrasto = useArrastar(itens.map((x) => x.id), (nova) => setRascunho((r) => (r ? nova.map((id) => r.find((x) => x.id === id)!) : r)));
+  /** As janelas do Organizar: os grupos de um gráfico, e as etapas que fecham. */
+  const [gruposDe, setGruposDe] = useState<string | null>(null);
+  const [verEtapas, setVerEtapas] = useState(false);
+  const arrasto = useArrastar(itens.map((x) => x.id), (nova) => setRascunho((r) => (r ? { ...r, itens: nova.map((id) => r.itens.find((x) => x.id === id)!) } : r)));
 
   const salvar = useMutation({
-    mutationFn: (novos: ItemPainel[]) => api.chamados.salvarPainel(novos),
+    mutationFn: (r: Rascunho) => api.chamados.salvarPainel(r),
     onSuccess: (p) => {
       qc.setQueryData(['chamados', 'painel'], p);
+      // as etapas que fecham mudam as contas: números, gráficos e tabela são lidos de novo
+      void qc.invalidateQueries({ queryKey: ['chamados', 'resumo'] });
+      void qc.invalidateQueries({ queryKey: ['chamados', 'lista'] });
+      void qc.invalidateQueries({ queryKey: ['chamados', 'opcoes'] });
       // quem arrumou passa a ver exatamente o que a equipe vê
-      try { localStorage.removeItem(CHAVE_FORMAS); } catch { /* sem storage */ }
+      try { localStorage.removeItem(CHAVE_FORMAS); localStorage.removeItem(CHAVE_AGRUPAR); } catch { /* sem storage */ }
       setGeracao((g) => g + 1);
       setRascunho(null);
       toast.push('ok', 'Arrumação salva: a equipe toda vê a tela assim.');
@@ -143,19 +176,24 @@ export function Chamados() {
     onError: (e) => toast.push('erro', mensagemErro(e)),
   });
 
-  const mudarItem = (id: string, m: Partial<ItemPainel>) => setRascunho((r) => (r ? r.map((x) => (x.id === id ? { ...x, ...m } : x)) : r));
+  const mudarItem = (id: string, m: Partial<ItemPainel>) => setRascunho((r) => (r ? { ...r, itens: r.itens.map((x) => (x.id === id ? { ...x, ...m } : x)) } : r));
   const moverItem = (id: string, passo: -1 | 1, foco: string) => {
     setRascunho((r) => {
       if (!r) return r;
-      const i = r.findIndex((x) => x.id === id);
+      const i = r.itens.findIndex((x) => x.id === id);
       const j = i + passo;
-      if (i < 0 || j < 0 || j >= r.length) return r;
-      const n = [...r];
+      if (i < 0 || j < 0 || j >= r.itens.length) return r;
+      const n = [...r.itens];
       [n[i], n[j]] = [n[j]!, n[i]!];
-      return n;
+      return { ...r, itens: n };
     });
     setFocar(`${id}:${foco}`);
   };
+  /** "Voltar ao padrão" volta a ordem, a largura e o jeito de fábrica — os grupos ficam (dão trabalho para montar). */
+  const voltarAoPadrao = () => setRascunho((r) => (r ? {
+    ...r,
+    itens: painelPadrao(campos).map((x) => { const atual = r.itens.find((y) => y.id === x.id); return atual?.grupos?.length ? { ...x, grupos: atual.grupos } : x; }),
+  } : r));
   // o cartão mudou de lugar: o foco volta ao botão que foi apertado (ou à alça, se ele desligou)
   useLayoutEffect(() => {
     if (!focar) return;
@@ -176,25 +214,39 @@ export function Chamados() {
   const definirLista = (nome: string, valores: string[]) => mudar((n) => { n.delete(nome); valores.forEach((v) => n.append(nome, v)); });
   const escolher = (nome: 'etapa' | 'responsavel' | 'etiqueta' | 'quando', valor: string, ev: MouseEvent) =>
     definirLista(nome, alternar(sp.getAll(nome), valor, somar(ev)));
-  const escolherCampo = (key: string, valor: string, ev: MouseEvent) => {
+  const escolherVarios = (nome: 'etapa' | 'responsavel' | 'etiqueta', valores: string[], ev: MouseEvent) =>
+    definirLista(nome, alternarVarios(sp.getAll(nome), valores, somar(ev)));
+  const escolherCampo = (key: string, valores: string[], ev: MouseEvent) => {
     const pre = `${key}=`;
     const todos = sp.getAll('campo');
     const doCampo = todos.filter((x) => x.startsWith(pre)).map((x) => x.slice(pre.length));
-    definirLista('campo', [...todos.filter((x) => !x.startsWith(pre)), ...alternar(doCampo, valor, somar(ev)).map((v) => pre + v)]);
+    const novos = valores.length === 1 ? alternar(doCampo, valores[0]!, somar(ev)) : alternarVarios(doCampo, valores, somar(ev));
+    definirLista('campo', [...todos.filter((x) => !x.startsWith(pre)), ...novos.map((v) => pre + v)]);
   };
-  const tirar = (nome: string, valor: string) => {
+  const tirar = (nome: string, valores: string[]) => {
     if (nome === 'situacao') mudar((n) => trocarSituacao(n, undefined));
-    else definirLista(nome, sp.getAll(nome).filter((x) => x !== valor));
+    else if (nome === 'emaberto') mudar((n) => n.delete('emaberto'));
+    else definirLista(nome, sp.getAll(nome).filter((x) => !valores.includes(x)));
   };
-  const limpar = () => mudar((n) => { MULTI.forEach((k) => n.delete(k)); n.delete('situacao'); n.delete('busca'); n.delete('arquivados'); });
+  const limpar = () => mudar((n) => { MULTI.forEach((k) => n.delete(k)); n.delete('situacao'); n.delete('busca'); n.delete('arquivados'); n.delete('emaberto'); });
+  const ligarEmAberto = (v: boolean) => mudar((n) => {
+    if (v) { n.set('emaberto', '1'); if (n.get('situacao') === 'fechados') trocarSituacao(n, undefined); } else n.delete('emaberto');
+  });
 
-  /** Os números de cima: filtram pela situação; o "de qualquer dia" leva para a aba Em aberto. */
+  const r = resumo.data;
+  /** Os números de cima: filtram pela situação; os "de qualquer dia" levam ao Período inteiro, só em aberto. */
   const clicarKpi = (k: KpiChamados) => {
     if (k.total) { mudar((n) => trocarSituacao(n, undefined)); return; }
     const f = k.filtro;
     if (!f) return;
-    if (f.aba && f.aba !== aba) {
-      mudar((n) => { n.set('aba', f.aba!); n.delete('de'); n.delete('ate'); n.delete('quando'); if (f.situacao) n.set('situacao', f.situacao); else n.delete('situacao'); });
+    if (f.aba || f.tudo || f.emAberto) {
+      mudar((n) => {
+        if (f.aba) n.set('aba', f.aba);
+        if (f.tudo && r) { n.set('de', r.primeiroDia); n.set('ate', r.hoje); }
+        if (f.aba || f.tudo) n.delete('quando');
+        if (f.emAberto) n.set('emaberto', '1');
+        trocarSituacao(n, f.situacao);
+      });
       return;
     }
     mudar((n) => trocarSituacao(n, k.ativo ? undefined : f.situacao));
@@ -203,7 +255,8 @@ export function Chamados() {
     if (organizando) return undefined;
     if (k.total) return situacao ? 'Clique para voltar a ver todos' : undefined;
     if (!k.filtro) return undefined;
-    if (k.filtro.aba && k.filtro.aba !== aba) return `Clique para ver na aba ${NOME_ABA[k.filtro.aba]}`;
+    if (k.filtro.tudo) return k.filtro.situacao ? 'Clique para ver os vencidos em aberto, de qualquer dia' : 'Clique para ver todos os em aberto, de qualquer dia';
+    if (k.filtro.emAberto && !k.filtro.situacao) return 'Clique para ver só os que ainda estão em aberto';
     return k.ativo ? 'Clique para desfazer o filtro' : 'Clique para ver só estes chamados';
   };
 
@@ -220,8 +273,7 @@ export function Chamados() {
     );
   }
 
-  const r = resumo.data;
-  const temFiltro = MULTI.some((k) => sp.getAll(k).length) || !!situacao || !!sp.get('busca') || sp.get('arquivados') === '1';
+  const temFiltro = MULTI.some((k) => sp.getAll(k).length) || !!situacao || !!sp.get('busca') || sp.get('arquivados') === '1' || emAberto;
   const tituloDe = (id: string) => {
     if (id === 'serie') return r?.serie.titulo ?? 'Chamados no tempo';
     if (id === 'etapa') return 'Por etapa';
@@ -233,6 +285,10 @@ export function Chamados() {
   const ultimaArrumacao = painel.data?.atualizadoEm
     ? `Última arrumação: ${painel.data.atualizadoPor ?? 'alguém da administração'}, ${data(painel.data.atualizadoEm, true)}.`
     : 'A tela está na arrumação de fábrica.';
+  /** Os grupos de cada gráfico, para os filtros escritos e o filtro em botão (os salvos: são os que valem). */
+  const gruposSalvos = new Map(salvo.map((x) => [x.id, x.grupos ?? []]));
+  const fechamEm = (op?.etapas ?? []).filter((e) => (rascunho ? (rascunho.etapasFechadas ?? []).includes(e.id) || (!rascunho.etapasFechadas && e.finalNoLineChat) : e.isFinal));
+  const itemGrupos = gruposDe ? itens.find((x) => x.id === gruposDe) : undefined;
 
   return (
     <Pagina
@@ -242,7 +298,7 @@ export function Chamados() {
         <Situacao op={op} />
         {op?.linkDoPainel && <a className="btn-secondary btn-sm" href={op.linkDoPainel} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Abrir no LineChat</a>}
         {podeArrumar && !organizando && (
-          <button type="button" className="btn-secondary btn-sm" onClick={() => setRascunho(salvo)} title={`Trocar os gráficos de lugar, mudar a largura, esconder — para a equipe toda. ${ultimaArrumacao}`}>
+          <button type="button" className="btn-secondary btn-sm" onClick={() => setRascunho({ itens: salvo, etapasFechadas: fechadasSalvas })} title={`Trocar os gráficos de lugar, mudar a largura, esconder, montar grupos e escolher as etapas que fecham — para a equipe toda. ${ultimaArrumacao}`}>
             <LayoutGrid size={14} /> Organizar
           </button>
         )}
@@ -252,7 +308,7 @@ export function Chamados() {
 
       {/* ---------- filtros ---------- */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        {aba === 'periodo' && r && <Periodo de={r.de} ate={r.ate} onChange={(de, ate) => mudar((n) => { n.set('de', de); n.set('ate', ate); n.delete('quando'); })} />}
+        {aba === 'periodo' && r && <Periodo de={r.de} ate={r.ate} hoje={r.hoje} primeiroDia={r.primeiroDia} onChange={(de, ate) => mudar((n) => { n.set('de', de); n.set('ate', ate); n.delete('quando'); })} />}
         <label className="relative">
           <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
           <input
@@ -262,13 +318,17 @@ export function Chamados() {
             onBlur={(e) => { const v = e.target.value.trim(); if (v !== (sp.get('busca') ?? '')) mudar((n) => { if (v) n.set('busca', v); else n.delete('busca'); }); }}
           />
         </label>
-        {op && <Filtros op={op} sp={sp} definirLista={definirLista} />}
+        {op && <Filtros op={op} sp={sp} definirLista={definirLista} grupos={gruposSalvos} />}
+        <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Só os chamados que ainda não chegaram numa etapa que fecha (a administração escolhe quais, em Organizar).">
+          <Toggle checked={emAberto} onChange={ligarEmAberto} />
+          <CircleDot size={14} /> só em aberto
+        </label>
         <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Cards arquivados no LineChat. O Grafana não contava.">
           <Toggle checked={sp.get('arquivados') === '1'} onChange={(v) => mudar((n) => { if (v) n.set('arquivados', '1'); else n.delete('arquivados'); })} />
           <Archive size={14} /> incluir arquivados
         </label>
       </div>
-      {op && temFiltro && <FiltrosAtivos op={op} sp={sp} aba={aba} situacao={situacao} tirar={tirar} limpar={limpar} />}
+      {op && temFiltro && <FiltrosAtivos op={op} sp={sp} aba={aba} situacao={situacao} emAberto={emAberto} grupos={gruposSalvos} tirar={tirar} limpar={limpar} />}
 
       {!r ? <Carregando /> : (
         <div className={`flex flex-col gap-4 transition-opacity ${resumo.isFetching && resumo.isPlaceholderData ? 'opacity-60' : ''}`}>
@@ -288,18 +348,23 @@ export function Chamados() {
           </p>
 
           {/* ---------- organizar (só a administração) ---------- */}
-          {organizando && (
+          {organizando && rascunho && (
             <div className="sticky top-16 z-10 rounded-xl border border-accent bg-accent-soft px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 shadow-sm">
               <LayoutGrid size={17} className="text-accent shrink-0" />
               <div className="text-[13px] text-accent-ink flex-1 min-w-[240px] leading-snug">
                 <b>Organizando a tela para a equipe toda.</b> Arraste pela alça <GripVertical size={13} className="inline -mt-0.5" /> (ou use as setas),
-                escolha metade ou inteira e esconda o que não usa. Enquanto organiza, clicar nos gráficos não filtra.
-                <span className="block text-[12px] opacity-80 mt-0.5">Os números de cima e a tabela ficam fixos. {ultimaArrumacao}</span>
+                escolha metade ou inteira, esconda o que não usa e monte os grupos de cada gráfico. Enquanto organiza, clicar nos gráficos não filtra.
+                <span className="block text-[12px] opacity-80 mt-0.5">
+                  Fecham o chamado: {fechamEm.map((e) => e.title).join(', ') || '—'}. Os números de cima e a tabela ficam fixos. {ultimaArrumacao}
+                </span>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                <button type="button" className="btn-ghost btn-sm" onClick={() => setRascunho(painelPadrao(campos))}>Voltar ao padrão</button>
+                <button type="button" className="btn-secondary btn-sm" onClick={() => setVerEtapas(true)} title="Quais etapas do Kanban contam como fechadas">
+                  <CheckCircle2 size={14} /> Etapas que fecham
+                </button>
+                <button type="button" className="btn-ghost btn-sm" onClick={voltarAoPadrao} title="Volta a ordem, a largura e a pizza de fábrica. Os grupos e as etapas que fecham ficam como estão.">Voltar ao padrão</button>
                 <button type="button" className="btn-secondary btn-sm" onClick={() => setRascunho(null)}>Cancelar</button>
-                <button type="button" className="btn-primary btn-sm" disabled={!mudou || salvar.isPending} onClick={() => rascunho && salvar.mutate(rascunho)}>
+                <button type="button" className="btn-primary btn-sm" disabled={!mudou || salvar.isPending} onClick={() => salvar.mutate(rascunho)}>
                   {salvar.isPending ? 'Salvando…' : 'Salvar para todos'}
                 </button>
               </div>
@@ -315,6 +380,7 @@ export function Chamados() {
                 aoPegar: (e) => arrasto.iniciar(item.id, e),
                 aoMover: (passo, foco) => moverItem(item.id, passo, foco),
                 aoMudar: (x) => mudarItem(item.id, x),
+                aoAbrirGrupos: () => setGruposDe(item.id),
               };
               const chaveG = `${item.id}:${geracao}`;
               if (item.id === 'serie') {
@@ -328,15 +394,15 @@ export function Chamados() {
                   </Cartao>
                 );
               }
-              if (item.id === 'etapa') return <GraficoLista key={chaveG} m={m} titulo="Por etapa" sub="na ordem do Kanban" itens={r.porEtapa} aoClicar={(v, ev) => escolher('etapa', v, ev)} semOrdenar />;
-              if (item.id === 'responsavel') return <GraficoLista key={chaveG} m={m} titulo="Por responsável" itens={r.porResponsavel} aoClicar={(v, ev) => escolher('responsavel', v, ev)} />;
-              if (item.id === 'etiqueta') return <GraficoLista key={chaveG} m={m} titulo="Por etiqueta" sub="um card pode ter várias" multiplo itens={r.porEtiqueta} aoClicar={(v, ev) => escolher('etiqueta', v, ev)} />;
+              if (item.id === 'etapa') return <GraficoLista key={chaveG} m={m} titulo="Por etapa" sub="na ordem do Kanban" itens={r.porEtapa} aoClicar={(vs, ev) => (vs.length === 1 ? escolher('etapa', vs[0]!, ev) : escolherVarios('etapa', vs, ev))} semOrdenar />;
+              if (item.id === 'responsavel') return <GraficoLista key={chaveG} m={m} titulo="Por responsável" itens={r.porResponsavel} aoClicar={(vs, ev) => (vs.length === 1 ? escolher('responsavel', vs[0]!, ev) : escolherVarios('responsavel', vs, ev))} />;
+              if (item.id === 'etiqueta') return <GraficoLista key={chaveG} m={m} titulo="Por etiqueta" sub="um card pode ter várias" multiplo itens={r.porEtiqueta} aoClicar={(vs, ev) => (vs.length === 1 ? escolher('etiqueta', vs[0]!, ev) : escolherVarios('etiqueta', vs, ev))} />;
               const c = r.porCampo.find((x) => `campo:${x.key}` === item.id);
               if (!c) return null;
               return (
                 <GraficoLista
                   key={chaveG} m={m} titulo={`Por ${c.name.toLowerCase()}`} sub={c.multiplo ? 'um card pode contar em mais de um' : undefined}
-                  multiplo={c.multiplo} itens={c.itens} aoClicar={(v, ev) => escolherCampo(c.key, v, ev)}
+                  multiplo={c.multiplo} itens={c.itens} aoClicar={(vs, ev) => escolherCampo(c.key, vs, ev)}
                 />
               );
             })}
@@ -348,6 +414,24 @@ export function Chamados() {
             setTudo={(v) => { const n = new URLSearchParams(sp); if (v) n.set('tudo', '1'); else n.delete('tudo'); n.delete('p'); setSp(n, { replace: true }); }}
           />
         </div>
+      )}
+
+      {/* as janelas do Organizar: montadas só quando abrem (começam do rascunho de agora) */}
+      {itemGrupos && rascunho && op && r && (
+        <GruposDoGrafico
+          open onClose={() => setGruposDe(null)} titulo={tituloDe(itemGrupos.id)}
+          grupos={itemGrupos.grupos ?? []} agrupar={!!itemGrupos.agrupar} candidatos={candidatosDe(itemGrupos.id, op, r)}
+          onPronto={(grupos, agrupar) => {
+            mudarItem(itemGrupos.id, grupos.length ? { grupos, agrupar } : { grupos: undefined, agrupar: undefined });
+            setGruposDe(null);
+          }}
+        />
+      )}
+      {verEtapas && rascunho && op && (
+        <EtapasQueFecham
+          open onClose={() => setVerEtapas(false)} etapas={op.etapas} valor={rascunho.etapasFechadas}
+          onPronto={(v) => { setRascunho((x) => (x ? { ...x, etapasFechadas: v } : x)); setVerEtapas(false); }}
+        />
       )}
 
       {/* o nome do gráfico acompanha o ponteiro enquanto se arrasta */}
@@ -365,6 +449,23 @@ export function Chamados() {
   );
 }
 
+/**
+ * As opções que podem entrar num grupo de um gráfico: todas as que o LineChat conhece (não só as
+ * que apareceram com os filtros de agora), com quanto cada uma contou na tela neste momento.
+ */
+function candidatosDe(id: string, op: OpcoesChamados, r: ResumoChamados): Candidato[] {
+  const conta = (itens: ItemRanking[]) => new Map(itens.filter((x) => !x.grupo).map((x) => [x.valor, x.n]));
+  if (id === 'etapa') { const n = conta(r.porEtapa); return op.etapas.map((e) => ({ valor: e.id, rotulo: e.title, n: n.get(e.id) ?? 0 })); }
+  if (id === 'responsavel') { const n = conta(r.porResponsavel); return op.responsaveis.map((p) => ({ valor: p, rotulo: p, n: n.get(p) ?? 0 })); }
+  if (id === 'etiqueta') { const n = conta(r.porEtiqueta); return op.etiquetas.map((t) => ({ valor: t.id, rotulo: t.name, n: n.get(t.id) ?? 0 })); }
+  const key = id.slice('campo:'.length);
+  const campo = op.campos.find((c) => c.key === key);
+  const itens = r.porCampo.find((c) => c.key === key)?.itens ?? [];
+  const n = conta(itens);
+  const valores = [...new Set([...(campo?.options ?? []), ...itens.filter((x) => x.valor !== VAZIO && !x.grupo).map((x) => x.valor)])];
+  return valores.map((v) => ({ valor: v, rotulo: v, n: n.get(v) ?? 0 })).sort((a, b) => b.n - a.n || a.rotulo.localeCompare(b.rotulo, 'pt-BR'));
+}
+
 // ---------- peças ----------
 
 /** "Atualizado há 1 min" — ou o erro, para ninguém confiar num número parado sem saber. */
@@ -376,18 +477,20 @@ function Situacao({ op }: { op?: OpcoesChamados }) {
   return <span title={`Última leitura: ${data(op.sincronizadoEm, true)}. ${op.ultimaMsg ?? ''}`}><Chip tone="ok"><RefreshCw size={11} className="inline -mt-0.5 mr-1" />atualizado {relativo(op.sincronizadoEm)}</Chip></span>;
 }
 
-function Periodo({ de, ate, onChange }: { de: string; ate: string; onChange: (de: string, ate: string) => void }) {
-  const hoje = diaLocal();
+function Periodo({ de, ate, hoje: hojeServidor, primeiroDia, onChange }: { de: string; ate: string; hoje: string; primeiroDia: string; onChange: (de: string, ate: string) => void }) {
+  const hoje = hojeServidor || diaLocal();
   const inicioMes = hoje.slice(0, 8) + '01';
   const d = new Date(); d.setDate(0); // último dia do mês passado
   const fimMesPassado = diaLocal(d);
   const inicioMesPassado = fimMesPassado.slice(0, 8) + '01';
-  const atalhos: Array<[string, string, string]> = [
+  const atalhos: Array<[string, string, string, string?]> = [
     ['7 dias', diasAtras(6), hoje],
     ['30 dias', diasAtras(29), hoje],
     ['Este mês', inicioMes, hoje],
     ['Mês passado', inicioMesPassado, fimMesPassado],
     ['12 meses', diasAtras(364), hoje],
+    // desde o primeiro chamado guardado: com "só em aberto", é o que a antiga aba Em aberto mostrava
+    ['Tudo', primeiroDia, hoje, `Desde o primeiro chamado guardado (${diaCurto(primeiroDia)})`],
   ];
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -395,60 +498,95 @@ function Periodo({ de, ate, onChange }: { de: string; ate: string; onChange: (de
       <input type="date" className="input w-[150px]" id="chamados-de" value={de} max={ate} onChange={(e) => e.target.value && onChange(e.target.value, ate)} />
       <span className="text-muted text-sm">até</span>
       <input type="date" className="input w-[150px]" id="chamados-ate" value={ate} min={de} onChange={(e) => e.target.value && onChange(de, e.target.value)} />
-      {atalhos.map(([rotulo, a, b]) => (
-        <button key={rotulo} className={`btn-sm ${a === de && b === ate ? 'btn-primary' : 'btn-ghost'}`} onClick={() => onChange(a, b)}>{rotulo}</button>
+      {atalhos.map(([rotulo, a, b, dica]) => (
+        <button key={rotulo} className={`btn-sm ${a === de && b === ate ? 'btn-primary' : 'btn-ghost'}`} title={dica} onClick={() => onChange(a, b)}>{rotulo}</button>
       ))}
     </div>
   );
 }
 
-function Filtros({ op, sp, definirLista }: { op: OpcoesChamados; sp: URLSearchParams; definirLista: (nome: string, valores: string[]) => void }) {
+/**
+ * As opções de um filtro em botão, divididas pelos grupos da equipe (cada grupo com o seu "marcar
+ * grupo") e, no fim, as que não estão em grupo nenhum.
+ */
+function emSecoes(opcoes: Array<{ key: string; label: string; cor?: string }>, grupos: GrupoGrafico[], chave: (v: string) => string, rotulo: (v: string) => string): GrupoFiltro[] {
+  if (!grupos.length) return [{ opcoes }];
+  const agrupados = new Set(grupos.flatMap((g) => g.valores.map(chave)));
+  return [
+    ...grupos.map((g) => ({ titulo: g.nome, opcoes: g.valores.map((v) => ({ key: chave(v), label: rotulo(v) })) })),
+    { titulo: 'Sem grupo', opcoes: opcoes.filter((x) => !agrupados.has(x.key)) },
+  ];
+}
+
+function Filtros({ op, sp, definirLista, grupos }: { op: OpcoesChamados; sp: URLSearchParams; definirLista: (nome: string, valores: string[]) => void; grupos: Map<string, GrupoGrafico[]> }) {
   const vazio = op.vazio;
   const campo = (key: string) => sp.getAll('campo').filter((x) => x.startsWith(`${key}=`));
   const outrosCampos = (key: string) => sp.getAll('campo').filter((x) => !x.startsWith(`${key}=`));
-  const grupo = (opcoes: Array<{ key: string; label: string; cor?: string }>): GrupoFiltro[] => [{ opcoes }];
+  const nomeEtapa = (id: string) => op.etapas.find((e) => e.id === id)?.title ?? id;
+  const nomeEtiqueta = (id: string) => op.etiquetas.find((t) => t.id === id)?.name ?? id;
   return (
     <>
       <FiltroEmBotao icone={ListFilter} nome="Etapa" escolhidos={sp.getAll('etapa')} onChange={(v) => definirLista('etapa', v)}
-        grupos={grupo(op.etapas.map((e) => ({ key: e.id, label: e.title + (e.isFinal ? ' (final)' : '') })))} />
+        grupos={emSecoes(op.etapas.map((e) => ({ key: e.id, label: e.title + (e.isFinal ? ' · fecha' : '') })), grupos.get('etapa') ?? [], (v) => v, nomeEtapa)} />
       <FiltroEmBotao icone={UserRound} nome="Responsável" escolhidos={sp.getAll('responsavel')} onChange={(v) => definirLista('responsavel', v)}
-        grupos={grupo([...op.responsaveis.map((n) => ({ key: n, label: n })), { key: vazio, label: 'Sem responsável' }])} />
+        grupos={emSecoes([...op.responsaveis.map((n) => ({ key: n, label: n })), { key: vazio, label: 'Sem responsável' }], grupos.get('responsavel') ?? [], (v) => v, (v) => v)} />
       {op.campos.map((c) => (
         <FiltroEmBotao key={c.key} icone={Filter} nome={c.name} escolhidos={campo(c.key)} largura="w-[300px]"
           onChange={(v) => definirLista('campo', [...outrosCampos(c.key), ...v])}
-          grupos={grupo([...c.options.map((x) => ({ key: `${c.key}=${x}`, label: x })), { key: `${c.key}=${vazio}`, label: 'Não preenchido' }])} />
+          grupos={emSecoes([...c.options.map((x) => ({ key: `${c.key}=${x}`, label: x })), { key: `${c.key}=${vazio}`, label: 'Não preenchido' }], grupos.get(`campo:${c.key}`) ?? [], (v) => `${c.key}=${v}`, (v) => v)} />
       ))}
       <FiltroEmBotao icone={Tag} nome="Etiqueta" escolhidos={sp.getAll('etiqueta')} onChange={(v) => definirLista('etiqueta', v)}
-        grupos={grupo([...op.etiquetas.map((t) => ({ key: t.id, label: t.name, cor: t.color ?? undefined })), { key: vazio, label: 'Sem etiqueta' }])} />
+        grupos={emSecoes([...op.etiquetas.map((t) => ({ key: t.id, label: t.name, cor: t.color ?? undefined })), { key: vazio, label: 'Sem etiqueta' }], grupos.get('etiqueta') ?? [], (v) => v, nomeEtiqueta)} />
     </>
   );
 }
 
-/** O que está filtrado, escrito — cada um com o seu X (inclusive o que foi clicado nos gráficos). */
-function FiltrosAtivos({ op, sp, aba, situacao, tirar, limpar }: {
-  op: OpcoesChamados; sp: URLSearchParams; aba: Aba; situacao?: SituacaoChamado; tirar: (nome: string, valor: string) => void; limpar: () => void;
+/**
+ * O que está filtrado, escrito — cada um com o seu X (inclusive o que foi clicado nos gráficos).
+ * Um grupo inteiro no filtro aparece como um item só ("Assunto: Ramal (grupo)"), e o X tira todos.
+ */
+function FiltrosAtivos({ op, sp, aba, situacao, emAberto, grupos, tirar, limpar }: {
+  op: OpcoesChamados; sp: URLSearchParams; aba: Aba; situacao?: SituacaoChamado; emAberto: boolean; grupos: Map<string, GrupoGrafico[]>;
+  tirar: (nome: string, valores: string[]) => void; limpar: () => void;
 }) {
   const vazio = op.vazio;
-  const itens: Array<{ nome: string; valor: string; rotulo: ReactNode }> = [];
-  if (situacao) itens.push({ nome: 'situacao', valor: situacao, rotulo: <>Só os <b>{rotuloSituacao(situacao, aba)}</b></> });
+  const itens: Array<{ nome: string; valores: string[]; rotulo: ReactNode }> = [];
+  if (emAberto) itens.push({ nome: 'emaberto', valores: ['1'], rotulo: <>Só os <b>em aberto</b></> });
+  if (situacao) itens.push({ nome: 'situacao', valores: [situacao], rotulo: <>Só os <b>{rotuloSituacao(situacao, aba)}</b></> });
   for (const v of quandoValidos({ aba, quando: sp.getAll('quando') })) {
     const q = rotuloQuando(v, { aba, situacao });
-    itens.push({ nome: 'quando', valor: v, rotulo: <>{q.nome}: <b>{q.valor}</b></> });
+    itens.push({ nome: 'quando', valores: [v], rotulo: <>{q.nome}: <b>{q.valor}</b></> });
   }
-  for (const v of sp.getAll('etapa')) itens.push({ nome: 'etapa', valor: v, rotulo: <>Etapa: <b>{op.etapas.find((e) => e.id === v)?.title ?? 'sem etapa'}</b></> });
-  for (const v of sp.getAll('responsavel')) itens.push({ nome: 'responsavel', valor: v, rotulo: <>Responsável: <b>{v === vazio ? 'sem responsável' : v}</b></> });
+  /** Os escolhidos de uma dimensão: grupo inteiro vira um item só; o resto, um por valor. */
+  const porDimensao = (nome: string, idGrafico: string, escolhidos: string[], paraValor: (x: string) => string, nomeDim: string, rotulo: (v: string) => string) => {
+    const valores = escolhidos.map(paraValor);
+    const usados = new Set<string>();
+    for (const g of grupos.get(idGrafico) ?? []) {
+      if (!g.valores.length || !g.valores.every((v) => valores.includes(v))) continue;
+      g.valores.forEach((v) => usados.add(v));
+      itens.push({ nome, valores: escolhidos.filter((x) => g.valores.includes(paraValor(x))), rotulo: <>{nomeDim}: <b>{g.nome}</b> <Layers size={11} className="inline -mt-0.5 opacity-70" aria-label="grupo" /></> });
+    }
+    for (const x of escolhidos) if (!usados.has(paraValor(x))) itens.push({ nome, valores: [x], rotulo: <>{nomeDim}: <b>{rotulo(paraValor(x))}</b></> });
+  };
+  porDimensao('etapa', 'etapa', sp.getAll('etapa'), (x) => x, 'Etapa', (v) => op.etapas.find((e) => e.id === v)?.title ?? 'sem etapa');
+  porDimensao('responsavel', 'responsavel', sp.getAll('responsavel'), (x) => x, 'Responsável', (v) => (v === vazio ? 'sem responsável' : v));
+  for (const c of op.campos) {
+    const pre = `${c.key}=`;
+    porDimensao('campo', `campo:${c.key}`, sp.getAll('campo').filter((x) => x.startsWith(pre)), (x) => x.slice(pre.length), c.name, (v) => (v === vazio ? 'não preenchido' : v));
+  }
+  // campo que não existe mais no LineChat: o filtro continua escrito (e dá para tirar)
   for (const v of sp.getAll('campo')) {
-    const i = v.indexOf('='); const c = op.campos.find((x) => x.key === v.slice(0, i)); const val = v.slice(i + 1);
-    itens.push({ nome: 'campo', valor: v, rotulo: <>{c?.name ?? v.slice(0, i)}: <b>{val === vazio ? 'não preenchido' : val}</b></> });
+    const i = v.indexOf('=');
+    if (!op.campos.some((c) => c.key === v.slice(0, i))) itens.push({ nome: 'campo', valores: [v], rotulo: <>{v.slice(0, i)}: <b>{v.slice(i + 1)}</b></> });
   }
-  for (const v of sp.getAll('etiqueta')) itens.push({ nome: 'etiqueta', valor: v, rotulo: <>Etiqueta: <b>{v === vazio ? 'sem etiqueta' : op.etiquetas.find((t) => t.id === v)?.name ?? '?'}</b></> });
-  if (sp.get('busca')) itens.push({ nome: 'busca', valor: sp.get('busca')!, rotulo: <>Procurando: <b>{sp.get('busca')}</b></> });
+  porDimensao('etiqueta', 'etiqueta', sp.getAll('etiqueta'), (x) => x, 'Etiqueta', (v) => (v === vazio ? 'sem etiqueta' : op.etiquetas.find((t) => t.id === v)?.name ?? '?'));
+  if (sp.get('busca')) itens.push({ nome: 'busca', valores: [sp.get('busca')!], rotulo: <>Procurando: <b>{sp.get('busca')}</b></> });
   return (
     <div className="flex flex-wrap items-center gap-1.5 mb-4">
       {itens.map((x) => (
-        <span key={x.nome + x.valor} className="inline-flex items-center gap-1 rounded-full bg-accent-soft text-accent-ink text-[12.5px] pl-2.5 pr-1 py-0.5">
+        <span key={x.nome + x.valores.join('|')} className="inline-flex items-center gap-1 rounded-full bg-accent-soft text-accent-ink text-[12.5px] pl-2.5 pr-1 py-0.5">
           {x.rotulo}
-          <button className="hover:bg-surface-2 rounded-full p-0.5" aria-label="Tirar este filtro" onClick={() => tirar(x.nome, x.valor)}><X size={12} /></button>
+          <button className="hover:bg-surface-2 rounded-full p-0.5" aria-label="Tirar este filtro" onClick={() => tirar(x.nome, x.valores)}><X size={12} /></button>
         </span>
       ))}
       {sp.get('arquivados') === '1' && <Chip tone="muted">com arquivados</Chip>}
@@ -470,14 +608,16 @@ type Moldura = {
   aoPegar: (e: PointerEvent<HTMLElement>) => void;
   aoMover: (passo: -1 | 1, foco: string) => void;
   aoMudar: (m: Partial<ItemPainel>) => void;
+  /** abre a janela dos grupos deste gráfico */
+  aoAbrirGrupos: () => void;
 };
 
 /**
  * A moldura de um gráfico. Fora do Organizar, é só o cartão. No Organizar, ganha em cima a faixa
- * de ferramentas (alça, setas, largura, esconder) e o gráfico para de responder a cliques.
+ * de ferramentas (alça, setas, grupos, largura, esconder) e o gráfico para de responder a cliques.
  * Escondido, no Organizar, vira uma tira fina no mesmo lugar — para dar para mostrar de volta.
  */
-function Cartao({ m, titulo, sub, extra, children }: { m: Moldura; titulo: string; sub?: ReactNode; extra?: ReactNode; children: ReactNode }) {
+function Cartao({ m, titulo, sub, extra, children, comGrupos = false }: { m: Moldura; titulo: string; sub?: ReactNode; extra?: ReactNode; children: ReactNode; comGrupos?: boolean }) {
   const { item } = m;
   const largura = item.largura === 'inteira' ? 'md:col-span-2' : '';
   const cabecalho = (
@@ -494,6 +634,7 @@ function Cartao({ m, titulo, sub, extra, children }: { m: Moldura; titulo: strin
   }
   const botao = 'p-1 rounded-md text-ink-2 hover:bg-surface hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent';
   const seg = (ativo: boolean) => `px-2 py-0.5 rounded-md text-[12px] font-semibold ${ativo ? 'bg-accent text-white' : 'text-ink-2 hover:text-ink'}`;
+  const nGrupos = item.grupos?.length ?? 0;
   return (
     <section
       data-arrastavel={item.id}
@@ -517,7 +658,12 @@ function Cartao({ m, titulo, sub, extra, children }: { m: Moldura; titulo: strin
           <button type="button" className={botao} data-foco={`${item.id}:antes`} disabled={m.primeiro} onClick={() => m.aoMover(-1, 'antes')} aria-label={`${titulo}: mover para antes`} title="Mover para antes"><ChevronLeft size={16} /></button>
           <button type="button" className={botao} data-foco={`${item.id}:depois`} disabled={m.ultimo} onClick={() => m.aoMover(1, 'depois')} aria-label={`${titulo}: mover para depois`} title="Mover para depois"><ChevronRight size={16} /></button>
         </span>
-        <div className="ml-auto flex items-center gap-1.5">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+          {comGrupos && !item.oculto && (
+            <button type="button" className="btn-ghost btn-sm" onClick={m.aoAbrirGrupos} title="Juntar várias opções num ponto só do gráfico (para a equipe toda)">
+              <Layers size={14} /> Grupos{nGrupos ? <span className="tnum text-muted">({nGrupos})</span> : null}
+            </button>
+          )}
           {!item.oculto && (
             <div className="hidden md:flex rounded-lg bg-surface border border-line p-0.5" role="group" aria-label={`${titulo}: largura`}>
               <button type="button" className={seg(item.largura === 'metade')} aria-pressed={item.largura === 'metade'} onClick={() => m.aoMudar({ largura: 'metade' })}>Metade</button>
@@ -539,47 +685,66 @@ function Cartao({ m, titulo, sub, extra, children }: { m: Moldura; titulo: strin
   );
 }
 
-/** A escolha barras/pizza de cada pessoa (no navegador dela); sem escolha, vale a da equipe. */
+/**
+ * As escolhas de cada pessoa, no navegador dela: pizza ou barras, e agrupado ou separado. Sem
+ * escolha, vale a da equipe; voltar para a da equipe esquece a escolha (para acompanhar quando a
+ * equipe mudar).
+ */
 const CHAVE_FORMAS = 'gestor.chamados.graficos';
-function lerFormas(): Record<string, FormaGrafico> {
-  try { return JSON.parse(localStorage.getItem(CHAVE_FORMAS) ?? '{}') as Record<string, FormaGrafico>; } catch { return {}; }
+const CHAVE_AGRUPAR = 'gestor.chamados.agrupar';
+function lerEscolhas<T>(chave: string): Record<string, T> {
+  try { return JSON.parse(localStorage.getItem(chave) ?? '{}') as Record<string, T>; } catch { return {}; }
 }
-function useForma(id: string, daEquipe: FormaGrafico): [FormaGrafico, (f: FormaGrafico) => void] {
-  const [minha, setMinha] = useState<FormaGrafico | undefined>(() => lerFormas()[id]);
-  const mudar = (f: FormaGrafico) => {
-    // voltou para a da equipe: esquece a escolha, para acompanhar quando a equipe mudar
-    setMinha(f === daEquipe ? undefined : f);
+function useEscolha<T>(chave: string, id: string, daEquipe: T): [T, (v: T) => void] {
+  const [minha, setMinha] = useState<T | undefined>(() => lerEscolhas<T>(chave)[id]);
+  const mudar = (v: T) => {
+    setMinha(v === daEquipe ? undefined : v);
     try {
-      const m = lerFormas();
-      if (f === daEquipe) delete m[id]; else m[id] = f;
-      localStorage.setItem(CHAVE_FORMAS, JSON.stringify(m));
+      const m = lerEscolhas<T>(chave);
+      if (v === daEquipe) delete m[id]; else m[id] = v;
+      localStorage.setItem(chave, JSON.stringify(m));
     } catch { /* sem storage: só não lembra */ }
   };
   return [minha ?? daEquipe, mudar];
 }
 
 /**
- * Um gráfico de lista: em barras (os 8 maiores, os escolhidos e o "ver todos" — nenhuma lista
- * esconde linhas) ou em pizza (as 6 maiores fatias, o resto em "Outros", que abre a lista).
- * Clicar filtra; clicar de novo desfaz.
+ * Um gráfico de lista: em pizza (as 6 maiores fatias com cor; o resto em "Outros", que se desdobra
+ * em itens normais) ou em barras (os 8 maiores, os escolhidos e o "ver todos" — nenhuma lista
+ * esconde linhas). Com grupos montados pela equipe, o botão **Agrupar** junta os valores de cada
+ * grupo num ponto só. Clicar filtra (num grupo, por todos os valores dele); clicar de novo desfaz.
  */
 function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = false, multiplo = false }: {
-  m: Moldura; titulo: string; sub?: string; itens: ItemRanking[]; aoClicar: (valor: string, ev: MouseEvent) => void; semOrdenar?: boolean;
+  m: Moldura; titulo: string; sub?: string; itens: ItemRanking[];
+  /** os valores clicados: um só, ou todos os de um grupo */
+  aoClicar: (valores: string[], ev: MouseEvent) => void;
+  semOrdenar?: boolean;
   /** um card conta em mais de uma fatia: a pizza soma marcações, não chamados */
   multiplo?: boolean;
 }) {
   const [todos, setTodos] = useState(false);
-  const daEquipe = m.item.forma ?? 'barras';
-  const [minha, setMinha] = useForma(m.item.id, daEquipe);
+  const grupos = m.item.grupos ?? [];
+  const daEquipe: FormaGrafico = m.item.forma ?? 'pizza';
+  const [minhaForma, setMinhaForma] = useEscolha<FormaGrafico>(CHAVE_FORMAS, m.item.id, daEquipe);
+  const [meuAgrupar, setMeuAgrupar] = useEscolha<boolean>(CHAVE_AGRUPAR, m.item.id, !!m.item.agrupar);
   // organizando, a escolha é a da equipe (é ela que está sendo arrumada)
-  const forma = m.organizando ? daEquipe : minha;
-  const trocar = (f: FormaGrafico) => (m.organizando ? m.aoMudar({ forma: f }) : setMinha(f));
+  const forma = m.organizando ? daEquipe : minhaForma;
+  const agrupado = grupos.length > 0 && (m.organizando ? !!m.item.agrupar : meuAgrupar);
+  const trocarForma = (f: FormaGrafico) => (m.organizando ? m.aoMudar({ forma: f }) : setMinhaForma(f));
+  const trocarAgrupar = () => (m.organizando ? m.aoMudar({ agrupar: !m.item.agrupar }) : setMeuAgrupar(!meuAgrupar));
+
+  const mostrados = agrupado ? agruparItens(itens, grupos, semOrdenar) : itens;
+  const clicar = (valor: string, ev: MouseEvent) => {
+    const g = mostrados.find((x) => x.valor === valor)?.grupo;
+    aoClicar(g ? g.valores : [valor], ev);
+  };
   const LIMITE = 8;
-  const mostrar = todos || semOrdenar ? itens : itens.filter((x, i) => i < LIMITE || x.selecionado);
-  const soma = itens.reduce((a, x) => a + x.n, 0);
+  const mostrar = todos || semOrdenar ? mostrados : mostrados.filter((x, i) => i < LIMITE || x.selecionado);
+  const soma = mostrados.reduce((a, x) => a + x.n, 0);
+  const dicaGrupo = (x: ItemRanking) => (x.grupo ? `Grupo: ${x.grupo.membros.map((mb) => `${mb.rotulo} (${mb.n})`).join(', ') || 'nada agora'}` : undefined);
   const botao = (f: FormaGrafico, Icone: typeof PieChart, rotulo: string) => (
     <button
-      type="button" onClick={() => trocar(f)} aria-pressed={forma === f}
+      type="button" onClick={() => trocarForma(f)} aria-pressed={forma === f}
       title={m.organizando ? `${rotulo} (para a equipe toda)` : rotulo} aria-label={`${titulo}: ${rotulo.toLowerCase()}`}
       className={`p-1 rounded ${forma === f ? 'bg-surface text-accent shadow-sm' : 'text-muted hover:text-ink'}`}
     >
@@ -587,18 +752,33 @@ function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = false, mul
     </button>
   );
   const extra = (
-    <div className="flex items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 shrink-0" role="group" aria-label="Como mostrar">
-      {botao('barras', BarChartHorizontal, 'Ver em barras')}
-      {botao('pizza', PieChart, 'Ver em pizza')}
+    <div className="flex items-center gap-1.5 shrink-0">
+      {grupos.length > 0 && (
+        <button
+          type="button" onClick={trocarAgrupar} aria-pressed={agrupado}
+          title={agrupado ? `Separar os grupos (${grupos.map((g) => g.nome).join(', ')})` : `Juntar os grupos: ${grupos.map((g) => g.nome).join(', ')}${m.organizando ? ' (a equipe abre assim)' : ''}`}
+          className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[12.5px] font-semibold ${agrupado ? 'bg-accent-soft text-accent-ink ring-1 ring-accent' : 'bg-surface-2 text-ink-2 hover:text-ink'}`}
+        >
+          <Layers size={14} /> Agrupar
+        </button>
+      )}
+      <div className="flex items-center gap-0.5 rounded-lg bg-surface-2 p-0.5" role="group" aria-label="Como mostrar">
+        {botao('pizza', PieChart, 'Ver em pizza')}
+        {botao('barras', BarChartHorizontal, 'Ver em barras')}
+      </div>
     </div>
   );
+  const nValores = mostrados.length;
+  const contagem = nValores ? `${nValores} ${nValores === 1 ? 'valor' : 'valores'}${agrupado ? ', com os grupos juntos' : ''}` : '';
+  // "na ordem do Kanban" só vale nas barras: a pizza põe a maior fatia primeiro
+  const legenda = sub && !(semOrdenar && forma === 'pizza') ? sub : contagem;
   return (
-    <Cartao m={m} titulo={titulo} sub={sub ?? (itens.length ? `${itens.length} ${itens.length === 1 ? 'valor' : 'valores'}` : '')} extra={extra}>
+    <Cartao m={m} comGrupos titulo={titulo} sub={legenda} extra={extra}>
       {forma === 'pizza' ? (
         <Pizza
-          partes={itens.map((x) => ({ id: x.valor, rotulo: x.rotulo, n: x.n, neutro: x.valor === VAZIO, selecionado: x.selecionado }))}
-          rotuloCentro={multiplo ? 'marcações' : itens.length ? 'chamados' : ''}
-          aoClicar={aoClicar}
+          partes={mostrados.map((x) => ({ id: x.valor, rotulo: x.rotulo, n: x.n, neutro: x.valor === VAZIO, selecionado: x.selecionado, grupo: !!x.grupo, dica: dicaGrupo(x) }))}
+          rotuloCentro={multiplo ? 'marcações' : mostrados.length ? 'chamados' : ''}
+          aoClicar={clicar}
           vazio="Nenhum chamado aqui."
         />
       ) : (
@@ -607,17 +787,23 @@ function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = false, mul
             selecionavel
             dados={mostrar.map((x) => ({
               id: x.valor,
-              rotulo: <span className="flex items-center gap-1.5 min-w-0">{x.cor && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.cor }} aria-hidden />}<span className={`truncate ${x.valor === VAZIO ? 'text-muted italic' : ''}`}>{x.rotulo}</span></span>,
+              rotulo: (
+                <span className="flex items-center gap-1.5 min-w-0">
+                  {x.cor && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: x.cor }} aria-hidden />}
+                  <span className={`truncate ${x.valor === VAZIO ? 'text-muted italic' : ''}`}>{x.rotulo}</span>
+                  {x.grupo && <Layers size={12} className="shrink-0 text-muted" aria-label="grupo" />}
+                </span>
+              ),
               valor: x.n,
               selecionado: x.selecionado,
-              titulo: `${x.rotulo}: ${x.n} (${soma ? Math.round((x.n / soma) * 100) : 0}%) — ${x.selecionado ? 'clique para desfazer o filtro' : 'clique para filtrar (Ctrl+clique soma outro)'}`,
+              titulo: [`${x.rotulo}: ${x.n} (${soma ? Math.round((x.n / soma) * 100) : 0}%)`, dicaGrupo(x), x.selecionado ? 'clique para desfazer o filtro' : 'clique para filtrar (Ctrl+clique soma outro)'].filter(Boolean).join(' — '),
             }))}
-            acao={aoClicar}
+            acao={clicar}
             larguraRotulo="w-[45%] sm:w-[190px]"
             vazio="Nenhum chamado aqui."
           />
-          {!semOrdenar && itens.length > LIMITE && (
-            <button className="btn-ghost btn-sm mt-2" onClick={() => setTodos((v) => !v)}>{todos ? 'Mostrar só os 8 maiores' : `Ver todos (${itens.length})`}</button>
+          {!semOrdenar && mostrados.length > LIMITE && (
+            <button className="btn-ghost btn-sm mt-2" onClick={() => setTodos((v) => !v)}>{todos ? 'Mostrar só os 8 maiores' : `Ver todos (${mostrados.length})`}</button>
           )}
         </>
       )}
@@ -631,6 +817,13 @@ function Tabela({ op, total, lista, carregando, o, page, tudo, setPage, setTudo 
 }) {
   const colunas: Coluna<LinhaChamado>[] = useMemo(() => [
     { id: 'titulo', label: 'Título', grupo: 'Chamado', render: (c) => <span className="line-clamp-2 min-w-[220px]">{c.title || <span className="text-muted">(sem título)</span>}</span> },
+    {
+      id: 'descricao', label: 'Descrição', grupo: 'Chamado', ordenavel: false,
+      // o começo do texto do card; o texto inteiro aparece ao passar o mouse (e o card abre no LineChat)
+      render: (c) => (c.descricao
+        ? <span className="block min-w-[260px] max-w-[440px] line-clamp-3 whitespace-pre-line text-ink-2" title={c.descricao}>{c.descricao}</span>
+        : <span className="text-muted">—</span>),
+    },
     { id: 'etapa', label: 'Etapa', grupo: 'Chamado', render: (c) => <span className="whitespace-nowrap">{c.stepTitle ?? '—'}{c.arquivado && <Chip tone="muted" className="ml-1">arquivado</Chip>}</span> },
     { id: 'responsavel', label: 'Responsável', grupo: 'Chamado', render: (c) => c.responsavel ?? <span className="text-muted">—</span> },
     ...op.campos.map((f): Coluna<LinhaChamado> => ({ id: `campo:${f.key}`, label: f.name, grupo: 'Campos do card', render: (c) => c.campos[f.key] ?? <span className="text-muted">—</span> })),
@@ -641,8 +834,9 @@ function Tabela({ op, total, lista, carregando, o, page, tudo, setPage, setTudo 
     { id: 'vencimento', label: 'Vencimento', grupo: 'Datas', render: (c) => (c.dueDate ? <span className={`whitespace-nowrap tnum ${c.isOverdue ? 'text-bad font-semibold' : ''}`}>{data(c.dueDate)}</span> : <span className="text-muted">—</span>) },
   ], [op.campos]);
   // o padrão: o que a equipe olha primeiro no card (os três primeiros campos são Cliente, Tipo e Produto)
-  const padrao = useMemo(() => ['titulo', 'etapa', 'responsavel', ...op.campos.slice(0, 3).map((f) => `campo:${f.key}`), 'aberto'], [op.campos]);
-  const escolha = useColunasEscolhidas('gestor.colunas.chamados', padrao);
+  const padrao = useMemo(() => ['titulo', 'descricao', 'etapa', 'responsavel', ...op.campos.slice(0, 3).map((f) => `campo:${f.key}`), 'aberto'], [op.campos]);
+  // a Descrição chegou no 1.4: quem já tinha escolhido as colunas passa a vê-la uma vez (e tira, se quiser)
+  const escolha = useColunasEscolhidas('gestor.colunas.chamados', padrao, { novas: ['descricao'] });
   const visiveis = colunas.filter((c) => escolha.ids.includes(c.id));
   const numero = contarDe(tudo ? 1 : page, tudo ? TODOS : POR_PAGINA);
 

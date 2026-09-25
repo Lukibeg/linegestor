@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aplicarFiltros, diaEmBrasilia, FiltrosChamadosSchema, horaEmBrasilia, listarChamados, ListaChamadosSchema, montarPainel,
-  PainelChamadosSchema, painelPadrao, resumirChamados, rotuloQuando, VAZIO, type Chamado, type ContextoChamados,
+  agruparItens, aplicarFiltros, atualizarPainelGuardado, comFechamento, diaEmBrasilia, etapasDaEquipe, FiltrosChamadosSchema, horaEmBrasilia,
+  ItemPainelSchema, listarChamados, ListaChamadosSchema, montarPainel, PainelChamadosSchema, painelPadrao, PREFIXO_GRUPO, resumirChamados,
+  rotuloQuando, sugerirGrupos, textoDoCard, VAZIO, type Chamado, type ContextoChamados, type ItemPainel, type ItemRanking, type MovimentoChamado,
 } from './chamados.js';
 
 const etapas = [
@@ -78,11 +79,34 @@ describe('filtros e contas', () => {
     expect(aplicarFiltros(cards, f({ busca: 'chamado 2' })).length).toBe(1);
   });
 
-  it('Em aberto: tudo fora das etapas finais, e a série diz há quanto tempo', () => {
-    const r = resumirChamados(cards, f({ aba: 'abertos' }), ctx);
+  it('"só em aberto" com o período inteiro é o que a antiga aba Em aberto mostrava', () => {
+    // o atalho Tudo começa no dia do chamado mais antigo
+    expect(resumirChamados(cards, f({ aba: 'periodo' }), ctx).primeiroDia).toBe('2026-09-20');
+    const r = resumirChamados(cards, f({ aba: 'periodo', de: '2026-09-20', ate: '2026-09-23', emAberto: 'true' }), ctx);
     expect(r.total).toBe(3);
-    expect(r.serie.pontos.find((p) => p.id === 'hoje')!.n).toBe(2);
-    expect(r.serie.pontos.find((p) => p.id === '1')!.n).toBe(1);
+    expect(r.kpis.map((k) => k.id)).toEqual(['em-aberto', 'vencidos', 'parados', 'sem-responsavel']);
+    expect(r.kpis[0]).toMatchObject({ valor: '3', sub: 'de qualquer data', total: true });
+    expect(r.serie.titulo).toBe('Em aberto, pelo dia em que foram abertos');
+    expect(r.serie.pontos.find((p) => p.id === '2026-09-22')!.n).toBe(1); // o das 22h de ontem
+    expect(r.serie.pontos.find((p) => p.id === '2026-09-23')!.n).toBe(2);
+    // com um período menor, o número diz que é só daquele pedaço
+    expect(resumirChamados(cards, f({ aba: 'periodo', de: '2026-09-23', ate: '2026-09-23', emAberto: 'true' }), ctx).kpis[0]!.sub).toBe('dos abertos no período');
+  });
+
+  it('na aba Hoje, o "só em aberto" deixa de fora o que já fechou e troca os números de cima', () => {
+    const hoje = [...cards, card({ stepId: 'tratado', stepPhase: 'FINAL', closedAt: '2026-09-23T14:30:00Z' })];
+    expect(resumirChamados(hoje, f({ aba: 'hoje' }), ctx).total).toBe(3);
+    const r = resumirChamados(hoje, f({ aba: 'hoje', emAberto: 'true' }), ctx);
+    expect(r.total).toBe(2);
+    expect(r.kpis.map((k) => k.id)).toEqual(['abertos-hoje', 'sem-responsavel', 'vencidos', 'em-aberto']);
+    expect(r.serie.titulo).toBe('Abertos hoje e ainda em aberto, por hora');
+    // "em aberto agora" de qualquer dia leva para o Período inteiro, com o interruptor ligado
+    expect(r.kpis.find((k) => k.id === 'em-aberto')!.filtro).toEqual({ aba: 'periodo', tudo: true, emAberto: true });
+  });
+
+  it('endereço antigo com a aba "abertos" cai na aba Hoje, sem erro', () => {
+    expect(f({ aba: 'abertos' }).aba).toBe('hoje');
+    expect(f({ situacao: 'abertos' }).situacao).toBeUndefined();
   });
 
   it('a tabela ordena, pagina e leva o link do card', () => {
@@ -134,20 +158,24 @@ describe('clicar filtra, e o gráfico clicado continua inteiro', () => {
     expect(rotuloQuando('9', f({ aba: 'hoje' }))).toEqual({ nome: 'Hora', valor: '09h' });
   });
 
-  it('Em aberto: a faixa de idade clicada, e os números de cima clicados', () => {
-    const idade = resumirChamados(cards, f({ aba: 'abertos', quando: '8-15' }), ctx);
-    expect(idade.total).toBe(1);
-    expect(idade.serie.pontos.find((p) => p.id === 'hoje')).toMatchObject({ n: 3 });
-    expect(idade.serie.pontos.find((p) => p.id === '8-15')).toMatchObject({ n: 1, selecionado: true });
-    const parados = resumirChamados(cards, f({ aba: 'abertos', situacao: 'parados' }), ctx);
+  it('só em aberto: o dia clicado, e os números de cima clicados', () => {
+    const emAberto = { aba: 'periodo', de: '2026-09-01', ate: '2026-09-23', emAberto: 'true' };
+    const dia = resumirChamados(cards, f({ ...emAberto, quando: '2026-09-10' }), ctx);
+    expect(dia.total).toBe(1);
+    expect(dia.serie.pontos.find((p) => p.id === '2026-09-23')).toMatchObject({ n: 3 });
+    expect(dia.serie.pontos.find((p) => p.id === '2026-09-10')).toMatchObject({ n: 1, selecionado: true });
+    const parados = resumirChamados(cards, f({ ...emAberto, situacao: 'parados' }), ctx);
     expect(parados.total).toBe(1);
     expect(parados.kpis.find((k) => k.id === 'parados')).toMatchObject({ valor: '1', ativo: true });
     // os números de cima não mudam com a própria escolha
     expect(parados.kpis.find((k) => k.id === 'em-aberto')).toMatchObject({ valor: '4', total: true });
-    expect(resumirChamados(cards, f({ aba: 'abertos', situacao: 'sem-responsavel' }), ctx).total).toBe(1);
-    expect(resumirChamados(cards, f({ aba: 'abertos', situacao: 'vencidos' }), ctx).total).toBe(1);
+    expect(resumirChamados(cards, f({ ...emAberto, situacao: 'sem-responsavel' }), ctx).total).toBe(1);
+    expect(resumirChamados(cards, f({ ...emAberto, situacao: 'vencidos' }), ctx).total).toBe(1);
     // situação que não existe (endereço antigo) é ignorada
-    expect(resumirChamados(cards, f({ aba: 'abertos', situacao: 'qualquer' }), ctx).total).toBe(4);
+    expect(resumirChamados(cards, f({ ...emAberto, situacao: 'qualquer' }), ctx).total).toBe(4);
+    // sem o interruptor, "Ainda em aberto" é o número que o liga
+    const periodo = resumirChamados(cards, f({ aba: 'periodo', de: '2026-09-01', ate: '2026-09-23' }), ctx);
+    expect(periodo.kpis.find((k) => k.id === 'ainda-abertos')).toMatchObject({ valor: '4', filtro: { emAberto: true } });
   });
 
   it('"Fechados hoje" troca a pergunta: o que foi fechado hoje, pela hora do fechamento', () => {
@@ -157,8 +185,8 @@ describe('clicar filtra, e o gráfico clicado continua inteiro', () => {
     expect(r.serie.pontos[13]!.n).toBe(1);
     expect(r.kpis.find((k) => k.id === 'fechados-hoje')).toMatchObject({ valor: '1', ativo: true });
     expect(r.kpis.find((k) => k.id === 'abertos-hoje')!.valor).toBe('3');
-    // o "Em aberto agora" de qualquer dia leva para a outra aba
-    expect(r.kpis.find((k) => k.id === 'vencidos')!.filtro).toEqual({ aba: 'abertos', situacao: 'vencidos' });
+    // o "Vencidos" de qualquer dia leva para o Período inteiro, só em aberto, só os vencidos
+    expect(r.kpis.find((k) => k.id === 'vencidos')!.filtro).toEqual({ aba: 'periodo', tudo: true, emAberto: true, situacao: 'vencidos' });
     // aqui, a hora clicada é a do fechamento
     expect(resumirChamados(cards, f({ aba: 'hoje', situacao: 'fechados', quando: '13' }), ctx).total).toBe(1);
     expect(resumirChamados(cards, f({ aba: 'hoje', situacao: 'fechados', quando: '10' }), ctx).total).toBe(0);
@@ -190,11 +218,31 @@ describe('clicar filtra, e o gráfico clicado continua inteiro', () => {
 describe('arrumação da tela', () => {
   const campos = [{ key: 'cliente-71' }, { key: 'plataforma' }];
 
-  it('de fábrica: o do tempo na linha inteira, os campos na ordem, Produto em pizza', () => {
+  it('de fábrica: o do tempo na linha inteira, os campos na ordem, todos os de lista em pizza', () => {
     expect(painelPadrao(campos).map((x) => [x.id, x.largura, x.forma ?? '-'])).toEqual([
-      ['serie', 'inteira', '-'], ['etapa', 'metade', 'barras'], ['responsavel', 'metade', 'barras'],
-      ['campo:cliente-71', 'metade', 'barras'], ['campo:plataforma', 'metade', 'pizza'], ['etiqueta', 'metade', 'barras'],
+      ['serie', 'inteira', '-'], ['etapa', 'metade', 'pizza'], ['responsavel', 'metade', 'pizza'],
+      ['campo:cliente-71', 'metade', 'pizza'], ['campo:plataforma', 'metade', 'pizza'], ['etiqueta', 'metade', 'pizza'],
     ]);
+  });
+
+  it('a arrumação guardada no 1.3 (barras era o padrão) passa a abrir em pizza; a do 1.4 fica como está', () => {
+    const antiga: { versao?: number; itens: ItemPainel[] } = { itens: [{ id: 'serie', largura: 'inteira', oculto: false }, { id: 'etapa', largura: 'metade', oculto: false, forma: 'barras' }] };
+    const nova = atualizarPainelGuardado(antiga);
+    expect(nova.versao).toBe(2);
+    expect(nova.itens.map((x) => x.forma ?? '-')).toEqual(['-', 'pizza']);
+    const doUmQuatro = { versao: 2, itens: [{ id: 'etapa', largura: 'metade' as const, oculto: false, forma: 'barras' as const }] };
+    expect(atualizarPainelGuardado(doUmQuatro).itens[0]!.forma).toBe('barras');
+  });
+
+  it('grupos: uma opção num grupo só, nomes diferentes, e ao menos duas opções por grupo', () => {
+    const base = { id: 'campo:assunto', largura: 'metade' };
+    const ramal = { id: 'g1', nome: 'Ramal', valores: ['Ramal - Criação', 'Ramal - Configuração'] };
+    expect(ItemPainelSchema.safeParse({ ...base, grupos: [ramal] }).success).toBe(true);
+    expect(ItemPainelSchema.safeParse({ ...base, grupos: [ramal, { id: 'g2', nome: 'Outro', valores: ['Ramal - Criação', 'URA'] }] }).success).toBe(false);
+    expect(ItemPainelSchema.safeParse({ ...base, grupos: [ramal, { id: 'g2', nome: 'ramal', valores: ['URA', 'Fila'] }] }).success).toBe(false);
+    expect(ItemPainelSchema.safeParse({ ...base, grupos: [{ id: 'g3', nome: 'Só um', valores: ['URA'] }] }).success).toBe(false);
+    // o gráfico do tempo não leva grupos nem forma
+    expect(montarPainel([{ id: 'serie', largura: 'metade', oculto: false, forma: 'pizza', grupos: [ramal] }], campos)[0]).toEqual({ id: 'serie', largura: 'metade', oculto: false });
   });
 
   it('o guardado manda; o que saiu do LineChat some; o que é novo entra no fim; repetido conta uma vez', () => {
@@ -206,12 +254,106 @@ describe('arrumação da tela', () => {
     ], campos);
     expect(p.map((x) => x.id)).toEqual(['campo:plataforma', 'etiqueta', 'serie', 'etapa', 'responsavel', 'campo:cliente-71']);
     expect(p[0]).toMatchObject({ largura: 'inteira', forma: 'barras', oculto: false });
-    expect(p[1]).toMatchObject({ oculto: true, forma: 'barras' });
+    // sem forma guardada, vale a de fábrica (pizza, desde o 1.4)
+    expect(p[1]).toMatchObject({ oculto: true, forma: 'pizza' });
   });
 
   it('a arrumação recusa gráfico repetido e gráfico que não existe', () => {
     expect(PainelChamadosSchema.safeParse({ itens: [{ id: 'etapa', largura: 'metade' }, { id: 'etapa', largura: 'inteira' }] }).success).toBe(false);
     expect(PainelChamadosSchema.safeParse({ itens: [{ id: 'qualquer', largura: 'metade' }] }).success).toBe(false);
     expect(PainelChamadosSchema.parse({ itens: [{ id: 'campo:cliente-71', largura: 'metade' }] }).itens[0]!.oculto).toBe(false);
+  });
+});
+
+describe('as etapas que fecham o chamado (escolhidas pela equipe)', () => {
+  const obs = { id: 'obs', title: 'Em Observação', position: 3, isInitial: false, isFinal: false, archived: false };
+  const todas = [...etapas.slice(0, 2), obs, etapas[2]!];
+  const mov = (fromStepId: string | null, toStepId: string, at: string, estimated = false): MovimentoChamado => ({ fromStepId, toStepId, at, estimated });
+
+  it('sem escolha valem as finais do LineChat; com escolha, as marcadas; lista sem etapa que exista é ignorada', () => {
+    expect(etapasDaEquipe(todas, null).filter((e) => e.isFinal).map((e) => e.id)).toEqual(['tratado']);
+    expect(etapasDaEquipe(todas, ['obs', 'tratado']).filter((e) => e.isFinal).map((e) => e.id)).toEqual(['obs', 'tratado']);
+    expect(etapasDaEquipe(todas, ['apagada']).filter((e) => e.isFinal).map((e) => e.id)).toEqual(['tratado']);
+  });
+
+  it('a hora do fechamento sai do histórico: o começo da última sequência em etapas que fecham', () => {
+    const eq = etapasDaEquipe(todas, ['obs', 'tratado']);
+    const historico = new Map<string, MovimentoChamado[]>([
+      // N1 → Observação (10h) → Tratado (12h): fechado desde as 10h
+      ['a', [mov(null, 'n1', '2026-09-20T12:00:00Z', true), mov('n1', 'obs', '2026-09-22T13:00:00Z'), mov('obs', 'tratado', '2026-09-22T15:00:00Z')]],
+      // foi para Observação, voltou para o N1 e fechou de novo: vale a última vez
+      ['b', [mov(null, 'n1', '2026-09-20T12:00:00Z'), mov('n1', 'obs', '2026-09-21T12:00:00Z'), mov('obs', 'n1', '2026-09-21T15:00:00Z'), mov('n1', 'tratado', '2026-09-23T11:00:00Z')]],
+      // já estava na Observação antes da primeira leitura: hora estimada
+      ['c', [mov(null, 'obs', '2026-09-19T12:00:00Z', true)]],
+    ]);
+    const [a, b, c, d] = comFechamento([
+      card({ id: 'a', stepId: 'tratado', closedAt: '2026-09-22T15:00:00Z' }),
+      card({ id: 'b', stepId: 'tratado', closedAt: '2026-09-23T11:00:00Z' }),
+      card({ id: 'c', stepId: 'obs' }),
+      // na prévia não há histórico: fechado por etapa que o LineChat não chama de final usa a última alteração
+      card({ id: 'd', stepId: 'obs', updatedAt: '2026-09-18T10:00:00Z' }),
+    ], eq, historico);
+    expect([a!.closedAt, a!.closedEstimated]).toEqual(['2026-09-22T13:00:00Z', false]);
+    expect(b!.closedAt).toBe('2026-09-23T11:00:00Z');
+    expect([c!.closedAt, c!.closedEstimated]).toEqual(['2026-09-19T12:00:00Z', true]);
+    expect([d!.closedAt, d!.closedEstimated]).toEqual(['2026-09-18T10:00:00Z', true]);
+    // e as contas passam a considerar Observação como fechado
+    const r = resumirChamados([a!, b!, c!, d!], FiltrosChamadosSchema.parse({ aba: 'periodo', de: '2026-09-01', ate: '2026-09-23' }), { ...ctx, etapas: eq });
+    expect(r.kpis.find((k) => k.id === 'ainda-abertos')!.valor).toBe('0');
+    expect(r.kpis.find((k) => k.id === 'fechados')!.valor).toBe('4');
+  });
+
+  it('card que nasceu e fechou entre duas leituras fica com a hora que a sincronização gravou', () => {
+    const [x] = comFechamento(
+      [card({ id: 'x', stepId: 'tratado', createdAt: '2026-09-23T13:00:00Z', closedAt: '2026-09-23T13:00:40Z' })],
+      etapas, new Map([['x', [mov(null, 'tratado', '2026-09-23T13:00:00Z')]]]),
+    );
+    expect(x!.closedAt).toBe('2026-09-23T13:00:40Z');
+  });
+});
+
+describe('a descrição do card', () => {
+  it('sai sem as marcas do editor, com as quebras de linha, e cortada na tabela', () => {
+    expect(textoDoCard('<p>Ramal 9871 <b>sem áudio</b></p><p>Cliente &amp; filial&nbsp;2</p>')).toBe('Ramal 9871 sem áudio\nCliente & filial 2');
+    expect(textoDoCard('<ul><li>um</li><li>dois</li></ul>')).toBe('• um\n• dois');
+    expect(textoDoCard('valor < 10 e > 5')).toBe('valor < 10 e > 5');
+    expect(textoDoCard(null)).toBe('');
+    expect(textoDoCard('abcdefghij', 4)).toBe('abcd…');
+    const l = listarChamados([card({ description: '<p>Troca de <i>aparelho</i></p>' })], ListaChamadosSchema.parse({ aba: 'hoje' }), ctx, () => '');
+    expect(l.items[0]!.descricao).toBe('Troca de aparelho');
+    // a busca olha o texto, não as marcas
+    expect(aplicarFiltros([card({ description: '<p>x</p>' })], FiltrosChamadosSchema.parse({ busca: 'p' })).length).toBe(0);
+  });
+});
+
+describe('grupos num gráfico', () => {
+  const itens: ItemRanking[] = [
+    { valor: 'Ramal - Configuração', rotulo: 'Ramal - Configuração', n: 55 },
+    { valor: 'Ramal - Telefone Sem Serviço', rotulo: 'Ramal - Telefone Sem Serviço', n: 29 },
+    { valor: 'Tronco - Rota', rotulo: 'Tronco - Rota', n: 40 },
+    { valor: 'Ramal - Criação', rotulo: 'Ramal - Criação', n: 24, selecionado: true },
+    { valor: VAZIO, rotulo: 'Não preenchido', n: 3 },
+  ];
+  const ramal = { id: 'g1', nome: 'Ramal', valores: ['Ramal - Configuração', 'Ramal - Telefone Sem Serviço', 'Ramal - Criação', 'Ramal - Outro'] };
+
+  it('os valores do grupo viram um ponto só, com a soma; o grupo fica em destaque se algum estiver no filtro', () => {
+    const r = agruparItens(itens, [ramal]);
+    expect(r.map((x) => [x.valor, x.n])).toEqual([[`${PREFIXO_GRUPO}g1`, 108], ['Tronco - Rota', 40], [VAZIO, 3]]);
+    expect(r[0]!.selecionado).toBe(true);
+    expect(r[0]!.grupo!.membros.map((m) => m.n)).toEqual([55, 29, 24]);
+    // o grupo lembra todos os valores dele, mesmo o que não apareceu agora (clicar filtra por todos)
+    expect(r[0]!.grupo!.valores).toHaveLength(4);
+    // sem grupos, nada muda
+    expect(agruparItens(itens, [])).toBe(itens);
+  });
+
+  it('sugestão pelo começo do nome: junta dois ou mais, ignora maiúscula e acento, pula quem já tem grupo', () => {
+    const opcoes = ['Ramal - Configuração', 'Ramal - Criação', 'LineChat - Ajuste', 'Linechat - Criação Login', 'Linechat - Disparos', 'Wi-Fi fora', 'Armazenamento Lotado', 'URA - Ajuste']
+      .map((v) => ({ valor: v, rotulo: v }));
+    expect(sugerirGrupos(opcoes)).toEqual([
+      { nome: 'Linechat', valores: ['LineChat - Ajuste', 'Linechat - Criação Login', 'Linechat - Disparos'] },
+      { nome: 'Ramal', valores: ['Ramal - Configuração', 'Ramal - Criação'] },
+    ]);
+    expect(sugerirGrupos(opcoes, new Set(['Ramal - Criação'])).map((g) => g.nome)).toEqual(['Linechat']);
   });
 });

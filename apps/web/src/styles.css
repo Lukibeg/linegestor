@@ -14,6 +14,12 @@
      o que passa de 6 vira "Outros". */
   --pz-1: #2a78d6; --pz-2: #eb6834; --pz-3: #1baf7a; --pz-4: #eda100; --pz-5: #e87ba4; --pz-6: #008300;
   --pz-outros: #9aa6b5; --pz-vazio: #d9e0e9;
+  /* cores extras das opções dos projetos (1.4): a cheia (barra), o fundo do chip e o texto dele —
+     o texto fica bem mais escuro que a cor cheia para passar de 6:1 sobre o fundo */
+  --roxo: #7c3aed; --roxo-soft: #ede9fe; --roxo-ink: #5b21b6;
+  --rosa: #db2777; --rosa-soft: #fce7f3; --rosa-ink: #9d174d;
+  --turquesa: #0891b2; --turquesa-soft: #cffafe; --turquesa-ink: #155e75;
+  --amarelo: #eab308; --amarelo-soft: #fef3c7; --amarelo-ink: #854d0e;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -25,6 +31,10 @@
     --ok: #3fbf8a; --ok-soft: #153125; --bad: #f06a6a; --bad-soft: #3a1a1a;
     --pz-1: #3987e5; --pz-2: #d95926; --pz-3: #199e70; --pz-4: #c98500; --pz-5: #d55181; --pz-6: #008300;
     --pz-outros: #6b7a8c; --pz-vazio: #3c4a5b;
+    --roxo: #a78bfa; --roxo-soft: #2a2150; --roxo-ink: #c4b5fd;
+    --rosa: #f472b6; --rosa-soft: #3d1a2e; --rosa-ink: #f9a8d4;
+    --turquesa: #22d3ee; --turquesa-soft: #0c2d36; --turquesa-ink: #67e8f9;
+    --amarelo: #facc15; --amarelo-soft: #352c0c; --amarelo-ink: #fde68a;
     color-scheme: dark;
   }
 }
@@ -36,6 +46,10 @@
   --ok: #3fbf8a; --ok-soft: #153125; --bad: #f06a6a; --bad-soft: #3a1a1a;
   --pz-1: #3987e5; --pz-2: #d95926; --pz-3: #199e70; --pz-4: #c98500; --pz-5: #d55181; --pz-6: #008300;
   --pz-outros: #6b7a8c; --pz-vazio: #3c4a5b;
+  --roxo: #a78bfa; --roxo-soft: #2a2150; --roxo-ink: #c4b5fd;
+  --rosa: #f472b6; --rosa-soft: #3d1a2e; --rosa-ink: #f9a8d4;
+  --turquesa: #22d3ee; --turquesa-soft: #0c2d36; --turquesa-ink: #67e8f9;
+  --amarelo: #facc15; --amarelo-soft: #352c0c; --amarelo-ink: #fde68a;
   color-scheme: dark;
 }
 

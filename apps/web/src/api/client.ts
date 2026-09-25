@@ -147,7 +147,7 @@ export const realApi: Api = {
     resumo: (q) => http('GET', `/chamados/resumo${qs(q)}`),
     lista: (q) => http('GET', `/chamados/lista${qs(q)}`),
     painel: () => http('GET', '/chamados/painel'),
-    salvarPainel: (itens) => http('PUT', '/chamados/painel', { itens }),
+    salvarPainel: (p) => http('PUT', '/chamados/painel', { versao: 2, ...p }),
   },
   projetos: {
     lista: (q) => http('GET', `/projects${qs(q ?? {})}`),

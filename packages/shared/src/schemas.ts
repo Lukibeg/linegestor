@@ -103,8 +103,11 @@ export const LinePbxSettingsSchema = z.object({
 });
 export const Fop2SettingsSchema = z.object({
   adminExtension: z.string().trim().max(64).nullable().optional(),
-  /** Senha do usuário padrão do FOP2 — só na gravação; ausente = mantém */
-  defaultUserPassword: SenhaEntradaSchema.optional(),
+  /**
+   * Senha do ramal admin do FOP2 — só na gravação; ausente = mantém. Desde o 1.4 (decisão 0032):
+   * a senha do usuário padrão saiu das telas e não é mais aceita (a já guardada fica no cofre).
+   */
+  adminPassword: SenhaEntradaSchema.optional(),
 });
 export const OmniboardSettingsSchema = z.object({
   adminLogin: z.string().trim().max(200).nullable().optional(),
@@ -125,7 +128,12 @@ export const AssinaturaGravarSchema = z.object({
   activatedAt: DiaSchema.nullable().optional(),
   deactivatedAt: DiaSchema.nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
-  settings: z.union([LinePbxSettingsSchema, SzchatSettingsSchema, z.object({})]).optional(),
+  /**
+   * Os campos de todos os produtos com configuração, num objeto só: o servidor usa os do produto
+   * gravado. (Até o 1.4 era uma união, e a união fica com o primeiro formato que serve — com tudo
+   * opcional, sempre o do LinePBX: o login e a senha do SZChat se perdiam sem aviso.)
+   */
+  settings: LinePbxSettingsSchema.merge(SzchatSettingsSchema).optional(),
 });
 
 /** Ligar/ajustar um MÓDULO dentro de um produto que o cliente já assina (ex.: FOP2 dentro do LinePBX). */
@@ -135,7 +143,8 @@ export const ModuloGravarSchema = z.object({
   activatedAt: DiaSchema.nullable().optional(),
   deactivatedAt: DiaSchema.nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
-  settings: z.union([Fop2SettingsSchema, OmniboardSettingsSchema, z.object({})]).optional(),
+  /** Os campos do FOP2 e do Omniboard num objeto só (ver a nota da assinatura: com a união, os do Omniboard se perdiam). */
+  settings: Fop2SettingsSchema.merge(OmniboardSettingsSchema).optional(),
 });
 
 /** Administração: criar ou editar um módulo do catálogo de um produto. */
@@ -483,8 +492,11 @@ export const SituacaoProjetoSchema = z.enum(SITUACOES_PROJETO);
 /** Data-alvo como o campo de calendário manda: "AAAA-MM-DD", guardada como texto (não tem hora). */
 const DiaTextoSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida');
 
-/** As cores que uma opção pode ter (as mesmas do resto do sistema). */
-export const CORES_OPCAO = ['neutral', 'accent', 'ok', 'signal', 'bad', 'muted'] as const;
+/**
+ * As cores que uma opção pode ter. As seis primeiras são as do resto do sistema; roxo, rosa,
+ * turquesa e amarelo chegaram no Patch 1.4 (pedido do Luan: mais cores para as opções).
+ */
+export const CORES_OPCAO = ['neutral', 'accent', 'ok', 'signal', 'bad', 'muted', 'roxo', 'rosa', 'turquesa', 'amarelo'] as const;
 
 /**
  * Uma opção de uma etapa do tipo lista ("Pendente", "Mensagem enviada", …).
