@@ -9,7 +9,7 @@
  * Entrar: qualquer um destes e-mails com a senha "demo":
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
-import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, VERSAO_PAINEL, camposDeLista, comFechamento, etapasDaEquipe, listarChamados, painelPadrao, primeiroDiaDe, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
+import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, VERSAO_PAINEL, camposDeLista, comFechamento, diaEmBrasilia, etapasDaEquipe, listarChamados, painelPadrao, primeiroDiaDe, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
 import { ApiError, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
@@ -670,7 +670,9 @@ function chamadosDemo() {
     };
   }
   const inicio = new Date(agora - 20 * 86_400_000).toISOString();
-  S.ajustesLineChat = { ...S.ajustesLineChat, inicioEm: inicio, ultimaEm: new Date(agora - 40_000).toISOString(), ultimaCompletaEm: new Date(agora - 8 * 3_600_000).toISOString(), ultimaMsg: 'Atualização: 2 cards lidos, 1 mudança de etapa.' };
+  // a completa roda à meia-noite de Brasília (0h = 3h UTC): a de hoje
+  const meiaNoite = new Date(`${diaEmBrasilia(new Date(agora))}T03:01:00Z`).toISOString();
+  S.ajustesLineChat = { ...S.ajustesLineChat, inicioEm: inicio, ultimaEm: new Date(agora - 40_000).toISOString(), ultimaCompletaEm: meiaNoite, ultimaMsg: 'Atualização: 2 cards lidos, 1 mudança de etapa.' };
   return chamadosGuardados;
 }
 /** Os chamados como o servidor os entrega: com as etapas que fecham escolhidas pela equipe. */
@@ -680,14 +682,33 @@ function chamadosDaEquipe() {
   return { ...d, cards: comFechamento(d.cards, etapas), ctx: { ...d.ctx, etapas } };
 }
 const linkDemo = (c: Chamado) => (c.key ? `https://inglinechat.com.br/panels/painel-demo/card/${c.key}` : '');
+/**
+ * Dois cards abertos por engano hoje e excluídos no LineChat: a conferência de 10 em 10 minutos
+ * os tirou das contas (não estão em `chamadosDemo`); aparecem só em Ajustes.
+ */
+function excluidosDemo(): AjustesLineChat['excluidos'] {
+  const { cards } = chamadosDemo();
+  const n = Math.max(...cards.map((c) => c.number ?? 0));
+  const em = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+  return [
+    { id: 'demo-excluido-2', key: `IS-${n + 2}`, number: n + 2, title: 'Teste - pode excluir', createdAt: em(14), removedAt: em(8) },
+    { id: 'demo-excluido-1', key: `IS-${n + 1}`, number: n + 1, title: 'Ramal sem áudio (aberto em duplicidade)', createdAt: em(27), removedAt: em(18) },
+  ];
+}
 function statusLineChatDemo(): AjustesLineChat {
   const { cards, movimentos } = chamadosDemo();
   const a = S.ajustesLineChat;
+  const excluidos = excluidosDemo();
   return {
     ...a,
-    totais: { cards: cards.length, ativos: cards.filter((c) => c.status !== 'ARCHIVED').length, arquivados: cards.filter((c) => c.status === 'ARCHIVED').length, movimentos },
+    totais: { cards: cards.length, ativos: cards.filter((c) => c.status !== 'ARCHIVED').length, arquivados: cards.filter((c) => c.status === 'ARCHIVED').length, movimentos, excluidos: excluidos.length },
+    excluidos,
     execucoes: [
-      { id: 'run2', kind: 'recente', trigger: 'agendada', startedAt: a.ultimaEm ?? now(), finishedAt: a.ultimaEm, ok: true, message: a.ultimaMsg },
+      { id: 'run4', kind: 'recente', trigger: 'agendada', startedAt: a.ultimaEm ?? now(), finishedAt: a.ultimaEm, ok: true, message: a.ultimaMsg },
+      ...excluidos.map((c, i) => ({
+        id: `run-conf-${i}`, kind: 'conferencia', trigger: 'agendada', startedAt: c.removedAt!, finishedAt: c.removedAt, ok: true,
+        message: `Conferência dos últimos 7 dias: 1 excluído no LineChat (${c.key}).`,
+      })),
       { id: 'run1', kind: 'completa', trigger: 'agendada', startedAt: a.ultimaCompletaEm ?? now(), finishedAt: a.ultimaCompletaEm, ok: true, message: `Leitura completa: ${cards.length.toLocaleString('pt-BR')} cards lidos.` },
     ],
   };

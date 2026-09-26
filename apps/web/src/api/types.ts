@@ -26,11 +26,14 @@ export type AjustesLineChat = {
   /** a primeira leitura completa: dali em diante o histórico de etapas tem hora exata */
   inicioEm: string | null;
   ultimaEm: string | null; ultimaOk: boolean | null; ultimaMsg: string | null; ultimaCompletaEm: string | null;
-  totais: { cards: number; ativos: number; arquivados: number; movimentos: number };
+  /** `excluidos` = marcados como excluídos no LineChat: fora da tela e das contas, mas guardados */
+  totais: { cards: number; ativos: number; arquivados: number; movimentos: number; excluidos: number };
+  /** os marcados como excluídos no LineChat, os mais recentes primeiro */
+  excluidos: Array<{ id: string; key: string | null; number: number | null; title: string; createdAt: string; removedAt: string | null }>;
   execucoes: Array<{ id: string; kind: string; trigger: string; startedAt: string; finishedAt: string | null; ok: boolean; message: string | null }>;
 };
 export type PainelLineChat = { id: string; title: string; key: string | null; type: string | null };
-export type ResultadoSincronizacao = { ok: boolean; mensagem: string; tipo: string; lidos: number; novos: number; movimentos: number; removidos: number };
+export type ResultadoSincronizacao = { ok: boolean; mensagem: string; tipo: string; lidos: number; novos: number; movimentos: number; removidos: number; voltaram?: number };
 
 /** Chamados: o que a tela precisa para montar os filtros e dizer se a leitura está em dia. */
 export type OpcoesChamados = {

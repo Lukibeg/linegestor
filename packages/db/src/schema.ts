@@ -980,7 +980,7 @@ export const linechatCards = pgTable(
     closedEstimated: boolean('closed_estimated').notNull().default(false),
     /** Quando o card foi arquivado no LineChat (a hora em que percebemos) */
     archivedAt: timestamp('archived_at', { withTimezone: true }),
-    /** O card sumiu do LineChat na conferência completa */
+    /** Quando percebemos que o card foi excluído no LineChat (na conferência de 10 em 10 minutos ou na completa da meia-noite). Preenchido = fora da tela e das contas; volta a nulo se ele reaparecer */
     removedAt: timestamp('removed_at', { withTimezone: true }),
     /** Quando a sincronização viu este card pela primeira vez */
     firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1032,7 +1032,7 @@ export const linechatSyncRuns = pgTable(
   'linechat_sync_runs',
   {
     id: id(),
-    /** completa = leu o painel inteiro · recente = só o que mudou desde a última */
+    /** completa = leu o painel inteiro · recente = só o que mudou desde a última · conferencia = releu os últimos 7 dias atrás de excluídos */
     kind: text('kind').notNull(),
     /** agendada (automática) · manual (botão "Sincronizar agora") */
     trigger: text('trigger').notNull().default('agendada'),
@@ -1047,7 +1047,7 @@ export const linechatSyncRuns = pgTable(
     cardsNew: integer('cards_new').notNull().default(0),
     /** Quantos mudaram de etapa */
     moves: integer('moves').notNull().default(0),
-    /** Quantos sumiram do LineChat (só na completa) */
+    /** Quantos sumiram do LineChat (na completa e na conferência) */
     cardsRemoved: integer('cards_removed').notNull().default(0),
     /** Quem apertou o botão (nulo na automática) */
     userId: text('user_id').references(() => users.id),

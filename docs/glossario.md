@@ -58,5 +58,5 @@
 | **SSH** | O jeito de entrar no servidor pelo terminal. No nosso caso, só com chave — senha não funciona. |
 | **Chamado** | Um card do painel de suporte no LineChat (IS-3607). É aberto e trabalhado lá; o Gestor guarda uma cópia para contar e filtrar. |
 | **Arrumação da tela** | A ordem, a largura e os gráficos escondidos da tela de Chamados, e se cada um abre em barras ou pizza. Quem administra arruma pelo botão Organizar, e vale para a equipe toda. |
-| **Sincronização** | O Gestor pergunta ao LineChat, a cada minuto, o que mudou nos chamados e atualiza a cópia. De madrugada relê tudo para conferir. |
+| **Sincronização** | O Gestor pergunta ao LineChat, a cada minuto, o que mudou nos chamados e atualiza a cópia. A cada 10 minutos confere os da última semana e, à meia-noite, relê tudo: o card excluído no LineChat sai da tela e das contas. |
 | **API** | A porta de serviço de um sistema: por onde outro programa pede dados sem abrir a tela. A do LineChat entrega no máximo 100 chamados por vez. |

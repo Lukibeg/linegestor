@@ -9,16 +9,20 @@
  *  2. **Guardamos cada mudança de etapa**, com a hora. A API do LineChat não entrega o histórico
  *     do card, então comparamos a etapa que ele tem agora com a que tinha na leitura anterior.
  *     É daqui que sai "quanto tempo ficou no N1" — a partir do dia em que a sincronização começou.
- *  3. **Card que sumiu de lá fica marcado**, em vez de continuar contando para sempre.
+ *  3. **Card que sumiu de lá fica marcado** (`removedAt`), em vez de continuar contando para
+ *     sempre. Ele não é apagado daqui: sai da tela e das contas, e volta sozinho se reaparecer.
  *
  * O ritmo:
  *  - a cada minuto, a leitura **recente**: pede ao LineChat só o que mudou desde a última vez;
- *  - de madrugada (e na primeira vez), a **completa**: lê o painel inteiro, de 100 em 100 (é o
+ *  - a cada 10 minutos, a **conferência**: relê o que foi mexido nos últimos 7 dias e marca o que
+ *    foi aberto nesse período e sumiu. Excluir um card lá não muda nada que a recente enxergue —
+ *    sem ela, o card aberto por engano ficava na tela até a completa;
+ *  - à meia-noite (e na primeira vez), a **completa**: lê o painel inteiro, de 100 em 100 (é o
  *    máximo que a API devolve por vez), confere etapas, campos e etiquetas, e marca o que sumiu.
  *
  * A API do LineChat é a da Helena (a plataforma por trás dele). Referência: helena.readme.io.
  */
-import { and, desc, eq, inArray, isNull, lt, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, notInArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   linechatCardMoves, linechatCards, linechatFields, linechatSteps, linechatSyncRuns, linechatTags, newId, type Db,
@@ -62,6 +66,10 @@ const DETALHES = ['CustomFields', 'StepTitle', 'StepPhase', 'ResponsibleUser'];
 /** Painel de "gestão" só tem OPEN e ARCHIVED; os outros dois são de painel de vendas. Pedimos todos. */
 const SITUACOES = ['OPEN', 'ARCHIVED', 'WON', 'LOST'];
 const POR_PAGINA = 100; // o máximo da API: 200 dá erro 500
+/** A conferência olha os chamados abertos nos últimos 7 dias: é aí que mora o card aberto por engano. */
+export const JANELA_CONFERENCIA_DIAS = 7;
+/** De quanto em quanto tempo a conferência roda (o resto, a completa da meia-noite pega). */
+const CONFERENCIA_A_CADA_MS = 10 * 60_000;
 
 // ---------- o cliente da API ----------
 
@@ -189,40 +197,58 @@ async function atualizarEstrutura(db: Db, api: LineChatApi, painelId: string, ag
 
 export type ResultadoSincronizacao = {
   ok: boolean;
-  tipo: 'completa' | 'recente';
+  tipo: 'completa' | 'recente' | 'conferencia';
   mensagem: string;
   lidos: number;
   novos: number;
   movimentos: number;
   removidos: number;
+  /** Cards que estavam marcados como excluídos e o LineChat voltou a devolver */
+  voltaram?: number;
 };
 
-/** Uma sincronização por vez: a automática e o botão não podem se atropelar. */
-let emAndamento: Promise<ResultadoSincronizacao> | null = null;
+/**
+ * Uma leitura por vez: a automática, a conferência e o botão não podem se atropelar. A
+ * conferência depende disso: entre ler o LineChat e olhar o que temos aqui, nada pode entrar.
+ */
+let emAndamento: { qual: 'sincronizacao' | 'conferencia'; p: Promise<ResultadoSincronizacao> } | null = null;
 /** Muda a cada sincronização que gravou algo: a tela de Chamados usa para saber se pode reaproveitar a leitura. */
 let versao = 0;
 export const versaoDosDados = () => versao;
 
 type Antigo = { id: string; stepId: string | null; stepTitle: string | null; status: string; closedAt: Date | null; closedEstimated: boolean; archivedAt: Date | null; removedAt: Date | null };
+type Log = { warn: (o: unknown, m?: string) => void };
 
 const dataOuNula = (v: string | null | undefined) => { if (!v) return null; const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d; };
+
+/** "IS-812, IS-815": o registro diz quais cards saíram, para a equipe reconhecer (até 10). */
+function quais(cs: Array<{ id: string; key: string | null; number: number | null }>) {
+  const nomes = cs.map((c) => c.key ?? (c.number != null ? `#${c.number}` : c.id));
+  return nomes.length > 10 ? `${nomes.slice(0, 10).join(', ')} e mais ${nomes.length - 10}` : nomes.join(', ');
+}
+const excluidosNoLineChat = (cs: Parameters<typeof quais>[0]) =>
+  `${cs.length.toLocaleString('pt-BR')} ${cs.length === 1 ? 'excluído' : 'excluídos'} no LineChat (${quais(cs)})`;
 
 export async function sincronizar(
   db: Db,
   vault: SecretsVault,
-  opts: { completa?: boolean; gatilho?: 'agendada' | 'manual'; userId?: string | null; fetchFn?: typeof fetch; log?: { warn: (o: unknown, m?: string) => void } } = {},
+  opts: { completa?: boolean; gatilho?: 'agendada' | 'manual'; userId?: string | null; fetchFn?: typeof fetch; log?: Log } = {},
 ): Promise<ResultadoSincronizacao> {
-  if (emAndamento) return emAndamento;
-  emAndamento = rodar(db, vault, opts).finally(() => { emAndamento = null; });
-  return emAndamento;
+  // a conferência dura um ou dois segundos: espera ela acabar, em vez de devolver o resultado dela
+  while (emAndamento?.qual === 'conferencia') await emAndamento.p.catch(() => undefined);
+  if (emAndamento) return emAndamento.p;
+  const p = rodar(db, vault, opts).finally(() => { emAndamento = null; });
+  emAndamento = { qual: 'sincronizacao', p };
+  return p;
 }
 
 async function rodar(
   db: Db,
   vault: SecretsVault,
-  opts: { completa?: boolean; gatilho?: 'agendada' | 'manual'; userId?: string | null; fetchFn?: typeof fetch; log?: { warn: (o: unknown, m?: string) => void } },
+  opts: { completa?: boolean; gatilho?: 'agendada' | 'manual'; userId?: string | null; fetchFn?: typeof fetch; log?: Log },
 ): Promise<ResultadoSincronizacao> {
   const inicio = new Date();
+  let quaisSairam = '';
   const gatilho = opts.gatilho ?? 'agendada';
   const { valor: ajustes } = await lerAjustes(db);
   // sem nenhuma completa ainda, a recente não tem de onde partir
@@ -351,8 +377,9 @@ async function rodar(
         } else if (sumidos > 0) {
           const marcados = await tx.update(linechatCards).set({ removedAt: inicio })
             .where(and(eq(linechatCards.panelId, ajustes.painelId), isNull(linechatCards.removedAt), lt(linechatCards.lastSeenAt, inicio)))
-            .returning({ id: linechatCards.id });
+            .returning({ id: linechatCards.id, key: linechatCards.key, number: linechatCards.number });
           r.removidos = marcados.length;
+          if (marcados.length) quaisSairam = excluidosNoLineChat(marcados);
         }
       }
     });
@@ -363,7 +390,7 @@ async function rodar(
       `${r.lidos.toLocaleString('pt-BR')} ${r.lidos === 1 ? 'card lido' : 'cards lidos'}`,
       r.novos ? `${r.novos.toLocaleString('pt-BR')} novos` : '',
       r.movimentos ? `${r.movimentos.toLocaleString('pt-BR')} mudanças de etapa` : '',
-      r.removidos ? `${r.removidos.toLocaleString('pt-BR')} excluídos no LineChat` : '',
+      quaisSairam,
     ].filter(Boolean);
     r.mensagem = r.mensagem || `${tipo === 'completa' ? 'Leitura completa' : 'Atualização'}: ${partes.join(', ')}.`;
 
@@ -395,6 +422,105 @@ async function rodar(
   return r;
 }
 
+// ---------- a conferência do que foi excluído no LineChat ----------
+
+/**
+ * A conferência (a cada 10 minutos): o card aberto por engano e excluído no LineChat sai da tela
+ * no mesmo dia, sem esperar a completa da meia-noite.
+ *
+ * Excluir não aparece para a leitura recente: o card só some da API. Então relemos tudo que foi
+ * mexido nos últimos 7 dias — o que foi aberto nesse período entra, porque abrir é mexer — e o que
+ * temos aqui, aberto nesse período, e não veio, foi excluído lá. É uma página ou duas.
+ *
+ * Um card de verdade não pode sumir da tela: o que faltou é conferido numa **segunda leitura**,
+ * porque a página pode "escorregar" (um card alterado no meio da leitura vai para o fim da fila e
+ * o vizinho passa para a página de trás). Faltou nas duas = excluído. E o que estava marcado como
+ * excluído e veio de novo volta para a tela.
+ *
+ * Devolve `null` quando já havia outra leitura rodando: a próxima conferência pega.
+ */
+export async function conferirExcluidos(
+  db: Db,
+  vault: SecretsVault,
+  opts: { fetchFn?: typeof fetch; log?: Log } = {},
+): Promise<ResultadoSincronizacao | null> {
+  if (emAndamento) return null;
+  const p = conferir(db, vault, opts).finally(() => { emAndamento = null; });
+  emAndamento = { qual: 'conferencia', p };
+  return p;
+}
+
+async function conferir(db: Db, vault: SecretsVault, opts: { fetchFn?: typeof fetch; log?: Log }): Promise<ResultadoSincronizacao> {
+  const inicio = new Date();
+  const r: ResultadoSincronizacao = { ok: false, tipo: 'conferencia', mensagem: '', lidos: 0, novos: 0, movimentos: 0, removidos: 0, voltaram: 0 };
+  try {
+    const { valor: ajustes } = await lerAjustes(db);
+    if (!ajustes.painelId) throw new Error('Escolha o painel do LineChat em Administração › Ajustes.');
+    const painelId = ajustes.painelId;
+    const { api } = await clienteDaApi(db, vault, opts.fetchFn);
+
+    const limite = new Date(inicio.getTime() - JANELA_CONFERENCIA_DIAS * 86_400_000);
+    // 10 minutos de folga antes do limite: o card aberto bem no limite foi mexido na abertura ou depois
+    const desde = new Date(limite.getTime() - 10 * 60_000);
+    const lerJanela = async () => new Set((await api.cards(painelId, desde)).map((c) => c.id));
+
+    const vistos = await lerJanela();
+    const daJanela = await db.select({ id: linechatCards.id, key: linechatCards.key, number: linechatCards.number })
+      .from(linechatCards)
+      .where(and(eq(linechatCards.panelId, painelId), isNull(linechatCards.removedAt), gte(linechatCards.createdAt, limite)));
+    let faltando = daJanela.filter((c) => !vistos.has(c.id));
+    if (faltando.length) {
+      const segunda = await lerJanela();
+      faltando = faltando.filter((c) => !segunda.has(c.id));
+      for (const id of segunda) vistos.add(id);
+    }
+    r.lidos = vistos.size;
+
+    await db.transaction(async (tx) => {
+      // marcado como excluído e o LineChat devolveu: existe, volta para a tela
+      const ids = [...vistos];
+      for (let i = 0; i < ids.length; i += 1000) {
+        const voltou = await tx.update(linechatCards).set({ removedAt: null, lastSeenAt: inicio })
+          .where(and(inArray(linechatCards.id, ids.slice(i, i + 1000)), isNotNull(linechatCards.removedAt)))
+          .returning({ id: linechatCards.id });
+        r.voltaram! += voltou.length;
+      }
+      if (!faltando.length) return;
+      // a mesma trava da completa: se faltou mais da metade, é mais provável a leitura ter vindo errada
+      if (faltando.length > daJanela.length / 2 && daJanela.length > 10) {
+        r.mensagem = `Atenção: dos ${daJanela.length} chamados abertos nos últimos ${JANELA_CONFERENCIA_DIAS} dias, o LineChat não devolveu ${faltando.length}. Nada foi marcado como excluído — confira o painel e o token.`;
+        return;
+      }
+      for (let i = 0; i < faltando.length; i += 1000) {
+        await tx.update(linechatCards).set({ removedAt: inicio })
+          .where(inArray(linechatCards.id, faltando.slice(i, i + 1000).map((c) => c.id)));
+      }
+      r.removidos = faltando.length;
+    });
+    if (r.removidos || r.voltaram) versao++;
+
+    r.ok = true;
+    const partes = [
+      r.removidos ? excluidosNoLineChat(faltando) : '',
+      r.voltaram ? `${r.voltaram.toLocaleString('pt-BR')} ${r.voltaram === 1 ? 'voltou' : 'voltaram'} (${r.voltaram === 1 ? 'estava marcado' : 'estavam marcados'} como excluído)` : '',
+    ].filter(Boolean);
+    r.mensagem = r.mensagem || `Conferência dos últimos ${JANELA_CONFERENCIA_DIAS} dias: ${partes.length ? partes.join(', ') : 'nada excluído'}.`;
+  } catch (e) {
+    r.ok = false;
+    r.mensagem = e instanceof Error ? e.message : String(e);
+    opts.log?.warn({ motivo: r.mensagem }, 'conferência dos chamados excluídos falhou');
+  }
+
+  // o registro só quando mudou algo ou deu errado: senão seriam 144 linhas por dia dizendo "nada"
+  if (!r.ok || r.removidos || r.voltaram || r.mensagem.startsWith('Atenção')) {
+    await db.insert(linechatSyncRuns).values({
+      id: newId(), kind: 'conferencia', trigger: 'agendada', startedAt: inicio, finishedAt: new Date(), ok: r.ok, message: r.mensagem,
+      cardsRead: r.lidos, cardsNew: 0, moves: 0, cardsRemoved: r.removidos, userId: null,
+    });
+  }
+  return r;
+}
+
 async function avisarFalha(db: Db, vault: SecretsVault, motivo: string) {
   const { valor } = await integ.ler<integ.AjustesAvisos>(db, 'avisos');
   if (!valor.ativo || !valor.url) return;
@@ -412,36 +538,68 @@ export async function ultimasExecucoes(db: Db, n = 8) {
 
 /** Quanto já temos guardado do painel escolhido. */
 export async function totais(db: Db, painelId: string) {
-  if (!painelId) return { cards: 0, ativos: 0, arquivados: 0, movimentos: 0 };
+  if (!painelId) return { cards: 0, ativos: 0, arquivados: 0, movimentos: 0, excluidos: 0 };
   const [c] = await db.select({
-    cards: sql<number>`count(*)::int`,
-    ativos: sql<number>`count(*) filter (where ${linechatCards.status} <> 'ARCHIVED')::int`,
-    arquivados: sql<number>`count(*) filter (where ${linechatCards.status} = 'ARCHIVED')::int`,
-  }).from(linechatCards).where(and(eq(linechatCards.panelId, painelId), isNull(linechatCards.removedAt)));
+    cards: sql<number>`count(*) filter (where ${linechatCards.removedAt} is null)::int`,
+    ativos: sql<number>`count(*) filter (where ${linechatCards.removedAt} is null and ${linechatCards.status} <> 'ARCHIVED')::int`,
+    arquivados: sql<number>`count(*) filter (where ${linechatCards.removedAt} is null and ${linechatCards.status} = 'ARCHIVED')::int`,
+    excluidos: sql<number>`count(*) filter (where ${linechatCards.removedAt} is not null)::int`,
+  }).from(linechatCards).where(eq(linechatCards.panelId, painelId));
   const [m] = await db.select({ n: sql<number>`count(*)::int` }).from(linechatCardMoves).where(sql`${linechatCardMoves.fromStepId} is not null`);
-  return { cards: Number(c?.cards ?? 0), ativos: Number(c?.ativos ?? 0), arquivados: Number(c?.arquivados ?? 0), movimentos: Number(m?.n ?? 0) };
+  return {
+    cards: Number(c?.cards ?? 0), ativos: Number(c?.ativos ?? 0), arquivados: Number(c?.arquivados ?? 0),
+    movimentos: Number(m?.n ?? 0), excluidos: Number(c?.excluidos ?? 0),
+  };
+}
+
+/**
+ * Os marcados como excluídos no LineChat, os mais recentes primeiro, para a tela de Ajustes: a
+ * equipe vê o que saiu das contas e, se algum não devia ter saído, percebe (o "Reler tudo" o traz
+ * de volta). Vêm todos: são poucos (o card aberto por engano), e lista aqui não esconde linha.
+ */
+export async function cardsExcluidos(db: Db, painelId: string) {
+  if (!painelId) return [];
+  return db.select({
+    id: linechatCards.id, key: linechatCards.key, number: linechatCards.number, title: linechatCards.title,
+    createdAt: linechatCards.createdAt, removedAt: linechatCards.removedAt,
+  }).from(linechatCards)
+    .where(and(eq(linechatCards.panelId, painelId), isNotNull(linechatCards.removedAt)))
+    .orderBy(desc(linechatCards.removedAt), desc(linechatCards.createdAt));
 }
 
 // ---------- o relógio ----------
 
 /**
+ * A completa de hoje já devia ter rodado? À meia-noite de Brasília (pedido do Luan, 26/09: o dia
+ * fecha limpo, e o backup das 3h já leva a cópia conferida), na primeira vez e, se o servidor ficou
+ * fora do ar na virada, assim que passar de 26 horas sem ela.
+ */
+export function hojeCabeCompleta(agora: Date, ultimaCompletaEm: string | null): boolean {
+  if (!ultimaCompletaEm) return true;
+  const horas = (agora.getTime() - Date.parse(ultimaCompletaEm)) / 3_600_000;
+  const meiaNoite = horaEmBrasilia(agora) === 0 && diaEmBrasilia(ultimaCompletaEm) !== diaEmBrasilia(agora);
+  return meiaNoite || horas > 26;
+}
+
+/**
  * Liga a sincronização automática. Chamado só pelo `server.ts` (os testes não ligam relógio).
- * A cada minuto: se estiver ligada e configurada, roda. A completa acontece na primeira vez,
- * às 4h (depois do backup das 3h e da conferência das 3h30) e, se o servidor ficou fora do ar
- * na madrugada, assim que passar de 26 horas sem ela.
+ * A cada minuto: se estiver ligada e configurada, roda a recente (ou a completa, quando é a hora
+ * dela). Depois de uma recente que deu certo, a cada 10 minutos, a conferência dos excluídos.
  */
 export function iniciarSincronizacaoAutomatica(app: FastifyInstance) {
+  let ultimaConferencia = 0;
   const tick = async () => {
     try {
       const { valor, temSegredo } = await lerAjustes(app.db);
       if (!valor.ativo || !valor.painelId || !temSegredo) return;
-      const agora = new Date();
-      const ultima = valor.ultimaCompletaEm ? Date.parse(valor.ultimaCompletaEm) : 0;
-      const horas = (agora.getTime() - ultima) / 3_600_000;
-      const madrugada = horaEmBrasilia(agora) === 4 && (!valor.ultimaCompletaEm || diaEmBrasilia(valor.ultimaCompletaEm) !== diaEmBrasilia(agora));
-      const completa = !valor.ultimaCompletaEm || madrugada || horas > 26;
+      const completa = hojeCabeCompleta(new Date(), valor.ultimaCompletaEm);
       const r = await sincronizar(app.db, app.vault, { completa, gatilho: 'agendada', log: app.log });
-      if (!r.ok) app.log.warn({ motivo: r.mensagem }, 'sincronização do LineChat falhou');
+      if (!r.ok) { app.log.warn({ motivo: r.mensagem }, 'sincronização do LineChat falhou'); return; }
+      // a completa já conferiu o painel inteiro
+      if (r.tipo === 'completa') { ultimaConferencia = Date.now(); return; }
+      if (Date.now() - ultimaConferencia < CONFERENCIA_A_CADA_MS) return;
+      const c = await conferirExcluidos(app.db, app.vault, { log: app.log });
+      if (c) ultimaConferencia = Date.now();
     } catch (err) {
       app.log.error({ err }, 'sincronização do LineChat: erro inesperado');
     }

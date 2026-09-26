@@ -290,7 +290,12 @@ function CartaoLineChat({ inicial }: { inicial: AjustesLineChat }) {
         <p>
           A tela de <b>Chamados</b> mostra os chamados de suporte que a equipe abre no LineChat — o que o Grafana
           mostrava. O Gestor guarda uma cópia do painel: na primeira vez lê tudo, e depois, <b>a cada minuto</b>, só o
-          que mudou. De madrugada relê o painel inteiro para conferir.
+          que mudou.
+        </p>
+        <p>
+          Excluir um card no LineChat não conta como mudança, então o Gestor confere à parte: <b>a cada 10 minutos</b>{' '}
+          relê os chamados da última semana e, <b>à meia-noite</b>, o painel inteiro. O card excluído lá sai da tela e
+          das contas — fica guardado aqui, marcado como excluído, e volta sozinho se reaparecer no LineChat.
         </p>
         <p>
           Ao guardar a cópia, o Gestor também anota <b>cada vez que um chamado muda de etapa</b>, com a hora. O LineChat
@@ -347,7 +352,27 @@ function CartaoLineChat({ inicial }: { inicial: AjustesLineChat }) {
           Guardados: <b className="text-ink-2 tnum">{nf(inicial.totais.cards)}</b> chamados ({nf(inicial.totais.ativos)} no Kanban, {nf(inicial.totais.arquivados)} arquivados)
           {' '}e <b className="text-ink-2 tnum">{nf(inicial.totais.movimentos)}</b> mudanças de etapa registradas
           {inicial.inicioEm ? <> desde {data(inicial.inicioEm, true)}</> : null}.
+          {inicial.totais.excluidos > 0 && <> Fora das contas: <b className="text-ink-2 tnum">{nf(inicial.totais.excluidos)}</b> {inicial.totais.excluidos === 1 ? 'excluído' : 'excluídos'} no LineChat.</>}
         </p>
+      )}
+      {inicial.excluidos.length > 0 && (
+        <details className="mt-2 text-[12.5px]" id="linechat-excluidos">
+          <summary className="cursor-pointer text-muted">Excluídos no LineChat ({nf(inicial.excluidos.length)})</summary>
+          <p className="mt-2 text-muted">
+            Não vieram mais do LineChat, então saíram da tela e das contas. O código abre o card lá: se ele abrir, não foi
+            excluído — clique em "Reler tudo" e ele volta.
+          </p>
+          <ul className="mt-2 flex flex-col gap-1 max-h-64 overflow-y-auto">
+            {inicial.excluidos.map((c) => (
+              <li key={c.id} className="text-ink-2">
+                {c.key && inicial.painelId
+                  ? <a className="font-mono text-accent hover:underline" href={`${inicial.appUrl.replace(/\/+$/, '')}/panels/${inicial.painelId}/card/${encodeURIComponent(c.key)}`} target="_blank" rel="noreferrer">{c.key}</a>
+                  : <span className="font-mono">{c.key ?? (c.number != null ? `#${c.number}` : '—')}</span>}
+                {' '}· {c.title || 'sem título'} <span className="text-muted">· aberto em <span className="tnum">{data(c.createdAt, true)}</span>{c.removedAt ? <>, excluído em <span className="tnum">{data(c.removedAt, true)}</span></> : null}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {inicial.execucoes.length > 0 && (
         <details className="mt-2 text-[12.5px]">
@@ -355,7 +380,7 @@ function CartaoLineChat({ inicial }: { inicial: AjustesLineChat }) {
           <ul className="mt-2 flex flex-col gap-1">
             {inicial.execucoes.map((x) => (
               <li key={x.id} className={x.ok ? 'text-ink-2' : 'text-bad'}>
-                <span className="tnum">{data(x.startedAt, true)}</span> · {x.kind === 'completa' ? 'completa' : 'recente'}{x.trigger === 'manual' ? ' (botão)' : ''} — {x.message}
+                <span className="tnum">{data(x.startedAt, true)}</span> · {x.kind === 'completa' ? 'completa' : x.kind === 'conferencia' ? 'conferência' : 'recente'}{x.trigger === 'manual' ? ' (botão)' : ''} — {x.message}
               </li>
             ))}
           </ul>
