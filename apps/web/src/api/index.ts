@@ -170,6 +170,7 @@ export type Api = {
     updateProduct(id: string, d: Record<string, unknown>): Promise<T.Product>;
     removeProduct(id: string): Promise<{ ok: boolean }>;
     upsertModule(productId: string, d: Record<string, unknown>): Promise<T.ProductModule>;
+    removeModule(productId: string, moduleId: string): Promise<{ ok: boolean }>;
     audit(q: Record<string, unknown>): Promise<T.Page<T.AuditItem>>;
     trash(): Promise<T.TrashItem[]>;
     restore(type: string, id: string): Promise<{ ok: boolean }>;

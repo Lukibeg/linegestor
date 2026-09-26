@@ -29,7 +29,7 @@ type Client = { id: string; tradeName: string; legalName: string; cnpj: string; 
 type Sub = { id: string; clientId: string; productCode: string; activatedAt: string | null; deactivatedAt: string | null; notes: string | null; settings: Record<string, any> };
 /** Um módulo ligado numa assinatura (ex.: FOP2 dentro do LinePBX do cliente X). */
 type SubMod = { id: string; subscriptionId: string; moduleId: string; activatedAt: string | null; deactivatedAt: string | null; notes: string | null; settings: Record<string, any> };
-type ModRow = ProductModule & { productId: string };
+type ModRow = ProductModule & { productId: string; deletedAt?: string | null };
 type CircuitRow = { id: string; name: string; code: string; keyNumber: string | null; carrierId: string | null; channels: number; ownerClientId: string | null; monthlyValueCents: number | null; authType: 'ip' | 'login'; signalingIp: string | null; authIp: string | null; authUsername: string | null; authPasswordSecretId: string | null; notes: string | null; thirdParty: boolean; deletedAt: string | null };
 type DidRow = { id: string; number: string; circuitId: string | null; clientId: string | null; ownerClientId: string | null; inUse: boolean; note: string | null; deletedAt: string | null };
 /** `image` é a foto embutida ("data:…"), como a logo do cliente na demonstração */
@@ -315,7 +315,7 @@ function seed() {
       mods.filter((m) => m.startsWith(code + ':')).forEach((pm, k) => {
         const mcode = pm.split(':')[1]!; const mod = S.modules.find((m) => m.productId === 'p' + code && m.code === mcode)!;
         const ms: Record<string, any> = {};
-        if (mcode === 'fop2') { const f = id(); S.secrets.set(f, { label: `Senha do ramal admin do FOP2 — ${t}`, value: 'fop2#2026' }); Object.assign(ms, { adminExtension: '1000', adminPasswordSecretId: f }); }
+        if (mcode === 'fop2') { const f = id(), u = id(); S.secrets.set(f, { label: `Senha do ramal admin do FOP2 — ${t}`, value: 'fop2#2026' }); S.secrets.set(u, { label: `Senha do usuário padrão do FOP2 — ${t}`, value: 'Ramal@2026' }); Object.assign(ms, { adminExtension: '1000', adminPasswordSecretId: f, defaultUserPasswordSecretId: u }); }
         if (mcode === 'omniboard') { const a = id(), d = id(); S.secrets.set(a, { label: `Senha admin do Omniboard — ${t}`, value: 'Omni#2026' }); S.secrets.set(d, { label: `Senha padrão de usuário do Omniboard — ${t}`, value: 'Bemvindo1' }); Object.assign(ms, { adminLogin: `admin@${t.toLowerCase().replace(/\W+/g, '')}.com.br`, adminPasswordSecretId: a, userDefaultPasswordSecretId: d }); }
         S.subMods.push({ id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: daysAgo(tudoJunto ? diasDoProduto : Math.max(3, diasDoProduto - 40 - k * 75), tudoJunto ? 11 + k : 10), deactivatedAt: null, notes: null, settings: ms });
       });
@@ -715,6 +715,13 @@ function statusLineChatDemo(): AjustesLineChat {
 }
 
 // ---------------- ajudantes ----------------
+/** Como o servidor (`conferirDesativacao`): a desativação não vem antes da ativação nem no futuro. */
+function conferirDesativacaoDemo(fim: unknown, inicio: unknown) {
+  if (!fim) return;
+  const f = Date.parse(String(fim)), i = inicio ? Date.parse(String(inicio)) : NaN;
+  if (!Number.isNaN(i) && f < i - 12 * 3_600_000) throw bad('A desativação não pode ser antes da ativação.');
+  if (f > Date.now() + 12 * 3_600_000) throw bad('A data de desativação não pode ser no futuro.');
+}
 const prodMeta = (code: string) => S.products.find((p) => p.code === code)!;
 /** produto na lixeira some das telas (a assinatura fica guardada) */
 const produtoVivo = (code: string) => !prodMeta(code)?.deletedAt;
@@ -730,7 +737,7 @@ const unidadesDe = (cid: string) => {
 };
 const modMeta = (mid: string) => S.modules.find((m) => m.id === mid)!;
 /** Módulos ligados numa assinatura (ordenados como no catálogo). */
-const activeMods = (subId: string) => S.subMods.filter((m) => m.subscriptionId === subId && !m.deactivatedAt).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder);
+const activeMods = (subId: string) => S.subMods.filter((m) => m.subscriptionId === subId && !m.deactivatedAt && !modMeta(m.moduleId).deletedAt).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder);
 /** O que o cliente tem ligado: códigos dos produtos e "produto:módulo" (como o servidor, com withProducts). */
 const produtosDoCliente = (cid: string) => {
   const subs = activeSubs(cid).slice().sort((a, b) => (S.products.find((p) => p.code === a.productCode)?.sortOrder ?? 0) - (S.products.find((p) => p.code === b.productCode)?.sortOrder ?? 0));
@@ -759,7 +766,7 @@ const listItem = (c: Client): ClientListItem => {
 };
 const shapeSubMod = (m: SubMod): SubscriptionModule => {
   const meta = modMeta(m.moduleId); const st = m.settings; let settings: Record<string, any> | null = null;
-  if (meta.code === 'fop2') settings = { adminExtension: st.adminExtension ?? null, adminPassword: secretRef(st.adminPasswordSecretId) };
+  if (meta.code === 'fop2') settings = { adminExtension: st.adminExtension ?? null, adminPassword: secretRef(st.adminPasswordSecretId), defaultUserPassword: secretRef(st.defaultUserPasswordSecretId) };
   else if (meta.code === 'omniboard') settings = { adminLogin: st.adminLogin ?? null, adminPassword: secretRef(st.adminPasswordSecretId), userDefaultPassword: secretRef(st.userDefaultPasswordSecretId) };
   return { id: m.id, moduleCode: meta.code, moduleName: meta.name, hasSettings: meta.hasSettings, active: !m.deactivatedAt, activatedAt: m.activatedAt, deactivatedAt: m.deactivatedAt, notes: m.notes, settings };
 };
@@ -769,7 +776,7 @@ const fullClient = (idc: string): ClientFull => {
     const p = prodMeta(s.productCode); const st = s.settings; let settings: Record<string, any> | null = null;
     if (s.productCode === 'linepbx') settings = { hostingId: st.hostingId, hostingName: S.hostings.find((h) => h.id === st.hostingId)?.name ?? null, serverIp: st.serverIp, domain: st.domain, sshPort: st.sshPort };
     else if (s.productCode === 'szchat') settings = { adminLogin: st.adminLogin ?? null, adminPassword: secretRef(st.adminPasswordSecretId) };
-    const modules = S.subMods.filter((m) => m.subscriptionId === s.id).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder).map(shapeSubMod);
+    const modules = S.subMods.filter((m) => m.subscriptionId === s.id && !modMeta(m.moduleId).deletedAt).sort((a, b) => modMeta(a.moduleId).sortOrder - modMeta(b.moduleId).sortOrder).map(shapeSubMod);
     return { id: s.id, productCode: s.productCode, productName: p.name, color: p.color, hasSettings: p.hasSettings, active: !s.deactivatedAt, activatedAt: s.activatedAt, deactivatedAt: s.deactivatedAt, notes: s.notes, settings, modules, sortOrder: p.sortOrder };
   }).sort((a: any, b: any) => a.sortOrder - b.sortOrder);
   const net = S.networks.find((n) => n.clientId === idc);
@@ -802,7 +809,9 @@ const shapeMov = (mv: MovRow): Movement => ({
   items: Object.values(mv.items.reduce((acc, i) => { const k = i.modelId; acc[k] = acc[k] ?? { modelName: S.models.find((m) => m.id === k)?.name ?? '?', quantity: 0 }; acc[k]!.quantity += 1; return acc; }, {} as Record<string, { modelName: string; quantity: number }>)),
   devices: mv.items.map((i) => { const d = S.devices.find((x) => x.id === i.deviceId)!; return { id: d.id, modelName: modeloDe(d).name, identificacao: identificacaoAparelho(d).texto }; }),
 });
-const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active, protegido: PROTEGIDOS.includes(p.code), activeClients: new Set(S.subs.filter((x) => x.productCode === p.code && !x.deactivatedAt && S.clients.some((c) => c.id === x.clientId && !c.deletedAt)).map((x) => x.clientId)).size, modules: S.modules.filter((m) => m.productId === p.id).sort((a, b) => a.sortOrder - b.sortOrder).map(({ productId: _p, ...m }) => m) });
+const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active, protegido: PROTEGIDOS.includes(p.code), activeClients: new Set(S.subs.filter((x) => x.productCode === p.code && !x.deactivatedAt && S.clients.some((c) => c.id === x.clientId && !c.deletedAt)).map((x) => x.clientId)).size, modules: S.modules.filter((m) => m.productId === p.id && !m.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map(({ productId: _p, deletedAt: _d, ...m }) => ({ ...m, protegido: MODULOS_PROTEGIDOS.includes(`${p.code}:${m.code}`), activeClients: new Set(S.subMods.filter((x) => x.moduleId === m.id && !x.deactivatedAt).map((x) => S.subs.find((y) => y.id === x.subscriptionId)).filter((y) => y && !y.deactivatedAt && S.clients.some((c) => c.id === y.clientId && !c.deletedAt)).map((y) => y!.clientId)).size })) });
+/** Como o servidor: FOP2 e Omniboard guardam campos na ficha do cliente e não vão para a lixeira. */
+const MODULOS_PROTEGIDOS = ['linepbx:fop2', 'linepbx:omniboard'];
 const shapeUnit = (u: UnitRow): ClientUnit => {
   const ds = S.devices.filter((d) => d.clientId === u.clientId && !d.deletedAt);
   const n = ds.filter((d) => (d.unit ?? '').trim().toLowerCase() === u.name.toLowerCase()).length + (u.isMain ? ds.filter((d) => !(d.unit ?? '').trim()).length : 0);
@@ -1034,7 +1043,8 @@ export const demoApi: Api = {
       let s = S.subs.find((x) => x.clientId === idc && x.productCode === d.productCode);
       if (!S.products.some((p) => p.code === d.productCode && !p.deletedAt)) throw notFound(`Produto "${d.productCode}"`);
       if (!s) { s = { id: id(), clientId: idc, productCode: String(d.productCode), activatedAt: now(), deactivatedAt: null, notes: null, settings: {} }; S.subs.push(s); }
-      s.deactivatedAt = null; if (d.activatedAt !== undefined) s.activatedAt = dia(d.activatedAt); if (d.notes !== undefined) s.notes = d.notes as string;
+      conferirDesativacaoDemo(d.deactivatedAt, d.activatedAt ?? s.activatedAt);
+      s.deactivatedAt = d.deactivatedAt ? dia(d.deactivatedAt) : null; if (d.activatedAt !== undefined) s.activatedAt = dia(d.activatedAt); if (d.notes !== undefined) s.notes = d.notes as string;
       const saveSecret = (key: string, label: string) => { if (st[key]) { const sid = s!.settings[key + 'SecretId'] ?? id(); S.secrets.set(sid, { label: `${label} — ${c.tradeName}`, value: st[key] }); s!.settings[key + 'SecretId'] = sid; } };
       for (const [k, v] of Object.entries(st)) if (!/password/i.test(k)) s.settings[k] = v;
       saveSecret('adminPassword', 'Senha admin do SZChat');
@@ -1043,17 +1053,18 @@ export const demoApi: Api = {
     async upsertModule(idc, d) {
       await wait(); requirePerm('records.write'); const c = S.clients.find((x) => x.id === idc); if (!c) throw notFound('Cliente');
       const p = S.products.find((x) => x.code === d.productCode); if (!p) throw notFound(`Produto "${d.productCode}"`);
-      const mod = S.modules.find((m) => m.productId === p.id && m.code === d.moduleCode); if (!mod) throw notFound(`Módulo "${d.moduleCode}" do produto ${p.name}`);
+      const mod = S.modules.find((m) => m.productId === p.id && m.code === d.moduleCode && !m.deletedAt); if (!mod) throw notFound(`Módulo "${d.moduleCode}" do produto ${p.name}`);
       const sub = activeSubs(idc).find((x) => x.productCode === p.code); if (!sub) throw bad(`Marque o produto ${p.name} no cliente antes de ligar o módulo ${mod.name}`);
       let m = S.subMods.find((x) => x.subscriptionId === sub.id && x.moduleId === mod.id);
       if (!m) { m = { id: id(), subscriptionId: sub.id, moduleId: mod.id, activatedAt: now(), deactivatedAt: null, notes: null, settings: {} }; S.subMods.push(m); }
-      m.deactivatedAt = null; if (d.activatedAt !== undefined) m.activatedAt = dia(d.activatedAt); if (d.notes !== undefined) m.notes = d.notes as string;
+      conferirDesativacaoDemo(d.deactivatedAt, d.activatedAt ?? m.activatedAt);
+      m.deactivatedAt = d.deactivatedAt ? dia(d.deactivatedAt) : null; if (d.activatedAt !== undefined) m.activatedAt = dia(d.activatedAt); if (d.notes !== undefined) m.notes = d.notes as string;
       const st = (d.settings as Record<string, any>) ?? {};
-      // como o servidor: só os campos do módulo; a senha do usuário padrão do FOP2 não entra mais (1.4)
+      // como o servidor: só os campos do módulo (as senhas vão para o cofre logo abaixo)
       const CAMPOS: Record<string, string[]> = { fop2: ['adminExtension'], omniboard: ['adminLogin'] };
       for (const [k, v] of Object.entries(st)) if ((CAMPOS[mod.code] ?? []).includes(k)) m.settings[k] = v;
       const saveSecret = (key: string, label: string) => { if (st[key]) { const sid = m!.settings[key + 'SecretId'] ?? id(); S.secrets.set(sid, { label: `${label} — ${c.tradeName}`, value: st[key] }); m!.settings[key + 'SecretId'] = sid; } };
-      if (mod.code === 'fop2') saveSecret('adminPassword', 'Senha do ramal admin do FOP2');
+      if (mod.code === 'fop2') { saveSecret('adminPassword', 'Senha do ramal admin do FOP2'); saveSecret('defaultUserPassword', 'Senha do usuário padrão do FOP2'); }
       if (mod.code === 'omniboard') { saveSecret('adminPassword', 'Senha admin do Omniboard'); saveSecret('userDefaultPassword', 'Senha padrão de usuário do Omniboard'); }
       audit('update', 'subscription_module', `Ligou/ajustou o módulo ${mod.name} (${p.name}) no cliente ${c.tradeName}`, m.id); return fullClient(idc);
     },
@@ -1763,13 +1774,20 @@ export const demoApi: Api = {
       return { ok: true };
     },
     async updateProduct(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); for (const k of ['name', 'color', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (p as any)[k] = d[k]; return shapeProduct(p); },
-    async upsertModule(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); const code = String(d.code); if (!/^[a-z0-9_]+$/.test(code)) throw new ApiError(400, 'Dados inválidos', [{ field: 'code', message: 'Use só letras minúsculas, números e _' }]); let m = S.modules.find((x) => x.productId === p.id && x.code === code); if (!m) { m = { id: id(), productId: p.id, code, name: String(d.name), description: (d.description as string) ?? null, hasSettings: false, sortOrder: 99, active: true }; S.modules.push(m); audit('create', 'product_module', `Criou o módulo ${m.name} em ${p.name}`, m.id); } else { for (const k of ['name', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (m as any)[k] = d[k]; audit('update', 'product_module', `Editou o módulo ${m.name} em ${p.name}`, m.id); } const { productId: _p, ...out } = m; return out; },
+    async upsertModule(idp, d) { await wait(); requirePerm('admin.manage'); const p = S.products.find((x) => x.id === idp); if (!p) throw notFound('Produto'); const code = String(d.code); if (!/^[a-z0-9_]+$/.test(code)) throw new ApiError(400, 'Dados inválidos', [{ field: 'code', message: 'Use só letras minúsculas, números e _' }]); let m = S.modules.find((x) => x.productId === p.id && x.code === code); if (m?.deletedAt) throw bad(`O código "${code}" é do módulo ${m.name}, que está na lixeira. Restaure-o em Lixeira ou use outro código.`); if (!m) { m = { id: id(), productId: p.id, code, name: String(d.name), description: (d.description as string) ?? null, hasSettings: false, sortOrder: 99, active: true }; S.modules.push(m); audit('create', 'product_module', `Criou o módulo ${m.name} em ${p.name}`, m.id); } else { for (const k of ['name', 'description', 'active', 'sortOrder'] as const) if (d[k] !== undefined) (m as any)[k] = d[k]; audit('update', 'product_module', `Editou o módulo ${m.name} em ${p.name}`, m.id); } const { productId: _p, ...out } = m; return out; },
     async audit(q) {
       await wait(); requirePerm('audit.read');
       const items = S.audit.filter((a) => (!q.action || a.action === q.action) && (!q.entityType || a.entityType === q.entityType) && (!q.userId || a.userId === q.userId));
       return paginate(ordenar(items, q, 'createdAt', {
         createdAt: (a) => a.createdAt, action: (a) => a.action, entityType: (a) => a.entityType, summary: (a) => a.summary, userName: (a) => a.userName,
       }, 'desc'), q);
+    },
+    async removeModule(idp, idm) {
+      await wait(); requirePerm('admin.manage');
+      const p = S.products.find((x) => x.id === idp); const m = S.modules.find((x) => x.id === idm && x.productId === idp && !x.deletedAt);
+      if (!p || !m) throw notFound('Módulo');
+      if (MODULOS_PROTEGIDOS.includes(`${p.code}:${m.code}`)) throw bad(`O ${m.name} não pode ir para a lixeira: o sistema guarda campos dele na ficha do cliente. Se não quiser vê-lo, desligue o "ativo".`);
+      m.deletedAt = now(); audit('delete', 'product_module', `Mandou o módulo ${m.name} (${p.name}) para a lixeira`, m.id); return { ok: true };
     },
     async trash() {
       await wait(); requirePerm('records.delete');
@@ -1781,11 +1799,12 @@ export const demoApi: Api = {
         ...S.models.filter((c) => c.deletedAt).map((c) => ({ type: 'deviceModel', id: c.id, label: c.name, deletedAt: c.deletedAt! })),
         ...S.products.filter((c) => c.deletedAt).map((c) => ({ type: 'product', id: c.id, label: c.name, deletedAt: c.deletedAt! })),
         ...S.notas.filter((c) => c.deletedAt).map((c) => ({ type: 'releaseNote', id: c.id, label: c.title, deletedAt: c.deletedAt! })),
+        ...S.modules.filter((c) => c.deletedAt).map((c) => ({ type: 'productModule', id: c.id, label: `${S.products.find((p) => p.id === c.productId)?.name} › ${c.name}`, deletedAt: c.deletedAt! })),
       ].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
     },
     async restore(type, idr) {
       await wait(); requirePerm('records.delete');
-      const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'releaseNote' ? S.notas : S.devices;
+      const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'productModule' ? S.modules : type === 'releaseNote' ? S.notas : S.devices;
       const it = list.find((x) => x.id === idr); if (!it) throw notFound();
       it.deletedAt = null;
       const nome = it.tradeName ?? it.name ?? it.number ?? (type === 'device' ? identificacaoAparelho(it).texto : idr);

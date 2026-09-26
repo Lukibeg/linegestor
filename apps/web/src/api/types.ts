@@ -184,7 +184,13 @@ export type Option = { id: string; name: string; isInternal?: boolean; internalC
 /** Resposta do cadastro em massa */
 export type CadastroEmMassa = { created: number; modelName: string; tipo: 'mac' | 'serie' | 'nenhum' };
 export type CatalogItem = { id: string; name: string; active: boolean };
-export type ProductModule = { id: string; code: string; name: string; description: string | null; hasSettings: boolean; sortOrder: number; active: boolean };
+export type ProductModule = {
+  id: string; code: string; name: string; description: string | null; hasSettings: boolean; sortOrder: number; active: boolean;
+  /** o sistema guarda campos dele na ficha do cliente (FOP2, Omniboard): não vai para a lixeira */
+  protegido?: boolean;
+  /** quantos clientes têm o módulo ligado hoje */
+  activeClients?: number;
+};
 export type Product = {
   id: string; code: string; name: string; color: string; description: string | null; hasSettings: boolean; sortOrder: number; active: boolean; modules: ProductModule[];
   /** o sistema depende dele (LinePBX, VoiceNet, Equipamentos): não pode ser excluído */

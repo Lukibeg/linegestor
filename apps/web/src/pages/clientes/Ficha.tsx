@@ -1,6 +1,7 @@
 /**
- * Ficha do cliente: uma página com endereço próprio e abas.
- * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Unidades · Histórico
+ * Ficha do cliente: uma página com endereço próprio e abas — ou a mesma ficha numa janela, por
+ * cima de outra tela (`FichaEmJanela`, desde o 1.5: o cliente de um projeto abre assim).
+ * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Unidades · Projetos · Histórico
  */
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -19,13 +20,36 @@ import { ClienteForm } from './Form.js';
 import { ChipSituacao } from '../projetos/partes.js';
 import { BarrasRanking } from '../../components/graficos.js';
 import { FiltroEmBotao } from '../../lib/filtros.js';
+import { temDataDeAtivacao } from '@gestor/shared';
+import { ClienteDoDid, ObservacaoDid, UsoDid, useEditarDid, useOpcoesDeCliente } from '../dids/partes.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'historico';
 
+/** A página da ficha (rota `/clientes/:id`): a aba escolhida mora no endereço. */
 export function ClienteFicha() {
   const { id = '' } = useParams();
   const [sp, setSp] = useSearchParams();
   const aba = (sp.get('aba') ?? 'geral') as Aba;
+  return <FichaDoCliente id={id} aba={aba} onAba={(a) => setSp({ aba: a }, { replace: true })} />;
+}
+
+/**
+ * A ficha em janela, por cima de outra tela (1.5, pedido do Luan): o cliente de um projeto abre
+ * aqui, e fechar volta para o projeto no mesmo lugar, com a rolagem e o que estava aberto. A aba
+ * fica na memória da janela, não no endereço; "Abrir a página" leva para a ficha de verdade.
+ */
+export function FichaEmJanela({ id, onClose }: { id: string; onClose: () => void }) {
+  const [aba, setAba] = useState<Aba>('geral');
+  return (
+    <Modal open onClose={onClose} lateral largura="max-w-6xl" titulo={
+      <span className="flex items-center gap-3">Ficha do cliente <Link className="link text-[13px] font-normal inline-flex items-center gap-1" to={`/clientes/${id}${aba !== 'geral' ? `?aba=${aba}` : ''}`}>abrir a página <ExternalLink size={12} /></Link></span>
+    }>
+      <FichaDoCliente id={id} aba={aba} onAba={setAba} emJanela />
+    </Modal>
+  );
+}
+
+function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba: Aba; onAba: (a: Aba) => void; emJanela?: boolean }) {
   const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
@@ -36,7 +60,7 @@ export function ClienteFicha() {
   const [busy, setBusy] = useState(false);
 
   if (q.isLoading) return <Carregando />;
-  if (q.isError || !q.data) return <Vazio titulo="Cliente não encontrado" acao={<Link className="btn-secondary" to={paraALista('/clientes')}>Voltar</Link>} />;
+  if (q.isError || !q.data) return <Vazio titulo="Cliente não encontrado" acao={emJanela ? undefined : <Link className="btn-secondary" to={paraALista('/clientes')}>Voltar</Link>} />;
   const c = q.data;
   const ativos = c.subscriptions.filter((s) => s.active);
 
@@ -45,16 +69,17 @@ export function ClienteFicha() {
 
   return (
     <Pagina
-      voltar={<Voltar rota="/clientes" texto="Todos os clientes" />}
+      voltar={emJanela ? undefined : <Voltar rota="/clientes" texto="Todos os clientes" />}
       titulo={<span className="flex items-center gap-2"><LogoCliente src={logoSrc(c.logoUrl)} nome={c.tradeName} tamanho={30} />{c.tradeName}{c.archived && <Chip tone="muted">arquivado</Chip>}</span>}
       sub={<span>{c.legalName} · <span className="font-mono">{cnpjFormatado(c.cnpj)}</span></span>}
       acoes={<>
         {c.links.web && <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary"><ExternalLink size={15} /> Abrir</a>}
-        <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button><button className="btn-ghost" onClick={toggleArchive}><Archive size={15} /> {c.archived ? 'Desarquivar' : 'Arquivar'}</button></Can>
-        <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)}><Trash2 size={15} /></button></Can>
+        <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button>{!emJanela && <button className="btn-ghost" onClick={toggleArchive}><Archive size={15} /> {c.archived ? 'Desarquivar' : 'Arquivar'}</button>}</Can>
+        {/* na janela ficam só as ações do dia a dia; arquivar e excluir, na página */}
+        {!emJanela && <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)}><Trash2 size={15} /></button></Can>}
       </>}
     >
-      <Abas atual={aba} onChange={(a) => setSp({ aba: a }, { replace: true })} abas={[
+      <Abas atual={aba} onChange={onAba} abas={[
         { id: 'geral', label: 'Visão geral' }, { id: 'acessos', label: 'Acessos' },
         { id: 'dids', label: <>DIDs <span className="text-muted">({c.didCount})</span></> }, { id: 'equipamentos', label: <>Equipamentos <span className="text-muted">({c.deviceCount})</span></> },
         { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> },
@@ -128,7 +153,8 @@ function LinhaDoTempo({ c }: { c: ClientFull }) {
       atual.eventos.push(ev);
       porDia.set(chave, atual);
     };
-    for (const s of c.subscriptions) {
+    // o Equipamentos não tem data de ativação (1.5): não entra na linha do tempo
+    for (const s of c.subscriptions.filter((x) => temDataDeAtivacao(x.productCode))) {
       if (s.active) add(s.activatedAt, { cor: s.color, titulo: s.productName, fim: false });
       else if (s.deactivatedAt) add(s.deactivatedAt, { cor: s.color, titulo: `${s.productName} — encerrado`, fim: true });
       for (const m of s.modules) {
@@ -176,6 +202,7 @@ function Produtos({ c }: { c: ClientFull }) {
   const prods = useQuery({ queryKey: ['products'], queryFn: api.admin.products });
   const [editando, setEditando] = useState<string | null>(null);
   const [editandoModulo, setEditandoModulo] = useState<{ product: Product; module: ProductModule } | null>(null);
+  const [encerramento, setEncerramento] = useState<Encerramento | null>(null);
   const qc = useQueryClient();
   const toast = useToast();
   const { can } = useAuth();
@@ -194,9 +221,13 @@ function Produtos({ c }: { c: ClientFull }) {
           const modulos = p.modules.filter((m) => m.active);
           return (
             <div key={p.code} className={`card p-4 flex flex-col gap-2 ${on ? '' : 'opacity-70'}`} style={on ? { borderColor: p.color } : undefined}>
-              <div className="flex items-center justify-between"><Chip color={p.color}>{p.name}</Chip>{on ? <span className="text-ok text-[12px] font-semibold">ativo</span> : s ? <span className="text-muted text-[12px]">encerrado em {data(s.deactivatedAt)}</span> : <span className="text-muted text-[12px]">não assina</span>}</div>
+              <div className="flex items-center justify-between gap-2"><Chip color={p.color}>{p.name}</Chip>{on ? <span className="text-ok text-[12px] font-semibold">ativo</span> : s ? (
+                <span className="text-muted text-[12px] inline-flex items-center gap-0.5">encerrado em {data(s.deactivatedAt)}
+                  {can('records.write') && <button className="btn-ghost btn-sm px-1 text-muted" onClick={() => setEncerramento({ product: p, quando: s.deactivatedAt, desde: s.activatedAt })} title="Corrigir a data do encerramento" aria-label={`Corrigir a data do encerramento de ${p.name}`}><Pencil size={12} /></button>}
+                </span>
+              ) : <span className="text-muted text-[12px]">não assina</span>}</div>
               <div className="text-[12.5px] text-muted">{p.description}</div>
-              {on && s && <div className="text-[12.5px]">desde {data(s.activatedAt)}</div>}
+              {on && s && temDataDeAtivacao(p.code) && <div className="text-[12.5px]">desde {data(s.activatedAt)}</div>}
               {on && s?.notes && <div className="text-[12.5px] text-ink-2 italic truncate" title={s.notes}>{s.notes}</div>}
               {modulos.length > 0 && (
                 <div className="mt-1 border-t border-line pt-2">
@@ -210,7 +241,11 @@ function Produtos({ c }: { c: ClientFull }) {
                           <span className={`w-2 h-2 rounded-full shrink-0 ${ativo ? 'bg-ok' : 'bg-line-strong'}`} aria-hidden />
                           <span className={ativo ? 'font-medium' : 'text-muted'} title={m.description ?? undefined}>{m.name}</span>
                           {ativo && sm?.activatedAt && <span className="text-muted whitespace-nowrap">desde {data(sm.activatedAt)}</span>}
-                          {!ativo && sm && sm.deactivatedAt && <span className="text-muted whitespace-nowrap">desativado em {data(sm.deactivatedAt)}</span>}
+                          {!ativo && sm && sm.deactivatedAt && (
+                            <span className="text-muted whitespace-nowrap inline-flex items-center gap-0.5">desativado em {data(sm.deactivatedAt)}
+                              {on && can('records.write') && <button className="btn-ghost btn-sm px-1 text-muted" onClick={() => setEncerramento({ product: p, module: m, quando: sm.deactivatedAt, desde: sm.activatedAt })} title="Corrigir a data da desativação" aria-label={`Corrigir a data da desativação de ${m.name}`}><Pencil size={12} /></button>}
+                            </span>
+                          )}
                           {on && can('records.write') && (
                             <span className="ml-auto flex gap-1">
                               {ativo ? (<>
@@ -237,7 +272,45 @@ function Produtos({ c }: { c: ClientFull }) {
       </div>
       {editando && <ProdutoForm c={c} code={editando} sub={c.subscriptions.find((x) => x.productCode === editando)} onClose={() => setEditando(null)} />}
       {editandoModulo && <ModuloForm c={c} product={editandoModulo.product} module={editandoModulo.module} sm={c.subscriptions.find((x) => x.productCode === editandoModulo.product.code)?.modules.find((x) => x.moduleCode === editandoModulo.module.code)} onClose={() => setEditandoModulo(null)} />}
+      {encerramento && <DataDoEncerramento c={c} alvo={encerramento} onClose={() => setEncerramento(null)} />}
     </div>
+  );
+}
+
+type Encerramento = { product: Product; module?: ProductModule; quando: string | null; desde: string | null };
+
+/**
+ * Corrige o dia em que um produto (ou módulo) foi encerrado, sem reativar nada (pedido de 26/09,
+ * decisão 0034). Quem encerra pelo botão grava "hoje"; aqui se acerta quando foi de verdade.
+ */
+function DataDoEncerramento({ c, alvo, onClose }: { c: ClientFull; alvo: Encerramento; onClose: () => void }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [dia, setDia] = useState(alvo.quando ? paraCampoData(alvo.quando) : hojeCampoData());
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const nome = alvo.module ? `${alvo.product.name} › ${alvo.module.name}` : alvo.product.name;
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      const deactivatedAt = diaParaIso(dia);
+      if (alvo.module) await api.clients.upsertModule(c.id, { productCode: alvo.product.code, moduleCode: alvo.module.code, deactivatedAt });
+      else await api.clients.upsertSubscription(c.id, { productCode: alvo.product.code, deactivatedAt });
+      await Promise.all([qc.invalidateQueries({ queryKey: ['client', c.id] }), qc.invalidateQueries({ queryKey: ['clients'] })]);
+      toast.push('ok', `Data ${alvo.module ? 'da desativação' : 'do encerramento'} de ${nome} corrigida`); onClose();
+    } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
+  return (
+    <Modal open onClose={onClose} titulo={<span className="flex items-center gap-2">{alvo.module ? 'Desativado em' : 'Encerrado em'} <Chip color={alvo.product.color}>{nome}</Chip></span>}
+      rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !dia} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
+      <div className="flex flex-col gap-3">
+        <Campo label={alvo.module ? 'Desativado em' : 'Encerrado em'} className="max-w-[220px]" dica={alvo.desde && temDataDeAtivacao(alvo.product.code) ? `ativado em ${data(alvo.desde)}` : undefined}>
+          <input type="date" className="input" value={dia} onChange={(e) => setDia(e.target.value)} autoFocus />
+        </Campo>
+        <p className="text-[12.5px] text-muted">Só muda a data: {alvo.module ? 'o módulo continua desativado' : 'o produto continua encerrado'}. Para voltar a usar, {alvo.module ? 'ative o módulo' : 'marque o produto'} de novo.</p>
+        {err && <div className="text-bad text-sm">{err}</div>}
+      </div>
+    </Modal>
   );
 }
 
@@ -261,7 +334,9 @@ function ProdutoForm({ c, code, sub, onClose }: { c: ClientFull; code: string; s
       const settings: Record<string, unknown> = {};
       if (code === 'linepbx' && podeServidor) Object.assign(settings, { hostingId: f.hostingId || null, serverIp: f.serverIp || null, domain: f.domain || null, sshPort: Number(f.sshPort) || 22 });
       if (code === 'szchat') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}) });
-      await api.clients.upsertSubscription(c.id, { productCode: code, activatedAt: f.activatedAt ? diaParaIso(f.activatedAt) : null, notes: f.notes || null, settings });
+      // Equipamentos não tem data de ativação (1.5): ausente = o servidor mantém a que houver
+      const activatedAt = !temDataDeAtivacao(code) ? undefined : f.activatedAt ? diaParaIso(f.activatedAt) : null;
+      await api.clients.upsertSubscription(c.id, { productCode: code, activatedAt, notes: f.notes || null, settings });
       await qc.invalidateQueries({ queryKey: ['client', c.id] }); await qc.invalidateQueries({ queryKey: ['clients'] });
       toast.push('ok', `${nome} salvo`); onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
@@ -272,7 +347,7 @@ function ProdutoForm({ c, code, sub, onClose }: { c: ClientFull; code: string; s
   return (
     <Modal open onClose={onClose} lateral largura="max-w-xl" titulo={<span className="flex items-center gap-2">{sub?.active ? 'Ajustar' : 'Marcar'} <Chip color={sub?.color}>{nome}</Chip> em {c.tradeName}</span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
       <div className="flex flex-col gap-3">
-        <Campo label="Ativado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
+        {temDataDeAtivacao(code) && <Campo label="Ativado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>}
         {code === 'linepbx' && (
           <fieldset className="card p-3 flex flex-col gap-3" disabled={!podeServidor}>
             <legend className="eyebrow px-1">Servidor {!podeServidor && '· somente leitura (sem permissão)'}</legend>
@@ -311,14 +386,14 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
     setBusy(true); setErr('');
     try {
       const settings: Record<string, unknown> = {};
-      if (module.code === 'fop2') Object.assign(settings, { adminExtension: f.adminExtension || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}) });
+      if (module.code === 'fop2') Object.assign(settings, { adminExtension: f.adminExtension || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}), ...(senhas.defaultUserPassword ? { defaultUserPassword: senhas.defaultUserPassword } : {}) });
       if (module.code === 'omniboard') Object.assign(settings, { adminLogin: f.adminLogin || null, ...(senhas.adminPassword ? { adminPassword: senhas.adminPassword } : {}), ...(senhas.userDefaultPassword ? { userDefaultPassword: senhas.userDefaultPassword } : {}) });
       await api.clients.upsertModule(c.id, { productCode: product.code, moduleCode: module.code, activatedAt: f.activatedAt ? diaParaIso(f.activatedAt) : null, notes: f.notes || null, settings });
       await qc.invalidateQueries({ queryKey: ['client', c.id] }); await qc.invalidateQueries({ queryKey: ['clients'] });
       toast.push('ok', `${module.name} salvo`); onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
-  const seg = (key: 'adminPassword' | 'userDefaultPassword', label: string) => (
+  const seg = (key: 'adminPassword' | 'userDefaultPassword' | 'defaultUserPassword', label: string) => (
     <Campo label={label}><CampoSegredo secretId={st[key]?.secretId ?? null} hasSecret={!!st[key]?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={(v) => setSenhas({ ...senhas, [key]: v })} /></Campo>
   );
   return (
@@ -328,8 +403,9 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
         <Campo label="Ativado em" className="max-w-[220px]"><input type="date" className="input" value={f.activatedAt} onChange={(e) => setF({ ...f, activatedAt: e.target.value })} /></Campo>
         {module.code === 'fop2' && (<>
           <Campo label="Ramal / usuário admin do FOP2" dica="usado para o acesso rápido"><input className="input font-mono" autoComplete="off" value={f.adminExtension} onChange={(e) => setF({ ...f, adminExtension: e.target.value })} /></Campo>
-          {/* 1.4 (decisão 0032): a senha que a equipe usa é a do ramal admin; a do usuário padrão saiu (a já guardada fica no cofre) */}
+          {/* as duas senhas: a do ramal admin (1.4) e a do usuário padrão, que voltou no 1.5 (decisão 0034) */}
           {seg('adminPassword', 'Senha do ramal admin do FOP2')}
+          {seg('defaultUserPassword', 'Senha do usuário padrão do FOP2')}
         </>)}
         {module.code === 'omniboard' && (<>
           <Campo label="E-mail do administrador"><input className="input" value={f.adminLogin} onChange={(e) => setF({ ...f, adminLogin: e.target.value })} /></Campo>
@@ -355,6 +431,9 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
  * O uso é um **interruptor** ("só não usados"), no padrão do "só em aberto" dos Chamados: com
  * duas opções só, uma lista de caixinhas era um clique a mais. Ele mostra os números que pedem
  * atenção (alocados e ainda sem uso); os em uso são a maioria e não precisam de filtro.
+ *
+ * Patch 1.5: **trocar o cliente** de um número daqui mesmo (passa para outro, ou fica livre), como
+ * na Numeração e na ficha do circuito — as peças são as mesmas (`pages/dids/partes.tsx`).
  */
 function Dids({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
@@ -392,23 +471,14 @@ function Dids({ c }: { c: ClientFull }) {
   }, [items, busca, soNaoUsados, operadoras, circuitos, titulares]);
   const ordenados = ordenarLista(filtrados, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, inUse: (d) => (d.inUse ? 1 : 0), note: (d) => d.note });
   const pg = usePaginaLocal(ordenados, 100);
-  const [mudando, setMudando] = useState<string | null>(null);
-  const atualizar = () => Promise.all([qc.invalidateQueries({ queryKey: ['client-dids', c.id] }), qc.invalidateQueries({ queryKey: ['dids'] })]);
-  const alternar = async (id: string, inUse: boolean) => {
-    setMudando(id);
-    try { await api.dids.update(id, { inUse }); await atualizar(); }
-    catch (e) { toast.push('erro', mensagemErro(e)); } finally { setMudando(null); }
-  };
-  const gravarObservacao = async (id: string, note: string | null) => {
-    await api.dids.update(id, { note });
-    await atualizar();
-  };
+  const { mudando, alternarUso, gravarObservacao, trocarCliente } = useEditarDid();
+  const podeEditar = can('dids.assign');
+  const clientes = useOpcoesDeCliente(podeEditar);
   if (q.isLoading) return <Carregando />;
   if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
   const emUso = items.filter((d) => d.inUse).length;
   const temFiltro = !!busca.trim() || soNaoUsados || operadoras.length > 0 || circuitos.length > 0 || titulares.length > 0;
   const limpar = () => { setBusca(''); setSoNaoUsados(false); setOperadoras([]); setCircuitos([]); setTitulares([]); };
-  const podeEditar = can('dids.assign');
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -428,71 +498,18 @@ function Dids({ c }: { c: ClientFull }) {
       </div>
       <div className="card overflow-x-auto">
         {!filtrados.length ? <div className="text-muted text-sm p-4">Nenhum número com esses filtros. <button type="button" className="link" onClick={limpar}>Limpar filtros</button></div> : (
-          <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
+          <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th>{podeEditar && <th className="w-px" aria-label="Trocar o cliente" />}</tr></thead>
             <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum whitespace-nowrap">{d.numberFormatted}</td>
-              <td><UsoDid inUse={d.inUse} podeMudar={podeEditar} mudando={mudando === d.id} onChange={(v) => alternar(d.id, v)} /></td>
+              <td><UsoDid inUse={d.inUse} podeMudar={podeEditar} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /></td>
               <td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td><td>{d.ownerName ?? '—'}</td>
-              <td className="min-w-[200px]"><Observacao nota={d.note} podeEditar={podeEditar} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td></tr>)}</tbody></table>
+              <td className="min-w-[200px]"><ObservacaoDid nota={d.note} podeEditar={podeEditar} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td>
+              {/* trocar o cliente daqui: o número sai desta lista e vai para o outro (ou fica livre) */}
+              {podeEditar && <td className="text-right"><ClienteDoDid d={{ ...d, clientId: c.id, clientName: c.tradeName }} clientes={clientes} podeEditar trocar={(novo, nome) => trocarCliente(d.id, d.numberFormatted, novo, nome)} soBotao /></td>}</tr>)}</tbody></table>
         )}
         <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted flex flex-wrap gap-x-3"><span className="tnum">{emUso} em uso · {items.length - emUso} não usado(s)</span><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div></div>
       </div>
     </div>
   );
-}
-
-/**
- * A observação de um número, editável na própria linha: clicar abre o campo, **Enter** (ou sair
- * do campo) grava, **Esc** desiste. Vazio limpa a observação. O texto novo fica na tela enquanto
- * grava (o clique não "some"), e o erro aparece logo abaixo, na mesma linha.
- */
-function Observacao({ nota, podeEditar, numero, gravar }: { nota: string | null; podeEditar: boolean; numero: string; gravar: (v: string | null) => Promise<void> }) {
-  const [editando, setEditando] = useState(false);
-  const [valor, setValor] = useState(nota ?? '');
-  const [gravando, setGravando] = useState<string | null>(null);
-  const [erro, setErro] = useState('');
-  const mostrada = gravando ?? nota;
-  const concluir = async () => {
-    const novo = valor.trim();
-    setEditando(false);
-    if (novo === (nota ?? '')) return;
-    setGravando(novo); setErro('');
-    try { await gravar(novo || null); } catch (e) { setErro(mensagemErro(e)); setValor(nota ?? ''); } finally { setGravando(null); }
-  };
-  if (!podeEditar) return <span className="text-muted">{nota}</span>;
-  if (editando) {
-    return (
-      <input
-        className="input py-1 text-[13px]" autoFocus autoComplete="off" maxLength={500} value={valor} aria-label={`Observação do ${numero}`}
-        placeholder="Observação (vazio = sem observação)"
-        onChange={(e) => setValor(e.target.value)} onBlur={() => void concluir()}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void concluir(); } if (e.key === 'Escape') { setValor(nota ?? ''); setEditando(false); } }}
-      />
-    );
-  }
-  return (
-    <div>
-      <button
-        type="button" onClick={() => { setValor(nota ?? ''); setEditando(true); }}
-        className={`group w-full text-left rounded px-1 -mx-1 py-0.5 hover:bg-surface-2 inline-flex items-center gap-1.5 ${gravando !== null ? 'opacity-60' : ''}`}
-        title="Clique para editar a observação" aria-label={`Editar a observação do ${numero}`}
-      >
-        {/* vazia: um traço discreto; o convite a escrever só aparece sob o mouse (ou no foco do teclado) */}
-        {mostrada ? <span className="text-ink-2 whitespace-pre-wrap break-words">{mostrada}</span> : <>
-          <span className="text-muted group-hover:hidden group-focus-visible:hidden">—</span>
-          <span className="text-muted italic hidden group-hover:inline group-focus-visible:inline">adicionar observação</span>
-        </>}
-        {gravando !== null ? <Spinner className="shrink-0 !w-3.5 !h-3.5" /> : <Pencil size={12} className="shrink-0 text-muted opacity-0 group-hover:opacity-100" />}
-      </button>
-      {erro && <div className="text-[12px] text-bad mt-0.5">{erro}</div>}
-    </div>
-  );
-}
-
-/** A marca "em uso" / "não usado" de um número. Com permissão, vira um botão que alterna. */
-export function UsoDid({ inUse, podeMudar, mudando, onChange }: { inUse: boolean; podeMudar: boolean; mudando?: boolean; onChange?: (v: boolean) => void }) {
-  const chip = <Chip tone={inUse ? 'ok' : 'signal'} title={inUse ? 'O cliente usa este número' : 'Alocado ao cliente, mas ainda não está em uso'}>{inUse ? 'em uso' : 'não usado'}</Chip>;
-  if (!podeMudar || !onChange) return chip;
-  return <button type="button" className={`inline-flex ${mudando ? 'opacity-50' : ''}`} disabled={mudando} onClick={(e) => { e.stopPropagation(); onChange(!inUse); }} title={inUse ? 'Clique para marcar como não usado' : 'Clique para marcar como em uso'} aria-label={inUse ? 'Marcar como não usado' : 'Marcar como em uso'}>{chip}</button>;
 }
 
 // ---------- Equipamentos ----------
@@ -959,6 +976,7 @@ function Acessos({ c }: { c: ClientFull }) {
       )}
       {f2 && lp && <div className="card p-4 flex flex-col gap-3"><div className="flex items-center justify-between"><Chip color={lp.color}>LinePBX › FOP2</Chip>{c.links.fop2 && <a className="link text-sm" href={c.links.fop2} target="_blank" rel="noreferrer">abrir painel ↗</a>}</div><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Ramal admin</dt><dd className="font-mono">{f2.settings?.adminExtension ?? '—'}</dd></dl>
         <Campo label="Senha do ramal admin"><CampoSegredo secretId={f2.settings?.adminPassword?.secretId ?? null} hasSecret={!!f2.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
+        <Campo label="Senha do usuário padrão"><CampoSegredo secretId={f2.settings?.defaultUserPassword?.secretId ?? null} hasSecret={!!f2.settings?.defaultUserPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>
         <p className="text-[12px] text-muted">O link do FOP2 nunca carrega senha na URL.</p><Anotacao texto={f2.notes} /></div>}
       {om && lp && <div className="card p-4 flex flex-col gap-3"><Chip color={lp.color}>LinePBX › Omniboard</Chip><dl className="grid grid-cols-[110px_1fr] gap-y-1 text-sm"><dt className="text-muted">Admin</dt><dd className="font-mono">{om.settings?.adminLogin ?? '—'}</dd></dl>
         <Campo label="Senha admin"><CampoSegredo secretId={om.settings?.adminPassword?.secretId ?? null} hasSecret={!!om.settings?.adminPassword?.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} /></Campo>

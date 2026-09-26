@@ -1,0 +1,1 @@
+ALTER TABLE "product_modules" ADD COLUMN "deleted_at" timestamp with time zone;

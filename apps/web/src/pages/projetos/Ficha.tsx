@@ -19,6 +19,7 @@ import { EscolherClientes } from './EscolherClientes.js';
 import { ProjetoForm } from './Form.js';
 import { Andamento, ChipSituacao, CHIP_SELECT, FAIXA, Numero, SITUACAO } from './partes.js';
 import { Anexos, Comentarios } from './Conversa.js';
+import { FichaEmJanela } from '../clientes/Ficha.js';
 
 export function ProjetoFicha() {
   const { id = '' } = useParams();
@@ -30,6 +31,7 @@ export function ProjetoFicha() {
   const [editar, setEditar] = useState(false);
   const [incluir, setIncluir] = useState(false);
   const [excluir, setExcluir] = useState(false);
+  const [verCliente, setVerCliente] = useState<string | null>(null);
   /** O filtro da tabela: por situação, ou por uma faixa de uma etapa ("quem está em Pendente envio"). */
   type Filtro = { tipo: 'situacao'; valor: SituacaoProjeto } | { tipo: 'etapa'; stepId: string; valor: string };
   const [filtro, setFiltro] = useState<Filtro | null>(null);
@@ -226,6 +228,7 @@ export function ProjetoFicha() {
                     onSituacao={(status) => status === 'travado' ? setTravando(c) : linha.mutate({ linhaId: c.id, d: { status } })}
                     onAbrir={() => setAberto(aberto === c.id ? null : c.id)}
                     onTirar={() => setTirar(c)}
+                    onVerCliente={setVerCliente}
                     aberto={aberto === c.id}
                   />
                 ))}
@@ -259,16 +262,17 @@ export function ProjetoFicha() {
       <Confirmar open={excluir} onClose={() => setExcluir(false)} onConfirm={() => apagar.mutate()}
         titulo="Mandar o projeto para a lixeira" perigoso loading={apagar.isPending}
         texto={<>O projeto <b>{p.name}</b> sai da lista. Nada é apagado de verdade — dá para restaurar na lixeira.</>} />
+      {verCliente && <FichaEmJanela id={verCliente} onClose={() => setVerCliente(null)} />}
     </Pagina>
   );
 }
 
 /** Uma linha da tabela: as caixinhas das etapas, a situação, o responsável e a conversa daquele cliente. */
-function Linha({ c, i, p, onMarcar, onSituacao, onAbrir, onTirar, aberto }: {
+function Linha({ c, i, p, onMarcar, onSituacao, onAbrir, onTirar, onVerCliente, aberto }: {
   c: ClienteDoProjeto; i: number; p: Projeto;
   onMarcar: (stepId: string, d: { feito?: boolean; valor?: string | null }) => void;
   onSituacao: (status: SituacaoProjeto) => void;
-  onAbrir: () => void; onTirar: () => void; aberto: boolean;
+  onAbrir: () => void; onTirar: () => void; onVerCliente: (clientId: string) => void; aberto: boolean;
 }) {
   const podeMexer = p.podeTrabalhar && p.status === 'aberto';
   const fora = c.status === 'nao_se_aplica';
@@ -293,7 +297,8 @@ function Linha({ c, i, p, onMarcar, onSituacao, onAbrir, onTirar, aberto }: {
       <tr className={fora ? 'opacity-60' : undefined}>
         <TdN n={contar(i)} />
         <td className="min-w-[180px]">
-          <Link className="link" to={`/clientes/${c.clientId}`}>{c.clientName}</Link>
+          {/* 1.5: a ficha abre em janela, por cima do projeto — fechar volta para cá, no mesmo lugar */}
+          <button type="button" className="link text-left" onClick={() => onVerCliente(c.clientId)} title="Abrir a ficha do cliente (em janela)">{c.clientName}</button>
           {c.status === 'travado' && c.blockedReason && <div className="text-[12px] text-signal truncate max-w-[260px]" title={c.blockedReason}>{c.blockedReason}</div>}
         </td>
         {p.etapas.map((e) => {

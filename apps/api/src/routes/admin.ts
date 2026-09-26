@@ -49,13 +49,15 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.put('/products/:id/modules', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Criar/editar um módulo de um produto', params: Id, body: ModuloCatalogoSchema } },
     async (req) => { const row = await svc.upsertModule(app.db, req.params.id, req.body); await app.audit(req, { action: row.created ? 'create' : 'update', entityType: 'product_module', entityId: row.id, summary: `${row.created ? 'Criou' : 'Editou'} o módulo ${row.name} em ${row.productName}` }); return row; });
+  app.delete('/products/:id/modules/:moduleId', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Mandar um módulo para a lixeira (as ligações dos clientes ficam guardadas)', params: z.object({ id: z.string(), moduleId: z.string() }) } },
+    async (req) => { const m = await svc.deleteModule(app.db, req.params.id, req.params.moduleId); await app.audit(req, { action: 'delete', entityType: 'product_module', entityId: m.id, summary: `Mandou o módulo ${m.name} (${m.productName}) para a lixeira (${m.activeClients} cliente(s) usavam)` }); return { ok: true }; });
 
   // ---- auditoria ----
   app.get('/audit', { preHandler: app.requirePermission('audit.read'), schema: { tags: ['Administração'], summary: 'Auditoria: quem fez o quê', querystring: AuditoriaListarSchema } }, async (req) => audit.list(app.db, req.query));
 
   // ---- lixeira ----
   app.get('/trash', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'O que está na lixeira' } }, async () => svc.listTrash(app.db));
-  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'releaseNote', 'project']), id: z.string() }) } },
+  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project']), id: z.string() }) } },
     async (req) => {
       const { type, id } = req.params;
       let label = id;
@@ -65,6 +67,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       else if (type === 'device') label = inv.nomeAparelho(await inv.restoreDevice(app.db, id), id);
       else if (type === 'deviceModel') label = (await inv.restoreModel(app.db, id)).name;
       else if (type === 'product') label = (await svc.restoreProduct(app.db, id)).name;
+      else if (type === 'productModule') label = `o módulo ${(await svc.restoreModule(app.db, id)).name}`;
       else if (type === 'releaseNote') label = (await novidades.restore(app.db, id)).title;
       else if (type === 'project') label = (await svc.restoreProject(app.db, id)).name;
       else throw new BadRequest('Tipo desconhecido');

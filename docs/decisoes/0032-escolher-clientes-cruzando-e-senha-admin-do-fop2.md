@@ -29,6 +29,7 @@ as senhas antigas. Os dois entram no 1.4, que ainda não tinha subido.
     clique responde na hora.
   - Na lista de clientes, o "tem qualquer um" continua o padrão (ali o uso comum é juntar, não
     cruzar), e produtos e módulos continuam nos dois botões de filtro.
+- *(Revisto pela 0034, no 1.5: a senha do usuário padrão voltou, ao lado da do ramal admin.)*
 - **FOP2 guarda a senha do ramal admin** (`fop2_settings.admin_password_secret_id`, no cofre, com
   o rótulo "Senha do ramal admin do FOP2"), no formulário do módulo e na aba Acessos, logo abaixo do
   ramal admin. **A senha do usuário padrão sai das telas e da API** (a API não aceita mais o campo

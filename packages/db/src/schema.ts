@@ -194,6 +194,11 @@ export const productModules = pgTable(
     hasSettings: boolean('has_settings').notNull().default(false),
     sortOrder: integer('sort_order').notNull().default(0),
     active: boolean('active').notNull().default(true),
+    /**
+     * Na lixeira desde (1.5, decisão 0034). Some das telas, dos filtros e da ficha do cliente; as
+     * ligações dos clientes ficam guardadas e voltam se ele for restaurado.
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => [uniqueIndex('product_modules_product_code_uq').on(t.productId, t.code)],
 );
@@ -270,8 +275,8 @@ export const fop2Settings = pgTable('fop2_settings', {
   /** Senha do ramal admin do FOP2 — no cofre (desde o 1.4, decisão 0032) */
   adminPasswordSecretId: text('admin_password_secret_id').references(() => secrets.id),
   /**
-   * Senha do usuário padrão do FOP2 — no cofre. Saiu das telas no 1.4 (decisão 0032, revendo a
-   * 0025): quem já tinha continua guardado aqui, sem aparecer; nada foi apagado.
+   * Senha do usuário padrão do FOP2 — no cofre. Saiu das telas no 1.4 (decisão 0032) e voltou no
+   * 1.5 (decisão 0034): nesse meio-tempo nada foi apagado, então as guardadas antes reaparecem.
    */
   defaultUserPasswordSecretId: text('default_user_password_secret_id').references(() => secrets.id),
 });

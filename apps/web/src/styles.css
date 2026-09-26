@@ -97,3 +97,12 @@ input, select, textarea, button { font: inherit; }
 :root[data-theme='dark'] .marca-escuro { display: inline; }
 :root[data-theme='light'] .marca-claro { display: inline; }
 :root[data-theme='light'] .marca-escuro { display: none; }
+
+/*
+ * Faixa de abas sem barra de rolagem, em navegador nenhum (1.5). O 1.4 tirou o 1px que sobrava e
+ * pôs overflow-y: hidden, mas o Chrome do Windows (barras "Fluent", com zoom de 110%) ainda
+ * desenhava uma barrinha vertical na ponta da faixa. A faixa continua rolando para o lado no
+ * celular — com o dedo ou a roda do mouse —, só não desenha a barra.
+ */
+.sem-barra { scrollbar-width: none; -ms-overflow-style: none; }
+.sem-barra::-webkit-scrollbar { display: none; width: 0; height: 0; }

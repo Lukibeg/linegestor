@@ -10,7 +10,7 @@ import { api } from '../../api/index.js';
 import type { Circuit } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Chip, InputIp, Kpi, Modal, Ocupacao, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, EscolherComBusca, InputIp, Kpi, Modal, Ocupacao, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { didFormatado, paraCentavos, reais } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
@@ -120,7 +120,7 @@ export function CircuitoForm({ open, onClose, onSaved, circuito }: { open: boole
           <Campo label="Número chave" dica="o número piloto do feixe"><input className="input font-mono tnum" placeholder="(71) 3020-0000" value={f.keyNumber ?? ''} onChange={(e) => setF({ ...f, keyNumber: e.target.value })} onBlur={() => setF((x) => ({ ...x, keyNumber: x.keyNumber ? didFormatado(x.keyNumber) : '' }))} /></Campo>
           <Campo label="Canais (chamadas simultâneas)"><input type="number" min={0} className="input tnum" value={f.channels ?? 0} onChange={(e) => setF({ ...f, channels: e.target.value })} /></Campo>
           <Campo label="Valor mensal (R$)"><input className="input tnum" placeholder="0,00" value={f.monthlyValue ?? ''} onChange={(e) => setF({ ...f, monthlyValue: e.target.value })} /></Campo>
-          <Campo label="Titular" dica="quem detém o contrato com a operadora (normalmente VoiceNet)" className="col-span-2"><select className="input" value={f.ownerClientId ?? ''} onChange={(e) => setF({ ...f, ownerClientId: e.target.value })}><option value="">—</option>{owners.data?.map((o) => <option key={o.id} value={o.id}>{o.name}{o.isInternal ? ' (interna)' : ''}</option>)}</select></Campo>
+          <Campo label="Titular" dica="quem detém o contrato com a operadora (normalmente VoiceNet)" className="col-span-2"><EscolherComBusca className="input w-full" valor={f.ownerClientId ?? ''} onChange={(v) => setF({ ...f, ownerClientId: v })} vazio="—" opcoes={(owners.data ?? []).map((o) => ({ id: o.id, nome: o.name, dica: o.isInternal ? 'interna' : undefined }))} rotulo="Titular" procurar="Procurar titular…" /></Campo>
           {/* o tronco que o próprio cliente contratou: guardar é útil, mas não pode poluir o controle da VoiceNet */}
           <label className="col-span-2 flex items-start gap-2 text-sm cursor-pointer">
             <input type="checkbox" className="mt-0.5" checked={!!f.thirdParty} onChange={(e) => setF({ ...f, thirdParty: e.target.checked })} />

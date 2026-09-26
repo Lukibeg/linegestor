@@ -142,6 +142,7 @@ Catálogo de MÓDULOS: partes opcionais dentro de um produto. LinePBX tem Omnibo
 | `has_settings` | sim/não | Tem configuração própria? (FOP2: ramal admin · Omniboard: login e senhas) | obrigatório · padrão: false |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `active` | sim/não | — | obrigatório · padrão: true |
+| `deleted_at` | data e hora | Na lixeira desde (1.5, decisão 0034). Some das telas, dos filtros e da ficha do cliente; as ligações dos clientes ficam guardadas e voltam se ele for restaurado. | — |
 
 ## subscriptions
 

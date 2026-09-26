@@ -103,11 +103,13 @@ export const LinePbxSettingsSchema = z.object({
 });
 export const Fop2SettingsSchema = z.object({
   adminExtension: z.string().trim().max(64).nullable().optional(),
-  /**
-   * Senha do ramal admin do FOP2 — só na gravação; ausente = mantém. Desde o 1.4 (decisão 0032):
-   * a senha do usuário padrão saiu das telas e não é mais aceita (a já guardada fica no cofre).
-   */
+  /** Senha do ramal admin do FOP2 — só na gravação; ausente = mantém (desde o 1.4, decisão 0032) */
   adminPassword: SenhaEntradaSchema.optional(),
+  /**
+   * Senha do usuário padrão do FOP2 — só na gravação; ausente = mantém. Saiu no 1.4 (0032) e voltou
+   * no 1.5 a pedido do Luan (0034): as guardadas antes nunca foram apagadas e voltam a aparecer.
+   */
+  defaultUserPassword: SenhaEntradaSchema.optional(),
 });
 export const OmniboardSettingsSchema = z.object({
   adminLogin: z.string().trim().max(200).nullable().optional(),

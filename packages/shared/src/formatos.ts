@@ -202,3 +202,8 @@ export function formatarIp(v: string): string {
   // "10.1.1.0" viraria "101.1.0" porque o ponto sumiria assim que fosse digitado
   return v.endsWith('.') && !atual && octetos.length > 0 && octetos.length < 4 ? `${texto}.` : texto;
 }
+
+/** Para procurar sem ligar para acento nem maiúscula: "sotero" acha "Hospital Soterô". */
+export function paraBusca(v: string | null | undefined): string {
+  return (v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+}

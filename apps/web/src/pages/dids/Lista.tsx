@@ -9,11 +9,11 @@ import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { Plus, X } from 'lucide-react';
 import { api } from '../../api/index.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Campo, Carregando, Chip, Confirmar, Copiar, Modal, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Campo, Carregando, Chip, Confirmar, Copiar, EscolherComBusca, Modal, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { FaixaForm } from '../circuitos/Detalhe.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
-import { UsoDid } from '../clientes/Ficha.js';
+import { ClienteDoDid, ObservacaoDid, UsoDid, useEditarDid, useOpcoesDeCliente } from './partes.js';
 
 type Acao = 'circuito' | 'cliente' | 'liberar' | 'uso' | 'observacao' | 'excluir';
 
@@ -46,12 +46,9 @@ export function Numeracao() {
   const [acao, setAcao] = useState<Acao | null>(null);
   const [faixa, setFaixa] = useState(false);
   useEffect(() => { setSel(new Set()); }, [q, circuito, cliente, uso, terceiros]);
-  const [mudando, setMudando] = useState<string | null>(null);
-  const alternarUso = async (id: string, inUse: boolean) => {
-    setMudando(id);
-    try { await api.dids.update(id, { inUse }); await qc.invalidateQueries({ queryKey: ['dids'] }); await qc.invalidateQueries({ queryKey: ['client-dids'] }); }
-    catch (e) { toast.push('erro', mensagemErro(e)); } finally { setMudando(null); }
-  };
+  // 1.5: cliente, uso e observação se editam na própria linha (as peças são as da ficha do cliente)
+  const { mudando, alternarUso, gravarObservacao, trocarCliente } = useEditarDid();
+  const opcoesCliente = useOpcoesDeCliente();
 
   const items = lista.data?.items ?? [];
   const allOnPage = items.length > 0 && items.every((d) => sel.has(d.id));
@@ -66,7 +63,7 @@ export function Numeracao() {
         <input className="input max-w-[200px] font-mono" placeholder="número (só dígitos)" value={q} onChange={(e) => set('q', e.target.value)} />
         {/* "Sem circuito" saiu do filtro: todo DID pertence a um circuito */}
         <select className="input w-auto" value={circuito} onChange={(e) => set('circuito', e.target.value || null)}><option value="">Todos os circuitos</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-        <select className="input w-auto" value={cliente} onChange={(e) => set('cliente', e.target.value || null)}><option value="">Todos os clientes</option><option value="free">Livres</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        <EscolherComBusca className="input w-[240px] max-w-full" valor={cliente} onChange={(v) => set('cliente', v || null)} vazio="Todos os clientes" opcoes={[{ id: 'free', nome: 'Livres (sem cliente)' }, ...opcoesCliente]} rotulo="Filtrar por cliente" procurar="Procurar cliente…" id="dids-filtro-cliente" />
         <select className="input w-auto" value={uso} onChange={(e) => set('uso', e.target.value || null)} aria-label="Uso"><option value="">Em uso e não usados</option><option value="true">Só em uso</option><option value="false">Só não usados</option></select>
         <Toggle checked={terceiros} onChange={(v) => set('terceiros', v ? '1' : null)} label="Habilitar links de terceiros" />
         {(q || circuito || cliente || uso) && <button className="btn-ghost btn-sm" onClick={limpar}><X size={14} /> limpar</button>}
@@ -103,11 +100,11 @@ export function Numeracao() {
               <td className="font-mono tnum whitespace-nowrap">{d.numberFormatted} <Copiar texto={d.number} titulo="Copiar número" /></td>
               <td>{d.carrierName ?? '—'}</td>
               <td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td>
-              <td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <Chip tone="ok">livre</Chip>}</td>
+              <td><ClienteDoDid d={d} clientes={opcoesCliente} podeEditar={can('dids.assign')} trocar={(novo, nome) => trocarCliente(d.id, d.numberFormatted, novo, nome)} /></td>
               {/* a marca só faz sentido com cliente: número livre não está em uso nem "não usado" */}
               <td>{d.clientId ? <UsoDid inUse={d.inUse} podeMudar={can('dids.assign')} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /> : <span className="text-muted">—</span>}</td>
               <td className="text-muted">{d.ownerName ?? '—'}</td>
-              <td className="text-muted">{d.note}</td>
+              <td className="min-w-[140px]"><ObservacaoDid nota={d.note} podeEditar={can('dids.assign')} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td>
             </tr>))}</tbody></table></div>
       )}
       {lista.data && <Paginacao page={page} pageSize={pageSize} total={lista.data.total} onChange={(p) => set('p', String(p))} tudo={tudo} onTudo={(v) => set('tudo', v ? '1' : null)} />}
@@ -139,7 +136,7 @@ function AcaoMassa({ acao, ids, onClose, onDone, circuits, clients }: { acao: Ac
           </div>
         </div>
       )}
-      {acao === 'cliente' && <Campo label="Cliente que vai usar os números"><select className="input" value={valor} onChange={(e) => setValor(e.target.value)} autoFocus><option value="">livre (sem cliente)</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>}
+      {acao === 'cliente' && <Campo label="Cliente que vai usar os números"><EscolherComBusca className="input w-full" valor={valor} onChange={setValor} vazio="livre (sem cliente)" opcoes={clients.map((c) => ({ id: c.id, nome: c.name }))} procurar="Procurar cliente…" rotulo="Cliente que vai usar os números" autoFocus /></Campo>}
       {acao === 'liberar' && <p className="text-sm text-ink-2">Os {n} DIDs selecionados ficam sem cliente (livres). O circuito não muda.</p>}
       {acao === 'observacao' && <Campo label="Observação" dica="vazio = limpar"><input className="input" value={valor} onChange={(e) => setValor(e.target.value)} autoFocus /></Campo>}
       {err && <div className="text-bad text-sm mt-2">{err}</div>}

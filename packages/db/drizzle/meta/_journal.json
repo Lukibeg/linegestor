@@ -57,6 +57,13 @@
       "when": 1790288050172,
       "tag": "0007_fop2_senha_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790441584409,
+      "tag": "0008_modulo_na_lixeira",
+      "breakpoints": true
     }
   ]
 }

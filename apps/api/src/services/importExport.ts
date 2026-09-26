@@ -114,7 +114,7 @@ async function planClients(db: Db, raw: Record<string, string>[]): Promise<Plan>
   const hostings = (await db.select({ name: hostingProviders.name }).from(hostingProviders)).map((h) => h.name);
   const hostingByNorm = new Map(hostings.map((n) => [norm(n), n]));
   const prodCodes = new Set((await db.select({ code: products.code }).from(products)).map((p) => p.code));
-  const modPairs = new Set((await db.select({ p: products.code, m: productModules.code }).from(productModules).innerJoin(products, eq(products.id, productModules.productId))).map((x) => `${x.p}:${x.m}`));
+  const modPairs = new Set((await db.select({ p: products.code, m: productModules.code }).from(productModules).innerJoin(products, eq(products.id, productModules.productId)).where(isNull(productModules.deletedAt))).map((x) => `${x.p}:${x.m}`));
   // Compatibilidade com o Nexus: lá FOP2 e Omniboard eram "produtos"; aqui são módulos do LinePBX
   const LEGADO: Record<string, string> = { fop2: 'linepbx:fop2', omniboard: 'linepbx:omniboard' };
   const seen = new Set<string>();
