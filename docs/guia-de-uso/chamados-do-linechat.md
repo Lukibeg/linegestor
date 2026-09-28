@@ -15,7 +15,9 @@ uma cópia do painel e a atualiza sozinho. Ligar é coisa de uma vez, feita por 
    No fim aparece algo como *"Leitura completa: 3.194 cards lidos, 3.194 novos."*
 
 Pronto: o menu **Chamados** já mostra os números, e o Gestor passa a buscar sozinho, a cada minuto,
-o que mudou. De madrugada (às 4h) ele relê o painel inteiro para conferir.
+o que mudou. A cada 10 minutos ele confere os chamados da última semana e, à meia-noite, relê o
+painel inteiro: é assim que o card **excluído no LineChat** sai da tela (excluir não conta como
+mudança para a leitura de minuto em minuto).
 
 ## Conferir que está funcionando
 
@@ -33,6 +35,9 @@ o que mudou. De madrugada (às 4h) ele relê o painel inteiro para conferir.
 | *O LineChat não encontrou esse painel (404)* | O painel foi apagado ou trocado. **Buscar painéis** e escolha de novo. |
 | *Não consegui falar com o LineChat* | O LineChat ou a internet do servidor estão fora. A leitura tenta de novo sozinha a cada minuto. |
 | *Atenção: o LineChat devolveu N cards, e aqui há M* | Veio muito menos do que o esperado. Nada foi marcado como excluído. Confira o painel e a chave. |
+| *Atenção: dos N chamados abertos nos últimos 7 dias, o LineChat não devolveu M* | O mesmo, na conferência de 10 em 10 minutos. Nada foi marcado. |
+| Um card excluído no LineChat ainda aparece | Se ele foi aberto na última semana, some em até 10 minutos; se é mais antigo, à meia-noite. Para tirar na hora: **Reler tudo**. |
+| Um card sumiu dos Chamados, mas existe no LineChat | Veja em **Excluídos no LineChat** (Ajustes): o código abre o card lá. **Reler tudo** o traz de volta. |
 
 Se a leitura ficar 15 minutos seguidos falhando, o Gestor manda **um** aviso pelo mesmo caminho dos
 avisos do sistema (o WhatsApp, se estiver configurado em Ajustes › Avisos).
@@ -93,6 +98,8 @@ depois.
 - **Os chamados**, com etapa, responsável, vencimento, etiquetas e os campos do card.
 - **Cada mudança de etapa**, com a hora. O LineChat não entrega esse histórico pela API: quem anota
   é o Gestor, a partir da primeira leitura. É daí que vai sair o tempo em cada nível.
-- **O que foi excluído no LineChat** fica marcado e sai das contas, mas não é apagado.
+- **O que foi excluído no LineChat** fica marcado e sai das contas, mas não é apagado. A lista está
+  em Ajustes › Chamados do LineChat › **Excluídos no LineChat**, com o código de cada card; se ele
+  reaparecer no LineChat, volta sozinho.
 
 Os chamados continuam sendo abertos e trabalhados **no LineChat**. O Gestor só lê.

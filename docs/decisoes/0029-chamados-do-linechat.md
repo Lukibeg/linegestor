@@ -24,7 +24,7 @@ Os problemas dessa montagem:
   LineMóvel (Suporte e Financeiro) e Labchecap; esses ficam de fora por decisão do Luan (23/09).
 - **Sincronização dentro do próprio Gestor** (`apps/api/src/services/linechat.ts`), sem serviço novo:
   - a cada minuto, a leitura **recente** pede ao LineChat só o que mudou (`UpdatedAt.After`);
-  - na primeira vez, às 4h e depois de 26 h sem ela, a **completa** relê o painel inteiro (uns 45 s
+  - na primeira vez, às 4h (**meia-noite desde o 1.5**, ver 0033) e depois de 26 h sem ela, a **completa** relê o painel inteiro (uns 45 s
     para 3,2 mil cards), atualiza etapas, campos e etiquetas e marca o que sumiu de lá;
   - se a completa devolver menos da metade do que temos, **ninguém é marcado como excluído**: o mais
     provável é token ou painel errado, e a tela avisa;

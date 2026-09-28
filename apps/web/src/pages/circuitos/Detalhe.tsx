@@ -6,13 +6,13 @@ import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { api } from '../../api/index.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Campo, CampoSegredo, Carregando, Chip, Confirmar, Kpi, Modal, Spinner, TODOS, usePaginaLocal, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Campo, CampoSegredo, Carregando, Chip, Confirmar, EscolherComBusca, Kpi, Modal, Spinner, TODOS, usePaginaLocal, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { didFormatado, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { CircuitoForm } from './Lista.js';
 import { Voltar } from '../../lib/voltar.js';
 import { TdN, ThN } from '../../lib/contagem.js';
-import { UsoDid } from '../clientes/Ficha.js';
+import { ClienteDoDid, ObservacaoDid, UsoDid, useEditarDid, useOpcoesDeCliente } from '../dids/partes.js';
 
 export function CircuitoDetalhe() {
   const { id = '' } = useParams();
@@ -23,12 +23,9 @@ export function CircuitoDetalhe() {
   const [editar, setEditar] = useState(false); const [faixa, setFaixa] = useState(false); const [excluir, setExcluir] = useState(false); const [busy, setBusy] = useState(false);
   const o = useOrdenacaoLocal('number');
   const ordenados = ordenarLista(dids.data?.items ?? [], o, { number: (d) => d.number, clientName: (d) => d.clientName, inUse: (d) => (d.clientId ? (d.inUse ? 1 : 0) : null), ownerName: (d) => d.ownerName, note: (d) => d.note });
-  const [mudando, setMudando] = useState<string | null>(null);
-  const alternarUso = async (didId: string, inUse: boolean) => {
-    setMudando(didId);
-    try { await api.dids.update(didId, { inUse }); await Promise.all([qc.invalidateQueries({ queryKey: ['circuit-dids', id] }), qc.invalidateQueries({ queryKey: ['dids'] }), qc.invalidateQueries({ queryKey: ['client-dids'] })]); }
-    catch (e) { toast.push('erro', mensagemErro(e)); } finally { setMudando(null); }
-  };
+  // 1.5: cliente, uso e observação se editam na própria linha, como na Numeração e na ficha do cliente
+  const { mudando, alternarUso, gravarObservacao, trocarCliente } = useEditarDid();
+  const opcoesCliente = useOpcoesDeCliente(can('dids.assign'));
   const pg = usePaginaLocal(ordenados, 100);
   if (q.isLoading) return <Carregando />;
   if (!q.data) return <Vazio titulo="Circuito não encontrado" acao={<Link className="btn-secondary" to="/circuitos">Voltar</Link>} />;
@@ -67,9 +64,9 @@ export function CircuitoDetalhe() {
           <div className="px-4 py-3 border-b border-line flex items-center justify-between"><span className="font-display font-semibold">DIDs deste circuito</span><Link className="link text-sm" to={`/circuitos?aba=numeracao&circuito=${c.id}`}>abrir na Numeração para editar em massa</Link></div>
           {dids.isLoading ? <Carregando /> : !dids.data?.items.length ? <div className="p-6 text-muted text-sm">Nenhum DID ainda. Crie uma faixa.</div> : (
             <table className="table"><thead><tr><ThN /><Th o={o} col="number">Número</Th><Th o={o} col="clientName">Cliente</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
-              <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum">{d.numberFormatted}</td><td>{d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <span className="chip bg-ok-soft text-ok">livre</span>}</td>
+              <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum whitespace-nowrap">{d.numberFormatted}</td><td><ClienteDoDid d={d} clientes={opcoesCliente} podeEditar={can('dids.assign')} trocar={(novo, nome) => trocarCliente(d.id, d.numberFormatted, novo, nome)} /></td>
                 <td>{d.clientId ? <UsoDid inUse={d.inUse} podeMudar={can('dids.assign')} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /> : <span className="text-muted">—</span>}</td>
-                <td className="text-muted">{d.ownerName ?? '—'}</td><td className="text-muted">{d.note}</td></tr>)}</tbody></table>
+                <td className="text-muted">{d.ownerName ?? '—'}</td><td className="min-w-[140px]"><ObservacaoDid nota={d.note} podeEditar={can('dids.assign')} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td></tr>)}</tbody></table>
           )}
           {!!dids.data?.items.length && <div className="px-4 pb-3">{pg.rodape}</div>}
         </div>
@@ -106,7 +103,7 @@ export function FaixaForm({ open, onClose, circuitId, onDone }: { open: boolean;
         </div>
         {/* todo DID nasce dentro de um circuito: sem escolher, o botão fica desligado */}
         {!circuitId && <Campo label="Circuito" dica="obrigatório: todo DID pertence a um circuito"><select className="input" value={f.circuitId} onChange={(e) => setF({ ...f, circuitId: e.target.value })}><option value="">Escolha o circuito…</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name} · {c.code}</option>)}</select></Campo>}
-        <Campo label="Cliente (uso)" dica="deixe vazio para criar livres"><select className="input" value={f.clientId} onChange={(e) => setF({ ...f, clientId: e.target.value })}><option value="">livre</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>
+        <Campo label="Cliente (uso)" dica="deixe vazio para criar livres"><EscolherComBusca className="input w-full" valor={f.clientId} onChange={(v) => setF({ ...f, clientId: v })} vazio="livre" opcoes={(clients.data ?? []).map((c) => ({ id: c.id, nome: c.name }))} procurar="Procurar cliente…" rotulo="Cliente dos números" /></Campo>
         {preview && <div className="card p-3 text-sm bg-accent-soft border-transparent text-accent-ink font-mono">{preview}</div>}
         {err && <div className="text-bad text-sm">{err}</div>}
       </div>

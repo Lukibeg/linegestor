@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { Check, Pencil, Plus, X } from 'lucide-react';
+import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { CAMPOS_PROPRIOS } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import type { Product, ProductModule, Role, User } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
@@ -146,6 +147,9 @@ function Produtos() {
   const q = useQuery({ queryKey: ['products'], queryFn: api.admin.products }); const qc = useQueryClient(); const toast = useToast();
   const [novoModulo, setNovoModulo] = useState<Product | null>(null);
   const [novoProduto, setNovoProduto] = useState(false);
+  const [editarProduto, setEditarProduto] = useState<Product | null>(null);
+  const [editarModulo, setEditarModulo] = useState<{ p: Product; m: ProductModule } | null>(null);
+  const [excluirModulo, setExcluirModulo] = useState<{ p: Product; m: ProductModule } | null>(null);
   const [excluir, setExcluir] = useState<Product | null>(null);
   const [busy, setBusy] = useState(false);
   const doExcluir = async () => {
@@ -155,6 +159,15 @@ function Produtos() {
       await api.admin.removeProduct(excluir.id);
       await Promise.all(['products', 'clients', 'client', 'trash', 'dashboard'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
       toast.push('ok', `${excluir.name} foi para a lixeira`); setExcluir(null);
+    } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); }
+  };
+  const doExcluirModulo = async () => {
+    if (!excluirModulo) return;
+    setBusy(true);
+    try {
+      await api.admin.removeModule(excluirModulo.p.id, excluirModulo.m.id);
+      await Promise.all(['products', 'clients', 'client', 'trash'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+      toast.push('ok', `${excluirModulo.m.name} foi para a lixeira`); setExcluirModulo(null);
     } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); }
   };
   const upd = async (id: string, d: Record<string, unknown>) => { try { await api.admin.updateProduct(id, d); await qc.invalidateQueries({ queryKey: ['products'] }); } catch (e) { toast.push('erro', mensagemErro(e)); } };
@@ -171,9 +184,13 @@ function Produtos() {
           <div className="p-3 flex flex-wrap items-center gap-3 border-b border-line">
             <Chip color={p.color}>{p.name}</Chip>
             <span className="font-mono text-muted text-[12.5px]">{p.code}</span>
-            <span className="text-ink-2 text-[13px] flex-1 min-w-[200px]">{p.description}</span>
+            <span className="text-ink-2 text-[13px] flex-1 min-w-[200px]">
+              {p.description}
+              {/* o que era "config. própria": agora diz quais campos a ficha do cliente guarda */}
+              {p.hasSettings && CAMPOS_PROPRIOS[p.code] && <span className="block text-[12px] text-muted">Na ficha do cliente: {CAMPOS_PROPRIOS[p.code]}</span>}
+            </span>
+            <button className="btn-ghost btn-sm text-muted" onClick={() => setEditarProduto(p)} aria-label={`Editar ${p.name}`} title="Editar nome e descrição"><Pencil size={13} /> Editar</button>
             <label className="flex items-center gap-1 text-[12.5px] text-muted">cor <input type="color" value={p.color} onChange={(e) => upd(p.id, { color: e.target.value })} className="w-8 h-6 border-0 bg-transparent cursor-pointer" /></label>
-            {p.hasSettings && <span className="text-[12px] text-muted">config. própria</span>}
             {p.activeClients != null && <span className="text-[12px] text-muted tnum">{p.activeClients} cliente(s)</span>}
             <Toggle checked={p.active} onChange={(v) => upd(p.id, { active: v })} label="ativo" />
             {p.protegido
@@ -184,37 +201,59 @@ function Produtos() {
             <div className="flex items-center justify-between mb-2"><span className="eyebrow">Módulos</span><button className="btn-ghost btn-sm" onClick={() => setNovoModulo(p)}><Plus size={14} /> novo módulo</button></div>
             {p.modules.length === 0 ? <div className="text-muted text-[12.5px]">Este produto não tem módulos.</div> : (
               // no celular a tabela rola dentro do cartão, e não a página inteira para o lado
-              <div className="overflow-x-auto"><table className="table"><thead><tr><ThN /><th>Módulo</th><th>Código</th><th>Descrição</th><th>Config. própria</th><th>Ativo</th></tr></thead>
-                <tbody>{p.modules.map((m, i) => <tr key={m.id}><TdN n={contar(i)} /><td className="font-medium">{m.name}</td><td className="font-mono text-muted">{m.code}</td><td className="text-ink-2 text-[13px]">{m.description}</td><td>{m.hasSettings ? 'sim' : '—'}</td><td><Toggle checked={m.active} onChange={(v) => updModulo(p, m, { active: v })} /></td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="table"><thead><tr><ThN /><th>Módulo</th><th>Código</th><th>Descrição</th><th title="O que a ficha do cliente guarda para este módulo, além da data e das anotações">Campos na ficha do cliente</th><th className="text-right">Clientes</th><th>Ativo</th><th /></tr></thead>
+                <tbody>{p.modules.map((m, i) => <tr key={m.id}><TdN n={contar(i)} /><td className="font-medium">{m.name}</td><td className="font-mono text-muted">{m.code}</td><td className="text-ink-2 text-[13px]">{m.description}</td>
+                  <td className="text-[13px]">{CAMPOS_PROPRIOS[`${p.code}:${m.code}`] ?? <span className="text-muted">só data e anotações</span>}</td>
+                  <td className="text-right tnum">{m.activeClients ?? 0}</td>
+                  <td><Toggle checked={m.active} onChange={(v) => updModulo(p, m, { active: v })} /></td>
+                  <td className="text-right whitespace-nowrap">
+                    <button className="btn-ghost btn-sm text-muted" onClick={() => setEditarModulo({ p, m })} aria-label={`Editar o módulo ${m.name}`} title="Editar nome e descrição"><Pencil size={13} /></button>
+                    {m.protegido
+                      ? <span className="text-[11.5px] text-muted ml-1" title="O sistema guarda campos deste módulo na ficha do cliente. Se não quiser vê-lo, desligue o ativo.">do sistema</span>
+                      : <button className="btn-ghost btn-sm text-bad" onClick={() => setExcluirModulo({ p, m })} aria-label={`Excluir o módulo ${m.name}`} title="Mandar para a lixeira"><Trash2 size={13} /></button>}
+                  </td></tr>)}</tbody></table></div>
             )}
           </div>
         </div>
       ))}
       {novoModulo && <ModuloCatalogoForm product={novoModulo} onClose={() => setNovoModulo(null)} />}
+      {editarModulo && <ModuloCatalogoForm product={editarModulo.p} modulo={editarModulo.m} onClose={() => setEditarModulo(null)} />}
       {novoProduto && <ProdutoCatalogoForm onClose={() => setNovoProduto(false)} />}
+      {editarProduto && <ProdutoCatalogoForm produto={editarProduto} onClose={() => setEditarProduto(null)} />}
+      <Confirmar open={!!excluirModulo} onClose={() => setExcluirModulo(null)} onConfirm={doExcluirModulo} loading={busy} perigoso titulo="Excluir módulo" botao="Mandar para a lixeira"
+        digitar={excluirModulo && (excluirModulo.m.activeClients ?? 0) > 0 ? excluirModulo.m.name : undefined}
+        texto={<>O módulo <b>{excluirModulo?.p.name} › {excluirModulo?.m.name}</b> some desta lista, das fichas e dos filtros.{(excluirModulo?.m.activeClients ?? 0) > 0 && <> Hoje <b>{excluirModulo?.m.activeClients} cliente(s)</b> têm o módulo ligado: as ligações ficam guardadas e voltam se você restaurar.</>} Dá para restaurar em Administração → Lixeira.</>} />
       <Confirmar open={!!excluir} onClose={() => setExcluir(null)} onConfirm={doExcluir} loading={busy} perigoso digitar={excluir && (excluir.activeClients ?? 0) > 0 ? excluir.name : undefined} titulo="Excluir produto" botao="Mandar para a lixeira"
         texto={<>O produto <b>{excluir?.name}</b> some das fichas, dos filtros e dos cartões.{(excluir?.activeClients ?? 0) > 0 && <> Hoje <b>{excluir?.activeClients} cliente(s)</b> assinam: as assinaturas ficam guardadas e voltam se você restaurar o produto.</>} Dá para restaurar em Administração → Lixeira.</>} />
     </div>
   );
 }
 
-/** Um produto novo no portfólio. O código sai do nome; a cor é a do chip nas telas. */
-function ProdutoCatalogoForm({ onClose }: { onClose: () => void }) {
+/**
+ * Um produto novo no portfólio — ou editar o nome e a descrição de um que já existe (1.5). O código
+ * sai do nome e não muda depois: é por ele que o sistema e a importação acham o produto.
+ */
+function ProdutoCatalogoForm({ onClose, produto }: { onClose: () => void; produto?: Product }) {
   const qc = useQueryClient(); const toast = useToast();
-  const [f, setF] = useState({ name: '', code: '', color: '#2457D6', description: '' });
+  const [f, setF] = useState({ name: produto?.name ?? '', code: produto?.code ?? '', color: produto?.color ?? '#2457D6', description: produto?.description ?? '' });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const code = f.code || f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
   const save = async () => {
     setBusy(true); setErr('');
-    try { await api.admin.createProduct({ name: f.name.trim(), code, color: f.color, description: f.description.trim() || null }); await qc.invalidateQueries({ queryKey: ['products'] }); toast.push('ok', `Produto ${f.name} criado`); onClose(); }
+    try {
+      if (produto) await api.admin.updateProduct(produto.id, { name: f.name.trim(), color: f.color, description: f.description.trim() || null });
+      else await api.admin.createProduct({ name: f.name.trim(), code, color: f.color, description: f.description.trim() || null });
+      await Promise.all(['products', 'clients', 'client'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+      toast.push('ok', produto ? `${f.name} salvo` : `Produto ${f.name} criado`); onClose();
+    }
     catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
   return (
-    <Modal open onClose={onClose} titulo="Novo produto" rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name.trim() || !code} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Criar'}</button></>}>
+    <Modal open onClose={onClose} titulo={produto ? `Editar ${produto.name}` : 'Novo produto'} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name.trim() || !code} onClick={save}>{busy ? <Spinner className="text-white" /> : produto ? 'Salvar' : 'Criar'}</button></>}>
       <div className="flex flex-col gap-3">
         <Campo label="Nome"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus placeholder="ex.: LineBot" /></Campo>
         <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
-          <Campo label="Código" dica="gerado do nome; só letras minúsculas, números e _"><input className="input font-mono" value={code} onChange={(e) => setF({ ...f, code: e.target.value })} /></Campo>
+          <Campo label="Código" dica={produto ? 'não muda: é por ele que o sistema acha o produto' : 'gerado do nome; só letras minúsculas, números e _'}><input className="input font-mono" value={code} disabled={!!produto} onChange={(e) => setF({ ...f, code: e.target.value })} /></Campo>
           <Campo label="Cor"><input type="color" className="h-[38px] w-14 border border-line rounded-lg bg-transparent cursor-pointer" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} /></Campo>
         </div>
         <Campo label="Descrição" dica="uma frase"><input className="input" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Campo>
@@ -225,21 +264,26 @@ function ProdutoCatalogoForm({ onClose }: { onClose: () => void }) {
   );
 }
 
-function ModuloCatalogoForm({ product, onClose }: { product: Product; onClose: () => void }) {
+/** Um módulo novo no produto — ou editar o nome e a descrição de um que já existe (1.5). O código não muda. */
+function ModuloCatalogoForm({ product, modulo, onClose }: { product: Product; modulo?: ProductModule; onClose: () => void }) {
   const qc = useQueryClient(); const toast = useToast();
-  const [f, setF] = useState({ name: '', code: '', description: '' });
+  const [f, setF] = useState({ name: modulo?.name ?? '', code: modulo?.code ?? '', description: modulo?.description ?? '' });
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const code = f.code || f.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
   const save = async () => {
     setBusy(true); setErr('');
-    try { await api.admin.upsertModule(product.id, { name: f.name, code, description: f.description || null }); await qc.invalidateQueries({ queryKey: ['products'] }); toast.push('ok', `Módulo ${f.name} criado em ${product.name}`); onClose(); }
+    try {
+      await api.admin.upsertModule(product.id, { name: f.name.trim(), code, description: f.description.trim() || null });
+      await Promise.all(['products', 'clients', 'client'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
+      toast.push('ok', modulo ? `${f.name} salvo` : `Módulo ${f.name} criado em ${product.name}`); onClose();
+    }
     catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
   return (
-    <Modal open onClose={onClose} titulo={<span className="flex items-center gap-2">Novo módulo em <Chip color={product.color}>{product.name}</Chip></span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Criar'}</button></>}>
+    <Modal open onClose={onClose} titulo={<span className="flex items-center gap-2">{modulo ? 'Editar módulo' : 'Novo módulo'} em <Chip color={product.color}>{product.name}</Chip></span>} rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name.trim()} onClick={save}>{busy ? <Spinner className="text-white" /> : modulo ? 'Salvar' : 'Criar'}</button></>}>
       <div className="flex flex-col gap-3">
         <Campo label="Nome"><input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus placeholder="ex.: Gravação de chamadas" /></Campo>
-        <Campo label="Código" dica="gerado do nome; só letras minúsculas, números e _"><input className="input font-mono" value={code} onChange={(e) => setF({ ...f, code: e.target.value })} /></Campo>
+        <Campo label="Código" dica={modulo ? 'não muda: é por ele que o sistema e a importação acham o módulo' : 'gerado do nome; só letras minúsculas, números e _'}><input className="input font-mono" value={code} disabled={!!modulo} onChange={(e) => setF({ ...f, code: e.target.value })} /></Campo>
         <Campo label="Descrição" dica="uma frase"><input className="input" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} /></Campo>
         {err && <div className="text-bad text-sm">{err}</div>}
       </div>
@@ -278,7 +322,7 @@ function Auditoria() {
 
 function Lixeira() {
   const q = useQuery({ queryKey: ['trash'], queryFn: api.admin.trash }); const qc = useQueryClient(); const toast = useToast();
-  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', releaseNote: 'Novidades' };
+  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', productModule: 'Módulo', releaseNote: 'Novidades', project: 'Projeto' };
   const o = useOrdenacaoLocal('deletedAt', 'desc');
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;

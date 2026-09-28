@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom';
 import { ClipboardList, X } from 'lucide-react';
 import { api } from '../../api/index.js';
 import type { Device } from '../../api/types.js';
-import { Campo, Chip, Modal, Spinner, TODOS, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Campo, Chip, EscolherComBusca, Modal, Spinner, TODOS, mensagemErro, useToast } from '../../components/ui/index.js';
 import { CONDICOES_APARELHO, lerLista, macLimpo, MODALIDADES, serieLimpa } from '../../lib/format.js';
 
 const NOVA = '__nova__';
@@ -124,8 +124,8 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
             </select>
           </Campo>
           {devolucao
-            ? <Campo label="Devolvido por (cliente)" dica="só clientes que estão com aparelho nosso"><select className="input" value={fromClientId} onChange={(e) => { setFrom(e.target.value); setEscolhidos([]); }}><option value="">{comAparelho.data && !comAparelho.data.length ? 'Nenhum cliente está com aparelho' : 'Selecione…'}</option>{comAparelho.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>
-            : <Campo label="Cliente de destino" dica="só clientes que assinam Equipamentos"><select className="input" value={toClientId} onChange={(e) => setTo(e.target.value)}><option value="">Selecione…</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Campo>}
+            ? <Campo label="Devolvido por (cliente)" dica="só clientes que estão com aparelho nosso"><EscolherComBusca className="input w-full" valor={fromClientId} onChange={(v) => { setFrom(v); setEscolhidos([]); }} placeholder={comAparelho.data && !comAparelho.data.length ? 'Nenhum cliente está com aparelho' : 'Selecione…'} opcoes={(comAparelho.data ?? []).map((c) => ({ id: c.id, nome: c.name }))} rotulo="Devolvido por (cliente)" procurar="Procurar cliente…" /></Campo>
+            : <Campo label="Cliente de destino" dica="só clientes que assinam Equipamentos"><EscolherComBusca className="input w-full" valor={toClientId} onChange={setTo} placeholder="Selecione…" opcoes={(clients.data ?? []).map((c) => ({ id: c.id, nome: c.name }))} rotulo="Cliente de destino" procurar="Procurar cliente…" /></Campo>}
           <Campo label="Condição" dica="vazio = manter como está">
             <select className="input" value={newCondition} onChange={(e) => setCond(e.target.value)}>
               <option value="">manter atual</option>

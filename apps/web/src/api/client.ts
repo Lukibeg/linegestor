@@ -184,6 +184,7 @@ export const realApi: Api = {
     updateProduct: (id, d) => http('PATCH', `/admin/products/${id}`, d),
     removeProduct: (id) => http('DELETE', `/admin/products/${id}`),
     upsertModule: (productId, d) => http('PUT', `/admin/products/${productId}/modules`, d),
+    removeModule: (productId, moduleId) => http('DELETE', `/admin/products/${productId}/modules/${moduleId}`),
     audit: (q) => http('GET', `/admin/audit${qs(q)}`),
     trash: () => http('GET', '/admin/trash'),
     restore: (type, id) => http('POST', `/admin/trash/${type}/${id}/restore`),

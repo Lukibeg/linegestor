@@ -25,7 +25,11 @@ const StatusLineChat = z.object({
   ativo: z.boolean(), url: z.string(), appUrl: z.string(), painelId: z.string(), painelNome: z.string(), temToken: z.boolean(),
   inicioEm: z.string().nullable(), ultimaEm: z.string().nullable(), ultimaOk: z.boolean().nullable(), ultimaMsg: z.string().nullable(),
   ultimaCompletaEm: z.string().nullable(),
-  totais: z.object({ cards: z.number(), ativos: z.number(), arquivados: z.number(), movimentos: z.number() }),
+  totais: z.object({ cards: z.number(), ativos: z.number(), arquivados: z.number(), movimentos: z.number(), excluidos: z.number() }),
+  /** os marcados como excluídos no LineChat (os mais recentes primeiro): saíram da tela e das contas, mas continuam guardados */
+  excluidos: z.array(z.object({
+    id: z.string(), key: z.string().nullable(), number: z.number().nullable(), title: z.string(), createdAt: z.date(), removedAt: z.date().nullable(),
+  })),
   execucoes: z.array(z.object({
     id: z.string(), kind: z.string(), trigger: z.string(), startedAt: z.date(), finishedAt: z.date().nullable(), ok: z.boolean(), message: z.string().nullable(),
   })),
@@ -125,6 +129,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       ativo: valor.ativo, url: valor.url, appUrl: valor.appUrl, painelId: valor.painelId, painelNome: valor.painelNome, temToken: temSegredo,
       inicioEm: valor.inicioEm, ultimaEm: valor.ultimaEm, ultimaOk: valor.ultimaOk, ultimaMsg: valor.ultimaMsg, ultimaCompletaEm: valor.ultimaCompletaEm,
       totais: await linechat.totais(app.db, valor.painelId),
+      excluidos: await linechat.cardsExcluidos(app.db, valor.painelId),
       execucoes: await linechat.ultimasExecucoes(app.db),
     };
   };

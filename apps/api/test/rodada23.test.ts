@@ -83,7 +83,7 @@ describe('rede padrão dos aparelhos', () => {
   });
 });
 
-describe('FOP2: senha do ramal admin (1.4, decisão 0032, revendo a 0025)', () => {
+describe('FOP2: senha do ramal admin (1.4, decisão 0032) e a do usuário padrão de volta (1.5, decisão 0034)', () => {
   it('guarda a senha do ramal admin no cofre e a ficha só diz que ela existe', async () => {
     await s.put(`/clients/${clientId}/subscriptions`, { productCode: 'linepbx' });
     const r = await s.put(`/clients/${clientId}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', settings: { adminExtension: '1000', adminPassword: 'fop2#admin' } });
@@ -91,27 +91,36 @@ describe('FOP2: senha do ramal admin (1.4, decisão 0032, revendo a 0025)', () =
     const f2 = r.json().subscriptions.find((x: any) => x.productCode === 'linepbx').modules.find((x: any) => x.moduleCode === 'fop2');
     expect(f2.settings.adminExtension).toBe('1000');
     expect(f2.settings.adminPassword.hasSecret).toBe(true);
-    expect(f2.settings).not.toHaveProperty('defaultUserPassword');
+    expect(f2.settings.defaultUserPassword.hasSecret).toBe(false);
     expect(JSON.stringify(r.json())).not.toContain('fop2#admin');
     const revelada = await s.post(`/secrets/${f2.settings.adminPassword.secretId}/reveal`, { password: 'SenhaDeTeste!123' });
     expect(revelada.json().value).toBe('fop2#admin');
   });
 
-  it('a senha do usuário padrão não é mais aceita, e a que já estava guardada continua no cofre', async () => {
+  it('a senha do usuário padrão voltou: a guardada antes do 1.4 reaparece, e dá para trocar', async () => {
     const ficha = (await s.get(`/clients/${clientId}`)).json();
     const f2 = ficha.subscriptions.find((x: any) => x.productCode === 'linepbx').modules.find((x: any) => x.moduleCode === 'fop2');
     // simula a senha de antes do 1.4: a coluna antiga apontando para um segredo do cofre
     const antiga = f2.settings.adminPassword.secretId;
     await app.db.execute(sql`update fop2_settings set default_user_password_secret_id = ${antiga} where subscription_module_id = ${f2.id}`);
-    const r = await s.put(`/clients/${clientId}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', settings: { adminExtension: '2000', defaultUserPassword: 'nao-deve-entrar' } });
+    const volta = (await s.get(`/clients/${clientId}`)).json().subscriptions.find((x: any) => x.productCode === 'linepbx').modules.find((x: any) => x.moduleCode === 'fop2');
+    expect(volta.settings.defaultUserPassword).toMatchObject({ hasSecret: true, secretId: antiga });
+
+    // salvar sem a senha mantém a guardada; com a senha, grava no cofre (no mesmo segredo)
+    const r0 = await s.put(`/clients/${clientId}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', settings: { adminExtension: '2000' } });
+    expect(r0.json().subscriptions.find((x: any) => x.productCode === 'linepbx').modules.find((x: any) => x.moduleCode === 'fop2').settings.defaultUserPassword.secretId).toBe(antiga);
+
+    await app.db.execute(sql`update fop2_settings set default_user_password_secret_id = null where subscription_module_id = ${f2.id}`);
+    const r = await s.put(`/clients/${clientId}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', settings: { adminExtension: '2000', defaultUserPassword: 'ramal#padrao' } });
     expect(r.statusCode).toBe(200);
+    expect(JSON.stringify(r.json())).not.toContain('ramal#padrao');
     const depois = r.json().subscriptions.find((x: any) => x.productCode === 'linepbx').modules.find((x: any) => x.moduleCode === 'fop2');
     expect(depois.settings.adminExtension).toBe('2000');
-    expect(depois.settings).not.toHaveProperty('defaultUserPassword');
-    const linha = (await app.db.execute(sql`select default_user_password_secret_id as d from fop2_settings where subscription_module_id = ${f2.id}`)) as any;
-    expect((linha.rows ?? linha)[0].d).toBe(antiga);
+    expect(depois.settings.defaultUserPassword.hasSecret).toBe(true);
+    const revelada = await s.post(`/secrets/${depois.settings.defaultUserPassword.secretId}/reveal`, { password: 'SenhaDeTeste!123' });
+    expect(revelada.json().value).toBe('ramal#padrao');
     const segredos = (await app.db.execute(sql`select count(*)::int as n from secrets where label like 'Senha do usuário padrão do FOP2%'`)) as any;
-    expect((segredos.rows ?? segredos)[0].n).toBe(0);
+    expect((segredos.rows ?? segredos)[0].n).toBe(1);
   });
 });
 

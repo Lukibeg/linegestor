@@ -8,7 +8,7 @@ import type { Device, DeviceModel } from '../../api/types.js';
 import { ApiError } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can } from '../../lib/auth.js';
-import { Abas, Campo, CampoLogo, Carregando, Chip, Confirmar, FotoModelo, Identificacao, InputIp, Kpi, Modal, Paginacao, Spinner, TODOS, usePaginaLocal, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoLogo, Carregando, Chip, Confirmar, EscolherComBusca, FotoModelo, Identificacao, InputIp, Kpi, Modal, Paginacao, Spinner, TODOS, usePaginaLocal, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { centavosParaCampo, condicaoCor, condicaoNome, CONDICOES_APARELHO, data, lerLista, macFormatado, macLimpo, macValido, MODALIDADES, paraCentavos, reais, serieLimpa } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { SeletorColunas, useColunasEscolhidas, type Coluna } from '../../lib/colunas.js';
@@ -113,12 +113,8 @@ function Aparelhos({ models }: { models: DeviceModel[] }) {
       <div className="card p-3 mb-3 flex flex-wrap gap-2 items-center">
         <input className="input max-w-[220px] font-mono" placeholder="MAC, N/S, unidade ou IP" value={q} onChange={(e) => set('q', e.target.value)} />
         <select className="input w-auto" value={modelId} onChange={(e) => set('modelo', e.target.value || null)}><option value="">Todos os modelos</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-        <select className="input w-auto" value={clientId} onChange={(e) => set('cliente', e.target.value || null)} aria-label="Atribuído a">
-          <option value="">Estoque e clientes</option>
-          <option value="stock">Só estoque</option>
-          <option value="clients">Só em clientes</option>
-          <optgroup label="Um cliente">{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</optgroup>
-        </select>
+        <EscolherComBusca className="input w-[220px] max-w-full" valor={clientId} onChange={(v) => set('cliente', v || null)} rotulo="Atribuído a" procurar="Procurar cliente…" vazio="Estoque e clientes"
+          opcoes={[{ id: 'stock', nome: 'Só estoque' }, { id: 'clients', nome: 'Só em clientes' }, ...(clients.data ?? []).map((c) => ({ id: c.id, nome: c.name }))]} />
         <select className="input w-auto" value={condition} onChange={(e) => set('condicao', e.target.value || null)}><option value="">Ativos e inativos</option>{Object.entries(CONDICOES_APARELHO).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
         <span className="flex-1" />
         <SeletorColunas colunas={colunas} escolha={escolha} />
@@ -423,7 +419,7 @@ function Movimentacoes({ models }: { models: DeviceModel[] }) {
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2">
         <select className="input w-auto" value={modality} onChange={(e) => set('modalidade', e.target.value || null)}><option value="">Todas as modalidades</option>{Object.entries(MODALIDADES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
-        <select className="input w-auto" value={clientId} onChange={(e) => set('cliente', e.target.value || null)}><option value="">Todos os clientes</option>{clients.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        <EscolherComBusca className="input w-[220px] max-w-full" valor={clientId} onChange={(v) => set('cliente', v || null)} vazio="Todos os clientes" opcoes={(clients.data ?? []).map((c) => ({ id: c.id, nome: c.name }))} rotulo="Filtrar por cliente" procurar="Procurar cliente…" />
         <select className="input w-auto" value={modelId} onChange={(e) => set('modelo', e.target.value || null)} aria-label="Modelo"><option value="">Todos os modelos</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
         <input className="input max-w-[220px] font-mono" placeholder="MAC ou N/S de um aparelho" value={q} onChange={(e) => set('q', e.target.value)} aria-label="Buscar aparelho" />
         <input type="date" className="input w-auto" value={from} onChange={(e) => set('de', e.target.value || null)} /><input type="date" className="input w-auto" value={to} onChange={(e) => set('ate', e.target.value || null)} />

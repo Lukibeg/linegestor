@@ -180,7 +180,7 @@ async function enrich(db: Db, rows: (typeof clients.$inferSelect)[]): Promise<Cl
   const mods = await db
     .select({ subId: subscriptionModules.subscriptionId, code: productModules.code, name: productModules.name, activatedAt: subscriptionModules.activatedAt, sort: productModules.sortOrder })
     .from(subscriptionModules).innerJoin(productModules, eq(productModules.id, subscriptionModules.moduleId))
-    .where(and(inArray(subscriptionModules.subscriptionId, subIds), isNull(subscriptionModules.deactivatedAt)))
+    .where(and(inArray(subscriptionModules.subscriptionId, subIds), isNull(subscriptionModules.deactivatedAt), isNull(productModules.deletedAt)))
     .orderBy(asc(productModules.sortOrder));
   const lps = await db.select({ s: linepbxSettings, hostingName: hostingProviders.name }).from(linepbxSettings).leftJoin(hostingProviders, eq(hostingProviders.id, linepbxSettings.hostingId))
     .where(inArray(linepbxSettings.subscriptionId, subs.filter((s) => s.code === 'linepbx').map((s) => s.subId).concat(['-'])));
@@ -227,8 +227,9 @@ export async function get(db: Db, id: string) {
       id: subscriptionModules.id, subId: subscriptionModules.subscriptionId, moduleCode: productModules.code, moduleName: productModules.name, hasSettings: productModules.hasSettings,
       activatedAt: subscriptionModules.activatedAt, deactivatedAt: subscriptionModules.deactivatedAt, notes: subscriptionModules.notes, sort: productModules.sortOrder,
     })
+    // módulo na lixeira some da ficha (a ligação fica guardada e volta com ele)
     .from(subscriptionModules).innerJoin(productModules, eq(productModules.id, subscriptionModules.moduleId))
-    .where(inArray(subscriptionModules.subscriptionId, subIds)).orderBy(asc(productModules.sortOrder));
+    .where(and(inArray(subscriptionModules.subscriptionId, subIds), isNull(productModules.deletedAt))).orderBy(asc(productModules.sortOrder));
   const modIds = mods.map((m) => m.id).concat(['-']);
   const [lps, szs, f2s, oms] = await Promise.all([
     db.select({ s: linepbxSettings, hostingName: hostingProviders.name }).from(linepbxSettings).leftJoin(hostingProviders, eq(hostingProviders.id, linepbxSettings.hostingId)).where(inArray(linepbxSettings.subscriptionId, subIds)),
@@ -249,8 +250,8 @@ export async function get(db: Db, id: string) {
       let ms: Record<string, unknown> | null = null;
       if (m.moduleCode === 'fop2') {
         const f = f2s.find((x) => x.subscriptionModuleId === m.id);
-        // a senha do usuário padrão (até o 1.4) fica guardada no cofre, mas não aparece mais (decisão 0032)
-        if (f) ms = { adminExtension: f.adminExtension, adminPassword: secretRef(f.adminPasswordSecretId) };
+        // as duas senhas: a do ramal admin (1.4) e a do usuário padrão, que voltou no 1.5 (decisão 0034)
+        if (f) ms = { adminExtension: f.adminExtension, adminPassword: secretRef(f.adminPasswordSecretId), defaultUserPassword: secretRef(f.defaultUserPasswordSecretId) };
       } else if (m.moduleCode === 'omniboard') {
         const o = oms.find((x) => x.subscriptionModuleId === m.id);
         if (o) ms = { adminLogin: o.adminLogin, adminPassword: secretRef(o.adminPasswordSecretId), userDefaultPassword: secretRef(o.userDefaultPasswordSecretId) };
@@ -323,6 +324,17 @@ export async function restore(db: Db, id: string) {
  * Grava (cria ou atualiza) a assinatura de um produto e a configuração própria dele.
  * Senhas vindas em texto vão para o cofre; texto vazio/ausente mantém a senha atual.
  */
+/**
+ * A data de desativação agora se corrige na tela (1.5, decisão 0034): mandar `deactivatedAt` grava o
+ * produto ou módulo encerrado naquele dia, sem reativar. Não pode ser antes da ativação nem no futuro
+ * — 12 horas de folga, porque a ativação guardada pode ser a hora exata e a desativação, o meio-dia.
+ */
+function conferirDesativacao(fim: Date | null | undefined, inicio: Date | null | undefined) {
+  if (!fim) return;
+  if (inicio && fim.getTime() < inicio.getTime() - 12 * 3_600_000) throw new BadRequest('A desativação não pode ser antes da ativação.');
+  if (fim.getTime() > Date.now() + 12 * 3_600_000) throw new BadRequest('A data de desativação não pode ser no futuro.');
+}
+
 export async function upsertSubscription(db: Db, vault: SecretsVault, clientId: string, data: AssinaturaGravar, userId: string) {
   const [client] = await db.select({ id: clients.id, name: clients.tradeName }).from(clients).where(eq(clients.id, clientId));
   if (!client) throw new NotFound('Cliente');
@@ -330,6 +342,7 @@ export async function upsertSubscription(db: Db, vault: SecretsVault, clientId: 
   if (!product) throw new NotFound(`Produto "${data.productCode}"`);
 
   const [existing] = await db.select().from(subscriptions).where(and(eq(subscriptions.clientId, clientId), eq(subscriptions.productId, product.id)));
+  conferirDesativacao(data.deactivatedAt, data.activatedAt ?? existing?.activatedAt);
   // `null` explícito = "não sabemos a data" (vem da importação do Nexus, que nem sempre a tinha);
   // ausente = mantém a que já existia, ou hoje na primeira vez.
   const common = { activatedAt: data.activatedAt === null ? null : data.activatedAt ?? existing?.activatedAt ?? new Date(), deactivatedAt: data.deactivatedAt === undefined ? null : data.deactivatedAt, notes: data.notes ?? existing?.notes ?? null };
@@ -369,12 +382,13 @@ export async function upsertModule(db: Db, vault: SecretsVault, clientId: string
   if (!client) throw new NotFound('Cliente');
   const [product] = await db.select().from(products).where(eq(products.code, data.productCode));
   if (!product) throw new NotFound(`Produto "${data.productCode}"`);
-  const [mod] = await db.select().from(productModules).where(and(eq(productModules.productId, product.id), eq(productModules.code, data.moduleCode)));
+  const [mod] = await db.select().from(productModules).where(and(eq(productModules.productId, product.id), eq(productModules.code, data.moduleCode), isNull(productModules.deletedAt)));
   if (!mod) throw new NotFound(`Módulo "${data.moduleCode}" do produto ${product.name}`);
   const [sub] = await db.select().from(subscriptions).where(and(eq(subscriptions.clientId, clientId), eq(subscriptions.productId, product.id), isNull(subscriptions.deactivatedAt)));
   if (!sub) throw new BadRequest(`Marque o produto ${product.name} no cliente antes de ligar o módulo ${mod.name}`);
 
   const [existing] = await db.select().from(subscriptionModules).where(and(eq(subscriptionModules.subscriptionId, sub.id), eq(subscriptionModules.moduleId, mod.id)));
+  conferirDesativacao(data.deactivatedAt, data.activatedAt ?? existing?.activatedAt);
   const common = { activatedAt: data.activatedAt === null ? null : data.activatedAt ?? existing?.activatedAt ?? new Date(), deactivatedAt: data.deactivatedAt === undefined ? null : data.deactivatedAt, notes: data.notes ?? existing?.notes ?? null };
   let smId = existing?.id;
   if (existing) await db.update(subscriptionModules).set({ ...common, updatedAt: new Date() }).where(eq(subscriptionModules.id, existing.id));
@@ -386,8 +400,8 @@ export async function upsertModule(db: Db, vault: SecretsVault, clientId: string
   if (mod.code === 'fop2') {
     const [cur] = await db.select().from(fop2Settings).where(eq(fop2Settings.subscriptionModuleId, id));
     const adminSecret = st.adminPassword ? await vault.save(db, { existingId: cur?.adminPasswordSecretId, label: label('Senha do ramal admin do FOP2'), plain: st.adminPassword, userId }) : cur?.adminPasswordSecretId ?? null;
-    // a coluna da senha do usuário padrão não entra aqui: quem tinha, continua tendo (decisão 0032)
-    const vals = { adminExtension: st.adminExtension ?? cur?.adminExtension ?? null, adminPasswordSecretId: adminSecret };
+    const padraoSecret = st.defaultUserPassword ? await vault.save(db, { existingId: cur?.defaultUserPasswordSecretId, label: label('Senha do usuário padrão do FOP2'), plain: st.defaultUserPassword, userId }) : cur?.defaultUserPasswordSecretId ?? null;
+    const vals = { adminExtension: st.adminExtension ?? cur?.adminExtension ?? null, adminPasswordSecretId: adminSecret, defaultUserPasswordSecretId: padraoSecret };
     if (cur) await db.update(fop2Settings).set(vals).where(eq(fop2Settings.subscriptionModuleId, id));
     else await db.insert(fop2Settings).values({ subscriptionModuleId: id, ...vals });
   } else if (mod.code === 'omniboard') {
@@ -474,7 +488,7 @@ async function produtosEModulosAtivos(db: Db): Promise<Map<string, { products: s
     .orderBy(asc(products.sortOrder));
   const mods = await db.select({ subId: subscriptionModules.subscriptionId, code: productModules.code })
     .from(subscriptionModules).innerJoin(productModules, eq(productModules.id, subscriptionModules.moduleId))
-    .where(isNull(subscriptionModules.deactivatedAt))
+    .where(and(isNull(subscriptionModules.deactivatedAt), isNull(productModules.deletedAt)))
     .orderBy(asc(productModules.sortOrder));
   const porSub = new Map(subs.map((s) => [s.subId, s]));
   const mapa = new Map<string, { products: string[]; modules: string[] }>();

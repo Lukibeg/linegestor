@@ -11,7 +11,7 @@
  */
 import argon2 from 'argon2';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, newId, productModules, products, projects, releaseNotes, roles, subscriptions, users, type Db } from '@gestor/db';
+import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, newId, productModules, products, projects, releaseNotes, roles, subscriptionModules, subscriptions, users, type Db } from '@gestor/db';
 import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 
@@ -135,18 +135,32 @@ export async function updateCatalogItem(db: Db, type: CatalogType, id: string, d
 /** Produtos com seus módulos (o catálogo inteiro, para a Administração e para a ficha do cliente). Os da lixeira ficam de fora. */
 export async function listProducts(db: Db) {
   const rows = await db.select().from(products).where(isNull(products.deletedAt)).orderBy(asc(products.sortOrder), asc(products.name));
-  const mods = await db.select().from(productModules).orderBy(asc(productModules.sortOrder));
+  const mods = await db.select().from(productModules).where(isNull(productModules.deletedAt)).orderBy(asc(productModules.sortOrder));
   // quantos clientes assinam hoje — a tela usa isso para avisar antes de excluir
   const assinantes = await db.select({ productId: subscriptions.productId, n: sql<number>`count(distinct ${subscriptions.clientId})` })
     .from(subscriptions).innerJoin(clients, eq(clients.id, subscriptions.clientId))
     .where(and(isNull(subscriptions.deactivatedAt), isNull(clients.deletedAt))).groupBy(subscriptions.productId);
+  // e quantos usam cada módulo (ligado em assinatura ativa) — para avisar antes de mandar para a lixeira
+  const usamModulo = await db.select({ moduleId: subscriptionModules.moduleId, n: sql<number>`count(distinct ${subscriptions.clientId})` })
+    .from(subscriptionModules).innerJoin(subscriptions, eq(subscriptions.id, subscriptionModules.subscriptionId)).innerJoin(clients, eq(clients.id, subscriptions.clientId))
+    .where(and(isNull(subscriptionModules.deactivatedAt), isNull(subscriptions.deactivatedAt), isNull(clients.deletedAt))).groupBy(subscriptionModules.moduleId);
   return rows.map(({ deletedAt: _d, ...p }) => ({
     ...p,
     protegido: PRODUTOS_PROTEGIDOS.includes(p.code),
     activeClients: Number(assinantes.find((a) => a.productId === p.id)?.n ?? 0),
-    modules: mods.filter((m) => m.productId === p.id).map(({ productId: _p, ...m }) => m),
+    modules: mods.filter((m) => m.productId === p.id).map(({ productId: _p, deletedAt: _dm, ...m }) => ({
+      ...m,
+      protegido: MODULOS_PROTEGIDOS.includes(`${p.code}:${m.code}`),
+      activeClients: Number(usamModulo.find((u) => u.moduleId === m.id)?.n ?? 0),
+    })),
   }));
 }
+
+/**
+ * Módulos que o sistema usa por dentro: o FOP2 (ramal admin, senhas e o acesso rápido) e o
+ * Omniboard (login e senhas) têm tabela própria. Não vão para a lixeira; dá para desligar o "ativo".
+ */
+export const MODULOS_PROTEGIDOS: string[] = ['linepbx:fop2', 'linepbx:omniboard'];
 
 /** Produtos que o próprio sistema usa por dentro (servidor e atalhos, alerta de DIDs, movimentação de aparelhos). */
 export const PRODUTOS_PROTEGIDOS: string[] = ['linepbx', 'voicenet', 'equipamentos'];
@@ -180,6 +194,7 @@ export async function upsertModule(db: Db, productId: string, data: ModuloCatalo
   const [product] = await db.select().from(products).where(eq(products.id, productId));
   if (!product) throw new NotFound('Produto');
   const [cur] = await db.select().from(productModules).where(and(eq(productModules.productId, productId), eq(productModules.code, data.code)));
+  if (cur?.deletedAt) throw new BadRequest(`O código "${data.code}" é do módulo ${cur.name}, que está na lixeira. Restaure-o em Lixeira ou use outro código.`);
   if (cur) {
     const [row] = await db.update(productModules).set({ name: data.name, description: data.description ?? cur.description, hasSettings: data.hasSettings ?? cur.hasSettings, active: data.active ?? cur.active, sortOrder: data.sortOrder ?? cur.sortOrder }).where(eq(productModules.id, cur.id)).returning();
     return { ...row!, productName: product.name, created: false };
@@ -187,6 +202,29 @@ export async function upsertModule(db: Db, productId: string, data: ModuloCatalo
   const [row] = await db.insert(productModules).values({ id: newId(), productId, code: data.code, name: data.name, description: data.description ?? null, hasSettings: data.hasSettings ?? false, active: data.active ?? true, sortOrder: data.sortOrder ?? 99 }).returning();
   return { ...row!, productName: product.name, created: true };
 }
+/**
+ * Manda o módulo para a lixeira (1.5, pedido do Luan). Some das telas e da ficha dos clientes; quem
+ * tinha o módulo ligado continua com a ligação guardada, e ela volta se o módulo for restaurado.
+ */
+export async function deleteModule(db: Db, productId: string, moduleId: string) {
+  const [m] = await db.select({ id: productModules.id, name: productModules.name, code: productModules.code, productCode: products.code, productName: products.name })
+    .from(productModules).innerJoin(products, eq(products.id, productModules.productId))
+    .where(and(eq(productModules.id, moduleId), eq(productModules.productId, productId), isNull(productModules.deletedAt)));
+  if (!m) throw new NotFound('Módulo');
+  if (MODULOS_PROTEGIDOS.includes(`${m.productCode}:${m.code}`)) throw new BadRequest(`O ${m.name} não pode ir para a lixeira: o sistema guarda campos dele na ficha do cliente. Se não quiser vê-lo, desligue o "ativo".`);
+  const [n] = await db.select({ n: sql<number>`count(distinct ${subscriptions.clientId})` }).from(subscriptionModules)
+    .innerJoin(subscriptions, eq(subscriptions.id, subscriptionModules.subscriptionId))
+    .where(and(eq(subscriptionModules.moduleId, moduleId), isNull(subscriptionModules.deactivatedAt), isNull(subscriptions.deactivatedAt)));
+  await db.update(productModules).set({ deletedAt: new Date() }).where(eq(productModules.id, moduleId));
+  return { ...m, activeClients: Number(n?.n ?? 0) };
+}
+
+export async function restoreModule(db: Db, id: string) {
+  const [row] = await db.update(productModules).set({ deletedAt: null }).where(eq(productModules.id, id)).returning();
+  if (!row) throw new NotFound('Módulo');
+  return row;
+}
+
 export async function updateProduct(db: Db, id: string, data: { name?: string; color?: string; description?: string | null; active?: boolean; sortOrder?: number }) {
   const [row] = await db.update(products).set(data).where(eq(products.id, id)).returning();
   if (!row) throw new NotFound('Produto');
@@ -203,7 +241,7 @@ export async function restoreProject(db: Db, id: string) {
 // ---------- Lixeira ----------
 
 export async function listTrash(db: Db) {
-  const [c, ci, d, dm, dv, pr, rn, pj] = await Promise.all([
+  const [c, ci, d, dm, dv, pr, rn, pj, pm] = await Promise.all([
     db.select({ id: clients.id, label: clients.tradeName, deletedAt: clients.deletedAt }).from(clients).where(isNotNull(clients.deletedAt)),
     db.select({ id: circuits.id, label: circuits.name, deletedAt: circuits.deletedAt }).from(circuits).where(isNotNull(circuits.deletedAt)),
     db.select({ id: dids.id, label: dids.number, deletedAt: dids.deletedAt }).from(dids).where(isNotNull(dids.deletedAt)),
@@ -212,6 +250,7 @@ export async function listTrash(db: Db) {
     db.select({ id: products.id, label: products.name, deletedAt: products.deletedAt }).from(products).where(isNotNull(products.deletedAt)),
     db.select({ id: releaseNotes.id, label: releaseNotes.title, deletedAt: releaseNotes.deletedAt }).from(releaseNotes).where(isNotNull(releaseNotes.deletedAt)),
     db.select({ id: projects.id, label: projects.name, deletedAt: projects.deletedAt }).from(projects).where(isNotNull(projects.deletedAt)),
+    db.select({ id: productModules.id, modulo: productModules.name, produto: products.name, deletedAt: productModules.deletedAt }).from(productModules).innerJoin(products, eq(products.id, productModules.productId)).where(isNotNull(productModules.deletedAt)),
   ]);
   return [
     ...c.map((x) => ({ type: 'client', ...x })), ...ci.map((x) => ({ type: 'circuit', ...x })), ...d.map((x) => ({ type: 'did', ...x })),
@@ -220,5 +259,6 @@ export async function listTrash(db: Db) {
     ...pr.map((x) => ({ type: 'product', ...x })),
     ...rn.map((x) => ({ type: 'releaseNote', ...x })),
     ...pj.map((x) => ({ type: 'project', ...x })),
+    ...pm.map((x) => ({ type: 'productModule', id: x.id, label: `${x.produto} › ${x.modulo}`, deletedAt: x.deletedAt })),
   ].sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
 }

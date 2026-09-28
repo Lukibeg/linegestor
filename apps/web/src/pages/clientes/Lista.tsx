@@ -19,6 +19,7 @@ import { FiltroEmBotao, type GrupoFiltro } from '../../lib/filtros.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
 import { ClienteForm } from './Form.js';
+import { temDataDeAtivacao } from '@gestor/shared';
 
 // ---------- Colunas disponíveis na tabela ----------
 
@@ -46,8 +47,9 @@ function montarColunas(produtos: Product[]): Coluna<ClientListItem>[] {
   ];
   // Para cada produto: a data de ativação dele + UMA COLUNA PARA CADA MÓDULO.
   // Assim dá para escolher "LinePBX › FOP2" sozinho, sem trazer os outros módulos junto.
+  // (o Equipamentos não tem data de ativação desde o 1.5: fica sem essa coluna)
   const porProduto: Coluna<ClientListItem>[] = produtos.flatMap((p) => {
-    const cols: Coluna<ClientListItem>[] = [{
+    const cols: Coluna<ClientListItem>[] = !temDataDeAtivacao(p.code) ? [] : [{
       id: `ativacao:${p.code}`, label: `${p.name} — ativado em`, labelCurto: p.name, grupo: 'Ativado em (por produto)',
       render: (c) => { const s = c.products.find((x) => x.code === p.code); return s ? <span className="tnum whitespace-nowrap">{data(s.activatedAt)}</span> : <span className="text-muted">—</span>; },
     }];

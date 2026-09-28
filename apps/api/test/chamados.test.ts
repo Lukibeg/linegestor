@@ -19,6 +19,9 @@
  *  - (1.4) "só em aberto" no lugar da aba Em aberto; as etapas que fecham o chamado escolhidas
  *    pela equipe mudam as contas e a hora do fechamento; grupos são validados; a descrição vem
  *    em texto puro; a arrumação guardada no 1.3 passa a abrir em pizza
+ *  - (1.5) a conferência de 10 em 10 minutos tira o card aberto nos últimos 7 dias e excluído lá,
+ *    mas só se ele faltar em duas leituras seguidas; o que reaparece volta; a completa roda à
+ *    meia-noite de Brasília
  */
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -27,6 +30,7 @@ import { eq } from 'drizzle-orm';
 import { linechatCardMoves, linechatCards, settings } from '@gestor/db';
 import { diaEmBrasilia } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
+import { conferirExcluidos, hojeCabeCompleta, sincronizar } from '../src/services/linechat.js';
 
 // ---------- o LineChat de mentira ----------
 
@@ -408,5 +412,97 @@ describe('Patch 1.4: etapas que fecham, grupos e a arrumação antiga', () => {
     const p = (await s.get('/chamados/painel')).json();
     expect(p.versao).toBe(2);
     expect(p.itens.map((x: any) => x.forma ?? '-')).toEqual(['pizza', '-']);
+  });
+});
+
+describe('Patch 1.5: card excluído no LineChat sai no mesmo dia', () => {
+  const card = async (id: string) => (await app.db.select().from(linechatCards).where(eq(linechatCards.id, id)))[0]!;
+
+  it('a conferência tira o card aberto nos últimos 7 dias que sumiu de lá, e diz qual foi', async () => {
+    const antes = (await s.get(`/chamados/resumo?${EM_ABERTO}`)).json().total;
+    cards = cards.filter((c) => c.id !== 'card-5'); // aberto há pouco mais de 2 dias
+    const r = (await conferirExcluidos(app.db, app.vault))!;
+    expect(r).toMatchObject({ ok: true, tipo: 'conferencia', removidos: 1 });
+    expect(r.mensagem).toContain('1 excluído no LineChat (IS-5)');
+    expect((await card('card-5')).removedAt).toBeTruthy();
+    // sai das contas na hora, sem esperar a completa
+    expect((await s.get(`/chamados/resumo?${EM_ABERTO}`)).json().total).toBe(antes - 1);
+    // Ajustes mostra quantos e quais saíram, e o registro diz qual foi
+    const st = (await s.get('/settings/linechat')).json();
+    expect(st.totais.excluidos).toBe(2); // o card-10, da completa, e o card-5
+    expect(st.excluidos.map((x: any) => x.key)).toEqual(expect.arrayContaining(['IS-5', 'IS-10']));
+    expect(st.execucoes[0]).toMatchObject({ kind: 'conferencia', ok: true });
+  });
+
+  it('card aberto há mais de 7 dias fica para a completa da meia-noite', async () => {
+    cards = cards.filter((c) => c.id !== 'card-200'); // aberto há 10 dias
+    const r = (await conferirExcluidos(app.db, app.vault))!;
+    expect(r.removidos).toBe(0);
+    expect(r.mensagem).toContain('nada excluído');
+    expect((await card('card-200')).removedAt).toBeNull();
+    const completa = (await s.post('/settings/linechat/sync', { completa: true })).json();
+    expect(completa.removidos).toBe(1);
+    expect(completa.mensagem).toContain('1 excluído no LineChat (IS-200)');
+  });
+
+  it('faltar numa leitura só não basta: a página pode ter escorregado', async () => {
+    let leitura = 0;
+    const escorrega: typeof fetch = async (url, init) => {
+      const resp = await fetch(url, init);
+      const u = new URL(String(url));
+      if (u.pathname !== '/crm/v2/panel/card') return resp;
+      if (u.searchParams.get('PageNumber') === '1') leitura++;
+      const corpo = await resp.json();
+      // na primeira leitura o card-6 "escorrega" para fora; na segunda ele está lá
+      if (leitura === 1) corpo.items = corpo.items.filter((c: any) => c.id !== 'card-6');
+      return new Response(JSON.stringify(corpo), { status: 200, headers: { 'content-type': 'application/json' } });
+    };
+    const r = (await conferirExcluidos(app.db, app.vault, { fetchFn: escorrega }))!;
+    expect(leitura).toBe(2);
+    expect(r.removidos).toBe(0);
+    expect((await card('card-6')).removedAt).toBeNull();
+  });
+
+  it('card marcado como excluído que reaparece volta para a tela', async () => {
+    cards.push(novoCard(5));
+    const r = (await conferirExcluidos(app.db, app.vault))!;
+    expect(r.voltaram).toBe(1);
+    expect(r.mensagem).toContain('1 voltou');
+    expect((await card('card-5')).removedAt).toBeNull();
+  });
+
+  it('se a leitura vier quase vazia, ninguém é marcado como excluído', async () => {
+    const guardados = cards;
+    cards = cards.filter((c) => Date.parse(c.createdAt) < Date.now() - 8 * 86_400_000); // só os antigos
+    const r = (await conferirExcluidos(app.db, app.vault))!;
+    expect(r.ok).toBe(true);
+    expect(r.removidos).toBe(0);
+    expect(r.mensagem).toContain('Nada foi marcado como excluído');
+    expect((await card('card-6')).removedAt).toBeNull();
+    cards = guardados;
+  });
+
+  it('uma leitura por vez: o botão espera a conferência, e a conferência não entra no meio de uma leitura', async () => {
+    const conferencia = conferirExcluidos(app.db, app.vault);
+    const botao = (await s.post('/settings/linechat/sync', {})).json();
+    expect(botao.tipo).toBe('recente');
+    expect(await conferencia).not.toBeNull();
+
+    const leitura = sincronizar(app.db, app.vault, {});
+    expect(await conferirExcluidos(app.db, app.vault)).toBeNull();
+    expect((await leitura).ok).toBe(true);
+  });
+
+  it('a completa roda à meia-noite de Brasília (não mais às 4h)', () => {
+    // 27/09, 0h10 em Brasília (3h10 UTC); a última foi na meia-noite anterior
+    expect(hojeCabeCompleta(new Date('2026-09-27T03:10:00Z'), '2026-09-26T03:05:00Z')).toBe(true);
+    // já rodou nesta meia-noite
+    expect(hojeCabeCompleta(new Date('2026-09-27T03:40:00Z'), '2026-09-27T03:01:00Z')).toBe(false);
+    // 4h da manhã deixou de ser a hora dela
+    expect(hojeCabeCompleta(new Date('2026-09-27T07:10:00Z'), '2026-09-27T03:01:00Z')).toBe(false);
+    // o servidor estava fora do ar na virada: passou de 26 horas, roda assim que voltar
+    expect(hojeCabeCompleta(new Date('2026-09-28T06:00:00Z'), '2026-09-27T03:01:00Z')).toBe(true);
+    // nunca rodou
+    expect(hojeCabeCompleta(new Date(), null)).toBe(true);
   });
 });

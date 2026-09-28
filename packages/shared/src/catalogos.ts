@@ -31,6 +31,25 @@ export const MODULOS_INICIAIS = [
 
 export type ProductCode = (typeof PRODUTOS_INICIAIS)[number]['code'];
 
+/**
+ * Produtos sem "Ativado em": o Equipamentos só diz que o cliente tem aparelhos conosco — a data que
+ * importa é a de cada aparelho, nas movimentações (pedido do Luan, 26/09, decisão 0034).
+ */
+export const PRODUTOS_SEM_DATA_DE_ATIVACAO: readonly string[] = ['equipamentos'];
+export const temDataDeAtivacao = (productCode: string) => !PRODUTOS_SEM_DATA_DE_ATIVACAO.includes(productCode);
+
+/**
+ * O que a "configuração própria" (`hasSettings`) de cada produto e módulo guarda na ficha do
+ * cliente, em palavras: a Administração mostrava só "sim", e ninguém sabia o que era (26/09).
+ * Módulo vai como "produto:módulo" — o NPS existe no LinePBX e no LineChat.
+ */
+export const CAMPOS_PROPRIOS: Readonly<Record<string, string>> = {
+  linepbx: 'servidor: hospedagem, endereço, IP e porta SSH',
+  szchat: 'e-mail e senha do administrador',
+  'linepbx:fop2': 'ramal admin, senha do ramal admin e senha do usuário padrão',
+  'linepbx:omniboard': 'e-mail do administrador, senha admin e senha padrão de usuário novo',
+};
+
 export const OPERADORAS_INICIAIS = ['ALGAR', 'VC1'] as const;
 
 export const HOSPEDAGENS_INICIAIS = ['Local', 'Nuvem (Local)', 'Vultr', 'AWS', 'Contabo', 'Hetzner', 'Outro'] as const;

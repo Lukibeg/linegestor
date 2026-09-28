@@ -142,6 +142,7 @@ Catálogo de MÓDULOS: partes opcionais dentro de um produto. LinePBX tem Omnibo
 | `has_settings` | sim/não | Tem configuração própria? (FOP2: ramal admin · Omniboard: login e senhas) | obrigatório · padrão: false |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `active` | sim/não | — | obrigatório · padrão: true |
+| `deleted_at` | data e hora | Na lixeira desde (1.5, decisão 0034). Some das telas, dos filtros e da ficha do cliente; as ligações dos clientes ficam guardadas e voltam se ele for restaurado. | — |
 
 ## subscriptions
 
@@ -582,7 +583,7 @@ Um chamado (card do LineChat), do jeito que ele estava na última sincronizaçã
 | `closed_at` | data e hora | Quando chegou numa etapa final (nulo = ainda aberto, ou reaberto depois) | — |
 | `closed_estimated` | sim/não | true = `closedAt` é a última alteração do card, não a hora exata (fechado antes de sincronizarmos) | obrigatório · padrão: false |
 | `archived_at` | data e hora | Quando o card foi arquivado no LineChat (a hora em que percebemos) | — |
-| `removed_at` | data e hora | O card sumiu do LineChat na conferência completa | — |
+| `removed_at` | data e hora | Quando percebemos que o card foi excluído no LineChat (na conferência de 10 em 10 minutos ou na completa da meia-noite). Preenchido = fora da tela e das contas; volta a nulo se ele reaparecer | — |
 | `first_seen_at` | data e hora | Quando a sincronização viu este card pela primeira vez | obrigatório |
 | `last_seen_at` | data e hora | Última vez que uma conferência completa encontrou o card lá | obrigatório |
 
@@ -608,7 +609,7 @@ O registro das sincronizações: quando rodou, o que leu, o que mudou e se deu e
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
-| `kind` | texto | completa = leu o painel inteiro · recente = só o que mudou desde a última | obrigatório |
+| `kind` | texto | completa = leu o painel inteiro · recente = só o que mudou desde a última · conferencia = releu os últimos 7 dias atrás de excluídos | obrigatório |
 | `trigger` | texto | agendada (automática) · manual (botão "Sincronizar agora") | obrigatório · padrão: 'agendada' |
 | `started_at` | data e hora | — | obrigatório |
 | `finished_at` | data e hora | — | — |
@@ -617,6 +618,6 @@ O registro das sincronizações: quando rodou, o que leu, o que mudou e se deu e
 | `cards_read` | número inteiro | Quantos cards vieram do LineChat | obrigatório · padrão: 0 |
 | `cards_new` | número inteiro | Quantos eram novos | obrigatório · padrão: 0 |
 | `moves` | número inteiro | Quantos mudaram de etapa | obrigatório · padrão: 0 |
-| `cards_removed` | número inteiro | Quantos sumiram do LineChat (só na completa) | obrigatório · padrão: 0 |
+| `cards_removed` | número inteiro | Quantos sumiram do LineChat (na completa e na conferência) | obrigatório · padrão: 0 |
 | `user_id` | texto | Quem apertou o botão (nulo na automática) | liga com **users** |
 

@@ -3,8 +3,8 @@
  * Todas usam as cores do tema (styles.css), então funcionam no claro e no escuro.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
-import { AlertTriangle, Check, Copy, Eye, EyeOff, Info, Loader2, X } from 'lucide-react';
-import { formatarIp, SEM_LIMITE } from '@gestor/shared';
+import { AlertTriangle, Check, ChevronDown, Copy, Eye, EyeOff, Info, Loader2, Search, X } from 'lucide-react';
+import { formatarIp, paraBusca, SEM_LIMITE } from '@gestor/shared';
 import { ApiError } from '../../api/types.js';
 
 // ---------- Avisos (toast) ----------
@@ -103,13 +103,29 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
 }
 
 // ---------- Modal / painel lateral ----------
+/**
+ * As janelas abertas, da de baixo para a de cima. Desde que a ficha do cliente abre em janela
+ * (1.5), é comum uma janela abrir outra (Ajustar um produto dentro da ficha): o Esc fecha só a de
+ * cima, e não as duas de uma vez.
+ */
+const pilhaDeJanelas: object[] = [];
+
 export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-w-lg', lateral = false, fechavel = true }: { open: boolean; onClose: () => void; titulo: ReactNode; children: ReactNode; rodape?: ReactNode; largura?: string; lateral?: boolean; /** `false` tranca a janela: sem X, sem Esc, sem clicar fora (a pessoa precisa concluir o que está ali). */ fechavel?: boolean }) {
+  const eu = useRef({});
+  const fechar = useRef(onClose);
+  fechar.current = onClose;
+  useEffect(() => {
+    if (!open) return;
+    const minha = eu.current;
+    pilhaDeJanelas.push(minha);
+    return () => { const i = pilhaDeJanelas.lastIndexOf(minha); if (i >= 0) pilhaDeJanelas.splice(i, 1); };
+  }, [open]);
   useEffect(() => {
     if (!open || !fechavel) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && pilhaDeJanelas[pilhaDeJanelas.length - 1] === eu.current) fechar.current(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [open, onClose, fechavel]);
+  }, [open, fechavel]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex" role="dialog" aria-modal="true">
@@ -290,7 +306,7 @@ export function usePaginaLocal<T>(itens: T[], tamanho = 100) {
  * descia 1px sobre a borda (`-mb-px`) e, com a rolagem lateral ligada (para caber no celular), esse
  * pixel virava uma barrinha de rolagem vertical à toa no Windows (Patch 1.4).
  */
-export const FAIXA_ABAS = 'flex gap-1 mb-4 overflow-x-auto overflow-y-hidden shadow-[inset_0_-1px_0_var(--line)]';
+export const FAIXA_ABAS = 'flex gap-1 mb-4 overflow-x-auto overflow-y-hidden sem-barra shadow-[inset_0_-1px_0_var(--line)]';
 export const classeAba = (ativa: boolean) => `px-3 py-2 text-sm font-semibold border-b-2 whitespace-nowrap ${ativa ? 'border-accent text-accent' : 'border-transparent text-ink-2 hover:text-ink'}`;
 
 export function Abas<T extends string>({ abas, atual, onChange }: { abas: Array<{ id: T; label: ReactNode }>; atual: T; onChange: (t: T) => void }) {
@@ -404,6 +420,155 @@ export function Popover({ botao, children, largura = 'w-[320px]' }: { botao: (ab
           style={{ left: pos?.left ?? -9999, top: pos?.top, bottom: pos?.bottom, maxHeight: pos?.maxHeight ?? 320, maxWidth: 'calc(100vw - 16px)', visibility: pos ? 'visible' : 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}
         >
           <div className={`${largura} max-w-full`}>{children}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Onde um painel flutuante cabe na tela, preso a um elemento: se não couber à direita, encosta na
+ * borda; se não couber embaixo, abre para cima; e sempre rola por dentro. `fixed`, então nenhum
+ * `overflow` de janela ou tabela corta o painel.
+ */
+function usePosicaoDoPainel(aberto: boolean, ancora: React.RefObject<HTMLElement | null>, painel: React.RefObject<HTMLElement | null>, alinhar: 'direita' | 'esquerda' = 'direita') {
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
+  useEffect(() => {
+    if (!aberto) { setPos(null); return; }
+    const posicionar = () => {
+      const b = ancora.current?.getBoundingClientRect();
+      const p = painel.current?.getBoundingClientRect();
+      if (!b) return;
+      const margem = 8;
+      const larg = p?.width ?? 320;
+      const alt = painel.current?.scrollHeight ?? p?.height ?? 320;
+      const espacoAbaixo = window.innerHeight - b.bottom - margem;
+      const espacoAcima = b.top - margem;
+      const paraCima = espacoAbaixo < Math.min(alt, 220) && espacoAcima > espacoAbaixo;
+      const desejado = alinhar === 'direita' ? b.right - larg : b.left;
+      const left = Math.max(margem, Math.min(desejado, window.innerWidth - larg - margem));
+      const altura = Math.max(140, (paraCima ? espacoAcima : espacoAbaixo) - 4);
+      setPos(paraCima
+        ? { left, bottom: Math.max(margem, window.innerHeight - b.top + 4), maxHeight: altura }
+        : { left, top: Math.max(margem, Math.min(b.bottom + 4, window.innerHeight - margem - altura)), maxHeight: altura });
+    };
+    posicionar();
+    // o painel mede depois de desenhar: uma segunda passada acerta a largura de verdade
+    const quadro = requestAnimationFrame(posicionar);
+    window.addEventListener('resize', posicionar, { passive: true });
+    window.addEventListener('scroll', posicionar, true);
+    return () => { cancelAnimationFrame(quadro); window.removeEventListener('resize', posicionar); window.removeEventListener('scroll', posicionar, true); };
+  }, [aberto, ancora, painel, alinhar]);
+  return pos;
+}
+
+export type OpcaoBusca = { id: string; nome: string; dica?: string };
+
+/**
+ * Escolher um item de uma lista longa digitando — no lugar da lista suspensa com 60 clientes
+ * (pedido do Luan, 26/09). O painel abre com a busca já no foco; setas andam, **Enter** escolhe,
+ * **Esc** fecha. Acha pedaço do meio do nome e ignora acento: "ramiro" acha "Grupo - Ramiro Campelo".
+ *
+ * `vazio` é o rótulo da opção "nenhum" (valor `''`): "Todos os clientes", "livre (sem cliente)"…
+ * Sem `vazio`, não há essa opção. `gatilho` troca o botão padrão (que parece um campo) por outro —
+ * o lápis da linha do DID, por exemplo.
+ */
+export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder = 'Escolha…', procurar = 'Procurar…', gatilho, className = 'input', largura = 'w-[320px]', id, rotulo, autoFocus, desativado }: {
+  valor: string;
+  opcoes: OpcaoBusca[];
+  onChange: (id: string) => void;
+  vazio?: string;
+  placeholder?: string;
+  procurar?: string;
+  gatilho?: (abrir: () => void, aberto: boolean) => ReactNode;
+  className?: string;
+  largura?: string;
+  id?: string;
+  rotulo?: string;
+  autoFocus?: boolean;
+  desativado?: boolean;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [busca, setBusca] = useState('');
+  const [marcado, setMarcado] = useState(0);
+  const caixa = useRef<HTMLDivElement>(null);
+  const painel = useRef<HTMLDivElement>(null);
+  const botao = useRef<HTMLButtonElement>(null);
+  const lista = useRef<HTMLUListElement>(null);
+  const entrada = useRef<HTMLInputElement>(null);
+  const pos = usePosicaoDoPainel(aberto, caixa, painel, 'esquerda');
+  // o foco vai para a busca só quando o painel já está à vista (escondido, o navegador recusa o foco)
+  const posicionado = !!pos;
+  useEffect(() => { if (aberto && posicionado) entrada.current?.focus(); }, [aberto, posicionado]);
+  const todas = useMemo(() => (vazio !== undefined ? [{ id: '', nome: vazio }, ...opcoes] : opcoes), [opcoes, vazio]);
+  const achadas = useMemo(() => {
+    const b = paraBusca(busca);
+    return b ? todas.filter((o) => o.id !== '' && paraBusca(`${o.nome} ${o.dica ?? ''}`).includes(b)) : todas;
+  }, [todas, busca]);
+  const escolhida = todas.find((o) => o.id === valor);
+  const abrir = () => { if (desativado) return; setBusca(''); setMarcado(Math.max(0, todas.findIndex((o) => o.id === valor))); setAberto(true); };
+  const fechar = (devolverFoco = true) => { setAberto(false); if (devolverFoco) botao.current?.focus(); };
+  const escolher = (o: OpcaoBusca) => { fechar(); if (o.id !== valor) onChange(o.id); };
+  useEffect(() => {
+    if (!aberto) return;
+    const fora = (e: MouseEvent) => { if (caixa.current && !caixa.current.contains(e.target as Node)) fechar(false); };
+    document.addEventListener('mousedown', fora);
+    return () => document.removeEventListener('mousedown', fora);
+  }, [aberto]);
+  useEffect(() => { if (autoFocus) botao.current?.focus(); }, [autoFocus]);
+  // o item marcado fica sempre à vista quando se anda com as setas
+  useEffect(() => { lista.current?.querySelector<HTMLElement>(`[data-i="${marcado}"]`)?.scrollIntoView({ block: 'nearest' }); }, [marcado, aberto]);
+  const tecla = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setMarcado((m) => Math.min(achadas.length - 1, m + 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setMarcado((m) => Math.max(0, m - 1)); }
+    else if (e.key === 'Enter') { e.preventDefault(); const o = achadas[marcado]; if (o) escolher(o); }
+    // o Esc fecha só o painel, não a janela em volta
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(); }
+    else if (e.key === 'Tab') fechar(false);
+  };
+  return (
+    // num formulário (className com w-full) a caixa ocupa a linha inteira; num filtro, só o que precisa
+    <div className={`relative max-w-full ${!gatilho && className.includes('w-full') ? 'block' : 'inline-block'}`} ref={caixa}>
+      {gatilho ? <span ref={botao as never}>{gatilho(abrir, aberto)}</span> : (
+        <button
+          type="button" ref={botao} id={id} disabled={desativado} aria-haspopup="listbox" aria-expanded={aberto} aria-label={rotulo}
+          className={`${className} inline-flex items-center gap-2 text-left cursor-pointer`}
+          onClick={() => (aberto ? fechar() : abrir())}
+          onKeyDown={(e) => { if (!aberto && (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); abrir(); } }}
+        >
+          <span className={`flex-1 truncate ${escolhida ? '' : 'text-muted'}`}>{escolhida?.nome ?? placeholder}</span>
+          <ChevronDown size={15} className="shrink-0 text-muted" />
+        </button>
+      )}
+      {aberto && (
+        <div
+          ref={painel} role="dialog" aria-label={rotulo ?? 'Escolher'}
+          className="fixed z-40 card p-2 shadow-lg flex flex-col"
+          style={{ left: pos?.left ?? -9999, top: pos?.top, bottom: pos?.bottom, maxHeight: Math.min(pos?.maxHeight ?? 360, 420), maxWidth: 'calc(100vw - 16px)', visibility: pos ? 'visible' : 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}
+        >
+          <div className={`${largura} max-w-full flex flex-col min-h-0`}>
+            <label className="relative block mb-1.5">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+              <input
+                ref={entrada} className="input py-1.5 pl-8 text-[13.5px]" autoComplete="off" placeholder={procurar} value={busca}
+                aria-label={procurar} aria-controls={id ? `${id}-lista` : undefined}
+                onChange={(e) => { setBusca(e.target.value); setMarcado(0); }} onKeyDown={tecla}
+              />
+            </label>
+            <ul ref={lista} role="listbox" id={id ? `${id}-lista` : undefined} className="overflow-y-auto min-h-0 flex-1">
+              {achadas.map((o, i) => (
+                <li
+                  key={o.id || '__vazio__'} data-i={i} role="option" aria-selected={o.id === valor}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded text-[13.5px] cursor-pointer ${i === marcado ? 'bg-surface-2' : ''} ${o.id === '' ? 'text-muted italic' : ''}`}
+                  onMouseEnter={() => setMarcado(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => escolher(o)}
+                >
+                  <span className="flex-1 min-w-0 truncate">{o.nome}{o.dica && <span className="text-muted"> · {o.dica}</span>}</span>
+                  {o.id === valor && <Check size={14} className="shrink-0 text-accent" />}
+                </li>
+              ))}
+              {!achadas.length && <li className="px-2 py-2 text-[13px] text-muted">Nada com "{busca}".</li>}
+            </ul>
+          </div>
         </div>
       )}
     </div>
