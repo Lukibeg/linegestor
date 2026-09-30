@@ -4,13 +4,21 @@
  * A regra mais importante: toda alteração em massa recebe uma LISTA EXPLÍCITA de ids,
  * conta quantos foram afetados e registra na auditoria com esse número. Não existe "aplica em tudo que está filtrado".
  */
-import { and, asc, desc, eq, ilike, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { alias, type PgColumn } from 'drizzle-orm/pg-core';
 import { carriers, circuits, clients, dids, newId, type Db } from '@gestor/db';
-import { didFormatado, gerarFaixaDids, type DidCriarFaixa, type DidEditarEmMassa, type DidListar } from '@gestor/shared';
+import { didFormatado, gerarFaixaDids, paraBusca, type DidCriarFaixa, type DidEditarEmMassa, type DidListar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 
 const owner = alias(clients, 'owner');
+
+/**
+ * Para a busca na observação sem acento: o `translate` do PostgreSQL troca letra por letra.
+ * As maiúsculas acentuadas entram também porque o `lower()` não as converte em todo banco
+ * (depende do idioma com que o banco foi criado).
+ */
+const ACENTOS = 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ';
+const SEM_ACENTOS = 'aaaaaeeeeiiiiooooouuuucaaaaaeeeeiiiiooooouuuuc';
 
 function baseSelect(db: Db) {
   return db
@@ -39,7 +47,16 @@ function shape(r: any) {
  */
 function filtros(q: Partial<DidListar>): SQL[] {
   const conds: SQL[] = [isNull(dids.deletedAt)];
-  if (q.q) conds.push(ilike(dids.number, `%${q.q.replace(/\D/g, '')}%`));
+  if (q.q) {
+    // o número (com ou sem DDD, traço, parênteses) OU um pedaço da observação, sem ligar para
+    // acento nem maiúscula — a mesma busca da aba DIDs da ficha do cliente (1.6: agora também na
+    // Numeração e na ficha do circuito)
+    const digitos = q.q.replace(/\D/g, '');
+    // % e _ digitados valem como texto, não como curinga do LIKE
+    const texto = paraBusca(q.q).replace(/[\\%_]/g, (c) => `\\${c}`);
+    const pelaObservacao = sql`translate(lower(coalesce(${dids.note}, '')), ${ACENTOS}, ${SEM_ACENTOS}) like ${`%${texto}%`}`;
+    conds.push(digitos ? or(ilike(dids.number, `%${digitos}%`), pelaObservacao)! : pelaObservacao);
+  }
   if (q.circuitId) conds.push(eq(dids.circuitId, q.circuitId));
   if (q.clientId === 'free') conds.push(isNull(dids.clientId));
   else if (q.clientId) conds.push(eq(dids.clientId, q.clientId));

@@ -21,7 +21,7 @@ import { ChipSituacao } from '../projetos/partes.js';
 import { BarrasRanking } from '../../components/graficos.js';
 import { FiltroEmBotao } from '../../lib/filtros.js';
 import { temDataDeAtivacao } from '@gestor/shared';
-import { ClienteDoDid, ObservacaoDid, UsoDid, useEditarDid, useOpcoesDeCliente } from '../dids/partes.js';
+import { ObservacaoDid, UsoDid, useEditarDid } from '../dids/partes.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'historico';
 
@@ -432,8 +432,10 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
  * duas opções só, uma lista de caixinhas era um clique a mais. Ele mostra os números que pedem
  * atenção (alocados e ainda sem uso); os em uso são a maioria e não precisam de filtro.
  *
- * Patch 1.5: **trocar o cliente** de um número daqui mesmo (passa para outro, ou fica livre), como
- * na Numeração e na ficha do circuito — as peças são as mesmas (`pages/dids/partes.tsx`).
+ * Patch 1.5: uso e observação com as mesmas peças da Numeração e da ficha do circuito
+ * (`pages/dids/partes.tsx`). O **"trocar cliente"** que o 1.5 pôs aqui **saiu no 1.6** (pedido do
+ * Luan, 30/09: "não precisa desse trocar cliente aqui"): passar o número para outro cliente é na
+ * Numeração ou na ficha do circuito, onde a coluna Cliente existe.
  */
 function Dids({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
@@ -471,9 +473,8 @@ function Dids({ c }: { c: ClientFull }) {
   }, [items, busca, soNaoUsados, operadoras, circuitos, titulares]);
   const ordenados = ordenarLista(filtrados, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, inUse: (d) => (d.inUse ? 1 : 0), note: (d) => d.note });
   const pg = usePaginaLocal(ordenados, 100);
-  const { mudando, alternarUso, gravarObservacao, trocarCliente } = useEditarDid();
+  const { mudando, alternarUso, gravarObservacao } = useEditarDid();
   const podeEditar = can('dids.assign');
-  const clientes = useOpcoesDeCliente(podeEditar);
   if (q.isLoading) return <Carregando />;
   if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
   const emUso = items.filter((d) => d.inUse).length;
@@ -498,15 +499,13 @@ function Dids({ c }: { c: ClientFull }) {
       </div>
       <div className="card overflow-x-auto">
         {!filtrados.length ? <div className="text-muted text-sm p-4">Nenhum número com esses filtros. <button type="button" className="link" onClick={limpar}>Limpar filtros</button></div> : (
-          <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th>{podeEditar && <th className="w-px" aria-label="Trocar o cliente" />}</tr></thead>
+          <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
             <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum whitespace-nowrap">{d.numberFormatted}</td>
               <td><UsoDid inUse={d.inUse} podeMudar={podeEditar} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /></td>
               <td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td><td>{d.ownerName ?? '—'}</td>
-              <td className="min-w-[200px]"><ObservacaoDid nota={d.note} podeEditar={podeEditar} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td>
-              {/* trocar o cliente daqui: o número sai desta lista e vai para o outro (ou fica livre) */}
-              {podeEditar && <td className="text-right"><ClienteDoDid d={{ ...d, clientId: c.id, clientName: c.tradeName }} clientes={clientes} podeEditar trocar={(novo, nome) => trocarCliente(d.id, d.numberFormatted, novo, nome)} soBotao /></td>}</tr>)}</tbody></table>
+              <td className="min-w-[200px]"><ObservacaoDid nota={d.note} podeEditar={podeEditar} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td></tr>)}</tbody></table>
         )}
-        <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted flex flex-wrap gap-x-3"><span className="tnum">{emUso} em uso · {items.length - emUso} não usado(s)</span><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa.</div></div>
+        <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted flex flex-wrap gap-x-3"><span className="tnum">{emUso} em uso · {items.length - emUso} não usado(s)</span><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa ou trocar o cliente.</div></div>
       </div>
     </div>
   );

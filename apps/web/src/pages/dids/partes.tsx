@@ -2,6 +2,7 @@
  * As peças de um DID que se editam na própria linha, iguais em todo lugar que mostra números:
  * Circuitos › Numeração, a ficha do circuito e a ficha do cliente (pedido do Luan, 26/09:
  * "qualquer lugar que tenha DIDs tem que ser possível alterar o cliente, o uso, a observação").
+ * Na ficha do cliente ficam só o uso e a observação: o "trocar cliente" de lá saiu no 1.6 (30/09).
  *
  *  - **Cliente**: o lápis ao lado abre a escolha com busca; "livre" libera o número.
  *  - **Uso**: clicar na marca alterna em uso / não usado (só com cliente).
@@ -13,7 +14,7 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { ArrowRightLeft, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { api } from '../../api/index.js';
 import { Chip, EscolherComBusca, mensagemErro, Spinner, useToast, type OpcaoBusca } from '../../components/ui/index.js';
 
@@ -46,22 +47,18 @@ export function useEditarDid() {
 
 /** A marca "em uso" / "não usado" de um número. Com permissão, vira um botão que alterna. */
 export function UsoDid({ inUse, podeMudar, mudando, onChange }: { inUse: boolean; podeMudar: boolean; mudando?: boolean; onChange?: (v: boolean) => void }) {
-  const chip = <Chip tone={inUse ? 'ok' : 'signal'} title={inUse ? 'O cliente usa este número' : 'Alocado ao cliente, mas ainda não está em uso'}>{inUse ? 'em uso' : 'não usado'}</Chip>;
+  // whitespace-nowrap: em coluna apertada a marca quebrava em duas linhas ("em / uso")
+  const chip = <Chip tone={inUse ? 'ok' : 'signal'} className="whitespace-nowrap" title={inUse ? 'O cliente usa este número' : 'Alocado ao cliente, mas ainda não está em uso'}>{inUse ? 'em uso' : 'não usado'}</Chip>;
   if (!podeMudar || !onChange) return chip;
   return <button type="button" className={`inline-flex ${mudando ? 'opacity-50' : ''}`} disabled={mudando} onClick={(e) => { e.stopPropagation(); onChange(!inUse); }} title={inUse ? 'Clique para marcar como não usado' : 'Clique para marcar como em uso'} aria-label={inUse ? 'Marcar como não usado' : 'Marcar como em uso'}>{chip}</button>;
 }
 
-/**
- * O cliente do número: o nome (que abre a ficha) ou "livre", e — com permissão — o lápis que troca.
- * `soBotao` é para a ficha do cliente, onde a coluna Cliente seria sempre o mesmo nome: fica só o
- * botão "trocar cliente".
- */
-export function ClienteDoDid({ d, clientes, podeEditar, trocar, soBotao = false }: {
+/** O cliente do número: o nome (que abre a ficha) ou "livre", e — com permissão — o lápis que troca. */
+export function ClienteDoDid({ d, clientes, podeEditar, trocar }: {
   d: { id: string; clientId: string | null; clientName: string | null; numberFormatted: string };
   clientes: OpcaoBusca[];
   podeEditar: boolean;
   trocar: (clientId: string | null, nome?: string) => Promise<void>;
-  soBotao?: boolean;
 }) {
   const toast = useToast();
   const [gravando, setGravando] = useState(false);
@@ -71,23 +68,18 @@ export function ClienteDoDid({ d, clientes, podeEditar, trocar, soBotao = false 
     catch (e) { toast.push('erro', mensagemErro(e)); } finally { setGravando(false); }
   };
   const nome = d.clientId ? <Link className="link" to={`/clientes/${d.clientId}`}>{d.clientName}</Link> : <Chip tone="ok">livre</Chip>;
-  if (!podeEditar) return soBotao ? null : nome;
+  if (!podeEditar) return nome;
   const escolha = (
     <EscolherComBusca
       valor={d.clientId ?? ''} opcoes={clientes} vazio="livre (sem cliente)" onChange={(id) => void escolher(id)}
       rotulo={`Cliente do ${d.numberFormatted}`} procurar="Procurar cliente…"
-      gatilho={(abrir) => soBotao ? (
-        <button type="button" className="btn-ghost btn-sm text-muted whitespace-nowrap" onClick={abrir} disabled={gravando} title="Passar este número para outro cliente, ou liberar" aria-label={`Trocar o cliente do ${d.numberFormatted}`}>
-          {gravando ? <Spinner className="!w-3.5 !h-3.5" /> : <ArrowRightLeft size={13} />} trocar cliente
-        </button>
-      ) : (
+      gatilho={(abrir) => (
         <button type="button" className="btn-ghost btn-sm px-1 text-muted opacity-60 hover:opacity-100 focus-visible:opacity-100" onClick={abrir} disabled={gravando} title="Trocar o cliente deste número (ou liberar)" aria-label={`Trocar o cliente do ${d.numberFormatted}`}>
           {gravando ? <Spinner className="!w-3.5 !h-3.5" /> : <Pencil size={12} />}
         </button>
       )}
     />
   );
-  if (soBotao) return escolha;
   return <span className="inline-flex items-center gap-0.5 whitespace-nowrap">{nome}{escolha}</span>;
 }
 

@@ -74,7 +74,36 @@ function montarColunas(produtos: Product[]): Coluna<ClientListItem>[] {
     }
     return cols;
   });
+  // 1.6 (pedido de 30/09): a ativação do PRIMEIRO módulo, mesmo que o cliente tenha vários — a
+  // mais antiga entre os módulos ligados hoje, de qualquer produto. Mora no grupo "Ativado em",
+  // logo depois das datas dos produtos, e diz embaixo qual módulo foi.
+  const primeiro: Coluna<ClientListItem> = {
+    id: 'primeiroModulo', label: '1º módulo — ativado em', labelCurto: '1º módulo (o mais antigo)', grupo: 'Ativado em (por produto)',
+    render: (c) => {
+      const m = primeiroModulo(c);
+      if (!m) return <span className="text-muted" title="Nenhum módulo ligado">—</span>;
+      if (!m.activatedAt) return <span className="text-muted italic" title={`Tem ${m.nomes}, sem data de ativação`}>sem data</span>;
+      return (
+        <span className="flex flex-col leading-tight" title={`${m.produto} › ${m.nome}, ativado em ${data(m.activatedAt)}`}>
+          <span className="tnum whitespace-nowrap">{data(m.activatedAt)}</span>
+          <span className="text-[11.5px] font-medium whitespace-nowrap" style={{ color: m.cor }}>{m.nome}</span>
+        </span>
+      );
+    },
+  };
+  const ultimaDoGrupo = porProduto.map((c) => c.grupo).lastIndexOf('Ativado em (por produto)');
+  porProduto.splice(ultimaDoGrupo + 1, 0, primeiro);
   return [...fixas, ...porProduto];
+}
+
+/** O módulo ativado primeiro (o de data mais antiga), com o nome e a cor do produto dele. */
+function primeiroModulo(c: ClientListItem): { nome: string; produto: string; cor: string; activatedAt: string | null; nomes: string } | null {
+  const todos = c.products.flatMap((p) => p.modules.map((m) => ({ nome: m.name, produto: p.name, cor: p.color, activatedAt: m.activatedAt })));
+  if (!todos.length) return null;
+  const nomes = todos.map((m) => m.nome).join(', ');
+  // as datas vêm em ISO: a ordem do texto é a ordem do calendário
+  const comData = todos.filter((m) => m.activatedAt).sort((a, b) => String(a.activatedAt).localeCompare(String(b.activatedAt)));
+  return { ...(comData[0] ?? { ...todos[0]!, activatedAt: null }), nomes };
 }
 
 /**
@@ -104,7 +133,8 @@ export function ClientesLista() {
   const view = sp.get('ver') ?? 'cards';
   // a lista de clientes não tem páginas (pedido do Luan, rodada 23): são poucas dezenas e ele quer ver todos de uma vez
   const [novo, setNovo] = useState(false);
-  const colunasEscolhidas = useColunasEscolhidas(STORAGE, PADRAO);
+  // a coluna do 1º módulo (1.6) aparece uma vez para quem já tinha escolhido as suas colunas
+  const colunasEscolhidas = useColunasEscolhidas(STORAGE, PADRAO, { novas: ['primeiroModulo'] });
   const o = useOrdenacao('tradeName');
 
   const numero = contarDe(1, TODOS);

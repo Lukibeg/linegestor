@@ -349,9 +349,9 @@ export const circuits = pgTable(
      *  - `login`: por login e senha do tronco
      */
     authType: text('auth_type').notNull().default('ip'),
-    /** IP da operadora (sinalização) */
+    /** IP ou URL da operadora (sinalização) — tem operadora que só libera o endereço (1.6) */
     signalingIp: text('signaling_ip'),
-    /** IP do PBX que a operadora autoriza (só na autenticação por IP; "IP PBX" no Nexus) */
+    /** IP (ou endereço) do PBX que a operadora autoriza (só na autenticação por IP; "IP PBX" no Nexus) */
     authIp: text('auth_ip'),
     /** Login do tronco (só na autenticação por login e senha) */
     authUsername: text('auth_username'),
