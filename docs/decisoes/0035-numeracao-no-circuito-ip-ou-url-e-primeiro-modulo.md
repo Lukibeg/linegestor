@@ -38,7 +38,8 @@ com a migração e a decisão renumeradas.
   64 para 200 caracteres (a coluna já era `text`: **sem migração**). O **IP do PBX** ganhou o mesmo
   campo: já há circuito com endereço gravado ali (`sbc.…`, vindo do Nexus), e a máscara só de IP o
   apagava na primeira tecla ao editar.
-- **Coluna "1º módulo — ativado em"** na lista de clientes (grupo "Ativado em", logo depois das
+- **Coluna "1º módulo — ativado em"** (**revista pela 0036, no 1.6.1**: o pedido era o 1º *produto*; a
+  coluna virou "1º produto — ativado em") na lista de clientes (grupo "Ativado em", logo depois das
   datas dos produtos): a data de ativação do módulo **ativado primeiro**, de qualquer produto, com o
   nome dele embaixo, na cor do produto. Conta os módulos **ligados hoje** — os mesmos que a coluna
   "Módulos" mostra —; módulo desativado não entra. Sem módulo: "—"; com módulo mas sem data: "sem

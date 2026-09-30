@@ -6,7 +6,7 @@
  *  - a busca dos DIDs acha o número OU um pedaço da observação, sem ligar para acento, e o
  *    "selecionar todos os filtrados" conta exatamente os mesmos — é o que a ficha do circuito usa
  *    agora, com o circuito fixo
- *  - a lista de clientes ordena pela ativação do 1º módulo (o mais antigo entre os ligados hoje)
+ *  (a ordem pela ativação do 1º módulo saiu no 1.6.1: a coluna virou "1º produto" — ver patch161)
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { makeApp, Session, type App } from './helpers.js';
@@ -77,29 +77,5 @@ describe('busca dos DIDs: número ou observação', () => {
   it('"selecionar todos os filtrados" conta os mesmos da lista', async () => {
     const ids = (await s.get(`/dids/ids?circuitId=${circuitId}&q=ramal`)).json().ids;
     expect(ids).toHaveLength(3);
-  });
-});
-
-describe('coluna "1º módulo — ativado em"', () => {
-  it('ordena pela ativação do módulo mais antigo, qualquer que seja o produto', async () => {
-    const novo = async (nome: string, cnpj: string) => (await s.post('/clients', { tradeName: nome, legalName: `${nome} LTDA`, cnpj })).json().id as string;
-    const a = await novo('Alfa Primeiro', '11.222.333/0001-81');
-    const b = await novo('Beta Primeiro', '22.333.444/0001-81');
-    const c = await novo('Gama Sem Módulo', '55.666.777/0001-81');
-    // Alfa: FOP2 em 2025-06 e NPS em 2024-03 → o 1º é o NPS (2024-03)
-    await s.put(`/clients/${a}/subscriptions`, { productCode: 'linepbx', activatedAt: '2024-01-10' });
-    await s.put(`/clients/${a}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', activatedAt: '2025-06-01' });
-    await s.put(`/clients/${a}/modules`, { productCode: 'linepbx', moduleCode: 'nps', activatedAt: '2024-03-01' });
-    // Beta: um módulo de 2023 que foi desligado (não conta) e um de 2024-08 ligado
-    await s.put(`/clients/${b}/subscriptions`, { productCode: 'linepbx', activatedAt: '2023-01-10' });
-    await s.put(`/clients/${b}/modules`, { productCode: 'linepbx', moduleCode: 'fop2', activatedAt: '2023-02-01' });
-    await s.del(`/clients/${b}/modules/linepbx/fop2`);
-    await s.put(`/clients/${b}/modules`, { productCode: 'linepbx', moduleCode: 'omniboard', activatedAt: '2024-08-01' });
-    await s.put(`/clients/${c}/subscriptions`, { productCode: 'linepbx', activatedAt: '2022-01-10' });
-
-    const nomes = async (dir: string) => (await s.get(`/clients?pageSize=100&sort=primeiroModulo&dir=${dir}`)).json().items.map((x: any) => x.tradeName).filter((n: string) => n.includes('Primeiro') || n.includes('Sem Módulo'));
-    expect(await nomes('asc')).toEqual(['Alfa Primeiro', 'Beta Primeiro', 'Gama Sem Módulo']);
-    // sem módulo vai para o fim nos dois sentidos
-    expect(await nomes('desc')).toEqual(['Beta Primeiro', 'Alfa Primeiro', 'Gama Sem Módulo']);
   });
 });

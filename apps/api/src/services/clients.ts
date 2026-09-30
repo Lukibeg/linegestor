@@ -14,11 +14,11 @@
  *  - o cliente tem uma configuração de rede padrão para os aparelhos e um login e senha padrão
  *    por modelo de aparelho; toda senha vai para o cofre
  */
-import { and, asc, desc, eq, ilike, inArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import {
   clientDeviceLogins, clientLogos, clientNetworkSettings, clients, clientUnits, deviceModels, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, type Db,
 } from '@gestor/db';
-import type { AssinaturaGravar, ClienteAtualizar, ClienteCriar, ClienteListar, LoginModeloGravar, ModuloGravar, RedePadrao, UnidadeGravar } from '@gestor/shared';
+import { PRODUTOS_SEM_DATA_DE_ATIVACAO, type AssinaturaGravar, type ClienteAtualizar, type ClienteCriar, type ClienteListar, type LoginModeloGravar, type ModuloGravar, type RedePadrao, type UnidadeGravar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 
@@ -60,7 +60,7 @@ export const valorDoAparelho = sql<number>`coalesce(${devices.valueCents}, ${dev
 /**
  * Traduz "ordenar por esta coluna" em ORDER BY.
  * O nome da coluna é o mesmo id que a tela usa, inclusive os criados na hora
- * ("ativacao:linepbx", "modulo:linepbx:fop2", "primeiroModulo"). O que não for reconhecido cai no
+ * ("ativacao:linepbx", "modulo:linepbx:fop2", "primeiroProduto"). O que não for reconhecido cai no
  * nome fantasia.
  * Vazio vai sempre para o fim (NULLS LAST), em qualquer sentido.
  */
@@ -118,16 +118,14 @@ function ordenacaoClientes(db: Db, q: ClienteListar) {
       .innerJoin(productModules, eq(productModules.id, subscriptionModules.moduleId))
       .where(and(eq(subscriptions.clientId, clients.id), eq(products.code, pCode), eq(productModules.code, mCode), isNull(subscriptions.deactivatedAt), isNull(subscriptionModules.deactivatedAt)))
       .limit(1)})`;
-  } else if (k === 'primeiroModulo') {
-    // 1.6: a ativação do PRIMEIRO módulo, qualquer que seja o produto — a mais antiga entre os
-    // módulos ligados hoje (os mesmos que a coluna "Módulos" mostra)
+  } else if (k === 'primeiroProduto') {
+    // 1.6.1: a ativação do PRIMEIRO PRODUTO — a mais antiga entre os produtos ativos hoje, fora os que
+    // não têm data de ativação na tela (Equipamentos): a mesma conta da coluna
     campo = sql`(${db
-      .select({ v: sql`min(${subscriptionModules.activatedAt})` })
-      .from(subscriptionModules)
-      .innerJoin(subscriptions, eq(subscriptions.id, subscriptionModules.subscriptionId))
-      .innerJoin(productModules, eq(productModules.id, subscriptionModules.moduleId))
+      .select({ v: sql`min(${subscriptions.activatedAt})` })
+      .from(subscriptions)
       .innerJoin(products, eq(products.id, subscriptions.productId))
-      .where(and(eq(subscriptions.clientId, clients.id), isNull(subscriptions.deactivatedAt), isNull(subscriptionModules.deactivatedAt), isNull(productModules.deletedAt), isNull(products.deletedAt)))})`;
+      .where(and(eq(subscriptions.clientId, clients.id), isNull(subscriptions.deactivatedAt), isNull(products.deletedAt), notInArray(products.code, [...PRODUTOS_SEM_DATA_DE_ATIVACAO])))})`;
   } else campo = sql`lower(${clients.tradeName})`;
 
   // desempate sempre pelo nome fantasia, para a ordem não "dançar" entre páginas
