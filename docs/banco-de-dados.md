@@ -235,8 +235,8 @@ Um circuito (feixe) contratado junto a uma operadora. Agrupa DIDs e tem um limit
 | `third_party` | sim/não | Circuito que NÃO é da VoiceNet: o tronco que o próprio cliente contratou de outra operadora. Guardar é útil (dá para saber a numeração dele), mas polui o controle da VoiceNet — por isso fica fora das listas, dos cartões e do painel até alguém ligar "links de terceiros". | obrigatório · padrão: false |
 | `monthly_value_cents` | número inteiro | Custo/valor mensal do feixe, em centavos | — |
 | `auth_type` | texto | Como o tronco se autentica na operadora: - `ip`: pelo IP — basta o IP da operadora e o IP do PBX - `login`: por login e senha do tronco | obrigatório · padrão: 'ip' |
-| `signaling_ip` | texto | IP da operadora (sinalização) | — |
-| `auth_ip` | texto | IP do PBX que a operadora autoriza (só na autenticação por IP; "IP PBX" no Nexus) | — |
+| `signaling_ip` | texto | IP ou URL da operadora (sinalização) — tem operadora que só libera o endereço (1.6) | — |
+| `auth_ip` | texto | IP (ou endereço) do PBX que a operadora autoriza (só na autenticação por IP; "IP PBX" no Nexus) | — |
 | `auth_username` | texto | Login do tronco (só na autenticação por login e senha) | — |
 | `auth_password_secret_id` | texto | Senha de autenticação do tronco — no cofre | liga com **secrets** |
 | `notes` | texto | — | — |

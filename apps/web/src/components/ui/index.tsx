@@ -4,7 +4,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
 import { AlertTriangle, Check, ChevronDown, Copy, Eye, EyeOff, Info, Loader2, Search, X } from 'lucide-react';
-import { formatarIp, paraBusca, SEM_LIMITE } from '@gestor/shared';
+import { formatarIp, formatarIpOuEndereco, paraBusca, SEM_LIMITE } from '@gestor/shared';
 import { ApiError } from '../../api/types.js';
 
 // ---------- Avisos (toast) ----------
@@ -244,6 +244,15 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
  */
 export function InputIp({ value, onChange, className = '', ...rest }: { value: string; onChange: (v: string) => void } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
   return <input {...rest} className={`input font-mono tnum ${className}`} inputMode="decimal" autoComplete="off" value={value} onChange={(e) => onChange(formatarIp(e.target.value))} />;
+}
+
+/**
+ * O mesmo campo de IP, mas que também aceita **endereço** (`sip.operadora.com.br`, `https://…`):
+ * tem operadora que só libera a URL. Enquanto só houver dígitos e pontos, põe os pontos sozinho;
+ * com uma letra, fica como foi digitado. O teclado do celular é o de texto (precisa de letras).
+ */
+export function InputIpOuEndereco({ value, onChange, className = '', ...rest }: { value: string; onChange: (v: string) => void } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+  return <input {...rest} className={`input font-mono ${className}`} inputMode="url" autoComplete="off" spellCheck={false} autoCapitalize="none" placeholder={rest.placeholder ?? 'IP ou URL'} value={value} onChange={(e) => onChange(formatarIpOuEndereco(e.target.value))} />;
 }
 
 // ---------- Paginação ----------

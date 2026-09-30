@@ -238,7 +238,8 @@ export const CircuitoGravarSchema = z.object({
   monthlyValueCents: CentavosSchema.nullable().optional(),
   /** por IP (IP da operadora + IP do PBX) ou por login e senha do tronco */
   authType: z.enum(['ip', 'login']).default('ip'),
-  signalingIp: z.string().trim().max(64).nullable().optional(),
+  /** IP **ou URL** da operadora: tem operadora que só libera o endereço (1.6) */
+  signalingIp: z.string().trim().max(200).nullable().optional(),
   authIp: z.string().trim().max(200).nullable().optional(),
   authUsername: z.string().trim().max(120).nullable().optional(),
   authPassword: SenhaEntradaSchema.optional(),

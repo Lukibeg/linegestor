@@ -35,7 +35,8 @@ foi avisado na conversa, com a interpretação escrita, e seguiu.
   nenhuma janela ou tabela corta. A lista curta de titulares do filtro de Circuitos ficou como está.
 - **DID editável na própria linha, em todo lugar** (`pages/dids/partes.tsx`: `ClienteDoDid`,
   `UsoDid`, `ObservacaoDid`, `useEditarDid`): Numeração, ficha do circuito e ficha do cliente (ali,
-  "trocar cliente", já que a coluna seria sempre o mesmo nome). Usa o `PATCH /dids/:id` que já
+  "trocar cliente", já que a coluna seria sempre o mesmo nome — **revisto pela 0035**, no 1.6: o
+  "trocar cliente" saiu da ficha do cliente a pedido do Luan; lá ficam o uso e a observação). Usa o `PATCH /dids/:id` que já
   existia, com a regra de sempre: trocar o cliente derruba a marca de uso. Permissão `dids.assign`.
 - **Data de desativação corrigível**: `deactivatedAt` no `PUT /clients/:id/subscriptions` (e
   `/modules`) grava o encerramento naquele dia sem reativar; não pode ser antes da ativação nem no

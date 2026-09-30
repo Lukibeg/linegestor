@@ -60,7 +60,8 @@ export const valorDoAparelho = sql<number>`coalesce(${devices.valueCents}, ${dev
 /**
  * Traduz "ordenar por esta coluna" em ORDER BY.
  * O nome da coluna é o mesmo id que a tela usa, inclusive os criados na hora
- * ("ativacao:linepbx", "modulo:linepbx:fop2"). O que não for reconhecido cai no nome fantasia.
+ * ("ativacao:linepbx", "modulo:linepbx:fop2", "primeiroModulo"). O que não for reconhecido cai no
+ * nome fantasia.
  * Vazio vai sempre para o fim (NULLS LAST), em qualquer sentido.
  */
 function ordenacaoClientes(db: Db, q: ClienteListar) {
@@ -117,6 +118,16 @@ function ordenacaoClientes(db: Db, q: ClienteListar) {
       .innerJoin(productModules, eq(productModules.id, subscriptionModules.moduleId))
       .where(and(eq(subscriptions.clientId, clients.id), eq(products.code, pCode), eq(productModules.code, mCode), isNull(subscriptions.deactivatedAt), isNull(subscriptionModules.deactivatedAt)))
       .limit(1)})`;
+  } else if (k === 'primeiroModulo') {
+    // 1.6: a ativação do PRIMEIRO módulo, qualquer que seja o produto — a mais antiga entre os
+    // módulos ligados hoje (os mesmos que a coluna "Módulos" mostra)
+    campo = sql`(${db
+      .select({ v: sql`min(${subscriptionModules.activatedAt})` })
+      .from(subscriptionModules)
+      .innerJoin(subscriptions, eq(subscriptions.id, subscriptionModules.subscriptionId))
+      .innerJoin(productModules, eq(productModules.id, subscriptionModules.moduleId))
+      .innerJoin(products, eq(products.id, subscriptions.productId))
+      .where(and(eq(subscriptions.clientId, clients.id), isNull(subscriptions.deactivatedAt), isNull(subscriptionModules.deactivatedAt), isNull(productModules.deletedAt), isNull(products.deletedAt)))})`;
   } else campo = sql`lower(${clients.tradeName})`;
 
   // desempate sempre pelo nome fantasia, para a ordem não "dançar" entre páginas

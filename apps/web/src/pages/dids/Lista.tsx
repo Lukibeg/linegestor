@@ -2,11 +2,16 @@
  * Numeração (todos os DIDs de todos os circuitos): lista com filtros, seleção por caixa,
  * "selecionar todos os filtrados", barra de ação em massa e confirmação que declara o número exato
  * de registros afetados. Vive como aba dentro de Circuitos; o endereço antigo /dids redireciona para lá.
+ *
+ * Patch 1.6 (pedido de 30/09): a MESMA tabela mora também na ficha do circuito, com o circuito fixo
+ * (`circuito`) — busca, filtros, seleção e edição em massa sem sair dali. Com o circuito fixo, somem
+ * o que seria sempre igual: o filtro e as colunas de circuito e operadora, o interruptor dos links de
+ * terceiros (a ficha mostra todos os números do circuito) e o "Criar faixa" (já está no alto da ficha).
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import { Plus, X } from 'lucide-react';
+import { Plus, Search, X } from 'lucide-react';
 import { api } from '../../api/index.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Campo, Carregando, Chip, Confirmar, Copiar, EscolherComBusca, Modal, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
@@ -24,11 +29,12 @@ export function DidsRedirect() {
   return <Navigate to={`/circuitos?${n.toString()}`} replace />;
 }
 
-export function Numeracao() {
+export function Numeracao({ circuito: fixo }: { circuito?: { id: string; nome: string } } = {}) {
   const [sp, setSp] = useSearchParams();
-  const q = sp.get('q') ?? ''; const circuito = sp.get('circuito') ?? ''; const cliente = sp.get('cliente') ?? ''; const uso = sp.get('uso') ?? ''; const page = Number(sp.get('p') ?? 1);
-  // o mesmo interruptor da aba Circuitos (mora no endereço, então vale para as duas)
-  const terceiros = sp.get('terceiros') === '1';
+  const q = sp.get('q') ?? ''; const circuito = fixo?.id ?? sp.get('circuito') ?? ''; const cliente = sp.get('cliente') ?? ''; const uso = sp.get('uso') ?? ''; const page = Number(sp.get('p') ?? 1);
+  // o mesmo interruptor da aba Circuitos (mora no endereço, então vale para as duas);
+  // na ficha do circuito vale sempre: ela mostra todos os números dele, de terceiro ou não
+  const terceiros = !!fixo || sp.get('terceiros') === '1';
   const o = useOrdenacao('number');
   const tudo = sp.get('tudo') === '1';
   const pageSize = 100;
@@ -36,11 +42,12 @@ export function Numeracao() {
   const numero = contarDe(tudo ? 1 : page, tamanho); // a contagem segue pela lista toda, não recomeça a cada página
   const set = (k: string, v: string | null) => { const n = new URLSearchParams(sp); if (v) n.set(k, v); else n.delete(k); if (k !== 'p') n.delete('p'); setSp(n, { replace: true }); };
   // "limpar" tira os filtros, não o modo de exibição: o interruptor dos terceiros fica como está
-  const limpar = () => setSp({ aba: 'numeracao', ...(terceiros ? { terceiros: '1' } : {}), ...(tudo ? { tudo: '1' } : {}) }, { replace: true });
+  const limpar = () => setSp({ ...(fixo ? {} : { aba: 'numeracao' }), ...(!fixo && terceiros ? { terceiros: '1' } : {}), ...(tudo ? { tudo: '1' } : {}) }, { replace: true });
   const filtro = { q, circuitId: circuito, clientId: cliente, inUse: uso || undefined, includeThirdParty: terceiros };
   const qc = useQueryClient(); const toast = useToast(); const { can } = useAuth();
   const lista = useQuery({ queryKey: ['dids', filtro, page, tudo, o.ord, o.dir], queryFn: () => api.dids.list({ ...filtro, page: tudo ? 1 : page, pageSize: tamanho, sort: o.ord, dir: o.dir }) });
   const circuits = useQuery({ queryKey: ['circuit-options'], queryFn: api.circuits.options });
+  const temFiltro = !!(q || (!fixo && circuito) || cliente || uso);
   const clients = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options() });
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [acao, setAcao] = useState<Acao | null>(null);
@@ -55,20 +62,25 @@ export function Numeracao() {
   const togglePage = () => setSel((s) => { const n = new Set(s); if (allOnPage) items.forEach((d) => n.delete(d.id)); else items.forEach((d) => n.add(d.id)); return n; });
   const selectAllFiltered = async () => { const r = await api.dids.ids(filtro); setSel(new Set(r.ids)); toast.push('info', `${r.ids.length} DIDs selecionados (todos os filtrados)`); };
 
-  const done = async (msg: string) => { setAcao(null); setSel(new Set()); toast.push('ok', msg); await qc.invalidateQueries({ queryKey: ['dids'] }); await qc.invalidateQueries({ queryKey: ['circuits'] }); await qc.invalidateQueries({ queryKey: ['dashboard'] }); };
+  // a ficha do circuito (os cartões do alto) e a do cliente também contam estes números
+  const done = async (msg: string) => { setAcao(null); setSel(new Set()); toast.push('ok', msg); await Promise.all(['dids', 'circuits', 'circuit', 'circuit-dids', 'client-dids', 'dashboard'].map((k) => qc.invalidateQueries({ queryKey: [k] }))); };
 
   return (
     <div>
       <div className="card p-3 mb-4 flex flex-wrap gap-2 items-center">
-        <input className="input max-w-[200px] font-mono" placeholder="número (só dígitos)" value={q} onChange={(e) => set('q', e.target.value)} />
+        {/* 1.6: o número (com ou sem DDD) ou um pedaço da observação, como na ficha do cliente */}
+        <label className="relative">
+          <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
+          <input className="input pl-8 w-[270px] max-w-full" id="dids-busca" autoComplete="off" placeholder="Procurar número ou observação…" value={q} onChange={(e) => set('q', e.target.value)} aria-label="Procurar número ou observação" />
+        </label>
         {/* "Sem circuito" saiu do filtro: todo DID pertence a um circuito */}
-        <select className="input w-auto" value={circuito} onChange={(e) => set('circuito', e.target.value || null)}><option value="">Todos os circuitos</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+        {!fixo && <select className="input w-auto" value={circuito} onChange={(e) => set('circuito', e.target.value || null)}><option value="">Todos os circuitos</option>{circuits.data?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>}
         <EscolherComBusca className="input w-[240px] max-w-full" valor={cliente} onChange={(v) => set('cliente', v || null)} vazio="Todos os clientes" opcoes={[{ id: 'free', nome: 'Livres (sem cliente)' }, ...opcoesCliente]} rotulo="Filtrar por cliente" procurar="Procurar cliente…" id="dids-filtro-cliente" />
         <select className="input w-auto" value={uso} onChange={(e) => set('uso', e.target.value || null)} aria-label="Uso"><option value="">Em uso e não usados</option><option value="true">Só em uso</option><option value="false">Só não usados</option></select>
-        <Toggle checked={terceiros} onChange={(v) => set('terceiros', v ? '1' : null)} label="Habilitar links de terceiros" />
-        {(q || circuito || cliente || uso) && <button className="btn-ghost btn-sm" onClick={limpar}><X size={14} /> limpar</button>}
+        {!fixo && <Toggle checked={terceiros} onChange={(v) => set('terceiros', v ? '1' : null)} label="Habilitar links de terceiros" />}
+        {temFiltro && <button className="btn-ghost btn-sm" onClick={limpar}><X size={14} /> limpar</button>}
         <span className="text-muted text-[12.5px] ml-1">{lista.data ? `${lista.data.total.toLocaleString('pt-BR')} número(s)${lista.data.free !== undefined ? ` · ${lista.data.free} livres` : ''}` : ''}</span>
-        <span className="ml-auto"><Can permission="dids.assign"><button className="btn-primary btn-sm" onClick={() => setFaixa(true)}><Plus size={15} /> Criar faixa</button></Can></span>
+        {!fixo && <span className="ml-auto"><Can permission="dids.assign"><button className="btn-primary btn-sm" onClick={() => setFaixa(true)}><Plus size={15} /> Criar faixa</button></Can></span>}
       </div>
 
       {/* barra de seleção */}
@@ -87,19 +99,19 @@ export function Numeracao() {
         </div>
       )}
 
-      {lista.isLoading ? <Carregando /> : !items.length ? <Vazio titulo="Nenhum DID encontrado" texto={q || circuito || cliente ? 'Tente outro filtro.' : 'Crie uma faixa de números para começar.'} /> : (
+      {lista.isLoading ? <Carregando /> : !items.length ? <Vazio titulo="Nenhum DID encontrado" texto={temFiltro ? 'Tente outro filtro.' : fixo ? 'Este circuito ainda não tem números: use "Criar faixa de DIDs", no alto.' : 'Crie uma faixa de números para começar.'} acao={temFiltro ? <button className="btn-secondary" onClick={limpar}>Limpar filtros</button> : undefined} /> : (
         <div className="card overflow-x-auto"><table className="table">
           <thead><tr>
             {can('dids.assign') && <th className="w-8"><input type="checkbox" checked={allOnPage} onChange={togglePage} aria-label="Selecionar página" /></th>}
-            <ThN /><Th o={o} col="number">Número</Th><Th o={o} col="carrier">Operadora</Th><Th o={o} col="circuit">Circuito</Th><Th o={o} col="client">Cliente</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="owner">Titular</Th><Th o={o} col="note">Observação</Th>
+            <ThN /><Th o={o} col="number">Número</Th>{!fixo && <><Th o={o} col="carrier">Operadora</Th><Th o={o} col="circuit">Circuito</Th></>}<Th o={o} col="client">Cliente</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="owner">Titular</Th><Th o={o} col="note">Observação</Th>
           </tr></thead>
           <tbody>{items.map((d, i) => (
             <tr key={d.id} className={sel.has(d.id) ? 'bg-accent-soft' : ''}>
               {can('dids.assign') && <td><input type="checkbox" checked={sel.has(d.id)} onChange={() => setSel((s) => { const n = new Set(s); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n; })} aria-label={`Selecionar ${d.numberFormatted}`} /></td>}
               <TdN n={numero(i)} />
               <td className="font-mono tnum whitespace-nowrap">{d.numberFormatted} <Copiar texto={d.number} titulo="Copiar número" /></td>
-              <td>{d.carrierName ?? '—'}</td>
-              <td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td>
+              {!fixo && <><td>{d.carrierName ?? '—'}</td>
+              <td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td></>}
               <td><ClienteDoDid d={d} clientes={opcoesCliente} podeEditar={can('dids.assign')} trocar={(novo, nome) => trocarCliente(d.id, d.numberFormatted, novo, nome)} /></td>
               {/* a marca só faz sentido com cliente: número livre não está em uso nem "não usado" */}
               <td>{d.clientId ? <UsoDid inUse={d.inUse} podeMudar={can('dids.assign')} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /> : <span className="text-muted">—</span>}</td>
@@ -111,7 +123,7 @@ export function Numeracao() {
 
       {acao && acao !== 'excluir' && <AcaoMassa acao={acao} ids={[...sel]} onClose={() => setAcao(null)} onDone={done} circuits={circuits.data ?? []} clients={clients.data ?? []} />}
       <ConfirmarExcluir open={acao === 'excluir'} ids={[...sel]} onClose={() => setAcao(null)} onDone={done} />
-      <FaixaForm open={faixa} onClose={() => setFaixa(false)} onDone={() => { setFaixa(false); void qc.invalidateQueries({ queryKey: ['dids'] }); void qc.invalidateQueries({ queryKey: ['circuits'] }); }} />
+      {!fixo && <FaixaForm open={faixa} onClose={() => setFaixa(false)} onDone={() => { setFaixa(false); void qc.invalidateQueries({ queryKey: ['dids'] }); void qc.invalidateQueries({ queryKey: ['circuits'] }); }} />}
     </div>
   );
 }

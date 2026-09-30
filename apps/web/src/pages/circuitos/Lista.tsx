@@ -10,7 +10,7 @@ import { api } from '../../api/index.js';
 import type { Circuit } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
-import { Abas, Campo, CampoSegredo, Carregando, Chip, EscolherComBusca, InputIp, Kpi, Modal, Ocupacao, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
+import { Abas, Campo, CampoSegredo, Carregando, Chip, EscolherComBusca, InputIpOuEndereco, Kpi, Modal, Ocupacao, Paginacao, Spinner, TODOS, Toggle, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { didFormatado, paraCentavos, reais } from '../../lib/format.js';
 import { Th, useOrdenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
@@ -139,9 +139,11 @@ export function CircuitoForm({ open, onClose, onSaved, circuito }: { open: boole
             ))}
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Campo label="IP da operadora"><InputIp value={f.signalingIp ?? ''} onChange={(v) => setF({ ...f, signalingIp: v })} /></Campo>
+            {/* IP ou URL (1.6): tem operadora que só libera o endereço. O IP do PBX também aceita,
+                porque já há circuitos com endereço gravado ali (sbc.…) e a máscara só de IP o apagava ao editar */}
+            <Campo label="IP da operadora" dica="IP ou URL (tem operadora que só libera o endereço)"><InputIpOuEndereco value={f.signalingIp ?? ''} onChange={(v) => setF({ ...f, signalingIp: v })} aria-label="IP ou URL da operadora" /></Campo>
             {(f.authType ?? 'ip') === 'ip'
-              ? <Campo label="IP do PBX" dica="o IP que a operadora autoriza"><InputIp value={f.authIp ?? ''} onChange={(v) => setF({ ...f, authIp: v })} /></Campo>
+              ? <Campo label="IP do PBX" dica="o IP (ou endereço) que a operadora autoriza"><InputIpOuEndereco value={f.authIp ?? ''} onChange={(v) => setF({ ...f, authIp: v })} aria-label="IP ou endereço do PBX" /></Campo>
               : <Campo label="Login do tronco"><input className="input font-mono" autoComplete="off" data-lpignore="true" data-1p-ignore value={f.authUsername ?? ''} onChange={(e) => setF({ ...f, authUsername: e.target.value })} /></Campo>}
           </div>
           {f.authType === 'login' && <Campo label="Senha do tronco"><CampoSegredo secretId={circuito?.authPassword.secretId ?? null} hasSecret={!!circuito?.authPassword.hasSecret} podeRevelar={can('secrets.reveal')} onReveal={api.secrets.reveal} onChangeNovo={setSenha} /></Campo>}

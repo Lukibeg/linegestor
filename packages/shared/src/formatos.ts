@@ -203,6 +203,19 @@ export function formatarIp(v: string): string {
   return v.endsWith('.') && !atual && octetos.length > 0 && octetos.length < 4 ? `${texto}.` : texto;
 }
 
+/**
+ * O IP **ou o endereço** de quem está do outro lado do tronco (pedido do Luan, 30/09: "tem
+ * operadoras que só liberam a URL"). Enquanto só houver dígitos e pontos, é a máscara de IP de
+ * sempre (`19216801` → `192.168.0.1`); com uma letra, dois-pontos ou barra, virou endereço
+ * (`sip.operadora.com.br`, `https://…`, `187.72.45.244:5060`) e fica como foi digitado — só sem
+ * espaços, que nenhum endereço tem.
+ */
+export function formatarIpOuEndereco(v: string): string {
+  const semEspaco = v.replace(/\s+/g, '');
+  if (/[^\d.]/.test(semEspaco)) return semEspaco;
+  return formatarIp(semEspaco);
+}
+
 /** Para procurar sem ligar para acento nem maiúscula: "sotero" acha "Hospital Soterô". */
 export function paraBusca(v: string | null | undefined): string {
   return (v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();

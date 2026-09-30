@@ -9,7 +9,7 @@ import {
   macFormatado, macLimpo, macValido,
   paraCentavos, reais,
   consertarAcentos, diaAoMeioDia, diaParaIso, identificacaoAparelho, lerLista, serieLimpa,
-  formatarIp,
+  formatarIp, formatarIpOuEndereco,
 } from './formatos.js';
 
 describe('CNPJ', () => {
@@ -102,5 +102,21 @@ describe('máscara de IP', () => {
     expect(formatarIp('10.1.1.0')).toBe('10.1.1.0');
     expect(formatarIp('10.1.1.0.')).toBe('10.1.1.0');
     expect(formatarIp('.')).toBe('');
+  });
+});
+
+describe('IP ou endereço da operadora', () => {
+  it('só dígitos e pontos: continua sendo a máscara de IP', () => {
+    expect(formatarIpOuEndereco('18772452')).toBe('187.72.45.2');
+    expect(formatarIpOuEndereco('187.72.45.244')).toBe('187.72.45.244');
+    expect(formatarIpOuEndereco('10.')).toBe('10.');
+  });
+  it('com letra, dois-pontos ou barra: é endereço e fica como foi digitado', () => {
+    expect(formatarIpOuEndereco('sip.operadora.com.br')).toBe('sip.operadora.com.br');
+    expect(formatarIpOuEndereco('SBC.Voz.com.br')).toBe('SBC.Voz.com.br');
+    expect(formatarIpOuEndereco('https://voz.operadora.com.br/tronco')).toBe('https://voz.operadora.com.br/tronco');
+    expect(formatarIpOuEndereco('187.72.45.244:5060')).toBe('187.72.45.244:5060');
+    expect(formatarIpOuEndereco(' sip.op .com.br ')).toBe('sip.op.com.br');
+    expect(formatarIpOuEndereco('')).toBe('');
   });
 });
