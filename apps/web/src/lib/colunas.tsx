@@ -27,18 +27,22 @@ export type EscolhaColunas = { ids: string[]; setIds: (v: string[]) => void; res
 /**
  * Guarda no navegador quais colunas a pessoa escolheu para aquela tabela.
  *
+ * `renomeadas`: coluna que trocou de id ({ antigo: novo }) — quem tinha a antiga marcada passa a ver a
+ * nova no mesmo lugar (a "1º módulo" do 1.6 virou "1º produto" no 1.6.1).
+ *
  * `novas`: colunas que chegaram depois (a Descrição dos Chamados, no 1.4). Quem já tinha escolhido
  * as colunas não as veria nunca — a escolha guardada manda. Então cada coluna nova aparece **uma
  * vez** para essa pessoa, no lugar em que está no padrão; se ela tirar, fica tirada.
  */
-export function useColunasEscolhidas(chaveStorage: string, padrao: string[], opcoes: { novas?: string[] } = {}): EscolhaColunas {
+export function useColunasEscolhidas(chaveStorage: string, padrao: string[], opcoes: { novas?: string[]; renomeadas?: Record<string, string> } = {}): EscolhaColunas {
   const [ids, setIds] = useState<string[]>(() => {
     try {
       const v = localStorage.getItem(chaveStorage);
       const chaveNovas = `${chaveStorage}:novas-vistas`;
       // quem começa agora já vê o padrão com as novas: nada a acrescentar depois
       if (!v) { if (opcoes.novas?.length) localStorage.setItem(chaveNovas, JSON.stringify(opcoes.novas)); return padrao; }
-      const guardadas = JSON.parse(v) as string[];
+      const trocar = opcoes.renomeadas ?? {};
+      const guardadas = [...new Set((JSON.parse(v) as string[]).map((id) => trocar[id] ?? id))];
       const vistas = new Set(JSON.parse(localStorage.getItem(chaveNovas) ?? '[]') as string[]);
       const faltam = (opcoes.novas ?? []).filter((id) => !vistas.has(id) && !guardadas.includes(id));
       if (!faltam.length) return guardadas;
