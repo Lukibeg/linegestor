@@ -571,7 +571,7 @@ export const users = pgTable('users', {
  *    do Google e o token da API de avisos
  */
 export const settings = pgTable('settings', {
-  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) */
+  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) */
   id: text('id').primaryKey(),
   value: text('value').notNull().default('{}'),
   secretId: text('secret_id').references(() => secrets.id),

@@ -10,9 +10,14 @@
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
 import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, VERSAO_PAINEL, camposDeLista, comFechamento, diaEmBrasilia, etapasDaEquipe, listarChamados, painelPadrao, primeiroDiaDe, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, paraBusca, temDataDeAtivacao, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
+import {
+  AjustesEnvioSchema, MarcadosEnvioSchema, momentoEmBrasilia, numeroLegivel, proximoEnvio, montarPainel,
+  AjustesRelatoriosSchema, ArrumacaoRelatoriosSchema, CATALOGO_RELATORIOS, montarArrumacao, ajustesParaTela, camposDosRelatorios, chamadosDaPeca, ChamadosDaPecaSchema, conferirAjustes, FiltrosRelatoriosSchema, opcoesLigadasAo,
+  raioXChamados, relatoriosChamados, type AjustesRelatorios, type ContextoRelatorios, type MovimentoChamado,
+} from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
-import { ApiError, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -83,6 +88,28 @@ const S = {
   // como o resto — dá para arrumar, sair e entrar como leitor@ para ver a mesma arrumação
   painelChamados: {
     versao: VERSAO_PAINEL, itens: [] as ItemPainel[], etapasFechadas: null as string[] | null,
+    atualizadoEm: null as string | null, atualizadoPor: null as string | null,
+  },
+  // Chamados › Relatórios (1.7): os campos usados e a ligação do Cliente do card com o cadastro
+  ajustesRelatorios: {
+    campos: {} as AjustesRelatorios['campos'], clientes: {} as AjustesRelatorios['clientes'], causas: {} as AjustesRelatorios['causas'],
+    atualizadoEm: null as string | null, atualizadoPor: null as string | null,
+  },
+  // o envio automático (1.7): desligado e sem token, como no servidor; na prévia nada sai de verdade
+  envio: {
+    ativo: false, url: 'https://api.flw.chat/chat/v1/message/send', remetente: '', horario: '18:00', dias: [0, 1, 2, 3, 4, 5, 6],
+    destinatarios: [] as Array<{ id: string; nome: string; numero: string; ativo: boolean }>,
+    temToken: false, configuradoEm: null as string | null, configuradoPor: null as string | null,
+    historico: [] as RegistroEnvio[],
+  },
+  // o que vai no PDF: na prévia já vem com alguns marcados, para o "Ver como fica" ter o que mostrar
+  envioMarcados: {
+    relatorios: ['relogio', 'primeira', 'pareto'], graficos: ['serie', 'etapa'],
+    atualizadoEm: null as string | null, atualizadoPor: null as string | null,
+  },
+  // a arrumação da página de Relatórios (ordem, escondidos, favoritos) — igual para a equipe toda
+  arrumacaoRelatorios: {
+    ordem: [] as string[], ocultos: [] as string[], favoritos: [] as string[],
     atualizadoEm: null as string | null, atualizadoPor: null as string | null,
   },
   carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[],
@@ -542,7 +569,7 @@ const ASSUNTOS_DEMO: Array<[string, number]> = [
   ['Tronco - Queda', 1], ['URA - Ajuste', 1], ['Relatórios - Ajuste', 1],
 ];
 
-let chamadosGuardados: { cards: Chamado[]; ctx: Omit<ContextoChamados, 'agora'>; movimentos: number } | null = null;
+let chamadosGuardados: { cards: Chamado[]; ctx: Omit<ContextoChamados, 'agora'>; movimentos: number; historico: Map<string, MovimentoChamado[]> } | null = null;
 function chamadosDemo() {
   if (chamadosGuardados) return chamadosGuardados;
   let semente = 20260923;
@@ -622,6 +649,20 @@ function chamadosDemo() {
     }
   }
 
+  // 1.7: um dia de incidente, 12 dias atrás (num dia útil): a operadora caiu e choveu chamado de
+  // "Tronco - Queda" — é o que o relatório "Dias fora da curva" existe para achar
+  const incidente = new Date(agora - 12 * 86_400_000);
+  while (incidente.getDay() === 0 || incidente.getDay() === 6) incidente.setDate(incidente.getDate() - 1);
+  for (let k = 0; k < 11; k++) {
+    const criado = new Date(incidente); criado.setHours(9, 5 + k * 9, 0, 0);
+    const fechadoEm = new Date(criado.getTime() + (2 + k * 0.4) * 3_600_000);
+    criar(criado, etapaDe('Chamado Validado'), fechadoEm, fechadoEm, { estimado: false });
+    const c = cards[cards.length - 1]!;
+    c.campos.assunto = 'Tronco - Queda';
+    c.campos['tipo-de-chamado-24'] = 'Dificuldade Infraestrutura Cliente';
+    c.title = `${c.campos.plataforma as string} - ${(c.campos['cliente-71'] as string | null) ?? 'Interno'} - Tronco - Queda`;
+  }
+
   // HOJE: uns 16 chamados espalhados pelo dia até agora, para a aba Hoje ter o que mostrar a qualquer
   // hora (antes das 7h30 a janela começa à meia-noite). Os mais antigos do dia já andaram no Kanban.
   const inicioDoDia = new Date(agora); inicioDoDia.setHours(0, 0, 0, 0);
@@ -652,8 +693,21 @@ function chamadosDemo() {
     const quando = new Date(de + sorte() * (agora - 2 * 60_000 - de)).toISOString();
     c.closedAt = quando; c.updatedAt = quando; c.closedEstimated = false;
   }
+  // 1.7: um terço dos fechados com hora exata tinha vencimento, para o "Prazo cumprido" ter o que
+  // mostrar — sem mexer no sorteio, para os outros números da prévia não mudarem
+  for (const c of cards) {
+    if (!c.closedAt || c.closedEstimated || c.dueDate || (c.number ?? 0) % 3 !== 0) continue;
+    const h = 6 + (((c.number ?? 0) * 37) % 90); // de 6h a 4 dias depois da abertura
+    c.dueDate = new Date(Date.parse(c.createdAt) + h * 3_600_000).toISOString();
+  }
   for (const c of cards) c.isOverdue = !!c.dueDate && Date.parse(c.dueDate) < agora && !ETAPAS_DEMO.find((e) => e.id === c.stepId)?.isFinal;
-  chamadosGuardados = { cards, ctx: { etapas: ETAPAS_DEMO, campos, etiquetas: ETIQUETAS_DEMO }, movimentos: Math.round(cards.length * 0.4) };
+  // 1.7: metade dos cards sem cliente vira "Interno" — uma opção do LineChat que não é cliente do
+  // cadastro, para a janela de ligar os clientes (Relatórios) ter o que mostrar
+  for (const c of cards) if (c.campos['cliente-71'] == null && (c.number ?? 0) % 2 === 0) c.campos['cliente-71'] = 'Interno';
+  campos[0]!.options = [...campos[0]!.options, 'Interno'];
+  const inicioDoHistorico = agora - 20 * 86_400_000;
+  const { historico, movimentos } = historicoDemo(cards, inicioDoHistorico);
+  chamadosGuardados = { cards, ctx: { etapas: ETAPAS_DEMO, campos, etiquetas: ETIQUETAS_DEMO }, movimentos, historico };
   // a prévia já vem com dois grupos no Assunto, para o botão Agrupar ter o que mostrar
   if (!S.painelChamados.itens.length) {
     S.painelChamados = {
@@ -669,7 +723,7 @@ function chamadosDemo() {
       atualizadoEm: new Date(agora - 2 * 3_600_000).toISOString(), atualizadoPor: 'Luan França',
     };
   }
-  const inicio = new Date(agora - 20 * 86_400_000).toISOString();
+  const inicio = new Date(inicioDoHistorico).toISOString();
   // a completa roda à meia-noite de Brasília (0h = 3h UTC): a de hoje
   const meiaNoite = new Date(`${diaEmBrasilia(new Date(agora))}T03:01:00Z`).toISOString();
   S.ajustesLineChat = { ...S.ajustesLineChat, inicioEm: inicio, ultimaEm: new Date(agora - 40_000).toISOString(), ultimaCompletaEm: meiaNoite, ultimaMsg: 'Atualização: 2 cards lidos, 1 mudança de etapa.' };
@@ -679,8 +733,91 @@ function chamadosDemo() {
 function chamadosDaEquipe() {
   const d = chamadosDemo();
   const etapas = etapasDaEquipe(d.ctx.etapas, S.painelChamados.etapasFechadas);
-  return { ...d, cards: comFechamento(d.cards, etapas), ctx: { ...d.ctx, etapas } };
+  // com o histórico, a hora do fechamento é refeita pelas etapas da equipe (como no servidor)
+  return { ...d, cards: comFechamento(d.cards, etapas, d.historico), ctx: { ...d.ctx, etapas } };
 }
+
+/**
+ * O caminho de cada chamado inventado pelas etapas, do jeito que a sincronização grava
+ * (`linechat_card_moves`). Sorteio com semente própria, depois dos cards prontos, para não mudar
+ * os números que a prévia já mostrava.
+ *  - nível alcançado: ~7% fecham sem passar do N1, ~63% no N1, ~21% sobem ao N2, ~9% ao N3;
+ *  - ~5% dos fechados foram reabertos uma vez (Tratado → N1/N2 → Tratado);
+ *  - a chegada na etapa que fecha é a hora do fechamento do card (`comFechamento` refaz igual);
+ *  - card aberto antes do histórico começar: como na sincronização, a primeira linha é estimada
+ *    (de onde ele estava quando começamos a olhar), e só o que veio depois tem hora exata.
+ */
+function historicoDemo(cards: Chamado[], inicio: number): { historico: Map<string, MovimentoChamado[]>; movimentos: number } {
+  let semente = 20261003;
+  const sorte = () => { semente = (semente * 1103515245 + 12345) % 2147483648; return semente / 2147483648; };
+  const idDe = (titulo: string) => ETAPAS_DEMO.find((e) => e.title === titulo)!.id;
+  const N = ['Chamado Em Tratativa N1', 'Chamado Em Tratativa N2', 'Chamado Em Tratativa N3'];
+  const historico = new Map<string, MovimentoChamado[]>();
+  let movimentos = 0;
+  const agora = Date.now();
+  for (const c of cards) {
+    const atual = ETAPAS_DEMO.find((e) => e.id === c.stepId)!;
+    const r = sorte();
+    const nivel = r < 0.07 ? 0 : r < 0.7 ? 1 : r < 0.91 ? 2 : 3;
+    const passos = ['Novos Suporte'];
+    const pendente = sorte() < 0.3;
+    if (atual.isFinal) {
+      if (pendente) passos.push('Chamado Pendente Suporte');
+      for (let k = 0; k < nivel; k++) passos.push(N[k]!);
+      if (sorte() < 0.15) passos.push('Chamado em Observação');
+      passos.push('Chamado Tratado Suporte');
+      if (sorte() < 0.05) passos.push(N[Math.min(Math.max(nivel, 1), 2) - 1]!, 'Chamado Tratado Suporte');
+      if (atual.title === 'Chamado Validado') passos.push('Chamado Validado');
+    } else if (atual.title === 'Chamado Pendente Suporte') {
+      passos.push(atual.title);
+    } else if (atual.title !== 'Novos Suporte') {
+      if (pendente) passos.push('Chamado Pendente Suporte');
+      const k = N.indexOf(atual.title);
+      if (k >= 0) for (let i = 0; i <= k; i++) passos.push(N[i]!);
+      else { for (let i = 0; i < Math.max(1, Math.min(nivel, 2)); i++) passos.push(N[i]!); passos.push(atual.title); }
+    }
+    // as horas: da abertura até o fechamento (ou a última alteração); o que vem depois do
+    // fechamento (o Validado) entra logo em seguida
+    const t0 = Date.parse(c.createdAt);
+    const tFim = Math.max(t0, Date.parse(c.closedAt ?? c.updatedAt));
+    const iFecha = atual.isFinal ? passos.lastIndexOf('Chamado Tratado Suporte') : passos.length - 1;
+    const fracoes = Array.from({ length: Math.max(0, iFecha - 1) }, () => sorte()).sort((a, b) => a - b);
+    const horas = passos.map((_, i) => {
+      if (i === 0) return t0;
+      if (i < iFecha) return t0 + (tFim - t0) * fracoes[i - 1]!;
+      if (i === iFecha) return tFim;
+      return Math.min(agora - 60_000, tFim + (i - iFecha) * 2 * 3_600_000);
+    });
+    let movs: MovimentoChamado[] = passos.map((p, i) => ({ fromStepId: i ? idDe(passos[i - 1]!) : null, toStepId: idDe(p), at: new Date(horas[i]!).toISOString(), estimated: false }));
+    if (t0 < inicio) {
+      const j = horas.reduce((acc, h, i) => (h <= inicio ? i : acc), 0);
+      movs = j === passos.length - 1
+        // já estava onde está hoje quando começamos a olhar: uma linha só, estimada
+        ? [{ fromStepId: null, toStepId: c.stepId, at: c.updatedAt, estimated: true }]
+        : [{ fromStepId: null, toStepId: idDe(passos[j]!), at: new Date(inicio).toISOString(), estimated: true }, ...movs.slice(j + 1)];
+    }
+    historico.set(c.id, movs);
+    movimentos += movs.filter((m) => m.fromStepId).length;
+  }
+  return { historico, movimentos };
+}
+
+/** O contexto dos Relatórios na prévia (o mesmo que o servidor monta). */
+function contextoRelatoriosDemo(): { cards: Chamado[]; ctx: ContextoRelatorios } {
+  const { cards, ctx, historico } = chamadosDaEquipe();
+  const ajustes = { campos: S.ajustesRelatorios.campos, clientes: S.ajustesRelatorios.clientes, causas: S.ajustesRelatorios.causas };
+  const assunto = camposDosRelatorios(ctx.campos, ajustes.campos).assunto;
+  const grupos = assunto ? S.painelChamados.itens.find((x) => x.id === `campo:${assunto.key}`)?.grupos : undefined;
+  // o tamanho de cada cliente (DIDs e aparelhos, sem os vendidos), como o servidor lê do banco
+  const tamanhos = new Map(S.clients.filter((c) => !c.deletedAt && !c.isInternal).map((c) => [c.id, {
+    nome: c.tradeName,
+    dids: S.dids.filter((d) => d.clientId === c.id && !d.deletedAt).length,
+    aparelhos: S.devices.filter((d) => d.clientId === c.id && !d.deletedAt && d.currentModality !== 'venda').length,
+  }]));
+  return { cards, ctx: { ...ctx, agora: new Date(), historico, historicoDesde: S.ajustesLineChat.inicioEm, ajustes, gruposAssunto: grupos?.length ? grupos : undefined, cadastro: cadastroParaLigar(), tamanhos } };
+}
+/** Os clientes do cadastro que podem aparecer no LineChat: fora os internos e os da lixeira. */
+const cadastroParaLigar = () => S.clients.filter((c) => !c.deletedAt && !c.isInternal).map((c) => ({ id: c.id, nomes: [c.tradeName, c.legalName].filter(Boolean) }));
 const linkDemo = (c: Chamado) => (c.key ? `https://inglinechat.com.br/panels/painel-demo/card/${c.key}` : '');
 /**
  * Dois cards abertos por engano hoje e excluídos no LineChat: a conferência de 10 em 10 minutos
@@ -904,6 +1041,48 @@ const shapeNota = (n: NotaRow): Novidade => ({
 });
 
 // ---------------- a API ----------------
+/** Envio automático (1.7): o que está marcado, com o nome e na ordem das telas (como o servidor). */
+async function marcadosComTituloDemo() {
+  const op = await demoApi.chamados.opcoes();
+  const resumo = await demoApi.chamados.resumo({ aba: 'hoje' });
+  const itens = montarPainel(S.painelChamados.itens, op.campos);
+  const titulo = (id: string) => {
+    if (id === 'serie') return resumo.serie.titulo;
+    if (id === 'etapa') return 'Por etapa';
+    if (id === 'responsavel') return 'Por responsável';
+    if (id === 'etiqueta') return 'Por etiqueta';
+    const c = resumo.porCampo.find((x) => `campo:${x.key}` === id);
+    return c ? `Por ${c.name.toLowerCase()}` : null;
+  };
+  const graficos = itens.filter((x) => S.envioMarcados.graficos.includes(x.id)).map((x) => ({ id: x.id, titulo: titulo(x.id) })).filter((x): x is { id: string; titulo: string } => !!x.titulo);
+  const relatorios = montarArrumacao(S.arrumacaoRelatorios).ordem.filter((id) => S.envioMarcados.relatorios.includes(id)).map((id) => ({ id, titulo: CATALOGO_RELATORIOS.find((r) => r.id === id)!.titulo }));
+  return { graficos, relatorios };
+}
+
+/** O envio na prévia: confere o que falta como o servidor, mas nada sai de verdade. */
+async function envioDemo(gatilho: 'manual' | 'teste', destinatarioId?: string): Promise<RegistroEnvio> {
+  await wait(900); requirePerm('admin.manage');
+  const e = S.envio;
+  const momento = momentoEmBrasilia(new Date());
+  const lista = e.destinatarios.filter((d) => (destinatarioId ? d.id === destinatarioId : d.ativo));
+  const falta = !e.url ? 'Falta o endereço da API da FlwChat (Administração › Envio automático).'
+    : !e.temToken ? 'Falta o token da API da FlwChat (Administração › Envio automático).'
+      : !e.remetente ? 'Falta o número que envia (Administração › Envio automático).'
+        : !lista.length ? 'Nenhum número ativo na lista.' : null;
+  const t = gatilho === 'teste' ? { graficos: [], relatorios: [] } : await marcadosComTituloDemo();
+  const itens = [...t.graficos.map((g) => g.titulo), ...t.relatorios.map((r) => r.titulo)];
+  const destinatarios = falta ? [] : lista.map((d) => ({ nome: d.nome, numero: d.numero, ok: true, mensagem: 'Simulação da prévia: nada foi enviado.' }));
+  const r: RegistroEnvio = {
+    id: id(), em: now(), dia: momento.dia, gatilho, quem: S.me?.name ?? null, ok: !falta,
+    mensagem: falta ?? `Simulação da prévia: nada foi para o WhatsApp. No sistema de verdade, ${gatilho === 'teste' ? 'a mensagem de teste' : 'o PDF'} iria para ${destinatarios.length} ${destinatarios.length === 1 ? 'número' : 'números'}.`,
+    pdf: falta || gatilho === 'teste' ? null : { id: id(), nome: `chamados-${momento.dia.slice(8, 10)}-${momento.dia.slice(5, 7)}-${momento.dia.slice(0, 4)}.pdf`, bytes: 0 },
+    itens, destinatarios,
+  };
+  S.envio.historico = [r, ...S.envio.historico].slice(0, 60);
+  audit(gatilho === 'teste' ? 'envio_automatico_teste' : 'envio_automatico', 'settings', `${S.me?.name} mandou ${gatilho === 'teste' ? 'mensagem de teste' : `PDF dos Chamados (${itens.length} itens)`} pelo WhatsApp — ${r.ok ? r.mensagem : `falhou: ${r.mensagem}`}${destinatarios.length ? ` (${destinatarios.map((d) => numeroLegivel(d.numero)).join(', ')})` : ''}`, 'envio-automatico');
+  return r;
+}
+
 export const demoApi: Api = {
   auth: {
     async me() { await wait(50); if (!S.me) throw new ApiError(401, 'Faça login para continuar'); return me(S.me); },
@@ -1463,6 +1642,75 @@ export const demoApi: Api = {
       chamadosDemo(); // os grupos de exemplo nascem junto com os chamados
       return S.painelChamados;
     },
+    // ---------- Relatórios (1.7): as mesmas contas do servidor ----------
+    async relatorios(q) {
+      await wait(140); requirePerm('support.read');
+      const { cards, ctx } = contextoRelatoriosDemo();
+      return relatoriosChamados(cards, FiltrosRelatoriosSchema.parse(q), ctx, linkDemo);
+    },
+    async pecaRelatorio(q) {
+      await wait(90); requirePerm('support.read');
+      const p = ChamadosDaPecaSchema.safeParse(q);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Peça desconhecida');
+      const { cards, ctx } = contextoRelatoriosDemo();
+      return chamadosDaPeca(cards, p.data, ctx, linkDemo);
+    },
+    async ajustesRelatorios() {
+      await wait(90); requirePerm('support.read');
+      const { cards, ctx } = contextoRelatoriosDemo();
+      const a = S.ajustesRelatorios;
+      return { ...ajustesParaTela(cards, ctx.campos, { campos: a.campos, clientes: a.clientes, causas: a.causas }, cadastroParaLigar()), atualizadoEm: a.atualizadoEm, atualizadoPor: a.atualizadoPor };
+    },
+    async salvarAjustesRelatorios(novo) {
+      await wait(250); requirePerm('admin.manage');
+      const p = AjustesRelatoriosSchema.safeParse(novo);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Ajustes inválidos');
+      const { ctx } = contextoRelatoriosDemo();
+      const erro = conferirAjustes(p.data, ctx.campos, new Set(cadastroParaLigar().map((c) => c.id)));
+      if (erro) throw bad(erro);
+      const antes = S.ajustesRelatorios.clientes;
+      const ligou = new Set([...Object.keys(antes), ...Object.keys(p.data.clientes)]);
+      const n = [...ligou].filter((k) => antes[k] !== p.data.clientes[k] && Object.prototype.hasOwnProperty.call(p.data.clientes, k)).length;
+      const causasAntes = S.ajustesRelatorios.causas;
+      const nc = [...new Set([...Object.keys(causasAntes), ...Object.keys(p.data.causas)])].filter((k) => causasAntes[k] !== p.data.causas[k]).length;
+      S.ajustesRelatorios = { campos: p.data.campos, clientes: p.data.clientes, causas: p.data.causas, atualizadoEm: now(), atualizadoPor: S.me?.name ?? null };
+      const partes = [n ? `ligou ${n} cliente${n > 1 ? 's' : ''} do LineChat ao cadastro` : '', nc ? `mudou o grupo de ${nc} tipo${nc > 1 ? 's' : ''} em "De quem é a falha"` : ''].filter(Boolean);
+      audit('chamados_relatorios', 'settings', `${S.me?.name} ajustou os Relatórios dos Chamados (${partes.join('; ') || 'campos'})`, 'chamados-relatorios');
+      return S.ajustesRelatorios;
+    },
+    async arrumacaoRelatorios() {
+      await wait(60); requirePerm('support.read');
+      const a = S.arrumacaoRelatorios;
+      return { ...montarArrumacao(a), atualizadoEm: a.atualizadoEm, atualizadoPor: a.atualizadoPor };
+    },
+    async salvarArrumacaoRelatorios(novo) {
+      await wait(200); requirePerm('admin.manage');
+      const p = ArrumacaoRelatoriosSchema.safeParse(novo);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Arrumação inválida');
+      S.arrumacaoRelatorios = { ...p.data, atualizadoEm: now(), atualizadoPor: S.me?.name ?? null };
+      const m = montarArrumacao(p.data);
+      const total = CATALOGO_RELATORIOS.length;
+      audit('chamados_relatorios_arrumacao', 'settings', `${S.me?.name} arrumou os Relatórios dos Chamados para a equipe (${total - m.ocultos.length} à vista, ${m.ocultos.length} escondido${m.ocultos.length === 1 ? '' : 's'}, ${m.favoritos.length} favorito${m.favoritos.length === 1 ? '' : 's'})`, 'chamados-relatorios-arrumacao');
+      return { ...m, atualizadoEm: S.arrumacaoRelatorios.atualizadoEm, atualizadoPor: S.arrumacaoRelatorios.atualizadoPor };
+    },
+    async raioX(clienteId, q) {
+      await wait(120); requirePerm('support.read');
+      const cli = S.clients.find((c) => c.id === clienteId && !c.deletedAt);
+      if (!cli) throw notFound('Cliente');
+      const { cards, ctx } = contextoRelatoriosDemo();
+      const opcoes = opcoesLigadasAo(clienteId, cards, ctx.campos, ctx.ajustes, cadastroParaLigar());
+      const campoCliente = camposDosRelatorios(ctx.campos, ctx.ajustes.campos).cliente;
+      return {
+        cliente: { id: cli.id, nome: cli.tradeName },
+        campoCliente: campoCliente?.name ?? null,
+        gestor: {
+          produtos: activeSubs(cli.id).sort((a, b) => prodMeta(a.productCode).sortOrder - prodMeta(b.productCode).sortOrder).map((s) => prodMeta(s.productCode).name),
+          dids: S.dids.filter((d) => d.clientId === cli.id && !d.deletedAt).length,
+          aparelhos: S.devices.filter((d) => d.clientId === cli.id && !d.deletedAt && d.currentModality !== 'venda').length,
+        },
+        ...raioXChamados(cards, opcoes, FiltrosRelatoriosSchema.parse(q), ctx, linkDemo),
+      };
+    },
     async salvarPainel(novo) {
       await wait(250); requirePerm('admin.manage');
       const p = PainelChamadosSchema.safeParse({ versao: VERSAO_PAINEL, ...novo });
@@ -1485,6 +1733,65 @@ export const demoApi: Api = {
       audit('chamados_painel', 'settings', `${S.me?.name} arrumou a tela de Chamados para a equipe (${partes.join('; ')})`, 'chamados-painel');
       return S.painelChamados;
     },
+  },
+  envio: {
+    async ajustes() {
+      await wait(80); requirePerm('admin.manage');
+      const e = S.envio;
+      return {
+        ativo: e.ativo, url: e.url, remetente: e.remetente, horario: e.horario, dias: e.dias, destinatarios: e.destinatarios,
+        temToken: e.temToken, configuradoEm: e.configuradoEm, configuradoPor: e.configuradoPor,
+        proximo: proximoEnvio(e, new Date(), null),
+        historico: e.historico.slice(0, 20),
+        marcados: { ...(await marcadosComTituloDemo()), atualizadoEm: S.envioMarcados.atualizadoEm, atualizadoPor: S.envioMarcados.atualizadoPor },
+        enderecoPublico: 'https://gestao.exemplo.com.br', linkValeDias: 7,
+      };
+    },
+    async salvarAjustes(novo) {
+      await wait(200); requirePerm('admin.manage');
+      const p = AjustesEnvioSchema.safeParse(novo);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Ajustes inválidos');
+      const { token, ...resto } = p.data;
+      // o token não fica guardado nem na prévia: só a marca de que existe um
+      S.envio = { ...S.envio, ...resto, temToken: S.envio.temToken || !!token, configuradoEm: now(), configuradoPor: S.me?.name ?? null };
+      const ativos = resto.destinatarios.filter((d) => d.ativo).length;
+      audit('envio_automatico_ajustes', 'settings', `${S.me?.name} ${resto.ativo ? 'ligou' : 'desligou'} o envio automático (${resto.horario}, ${ativos} ${ativos === 1 ? 'número' : 'números'})${token ? ' e trocou o token' : ''}`, 'envio-automatico');
+      return demoApi.envio.ajustes();
+    },
+    async marcados() {
+      await wait(40); requirePerm('support.read');
+      return { ...S.envioMarcados };
+    },
+    async salvarMarcados(m) {
+      await wait(120); requirePerm('admin.manage');
+      const p = MarcadosEnvioSchema.safeParse(m);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Marcação inválida');
+      const antes = [...S.envioMarcados.relatorios, ...S.envioMarcados.graficos];
+      const depois = [...p.data.relatorios, ...p.data.graficos];
+      const entrou = depois.filter((x) => !antes.includes(x)); const saiu = antes.filter((x) => !depois.includes(x));
+      S.envioMarcados = { ...p.data, atualizadoEm: now(), atualizadoPor: S.me?.name ?? null };
+      audit('envio_automatico_marcados', 'settings', `${S.me?.name} mudou o que vai no envio automático (${[entrou.length ? `entrou ${entrou.join(', ')}` : '', saiu.length ? `saiu ${saiu.join(', ')}` : ''].filter(Boolean).join('; ') || 'sem mudança'}; agora ${depois.length} no PDF)`, 'envio-automatico-marcados');
+      return { ...S.envioMarcados };
+    },
+    async pacote() {
+      await wait(150); requirePerm('support.read');
+      const momento = momentoEmBrasilia(new Date());
+      const t = await marcadosComTituloDemo();
+      const ids = t.relatorios.map((r) => r.id);
+      const op = await demoApi.chamados.opcoes();
+      const resumo = await demoApi.chamados.resumo({ aba: 'hoje' });
+      const itens = montarPainel(S.painelChamados.itens, op.campos);
+      return {
+        geradoEm: now(), dia: momento.dia, hhmm: momento.hhmm, painelNome: op.painelNome, primeiroDia: op.primeiroDia,
+        resumo, graficos: itens.filter((x) => t.graficos.some((g) => g.id === x.id)), relatorioIds: ids,
+        relatorios: ids.length ? await demoApi.chamados.relatorios({ de: momento.dia, ate: momento.dia, mes: momento.dia.slice(0, 7) }) : null,
+        titulos: [...t.graficos.map((g) => g.titulo), ...t.relatorios.map((r) => r.titulo)],
+      };
+    },
+    async enviar(destinatarioId) { return envioDemo('manual', destinatarioId); },
+    async testar(destinatarioId) { return envioDemo('teste', destinatarioId); },
+    pdfUrl: () => null,
+    historicoPdfUrl: () => null,
   },
   data: {
     async preview(d) { await wait(300); requirePerm('data.import'); const lines = d.csv.split(/\r?\n/).filter((l) => l.trim()); if (lines.length < 2) throw bad('O arquivo não tem linhas de dados'); const header = lines[0]!.split(d.delimiter === '\t' ? '\t' : d.delimiter).map((h) => h.trim().toLowerCase()); const rows = lines.slice(1).map((l, i) => { const cells = l.split(d.delimiter === '\t' ? '\t' : d.delimiter); const row: Record<string, string> = {}; header.forEach((h, j) => (row[h] = (cells[j] ?? '').trim())); const errors: string[] = []; let key = ''; let action: 'create' | 'update' | 'error' = 'create'; if (d.entity === 'clients') { const cnpj = cnpjLimpo(row.cnpj ?? ''); key = row.nome_fantasia || row.trade_name || cnpj; if (!cnpjValido(cnpj)) errors.push(`CNPJ inválido: ${row.cnpj || '(vazio)'}`); const hosp = (row.hospedagem ?? row.hosting ?? '').trim(); if (hosp && !S.hostings.some((h) => h.name.toLowerCase().replace(/[\s-]+/g, '') === hosp.toLowerCase().replace(/[\s-]+/g, ''))) errors.push(`Hospedagem desconhecida: ${hosp} (cadastre em Administração → Catálogos)`); for (const [k, v] of Object.entries(row)) { if (!/^(ativacao|ativado_em|activation)_/.test(k) || !v) continue; if (!/^(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})$/.test(v)) errors.push(`Data de ativação inválida em ${k} ("${v}") — use 31/12/2025 ou 2025-12-31`); } const existente = S.clients.find((c) => c.cnpj === cnpj); if (existente && existente.deletedAt) errors.push(`Este CNPJ já existe na lixeira ("${existente.tradeName}"). Restaure o cliente em Administração → Lixeira e importe de novo`); else if (existente) action = 'update'; else if (!key) errors.push('Nome fantasia vazio'); } else if (d.entity === 'dids') { const n = didLimpo(row.numero || row.number || ''); key = n; if (n.length < 10) errors.push(`Número inválido: ${row.numero || row.number || '(vazio)'}`); if (row.circuito && !S.circuits.some((c) => c.code === row.circuito || c.name.toLowerCase() === row.circuito!.toLowerCase())) errors.push(`Circuito desconhecido: ${row.circuito}`); if (S.dids.some((x) => x.number === n)) action = 'update'; } else { key = row.nome || row.name || row.codigo || ''; if (!(row.codigo || row.code)) errors.push('Código do circuito vazio'); if (S.circuits.some((c) => c.code === (row.codigo || row.code))) action = 'update'; } return { line: i + 2, action: errors.length ? 'error' as const : action, key, errors }; }); const summary = { create: rows.filter((r) => r.action === 'create').length, update: rows.filter((r) => r.action === 'update').length, error: rows.filter((r) => r.action === 'error').length, skip: 0, total: rows.length }; return { entity: d.entity, rows, summary }; },

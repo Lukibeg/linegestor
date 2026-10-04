@@ -106,3 +106,35 @@ input, select, textarea, button { font: inherit; }
  */
 .sem-barra { scrollbar-width: none; -ms-overflow-style: none; }
 .sem-barra::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+/* ---------- impressão (1.7): o Fechamento do mês sai sozinho, no tema claro, como um documento ---------- */
+@media print {
+  :root, :root:not([data-theme='light']), :root[data-theme='dark'] {
+    --bg: #ffffff; --surface: #ffffff; --surface-2: #eef2f7; --line: #d9e0e9; --line-strong: #b7c2d0;
+    --ink: #141c26; --ink-2: #3d4a5a; --muted: #6b7a8c;
+    --accent: #2457d6; --accent-soft: #e3eafb; --accent-ink: #1a3fa0;
+    --signal: #d9781f; --signal-soft: #fbebd9; --ok: #1f8f62; --ok-soft: #ddf3e8; --bad: #c93b3b; --bad-soft: #f9e0e0;
+    color-scheme: light;
+  }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { background: #ffffff; }
+  .so-tela { display: none !important; }
+  /* só o documento: some tudo o que não está nele nem em volta dele (menu, barra, filtros, outras
+     seções), e o que está em volta perde margem, borda e altura — senão a altura da tela viraria
+     páginas em branco */
+  body *:not(:has(.para-imprimir)):not(.para-imprimir):not(.para-imprimir *) { display: none !important; }
+  body *:has(.para-imprimir) {
+    display: block !important; position: static !important; margin: 0 !important; padding: 0 !important; border: 0 !important;
+    box-shadow: none !important; max-width: none !important; width: auto !important; min-height: 0 !important; height: auto !important;
+    overflow: visible !important; background: transparent !important; transform: none !important;
+  }
+  .para-imprimir { width: 100%; border: 0 !important; box-shadow: none !important; padding: 0 !important; }
+  .para-imprimir button { pointer-events: none; }
+  /* no papel é sempre a arte de fundo claro */
+  .marca-escuro { display: none !important; }
+  .marca-claro { display: inline !important; }
+  /* o PDF do envio diário (1.7): um cartão não se parte entre duas páginas, quando cabe numa */
+  .envio-diario .card, .envio-diario .envio-bloco > section, .envio-diario > p { break-inside: avoid; }
+  .envio-diario h2.eyebrow { break-after: avoid; }
+  @page { size: A4; margin: 14mm; }
+}

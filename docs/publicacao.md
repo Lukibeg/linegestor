@@ -87,6 +87,13 @@ Entre em `https://gestao.inglinesystems.com.br` e **ligue a verificação em dua
 O certificado HTTPS é emitido sozinho pelo Caddy no primeiro acesso e renovado sozinho — desde que
 o DNS já esteja apontando para o servidor.
 
+**O PDF do envio automático (1.7).** A imagem do sistema traz o **Chromium** (o navegador, sem
+janela), que monta o PDF abrindo a própria página do sistema — por isso ela ficou uns 300 MB maior,
+e a primeira atualização para o 1.7 demora mais. Os PDFs ficam em `config/envios/` (a mesma pasta da
+cópia dos avisos) e a FlwChat os baixa de `https://DOMINIO/api/envio/arquivo/…`. Nada a configurar no
+`.env`; se um dia precisar, existem `CHROMIUM_PATH`, `ENVIOS_DIR`, `ENVIO_PAGINA_URL` e
+`ENVIO_ENDERECO_PUBLICO`.
+
 ---
 
 ## 4. Backup e vigia (configure no mesmo dia)

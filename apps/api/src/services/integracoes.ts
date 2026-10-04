@@ -109,8 +109,22 @@ export const LINECHAT_PADRAO: AjustesLineChat = {
 /** A arrumação da tela de Chamados: vazia = a de fábrica (ver `montarPainel` em @gestor/shared). */
 export type AjustesPainelChamados = { itens: ItemPainel[] };
 
-type Assunto = 'backup' | 'avisos' | 'linechat' | 'chamados-painel';
-const PADROES: Record<Assunto, unknown> = { backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO, 'chamados-painel': { itens: [] } };
+type Assunto = 'backup' | 'avisos' | 'linechat' | 'chamados-painel' | 'chamados-relatorios' | 'chamados-relatorios-arrumacao'
+  | 'envio-automatico' | 'envio-automatico-marcados';
+const PADROES: Record<Assunto, unknown> = {
+  backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO, 'chamados-painel': { itens: [] },
+  // os Relatórios dos Chamados (1.7): sem nada guardado, os campos são achados pelo nome e os clientes, ligados pelo nome
+  'chamados-relatorios': { campos: {}, clientes: {} },
+  // a arrumação da página de Relatórios (1.7): vazia = a ordem de fábrica, nada escondido, sem favoritos
+  'chamados-relatorios-arrumacao': { ordem: [], ocultos: [], favoritos: [] },
+  // o envio automático (1.7): desligado; o token da FlwChat fica no cofre (ver `envio.ts`)
+  'envio-automatico': {
+    ativo: false, url: 'https://api.flw.chat/chat/v1/message/send', remetente: '', horario: '18:00', dias: [0, 1, 2, 3, 4, 5, 6],
+    destinatarios: [], configuradoEm: null, configuradoPor: null, ultimoAgendado: null, historico: [],
+  },
+  // o que vai no PDF do envio automático (1.7): marcado nos próprios gráficos e relatórios
+  'envio-automatico-marcados': { relatorios: [], graficos: [], atualizadoEm: null, atualizadoPor: null },
+};
 
 export async function ler<T>(db: Db, assunto: Assunto): Promise<{ valor: T; secretId: string | null; temSegredo: boolean }> {
   const [row] = await db.select().from(settings).where(eq(settings.id, assunto)).limit(1);

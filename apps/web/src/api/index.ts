@@ -112,6 +112,33 @@ export type Api = {
     painel(): Promise<T.PainelChamados>;
     /** Só a administração: arruma a tela para todos */
     salvarPainel(p: { itens: T.ItemPainel[]; etapasFechadas: string[] | null }): Promise<T.PainelChamados>;
+    /** Chamados › Relatórios (1.7): os oito relatórios no período e com os filtros */
+    relatorios(q: Record<string, unknown>): Promise<T.RelatoriosChamados>;
+    /** Os chamados de uma peça clicada num relatório */
+    pecaRelatorio(q: Record<string, unknown>): Promise<T.PecaRelatorio>;
+    ajustesRelatorios(): Promise<T.AjustesRelatoriosTela>;
+    /** Só a administração: os campos usados e a ligação dos clientes, para a equipe toda */
+    salvarAjustesRelatorios(a: T.AjustesRelatorios): Promise<unknown>;
+    raioX(clienteId: string, q: Record<string, unknown>): Promise<T.RaioXCliente>;
+    arrumacaoRelatorios(): Promise<T.ArrumacaoRelatoriosTela>;
+    /** só quem tem admin.manage; vale para a equipe toda e vai para a auditoria */
+    salvarArrumacaoRelatorios(a: { ordem: string[]; ocultos: string[]; favoritos: string[] }): Promise<T.ArrumacaoRelatoriosTela>;
+  };
+  /** O envio automático do PDF dos Chamados pelo WhatsApp (1.7) */
+  envio: {
+    ajustes(): Promise<T.EnvioAjustesTela>;
+    /** só a administração; o token (quando vem) vai para o cofre */
+    salvarAjustes(a: { ativo: boolean; url: string; remetente: string; horario: string; dias: number[]; destinatarios: Array<{ id: string; nome: string; numero: string; ativo: boolean }>; token?: string }): Promise<T.EnvioAjustesTela>;
+    marcados(): Promise<T.MarcadosEnvioTela>;
+    /** só a administração: o que vai no PDF, para a equipe toda */
+    salvarMarcados(m: { relatorios: string[]; graficos: string[] }): Promise<T.MarcadosEnvioTela>;
+    /** a página do PDF: com a chave do robô, ou com a sessão */
+    pacote(chave?: string): Promise<T.PacoteEnvio>;
+    enviar(destinatarioId?: string): Promise<T.RegistroEnvio>;
+    testar(destinatarioId?: string): Promise<T.RegistroEnvio>;
+    /** baixar o PDF de agora (null na prévia: não há servidor para montar) */
+    pdfUrl(): string | null;
+    historicoPdfUrl(id: string): string | null;
   };
   data: {
     preview(d: { entity: string; csv: string; delimiter: string }): Promise<T.ImportPlan>;

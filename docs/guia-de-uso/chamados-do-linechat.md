@@ -93,11 +93,60 @@ A arrumação vale para **a equipe toda**. Em **Chamados**, clique em **Organiza
 Os números de cima e a tabela ficam fixos. Cada arrumação salva fica na auditoria, com o antes e o
 depois.
 
+## Relatórios (1.7)
+
+Em **Chamados › Relatórios** (a terceira aba, depois de Hoje e Período), vinte relatórios em cinco
+abas, e mais a aba **Favoritos**, a primeira:
+
+- **Favoritos** — os relatórios que a equipe mais usa, na ordem escolhida. A página abre aqui
+  quando tem algum.
+- **Tempo** — o *Relógio do chamado* (mediana até fechar, "9 em cada 10 fecham em até…", as
+  faixas e o **Separar por**), a *Escada N1 → N2 → N3* (quanto o N1 resolve sozinho, quanto sobe e
+  quantos fecharam e voltaram), *Onde o chamado empaca* (quanto tempo fica em cada etapa), a
+  *Primeira resposta* (quanto espera em Novos Suporte até alguém pegar), *A prioridade faz
+  diferença?* (pelas etiquetas P/ Crítica, P/ Alta…) e o *Prazo cumprido* (fechou até o vencimento?).
+- **Volume** — o *Mapa de calor* (dia da semana × hora), a *Entrada × saída* (chegaram, fecharam e
+  a fila no fim de cada semana), a *Idade da fila* (há quanto tempo estão abertos os que não
+  fecharam), os *Dias fora da curva* (dias com muito mais chamado que o normal, e o que dominou), o
+  *Sobe e desce dos assuntos* (comparado com o período anterior), *Os poucos que pesam muito* (o
+  80/20, por assunto, cliente, produto ou tipo) e a *Previsão da semana* (quantos devem chegar na
+  próxima, dia a dia).
+- **Clientes** — o *Raio-X do cliente* (o mesmo da ficha do cliente, aba **Chamados**), *Chamados
+  pelo tamanho do cliente* (por 10 DIDs ou 10 aparelhos), *Voltou com o mesmo problema* (cliente +
+  assunto de novo em até 30 dias) e *De quem é a falha?* (falha nossa, do cliente, da operadora ou
+  pedido, mês a mês).
+- **Equipe** — o *Quadro da equipe* e o *Card bem preenchido* (fecharam com os campos preenchidos?),
+  por responsável, em ordem de nome.
+- **Mês** — o *Fechamento do mês*. **Imprimir ou salvar em PDF** abre a impressão: escolha
+  "Salvar como PDF".
+
+O período e os filtros são os mesmos da tela de Chamados e vão junto ao trocar de aba. Clicar num
+número, faixa, degrau ou quadrado abre os chamados por trás dele.
+
+**Quem administra — Organizar:** o botão **Organizar**, em cima da página, mostra a lista da aba
+aberta. As setas mudam a ordem, **Esconder** tira o relatório da página (para a equipe toda) e a
+**estrela** põe nos Favoritos; na aba Favoritos, as setas mudam a ordem deles. Nada vale antes do
+**Salvar para todos**, que fica na auditoria. **Cancelar** desfaz; **Voltar ao padrão** volta a ordem
+de fábrica e mostra todos (os favoritos ficam). Um relatório escondido não aparece nem nos Favoritos;
+o pé da aba avisa o que está escondido ali.
+
+**Quem administra — Ligar clientes:** em Relatórios › Clientes › **Ligar clientes**, confira as
+opções do Cliente do card que ficaram "sem ligação" e escolha o cliente do cadastro (ou "não é
+cliente do cadastro"). Na mesma janela, os **campos** que os relatórios usam (Cliente, Assunto,
+Tipo, Produto) e o **grupo de cada tipo de chamado** do "De quem é a falha?" (também pelo botão
+**Escolher os grupos**). Vale para a equipe toda e fica na auditoria.
+
+## Envio diário pelo WhatsApp (1.7)
+
+Quem administra vê um **aviãozinho** no canto de cada gráfico e relatório (o "Envio diário"): azul, ele vai no PDF que
+sai todo dia pelo WhatsApp. O horário, os dias e os números ficam em **Administração › Envio
+automático** — ver o guia [Envio automático](envio-automatico.md).
+
 ## O que a cópia guarda
 
 - **Os chamados**, com etapa, responsável, vencimento, etiquetas e os campos do card.
 - **Cada mudança de etapa**, com a hora. O LineChat não entrega esse histórico pela API: quem anota
-  é o Gestor, a partir da primeira leitura. É daí que vai sair o tempo em cada nível.
+  é o Gestor, a partir da primeira leitura. É daí que saem a escada N1 → N2 → N3, os reabertos, o Onde o chamado empaca e a Primeira resposta dos Relatórios.
 - **O que foi excluído no LineChat** fica marcado e sai das contas, mas não é apagado. A lista está
   em Ajustes › Chamados do LineChat › **Excluídos no LineChat**, com o código de cada card; se ele
   reaparecer no LineChat, volta sozinho.

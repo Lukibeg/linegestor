@@ -1,4 +1,4 @@
-/** Administração: Usuários · Papéis · Catálogos · Produtos · Ajustes · Auditoria · Lixeira. */
+/** Administração: Usuários · Papéis · Catálogos · Produtos · Novidades · Ajustes · Envio automático · Auditoria · Lixeira. */
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
@@ -12,13 +12,14 @@ import { Campo, Carregando, Chip, classeAba, Confirmar, FAIXA_ABAS, Modal, Pagin
 import { data, relativo } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { Ajustes } from './Ajustes.js';
+import { EnvioAutomatico } from './EnvioAutomatico.js';
 import { Novidades } from './Novidades.js';
 import { contar, contarDe, TdN, ThN } from '../../lib/contagem.js';
 
 export function Admin() {
   const { can } = useAuth();
   const links = [
-    ...(can('admin.manage') ? [{ to: 'usuarios', label: 'Usuários' }, { to: 'papeis', label: 'Papéis' }, { to: 'catalogos', label: 'Catálogos' }, { to: 'produtos', label: 'Produtos' }, { to: 'novidades', label: 'Novidades' }, { to: 'ajustes', label: 'Ajustes' }] : []),
+    ...(can('admin.manage') ? [{ to: 'usuarios', label: 'Usuários' }, { to: 'papeis', label: 'Papéis' }, { to: 'catalogos', label: 'Catálogos' }, { to: 'produtos', label: 'Produtos' }, { to: 'novidades', label: 'Novidades' }, { to: 'ajustes', label: 'Ajustes' }, { to: 'envio', label: 'Envio automático' }] : []),
     ...(can('audit.read') ? [{ to: 'auditoria', label: 'Auditoria' }] : []),
     ...(can('records.delete') ? [{ to: 'lixeira', label: 'Lixeira' }] : []),
   ];
@@ -27,7 +28,7 @@ export function Admin() {
       <div className={FAIXA_ABAS}>{links.map((l) => <NavLink key={l.to} to={l.to} className={({ isActive }) => classeAba(isActive)}>{l.label}</NavLink>)}</div>
       <Routes>
         <Route index element={<Navigate to={links[0]?.to ?? '/'} replace />} />
-        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="novidades" element={<Novidades />} /><Route path="ajustes" element={<Ajustes />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
+        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="novidades" element={<Novidades />} /><Route path="ajustes" element={<Ajustes />} /><Route path="envio" element={<EnvioAutomatico />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
       </Routes>
     </Pagina>
   );
