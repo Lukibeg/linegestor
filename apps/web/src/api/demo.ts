@@ -12,6 +12,7 @@
 import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, VERSAO_PAINEL, camposDeLista, comFechamento, diaEmBrasilia, etapasDaEquipe, listarChamados, painelPadrao, primeiroDiaDe, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, paraBusca, temDataDeAtivacao, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import {
   AjustesEnvioSchema, MarcadosEnvioSchema, momentoEmBrasilia, numeroLegivel, proximoEnvio, montarPainel,
+  agendadoDeHoje, envioDeHoje, horaDeEnviar, type UltimoEnvioAgendado,
   AjustesRelatoriosSchema, ArrumacaoRelatoriosSchema, CATALOGO_RELATORIOS, montarArrumacao, ajustesParaTela, camposDosRelatorios, chamadosDaPeca, ChamadosDaPecaSchema, conferirAjustes, FiltrosRelatoriosSchema, opcoesLigadasAo,
   raioXChamados, relatoriosChamados, type AjustesRelatorios, type ContextoRelatorios, type MovimentoChamado,
 } from '@gestor/shared';
@@ -100,6 +101,7 @@ const S = {
     ativo: false, url: 'https://api.flw.chat/chat/v1/message/send', remetente: '', horario: '18:00', dias: [0, 1, 2, 3, 4, 5, 6],
     destinatarios: [] as Array<{ id: string; nome: string; numero: string; ativo: boolean }>,
     temToken: false, configuradoEm: null as string | null, configuradoPor: null as string | null,
+    ultimoAgendado: null as UltimoEnvioAgendado,
     historico: [] as RegistroEnvio[],
   },
   // o que vai no PDF: na prévia já vem com alguns marcados, para o "Ver como fica" ter o que mostrar
@@ -1060,27 +1062,40 @@ async function marcadosComTituloDemo() {
 }
 
 /** O envio na prévia: confere o que falta como o servidor, mas nada sai de verdade. */
-async function envioDemo(gatilho: 'manual' | 'teste', destinatarioId?: string): Promise<RegistroEnvio> {
-  await wait(900); requirePerm('admin.manage');
+async function envioDemo(gatilho: 'manual' | 'teste' | 'agendado', destinatarioId?: string): Promise<RegistroEnvio> {
+  await wait(gatilho === 'agendado' ? 300 : 900); requirePerm('admin.manage');
   const e = S.envio;
-  const momento = momentoEmBrasilia(new Date());
+  const agora = new Date();
+  const momento = momentoEmBrasilia(agora);
   const lista = e.destinatarios.filter((d) => (destinatarioId ? d.id === destinatarioId : d.ativo));
   const falta = !e.url ? 'Falta o endereço da API da FlwChat (Administração › Envio automático).'
     : !e.temToken ? 'Falta o token da API da FlwChat (Administração › Envio automático).'
       : !e.remetente ? 'Falta o número que envia (Administração › Envio automático).'
         : !lista.length ? 'Nenhum número ativo na lista.' : null;
   const t = gatilho === 'teste' ? { graficos: [], relatorios: [] } : await marcadosComTituloDemo();
-  const itens = [...t.graficos.map((g) => g.titulo), ...t.relatorios.map((r) => r.titulo)];
+  // como no servidor: faltou algo, não chega a montar o PDF (nem lista o que iria nele)
+  const itens = falta ? [] : [...t.graficos.map((g) => g.titulo), ...t.relatorios.map((r) => r.titulo)];
   const destinatarios = falta ? [] : lista.map((d) => ({ nome: d.nome, numero: d.numero, ok: true, mensagem: 'Simulação da prévia: nada foi enviado.' }));
   const r: RegistroEnvio = {
-    id: id(), em: now(), dia: momento.dia, gatilho, quem: S.me?.name ?? null, ok: !falta,
+    id: id(), em: agora.toISOString(), dia: momento.dia, gatilho, quem: gatilho === 'agendado' ? null : S.me?.name ?? null, ok: !falta,
     mensagem: falta ?? `Simulação da prévia: nada foi para o WhatsApp. No sistema de verdade, ${gatilho === 'teste' ? 'a mensagem de teste' : 'o PDF'} iria para ${destinatarios.length} ${destinatarios.length === 1 ? 'número' : 'números'}.`,
     pdf: falta || gatilho === 'teste' ? null : { id: id(), nome: `chamados-${momento.dia.slice(8, 10)}-${momento.dia.slice(5, 7)}-${momento.dia.slice(0, 4)}.pdf`, bytes: 0 },
     itens, destinatarios,
   };
   S.envio.historico = [r, ...S.envio.historico].slice(0, 60);
-  audit(gatilho === 'teste' ? 'envio_automatico_teste' : 'envio_automatico', 'settings', `${S.me?.name} mandou ${gatilho === 'teste' ? 'mensagem de teste' : `PDF dos Chamados (${itens.length} itens)`} pelo WhatsApp — ${r.ok ? r.mensagem : `falhou: ${r.mensagem}`}${destinatarios.length ? ` (${destinatarios.map((d) => numeroLegivel(d.numero)).join(', ')})` : ''}`, 'envio-automatico');
+  // como no servidor: o envio agendado anota o dia, o horário e quantas tentativas já foram
+  if (gatilho === 'agendado') {
+    S.envio.ultimoAgendado = { dia: momento.dia, horario: e.horario, ok: r.ok, em: r.em, tentativas: (agendadoDeHoje(e, agora, e.ultimoAgendado)?.tentativas ?? 0) + 1 };
+  }
+  const quem = gatilho === 'agendado' ? 'Envio automático:' : `${S.me?.name} mandou`;
+  audit(gatilho === 'teste' ? 'envio_automatico_teste' : 'envio_automatico', 'settings', `${quem} ${gatilho === 'teste' ? 'mensagem de teste' : `PDF dos Chamados (${itens.length} itens)`} pelo WhatsApp — ${r.ok ? r.mensagem : `falhou: ${r.mensagem}`}${destinatarios.length ? ` (${destinatarios.map((d) => numeroLegivel(d.numero)).join(', ')})` : ''}`, 'envio-automatico');
   return r;
+}
+
+/** O relógio na prévia: não roda sozinho, então confere quando a tela do envio abre (e a cada minuto, com ela aberta). */
+async function relogioDemo() {
+  const e = S.envio;
+  if (horaDeEnviar(e, new Date(), e.ultimoAgendado)) await envioDemo('agendado');
 }
 
 export const demoApi: Api = {
@@ -1737,11 +1752,13 @@ export const demoApi: Api = {
   envio: {
     async ajustes() {
       await wait(80); requirePerm('admin.manage');
+      await relogioDemo();
       const e = S.envio;
       return {
         ativo: e.ativo, url: e.url, remetente: e.remetente, horario: e.horario, dias: e.dias, destinatarios: e.destinatarios,
         temToken: e.temToken, configuradoEm: e.configuradoEm, configuradoPor: e.configuradoPor,
-        proximo: proximoEnvio(e, new Date(), null),
+        proximo: proximoEnvio(e, new Date(), e.ultimoAgendado),
+        hoje: envioDeHoje(e, new Date(), e.ultimoAgendado, e.historico),
         historico: e.historico.slice(0, 20),
         marcados: { ...(await marcadosComTituloDemo()), atualizadoEm: S.envioMarcados.atualizadoEm, atualizadoPor: S.envioMarcados.atualizadoPor },
         enderecoPublico: 'https://gestao.exemplo.com.br', linkValeDias: 7,
@@ -1753,7 +1770,9 @@ export const demoApi: Api = {
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Ajustes inválidos');
       const { token, ...resto } = p.data;
       // o token não fica guardado nem na prévia: só a marca de que existe um
-      S.envio = { ...S.envio, ...resto, temToken: S.envio.temToken || !!token, configuradoEm: now(), configuradoPor: S.me?.name ?? null };
+      // como no servidor (1.7.1): salvar depois de uma falha do envio agendado libera o dia de novo
+      const ultimoAgendado = S.envio.ultimoAgendado && !S.envio.ultimoAgendado.ok ? null : S.envio.ultimoAgendado;
+      S.envio = { ...S.envio, ...resto, ultimoAgendado, temToken: S.envio.temToken || !!token, configuradoEm: now(), configuradoPor: S.me?.name ?? null };
       const ativos = resto.destinatarios.filter((d) => d.ativo).length;
       audit('envio_automatico_ajustes', 'settings', `${S.me?.name} ${resto.ativo ? 'ligou' : 'desligou'} o envio automático (${resto.horario}, ${ativos} ${ativos === 1 ? 'número' : 'números'})${token ? ' e trocou o token' : ''}`, 'envio-automatico');
       return demoApi.envio.ajustes();

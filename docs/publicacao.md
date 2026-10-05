@@ -94,6 +94,15 @@ cópia dos avisos) e a FlwChat os baixa de `https://DOMINIO/api/envio/arquivo/�
 `.env`; se um dia precisar, existem `CHROMIUM_PATH`, `ENVIOS_DIR`, `ENVIO_PAGINA_URL` e
 `ENVIO_ENDERECO_PUBLICO`.
 
+Para ver o relógio do envio trabalhando (1.7.1), no servidor:
+
+```bash
+docker compose -f docker-compose.prod.yml logs --since 24h app | grep "envio automático"
+```
+
+Aparece "relógio ligado" quando o sistema sobe, "hora de mandar" no horário, e depois "enviado" ou
+"falhou" com o motivo.
+
 ---
 
 ## 4. Backup e vigia (configure no mesmo dia)

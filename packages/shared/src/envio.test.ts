@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AjustesEnvioSchema, horaDeEnviar, MarcadosEnvioSchema, momentoEmBrasilia, nomeDoPdf, numeroLegivel, numeroWhatsApp, proximoEnvio,
-  RELATORIOS_DO_ENVIO, textoDoEnvio,
+  agendadoDeHoje, AjustesEnvioSchema, envioDeHoje, horaDeEnviar, MarcadosEnvioSchema, momentoEmBrasilia, nomeDoPdf, numeroLegivel,
+  numeroWhatsApp, proximoEnvio, RELATORIOS_DO_ENVIO, textoDoEnvio,
 } from './envio.js';
 
 // 04/10/2026 é um domingo; 05/10, segunda. Brasília = UTC−3.
@@ -80,6 +80,46 @@ describe('Quando o envio sai', () => {
     expect(proximoEnvio(a, em('2026-10-04T21:30:00Z'), { dia: '2026-10-04', ok: true, tentativas: 1, em: '2026-10-04T21:00:00Z' })).toBe('amanhã às 18:00');
     expect(proximoEnvio({ ...a, dias: [2] }, em('2026-10-04T15:00:00Z'), null)).toBe('qua, 07/10 às 18:00');
     expect(proximoEnvio({ ...a, ativo: false }, em('2026-10-04T15:00:00Z'), null)).toBeNull();
+  });
+
+  // 1.7.1: o caso do Luan em 05/10 — 3 falhas no horário antigo (18:00), trocou para 18:40 às 18:35
+  // e a tela disse "amanhã às 18:40": o dia tinha sido gasto no horário antigo.
+  it('trocar o horário vale já para hoje (1.7.1)', () => {
+    const gastou = { dia: '2026-10-05', horario: '18:00', ok: false, tentativas: 3, em: '2026-10-05T21:30:00Z' };
+    const novo = { ...a, horario: '18:40' };
+    expect(proximoEnvio(novo, em('2026-10-05T21:35:00Z'), gastou)).toBe('hoje às 18:40');
+    expect(horaDeEnviar(novo, em('2026-10-05T21:40:00Z'), gastou)).toBe(true);
+    // e se já tinha saído no horário antigo, sai de novo no novo (quem trocou quer ver no horário novo)
+    expect(horaDeEnviar(novo, em('2026-10-05T21:40:00Z'), { ...gastou, ok: true, tentativas: 1 })).toBe(true);
+    // no mesmo horário, continua uma vez por dia
+    expect(horaDeEnviar(a, em('2026-10-05T21:40:00Z'), { ...gastou, ok: true, tentativas: 1 })).toBe(false);
+    // guardado antes do 1.7.1 (sem o horário): vale o de agora, como antes
+    const antigo = { dia: '2026-10-05', ok: true, tentativas: 1, em: '2026-10-05T21:00:00Z' };
+    expect(agendadoDeHoje(novo, em('2026-10-05T21:40:00Z'), antigo)).toEqual(antigo);
+    expect(agendadoDeHoje(novo, em('2026-10-06T21:40:00Z'), antigo)).toBeNull();
+  });
+  it('depois de uma falha, o próximo diz quando tenta de novo (1.7.1)', () => {
+    const falhou = { dia: '2026-10-04', horario: '18:00', ok: false, tentativas: 1, em: '2026-10-04T21:00:00Z' };
+    expect(proximoEnvio(a, em('2026-10-04T21:05:00Z'), falhou)).toBe('hoje às 18:15 (nova tentativa)');
+    expect(proximoEnvio(a, em('2026-10-04T21:16:00Z'), falhou)).toBe('agora (nova tentativa, na próxima volta do relógio)');
+    expect(proximoEnvio(a, em('2026-10-04T21:35:00Z'), { ...falhou, tentativas: 3, em: '2026-10-04T21:30:00Z' })).toBe('amanhã às 18:00');
+    // a nova tentativa cairia depois das 3 horas: não tem mais hoje
+    expect(proximoEnvio(a, em('2026-10-04T23:55:00Z'), { ...falhou, em: '2026-10-04T23:50:00Z' })).toBe('amanhã às 18:00');
+  });
+  it('como foi o de hoje, para a tela (1.7.1)', () => {
+    const hist = [
+      { gatilho: 'manual', dia: '2026-10-04', em: '2026-10-04T21:20:00Z', mensagem: 'Enviado para 2 números.' },
+      { gatilho: 'agendado', dia: '2026-10-04', em: '2026-10-04T21:00:00Z', mensagem: 'Falta o token da API da FlwChat (Administração › Envio automático).' },
+    ];
+    const falhou = { dia: '2026-10-04', horario: '18:00', ok: false, tentativas: 1, em: '2026-10-04T21:00:00Z' };
+    expect(envioDeHoje(a, em('2026-10-04T21:05:00Z'), falhou, hist)).toEqual({
+      horario: '18:00', ok: false, tentativas: 1, em: '2026-10-04T21:00:00Z',
+      mensagem: 'Falta o token da API da FlwChat (Administração › Envio automático).', novaTentativa: '18:15',
+    });
+    expect(envioDeHoje(a, em('2026-10-04T21:40:00Z'), { ...falhou, tentativas: 3 }, hist)?.novaTentativa).toBeNull();
+    expect(envioDeHoje(a, em('2026-10-04T21:05:00Z'), null, hist)).toBeNull();
+    // trocou o horário: o de hoje ainda não houve
+    expect(envioDeHoje({ horario: '18:40' }, em('2026-10-04T21:05:00Z'), falhou, hist)).toBeNull();
   });
 });
 
