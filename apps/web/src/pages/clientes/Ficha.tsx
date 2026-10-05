@@ -1,7 +1,7 @@
 /**
  * Ficha do cliente: uma página com endereço próprio e abas — ou a mesma ficha numa janela, por
  * cima de outra tela (`FichaEmJanela`, desde o 1.5: o cliente de um projeto abre assim).
- * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Unidades · Projetos · Histórico
+ * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Unidades · Projetos · Chamados · Histórico
  */
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,8 +22,9 @@ import { BarrasRanking } from '../../components/graficos.js';
 import { FiltroEmBotao } from '../../lib/filtros.js';
 import { temDataDeAtivacao } from '@gestor/shared';
 import { ObservacaoDid, UsoDid, useEditarDid } from '../dids/partes.js';
+import { RaioX } from '../chamados/relatorios/Clientes.js';
 
-type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'historico';
+type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'chamados' | 'historico';
 
 /** A página da ficha (rota `/clientes/:id`): a aba escolhida mora no endereço. */
 export function ClienteFicha() {
@@ -84,7 +85,10 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
         { id: 'dids', label: <>DIDs <span className="text-muted">({c.didCount})</span></> }, { id: 'equipamentos', label: <>Equipamentos <span className="text-muted">({c.deviceCount})</span></> },
         { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> },
         { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> },
-        { id: 'projetos', label: 'Projetos' }, ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
+        { id: 'projetos', label: 'Projetos' },
+        // 1.7: os chamados do LineChat deste cliente (o Raio-X dos Relatórios)
+        ...(can('support.read') ? [{ id: 'chamados' as Aba, label: 'Chamados' }] : []),
+        ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
       ]} />
       {aba === 'geral' && <Geral c={c} />}
       {aba === 'acessos' && <Acessos c={c} />}
@@ -93,6 +97,7 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
       {aba === 'produtos' && <Produtos c={c} />}
       {aba === 'unidades' && <Unidades c={c} />}
       {aba === 'projetos' && <ProjetosDoCliente c={c} />}
+      {aba === 'chamados' && can('support.read') && <ChamadosDoCliente c={c} />}
       {aba === 'historico' && <Historico c={c} />}
       <ClienteForm open={editar} onClose={() => setEditar(false)} cliente={c} onSaved={() => setEditar(false)} />
       <Confirmar open={excluir} onClose={() => setExcluir(false)} onConfirm={doDelete} loading={busy} perigoso digitar={c.tradeName} titulo="Mandar para a lixeira" botao="Mandar para a lixeira" texto={<>O cliente <b>{c.tradeName}</b> sai de todas as listas. Os {c.didCount} DIDs continuam alocados a ele e os {c.deviceCount} aparelhos continuam registrados — nada é apagado. Dá para restaurar em Administração → Lixeira.</>} />
@@ -1025,6 +1030,30 @@ function ProjetosDoCliente({ c }: { c: ClientFull }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * Aba Chamados (1.7): o Raio-X dos Relatórios para este cliente — os chamados do LineChat ligados a
+ * ele, no período escolhido (90 dias, de padrão). A ligação do Cliente do card com o cadastro é
+ * automática pelo nome; quem administra corrige em Chamados › Relatórios › Clientes.
+ */
+function ChamadosDoCliente({ c }: { c: ClientFull }) {
+  const [dias, setDias] = useState(90);
+  const ate = diaLocal(new Date().toISOString());
+  const d = new Date(); d.setDate(d.getDate() - (dias - 1));
+  const de = diaLocal(d.toISOString());
+  return (
+    <div className="card p-4 sm:p-5 flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="font-display font-semibold">Chamados do LineChat</h2>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[30, 90, 365].map((n) => <button key={n} type="button" className={`btn-sm ${dias === n ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setDias(n)}>{n === 365 ? '12 meses' : `${n} dias`}</button>)}
+          <Link className="btn-secondary btn-sm" to={`/chamados/relatorios?sec=clientes&cliente=${c.id}`}>Ver nos Relatórios <ExternalLink size={13} /></Link>
+        </div>
+      </div>
+      <RaioX clienteId={c.id} filtros={{ de, ate }} naFicha />
     </div>
   );
 }

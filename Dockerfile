@@ -15,7 +15,13 @@ RUN pnpm --filter @gestor/web build && pnpm --filter @gestor/api build
 
 FROM node:24-bookworm-slim
 RUN corepack enable && corepack prepare pnpm@10.28.0 --activate
-ENV NODE_ENV=production \
+# o Chromium monta o PDF do envio automático (1.7): é o mesmo navegador, sem janela, abrindo a
+# própria página do sistema e mandando imprimir. As fontes cobrem o caso de o Google Fonts não abrir.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends chromium fonts-dejavu-core fonts-liberation \
+ && rm -rf /var/lib/apt/lists/*
+ENV CHROMIUM_PATH=/usr/bin/chromium \
+    NODE_ENV=production \
     HOME=/home/node \
     PNPM_HOME=/home/node/.pnpm \
     npm_config_update_notifier=false

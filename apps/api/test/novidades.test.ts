@@ -157,6 +157,19 @@ describe('edição', () => {
 });
 
 describe('nota escrita em arquivo (a que vem pronta na publicação)', () => {
+  it('toda nota em docs/novidades cabe nas regras da tela (título, resumo, itens e prints)', async () => {
+    const { lerNota } = await import('../src/tools/importar-novidades.js');
+    const { NovidadeGravarSchema } = await import('@gestor/shared');
+    const { readdir } = await import('node:fs/promises');
+    const pasta = new URL('../../../docs/novidades/', import.meta.url).pathname;
+    const arquivos = (await readdir(pasta)).filter((a) => a.endsWith('.md'));
+    expect(arquivos.length).toBeGreaterThan(5);
+    for (const a of arquivos) {
+      const r = NovidadeGravarSchema.safeParse(await lerNota(pasta + a));
+      expect(r.success ? '' : `${a}: ${r.error.issues[0]?.path.join('.')} ${r.error.issues[0]?.message}`).toBe('');
+    }
+  });
+
   it('lê o arquivo da rodada 23, importa uma vez só e já publica', async () => {
     const { lerNota } = await import('../src/tools/importar-novidades.js');
     const svc = await import('../src/services/releaseNotes.js');

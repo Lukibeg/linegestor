@@ -21,6 +21,8 @@ import { NovidadesPagina } from './pages/novidades/Index.js';
 import { ProjetosLista } from './pages/projetos/Lista.js';
 import { ProjetoFicha } from './pages/projetos/Ficha.js';
 import { Chamados } from './pages/chamados/Index.js';
+import { RelatoriosChamados } from './pages/chamados/Relatorios.js';
+import { EnvioDiario } from './pages/chamados/EnvioDiario.js';
 import { Conta } from './pages/Conta.js';
 import { Admin } from './pages/admin/Index.js';
 
@@ -40,6 +42,8 @@ export function App() {
         <Router>
           <Routes>
             <Route path="/entrar" element={<Entrar />} />
+            {/* a página que vira o PDF do envio diário: o robô entra com uma chave de uso único (1.7) */}
+            <Route path="/envio-diario" element={<EnvioDiario />} />
             <Route path="/" element={<Protegido><Painel /></Protegido>} />
             <Route path="/clientes" element={<Protegido><ClientesLista /></Protegido>} />
             <Route path="/clientes/:id" element={<Protegido><ClienteFicha /></Protegido>} />
@@ -53,6 +57,7 @@ export function App() {
             <Route path="/projetos" element={<Protegido><ProjetosLista /></Protegido>} />
             <Route path="/projetos/:id" element={<Protegido><ProjetoFicha /></Protegido>} />
             <Route path="/chamados" element={<Protegido><Chamados /></Protegido>} />
+            <Route path="/chamados/relatorios" element={<Protegido><RelatoriosChamados /></Protegido>} />
             <Route path="/novidades" element={<Protegido><NovidadesPagina /></Protegido>} />
             <Route path="/conta" element={<Protegido><Conta /></Protegido>} />
             <Route path="/admin/*" element={<Protegido><Admin /></Protegido>} />

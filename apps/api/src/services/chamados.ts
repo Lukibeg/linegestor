@@ -8,12 +8,17 @@
  * a tela chama resumo e lista a cada clique de filtro, e não há por que ler 3 mil cards duas vezes.
  */
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
-import { linechatCardMoves, linechatCards, linechatFields, linechatSteps, linechatTags, settings, users, type Db } from '@gestor/db';
 import {
-  atualizarPainelGuardado, camposDeLista, comFechamento, etapasDaEquipe, listarChamados, PainelChamadosSchema, primeiroDiaDe, resumirChamados, VAZIO,
-  VERSAO_PAINEL, type Chamado, type ContextoChamados, type FiltrosChamados, type ItemPainel, type ListaChamadosQuery, type MovimentoChamado,
+  clients, deviceModels, devices, dids, linechatCardMoves, linechatCards, linechatFields, linechatSteps, linechatTags, products, settings, subscriptions, users,
+  type Db,
+} from '@gestor/db';
+import {
+  AjustesRelatoriosSchema, ajustesParaTela, ArrumacaoRelatoriosSchema, montarArrumacao, type ArrumacaoRelatorios, atualizarPainelGuardado, camposDeLista, camposDosRelatorios, chamadosDaPeca, comFechamento, conferirAjustes,
+  etapasDaEquipe, listarChamados, opcoesLigadasAo, PainelChamadosSchema, primeiroDiaDe, raioXChamados, relatoriosChamados, resumirChamados, VAZIO,
+  VERSAO_PAINEL, type AjustesRelatorios, type Chamado, type ChamadosDaPecaQuery, type ContextoChamados, type ContextoRelatorios, type FiltrosChamados,
+  type FiltrosRelatorios, type ItemPainel, type ListaChamadosQuery, type MovimentoChamado,
 } from '@gestor/shared';
-import { BadRequest } from '../plugins/errors.js';
+import { BadRequest, NotFound } from '../plugins/errors.js';
 import { gravar } from './integracoes.js';
 import { lerAjustes, versaoDosDados } from './linechat.js';
 
@@ -28,6 +33,12 @@ type Leitura = {
   finaisDoLineChat: Set<string>;
   painelId: string;
   appUrl: string;
+  /** as mudanças de etapa de cada card (os Relatórios usam: a escada N1 → N2 → N3 e os reabertos) */
+  historico: Map<string, MovimentoChamado[]>;
+  /** desde quando o histórico tem hora exata (a primeira sincronização) */
+  historicoDesde: string | null;
+  /** os grupos que a equipe montou em Organizar, por gráfico (os Relatórios usam os do Assunto) */
+  grupos: Map<string, NonNullable<ItemPainel['grupos']>>;
 };
 let guardada: { versao: number; em: number; painelId: string; dados: Leitura } | null = null;
 
@@ -79,6 +90,9 @@ async function ler(db: Db): Promise<Leitura> {
     finaisDoLineChat: new Set(todasEtapas.filter((e) => e.isFinal).map((e) => e.id)),
     painelId,
     appUrl: (valor.appUrl || 'https://inglinechat.com.br').replace(/\/+$/, ''),
+    historico,
+    historicoDesde: valor.inicioEm ?? null,
+    grupos: new Map(arrumacao.itens.filter((x) => x.grupos?.length).map((x) => [x.id, x.grupos!])),
   };
   guardada = { versao: v, em: Date.now(), painelId, dados };
   return dados;
@@ -183,4 +197,148 @@ export async function gravarPainel(db: Db, p: { itens: ItemPainel[]; etapasFecha
   // as contas dependem das etapas fechadas: a próxima leitura refaz tudo
   esquecerLeitura();
   return lerPainel(db);
+}
+
+// ---------- os Relatórios (Patch 1.7) ----------
+//
+// As contas estão em `@gestor/shared/relatorios.ts` (as mesmas da prévia). Aqui: a leitura de
+// sempre, mais o histórico de etapas, os ajustes dos relatórios e, no Raio-X, o que o cliente tem
+// no Gestor.
+
+export type AjustesRelatoriosLidos = AjustesRelatorios & { atualizadoEm: string | null; atualizadoPor: string | null };
+
+/** Os ajustes dos relatórios (os campos usados e a ligação dos clientes). Guardado estragado = de fábrica. */
+export async function lerAjustesRelatorios(db: Db): Promise<AjustesRelatoriosLidos> {
+  const [row] = await db
+    .select({ value: settings.value, updatedAt: settings.updatedAt, nome: users.name })
+    .from(settings).leftJoin(users, eq(users.id, settings.updatedBy))
+    .where(eq(settings.id, 'chamados-relatorios')).limit(1);
+  let a: AjustesRelatorios = { campos: {}, clientes: {}, causas: {} };
+  if (row) {
+    try { const p = AjustesRelatoriosSchema.safeParse(JSON.parse(row.value)); if (p.success) a = p.data; } catch { /* fica o de fábrica */ }
+  }
+  return { ...a, atualizadoEm: row ? row.updatedAt.toISOString() : null, atualizadoPor: row?.nome ?? null };
+}
+
+async function contextoRelatorios(db: Db, l: Leitura): Promise<ContextoRelatorios> {
+  const ajustes = await lerAjustesRelatorios(db);
+  const campos = camposDosRelatorios(l.ctx.campos, ajustes.campos);
+  return {
+    ...l.ctx, agora: new Date(), historico: l.historico, historicoDesde: l.historicoDesde,
+    ajustes: { campos: ajustes.campos, clientes: ajustes.clientes, causas: ajustes.causas },
+    gruposAssunto: campos.assunto ? l.grupos.get(`campo:${campos.assunto.key}`) : undefined,
+    ...(await cadastroComTamanho(db)),
+  };
+}
+
+/**
+ * O cadastro (para ligar o Cliente do card) e o tamanho de cada cliente no Gestor: DIDs e aparelhos
+ * com ele (os vendidos não contam, como na ficha). É o que o "Chamados pelo tamanho do cliente" usa.
+ */
+async function cadastroComTamanho(db: Db) {
+  const [cadastro, porDids, porAparelhos] = await Promise.all([
+    db.select({ id: clients.id, tradeName: clients.tradeName, legalName: clients.legalName })
+      .from(clients).where(and(isNull(clients.deletedAt), eq(clients.isInternal, false))),
+    db.select({ id: dids.clientId, n: sql<number>`count(*)::int` }).from(dids)
+      .where(and(isNull(dids.deletedAt), sql`${dids.clientId} is not null`)).groupBy(dids.clientId),
+    db.select({ id: devices.clientId, n: sql<number>`count(*)::int` }).from(devices)
+      .where(and(isNull(devices.deletedAt), sql`${devices.clientId} is not null`, sql`coalesce(${devices.currentModality}, '') <> 'venda'`)).groupBy(devices.clientId),
+  ]);
+  const nDids = new Map(porDids.map((x) => [x.id, Number(x.n)]));
+  const nAparelhos = new Map(porAparelhos.map((x) => [x.id, Number(x.n)]));
+  return {
+    cadastro: cadastro.map((r) => ({ id: r.id, nomes: [r.tradeName, r.legalName].filter(Boolean) })),
+    tamanhos: new Map(cadastro.map((r) => [r.id, { nome: r.tradeName, dids: nDids.get(r.id) ?? 0, aparelhos: nAparelhos.get(r.id) ?? 0 }])),
+  };
+}
+
+export async function relatorios(db: Db, f: FiltrosRelatorios) {
+  const l = await ler(db);
+  return relatoriosChamados(l.cards, f, await contextoRelatorios(db, l), linkDe(l));
+}
+
+/** Os chamados por trás de uma peça clicada num relatório (uma faixa, um quadrado, uma coluna). */
+export async function pecaDoRelatorio(db: Db, q: ChamadosDaPecaQuery) {
+  const l = await ler(db);
+  return chamadosDaPeca(l.cards, q, await contextoRelatorios(db, l), linkDe(l));
+}
+
+/** Os clientes do cadastro que podem aparecer no LineChat: fora os internos e os da lixeira. */
+async function clientesParaLigar(db: Db) {
+  const rows = await db.select({ id: clients.id, tradeName: clients.tradeName, legalName: clients.legalName })
+    .from(clients).where(and(isNull(clients.deletedAt), eq(clients.isInternal, false)));
+  return rows.map((r) => ({ id: r.id, nomes: [r.tradeName, r.legalName].filter(Boolean) }));
+}
+
+/** O que a janela "Ajustar" dos Relatórios mostra (a conta é a mesma da prévia: `ajustesParaTela`). */
+export async function ajustesRelatorios(db: Db) {
+  const l = await ler(db);
+  const a = await lerAjustesRelatorios(db);
+  return {
+    ...ajustesParaTela(l.cards, l.ctx.campos, a, await clientesParaLigar(db)),
+    atualizadoEm: a.atualizadoEm,
+    atualizadoPor: a.atualizadoPor,
+  };
+}
+
+/**
+ * Grava os ajustes dos relatórios. O campo escolhido precisa existir (e ser de lista); o cliente
+ * ligado precisa existir no cadastro, fora da lixeira. Ligação "automática" não é guardada: só a
+ * que alguém escolheu (um cliente, ou "não é cliente do cadastro").
+ */
+export async function gravarAjustesRelatorios(db: Db, novo: AjustesRelatorios, userId: string) {
+  const l = await ler(db);
+  const erro = conferirAjustes(novo, l.ctx.campos, new Set((await clientesParaLigar(db)).map((c) => c.id)));
+  if (erro) throw new BadRequest(erro);
+  await gravar(db, 'chamados-relatorios', { campos: novo.campos, clientes: novo.clientes, causas: novo.causas }, { userId });
+  return lerAjustesRelatorios(db);
+}
+
+/** O Raio-X de um cliente do Gestor: os chamados dele e, junto, o que ele tem no Gestor. */
+export async function raioX(db: Db, clienteId: string, f: FiltrosRelatorios) {
+  const [cli] = await db.select({ id: clients.id, nome: clients.tradeName, deletedAt: clients.deletedAt }).from(clients).where(eq(clients.id, clienteId)).limit(1);
+  if (!cli || cli.deletedAt) throw new NotFound('Cliente');
+  const l = await ler(db);
+  const ctx = await contextoRelatorios(db, l);
+  const campos = camposDosRelatorios(l.ctx.campos, ctx.ajustes.campos);
+  const opcoes = opcoesLigadasAo(clienteId, l.cards, l.ctx.campos, ctx.ajustes, await clientesParaLigar(db));
+  const r = raioXChamados(l.cards, opcoes, f, ctx, linkDe(l));
+  const prods = await db.selectDistinct({ nome: products.name, ordem: products.sortOrder })
+    .from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId))
+    .where(and(eq(subscriptions.clientId, clienteId), isNull(subscriptions.deactivatedAt), isNull(products.deletedAt)))
+    .orderBy(asc(products.sortOrder));
+  const [didC] = await db.select({ n: sql<number>`count(*)` }).from(dids).where(and(eq(dids.clientId, clienteId), isNull(dids.deletedAt)));
+  // como na ficha: os aparelhos que estão com ele (comodato, locação…), fora os vendidos
+  const [devC] = await db.select({ n: sql<number>`count(*)` }).from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
+    .where(and(eq(devices.clientId, clienteId), isNull(devices.deletedAt), sql`coalesce(${devices.currentModality}, '') <> 'venda'`));
+  return {
+    cliente: { id: cli.id, nome: cli.nome },
+    campoCliente: campos.cliente ? campos.cliente.name : null,
+    gestor: { produtos: prods.map((p) => p.nome), dids: Number(didC?.n ?? 0), aparelhos: Number(devC?.n ?? 0) },
+    ...r,
+  };
+}
+
+// ---------- a arrumação da página de Relatórios (igual para a equipe toda) ----------
+
+export type ArrumacaoLida = { ordem: string[]; ocultos: string[]; favoritos: string[]; atualizadoEm: string | null; atualizadoPor: string | null };
+
+/** A ordem, os escondidos e os favoritos, juntos com o catálogo de hoje (relatório novo entra no fim). */
+export async function lerArrumacao(db: Db): Promise<ArrumacaoLida> {
+  const [row] = await db
+    .select({ value: settings.value, updatedAt: settings.updatedAt, nome: users.name })
+    .from(settings).leftJoin(users, eq(users.id, settings.updatedBy))
+    .where(eq(settings.id, 'chamados-relatorios-arrumacao')).limit(1);
+  let salva: Partial<ArrumacaoRelatorios> | null = null;
+  if (row) {
+    // guardada estragada (ou com um relatório que saiu do catálogo) não derruba a página
+    try { const j = JSON.parse(row.value) as Partial<ArrumacaoRelatorios>; salva = { ordem: j.ordem ?? [], ocultos: j.ocultos ?? [], favoritos: j.favoritos ?? [] }; } catch { /* fica a de fábrica */ }
+  }
+  return { ...montarArrumacao(salva), atualizadoEm: row ? row.updatedAt.toISOString() : null, atualizadoPor: row?.nome ?? null };
+}
+
+export async function gravarArrumacao(db: Db, a: ArrumacaoRelatorios, userId: string): Promise<ArrumacaoLida> {
+  const p = ArrumacaoRelatoriosSchema.parse(a);
+  await gravar(db, 'chamados-relatorios-arrumacao', p, { userId });
+  return lerArrumacao(db);
 }

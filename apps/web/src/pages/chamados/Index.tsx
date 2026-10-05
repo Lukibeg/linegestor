@@ -28,9 +28,9 @@
 import { useEffect, useLayoutEffect, useMemo, useState, type MouseEvent, type PointerEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  Archive, BarChartHorizontal, CalendarRange, CheckCircle2, ChevronLeft, ChevronRight, CircleDot, ExternalLink, Eye, EyeOff, Filter, GripVertical,
+  Archive, BarChartHorizontal, CalendarRange, CheckCircle2, ChevronLeft, ChevronRight, CircleDot, ExternalLink, Eye, EyeOff, FileBarChart, Filter, GripVertical,
   Headset, Layers, LayoutGrid, ListFilter, MousePointerClick, PieChart, RefreshCw, Search, Tag, TriangleAlert, UserRound, X,
 } from 'lucide-react';
 import {
@@ -50,13 +50,26 @@ import { useLembrarFiltros } from '../../lib/voltar.js';
 import { useArrastar } from '../../lib/arrastar.js';
 import { useAuth } from '../../lib/auth.js';
 import { data, relativo } from '../../lib/format.js';
+import { BotaoEnvio } from '../../lib/envio.js';
 import { EtapasQueFecham, GruposDoGrafico, type Candidato } from './organizar.js';
 
 type Aba = AbaChamados;
-const ABAS: Array<{ id: Aba; label: string }> = [
+/**
+ * As abas da tela. **Relatórios** (1.7) é uma página à parte (`/chamados/relatorios`), mas aparece
+ * aqui como a terceira aba: quem está olhando os chamados vai para os relatórios levando os filtros.
+ */
+export const ABAS_CHAMADOS: Array<{ id: Aba | 'relatorios'; label: ReactNode }> = [
   { id: 'hoje', label: 'Hoje' },
   { id: 'periodo', label: 'Período' },
+  { id: 'relatorios', label: <span className="inline-flex items-center gap-1.5"><FileBarChart size={14} /> Relatórios</span> },
 ];
+/** Os filtros que valem nas duas páginas (Chamados e Relatórios): os de valor, a busca e os arquivados. */
+export const FILTROS_QUE_VIAJAM = ['etapa', 'responsavel', 'etiqueta', 'campo', 'busca', 'arquivados'] as const;
+export function levarFiltros(sp: URLSearchParams, destino: URLSearchParams, comPeriodo: boolean) {
+  for (const k of FILTROS_QUE_VIAJAM) sp.getAll(k).forEach((v) => destino.append(k, v));
+  if (comPeriodo) for (const k of ['de', 'ate']) { const v = sp.get(k); if (v) destino.set(k, v); }
+  return destino;
+}
 const MULTI = ['etapa', 'responsavel', 'etiqueta', 'campo', 'quando'] as const;
 const POR_PAGINA = 50;
 
@@ -99,6 +112,7 @@ type Rascunho = { itens: ItemPainel[]; etapasFechadas: string[] | null };
 export function Chamados() {
   useLembrarFiltros('/chamados');
   const [sp, setSp] = useSearchParams();
+  const nav = useNavigate();
   const { can } = useAuth();
   const podeArrumar = can('admin.manage');
   const qc = useQueryClient();
@@ -304,7 +318,13 @@ export function Chamados() {
         )}
       </>}
     >
-      <Abas atual={aba} onChange={(a) => mudar((n) => { n.set('aba', a); n.delete('quando'); n.delete('situacao'); if (a !== 'periodo') { n.delete('de'); n.delete('ate'); } })} abas={ABAS} />
+      <Abas<Aba | 'relatorios'>
+        atual={aba} abas={ABAS_CHAMADOS}
+        onChange={(a) => (a === 'relatorios'
+          // os relatórios abrem com os mesmos filtros (e o período, se estava no Período)
+          ? nav(`/chamados/relatorios?${levarFiltros(sp, new URLSearchParams(), aba === 'periodo').toString()}`)
+          : mudar((n) => { n.set('aba', a); n.delete('quando'); n.delete('situacao'); if (a !== 'periodo') { n.delete('de'); n.delete('ate'); } }))}
+      />
 
       {/* ---------- filtros ---------- */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
@@ -469,7 +489,7 @@ function candidatosDe(id: string, op: OpcoesChamados, r: ResumoChamados): Candid
 // ---------- peças ----------
 
 /** "Atualizado há 1 min" — ou o erro, para ninguém confiar num número parado sem saber. */
-function Situacao({ op }: { op?: OpcoesChamados }) {
+export function Situacao({ op }: { op?: OpcoesChamados }) {
   if (!op?.sincronizadoEm) return <Chip tone="muted">ainda não sincronizado</Chip>;
   if (op.ultimaOk === false) {
     return <span title={op.ultimaMsg ?? ''}><Chip tone="bad"><TriangleAlert size={12} className="inline -mt-0.5 mr-1" />a leitura falhou {relativo(op.sincronizadoEm)}</Chip></span>;
@@ -477,7 +497,7 @@ function Situacao({ op }: { op?: OpcoesChamados }) {
   return <span title={`Última leitura: ${data(op.sincronizadoEm, true)}. ${op.ultimaMsg ?? ''}`}><Chip tone="ok"><RefreshCw size={11} className="inline -mt-0.5 mr-1" />atualizado {relativo(op.sincronizadoEm)}</Chip></span>;
 }
 
-function Periodo({ de, ate, hoje: hojeServidor, primeiroDia, onChange }: { de: string; ate: string; hoje: string; primeiroDia: string; onChange: (de: string, ate: string) => void }) {
+export function Periodo({ de, ate, hoje: hojeServidor, primeiroDia, onChange }: { de: string; ate: string; hoje: string; primeiroDia: string; onChange: (de: string, ate: string) => void }) {
   const hoje = hojeServidor || diaLocal();
   const inicioMes = hoje.slice(0, 8) + '01';
   const d = new Date(); d.setDate(0); // último dia do mês passado
@@ -518,7 +538,7 @@ function emSecoes(opcoes: Array<{ key: string; label: string; cor?: string }>, g
   ];
 }
 
-function Filtros({ op, sp, definirLista, grupos }: { op: OpcoesChamados; sp: URLSearchParams; definirLista: (nome: string, valores: string[]) => void; grupos: Map<string, GrupoGrafico[]> }) {
+export function Filtros({ op, sp, definirLista, grupos }: { op: OpcoesChamados; sp: URLSearchParams; definirLista: (nome: string, valores: string[]) => void; grupos: Map<string, GrupoGrafico[]> }) {
   const vazio = op.vazio;
   const campo = (key: string) => sp.getAll('campo').filter((x) => x.startsWith(`${key}=`));
   const outrosCampos = (key: string) => sp.getAll('campo').filter((x) => !x.startsWith(`${key}=`));
@@ -545,7 +565,7 @@ function Filtros({ op, sp, definirLista, grupos }: { op: OpcoesChamados; sp: URL
  * O que está filtrado, escrito — cada um com o seu X (inclusive o que foi clicado nos gráficos).
  * Um grupo inteiro no filtro aparece como um item só ("Assunto: Ramal (grupo)"), e o X tira todos.
  */
-function FiltrosAtivos({ op, sp, aba, situacao, emAberto, grupos, tirar, limpar }: {
+export function FiltrosAtivos({ op, sp, aba, situacao, emAberto, grupos, tirar, limpar }: {
   op: OpcoesChamados; sp: URLSearchParams; aba: Aba; situacao?: SituacaoChamado; emAberto: boolean; grupos: Map<string, GrupoGrafico[]>;
   tirar: (nome: string, valores: string[]) => void; limpar: () => void;
 }) {
@@ -598,7 +618,7 @@ function FiltrosAtivos({ op, sp, aba, situacao, emAberto, grupos, tirar, limpar 
 // ---------- os cartões dos gráficos ----------
 
 /** O que cada cartão precisa saber da arrumação (e o que pode mudar nela, enquanto se organiza). */
-type Moldura = {
+export type Moldura = {
   item: ItemPainel;
   organizando: boolean;
   /** este é o cartão sendo arrastado agora */
@@ -617,7 +637,7 @@ type Moldura = {
  * de ferramentas (alça, setas, grupos, largura, esconder) e o gráfico para de responder a cliques.
  * Escondido, no Organizar, vira uma tira fina no mesmo lugar — para dar para mostrar de volta.
  */
-function Cartao({ m, titulo, sub, extra, children, comGrupos = false }: { m: Moldura; titulo: string; sub?: ReactNode; extra?: ReactNode; children: ReactNode; comGrupos?: boolean }) {
+export function Cartao({ m, titulo, sub, extra, children, comGrupos = false }: { m: Moldura; titulo: string; sub?: ReactNode; extra?: ReactNode; children: ReactNode; comGrupos?: boolean }) {
   const { item } = m;
   const largura = item.largura === 'inteira' ? 'md:col-span-2' : '';
   const cabecalho = (
@@ -626,7 +646,10 @@ function Cartao({ m, titulo, sub, extra, children, comGrupos = false }: { m: Mol
         <h2 className="font-display font-semibold leading-tight">{titulo}</h2>
         {sub && <span className="text-[12px] text-muted">{sub}</span>}
       </div>
-      {extra}
+      <div className="flex items-center gap-1.5 shrink-0">
+        {!m.organizando && <BotaoEnvio tipo="grafico" id={item.id} titulo={titulo} />}
+        {extra && <div className="so-tela">{extra}</div>}
+      </div>
     </div>
   );
   if (!m.organizando) {
@@ -714,7 +737,7 @@ function useEscolha<T>(chave: string, id: string, daEquipe: T): [T, (v: T) => vo
  * esconde linhas). Com grupos montados pela equipe, o botão **Agrupar** junta os valores de cada
  * grupo num ponto só. Clicar filtra (num grupo, por todos os valores dele); clicar de novo desfaz.
  */
-function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = false, multiplo = false }: {
+export function GraficoLista({ m, titulo, sub, itens, aoClicar, semOrdenar = false, multiplo = false }: {
   m: Moldura; titulo: string; sub?: string; itens: ItemRanking[];
   /** os valores clicados: um só, ou todos os de um grupo */
   aoClicar: (valores: string[], ev: MouseEvent) => void;

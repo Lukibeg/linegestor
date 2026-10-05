@@ -65,6 +65,66 @@ export type PainelChamados = {
   atualizadoPor: string | null;
 };
 
+/** Chamados › Relatórios (1.7): os relatórios, a peça clicada, os ajustes, a arrumação e o Raio-X. */
+export type { RelatoriosChamados, RaioXChamados, AjustesRelatorios, LinhaReincidencia, LinhaEquipe, PontoFila, SepararPor, PapelCampo, Causa } from '@gestor/shared';
+export type PecaRelatorio = { titulo: string; itens: import('@gestor/shared').LinhaChamado[]; total: number };
+type CampoUsadoTela = { key: string; name: string } | null;
+/** A janela "Ajustar" dos Relatórios: os campos usados e a ligação de cada Cliente do card com o cadastro. */
+export type AjustesRelatoriosTela = {
+  campos: {
+    escolhidos: import('@gestor/shared').AjustesRelatorios['campos'];
+    usados: Record<'cliente' | 'assunto' | 'tipo' | 'produto', CampoUsadoTela>;
+  };
+  camposDisponiveis: Array<{ key: string; name: string; multiplo: boolean }>;
+  /** cada opção do Cliente do card: quantos chamados, a qual cliente está ligada e como (guardada = alguém escolheu) */
+  opcoes: Array<{ opcao: string; n: number; clienteId: string | null; como: 'manual' | 'automatico' | 'nenhum'; guardada: boolean }>;
+  clientes: Array<{ id: string; nome: string; razao: string | null }>;
+  /** os clientes do Gestor que têm chamados (a lista do Raio-X) */
+  ligados: Array<{ clienteId: string; nome: string; n: number; opcoes: string[] }>;
+  /** cada tipo de chamado, o grupo do "De quem é a falha" (o valendo e o sugerido pelo nome) e se alguém escolheu */
+  tipos: Array<{ tipo: string; n: number; causa: import('@gestor/shared').Causa; sugerida: import('@gestor/shared').Causa; escolhida: boolean }>;
+  atualizadoEm: string | null;
+  atualizadoPor: string | null;
+};
+/** O envio automático (1.7): um envio do histórico. */
+export type RegistroEnvio = {
+  id: string; em: string; dia: string; gatilho: 'agendado' | 'manual' | 'teste'; quem: string | null;
+  ok: boolean; mensagem: string; pdf: { id: string; nome: string; bytes: number } | null; itens: string[];
+  destinatarios: Array<{ nome: string; numero: string; ok: boolean; mensagem: string }>;
+};
+/** Administração › Envio automático: os ajustes (sem o token, que fica no cofre), o que está marcado e o histórico. */
+export type EnvioAjustesTela = {
+  ativo: boolean; url: string; remetente: string; horario: string; dias: number[];
+  destinatarios: import('@gestor/shared').Destinatario[];
+  temToken: boolean;
+  configuradoEm: string | null; configuradoPor: string | null;
+  /** "hoje às 18:00", "amanhã às 18:00"… (null = desligado) */
+  proximo: string | null;
+  historico: RegistroEnvio[];
+  marcados: { graficos: Array<{ id: string; titulo: string }>; relatorios: Array<{ id: string; titulo: string }>; atualizadoEm: string | null; atualizadoPor: string | null };
+  /** de onde a FlwChat baixa o PDF */
+  enderecoPublico: string;
+  linkValeDias: number;
+};
+export type MarcadosEnvioTela = { relatorios: string[]; graficos: string[]; atualizadoEm: string | null; atualizadoPor: string | null };
+/** O que a página do PDF desenha: os números e os gráficos de hoje, e os relatórios marcados (período = hoje). */
+export type PacoteEnvio = {
+  geradoEm: string; dia: string; hhmm: string; painelNome: string; primeiroDia: string;
+  resumo: import('@gestor/shared').ResumoChamados;
+  graficos: import('@gestor/shared').ItemPainel[];
+  relatorioIds: string[];
+  relatorios: import('@gestor/shared').RelatoriosChamados | null;
+  titulos: string[];
+};
+/** O Raio-X de um cliente: os chamados dele e o que ele tem no Gestor. */
+/** A arrumação da página de Relatórios (igual para a equipe toda): a ordem, os escondidos e os favoritos. */
+export type ArrumacaoRelatoriosTela = { ordem: string[]; ocultos: string[]; favoritos: string[]; atualizadoEm: string | null; atualizadoPor: string | null };
+export type RaioXCliente = import('@gestor/shared').RaioXChamados & {
+  cliente: { id: string; nome: string };
+  campoCliente: string | null;
+  gestor: { produtos: string[]; dids: number; aparelhos: number };
+};
+
 export type ProductChip = { code: string; name: string; color: string };
 export type Links = { web: string | null; ssh: string | null; fop2: string | null };
 
