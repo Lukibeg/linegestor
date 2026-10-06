@@ -40,13 +40,28 @@ tudo junto como 1.7**: os Relatórios (0037) e o envio automático saem no mesmo
 - **A mensagem** vai com o PDF: "*Chamados de hoje* — domingo, 04/10 (até 18:00)", os números de cima
   e a lista do que está no PDF. A chamada à FlwChat é `POST <endereço>` com `Authorization: Bearer
   <token>` e `{ from, to, body: { text, fileUrl } }` — o formato da plataforma por trás dela (a mesma
-  do LineChat). **A confirmar com as páginas de disparo da documentação** (o site não abre para
-  leitura automática); se for diferente, muda só `mandarMensagem` em `services/envio.ts`.
+  do LineChat). **Confirmado em produção em 05/10/2026**: o "Mandar agora" chegou no WhatsApp como
+  documento PDF com a legenda. Se a FlwChat mudar o formato, muda só `mandarMensagem` em
+  `services/envio.ts`.
 - **O relógio**: a cada minuto o servidor confere `horaDeEnviar` (em `@gestor/shared/envio.ts`): está
   ligado, hoje é um dos dias, já passou do horário **até 3 horas depois** (o servidor pode ter caído
   na hora) e ainda não saiu hoje. Se a FlwChat recusar, tenta de novo **a cada 15 minutos, até 3
   vezes** no dia. Um envio de cada vez. Cada envio vai para a auditoria (`envio_automatico`), com
   quem recebeu e o que foi no PDF.
+- **Revisto no 1.7.1 (05/10/2026)** — no primeiro dia em produção o envio do horário não saiu: o
+  dia tinha sido "gasto" com 3 tentativas no horário antigo (faltava o token ainda) e, quando o
+  Luan pôs o token e trocou o horário para 18:40, a tela disse "próximo: amanhã". Agora:
+  - o envio do dia é anotado **com o horário** (`ultimoAgendado.horario`): **trocar o horário vale
+    já para hoje**, mesmo que já tenha saído ou falhado no horário antigo (quem troca quer ver no
+    novo);
+  - **salvar os ajustes depois de uma falha** zera as tentativas do dia (3 novas): quem salva quase
+    sempre acabou de corrigir o que faltava. Um envio que deu certo não volta a sair só porque
+    alguém salvou;
+  - a tela mostra **como foi o de hoje** (saiu; falhou e tenta de novo às HH:MM; ou não saiu, com o
+    motivo) e o "próximo" diz quando é a nova tentativa; a tela se atualiza sozinha a cada minuto;
+  - o relógio dá **uma volta de cada vez**: um envio que demore mais de um minuto não sai duas vezes;
+  - o log do servidor diz quando o relógio liga, quando é hora de mandar, e se saiu ou falhou
+    (`docker compose … logs app | grep "envio automático"`).
 - Os números aceitam qualquer jeito de escrever ("(71) 99999-0000", "+55…") e são guardados só com
   dígitos, com o 55.
 

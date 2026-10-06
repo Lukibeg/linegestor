@@ -22,8 +22,8 @@ import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '@gestor/db';
 import {
-  CATALOGO_RELATORIOS, FiltrosChamadosSchema, FiltrosRelatoriosSchema, horaDeEnviar, MarcadosEnvioSchema, momentoEmBrasilia, montarPainel,
-  nomeDoPdf, numeroLegivel, proximoEnvio, textoDoEnvio,
+  agendadoDeHoje, CATALOGO_RELATORIOS, envioDeHoje, FiltrosChamadosSchema, FiltrosRelatoriosSchema, horaDeEnviar, MarcadosEnvioSchema,
+  momentoEmBrasilia, montarPainel, nomeDoPdf, numeroLegivel, proximoEnvio, textoDoEnvio,
   type AjustesEnvio, type Destinatario, type ItemPainel, type MarcadosEnvio, type ResumoChamados, type UltimoEnvioAgendado,
 } from '@gestor/shared';
 import * as audit from './audit.js';
@@ -100,7 +100,12 @@ export async function gravarMarcados(db: Db, m: MarcadosEnvio, quem: { id: strin
   return lerMarcados(db);
 }
 
-/** Grava os ajustes da tela, sem tocar no histórico (que o relógio pode estar escrevendo). */
+/**
+ * Grava os ajustes da tela, sem tocar no histórico (que o relógio pode estar escrevendo).
+ * Salvar depois de uma falha do envio agendado libera o dia de novo, com 3 tentativas novas: quem
+ * salva quase sempre acabou de corrigir o que faltava (1.7.1). Trocar o horário também vale já
+ * para hoje (veja `agendadoDeHoje`).
+ */
 export async function gravarAjustes(db: Db, vault: SecretsVault, a: AjustesEnvio, quem: { id: string; name: string }) {
   const { valor } = await lerAjustes(db);
   let secretId: string | null | undefined;
@@ -109,7 +114,8 @@ export async function gravarAjustes(db: Db, vault: SecretsVault, a: AjustesEnvio
     secretId = await vault.save(db, { existingId: atual?.secretId ?? null, label: 'Token da API da FlwChat (envio automático)', plain: a.token, userId: quem.id });
   }
   const { token: _fora, ...resto } = a;
-  const novo: AjustesEnvioGuardados = { ...valor, ...resto, configuradoEm: new Date().toISOString(), configuradoPor: quem.name };
+  const ultimoAgendado = valor.ultimoAgendado && !valor.ultimoAgendado.ok ? null : (valor.ultimoAgendado ?? null);
+  const novo: AjustesEnvioGuardados = { ...valor, ...resto, ultimoAgendado, configuradoEm: new Date().toISOString(), configuradoPor: quem.name };
   await integ.gravar(db, 'envio-automatico', novo, { secretId, userId: quem.id });
   return { antes: valor, depois: novo, trocouToken: !!a.token };
 }
@@ -376,8 +382,8 @@ async function enviarAgora(
     historico: [registro, ...(v.historico ?? [])].slice(0, HISTORICO),
     ...(o.gatilho === 'agendado' ? {
       ultimoAgendado: {
-        dia: momento.dia, ok: registro.ok, em: agora.toISOString(),
-        tentativas: (v.ultimoAgendado?.dia === momento.dia ? v.ultimoAgendado.tentativas : 0) + 1,
+        dia: momento.dia, horario: valor.horario, ok: registro.ok, em: agora.toISOString(),
+        tentativas: (agendadoDeHoje(valor, agora, v.ultimoAgendado ?? null)?.tentativas ?? 0) + 1,
       },
     } : {}),
   }));
@@ -393,20 +399,37 @@ async function enviarAgora(
 
 // ---------- o relógio ----------
 
+/**
+ * Uma volta do relógio: se está na hora, manda. Uma volta de cada vez — se um envio demorar mais
+ * de um minuto, a volta seguinte não manda de novo (1.7.1). Exportada para os testes.
+ */
+let relogioOcupado = false;
+export async function voltaDoRelogio(app: FastifyInstance): Promise<ResultadoEnvio | null> {
+  if (relogioOcupado) return null;
+  relogioOcupado = true;
+  try {
+    const { valor } = await lerAjustes(app.db);
+    const agora = ferramentas.agora();
+    if (!horaDeEnviar(valor, agora, valor.ultimoAgendado ?? null)) return null;
+    const tentativa = (agendadoDeHoje(valor, agora, valor.ultimoAgendado ?? null)?.tentativas ?? 0) + 1;
+    app.log.info({ horario: valor.horario, tentativa }, 'envio automático: hora de mandar');
+    const r = await enviar(app, { gatilho: 'agendado' });
+    if (r.ok) app.log.info({ mensagem: r.mensagem }, 'envio automático: enviado');
+    else app.log.warn({ motivo: r.mensagem, tentativa }, 'envio automático falhou');
+    return r;
+  } catch (err) {
+    app.log.error({ err }, 'envio automático: erro inesperado');
+    return null;
+  } finally {
+    relogioOcupado = false;
+  }
+}
+
 /** A cada minuto, confere se está na hora do envio do dia (só quando ligado). */
 export function iniciarEnvioAutomatico(app: FastifyInstance) {
-  const tick = async () => {
-    try {
-      const { valor } = await lerAjustes(app.db);
-      if (!horaDeEnviar(valor, ferramentas.agora(), valor.ultimoAgendado ?? null)) return;
-      const r = await enviar(app, { gatilho: 'agendado' });
-      if (!r.ok) app.log.warn({ motivo: r.mensagem }, 'envio automático falhou');
-    } catch (err) {
-      app.log.error({ err }, 'envio automático: erro inesperado');
-    }
-  };
-  setTimeout(() => void tick(), 30_000);
-  setInterval(() => void tick(), 60_000);
+  app.log.info('envio automático: relógio ligado (confere o horário a cada minuto)');
+  setTimeout(() => void voltaDoRelogio(app), 30_000);
+  setInterval(() => void voltaDoRelogio(app), 60_000);
 }
 
 /** O que a tela de Administração › Envio automático mostra. */
@@ -418,6 +441,7 @@ export async function paraTela(app: FastifyInstance) {
     temToken,
     configuradoEm: valor.configuradoEm ?? null, configuradoPor: valor.configuradoPor ?? null,
     proximo: proximoEnvio(valor, ferramentas.agora(), valor.ultimoAgendado ?? null),
+    hoje: envioDeHoje(valor, ferramentas.agora(), valor.ultimoAgendado ?? null, valor.historico ?? []),
     historico: (valor.historico ?? []).slice(0, 20),
     marcados: { graficos: t.graficos, relatorios: t.relatorios, atualizadoEm: t.atualizadoEm, atualizadoPor: t.atualizadoPor },
     enderecoPublico: enderecoPublico(app),

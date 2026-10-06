@@ -113,15 +113,29 @@ export const JANELA_ENVIO_MIN = 180;
 export const ESPERA_NOVA_TENTATIVA_MIN = 15;
 export const TENTATIVAS_ENVIO = 3;
 
-/** Como foi o envio agendado do dia (para não mandar duas vezes nem insistir sem fim). */
-export type UltimoEnvioAgendado = { dia: string; ok: boolean; tentativas: number; em: string } | null;
+/**
+ * Como foi o envio agendado do dia (para não mandar duas vezes nem insistir sem fim).
+ * `horario`: o horário para o qual ele foi (1.7.1). Guardado antes do 1.7.1, não tem: vale o de agora.
+ */
+export type UltimoEnvioAgendado = { dia: string; ok: boolean; tentativas: number; em: string; horario?: string } | null;
 
 const emMinutos = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
 /**
+ * O envio agendado de hoje, se já houve um **para o horário de agora**. Trocou o horário? O dia
+ * conta de novo: o envio sai no horário novo, mesmo que já tenha saído (ou falhado) no antigo
+ * (1.7.1 — no 1.7, trocar o horário depois de 3 falhas deixava o dia sem envio).
+ */
+export function agendadoDeHoje(a: Pick<AjustesEnvio, 'horario'>, agora: Date, ultimo: UltimoEnvioAgendado): Exclude<UltimoEnvioAgendado, null> | null {
+  if (!ultimo || ultimo.dia !== momentoEmBrasilia(agora).dia) return null;
+  if (ultimo.horario && ultimo.horario !== a.horario) return null;
+  return ultimo;
+}
+
+/**
  * Está na hora do envio agendado? Sim quando: está ligado; hoje é um dos dias; já passou do
- * horário (até 3 horas depois); e hoje ainda não saiu — ou falhou, já esperou 15 minutos e não
- * gastou as 3 tentativas.
+ * horário (até 3 horas depois); e hoje ainda não saiu nesse horário — ou falhou, já esperou 15
+ * minutos e não gastou as 3 tentativas.
  */
 export function horaDeEnviar(
   a: Pick<AjustesEnvio, 'ativo' | 'horario' | 'dias'>, agora: Date, ultimo: UltimoEnvioAgendado,
@@ -131,9 +145,19 @@ export function horaDeEnviar(
   if (!a.dias.includes(m.dow)) return false;
   const passou = emMinutos(m.hhmm) - emMinutos(a.horario);
   if (passou < 0 || passou > JANELA_ENVIO_MIN) return false;
-  if (!ultimo || ultimo.dia !== m.dia) return true;
-  if (ultimo.ok || ultimo.tentativas >= TENTATIVAS_ENVIO) return false;
-  return agora.getTime() - Date.parse(ultimo.em) >= ESPERA_NOVA_TENTATIVA_MIN * 60_000;
+  const u = agendadoDeHoje(a, agora, ultimo);
+  if (!u) return true;
+  if (u.ok || u.tentativas >= TENTATIVAS_ENVIO) return false;
+  return agora.getTime() - Date.parse(u.em) >= ESPERA_NOVA_TENTATIVA_MIN * 60_000;
+}
+
+/** Quando sai a próxima tentativa de hoje, depois de uma falha (null = não tem mais hoje). */
+function novaTentativa(a: Pick<AjustesEnvio, 'horario'>, agora: Date, u: Exclude<UltimoEnvioAgendado, null>): string | null {
+  if (u.ok || u.tentativas >= TENTATIVAS_ENVIO) return null;
+  const quando = new Date(Math.max(agora.getTime(), Date.parse(u.em) + ESPERA_NOVA_TENTATIVA_MIN * 60_000));
+  const q = momentoEmBrasilia(quando);
+  if (q.dia !== u.dia || emMinutos(q.hhmm) - emMinutos(a.horario) > JANELA_ENVIO_MIN) return null;
+  return q.hhmm;
 }
 
 /** O próximo envio agendado, escrito ("hoje às 18:00", "seg, 06/10 às 18:00"), para a tela. */
@@ -144,15 +168,48 @@ export function proximoEnvio(a: Pick<AjustesEnvio, 'ativo' | 'horario' | 'dias'>
     const dow = (m.dow + k) % 7;
     if (!a.dias.includes(dow)) continue;
     if (k === 0) {
-      const jaSaiu = ultimo?.dia === m.dia && (ultimo.ok || ultimo.tentativas >= TENTATIVAS_ENVIO);
-      if (jaSaiu || emMinutos(m.hhmm) - emMinutos(a.horario) > JANELA_ENVIO_MIN) continue;
-      return emMinutos(m.hhmm) >= emMinutos(a.horario) ? 'agora (na próxima volta do relógio)' : `hoje às ${a.horario}`;
+      const passou = emMinutos(m.hhmm) - emMinutos(a.horario);
+      if (passou > JANELA_ENVIO_MIN) continue;
+      if (passou < 0) return `hoje às ${a.horario}`;
+      const u = agendadoDeHoje(a, agora, ultimo);
+      if (!u) return 'agora (na próxima volta do relógio)';
+      const nova = novaTentativa(a, agora, u);
+      if (!nova) continue; // já saiu hoje, ou gastou as tentativas
+      return nova > m.hhmm ? `hoje às ${nova} (nova tentativa)` : 'agora (nova tentativa, na próxima volta do relógio)';
     }
     const d = new Date(`${m.dia}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + k);
     const dia = d.toISOString().slice(0, 10);
     return k === 1 ? `amanhã às ${a.horario}` : `${NOMES_DIAS_ENVIO[dow]}, ${dia.slice(8, 10)}/${dia.slice(5, 7)} às ${a.horario}`;
   }
   return null;
+}
+
+/** Como está o envio agendado de hoje, para a tela (1.7.1). */
+export type EnvioDeHoje = {
+  horario: string;
+  /** saiu (todos os números receberam) */
+  ok: boolean;
+  tentativas: number;
+  /** a última tentativa */
+  em: string;
+  /** o que aconteceu na última tentativa (o motivo, quando falhou) */
+  mensagem: string | null;
+  /** HH:MM da próxima tentativa de hoje; null = não tenta mais hoje */
+  novaTentativa: string | null;
+};
+
+/** O envio agendado de hoje (no horário de agora), com o motivo da última tentativa; null = ainda não houve. */
+export function envioDeHoje(
+  a: Pick<AjustesEnvio, 'horario'>, agora: Date, ultimo: UltimoEnvioAgendado,
+  historico: ReadonlyArray<{ gatilho: string; dia: string; em: string; mensagem: string }>,
+): EnvioDeHoje | null {
+  const u = agendadoDeHoje(a, agora, ultimo);
+  if (!u) return null;
+  const r = historico.find((h) => h.gatilho === 'agendado' && h.dia === u.dia);
+  return {
+    horario: u.horario ?? a.horario, ok: u.ok, tentativas: u.tentativas, em: u.em,
+    mensagem: r?.mensagem ?? null, novaTentativa: novaTentativa(a, agora, u),
+  };
 }
 
 /** O nome do arquivo que chega no WhatsApp: "chamados-04-10-2026.pdf". */

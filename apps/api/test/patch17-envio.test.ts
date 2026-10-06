@@ -212,3 +212,77 @@ describe('O envio', () => {
     expect(e.mensagem).toContain('Falta o token');
   });
 });
+
+/**
+ * 1.7.1 — o relógio. Em 05/10 o envio no horário não saiu: o dia tinha sido "gasto" com 3 falhas
+ * no horário antigo, e trocar o horário (18:40) não liberava. Agora trocar o horário vale já para
+ * hoje, salvar depois de uma falha dá 3 tentativas novas, e a tela mostra como foi o de hoje.
+ */
+describe('O relógio (1.7.1)', () => {
+  /** um momento em Brasília */
+  const as = (dia: string, hhmm: string) => () => new Date(`${dia}T${hhmm}:00-03:00`);
+  const volta = async (dia: string, hhmm: string) => { envio.trocarFerramentas({ agora: as(dia, hhmm) }); return envio.voltaDoRelogio(app); };
+  const tela = async () => (await s.get('/envio/ajustes')).json();
+  afterAll(() => { envio.trocarFerramentas({ agora: () => new Date() }); });
+  // começa limpo: salvar zera a falha do agendado que o teste da FlwChat deixou (com a data de verdade)
+  beforeAll(async () => { expect((await s.put('/envio/ajustes', AJUSTES)).json().temToken).toBe(false); });
+
+  it('o caso de 05/10: 3 falhas às 18:00, trocou para 18:40 às 18:35 — sai às 18:40, uma vez', async () => {
+    // sem token (o teste anterior tirou): as 3 tentativas das 18:00 falham dizendo o que falta
+    expect((await volta('2026-10-05', '17:59'))).toBeNull();
+    for (const h of ['18:00', '18:15', '18:30']) expect((await volta('2026-10-05', h))?.mensagem).toContain('Falta o token');
+    expect(await volta('2026-10-05', '18:31')).toBeNull();
+    expect(await volta('2026-10-05', '18:46')).toBeNull(); // gastou as 3
+    envio.trocarFerramentas({ agora: as('2026-10-05', '18:35') });
+    const antes = await tela();
+    expect(antes.proximo).toBe('amanhã às 18:00');
+    expect(antes.hoje).toMatchObject({ horario: '18:00', ok: false, tentativas: 3, novaTentativa: null });
+    expect(antes.hoje.mensagem).toContain('Falta o token');
+
+    // às 18:35: põe o token e troca para 18:40
+    const depois = (await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40', token: TOKEN })).json();
+    expect(depois.proximo).toBe('hoje às 18:40');
+    expect(depois.hoje).toBeNull();
+    recebidos = [];
+    expect(await volta('2026-10-05', '18:39')).toBeNull();
+    expect((await volta('2026-10-05', '18:40'))?.ok).toBe(true);
+    expect(recebidos.map((r) => r.corpo.to)).toEqual(['5571999990001', '5571999990002']);
+    expect(await volta('2026-10-05', '18:41')).toBeNull(); // uma vez só
+    envio.trocarFerramentas({ agora: as('2026-10-05', '18:42') });
+    const fim = await tela();
+    expect(fim.proximo).toBe('amanhã às 18:40');
+    expect(fim.hoje).toMatchObject({ horario: '18:40', ok: true, tentativas: 1 });
+    expect(fim.historico[0]).toMatchObject({ gatilho: 'agendado', ok: true, quem: null });
+  });
+
+  it('salvar depois de uma falha libera 3 tentativas novas, no mesmo horário', async () => {
+    respostaDaFlwChat = 500;
+    for (const h of ['18:40', '18:55', '19:10']) expect((await volta('2026-10-06', h))?.ok).toBe(false);
+    expect(await volta('2026-10-06', '19:30')).toBeNull();
+    respostaDaFlwChat = 200;
+    envio.trocarFerramentas({ agora: as('2026-10-06', '19:31') });
+    expect((await tela()).proximo).toBe('amanhã às 18:40');
+    // salvou (por exemplo, depois de reconectar o número na FlwChat): tenta de novo
+    expect((await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40' })).json().proximo).toBe('agora (na próxima volta do relógio)');
+    expect((await volta('2026-10-06', '19:32'))?.ok).toBe(true);
+    // e um envio que deu certo não volta a sair só porque alguém salvou
+    await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40' });
+    expect(await volta('2026-10-06', '19:33')).toBeNull();
+  });
+
+  it('uma volta de cada vez: um envio demorado não sai duas vezes', async () => {
+    let soltar!: () => void;
+    const segura = new Promise<void>((r) => { soltar = r; });
+    envio.trocarFerramentas({
+      gerarPdf: async (_app, chave) => { await segura; if (!envio.chaveValida(chave)) throw new Error('chave inválida'); return Buffer.from('%PDF-1.4 PDF de teste'); },
+    });
+    recebidos = [];
+    const primeira = volta('2026-10-07', '18:40');
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await volta('2026-10-07', '18:41')).toBeNull(); // a primeira ainda está mandando
+    soltar();
+    expect((await primeira)?.ok).toBe(true);
+    expect(await volta('2026-10-07', '18:42')).toBeNull();
+    expect(recebidos).toHaveLength(2); // um para cada número ativo, uma vez
+  });
+});

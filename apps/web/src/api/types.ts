@@ -100,6 +100,8 @@ export type EnvioAjustesTela = {
   configuradoEm: string | null; configuradoPor: string | null;
   /** "hoje às 18:00", "amanhã às 18:00"… (null = desligado) */
   proximo: string | null;
+  /** como foi o envio agendado de hoje, no horário de agora (1.7.1); null = ainda não houve */
+  hoje: import('@gestor/shared').EnvioDeHoje | null;
   historico: RegistroEnvio[];
   marcados: { graficos: Array<{ id: string; titulo: string }>; relatorios: Array<{ id: string; titulo: string }>; atualizadoEm: string | null; atualizadoPor: string | null };
   /** de onde a FlwChat baixa o PDF */

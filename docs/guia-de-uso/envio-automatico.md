@@ -27,7 +27,7 @@ Em **Administração › Envio automático**:
 | Campo | O que é |
 |---|---|
 | **Mandar todo dia, sozinho** | Liga e desliga o envio |
-| **Horário** | De Brasília. O envio sai nesse minuto (ou até 3 horas depois, se o servidor estava fora do ar) |
+| **Horário** | De Brasília. O envio sai nesse minuto (ou até 3 horas depois, se o servidor estava fora do ar). Trocou o horário? Vale já para hoje |
 | **Dias** | Todos, por padrão. "só dias úteis" deixa de segunda a sexta |
 | **Para quem** | Nome e número (com DDD) de cada pessoa. "pausado" deixa na lista sem receber |
 | **Número que envia** | O número conectado na FlwChat |
@@ -46,8 +46,13 @@ Salve, depois:
 Embaixo, **Últimos envios**: quando, se foi no horário ou mandado à mão, se deu certo, para quantos
 números e o PDF de cada um para baixar. Tudo também fica na auditoria.
 
-Se a FlwChat recusar (token errado, número desconectado), o motivo aparece ali, e o envio do horário
-tenta de novo duas vezes, a cada 15 minutos.
+Lá em cima, ao lado de **próximo**, a tela diz **como foi o envio de hoje**: se saiu (e a que horas),
+se falhou e quando tenta de novo, ou se não saiu — sempre com o motivo. A tela se atualiza sozinha a
+cada minuto.
+
+Se falhar (token errado, número desconectado, faltou algo), o motivo aparece ali, e o envio do horário
+tenta de novo duas vezes, a cada 15 minutos. Corrigiu e **salvou**? Ele ganha 3 tentativas novas no
+mesmo dia (se ainda estiver dentro das 3 horas depois do horário). Ou use **Mandar agora**.
 
 ## Bom saber
 

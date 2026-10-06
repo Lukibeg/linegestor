@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { CheckCircle2, Download, Eye, Plus, Send, Trash2, TriangleAlert, X } from 'lucide-react';
-import { NOMES_DIAS_ENVIO, numeroLegivel } from '@gestor/shared';
+import { NOMES_DIAS_ENVIO, numeroLegivel, TENTATIVAS_ENVIO } from '@gestor/shared';
 import { api, IS_DEMO } from '../../api/index.js';
 import type { EnvioAjustesTela, RegistroEnvio } from '../../api/types.js';
 import { Campo, Carregando, Chip, Confirmar, Spinner, Toggle, mensagemErro, useToast } from '../../components/ui/index.js';
@@ -25,7 +25,8 @@ const doServidor = (a: EnvioAjustesTela): Form => ({
 const novoId = () => Math.random().toString(36).slice(2, 10);
 
 export function EnvioAutomatico() {
-  const q = useQuery({ queryKey: ['envio', 'ajustes'], queryFn: () => api.envio.ajustes() });
+  // a cada minuto, para o "hoje" e os últimos envios aparecerem sozinhos quando o relógio mandar (1.7.1)
+  const q = useQuery({ queryKey: ['envio', 'ajustes'], queryFn: () => api.envio.ajustes(), refetchInterval: 60_000 });
   if (q.isLoading) return <Carregando />;
   if (q.isError) return <div className="text-bad text-sm">{mensagemErro(q.error)}</div>;
   return <Tela inicial={q.data!} />;
@@ -39,7 +40,9 @@ function Tela({ inicial }: { inicial: EnvioAjustesTela }) {
   const [res, setRes] = useState<{ ok: boolean; mensagem: string } | null>(null);
   const [mandando, setMandando] = useState<string | null>(null);
   const [confirmar, setConfirmar] = useState(false);
-  useEffect(() => { setF(doServidor(inicial)); }, [inicial]);
+  // volta ao que está salvo só quando o salvo muda (a atualização de cada minuto não apaga o que a pessoa está digitando)
+  const salvoAgora = JSON.stringify(doServidor(inicial));
+  useEffect(() => { setF(JSON.parse(salvoAgora) as Form); }, [salvoAgora]);
   const mudou = useMemo(() => JSON.stringify(f) !== JSON.stringify(doServidor(inicial)) || !!token, [f, inicial, token]);
   const ativos = inicial.destinatarios.filter((d) => d.ativo).length;
   const nMarcados = inicial.marcados.graficos.length + inicial.marcados.relatorios.length;
@@ -80,13 +83,14 @@ function Tela({ inicial }: { inicial: EnvioAjustesTela }) {
           {inicial.ativo ? <Chip tone="ok">ligado</Chip> : <Chip tone="muted">desligado</Chip>}
           {inicial.ativo && inicial.proximo && <span className="text-[13px] text-ink-2">próximo: <b>{inicial.proximo}</b></span>}
         </div>
+        {inicial.ativo && inicial.hoje && <EnvioDeHoje h={inicial.hoje} />}
         {IS_DEMO && (
           <div className="mt-3 rounded-lg border border-signal bg-signal-soft p-3 text-[13.5px] text-ink flex items-start gap-2">
             <TriangleAlert size={16} className="text-signal shrink-0 mt-0.5" />
             <span>
               <b>Esta é a prévia: nenhuma mensagem sai daqui.</b> Testar e Mandar agora só simulam (aparecem nos últimos envios, mas nada vai
-              para o WhatsApp) e não há servidor para montar o PDF — use "Ver como fica". O WhatsApp só recebe depois que o 1.7 estiver
-              publicado no sistema de verdade, com o token da FlwChat salvo nesta tela.
+              para o WhatsApp) e não há servidor para montar o PDF — use "Ver como fica". O relógio da prévia só confere o horário
+              com esta tela aberta. O WhatsApp só recebe no sistema de verdade, com o token da FlwChat salvo nesta tela.
             </span>
           </div>
         )}
@@ -96,7 +100,10 @@ function Tela({ inicial }: { inicial: EnvioAjustesTela }) {
             <Send size={13} className="inline mx-1 -mt-0.5 text-accent fill-current" aria-label="Envio diário" />
             (no canto de cada um; fica azul quando marcado) e manda pelo WhatsApp, pela API da FlwChat, para os números da lista — com uma mensagem com os números do dia.
           </p>
-          <p>Os números são <b>do dia de hoje</b>, até a hora do envio. Se o servidor estiver fora do ar na hora, o envio sai quando ele voltar (até 3 horas depois); se a FlwChat recusar, tenta de novo 2 vezes, a cada 15 minutos.</p>
+          <p>
+            Os números são <b>do dia de hoje</b>, até a hora do envio. Se o servidor estiver fora do ar na hora, o envio sai quando ele voltar (até 3 horas depois); se falhar, tenta de novo 2 vezes, a cada 15 minutos.
+            Trocou o horário? Vale <b>já para hoje</b>. E salvar depois de uma falha libera 3 tentativas novas.
+          </p>
         </div>
 
         {/* ---------- quando ---------- */}
@@ -243,6 +250,38 @@ function Tela({ inicial }: { inicial: EnvioAjustesTela }) {
         titulo="Mandar o PDF agora?" botao={`Mandar para ${ativos} ${ativos === 1 ? 'número' : 'números'}`}
         texto={<>O Gestor monta o PDF com os números de agora ({nMarcados ? `${nMarcados} ${nMarcados === 1 ? 'item marcado' : 'itens marcados'}` : 'só os números do dia'}) e manda pelo WhatsApp para {inicial.destinatarios.filter((d) => d.ativo).map((d) => d.nome).join(', ')}. O envio de todo dia continua no horário.</>}
       />
+    </div>
+  );
+}
+
+const hora = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
+
+/** Como foi o envio agendado de hoje (1.7.1): saiu, vai tentar de novo, ou desistiu e por quê. */
+function EnvioDeHoje({ h }: { h: NonNullable<EnvioAjustesTela['hoje']> }) {
+  const motivo = h.mensagem ? <> Motivo: <span className="font-medium">{h.mensagem}</span></> : null;
+  if (h.ok) {
+    return (
+      <p className="mt-2 text-[13px] text-ok flex items-start gap-1.5" data-envio-hoje="ok">
+        <CheckCircle2 size={15} className="mt-0.5 shrink-0" />
+        <span>Hoje: o envio das {h.horario} saiu às {hora(h.em)}.</span>
+      </p>
+    );
+  }
+  if (h.novaTentativa) {
+    return (
+      <div className="mt-3 rounded-lg bg-signal-soft p-2.5 text-[13px] text-ink flex items-start gap-2" data-envio-hoje="tentando">
+        <TriangleAlert size={15} className="mt-0.5 shrink-0 text-signal" />
+        <span>Hoje: a tentativa das {hora(h.em)} falhou ({h.tentativas} de {TENTATIVAS_ENVIO}).{motivo} Tenta de novo às <b>{h.novaTentativa}</b>.</span>
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 rounded-lg bg-bad-soft p-2.5 text-[13px] text-ink flex items-start gap-2" data-envio-hoje="falhou">
+      <TriangleAlert size={15} className="mt-0.5 shrink-0 text-bad" />
+      <span>
+        <b>Hoje o envio das {h.horario} não saiu</b> ({h.tentativas} {h.tentativas === 1 ? 'tentativa' : 'tentativas'}, a última às {hora(h.em)}).{motivo}{' '}
+        Corrija o que faltou e salve: se ainda estiver dentro de 3 horas do horário, ele tenta de novo hoje. Ou use "Mandar agora".
+      </span>
     </div>
   );
 }
