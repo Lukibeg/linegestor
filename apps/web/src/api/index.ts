@@ -180,6 +180,37 @@ export type Api = {
     /** Endereço para baixar o anexo (abre direto no navegador) */
     anexoUrl(anexoId: string): string;
   };
+  /** Base de conhecimento (Patch 1.8) */
+  base: {
+    lista(q: Record<string, unknown>): Promise<T.ListaBase>;
+    opcoes(): Promise<T.OpcoesBase>;
+    /** pelo número (12) ou pelo código (BC-12) */
+    get(numero: number | string): Promise<T.Artigo>;
+    criar(d: T.ArtigoGravar): Promise<T.GravadoArtigo>;
+    /** `versao` é a que a pessoa abriu: se outra pessoa salvou no meio, vem erro 409 */
+    atualizar(numero: number, d: T.ArtigoGravar): Promise<T.GravadoArtigo>;
+    remover(numero: number): Promise<{ ok: boolean }>;
+    /** ligar (ou tirar) uma coisa só, sem mexer no texto (o "Ligar um artigo" do projeto) */
+    ligar(numero: number, l: { tipo: T.TipoLigacao; alvo: string; ligar: boolean }): Promise<{ ok: boolean }>;
+    versoes(numero: number): Promise<T.VersoesArtigo>;
+    comparar(numero: number, de: number, para: number): Promise<{ de: T.TextoVersao; para: T.TextoVersao }>;
+    voltarVersao(numero: number, versao: number): Promise<{ numero: number; versao: number }>;
+    /** só quem cuida da base: pedir (ou tirar) a leitura obrigatória */
+    obrigatoria(numero: number, ligar: boolean): Promise<{ ok: boolean }>;
+    marcarLida(numero: number): Promise<{ ok: boolean }>;
+    leituras(numero: number): Promise<T.LeiturasArtigo>;
+    /** quem escreve comenta (fica registrado quem e quando); apagar é o seu, ou qualquer um se você cuida da base */
+    comentar(numero: number, texto: string): Promise<{ id: string }>;
+    apagarComentario(numero: number, id: string): Promise<{ ok: boolean }>;
+    /** os de leitura obrigatória que esta pessoa ainda não leu (o número do menu) */
+    pendentes(): Promise<T.PendentesBase>;
+    /** os publicados ligados a um cliente, modelo, operadora, projeto… (as fichas) */
+    ligados(tipo: T.TipoLigacao, alvo: string): Promise<T.LigadosBase>;
+    /** o livrinho da tabela de Chamados */
+    paraChamados(ids: string[]): Promise<T.ArtigosDosChamados>;
+    /** "Registrar na base" a partir de um chamado (pelo id do card ou IS-3607) */
+    doChamado(ref: string): Promise<T.DoChamado>;
+  };
   admin: {
     users(): Promise<T.User[]>;
     createUser(d: Record<string, unknown>): Promise<T.User>;

@@ -23,6 +23,7 @@ import { FiltroEmBotao } from '../../lib/filtros.js';
 import { temDataDeAtivacao } from '@gestor/shared';
 import { ObservacaoDid, UsoDid, useEditarDid } from '../dids/partes.js';
 import { RaioX } from '../chamados/relatorios/Clientes.js';
+import { ArtigosLigados } from '../base/partes.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'chamados' | 'historico';
 
@@ -74,6 +75,8 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
       titulo={<span className="flex items-center gap-2"><LogoCliente src={logoSrc(c.logoUrl)} nome={c.tradeName} tamanho={30} />{c.tradeName}{c.archived && <Chip tone="muted">arquivado</Chip>}</span>}
       sub={<span>{c.legalName} · <span className="font-mono">{cnpjFormatado(c.cnpj)}</span></span>}
       acoes={<>
+        {/* 1.8: os artigos da base ligados a este cliente (só aparece se houver) */}
+        <ArtigosLigados tipo="cliente" alvo={c.id} sobre="sobre este cliente" />
         {c.links.web && <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary"><ExternalLink size={15} /> Abrir</a>}
         <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button>{!emJanela && <button className="btn-ghost" onClick={toggleArchive}><Archive size={15} /> {c.archived ? 'Desarquivar' : 'Arquivar'}</button>}</Can>
         {/* na janela ficam só as ações do dia a dia; arquivar e excluir, na página */}

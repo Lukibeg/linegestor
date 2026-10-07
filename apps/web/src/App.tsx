@@ -23,6 +23,9 @@ import { ProjetoFicha } from './pages/projetos/Ficha.js';
 import { Chamados } from './pages/chamados/Index.js';
 import { RelatoriosChamados } from './pages/chamados/Relatorios.js';
 import { EnvioDiario } from './pages/chamados/EnvioDiario.js';
+import { BaseLista } from './pages/base/Lista.js';
+import { ArtigoPagina } from './pages/base/Artigo.js';
+import { ArtigoEditor } from './pages/base/Editar.js';
 import { Conta } from './pages/Conta.js';
 import { Admin } from './pages/admin/Index.js';
 
@@ -58,6 +61,11 @@ export function App() {
             <Route path="/projetos/:id" element={<Protegido><ProjetoFicha /></Protegido>} />
             <Route path="/chamados" element={<Protegido><Chamados /></Protegido>} />
             <Route path="/chamados/relatorios" element={<Protegido><RelatoriosChamados /></Protegido>} />
+            {/* a base de conhecimento: o que a equipe aprendeu, com passo a passo (1.8) */}
+            <Route path="/base" element={<Protegido><BaseLista /></Protegido>} />
+            <Route path="/base/novo" element={<Protegido><ArtigoEditor /></Protegido>} />
+            <Route path="/base/:numero" element={<Protegido><ArtigoPagina /></Protegido>} />
+            <Route path="/base/:numero/editar" element={<Protegido><ArtigoEditor /></Protegido>} />
             <Route path="/novidades" element={<Protegido><NovidadesPagina /></Protegido>} />
             <Route path="/conta" element={<Protegido><Conta /></Protegido>} />
             <Route path="/admin/*" element={<Protegido><Admin /></Protegido>} />

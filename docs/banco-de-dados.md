@@ -53,6 +53,12 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [linechat_cards](#linechat_cards) — Um chamado (card do LineChat), do jeito que ele estava na última sincronização.
 - [linechat_card_moves](#linechat_card_moves) — Cada vez que um chamado mudou de etapa.
 - [linechat_sync_runs](#linechat_sync_runs) — O registro das sincronizações: quando rodou, o que leu, o que mudou e se deu erro.
+- [knowledge_articles](#knowledge_articles) — Um artigo.
+- [knowledge_versions](#knowledge_versions) — Cada versão do texto de um artigo, inteira, para comparar e voltar atrás.
+- [knowledge_links](#knowledge_links) — "Este artigo fala de…": a ligação com o que o Gestor já tem.
+- [knowledge_attachments](#knowledge_attachments) — Um arquivo do artigo, no próprio banco (como os anexos dos projetos: entra no backup).
+- [knowledge_reads](#knowledge_reads) — "Fulano leu o artigo (de leitura obrigatória) em tal dia." Uma linha por pessoa × artigo; ler de novo atualiza a data.
+- [knowledge_comments](#knowledge_comments) — Um comentário no artigo: o que a equipe viu depois ("aconteceu de novo, era outra coisa"), sem mexer no texto.
 
 
 ---
@@ -620,4 +626,98 @@ O registro das sincronizações: quando rodou, o que leu, o que mudou e se deu e
 | `moves` | número inteiro | Quantos mudaram de etapa | obrigatório · padrão: 0 |
 | `cards_removed` | número inteiro | Quantos sumiram do LineChat (na completa e na conferência) | obrigatório · padrão: 0 |
 | `user_id` | texto | Quem apertou o botão (nulo na automática) | liga com **users** |
+
+
+---
+
+# 8. BASE DE CONHECIMENTO
+
+## knowledge_articles
+
+Um artigo. O texto é "simples": uma linha que começa com número vira passo, o que está entre crases vira comando com botão Copiar, e `[print:<id>]` numa linha sozinha é um print colado (o arquivo mora em `knowledge_attachments`). Quem lê é a equipe toda — senha não vai aqui, vai no cofre (combinado do Patch 1.8).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `number` | serial | O número do código BC-12: sequencial, nunca reaproveitado (nem depois da lixeira) | obrigatório |
+| `title` | texto | O título, escrito como alguém procuraria ("Ligação cai sempre aos 32 segundos") | obrigatório |
+| `symptom` | texto | O que acontece: o sintoma, nas palavras do cliente | — |
+| `resolution` | texto | Como resolver: os passos (obrigatório para publicar) | — |
+| `cause` | texto | Por que acontece: a causa (opcional, mas é o que ensina a reconhecer o problema) | — |
+| `customer_terms` | texto | Palavras do cliente: outros jeitos de dizer o mesmo problema ("cai sozinha"), para a busca achar | obrigatório · padrão: [] · lista |
+| `status` | texto | rascunho = só quem escreveu (e quem cuida da base) vê · publicado = a equipe toda vê | obrigatório · padrão: 'rascunho' |
+| `mandatory_since` | data e hora | Leitura obrigatória desde quando (nulo = não é). Quem leu antes disso precisa ler de novo | — |
+| `mandatory_by_id` | texto | Quem marcou a leitura obrigatória | liga com **users** |
+| `version` | número inteiro | A versão atual do texto (sobe a cada mudança; cada uma fica guardada em `knowledge_versions`) | obrigatório · padrão: 1 |
+| `author_id` | texto | Quem escreveu | liga com **users** |
+| `updated_by_id` | texto | Quem mexeu por último | liga com **users** |
+| `published_at` | data e hora | Quando foi publicado pela primeira vez | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## knowledge_versions
+
+Cada versão do texto de um artigo, inteira, para comparar e voltar atrás. A última é igual ao artigo; "voltar a esta versão" não apaga nada: grava uma versão nova com o texto antigo. As ligações não entram aqui (a auditoria guarda quem as mudou).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `version` | número inteiro | 1, 2, 3… (a do artigo é a última) | obrigatório |
+| `title` | texto | — | obrigatório |
+| `symptom` | texto | — | — |
+| `resolution` | texto | — | — |
+| `cause` | texto | — | — |
+| `customer_terms` | texto | — | obrigatório · padrão: [] · lista |
+| `note` | texto | Um recado sobre a versão ("voltou à versão 2") | — |
+| `edited_by_id` | texto | — | liga com **users** |
+| `edited_at` | data e hora | — | obrigatório |
+
+## knowledge_links
+
+"Este artigo fala de…": a ligação com o que o Gestor já tem. `kind`: produto · modulo · assunto · cliente · modelo · operadora · chamado · projeto. `target` é o id do que está ligado — menos no assunto, que guarda o NOME da opção do campo Assunto do LineChat (é como o card guarda o valor; o campo é o escolhido nos Relatórios).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `kind` | texto | — | obrigatório |
+| `target` | texto | — | obrigatório |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+
+## knowledge_attachments
+
+Um arquivo do artigo, no próprio banco (como os anexos dos projetos: entra no backup). `inline` = print colado no meio do texto (só imagem PNG, JPG, WEBP ou GIF, que o navegador já reduziu); senão, um anexo da lista, de qualquer formato, que sempre baixa como arquivo.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `file_name` | texto | — | obrigatório |
+| `mime_type` | texto | — | obrigatório |
+| `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
+| `data_base64` | texto | — | obrigatório |
+| `inline` | sim/não | — | obrigatório · padrão: false |
+| `uploaded_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## knowledge_reads
+
+"Fulano leu o artigo (de leitura obrigatória) em tal dia." Uma linha por pessoa × artigo; ler de novo atualiza a data. Vale a leitura feita depois de `mandatorySince` do artigo.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `read_at` | data e hora | — | obrigatório |
+
+## knowledge_comments
+
+Um comentário no artigo: o que a equipe viu depois ("aconteceu de novo, era outra coisa"), sem mexer no texto. Fica registrado quem comentou e quando; apagar só marca `deletedAt`, e a auditoria guarda o texto apagado. Pedido do Luan na prévia do 1.8 (07/10).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `user_id` | texto | Quem comentou | liga com **users** |
+| `body` | texto | — | obrigatório |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 

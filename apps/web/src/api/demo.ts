@@ -16,9 +16,14 @@ import {
   AjustesRelatoriosSchema, ArrumacaoRelatoriosSchema, CATALOGO_RELATORIOS, montarArrumacao, ajustesParaTela, camposDosRelatorios, chamadosDaPeca, ChamadosDaPecaSchema, conferirAjustes, FiltrosRelatoriosSchema, opcoesLigadasAo,
   raioXChamados, relatoriosChamados, type AjustesRelatorios, type ContextoRelatorios, type MovimentoChamado,
 } from '@gestor/shared';
+import {
+  ArtigoGravarSchema, BaseListarSchema, ComentarioArtigoSchema, artigosDoChamado, buscarArtigos, codigoDoArtigo, faltaParaPublicar,
+  ligarClientes, montarIndiceParaChamados, nomeComparavel, printsDoTexto, textoDoCard, textoPuro, trocarMarcadores,
+  type ArtigoCurto, type ArtigoGravar, type LigacaoArtigo, type PedacoTrecho, type TipoLigacao,
+} from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
-import { ApiError, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -56,6 +61,16 @@ type PClientRow = { id: string; projectId: string; clientId: string; assigneeId:
 type CheckRow = { projectClientId: string; stepId: string; value: string | null; doneById: string | null; doneAt: string };
 type PCommentRow = { id: string; projectId: string; projectClientId: string | null; userId: string | null; body: string; createdAt: string; deletedAt: string | null };
 type PFileRow = { id: string; projectId: string; projectClientId: string | null; fileName: string; mimeType: string; sizeBytes: number; conteudo: string; uploadedById: string | null; createdAt: string; deletedAt: string | null };
+/** Base de conhecimento (1.8): o artigo, as versões do texto, as ligações e os arquivos (o print fica embutido, como a logo). */
+type ArtRow = {
+  id: string; numero: number; titulo: string; oQueAcontece: string | null; comoResolver: string | null; porQueAcontece: string | null; palavras: string[];
+  situacao: 'rascunho' | 'publicado'; obrigatoriaDesde: string | null; obrigatoriaPor: string | null; versao: number;
+  autorId: string | null; atualizadoPorId: string | null; publicadoEm: string | null; criadoEm: string; atualizadoEm: string; deletedAt: string | null;
+};
+type ArtVersaoRow = { articleId: string; versao: number; titulo: string; oQueAcontece: string | null; comoResolver: string | null; porQueAcontece: string | null; palavras: string[]; nota: string | null; porId: string | null; em: string };
+type ArtLigRow = { articleId: string; tipo: TipoLigacao; alvo: string };
+type ArtAnexoRow = { id: string; articleId: string; fileName: string; mimeType: string; sizeBytes: number; conteudo: string; inline: boolean; porId: string | null; criadoEm: string; deletedAt: string | null };
+type ArtComentarioRow = { id: string; articleId: string; userId: string | null; texto: string; em: string; deletedAt: string | null };
 
 type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
@@ -66,6 +81,9 @@ const S = {
   notas: [] as NotaRow[], leituras: [] as Array<{ noteId: string; userId: string; readAt: string }>,
   projetos: [] as ProjRow[], etapas: [] as StepRow[], projClientes: [] as PClientRow[], marcas: [] as CheckRow[],
   projComentarios: [] as PCommentRow[], projAnexos: [] as PFileRow[],
+  // Base de conhecimento (1.8): os artigos entram na primeira vez que alguém abre a base (ligam chamados inventados)
+  artigos: [] as ArtRow[], artVersoes: [] as ArtVersaoRow[], artLigacoes: [] as ArtLigRow[], artAnexos: [] as ArtAnexoRow[],
+  artLeituras: [] as Array<{ articleId: string; userId: string; em: string }>, artComentarios: [] as ArtComentarioRow[], proximoArtigo: 1, baseSemeada: false,
   ajustesBackup: {
     ativo: false, pasta: 'Backups › Ingline Gestão', pastaId: '', contaDeServico: '',
     ultimoEnvioEm: null as string | null, ultimoEnvioOk: null as boolean | null, ultimoEnvioMsg: null as string | null, temChave: false,
@@ -122,8 +140,8 @@ const S = {
   me: null as UserRow | null,
 };
 
-function audit(action: string, entityType: string, summary: string, entityId: string | null = null) {
-  S.audit.unshift({ id: id(), action, entityType, entityId, summary, before: null, after: null, userName: S.me?.name ?? null, userId: S.me?.id ?? null, createdAt: now() });
+function audit(action: string, entityType: string, summary: string, entityId: string | null = null, extra: { before?: unknown; after?: unknown } = {}) {
+  S.audit.unshift({ id: id(), action, entityType, entityId, summary, before: extra.before ?? null, after: extra.after ?? null, userName: S.me?.name ?? null, userId: S.me?.id ?? null, createdAt: now() });
 }
 const notFound = (w = 'Registro') => new ApiError(404, `${w} não encontrado`);
 const bad = (m: string) => new ApiError(400, m);
@@ -618,7 +636,7 @@ function chamadosDemo() {
     cards.push({
       id: `card-${numero}`, key: `IS-${numero}`, number: numero,
       // a descrição vem do editor do LineChat, com marcas: a tabela mostra só o texto
-      title: `${cf.plataforma} - ${cliente} - ${assunto}`, description: `<p>Cliente relata: ${assunto.toLowerCase()}.</p><p>Chamado de <b>demonstração</b>, aberto pelo ${cf['meio-solicita-o'] as string}.</p>`,
+      title: `${cf.plataforma} - ${cliente} - ${assunto}`, description: `<p>Cliente relata: ${assunto.toLowerCase()}.</p><p>Chamado de <b>demonstração</b>, aberto pelo canal ${cf['meio-solicita-o'] as string}.</p>`,
       stepId: etapa.id, stepTitle: etapa.title, stepPhase: etapa.isInitial ? 'INITIAL' : etapa.isFinal ? 'FINAL' : 'INTERMEDIATE',
       status: extra.arquivado ? 'ARCHIVED' : 'OPEN',
       responsavel: resp,
@@ -663,6 +681,7 @@ function chamadosDemo() {
     c.campos.assunto = 'Tronco - Queda';
     c.campos['tipo-de-chamado-24'] = 'Dificuldade Infraestrutura Cliente';
     c.title = `${c.campos.plataforma as string} - ${(c.campos['cliente-71'] as string | null) ?? 'Interno'} - Tronco - Queda`;
+    c.description = `<p>Cliente relata: ninguém consegue ligar para a empresa, dá "número não existe".</p><p>Chamado de <b>demonstração</b>, aberto pelo canal ${c.campos['meio-solicita-o'] as string}.</p>`;
   }
 
   // HOJE: uns 16 chamados espalhados pelo dia até agora, para a aba Hoje ter o que mostrar a qualquer
@@ -1097,6 +1116,393 @@ async function relogioDemo() {
   const e = S.envio;
   if (horaDeEnviar(e, new Date(), e.ultimoAgendado)) await envioDemo('agendado');
 }
+
+// ---------- Base de conhecimento (1.8) ----------
+//
+// As mesmas regras do servidor (`apps/api/src/services/base.ts`): rascunho só para quem escreveu e
+// para quem cuida da base; publicar exige o "Como resolver"; toda mudança no texto vira versão;
+// leitura obrigatória vale a leitura feita depois do pedido. A busca, o texto simples e o livrinho
+// do chamado são as funções do `@gestor/shared`, as mesmas do servidor. Os artigos entram na
+// primeira vez que alguém abre a base, porque alguns ligam chamados inventados.
+
+const IMAGENS_DO_TEXTO_DEMO = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const NAO_EXISTE = '(não existe mais)';
+/** Texto com acento em "data:" (o btoa sozinho só aceita Latin-1). */
+const base64Utf8 = (t: string) => btoa(unescape(encodeURIComponent(t)));
+const svgDemo = (w: number, h: number, conteudo: string) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" font-family="Verdana,Arial,sans-serif">${conteudo}</svg>`);
+
+/** O print de exemplo do BC-2: a tela de conta do telefone, desenhada (na prévia não há print de verdade). */
+const PRINT_GRANDSTREAM = svgDemo(640, 300, [
+  '<rect width="640" height="300" fill="#f4f6f8"/>',
+  '<rect width="640" height="38" fill="#1f3a5f"/><text x="16" y="25" font-size="14" fill="#fff" font-weight="bold">GXP1610</text><text x="96" y="25" font-size="12" fill="#c9d6e6">Account › Account 1 › General Settings</text>',
+  '<rect x="0" y="38" width="130" height="262" fill="#e3e8ee"/>',
+  ...['Status', 'Account', 'Settings', 'Network', 'Maintenance'].map((t, i) => `<rect x="0" y="${50 + i * 30}" width="130" height="26" fill="${i === 1 ? '#c9d6e6' : 'none'}"/><text x="14" y="${68 + i * 30}" font-size="12" fill="#1f2937"${i === 1 ? ' font-weight="bold"' : ''}>${t}</text>`),
+  ...[
+    ['Account Active', 'Yes'], ['Account Name', 'Recepcao'], ['SIP Server', 'valeverde.linepbx.com.br'], ['SIP User ID', '2001'], ['Authenticate ID', '2001'], ['Name', 'Recepcao'],
+  ].map(([k, v], i) => `<text x="150" y="${70 + i * 32}" font-size="12" fill="#4b5563">${k}</text><rect x="300" y="${54 + i * 32}" width="300" height="24" rx="3" fill="#fff" stroke="#cbd5e1"/><text x="308" y="${70 + i * 32}" font-size="12" fill="#111827">${v}</text>`),
+  '<rect x="294" y="114" width="312" height="32" rx="5" fill="none" stroke="#dc2626" stroke-width="3"/>',
+  '<rect x="300" y="256" width="120" height="28" rx="4" fill="#1f3a5f"/><text x="314" y="275" font-size="12" fill="#fff">Save and Apply</text>',
+].join(''));
+
+/** O print de exemplo do BC-3: o terminal com o disco cheio. */
+const PRINT_DISCO = svgDemo(640, 190, [
+  '<rect width="640" height="190" rx="6" fill="#111827"/>',
+  '<circle cx="16" cy="14" r="5" fill="#ef4444"/><circle cx="32" cy="14" r="5" fill="#f59e0b"/><circle cx="48" cy="14" r="5" fill="#22c55e"/>',
+  ...[
+    ['root@valeverde:~# df -h', '#e5e7eb'],
+    ['Filesystem      Size  Used Avail Use% Mounted on', '#9ca3af'],
+    ['/dev/sda1        98G   98G     0 100% /', '#fca5a5'],
+    ['tmpfs           3.9G     0  3.9G   0% /dev/shm', '#9ca3af'],
+    ['root@valeverde:~# du -sh /var/spool/asterisk/monitor', '#e5e7eb'],
+    ['71G     /var/spool/asterisk/monitor', '#fde68a'],
+  ].map(([t, cor], i) => `<text x="16" y="${50 + i * 22}" font-size="13" font-family="Consolas,Menlo,monospace" fill="${cor}" xml:space="preserve">${t}</text>`),
+].join(''));
+
+const TEXTO_FERIADO = 'Texto padrão do aviso de feriado (para a locutora gravar)\n\nOlá! Hoje é feriado e o nosso atendimento está fechado.\nVoltamos amanhã, a partir das 8h.\nObrigado pela ligação!\n';
+
+function semearBase() {
+  if (S.baseSemeada) return;
+  S.baseSemeada = true;
+  const cli = (nome: string) => S.clients.find((c) => c.tradeName === nome)?.id ?? null;
+  const modelo = (code: string) => S.models.find((m) => m.code === code)?.id ?? null;
+  const { cards } = chamadosDemo();
+  // o dia do incidente da operadora (o dia com mais "Tronco - Queda"): o BC-5 nasceu dele
+  const porDia = new Map<string, Chamado[]>();
+  for (const c of cards.filter((x) => x.campos.assunto === 'Tronco - Queda')) { const d = c.createdAt.slice(0, 10); porDia.set(d, [...(porDia.get(d) ?? []), c]); }
+  const incidente = [...porDia.values()].sort((a, b) => b.length - a.length)[0]?.sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0] ?? null;
+  const semServico = cards.find((c) => c.campos.assunto === 'Ramal - Telefone Sem Serviço' && c.campos['cliente-71'] === 'Supermercado Bom Preço' && c.closedAt) ?? null;
+
+  type Texto = Pick<ArtRow, 'titulo' | 'oQueAcontece' | 'comoResolver' | 'porQueAcontece' | 'palavras'>;
+  const artigo = (o: {
+    autor: string; dias: number; publicado: boolean; texto: Texto; ligacoes: Array<[TipoLigacao, string | null]>;
+    /** as versões anteriores (a mais antiga primeiro), com quem escreveu e quando */
+    antes?: Array<{ por: string; dias: number; texto: Texto }>;
+    editadoPor?: string; editadoDias?: number;
+    obrigatoria?: { por: string; dias: number; leram: Array<[string, number]> };
+    anexos?: Array<{ ref: string; fileName: string; mimeType: string; conteudo: string; inline: boolean; sizeBytes: number }>;
+  }) => {
+    const a: ArtRow = {
+      id: id(), numero: S.proximoArtigo++, ...o.texto, situacao: o.publicado ? 'publicado' : 'rascunho',
+      obrigatoriaDesde: o.obrigatoria ? daysAgo(o.obrigatoria.dias, 9) : null, obrigatoriaPor: o.obrigatoria?.por ?? null,
+      versao: (o.antes?.length ?? 0) + 1, autorId: o.autor, atualizadoPorId: o.editadoPor ?? o.autor,
+      publicadoEm: o.publicado ? daysAgo(o.dias, 10) : null, criadoEm: daysAgo(o.dias, 10), atualizadoEm: o.editadoDias != null ? daysAgo(o.editadoDias, 15) : daysAgo(o.dias, 10), deletedAt: null,
+    };
+    // os prints: o marcador do texto vira o id do anexo, como o servidor faz ao gravar
+    const ids: Record<string, string> = {};
+    for (const x of o.anexos ?? []) {
+      const ax: ArtAnexoRow = { id: id(), articleId: a.id, fileName: x.fileName, mimeType: x.mimeType, sizeBytes: x.sizeBytes, conteudo: x.conteudo, inline: x.inline, porId: o.autor, criadoEm: a.criadoEm, deletedAt: null };
+      S.artAnexos.push(ax); ids[x.ref] = ax.id;
+    }
+    const troca = (t: Texto): Texto => ({ ...t, oQueAcontece: trocarMarcadores(t.oQueAcontece, ids), comoResolver: trocarMarcadores(t.comoResolver, ids), porQueAcontece: trocarMarcadores(t.porQueAcontece, ids) });
+    Object.assign(a, troca(o.texto));
+    S.artigos.push(a);
+    (o.antes ?? []).forEach((v, i) => S.artVersoes.push({ articleId: a.id, versao: i + 1, ...troca(v.texto), nota: null, porId: v.por, em: daysAgo(v.dias, 10) }));
+    S.artVersoes.push({ articleId: a.id, versao: a.versao, ...troca(o.texto), nota: null, porId: o.editadoPor ?? o.autor, em: a.atualizadoEm });
+    for (const [tipo, alvo] of o.ligacoes) if (alvo) S.artLigacoes.push({ articleId: a.id, tipo, alvo });
+    for (const [userId, dias] of o.obrigatoria?.leram ?? []) S.artLeituras.push({ articleId: a.id, userId, em: daysAgo(dias, 15) });
+    return a;
+  };
+
+  // BC-1 — escrito pelo Lúcio, melhorado pela Marina (o Histórico mostra o que ela pôs)
+  const bc1v1: Texto = {
+    titulo: 'Áudio de um lado só: o cliente fala e não é ouvido',
+    oQueAcontece: 'A ligação completa, mas só um lado escuta. O mais comum: o ramal ouve quem ligou e quem ligou não ouve o ramal. Às vezes a ligação cai sozinha depois de uns 30 segundos.\nCostuma começar logo depois de o cliente trocar o roteador ou a internet.',
+    comoResolver: '1. Entre no roteador do cliente e procure "SIP ALG" (às vezes aparece como "SIP Helper", "SIP Passthrough" ou dentro de "NAT").\n2. Desligue o SIP ALG e salve.\n3. Reinicie o telefone (tirar da tomada por 10 segundos) para ele registrar de novo.\n4. Confira se o ramal voltou a registrar.\n5. Faça uma ligação de teste de pelo menos 1 minuto, falando dos dois lados.',
+    porQueAcontece: 'O SIP ALG é uma função do roteador que tenta "ajudar" o VoIP reescrevendo os endereços de dentro da ligação. Na prática ele troca para o endereço errado e o áudio de volta se perde. Roteador novo de operadora quase sempre vem com ele ligado.',
+    palavras: ['ligação muda', 'não me escutam', 'cliente não ouve', 'cai depois de 30 segundos'],
+  };
+  artigo({
+    autor: 'u2', dias: 40, publicado: true, editadoPor: 'u3', editadoDias: 6,
+    antes: [{ por: 'u2', dias: 40, texto: bc1v1 }],
+    texto: {
+      ...bc1v1,
+      comoResolver: '1. Entre no roteador do cliente e procure "SIP ALG" (às vezes aparece como "SIP Helper", "SIP Passthrough" ou dentro de "NAT").\n2. Desligue o SIP ALG e salve.\n3. Reinicie o telefone (tirar da tomada por 10 segundos) para ele registrar de novo.\n4. Confira no servidor se o ramal voltou:\n`asterisk -rx "pjsip show contacts"`\n5. Faça uma ligação de teste de pelo menos 1 minuto, falando dos dois lados.\n\nSe o roteador for da operadora e o cliente não tiver acesso, peça para a operadora desligar o SIP ALG — eles sabem o que é. Anote o protocolo no chamado.',
+      palavras: [...bc1v1.palavras, 'voz some'],
+    },
+    ligacoes: [['produto', 'plinepbx'], ['assunto', 'Ramal - Telefone Sem Serviço'], ['cliente', cli('Supermercado Bom Preço')], ['modelo', modelo('gxp1610')], ['chamado', semServico?.id ?? null]],
+    obrigatoria: { por: 'u1', dias: 3, leram: [['u1', 3], ['u2', 2]] },
+  });
+
+  // BC-2 — com um print no meio dos passos
+  artigo({
+    autor: 'u2', dias: 25, publicado: true,
+    texto: {
+      titulo: 'GXP1610 não registra depois de mudar de rede',
+      oQueAcontece: 'O telefone liga e mostra a hora, mas aparece "Sem conta" ou o ícone do ramal fica piscando. Acontece quando o aparelho muda de unidade, de rede, ou quando o cliente troca a faixa de IP.',
+      comoResolver: '1. No telefone, aperte a tecla do meio (OK) e veja o IP em "Status".\n2. Abra http://IP-DO-TELEFONE no navegador e entre com o login padrão do modelo — fica na ficha do cliente, aba Acessos.\n3. Vá em Account › Account 1 › General Settings e confira o SIP Server:\n[print:p1]\n4. Se estiver certo e mesmo assim não registrar, volte o telefone ao padrão de fábrica: Menu › System › Factory Reset.\n5. Configure de novo (servidor, ramal e a senha do ramal) e reinicie.\n\nSe registra mas a voz some, veja BC-1.',
+      porQueAcontece: 'O GXP1610 guarda o servidor pelo endereço antigo. Na rede nova esse endereço não responde, e ele desiste de tentar até ser reiniciado com a configuração certa.',
+      palavras: ['telefone sem linha', 'sem conta', 'ramal piscando', 'telefone mudo'],
+    },
+    ligacoes: [['modelo', modelo('gxp1610')], ['assunto', 'Ramal - Telefone Sem Serviço'], ['cliente', cli('Hospital Vale Verde')]],
+    anexos: [{ ref: 'p1', fileName: 'grandstream-conta.png', mimeType: 'image/svg+xml', conteudo: PRINT_GRANDSTREAM, inline: true, sizeBytes: 48_200 }],
+  });
+
+  // BC-3 — três versões (o Histórico tem o que comparar)
+  const bc3: Texto = {
+    titulo: 'Gravações sumiram do LineReports: disco do servidor cheio',
+    oQueAcontece: 'O LineReports mostra as ligações, mas a gravação não toca ("arquivo não encontrado"), ou as gravações de hoje simplesmente não aparecem. As de dias anteriores continuam lá.',
+    comoResolver: '1. Entre por SSH no servidor do cliente (o endereço e a porta estão na ficha do cliente, aba Acessos).\n2. Veja quanto sobra de disco:\n`df -h`\n3. Se a linha do "/" estiver em 100%, veja o tamanho das gravações:\n`du -sh /var/spool/asterisk/monitor`\n[print:p1]\n4. Combine com o cliente quantos meses de gravação ficam no servidor. O resto vai para o backup antes de apagar — nunca apague sem o backup conferido.\n5. Depois de liberar espaço, faça uma ligação de teste e confira se a gravação aparece no LineReports.',
+    porQueAcontece: 'Sem espaço, o servidor continua completando as ligações, mas não consegue gravar o arquivo. O LineReports registra a ligação e aponta para uma gravação que nunca foi criada.',
+    palavras: ['gravação não toca', 'sumiu a gravação', 'arquivo não encontrado', 'não grava mais'],
+  };
+  artigo({
+    autor: 'u1', dias: 60, publicado: true, editadoPor: 'u1', editadoDias: 20,
+    antes: [
+      { por: 'u1', dias: 60, texto: { ...bc3, comoResolver: '1. Entre por SSH no servidor do cliente.\n2. Veja quanto sobra de disco:\n`df -h`\n3. Libere espaço apagando as gravações mais antigas.', porQueAcontece: null, palavras: ['gravação não toca'] } },
+      { por: 'u2', dias: 31, texto: { ...bc3, comoResolver: '1. Entre por SSH no servidor do cliente (o endereço e a porta estão na ficha do cliente, aba Acessos).\n2. Veja quanto sobra de disco:\n`df -h`\n3. Se a linha do "/" estiver em 100%, veja o tamanho das gravações:\n`du -sh /var/spool/asterisk/monitor`\n[print:p1]\n4. Combine com o cliente quantos meses de gravação ficam no servidor. O resto vai para o backup antes de apagar — nunca apague sem o backup conferido.', porQueAcontece: null, palavras: ['gravação não toca', 'sumiu a gravação'] } },
+    ],
+    texto: bc3,
+    ligacoes: [['produto', 'plinereports'], ['assunto', 'Armazenamento Lotado Server'], ['assunto', 'LinePBX - Gravação'], ['cliente', cli('Hospital Vale Verde')]],
+    anexos: [{ ref: 'p1', fileName: 'disco-cheio.png', mimeType: 'image/svg+xml', conteudo: PRINT_DISCO, inline: true, sizeBytes: 31_400 }],
+  });
+
+  // BC-4 — o "como fazer" do projeto do feriado, com um anexo para baixar
+  artigo({
+    autor: 'u1', dias: 14, publicado: true,
+    texto: {
+      titulo: 'URA de feriado: subir o áudio e voltar ao normal no dia seguinte',
+      oQueAcontece: 'No feriado, o cliente quer que quem ligar ouça um aviso ("hoje não abrimos, voltamos amanhã") no lugar da URA de sempre — e que o bot do LineChat avise o mesmo.',
+      comoResolver: '1. Peça o áudio ao cliente (ou use o texto padrão em anexo, gravado pela locutora).\n2. No LinePBX, em URA › Áudios, suba o arquivo com o nome feriado-AAAA-MM-DD.\n3. Em Horários, crie uma exceção para o dia do feriado apontando para a URA de feriado.\n4. Ligue para o número principal e confira se toca o aviso.\n5. No LineChat, trave o bot com a mensagem de feriado (Chatbot › Mensagem de ausência).\n6. No dia seguinte, confira se voltou ao normal: a exceção só vale para o dia, mas o bot precisa ser destravado à mão.\n\nMarque cliente por cliente no projeto do feriado.',
+      porQueAcontece: null,
+      palavras: ['aviso de feriado', 'mensagem de feriado', 'fechado hoje'],
+    },
+    ligacoes: [['projeto', 'proj2'], ['assunto', 'URA - Ajuste'], ['produto', 'plinepbx'], ['produto', 'plinechat']],
+    anexos: [{ ref: 'a1', fileName: 'texto-padrao-feriado.txt', mimeType: 'text/plain', conteudo: `data:text/plain;base64,${base64Utf8(TEXTO_FERIADO)}`, inline: false, sizeBytes: TEXTO_FERIADO.length }],
+  });
+
+  // BC-5 — nasceu do incidente da operadora; leitura obrigatória pedida ontem
+  artigo({
+    autor: 'u2', dias: 11, publicado: true,
+    texto: {
+      titulo: 'Tronco caiu: as ligações de entrada não chegam',
+      oQueAcontece: 'Vários clientes ao mesmo tempo dizem que ninguém consegue ligar para eles: dá "número não existe", fora de área, ou cai direto. As ligações de saída às vezes continuam funcionando.',
+      comoResolver: '1. Veja se é um cliente só ou vários do mesmo tronco: abra Circuitos e DIDs e procure o circuito do número que não recebe.\n2. No servidor, confira se o tronco está registrado:\n`asterisk -rx "pjsip show registrations"`\n3. Teste o IP de sinalização da operadora (está na ficha do circuito):\n`ping -c 5 IP-DE-SINALIZACAO`\n4. Se não registra ou não responde, abra chamado na operadora pelo número-chave do circuito e anote o protocolo.\n5. Avise os clientes afetados: o problema é da operadora e já tem protocolo.\n6. Quando voltar, faça uma ligação de entrada de teste para cada cliente.',
+      porQueAcontece: 'Quando a operadora tem problema na rede dela, o tronco para de receber as ligações. Do nosso lado não há o que consertar: o que dá para fazer é confirmar rápido, abrir o chamado com protocolo e avisar os clientes.',
+      palavras: ['ninguém consegue ligar', 'número não existe', 'fora de área', 'só cai na caixa'],
+    },
+    ligacoes: [['operadora', 'carALGAR'], ['assunto', 'Tronco - Queda'], ['chamado', incidente?.id ?? null]],
+    obrigatoria: { por: 'u1', dias: 1, leram: [['u2', 1]] },
+  });
+
+  // BC-6 a BC-8 — os de todo dia
+  artigo({
+    autor: 'u3', dias: 9, publicado: true,
+    texto: {
+      titulo: 'Omniboard: o agente não consegue pegar a chamada da fila',
+      oQueAcontece: 'A chamada aparece na fila do Omniboard, o agente clica em "Pegar" e nada acontece — ou a chamada vai para outro agente.',
+      comoResolver: '1. Confira se o agente está logado na fila: o nome dele precisa aparecer em "Agentes da fila".\n2. Veja se ele não está em pausa — pausa esquecida é o caso mais comum.\n3. Confira se o ramal do agente no Omniboard é o mesmo do telefone dele.\n4. Peça para o agente sair e entrar de novo no Omniboard.\n5. Se ainda não pegar, confira a fila no servidor:\n`asterisk -rx "queue show"`',
+      porQueAcontece: 'O Omniboard só entrega a chamada para o ramal que está na fila e livre. Agente em pausa, ou com o ramal trocado, não recebe — mesmo vendo a chamada na tela.',
+      palavras: ['não consigo pegar a ligação', 'botão pegar não funciona', 'chamada vai pra outro'],
+    },
+    ligacoes: [['modulo', 'mlinepbx_omniboard'], ['assunto', 'Omniboard - configuração'], ['cliente', cli('Home Care Viver Bem')]],
+  });
+  artigo({
+    autor: 'u2', dias: 18, publicado: true,
+    texto: {
+      titulo: 'DP722 (sem fio) perde o registro longe da base',
+      oQueAcontece: 'O ramal sem fio funciona perto da base, mas em algumas salas fica "Fora de alcance" ou derruba a ligação no meio.',
+      comoResolver: '1. Veja onde está a base: ela precisa ficar no alto, longe de parede de concreto, micro-ondas e rack.\n2. Ande com o telefone pelo caminho que o cliente faz, olhando as barrinhas de sinal.\n3. Se o sinal cair abaixo de 2 barras num lugar que o cliente usa, a solução é um repetidor — passe o orçamento.\n4. Depois de mudar a base de lugar, registre o telefone de novo: Menu › Registro › Registrar na base.',
+      porQueAcontece: 'O sem fio tem bom alcance em área aberta, mas parede grossa e metal derrubam o sinal. Não é defeito do aparelho.',
+      palavras: ['fora de alcance', 'sem fio cai', 'telefone sem fio desliga'],
+    },
+    ligacoes: [['modelo', modelo('dp722')], ['cliente', cli('Hospital Vale Verde')]],
+  });
+  artigo({
+    autor: 'u3', dias: 5, publicado: true,
+    texto: {
+      titulo: 'LineChat: o bot parou de responder depois de trocar o template',
+      oQueAcontece: 'Depois de mexer no template de mensagem, o cliente manda mensagem e o bot não responde nada — nem a mensagem de boas-vindas.',
+      comoResolver: '1. No LineChat, abra Chatbot e veja se o fluxo está "Ativo": salvar o template às vezes desativa o fluxo.\n2. Confira se o template novo foi aprovado pela Meta (aparece "Aprovado" em Templates). Template em análise não sai.\n3. Ative o fluxo de novo e mande uma mensagem de teste do seu celular.\n4. Se o cliente trocou o texto da primeira mensagem, ajuste o fluxo para usar o template novo.',
+      porQueAcontece: 'O fluxo do bot aponta para o template pelo nome. Template trocado e ainda não aprovado faz o fluxo parar sem avisar.',
+      palavras: ['bot não responde', 'robô parou', 'whatsapp não responde'],
+    },
+    ligacoes: [['produto', 'plinechat'], ['assunto', 'Linechat - Alteração Chatbot'], ['cliente', cli('Distribuidora Norte')]],
+  });
+
+  // dois rascunhos: o da Marina e o do Lúcio (só eles e quem cuida da base veem)
+  artigo({
+    autor: 'u3', dias: 2, publicado: false,
+    texto: {
+      titulo: 'FOP2 não mostra se o ramal está ocupado',
+      oQueAcontece: 'No FOP2 da Clínica Aurora, todos os ramais aparecem livres, mesmo com gente falando.',
+      comoResolver: '1. Reiniciar o FOP2 resolveu da primeira vez, mas voltou no dia seguinte.\n2. [completar: ver com o Lúcio o que ele mudou no servidor]',
+      porQueAcontece: null, palavras: ['fop não atualiza'],
+    },
+    ligacoes: [['modulo', 'mlinepbx_fop2'], ['cliente', cli('Clínica Aurora')]],
+  });
+  artigo({
+    autor: 'u2', dias: 1, publicado: false,
+    texto: {
+      titulo: 'Fila toca no ramal errado depois de mudar o horário de atendimento',
+      oQueAcontece: 'Depois de mudar o horário da fila, as ligações começaram a tocar no ramal da recepção em vez de nos atendentes.',
+      comoResolver: null, porQueAcontece: null, palavras: [],
+    },
+    ligacoes: [['assunto', 'LinePBX - Fila - Configuração'], ['cliente', cli('Distribuidora Norte')]],
+  });
+
+  // comentários (pedido do Luan na prévia): o que a equipe viu depois, sem mexer no texto
+  const comentario = (numero: number, userId: string, dias: number, hora: number, texto: string) => {
+    const a = S.artigos.find((x) => x.numero === numero);
+    if (a) S.artComentarios.push({ id: id(), articleId: a.id, userId, texto, em: daysAgo(dias, hora), deletedAt: null });
+  };
+  comentario(1, 'u3', 4, 11, 'Aconteceu de novo no Supermercado Bom Preço depois da troca do roteador da operadora. Era o SIP ALG outra vez: no roteador novo a opção fica em Avançado › NAT.');
+  comentario(1, 'u2', 2, 16, 'No Mikrotik não aparece "SIP ALG": é IP › Firewall › Service Ports › sip, desmarcar. Depois disso o áudio voltou dos dois lados.');
+  comentario(5, 'u3', 11, 10, 'Na última queda a operadora levou duas horas para responder. Vale abrir o protocolo logo no primeiro chamado, antes de testar ramal por ramal.');
+}
+
+const artigosVivosDemo = () => { semearBase(); return S.artigos.filter((a) => !a.deletedAt); };
+const podeCuidarDemo = () => temPerm('knowledge.manage');
+const artigoVisivelDemo = (a: ArtRow) => a.situacao === 'publicado' || a.autorId === S.me?.id || podeCuidarDemo();
+const nomeDaPessoaDemo = (uid: string | null) => (uid ? S.users.find((u) => u.id === uid)?.name ?? null : null);
+const ligacoesDoArtigoDemo = (articleId: string): LigacaoArtigo[] => S.artLigacoes.filter((l) => l.articleId === articleId).map((l) => ({ tipo: l.tipo, alvo: l.alvo }));
+const valoresDoCampo = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : v == null || v === '' ? [] : [String(v)]).filter(Boolean);
+
+/** "12" ou "BC-12" → o artigo (rascunho de outra pessoa é como se não existisse). */
+function artigoDemoOu404(p: number | string): ArtRow {
+  const m = /^(?:bc-?)?(\d{1,7})$/i.exec(String(p).trim());
+  const a = m ? artigosVivosDemo().find((x) => x.numero === Number(m[1])) : undefined;
+  if (!a || !artigoVisivelDemo(a)) throw notFound('Artigo');
+  return a;
+}
+
+/** Um card inventado, pelo id ou pelo código (IS-3607, sem ligar para maiúscula). */
+function cardDemo(ref: string): Chamado | null {
+  const r = ref.trim();
+  const { cards } = chamadosDemo();
+  return cards.find((c) => c.id === r) ?? cards.find((c) => (c.key ?? '').toUpperCase() === r.toUpperCase()) ?? null;
+}
+
+/** O nome de cada coisa ligada (e para onde a etiqueta leva), como o servidor monta. */
+function mostrarLigacaoDemo(l: LigacaoArtigo): LigacaoMostrada {
+  const b = { tipo: l.tipo, alvo: l.alvo };
+  const falta = { ...b, nome: NAO_EXISTE, extra: null, href: null, existe: false };
+  switch (l.tipo) {
+    case 'produto': { const p = S.products.find((x) => x.id === l.alvo); return p ? { ...b, nome: p.name, extra: null, href: null, existe: !p.deletedAt } : falta; }
+    case 'modulo': { const m = S.modules.find((x) => x.id === l.alvo); return m ? { ...b, nome: m.name, extra: S.products.find((p) => p.id === m.productId)?.name ?? null, href: null, existe: !m.deletedAt } : falta; }
+    case 'cliente': { const c = S.clients.find((x) => x.id === l.alvo); return c ? { ...b, nome: c.tradeName, extra: null, href: `/clientes/${c.id}`, existe: !c.deletedAt } : falta; }
+    case 'modelo': { const m = S.models.find((x) => x.id === l.alvo); return m ? { ...b, nome: m.name, extra: null, href: null, existe: !m.deletedAt } : falta; }
+    case 'operadora': { const o = S.carriers.find((x) => x.id === l.alvo); return o ? { ...b, nome: o.name, extra: null, href: null, existe: true } : falta; }
+    case 'projeto': { const p = S.projetos.find((x) => x.id === l.alvo); return p ? { ...b, nome: p.name, extra: null, href: `/projetos/${p.id}`, existe: !p.deletedAt } : falta; }
+    case 'chamado': { const c = chamadosDemo().cards.find((x) => x.id === l.alvo); return c ? { ...b, nome: c.key ?? 'Chamado', extra: c.title || null, href: linkDemo(c) || null, existe: true } : falta; }
+    case 'assunto': return { ...b, nome: l.alvo, extra: null, href: null, existe: true };
+  }
+}
+
+/** Cada ligação precisa apontar para algo que existe; o chamado pode vir pelo código (IS-3607). */
+function conferirLigacoesDemo(ligacoes: LigacaoArtigo[]): LigacaoArtigo[] {
+  const out = new Map<string, LigacaoArtigo>();
+  const vivo = (ok: boolean, nome: string) => { if (!ok) throw bad(`${nome} ligado ao artigo não existe (ou está na lixeira).`); };
+  for (const l0 of ligacoes) {
+    const l: LigacaoArtigo = { tipo: l0.tipo, alvo: l0.alvo.trim() };
+    if (l.tipo === 'produto') vivo(S.products.some((x) => x.id === l.alvo && !x.deletedAt), 'Um produto');
+    else if (l.tipo === 'modulo') vivo(S.modules.some((x) => x.id === l.alvo && !x.deletedAt), 'Um módulo');
+    else if (l.tipo === 'cliente') vivo(S.clients.some((x) => x.id === l.alvo && !x.deletedAt), 'Um cliente');
+    else if (l.tipo === 'modelo') vivo(S.models.some((x) => x.id === l.alvo && !x.deletedAt), 'Um modelo');
+    else if (l.tipo === 'operadora') vivo(S.carriers.some((x) => x.id === l.alvo), 'Uma operadora');
+    else if (l.tipo === 'projeto') vivo(projetosVivos().some((x) => x.id === l.alvo), 'Um projeto');
+    else if (l.tipo === 'chamado') { const c = cardDemo(l.alvo); if (!c) throw bad(`O chamado ${l.alvo} não está na cópia do LineChat.`); l.alvo = c.id; }
+    out.set(`${l.tipo}:${l.alvo}`, l);
+  }
+  return [...out.values()];
+}
+
+const paraBuscaDemo = (a: ArtRow) => ({
+  a, numero: a.numero, titulo: a.titulo, oQueAcontece: a.oQueAcontece, comoResolver: a.comoResolver, porQueAcontece: a.porQueAcontece, palavrasDoCliente: a.palavras,
+  nomesLigados: ligacoesDoArtigoDemo(a.id).map((l) => { const m = mostrarLigacaoDemo(l); return m.nome === NAO_EXISTE ? l.alvo : [m.nome, m.extra].filter(Boolean).join(' '); }),
+});
+
+/** Esta pessoa já leu (depois do pedido de leitura)? */
+const lidaPorMimDemo = (a: ArtRow) => !!a.obrigatoriaDesde && S.artLeituras.some((r) => r.articleId === a.id && r.userId === S.me?.id && r.em >= a.obrigatoriaDesde!);
+
+function resumoDemo(a: ArtRow): string | null {
+  const t = textoPuro(a.oQueAcontece) || textoPuro(a.comoResolver);
+  if (!t) return null;
+  const linha = t.replace(/\s+/g, ' ').trim();
+  return linha.length > 200 ? `${linha.slice(0, 200).replace(/\s+\S*$/, '')}…` : linha;
+}
+
+function itemDaBaseDemo(a: ArtRow, trecho: PedacoTrecho[] | null): ArtigoNaLista {
+  return {
+    id: a.id, numero: a.numero, codigo: codigoDoArtigo(a.numero), titulo: a.titulo, situacao: a.situacao,
+    obrigatoria: !!a.obrigatoriaDesde, lidaPorMim: a.obrigatoriaDesde ? lidaPorMimDemo(a) : null,
+    autor: nomeDaPessoaDemo(a.autorId), atualizadoPor: nomeDaPessoaDemo(a.atualizadoPorId),
+    atualizadoEm: a.atualizadoEm, publicadoEm: a.publicadoEm,
+    ligacoes: ligacoesDoArtigoDemo(a.id).map(mostrarLigacaoDemo), trecho, resumo: resumoDemo(a),
+    comentarios: S.artComentarios.filter((c) => c.articleId === a.id && !c.deletedAt).length,
+  };
+}
+
+function artigoInteiroDemo(a: ArtRow): Artigo {
+  const ativos = S.users.filter((u) => u.active);
+  return {
+    id: a.id, numero: a.numero, codigo: codigoDoArtigo(a.numero), titulo: a.titulo,
+    oQueAcontece: a.oQueAcontece, comoResolver: a.comoResolver, porQueAcontece: a.porQueAcontece, palavrasDoCliente: a.palavras,
+    situacao: a.situacao, versao: a.versao,
+    autor: a.autorId ? { id: a.autorId, nome: nomeDaPessoaDemo(a.autorId) ?? '—' } : null,
+    atualizadoPor: nomeDaPessoaDemo(a.atualizadoPorId),
+    criadoEm: a.criadoEm, atualizadoEm: a.atualizadoEm, publicadoEm: a.publicadoEm,
+    ligacoes: ligacoesDoArtigoDemo(a.id).map(mostrarLigacaoDemo),
+    // na prévia o arquivo fica embutido: a "url" já é a imagem (como a logo do cliente)
+    anexos: S.artAnexos.filter((x) => x.articleId === a.id && !x.deletedAt).sort((x, y) => x.criadoEm.localeCompare(y.criadoEm))
+      .map((x) => ({ id: x.id, fileName: x.fileName, mimeType: x.mimeType, sizeBytes: x.sizeBytes, inline: x.inline, createdAt: x.criadoEm, url: x.conteudo })),
+    obrigatoria: a.obrigatoriaDesde ? {
+      desde: a.obrigatoriaDesde, por: nomeDaPessoaDemo(a.obrigatoriaPor), lidaPorMim: lidaPorMimDemo(a),
+      lidos: ativos.filter((u) => S.artLeituras.some((r) => r.articleId === a.id && r.userId === u.id && r.em >= a.obrigatoriaDesde!)).length,
+      pessoas: ativos.length,
+    } : null,
+    // do mais novo para o mais antigo, como no servidor
+    comentarios: S.artComentarios.filter((c) => c.articleId === a.id && !c.deletedAt).sort((x, y) => y.em.localeCompare(x.em))
+      .map((c) => ({ id: c.id, texto: c.texto, autor: nomeDaPessoaDemo(c.userId) ?? '—', em: c.em, podeApagar: temPerm('knowledge.write') && (c.userId === S.me?.id || podeCuidarDemo()) })),
+    podeEditar: temPerm('knowledge.write'),
+    podeApagar: temPerm('knowledge.write') && (a.autorId === S.me?.id || podeCuidarDemo()),
+    podeCuidar: podeCuidarDemo(),
+    podeComentar: temPerm('knowledge.write'),
+  };
+}
+
+/** O "pedir a leitura da equipe" do formulário: só quem cuida da base, e só junto com o publicar. */
+function conferirPedidoDeLeituraDemo(d: ArtigoGravar, publicado: boolean) {
+  if (!d.pedirLeitura) return;
+  if (!podeCuidarDemo()) throw new ApiError(403, 'Só quem cuida da base pode pedir a leitura obrigatória da equipe.');
+  if (!publicado) throw bad('A leitura da equipe é pedida ao publicar: o rascunho só você vê.');
+}
+const pediuLeituraDemo = (a: ArtRow) => `Pediu a leitura obrigatória de ${codigoDoArtigo(a.numero)} "${a.titulo}"`;
+
+/** O texto como fica guardado: quebras de linha do jeito Unix, sem espaço sobrando no fim; vazio = nada. */
+const limpoDemo = (t: string | null | undefined) => { const s = (t ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/^\n+|\s+$/g, ''); return s || null; };
+const unicosDemo = (xs: string[]) => [...new Map(xs.map((x) => x.trim()).filter(Boolean).map((x) => [x.toLowerCase(), x])).values()];
+const textoDoFormularioDemo = (d: ArtigoGravar) => ({
+  titulo: d.titulo.trim(), oQueAcontece: limpoDemo(d.oQueAcontece), comoResolver: limpoDemo(d.comoResolver), porQueAcontece: limpoDemo(d.porQueAcontece), palavras: unicosDemo(d.palavrasDoCliente),
+});
+const textoIgualDemo = (a: Pick<ArtRow, 'titulo' | 'oQueAcontece' | 'comoResolver' | 'porQueAcontece' | 'palavras'>, b: typeof a) =>
+  a.titulo === b.titulo && a.oQueAcontece === b.oQueAcontece && a.comoResolver === b.comoResolver && a.porQueAcontece === b.porQueAcontece && JSON.stringify(a.palavras) === JSON.stringify(b.palavras);
+
+/** Lê os arquivos novos (sem gravar ainda): o print só pode ser imagem que o navegador desenha sem rodar nada. */
+function lerAnexosNovosDemo(novos: ArtigoGravar['anexosNovos']) {
+  return novos.map((n) => {
+    const m = /^data:([^;]+);base64,(.+)$/s.exec(n.conteudo);
+    if (!m) throw bad('Não consegui ler esse arquivo');
+    const sizeBytes = Math.floor((m[2]!.length * 3) / 4);
+    if (sizeBytes > 10 * 1024 * 1024) throw bad('Arquivo muito grande (máximo 10 MB)');
+    const mimeType = m[1]!.toLowerCase();
+    if (n.inline && !IMAGENS_DO_TEXTO_DEMO.includes(mimeType)) throw bad('No meio do texto só entra imagem PNG, JPG, WEBP ou GIF. Mande outros arquivos como anexo.');
+    return { ref: n.ref, id: id(), fileName: n.fileName, mimeType, sizeBytes, conteudo: n.conteudo, inline: n.inline };
+  });
+}
+type TextoGuardado = Pick<ArtRow, 'titulo' | 'oQueAcontece' | 'comoResolver' | 'porQueAcontece' | 'palavras'>;
+const comIdsDemo = <T extends TextoGuardado>(t: T, ids: Record<string, string>): T => ({
+  ...t, oQueAcontece: trocarMarcadores(t.oQueAcontece, ids), comoResolver: trocarMarcadores(t.comoResolver, ids), porQueAcontece: trocarMarcadores(t.porQueAcontece, ids),
+});
+/** Print citado no texto precisa ser deste artigo (ou ter acabado de chegar junto). */
+function conferirPrintsDemo(articleId: string, t: TextoGuardado, chegando: string[]) {
+  const citados = [...new Set([t.oQueAcontece, t.comoResolver, t.porQueAcontece].flatMap((x) => printsDoTexto(x)))];
+  const existem = new Set([...S.artAnexos.filter((x) => x.articleId === articleId).map((x) => x.id), ...chegando]);
+  if (citados.some((c) => !existem.has(c))) throw bad('O texto cita um print que não chegou. Cole a imagem de novo.');
+}
+function gravarVersaoDemo(a: ArtRow, nota: string | null = null) {
+  S.artVersoes.push({ articleId: a.id, versao: a.versao, titulo: a.titulo, oQueAcontece: a.oQueAcontece, comoResolver: a.comoResolver, porQueAcontece: a.porQueAcontece, palavras: [...a.palavras], nota, porId: S.me!.id, em: now() });
+}
+const textoDaVersaoDemo = (v: ArtVersaoRow): TextoVersao => ({ versao: v.versao, titulo: v.titulo, oQueAcontece: v.oQueAcontece, comoResolver: v.comoResolver, porQueAcontece: v.porQueAcontece, palavrasDoCliente: v.palavras });
 
 export const demoApi: Api = {
   auth: {
@@ -2076,6 +2482,276 @@ export const demoApi: Api = {
     },
     anexoUrl: (anexoId) => S.projAnexos.find((a) => a.id === anexoId)?.conteudo || 'data:text/plain;base64,',
   },
+  base: {
+    async lista(q) {
+      await wait(90); requirePerm('records.read');
+      const p = BaseListarSchema.safeParse(q ?? {});
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Filtro inválido');
+      const f = p.data;
+      const filtro = (tipo: TipoLigacao, alvo?: string) => (a: ArtRow) => !alvo || ligacoesDoArtigoDemo(a.id).some((l) => l.tipo === tipo && (tipo === 'assunto' ? nomeComparavel(l.alvo) === nomeComparavel(alvo) : l.alvo === alvo));
+      const lista = artigosVivosDemo().filter(artigoVisivelDemo)
+        .filter((a) => f.situacao === 'publicados' ? a.situacao === 'publicado' : f.situacao === 'rascunhos' ? a.situacao === 'rascunho' : f.situacao === 'obrigatorios' ? a.situacao === 'publicado' && !!a.obrigatoriaDesde : true)
+        .filter(filtro('produto', f.produto)).filter(filtro('modulo', f.modulo)).filter(filtro('assunto', f.assunto)).filter(filtro('cliente', f.cliente))
+        .filter(filtro('modelo', f.modelo)).filter(filtro('operadora', f.operadora)).filter(filtro('projeto', f.projeto)).filter(filtro('chamado', f.chamado))
+        .filter((a) => !f.autor || a.autorId === f.autor);
+      const porData = (x: ArtRow, y: ArtRow) => y.atualizadoEm.localeCompare(x.atualizadoEm);
+      const achados = buscarArtigos(lista.map(paraBuscaDemo), f.q).sort((x, y) => {
+        if (f.ordem === 'titulo') return x.artigo.titulo.localeCompare(y.artigo.titulo, 'pt-BR');
+        if (f.ordem === 'numero') return y.artigo.numero - x.artigo.numero;
+        if (f.ordem === 'relevancia' && f.q?.trim()) return y.pontos - x.pontos || porData(x.artigo.a, y.artigo.a);
+        return porData(x.artigo.a, y.artigo.a);
+      });
+      const inicio = (f.page - 1) * f.pageSize;
+      return {
+        items: achados.slice(inicio, inicio + f.pageSize).map((x) => itemDaBaseDemo(x.artigo.a, x.trecho)),
+        total: achados.length, page: f.page, pageSize: f.pageSize,
+        podeEscrever: temPerm('knowledge.write'), podeCuidar: podeCuidarDemo(),
+      };
+    },
+    async opcoes() {
+      await wait(60); requirePerm('records.read');
+      const vivos = artigosVivosDemo();
+      const { ctx } = chamadosDemo();
+      const assunto = camposDosRelatorios(ctx.campos, S.ajustesRelatorios.campos).assunto;
+      const porNome = <T extends { nome: string }>(xs: T[]) => xs.sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      return {
+        produtos: S.products.filter((p) => !p.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map((p) => ({
+          id: p.id, nome: p.name, cor: p.color,
+          modulos: S.modules.filter((m) => m.productId === p.id && !m.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map((m) => ({ id: m.id, nome: m.name })),
+        })),
+        campoAssunto: assunto?.name ?? null,
+        assuntos: [...(assunto?.options ?? [])].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+        clientes: porNome(S.clients.filter((c) => !c.deletedAt && !c.isInternal).map((c) => ({ id: c.id, nome: c.tradeName }))),
+        modelos: porNome(S.models.filter((m) => !m.deletedAt).map((m) => ({ id: m.id, nome: m.name }))),
+        operadoras: porNome(S.carriers.map((o) => ({ id: o.id, nome: o.name }))),
+        projetos: projetosVivos().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).map((p) => ({ id: p.id, nome: p.name, situacao: p.status })),
+        autores: porNome([...new Set(vivos.map((a) => a.autorId).filter((x): x is string => !!x))].map((u) => ({ id: u, nome: nomeDaPessoaDemo(u) ?? '—' }))),
+      };
+    },
+    async get(numero) { await wait(80); requirePerm('records.read'); return artigoInteiroDemo(artigoDemoOu404(numero)); },
+    async criar(d0) {
+      await wait(250); requirePerm('knowledge.write');
+      const p = ArtigoGravarSchema.safeParse(d0);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      const d = p.data;
+      const texto = textoDoFormularioDemo(d);
+      if (d.publicar) { const falta = faltaParaPublicar({ titulo: texto.titulo, comoResolver: texto.comoResolver }); if (falta) throw bad(falta); }
+      conferirPedidoDeLeituraDemo(d, d.publicar);
+      const ligacoes = conferirLigacoesDemo(d.ligacoes);
+      const novos = lerAnexosNovosDemo(d.anexosNovos);
+      const articleId = id();
+      const final = comIdsDemo(texto, Object.fromEntries(novos.map((n) => [n.ref, n.id])));
+      conferirPrintsDemo(articleId, final, novos.map((n) => n.id));
+      semearBase();
+      const a: ArtRow = {
+        id: articleId, numero: S.proximoArtigo++, ...final, situacao: d.publicar ? 'publicado' : 'rascunho',
+        obrigatoriaDesde: d.pedirLeitura ? now() : null, obrigatoriaPor: d.pedirLeitura ? S.me!.id : null,
+        versao: 1, autorId: S.me!.id, atualizadoPorId: S.me!.id, publicadoEm: d.publicar ? now() : null, criadoEm: now(), atualizadoEm: now(), deletedAt: null,
+      };
+      S.artigos.push(a);
+      for (const n of novos) S.artAnexos.push({ id: n.id, articleId, fileName: n.fileName, mimeType: n.mimeType, sizeBytes: n.sizeBytes, conteudo: n.conteudo, inline: n.inline, porId: S.me!.id, criadoEm: now(), deletedAt: null });
+      for (const l of ligacoes) S.artLigacoes.push({ articleId, tipo: l.tipo, alvo: l.alvo });
+      gravarVersaoDemo(a);
+      audit('create', 'knowledge', `${d.publicar ? 'Publicou' : 'Escreveu o rascunho de'} ${codigoDoArtigo(a.numero)} "${a.titulo}"`, a.id);
+      if (d.pedirLeitura) audit('update', 'knowledge', pediuLeituraDemo(a), a.id);
+      return { numero: a.numero, codigo: codigoDoArtigo(a.numero), situacao: a.situacao, versao: a.versao };
+    },
+    async atualizar(numero, d0) {
+      await wait(250); requirePerm('knowledge.write');
+      const a = artigoDemoOu404(numero);
+      const p = ArtigoGravarSchema.safeParse(d0);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      const d = p.data;
+      if (d.versao != null && d.versao !== a.versao) {
+        throw new ApiError(409, `${nomeDaPessoaDemo(a.atualizadoPorId) ?? 'Outra pessoa'} salvou este artigo enquanto você editava. Copie o que você escreveu, abra o artigo de novo e junte as duas mudanças.`);
+      }
+      // publicado continua publicado: corrige-se editando (para tirar da equipe, a lixeira)
+      const publicar = d.publicar || a.situacao === 'publicado';
+      const texto = textoDoFormularioDemo(d);
+      if (publicar) { const falta = faltaParaPublicar({ titulo: texto.titulo, comoResolver: texto.comoResolver }); if (falta) throw bad(falta); }
+      conferirPedidoDeLeituraDemo(d, publicar);
+      const ligacoes = conferirLigacoesDemo(d.ligacoes);
+      const novos = lerAnexosNovosDemo(d.anexosNovos);
+      const final = comIdsDemo(texto, Object.fromEntries(novos.map((n) => [n.ref, n.id])));
+      conferirPrintsDemo(a.id, final, novos.map((n) => n.id));
+      for (const n of novos) S.artAnexos.push({ id: n.id, articleId: a.id, fileName: n.fileName, mimeType: n.mimeType, sizeBytes: n.sizeBytes, conteudo: n.conteudo, inline: n.inline, porId: S.me!.id, criadoEm: now(), deletedAt: null });
+      for (const x of S.artAnexos) if (x.articleId === a.id && !x.deletedAt && d.anexosRemovidos.includes(x.id)) x.deletedAt = now();
+      const chave = (l: LigacaoArtigo) => `${l.tipo}:${l.alvo}`;
+      const mudouTexto = !textoIgualDemo(a, final);
+      const mudouLigacoes = JSON.stringify(ligacoesDoArtigoDemo(a.id).map(chave).sort()) !== JSON.stringify(ligacoes.map(chave).sort());
+      const publicouAgora = publicar && a.situacao !== 'publicado';
+      if (mudouTexto || mudouLigacoes || publicouAgora || novos.length || d.anexosRemovidos.length) {
+        Object.assign(a, final, {
+          situacao: publicar ? 'publicado' : 'rascunho', publicadoEm: a.publicadoEm ?? (publicar ? now() : null),
+          versao: mudouTexto ? a.versao + 1 : a.versao, atualizadoPorId: S.me!.id, atualizadoEm: now(),
+        });
+        if (mudouTexto) gravarVersaoDemo(a);
+        if (mudouLigacoes) {
+          S.artLigacoes = S.artLigacoes.filter((l) => l.articleId !== a.id);
+          for (const l of ligacoes) S.artLigacoes.push({ articleId: a.id, tipo: l.tipo, alvo: l.alvo });
+        }
+        audit('update', 'knowledge', `${publicouAgora ? 'Publicou' : 'Editou'} ${codigoDoArtigo(a.numero)} "${a.titulo}"${mudouTexto ? ` (versão ${a.versao})` : ''}`, a.id);
+      }
+      // pedir (de novo) a leitura não é mudança no texto: não mexe na versão nem em "quem mexeu por último"
+      if (d.pedirLeitura) { a.obrigatoriaDesde = now(); a.obrigatoriaPor = S.me!.id; audit('update', 'knowledge', pediuLeituraDemo(a), a.id); }
+      return { numero: a.numero, codigo: codigoDoArtigo(a.numero), situacao: a.situacao, versao: a.versao };
+    },
+    async remover(numero) {
+      await wait(); requirePerm('knowledge.write');
+      const a = artigoDemoOu404(numero);
+      if (a.autorId !== S.me!.id && !podeCuidarDemo()) throw new ApiError(403, 'Só quem escreveu o artigo (ou quem cuida da base) pode mandá-lo para a lixeira.');
+      a.deletedAt = now();
+      audit('delete', 'knowledge', `Mandou ${codigoDoArtigo(a.numero)} "${a.titulo}" para a lixeira`, a.id);
+      return { ok: true };
+    },
+    async ligar(numero, l) {
+      await wait(); requirePerm('knowledge.write');
+      const a = artigoDemoOu404(numero);
+      if (l.ligar) {
+        const [ok] = conferirLigacoesDemo([{ tipo: l.tipo, alvo: l.alvo }]);
+        if (!S.artLigacoes.some((x) => x.articleId === a.id && x.tipo === ok!.tipo && x.alvo === ok!.alvo)) S.artLigacoes.push({ articleId: a.id, tipo: ok!.tipo, alvo: ok!.alvo });
+      } else {
+        S.artLigacoes = S.artLigacoes.filter((x) => !(x.articleId === a.id && x.tipo === l.tipo && x.alvo === l.alvo));
+      }
+      a.atualizadoEm = now(); a.atualizadoPorId = S.me!.id;
+      audit('update', 'knowledge', `${l.ligar ? 'Ligou' : 'Desligou'} ${codigoDoArtigo(a.numero)} ${l.ligar ? 'a' : 'de'} um ${l.tipo}`, a.id);
+      return { ok: true };
+    },
+    async versoes(numero) {
+      await wait(70); requirePerm('records.read');
+      const a = artigoDemoOu404(numero);
+      return {
+        atual: a.versao,
+        versoes: S.artVersoes.filter((v) => v.articleId === a.id).sort((x, y) => y.versao - x.versao).map((v) => ({ versao: v.versao, por: nomeDaPessoaDemo(v.porId), em: v.em, nota: v.nota })),
+      };
+    },
+    async comparar(numero, de, para) {
+      await wait(70); requirePerm('records.read');
+      const a = artigoDemoOu404(numero);
+      const vDe = S.artVersoes.find((v) => v.articleId === a.id && v.versao === Number(de));
+      const vPara = S.artVersoes.find((v) => v.articleId === a.id && v.versao === Number(para));
+      if (!vDe || !vPara) throw notFound('Versão');
+      return { de: textoDaVersaoDemo(vDe), para: textoDaVersaoDemo(vPara) };
+    },
+    async voltarVersao(numero, versao) {
+      await wait(); requirePerm('knowledge.write');
+      const a = artigoDemoOu404(numero);
+      const antiga = S.artVersoes.find((v) => v.articleId === a.id && v.versao === Number(versao));
+      if (!antiga) throw notFound('Versão');
+      if (antiga.versao === a.versao) throw bad('Esta já é a versão atual.');
+      if (a.situacao === 'publicado') { const falta = faltaParaPublicar({ titulo: antiga.titulo, comoResolver: antiga.comoResolver }); if (falta) throw bad(`Não dá para voltar a essa versão com o artigo publicado: ${falta}`); }
+      Object.assign(a, {
+        titulo: antiga.titulo, oQueAcontece: antiga.oQueAcontece, comoResolver: antiga.comoResolver, porQueAcontece: antiga.porQueAcontece, palavras: [...antiga.palavras],
+        versao: a.versao + 1, atualizadoPorId: S.me!.id, atualizadoEm: now(),
+      });
+      gravarVersaoDemo(a, `Voltou à versão ${antiga.versao}`);
+      audit('update', 'knowledge', `Voltou ${codigoDoArtigo(a.numero)} à versão ${antiga.versao} (agora versão ${a.versao})`, a.id);
+      return { numero: a.numero, versao: a.versao };
+    },
+    async obrigatoria(numero, ligar) {
+      await wait(); requirePerm('knowledge.manage');
+      const a = artigoDemoOu404(numero);
+      if (ligar && a.situacao !== 'publicado') throw bad('Publique o artigo antes de pedir a leitura da equipe.');
+      a.obrigatoriaDesde = ligar ? now() : null; a.obrigatoriaPor = ligar ? S.me!.id : null;
+      audit('update', 'knowledge', ligar ? pediuLeituraDemo(a) : `Tirou a leitura obrigatória de ${codigoDoArtigo(a.numero)}`, a.id);
+      return { ok: true };
+    },
+    async marcarLida(numero) {
+      await wait(80); requirePerm('records.read');
+      const a = artigoDemoOu404(numero);
+      const r = S.artLeituras.find((x) => x.articleId === a.id && x.userId === S.me!.id);
+      if (r) r.em = now(); else S.artLeituras.push({ articleId: a.id, userId: S.me!.id, em: now() });
+      audit('update', 'knowledge', `${S.me!.name} leu ${codigoDoArtigo(a.numero)} "${a.titulo}"`, a.id);
+      return { ok: true };
+    },
+    async leituras(numero) {
+      await wait(70); requirePerm('knowledge.manage');
+      const a = artigoDemoOu404(numero);
+      if (!a.obrigatoriaDesde) return { desde: null, lidos: [], faltam: [] };
+      const pessoas = S.users.filter((u) => u.active).sort((x, y) => x.name.localeCompare(y.name, 'pt-BR'));
+      const quando = new Map(S.artLeituras.filter((r) => r.articleId === a.id && r.em >= a.obrigatoriaDesde!).map((r) => [r.userId, r.em]));
+      return {
+        desde: a.obrigatoriaDesde,
+        lidos: pessoas.filter((u) => quando.has(u.id)).map((u) => ({ nome: u.name, em: quando.get(u.id)! })),
+        faltam: pessoas.filter((u) => !quando.has(u.id)).map((u) => ({ nome: u.name })),
+      };
+    },
+    async comentar(numero, texto0) {
+      await wait(120); requirePerm('knowledge.write');
+      const a = artigoDemoOu404(numero);
+      const p = ComentarioArtigoSchema.safeParse({ texto: texto0 });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Escreva o comentário');
+      const texto = limpoDemo(p.data.texto);
+      if (!texto) throw bad('Escreva o comentário.');
+      const c: ArtComentarioRow = { id: id(), articleId: a.id, userId: S.me!.id, texto, em: now(), deletedAt: null };
+      S.artComentarios.push(c);
+      audit('create', 'knowledge', `Comentou em ${codigoDoArtigo(a.numero)} "${a.titulo}"`, a.id, { after: { comentario: texto } });
+      return { id: c.id };
+    },
+    async apagarComentario(numero, cid) {
+      await wait(); requirePerm('knowledge.write');
+      const a = artigoDemoOu404(numero);
+      const c = S.artComentarios.find((x) => x.id === cid && x.articleId === a.id && !x.deletedAt);
+      if (!c) throw notFound('Comentário');
+      if (c.userId !== S.me!.id && !podeCuidarDemo()) throw new ApiError(403, 'Só quem escreveu o comentário (ou quem cuida da base) pode apagá-lo.');
+      c.deletedAt = now();
+      const autor = nomeDaPessoaDemo(c.userId);
+      audit('delete', 'knowledge', `Apagou um comentário${autor && autor !== S.me!.name ? ` de ${autor}` : ''} em ${codigoDoArtigo(a.numero)}`, a.id, { before: { comentario: c.texto, escritoEm: c.em, por: autor } });
+      return { ok: true };
+    },
+    async pendentes() {
+      await wait(40); requirePerm('records.read');
+      const faltam = artigosVivosDemo().filter((a) => a.situacao === 'publicado' && a.obrigatoriaDesde && !lidaPorMimDemo(a))
+        .sort((x, y) => y.obrigatoriaDesde!.localeCompare(x.obrigatoriaDesde!));
+      return { naoLidas: faltam.length, artigos: faltam.map((a) => ({ numero: a.numero, codigo: codigoDoArtigo(a.numero), titulo: a.titulo, desde: a.obrigatoriaDesde! })) };
+    },
+    async ligados(tipo, alvo) {
+      await wait(50); requirePerm('records.read');
+      const rows = artigosVivosDemo().filter((a) => a.situacao === 'publicado' && S.artLigacoes.some((l) => l.articleId === a.id && l.tipo === tipo && l.alvo === alvo))
+        .sort((x, y) => y.atualizadoEm.localeCompare(x.atualizadoEm));
+      return { total: rows.length, artigos: rows.slice(0, 30).map((a) => ({ id: a.id, numero: a.numero, codigo: codigoDoArtigo(a.numero), titulo: a.titulo })) };
+    },
+    async paraChamados(ids) {
+      await wait(60); requirePerm('support.read');
+      const publicados = artigosVivosDemo().filter((a) => a.situacao === 'publicado');
+      if (!ids.length || !publicados.length) return {};
+      const indice = montarIndiceParaChamados(publicados.map((a) => ({ id: a.id, numero: a.numero, titulo: a.titulo, ligacoes: ligacoesDoArtigoDemo(a.id) })));
+      const { cards, ctx } = chamadosDemo();
+      const pedidos = new Set(ids);
+      const escolhidos = cards.filter((c) => pedidos.has(c.id));
+      const papeis = camposDosRelatorios(ctx.campos, S.ajustesRelatorios.campos);
+      const chaveCliente = papeis.cliente?.key ?? null;
+      const opcoesCliente = chaveCliente ? [...new Set(escolhidos.flatMap((c) => valoresDoCampo(c.campos[chaveCliente])))] : [];
+      const lig = ligarClientes(opcoesCliente, cadastroParaLigar(), S.ajustesRelatorios.clientes);
+      const out: Record<string, ArtigoCurto[]> = {};
+      for (const c of escolhidos) {
+        const l = artigosDoChamado({ id: c.id, campos: c.campos }, indice, { assunto: papeis.assunto?.key ?? null, cliente: chaveCliente }, (op) => lig[op]?.clienteId ?? null);
+        if (l.length) out[c.id] = l;
+      }
+      return out;
+    },
+    async doChamado(ref) {
+      await wait(150); requirePerm('knowledge.write');
+      const c = cardDemo(ref);
+      if (!c) throw notFound('Chamado');
+      const { ctx } = chamadosDemo();
+      const papeis = camposDosRelatorios(ctx.campos, S.ajustesRelatorios.campos);
+      const valores = (k: string | null | undefined) => (k ? valoresDoCampo(c.campos[k]) : []);
+      const ligacoes: LigacaoArtigo[] = [{ tipo: 'chamado', alvo: c.id }];
+      for (const a of valores(papeis.assunto?.key)) ligacoes.push({ tipo: 'assunto', alvo: a });
+      const opcoesCliente = valores(papeis.cliente?.key);
+      const lig = ligarClientes(opcoesCliente, cadastroParaLigar(), S.ajustesRelatorios.clientes);
+      for (const op of opcoesCliente) { const idc = lig[op]?.clienteId; if (idc) ligacoes.push({ tipo: 'cliente', alvo: idc }); }
+      // o Produto do card (LinePBX, LineChat…) liga ao produto do Gestor com o mesmo nome
+      for (const pr of valores(papeis.produto?.key)) { const achado = S.products.find((x) => !x.deletedAt && nomeComparavel(x.name) === nomeComparavel(pr)); if (achado) ligacoes.push({ tipo: 'produto', alvo: achado.id }); }
+      const unicas = [...new Map(ligacoes.map((l) => [`${l.tipo}:${l.alvo}`, l])).values()];
+      return {
+        chamado: { id: c.id, key: c.key, titulo: c.title, link: linkDemo(c) || null },
+        titulo: c.title.trim(), oQueAcontece: textoDoCard(c.description) || null,
+        ligacoes: unicas.map(mostrarLigacaoDemo),
+      };
+    },
+  },
   admin: {
     async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt })); },
     async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
@@ -2134,14 +2810,16 @@ export const demoApi: Api = {
         ...S.products.filter((c) => c.deletedAt).map((c) => ({ type: 'product', id: c.id, label: c.name, deletedAt: c.deletedAt! })),
         ...S.notas.filter((c) => c.deletedAt).map((c) => ({ type: 'releaseNote', id: c.id, label: c.title, deletedAt: c.deletedAt! })),
         ...S.modules.filter((c) => c.deletedAt).map((c) => ({ type: 'productModule', id: c.id, label: `${S.products.find((p) => p.id === c.productId)?.name} › ${c.name}`, deletedAt: c.deletedAt! })),
+        ...S.artigos.filter((c) => c.deletedAt).map((c) => ({ type: 'knowledgeArticle', id: c.id, label: `${codigoDoArtigo(c.numero)} · ${c.titulo}`, deletedAt: c.deletedAt! })),
       ].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
     },
     async restore(type, idr) {
       await wait(); requirePerm('records.delete');
-      const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'productModule' ? S.modules : type === 'releaseNote' ? S.notas : S.devices;
+      const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'productModule' ? S.modules : type === 'releaseNote' ? S.notas : type === 'knowledgeArticle' ? S.artigos : S.devices;
       const it = list.find((x) => x.id === idr); if (!it) throw notFound();
       it.deletedAt = null;
-      const nome = it.tradeName ?? it.name ?? it.number ?? (type === 'device' ? identificacaoAparelho(it).texto : idr);
+      if (type === 'knowledgeArticle') it.atualizadoEm = now();
+      const nome = type === 'knowledgeArticle' ? `${codigoDoArtigo(it.numero)} "${it.titulo}"` : it.tradeName ?? it.name ?? it.number ?? (type === 'device' ? identificacaoAparelho(it).texto : idr);
       audit('restore', type, `Restaurou ${nome} da lixeira`, idr); return { ok: true };
     },
   },

@@ -302,7 +302,7 @@ function Auditoria() {
     <div>
       <div className="card p-3 mb-3 flex flex-wrap gap-2">
         <select className="input w-auto" value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }}><option value="">Todas as ações</option>{acoes.map((a) => <option key={a} value={a}>{a}</option>)}</select>
-        <select className="input w-auto" value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }}><option value="">Todos os tipos</option>{['client', 'subscription', 'product', 'circuit', 'did', 'device', 'deviceModel', 'deviceMovement', 'secret', 'user', 'role'].map((t) => <option key={t} value={t}>{t}</option>)}</select>
+        <select className="input w-auto" value={entityType} onChange={(e) => { setEntityType(e.target.value); setPage(1); }}><option value="">Todos os tipos</option>{['client', 'subscription', 'product', 'circuit', 'did', 'device', 'deviceModel', 'deviceMovement', 'secret', 'user', 'role', 'project', 'knowledge'].map((t) => <option key={t} value={t}>{t}</option>)}</select>
       </div>
       {q.isLoading ? <Carregando /> : !q.data?.items.length ? <Vazio titulo="Nada registrado" /> : (
         <div className="card overflow-x-auto"><table className="table">
@@ -323,7 +323,7 @@ function Auditoria() {
 
 function Lixeira() {
   const q = useQuery({ queryKey: ['trash'], queryFn: api.admin.trash }); const qc = useQueryClient(); const toast = useToast();
-  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', productModule: 'Módulo', releaseNote: 'Novidades', project: 'Projeto' };
+  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', productModule: 'Módulo', releaseNote: 'Novidades', project: 'Projeto', knowledgeArticle: 'Artigo da base' };
   const o = useOrdenacaoLocal('deletedAt', 'desc');
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;

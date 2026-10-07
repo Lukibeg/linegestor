@@ -52,6 +52,7 @@ import { useAuth } from '../../lib/auth.js';
 import { data, relativo } from '../../lib/format.js';
 import { BotaoEnvio } from '../../lib/envio.js';
 import { EtapasQueFecham, GruposDoGrafico, type Candidato } from './organizar.js';
+import { LivroDoChamado, RegistrarNaBase, useArtigosDosChamados } from '../base/partes.js';
 
 type Aba = AbaChamados;
 /**
@@ -862,6 +863,8 @@ function Tabela({ op, total, lista, carregando, o, page, tudo, setPage, setTudo 
   const escolha = useColunasEscolhidas('gestor.colunas.chamados', padrao, { novas: ['descricao'] });
   const visiveis = colunas.filter((c) => escolha.ids.includes(c.id));
   const numero = contarDe(tudo ? 1 : page, tudo ? TODOS : POR_PAGINA);
+  // 1.8: o livrinho — os artigos da base que valem para cada chamado da página (uma consulta só)
+  const livros = useArtigosDosChamados(useMemo(() => (lista?.items ?? []).map((c) => c.id), [lista]));
 
   return (
     <section className="card p-0 min-w-0">
@@ -878,11 +881,15 @@ function Tabela({ op, total, lista, carregando, o, page, tudo, setPage, setTudo 
             </tr></thead>
             <tbody>
               {lista.items.map((c, i) => (
-                <tr key={c.id}>
+                <tr key={c.id} className="group">
                   <TdN n={numero(i)} />
                   <td className="whitespace-nowrap">
-                    {c.link ? <a className="link font-mono text-[12.5px]" href={c.link} target="_blank" rel="noreferrer" title="Abrir o card no LineChat">{c.key ?? '?'} <ExternalLink size={11} className="inline -mt-0.5" /></a> : <span className="font-mono text-[12.5px]">{c.key ?? '?'}</span>}
-                    {c.isOverdue && !c.fechado && <Chip tone="bad" className="ml-1">vencido</Chip>}
+                    <span className="inline-flex items-center gap-1">
+                      {c.link ? <a className="link font-mono text-[12.5px]" href={c.link} target="_blank" rel="noreferrer" title="Abrir o card no LineChat">{c.key ?? '?'} <ExternalLink size={11} className="inline -mt-0.5" /></a> : <span className="font-mono text-[12.5px]">{c.key ?? '?'}</span>}
+                      {c.isOverdue && !c.fechado && <Chip tone="bad">vencido</Chip>}
+                      <LivroDoChamado artigos={livros[c.id]} />
+                      <RegistrarNaBase cardId={c.id} className="md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100" />
+                    </span>
                   </td>
                   {visiveis.map((col) => <td key={col.id} className="text-[13px] align-top">{col.render(c)}</td>)}
                 </tr>

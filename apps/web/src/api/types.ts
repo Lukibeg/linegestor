@@ -345,6 +345,66 @@ export type ProjetoDoCliente = {
   feitas: number; etapas: number;
 };
 
+
+// ---------- Base de conhecimento (Patch 1.8) ----------
+
+export type { LigacaoArtigo, TipoLigacao, PedacoTrecho, ArtigoCurto, LinhaDiferenca, ArtigoGravar, AnexoNovoArtigo } from '@gestor/shared';
+import type { PedacoTrecho as _Trecho, TipoLigacao as _Tipo, ArtigoCurto as _Curto } from '@gestor/shared';
+
+/** Uma ligação já com o nome (o cliente "Clínica Aurora", o chamado "IS-3607" com o título…). */
+export type LigacaoMostrada = { tipo: _Tipo; alvo: string; nome: string; extra: string | null; href: string | null; existe: boolean };
+export type ArtigoNaLista = {
+  id: string; numero: number; codigo: string; titulo: string; situacao: 'rascunho' | 'publicado';
+  obrigatoria: boolean;
+  /** só nos de leitura obrigatória: esta pessoa já leu (depois do pedido)? */
+  lidaPorMim: boolean | null;
+  autor: string | null; atualizadoPor: string | null; atualizadoEm: string; publicadoEm: string | null;
+  ligacoes: LigacaoMostrada[];
+  /** o pedaço do texto onde a busca achou, com as palavras em destaque */
+  trecho: _Trecho[] | null;
+  /** o começo do texto, quando não há busca */
+  resumo: string | null;
+  /** quantos comentários o artigo tem */
+  comentarios: number;
+};
+export type ListaBase = Page<ArtigoNaLista> & { podeEscrever: boolean; podeCuidar: boolean };
+/** `url` é relativa à API (como a logo do cliente); na prévia, a imagem embutida */
+export type AnexoArtigo = { id: string; fileName: string; mimeType: string; sizeBytes: number; inline: boolean; createdAt: string; url: string };
+export type Artigo = {
+  id: string; numero: number; codigo: string; titulo: string;
+  oQueAcontece: string | null; comoResolver: string | null; porQueAcontece: string | null; palavrasDoCliente: string[];
+  situacao: 'rascunho' | 'publicado'; versao: number;
+  autor: { id: string; nome: string } | null; atualizadoPor: string | null;
+  criadoEm: string; atualizadoEm: string; publicadoEm: string | null;
+  ligacoes: LigacaoMostrada[];
+  anexos: AnexoArtigo[];
+  obrigatoria: { desde: string; por: string | null; lidaPorMim: boolean; lidos: number; pessoas: number } | null;
+  /** do mais novo para o mais antigo */
+  comentarios: ComentarioDoArtigo[];
+  podeEditar: boolean; podeApagar: boolean; podeCuidar: boolean; podeComentar: boolean;
+};
+/** Um comentário no artigo (pedido do Luan na prévia do 1.8): fica registrado quem e quando. */
+export type ComentarioDoArtigo = { id: string; texto: string; autor: string; em: string; podeApagar: boolean };
+export type OpcoesBase = {
+  produtos: Array<{ id: string; nome: string; cor: string; modulos: Array<{ id: string; nome: string }> }>;
+  /** o nome do campo Assunto do LineChat (o mesmo dos Relatórios); null = sem LineChat */
+  campoAssunto: string | null;
+  assuntos: string[];
+  clientes: Array<{ id: string; nome: string }>;
+  modelos: Array<{ id: string; nome: string }>;
+  operadoras: Array<{ id: string; nome: string }>;
+  projetos: Array<{ id: string; nome: string; situacao: string }>;
+  autores: Array<{ id: string; nome: string }>;
+};
+export type VersoesArtigo = { atual: number; versoes: Array<{ versao: number; por: string | null; em: string; nota: string | null }> };
+export type TextoVersao = { versao: number; titulo: string; oQueAcontece: string | null; comoResolver: string | null; porQueAcontece: string | null; palavrasDoCliente: string[] };
+export type LeiturasArtigo = { desde: string | null; lidos: Array<{ nome: string; em: string }>; faltam: Array<{ nome: string }> };
+export type PendentesBase = { naoLidas: number; artigos: Array<{ numero: number; codigo: string; titulo: string; desde: string }> };
+export type LigadosBase = { total: number; artigos: Array<{ id: string; numero: number; codigo: string; titulo: string }> };
+export type ArtigosDosChamados = Record<string, _Curto[]>;
+export type DoChamado = { chamado: { id: string; key: string | null; titulo: string; link: string | null }; titulo: string; oQueAcontece: string | null; ligacoes: LigacaoMostrada[] };
+export type GravadoArtigo = { numero: number; codigo: string; situacao: string; versao: number };
+
 export class ApiError extends Error {
   /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */
   constructor(public status: number, message: string, public details: Array<{ field: string; message: string }> | string | null = null) { super(message); }

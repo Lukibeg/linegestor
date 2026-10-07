@@ -64,6 +64,13 @@
       "when": 1790441584409,
       "tag": "0008_modulo_na_lixeira",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791375417989,
+      "tag": "0009_base_de_conhecimento",
+      "breakpoints": true
     }
   ]
 }

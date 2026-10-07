@@ -23,6 +23,8 @@ export const PERMISSIONS = {
   'projects.work': 'Trabalhar nos projetos: marcar etapas, comentar e anexar',
   'projects.manage': 'Criar e encerrar projetos, definir etapas e a lista de clientes',
   'support.read': 'Ver os chamados de suporte (a cópia do painel do LineChat)',
+  'knowledge.write': 'Escrever na base de conhecimento: criar artigos e melhorar os de qualquer pessoa',
+  'knowledge.manage': 'Cuidar da base de conhecimento: leitura obrigatória, rascunhos de todos e mandar artigo para a lixeira',
   'admin.manage': 'Gerenciar usuários, papéis e catálogos',
   'audit.read': 'Ver a auditoria',
 } as const;
@@ -45,14 +47,14 @@ export const DEFAULT_ROLES: Array<{ key: string; name: string; description: stri
     key: 'operador',
     name: 'Operador',
     description: 'Operação do dia a dia: aloca DIDs, movimenta aparelhos, anota. Sem senhas, sem exclusão, sem importação.',
-    permissions: ['records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work'],
+    permissions: ['records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work', 'knowledge.write'],
   },
   {
     key: 'tecnico',
     name: 'Técnico',
     description: 'Tudo do Operador + edita cadastros e dados de servidor, revela senhas (com registro) e vê a auditoria.',
     permissions: [
-      'records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work',
+      'records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work', 'knowledge.write',
       'records.write', 'servers.write', 'secrets.reveal', 'audit.read',
     ],
   },

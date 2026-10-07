@@ -7,6 +7,7 @@
  *
  *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico · 5. Novidades
  *          6. Projetos · 7. Chamados do LineChat (cópia só de leitura, alimentada pela sincronização)
+ *          8. Base de conhecimento
  *
  *  Convenções:
  *   - dinheiro é guardado em CENTAVOS inteiros (R$ 603,38 → 60338), sem arredondamento
@@ -16,7 +17,7 @@
  *   - toda tabela tem `id` em texto (cuid), gerado pela aplicação
  * =====================================================================
  */
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 const id = () => text('id').primaryKey();
@@ -1058,6 +1059,163 @@ export const linechatSyncRuns = pgTable(
     userId: text('user_id').references(() => users.id),
   },
   (t) => [index('linechat_sync_runs_started_idx').on(t.startedAt)],
+);
+
+// ---------------------------------------------------------------------
+// 8. BASE DE CONHECIMENTO
+// ---------------------------------------------------------------------
+//
+// O que alguém descobriu resolvendo um chamado (ou fazendo um procedimento) vira um ARTIGO, com o
+// código curto BC-<número> para citar no card do LineChat e no WhatsApp. O modelo é o do KCS, o
+// padrão das bases de suporte: o que acontece, como resolver e por que acontece.
+//
+// O artigo se liga ao que o Gestor já tem (produto, assunto do LineChat, cliente, modelo de aparelho,
+// operadora, chamado, projeto) — é isso que o faz aparecer sozinho nas fichas e nos chamados, sem
+// pastas nem etiquetas soltas para manter.
+
+/**
+ * Um artigo. O texto é "simples": uma linha que começa com número vira passo, o que está entre
+ * crases vira comando com botão Copiar, e `[print:<id>]` numa linha sozinha é um print colado
+ * (o arquivo mora em `knowledge_attachments`). Quem lê é a equipe toda — senha não vai aqui, vai no
+ * cofre (combinado do Patch 1.8).
+ */
+export const knowledgeArticles = pgTable(
+  'knowledge_articles',
+  {
+    id: id(),
+    /** O número do código BC-12: sequencial, nunca reaproveitado (nem depois da lixeira) */
+    number: serial('number').notNull(),
+    /** O título, escrito como alguém procuraria ("Ligação cai sempre aos 32 segundos") */
+    title: text('title').notNull(),
+    /** O que acontece: o sintoma, nas palavras do cliente */
+    symptom: text('symptom'),
+    /** Como resolver: os passos (obrigatório para publicar) */
+    resolution: text('resolution'),
+    /** Por que acontece: a causa (opcional, mas é o que ensina a reconhecer o problema) */
+    cause: text('cause'),
+    /** Palavras do cliente: outros jeitos de dizer o mesmo problema ("cai sozinha"), para a busca achar */
+    customerTerms: text('customer_terms').array().notNull().default([]),
+    /** rascunho = só quem escreveu (e quem cuida da base) vê · publicado = a equipe toda vê */
+    status: text('status').notNull().default('rascunho'),
+    /** Leitura obrigatória desde quando (nulo = não é). Quem leu antes disso precisa ler de novo */
+    mandatorySince: timestamp('mandatory_since', { withTimezone: true }),
+    /** Quem marcou a leitura obrigatória */
+    mandatoryById: text('mandatory_by_id').references(() => users.id),
+    /** A versão atual do texto (sobe a cada mudança; cada uma fica guardada em `knowledge_versions`) */
+    version: integer('version').notNull().default(1),
+    /** Quem escreveu */
+    authorId: text('author_id').references(() => users.id),
+    /** Quem mexeu por último */
+    updatedById: text('updated_by_id').references(() => users.id),
+    /** Quando foi publicado pela primeira vez */
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [uniqueIndex('knowledge_articles_number_uq').on(t.number), index('knowledge_articles_status_idx').on(t.status)],
+);
+
+/**
+ * Cada versão do texto de um artigo, inteira, para comparar e voltar atrás. A última é igual ao
+ * artigo; "voltar a esta versão" não apaga nada: grava uma versão nova com o texto antigo.
+ * As ligações não entram aqui (a auditoria guarda quem as mudou).
+ */
+export const knowledgeVersions = pgTable(
+  'knowledge_versions',
+  {
+    id: id(),
+    articleId: text('article_id').notNull().references(() => knowledgeArticles.id, { onDelete: 'cascade' }),
+    /** 1, 2, 3… (a do artigo é a última) */
+    version: integer('version').notNull(),
+    title: text('title').notNull(),
+    symptom: text('symptom'),
+    resolution: text('resolution'),
+    cause: text('cause'),
+    customerTerms: text('customer_terms').array().notNull().default([]),
+    /** Um recado sobre a versão ("voltou à versão 2") */
+    note: text('note'),
+    editedById: text('edited_by_id').references(() => users.id),
+    editedAt: timestamp('edited_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('knowledge_versions_uq').on(t.articleId, t.version)],
+);
+
+/**
+ * "Este artigo fala de…": a ligação com o que o Gestor já tem.
+ * `kind`: produto · modulo · assunto · cliente · modelo · operadora · chamado · projeto.
+ * `target` é o id do que está ligado — menos no assunto, que guarda o NOME da opção do campo
+ * Assunto do LineChat (é como o card guarda o valor; o campo é o escolhido nos Relatórios).
+ */
+export const knowledgeLinks = pgTable(
+  'knowledge_links',
+  {
+    id: id(),
+    articleId: text('article_id').notNull().references(() => knowledgeArticles.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    target: text('target').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('knowledge_links_uq').on(t.articleId, t.kind, t.target),
+    index('knowledge_links_target_idx').on(t.kind, t.target),
+  ],
+);
+
+/**
+ * Um arquivo do artigo, no próprio banco (como os anexos dos projetos: entra no backup).
+ * `inline` = print colado no meio do texto (só imagem PNG, JPG, WEBP ou GIF, que o navegador
+ * já reduziu); senão, um anexo da lista, de qualquer formato, que sempre baixa como arquivo.
+ */
+export const knowledgeAttachments = pgTable(
+  'knowledge_attachments',
+  {
+    id: id(),
+    articleId: text('article_id').notNull().references(() => knowledgeArticles.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    dataBase64: text('data_base64').notNull(),
+    inline: boolean('inline').notNull().default(false),
+    uploadedById: text('uploaded_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('knowledge_attachments_article_idx').on(t.articleId)],
+);
+
+/**
+ * "Fulano leu o artigo (de leitura obrigatória) em tal dia." Uma linha por pessoa × artigo;
+ * ler de novo atualiza a data. Vale a leitura feita depois de `mandatorySince` do artigo.
+ */
+export const knowledgeReads = pgTable(
+  'knowledge_reads',
+  {
+    id: id(),
+    articleId: text('article_id').notNull().references(() => knowledgeArticles.id, { onDelete: 'cascade' }),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('knowledge_reads_uq').on(t.articleId, t.userId)],
+);
+
+/**
+ * Um comentário no artigo: o que a equipe viu depois ("aconteceu de novo, era outra coisa"), sem
+ * mexer no texto. Fica registrado quem comentou e quando; apagar só marca `deletedAt`, e a auditoria
+ * guarda o texto apagado. Pedido do Luan na prévia do 1.8 (07/10).
+ */
+export const knowledgeComments = pgTable(
+  'knowledge_comments',
+  {
+    id: id(),
+    articleId: text('article_id').notNull().references(() => knowledgeArticles.id, { onDelete: 'cascade' }),
+    /** Quem comentou */
+    userId: text('user_id').references(() => users.id),
+    body: text('body').notNull(),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('knowledge_comments_article_idx').on(t.articleId)],
 );
 
 // ---------------------------------------------------------------------

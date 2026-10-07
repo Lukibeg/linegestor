@@ -3,6 +3,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { AuditoriaListarSchema, CatalogoItemSchema, ModuloCatalogoSchema, PapelGravarSchema, ProdutoCriarSchema, UsuarioAtualizarSchema, UsuarioCriarSchema } from '@gestor/shared';
 import * as svc from '../services/admin.js';
+import * as baseSvc from '../services/base.js';
 import * as audit from '../services/audit.js';
 import * as clientsSvc from '../services/clients.js';
 import * as circuitsSvc from '../services/circuits.js';
@@ -57,7 +58,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---- lixeira ----
   app.get('/trash', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'O que está na lixeira' } }, async () => svc.listTrash(app.db));
-  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project']), id: z.string() }) } },
+  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle']), id: z.string() }) } },
     async (req) => {
       const { type, id } = req.params;
       let label = id;
@@ -70,6 +71,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       else if (type === 'productModule') label = `o módulo ${(await svc.restoreModule(app.db, id)).name}`;
       else if (type === 'releaseNote') label = (await novidades.restore(app.db, id)).title;
       else if (type === 'project') label = (await svc.restoreProject(app.db, id)).name;
+      else if (type === 'knowledgeArticle') { const a = await baseSvc.restaurar(app.db, id); label = `o artigo BC-${a.number} "${a.title}"`; }
       else throw new BadRequest('Tipo desconhecido');
       await app.audit(req, { action: 'restore', entityType: type, entityId: id, summary: `Restaurou ${label} da lixeira` });
       return { ok: true };

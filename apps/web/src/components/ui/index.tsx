@@ -378,7 +378,12 @@ export function Copiar({ texto, titulo = 'Copiar' }: { texto: string; titulo?: s
  * Um painel que abre abaixo de um botão e fecha ao clicar fora ou apertar Esc.
  * Usado pelo seletor de colunas e pelo filtro de módulos.
  */
-export function Popover({ botao, children, largura = 'w-[320px]' }: { botao: (aberto: boolean) => ReactNode; children: ReactNode; largura?: string }) {
+/**
+ * `classe` troca o jeito do botão (o padrão é o botão secundário pequeno; na tabela, um link discreto).
+ * `alinhar`: o painel encosta pela direita do botão (o padrão) ou começa na esquerda dele (botão no
+ * começo de uma tabela, para o painel não cobrir o menu).
+ */
+export function Popover({ botao, children, largura = 'w-[320px]', classe = 'btn-secondary btn-sm', titulo, alinhar = 'direita' }: { botao: (aberto: boolean) => ReactNode; children: ReactNode; largura?: string; classe?: string; titulo?: string; alinhar?: 'direita' | 'esquerda' }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const painel = useRef<HTMLDivElement>(null);
@@ -399,7 +404,7 @@ export function Popover({ botao, children, largura = 'w-[320px]' }: { botao: (ab
       const espacoAbaixo = window.innerHeight - b.bottom - margem;
       const espacoAcima = b.top - margem;
       const paraCima = espacoAbaixo < Math.min(alt, 220) && espacoAcima > espacoAbaixo;
-      const left = Math.max(margem, Math.min(b.right - larg, window.innerWidth - larg - margem));
+      const left = Math.max(margem, Math.min(alinhar === 'esquerda' ? b.left : b.right - larg, window.innerWidth - larg - margem));
       // abrindo para cima, prendemos pela base (assim nunca sobra pedaço fora da tela embaixo)
       const altura = Math.max(140, (paraCima ? espacoAcima : espacoAbaixo) - 4);
       setPos(paraCima
@@ -418,14 +423,15 @@ export function Popover({ botao, children, largura = 'w-[320px]' }: { botao: (ab
       window.removeEventListener('resize', posicionar);
       window.removeEventListener('scroll', posicionar, true);
     };
-  }, [open]);
+  }, [open, alinhar]);
   return (
     <div className="relative" ref={ref}>
-      <button type="button" className="btn-secondary btn-sm" onClick={() => { setPos(null); setOpen((o) => !o); }} aria-expanded={open}>{botao(open)}</button>
+      <button type="button" className={classe} title={titulo} onClick={() => { setPos(null); setOpen((o) => !o); }} aria-expanded={open}>{botao(open)}</button>
       {open && (
         <div
           ref={painel}
-          className="fixed z-40 card p-3 overflow-y-auto shadow-lg"
+          // o painel pode nascer dentro de uma célula "sem quebra de linha": o texto dele quebra normalmente
+          className="fixed z-40 card p-3 overflow-y-auto shadow-lg whitespace-normal text-left font-normal"
           style={{ left: pos?.left ?? -9999, top: pos?.top, bottom: pos?.bottom, maxHeight: pos?.maxHeight ?? 320, maxWidth: 'calc(100vw - 16px)', visibility: pos ? 'visible' : 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}
         >
           <div className={`${largura} max-w-full`}>{children}</div>
