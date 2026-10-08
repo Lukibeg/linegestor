@@ -9,6 +9,8 @@
  *  - a diferença entre duas versões (o que saiu, o que entrou)
  *  - os artigos que valem para um chamado (o livrinho da tabela de Chamados)
  *  - o que se grava: o artigo (com o "pedir a leitura da equipe" junto) e o comentário
+ *
+ * A IA (perguntar à base e o rascunho a partir do card) está em `ia.ts`.
  */
 import { z } from 'zod';
 import { IdSchema, PaginacaoSchema } from './schemas.js';
@@ -217,7 +219,7 @@ export function trocarMarcadores(texto: string | null | undefined, ids: Record<s
   return texto.replace(/\[print:([A-Za-z0-9_-]{1,64})\]/g, (inteiro, ref: string) => (ids[ref] ? `[print:${ids[ref]}]` : inteiro));
 }
 
-/** O texto sem marcas: para a busca, o trecho achado e o resumo da lista. */
+/** O texto sem marcas: para a busca, o trecho achado, o resumo da lista e a IA. */
 export function textoPuro(texto: string | null | undefined): string {
   return (texto ?? '')
     .replace(/\r\n?/g, '\n')
@@ -312,11 +314,12 @@ function camposDoArtigo(a: ArtigoParaBusca): Campo[] {
 const comecaPalavra = (texto: string, i: number) => i === 0 || !/[a-z0-9]/.test(texto[i - 1]!);
 
 /**
- * Procura nos artigos: cada palavra precisa aparecer em algum lugar do artigo (título, textos,
- * palavras do cliente ou nomes ligados), e os que têm as palavras nos lugares que pesam mais vêm
- * antes. O código BC-12 acha só aquele artigo. Sem busca, vêm todos, sem pontos.
+ * Procura nos artigos. `todas` (a busca da tela): cada palavra precisa aparecer em algum lugar do
+ * artigo (título, textos, palavras do cliente ou nomes ligados), e os que têm as palavras nos lugares
+ * que pesam mais vêm antes. `alguma` (a busca da IA, que manda muitas palavras): basta uma, e os que
+ * têm mais vêm antes. O código BC-12 acha só aquele artigo. Sem busca, vêm todos, sem pontos.
  */
-export function buscarArtigos<T extends ArtigoParaBusca>(artigos: T[], q: string | null | undefined): Achado<T>[] {
+export function buscarArtigos<T extends ArtigoParaBusca>(artigos: T[], q: string | null | undefined, modo: 'todas' | 'alguma' = 'todas'): Achado<T>[] {
   const bruto = (q ?? '').trim();
   if (!bruto) return artigos.map((artigo) => ({ artigo, pontos: 0, trecho: null }));
   const codigo = numeroDoCodigo(bruto);
@@ -344,7 +347,7 @@ export function buscarArtigos<T extends ArtigoParaBusca>(artigos: T[], q: string
       if (melhor > 0) { achadas++; pontos += melhor + Math.min(lugares - 1, 2) * 0.5; }
     }
     if (soNumero != null && artigo.numero === soNumero) { pontos += 50; achadas = termos.length; }
-    if (achadas < termos.length) continue;
+    if (modo === 'todas' ? achadas < termos.length : achadas === 0) continue;
     // a frase inteira, do jeito que foi escrita, vale mais que as palavras soltas
     if (frase.includes(' ')) {
       if (campos[0]!.normal.includes(frase)) pontos += 10;

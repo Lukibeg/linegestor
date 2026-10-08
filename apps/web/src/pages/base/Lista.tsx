@@ -9,18 +9,21 @@
  * Dois jeitos de ver o mesmo resultado (pedido do Luan na prévia): a **Lista** (o padrão) e o
  * **Kanban**, com uma coluna por produto, assunto, situação ou autor. A escolha fica no endereço e
  * no navegador de cada um.
+ *
+ * Com a IA ligada (Administração › Ajustes), o **Perguntar à IA** usa o mesmo texto da busca: a IA
+ * escolhida responde só com os artigos publicados e diz de qual artigo tirou cada linha.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { BookOpen, Filter, Kanban, LayoutList, MessageSquare, Plus, Search, X } from 'lucide-react';
-import { api } from '../../api/index.js';
-import type { ArtigoNaLista, OpcoesBase, TipoLigacao } from '../../api/types.js';
+import { BookOpen, Bot, Filter, Kanban, LayoutList, MessageSquare, Plus, Search, X } from 'lucide-react';
+import { api, IS_DEMO } from '../../api/index.js';
+import type { ArtigoNaLista, OpcoesBase, RespostaIa, TipoLigacao } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
-import { Abas, Carregando, Chip, EscolherComBusca, Paginacao, TODOS, Vazio, mensagemErro } from '../../components/ui/index.js';
+import { Abas, Carregando, Chip, EscolherComBusca, Paginacao, Spinner, TODOS, Vazio, mensagemErro } from '../../components/ui/index.js';
 import { relativo } from '../../lib/format.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
-import { CodigoArtigo, Ligacoes, Trecho, telaLarga } from './partes.js';
+import { CodigoArtigo, Ligacoes, Linha, Trecho, telaLarga } from './partes.js';
 
 const POR_PAGINA = 30;
 type Situacao = 'publicados' | 'obrigatorios' | 'rascunhos' | 'todos';
@@ -72,6 +75,14 @@ export function BaseLista() {
   });
   const opcoes = useQuery({ queryKey: ['base', 'opcoes'], queryFn: () => api.base.opcoes(), staleTime: 5 * 60_000 });
   const pendentes = useQuery({ queryKey: ['base', 'pendentes'], queryFn: () => api.base.pendentes(), staleTime: 60_000 });
+  const ia = useQuery({ queryKey: ['base', 'ia'], queryFn: () => api.base.ia(), staleTime: 5 * 60_000 });
+
+  const [resposta, setResposta] = useState<{ pergunta: string; r: RespostaIa } | null>(null);
+  const perguntar = useMutation({
+    mutationFn: (pergunta: string) => api.base.perguntar(pergunta),
+    onSuccess: (r, pergunta) => setResposta({ pergunta, r }),
+  });
+  const podePerguntar = !!ia.data?.ativa && texto.trim().length >= 3 && !perguntar.isPending;
 
   const podeEscrever = lista.data?.podeEscrever ?? false;
   const novoComTitulo = (t: string) => navigate(`/base/novo${t ? `?titulo=${encodeURIComponent(t)}` : ''}`);
@@ -93,7 +104,7 @@ export function BaseLista() {
         </div>
       )}
 
-      {/* a busca */}
+      {/* a busca, e a pergunta à IA com o mesmo texto (Ctrl+Enter) */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <label className="relative flex-1 min-w-[240px]">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
@@ -101,10 +112,19 @@ export function BaseLista() {
             className="input pl-9 py-2.5 text-[15px]" autoComplete="off" autoFocus={telaLarga()} id="busca-base"
             placeholder="Procure como o cliente falou: “ligação cai sozinha”, “ramal não registra”, BC-12…"
             value={texto} onChange={(e) => setTexto(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && podePerguntar) perguntar.mutate(texto.trim()); }}
           />
           {texto && <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 btn-ghost btn-sm text-muted px-1.5" onClick={() => setTexto('')} aria-label="Limpar a busca"><X size={14} /></button>}
         </label>
+        {ia.data?.ativa && (
+          <button className="btn-secondary py-2.5" id="perguntar-ia" disabled={!podePerguntar} onClick={() => perguntar.mutate(texto.trim())}
+            title={`Pergunta à IA (${ia.data.modelo}, ${ia.data.provedor}): ela responde só com os artigos publicados e diz de onde tirou (Ctrl+Enter)`}>
+            {perguntar.isPending ? <Spinner /> : <Bot size={16} />} Perguntar à IA
+          </button>
+        )}
       </div>
+      {perguntar.isError && <div className="text-bad text-sm mb-3" role="alert">{mensagemErro(perguntar.error)}</div>}
+      {resposta && <RespostaDaIa pergunta={resposta.pergunta} r={resposta.r} onFechar={() => setResposta(null)} podeEscrever={podeEscrever} onEscrever={() => novoComTitulo(resposta.pergunta)} />}
 
       <div className="flex flex-wrap items-end justify-between gap-x-3">
         {/* na tela larga as abas não encolhem: os botões da direita descem de linha antes de cortar "Todos" */}
@@ -330,5 +350,48 @@ function Filtros({ opcoes, valor, mudar }: { opcoes: OpcoesBase; valor: (f: stri
       {valor('chamado') && <Chip tone="accent">Ligados ao chamado <button className="ml-1" onClick={() => mudar('chamado', '')} aria-label="Tirar o filtro do chamado"><X size={12} /></button></Chip>}
     </div>
     </>
+  );
+}
+
+/** A resposta da IA: linha a linha, com os artigos de onde saiu cada uma, e os artigos que foram para ela. */
+function RespostaDaIa({ pergunta, r, onFechar, podeEscrever, onEscrever }: { pergunta: string; r: RespostaIa; onFechar: () => void; podeEscrever: boolean; onEscrever: () => void }) {
+  const custo = r.custo == null ? null : r.custo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 });
+  return (
+    <section className="card p-4 mb-4 border-accent" id="resposta-ia" aria-live="polite">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div className="min-w-0">
+          <div className="eyebrow flex items-center gap-1.5"><Bot size={13} /> A IA respondeu, com os artigos da base</div>
+          <p className="text-[13px] text-muted mt-0.5 truncate">“{pergunta}”</p>
+        </div>
+        <button className="btn-ghost btn-sm text-muted" onClick={onFechar} aria-label="Fechar a resposta"><X size={15} /></button>
+      </div>
+      <div className="text-[14.5px] leading-relaxed flex flex-col gap-0.5">
+        {r.trechos.map((t, i) => (t.texto ? (
+          <p key={i} className="whitespace-pre-wrap break-words">
+            <Linha texto={t.texto} />
+            {t.fontes.map((n) => <Link key={n} to={`/base/${n}`} className="ml-1 align-super text-[10.5px] font-mono text-accent-ink hover:underline" title={`De onde saiu: BC-${n}`}>BC-{n}</Link>)}
+          </p>
+        ) : <div key={i} className="h-2" aria-hidden />))}
+      </div>
+      {!r.achou && podeEscrever && (
+        <p className="text-[13px] mt-3">
+          {r.artigos.length ? 'A IA não citou nenhum dos artigos que leu (confira abaixo). ' : 'A base ainda não tem isso. '}
+          Quando resolver, <button className="link font-semibold" onClick={onEscrever}>escreva o artigo</button>.
+        </p>
+      )}
+      {r.artigos.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-line flex flex-col gap-1">
+          <div className="text-[12px] text-muted">{r.achou ? 'De onde saiu a resposta' : 'Artigos que foram para a IA'}</div>
+          {r.artigos.map((a) => (
+            <Link key={a.numero} to={`/base/${a.numero}`} className={`flex items-baseline gap-2 text-[13.5px] hover:underline ${a.citado ? '' : 'text-muted'}`}>
+              <CodigoArtigo codigo={a.codigo} /> {a.titulo}{!a.citado && r.achou && <span className="text-[11.5px]">(lido, não citado)</span>}
+            </Link>
+          ))}
+        </div>
+      )}
+      <p className="text-[11.5px] text-muted mt-3">
+        {IS_DEMO ? r.modelo : `${r.modelo} · ${r.provedor}`}{custo != null && ` · custou uns US$ ${custo}`} · confira no artigo antes de mexer no cliente
+      </p>
+    </section>
   );
 }

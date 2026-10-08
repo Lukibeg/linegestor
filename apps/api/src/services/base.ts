@@ -18,6 +18,7 @@
  *  - **comentários** (pedido do Luan na prévia): quem escreve comenta; fica registrado quem e
  *    quando; apagar é só o seu (ou quem cuida da base), e a auditoria guarda o texto apagado
  *  - nada se apaga de verdade: vai para a lixeira (quem escreveu, ou quem cuida da base)
+ *  - para a IA (`baseIa.ts`) vão só os **publicados**: rascunho e lixeira nunca saem do servidor
  *
  * As contas (busca, texto simples, versões, o livrinho do chamado) estão em `@gestor/shared/base.ts`,
  * as mesmas da prévia clicável.
@@ -722,6 +723,19 @@ export async function lerAnexo(db: Db, id: string, quem: Quem) {
   // o print de uma versão antiga continua abrindo (por isso não olhamos o deletedAt do anexo inline)
   if (!row || row.a.deletedAt || !visivel(row.a, quem) || (row.x.deletedAt && !row.x.inline)) throw new NotFound('Anexo');
   return { ...row.x, buffer: Buffer.from(row.x.dataBase64, 'base64'), imagem: row.x.inline && IMAGENS_DO_TEXTO.includes(row.x.mimeType) };
+}
+
+// ---------------------------------------------------------------------
+// Para a IA: os artigos publicados, do jeito que a busca precisa
+// ---------------------------------------------------------------------
+
+/** Os publicados (nunca rascunho, nunca da lixeira), com os nomes do que está ligado: é só isso que vai para a IA. */
+export async function publicadosParaBusca(db: Db) {
+  const rows = await db.select().from(knowledgeArticles).where(and(isNull(knowledgeArticles.deletedAt), eq(knowledgeArticles.status, 'publicado')));
+  const ligs = await ligacoesDe(db, rows.map((a) => a.id));
+  const carregados = rows.map((a) => ({ a, ligacoes: ligs.get(a.id) ?? [] }));
+  const nomes = await nomesDasLigacoes(db, carregados.flatMap((c) => c.ligacoes));
+  return carregados.map((c) => ({ ...paraBusca(c, nomes), id: c.a.id }));
 }
 
 export { codigoDoArtigo };

@@ -228,6 +228,13 @@ export const realApi: Api = {
     ligados: (tipo, alvo) => http('GET', `/base/ligados${qs({ tipo, alvo })}`),
     paraChamados: (ids) => http('POST', '/base/para-chamados', { ids }),
     doChamado: (ref) => http('GET', `/base/do-chamado/${encodeURIComponent(ref)}`),
+    ia: () => http('GET', '/base/ia'),
+    perguntar: (pergunta) => http('POST', '/base/ia/perguntar', { pergunta }),
+    rascunhoIa: (chamado) => http('POST', '/base/ia/rascunho', { chamado }),
+    iaAjustes: () => http('GET', '/base/ia/ajustes'),
+    salvarIaAjustes: (a) => http('PUT', '/base/ia/ajustes', a),
+    testarIa: () => http('POST', '/base/ia/testar'),
+    iaModelos: (p) => http('POST', '/base/ia/modelos', p),
   },
   portalAdmin: {
     opcoes: () => http('GET', '/portal-admin/opcoes'),

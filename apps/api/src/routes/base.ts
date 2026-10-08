@@ -1,13 +1,18 @@
 /**
  * Base de conhecimento (Patch 1.8): os artigos, a busca, as versões, a leitura obrigatória, os
- * comentários e a base nas outras telas (fichas, chamados, projetos). Ler é de todo mundo
+ * comentários, a base nas outras telas (fichas, chamados, projetos) e a IA. Ler é de todo mundo
  * (`records.read`); escrever e comentar é `knowledge.write`; cuidar da base (leitura obrigatória,
- * rascunhos de todos) é `knowledge.manage`. Tudo o que muda vai para a auditoria.
+ * rascunhos de todos) é `knowledge.manage`; os ajustes da IA (o provedor, o modelo e a chave) são da
+ * administração. Tudo o que muda vai para a auditoria.
  */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { ArtigoGravarSchema, BaseListarSchema, codigoDoArtigo, ComentarioArtigoSchema, LigacaoArtigoSchema, TIPOS_LIGACAO } from '@gestor/shared';
+import {
+  AjustesIaSchema, ArtigoGravarSchema, BaseListarSchema, codigoDoArtigo, ComentarioArtigoSchema, hostDoEndereco, INFO_PROVEDORES, LigacaoArtigoSchema, ModelosIaSchema,
+  PerguntarSchema, RascunhoIaSchema, TIPOS_LIGACAO,
+} from '@gestor/shared';
 import * as svc from '../services/base.js';
+import * as ia from '../services/baseIa.js';
 
 const Numero = z.object({ numero: z.string() });
 const NumeroVersao = z.object({ numero: z.string(), versao: z.coerce.number().int().min(1) });
@@ -60,6 +65,73 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       // o print é imagem que o próprio navegador reduziu (nunca SVG); o resto sempre baixa
       if (a.imagem) return reply.header('Content-Type', a.mimeType).header('Content-Disposition', contentDisposition('inline', a.fileName)).send(a.buffer);
       return reply.header('Content-Type', 'application/octet-stream').header('Content-Disposition', contentDisposition('attachment', a.fileName)).send(a.buffer);
+    });
+
+  // ---------- a IA (com o provedor que a administração escolher) ----------
+
+  app.get('/ia', { ...ler, schema: { tags: ['Base de conhecimento'], summary: 'A IA está ligada? (para mostrar o "Perguntar à IA")' } },
+    async () => ia.situacaoIa(app.db));
+
+  app.post('/ia/perguntar', {
+    ...ler,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    schema: { tags: ['Base de conhecimento'], summary: 'Perguntar à base: a IA responde só com os artigos publicados que a busca achar, citando de onde tirou', body: PerguntarSchema },
+  }, async (req) => {
+    const r = await ia.perguntar(app.db, app.vault, req.body.pergunta, quem(req));
+    await app.audit(req, {
+      action: 'base_ia_pergunta', entityType: 'knowledge', entityId: null,
+      summary: `${req.user!.name} perguntou à base (IA, ${r.provedor}): "${req.body.pergunta.slice(0, 120)}"${r.achou ? ` — respondeu com ${r.artigos.filter((a) => a.citado).map((a) => a.codigo).join(', ')}` : ' — a base não tinha a resposta'}`,
+    });
+    return r;
+  });
+
+  app.post('/ia/rascunho', {
+    ...escrever,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    schema: { tags: ['Base de conhecimento'], summary: 'O rascunho do artigo, escrito pela IA a partir do card (a pessoa revisa antes de publicar)', body: RascunhoIaSchema },
+  }, async (req) => {
+    const r = await ia.rascunho(app.db, app.vault, req.body.chamado, quem(req));
+    await app.audit(req, { action: 'base_ia_rascunho', entityType: 'knowledge', entityId: null, summary: `${req.user!.name} pediu à IA (${r.provedor}) o rascunho de um artigo a partir do chamado ${req.body.chamado}` });
+    return r;
+  });
+
+  const administrar = { preHandler: app.requirePermission('admin.manage') };
+
+  app.get('/ia/ajustes', { ...administrar, schema: { tags: ['Base de conhecimento'], summary: 'Os ajustes da IA: provedor, modelo, último teste e o uso do mês (a chave nunca volta)' } },
+    async () => ia.statusIa(app.db));
+
+  app.put('/ia/ajustes', {
+    ...administrar,
+    schema: { tags: ['Base de conhecimento'], summary: 'Ligar a IA, escolher o provedor e o modelo, e trocar a chave (que vai para o cofre)', body: AjustesIaSchema },
+  }, async (req) => {
+    const r = await ia.gravarAjustesIa(app.db, app.vault, req.body, req.user!.id);
+    await app.audit(req, {
+      action: 'settings_base_ia', entityType: 'settings', entityId: 'base-ia',
+      summary: `${req.user!.name} ${req.body.ativo ? 'ligou' : 'desligou'} a IA da base (${INFO_PROVEDORES[r.provedor].nome}${r.modelo ? ` · ${r.modeloNome || r.modelo}` : ''})${req.body.chave ? ' e trocou a chave' : ''}`,
+    });
+    return r;
+  });
+
+  app.post('/ia/modelos', {
+    ...administrar,
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    schema: { tags: ['Base de conhecimento'], summary: 'Os modelos que a chave pode usar (a chave digitada, ou a guardada se for do mesmo provedor)', body: ModelosIaSchema },
+  }, async (req) => {
+    const r = await ia.modelosDoProvedor(app.db, app.vault, req.body);
+    // a lista sai com a chave digitada ou com a guardada (que só vai para o provedor e o serviço dela)
+    const onde = req.body.provedor === 'compativel' ? ` · ${hostDoEndereco(req.body.endereco)}` : '';
+    await app.audit(req, {
+      action: 'settings_base_ia_modelos', entityType: 'settings', entityId: 'base-ia',
+      summary: `${req.user!.name} buscou os modelos da IA (${INFO_PROVEDORES[req.body.provedor].nome}${onde}) com a chave ${r.chaveGuardada ? 'guardada' : 'digitada'}: ${r.modelos.length} ${r.modelos.length === 1 ? 'modelo' : 'modelos'}`,
+    });
+    return { modelos: r.modelos };
+  });
+
+  app.post('/ia/testar', { ...administrar, schema: { tags: ['Base de conhecimento'], summary: 'Testar a chave, o modelo e o endereço guardados' } },
+    async (req) => {
+      const r = await ia.testarIa(app.db, app.vault);
+      await app.audit(req, { action: 'settings_base_ia_test', entityType: 'settings', entityId: 'base-ia', summary: `${req.user!.name} testou a IA da base (${r.ok ? 'funcionou' : 'falhou'})` });
+      return r;
     });
 
   // ---------- um artigo ----------

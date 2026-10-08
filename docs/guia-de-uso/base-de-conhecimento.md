@@ -5,7 +5,7 @@ passo de uma configuração, o cuidado que evita retrabalho. Cada artigo tem um 
 para colar no card do LineChat ou no WhatsApp.
 
 Quem lê: todo mundo. Quem escreve e comenta: Operador, Técnico e Administrador. Quem cuida da base
-(pede leitura obrigatória, vê os rascunhos de todos): o Administrador.
+(pede leitura obrigatória, vê os rascunhos de todos) e liga a IA: o Administrador.
 
 ---
 
@@ -58,7 +58,8 @@ só para você (e para quem cuida da base).
 - Ou, no artigo novo, escreva o código do card em **Veio de um chamado?** e clique em **Trazer o que
   o card tem**.
 
-O Gestor só lê o card: nada muda no LineChat.
+O Gestor só lê o card: nada muda no LineChat. Com a IA ligada (item 9), o botão **Escrever o
+rascunho com a IA** lê o card e preenche o artigo para você revisar.
 
 O **livrinho** ao lado do código do card mostra quantos artigos valem para aquele chamado (os ligados
 ao card, ao assunto e ao cliente dele). Clique para ver quais.
@@ -105,3 +106,48 @@ não vale: só quem escreveu vê.
 
 O artigo vai para a lixeira pelo botão vermelho (quem escreveu, ou quem cuida da base) e volta por
 **Administração › Lixeira**.
+
+## 9. A IA (opcional)
+
+Desligada até quem administra ligar. Com ela ligada, aparecem dois botões:
+
+- **Perguntar à IA**, ao lado da busca: escreva a pergunta do jeito que o cliente falou e clique
+  (ou **Ctrl+Enter**). A IA responde **só com os artigos publicados** que a busca da base achar, e
+  cada linha diz de qual artigo saiu (o **BC-1** pequeno abre o artigo). Embaixo vêm os artigos que
+  ela leu. **Confira no artigo antes de mexer no cliente.** Se a base não tem a resposta, ela diz
+  isso, e o link **escreva o artigo** já abre um artigo novo com a pergunta no título.
+- **Escrever o rascunho com a IA**, em **Veio de um chamado?** (artigo novo): ela lê o card (título,
+  descrição, campos e as etapas por onde passou) e preenche o artigo. Onde faltou informação, ela
+  escreve **[completar: …]** — troque pelo que aconteceu de verdade. **Desfazer** volta ao que estava.
+  Nada é publicado sozinho: você revisa e publica.
+
+Cada pessoa usa até **30 vezes por hora**. Rascunho de artigo nunca vai para a IA; o texto dos
+artigos publicados que a busca acha, sim — mais um motivo para senha nunca ir em artigo.
+
+### Ligar e escolher o provedor (quem administra)
+
+Em **Administração › Ajustes › IA da base**:
+
+1. **Provedor**: Anthropic (Claude), OpenAI (ChatGPT), Google (Gemini) ou **outro compatível** com a
+   OpenAI. No compatível, informe o **endereço da API** (começa com `https://`); os botões abaixo do
+   campo preenchem os mais usados: OpenRouter (muitos modelos com uma chave só), DeepSeek, Groq,
+   Mistral, Maritaca (brasileira) e xAI.
+2. **Chave da API**, criada na conta da empresa no provedor (Anthropic: platform.claude.com › API
+   Keys; OpenAI: platform.openai.com › API keys; Google: aistudio.google.com › Get API key). Ela fica
+   cifrada no cofre, não aparece de volta e só vai para o provedor dela (no compatível, só para o
+   serviço dela): para trocar de provedor, ou de serviço compatível, cole a chave do novo.
+3. **Modelo**: **Buscar modelos** mostra os que a chave pode usar; ou escreva o nome (como
+   `claude-sonnet-5-5`, `gpt-5.4-mini`, `gemini-3.5-flash`). Serviço que não mostra a lista (a
+   Maritaca, por exemplo): escreva o nome que está na página dele, como `sabia-3`.
+4. **Preço do modelo** (opcional): o valor em dólar por milhão de tokens lidos e escritos, da página
+   de preços do provedor. Com ele, o cartão mostra quanto o mês custou e cada resposta mostra quanto
+   custou. Sem ele, só os tokens.
+5. Ligue a chave **Ligar a IA na base de conhecimento**, **Salvar** e **Testar agora** (uma pergunta
+   de uma palavra, que custa uma fração de centavo).
+
+Dá para trocar o provedor ou o modelo quando quiser. O cartão mostra o último teste e o uso do mês
+(perguntas, rascunhos e tokens). Quem paga é a conta da empresa no provedor.
+
+**Se der erro**: "A chave da IA foi recusada" — a chave está errada ou foi apagada no provedor;
+"sem crédito ou passou da cota" — falta crédito na conta do provedor; "não reconheceu o modelo" —
+escolha outro em **Buscar modelos**; "chegou ao limite de pedidos" — espere um minuto.

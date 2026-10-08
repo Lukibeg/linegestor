@@ -210,6 +210,16 @@ export type Api = {
     paraChamados(ids: string[]): Promise<T.ArtigosDosChamados>;
     /** "Registrar na base" a partir de um chamado (pelo id do card ou IS-3607) */
     doChamado(ref: string): Promise<T.DoChamado>;
+    /** a IA (1.8): pronta? perguntar à base, o rascunho a partir do card */
+    ia(): Promise<T.SituacaoIa>;
+    perguntar(pergunta: string): Promise<T.RespostaIa>;
+    rascunhoIa(chamado: string): Promise<T.RascunhoIa>;
+    /** os ajustes da IA (administração): o provedor, o modelo, a chave (que nunca volta) */
+    iaAjustes(): Promise<T.AjustesIa>;
+    salvarIaAjustes(a: T.SalvarAjustesIa): Promise<T.AjustesIa>;
+    testarIa(): Promise<{ ok: boolean; mensagem: string }>;
+    /** os modelos que a chave pode usar (a digitada, ou a guardada se for do mesmo provedor) */
+    iaModelos(p: { provedor: T.ProvedorIa; endereco?: string | null; chave?: string }): Promise<{ modelos: T.ModeloIa[] }>;
   };
   /** Portal do cliente — o lado da equipe (Patch 1.8) */
   portalAdmin: {

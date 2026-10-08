@@ -9,10 +9,15 @@
  *  - versões (comparar e voltar), ligações conferidas, prints e anexos
  *  - leitura obrigatória (pelo botão do artigo e já no formulário), a base nas fichas e no chamado,
  *    a lixeira e os comentários
+ *  - a IA, com o provedor escolhido (Anthropic, OpenAI, Google ou compatível): desligada sem chave;
+ *    a chave no cofre; o que vai para cada API; a resposta só com os publicados, citando; os erros
+ *    em português; a lista de modelos; o rascunho a partir do card; o limite de uso
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { linechatFields, linechatSteps, linechatCards, settings } from '@gestor/db';
+import { INSTRUCOES_PERGUNTA, INSTRUCOES_RASCUNHO, INSTRUCOES_TERMOS } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
+import { esquecerLimitesIa, trocarFerramentasIa } from '../src/services/baseIa.js';
 
 let app: App;
 let s: Session;          // administrador: escreve e cuida da base
@@ -343,5 +348,316 @@ describe('comentários (pedido do Luan na prévia)', () => {
     const apagou = itens.find((x: any) => x.summary === `Apagou um comentário de Bruno Técnico em ${r.codigo}`);
     expect(apagou.before).toMatchObject({ comentario: 'No Mikrotik a opção fica em IP › Firewall › Service Ports.', por: 'Bruno Técnico' });
     expect(itens.some((x: any) => x.summary === `Apagou um comentário em ${r.codigo}`)).toBe(true); // a Marina apagou o dela
+  });
+});
+
+describe('a IA, com o provedor escolhido', () => {
+  type Chamada = { url: string; metodo: string; corpo: any; cabecalhos: Headers; redirect?: string };
+  type Falsa = { status?: number; corpo?: unknown; erro?: Error };
+  let chamadas: Chamada[] = [];
+  /** o que cada chamada devolve, na ordem (faltou: erro 500, para o teste perceber) */
+  let respostas: Falsa[] = [];
+  beforeAll(() => {
+    trocarFerramentasIa({
+      fetchFn: (async (url: string, init: RequestInit) => {
+        chamadas.push({ url: String(url), metodo: init.method ?? 'GET', corpo: init.body ? JSON.parse(String(init.body)) : null, cabecalhos: new Headers(init.headers), redirect: init.redirect });
+        const r = respostas.shift() ?? { status: 500, corpo: {} };
+        if (r.erro) throw r.erro;
+        return new Response(JSON.stringify(r.corpo ?? {}), { status: r.status ?? 200, headers: { 'content-type': 'application/json' } });
+      }) as typeof fetch,
+      // para onde o nome do serviço compatível aponta (o teste não sai para a internet)
+      resolver: async (host: string) => { nomesResolvidos.push(host); return ipsDoServico; },
+    });
+  });
+  let ipsDoServico: string[] = [];
+  let nomesResolvidos: string[] = [];
+  beforeEach(() => { chamadas = []; respostas = []; esquecerLimitesIa(); ipsDoServico = ['203.0.113.10']; nomesResolvidos = []; });
+
+  // o formato de resposta de cada provedor
+  const anthropic = (texto: string, entrada = 100, saida = 20): Falsa => ({ corpo: { content: [{ type: 'text', text: texto }], stop_reason: 'end_turn', usage: { input_tokens: entrada, output_tokens: saida } } });
+  const openai = (texto: string, entrada = 100, saida = 20): Falsa => ({ corpo: { choices: [{ message: { role: 'assistant', content: texto }, finish_reason: 'stop' }], usage: { prompt_tokens: entrada, completion_tokens: saida } } });
+  const google = (texto: string, entrada = 100, saida = 20): Falsa => ({
+    corpo: { candidates: [{ content: { role: 'model', parts: [{ text: 'pensando no assunto…', thought: true }, { text: texto }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: entrada, candidatesTokenCount: saida, thoughtsTokenCount: 5 } },
+  });
+  const ajustes = (o: Record<string, unknown>) => s.put('/base/ia/ajustes', { ativo: true, modeloNome: null, precoEntrada: null, precoSaida: null, ...o });
+
+  it('desligada sem chave: avisa em vez de tentar', async () => {
+    expect((await leitor.get('/base/ia')).json()).toMatchObject({ ativa: false });
+    const r = await leitor.post('/base/ia/perguntar', { pergunta: 'ligação cai?' });
+    expect(r.statusCode).toBe(400);
+    expect(r.json().error).toMatch(/chave/);
+    expect((await ajustes({ provedor: 'anthropic', modelo: 'claude-sonnet-5-5' })).json().error).toMatch(/Cole a chave da API da Anthropic/);
+    expect((await ajustes({ provedor: 'openai', modelo: '' })).statusCode).toBe(400); // ligar pede o modelo
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it('a chave vai para o cofre e nunca volta; só a administração mexe', async () => {
+    expect((await tecnico.put('/base/ia/ajustes', { ativo: true, provedor: 'anthropic', modelo: 'claude-sonnet-5-5', chave: 'chave-falsa-anthropic' })).statusCode).toBe(403);
+    const r = await ajustes({ provedor: 'anthropic', modelo: 'claude-sonnet-5-5', modeloNome: 'Claude Sonnet 5.5', chave: 'chave-falsa-anthropic' });
+    expect(r.statusCode).toBe(200);
+    expect(JSON.stringify(r.json())).not.toContain('chave-falsa-anthropic');
+    expect(r.json()).toMatchObject({ ativo: true, provedor: 'anthropic', temChave: true, chaveDe: 'anthropic', uso: { perguntas: 0, custo: null } });
+    expect(JSON.stringify(await app.db.select().from(settings))).not.toContain('chave-falsa-anthropic');
+    expect((await leitor.get('/base/ia')).json()).toEqual({ ativa: true, modelo: 'Claude Sonnet 5.5', provedor: 'Anthropic (Claude)' });
+    const auditoria = (await s.get('/admin/audit?entityId=base-ia')).json().items;
+    expect(auditoria[0].summary).toMatch(/ligou a IA da base \(Anthropic \(Claude\) · Claude Sonnet 5\.5\) e trocou a chave/);
+    expect(JSON.stringify(auditoria)).not.toContain('chave-falsa-anthropic');
+  });
+
+  it('Anthropic: a IA sugere as palavras, o Gestor procura e ela responde só com os publicados, citando', async () => {
+    // um rascunho que a busca acharia: rascunho nunca vai para a IA
+    await operador.post('/base', { titulo: 'Áudio mudo no ramal (rascunho)', comoResolver: 'Liberar as portas RTP no roteador.' });
+    respostas = [
+      anthropic('{"termos": ["portas rtp", "roteador", "áudio de um lado"]}', 300, 30),
+      anthropic('1. Libere as portas de áudio (RTP) no roteador [BC-3].\n2. Depois teste uma ligação.', 2000, 100),
+    ];
+    const r = await leitor.post('/base/ia/perguntar', { pergunta: 'O ramal toca mas ninguém se ouve' });
+    expect(r.statusCode).toBe(200);
+    const b = r.json();
+    expect(b.achou).toBe(true);
+    expect(b.trechos).toEqual([
+      { texto: '1. Libere as portas de áudio (RTP) no roteador.', fontes: [3] },
+      { texto: '2. Depois teste uma ligação.', fontes: [] },
+    ]);
+    expect(b.artigos[0]).toMatchObject({ codigo: 'BC-3', titulo: 'Áudio só de um lado depois de trocar a internet', citado: true });
+    expect(b).toMatchObject({ modelo: 'Claude Sonnet 5.5', provedor: 'Anthropic (Claude)', custo: null });
+
+    // o que foi para a API da Anthropic: a chave no cabeçalho, as instruções, a pergunta e os artigos
+    expect(chamadas.map((c) => [c.metodo, c.url])).toEqual([['POST', 'https://api.anthropic.com/v1/messages'], ['POST', 'https://api.anthropic.com/v1/messages']]);
+    expect(chamadas[0]!.cabecalhos.get('x-api-key')).toBe('chave-falsa-anthropic');
+    expect(chamadas[0]!.cabecalhos.get('anthropic-version')).toBe('2023-06-01');
+    expect(chamadas[0]!.corpo).toMatchObject({ model: 'claude-sonnet-5-5', system: INSTRUCOES_TERMOS, messages: [{ role: 'user', content: 'O ramal toca mas ninguém se ouve' }] });
+    expect(chamadas[1]!.corpo.system).toBe(INSTRUCOES_PERGUNTA);
+    const mensagem: string = chamadas[1]!.corpo.messages[0].content;
+    expect(mensagem).toContain('[BC-3] Áudio só de um lado depois de trocar a internet');
+    expect(mensagem).toContain('Como resolver:\nLiberar as portas de áudio (RTP) no roteador.');
+    expect(mensagem.endsWith('Pergunta da equipe: O ramal toca mas ninguém se ouve')).toBe(true);
+    expect(mensagem).not.toContain('rascunho');
+
+    // o mês soma os usos e os tokens; sem o preço do modelo, sem custo
+    expect((await s.get('/base/ia/ajustes')).json().uso).toMatchObject({ perguntas: 1, rascunhos: 0, entrada: 2300, saida: 130, custo: null });
+    const auditoria = (await s.get('/admin/audit?action=base_ia_pergunta')).json().items;
+    expect(auditoria.some((x: any) => x.summary.includes('respondeu com BC-3'))).toBe(true);
+  });
+
+  it('OpenAI: trocar de provedor pede a chave dele; com o preço, sai o custo', async () => {
+    expect((await ajustes({ provedor: 'openai', modelo: 'gpt-5.4-mini' })).json().error).toMatch(/A chave guardada é da Anthropic\. Cole a chave da OpenAI/);
+    // desligada, dá para escolher o provedor antes de ter a chave
+    expect((await s.put('/base/ia/ajustes', { ativo: false, provedor: 'openai', modelo: 'gpt-5.4-mini' })).json()).toMatchObject({ ativo: false, chaveDe: 'anthropic' });
+    expect((await leitor.get('/base/ia')).json().ativa).toBe(false);
+    const r = await ajustes({ provedor: 'openai', modelo: 'gpt-5.4-mini', chave: 'chave-falsa-openai', precoEntrada: 0.25, precoSaida: 2 });
+    expect(r.json()).toMatchObject({ provedor: 'openai', modelo: 'gpt-5.4-mini', modeloNome: null, chaveDe: 'openai', precoEntrada: 0.25, precoSaida: 2 });
+
+    respostas = [openai('{"termos": ["rtp", "roteador"]}', 400, 40), openai('Libere as portas RTP no roteador [BC-3, BC-99].', 1600, 60)];
+    const b = (await tecnico.post('/base/ia/perguntar', { pergunta: 'ninguém se ouve na ligação' })).json();
+    // o BC-99 não foi para a IA: some do texto
+    expect(b.trechos).toEqual([{ texto: 'Libere as portas RTP no roteador.', fontes: [3] }]);
+    expect(b.custo).toBeCloseTo((2000 * 0.25 + 100 * 2) / 1_000_000, 6);
+    expect(chamadas[0]!.url).toBe('https://api.openai.com/v1/chat/completions');
+    expect(chamadas[0]!.cabecalhos.get('authorization')).toBe('Bearer chave-falsa-openai');
+    expect(chamadas[0]!.cabecalhos.get('x-api-key')).toBeNull();
+    expect(chamadas[0]!.corpo).toMatchObject({ model: 'gpt-5.4-mini', response_format: { type: 'json_object' }, max_completion_tokens: 2048 });
+    expect(chamadas[0]!.corpo.messages).toEqual([{ role: 'system', content: INSTRUCOES_TERMOS }, { role: 'user', content: 'ninguém se ouve na ligação' }]);
+    expect(chamadas[1]!.corpo.response_format).toBeUndefined();
+    expect((await s.get('/base/ia/ajustes')).json().uso).toMatchObject({ perguntas: 2, custo: expect.any(Number) });
+  });
+
+  it('Google (Gemini): o pensamento do modelo não entra na resposta, mas entra na conta', async () => {
+    await ajustes({ provedor: 'google', modelo: 'gemini-3.5-flash', chave: 'chave-falsa-google' });
+    respostas = [google('{"termos": ["rtp"]}'), google('Libere as portas RTP [BC-3].', 1000, 50)];
+    const b = (await leitor.post('/base/ia/perguntar', { pergunta: 'ninguém se ouve' })).json();
+    expect(b.trechos).toEqual([{ texto: 'Libere as portas RTP.', fontes: [3] }]);
+    expect(chamadas[0]!.url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent');
+    expect(chamadas[0]!.cabecalhos.get('x-goog-api-key')).toBe('chave-falsa-google');
+    expect(chamadas[0]!.url).not.toContain('chave-falsa-google');
+    expect(chamadas[0]!.corpo).toMatchObject({
+      systemInstruction: { parts: [{ text: INSTRUCOES_TERMOS }] },
+      contents: [{ role: 'user', parts: [{ text: 'ninguém se ouve' }] }],
+      generationConfig: { maxOutputTokens: 2048, responseMimeType: 'application/json' },
+    });
+    expect(chamadas[1]!.corpo.generationConfig.responseMimeType).toBeUndefined();
+    // nesta pergunta, 100 + 1000 lidos e 20 + 5 + 50 + 5 escritos: o "pensamento" também se paga
+    expect((await s.get('/base/ia/ajustes')).json().uso).toMatchObject({ perguntas: 3, entrada: 2300 + 2000 + 1100, saida: 130 + 100 + 80 });
+  });
+
+  it('compatível (OpenRouter, DeepSeek…): o endereço colado de qualquer jeito, e o limite menor', async () => {
+    expect((await ajustes({ provedor: 'compativel', modelo: 'deepseek-chat', endereco: 'http://api.deepseek.com', chave: 'chave-falsa-deepseek' })).statusCode).toBe(400);
+    expect((await ajustes({ provedor: 'compativel', modelo: 'deepseek-chat', endereco: 'https://localhost/v1', chave: 'chave-falsa-deepseek' })).statusCode).toBe(400);
+    const r = await ajustes({ provedor: 'compativel', modelo: 'deepseek-chat', endereco: ' https://api.deepseek.com/chat/completions/ ', chave: 'chave-falsa-deepseek' });
+    expect(r.json()).toMatchObject({ provedor: 'compativel', endereco: 'https://api.deepseek.com', chaveDe: 'compativel' });
+    expect((await leitor.get('/base/ia')).json()).toMatchObject({ ativa: true, modelo: 'deepseek-chat' });
+
+    respostas = [openai('<think>o cliente quer…</think>{"termos": ["rtp"]}'), openai('<think>vou citar o BC-3</think>Libere as portas RTP [BC-3].')];
+    const b = (await leitor.post('/base/ia/perguntar', { pergunta: 'ninguém se ouve' })).json();
+    expect(b.trechos).toEqual([{ texto: 'Libere as portas RTP.', fontes: [3] }]);
+    expect(chamadas[0]!.url).toBe('https://api.deepseek.com/chat/completions');
+    expect(chamadas[0]!.cabecalhos.get('authorization')).toBe('Bearer chave-falsa-deepseek');
+    expect(chamadas.map((c) => c.redirect)).toEqual(['error', 'error']);
+    expect(nomesResolvidos).toEqual(['api.deepseek.com', 'api.deepseek.com']);
+    expect(chamadas[1]!.corpo).toMatchObject({ model: 'deepseek-chat', max_tokens: 4096 });
+    expect(chamadas[1]!.corpo.max_completion_tokens).toBeUndefined();
+    expect(chamadas[0]!.corpo.response_format).toBeUndefined();
+  });
+
+  it('não achou nada na base: diz isso sem a 2ª conversa (não gasta à toa)', async () => {
+    respostas = [openai('{"termos": ["xyzzy"]}')];
+    const b = (await leitor.post('/base/ia/perguntar', { pergunta: 'qwertyuiop asdfgh' })).json();
+    expect(b).toMatchObject({ achou: false, artigos: [] });
+    expect(b.trechos[0].texto).toMatch(/não achei nenhum artigo/);
+    expect(chamadas).toHaveLength(1);
+    // "???" não tem palavra que conte: nada de mandar artigo qualquer para a IA
+    chamadas = [];
+    respostas = [openai('{"termos": ["??", "--"]}')];
+    expect((await leitor.post('/base/ia/perguntar', { pergunta: '???' })).json()).toMatchObject({ achou: false, artigos: [] });
+    expect(chamadas).toHaveLength(1);
+  });
+
+  it('serviço que não diz os tokens: a pergunta conta do mesmo jeito', async () => {
+    const antes = (await s.get('/base/ia/ajustes')).json().uso;
+    respostas = [{ corpo: { choices: [{ message: { content: '{"termos": ["rtp"]}' } }] } }, { corpo: { choices: [{ message: { content: [{ type: 'thinking', thinking: 'hmm' }, { type: 'text', text: 'Libere as portas RTP [BC-3].' }] } }] } }];
+    const b = (await leitor.post('/base/ia/perguntar', { pergunta: 'ninguém se ouve' })).json();
+    // a resposta em partes (o "pensamento" numa, o texto noutra) também é lida
+    expect(b.trechos).toEqual([{ texto: 'Libere as portas RTP.', fontes: [3] }]);
+    const depois = (await s.get('/base/ia/ajustes')).json().uso;
+    expect(depois.perguntas).toBe(antes.perguntas + 1);
+    expect(depois.entrada).toBe(antes.entrada);
+  });
+
+  it('os erros do provedor viram mensagem em português, sem a chave', async () => {
+    const casos: Array<[Falsa, RegExp]> = [
+      [{ status: 401, corpo: { error: { message: 'Incorrect API key provided: chave-falsa-deepseek' } } }, /A chave da IA foi recusada/],
+      [{ status: 402, corpo: { error: { message: 'Insufficient Balance' } } }, /sem crédito/],
+      [{ status: 429, corpo: { error: { code: 'insufficient_quota', message: 'You exceeded your current quota' } } }, /sem crédito/],
+      [{ status: 404, corpo: { error: { message: 'Model Not Exist' } } }, /não reconheceu o modelo "deepseek-chat" \(ou o endereço da API\)/],
+      [{ status: 429, corpo: { error: { message: 'Rate limit reached' } } }, /limite de pedidos/],
+      [{ status: 429, corpo: { error: { code: 429, message: 'You exceeded your current quota, please check your plan and billing details.', status: 'RESOURCE_EXHAUSTED' } } }, /limite de pedidos/],
+      [{ erro: Object.assign(new TypeError('fetch failed'), { cause: new Error('unexpected redirect') }) }, /redirecionou/],
+      [{ status: 503, corpo: {} }, /sobrecarregada/],
+      [{ status: 400, corpo: { error: { message: 'max_tokens is too large for chave-falsa-deepseek' } } }, /recusou o pedido \(400\): max_tokens is too large/],
+      [{ erro: Object.assign(new TypeError('fetch failed'), { cause: { code: 'ENOTFOUND' } }) }, /Não achei o endereço/],
+      [{ erro: Object.assign(new Error('demorou'), { name: 'TimeoutError' }) }, /demorou demais/],
+    ];
+    for (const [falsa, espera] of casos) {
+      respostas = [falsa];
+      const r = (await s.post('/base/ia/testar')).json();
+      expect(r.ok).toBe(false);
+      expect(r.mensagem).toMatch(espera);
+      expect(r.mensagem).not.toContain('chave-falsa-deepseek');
+    }
+    // na pergunta, o erro chega como erro da tela
+    respostas = [{ status: 401, corpo: {} }];
+    const r = await leitor.post('/base/ia/perguntar', { pergunta: 'qualquer coisa' });
+    expect(r.statusCode).toBe(400);
+    expect(r.json().error).toMatch(/A chave da IA foi recusada \(Outro compatível/);
+  });
+
+  it('testar: com o que está guardado; mudar o modelo apaga o último teste', async () => {
+    respostas = [openai('')];
+    expect((await s.post('/base/ia/testar')).json()).toMatchObject({ ok: false, mensagem: expect.stringMatching(/respondeu sem texto/) });
+    respostas = [openai('funcionando')];
+    expect((await s.post('/base/ia/testar')).json()).toMatchObject({ ok: true, mensagem: expect.stringMatching(/A IA respondeu \(deepseek-chat, .*\): "funcionando"/) });
+    expect(chamadas.at(-1)!.corpo.max_tokens).toBe(4096);
+    expect((await s.get('/base/ia/ajustes')).json()).toMatchObject({ ultimoTesteOk: true, ultimoTesteMsg: expect.stringContaining('funcionando') });
+    expect((await leitor.post('/base/ia/testar')).statusCode).toBe(403);
+    // o teste não conta no uso do mês (sete perguntas até aqui; a que deu erro antes de responder não conta)
+    expect((await s.get('/base/ia/ajustes')).json().uso.perguntas).toBe(7);
+    const r = await ajustes({ provedor: 'compativel', modelo: 'deepseek-reasoner', endereco: 'https://api.deepseek.com' });
+    expect(r.json()).toMatchObject({ modelo: 'deepseek-reasoner', ultimoTesteEm: null, ultimoTesteOk: null, chaveDe: 'compativel' });
+    await ajustes({ provedor: 'compativel', modelo: 'deepseek-chat', endereco: 'https://api.deepseek.com' });
+  });
+
+  it('a chave guardada do compatível só vai para o serviço dela', async () => {
+    // outro endereço com a chave guardada: nem sai pedido
+    const r1 = await s.post('/base/ia/modelos', { provedor: 'compativel', endereco: 'https://outro-servico.example.com/v1' });
+    expect(r1.statusCode).toBe(400);
+    expect(r1.json().error).toMatch(/Cole a chave da API de outro-servico\.example\.com/);
+    expect(chamadas).toHaveLength(0);
+    // ligar com outro endereço pede a chave dele
+    expect((await ajustes({ provedor: 'compativel', modelo: 'deepseek-chat', endereco: 'https://openrouter.ai/api/v1' })).json().error)
+      .toMatch(/A chave guardada é de api\.deepseek\.com\. Cole a chave de openrouter\.ai/);
+    // desligada, dá para gravar o endereço novo; mas a chave de lá não serve aqui
+    expect((await s.put('/base/ia/ajustes', { ativo: false, provedor: 'compativel', modelo: 'deepseek-chat', endereco: 'https://openrouter.ai/api/v1' })).json())
+      .toMatchObject({ chaveDe: 'compativel', chaveEndereco: 'api.deepseek.com', endereco: 'https://openrouter.ai/api/v1' });
+    const t = await s.post('/base/ia/testar');
+    expect(t.statusCode).toBe(400);
+    expect(t.json().error).toMatch(/A chave guardada é de api\.deepseek\.com, e o escolhido agora é openrouter\.ai/);
+    expect(chamadas).toHaveLength(0);
+    // de volta ao endereço dela, a chave volta a servir
+    expect((await ajustes({ provedor: 'compativel', modelo: 'deepseek-chat', endereco: 'https://api.deepseek.com' })).statusCode).toBe(200);
+    expect((await leitor.get('/base/ia')).json().ativa).toBe(true);
+  });
+
+  it('o compatível não vai para a rede de dentro', async () => {
+    ipsDoServico = ['10.0.0.5'];
+    const r = (await s.post('/base/ia/testar')).json();
+    expect(r).toMatchObject({ ok: false, mensagem: expect.stringMatching(/aponta para a rede de dentro/) });
+    ipsDoServico = ['::ffff:127.0.0.1'];
+    expect((await s.post('/base/ia/testar')).json().mensagem).toMatch(/rede de dentro/);
+    expect(chamadas).toHaveLength(0);
+  });
+
+  it('buscar modelos: com a chave digitada (ou a guardada, do mesmo provedor), só os de conversa', async () => {
+    expect((await tecnico.post('/base/ia/modelos', { provedor: 'anthropic', chave: 'outra-chave-falsa-anthropic' })).statusCode).toBe(403);
+    respostas = [{ corpo: { data: [{ id: 'claude-opus-5-5', display_name: 'Claude Opus 5.5' }, { id: 'claude-haiku-5-5', display_name: 'Claude Haiku 5.5' }] } }];
+    expect((await s.post('/base/ia/modelos', { provedor: 'anthropic', chave: 'outra-chave-falsa-anthropic' })).json()).toEqual({
+      modelos: [{ id: 'claude-opus-5-5', nome: 'Claude Opus 5.5' }, { id: 'claude-haiku-5-5', nome: 'Claude Haiku 5.5' }],
+    });
+    expect(chamadas[0]).toMatchObject({ metodo: 'GET', url: 'https://api.anthropic.com/v1/models?limit=1000' });
+    expect(chamadas[0]!.cabecalhos.get('x-api-key')).toBe('outra-chave-falsa-anthropic');
+
+    // a chave guardada agora é do compatível: para a OpenAI, precisa colar
+    expect((await s.post('/base/ia/modelos', { provedor: 'openai' })).json().error).toMatch(/Cole a chave da API da OpenAI/);
+    respostas = [{ corpo: { data: [
+      { id: 'gpt-5.4-mini', created: 100 }, { id: 'text-embedding-3-small', created: 300 }, { id: 'whisper-1', created: 50 }, { id: 'gpt-5.6-sol', created: 200 },
+    ] } }];
+    expect((await s.post('/base/ia/modelos', { provedor: 'openai', chave: 'outra-chave-falsa-openai' })).json().modelos.map((m: any) => m.id)).toEqual(['gpt-5.6-sol', 'gpt-5.4-mini']);
+
+    respostas = [{ corpo: { models: [
+      { name: 'models/gemini-3.5-flash', displayName: 'Gemini 3.5 Flash', supportedGenerationMethods: ['generateContent', 'countTokens'] },
+      { name: 'models/gemini-embedding-001', displayName: 'Gemini Embedding', supportedGenerationMethods: ['embedContent'] },
+    ] } }];
+    expect((await s.post('/base/ia/modelos', { provedor: 'google', chave: 'outra-chave-falsa-google' })).json().modelos).toEqual([{ id: 'gemini-3.5-flash', nome: 'Gemini 3.5 Flash' }]);
+
+    // o compatível usa a chave guardada (é dele) e o endereço da tela
+    respostas = [{ corpo: { data: [{ id: 'deepseek-chat' }, { id: 'deepseek-reasoner' }] } }];
+    expect((await s.post('/base/ia/modelos', { provedor: 'compativel', endereco: 'https://api.deepseek.com/' })).json().modelos).toHaveLength(2);
+    expect(chamadas.at(-1)!.url).toBe('https://api.deepseek.com/models');
+    expect(chamadas.at(-1)!.cabecalhos.get('authorization')).toBe('Bearer chave-falsa-deepseek');
+    // serviço que não lista (com a chave dele: a guardada é de outro serviço): dá para escrever o nome
+    respostas = [{ status: 404, corpo: {} }];
+    expect((await s.post('/base/ia/modelos', { provedor: 'compativel', endereco: 'https://chat.maritaca.ai/api', chave: 'chave-falsa-maritaca' })).json().error).toMatch(/não mostrou a lista de modelos/);
+    expect(chamadas.at(-1)!.cabecalhos.get('authorization')).toBe('Bearer chave-falsa-maritaca');
+    // a busca da lista vai para a auditoria (com qual chave), sem a chave
+    const auditoria = (await s.get('/admin/audit?entityId=base-ia')).json().items.filter((x: any) => x.action === 'settings_base_ia_modelos');
+    expect(auditoria.map((x: any) => x.summary)).toContain('Administrador buscou os modelos da IA (Outro compatível (OpenRouter, DeepSeek, Groq…) · api.deepseek.com) com a chave guardada: 2 modelos');
+    expect(JSON.stringify(auditoria)).not.toContain('chave-falsa');
+    // a chave errada do Google
+    respostas = [{ status: 400, corpo: { error: { code: 400, message: 'API key not valid. Please pass a valid API key.', status: 'INVALID_ARGUMENT', details: [{ reason: 'API_KEY_INVALID' }] } } }];
+    expect((await s.post('/base/ia/modelos', { provedor: 'google', chave: 'chave-errada-google' })).json().error).toMatch(/A chave da IA foi recusada \(Google/);
+  });
+
+  it('rascunho a partir do card: a IA devolve o JSON e o Gestor confere', async () => {
+    respostas = [openai('```json\n{"titulo": "Ligação cai aos 32 s", "oQueAcontece": "Cai no meio.", "comoResolver": "1. Desligar o SIP ALG.", "porQueAcontece": "", "palavrasDoCliente": ["cai sozinha"]}\n```', 500, 80)];
+    expect((await leitor.post('/base/ia/rascunho', { chamado: 'IS-3642' })).statusCode).toBe(403);
+    const r = await operador.post('/base/ia/rascunho', { chamado: 'IS-3642' });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ titulo: 'Ligação cai aos 32 s', comoResolver: '1. Desligar o SIP ALG.', palavrasDoCliente: ['cai sozinha'], modelo: 'deepseek-chat' });
+    const corpo = chamadas[0]!.corpo;
+    expect(corpo.messages[0]).toEqual({ role: 'system', content: INSTRUCOES_RASCUNHO });
+    expect(corpo.messages[1].content).toContain('Ligação cai depois de meio minuto');
+    expect(corpo.messages[1].content).toContain('Assunto: Ramal - Queda de ligação');
+    expect((await s.get('/base/ia/ajustes')).json().uso).toMatchObject({ rascunhos: 1 });
+    // resposta fora do combinado: avisa em vez de preencher com nada
+    respostas = [openai('Desculpe, não consigo ajudar com isso.')];
+    expect((await operador.post('/base/ia/rascunho', { chamado: 'IS-3642' })).json().error).toMatch(/formato combinado/);
+    expect((await operador.post('/base/ia/rascunho', { chamado: 'IS-9999' })).json().error).toMatch(/não está na cópia do LineChat/);
+  });
+
+  it('não deixa disparar perguntas sem parar (custa dinheiro)', async () => {
+    for (let i = 0; i < 30; i++) respostas.push(openai('{"termos": []}', 10, 5));
+    // no máximo 10 por minuto (e 30 por hora por pessoa)
+    const codigos: number[] = [];
+    for (let i = 0; i < 11; i++) codigos.push((await tecnico.post('/base/ia/perguntar', { pergunta: 'qualquer coisa' })).statusCode);
+    expect(codigos).toContain(429);
   });
 });

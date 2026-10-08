@@ -22,6 +22,10 @@ import {
   type ArtigoCurto, type ArtigoGravar, type LigacaoArtigo, type PedacoTrecho, type TipoLigacao,
 } from '@gestor/shared';
 import {
+  AjustesIaSchema, custoEstimado, enderecoValido, hostDoEndereco, INFO_PROVEDORES, juntarAchados, ModelosIaSchema, normalizarEndereco, PerguntarSchema,
+  RascunhoIaSchema, type ProvedorIa,
+} from '@gestor/shared';
+import {
   AcessoCriarSchema, AJUSTES_PORTAL_PADRAO, arquivosDoTexto, caminhoDoTutorial, clienteNaBase, DIAS_DO_CONVITE, faltaParaPublicarTutorial, motivoForaDaBase,
   numeroDoCaminho, PortalAjustesSchema, PortalCriarSenhaSchema, PortalEntrarSchema, PortalTrocarSenhaSchema, problemaDoArquivo, situacaoDoAcesso,
   TIPOS_IMAGEM_PORTAL, TutoriaisListarSchema, TutorialGravarSchema, tutorialValePara, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar,
@@ -29,7 +33,7 @@ import {
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
 import { PDF_MANUAL_RAMAL, VIDEO_TRANSFERIR } from './portal-demo-midia.js';
-import { ApiError, type AcessoPortal, type ArquivoDoPortal, type CartaoTutorial, type EuPortal, type TutorialNaLista, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type AjustesIa, type ModeloIa, type RespostaIa, type AcessoPortal, type ArquivoDoPortal, type CartaoTutorial, type EuPortal, type TutorialNaLista, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -106,6 +110,15 @@ const S = {
   tutoriais: [] as TutorialRow[], arqPortal: [] as ArqPortalRow[], acessosPortal: [] as AcessoRow[], proximoTutorial: 1, portalSemeado: false,
   portalSessao: null as string | null,
   ajustesPortal: { ...AJUSTES_PORTAL_PADRAO, whatsapp: '(71) 99999-0000', email: 'suporte@exemplo.com.br', horario: 'Segunda a sexta, das 8h às 18h' } as PortalAjustes,
+  // a IA da base (1.8) já vem ligada na prévia — Anthropic, com um preço e um uso do mês de exemplo. A chave
+  // não existe de verdade (só marcamos que existe) e a resposta é montada sem IA (ver `respostaDemo`)
+  ajustesIa: {
+    ativo: true, provedor: 'anthropic' as ProvedorIa, modelo: 'claude-sonnet-5-5', modeloNome: 'Claude Sonnet 5.5' as string | null, endereco: null as string | null,
+    precoEntrada: 2 as number | null, precoSaida: 10 as number | null, temChave: true, chaveDe: 'anthropic' as ProvedorIa | null, chaveEndereco: null as string | null,
+    ultimoTesteEm: daysAgo(1, 16) as string | null, ultimoTesteOk: true as boolean | null,
+    ultimoTesteMsg: 'A IA respondeu (Claude Sonnet 5.5, Anthropic (Claude)): "funcionando". Pode usar.' as string | null,
+    uso: { mes: diaEmBrasilia(new Date()).slice(0, 7), perguntas: 23, rascunhos: 4, entrada: 182_000, saida: 21_500 },
+  },
   ajustesBackup: {
     ativo: false, pasta: 'Backups › Ingline Gestão', pastaId: '', contaDeServico: '',
     ultimoEnvioEm: null as string | null, ultimoEnvioOk: null as boolean | null, ultimoEnvioMsg: null as string | null, temChave: false,
@@ -1725,6 +1738,113 @@ const visiveisDemo = (ativos: { produtos: string[]; modulos: string[] }) =>
   tutoriaisVivos().filter((t) => t.situacao === 'publicado' && tutorialValePara({ produtoId: t.produtoId, moduloId: t.moduloId }, ativos));
 const lerArquivoDemo = (file: File) => new Promise<string>((ok, falhou) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => falhou(bad('Não deu para ler o arquivo')); r.readAsDataURL(file); });
 
+// ---------- a IA da base (1.8): as mesmas regras do servidor, sem IA de verdade ----------
+
+const IA_DE_MENTIRA = 'Prévia: resposta montada sem IA de verdade';
+const mesDemo = () => diaEmBrasilia(new Date()).slice(0, 7);
+/** O que já se gastou com a IA no mês (zera quando o mês vira). */
+function usoIaDemo() {
+  if (S.ajustesIa.uso.mes !== mesDemo()) S.ajustesIa.uso = { mes: mesDemo(), perguntas: 0, rascunhos: 0, entrada: 0, saida: 0 };
+  return S.ajustesIa.uso;
+}
+const ONDE_IA = 'Administração › Ajustes › IA da base';
+/** A chave guardada serve para este provedor (e, no compatível, para este serviço)? Como no servidor. */
+const chaveServeParaDemo = (provedor: ProvedorIa, endereco: string | null | undefined) => {
+  const a = S.ajustesIa;
+  return a.temChave && a.chaveDe === provedor && (provedor !== 'compativel' || (!!a.chaveEndereco && a.chaveEndereco === hostDoEndereco(endereco)));
+};
+const chaveServeDemo = () => chaveServeParaDemo(S.ajustesIa.provedor, S.ajustesIa.endereco);
+const deQuemEaChaveDemo = () => (S.ajustesIa.chaveDe === 'compativel' && S.ajustesIa.chaveEndereco ? `de ${S.ajustesIa.chaveEndereco}` : INFO_PROVEDORES[S.ajustesIa.chaveDe ?? 'anthropic'].de);
+/** A configuração guardada, conferida na mesma ordem do servidor (o teste usa mesmo desligada). */
+function iaConfigDemo() {
+  const a = S.ajustesIa;
+  if (!a.temChave) throw bad(`A IA ainda não tem a chave. Quem administra escolhe o provedor e cola a chave em ${ONDE_IA}.`);
+  if (a.provedor === 'compativel' && !enderecoValido(a.endereco)) throw bad(`Falta o endereço da API do serviço compatível em ${ONDE_IA}.`);
+  if (!chaveServeDemo()) {
+    const agora = a.provedor === 'compativel' ? hostDoEndereco(a.endereco) : INFO_PROVEDORES[a.provedor].nome;
+    throw bad(`A chave guardada é ${deQuemEaChaveDemo()}, e o escolhido agora é ${agora}. Cole a chave dele em ${ONDE_IA}.`);
+  }
+  if (!a.modelo) throw bad(`Falta escolher o modelo da IA em ${ONDE_IA}.`);
+}
+function iaProntaDemo() {
+  iaConfigDemo();
+  if (!S.ajustesIa.ativo) throw bad(`A IA da base está desligada. Quem administra liga em ${ONDE_IA}.`);
+}
+/** 30 usos por pessoa por hora, como no servidor. */
+const usosIaDemo = new Map<string, number[]>();
+function limiteIaDemo() {
+  const agora = Date.now();
+  const recentes = (usosIaDemo.get(S.me!.id) ?? []).filter((t) => agora - t < 3_600_000);
+  if (recentes.length >= 30) throw new ApiError(429, 'Você já usou a IA 30 vezes na última hora. Espere um pouco, ou procure na base.');
+  recentes.push(agora); usosIaDemo.set(S.me!.id, recentes);
+}
+function statusIaDemo(): AjustesIa {
+  const { temChave, uso: _uso, ...a } = S.ajustesIa;
+  const uso = { ...usoIaDemo() };
+  return { ...a, temChave, chaveDe: temChave ? a.chaveDe : null, chaveEndereco: temChave && a.chaveDe === 'compativel' ? a.chaveEndereco : null, uso: { ...uso, custo: custoEstimado(uso, a) } };
+}
+
+/**
+ * Os modelos da "Buscar modelos" na prévia: listas de EXEMPLO (no sistema, a lista vem da API do
+ * provedor, com a chave). A Maritaca não lista: é o caso de escrever o nome do modelo.
+ */
+function modelosDeExemplo(provedor: ProvedorIa, endereco: string | null | undefined): ModeloIa[] {
+  const m = (id: string, nome = id) => ({ id, nome });
+  if (provedor === 'anthropic') return [m('claude-fable-5-1', 'Claude Fable 5.1'), m('claude-opus-5-5', 'Claude Opus 5.5'), m('claude-sonnet-5-5', 'Claude Sonnet 5.5'), m('claude-haiku-5-5', 'Claude Haiku 5.5')];
+  if (provedor === 'openai') return ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.4-mini', 'gpt-5.4-nano'].map((x) => m(x));
+  if (provedor === 'google') return [m('gemini-3.6-flash', 'Gemini 3.6 Flash'), m('gemini-3.5-flash', 'Gemini 3.5 Flash'), m('gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite'), m('gemini-3.1-pro-preview', 'Gemini 3.1 Pro Preview')];
+  let host = '';
+  try { host = new URL(normalizarEndereco(endereco)).hostname; } catch { /* o endereço já foi conferido */ }
+  if (host.endsWith('openrouter.ai')) return [m('anthropic/claude-sonnet-5.5', 'Anthropic: Claude Sonnet 5.5'), m('openai/gpt-5.4-mini', 'OpenAI: GPT-5.4 Mini'), m('google/gemini-3.5-flash', 'Google: Gemini 3.5 Flash'), m('deepseek/deepseek-chat', 'DeepSeek: DeepSeek Chat')];
+  if (host.endsWith('deepseek.com')) return [m('deepseek-chat'), m('deepseek-reasoner')];
+  if (host.endsWith('groq.com')) return [m('llama-3.3-70b-versatile'), m('openai/gpt-oss-120b'), m('qwen/qwen3-32b')];
+  if (host.endsWith('mistral.ai')) return [m('mistral-large-latest'), m('mistral-medium-latest'), m('mistral-small-latest')];
+  if (host.endsWith('maritaca.ai')) throw bad('O serviço não mostrou a lista de modelos (ou o endereço está errado). Confira o endereço, ou escreva o nome do modelo.');
+  if (host.endsWith('x.ai')) return [m('grok-4'), m('grok-3-mini')];
+  return [m('modelo-de-exemplo', 'Modelo de exemplo')];
+}
+
+/**
+ * "Perguntar à IA" na prévia: não há IA de verdade aqui. A resposta é montada com a mesma busca que
+ * o servidor usa (o modo "alguma palavra") e os passos do artigo mais perto — para dar a ideia de como
+ * fica, com as citações. No sistema, quem escreve a resposta é a IA escolhida em Ajustes.
+ */
+function respostaDemo(pergunta: string): RespostaIa {
+  const quem = { modelo: IA_DE_MENTIRA, provedor: INFO_PROVEDORES[S.ajustesIa.provedor].nome, custo: null };
+  const publicados = artigosVivosDemo().filter((a) => a.situacao === 'publicado').map(paraBuscaDemo);
+  if (!publicados.length) {
+    return { trechos: [{ texto: 'A base ainda não tem nenhum artigo publicado. Quando alguém resolver um chamado que deu trabalho, vale registrar: a próxima pergunta já acha.', fontes: [] }], artigos: [], achou: false, ...quem };
+  }
+  const achados = juntarAchados([buscarArtigos(publicados, pergunta, 'alguma')], 3);
+  if (!achados.length) {
+    return { trechos: [{ texto: 'Procurei na base e não achei nenhum artigo sobre isso. Quando alguém resolver, vale registrar: a próxima pergunta já acha.', fontes: [] }], artigos: [], achou: false, ...quem };
+  }
+  const [a, ...outros] = achados as [ReturnType<typeof paraBuscaDemo>, ...Array<ReturnType<typeof paraBuscaDemo>>];
+  const trechos: RespostaIa['trechos'] = [{ texto: `O caminho, em resumo (do ${codigoDoArtigo(a.numero)}):`, fontes: [] }];
+  // os primeiros passos do "Como resolver", com o comando que vem logo abaixo de cada um (com as crases:
+  // a tela desenha o comando, como faria com a resposta da IA)
+  const linhas = (a.comoResolver ?? '').replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim())
+    .filter((l) => l && !/^\[(print|video|arquivo):[^\]]+\]$/.test(l) && !l.startsWith('```'));
+  let numerados = 0;
+  for (const l of linhas) {
+    const passo = /^\d{1,3}[.)]\s/.test(l);
+    if ((passo && ++numerados > 4) || trechos.length > 8) break;
+    trechos.push({ texto: passo || !numerados ? l : `   ${l}`, fontes: passo ? [a.numero] : [] });
+  }
+  const porQueTudo = textoPuro(a.porQueAcontece);
+  const ponto = porQueTudo.indexOf('. ');
+  const porQue = ponto > 0 ? porQueTudo.slice(0, ponto + 1) : porQueTudo;
+  if (porQue) trechos.push({ texto: '', fontes: [] }, { texto: `Por que acontece: ${porQue}`, fontes: [a.numero] });
+  return {
+    trechos,
+    artigos: [
+      { numero: a.numero, codigo: codigoDoArtigo(a.numero), titulo: a.titulo, citado: true },
+      ...outros.map((o) => ({ numero: o.numero, codigo: codigoDoArtigo(o.numero), titulo: o.titulo, citado: false })),
+    ],
+    achou: true, ...quem,
+  };
+}
+
 export const demoApi: Api = {
   auth: {
     async me() { await wait(50); if (!S.me) throw new ApiError(401, 'Faça login para continuar'); return me(S.me); },
@@ -2971,6 +3091,99 @@ export const demoApi: Api = {
         titulo: c.title.trim(), oQueAcontece: textoDoCard(c.description) || null,
         ligacoes: unicas.map(mostrarLigacaoDemo),
       };
+    },
+    async ia() {
+      await wait(30); requirePerm('records.read');
+      const a = S.ajustesIa;
+      return { ativa: a.ativo && chaveServeDemo() && !!a.modelo, modelo: a.modeloNome || a.modelo, provedor: INFO_PROVEDORES[a.provedor].nome };
+    },
+    async perguntar(pergunta) {
+      await wait(1100); requirePerm('records.read');
+      const p = PerguntarSchema.safeParse({ pergunta });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Escreva a pergunta');
+      iaProntaDemo(); limiteIaDemo();
+      const r = respostaDemo(p.data.pergunta);
+      // como no servidor: sem artigo publicado nenhum, a IA nem é chamada (não conta)
+      if (artigosVivosDemo().some((a) => a.situacao === 'publicado')) usoIaDemo().perguntas++;
+      audit('base_ia_pergunta', 'knowledge', `${S.me!.name} perguntou à base (IA, ${r.provedor}): "${p.data.pergunta.slice(0, 120)}"${r.achou ? ` — respondeu com ${r.artigos.filter((a) => a.citado).map((a) => a.codigo).join(', ')}` : ' — a base não tinha a resposta'}`);
+      return r;
+    },
+    async rascunhoIa(chamado) {
+      await wait(1300); requirePerm('knowledge.write');
+      const p = RascunhoIaSchema.safeParse({ chamado });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Informe o chamado');
+      iaProntaDemo();
+      const c = cardDemo(p.data.chamado);
+      if (!c) throw bad(`O chamado ${p.data.chamado} não está na cópia do LineChat.`);
+      limiteIaDemo();
+      const { ctx } = chamadosDemo();
+      const papeis = camposDosRelatorios(ctx.campos, S.ajustesRelatorios.campos);
+      const primeiro = (k: string | null | undefined) => (k ? valoresDoCampo(c.campos[k])[0] : undefined);
+      const assunto = primeiro(papeis.assunto?.key) ?? 'o problema';
+      const cliente = primeiro(papeis.cliente?.key) ?? 'o cliente';
+      usoIaDemo().rascunhos++;
+      const provedor = INFO_PROVEDORES[S.ajustesIa.provedor].nome;
+      audit('base_ia_rascunho', 'knowledge', `${S.me!.name} pediu à IA (${provedor}) o rascunho de um artigo a partir do chamado ${chamado}`);
+      // na prévia não há IA: o rascunho mostra o formato que ela devolve, com os [completar: …]
+      return {
+        titulo: `${assunto}: [completar: o sintoma, do jeito que alguém procuraria]`,
+        oQueAcontece: `${cliente} abriu o ${c.key ?? 'chamado'} contando: ${textoDoCard(c.description).split('\n')[0] || assunto}\n[completar: desde quando acontece e com quem]`,
+        comoResolver: '1. [completar: o primeiro passo que resolveu]\n2. [completar: o que conferir depois]\n3. Fazer uma ligação de teste com o cliente antes de fechar o chamado.',
+        porQueAcontece: '[completar: a causa, se ficou clara]',
+        palavrasDoCliente: [assunto.toLowerCase()],
+        custo: null, modelo: 'prévia, sem IA de verdade', provedor,
+      };
+    },
+    async iaAjustes() { await wait(60); requirePerm('admin.manage'); return statusIaDemo(); },
+    async salvarIaAjustes(dados) {
+      await wait(200); requirePerm('admin.manage');
+      const p = AjustesIaSchema.safeParse(dados);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Ajustes inválidos');
+      const d = p.data; const a = S.ajustesIa;
+      const info = INFO_PROVEDORES[d.provedor];
+      const chave = d.chave?.trim() || null;
+      const endereco = d.provedor === 'compativel' ? normalizarEndereco(d.endereco) || null : null;
+      const host = d.provedor === 'compativel' ? hostDoEndereco(endereco) : '';
+      if (d.ativo && !chave && !chaveServeParaDemo(d.provedor, endereco)) {
+        if (a.temChave && a.chaveDe === 'compativel' && d.provedor === 'compativel') throw bad(`A chave guardada é ${deQuemEaChaveDemo()}. Cole a chave de ${host || 'o novo serviço'} para usar este endereço.`);
+        if (a.temChave && a.chaveDe) throw bad(`A chave guardada é ${deQuemEaChaveDemo()}. Cole a chave ${d.provedor === 'compativel' && host ? `de ${host}` : info.de} para usar este provedor.`);
+        throw bad(`Cole a chave da API ${info.de} para ligar a IA.`);
+      }
+      const modelo = d.modelo.trim();
+      const mudouOTestado = !!chave || d.provedor !== a.provedor || modelo !== a.modelo || endereco !== a.endereco;
+      // a chave iria para o cofre; na prévia ela nem é guardada (só marcamos que existe e de quem é)
+      if (chave) { a.temChave = true; a.chaveDe = d.provedor; a.chaveEndereco = d.provedor === 'compativel' ? host : null; }
+      Object.assign(a, {
+        ativo: d.ativo, provedor: d.provedor, modelo, modeloNome: modelo && d.modeloNome?.trim() ? d.modeloNome.trim() : null, endereco,
+        precoEntrada: d.precoEntrada ?? null, precoSaida: d.precoSaida ?? null,
+        ...(mudouOTestado ? { ultimoTesteEm: null, ultimoTesteOk: null, ultimoTesteMsg: null } : {}),
+      });
+      audit('settings_base_ia', 'settings', `${S.me!.name} ${d.ativo ? 'ligou' : 'desligou'} a IA da base (${info.nome}${modelo ? ` · ${a.modeloNome || modelo}` : ''})${chave ? ' e trocou a chave' : ''}`, 'base-ia');
+      return statusIaDemo();
+    },
+    async testarIa() {
+      await wait(700); requirePerm('admin.manage');
+      const a = S.ajustesIa;
+      iaConfigDemo();
+      const mensagem = `Na prévia não há IA de verdade. No sistema, o teste manda uma pergunta de uma palavra para o ${a.modeloNome || a.modelo} (${INFO_PROVEDORES[a.provedor].nome}) e mostra a resposta aqui.`;
+      Object.assign(a, { ultimoTesteEm: now(), ultimoTesteOk: true, ultimoTesteMsg: mensagem });
+      audit('settings_base_ia_test', 'settings', `${S.me!.name} testou a IA da base (funcionou)`, 'base-ia');
+      return { ok: true, mensagem };
+    },
+    async iaModelos(dados) {
+      await wait(500); requirePerm('admin.manage');
+      const v = ModelosIaSchema.safeParse(dados);
+      if (!v.success) throw bad(v.error.issues[0]?.message ?? 'Pedido inválido');
+      const p = v.data;
+      const info = INFO_PROVEDORES[p.provedor];
+      const endereco = p.provedor === 'compativel' ? normalizarEndereco(p.endereco) : null;
+      if (p.provedor === 'compativel' && !enderecoValido(endereco)) throw bad('Informe o endereço da API do serviço (começa com https://) para buscar os modelos.');
+      const guardada = !p.chave?.trim() && chaveServeParaDemo(p.provedor, endereco);
+      if (!p.chave?.trim() && !guardada) throw bad(`Cole a chave da API ${p.provedor === 'compativel' ? `de ${hostDoEndereco(endereco)}` : info.de} para buscar os modelos.`);
+      const modelos = modelosDeExemplo(p.provedor, endereco);
+      const onde = p.provedor === 'compativel' ? ` · ${hostDoEndereco(endereco)}` : '';
+      audit('settings_base_ia_modelos', 'settings', `${S.me!.name} buscou os modelos da IA (${info.nome}${onde}) com a chave ${guardada ? 'guardada' : 'digitada'}: ${modelos.length} ${modelos.length === 1 ? 'modelo' : 'modelos'}`, 'base-ia');
+      return { modelos };
     },
   },
   portalAdmin: {

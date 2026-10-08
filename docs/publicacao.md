@@ -201,6 +201,7 @@ banco local e teste ali. Nunca o contrário.
 | Senhas guardadas | Cifradas com AES-256-GCM; a chave fica no `.env`, nunca no banco |
 | Quem pode o quê | 4 papéis e 21 permissões; toda ação sensível fica na auditoria |
 | Portal do cliente | Login separado do da equipe (outro cookie, outra tabela); a pessoa cria a própria senha pelo convite; cai sozinho quando o cliente sai da base |
+| IA da base (opcional) | Desligada até a administração ligar. A chave fica no cofre e só vai para o provedor dela (no compatível, só para o serviço dela; endereço só `https://` da internet, sem seguir redirecionamento). Saem do servidor só os artigos publicados que a busca achar (com os nomes ligados a eles) e, no rascunho, o texto do card. 30 usos por pessoa por hora; perguntas, rascunhos, ajustes, testes e a busca de modelos vão para a auditoria |
 | Dados | Nada é apagado de verdade (lixeira); exportação com senhas só em ZIP com senha e auditada |
 | Entrada (2ª etapa) | Código de 6 dígitos do celular (TOTP), opcional por pessoa, com códigos de recuperação |
 | Contêiner | Roda como usuário sem poderes, nunca como root |

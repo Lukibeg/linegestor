@@ -4,7 +4,8 @@
  * Texto simples, como o Luan escolheu: linha que começa com número vira passo, o que está entre
  * crases vira comando com Copiar, e o print entra colando (Ctrl+V) — reduzido no navegador, como o
  * print das Novidades. Vindo de um chamado ("Registrar na base"), o título, a descrição e as
- * ligações já chegam preenchidos.
+ * ligações já chegam preenchidos; com a IA ligada, ela escreve o rascunho a partir do card (com o
+ * "Desfazer", e a pessoa revisa antes de publicar).
  *
  * Rascunho só a pessoa (e quem cuida da base) vê; publicar exige o "Como resolver". Qualquer um
  * que escreve melhora o artigo de qualquer um: se outra pessoa salvou no meio, o servidor avisa.
@@ -14,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { BookOpen, Eye, ImagePlus, ListOrdered, Paperclip, Pencil, Plus, SquareTerminal, X } from 'lucide-react';
+import { BookOpen, Bot, Eye, ImagePlus, ListOrdered, Paperclip, Pencil, Plus, SquareTerminal, Undo2, X } from 'lucide-react';
 import { TIPOS_LIGACAO, NOMES_LIGACAO, faltaParaPublicar } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import type { AnexoArtigo, Artigo, ArtigoGravar, LigacaoMostrada, OpcoesBase, TipoLigacao } from '../../api/types.js';
@@ -85,6 +86,7 @@ function Formulario() {
 
   const existente = useQuery({ queryKey: ['base', 'artigo', numero], queryFn: () => api.base.get(numero!), enabled: editando });
   const opcoes = useQuery({ queryKey: ['base', 'opcoes'], queryFn: () => api.base.opcoes(), staleTime: 5 * 60_000 });
+  const ia = useQuery({ queryKey: ['base', 'ia'], queryFn: () => api.base.ia(), staleTime: 5 * 60_000 });
 
   const [f, setF] = useState<Form>(VAZIO);
   const [carregado, setCarregado] = useState(!editando);
@@ -96,6 +98,9 @@ function Formulario() {
   const [chamado, setChamado] = useState(sp.get('chamado') ?? '');
   /** pedir a leitura obrigatória junto com o publicar (só quem cuida da base) */
   const [pedirLeitura, setPedirLeitura] = useState(false);
+  /** o formulário de antes da IA escrever (para o "Desfazer") e o aviso do que ela fez */
+  const [antesDaIa, setAntesDaIa] = useState<Form | null>(null);
+  const [avisoIa, setAvisoIa] = useState('');
   const versaoAberta = useRef<number | undefined>(undefined);
 
   const mudar = (o: Partial<Form>) => { setF((x) => ({ ...x, ...o })); setMexeu(true); };
@@ -133,6 +138,25 @@ function Formulario() {
         oQueAcontece: x.oQueAcontece || r.oQueAcontece || '',
         ligacoes: juntarLigacoes(x.ligacoes, r.ligacoes),
       }));
+    },
+    onError: (e) => setErro(mensagemErro(e)),
+  });
+  // a IA escreve o rascunho a partir do card: preenche o que vier (o que ela não mandar fica como estava)
+  const escreverComIa = useMutation({
+    mutationFn: () => api.base.rascunhoIa(chamado.trim()),
+    onSuccess: (r) => {
+      setAntesDaIa(f);
+      setF((x) => ({
+        ...x,
+        titulo: r.titulo || x.titulo,
+        oQueAcontece: r.oQueAcontece || x.oQueAcontece,
+        comoResolver: r.comoResolver || x.comoResolver,
+        porQueAcontece: r.porQueAcontece || x.porQueAcontece,
+        palavras: r.palavrasDoCliente.length ? [...new Set([...x.palavras, ...r.palavrasDoCliente])] : x.palavras,
+      }));
+      setMexeu(true);
+      const custo = r.custo == null ? '' : ` — custou uns US$ ${r.custo.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
+      setAvisoIa(`A IA (${r.modelo}) escreveu o rascunho a partir do card${custo}. Revise antes de publicar: onde faltou informação, ela escreveu [completar: …].`);
     },
     onError: (e) => setErro(mensagemErro(e)),
   });
@@ -216,8 +240,30 @@ function Formulario() {
                   <input className="input font-mono" id="artigo-chamado" placeholder="IS-3607" value={chamado} onChange={(e) => setChamado(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && chamado.trim()) { e.preventDefault(); trazer.mutate(chamado.trim()); } }} />
                 </Campo>
                 <button className="btn-secondary" disabled={!chamado.trim() || trazer.isPending} onClick={() => trazer.mutate(chamado.trim())}>{trazer.isPending ? <Spinner /> : 'Trazer o que o card tem'}</button>
+                {ia.data?.ativa && (
+                  <button className="btn-secondary" id="rascunho-ia" disabled={!chamado.trim() || escreverComIa.isPending} onClick={() => { setErro(''); escreverComIa.mutate(); }}
+                    title={`A IA (${ia.data.modelo}) lê o card — título, descrição, campos e etapas — e escreve o rascunho; você revisa`}>
+                    {escreverComIa.isPending ? <Spinner /> : <Bot size={15} />} Escrever o rascunho com a IA
+                  </button>
+                )}
               </div>
               <p className="text-[12.5px] text-muted">O código do card, como IS-3607: o título, a descrição e as ligações (cliente, assunto, produto) vêm junto. Nada muda no LineChat.</p>
+              {avisoIa && (
+                <p className="text-[13px] rounded-lg bg-accent-soft text-accent-ink p-2.5 flex flex-wrap items-center gap-2" role="status">
+                  <Bot size={14} className="shrink-0" /> <span className="flex-1 min-w-[200px]">{avisoIa}</span>
+                  {antesDaIa && (
+                    <button className="link font-semibold inline-flex items-center gap-1"
+                      onClick={() => {
+                        // volta só o que a IA escreveu: as ligações (e o resto) ficam como estão
+                        const a = antesDaIa;
+                        setF((x) => ({ ...x, titulo: a.titulo, oQueAcontece: a.oQueAcontece, comoResolver: a.comoResolver, porQueAcontece: a.porQueAcontece, palavras: a.palavras }));
+                        setAntesDaIa(null); setAvisoIa('');
+                      }}>
+                      <Undo2 size={13} /> Desfazer
+                    </button>
+                  )}
+                </p>
+              )}
             </section>
           )}
 

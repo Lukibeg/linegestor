@@ -133,6 +133,12 @@ describe('A busca', () => {
     expect(buscarArtigos(artigos, 'BC-7').map((a) => a.artigo.numero)).toEqual([7]);
     expect(buscarArtigos(artigos, 'bc 99')).toEqual([]);
   });
+  it('no modo "alguma" (a IA) basta uma palavra, e quem tem mais vem antes', () => {
+    const r = buscarArtigos(artigos, 'roteador portas rtp desligar', 'alguma').map((a) => a.artigo.numero);
+    expect(r[0]).toBe(7);
+    expect(r).toContain(12);
+    expect(r).not.toContain(19);
+  });
   it('o trecho mostra onde achou, no lugar certo mesmo com acento', () => {
     const [r] = buscarArtigos(artigos, 'conversa');
     const achados = r!.trecho!.filter((p) => p.achado).map((p) => p.texto);

@@ -15,10 +15,12 @@ também pediu, à parte, um **portal para o cliente** (tutoriais por produto, co
 cliente) — fica para um módulo separado, com proposta própria.
 
 A IA (perguntar à base e o rascunho a partir do card) chegou a ser construída, mas em 07/10, vendo a
-prévia, o Luan disse "não acho muito necessário a questão da IA": **saiu do 1.8 antes de subir**
-(ver o fim desta decisão). No mesmo dia ele comentou na prévia mais três coisas, que entraram no 1.8:
-**marcar a leitura obrigatória já no formulário**, "na hora de realizar", **comentar nos artigos,
-ficando registrado**, e **um botão para ver a base em lista (o padrão) ou em Kanban**.
+prévia, o Luan disse "não acho muito necessário a questão da IA" e ela saiu. No mesmo dia ele
+comentou na prévia mais três coisas, que entraram no 1.8: **marcar a leitura obrigatória já no
+formulário**, "na hora de realizar", **comentar nos artigos, ficando registrado**, e **um botão para
+ver a base em lista (o padrão) ou em Kanban**. Em 08/10 ele pediu **a IA de volta** e perguntou se
+daria para usar outros provedores: voltou no 1.8, com o provedor que a empresa escolher (ver o fim
+desta decisão).
 
 **Decisão.**
 
@@ -92,8 +94,9 @@ ficando registrado**, e **um botão para ver a base em lista (o padrão) ou em K
   projetos), `knowledge_reads` e `knowledge_comments` (esta entrou em 07/10; a migração, ainda não
   publicada, foi refeita).
 - Rotas novas em `/api/base` (lista, opções, artigo, gravar, ligar, versões, comparar, voltar,
-  leitura obrigatória, lidos, pendentes, ligados, para-chamados, do-chamado, anexos e comentários). Testes:
-  `packages/shared/src/base.test.ts` e `apps/api/test/base.test.ts`.
+  leitura obrigatória, lidos, pendentes, ligados, para-chamados, do-chamado, anexos, comentários e
+  `/ia/*`). Testes: `packages/shared/src/base.test.ts`, `packages/shared/src/ia.test.ts` e
+  `apps/api/test/base.test.ts`.
 - Telas novas: `/base`, `/base/novo`, `/base/:numero` e `/base/:numero/editar`. O **menu lateral
   ficou 16 px mais largo** para "Base de conhecimento" e o número de leituras caberem numa linha. O
   `Popover` ganhou o jeito do botão e o lado de abrir (`classe`, `alinhar`), e o texto dele quebra
@@ -103,11 +106,69 @@ ficando registrado**, e **um botão para ver a base em lista (o padrão) ou em K
 - Ficou para depois: o "conferido em" (artigo velho pede revisão) e as trilhas de leitura. O portal
   do cliente é outro módulo.
 
-**A IA que saiu (07/10/2026).** Foi construída no 1.8 e retirada antes de subir, a pedido do Luan
-("não acho muito necessário"): o "Perguntar à IA" (a IA da Anthropic procurava nos artigos
-publicados com a mesma busca e respondia citando o BC de cada parte), o "Escrever o rascunho com a
-IA" a partir do card, o cartão de Administração › Ajustes (chave no cofre, modelo, testar, uso do
-mês) e o limite de 30 usos por pessoa por hora. Nada disso ficou no código, no banco nem nas telas,
-e nada sai do servidor para uma IA. O trabalho está guardado no commit `bc28a1c` (a branch
-`base-com-ia-1.8`, dentro do bundle do 1.8): se um dia ele quiser, volta de lá, revendo esta
-decisão.
+**A IA: saiu em 07/10 e voltou em 08/10, com o provedor que a empresa escolher.** A primeira versão
+(o commit `bc28a1c`, branch `base-com-ia-1.8`) falava só com a Anthropic e usava recursos que só ela
+tem (a ferramenta de busca e as citações da própria API). Quando o Luan a pediu de volta, perguntou
+"vou poder usar com outros provedores?" e escolheu **os quatro**: Anthropic (Claude), OpenAI
+(ChatGPT), Google (Gemini) e **outro compatível** com a OpenAI (OpenRouter, DeepSeek, Groq, Mistral,
+Maritaca, xAI…), e **na Base, como antes** (não no portal do cliente). Então a IA foi refeita para
+valer com todos:
+
+- **Onde**: o **Perguntar à IA** ao lado da busca (o mesmo texto; Ctrl+Enter) e o **Escrever o
+  rascunho com a IA** em "Veio de um chamado?" (preenche o que vier, com **Desfazer**; onde faltou
+  informação, ela escreve `[completar: …]`). Os dois só aparecem com a IA ligada; perguntar é de todo
+  mundo (`records.read`), o rascunho é de quem escreve (`knowledge.write`).
+- **A busca é a do Gestor**, não da IA: numa 1ª conversa a IA sugere de 3 a 8 palavras (o jeito do
+  cliente e o nome técnico, em JSON); a busca da tela, no modo "alguma palavra" (`buscarArtigos(…,
+  'alguma')`), procura a pergunta e cada palavra, os pontos se somam e **os 6 melhores** vão para a
+  2ª conversa, cada um com o código (`[BC-12] Título` e as partes, em texto puro). Ela responde em
+  texto simples, citando **`[BC-12]`** depois de cada frase ou passo. O Gestor lê linha a linha e
+  **só aceita citação de artigo que foi para ela** (o resto some do texto); aceita `[BC-3, BC-7]`,
+  `(BC-3)` e o código solto na frase, e limpa o markdown e o "pensamento" (`<think>`) que alguns
+  modelos mandam. **Não achou artigo nenhum? Diz isso sem a 2ª conversa.** Vão só os **publicados**:
+  rascunho e lixeira nunca saem do servidor. As regras ficam em `@gestor/shared/ia.ts` (as mesmas da
+  prévia); a conversa com cada API, em `apps/api/src/services/baseIa.ts`, sem biblioteca — um POST
+  com a chave no cabeçalho (Anthropic: `/v1/messages`; OpenAI e compatíveis: `/chat/completions`;
+  Google: `:generateContent`).
+- **Administração › Ajustes › IA da base** (`admin.manage`): o **provedor**; o **endereço da API**
+  no compatível (só `https://` e nome da internet — nada de localhost, IP solto ou `.local` —, com
+  atalhos para os conhecidos; quem cola o `…/chat/completions` inteiro tem o endereço arrumado); a
+  **chave**, que vai para o **cofre** e nunca volta, **presa ao provedor e, no compatível, ao nome do
+  serviço** (`chaveDe` e `chaveEndereco`): trocar de provedor, ou o endereço para outro serviço, pede a
+  chave do novo — "A chave guardada é da Anthropic. Cole a chave da OpenAI…" —, e a chave de um nunca
+  vai para outro, nem na busca de modelos; o
+  **modelo**, escrito ou escolhido em **Buscar modelos** (a lista vem da API do provedor, com a chave
+  digitada ou a guardada, só com os modelos de conversa; serviço que não lista, como a Maritaca, é
+  escrever o nome); o **preço** (opcional, dólar por milhão de tokens); **Testar agora** (uma
+  pergunta de uma palavra com o que está guardado). Trocar o provedor, o modelo ou o endereço apaga o
+  último teste. A IA começa **desligada**.
+- **Custo**: o Gestor **não guarda tabela de preços** (são muitos provedores e os preços mudam). O
+  mês soma os usos e os tokens (lidos e escritos, contando o "pensamento" dos modelos que pensam), e
+  o custo em dólar só aparece com o preço informado — no cartão de Ajustes e embaixo de cada
+  resposta. O uso do mês é gravado com a linha travada (dois usos ao mesmo tempo somam os dois, e o
+  que a administração salvou no meio não é atropelado).
+- **O compatível só fala com a internet**: além do `https://` e do nome (nada de localhost, IP solto,
+  `.local`, nem com o ponto no fim), o servidor confere **para onde o nome aponta** antes de cada
+  pedido (nome que aponta para a rede de dentro é recusado) e **não segue redirecionamento** (que
+  levaria a chave e os artigos para outro lugar). Isso foi apontado por uma revisão independente do
+  código antes de subir, junto com: a pergunta sem palavra que conte ("???") não manda artigo
+  nenhum; a limpeza da resposta não mexe em `**201` nem em nada entre crases; o "passou da cota" por
+  minuto do Google é limite, não falta de crédito; a pergunta conta no mês mesmo quando o serviço não
+  diz os tokens; o teste usa o mesmo limite de tokens das respostas.
+- **Limites**: **30 usos por pessoa por hora** e 10 pedidos por minuto em cada rota. O limite de
+  tokens de cada conversa é folgado (os modelos que pensam gastam parte dele pensando; só se paga o
+  que se usa); nos compatíveis, 4.096, porque há serviço que recusa mais.
+- **Erros em português**, sem jargão e **sem a chave** (alguns provedores repetem um pedaço dela):
+  chave recusada, sem crédito ou cota, modelo (ou endereço) não reconhecido, limite de pedidos,
+  provedor fora do ar, demorou demais, endereço que não existe.
+- **Auditoria**: `base_ia_pergunta` (a pergunta e os artigos citados), `base_ia_rascunho`,
+  `settings_base_ia` (ligou/desligou, provedor e modelo, "trocou a chave"), `settings_base_ia_test` e
+  `settings_base_ia_modelos` (a busca da lista, dizendo se foi com a chave guardada). A chave nunca
+  aparece.
+- **O que sai do servidor**: o texto dos artigos que a busca achou, com os nomes do que está ligado a
+  eles (cliente, modelo, assunto…), e, no rascunho, o do card vão para o provedor escolhido — a tela
+  de Ajustes diz isso. Por isso senha nunca vai em artigo.
+- Sem migração: os ajustes moram em `settings` (id `base-ia`) e a chave em `secrets`. Na prévia, a
+  IA vem ligada com um uso de exemplo, a resposta é montada sem IA de verdade (com a mesma busca) e
+  a lista de modelos é de exemplo. Conferido contra a API de verdade da Anthropic com uma chave falsa
+  (volta "A chave da IA foi recusada"); os outros provedores, pela documentação deles e pelos testes.

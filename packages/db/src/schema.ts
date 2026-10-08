@@ -564,15 +564,16 @@ export const users = pgTable('users', {
 
 /**
  * AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), em vez de
- * mexer em arquivo no servidor. Uma linha por assunto: 'backup' e 'avisos'.
+ * mexer em arquivo no servidor. Uma linha por assunto (o `id`): 'backup', 'avisos', 'linechat',
+ * os da tela de Chamados e do envio automático (1.7) e 'base-ia' (a IA da base, 1.8).
  *
  *  - `value` guarda o que NÃO é segredo (pasta do Drive, endereço do aviso, se está ligado,
- *    e o resultado do último envio), em JSON
+ *    o provedor e o modelo da IA, e o resultado do último envio ou teste), em JSON
  *  - `secretId` aponta para o cofre, onde mora o que é segredo: a chave da conta de serviço
- *    do Google e o token da API de avisos
+ *    do Google, o token da API de avisos, a chave do LineChat, o token da FlwChat e a chave da IA
  */
 export const settings = pgTable('settings', {
-  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) */
+  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) */
   id: text('id').primaryKey(),
   value: text('value').notNull().default('{}'),
   secretId: text('secret_id').references(() => secrets.id),

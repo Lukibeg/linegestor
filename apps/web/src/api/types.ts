@@ -405,6 +405,50 @@ export type ArtigosDosChamados = Record<string, _Curto[]>;
 export type DoChamado = { chamado: { id: string; key: string | null; titulo: string; link: string | null }; titulo: string; oQueAcontece: string | null; ligacoes: LigacaoMostrada[] };
 export type GravadoArtigo = { numero: number; codigo: string; situacao: string; versao: number };
 
+// ---------- a IA da base (1.8), com o provedor que a administração escolher ----------
+
+export type ProvedorIa = 'anthropic' | 'openai' | 'google' | 'compativel';
+/** Para as telas da base: a IA está pronta? (o modelo e o provedor vão no "Perguntar à IA") */
+export type SituacaoIa = { ativa: boolean; modelo: string; provedor: string };
+export type RespostaIa = {
+  /** a resposta, linha a linha; cada linha com os artigos de onde saiu (texto vazio = linha em branco) */
+  trechos: Array<{ texto: string; fontes: number[] }>;
+  /** os citados primeiro, depois os outros que foram para a IA */
+  artigos: Array<{ numero: number; codigo: string; titulo: string; citado: boolean }>;
+  achou: boolean;
+  modelo: string;
+  provedor: string;
+  /** em dólar; null = o preço do modelo não foi informado em Ajustes */
+  custo: number | null;
+};
+export type RascunhoIa = { titulo: string; oQueAcontece: string; comoResolver: string; porQueAcontece: string; palavrasDoCliente: string[]; custo: number | null; modelo: string; provedor: string };
+export type AjustesIa = {
+  ativo: boolean;
+  provedor: ProvedorIa;
+  modelo: string;
+  modeloNome: string | null;
+  /** só no "compatível" */
+  endereco: string | null;
+  /** dólar por milhão de tokens (opcional) */
+  precoEntrada: number | null;
+  precoSaida: number | null;
+  temChave: boolean;
+  /** de qual provedor é a chave guardada */
+  chaveDe: ProvedorIa | null;
+  /** no compatível, o serviço da chave guardada ("api.deepseek.com"): ela só vai para lá */
+  chaveEndereco: string | null;
+  ultimoTesteEm: string | null; ultimoTesteOk: boolean | null; ultimoTesteMsg: string | null;
+  /** custo: null = sem o preço do modelo */
+  uso: { mes: string; perguntas: number; rascunhos: number; entrada: number; saida: number; custo: number | null };
+};
+export type SalvarAjustesIa = {
+  ativo: boolean; provedor: ProvedorIa; modelo: string; modeloNome: string | null; endereco: string | null;
+  precoEntrada: number | null; precoSaida: number | null;
+  /** em branco = manter a guardada */
+  chave?: string;
+};
+export type ModeloIa = { id: string; nome: string };
+
 // ---------- Portal do cliente (Patch 1.8) ----------
 
 export type { TutorialGravar, PortalAjustes, SituacaoAcesso, TipoArquivoPortal } from '@gestor/shared';
