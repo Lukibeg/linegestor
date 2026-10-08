@@ -405,6 +405,45 @@ export type ArtigosDosChamados = Record<string, _Curto[]>;
 export type DoChamado = { chamado: { id: string; key: string | null; titulo: string; link: string | null }; titulo: string; oQueAcontece: string | null; ligacoes: LigacaoMostrada[] };
 export type GravadoArtigo = { numero: number; codigo: string; situacao: string; versao: number };
 
+// ---------- Portal do cliente (Patch 1.8) ----------
+
+export type { TutorialGravar, PortalAjustes, SituacaoAcesso, TipoArquivoPortal } from '@gestor/shared';
+import type { SituacaoAcesso as _SitAcesso, TipoArquivoPortal as _TipoArq, PortalAjustes as _AjustesPortal } from '@gestor/shared';
+
+export type ProdutoDoPortal = { id: string; nome: string; cor: string };
+/** O cartão do tutorial: a lista da equipe e as do cliente. `caminho` é o link (/portal/a/12-…). */
+export type CartaoTutorial = {
+  id: string; numero: number; titulo: string; resumo: string | null;
+  produto: ProdutoDoPortal | null; modulo: { id: string; nome: string } | null;
+  destaque: boolean; atualizadoEm: string; caminho: string;
+};
+/** `trecho`: onde a busca bateu (só com busca) */
+export type TutorialNaLista = CartaoTutorial & { situacao: 'rascunho' | 'publicado'; visualizacoes: number; autor: string | null; atualizadoPor: string | null; trecho?: Array<{ texto: string; achado: boolean }> | null };
+/** `url` é relativa à API (como a logo do cliente); na prévia, o próprio arquivo embutido */
+export type ArquivoDoPortal = { id: string; tipo: _TipoArq; nome: string; mimeType: string; tamanho: number; url: string };
+export type Tutorial = TutorialNaLista & { texto: string | null; versao: number; criadoEm: string; publicadoEm: string | null; arquivos: ArquivoDoPortal[] };
+export type GravadoTutorial = { numero: number; versao: number; situacao: 'rascunho' | 'publicado'; caminho: string };
+export type OpcoesPortal = { produtos: Array<ProdutoDoPortal & { modulos: Array<{ id: string; nome: string }> }> };
+export type AcessoPortal = {
+  id: string; nome: string; email: string; clienteId: string; cliente: string;
+  situacao: _SitAcesso; motivo: string | null; conviteVenceEm: string | null;
+  ultimoAcesso: string | null; acessos: number; criadoPor: string | null; criadoEm: string;
+};
+export type AcessosDoCliente = { naBase: boolean; motivo: string | null; acessos: AcessoPortal[] };
+/** O caminho do convite (/portal/convite/<código>): o código só existe agora, no banco fica o hash */
+export type ConviteGerado = { id: string; convite: string };
+export type EspacoPortal = { videos: number; bytesVideos: number; arquivos: number; bytesArquivos: number };
+// o lado do cliente
+export type EuPortal = { nome: string; email: string; cliente: { nome: string; logo: string | null }; portal: _AjustesPortal };
+export type SobrePortal = { titulo: string; whatsapp: string | null; email: string | null; horario: string | null };
+export type InicioPortal = {
+  portal: _AjustesPortal; produtos: Array<ProdutoDoPortal & { tutoriais: number }>; geral: number;
+  destaques: CartaoTutorial[]; recentes: CartaoTutorial[]; total: number;
+};
+export type TutorialAchado = CartaoTutorial & { trecho: Array<{ texto: string; achado: boolean }> | null };
+export type TutorialDoCliente = CartaoTutorial & { texto: string | null; publicadoEm: string | null; arquivos: ArquivoDoPortal[] };
+export type ConvitePortal = { nome: string; email: string; cliente: string; trocando: boolean };
+
 export class ApiError extends Error {
   /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */
   constructor(public status: number, message: string, public details: Array<{ field: string; message: string }> | string | null = null) { super(message); }

@@ -21,3 +21,4 @@
 - [Chamados do LineChat](chamados-do-linechat.md) — ligar a leitura dos chamados de suporte (o que era o Grafana) e conferir que está funcionando.
 - [Envio automático do PDF dos Chamados pelo WhatsApp](envio-automatico.md) — marcar o que vai, os números, o horário e o token da FlwChat.
 - [Base de conhecimento](base-de-conhecimento.md) — procurar, escrever um artigo (passos, comandos, prints), registrar a partir do chamado, comentários e leitura obrigatória.
+- [Portal do cliente](portal-do-cliente.md) — escrever um tutorial com vídeo, print e arquivo, mandar o link pelo WhatsApp, dar acesso às pessoas do cliente e o que acontece quando o cliente sai da base.

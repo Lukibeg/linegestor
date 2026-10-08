@@ -3,7 +3,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { BookOpen, Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, ListChecks, LogOut, Menu, Moon, Settings, Sparkles, Sun, Upload, UserRound, X } from 'lucide-react';
+import { BookOpen, Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, Moon, Settings, Sparkles, Sun, Upload, UserRound, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
 import { NovidadesPopup } from '../../pages/novidades/Index.js';
@@ -22,6 +22,8 @@ const NAV = [
   { to: '/chamados', label: 'Chamados', icon: Headset, perm: 'support.read' },
   // o que a equipe aprendeu: chamados estranhos, passo a passo, "como faz" (1.8)
   { to: '/base', label: 'Base de conhecimento', icon: BookOpen, perm: 'records.read' },
+  // o que o cliente vê: os tutoriais (vídeo, print, arquivo) e quem entra (1.8)
+  { to: '/portal-do-cliente', label: 'Portal do cliente', icon: LifeBuoy, perm: 'records.read' },
   // logo abaixo: o "o que mudou" de cada publicação
   { to: '/novidades', label: 'Novidades', icon: Sparkles, perm: 'records.read' },
   { to: '/dados', label: 'Importar / Exportar', icon: Upload, perm: ['data.import', 'data.export'] },

@@ -21,9 +21,15 @@ import {
   ligarClientes, montarIndiceParaChamados, nomeComparavel, printsDoTexto, textoDoCard, textoPuro, trocarMarcadores,
   type ArtigoCurto, type ArtigoGravar, type LigacaoArtigo, type PedacoTrecho, type TipoLigacao,
 } from '@gestor/shared';
+import {
+  AcessoCriarSchema, AJUSTES_PORTAL_PADRAO, arquivosDoTexto, caminhoDoTutorial, clienteNaBase, DIAS_DO_CONVITE, faltaParaPublicarTutorial, motivoForaDaBase,
+  numeroDoCaminho, PortalAjustesSchema, PortalCriarSenhaSchema, PortalEntrarSchema, PortalTrocarSenhaSchema, problemaDoArquivo, situacaoDoAcesso,
+  TIPOS_IMAGEM_PORTAL, TutoriaisListarSchema, TutorialGravarSchema, tutorialValePara, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar,
+} from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
-import { ApiError, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { PDF_MANUAL_RAMAL, VIDEO_TRANSFERIR } from './portal-demo-midia.js';
+import { ApiError, type AcessoPortal, type ArquivoDoPortal, type CartaoTutorial, type EuPortal, type TutorialNaLista, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -71,6 +77,17 @@ type ArtVersaoRow = { articleId: string; versao: number; titulo: string; oQueAco
 type ArtLigRow = { articleId: string; tipo: TipoLigacao; alvo: string };
 type ArtAnexoRow = { id: string; articleId: string; fileName: string; mimeType: string; sizeBytes: number; conteudo: string; inline: boolean; porId: string | null; criadoEm: string; deletedAt: string | null };
 type ArtComentarioRow = { id: string; articleId: string; userId: string | null; texto: string; em: string; deletedAt: string | null };
+/** Portal do cliente (1.8): o tutorial, os arquivos (vídeo, print, arquivo para baixar) e quem tem acesso. */
+type TutorialRow = {
+  id: string; numero: number; titulo: string; resumo: string | null; texto: string | null; produtoId: string | null; moduloId: string | null;
+  destaque: boolean; situacao: 'rascunho' | 'publicado'; versao: number; views: number; autorId: string | null; atualizadoPorId: string | null;
+  publicadoEm: string | null; criadoEm: string; atualizadoEm: string; deletedAt: string | null;
+};
+type ArqPortalRow = { id: string; tutorialId: string | null; tipo: TipoArquivoPortal; nome: string; mimeType: string; tamanho: number; url: string; porId: string | null; criadoEm: string; deletedAt: string | null };
+type AcessoRow = {
+  id: string; clienteId: string; nome: string; email: string; senha: string | null; ativo: boolean;
+  conviteCodigo: string | null; conviteVence: string | null; ultimoAcesso: string | null; acessos: number; criadoPorId: string | null; criadoEm: string;
+};
 
 type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
@@ -84,6 +101,11 @@ const S = {
   // Base de conhecimento (1.8): os artigos entram na primeira vez que alguém abre a base (ligam chamados inventados)
   artigos: [] as ArtRow[], artVersoes: [] as ArtVersaoRow[], artLigacoes: [] as ArtLigRow[], artAnexos: [] as ArtAnexoRow[],
   artLeituras: [] as Array<{ articleId: string; userId: string; em: string }>, artComentarios: [] as ArtComentarioRow[], proximoArtigo: 1, baseSemeada: false,
+  // Portal do cliente (1.8): os tutoriais e os acessos entram na primeira vez que alguém abre o portal.
+  // `portalSessao` é o login do cliente (o id do acesso), separado do da equipe: dá para abrir os dois lados.
+  tutoriais: [] as TutorialRow[], arqPortal: [] as ArqPortalRow[], acessosPortal: [] as AcessoRow[], proximoTutorial: 1, portalSemeado: false,
+  portalSessao: null as string | null,
+  ajustesPortal: { ...AJUSTES_PORTAL_PADRAO, whatsapp: '(71) 99999-0000', email: 'suporte@exemplo.com.br', horario: 'Segunda a sexta, das 8h às 18h' } as PortalAjustes,
   ajustesBackup: {
     ativo: false, pasta: 'Backups › Ingline Gestão', pastaId: '', contaDeServico: '',
     ultimoEnvioEm: null as string | null, ultimoEnvioOk: null as boolean | null, ultimoEnvioMsg: null as string | null, temChave: false,
@@ -1504,6 +1526,205 @@ function gravarVersaoDemo(a: ArtRow, nota: string | null = null) {
 }
 const textoDaVersaoDemo = (v: ArtVersaoRow): TextoVersao => ({ versao: v.versao, titulo: v.titulo, oQueAcontece: v.oQueAcontece, comoResolver: v.comoResolver, porQueAcontece: v.porQueAcontece, palavrasDoCliente: v.palavras });
 
+// ---------- Portal do cliente (1.8) ----------
+//
+// As mesmas regras do servidor (`apps/api/src/services/portal.ts`), com as contas do
+// `@gestor/shared/portal.ts`: entra quem está ativo, já criou a senha e é de um cliente na base;
+// cada cliente vê os tutoriais "Geral" e os dos produtos (e módulos) que tem. Na prévia, a sessão
+// do cliente é separada da da equipe (`S.portalSessao`) — dá para abrir os dois lados.
+
+/** O print de exemplo: as teclas do telefone, com o TRANSF em destaque. */
+const PRINT_TECLAS = svgDemo(560, 170, [
+  '<rect width="560" height="170" rx="14" fill="#e2e8f0"/>',
+  '<rect x="20" y="16" width="520" height="70" rx="8" fill="#1f2937"/><text x="280" y="46" font-size="16" fill="#fff" text-anchor="middle" font-weight="bold">Em ligação</text><text x="280" y="70" font-size="14" fill="#cbd5e1" text-anchor="middle">(71) 3020-0000 · 00:42</text>',
+  ...['Espera', 'TRANSF', 'Conf', 'Encerrar'].map((k, i) => `<rect x="${20 + i * 132}" y="104" width="120" height="44" rx="8" fill="${k === 'TRANSF' ? '#fde68a' : '#f8fafc'}" stroke="${k === 'TRANSF' ? '#f59e0b' : '#cbd5e1'}" stroke-width="${k === 'TRANSF' ? 4 : 1}"/><text x="${80 + i * 132}" y="132" font-size="15" text-anchor="middle" fill="#111827"${k === 'TRANSF' ? ' font-weight="bold"' : ''}>${k}</text>`),
+].join(''));
+
+/** O print de exemplo: o aplicativo de ramal no celular, preenchido (sem a senha). */
+const PRINT_APP = svgDemo(300, 420, [
+  '<rect width="300" height="420" rx="26" fill="#0f172a"/><rect x="12" y="14" width="276" height="392" rx="18" fill="#f8fafc"/>',
+  '<text x="150" y="52" font-size="16" text-anchor="middle" font-weight="bold" fill="#111827">Usar conta SIP</text>',
+  ...[['Usuário', '2041'], ['Domínio', 'aurora.linepbx.com.br'], ['Senha', '••••••••'], ['Nome', 'Recepção'], ['Transporte', 'UDP']]
+    .map(([k, v], i) => `<text x="30" y="${92 + i * 56}" font-size="11" fill="#64748b">${k}</text><rect x="30" y="${98 + i * 56}" width="240" height="30" rx="6" fill="#fff" stroke="#cbd5e1"/><text x="40" y="${118 + i * 56}" font-size="13" fill="#111827">${v}</text>`),
+  '<rect x="30" y="374" width="240" height="22" rx="11" fill="#1d4ed8"/><text x="150" y="389" font-size="12" text-anchor="middle" fill="#fff" font-weight="bold">Entrar</text>',
+].join(''));
+
+/** O print de exemplo: o painel do FOP2 (verde livre, vermelho em ligação). */
+const PRINT_FOP2 = svgDemo(560, 230, [
+  '<rect width="560" height="230" fill="#f1f5f9"/><rect width="560" height="34" fill="#334155"/><text x="14" y="23" font-size="14" fill="#fff" font-weight="bold">FOP2 · Ramais</text>',
+  ...[['201', 'Recepção', 1], ['202', 'Financeiro', 0], ['203', 'Dra. Ana', 0], ['204', 'Enfermagem', 1], ['205', 'Raio-X', 0], ['206', 'Laboratório', 0], ['207', 'Diretoria', 1], ['208', 'Compras', 0]]
+    .map(([n, nome, ocupado], i) => {
+      const x = 14 + (i % 4) * 136; const y = 50 + Math.floor(i / 4) * 88;
+      return `<rect x="${x}" y="${y}" width="126" height="76" rx="8" fill="${ocupado ? '#fee2e2' : '#dcfce7'}" stroke="${ocupado ? '#ef4444' : '#22c55e'}" stroke-width="2"/><text x="${x + 10}" y="${y + 24}" font-size="15" font-weight="bold" fill="#111827">${n}</text><text x="${x + 10}" y="${y + 44}" font-size="12" fill="#334155">${nome}</text><text x="${x + 10}" y="${y + 64}" font-size="11" fill="${ocupado ? '#b91c1c' : '#15803d'}">${ocupado ? 'em ligação' : 'livre'}</text>`;
+    }),
+].join(''));
+
+/** O print de exemplo: a caixa de conversas do LineChat. */
+const PRINT_CHAT = svgDemo(560, 250, [
+  '<rect width="560" height="250" fill="#ffffff"/><rect width="190" height="250" fill="#f1f5f9"/>',
+  ...[['Fernanda', 'Bom dia! Vocês abrem sábado?', 1], ['Roberto', 'Obrigado, deu certo', 0], ['Lúcia', 'Preciso da segunda via', 0]]
+    .map(([nome, msg, sel], i) => `<rect x="0" y="${i * 62}" width="190" height="62" fill="${sel ? '#dbeafe' : 'none'}"/><text x="14" y="${i * 62 + 26}" font-size="13" font-weight="bold" fill="#111827">${nome}</text><text x="14" y="${i * 62 + 46}" font-size="11" fill="#475569">${msg}</text>`),
+  '<rect x="206" y="18" width="250" height="40" rx="12" fill="#f1f5f9"/><text x="218" y="43" font-size="12" fill="#111827">Bom dia! Vocês abrem sábado?</text>',
+  '<rect x="300" y="74" width="244" height="40" rx="12" fill="#1d4ed8"/><text x="312" y="99" font-size="12" fill="#fff">Abrimos sim, das 8h às 12h 😊</text>',
+  '<rect x="206" y="196" width="270" height="36" rx="10" fill="#fff" stroke="#cbd5e1"/><text x="218" y="219" font-size="12" fill="#94a3b8">Escreva a resposta…</text>',
+  '<rect x="484" y="196" width="60" height="36" rx="10" fill="#f59e0b"/><text x="514" y="219" font-size="11" text-anchor="middle" fill="#111827" font-weight="bold">Transferir</text>',
+].join(''));
+
+function semearPortal() {
+  if (S.portalSemeado) return;
+  S.portalSemeado = true;
+  const cli = (nome: string) => S.clients.find((c) => c.tradeName === nome)?.id ?? null;
+  const arquivo = (tipo: TipoArquivoPortal, nome: string, mimeType: string, tamanho: number, url: string, dias: number): string => {
+    const a: ArqPortalRow = { id: id(), tutorialId: null, tipo, nome, mimeType, tamanho, url, porId: 'u2', criadoEm: daysAgo(dias), deletedAt: null };
+    S.arqPortal.push(a);
+    return a.id;
+  };
+  const video = arquivo('video', 'transferir-uma-ligacao.mp4', 'video/mp4', Math.round(VIDEO_TRANSFERIR.length * 0.75), VIDEO_TRANSFERIR, 9);
+  const teclas = arquivo('imagem', 'teclas-do-telefone.png', 'image/png', 24_000, PRINT_TECLAS, 9);
+  const app = arquivo('imagem', 'linphone-conta-sip.png', 'image/png', 31_000, PRINT_APP, 20);
+  const manual = arquivo('arquivo', 'Manual rápido do ramal.pdf', 'application/pdf', Math.round(PDF_MANUAL_RAMAL.length * 0.75), PDF_MANUAL_RAMAL, 20);
+  const fop2 = arquivo('imagem', 'fop2-painel.png', 'image/png', 28_000, PRINT_FOP2, 15);
+  const chat = arquivo('imagem', 'linechat-conversas.png', 'image/png', 26_000, PRINT_CHAT, 6);
+  const tutorial = (o: Pick<TutorialRow, 'titulo' | 'resumo' | 'texto' | 'produtoId' | 'moduloId'> & { destaque?: boolean; publicado?: boolean; autor: string; dias: number; views: number; editado?: number }) => {
+    const t: TutorialRow = {
+      id: id(), numero: S.proximoTutorial++, titulo: o.titulo, resumo: o.resumo, texto: o.texto, produtoId: o.produtoId, moduloId: o.moduloId,
+      destaque: !!o.destaque, situacao: o.publicado === false ? 'rascunho' : 'publicado', versao: o.editado != null ? 2 : 1, views: o.views,
+      autorId: o.autor, atualizadoPorId: o.autor, publicadoEm: o.publicado === false ? null : daysAgo(o.dias, 10), criadoEm: daysAgo(o.dias, 9),
+      atualizadoEm: o.editado != null ? daysAgo(o.editado, 16) : daysAgo(o.dias, 10), deletedAt: null,
+    };
+    S.tutoriais.push(t);
+    for (const a of S.arqPortal) if (!a.tutorialId && arquivosDoTexto(t.texto).includes(a.id)) a.tutorialId = t.id;
+  };
+  tutorial({
+    titulo: 'Como abrir um chamado com o suporte', resumo: 'O jeito mais rápido de a gente resolver: o que mandar e por onde.', produtoId: null, moduloId: null,
+    texto: '1. Mande uma mensagem no WhatsApp do suporte (o botão "Falar com o suporte", aqui na página).\n2. Diga o nome da empresa, o ramal (ou o número) com problema e o que está acontecendo.\n3. Se puder, mande um print ou um vídeo curto da tela: ajuda muito.\n\n- Telefone sem linha? Diga se a luz do cabo de rede está acesa.\n- Ligação caindo? Diga o horário e o número de quem ligou.\n\nVocê recebe o número do chamado (IS-1234) para acompanhar.',
+    destaque: true, autor: 'u1', dias: 30, views: 41,
+  });
+  tutorial({
+    titulo: 'Como transferir uma ligação', resumo: 'Passe a ligação para outro ramal sem derrubar, em 3 toques.', produtoId: 'plinepbx', moduloId: null,
+    texto: `Assista (10 segundos):\n[video:${video}]\n\n1. Com a ligação em andamento, aperte TRANSF.\n[print:${teclas}]\n2. Digite o número do ramal (por exemplo, 204).\n3. Aperte TRANSF de novo. Pronto: a ligação já está com o outro ramal.\n\nQuer falar antes com a pessoa do outro ramal? Aperte TRANSF, digite o ramal e espere ela atender; depois aperte TRANSF de novo.`,
+    destaque: true, autor: 'u2', dias: 9, views: 58,
+  });
+  tutorial({
+    titulo: 'Como puxar uma ligação que está tocando em outro ramal', resumo: 'Atenda do seu ramal a ligação que toca na mesa ao lado.', produtoId: 'plinepbx', moduloId: null,
+    texto: '1. Tire o telefone do gancho (ou aperte o viva-voz).\n2. Digite *8 e o número do ramal que está tocando:\n`*8204`\n3. A ligação vem para você.\n\nPara puxar qualquer ligação do seu grupo, sem saber o ramal, digite só *8.',
+    autor: 'u3', dias: 25, views: 23,
+  });
+  tutorial({
+    titulo: 'Usar o seu ramal no celular', resumo: 'Atenda e faça ligações do ramal pelo celular, com o aplicativo Linphone.', produtoId: 'plinepbx', moduloId: null,
+    texto: `1. Instale o aplicativo Linphone (Android ou iPhone).\n2. Abra e toque em "Usar conta SIP".\n3. Preencha com os dados do seu ramal (a Ingline manda para você):\n[print:${app}]\n4. Toque em Entrar. Quando aparecer "Conectado", é só ligar.\n\nOs atalhos do dia a dia estão no manual:\n[arquivo:${manual}]`,
+    autor: 'u2', dias: 20, views: 17, editado: 4,
+  });
+  tutorial({
+    titulo: 'FOP2: ver quem está em ligação e transferir arrastando', resumo: 'O painel mostra cada ramal: verde está livre, vermelho em ligação.', produtoId: 'plinepbx', moduloId: 'mlinepbx_fop2',
+    texto: `1. Abra o FOP2 no navegador e entre com o seu ramal.\n2. Cada quadradinho é um ramal: verde está livre, vermelho está em ligação.\n[print:${fop2}]\n3. Para transferir, arraste a ligação até o ramal de destino.`,
+    autor: 'u2', dias: 15, views: 12,
+  });
+  tutorial({
+    titulo: 'Omniboard: entrar na fila e fazer uma pausa', resumo: 'Comece o turno na fila e pause sem perder ligação.', produtoId: 'plinepbx', moduloId: 'mlinepbx_omniboard',
+    texto: '1. Entre no Omniboard com o seu usuário.\n2. Clique em "Entrar na fila": o seu nome aparece em "Agentes da fila".\n3. Para pausar (almoço, reunião), clique em "Pausa" e escolha o motivo.\n4. Na volta, clique em "Voltar da pausa". Pausa esquecida é o motivo nº 1 de "a ligação não chega para mim".',
+    autor: 'u3', dias: 12, views: 9,
+  });
+  tutorial({
+    titulo: 'LineChat: responder e transferir uma conversa', resumo: 'Responda pelo computador ou pelo celular e passe a conversa para outra pessoa.', produtoId: 'plinechat', moduloId: null,
+    texto: `1. Abra o LineChat e escolha a conversa na coluna da esquerda.\n2. Escreva a resposta e aperte Enter.\n[print:${chat}]\n3. Para passar a conversa para outra pessoa, clique em "Transferir" e escolha o atendente ou o setor.`,
+    destaque: true, autor: 'u3', dias: 6, views: 14,
+  });
+  tutorial({
+    titulo: 'Ouvir e baixar a gravação de uma ligação', resumo: 'Ache a ligação pelo dia e pelo número, e baixe o áudio.', produtoId: 'plinereports', moduloId: null,
+    texto: '1. Entre no LineReports e clique em "Gravações".\n2. Escolha o dia e, se quiser, escreva o número de quem ligou.\n3. Clique no ▶ para ouvir, ou no botão de baixar para guardar o áudio.\n\nA gravação fica guardada pelo tempo do seu contrato.',
+    autor: 'u1', dias: 18, views: 7,
+  });
+  tutorial({
+    titulo: 'URA de feriado: como pedir a mensagem', resumo: null, produtoId: 'plinepbx', moduloId: null,
+    texto: '1. Mande o texto da mensagem com 5 dias de antecedência.\n2. [completar: o modelo de texto que a locutora usa]', publicado: false, autor: 'u3', dias: 2, views: 0,
+  });
+
+  // quem tem acesso (a senha das pessoas da prévia é "demo", como a da equipe)
+  const acesso = (clienteNome: string, nome: string, email: string, o: Partial<AcessoRow>) => {
+    const clienteId = cli(clienteNome);
+    if (!clienteId) return;
+    S.acessosPortal.push({ id: id(), clienteId, nome, email, senha: 'demo', ativo: true, conviteCodigo: null, conviteVence: null, ultimoAcesso: daysAgo(2, 15), acessos: 6, criadoPorId: 'u1', criadoEm: daysAgo(20), ...o });
+  };
+  acesso('Clínica Aurora', 'Maria Souza', 'maria@clinicaaurora.com.br', { acessos: 14 });
+  acesso('Clínica Aurora', 'Recepção Aurora', 'recepcao@clinicaaurora.com.br', { senha: null, conviteCodigo: codigoDeConviteDemo(), conviteVence: daysAgo(-6, 12), ultimoAcesso: null, acessos: 0, criadoEm: daysAgo(1) });
+  acesso('Hospital Vale Verde', 'Carlos Lima', 'carlos@hvaleverde.org.br', { acessos: 5, ultimoAcesso: daysAgo(6, 9) });
+  acesso('Distribuidora Norte', 'Joana Prado', 'joana@distnorte.com.br', { ativo: false, acessos: 3, ultimoAcesso: daysAgo(40, 9) });
+  acesso('Farmácia Central (arquivada)', 'Pedro Alves', 'pedro@centralfarma.com.br', { acessos: 21, ultimoAcesso: daysAgo(90, 9) });
+}
+
+const tutoriaisVivos = () => { semearPortal(); return S.tutoriais.filter((t) => !t.deletedAt); };
+const acessosVivos = () => { semearPortal(); return S.acessosPortal; };
+const ativosDoClienteDemo = (clienteId: string) => {
+  const subs = activeSubs(clienteId);
+  return { produtos: subs.map((s) => `p${s.productCode}`), modulos: subs.flatMap((s) => activeMods(s.id).map((m) => m.moduleId)) };
+};
+const situacaoClienteDemo = (clienteId: string) => {
+  const c = S.clients.find((x) => x.id === clienteId);
+  const dados = { arquivado: !!c?.archived, naLixeira: !!c?.deletedAt, produtosAtivos: activeSubs(clienteId).length };
+  return { nome: c?.tradeName ?? '—', naBase: clienteNaBase(dados), motivo: motivoForaDaBase(dados) };
+};
+const produtoDemo = (pid: string | null) => { const p = pid ? S.products.find((x) => x.id === pid) : null; return p ? { id: p.id, nome: p.name, cor: p.color } : null; };
+const cartaoDemo = (t: TutorialRow): CartaoTutorial => ({
+  id: t.id, numero: t.numero, titulo: t.titulo, resumo: t.resumo, produto: produtoDemo(t.produtoId),
+  modulo: t.moduloId ? { id: t.moduloId, nome: S.modules.find((m) => m.id === t.moduloId)?.name ?? '—' } : null,
+  destaque: t.destaque, atualizadoEm: t.atualizadoEm, caminho: caminhoDoTutorial(t.numero, t.titulo),
+});
+const tutorialNaListaDemo = (t: TutorialRow): TutorialNaLista => ({
+  ...cartaoDemo(t), situacao: t.situacao, visualizacoes: t.views, autor: nomeDaPessoaDemo(t.autorId), atualizadoPor: nomeDaPessoaDemo(t.atualizadoPorId),
+});
+const arquivoDemo = (a: ArqPortalRow): ArquivoDoPortal => ({ id: a.id, tipo: a.tipo, nome: a.nome, mimeType: a.mimeType, tamanho: a.tamanho, url: a.url });
+const arquivosDoTutorialDemo = (t: TutorialRow) => S.arqPortal.filter((a) => a.tutorialId === t.id && !a.deletedAt).map(arquivoDemo);
+const paraBuscaPortalDemo = (t: TutorialRow) => ({
+  t, numero: t.numero, titulo: t.titulo, oQueAcontece: t.resumo, comoResolver: textoPuro(t.texto), porQueAcontece: null, palavrasDoCliente: [] as string[],
+  nomesLigados: [produtoDemo(t.produtoId)?.nome ?? 'Geral', t.moduloId ? S.modules.find((m) => m.id === t.moduloId)?.name ?? '' : ''].filter(Boolean),
+});
+const acessoDemo = (a: AcessoRow): AcessoPortal => {
+  const c = situacaoClienteDemo(a.clienteId);
+  return {
+    id: a.id, nome: a.nome, email: a.email, clienteId: a.clienteId, cliente: c.nome,
+    situacao: situacaoDoAcesso({ ativo: a.ativo, temSenha: !!a.senha, conviteVenceEm: a.conviteVence }, c.naBase),
+    motivo: c.naBase ? null : c.motivo, conviteVenceEm: a.conviteCodigo ? a.conviteVence : null,
+    ultimoAcesso: a.ultimoAcesso, acessos: a.acessos, criadoPor: nomeDaPessoaDemo(a.criadoPorId), criadoEm: a.criadoEm,
+  };
+};
+function tutorialDemoOu404(numero: number | string): TutorialRow {
+  const n = typeof numero === 'number' ? numero : numeroDoCaminho(numero);
+  const t = tutoriaisVivos().find((x) => x.numero === n);
+  if (!t) throw notFound('Tutorial');
+  return t;
+}
+/** Produto e módulo existem, e o módulo é do produto (como o servidor). */
+function conferirProdutoDemo(d: TutorialGravar) {
+  const produtoId = d.produtoId ?? null; const moduloId = d.moduloId ?? null;
+  if (moduloId && !produtoId) throw bad('Escolha o produto do módulo.');
+  if (produtoId && !S.products.some((p) => p.id === produtoId && !p.deletedAt)) throw bad('O produto escolhido não existe (ou está na lixeira).');
+  if (moduloId && S.modules.find((m) => m.id === moduloId && !m.deletedAt)?.productId !== produtoId) throw bad('O módulo escolhido não é deste produto.');
+  return { produtoId, moduloId };
+}
+function ligarArquivosDemo(t: TutorialRow) {
+  const citados = arquivosDoTexto(t.texto);
+  const existem = S.arqPortal.filter((a) => citados.includes(a.id) && !a.deletedAt);
+  if (existem.length < citados.length) throw bad('O texto cita um arquivo que não chegou ao servidor. Suba o arquivo de novo.');
+  for (const a of existem) if (!a.tutorialId) a.tutorialId = t.id;
+}
+const limpoPortalDemo = (t: string | null | undefined) => { const s = (t ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/^\n+|\s+$/g, ''); return s || null; };
+const codigoDeConviteDemo = () => `demo${id()}${id()}${id()}`.slice(0, 40);
+/** A sessão do cliente na prévia: confere a cada pedido, como o servidor. */
+function sessaoPortalDemo(): { a: AcessoRow; ativos: { produtos: string[]; modulos: string[] } } {
+  const a = acessosVivos().find((x) => x.id === S.portalSessao);
+  if (!a) throw new ApiError(401, 'Entre para ver');
+  if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(401, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
+  return { a, ativos: ativosDoClienteDemo(a.clienteId) };
+}
+const euPortalDemo = (a: AcessoRow): EuPortal => {
+  const c = S.clients.find((x) => x.id === a.clienteId);
+  return { nome: a.nome, email: a.email, cliente: { nome: c?.tradeName ?? '—', logo: c?.logoUrl ?? null }, portal: S.ajustesPortal };
+};
+const visiveisDemo = (ativos: { produtos: string[]; modulos: string[] }) =>
+  tutoriaisVivos().filter((t) => t.situacao === 'publicado' && tutorialValePara({ produtoId: t.produtoId, moduloId: t.moduloId }, ativos));
+const lerArquivoDemo = (file: File) => new Promise<string>((ok, falhou) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => falhou(bad('Não deu para ler o arquivo')); r.readAsDataURL(file); });
+
 export const demoApi: Api = {
   auth: {
     async me() { await wait(50); if (!S.me) throw new ApiError(401, 'Faça login para continuar'); return me(S.me); },
@@ -2752,6 +2973,249 @@ export const demoApi: Api = {
       };
     },
   },
+  portalAdmin: {
+    async opcoes() {
+      await wait(50); requirePerm('records.read');
+      return {
+        produtos: S.products.filter((p) => !p.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map((p) => ({
+          id: p.id, nome: p.name, cor: p.color,
+          modulos: S.modules.filter((m) => m.productId === p.id && !m.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map((m) => ({ id: m.id, nome: m.name })),
+        })),
+      };
+    },
+    async tutoriais(q) {
+      await wait(80); requirePerm('records.read');
+      const p = TutoriaisListarSchema.safeParse(q ?? {});
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Filtro inválido');
+      const f = p.data;
+      const rows = tutoriaisVivos().slice().sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
+        .filter((t) => f.situacao === 'publicados' ? t.situacao === 'publicado' : f.situacao === 'rascunhos' ? t.situacao === 'rascunho' : true)
+        .filter((t) => !f.produto || (f.produto === 'geral' ? !t.produtoId : t.produtoId === f.produto));
+      const achados = buscarArtigos(rows.map(paraBuscaPortalDemo), f.q);
+      if (f.q?.trim()) achados.sort((a, b) => b.pontos - a.pontos);
+      const inicio = (f.page - 1) * f.pageSize;
+      return { items: achados.slice(inicio, inicio + f.pageSize).map((x) => ({ ...tutorialNaListaDemo(x.artigo.t), trecho: x.trecho })), total: achados.length, page: f.page, pageSize: f.pageSize };
+    },
+    async tutorial(numero) {
+      await wait(70); requirePerm('records.read');
+      const t = tutorialDemoOu404(numero);
+      return { ...tutorialNaListaDemo(t), texto: t.texto, versao: t.versao, criadoEm: t.criadoEm, publicadoEm: t.publicadoEm, arquivos: arquivosDoTutorialDemo(t) };
+    },
+    async criar(d0) {
+      await wait(220); requirePerm('portal.write');
+      const p = TutorialGravarSchema.safeParse(d0);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      const d = p.data;
+      const campos = { titulo: d.titulo.trim(), resumo: limpoPortalDemo(d.resumo), texto: limpoPortalDemo(d.texto), destaque: d.destaque };
+      if (d.publicar) { const falta = faltaParaPublicarTutorial(campos); if (falta) throw bad(falta); }
+      const { produtoId, moduloId } = conferirProdutoDemo(d);
+      semearPortal();
+      const t: TutorialRow = {
+        id: id(), numero: S.proximoTutorial++, ...campos, produtoId, moduloId, situacao: d.publicar ? 'publicado' : 'rascunho', versao: 1, views: 0,
+        autorId: S.me!.id, atualizadoPorId: S.me!.id, publicadoEm: d.publicar ? now() : null, criadoEm: now(), atualizadoEm: now(), deletedAt: null,
+      };
+      ligarArquivosDemo(t);
+      S.tutoriais.push(t);
+      audit('create', 'portal', `${d.publicar ? 'Publicou' : 'Escreveu o rascunho do'} tutorial ${t.numero} "${t.titulo}" no portal`, t.id);
+      return { numero: t.numero, versao: t.versao, situacao: t.situacao, caminho: caminhoDoTutorial(t.numero, t.titulo) };
+    },
+    async atualizar(numero, d0) {
+      await wait(220); requirePerm('portal.write');
+      const t = tutorialDemoOu404(numero);
+      const p = TutorialGravarSchema.safeParse(d0);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      const d = p.data;
+      if (d.versao != null && d.versao !== t.versao) throw new ApiError(409, `${nomeDaPessoaDemo(t.atualizadoPorId) ?? 'Outra pessoa'} salvou este tutorial enquanto você editava. Copie o que você escreveu, abra o tutorial de novo e junte as duas mudanças.`);
+      const campos = { titulo: d.titulo.trim(), resumo: limpoPortalDemo(d.resumo), texto: limpoPortalDemo(d.texto), destaque: d.destaque };
+      if (d.publicar) { const falta = faltaParaPublicarTutorial(campos); if (falta) throw bad(falta); }
+      const { produtoId, moduloId } = conferirProdutoDemo(d);
+      ligarArquivosDemo({ ...t, texto: campos.texto });
+      const antes = t.situacao;
+      Object.assign(t, campos, { produtoId, moduloId, situacao: d.publicar ? 'publicado' : 'rascunho', publicadoEm: t.publicadoEm ?? (d.publicar ? now() : null), versao: t.versao + 1, atualizadoPorId: S.me!.id, atualizadoEm: now() });
+      const acao = antes !== t.situacao ? (t.situacao === 'publicado' ? 'Publicou' : 'Tirou do portal (voltou a rascunho)') : 'Editou';
+      audit('update', 'portal', `${acao} o tutorial ${t.numero} "${t.titulo}"`, t.id);
+      return { numero: t.numero, versao: t.versao, situacao: t.situacao, caminho: caminhoDoTutorial(t.numero, t.titulo) };
+    },
+    async remover(numero) {
+      await wait(); requirePerm('portal.write');
+      const t = tutorialDemoOu404(numero);
+      t.deletedAt = now();
+      audit('delete', 'portal', `Mandou o tutorial ${t.numero} "${t.titulo}" para a lixeira`, t.id);
+      return { ok: true };
+    },
+    async subir(tipo, file, progresso) {
+      requirePerm('portal.write');
+      const mime = file.type || 'application/octet-stream';
+      const problema = problemaDoArquivo(tipo, mime, file.size) ?? (tipo === 'imagem' && !(TIPOS_IMAGEM_PORTAL as readonly string[]).includes(mime) ? 'No meio do texto só entra imagem PNG, JPG, WEBP ou GIF.' : null);
+      if (problema) throw bad(problema);
+      // na prévia o arquivo não sai do navegador: a barra anda só para mostrar como fica
+      for (const p of [0.25, 0.6, 0.9]) { progresso?.(p); await wait(tipo === 'video' ? 260 : 90); }
+      const url = tipo === 'video' ? URL.createObjectURL(file) : await lerArquivoDemo(file);
+      progresso?.(1);
+      semearPortal();
+      const a: ArqPortalRow = { id: id(), tutorialId: null, tipo, nome: file.name || tipo, mimeType: mime, tamanho: file.size, url, porId: S.me!.id, criadoEm: now(), deletedAt: null };
+      S.arqPortal.push(a);
+      audit('create', 'portal', `Subiu ${tipo === 'video' ? 'o vídeo' : tipo === 'imagem' ? 'a imagem' : 'o arquivo'} "${a.nome}" (${Math.max(1, Math.round(a.tamanho / 1024))} KB) para o portal`, a.id);
+      return arquivoDemo(a);
+    },
+    async espaco() {
+      await wait(40); requirePerm('records.read'); semearPortal();
+      const vivos = S.arqPortal.filter((a) => !a.deletedAt);
+      const de = (f: (a: ArqPortalRow) => boolean) => vivos.filter(f);
+      return {
+        videos: de((a) => a.tipo === 'video').length, bytesVideos: de((a) => a.tipo === 'video').reduce((s, a) => s + a.tamanho, 0),
+        arquivos: de((a) => a.tipo !== 'video').length, bytesArquivos: de((a) => a.tipo !== 'video').reduce((s, a) => s + a.tamanho, 0),
+      };
+    },
+    async acessos(q) {
+      await wait(70); requirePerm('records.read');
+      const termo = (q?.q ?? '').trim().toLowerCase();
+      return acessosVivos().filter((a) => !q?.cliente || a.clienteId === q.cliente).map(acessoDemo)
+        .filter((a) => !termo || `${a.nome} ${a.email} ${a.cliente}`.toLowerCase().includes(termo))
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+    },
+    async acessosDoCliente(clienteId) {
+      await wait(60); requirePerm('records.read');
+      if (!S.clients.some((c) => c.id === clienteId)) throw notFound('Cliente');
+      const c = situacaoClienteDemo(clienteId);
+      return { naBase: c.naBase, motivo: c.naBase ? null : c.motivo, acessos: acessosVivos().filter((a) => a.clienteId === clienteId).map(acessoDemo).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')) };
+    },
+    async darAcesso(clienteId, d0) {
+      await wait(160); requirePerm('portal.access');
+      const p = AcessoCriarSchema.safeParse(d0);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      const c = S.clients.find((x) => x.id === clienteId && !x.deletedAt);
+      if (!c) throw notFound('Cliente');
+      const outro = acessosVivos().find((a) => a.email === p.data.email);
+      if (outro) throw new ApiError(409, `Este e-mail já tem acesso ao portal (${situacaoClienteDemo(outro.clienteId).nome}).`);
+      const codigo = codigoDeConviteDemo();
+      const a: AcessoRow = { id: id(), clienteId, nome: p.data.nome, email: p.data.email, senha: null, ativo: true, conviteCodigo: codigo, conviteVence: new Date(Date.now() + DIAS_DO_CONVITE * 86_400_000).toISOString(), ultimoAcesso: null, acessos: 0, criadoPorId: S.me!.id, criadoEm: now() };
+      S.acessosPortal.push(a);
+      audit('create', 'portal', `Deu acesso ao portal a ${a.nome} (${a.email}), de ${c.tradeName}`, a.id);
+      return { id: a.id, convite: `/portal/convite/${codigo}` };
+    },
+    async novoConvite(idAcesso) {
+      await wait(120); requirePerm('portal.access');
+      const a = acessosVivos().find((x) => x.id === idAcesso);
+      if (!a) throw notFound('Acesso');
+      if (!a.ativo) throw bad('O acesso está bloqueado. Desbloqueie antes de mandar um convite.');
+      a.conviteCodigo = codigoDeConviteDemo(); a.conviteVence = new Date(Date.now() + DIAS_DO_CONVITE * 86_400_000).toISOString();
+      audit('update', 'portal', `Gerou um convite novo para ${a.nome} (${a.email}) entrar no portal`, a.id);
+      return { id: a.id, convite: `/portal/convite/${a.conviteCodigo}` };
+    },
+    async bloquear(idAcesso, bloquear) {
+      await wait(); requirePerm('portal.access');
+      const a = acessosVivos().find((x) => x.id === idAcesso);
+      if (!a) throw notFound('Acesso');
+      a.ativo = !bloquear;
+      if (bloquear && S.portalSessao === a.id) S.portalSessao = null;
+      audit('update', 'portal', `${bloquear ? 'Bloqueou' : 'Desbloqueou'} o acesso de ${a.nome} (${a.email}) ao portal`, a.id);
+      return { ok: true };
+    },
+    async corrigirAcesso(idAcesso, d0) {
+      await wait(); requirePerm('portal.access');
+      const p = AcessoCriarSchema.safeParse(d0);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      const a = acessosVivos().find((x) => x.id === idAcesso);
+      if (!a) throw notFound('Acesso');
+      const outro = acessosVivos().find((x) => x.email === p.data.email && x.id !== a.id);
+      if (outro) throw new ApiError(409, `Este e-mail já tem acesso ao portal (${situacaoClienteDemo(outro.clienteId).nome}).`);
+      Object.assign(a, { nome: p.data.nome, email: p.data.email });
+      audit('update', 'portal', `Corrigiu o acesso de ${a.nome} ao portal`, a.id);
+      return { ok: true };
+    },
+    async ajustes() { await wait(40); requirePerm('records.read'); return S.ajustesPortal; },
+    async salvarAjustes(d0) {
+      await wait(); requirePerm('admin.manage');
+      const p = PortalAjustesSchema.safeParse(d0);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      S.ajustesPortal = { ...p.data, email: p.data.email || null };
+      audit('update', 'portal', 'Mudou os ajustes do portal do cliente', null);
+      return S.ajustesPortal;
+    },
+  },
+  portal: {
+    async sobre() {
+      await wait(30);
+      const a = S.ajustesPortal;
+      return { titulo: a.titulo, whatsapp: a.whatsapp ?? null, email: a.email || null, horario: a.horario ?? null };
+    },
+    async eu() { await wait(50); return euPortalDemo(sessaoPortalDemo().a); },
+    async entrar(email, senha) {
+      await wait(180);
+      const p = PortalEntrarSchema.safeParse({ email, senha });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      const a = acessosVivos().find((x) => x.email === p.data.email);
+      if (!a || !a.senha || a.senha !== p.data.senha) {
+        audit('login_failed', 'portal', `Tentativa de entrar no portal falhou para ${p.data.email}`, null);
+        throw new ApiError(401, 'E-mail ou senha incorretos');
+      }
+      if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(403, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
+      S.portalSessao = a.id; a.ultimoAcesso = now(); a.acessos += 1;
+      return euPortalDemo(a);
+    },
+    async sair() { await wait(40); S.portalSessao = null; return { ok: true }; },
+    async convite(codigo) {
+      await wait(80);
+      const a = acessosVivos().find((x) => x.conviteCodigo === codigo && x.conviteVence && x.conviteVence > now());
+      if (!a) throw notFound('Convite');
+      if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(403, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
+      return { nome: a.nome, email: a.email, cliente: situacaoClienteDemo(a.clienteId).nome, trocando: !!a.senha };
+    },
+    async criarSenha(codigo, senha) {
+      await wait(180);
+      const p = PortalCriarSenhaSchema.safeParse({ senha });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Senha inválida');
+      const a = acessosVivos().find((x) => x.conviteCodigo === codigo && x.conviteVence && x.conviteVence > now());
+      if (!a) throw notFound('Convite');
+      const trocando = !!a.senha;
+      a.senha = p.data.senha; a.conviteCodigo = null; a.conviteVence = null;
+      audit('update', 'portal', `${a.nome} (${a.email}) ${trocando ? 'trocou a senha' : 'criou a senha'} do portal pelo convite`, a.id);
+      S.portalSessao = a.id; a.ultimoAcesso = now(); a.acessos += 1;
+      return { ok: true };
+    },
+    async trocarSenha(atual, nova) {
+      await wait(150);
+      const { a } = sessaoPortalDemo();
+      const p = PortalTrocarSenhaSchema.safeParse({ atual, nova });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Senha inválida');
+      if (a.senha !== p.data.atual) throw bad('A senha atual não confere.');
+      a.senha = p.data.nova;
+      return { ok: true };
+    },
+    async inicio() {
+      await wait(90);
+      const { ativos } = sessaoPortalDemo();
+      const rows = visiveisDemo(ativos);
+      const produtos = S.products.filter((p) => !p.deletedAt && ativos.produtos.includes(p.id)).sort((a, b) => a.sortOrder - b.sortOrder);
+      return {
+        portal: S.ajustesPortal,
+        produtos: produtos.map((p) => ({ id: p.id, nome: p.name, cor: p.color, tutoriais: rows.filter((t) => t.produtoId === p.id).length })),
+        geral: rows.filter((t) => !t.produtoId).length,
+        destaques: rows.filter((t) => t.destaque).sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm)).slice(0, 6).map(cartaoDemo),
+        recentes: [...rows].sort((a, b) => (b.publicadoEm ?? b.atualizadoEm).localeCompare(a.publicadoEm ?? a.atualizadoEm)).slice(0, 6).map(cartaoDemo),
+        total: rows.length,
+      };
+    },
+    async tutoriais(q) {
+      await wait(80);
+      const { ativos } = sessaoPortalDemo();
+      const rows = visiveisDemo(ativos).filter((t) => !q.produto || (q.produto === 'geral' ? !t.produtoId : t.produtoId === q.produto));
+      const achados = buscarArtigos(rows.map(paraBuscaPortalDemo), q.q);
+      if (q.q?.trim()) achados.sort((a, b) => b.pontos - a.pontos);
+      else achados.sort((a, b) => Number(b.artigo.t.destaque) - Number(a.artigo.t.destaque) || a.artigo.t.titulo.localeCompare(b.artigo.t.titulo, 'pt-BR'));
+      return { items: achados.map((x) => ({ ...cartaoDemo(x.artigo.t), trecho: x.trecho })), total: achados.length };
+    },
+    async tutorial(numero) {
+      await wait(80);
+      const { ativos } = sessaoPortalDemo();
+      const n = numeroDoCaminho(numero);
+      const t = visiveisDemo(ativos).find((x) => x.numero === n);
+      if (!t) throw notFound('Tutorial');
+      t.views += 1;
+      return { ...cartaoDemo(t), texto: t.texto, publicadoEm: t.publicadoEm, arquivos: arquivosDoTutorialDemo(t) };
+    },
+  },
   admin: {
     async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt })); },
     async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
@@ -2811,15 +3275,16 @@ export const demoApi: Api = {
         ...S.notas.filter((c) => c.deletedAt).map((c) => ({ type: 'releaseNote', id: c.id, label: c.title, deletedAt: c.deletedAt! })),
         ...S.modules.filter((c) => c.deletedAt).map((c) => ({ type: 'productModule', id: c.id, label: `${S.products.find((p) => p.id === c.productId)?.name} › ${c.name}`, deletedAt: c.deletedAt! })),
         ...S.artigos.filter((c) => c.deletedAt).map((c) => ({ type: 'knowledgeArticle', id: c.id, label: `${codigoDoArtigo(c.numero)} · ${c.titulo}`, deletedAt: c.deletedAt! })),
+        ...S.tutoriais.filter((c) => c.deletedAt).map((c) => ({ type: 'portalArticle', id: c.id, label: `Tutorial ${c.numero} · ${c.titulo}`, deletedAt: c.deletedAt! })),
       ].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
     },
     async restore(type, idr) {
       await wait(); requirePerm('records.delete');
-      const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'productModule' ? S.modules : type === 'releaseNote' ? S.notas : type === 'knowledgeArticle' ? S.artigos : S.devices;
+      const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'productModule' ? S.modules : type === 'releaseNote' ? S.notas : type === 'knowledgeArticle' ? S.artigos : type === 'portalArticle' ? S.tutoriais : S.devices;
       const it = list.find((x) => x.id === idr); if (!it) throw notFound();
       it.deletedAt = null;
-      if (type === 'knowledgeArticle') it.atualizadoEm = now();
-      const nome = type === 'knowledgeArticle' ? `${codigoDoArtigo(it.numero)} "${it.titulo}"` : it.tradeName ?? it.name ?? it.number ?? (type === 'device' ? identificacaoAparelho(it).texto : idr);
+      if (type === 'knowledgeArticle' || type === 'portalArticle') it.atualizadoEm = now();
+      const nome = type === 'knowledgeArticle' ? `${codigoDoArtigo(it.numero)} "${it.titulo}"` : type === 'portalArticle' ? `o tutorial ${it.numero} "${it.titulo}" do portal` : it.tradeName ?? it.name ?? it.number ?? (type === 'device' ? identificacaoAparelho(it).texto : idr);
       audit('restore', type, `Restaurou ${nome} da lixeira`, idr); return { ok: true };
     },
   },

@@ -211,6 +211,42 @@ export type Api = {
     /** "Registrar na base" a partir de um chamado (pelo id do card ou IS-3607) */
     doChamado(ref: string): Promise<T.DoChamado>;
   };
+  /** Portal do cliente — o lado da equipe (Patch 1.8) */
+  portalAdmin: {
+    opcoes(): Promise<T.OpcoesPortal>;
+    tutoriais(q: Record<string, unknown>): Promise<T.Page<T.TutorialNaLista>>;
+    tutorial(numero: number): Promise<T.Tutorial>;
+    criar(d: T.TutorialGravar): Promise<T.GravadoTutorial>;
+    /** `versao` é a que a pessoa abriu: se outra pessoa salvou no meio, vem erro 409 */
+    atualizar(numero: number, d: T.TutorialGravar): Promise<T.GravadoTutorial>;
+    remover(numero: number): Promise<{ ok: boolean }>;
+    /** sobe um arquivo (o vídeo até 300 MB); `progresso` recebe de 0 a 1 */
+    subir(tipo: T.TipoArquivoPortal, arquivo: File, progresso?: (p: number) => void): Promise<T.ArquivoDoPortal>;
+    espaco(): Promise<T.EspacoPortal>;
+    acessos(q?: { q?: string; cliente?: string }): Promise<T.AcessoPortal[]>;
+    acessosDoCliente(clienteId: string): Promise<T.AcessosDoCliente>;
+    darAcesso(clienteId: string, d: { nome: string; email: string }): Promise<T.ConviteGerado>;
+    /** o primeiro convite venceu, ou a pessoa esqueceu a senha */
+    novoConvite(id: string): Promise<T.ConviteGerado>;
+    bloquear(id: string, bloquear: boolean): Promise<{ ok: boolean }>;
+    corrigirAcesso(id: string, d: { nome: string; email: string }): Promise<{ ok: boolean }>;
+    ajustes(): Promise<T.PortalAjustes>;
+    salvarAjustes(d: T.PortalAjustes): Promise<T.PortalAjustes>;
+  };
+  /** Portal do cliente — o lado do cliente, com login próprio (Patch 1.8) */
+  portal: {
+    sobre(): Promise<T.SobrePortal>;
+    eu(): Promise<T.EuPortal>;
+    entrar(email: string, senha: string): Promise<T.EuPortal>;
+    sair(): Promise<{ ok: boolean }>;
+    convite(codigo: string): Promise<T.ConvitePortal>;
+    criarSenha(codigo: string, senha: string): Promise<{ ok: boolean }>;
+    trocarSenha(atual: string, nova: string): Promise<{ ok: boolean }>;
+    inicio(): Promise<T.InicioPortal>;
+    tutoriais(q: { q?: string; produto?: string }): Promise<{ items: T.TutorialAchado[]; total: number }>;
+    /** pelo número, ou pelo pedaço do endereço ("12-como-transferir…") */
+    tutorial(numero: string): Promise<T.TutorialDoCliente>;
+  };
   admin: {
     users(): Promise<T.User[]>;
     createUser(d: Record<string, unknown>): Promise<T.User>;

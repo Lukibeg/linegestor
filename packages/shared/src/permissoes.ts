@@ -25,6 +25,8 @@ export const PERMISSIONS = {
   'support.read': 'Ver os chamados de suporte (a cópia do painel do LineChat)',
   'knowledge.write': 'Escrever na base de conhecimento: criar artigos e melhorar os de qualquer pessoa',
   'knowledge.manage': 'Cuidar da base de conhecimento: leitura obrigatória, rascunhos de todos e mandar artigo para a lixeira',
+  'portal.write': 'Escrever no portal do cliente: tutoriais com passo a passo, prints, vídeos e arquivos',
+  'portal.access': 'Dar e tirar o acesso dos clientes ao portal (convites e bloqueios)',
   'admin.manage': 'Gerenciar usuários, papéis e catálogos',
   'audit.read': 'Ver a auditoria',
 } as const;
@@ -47,7 +49,7 @@ export const DEFAULT_ROLES: Array<{ key: string; name: string; description: stri
     key: 'operador',
     name: 'Operador',
     description: 'Operação do dia a dia: aloca DIDs, movimenta aparelhos, anota. Sem senhas, sem exclusão, sem importação.',
-    permissions: ['records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work', 'knowledge.write'],
+    permissions: ['records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work', 'knowledge.write', 'portal.write', 'portal.access'],
   },
   {
     key: 'tecnico',
@@ -55,7 +57,7 @@ export const DEFAULT_ROLES: Array<{ key: string; name: string; description: stri
     description: 'Tudo do Operador + edita cadastros e dados de servidor, revela senhas (com registro) e vê a auditoria.',
     permissions: [
       'records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work', 'knowledge.write',
-      'records.write', 'servers.write', 'secrets.reveal', 'audit.read',
+      'portal.write', 'portal.access', 'records.write', 'servers.write', 'secrets.reveal', 'audit.read',
     ],
   },
   {

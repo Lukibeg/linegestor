@@ -71,6 +71,13 @@
       "when": 1791375417989,
       "tag": "0009_base_de_conhecimento",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791472599836,
+      "tag": "0010_portal_do_cliente",
+      "breakpoints": true
     }
   ]
 }

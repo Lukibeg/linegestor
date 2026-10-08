@@ -1219,6 +1219,125 @@ export const knowledgeComments = pgTable(
 );
 
 // ---------------------------------------------------------------------
+// 9. PORTAL DO CLIENTE (decisão 0040, Patch 1.8, migração 0010)
+// ---------------------------------------------------------------------
+// O autoatendimento: a pessoa do cliente entra com o próprio e-mail e senha e vê os tutoriais dos
+// produtos que o cliente tem. O login é separado do da equipe (outra tabela, outra sessão, outro
+// cookie): nada do que vale no portal abre o Gestor.
+
+/**
+ * Uma pessoa do cliente com acesso ao portal. A senha é ela quem cria, pelo link de convite (a
+ * equipe nunca digita senha de cliente). Só entra enquanto o cliente está na base: com produto
+ * ativo, fora do arquivo e da lixeira — e a sessão aberta cai na hora em que ele sai.
+ */
+export const portalUsers = pgTable(
+  'portal_users',
+  {
+    id: id(),
+    clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** O e-mail de entrada, em minúsculas. Único no portal inteiro. */
+    email: text('email').notNull(),
+    /** Hash Argon2 da senha; nulo enquanto a pessoa não aceitou o convite */
+    passwordHash: text('password_hash'),
+    /** false = bloqueado pela equipe: não entra, e a sessão aberta cai */
+    active: boolean('active').notNull().default(true),
+    /** O convite (criar ou trocar a senha): só o hash do código fica no banco; vale até `invite_expires_at` e uma vez só */
+    inviteTokenHash: text('invite_token_hash'),
+    inviteExpiresAt: timestamp('invite_expires_at', { withTimezone: true }),
+    /** Última vez que entrou, e quantas vezes entrou */
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+    loginCount: integer('login_count').notNull().default(0),
+    /** Quem da equipe deu o acesso */
+    createdById: text('created_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('portal_users_email_uq').on(t.email),
+    uniqueIndex('portal_users_invite_uq').on(t.inviteTokenHash),
+    index('portal_users_client_idx').on(t.clientId),
+  ],
+);
+
+/** A sessão de quem entrou no portal (como `sessions`, mas do cliente). Dura 30 dias sem uso. */
+export const portalSessions = pgTable(
+  'portal_sessions',
+  {
+    id: id(),
+    portalUserId: text('portal_user_id').notNull().references(() => portalUsers.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+  },
+  (t) => [index('portal_sessions_user_idx').on(t.portalUserId)],
+);
+
+/**
+ * Um tutorial do portal. O texto é o "texto simples" da base de conhecimento — linha com número
+ * vira passo, crases viram comando com Copiar, `[print:<id>]` é um print — e mais `[video:<id>]`
+ * (o player) e `[arquivo:<id>]` (o botão de baixar). Sem produto = Geral (todos os clientes veem).
+ */
+export const portalArticles = pgTable(
+  'portal_articles',
+  {
+    id: id(),
+    /** O número do link (/portal/a/12-como-transferir…): sequencial, nunca reaproveitado */
+    number: serial('number').notNull(),
+    title: text('title').notNull(),
+    /** Uma frase: aparece na lista e no começo do tutorial */
+    summary: text('summary'),
+    body: text('body'),
+    /** De qual produto (nulo = Geral) */
+    productId: text('product_id').references(() => products.id),
+    /** De qual módulo do produto (nulo = o produto inteiro) */
+    moduleId: text('module_id').references(() => productModules.id),
+    /** Em destaque na página inicial do portal */
+    featured: boolean('featured').notNull().default(false),
+    /** rascunho = só a equipe vê · publicado = os clientes veem */
+    status: text('status').notNull().default('rascunho'),
+    /** Sobe a cada gravação: quem salvou no meio não é atropelado */
+    version: integer('version').notNull().default(1),
+    /** Quantas vezes os clientes abriram o tutorial */
+    views: integer('views').notNull().default(0),
+    authorId: text('author_id').references(() => users.id),
+    updatedById: text('updated_by_id').references(() => users.id),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [uniqueIndex('portal_articles_number_uq').on(t.number), index('portal_articles_product_idx').on(t.productId)],
+);
+
+/**
+ * Um arquivo do portal: `imagem` (print no texto), `video` ou `arquivo` (para baixar).
+ * Imagem e arquivo ficam no banco, em base64 (entram no backup diário); o vídeo fica em disco,
+ * em `PORTAL_DIR/videos/<disk_name>`, pelo tamanho (e tem backup próprio, semanal).
+ */
+export const portalFiles = pgTable(
+  'portal_files',
+  {
+    id: id(),
+    /** O tutorial que usa o arquivo (nulo enquanto o tutorial novo não foi gravado) */
+    articleId: text('article_id').references(() => portalArticles.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    /** Imagem e arquivo: o conteúdo em base64 */
+    dataBase64: text('data_base64'),
+    /** Vídeo: o nome do arquivo em disco */
+    diskName: text('disk_name'),
+    uploadedById: text('uploaded_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('portal_files_article_idx').on(t.articleId)],
+);
+
+// ---------------------------------------------------------------------
 // RELAÇÕES (para consultas com "traga junto")
 // ---------------------------------------------------------------------
 

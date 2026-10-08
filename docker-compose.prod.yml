@@ -31,11 +31,15 @@ services:
       PORT: 3333
       # onde o sistema escreve a cópia dos ajustes para o vigia que roda fora dele
       CONFIG_DIR: /dados
+      # os vídeos do portal do cliente (1.8): grandes demais para o banco, ficam no volume "portal"
+      PORTAL_DIR: /portal
     volumes:
       # os backups, para o sistema conseguir mandá-los ao Google Drive
       - ./backups:/backups
       # a cópia dos ajustes de aviso, lida pelo monitorar.sh lá de fora
       - ./config:/dados
+      # os vídeos do portal do cliente (não entram no backup diário do banco: guarde o original)
+      - portal:/portal
     networks: [interna]
 
   caddy:
@@ -54,6 +58,7 @@ services:
 
 volumes:
   db:
+  portal:
   caddy_data:
   caddy_config:
   caddy_log:

@@ -135,6 +135,8 @@ export function faltaParaPublicar(a: { titulo: string; comoResolver?: string | n
  *  - `item`: linha que começa com "-", "•" ou "*"
  *  - `comando`: linha inteira entre crases (`asterisk -r`), ou várias entre ``` e ```: ganha Copiar
  *  - `imagem`: `[print:<id>]` numa linha sozinha
+ *  - `video` e `arquivo` (só no portal do cliente, com `midia: true`): `[video:<id>]` e
+ *    `[arquivo:<id>]` numa linha sozinha — o player do vídeo e o botão de baixar
  *  - `paragrafo`: o resto (linhas seguidas viram um parágrafo; linha em branco separa)
  */
 export type BlocoTexto =
@@ -142,15 +144,20 @@ export type BlocoTexto =
   | { tipo: 'passo'; numero: number; texto: string; dentro: BlocoTexto[] }
   | { tipo: 'item'; texto: string }
   | { tipo: 'comando'; texto: string }
-  | { tipo: 'imagem'; anexoId: string };
+  | { tipo: 'imagem'; anexoId: string }
+  | { tipo: 'video'; arquivoId: string }
+  | { tipo: 'arquivo'; arquivoId: string };
 
 const RE_PASSO = /^\s*(\d{1,3})[.)]\s+(.*)$/;
 const RE_ITEM = /^\s*[-•*]\s+(.*)$/;
 const RE_COMANDO = /^\s*`([^`]+)`\s*$/;
 const RE_IMAGEM = /^\s*\[print:([A-Za-z0-9_-]{1,64})\]\s*$/;
+const RE_VIDEO = /^\s*\[video:([A-Za-z0-9_-]{1,64})\]\s*$/;
+const RE_ARQUIVO = /^\s*\[arquivo:([A-Za-z0-9_-]{1,64})\]\s*$/;
 const RE_CERCA = /^\s*```/;
 
-export function blocosDoTexto(texto: string | null | undefined): BlocoTexto[] {
+/** `midia: true` (o portal do cliente) entende também `[video:id]` e `[arquivo:id]`; a base não. */
+export function blocosDoTexto(texto: string | null | undefined, opcoes: { midia?: boolean } = {}): BlocoTexto[] {
   const linhas = (texto ?? '').replace(/\r\n?/g, '\n').split('\n');
   const out: BlocoTexto[] = [];
   let passo: Extract<BlocoTexto, { tipo: 'passo' }> | null = null;
@@ -181,10 +188,19 @@ export function blocosDoTexto(texto: string | null | undefined): BlocoTexto[] {
     }
     if ((m = RE_ITEM.exec(linha))) { fecharParagrafo(); passo = null; out.push({ tipo: 'item', texto: m[1]!.trim() }); continue; }
     if ((m = RE_IMAGEM.exec(linha))) { fecharParagrafo(); destino().push({ tipo: 'imagem', anexoId: m[1]! }); continue; }
+    if (opcoes.midia && (m = RE_VIDEO.exec(linha))) { fecharParagrafo(); destino().push({ tipo: 'video', arquivoId: m[1]! }); continue; }
+    if (opcoes.midia && (m = RE_ARQUIVO.exec(linha))) { fecharParagrafo(); destino().push({ tipo: 'arquivo', arquivoId: m[1]! }); continue; }
     if ((m = RE_COMANDO.exec(linha))) { fecharParagrafo(); destino().push({ tipo: 'comando', texto: m[1]!.trim() }); continue; }
     paragrafo.push(linha.trim());
   }
   fecharParagrafo();
+  return out;
+}
+
+/** Todos os arquivos citados no texto — prints, vídeos e arquivos (`[print:id]`, `[video:id]`, `[arquivo:id]`), na ordem. */
+export function arquivosDoTexto(texto: string | null | undefined): string[] {
+  const out: string[] = [];
+  for (const l of (texto ?? '').split(/\r?\n/)) { const m = RE_IMAGEM.exec(l) ?? RE_VIDEO.exec(l) ?? RE_ARQUIVO.exec(l); if (m && !out.includes(m[1]!)) out.push(m[1]!); }
   return out;
 }
 
@@ -206,7 +222,7 @@ export function textoPuro(texto: string | null | undefined): string {
   return (texto ?? '')
     .replace(/\r\n?/g, '\n')
     .split('\n')
-    .filter((l) => !RE_IMAGEM.test(l) && !RE_CERCA.test(l))
+    .filter((l) => !RE_IMAGEM.test(l) && !RE_VIDEO.test(l) && !RE_ARQUIVO.test(l) && !RE_CERCA.test(l))
     .map((l) => l.replace(/`/g, '').trim())
     .filter(Boolean)
     .join('\n');

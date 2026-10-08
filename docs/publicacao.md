@@ -136,6 +136,14 @@ Drive configurada na tela. Sem essa segunda parte, o backup só protege contra e
 
 Backup que nunca foi restaurado não é backup.
 
+**Os vídeos do portal do cliente (1.8) não entram nesse backup**: ficam no volume `portal` do
+Docker, fora do banco, e são grandes demais para o envio ao Drive. A regra é guardar o original de
+cada vídeo; se quiser também uma cópia no servidor:
+
+```bash
+docker compose -f docker-compose.prod.yml cp app:/portal/videos ./backups/videos-$(date +%F)
+```
+
 ---
 
 ## 5. O dia a dia: publicar uma versão nova
@@ -191,7 +199,8 @@ banco local e teste ali. Nunca o contrário.
 | Cabeçalhos | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` |
 | Entrada | Acesso por sessão em cookie assinado e `httpOnly`; limite de tentativas de login |
 | Senhas guardadas | Cifradas com AES-256-GCM; a chave fica no `.env`, nunca no banco |
-| Quem pode o quê | 4 papéis e 14 permissões; toda ação sensível fica na auditoria |
+| Quem pode o quê | 4 papéis e 21 permissões; toda ação sensível fica na auditoria |
+| Portal do cliente | Login separado do da equipe (outro cookie, outra tabela); a pessoa cria a própria senha pelo convite; cai sozinho quando o cliente sai da base |
 | Dados | Nada é apagado de verdade (lixeira); exportação com senhas só em ZIP com senha e auditada |
 | Entrada (2ª etapa) | Código de 6 dígitos do celular (TOTP), opcional por pessoa, com códigos de recuperação |
 | Contêiner | Roda como usuário sem poderes, nunca como root |

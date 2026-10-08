@@ -23,6 +23,29 @@ async function http<T>(method: string, path: string, body?: unknown, raw = false
   return res.json() as Promise<T>;
 }
 
+/**
+ * Sobe um arquivo com a barra de progresso (o vídeo pode ter centenas de MB: o fetch não conta
+ * quanto já foi). Mesmo jeito de erro do `http()`.
+ */
+function subirArquivo<T>(path: string, arquivo: File, progresso?: (p: number) => void): Promise<T> {
+  return new Promise<T>((ok, falhou) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', BASE + path);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) progresso?.(e.loaded / e.total); };
+    xhr.onload = () => {
+      let corpo: any = null;
+      try { corpo = JSON.parse(xhr.responseText); } catch { /* sem corpo */ }
+      if (xhr.status >= 200 && xhr.status < 300) ok(corpo as T);
+      else falhou(new ApiError(xhr.status, corpo?.error ?? `Erro ${xhr.status}`, corpo?.details ?? null));
+    };
+    xhr.onerror = () => falhou(new ApiError(0, 'A conexão caiu no meio do envio. Tente de novo.'));
+    const form = new FormData();
+    form.append('arquivo', arquivo, arquivo.name);
+    xhr.send(form);
+  });
+}
+
 const qs = (o: Record<string, unknown>) => {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(o)) {
@@ -205,6 +228,36 @@ export const realApi: Api = {
     ligados: (tipo, alvo) => http('GET', `/base/ligados${qs({ tipo, alvo })}`),
     paraChamados: (ids) => http('POST', '/base/para-chamados', { ids }),
     doChamado: (ref) => http('GET', `/base/do-chamado/${encodeURIComponent(ref)}`),
+  },
+  portalAdmin: {
+    opcoes: () => http('GET', '/portal-admin/opcoes'),
+    tutoriais: (q) => http('GET', `/portal-admin/tutoriais${qs(q)}`),
+    tutorial: (numero) => http('GET', `/portal-admin/tutoriais/${numero}`),
+    criar: (d) => http('POST', '/portal-admin/tutoriais', d),
+    atualizar: (numero, d) => http('PUT', `/portal-admin/tutoriais/${numero}`, d),
+    remover: (numero) => http('DELETE', `/portal-admin/tutoriais/${numero}`),
+    subir: (tipo, arquivo, progresso) => subirArquivo(`/portal-admin/arquivos?tipo=${tipo}`, arquivo, progresso),
+    espaco: () => http('GET', '/portal-admin/espaco'),
+    acessos: (q) => http('GET', `/portal-admin/acessos${qs(q ?? {})}`),
+    acessosDoCliente: (id) => http('GET', `/portal-admin/clientes/${id}/acessos`),
+    darAcesso: (id, d) => http('POST', `/portal-admin/clientes/${id}/acessos`, d),
+    novoConvite: (id) => http('POST', `/portal-admin/acessos/${id}/convite`),
+    bloquear: (id, bloquear) => http('POST', `/portal-admin/acessos/${id}/bloqueio`, { bloquear }),
+    corrigirAcesso: (id, d) => http('PUT', `/portal-admin/acessos/${id}`, d),
+    ajustes: () => http('GET', '/portal-admin/ajustes'),
+    salvarAjustes: (d) => http('PUT', '/portal-admin/ajustes', d),
+  },
+  portal: {
+    sobre: () => http('GET', '/portal/sobre'),
+    eu: () => http('GET', '/portal/eu'),
+    entrar: (email, senha) => http('POST', '/portal/entrar', { email, senha }),
+    sair: () => http('POST', '/portal/sair'),
+    convite: (codigo) => http('GET', `/portal/convite/${encodeURIComponent(codigo)}`),
+    criarSenha: (codigo, senha) => http('POST', `/portal/convite/${encodeURIComponent(codigo)}`, { senha }),
+    trocarSenha: (atual, nova) => http('POST', '/portal/senha', { atual, nova }),
+    inicio: () => http('GET', '/portal/inicio'),
+    tutoriais: (q) => http('GET', `/portal/tutoriais${qs(q)}`),
+    tutorial: (numero) => http('GET', `/portal/tutoriais/${encodeURIComponent(numero)}`),
   },
   admin: {
     users: () => http('GET', '/admin/users'),
