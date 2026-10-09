@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  clienteForaDaBase, idNaAnotacao, relacaoDoCliente, relatoriosInventario,
+  clienteForaDaBase, idNaAnotacao, relatoriosInventario,
   type AparelhoDaBase, type BaseInventario, type ClienteDaBase, type MovimentacaoDaBase,
 } from './inventario.js';
 
@@ -18,13 +18,13 @@ const modelos = [
 
 function cliente(p: Partial<ClienteDaBase> & { id: string; nome: string }): ClienteDaBase {
   return {
-    razaoSocial: `${p.nome} Ltda`, cnpj: '11222333000181', interno: false, arquivado: false, naLixeiraDesde: null,
+    interno: false, arquivado: false, naLixeiraDesde: null,
     temEquipamentos: true, produtosAtivos: 1,
-    temRedePadrao: false, modelosComLogin: [], unidades: [{ nome: 'Matriz', endereco: null, principal: true }], ...p,
+    temRedePadrao: false, modelosComLogin: [], ...p,
   };
 }
 const clientes = [
-  cliente({ id: 'hosp', nome: 'Hospital Vale Verde', produtosAtivos: 2, temRedePadrao: true, modelosComLogin: ['gx'], unidades: [{ nome: 'Matriz', endereco: 'Rua A, 1', principal: true }, { nome: 'Unidade Simões Filho', endereco: 'Av. B, 2', principal: false }] }),
+  cliente({ id: 'hosp', nome: 'Hospital Vale Verde', produtosAtivos: 2, temRedePadrao: true, modelosComLogin: ['gx'] }),
   cliente({ id: 'clin', nome: 'Clínica Aurora' }),
   cliente({ id: 'antiga', nome: 'Antiga', arquivado: true }),
   cliente({ id: 'lixo', nome: 'Lixo SA', naLixeiraDesde: dia('2026-09-01') }),
@@ -225,23 +225,5 @@ describe('cadastro em dia', () => {
     expect(item('valor_proprio').aparelhos!.map((x) => x.id)).toEqual(['t4']);
     expect(item('modelo_sem_foto').modelos!.map((x) => x.id)).toEqual(['hs', 'dp']);
     expect(c.pendencias).toBe(5);
-  });
-});
-
-describe('relação do cliente', () => {
-  it('por unidade (a Matriz primeiro, com o endereço), o resumo por modelo e os vendidos à parte', () => {
-    const h = relacaoDoCliente(r, 'hosp')!;
-    expect(h.unidades.map((u) => [u.nome, u.endereco, u.aparelhos.length])).toEqual([['Matriz', 'Rua A, 1', 4], ['Unidade Simões Filho', 'Av. B, 2', 1]]);
-    expect(h.porModelo).toEqual([
-      { modelId: 'gx', nome: 'Grandstream GXP1610', n: 4, valorDeCadaCents: 45000, valorCents: 180000, semValor: 0 },
-      { modelId: 'hs', nome: 'Headset Genérico', n: 1, valorDeCadaCents: 9000, valorCents: 9000, semValor: 0 },
-    ]);
-    expect(h.totais).toEqual({ aparelhos: 5, comodato: 2, locacao: 3, inativos: 1, valorCents: 189000, semValor: 0 });
-    const c = relacaoDoCliente(r, 'clin')!;
-    // sem unidade = a Matriz
-    expect(c.unidades.map((u) => [u.nome, u.aparelhos.length])).toEqual([['Matriz', 2]]);
-    expect(c.vendidos.map((x) => x.id)).toEqual(['t3']);
-    expect(c.totais.semValor).toBe(1);
-    expect(relacaoDoCliente(r, 'nao-existe')).toBeNull();
   });
 });

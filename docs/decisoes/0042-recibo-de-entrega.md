@@ -50,5 +50,4 @@ entregou). Como o 1.9 ainda não subiu, o recibo entrou no mesmo patch.
   sistema, baixa). Os dois saem de `scripts/gerar-recibo-demo.py`.
 - **Ficaram de fora**, para quando ele pedir: um filtro "sem recibo" na lista de movimentações (o
   histórico que veio do Nexus não tem recibo e ficaria todo marcado), o recibo na devolução e o
-  próprio Gestor gerar o recibo da movimentação para imprimir e assinar (a Relação do cliente, do
-  1.9, já imprime a lista com o campo de assinatura).
+  próprio Gestor gerar o recibo da movimentação para imprimir e assinar.

@@ -1,6 +1,6 @@
 # Relatórios do Inventário (Patch 1.9)
 
-Inventário › aba **Relatórios**. Quatro partes, escolhidas nos botões do alto. Todo mundo que vê o
+Inventário › aba **Relatórios**. Três partes, escolhidas nos botões do alto. Todo mundo que vê o
 inventário vê os relatórios. **Clicar em qualquer número abre os aparelhos dele**, cada um com o link
 para a ficha — e o Voltar da ficha traz de volta para o relatório.
 
@@ -45,11 +45,3 @@ marcada como Inativo), por modelo e por cliente, quanto tempo ficou no cliente a
 | Cliente sem a rede padrão | ficha do cliente › Acessos › Rede padrão dos aparelhos |
 | Valor diferente do modelo (conferir) | se foi engano: Editar modelo › "Usar este valor em todos" |
 | Modelo sem foto (conferir) | Editar modelo › Foto |
-
-## Relação do cliente (imprimir ou PDF)
-
-Escolha o cliente (ou, na ficha do cliente, aba Equipamentos, **Relação para imprimir**): os aparelhos
-dele por unidade, com o endereço da unidade, o resumo por modelo e o valor. **Valores** e **Campo de
-conferência** (data e as assinaturas da Ingline e do cliente) ligam e desligam. **Imprimir ou salvar
-em PDF** abre a impressão do navegador: escolha "Salvar como PDF" para guardar o arquivo. Sai só o
-documento, no tema claro, em A4. Os aparelhos que o cliente comprou aparecem à parte.

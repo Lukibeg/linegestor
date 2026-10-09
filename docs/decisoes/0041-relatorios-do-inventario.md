@@ -14,9 +14,9 @@ para a lista, que lê `?modelo=` e `?cliente=` — o clique não filtrava nada.
 **Decisão.**
 
 - **Uma aba Relatórios no próprio Inventário** (a quarta: Aparelhos · Modelos · Movimentações ·
-  Relatórios), em `?aba=relatorios&rel=…`, em quatro partes — **Clientes**, **Estoque e valor**,
-  **Histórico e cadastro** e **Relação do cliente** —, cada relatório respondendo uma pergunta que a
-  tela não responde (a regra da 0028):
+  Relatórios), em `?aba=relatorios&rel=…`, em três partes — **Clientes**, **Estoque e valor** e
+  **Histórico e cadastro** —, cada relatório respondendo uma pergunta que a tela não responde (a
+  regra da 0028):
   - **Quem tem o quê**: cliente × modelo, com locação/comodato, unidades, inativos e o valor; embaixo,
     o total com clientes e o estoque por modelo. O cliente **fora da base** vem marcado ao lado do
     nome — na lixeira, arquivado, sem produto ativo (a mesma regra do portal do cliente, 0040) ou
@@ -30,20 +30,16 @@ para a lista, que lê `?modelo=` e `?cliente=` — o clique não filtrava nada.
     tempo no cliente antes de voltar e as últimas devoluções;
   - **Cadastro em dia**: MAC ou N/S escrito na anotação, sem MAC e sem N/S (num modelo em que os outros
     têm), modelo sem valor, cliente sem o login padrão do modelo, cliente sem a rede padrão; e, para
-    conferir, valor diferente do modelo e modelo sem foto;
-  - **Relação de equipamentos do cliente**: por unidade (com o endereço), o resumo por modelo e o
-    valor, para **imprimir ou salvar em PDF** pela impressão do navegador (como o Fechamento do mês,
-    0037), com valores e campo de conferência que ligam e desligam. A ficha do cliente (aba
-    Equipamentos) tem o atalho **Relação para imprimir**.
+    conferir, valor diferente do modelo e modelo sem foto.
 - **Clicar em qualquer número abre os aparelhos dele** numa janela (MAC/N/S com link para a ficha,
   modelo, onde está, modalidade, condição, valor e desde quando).
-- **As contas moram em `packages/shared/src/inventario.ts`** (`relatoriosInventario` e
-  `relacaoDoCliente`), as mesmas no servidor (`GET /api/inventory/relatorios`, permissão
+- **As contas moram em `packages/shared/src/inventario.ts`** (`relatoriosInventario`), as mesmas
+  no servidor (`GET /api/inventory/relatorios`, permissão
   `records.read`) e na prévia. O servidor lê tudo de uma vez (o inventário tem centenas de aparelhos)
-  e manda junto a lista curta dos aparelhos, que alimenta as janelas e a relação.
+  e manda junto a lista curta dos aparelhos, que alimenta as janelas.
 - **As regras da conta**:
   - **vendido não é nosso**: fora do patrimônio, do estoque e do "quem tem o quê" (só aparece como
-    informação e, na relação, à parte);
+    informação);
   - o valor é o **próprio ou o do modelo**; sem os dois, o aparelho conta, mas não soma;
   - a **história de cada aparelho** é refeita pelas movimentações dele, em ordem (todo aparelho nasce
     no estoque): **saída** = do estoque para um cliente (locação, comodato ou venda);
@@ -72,6 +68,11 @@ para a lista, que lê `?modelo=` e `?cliente=` — o clique não filtrava nada.
 regularizar** (o aparelho nosso em cliente fora da base e os inativos parados em cliente, com o motivo
 e desde quando), com o número laranja ao lado de **Clientes**. O Luan comentou na prévia "precisa
 disso não": saiu o relatório e o número. Ficou só a marca de quem saiu da base no Quem tem o quê.
+No fim do mesmo dia, saiu também a **Relação de equipamentos do cliente** (a lista dos aparelhos de um
+cliente, por unidade, com o endereço, o resumo por modelo, o valor e o campo de conferência, para
+imprimir ou salvar em PDF), com o atalho **Relação para imprimir** da ficha do cliente: "n precisa n,
+pode tirar". Com ela saíram `relacaoDoCliente` e a lista de clientes (com as unidades e o endereço)
+que o relatório mandava só para ela.
 
 **Consequências.**
 

@@ -6,7 +6,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Archive, ChevronDown, ChevronRight, ExternalLink, Filter, Network, Pencil, Plus, Printer, Search, Star, Trash2 } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, ExternalLink, Filter, Network, Pencil, Plus, Search, Star, Trash2 } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { ClientDeviceLogin, ClientFull, ClientUnit, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
@@ -609,9 +609,6 @@ function AparelhosDoCliente({ c }: { c: ClientFull }) {
         {/* o filtro de modalidade saiu a pedido do Luan (rodada 23); a coluna continua na tabela */}
         {opcoes.condicoes.length > 1 && <select className="input w-auto" value={fCondicao} onChange={(e) => setFCondicao(e.target.value)}><option value="">Ativos e inativos</option>{opcoes.condicoes.map((k) => <option key={k} value={k}>{condicaoNome[k] ?? k}</option>)}</select>}
         {filtrado && <button className="btn-ghost btn-sm text-muted" onClick={limpar}>limpar filtros</button>}
-        <span className="flex-1" />
-        {/* 1.9: a mesma lista, por unidade, pronta para imprimir ou salvar em PDF */}
-        <Link className="btn-secondary btn-sm" to={`/inventario?aba=relatorios&rel=relacao&cliente=${c.id}`}><Printer size={14} /> Relação para imprimir</Link>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="card p-4">

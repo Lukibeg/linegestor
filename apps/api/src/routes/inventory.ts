@@ -46,7 +46,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => svc.summary(app.db, req.query as any));
 
   // ---- relatórios (Patch 1.9, decisão 0041): só leitura, para quem vê o inventário ----
-  app.get('/relatorios', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Os relatórios do Inventário: quem tem o quê, na prateleira, valor do parque, vai e volta, cadastro em dia — e os aparelhos, para a relação de cada cliente' } },
+  app.get('/relatorios', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Inventário'], summary: 'Os relatórios do Inventário: quem tem o quê, na prateleira, valor do parque, vai e volta, cadastro em dia — e os aparelhos, para a janela de cada número' } },
     async () => svc.relatorios(app.db));
 
   // ---- aparelhos ----

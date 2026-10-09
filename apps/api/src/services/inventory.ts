@@ -21,7 +21,7 @@
  */
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { clientDeviceLogins, clientNetworkSettings, clients, clientUnits, deviceCategories, deviceModelImages, deviceModels, deviceMovementItems, deviceMovementReceipts, deviceMovements, devices, newId, products, subscriptions, users, type Db } from '@gestor/db';
+import { clientDeviceLogins, clientNetworkSettings, clients, deviceCategories, deviceModelImages, deviceModels, deviceMovementItems, deviceMovementReceipts, deviceMovements, devices, newId, products, subscriptions, users, type Db } from '@gestor/db';
 import {
   identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, problemaDoRecibo, problemaParaAnexar, relatoriosInventario, serieLimpa, tipoDoRecibo,
   type AparelhoGravar, type AparelhosEmMassa, type BaseInventario, type ModeloAtualizar, type ModeloGravar, type MovimentacaoCriar, type ReciboAnexar,
@@ -570,22 +570,21 @@ export async function tirarRecibo(db: Db, id: string) {
  * Os relatórios do Inventário. Lê do banco o que as contas precisam e chama as MESMAS contas da
  * prévia (`relatoriosInventario`, em @gestor/shared) — assim o número da prévia é o do sistema.
  * Lê tudo de uma vez: o inventário é pequeno (centenas de aparelhos) e a conta em memória é a mesma
- * nos dois lugares. Os da lixeira (aparelho, unidade, login) ficam de fora; o cliente na lixeira
+ * nos dois lugares. Os da lixeira (aparelho, login) ficam de fora; o cliente na lixeira
  * entra, marcado, porque aparelho nosso pode ter ficado com ele.
  */
 export async function relatorios(db: Db, agora = new Date()) {
-  const [aps, mods, cls, subs, redes, logins, unidades, movs, itens] = await Promise.all([
+  const [aps, mods, cls, subs, redes, logins, movs, itens] = await Promise.all([
     db.select({
       id: devices.id, modelId: devices.modelId, mac: devices.mac, serialNumber: devices.serialNumber, clientId: devices.clientId, unit: devices.unit,
       currentModality: devices.currentModality, condition: devices.condition, valueCents: devices.valueCents, ip: devices.ip, note: devices.note, createdAt: devices.createdAt,
     }).from(devices).where(isNull(devices.deletedAt)),
     db.select({ id: deviceModels.id, name: deviceModels.name, valueCents: deviceModels.valueCents, categoryName: deviceCategories.name, fotoEm: deviceModelImages.updatedAt })
       .from(deviceModels).leftJoin(deviceCategories, eq(deviceCategories.id, deviceModels.categoryId)).leftJoin(deviceModelImages, eq(deviceModelImages.modelId, deviceModels.id)),
-    db.select({ id: clients.id, nome: clients.tradeName, razaoSocial: clients.legalName, cnpj: clients.cnpj, interno: clients.isInternal, arquivado: clients.archived, deletedAt: clients.deletedAt }).from(clients),
+    db.select({ id: clients.id, nome: clients.tradeName, interno: clients.isInternal, arquivado: clients.archived, deletedAt: clients.deletedAt }).from(clients),
     db.select({ clientId: subscriptions.clientId, code: products.code, deactivatedAt: subscriptions.deactivatedAt }).from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId)),
     db.select({ clientId: clientNetworkSettings.clientId, ip: clientNetworkSettings.ipAddress, mascara: clientNetworkSettings.subnetMask, roteador: clientNetworkSettings.defaultRouter, dns: clientNetworkSettings.dns1 }).from(clientNetworkSettings),
     db.select({ clientId: clientDeviceLogins.clientId, modelId: clientDeviceLogins.modelId }).from(clientDeviceLogins).where(isNull(clientDeviceLogins.deletedAt)),
-    db.select({ clientId: clientUnits.clientId, nome: clientUnits.name, endereco: clientUnits.address, principal: clientUnits.isMain }).from(clientUnits).where(isNull(clientUnits.deletedAt)).orderBy(asc(clientUnits.name)),
     db.select({ id: deviceMovements.id, modality: deviceMovements.modality, fromClientId: deviceMovements.fromClientId, toClientId: deviceMovements.toClientId, unit: deviceMovements.unit, newCondition: deviceMovements.newCondition, createdAt: deviceMovements.createdAt }).from(deviceMovements),
     db.select({ movementId: deviceMovementItems.movementId, deviceId: deviceMovementItems.deviceId }).from(deviceMovementItems),
   ]);
@@ -598,7 +597,7 @@ export async function relatorios(db: Db, agora = new Date()) {
     for (const x of xs) { const l = m.get(x.clientId); if (l) l.push(x); else m.set(x.clientId, [x]); }
     return m;
   };
-  const subsDe = doCliente(subs), loginsDe = doCliente(logins), unidadesDe = doCliente(unidades);
+  const subsDe = doCliente(subs), loginsDe = doCliente(logins);
   const redeDe = new Map(redes.map((r) => [r.clientId, !!(r.ip || r.mascara || r.roteador || r.dns)]));
   const itensDe = new Map<string, string[]>();
   for (const i of itens) { const l = itensDe.get(i.movementId); if (l) l.push(i.deviceId); else itensDe.set(i.movementId, [i.deviceId]); }
@@ -610,13 +609,12 @@ export async function relatorios(db: Db, agora = new Date()) {
     clientes: cls.map((c) => {
       const s = subsDe.get(c.id) ?? [];
       return {
-        id: c.id, nome: c.nome, razaoSocial: c.razaoSocial, cnpj: c.cnpj, interno: c.interno, arquivado: c.arquivado,
+        id: c.id, nome: c.nome, interno: c.interno, arquivado: c.arquivado,
         naLixeiraDesde: iso(c.deletedAt),
         temEquipamentos: s.some((x) => x.code === 'equipamentos' && ativa(x.deactivatedAt)),
         produtosAtivos: s.filter((x) => ativa(x.deactivatedAt)).length,
         temRedePadrao: redeDe.get(c.id) ?? false,
         modelosComLogin: (loginsDe.get(c.id) ?? []).map((l) => l.modelId),
-        unidades: (unidadesDe.get(c.id) ?? []).map((u) => ({ nome: u.nome, endereco: u.endereco, principal: u.principal })),
       };
     }),
     movimentacoes: movs.map((m) => ({ ...m, createdAt: m.createdAt.toISOString(), deviceIds: itensDe.get(m.id) ?? [] })),

@@ -92,11 +92,8 @@ describe('Inventário › Relatórios', () => {
     // o Hospital tem rede e login; os outros saíram da base e não contam aqui
     expect(item('sem_login').n).toBe(0);
     expect(item('sem_rede').n).toBe(0);
-    // a relação do cliente usa a lista de clientes que vem junto, com as unidades
-    const hosp = r.clientes.find((c: any) => c.id === id.hosp);
-    expect(hosp).toMatchObject({ nome: 'Hospital Vale Verde', cnpj: '11222333000181', naLixeira: false });
-    expect(hosp.unidades.map((u: any) => u.nome)).toEqual(['Matriz']);
-    expect(r.clientes.find((c: any) => c.id === id.lixo).naLixeira).toBe(true);
+    // a Relação do cliente saiu na prévia (09/10): não vem mais a lista de clientes
+    expect(r.clientes).toBeUndefined();
   });
 
   it('quem vê o inventário vê os relatórios; sem sessão, não', async () => {

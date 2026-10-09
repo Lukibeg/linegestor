@@ -1,7 +1,7 @@
 /**
  * Inventário › Relatórios (Patch 1.9, decisão 0041). O pedido (09/10): "gostaria de mais
  * informações sobre os equipamentos, tá bem enxuto, gere alguns relatórios". A quarta aba do
- * Inventário, em quatro partes, cada relatório respondendo uma pergunta que a tela não responde:
+ * Inventário, em três partes, cada relatório respondendo uma pergunta que a tela não responde:
  *
  *  - **Clientes**: Quem tem o quê (cliente × modelo, com o valor). O "Para recolher ou
  *    regularizar" saiu na prévia (09/10): o Luan não quis.
@@ -9,7 +9,9 @@
  *    semanas) · Quanto vale o parque
  *  - **Histórico e cadastro**: Vai e volta (o que sai, o que volta, quem volta inativo) · Cadastro
  *    em dia (o que falta preencher)
- *  - **Relação do cliente**: os aparelhos de um cliente, por unidade, para imprimir ou salvar em PDF
+ *
+ * A **Relação do cliente** (os aparelhos de um cliente, por unidade, para imprimir) também saiu na
+ * prévia (09/10): "n precisa n, pode tirar".
  *
  * As contas são as de `@gestor/shared/inventario.ts` — as mesmas do servidor e da prévia. **Clicar
  * num número mostra os aparelhos dele** (a janela), cada um com o link para a ficha. Tudo fica no
@@ -18,25 +20,24 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Building2, CheckCircle2, ClipboardList, Info, ListChecks, Package, Printer, Repeat, Wallet } from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, Info, ListChecks, Package, Repeat, Wallet } from 'lucide-react';
 import {
-  cnpjFormatado, FORA_DA_BASE, relacaoDoCliente, SITUACOES_ESTOQUE,
+  FORA_DA_BASE, SITUACOES_ESTOQUE,
   type AparelhoDoRelatorio, type ItemCadastro, type LinhaQuemTem, type ParteDoParque, type RelatoriosInventario, type SituacaoEstoque,
 } from '@gestor/shared';
-import { api, IS_DEMO } from '../../api/index.js';
-import { Carregando, Chip, EscolherComBusca, Identificacao, Modal, mensagemErro, Toggle, usePaginaLocal, type TomChip } from '../../components/ui/index.js';
+import { api } from '../../api/index.js';
+import { Carregando, Chip, Identificacao, Modal, mensagemErro, usePaginaLocal, type TomChip } from '../../components/ui/index.js';
 import { Proporcao } from '../../components/graficos.js';
-import { condicaoCor, condicaoNome, data, MODALIDADES, reais } from '../../lib/format.js';
+import { condicaoCor, condicaoNome, MODALIDADES, reais } from '../../lib/format.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { TdN, ThN } from '../../lib/contagem.js';
 import { BarrasComparadas, Bloco, nf, Numero, Numeros, pct } from '../chamados/relatorios/pecas.js';
 
-type Secao = 'clientes' | 'estoque' | 'historico' | 'relacao';
+type Secao = 'clientes' | 'estoque' | 'historico';
 const SECOES: Array<{ id: Secao; label: string }> = [
   { id: 'clientes', label: 'Clientes' },
   { id: 'estoque', label: 'Estoque e valor' },
   { id: 'historico', label: 'Histórico e cadastro' },
-  { id: 'relacao', label: 'Relação do cliente' },
 ];
 type Abrir = (titulo: string, ids: string[]) => void;
 
@@ -86,7 +87,6 @@ export function RelatoriosDoInventario() {
       {secao === 'clientes' && <QuemTem r={r} abrir={abrir} />}
       {secao === 'estoque' && <><Prateleira r={r} abrir={abrir} /><ValorDoParque r={r} abrir={abrir} /></>}
       {secao === 'historico' && <><VaiEVolta r={r} abrir={abrir} /><CadastroEmDia r={r} abrir={abrir} /></>}
-      {secao === 'relacao' && <RelacaoDoCliente r={r} />}
 
       <JanelaDeAparelhos janela={janela} r={r} onClose={() => setJanela(null)} />
     </div>
@@ -537,142 +537,6 @@ function ItemDoCadastro({ it, r, abrir }: { it: ItemCadastro; r: RelatoriosInven
         </div>
       </details>
     </li>
-  );
-}
-
-// ---------- Relação do cliente (imprime) ----------
-
-function RelacaoDoCliente({ r }: { r: RelatoriosInventario }) {
-  const [sp, setSp] = useSearchParams();
-  const clienteId = sp.get('cliente') ?? '';
-  const [comValores, setComValores] = useState(true);
-  const [comAssinatura, setComAssinatura] = useState(true);
-  const opcoes = useMemo(() => r.clientes.map((c) => {
-    const n = r.aparelhos.filter((x) => x.clienteId === c.id && x.modalidade !== 'venda').length;
-    return { id: c.id, nome: c.nome, dica: n ? plural(n, 'aparelho', 'aparelhos') : 'só comprados' };
-  }), [r]);
-  const rel = useMemo(() => (clienteId ? relacaoDoCliente(r, clienteId) : null), [r, clienteId]);
-  const escolher = (id: string) => { const n = new URLSearchParams(sp); if (id) n.set('cliente', id); else n.delete('cliente'); setSp(n, { replace: true }); };
-  const valor = (c: number | null) => (c != null ? reais(c) : <span className="text-muted">sem valor</span>);
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="so-tela card p-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-        <EscolherComBusca className="input w-[280px] max-w-full" valor={clienteId} onChange={escolher} opcoes={opcoes} vazio="Escolha o cliente…" rotulo="Cliente" procurar="Procurar cliente…" />
-        {rel && (
-          <>
-            <Toggle checked={comValores} onChange={setComValores} label="Valores" />
-            <Toggle checked={comAssinatura} onChange={setComAssinatura} label="Campo de conferência" />
-            <span className="flex-1" />
-            {/* a prévia roda dentro do claude.ai, que não deixa a página abrir a impressão; no sistema abre */}
-            {IS_DEMO && <span className="text-[12px] text-muted">Na prévia a impressão não abre (o claude.ai bloqueia); no sistema, abre.</span>}
-            <button type="button" className="btn-primary btn-sm" onClick={() => window.print()} title='Abre a impressão: escolha "Salvar como PDF" para guardar o arquivo'>
-              <Printer size={14} /> Imprimir ou salvar em PDF
-            </button>
-          </>
-        )}
-      </div>
-      {!clienteId ? (
-        <div className="card p-8 text-center">
-          <ClipboardList size={28} className="mx-auto text-muted" />
-          <div className="font-display font-semibold mt-2">Relação de equipamentos do cliente</div>
-          <p className="text-muted text-sm mt-1 max-w-md mx-auto">Escolha o cliente: a lista dos aparelhos dele, por unidade, pronta para imprimir ou salvar em PDF — para conferir no local ou anexar ao contrato.</p>
-        </div>
-      ) : !rel ? <div className="card p-4 text-muted text-sm">Este cliente não tem aparelho nosso.</div> : (
-        <article className="para-imprimir card p-5 sm:p-7 flex flex-col gap-5" aria-label={`Relação de equipamentos de ${rel.cliente.nome}`}>
-          <header className="flex flex-wrap items-end justify-between gap-2 border-b border-line pb-3">
-            <div className="min-w-0">
-              <div className="eyebrow flex items-center gap-1.5"><ClipboardList size={13} /> Relação de equipamentos · Ingline</div>
-              <h2 className="font-display text-2xl font-semibold">{rel.cliente.nome}</h2>
-              <div className="text-[13px] text-ink-2">{rel.cliente.razaoSocial}{rel.cliente.cnpj && <> · CNPJ {cnpjFormatado(rel.cliente.cnpj)}</>}</div>
-              {(rel.cliente.arquivado || rel.cliente.naLixeira) && <Chip tone="signal" className="mt-1 so-tela">{rel.cliente.naLixeira ? 'cliente na lixeira' : 'cliente arquivado'}</Chip>}
-            </div>
-            <div className="text-[12px] text-muted text-right">gerado em {data(new Date().toISOString(), true)}</div>
-          </header>
-
-          <div className={`grid grid-cols-2 gap-3 ${comValores ? 'lg:grid-cols-4 print:grid-cols-4' : 'lg:grid-cols-3 print:grid-cols-3'}`}>
-            <Quadro valor={nf(rel.totais.aparelhos)} rotulo={rel.totais.aparelhos === 1 ? 'aparelho' : 'aparelhos'} sub={rel.totais.inativos ? `${plural(rel.totais.inativos, 'inativo', 'inativos')}` : undefined} />
-            <Quadro valor={nf(rel.totais.comodato)} rotulo="em comodato" />
-            <Quadro valor={nf(rel.totais.locacao)} rotulo="em locação" />
-            {comValores && <Quadro valor={reais(rel.totais.valorCents)} rotulo="valor dos equipamentos" sub={rel.totais.semValor ? `${plural(rel.totais.semValor, 'sem valor', 'sem valor')}, fora da soma` : undefined} />}
-          </div>
-
-          {rel.porModelo.length > 0 && (
-            <div className="break-inside-avoid">
-              <div className="eyebrow mb-2">Por modelo</div>
-              <table className="table">
-                <thead><tr><th>Modelo</th><th className="!text-right">Quantidade</th>{comValores && <><th className="!text-right">Valor de cada</th><th className="!text-right">Valor</th></>}</tr></thead>
-                <tbody>{rel.porModelo.map((m) => (
-                  <tr key={m.modelId}>
-                    <td>{m.nome}</td><td className="text-right tnum">{nf(m.n)}</td>
-                    {comValores && <><td className="text-right tnum">{m.valorDeCadaCents != null ? reais(m.valorDeCadaCents) : m.semValor === m.n ? <span className="text-muted">sem valor</span> : <span className="text-muted">vários</span>}</td><td className="text-right tnum">{m.semValor === m.n ? <span className="text-muted">—</span> : reais(m.valorCents)}</td></>}
-                  </tr>
-                ))}</tbody>
-              </table>
-            </div>
-          )}
-
-          {rel.unidades.map((u) => (
-            <section key={u.nome} className="flex flex-col gap-2">
-              <h3 className="font-display font-semibold text-[15px] flex flex-wrap items-baseline gap-x-2">
-                {u.nome}
-                <span className="text-[12.5px] font-sans font-normal text-muted">{u.endereco ? `${u.endereco} · ` : ''}{plural(u.aparelhos.length, 'aparelho', 'aparelhos')}</span>
-              </h3>
-              <div className="overflow-x-auto print:overflow-visible">
-                <table className="table">
-                  <thead><tr><th className="w-8">#</th><th>Modelo</th><th>MAC / N/S</th><th>Modalidade</th><th>Condição</th>{comValores && <th className="!text-right">Valor</th>}<th>Desde</th></tr></thead>
-                  <tbody>{u.aparelhos.map((x, i) => (
-                    <tr key={x.id} className="break-inside-avoid">
-                      <td className="text-muted tnum">{i + 1}</td>
-                      <td className="whitespace-nowrap">{x.modelo}</td>
-                      <td><Identificacao d={{ identificacao: x.identificacao, identificacaoTipo: x.tipoId }} /></td>
-                      <td>{modalidade(x.modalidade)}</td>
-                      <td>{condicaoNome[x.condicao] ?? x.condicao}</td>
-                      {comValores && <td className="text-right tnum whitespace-nowrap">{valor(x.valorCents)}</td>}
-                      <td className="tnum whitespace-nowrap">{diaBr(x.desde)}</td>
-                    </tr>
-                  ))}</tbody>
-                </table>
-              </div>
-            </section>
-          ))}
-
-          {rel.vendidos.length > 0 && (
-            <section className="flex flex-col gap-2">
-              <h3 className="font-display font-semibold text-[15px]">Comprados pelo cliente <span className="text-[12.5px] font-sans font-normal text-muted">(venda: são do cliente e não entram nas contas acima)</span></h3>
-              <table className="table">
-                <thead><tr><th className="w-8">#</th><th>Modelo</th><th>MAC / N/S</th><th>Unidade</th><th>Desde</th></tr></thead>
-                <tbody>{rel.vendidos.map((x, i) => (
-                  <tr key={x.id}><td className="text-muted tnum">{i + 1}</td><td>{x.modelo}</td><td><Identificacao d={{ identificacao: x.identificacao, identificacaoTipo: x.tipoId }} /></td><td>{x.unidade ?? 'Matriz'}</td><td className="tnum">{diaBr(x.desde)}</td></tr>
-                ))}</tbody>
-              </table>
-            </section>
-          )}
-
-          {comAssinatura && (
-            <div className="break-inside-avoid grid gap-6 sm:grid-cols-3 print:grid-cols-3 pt-6 text-[12.5px] text-ink-2">
-              <div><div className="border-b border-line-strong h-8" /><div className="mt-1">Conferido em ____/____/________</div></div>
-              <div><div className="border-b border-line-strong h-8" /><div className="mt-1">Pela Ingline</div></div>
-              <div><div className="border-b border-line-strong h-8" /><div className="mt-1">Pelo cliente</div></div>
-            </div>
-          )}
-
-          <footer className="text-[11.5px] text-muted border-t border-line pt-2 flex flex-wrap justify-between gap-2">
-            <span>"Desde" = desde quando o aparelho está com o cliente.</span>
-            <span>Ingline Gestão · Inventário › Relatórios</span>
-          </footer>
-        </article>
-      )}
-    </div>
-  );
-}
-
-function Quadro({ valor, rotulo, sub }: { valor: string; rotulo: string; sub?: string }) {
-  return (
-    <div className="rounded-lg border border-line p-3">
-      <div className="font-display text-[24px] font-semibold tnum leading-tight">{valor}</div>
-      <div className="text-[12.5px] text-muted">{rotulo}</div>
-      {sub && <div className="text-[12px] text-ink-2 mt-0.5">{sub}</div>}
-    </div>
   );
 }
 

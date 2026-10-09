@@ -2347,11 +2347,10 @@ export const demoApi: Api = {
           const temEquipamentos = equip.some((x) => ativa(x.deactivatedAt));
           const rede = S.networks.find((n) => n.clientId === c.id);
           return {
-            id: c.id, nome: c.tradeName, razaoSocial: c.legalName, cnpj: c.cnpj, interno: c.isInternal, arquivado: c.archived, naLixeiraDesde: c.deletedAt,
+            id: c.id, nome: c.tradeName, interno: c.isInternal, arquivado: c.archived, naLixeiraDesde: c.deletedAt,
             temEquipamentos, produtosAtivos: subs.filter((x) => ativa(x.deactivatedAt)).length,
             temRedePadrao: !!rede && !!(rede.ipAddress || rede.subnetMask || rede.defaultRouter || rede.dns1),
             modelosComLogin: S.deviceLogins.filter((l) => l.clientId === c.id && !l.deletedAt).map((l) => l.modelId),
-            unidades: S.units.filter((u) => u.clientId === c.id && !u.deletedAt).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((u) => ({ nome: u.name, endereco: u.address, principal: u.isMain })),
           };
         }),
         movimentacoes: S.movements.map((m) => ({ id: m.id, modality: m.modality, fromClientId: m.fromClientId, toClientId: m.toClientId, unit: m.unit, newCondition: m.newCondition, createdAt: m.createdAt, deviceIds: m.items.map((i) => i.deviceId) })),

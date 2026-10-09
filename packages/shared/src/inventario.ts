@@ -13,11 +13,11 @@
  *  - **Quanto vale o parque**: quanto dinheiro temos em aparelho, e onde ele está?
  *  - **Vai e volta**: o que sai, o que volta, e quantos voltam inativos?
  *  - **Cadastro em dia**: o que falta preencher para o inventário ser confiável?
- *  - **Relação do cliente**: os aparelhos de um cliente, por unidade, para imprimir.
+ *    (A "Relação do cliente", para imprimir, também saiu na prévia, 09/10.)
  *
  * Regras que valem para todos:
  *  - **vendido já não é nosso**: fica fora do patrimônio, do estoque e de "quem tem o quê" (aparece
- *    só como informação e, na relação do cliente, à parte);
+ *    só como informação);
  *  - o valor de um aparelho é o **próprio** ou, sem ele, o **do modelo** (como no resto do sistema);
  *    sem nenhum dos dois, o aparelho conta, mas não soma — e o Cadastro em dia avisa;
  *  - "dia" é sempre o de **Brasília**;
@@ -58,8 +58,6 @@ export type ModeloDaBase = { id: string; name: string; categoryName: string | nu
 export type ClienteDaBase = {
   id: string;
   nome: string;
-  razaoSocial: string;
-  cnpj: string;
   interno: boolean;
   arquivado: boolean;
   /** quando foi para a lixeira (ISO), ou vazio */
@@ -72,8 +70,6 @@ export type ClienteDaBase = {
   temRedePadrao: boolean;
   /** os modelos que têm o login padrão cadastrado neste cliente */
   modelosComLogin: string[];
-  /** as unidades (a Matriz é a `principal`), com o endereço, para a relação impressa */
-  unidades: Array<{ nome: string; endereco: string | null; principal: boolean }>;
 };
 
 export type MovimentacaoDaBase = {
@@ -122,9 +118,6 @@ export type AparelhoDoRelatorio = {
   /** dias desde então */
   dias: number;
 };
-
-/** Os dados de um cliente que as telas precisam (só os que têm ou já tiveram aparelho). */
-export type ClienteDoRelatorio = Pick<ClienteDaBase, 'id' | 'nome' | 'razaoSocial' | 'cnpj' | 'interno' | 'arquivado' | 'unidades'> & { naLixeira: boolean };
 
 export type LinhaQuemTem = {
   clienteId: string;
@@ -267,7 +260,6 @@ export type RelatoriosInventario = {
   /** a primeira movimentação guardada (AAAA-MM-DD), ou vazio */
   historicoDesde: string | null;
   aparelhos: AparelhoDoRelatorio[];
-  clientes: ClienteDoRelatorio[];
   quemTem: QuemTemOQue;
   prateleira: Prateleira;
   valor: ValorDoParque;
@@ -590,14 +582,7 @@ export function relatoriosInventario(base: BaseInventario): RelatoriosInventario
   // ---- Cadastro em dia
   const cadastro = cadastroEmDia({ nossos, daBase, modelos, clientes, foraDe, nomeDoModelo });
 
-  // ---- os clientes que as telas usam (quem tem ou já teve aparelho)
-  const comAparelho = new Set(aparelhos.map((x) => x.clienteId).filter((x): x is string => !!x));
-  const clientesDoRelatorio: ClienteDoRelatorio[] = base.clientes
-    .filter((c) => comAparelho.has(c.id))
-    .map((c) => ({ id: c.id, nome: c.nome, razaoSocial: c.razaoSocial, cnpj: c.cnpj, interno: c.interno, arquivado: c.arquivado, naLixeira: !!c.naLixeiraDesde, unidades: c.unidades }))
-    .sort(porNome);
-
-  return { hoje, historicoDesde, aparelhos, clientes: clientesDoRelatorio, quemTem, prateleira, valor, vaiEVolta, cadastro };
+  return { hoje, historicoDesde, aparelhos, quemTem, prateleira, valor, vaiEVolta, cadastro };
 }
 
 /** O que falta preencher. Só olha o que é nosso (os vendidos ficam de fora). */
@@ -702,63 +687,4 @@ function cadastroEmDia({ nossos, daBase, modelos, clientes, foraDe, nomeDoModelo
   });
 
   return { itens, pendencias: soma(itens.filter((i) => i.tipo === 'pendencia').map((i) => i.n)) };
-}
-
-// ---------- a relação de um cliente (para imprimir) ----------
-
-export type RelacaoDoCliente = {
-  cliente: ClienteDoRelatorio;
-  /** as unidades com aparelho nosso, a Matriz primeiro; dentro, por modelo e identificação */
-  unidades: Array<{ nome: string; endereco: string | null; aparelhos: AparelhoDoRelatorio[] }>;
-  porModelo: Array<{ modelId: string; nome: string; n: number; valorDeCadaCents: number | null; valorCents: number; semValor: number }>;
-  totais: { aparelhos: number; comodato: number; locacao: number; inativos: number; valorCents: number; semValor: number };
-  /** os que o cliente comprou (venda): são dele, listados à parte */
-  vendidos: AparelhoDoRelatorio[];
-};
-
-/** A relação de equipamentos de um cliente, montada do mesmo relatório (mesma conta da tela). */
-export function relacaoDoCliente(rel: Pick<RelatoriosInventario, 'aparelhos' | 'clientes'>, clienteId: string): RelacaoDoCliente | null {
-  const cliente = rel.clientes.find((c) => c.id === clienteId);
-  if (!cliente) return null;
-  const dele = rel.aparelhos.filter((x) => x.clienteId === clienteId);
-  const nossos = dele.filter((x) => x.modalidade !== 'venda');
-  const ordem = (a: AparelhoDoRelatorio, b: AparelhoDoRelatorio) => a.modelo.localeCompare(b.modelo, 'pt-BR') || a.identificacao.localeCompare(b.identificacao, 'pt-BR');
-  const principal = cliente.unidades.find((u) => u.principal)?.nome ?? 'Matriz';
-  const chave = (u: string | null) => (u ?? principal).trim().toLowerCase();
-  const grupos = new Map<string, AparelhoDoRelatorio[]>();
-  for (const x of nossos) {
-    const l = grupos.get(chave(x.unidade));
-    if (l) l.push(x); else grupos.set(chave(x.unidade), [x]);
-  }
-  const unidades = [...grupos.entries()].map(([k, xs]) => {
-    const cadastrada = cliente.unidades.find((u) => u.nome.trim().toLowerCase() === k);
-    return { nome: cadastrada?.nome ?? xs[0]!.unidade ?? principal, endereco: cadastrada?.endereco ?? null, principal: k === principal.trim().toLowerCase(), aparelhos: xs.sort(ordem) };
-  }).sort((a, b) => Number(b.principal) - Number(a.principal) || a.nome.localeCompare(b.nome, 'pt-BR'))
-    .map(({ principal: _p, ...u }) => u);
-  const modelosDele = new Map<string, AparelhoDoRelatorio[]>();
-  for (const x of nossos) {
-    const l = modelosDele.get(x.modelId);
-    if (l) l.push(x); else modelosDele.set(x.modelId, [x]);
-  }
-  const porModelo = [...modelosDele.entries()].map(([modelId, xs]) => {
-    const valores = [...new Set(xs.map((x) => x.valorCents))];
-    return {
-      modelId, nome: xs[0]!.modelo, n: xs.length,
-      // "valor de cada" só quando todos valem o mesmo; senão a tabela mostra o total
-      valorDeCadaCents: valores.length === 1 ? valores[0]! : null,
-      valorCents: soma(xs.map((x) => x.valorCents)), semValor: xs.filter((x) => x.valorCents == null).length,
-    };
-  }).sort((a, b) => b.n - a.n || a.nome.localeCompare(b.nome, 'pt-BR'));
-  return {
-    cliente, unidades, porModelo,
-    totais: {
-      aparelhos: nossos.length,
-      comodato: nossos.filter((x) => x.modalidade === 'comodato').length,
-      locacao: nossos.filter((x) => x.modalidade === 'locacao').length,
-      inativos: nossos.filter((x) => x.condicao === 'inativo').length,
-      valorCents: soma(nossos.map((x) => x.valorCents)),
-      semValor: nossos.filter((x) => x.valorCents == null).length,
-    },
-    vendidos: dele.filter((x) => x.modalidade === 'venda').sort(ordem),
-  };
 }
