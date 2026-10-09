@@ -3,6 +3,8 @@
  *
  *  - quem entra: a pessoa ativa, que já criou a senha pelo convite, de um cliente que está na
  *    base (com produto ativo, fora do arquivo e da lixeira). Saiu da base, perdeu o acesso na hora.
+ *    E a equipe (decisão 0044, Patch 1.9): quem tem usuário ativo no Gestor entra com o mesmo
+ *    e-mail e a mesma senha (e o código de 6 dígitos, se usa) e vê todos os tutoriais publicados.
  *  - o que cada cliente vê: os tutoriais publicados "Geral" e os dos produtos (e módulos) que ele
  *    tem ativos
  *  - o tutorial: título, resumo e o texto simples da base (passos, comandos, prints) com vídeo e
@@ -129,6 +131,13 @@ export const AcessoCriarSchema = z.object({
 export type AcessoCriar = z.infer<typeof AcessoCriarSchema>;
 
 export const PortalEntrarSchema = z.object({ email: EmailSchema, senha: z.string().min(1, 'Informe a senha').max(200) });
+/**
+ * A segunda etapa de quem é da equipe e usa o código de 6 dígitos no Gestor (decisão 0044): o
+ * e-mail e a senha de novo, mais o código (ou um código de recuperação).
+ */
+export const PortalEntrarComCodigoSchema = PortalEntrarSchema.extend({ codigo: z.string().trim().min(6, 'Digite os 6 dígitos do aplicativo').max(20) });
+/** O nome que aparece no lugar do cliente quando quem entrou no portal é da equipe. */
+export const NOME_DA_EQUIPE_NO_PORTAL = 'Equipe Ingline';
 export const PortalCriarSenhaSchema = z.object({ senha: SenhaDoPortalSchema });
 export const PortalTrocarSenhaSchema = z.object({ atual: z.string().min(1, 'Informe a senha atual').max(200), nova: SenhaDoPortalSchema });
 

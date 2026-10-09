@@ -15,7 +15,9 @@ portal **subir junto com o 1.8**, que ainda não tinha ido para o servidor.
   domínio, que é do Luan.
 - **Outro login, outro mundo.** As pessoas dos clientes ficam em `portal_users` (não em `users`),
   com sessão própria (`portal_sessions`) e cookie próprio (`gestor_portal`). A sessão da equipe não
-  abre o portal e a do portal não abre nada do Gestor (as rotas da equipe respondem 401). O cookie do
+  abre o portal e a do portal não abre nada do Gestor (as rotas da equipe respondem 401). (No 1.9, a
+  equipe passou a entrar no portal com o próprio login do Gestor — decisão 0044 —, ainda com a sessão
+  e o cookie do portal.) O cookie do
   portal é `httpOnly`, assinado e **`SameSite=Lax`** — o da equipe é `Strict` —, porque o link do
   tutorial chega pelo WhatsApp e precisa abrir já logado; o que muda alguma coisa no portal é `POST`,
   que o `Lax` não manda de outro site. A sessão dura **30 dias e desliza** (cada uso renova; no máximo

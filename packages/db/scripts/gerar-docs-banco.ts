@@ -27,8 +27,10 @@ let inDocBlock = false;
 const grupoRe = /^\/\/ (\d\. [A-ZÇÃÕÉÊÁÍÓÚ][^\n]*)/;
 const tabelaRe = /^export const (\w+) = pgTable\(\s*$|^export const (\w+) = pgTable\('(\w+)'/;
 const tabelaNomeRe = /^\s*'(\w+)',\s*$/;
-const colunaRe = /^\s{4}(\w+): (\w+)\('(\w+)'([^)]*)\)([^,]*),?\s*$/;
-const colunaHelperRe = /^\s{4}(\w+): (createdAt|updatedAt|deletedAt|id)\(\),?\s*$/;
+// a coluna: 4 espaços (a tabela com índices, `pgTable(\n  'nome',\n  {`) ou 2 (`pgTable('nome', {`);
+// o resto da linha inteiro, para pegar também `references(() => x.id, { onDelete: 'cascade' })`
+const colunaRe = /^(?: {2}| {4})(\w+): (\w+)\('(\w+)'(.*)$/;
+const colunaHelperRe = /^(?: {2}| {4})(\w+): (createdAt|updatedAt|deletedAt|id)\(\),?\s*$/;
 
 function flushDoc(): string {
   const d = pendingDoc.join(' ').replace(/\s+/g, ' ').trim();
@@ -76,7 +78,7 @@ for (const raw of lines) {
     const c = line.match(colunaRe);
     if (c) {
       const tipo: Record<string, string> = { text: 'texto', integer: 'número inteiro', boolean: 'sim/não', timestamp: 'data e hora', jsonb: 'JSON' };
-      const rest = (c[4] ?? '') + (c[5] ?? '');
+      const rest = c[4] ?? '';
       const flags: string[] = [];
       if (/\.primaryKey\(\)/.test(rest)) flags.push('chave primária');
       if (/\.notNull\(\)/.test(rest)) flags.push('obrigatório');
@@ -89,7 +91,8 @@ for (const raw of lines) {
       current.cols.push({ name: c[1]!, sqlName: c[3]!, type: tipo[c[2]!] ?? c[2]!, desc: flushDoc(), flags });
       continue;
     }
-    if (/^\);|^\s*\(t\) => \[/.test(line)) { if (/^\);/.test(line)) current = null; }
+    // o fim da tabela: `);` (a com índices) ou `});` (a simples)
+    if (/^\}?\);/.test(line)) current = null;
   }
 }
 

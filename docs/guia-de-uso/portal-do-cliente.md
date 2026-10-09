@@ -9,6 +9,8 @@ Do lado da equipe, fica no menu **Portal do cliente**, com três abas: **Tutoria
 **Ajustes**. Quem vê: todo mundo da equipe. Quem escreve tutorial e dá acesso: Operador, Técnico e
 Administrador. Quem muda os Ajustes: o Administrador.
 
+E a equipe também entra no portal, com o **mesmo e-mail e a mesma senha do Gestor** — veja o item 6.
+
 ---
 
 ## 1. Escrever um tutorial
@@ -108,7 +110,28 @@ sozinhos**, com as mesmas senhas.
 
 Tutorial de produto que o cliente não tem não aparece, nem pela busca, nem pelo link.
 
-## 6. Ajustes
+## 6. A equipe no portal
+
+Quem tem usuário no Gestor **entra no portal com o mesmo e-mail e a mesma senha**. Não precisa criar
+nada: vale para quem já existe e para quem for criado depois. Em Portal do cliente, **Abrir o
+portal** leva até lá (ou abra `/portal`).
+
+- **Vê todos os tutoriais publicados**, de todos os produtos e módulos (o rascunho continua só aqui no
+  Gestor). No topo, no lugar do cliente, aparece **Equipe Ingline**, e o início avisa que a equipe vê
+  tudo — cada cliente vê só os dos produtos que tem.
+- **A visita da equipe não conta** no número de visualizações do tutorial: o número é o dos clientes.
+- **Usa o código de 6 dígitos no Gestor?** O portal pede o código também, depois da senha (ou um
+  código de recuperação).
+- **A senha é a do Gestor.** Troca-se aqui, em **Minha conta** (ou o administrador redefine em
+  Administração › Usuários), e o portal acompanha: quem estava com o portal aberto precisa entrar de
+  novo, com a senha nova. No portal, Minha conta só mostra o aviso.
+- **Desativou o usuário?** Ele não entra mais nem no Gestor nem no portal, na hora.
+- Entrar no portal **não abre o Gestor**, e estar no Gestor não abre o portal: são duas entradas, com
+  o mesmo login.
+- Tem também um acesso de cliente com o mesmo e-mail (para ver o portal como aquele cliente)? **A
+  senha decide**: a senha do acesso de cliente entra como o cliente; a do Gestor, como a equipe.
+
+## 7. Ajustes
 
 Em Portal do cliente › **Ajustes** (mudar é de quem administra):
 
@@ -116,7 +139,7 @@ Em Portal do cliente › **Ajustes** (mudar é de quem administra):
 - **WhatsApp**, **e-mail** e **horário do suporte** — o WhatsApp vira o botão "Falar com o suporte";
 - **Espaço usado**: quantos vídeos (no disco do servidor) e quantos prints e arquivos (no banco).
 
-## 7. Os vídeos e o backup
+## 8. Os vídeos e o backup
 
 Os prints e os arquivos entram no backup diário, como o resto do sistema. **Os vídeos não**: ficam
 numa pasta do servidor e são grandes demais para o envio ao Google Drive. **Guarde o arquivo original
@@ -131,4 +154,7 @@ que sobe de novo.
   que ele tem, e se está **publicado**.
 - **Dá para a mesma pessoa ver dois clientes?** Não: um e-mail é de um cliente só.
 - **Dá para ver o portal como o cliente?** O **Celular** e o **Computador** do tutorial mostram
-  exatamente o que ele vê.
+  exatamente o que ele vê. Para ver o portal inteiro, entre em `/portal` com o seu e-mail e a sua
+  senha do Gestor (item 6) — você vê todos os tutoriais, não só os de um cliente.
+- **Preciso dar acesso a alguém da equipe?** Não: a equipe entra com o login do Gestor (item 6). Os
+  acessos são das pessoas dos clientes.

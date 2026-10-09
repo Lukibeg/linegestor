@@ -180,6 +180,10 @@ export function AcessosDoPortal({ clienteId }: { clienteId?: string }) {
           {pode && <button className="btn-primary ml-auto" onClick={() => setDando(true)}><UserPlus size={15} /> Dar acesso</button>}
         </div>
       )}
+      {!clienteId && (
+        // decisão 0044: a equipe usa o próprio login do Gestor no portal
+        <p className="text-[12.5px] text-muted -mt-1">Os acessos são das pessoas dos clientes. A equipe não precisa de acesso aqui: entra no portal com o e-mail e a senha do Gestor.</p>
+      )}
 
       {q.isLoading ? <Carregando /> : q.isError ? <p className="text-bad text-sm">{mensagemErro(q.error)}</p> : !visiveis.length ? (
         <Vazio titulo={termo ? `Ninguém com “${busca}”` : 'Ninguém tem acesso ainda'}

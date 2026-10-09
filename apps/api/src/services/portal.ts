@@ -7,6 +7,9 @@
  *    saiu da base, a sessão aberta cai na hora
  *  - **a senha é da pessoa**: a equipe gera um convite (o código vale 7 dias e uma vez só; no banco
  *    só o hash dele) e a pessoa cria a senha. Ninguém da equipe digita senha de cliente
+ *  - **a equipe entra com o login do Gestor** (decisão 0044, Patch 1.9): o mesmo e-mail, a mesma
+ *    senha e o código de 6 dígitos de quem usa; nada a criar. Vê todos os tutoriais publicados; a
+ *    visita dela não conta; desativado no Gestor (ou com a senha trocada lá), a sessão cai
  *  - **o que cada cliente vê**: os tutoriais publicados "Geral" e os dos produtos (e módulos) que ele
  *    tem ativos; arquivo só de tutorial que ele pode ver
  *  - **os arquivos**: imagem e arquivo no banco (entram no backup diário); vídeo em disco
@@ -27,7 +30,7 @@ import {
 } from '@gestor/db';
 import {
   AJUSTES_PORTAL_PADRAO, arquivosDoTexto, buscarArtigos, caminhoDoTutorial, clienteNaBase, DIAS_DO_CONVITE, faltaParaPublicarTutorial,
-  motivoForaDaBase, PortalAjustesSchema, problemaDoArquivo, situacaoDoAcesso, textoPuro, tutorialValePara,
+  motivoForaDaBase, NOME_DA_EQUIPE_NO_PORTAL, PortalAjustesSchema, problemaDoArquivo, situacaoDoAcesso, textoPuro, tutorialValePara,
   type AcessoCriar, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar, type TutoriaisListarQuery,
 } from '@gestor/shared';
 import { BadRequest, Conflict, Forbidden, NotFound, Unauthorized } from '../plugins/errors.js';
@@ -447,17 +450,34 @@ export async function atualizarAcesso(db: Db, id: string, d: AcessoCriar) {
 // O lado do cliente: entrar, a sessão, o convite
 // ---------------------------------------------------------------------
 
-/** Quem está no portal agora: a pessoa, o cliente e o que ele tem. */
-export type SessaoPortal = { sid: string; usuario: { id: string; nome: string; email: string }; cliente: { id: string; nome: string; temLogo: boolean }; ativos: { produtos: string[]; modulos: string[] } };
+/**
+ * Quem está no portal agora: a pessoa, o cliente e o que ele tem. Quando é alguém da equipe
+ * (`equipe`, decisão 0044), o "cliente" é a Equipe Ingline e vale o catálogo inteiro: vê todos os
+ * tutoriais publicados.
+ */
+export type SessaoPortal = {
+  sid: string;
+  equipe: boolean;
+  usuario: { id: string; nome: string; email: string };
+  cliente: { id: string; nome: string; temLogo: boolean };
+  ativos: { produtos: string[]; modulos: string[] };
+};
 /** Por que a sessão não vale (para a tela dizer). */
 export type MotivoSemSessao = 'bloqueado' | 'fora_da_base' | null;
+/** De quem é a sessão: uma pessoa do cliente ou alguém da equipe (com o login do Gestor). */
+export type DonoDaSessao = { portalUserId: string } | { staffUserId: string };
 
 export const DIAS_DA_SESSAO = 30;
 
-export async function criarSessao(db: Db, portalUserId: string, ip: string, userAgent: string | undefined) {
+export async function criarSessao(db: Db, dono: DonoDaSessao, ip: string, userAgent: string | undefined) {
   const id = novoCodigo();
-  await db.insert(portalSessions).values({ id, portalUserId, expiresAt: new Date(Date.now() + DIAS_DA_SESSAO * 86_400_000), ip, userAgent: userAgent?.slice(0, 300) ?? null });
-  await db.update(portalUsers).set({ lastLoginAt: new Date(), loginCount: sql`${portalUsers.loginCount} + 1` }).where(eq(portalUsers.id, portalUserId));
+  const expiresAt = new Date(Date.now() + DIAS_DA_SESSAO * 86_400_000);
+  const quem = 'portalUserId' in dono ? { portalUserId: dono.portalUserId } : { staffUserId: dono.staffUserId };
+  await db.insert(portalSessions).values({ id, ...quem, expiresAt, ip, userAgent: userAgent?.slice(0, 300) ?? null });
+  // as entradas da pessoa do cliente contam no acesso dela; as da equipe ficam na auditoria
+  if ('portalUserId' in dono) {
+    await db.update(portalUsers).set({ lastLoginAt: new Date(), loginCount: sql`${portalUsers.loginCount} + 1` }).where(eq(portalUsers.id, dono.portalUserId));
+  }
   return id;
 }
 
@@ -465,43 +485,83 @@ export async function destruirSessao(db: Db, sid: string) {
   await db.delete(portalSessions).where(eq(portalSessions.id, sid));
 }
 
-/** Lê a sessão e confere, a cada pedido, que a pessoa e o cliente ainda podem entrar. */
+/** Derruba as sessões do portal de alguém da equipe (a senha mudou no Gestor, ou o usuário foi desativado). */
+export async function derrubarSessoesDaEquipe(db: Db | Transacao, userId: string) {
+  await db.delete(portalSessions).where(eq(portalSessions.staffUserId, userId));
+}
+
+/** O catálogo inteiro: a equipe vê os tutoriais de todos os produtos e módulos. */
+async function catalogoInteiro(db: Db) {
+  const [ps, ms] = await Promise.all([db.select({ id: products.id }).from(products), db.select({ id: productModules.id }).from(productModules)]);
+  return { produtos: ps.map((p) => p.id), modulos: ms.map((m) => m.id) };
+}
+
+/**
+ * Lê a sessão e confere, a cada pedido, que quem entrou ainda pode: a pessoa do cliente ativa e o
+ * cliente na base; o usuário da equipe ativo no Gestor.
+ */
 export async function lerSessao(db: Db, sid: string): Promise<{ sessao: SessaoPortal | null; motivo: MotivoSemSessao }> {
   const [row] = await db.select({
-    sid: portalSessions.id, expiresAt: portalSessions.expiresAt,
+    sid: portalSessions.id, expiresAt: portalSessions.expiresAt, daEquipe: portalSessions.staffUserId,
     uid: portalUsers.id, nome: portalUsers.name, email: portalUsers.email, ativo: portalUsers.active,
     cid: clients.id, cliente: clients.tradeName, arquivado: clients.archived, deletedAt: clients.deletedAt,
+    eid: users.id, eNome: users.name, eEmail: users.email, eAtivo: users.active,
   }).from(portalSessions)
-    .innerJoin(portalUsers, eq(portalUsers.id, portalSessions.portalUserId))
-    .innerJoin(clients, eq(clients.id, portalUsers.clientId))
+    .leftJoin(portalUsers, eq(portalUsers.id, portalSessions.portalUserId))
+    .leftJoin(clients, eq(clients.id, portalUsers.clientId))
+    .leftJoin(users, eq(users.id, portalSessions.staffUserId))
     .where(and(eq(portalSessions.id, sid), gt(portalSessions.expiresAt, new Date()))).limit(1);
   if (!row) return { sessao: null, motivo: null };
-  if (!row.ativo) return { sessao: null, motivo: 'bloqueado' };
-  const [ativos, [logo]] = await Promise.all([
-    ativosDoCliente(db, row.cid),
-    db.select({ id: clientLogos.clientId }).from(clientLogos).where(eq(clientLogos.clientId, row.cid)).limit(1),
-  ]);
-  if (!clienteNaBase({ arquivado: row.arquivado, naLixeira: !!row.deletedAt, produtosAtivos: ativos.produtos.length })) return { sessao: null, motivo: 'fora_da_base' };
+
+  let sessao: SessaoPortal;
+  if (row.daEquipe) {
+    if (!row.eid || !row.eAtivo) return { sessao: null, motivo: 'bloqueado' };
+    sessao = {
+      sid: row.sid, equipe: true, usuario: { id: row.eid, nome: row.eNome!, email: row.eEmail! },
+      cliente: { id: '', nome: NOME_DA_EQUIPE_NO_PORTAL, temLogo: false }, ativos: await catalogoInteiro(db),
+    };
+  } else {
+    if (!row.uid || !row.cid) return { sessao: null, motivo: null };
+    if (!row.ativo) return { sessao: null, motivo: 'bloqueado' };
+    const [ativos, [logo]] = await Promise.all([
+      ativosDoCliente(db, row.cid),
+      db.select({ id: clientLogos.clientId }).from(clientLogos).where(eq(clientLogos.clientId, row.cid)).limit(1),
+    ]);
+    if (!clienteNaBase({ arquivado: !!row.arquivado, naLixeira: !!row.deletedAt, produtosAtivos: ativos.produtos.length })) return { sessao: null, motivo: 'fora_da_base' };
+    sessao = { sid: row.sid, equipe: false, usuario: { id: row.uid, nome: row.nome!, email: row.email! }, cliente: { id: row.cid, nome: row.cliente!, temLogo: !!logo }, ativos };
+  }
   // a sessão "desliza": cada uso renova os 30 dias (no máximo uma vez por dia, para não escrever à toa)
   if (row.expiresAt.getTime() - Date.now() < (DIAS_DA_SESSAO - 1) * 86_400_000) {
     await db.update(portalSessions).set({ expiresAt: new Date(Date.now() + DIAS_DA_SESSAO * 86_400_000) }).where(eq(portalSessions.id, sid));
   }
-  return {
-    sessao: { sid: row.sid, usuario: { id: row.uid, nome: row.nome, email: row.email }, cliente: { id: row.cid, nome: row.cliente, temLogo: !!logo }, ativos },
-    motivo: null,
-  };
+  return { sessao, motivo: null };
 }
 
 const SEM_ACESSO = 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.';
 
-/** Entrar: a mesma mensagem para e-mail que não existe e senha errada (não revelar quem tem acesso). */
-export async function entrar(db: Db, email: string, senha: string) {
+/** Quem a senha abriu: a pessoa do cliente, ou alguém da equipe (que talvez ainda deva o código de 6 dígitos). */
+export type Entrada =
+  | { tipo: 'cliente'; id: string }
+  | { tipo: 'equipe'; id: string; nome: string; precisaCodigo: boolean };
+
+/**
+ * Entrar. Primeiro o acesso de cliente com este e-mail; se não houver (ou a senha não for a dele),
+ * o usuário da equipe com o mesmo e-mail — a mesma senha do Gestor (decisão 0044). A mesma mensagem
+ * para e-mail que não existe e senha errada (não revelar quem tem acesso); o usuário desativado no
+ * Gestor também não entra aqui.
+ */
+export async function entrar(db: Db, email: string, senha: string): Promise<Entrada> {
   const [u] = await db.select().from(portalUsers).where(eq(portalUsers.email, email)).limit(1);
-  if (!u || !u.passwordHash || !(await argon2.verify(u.passwordHash, senha))) throw new Unauthorized('E-mail ou senha incorretos');
-  if (!u.active) throw new Forbidden(SEM_ACESSO);
-  const info = (await clientesNaBase(db, [u.clientId])).get(u.clientId);
-  if (!info?.naBase) throw new Forbidden(SEM_ACESSO);
-  return u;
+  if (u?.passwordHash && (await argon2.verify(u.passwordHash, senha))) {
+    if (!u.active) throw new Forbidden(SEM_ACESSO);
+    const info = (await clientesNaBase(db, [u.clientId])).get(u.clientId);
+    if (!info?.naBase) throw new Forbidden(SEM_ACESSO);
+    return { tipo: 'cliente', id: u.id };
+  }
+  const [e] = await db.select({ id: users.id, nome: users.name, hash: users.passwordHash, ativo: users.active, duasEtapas: users.totpEnabledAt })
+    .from(users).where(eq(users.email, email)).limit(1);
+  if (e?.ativo && (await argon2.verify(e.hash, senha))) return { tipo: 'equipe', id: e.id, nome: e.nome, precisaCodigo: !!e.duasEtapas };
+  throw new Unauthorized('E-mail ou senha incorretos');
 }
 
 /** O convite ainda vale? (a tela de criar a senha) */
@@ -525,6 +585,8 @@ export async function criarSenha(db: Db, codigo: string, senha: string) {
 }
 
 export async function trocarSenha(db: Db, s: SessaoPortal, atual: string, nova: string) {
+  // a senha de quem é da equipe é a do Gestor: troca lá, em Minha conta (e o portal acompanha)
+  if (s.equipe) throw new BadRequest('Sua senha é a do Ingline Gestão: troque por lá, em Minha conta.');
   const [u] = await db.select().from(portalUsers).where(eq(portalUsers.id, s.usuario.id)).limit(1);
   if (!u?.passwordHash || !(await argon2.verify(u.passwordHash, atual))) throw new BadRequest('A senha atual não confere.');
   await db.update(portalUsers).set({ passwordHash: await argon2.hash(nova, { type: argon2.argon2id }), updatedAt: new Date() }).where(eq(portalUsers.id, u.id));
@@ -565,12 +627,12 @@ export async function tutoriaisDoCliente(db: Db, s: SessaoPortal, f: { q?: strin
   return { items: achados.map((x) => ({ ...cartao(x.artigo.t, cat), trecho: x.trecho })), total: achados.length };
 }
 
-/** Um tutorial, se este cliente pode ver. Conta a visita. */
+/** Um tutorial, se este cliente pode ver. Conta a visita (a da equipe não conta: o número é o dos clientes). */
 export async function tutorialDoCliente(db: Db, s: SessaoPortal, numero: number) {
   const [t] = await db.select().from(portalArticles)
     .where(and(eq(portalArticles.number, numero), isNull(portalArticles.deletedAt), eq(portalArticles.status, 'publicado'))).limit(1);
   if (!t || !tutorialValePara({ produtoId: t.productId, moduloId: t.moduleId }, s.ativos)) throw new NotFound('Tutorial');
-  await db.update(portalArticles).set({ views: sql`${portalArticles.views} + 1` }).where(eq(portalArticles.id, t.id));
+  if (!s.equipe) await db.update(portalArticles).set({ views: sql`${portalArticles.views} + 1` }).where(eq(portalArticles.id, t.id));
   const [cat, arquivos] = await Promise.all([nomesDoCatalogo(db), arquivosDoTutorial(db, t.id)]);
   return { ...cartao(t, cat), texto: t.body, publicadoEm: t.publishedAt?.toISOString() ?? null, arquivos: arquivos.map((f) => descricaoDoArquivo(f, 'portal')) };
 }

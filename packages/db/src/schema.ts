@@ -17,8 +17,8 @@
  *   - toda tabela tem `id` em texto (cuid), gerado pela aplicação
  * =====================================================================
  */
-import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
 
 const id = () => text('id').primaryKey();
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -1285,18 +1285,30 @@ export const portalUsers = pgTable(
   ],
 );
 
-/** A sessão de quem entrou no portal (como `sessions`, mas do cliente). Dura 30 dias sem uso. */
+/**
+ * A sessão de quem entrou no portal (como `sessions`, mas do cliente). Dura 30 dias sem uso.
+ * É de uma pessoa do cliente (`portal_user_id`) **ou** de alguém da equipe (`staff_user_id`): a
+ * equipe entra no portal com o próprio login do Gestor e vê todos os tutoriais (decisão 0044,
+ * Patch 1.9, migração 0012). Nunca as duas coisas, nunca nenhuma.
+ */
 export const portalSessions = pgTable(
   'portal_sessions',
   {
     id: id(),
-    portalUserId: text('portal_user_id').notNull().references(() => portalUsers.id, { onDelete: 'cascade' }),
+    /** A pessoa do cliente (nulo quando quem entrou é da equipe) */
+    portalUserId: text('portal_user_id').references(() => portalUsers.id, { onDelete: 'cascade' }),
+    /** Quem da equipe entrou com o login do Gestor (nulo quando é uma pessoa do cliente) */
+    staffUserId: text('staff_user_id').references(() => users.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: createdAt(),
     ip: text('ip'),
     userAgent: text('user_agent'),
   },
-  (t) => [index('portal_sessions_user_idx').on(t.portalUserId)],
+  (t) => [
+    index('portal_sessions_user_idx').on(t.portalUserId),
+    index('portal_sessions_staff_idx').on(t.staffUserId),
+    check('portal_sessions_dono_ck', sql`num_nonnulls(portal_user_id, staff_user_id) = 1`),
+  ],
 );
 
 /**

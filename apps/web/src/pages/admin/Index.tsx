@@ -44,7 +44,11 @@ function Usuarios() {
   if (q.isLoading) return <Carregando />;
   return (
     <div>
-      <div className="flex justify-end mb-3"><button className="btn-primary btn-sm" onClick={() => setEdit('novo')}><Plus size={14} /> Novo usuário</button></div>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+        {/* decisão 0044: o mesmo login entra no portal do cliente — nada a criar lá */}
+        <p className="text-sm text-muted flex-1">Cada usuário daqui também entra no <b className="text-ink-2">portal do cliente</b> com o mesmo e-mail e a mesma senha, e vê todos os tutoriais. Desativado, não entra em nenhum dos dois.</p>
+        <button className="btn-primary btn-sm self-end sm:self-auto shrink-0" onClick={() => setEdit('novo')}><Plus size={14} /> Novo usuário</button>
+      </div>
       <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><Th o={o} col="name">Nome</Th><Th o={o} col="email">E-mail</Th><Th o={o} col="roleName">Papel</Th><Th o={o} col="active">Situação</Th><Th o={o} col="lastLoginAt">Último acesso</Th><th /></tr></thead>
         <tbody>{ordenarLista(q.data ?? [], o, { name: (u) => u.name, email: (u) => u.email, roleName: (u) => u.roleName, active: (u) => (u.active ? 1 : 0), lastLoginAt: (u) => u.lastLoginAt }).map((u, i) => <tr key={u.id}><TdN n={contar(i)} /><td className="font-medium">{u.name}</td><td className="text-ink-2">{u.email}</td><td><Chip tone="accent">{u.roleName}</Chip></td><td>{u.active ? <Chip tone="ok">ativo</Chip> : <Chip tone="muted">desativado</Chip>}</td><td className="text-muted">{u.lastLoginAt ? relativo(u.lastLoginAt) : 'nunca'}</td><td className="text-right"><button className="btn-ghost btn-sm" onClick={() => setEdit(u)}>Editar</button></td></tr>)}</tbody></table></div>
       <Modal open={!!edit} onClose={() => setEdit(null)} titulo={edit === 'novo' ? 'Novo usuário' : 'Editar usuário'} rodape={<><button className="btn-secondary" onClick={() => setEdit(null)}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name || !f.email || (edit === 'novo' && (f.password?.length ?? 0) < 10)} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
@@ -53,7 +57,7 @@ function Usuarios() {
           <Campo label="E-mail"><input className="input" type="email" value={f.email ?? ''} onChange={(e) => setF({ ...f, email: e.target.value })} /></Campo>
           <Campo label={edit === 'novo' ? 'Senha inicial' : 'Nova senha'} dica={edit === 'novo' ? 'mínimo 10 caracteres' : 'deixe vazio para não trocar'}><input className="input" type="password" autoComplete="new-password" value={f.password ?? ''} onChange={(e) => setF({ ...f, password: e.target.value })} /></Campo>
           <Campo label="Papel"><select className="input" value={f.roleId ?? ''} onChange={(e) => setF({ ...f, roleId: e.target.value })}>{roles.data?.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.description}</option>)}</select></Campo>
-          {edit !== 'novo' && <Toggle checked={!!f.active} onChange={(v) => setF({ ...f, active: v })} label="Ativo (desativado não consegue entrar)" />}
+          {edit !== 'novo' && <Toggle checked={!!f.active} onChange={(v) => setF({ ...f, active: v })} label="Ativo (desativado não entra no Gestor nem no portal do cliente)" />}
           {err && <div className="text-bad text-sm">{err}</div>}
         </div>
       </Modal>

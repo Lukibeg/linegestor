@@ -85,6 +85,13 @@
       "when": 1791554883463,
       "tag": "0011_recibos_de_entrega",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791583862271,
+      "tag": "0012_equipe_no_portal",
+      "breakpoints": true
     }
   ]
 }

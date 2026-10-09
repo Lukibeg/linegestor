@@ -28,7 +28,7 @@ import {
 } from '@gestor/shared';
 import {
   AcessoCriarSchema, AJUSTES_PORTAL_PADRAO, arquivosDoTexto, caminhoDoTutorial, clienteNaBase, DIAS_DO_CONVITE, faltaParaPublicarTutorial, motivoForaDaBase,
-  numeroDoCaminho, PortalAjustesSchema, PortalCriarSenhaSchema, PortalEntrarSchema, PortalTrocarSenhaSchema, problemaDoArquivo, situacaoDoAcesso,
+  numeroDoCaminho, NOME_DA_EQUIPE_NO_PORTAL, PortalAjustesSchema, PortalCriarSenhaSchema, PortalEntrarComCodigoSchema, PortalEntrarSchema, PortalTrocarSenhaSchema, problemaDoArquivo, situacaoDoAcesso,
   TIPOS_IMAGEM_PORTAL, TutoriaisListarSchema, TutorialGravarSchema, tutorialValePara, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar,
 } from '@gestor/shared';
 import type { Api } from './index.js';
@@ -110,7 +110,8 @@ const S = {
   artigos: [] as ArtRow[], artVersoes: [] as ArtVersaoRow[], artLigacoes: [] as ArtLigRow[], artAnexos: [] as ArtAnexoRow[],
   artLeituras: [] as Array<{ articleId: string; userId: string; em: string }>, artComentarios: [] as ArtComentarioRow[], proximoArtigo: 1, baseSemeada: false,
   // Portal do cliente (1.8): os tutoriais e os acessos entram na primeira vez que alguém abre o portal.
-  // `portalSessao` é o login do cliente (o id do acesso), separado do da equipe: dá para abrir os dois lados.
+  // `portalSessao` é o login do portal, separado do da equipe: dá para abrir os dois lados. É o id do acesso do
+  // cliente, ou "equipe:<id do usuário>" quando alguém da equipe entra com o login do Gestor (1.9, decisão 0044).
   tutoriais: [] as TutorialRow[], arqPortal: [] as ArqPortalRow[], acessosPortal: [] as AcessoRow[], proximoTutorial: 1, portalSemeado: false,
   portalSessao: null as string | null,
   ajustesPortal: { ...AJUSTES_PORTAL_PADRAO, whatsapp: '(71) 99999-0000', email: 'suporte@exemplo.com.br', horario: 'Segunda a sexta, das 8h às 18h' } as PortalAjustes,
@@ -1616,7 +1617,8 @@ const textoDaVersaoDemo = (v: ArtVersaoRow): TextoVersao => ({ versao: v.versao,
 // As mesmas regras do servidor (`apps/api/src/services/portal.ts`), com as contas do
 // `@gestor/shared/portal.ts`: entra quem está ativo, já criou a senha e é de um cliente na base;
 // cada cliente vê os tutoriais "Geral" e os dos produtos (e módulos) que tem. Na prévia, a sessão
-// do cliente é separada da da equipe (`S.portalSessao`) — dá para abrir os dois lados.
+// do cliente é separada da da equipe (`S.portalSessao`) — dá para abrir os dois lados. A equipe entra
+// no portal com o login do Gestor (1.9, decisão 0044) e vê todos os tutoriais publicados.
 
 /** O print de exemplo: as teclas do telefone, com o TRANSF em destaque. */
 const PRINT_TECLAS = svgDemo(560, 170, [
@@ -1795,17 +1797,49 @@ function ligarArquivosDemo(t: TutorialRow) {
 }
 const limpoPortalDemo = (t: string | null | undefined) => { const s = (t ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/^\n+|\s+$/g, ''); return s || null; };
 const codigoDeConviteDemo = () => `demo${id()}${id()}${id()}`.slice(0, 40);
-/** A sessão do cliente na prévia: confere a cada pedido, como o servidor. */
-function sessaoPortalDemo(): { a: AcessoRow; ativos: { produtos: string[]; modulos: string[] } } {
+/** A sessão do portal na prévia: confere a cada pedido, como o servidor (o acesso do cliente, ou alguém da equipe). */
+type SessaoPortalDemo = { a: AcessoRow; u: null; ativos: { produtos: string[]; modulos: string[] } } | { a: null; u: UserRow; ativos: { produtos: string[]; modulos: string[] } };
+const PREFIXO_EQUIPE = 'equipe:';
+function sessaoPortalDemo(): SessaoPortalDemo {
+  if (S.portalSessao?.startsWith(PREFIXO_EQUIPE)) {
+    const u = S.users.find((x) => x.id === S.portalSessao!.slice(PREFIXO_EQUIPE.length));
+    // desativado no Gestor: a sessão do portal cai na hora (como no servidor)
+    if (!u || !u.active) throw new ApiError(401, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
+    return { a: null, u, ativos: { produtos: S.products.map((p) => p.id), modulos: S.modules.map((m) => m.id) } };
+  }
   const a = acessosVivos().find((x) => x.id === S.portalSessao);
   if (!a) throw new ApiError(401, 'Entre para ver');
   if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(401, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
-  return { a, ativos: ativosDoClienteDemo(a.clienteId) };
+  return { a, u: null, ativos: ativosDoClienteDemo(a.clienteId) };
 }
-const euPortalDemo = (a: AcessoRow): EuPortal => {
-  const c = S.clients.find((x) => x.id === a.clienteId);
-  return { nome: a.nome, email: a.email, cliente: { nome: c?.tradeName ?? '—', logo: c?.logoUrl ?? null }, portal: S.ajustesPortal };
+const euPortalDemo = (sessao: SessaoPortalDemo): EuPortal => {
+  if (sessao.u) return { nome: sessao.u.name, email: sessao.u.email, equipe: true, cliente: { nome: NOME_DA_EQUIPE_NO_PORTAL, logo: null }, portal: S.ajustesPortal };
+  const c = S.clients.find((x) => x.id === sessao.a.clienteId);
+  return { nome: sessao.a.nome, email: sessao.a.email, equipe: false, cliente: { nome: c?.tradeName ?? '—', logo: c?.logoUrl ?? null }, portal: S.ajustesPortal };
 };
+/**
+ * E-mail e senha do portal, como o servidor: primeiro o acesso do cliente com este e-mail; se não houver
+ * (ou a senha não for a dele), o usuário ativo da equipe com o mesmo e-mail e a senha do Gestor.
+ */
+function conferirSenhaDoPortalDemo(email: string, senha: string): { a: AcessoRow; u: null } | { a: null; u: UserRow } {
+  const a = acessosVivos().find((x) => x.email === email);
+  if (a?.senha && a.senha === senha) {
+    if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(403, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
+    return { a, u: null };
+  }
+  const u = S.users.find((x) => x.email === email && x.active);
+  if (u && u.password === senha) return { a: null, u };
+  audit('login_failed', 'portal', `Tentativa de entrar no portal falhou para ${email}`, null);
+  throw new ApiError(401, 'E-mail ou senha incorretos');
+}
+/** A equipe entrou no portal (como o servidor: fica na auditoria). */
+function entrarComoEquipeDemo(u: UserRow, como?: 'codigo' | 'recuperacao'): EuPortal {
+  S.portalSessao = PREFIXO_EQUIPE + u.id;
+  audit('login', 'portal', `${u.name} entrou no portal do cliente com o login da equipe${como === 'recuperacao' ? ', usando um código de recuperação' : como === 'codigo' ? ' (com verificação em duas etapas)' : ''}`, u.id);
+  return euPortalDemo(sessaoPortalDemo());
+}
+/** Senha nova ou usuário desativado no Gestor: a sessão do portal dele cai. */
+const derrubarPortalDaEquipeDemo = (idUsuario: string) => { if (S.portalSessao === PREFIXO_EQUIPE + idUsuario) S.portalSessao = null; };
 const visiveisDemo = (ativos: { produtos: string[]; modulos: string[] }) =>
   tutoriaisVivos().filter((t) => t.situacao === 'publicado' && tutorialValePara({ produtoId: t.produtoId, moduloId: t.moduloId }, ativos));
 const lerArquivoDemo = (file: File) => new Promise<string>((ok, falhou) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => falhou(bad('Não deu para ler o arquivo')); r.readAsDataURL(file); });
@@ -1959,7 +1993,7 @@ export const demoApi: Api = {
       return { ok: true };
     },
     async logout() { if (S.me) audit('logout', 'user', `${S.me.name} saiu`, S.me.id); S.me = null; esperandoCodigo = null; return { ok: true }; },
-    async changePassword(cur, nw) { if (!S.me) throw new ApiError(401, 'Faça login'); if (cur !== S.me.password) throw new ApiError(401, 'Senha atual incorreta'); S.me.password = nw; return { ok: true }; },
+    async changePassword(cur, nw) { if (!S.me) throw new ApiError(401, 'Faça login'); if (cur !== S.me.password) throw new ApiError(401, 'Senha atual incorreta'); S.me.password = nw; derrubarPortalDaEquipeDemo(S.me.id); return { ok: true }; },
     async updateMe(d) {
       await wait(); if (!S.me) throw new ApiError(401, 'Faça login');
       const v = (d.sshUser ?? '').trim();
@@ -3480,19 +3514,32 @@ export const demoApi: Api = {
       const a = S.ajustesPortal;
       return { titulo: a.titulo, whatsapp: a.whatsapp ?? null, email: a.email || null, horario: a.horario ?? null };
     },
-    async eu() { await wait(50); return euPortalDemo(sessaoPortalDemo().a); },
+    async eu() { await wait(50); return euPortalDemo(sessaoPortalDemo()); },
     async entrar(email, senha) {
       await wait(180);
       const p = PortalEntrarSchema.safeParse({ email, senha });
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
-      const a = acessosVivos().find((x) => x.email === p.data.email);
-      if (!a || !a.senha || a.senha !== p.data.senha) {
-        audit('login_failed', 'portal', `Tentativa de entrar no portal falhou para ${p.data.email}`, null);
-        throw new ApiError(401, 'E-mail ou senha incorretos');
+      const r = conferirSenhaDoPortalDemo(p.data.email, p.data.senha);
+      if (r.u) return r.u.totpOn ? { precisaCodigo: true as const } : entrarComoEquipeDemo(r.u);
+      S.portalSessao = r.a.id; r.a.ultimoAcesso = now(); r.a.acessos += 1;
+      return euPortalDemo(sessaoPortalDemo());
+    },
+    async entrarComCodigo(email, senha, codigo) {
+      await wait(220);
+      const p = PortalEntrarComCodigoSchema.safeParse({ email, senha, codigo });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      const r = conferirSenhaDoPortalDemo(p.data.email, p.data.senha);
+      if (!r.u) { S.portalSessao = r.a.id; r.a.ultimoAcesso = now(); r.a.acessos += 1; return euPortalDemo(sessaoPortalDemo()); }
+      if (!r.u.totpOn) return entrarComoEquipeDemo(r.u);
+      // como o login do Gestor na prévia: qualquer código de 6 dígitos, ou um de recuperação (uma vez)
+      const limpo = p.data.codigo.toUpperCase();
+      const recuperacao = r.u.recovery?.includes(limpo);
+      if (!/^\d{6}$/.test(limpo) && !recuperacao) {
+        audit('login_failed', 'portal', 'Código de verificação incorreto ao entrar no portal do cliente', r.u.id);
+        throw new ApiError(401, 'Código incorreto. Confira o aplicativo e tente de novo.');
       }
-      if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(403, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
-      S.portalSessao = a.id; a.ultimoAcesso = now(); a.acessos += 1;
-      return euPortalDemo(a);
+      if (recuperacao) r.u.recovery = (r.u.recovery ?? []).filter((c) => c !== limpo);
+      return entrarComoEquipeDemo(r.u, recuperacao ? 'recuperacao' : 'codigo');
     },
     async sair() { await wait(40); S.portalSessao = null; return { ok: true }; },
     async convite(codigo) {
@@ -3517,6 +3564,7 @@ export const demoApi: Api = {
     async trocarSenha(atual, nova) {
       await wait(150);
       const { a } = sessaoPortalDemo();
+      if (!a) throw bad('Sua senha é a do Ingline Gestão: troque por lá, em Minha conta.');
       const p = PortalTrocarSenhaSchema.safeParse({ atual, nova });
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Senha inválida');
       if (a.senha !== p.data.atual) throw bad('A senha atual não confere.');
@@ -3548,18 +3596,19 @@ export const demoApi: Api = {
     },
     async tutorial(numero) {
       await wait(80);
-      const { ativos } = sessaoPortalDemo();
+      const { ativos, u } = sessaoPortalDemo();
       const n = numeroDoCaminho(numero);
       const t = visiveisDemo(ativos).find((x) => x.numero === n);
       if (!t) throw notFound('Tutorial');
-      t.views += 1;
+      // a visita da equipe não conta: o número é o dos clientes
+      if (!u) t.views += 1;
       return { ...cartaoDemo(t), texto: t.texto, publicadoEm: t.publicadoEm, arquivos: arquivosDoTutorialDemo(t) };
     },
   },
   admin: {
     async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt })); },
     async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
-    async updateUser(idu, d) { await wait(); requirePerm('admin.manage'); const u = S.users.find((x) => x.id === idu); if (!u) throw notFound('Usuário'); if ((d.active === false || (d.roleId && d.roleId !== u.roleId)) && u.roleId === 'radministrador' && !S.users.some((o) => o.id !== idu && o.roleId === 'radministrador' && o.active)) throw bad('Este é o único administrador ativo. Crie outro antes de rebaixar ou desativar.'); for (const k of ['name', 'email', 'roleId', 'active'] as const) if (d[k] !== undefined) (u as any)[k] = d[k]; if (d.password) u.password = String(d.password); audit('update', 'user', `Editou o usuário ${u.name}`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
+    async updateUser(idu, d) { await wait(); requirePerm('admin.manage'); const u = S.users.find((x) => x.id === idu); if (!u) throw notFound('Usuário'); if ((d.active === false || (d.roleId && d.roleId !== u.roleId)) && u.roleId === 'radministrador' && !S.users.some((o) => o.id !== idu && o.roleId === 'radministrador' && o.active)) throw bad('Este é o único administrador ativo. Crie outro antes de rebaixar ou desativar.'); for (const k of ['name', 'email', 'roleId', 'active'] as const) if (d[k] !== undefined) (u as any)[k] = d[k]; if (d.password) u.password = String(d.password); if (d.password || d.active === false) derrubarPortalDaEquipeDemo(u.id); audit('update', 'user', `Editou o usuário ${u.name}`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
     async roles() { await wait(); requirePerm('admin.manage'); return S.roles.map((r) => ({ ...r, userCount: S.users.filter((u) => u.roleId === r.id).length })); },
     async permissions() { await wait(30); return ALL_PERMISSIONS.map((key) => ({ key, label: PERMISSIONS[key] })); },
     async createRole(d) { await wait(); requirePerm('admin.manage'); const r: RoleRow = { id: id(), key: null, name: String(d.name), description: (d.description as string) ?? null, permissions: (d.permissions as string[]) ?? [], isSystem: false }; S.roles.push(r); audit('create', 'role', `Criou o papel ${r.name}`, r.id); return { ...r, userCount: 0 }; },

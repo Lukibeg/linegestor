@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, BookOpen, Check, ChevronRight, Copy, KeyRound, LogOut, MessageCircle, Search, Share2, ThumbsDown, ThumbsUp, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Check, ChevronRight, Copy, KeyRound, LogOut, MessageCircle, Search, Share2, ShieldCheck, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { api, logoSrc } from '../api/index.js';
 import { ApiError, type CartaoTutorial, type EuPortal, type InicioPortal } from '../api/types.js';
 import { Carregando, LogoCliente, mensagemErro, Spinner, useToast } from '../components/ui/index.js';
@@ -80,15 +80,22 @@ export function Inicio({ eu }: { eu: EuPortal }) {
       <div className="-mx-4 sm:mx-0 sm:rounded-2xl px-4 sm:px-8 py-7 sm:py-10 bg-[linear-gradient(135deg,var(--accent-soft),var(--surface)_70%)] border-b sm:border border-line">
         <h1 className="font-display font-semibold text-[24px] sm:text-[28px] leading-tight">Olá, {primeiroNome(eu.nome)}!</h1>
         <p className="text-[15px] text-ink-2 mt-1.5 max-w-2xl">{eu.portal.boasVindas || 'Passo a passo, vídeos e manuais dos seus produtos.'}</p>
+        {/* a equipe (o login do Gestor) vê tudo; o cliente, só o dos produtos que tem */}
+        {eu.equipe && (
+          <p className="mt-3 max-w-2xl text-[13px] text-ink-2 flex items-start gap-1.5">
+            <ShieldCheck size={15} className="mt-0.5 shrink-0 text-accent" />
+            <span>Você entrou com o login da equipe e vê <b>todos</b> os tutoriais publicados. Cada cliente vê só os dos produtos que tem.</span>
+          </p>
+        )}
         <div className="mt-5 max-w-2xl"><CaixaDeBusca grande /></div>
       </div>
-      {q.isLoading ? <Carregando /> : q.isError ? <Erro e={q.error} /> : <ConteudoDoInicio d={q.data!} />}
+      {q.isLoading ? <Carregando /> : q.isError ? <Erro e={q.error} /> : <ConteudoDoInicio d={q.data!} equipe={eu.equipe} />}
       <CartaoSuporte mensagem={`Olá! Sou ${eu.nome}, da ${eu.cliente.nome}. Preciso de ajuda com…`} />
     </>
   );
 }
 
-function ConteudoDoInicio({ d }: { d: InicioPortal }) {
+function ConteudoDoInicio({ d, equipe }: { d: InicioPortal; equipe: boolean }) {
   const produtos = d.produtos.filter((p) => p.tutoriais > 0);
   const destaques = new Set(d.destaques.map((t) => t.id));
   const novos = d.recentes.filter((t) => !destaques.has(t.id)).slice(0, 4);
@@ -103,7 +110,7 @@ function ConteudoDoInicio({ d }: { d: InicioPortal }) {
   }
   return (
     <>
-      <Secao titulo="Seus produtos">
+      <Secao titulo={equipe ? 'Os produtos' : 'Seus produtos'}>
         <ul className="grid grid-cols-1 min-[440px]:grid-cols-2 lg:grid-cols-3 gap-3">
           {produtos.map((p) => <CartaoProduto key={p.id} id={p.id} nome={p.nome} cor={p.cor} n={p.tutoriais} />)}
           {d.geral > 0 && <CartaoProduto id="geral" nome="Geral" cor={null} n={d.geral} dica="Suporte e dúvidas de todos os produtos" />}
@@ -352,8 +359,18 @@ export function Conta({ eu }: { eu: EuPortal }) {
           <div className="text-[13px] text-muted">{eu.cliente.nome}</div>
         </div>
       </section>
-      <p className="text-[12.5px] text-muted mt-2">Para mudar o nome ou o e-mail, fale com o suporte.</p>
+      <p className="text-[12.5px] text-muted mt-2">{eu.equipe ? 'O nome e o e-mail são os do seu usuário no Ingline Gestão.' : 'Para mudar o nome ou o e-mail, fale com o suporte.'}</p>
 
+      {eu.equipe ? (
+        // a senha da equipe é a do Gestor: troca lá (e o portal acompanha)
+        <section className="card p-4 sm:p-5 mt-5 flex gap-3">
+          <KeyRound size={18} className="text-accent shrink-0 mt-0.5" />
+          <div className="text-[14px] text-ink-2">
+            <h2 className="font-display font-semibold text-[16px] text-ink">A senha é a do Ingline Gestão</h2>
+            <p className="mt-1">Você entrou com o seu login da equipe. Para trocar a senha (ou ligar o código de 6 dígitos), use o Gestor, em <Link className="link" to="/conta">Minha conta</Link> — o portal acompanha.</p>
+          </div>
+        </section>
+      ) : (
       <form className="card p-4 sm:p-5 mt-5 flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); if (regras.every((r) => r.ok)) trocar.mutate(); }}>
         <h2 className="font-display font-semibold text-[16px] flex items-center gap-2"><KeyRound size={17} className="text-accent" /> Trocar a senha</h2>
         <input type="email" autoComplete="username" value={eu.email} readOnly hidden />
@@ -364,6 +381,7 @@ export function Conta({ eu }: { eu: EuPortal }) {
         {trocar.error && <div className="text-bad text-[13.5px]" role="alert">{mensagemErro(trocar.error)}</div>}
         <button className="btn-primary self-start" disabled={!atual || !regras.every((r) => r.ok) || trocar.isPending}>{trocar.isPending ? <Spinner className="text-white" /> : 'Salvar a senha nova'}</button>
       </form>
+      )}
 
       <button type="button" className="btn-secondary mt-5" onClick={() => sair.mutate()} disabled={sair.isPending}><LogOut size={15} /> Sair do portal</button>
     </div>

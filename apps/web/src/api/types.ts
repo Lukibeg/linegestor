@@ -487,7 +487,10 @@ export type AcessosDoCliente = { naBase: boolean; motivo: string | null; acessos
 export type ConviteGerado = { id: string; convite: string };
 export type EspacoPortal = { videos: number; bytesVideos: number; arquivos: number; bytesArquivos: number };
 // o lado do cliente
-export type EuPortal = { nome: string; email: string; cliente: { nome: string; logo: string | null }; portal: _AjustesPortal };
+/** Quem está no portal. `equipe` = entrou com o login do Gestor (decisão 0044): o "cliente" é a Equipe Ingline e vê todos os tutoriais. */
+export type EuPortal = { nome: string; email: string; equipe: boolean; cliente: { nome: string; logo: string | null }; portal: _AjustesPortal };
+/** O que o "Entrar" responde: quem entrou, ou que falta o código de 6 dígitos (a equipe que usa o código no Gestor). */
+export type EntradaPortal = EuPortal | { precisaCodigo: true };
 export type SobrePortal = { titulo: string; whatsapp: string | null; email: string | null; horario: string | null };
 export type InicioPortal = {
   portal: _AjustesPortal; produtos: Array<ProdutoDoPortal & { tutoriais: number }>; geral: number;

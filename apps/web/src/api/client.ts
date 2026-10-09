@@ -261,6 +261,7 @@ export const realApi: Api = {
     sobre: () => http('GET', '/portal/sobre'),
     eu: () => http('GET', '/portal/eu'),
     entrar: (email, senha) => http('POST', '/portal/entrar', { email, senha }),
+    entrarComCodigo: (email, senha, codigo) => http('POST', '/portal/entrar/codigo', { email, senha, codigo }),
     sair: () => http('POST', '/portal/sair'),
     convite: (codigo) => http('GET', `/portal/convite/${encodeURIComponent(codigo)}`),
     criarSenha: (codigo, senha) => http('POST', `/portal/convite/${encodeURIComponent(codigo)}`, { senha }),

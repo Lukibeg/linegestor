@@ -5,13 +5,16 @@
  * do convite que a equipe manda no WhatsApp (ninguém da Ingline digita a senha de cliente). Esqueceu
  * a senha? O suporte manda um convite novo. Chegou por um link de tutorial sem estar logado? Depois
  * de entrar, cai direto no tutorial (`?volta=`).
+ *
+ * A equipe entra aqui com o e-mail e a senha do Gestor (1.9, decisão 0044); quem usa o código de 6
+ * dígitos lá digita o código aqui também (a segunda etapa, como no Gestor).
  */
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, KeyRound, LockKeyhole } from 'lucide-react';
 import { api, IS_DEMO } from '../api/index.js';
-import { ApiError } from '../api/types.js';
+import { ApiError, type EuPortal } from '../api/types.js';
 import { mensagemErro, Spinner } from '../components/ui/index.js';
 import { Simbolo } from '../components/Marca.js';
 import { BotaoSuporte, CampoSenha, ContatoDoSuporte, primeiroNome, RegrasDaSenha, regrasDaSenha, useEu, useSobre, useTituloDaAba } from './comum.js';
@@ -48,23 +51,61 @@ export function Entrar() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [esqueci, setEsqueci] = useState(false);
+  // a equipe que usa o código de 6 dígitos no Gestor: depois da senha, o código
+  const [etapa, setEtapa] = useState<'senha' | 'codigo'>('senha');
+  const [codigo, setCodigo] = useState('');
   const titulo = sobre.data?.titulo ?? 'Central de ajuda';
   useTituloDaAba('Entrar', titulo);
 
+  const entrou = (r: EuPortal) => {
+    qc.removeQueries({ queryKey: ['portal'] });
+    qc.setQueryData(['portal', 'eu'], r);
+    navigate(destino, { replace: true });
+  };
   const entrar = useMutation({
     mutationFn: () => api.portal.entrar(email.trim(), senha),
-    onSuccess: (r) => {
-      qc.removeQueries({ queryKey: ['portal'] });
-      qc.setQueryData(['portal', 'eu'], r);
-      navigate(destino, { replace: true });
-    },
+    onSuccess: (r) => { if ('precisaCodigo' in r) { setCodigo(''); setEtapa('codigo'); } else entrou(r); },
+  });
+  const confirmar = useMutation({
+    mutationFn: () => api.portal.entrarComCodigo(email.trim(), senha, codigo.trim()),
+    onSuccess: entrou,
+    onError: () => setCodigo(''),
   });
   // a sessão que caiu continua com os dados antigos guardados: só volta se a conferência de agora passou
-  if (eu.data && !eu.isError && !entrar.isPending) return <Navigate to={destino} replace />;
+  if (eu.data && !eu.isError && !entrar.isPending && !confirmar.isPending) return <Navigate to={destino} replace />;
 
   const enviar = (e: FormEvent) => { e.preventDefault(); entrar.mutate(); };
   const erro = entrar.error;
   const mensagemEsqueci = `Olá! Esqueci a minha senha da ${titulo}.${email.trim() ? ` Meu e-mail é ${email.trim()}.` : ''}`;
+
+  if (etapa === 'codigo') {
+    const voltar = () => { setEtapa('senha'); setSenha(''); setCodigo(''); entrar.reset(); confirmar.reset(); };
+    const erroDoCodigo = confirmar.error;
+    return (
+      <TelaDeFora titulo={titulo}>
+        <form onSubmit={(e) => { e.preventDefault(); confirmar.mutate(); }} className="card p-5 sm:p-6 flex flex-col gap-4 shadow-sm">
+          <div>
+            <h1 className="font-display font-semibold text-[17px]">Código de verificação</h1>
+            <p className="text-[13.5px] text-muted mt-0.5">Abra o aplicativo de autenticação no celular e digite os 6 dígitos da conta <b className="text-ink-2">Ingline Gestão</b> — o mesmo código de entrar no Gestor.</p>
+          </div>
+          <div>
+            <label className="label" htmlFor="portal-codigo">Código</label>
+            <input id="portal-codigo" className="input py-2.5 font-mono text-center text-lg tracking-[0.35em]" inputMode="numeric" autoComplete="one-time-code" placeholder="000000" maxLength={11}
+              value={codigo} onChange={(e) => setCodigo(e.target.value)} required autoFocus />
+            <p className="text-muted text-[12px] mt-1.5">Sem o celular à mão? Use um dos códigos de recuperação que você guardou.</p>
+          </div>
+          {erroDoCodigo && (
+            <div className="text-bad text-[13.5px] flex gap-1.5" role="alert">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+              <span>{erroDoCodigo instanceof ApiError && erroDoCodigo.status === 429 ? 'Muitas tentativas seguidas. Espere alguns minutos e tente de novo.' : mensagemErro(erroDoCodigo)}</span>
+            </div>
+          )}
+          <button className="btn-primary w-full py-2.5 text-[15px]" disabled={confirmar.isPending || codigo.trim().length < 6}>{confirmar.isPending ? <Spinner className="text-white" /> : <>Confirmar <ArrowRight size={16} /></>}</button>
+          <button type="button" className="btn-ghost btn-sm self-center" onClick={voltar}>Voltar</button>
+        </form>
+      </TelaDeFora>
+    );
+  }
 
   return (
     <TelaDeFora titulo={titulo} rodape={IS_DEMO && <DicaDaPrevia />}>
@@ -117,6 +158,7 @@ function DicaDaPrevia() {
         {conta('carlos@hvaleverde.org.br', 'Hospital Vale Verde (LinePBX, LineReports, FOP2 e Omniboard)')}
         {conta('pedro@centralfarma.com.br', 'cliente que saiu da base: o acesso cai sozinho')}
       </ul>
+      <p className="mt-1.5">A equipe entra com o <b>mesmo login do Gestor</b> (<span className="font-mono text-[12px] text-ink">admin@gestor.local</span>, <span className="font-mono text-[12px] text-ink">tecnico@gestor.local</span>…) e vê todos os tutoriais.</p>
       <p className="mt-1.5">O convite (a pessoa cria a própria senha) sai da ficha do cliente, aba <b>Portal</b>, no <Link className="link" to="/clientes">Gestor</Link>.</p>
     </div>
   );

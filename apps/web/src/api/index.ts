@@ -252,7 +252,10 @@ export type Api = {
   portal: {
     sobre(): Promise<T.SobrePortal>;
     eu(): Promise<T.EuPortal>;
-    entrar(email: string, senha: string): Promise<T.EuPortal>;
+    /** a pessoa do cliente, ou a equipe com o login do Gestor; quem usa o código de 6 dígitos recebe `{ precisaCodigo: true }` */
+    entrar(email: string, senha: string): Promise<T.EntradaPortal>;
+    /** a segunda etapa da equipe: o e-mail e a senha de novo, mais o código (ou um de recuperação) */
+    entrarComCodigo(email: string, senha: string, codigo: string): Promise<T.EuPortal>;
     sair(): Promise<{ ok: boolean }>;
     convite(codigo: string): Promise<T.ConvitePortal>;
     criarSenha(codigo: string, senha: string): Promise<{ ok: boolean }>;

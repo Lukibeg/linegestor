@@ -94,6 +94,11 @@ A logo do cliente, guardada no próprio banco (uma linha por cliente que tem log
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `client_id` | texto | — | chave primária · liga com **clients** |
+| `mime_type` | texto | Tipo da imagem: image/png, image/jpeg, image/webp, image/svg+xml | obrigatório |
+| `data_base64` | texto | A imagem em base64 (sem o prefixo "data:") | obrigatório |
+| `size_bytes` | número inteiro | Tamanho aproximado em bytes, para exibir e limitar | obrigatório · padrão: 0 |
+| `updated_at` | data e hora | Última alteração | — |
 
 ## client_units
 
@@ -102,6 +107,7 @@ As UNIDADES de um cliente: matriz, filiais, lojas, andares. Todo cliente tem a "
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `client_id` | texto | — | obrigatório · liga com **clients** |
 | `name` | texto | Nome da unidade: "Matriz", "Loja Simões Filho" | obrigatório |
 | `is_main` | sim/não | A matriz: existe em todo cliente, é a unidade padrão e não pode ser removida | obrigatório · padrão: false |
 | `address` | texto | Endereço da unidade (rua, número, bairro, cidade) | — |
@@ -118,6 +124,7 @@ LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `client_id` | texto | — | obrigatório · liga com **clients** |
 | `model_id` | texto | O modelo de aparelho a que este login se aplica | obrigatório · liga com **deviceModels** |
 | `username` | texto | Usuário/login padrão (admin, user…) | — |
 | `password_secret_id` | texto | Senha padrão — no cofre | liga com **secrets** |
@@ -132,6 +139,15 @@ CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita n
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `client_id` | texto | — | chave primária · liga com **clients** |
+| `ip_address` | texto | IP padrão (ou o primeiro da faixa usada nos aparelhos) | — |
+| `subnet_mask` | texto | Máscara de sub-rede (255.255.255.0) | — |
+| `default_router` | texto | Roteador padrão (gateway) | — |
+| `dns1` | texto | DNS primário | — |
+| `dns2` | texto | DNS secundário | — |
+| `wireless_password_secret_id` | texto | Senha do ramal sem fio (DECT/Wi-Fi) — no cofre | liga com **secrets** |
+| `note` | texto | — | — |
+| `updated_at` | data e hora | Última alteração | — |
 
 ## products
 
@@ -139,6 +155,15 @@ Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNe
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `code` | texto | Identificador estável usado no código ("linepbx", "fop2"...) | obrigatório · único |
+| `name` | texto | Nome exibido | obrigatório |
+| `color` | texto | Cor do chip na interface (hex) | obrigatório · padrão: '#2457D6' |
+| `description` | texto | Uma frase explicando o produto | — |
+| `has_settings` | sim/não | Tem uma tabela de configuração própria? (LinePBX, SZChat) | obrigatório · padrão: false |
+| `sort_order` | número inteiro | Ordem nos chips e menus | obrigatório · padrão: 0 |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `deleted_at` | data e hora | Preenchido quando o produto foi para a lixeira. Some das fichas, dos filtros e dos cartões, mas as assinaturas ficam guardadas e voltam se o produto for restaurado. | — |
 
 ## product_modules
 
@@ -147,6 +172,7 @@ Catálogo de MÓDULOS: partes opcionais dentro de um produto. LinePBX tem Omnibo
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `product_id` | texto | — | obrigatório · liga com **products** |
 | `code` | texto | Identificador estável dentro do produto ("fop2", "nps"…) | obrigatório |
 | `name` | texto | Nome exibido | obrigatório |
 | `description` | texto | Uma frase explicando o módulo | — |
@@ -162,6 +188,7 @@ Catálogo de MÓDULOS: partes opcionais dentro de um produto. LinePBX tem Omnibo
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `client_id` | texto | — | obrigatório · liga com **clients** |
 | `product_id` | texto | — | obrigatório · liga com **products** |
 | `activated_at` | data e hora | Data em que o produto foi ativado para o cliente | — |
 | `deactivated_at` | data e hora | Preenchido quando o cliente deixou de assinar. Nulo = ativa. | — |
@@ -175,6 +202,13 @@ Configuração própria do LinePBX: onde está o servidor e como acessá-lo.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `subscription_id` | texto | — | chave primária · liga com **subscriptions** |
+| `hosting_id` | texto | Onde o servidor roda (catálogo: Local, Vultr, AWS...) | liga com **hostingProviders** |
+| `server_ip` | texto | IP do servidor | — |
+| `domain` | texto | Endereço web (domínio) — alimenta o atalho "abrir" e o link do FOP2 | — |
+| `ssh_user` | texto | Usuário do SSH — NÃO É MAIS USADO pela tela: cada técnico entra com o próprio usuário (ver `users.sshUser`). Fica guardado para não perder o que veio do Nexus. | — |
+| `ssh_port` | número inteiro | Porta do SSH (22 por padrão) | padrão: 22 |
+| `ssh_password_secret_id` | texto | Senha do SSH (no cofre) — também fora da tela, pelo mesmo motivo do usuário | liga com **secrets** |
 
 ## subscription_modules
 
@@ -183,6 +217,7 @@ Configuração própria do LinePBX: onde está o servidor e como acessá-lo.
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `subscription_id` | texto | — | obrigatório · liga com **subscriptions** |
 | `module_id` | texto | — | obrigatório · liga com **productModules** |
 | `activated_at` | data e hora | Quando o módulo foi ligado para o cliente | — |
 | `deactivated_at` | data e hora | Preenchido quando foi desligado. Nulo = ligado. | — |
@@ -196,6 +231,10 @@ Configuração própria do módulo FOP2 (dentro do LinePBX).
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `subscription_module_id` | texto | — | chave primária · liga com **subscriptionModules** |
+| `admin_extension` | texto | Ramal/usuário do FOP2 usado para o acesso rápido | — |
+| `admin_password_secret_id` | texto | Senha do ramal admin do FOP2 — no cofre (desde o 1.4, decisão 0032) | liga com **secrets** |
+| `default_user_password_secret_id` | texto | Senha do usuário padrão do FOP2 — no cofre. Saiu das telas no 1.4 (decisão 0032) e voltou no 1.5 (decisão 0034): nesse meio-tempo nada foi apagado, então as guardadas antes reaparecem. | liga com **secrets** |
 
 ## omniboard_settings
 
@@ -203,6 +242,10 @@ Configuração própria do módulo Omniboard (call center, dentro do LinePBX).
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `subscription_module_id` | texto | — | chave primária · liga com **subscriptionModules** |
+| `admin_login` | texto | E-mail do administrador | — |
+| `admin_password_secret_id` | texto | Senha do administrador — no cofre | liga com **secrets** |
+| `user_default_password_secret_id` | texto | Senha padrão dos usuários novos — no cofre | liga com **secrets** |
 
 ## szchat_settings
 
@@ -210,6 +253,9 @@ Configuração própria do SZChat (legado Fortics).
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `subscription_id` | texto | — | chave primária · liga com **subscriptions** |
+| `admin_login` | texto | E-mail do administrador | — |
+| `admin_password_secret_id` | texto | Senha do administrador — no cofre | liga com **secrets** |
 
 ## hosting_providers
 
@@ -217,6 +263,9 @@ Catálogo: onde um servidor pode estar hospedado (Local, Vultr, AWS, Contabo, He
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | — | obrigatório · único |
+| `active` | sim/não | — | obrigatório · padrão: true |
 
 
 ---
@@ -229,6 +278,9 @@ Catálogo: operadoras que fornecem circuitos (ALGAR, VC1...).
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | — | obrigatório · único |
+| `active` | sim/não | — | obrigatório · padrão: true |
 
 ## circuits
 
@@ -283,6 +335,9 @@ Catálogo: categoria de aparelho (Telefone IP, Periférico, ATA...).
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | — | obrigatório · único |
+| `active` | sim/não | — | obrigatório · padrão: true |
 
 ## device_models
 
@@ -290,6 +345,15 @@ Um modelo de aparelho (ex.: Grandstream GXP1610). Diz se é contado um a um ou p
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `code` | texto | Código curto ("gxp1610") | obrigatório · único |
+| `name` | texto | Nome exibido | obrigatório |
+| `category_id` | texto | — | liga com **deviceCategories** |
+| `image_url` | texto | Endereço de imagem externa (não usado: a foto fica em `device_model_images`) | — |
+| `value_cents` | número inteiro | Valor de cada unidade deste modelo, em centavos. É o valor que soma no cliente — o aparelho só tem valor próprio quando foi cadastrado diferente do modelo. | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 
 ## device_model_images
 
@@ -297,6 +361,11 @@ A foto do modelo, no próprio banco (como a logo do cliente). Reduzida no navega
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `model_id` | texto | — | chave primária · liga com **deviceModels** |
+| `mime_type` | texto | — | obrigatório |
+| `data_base64` | texto | — | obrigatório |
+| `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
+| `updated_at` | data e hora | Última alteração | — |
 
 ## devices
 
@@ -344,6 +413,10 @@ Um aparelho dentro de uma movimentação. Uma linha por aparelho — a quantidad
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `movement_id` | texto | — | obrigatório · liga com **deviceMovements** |
+| `model_id` | texto | — | obrigatório · liga com **deviceModels** |
+| `device_id` | texto | — | obrigatório · liga com **devices** |
 
 ## device_movement_receipts
 
@@ -352,6 +425,7 @@ O recibo de entrega de uma movimentação para cliente (Patch 1.9, decisão 0042
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `movement_id` | texto | — | obrigatório · liga com **deviceMovements** |
 | `file_name` | texto | O nome com que a pessoa baixa o arquivo | obrigatório |
 | `mime_type` | texto | O tipo de verdade, pelos primeiros bytes: application/pdf, image/jpeg, image/png ou image/webp | obrigatório |
 | `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
@@ -371,6 +445,12 @@ Um papel = um nome + uma lista de permissões (ver packages/shared/src/permissoe
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `key` | texto | Chave estável ("administrador"); nula para papéis criados pela tela | único |
+| `name` | texto | — | obrigatório · único |
+| `description` | texto | — | — |
+| `permissions` | texto | Lista de chaves de permissão, ex.: ["records.read","dids.assign"] | obrigatório · padrão: [] · lista |
+| `is_system` | sim/não | Papéis do sistema não podem ser apagados | obrigatório · padrão: false |
 
 ## users
 
@@ -378,6 +458,19 @@ Quem entra no sistema.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | — | obrigatório |
+| `email` | texto | — | obrigatório · único |
+| `password_hash` | texto | Senha de entrada, com hash Argon2 (nunca a senha em si) | obrigatório |
+| `role_id` | texto | — | obrigatório · liga com **roles** |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `ssh_user` | texto | O usuário SSH desta pessoa. Cada técnico tem o seu, e é o mesmo em todos os servidores — por isso mora aqui, e não no cliente. O atalho "SSH" da ficha usa este usuário. | — |
+| `last_login_at` | data e hora | Última vez que entrou | — |
+| `totp_secret` | texto | Verificação em duas etapas (o código de 6 dígitos do celular). `totpSecret` guarda o segredo CIFRADO com a chave-mestra, no formato "iv:tag:texto". Enquanto `totpEnabledAt` for nulo, o segredo é só um rascunho: foi gerado, mas a pessoa ainda não confirmou com um código, então o login continua só com senha. | — |
+| `totp_enabled_at` | data e hora | — | — |
+| `totp_recovery` | texto | Códigos de recuperação ainda não usados, guardados como hash (JSON de strings) | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
 
 ## settings
 
@@ -385,6 +478,11 @@ AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), 
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | chave primária |
+| `value` | texto | — | obrigatório · padrão: '{}' |
+| `secret_id` | texto | — | liga com **secrets** |
+| `updated_at` | data e hora | Última alteração | — |
+| `updated_by` | texto | — | liga com **users** |
 
 ## sessions
 
@@ -393,6 +491,7 @@ Sessão de login (cookie). Expira sozinha.
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `user_id` | texto | — | obrigatório · liga com **users** |
 | `expires_at` | data e hora | — | obrigatório |
 | `pending_totp` | sim/não | true = entrou com a senha certa, mas ainda falta o código de 6 dígitos. Não vale como login. | obrigatório · padrão: false |
 | `created_at` | data e hora | Quando a linha foi criada | — |
@@ -405,6 +504,15 @@ O COFRE. Toda senha do sistema mora aqui, cifrada (AES-256-GCM) com a chave-mest
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `label` | texto | Rótulo legível: "Senha SSH do LinePBX", "Senha do tronco" | obrigatório |
+| `ciphertext` | texto | Valor cifrado (base64) | obrigatório |
+| `iv` | texto | Vetor de inicialização da cifra (base64) | obrigatório |
+| `auth_tag` | texto | Etiqueta de autenticação da cifra (base64) | obrigatório |
+| `key_version` | número inteiro | Versão da chave usada (permite rotação) | obrigatório · padrão: 1 |
+| `updated_by` | texto | — | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
 
 ## audit_log
 
@@ -450,6 +558,7 @@ Um item da nota: o cartão que a pessoa vê, um por vez. `kind` diz a cor e o r�
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `note_id` | texto | — | obrigatório · liga com **releaseNotes** |
 | `kind` | texto | — | obrigatório · padrão: 'novo' |
 | `title` | texto | — | obrigatório |
 | `text` | texto | Duas ou três linhas explicando, em português de gente | — |
@@ -461,6 +570,11 @@ O print de um item, no próprio banco (como a logo do cliente e a foto do modelo
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `item_id` | texto | — | chave primária · liga com **releaseNoteItems** |
+| `mime_type` | texto | — | obrigatório |
+| `data_base64` | texto | — | obrigatório |
+| `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
+| `updated_at` | data e hora | Última alteração | — |
 
 ## release_note_reads
 
@@ -469,6 +583,8 @@ O print de um item, no próprio banco (como a logo do cliente e a foto do modelo
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `note_id` | texto | — | obrigatório · liga com **releaseNotes** |
+| `user_id` | texto | — | obrigatório · liga com **users** |
 | `read_at` | data e hora | — | obrigatório |
 
 
@@ -500,6 +616,7 @@ Uma etapa (coluna) do projeto. Vale para todos os clientes da lista, na mesma or
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `project_id` | texto | — | obrigatório · liga com **projects** |
 | `title` | texto | O que fazer ("Gravar o áudio") ou o nome da coluna ("Situação do contato") | obrigatório |
 | `kind` | texto | check = caixinha · escolha = lista de opções | obrigatório · padrão: 'check' |
 | `options` | JSON | As opções, quando `kind` é "escolha" | obrigatório · padrão: [] |
@@ -512,6 +629,8 @@ Um cliente dentro do projeto: a linha que o técnico trabalha. `status` é a sit
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `project_id` | texto | — | obrigatório · liga com **projects** |
+| `client_id` | texto | — | obrigatório · liga com **clients** |
 | `assignee_id` | texto | Quem ficou de fazer este cliente | liga com **users** |
 | `status` | texto | — | obrigatório · padrão: 'pendente' |
 | `blocked_reason` | texto | Por que está parado — obrigatório quando o status é "travado" | — |
@@ -526,6 +645,8 @@ O que foi marcado numa etapa, para um cliente: "fulano marcou, em tal dia". Sem 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `project_client_id` | texto | — | obrigatório · liga com **projectClients** |
+| `step_id` | texto | — | obrigatório · liga com **projectSteps** |
 | `value` | texto | O id da opção escolhida (só em etapa de lista); nulo na caixinha | — |
 | `done_by_id` | texto | — | liga com **users** |
 | `done_at` | data e hora | — | obrigatório |
@@ -537,6 +658,8 @@ Um comentário. Sem `projectClientId` é um recado do projeto inteiro; com ele, 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `project_id` | texto | — | obrigatório · liga com **projects** |
+| `project_client_id` | texto | — | liga com **projectClients** |
 | `user_id` | texto | — | liga com **users** |
 | `body` | texto | — | obrigatório |
 | `created_at` | data e hora | Quando a linha foi criada | — |
@@ -549,6 +672,8 @@ Um anexo: planilha, documento, print, áudio da URA — qualquer formato, até o
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `project_id` | texto | — | obrigatório · liga com **projects** |
+| `project_client_id` | texto | — | liga com **projectClients** |
 | `file_name` | texto | — | obrigatório |
 | `mime_type` | texto | — | obrigatório |
 | `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
@@ -568,6 +693,13 @@ As etapas (colunas) do painel, na ordem em que aparecem no Kanban.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | O id da etapa no LineChat | chave primária |
+| `title` | texto | O nome da coluna ("Chamado Em Tratativa N1") | obrigatório |
+| `position` | número inteiro | A ordem da coluna no Kanban, da esquerda para a direita | obrigatório · padrão: 0 |
+| `is_initial` | sim/não | Etapa onde o chamado nasce ("Novos Suporte") | obrigatório · padrão: false |
+| `is_final` | sim/não | Etapa que encerra o chamado ("Chamado Tratado", "Chamado Validado"): chegar nela = fechado | obrigatório · padrão: false |
+| `archived` | sim/não | A etapa foi arquivada ou apagada lá: continua aqui para os chamados antigos não perderem o nome | obrigatório · padrão: false |
+| `synced_at` | data e hora | Última vez que a sincronização leu esta etapa | obrigatório |
 
 ## linechat_fields
 
@@ -575,6 +707,13 @@ Os campos personalizados do painel (Cliente, Produto, Assunto, Tipo de chamado�
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `key` | texto | A chave do campo no LineChat ("cliente-71", "plataforma") — é o nome dele dentro de `customFields` | chave primária |
+| `name` | texto | O nome que aparece na tela ("Cliente", "Produto") | obrigatório |
+| `type` | texto | SINGLESELECT · MULTISELECT · TEXT · DATETIME… (o tipo que o LineChat informa) | obrigatório |
+| `position` | número inteiro | A ordem do campo no formulário do card | obrigatório · padrão: 0 |
+| `options` | JSON | As opções da lista, na ordem de lá (só nos campos de lista) | obrigatório · padrão: [] |
+| `archived` | sim/não | O campo sumiu do painel: some dos filtros, mas o valor antigo continua nos cards | obrigatório · padrão: false |
+| `synced_at` | data e hora | — | obrigatório |
 
 ## linechat_tags
 
@@ -582,6 +721,11 @@ As etiquetas do painel (P/ Alta, NIA - ERRO, StandBy…), com a cor de lá.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+| `id` | texto | O id da etiqueta no LineChat | chave primária |
+| `name` | texto | — | obrigatório |
+| `color` | texto | A cor de fundo que o LineChat usa (ex.: "rgb(255, 153, 255)") | — |
+| `archived` | sim/não | — | obrigatório · padrão: false |
+| `synced_at` | data e hora | — | obrigatório |
 
 ## linechat_cards
 
@@ -604,6 +748,7 @@ Um chamado (card do LineChat), do jeito que ele estava na última sincronizaçã
 | `due_date` | data e hora | O vencimento que a equipe pôs no card | — |
 | `is_overdue` | sim/não | O LineChat diz se o card está vencido | obrigatório · padrão: false |
 | `tag_ids` | texto | As etiquetas do card (ids de `linechat_tags`) | obrigatório · padrão: [] · lista |
+| `custom_fields` | JSON | Os campos personalizados, do jeito que o LineChat manda: a chave do campo → o valor (texto nos campos de escolha única, lista de textos nos de múltipla escolha). | obrigatório · padrão: {} |
 | `created_at` | data e hora | Quando o chamado foi aberto no LineChat | obrigatório |
 | `updated_at` | data e hora | A última alteração do card no LineChat | obrigatório |
 | `closed_at` | data e hora | Quando chegou numa etapa final (nulo = ainda aberto, ou reaberto depois) | — |
@@ -620,6 +765,7 @@ Cada vez que um chamado mudou de etapa. É o que a API do LineChat não entrega,
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `card_id` | texto | — | obrigatório · liga com **linechatCards** |
 | `from_step_id` | texto | A etapa de onde saiu (nula na primeira vez que o card foi visto) | — |
 | `from_step_title` | texto | — | — |
 | `to_step_id` | texto | A etapa para onde foi | — |
@@ -683,6 +829,7 @@ Cada versão do texto de um artigo, inteira, para comparar e voltar atrás. A ú
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `article_id` | texto | — | obrigatório · liga com **knowledgeArticles** |
 | `version` | número inteiro | 1, 2, 3… (a do artigo é a última) | obrigatório |
 | `title` | texto | — | obrigatório |
 | `symptom` | texto | — | — |
@@ -700,6 +847,7 @@ Cada versão do texto de um artigo, inteira, para comparar e voltar atrás. A ú
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `article_id` | texto | — | obrigatório · liga com **knowledgeArticles** |
 | `kind` | texto | — | obrigatório |
 | `target` | texto | — | obrigatório |
 | `created_at` | data e hora | Quando a linha foi criada | — |
@@ -711,6 +859,7 @@ Um arquivo do artigo, no próprio banco (como os anexos dos projetos: entra no b
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `article_id` | texto | — | obrigatório · liga com **knowledgeArticles** |
 | `file_name` | texto | — | obrigatório |
 | `mime_type` | texto | — | obrigatório |
 | `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
@@ -727,6 +876,8 @@ Um arquivo do artigo, no próprio banco (como os anexos dos projetos: entra no b
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `article_id` | texto | — | obrigatório · liga com **knowledgeArticles** |
+| `user_id` | texto | — | obrigatório · liga com **users** |
 | `read_at` | data e hora | — | obrigatório |
 
 ## knowledge_comments
@@ -736,6 +887,7 @@ Um comentário no artigo: o que a equipe viu depois ("aconteceu de novo, era out
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `article_id` | texto | — | obrigatório · liga com **knowledgeArticles** |
 | `user_id` | texto | Quem comentou | liga com **users** |
 | `body` | texto | — | obrigatório |
 | `created_at` | data e hora | Quando a linha foi criada | — |
@@ -753,6 +905,7 @@ Uma pessoa do cliente com acesso ao portal. A senha é ela quem cria, pelo link 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `client_id` | texto | — | obrigatório · liga com **clients** |
 | `name` | texto | — | obrigatório |
 | `email` | texto | O e-mail de entrada, em minúsculas. Único no portal inteiro. | obrigatório |
 | `password_hash` | texto | Hash Argon2 da senha; nulo enquanto a pessoa não aceitou o convite | — |
@@ -767,11 +920,13 @@ Uma pessoa do cliente com acesso ao portal. A senha é ela quem cria, pelo link 
 
 ## portal_sessions
 
-A sessão de quem entrou no portal (como `sessions`, mas do cliente). Dura 30 dias sem uso.
+A sessão de quem entrou no portal (como `sessions`, mas do cliente). Dura 30 dias sem uso. É de uma pessoa do cliente (`portal_user_id`) **ou** de alguém da equipe (`staff_user_id`): a equipe entra no portal com o próprio login do Gestor e vê todos os tutoriais (decisão 0044, Patch 1.9, migração 0012). Nunca as duas coisas, nunca nenhuma.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `portal_user_id` | texto | A pessoa do cliente (nulo quando quem entrou é da equipe) | liga com **portalUsers** |
+| `staff_user_id` | texto | Quem da equipe entrou com o login do Gestor (nulo quando é uma pessoa do cliente) | liga com **users** |
 | `expires_at` | data e hora | — | obrigatório |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `ip` | texto | — | — |
@@ -808,7 +963,8 @@ Um arquivo do portal: `imagem` (print no texto), `video` ou `arquivo` (para baix
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
-| `kind` | texto | O tutorial que usa o arquivo (nulo enquanto o tutorial novo não foi gravado) | obrigatório |
+| `article_id` | texto | O tutorial que usa o arquivo (nulo enquanto o tutorial novo não foi gravado) | liga com **portalArticles** |
+| `kind` | texto | — | obrigatório |
 | `file_name` | texto | — | obrigatório |
 | `mime_type` | texto | — | obrigatório |
 | `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
