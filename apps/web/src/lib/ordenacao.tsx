@@ -45,7 +45,8 @@ export function useOrdenacaoLocal(padrao: string, dirPadrao: Dir = 'asc'): Orden
 export function Th({ o, col, children, align, titulo }: { o: Ordenacao; col: string; children: ReactNode; align?: 'right' | 'center'; titulo?: string }) {
   const ativa = o.ord === col;
   return (
-    <th className={align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : ''}>
+    // `!` porque o `.table th` (que alinha à esquerda) é mais específico que a classe sozinha
+    <th className={align === 'right' ? '!text-right' : align === 'center' ? '!text-center' : ''}>
       <button
         type="button"
         onClick={() => o.ordenarPor(col)}

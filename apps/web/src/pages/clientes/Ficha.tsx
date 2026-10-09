@@ -6,7 +6,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { Archive, ChevronDown, ChevronRight, ExternalLink, Filter, Network, Pencil, Plus, Search, Star, Trash2 } from 'lucide-react';
+import { Archive, ChevronDown, ChevronRight, ExternalLink, Filter, Network, Pencil, Plus, Printer, Search, Star, Trash2 } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import type { ClientDeviceLogin, ClientFull, ClientUnit, Product, ProductModule, Subscription, SubscriptionModule } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
@@ -25,6 +25,7 @@ import { ObservacaoDid, UsoDid, useEditarDid } from '../dids/partes.js';
 import { RaioX } from '../chamados/relatorios/Clientes.js';
 import { ArtigosLigados } from '../base/partes.js';
 import { AcessosDoPortal } from '../portal/Acessos.js';
+import { MarcaRecibo, RecibosDaMovimentacao } from '../inventario/Recibos.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'portal' | 'chamados' | 'historico';
 
@@ -609,6 +610,9 @@ function AparelhosDoCliente({ c }: { c: ClientFull }) {
         {/* o filtro de modalidade saiu a pedido do Luan (rodada 23); a coluna continua na tabela */}
         {opcoes.condicoes.length > 1 && <select className="input w-auto" value={fCondicao} onChange={(e) => setFCondicao(e.target.value)}><option value="">Ativos e inativos</option>{opcoes.condicoes.map((k) => <option key={k} value={k}>{condicaoNome[k] ?? k}</option>)}</select>}
         {filtrado && <button className="btn-ghost btn-sm text-muted" onClick={limpar}>limpar filtros</button>}
+        <span className="flex-1" />
+        {/* 1.9: a mesma lista, por unidade, pronta para imprimir ou salvar em PDF */}
+        <Link className="btn-secondary btn-sm" to={`/inventario?aba=relatorios&rel=relacao&cliente=${c.id}`}><Printer size={14} /> Relação para imprimir</Link>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="card p-4">
@@ -661,7 +665,7 @@ function MovimentacoesDoCliente({ c }: { c: ClientFull }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table">
-        <thead><tr><th className="w-6" /><ThN /><th>Quando</th><th>Modalidade</th><th>De</th><th>Para</th><th>Unidade</th><th>Itens</th><th>Por</th></tr></thead>
+        <thead><tr><th className="w-6" /><ThN /><th>Quando</th><th>Modalidade</th><th>De</th><th>Para</th><th>Unidade</th><th>Itens</th><th title="Recibo de entrega">Recibo</th><th>Por</th></tr></thead>
         <tbody>{pg.visiveis.map((m, i) => {
           const entrou = m.toClientId === c.id;
           const abrir = aberta === m.id;
@@ -676,16 +680,18 @@ function MovimentacoesDoCliente({ c }: { c: ClientFull }) {
                 <td className={entrou ? '' : 'text-muted'}>{m.toName ?? 'Estoque'}</td>
                 <td>{m.unit ?? <span className="text-muted">—</span>}</td>
                 <td>{m.items.map((x) => `${x.quantity}× ${x.modelName}`).join(', ')}</td>
+                <td><MarcaRecibo recibos={m.recibos} /></td>
                 <td className="text-muted whitespace-nowrap">{m.userName}</td>
               </tr>
               {abrir && (
                 <tr className="bg-surface-2">
                   <td />
-                  <td colSpan={8} className="py-2">
+                  <td colSpan={9} className="py-2">
                     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
                       {m.devices.map((d) => <li key={d.id}><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.identificacao}</Link> <span className="text-muted">· {d.modelName}</span></li>)}
                     </ul>
                     {m.note && <p className="text-muted italic text-[12.5px] mt-1">{m.note}</p>}
+                    <RecibosDaMovimentacao m={m} />
                   </td>
                 </tr>
               )}

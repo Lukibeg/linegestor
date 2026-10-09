@@ -515,6 +515,30 @@ export const deviceMovementItems = pgTable('device_movement_items', {
   deviceId: text('device_id').notNull().references(() => devices.id),
 });
 
+/**
+ * O recibo de entrega de uma movimentação para cliente (Patch 1.9, decisão 0042): PDF ou foto,
+ * até 10 MB cada e até 5 por movimentação, anexado na hora de movimentar ou depois. Fica no próprio
+ * banco (entra no backup), como os anexos dos projetos. Tirar um recibo só marca `deletedAt`.
+ */
+export const deviceMovementReceipts = pgTable(
+  'device_movement_receipts',
+  {
+    id: id(),
+    movementId: text('movement_id').notNull().references(() => deviceMovements.id, { onDelete: 'cascade' }),
+    /** O nome com que a pessoa baixa o arquivo */
+    fileName: text('file_name').notNull(),
+    /** O tipo de verdade, pelos primeiros bytes: application/pdf, image/jpeg, image/png ou image/webp */
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    dataBase64: text('data_base64').notNull(),
+    /** Quem anexou */
+    uploadedById: text('uploaded_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('device_movement_receipts_movement_idx').on(t.movementId)],
+);
+
 // ---------------------------------------------------------------------
 // 4. SEGURANÇA E HISTÓRICO
 // ---------------------------------------------------------------------

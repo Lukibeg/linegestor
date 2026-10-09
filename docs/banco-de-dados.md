@@ -31,6 +31,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [devices](#devices) — Um aparelho.
 - [device_movements](#device_movements) — Cabeçalho de uma movimentação: de onde, para onde, por quê, quem, quando.
 - [device_movement_items](#device_movement_items) — Um aparelho dentro de uma movimentação.
+- [device_movement_receipts](#device_movement_receipts) — O recibo de entrega de uma movimentação para cliente (Patch 1.9, decisão 0042): PDF ou foto, até 10 MB cada e até 5 por movimentação, anexado na hora de movimentar ou depois.
 - [roles](#roles) — Um papel = um nome + uma lista de permissões (ver packages/shared/src/permissoes.ts).
 - [users](#users) — Quem entra no sistema.
 - [settings](#settings) — AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), em vez de mexer em arquivo no servidor.
@@ -343,6 +344,21 @@ Um aparelho dentro de uma movimentação. Uma linha por aparelho — a quantidad
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
+
+## device_movement_receipts
+
+O recibo de entrega de uma movimentação para cliente (Patch 1.9, decisão 0042): PDF ou foto, até 10 MB cada e até 5 por movimentação, anexado na hora de movimentar ou depois. Fica no próprio banco (entra no backup), como os anexos dos projetos. Tirar um recibo só marca `deletedAt`.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `file_name` | texto | O nome com que a pessoa baixa o arquivo | obrigatório |
+| `mime_type` | texto | O tipo de verdade, pelos primeiros bytes: application/pdf, image/jpeg, image/png ou image/webp | obrigatório |
+| `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
+| `data_base64` | texto | — | obrigatório |
+| `uploaded_by_id` | texto | Quem anexou | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 
 
 ---

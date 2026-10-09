@@ -111,31 +111,56 @@ export function BarrasRanking({ dados, maximo, vazio = 'Nada ainda.', acao, form
 /**
  * Uma barra dividida em duas ou três partes, com os rótulos escritos embaixo.
  * Serve para "em uso × livre", "em estoque × com clientes" — a leitura de um golpe.
+ *
+ * Desde o 1.9 (o "Quanto vale o parque" do Inventário) a barra pode ter até seis partes: aí a cor
+ * de cada uma é a da paleta da pizza (`pz1`…`pz6`, `outros`), conferida para daltonismo e
+ * contraste — nunca uma cor nova. `formatar` escreve o número (R$, por exemplo) e `aoClicar`
+ * deixa cada parte e cada linha da legenda clicáveis.
  */
-export function Proporcao({ partes, total }: {
-  partes: Array<{ id: string; rotulo: string; n: number; cor: 'accent' | 'ok' | 'signal' | 'bad' | 'muted' }>;
+type CorProporcao = 'accent' | 'ok' | 'signal' | 'bad' | 'muted' | 'pz1' | 'pz2' | 'pz3' | 'pz4' | 'pz5' | 'pz6' | 'outros';
+export function Proporcao({ partes, total, formatar, aoClicar }: {
+  partes: Array<{ id: string; rotulo: string; n: number; cor: CorProporcao; titulo?: string }>;
   /** o total, quando ele não é a soma das partes */
   total?: number;
+  formatar?: (n: number) => string;
+  aoClicar?: (id: string) => void;
 }) {
   const id = useId();
   const soma = total ?? partes.reduce((a, x) => a + x.n, 0);
-  const CORES = { accent: 'bg-accent', ok: 'bg-ok', signal: 'bg-signal', bad: 'bg-bad', muted: 'bg-line-strong' };
-  const PONTOS = { accent: 'bg-accent', ok: 'bg-ok', signal: 'bg-signal', bad: 'bg-bad', muted: 'bg-line-strong' };
+  const CORES: Record<string, string> = { accent: 'bg-accent', ok: 'bg-ok', signal: 'bg-signal', bad: 'bg-bad', muted: 'bg-line-strong' };
+  // as da paleta da pizza moram em variáveis do tema (claro e escuro), não em classes
+  const pinta = (c: CorProporcao) => (CORES[c] ? { className: CORES[c] } : { style: { background: c === 'outros' ? 'var(--pz-outros)' : `var(--pz-${c.slice(2)})` } });
+  const escrito = (n: number) => (formatar ? formatar(n) : n);
   return (
     <div>
       <div className="flex h-3 rounded-full overflow-hidden bg-surface-2" aria-describedby={id}>
-        {partes.filter((x) => x.n > 0).map((x) => (
-          <span key={x.id} className={`h-full ${CORES[x.cor]}`} style={{ width: `${(x.n / Math.max(soma, 1)) * 100}%` }} title={`${x.rotulo}: ${x.n}`} />
-        ))}
+        {partes.filter((x) => x.n > 0).map((x) => {
+          const cor = pinta(x.cor);
+          return (
+            <span
+              key={x.id}
+              onClick={aoClicar ? () => aoClicar(x.id) : undefined}
+              className={`h-full ${cor.className ?? ''} ${aoClicar ? 'cursor-pointer hover:opacity-80' : ''} [&+&]:border-l-2 [&+&]:border-surface`}
+              style={{ ...cor.style, width: `${(x.n / Math.max(soma, 1)) * 100}%` }}
+              title={x.titulo ?? `${x.rotulo}: ${escrito(x.n)}`}
+            />
+          );
+        })}
       </div>
       <div id={id} className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[12.5px]">
-        {partes.map((x) => (
-          <span key={x.id} className="flex items-center gap-1.5">
-            <span className={`h-2 w-2 rounded-full shrink-0 ${PONTOS[x.cor]}`} />
-            <span className="text-muted">{x.rotulo}</span>
-            <b className="tnum">{x.n}</b>
-          </span>
-        ))}
+        {partes.map((x) => {
+          const cor = pinta(x.cor);
+          const corpo = (
+            <>
+              <span className={`h-2 w-2 rounded-full shrink-0 ${cor.className ?? ''}`} style={cor.style} />
+              <span className="text-muted">{x.rotulo}</span>
+              <b className="tnum">{escrito(x.n)}</b>
+            </>
+          );
+          return aoClicar
+            ? <button key={x.id} type="button" onClick={() => aoClicar(x.id)} title={x.titulo} className="flex items-center gap-1.5 rounded px-1 -mx-1 hover:bg-surface-2">{corpo}</button>
+            : <span key={x.id} className="flex items-center gap-1.5" title={x.titulo}>{corpo}</span>;
+        })}
       </div>
     </div>
   );

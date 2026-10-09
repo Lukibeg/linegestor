@@ -131,7 +131,10 @@ export const realApi: Api = {
     removeDevice: (id) => http('DELETE', `/inventory/devices/${id}`),
     movements: (q) => http('GET', `/inventory/movements${qs(q)}`),
     move: (d) => http('POST', '/inventory/movements', d),
+    anexarRecibo: (movementId, d) => http('POST', `/inventory/movements/${movementId}/recibos`, d),
+    tirarRecibo: (id) => http('DELETE', `/inventory/recibos/${id}`),
     units: (clientId) => http('GET', `/inventory/units${qs({ clientId })}`),
+    relatorios: () => http('GET', '/inventory/relatorios'),
   },
   settings: {
     backup: () => http('GET', '/settings/backup'),

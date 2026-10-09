@@ -67,6 +67,8 @@ export type PainelChamados = {
 
 /** Chamados › Relatórios (1.7): os relatórios, a peça clicada, os ajustes, a arrumação e o Raio-X. */
 export type { RelatoriosChamados, RaioXChamados, AjustesRelatorios, LinhaReincidencia, LinhaEquipe, PontoFila, SepararPor, PapelCampo, Causa } from '@gestor/shared';
+// os Relatórios do Inventário (1.9): o tipo é o das contas, que servidor e prévia dividem
+export type { RelatoriosInventario, AparelhoDoRelatorio, LinhaQuemTem, ItemCadastro } from '@gestor/shared';
 export type PecaRelatorio = { titulo: string; itens: import('@gestor/shared').LinhaChamado[]; total: number };
 type CampoUsadoTela = { key: string; name: string } | null;
 /** A janela "Ajustar" dos Relatórios: os campos usados e a ligação de cada Cliente do card com o cadastro. */
@@ -206,8 +208,13 @@ export type Device = {
   modelValueCents: number | null;
   modelImageUrl: string | null;
   ip: string | null; location: string | null; note: string | null;
-  history?: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; unit: string | null; newCondition: string | null; note: string | null; userName: string; createdAt: string }>;
+  history?: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; unit: string | null; newCondition: string | null; note: string | null; userName: string; createdAt: string; recibos: ReciboDeEntrega[] }>;
 };
+/**
+ * Um arquivo do recibo de entrega da movimentação (1.9, decisão 0042) — os dados, nunca o arquivo.
+ * `url`: no sistema, o caminho na API (passa por `logoSrc`); na prévia, o próprio arquivo ("data:…").
+ */
+export type ReciboDeEntrega = { id: string; fileName: string; mimeType: string; sizeBytes: number; createdAt: string; url: string; quem: string | null };
 export type Movement = {
   id: string; modality: string; modalityName: string; fromClientId: string | null; fromName: string | null; toClientId: string | null; toName: string | null;
   /** unidade do cliente de destino */
@@ -215,6 +222,8 @@ export type Movement = {
   newCondition: string | null; note: string | null; userName: string; createdAt: string; items: Array<{ modelName: string; quantity: number }>;
   /** cada aparelho desta movimentação */
   devices: Array<{ id: string; modelName: string; identificacao: string }>;
+  /** o recibo de entrega (só na movimentação para cliente), na ordem em que foi anexado */
+  recibos: ReciboDeEntrega[];
 };
 
 export type Dashboard = {

@@ -9,6 +9,7 @@
  * Entrar: qualquer um destes e-mails com a senha "demo":
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
+import { problemaDoRecibo, problemaParaAnexar, ReciboAnexarSchema, relatoriosInventario, tipoDoRecibo, type BaseInventario } from '@gestor/shared';
 import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, VERSAO_PAINEL, camposDeLista, comFechamento, diaEmBrasilia, etapasDaEquipe, listarChamados, painelPadrao, primeiroDiaDe, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, paraBusca, temDataDeAtivacao, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import {
   AjustesEnvioSchema, MarcadosEnvioSchema, momentoEmBrasilia, numeroLegivel, proximoEnvio, montarPainel,
@@ -33,7 +34,8 @@ import {
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
 import { PDF_MANUAL_RAMAL, VIDEO_TRANSFERIR } from './portal-demo-midia.js';
-import { ApiError, type AjustesIa, type ModeloIa, type RespostaIa, type AcessoPortal, type ArquivoDoPortal, type CartaoTutorial, type EuPortal, type TutorialNaLista, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { RECIBO_FOTO_DEMO, RECIBO_PDF_DEMO } from './recibo-demo-midia.js';
+import { ApiError, type AjustesIa, type ModeloIa, type RespostaIa, type AcessoPortal, type ArquivoDoPortal, type CartaoTutorial, type EuPortal, type TutorialNaLista, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ReciboDeEntrega, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -57,6 +59,8 @@ type DidRow = { id: string; number: string; circuitId: string | null; clientId: 
 type ModelRow = { id: string; code: string; name: string; categoryId: string | null; image: string | null; valueCents: number | null; deletedAt: string | null };
 type DeviceRow = { id: string; modelId: string; mac: string | null; macSecondary: string | null; serialNumber: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
 type MovRow = { id: string; modality: string; fromClientId: string | null; toClientId: string | null; unit: string | null; newCondition: string | null; note: string | null; userId: string; createdAt: string; items: Array<{ modelId: string; deviceId: string }> };
+/** O recibo de entrega da movimentação (1.9): o arquivo embutido ("data:…"), como os anexos dos projetos na demonstração */
+type ReciboRow = { id: string; movementId: string; fileName: string; mimeType: string; sizeBytes: number; conteudo: string; uploadedById: string | null; createdAt: string; deletedAt: string | null };
 type UnitRow = { id: string; clientId: string; name: string; isMain: boolean; address: string | null; egressIp: string | null; note: string | null; createdAt: string; deletedAt: string | null };
 /** Login e senha padrão dos aparelhos de um modelo no cliente (a senha mora em `S.secrets`) */
 type LoginRow = { id: string; clientId: string; modelId: string; username: string | null; passwordSecretId: string | null; note: string | null; updatedAt: string; deletedAt: string | null };
@@ -97,7 +101,7 @@ type UserRow = { id: string; name: string; email: string; password: string; role
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
 
 const S = {
-  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], units: [] as UnitRow[], deviceLogins: [] as LoginRow[], networks: [] as NetRow[],
+  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], recibos: [] as ReciboRow[], units: [] as UnitRow[], deviceLogins: [] as LoginRow[], networks: [] as NetRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
   notas: [] as NotaRow[], leituras: [] as Array<{ noteId: string; userId: string; readAt: string }>,
   projetos: [] as ProjRow[], etapas: [] as StepRow[], projClientes: [] as PClientRow[], marcas: [] as CheckRow[],
@@ -452,7 +456,9 @@ function seed() {
   const mHs: ModelRow = { id: id(), code: 'headset', name: 'Headset Genérico', categoryId: catPerif, image: FOTO_HEADSET, valueCents: 9000, deletedAt: null };
   const mTip: ModelRow = { id: id(), code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: 'catTelefoneIP', image: FOTO_TELEFONE('#1F2937'), valueCents: 38000, deletedAt: null };
   const mDect: ModelRow = { id: id(), code: 'dp722', name: 'Grandstream DP722', categoryId: 'catTelefoneIP', image: null, valueCents: 33900, deletedAt: null };
-  S.models = [mGx, mHs, mTip, mDect];
+  // 1.9: um modelo ainda sem valor, como os que faltam conferir no sistema de verdade (o Cadastro em dia avisa)
+  const mBase: ModelRow = { id: id(), code: 'dp752', name: 'Base Grandstream DP752', categoryId: 'catTelefoneIP', image: null, valueCents: null, deletedAt: null };
+  S.models = [mGx, mHs, mTip, mDect, mBase];
   // login e senha padrão por modelo no Hospital: todos os GXP1610 entram com admin; os DP722 com outro
   const secGx = id(); S.secrets.set(secGx, { label: 'Senha padrão Grandstream GXP1610 — Hospital Vale Verde', value: 'gxp#hvv2026' });
   S.deviceLogins.push({ id: id(), clientId: byName['Hospital Vale Verde']!, modelId: mGx.id, username: 'admin', passwordSecretId: secGx, note: null, updatedAt: daysAgo(30), deletedAt: null });
@@ -487,26 +493,79 @@ function seed() {
     publishedAt: daysAgo(0, 9), createdAt: daysAgo(0, 8), updatedAt: daysAgo(0, 9), deletedAt: null,
     items: NOTA_DEMO.items.map((i) => ({ id: id(), kind: i.kind, title: i.title, text: i.text, imagem: i.imagem ?? null })),
   }];
-  // meses anteriores com movimento, só para o gráfico do Painel ter o que mostrar
-  const avulsos = S.devices.filter((d) => !d.clientId).slice(0, 9);
-  const historico: Array<[MovRow['modality'], string, number, number]> = [
-    ['locacao', 'Clínica Aurora', 3, 128],
-    ['devolucao', 'Distribuidora Norte', 2, 96],
-    ['venda', 'Supermercado Bom Preço', 2, 64],
-    ['comodato', 'Apae', 2, 38],
-  ];
-  let corte = 0;
-  for (const [modality, cliente, quantos, dias] of historico) {
-    const itens = avulsos.slice(corte, corte + quantos); corte += quantos;
-    if (!itens.length || !byName[cliente]) continue;
-    S.movements.push({
-      id: id(), modality,
-      fromClientId: modality === 'devolucao' ? byName[cliente]! : null,
-      toClientId: modality === 'devolucao' ? null : byName[cliente]!,
-      unit: 'Matriz', newCondition: null, note: null, userId: 'u2', createdAt: daysAgo(dias),
-      items: itens.map((d) => ({ modelId: d.modelId, deviceId: d.id })),
-    });
-  }
+  // ---- a história dos aparelhos (1.9): meses de ida e volta, coerentes com onde cada um está ----
+  // É o que os Relatórios do Inventário contam: o que saiu e voltou (um voltou inativo), o estoque
+  // parado há meses, aparelho nosso em cliente arquivado e em cliente que encerrou o Equipamentos,
+  // o uso interno, os vendidos, um modelo sem valor e um aparelho com o código na anotação. (Até o
+  // 1.8 havia aqui movimentações soltas, que não batiam com onde os aparelhos estavam.)
+  const movDemo = (dias: number, modality: MovRow['modality'], de: string | null, para: string | null, aparelhos: DeviceRow[], extra: Partial<MovRow> = {}) =>
+    S.movements.push({ id: id(), modality, fromClientId: de, toClientId: para, unit: para ? 'Matriz' : null, newCondition: null, note: null, userId: 'u2', createdAt: daysAgo(dias), items: aparelhos.map((d) => ({ modelId: d.modelId, deviceId: d.id })), ...extra });
+  const estoqueGx = S.devices.filter((d) => d.modelId === mGx.id && !d.clientId);
+  // seis estão na prateleira desde o cadastro, há sete meses: os "parados há mais de 180 dias"
+  for (const d of estoqueGx.slice(0, 6)) d.createdAt = daysAgo(210);
+  // dois foram para a Distribuidora e voltaram; um deles com a tela piscando (o inativo da prateleira)
+  const idaDist = estoqueGx[10]!, voltaInativo = estoqueGx[11]!;
+  for (const d of [idaDist, voltaInativo]) d.createdAt = daysAgo(212);
+  movDemo(150, 'locacao', null, byName['Distribuidora Norte']!, [idaDist, voltaInativo]);
+  movDemo(96, 'devolucao', byName['Distribuidora Norte']!, null, [idaDist]);
+  movDemo(96, 'devolucao', byName['Distribuidora Norte']!, null, [voltaInativo], { newCondition: 'inativo', note: 'Tela piscando; aguardando peça' });
+  // na prateleira: um GXP com o código do Nexus na anotação (e nada no campo), e outro sem identificação nenhuma
+  estoqueGx[9]!.mac = null; estoqueGx[9]!.note = 'Veio do Nexus como N001 — a etiqueta de MAC está apagada';
+  estoqueGx[8]!.mac = null;
+  // um GXP do Hospital está sem uso (o ramal foi desligado): inativo, e ainda lá
+  const semUso = S.devices.find((d) => d.clientId === byName['Hospital Vale Verde'] && d.modelId === mGx.id && d.unit === 'Ambulatório Centro')!;
+  semUso.condition = 'inativo'; semUso.note = 'Sem uso desde que o ramal da recepção foi desligado';
+  // três headsets foram ao Supermercado em comodato e voltaram há um mês
+  const hsIdaVolta = S.devices.filter((d) => d.modelId === mHs.id && !d.clientId && !d.serialNumber).slice(0, 3);
+  for (const d of hsIdaVolta) d.createdAt = daysAgo(130);
+  movDemo(120, 'comodato', null, byName['Supermercado Bom Preço']!, hsIdaVolta, { unit: 'Loja Centro' });
+  movDemo(30, 'devolucao', byName['Supermercado Bom Preço']!, null, hsIdaVolta);
+  // dois TIP vendidos ao Supermercado (já não são nossos) e um que voltou do Home Care com defeito
+  let nTip = 0;
+  const tip = (x: Partial<DeviceRow>) => dev({ modelId: mTip.id, mac: '1C61B4' + (0x400000 + nTip++).toString(16).toUpperCase().slice(-6), ...x });
+  const vendidos = [tip({ createdAt: daysAgo(70) }), tip({ createdAt: daysAgo(70) })];
+  for (const d of vendidos) { d.clientId = byName['Supermercado Bom Preço']!; d.unit = 'Loja Centro'; d.currentModality = 'venda'; S.devices.push(d); }
+  movDemo(64, 'venda', null, byName['Supermercado Bom Preço']!, vendidos, { unit: 'Loja Centro', note: 'Vendidos ao cliente' });
+  const tipVolta = tip({ createdAt: daysAgo(100), condition: 'inativo', note: 'Teclado falhando; avaliar o conserto' });
+  S.devices.push(tipVolta);
+  movDemo(90, 'locacao', null, byName['Home Care Viver Bem']!, [tipVolta], { unit: 'Sede' });
+  movDemo(10, 'devolucao', byName['Home Care Viver Bem']!, null, [tipVolta], { newCondition: 'inativo' });
+  // um DP722 foi para a Unidade Simões Filho do Hospital; e a base DP752, de um modelo ainda sem valor
+  const dect = S.devices.find((d) => d.modelId === mDect.id && !d.clientId)!;
+  Object.assign(dect, { createdAt: daysAgo(30), clientId: byName['Hospital Vale Verde']!, unit: 'Unidade Simões Filho', currentModality: 'comodato' });
+  movDemo(25, 'comodato', null, byName['Hospital Vale Verde']!, [dect], { unit: 'Unidade Simões Filho' });
+  // 1.9: o recibo dessa entrega voltou assinado no dia seguinte (a foto do celular); o da locação da
+  // Distribuidora foi anexado em PDF na hora; os headsets do call center ainda estão sem recibo
+  const reciboDemo = (mv: MovRow, fileName: string, conteudo: string, quem: string, dias: number) => S.recibos.push({
+    id: id(), movementId: mv.id, fileName, mimeType: conteudo.slice(5, conteudo.indexOf(';')), sizeBytes: bytesDoDataUrl(conteudo), conteudo, uploadedById: quem, createdAt: daysAgo(dias), deletedAt: null,
+  });
+  reciboDemo(S.movements[S.movements.length - 1]!, 'recibo-dp722-simoes-filho.jpg', RECIBO_FOTO_DEMO, 'u2', 24);
+  reciboDemo(S.movements.find((m) => m.toClientId === byName['Distribuidora Norte'] && m.modality === 'locacao' && m.items.length === 8)!, 'Recibo de entrega 0145 — Distribuidora Norte.pdf', RECIBO_PDF_DEMO, 'u3', 20);
+  const base752 = dev({ modelId: mBase.id, serialNumber: 'DP752SN0007', clientId: byName['Hospital Vale Verde']!, unit: 'Matriz', currentModality: 'comodato', createdAt: daysAgo(50) });
+  S.devices.push(base752);
+  movDemo(45, 'comodato', null, byName['Hospital Vale Verde']!, [base752]);
+  // aparelho nosso em quem saiu da base: a Farmácia Central (arquivada) e a Clínica Aurora, que
+  // encerrou o Equipamentos há 40 dias — as duas aparecem marcadas no Quem tem o quê
+  const assinouEquipamentos = (clienteId: string, desde: number, ate: number | null) =>
+    S.subs.push({ id: id(), clientId: clienteId, productCode: 'equipamentos', activatedAt: daysAgo(desde), deactivatedAt: ate == null ? null : daysAgo(ate), notes: null, settings: {} });
+  assinouEquipamentos(byName['Farmácia Central (arquivada)']!, 420, 60);
+  assinouEquipamentos(byName['Clínica Aurora']!, 260, 40);
+  let nGx = 0;
+  const gx = (x: Partial<DeviceRow>) => dev({ modelId: mGx.id, mac: '000B82' + (0x300000 + nGx++).toString(16).toUpperCase().slice(-6), ...x });
+  const farmacia = [0, 1, 2].map(() => gx({ clientId: byName['Farmácia Central (arquivada)']!, unit: 'Matriz', currentModality: 'comodato', createdAt: daysAgo(330) }));
+  S.devices.push(...farmacia);
+  movDemo(300, 'comodato', null, byName['Farmácia Central (arquivada)']!, farmacia);
+  const hsClinica = [0, 1].map(() => dev({ modelId: mHs.id, clientId: byName['Clínica Aurora']!, unit: 'Matriz', currentModality: 'comodato', createdAt: daysAgo(250) }));
+  S.devices.push(...hsClinica);
+  movDemo(200, 'comodato', null, byName['Clínica Aurora']!, hsClinica);
+  // e o uso interno: dois GXP nos ramais do suporte da própria Ingline
+  assinouEquipamentos(ingline.id, 500, null);
+  const interno = [0, 1].map(() => gx({ clientId: ingline.id, unit: 'Matriz', currentModality: 'comodato', createdAt: daysAgo(190) }));
+  S.devices.push(...interno);
+  movDemo(180, 'comodato', null, ingline.id, interno, { note: 'Ramais do suporte' });
+  // a Distribuidora já tem o "como configurar" completo; o Supermercado e o Home Care, ainda não
+  S.networks.push({ clientId: byName['Distribuidora Norte']!, ipAddress: '192.168.10.50', subnetMask: '255.255.255.0', defaultRouter: '192.168.10.1', dns1: '1.1.1.1', dns2: null, wirelessPasswordSecretId: null, note: null, updatedAt: daysAgo(20) });
+  S.deviceLogins.push({ id: id(), clientId: byName['Distribuidora Norte']!, modelId: mGx.id, username: 'admin', passwordSecretId: null, note: null, updatedAt: daysAgo(20), deletedAt: null });
 
   // ---- um projeto de exemplo: a troca do áudio das URAs ----
   const proj: ProjRow = {
@@ -994,13 +1053,26 @@ const shapeDevice = (d: DeviceRow, withHistory = false): Device => {
   const m = modeloDe(d);
   const ident = identificacaoAparelho(d);
   const base: Device = { ...d, macFormatted: macFormatado(d.mac), identificacao: ident.texto, identificacaoTipo: ident.tipo, valueCents: valorDe(d), ownValueCents: d.valueCents, modelValueCents: m.valueCents, modelImageUrl: m.image, modelName: m.name, modelCode: m.code, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null };
-  if (withHistory) base.history = S.movements.filter((mv) => mv.items.some((i) => i.deviceId === d.id)).map((mv) => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, unit: mv.unit, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (withHistory) base.history = S.movements.filter((mv) => mv.items.some((i) => i.deviceId === d.id)).map((mv) => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, unit: mv.unit, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt, recibos: recibosDaMov(mv.id) })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return base;
 };
+/** Os recibos ativos de uma movimentação, como o servidor manda (sem o arquivo; aqui o endereço é o próprio arquivo). */
+const recibosDaMov = (movementId: string): ReciboDeEntrega[] => S.recibos
+  .filter((r) => r.movementId === movementId && !r.deletedAt)
+  .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  .map((r) => ({ id: r.id, fileName: r.fileName, mimeType: r.mimeType, sizeBytes: r.sizeBytes, createdAt: r.createdAt, url: r.conteudo, quem: S.users.find((u) => u.id === r.uploadedById)?.name ?? null }));
+/** "à locação para Hospital Vale Verde" — como a auditoria do servidor. */
+const aMovDemo = (mv: MovRow, de = false) => {
+  const [a, da] = mv.modality === 'comodato' ? ['ao', 'do'] : ['à', 'da'];
+  return `${de ? da : a} ${String((MODALIDADES as any)[mv.modality] ?? mv.modality).toLowerCase()} para ${S.clients.find((c) => c.id === mv.toClientId)?.tradeName ?? 'o cliente'}`;
+};
+/** Os bytes do arquivo embutido (função, e não `const`: os recibos de exemplo são montados antes desta linha). */
+function bytesDoDataUrl(u: string) { const b64 = u.slice(u.indexOf(',') + 1); return Math.floor((b64.length * 3) / 4) - (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0); }
 const shapeMov = (mv: MovRow): Movement => ({
   id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromClientId: mv.fromClientId, fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toClientId: mv.toClientId, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, unit: mv.unit, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt,
   items: Object.values(mv.items.reduce((acc, i) => { const k = i.modelId; acc[k] = acc[k] ?? { modelName: S.models.find((m) => m.id === k)?.name ?? '?', quantity: 0 }; acc[k]!.quantity += 1; return acc; }, {} as Record<string, { modelName: string; quantity: number }>)),
   devices: mv.items.map((i) => { const d = S.devices.find((x) => x.id === i.deviceId)!; return { id: d.id, modelName: modeloDe(d).name, identificacao: identificacaoAparelho(d).texto }; }),
+  recibos: recibosDaMov(mv.id),
 });
 const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active, protegido: PROTEGIDOS.includes(p.code), activeClients: new Set(S.subs.filter((x) => x.productCode === p.code && !x.deactivatedAt && S.clients.some((c) => c.id === x.clientId && !c.deletedAt)).map((x) => x.clientId)).size, modules: S.modules.filter((m) => m.productId === p.id && !m.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map(({ productId: _p, deletedAt: _d, ...m }) => ({ ...m, protegido: MODULOS_PROTEGIDOS.includes(`${p.code}:${m.code}`), activeClients: new Set(S.subMods.filter((x) => x.moduleId === m.id && !x.deactivatedAt).map((x) => S.subs.find((y) => y.id === x.subscriptionId)).filter((y) => y && !y.deactivatedAt && S.clients.some((c) => c.id === y.clientId && !c.deletedAt)).map((y) => y!.clientId)).size })) });
 /** Como o servidor: FOP2 e Omniboard guardam campos na ficha do cliente e não vão para a lixeira. */
@@ -2259,6 +2331,33 @@ export const demoApi: Api = {
     },
     async removeDevice(idd) { await wait(); requirePerm('records.delete'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); x.deletedAt = now(); audit('delete', 'device', `Mandou o aparelho ${identificacaoAparelho(x).texto} para a lixeira`, x.id); return { ok: true }; },
     async units(clientId) { await wait(); const us = S.devices.filter((d) => !d.deletedAt && d.unit && (!clientId || d.clientId === clientId)).map((d) => d.unit!); return [...new Set(us)].sort((a, b) => a.localeCompare(b, 'pt-BR')); },
+    // 1.9: os Relatórios do Inventário — a mesma base que o servidor monta do banco, e as mesmas contas
+    async relatorios() {
+      await wait(); requirePerm('records.read');
+      const agora = new Date();
+      // a regra do servidor (e do portal): ativa = sem encerramento, ou com o encerramento ainda por vir
+      const ativa = (d: string | null) => !d || new Date(d) > agora;
+      const base: BaseInventario = {
+        agora,
+        aparelhos: S.devices.filter((d) => !d.deletedAt).map((d) => ({ id: d.id, modelId: d.modelId, mac: d.mac, serialNumber: d.serialNumber, clientId: d.clientId, unit: d.unit, currentModality: d.currentModality, condition: d.condition, valueCents: d.valueCents, ip: d.ip, note: d.note, createdAt: d.createdAt })),
+        modelos: S.models.map((m) => ({ id: m.id, name: m.name, valueCents: m.valueCents, categoryName: S.categories.find((c) => c.id === m.categoryId)?.name ?? null, temFoto: !!m.image })),
+        clientes: S.clients.map((c) => {
+          const subs = S.subs.filter((x) => x.clientId === c.id);
+          const equip = subs.filter((x) => x.productCode === 'equipamentos');
+          const temEquipamentos = equip.some((x) => ativa(x.deactivatedAt));
+          const rede = S.networks.find((n) => n.clientId === c.id);
+          return {
+            id: c.id, nome: c.tradeName, razaoSocial: c.legalName, cnpj: c.cnpj, interno: c.isInternal, arquivado: c.archived, naLixeiraDesde: c.deletedAt,
+            temEquipamentos, produtosAtivos: subs.filter((x) => ativa(x.deactivatedAt)).length,
+            temRedePadrao: !!rede && !!(rede.ipAddress || rede.subnetMask || rede.defaultRouter || rede.dns1),
+            modelosComLogin: S.deviceLogins.filter((l) => l.clientId === c.id && !l.deletedAt).map((l) => l.modelId),
+            unidades: S.units.filter((u) => u.clientId === c.id && !u.deletedAt).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((u) => ({ nome: u.name, endereco: u.address, principal: u.isMain })),
+          };
+        }),
+        movimentacoes: S.movements.map((m) => ({ id: m.id, modality: m.modality, fromClientId: m.fromClientId, toClientId: m.toClientId, unit: m.unit, newCondition: m.newCondition, createdAt: m.createdAt, deviceIds: m.items.map((i) => i.deviceId) })),
+      };
+      return relatoriosInventario(base);
+    },
     async movements(q) {
       await wait(); requirePerm('records.read');
       // MAC ou N/S de um aparelho: as movimentações por onde ele passou (pedaço de MAC só a partir de 4 caracteres, como na busca de aparelhos)
@@ -2308,6 +2407,35 @@ export const demoApi: Api = {
       const mv: MovRow = { id: id(), modality, fromClientId: from ?? null, toClientId: to, unit: unidade, newCondition: (d.newCondition as string) ?? null, note: (d.note as string) ?? null, userId: S.me!.id, createdAt: now(), items: out };
       S.movements.push(mv); audit('movement', 'deviceMovement', `${(MODALIDADES as any)[modality]} de ${qty} aparelho(s)${to ? ` para ${S.clients.find((c) => c.id === to)?.tradeName}${unidade ? ` (unidade ${unidade})` : ''}` : ' para o estoque'}`, mv.id);
       return { id: mv.id, items: out.length, quantity: qty };
+    },
+    // 1.9: o recibo de entrega — as mesmas regras do servidor (@gestor/shared/recibo.ts)
+    async anexarRecibo(movementId, d0) {
+      await wait(250); requirePerm('devices.move');
+      const p = ReciboAnexarSchema.safeParse(d0);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Não consegui ler esse arquivo');
+      const mv = S.movements.find((m) => m.id === movementId); if (!mv) throw notFound('Movimentação');
+      const naoPode = problemaParaAnexar(mv, S.recibos.filter((r) => r.movementId === mv.id && !r.deletedAt).length);
+      if (naoPode) throw bad(naoPode);
+      const b64 = p.data.conteudo.slice(p.data.conteudo.indexOf(',') + 1);
+      const inicio = Uint8Array.from(atob(b64.slice(0, 24)), (c) => c.charCodeAt(0));
+      const tipo = tipoDoRecibo(inicio);
+      const bytes = bytesDoDataUrl(p.data.conteudo);
+      const problema = problemaDoRecibo({ nome: p.data.fileName, tipo: tipo ?? '', bytes });
+      if (problema || !tipo) throw bad(problema ?? 'Não consegui ler esse arquivo');
+      // guarda com o tipo de verdade (o navegador pode ter dito outro)
+      const r: ReciboRow = { id: id(), movementId: mv.id, fileName: p.data.fileName, mimeType: tipo, sizeBytes: bytes, conteudo: `data:${tipo};base64,${b64}`, uploadedById: S.me!.id, createdAt: now(), deletedAt: null };
+      S.recibos.push(r);
+      const kb = bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
+      audit('create', 'deviceMovement', `Anexou o recibo de entrega "${r.fileName}" (${kb}) ${aMovDemo(mv)}`, mv.id);
+      return recibosDaMov(mv.id).find((x) => x.id === r.id)!;
+    },
+    async tirarRecibo(idr) {
+      await wait(); requirePerm('devices.move');
+      const r = S.recibos.find((x) => x.id === idr && !x.deletedAt); if (!r) throw notFound('Recibo');
+      r.deletedAt = now();
+      const mv = S.movements.find((m) => m.id === r.movementId)!;
+      audit('delete', 'deviceMovement', `Tirou o recibo de entrega "${r.fileName}" ${aMovDemo(mv, true)}`, mv.id);
+      return { ok: true };
     },
   },
   /**

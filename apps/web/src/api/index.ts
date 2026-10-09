@@ -86,8 +86,13 @@ export type Api = {
     removeDevice(id: string): Promise<{ ok: boolean }>;
     movements(q: Record<string, unknown>): Promise<T.Page<T.Movement>>;
     move(d: Record<string, unknown>): Promise<{ id: string; items: number; quantity: number }>;
+    /** O recibo de entrega (1.9): um arquivo por vez — PDF ou foto, até 10 MB; até 5 por movimentação. */
+    anexarRecibo(movementId: string, d: { fileName: string; conteudo: string }): Promise<T.ReciboDeEntrega>;
+    tirarRecibo(id: string): Promise<{ ok: boolean }>;
     /** Unidades já usadas (para sugerir no formulário). */
     units(clientId?: string): Promise<string[]>;
+    /** Os relatórios do Inventário (1.9): quem tem o quê, prateleira, valor, vai e volta, cadastro. */
+    relatorios(): Promise<T.RelatoriosInventario>;
   };
   settings: {
     backup(): Promise<T.AjustesBackup>;
