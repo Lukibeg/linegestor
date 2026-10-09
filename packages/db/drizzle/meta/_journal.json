@@ -92,6 +92,13 @@
       "when": 1791583862271,
       "tag": "0012_equipe_no_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791585647536,
+      "tag": "0013_portal_senha_e_video",
+      "breakpoints": true
     }
   ]
 }

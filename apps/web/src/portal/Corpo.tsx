@@ -3,7 +3,7 @@
  *
  * É o texto simples da base (linha com número vira passo, crases viram comando com Copiar,
  * `[print:id]` vira a imagem) e mais o que só o portal tem: `[video:id]` vira o vídeo, que toca ali
- * mesmo, e `[arquivo:id]` vira o botão de baixar. O "BC-12" da base não vira link aqui: o cliente
+ * mesmo, e `[arquivo:id]` vira o botão de baixar. O vídeo principal (1.9) fica no topo, fora do texto. O "BC-12" da base não vira link aqui: o cliente
  * não vê a base da equipe.
  *
  * Feito para o celular: letra maior, passo com número grande, o print abre na tela inteira.
@@ -95,14 +95,15 @@ function Print({ a }: { a?: ArquivoDoPortal }) {
   );
 }
 
-function Video({ a }: { a?: ArquivoDoPortal }) {
+/** O vídeo que toca ali mesmo. O principal (1.9) ocupa a largura toda, no topo do tutorial. */
+export function VideoDoTutorial({ a, principal = false }: { a?: ArquivoDoPortal; principal?: boolean }) {
   if (!a) return <Faltando o="Vídeo" />;
   // o "#t=0.1" faz o iPhone mostrar o primeiro quadro no lugar do retângulo preto (não vale para "data:", da prévia)
   const src = a.url.startsWith('data:') ? a.url : `${a.url}#t=0.1`;
   return (
-    <div className="mt-2 max-w-[760px]">
+    <div className={principal ? 'w-full' : 'mt-2 max-w-[760px]'}>
       {/* preload="metadata": só baixa o vídeo quando a pessoa aperta o play (o celular agradece) */}
-      <video controls playsInline preload="metadata" src={src} className="w-full max-h-[70vh] rounded-xl bg-black" aria-label={a.nome} />
+      <video controls playsInline preload="metadata" src={src} className={`w-full bg-black ${principal ? 'max-h-[75vh] rounded-2xl shadow-sm' : 'max-h-[70vh] rounded-xl'}`} aria-label={a.nome} />
     </div>
   );
 }
@@ -128,7 +129,7 @@ function Bloco({ b, arquivos }: { b: BlocoTexto; arquivos: MapaDeArquivos }) {
     case 'item': return <div className="grid grid-cols-[18px_minmax(0,1fr)] gap-1.5"><span className="text-accent font-bold">•</span><span><Linha texto={b.texto} /></span></div>;
     case 'comando': return <Copiavel texto={b.texto} />;
     case 'imagem': return <Print a={arquivos[b.anexoId]} />;
-    case 'video': return <Video a={arquivos[b.arquivoId]} />;
+    case 'video': return <VideoDoTutorial a={arquivos[b.arquivoId]} />;
     case 'arquivo': return <Arquivo a={arquivos[b.arquivoId]} />;
     case 'passo':
       return (
@@ -144,9 +145,23 @@ function Bloco({ b, arquivos }: { b: BlocoTexto; arquivos: MapaDeArquivos }) {
   }
 }
 
-/** O texto do tutorial, desenhado. `arquivos` diz onde está cada print, vídeo e arquivo citado. */
-export function CorpoDoTutorial({ texto, arquivos }: { texto: string | null | undefined; arquivos: MapaDeArquivos }) {
-  const blocos = blocosDoTexto(texto, { midia: true });
+/** Os blocos do texto, sem o vídeo principal (que já aparece no topo: não repete no meio do texto). */
+function blocosSem(texto: string | null | undefined, omitir?: string | null): BlocoTexto[] {
+  const tira = (lista: BlocoTexto[]): BlocoTexto[] => lista
+    .filter((b) => !(omitir && b.tipo === 'video' && b.arquivoId === omitir))
+    .map((b) => (b.tipo === 'passo' ? { ...b, dentro: tira(b.dentro) } : b));
+  return tira(blocosDoTexto(texto, { midia: true }));
+}
+
+/** Tem o que desenhar? (o tutorial só com o vídeo principal não mostra a caixa do passo a passo) */
+export const temCorpo = (texto: string | null | undefined, omitir?: string | null) => blocosSem(texto, omitir).length > 0;
+
+/**
+ * O texto do tutorial, desenhado. `arquivos` diz onde está cada print, vídeo e arquivo citado;
+ * `omitir` é o vídeo principal, que fica no topo.
+ */
+export function CorpoDoTutorial({ texto, arquivos, omitir }: { texto: string | null | undefined; arquivos: MapaDeArquivos; omitir?: string | null }) {
+  const blocos = blocosSem(texto, omitir);
   if (!blocos.length) return null;
   return <div className="flex flex-col gap-4 text-[16px] leading-relaxed text-ink">{blocos.map((b, i) => <Bloco key={i} b={b} arquivos={arquivos} />)}</div>;
 }

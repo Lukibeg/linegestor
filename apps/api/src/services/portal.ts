@@ -2,11 +2,12 @@
  * Portal do cliente (Patch 1.8, decisão 0040): o autoatendimento.
  *
  * Regras que vivem aqui (as contas estão em `@gestor/shared/portal.ts`, as mesmas da prévia):
- *  - **quem entra**: a pessoa ativa, que já criou a senha pelo convite, de um cliente que está na
- *    base (produto ativo, fora do arquivo e da lixeira). Conferido no login **e em todo pedido**:
- *    saiu da base, a sessão aberta cai na hora
- *  - **a senha é da pessoa**: a equipe gera um convite (o código vale 7 dias e uma vez só; no banco
- *    só o hash dele) e a pessoa cria a senha. Ninguém da equipe digita senha de cliente
+ *  - **quem entra**: a pessoa ativa, com senha, de um cliente que está na base (produto ativo, fora
+ *    do arquivo e da lixeira). Conferido no login **e em todo pedido**: saiu da base, a sessão aberta
+ *    cai na hora
+ *  - **o suporte cria o login e a senha** (decisão 0045, Patch 1.9 — no 1.8 era a pessoa, por
+ *    convite): o login é o e-mail ou um nome; a senha vai para o hash (a entrada) e para o cofre
+ *    (`secrets`), para a equipe ver (fica na auditoria) e trocar quando a pessoa esquecer
  *  - **a equipe entra com o login do Gestor** (decisão 0044, Patch 1.9): o mesmo e-mail, a mesma
  *    senha e o código de 6 dígitos de quem usa; nada a criar. Vê todos os tutoriais publicados; a
  *    visita dela não conta; desativado no Gestor (ou com a senha trocada lá), a sessão cai
@@ -16,7 +17,7 @@
  *    (`PORTAL_DIR/videos`), pelo tamanho; imagem só raster (nunca SVG); arquivo baixa sempre
  *  - nada se apaga de verdade: o tutorial vai para a lixeira; o acesso é bloqueado, não apagado
  */
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
 import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -25,16 +26,17 @@ import type { Readable } from 'node:stream';
 import argon2 from 'argon2';
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
-  clientLogos, clients, newId, portalArticles, portalFiles, portalSessions, portalUsers, productModules, products, settings,
+  clientLogos, clients, newId, portalArticles, portalFiles, portalSessions, portalUsers, productModules, products, secrets, settings,
   subscriptionModules, subscriptions, users, type Db,
 } from '@gestor/db';
 import {
-  AJUSTES_PORTAL_PADRAO, arquivosDoTexto, buscarArtigos, caminhoDoTutorial, clienteNaBase, DIAS_DO_CONVITE, faltaParaPublicarTutorial,
+  AJUSTES_PORTAL_PADRAO, arquivosDoTexto, buscarArtigos, caminhoDoTutorial, clienteNaBase, faltaParaPublicarTutorial,
   motivoForaDaBase, NOME_DA_EQUIPE_NO_PORTAL, PortalAjustesSchema, problemaDoArquivo, situacaoDoAcesso, textoPuro, tutorialValePara,
-  type AcessoCriar, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar, type TutoriaisListarQuery,
+  type AcessoCorrigir, type AcessoCriar, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar, type TutoriaisListarQuery,
 } from '@gestor/shared';
 import { BadRequest, Conflict, Forbidden, NotFound, Unauthorized } from '../plugins/errors.js';
 import { CONFIG_DIR } from './integracoes.js';
+import type { SecretsVault } from './secrets.js';
 
 type Transacao = Parameters<Parameters<Db['transaction']>[0]>[0];
 type LinhaTutorial = typeof portalArticles.$inferSelect;
@@ -46,8 +48,7 @@ export type Quem = { id: string; name: string; permissions: string[] };
 export const pastaDoPortal = () => process.env.PORTAL_DIR ?? join(CONFIG_DIR, 'portal');
 const pastaDosVideos = () => join(pastaDoPortal(), 'videos');
 
-/** O código do convite vai no link; no banco, só o hash dele. */
-const hashDoConvite = (codigo: string) => createHash('sha256').update(codigo).digest('hex');
+/** O código da sessão: 32 bytes ao acaso (vai no cookie assinado). */
 const novoCodigo = () => randomBytes(32).toString('base64url');
 
 // ---------------------------------------------------------------------
@@ -144,6 +145,8 @@ function cartao(t: LinhaTutorial, cat: Catalogo) {
     produto: p ? { id: p.id, nome: p.nome, cor: p.cor } : null,
     modulo: t.moduleId ? { id: t.moduleId, nome: cat.modulos.get(t.moduleId) ?? '—' } : null,
     destaque: t.featured, atualizadoEm: t.updatedAt.toISOString(), caminho: caminhoDoTutorial(t.number, t.title),
+    /** tem o vídeo principal (1.9): a lista mostra o "vídeo" */
+    temVideo: !!t.mainVideoId,
   };
 }
 
@@ -189,15 +192,19 @@ async function arquivosDoTutorial(db: Db, articleId: string) {
     .from(portalFiles).where(and(eq(portalFiles.articleId, articleId), isNull(portalFiles.deletedAt)));
 }
 
+/** O vídeo principal, entre os arquivos do tutorial (ele é sempre deste tutorial). */
+const videoPrincipalDe = (t: LinhaTutorial, arquivos: ReturnType<typeof descricaoDoArquivo>[]) => (t.mainVideoId ? arquivos.find((a) => a.id === t.mainVideoId) ?? null : null);
+
 /** O tutorial inteiro, para a equipe (inclusive o rascunho). */
 export async function lerTutorial(db: Db, numero: number) {
   const t = await tutorialOu404(db, numero);
   const [cat, arquivos, pessoas] = await Promise.all([nomesDoCatalogo(db), arquivosDoTutorial(db, t.id), nomesDePessoas(db, [t.authorId, t.updatedById])]);
+  const descritos = arquivos.map((f) => descricaoDoArquivo(f, 'portal-admin'));
   return {
     ...cartao(t, cat), texto: t.body, situacao: t.status as 'rascunho' | 'publicado', versao: t.version, visualizacoes: t.views,
     autor: t.authorId ? pessoas.get(t.authorId) ?? null : null, atualizadoPor: t.updatedById ? pessoas.get(t.updatedById) ?? null : null,
     criadoEm: t.createdAt.toISOString(), publicadoEm: t.publishedAt?.toISOString() ?? null,
-    arquivos: arquivos.map((f) => descricaoDoArquivo(f, 'portal-admin')),
+    arquivos: descritos, videoPrincipal: videoPrincipalDe(t, descritos),
   };
 }
 
@@ -228,6 +235,19 @@ async function ligarArquivos(tx: Transacao, articleId: string, texto: string | n
   if (soltos.length) await tx.update(portalFiles).set({ articleId }).where(inArray(portalFiles.id, soltos));
 }
 
+/**
+ * O vídeo principal (1.9): tem de ser um vídeo que subiu e ainda não é de outro tutorial. Passa a
+ * ser deste (como os arquivos citados no texto) — é assim que o cliente consegue abrir.
+ */
+async function ligarVideoPrincipal(tx: Transacao, articleId: string, videoId: string | null) {
+  if (!videoId) return null;
+  const [v] = await tx.select({ id: portalFiles.id, kind: portalFiles.kind, articleId: portalFiles.articleId }).from(portalFiles)
+    .where(and(eq(portalFiles.id, videoId), isNull(portalFiles.deletedAt))).limit(1);
+  if (!v || v.kind !== 'video' || (v.articleId && v.articleId !== articleId)) throw new BadRequest('O vídeo principal não chegou ao servidor (ou é de outro tutorial). Suba o vídeo de novo.');
+  if (!v.articleId) await tx.update(portalFiles).set({ articleId }).where(eq(portalFiles.id, v.id));
+  return v.id;
+}
+
 const limpo = (t: string | null | undefined) => {
   const s = (t ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/^\n+|\s+$/g, '');
   return s || null;
@@ -236,7 +256,8 @@ const doFormulario = (d: TutorialGravar) => ({ title: d.titulo.trim(), summary: 
 
 export async function criarTutorial(db: Db, d: TutorialGravar, quem: Quem) {
   const campos = doFormulario(d);
-  if (d.publicar) { const falta = faltaParaPublicarTutorial({ titulo: campos.title, texto: campos.body, resumo: campos.summary }); if (falta) throw new BadRequest(falta); }
+  const video = d.videoPrincipalId ?? null;
+  if (d.publicar) { const falta = faltaParaPublicarTutorial({ titulo: campos.title, texto: campos.body, resumo: campos.summary, videoPrincipal: video }); if (falta) throw new BadRequest(falta); }
   const { produtoId, moduloId } = await conferirProduto(db, d);
   return db.transaction(async (tx) => {
     const id = newId();
@@ -245,7 +266,10 @@ export async function criarTutorial(db: Db, d: TutorialGravar, quem: Quem) {
       publishedAt: d.publicar ? new Date() : null, authorId: quem.id, updatedById: quem.id,
     }).returning();
     await ligarArquivos(tx, id, campos.body);
-    return t!;
+    const mainVideoId = await ligarVideoPrincipal(tx, id, video);
+    if (!mainVideoId) return t!;
+    const [comVideo] = await tx.update(portalArticles).set({ mainVideoId }).where(eq(portalArticles.id, id)).returning();
+    return comVideo!;
   });
 }
 
@@ -258,12 +282,15 @@ export async function atualizarTutorial(db: Db, numero: number, d: TutorialGrava
   // publicado continua publicado (para tirar do portal: voltar para rascunho é pelo botão, ou a lixeira)
   const publicar = d.publicar;
   const campos = doFormulario(d);
-  if (publicar) { const falta = faltaParaPublicarTutorial({ titulo: campos.title, texto: campos.body, resumo: campos.summary }); if (falta) throw new BadRequest(falta); }
+  // sem o campo (tela antiga), o vídeo principal fica como estava; nulo tira
+  const video = d.videoPrincipalId === undefined ? atual.mainVideoId : d.videoPrincipalId;
+  if (publicar) { const falta = faltaParaPublicarTutorial({ titulo: campos.title, texto: campos.body, resumo: campos.summary, videoPrincipal: video }); if (falta) throw new BadRequest(falta); }
   const { produtoId, moduloId } = await conferirProduto(db, d);
   return db.transaction(async (tx) => {
     await ligarArquivos(tx, atual.id, campos.body);
+    const mainVideoId = await ligarVideoPrincipal(tx, atual.id, video);
     const [t] = await tx.update(portalArticles).set({
-      ...campos, productId: produtoId, moduleId: moduloId, status: publicar ? 'publicado' : 'rascunho',
+      ...campos, mainVideoId, productId: produtoId, moduleId: moduloId, status: publicar ? 'publicado' : 'rascunho',
       publishedAt: atual.publishedAt ?? (publicar ? new Date() : null),
       version: atual.version + 1, updatedById: quem.id, updatedAt: new Date(),
     }).where(eq(portalArticles.id, atual.id)).returning();
@@ -365,15 +392,16 @@ export async function arquivoParaEquipe(db: Db, id: string): Promise<ArquivoPara
 }
 
 // ---------------------------------------------------------------------
-// Os acessos (a equipe dá, o cliente usa)
+// Os acessos: o suporte cria o login e a senha, o cliente usa (decisão 0045, Patch 1.9)
 // ---------------------------------------------------------------------
 
 function comoAcesso(u: LinhaAcesso, cliente: { nome: string; naBase: boolean; motivo: string | null } | undefined, pessoas: Map<string, string>) {
   return {
-    id: u.id, nome: u.name, email: u.email, clienteId: u.clientId, cliente: cliente?.nome ?? '—',
-    situacao: situacaoDoAcesso({ ativo: u.active, temSenha: !!u.passwordHash, conviteVenceEm: u.inviteExpiresAt }, cliente?.naBase ?? false),
+    id: u.id, nome: u.name, login: u.login, clienteId: u.clientId, cliente: cliente?.nome ?? '—',
+    situacao: situacaoDoAcesso({ ativo: u.active, temSenha: !!u.passwordHash }, cliente?.naBase ?? false),
     motivo: cliente?.naBase ? null : cliente?.motivo ?? null,
-    conviteVenceEm: u.inviteTokenHash ? u.inviteExpiresAt?.toISOString() ?? null : null,
+    /** a senha está no cofre: a equipe pode ver (o olho). Não está: foi criada pela pessoa, no convite do 1.8 */
+    senhaGuardada: !!u.passwordSecretId,
     ultimoAcesso: u.lastLoginAt?.toISOString() ?? null, acessos: u.loginCount,
     criadoPor: u.createdById ? pessoas.get(u.createdById) ?? null : null, criadoEm: u.createdAt.toISOString(),
   };
@@ -383,7 +411,7 @@ export async function listarAcessos(db: Db, f: { clienteId?: string; q?: string 
   let rows = await db.select().from(portalUsers).where(f.clienteId ? eq(portalUsers.clientId, f.clienteId) : undefined).orderBy(portalUsers.name);
   const [clientesInfo, pessoas] = await Promise.all([clientesNaBase(db, [...new Set(rows.map((r) => r.clientId))]), nomesDePessoas(db, rows.map((r) => r.createdById))]);
   const termo = (f.q ?? '').trim().toLowerCase();
-  if (termo) rows = rows.filter((r) => `${r.name} ${r.email} ${clientesInfo.get(r.clientId)?.nome ?? ''}`.toLowerCase().includes(termo));
+  if (termo) rows = rows.filter((r) => `${r.name} ${r.login} ${clientesInfo.get(r.clientId)?.nome ?? ''}`.toLowerCase().includes(termo));
   return rows.map((u) => comoAcesso(u, clientesInfo.get(u.clientId), pessoas));
 }
 
@@ -400,35 +428,56 @@ async function acessoOu404(db: Db, id: string) {
   return u;
 }
 
-async function emailLivre(db: Db, email: string, menosId?: string) {
-  const [outro] = await db.select({ id: portalUsers.id, clientId: portalUsers.clientId }).from(portalUsers).where(eq(portalUsers.email, email)).limit(1);
-  if (outro && outro.id !== menosId) {
-    const [c] = await db.select({ nome: clients.tradeName }).from(clients).where(eq(clients.id, outro.clientId));
-    throw new Conflict(`Este e-mail já tem acesso ao portal${c ? ` (${c.nome})` : ''}.`);
-  }
+async function nomeDoCliente(db: Db, clientId: string) {
+  const [c] = await db.select({ nome: clients.tradeName }).from(clients).where(eq(clients.id, clientId)).limit(1);
+  return c?.nome ?? '—';
 }
 
-const conviteNovo = () => { const codigo = novoCodigo(); return { codigo, hash: hashDoConvite(codigo), vence: new Date(Date.now() + DIAS_DO_CONVITE * 86_400_000) }; };
+/** O login é único no portal inteiro (de qualquer cliente). */
+async function loginLivre(db: Db, login: string, menosId?: string) {
+  const [outro] = await db.select({ id: portalUsers.id, clientId: portalUsers.clientId }).from(portalUsers).where(eq(portalUsers.login, login)).limit(1);
+  if (outro && outro.id !== menosId) throw new Conflict(`Este login já é de outra pessoa (${await nomeDoCliente(db, outro.clientId)}). Escolha outro.`);
+}
 
-/** Dá acesso a uma pessoa do cliente. Devolve o código do convite (só agora: no banco fica o hash). */
-export async function criarAcesso(db: Db, clientId: string, d: AcessoCriar, quem: Quem) {
+const rotuloDaSenha = (nome: string, cliente: string) => `Senha do portal do cliente — ${nome} (${cliente})`;
+
+/**
+ * Grava a senha nos dois lugares: o hash (é com ele que a entrada confere) e a cópia cifrada no
+ * cofre, para a equipe ver quando a pessoa esquecer. O convite antigo, se havia, deixa de valer.
+ */
+async function gravarSenha(db: Db, vault: SecretsVault, u: Pick<LinhaAcesso, 'id' | 'name' | 'clientId' | 'passwordSecretId'>, senha: string, quemId: string | null) {
+  const passwordHash = await argon2.hash(senha, { type: argon2.argon2id });
+  const passwordSecretId = await vault.save(db, { existingId: u.passwordSecretId, label: rotuloDaSenha(u.name, await nomeDoCliente(db, u.clientId)), plain: senha, userId: quemId });
+  await db.update(portalUsers).set({ passwordHash, passwordSecretId, inviteTokenHash: null, inviteExpiresAt: null, updatedAt: new Date() }).where(eq(portalUsers.id, u.id));
+}
+
+/** Dá acesso a uma pessoa do cliente, com o login e a senha que o suporte escolheu. */
+export async function criarAcesso(db: Db, vault: SecretsVault, clientId: string, d: AcessoCriar, quem: Quem) {
   const [c] = await db.select({ id: clients.id, nome: clients.tradeName, deletedAt: clients.deletedAt }).from(clients).where(eq(clients.id, clientId)).limit(1);
   if (!c || c.deletedAt) throw new NotFound('Cliente');
-  await emailLivre(db, d.email);
-  const convite = conviteNovo();
-  const [u] = await db.insert(portalUsers).values({
-    id: newId(), clientId, name: d.nome.trim(), email: d.email, inviteTokenHash: convite.hash, inviteExpiresAt: convite.vence, createdById: quem.id,
-  }).returning();
-  return { acesso: u!, cliente: c.nome, codigo: convite.codigo };
+  await loginLivre(db, d.login);
+  const [u] = await db.insert(portalUsers).values({ id: newId(), clientId, name: d.nome.trim(), login: d.login, createdById: quem.id }).returning();
+  await gravarSenha(db, vault, u!, d.senha, quem.id);
+  return { acesso: u!, cliente: c.nome };
 }
 
-/** Um convite novo: para quem não usou o primeiro a tempo, ou esqueceu a senha. A senha antiga vale até a nova ser criada. */
-export async function novoConvite(db: Db, id: string) {
+/** O suporte troca a senha (a pessoa esqueceu, ou o acesso do 1.8 ainda não tinha). As sessões abertas caem. */
+export async function definirSenha(db: Db, vault: SecretsVault, id: string, senha: string, quem: Quem) {
   const u = await acessoOu404(db, id);
-  if (!u.active) throw new BadRequest('O acesso está bloqueado. Desbloqueie antes de mandar um convite.');
-  const convite = conviteNovo();
-  await db.update(portalUsers).set({ inviteTokenHash: convite.hash, inviteExpiresAt: convite.vence, updatedAt: new Date() }).where(eq(portalUsers.id, id));
-  return { acesso: u, codigo: convite.codigo };
+  if (!u.active) throw new BadRequest('O acesso está bloqueado. Desbloqueie antes de trocar a senha.');
+  await gravarSenha(db, vault, u, senha, quem.id);
+  await db.delete(portalSessions).where(eq(portalSessions.portalUserId, id));
+  return { acesso: u, cliente: await nomeDoCliente(db, u.clientId) };
+}
+
+/** A senha guardada, para a equipe passar de novo à pessoa (quem pede é a rota, que registra na auditoria). */
+export async function verSenha(db: Db, vault: SecretsVault, id: string) {
+  const u = await acessoOu404(db, id);
+  const cliente = await nomeDoCliente(db, u.clientId);
+  if (!u.passwordSecretId) throw new BadRequest('Esta senha foi criada pela própria pessoa, pelo convite: ela não fica guardada. Troque a senha para passar uma nova.');
+  const s = await vault.read(db, u.passwordSecretId);
+  if (!s) throw new NotFound('Senha');
+  return { acesso: u, cliente, senha: s.value };
 }
 
 /** Bloquear derruba a sessão aberta na hora; desbloquear devolve o acesso com a mesma senha. */
@@ -439,10 +488,14 @@ export async function bloquearAcesso(db: Db, id: string, bloquear: boolean) {
   return u;
 }
 
-export async function atualizarAcesso(db: Db, id: string, d: AcessoCriar) {
+/** Corrige o nome ou o login (a senha fica a mesma; o nome novo vai também para o rótulo do cofre). */
+export async function atualizarAcesso(db: Db, id: string, d: AcessoCorrigir) {
   const u = await acessoOu404(db, id);
-  await emailLivre(db, d.email, id);
-  const [novo] = await db.update(portalUsers).set({ name: d.nome.trim(), email: d.email, updatedAt: new Date() }).where(eq(portalUsers.id, id)).returning();
+  await loginLivre(db, d.login, id);
+  const [novo] = await db.update(portalUsers).set({ name: d.nome.trim(), login: d.login, updatedAt: new Date() }).where(eq(portalUsers.id, id)).returning();
+  if (u.passwordSecretId && u.name !== novo!.name) {
+    await db.update(secrets).set({ label: rotuloDaSenha(novo!.name, await nomeDoCliente(db, u.clientId)) }).where(eq(secrets.id, u.passwordSecretId));
+  }
   return { antes: u, depois: novo! };
 }
 
@@ -458,7 +511,8 @@ export async function atualizarAcesso(db: Db, id: string, d: AcessoCriar) {
 export type SessaoPortal = {
   sid: string;
   equipe: boolean;
-  usuario: { id: string; nome: string; email: string };
+  /** o login: o da pessoa do cliente, ou o e-mail de quem é da equipe */
+  usuario: { id: string; nome: string; login: string };
   cliente: { id: string; nome: string; temLogo: boolean };
   ativos: { produtos: string[]; modulos: string[] };
 };
@@ -503,7 +557,7 @@ async function catalogoInteiro(db: Db) {
 export async function lerSessao(db: Db, sid: string): Promise<{ sessao: SessaoPortal | null; motivo: MotivoSemSessao }> {
   const [row] = await db.select({
     sid: portalSessions.id, expiresAt: portalSessions.expiresAt, daEquipe: portalSessions.staffUserId,
-    uid: portalUsers.id, nome: portalUsers.name, email: portalUsers.email, ativo: portalUsers.active,
+    uid: portalUsers.id, nome: portalUsers.name, login: portalUsers.login, ativo: portalUsers.active,
     cid: clients.id, cliente: clients.tradeName, arquivado: clients.archived, deletedAt: clients.deletedAt,
     eid: users.id, eNome: users.name, eEmail: users.email, eAtivo: users.active,
   }).from(portalSessions)
@@ -517,7 +571,7 @@ export async function lerSessao(db: Db, sid: string): Promise<{ sessao: SessaoPo
   if (row.daEquipe) {
     if (!row.eid || !row.eAtivo) return { sessao: null, motivo: 'bloqueado' };
     sessao = {
-      sid: row.sid, equipe: true, usuario: { id: row.eid, nome: row.eNome!, email: row.eEmail! },
+      sid: row.sid, equipe: true, usuario: { id: row.eid, nome: row.eNome!, login: row.eEmail! },
       cliente: { id: '', nome: NOME_DA_EQUIPE_NO_PORTAL, temLogo: false }, ativos: await catalogoInteiro(db),
     };
   } else {
@@ -528,7 +582,7 @@ export async function lerSessao(db: Db, sid: string): Promise<{ sessao: SessaoPo
       db.select({ id: clientLogos.clientId }).from(clientLogos).where(eq(clientLogos.clientId, row.cid)).limit(1),
     ]);
     if (!clienteNaBase({ arquivado: !!row.arquivado, naLixeira: !!row.deletedAt, produtosAtivos: ativos.produtos.length })) return { sessao: null, motivo: 'fora_da_base' };
-    sessao = { sid: row.sid, equipe: false, usuario: { id: row.uid, nome: row.nome!, email: row.email! }, cliente: { id: row.cid, nome: row.cliente!, temLogo: !!logo }, ativos };
+    sessao = { sid: row.sid, equipe: false, usuario: { id: row.uid, nome: row.nome!, login: row.login! }, cliente: { id: row.cid, nome: row.cliente!, temLogo: !!logo }, ativos };
   }
   // a sessão "desliza": cada uso renova os 30 dias (no máximo uma vez por dia, para não escrever à toa)
   if (row.expiresAt.getTime() - Date.now() < (DIAS_DA_SESSAO - 1) * 86_400_000) {
@@ -545,13 +599,13 @@ export type Entrada =
   | { tipo: 'equipe'; id: string; nome: string; precisaCodigo: boolean };
 
 /**
- * Entrar. Primeiro o acesso de cliente com este e-mail; se não houver (ou a senha não for a dele),
- * o usuário da equipe com o mesmo e-mail — a mesma senha do Gestor (decisão 0044). A mesma mensagem
- * para e-mail que não existe e senha errada (não revelar quem tem acesso); o usuário desativado no
- * Gestor também não entra aqui.
+ * Entrar. Primeiro o acesso de cliente com este login; se não houver (ou a senha não for a dele), o
+ * usuário da equipe com este e-mail — a mesma senha do Gestor (decisão 0044). A mesma mensagem para
+ * login que não existe e senha errada (não revelar quem tem acesso); o usuário desativado no Gestor
+ * também não entra aqui.
  */
-export async function entrar(db: Db, email: string, senha: string): Promise<Entrada> {
-  const [u] = await db.select().from(portalUsers).where(eq(portalUsers.email, email)).limit(1);
+export async function entrar(db: Db, login: string, senha: string): Promise<Entrada> {
+  const [u] = await db.select().from(portalUsers).where(eq(portalUsers.login, login)).limit(1);
   if (u?.passwordHash && (await argon2.verify(u.passwordHash, senha))) {
     if (!u.active) throw new Forbidden(SEM_ACESSO);
     const info = (await clientesNaBase(db, [u.clientId])).get(u.clientId);
@@ -559,39 +613,24 @@ export async function entrar(db: Db, email: string, senha: string): Promise<Entr
     return { tipo: 'cliente', id: u.id };
   }
   const [e] = await db.select({ id: users.id, nome: users.name, hash: users.passwordHash, ativo: users.active, duasEtapas: users.totpEnabledAt })
-    .from(users).where(eq(users.email, email)).limit(1);
+    .from(users).where(eq(users.email, login)).limit(1);
   if (e?.ativo && (await argon2.verify(e.hash, senha))) return { tipo: 'equipe', id: e.id, nome: e.nome, precisaCodigo: !!e.duasEtapas };
-  throw new Unauthorized('E-mail ou senha incorretos');
+  throw new Unauthorized('Login ou senha incorretos');
 }
 
-/** O convite ainda vale? (a tela de criar a senha) */
-export async function lerConvite(db: Db, codigo: string) {
-  const [u] = await db.select().from(portalUsers).where(eq(portalUsers.inviteTokenHash, hashDoConvite(codigo))).limit(1);
-  if (!u || !u.inviteExpiresAt || u.inviteExpiresAt.getTime() < Date.now()) throw new NotFound('Convite');
-  if (!u.active) throw new Forbidden(SEM_ACESSO);
-  const info = (await clientesNaBase(db, [u.clientId])).get(u.clientId);
-  if (!info?.naBase) throw new Forbidden(SEM_ACESSO);
-  return { u, cliente: info.nome, trocando: !!u.passwordHash };
-}
-
-/** Cria (ou troca) a senha pelo convite. O convite morre aqui: vale uma vez só. */
-export async function criarSenha(db: Db, codigo: string, senha: string) {
-  const { u } = await lerConvite(db, codigo);
-  const hash = await argon2.hash(senha, { type: argon2.argon2id });
-  await db.update(portalUsers).set({ passwordHash: hash, inviteTokenHash: null, inviteExpiresAt: null, updatedAt: new Date() }).where(eq(portalUsers.id, u.id));
-  // trocar a senha derruba as outras sessões (o celular perdido, quem sabia a antiga)
-  await db.delete(portalSessions).where(eq(portalSessions.portalUserId, u.id));
-  return u;
-}
-
-export async function trocarSenha(db: Db, s: SessaoPortal, atual: string, nova: string) {
+/**
+ * A pessoa troca a própria senha (Minha conta). A cópia do cofre acompanha: a equipe continua vendo
+ * a senha certa para ajudar quando ela esquecer (a tela avisa a pessoa disso). As outras sessões caem.
+ */
+export async function trocarSenha(db: Db, vault: SecretsVault, s: SessaoPortal, atual: string, nova: string) {
   // a senha de quem é da equipe é a do Gestor: troca lá, em Minha conta (e o portal acompanha)
   if (s.equipe) throw new BadRequest('Sua senha é a do Ingline Gestão: troque por lá, em Minha conta.');
   const [u] = await db.select().from(portalUsers).where(eq(portalUsers.id, s.usuario.id)).limit(1);
   if (!u?.passwordHash || !(await argon2.verify(u.passwordHash, atual))) throw new BadRequest('A senha atual não confere.');
-  await db.update(portalUsers).set({ passwordHash: await argon2.hash(nova, { type: argon2.argon2id }), updatedAt: new Date() }).where(eq(portalUsers.id, u.id));
+  await gravarSenha(db, vault, u, nova, null);
   // as outras sessões caem; esta continua
   await db.delete(portalSessions).where(and(eq(portalSessions.portalUserId, u.id), sql`${portalSessions.id} <> ${s.sid}`));
+  return u;
 }
 
 // ---------------------------------------------------------------------
@@ -634,7 +673,8 @@ export async function tutorialDoCliente(db: Db, s: SessaoPortal, numero: number)
   if (!t || !tutorialValePara({ produtoId: t.productId, moduloId: t.moduleId }, s.ativos)) throw new NotFound('Tutorial');
   if (!s.equipe) await db.update(portalArticles).set({ views: sql`${portalArticles.views} + 1` }).where(eq(portalArticles.id, t.id));
   const [cat, arquivos] = await Promise.all([nomesDoCatalogo(db), arquivosDoTutorial(db, t.id)]);
-  return { ...cartao(t, cat), texto: t.body, publicadoEm: t.publishedAt?.toISOString() ?? null, arquivos: arquivos.map((f) => descricaoDoArquivo(f, 'portal')) };
+  const descritos = arquivos.map((f) => descricaoDoArquivo(f, 'portal'));
+  return { ...cartao(t, cat), texto: t.body, publicadoEm: t.publishedAt?.toISOString() ?? null, arquivos: descritos, videoPrincipal: videoPrincipalDe(t, descritos) };
 }
 
 /** Um arquivo, se for de um tutorial que este cliente pode ver. */

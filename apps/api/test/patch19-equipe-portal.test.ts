@@ -10,7 +10,7 @@
  *  - desativado no Gestor, não entra, e a sessão aberta cai; senha trocada no Gestor derruba as
  *    sessões do portal
  *  - a senha da equipe não se troca pelo portal; o cookie do portal não abre o Gestor
- *  - um acesso de cliente com o mesmo e-mail continua valendo: a senha decide qual entra
+ *  - um acesso de cliente com o mesmo login (o e-mail) continua valendo: a senha decide qual entra
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
@@ -43,8 +43,8 @@ class NoPortal {
   }
   get(url: string) { return this.req('GET', url); }
   post(url: string, payload?: unknown) { return this.req('POST', url, payload); }
-  entrar(email: string, senha: string) { return this.post('/portal/entrar', { email, senha }); }
-  entrarComCodigo(email: string, senha: string, cod: string) { return this.post('/portal/entrar/codigo', { email, senha, codigo: cod }); }
+  entrar(login: string, senha: string) { return this.post('/portal/entrar', { login, senha }); }
+  entrarComCodigo(login: string, senha: string, cod: string) { return this.post('/portal/entrar/codigo', { login, senha, codigo: cod }); }
 }
 
 const tutorial = (o: Record<string, unknown> = {}) => ({
@@ -87,7 +87,7 @@ describe('a equipe entra no portal com o login do Gestor', () => {
     const marina = new NoPortal(app);
     const r = await marina.entrar('Marina@Gestor.local', SENHA);
     expect(r.statusCode).toBe(200);
-    expect(r.json()).toMatchObject({ nome: 'Marina Costa', email: 'marina@gestor.local', equipe: true, cliente: { nome: 'Equipe Ingline', logo: null } });
+    expect(r.json()).toMatchObject({ nome: 'Marina Costa', login: 'marina@gestor.local', equipe: true, cliente: { nome: 'Equipe Ingline', logo: null } });
     expect((await marina.get('/portal/eu')).json().equipe).toBe(true);
     // todos os publicados, de todos os produtos e módulos — o rascunho não
     const vistos = (await marina.get('/portal/tutoriais')).json().items.map((t: any) => t.numero).sort();
@@ -140,7 +140,7 @@ describe('a equipe entra no portal com o login do Gestor', () => {
     expect((await marina.get('/portal/eu')).statusCode).toBe(401);
     const recusado = await new NoPortal(app).entrar('marina@gestor.local', SENHA);
     expect(recusado.statusCode).toBe(401);
-    expect(recusado.json().error).toBe('E-mail ou senha incorretos');
+    expect(recusado.json().error).toBe('Login ou senha incorretos');
     // mesmo que a sessão não tivesse sido apagada, a conferência de cada pedido barra o desativado
     const sid = newId();
     await app.db.insert(portalSessions).values({ id: sid, staffUserId: marinaId, expiresAt: new Date(Date.now() + 86_400_000) });
@@ -188,10 +188,8 @@ describe('quem usa o código de 6 dígitos no Gestor', () => {
   });
 
   it('o acesso de cliente com o mesmo e-mail continua valendo: a senha decide qual entra', async () => {
-    const r = await operador.post(`/portal-admin/clientes/${aurora}/acessos`, { nome: 'Marina (teste)', email: 'marina@gestor.local' });
+    const r = await operador.post(`/portal-admin/clientes/${aurora}/acessos`, { nome: 'Marina (teste)', login: 'marina@gestor.local', senha: 'Aurora2026!' });
     expect(r.statusCode).toBe(201);
-    const cod = r.json().convite.split('/').pop();
-    expect((await new NoPortal(app).post(`/portal/convite/${cod}`, { senha: 'Aurora2026!' })).statusCode).toBe(200);
     const comoCliente = await new NoPortal(app).entrar('marina@gestor.local', 'Aurora2026!');
     expect(comoCliente.json()).toMatchObject({ equipe: false, cliente: { nome: 'Clínica Aurora' } });
     const comoEquipe = await new NoPortal(app).entrar('marina@gestor.local', SENHA);

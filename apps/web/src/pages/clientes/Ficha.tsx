@@ -91,7 +91,7 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
         { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> },
         { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> },
         { id: 'projetos', label: 'Projetos' },
-        // 1.8: quem deste cliente entra no portal do cliente (o convite, o bloqueio)
+        // 1.8: quem deste cliente entra no portal do cliente (o login e a senha do suporte, 1.9; o bloqueio)
         { id: 'portal', label: 'Portal' },
         // 1.7: os chamados do LineChat deste cliente (o Raio-X dos Relatórios)
         ...(can('support.read') ? [{ id: 'chamados' as Aba, label: 'Chamados' }] : []),

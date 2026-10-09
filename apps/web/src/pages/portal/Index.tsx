@@ -3,7 +3,7 @@
  *
  *  - Tutoriais: o passo a passo que os clientes veem (texto, prints, vídeos e arquivos), cada um de
  *    um produto (ou módulo) ou "Geral". Copiar o link ou mandar pelo WhatsApp sai daqui.
- *  - Acessos: quem da empresa de cada cliente pode entrar (o convite, o bloqueio).
+ *  - Acessos: quem da empresa de cada cliente pode entrar (o login e a senha que o suporte cria, 1.9; o bloqueio).
  *  - Ajustes: o nome do portal, as boas-vindas, o contato do suporte e quanto espaço o portal ocupa.
  */
 import { useEffect, useState } from 'react';
@@ -192,7 +192,7 @@ function Ajustes() {
       <section className="card p-4 flex flex-col gap-3">
         <div>
           <h2 className="font-display font-semibold">O que o cliente vê</h2>
-          <p className="text-[13px] text-muted">O nome aparece no topo do portal e na mensagem do convite; o contato vira o botão “Falar com o suporte”.</p>
+          <p className="text-[13px] text-muted">O nome aparece no topo do portal e na mensagem com o acesso; o contato vira o botão “Falar com o suporte” (e o WhatsApp aparece quando o cliente diz que o tutorial não ajudou).</p>
         </div>
         <fieldset disabled={!pode} className="flex flex-col gap-3">
           <Campo label="Nome do portal"><input className="input" value={f.titulo} onChange={(e) => mudar({ titulo: e.target.value })} maxLength={80} /></Campo>

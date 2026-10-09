@@ -900,17 +900,18 @@ Um comentário no artigo: o que a equipe viu depois ("aconteceu de novo, era out
 
 ## portal_users
 
-Uma pessoa do cliente com acesso ao portal. A senha é ela quem cria, pelo link de convite (a equipe nunca digita senha de cliente). Só entra enquanto o cliente está na base: com produto ativo, fora do arquivo e da lixeira — e a sessão aberta cai na hora em que ele sai.
+Uma pessoa do cliente com acesso ao portal. Desde o 1.9 (decisão 0045) o suporte cria o login (o e-mail ou um nome) e a senha, e a senha fica também no cofre (`secrets`), para a equipe ver e trocar quando a pessoa esquecer. Só entra enquanto o cliente está na base: com produto ativo, fora do arquivo e da lixeira — e a sessão aberta cai na hora em que ele sai.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
 | `client_id` | texto | — | obrigatório · liga com **clients** |
 | `name` | texto | — | obrigatório |
-| `email` | texto | O e-mail de entrada, em minúsculas. Único no portal inteiro. | obrigatório |
-| `password_hash` | texto | Hash Argon2 da senha; nulo enquanto a pessoa não aceitou o convite | — |
+| `email` | texto | O login: o e-mail da pessoa ou um nome (como "maria.souza"), em minúsculas. Único no portal inteiro. A coluna se chama `email` porque no 1.8 o login era sempre o e-mail. | obrigatório |
+| `password_hash` | texto | Hash Argon2 da senha (é com ele que o login confere); nulo = ainda sem senha | — |
+| `password_secret_id` | texto | A mesma senha, cifrada no cofre, para a equipe ver (fica na auditoria); nulo = criada pela pessoa no 1.8, pelo convite | liga com **secrets** |
 | `active` | sim/não | false = bloqueado pela equipe: não entra, e a sessão aberta cai | obrigatório · padrão: true |
-| `invite_token_hash` | texto | O convite (criar ou trocar a senha): só o hash do código fica no banco; vale até `invite_expires_at` e uma vez só | — |
+| `invite_token_hash` | texto | O convite do 1.8 (a pessoa criava a senha pelo link): sem uso desde o 1.9, quando o suporte passou a criar a senha | — |
 | `invite_expires_at` | data e hora | — | — |
 | `last_login_at` | data e hora | Última vez que entrou, e quantas vezes entrou | — |
 | `login_count` | número inteiro | — | obrigatório · padrão: 0 |
@@ -946,6 +947,7 @@ Um tutorial do portal. O texto é o "texto simples" da base de conhecimento — 
 | `product_id` | texto | De qual produto (nulo = Geral) | liga com **products** |
 | `module_id` | texto | De qual módulo do produto (nulo = o produto inteiro) | liga com **productModules** |
 | `featured` | sim/não | Em destaque na página inicial do portal | obrigatório · padrão: false |
+| `main_video_id` | texto | O vídeo principal (1.9): fica no topo do tutorial, logo acima do passo a passo | — |
 | `status` | texto | rascunho = só a equipe vê · publicado = os clientes veem | obrigatório · padrão: 'rascunho' |
 | `version` | número inteiro | Sobe a cada gravação: quem salvou no meio não é atropelado | obrigatório · padrão: 1 |
 | `views` | número inteiro | Quantas vezes os clientes abriram o tutorial | obrigatório · padrão: 0 |

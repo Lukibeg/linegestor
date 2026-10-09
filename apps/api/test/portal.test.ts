@@ -5,18 +5,19 @@
  * `packages/shared/src/portal.test.ts`. Aqui fica o que é do servidor:
  *  - a equipe escreve tutoriais; o Leitor não; arquivos (print só raster, arquivo baixa, vídeo em
  *    disco com Range)
- *  - o convite: a pessoa cria a senha, o código vale uma vez, só o hash fica no banco
+ *  - o acesso: o suporte cria o login e a senha (1.9, decisão 0045); a senha fica no hash e no
+ *    cofre, a equipe vê (auditado) e troca
  *  - o que cada cliente vê (Geral + os produtos e módulos ativos), e os arquivos só desses
  *  - saiu da base (produto desativado, arquivado), bloqueado: a sessão aberta cai na hora
  *  - o cookie do portal não abre o Gestor, e o da equipe não abre o portal
- *  - lixeira, ajustes e auditoria (sem o código do convite)
+ *  - lixeira, ajustes e auditoria (nunca a senha)
  */
 import { mkdtemp, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { clients, newId, portalUsers, productModules, products, subscriptionModules, subscriptions } from '@gestor/db';
+import { clients, newId, portalUsers, productModules, products, secrets, subscriptionModules, subscriptions } from '@gestor/db';
 import { makeApp, Session, type App } from './helpers.js';
 
 let app: App;
@@ -51,7 +52,7 @@ class Cliente {
   }
   get(url: string, headers?: Record<string, string>) { return this.req('GET', url, undefined, headers); }
   post(url: string, payload?: unknown) { return this.req('POST', url, payload); }
-  entrar(email: string, senha: string) { return this.post('/portal/entrar', { email, senha }); }
+  entrar(login: string, senha: string) { return this.post('/portal/entrar', { login, senha }); }
 }
 
 function multipart(nome: string, mime: string, conteudo: Buffer) {
@@ -175,40 +176,61 @@ describe('os arquivos', () => {
   });
 });
 
-describe('o convite e a senha', () => {
-  it('a equipe dá o acesso, a pessoa cria a senha, o código vale uma vez', async () => {
-    expect((await leitor.post(`/portal-admin/clientes/${aurora}/acessos`, { nome: 'Maria Souza', email: 'maria@aurora.com.br' })).statusCode).toBe(403);
-    const r = await operador.post(`/portal-admin/clientes/${aurora}/acessos`, { nome: 'Maria Souza', email: 'Maria@Aurora.com.br' });
+describe('o acesso: o suporte cria o login e a senha (1.9)', () => {
+  it('a equipe dá o acesso com login e senha; a senha fica no hash e no cofre, e a equipe vê', async () => {
+    const dados = { nome: 'Maria Souza', login: 'Maria@Aurora.com.br', senha: 'Aurora2026!' };
+    expect((await leitor.post(`/portal-admin/clientes/${aurora}/acessos`, dados)).statusCode).toBe(403);
+    expect((await operador.post(`/portal-admin/clientes/${aurora}/acessos`, { ...dados, senha: 'curta1' })).statusCode).toBe(400);
+    expect((await operador.post(`/portal-admin/clientes/${aurora}/acessos`, { ...dados, login: 'maria souza' })).statusCode).toBe(400);
+    const r = await operador.post(`/portal-admin/clientes/${aurora}/acessos`, dados);
     expect(r.statusCode).toBe(201);
-    const caminho: string = r.json().convite;
-    expect(caminho).toMatch(/^\/portal\/convite\/[\w-]{40,}$/);
-    const codigo = caminho.split('/').pop()!;
-    expect((await operador.post(`/portal-admin/clientes/${norte}/acessos`, { nome: 'Outra', email: 'maria@aurora.com.br' })).statusCode).toBe(409);
-    // no banco, só o hash do código
-    const [u] = await app.db.select().from(portalUsers).where(eq(portalUsers.email, 'maria@aurora.com.br'));
-    expect(u!.inviteTokenHash).not.toBe(codigo);
-    expect(u!.passwordHash).toBeNull();
-    expect((await leitor.get(`/portal-admin/clientes/${aurora}/acessos`)).json().acessos[0].situacao).toBe('convite');
+    // o login é único no portal inteiro
+    const outro = await operador.post(`/portal-admin/clientes/${norte}/acessos`, { nome: 'Outra', login: 'maria@aurora.com.br', senha: 'Outra2026!' });
+    expect(outro.statusCode).toBe(409);
+    expect(outro.json().error).toMatch(/Clínica Aurora/);
+    // no banco: o hash (para entrar) e a cópia cifrada no cofre — nunca a senha em texto
+    const [u] = await app.db.select().from(portalUsers).where(eq(portalUsers.login, 'maria@aurora.com.br'));
+    expect(u!.passwordHash).toMatch(/^\$argon2id\$/);
+    const [cofre] = await app.db.select().from(secrets).where(eq(secrets.id, u!.passwordSecretId!));
+    expect(cofre!.label).toBe('Senha do portal do cliente — Maria Souza (Clínica Aurora)');
+    expect(cofre!.ciphertext).not.toContain('Aurora2026');
+    const lista = (await leitor.get(`/portal-admin/clientes/${aurora}/acessos`)).json().acessos;
+    expect(lista[0]).toMatchObject({ login: 'maria@aurora.com.br', situacao: 'ativo', senhaGuardada: true });
+    // ver a senha: quem dá acesso vê (e fica na auditoria); quem só lê, não
+    expect((await leitor.post(`/portal-admin/acessos/${u!.id}/ver-senha`)).statusCode).toBe(403);
+    expect((await operador.post(`/portal-admin/acessos/${u!.id}/ver-senha`)).json()).toMatchObject({ senha: 'Aurora2026!' });
 
+    // o login não precisa ser e-mail
+    const recepcao = await operador.post(`/portal-admin/clientes/${aurora}/acessos`, { nome: 'Recepção Aurora', login: 'recepcao.aurora', senha: 'mabeto38' });
+    expect(recepcao.statusCode).toBe(201);
     const maria = new Cliente(app);
-    expect((await maria.get(`/portal/convite/${codigo}`)).json()).toMatchObject({ nome: 'Maria Souza', cliente: 'Clínica Aurora', trocando: false });
-    expect((await maria.post(`/portal/convite/${codigo}`, { senha: 'curta1' })).statusCode).toBe(400);
-    expect((await maria.post(`/portal/convite/${codigo}`, { senha: 'somenteletras' })).statusCode).toBe(400);
-    expect((await maria.post(`/portal/convite/${codigo}`, { senha: 'Aurora2026!' })).statusCode).toBe(200);
-    expect((await maria.get('/portal/eu')).json()).toMatchObject({ nome: 'Maria Souza', cliente: { nome: 'Clínica Aurora' } });
-    expect((await new Cliente(app).get(`/portal/convite/${codigo}`)).statusCode).toBe(404);
-    expect((await new Cliente(app).post(`/portal/convite/${codigo}`, { senha: 'Outra2026!' })).statusCode).toBe(404);
-    expect((await leitor.get(`/portal-admin/clientes/${aurora}/acessos`)).json().acessos[0].situacao).toBe('ativo');
+    expect((await maria.entrar('recepcao.aurora', 'mabeto38')).json()).toMatchObject({ nome: 'Recepção Aurora', login: 'recepcao.aurora', cliente: { nome: 'Clínica Aurora' } });
   });
 
-  it('entra com e-mail e senha; a mesma mensagem para e-mail que não existe e senha errada', async () => {
+  it('entra com login e senha; a mesma mensagem para login que não existe e senha errada', async () => {
     const a = await new Cliente(app).entrar('maria@aurora.com.br', 'errada123');
     const b = await new Cliente(app).entrar('ninguem@aurora.com.br', 'errada123');
     expect([a.statusCode, b.statusCode]).toEqual([401, 401]);
     expect(a.json().error).toBe(b.json().error);
+    expect(a.json().error).toBe('Login ou senha incorretos');
     const ok = await new Cliente(app).entrar('MARIA@aurora.com.br', 'Aurora2026!');
     expect(ok.statusCode).toBe(200);
-    expect(ok.json().nome).toBe('Maria Souza');
+    expect(ok.json()).toMatchObject({ nome: 'Maria Souza', login: 'maria@aurora.com.br', equipe: false });
+    // o convite do 1.8 saiu: o endereço antigo não existe mais no servidor
+    expect((await new Cliente(app).get('/portal/convite/qualquer-coisa-com-mais-de-vinte-letras')).statusCode).toBe(404);
+  });
+
+  it('o acesso do 1.8 sem senha (convite não usado): o suporte define a senha', async () => {
+    const id = newId();
+    await app.db.insert(portalUsers).values({ id, clientId: aurora, name: 'Pedro Antigo', login: 'pedro@aurora.com.br', inviteTokenHash: 'x'.repeat(64), inviteExpiresAt: new Date(Date.now() + 86_400_000) });
+    const antes = (await leitor.get(`/portal-admin/clientes/${aurora}/acessos`)).json().acessos.find((a: any) => a.id === id);
+    expect(antes).toMatchObject({ situacao: 'sem_senha', senhaGuardada: false });
+    const ver = await operador.post(`/portal-admin/acessos/${id}/ver-senha`);
+    expect(ver.statusCode).toBe(400);
+    expect((await operador.post(`/portal-admin/acessos/${id}/senha`, { senha: 'Pedro2026x' })).statusCode).toBe(200);
+    const [u] = await app.db.select().from(portalUsers).where(eq(portalUsers.id, id));
+    expect(u!.inviteTokenHash).toBeNull();
+    expect((await new Cliente(app).entrar('pedro@aurora.com.br', 'Pedro2026x')).statusCode).toBe(200);
   });
 });
 
@@ -272,35 +294,45 @@ describe('quem sai da base perde o acesso na hora', () => {
   it('bloquear derruba a sessão; desbloquear volta com a mesma senha', async () => {
     const maria = new Cliente(app);
     await maria.entrar('maria@aurora.com.br', 'Aurora2026!');
-    const id = (await leitor.get(`/portal-admin/clientes/${aurora}/acessos`)).json().acessos[0].id;
+    const id = (await leitor.get(`/portal-admin/clientes/${aurora}/acessos`)).json().acessos.find((a: any) => a.login === 'maria@aurora.com.br').id;
     expect((await leitor.post(`/portal-admin/acessos/${id}/bloqueio`, { bloquear: true })).statusCode).toBe(403);
     expect((await operador.post(`/portal-admin/acessos/${id}/bloqueio`, { bloquear: true })).statusCode).toBe(200);
     expect((await maria.get('/portal/eu')).statusCode).toBe(401);
     expect((await new Cliente(app).entrar('maria@aurora.com.br', 'Aurora2026!')).statusCode).toBe(403);
-    expect((await operador.post(`/portal-admin/acessos/${id}/convite`)).statusCode).toBe(400);
+    expect((await operador.post(`/portal-admin/acessos/${id}/senha`, { senha: 'Outra2026x' })).statusCode).toBe(400);
     await operador.post(`/portal-admin/acessos/${id}/bloqueio`, { bloquear: false });
     expect((await new Cliente(app).entrar('maria@aurora.com.br', 'Aurora2026!')).statusCode).toBe(200);
   });
 
-  it('esqueci a senha: o convite novo troca a senha; a antiga vale até a nova ser criada, e as sessões caem', async () => {
+  it('esqueceu a senha: o suporte vê ou troca; trocada, a antiga para e as sessões caem', async () => {
     const maria = new Cliente(app);
     await maria.entrar('maria@aurora.com.br', 'Aurora2026!');
-    const id = (await leitor.get(`/portal-admin/clientes/${aurora}/acessos`)).json().acessos[0].id;
-    const codigo = (await operador.post(`/portal-admin/acessos/${id}/convite`)).json().convite.split('/').pop();
-    expect((await new Cliente(app).entrar('maria@aurora.com.br', 'Aurora2026!')).statusCode).toBe(200);
-    expect((await new Cliente(app).get(`/portal/convite/${codigo}`)).json().trocando).toBe(true);
-    const nova = new Cliente(app);
-    expect((await nova.post(`/portal/convite/${codigo}`, { senha: 'NovaSenha2026' })).statusCode).toBe(200);
+    const id = (await leitor.get(`/portal-admin/clientes/${aurora}/acessos`)).json().acessos.find((a: any) => a.login === 'maria@aurora.com.br').id;
+    expect((await leitor.post(`/portal-admin/acessos/${id}/senha`, { senha: 'NovaSenha2026' })).statusCode).toBe(403);
+    expect((await operador.post(`/portal-admin/acessos/${id}/senha`, { senha: 'curta' })).statusCode).toBe(400);
+    expect((await operador.post(`/portal-admin/acessos/${id}/senha`, { senha: 'NovaSenha2026' })).statusCode).toBe(200);
     expect((await maria.get('/portal/eu')).statusCode).toBe(401);
-    expect((await nova.get('/portal/eu')).statusCode).toBe(200);
     expect((await new Cliente(app).entrar('maria@aurora.com.br', 'Aurora2026!')).statusCode).toBe(401);
-    // trocar a senha logado: pede a atual; as outras sessões caem, esta fica
+    const nova = new Cliente(app);
+    expect((await nova.entrar('maria@aurora.com.br', 'NovaSenha2026')).statusCode).toBe(200);
+    // ela troca a própria senha no portal: pede a atual; as outras sessões caem, esta fica — e a equipe vê a nova
     const outra = new Cliente(app);
     await outra.entrar('maria@aurora.com.br', 'NovaSenha2026');
     expect((await nova.post('/portal/senha', { atual: 'errada', nova: 'Trocada2026' })).statusCode).toBe(400);
     expect((await nova.post('/portal/senha', { atual: 'NovaSenha2026', nova: 'Trocada2026' })).statusCode).toBe(200);
     expect((await nova.get('/portal/eu')).statusCode).toBe(200);
     expect((await outra.get('/portal/eu')).statusCode).toBe(401);
+    expect((await operador.post(`/portal-admin/acessos/${id}/ver-senha`)).json().senha).toBe('Trocada2026');
+  });
+
+  it('corrigir o nome ou o login: a senha fica a mesma', async () => {
+    const id = (await leitor.get(`/portal-admin/clientes/${aurora}/acessos`)).json().acessos.find((a: any) => a.login === 'recepcao.aurora').id;
+    expect((await operador.put(`/portal-admin/acessos/${id}`, { nome: 'Recepção da Aurora', login: 'maria@aurora.com.br' })).statusCode).toBe(409);
+    expect((await operador.put(`/portal-admin/acessos/${id}`, { nome: 'Recepção da Aurora', login: 'recepcao' })).statusCode).toBe(200);
+    expect((await new Cliente(app).entrar('recepcao', 'mabeto38')).json().nome).toBe('Recepção da Aurora');
+    const [u] = await app.db.select().from(portalUsers).where(eq(portalUsers.id, id));
+    const [cofre] = await app.db.select().from(secrets).where(eq(secrets.id, u!.passwordSecretId!));
+    expect(cofre!.label).toBe('Senha do portal do cliente — Recepção da Aurora (Clínica Aurora)');
   });
 });
 
@@ -324,13 +356,16 @@ describe('lixeira, ajustes e auditoria', () => {
     expect((await new Cliente(app).get('/portal/sobre')).json()).toMatchObject({ titulo: 'Central de ajuda Ingline', email: 'suporte@inglinesystems.com.br' });
   });
 
-  it('a auditoria registra quem deu e tirou acesso — nunca o código do convite', async () => {
+  it('a auditoria registra quem deu e tirou acesso, e quem viu a senha — nunca a senha', async () => {
     const itens = (await s.get('/admin/audit?entityType=portal&pageSize=200')).json().items;
     const resumos: string[] = itens.map((x: any) => x.summary);
-    expect(resumos).toContain('Deu acesso ao portal a Maria Souza (maria@aurora.com.br), de Clínica Aurora');
+    expect(resumos).toContain('Deu acesso ao portal a Maria Souza (login maria@aurora.com.br), de Clínica Aurora');
     expect(resumos.some((r) => r.startsWith('Bloqueou o acesso de Maria Souza'))).toBe(true);
-    expect(resumos.some((r) => r.startsWith('Gerou um convite novo para Maria Souza'))).toBe(true);
+    expect(resumos).toContain('Trocou a senha do portal de Maria Souza (login maria@aurora.com.br), de Clínica Aurora');
+    expect(resumos).toContain('Marina Costa viu a senha do portal de Maria Souza (login maria@aurora.com.br), de Clínica Aurora');
+    expect(resumos).toContain('Maria Souza (login maria@aurora.com.br) trocou a própria senha do portal');
+    expect(itens.find((x: any) => x.summary.startsWith('Marina Costa viu a senha')).action).toBe('reveal_secret');
     expect(resumos.some((r) => r.startsWith('Tentativa de entrar no portal falhou para ninguem@aurora.com.br'))).toBe(true);
-    expect(JSON.stringify(itens)).not.toMatch(/convite\/[\w-]{40,}/);
+    expect(JSON.stringify(itens)).not.toMatch(/Aurora2026|NovaSenha2026|Trocada2026|mabeto38/);
   });
 });

@@ -11,7 +11,7 @@ import { api, logoSrc } from '../api/index.js';
 import { ApiError, type CartaoTutorial, type EuPortal, type InicioPortal } from '../api/types.js';
 import { Carregando, LogoCliente, mensagemErro, Spinner, useToast } from '../components/ui/index.js';
 import { data as dataCurta } from '../lib/format.js';
-import { CorpoDoTutorial, linkDoPortal, mapaDeArquivos } from './Corpo.js';
+import { CorpoDoTutorial, linkDoPortal, mapaDeArquivos, temCorpo, VideoDoTutorial } from './Corpo.js';
 import {
   BotaoSuporte, CampoSenha, CartaoDeTutorial, CartaoDestaque, ContatoDoSuporte, CorDoProduto, EtiquetaProduto, linkDoSuporte, primeiroNome,
   RegrasDaSenha, regrasDaSenha, useSobre, useTituloDaAba,
@@ -295,11 +295,16 @@ export function TutorialPagina({ eu }: { eu: EuPortal }) {
         </span>
       </div>
 
-      <div className="mt-6 card p-4 sm:p-6">
-        <CorpoDoTutorial texto={t.texto} arquivos={arquivos} />
-      </div>
+      {/* o vídeo principal (1.9): o ponto principal do tutorial, logo acima do passo a passo */}
+      {t.videoPrincipal && <div className="mt-5"><VideoDoTutorial a={arquivos[t.videoPrincipal.id] ?? t.videoPrincipal} principal /></div>}
 
-      {/* "Isso resolveu?": não guarda nada; o "não" leva para o suporte já com o tutorial na mensagem */}
+      {temCorpo(t.texto, t.videoPrincipal?.id) && (
+        <div className={`${t.videoPrincipal ? 'mt-5' : 'mt-6'} card p-4 sm:p-6`}>
+          <CorpoDoTutorial texto={t.texto} arquivos={arquivos} omitir={t.videoPrincipal?.id} />
+        </div>
+      )}
+
+      {/* "Isso resolveu?": não guarda nada; o "não" mostra o WhatsApp do suporte e leva para lá já com o tutorial na mensagem */}
       <section className="mt-5 card p-4 sm:p-5" aria-live="polite">
         {resolveu === null ? (
           <div className="flex flex-wrap items-center gap-3">
@@ -311,10 +316,16 @@ export function TutorialPagina({ eu }: { eu: EuPortal }) {
           <p className="text-[14.5px] flex items-center gap-2"><Check size={17} className="text-ok" /> Que bom! Se precisar de novo, é só voltar aqui.</p>
         ) : (
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <p className="text-[14.5px] text-ink-2 flex-1">A gente ajuda. A mensagem já vai com o nome deste tutorial.</p>
-            {linkDoSuporte(sobre.data, ajuda)
-              ? <BotaoSuporte sobre={sobre.data} mensagem={ajuda} className="btn-primary" />
-              : <ContatoDoSuporte sobre={sobre.data} />}
+            <div className="flex-1 min-w-0">
+              <p className="font-display font-semibold text-[15.5px]">A gente ajuda!</p>
+              {sobre.data?.whatsapp ? (
+                <p className="text-[14.5px] text-ink-2 mt-0.5">
+                  Chame o suporte no WhatsApp <b className="text-ink whitespace-nowrap">{sobre.data.whatsapp}</b>. Pelo botão, a mensagem já vai com o nome deste tutorial.
+                </p>
+              ) : <p className="text-[14.5px] text-ink-2 mt-0.5">Fale com o suporte da Ingline.</p>}
+              {!linkDoSuporte(sobre.data, ajuda) && <ContatoDoSuporte sobre={sobre.data} className="mt-1" />}
+            </div>
+            <BotaoSuporte sobre={sobre.data} mensagem={ajuda} className="btn-primary shrink-0">Falar no WhatsApp</BotaoSuporte>
           </div>
         )}
       </section>
@@ -355,11 +366,11 @@ export function Conta({ eu }: { eu: EuPortal }) {
         <LogoCliente src={logoSrc(eu.cliente.logo)} nome={eu.cliente.nome} tamanho={44} />
         <div className="min-w-0">
           <div className="font-semibold text-[15.5px]">{eu.nome}</div>
-          <div className="text-[13.5px] text-ink-2 break-all">{eu.email}</div>
+          <div className="text-[13.5px] text-ink-2 break-all font-mono">{eu.login}</div>
           <div className="text-[13px] text-muted">{eu.cliente.nome}</div>
         </div>
       </section>
-      <p className="text-[12.5px] text-muted mt-2">{eu.equipe ? 'O nome e o e-mail são os do seu usuário no Ingline Gestão.' : 'Para mudar o nome ou o e-mail, fale com o suporte.'}</p>
+      <p className="text-[12.5px] text-muted mt-2">{eu.equipe ? 'O nome e o e-mail são os do seu usuário no Ingline Gestão.' : 'Para mudar o nome ou o login, fale com o suporte.'}</p>
 
       {eu.equipe ? (
         // a senha da equipe é a do Gestor: troca lá (e o portal acompanha)
@@ -373,13 +384,15 @@ export function Conta({ eu }: { eu: EuPortal }) {
       ) : (
       <form className="card p-4 sm:p-5 mt-5 flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); if (regras.every((r) => r.ok)) trocar.mutate(); }}>
         <h2 className="font-display font-semibold text-[16px] flex items-center gap-2"><KeyRound size={17} className="text-accent" /> Trocar a senha</h2>
-        <input type="email" autoComplete="username" value={eu.email} readOnly hidden />
+        <input type="text" autoComplete="username" value={eu.login} readOnly hidden />
         <CampoSenha id="conta-atual" rotulo="Senha atual" valor={atual} onChange={setAtual} autoComplete="current-password" />
         <CampoSenha id="conta-nova" rotulo="Senha nova" valor={nova} onChange={setNova} autoComplete="new-password" />
         <CampoSenha id="conta-confirmar" rotulo="Repita a senha nova" valor={confirmar} onChange={setConfirmar} autoComplete="new-password" />
         <RegrasDaSenha regras={regras} />
         {trocar.error && <div className="text-bad text-[13.5px]" role="alert">{mensagemErro(trocar.error)}</div>}
         <button className="btn-primary self-start" disabled={!atual || !regras.every((r) => r.ok) || trocar.isPending}>{trocar.isPending ? <Spinner className="text-white" /> : 'Salvar a senha nova'}</button>
+        {/* 1.9, decisão 0045: a senha fica guardada para o suporte ajudar quando a pessoa esquecer — e a pessoa sabe disso */}
+        <p className="text-[12.5px] text-muted">O suporte da Ingline também vê esta senha, para te ajudar se você esquecer. Não use a mesma senha de outros lugares.</p>
       </form>
       )}
 

@@ -35,8 +35,10 @@ criado quando criar o seu usuário do Ingline Gestão". Como o 1.9 ainda não su
   portal não abre o Gestor, e estar no Gestor não abre o portal (é preciso entrar lá com o mesmo
   e-mail e senha).
 - **O acesso de cliente com o mesmo e-mail continua valendo.** Se alguém da equipe também tiver um
-  acesso de cliente com o mesmo e-mail (para ver o portal como um cliente), **a senha decide**: a do
-  acesso de cliente entra como o cliente; a do Gestor, como a equipe.
+  acesso de cliente cujo login é o seu e-mail (para ver o portal como um cliente), **a senha decide**:
+  a do acesso de cliente entra como o cliente; a do Gestor, como a equipe. (Desde a decisão 0045, no
+  mesmo 1.9, o acesso de cliente tem login — o e-mail ou um nome — e a tela de entrar pede "Login": a
+  equipe digita ali o e-mail do Gestor.)
 - **Auditoria.** A entrada da equipe no portal fica registrada ("Fulano entrou no portal do cliente
   com o login da equipe", com a verificação em duas etapas ou o código de recuperação quando houve),
   e o código errado também. Nunca a senha nem o código.

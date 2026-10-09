@@ -17,7 +17,7 @@
  *   - toda tabela tem `id` em texto (cuid), gerado pela aplicação
  * =====================================================================
  */
-import { boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
 const id = () => text('id').primaryKey();
@@ -1246,14 +1246,15 @@ export const knowledgeComments = pgTable(
 // ---------------------------------------------------------------------
 // 9. PORTAL DO CLIENTE (decisão 0040, Patch 1.8, migração 0010)
 // ---------------------------------------------------------------------
-// O autoatendimento: a pessoa do cliente entra com o próprio e-mail e senha e vê os tutoriais dos
-// produtos que o cliente tem. O login é separado do da equipe (outra tabela, outra sessão, outro
-// cookie): nada do que vale no portal abre o Gestor.
+// O autoatendimento: a pessoa do cliente entra com o login e a senha que o suporte criou e vê os
+// tutoriais dos produtos que o cliente tem. O login é separado do da equipe (outra tabela, outra
+// sessão, outro cookie): nada do que vale no portal abre o Gestor.
 
 /**
- * Uma pessoa do cliente com acesso ao portal. A senha é ela quem cria, pelo link de convite (a
- * equipe nunca digita senha de cliente). Só entra enquanto o cliente está na base: com produto
- * ativo, fora do arquivo e da lixeira — e a sessão aberta cai na hora em que ele sai.
+ * Uma pessoa do cliente com acesso ao portal. Desde o 1.9 (decisão 0045) o suporte cria o login (o
+ * e-mail ou um nome) e a senha, e a senha fica também no cofre (`secrets`), para a equipe ver e
+ * trocar quando a pessoa esquecer. Só entra enquanto o cliente está na base: com produto ativo, fora
+ * do arquivo e da lixeira — e a sessão aberta cai na hora em que ele sai.
  */
 export const portalUsers = pgTable(
   'portal_users',
@@ -1261,13 +1262,18 @@ export const portalUsers = pgTable(
     id: id(),
     clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    /** O e-mail de entrada, em minúsculas. Único no portal inteiro. */
-    email: text('email').notNull(),
-    /** Hash Argon2 da senha; nulo enquanto a pessoa não aceitou o convite */
+    /**
+     * O login: o e-mail da pessoa ou um nome (como "maria.souza"), em minúsculas. Único no portal
+     * inteiro. A coluna se chama `email` porque no 1.8 o login era sempre o e-mail.
+     */
+    login: text('email').notNull(),
+    /** Hash Argon2 da senha (é com ele que o login confere); nulo = ainda sem senha */
     passwordHash: text('password_hash'),
+    /** A mesma senha, cifrada no cofre, para a equipe ver (fica na auditoria); nulo = criada pela pessoa no 1.8, pelo convite */
+    passwordSecretId: text('password_secret_id').references(() => secrets.id),
     /** false = bloqueado pela equipe: não entra, e a sessão aberta cai */
     active: boolean('active').notNull().default(true),
-    /** O convite (criar ou trocar a senha): só o hash do código fica no banco; vale até `invite_expires_at` e uma vez só */
+    /** O convite do 1.8 (a pessoa criava a senha pelo link): sem uso desde o 1.9, quando o suporte passou a criar a senha */
     inviteTokenHash: text('invite_token_hash'),
     inviteExpiresAt: timestamp('invite_expires_at', { withTimezone: true }),
     /** Última vez que entrou, e quantas vezes entrou */
@@ -1279,7 +1285,7 @@ export const portalUsers = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    uniqueIndex('portal_users_email_uq').on(t.email),
+    uniqueIndex('portal_users_email_uq').on(t.login),
     uniqueIndex('portal_users_invite_uq').on(t.inviteTokenHash),
     index('portal_users_client_idx').on(t.clientId),
   ],
@@ -1332,6 +1338,8 @@ export const portalArticles = pgTable(
     moduleId: text('module_id').references(() => productModules.id),
     /** Em destaque na página inicial do portal */
     featured: boolean('featured').notNull().default(false),
+    /** O vídeo principal (1.9): fica no topo do tutorial, logo acima do passo a passo */
+    mainVideoId: text('main_video_id').references((): AnyPgColumn => portalFiles.id),
     /** rascunho = só a equipe vê · publicado = os clientes veem */
     status: text('status').notNull().default('rascunho'),
     /** Sobe a cada gravação: quem salvou no meio não é atropelado */

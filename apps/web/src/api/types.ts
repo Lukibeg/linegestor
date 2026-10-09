@@ -469,26 +469,27 @@ export type CartaoTutorial = {
   id: string; numero: number; titulo: string; resumo: string | null;
   produto: ProdutoDoPortal | null; modulo: { id: string; nome: string } | null;
   destaque: boolean; atualizadoEm: string; caminho: string;
+  /** tem o vídeo principal (1.9) */
+  temVideo: boolean;
 };
 /** `trecho`: onde a busca bateu (só com busca) */
 export type TutorialNaLista = CartaoTutorial & { situacao: 'rascunho' | 'publicado'; visualizacoes: number; autor: string | null; atualizadoPor: string | null; trecho?: Array<{ texto: string; achado: boolean }> | null };
 /** `url` é relativa à API (como a logo do cliente); na prévia, o próprio arquivo embutido */
 export type ArquivoDoPortal = { id: string; tipo: _TipoArq; nome: string; mimeType: string; tamanho: number; url: string };
-export type Tutorial = TutorialNaLista & { texto: string | null; versao: number; criadoEm: string; publicadoEm: string | null; arquivos: ArquivoDoPortal[] };
+export type Tutorial = TutorialNaLista & { texto: string | null; versao: number; criadoEm: string; publicadoEm: string | null; arquivos: ArquivoDoPortal[]; videoPrincipal: ArquivoDoPortal | null };
 export type GravadoTutorial = { numero: number; versao: number; situacao: 'rascunho' | 'publicado'; caminho: string };
 export type OpcoesPortal = { produtos: Array<ProdutoDoPortal & { modulos: Array<{ id: string; nome: string }> }> };
+/** Um acesso ao portal (1.9: o login e a senha são do suporte; `senhaGuardada` = dá para ver a senha) */
 export type AcessoPortal = {
-  id: string; nome: string; email: string; clienteId: string; cliente: string;
-  situacao: _SitAcesso; motivo: string | null; conviteVenceEm: string | null;
+  id: string; nome: string; login: string; clienteId: string; cliente: string;
+  situacao: _SitAcesso; motivo: string | null; senhaGuardada: boolean;
   ultimoAcesso: string | null; acessos: number; criadoPor: string | null; criadoEm: string;
 };
 export type AcessosDoCliente = { naBase: boolean; motivo: string | null; acessos: AcessoPortal[] };
-/** O caminho do convite (/portal/convite/<código>): o código só existe agora, no banco fica o hash */
-export type ConviteGerado = { id: string; convite: string };
 export type EspacoPortal = { videos: number; bytesVideos: number; arquivos: number; bytesArquivos: number };
 // o lado do cliente
 /** Quem está no portal. `equipe` = entrou com o login do Gestor (decisão 0044): o "cliente" é a Equipe Ingline e vê todos os tutoriais. */
-export type EuPortal = { nome: string; email: string; equipe: boolean; cliente: { nome: string; logo: string | null }; portal: _AjustesPortal };
+export type EuPortal = { nome: string; login: string; equipe: boolean; cliente: { nome: string; logo: string | null }; portal: _AjustesPortal };
 /** O que o "Entrar" responde: quem entrou, ou que falta o código de 6 dígitos (a equipe que usa o código no Gestor). */
 export type EntradaPortal = EuPortal | { precisaCodigo: true };
 export type SobrePortal = { titulo: string; whatsapp: string | null; email: string | null; horario: string | null };
@@ -497,8 +498,7 @@ export type InicioPortal = {
   destaques: CartaoTutorial[]; recentes: CartaoTutorial[]; total: number;
 };
 export type TutorialAchado = CartaoTutorial & { trecho: Array<{ texto: string; achado: boolean }> | null };
-export type TutorialDoCliente = CartaoTutorial & { texto: string | null; publicadoEm: string | null; arquivos: ArquivoDoPortal[] };
-export type ConvitePortal = { nome: string; email: string; cliente: string; trocando: boolean };
+export type TutorialDoCliente = CartaoTutorial & { texto: string | null; publicadoEm: string | null; arquivos: ArquivoDoPortal[]; videoPrincipal: ArquivoDoPortal | null };
 
 export class ApiError extends Error {
   /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */

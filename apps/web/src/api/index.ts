@@ -240,11 +240,14 @@ export type Api = {
     espaco(): Promise<T.EspacoPortal>;
     acessos(q?: { q?: string; cliente?: string }): Promise<T.AcessoPortal[]>;
     acessosDoCliente(clienteId: string): Promise<T.AcessosDoCliente>;
-    darAcesso(clienteId: string, d: { nome: string; email: string }): Promise<T.ConviteGerado>;
-    /** o primeiro convite venceu, ou a pessoa esqueceu a senha */
-    novoConvite(id: string): Promise<T.ConviteGerado>;
+    /** o suporte escolhe o login (o e-mail ou um nome) e a senha (1.9, decisão 0045) */
+    darAcesso(clienteId: string, d: { nome: string; login: string; senha: string }): Promise<{ id: string }>;
+    /** a pessoa esqueceu (ou o acesso do 1.8 ainda não tinha senha): as sessões abertas caem */
+    trocarSenhaDoAcesso(id: string, senha: string): Promise<{ ok: boolean }>;
+    /** a senha guardada no cofre (fica na auditoria) */
+    verSenhaDoAcesso(id: string): Promise<{ senha: string; visivelPorSegundos: number }>;
     bloquear(id: string, bloquear: boolean): Promise<{ ok: boolean }>;
-    corrigirAcesso(id: string, d: { nome: string; email: string }): Promise<{ ok: boolean }>;
+    corrigirAcesso(id: string, d: { nome: string; login: string }): Promise<{ ok: boolean }>;
     ajustes(): Promise<T.PortalAjustes>;
     salvarAjustes(d: T.PortalAjustes): Promise<T.PortalAjustes>;
   };
@@ -252,13 +255,11 @@ export type Api = {
   portal: {
     sobre(): Promise<T.SobrePortal>;
     eu(): Promise<T.EuPortal>;
-    /** a pessoa do cliente, ou a equipe com o login do Gestor; quem usa o código de 6 dígitos recebe `{ precisaCodigo: true }` */
-    entrar(email: string, senha: string): Promise<T.EntradaPortal>;
-    /** a segunda etapa da equipe: o e-mail e a senha de novo, mais o código (ou um de recuperação) */
-    entrarComCodigo(email: string, senha: string, codigo: string): Promise<T.EuPortal>;
+    /** a pessoa do cliente (o login e a senha do suporte), ou a equipe com o e-mail e a senha do Gestor; quem usa o código de 6 dígitos recebe `{ precisaCodigo: true }` */
+    entrar(login: string, senha: string): Promise<T.EntradaPortal>;
+    /** a segunda etapa da equipe: o login e a senha de novo, mais o código (ou um de recuperação) */
+    entrarComCodigo(login: string, senha: string, codigo: string): Promise<T.EuPortal>;
     sair(): Promise<{ ok: boolean }>;
-    convite(codigo: string): Promise<T.ConvitePortal>;
-    criarSenha(codigo: string, senha: string): Promise<{ ok: boolean }>;
     trocarSenha(atual: string, nova: string): Promise<{ ok: boolean }>;
     inicio(): Promise<T.InicioPortal>;
     tutoriais(q: { q?: string; produto?: string }): Promise<{ items: T.TutorialAchado[]; total: number }>;

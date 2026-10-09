@@ -112,12 +112,17 @@ export function EtiquetaProduto({ t }: { t: Pick<CartaoTutorial, 'produto' | 'mo
   );
 }
 
+/** "▶ vídeo": o tutorial tem o vídeo principal (1.9). */
+export function MarcaVideo() {
+  return <span className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent shrink-0"><PlayCircle size={13} aria-hidden /> vídeo</span>;
+}
+
 /** O cartão de um tutorial nas listas do portal (o cartão inteiro é o link). */
 export function CartaoDeTutorial({ t, trecho, compacto = false }: { t: CartaoTutorial; trecho?: Array<{ texto: string; achado: boolean }> | null; compacto?: boolean }) {
   return (
     <li className="relative card p-4 flex gap-3 hover:border-accent hover:shadow-sm transition">
       <div className="min-w-0 flex-1 flex flex-col gap-1">
-        <EtiquetaProduto t={t} />
+        <span className="flex items-center gap-2 min-w-0"><EtiquetaProduto t={t} />{t.temVideo && <MarcaVideo />}</span>
         <Link to={t.caminho} className="font-display font-semibold text-[16px] leading-snug text-ink hover:text-accent after:absolute after:inset-0">
           {t.destaque && <Star size={14} className="inline -mt-0.5 mr-1 text-signal fill-current" aria-label="Em destaque" />}
           {t.titulo}
@@ -136,10 +141,10 @@ export function CartaoDestaque({ t }: { t: CartaoTutorial }) {
   return (
     <li className="relative card p-4 flex flex-col gap-2 hover:border-accent hover:shadow-sm transition overflow-hidden">
       <span aria-hidden className="absolute inset-x-0 top-0 h-1" style={{ background: t.produto?.cor ?? 'var(--accent)' }} />
-      <EtiquetaProduto t={t} />
+      <span className="flex items-center gap-2 min-w-0"><EtiquetaProduto t={t} />{t.temVideo && <MarcaVideo />}</span>
       <Link to={t.caminho} className="font-display font-semibold text-[16.5px] leading-snug text-ink hover:text-accent after:absolute after:inset-0">{t.titulo}</Link>
       {t.resumo && <p className="text-[14px] text-ink-2 line-clamp-3">{t.resumo}</p>}
-      <span className="mt-auto pt-1 inline-flex items-center gap-1 text-[13px] font-semibold text-accent">Ver o passo a passo <PlayCircle size={14} /></span>
+      <span className="mt-auto pt-1 inline-flex items-center gap-1 text-[13px] font-semibold text-accent">{t.temVideo ? 'Ver o vídeo' : 'Ver o passo a passo'} <PlayCircle size={14} /></span>
     </li>
   );
 }

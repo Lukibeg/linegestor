@@ -27,8 +27,8 @@ import {
   RascunhoIaSchema, type ProvedorIa,
 } from '@gestor/shared';
 import {
-  AcessoCriarSchema, AJUSTES_PORTAL_PADRAO, arquivosDoTexto, caminhoDoTutorial, clienteNaBase, DIAS_DO_CONVITE, faltaParaPublicarTutorial, motivoForaDaBase,
-  numeroDoCaminho, NOME_DA_EQUIPE_NO_PORTAL, PortalAjustesSchema, PortalCriarSenhaSchema, PortalEntrarComCodigoSchema, PortalEntrarSchema, PortalTrocarSenhaSchema, problemaDoArquivo, situacaoDoAcesso,
+  AcessoCorrigirSchema, AcessoCriarSchema, AcessoSenhaSchema, AJUSTES_PORTAL_PADRAO, arquivosDoTexto, caminhoDoTutorial, clienteNaBase, faltaParaPublicarTutorial, motivoForaDaBase,
+  numeroDoCaminho, NOME_DA_EQUIPE_NO_PORTAL, PortalAjustesSchema, PortalEntrarComCodigoSchema, PortalEntrarSchema, PortalTrocarSenhaSchema, problemaDoArquivo, situacaoDoAcesso,
   TIPOS_IMAGEM_PORTAL, TutoriaisListarSchema, TutorialGravarSchema, tutorialValePara, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar,
 } from '@gestor/shared';
 import type { Api } from './index.js';
@@ -90,11 +90,16 @@ type TutorialRow = {
   id: string; numero: number; titulo: string; resumo: string | null; texto: string | null; produtoId: string | null; moduloId: string | null;
   destaque: boolean; situacao: 'rascunho' | 'publicado'; versao: number; views: number; autorId: string | null; atualizadoPorId: string | null;
   publicadoEm: string | null; criadoEm: string; atualizadoEm: string; deletedAt: string | null;
+  /** o vídeo principal (1.9): no topo do tutorial */
+  videoPrincipalId: string | null;
 };
 type ArqPortalRow = { id: string; tutorialId: string | null; tipo: TipoArquivoPortal; nome: string; mimeType: string; tamanho: number; url: string; porId: string | null; criadoEm: string; deletedAt: string | null };
+/** Um acesso ao portal: o login e a senha do suporte (1.9). Na prévia a senha fica em texto — é a cópia "do cofre". */
 type AcessoRow = {
-  id: string; clienteId: string; nome: string; email: string; senha: string | null; ativo: boolean;
-  conviteCodigo: string | null; conviteVence: string | null; ultimoAcesso: string | null; acessos: number; criadoPorId: string | null; criadoEm: string;
+  id: string; clienteId: string; nome: string; login: string; senha: string | null; ativo: boolean;
+  /** false = a senha foi criada pela pessoa no convite do 1.8 (não fica guardada) */
+  senhaGuardada: boolean;
+  ultimoAcesso: string | null; acessos: number; criadoPorId: string | null; criadoEm: string;
 };
 
 type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null };
@@ -114,7 +119,7 @@ const S = {
   // cliente, ou "equipe:<id do usuário>" quando alguém da equipe entra com o login do Gestor (1.9, decisão 0044).
   tutoriais: [] as TutorialRow[], arqPortal: [] as ArqPortalRow[], acessosPortal: [] as AcessoRow[], proximoTutorial: 1, portalSemeado: false,
   portalSessao: null as string | null,
-  ajustesPortal: { ...AJUSTES_PORTAL_PADRAO, whatsapp: '(71) 99999-0000', email: 'suporte@exemplo.com.br', horario: 'Segunda a sexta, das 8h às 18h' } as PortalAjustes,
+  ajustesPortal: { ...AJUSTES_PORTAL_PADRAO, email: 'suporte@exemplo.com.br', horario: 'Segunda a sexta, das 8h às 18h' } as PortalAjustes,
   // a IA da base (1.8) já vem ligada na prévia — Anthropic, com um preço e um uso do mês de exemplo. A chave
   // não existe de verdade (só marcamos que existe) e a resposta é montada sem IA (ver `respostaDemo`)
   ajustesIa: {
@@ -1672,15 +1677,15 @@ function semearPortal() {
   const manual = arquivo('arquivo', 'Manual rápido do ramal.pdf', 'application/pdf', Math.round(PDF_MANUAL_RAMAL.length * 0.75), PDF_MANUAL_RAMAL, 20);
   const fop2 = arquivo('imagem', 'fop2-painel.png', 'image/png', 28_000, PRINT_FOP2, 15);
   const chat = arquivo('imagem', 'linechat-conversas.png', 'image/png', 26_000, PRINT_CHAT, 6);
-  const tutorial = (o: Pick<TutorialRow, 'titulo' | 'resumo' | 'texto' | 'produtoId' | 'moduloId'> & { destaque?: boolean; publicado?: boolean; autor: string; dias: number; views: number; editado?: number }) => {
+  const tutorial = (o: Pick<TutorialRow, 'titulo' | 'resumo' | 'texto' | 'produtoId' | 'moduloId'> & { destaque?: boolean; publicado?: boolean; autor: string; dias: number; views: number; editado?: number; video?: string }) => {
     const t: TutorialRow = {
       id: id(), numero: S.proximoTutorial++, titulo: o.titulo, resumo: o.resumo, texto: o.texto, produtoId: o.produtoId, moduloId: o.moduloId,
       destaque: !!o.destaque, situacao: o.publicado === false ? 'rascunho' : 'publicado', versao: o.editado != null ? 2 : 1, views: o.views,
       autorId: o.autor, atualizadoPorId: o.autor, publicadoEm: o.publicado === false ? null : daysAgo(o.dias, 10), criadoEm: daysAgo(o.dias, 9),
-      atualizadoEm: o.editado != null ? daysAgo(o.editado, 16) : daysAgo(o.dias, 10), deletedAt: null,
+      atualizadoEm: o.editado != null ? daysAgo(o.editado, 16) : daysAgo(o.dias, 10), deletedAt: null, videoPrincipalId: o.video ?? null,
     };
     S.tutoriais.push(t);
-    for (const a of S.arqPortal) if (!a.tutorialId && arquivosDoTexto(t.texto).includes(a.id)) a.tutorialId = t.id;
+    for (const a of S.arqPortal) if (!a.tutorialId && (arquivosDoTexto(t.texto).includes(a.id) || a.id === t.videoPrincipalId)) a.tutorialId = t.id;
   };
   tutorial({
     titulo: 'Como abrir um chamado com o suporte', resumo: 'O jeito mais rápido de a gente resolver: o que mandar e por onde.', produtoId: null, moduloId: null,
@@ -1689,7 +1694,9 @@ function semearPortal() {
   });
   tutorial({
     titulo: 'Como transferir uma ligação', resumo: 'Passe a ligação para outro ramal sem derrubar, em 3 toques.', produtoId: 'plinepbx', moduloId: null,
-    texto: `Assista (10 segundos):\n[video:${video}]\n\n1. Com a ligação em andamento, aperte TRANSF.\n[print:${teclas}]\n2. Digite o número do ramal (por exemplo, 204).\n3. Aperte TRANSF de novo. Pronto: a ligação já está com o outro ramal.\n\nQuer falar antes com a pessoa do outro ramal? Aperte TRANSF, digite o ramal e espere ela atender; depois aperte TRANSF de novo.`,
+    // o vídeo principal (1.9): fica no topo, antes do passo a passo
+    video,
+    texto: `1. Com a ligação em andamento, aperte TRANSF.\n[print:${teclas}]\n2. Digite o número do ramal (por exemplo, 204).\n3. Aperte TRANSF de novo. Pronto: a ligação já está com o outro ramal.\n\nQuer falar antes com a pessoa do outro ramal? Aperte TRANSF, digite o ramal e espere ela atender; depois aperte TRANSF de novo.`,
     destaque: true, autor: 'u2', dias: 9, views: 58,
   });
   tutorial({
@@ -1727,14 +1734,15 @@ function semearPortal() {
     texto: '1. Mande o texto da mensagem com 5 dias de antecedência.\n2. [completar: o modelo de texto que a locutora usa]', publicado: false, autor: 'u3', dias: 2, views: 0,
   });
 
-  // quem tem acesso (a senha das pessoas da prévia é "demo", como a da equipe)
-  const acesso = (clienteNome: string, nome: string, email: string, o: Partial<AcessoRow>) => {
+  // quem tem acesso: o login e a senha que o suporte criou (a senha das pessoas da prévia é "demo", como a da equipe)
+  const acesso = (clienteNome: string, nome: string, login: string, o: Partial<AcessoRow>) => {
     const clienteId = cli(clienteNome);
     if (!clienteId) return;
-    S.acessosPortal.push({ id: id(), clienteId, nome, email, senha: 'demo', ativo: true, conviteCodigo: null, conviteVence: null, ultimoAcesso: daysAgo(2, 15), acessos: 6, criadoPorId: 'u1', criadoEm: daysAgo(20), ...o });
+    S.acessosPortal.push({ id: id(), clienteId, nome, login, senha: 'demo', senhaGuardada: true, ativo: true, ultimoAcesso: daysAgo(2, 15), acessos: 6, criadoPorId: 'u1', criadoEm: daysAgo(20), ...o });
   };
   acesso('Clínica Aurora', 'Maria Souza', 'maria@clinicaaurora.com.br', { acessos: 14 });
-  acesso('Clínica Aurora', 'Recepção Aurora', 'recepcao@clinicaaurora.com.br', { senha: null, conviteCodigo: codigoDeConviteDemo(), conviteVence: daysAgo(-6, 12), ultimoAcesso: null, acessos: 0, criadoEm: daysAgo(1) });
+  // o login não precisa ser e-mail
+  acesso('Clínica Aurora', 'Recepção Aurora', 'recepcao.aurora', { ultimoAcesso: null, acessos: 0, criadoPorId: 'u3', criadoEm: daysAgo(1) });
   acesso('Hospital Vale Verde', 'Carlos Lima', 'carlos@hvaleverde.org.br', { acessos: 5, ultimoAcesso: daysAgo(6, 9) });
   acesso('Distribuidora Norte', 'Joana Prado', 'joana@distnorte.com.br', { ativo: false, acessos: 3, ultimoAcesso: daysAgo(40, 9) });
   acesso('Farmácia Central (arquivada)', 'Pedro Alves', 'pedro@centralfarma.com.br', { acessos: 21, ultimoAcesso: daysAgo(90, 9) });
@@ -1755,7 +1763,7 @@ const produtoDemo = (pid: string | null) => { const p = pid ? S.products.find((x
 const cartaoDemo = (t: TutorialRow): CartaoTutorial => ({
   id: t.id, numero: t.numero, titulo: t.titulo, resumo: t.resumo, produto: produtoDemo(t.produtoId),
   modulo: t.moduloId ? { id: t.moduloId, nome: S.modules.find((m) => m.id === t.moduloId)?.name ?? '—' } : null,
-  destaque: t.destaque, atualizadoEm: t.atualizadoEm, caminho: caminhoDoTutorial(t.numero, t.titulo),
+  destaque: t.destaque, atualizadoEm: t.atualizadoEm, caminho: caminhoDoTutorial(t.numero, t.titulo), temVideo: !!t.videoPrincipalId,
 });
 const tutorialNaListaDemo = (t: TutorialRow): TutorialNaLista => ({
   ...cartaoDemo(t), situacao: t.situacao, visualizacoes: t.views, autor: nomeDaPessoaDemo(t.autorId), atualizadoPor: nomeDaPessoaDemo(t.atualizadoPorId),
@@ -1769,9 +1777,9 @@ const paraBuscaPortalDemo = (t: TutorialRow) => ({
 const acessoDemo = (a: AcessoRow): AcessoPortal => {
   const c = situacaoClienteDemo(a.clienteId);
   return {
-    id: a.id, nome: a.nome, email: a.email, clienteId: a.clienteId, cliente: c.nome,
-    situacao: situacaoDoAcesso({ ativo: a.ativo, temSenha: !!a.senha, conviteVenceEm: a.conviteVence }, c.naBase),
-    motivo: c.naBase ? null : c.motivo, conviteVenceEm: a.conviteCodigo ? a.conviteVence : null,
+    id: a.id, nome: a.nome, login: a.login, clienteId: a.clienteId, cliente: c.nome,
+    situacao: situacaoDoAcesso({ ativo: a.ativo, temSenha: !!a.senha }, c.naBase),
+    motivo: c.naBase ? null : c.motivo, senhaGuardada: a.senhaGuardada && !!a.senha,
     ultimoAcesso: a.ultimoAcesso, acessos: a.acessos, criadoPor: nomeDaPessoaDemo(a.criadoPorId), criadoEm: a.criadoEm,
   };
 };
@@ -1789,6 +1797,14 @@ function conferirProdutoDemo(d: TutorialGravar) {
   if (moduloId && S.modules.find((m) => m.id === moduloId && !m.deletedAt)?.productId !== produtoId) throw bad('O módulo escolhido não é deste produto.');
   return { produtoId, moduloId };
 }
+/** O vídeo principal: um vídeo que subiu e não é de outro tutorial; passa a ser deste (como o servidor). */
+function ligarVideoPrincipalDemo(t: TutorialRow, videoId: string | null): string | null {
+  if (!videoId) return null;
+  const v = S.arqPortal.find((a) => a.id === videoId && !a.deletedAt);
+  if (!v || v.tipo !== 'video' || (v.tutorialId && v.tutorialId !== t.id)) throw bad('O vídeo principal não chegou ao servidor (ou é de outro tutorial). Suba o vídeo de novo.');
+  v.tutorialId = t.id;
+  return v.id;
+}
 function ligarArquivosDemo(t: TutorialRow) {
   const citados = arquivosDoTexto(t.texto);
   const existem = S.arqPortal.filter((a) => citados.includes(a.id) && !a.deletedAt);
@@ -1796,7 +1812,6 @@ function ligarArquivosDemo(t: TutorialRow) {
   for (const a of existem) if (!a.tutorialId) a.tutorialId = t.id;
 }
 const limpoPortalDemo = (t: string | null | undefined) => { const s = (t ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/^\n+|\s+$/g, ''); return s || null; };
-const codigoDeConviteDemo = () => `demo${id()}${id()}${id()}`.slice(0, 40);
 /** A sessão do portal na prévia: confere a cada pedido, como o servidor (o acesso do cliente, ou alguém da equipe). */
 type SessaoPortalDemo = { a: AcessoRow; u: null; ativos: { produtos: string[]; modulos: string[] } } | { a: null; u: UserRow; ativos: { produtos: string[]; modulos: string[] } };
 const PREFIXO_EQUIPE = 'equipe:';
@@ -1813,24 +1828,24 @@ function sessaoPortalDemo(): SessaoPortalDemo {
   return { a, u: null, ativos: ativosDoClienteDemo(a.clienteId) };
 }
 const euPortalDemo = (sessao: SessaoPortalDemo): EuPortal => {
-  if (sessao.u) return { nome: sessao.u.name, email: sessao.u.email, equipe: true, cliente: { nome: NOME_DA_EQUIPE_NO_PORTAL, logo: null }, portal: S.ajustesPortal };
+  if (sessao.u) return { nome: sessao.u.name, login: sessao.u.email, equipe: true, cliente: { nome: NOME_DA_EQUIPE_NO_PORTAL, logo: null }, portal: S.ajustesPortal };
   const c = S.clients.find((x) => x.id === sessao.a.clienteId);
-  return { nome: sessao.a.nome, email: sessao.a.email, equipe: false, cliente: { nome: c?.tradeName ?? '—', logo: c?.logoUrl ?? null }, portal: S.ajustesPortal };
+  return { nome: sessao.a.nome, login: sessao.a.login, equipe: false, cliente: { nome: c?.tradeName ?? '—', logo: c?.logoUrl ?? null }, portal: S.ajustesPortal };
 };
 /**
- * E-mail e senha do portal, como o servidor: primeiro o acesso do cliente com este e-mail; se não houver
- * (ou a senha não for a dele), o usuário ativo da equipe com o mesmo e-mail e a senha do Gestor.
+ * Login e senha do portal, como o servidor: primeiro o acesso do cliente com este login; se não houver
+ * (ou a senha não for a dele), o usuário ativo da equipe com este e-mail e a senha do Gestor.
  */
-function conferirSenhaDoPortalDemo(email: string, senha: string): { a: AcessoRow; u: null } | { a: null; u: UserRow } {
-  const a = acessosVivos().find((x) => x.email === email);
+function conferirSenhaDoPortalDemo(login: string, senha: string): { a: AcessoRow; u: null } | { a: null; u: UserRow } {
+  const a = acessosVivos().find((x) => x.login === login);
   if (a?.senha && a.senha === senha) {
     if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(403, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
     return { a, u: null };
   }
-  const u = S.users.find((x) => x.email === email && x.active);
+  const u = S.users.find((x) => x.email === login && x.active);
   if (u && u.password === senha) return { a: null, u };
-  audit('login_failed', 'portal', `Tentativa de entrar no portal falhou para ${email}`, null);
-  throw new ApiError(401, 'E-mail ou senha incorretos');
+  audit('login_failed', 'portal', `Tentativa de entrar no portal falhou para ${login}`, null);
+  throw new ApiError(401, 'Login ou senha incorretos');
 }
 /** A equipe entrou no portal (como o servidor: fica na auditoria). */
 function entrarComoEquipeDemo(u: UserRow, como?: 'codigo' | 'recuperacao'): EuPortal {
@@ -3373,7 +3388,8 @@ export const demoApi: Api = {
     async tutorial(numero) {
       await wait(70); requirePerm('records.read');
       const t = tutorialDemoOu404(numero);
-      return { ...tutorialNaListaDemo(t), texto: t.texto, versao: t.versao, criadoEm: t.criadoEm, publicadoEm: t.publicadoEm, arquivos: arquivosDoTutorialDemo(t) };
+      const arquivos = arquivosDoTutorialDemo(t);
+      return { ...tutorialNaListaDemo(t), texto: t.texto, versao: t.versao, criadoEm: t.criadoEm, publicadoEm: t.publicadoEm, arquivos, videoPrincipal: arquivos.find((a) => a.id === t.videoPrincipalId) ?? null };
     },
     async criar(d0) {
       await wait(220); requirePerm('portal.write');
@@ -3381,13 +3397,15 @@ export const demoApi: Api = {
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
       const d = p.data;
       const campos = { titulo: d.titulo.trim(), resumo: limpoPortalDemo(d.resumo), texto: limpoPortalDemo(d.texto), destaque: d.destaque };
-      if (d.publicar) { const falta = faltaParaPublicarTutorial(campos); if (falta) throw bad(falta); }
+      const video = d.videoPrincipalId ?? null;
+      if (d.publicar) { const falta = faltaParaPublicarTutorial({ ...campos, videoPrincipal: video }); if (falta) throw bad(falta); }
       const { produtoId, moduloId } = conferirProdutoDemo(d);
       semearPortal();
       const t: TutorialRow = {
         id: id(), numero: S.proximoTutorial++, ...campos, produtoId, moduloId, situacao: d.publicar ? 'publicado' : 'rascunho', versao: 1, views: 0,
-        autorId: S.me!.id, atualizadoPorId: S.me!.id, publicadoEm: d.publicar ? now() : null, criadoEm: now(), atualizadoEm: now(), deletedAt: null,
+        autorId: S.me!.id, atualizadoPorId: S.me!.id, publicadoEm: d.publicar ? now() : null, criadoEm: now(), atualizadoEm: now(), deletedAt: null, videoPrincipalId: null,
       };
+      t.videoPrincipalId = ligarVideoPrincipalDemo(t, video);
       ligarArquivosDemo(t);
       S.tutoriais.push(t);
       audit('create', 'portal', `${d.publicar ? 'Publicou' : 'Escreveu o rascunho do'} tutorial ${t.numero} "${t.titulo}" no portal`, t.id);
@@ -3401,11 +3419,14 @@ export const demoApi: Api = {
       const d = p.data;
       if (d.versao != null && d.versao !== t.versao) throw new ApiError(409, `${nomeDaPessoaDemo(t.atualizadoPorId) ?? 'Outra pessoa'} salvou este tutorial enquanto você editava. Copie o que você escreveu, abra o tutorial de novo e junte as duas mudanças.`);
       const campos = { titulo: d.titulo.trim(), resumo: limpoPortalDemo(d.resumo), texto: limpoPortalDemo(d.texto), destaque: d.destaque };
-      if (d.publicar) { const falta = faltaParaPublicarTutorial(campos); if (falta) throw bad(falta); }
+      // sem o campo, o vídeo principal fica como estava; nulo tira (como o servidor)
+      const video = d.videoPrincipalId === undefined ? t.videoPrincipalId : d.videoPrincipalId;
+      if (d.publicar) { const falta = faltaParaPublicarTutorial({ ...campos, videoPrincipal: video }); if (falta) throw bad(falta); }
       const { produtoId, moduloId } = conferirProdutoDemo(d);
       ligarArquivosDemo({ ...t, texto: campos.texto });
+      const videoPrincipalId = ligarVideoPrincipalDemo(t, video);
       const antes = t.situacao;
-      Object.assign(t, campos, { produtoId, moduloId, situacao: d.publicar ? 'publicado' : 'rascunho', publicadoEm: t.publicadoEm ?? (d.publicar ? now() : null), versao: t.versao + 1, atualizadoPorId: S.me!.id, atualizadoEm: now() });
+      Object.assign(t, campos, { videoPrincipalId, produtoId, moduloId, situacao: d.publicar ? 'publicado' : 'rascunho', publicadoEm: t.publicadoEm ?? (d.publicar ? now() : null), versao: t.versao + 1, atualizadoPorId: S.me!.id, atualizadoEm: now() });
       const acao = antes !== t.situacao ? (t.situacao === 'publicado' ? 'Publicou' : 'Tirou do portal (voltou a rascunho)') : 'Editou';
       audit('update', 'portal', `${acao} o tutorial ${t.numero} "${t.titulo}"`, t.id);
       return { numero: t.numero, versao: t.versao, situacao: t.situacao, caminho: caminhoDoTutorial(t.numero, t.titulo) };
@@ -3445,7 +3466,7 @@ export const demoApi: Api = {
       await wait(70); requirePerm('records.read');
       const termo = (q?.q ?? '').trim().toLowerCase();
       return acessosVivos().filter((a) => !q?.cliente || a.clienteId === q.cliente).map(acessoDemo)
-        .filter((a) => !termo || `${a.nome} ${a.email} ${a.cliente}`.toLowerCase().includes(termo))
+        .filter((a) => !termo || `${a.nome} ${a.login} ${a.cliente}`.toLowerCase().includes(termo))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     },
     async acessosDoCliente(clienteId) {
@@ -3460,22 +3481,33 @@ export const demoApi: Api = {
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
       const c = S.clients.find((x) => x.id === clienteId && !x.deletedAt);
       if (!c) throw notFound('Cliente');
-      const outro = acessosVivos().find((a) => a.email === p.data.email);
-      if (outro) throw new ApiError(409, `Este e-mail já tem acesso ao portal (${situacaoClienteDemo(outro.clienteId).nome}).`);
-      const codigo = codigoDeConviteDemo();
-      const a: AcessoRow = { id: id(), clienteId, nome: p.data.nome, email: p.data.email, senha: null, ativo: true, conviteCodigo: codigo, conviteVence: new Date(Date.now() + DIAS_DO_CONVITE * 86_400_000).toISOString(), ultimoAcesso: null, acessos: 0, criadoPorId: S.me!.id, criadoEm: now() };
+      const outro = acessosVivos().find((a) => a.login === p.data.login);
+      if (outro) throw new ApiError(409, `Este login já é de outra pessoa (${situacaoClienteDemo(outro.clienteId).nome}). Escolha outro.`);
+      const a: AcessoRow = { id: id(), clienteId, nome: p.data.nome, login: p.data.login, senha: p.data.senha, senhaGuardada: true, ativo: true, ultimoAcesso: null, acessos: 0, criadoPorId: S.me!.id, criadoEm: now() };
       S.acessosPortal.push(a);
-      audit('create', 'portal', `Deu acesso ao portal a ${a.nome} (${a.email}), de ${c.tradeName}`, a.id);
-      return { id: a.id, convite: `/portal/convite/${codigo}` };
+      audit('create', 'portal', `Deu acesso ao portal a ${a.nome} (login ${a.login}), de ${c.tradeName}`, a.id);
+      return { id: a.id };
     },
-    async novoConvite(idAcesso) {
+    async trocarSenhaDoAcesso(idAcesso, senha) {
+      await wait(140); requirePerm('portal.access');
+      const p = AcessoSenhaSchema.safeParse({ senha });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Senha inválida');
+      const a = acessosVivos().find((x) => x.id === idAcesso);
+      if (!a) throw notFound('Acesso');
+      if (!a.ativo) throw bad('O acesso está bloqueado. Desbloqueie antes de trocar a senha.');
+      a.senha = p.data.senha; a.senhaGuardada = true;
+      // as sessões abertas caem (a senha antiga não vale mais)
+      if (S.portalSessao === a.id) S.portalSessao = null;
+      audit('update', 'portal', `Trocou a senha do portal de ${a.nome} (login ${a.login}), de ${situacaoClienteDemo(a.clienteId).nome}`, a.id);
+      return { ok: true };
+    },
+    async verSenhaDoAcesso(idAcesso) {
       await wait(120); requirePerm('portal.access');
       const a = acessosVivos().find((x) => x.id === idAcesso);
       if (!a) throw notFound('Acesso');
-      if (!a.ativo) throw bad('O acesso está bloqueado. Desbloqueie antes de mandar um convite.');
-      a.conviteCodigo = codigoDeConviteDemo(); a.conviteVence = new Date(Date.now() + DIAS_DO_CONVITE * 86_400_000).toISOString();
-      audit('update', 'portal', `Gerou um convite novo para ${a.nome} (${a.email}) entrar no portal`, a.id);
-      return { id: a.id, convite: `/portal/convite/${a.conviteCodigo}` };
+      if (!a.senha || !a.senhaGuardada) throw bad('Esta senha foi criada pela própria pessoa, pelo convite: ela não fica guardada. Troque a senha para passar uma nova.');
+      audit('reveal_secret', 'portal', `${S.me!.name} viu a senha do portal de ${a.nome} (login ${a.login}), de ${situacaoClienteDemo(a.clienteId).nome}`, a.id);
+      return { senha: a.senha, visivelPorSegundos: 30 };
     },
     async bloquear(idAcesso, bloquear) {
       await wait(); requirePerm('portal.access');
@@ -3483,18 +3515,18 @@ export const demoApi: Api = {
       if (!a) throw notFound('Acesso');
       a.ativo = !bloquear;
       if (bloquear && S.portalSessao === a.id) S.portalSessao = null;
-      audit('update', 'portal', `${bloquear ? 'Bloqueou' : 'Desbloqueou'} o acesso de ${a.nome} (${a.email}) ao portal`, a.id);
+      audit('update', 'portal', `${bloquear ? 'Bloqueou' : 'Desbloqueou'} o acesso de ${a.nome} (login ${a.login}) ao portal`, a.id);
       return { ok: true };
     },
     async corrigirAcesso(idAcesso, d0) {
       await wait(); requirePerm('portal.access');
-      const p = AcessoCriarSchema.safeParse(d0);
+      const p = AcessoCorrigirSchema.safeParse(d0);
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
       const a = acessosVivos().find((x) => x.id === idAcesso);
       if (!a) throw notFound('Acesso');
-      const outro = acessosVivos().find((x) => x.email === p.data.email && x.id !== a.id);
-      if (outro) throw new ApiError(409, `Este e-mail já tem acesso ao portal (${situacaoClienteDemo(outro.clienteId).nome}).`);
-      Object.assign(a, { nome: p.data.nome, email: p.data.email });
+      const outro = acessosVivos().find((x) => x.login === p.data.login && x.id !== a.id);
+      if (outro) throw new ApiError(409, `Este login já é de outra pessoa (${situacaoClienteDemo(outro.clienteId).nome}). Escolha outro.`);
+      Object.assign(a, { nome: p.data.nome, login: p.data.login });
       audit('update', 'portal', `Corrigiu o acesso de ${a.nome} ao portal`, a.id);
       return { ok: true };
     },
@@ -3515,20 +3547,20 @@ export const demoApi: Api = {
       return { titulo: a.titulo, whatsapp: a.whatsapp ?? null, email: a.email || null, horario: a.horario ?? null };
     },
     async eu() { await wait(50); return euPortalDemo(sessaoPortalDemo()); },
-    async entrar(email, senha) {
+    async entrar(login, senha) {
       await wait(180);
-      const p = PortalEntrarSchema.safeParse({ email, senha });
+      const p = PortalEntrarSchema.safeParse({ login, senha });
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
-      const r = conferirSenhaDoPortalDemo(p.data.email, p.data.senha);
+      const r = conferirSenhaDoPortalDemo(p.data.login, p.data.senha);
       if (r.u) return r.u.totpOn ? { precisaCodigo: true as const } : entrarComoEquipeDemo(r.u);
       S.portalSessao = r.a.id; r.a.ultimoAcesso = now(); r.a.acessos += 1;
       return euPortalDemo(sessaoPortalDemo());
     },
-    async entrarComCodigo(email, senha, codigo) {
+    async entrarComCodigo(login, senha, codigo) {
       await wait(220);
-      const p = PortalEntrarComCodigoSchema.safeParse({ email, senha, codigo });
+      const p = PortalEntrarComCodigoSchema.safeParse({ login, senha, codigo });
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
-      const r = conferirSenhaDoPortalDemo(p.data.email, p.data.senha);
+      const r = conferirSenhaDoPortalDemo(p.data.login, p.data.senha);
       if (!r.u) { S.portalSessao = r.a.id; r.a.ultimoAcesso = now(); r.a.acessos += 1; return euPortalDemo(sessaoPortalDemo()); }
       if (!r.u.totpOn) return entrarComoEquipeDemo(r.u);
       // como o login do Gestor na prévia: qualquer código de 6 dígitos, ou um de recuperação (uma vez)
@@ -3542,25 +3574,6 @@ export const demoApi: Api = {
       return entrarComoEquipeDemo(r.u, recuperacao ? 'recuperacao' : 'codigo');
     },
     async sair() { await wait(40); S.portalSessao = null; return { ok: true }; },
-    async convite(codigo) {
-      await wait(80);
-      const a = acessosVivos().find((x) => x.conviteCodigo === codigo && x.conviteVence && x.conviteVence > now());
-      if (!a) throw notFound('Convite');
-      if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(403, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
-      return { nome: a.nome, email: a.email, cliente: situacaoClienteDemo(a.clienteId).nome, trocando: !!a.senha };
-    },
-    async criarSenha(codigo, senha) {
-      await wait(180);
-      const p = PortalCriarSenhaSchema.safeParse({ senha });
-      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Senha inválida');
-      const a = acessosVivos().find((x) => x.conviteCodigo === codigo && x.conviteVence && x.conviteVence > now());
-      if (!a) throw notFound('Convite');
-      const trocando = !!a.senha;
-      a.senha = p.data.senha; a.conviteCodigo = null; a.conviteVence = null;
-      audit('update', 'portal', `${a.nome} (${a.email}) ${trocando ? 'trocou a senha' : 'criou a senha'} do portal pelo convite`, a.id);
-      S.portalSessao = a.id; a.ultimoAcesso = now(); a.acessos += 1;
-      return { ok: true };
-    },
     async trocarSenha(atual, nova) {
       await wait(150);
       const { a } = sessaoPortalDemo();
@@ -3568,7 +3581,9 @@ export const demoApi: Api = {
       const p = PortalTrocarSenhaSchema.safeParse({ atual, nova });
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Senha inválida');
       if (a.senha !== p.data.atual) throw bad('A senha atual não confere.');
-      a.senha = p.data.nova;
+      // a cópia "do cofre" acompanha: o suporte continua vendo a senha certa (como o servidor)
+      a.senha = p.data.nova; a.senhaGuardada = true;
+      audit('update', 'portal', `${a.nome} (login ${a.login}) trocou a própria senha do portal`, a.id);
       return { ok: true };
     },
     async inicio() {
@@ -3602,7 +3617,8 @@ export const demoApi: Api = {
       if (!t) throw notFound('Tutorial');
       // a visita da equipe não conta: o número é o dos clientes
       if (!u) t.views += 1;
-      return { ...cartaoDemo(t), texto: t.texto, publicadoEm: t.publicadoEm, arquivos: arquivosDoTutorialDemo(t) };
+      const arquivos = arquivosDoTutorialDemo(t);
+      return { ...cartaoDemo(t), texto: t.texto, publicadoEm: t.publicadoEm, arquivos, videoPrincipal: arquivos.find((a) => a.id === t.videoPrincipalId) ?? null };
     },
   },
   admin: {

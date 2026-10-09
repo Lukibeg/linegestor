@@ -10,6 +10,9 @@
  * Cada tutorial é de um produto (ou de um módulo dele) — só os clientes que têm esse produto ativo
  * veem — ou "Geral", para todos. Rascunho o cliente não vê. Publicado, o link sai daqui mesmo:
  * Copiar ou WhatsApp, com a mensagem pronta.
+ *
+ * O **vídeo principal** (1.9, pedido de 09/10) fica fora do texto: no portal ele aparece no topo,
+ * logo acima do passo a passo — e só com ele já dá para publicar.
  */
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,16 +26,18 @@ import { Campo, Carregando, Chip, Confirmar, mensagemErro, Modal, Spinner, Toggl
 import { useAuth } from '../../lib/auth.js';
 import { relativo } from '../../lib/format.js';
 import { Voltar } from '../../lib/voltar.js';
-import { CorpoDoTutorial, mapaDeArquivos, tamanhoDoArquivo } from '../../portal/Corpo.js';
+import { CorpoDoTutorial, mapaDeArquivos, tamanhoDoArquivo, temCorpo, VideoDoTutorial } from '../../portal/Corpo.js';
 import { EtiquetaProduto } from '../../portal/comum.js';
 import { MandarTutorial } from './Index.js';
 
-type Form = { titulo: string; resumo: string; texto: string; produtoId: string; moduloId: string; destaque: boolean };
-const VAZIO: Form = { titulo: '', resumo: '', texto: '', produtoId: '', moduloId: '', destaque: false };
-type Envio = { ref: string; nome: string; tipo: TipoArquivoPortal; progresso: number };
+type Form = { titulo: string; resumo: string; texto: string; produtoId: string; moduloId: string; destaque: boolean; videoPrincipalId: string };
+const VAZIO: Form = { titulo: '', resumo: '', texto: '', produtoId: '', moduloId: '', destaque: false, videoPrincipalId: '' };
+/** Um arquivo subindo; `principal` = o vídeo principal (não vai para o texto) */
+type Envio = { ref: string; nome: string; tipo: TipoArquivoPortal; progresso: number; principal?: boolean };
 
 const doTutorial = (t: Tutorial): Form => ({
   titulo: t.titulo, resumo: t.resumo ?? '', texto: t.texto ?? '', produtoId: t.produto?.id ?? '', moduloId: t.modulo?.id ?? '', destaque: t.destaque,
+  videoPrincipalId: t.videoPrincipal?.id ?? '',
 });
 
 let seq = 0;
@@ -130,7 +135,7 @@ function Formulario() {
     mutationFn: (publicar: boolean) => {
       const d: TutorialGravar = {
         titulo: f.titulo, resumo: f.resumo || null, texto: f.texto || null, produtoId: f.produtoId || null, moduloId: f.moduloId || null,
-        destaque: f.destaque, publicar, versao: versaoAberta.current,
+        destaque: f.destaque, publicar, versao: versaoAberta.current, videoPrincipalId: f.videoPrincipalId || null,
       };
       return editando ? api.portalAdmin.atualizar(Number(numero), d) : api.portalAdmin.criar(d);
     },
@@ -205,10 +210,30 @@ function Formulario() {
     })();
   };
 
+  /** O vídeo principal sobe sozinho (não entra no texto): chegou, vira o principal. */
+  const subirPrincipal = (file: File) => {
+    setErro('');
+    const p = problemaDoArquivo('video', file.type || 'application/octet-stream', file.size);
+    if (p) { setErro(`“${file.name}”: ${p}`); return; }
+    const ref = novaRef();
+    setEnviando((x) => [...x, { ref, nome: file.name || 'vídeo', tipo: 'video', progresso: 0, principal: true }]);
+    void (async () => {
+      try {
+        const a = await api.portalAdmin.subir('video', file, (v) => setEnviando((x) => x.map((e) => (e.ref === ref ? { ...e, progresso: v } : e))));
+        setSubidos((x) => [...x, a]);
+        mudar({ videoPrincipalId: a.id });
+      } catch (e) {
+        setErro(`“${file.name || 'O vídeo'}” não subiu: ${mensagemErro(e)}`);
+      } finally {
+        setEnviando((x) => x.filter((e) => e.ref !== ref));
+      }
+    })();
+  };
+
   if (editando && existente.isError) return <Vazio titulo="Tutorial não encontrado" texto={mensagemErro(existente.error)} acao={<button className="btn-secondary" onClick={() => navigate('/portal-do-cliente')}>Voltar para os tutoriais</button>} />;
   if (editando && (existente.isLoading || !carregado)) return <Pagina titulo="Tutorial"><Carregando /></Pagina>;
 
-  const falta = faltaParaPublicarTutorial({ titulo: f.titulo, texto: f.texto, resumo: f.resumo });
+  const falta = faltaParaPublicarTutorial({ titulo: f.titulo, texto: f.texto, resumo: f.resumo, videoPrincipal: f.videoPrincipalId || null });
   const ocupado = salvar.isPending || enviando.length > 0;
   const porQue = enviando.length ? 'Espere o arquivo terminar de subir' : undefined;
   const citados = new Set(arquivosDoTexto(f.texto));
@@ -246,7 +271,9 @@ function Formulario() {
               <Campo label="Resumo" dica="uma frase: aparece na lista e no começo do tutorial">
                 <input className="input" id="tutorial-resumo" autoComplete="off" maxLength={300} value={f.resumo} onChange={(e) => mudar({ resumo: e.target.value })} placeholder="Passe a ligação para outro ramal sem derrubar, em 3 toques." />
               </Campo>
-              <AreaDoTexto area={area} valor={f.texto} onChange={(v) => mudar({ texto: v })} inserir={inserir} subir={subir} enviando={enviando} />
+              <CampoVideoPrincipal valor={f.videoPrincipalId} arquivos={arquivos} mapa={mapa} enviando={enviando.find((e) => e.principal)}
+                subir={subirPrincipal} escolher={(id) => mudar({ videoPrincipalId: id })} />
+              <AreaDoTexto area={area} valor={f.texto} onChange={(v) => mudar({ texto: v })} inserir={inserir} subir={subir} enviando={enviando.filter((e) => !e.principal)} />
             </section>
             {arquivos.length > 0 && (
               <section className="card p-4 flex flex-col gap-2">
@@ -256,13 +283,15 @@ function Formulario() {
                     <li key={a.id} className="flex items-center gap-2 text-[13.5px] min-w-0">
                       {a.tipo === 'video' ? <Film size={14} className="text-muted shrink-0" /> : a.tipo === 'imagem' ? <ImagePlus size={14} className="text-muted shrink-0" /> : <Paperclip size={14} className="text-muted shrink-0" />}
                       <span className="truncate">{a.nome}</span><span className="text-muted text-[12px] shrink-0">· {tamanhoDoArquivo(a.tamanho)}</span>
-                      {citados.has(a.id)
-                        ? <Chip tone="ok" className="ml-auto shrink-0">no texto</Chip>
-                        : <button type="button" className="btn-ghost btn-sm ml-auto shrink-0" onClick={() => inserir(marcaDe(a))} title="Pôr a marca do arquivo onde está o cursor">Pôr no texto</button>}
+                      {a.id === f.videoPrincipalId
+                        ? <Chip tone="accent" className="ml-auto shrink-0">vídeo principal</Chip>
+                        : citados.has(a.id)
+                          ? <Chip tone="ok" className="ml-auto shrink-0">no texto</Chip>
+                          : <button type="button" className="btn-ghost btn-sm ml-auto shrink-0" onClick={() => inserir(marcaDe(a))} title="Pôr a marca do arquivo onde está o cursor">Pôr no texto</button>}
                     </li>
                   ))}
                 </ul>
-                <p className="text-[12px] text-muted">O cliente só vê o que está no texto. Os vídeos ficam no servidor e <b>não entram no backup diário</b>: guarde o arquivo original.</p>
+                <p className="text-[12px] text-muted">O cliente só vê o que está no texto (e o vídeo principal). Os vídeos ficam no servidor e <b>não entram no backup diário</b>: guarde o arquivo original.</p>
               </section>
             )}
           </div>
@@ -307,7 +336,7 @@ function Formulario() {
           <div className="flex flex-col gap-3">
             <p className="text-[14px]">“{t?.titulo ?? f.titulo}” já aparece para {f.produtoId ? <>os clientes com <b>{nomeDoAlvo(f, opcoes.data)}</b></> : <b>todos os clientes</b>}. Mande o link:</p>
             <div className="flex flex-wrap gap-2"><MandarTutorial t={{ titulo: t?.titulo ?? f.titulo, caminho }} /></div>
-            <p className="text-[12.5px] text-muted">Quem não estiver logado entra com o e-mail e a senha e cai direto no tutorial.</p>
+            <p className="text-[12.5px] text-muted">Quem não estiver logado entra com o login e a senha e cai direto no tutorial.</p>
           </div>
         </Modal>
       )}
@@ -348,6 +377,51 @@ function QuemVe({ f, opcoes, mudar }: { f: Form; opcoes?: OpcoesPortal; mudar: (
         {!produto ? 'Todo cliente com acesso ao portal vê.' : f.moduloId ? `Só os clientes com ${nomeDoAlvo(f, opcoes)} ligados veem.` : `Só os clientes com ${produto.nome} ativo veem.`}
       </p>
     </section>
+  );
+}
+
+/**
+ * O vídeo principal (1.9): subir um vídeo, ou escolher um que já subiu neste tutorial. No portal, ele
+ * fica no topo, logo acima do passo a passo.
+ */
+function CampoVideoPrincipal({ valor, arquivos, mapa, enviando, subir, escolher }: {
+  valor: string; arquivos: ArquivoDoPortal[]; mapa: ReturnType<typeof mapaDeArquivos>; enviando?: Envio;
+  subir: (f: File) => void; escolher: (id: string) => void;
+}) {
+  const entrada = useRef<HTMLInputElement>(null);
+  const atual = valor ? arquivos.find((a) => a.id === valor) : undefined;
+  const outros = arquivos.filter((a) => a.tipo === 'video' && a.id !== valor);
+  return (
+    <Campo label="Vídeo principal (opcional)" dica="Fica no topo do tutorial, logo acima do passo a passo: é a primeira coisa que o cliente vê. Só com o vídeo já dá para publicar.">
+      <input ref={entrada} type="file" className="hidden" accept="video/mp4,video/webm,video/quicktime"
+        onChange={(e) => { const a = e.target.files?.[0]; e.target.value = ''; if (a) subir(a); }} />
+      {enviando ? (
+        <div className="flex items-center gap-2 text-[12.5px]" aria-live="polite">
+          <Film size={13} className="text-muted shrink-0" /><span className="truncate max-w-[220px]">{enviando.nome}</span>
+          <span className="flex-1 h-1.5 rounded-full bg-surface-2 overflow-hidden min-w-[80px]"><span className="block h-full bg-accent transition-[width]" style={{ width: `${Math.round(enviando.progresso * 100)}%` }} /></span>
+          <span className="tnum text-muted w-10 text-right">{Math.round(enviando.progresso * 100)}%</span>
+        </div>
+      ) : atual ? (
+        <div className="flex flex-col gap-2">
+          <div className="max-w-[360px]"><VideoDoTutorial a={mapa[atual.id]} /></div>
+          <div className="flex flex-wrap items-center gap-2 text-[13px]">
+            <Film size={14} className="text-muted shrink-0" /><span className="truncate max-w-[240px]">{atual.nome}</span><span className="text-muted text-[12px]">· {tamanhoDoArquivo(atual.tamanho)}</span>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => entrada.current?.click()}>Trocar</button>
+            <button type="button" className="btn-ghost btn-sm text-bad" onClick={() => escolher('')}>Tirar</button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" className="btn-secondary btn-sm" onClick={() => entrada.current?.click()} title="MP4 (o melhor), WebM ou MOV, até 300 MB"><Film size={14} /> Subir o vídeo</button>
+          {outros.length > 0 && (
+            <select className="input w-auto max-w-full text-[13px] py-1.5" value="" onChange={(e) => e.target.value && escolher(e.target.value)} aria-label="Usar um vídeo deste tutorial">
+              <option value="">ou use um vídeo deste tutorial…</option>
+              {outros.map((a) => <option key={a.id} value={a.id}>{a.nome}</option>)}
+            </select>
+          )}
+        </div>
+      )}
+    </Campo>
   );
 }
 
@@ -431,7 +505,10 @@ function VistaDoCliente({ f, opcoes, mapa, celular }: { f: Form; opcoes?: Opcoes
       <EtiquetaProduto t={{ produto: p ? { id: p.id, nome: p.nome, cor: p.cor } : null, modulo: m ? { id: m.id, nome: m.nome } : null }} />
       <h1 className={`font-display font-semibold leading-tight ${celular ? 'text-[22px]' : 'text-[26px]'}`}>{f.titulo || <span className="text-muted">(sem título)</span>}</h1>
       {f.resumo && <p className="text-[16px] text-ink-2">{f.resumo}</p>}
-      <div className="card p-4 sm:p-5 mt-1">{f.texto.trim() ? <CorpoDoTutorial texto={f.texto} arquivos={mapa} /> : <p className="text-muted text-[14px]">(o passo a passo aparece aqui)</p>}</div>
+      {f.videoPrincipalId && <div className="mt-1"><VideoDoTutorial a={mapa[f.videoPrincipalId]} principal /></div>}
+      {temCorpo(f.texto, f.videoPrincipalId)
+        ? <div className="card p-4 sm:p-5 mt-1"><CorpoDoTutorial texto={f.texto} arquivos={mapa} omitir={f.videoPrincipalId} /></div>
+        : !f.videoPrincipalId && <div className="card p-4 sm:p-5 mt-1"><p className="text-muted text-[14px]">(o passo a passo aparece aqui)</p></div>}
     </div>
   );
   if (!celular) return <div className="card p-5 sm:p-8 bg-bg max-w-4xl">{conteudo}</div>;
