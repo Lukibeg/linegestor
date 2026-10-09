@@ -53,6 +53,16 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [linechat_cards](#linechat_cards) — Um chamado (card do LineChat), do jeito que ele estava na última sincronização.
 - [linechat_card_moves](#linechat_card_moves) — Cada vez que um chamado mudou de etapa.
 - [linechat_sync_runs](#linechat_sync_runs) — O registro das sincronizações: quando rodou, o que leu, o que mudou e se deu erro.
+- [knowledge_articles](#knowledge_articles) — Um artigo.
+- [knowledge_versions](#knowledge_versions) — Cada versão do texto de um artigo, inteira, para comparar e voltar atrás.
+- [knowledge_links](#knowledge_links) — "Este artigo fala de…": a ligação com o que o Gestor já tem.
+- [knowledge_attachments](#knowledge_attachments) — Um arquivo do artigo, no próprio banco (como os anexos dos projetos: entra no backup).
+- [knowledge_reads](#knowledge_reads) — "Fulano leu o artigo (de leitura obrigatória) em tal dia." Uma linha por pessoa × artigo; ler de novo atualiza a data.
+- [knowledge_comments](#knowledge_comments) — Um comentário no artigo: o que a equipe viu depois ("aconteceu de novo, era outra coisa"), sem mexer no texto.
+- [portal_users](#portal_users) — Uma pessoa do cliente com acesso ao portal.
+- [portal_sessions](#portal_sessions) — A sessão de quem entrou no portal (como `sessions`, mas do cliente).
+- [portal_articles](#portal_articles) — Um tutorial do portal.
+- [portal_files](#portal_files) — Um arquivo do portal: `imagem` (print no texto), `video` ou `arquivo` (para baixar).
 
 
 ---
@@ -355,7 +365,7 @@ Quem entra no sistema.
 
 ## settings
 
-AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), em vez de mexer em arquivo no servidor. Uma linha por assunto: 'backup' e 'avisos'. - `value` guarda o que NÃO é segredo (pasta do Drive, endereço do aviso, se está ligado, e o resultado do último envio), em JSON - `secretId` aponta para o cofre, onde mora o que é segredo: a chave da conta de serviço do Google e o token da API de avisos
+AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), em vez de mexer em arquivo no servidor. Uma linha por assunto (o `id`): 'backup', 'avisos', 'linechat', os da tela de Chamados e do envio automático (1.7) e 'base-ia' (a IA da base, 1.8). - `value` guarda o que NÃO é segredo (pasta do Drive, endereço do aviso, se está ligado, o provedor e o modelo da IA, e o resultado do último envio ou teste), em JSON - `secretId` aponta para o cofre, onde mora o que é segredo: a chave da conta de serviço do Google, o token da API de avisos, a chave do LineChat, o token da FlwChat e a chave da IA
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
@@ -620,4 +630,175 @@ O registro das sincronizações: quando rodou, o que leu, o que mudou e se deu e
 | `moves` | número inteiro | Quantos mudaram de etapa | obrigatório · padrão: 0 |
 | `cards_removed` | número inteiro | Quantos sumiram do LineChat (na completa e na conferência) | obrigatório · padrão: 0 |
 | `user_id` | texto | Quem apertou o botão (nulo na automática) | liga com **users** |
+
+
+---
+
+# 8. BASE DE CONHECIMENTO
+
+## knowledge_articles
+
+Um artigo. O texto é "simples": uma linha que começa com número vira passo, o que está entre crases vira comando com botão Copiar, e `[print:<id>]` numa linha sozinha é um print colado (o arquivo mora em `knowledge_attachments`). Quem lê é a equipe toda — senha não vai aqui, vai no cofre (combinado do Patch 1.8).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `number` | serial | O número do código BC-12: sequencial, nunca reaproveitado (nem depois da lixeira) | obrigatório |
+| `title` | texto | O título, escrito como alguém procuraria ("Ligação cai sempre aos 32 segundos") | obrigatório |
+| `symptom` | texto | O que acontece: o sintoma, nas palavras do cliente | — |
+| `resolution` | texto | Como resolver: os passos (obrigatório para publicar) | — |
+| `cause` | texto | Por que acontece: a causa (opcional, mas é o que ensina a reconhecer o problema) | — |
+| `customer_terms` | texto | Palavras do cliente: outros jeitos de dizer o mesmo problema ("cai sozinha"), para a busca achar | obrigatório · padrão: [] · lista |
+| `status` | texto | rascunho = só quem escreveu (e quem cuida da base) vê · publicado = a equipe toda vê | obrigatório · padrão: 'rascunho' |
+| `mandatory_since` | data e hora | Leitura obrigatória desde quando (nulo = não é). Quem leu antes disso precisa ler de novo | — |
+| `mandatory_by_id` | texto | Quem marcou a leitura obrigatória | liga com **users** |
+| `version` | número inteiro | A versão atual do texto (sobe a cada mudança; cada uma fica guardada em `knowledge_versions`) | obrigatório · padrão: 1 |
+| `author_id` | texto | Quem escreveu | liga com **users** |
+| `updated_by_id` | texto | Quem mexeu por último | liga com **users** |
+| `published_at` | data e hora | Quando foi publicado pela primeira vez | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## knowledge_versions
+
+Cada versão do texto de um artigo, inteira, para comparar e voltar atrás. A última é igual ao artigo; "voltar a esta versão" não apaga nada: grava uma versão nova com o texto antigo. As ligações não entram aqui (a auditoria guarda quem as mudou).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `version` | número inteiro | 1, 2, 3… (a do artigo é a última) | obrigatório |
+| `title` | texto | — | obrigatório |
+| `symptom` | texto | — | — |
+| `resolution` | texto | — | — |
+| `cause` | texto | — | — |
+| `customer_terms` | texto | — | obrigatório · padrão: [] · lista |
+| `note` | texto | Um recado sobre a versão ("voltou à versão 2") | — |
+| `edited_by_id` | texto | — | liga com **users** |
+| `edited_at` | data e hora | — | obrigatório |
+
+## knowledge_links
+
+"Este artigo fala de…": a ligação com o que o Gestor já tem. `kind`: produto · modulo · assunto · cliente · modelo · operadora · chamado · projeto. `target` é o id do que está ligado — menos no assunto, que guarda o NOME da opção do campo Assunto do LineChat (é como o card guarda o valor; o campo é o escolhido nos Relatórios).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `kind` | texto | — | obrigatório |
+| `target` | texto | — | obrigatório |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+
+## knowledge_attachments
+
+Um arquivo do artigo, no próprio banco (como os anexos dos projetos: entra no backup). `inline` = print colado no meio do texto (só imagem PNG, JPG, WEBP ou GIF, que o navegador já reduziu); senão, um anexo da lista, de qualquer formato, que sempre baixa como arquivo.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `file_name` | texto | — | obrigatório |
+| `mime_type` | texto | — | obrigatório |
+| `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
+| `data_base64` | texto | — | obrigatório |
+| `inline` | sim/não | — | obrigatório · padrão: false |
+| `uploaded_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## knowledge_reads
+
+"Fulano leu o artigo (de leitura obrigatória) em tal dia." Uma linha por pessoa × artigo; ler de novo atualiza a data. Vale a leitura feita depois de `mandatorySince` do artigo.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `read_at` | data e hora | — | obrigatório |
+
+## knowledge_comments
+
+Um comentário no artigo: o que a equipe viu depois ("aconteceu de novo, era outra coisa"), sem mexer no texto. Fica registrado quem comentou e quando; apagar só marca `deletedAt`, e a auditoria guarda o texto apagado. Pedido do Luan na prévia do 1.8 (07/10).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `user_id` | texto | Quem comentou | liga com **users** |
+| `body` | texto | — | obrigatório |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+
+---
+
+# 9. PORTAL DO CLIENTE (decisão 0040, Patch 1.8, migração 0010)
+
+## portal_users
+
+Uma pessoa do cliente com acesso ao portal. A senha é ela quem cria, pelo link de convite (a equipe nunca digita senha de cliente). Só entra enquanto o cliente está na base: com produto ativo, fora do arquivo e da lixeira — e a sessão aberta cai na hora em que ele sai.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | — | obrigatório |
+| `email` | texto | O e-mail de entrada, em minúsculas. Único no portal inteiro. | obrigatório |
+| `password_hash` | texto | Hash Argon2 da senha; nulo enquanto a pessoa não aceitou o convite | — |
+| `active` | sim/não | false = bloqueado pela equipe: não entra, e a sessão aberta cai | obrigatório · padrão: true |
+| `invite_token_hash` | texto | O convite (criar ou trocar a senha): só o hash do código fica no banco; vale até `invite_expires_at` e uma vez só | — |
+| `invite_expires_at` | data e hora | — | — |
+| `last_login_at` | data e hora | Última vez que entrou, e quantas vezes entrou | — |
+| `login_count` | número inteiro | — | obrigatório · padrão: 0 |
+| `created_by_id` | texto | Quem da equipe deu o acesso | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+
+## portal_sessions
+
+A sessão de quem entrou no portal (como `sessions`, mas do cliente). Dura 30 dias sem uso.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `expires_at` | data e hora | — | obrigatório |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `ip` | texto | — | — |
+| `user_agent` | texto | — | — |
+
+## portal_articles
+
+Um tutorial do portal. O texto é o "texto simples" da base de conhecimento — linha com número vira passo, crases viram comando com Copiar, `[print:<id>]` é um print — e mais `[video:<id>]` (o player) e `[arquivo:<id>]` (o botão de baixar). Sem produto = Geral (todos os clientes veem).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `number` | serial | O número do link (/portal/a/12-como-transferir…): sequencial, nunca reaproveitado | obrigatório |
+| `title` | texto | — | obrigatório |
+| `summary` | texto | Uma frase: aparece na lista e no começo do tutorial | — |
+| `body` | texto | — | — |
+| `product_id` | texto | De qual produto (nulo = Geral) | liga com **products** |
+| `module_id` | texto | De qual módulo do produto (nulo = o produto inteiro) | liga com **productModules** |
+| `featured` | sim/não | Em destaque na página inicial do portal | obrigatório · padrão: false |
+| `status` | texto | rascunho = só a equipe vê · publicado = os clientes veem | obrigatório · padrão: 'rascunho' |
+| `version` | número inteiro | Sobe a cada gravação: quem salvou no meio não é atropelado | obrigatório · padrão: 1 |
+| `views` | número inteiro | Quantas vezes os clientes abriram o tutorial | obrigatório · padrão: 0 |
+| `author_id` | texto | — | liga com **users** |
+| `updated_by_id` | texto | — | liga com **users** |
+| `published_at` | data e hora | — | — |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## portal_files
+
+Um arquivo do portal: `imagem` (print no texto), `video` ou `arquivo` (para baixar). Imagem e arquivo ficam no banco, em base64 (entram no backup diário); o vídeo fica em disco, em `PORTAL_DIR/videos/<disk_name>`, pelo tamanho (e tem backup próprio, semanal).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `kind` | texto | O tutorial que usa o arquivo (nulo enquanto o tutorial novo não foi gravado) | obrigatório |
+| `file_name` | texto | — | obrigatório |
+| `mime_type` | texto | — | obrigatório |
+| `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
+| `data_base64` | texto | Imagem e arquivo: o conteúdo em base64 | — |
+| `disk_name` | texto | Vídeo: o nome do arquivo em disco | — |
+| `uploaded_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 

@@ -180,6 +180,83 @@ export type Api = {
     /** Endereço para baixar o anexo (abre direto no navegador) */
     anexoUrl(anexoId: string): string;
   };
+  /** Base de conhecimento (Patch 1.8) */
+  base: {
+    lista(q: Record<string, unknown>): Promise<T.ListaBase>;
+    opcoes(): Promise<T.OpcoesBase>;
+    /** pelo número (12) ou pelo código (BC-12) */
+    get(numero: number | string): Promise<T.Artigo>;
+    criar(d: T.ArtigoGravar): Promise<T.GravadoArtigo>;
+    /** `versao` é a que a pessoa abriu: se outra pessoa salvou no meio, vem erro 409 */
+    atualizar(numero: number, d: T.ArtigoGravar): Promise<T.GravadoArtigo>;
+    remover(numero: number): Promise<{ ok: boolean }>;
+    /** ligar (ou tirar) uma coisa só, sem mexer no texto (o "Ligar um artigo" do projeto) */
+    ligar(numero: number, l: { tipo: T.TipoLigacao; alvo: string; ligar: boolean }): Promise<{ ok: boolean }>;
+    versoes(numero: number): Promise<T.VersoesArtigo>;
+    comparar(numero: number, de: number, para: number): Promise<{ de: T.TextoVersao; para: T.TextoVersao }>;
+    voltarVersao(numero: number, versao: number): Promise<{ numero: number; versao: number }>;
+    /** só quem cuida da base: pedir (ou tirar) a leitura obrigatória */
+    obrigatoria(numero: number, ligar: boolean): Promise<{ ok: boolean }>;
+    marcarLida(numero: number): Promise<{ ok: boolean }>;
+    leituras(numero: number): Promise<T.LeiturasArtigo>;
+    /** quem escreve comenta (fica registrado quem e quando); apagar é o seu, ou qualquer um se você cuida da base */
+    comentar(numero: number, texto: string): Promise<{ id: string }>;
+    apagarComentario(numero: number, id: string): Promise<{ ok: boolean }>;
+    /** os de leitura obrigatória que esta pessoa ainda não leu (o número do menu) */
+    pendentes(): Promise<T.PendentesBase>;
+    /** os publicados ligados a um cliente, modelo, operadora, projeto… (as fichas) */
+    ligados(tipo: T.TipoLigacao, alvo: string): Promise<T.LigadosBase>;
+    /** o livrinho da tabela de Chamados */
+    paraChamados(ids: string[]): Promise<T.ArtigosDosChamados>;
+    /** "Registrar na base" a partir de um chamado (pelo id do card ou IS-3607) */
+    doChamado(ref: string): Promise<T.DoChamado>;
+    /** a IA (1.8): pronta? perguntar à base, o rascunho a partir do card */
+    ia(): Promise<T.SituacaoIa>;
+    perguntar(pergunta: string): Promise<T.RespostaIa>;
+    rascunhoIa(chamado: string): Promise<T.RascunhoIa>;
+    /** os ajustes da IA (administração): o provedor, o modelo, a chave (que nunca volta) */
+    iaAjustes(): Promise<T.AjustesIa>;
+    salvarIaAjustes(a: T.SalvarAjustesIa): Promise<T.AjustesIa>;
+    testarIa(): Promise<{ ok: boolean; mensagem: string }>;
+    /** os modelos que a chave pode usar (a digitada, ou a guardada se for do mesmo provedor) */
+    iaModelos(p: { provedor: T.ProvedorIa; endereco?: string | null; chave?: string }): Promise<{ modelos: T.ModeloIa[] }>;
+  };
+  /** Portal do cliente — o lado da equipe (Patch 1.8) */
+  portalAdmin: {
+    opcoes(): Promise<T.OpcoesPortal>;
+    tutoriais(q: Record<string, unknown>): Promise<T.Page<T.TutorialNaLista>>;
+    tutorial(numero: number): Promise<T.Tutorial>;
+    criar(d: T.TutorialGravar): Promise<T.GravadoTutorial>;
+    /** `versao` é a que a pessoa abriu: se outra pessoa salvou no meio, vem erro 409 */
+    atualizar(numero: number, d: T.TutorialGravar): Promise<T.GravadoTutorial>;
+    remover(numero: number): Promise<{ ok: boolean }>;
+    /** sobe um arquivo (o vídeo até 300 MB); `progresso` recebe de 0 a 1 */
+    subir(tipo: T.TipoArquivoPortal, arquivo: File, progresso?: (p: number) => void): Promise<T.ArquivoDoPortal>;
+    espaco(): Promise<T.EspacoPortal>;
+    acessos(q?: { q?: string; cliente?: string }): Promise<T.AcessoPortal[]>;
+    acessosDoCliente(clienteId: string): Promise<T.AcessosDoCliente>;
+    darAcesso(clienteId: string, d: { nome: string; email: string }): Promise<T.ConviteGerado>;
+    /** o primeiro convite venceu, ou a pessoa esqueceu a senha */
+    novoConvite(id: string): Promise<T.ConviteGerado>;
+    bloquear(id: string, bloquear: boolean): Promise<{ ok: boolean }>;
+    corrigirAcesso(id: string, d: { nome: string; email: string }): Promise<{ ok: boolean }>;
+    ajustes(): Promise<T.PortalAjustes>;
+    salvarAjustes(d: T.PortalAjustes): Promise<T.PortalAjustes>;
+  };
+  /** Portal do cliente — o lado do cliente, com login próprio (Patch 1.8) */
+  portal: {
+    sobre(): Promise<T.SobrePortal>;
+    eu(): Promise<T.EuPortal>;
+    entrar(email: string, senha: string): Promise<T.EuPortal>;
+    sair(): Promise<{ ok: boolean }>;
+    convite(codigo: string): Promise<T.ConvitePortal>;
+    criarSenha(codigo: string, senha: string): Promise<{ ok: boolean }>;
+    trocarSenha(atual: string, nova: string): Promise<{ ok: boolean }>;
+    inicio(): Promise<T.InicioPortal>;
+    tutoriais(q: { q?: string; produto?: string }): Promise<{ items: T.TutorialAchado[]; total: number }>;
+    /** pelo número, ou pelo pedaço do endereço ("12-como-transferir…") */
+    tutorial(numero: string): Promise<T.TutorialDoCliente>;
+  };
   admin: {
     users(): Promise<T.User[]>;
     createUser(d: Record<string, unknown>): Promise<T.User>;

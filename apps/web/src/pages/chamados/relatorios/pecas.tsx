@@ -7,7 +7,7 @@
  * mostra os chamados por trás do que foi clicado.
  */
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { ExternalLink, Info, TrendingDown, TrendingUp } from 'lucide-react';
 import { duracaoLegivel } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -15,6 +15,7 @@ import type { LinhaChamado } from '../../../api/types.js';
 import { Carregando, Chip, Modal, mensagemErro } from '../../../components/ui/index.js';
 import { data, relativo } from '../../../lib/format.js';
 import { BotaoEnvio } from '../../../lib/envio.js';
+import { LivroDoChamado, RegistrarNaBase, useArtigosDosChamados } from '../../base/partes.js';
 
 export const nf = (n: number) => n.toLocaleString('pt-BR');
 export const pct = (n: number, de: number) => (de ? Math.round((n / de) * 100) : 0);
@@ -152,6 +153,8 @@ export function JanelaDaPeca({ peca, filtros, onClose }: { peca: string | null; 
     enabled: !!peca,
   });
   const r = q.data;
+  // 1.8: o livrinho da base em cada chamado da janela
+  const livros = useArtigosDosChamados(useMemo(() => (r?.itens ?? []).map((c) => c.id), [r]));
   return (
     <Modal open={!!peca} onClose={onClose} largura="max-w-4xl" titulo={r ? <>{r.titulo} <span className="text-muted font-normal tnum">({nf(r.total)})</span></> : 'Chamados'}>
       {q.isLoading ? <Carregando /> : q.isError ? <div className="text-bad text-sm">{mensagemErro(q.error)}</div> : !r?.itens.length ? <div className="text-muted text-sm">Nenhum chamado aqui.</div> : (
@@ -160,8 +163,8 @@ export function JanelaDaPeca({ peca, filtros, onClose }: { peca: string | null; 
             <thead><tr><th>Card</th><th>Título</th><th>Etapa</th><th>Responsável</th><th>Aberto em</th><th>Fechado em</th></tr></thead>
             <tbody>
               {r.itens.map((c) => (
-                <tr key={c.id}>
-                  <td><CodigoDoCard c={c} /></td>
+                <tr key={c.id} className="group">
+                  <td className="whitespace-nowrap"><span className="inline-flex items-center gap-1"><CodigoDoCard c={c} /><LivroDoChamado artigos={livros[c.id]} /><RegistrarNaBase cardId={c.id} className="md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100" /></span></td>
                   <td className="text-[13px]"><span className="line-clamp-2 min-w-[200px]">{c.title || <span className="text-muted">(sem título)</span>}</span></td>
                   <td className="text-[13px] whitespace-nowrap">{c.stepTitle ?? '—'}{c.arquivado && <Chip tone="muted" className="ml-1">arquivado</Chip>}</td>
                   <td className="text-[13px] whitespace-nowrap">{c.responsavel ?? <span className="text-muted">—</span>}</td>

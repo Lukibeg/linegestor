@@ -16,6 +16,7 @@ import { didFormatado, reais } from '../../lib/format.js';
 import { CircuitoForm } from './Lista.js';
 import { Voltar } from '../../lib/voltar.js';
 import { Numeracao } from '../dids/Lista.js';
+import { ArtigosLigados } from '../base/partes.js';
 
 export function CircuitoDetalhe() {
   const { id = '' } = useParams();
@@ -28,6 +29,8 @@ export function CircuitoDetalhe() {
   const doDelete = async () => { setBusy(true); try { await api.circuits.remove(c.id); toast.push('ok', 'Circuito foi para a lixeira'); await qc.invalidateQueries({ queryKey: ['circuits'] }); nav('/circuitos'); } catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); } };
   return (
     <Pagina voltar={<Voltar rota="/circuitos" texto="Todos os circuitos" />} titulo={<span className="flex items-center gap-2">{c.name}{c.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">link de terceiro</Chip>}</span>} sub={<span>{c.carrierName ?? 'sem operadora'} · N° <span className="font-mono">{c.code}</span>{c.keyNumber ? <> · número chave <span className="font-mono tnum">{didFormatado(c.keyNumber)}</span></> : null}{c.ownerName ? ` · titular: ${c.ownerName}` : ''}</span>} acoes={<>
+      {/* 1.8: o que a base sabe sobre a operadora deste circuito (só aparece se houver) */}
+      <ArtigosLigados tipo="operadora" alvo={c.carrierId} sobre={c.carrierName ? `sobre a ${c.carrierName}` : 'sobre a operadora'} />
       <Can permission="dids.assign"><button className="btn-primary" onClick={() => setFaixa(true)}><Plus size={15} /> Criar faixa de DIDs</button></Can>
       <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button></Can>
       <Can permission="records.delete"><button className="btn-ghost text-bad" onClick={() => setExcluir(true)} title="Mandar para a lixeira"><Trash2 size={15} /></button></Can>

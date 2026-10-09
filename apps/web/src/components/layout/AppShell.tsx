@@ -3,7 +3,7 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, ListChecks, LogOut, Menu, Moon, Settings, Sparkles, Sun, Upload, UserRound, X } from 'lucide-react';
+import { BookOpen, Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, Moon, Settings, Sparkles, Sun, Upload, UserRound, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
 import { NovidadesPopup } from '../../pages/novidades/Index.js';
@@ -20,6 +20,10 @@ const NAV = [
   { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
   // os chamados de suporte, lidos do LineChat (substitui o Grafana)
   { to: '/chamados', label: 'Chamados', icon: Headset, perm: 'support.read' },
+  // o que a equipe aprendeu: chamados estranhos, passo a passo, "como faz" (1.8)
+  { to: '/base', label: 'Base de conhecimento', icon: BookOpen, perm: 'records.read' },
+  // o que o cliente vê: os tutoriais (vídeo, print, arquivo) e quem entra (1.8)
+  { to: '/portal-do-cliente', label: 'Portal do cliente', icon: LifeBuoy, perm: 'records.read' },
   // logo abaixo: o "o que mudou" de cada publicação
   { to: '/novidades', label: 'Novidades', icon: Sparkles, perm: 'records.read' },
   { to: '/dados', label: 'Importar / Exportar', icon: Upload, perm: ['data.import', 'data.export'] },
@@ -54,13 +58,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   // o número no menu: quantas notas de novidade esta pessoa ainda não leu
   const novidades = useQuery({ queryKey: ['novidades'], queryFn: () => api.novidades.lista(), enabled: !!user, staleTime: 5 * 60_000 });
   const naoLidas = novidades.data?.naoLidas ?? 0;
+  // e quantos artigos de leitura obrigatória ela ainda não leu
+  const pendentes = useQuery({ queryKey: ['base', 'pendentes'], queryFn: () => api.base.pendentes(), enabled: !!user && can('records.read'), staleTime: 60_000 });
+  const leituras = pendentes.data?.naoLidas ?? 0;
   // no celular o menu é sempre completo (abre por cima); no desktop pode ficar só com ícones
   const hide = collapsed ? 'md:hidden' : '';
 
   return (
     <div className="min-h-full flex">
       {/* menu lateral */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-60 ${collapsed ? 'md:w-16' : 'md:w-60'} bg-surface border-r border-line flex flex-col transition-[transform,width] duration-200 md:translate-x-0 md:sticky md:inset-y-auto md:top-0 md:h-screen ${open ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 ${collapsed ? 'md:w-16' : 'md:w-64'} bg-surface border-r border-line flex flex-col transition-[transform,width] duration-200 md:translate-x-0 md:sticky md:inset-y-auto md:top-0 md:h-screen ${open ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className={`h-14 flex items-center gap-2 px-4 border-b border-line ${collapsed ? 'md:justify-center md:px-0' : ''}`}>
           {/* no celular o menu é sempre largo, então mostra o logotipo inteiro */}
           {collapsed ? <><Logotipo altura={26} className="md:hidden" /><Simbolo tamanho={26} className="hidden md:block md:mx-auto" /></> : <Logotipo altura={26} />}
@@ -74,6 +81,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               <n.icon size={17} className="shrink-0" /> <span className={hide}>{n.label}</span>
               {n.to === '/novidades' && naoLidas > 0 && (
                 <span className={`ml-auto tnum text-[11px] font-semibold rounded-full bg-accent text-white px-1.5 py-0.5 ${collapsed ? 'md:absolute md:ml-0 md:translate-x-4 md:-translate-y-3' : ''}`} title={`${naoLidas} novidade(s) que você ainda não leu`}>{naoLidas}</span>
+              )}
+              {n.to === '/base' && leituras > 0 && (
+                <span className={`ml-auto tnum text-[11px] font-semibold rounded-full bg-signal text-white px-1.5 py-0.5 ${collapsed ? 'md:absolute md:ml-0 md:translate-x-4 md:-translate-y-3' : ''}`} title={`${leituras} artigo(s) de leitura obrigatória que você ainda não leu`}>{leituras}</span>
               )}
             </NavLink>
           ))}

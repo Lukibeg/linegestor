@@ -32,6 +32,9 @@ import projectRoutes from './routes/projects.js';
 import releaseNoteRoutes from './routes/releaseNotes.js';
 import chamadoRoutes from './routes/chamados.js';
 import envioRoutes from './routes/envio.js';
+import baseRoutes from './routes/base.js';
+import portalAdminRoutes from './routes/portalAdmin.js';
+import portalRoutes from './routes/portal.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -86,6 +89,10 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
     await api.register(projectRoutes, { prefix: '/projects' });
     await api.register(chamadoRoutes, { prefix: '/chamados' });
     await api.register(envioRoutes, { prefix: '/envio' });
+    await api.register(baseRoutes, { prefix: '/base' });
+    // o portal do cliente (1.8): a equipe cuida em /portal-admin; o cliente usa /portal, com login próprio
+    await api.register(portalAdminRoutes, { prefix: '/portal-admin' });
+    await api.register(portalRoutes, { prefix: '/portal' });
   }, { prefix: '/api' });
 
   // Em produção, a própria API serve a interface (apps/web/dist) e devolve o index.html para qualquer rota que não seja /api

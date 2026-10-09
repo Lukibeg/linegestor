@@ -20,6 +20,7 @@ import { ProjetoForm } from './Form.js';
 import { Andamento, ChipSituacao, CHIP_SELECT, FAIXA, Numero, SITUACAO } from './partes.js';
 import { Anexos, Comentarios } from './Conversa.js';
 import { FichaEmJanela } from '../clientes/Ficha.js';
+import { ComoFazer } from '../base/partes.js';
 
 export function ProjetoFicha() {
   const { id = '' } = useParams();
@@ -118,6 +119,9 @@ export function ProjetoFicha() {
         </div>
 
       </section>
+
+      {/* ---------- como fazer: os artigos da base ligados ao projeto (1.8) ---------- */}
+      <ComoFazer p={p} />
 
       {/* ---------- como está cada passo ---------- */}
       {r.porEtapa.length > 0 && r.total > 0 && (

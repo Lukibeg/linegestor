@@ -345,6 +345,149 @@ export type ProjetoDoCliente = {
   feitas: number; etapas: number;
 };
 
+
+// ---------- Base de conhecimento (Patch 1.8) ----------
+
+export type { LigacaoArtigo, TipoLigacao, PedacoTrecho, ArtigoCurto, LinhaDiferenca, ArtigoGravar, AnexoNovoArtigo } from '@gestor/shared';
+import type { PedacoTrecho as _Trecho, TipoLigacao as _Tipo, ArtigoCurto as _Curto } from '@gestor/shared';
+
+/** Uma ligação já com o nome (o cliente "Clínica Aurora", o chamado "IS-3607" com o título…). */
+export type LigacaoMostrada = { tipo: _Tipo; alvo: string; nome: string; extra: string | null; href: string | null; existe: boolean };
+export type ArtigoNaLista = {
+  id: string; numero: number; codigo: string; titulo: string; situacao: 'rascunho' | 'publicado';
+  obrigatoria: boolean;
+  /** só nos de leitura obrigatória: esta pessoa já leu (depois do pedido)? */
+  lidaPorMim: boolean | null;
+  autor: string | null; atualizadoPor: string | null; atualizadoEm: string; publicadoEm: string | null;
+  ligacoes: LigacaoMostrada[];
+  /** o pedaço do texto onde a busca achou, com as palavras em destaque */
+  trecho: _Trecho[] | null;
+  /** o começo do texto, quando não há busca */
+  resumo: string | null;
+  /** quantos comentários o artigo tem */
+  comentarios: number;
+};
+export type ListaBase = Page<ArtigoNaLista> & { podeEscrever: boolean; podeCuidar: boolean };
+/** `url` é relativa à API (como a logo do cliente); na prévia, a imagem embutida */
+export type AnexoArtigo = { id: string; fileName: string; mimeType: string; sizeBytes: number; inline: boolean; createdAt: string; url: string };
+export type Artigo = {
+  id: string; numero: number; codigo: string; titulo: string;
+  oQueAcontece: string | null; comoResolver: string | null; porQueAcontece: string | null; palavrasDoCliente: string[];
+  situacao: 'rascunho' | 'publicado'; versao: number;
+  autor: { id: string; nome: string } | null; atualizadoPor: string | null;
+  criadoEm: string; atualizadoEm: string; publicadoEm: string | null;
+  ligacoes: LigacaoMostrada[];
+  anexos: AnexoArtigo[];
+  obrigatoria: { desde: string; por: string | null; lidaPorMim: boolean; lidos: number; pessoas: number } | null;
+  /** do mais novo para o mais antigo */
+  comentarios: ComentarioDoArtigo[];
+  podeEditar: boolean; podeApagar: boolean; podeCuidar: boolean; podeComentar: boolean;
+};
+/** Um comentário no artigo (pedido do Luan na prévia do 1.8): fica registrado quem e quando. */
+export type ComentarioDoArtigo = { id: string; texto: string; autor: string; em: string; podeApagar: boolean };
+export type OpcoesBase = {
+  produtos: Array<{ id: string; nome: string; cor: string; modulos: Array<{ id: string; nome: string }> }>;
+  /** o nome do campo Assunto do LineChat (o mesmo dos Relatórios); null = sem LineChat */
+  campoAssunto: string | null;
+  assuntos: string[];
+  clientes: Array<{ id: string; nome: string }>;
+  modelos: Array<{ id: string; nome: string }>;
+  operadoras: Array<{ id: string; nome: string }>;
+  projetos: Array<{ id: string; nome: string; situacao: string }>;
+  autores: Array<{ id: string; nome: string }>;
+};
+export type VersoesArtigo = { atual: number; versoes: Array<{ versao: number; por: string | null; em: string; nota: string | null }> };
+export type TextoVersao = { versao: number; titulo: string; oQueAcontece: string | null; comoResolver: string | null; porQueAcontece: string | null; palavrasDoCliente: string[] };
+export type LeiturasArtigo = { desde: string | null; lidos: Array<{ nome: string; em: string }>; faltam: Array<{ nome: string }> };
+export type PendentesBase = { naoLidas: number; artigos: Array<{ numero: number; codigo: string; titulo: string; desde: string }> };
+export type LigadosBase = { total: number; artigos: Array<{ id: string; numero: number; codigo: string; titulo: string }> };
+export type ArtigosDosChamados = Record<string, _Curto[]>;
+export type DoChamado = { chamado: { id: string; key: string | null; titulo: string; link: string | null }; titulo: string; oQueAcontece: string | null; ligacoes: LigacaoMostrada[] };
+export type GravadoArtigo = { numero: number; codigo: string; situacao: string; versao: number };
+
+// ---------- a IA da base (1.8), com o provedor que a administração escolher ----------
+
+export type ProvedorIa = 'anthropic' | 'openai' | 'google' | 'compativel';
+/** Para as telas da base: a IA está pronta? (o modelo e o provedor vão no "Perguntar à IA") */
+export type SituacaoIa = { ativa: boolean; modelo: string; provedor: string };
+export type RespostaIa = {
+  /** a resposta, linha a linha; cada linha com os artigos de onde saiu (texto vazio = linha em branco) */
+  trechos: Array<{ texto: string; fontes: number[] }>;
+  /** os citados primeiro, depois os outros que foram para a IA */
+  artigos: Array<{ numero: number; codigo: string; titulo: string; citado: boolean }>;
+  achou: boolean;
+  modelo: string;
+  provedor: string;
+  /** em dólar; null = o preço do modelo não foi informado em Ajustes */
+  custo: number | null;
+};
+export type RascunhoIa = { titulo: string; oQueAcontece: string; comoResolver: string; porQueAcontece: string; palavrasDoCliente: string[]; custo: number | null; modelo: string; provedor: string };
+export type AjustesIa = {
+  ativo: boolean;
+  provedor: ProvedorIa;
+  modelo: string;
+  modeloNome: string | null;
+  /** só no "compatível" */
+  endereco: string | null;
+  /** dólar por milhão de tokens (opcional) */
+  precoEntrada: number | null;
+  precoSaida: number | null;
+  temChave: boolean;
+  /** de qual provedor é a chave guardada */
+  chaveDe: ProvedorIa | null;
+  /** no compatível, o serviço da chave guardada ("api.deepseek.com"): ela só vai para lá */
+  chaveEndereco: string | null;
+  ultimoTesteEm: string | null; ultimoTesteOk: boolean | null; ultimoTesteMsg: string | null;
+  /** custo: null = sem o preço do modelo */
+  uso: { mes: string; perguntas: number; rascunhos: number; entrada: number; saida: number; custo: number | null };
+};
+export type SalvarAjustesIa = {
+  ativo: boolean; provedor: ProvedorIa; modelo: string; modeloNome: string | null; endereco: string | null;
+  precoEntrada: number | null; precoSaida: number | null;
+  /** em branco = manter a guardada */
+  chave?: string;
+};
+export type ModeloIa = { id: string; nome: string };
+
+// ---------- Portal do cliente (Patch 1.8) ----------
+
+export type { TutorialGravar, PortalAjustes, SituacaoAcesso, TipoArquivoPortal } from '@gestor/shared';
+import type { SituacaoAcesso as _SitAcesso, TipoArquivoPortal as _TipoArq, PortalAjustes as _AjustesPortal } from '@gestor/shared';
+
+export type ProdutoDoPortal = { id: string; nome: string; cor: string };
+/** O cartão do tutorial: a lista da equipe e as do cliente. `caminho` é o link (/portal/a/12-…). */
+export type CartaoTutorial = {
+  id: string; numero: number; titulo: string; resumo: string | null;
+  produto: ProdutoDoPortal | null; modulo: { id: string; nome: string } | null;
+  destaque: boolean; atualizadoEm: string; caminho: string;
+};
+/** `trecho`: onde a busca bateu (só com busca) */
+export type TutorialNaLista = CartaoTutorial & { situacao: 'rascunho' | 'publicado'; visualizacoes: number; autor: string | null; atualizadoPor: string | null; trecho?: Array<{ texto: string; achado: boolean }> | null };
+/** `url` é relativa à API (como a logo do cliente); na prévia, o próprio arquivo embutido */
+export type ArquivoDoPortal = { id: string; tipo: _TipoArq; nome: string; mimeType: string; tamanho: number; url: string };
+export type Tutorial = TutorialNaLista & { texto: string | null; versao: number; criadoEm: string; publicadoEm: string | null; arquivos: ArquivoDoPortal[] };
+export type GravadoTutorial = { numero: number; versao: number; situacao: 'rascunho' | 'publicado'; caminho: string };
+export type OpcoesPortal = { produtos: Array<ProdutoDoPortal & { modulos: Array<{ id: string; nome: string }> }> };
+export type AcessoPortal = {
+  id: string; nome: string; email: string; clienteId: string; cliente: string;
+  situacao: _SitAcesso; motivo: string | null; conviteVenceEm: string | null;
+  ultimoAcesso: string | null; acessos: number; criadoPor: string | null; criadoEm: string;
+};
+export type AcessosDoCliente = { naBase: boolean; motivo: string | null; acessos: AcessoPortal[] };
+/** O caminho do convite (/portal/convite/<código>): o código só existe agora, no banco fica o hash */
+export type ConviteGerado = { id: string; convite: string };
+export type EspacoPortal = { videos: number; bytesVideos: number; arquivos: number; bytesArquivos: number };
+// o lado do cliente
+export type EuPortal = { nome: string; email: string; cliente: { nome: string; logo: string | null }; portal: _AjustesPortal };
+export type SobrePortal = { titulo: string; whatsapp: string | null; email: string | null; horario: string | null };
+export type InicioPortal = {
+  portal: _AjustesPortal; produtos: Array<ProdutoDoPortal & { tutoriais: number }>; geral: number;
+  destaques: CartaoTutorial[]; recentes: CartaoTutorial[]; total: number;
+};
+export type TutorialAchado = CartaoTutorial & { trecho: Array<{ texto: string; achado: boolean }> | null };
+export type TutorialDoCliente = CartaoTutorial & { texto: string | null; publicadoEm: string | null; arquivos: ArquivoDoPortal[] };
+export type ConvitePortal = { nome: string; email: string; cliente: string; trocando: boolean };
+
 export class ApiError extends Error {
   /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */
   constructor(public status: number, message: string, public details: Array<{ field: string; message: string }> | string | null = null) { super(message); }

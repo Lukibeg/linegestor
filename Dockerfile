@@ -27,7 +27,9 @@ ENV CHROMIUM_PATH=/usr/bin/chromium \
     npm_config_update_notifier=false
 WORKDIR /src
 COPY --from=build --chown=node:node /src ./
-RUN mkdir -p /home/node/.pnpm /home/node/.cache && chown -R node:node /home/node
+# /portal: os vídeos do portal do cliente (1.8). A pasta nasce do usuário "node", e o volume
+# "portal" do docker-compose.prod.yml herda o dono na primeira vez que é montado.
+RUN mkdir -p /home/node/.pnpm /home/node/.cache /portal/videos && chown -R node:node /home/node /portal
 USER node
 EXPOSE 3333
 # aplica migrações e sobe a API (que também serve a interface em produção)

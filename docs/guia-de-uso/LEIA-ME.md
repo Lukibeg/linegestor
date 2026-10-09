@@ -20,3 +20,5 @@
 - [Receber os avisos do sistema no WhatsApp](avisos-no-whatsapp.md) — ligar a API do LineChat na tela de Ajustes.
 - [Chamados do LineChat](chamados-do-linechat.md) — ligar a leitura dos chamados de suporte (o que era o Grafana) e conferir que está funcionando.
 - [Envio automático do PDF dos Chamados pelo WhatsApp](envio-automatico.md) — marcar o que vai, os números, o horário e o token da FlwChat.
+- [Base de conhecimento](base-de-conhecimento.md) — procurar, escrever um artigo (passos, comandos, prints), registrar a partir do chamado, comentários, leitura obrigatória e a IA (perguntar à base e o rascunho do card, com o provedor que a empresa escolher).
+- [Portal do cliente](portal-do-cliente.md) — escrever um tutorial com vídeo, print e arquivo, mandar o link pelo WhatsApp, dar acesso às pessoas do cliente e o que acontece quando o cliente sai da base.

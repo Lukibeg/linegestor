@@ -1,7 +1,7 @@
 /**
  * Ficha do cliente: uma página com endereço próprio e abas — ou a mesma ficha numa janela, por
  * cima de outra tela (`FichaEmJanela`, desde o 1.5: o cliente de um projeto abre assim).
- * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Unidades · Projetos · Chamados · Histórico
+ * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Unidades · Projetos · Portal · Chamados · Histórico
  */
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,8 +23,10 @@ import { FiltroEmBotao } from '../../lib/filtros.js';
 import { temDataDeAtivacao } from '@gestor/shared';
 import { ObservacaoDid, UsoDid, useEditarDid } from '../dids/partes.js';
 import { RaioX } from '../chamados/relatorios/Clientes.js';
+import { ArtigosLigados } from '../base/partes.js';
+import { AcessosDoPortal } from '../portal/Acessos.js';
 
-type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'chamados' | 'historico';
+type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'portal' | 'chamados' | 'historico';
 
 /** A página da ficha (rota `/clientes/:id`): a aba escolhida mora no endereço. */
 export function ClienteFicha() {
@@ -74,6 +76,8 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
       titulo={<span className="flex items-center gap-2"><LogoCliente src={logoSrc(c.logoUrl)} nome={c.tradeName} tamanho={30} />{c.tradeName}{c.archived && <Chip tone="muted">arquivado</Chip>}</span>}
       sub={<span>{c.legalName} · <span className="font-mono">{cnpjFormatado(c.cnpj)}</span></span>}
       acoes={<>
+        {/* 1.8: os artigos da base ligados a este cliente (só aparece se houver) */}
+        <ArtigosLigados tipo="cliente" alvo={c.id} sobre="sobre este cliente" />
         {c.links.web && <a href={c.links.web} target="_blank" rel="noreferrer" className="btn-secondary"><ExternalLink size={15} /> Abrir</a>}
         <Can permission="records.write"><button className="btn-secondary" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</button>{!emJanela && <button className="btn-ghost" onClick={toggleArchive}><Archive size={15} /> {c.archived ? 'Desarquivar' : 'Arquivar'}</button>}</Can>
         {/* na janela ficam só as ações do dia a dia; arquivar e excluir, na página */}
@@ -86,6 +90,8 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
         { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> },
         { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> },
         { id: 'projetos', label: 'Projetos' },
+        // 1.8: quem deste cliente entra no portal do cliente (o convite, o bloqueio)
+        { id: 'portal', label: 'Portal' },
         // 1.7: os chamados do LineChat deste cliente (o Raio-X dos Relatórios)
         ...(can('support.read') ? [{ id: 'chamados' as Aba, label: 'Chamados' }] : []),
         ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
@@ -97,6 +103,7 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
       {aba === 'produtos' && <Produtos c={c} />}
       {aba === 'unidades' && <Unidades c={c} />}
       {aba === 'projetos' && <ProjetosDoCliente c={c} />}
+      {aba === 'portal' && <AcessosDoPortal clienteId={c.id} />}
       {aba === 'chamados' && can('support.read') && <ChamadosDoCliente c={c} />}
       {aba === 'historico' && <Historico c={c} />}
       <ClienteForm open={editar} onClose={() => setEditar(false)} cliente={c} onSaved={() => setEditar(false)} />

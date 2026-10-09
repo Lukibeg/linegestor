@@ -16,6 +16,7 @@ import { Movimentar } from './Movimentar.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
 import { BarrasRanking } from '../../components/graficos.js';
+import { ArtigosLigados } from '../base/partes.js';
 
 type Aba = 'aparelhos' | 'modelos' | 'movimentacoes';
 
@@ -311,6 +312,8 @@ function ModeloDetalhe({ m, models, onClose }: { m: DeviceModel; models: DeviceM
                 <button className="btn-secondary btn-sm" onClick={() => setCadastrar(true)}><Plus size={13} /> Cadastrar aparelhos</button>
               </Can>
               <Can permission="records.delete">{conta.todos === 0 && <button className="btn-ghost btn-sm text-bad" onClick={() => setExcluir(true)}><Trash2 size={13} /> Excluir</button>}</Can>
+              {/* 1.8: o que a base sabe sobre este modelo (só aparece se houver) */}
+              <ArtigosLigados tipo="modelo" alvo={m.id} sobre="sobre este modelo" pequeno />
             </div>
           </div>
         </div>

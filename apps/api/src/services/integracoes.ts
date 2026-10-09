@@ -12,6 +12,9 @@
  * A mesma tabela guarda a **arrumação da tela de Chamados** (`chamados-painel`): não é uma
  * integração, mas é um ajuste da tela que vale para a equipe toda, com quem mexeu e quando.
  *
+ * E guarda os ajustes da **IA da Base de conhecimento** (`base-ia`, 1.8): o provedor, o modelo e o
+ * uso do mês (a conversa com a IA mora em `baseIa.ts`).
+ *
  * O que é segredo (a chave da conta de serviço, o token da API) vai para o cofre cifrado.
  * O resto fica em `settings.value`, em JSON.
  *
@@ -25,7 +28,7 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { secrets, settings, type Db } from '@gestor/db';
-import type { ItemPainel } from '@gestor/shared';
+import type { ItemPainel, ProvedorIa } from '@gestor/shared';
 import type { SecretsVault } from './secrets.js';
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? '/dados';
@@ -109,8 +112,41 @@ export const LINECHAT_PADRAO: AjustesLineChat = {
 /** A arrumação da tela de Chamados: vazia = a de fábrica (ver `montarPainel` em @gestor/shared). */
 export type AjustesPainelChamados = { itens: ItemPainel[] };
 
+/** O que a IA da base já gastou no mês (zera quando o mês vira): o número de usos e os tokens. */
+export type UsoIa = { mes: string; perguntas: number; rascunhos: number; entrada: number; saida: number };
+
+/**
+ * A IA da Base de conhecimento (1.8): o provedor e o modelo que quem administra escolheu. A chave
+ * fica no cofre; `chaveDe` diz de qual provedor ela é (trocar de provedor pede a chave do novo).
+ */
+export type AjustesIa = {
+  ativo: boolean;
+  provedor: ProvedorIa;
+  modelo: string;
+  /** o nome bonito, quando o modelo veio da lista do provedor */
+  modeloNome: string | null;
+  /** só no "compatível": o endereço da API */
+  endereco: string | null;
+  /** dólar por milhão de tokens: opcional, só para a tela mostrar quanto custou */
+  precoEntrada: number | null;
+  precoSaida: number | null;
+  chaveDe: ProvedorIa | null;
+  /** no compatível, o nome do serviço da chave ("api.deepseek.com"): a chave de um nunca vai para outro */
+  chaveEndereco: string | null;
+  ultimoTesteEm: string | null;
+  ultimoTesteOk: boolean | null;
+  ultimoTesteMsg: string | null;
+  uso: UsoIa;
+};
+
+export const IA_PADRAO: AjustesIa = {
+  ativo: false, provedor: 'anthropic', modelo: '', modeloNome: null, endereco: null, precoEntrada: null, precoSaida: null, chaveDe: null, chaveEndereco: null,
+  ultimoTesteEm: null, ultimoTesteOk: null, ultimoTesteMsg: null,
+  uso: { mes: '', perguntas: 0, rascunhos: 0, entrada: 0, saida: 0 },
+};
+
 type Assunto = 'backup' | 'avisos' | 'linechat' | 'chamados-painel' | 'chamados-relatorios' | 'chamados-relatorios-arrumacao'
-  | 'envio-automatico' | 'envio-automatico-marcados';
+  | 'envio-automatico' | 'envio-automatico-marcados' | 'base-ia';
 const PADROES: Record<Assunto, unknown> = {
   backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO, 'chamados-painel': { itens: [] },
   // os Relatórios dos Chamados (1.7): sem nada guardado, os campos são achados pelo nome e os clientes, ligados pelo nome
@@ -124,6 +160,8 @@ const PADROES: Record<Assunto, unknown> = {
   },
   // o que vai no PDF do envio automático (1.7): marcado nos próprios gráficos e relatórios
   'envio-automatico-marcados': { relatorios: [], graficos: [], atualizadoEm: null, atualizadoPor: null },
+  // a IA da Base de conhecimento (1.8): desligada até alguém escolher o provedor e pôr a chave (no cofre)
+  'base-ia': IA_PADRAO,
 };
 
 export async function ler<T>(db: Db, assunto: Assunto): Promise<{ valor: T; secretId: string | null; temSegredo: boolean }> {
