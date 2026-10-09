@@ -42,7 +42,7 @@ export function CircuitoDetalhe() {
         <Kpi label="Livres" valor={c.dids.free} tone={c.dids.free === 0 && c.dids.total > 0 ? 'signal' : 'ok'} />
       </div>
       {/* 1.6: o tronco virou uma faixa no alto e os DIDs ganharam a largura toda — a tabela da
-          Numeração (seleção, cliente, uso, titular, observação) não cabia em dois terços da tela */}
+          Numeração (seleção, cliente, uso, observação) não cabia em dois terços da tela */}
       <div className="flex flex-col gap-4">
         <div className="card p-4">
           <div className="eyebrow mb-2">Tronco</div>
