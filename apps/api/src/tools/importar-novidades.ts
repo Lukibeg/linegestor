@@ -11,17 +11,18 @@
  *     versao: 1.2
  *     titulo: O que mudou
  *     resumo: Uma frase.
+ *     video: 1.9/o-que-mudou.mp4      (opcional, desde o 1.9: abre no login no lugar dos cartões)
  *     ---
  *
  *     ## novo · Título do item
  *     Duas ou três linhas.
  *     ![](1.2/print.jpg)
  */
-import { readFile, readdir } from 'node:fs/promises';
-import { dirname, extname, join, resolve } from 'node:path';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createDb } from '@gestor/db';
-import type { NovidadeGravar, NovidadeItem } from '@gestor/shared';
+import type { NovidadeItem } from '@gestor/shared';
 import { loadConfig } from '../config.js';
 import * as svc from '../services/releaseNotes.js';
 
@@ -31,6 +32,7 @@ const PASTA = process.argv[2] ? resolve(process.argv[2]) : resolve(aqui, '../../
 
 const TIPOS = ['novo', 'melhorou', 'corrigido', 'atencao'] as const;
 const MIMES: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.gif': 'image/gif', '.svg': 'image/svg+xml' };
+const MIMES_DO_VIDEO: Record<string, string> = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime' };
 
 /**
  * Ordena "1.2" antes de "1.10" (comparando número a número, não letra a letra).
@@ -48,8 +50,8 @@ export function compararVersoes(a: string, b: string): number {
   return 0;
 }
 
-/** Lê o arquivo e devolve a nota no formato que o servidor grava. */
-export async function lerNota(caminho: string): Promise<NovidadeGravar> {
+/** Lê o arquivo e devolve a nota no formato que o servidor grava (e o vídeo ao lado, se tiver). */
+export async function lerNota(caminho: string): Promise<svc.NotaDoArquivo> {
   const texto = await readFile(caminho, 'utf8');
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/.exec(texto);
   if (!m) throw new Error(`${caminho}: falta o cabeçalho entre "---"`);
@@ -89,7 +91,18 @@ export async function lerNota(caminho: string): Promise<NovidadeGravar> {
     items.push({ kind, title: title2, text, ...(imagem ? { imagem } : {}) });
   }
   if (!items.length) throw new Error(`${caminho}: a nota não tem nenhum item ("## tipo · título")`);
-  return { version, title, summary: campo('resumo') ?? null, items };
+
+  // o vídeo do patch: o caminho, ao lado da nota, como os prints
+  let video: svc.NotaDoArquivo['video'];
+  const nomeDoVideo = campo('video');
+  if (nomeDoVideo) {
+    const arquivo = join(dirname(caminho), nomeDoVideo);
+    const mime = MIMES_DO_VIDEO[extname(arquivo).toLowerCase()];
+    if (!mime) throw new Error(`${caminho}: vídeo em formato não suportado (${nomeDoVideo}); use MP4, WebM ou MOV`);
+    try { await stat(arquivo); } catch { throw new Error(`${caminho}: o vídeo ${nomeDoVideo} não está na pasta`); }
+    video = { arquivo, nome: basename(arquivo), mime };
+  }
+  return { version, title, summary: campo('resumo') ?? null, items, ...(video ? { video } : {}) };
 }
 
 async function principal() {
@@ -108,7 +121,7 @@ async function principal() {
     for (const arquivo of arquivos) {
       const nota = await lerNota(join(PASTA, arquivo));
       const r = await svc.importar(db, nota);
-      console.log(r.criada ? `Novidades: ${r.version} importada e publicada (${nota.items.length} itens).` : `Novidades: ${r.version} já estava no sistema.`);
+      console.log(r.criada ? `Novidades: ${r.version} importada e publicada (${nota.items.length} itens${r.video ? ' e o vídeo' : ''}).` : `Novidades: ${r.version} já estava no sistema.`);
     }
   } finally {
     await pool.end();

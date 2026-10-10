@@ -42,6 +42,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [release_note_items](#release_note_items) — Um item da nota: o cartão que a pessoa vê, um por vez.
 - [release_note_images](#release_note_images) — O print de um item, no próprio banco (como a logo do cliente e a foto do modelo).
 - [release_note_reads](#release_note_reads) — "Fulano leu a nota da rodada 23 em tal dia." Uma linha por pessoa × nota.
+- [release_note_videos](#release_note_videos) — O vídeo do patch (Patch 1.9, decisão 0046): quando a nota tem vídeo, é ele que abre no login, no lugar dos cartões (os cartões continuam na página Novidades).
 - [projects](#projects) — Um projeto é uma tarefa que percorre VÁRIOS clientes até acabar ("trocar o áudio da URA de todos os clientes com PBX").
 - [project_steps](#project_steps) — Uma etapa (coluna) do projeto.
 - [project_clients](#project_clients) — Um cliente dentro do projeto: a linha que o técnico trabalha.
@@ -538,7 +539,7 @@ Quem fez o quê, em qual registro, quando — com o antes e o depois. Inclui aç
 
 ## release_notes
 
-Uma NOTA DE VERSÃO ("o que mudou na rodada 23"). Quando publicada, aparece uma vez para cada pessoa no login e só para de aparecer quando ela marca "Li e entendi". Rascunho = `publishedAt` nulo: ninguém vê até publicar.
+Uma NOTA DE VERSÃO ("o que mudou na rodada 23"). Quando publicada, aparece uma vez para cada pessoa no login e só para de aparecer quando ela marca "Li e entendi" — ou, na nota com vídeo (1.9, `release_note_videos`), "Assisti e entendi", depois de ver o vídeo até o fim. Rascunho = `publishedAt` nulo: ninguém vê até publicar.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
@@ -586,6 +587,22 @@ O print de um item, no próprio banco (como a logo do cliente e a foto do modelo
 | `note_id` | texto | — | obrigatório · liga com **releaseNotes** |
 | `user_id` | texto | — | obrigatório · liga com **users** |
 | `read_at` | data e hora | — | obrigatório |
+
+## release_note_videos
+
+O vídeo do patch (Patch 1.9, decisão 0046): quando a nota tem vídeo, é ele que abre no login, no lugar dos cartões (os cartões continuam na página Novidades). Fica em disco, como os vídeos do portal (`PORTAL_DIR/novidades/<disk_name>`), pelo tamanho — fora do backup diário do banco; o da nota que vem pronta tem o original em `docs/novidades/`. Nasce sem nota (subiu, e a nota ainda não foi salva) e passa a ser dela ao salvar. Trocar ou tirar não apaga: o anterior ganha `deleted_at` e o arquivo continua no disco. Cada nota tem no máximo um vídeo valendo.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `note_id` | texto | A nota do vídeo (vazio enquanto a nota em que ele subiu não foi salva) | liga com **releaseNotes** |
+| `file_name` | texto | O nome do arquivo que subiu ("o-que-mudou.mp4") | obrigatório |
+| `mime_type` | texto | video/mp4, video/webm ou video/quicktime | obrigatório |
+| `size_bytes` | número inteiro | O tamanho, em bytes | obrigatório · padrão: 0 |
+| `disk_name` | texto | O nome do arquivo no disco, na pasta `PORTAL_DIR/novidades` | obrigatório |
+| `uploaded_by_id` | texto | Quem subiu (vazio = veio pronto com a nota, na publicação) | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Trocado ou tirado da nota: sai das telas, o arquivo fica no disco | — |
 
 
 ---

@@ -156,8 +156,11 @@ export type Api = {
     pendente(): Promise<T.NovidadePendente | null>;
     /** Histórico + se esta pessoa pode editar + quantas ela ainda não leu */
     lista(): Promise<{ items: T.Novidade[]; podeEditar: boolean; naoLidas: number }>;
-    marcarLida(id: string): Promise<{ ok: boolean }>;
+    /** `assistiu`: marcou pelo vídeo ("Assisti e entendi"), e não pelos cartões — vai para a auditoria */
+    marcarLida(id: string, assistiu?: boolean): Promise<{ ok: boolean }>;
     leituras(id: string): Promise<T.LeiturasNovidade>;
+    /** Sobe o vídeo do patch (com a barra de progresso); passa a ser da nota ao salvar, com `videoId` */
+    subirVideo(arquivo: File, progresso?: (p: number) => void): Promise<T.VideoNovidade>;
     criar(d: Record<string, unknown>): Promise<{ id: string }>;
     atualizar(id: string, d: Record<string, unknown>): Promise<{ id: string }>;
     publicar(id: string, publicar: boolean): Promise<{ id: string; publishedAt: string | null }>;

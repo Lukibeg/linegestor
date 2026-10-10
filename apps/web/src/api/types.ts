@@ -277,18 +277,24 @@ export type ImportPlan = { entity: string; rows: Array<{ line: number; action: '
 
 /** Um item (cartão) de uma nota de novidades. `imageUrl` é caminho relativo à API (use `logoSrc()`). */
 export type NovidadeItem = { id: string; kind: 'novo' | 'melhorou' | 'corrigido' | 'atencao'; title: string; text: string | null; sortOrder: number; imageUrl: string | null };
+/**
+ * O vídeo do patch (1.9, decisão 0046): com vídeo, é ele que abre no login, no lugar dos cartões.
+ * `url` é relativa à API (use `logoSrc()`); na prévia já vem pronta.
+ */
+export type VideoNovidade = { id: string; url: string; nome: string; tamanho: number; tipo: string };
 /** Uma nota de versão. `publishedAt` nulo = rascunho (só quem administra enxerga). */
 export type Novidade = {
   id: string; version: string; title: string; summary: string | null;
   publishedAt: string | null; createdAt: string; updatedAt: string;
-  /** esta pessoa já marcou "Li e entendi" */
+  /** esta pessoa já marcou "Li e entendi" (ou "Assisti e entendi") */
   lida: boolean;
   /** quantas pessoas já leram, de quantas pessoas ativas existem */
   leituras: number; pessoas: number;
   items: NovidadeItem[];
+  video: VideoNovidade | null;
 };
 /** A nota que abre no login: só o necessário para o pop-up. */
-export type NovidadePendente = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; items: NovidadeItem[] };
+export type NovidadePendente = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; items: NovidadeItem[]; video: VideoNovidade | null };
 /** Quem já leu uma nota e quem ainda não. */
 export type LeiturasNovidade = { version: string; title: string; publishedAt: string | null; pessoas: Array<{ id: string; name: string; email: string; readAt: string | null }> };
 

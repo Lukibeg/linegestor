@@ -675,7 +675,8 @@ export const auditLog = pgTable(
 
 /**
  * Uma NOTA DE VERSÃO ("o que mudou na rodada 23"). Quando publicada, aparece uma vez para
- * cada pessoa no login e só para de aparecer quando ela marca "Li e entendi".
+ * cada pessoa no login e só para de aparecer quando ela marca "Li e entendi" — ou, na nota com
+ * vídeo (1.9, `release_note_videos`), "Assisti e entendi", depois de ver o vídeo até o fim.
  * Rascunho = `publishedAt` nulo: ninguém vê até publicar.
  */
 export const releaseNotes = pgTable(
@@ -736,6 +737,40 @@ export const releaseNoteReads = pgTable(
     readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('release_note_reads_note_user_uq').on(t.noteId, t.userId)],
+);
+
+/**
+ * O vídeo do patch (Patch 1.9, decisão 0046): quando a nota tem vídeo, é ele que abre no login, no
+ * lugar dos cartões (os cartões continuam na página Novidades). Fica em disco, como os vídeos do
+ * portal (`PORTAL_DIR/novidades/<disk_name>`), pelo tamanho — fora do backup diário do banco; o da
+ * nota que vem pronta tem o original em `docs/novidades/`. Nasce sem nota (subiu, e a nota ainda não
+ * foi salva) e passa a ser dela ao salvar. Trocar ou tirar não apaga: o anterior ganha `deleted_at`
+ * e o arquivo continua no disco. Cada nota tem no máximo um vídeo valendo.
+ */
+export const releaseNoteVideos = pgTable(
+  'release_note_videos',
+  {
+    id: id(),
+    /** A nota do vídeo (vazio enquanto a nota em que ele subiu não foi salva) */
+    noteId: text('note_id').references(() => releaseNotes.id, { onDelete: 'cascade' }),
+    /** O nome do arquivo que subiu ("o-que-mudou.mp4") */
+    fileName: text('file_name').notNull(),
+    /** video/mp4, video/webm ou video/quicktime */
+    mimeType: text('mime_type').notNull(),
+    /** O tamanho, em bytes */
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    /** O nome do arquivo no disco, na pasta `PORTAL_DIR/novidades` */
+    diskName: text('disk_name').notNull(),
+    /** Quem subiu (vazio = veio pronto com a nota, na publicação) */
+    uploadedById: text('uploaded_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    /** Trocado ou tirado da nota: sai das telas, o arquivo fica no disco */
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('release_note_videos_note_idx').on(t.noteId),
+    uniqueIndex('release_note_videos_um_por_nota_uq').on(t.noteId).where(sql`deleted_at is null`),
+  ],
 );
 
 // ---------------------------------------------------------------------

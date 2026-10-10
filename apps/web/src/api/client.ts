@@ -161,8 +161,9 @@ export const realApi: Api = {
   novidades: {
     pendente: () => http('GET', '/release-notes/pending'),
     lista: () => http('GET', '/release-notes'),
-    marcarLida: (id) => http('POST', `/release-notes/${id}/read`),
+    marcarLida: (id, assistiu) => http('POST', `/release-notes/${id}/read`, assistiu ? { assistiu: true } : undefined),
     leituras: (id) => http('GET', `/release-notes/${id}/reads`),
+    subirVideo: (arquivo, progresso) => subirArquivo('/release-notes/videos', arquivo, progresso),
     criar: (d) => http('POST', '/release-notes', d),
     atualizar: (id, d) => http('PATCH', `/release-notes/${id}`, d),
     publicar: (id, publicar) => http('POST', `/release-notes/${id}/publish`, { publicar }),

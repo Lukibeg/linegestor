@@ -31,7 +31,8 @@ services:
       PORT: 3333
       # onde o sistema escreve a cópia dos ajustes para o vigia que roda fora dele
       CONFIG_DIR: /dados
-      # os vídeos do portal do cliente (1.8): grandes demais para o banco, ficam no volume "portal"
+      # os vídeos do portal do cliente (1.8) e o vídeo de cada patch (1.9, /portal/novidades):
+      # grandes demais para o banco, ficam no volume "portal"
       PORTAL_DIR: /portal
     volumes:
       # os backups, para o sistema conseguir mandá-los ao Google Drive

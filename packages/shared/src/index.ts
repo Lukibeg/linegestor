@@ -10,3 +10,4 @@ export * from './ia.js';
 export * from './portal.js';
 export * from './inventario.js';
 export * from './recibo.js';
+export * from './novidades.js';

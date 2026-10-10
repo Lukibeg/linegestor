@@ -35,7 +35,7 @@ import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
 import { PDF_MANUAL_RAMAL, VIDEO_TRANSFERIR } from './portal-demo-midia.js';
 import { RECIBO_FOTO_DEMO, RECIBO_PDF_DEMO } from './recibo-demo-midia.js';
-import { ApiError, type AjustesIa, type ModeloIa, type RespostaIa, type AcessoPortal, type ArquivoDoPortal, type CartaoTutorial, type EuPortal, type TutorialNaLista, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ReciboDeEntrega, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { ApiError, type AjustesIa, type ModeloIa, type RespostaIa, type AcessoPortal, type ArquivoDoPortal, type CartaoTutorial, type EuPortal, type TutorialNaLista, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type VideoNovidade, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ReciboDeEntrega, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -68,6 +68,8 @@ type LoginRow = { id: string; clientId: string; modelId: string; username: strin
 type NetRow = { clientId: string; ipAddress: string | null; subnetMask: string | null; defaultRouter: string | null; dns1: string | null; dns2: string | null; wirelessPasswordSecretId: string | null; note: string | null; updatedAt: string };
 /** Uma nota de novidades na demonstração (a imagem fica embutida, como a logo do cliente) */
 type NotaRow = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null; items: Array<{ id: string; kind: NovidadeItem['kind']; title: string; text: string | null; imagem: string | null }> };
+/** O vídeo do patch (1.9): nasce sem nota e passa a ser dela ao salvar; trocar ou tirar só o tira da nota (como no servidor) */
+type VideoNotaRow = VideoNovidade & { noteId: string | null; deletedAt: string | null };
 /** Projetos na demonstração: o projeto, as etapas, a lista de clientes e o que já foi marcado. */
 type ProjRow = { id: string; name: string; goal: string | null; status: 'aberto' | 'concluido' | 'cancelado'; dueDate: string | null; ownerId: string | null; closedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null };
 type StepRow = { id: string; projectId: string; title: string; kind: 'check' | 'escolha'; options: OpcaoEtapa[]; sortOrder: number };
@@ -108,7 +110,7 @@ type RoleRow = { id: string; key: string | null; name: string; description: stri
 const S = {
   clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], recibos: [] as ReciboRow[], units: [] as UnitRow[], deviceLogins: [] as LoginRow[], networks: [] as NetRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
-  notas: [] as NotaRow[], leituras: [] as Array<{ noteId: string; userId: string; readAt: string }>,
+  notas: [] as NotaRow[], leituras: [] as Array<{ noteId: string; userId: string; readAt: string }>, videosNotas: [] as VideoNotaRow[],
   projetos: [] as ProjRow[], etapas: [] as StepRow[], projClientes: [] as PClientRow[], marcas: [] as CheckRow[],
   projComentarios: [] as PCommentRow[], projAnexos: [] as PFileRow[],
   // Base de conhecimento (1.8): os artigos entram na primeira vez que alguém abre a base (ligam chamados inventados)
@@ -499,6 +501,8 @@ function seed() {
     publishedAt: daysAgo(0, 9), createdAt: daysAgo(0, 8), updatedAt: daysAgo(0, 9), deletedAt: null,
     items: NOTA_DEMO.items.map((i) => ({ id: id(), kind: i.kind, title: i.title, text: i.text, imagem: i.imagem ?? null })),
   }];
+  // o vídeo do patch (1.9): com ele, é o vídeo que abre no login da prévia, no lugar dos cartões
+  S.videosNotas = NOTA_DEMO.video ? [{ id: id(), noteId: S.notas[0]!.id, ...NOTA_DEMO.video, deletedAt: null }] : [];
   // ---- a história dos aparelhos (1.9): meses de ida e volta, coerentes com onde cada um está ----
   // É o que os Relatórios do Inventário contam: o que saiu e voltou (um voltou inativo), o estoque
   // parado há meses, aparelho nosso em cliente arquivado e em cliente que encerrou o Equipamentos,
@@ -1165,6 +1169,23 @@ function aplicarItens(n: NotaRow, itens?: Array<Record<string, any>>) {
   });
 }
 const notasVivas = () => S.notas.filter((n) => !n.deletedAt);
+/** O vídeo que vale da nota (no máximo um), como as telas veem. */
+const videoDaNota = (noteId: string): VideoNovidade | null => {
+  const v = S.videosNotas.find((x) => x.noteId === noteId && !x.deletedAt);
+  return v ? { id: v.id, url: v.url, nome: v.nome, tamanho: v.tamanho, tipo: v.tipo } : null;
+};
+/** O vídeo ao salvar a nota: ausente = mantém · null = tira · o id = o que acabou de subir (o anterior sai; nada se apaga). */
+function ligarVideoDemo(n: NotaRow, videoId: unknown): string {
+  if (videoId === undefined) return '';
+  const atual = S.videosNotas.find((x) => x.noteId === n.id && !x.deletedAt);
+  if (videoId === null) { if (!atual) return ''; atual.deletedAt = now(); return ' — tirou o vídeo'; }
+  if (atual?.id === videoId) return '';
+  const novo = S.videosNotas.find((x) => x.id === videoId && !x.deletedAt);
+  if (!novo || (novo.noteId && novo.noteId !== n.id)) throw bad('Este vídeo não está mais disponível. Suba o vídeo de novo.');
+  if (atual) atual.deletedAt = now();
+  novo.noteId = n.id;
+  return atual ? ' — trocou o vídeo' : ' — pôs o vídeo';
+}
 const podeEditarNovidades = () => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes('admin.manage') ?? false);
 const shapeNota = (n: NotaRow): Novidade => ({
   id: n.id, version: n.version, title: n.title, summary: n.summary, publishedAt: n.publishedAt, createdAt: n.createdAt, updatedAt: n.updatedAt,
@@ -1172,6 +1193,7 @@ const shapeNota = (n: NotaRow): Novidade => ({
   leituras: S.leituras.filter((l) => l.noteId === n.id).length,
   pessoas: S.users.filter((u) => u.active).length,
   items: n.items.map((i, ordem) => ({ id: i.id, kind: i.kind, title: i.title, text: i.text, sortOrder: ordem, imageUrl: i.imagem })),
+  video: videoDaNota(n.id),
 });
 
 // ---------------- a API ----------------
@@ -2749,7 +2771,7 @@ export const demoApi: Api = {
       const nota = notasVivas().filter((n) => n.publishedAt).sort((a, b) => b.publishedAt!.localeCompare(a.publishedAt!))[0];
       if (!nota || S.leituras.some((l) => l.noteId === nota.id && l.userId === S.me!.id)) return null;
       const { items, ...resto } = shapeNota(nota);
-      return { id: resto.id, version: resto.version, title: resto.title, summary: resto.summary, publishedAt: resto.publishedAt, items };
+      return { id: resto.id, version: resto.version, title: resto.title, summary: resto.summary, publishedAt: resto.publishedAt, items, video: resto.video };
     },
     async lista() {
       await wait(80); requirePerm('records.read');
@@ -2758,13 +2780,25 @@ export const demoApi: Api = {
         .sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt)).map(shapeNota);
       return { items, podeEditar, naoLidas: items.filter((n) => n.publishedAt && !n.lida).length };
     },
-    async marcarLida(idn) {
+    async marcarLida(idn, assistiu) {
       await wait(120);
       const n = notasVivas().find((x) => x.id === idn); if (!n) throw notFound('Nota');
       if (!n.publishedAt) throw bad('Esta nota ainda é um rascunho');
       if (!S.leituras.some((l) => l.noteId === idn && l.userId === S.me!.id)) S.leituras.push({ noteId: idn, userId: S.me!.id, readAt: now() });
-      audit('update', 'releaseNote', `${S.me!.name} leu as novidades de ${n.version}`, n.id);
+      audit('update', 'releaseNote', `${S.me!.name} ${assistiu ? 'assistiu ao vídeo das' : 'leu as'} novidades de ${n.version}`, n.id);
       return { ok: true };
+    },
+    async subirVideo(file, progresso) {
+      requirePerm('admin.manage');
+      const problema = problemaDoArquivo('video', file.type || 'application/octet-stream', file.size);
+      if (problema) throw bad(problema);
+      // na prévia o vídeo não sai do navegador: a barra anda só para mostrar como fica
+      for (const p of [0.25, 0.6, 0.9]) { progresso?.(p); await wait(260); }
+      progresso?.(1);
+      const v: VideoNotaRow = { id: id(), noteId: null, url: URL.createObjectURL(file), nome: file.name || 'video', tamanho: file.size, tipo: file.type, deletedAt: null };
+      S.videosNotas.push(v);
+      audit('create', 'releaseNote', `Subiu o vídeo "${v.nome}" (${Math.max(1, Math.round(v.tamanho / 1024))} KB) para as novidades`, v.id);
+      return { id: v.id, url: v.url, nome: v.nome, tamanho: v.tamanho, tipo: v.tipo };
     },
     async leituras(idn): Promise<LeiturasNovidade> {
       await wait(60); requirePerm('admin.manage');
@@ -2782,7 +2816,8 @@ export const demoApi: Api = {
       if (S.notas.some((n) => n.version === version)) throw bad(`Já existe uma nota com a versão "${version}"`);
       const n: NotaRow = { id: id(), version, title: String(d.title), summary: (d.summary as string) ?? null, publishedAt: null, createdAt: now(), updatedAt: now(), deletedAt: null, items: [] };
       aplicarItens(n, d.items as any[]);
-      S.notas.push(n); audit('create', 'releaseNote', `Criou a nota de novidades ${version}`, n.id);
+      const doVideo = ligarVideoDemo(n, d.videoId);
+      S.notas.push(n); audit('create', 'releaseNote', `Criou a nota de novidades ${version}${doVideo}`, n.id);
       return { id: n.id };
     },
     async atualizar(idn, d) {
@@ -2796,7 +2831,8 @@ export const demoApi: Api = {
       if (d.title !== undefined) n.title = String(d.title);
       if (d.summary !== undefined) n.summary = (d.summary as string) ?? null;
       if (d.items !== undefined) aplicarItens(n, d.items as any[]);
-      n.updatedAt = now(); audit('update', 'releaseNote', `Editou a nota de novidades ${n.version}`, n.id);
+      const doVideo = ligarVideoDemo(n, d.videoId);
+      n.updatedAt = now(); audit('update', 'releaseNote', `Editou a nota de novidades ${n.version}${doVideo}`, n.id);
       return { id: n.id };
     },
     async publicar(idn, publicar) {

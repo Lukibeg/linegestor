@@ -18,10 +18,7 @@
  *  - nada se apaga de verdade: o tutorial vai para a lixeira; o acesso é bloqueado, não apagado
  */
 import { randomBytes } from 'node:crypto';
-import { createWriteStream } from 'node:fs';
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { pipeline } from 'node:stream/promises';
 import type { Readable } from 'node:stream';
 import argon2 from 'argon2';
 import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
@@ -37,6 +34,7 @@ import {
 import { BadRequest, Conflict, Forbidden, NotFound, Unauthorized } from '../plugins/errors.js';
 import { CONFIG_DIR } from './integracoes.js';
 import type { SecretsVault } from './secrets.js';
+import { gravarVideoNoDisco } from './videoEmDisco.js';
 
 type Transacao = Parameters<Parameters<Db['transaction']>[0]>[0];
 type LinhaTutorial = typeof portalArticles.$inferSelect;
@@ -314,8 +312,6 @@ export async function restaurarTutorial(db: Db, id: string) {
 // Os arquivos
 // ---------------------------------------------------------------------
 
-const EXTENSAO_DO_VIDEO: Record<string, string> = { 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov' };
-
 /** O tipo de verdade da imagem, pelos primeiros bytes (não pelo nome nem pelo que o navegador disse). */
 export function tipoDaImagem(b: Buffer): string | null {
   if (b.length >= 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
@@ -343,25 +339,9 @@ export async function guardarNoBanco(db: Db, tipo: 'imagem' | 'arquivo', nome: s
  * do caminho (o multipart corta o arquivo): aí nada fica guardado.
  */
 export async function guardarVideo(db: Db, nome: string, mime: string, corpo: Readable, truncado: () => boolean, quem: Quem) {
-  const ext = EXTENSAO_DO_VIDEO[mime];
-  if (!ext) { corpo.resume(); throw new BadRequest(problemaDoArquivo('video', mime, 1) ?? 'Vídeo em MP4, WebM ou MOV.'); }
-  const id = newId();
-  const pasta = pastaDosVideos();
-  await mkdir(pasta, { recursive: true });
-  const final = join(pasta, `${id}.${ext}`);
-  const parcial = `${final}.parte`;
-  try {
-    await pipeline(corpo, createWriteStream(parcial, { mode: 0o600 }));
-  } catch (e) {
-    await rm(parcial, { force: true });
-    throw e;
-  }
-  const { size } = await stat(parcial);
-  const problema = truncado() ? problemaDoArquivo('video', mime, Number.MAX_SAFE_INTEGER) : problemaDoArquivo('video', mime, size);
-  if (problema) { await rm(parcial, { force: true }); throw new BadRequest(problema); }
-  await rename(parcial, final);
+  const v = await gravarVideoNoDisco(pastaDosVideos(), mime, corpo, truncado);
   const [f] = await db.insert(portalFiles).values({
-    id, kind: 'video', fileName: nome.slice(0, 200) || 'video', mimeType: mime, sizeBytes: size, diskName: `${id}.${ext}`, uploadedById: quem.id,
+    id: v.id, kind: 'video', fileName: nome.slice(0, 200) || 'video', mimeType: mime, sizeBytes: v.size, diskName: v.diskName, uploadedById: quem.id,
   }).returning();
   return descricaoDoArquivo(f!, 'portal-admin');
 }
