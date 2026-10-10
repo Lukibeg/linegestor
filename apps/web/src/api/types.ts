@@ -510,3 +510,14 @@ export class ApiError extends Error {
   /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */
   constructor(public status: number, message: string, public details: Array<{ field: string; message: string }> | string | null = null) { super(message); }
 }
+
+// ---------- os chamados do Gestor (1.10, decisão 0047): os formatos moram no @gestor/shared ----------
+export type {
+  OpcoesAtendimento, QuadroAtendimento, ColunaQuadro, CartaoChamado, FichaChamado, MeuDia, AvisosNaTela, AvisoNaTela, CadastroDoCliente, Painel, EtapaPainel,
+  AjustesDoPainel, Assunto, AssuntoCurto, EventoChamado, AnotacaoChamado, AnexoChamado, TempoGasto, CasoOperadora, PassoTrajetoria, LigacaoMostradaChamado,
+  ReferenciaMostrada, GrafoChamado, NoGrafo, ArestaGrafo, RespostaPronta, Agendado, AvisosChamadosTela, WebhookTela, ChaveApiTela, IntegracoesTela, SugestaoIa,
+  TipoLigacaoChamado, ChamadoCriarEntrada, ChamadoAlterarEntrada, MoverEntrada, ChecklistEntrada, TempoEntrada, OperadoraCasoEntrada, PainelGravarEntrada,
+  EtapaGravarEntrada, AssuntoGravarEntrada, RespostaProntaGravarEntrada, AgendadoGravarEntrada, AvisosChamadosEntrada, WebhookGravarEntrada, AjustesPrazos,
+  CampoObrigatorio, TipoEtapa, Afetado, ItemChecklist, SituacaoDoChamado, Prioridade, Gravidade, Alcance, EstadoPrazo, TipoEspera, PessoaCurta, AcaoResposta, RegraAgendado,
+  EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, TipoAfetado, Nivel,
+} from '@gestor/shared';

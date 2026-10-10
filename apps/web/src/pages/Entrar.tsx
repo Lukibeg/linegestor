@@ -6,6 +6,14 @@ import { IS_DEMO } from '../api/index.js';
 import { mensagemErro, Spinner } from '../components/ui/index.js';
 import { Logotipo } from '../components/Marca.js';
 
+/**
+ * A tela está dentro de outro site (o Gestor no menu do LineChat, num iframe)? Aí o login pede o
+ * cookie que funciona num iframe. Se o navegador nem deixar olhar quem está em volta, é porque está.
+ */
+function dentroDeOutroSite(): boolean {
+  try { return window.self !== window.top; } catch { return true; }
+}
+
 export function Entrar() {
   const { user, login, entrarComCodigo, loading } = useAuth();
   const nav = useNavigate();
@@ -23,7 +31,7 @@ export function Entrar() {
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
     try {
-      const faltaCodigo = await login(email, password);
+      const faltaCodigo = await login(email, password, dentroDeOutroSite());
       if (faltaCodigo) setEtapa('codigo'); else irParaOSistema();
     } catch (x) { setErr(mensagemErro(x)); } finally { setBusy(false); }
   };

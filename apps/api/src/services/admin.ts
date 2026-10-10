@@ -11,7 +11,7 @@
  */
 import argon2 from 'argon2';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, subscriptionModules, subscriptions, users, type Db } from '@gestor/db';
+import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, subscriptionModules, subscriptions, ticketEvents, tickets, users, type Db } from '@gestor/db';
 import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import { derrubarSessoesDaEquipe } from './portal.js';
@@ -242,10 +242,22 @@ export async function restoreProject(db: Db, id: string) {
   return row;
 }
 
+/**
+ * Tira o chamado do Gestor da lixeira (1.10). O histórico do chamado registra quem restaurou, como
+ * quando a restauração é feita pela própria ficha.
+ */
+export async function restoreTicket(db: Db, id: string, quem: { id: string }) {
+  const [antes] = await db.select({ deletedAt: tickets.deletedAt }).from(tickets).where(eq(tickets.id, id));
+  if (!antes) throw new NotFound('Chamado');
+  const [row] = await db.update(tickets).set({ deletedAt: null, updatedAt: new Date() }).where(eq(tickets.id, id)).returning();
+  if (antes.deletedAt) await db.insert(ticketEvents).values({ id: newId(), ticketId: id, kind: 'lixeira', userId: quem.id, data: { acao: 'restaurou' } });
+  return row!;
+}
+
 // ---------- Lixeira ----------
 
 export async function listTrash(db: Db) {
-  const [c, ci, d, dm, dv, pr, rn, pj, pm, ka, pa] = await Promise.all([
+  const [c, ci, d, dm, dv, pr, rn, pj, pm, ka, pa, tk] = await Promise.all([
     db.select({ id: clients.id, label: clients.tradeName, deletedAt: clients.deletedAt }).from(clients).where(isNotNull(clients.deletedAt)),
     db.select({ id: circuits.id, label: circuits.name, deletedAt: circuits.deletedAt }).from(circuits).where(isNotNull(circuits.deletedAt)),
     db.select({ id: dids.id, label: dids.number, deletedAt: dids.deletedAt }).from(dids).where(isNotNull(dids.deletedAt)),
@@ -257,6 +269,7 @@ export async function listTrash(db: Db) {
     db.select({ id: productModules.id, modulo: productModules.name, produto: products.name, deletedAt: productModules.deletedAt }).from(productModules).innerJoin(products, eq(products.id, productModules.productId)).where(isNotNull(productModules.deletedAt)),
     db.select({ id: knowledgeArticles.id, numero: knowledgeArticles.number, titulo: knowledgeArticles.title, deletedAt: knowledgeArticles.deletedAt }).from(knowledgeArticles).where(isNotNull(knowledgeArticles.deletedAt)),
     db.select({ id: portalArticles.id, numero: portalArticles.number, titulo: portalArticles.title, deletedAt: portalArticles.deletedAt }).from(portalArticles).where(isNotNull(portalArticles.deletedAt)),
+    db.select({ id: tickets.id, codigo: tickets.code, titulo: tickets.title, deletedAt: tickets.deletedAt }).from(tickets).where(isNotNull(tickets.deletedAt)),
   ]);
   return [
     ...c.map((x) => ({ type: 'client', ...x })), ...ci.map((x) => ({ type: 'circuit', ...x })), ...d.map((x) => ({ type: 'did', ...x })),
@@ -268,5 +281,6 @@ export async function listTrash(db: Db) {
     ...pm.map((x) => ({ type: 'productModule', id: x.id, label: `${x.produto} › ${x.modulo}`, deletedAt: x.deletedAt })),
     ...ka.map((x) => ({ type: 'knowledgeArticle', id: x.id, label: `BC-${x.numero} · ${x.titulo}`, deletedAt: x.deletedAt })),
     ...pa.map((x) => ({ type: 'portalArticle', id: x.id, label: `Tutorial ${x.numero} · ${x.titulo}`, deletedAt: x.deletedAt })),
+    ...tk.map((x) => ({ type: 'ticket', id: x.id, label: `${x.codigo} · ${x.titulo}`, deletedAt: x.deletedAt })),
   ].sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
 }

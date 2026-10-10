@@ -38,7 +38,9 @@ export async function makeApp(): Promise<App> {
 
 export async function resetDb(app: App) {
   await app.db.execute(sql`
-    TRUNCATE TABLE portal_sessions, portal_files, portal_users, portal_articles, knowledge_comments, knowledge_reads, knowledge_attachments, knowledge_links, knowledge_versions, knowledge_articles, linechat_card_moves, linechat_cards, linechat_sync_runs, linechat_steps, linechat_fields, linechat_tags, audit_log, sessions, project_attachments, project_comments, project_checks, project_clients, project_steps, projects, release_note_reads, release_note_videos, release_note_images, release_note_items, release_notes, device_movement_receipts, device_movement_items, device_movements, devices, device_model_images, device_models, device_categories,
+    TRUNCATE TABLE ticket_notifications, ticket_api_keys, ticket_webhooks, ticket_contacts, ticket_macros, ticket_schedules, ticket_carrier_cases, ticket_time_entries,
+      ticket_links, ticket_attachments, ticket_notes, ticket_events, tickets, ticket_subjects, ticket_stages, ticket_panels,
+      portal_sessions, portal_files, portal_users, portal_articles, knowledge_comments, knowledge_reads, knowledge_attachments, knowledge_links, knowledge_versions, knowledge_articles, linechat_card_moves, linechat_cards, linechat_sync_runs, linechat_steps, linechat_fields, linechat_tags, audit_log, sessions, project_attachments, project_comments, project_checks, project_clients, project_steps, projects, release_note_reads, release_note_videos, release_note_images, release_note_items, release_notes, device_movement_receipts, device_movement_items, device_movements, devices, device_model_images, device_models, device_categories,
       dids, circuits, carriers, linepbx_settings, fop2_settings, omniboard_settings, szchat_settings, subscription_modules, subscriptions, product_modules, products,
       hosting_providers, settings, secrets, users, roles, client_logos, client_units, client_device_logins, client_network_settings, clients RESTART IDENTITY CASCADE
   `);

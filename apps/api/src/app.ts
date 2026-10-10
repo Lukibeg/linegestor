@@ -17,6 +17,7 @@ import { SecretsVault } from './services/secrets.js';
 import * as audit from './services/audit.js';
 import { notFoundJson, registerErrorHandler } from './plugins/errors.js';
 import authPlugin from './plugins/auth.js';
+import segurancaPlugin from './plugins/seguranca.js';
 import openapiPlugin from './plugins/openapi.js';
 import authRoutes from './routes/auth.js';
 import clientRoutes from './routes/clients.js';
@@ -35,6 +36,10 @@ import envioRoutes from './routes/envio.js';
 import baseRoutes from './routes/base.js';
 import portalAdminRoutes from './routes/portalAdmin.js';
 import portalRoutes from './routes/portal.js';
+import atendimentoRoutes from './routes/atendimento.js';
+import atendimentoAjustesRoutes from './routes/atendimentoAjustes.js';
+import atendimentoEntradaRoutes from './routes/atendimentoEntrada.js';
+import atendimentoRotinaRoutes from './routes/atendimentoRotina.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -70,6 +75,8 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
   await app.register(rateLimit, { global: false });
   registerErrorHandler(app);
   await app.register(authPlugin);
+  // o CSP de toda resposta (quem pode abrir o Gestor num iframe) e a recusa do pedido que vem de outro site
+  await app.register(segurancaPlugin);
   await app.register(openapiPlugin);
 
   // Toda a API vive sob /api — assim a interface pode ser servida na raiz pelo mesmo servidor.
@@ -93,6 +100,11 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
     // o portal do cliente (1.8): a equipe cuida em /portal-admin; o cliente usa /portal, com login próprio
     await api.register(portalAdminRoutes, { prefix: '/portal-admin' });
     await api.register(portalRoutes, { prefix: '/portal' });
+    // os chamados do Gestor (1.10): o trabalho, os ajustes do módulo e a entrada das integrações (chave de API)
+    await api.register(atendimentoRoutes, { prefix: '/atendimento' });
+    await api.register(atendimentoAjustesRoutes, { prefix: '/atendimento' });
+    await api.register(atendimentoEntradaRoutes, { prefix: '/atendimento' });
+    await api.register(atendimentoRotinaRoutes, { prefix: '/atendimento' });
   }, { prefix: '/api' });
 
   // Em produção, a própria API serve a interface (apps/web/dist) e devolve o index.html para qualquer rota que não seja /api

@@ -11,7 +11,7 @@ import * as circuitsSvc from '../services/circuits.js';
 import * as didsSvc from '../services/dids.js';
 import * as inv from '../services/inventory.js';
 import * as novidades from '../services/releaseNotes.js';
-import { BadRequest } from '../plugins/errors.js';
+import { BadRequest, Forbidden } from '../plugins/errors.js';
 
 const Id = z.object({ id: z.string() });
 const CatalogType = z.enum(['carriers', 'hostings', 'categories']);
@@ -59,9 +59,11 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---- lixeira ----
   app.get('/trash', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'O que está na lixeira' } }, async () => svc.listTrash(app.db));
-  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle', 'portalArticle']), id: z.string() }) } },
+  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle', 'portalArticle', 'ticket']), id: z.string() }) } },
     async (req) => {
       const { type, id } = req.params;
+      // o chamado do Gestor (1.10) é da lixeira de quem cuida dos chamados
+      if (type === 'ticket' && !req.user!.permissions.includes('tickets.manage')) throw new Forbidden('Esta ação exige a permissão "tickets.manage"');
       let label = id;
       if (type === 'client') label = (await clientsSvc.restore(app.db, id)).tradeName;
       else if (type === 'circuit') label = (await circuitsSvc.restore(app.db, id)).name;
@@ -74,6 +76,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       else if (type === 'project') label = (await svc.restoreProject(app.db, id)).name;
       else if (type === 'knowledgeArticle') { const a = await baseSvc.restaurar(app.db, id); label = `o artigo BC-${a.number} "${a.title}"`; }
       else if (type === 'portalArticle') { const t = await portalSvc.restaurarTutorial(app.db, id); label = `o tutorial ${t.number} "${t.title}" do portal`; }
+      else if (type === 'ticket') { const t = await svc.restoreTicket(app.db, id, req.user!); label = `o chamado ${t.code} "${t.title}"`; }
       else throw new BadRequest('Tipo desconhecido');
       await app.audit(req, { action: 'restore', entityType: type, entityId: id, summary: `Restaurou ${label} da lixeira` });
       return { ok: true };

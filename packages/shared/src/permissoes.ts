@@ -22,7 +22,9 @@ export const PERMISSIONS = {
   'data.export_secrets': 'Exportar CSV com senhas (fica registrado)',
   'projects.work': 'Trabalhar nos projetos: marcar etapas, comentar e anexar',
   'projects.manage': 'Criar e encerrar projetos, definir etapas e a lista de clientes',
-  'support.read': 'Ver os chamados de suporte (a cópia do painel do LineChat)',
+  'support.read': 'Ver os chamados: os do Gestor (nos painéis que a pessoa vê) e a cópia do painel do LineChat',
+  'tickets.work': 'Trabalhar nos chamados: abrir, assumir, mover, escalonar, anotar, ligar e avisar o cliente',
+  'tickets.manage': 'Cuidar dos chamados: painéis, etapas, assuntos, prazos, avisos, respostas prontas, agendados e a lixeira dos chamados',
   'knowledge.write': 'Escrever na base de conhecimento: criar artigos e melhorar os de qualquer pessoa',
   'knowledge.manage': 'Cuidar da base de conhecimento: leitura obrigatória, rascunhos de todos e mandar artigo para a lixeira',
   'portal.write': 'Escrever no portal do cliente: tutoriais com passo a passo, prints, vídeos e arquivos',
@@ -49,7 +51,7 @@ export const DEFAULT_ROLES: Array<{ key: string; name: string; description: stri
     key: 'operador',
     name: 'Operador',
     description: 'Operação do dia a dia: aloca DIDs, movimenta aparelhos, anota. Sem senhas, sem exclusão, sem importação.',
-    permissions: ['records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work', 'knowledge.write', 'portal.write', 'portal.access'],
+    permissions: ['records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work', 'knowledge.write', 'portal.write', 'portal.access', 'tickets.work'],
   },
   {
     key: 'tecnico',
@@ -57,7 +59,7 @@ export const DEFAULT_ROLES: Array<{ key: string; name: string; description: stri
     description: 'Tudo do Operador + edita cadastros e dados de servidor, revela senhas (com registro) e vê a auditoria.',
     permissions: [
       'records.read', 'support.read', 'access.use', 'notes.edit', 'dids.assign', 'devices.move', 'data.export', 'projects.work', 'knowledge.write',
-      'portal.write', 'portal.access', 'records.write', 'servers.write', 'secrets.reveal', 'audit.read',
+      'portal.write', 'portal.access', 'tickets.work', 'records.write', 'servers.write', 'secrets.reveal', 'audit.read',
     ],
   },
   {
