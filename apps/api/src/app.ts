@@ -53,7 +53,11 @@ declare module 'fastify' {
 export async function buildApp(overrides: Partial<Record<keyof Config, string>> = {}) {
   const config = loadConfig(overrides);
   const app = Fastify({
-    logger: config.NODE_ENV === 'test' ? false : { level: config.NODE_ENV === 'production' ? 'info' : 'debug', transport: config.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined },
+    logger: config.NODE_ENV === 'test' ? false : {
+      level: config.NODE_ENV === 'production' ? 'info' : 'debug', transport: config.NODE_ENV === 'development' ? { target: 'pino-pretty' } : undefined,
+      // a chave de API do robô do LineChat pode vir no endereço (?chave=…): ela nunca vai para o log
+      serializers: { req: (req) => ({ method: req.method, url: String(req.url ?? '').replace(/([?&]chave=)[^&#]*/gi, '$1…'), hostname: req.hostname, remoteAddress: req.ip }) },
+    },
     trustProxy: true,
     // o padrão do Fastify é 1 MB: pequeno demais para o CSV de importação e para um anexo de
     // projeto (10 MB viram ~14 MB em base64). Os schemas é que limitam cada caso.

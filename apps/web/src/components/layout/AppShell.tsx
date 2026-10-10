@@ -3,10 +3,11 @@
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { BookOpen, Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, Moon, Settings, Sparkles, Sun, Upload, UserRound, X } from 'lucide-react';
+import { BookOpen, Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, Moon, Settings, Sparkles, Sun, Ticket, Upload, UserRound, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
 import { NovidadesPopup } from '../../pages/novidades/Index.js';
+import { SinoDeAvisos } from '../../pages/atendimento/Sino.js';
 import { useAuth } from '../../lib/auth.js';
 import { IS_DEMO } from '../../api/index.js';
 import { Logotipo, Simbolo } from '../Marca.js';
@@ -18,8 +19,10 @@ const NAV = [
   { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
   // tarefas que percorrem vários clientes
   { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
-  // os chamados de suporte, lidos do LineChat (substitui o Grafana)
-  { to: '/chamados', label: 'Chamados', icon: Headset, perm: 'support.read' },
+  // os chamados do Gestor (1.10): onde o chamado é aberto, trabalhado e fechado
+  { to: '/atendimento', label: 'Chamados', icon: Ticket, perm: 'support.read' },
+  // a cópia do painel do LineChat (1.3): os números e os relatórios dos chamados de lá (consulta)
+  { to: '/chamados', label: 'Chamados do LineChat', icon: Headset, perm: 'support.read' },
   // o que a equipe aprendeu: chamados estranhos, passo a passo, "como faz" (1.8)
   { to: '/base', label: 'Base de conhecimento', icon: BookOpen, perm: 'records.read' },
   // o que o cliente vê: os tutoriais (vídeo, print, arquivo) e quem entra (1.8)
@@ -108,6 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <button className="md:hidden btn-ghost btn-sm" onClick={() => setOpen(true)} aria-label="Abrir menu"><Menu size={18} /></button>
           <div className="ml-auto flex items-center gap-1">
             {collapsed && <span className="hidden md:inline text-[12px] text-muted mr-1">{user?.name}</span>}
+            {can('support.read') && <SinoDeAvisos />}
             <button className="btn-ghost btn-sm" onClick={toggle} title="Tema claro/escuro">{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
             <button className="btn-ghost btn-sm" onClick={async () => { await logout(); nav('/entrar'); }} title="Sair"><LogOut size={16} /></button>
           </div>
