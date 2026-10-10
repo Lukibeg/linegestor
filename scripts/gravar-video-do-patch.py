@@ -1,0 +1,314 @@
+"""
+Grava o vídeo do patch (Patch 1.9, decisão 0046): o vídeo que abre no login, no lugar dos cartões
+(os cartões continuam na página Novidades). Grava a PRÉVIA, com os dados de exemplo, com um cursor
+visível, uma legenda numerada para cada mudança e uma capa no começo e no fim, e converte para MP4
+(H.264, o que toca em todo navegador).
+
+    1. pnpm --filter @gestor/web build:demo
+    2. python3 -m http.server 4174 -d apps/web/dist-demo          (noutra janela)
+    3. python3 scripts/gravar-video-do-patch.py docs/novidades/<versao>/o-que-mudou.mp4
+    4. no cabeçalho de docs/novidades/<versao>.md:   video: <versao>/o-que-mudou.mp4
+       e `pnpm novidades:demo` + `build:demo` de novo (a prévia passa a abrir com o vídeo)
+
+Precisa do Playwright (Python) e do ffmpeg. **Cada patch tem o seu roteiro**: troque a função
+`roteiro()` e os textos da capa pelos do patch novo — a do 1.9 fica como exemplo. O jeito do vídeo
+(o que o Luan aprovou em 10/10): uns 2 minutos, sem som (o que importa vai na legenda), os dados de
+exemplo da prévia, e a capa e o fim falando com a equipe — nada de "prévia" nem de "quando você der
+o ok": quem assiste é a equipe, no login, depois de publicado.
+
+Por que assim:
+  - o Chromium do Playwright não toca MP4 (H.264): o vídeo do tutorial do portal, na gravação, vai
+    em WebM (convertido na hora, a partir do MP4 de exemplo da prévia);
+  - a janela do login da própria prévia abre com o vídeo do patch, que aqui não toca: atrás da capa,
+    o roteiro segue pelos cartões ("O vídeo não abre? Ler em texto");
+  - o aviso "Novidades marcadas como lidas" dura 4 s: a capa só sai depois dele;
+  - a gravação começa antes de a página carregar: o começo (entrar, a janela do login) fica atrás da
+    capa e é cortado na conversão, deixando ~3 s de capa no começo do vídeo.
+"""
+import base64
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+from playwright.sync_api import sync_playwright
+
+RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+URL = os.environ.get('PREVIA_URL', 'http://localhost:4174/')
+SAIDA = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(RAIZ, 'o-que-mudou.mp4')
+
+# ---------- os textos do patch (troque a cada patch) ----------
+CAPA = ('Patch 1.9 — o que mudou', 'Ingline Gestão · as mudanças em 2 minutos, com dados de exemplo')
+FIM = ('Os detalhes estão em Novidades', 'Cada mudança, com o texto e o print, fica no menu Novidades')
+# quanto da capa fica no começo do vídeo, em segundos (a gravação começa com uns 0 a 2 s de
+# diferença do relógio daqui: na prática a capa fica entre 2,5 e 4,5 s)
+CAPA_NO_COMECO = 2.5
+
+ASSETS = os.path.join(RAIZ, 'apps/web/dist-demo/assets')
+SIMBOLO = next(n for n in os.listdir(ASSETS) if n.startswith('ingline-simbolo'))
+
+INIT = r"""
+(() => {
+  const css = `
+    #__cursor { position: fixed; left: 0; top: 0; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
+      background: rgba(255,255,255,.9); border: 3px solid #2563eb; box-shadow: 0 2px 6px rgba(0,0,0,.35);
+      pointer-events: none; z-index: 2147483645; }
+    .__onda { position: fixed; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; border: 3px solid #2563eb;
+      pointer-events: none; z-index: 2147483644; animation: __onda .6s ease-out forwards; }
+    @keyframes __onda { to { transform: scale(3.4); opacity: 0; } }
+    #__capa { position: fixed; inset: 0; z-index: 2147483646; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 16px; background: radial-gradient(ellipse at top, #dbe4ff, #f8fafc 72%); transition: opacity .6s;
+      font-family: 'Public Sans', 'Segoe UI', sans-serif; text-align: center; padding: 0 60px; pointer-events: none; }
+    #__capa img { width: 84px; height: 84px; }
+    #__capa .t { font-size: 46px; font-weight: 800; color: #0f172a; letter-spacing: -.5px; }
+    #__capa .s { font-size: 21px; color: #475569; max-width: 900px; line-height: 1.45; }
+    #__legenda { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 2147483643; display: flex; gap: 14px;
+      align-items: center; max-width: 1000px; width: max-content; padding: 14px 22px 14px 16px; border-radius: 16px;
+      background: rgba(15,23,42,.93); color: #fff; box-shadow: 0 12px 32px rgba(0,0,0,.28); opacity: 0; transition: opacity .35s;
+      font-family: 'Public Sans', 'Segoe UI', sans-serif; pointer-events: none; }
+    #__legenda .n { flex: none; width: 36px; height: 36px; border-radius: 50%; background: #2563eb; display: flex; align-items: center;
+      justify-content: center; font-weight: 800; font-size: 17px; }
+    #__legenda .t { font-weight: 800; font-size: 20px; }
+    #__legenda .s { font-size: 16px; color: #cbd5e1; margin-top: 3px; }
+  `;
+  function pronto(fn) { if (document.body) fn(); else document.addEventListener('DOMContentLoaded', fn); }
+  pronto(() => {
+    const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+    const cur = document.createElement('div'); cur.id = '__cursor'; cur.style.transform = 'translate(640px, 360px)'; document.body.appendChild(cur);
+    document.addEventListener('mousemove', (e) => { cur.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`; }, true);
+    document.addEventListener('mousedown', (e) => {
+      const r = document.createElement('div'); r.className = '__onda'; r.style.left = e.clientX + 'px'; r.style.top = e.clientY + 'px';
+      document.body.appendChild(r); setTimeout(() => r.remove(), 650);
+    }, true);
+    // a capa fica POR CIMA do cursor (a ordem dos z-index), e não pega os cliques (pointer-events)
+    const capa = document.createElement('div'); capa.id = '__capa';
+    capa.innerHTML = '<img src="assets/__SIMBOLO__" alt=""><div class="t">__TITULO__</div><div class="s">__SUB__</div>';
+    document.body.appendChild(capa);
+    const leg = document.createElement('div'); leg.id = '__legenda'; document.body.appendChild(leg);
+  });
+  window.__capa = (t, s) => { const c = document.getElementById('__capa'); c.querySelector('.t').textContent = t; c.querySelector('.s').textContent = s; c.style.display = 'flex'; requestAnimationFrame(() => { c.style.opacity = '1'; }); };
+  window.__semCapa = () => { const c = document.getElementById('__capa'); c.style.opacity = '0'; setTimeout(() => { c.style.display = 'none'; }, 650); };
+  window.__legenda = (n, t, s) => {
+    const l = document.getElementById('__legenda');
+    l.innerHTML = '<span class="n"></span><div><div class="t"></div><div class="s"></div></div>';
+    l.querySelector('.n').textContent = n; l.querySelector('.t').textContent = t; l.querySelector('.s').textContent = s;
+    l.style.opacity = '1';
+  };
+  window.__semLegenda = () => { document.getElementById('__legenda').style.opacity = '0'; };
+})();
+""".replace('__SIMBOLO__', SIMBOLO).replace('__TITULO__', CAPA[0]).replace('__SUB__', CAPA[1])
+
+
+# ---------- as peças de qualquer roteiro ----------
+
+def esperar(page, ms):
+    page.wait_for_timeout(ms)
+
+
+def ir(page, h, ms=1200):
+    page.evaluate(f"location.hash = {json.dumps(h)}")
+    esperar(page, ms)
+
+
+def apontar(page, loc, ms=350):
+    """Leva o cursor até o elemento, devagar (24 passos), para quem assiste acompanhar."""
+    loc.scroll_into_view_if_needed()
+    esperar(page, 200)
+    b = loc.bounding_box()
+    x, y = b['x'] + b['width'] / 2, b['y'] + b['height'] / 2
+    page.mouse.move(x, y, steps=24)
+    esperar(page, ms)
+    return x, y
+
+
+def clicar(page, loc, ms=350):
+    x, y = apontar(page, loc, ms)
+    page.mouse.click(x, y)
+
+
+def digitar(page, loc, texto):
+    clicar(page, loc, 200)
+    page.keyboard.type(texto, delay=75)
+
+
+def legenda(page, n, t, s, ms=900):
+    page.evaluate('([n, t, s]) => window.__legenda(n, t, s)', [str(n), t, s])
+    esperar(page, ms)
+
+
+def rolar(page, dy, passos=12):
+    for _ in range(passos):
+        page.mouse.wheel(0, dy / passos)
+        esperar(page, 45)
+
+
+def topo(page):
+    page.evaluate('window.scrollTo({ top: 0, behavior: "smooth" })')
+    esperar(page, 600)
+
+
+def video_do_portal_em_webm():
+    """O vídeo de exemplo do portal (MP4, embutido na prévia) em WebM, que o Chromium daqui toca."""
+    fonte = open(os.path.join(RAIZ, 'apps/web/src/api/portal-demo-midia.ts'), encoding='utf-8').read()
+    mp4 = base64.b64decode(re.search(r"VIDEO_TRANSFERIR = 'data:video/mp4;base64,([^']+)'", fonte).group(1))
+    with tempfile.TemporaryDirectory() as tmp:
+        open(os.path.join(tmp, 'v.mp4'), 'wb').write(mp4)
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-i', os.path.join(tmp, 'v.mp4'), '-c:v', 'libvpx-vp9', '-b:v', '0',
+                        '-crf', '38', '-an', os.path.join(tmp, 'v.webm')], check=True)
+        return 'data:video/webm;base64,' + base64.b64encode(open(os.path.join(tmp, 'v.webm'), 'rb').read()).decode()
+
+
+def entrar_atras_da_capa(page):
+    """Entra como admin e passa pela janela do login (pelos cartões: o vídeo do patch não toca aqui)."""
+    page.fill('#email', 'admin@gestor.local')
+    page.fill('#password', 'demo')
+    page.click('button:has-text("Entrar")')
+    esperar(page, 1500)
+    ler = page.get_by_role('button', name='O vídeo não abre? Ler em texto')
+    if ler.count():
+        ler.click()
+        esperar(page, 300)
+    bolinhas = page.locator('button[aria-label^="Ir para "]')
+    for i in range(bolinhas.count()):
+        bolinhas.nth(i).click()
+        esperar(page, 40)
+    page.locator('label:has-text("Li e entendi") input[type=checkbox]').check()
+    page.get_by_role('button', name='Concluir').click()
+
+
+# ---------- o roteiro do Patch 1.9 (troque pelo do patch novo) ----------
+
+def roteiro(page):
+    webm = video_do_portal_em_webm()
+
+    # 1. Inventário › Relatórios
+    legenda(page, 1, 'Inventário › Relatórios', 'A aba nova: quem tem o quê, o estoque, quanto vale o parque, o vai e volta e o cadastro.', 2400)
+    rolar(page, 260); esperar(page, 1200)
+    clicar(page, page.locator('button[title="Ver os aparelhos"]').first); esperar(page, 2400)
+    page.keyboard.press('Escape'); esperar(page, 600)
+    topo(page)
+    clicar(page, page.get_by_role('tab', name='Estoque e valor')); esperar(page, 2200)
+    rolar(page, 420); esperar(page, 1600)
+    topo(page)
+    clicar(page, page.get_by_role('tab', name='Histórico e cadastro')); esperar(page, 2400)
+
+    # 2. o recibo de entrega
+    ir(page, '/inventario?aba=movimentacoes', 1500)
+    legenda(page, 2, 'Recibo de entrega', 'Na movimentação para o cliente: PDF ou foto, na hora ou depois. A foto abre na tela.', 1500)
+    cliente = page.locator('a:has-text("Hospital Vale Verde")').first.get_attribute('href').split('#')[-1].split('?')[0]
+    clicar(page, page.locator('tbody tr:has-text("Unidade Simões Filho")').first.locator('td').nth(2)); esperar(page, 1600)
+    clicar(page, page.locator('tbody tr.bg-surface-2 button:has-text("recibo-dp722")').first); esperar(page, 2600)
+    page.keyboard.press('Escape'); esperar(page, 700)
+
+    # 3. o DID sem titular
+    ir(page, '/circuitos', 1200)
+    legenda(page, 3, 'O DID sem titular', 'O titular fica só no circuito: a tabela de DIDs ficou mais limpa.', 1000)
+    clicar(page, page.locator('main tbody tr').first); esperar(page, 1600)
+    rolar(page, 320); esperar(page, 2200)
+
+    # 4. os chamados do cliente: esta semana e este mês
+    ir(page, f'{cliente}?aba=chamados', 1800)
+    legenda(page, 4, 'Chamados do cliente', 'Os períodos ganharam Esta semana e Este mês.', 900)
+    bloco = page.locator('div.card:has(h2:text-is("Chamados do LineChat"))').first
+    clicar(page, bloco.locator('button:text-is("Esta semana")')); esperar(page, 1800)
+    clicar(page, bloco.locator('button:text-is("Este mês")')); esperar(page, 1800)
+
+    # 5. a lista de clientes do projeto ordena pela coluna
+    ir(page, '/projetos', 1100)
+    links = list(dict.fromkeys(a.get_attribute('href').split('#')[-1] for a in page.locator('a[href*="/projetos/"]').all() if a.get_attribute('href')))
+    tabela = None
+    for destino in links:
+        ir(page, destino, 1300)
+        tabela = page.locator('section.card:has(h2:has-text("Clientes")) table').first
+        if tabela.count():
+            break
+    legenda(page, 5, 'Clientes do projeto', 'Clicar no título da coluna ordena; clicar de novo inverte.', 900)
+    clicar(page, tabela.get_by_role('button', name='Cliente', exact=True)); esperar(page, 1500)
+    clicar(page, tabela.get_by_role('button', name='Cliente', exact=True)); esperar(page, 1700)
+
+    # 6. o portal: a equipe entra com o login do Gestor
+    ir(page, '/portal/entrar', 1300)
+    legenda(page, 6, 'Portal: a equipe entra com o login do Gestor', 'O mesmo e-mail e a mesma senha do Gestor, sem criar nada. A equipe vê todos os tutoriais.', 900)
+    digitar(page, page.locator('#portal-login'), 'admin@gestor.local')
+    digitar(page, page.locator('#portal-senha'), 'demo')
+    clicar(page, page.get_by_role('button', name='Entrar', exact=True)); esperar(page, 1800)
+    apontar(page, page.locator('text=Você entrou com o login da equipe').first, 2600)
+
+    # 7. o suporte cria o login e a senha
+    ir(page, '/portal-do-cliente?aba=acessos', 1300)
+    legenda(page, 7, 'Portal: o suporte cria o login e a senha', 'O login pode ser o e-mail ou um nome. A senha fica guardada: dá para ver e trocar.', 900)
+    clicar(page, page.get_by_role('link', name='Clínica Aurora').first); esperar(page, 1500)
+    clicar(page, page.get_by_role('button', name='Dar acesso').first); esperar(page, 700)
+    digitar(page, page.locator('#acesso-nome'), 'João Pereira'); esperar(page, 1200)
+    apontar(page, page.locator('#acesso-login'), 900)
+    clicar(page, page.get_by_role('button', name='Gerar')); esperar(page, 1000)
+    clicar(page, page.locator('[role="dialog"]').get_by_role('button', name='Dar acesso')); esperar(page, 3200)
+    clicar(page, page.get_by_role('button', name='Fechar').last); esperar(page, 800)
+    clicar(page, page.locator('tr', has_text='João Pereira').locator('button[title^="Ver a senha"]')); esperar(page, 2600)
+
+    # 8. o vídeo principal no topo do tutorial (o vídeo do tutorial, na gravação, em WebM)
+    ir(page, '/portal/a/2', 1600)
+    legenda(page, 8, 'Portal: o vídeo principal', 'Fica no topo do tutorial, logo acima do passo a passo.', 600)
+    page.evaluate("""(src) => { const v = document.querySelector('main video'); v.muted = true; v.src = src; v.play().catch(() => {}); }""", webm)
+    apontar(page, page.locator('main video').first, 4800)
+
+    # 9. o "não ajudou" mostra o WhatsApp do suporte
+    page.evaluate("document.querySelector('main video')?.pause()")
+    legenda(page, 9, 'Portal: o “não ajudou”', 'Mostra o WhatsApp do suporte e abre a conversa já com o nome do tutorial.', 600)
+    clicar(page, page.get_by_role('button', name='Não', exact=True)); esperar(page, 900)
+    apontar(page, page.get_by_role('link', name='Falar no WhatsApp'), 2800)
+
+
+# ---------- gravar e converter ----------
+
+def gravar(pasta):
+    with sync_playwright() as p:
+        b = p.chromium.launch(args=['--no-proxy-server', '--lang=pt-BR', '--autoplay-policy=no-user-gesture-required'], env={'LANG': 'pt_BR.UTF-8'})
+        ctx = b.new_context(viewport={'width': 1280, 'height': 720}, locale='pt-BR', timezone_id='America/Sao_Paulo',
+                            record_video_dir=pasta, record_video_size={'width': 1280, 'height': 720})
+        ctx.add_init_script(INIT)
+        page = ctx.new_page()
+        erros = []
+        page.on('pageerror', lambda e: erros.append(str(e)))
+        t0 = time.monotonic()
+        page.goto(URL)
+        esperar(page, 1200)
+        entrar_atras_da_capa(page)
+        # o aviso "Novidades marcadas como lidas" dura 4 s: a capa só sai depois dele
+        ir(page, '/inventario?aba=relatorios&rel=clientes', 4600)
+        page.mouse.move(700, 380)
+        capa_sai = time.monotonic() - t0
+        page.evaluate('window.__semCapa()')
+        esperar(page, 800)
+
+        roteiro(page)
+
+        page.evaluate('window.__semLegenda()')
+        page.evaluate('([t, s]) => window.__capa(t, s)', list(FIM))
+        esperar(page, 3800)
+        caminho = page.video.path()
+        ctx.close()
+        b.close()
+    if erros:
+        print('erros na página:', erros)
+    return caminho, capa_sai
+
+
+if __name__ == '__main__':
+    pasta = tempfile.mkdtemp(prefix='video-do-patch-')
+    try:
+        gravado, capa_sai = gravar(pasta)
+        os.makedirs(os.path.dirname(SAIDA), exist_ok=True)
+        # corta o começo (entrar e a janela do login, atrás da capa), deixando ~3 s de capa
+        subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-ss', f'{max(0, capa_sai - CAPA_NO_COMECO):.2f}', '-i', gravado,
+                        '-c:v', 'libx264', '-preset', 'slow', '-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', SAIDA],
+                       check=True)
+        duracao = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', SAIDA],
+                                 check=True, capture_output=True, text=True).stdout.strip()
+        print(f'{SAIDA}: {float(duracao):.0f} s, {os.path.getsize(SAIDA) / 1024 / 1024:.1f} MB')
+    finally:
+        shutil.rmtree(pasta, ignore_errors=True)

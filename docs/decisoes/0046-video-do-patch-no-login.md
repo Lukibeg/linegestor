@@ -46,7 +46,10 @@ Luan foi avisado antes, com o motivo; a obrigação continua, só que pelo víde
   copia para `assets/`), não embutido.
 - **O vídeo do 1.9** é o que o Luan aprovou, com a capa e o fim falando com a equipe: "Patch 1.9 —
   o que mudou · as mudanças em 2 minutos, com dados de exemplo" e, no fim, "Os detalhes estão em
-  Novidades". Gravado na prévia (dados de exemplo), 2:08, 4,1 MB.
+  Novidades". Gravado na prévia (dados de exemplo), 2:08, 4,1 MB, com
+  `scripts/gravar-video-do-patch.py` — o roteiro do 1.9 fica lá como exemplo: **a cada patch, o
+  vídeo novo sai do mesmo script, com o roteiro do patch** (uns 2 minutos, sem som, uma legenda
+  numerada por mudança, a capa e o fim falando com a equipe).
 
 **Consequências.**
 
