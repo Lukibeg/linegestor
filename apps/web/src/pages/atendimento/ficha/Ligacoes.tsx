@@ -10,7 +10,7 @@
  * abre a ficha dele.
  */
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { GitBranch, Link2, Unlink, Waypoints } from 'lucide-react';
 import {
   NOME_SITUACAO_CHAMADO, posicoesDoGrafo,
@@ -18,7 +18,7 @@ import {
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
-import { ChipSituacao, CodigoChamado } from '../comum.js';
+import { ChipSituacao, CodigoChamado, LinkDoChamado, useAbrirChamado } from '../comum.js';
 import { ErroPerto, Secao, useAberta, useAcao } from './base.js';
 import { JanelaLigar } from './Janelas.js';
 import { LinhaDeChamado } from './Partes.js';
@@ -118,7 +118,7 @@ function LinhaCurta({ rotulo, codigo, cor, no, depois }: { rotulo: string; codig
           <CodigoChamado codigo={codigo} cor={cor} />
           {no && <ChipSituacao s={no.situacao} />}
         </div>
-        {no && <Link to={`/atendimento/${encodeURIComponent(codigo)}`} className="block text-[13.5px] text-ink hover:text-accent mt-0.5 break-words">{no.titulo}</Link>}
+        {no && <LinkDoChamado codigo={codigo} className="block text-[13.5px] text-ink hover:text-accent mt-0.5 break-words">{no.titulo}</LinkDoChamado>}
       </div>
       {depois && <div className="shrink-0">{depois}</div>}
     </li>
@@ -256,7 +256,7 @@ function useLargura<T extends HTMLElement>() {
 }
 
 export function Desenho({ g }: { g: GrafoChamado }) {
-  const navigate = useNavigate();
+  const abrirChamado = useAbrirChamado();
   const { ref, largura } = useLargura<HTMLDivElement>();
   const posicoes = useMemo(() => posicoesDoGrafo(g), [g]);
   const W = Math.max(280, largura);
@@ -290,7 +290,7 @@ export function Desenho({ g }: { g: GrafoChamado }) {
     return { caixa: m, H: Math.round(fundo - topo + 2 * folga) };
   }, [g.nos, posicoes, W, estreito]);
 
-  const abrir = (n: NoGrafo) => { if (!n.centro) navigate(`/atendimento/${encodeURIComponent(n.codigo)}`); };
+  const abrir = (n: NoGrafo) => { if (!n.centro) abrirChamado(n.codigo); };
 
   return (
     <figure className="mt-4 min-w-0">

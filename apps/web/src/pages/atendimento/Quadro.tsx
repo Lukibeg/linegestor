@@ -6,14 +6,16 @@
  * teclado tem o botão "Mover" no pé do cartão.
  *
  * O painel e os filtros ficam no endereço (?painel=…&responsavel=eu), e o quadro relê a cada minuto:
- * o prazo anda com o relógio. O Fechado mostra só os 30 mais recentes; o resto fica na lista.
+ * o prazo anda com o relógio. O Fechado mostra só os 30 mais recentes; o resto fica na lista. Em cima,
+ * uma linha só (o painel, a busca e o botão Filtros), para sobrar altura para os cartões; clicar no
+ * cartão abre o chamado numa janela grande por cima do quadro.
  *
  * O quadro se abre pela tela inicial dos chamados (os painéis, como no Helena): em cima, o caminho de
  * volta, o painel aberto, "Trocar" (a lista dos outros painéis) e "Configurar" (quem cuida). As abas
  * de painéis saíram — com muitos painéis, não cabiam (o Luan, na prévia).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode, type RefObject } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ArrowLeft, ArrowRightLeft, ChevronsUpDown, CircleCheck, Clock, Filter, Inbox, List, Moon, Settings2 } from 'lucide-react';
 import {
@@ -22,7 +24,7 @@ import {
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, EscolherComBusca, Popover, Spinner, Vazio, mensagemErro } from '../../components/ui/index.js';
-import { CabecalhoAtendimento, dataHoraCurta, haQuanto, useOpcoes, usePode } from './comum.js';
+import { CabecalhoAtendimento, dataHoraCurta, haQuanto, useAbrirChamado, useOpcoes, usePode } from './comum.js';
 import { useMover } from './mover.js';
 import { CartaoComRodape, cliqueAbreAFicha } from './quadro/cartao.js';
 import {
@@ -58,7 +60,11 @@ export function Quadro() {
 
   return (
     <div>
-      <CabecalhoAtendimento acoes={painel && <Link className="btn-secondary" to={enderecoDaLista(painel.id, filtros)} title="Os mesmos chamados, numa tabela que ordena e exporta"><List size={15} /> Ver na lista</Link>} />
+      <CabecalhoAtendimento acoes={painel && (
+        <Link className="btn-secondary" to={enderecoDaLista(painel.id, filtros)} title="Os mesmos chamados, numa tabela que ordena e exporta" aria-label="Ver na lista">
+          <List size={15} aria-hidden /> <span className="hidden sm:inline">Ver na lista</span>
+        </Link>
+      )} />
       {opcoes.isLoading ? <Carregando /> : opcoes.isError ? <ErroComTentar erro={opcoes.error} tentar={() => void opcoes.refetch()} /> : !painel ? (
         <Vazio titulo="Painel não encontrado" texto="Ele pode ter saído, ou ser de acesso escolhido sem você na lista."
           acao={<Link to="/atendimento" className="btn-secondary"><ArrowLeft size={15} /> Ver os painéis</Link>} />
@@ -97,7 +103,7 @@ function CabecalhoDoPainel({ paineis, atual, className = '' }: { paineis: Painel
   };
   return (
     <div className={`flex items-center gap-x-2 gap-y-1 flex-wrap min-w-0 ${className}`} id="quadro-painel">
-      <Link to="/atendimento" className="btn-ghost btn-sm -ml-2 text-ink-2" title="Voltar à tela dos painéis"><ArrowLeft size={15} aria-hidden /> Painéis</Link>
+      <Link to="/atendimento" className="btn-ghost btn-sm -ml-2 text-ink-2" title="Voltar à tela dos painéis" aria-label="Painéis"><ArrowLeft size={15} aria-hidden /> <span className="hidden sm:inline">Painéis</span></Link>
       <span className="text-line-strong" aria-hidden>/</span>
       <h2 className="font-display font-semibold text-[17px] flex items-center gap-2 min-w-0">
         <PontoDoPainel cor={atual.cor} />
@@ -127,8 +133,8 @@ function CabecalhoDoPainel({ paineis, atual, className = '' }: { paineis: Painel
         </Popover>
       )}
       {pode.cuidar && (
-        <Link to={`/atendimento/ajustes?aba=paineis&editar=${encodeURIComponent(atual.id)}`} className="btn-ghost btn-sm text-ink-2" title="As etapas, as regras e quem vê este painel">
-          <Settings2 size={15} aria-hidden /> Configurar
+        <Link to={`/atendimento/ajustes?aba=paineis&editar=${encodeURIComponent(atual.id)}`} className="btn-ghost btn-sm text-ink-2" title="As etapas, as regras e quem vê este painel" aria-label="Configurar">
+          <Settings2 size={15} aria-hidden /> <span className="hidden sm:inline">Configurar</span>
         </Link>
       )}
     </div>
@@ -251,18 +257,27 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
 
   return (
     <>
-      {/* o painel aberto e, do lado, a busca (no celular, a busca desce para a linha de baixo, com o botão dos filtros) */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
-        <CabecalhoDoPainel paineis={opcoes.paineis} atual={painel} className="flex-1 min-w-0 basis-full md:basis-auto" />
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <CampoBusca className="flex-1 md:flex-none md:w-[320px]" id="quadro-busca" valor={valor('q')} onChange={(v) => mudar({ q: v })}
+      {/* numa linha só (o pedido do Luan: o alto tomava o espaço dos cartões): o painel aberto, o aviso de
+          fora do horário, a busca e o botão dos filtros — as caixas dos filtros só aparecem quando pedidas,
+          e o que está filtrado fica escrito logo embaixo, com o X */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2.5">
+        <CabecalhoDoPainel paineis={opcoes.paineis} atual={painel} className="min-w-0" />
+        {quadro.data?.foraDoHorario && painel.ajustes.contaPrazo && (
+          <span className="chip bg-surface-2 text-ink-2 font-medium" id="quadro-fora-do-horario"
+            title={`Fora do horário de atendimento: ${todasUteis ? 'os prazos estão parados' : 'os prazos em horas úteis estão parados'}.`}>
+            <Moon size={12} className="text-muted" aria-hidden /> Fora do horário: {todasUteis ? 'prazos parados' : 'prazos úteis parados'}
+          </span>
+        )}
+        <div className="flex items-center gap-2 w-full md:w-auto md:flex-1 md:min-w-[220px] md:max-w-[420px] md:ml-auto">
+          <CampoBusca className="flex-1" id="quadro-busca" valor={valor('q')} onChange={(v) => mudar({ q: v })}
             placeholder="Código, título, cliente…" titulo="Acha pelo código, título, cliente, contato, telefone e pelo que foi escrito (sem acento)" />
-          <button type="button" className="btn-secondary md:hidden" aria-expanded={filtrosAbertos} aria-controls="quadro-filtros" onClick={() => setFiltrosAbertos((v) => !v)}>
+          <button type="button" className={`btn-secondary ${filtrosAbertos ? 'border-accent text-accent-ink bg-accent-soft' : ''}`} aria-expanded={filtrosAbertos} aria-controls="quadro-filtros"
+            id="quadro-botao-filtros" onClick={() => setFiltrosAbertos((v) => !v)} title={filtrosAbertos ? 'Esconder as caixas dos filtros' : 'Filtrar por responsável, prioridade, espera, cliente e assunto'}>
             <Filter size={15} /> Filtros{ligados > 0 && <span className="text-accent tnum">({ligados})</span>}
           </button>
         </div>
       </div>
-      <div id="quadro-filtros" className={`${filtrosAbertos ? 'flex' : 'hidden'} md:flex flex-wrap items-center gap-2 mb-3`}>
+      <div id="quadro-filtros" className={`${filtrosAbertos ? 'flex' : 'hidden'} flex-wrap items-center gap-2 mb-2.5`}>
         <EscolherComBusca className={CAIXA_FILTRO} rotulo="Responsável" valor={valor('responsavel')} vazio="Todos os responsáveis" opcoes={opcoesDeResponsavel(pessoas)} procurar="Procurar pessoa…" onChange={(v) => mudar({ responsavel: v })} />
         <SelectFiltro rotulo="Prioridade" valor={valor('prioridade')} vazio="Todas as prioridades" opcoes={PRIORIDADES.map((p) => ({ id: p, nome: NOME_PRIORIDADE[p] }))} onChange={(v) => mudar({ prioridade: v })} />
         <SelectFiltro rotulo="Espera" valor={valor('espera')} vazio="Esperando ou não" opcoes={ESPERAS} onChange={(v) => mudar({ espera: v })} />
@@ -272,13 +287,6 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
         )}
       </div>
       <FiltrosEscritos itens={escritos} onLimpar={() => mudar(Object.fromEntries(FILTROS.map((k) => [k, null])))} />
-
-      {quadro.data?.foraDoHorario && painel.ajustes.contaPrazo && (
-        <p className="flex items-center gap-2 rounded-lg bg-surface-2 text-ink-2 text-[12.5px] px-3 py-1.5 mb-3" id="quadro-fora-do-horario">
-          <Moon size={14} className="text-muted shrink-0" aria-hidden />
-          Fora do horário de atendimento: {todasUteis ? 'os prazos estão parados.' : 'os prazos em horas úteis estão parados.'}
-        </p>
-      )}
       {nenhum && escritos.length > 0 && <p className="text-[13px] text-muted mb-2">Nenhum chamado neste painel com esses filtros.</p>}
 
       {!colunas ? (quadro.isError ? <ErroComTentar erro={quadro.error} tentar={() => void quadro.refetch()} /> : <Carregando />) : (
@@ -385,15 +393,15 @@ function CartaoNoQuadro({ c, painel, etapas, podeMover, ocupado, esmaecido, onCo
   c: CartaoChamado; painel: Painel; etapas: EtapaPainel[]; podeMover: boolean; ocupado: boolean; esmaecido: boolean;
   onComecar: (c: CartaoChamado, e: DragEvent<HTMLDivElement>) => void; onTerminar: () => void; onMover: (etapaId: string) => void;
 }) {
-  const nav = useNavigate();
+  const abrirChamado = useAbrirChamado();
   const arrastavel = podeMover && !ocupado;
   return (
     <li data-cartao={c.id} data-codigo={c.codigo}>
       <CartaoComRodape
         c={c} cor={painel.cor} arrastavel={arrastavel} draggable={arrastavel}
         onDragStart={(e) => onComecar(c, e)} onDragEnd={onTerminar}
-        // clicar no cartão (fora dos links e do pé) abre a ficha, como no título
-        onClick={(e) => { if (cliqueAbreAFicha(e)) nav(`/atendimento/${encodeURIComponent(c.codigo)}`); }}
+        // clicar no cartão (fora dos links e do pé) abre a ficha, como no título: na janela grande, com o quadro embaixo
+        onClick={(e) => { if (cliqueAbreAFicha(e)) abrirChamado(c.codigo); }}
         aria-busy={ocupado || undefined}
         className={`cursor-pointer transition-opacity ${ocupado ? 'opacity-50 pointer-events-none' : esmaecido ? 'opacity-40' : ''}`}
         rodape={(

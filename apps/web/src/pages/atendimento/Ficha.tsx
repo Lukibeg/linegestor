@@ -12,18 +12,23 @@
  * No celular é uma coluna só, com a empresa e a barra de ações primeiro. Toda ação chama a API, que
  * devolve a ficha inteira: `useDepoisDeMudar` põe a ficha nova no lugar e relê o quadro, a lista e o
  * Meu dia. Quem só lê (o Leitor) vê tudo, sem os botões de mudar.
+ *
+ * Aberta de dentro do sistema (o cartão do quadro, a lista, o Meu dia, o sininho), a ficha vem numa
+ * janela grande por cima da tela, que continua lá embaixo do jeito que estava — o pedido do Luan na
+ * prévia. O link direto (/atendimento/SUP-12) abre em página inteira, e a janela tem o botão para ela.
  */
-import { useEffect, useMemo } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo } from 'react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { RotateCcw } from 'lucide-react';
+import { Maximize2, RotateCcw } from 'lucide-react';
 import { lerCodigo } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
-import { Carregando, Vazio, mensagemErro } from '../../components/ui/index.js';
+import { Carregando, Modal, Vazio, mensagemErro } from '../../components/ui/index.js';
 import { useAuth } from '../../lib/auth.js';
 import { paraALista } from '../../lib/voltar.js';
-import { chaveDaFicha, painelDe, useFicha, useOpcoes } from './comum.js';
+import { PontoDoPainel } from './quadro/filtros.js';
+import { chaveDaFicha, enderecoDoChamado, fundoDaJanela, painelDe, useFicha, useOpcoes } from './comum.js';
 import { useMover } from './mover.js';
 import { FichaAberta, proximaEtapa, type Aberta } from './ficha/base.js';
 import { Cabecalho } from './ficha/Cabecalho.js';
@@ -44,19 +49,60 @@ import { Tempo } from './ficha/Tempo.js';
  * zero (nenhuma caixa aberta, a aba Tudo).
  */
 export function FichaDoChamado() {
-  const { codigo = '' } = useParams();
-  const lido = lerCodigo(codigo);
-  const referencia = lido ? `${lido.sigla}-${lido.numero}` : codigo;
+  const referencia = useReferencia();
   return <Ficha key={referencia} referencia={referencia} />;
 }
 
-function Ficha({ referencia }: { referencia: string }) {
+/** O código do endereço, escrito de qualquer jeito (sup-12, SUP 12), do jeito do sistema. */
+function useReferencia() {
+  const { codigo = '' } = useParams();
+  const lido = lerCodigo(codigo);
+  return lido ? `${lido.sigla}-${lido.numero}` : codigo;
+}
+
+/**
+ * A ficha numa janela grande, por cima da tela de onde ela foi aberta. Fechar (o X, o Esc, o clique
+ * fora ou o Voltar do navegador) volta para a tela, do jeito que estava; ir para outro chamado dentro
+ * da janela troca o chamado da janela. "Página inteira" abre a ficha sozinha, no endereço dela.
+ */
+export function ChamadoEmJanela() {
+  const referencia = useReferencia();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const opcoes = useOpcoes();
+  const ficha = useFicha(referencia);
+  const painel = painelDe(opcoes.data, ficha.data?.painelId);
+  const fechar = useCallback(() => {
+    // a janela entrou no histórico por cima da tela: voltar um passo é voltar para ela
+    const passo = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    const fundo = fundoDaJanela(location);
+    if (passo > 0) navigate(-1);
+    else if (fundo) navigate(`${fundo.pathname}${fundo.search}${fundo.hash}`, { replace: true, state: fundo.state });
+  }, [navigate, location]);
+  return (
+    <Modal open onClose={fechar} largura="max-w-[1320px] h-[calc(100vh-32px)]" titulo={(
+      <span className="flex items-center gap-2 min-w-0" id="janela-do-chamado">
+        {painel && <PontoDoPainel cor={painel.cor} />}
+        <span className="truncate">{painel ? `${painel.nome} · ` : ''}<span className="font-mono">{ficha.data?.codigo ?? referencia}</span></span>
+        <Link to={enderecoDoChamado(ficha.data?.codigo ?? referencia)} replace className="btn-ghost btn-sm text-muted font-sans font-normal text-[12.5px] ml-1"
+          title="Abrir a ficha sozinha, na tela inteira (o endereço dela dá para mandar para alguém)">
+          <Maximize2 size={13} aria-hidden /> Página inteira
+        </Link>
+      </span>
+    )}>
+      <Ficha key={referencia} referencia={referencia} emJanela />
+    </Modal>
+  );
+}
+
+function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?: boolean }) {
   const opcoes = useOpcoes();
   const q = useFicha(referencia);
   const f = q.data;
   const { user } = useAuth();
   const mover = useMover();
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const clienteId = f?.cliente?.id ?? null;
   const cadastro = useQuery({
@@ -74,13 +120,13 @@ function Ficha({ referencia }: { referencia: string }) {
     return () => { document.title = antes; };
   }, [f?.codigo, f?.titulo]);
 
-  // aberto pelo id (um link antigo, um aviso): o endereço passa a ser o do código
+  // aberto pelo id (um link antigo, um aviso): o endereço passa a ser o do código (na janela, continua na janela)
   useEffect(() => {
     if (f && referencia !== f.codigo && !lerCodigo(referencia)) {
       qc.setQueryData(chaveDaFicha(f.codigo), f);
-      navigate(`/atendimento/${encodeURIComponent(f.codigo)}`, { replace: true });
+      navigate(enderecoDoChamado(f.codigo), { replace: true, state: location.state });
     }
-  }, [f, referencia, navigate, qc]);
+  }, [f, referencia, navigate, qc, location.state]);
 
   const aberta = useMemo<Aberta | null>(() => {
     if (!f || !opcoes.data) return null;
@@ -105,7 +151,7 @@ function Ficha({ referencia }: { referencia: string }) {
   return (
     <FichaAberta value={aberta}>
       <div className="flex flex-col gap-4 min-w-0">
-        <Cabecalho />
+        <Cabecalho emJanela={emJanela} />
         {aberta.pode && <BarraDeAcoes />}
         <div className="grid grid-cols-1 gap-4 items-start lg:grid-cols-[minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr]">
           {/* no celular a empresa vem antes de tudo; no computador, no alto da coluna do lado */}

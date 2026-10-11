@@ -518,6 +518,6 @@ export type {
   ReferenciaMostrada, GrafoChamado, NoGrafo, ArestaGrafo, RespostaPronta, Agendado, AvisosChamadosTela, WebhookTela, ChaveApiTela, IntegracoesTela, SugestaoIa,
   TipoLigacaoChamado, ChamadoCriarEntrada, ChamadoAlterarEntrada, MoverEntrada, ChecklistEntrada, TempoEntrada, OperadoraCasoEntrada, PainelGravarEntrada,
   EtapaGravarEntrada, AssuntoGravarEntrada, RespostaProntaGravarEntrada, AgendadoGravarEntrada, AvisosChamadosEntrada, WebhookGravarEntrada, AjustesPrazos,
-  CampoObrigatorio, TipoEtapa, Afetado, ItemChecklist, SituacaoDoChamado, Prioridade, Gravidade, Alcance, EstadoPrazo, TipoEspera, PessoaCurta, AcaoResposta, RegraAgendado,
-  EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, TipoAfetado, Nivel,
+  CampoObrigatorio, TipoEtapa, ItemChecklist, SituacaoDoChamado, Prioridade, Gravidade, Alcance, EstadoPrazo, TipoEspera, PessoaCurta, AcaoResposta, RegraAgendado,
+  EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, Nivel,
 } from '@gestor/shared';

@@ -8,7 +8,6 @@
  * servidor, não só a página). Páginas de 50, com "Ver tudo"; Exportar leva os mesmos filtros.
  */
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import { Clock, Download, Filter, Hourglass, Layers, RotateCcw, TriangleAlert, User, UserX, type LucideIcon } from 'lucide-react';
 import {
@@ -20,7 +19,9 @@ import { Carregando, Chip, EscolherComBusca, Paginacao, Spinner, TODOS, Vazio, m
 import { ThN, TdN, contarDe } from '../../lib/contagem.js';
 import { Th, type Dir, type Ordenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
-import { Avatar, CabecalhoAtendimento, ChipEspera, ChipPrioridade, CodigoChamado, SeloPrazo, dataHoraCurta, haQuanto, painelDe, telefoneLegivel, useOpcoes } from './comum.js';
+import {
+  Avatar, CabecalhoAtendimento, ChipEspera, ChipPrioridade, CodigoChamado, LinkDoChamado, SeloPrazo, dataHoraCurta, haQuanto, painelDe, telefoneLegivel, useAbrirChamado, useOpcoes,
+} from './comum.js';
 import { cliqueAbreAFicha } from './quadro/cartao.js';
 import {
   CAIXA_FILTRO, CampoBusca, FiltrosEscritos, PontoDoPainel, SelectFiltro, nomeDoAssunto, nomeDoResponsavel, opcoesDeAssunto, opcoesDeResponsavel,
@@ -168,7 +169,10 @@ export function ListaDeChamados() {
   );
 }
 
-/** A busca, a situação e os filtros (no celular, atrás do botão "Filtros"). */
+/**
+ * A busca, a situação e o botão "Filtros": as caixas dos filtros só aparecem quando pedidas (o alto da
+ * tela ficava comprido — o pedido do Luan na prévia); o que está filtrado fica escrito embaixo, com o X.
+ */
 function Filtros({ opcoes, situacao }: { opcoes: OpcoesAtendimento; situacao: Situacao }) {
   const { valor, mudar } = useFiltrosNoEndereco();
   const [abertos, setAbertos] = useState(false);
@@ -198,11 +202,12 @@ function Filtros({ opcoes, situacao }: { opcoes: OpcoesAtendimento; situacao: Si
             </button>
           ))}
         </div>
-        <button type="button" className="btn-secondary md:hidden" aria-expanded={abertos} aria-controls="lista-filtros" onClick={() => setAbertos((v) => !v)}>
+        <button type="button" className={`btn-secondary ${abertos ? 'border-accent text-accent-ink bg-accent-soft' : ''}`} aria-expanded={abertos} aria-controls="lista-filtros"
+          id="lista-botao-filtros" onClick={() => setAbertos((v) => !v)} title={abertos ? 'Esconder as caixas dos filtros' : 'Filtrar por painel, etapa, responsável, prioridade, prazo, cliente, assunto, etiqueta e data'}>
           <Filter size={15} /> Filtros{ligados > 0 && <span className="text-accent tnum">({ligados})</span>}
         </button>
       </div>
-      <div id="lista-filtros" className={`${abertos ? 'flex' : 'hidden'} md:flex flex-wrap items-center gap-2 mb-3`}>
+      <div id="lista-filtros" className={`${abertos ? 'flex' : 'hidden'} flex-wrap items-center gap-2 mb-3`}>
         <SelectFiltro rotulo="Painel" valor={valor('painel')} vazio="Todos os painéis" onChange={trocarPainel}
           opcoes={opcoes.paineis.map((p) => ({ id: p.id, nome: p.ativo ? p.nome : `${p.nome} (desativado)` }))} />
         {painel && <SelectFiltro rotulo="Etapa" valor={valor('etapa')} vazio="Todas as etapas" onChange={(v) => mudar({ etapa: v })} opcoes={painel.etapas.map((e) => ({ id: e.id, nome: e.nome }))} />}
@@ -261,12 +266,12 @@ function Tabela({ itens, total, opcoes, ordem, mostrarPainel, page, tudo, carreg
   itens: CartaoChamado[]; total: number; opcoes: OpcoesAtendimento; ordem: Ordenacao & { voltar: () => void }; mostrarPainel: boolean;
   page: number; tudo: boolean; carregando: boolean; setPage: (p: number) => void; setTudo: (v: boolean) => void;
 }) {
-  const nav = useNavigate();
+  const abrirChamado = useAbrirChamado();
   const numero = contarDe(tudo ? 1 : page, tudo ? TODOS : POR_PAGINA);
   const etapas = useMemo(() => new Map(opcoes.paineis.flatMap((p) => p.etapas.map((e) => [e.id, e] as const))), [opcoes.paineis]);
   const abrir = (e: MouseEvent<HTMLTableRowElement>, c: CartaoChamado) => {
-    // os links e os botões da linha fazem o que é deles; o resto da linha abre a ficha
-    if (cliqueAbreAFicha(e)) nav(`/atendimento/${encodeURIComponent(c.codigo)}`);
+    // os links e os botões da linha fazem o que é deles; o resto da linha abre a ficha (na janela grande, com a lista embaixo)
+    if (cliqueAbreAFicha(e)) abrirChamado(c.codigo);
   };
   return (
     <section className="card p-0 min-w-0" aria-busy={carregando || undefined}>
@@ -303,7 +308,7 @@ function Tabela({ itens, total, opcoes, ordem, mostrarPainel, page, tudo, carreg
                   <TdN n={numero(i)} />
                   <td className="whitespace-nowrap"><CodigoChamado codigo={c.codigo} cor={painel?.cor} /></td>
                   <td className="min-w-[210px] max-w-[400px]">
-                    <Link to={`/atendimento/${encodeURIComponent(c.codigo)}`} className="font-semibold text-ink hover:text-accent">{c.titulo}</Link>
+                    <LinkDoChamado codigo={c.codigo} className="font-semibold text-ink hover:text-accent">{c.titulo}</LinkDoChamado>
                     <Marcas c={c} />
                   </td>
                   <td className="min-w-[150px] max-w-[240px]">
@@ -351,8 +356,8 @@ function Marcas({ c }: { c: CartaoChamado }) {
           {c.incidentes > 0 && <span className="text-[12px] text-muted">{c.incidentes} {c.incidentes === 1 ? 'incidente' : 'incidentes'}</span>}
         </>
       )}
-      {c.pai && <span className="text-[12px] text-muted">filho de <Link to={`/atendimento/${encodeURIComponent(c.pai.codigo)}`} className="font-mono hover:text-accent">{c.pai.codigo}</Link></span>}
-      {c.problema && <span className="text-[12px] text-muted">incidente de <Link to={`/atendimento/${encodeURIComponent(c.problema.codigo)}`} className="font-mono hover:text-accent">{c.problema.codigo}</Link></span>}
+      {c.pai && <span className="text-[12px] text-muted">filho de <LinkDoChamado codigo={c.pai.codigo} className="font-mono hover:text-accent">{c.pai.codigo}</LinkDoChamado></span>}
+      {c.problema && <span className="text-[12px] text-muted">incidente de <LinkDoChamado codigo={c.problema.codigo} className="font-mono hover:text-accent">{c.problema.codigo}</LinkDoChamado></span>}
       {c.reaberto > 0 && <Chip tone="signal" title={`Reaberto ${c.reaberto} ${c.reaberto === 1 ? 'vez' : 'vezes'}`}><RotateCcw size={11} /> reaberto{c.reaberto > 1 ? ` ${c.reaberto}×` : ''}</Chip>}
       <ChipEspera e={c.espera} />
     </div>

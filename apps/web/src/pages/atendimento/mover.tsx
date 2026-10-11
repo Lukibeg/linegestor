@@ -7,12 +7,11 @@
  *  - fechou: a comemoração (confete), que some sozinha e respeita quem pede menos movimento.
  */
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 import { NOME_CAMPO, movimentoDeNivel, type EtapaPainel, type FichaChamado, type PessoaCurta } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
 import { Campo, EscolherComBusca, Modal, Spinner, mensagemErro, useToast } from '../../components/ui/index.js';
-import { painelDe, useDepoisDeMudar, useOpcoes } from './comum.js';
+import { LinkDoChamado, painelDe, useDepoisDeMudar, useOpcoes } from './comum.js';
 
 export type Movivel = { id: string; codigo: string; painelId: string; etapaId: string; responsavel: PessoaCurta | null };
 
@@ -125,7 +124,7 @@ function JanelaEscalonar({ e, pessoas, onFechar, onConfirmar }: { e: Escalonando
 function JanelaTravado({ t, onFechar }: { t: Travado; onFechar: () => void }) {
   return (
     <Modal open onClose={onFechar} titulo={`${t.c.codigo} ainda não pode ir para ${t.para.nome}`}
-      rodape={<><button className="btn-secondary" onClick={onFechar}>Entendi</button><Link to={`/atendimento/${encodeURIComponent(t.c.codigo)}`} className="btn-primary" onClick={onFechar}>Abrir o chamado</Link></>}>
+      rodape={<><button className="btn-secondary" onClick={onFechar}>Entendi</button><LinkDoChamado codigo={t.c.codigo} className="btn-primary" onClick={onFechar}>Abrir o chamado</LinkDoChamado></>}>
       {t.faltam.length > 0 && (
         <div className="mb-3">
           <p className="text-sm text-ink-2 mb-2">Para ir para <b>{t.para.nome}</b>, falta preencher:</p>
@@ -135,7 +134,7 @@ function JanelaTravado({ t, onFechar }: { t: Travado; onFechar: () => void }) {
       {t.filhos.length > 0 && (
         <div>
           <p className="text-sm text-ink-2 mb-2">Os filhos em aberto precisam fechar antes:</p>
-          <ul className="flex flex-wrap gap-1.5">{t.filhos.map((f) => <li key={f}><Link className="chip bg-surface-2 text-ink-2 font-mono hover:text-accent" to={`/atendimento/${encodeURIComponent(f)}`} onClick={onFechar}>{f}</Link></li>)}</ul>
+          <ul className="flex flex-wrap gap-1.5">{t.filhos.map((f) => <li key={f}><LinkDoChamado className="chip bg-surface-2 text-ink-2 font-mono hover:text-accent" codigo={f} onClick={onFechar}>{f}</LinkDoChamado></li>)}</ul>
         </div>
       )}
       {!t.faltam.length && !t.filhos.length && <p className="text-sm text-ink-2">{t.mensagem}</p>}

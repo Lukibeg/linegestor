@@ -1,5 +1,6 @@
 /**
- * O cabeçalho da ficha: o caminho de volta (a lista com os filtros, ou o quadro do painel), o código
+ * O cabeçalho da ficha: o caminho de volta (a lista com os filtros, ou o quadro do painel — na janela
+ * por cima da tela, não precisa: fechar a janela já volta), o código
  * grande na cor do painel, a etapa, a prioridade, os selos (problema, reaberto, esperando, o prazo),
  * o título — que se edita ali mesmo: clicar edita, Enter grava, Esc desiste — e quem abriu, quando
  * e de onde o chamado veio.
@@ -36,16 +37,18 @@ function paraOQuadro(painelId: string): string {
   return `/atendimento/quadro?painel=${encodeURIComponent(painelId)}`;
 }
 
-export function Cabecalho() {
+export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
   const { f, painel, etapa } = useAberta();
   const Icone = ICONE_ORIGEM[f.origem] ?? Monitor;
   return (
     <header className="flex flex-col gap-2 min-w-0">
-      <nav aria-label="Voltar" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
-        <Link to={paraALista('/atendimento/lista')} className="inline-flex items-center gap-1.5 text-muted hover:text-accent"><ArrowLeft size={14} /> Lista de chamados</Link>
-        <span className="text-line-strong" aria-hidden>·</span>
-        <Link to={paraOQuadro(f.painelId)} className="inline-flex items-center gap-1.5 text-muted hover:text-accent"><Kanban size={14} /> Quadro · {painel?.nome ?? 'painel'}</Link>
-      </nav>
+      {!emJanela && (
+        <nav aria-label="Voltar" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
+          <Link to={paraALista('/atendimento/lista')} className="inline-flex items-center gap-1.5 text-muted hover:text-accent"><ArrowLeft size={14} /> Lista de chamados</Link>
+          <span className="text-line-strong" aria-hidden>·</span>
+          <Link to={paraOQuadro(f.painelId)} className="inline-flex items-center gap-1.5 text-muted hover:text-accent"><Kanban size={14} /> Quadro · {painel?.nome ?? 'painel'}</Link>
+        </nav>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <CodigoChamado codigo={f.codigo} cor={painel?.cor} link={false} className="!text-[16px] !leading-6 !px-2.5 !py-1" />

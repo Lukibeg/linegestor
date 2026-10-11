@@ -26,9 +26,9 @@ import {
 } from '@gestor/db';
 import {
   caminhoDoAssunto, codigoDoChamado, diaLocal, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir,
-  faltaParaEtapa, filhosQueTravam, mensagemDoQueFalta, movimentoDeNivel, NOME_AFETADO, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE,
+  faltaParaEtapa, filhosQueTravam, mensagemDoQueFalta, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE,
   NOME_LIGACAO, numeroWhatsApp, paraBusca, preencherModelo, prioridadeSugerida, situacaoDaEtapa,
-  type Afetado, type Alcance, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
+  type Alcance, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
 } from '@gestor/shared';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
@@ -98,7 +98,6 @@ const nomeCliente = (ctx: Contexto, id: string | null) => (id ? ctx.clientes.get
 const nomesProdutos = (ctx: Contexto, ids: string[]) => juntar(ids.map((id) => ctx.produtos.get(id)?.nome ?? '?'));
 const nomesOperadoras = (ctx: Contexto, ids: string[]) => juntar(ids.map((id) => ctx.operadoras.get(id) ?? '?'));
 const nomesPessoas = (ctx: Contexto, ids: string[]) => juntar(ids.map((id) => pessoaCurta(ctx, id)!.nome));
-const nomesAfetados = (xs: Afetado[]) => juntar(xs.map((a) => `${NOME_AFETADO[a.tipo]} ${a.nome}`));
 const caminho = (ctx: Contexto, id: string | null) => (id ? caminhoDoAssunto(id, ctx.assuntos) || null : null);
 const unicos = (xs: string[]) => [...new Set(xs.map((x) => x.trim()).filter(Boolean))];
 const mesmoConjunto = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
@@ -228,7 +227,7 @@ export async function criarChamado(
   const dados: DadosObrigatorios = {
     tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
     assuntoId: assunto?.id ?? null, tipo, gravidade: d.gravidade ?? null, alcance: d.alcance ?? null, prioridade,
-    produtos, operadoras, afetados: d.afetados ?? [], responsavelId: d.responsavelId ?? null,
+    produtos, operadoras, responsavelId: d.responsavelId ?? null,
     solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0,
   };
   const faltam = faltaParaAbrir(dados, painel.ajustes);
@@ -267,7 +266,7 @@ export async function criarChamado(
       customerReport: dados.relato, description: dados.descricao, clientId: clienteId, contactName: contatoNome, contactPhone: telefone,
       sessionId: d.sessaoId ?? null, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: d.gravidade ?? null, reach: d.alcance ?? null, priority: prioridade, priorityReason: motivoPrioridade,
-      productIds: produtos, carrierIds: operadoras, tags: etiquetasUnicas(d.etiquetas ?? []), affected: d.afetados ?? [],
+      productIds: produtos, carrierIds: operadoras, tags: etiquetasUnicas(d.etiquetas ?? []),
       parentId: pai?.id ?? null, problemId: problema?.id ?? null, checklist,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       firstResponseAt: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? agora : null,
@@ -406,7 +405,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, d: 
   }
   if (motivo !== t.priorityReason) set.priorityReason = motivo;
 
-  // produtos, operadoras, o que foi afetado, etiquetas, observadores
+  // produtos, operadoras, etiquetas, observadores
   if (d.produtos !== undefined) {
     const novos = unicos(d.produtos);
     if (!mesmoConjunto(novos, t.productIds)) {
@@ -421,14 +420,6 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, d: 
       conferirOperadoras(ctx, novas);
       set.carrierIds = novas;
       campo('operadoras', NOME_CAMPO.operadora, nomesOperadoras(ctx, t.carrierIds), nomesOperadoras(ctx, novas), t.carrierIds);
-    }
-  }
-  if (d.afetados !== undefined) {
-    const antigos = (t.affected as Afetado[] | null) ?? [];
-    const chave = (xs: Afetado[]) => xs.map((x) => `${x.tipo}:${x.id}`).sort().join('|');
-    if (chave(d.afetados) !== chave(antigos)) {
-      set.affected = d.afetados;
-      campo('afetados', NOME_CAMPO.afetados, nomesAfetados(antigos), nomesAfetados(d.afetados), antigos);
     }
   }
 

@@ -2,17 +2,17 @@
  * A classificação do chamado, na coluna do lado: o assunto (o caminho inteiro, só os ativos do
  * painel), o tipo (as opções do painel), a gravidade (com a dica de cada uma), o alcance e a
  * prioridade — com a sugerida ao lado; escolher outra pede o motivo, que vai junto e fica à vista.
- * Depois, os produtos e as operadoras (os do cliente primeiro, e os outros do catálogo), "o que foi
- * afetado" (do cadastro do cliente: circuitos, DIDs, aparelhos, unidades) e as etiquetas, inteiras.
+ * Depois, os produtos e as operadoras (os do cliente primeiro, e os outros do catálogo) e as
+ * etiquetas, inteiras. ("O que foi afetado" saiu na prévia: "não precisa desse campo", o Luan.)
  *
  * E o cartão do responsável e de quem acompanha o chamado.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, Plus, Tags, TriangleAlert, UserRound, X } from 'lucide-react';
+import { Check, Plus, Tags, UserRound, X } from 'lucide-react';
 import {
-  ALCANCES, caminhoDoAssunto, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasUnicas, GRAVIDADES, NOME_AFETADO, NOME_ALCANCE, NOME_GRAVIDADE,
-  NOME_PRIORIDADE, paraBusca, PRIORIDADES, TIPOS_AFETADO,
-  type Afetado, type Alcance, type ChamadoAlterarEntrada, type Gravidade, type Prioridade, type TipoAfetado,
+  ALCANCES, caminhoDoAssunto, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasUnicas, GRAVIDADES, NOME_ALCANCE, NOME_GRAVIDADE,
+  NOME_PRIORIDADE, paraBusca, PRIORIDADES,
+  type Alcance, type ChamadoAlterarEntrada, type Gravidade, type Prioridade,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Chip, EscolherComBusca, Modal, Spinner } from '../../../components/ui/index.js';
@@ -129,7 +129,6 @@ export function Classificacao() {
         </Linha>
 
         <ProdutosEOperadoras />
-        <Afetados />
         <Etiquetas />
       </div>
       {trocando && <JanelaMotivoPrioridade para={trocando} onFechar={() => setTrocando(null)} />}
@@ -267,113 +266,6 @@ function ProdutosEOperadoras() {
         ) : <p className="text-[13px] text-muted">Nenhuma.</p>}
       </Linha>
     </>
-  );
-}
-
-// =====================================================================
-//  O QUE FOI AFETADO (do cadastro do cliente)
-// =====================================================================
-
-/** O nome do afetado como ele fica guardado no chamado (e vira chip). */
-function opcoesAfetados(c: NonNullable<ReturnType<typeof useAberta>['cadastro']>): Record<TipoAfetado, Afetado[]> {
-  return {
-    circuito: c.circuitos.map((x) => ({ tipo: 'circuito', id: x.id, nome: x.operadora ? `${x.nome} (${x.operadora})` : x.nome })),
-    did: c.dids.map((x) => ({ tipo: 'did', id: x.id, nome: x.numero })),
-    aparelho: c.aparelhos.map((x) => ({ tipo: 'aparelho', id: x.id, nome: x.nome })),
-    unidade: c.unidades.map((x) => ({ tipo: 'unidade', id: x.id, nome: x.nome })),
-  };
-}
-const chave = (a: Pick<Afetado, 'tipo' | 'id'>) => `${a.tipo}:${a.id}`;
-const NOME_GRUPO_AFETADO: Record<TipoAfetado, string> = { circuito: 'Circuitos', did: 'DIDs', aparelho: 'Aparelhos', unidade: 'Unidades' };
-
-function Afetados() {
-  const { f, pode, cadastro } = useAberta();
-  const acao = useAcao();
-  const [escolhendo, setEscolhendo] = useState(false);
-  const tirar = (a: Afetado) => void acao.rodar(() => api.atendimento.alterar(f.id, { afetados: f.afetados.filter((x) => chave(x) !== chave(a)) }));
-  // trocou a empresa depois de escolher: o que era do cadastro da outra fica marcado
-  const doCadastro = useMemo(() => (cadastro ? new Set(Object.values(opcoesAfetados(cadastro)).flat().map(chave)) : null), [cadastro]);
-  const deFora = (a: Afetado) => !!doCadastro && !doCadastro.has(chave(a));
-  return (
-    <Linha id="campo-afetados" campo="afetados" rotulo="O que foi afetado" ocupado={acao.ocupado} erro={acao.erro}
-      extra={pode && <button type="button" className="btn-ghost btn-sm -my-1 text-[12.5px]" onClick={() => setEscolhendo(true)}>{f.afetados.length ? 'Mudar' : 'Escolher'}</button>}>
-      {f.afetados.length ? (
-        <ul className="flex flex-wrap gap-1">
-          {f.afetados.map((a) => (
-            <li key={chave(a)} className={`chip font-medium max-w-full ${deFora(a) ? 'bg-signal-soft text-signal' : 'bg-surface-2 text-ink-2'}`}
-              title={deFora(a) ? `Não é do cadastro de ${f.cliente?.nome ?? 'nenhuma empresa'}` : undefined}>
-              {deFora(a) && <TriangleAlert size={11} aria-label="não é do cadastro desta empresa" />}
-              <span className="opacity-75 font-normal">{NOME_AFETADO[a.tipo]}</span> <span className="break-all">{a.nome}</span>
-              {pode && <button type="button" className="opacity-75 hover:text-bad -mr-0.5" disabled={acao.ocupado} onClick={() => tirar(a)} aria-label={`Tirar ${NOME_AFETADO[a.tipo]} ${a.nome}`}><X size={12} /></button>}
-            </li>
-          ))}
-        </ul>
-      ) : <p className="text-[13px] text-muted">Nada escolhido. Escolher do cadastro ajuda a achar depois todos os afetados por uma queda.</p>}
-      {f.afetados.some(deFora) && <p className="text-[12px] text-signal mt-1 flex items-start gap-1"><TriangleAlert size={12} className="shrink-0 mt-0.5" aria-hidden /> Os marcados assim não são do cadastro de {f.cliente?.nome ?? 'nenhuma empresa'} (a empresa mudou depois?).</p>}
-      {escolhendo && <JanelaAfetados onFechar={() => setEscolhendo(false)} />}
-    </Linha>
-  );
-}
-
-function JanelaAfetados({ onFechar }: { onFechar: () => void }) {
-  const { f, cadastro } = useAberta();
-  const acao = useAcao();
-  const [marcados, setMarcados] = useState<Map<string, Afetado>>(() => new Map(f.afetados.map((a) => [chave(a), a])));
-  const [busca, setBusca] = useState('');
-  const todos = cadastro ? opcoesAfetados(cadastro) : null;
-  const b = paraBusca(busca);
-  const alternar = (a: Afetado) => setMarcados((m) => { const n = new Map(m); if (n.has(chave(a))) n.delete(chave(a)); else n.set(chave(a), a); return n; });
-  const salvar = async () => {
-    const r = await acao.rodar(() => api.atendimento.alterar(f.id, { afetados: [...marcados.values()] }), 'O que foi afetado: salvo');
-    if (r.ok) onFechar();
-  };
-  const vazio = !todos || TIPOS_AFETADO.every((t) => !todos[t].length);
-  return (
-    <Modal open onClose={onFechar} titulo={`O que foi afetado${f.cliente ? ` — ${f.cliente.nome}` : ''}`} largura="max-w-xl"
-      rodape={<>
-        <span className="text-[12.5px] text-muted mr-auto tnum">{marcados.size} {marcados.size === 1 ? 'escolhido' : 'escolhidos'}</span>
-        <button type="button" className="btn-secondary" onClick={onFechar}>Cancelar</button>
-        <button type="button" className="btn-primary" disabled={acao.ocupado || !f.cliente} onClick={() => void salvar()}>{acao.ocupado ? <Spinner className="text-white" /> : 'Salvar'}</button>
-      </>}>
-      {!f.cliente ? <p className="text-sm text-muted">Escolha a empresa do chamado primeiro: o que foi afetado vem do cadastro dela.</p>
-        : !cadastro ? <p className="text-sm text-muted flex items-center gap-2"><Spinner /> Lendo o cadastro do cliente…</p>
-          : vazio ? <p className="text-sm text-muted">O cadastro de {f.cliente.nome} não tem circuitos, DIDs, aparelhos nem unidades.</p>
-            : (
-              <>
-                <input className="input mb-3" autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Procurar (número do DID, MAC, nome do circuito…)" aria-label="Procurar no cadastro" />
-                <div className="flex flex-col gap-3">
-                  {TIPOS_AFETADO.map((t) => {
-                    const itens = todos![t].filter((a) => !b || paraBusca(a.nome).includes(b));
-                    if (!itens.length) return null;
-                    const todosMarcados = itens.every((a) => marcados.has(chave(a)));
-                    return (
-                      <fieldset key={t}>
-                        <legend className="flex w-full items-center justify-between gap-2 mb-1">
-                          <span className="text-[13px] font-semibold text-ink-2">{NOME_GRUPO_AFETADO[t]} <span className="text-muted font-normal tnum">({itens.length})</span></span>
-                          {itens.length > 1 && (
-                            <button type="button" className="btn-ghost btn-sm text-[12px] -my-1"
-                              onClick={() => setMarcados((m) => { const n = new Map(m); for (const a of itens) { if (todosMarcados) n.delete(chave(a)); else n.set(chave(a), a); } return n; })}>
-                              {todosMarcados ? 'Desmarcar estes' : `Marcar ${b ? 'os achados' : 'todos'}`}
-                            </button>
-                          )}
-                        </legend>
-                        {/* o DID e a unidade cabem em duas colunas; o aparelho e o circuito precisam da linha inteira (o MAC é o que distingue) */}
-                        <div className={`grid grid-cols-1 gap-x-3 max-h-[220px] overflow-y-auto rounded-lg border border-line p-1.5 ${t === 'did' || t === 'unidade' ? 'sm:grid-cols-2' : ''}`}>
-                          {itens.map((a) => (
-                            <label key={chave(a)} className="flex items-center gap-2 px-1 py-1 rounded hover:bg-surface-2 cursor-pointer text-[13px] min-w-0">
-                              <input type="checkbox" className="shrink-0" checked={marcados.has(chave(a))} onChange={() => alternar(a)} />
-                              <span className={`min-w-0 break-words ${t === 'did' || t === 'aparelho' ? 'font-mono text-[12.5px]' : ''}`}>{a.nome}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </fieldset>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-      <ErroPerto erro={acao.erro} />
-    </Modal>
   );
 }
 

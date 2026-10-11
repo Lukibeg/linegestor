@@ -3,12 +3,11 @@
  * sozinhos) e, no problema, os incidentes que ele junta (com "Ligar um incidente").
  */
 import { useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 import { Layers, ListChecks, Plus, Unlink, X } from 'lucide-react';
 import type { CartaoChamado, ItemChecklist } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
-import { Avatar, ChipSituacao, CodigoChamado, painelDe } from '../comum.js';
+import { Avatar, ChipSituacao, CodigoChamado, LinkDoChamado, painelDe } from '../comum.js';
 import { ErroPerto, MarcaFalta, Secao, nomeComNivel, useAberta, useAcao } from './base.js';
 import { emQuando } from './Cabecalho.js';
 import { JanelaEscolherChamado } from './Janelas.js';
@@ -114,7 +113,7 @@ export function LinhaDeChamado({ c, antes, depois }: { c: CartaoChamado; antes?:
           <ChipSituacao s={c.situacao} />
           <span className="text-[12px] text-muted">{[painel?.nome, etapa ? nomeComNivel(etapa) : null].filter(Boolean).join(' · ')}</span>
         </div>
-        <Link to={`/atendimento/${encodeURIComponent(c.codigo)}`} className="block text-[13.5px] text-ink hover:text-accent mt-0.5 break-words">{c.titulo}</Link>
+        <LinkDoChamado codigo={c.codigo} className="block text-[13.5px] text-ink hover:text-accent mt-0.5 break-words">{c.titulo}</LinkDoChamado>
         {(c.cliente || c.responsavel) && (
           <div className="text-[12px] text-muted mt-0.5 flex flex-wrap items-center gap-x-2">
             {c.cliente && <span className="font-medium text-ink-2">{c.cliente.nome}</span>}

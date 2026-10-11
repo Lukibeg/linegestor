@@ -13,14 +13,21 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
   painel para abrir o **quadro**; cada número abre a lista já filtrada; **Configurar** (quem cuida dos
   chamados) abre a janela daquele painel, com as etapas e as regras; **Novo painel** cria outro.
 - **Quadro**: o de um painel, uma coluna por etapa. **Arraste** o cartão para mover; no celular ou pelo
-  teclado, use **Mover** no pé do cartão. Em cima, **Trocar** abre o quadro de outro painel e
-  **Painéis** volta à primeira tela. O fechado mostra os 30 mais recentes (o resto, na lista).
+  teclado, use **Mover** no pé do cartão. Em cima, numa linha só: **Painéis** (volta à primeira tela),
+  **Trocar** (o quadro de outro painel), a busca e **Filtros** (as caixas dos filtros aparecem quando
+  pedidas; o que está filtrado fica escrito, com o X). O fechado mostra os 30 mais recentes (o resto,
+  na lista).
+- **Clicar num chamado** (no quadro, na lista, no Meu dia ou num aviso do sininho) abre a ficha numa
+  **janela grande por cima da tela**, que continua embaixo do jeito que estava: fechar (o X, o Esc ou o
+  Voltar do navegador) volta para ela. **Página inteira** abre a ficha sozinha — o endereço dela
+  (`/atendimento/SUP-12`) é o que dá para mandar para alguém.
 - **Meu dia** (a aba ao lado): os seus em aberto, os que estão **vencendo**, os **sem dono** na fila
   (com o botão **Assumir**), os que esperam o cliente, os que você acompanha e os agendados de hoje.
   Cada número leva para a lista já filtrada.
 - **Lista**: a busca (código, título, cliente, contato, telefone, o que o cliente disse — sem acento),
-  os filtros, os atalhos (Meus, Vencidos, Perto de vencer, Sem dono, Esperando o cliente), as colunas
-  que ordenam e **Exportar (CSV)**.
+  os atalhos (Meus, Vencidos, Perto de vencer, Sem dono, Esperando o cliente), **Filtros** (painel,
+  etapa, responsável, prioridade, prazo, cliente, assunto, etiqueta e as datas), as colunas que ordenam
+  e **Exportar (CSV)**.
 - O **sininho**, no rodapé do menu lateral, ao lado do seu nome (no celular, no alto): os avisos
   (recebeu um chamado, chegou na sua etapa, o prazo está vencendo, o cliente respondeu…). O tema e o
   Sair também ficam ali — no computador, a barra de cima saiu, para sobrar espaço.
@@ -47,7 +54,7 @@ nome), **pelo robô** e **pelos agendados** (seção 5).
   que a próxima etapa pede e está vazio fica marcado ("falta para ir para Resolvido").
 - Um código citado no texto (SUP-12, ou um card antigo do LineChat como IS-4280) vira link.
 - Do lado: a **empresa** e o **contato**, a **classificação** (assunto, tipo, gravidade, alcance,
-  prioridade, produtos, operadoras, **o que foi afetado** do cadastro, etiquetas), o responsável e
+  prioridade, produtos, operadoras, etiquetas), o responsável e
   quem acompanha, os **prazos**, o caso **na operadora** e o **tempo gasto**.
 - A barra de cima: **Assumir**, **Mover**, **Escalonar** (pede o motivo), **Esperar** o cliente ou a
   operadora (pede o motivo), **Avisar o cliente**, **Resposta pronta**, **Preencher com IA** e **Mais**

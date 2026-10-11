@@ -67,21 +67,16 @@ export const NOME_LIGACAO: Record<TipoLigacaoChamado, { de: string; para: string
 /** O que pode ser obrigatório para entrar numa etapa (as regras de cada painel). */
 export const CAMPOS_CHAMADO = [
   'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade',
-  'produto', 'operadora', 'afetados', 'responsavel', 'solucao', 'causa', 'checklist', 'tempo',
+  'produto', 'operadora', 'responsavel', 'solucao', 'causa', 'checklist', 'tempo',
 ] as const;
 export type CampoObrigatorio = (typeof CAMPOS_CHAMADO)[number];
 export const NOME_CAMPO: Record<CampoObrigatorio | 'validacao' | 'filhos', string> = {
   cliente: 'Cliente', contato: 'Contato', relato: 'Relato do cliente', descricao: 'Descrição', assunto: 'Assunto', tipo: 'Tipo',
-  gravidade: 'Gravidade', alcance: 'Alcance', prioridade: 'Prioridade', produto: 'Produto', operadora: 'Operadora', afetados: 'O que foi afetado',
+  gravidade: 'Gravidade', alcance: 'Alcance', prioridade: 'Prioridade', produto: 'Produto', operadora: 'Operadora',
   responsavel: 'Responsável', solucao: 'Solução', causa: 'Causa', checklist: 'O checklist inteiro marcado', tempo: 'O tempo gasto',
   validacao: 'A validação (problema)', filhos: 'Os filhos fechados',
 };
 
-/** O que foi afetado, escolhido do cadastro do cliente (é o que depois acha todos os afetados por uma queda). */
-export const TIPOS_AFETADO = ['circuito', 'did', 'aparelho', 'unidade'] as const;
-export type TipoAfetado = (typeof TIPOS_AFETADO)[number];
-export const NOME_AFETADO: Record<TipoAfetado, string> = { circuito: 'Circuito', did: 'DID', aparelho: 'Aparelho', unidade: 'Unidade' };
-export type Afetado = { tipo: TipoAfetado; id: string; nome: string };
 
 /** As cores de um painel (as mesmas dos chips do sistema). */
 export const CORES_PAINEL = ['accent', 'roxo', 'turquesa', 'signal', 'ok', 'rosa', 'amarelo', 'neutral'] as const;
@@ -250,7 +245,7 @@ export type DadosObrigatorios = {
   clienteId: string | null; contatoNome: string | null; contatoTelefone: string | null;
   relato: string | null; descricao: string | null;
   assuntoId: string | null; tipo: string | null; gravidade: Gravidade | null; alcance: Alcance | null; prioridade: Prioridade | null;
-  produtos: string[]; operadoras: string[]; afetados: Afetado[];
+  produtos: string[]; operadoras: string[];
   responsavelId: string | null;
   solucao: string | null; causa: string | null; validacao: string | null;
   checklist: ItemChecklist[];
@@ -272,7 +267,6 @@ function falta(c: DadosObrigatorios, campo: CampoObrigatorio): boolean {
     case 'prioridade': return !c.prioridade;
     case 'produto': return !c.produtos.length;
     case 'operadora': return !c.operadoras.length;
-    case 'afetados': return !c.afetados.length;
     case 'responsavel': return !c.responsavelId;
     case 'solucao': return !preenchido(c.solucao);
     case 'causa': return !preenchido(c.causa);
@@ -359,7 +353,6 @@ const TelefoneSchema = z.string().trim().max(40).nullish().transform((v, ctx) =>
   if (!n) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Telefone inválido: use DDD + número, como (71) 99999-0000.' }); return z.NEVER; }
   return n;
 });
-const AfetadoSchema = z.object({ tipo: z.enum(TIPOS_AFETADO), id: z.string().min(1).max(60), nome: z.string().trim().min(1).max(160) });
 
 export const EtapaGravarSchema = z.object({
   /** sem id = etapa nova */
@@ -458,7 +451,6 @@ export const ChamadoCriarSchema = z.object({
   motivoPrioridade: TextoOpcional(300),
   produtos: Lista().default([]),
   operadoras: Lista().default([]),
-  afetados: z.array(AfetadoSchema).max(200).default([]),
   etiquetas: z.array(EtiquetaSchema).max(20).default([]),
   responsavelId: z.string().nullish().transform((v) => v || null),
   /** filho de quem (pode ser de outro painel) */
@@ -490,7 +482,6 @@ export const ChamadoAlterarSchema = z.object({
   motivoPrioridade: TextoOpcional(300).optional(),
   produtos: Lista().optional(),
   operadoras: Lista().optional(),
-  afetados: z.array(AfetadoSchema).max(200).optional(),
   etiquetas: z.array(EtiquetaSchema).max(20).optional(),
   solucao: TextoOpcional(20_000).optional(),
   causa: TextoOpcional(5_000).optional(),
@@ -792,7 +783,6 @@ export type FichaChamado = CartaoChamado & {
   sessaoId: string | null;
   /** o link da conversa no LineChat (com a sessão) */
   conversaUrl: string | null;
-  afetados: Afetado[];
   checklist: ItemChecklist[];
   observadores: PessoaCurta[];
   criadoPor: PessoaCurta | null;
@@ -925,7 +915,7 @@ export type SugestaoIa = {
   modelo: string; provedor: string; custo: number | null;
 };
 
-/** O cadastro do cliente para escolher o que foi afetado, os produtos e as operadoras. */
+/** O cadastro do cliente na ficha e no abrir: os produtos, as operadoras, o que ele tem (o resumo do cartão da empresa) e os chamados recentes. */
 export type CadastroDoCliente = {
   produtos: Array<{ id: string; nome: string; cor: string }>;
   operadoras: Array<{ id: string; nome: string }>;

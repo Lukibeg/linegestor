@@ -200,15 +200,13 @@ export const AGENDADOS_DE_EXEMPLO: AgendadoDeExemplo[] = [
 //  OS CHAMADOS
 // =====================================================================
 
-/** O que foi afetado, pelo nome do cadastro (o circuito, o DID, a unidade do cliente do chamado). */
-export type Afetar = { circuito: string } | { did: string } | { unidade: string };
 type Contato = [nome: string | null, telefone: string];
 
 /** Os campos do chamado pelos nomes que a pessoa vê (o cliente, o caminho do assunto, o código do produto…). */
 export type DadosDoExemplo = {
   titulo?: string; tipoChamado?: TipoChamado; relato?: string; descricao?: string; cliente?: string; contato?: Contato; sessao?: string;
   assunto?: string; tipo?: string; gravidade?: Gravidade; alcance?: Alcance; prioridade?: Prioridade; motivoPrioridade?: string;
-  produtos?: string[]; operadoras?: string[]; etiquetas?: string[]; afetados?: Afetar[]; responsavel?: Pessoa;
+  produtos?: string[]; operadoras?: string[]; etiquetas?: string[]; responsavel?: Pessoa;
   /** a chave de outro exemplo */
   pai?: string; incidentes?: string[];
   /**
@@ -320,7 +318,7 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Criar 4 ramais para o CD de Feira de Santana', cliente: NORTE, contato: CARLOS,
       relato: 'O Carlos pediu 4 ramais para a equipe nova do CD de Feira de Santana: Ana, Bruno, Caio e Débora.',
       assunto: 'Ramal › Configuração › Criação', tipo: 'Requisição', gravidade: 'nao_se_aplica', alcance: 'setor',
-      produtos: ['linepbx'], afetados: [{ unidade: 'CD Feira de Santana' }],
+      produtos: ['linepbx'],
     },
     passos: [
       { aos: 4, faz: 'assumir', por: 'marina' },
@@ -516,7 +514,6 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Telefones da Loja Simões Filho sem sinal', cliente: BOMPRECO, contato: ANTONIO,
       relato: 'O Antônio (gerente da Loja Simões Filho) diz que nenhum telefone da loja funciona desde cedo.',
       assunto: 'Infraestrutura do cliente › Rede › Energia', tipo: 'Incidente', gravidade: 'inoperancia', alcance: 'setor', produtos: ['linepbx'],
-      afetados: [{ unidade: 'Loja Simões Filho' }],
     },
     passos: [
       { aos: 3, faz: 'assumir', por: 'marina' },
@@ -698,7 +695,7 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Ligações caindo depois de 2 minutos', cliente: BOMPRECO, contato: FERNANDA,
       relato: 'A Fernanda diz que as ligações que entram no supermercado caem sozinhas depois de uns 2 minutos, desde segunda.',
       assunto: 'Operadora › Incidente › Canais', tipo: 'Incidente', gravidade: 'intermitencia', alcance: 'empresa',
-      produtos: ['voicenet'], operadoras: ['ALGAR'], afetados: [{ circuito: '071 Principal' }], etiquetas: ['algar'],
+      produtos: ['voicenet'], operadoras: ['ALGAR'], etiquetas: ['algar'],
     },
     passos: [
       { aos: 4, faz: 'assumir', por: 'marina' },
@@ -722,7 +719,7 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Ligações recebidas caem no meio da conversa', cliente: EXAME, contato: SERGIO,
       relato: 'O Sérgio diz que as ligações recebidas no laboratório estão caindo no meio da conversa, várias vezes por dia.',
       assunto: 'Operadora › Incidente › Canais', tipo: 'Incidente', gravidade: 'intermitencia', alcance: 'empresa',
-      produtos: ['voicenet'], operadoras: ['ALGAR'], afetados: [{ circuito: '071 Principal' }], etiquetas: ['algar'],
+      produtos: ['voicenet'], operadoras: ['ALGAR'], etiquetas: ['algar'],
     },
     passos: [
       { aos: 5, faz: 'assumir', por: 'lucio' },
@@ -776,7 +773,6 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Telefone novo para a recepção da Loja Centro', cliente: BOMPRECO, contato: FERNANDA,
       relato: 'A Fernanda pediu mais um telefone para a recepção da Loja Centro: a recepcionista nova começa na semana que vem.',
       assunto: 'Equipamentos › Solicitação › Telefone', tipo: 'Requisição', gravidade: 'nao_se_aplica', alcance: 'setor', produtos: ['equipamentos'],
-      afetados: [{ unidade: 'Loja Centro' }],
     },
     passos: [
       { aos: 6, faz: 'assumir', por: 'lucio' },
@@ -791,7 +787,7 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Ligações para o hospital caindo e às vezes sem completar', cliente: HOSPITAL, contato: FABIO,
       relato: 'O Dr. Fábio (diretoria) reclamou que as ligações para o hospital caem depois de 1 ou 2 minutos e algumas nem completam.',
       assunto: 'Operadora › Incidente › Canais', tipo: 'Incidente', gravidade: 'intermitencia', alcance: 'empresa',
-      produtos: ['voicenet'], operadoras: ['ALGAR'], afetados: [{ circuito: '071 Hospitalar' }], etiquetas: ['algar', 'vip'],
+      produtos: ['voicenet'], operadoras: ['ALGAR'], etiquetas: ['algar', 'vip'],
     },
     passos: [
       { aos: 3, faz: 'assumir', por: 'camila' },
@@ -815,7 +811,7 @@ export const EXEMPLOS: Exemplo[] = [
       relato: 'Três clientes nos troncos da Algar (071 Principal e 071 Hospitalar) relatam ligações caindo depois de 1 a 3 minutos, desde segunda.',
       assunto: 'Operadora › Incidente › Canais', tipo: 'Incidente', gravidade: 'intermitencia', alcance: 'empresa',
       prioridade: 'baixa', motivoPrioridade: 'O problema não tem prazo de cliente: cada incidente segue o prazo dele.',
-      produtos: ['voicenet'], operadoras: ['ALGAR'], afetados: [{ circuito: '071 Principal' }, { circuito: '071 Hospitalar' }], etiquetas: ['algar'],
+      produtos: ['voicenet'], operadoras: ['ALGAR'], etiquetas: ['algar'],
       incidentes: ['algar-bompreco', 'algar-exame', 'algar-hospital'],
     },
     passos: [
@@ -947,7 +943,6 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Criar ramais para 3 médicos novos', cliente: HOSPITAL, contato: RENATA,
       relato: 'A Renata pediu ramais para os médicos novos do ambulatório: Dra. Lívia, Dr. Otávio e Dra. Sueli.',
       assunto: 'Ramal › Configuração › Criação', tipo: 'Requisição', gravidade: 'nao_se_aplica', alcance: 'setor', produtos: ['linepbx'],
-      afetados: [{ unidade: 'Ambulatório Centro' }],
     },
     passos: [
       { aos: 5, faz: 'assumir', por: 'camila' },
@@ -962,7 +957,6 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Áudio picotando nas ligações da Loja Centro', cliente: BOMPRECO, contato: FERNANDA,
       relato: 'A Fernanda diz que as ligações da Loja Centro estão picotando no fim da tarde, quando a loja enche.',
       assunto: 'Infraestrutura do cliente › Rede › Interna', tipo: 'Incidente', gravidade: 'performance', alcance: 'setor', produtos: ['linepbx'],
-      afetados: [{ unidade: 'Loja Centro' }],
     },
     passos: [
       { aos: 4, faz: 'assumir', por: 'lucio' },
@@ -994,7 +988,7 @@ export const EXEMPLOS: Exemplo[] = [
       relato: 'Desde as 9h nenhuma ligação para 0300 e 0800 completa: dá ocupado. Para celular e fixo está normal.',
       descricao: 'Só as ligações para 0300 e 0800 dão ocupado; para celular e fixo, normal.\nNo LineChat, o mesmo cliente teve o {LC} com um sintoma parecido.',
       assunto: 'Operadora › Incidente › DID de saída', tipo: 'Incidente', gravidade: 'inoperancia', alcance: 'setor',
-      produtos: ['linepbx', 'voicenet'], operadoras: ['VC1'], afetados: [{ circuito: 'Link - Aurora' }, { did: '7130396100' }, { did: '7130396101' }], etiquetas: ['saída'],
+      produtos: ['linepbx', 'voicenet'], operadoras: ['VC1'], etiquetas: ['saída'],
     },
     passos: [
       { aos: 5, faz: 'assumir', por: 'lucio' },
@@ -1071,7 +1065,6 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Firewall bloqueando o IP novo do CD de Feira de Santana', cliente: NORTE, contato: CARLOS,
       relato: 'O Carlos avisou que o CD de Feira de Santana trocou de provedor de internet e os ramais de lá não registram mais.',
       assunto: 'LinePBX › Configuração › Firewall', tipo: 'Incidente', gravidade: 'inoperancia', alcance: 'setor', produtos: ['linepbx'],
-      afetados: [{ unidade: 'CD Feira de Santana' }],
     },
     passos: [
       { aos: 4, faz: 'assumir', por: 'lucio' },
@@ -1101,7 +1094,6 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Ramal do caixa 4 sem registro depois da troca do switch', cliente: BOMPRECO, contato: ANTONIO,
       relato: 'O Antônio diz que, depois da troca do switch da Loja Simões Filho, o ramal do caixa 4 não liga.',
       assunto: 'Ramal › Incidente › Sem serviço', tipo: 'Incidente', gravidade: 'inoperancia', alcance: 'pessoa', produtos: ['linepbx'],
-      afetados: [{ unidade: 'Loja Simões Filho' }],
     },
     passos: [
       { aos: 3, faz: 'assumir', por: 'lucio' },

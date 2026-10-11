@@ -1560,8 +1560,6 @@ export const tickets = pgTable(
     /** As operadoras envolvidas (ids de `carriers`) — o cliente pode ter mais de uma */
     carrierIds: text('carrier_ids').array().notNull().default([]),
     tags: text('tags').array().notNull().default([]),
-    /** O que foi afetado, escolhido do cadastro: [{tipo: circuito|did|aparelho|unidade, id, nome}] */
-    affected: jsonb('affected').notNull().default([]),
     /** A solução dada */
     solution: text('solution'),
     /** A causa (no problema: a causa raiz, ou a justificativa de não ter achado) */

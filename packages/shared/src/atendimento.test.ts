@@ -115,7 +115,7 @@ const etapas: EtapaPainel[] = [
 ];
 const dados = (d: Partial<DadosObrigatorios> = {}): DadosObrigatorios => ({
   tipoChamado: 'chamado', clienteId: 'c1', contatoNome: null, contatoTelefone: null, relato: 'Ramal mudo', descricao: null, assuntoId: null, tipo: null,
-  gravidade: null, alcance: null, prioridade: null, produtos: [], operadoras: [], afetados: [], responsavelId: null, solucao: null, causa: null, validacao: null,
+  gravidade: null, alcance: null, prioridade: null, produtos: [], operadoras: [], responsavelId: null, solucao: null, causa: null, validacao: null,
   checklist: [], tempoMinutos: 0, ...d,
 });
 

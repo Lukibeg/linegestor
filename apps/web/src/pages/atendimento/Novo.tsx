@@ -17,13 +17,13 @@
  * `@gestor/shared`; quem decide é o servidor, e o erro dele aparece perto do botão.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, X } from 'lucide-react';
 import {
-  ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, NOME_ALCANCE, NOME_AFETADO, NOME_CAMPO, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
+  ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, NOME_ALCANCE, NOME_CAMPO, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
   caminhoDoAssunto, emOrdemDeArvore, etiquetasUnicas, numeroWhatsApp, paraBusca, prioridadeSugerida,
-  type Afetado, type Alcance, type CadastroDoCliente, type CampoObrigatorio, type CartaoChamado, type ChamadoCriarEntrada,
+  type Alcance, type CadastroDoCliente, type CampoObrigatorio, type CartaoChamado, type ChamadoCriarEntrada,
   type FichaChamado, type Gravidade, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -31,7 +31,7 @@ import { ApiError } from '../../api/types.js';
 import { Carregando, Chip, EscolherComBusca, Spinner, Vazio, mensagemErro, useToast, type OpcaoBusca } from '../../components/ui/index.js';
 import { useAuth } from '../../lib/auth.js';
 import {
-  CabecalhoAtendimento, ChipSituacao, CodigoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto, painelDe, telefoneLegivel,
+  CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto, painelDe, telefoneLegivel,
   useDepoisDeMudar, useFicha, useOpcoes, usePode,
 } from './comum.js';
 
@@ -40,7 +40,7 @@ const MOTIVO_REABRIR = 'O cliente voltou com o mesmo problema';
 
 /** Os campos que o formulário tem; o resto (solução, causa, checklist, tempo) só existe depois de aberto. */
 const CAMPOS_DO_FORMULARIO: CampoObrigatorio[] = [
-  'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'afetados', 'responsavel',
+  'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'responsavel',
 ];
 
 /** A cor de cada prioridade no botão escolhido (as mesmas do chip da prioridade). */
@@ -69,7 +69,6 @@ type Form = {
   motivoPrioridade: string;
   produtos: string[];
   operadoras: string[];
-  afetados: Afetado[];
   /** '' = ninguém (o chamado fica na fila da entrada) */
   responsavelId: string;
   etiquetas: string[];
@@ -129,7 +128,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       contatoTelefone: fone ? telefoneLegivel(numeroWhatsApp(fone) ?? fone) : '',
       titulo: '', relato: '', descricao: '',
       assuntoId: '', tipo: '', gravidade: null, alcance: null, prioridade: null, motivoPrioridade: '',
-      produtos: [], operadoras: [], afetados: [],
+      produtos: [], operadoras: [],
       responsavelId: eu,
       etiquetas: [],
       avisarCliente: false,
@@ -200,8 +199,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
     mudar({ painelId: novo.id, assuntoId: assuntoFica ? f.assuntoId : '', tipo: tipoFica ?? '' });
     setFaltando(new Set());
   };
-  /** Outro cliente: o que foi afetado era do cadastro do anterior. */
-  const trocarCliente = (id: string) => { mudar({ clienteId: id, afetados: [] }); tirarFalta('cliente'); };
+  const trocarCliente = (id: string) => { mudar({ clienteId: id }); tirarFalta('cliente'); };
   const tirarFalta = (c: string) => setFaltando((s) => { if (!s.has(c)) return s; const n = new Set(s); n.delete(c); return n; });
 
   /** Escolher a prioridade: a sugerida volta a "seguir a sugestão"; outra pede o motivo. */
@@ -234,7 +232,6 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       motivoPrioridade: precisaMotivo ? f.motivoPrioridade.trim() : null,
       produtos: f.produtos,
       operadoras: f.operadoras,
-      afetados: f.afetados,
       etiquetas: f.etiquetas,
       responsavelId: f.responsavelId || null,
       paiId: pai.data?.id ?? null,
@@ -469,7 +466,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
           </div>
         </Secao>
 
-        {/* ---------- produtos, operadoras e o que foi afetado ---------- */}
+        {/* ---------- produtos e operadoras ---------- */}
         <Secao titulo="Produtos e operadoras" dica={f.clienteId ? 'Os do cliente aparecem primeiro; os outros vêm do catálogo.' : 'Escolha o cliente para ver primeiro os produtos e as operadoras dele.'}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Rotulado rotulo="Produtos" id="novo-produtos" grupo obrigatorio={pede('produto')} falta={falta('produto')}>
@@ -482,12 +479,6 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
                 doCliente={(cadastro.data?.operadoras ?? []).map((o) => ({ id: o.id, nome: o.nome }))}
                 catalogo={opcoes.operadoras.map((o) => ({ id: o.id, nome: o.nome }))} />
             </Rotulado>
-            {(f.clienteId || pede('afetados')) && (
-              <Rotulado rotulo="O que foi afetado" id="novo-afetados" grupo obrigatorio={pede('afetados')} falta={falta('afetados')} className="sm:col-span-2"
-                dica={f.clienteId ? 'Do cadastro do cliente: circuitos, DIDs, aparelhos e unidades (é o que acha todos os afetados por uma queda).' : 'Escolha o cliente para ver o cadastro dele.'}>
-                {f.clienteId && <EscolherAfetados id="novo-afetados" cadastro={cadastro.data} valor={f.afetados} onChange={(v) => { mudar({ afetados: v }); tirarFalta('afetados'); }} />}
-              </Rotulado>
-            )}
           </div>
         </Secao>
 
@@ -656,7 +647,7 @@ function Recentes({ cadastro, carregando, erroCarregar, opcoes, reabrindo, erro,
                   {reabrindo === c.id ? <Spinner /> : <RotateCcw size={14} />} Reabrir este em vez de abrir outro
                 </button>
               ) : (
-                <Link to={`/atendimento/${encodeURIComponent(c.codigo)}`} className="btn-secondary btn-sm shrink-0 self-start sm:self-center">Abrir este</Link>
+                <LinkDoChamado codigo={c.codigo} className="btn-secondary btn-sm shrink-0 self-start sm:self-center">Abrir este</LinkDoChamado>
               )}
             </li>
           );
@@ -700,35 +691,6 @@ function EscolherVarios({ id, rotulo, valor, onChange, doCliente, catalogo }: {
           )} />
       )}
       {!valor.length && !sugeridos.length && !resto.length && <span className="text-[12.5px] text-muted">Nada no cadastro.</span>}
-    </div>
-  );
-}
-
-/** O que foi afetado: do cadastro do cliente (circuito, DID, aparelho, unidade), pela busca — um cliente pode ter centenas de DIDs. */
-function EscolherAfetados({ id, cadastro, valor, onChange }: { id: string; cadastro: CadastroDoCliente | undefined; valor: Afetado[]; onChange: (v: Afetado[]) => void }) {
-  const todos = useMemo<Afetado[]>(() => (cadastro ? [
-    ...cadastro.circuitos.map((c) => ({ tipo: 'circuito' as const, id: c.id, nome: c.operadora ? `${c.nome} (${c.operadora})` : c.nome })),
-    ...cadastro.dids.map((d) => ({ tipo: 'did' as const, id: d.id, nome: d.circuito ? `${d.numero} (${d.circuito})` : d.numero })),
-    ...cadastro.aparelhos.map((a) => ({ tipo: 'aparelho' as const, id: a.id, nome: a.nome })),
-    ...cadastro.unidades.map((u) => ({ tipo: 'unidade' as const, id: u.id, nome: u.nome })),
-  ] : []), [cadastro]);
-  const chave = (a: Pick<Afetado, 'tipo' | 'id'>) => `${a.tipo}:${a.id}`;
-  const ja = new Set(valor.map(chave));
-  const opcoes: OpcaoBusca[] = todos.filter((a) => !ja.has(chave(a))).map((a) => ({ id: chave(a), nome: `${NOME_AFETADO[a.tipo]}: ${a.nome}` }));
-  if (!cadastro) return <div className="text-[12.5px] text-muted flex items-center gap-2 min-h-[38px]"><Spinner /> Lendo o cadastro do cliente…</div>;
-  return (
-    <div className="flex flex-wrap items-center gap-1.5 min-h-[38px]" id={id}>
-      {valor.map((a) => (
-        <span key={chave(a)} className="chip bg-surface-2 text-ink-2">
-          <span className="text-muted font-normal">{NOME_AFETADO[a.tipo]}</span> {a.nome}
-          <button type="button" onClick={() => onChange(valor.filter((x) => chave(x) !== chave(a)))} aria-label={`Tirar ${a.nome}`} className="hover:opacity-70"><X size={12} /></button>
-        </span>
-      ))}
-      {opcoes.length > 0 ? (
-        <EscolherComBusca valor="" opcoes={opcoes} largura="w-[400px]" procurar="Procurar circuito, DID, aparelho ou unidade…" rotulo="Incluir o que foi afetado"
-          onChange={(v) => { const a = todos.find((x) => chave(x) === v); if (a) onChange([...valor, a]); }}
-          gatilho={(abrir) => <button type="button" className="btn-ghost btn-sm text-muted" onClick={abrir}><Plus size={13} /> Incluir <ChevronDown size={13} /></button>} />
-      ) : !valor.length && <span className="text-[12.5px] text-muted">O cadastro deste cliente não tem circuitos, DIDs, aparelhos nem unidades.</span>}
     </div>
   );
 }

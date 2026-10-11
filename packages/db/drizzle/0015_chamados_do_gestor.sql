@@ -218,7 +218,6 @@ CREATE TABLE "tickets" (
 	"product_ids" text[] DEFAULT '{}' NOT NULL,
 	"carrier_ids" text[] DEFAULT '{}' NOT NULL,
 	"tags" text[] DEFAULT '{}' NOT NULL,
-	"affected" jsonb DEFAULT '[]'::jsonb NOT NULL,
 	"solution" text,
 	"cause" text,
 	"workaround" text,

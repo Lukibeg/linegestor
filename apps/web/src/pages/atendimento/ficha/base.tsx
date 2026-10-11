@@ -5,14 +5,13 @@
  * texto com os códigos citados virando link.
  */
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode, type RefObject } from 'react';
-import { Link } from 'react-router-dom';
 import { AlertTriangle, ChevronDown, ExternalLink } from 'lucide-react';
 import {
   NOME_SITUACAO_CHAMADO, pedacosComReferencias,
   type CadastroDoCliente, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type SituacaoDoChamado,
 } from '@gestor/shared';
 import { mensagemErro } from '../../../components/ui/index.js';
-import { useDepoisDeMudar } from '../comum.js';
+import { LinkDoChamado, useDepoisDeMudar } from '../comum.js';
 import type { useMover } from '../mover.js';
 
 // =====================================================================
@@ -290,7 +289,7 @@ export function Referencia({ codigo }: { codigo: string }) {
   if (r) {
     if (r.existe && r.id) {
       const sit = r.situacao ? NOME_SITUACAO_CHAMADO[r.situacao as SituacaoDoChamado] ?? r.situacao : null;
-      return <Link to={`/atendimento/${encodeURIComponent(codigo)}`} className="link font-mono text-[0.93em] whitespace-nowrap" title={[r.titulo, sit].filter(Boolean).join(' — ')}>{codigo}</Link>;
+      return <LinkDoChamado codigo={codigo} className="link font-mono text-[0.93em] whitespace-nowrap" title={[r.titulo, sit].filter(Boolean).join(' — ')}>{codigo}</LinkDoChamado>;
     }
     if (r.existe && r.url) {
       return (
@@ -305,7 +304,7 @@ export function Referencia({ codigo }: { codigo: string }) {
   const no = f.grafo.nos.find((n) => n.codigo === codigo);
   const sigla = codigo.split('-')[0] ?? '';
   if (no || opcoes.paineis.some((p) => p.sigla === sigla)) {
-    return <Link to={`/atendimento/${encodeURIComponent(codigo)}`} className="link font-mono text-[0.93em] whitespace-nowrap" title={no ? `${no.titulo} — ${NOME_SITUACAO_CHAMADO[no.situacao]}` : undefined}>{codigo}</Link>;
+    return <LinkDoChamado codigo={codigo} className="link font-mono text-[0.93em] whitespace-nowrap" title={no ? `${no.titulo} — ${NOME_SITUACAO_CHAMADO[no.situacao]}` : undefined}>{codigo}</LinkDoChamado>;
   }
   return <>{codigo}</>;
 }

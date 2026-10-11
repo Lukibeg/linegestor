@@ -33,7 +33,8 @@ import { PaineisDeChamados } from './pages/atendimento/Inicio.js';
 import { Quadro } from './pages/atendimento/Quadro.js';
 import { ListaDeChamados } from './pages/atendimento/Lista.js';
 import { NovoChamado } from './pages/atendimento/Novo.js';
-import { FichaDoChamado } from './pages/atendimento/Ficha.js';
+import { ChamadoEmJanela, FichaDoChamado } from './pages/atendimento/Ficha.js';
+import { fundoDaJanela } from './pages/atendimento/comum.js';
 import { AjustesAtendimento } from './pages/atendimento/Ajustes.js';
 import { TutorialEditor } from './pages/portal/Editor.js';
 
@@ -48,7 +49,23 @@ function Protegido({ children }: { children: React.ReactNode }) {
 export function Equipe() {
   return (
     <AuthProvider>
-      <Routes>
+      <Rotas />
+    </AuthProvider>
+  );
+}
+
+/**
+ * As rotas. O chamado aberto de dentro do sistema (o cartão do quadro, a linha da lista, o aviso do
+ * sininho) vem com a tela de baixo no estado da navegação: ela continua desenhada como estava e a
+ * ficha abre numa janela grande por cima (o pedido do Luan na prévia). O link direto do chamado
+ * (/atendimento/SUP-12, sem a tela de baixo) abre a ficha em página inteira.
+ */
+function Rotas() {
+  const location = useLocation();
+  const fundo = fundoDaJanela(location);
+  return (
+    <>
+      <Routes location={fundo ?? location}>
         <Route path="/entrar" element={<Entrar />} />
         {/* a página que vira o PDF do envio diário: o robô entra com uma chave de uso único (1.7) */}
         <Route path="/envio-diario" element={<EnvioDiario />} />
@@ -89,6 +106,11 @@ export function Equipe() {
         <Route path="/admin/*" element={<Protegido><Admin /></Protegido>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </AuthProvider>
+      {fundo && (
+        <Routes>
+          <Route path="/atendimento/:codigo" element={<ChamadoEmJanela />} />
+        </Routes>
+      )}
+    </>
   );
 }

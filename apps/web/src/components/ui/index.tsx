@@ -122,7 +122,8 @@ export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-
   }, [open]);
   useEffect(() => {
     if (!open || !fechavel) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && pilhaDeJanelas[pilhaDeJanelas.length - 1] === eu.current) fechar.current(); };
+    // o Esc que um campo de dentro já usou (desistir de editar o título, fechar uma lista) não fecha a janela
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && pilhaDeJanelas[pilhaDeJanelas.length - 1] === eu.current) fechar.current(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [open, fechavel]);
@@ -135,7 +136,7 @@ export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-
           <h3 className="font-display font-semibold text-[15px]">{titulo}</h3>
           {fechavel && <button type="button" onClick={onClose} className="btn-ghost btn-sm" aria-label="Fechar"><X size={16} /></button>}
         </div>
-        <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
+        <div className="px-5 py-4 overflow-y-auto overscroll-contain flex-1">{children}</div>
         {rodape && <div className="px-5 py-3 border-t border-line flex flex-wrap items-center justify-end gap-2 bg-surface-2 rounded-b-xl">{rodape}</div>}
       </div>
     </div>

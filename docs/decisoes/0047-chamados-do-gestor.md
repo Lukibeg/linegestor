@@ -26,8 +26,12 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   bom): um cartão por painel com os números de agora e as etapas, que abre o **quadro** daquele painel
   (com **Trocar**, para ir a outro) e leva às configurações dele. Ao lado, o **Meu dia** e a **Lista**;
   e a **ficha do chamado**, **Abrir chamado** e os **Ajustes** do módulo. No módulo, a tela usa a
-  largura toda. No computador, a barra de cima do sistema saiu: o sininho, o tema e o Sair ficam no
-  rodapé do menu lateral (também pedido dele na prévia).
+  largura toda e o alto é curto: o nome, as abas e as ações numa linha; no quadro e na lista, a busca e
+  o botão **Filtros** (as caixas aparecem quando pedidas), para sobrar espaço para os cartões. No
+  computador, a barra de cima do sistema saiu: o sininho, o tema e o Sair ficam no rodapé do menu
+  lateral. **Clicar num chamado abre a ficha numa janela grande por cima da tela** (o quadro, a lista
+  ou o Meu dia continuam embaixo, do jeito que estavam); o link direto (`/atendimento/SUP-12`) abre a
+  ficha em página inteira. Tudo isso pedido dele na prévia.
 - **Os painéis são da equipe.** O módulo nasce com **Suporte** (sigla SUP) e **Desenvolvimento**
   (DEV); quem cuida dos chamados cria outros (Interno, Comercial, Administrativo…) quando quiser, cada
   um com: as **etapas** (criar, renomear, tirar, mudar a ordem; o tipo — entrada, andamento,
@@ -50,8 +54,7 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   níveis, com descrição, checklist e de-para; **nasce em branco** para a equipe montar), o tipo, a
   **gravidade** e o **alcance** → a **prioridade sugerida** pela matriz (trocar pede o motivo, que
   fica à vista) —; **produtos e operadoras** (vários, os do cliente primeiro: "tem cliente com duas
-  operadoras e dois produtos"); **o que foi afetado** (circuitos, DIDs, aparelhos e unidades, do
-  cadastro); **etiquetas inteiras**; o checklist; o responsável e quem acompanha; os **prazos**; o
+  operadoras e dois produtos"); **etiquetas inteiras**; o checklist; o responsável e quem acompanha; os **prazos**; o
   caso **na operadora** (protocolo, prometido para, cobrar a cada X horas); o **tempo gasto**; as
   **anotações com anexos** (até 5 de 10 MB, colar print); e a **linha do tempo** (tudo, anotações,
   histórico e a **trajetória** pelas etapas e níveis, com quanto tempo ficou em cada uma e o motivo
@@ -105,8 +108,11 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 
 **Ficou de fora, por decisão dele.** A pesquisa de satisfação (já existe em outro módulo); os
 chamados no Portal do cliente; o "pedido interno que mexe no cadastro"; o aviso de senha no chamado
-("não quero que proíba colocar senhas"); as ligações automáticas. **O incidente geral** (afetados
-pelo cadastro, aviso em massa) fica anotado para amadurecer à parte ("não perca ela de vista").
+("não quero que proíba colocar senhas"); as ligações automáticas; e **o que foi afetado** no chamado
+(circuitos, DIDs, aparelhos e unidades do cadastro), que saiu na prévia ("não precisa desse campo") —
+da tela, da API e da migração. **O incidente geral** (afetados pelo cadastro, aviso em massa) fica
+anotado para amadurecer à parte ("não perca ela de vista"); quando vier, decide como marcar os
+afetados.
 
 **Consequências.**
 

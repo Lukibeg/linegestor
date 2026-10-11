@@ -47,7 +47,7 @@ export function PaineisDeChamados() {
 
   return (
     <div>
-      <CabecalhoAtendimento sub="Escolha o painel para abrir o quadro." />
+      <CabecalhoAtendimento />
       {opcoes.isLoading ? <Carregando /> : opcoes.isError ? <p className="text-bad text-sm" role="alert">{mensagemErro(opcoes.error)}</p> : !quantos ? (
         <Vazio titulo="Nenhum painel para você"
           texto="Os painéis de chamados aparecem aqui quando quem cuida dos chamados cria um (ou inclui você num painel de acesso escolhido)."

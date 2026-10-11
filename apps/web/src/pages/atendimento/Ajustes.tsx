@@ -32,7 +32,7 @@ export function AjustesAtendimento() {
   const atual = abas.find((a) => a.id === pedida)?.id ?? abas[0]?.id;
   return (
     <div>
-      <CabecalhoAtendimento sub="O que a administração arruma no módulo: vale para a equipe toda." />
+      <CabecalhoAtendimento />
       {!atual ? <Vazio titulo="Nada para ajustar" texto="Os ajustes dos chamados são de quem cuida dos chamados (e as integrações, da administração)." /> : (
         <>
           <Abas abas={abas} atual={atual} onChange={(a) => setSp((s) => { const n = new URLSearchParams(s); n.set('aba', a); return n; }, { replace: true })} />

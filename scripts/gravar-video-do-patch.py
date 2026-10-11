@@ -235,10 +235,13 @@ def roteiro(page):
     clicar(page, page.locator('[role="dialog"]').get_by_role('button', name='Escalonar')); esperar(page, 2000)
     clicar(page, page.get_by_role('button', name='Trocar')); esperar(page, 1600)
     page.keyboard.press('Escape'); esperar(page, 400)
+    # os filtros ficam atrás do botão (o alto do quadro é uma linha só)
+    clicar(page, page.locator('#quadro-botao-filtros')); esperar(page, 1500)
+    clicar(page, page.locator('#quadro-botao-filtros')); esperar(page, 500)
 
-    # 4. a ficha do chamado
-    ir(page, '/atendimento/SUP-22', 1600)
-    legenda(page, next(n), 'A ficha do chamado', 'O relato do cliente, a descrição, a solução e a causa; do lado, a empresa, o contato e a classificação.', 1800)
+    # 4. a ficha do chamado: clicar no cartão abre a janela grande, por cima do quadro
+    clicar(page, page.locator('li[data-codigo="SUP-22"] a.line-clamp-2').first); esperar(page, 1600)
+    legenda(page, next(n), 'A ficha do chamado', 'Abre numa janela grande, por cima do quadro: o relato, a solução, a empresa e a classificação. Fechou, voltou.', 1800)
     rolar(page, 380); esperar(page, 1800)
     rolar(page, 420); esperar(page, 1600)
 
@@ -248,12 +251,14 @@ def roteiro(page):
     legenda(page, next(n), 'A trajetória', 'Por onde o chamado passou, quanto tempo ficou em cada nível e o motivo de cada escalonamento.', 600)
     clicar(page, linha.get_by_role('tab', name='Trajetória')); esperar(page, 2600)
 
-    # 6. o problema junta os incidentes; a ficha desenha as ligações
-    ir(page, '/atendimento/SUP-23', 1500)
+    # 6. o problema junta os incidentes; a ficha desenha as ligações (o link troca o chamado da janela)
+    clicar(page, page.locator('[role="dialog"] a[href$="SUP-23"]').first); esperar(page, 1500)
     legenda(page, next(n), 'Problema, pai e filhos', 'O problema junta os incidentes de clientes diferentes. O pai não fecha com filho aberto.', 900)
     ligacoes = page.locator('section:has(h2:has-text("Filhos e ligações")), section:has(h2:has-text("Incidentes"))').first
     ligacoes.scroll_into_view_if_needed(); esperar(page, 600)
     apontar(page, ligacoes.locator('svg').first, 2800)
+    # fechar a janela volta para o quadro
+    page.keyboard.press('Escape'); esperar(page, 1200)
 
     # 7. esperar o cliente: o prazo para
     ir(page, '/atendimento/SUP-39', 1500)

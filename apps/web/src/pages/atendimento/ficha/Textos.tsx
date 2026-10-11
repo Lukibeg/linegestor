@@ -36,7 +36,7 @@ const DO_PROBLEMA: Bloco[] = [
 export const ALVO_DO_CAMPO: Record<string, string> = {
   relato: 'campo-relato', descricao: 'campo-descricao', solucao: 'campo-solucao', causa: 'campo-causa', validacao: 'campo-validacao',
   cliente: 'campo-cliente', contato: 'campo-contato', assunto: 'campo-assunto', tipo: 'campo-tipo', gravidade: 'campo-gravidade', alcance: 'campo-alcance',
-  prioridade: 'campo-prioridade', produto: 'campo-produtos', operadora: 'campo-operadoras', afetados: 'campo-afetados', responsavel: 'campo-responsavel',
+  prioridade: 'campo-prioridade', produto: 'campo-produtos', operadora: 'campo-operadoras', responsavel: 'campo-responsavel',
   checklist: 'campo-checklist', tempo: 'campo-tempo',
 };
 

@@ -21,7 +21,7 @@ import {
   AcaoRespostaSchema, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, etiquetasUnicas, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugerida,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
-  type AcaoResposta, type Afetado, type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
+  type AcaoResposta, type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
   type CartaoParaLista, type CasoOperadora, type DadosObrigatorios, type FichaChamado, type FiltrosAtendimento, type Gravidade, type ItemChecklist,
   type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Prioridade, type QuadroAtendimento, type RespostaPronta, type ResumoDoPainel,
   type ReferenciaMostrada, type SituacaoDoChamado, type TipoAviso, type TipoChamado, type TipoLigacaoChamado,
@@ -56,7 +56,7 @@ export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number): DadosObriga
     relato: t.customerReport, descricao: t.description,
     assuntoId: t.subjectId, tipo: t.type,
     gravidade: (t.severity as Gravidade | null) ?? null, alcance: (t.reach as Alcance | null) ?? null, prioridade: (t.priority as Prioridade | null) ?? null,
-    produtos: t.productIds, operadoras: t.carrierIds, afetados: (t.affected as Afetado[] | null) ?? [],
+    produtos: t.productIds, operadoras: t.carrierIds,
     responsavelId: t.assigneeId,
     solucao: t.solution, causa: t.cause, validacao: t.validation,
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
@@ -283,7 +283,7 @@ export async function marcarAvisosLidos(db: Db, userId: string, ids?: string[]) 
 }
 
 // =====================================================================
-//  O CADASTRO DO CLIENTE (o formulário de abrir e o "o que foi afetado")
+//  O CADASTRO DO CLIENTE (o formulário de abrir e o cartão da empresa na ficha)
 // =====================================================================
 
 export async function cadastroDoCliente(app: FastifyInstance, ator: Ator, clienteId: string): Promise<CadastroDoCliente> {
@@ -488,7 +488,6 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     prioridadeSugerida: prioridadeSugerida(t.severity as Gravidade | null, t.reach as Alcance | null, ctx.prazos.matriz),
     sessaoId: t.sessionId,
     conversaUrl: linkDaConversa(integracoes.valor.linkConversa, t.sessionId),
-    afetados: (t.affected as Afetado[] | null) ?? [],
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
     observadores: t.watcherIds.map((id) => pessoaCurta(ctx, id)!),
     criadoPor: pessoaCurta(ctx, t.createdById),

@@ -23,7 +23,7 @@ import {
   AcaoRespostaSchema, AgendadoGravarSchema, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AplicarRespostaSchema, AssuntoGravarSchema,
   AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
-  MoverSchema, NOME_AFETADO, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
+  MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
   OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema, RespostaProntaGravarSchema,
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema,
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, codigoDoChamado, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal, didFormatado,
@@ -32,7 +32,7 @@ import {
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca, pareceAgradecimento,
   preencherModelo, prioridadeSugerida, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
-  type AcaoResposta, type Afetado, type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
+  type AcaoResposta, type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
   type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoObrigatorio, type CartaoChamado, type CartaoParaLista,
   type CasoOperadora, type ChamadoAlterar, type ChamadoCriar, type ChaveApiTela, type CorPainel, type DadosObrigatorios, type Espera, type EstadoPrazo,
   type EtapaPainel, type EventoAviso, type EventoChamado, type EventoWebhook, type FichaChamado, type FiltrosAtendimento, type Gravidade,
@@ -46,7 +46,7 @@ import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import {
   AGENDADOS_DE_EXEMPLO, ASSUNTOS_DO_DESENVOLVIMENTO, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, RESPOSTAS_PRONTAS, WHATSAPP_DA_EQUIPE,
-  type Afetar, type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
+  type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
 
 // =====================================================================
@@ -105,7 +105,7 @@ type ChamadoRow = {
   id: string; painelId: string; etapaId: string; numero: number; codigo: string; tipoChamado: TipoChamado; titulo: string;
   relato: string | null; descricao: string | null; clienteId: string | null; contatoNome: string | null; contatoTelefone: string | null; sessaoId: string | null;
   origem: Origem; responsavelId: string | null; assuntoId: string | null; tipo: string | null; gravidade: Gravidade | null; alcance: Alcance | null;
-  prioridade: Prioridade | null; motivoPrioridade: string | null; produtos: string[]; operadoras: string[]; etiquetas: string[]; afetados: Afetado[];
+  prioridade: Prioridade | null; motivoPrioridade: string | null; produtos: string[]; operadoras: string[]; etiquetas: string[];
   paiId: string | null; problemaId: string | null; checklist: ItemChecklist[];
   solucao: string | null; causa: string | null; contorno: string | null; validacao: string | null;
   esperas: Espera[]; observadores: string[];
@@ -499,7 +499,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return {
       tipoChamado: t.tipoChamado, clienteId: t.clienteId, contatoNome: t.contatoNome, contatoTelefone: t.contatoTelefone,
       relato: t.relato, descricao: t.descricao, assuntoId: t.assuntoId, tipo: t.tipo, gravidade: t.gravidade, alcance: t.alcance, prioridade: t.prioridade,
-      produtos: t.produtos, operadoras: t.operadoras, afetados: t.afetados, responsavelId: t.responsavelId,
+      produtos: t.produtos, operadoras: t.operadoras, responsavelId: t.responsavelId,
       solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id),
     };
   }
@@ -537,7 +537,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const nomesProdutos = (ids: string[]) => juntar(ids.map((id) => S.products.find((p) => p.id === id)?.name ?? '?'));
   const nomesOperadoras = (ids: string[]) => juntar(ids.map((id) => S.carriers.find((c) => c.id === id)?.name ?? '?'));
   const nomesPessoas = (ids: string[]) => juntar(ids.map((id) => pessoaCurta(id)!.nome));
-  const nomesAfetados = (xs: Afetado[]) => juntar(xs.map((a) => `${NOME_AFETADO[a.tipo]} ${a.nome}`));
 
   /** O Gestor aprende de quem é o telefone: o próximo chamado desse WhatsApp já vem com o cliente. */
   function aprenderTelefone(telefone: string | null, clienteId: string | null, nome: string | null) {
@@ -606,7 +605,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const dados: DadosObrigatorios = {
       tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
       assuntoId: assunto?.id ?? null, tipo, gravidade: d.gravidade ?? null, alcance: d.alcance ?? null, prioridade,
-      produtos, operadoras, afetados: d.afetados ?? [], responsavelId: d.responsavelId ?? null,
+      produtos, operadoras, responsavelId: d.responsavelId ?? null,
       solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0,
     };
     const faltam = faltaParaAbrir(dados, painel.ajustes);
@@ -640,7 +639,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       id, painelId: painel.id, etapaId: etapa.id, numero, codigo, tipoChamado, titulo: d.titulo,
       relato: dados.relato, descricao: dados.descricao, clienteId, contatoNome, contatoTelefone: telefone, sessaoId: d.sessaoId ?? null, origem,
       responsavelId: d.responsavelId ?? null, assuntoId: assunto?.id ?? null, tipo, gravidade: d.gravidade ?? null, alcance: d.alcance ?? null,
-      prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasUnicas(d.etiquetas ?? []), afetados: d.afetados ?? [],
+      prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasUnicas(d.etiquetas ?? []),
       paiId: pai?.id ?? null, problemaId: problema?.id ?? null, checklist,
       solucao: null, causa: null, contorno: null, validacao: null, esperas: [], observadores: [],
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
@@ -759,10 +758,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (d.operadoras !== undefined) {
       const novas = unicos(d.operadoras);
       if (!mesmoConjunto(novas, t.operadoras)) { conferirOperadoras(novas); set.operadoras = novas; campo('operadoras', NOME_CAMPO.operadora, nomesOperadoras(t.operadoras), nomesOperadoras(novas), t.operadoras); }
-    }
-    if (d.afetados !== undefined) {
-      const chave = (xs: Afetado[]) => xs.map((x) => `${x.tipo}:${x.id}`).sort().join('|');
-      if (chave(d.afetados) !== chave(t.afetados)) { set.afetados = d.afetados; campo('afetados', NOME_CAMPO.afetados, nomesAfetados(t.afetados), nomesAfetados(d.afetados), t.afetados); }
     }
     // os textos longos: o histórico diz só que mudou (o texto está no chamado; a auditoria guarda o de antes)
     const textos: Array<['relato' | 'descricao' | 'solucao' | 'causa' | 'contorno' | 'validacao', string]> = [
@@ -1751,7 +1746,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       prioridadeSugerida: prioridadeSugerida(t.gravidade, t.alcance, A.prazos.matriz),
       sessaoId: t.sessaoId,
       conversaUrl: linkDaConversa(A.integ.linkConversa, t.sessaoId),
-      afetados: t.afetados.map((x) => ({ ...x })),
       checklist: t.checklist.map((i) => ({ ...i })),
       observadores: t.observadores.map((id) => pessoaCurta(id)!),
       criadoPor: pessoaCurta(t.criadoPorId),
@@ -2301,13 +2295,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     };
     const produtoDo = (code: string) => { const p = S.products.find((x) => x.code === code); if (!p) throw new Error(`o produto ${code} não existe`); return p.id; };
     const operadoraDa = (nome: string) => { const o = S.carriers.find((x) => paraBusca(x.name) === paraBusca(nome)); if (!o) throw new Error(`a operadora ${nome} não existe`); return o.id; };
-    const afetadosDe = (clienteId: string | null, xs: Afetar[] | undefined): Afetado[] | undefined => xs?.map((x) => {
-      if ('circuito' in x) { const c = S.circuits.find((y) => y.name === x.circuito); if (!c) throw new Error(`o circuito ${x.circuito} não existe`); return { tipo: 'circuito', id: c.id, nome: c.name }; }
-      if ('did' in x) { const d = S.dids.find((y) => y.number.replace(/\D/g, '') === x.did); if (!d) throw new Error(`o DID ${x.did} não existe`); return { tipo: 'did', id: d.id, nome: didFormatado(d.number) }; }
-      const u = S.units.find((y) => y.name === x.unidade && (!clienteId || y.clientId === clienteId));
-      if (!u) throw new Error(`a unidade ${x.unidade} não existe`);
-      return { tipo: 'unidade', id: u.id, nome: u.name };
-    });
     /** Os campos do exemplo (pelos nomes) no formato da tela (pelos ids). */
     const camposDe = (painelId: string, chave: string, clienteAtual: string | null, d: DadosAlterarExemplo) => {
       const clienteId = d.cliente ? idDoCliente(d.cliente) : clienteAtual;
@@ -2321,7 +2308,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         ...(d.tipo ? { tipo: d.tipo } : {}), ...(d.gravidade ? { gravidade: d.gravidade } : {}), ...(d.alcance ? { alcance: d.alcance } : {}),
         ...(d.prioridade ? { prioridade: d.prioridade } : {}), ...(d.motivoPrioridade ? { motivoPrioridade: d.motivoPrioridade } : {}),
         ...(d.produtos ? { produtos: d.produtos.map(produtoDo) } : {}), ...(d.operadoras ? { operadoras: d.operadoras.map(operadoraDa) } : {}),
-        ...(d.etiquetas ? { etiquetas: d.etiquetas } : {}), ...(d.afetados ? { afetados: afetadosDe(clienteId, d.afetados) } : {}),
+        ...(d.etiquetas ? { etiquetas: d.etiquetas } : {}),
         ...(d.responsavel !== undefined ? { responsavelId: d.responsavel ? idDa(d.responsavel) : null } : {}),
         ...(d.solucao !== undefined ? { solucao: textoCom(d.solucao, chave) } : {}), ...(d.causa !== undefined ? { causa: textoCom(d.causa, chave) } : {}),
         ...(d.contorno !== undefined ? { contorno: textoCom(d.contorno, chave) } : {}), ...(d.validacao !== undefined ? { validacao: textoCom(d.validacao, chave) } : {}),

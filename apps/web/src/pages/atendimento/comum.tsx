@@ -6,8 +6,8 @@
  * As contas (o prazo em palavras, a prioridade sugerida, o que falta) vêm do `@gestor/shared` — as
  * mesmas do servidor e da prévia.
  */
-import { useCallback, type ReactNode } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { useCallback, useMemo, type ReactNode } from 'react';
+import { Link, NavLink, useLocation, useNavigate, type LinkProps, type Location } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, TriangleAlert } from 'lucide-react';
 import {
@@ -16,7 +16,7 @@ import {
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { useAuth } from '../../lib/auth.js';
-import { Chip, FAIXA_ABAS, classeAba, useToast, type TomChip } from '../../components/ui/index.js';
+import { Chip, classeAba, useToast, type TomChip } from '../../components/ui/index.js';
 
 // =====================================================================
 //  OS DADOS DO MÓDULO
@@ -60,6 +60,57 @@ export function usePode() {
   return { ver: can('support.read'), trabalhar: can('tickets.work'), cuidar: can('tickets.manage'), integrar: can('admin.manage') };
 }
 
+// =====================================================================
+//  ABRIR O CHAMADO: NUMA JANELA GRANDE, POR CIMA DA TELA
+// =====================================================================
+
+/** O endereço da ficha do chamado (o link direto, que abre a ficha em página inteira). */
+export const enderecoDoChamado = (codigo: string) => `/atendimento/${encodeURIComponent(codigo)}`;
+/** As telas do módulo: o resto de /atendimento/… é o código de um chamado. */
+const TELAS_DO_MODULO = new Set(['meu-dia', 'quadro', 'lista', 'novo', 'ajustes']);
+/** O endereço é a ficha de um chamado (/atendimento/SUP-12)? */
+export function ehFichaDoChamado(pathname: string): boolean {
+  const m = /^\/atendimento\/([^/]+)\/?$/.exec(pathname);
+  if (!m) return false;
+  try { return !TELAS_DO_MODULO.has(decodeURIComponent(m[1]!)); } catch { return false; }
+}
+/** O estado da navegação que leva junto a tela de baixo da janela do chamado. */
+export type ComFundo = { fundo?: Location };
+/** A tela que fica embaixo da janela do chamado — só quando o endereço é mesmo o de um chamado. */
+export function fundoDaJanela(location: Location): Location | null {
+  const fundo = (location.state as ComFundo | null)?.fundo;
+  return fundo && ehFichaDoChamado(location.pathname) ? fundo : null;
+}
+
+/**
+ * Para onde vai o clique num chamado — o pedido do Luan na prévia: "prefiro que ele abra como pop-up
+ * central ocupando boa parte da tela, porém não direcionando para outra tela".
+ *  - de qualquer tela: a janela grande por cima, com a tela de baixo do jeito que estava (o quadro
+ *    com os filtros, a lista na mesma página);
+ *  - dentro da janela: troca o chamado da janela, sem empilhar (o Voltar e o X voltam para a tela);
+ *  - na ficha aberta pelo link direto (página inteira): continua página.
+ */
+export function useIrParaOChamado(): { state?: ComFundo; replace?: boolean } {
+  const location = useLocation();
+  return useMemo(() => {
+    const fundo = fundoDaJanela(location);
+    if (fundo) return { state: { fundo }, replace: true };
+    if (ehFichaDoChamado(location.pathname)) return {};
+    return { state: { fundo: location } };
+  }, [location]);
+}
+/** Abrir o chamado por código (o clique no cartão, no aviso do sininho, no desenho das ligações). */
+export function useAbrirChamado() {
+  const navigate = useNavigate();
+  const ir = useIrParaOChamado();
+  return useCallback((codigo: string) => navigate(enderecoDoChamado(codigo), ir), [navigate, ir]);
+}
+/** O link de um chamado: abre na janela grande (as mesmas regras do `useIrParaOChamado`). */
+export function LinkDoChamado({ codigo, ...props }: Omit<LinkProps, 'to' | 'state' | 'replace'> & { codigo: string }) {
+  const ir = useIrParaOChamado();
+  return <Link to={enderecoDoChamado(codigo)} state={ir.state} replace={ir.replace} {...props} />;
+}
+
 export const painelDe = (opcoes: OpcoesAtendimento | undefined, id: string | null | undefined): Painel | undefined => opcoes?.paineis.find((p) => p.id === id);
 export const etapaDe = (opcoes: OpcoesAtendimento | undefined, painelId: string, etapaId: string) => painelDe(opcoes, painelId)?.etapas.find((e) => e.id === etapaId);
 
@@ -79,26 +130,29 @@ const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tam
 ];
 
 /** O título "Chamados", as abas do módulo e o botão de abrir chamado (quem trabalha). */
+/**
+ * O alto das telas do módulo, numa linha só: o nome, as abas e as ações (o pedido do Luan na prévia:
+ * o alto ficava comprido e tomava o espaço dos cartões). No celular, as abas descem para a linha de
+ * baixo. O `sub` (uma frase curta, como a do Meu dia) vem embaixo, só onde diz algo.
+ */
 export function CabecalhoAtendimento({ sub, acoes }: { sub?: ReactNode; acoes?: ReactNode }) {
   const pode = usePode();
   const { pathname } = useLocation();
   return (
-    <div className="mb-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
-        <div className="min-w-0">
-          <h1 className="font-display text-xl font-semibold">Chamados</h1>
-          {sub && <div className="text-muted text-sm mt-0.5">{sub}</div>}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div className="mb-3" id="cabecalho-chamados">
+      <div className="flex flex-wrap items-center gap-x-4 shadow-[inset_0_-1px_0_var(--line)]">
+        <h1 className="font-display text-xl font-semibold py-1.5">Chamados</h1>
+        <nav className="order-last basis-full sm:order-none sm:basis-auto self-stretch flex items-end gap-1 overflow-x-auto overflow-y-hidden sem-barra" aria-label="Partes do módulo de chamados">
+          {ABAS.filter((a) => !a.so || pode.cuidar || pode.integrar).map((a) => (
+            <NavLink key={a.to} to={a.to} end={a.fim} className={({ isActive }) => classeAba(isActive || (!!a.tambem && pathname.startsWith(a.tambem)))}>{a.label}</NavLink>
+          ))}
+        </nav>
+        <div className="ml-auto flex flex-wrap items-center gap-2 py-1.5">
           {acoes}
           {pode.trabalhar && <Link to="/atendimento/novo" className="btn-primary"><Plus size={16} /> Abrir chamado</Link>}
         </div>
       </div>
-      <nav className={FAIXA_ABAS} aria-label="Partes do módulo de chamados">
-        {ABAS.filter((a) => !a.so || pode.cuidar || pode.integrar).map((a) => (
-          <NavLink key={a.to} to={a.to} end={a.fim} className={({ isActive }) => classeAba(isActive || (!!a.tambem && pathname.startsWith(a.tambem)))}>{a.label}</NavLink>
-        ))}
-      </nav>
+      {sub && <div className="text-muted text-[13px] mt-2">{sub}</div>}
     </div>
   );
 }
@@ -116,7 +170,7 @@ export const TOM_DO_PAINEL: Record<CorPainel, TomChip> = {
 export function CodigoChamado({ codigo, cor = 'accent', link = true, className = '' }: { codigo: string; cor?: CorPainel; link?: boolean; className?: string }) {
   const chip = <Chip tone={TOM_DO_PAINEL[cor] ?? 'accent'} className={`font-mono tracking-tight ${className}`}>{codigo}</Chip>;
   if (!link) return chip;
-  return <Link to={`/atendimento/${encodeURIComponent(codigo)}`} className="hover:opacity-80" onClick={(e) => e.stopPropagation()}>{chip}</Link>;
+  return <LinkDoChamado codigo={codigo} className="hover:opacity-80" onClick={(e) => e.stopPropagation()}>{chip}</LinkDoChamado>;
 }
 
 /** A cor de cada prioridade: Crítica vermelha, Alta laranja, Média amarela, Baixa neutra. */
@@ -253,7 +307,7 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
         <ChipPrioridade p={c.prioridade} curta />
         <span className="ml-auto"><SeloPrazo c={c} /></span>
       </div>
-      <Link to={`/atendimento/${encodeURIComponent(c.codigo)}`} className="font-semibold text-ink hover:text-accent line-clamp-2" onClick={(e) => e.stopPropagation()}>{c.titulo}</Link>
+      <LinkDoChamado codigo={c.codigo} className="font-semibold text-ink hover:text-accent line-clamp-2" onClick={(e) => e.stopPropagation()}>{c.titulo}</LinkDoChamado>
       {(c.cliente || c.contato) && (
         <div className="min-w-0">
           {c.cliente ? <div className="font-semibold text-ink-2 truncate">{c.cliente.nome}</div> : <div className="text-signal text-[12px] font-medium">sem cliente</div>}

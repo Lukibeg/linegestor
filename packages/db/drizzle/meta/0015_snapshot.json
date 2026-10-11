@@ -7923,13 +7923,6 @@
           "notNull": true,
           "default": "'{}'"
         },
-        "affected": {
-          "name": "affected",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
         "solution": {
           "name": "solution",
           "type": "text",

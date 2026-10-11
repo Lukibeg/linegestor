@@ -8,12 +8,11 @@
  * para o lado com o menu recolhido, para baixo na barra do celular.
  */
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, Bell, CheckCheck, GitBranch, Hourglass, Inbox, MessageSquare, Siren, TriangleAlert, UserX, type LucideIcon } from 'lucide-react';
 import type { AvisoNaTela } from '@gestor/shared';
 import { api } from '../../api/index.js';
-import { haQuanto } from './comum.js';
+import { haQuanto, useAbrirChamado } from './comum.js';
 
 const ICONE: Record<AvisoNaTela['tipo'], { Icone: LucideIcon; cor: string }> = {
   recebeu: { Icone: Inbox, cor: 'text-accent' }, etapa: { Icone: ArrowRight, cor: 'text-accent' }, prazo_perto: { Icone: Hourglass, cor: 'text-signal' },
@@ -30,7 +29,7 @@ const LUGAR_DA_LISTA = {
 export function SinoDeAvisos({ lado = 'baixo' }: { lado?: keyof typeof LUGAR_DA_LISTA }) {
   const [aberto, setAberto] = useState(false);
   const caixa = useRef<HTMLDivElement>(null);
-  const nav = useNavigate();
+  const abrirChamado = useAbrirChamado();
   const qc = useQueryClient();
   // relê a cada minuto: o aviso do prazo nasce no relógio do servidor
   const q = useQuery({ queryKey: ['atendimento', 'avisos'], queryFn: () => api.atendimento.avisos(), refetchInterval: 60_000, staleTime: 30_000 });
@@ -52,7 +51,8 @@ export function SinoDeAvisos({ lado = 'baixo' }: { lado?: keyof typeof LUGAR_DA_
   const abrir = async (a: AvisoNaTela) => {
     setAberto(false);
     if (!a.lido) { await api.atendimento.marcarAvisosLidos([a.id]).catch(() => undefined); void qc.invalidateQueries({ queryKey: ['atendimento', 'avisos'] }); }
-    if (a.chamado) nav(`/atendimento/${encodeURIComponent(a.chamado.codigo)}`);
+    // o chamado abre na janela grande, por cima da tela em que a pessoa está
+    if (a.chamado) abrirChamado(a.chamado.codigo);
   };
 
   return (

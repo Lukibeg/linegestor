@@ -46,7 +46,7 @@ const TIPO_CURTO: Record<TipoEtapa, string> = { entrada: 'Entrada', andamento: '
  * só existem depois de aberto — exigi-los na abertura travaria o painel inteiro.
  */
 const CAMPOS_PARA_ABRIR: CampoObrigatorio[] = [
-  'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'afetados', 'responsavel',
+  'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'responsavel',
 ];
 
 const listaDeNomes = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`);
