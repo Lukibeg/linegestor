@@ -7,7 +7,7 @@
  */
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, CalendarClock, Kanban, Layers, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Bot, CalendarClock, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
 import { DICA_TIPO_ETAPA, NOME_ORIGEM, type Origem } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Chip, Spinner, type TomChip } from '../../../components/ui/index.js';
@@ -27,14 +27,14 @@ export const emQuando = (iso: string | null | undefined) => {
 };
 
 /**
- * O quadro do painel do chamado: com os filtros que a pessoa deixou nele, quando eram deste painel;
- * senão, o quadro limpo do painel.
+ * O quadro ou a lista do painel do chamado: com os filtros que a pessoa deixou neles, quando eram
+ * deste painel; senão, a vista limpa do painel.
  */
-function paraOQuadro(painelId: string): string {
-  const guardado = paraALista('/atendimento/quadro');
+function paraOPainel(rota: '/atendimento/quadro' | '/atendimento/lista', painelId: string): string {
+  const guardado = paraALista(rota);
   const busca = new URLSearchParams(guardado.split('?')[1] ?? '');
   if (busca.get('painel') === painelId) return guardado;
-  return `/atendimento/quadro?painel=${encodeURIComponent(painelId)}`;
+  return `${rota}?painel=${encodeURIComponent(painelId)}`;
 }
 
 export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
@@ -43,10 +43,11 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
   return (
     <header className="flex flex-col gap-2 min-w-0">
       {!emJanela && (
-        <nav aria-label="Voltar" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
-          <Link to={paraALista('/atendimento/lista')} className="inline-flex items-center gap-1.5 text-muted hover:text-accent"><ArrowLeft size={14} /> Lista de chamados</Link>
+        <nav aria-label="Voltar" className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted">
+          <span className="inline-flex items-center gap-1.5"><ArrowLeft size={14} aria-hidden /> {painel?.nome ?? 'Painel'}:</span>
+          <Link to={paraOPainel('/atendimento/quadro', f.painelId)} className="inline-flex items-center gap-1.5 hover:text-accent"><Kanban size={14} aria-hidden /> Quadro</Link>
           <span className="text-line-strong" aria-hidden>·</span>
-          <Link to={paraOQuadro(f.painelId)} className="inline-flex items-center gap-1.5 text-muted hover:text-accent"><Kanban size={14} /> Quadro · {painel?.nome ?? 'painel'}</Link>
+          <Link to={paraOPainel('/atendimento/lista', f.painelId)} className="inline-flex items-center gap-1.5 hover:text-accent"><List size={14} aria-hidden /> Lista</Link>
         </nav>
       )}
 

@@ -11,40 +11,34 @@
  * cartão abre o chamado numa janela grande por cima do quadro.
  *
  * O quadro se abre pela tela inicial dos chamados (os painéis, como no Helena): em cima, o caminho de
- * volta, o painel aberto, "Trocar" (a lista dos outros painéis) e "Configurar" (quem cuida). As abas
- * de painéis saíram — com muitos painéis, não cabiam (o Luan, na prévia).
+ * volta, o painel aberto, Quadro | Lista (a lista mora dentro do painel), "Trocar" (os outros painéis)
+ * e "Configurar" (quem cuida) — o alto da visualização do painel, em `painel.tsx`.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowLeft, ArrowRightLeft, ChevronsUpDown, CircleCheck, Clock, Filter, Inbox, List, Moon, Settings2 } from 'lucide-react';
+import { Archive, ArrowLeft, ArrowRightLeft, CircleCheck, Clock, Filter, Inbox, Moon } from 'lucide-react';
 import {
   DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararUrgencia, movimentoDeNivel,
   type CartaoChamado, type ColunaQuadro, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type QuadroAtendimento, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, EscolherComBusca, Popover, Spinner, Vazio, mensagemErro } from '../../components/ui/index.js';
+import { CabecalhoDoPainel, FILTROS_DO_PAINEL, enderecoDaLista, type FiltrosDoPainel } from './painel.js';
 import { CabecalhoAtendimento, dataHoraCurta, haQuanto, useAbrirChamado, useOpcoes, usePode } from './comum.js';
 import { useMover } from './mover.js';
 import { CartaoComRodape, cliqueAbreAFicha } from './quadro/cartao.js';
 import {
-  CAIXA_FILTRO, CampoBusca, FiltrosEscritos, PontoDoPainel, SelectFiltro, nomeDoAssunto, nomeDoResponsavel, opcoesDeAssunto, opcoesDeResponsavel,
+  CAIXA_FILTRO, CampoBusca, FiltrosEscritos, SelectFiltro, nomeDoAssunto, nomeDoResponsavel, opcoesDeAssunto, opcoesDeResponsavel,
   useClientesParaFiltro, useFiltrosNoEndereco, type FiltroEscrito,
 } from './quadro/filtros.js';
 
-/** Os filtros do quadro — com os mesmos nomes da lista, para o "Ver na lista" levar tudo junto. */
-const FILTROS = ['q', 'responsavel', 'prioridade', 'espera', 'cliente', 'assunto'] as const;
-type Filtros = Partial<Record<(typeof FILTROS)[number], string>>;
+/** Os filtros do quadro — com os mesmos nomes da lista, para a troca de vista levar tudo junto. */
+const FILTROS = FILTROS_DO_PAINEL;
+type Filtros = FiltrosDoPainel;
 
 const ESPERAS: Array<{ id: TipoEspera; nome: string }> = [{ id: 'cliente', nome: NOME_ESPERA.cliente }, { id: 'operadora', nome: NOME_ESPERA.operadora }];
 
-/** O endereço da lista com o painel e os filtros do quadro (todas as situações, como o quadro mostra). */
-function enderecoDaLista(painelId: string, filtros: Filtros, etapaId?: string) {
-  const n = new URLSearchParams({ painel: painelId, situacao: 'todos' });
-  if (etapaId) n.set('etapa', etapaId);
-  for (const [k, v] of Object.entries(filtros)) if (v) n.set(k, v);
-  return `/atendimento/lista?${n}`;
-}
 
 export function Quadro() {
   const opcoes = useOpcoes();
@@ -60,11 +54,7 @@ export function Quadro() {
 
   return (
     <div>
-      <CabecalhoAtendimento acoes={painel && (
-        <Link className="btn-secondary" to={enderecoDaLista(painel.id, filtros)} title="Os mesmos chamados, numa tabela que ordena e exporta" aria-label="Ver na lista">
-          <List size={15} aria-hidden /> <span className="hidden sm:inline">Ver na lista</span>
-        </Link>
-      )} />
+      <CabecalhoAtendimento />
       {opcoes.isLoading ? <Carregando /> : opcoes.isError ? <ErroComTentar erro={opcoes.error} tentar={() => void opcoes.refetch()} /> : !painel ? (
         <Vazio titulo="Painel não encontrado" texto="Ele pode ter saído, ou ser de acesso escolhido sem você na lista."
           acao={<Link to="/atendimento" className="btn-secondary"><ArrowLeft size={15} /> Ver os painéis</Link>} />
@@ -81,62 +71,6 @@ function ErroComTentar({ erro, tentar }: { erro: unknown; tentar: () => void }) 
     <div className="card p-4 text-sm" role="alert">
       <p className="text-bad">{mensagemErro(erro)}</p>
       <button type="button" className="btn-secondary btn-sm mt-2" onClick={tentar}>Tentar de novo</button>
-    </div>
-  );
-}
-
-/**
- * Em cima do quadro: o caminho de volta para os painéis, o painel aberto (a cor, o nome e a sigla),
- * "Trocar" (os outros painéis, com quantos estão em aberto) e "Configurar" (as etapas e as regras).
- */
-function CabecalhoDoPainel({ paineis, atual, className = '' }: { paineis: Painel[]; atual: Painel; className?: string }) {
-  const pode = usePode();
-  const { sp } = useFiltrosNoEndereco();
-  // o desativado só aparece se for o aberto (um link antigo)
-  const outros = paineis.filter((p) => p.ativo || p.id === atual.id);
-  const para = (p: Painel) => {
-    const n = new URLSearchParams(sp);
-    n.set('painel', p.id);
-    // o assunto é de um painel só: no outro, não existe
-    n.delete('assunto');
-    return `?${n}`;
-  };
-  return (
-    <div className={`flex items-center gap-x-2 gap-y-1 flex-wrap min-w-0 ${className}`} id="quadro-painel">
-      <Link to="/atendimento" className="btn-ghost btn-sm -ml-2 text-ink-2" title="Voltar à tela dos painéis" aria-label="Painéis"><ArrowLeft size={15} aria-hidden /> <span className="hidden sm:inline">Painéis</span></Link>
-      <span className="text-line-strong" aria-hidden>/</span>
-      <h2 className="font-display font-semibold text-[17px] flex items-center gap-2 min-w-0">
-        <PontoDoPainel cor={atual.cor} />
-        <span className="truncate">{atual.nome}</span>
-        <span className="chip bg-surface-2 text-muted font-mono">{atual.sigla}</span>
-        {!atual.ativo && <span className="font-normal text-[12px] text-muted">(desativado)</span>}
-      </h2>
-      {outros.length > 1 && (
-        <Popover classe="btn-ghost btn-sm text-ink-2" alinhar="esquerda" largura="w-[290px]" titulo="Abrir o quadro de outro painel"
-          botao={() => <><ChevronsUpDown size={14} aria-hidden /> Trocar</>}>
-          <p className="text-[12.5px] text-muted mb-1">Abrir o quadro de:</p>
-          <ul className="flex flex-col" aria-label="Painéis">
-            {outros.map((p) => {
-              const aqui = p.id === atual.id;
-              return (
-                <li key={p.id}>
-                  <Link to={{ search: para(p) }} aria-current={aqui ? 'page' : undefined}
-                    className={`rounded-md px-2 py-1.5 text-[13.5px] flex items-center gap-2 ${aqui ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink hover:bg-surface-2'}`}>
-                    <PontoDoPainel cor={p.cor} />
-                    <span className="flex-1 min-w-0 truncate">{p.nome}</span>
-                    <span className="tnum text-[12px] text-muted" title={`${p.abertos} ${p.abertos === 1 ? 'chamado em aberto' : 'chamados em aberto'}`}>{p.abertos}</span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </Popover>
-      )}
-      {pode.cuidar && (
-        <Link to={`/atendimento/ajustes?aba=paineis&editar=${encodeURIComponent(atual.id)}`} className="btn-ghost btn-sm text-ink-2" title="As etapas, as regras e quem vê este painel" aria-label="Configurar">
-          <Settings2 size={15} aria-hidden /> <span className="hidden sm:inline">Configurar</span>
-        </Link>
-      )}
     </div>
   );
 }
@@ -261,11 +195,11 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
           fora do horário, a busca e o botão dos filtros — as caixas dos filtros só aparecem quando pedidas,
           e o que está filtrado fica escrito logo embaixo, com o X */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2.5">
-        <CabecalhoDoPainel paineis={opcoes.paineis} atual={painel} className="min-w-0" />
+        <CabecalhoDoPainel paineis={opcoes.paineis} atual={painel} vista="quadro" outraVista={enderecoDaLista(painel.id, filtros)} className="min-w-0" />
         {quadro.data?.foraDoHorario && painel.ajustes.contaPrazo && (
           <span className="chip bg-surface-2 text-ink-2 font-medium" id="quadro-fora-do-horario"
             title={`Fora do horário de atendimento: ${todasUteis ? 'os prazos estão parados' : 'os prazos em horas úteis estão parados'}.`}>
-            <Moon size={12} className="text-muted" aria-hidden /> Fora do horário: {todasUteis ? 'prazos parados' : 'prazos úteis parados'}
+            <Moon size={12} className="text-muted" aria-hidden /> {todasUteis ? 'Prazos parados' : 'Prazos úteis parados'}
           </span>
         )}
         <div className="flex items-center gap-2 w-full md:w-auto md:flex-1 md:min-w-[220px] md:max-w-[420px] md:ml-auto">
@@ -295,7 +229,8 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
           ref={quadroRef} id="quadro-colunas" className="overflow-x-auto -mx-4 sm:mx-0 pb-3 snap-x snap-mandatory scroll-pl-4 sm:snap-none sm:scroll-pl-0"
           style={alturaDasColunas ? ({ '--altura-colunas': `${alturaDasColunas}px` } as CSSProperties) : undefined}
         >
-          <div className="flex items-start gap-3 w-max sm:w-auto px-4 sm:px-0">
+          {/* colunas finas (o pedido do Luan na prévia: mais colunas cabendo na tela) */}
+          <div className="flex items-start gap-2 w-max sm:w-auto px-4 sm:px-0">
             {colunas.map((col) => (
               <Coluna
                 key={col.etapa.id} col={col} painel={painel} filtros={filtros}
@@ -363,7 +298,7 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
     <section
       aria-labelledby={idTitulo} data-etapa={etapa.id}
       onDragOver={onPassar} onDragLeave={onSair} onDrop={onSoltar}
-      className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_272px] sm:max-w-[340px] rounded-xl border p-2 flex flex-col gap-2 transition-colors ${
+      className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_236px] sm:max-w-[290px] rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
         sobre ? 'border-accent bg-accent-soft' : arrastando ? 'border-dashed border-line-strong bg-surface-2' : 'border-line bg-surface-2'}`}
     >
       <header className="flex items-center gap-1.5 px-1 pt-0.5 min-w-0" title={DICA_TIPO_ETAPA[etapa.tipo]}>
@@ -376,7 +311,7 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
         )}
         <span className="ml-auto tnum text-[12px] font-semibold text-muted" title={`${total} ${total === 1 ? 'chamado' : 'chamados'}`}>{total}</span>
       </header>
-      <ul className="flex flex-col gap-2 sm:max-h-[var(--altura-colunas,70vh)] sm:overflow-y-auto sm:-mr-1 sm:pr-1" aria-label={`Chamados em ${etapa.nome}`}>
+      <ul className="flex flex-col gap-1.5 sm:max-h-[var(--altura-colunas,70vh)] sm:overflow-y-auto sm:-mr-1 sm:pr-1" aria-label={`Chamados em ${etapa.nome}`}>
         {chamados.map((c) => cartao(c))}
         {!chamados.length && <li className="rounded-lg border border-dashed border-line-strong text-muted text-[12.5px] text-center py-5">Nenhum chamado</li>}
       </ul>

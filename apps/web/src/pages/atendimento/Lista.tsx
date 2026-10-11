@@ -1,5 +1,7 @@
 /**
- * Chamados › Lista (Patch 1.10, decisão 0047): todos os chamados que a pessoa vê, numa tabela.
+ * Chamados › Lista (Patch 1.10, decisão 0047): os chamados numa tabela. Mora dentro do painel
+ * (Quadro | Lista, no alto da visualização do painel — o pedido do Luan na prévia); sem painel no
+ * endereço (os números do Meu dia), é a lista de todos os painéis que a pessoa vê.
  *
  * Os filtros ficam no endereço (o Voltar da ficha devolve a lista como estava) e quem filtra é o
  * servidor — a busca acha pelo código, título, cliente, contato, telefone, relato e descrição, sem
@@ -8,11 +10,12 @@
  * servidor, não só a página). Páginas de 50, com "Ver tudo"; Exportar leva os mesmos filtros.
  */
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
-import { Clock, Download, Filter, Hourglass, Layers, RotateCcw, TriangleAlert, User, UserX, type LucideIcon } from 'lucide-react';
+import { ArrowLeft, Clock, Download, Filter, Hourglass, Layers, RotateCcw, TriangleAlert, User, UserX, type LucideIcon } from 'lucide-react';
 import {
   NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, csvDosChamados, diaLocal,
-  type CartaoChamado, type OpcoesAtendimento, type TipoEspera,
+  type CartaoChamado, type OpcoesAtendimento, type Painel, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, Chip, EscolherComBusca, Paginacao, Spinner, TODOS, Vazio, mensagemErro } from '../../components/ui/index.js';
@@ -23,6 +26,7 @@ import {
   Avatar, CabecalhoAtendimento, ChipEspera, ChipPrioridade, CodigoChamado, LinkDoChamado, SeloPrazo, dataHoraCurta, haQuanto, painelDe, telefoneLegivel, useAbrirChamado, useOpcoes,
 } from './comum.js';
 import { cliqueAbreAFicha } from './quadro/cartao.js';
+import { CabecalhoDoPainel, FILTROS_DO_PAINEL, enderecoDoQuadro, type FiltrosDoPainel } from './painel.js';
 import {
   CAIXA_FILTRO, CampoBusca, FiltrosEscritos, PontoDoPainel, SelectFiltro, nomeDoAssunto, nomeDoResponsavel, opcoesDeAssunto, opcoesDeResponsavel,
   useClientesParaFiltro, useFiltrosNoEndereco, type FiltroEscrito,
@@ -110,8 +114,11 @@ export function ListaDeChamados() {
     if (dados && !tudo && page > 1 && !dados.items.length && dados.total > 0) mudar({ p: String(Math.ceil(dados.total / POR_PAGINA)) }, true);
   }, [dados, page, tudo, mudar]);
 
-  const algumFiltro = FILTROS.some((k) => !!valor(k));
-  const limpar = () => mudar(Object.fromEntries(FILTROS.map((k) => [k, null])));
+  // dentro do painel (?painel=), o painel é a vista, não um filtro: "Limpar filtros" não sai dele
+  const painel = painelDe(opcoes.data, valor('painel'));
+  const filtrosDeVerdade = FILTROS.filter((k) => !(painel && k === 'painel'));
+  const algumFiltro = filtrosDeVerdade.some((k) => !!valor(k));
+  const limpar = () => mudar(Object.fromEntries(filtrosDeVerdade.map((k) => [k, null])));
 
   return (
     <div>
@@ -120,29 +127,8 @@ export function ListaDeChamados() {
         <div className="card p-4 text-sm" role="alert"><p className="text-bad">{mensagemErro(opcoes.error)}</p><button className="btn-secondary btn-sm mt-2" onClick={() => void opcoes.refetch()}>Tentar de novo</button></div>
       ) : (
         <>
-          {/* os atalhos */}
-          <div className="flex flex-wrap items-center gap-2 mb-3" role="group" aria-label="Atalhos" id="lista-atalhos">
-            {ATALHOS.map((a, i) => {
-              const ativo = Object.entries(a.filtro).every(([k, v]) => valor(k) === v);
-              const n = contagens[i]?.data?.total;
-              const Icone = a.icone;
-              const forte = !!n && a.tom === 'bad' ? 'bg-bad-soft text-bad' : !!n && a.tom === 'signal' ? 'bg-signal-soft text-signal' : 'bg-surface-2 text-muted';
-              return (
-                <button
-                  key={a.id} type="button" aria-pressed={ativo} title={ativo ? 'Clique para tirar este filtro' : a.dica}
-                  onClick={() => mudar(Object.fromEntries(Object.entries(a.filtro).map(([k, v]) => [k, ativo ? null : v])))}
-                  className={`inline-flex items-center gap-1.5 rounded-full border pl-2.5 pr-1.5 py-1 text-[13px] font-semibold transition-colors ${ativo ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line bg-surface text-ink-2 hover:border-line-strong hover:text-ink'}`}
-                >
-                  <Icone size={14} aria-hidden className={ativo ? '' : a.tom === 'bad' ? 'text-bad' : a.tom === 'signal' ? 'text-signal' : 'text-muted'} />
-                  {a.nome}
-                  <span className={`tnum rounded-full min-w-[1.6rem] px-1.5 text-center text-[12px] leading-5 ${ativo ? 'bg-surface text-accent-ink' : forte}`}>{n ?? '…'}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <Filtros opcoes={opcoes.data!} situacao={situacao} />
-          <FiltrosDaLista opcoes={opcoes.data!} onLimpar={limpar} />
+          <TopoDaLista opcoes={opcoes.data!} situacao={situacao} painel={painel} totais={contagens.map((c) => c.data?.total)} />
+          <FiltrosDaLista opcoes={opcoes.data!} onLimpar={limpar} emPainel={!!painel} />
 
           {lista.isLoading ? <Carregando /> : lista.isError ? (
             <div className="card p-4 text-sm" role="alert"><p className="text-bad">{mensagemErro(lista.error)}</p><button className="btn-secondary btn-sm mt-2" onClick={() => void lista.refetch()}>Tentar de novo</button></div>
@@ -170,17 +156,19 @@ export function ListaDeChamados() {
 }
 
 /**
- * A busca, a situação e o botão "Filtros": as caixas dos filtros só aparecem quando pedidas (o alto da
- * tela ficava comprido — o pedido do Luan na prévia); o que está filtrado fica escrito embaixo, com o X.
+ * O alto da lista, em duas linhas curtas (o pedido do Luan: o alto tomava o espaço): o painel — com
+ * Quadro | Lista, Trocar e Configurar, porque a lista mora dentro do painel — ou "Todos os painéis"
+ * (quando se chega pelo Meu dia), a busca e o botão Filtros; embaixo, os atalhos do dia a dia, com
+ * quantos cada um daria, e a situação. As caixas dos filtros só aparecem quando pedidas.
  */
-function Filtros({ opcoes, situacao }: { opcoes: OpcoesAtendimento; situacao: Situacao }) {
+function TopoDaLista({ opcoes, situacao, painel, totais }: { opcoes: OpcoesAtendimento; situacao: Situacao; painel: Painel | undefined; totais: Array<number | undefined> }) {
   const { valor, mudar } = useFiltrosNoEndereco();
   const [abertos, setAbertos] = useState(false);
   const clientes = useClientesParaFiltro();
   const pessoas = useMemo(() => opcoes.pessoas.filter((p) => p.ativo), [opcoes.pessoas]);
-  const painel = painelDe(opcoes, valor('painel'));
   const assuntos = useMemo(() => opcoesDeAssunto(opcoes, painel?.id), [opcoes, painel?.id]);
-  const ligados = FILTROS.filter((k) => k !== 'q' && valor(k)).length;
+  const ligados = FILTROS.filter((k) => k !== 'q' && !(painel && k === 'painel') && valor(k)).length;
+  const doPainel = Object.fromEntries(FILTROS_DO_PAINEL.map((k) => [k, valor(k)]).filter(([, v]) => v)) as FiltrosDoPainel;
   const trocarPainel = (id: string) => {
     // a etapa e o assunto são de um painel só: trocando de painel, saem (o assunto fica se for do novo)
     const assunto = valor('assunto');
@@ -189,27 +177,67 @@ function Filtros({ opcoes, situacao }: { opcoes: OpcoesAtendimento; situacao: Si
   };
   return (
     <>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-2.5">
+        {painel ? (
+          <CabecalhoDoPainel paineis={opcoes.paineis} atual={painel} vista="lista" outraVista={enderecoDoQuadro(painel.id, doPainel)} className="min-w-0" />
+        ) : (
+          <div className="flex items-center gap-x-2 min-w-0" id="lista-todos">
+            <Link to="/atendimento" className="btn-ghost btn-sm -ml-2 text-ink-2" title="Voltar à tela dos painéis" aria-label="Painéis">
+              <ArrowLeft size={15} aria-hidden /> <span className="hidden sm:inline">Painéis</span>
+            </Link>
+            <span className="text-line-strong" aria-hidden>/</span>
+            <h2 className="font-display font-semibold text-[17px]">Todos os painéis</h2>
+          </div>
+        )}
+        <div className="flex items-center gap-2 w-full md:w-auto md:flex-1 md:min-w-[220px] md:max-w-[420px] md:ml-auto">
+          <CampoBusca className="flex-1" id="lista-busca" valor={valor('q')} onChange={(v) => mudar({ q: v })}
+            placeholder="Código, título, cliente, telefone…" titulo="Acha pelo código, título, cliente, contato, telefone, relato e descrição (sem acento)" />
+          <button type="button" className={`btn-secondary ${abertos ? 'border-accent text-accent-ink bg-accent-soft' : ''}`} aria-expanded={abertos} aria-controls="lista-filtros"
+            id="lista-botao-filtros" onClick={() => setAbertos((v) => !v)} title={abertos ? 'Esconder as caixas dos filtros' : 'Filtrar por etapa, responsável, prioridade, prazo, cliente, assunto, etiqueta e data'}>
+            <Filter size={15} /> Filtros{ligados > 0 && <span className="text-accent tnum">({ligados})</span>}
+          </button>
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center gap-2 mb-3">
-        <CampoBusca className="flex-1 min-w-[200px] max-w-[520px]" id="lista-busca" valor={valor('q')} onChange={(v) => mudar({ q: v })}
-          placeholder="Código, título, cliente, telefone…" titulo="Acha pelo código, título, cliente, contato, telefone, relato e descrição (sem acento)" />
-        <div className="inline-flex rounded-lg border border-line bg-surface p-0.5" role="group" aria-label="Situação" id="lista-situacao">
+        {/* os atalhos */}
+        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Atalhos" id="lista-atalhos">
+          {ATALHOS.map((a, i) => {
+            const ativo = Object.entries(a.filtro).every(([k, v]) => valor(k) === v);
+            const n = totais[i];
+            const Icone = a.icone;
+            const forte = !!n && a.tom === 'bad' ? 'bg-bad-soft text-bad' : !!n && a.tom === 'signal' ? 'bg-signal-soft text-signal' : 'bg-surface-2 text-muted';
+            return (
+              <button
+                key={a.id} type="button" aria-pressed={ativo} title={ativo ? 'Clique para tirar este filtro' : a.dica}
+                onClick={() => mudar(Object.fromEntries(Object.entries(a.filtro).map(([k, v]) => [k, ativo ? null : v])))}
+                className={`inline-flex items-center gap-1 rounded-full border pl-2 pr-1 py-0.5 text-[12.5px] font-semibold transition-colors ${ativo ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line bg-surface text-ink-2 hover:border-line-strong hover:text-ink'}`}
+              >
+                <Icone size={14} aria-hidden className={ativo ? '' : a.tom === 'bad' ? 'text-bad' : a.tom === 'signal' ? 'text-signal' : 'text-muted'} />
+                {a.nome}
+                <span className={`tnum rounded-full min-w-[1.6rem] px-1.5 text-center text-[12px] leading-5 ${ativo ? 'bg-surface text-accent-ink' : forte}`}>{n ?? '…'}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="inline-flex rounded-lg border border-line bg-surface p-0.5 lg:ml-auto" role="group" aria-label="Situação" id="lista-situacao">
           {SITUACOES.map((s) => (
             <button
               key={s.id} type="button" aria-pressed={situacao === s.id} onClick={() => mudar({ situacao: s.id === 'abertos' ? null : s.id })}
-              className={`px-2.5 py-1 rounded-md text-[13px] font-semibold whitespace-nowrap ${situacao === s.id ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}
+              className={`px-2 py-0.5 rounded-md text-[12.5px] font-semibold whitespace-nowrap ${situacao === s.id ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}
             >
               {s.nome}
             </button>
           ))}
         </div>
-        <button type="button" className={`btn-secondary ${abertos ? 'border-accent text-accent-ink bg-accent-soft' : ''}`} aria-expanded={abertos} aria-controls="lista-filtros"
-          id="lista-botao-filtros" onClick={() => setAbertos((v) => !v)} title={abertos ? 'Esconder as caixas dos filtros' : 'Filtrar por painel, etapa, responsável, prioridade, prazo, cliente, assunto, etiqueta e data'}>
-          <Filter size={15} /> Filtros{ligados > 0 && <span className="text-accent tnum">({ligados})</span>}
-        </button>
       </div>
+
       <div id="lista-filtros" className={`${abertos ? 'flex' : 'hidden'} flex-wrap items-center gap-2 mb-3`}>
-        <SelectFiltro rotulo="Painel" valor={valor('painel')} vazio="Todos os painéis" onChange={trocarPainel}
-          opcoes={opcoes.paineis.map((p) => ({ id: p.id, nome: p.ativo ? p.nome : `${p.nome} (desativado)` }))} />
+        {/* dentro do painel, o painel é a vista (Trocar muda); em "Todos os painéis", escolher um entra nele */}
+        {!painel && (
+          <SelectFiltro rotulo="Painel" valor={valor('painel')} vazio="Todos os painéis" onChange={trocarPainel}
+            opcoes={opcoes.paineis.map((p) => ({ id: p.id, nome: p.ativo ? p.nome : `${p.nome} (desativado)` }))} />
+        )}
         {painel && <SelectFiltro rotulo="Etapa" valor={valor('etapa')} vazio="Todas as etapas" onChange={(v) => mudar({ etapa: v })} opcoes={painel.etapas.map((e) => ({ id: e.id, nome: e.nome }))} />}
         <EscolherComBusca className={CAIXA_FILTRO} rotulo="Responsável" valor={valor('responsavel')} vazio="Todos os responsáveis" opcoes={opcoesDeResponsavel(pessoas)} procurar="Procurar pessoa…" onChange={(v) => mudar({ responsavel: v })} />
         <SelectFiltro rotulo="Prioridade" valor={valor('prioridade')} vazio="Todas as prioridades" onChange={(v) => mudar({ prioridade: v })} opcoes={PRIORIDADES.map((p) => ({ id: p, nome: NOME_PRIORIDADE[p] }))} />
@@ -235,14 +263,14 @@ function Filtros({ opcoes, situacao }: { opcoes: OpcoesAtendimento; situacao: Si
 }
 
 /** O que está filtrado, escrito, cada um com o seu X. */
-function FiltrosDaLista({ opcoes, onLimpar }: { opcoes: OpcoesAtendimento; onLimpar: () => void }) {
+function FiltrosDaLista({ opcoes, onLimpar, emPainel }: { opcoes: OpcoesAtendimento; onLimpar: () => void; emPainel: boolean }) {
   const { valor, mudar } = useFiltrosNoEndereco();
   const clientes = useClientesParaFiltro();
   const tirar = (...ks: string[]) => () => mudar(Object.fromEntries(ks.map((k) => [k, null])));
   const itens: FiltroEscrito[] = [];
   const v = (k: Filtro) => valor(k);
   if (v('q')) itens.push({ chave: 'q', nome: 'Procurando', valor: `“${v('q')}”`, tirar: tirar('q') });
-  if (v('painel')) itens.push({ chave: 'painel', nome: 'Painel', valor: painelDe(opcoes, v('painel'))?.nome ?? 'um painel que você não vê', tirar: tirar('painel', 'etapa') });
+  if (v('painel') && !emPainel) itens.push({ chave: 'painel', nome: 'Painel', valor: painelDe(opcoes, v('painel'))?.nome ?? 'um painel que você não vê', tirar: tirar('painel', 'etapa') });
   if (v('etapa')) {
     const etapa = opcoes.paineis.flatMap((p) => p.etapas).find((e) => e.id === v('etapa'));
     itens.push({ chave: 'etapa', nome: 'Etapa', valor: etapa?.nome ?? 'uma etapa que saiu', tirar: tirar('etapa') });

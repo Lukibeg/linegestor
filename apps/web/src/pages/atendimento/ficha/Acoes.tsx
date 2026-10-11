@@ -9,7 +9,7 @@
  * embaixo da barra, com o nome da ação.
  */
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRightLeft, ArrowUpRight, Columns3, Copy, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, MessageCircle, MoreHorizontal, RotateCcw, Sparkles, Trash2, Unlink, UserCheck, Zap,
@@ -18,7 +18,7 @@ import { etapaAoAssumir, movimentoDeNivel, NOME_CAMPO, type RespostaPronta, type
 import { api } from '../../../api/index.js';
 import { Confirmar, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
-import { chaveDaFicha } from '../comum.js';
+import { chaveDaFicha, fundoDaJanela } from '../comum.js';
 import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, linkDaFicha, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 import { JanelaIa, pedirSugestao } from './Ia.js';
 import { JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaResposta, JanelaTrocarPainel, resumoDaResposta } from './Janelas.js';
@@ -38,6 +38,7 @@ type Janela =
 export function BarraDeAcoes() {
   const { f, opcoes, painel, etapa, cuida, eu, mover } = useAberta();
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const toast = useToast();
   const acao = useAcao();
@@ -90,7 +91,10 @@ export function BarraDeAcoes() {
     setApagando(true);
     try {
       await api.atendimento.remover(f.id);
-      navigate(paraALista('/atendimento/lista'));
+      // na janela por cima da tela, volta para a tela; na página inteira, para a lista
+      const fundo = fundoDaJanela(location);
+      if (fundo) navigate(`${fundo.pathname}${fundo.search}${fundo.hash}`, { replace: true, state: fundo.state });
+      else navigate(paraALista('/atendimento/lista'));
       // sai da ficha antes de esquecê-la (senão ela pede de novo o chamado que acabou de sair)
       window.setTimeout(() => {
         qc.removeQueries({ queryKey: chaveDaFicha(f.codigo) });

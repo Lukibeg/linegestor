@@ -12,11 +12,12 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
   os números de agora (em aberto, vencidos, sem dono, os seus) e quantos estão em cada etapa. Clique no
   painel para abrir o **quadro**; cada número abre a lista já filtrada; **Configurar** (quem cuida dos
   chamados) abre a janela daquele painel, com as etapas e as regras; **Novo painel** cria outro.
-- **Quadro**: o de um painel, uma coluna por etapa. **Arraste** o cartão para mover; no celular ou pelo
-  teclado, use **Mover** no pé do cartão. Em cima, numa linha só: **Painéis** (volta à primeira tela),
-  **Trocar** (o quadro de outro painel), a busca e **Filtros** (as caixas dos filtros aparecem quando
-  pedidas; o que está filtrado fica escrito, com o X). O fechado mostra os 30 mais recentes (o resto,
-  na lista).
+- **Quadro**: o de um painel, uma coluna por etapa (colunas finas: cabem mais na tela). **Arraste** o
+  cartão para mover; no celular ou pelo teclado, use **Mover** no pé do cartão. Em cima, numa linha
+  só: a seta (volta aos painéis), **Quadro | Lista** (as duas vistas do painel, com os mesmos filtros),
+  **Trocar** (outro painel), **Configurar**, a busca e **Filtros** (as caixas dos filtros aparecem
+  quando pedidas; o que está filtrado fica escrito, com o X). O fechado mostra os 30 mais recentes (o
+  resto, na lista).
 - **Clicar num chamado** (no quadro, na lista, no Meu dia ou num aviso do sininho) abre a ficha numa
   **janela grande por cima da tela**, que continua embaixo do jeito que estava: fechar (o X, o Esc ou o
   Voltar do navegador) volta para ela. **Página inteira** abre a ficha sozinha — o endereço dela
@@ -24,10 +25,11 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 - **Meu dia** (a aba ao lado): os seus em aberto, os que estão **vencendo**, os **sem dono** na fila
   (com o botão **Assumir**), os que esperam o cliente, os que você acompanha e os agendados de hoje.
   Cada número leva para a lista já filtrada.
-- **Lista**: a busca (código, título, cliente, contato, telefone, o que o cliente disse — sem acento),
-  os atalhos (Meus, Vencidos, Perto de vencer, Sem dono, Esperando o cliente), **Filtros** (painel,
-  etapa, responsável, prioridade, prazo, cliente, assunto, etiqueta e as datas), as colunas que ordenam
-  e **Exportar (CSV)**.
+- **Lista** (dentro do painel, em **Quadro | Lista**): a busca (código, título, cliente, contato,
+  telefone, o que o cliente disse — sem acento), os atalhos (Meus, Vencidos, Perto de vencer, Sem dono,
+  Esperando o cliente), a situação, **Filtros** (etapa, responsável, prioridade, prazo, cliente,
+  assunto, etiqueta e as datas), as colunas que ordenam e **Exportar (CSV)**. Os números do Meu dia
+  abrem a lista de todos os painéis.
 - O **sininho**, no rodapé do menu lateral, ao lado do seu nome (no celular, no alto): os avisos
   (recebeu um chamado, chegou na sua etapa, o prazo está vencendo, o cliente respondeu…). O tema e o
   Sair também ficam ali — no computador, a barra de cima saiu, para sobrar espaço.

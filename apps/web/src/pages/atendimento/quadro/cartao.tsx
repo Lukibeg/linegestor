@@ -12,10 +12,10 @@ export function CartaoComRodape({ c, cor, rodape, nomeDaEtapa, arrastavel = fals
   c: CartaoChamado; cor?: CorPainel; rodape: ReactNode; nomeDaEtapa?: string; arrastavel?: boolean; className?: string;
 } & Omit<HTMLAttributes<HTMLDivElement>, 'className'>) {
   return (
-    <div className={`relative [&>.card]:pb-11 ${className}`} {...resto}>
+    <div className={`relative [&>.card]:pb-10 ${className}`} {...resto}>
       <CartaoDoChamado c={c} cor={cor} arrastavel={arrastavel} mostrarEtapa={!!nomeDaEtapa} nomeDaEtapa={nomeDaEtapa} />
       {/* `data-sem-abrir`: clicar aqui (ou no painel do Mover, que nasce aqui dentro) não abre a ficha */}
-      <div className="absolute left-3 right-3 bottom-2 flex items-center gap-2 min-w-0" data-sem-abrir>{rodape}</div>
+      <div className="absolute left-2.5 right-2.5 bottom-1.5 flex items-center gap-2 min-w-0" data-sem-abrir>{rodape}</div>
     </div>
   );
 }

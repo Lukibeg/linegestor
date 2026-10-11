@@ -24,7 +24,8 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 - **Um módulo novo, Chamados** (menu Chamados, endereço `/atendimento`). A primeira tela são os
   **Painéis**, como no Helena (o pedido dele na prévia: com muitos painéis, alternar por abas não fica
   bom): um cartão por painel com os números de agora e as etapas, que abre o **quadro** daquele painel
-  (com **Trocar**, para ir a outro) e leva às configurações dele. Ao lado, o **Meu dia** e a **Lista**;
+  (com **Trocar**, para ir a outro) e leva às configurações dele. Dentro do painel, **Quadro | Lista**
+  (a lista não é aba: mora no painel, pedido dele na prévia). Ao lado dos Painéis, o **Meu dia**;
   e a **ficha do chamado**, **Abrir chamado** e os **Ajustes** do módulo. No módulo, a tela usa a
   largura toda e o alto é curto: o nome, as abas e as ações numa linha; no quadro e na lista, a busca e
   o botão **Filtros** (as caixas aparecem quando pedidas), para sobrar espaço para os cartões. No

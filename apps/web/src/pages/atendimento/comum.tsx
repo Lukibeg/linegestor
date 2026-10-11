@@ -1,6 +1,6 @@
 /**
  * As peças comuns das telas dos chamados do Gestor (Patch 1.10, decisão 0047): o cabeçalho do
- * módulo (Meu dia · Quadro · Lista · Ajustes), o código do chamado, a prioridade, o selo do prazo,
+ * módulo (Painéis · Meu dia · Ajustes), o código do chamado, a prioridade, o selo do prazo,
  * a marca de espera, o responsável e o cartão do chamado (o mesmo no quadro e no Meu dia).
  *
  * As contas (o prazo em palavras, a prioridade sugerida, o que falta) vêm do `@gestor/shared` — as
@@ -119,13 +119,13 @@ export const etapaDe = (opcoes: OpcoesAtendimento | undefined, painelId: string,
 // =====================================================================
 
 /**
- * As abas do módulo. A primeira são os Painéis (a tela inicial, como no Helena): o quadro de cada
- * painel se abre por ela, e a aba continua marcada lá dentro.
+ * As abas do módulo. A primeira são os Painéis (a tela inicial, como no Helena): o quadro e a lista
+ * de cada painel se abrem por ela, e a aba continua marcada lá dentro. A lista não é aba: mora dentro
+ * do painel (Quadro | Lista), o pedido do Luan na prévia.
  */
-const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tambem?: string }> = [
-  { to: '/atendimento', label: 'Painéis', fim: true, tambem: '/atendimento/quadro' },
+const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tambem?: string[] }> = [
+  { to: '/atendimento', label: 'Painéis', fim: true, tambem: ['/atendimento/quadro', '/atendimento/lista'] },
   { to: '/atendimento/meu-dia', label: 'Meu dia' },
-  { to: '/atendimento/lista', label: 'Lista' },
   { to: '/atendimento/ajustes', label: 'Ajustes', so: 'cuidar' },
 ];
 
@@ -144,7 +144,7 @@ export function CabecalhoAtendimento({ sub, acoes }: { sub?: ReactNode; acoes?: 
         <h1 className="font-display text-xl font-semibold py-1.5">Chamados</h1>
         <nav className="order-last basis-full sm:order-none sm:basis-auto self-stretch flex items-end gap-1 overflow-x-auto overflow-y-hidden sem-barra" aria-label="Partes do módulo de chamados">
           {ABAS.filter((a) => !a.so || pode.cuidar || pode.integrar).map((a) => (
-            <NavLink key={a.to} to={a.to} end={a.fim} className={({ isActive }) => classeAba(isActive || (!!a.tambem && pathname.startsWith(a.tambem)))}>{a.label}</NavLink>
+            <NavLink key={a.to} to={a.to} end={a.fim} className={({ isActive }) => classeAba(isActive || !!a.tambem?.some((t) => pathname.startsWith(t)))}>{a.label}</NavLink>
           ))}
         </nav>
         <div className="ml-auto flex flex-wrap items-center gap-2 py-1.5">
@@ -300,7 +300,7 @@ export function telefoneLegivel(n: string | null | undefined): string {
  */
 export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel = false }: { c: CartaoChamado; cor?: CorPainel; mostrarEtapa?: boolean; nomeDaEtapa?: string; arrastavel?: boolean }) {
   return (
-    <div className={`card p-3 text-[13px] leading-snug flex flex-col gap-1.5 ${c.prazos.solucao.situacao === 'vencido' || c.prazos.resposta.situacao === 'vencido' ? 'border-l-4 border-l-bad' : c.prioridade === 'critica' ? 'border-l-4 border-l-signal' : ''} ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+    <div className={`card p-2.5 text-[13px] leading-snug flex flex-col gap-1 ${c.prazos.solucao.situacao === 'vencido' || c.prazos.resposta.situacao === 'vencido' ? 'border-l-4 border-l-bad' : c.prioridade === 'critica' ? 'border-l-4 border-l-signal' : ''} ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`}>
       <div className="flex items-center gap-1.5 flex-wrap">
         <CodigoChamado codigo={c.codigo} cor={cor} />
         {c.tipoChamado === 'problema' && <Chip tone="rosa" title="Problema: junta incidentes de várias empresas"><Layers size={12} /> Problema</Chip>}
