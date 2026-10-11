@@ -11,7 +11,8 @@ visível, uma legenda numerada para cada mudança e uma capa no começo e no fim
        e `pnpm novidades:demo` + `build:demo` de novo (a prévia passa a abrir com o vídeo)
 
 Precisa do Playwright (Python) e do ffmpeg. **Cada patch tem o seu roteiro**: troque a função
-`roteiro()` e os textos da capa pelos do patch novo — a do 1.9 fica como exemplo. O jeito do vídeo
+`roteiro()`, a `PRIMEIRA_TELA` e os textos da capa pelos do patch novo — o roteiro do 1.9 fica como
+exemplo (`roteiro_1_9`). O jeito do vídeo
 (o que o Luan aprovou em 10/10): uns 2 minutos, sem som (o que importa vai na legenda), os dados de
 exemplo da prévia, e a capa e o fim falando com a equipe — nada de "prévia" nem de "quando você der
 o ok": quem assiste é a equipe, no login, depois de publicado.
@@ -42,8 +43,10 @@ URL = os.environ.get('PREVIA_URL', 'http://localhost:4174/')
 SAIDA = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(RAIZ, 'o-que-mudou.mp4')
 
 # ---------- os textos do patch (troque a cada patch) ----------
-CAPA = ('Patch 1.9 — o que mudou', 'Ingline Gestão · as mudanças em 2 minutos, com dados de exemplo')
+CAPA = ('Patch 1.10 — os chamados agora são do Gestor', 'Ingline Gestão · o módulo novo em 2 minutos, com dados de exemplo')
 FIM = ('Os detalhes estão em Novidades', 'Cada mudança, com o texto e o print, fica no menu Novidades')
+# a tela que fica atrás da capa (o roteiro começa nela)
+PRIMEIRA_TELA = '/atendimento'
 # quanto da capa fica no começo do vídeo, em segundos (a gravação começa com uns 0 a 2 s de
 # diferença do relógio daqui: na prática a capa fica entre 2,5 e 4,5 s)
 CAPA_NO_COMECO = 2.5
@@ -110,7 +113,8 @@ def esperar(page, ms):
 
 
 def ir(page, h, ms=1200):
-    page.evaluate(f"location.hash = {json.dumps(h)}")
+    # a tela nova começa do alto (a prévia mantém a rolagem da tela anterior)
+    page.evaluate(f"location.hash = {json.dumps(h)}; window.scrollTo(0, 0)")
     esperar(page, ms)
 
 
@@ -163,26 +167,117 @@ def video_do_portal_em_webm():
 
 
 def entrar_atras_da_capa(page):
-    """Entra como admin e passa pela janela do login (pelos cartões: o vídeo do patch não toca aqui)."""
+    """
+    Entra como admin e passa pela janela do login (pelos cartões: o vídeo do patch não toca aqui).
+    O vídeo que não abre faz a janela cair sozinha nos cartões (o botão "Ler em texto" some no meio
+    do clique), e pode haver mais de uma nota por ler: por isso a volta, e o clique que tolera sumir.
+    """
     page.fill('#email', 'admin@gestor.local')
     page.fill('#password', 'demo')
     page.click('button:has-text("Entrar")')
-    esperar(page, 1500)
-    ler = page.get_by_role('button', name='O vídeo não abre? Ler em texto')
-    if ler.count():
-        ler.click()
-        esperar(page, 300)
-    bolinhas = page.locator('button[aria-label^="Ir para "]')
-    for i in range(bolinhas.count()):
-        bolinhas.nth(i).click()
-        esperar(page, 40)
-    page.locator('label:has-text("Li e entendi") input[type=checkbox]').check()
-    page.get_by_role('button', name='Concluir').click()
+    esperar(page, 2500)
+    for _ in range(4):
+        ler = page.get_by_role('button', name='O vídeo não abre? Ler em texto')
+        if ler.count():
+            try:
+                ler.click(timeout=2000)
+            except Exception:
+                pass  # a janela já caiu sozinha nos cartões
+            esperar(page, 300)
+        bolinhas = page.locator('button[aria-label^="Ir para "]')
+        caixa = page.locator('label:has-text("Li e entendi") input[type=checkbox]')
+        if not bolinhas.count() and not caixa.count():
+            break
+        for i in range(bolinhas.count()):
+            bolinhas.nth(i).click()
+            esperar(page, 40)
+        if caixa.count():
+            caixa.check()
+            page.get_by_role('button', name='Concluir').click()
+            esperar(page, 900)
 
 
-# ---------- o roteiro do Patch 1.9 (troque pelo do patch novo) ----------
+# ---------- o roteiro do Patch 1.10 (troque pelo do patch novo) ----------
 
 def roteiro(page):
+    # 1 e 2. o módulo novo: o Meu dia (a tela que já está aberta atrás da capa)
+    legenda(page, 1, 'Os chamados agora são do Gestor', 'Os chamados nascem, andam e fecham aqui. Os antigos ficam em Chamados do LineChat.', 1400)
+    apontar(page, page.locator('nav a:has-text("Chamados")').first, 1300)
+    apontar(page, page.locator('nav a:has-text("Chamados do LineChat")').first, 1700)
+    legenda(page, 2, 'Meu dia', 'Os seus, os que estão vencendo e os sem dono na fila, com o botão Assumir.', 1200)
+    rolar(page, 520); esperar(page, 2000)
+    topo(page)
+
+    # 3. o quadro: mover pelo Mover do cartão; subir de nível pede o motivo
+    clicar(page, page.get_by_role('link', name='Quadro', exact=True)); esperar(page, 1500)
+    legenda(page, 3, 'O quadro', 'N1, N2 e N3 continuam como colunas. Arraste o cartão ou use Mover: escalonar pede o motivo.', 1600)
+    cartao = page.locator('li[data-codigo="SUP-27"]').first
+    clicar(page, cartao.get_by_role('button', name='Mover')); esperar(page, 900)
+    clicar(page, cartao.locator('button:has(span:text-is("N2"))').first); esperar(page, 900)
+    page.keyboard.type('Precisa de acesso ao servidor do cliente para trocar o áudio da fila', delay=40); esperar(page, 600)
+    clicar(page, page.locator('[role="dialog"]').get_by_role('button', name='Escalonar')); esperar(page, 2200)
+
+    # 4. a ficha do chamado
+    ir(page, '/atendimento/SUP-22', 1600)
+    legenda(page, 4, 'A ficha do chamado', 'O relato do cliente, a descrição, a solução e a causa; do lado, a empresa, o contato e a classificação.', 1800)
+    rolar(page, 380); esperar(page, 1800)
+    rolar(page, 420); esperar(page, 1600)
+
+    # 5. a trajetória (o pedido do Miguel)
+    linha = page.locator('section:has(h2:has-text("Linha do tempo"))').first
+    linha.scroll_into_view_if_needed(); esperar(page, 500)
+    legenda(page, 5, 'A trajetória', 'Por onde o chamado passou, quanto tempo ficou em cada nível e o motivo de cada escalonamento.', 600)
+    clicar(page, linha.get_by_role('tab', name='Trajetória')); esperar(page, 2600)
+
+    # 6. o problema junta os incidentes; a ficha desenha as ligações
+    ir(page, '/atendimento/SUP-23', 1500)
+    legenda(page, 6, 'Problema, pai e filhos', 'O problema junta os incidentes de clientes diferentes. O pai não fecha com filho aberto.', 900)
+    ligacoes = page.locator('section:has(h2:has-text("Filhos e ligações")), section:has(h2:has-text("Incidentes"))').first
+    ligacoes.scroll_into_view_if_needed(); esperar(page, 600)
+    apontar(page, ligacoes.locator('svg').first, 2800)
+
+    # 7. esperar o cliente: o prazo para
+    ir(page, '/atendimento/SUP-39', 1500)
+    legenda(page, 7, 'Prazos que param', 'Em horas úteis, com os feriados. Esperando o cliente, o prazo para; esperando a operadora, corre.', 900)
+    clicar(page, page.get_by_role('button', name='Esperar', exact=True)); esperar(page, 700)
+    clicar(page, page.get_by_role('menuitem', name='Esperar o cliente')); esperar(page, 700)
+    page.keyboard.type('O cliente vai liberar o IP novo no firewall e avisar', delay=40); esperar(page, 500)
+    clicar(page, page.locator('[role="dialog"]').get_by_role('button', name='Marcar a espera')); esperar(page, 1500)
+    prazos = page.locator('section:has(h2:has-text("Prazos"))').first
+    prazos.scroll_into_view_if_needed(); esperar(page, 500)
+    apontar(page, prazos, 2400)
+
+    # 8. abrir chamado: o cliente que volta com o mesmo problema reabre o de antes
+    ir(page, '/atendimento/novo', 1400)
+    legenda(page, 8, 'Abrir, ou reabrir o de antes', 'Ao escolher o cliente, aparecem os chamados recentes dele: é o mesmo problema? Reabra.', 800)
+    clicar(page, page.locator('button#novo-cliente')); esperar(page, 500)
+    page.keyboard.type('Supermercado', delay=60); esperar(page, 500)
+    page.keyboard.press('Enter'); esperar(page, 1400)
+    recentes = page.locator('#novo-recentes')
+    recentes.scroll_into_view_if_needed(); esperar(page, 400)
+    apontar(page, recentes.get_by_role('button', name='Reabrir este em vez de abrir outro').first, 2600)
+
+    # 9. Preencher com IA
+    ir(page, '/atendimento/SUP-45', 1400)
+    legenda(page, 9, 'Preencher com IA', 'A IA lê a conversa do cliente no LineChat e sugere os campos. Nada entra sozinho.', 800)
+    clicar(page, page.get_by_role('button', name='Preencher com IA')); esperar(page, 2600)
+    janela = page.locator('[role="dialog"] > div.relative').first
+    apontar(page, janela.locator('text=Sugerido').first, 1400)
+    rolar(page, 300); esperar(page, 1200)
+    clicar(page, janela.get_by_role('button', name='Aplicar os marcados')); esperar(page, 2000)
+
+    # 10. os Ajustes do módulo
+    ir(page, '/atendimento/ajustes?aba=paineis', 1500)
+    legenda(page, 10, 'Os Ajustes do módulo', 'Os painéis e as etapas são da equipe. E os assuntos, os prazos, os avisos, as respostas prontas e a IA.', 1600)
+    rolar(page, 360); esperar(page, 1400)
+    topo(page)
+    clicar(page, page.get_by_role('tab', name='Assuntos')); esperar(page, 2000)
+    clicar(page, page.get_by_role('tab', name='Avisos e WhatsApp')); esperar(page, 2200)
+
+
+# ---------- o roteiro do Patch 1.9 (o exemplo de antes) ----------
+
+def roteiro_1_9(page):
     webm = video_do_portal_em_webm()
 
     # 1. Inventário › Relatórios
@@ -279,7 +374,7 @@ def gravar(pasta):
         esperar(page, 1200)
         entrar_atras_da_capa(page)
         # o aviso "Novidades marcadas como lidas" dura 4 s: a capa só sai depois dele
-        ir(page, '/inventario?aba=relatorios&rel=clientes', 4600)
+        ir(page, PRIMEIRA_TELA, 4600)
         page.mouse.move(700, 380)
         capa_sai = time.monotonic() - t0
         page.evaluate('window.__semCapa()')

@@ -1,7 +1,8 @@
 /**
  * Chamados › Ajustes (Patch 1.10): o que a administração arruma no módulo. Cada parte numa aba
  * (o endereço guarda a aba: ?aba=assuntos). Painéis, assuntos, prazos, avisos, respostas prontas e
- * agendados são de quem cuida dos chamados; as integrações, da administração do sistema.
+ * agendados são de quem cuida dos chamados; as integrações e a IA (a mesma da Base de conhecimento), da
+ * administração do sistema.
  */
 import { useSearchParams } from 'react-router-dom';
 import { Abas, Vazio } from '../../components/ui/index.js';
@@ -13,8 +14,9 @@ import { AjustesAvisos } from './ajustes/Avisos.js';
 import { AjustesRespostas } from './ajustes/Respostas.js';
 import { AjustesAgendados } from './ajustes/Agendados.js';
 import { AjustesIntegracoes } from './ajustes/Integracoes.js';
+import { AjustesIa } from './ajustes/Ia.js';
 
-type Aba = 'paineis' | 'assuntos' | 'prazos' | 'avisos' | 'respostas' | 'agendados' | 'integracoes';
+type Aba = 'paineis' | 'assuntos' | 'prazos' | 'avisos' | 'respostas' | 'agendados' | 'integracoes' | 'ia';
 
 export function AjustesAtendimento() {
   const pode = usePode();
@@ -24,7 +26,7 @@ export function AjustesAtendimento() {
       { id: 'paineis' as const, label: 'Painéis e etapas' }, { id: 'assuntos' as const, label: 'Assuntos' }, { id: 'prazos' as const, label: 'Prazos' },
       { id: 'avisos' as const, label: 'Avisos e WhatsApp' }, { id: 'respostas' as const, label: 'Respostas prontas' }, { id: 'agendados' as const, label: 'Agendados' },
     ] : []),
-    ...(pode.integrar ? [{ id: 'integracoes' as const, label: 'Integrações' }] : []),
+    ...(pode.integrar ? [{ id: 'integracoes' as const, label: 'Integrações' }, { id: 'ia' as const, label: 'IA' }] : []),
   ];
   const pedida = sp.get('aba') as Aba | null;
   const atual = abas.find((a) => a.id === pedida)?.id ?? abas[0]?.id;
@@ -41,6 +43,7 @@ export function AjustesAtendimento() {
           {atual === 'respostas' && <AjustesRespostas />}
           {atual === 'agendados' && <AjustesAgendados />}
           {atual === 'integracoes' && <AjustesIntegracoes />}
+          {atual === 'ia' && <AjustesIa />}
         </>
       )}
     </div>

@@ -46,7 +46,7 @@ import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import {
   AGENDADOS_DE_EXEMPLO, ASSUNTOS_DO_DESENVOLVIMENTO, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, RESPOSTAS_PRONTAS, WHATSAPP_DA_EQUIPE,
-  type Afetar, type DadosAlterarExemplo, type Exemplo, type Passo, type Pessoa,
+  type Afetar, type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
 
 // =====================================================================
@@ -273,6 +273,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     erros: [] as string[],
     /** o robô do LineChat (a chave de API de exemplo) */
     robo: null as Ator | null,
+    /** o que a IA "leu" na conversa dos chamados do robô (a prévia não tem a conversa nem IA de verdade) */
+    iaExemplos: new Map<string, IaDoExemplo>(),
   };
 
   // ---------- quem está agindo ----------
@@ -1789,6 +1791,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
    * `lerSugestaoDaIa` como a resposta da IA de verdade: o que não existe nas opções fica de fora.
    */
   function sugestao(t: ChamadoRow, painel: Painel): { json: Record<string, unknown>; letras: number } {
+    // o chamado do robô de exemplo: a IA leu a conversa (que a prévia não tem) — a sugestão vem escrita
+    const lida = t.sessaoId && S.ajustesLineChat.ativo ? A.iaExemplos.get(t.id) : undefined;
+    if (lida) { const { letras, ...json } = lida; return { json, letras }; }
     const notas = porData(A.notas.filter((n) => n.chamadoId === t.id && !n.deletedAt && n.texto.trim()));
     const fala = (t.relato ?? '').replace(/^Cliente pelo WhatsApp:\s*/i, '').replace(/^"|"$/g, '').trim();
     const tudo = [t.titulo, fala, t.descricao ?? '', ...notas.map((n) => n.texto)].join('\n');
@@ -1799,7 +1804,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     let melhor: { c: string; pontos: number } | null = null;
     for (const x of caminhos) {
       const termos = paraBusca(x.c).split(/[^a-z0-9]+/).filter((p) => p.length >= 3 && !['configuracao', 'incidente', 'solicitacao'].includes(p));
-      const pontos = termos.filter((p) => palavras.has(p) || [...palavras].some((w) => w.startsWith(p.slice(0, 5)))).length * 10 + x.n;
+      // parecido conta a partir de 6 letras iguais: "relatorio" acha "relatorios", mas "entrar" não acha "entrada"
+      const pontos = termos.filter((p) => palavras.has(p) || (p.length >= 6 && [...palavras].some((w) => w.startsWith(p.slice(0, 6))))).length * 10 + x.n;
       if (termos.length && pontos > 10 && (!melhor || pontos > melhor.pontos)) melhor = { c: x.c, pontos };
     }
     const pedido = TEM(/\b(criar|cria|novo|nova|novos|novas|trocar|instalar|pedi|pediu|pedido|quer|liberar|login|acesso|mandar|configurar)\b/, b);
@@ -2297,6 +2303,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         incidentes: (d.incidentes ?? []).map((k) => codigoDa.get(k) ?? `faltou-${k}`),
       });
       const r = criarChamado(atorDe(ex.abre), pedido, { origem: robo ? 'robo' : 'manual' }, quando);
+      if (d.ia) A.iaExemplos.set(r.id, d.ia);
       if (robo) { const k = A.chaves.find((x) => x.id === A.robo!.id)!; k.usadaEm = iso(quando); webhook.ultimoEm = iso(quando); webhook.ultimoOk = true; webhook.ultimaMsg = 'chamado.criado: recebido (200)'; }
       codigoDa.set(ex.chave, r.codigo); idDoExemplo.set(ex.chave, r.id);
     };

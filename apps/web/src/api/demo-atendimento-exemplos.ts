@@ -211,6 +211,18 @@ export type DadosDoExemplo = {
   produtos?: string[]; operadoras?: string[]; etiquetas?: string[]; afetados?: Afetar[]; responsavel?: Pessoa;
   /** a chave de outro exemplo */
   pai?: string; incidentes?: string[];
+  /**
+   * O que a IA "leu" na conversa do robô e sugeriu (só na prévia, que não tem IA de verdade): a
+   * conversa inteira do WhatsApp não mora na prévia, então a sugestão vem escrita aqui, como uma IA
+   * responderia. Os caminhos de assunto e os produtos precisam existir (o `lerSugestaoDaIa` confere).
+   */
+  ia?: IaDoExemplo;
+};
+export type IaDoExemplo = {
+  titulo: string; relato: string; descricao: string; assunto: string; tipo: string; gravidade: Gravidade | ''; alcance: Alcance | '';
+  produtos: string[]; etiquetas: string[]; resumo: string;
+  /** quantas letras tinha a conversa (a conta do uso do mês) */
+  letras: number;
 };
 export type DadosAlterarExemplo = Omit<DadosDoExemplo, 'tipoChamado' | 'sessao' | 'pai' | 'incidentes'> & {
   solucao?: string; causa?: string; contorno?: string; validacao?: string;
@@ -1151,6 +1163,15 @@ export const EXEMPLOS: Exemplo[] = [
     dados: {
       contato: JOANA_ROBO, sessao: '7c4e2a91-3d6b-4f80-a5c2-91e8d3b60a47',
       relato: 'Cliente pelo WhatsApp: "Boa tarde, o telefone da recepção da casa de apoio está mudo."',
+      ia: {
+        titulo: 'Telefone da recepção da casa de apoio mudo',
+        relato: 'A Joana disse que o telefone da recepção da casa de apoio está mudo desde depois do almoço: não dá sinal para ligar e não toca quando ligam.',
+        descricao: '- Ramal 305 (recepção da casa de apoio)\n- O aparelho está ligado na tomada e com a tela acesa\n- Os outros telefones da casa funcionam',
+        assunto: 'Ramal › Incidente › Sem serviço', tipo: 'Incidente', gravidade: 'inoperancia', alcance: 'setor',
+        produtos: ['LinePBX'], etiquetas: ['ramal', 'casa de apoio'],
+        resumo: 'A recepção da casa de apoio está sem telefone desde depois do almoço. Conferir o registro do ramal 305 e pedir para a Joana reiniciar o aparelho.',
+        letras: 1460,
+      },
     },
   },
   {
@@ -1160,6 +1181,15 @@ export const EXEMPLOS: Exemplo[] = [
       titulo: 'Nenhuma ligação entra na central', contato: ['Carlos Menezes', '(71) 99999-3321'], sessao: 'e3b0c442-98fc-4c14-9afb-f4c8996fb924',
       relato: 'Cliente pelo WhatsApp: "URGENTE: ninguém consegue ligar para a distribuidora desde agora há pouco, dá número inexistente!"',
       prioridade: 'critica', etiquetas: ['urgente'],
+      ia: {
+        titulo: 'Ligações para a distribuidora dão número inexistente',
+        relato: 'O Carlos (TI) disse que ninguém consegue ligar para a Distribuidora Norte: quem liga ouve "número inexistente". As ligações de saída funcionam.',
+        descricao: '- Começou há uns 20 minutos\n- Todos os números da empresa (o principal e os da fila do SAC)\n- As ligações de saída continuam saindo',
+        assunto: 'Operadora › Incidente › DID de entrada', tipo: 'Incidente', gravidade: 'inoperancia', alcance: 'empresa',
+        produtos: ['VoiceNet', 'LinePBX'], etiquetas: ['urgente', 'did', 'entrada'],
+        resumo: 'Nenhuma ligação entra na Distribuidora Norte; as de saída funcionam. Conferir o tronco na operadora e a rota de entrada no SBC.',
+        letras: 2310,
+      },
     },
   },
   {
@@ -1168,6 +1198,15 @@ export const EXEMPLOS: Exemplo[] = [
     dados: {
       contato: [null, '(71) 99999-4321'], sessao: '5a9d3f7e-2c41-4b6e-8f05-d17c3e9a2b68',
       relato: 'Cliente pelo WhatsApp: "Oi, o sistema de vocês está fora? Não consigo entrar no painel de relatórios."',
+      ia: {
+        titulo: 'Não consegue entrar no LineReports',
+        relato: 'O cliente perguntou se o sistema está fora: ele não consegue entrar no painel de relatórios. Disse que a senha é a mesma de sempre.',
+        descricao: '- A tela de entrada do LineReports abre, mas a senha não é aceita\n- O cliente não disse o nome nem a empresa',
+        assunto: 'Relatórios › LineReports › Criação de logins', tipo: 'Incidente', gravidade: 'disfuncional', alcance: 'pessoa',
+        produtos: ['LineReports'], etiquetas: ['linereports', 'login'],
+        resumo: 'Alguém de um número que o Gestor não conhece não consegue entrar no LineReports. Perguntar o nome e a empresa e conferir o login.',
+        letras: 980,
+      },
     },
   },
   {
