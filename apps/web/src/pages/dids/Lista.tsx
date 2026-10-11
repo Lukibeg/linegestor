@@ -7,6 +7,9 @@
  * (`circuito`) — busca, filtros, seleção e edição em massa sem sair dali. Com o circuito fixo, somem
  * o que seria sempre igual: o filtro e as colunas de circuito e operadora, o interruptor dos links de
  * terceiros (a ficha mostra todos os números do circuito) e o "Criar faixa" (já está no alto da ficha).
+ *
+ * Patch 1.9 (pedido de 09/10: "não precisa de titular no DID"): a coluna Titular saiu. O titular é
+ * do circuito (a ficha do circuito e a lista de Circuitos mostram); no DID ele não dizia nada.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -103,7 +106,7 @@ export function Numeracao({ circuito: fixo }: { circuito?: { id: string; nome: s
         <div className="card overflow-x-auto"><table className="table">
           <thead><tr>
             {can('dids.assign') && <th className="w-8"><input type="checkbox" checked={allOnPage} onChange={togglePage} aria-label="Selecionar página" /></th>}
-            <ThN /><Th o={o} col="number">Número</Th>{!fixo && <><Th o={o} col="carrier">Operadora</Th><Th o={o} col="circuit">Circuito</Th></>}<Th o={o} col="client">Cliente</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="owner">Titular</Th><Th o={o} col="note">Observação</Th>
+            <ThN /><Th o={o} col="number">Número</Th>{!fixo && <><Th o={o} col="carrier">Operadora</Th><Th o={o} col="circuit">Circuito</Th></>}<Th o={o} col="client">Cliente</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="note">Observação</Th>
           </tr></thead>
           <tbody>{items.map((d, i) => (
             <tr key={d.id} className={sel.has(d.id) ? 'bg-accent-soft' : ''}>
@@ -115,7 +118,6 @@ export function Numeracao({ circuito: fixo }: { circuito?: { id: string; nome: s
               <td><ClienteDoDid d={d} clientes={opcoesCliente} podeEditar={can('dids.assign')} trocar={(novo, nome) => trocarCliente(d.id, d.numberFormatted, novo, nome)} /></td>
               {/* a marca só faz sentido com cliente: número livre não está em uso nem "não usado" */}
               <td>{d.clientId ? <UsoDid inUse={d.inUse} podeMudar={can('dids.assign')} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /> : <span className="text-muted">—</span>}</td>
-              <td className="text-muted">{d.ownerName ?? '—'}</td>
               <td className="min-w-[140px]"><ObservacaoDid nota={d.note} podeEditar={can('dids.assign')} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td>
             </tr>))}</tbody></table></div>
       )}

@@ -2,7 +2,11 @@
  * A ficha do projeto: é aqui que o trabalho acontece.
  *
  *  - em cima, o **painel**: quanto já foi, o que está travado, quanto falta para cada responsável
- *  - no meio, a **tabela de clientes × etapas**: uma caixinha por etapa, clicou marcou
+ *  - no meio, a **tabela de clientes × etapas**: uma caixinha por etapa, clicou marcou. Desde o 1.9
+ *    (pedido de 09/10), clicar no título de uma coluna ordena por ela: Cliente pelo nome, a etapa de
+ *    lista pela ordem das opções (a do formulário do projeto; em branco por último), a de caixinha
+ *    com as não feitas primeiro, e a Situação na ordem pendente → em andamento → travado → concluído →
+ *    não se aplica. Clicar de novo inverte. Sem clicar, a ordem é a de sempre.
  *  - embaixo, **comentários e anexos** do projeto (cada cliente também tem os seus)
  */
 import { useEffect, useMemo, useState } from 'react';
@@ -15,6 +19,7 @@ import { Pagina } from '../../components/layout/AppShell.js';
 import { Carregando, Chip, Confirmar, Modal, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { data, relativo } from '../../lib/format.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
+import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { EscolherClientes } from './EscolherClientes.js';
 import { ProjetoForm } from './Form.js';
 import { Andamento, ChipSituacao, CHIP_SELECT, FAIXA, Numero, SITUACAO } from './partes.js';
@@ -39,6 +44,8 @@ export function ProjetoFicha() {
   const [aberto, setAberto] = useState<string | null>(null);
   const [travando, setTravando] = useState<ClienteDoProjeto | null>(null);
   const [tirar, setTirar] = useState<ClienteDoProjeto | null>(null);
+  /** A ordem da tabela: vazio = a de sempre, até alguém clicar num título. */
+  const o = useOrdenacaoLocal('');
   /** Como mostrar "Como está cada passo": cartões (números grandes) ou barras (proporção). */
   const [visao, setVisao] = useState<'cartoes' | 'barras'>(() => {
     try { return localStorage.getItem('gestor.projeto.passos') === 'barras' ? 'barras' : 'cartoes'; } catch { return 'cartoes'; }
@@ -76,6 +83,7 @@ export function ProjetoFicha() {
 
   if (q.isLoading || !p) return <Pagina titulo="Projeto"><Carregando /></Pagina>;
   const r = p.resumo;
+  const ordenados = ordenarLista(clientes, o, valoresParaOrdenar(p));
 
   return (
     <Pagina
@@ -219,14 +227,18 @@ export function ProjetoFicha() {
               <thead>
                 <tr>
                   <ThN />
-                  <th>Cliente</th>
-                  {p.etapas.map((e) => <th key={e.id} className={`whitespace-nowrap ${e.kind === 'escolha' ? '' : 'text-center'}`}>{e.title}</th>)}
-                  <th>Situação</th>
+                  <Th o={o} col="cliente">Cliente</Th>
+                  {p.etapas.map((e) => (
+                    <Th key={e.id} o={o} col={`etapa:${e.id}`} align={e.kind === 'escolha' ? undefined : 'center'} titulo={`Ordenar por ${e.title}`}>
+                      <span className="whitespace-nowrap">{e.title}</span>
+                    </Th>
+                  ))}
+                  <Th o={o} col="situacao">Situação</Th>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {clientes.map((c, i) => (
+                {ordenados.map((c, i) => (
                   <Linha key={c.id} c={c} i={i} p={p}
                     onMarcar={(stepId, d) => marcar.mutate({ linhaId: c.id, stepId, d })}
                     onSituacao={(status) => status === 'travado' ? setTravando(c) : linha.mutate({ linhaId: c.id, d: { status } })}
@@ -269,6 +281,28 @@ export function ProjetoFicha() {
       {verCliente && <FichaEmJanela id={verCliente} onClose={() => setVerCliente(null)} />}
     </Pagina>
   );
+}
+
+/**
+ * Como cada coluna da tabela ordena (1.9). A etapa de lista vai pela ordem das opções que o projeto
+ * definiu (é a ordem do trabalho: "Pendente envio" antes de "Cliente confirmou"); em branco, sempre
+ * por último. A de caixinha: não feita (0) antes de feita (1).
+ */
+function valoresParaOrdenar(p: Projeto): Record<string, (c: ClienteDoProjeto) => string | number | null> {
+  const ordemSituacao = Object.keys(SITUACAO);
+  const valores: Record<string, (c: ClienteDoProjeto) => string | number | null> = {
+    cliente: (c) => c.clientName,
+    situacao: (c) => ordemSituacao.indexOf(c.status),
+  };
+  for (const e of p.etapas) {
+    valores[`etapa:${e.id}`] = (c) => {
+      const marca = c.feitas.find((f) => f.stepId === e.id);
+      if (e.kind !== 'escolha') return marca ? 1 : 0;
+      const i = e.options.findIndex((op) => op.id === marca?.valor);
+      return i < 0 ? null : i;
+    };
+  }
+  return valores;
 }
 
 /** Uma linha da tabela: as caixinhas das etapas, a situação, o responsável e a conversa daquele cliente. */

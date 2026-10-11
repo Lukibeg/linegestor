@@ -22,3 +22,5 @@
 - [Envio automático do PDF dos Chamados pelo WhatsApp](envio-automatico.md) — marcar o que vai, os números, o horário e o token da FlwChat.
 - [Base de conhecimento](base-de-conhecimento.md) — procurar, escrever um artigo (passos, comandos, prints), registrar a partir do chamado, comentários, leitura obrigatória e a IA (perguntar à base e o rascunho do card, com o provedor que a empresa escolher).
 - [Portal do cliente](portal-do-cliente.md) — escrever um tutorial com vídeo, print e arquivo, mandar o link pelo WhatsApp, dar acesso às pessoas do cliente e o que acontece quando o cliente sai da base.
+- [Relatórios do Inventário](relatorios-do-inventario.md) — quem tem o quê, o estoque e o valor, o vai e volta e o que corrigir no cadastro (1.9).
+- [Recibo de entrega na movimentação](recibo-de-entrega.md) — anexar o recibo (PDF ou foto) ao movimentar para o cliente, ou depois, quando ele volta assinado; ver, baixar e tirar (1.9).

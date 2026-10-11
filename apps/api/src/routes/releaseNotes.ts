@@ -1,12 +1,24 @@
-/** Novidades: o que mudou em cada versão, quem já leu, e a edição das notas. */
+/**
+ * Novidades: o que mudou em cada versão, quem já leu, e a edição das notas. Desde o 1.9 (decisão
+ * 0046), a nota pode ter um vídeo: é ele que abre no login, no lugar dos cartões.
+ */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import multipart from '@fastify/multipart';
 import { z } from 'zod';
-import { NovidadeAtualizarSchema, NovidadeGravarSchema } from '@gestor/shared';
+import { LIMITES_PORTAL, NovidadeAtualizarSchema, NovidadeGravarSchema } from '@gestor/shared';
+import { BadRequest } from '../plugins/errors.js';
 import * as svc from '../services/releaseNotes.js';
+import { mandarVideo } from './portalArquivo.js';
 
 const Id = z.object({ id: z.string() });
 
+/** O que mudou no vídeo, para a auditoria ("Editou a nota 1.9 — pôs o vídeo"). */
+const textoDoVideo = (m: svc.MudancaDoVideo) => (m === 'pos' ? ' — pôs o vídeo' : m === 'trocou' ? ' — trocou o vídeo' : m === 'tirou' ? ' — tirou o vídeo' : '');
+
 const routes: FastifyPluginAsyncZod = async (app) => {
+  // o vídeo do patch sobe como o do portal: um arquivo por vez, até 300 MB, direto para o disco
+  await app.register(multipart, { limits: { files: 1, fields: 5, fileSize: LIMITES_PORTAL.video } });
+
   // ---- para toda a equipe (qualquer pessoa logada, inclusive o Leitor) ----
   app.get('/pending', { preHandler: app.requireLogin, schema: { tags: ['Novidades'], summary: 'A nota que deve abrir no login desta pessoa (a mais recente ainda não lida), ou nada' } },
     async (req) => svc.pending(app.db, req.user!.id));
@@ -17,12 +29,18 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return { items: await svc.list(app.db, req.user!.id, { includeDrafts: podeEditar }), podeEditar, naoLidas: await svc.unreadCount(app.db, req.user!.id) };
     });
 
-  app.post('/:id/read', { preHandler: app.requireLogin, schema: { tags: ['Novidades'], summary: 'Marcar como lida ("Li e entendi")', params: Id } },
-    async (req) => {
-      const nota = await svc.markRead(app.db, req.params.id, req.user!.id);
-      await app.audit(req, { action: 'update', entityType: 'releaseNote', entityId: nota.id, summary: `${req.user!.name} leu as novidades de ${nota.version}` });
-      return { ok: true };
-    });
+  app.post('/:id/read', {
+    preHandler: app.requireLogin,
+    schema: { tags: ['Novidades'], summary: 'Marcar como lida ("Li e entendi"; com o vídeo, "Assisti e entendi")', params: Id, body: z.object({ assistiu: z.boolean().optional() }).nullish() },
+  }, async (req) => {
+    const nota = await svc.markRead(app.db, req.params.id, req.user!.id);
+    const como = req.body?.assistiu ? 'assistiu ao vídeo das' : 'leu as';
+    await app.audit(req, { action: 'update', entityType: 'releaseNote', entityId: nota.id, summary: `${req.user!.name} ${como} novidades de ${nota.version}` });
+    return { ok: true };
+  });
+
+  app.get('/videos/:id', { preHandler: app.requireLogin, schema: { tags: ['Novidades'], summary: 'O vídeo do patch, com Range (o de rascunho, só quem edita)', params: Id } },
+    async (req, reply) => mandarVideo(req, reply, await svc.videoParaMandar(app.db, req.params.id, req.user!.permissions.includes('admin.manage'))));
 
   app.get('/items/:id/image', { preHandler: app.requireLogin, schema: { tags: ['Novidades'], summary: 'O print de um item', params: Id } },
     async (req, reply) => {
@@ -34,17 +52,28 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/:id/reads', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Novidades'], summary: 'Quem já leu e quem ainda não', params: Id } },
     async (req) => svc.reads(app.db, req.params.id));
 
+  app.post('/videos', {
+    preHandler: app.requirePermission('admin.manage'),
+    schema: { tags: ['Novidades'], summary: 'Subir o vídeo do patch (até 300 MB, fica em disco); passa a ser da nota ao salvar', consumes: ['multipart/form-data'] },
+  }, async (req, reply) => {
+    const parte = await req.file({ limits: { fileSize: LIMITES_PORTAL.video + 1 } });
+    if (!parte) throw new BadRequest('Escolha um vídeo.');
+    const v = await svc.guardarVideo(app.db, parte.filename, parte.mimetype, parte.file, () => parte.file.truncated, req.user!.id);
+    await app.audit(req, { action: 'create', entityType: 'releaseNote', entityId: v.id, summary: `Subiu o vídeo "${v.nome}" (${Math.max(1, Math.round(v.tamanho / 1024))} KB) para as novidades` });
+    return reply.status(201).send(v);
+  });
+
   app.post('/', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Novidades'], summary: 'Criar uma nota (nasce como rascunho)', body: NovidadeGravarSchema } },
     async (req, reply) => {
-      const row = await svc.create(app.db, req.body);
-      await app.audit(req, { action: 'create', entityType: 'releaseNote', entityId: row.id, summary: `Criou a nota de novidades ${row.version}` });
+      const { mudancaDoVideo, ...row } = await svc.create(app.db, req.body);
+      await app.audit(req, { action: 'create', entityType: 'releaseNote', entityId: row.id, summary: `Criou a nota de novidades ${row.version}${textoDoVideo(mudancaDoVideo)}` });
       return reply.status(201).send(row);
     });
 
-  app.patch('/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Novidades'], summary: 'Editar a nota e seus itens', params: Id, body: NovidadeAtualizarSchema } },
+  app.patch('/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Novidades'], summary: 'Editar a nota, seus itens e o vídeo', params: Id, body: NovidadeAtualizarSchema } },
     async (req) => {
-      const { before, after } = await svc.update(app.db, req.params.id, req.body);
-      await app.audit(req, { action: 'update', entityType: 'releaseNote', entityId: after.id, summary: `Editou a nota de novidades ${after.version}`, before: { title: before.title }, after: { title: after.title } });
+      const { before, after, video } = await svc.update(app.db, req.params.id, req.body);
+      await app.audit(req, { action: 'update', entityType: 'releaseNote', entityId: after.id, summary: `Editou a nota de novidades ${after.version}${textoDoVideo(video)}`, before: { title: before.title }, after: { title: after.title } });
       return after;
     });
 

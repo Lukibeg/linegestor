@@ -16,16 +16,19 @@
  *  - só se movimenta aparelho PARA um cliente que assina o produto Equipamentos (regra R22)
  *  - devolução: destino é sempre o estoque — é assim que o aparelho volta do cliente
  *  - toda movimentação (e todo cadastro em massa) é uma transação: ou grava tudo ou nada
+ *  - a movimentação para um cliente pode levar o **recibo de entrega** (PDF ou foto, até 5 arquivos),
+ *    na hora ou depois; a regra mora em `@gestor/shared/recibo.ts` (Patch 1.9, decisão 0042)
  */
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
-import { clients, deviceCategories, deviceModelImages, deviceModels, deviceMovementItems, deviceMovements, devices, newId, users, type Db } from '@gestor/db';
+import { clientDeviceLogins, clientNetworkSettings, clients, deviceCategories, deviceModelImages, deviceModels, deviceMovementItems, deviceMovementReceipts, deviceMovements, devices, newId, products, subscriptions, users, type Db } from '@gestor/db';
 import {
-  identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, serieLimpa,
-  type AparelhoGravar, type AparelhosEmMassa, type ModeloAtualizar, type ModeloGravar, type MovimentacaoCriar,
+  identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, problemaDoRecibo, problemaParaAnexar, relatoriosInventario, serieLimpa, tipoDoRecibo,
+  type AparelhoGravar, type AparelhosEmMassa, type BaseInventario, type ModeloAtualizar, type ModeloGravar, type MovimentacaoCriar, type ReciboAnexar,
 } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import { idsWithProduct, unidadeDoCliente, valorDoAparelho } from './clients.js';
+import { lerConteudo } from './projects.js';
 
 // ---------- Modelos ----------
 
@@ -268,7 +271,8 @@ export async function getDevice(db: Db, id: string) {
     .from(deviceMovementItems).innerJoin(deviceMovements, eq(deviceMovements.id, deviceMovementItems.movementId))
     .leftJoin(from, eq(from.id, deviceMovements.fromClientId)).leftJoin(to, eq(to.id, deviceMovements.toClientId)).innerJoin(users, eq(users.id, deviceMovements.userId))
     .where(eq(deviceMovementItems.deviceId, id)).orderBy(desc(deviceMovements.createdAt));
-  return { ...formatarAparelho(r), history: history.map((h) => ({ ...h, modalityName: (MODALIDADES as any)[h.modality] ?? h.modality })) };
+  const recibos = await recibosDe(db, history.map((h) => h.id));
+  return { ...formatarAparelho(r), history: history.map((h) => ({ ...h, modalityName: (MODALIDADES as any)[h.modality] ?? h.modality, recibos: recibos.get(h.id) ?? [] })) };
 }
 
 /** Número de série não se repete dentro do mesmo modelo. */
@@ -470,6 +474,7 @@ export async function listMovements(db: Db, q: { modality?: string; clientId?: s
     .where(inArray(deviceMovementItems.movementId, ids))
     .orderBy(asc(deviceModels.name), asc(devices.mac), asc(devices.serialNumber));
   const [c] = await db.select({ n: sql<number>`count(*)` }).from(deviceMovements).where(where);
+  const recibos = await recibosDe(db, rows.map((r) => r.id));
   return {
     items: rows.map((r) => {
       const meus = itens.filter((i) => i.movementId === r.id);
@@ -480,8 +485,139 @@ export async function listMovements(db: Db, q: { modality?: string; clientId?: s
         modalityName: (MODALIDADES as any)[r.modality] ?? r.modality,
         items: [...porModelo.entries()].map(([modelName, quantity]) => ({ modelName, quantity })),
         devices: meus.map((i) => ({ id: i.deviceId, modelName: i.modelName, identificacao: identificacaoAparelho(i).texto })),
+        recibos: recibos.get(r.id) ?? [],
       };
     }),
     total: Number(c?.n ?? 0), page: q.page, pageSize: q.pageSize,
   };
+}
+
+// ---------- Recibo de entrega (Patch 1.9, decisão 0042) ----------
+
+/** "à locação para Hospital Vale Verde" — para a auditoria dizer de qual movimentação. */
+export function aMovimentacao(m: { modality: string; toName: string | null }, de = false) {
+  const artigo: Record<string, [string, string]> = { locacao: ['à', 'da'], venda: ['à', 'da'], comodato: ['ao', 'do'] };
+  const [a, da] = artigo[m.modality] ?? ['à', 'da'];
+  return `${de ? da : a} ${((MODALIDADES as Record<string, string>)[m.modality] ?? m.modality).toLowerCase()} para ${m.toName ?? 'o cliente'}`;
+}
+
+/** Os dados de um recibo para a tela (nunca o arquivo): o endereço baixa ou abre. */
+function formatarRecibo(r: { id: string; fileName: string; mimeType: string; sizeBytes: number; createdAt: Date; quem: string | null }) {
+  return { id: r.id, fileName: r.fileName, mimeType: r.mimeType, sizeBytes: r.sizeBytes, createdAt: r.createdAt.toISOString(), url: `inventory/recibos/${r.id}`, quem: r.quem };
+}
+export type ReciboDaMovimentacao = ReturnType<typeof formatarRecibo>;
+
+/** Os recibos de cada movimentação (sem o conteúdo, que pesa), na ordem em que foram anexados. */
+async function recibosDe(db: Db, movementIds: string[]) {
+  const porMovimentacao = new Map<string, ReciboDaMovimentacao[]>();
+  if (!movementIds.length) return porMovimentacao;
+  const rows = await db
+    .select({ id: deviceMovementReceipts.id, movementId: deviceMovementReceipts.movementId, fileName: deviceMovementReceipts.fileName, mimeType: deviceMovementReceipts.mimeType, sizeBytes: deviceMovementReceipts.sizeBytes, createdAt: deviceMovementReceipts.createdAt, quem: users.name })
+    .from(deviceMovementReceipts).leftJoin(users, eq(users.id, deviceMovementReceipts.uploadedById))
+    .where(and(inArray(deviceMovementReceipts.movementId, movementIds), isNull(deviceMovementReceipts.deletedAt)))
+    .orderBy(asc(deviceMovementReceipts.createdAt));
+  for (const r of rows) {
+    const l = porMovimentacao.get(r.movementId);
+    if (l) l.push(formatarRecibo(r)); else porMovimentacao.set(r.movementId, [formatarRecibo(r)]);
+  }
+  return porMovimentacao;
+}
+
+/**
+ * Anexa um arquivo do recibo de entrega. Só na movimentação para um cliente, até 5 arquivos, PDF
+ * ou foto de verdade (pelos primeiros bytes: o tipo que fica guardado é o de verdade, não o que o
+ * navegador disse).
+ */
+export async function anexarRecibo(db: Db, movementId: string, userId: string, d: ReciboAnexar) {
+  const [mov] = await db.select({ id: deviceMovements.id, modality: deviceMovements.modality, toClientId: deviceMovements.toClientId, toName: clients.tradeName })
+    .from(deviceMovements).leftJoin(clients, eq(clients.id, deviceMovements.toClientId)).where(eq(deviceMovements.id, movementId));
+  if (!mov) throw new NotFound('Movimentação');
+  const [c] = await db.select({ n: sql<number>`count(*)` }).from(deviceMovementReceipts).where(and(eq(deviceMovementReceipts.movementId, movementId), isNull(deviceMovementReceipts.deletedAt)));
+  const naoPode = problemaParaAnexar(mov, Number(c?.n ?? 0));
+  if (naoPode) throw new BadRequest(naoPode);
+  const { dataBase64 } = lerConteudo(d.conteudo);
+  const buffer = Buffer.from(dataBase64, 'base64');
+  const mimeType = tipoDoRecibo(buffer);
+  const problema = problemaDoRecibo({ nome: d.fileName, tipo: mimeType ?? '', bytes: buffer.length });
+  if (problema || !mimeType) throw new BadRequest(problema ?? 'Não consegui ler esse arquivo');
+  const [row] = await db.insert(deviceMovementReceipts).values({
+    id: newId(), movementId, fileName: d.fileName, mimeType, sizeBytes: buffer.length, dataBase64, uploadedById: userId,
+  }).returning();
+  const [quem] = await db.select({ name: users.name }).from(users).where(eq(users.id, userId));
+  return { recibo: formatarRecibo({ ...row!, quem: quem?.name ?? null }), movimentacao: mov };
+}
+
+/** O arquivo de um recibo (o tirado não abre mais). */
+export async function lerRecibo(db: Db, id: string) {
+  const [row] = await db.select().from(deviceMovementReceipts).where(and(eq(deviceMovementReceipts.id, id), isNull(deviceMovementReceipts.deletedAt)));
+  if (!row) throw new NotFound('Recibo');
+  return { ...row, buffer: Buffer.from(row.dataBase64, 'base64'), imagem: row.mimeType.startsWith('image/') };
+}
+
+/** Tira o recibo da tela: ele fica guardado (nada se apaga de verdade) e o motivo vai para a auditoria. */
+export async function tirarRecibo(db: Db, id: string) {
+  const [row] = await db.select({ id: deviceMovementReceipts.id, movementId: deviceMovementReceipts.movementId, fileName: deviceMovementReceipts.fileName, modality: deviceMovements.modality, toName: clients.tradeName })
+    .from(deviceMovementReceipts).innerJoin(deviceMovements, eq(deviceMovements.id, deviceMovementReceipts.movementId)).leftJoin(clients, eq(clients.id, deviceMovements.toClientId))
+    .where(and(eq(deviceMovementReceipts.id, id), isNull(deviceMovementReceipts.deletedAt)));
+  if (!row) throw new NotFound('Recibo');
+  await db.update(deviceMovementReceipts).set({ deletedAt: new Date() }).where(eq(deviceMovementReceipts.id, id));
+  return row;
+}
+
+// ---------- Relatórios (Patch 1.9, decisão 0041) ----------
+
+/**
+ * Os relatórios do Inventário. Lê do banco o que as contas precisam e chama as MESMAS contas da
+ * prévia (`relatoriosInventario`, em @gestor/shared) — assim o número da prévia é o do sistema.
+ * Lê tudo de uma vez: o inventário é pequeno (centenas de aparelhos) e a conta em memória é a mesma
+ * nos dois lugares. Os da lixeira (aparelho, login) ficam de fora; o cliente na lixeira
+ * entra, marcado, porque aparelho nosso pode ter ficado com ele.
+ */
+export async function relatorios(db: Db, agora = new Date()) {
+  const [aps, mods, cls, subs, redes, logins, movs, itens] = await Promise.all([
+    db.select({
+      id: devices.id, modelId: devices.modelId, mac: devices.mac, serialNumber: devices.serialNumber, clientId: devices.clientId, unit: devices.unit,
+      currentModality: devices.currentModality, condition: devices.condition, valueCents: devices.valueCents, ip: devices.ip, note: devices.note, createdAt: devices.createdAt,
+    }).from(devices).where(isNull(devices.deletedAt)),
+    db.select({ id: deviceModels.id, name: deviceModels.name, valueCents: deviceModels.valueCents, categoryName: deviceCategories.name, fotoEm: deviceModelImages.updatedAt })
+      .from(deviceModels).leftJoin(deviceCategories, eq(deviceCategories.id, deviceModels.categoryId)).leftJoin(deviceModelImages, eq(deviceModelImages.modelId, deviceModels.id)),
+    db.select({ id: clients.id, nome: clients.tradeName, interno: clients.isInternal, arquivado: clients.archived, deletedAt: clients.deletedAt }).from(clients),
+    db.select({ clientId: subscriptions.clientId, code: products.code, deactivatedAt: subscriptions.deactivatedAt }).from(subscriptions).innerJoin(products, eq(products.id, subscriptions.productId)),
+    db.select({ clientId: clientNetworkSettings.clientId, ip: clientNetworkSettings.ipAddress, mascara: clientNetworkSettings.subnetMask, roteador: clientNetworkSettings.defaultRouter, dns: clientNetworkSettings.dns1 }).from(clientNetworkSettings),
+    db.select({ clientId: clientDeviceLogins.clientId, modelId: clientDeviceLogins.modelId }).from(clientDeviceLogins).where(isNull(clientDeviceLogins.deletedAt)),
+    db.select({ id: deviceMovements.id, modality: deviceMovements.modality, fromClientId: deviceMovements.fromClientId, toClientId: deviceMovements.toClientId, unit: deviceMovements.unit, newCondition: deviceMovements.newCondition, createdAt: deviceMovements.createdAt }).from(deviceMovements),
+    db.select({ movementId: deviceMovementItems.movementId, deviceId: deviceMovementItems.deviceId }).from(deviceMovementItems),
+  ]);
+
+  // a mesma regra do portal do cliente: ativa = sem encerramento, ou encerramento ainda por vir
+  const ativa = (d: Date | null) => !d || d > agora;
+  const iso = (d: Date | null) => (d ? d.toISOString() : null);
+  const doCliente = <T extends { clientId: string }>(xs: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const x of xs) { const l = m.get(x.clientId); if (l) l.push(x); else m.set(x.clientId, [x]); }
+    return m;
+  };
+  const subsDe = doCliente(subs), loginsDe = doCliente(logins);
+  const redeDe = new Map(redes.map((r) => [r.clientId, !!(r.ip || r.mascara || r.roteador || r.dns)]));
+  const itensDe = new Map<string, string[]>();
+  for (const i of itens) { const l = itensDe.get(i.movementId); if (l) l.push(i.deviceId); else itensDe.set(i.movementId, [i.deviceId]); }
+
+  const base: BaseInventario = {
+    agora,
+    aparelhos: aps.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() })),
+    modelos: mods.map((m) => ({ id: m.id, name: m.name, valueCents: m.valueCents, categoryName: m.categoryName, temFoto: !!m.fotoEm })),
+    clientes: cls.map((c) => {
+      const s = subsDe.get(c.id) ?? [];
+      return {
+        id: c.id, nome: c.nome, interno: c.interno, arquivado: c.arquivado,
+        naLixeiraDesde: iso(c.deletedAt),
+        temEquipamentos: s.some((x) => x.code === 'equipamentos' && ativa(x.deactivatedAt)),
+        produtosAtivos: s.filter((x) => ativa(x.deactivatedAt)).length,
+        temRedePadrao: redeDe.get(c.id) ?? false,
+        modelosComLogin: (loginsDe.get(c.id) ?? []).map((l) => l.modelId),
+      };
+    }),
+    movimentacoes: movs.map((m) => ({ ...m, createdAt: m.createdAt.toISOString(), deviceIds: itensDe.get(m.id) ?? [] })),
+  };
+  return relatoriosInventario(base);
 }

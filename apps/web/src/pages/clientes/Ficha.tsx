@@ -20,11 +20,12 @@ import { ClienteForm } from './Form.js';
 import { ChipSituacao } from '../projetos/partes.js';
 import { BarrasRanking } from '../../components/graficos.js';
 import { FiltroEmBotao } from '../../lib/filtros.js';
-import { temDataDeAtivacao } from '@gestor/shared';
+import { inicioDaSemana, temDataDeAtivacao } from '@gestor/shared';
 import { ObservacaoDid, UsoDid, useEditarDid } from '../dids/partes.js';
 import { RaioX } from '../chamados/relatorios/Clientes.js';
 import { ArtigosLigados } from '../base/partes.js';
 import { AcessosDoPortal } from '../portal/Acessos.js';
+import { MarcaRecibo, RecibosDaMovimentacao } from '../inventario/Recibos.js';
 
 type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'portal' | 'chamados' | 'historico';
 
@@ -90,7 +91,7 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
         { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> },
         { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> },
         { id: 'projetos', label: 'Projetos' },
-        // 1.8: quem deste cliente entra no portal do cliente (o convite, o bloqueio)
+        // 1.8: quem deste cliente entra no portal do cliente (o login e a senha do suporte, 1.9; o bloqueio)
         { id: 'portal', label: 'Portal' },
         // 1.7: os chamados do LineChat deste cliente (o Raio-X dos Relatórios)
         ...(can('support.read') ? [{ id: 'chamados' as Aba, label: 'Chamados' }] : []),
@@ -436,7 +437,7 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
  * Os números do cliente, com a marca **em uso / não usado**: o número pode estar alocado ao
  * cliente e ainda não estar em uso (reservado, aguardando configuração). Clicar na marca alterna.
  *
- * Patch 1.4: **procurar e filtrar** (número, operadora, circuito, titular) sem sair da ficha —
+ * Patch 1.4: **procurar e filtrar** (número, operadora, circuito) sem sair da ficha —
  * cliente grande tem 150 números — e **a observação se edita na própria linha** (clicar no texto,
  * Enter grava, Esc desiste), com a mesma permissão de alocar números.
  *
@@ -448,6 +449,9 @@ function ModuloForm({ c, product, module, sm, onClose }: { c: ClientFull; produc
  * (`pages/dids/partes.tsx`). O **"trocar cliente"** que o 1.5 pôs aqui **saiu no 1.6** (pedido do
  * Luan, 30/09: "não precisa desse trocar cliente aqui"): passar o número para outro cliente é na
  * Numeração ou na ficha do circuito, onde a coluna Cliente existe.
+ *
+ * Patch 1.9 (09/10, "não precisa de titular no DID"): saíram o filtro e a coluna Titular — o titular é
+ * do circuito.
  */
 function Dids({ c }: { c: ClientFull }) {
   const q = useQuery({ queryKey: ['client-dids', c.id], queryFn: () => api.clients.dids(c.id) });
@@ -458,14 +462,12 @@ function Dids({ c }: { c: ClientFull }) {
   const [soNaoUsados, setSoNaoUsados] = useState(false);
   const [operadoras, setOperadoras] = useState<string[]>([]);
   const [circuitos, setCircuitos] = useState<string[]>([]);
-  const [titulares, setTitulares] = useState<string[]>([]);
   const SEM = '__sem__';
   const opcoes = useMemo(() => {
     const unicos = (f: (d: (typeof items)[number]) => [string, string]) => [...new Map(items.map(f)).entries()].map(([key, label]) => ({ key, label })).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
     return {
       operadoras: unicos((d) => [d.carrierName ?? SEM, d.carrierName ?? 'Sem operadora']),
       circuitos: unicos((d) => [d.circuitId ?? SEM, d.circuitName ?? 'Sem circuito']),
-      titulares: unicos((d) => [d.ownerClientId ?? SEM, d.ownerName ?? 'Sem titular']),
     };
   }, [items]);
   const semAcento = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -476,22 +478,21 @@ function Dids({ c }: { c: ClientFull }) {
       if (soNaoUsados && d.inUse) return false;
       if (operadoras.length && !operadoras.includes(d.carrierName ?? SEM)) return false;
       if (circuitos.length && !circuitos.includes(d.circuitId ?? SEM)) return false;
-      if (titulares.length && !titulares.includes(d.ownerClientId ?? SEM)) return false;
       if (!texto) return true;
       // o número com ou sem DDD, com ou sem traço; ou um pedaço da observação ou do circuito
       if (digitos.length >= 2 && d.number.includes(digitos)) return true;
       return semAcento(`${d.note ?? ''} ${d.circuitName ?? ''}`).includes(texto);
     });
-  }, [items, busca, soNaoUsados, operadoras, circuitos, titulares]);
-  const ordenados = ordenarLista(filtrados, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, ownerName: (d) => d.ownerName, inUse: (d) => (d.inUse ? 1 : 0), note: (d) => d.note });
+  }, [items, busca, soNaoUsados, operadoras, circuitos]);
+  const ordenados = ordenarLista(filtrados, o, { numberFormatted: (d) => d.number, carrierName: (d) => d.carrierName, circuitName: (d) => d.circuitName, inUse: (d) => (d.inUse ? 1 : 0), note: (d) => d.note });
   const pg = usePaginaLocal(ordenados, 100);
   const { mudando, alternarUso, gravarObservacao } = useEditarDid();
   const podeEditar = can('dids.assign');
   if (q.isLoading) return <Carregando />;
   if (!items.length) return <Vazio titulo="Nenhum DID com este cliente" texto="Aloque números em Circuitos › Numeração, selecionando os desejados e escolhendo este cliente." acao={<Link className="btn-secondary" to="/circuitos?aba=numeracao&cliente=free">Ver DIDs livres</Link>} />;
   const emUso = items.filter((d) => d.inUse).length;
-  const temFiltro = !!busca.trim() || soNaoUsados || operadoras.length > 0 || circuitos.length > 0 || titulares.length > 0;
-  const limpar = () => { setBusca(''); setSoNaoUsados(false); setOperadoras([]); setCircuitos([]); setTitulares([]); };
+  const temFiltro = !!busca.trim() || soNaoUsados || operadoras.length > 0 || circuitos.length > 0;
+  const limpar = () => { setBusca(''); setSoNaoUsados(false); setOperadoras([]); setCircuitos([]); };
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -501,7 +502,6 @@ function Dids({ c }: { c: ClientFull }) {
         </label>
         {opcoes.operadoras.length > 1 && <FiltroEmBotao icone={Filter} nome="Operadora" escolhidos={operadoras} onChange={setOperadoras} grupos={[{ opcoes: opcoes.operadoras }]} />}
         {opcoes.circuitos.length > 1 && <FiltroEmBotao icone={Filter} nome="Circuito" escolhidos={circuitos} onChange={setCircuitos} grupos={[{ opcoes: opcoes.circuitos }]} />}
-        {opcoes.titulares.length > 1 && <FiltroEmBotao icone={Filter} nome="Titular" escolhidos={titulares} onChange={setTitulares} grupos={[{ opcoes: opcoes.titulares }]} />}
         <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Só os números alocados a este cliente que ainda não estão em uso (reservados, esperando configuração).">
           <Toggle checked={soNaoUsados} onChange={setSoNaoUsados} />
           só não usados <span className="text-muted tnum">({items.length - emUso})</span>
@@ -511,10 +511,10 @@ function Dids({ c }: { c: ClientFull }) {
       </div>
       <div className="card overflow-x-auto">
         {!filtrados.length ? <div className="text-muted text-sm p-4">Nenhum número com esses filtros. <button type="button" className="link" onClick={limpar}>Limpar filtros</button></div> : (
-          <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="ownerName">Titular</Th><Th o={o} col="note">Observação</Th></tr></thead>
+          <table className="table"><thead><tr><ThN /><Th o={o} col="numberFormatted">Número</Th><Th o={o} col="inUse">Uso</Th><Th o={o} col="carrierName">Operadora</Th><Th o={o} col="circuitName">Circuito</Th><Th o={o} col="note">Observação</Th></tr></thead>
             <tbody>{pg.visiveis.map((d, i) => <tr key={d.id}><TdN n={pg.numero(i)} /><td className="font-mono tnum whitespace-nowrap">{d.numberFormatted}</td>
               <td><UsoDid inUse={d.inUse} podeMudar={podeEditar} mudando={mudando === d.id} onChange={(v) => alternarUso(d.id, v)} /></td>
-              <td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td><td>{d.ownerName ?? '—'}</td>
+              <td>{d.carrierName ?? '—'}</td><td>{d.circuitId ? <span className="inline-flex items-center gap-1.5"><Link className="link" to={`/circuitos/${d.circuitId}`}>{d.circuitName}</Link>{d.thirdParty && <Chip tone="muted" title="Tronco do próprio cliente, com outra operadora">terceiro</Chip>}</span> : <span className="text-muted">—</span>}</td>
               <td className="min-w-[200px]"><ObservacaoDid nota={d.note} podeEditar={podeEditar} numero={d.numberFormatted} gravar={(v) => gravarObservacao(d.id, v)} /></td></tr>)}</tbody></table>
         )}
         <div className="px-3 pb-3 border-t border-line">{pg.rodape}<div className="pt-2 text-[12.5px] text-muted flex flex-wrap gap-x-3"><span className="tnum">{emUso} em uso · {items.length - emUso} não usado(s)</span><Link className="link" to={`/circuitos?aba=numeracao&cliente=${c.id}`}>Abrir em Circuitos › Numeração</Link> para editar em massa ou trocar o cliente.</div></div>
@@ -661,7 +661,7 @@ function MovimentacoesDoCliente({ c }: { c: ClientFull }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table">
-        <thead><tr><th className="w-6" /><ThN /><th>Quando</th><th>Modalidade</th><th>De</th><th>Para</th><th>Unidade</th><th>Itens</th><th>Por</th></tr></thead>
+        <thead><tr><th className="w-6" /><ThN /><th>Quando</th><th>Modalidade</th><th>De</th><th>Para</th><th>Unidade</th><th>Itens</th><th title="Recibo de entrega">Recibo</th><th>Por</th></tr></thead>
         <tbody>{pg.visiveis.map((m, i) => {
           const entrou = m.toClientId === c.id;
           const abrir = aberta === m.id;
@@ -676,16 +676,18 @@ function MovimentacoesDoCliente({ c }: { c: ClientFull }) {
                 <td className={entrou ? '' : 'text-muted'}>{m.toName ?? 'Estoque'}</td>
                 <td>{m.unit ?? <span className="text-muted">—</span>}</td>
                 <td>{m.items.map((x) => `${x.quantity}× ${x.modelName}`).join(', ')}</td>
+                <td><MarcaRecibo recibos={m.recibos} /></td>
                 <td className="text-muted whitespace-nowrap">{m.userName}</td>
               </tr>
               {abrir && (
                 <tr className="bg-surface-2">
                   <td />
-                  <td colSpan={8} className="py-2">
+                  <td colSpan={9} className="py-2">
                     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
                       {m.devices.map((d) => <li key={d.id}><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.identificacao}</Link> <span className="text-muted">· {d.modelName}</span></li>)}
                     </ul>
                     {m.note && <p className="text-muted italic text-[12.5px] mt-1">{m.note}</p>}
+                    <RecibosDaMovimentacao m={m} />
                   </td>
                 </tr>
               )}
@@ -1041,22 +1043,34 @@ function ProjetosDoCliente({ c }: { c: ClientFull }) {
   );
 }
 
+/** Os períodos da aba Chamados do cliente. "Esta semana" (desde a segunda-feira) e "Este mês" (desde o dia 1) entraram no 1.9, a pedido do Luan (09/10). */
+const PERIODOS_DO_CLIENTE = [
+  { id: 'semana', rotulo: 'Esta semana' },
+  { id: 'mes', rotulo: 'Este mês' },
+  { id: '30', rotulo: '30 dias' },
+  { id: '90', rotulo: '90 dias' },
+  { id: '365', rotulo: '12 meses' },
+] as const;
+type PeriodoDoCliente = (typeof PERIODOS_DO_CLIENTE)[number]['id'];
+
 /**
  * Aba Chamados (1.7): o Raio-X dos Relatórios para este cliente — os chamados do LineChat ligados a
- * ele, no período escolhido (90 dias, de padrão). A ligação do Cliente do card com o cadastro é
- * automática pelo nome; quem administra corrige em Chamados › Relatórios › Clientes.
+ * ele, no período escolhido (90 dias, de padrão; desde o 1.9 também esta semana e este mês). A ligação
+ * do Cliente do card com o cadastro é automática pelo nome; quem administra corrige em Chamados ›
+ * Relatórios › Clientes.
  */
 function ChamadosDoCliente({ c }: { c: ClientFull }) {
-  const [dias, setDias] = useState(90);
+  const [periodo, setPeriodo] = useState<PeriodoDoCliente>('90');
   const ate = diaLocal(new Date().toISOString());
-  const d = new Date(); d.setDate(d.getDate() - (dias - 1));
-  const de = diaLocal(d.toISOString());
+  const de = periodo === 'semana' ? inicioDaSemana(ate)
+    : periodo === 'mes' ? `${ate.slice(0, 8)}01`
+    : (() => { const d = new Date(); d.setDate(d.getDate() - (Number(periodo) - 1)); return diaLocal(d.toISOString()); })();
   return (
     <div className="card p-4 sm:p-5 flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-display font-semibold">Chamados do LineChat</h2>
         <div className="flex flex-wrap items-center gap-1.5">
-          {[30, 90, 365].map((n) => <button key={n} type="button" className={`btn-sm ${dias === n ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setDias(n)}>{n === 365 ? '12 meses' : `${n} dias`}</button>)}
+          {PERIODOS_DO_CLIENTE.map((x) => <button key={x.id} type="button" className={`btn-sm ${periodo === x.id ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPeriodo(x.id)} aria-pressed={periodo === x.id}>{x.rotulo}</button>)}
           <Link className="btn-secondary btn-sm" to={`/chamados/relatorios?sec=clientes&cliente=${c.id}`}>Ver nos Relatórios <ExternalLink size={13} /></Link>
         </div>
       </div>

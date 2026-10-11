@@ -1,7 +1,8 @@
 /**
  * Manda um arquivo do portal: imagem e vídeo abrem na tela (o vídeo com "Range", para o player
  * pular para o meio sem baixar tudo); o resto baixa sempre como arquivo. Usado pela equipe e pelo
- * cliente — quem pode ver é conferido antes, no serviço.
+ * cliente — quem pode ver é conferido antes, no serviço. O vídeo do patch, nas Novidades (1.9),
+ * usa o mesmo `mandarVideo`.
  */
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
@@ -36,16 +37,24 @@ export async function mandarArquivo(req: FastifyRequest, reply: FastifyReply, a:
   if (row.kind === 'imagem') {
     return reply.header('Content-Type', row.mimeType).header('Content-Disposition', contentDisposition('inline', row.fileName)).send(a.buffer);
   }
-  // o vídeo: do disco, com Range
-  if (!a.caminho) throw new NotFound('Vídeo');
+  return mandarVideo(req, reply, { caminho: a.caminho, mimeType: row.mimeType, fileName: row.fileName });
+}
+
+/**
+ * O vídeo: do disco, com "Range" — o player pula para o meio sem baixar tudo, e o Safari (o do
+ * iPhone, principalmente) só toca vídeo de quem responde assim.
+ */
+export async function mandarVideo(req: FastifyRequest, reply: FastifyReply, v: { caminho: string | null; mimeType: string; fileName: string }) {
+  if (!v.caminho) throw new NotFound('Vídeo');
   let tamanho: number;
-  try { tamanho = (await stat(a.caminho)).size; } catch { throw new NotFound('Vídeo'); }
-  reply.header('Content-Type', row.mimeType).header('Accept-Ranges', 'bytes').header('Content-Disposition', contentDisposition('inline', row.fileName));
+  try { tamanho = (await stat(v.caminho)).size; } catch { throw new NotFound('Vídeo'); }
+  reply.header('X-Content-Type-Options', 'nosniff').header('Cache-Control', 'private, max-age=3600')
+    .header('Content-Type', v.mimeType).header('Accept-Ranges', 'bytes').header('Content-Disposition', contentDisposition('inline', v.fileName));
   const range = lerRange(req.headers.range, tamanho);
   if (range === 'invalido') return reply.code(416).header('Content-Range', `bytes */${tamanho}`).send();
-  if (!range) return reply.header('Content-Length', tamanho).send(createReadStream(a.caminho));
+  if (!range) return reply.header('Content-Length', tamanho).send(createReadStream(v.caminho));
   return reply.code(206)
     .header('Content-Range', `bytes ${range.inicio}-${range.fim}/${tamanho}`)
     .header('Content-Length', range.fim - range.inicio + 1)
-    .send(createReadStream(a.caminho, { start: range.inicio, end: range.fim }));
+    .send(createReadStream(v.caminho, { start: range.inicio, end: range.fim }));
 }

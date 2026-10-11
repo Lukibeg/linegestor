@@ -136,12 +136,13 @@ Drive configurada na tela. Sem essa segunda parte, o backup só protege contra e
 
 Backup que nunca foi restaurado não é backup.
 
-**Os vídeos do portal do cliente (1.8) não entram nesse backup**: ficam no volume `portal` do
-Docker, fora do banco, e são grandes demais para o envio ao Drive. A regra é guardar o original de
-cada vídeo; se quiser também uma cópia no servidor:
+**Os vídeos do portal do cliente (1.8) e o vídeo de cada patch, nas Novidades (1.9), não entram
+nesse backup**: ficam no volume `portal` do Docker (`/portal/videos` e `/portal/novidades`), fora do
+banco, e são grandes demais para o envio ao Drive. A regra é guardar o original de cada vídeo (o do
+patch que vem pronto já está em `docs/novidades/`); se quiser também uma cópia no servidor:
 
 ```bash
-docker compose -f docker-compose.prod.yml cp app:/portal/videos ./backups/videos-$(date +%F)
+docker compose -f docker-compose.prod.yml cp app:/portal ./backups/portal-$(date +%F)
 ```
 
 ---

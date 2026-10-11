@@ -3,16 +3,20 @@
  *
  * A nota nasce **rascunho** (ninguém vê) e só aparece para a equipe quando alguém aperta
  * **Publicar** — por isso publicar é um botão à parte, e não um efeito de salvar.
+ * Desde o 1.9 (decisão 0046), a nota pode ter um **vídeo**: com ele, é o vídeo que abre no login,
+ * no lugar dos cartões (que continuam na página Novidades).
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, Eye, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, Film, Plus, Trash2 } from 'lucide-react';
+import { problemaDoArquivo, TIPOS_VIDEO_NOVIDADE } from '@gestor/shared';
 import { api, logoSrc } from '../../api/index.js';
-import type { Novidade, NovidadeItem } from '../../api/types.js';
+import type { Novidade, NovidadeItem, VideoNovidade } from '../../api/types.js';
 import { Campo, CampoLogo, Carregando, Chip, Confirmar, Modal, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { data, patch, relativo } from '../../lib/format.js';
+import { tamanhoDoArquivo } from '../../lib/arquivos.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
-import { TIPO_NOVIDADE } from '../novidades/Index.js';
+import { TIPO_NOVIDADE, VideoDoPatch } from '../novidades/Index.js';
 
 /** Um item em edição: o `imagem` só existe enquanto a pessoa está mexendo (não veio do servidor). */
 type ItemEdit = Partial<NovidadeItem> & { kind: NovidadeItem['kind']; title: string; text: string | null; imagem?: string | null; imageUrl?: string | null };
@@ -50,8 +54,9 @@ export function Novidades() {
       <div className="flex flex-wrap items-start gap-3">
         <p className="text-sm text-muted flex-1 min-w-[260px]">
           Cada <b>patch</b> é uma publicação do sistema (1.2, 1.3, …). Ele nasce como <b>rascunho</b>; ao <b>publicar</b>, abre no
-          login de cada pessoa como <b>leitura obrigatória</b> — a janela só sai quando ela passa por todos os cartões e marca
-          "Li e entendi". A cada publicação eu já deixo o patch pronto aqui — você revisa e publica.
+          login de cada pessoa e é <b>obrigatório</b>: com <b>vídeo</b>, a janela mostra o vídeo e só sai quando a pessoa assiste até
+          o fim e marca "Assisti e entendi"; sem vídeo, quando ela passa por todos os cartões e marca "Li e entendi". Os cartões
+          ficam sempre na página Novidades. A cada publicação eu já deixo o patch pronto aqui — você revisa e publica.
         </p>
         <button className="btn-primary btn-sm" onClick={() => setEditar('nova')}><Plus size={14} /> Novo patch</button>
       </div>
@@ -64,7 +69,12 @@ export function Novidades() {
               <tr key={n.id}>
                 <TdN n={contar(i)} />
                 <td><Chip tone="accent">{patch(n.version)}</Chip></td>
-                <td className="font-medium max-w-[320px] truncate" title={n.title}>{n.title}</td>
+                <td className="font-medium max-w-[320px]">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="truncate" title={n.title}>{n.title}</span>
+                    {n.video && <span className="shrink-0" title="Abre no login com o vídeo"><Chip tone="muted">vídeo</Chip></span>}
+                  </span>
+                </td>
                 <td className="tnum">{n.items.length}</td>
                 <td className="whitespace-nowrap">{n.publishedAt ? <span className="text-ok text-[12.5px] font-semibold">publicada <span className="text-muted font-normal">{data(n.publishedAt)}</span></span> : <Chip tone="muted">rascunho</Chip>}</td>
                 <td className="whitespace-nowrap">{n.publishedAt ? <button className="link tnum" onClick={() => setLeituras(n)}>{n.leituras} de {n.pessoas}</button> : <span className="text-muted">—</span>}</td>
@@ -84,7 +94,7 @@ export function Novidades() {
       <Confirmar open={!!publicar} onClose={() => setPublicar(null)} onConfirm={doPublicar} loading={busy}
         titulo={publicar?.ligar ? 'Publicar novidades' : 'Voltar para rascunho'} botao={publicar?.ligar ? 'Publicar para todos' : 'Voltar para rascunho'}
         texto={publicar?.ligar
-          ? <>O <b>{publicar ? patch(publicar.nota.version) : ''}</b> vai abrir no próximo acesso de <b>cada pessoa</b> do sistema, e só para de abrir quando cada uma marcar "Li e entendi".</>
+          ? <>O <b>{publicar ? patch(publicar.nota.version) : ''}</b> vai abrir no próximo acesso de <b>cada pessoa</b> do sistema{publicar?.nota.video ? ', com o vídeo,' : ''} e só para de abrir quando cada uma marcar {publicar?.nota.video ? '"Assisti e entendi"' : '"Li e entendi"'}.</>
           : <>O <b>{publicar ? patch(publicar.nota.version) : ''}</b> sai do ar e volta a ser rascunho. Quem já leu não vê mais nada; quem não leu também não verá.</>} />
       <Confirmar open={!!excluir} onClose={() => setExcluir(null)} onConfirm={doExcluir} loading={busy} perigoso titulo="Excluir nota" botao="Mandar para a lixeira"
         texto={<>A nota <b>{excluir?.title}</b> sai das telas. Dá para restaurar em Administração → Lixeira.</>} />
@@ -125,7 +135,21 @@ function NotaForm({ nota, onClose, onSaved }: { nota?: Novidade; onClose: () => 
     summary: nota?.summary ?? '',
   });
   const [itens, setItens] = useState<ItemEdit[]>(nota?.items.map((i) => ({ id: i.id, kind: i.kind, title: i.title, text: i.text, imageUrl: i.imageUrl })) ?? []);
+  // o vídeo: `undefined` = como está · null = tirar · o vídeo = o que acabou de subir (vale ao salvar)
+  const [video, setVideo] = useState<VideoNovidade | null | undefined>(undefined);
+  const [enviando, setEnviando] = useState<{ nome: string; progresso: number } | null>(null);
   const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const videoAtual = video === undefined ? nota?.video ?? null : video;
+
+  const subirVideo = async (arquivo: File) => {
+    const problema = problemaDoArquivo('video', arquivo.type, arquivo.size);
+    if (problema) { setErr(problema); return; }
+    setErr(''); setEnviando({ nome: arquivo.name, progresso: 0 });
+    try {
+      const v = await api.novidades.subirVideo(arquivo, (p) => setEnviando({ nome: arquivo.name, progresso: p }));
+      setVideo(v);
+    } catch (e) { setErr(mensagemErro(e)); } finally { setEnviando(null); }
+  };
 
   const mexer = (k: number, mudanca: Partial<ItemEdit>) => setItens(itens.map((it, j) => (j === k ? { ...it, ...mudanca } : it)));
   const mover = (k: number, passo: number) => {
@@ -147,13 +171,15 @@ function NotaForm({ nota, onClose, onSaved }: { nota?: Novidade; onClose: () => 
           // ausente = mantém o print · null = tira · texto = troca
           ...(it.imagem === undefined ? {} : { imagem: it.imagem }),
         })),
+        // o vídeo, do mesmo jeito: ausente = mantém · null = tira · o id = o que acabou de subir
+        ...(video === undefined ? {} : { videoId: video?.id ?? null }),
       };
       if (nota) await api.novidades.atualizar(nota.id, body); else await api.novidades.criar(body);
       toast.push('ok', nota ? 'Nota salva' : 'Nota criada como rascunho'); onSaved();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
 
-  const podeSalvar = !!f.version.trim() && !!f.title.trim() && itens.every((i) => i.title.trim());
+  const podeSalvar = !!f.version.trim() && !!f.title.trim() && itens.every((i) => i.title.trim()) && !enviando;
   return (
     <Modal open onClose={onClose} lateral largura="max-w-3xl" titulo={nota ? `Editar ${patch(nota.version)}` : 'Novo patch'}
       rodape={<><button className="btn-secondary" onClick={onClose}>Cancelar</button><button className="btn-primary" disabled={busy || !podeSalvar} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
@@ -163,6 +189,7 @@ function NotaForm({ nota, onClose, onSaved }: { nota?: Novidade; onClose: () => 
           <Campo label="Título"><input className="input" autoComplete="off" placeholder="O que mudou nesta publicação" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} autoFocus /></Campo>
         </div>
         <Campo label="Resumo" dica="uma frase, aparece abaixo do título"><input className="input" autoComplete="off" value={f.summary} onChange={(e) => setF({ ...f, summary: e.target.value })} /></Campo>
+        <CampoVideoDoPatch atual={videoAtual} enviando={enviando} subir={subirVideo} tirar={() => setVideo(null)} />
 
         <div className="flex items-center justify-between">
           <span className="eyebrow">Itens ({itens.length})</span>
@@ -203,5 +230,39 @@ function NotaForm({ nota, onClose, onSaved }: { nota?: Novidade; onClose: () => 
         {err && <div className="text-bad text-sm">{err}</div>}
       </div>
     </Modal>
+  );
+}
+
+/**
+ * O vídeo do patch (opcional): com ele, é o vídeo que abre no login, no lugar dos cartões. Sobe na
+ * hora, com a barra de progresso, mas só passa a valer quando a nota é salva.
+ */
+function CampoVideoDoPatch({ atual, enviando, subir, tirar }: {
+  atual: VideoNovidade | null; enviando: { nome: string; progresso: number } | null; subir: (f: File) => void; tirar: () => void;
+}) {
+  const entrada = useRef<HTMLInputElement>(null);
+  return (
+    <Campo label="Vídeo do patch (opcional)" dica={'Com vídeo, é ele que abre no login, no lugar dos cartões: a pessoa assiste até o fim e marca "Assisti e entendi". Os cartões continuam na página Novidades. MP4 (o melhor), WebM ou MOV, até 300 MB.'}>
+      <input ref={entrada} type="file" className="hidden" accept={TIPOS_VIDEO_NOVIDADE.join(',')}
+        onChange={(e) => { const a = e.target.files?.[0]; e.target.value = ''; if (a) subir(a); }} />
+      {enviando ? (
+        <div className="flex items-center gap-2 text-[12.5px]" aria-live="polite">
+          <Film size={13} className="text-muted shrink-0" /><span className="truncate max-w-[220px]">{enviando.nome}</span>
+          <span className="flex-1 h-1.5 rounded-full bg-surface-2 overflow-hidden min-w-[80px]"><span className="block h-full bg-accent transition-[width]" style={{ width: `${Math.round(enviando.progresso * 100)}%` }} /></span>
+          <span className="tnum text-muted w-10 text-right">{Math.round(enviando.progresso * 100)}%</span>
+        </div>
+      ) : atual ? (
+        <div className="flex flex-col gap-2">
+          <div className="max-w-[360px]"><VideoDoPatch video={atual} /></div>
+          <div className="flex flex-wrap items-center gap-2 text-[13px]">
+            <Film size={14} className="text-muted shrink-0" /><span className="truncate max-w-[240px]">{atual.nome}</span><span className="text-muted text-[12px]">· {tamanhoDoArquivo(atual.tamanho)}</span>
+            <button type="button" className="btn-ghost btn-sm" onClick={() => entrada.current?.click()}>Trocar</button>
+            <button type="button" className="btn-ghost btn-sm text-bad" onClick={tirar}>Tirar</button>
+          </div>
+        </div>
+      ) : (
+        <div><button type="button" className="btn-secondary btn-sm" onClick={() => entrada.current?.click()} title="MP4 (o melhor), WebM ou MOV, até 300 MB"><Film size={14} /> Subir o vídeo</button></div>
+      )}
+    </Campo>
   );
 }

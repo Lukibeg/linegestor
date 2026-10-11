@@ -8,6 +8,7 @@ import { roles, users } from '@gestor/db';
 import { CodigoSegundaEtapaSchema, DesligarSegundaEtapaSchema, LoginSchema, MinhaContaSchema } from '@gestor/shared';
 import { BadRequest, Unauthorized } from '../plugins/errors.js';
 import * as duasEtapas from '../services/twofactor.js';
+import { derrubarSessoesDaEquipe } from '../services/portal.js';
 
 const MeSchema = z.object({
   id: z.string(), name: z.string(), email: z.string(), roleId: z.string(), roleName: z.string(), roleKey: z.string().nullable(), permissions: z.array(z.string()),
@@ -159,6 +160,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     const [u] = await app.db.select().from(users).where(eq(users.id, req.user!.id));
     if (!u || !(await argon2.verify(u.passwordHash, req.body.currentPassword))) throw new Unauthorized('Senha atual incorreta');
     await app.db.update(users).set({ passwordHash: await argon2.hash(req.body.newPassword), updatedAt: new Date() }).where(eq(users.id, u.id));
+    // o mesmo login entra no portal do cliente (decisão 0044): as sessões abertas lá caem
+    await derrubarSessoesDaEquipe(app.db, u.id);
     await app.audit(req, { action: 'change_password', entityType: 'user', entityId: u.id, summary: `${u.name} trocou a própria senha` });
     return { ok: true };
   });

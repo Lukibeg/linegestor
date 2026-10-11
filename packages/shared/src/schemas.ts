@@ -483,6 +483,11 @@ export const NovidadeGravarSchema = z.object({
   title: z.string().trim().min(1, 'Dê um título à nota').max(160),
   summary: z.string().trim().max(500).nullable().optional(),
   items: z.array(NovidadeItemSchema).max(60, 'No máximo 60 itens por nota').default([]),
+  /**
+   * O vídeo do patch (1.9, decisão 0046): com vídeo, é ele que abre no login, no lugar dos cartões.
+   * Ausente = mantém · null = tira · o id = o vídeo que acabou de subir (`POST /release-notes/videos`)
+   */
+  videoId: IdSchema.nullable().optional(),
 });
 export const NovidadeAtualizarSchema = NovidadeGravarSchema.partial();
 

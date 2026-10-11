@@ -2,13 +2,14 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeftRight, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeftRight, Paperclip, Pencil, Trash2 } from 'lucide-react';
 import { api, logoSrc } from '../../api/index.js';
 import { Pagina } from '../../components/layout/AppShell.js';
 import { Can } from '../../lib/auth.js';
 import { Campo, Carregando, Chip, Confirmar, FotoModelo, Modal, Spinner, Vazio, mensagemErro, useToast, InputIp } from '../../components/ui/index.js';
 import { centavosParaCampo, condicaoCor, condicaoNome, CONDICOES_APARELHO, data, macFormatado, macValido, MODALIDADES, paraCentavos, reais } from '../../lib/format.js';
 import { Movimentar } from './Movimentar.js';
+import { ArquivoDoRecibo } from './Recibos.js';
 import { Voltar } from '../../lib/voltar.js';
 
 export function AparelhoDetalhe() {
@@ -70,7 +71,7 @@ export function AparelhoDetalhe() {
         <div className="card md:col-span-2">
           <div className="px-4 py-3 border-b border-line font-display font-semibold">Histórico</div>
           {!d.history?.length ? <div className="p-4 text-muted text-sm">Nenhuma movimentação ainda — está no estoque desde o cadastro.</div> : (
-            <ul>{d.history.map((h) => <li key={h.id} className="px-4 py-2.5 border-b border-line last:border-0 text-sm flex flex-wrap gap-x-3 gap-y-1 items-center"><span className="text-muted tnum w-32 shrink-0">{data(h.createdAt, true)}</span><Chip tone={h.modality === 'devolucao' ? 'neutral' : h.modality === 'venda' ? 'accent' : 'ok'}>{h.modalityName}</Chip><span>{h.fromName ?? 'Estoque'} → {h.toName ?? 'Estoque'}{h.unit ? <span className="text-muted"> ({h.unit})</span> : null}</span>{h.newCondition && <span className="text-muted">· {condicaoNome[h.newCondition]}</span>}<span className="ml-auto text-muted">{h.userName}</span>{h.note && <span className="w-full text-muted italic">{h.note}</span>}</li>)}</ul>
+            <ul>{d.history.map((h) => <li key={h.id} className="px-4 py-2.5 border-b border-line last:border-0 text-sm flex flex-wrap gap-x-3 gap-y-1 items-center"><span className="text-muted tnum w-32 shrink-0">{data(h.createdAt, true)}</span><Chip tone={h.modality === 'devolucao' ? 'neutral' : h.modality === 'venda' ? 'accent' : 'ok'}>{h.modalityName}</Chip><span>{h.fromName ?? 'Estoque'} → {h.toName ?? 'Estoque'}{h.unit ? <span className="text-muted"> ({h.unit})</span> : null}</span>{h.newCondition && <span className="text-muted">· {condicaoNome[h.newCondition]}</span>}<span className="ml-auto text-muted">{h.userName}</span>{h.note && <span className="w-full text-muted italic">{h.note}</span>}{h.recibos.length > 0 && <span className="w-full flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px]"><span className="text-muted inline-flex items-center gap-1"><Paperclip size={13} /> Recibo de entrega:</span>{h.recibos.map((r) => <ArquivoDoRecibo key={r.id} r={r} />)}</span>}</li>)}</ul>
           )}
         </div>
       </div>

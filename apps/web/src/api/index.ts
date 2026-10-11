@@ -86,8 +86,13 @@ export type Api = {
     removeDevice(id: string): Promise<{ ok: boolean }>;
     movements(q: Record<string, unknown>): Promise<T.Page<T.Movement>>;
     move(d: Record<string, unknown>): Promise<{ id: string; items: number; quantity: number }>;
+    /** O recibo de entrega (1.9): um arquivo por vez — PDF ou foto, até 10 MB; até 5 por movimentação. */
+    anexarRecibo(movementId: string, d: { fileName: string; conteudo: string }): Promise<T.ReciboDeEntrega>;
+    tirarRecibo(id: string): Promise<{ ok: boolean }>;
     /** Unidades já usadas (para sugerir no formulário). */
     units(clientId?: string): Promise<string[]>;
+    /** Os relatórios do Inventário (1.9): quem tem o quê, prateleira, valor, vai e volta, cadastro. */
+    relatorios(): Promise<T.RelatoriosInventario>;
   };
   settings: {
     backup(): Promise<T.AjustesBackup>;
@@ -151,8 +156,11 @@ export type Api = {
     pendente(): Promise<T.NovidadePendente | null>;
     /** Histórico + se esta pessoa pode editar + quantas ela ainda não leu */
     lista(): Promise<{ items: T.Novidade[]; podeEditar: boolean; naoLidas: number }>;
-    marcarLida(id: string): Promise<{ ok: boolean }>;
+    /** `assistiu`: marcou pelo vídeo ("Assisti e entendi"), e não pelos cartões — vai para a auditoria */
+    marcarLida(id: string, assistiu?: boolean): Promise<{ ok: boolean }>;
     leituras(id: string): Promise<T.LeiturasNovidade>;
+    /** Sobe o vídeo do patch (com a barra de progresso); passa a ser da nota ao salvar, com `videoId` */
+    subirVideo(arquivo: File, progresso?: (p: number) => void): Promise<T.VideoNovidade>;
     criar(d: Record<string, unknown>): Promise<{ id: string }>;
     atualizar(id: string, d: Record<string, unknown>): Promise<{ id: string }>;
     publicar(id: string, publicar: boolean): Promise<{ id: string; publishedAt: string | null }>;
@@ -235,11 +243,14 @@ export type Api = {
     espaco(): Promise<T.EspacoPortal>;
     acessos(q?: { q?: string; cliente?: string }): Promise<T.AcessoPortal[]>;
     acessosDoCliente(clienteId: string): Promise<T.AcessosDoCliente>;
-    darAcesso(clienteId: string, d: { nome: string; email: string }): Promise<T.ConviteGerado>;
-    /** o primeiro convite venceu, ou a pessoa esqueceu a senha */
-    novoConvite(id: string): Promise<T.ConviteGerado>;
+    /** o suporte escolhe o login (o e-mail ou um nome) e a senha (1.9, decisão 0045) */
+    darAcesso(clienteId: string, d: { nome: string; login: string; senha: string }): Promise<{ id: string }>;
+    /** a pessoa esqueceu (ou o acesso do 1.8 ainda não tinha senha): as sessões abertas caem */
+    trocarSenhaDoAcesso(id: string, senha: string): Promise<{ ok: boolean }>;
+    /** a senha guardada no cofre (fica na auditoria) */
+    verSenhaDoAcesso(id: string): Promise<{ senha: string; visivelPorSegundos: number }>;
     bloquear(id: string, bloquear: boolean): Promise<{ ok: boolean }>;
-    corrigirAcesso(id: string, d: { nome: string; email: string }): Promise<{ ok: boolean }>;
+    corrigirAcesso(id: string, d: { nome: string; login: string }): Promise<{ ok: boolean }>;
     ajustes(): Promise<T.PortalAjustes>;
     salvarAjustes(d: T.PortalAjustes): Promise<T.PortalAjustes>;
   };
@@ -247,10 +258,11 @@ export type Api = {
   portal: {
     sobre(): Promise<T.SobrePortal>;
     eu(): Promise<T.EuPortal>;
-    entrar(email: string, senha: string): Promise<T.EuPortal>;
+    /** a pessoa do cliente (o login e a senha do suporte), ou a equipe com o e-mail e a senha do Gestor; quem usa o código de 6 dígitos recebe `{ precisaCodigo: true }` */
+    entrar(login: string, senha: string): Promise<T.EntradaPortal>;
+    /** a segunda etapa da equipe: o login e a senha de novo, mais o código (ou um de recuperação) */
+    entrarComCodigo(login: string, senha: string, codigo: string): Promise<T.EuPortal>;
     sair(): Promise<{ ok: boolean }>;
-    convite(codigo: string): Promise<T.ConvitePortal>;
-    criarSenha(codigo: string, senha: string): Promise<{ ok: boolean }>;
     trocarSenha(atual: string, nova: string): Promise<{ ok: boolean }>;
     inicio(): Promise<T.InicioPortal>;
     tutoriais(q: { q?: string; produto?: string }): Promise<{ items: T.TutorialAchado[]; total: number }>;

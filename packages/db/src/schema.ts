@@ -17,8 +17,8 @@
  *   - toda tabela tem `id` em texto (cuid), gerado pela aplicação
  * =====================================================================
  */
-import { boolean, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { relations, sql } from 'drizzle-orm';
 
 const id = () => text('id').primaryKey();
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -515,6 +515,30 @@ export const deviceMovementItems = pgTable('device_movement_items', {
   deviceId: text('device_id').notNull().references(() => devices.id),
 });
 
+/**
+ * O recibo de entrega de uma movimentação para cliente (Patch 1.9, decisão 0042): PDF ou foto,
+ * até 10 MB cada e até 5 por movimentação, anexado na hora de movimentar ou depois. Fica no próprio
+ * banco (entra no backup), como os anexos dos projetos. Tirar um recibo só marca `deletedAt`.
+ */
+export const deviceMovementReceipts = pgTable(
+  'device_movement_receipts',
+  {
+    id: id(),
+    movementId: text('movement_id').notNull().references(() => deviceMovements.id, { onDelete: 'cascade' }),
+    /** O nome com que a pessoa baixa o arquivo */
+    fileName: text('file_name').notNull(),
+    /** O tipo de verdade, pelos primeiros bytes: application/pdf, image/jpeg, image/png ou image/webp */
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    dataBase64: text('data_base64').notNull(),
+    /** Quem anexou */
+    uploadedById: text('uploaded_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('device_movement_receipts_movement_idx').on(t.movementId)],
+);
+
 // ---------------------------------------------------------------------
 // 4. SEGURANÇA E HISTÓRICO
 // ---------------------------------------------------------------------
@@ -651,7 +675,8 @@ export const auditLog = pgTable(
 
 /**
  * Uma NOTA DE VERSÃO ("o que mudou na rodada 23"). Quando publicada, aparece uma vez para
- * cada pessoa no login e só para de aparecer quando ela marca "Li e entendi".
+ * cada pessoa no login e só para de aparecer quando ela marca "Li e entendi" — ou, na nota com
+ * vídeo (1.9, `release_note_videos`), "Assisti e entendi", depois de ver o vídeo até o fim.
  * Rascunho = `publishedAt` nulo: ninguém vê até publicar.
  */
 export const releaseNotes = pgTable(
@@ -712,6 +737,40 @@ export const releaseNoteReads = pgTable(
     readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('release_note_reads_note_user_uq').on(t.noteId, t.userId)],
+);
+
+/**
+ * O vídeo do patch (Patch 1.9, decisão 0046): quando a nota tem vídeo, é ele que abre no login, no
+ * lugar dos cartões (os cartões continuam na página Novidades). Fica em disco, como os vídeos do
+ * portal (`PORTAL_DIR/novidades/<disk_name>`), pelo tamanho — fora do backup diário do banco; o da
+ * nota que vem pronta tem o original em `docs/novidades/`. Nasce sem nota (subiu, e a nota ainda não
+ * foi salva) e passa a ser dela ao salvar. Trocar ou tirar não apaga: o anterior ganha `deleted_at`
+ * e o arquivo continua no disco. Cada nota tem no máximo um vídeo valendo.
+ */
+export const releaseNoteVideos = pgTable(
+  'release_note_videos',
+  {
+    id: id(),
+    /** A nota do vídeo (vazio enquanto a nota em que ele subiu não foi salva) */
+    noteId: text('note_id').references(() => releaseNotes.id, { onDelete: 'cascade' }),
+    /** O nome do arquivo que subiu ("o-que-mudou.mp4") */
+    fileName: text('file_name').notNull(),
+    /** video/mp4, video/webm ou video/quicktime */
+    mimeType: text('mime_type').notNull(),
+    /** O tamanho, em bytes */
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    /** O nome do arquivo no disco, na pasta `PORTAL_DIR/novidades` */
+    diskName: text('disk_name').notNull(),
+    /** Quem subiu (vazio = veio pronto com a nota, na publicação) */
+    uploadedById: text('uploaded_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    /** Trocado ou tirado da nota: sai das telas, o arquivo fica no disco */
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('release_note_videos_note_idx').on(t.noteId),
+    uniqueIndex('release_note_videos_um_por_nota_uq').on(t.noteId).where(sql`deleted_at is null`),
+  ],
 );
 
 // ---------------------------------------------------------------------
@@ -1222,14 +1281,15 @@ export const knowledgeComments = pgTable(
 // ---------------------------------------------------------------------
 // 9. PORTAL DO CLIENTE (decisão 0040, Patch 1.8, migração 0010)
 // ---------------------------------------------------------------------
-// O autoatendimento: a pessoa do cliente entra com o próprio e-mail e senha e vê os tutoriais dos
-// produtos que o cliente tem. O login é separado do da equipe (outra tabela, outra sessão, outro
-// cookie): nada do que vale no portal abre o Gestor.
+// O autoatendimento: a pessoa do cliente entra com o login e a senha que o suporte criou e vê os
+// tutoriais dos produtos que o cliente tem. O login é separado do da equipe (outra tabela, outra
+// sessão, outro cookie): nada do que vale no portal abre o Gestor.
 
 /**
- * Uma pessoa do cliente com acesso ao portal. A senha é ela quem cria, pelo link de convite (a
- * equipe nunca digita senha de cliente). Só entra enquanto o cliente está na base: com produto
- * ativo, fora do arquivo e da lixeira — e a sessão aberta cai na hora em que ele sai.
+ * Uma pessoa do cliente com acesso ao portal. Desde o 1.9 (decisão 0045) o suporte cria o login (o
+ * e-mail ou um nome) e a senha, e a senha fica também no cofre (`secrets`), para a equipe ver e
+ * trocar quando a pessoa esquecer. Só entra enquanto o cliente está na base: com produto ativo, fora
+ * do arquivo e da lixeira — e a sessão aberta cai na hora em que ele sai.
  */
 export const portalUsers = pgTable(
   'portal_users',
@@ -1237,13 +1297,18 @@ export const portalUsers = pgTable(
     id: id(),
     clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    /** O e-mail de entrada, em minúsculas. Único no portal inteiro. */
-    email: text('email').notNull(),
-    /** Hash Argon2 da senha; nulo enquanto a pessoa não aceitou o convite */
+    /**
+     * O login: o e-mail da pessoa ou um nome (como "maria.souza"), em minúsculas. Único no portal
+     * inteiro. A coluna se chama `email` porque no 1.8 o login era sempre o e-mail.
+     */
+    login: text('email').notNull(),
+    /** Hash Argon2 da senha (é com ele que o login confere); nulo = ainda sem senha */
     passwordHash: text('password_hash'),
+    /** A mesma senha, cifrada no cofre, para a equipe ver (fica na auditoria); nulo = criada pela pessoa no 1.8, pelo convite */
+    passwordSecretId: text('password_secret_id').references(() => secrets.id),
     /** false = bloqueado pela equipe: não entra, e a sessão aberta cai */
     active: boolean('active').notNull().default(true),
-    /** O convite (criar ou trocar a senha): só o hash do código fica no banco; vale até `invite_expires_at` e uma vez só */
+    /** O convite do 1.8 (a pessoa criava a senha pelo link): sem uso desde o 1.9, quando o suporte passou a criar a senha */
     inviteTokenHash: text('invite_token_hash'),
     inviteExpiresAt: timestamp('invite_expires_at', { withTimezone: true }),
     /** Última vez que entrou, e quantas vezes entrou */
@@ -1255,24 +1320,36 @@ export const portalUsers = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [
-    uniqueIndex('portal_users_email_uq').on(t.email),
+    uniqueIndex('portal_users_email_uq').on(t.login),
     uniqueIndex('portal_users_invite_uq').on(t.inviteTokenHash),
     index('portal_users_client_idx').on(t.clientId),
   ],
 );
 
-/** A sessão de quem entrou no portal (como `sessions`, mas do cliente). Dura 30 dias sem uso. */
+/**
+ * A sessão de quem entrou no portal (como `sessions`, mas do cliente). Dura 30 dias sem uso.
+ * É de uma pessoa do cliente (`portal_user_id`) **ou** de alguém da equipe (`staff_user_id`): a
+ * equipe entra no portal com o próprio login do Gestor e vê todos os tutoriais (decisão 0044,
+ * Patch 1.9, migração 0012). Nunca as duas coisas, nunca nenhuma.
+ */
 export const portalSessions = pgTable(
   'portal_sessions',
   {
     id: id(),
-    portalUserId: text('portal_user_id').notNull().references(() => portalUsers.id, { onDelete: 'cascade' }),
+    /** A pessoa do cliente (nulo quando quem entrou é da equipe) */
+    portalUserId: text('portal_user_id').references(() => portalUsers.id, { onDelete: 'cascade' }),
+    /** Quem da equipe entrou com o login do Gestor (nulo quando é uma pessoa do cliente) */
+    staffUserId: text('staff_user_id').references(() => users.id, { onDelete: 'cascade' }),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: createdAt(),
     ip: text('ip'),
     userAgent: text('user_agent'),
   },
-  (t) => [index('portal_sessions_user_idx').on(t.portalUserId)],
+  (t) => [
+    index('portal_sessions_user_idx').on(t.portalUserId),
+    index('portal_sessions_staff_idx').on(t.staffUserId),
+    check('portal_sessions_dono_ck', sql`num_nonnulls(portal_user_id, staff_user_id) = 1`),
+  ],
 );
 
 /**
@@ -1296,6 +1373,8 @@ export const portalArticles = pgTable(
     moduleId: text('module_id').references(() => productModules.id),
     /** Em destaque na página inicial do portal */
     featured: boolean('featured').notNull().default(false),
+    /** O vídeo principal (1.9): fica no topo do tutorial, logo acima do passo a passo */
+    mainVideoId: text('main_video_id').references((): AnyPgColumn => portalFiles.id),
     /** rascunho = só a equipe vê · publicado = os clientes veem */
     status: text('status').notNull().default('rascunho'),
     /** Sobe a cada gravação: quem salvou no meio não é atropelado */

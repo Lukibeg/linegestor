@@ -5,6 +5,8 @@
  * O valor não se informa aqui: ele é do modelo (ou do próprio aparelho) e é o que soma na
  * ficha do cliente. Aqui só se diz o que vai, para onde — cliente e unidade —, e em que
  * condição fica. A unidade sai das unidades cadastradas no cliente; a Matriz é a padrão.
+ * Para cliente, o recibo de entrega pode ir junto (1.9, decisão 0042): primeiro a movimentação é
+ * gravada, depois sobe cada arquivo — se um falhar, a movimentação fica e o recibo se anexa depois.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,6 +16,8 @@ import { api } from '../../api/index.js';
 import type { Device } from '../../api/types.js';
 import { Campo, Chip, EscolherComBusca, Modal, Spinner, TODOS, mensagemErro, useToast } from '../../components/ui/index.js';
 import { CONDICOES_APARELHO, lerLista, macLimpo, MODALIDADES, serieLimpa } from '../../lib/format.js';
+import type { ReciboPronto } from '../../lib/arquivos.js';
+import { CampoRecibo, enviarRecibos } from './Recibos.js';
 
 const NOVA = '__nova__';
 
@@ -25,6 +29,7 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
   const [unit, setUnit] = useState('');
   const [novaUnidade, setNovaUnidade] = useState('');
   const [note, setNote] = useState('');
+  const [recibos, setRecibos] = useState<ReciboPronto[]>([]);
   const [escolhidos, setEscolhidos] = useState<Device[]>([]);
   const [busca, setBusca] = useState('');
   const [modelId, setModelId] = useState('');
@@ -56,7 +61,7 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
 
   useEffect(() => {
     if (!open) return;
-    setErr(''); setEscolhidos(preset?.devices ?? []); setBusca(''); setModelId(''); setNote(''); setCond(''); setUnit(''); setNovaUnidade(''); setTo('');
+    setErr(''); setEscolhidos(preset?.devices ?? []); setBusca(''); setModelId(''); setNote(''); setCond(''); setUnit(''); setNovaUnidade(''); setTo(''); setRecibos([]);
     setColar(false); setLista(''); setResultadoLista(null);
     setFrom(preset?.devices?.[0]?.clientId ?? '');
     if (preset?.devices?.[0]?.clientId) setModality('devolucao');
@@ -105,7 +110,11 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
         note: note || null,
         items: escolhidos.map((d) => ({ deviceId: d.id })),
       });
-      toast.push('ok', `${MODALIDADES[modality]} de ${r.quantity} aparelho(s) registrada`);
+      // o recibo sobe depois da movimentação gravada; o que falhar se anexa na lista de movimentações
+      const falhas = !devolucao && recibos.length ? await enviarRecibos(r.id, recibos) : [];
+      const comRecibo = !devolucao && recibos.length > falhas.length ? ', com o recibo' : '';
+      toast.push('ok', `${MODALIDADES[modality]} de ${r.quantity} aparelho(s) registrada${comRecibo}`);
+      if (falhas.length) toast.push('erro', `A movimentação foi registrada, mas ${falhas.length === 1 ? `"${falhas[0]!.nome}" não subiu` : `${falhas.length} arquivos do recibo não subiram`} (${falhas[0]!.erro.replace(/\.$/, '')}). Anexe de novo em Inventário › Movimentações.`);
       await Promise.all(['devices', 'devices-pick', 'models', 'model-devices', 'movements', 'dashboard', 'client-devices', 'client-units', 'client', 'device', 'inventory', 'clients'].map((k) => qc.invalidateQueries({ queryKey: [k] })));
       onClose();
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
@@ -119,7 +128,7 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
       <div className="flex flex-col gap-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Campo label="Modalidade" dica={devolucao ? 'volta do cliente para o nosso estoque' : undefined}>
-            <select className="input" value={modality} onChange={(e) => { setModality(e.target.value as any); setEscolhidos([]); }}>
+            <select className="input" value={modality} onChange={(e) => { setModality(e.target.value as any); setEscolhidos([]); if (e.target.value === 'devolucao') setRecibos([]); }}>
               {Object.entries(MODALIDADES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
             </select>
           </Campo>
@@ -216,6 +225,7 @@ export function Movimentar({ open, onClose, preset }: { open: boolean; onClose: 
         </div>
 
         <Campo label="Observação"><input className="input" autoComplete="off" value={note} onChange={(e) => setNote(e.target.value)} /></Campo>
+        {!devolucao && <CampoRecibo prontos={recibos} onChange={setRecibos} />}
         {err && <div className="text-bad text-sm">{err}</div>}
       </div>
     </Modal>

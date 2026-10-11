@@ -1,8 +1,11 @@
 /**
  * PORTAL DO CLIENTE (Patch 1.8, decisão 0040) — as regras que o servidor e a prévia usam iguais.
  *
- *  - quem entra: a pessoa ativa, que já criou a senha pelo convite, de um cliente que está na
- *    base (com produto ativo, fora do arquivo e da lixeira). Saiu da base, perdeu o acesso na hora.
+ *  - quem entra: a pessoa ativa, com o login e a senha que o suporte criou (decisão 0045, Patch 1.9:
+ *    o login não precisa ser e-mail; a senha fica no cofre, e a equipe vê e troca), de um cliente que
+ *    está na base (com produto ativo, fora do arquivo e da lixeira). Saiu da base, perdeu o acesso na hora.
+ *    E a equipe (decisão 0044, Patch 1.9): quem tem usuário ativo no Gestor entra com o mesmo
+ *    e-mail e a mesma senha (e o código de 6 dígitos, se usa) e vê todos os tutoriais publicados.
  *  - o que cada cliente vê: os tutoriais publicados "Geral" e os dos produtos (e módulos) que ele
  *    tem ativos
  *  - o tutorial: título, resumo e o texto simples da base (passos, comandos, prints) com vídeo e
@@ -53,6 +56,8 @@ export const TutorialGravarSchema = z.object({
   destaque: z.boolean().default(false),
   /** true = publicar (o cliente passa a ver); false = rascunho, só a equipe vê */
   publicar: z.boolean().default(false),
+  /** o vídeo principal (1.9): fica no topo do tutorial, antes do passo a passo; nulo = sem */
+  videoPrincipalId: z.string().min(1).nullable().optional(),
   /** a versão que a pessoa abriu: se outra pessoa salvou no meio, o servidor avisa */
   versao: z.number().int().min(0).optional(),
 });
@@ -66,10 +71,10 @@ export const TutoriaisListarSchema = PaginacaoSchema.extend({
 });
 export type TutoriaisListarQuery = z.infer<typeof TutoriaisListarSchema>;
 
-/** O que falta para publicar (null = pode). */
-export function faltaParaPublicarTutorial(t: { titulo: string; texto?: string | null; resumo?: string | null }): string | null {
+/** O que falta para publicar (null = pode). Só o vídeo principal também basta. */
+export function faltaParaPublicarTutorial(t: { titulo: string; texto?: string | null; resumo?: string | null; videoPrincipal?: string | null }): string | null {
   if (!t.titulo.trim()) return 'Escreva o título antes de publicar.';
-  if (!(t.texto ?? '').trim() && !(t.resumo ?? '').trim()) return 'Para publicar, escreva o passo a passo (ou ponha um vídeo).';
+  if (!(t.texto ?? '').trim() && !(t.resumo ?? '').trim() && !t.videoPrincipal) return 'Para publicar, escreva o passo a passo (ou ponha um vídeo).';
   return null;
 }
 
@@ -99,10 +104,14 @@ export function numeroDoCaminho(p: string | null | undefined): number | null {
 /** A mensagem pronta para mandar um tutorial pelo WhatsApp. */
 export const mensagemDoTutorial = (titulo: string, link: string) => `Olá! Este passo a passo vai ajudar: *${titulo}*\n${link}`;
 
-/** A mensagem do convite: a própria pessoa cria a senha pelo link. */
-export function mensagemDoConvite(nome: string, link: string, portal: string, dias = DIAS_DO_CONVITE): string {
-  const primeiro = nome.trim().split(/\s+/)[0] ?? '';
-  return `Olá${primeiro ? `, ${primeiro}` : ''}! Seu acesso à ${portal} está pronto. Crie a sua senha por este link (vale por ${dias} dias):\n${link}`;
+/**
+ * A mensagem com o acesso (1.9, decisão 0045): o suporte criou o login e a senha e manda para a
+ * pessoa — o acesso novo, ou a senha nova (`nova`).
+ */
+export function mensagemDoAcesso(d: { nome: string; portal: string; link: string; login: string; senha: string; nova?: boolean }): string {
+  const primeiro = d.nome.trim().split(/\s+/)[0] ?? '';
+  const abertura = d.nova ? `Sua senha nova da ${d.portal}:` : `Seu acesso à ${d.portal} está pronto.`;
+  return `Olá${primeiro ? `, ${primeiro}` : ''}! ${abertura}\nEntre em: ${d.link}\nLogin: ${d.login}\nSenha: ${d.senha}`;
 }
 
 /** Link do WhatsApp com a mensagem pronta (a pessoa escolhe o contato). */
@@ -113,23 +122,67 @@ export const linkWhatsApp = (mensagem: string, numero?: string | null) => {
 
 // ---------- os acessos ----------
 
-/** Quanto tempo o link de convite vale. */
-export const DIAS_DO_CONVITE = 7;
-
 export const SenhaDoPortalSchema = z.string()
   .min(8, 'A senha precisa ter pelo menos 8 caracteres')
   .max(200, 'Senha comprida demais')
   .refine((s) => /\p{L}/u.test(s) && /\d/.test(s), 'Use letras e números na senha');
 
-const EmailSchema = z.string().trim().toLowerCase().email('E-mail inválido').max(160);
-export const AcessoCriarSchema = z.object({
-  nome: z.string().trim().min(2, 'Escreva o nome da pessoa').max(120),
-  email: EmailSchema,
-});
-export type AcessoCriar = z.infer<typeof AcessoCriarSchema>;
+/**
+ * O login do portal (1.9, decisão 0045): o que a pessoa digita para entrar — o e-mail dela ou um
+ * nome, como "maria.souza". Em minúsculas, sem espaço e sem acento; único no portal inteiro.
+ */
+export const LoginDoPortalSchema = z.string().trim().toLowerCase()
+  .min(3, 'O login precisa ter pelo menos 3 caracteres')
+  .max(160, 'Login comprido demais')
+  .regex(/^[a-z0-9][a-z0-9._@+-]*$/, 'No login vale letra sem acento, número, ponto, hífen, _ e @ — sem espaço');
 
-export const PortalEntrarSchema = z.object({ email: EmailSchema, senha: z.string().min(1, 'Informe a senha').max(200) });
-export const PortalCriarSenhaSchema = z.object({ senha: SenhaDoPortalSchema });
+const NomeDaPessoaSchema = z.string().trim().min(2, 'Escreva o nome da pessoa').max(120);
+/** Dar acesso: o nome, o login e a senha — o suporte escolhe os dois e passa para a pessoa. */
+export const AcessoCriarSchema = z.object({ nome: NomeDaPessoaSchema, login: LoginDoPortalSchema, senha: SenhaDoPortalSchema });
+export type AcessoCriar = z.infer<typeof AcessoCriarSchema>;
+/** Corrigir o nome ou o login (a senha fica a mesma). */
+export const AcessoCorrigirSchema = z.object({ nome: NomeDaPessoaSchema, login: LoginDoPortalSchema });
+export type AcessoCorrigir = z.infer<typeof AcessoCorrigirSchema>;
+/** O suporte troca a senha (a pessoa esqueceu, ou ainda não tinha). */
+export const AcessoSenhaSchema = z.object({ senha: SenhaDoPortalSchema });
+
+/** "Maria Souza" → "maria.souza": a sugestão de login (o suporte pode trocar). */
+export function loginSugerido(nome: string): string {
+  const palavras = paraBusca(nome).split(/[^a-z0-9]+/).filter(Boolean);
+  if (!palavras.length) return '';
+  const login = palavras.length === 1 ? palavras[0]! : `${palavras[0]}.${palavras[palavras.length - 1]}`;
+  return login.slice(0, 40);
+}
+
+const CONSOANTES = 'bcdfgjklmnprstvz';
+const VOGAIS = 'aeiou';
+function sortear(n: number): number {
+  const a = new Uint32Array(1);
+  globalThis.crypto.getRandomValues(a);
+  return a[0]! % n;
+}
+/**
+ * Uma senha fácil de ditar e de digitar no celular, como "mabeto38": três sílabas e dois números
+ * (passa nas regras da senha). O sorteio é o do navegador (`crypto`), não o `Math.random`.
+ */
+export function senhaSugerida(sorteio: (n: number) => number = sortear): string {
+  let s = '';
+  for (let i = 0; i < 3; i++) s += CONSOANTES[sorteio(CONSOANTES.length)]! + VOGAIS[sorteio(VOGAIS.length)]!;
+  return `${s}${10 + sorteio(90)}`;
+}
+
+/** Entrar: o login (o da pessoa do cliente, ou o e-mail de quem é da equipe) e a senha. */
+export const PortalEntrarSchema = z.object({
+  login: z.string().trim().toLowerCase().min(1, 'Informe o login').max(160, 'Login comprido demais'),
+  senha: z.string().min(1, 'Informe a senha').max(200),
+});
+/**
+ * A segunda etapa de quem é da equipe e usa o código de 6 dígitos no Gestor (decisão 0044): o
+ * e-mail e a senha de novo, mais o código (ou um código de recuperação).
+ */
+export const PortalEntrarComCodigoSchema = PortalEntrarSchema.extend({ codigo: z.string().trim().min(6, 'Digite os 6 dígitos do aplicativo').max(20) });
+/** O nome que aparece no lugar do cliente quando quem entrou no portal é da equipe. */
+export const NOME_DA_EQUIPE_NO_PORTAL = 'Equipe Ingline';
 export const PortalTrocarSenhaSchema = z.object({ atual: z.string().min(1, 'Informe a senha atual').max(200), nova: SenhaDoPortalSchema });
 
 /** O cliente está na base? O portal só abre para quem está. */
@@ -143,28 +196,26 @@ export function motivoForaDaBase(c: { arquivado: boolean; naLixeira: boolean; pr
   return null;
 }
 
-export const SITUACOES_ACESSO = ['ativo', 'convite', 'convite_vencido', 'bloqueado', 'fora_da_base'] as const;
+export const SITUACOES_ACESSO = ['ativo', 'sem_senha', 'bloqueado', 'fora_da_base'] as const;
 export type SituacaoAcesso = (typeof SITUACOES_ACESSO)[number];
 export const NOMES_SITUACAO_ACESSO: Record<SituacaoAcesso, string> = {
-  ativo: 'Ativo', convite: 'Convite enviado', convite_vencido: 'Convite vencido', bloqueado: 'Bloqueado', fora_da_base: 'Cliente fora da base',
+  ativo: 'Ativo', sem_senha: 'Sem senha', bloqueado: 'Bloqueado', fora_da_base: 'Cliente fora da base',
 };
 
 /**
- * A situação de um acesso. Quem já criou a senha continua "Ativo" mesmo com um convite novo no
- * meio (o "esqueci a senha"): a senha antiga vale até a nova ser criada.
+ * A situação de um acesso. "Sem senha" é o acesso do 1.8 cujo convite a pessoa não usou: o suporte
+ * define a senha e ele vira "Ativo".
  */
-export function situacaoDoAcesso(u: { ativo: boolean; temSenha: boolean; conviteVenceEm: Date | string | null }, naBase: boolean, agora: Date = new Date()): SituacaoAcesso {
+export function situacaoDoAcesso(u: { ativo: boolean; temSenha: boolean }, naBase: boolean): SituacaoAcesso {
   if (!naBase) return 'fora_da_base';
   if (!u.ativo) return 'bloqueado';
-  if (u.temSenha) return 'ativo';
-  const vence = u.conviteVenceEm ? new Date(u.conviteVenceEm).getTime() : 0;
-  return vence > agora.getTime() ? 'convite' : 'convite_vencido';
+  return u.temSenha ? 'ativo' : 'sem_senha';
 }
 
 // ---------- os ajustes do portal ----------
 
 export const PortalAjustesSchema = z.object({
-  /** o nome que aparece no topo do portal e no convite */
+  /** o nome que aparece no topo do portal e na mensagem com o acesso */
   titulo: z.string().trim().min(2, 'Dê um nome ao portal').max(80),
   /** a frase de boas-vindas da página inicial */
   boasVindas: z.string().trim().max(400).nullable().optional(),
@@ -177,8 +228,9 @@ export const PortalAjustesSchema = z.object({
 });
 export type PortalAjustes = z.infer<typeof PortalAjustesSchema>;
 
+/** Enquanto ninguém salvar os Ajustes do portal, vale isto — o WhatsApp do suporte já vem (pedido de 09/10). */
 export const AJUSTES_PORTAL_PADRAO: PortalAjustes = {
   titulo: 'Central de ajuda Ingline',
   boasVindas: 'Passo a passo, vídeos e manuais dos seus produtos. Procure do seu jeito, ou fale com a gente.',
-  whatsapp: null, email: null, horario: null,
+  whatsapp: '(71) 3034-8350', email: null, horario: null,
 };

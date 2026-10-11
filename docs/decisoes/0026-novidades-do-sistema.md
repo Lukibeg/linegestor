@@ -56,3 +56,8 @@ lugar de "rodada" (começando em **1.2**), uma **pasta por patch** no histórico
 obrigatória** — sem "Ver depois". Os três entraram acima. Como o número agora é "1.2", a ordem de
 importação passou a comparar número a número (`compararVersoes`), senão "1.10" entraria antes de
 "1.2" e o patch errado abriria no login.
+
+**Depois (Patch 1.9, decisão 0046).** O Luan pediu que o patch abra no login **com o vídeo** no lugar
+dos cartões, e que os textos fiquem na página Novidades. A obrigação continua, pelo vídeo: o
+"Assisti e entendi" só liga depois de ver até o fim (pular para o fim não vale); se o vídeo não abrir,
+a janela mostra os cartões, com a leitura obrigatória daqui. Patch sem vídeo continua como acima.

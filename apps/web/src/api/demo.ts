@@ -9,6 +9,7 @@
  * Entrar: qualquer um destes e-mails com a senha "demo":
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
+import { problemaDoRecibo, problemaParaAnexar, ReciboAnexarSchema, relatoriosInventario, tipoDoRecibo, type BaseInventario } from '@gestor/shared';
 import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, VERSAO_PAINEL, camposDeLista, comFechamento, diaEmBrasilia, etapasDaEquipe, listarChamados, painelPadrao, primeiroDiaDe, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, paraBusca, temDataDeAtivacao, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import {
   AjustesEnvioSchema, MarcadosEnvioSchema, momentoEmBrasilia, numeroLegivel, proximoEnvio, montarPainel,
@@ -26,14 +27,15 @@ import {
   RascunhoIaSchema, type ProvedorIa,
 } from '@gestor/shared';
 import {
-  AcessoCriarSchema, AJUSTES_PORTAL_PADRAO, arquivosDoTexto, caminhoDoTutorial, clienteNaBase, DIAS_DO_CONVITE, faltaParaPublicarTutorial, motivoForaDaBase,
-  numeroDoCaminho, PortalAjustesSchema, PortalCriarSenhaSchema, PortalEntrarSchema, PortalTrocarSenhaSchema, problemaDoArquivo, situacaoDoAcesso,
+  AcessoCorrigirSchema, AcessoCriarSchema, AcessoSenhaSchema, AJUSTES_PORTAL_PADRAO, arquivosDoTexto, caminhoDoTutorial, clienteNaBase, faltaParaPublicarTutorial, motivoForaDaBase,
+  numeroDoCaminho, NOME_DA_EQUIPE_NO_PORTAL, PortalAjustesSchema, PortalEntrarComCodigoSchema, PortalEntrarSchema, PortalTrocarSenhaSchema, problemaDoArquivo, situacaoDoAcesso,
   TIPOS_IMAGEM_PORTAL, TutoriaisListarSchema, TutorialGravarSchema, tutorialValePara, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar,
 } from '@gestor/shared';
 import type { Api } from './index.js';
 import { NOTA_DEMO } from './novidades-demo.js';
 import { PDF_MANUAL_RAMAL, VIDEO_TRANSFERIR } from './portal-demo-midia.js';
-import { ApiError, type AjustesIa, type ModeloIa, type RespostaIa, type AcessoPortal, type ArquivoDoPortal, type CartaoTutorial, type EuPortal, type TutorialNaLista, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
+import { RECIBO_FOTO_DEMO, RECIBO_PDF_DEMO } from './recibo-demo-midia.js';
+import { ApiError, type AjustesIa, type ModeloIa, type RespostaIa, type AcessoPortal, type ArquivoDoPortal, type CartaoTutorial, type EuPortal, type TutorialNaLista, type Artigo, type ArtigoNaLista, type LigacaoMostrada, type TextoVersao, type AjustesLineChat, type AuditItem, type LeiturasNovidade, type Novidade, type NovidadeItem, type NovidadePendente, type VideoNovidade, type RegistroEnvio, type Projeto, type ProjetoResumo, type OpcaoEtapa, type EtapaProjeto, type ProjetoDoCliente, type SituacaoProjeto, type AnexoProjeto, type Circuit, type ClientDeviceLogin, type ClientFull, type ClientListItem, type ClientUnit, type Device, type Did, type DeviceModel, type InventorySummary, type Me, type Movement, type Product, type ReciboDeEntrega, type ProductModule, type Subscription, type SubscriptionModule } from './types.js';
 
 const wait = (ms = 120) => new Promise((r) => setTimeout(r, ms));
 let seq = 1000;
@@ -57,6 +59,8 @@ type DidRow = { id: string; number: string; circuitId: string | null; clientId: 
 type ModelRow = { id: string; code: string; name: string; categoryId: string | null; image: string | null; valueCents: number | null; deletedAt: string | null };
 type DeviceRow = { id: string; modelId: string; mac: string | null; macSecondary: string | null; serialNumber: string | null; clientId: string | null; unit: string | null; currentModality: string | null; condition: string; valueCents: number | null; ip: string | null; location: string | null; note: string | null; deletedAt: string | null; createdAt: string };
 type MovRow = { id: string; modality: string; fromClientId: string | null; toClientId: string | null; unit: string | null; newCondition: string | null; note: string | null; userId: string; createdAt: string; items: Array<{ modelId: string; deviceId: string }> };
+/** O recibo de entrega da movimentação (1.9): o arquivo embutido ("data:…"), como os anexos dos projetos na demonstração */
+type ReciboRow = { id: string; movementId: string; fileName: string; mimeType: string; sizeBytes: number; conteudo: string; uploadedById: string | null; createdAt: string; deletedAt: string | null };
 type UnitRow = { id: string; clientId: string; name: string; isMain: boolean; address: string | null; egressIp: string | null; note: string | null; createdAt: string; deletedAt: string | null };
 /** Login e senha padrão dos aparelhos de um modelo no cliente (a senha mora em `S.secrets`) */
 type LoginRow = { id: string; clientId: string; modelId: string; username: string | null; passwordSecretId: string | null; note: string | null; updatedAt: string; deletedAt: string | null };
@@ -64,6 +68,8 @@ type LoginRow = { id: string; clientId: string; modelId: string; username: strin
 type NetRow = { clientId: string; ipAddress: string | null; subnetMask: string | null; defaultRouter: string | null; dns1: string | null; dns2: string | null; wirelessPasswordSecretId: string | null; note: string | null; updatedAt: string };
 /** Uma nota de novidades na demonstração (a imagem fica embutida, como a logo do cliente) */
 type NotaRow = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null; items: Array<{ id: string; kind: NovidadeItem['kind']; title: string; text: string | null; imagem: string | null }> };
+/** O vídeo do patch (1.9): nasce sem nota e passa a ser dela ao salvar; trocar ou tirar só o tira da nota (como no servidor) */
+type VideoNotaRow = VideoNovidade & { noteId: string | null; deletedAt: string | null };
 /** Projetos na demonstração: o projeto, as etapas, a lista de clientes e o que já foi marcado. */
 type ProjRow = { id: string; name: string; goal: string | null; status: 'aberto' | 'concluido' | 'cancelado'; dueDate: string | null; ownerId: string | null; closedAt: string | null; createdAt: string; updatedAt: string; deletedAt: string | null };
 type StepRow = { id: string; projectId: string; title: string; kind: 'check' | 'escolha'; options: OpcaoEtapa[]; sortOrder: number };
@@ -86,30 +92,36 @@ type TutorialRow = {
   id: string; numero: number; titulo: string; resumo: string | null; texto: string | null; produtoId: string | null; moduloId: string | null;
   destaque: boolean; situacao: 'rascunho' | 'publicado'; versao: number; views: number; autorId: string | null; atualizadoPorId: string | null;
   publicadoEm: string | null; criadoEm: string; atualizadoEm: string; deletedAt: string | null;
+  /** o vídeo principal (1.9): no topo do tutorial */
+  videoPrincipalId: string | null;
 };
 type ArqPortalRow = { id: string; tutorialId: string | null; tipo: TipoArquivoPortal; nome: string; mimeType: string; tamanho: number; url: string; porId: string | null; criadoEm: string; deletedAt: string | null };
+/** Um acesso ao portal: o login e a senha do suporte (1.9). Na prévia a senha fica em texto — é a cópia "do cofre". */
 type AcessoRow = {
-  id: string; clienteId: string; nome: string; email: string; senha: string | null; ativo: boolean;
-  conviteCodigo: string | null; conviteVence: string | null; ultimoAcesso: string | null; acessos: number; criadoPorId: string | null; criadoEm: string;
+  id: string; clienteId: string; nome: string; login: string; senha: string | null; ativo: boolean;
+  /** false = a senha foi criada pela pessoa no convite do 1.8 (não fica guardada) */
+  senhaGuardada: boolean;
+  ultimoAcesso: string | null; acessos: number; criadoPorId: string | null; criadoEm: string;
 };
 
 type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
 
 const S = {
-  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], units: [] as UnitRow[], deviceLogins: [] as LoginRow[], networks: [] as NetRow[],
+  clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], recibos: [] as ReciboRow[], units: [] as UnitRow[], deviceLogins: [] as LoginRow[], networks: [] as NetRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
-  notas: [] as NotaRow[], leituras: [] as Array<{ noteId: string; userId: string; readAt: string }>,
+  notas: [] as NotaRow[], leituras: [] as Array<{ noteId: string; userId: string; readAt: string }>, videosNotas: [] as VideoNotaRow[],
   projetos: [] as ProjRow[], etapas: [] as StepRow[], projClientes: [] as PClientRow[], marcas: [] as CheckRow[],
   projComentarios: [] as PCommentRow[], projAnexos: [] as PFileRow[],
   // Base de conhecimento (1.8): os artigos entram na primeira vez que alguém abre a base (ligam chamados inventados)
   artigos: [] as ArtRow[], artVersoes: [] as ArtVersaoRow[], artLigacoes: [] as ArtLigRow[], artAnexos: [] as ArtAnexoRow[],
   artLeituras: [] as Array<{ articleId: string; userId: string; em: string }>, artComentarios: [] as ArtComentarioRow[], proximoArtigo: 1, baseSemeada: false,
   // Portal do cliente (1.8): os tutoriais e os acessos entram na primeira vez que alguém abre o portal.
-  // `portalSessao` é o login do cliente (o id do acesso), separado do da equipe: dá para abrir os dois lados.
+  // `portalSessao` é o login do portal, separado do da equipe: dá para abrir os dois lados. É o id do acesso do
+  // cliente, ou "equipe:<id do usuário>" quando alguém da equipe entra com o login do Gestor (1.9, decisão 0044).
   tutoriais: [] as TutorialRow[], arqPortal: [] as ArqPortalRow[], acessosPortal: [] as AcessoRow[], proximoTutorial: 1, portalSemeado: false,
   portalSessao: null as string | null,
-  ajustesPortal: { ...AJUSTES_PORTAL_PADRAO, whatsapp: '(71) 99999-0000', email: 'suporte@exemplo.com.br', horario: 'Segunda a sexta, das 8h às 18h' } as PortalAjustes,
+  ajustesPortal: { ...AJUSTES_PORTAL_PADRAO, email: 'suporte@exemplo.com.br', horario: 'Segunda a sexta, das 8h às 18h' } as PortalAjustes,
   // a IA da base (1.8) já vem ligada na prévia — Anthropic, com um preço e um uso do mês de exemplo. A chave
   // não existe de verdade (só marcamos que existe) e a resposta é montada sem IA (ver `respostaDemo`)
   ajustesIa: {
@@ -452,7 +464,9 @@ function seed() {
   const mHs: ModelRow = { id: id(), code: 'headset', name: 'Headset Genérico', categoryId: catPerif, image: FOTO_HEADSET, valueCents: 9000, deletedAt: null };
   const mTip: ModelRow = { id: id(), code: 'tip125i', name: 'Intelbras TIP 125i', categoryId: 'catTelefoneIP', image: FOTO_TELEFONE('#1F2937'), valueCents: 38000, deletedAt: null };
   const mDect: ModelRow = { id: id(), code: 'dp722', name: 'Grandstream DP722', categoryId: 'catTelefoneIP', image: null, valueCents: 33900, deletedAt: null };
-  S.models = [mGx, mHs, mTip, mDect];
+  // 1.9: um modelo ainda sem valor, como os que faltam conferir no sistema de verdade (o Cadastro em dia avisa)
+  const mBase: ModelRow = { id: id(), code: 'dp752', name: 'Base Grandstream DP752', categoryId: 'catTelefoneIP', image: null, valueCents: null, deletedAt: null };
+  S.models = [mGx, mHs, mTip, mDect, mBase];
   // login e senha padrão por modelo no Hospital: todos os GXP1610 entram com admin; os DP722 com outro
   const secGx = id(); S.secrets.set(secGx, { label: 'Senha padrão Grandstream GXP1610 — Hospital Vale Verde', value: 'gxp#hvv2026' });
   S.deviceLogins.push({ id: id(), clientId: byName['Hospital Vale Verde']!, modelId: mGx.id, username: 'admin', passwordSecretId: secGx, note: null, updatedAt: daysAgo(30), deletedAt: null });
@@ -487,26 +501,81 @@ function seed() {
     publishedAt: daysAgo(0, 9), createdAt: daysAgo(0, 8), updatedAt: daysAgo(0, 9), deletedAt: null,
     items: NOTA_DEMO.items.map((i) => ({ id: id(), kind: i.kind, title: i.title, text: i.text, imagem: i.imagem ?? null })),
   }];
-  // meses anteriores com movimento, só para o gráfico do Painel ter o que mostrar
-  const avulsos = S.devices.filter((d) => !d.clientId).slice(0, 9);
-  const historico: Array<[MovRow['modality'], string, number, number]> = [
-    ['locacao', 'Clínica Aurora', 3, 128],
-    ['devolucao', 'Distribuidora Norte', 2, 96],
-    ['venda', 'Supermercado Bom Preço', 2, 64],
-    ['comodato', 'Apae', 2, 38],
-  ];
-  let corte = 0;
-  for (const [modality, cliente, quantos, dias] of historico) {
-    const itens = avulsos.slice(corte, corte + quantos); corte += quantos;
-    if (!itens.length || !byName[cliente]) continue;
-    S.movements.push({
-      id: id(), modality,
-      fromClientId: modality === 'devolucao' ? byName[cliente]! : null,
-      toClientId: modality === 'devolucao' ? null : byName[cliente]!,
-      unit: 'Matriz', newCondition: null, note: null, userId: 'u2', createdAt: daysAgo(dias),
-      items: itens.map((d) => ({ modelId: d.modelId, deviceId: d.id })),
-    });
-  }
+  // o vídeo do patch (1.9): com ele, é o vídeo que abre no login da prévia, no lugar dos cartões
+  S.videosNotas = NOTA_DEMO.video ? [{ id: id(), noteId: S.notas[0]!.id, ...NOTA_DEMO.video, deletedAt: null }] : [];
+  // ---- a história dos aparelhos (1.9): meses de ida e volta, coerentes com onde cada um está ----
+  // É o que os Relatórios do Inventário contam: o que saiu e voltou (um voltou inativo), o estoque
+  // parado há meses, aparelho nosso em cliente arquivado e em cliente que encerrou o Equipamentos,
+  // o uso interno, os vendidos, um modelo sem valor e um aparelho com o código na anotação. (Até o
+  // 1.8 havia aqui movimentações soltas, que não batiam com onde os aparelhos estavam.)
+  const movDemo = (dias: number, modality: MovRow['modality'], de: string | null, para: string | null, aparelhos: DeviceRow[], extra: Partial<MovRow> = {}) =>
+    S.movements.push({ id: id(), modality, fromClientId: de, toClientId: para, unit: para ? 'Matriz' : null, newCondition: null, note: null, userId: 'u2', createdAt: daysAgo(dias), items: aparelhos.map((d) => ({ modelId: d.modelId, deviceId: d.id })), ...extra });
+  const estoqueGx = S.devices.filter((d) => d.modelId === mGx.id && !d.clientId);
+  // seis estão na prateleira desde o cadastro, há sete meses: os "parados há mais de 180 dias"
+  for (const d of estoqueGx.slice(0, 6)) d.createdAt = daysAgo(210);
+  // dois foram para a Distribuidora e voltaram; um deles com a tela piscando (o inativo da prateleira)
+  const idaDist = estoqueGx[10]!, voltaInativo = estoqueGx[11]!;
+  for (const d of [idaDist, voltaInativo]) d.createdAt = daysAgo(212);
+  movDemo(150, 'locacao', null, byName['Distribuidora Norte']!, [idaDist, voltaInativo]);
+  movDemo(96, 'devolucao', byName['Distribuidora Norte']!, null, [idaDist]);
+  movDemo(96, 'devolucao', byName['Distribuidora Norte']!, null, [voltaInativo], { newCondition: 'inativo', note: 'Tela piscando; aguardando peça' });
+  // na prateleira: um GXP com o código do Nexus na anotação (e nada no campo), e outro sem identificação nenhuma
+  estoqueGx[9]!.mac = null; estoqueGx[9]!.note = 'Veio do Nexus como N001 — a etiqueta de MAC está apagada';
+  estoqueGx[8]!.mac = null;
+  // um GXP do Hospital está sem uso (o ramal foi desligado): inativo, e ainda lá
+  const semUso = S.devices.find((d) => d.clientId === byName['Hospital Vale Verde'] && d.modelId === mGx.id && d.unit === 'Ambulatório Centro')!;
+  semUso.condition = 'inativo'; semUso.note = 'Sem uso desde que o ramal da recepção foi desligado';
+  // três headsets foram ao Supermercado em comodato e voltaram há um mês
+  const hsIdaVolta = S.devices.filter((d) => d.modelId === mHs.id && !d.clientId && !d.serialNumber).slice(0, 3);
+  for (const d of hsIdaVolta) d.createdAt = daysAgo(130);
+  movDemo(120, 'comodato', null, byName['Supermercado Bom Preço']!, hsIdaVolta, { unit: 'Loja Centro' });
+  movDemo(30, 'devolucao', byName['Supermercado Bom Preço']!, null, hsIdaVolta);
+  // dois TIP vendidos ao Supermercado (já não são nossos) e um que voltou do Home Care com defeito
+  let nTip = 0;
+  const tip = (x: Partial<DeviceRow>) => dev({ modelId: mTip.id, mac: '1C61B4' + (0x400000 + nTip++).toString(16).toUpperCase().slice(-6), ...x });
+  const vendidos = [tip({ createdAt: daysAgo(70) }), tip({ createdAt: daysAgo(70) })];
+  for (const d of vendidos) { d.clientId = byName['Supermercado Bom Preço']!; d.unit = 'Loja Centro'; d.currentModality = 'venda'; S.devices.push(d); }
+  movDemo(64, 'venda', null, byName['Supermercado Bom Preço']!, vendidos, { unit: 'Loja Centro', note: 'Vendidos ao cliente' });
+  const tipVolta = tip({ createdAt: daysAgo(100), condition: 'inativo', note: 'Teclado falhando; avaliar o conserto' });
+  S.devices.push(tipVolta);
+  movDemo(90, 'locacao', null, byName['Home Care Viver Bem']!, [tipVolta], { unit: 'Sede' });
+  movDemo(10, 'devolucao', byName['Home Care Viver Bem']!, null, [tipVolta], { newCondition: 'inativo' });
+  // um DP722 foi para a Unidade Simões Filho do Hospital; e a base DP752, de um modelo ainda sem valor
+  const dect = S.devices.find((d) => d.modelId === mDect.id && !d.clientId)!;
+  Object.assign(dect, { createdAt: daysAgo(30), clientId: byName['Hospital Vale Verde']!, unit: 'Unidade Simões Filho', currentModality: 'comodato' });
+  movDemo(25, 'comodato', null, byName['Hospital Vale Verde']!, [dect], { unit: 'Unidade Simões Filho' });
+  // 1.9: o recibo dessa entrega voltou assinado no dia seguinte (a foto do celular); o da locação da
+  // Distribuidora foi anexado em PDF na hora; os headsets do call center ainda estão sem recibo
+  const reciboDemo = (mv: MovRow, fileName: string, conteudo: string, quem: string, dias: number) => S.recibos.push({
+    id: id(), movementId: mv.id, fileName, mimeType: conteudo.slice(5, conteudo.indexOf(';')), sizeBytes: bytesDoDataUrl(conteudo), conteudo, uploadedById: quem, createdAt: daysAgo(dias), deletedAt: null,
+  });
+  reciboDemo(S.movements[S.movements.length - 1]!, 'recibo-dp722-simoes-filho.jpg', RECIBO_FOTO_DEMO, 'u2', 24);
+  reciboDemo(S.movements.find((m) => m.toClientId === byName['Distribuidora Norte'] && m.modality === 'locacao' && m.items.length === 8)!, 'Recibo de entrega 0145 — Distribuidora Norte.pdf', RECIBO_PDF_DEMO, 'u3', 20);
+  const base752 = dev({ modelId: mBase.id, serialNumber: 'DP752SN0007', clientId: byName['Hospital Vale Verde']!, unit: 'Matriz', currentModality: 'comodato', createdAt: daysAgo(50) });
+  S.devices.push(base752);
+  movDemo(45, 'comodato', null, byName['Hospital Vale Verde']!, [base752]);
+  // aparelho nosso em quem saiu da base: a Farmácia Central (arquivada) e a Clínica Aurora, que
+  // encerrou o Equipamentos há 40 dias — as duas aparecem marcadas no Quem tem o quê
+  const assinouEquipamentos = (clienteId: string, desde: number, ate: number | null) =>
+    S.subs.push({ id: id(), clientId: clienteId, productCode: 'equipamentos', activatedAt: daysAgo(desde), deactivatedAt: ate == null ? null : daysAgo(ate), notes: null, settings: {} });
+  assinouEquipamentos(byName['Farmácia Central (arquivada)']!, 420, 60);
+  assinouEquipamentos(byName['Clínica Aurora']!, 260, 40);
+  let nGx = 0;
+  const gx = (x: Partial<DeviceRow>) => dev({ modelId: mGx.id, mac: '000B82' + (0x300000 + nGx++).toString(16).toUpperCase().slice(-6), ...x });
+  const farmacia = [0, 1, 2].map(() => gx({ clientId: byName['Farmácia Central (arquivada)']!, unit: 'Matriz', currentModality: 'comodato', createdAt: daysAgo(330) }));
+  S.devices.push(...farmacia);
+  movDemo(300, 'comodato', null, byName['Farmácia Central (arquivada)']!, farmacia);
+  const hsClinica = [0, 1].map(() => dev({ modelId: mHs.id, clientId: byName['Clínica Aurora']!, unit: 'Matriz', currentModality: 'comodato', createdAt: daysAgo(250) }));
+  S.devices.push(...hsClinica);
+  movDemo(200, 'comodato', null, byName['Clínica Aurora']!, hsClinica);
+  // e o uso interno: dois GXP nos ramais do suporte da própria Ingline
+  assinouEquipamentos(ingline.id, 500, null);
+  const interno = [0, 1].map(() => gx({ clientId: ingline.id, unit: 'Matriz', currentModality: 'comodato', createdAt: daysAgo(190) }));
+  S.devices.push(...interno);
+  movDemo(180, 'comodato', null, ingline.id, interno, { note: 'Ramais do suporte' });
+  // a Distribuidora já tem o "como configurar" completo; o Supermercado e o Home Care, ainda não
+  S.networks.push({ clientId: byName['Distribuidora Norte']!, ipAddress: '192.168.10.50', subnetMask: '255.255.255.0', defaultRouter: '192.168.10.1', dns1: '1.1.1.1', dns2: null, wirelessPasswordSecretId: null, note: null, updatedAt: daysAgo(20) });
+  S.deviceLogins.push({ id: id(), clientId: byName['Distribuidora Norte']!, modelId: mGx.id, username: 'admin', passwordSecretId: null, note: null, updatedAt: daysAgo(20), deletedAt: null });
 
   // ---- um projeto de exemplo: a troca do áudio das URAs ----
   const proj: ProjRow = {
@@ -994,13 +1063,26 @@ const shapeDevice = (d: DeviceRow, withHistory = false): Device => {
   const m = modeloDe(d);
   const ident = identificacaoAparelho(d);
   const base: Device = { ...d, macFormatted: macFormatado(d.mac), identificacao: ident.texto, identificacaoTipo: ident.tipo, valueCents: valorDe(d), ownValueCents: d.valueCents, modelValueCents: m.valueCents, modelImageUrl: m.image, modelName: m.name, modelCode: m.code, clientName: S.clients.find((x) => x.id === d.clientId)?.tradeName ?? null };
-  if (withHistory) base.history = S.movements.filter((mv) => mv.items.some((i) => i.deviceId === d.id)).map((mv) => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, unit: mv.unit, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (withHistory) base.history = S.movements.filter((mv) => mv.items.some((i) => i.deviceId === d.id)).map((mv) => ({ id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, unit: mv.unit, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt, recibos: recibosDaMov(mv.id) })).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   return base;
 };
+/** Os recibos ativos de uma movimentação, como o servidor manda (sem o arquivo; aqui o endereço é o próprio arquivo). */
+const recibosDaMov = (movementId: string): ReciboDeEntrega[] => S.recibos
+  .filter((r) => r.movementId === movementId && !r.deletedAt)
+  .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  .map((r) => ({ id: r.id, fileName: r.fileName, mimeType: r.mimeType, sizeBytes: r.sizeBytes, createdAt: r.createdAt, url: r.conteudo, quem: S.users.find((u) => u.id === r.uploadedById)?.name ?? null }));
+/** "à locação para Hospital Vale Verde" — como a auditoria do servidor. */
+const aMovDemo = (mv: MovRow, de = false) => {
+  const [a, da] = mv.modality === 'comodato' ? ['ao', 'do'] : ['à', 'da'];
+  return `${de ? da : a} ${String((MODALIDADES as any)[mv.modality] ?? mv.modality).toLowerCase()} para ${S.clients.find((c) => c.id === mv.toClientId)?.tradeName ?? 'o cliente'}`;
+};
+/** Os bytes do arquivo embutido (função, e não `const`: os recibos de exemplo são montados antes desta linha). */
+function bytesDoDataUrl(u: string) { const b64 = u.slice(u.indexOf(',') + 1); return Math.floor((b64.length * 3) / 4) - (b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0); }
 const shapeMov = (mv: MovRow): Movement => ({
   id: mv.id, modality: mv.modality, modalityName: (MODALIDADES as any)[mv.modality], fromClientId: mv.fromClientId, fromName: S.clients.find((x) => x.id === mv.fromClientId)?.tradeName ?? null, toClientId: mv.toClientId, toName: S.clients.find((x) => x.id === mv.toClientId)?.tradeName ?? null, unit: mv.unit, newCondition: mv.newCondition, note: mv.note, userName: S.users.find((u) => u.id === mv.userId)?.name ?? '?', createdAt: mv.createdAt,
   items: Object.values(mv.items.reduce((acc, i) => { const k = i.modelId; acc[k] = acc[k] ?? { modelName: S.models.find((m) => m.id === k)?.name ?? '?', quantity: 0 }; acc[k]!.quantity += 1; return acc; }, {} as Record<string, { modelName: string; quantity: number }>)),
   devices: mv.items.map((i) => { const d = S.devices.find((x) => x.id === i.deviceId)!; return { id: d.id, modelName: modeloDe(d).name, identificacao: identificacaoAparelho(d).texto }; }),
+  recibos: recibosDaMov(mv.id),
 });
 const shapeProduct = (p: (typeof S.products)[number]): Product => ({ id: p.id, code: p.code, name: p.name, color: p.color, description: p.description, hasSettings: p.hasSettings, sortOrder: p.sortOrder, active: p.active, protegido: PROTEGIDOS.includes(p.code), activeClients: new Set(S.subs.filter((x) => x.productCode === p.code && !x.deactivatedAt && S.clients.some((c) => c.id === x.clientId && !c.deletedAt)).map((x) => x.clientId)).size, modules: S.modules.filter((m) => m.productId === p.id && !m.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map(({ productId: _p, deletedAt: _d, ...m }) => ({ ...m, protegido: MODULOS_PROTEGIDOS.includes(`${p.code}:${m.code}`), activeClients: new Set(S.subMods.filter((x) => x.moduleId === m.id && !x.deactivatedAt).map((x) => S.subs.find((y) => y.id === x.subscriptionId)).filter((y) => y && !y.deactivatedAt && S.clients.some((c) => c.id === y.clientId && !c.deletedAt)).map((y) => y!.clientId)).size })) });
 /** Como o servidor: FOP2 e Omniboard guardam campos na ficha do cliente e não vão para a lixeira. */
@@ -1087,6 +1169,23 @@ function aplicarItens(n: NotaRow, itens?: Array<Record<string, any>>) {
   });
 }
 const notasVivas = () => S.notas.filter((n) => !n.deletedAt);
+/** O vídeo que vale da nota (no máximo um), como as telas veem. */
+const videoDaNota = (noteId: string): VideoNovidade | null => {
+  const v = S.videosNotas.find((x) => x.noteId === noteId && !x.deletedAt);
+  return v ? { id: v.id, url: v.url, nome: v.nome, tamanho: v.tamanho, tipo: v.tipo } : null;
+};
+/** O vídeo ao salvar a nota: ausente = mantém · null = tira · o id = o que acabou de subir (o anterior sai; nada se apaga). */
+function ligarVideoDemo(n: NotaRow, videoId: unknown): string {
+  if (videoId === undefined) return '';
+  const atual = S.videosNotas.find((x) => x.noteId === n.id && !x.deletedAt);
+  if (videoId === null) { if (!atual) return ''; atual.deletedAt = now(); return ' — tirou o vídeo'; }
+  if (atual?.id === videoId) return '';
+  const novo = S.videosNotas.find((x) => x.id === videoId && !x.deletedAt);
+  if (!novo || (novo.noteId && novo.noteId !== n.id)) throw bad('Este vídeo não está mais disponível. Suba o vídeo de novo.');
+  if (atual) atual.deletedAt = now();
+  novo.noteId = n.id;
+  return atual ? ' — trocou o vídeo' : ' — pôs o vídeo';
+}
 const podeEditarNovidades = () => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes('admin.manage') ?? false);
 const shapeNota = (n: NotaRow): Novidade => ({
   id: n.id, version: n.version, title: n.title, summary: n.summary, publishedAt: n.publishedAt, createdAt: n.createdAt, updatedAt: n.updatedAt,
@@ -1094,6 +1193,7 @@ const shapeNota = (n: NotaRow): Novidade => ({
   leituras: S.leituras.filter((l) => l.noteId === n.id).length,
   pessoas: S.users.filter((u) => u.active).length,
   items: n.items.map((i, ordem) => ({ id: i.id, kind: i.kind, title: i.title, text: i.text, sortOrder: ordem, imageUrl: i.imagem })),
+  video: videoDaNota(n.id),
 });
 
 // ---------------- a API ----------------
@@ -1544,7 +1644,8 @@ const textoDaVersaoDemo = (v: ArtVersaoRow): TextoVersao => ({ versao: v.versao,
 // As mesmas regras do servidor (`apps/api/src/services/portal.ts`), com as contas do
 // `@gestor/shared/portal.ts`: entra quem está ativo, já criou a senha e é de um cliente na base;
 // cada cliente vê os tutoriais "Geral" e os dos produtos (e módulos) que tem. Na prévia, a sessão
-// do cliente é separada da da equipe (`S.portalSessao`) — dá para abrir os dois lados.
+// do cliente é separada da da equipe (`S.portalSessao`) — dá para abrir os dois lados. A equipe entra
+// no portal com o login do Gestor (1.9, decisão 0044) e vê todos os tutoriais publicados.
 
 /** O print de exemplo: as teclas do telefone, com o TRANSF em destaque. */
 const PRINT_TECLAS = svgDemo(560, 170, [
@@ -1598,15 +1699,15 @@ function semearPortal() {
   const manual = arquivo('arquivo', 'Manual rápido do ramal.pdf', 'application/pdf', Math.round(PDF_MANUAL_RAMAL.length * 0.75), PDF_MANUAL_RAMAL, 20);
   const fop2 = arquivo('imagem', 'fop2-painel.png', 'image/png', 28_000, PRINT_FOP2, 15);
   const chat = arquivo('imagem', 'linechat-conversas.png', 'image/png', 26_000, PRINT_CHAT, 6);
-  const tutorial = (o: Pick<TutorialRow, 'titulo' | 'resumo' | 'texto' | 'produtoId' | 'moduloId'> & { destaque?: boolean; publicado?: boolean; autor: string; dias: number; views: number; editado?: number }) => {
+  const tutorial = (o: Pick<TutorialRow, 'titulo' | 'resumo' | 'texto' | 'produtoId' | 'moduloId'> & { destaque?: boolean; publicado?: boolean; autor: string; dias: number; views: number; editado?: number; video?: string }) => {
     const t: TutorialRow = {
       id: id(), numero: S.proximoTutorial++, titulo: o.titulo, resumo: o.resumo, texto: o.texto, produtoId: o.produtoId, moduloId: o.moduloId,
       destaque: !!o.destaque, situacao: o.publicado === false ? 'rascunho' : 'publicado', versao: o.editado != null ? 2 : 1, views: o.views,
       autorId: o.autor, atualizadoPorId: o.autor, publicadoEm: o.publicado === false ? null : daysAgo(o.dias, 10), criadoEm: daysAgo(o.dias, 9),
-      atualizadoEm: o.editado != null ? daysAgo(o.editado, 16) : daysAgo(o.dias, 10), deletedAt: null,
+      atualizadoEm: o.editado != null ? daysAgo(o.editado, 16) : daysAgo(o.dias, 10), deletedAt: null, videoPrincipalId: o.video ?? null,
     };
     S.tutoriais.push(t);
-    for (const a of S.arqPortal) if (!a.tutorialId && arquivosDoTexto(t.texto).includes(a.id)) a.tutorialId = t.id;
+    for (const a of S.arqPortal) if (!a.tutorialId && (arquivosDoTexto(t.texto).includes(a.id) || a.id === t.videoPrincipalId)) a.tutorialId = t.id;
   };
   tutorial({
     titulo: 'Como abrir um chamado com o suporte', resumo: 'O jeito mais rápido de a gente resolver: o que mandar e por onde.', produtoId: null, moduloId: null,
@@ -1615,7 +1716,9 @@ function semearPortal() {
   });
   tutorial({
     titulo: 'Como transferir uma ligação', resumo: 'Passe a ligação para outro ramal sem derrubar, em 3 toques.', produtoId: 'plinepbx', moduloId: null,
-    texto: `Assista (10 segundos):\n[video:${video}]\n\n1. Com a ligação em andamento, aperte TRANSF.\n[print:${teclas}]\n2. Digite o número do ramal (por exemplo, 204).\n3. Aperte TRANSF de novo. Pronto: a ligação já está com o outro ramal.\n\nQuer falar antes com a pessoa do outro ramal? Aperte TRANSF, digite o ramal e espere ela atender; depois aperte TRANSF de novo.`,
+    // o vídeo principal (1.9): fica no topo, antes do passo a passo
+    video,
+    texto: `1. Com a ligação em andamento, aperte TRANSF.\n[print:${teclas}]\n2. Digite o número do ramal (por exemplo, 204).\n3. Aperte TRANSF de novo. Pronto: a ligação já está com o outro ramal.\n\nQuer falar antes com a pessoa do outro ramal? Aperte TRANSF, digite o ramal e espere ela atender; depois aperte TRANSF de novo.`,
     destaque: true, autor: 'u2', dias: 9, views: 58,
   });
   tutorial({
@@ -1653,14 +1756,15 @@ function semearPortal() {
     texto: '1. Mande o texto da mensagem com 5 dias de antecedência.\n2. [completar: o modelo de texto que a locutora usa]', publicado: false, autor: 'u3', dias: 2, views: 0,
   });
 
-  // quem tem acesso (a senha das pessoas da prévia é "demo", como a da equipe)
-  const acesso = (clienteNome: string, nome: string, email: string, o: Partial<AcessoRow>) => {
+  // quem tem acesso: o login e a senha que o suporte criou (a senha das pessoas da prévia é "demo", como a da equipe)
+  const acesso = (clienteNome: string, nome: string, login: string, o: Partial<AcessoRow>) => {
     const clienteId = cli(clienteNome);
     if (!clienteId) return;
-    S.acessosPortal.push({ id: id(), clienteId, nome, email, senha: 'demo', ativo: true, conviteCodigo: null, conviteVence: null, ultimoAcesso: daysAgo(2, 15), acessos: 6, criadoPorId: 'u1', criadoEm: daysAgo(20), ...o });
+    S.acessosPortal.push({ id: id(), clienteId, nome, login, senha: 'demo', senhaGuardada: true, ativo: true, ultimoAcesso: daysAgo(2, 15), acessos: 6, criadoPorId: 'u1', criadoEm: daysAgo(20), ...o });
   };
   acesso('Clínica Aurora', 'Maria Souza', 'maria@clinicaaurora.com.br', { acessos: 14 });
-  acesso('Clínica Aurora', 'Recepção Aurora', 'recepcao@clinicaaurora.com.br', { senha: null, conviteCodigo: codigoDeConviteDemo(), conviteVence: daysAgo(-6, 12), ultimoAcesso: null, acessos: 0, criadoEm: daysAgo(1) });
+  // o login não precisa ser e-mail
+  acesso('Clínica Aurora', 'Recepção Aurora', 'recepcao.aurora', { ultimoAcesso: null, acessos: 0, criadoPorId: 'u3', criadoEm: daysAgo(1) });
   acesso('Hospital Vale Verde', 'Carlos Lima', 'carlos@hvaleverde.org.br', { acessos: 5, ultimoAcesso: daysAgo(6, 9) });
   acesso('Distribuidora Norte', 'Joana Prado', 'joana@distnorte.com.br', { ativo: false, acessos: 3, ultimoAcesso: daysAgo(40, 9) });
   acesso('Farmácia Central (arquivada)', 'Pedro Alves', 'pedro@centralfarma.com.br', { acessos: 21, ultimoAcesso: daysAgo(90, 9) });
@@ -1681,7 +1785,7 @@ const produtoDemo = (pid: string | null) => { const p = pid ? S.products.find((x
 const cartaoDemo = (t: TutorialRow): CartaoTutorial => ({
   id: t.id, numero: t.numero, titulo: t.titulo, resumo: t.resumo, produto: produtoDemo(t.produtoId),
   modulo: t.moduloId ? { id: t.moduloId, nome: S.modules.find((m) => m.id === t.moduloId)?.name ?? '—' } : null,
-  destaque: t.destaque, atualizadoEm: t.atualizadoEm, caminho: caminhoDoTutorial(t.numero, t.titulo),
+  destaque: t.destaque, atualizadoEm: t.atualizadoEm, caminho: caminhoDoTutorial(t.numero, t.titulo), temVideo: !!t.videoPrincipalId,
 });
 const tutorialNaListaDemo = (t: TutorialRow): TutorialNaLista => ({
   ...cartaoDemo(t), situacao: t.situacao, visualizacoes: t.views, autor: nomeDaPessoaDemo(t.autorId), atualizadoPor: nomeDaPessoaDemo(t.atualizadoPorId),
@@ -1695,9 +1799,9 @@ const paraBuscaPortalDemo = (t: TutorialRow) => ({
 const acessoDemo = (a: AcessoRow): AcessoPortal => {
   const c = situacaoClienteDemo(a.clienteId);
   return {
-    id: a.id, nome: a.nome, email: a.email, clienteId: a.clienteId, cliente: c.nome,
-    situacao: situacaoDoAcesso({ ativo: a.ativo, temSenha: !!a.senha, conviteVenceEm: a.conviteVence }, c.naBase),
-    motivo: c.naBase ? null : c.motivo, conviteVenceEm: a.conviteCodigo ? a.conviteVence : null,
+    id: a.id, nome: a.nome, login: a.login, clienteId: a.clienteId, cliente: c.nome,
+    situacao: situacaoDoAcesso({ ativo: a.ativo, temSenha: !!a.senha }, c.naBase),
+    motivo: c.naBase ? null : c.motivo, senhaGuardada: a.senhaGuardada && !!a.senha,
     ultimoAcesso: a.ultimoAcesso, acessos: a.acessos, criadoPor: nomeDaPessoaDemo(a.criadoPorId), criadoEm: a.criadoEm,
   };
 };
@@ -1715,6 +1819,14 @@ function conferirProdutoDemo(d: TutorialGravar) {
   if (moduloId && S.modules.find((m) => m.id === moduloId && !m.deletedAt)?.productId !== produtoId) throw bad('O módulo escolhido não é deste produto.');
   return { produtoId, moduloId };
 }
+/** O vídeo principal: um vídeo que subiu e não é de outro tutorial; passa a ser deste (como o servidor). */
+function ligarVideoPrincipalDemo(t: TutorialRow, videoId: string | null): string | null {
+  if (!videoId) return null;
+  const v = S.arqPortal.find((a) => a.id === videoId && !a.deletedAt);
+  if (!v || v.tipo !== 'video' || (v.tutorialId && v.tutorialId !== t.id)) throw bad('O vídeo principal não chegou ao servidor (ou é de outro tutorial). Suba o vídeo de novo.');
+  v.tutorialId = t.id;
+  return v.id;
+}
 function ligarArquivosDemo(t: TutorialRow) {
   const citados = arquivosDoTexto(t.texto);
   const existem = S.arqPortal.filter((a) => citados.includes(a.id) && !a.deletedAt);
@@ -1722,18 +1834,49 @@ function ligarArquivosDemo(t: TutorialRow) {
   for (const a of existem) if (!a.tutorialId) a.tutorialId = t.id;
 }
 const limpoPortalDemo = (t: string | null | undefined) => { const s = (t ?? '').replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/^\n+|\s+$/g, ''); return s || null; };
-const codigoDeConviteDemo = () => `demo${id()}${id()}${id()}`.slice(0, 40);
-/** A sessão do cliente na prévia: confere a cada pedido, como o servidor. */
-function sessaoPortalDemo(): { a: AcessoRow; ativos: { produtos: string[]; modulos: string[] } } {
+/** A sessão do portal na prévia: confere a cada pedido, como o servidor (o acesso do cliente, ou alguém da equipe). */
+type SessaoPortalDemo = { a: AcessoRow; u: null; ativos: { produtos: string[]; modulos: string[] } } | { a: null; u: UserRow; ativos: { produtos: string[]; modulos: string[] } };
+const PREFIXO_EQUIPE = 'equipe:';
+function sessaoPortalDemo(): SessaoPortalDemo {
+  if (S.portalSessao?.startsWith(PREFIXO_EQUIPE)) {
+    const u = S.users.find((x) => x.id === S.portalSessao!.slice(PREFIXO_EQUIPE.length));
+    // desativado no Gestor: a sessão do portal cai na hora (como no servidor)
+    if (!u || !u.active) throw new ApiError(401, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
+    return { a: null, u, ativos: { produtos: S.products.map((p) => p.id), modulos: S.modules.map((m) => m.id) } };
+  }
   const a = acessosVivos().find((x) => x.id === S.portalSessao);
   if (!a) throw new ApiError(401, 'Entre para ver');
   if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(401, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
-  return { a, ativos: ativosDoClienteDemo(a.clienteId) };
+  return { a, u: null, ativos: ativosDoClienteDemo(a.clienteId) };
 }
-const euPortalDemo = (a: AcessoRow): EuPortal => {
-  const c = S.clients.find((x) => x.id === a.clienteId);
-  return { nome: a.nome, email: a.email, cliente: { nome: c?.tradeName ?? '—', logo: c?.logoUrl ?? null }, portal: S.ajustesPortal };
+const euPortalDemo = (sessao: SessaoPortalDemo): EuPortal => {
+  if (sessao.u) return { nome: sessao.u.name, login: sessao.u.email, equipe: true, cliente: { nome: NOME_DA_EQUIPE_NO_PORTAL, logo: null }, portal: S.ajustesPortal };
+  const c = S.clients.find((x) => x.id === sessao.a.clienteId);
+  return { nome: sessao.a.nome, login: sessao.a.login, equipe: false, cliente: { nome: c?.tradeName ?? '—', logo: c?.logoUrl ?? null }, portal: S.ajustesPortal };
 };
+/**
+ * Login e senha do portal, como o servidor: primeiro o acesso do cliente com este login; se não houver
+ * (ou a senha não for a dele), o usuário ativo da equipe com este e-mail e a senha do Gestor.
+ */
+function conferirSenhaDoPortalDemo(login: string, senha: string): { a: AcessoRow; u: null } | { a: null; u: UserRow } {
+  const a = acessosVivos().find((x) => x.login === login);
+  if (a?.senha && a.senha === senha) {
+    if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(403, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
+    return { a, u: null };
+  }
+  const u = S.users.find((x) => x.email === login && x.active);
+  if (u && u.password === senha) return { a: null, u };
+  audit('login_failed', 'portal', `Tentativa de entrar no portal falhou para ${login}`, null);
+  throw new ApiError(401, 'Login ou senha incorretos');
+}
+/** A equipe entrou no portal (como o servidor: fica na auditoria). */
+function entrarComoEquipeDemo(u: UserRow, como?: 'codigo' | 'recuperacao'): EuPortal {
+  S.portalSessao = PREFIXO_EQUIPE + u.id;
+  audit('login', 'portal', `${u.name} entrou no portal do cliente com o login da equipe${como === 'recuperacao' ? ', usando um código de recuperação' : como === 'codigo' ? ' (com verificação em duas etapas)' : ''}`, u.id);
+  return euPortalDemo(sessaoPortalDemo());
+}
+/** Senha nova ou usuário desativado no Gestor: a sessão do portal dele cai. */
+const derrubarPortalDaEquipeDemo = (idUsuario: string) => { if (S.portalSessao === PREFIXO_EQUIPE + idUsuario) S.portalSessao = null; };
 const visiveisDemo = (ativos: { produtos: string[]; modulos: string[] }) =>
   tutoriaisVivos().filter((t) => t.situacao === 'publicado' && tutorialValePara({ produtoId: t.produtoId, moduloId: t.moduloId }, ativos));
 const lerArquivoDemo = (file: File) => new Promise<string>((ok, falhou) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = () => falhou(bad('Não deu para ler o arquivo')); r.readAsDataURL(file); });
@@ -1887,7 +2030,7 @@ export const demoApi: Api = {
       return { ok: true };
     },
     async logout() { if (S.me) audit('logout', 'user', `${S.me.name} saiu`, S.me.id); S.me = null; esperandoCodigo = null; return { ok: true }; },
-    async changePassword(cur, nw) { if (!S.me) throw new ApiError(401, 'Faça login'); if (cur !== S.me.password) throw new ApiError(401, 'Senha atual incorreta'); S.me.password = nw; return { ok: true }; },
+    async changePassword(cur, nw) { if (!S.me) throw new ApiError(401, 'Faça login'); if (cur !== S.me.password) throw new ApiError(401, 'Senha atual incorreta'); S.me.password = nw; derrubarPortalDaEquipeDemo(S.me.id); return { ok: true }; },
     async updateMe(d) {
       await wait(); if (!S.me) throw new ApiError(401, 'Faça login');
       const v = (d.sshUser ?? '').trim();
@@ -2259,6 +2402,32 @@ export const demoApi: Api = {
     },
     async removeDevice(idd) { await wait(); requirePerm('records.delete'); const x = S.devices.find((r) => r.id === idd); if (!x) throw notFound('Aparelho'); x.deletedAt = now(); audit('delete', 'device', `Mandou o aparelho ${identificacaoAparelho(x).texto} para a lixeira`, x.id); return { ok: true }; },
     async units(clientId) { await wait(); const us = S.devices.filter((d) => !d.deletedAt && d.unit && (!clientId || d.clientId === clientId)).map((d) => d.unit!); return [...new Set(us)].sort((a, b) => a.localeCompare(b, 'pt-BR')); },
+    // 1.9: os Relatórios do Inventário — a mesma base que o servidor monta do banco, e as mesmas contas
+    async relatorios() {
+      await wait(); requirePerm('records.read');
+      const agora = new Date();
+      // a regra do servidor (e do portal): ativa = sem encerramento, ou com o encerramento ainda por vir
+      const ativa = (d: string | null) => !d || new Date(d) > agora;
+      const base: BaseInventario = {
+        agora,
+        aparelhos: S.devices.filter((d) => !d.deletedAt).map((d) => ({ id: d.id, modelId: d.modelId, mac: d.mac, serialNumber: d.serialNumber, clientId: d.clientId, unit: d.unit, currentModality: d.currentModality, condition: d.condition, valueCents: d.valueCents, ip: d.ip, note: d.note, createdAt: d.createdAt })),
+        modelos: S.models.map((m) => ({ id: m.id, name: m.name, valueCents: m.valueCents, categoryName: S.categories.find((c) => c.id === m.categoryId)?.name ?? null, temFoto: !!m.image })),
+        clientes: S.clients.map((c) => {
+          const subs = S.subs.filter((x) => x.clientId === c.id);
+          const equip = subs.filter((x) => x.productCode === 'equipamentos');
+          const temEquipamentos = equip.some((x) => ativa(x.deactivatedAt));
+          const rede = S.networks.find((n) => n.clientId === c.id);
+          return {
+            id: c.id, nome: c.tradeName, interno: c.isInternal, arquivado: c.archived, naLixeiraDesde: c.deletedAt,
+            temEquipamentos, produtosAtivos: subs.filter((x) => ativa(x.deactivatedAt)).length,
+            temRedePadrao: !!rede && !!(rede.ipAddress || rede.subnetMask || rede.defaultRouter || rede.dns1),
+            modelosComLogin: S.deviceLogins.filter((l) => l.clientId === c.id && !l.deletedAt).map((l) => l.modelId),
+          };
+        }),
+        movimentacoes: S.movements.map((m) => ({ id: m.id, modality: m.modality, fromClientId: m.fromClientId, toClientId: m.toClientId, unit: m.unit, newCondition: m.newCondition, createdAt: m.createdAt, deviceIds: m.items.map((i) => i.deviceId) })),
+      };
+      return relatoriosInventario(base);
+    },
     async movements(q) {
       await wait(); requirePerm('records.read');
       // MAC ou N/S de um aparelho: as movimentações por onde ele passou (pedaço de MAC só a partir de 4 caracteres, como na busca de aparelhos)
@@ -2308,6 +2477,35 @@ export const demoApi: Api = {
       const mv: MovRow = { id: id(), modality, fromClientId: from ?? null, toClientId: to, unit: unidade, newCondition: (d.newCondition as string) ?? null, note: (d.note as string) ?? null, userId: S.me!.id, createdAt: now(), items: out };
       S.movements.push(mv); audit('movement', 'deviceMovement', `${(MODALIDADES as any)[modality]} de ${qty} aparelho(s)${to ? ` para ${S.clients.find((c) => c.id === to)?.tradeName}${unidade ? ` (unidade ${unidade})` : ''}` : ' para o estoque'}`, mv.id);
       return { id: mv.id, items: out.length, quantity: qty };
+    },
+    // 1.9: o recibo de entrega — as mesmas regras do servidor (@gestor/shared/recibo.ts)
+    async anexarRecibo(movementId, d0) {
+      await wait(250); requirePerm('devices.move');
+      const p = ReciboAnexarSchema.safeParse(d0);
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Não consegui ler esse arquivo');
+      const mv = S.movements.find((m) => m.id === movementId); if (!mv) throw notFound('Movimentação');
+      const naoPode = problemaParaAnexar(mv, S.recibos.filter((r) => r.movementId === mv.id && !r.deletedAt).length);
+      if (naoPode) throw bad(naoPode);
+      const b64 = p.data.conteudo.slice(p.data.conteudo.indexOf(',') + 1);
+      const inicio = Uint8Array.from(atob(b64.slice(0, 24)), (c) => c.charCodeAt(0));
+      const tipo = tipoDoRecibo(inicio);
+      const bytes = bytesDoDataUrl(p.data.conteudo);
+      const problema = problemaDoRecibo({ nome: p.data.fileName, tipo: tipo ?? '', bytes });
+      if (problema || !tipo) throw bad(problema ?? 'Não consegui ler esse arquivo');
+      // guarda com o tipo de verdade (o navegador pode ter dito outro)
+      const r: ReciboRow = { id: id(), movementId: mv.id, fileName: p.data.fileName, mimeType: tipo, sizeBytes: bytes, conteudo: `data:${tipo};base64,${b64}`, uploadedById: S.me!.id, createdAt: now(), deletedAt: null };
+      S.recibos.push(r);
+      const kb = bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} MB`;
+      audit('create', 'deviceMovement', `Anexou o recibo de entrega "${r.fileName}" (${kb}) ${aMovDemo(mv)}`, mv.id);
+      return recibosDaMov(mv.id).find((x) => x.id === r.id)!;
+    },
+    async tirarRecibo(idr) {
+      await wait(); requirePerm('devices.move');
+      const r = S.recibos.find((x) => x.id === idr && !x.deletedAt); if (!r) throw notFound('Recibo');
+      r.deletedAt = now();
+      const mv = S.movements.find((m) => m.id === r.movementId)!;
+      audit('delete', 'deviceMovement', `Tirou o recibo de entrega "${r.fileName}" ${aMovDemo(mv, true)}`, mv.id);
+      return { ok: true };
     },
   },
   /**
@@ -2573,7 +2771,7 @@ export const demoApi: Api = {
       const nota = notasVivas().filter((n) => n.publishedAt).sort((a, b) => b.publishedAt!.localeCompare(a.publishedAt!))[0];
       if (!nota || S.leituras.some((l) => l.noteId === nota.id && l.userId === S.me!.id)) return null;
       const { items, ...resto } = shapeNota(nota);
-      return { id: resto.id, version: resto.version, title: resto.title, summary: resto.summary, publishedAt: resto.publishedAt, items };
+      return { id: resto.id, version: resto.version, title: resto.title, summary: resto.summary, publishedAt: resto.publishedAt, items, video: resto.video };
     },
     async lista() {
       await wait(80); requirePerm('records.read');
@@ -2582,13 +2780,25 @@ export const demoApi: Api = {
         .sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt)).map(shapeNota);
       return { items, podeEditar, naoLidas: items.filter((n) => n.publishedAt && !n.lida).length };
     },
-    async marcarLida(idn) {
+    async marcarLida(idn, assistiu) {
       await wait(120);
       const n = notasVivas().find((x) => x.id === idn); if (!n) throw notFound('Nota');
       if (!n.publishedAt) throw bad('Esta nota ainda é um rascunho');
       if (!S.leituras.some((l) => l.noteId === idn && l.userId === S.me!.id)) S.leituras.push({ noteId: idn, userId: S.me!.id, readAt: now() });
-      audit('update', 'releaseNote', `${S.me!.name} leu as novidades de ${n.version}`, n.id);
+      audit('update', 'releaseNote', `${S.me!.name} ${assistiu ? 'assistiu ao vídeo das' : 'leu as'} novidades de ${n.version}`, n.id);
       return { ok: true };
+    },
+    async subirVideo(file, progresso) {
+      requirePerm('admin.manage');
+      const problema = problemaDoArquivo('video', file.type || 'application/octet-stream', file.size);
+      if (problema) throw bad(problema);
+      // na prévia o vídeo não sai do navegador: a barra anda só para mostrar como fica
+      for (const p of [0.25, 0.6, 0.9]) { progresso?.(p); await wait(260); }
+      progresso?.(1);
+      const v: VideoNotaRow = { id: id(), noteId: null, url: URL.createObjectURL(file), nome: file.name || 'video', tamanho: file.size, tipo: file.type, deletedAt: null };
+      S.videosNotas.push(v);
+      audit('create', 'releaseNote', `Subiu o vídeo "${v.nome}" (${Math.max(1, Math.round(v.tamanho / 1024))} KB) para as novidades`, v.id);
+      return { id: v.id, url: v.url, nome: v.nome, tamanho: v.tamanho, tipo: v.tipo };
     },
     async leituras(idn): Promise<LeiturasNovidade> {
       await wait(60); requirePerm('admin.manage');
@@ -2606,7 +2816,8 @@ export const demoApi: Api = {
       if (S.notas.some((n) => n.version === version)) throw bad(`Já existe uma nota com a versão "${version}"`);
       const n: NotaRow = { id: id(), version, title: String(d.title), summary: (d.summary as string) ?? null, publishedAt: null, createdAt: now(), updatedAt: now(), deletedAt: null, items: [] };
       aplicarItens(n, d.items as any[]);
-      S.notas.push(n); audit('create', 'releaseNote', `Criou a nota de novidades ${version}`, n.id);
+      const doVideo = ligarVideoDemo(n, d.videoId);
+      S.notas.push(n); audit('create', 'releaseNote', `Criou a nota de novidades ${version}${doVideo}`, n.id);
       return { id: n.id };
     },
     async atualizar(idn, d) {
@@ -2620,7 +2831,8 @@ export const demoApi: Api = {
       if (d.title !== undefined) n.title = String(d.title);
       if (d.summary !== undefined) n.summary = (d.summary as string) ?? null;
       if (d.items !== undefined) aplicarItens(n, d.items as any[]);
-      n.updatedAt = now(); audit('update', 'releaseNote', `Editou a nota de novidades ${n.version}`, n.id);
+      const doVideo = ligarVideoDemo(n, d.videoId);
+      n.updatedAt = now(); audit('update', 'releaseNote', `Editou a nota de novidades ${n.version}${doVideo}`, n.id);
       return { id: n.id };
     },
     async publicar(idn, publicar) {
@@ -3212,7 +3424,8 @@ export const demoApi: Api = {
     async tutorial(numero) {
       await wait(70); requirePerm('records.read');
       const t = tutorialDemoOu404(numero);
-      return { ...tutorialNaListaDemo(t), texto: t.texto, versao: t.versao, criadoEm: t.criadoEm, publicadoEm: t.publicadoEm, arquivos: arquivosDoTutorialDemo(t) };
+      const arquivos = arquivosDoTutorialDemo(t);
+      return { ...tutorialNaListaDemo(t), texto: t.texto, versao: t.versao, criadoEm: t.criadoEm, publicadoEm: t.publicadoEm, arquivos, videoPrincipal: arquivos.find((a) => a.id === t.videoPrincipalId) ?? null };
     },
     async criar(d0) {
       await wait(220); requirePerm('portal.write');
@@ -3220,13 +3433,15 @@ export const demoApi: Api = {
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
       const d = p.data;
       const campos = { titulo: d.titulo.trim(), resumo: limpoPortalDemo(d.resumo), texto: limpoPortalDemo(d.texto), destaque: d.destaque };
-      if (d.publicar) { const falta = faltaParaPublicarTutorial(campos); if (falta) throw bad(falta); }
+      const video = d.videoPrincipalId ?? null;
+      if (d.publicar) { const falta = faltaParaPublicarTutorial({ ...campos, videoPrincipal: video }); if (falta) throw bad(falta); }
       const { produtoId, moduloId } = conferirProdutoDemo(d);
       semearPortal();
       const t: TutorialRow = {
         id: id(), numero: S.proximoTutorial++, ...campos, produtoId, moduloId, situacao: d.publicar ? 'publicado' : 'rascunho', versao: 1, views: 0,
-        autorId: S.me!.id, atualizadoPorId: S.me!.id, publicadoEm: d.publicar ? now() : null, criadoEm: now(), atualizadoEm: now(), deletedAt: null,
+        autorId: S.me!.id, atualizadoPorId: S.me!.id, publicadoEm: d.publicar ? now() : null, criadoEm: now(), atualizadoEm: now(), deletedAt: null, videoPrincipalId: null,
       };
+      t.videoPrincipalId = ligarVideoPrincipalDemo(t, video);
       ligarArquivosDemo(t);
       S.tutoriais.push(t);
       audit('create', 'portal', `${d.publicar ? 'Publicou' : 'Escreveu o rascunho do'} tutorial ${t.numero} "${t.titulo}" no portal`, t.id);
@@ -3240,11 +3455,14 @@ export const demoApi: Api = {
       const d = p.data;
       if (d.versao != null && d.versao !== t.versao) throw new ApiError(409, `${nomeDaPessoaDemo(t.atualizadoPorId) ?? 'Outra pessoa'} salvou este tutorial enquanto você editava. Copie o que você escreveu, abra o tutorial de novo e junte as duas mudanças.`);
       const campos = { titulo: d.titulo.trim(), resumo: limpoPortalDemo(d.resumo), texto: limpoPortalDemo(d.texto), destaque: d.destaque };
-      if (d.publicar) { const falta = faltaParaPublicarTutorial(campos); if (falta) throw bad(falta); }
+      // sem o campo, o vídeo principal fica como estava; nulo tira (como o servidor)
+      const video = d.videoPrincipalId === undefined ? t.videoPrincipalId : d.videoPrincipalId;
+      if (d.publicar) { const falta = faltaParaPublicarTutorial({ ...campos, videoPrincipal: video }); if (falta) throw bad(falta); }
       const { produtoId, moduloId } = conferirProdutoDemo(d);
       ligarArquivosDemo({ ...t, texto: campos.texto });
+      const videoPrincipalId = ligarVideoPrincipalDemo(t, video);
       const antes = t.situacao;
-      Object.assign(t, campos, { produtoId, moduloId, situacao: d.publicar ? 'publicado' : 'rascunho', publicadoEm: t.publicadoEm ?? (d.publicar ? now() : null), versao: t.versao + 1, atualizadoPorId: S.me!.id, atualizadoEm: now() });
+      Object.assign(t, campos, { videoPrincipalId, produtoId, moduloId, situacao: d.publicar ? 'publicado' : 'rascunho', publicadoEm: t.publicadoEm ?? (d.publicar ? now() : null), versao: t.versao + 1, atualizadoPorId: S.me!.id, atualizadoEm: now() });
       const acao = antes !== t.situacao ? (t.situacao === 'publicado' ? 'Publicou' : 'Tirou do portal (voltou a rascunho)') : 'Editou';
       audit('update', 'portal', `${acao} o tutorial ${t.numero} "${t.titulo}"`, t.id);
       return { numero: t.numero, versao: t.versao, situacao: t.situacao, caminho: caminhoDoTutorial(t.numero, t.titulo) };
@@ -3284,7 +3502,7 @@ export const demoApi: Api = {
       await wait(70); requirePerm('records.read');
       const termo = (q?.q ?? '').trim().toLowerCase();
       return acessosVivos().filter((a) => !q?.cliente || a.clienteId === q.cliente).map(acessoDemo)
-        .filter((a) => !termo || `${a.nome} ${a.email} ${a.cliente}`.toLowerCase().includes(termo))
+        .filter((a) => !termo || `${a.nome} ${a.login} ${a.cliente}`.toLowerCase().includes(termo))
         .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
     },
     async acessosDoCliente(clienteId) {
@@ -3299,22 +3517,33 @@ export const demoApi: Api = {
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
       const c = S.clients.find((x) => x.id === clienteId && !x.deletedAt);
       if (!c) throw notFound('Cliente');
-      const outro = acessosVivos().find((a) => a.email === p.data.email);
-      if (outro) throw new ApiError(409, `Este e-mail já tem acesso ao portal (${situacaoClienteDemo(outro.clienteId).nome}).`);
-      const codigo = codigoDeConviteDemo();
-      const a: AcessoRow = { id: id(), clienteId, nome: p.data.nome, email: p.data.email, senha: null, ativo: true, conviteCodigo: codigo, conviteVence: new Date(Date.now() + DIAS_DO_CONVITE * 86_400_000).toISOString(), ultimoAcesso: null, acessos: 0, criadoPorId: S.me!.id, criadoEm: now() };
+      const outro = acessosVivos().find((a) => a.login === p.data.login);
+      if (outro) throw new ApiError(409, `Este login já é de outra pessoa (${situacaoClienteDemo(outro.clienteId).nome}). Escolha outro.`);
+      const a: AcessoRow = { id: id(), clienteId, nome: p.data.nome, login: p.data.login, senha: p.data.senha, senhaGuardada: true, ativo: true, ultimoAcesso: null, acessos: 0, criadoPorId: S.me!.id, criadoEm: now() };
       S.acessosPortal.push(a);
-      audit('create', 'portal', `Deu acesso ao portal a ${a.nome} (${a.email}), de ${c.tradeName}`, a.id);
-      return { id: a.id, convite: `/portal/convite/${codigo}` };
+      audit('create', 'portal', `Deu acesso ao portal a ${a.nome} (login ${a.login}), de ${c.tradeName}`, a.id);
+      return { id: a.id };
     },
-    async novoConvite(idAcesso) {
+    async trocarSenhaDoAcesso(idAcesso, senha) {
+      await wait(140); requirePerm('portal.access');
+      const p = AcessoSenhaSchema.safeParse({ senha });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Senha inválida');
+      const a = acessosVivos().find((x) => x.id === idAcesso);
+      if (!a) throw notFound('Acesso');
+      if (!a.ativo) throw bad('O acesso está bloqueado. Desbloqueie antes de trocar a senha.');
+      a.senha = p.data.senha; a.senhaGuardada = true;
+      // as sessões abertas caem (a senha antiga não vale mais)
+      if (S.portalSessao === a.id) S.portalSessao = null;
+      audit('update', 'portal', `Trocou a senha do portal de ${a.nome} (login ${a.login}), de ${situacaoClienteDemo(a.clienteId).nome}`, a.id);
+      return { ok: true };
+    },
+    async verSenhaDoAcesso(idAcesso) {
       await wait(120); requirePerm('portal.access');
       const a = acessosVivos().find((x) => x.id === idAcesso);
       if (!a) throw notFound('Acesso');
-      if (!a.ativo) throw bad('O acesso está bloqueado. Desbloqueie antes de mandar um convite.');
-      a.conviteCodigo = codigoDeConviteDemo(); a.conviteVence = new Date(Date.now() + DIAS_DO_CONVITE * 86_400_000).toISOString();
-      audit('update', 'portal', `Gerou um convite novo para ${a.nome} (${a.email}) entrar no portal`, a.id);
-      return { id: a.id, convite: `/portal/convite/${a.conviteCodigo}` };
+      if (!a.senha || !a.senhaGuardada) throw bad('Esta senha foi criada pela própria pessoa, pelo convite: ela não fica guardada. Troque a senha para passar uma nova.');
+      audit('reveal_secret', 'portal', `${S.me!.name} viu a senha do portal de ${a.nome} (login ${a.login}), de ${situacaoClienteDemo(a.clienteId).nome}`, a.id);
+      return { senha: a.senha, visivelPorSegundos: 30 };
     },
     async bloquear(idAcesso, bloquear) {
       await wait(); requirePerm('portal.access');
@@ -3322,18 +3551,18 @@ export const demoApi: Api = {
       if (!a) throw notFound('Acesso');
       a.ativo = !bloquear;
       if (bloquear && S.portalSessao === a.id) S.portalSessao = null;
-      audit('update', 'portal', `${bloquear ? 'Bloqueou' : 'Desbloqueou'} o acesso de ${a.nome} (${a.email}) ao portal`, a.id);
+      audit('update', 'portal', `${bloquear ? 'Bloqueou' : 'Desbloqueou'} o acesso de ${a.nome} (login ${a.login}) ao portal`, a.id);
       return { ok: true };
     },
     async corrigirAcesso(idAcesso, d0) {
       await wait(); requirePerm('portal.access');
-      const p = AcessoCriarSchema.safeParse(d0);
+      const p = AcessoCorrigirSchema.safeParse(d0);
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
       const a = acessosVivos().find((x) => x.id === idAcesso);
       if (!a) throw notFound('Acesso');
-      const outro = acessosVivos().find((x) => x.email === p.data.email && x.id !== a.id);
-      if (outro) throw new ApiError(409, `Este e-mail já tem acesso ao portal (${situacaoClienteDemo(outro.clienteId).nome}).`);
-      Object.assign(a, { nome: p.data.nome, email: p.data.email });
+      const outro = acessosVivos().find((x) => x.login === p.data.login && x.id !== a.id);
+      if (outro) throw new ApiError(409, `Este login já é de outra pessoa (${situacaoClienteDemo(outro.clienteId).nome}). Escolha outro.`);
+      Object.assign(a, { nome: p.data.nome, login: p.data.login });
       audit('update', 'portal', `Corrigiu o acesso de ${a.nome} ao portal`, a.id);
       return { ok: true };
     },
@@ -3353,47 +3582,44 @@ export const demoApi: Api = {
       const a = S.ajustesPortal;
       return { titulo: a.titulo, whatsapp: a.whatsapp ?? null, email: a.email || null, horario: a.horario ?? null };
     },
-    async eu() { await wait(50); return euPortalDemo(sessaoPortalDemo().a); },
-    async entrar(email, senha) {
+    async eu() { await wait(50); return euPortalDemo(sessaoPortalDemo()); },
+    async entrar(login, senha) {
       await wait(180);
-      const p = PortalEntrarSchema.safeParse({ email, senha });
+      const p = PortalEntrarSchema.safeParse({ login, senha });
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
-      const a = acessosVivos().find((x) => x.email === p.data.email);
-      if (!a || !a.senha || a.senha !== p.data.senha) {
-        audit('login_failed', 'portal', `Tentativa de entrar no portal falhou para ${p.data.email}`, null);
-        throw new ApiError(401, 'E-mail ou senha incorretos');
+      const r = conferirSenhaDoPortalDemo(p.data.login, p.data.senha);
+      if (r.u) return r.u.totpOn ? { precisaCodigo: true as const } : entrarComoEquipeDemo(r.u);
+      S.portalSessao = r.a.id; r.a.ultimoAcesso = now(); r.a.acessos += 1;
+      return euPortalDemo(sessaoPortalDemo());
+    },
+    async entrarComCodigo(login, senha, codigo) {
+      await wait(220);
+      const p = PortalEntrarComCodigoSchema.safeParse({ login, senha, codigo });
+      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Dados inválidos');
+      const r = conferirSenhaDoPortalDemo(p.data.login, p.data.senha);
+      if (!r.u) { S.portalSessao = r.a.id; r.a.ultimoAcesso = now(); r.a.acessos += 1; return euPortalDemo(sessaoPortalDemo()); }
+      if (!r.u.totpOn) return entrarComoEquipeDemo(r.u);
+      // como o login do Gestor na prévia: qualquer código de 6 dígitos, ou um de recuperação (uma vez)
+      const limpo = p.data.codigo.toUpperCase();
+      const recuperacao = r.u.recovery?.includes(limpo);
+      if (!/^\d{6}$/.test(limpo) && !recuperacao) {
+        audit('login_failed', 'portal', 'Código de verificação incorreto ao entrar no portal do cliente', r.u.id);
+        throw new ApiError(401, 'Código incorreto. Confira o aplicativo e tente de novo.');
       }
-      if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(403, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
-      S.portalSessao = a.id; a.ultimoAcesso = now(); a.acessos += 1;
-      return euPortalDemo(a);
+      if (recuperacao) r.u.recovery = (r.u.recovery ?? []).filter((c) => c !== limpo);
+      return entrarComoEquipeDemo(r.u, recuperacao ? 'recuperacao' : 'codigo');
     },
     async sair() { await wait(40); S.portalSessao = null; return { ok: true }; },
-    async convite(codigo) {
-      await wait(80);
-      const a = acessosVivos().find((x) => x.conviteCodigo === codigo && x.conviteVence && x.conviteVence > now());
-      if (!a) throw notFound('Convite');
-      if (!a.ativo || !situacaoClienteDemo(a.clienteId).naBase) throw new ApiError(403, 'Seu acesso ao portal está suspenso. Fale com o suporte da Ingline.');
-      return { nome: a.nome, email: a.email, cliente: situacaoClienteDemo(a.clienteId).nome, trocando: !!a.senha };
-    },
-    async criarSenha(codigo, senha) {
-      await wait(180);
-      const p = PortalCriarSenhaSchema.safeParse({ senha });
-      if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Senha inválida');
-      const a = acessosVivos().find((x) => x.conviteCodigo === codigo && x.conviteVence && x.conviteVence > now());
-      if (!a) throw notFound('Convite');
-      const trocando = !!a.senha;
-      a.senha = p.data.senha; a.conviteCodigo = null; a.conviteVence = null;
-      audit('update', 'portal', `${a.nome} (${a.email}) ${trocando ? 'trocou a senha' : 'criou a senha'} do portal pelo convite`, a.id);
-      S.portalSessao = a.id; a.ultimoAcesso = now(); a.acessos += 1;
-      return { ok: true };
-    },
     async trocarSenha(atual, nova) {
       await wait(150);
       const { a } = sessaoPortalDemo();
+      if (!a) throw bad('Sua senha é a do Ingline Gestão: troque por lá, em Minha conta.');
       const p = PortalTrocarSenhaSchema.safeParse({ atual, nova });
       if (!p.success) throw bad(p.error.issues[0]?.message ?? 'Senha inválida');
       if (a.senha !== p.data.atual) throw bad('A senha atual não confere.');
-      a.senha = p.data.nova;
+      // a cópia "do cofre" acompanha: o suporte continua vendo a senha certa (como o servidor)
+      a.senha = p.data.nova; a.senhaGuardada = true;
+      audit('update', 'portal', `${a.nome} (login ${a.login}) trocou a própria senha do portal`, a.id);
       return { ok: true };
     },
     async inicio() {
@@ -3421,18 +3647,20 @@ export const demoApi: Api = {
     },
     async tutorial(numero) {
       await wait(80);
-      const { ativos } = sessaoPortalDemo();
+      const { ativos, u } = sessaoPortalDemo();
       const n = numeroDoCaminho(numero);
       const t = visiveisDemo(ativos).find((x) => x.numero === n);
       if (!t) throw notFound('Tutorial');
-      t.views += 1;
-      return { ...cartaoDemo(t), texto: t.texto, publicadoEm: t.publicadoEm, arquivos: arquivosDoTutorialDemo(t) };
+      // a visita da equipe não conta: o número é o dos clientes
+      if (!u) t.views += 1;
+      const arquivos = arquivosDoTutorialDemo(t);
+      return { ...cartaoDemo(t), texto: t.texto, publicadoEm: t.publicadoEm, arquivos, videoPrincipal: arquivos.find((a) => a.id === t.videoPrincipalId) ?? null };
     },
   },
   admin: {
     async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt })); },
     async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
-    async updateUser(idu, d) { await wait(); requirePerm('admin.manage'); const u = S.users.find((x) => x.id === idu); if (!u) throw notFound('Usuário'); if ((d.active === false || (d.roleId && d.roleId !== u.roleId)) && u.roleId === 'radministrador' && !S.users.some((o) => o.id !== idu && o.roleId === 'radministrador' && o.active)) throw bad('Este é o único administrador ativo. Crie outro antes de rebaixar ou desativar.'); for (const k of ['name', 'email', 'roleId', 'active'] as const) if (d[k] !== undefined) (u as any)[k] = d[k]; if (d.password) u.password = String(d.password); audit('update', 'user', `Editou o usuário ${u.name}`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
+    async updateUser(idu, d) { await wait(); requirePerm('admin.manage'); const u = S.users.find((x) => x.id === idu); if (!u) throw notFound('Usuário'); if ((d.active === false || (d.roleId && d.roleId !== u.roleId)) && u.roleId === 'radministrador' && !S.users.some((o) => o.id !== idu && o.roleId === 'radministrador' && o.active)) throw bad('Este é o único administrador ativo. Crie outro antes de rebaixar ou desativar.'); for (const k of ['name', 'email', 'roleId', 'active'] as const) if (d[k] !== undefined) (u as any)[k] = d[k]; if (d.password) u.password = String(d.password); if (d.password || d.active === false) derrubarPortalDaEquipeDemo(u.id); audit('update', 'user', `Editou o usuário ${u.name}`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
     async roles() { await wait(); requirePerm('admin.manage'); return S.roles.map((r) => ({ ...r, userCount: S.users.filter((u) => u.roleId === r.id).length })); },
     async permissions() { await wait(30); return ALL_PERMISSIONS.map((key) => ({ key, label: PERMISSIONS[key] })); },
     async createRole(d) { await wait(); requirePerm('admin.manage'); const r: RoleRow = { id: id(), key: null, name: String(d.name), description: (d.description as string) ?? null, permissions: (d.permissions as string[]) ?? [], isSystem: false }; S.roles.push(r); audit('create', 'role', `Criou o papel ${r.name}`, r.id); return { ...r, userCount: 0 }; },

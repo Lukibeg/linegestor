@@ -67,6 +67,8 @@ export type PainelChamados = {
 
 /** Chamados › Relatórios (1.7): os relatórios, a peça clicada, os ajustes, a arrumação e o Raio-X. */
 export type { RelatoriosChamados, RaioXChamados, AjustesRelatorios, LinhaReincidencia, LinhaEquipe, PontoFila, SepararPor, PapelCampo, Causa } from '@gestor/shared';
+// os Relatórios do Inventário (1.9): o tipo é o das contas, que servidor e prévia dividem
+export type { RelatoriosInventario, AparelhoDoRelatorio, LinhaQuemTem, ItemCadastro } from '@gestor/shared';
 export type PecaRelatorio = { titulo: string; itens: import('@gestor/shared').LinhaChamado[]; total: number };
 type CampoUsadoTela = { key: string; name: string } | null;
 /** A janela "Ajustar" dos Relatórios: os campos usados e a ligação de cada Cliente do card com o cadastro. */
@@ -206,8 +208,13 @@ export type Device = {
   modelValueCents: number | null;
   modelImageUrl: string | null;
   ip: string | null; location: string | null; note: string | null;
-  history?: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; unit: string | null; newCondition: string | null; note: string | null; userName: string; createdAt: string }>;
+  history?: Array<{ id: string; modality: string; modalityName: string; fromName: string | null; toName: string | null; unit: string | null; newCondition: string | null; note: string | null; userName: string; createdAt: string; recibos: ReciboDeEntrega[] }>;
 };
+/**
+ * Um arquivo do recibo de entrega da movimentação (1.9, decisão 0042) — os dados, nunca o arquivo.
+ * `url`: no sistema, o caminho na API (passa por `logoSrc`); na prévia, o próprio arquivo ("data:…").
+ */
+export type ReciboDeEntrega = { id: string; fileName: string; mimeType: string; sizeBytes: number; createdAt: string; url: string; quem: string | null };
 export type Movement = {
   id: string; modality: string; modalityName: string; fromClientId: string | null; fromName: string | null; toClientId: string | null; toName: string | null;
   /** unidade do cliente de destino */
@@ -215,6 +222,8 @@ export type Movement = {
   newCondition: string | null; note: string | null; userName: string; createdAt: string; items: Array<{ modelName: string; quantity: number }>;
   /** cada aparelho desta movimentação */
   devices: Array<{ id: string; modelName: string; identificacao: string }>;
+  /** o recibo de entrega (só na movimentação para cliente), na ordem em que foi anexado */
+  recibos: ReciboDeEntrega[];
 };
 
 export type Dashboard = {
@@ -268,18 +277,24 @@ export type ImportPlan = { entity: string; rows: Array<{ line: number; action: '
 
 /** Um item (cartão) de uma nota de novidades. `imageUrl` é caminho relativo à API (use `logoSrc()`). */
 export type NovidadeItem = { id: string; kind: 'novo' | 'melhorou' | 'corrigido' | 'atencao'; title: string; text: string | null; sortOrder: number; imageUrl: string | null };
+/**
+ * O vídeo do patch (1.9, decisão 0046): com vídeo, é ele que abre no login, no lugar dos cartões.
+ * `url` é relativa à API (use `logoSrc()`); na prévia já vem pronta.
+ */
+export type VideoNovidade = { id: string; url: string; nome: string; tamanho: number; tipo: string };
 /** Uma nota de versão. `publishedAt` nulo = rascunho (só quem administra enxerga). */
 export type Novidade = {
   id: string; version: string; title: string; summary: string | null;
   publishedAt: string | null; createdAt: string; updatedAt: string;
-  /** esta pessoa já marcou "Li e entendi" */
+  /** esta pessoa já marcou "Li e entendi" (ou "Assisti e entendi") */
   lida: boolean;
   /** quantas pessoas já leram, de quantas pessoas ativas existem */
   leituras: number; pessoas: number;
   items: NovidadeItem[];
+  video: VideoNovidade | null;
 };
 /** A nota que abre no login: só o necessário para o pop-up. */
-export type NovidadePendente = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; items: NovidadeItem[] };
+export type NovidadePendente = { id: string; version: string; title: string; summary: string | null; publishedAt: string | null; items: NovidadeItem[]; video: VideoNovidade | null };
 /** Quem já leu uma nota e quem ainda não. */
 export type LeiturasNovidade = { version: string; title: string; publishedAt: string | null; pessoas: Array<{ id: string; name: string; email: string; readAt: string | null }> };
 
@@ -460,33 +475,36 @@ export type CartaoTutorial = {
   id: string; numero: number; titulo: string; resumo: string | null;
   produto: ProdutoDoPortal | null; modulo: { id: string; nome: string } | null;
   destaque: boolean; atualizadoEm: string; caminho: string;
+  /** tem o vídeo principal (1.9) */
+  temVideo: boolean;
 };
 /** `trecho`: onde a busca bateu (só com busca) */
 export type TutorialNaLista = CartaoTutorial & { situacao: 'rascunho' | 'publicado'; visualizacoes: number; autor: string | null; atualizadoPor: string | null; trecho?: Array<{ texto: string; achado: boolean }> | null };
 /** `url` é relativa à API (como a logo do cliente); na prévia, o próprio arquivo embutido */
 export type ArquivoDoPortal = { id: string; tipo: _TipoArq; nome: string; mimeType: string; tamanho: number; url: string };
-export type Tutorial = TutorialNaLista & { texto: string | null; versao: number; criadoEm: string; publicadoEm: string | null; arquivos: ArquivoDoPortal[] };
+export type Tutorial = TutorialNaLista & { texto: string | null; versao: number; criadoEm: string; publicadoEm: string | null; arquivos: ArquivoDoPortal[]; videoPrincipal: ArquivoDoPortal | null };
 export type GravadoTutorial = { numero: number; versao: number; situacao: 'rascunho' | 'publicado'; caminho: string };
 export type OpcoesPortal = { produtos: Array<ProdutoDoPortal & { modulos: Array<{ id: string; nome: string }> }> };
+/** Um acesso ao portal (1.9: o login e a senha são do suporte; `senhaGuardada` = dá para ver a senha) */
 export type AcessoPortal = {
-  id: string; nome: string; email: string; clienteId: string; cliente: string;
-  situacao: _SitAcesso; motivo: string | null; conviteVenceEm: string | null;
+  id: string; nome: string; login: string; clienteId: string; cliente: string;
+  situacao: _SitAcesso; motivo: string | null; senhaGuardada: boolean;
   ultimoAcesso: string | null; acessos: number; criadoPor: string | null; criadoEm: string;
 };
 export type AcessosDoCliente = { naBase: boolean; motivo: string | null; acessos: AcessoPortal[] };
-/** O caminho do convite (/portal/convite/<código>): o código só existe agora, no banco fica o hash */
-export type ConviteGerado = { id: string; convite: string };
 export type EspacoPortal = { videos: number; bytesVideos: number; arquivos: number; bytesArquivos: number };
 // o lado do cliente
-export type EuPortal = { nome: string; email: string; cliente: { nome: string; logo: string | null }; portal: _AjustesPortal };
+/** Quem está no portal. `equipe` = entrou com o login do Gestor (decisão 0044): o "cliente" é a Equipe Ingline e vê todos os tutoriais. */
+export type EuPortal = { nome: string; login: string; equipe: boolean; cliente: { nome: string; logo: string | null }; portal: _AjustesPortal };
+/** O que o "Entrar" responde: quem entrou, ou que falta o código de 6 dígitos (a equipe que usa o código no Gestor). */
+export type EntradaPortal = EuPortal | { precisaCodigo: true };
 export type SobrePortal = { titulo: string; whatsapp: string | null; email: string | null; horario: string | null };
 export type InicioPortal = {
   portal: _AjustesPortal; produtos: Array<ProdutoDoPortal & { tutoriais: number }>; geral: number;
   destaques: CartaoTutorial[]; recentes: CartaoTutorial[]; total: number;
 };
 export type TutorialAchado = CartaoTutorial & { trecho: Array<{ texto: string; achado: boolean }> | null };
-export type TutorialDoCliente = CartaoTutorial & { texto: string | null; publicadoEm: string | null; arquivos: ArquivoDoPortal[] };
-export type ConvitePortal = { nome: string; email: string; cliente: string; trocando: boolean };
+export type TutorialDoCliente = CartaoTutorial & { texto: string | null; publicadoEm: string | null; arquivos: ArquivoDoPortal[]; videoPrincipal: ArquivoDoPortal | null };
 
 export class ApiError extends Error {
   /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */

@@ -38,8 +38,9 @@ const ALIASES: Record<Entity, Record<string, string[]>> = {
     keyNumber: ['numero_chave', 'num_chave', 'key_number', 'numero_piloto'],
   },
   dids: {
+    // sem "titular" desde o 1.9 (09/10): o titular é do circuito; a coluna de um arquivo antigo é ignorada
     number: ['numero', 'number', 'did', 'linha'], circuit: ['circuito', 'circuit', 'circuit_code', 'codigo_circuito'], client: ['cliente', 'client', 'locacao', 'cnpj_cliente', 'client_cnpj'],
-    owner: ['titular', 'dono', 'owner', 'proprietario'], note: ['observacao', 'note', 'obs'],
+    note: ['observacao', 'note', 'obs'],
   },
 };
 
@@ -221,10 +222,7 @@ async function planDids(db: Db, raw: Record<string, string>[]): Promise<Plan> {
     const isFree = !clientRaw || /^(livre|free|-)$/i.test(clientRaw);
     const client = !isFree ? findClient(clientRaw!) : undefined;
     if (!isFree && !client) errors.push(`Cliente desconhecido: ${clientRaw}`);
-    const ownerRaw = pick(r, 'dids', 'owner');
-    const owner = ownerRaw ? findClient(ownerRaw) : undefined;
-    if (ownerRaw && !owner) errors.push(`Titular desconhecido: ${ownerRaw}`);
-    const data = { targetId, number, circuitId: circuit?.id, clientId: clientRaw === undefined ? undefined : client?.id ?? null, ownerClientId: owner?.id, note: pick(r, 'dids', 'note') };
+    const data = { targetId, number, circuitId: circuit?.id, clientId: clientRaw === undefined ? undefined : client?.id ?? null, note: pick(r, 'dids', 'note') };
     return { line: i + 2, action: errors.length ? 'error' : targetId ? 'update' : 'create', key: number, errors, data };
   });
   return summarize('dids', rows);
@@ -297,12 +295,11 @@ export async function apply(db: Db, vault: SecretsVault, p: Plan, userId: string
           const set: Record<string, unknown> = { updatedAt: new Date() };
           if (d.circuitId !== undefined) set.circuitId = d.circuitId;
           if (d.clientId !== undefined) { set.clientId = d.clientId; set.inUse = false; }
-          if (d.ownerClientId !== undefined) set.ownerClientId = d.ownerClientId;
           if (d.note !== undefined) set.note = d.note;
           await tx.update(dids).set(set).where(eq(dids.id, d.targetId));
           updated++;
         } else {
-          inserts.push({ id: newId(), number: d.number, circuitId: d.circuitId, clientId: d.clientId ?? null, inUse: false, ownerClientId: d.ownerClientId ?? null, note: d.note ?? null });
+          inserts.push({ id: newId(), number: d.number, circuitId: d.circuitId, clientId: d.clientId ?? null, inUse: false, note: d.note ?? null });
           created++;
         }
       }
@@ -353,10 +350,10 @@ export async function exportCsv(db: Db, vault: SecretsVault, entity: Entity, wit
     return { filename: `circuitos-${stamp}.csv`, csv: BOM + stringify(out, { header: true, delimiter: ';' }) };
   }
   const rows = await db
-    .select({ number: dids.number, circuitCode: circuits.code, circuitName: circuits.name, clientCnpj: clients.cnpj, clientName: clients.tradeName, ownerId: dids.ownerClientId, note: dids.note })
+    .select({ number: dids.number, circuitCode: circuits.code, circuitName: circuits.name, clientCnpj: clients.cnpj, clientName: clients.tradeName, note: dids.note })
     .from(dids).leftJoin(circuits, eq(circuits.id, dids.circuitId)).leftJoin(clients, eq(clients.id, dids.clientId)).where(isNull(dids.deletedAt)).orderBy(dids.number);
-  const owners = new Map((await db.select({ id: clients.id, name: clients.tradeName }).from(clients)).map((o) => [o.id, o.name]));
-  const out = rows.map((r) => ({ numero: r.number, circuito: r.circuitCode ?? '', circuito_nome: r.circuitName ?? '', cliente: r.clientCnpj ?? '', cliente_nome: r.clientName ?? 'livre', titular: r.ownerId ? owners.get(r.ownerId) ?? '' : '', observacao: r.note ?? '' }));
+  // sem o titular desde o 1.9: ele é do circuito (o CSV de circuitos traz)
+  const out = rows.map((r) => ({ numero: r.number, circuito: r.circuitCode ?? '', circuito_nome: r.circuitName ?? '', cliente: r.clientCnpj ?? '', cliente_nome: r.clientName ?? 'livre', observacao: r.note ?? '' }));
   return { filename: `dids-${stamp}.csv`, csv: BOM + stringify(out, { header: true, delimiter: ';' }) };
 }
 

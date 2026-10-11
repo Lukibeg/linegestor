@@ -2,7 +2,7 @@
  * PORTAL DO CLIENTE (Patch 1.8, decisão 0040) — o que o cliente da Ingline acessa.
  *
  * Fica no mesmo endereço do sistema, em /portal, mas é outro mundo: login próprio (cada pessoa do
- * cliente com e-mail e senha), outro cookie, outra moldura (sem o menu da equipe) e só o conteúdo
+ * cliente com o login e a senha que o suporte criou), outro cookie, outra moldura (sem o menu da equipe) e só o conteúdo
  * dos produtos que o cliente tem. Saiu da base (arquivado, na lixeira, sem produto ativo), o
  * acesso cai na hora — o servidor confere a cada pedido.
  *
@@ -18,7 +18,7 @@ import { ApiError, type EuPortal } from '../api/types.js';
 import { Carregando, LogoCliente, mensagemErro } from '../components/ui/index.js';
 import { Simbolo } from '../components/Marca.js';
 import { ContatoDoSuporte, linkDoSuporte, primeiroNome, useEu, useSobre } from './comum.js';
-import { Convite, Entrar } from './Entrada.js';
+import { ConviteAntigo, Entrar } from './Entrada.js';
 import { Busca, Conta, Inicio, Produto, TutorialPagina } from './Paginas.js';
 
 export function PortalApp() {
@@ -33,7 +33,7 @@ export function PortalApp() {
   return (
     <Routes>
       <Route path="entrar" element={<Entrar />} />
-      <Route path="convite/:codigo" element={<Convite />} />
+      <Route path="convite/:codigo" element={<ConviteAntigo />} />
       <Route index element={<Logado pagina={(eu) => <Inicio eu={eu} />} />} />
       <Route path="produto/:id" element={<Logado pagina={(eu) => <Produto eu={eu} />} />} />
       <Route path="busca" element={<Logado pagina={(eu) => <Busca eu={eu} />} />} />
@@ -152,7 +152,7 @@ function MenuDaConta({ eu }: { eu: EuPortal }) {
         <div className="absolute right-0 mt-2 w-[260px] card shadow-xl p-1.5 z-40" role="menu">
           <div className="px-2.5 py-2 border-b border-line mb-1">
             <div className="font-semibold text-[14px] truncate">{eu.nome}</div>
-            <div className="text-[12.5px] text-muted truncate">{eu.email}</div>
+            <div className="text-[12.5px] text-muted truncate">{eu.login}</div>
             <div className="text-[12.5px] text-muted truncate">{eu.cliente.nome}</div>
           </div>
           <Link to="/portal/conta" role="menuitem" className="flex items-center gap-2 rounded-md px-2.5 py-2 text-[14px] hover:bg-surface-2" onClick={() => setAberto(false)}><UserRound size={15} /> Minha conta</Link>

@@ -8,11 +8,36 @@
  *  - fechar sem marcar não conta: volta no próximo login
  *  - cada item é um cartão (rótulo, título, texto e um print opcional), na ordem escolhida
  *  - a imagem mora no banco, como a logo do cliente e a foto do modelo
+ *  - **o vídeo do patch** (1.9, decisão 0046): a nota com vídeo abre no login com ele, no lugar dos
+ *    cartões (que continuam na página). O vídeo fica em disco (`PORTAL_DIR/novidades`), como os do
+ *    portal; sobe sozinho, sem nota, e passa a ser dela ao salvar; trocar ou tirar só o tira da nota
  */
+import { join } from 'node:path';
+import type { Readable } from 'node:stream';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { newId, releaseNoteImages, releaseNoteItems, releaseNoteReads, releaseNotes, users, type Db } from '@gestor/db';
+import { newId, releaseNoteImages, releaseNoteItems, releaseNoteReads, releaseNotes, releaseNoteVideos, users, type Db } from '@gestor/db';
 import type { NovidadeGravar, NovidadeItem } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
+import { pastaDoPortal } from './portal.js';
+import { copiarVideoParaODisco, gravarVideoNoDisco } from './videoEmDisco.js';
+
+/** Onde mora o vídeo do patch: no mesmo volume dos vídeos do portal (em produção, /portal/novidades). */
+export const pastaDosVideosDasNovidades = () => join(pastaDoPortal(), 'novidades');
+
+type LinhaVideo = typeof releaseNoteVideos.$inferSelect;
+
+/** O vídeo como as telas veem. O endereço é relativo à API e muda quando o vídeo muda (o id é outro). */
+function shapeVideo(v: LinhaVideo) {
+  return { id: v.id, url: `release-notes/videos/${v.id}`, nome: v.fileName, tamanho: v.sizeBytes, tipo: v.mimeType };
+}
+
+/** O vídeo que vale de cada nota (no máximo um por nota). */
+async function videosDe(db: Db, noteIds: string[]) {
+  if (!noteIds.length) return new Map<string, LinhaVideo>();
+  const rows = await db.select().from(releaseNoteVideos)
+    .where(and(inArray(releaseNoteVideos.noteId, noteIds), isNull(releaseNoteVideos.deletedAt)));
+  return new Map(rows.map((r) => [r.noteId!, r]));
+}
 
 /** Endereço do print, relativo à API. O `v` muda a cada troca, para não vir o antigo do cache. */
 function imagemPath(itemId: string, updatedAt?: Date | null) {
@@ -47,13 +72,15 @@ export async function list(db: Db, userId: string, opts: { includeDrafts?: boole
   const notas = await db.select().from(releaseNotes).where(and(...conds))
     .orderBy(desc(sql`coalesce(${releaseNotes.publishedAt}, ${releaseNotes.createdAt})`));
   const ids = notas.map((n) => n.id);
-  const [itens, leituras, [total]] = await Promise.all([
+  const [itens, leituras, [total], videos] = await Promise.all([
     itensDe(db, ids),
     ids.length ? db.select({ noteId: releaseNoteReads.noteId, userId: releaseNoteReads.userId }).from(releaseNoteReads).where(inArray(releaseNoteReads.noteId, ids)) : [],
     db.select({ n: sql<number>`count(*)` }).from(users).where(eq(users.active, true)),
+    videosDe(db, ids),
   ]);
   return notas.map((n) => {
     const minhas = leituras.filter((l) => l.noteId === n.id);
+    const video = videos.get(n.id);
     return {
       id: n.id, version: n.version, title: n.title, summary: n.summary,
       publishedAt: n.publishedAt, createdAt: n.createdAt, updatedAt: n.updatedAt,
@@ -62,6 +89,8 @@ export async function list(db: Db, userId: string, opts: { includeDrafts?: boole
       /** quantas pessoas ativas existem hoje — o "4 de 6" da tela de acompanhamento */
       pessoas: Number(total?.n ?? 0),
       items: itens.filter((i) => i.noteId === n.id).map(shapeItem),
+      /** com vídeo, é ele que abre no login (os cartões ficam na página) */
+      video: video ? shapeVideo(video) : null,
     };
   });
 }
@@ -78,8 +107,12 @@ export async function pending(db: Db, userId: string) {
   const [leu] = await db.select({ id: releaseNoteReads.id }).from(releaseNoteReads)
     .where(and(eq(releaseNoteReads.noteId, nota.id), eq(releaseNoteReads.userId, userId))).limit(1);
   if (leu) return null;
-  const itens = await itensDe(db, [nota.id]);
-  return { id: nota.id, version: nota.version, title: nota.title, summary: nota.summary, publishedAt: nota.publishedAt, items: itens.map(shapeItem) };
+  const [itens, videos] = await Promise.all([itensDe(db, [nota.id]), videosDe(db, [nota.id])]);
+  const video = videos.get(nota.id);
+  return {
+    id: nota.id, version: nota.version, title: nota.title, summary: nota.summary, publishedAt: nota.publishedAt, items: itens.map(shapeItem),
+    video: video ? shapeVideo(video) : null,
+  };
 }
 
 /** Quantas notas publicadas esta pessoa ainda não leu (o número do sininho). */
@@ -143,6 +176,30 @@ async function gravarItens(tx: Db, noteId: string, itens: NovidadeItem[]) {
   }
 }
 
+/** O que aconteceu com o vídeo ao salvar (vai para a auditoria). */
+export type MudancaDoVideo = 'pos' | 'trocou' | 'tirou' | null;
+
+/**
+ * O vídeo da nota: ausente = mantém · null = tira · o id = o vídeo que acabou de subir. O que saía
+ * da nota só ganha `deleted_at` (o arquivo fica no disco: nada se apaga de verdade).
+ */
+async function ligarVideo(tx: Db, noteId: string, videoId: string | null | undefined): Promise<MudancaDoVideo> {
+  if (videoId === undefined) return null;
+  const [atual] = await tx.select().from(releaseNoteVideos).where(and(eq(releaseNoteVideos.noteId, noteId), isNull(releaseNoteVideos.deletedAt)));
+  if (videoId === null) {
+    if (!atual) return null;
+    await tx.update(releaseNoteVideos).set({ deletedAt: new Date() }).where(eq(releaseNoteVideos.id, atual.id));
+    return 'tirou';
+  }
+  if (atual?.id === videoId) return null;
+  const [novo] = await tx.select().from(releaseNoteVideos).where(and(eq(releaseNoteVideos.id, videoId), isNull(releaseNoteVideos.deletedAt)));
+  // só o vídeo que subiu sem nota (ou já é desta); o de outra nota, não
+  if (!novo || (novo.noteId && novo.noteId !== noteId)) throw new BadRequest('Este vídeo não está mais disponível. Suba o vídeo de novo.');
+  if (atual) await tx.update(releaseNoteVideos).set({ deletedAt: new Date() }).where(eq(releaseNoteVideos.id, atual.id));
+  await tx.update(releaseNoteVideos).set({ noteId }).where(eq(releaseNoteVideos.id, videoId));
+  return atual ? 'trocou' : 'pos';
+}
+
 export async function create(db: Db, data: NovidadeGravar) {
   const [dup] = await db.select({ id: releaseNotes.id }).from(releaseNotes).where(eq(releaseNotes.version, data.version));
   if (dup) throw new BadRequest(`Já existe uma nota com a versão "${data.version}"`);
@@ -150,8 +207,9 @@ export async function create(db: Db, data: NovidadeGravar) {
   return db.transaction(async (tx) => {
     await tx.insert(releaseNotes).values({ id, version: data.version, title: data.title, summary: data.summary ?? null });
     await gravarItens(tx as Db, id, data.items ?? []);
+    const mudancaDoVideo = await ligarVideo(tx as Db, id, data.videoId);
     const [row] = await tx.select().from(releaseNotes).where(eq(releaseNotes.id, id));
-    return row!;
+    return { ...row!, mudancaDoVideo };
   });
 }
 
@@ -170,8 +228,9 @@ export async function update(db: Db, id: string, data: Partial<NovidadeGravar>) 
       updatedAt: new Date(),
     }).where(eq(releaseNotes.id, id));
     if (data.items) await gravarItens(tx as Db, id, data.items);
+    const video = await ligarVideo(tx as Db, id, data.videoId);
     const [row] = await tx.select().from(releaseNotes).where(eq(releaseNotes.id, id));
-    return { before, after: row! };
+    return { before, after: row!, video };
   });
 }
 
@@ -208,14 +267,50 @@ export async function readImage(db: Db, itemId: string) {
   return { mimeType: row.mimeType, buffer: Buffer.from(row.dataBase64, 'base64'), updatedAt: row.updatedAt };
 }
 
+// ---------- O vídeo do patch ----------
+
+/** Sobe o vídeo para o disco (sem carregar na memória). Nasce sem nota: passa a ser dela ao salvar. */
+export async function guardarVideo(db: Db, nome: string, mime: string, corpo: Readable, truncado: () => boolean, quemId: string) {
+  const v = await gravarVideoNoDisco(pastaDosVideosDasNovidades(), mime, corpo, truncado);
+  const [row] = await db.insert(releaseNoteVideos).values({
+    id: v.id, fileName: nome.slice(0, 200) || 'video', mimeType: mime, sizeBytes: v.size, diskName: v.diskName, uploadedById: quemId,
+  }).returning();
+  return shapeVideo(row!);
+}
+
+/**
+ * O vídeo para mandar. O da nota publicada, qualquer pessoa logada vê; o de rascunho, o que acabou
+ * de subir e o que saiu da nota, só quem edita as novidades.
+ */
+export async function videoParaMandar(db: Db, id: string, podeEditar: boolean) {
+  const [r] = await db.select({ v: releaseNoteVideos, publicada: releaseNotes.publishedAt, notaApagada: releaseNotes.deletedAt })
+    .from(releaseNoteVideos).leftJoin(releaseNotes, eq(releaseNotes.id, releaseNoteVideos.noteId))
+    .where(eq(releaseNoteVideos.id, id)).limit(1);
+  if (!r) throw new NotFound('Vídeo');
+  const aberto = !!r.publicada && !r.notaApagada && !r.v.deletedAt;
+  if (!aberto && !podeEditar) throw new NotFound('Vídeo');
+  return { caminho: join(pastaDosVideosDasNovidades(), r.v.diskName), mimeType: r.v.mimeType, fileName: r.v.fileName };
+}
+
+/** A nota como vem do arquivo: a mesma da tela, mais o vídeo que está ao lado dela (`video:` no cabeçalho). */
+export type NotaDoArquivo = NovidadeGravar & { video?: { arquivo: string; nome: string; mime: string } };
+
 /**
  * Importação de uma nota escrita em arquivo (é assim que a nota de cada rodada chega já pronta
  * na publicação). Se a versão já existir, não faz nada — o `publicar.sh` pode rodar quantas vezes quiser.
+ * Com vídeo, ele é copiado para o disco antes: se o arquivo não abrir, a nota nem entra (e o erro avisa).
  */
-export async function importar(db: Db, data: NovidadeGravar, opts: { publicar?: boolean } = {}) {
+export async function importar(db: Db, data: NotaDoArquivo, opts: { publicar?: boolean } = {}) {
   const [existe] = await db.select({ id: releaseNotes.id }).from(releaseNotes).where(eq(releaseNotes.version, data.version));
-  if (existe) return { criada: false, id: existe.id, version: data.version };
-  const row = await create(db, data);
+  if (existe) return { criada: false, id: existe.id, version: data.version, video: false };
+  const { video, ...nota } = data;
+  let videoId: string | undefined;
+  if (video) {
+    const v = await copiarVideoParaODisco(pastaDosVideosDasNovidades(), video.arquivo, video.mime);
+    await db.insert(releaseNoteVideos).values({ id: v.id, fileName: video.nome, mimeType: video.mime, sizeBytes: v.size, diskName: v.diskName });
+    videoId = v.id;
+  }
+  const row = await create(db, { ...nota, ...(videoId ? { videoId } : {}) });
   if (opts.publicar !== false) await publish(db, row.id, true);
-  return { criada: true, id: row.id, version: data.version };
+  return { criada: true, id: row.id, version: data.version, video: !!videoId };
 }

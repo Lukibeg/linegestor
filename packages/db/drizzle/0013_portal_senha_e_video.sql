@@ -1,0 +1,4 @@
+ALTER TABLE "portal_articles" ADD COLUMN "main_video_id" text;--> statement-breakpoint
+ALTER TABLE "portal_users" ADD COLUMN "password_secret_id" text;--> statement-breakpoint
+ALTER TABLE "portal_articles" ADD CONSTRAINT "portal_articles_main_video_id_portal_files_id_fk" FOREIGN KEY ("main_video_id") REFERENCES "public"."portal_files"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "portal_users" ADD CONSTRAINT "portal_users_password_secret_id_secrets_id_fk" FOREIGN KEY ("password_secret_id") REFERENCES "public"."secrets"("id") ON DELETE no action ON UPDATE no action;

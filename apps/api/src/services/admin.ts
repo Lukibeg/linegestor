@@ -14,6 +14,7 @@ import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, subscriptionModules, subscriptions, users, type Db } from '@gestor/db';
 import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
+import { derrubarSessoesDaEquipe } from './portal.js';
 
 // ---------- Usuários ----------
 
@@ -53,6 +54,9 @@ export async function updateUser(db: Db, id: string, data: Partial<UsuarioCriar>
   if (data.active !== undefined) set.active = data.active;
   if (data.password) set.passwordHash = await argon2.hash(data.password);
   const [after] = await db.update(users).set(set).where(eq(users.id, id)).returning({ id: users.id, name: users.name, email: users.email, active: users.active, roleId: users.roleId });
+  // a equipe entra no portal do cliente com este mesmo login (decisão 0044): senha nova ou usuário
+  // desativado derruba as sessões abertas lá — quem sabia a senha antiga não continua dentro
+  if (data.password || data.active === false) await derrubarSessoesDaEquipe(db, id);
   void actorId;
   return { before: { id: before.id, name: before.name, email: before.email, active: before.active, roleId: before.roleId }, after: after! };
 }

@@ -1,4 +1,4 @@
-/** Inventário: abas Aparelhos · Modelos · Movimentações, e o painel "Movimentar aparelhos". */
+/** Inventário: abas Aparelhos · Modelos · Movimentações · Relatórios (1.9), e o painel "Movimentar aparelhos". */
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -17,8 +17,10 @@ import { useLembrarFiltros } from '../../lib/voltar.js';
 import { contarDe, TdN, ThN } from '../../lib/contagem.js';
 import { BarrasRanking } from '../../components/graficos.js';
 import { ArtigosLigados } from '../base/partes.js';
+import { RelatoriosDoInventario } from './Relatorios.js';
+import { MarcaRecibo, RecibosDaMovimentacao } from './Recibos.js';
 
-type Aba = 'aparelhos' | 'modelos' | 'movimentacoes';
+type Aba = 'aparelhos' | 'modelos' | 'movimentacoes' | 'relatorios';
 
 export function Inventario() {
   const [sp, setSp] = useSearchParams();
@@ -42,7 +44,7 @@ export function Inventario() {
       </div>
       {r?.filtrado && <p className="text-[12.5px] text-muted -mt-3 mb-4">Os cartões acima estão somando apenas o que o filtro deixou passar. <button className="link" onClick={() => setSp({ aba: 'aparelhos' }, { replace: true })}>limpar filtros</button></p>}
       {/* o retrato do parque: os modelos com mais aparelhos e onde eles estão */}
-      {aba !== 'movimentacoes' && (models.data ?? []).length > 0 && (
+      {(aba === 'aparelhos' || aba === 'modelos') && (models.data ?? []).length > 0 && (
         <section className="card p-4 mb-5">
           <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
             <h2 className="font-display font-semibold">Parque por modelo</h2>
@@ -51,8 +53,10 @@ export function Inventario() {
           <BarrasRanking
             larguraRotulo="w-[190px]"
             legenda={[{ label: 'Em estoque', tom: 'ok' }, { label: 'Com clientes', tom: 'accent' }]}
-            acao={(modelId) => setSp({ aba: 'aparelhos', modelId }, { replace: true })}
-            aoClicarParte={(modelId, parte) => setSp({ aba: 'aparelhos', modelId, ...(parte === 'estoque' ? { clientId: 'stock' } : {}) }, { replace: true })}
+            // os nomes são os que a lista lê (?modelo= e ?cliente=): até o 1.8 o clique mandava
+            // ?modelId= e a lista não filtrava nada
+            acao={(modelId) => setSp({ aba: 'aparelhos', modelo: modelId }, { replace: true })}
+            aoClicarParte={(modelId, parte) => setSp({ aba: 'aparelhos', modelo: modelId, cliente: parte === 'estoque' ? 'stock' : 'clients' }, { replace: true })}
             dados={[...(models.data ?? [])]
               .filter((m) => m.counts.total > 0)
               .sort((a, b) => b.counts.total - a.counts.total)
@@ -69,10 +73,11 @@ export function Inventario() {
         </section>
       )}
 
-      <Abas atual={aba} onChange={(a) => { const n = new URLSearchParams(); n.set('aba', a); setSp(n, { replace: true }); }} abas={[{ id: 'aparelhos', label: 'Aparelhos' }, { id: 'modelos', label: 'Modelos' }, { id: 'movimentacoes', label: 'Movimentações' }]} />
+      <Abas atual={aba} onChange={(a) => { const n = new URLSearchParams(); n.set('aba', a); setSp(n, { replace: true }); }} abas={[{ id: 'aparelhos', label: 'Aparelhos' }, { id: 'modelos', label: 'Modelos' }, { id: 'movimentacoes', label: 'Movimentações' }, { id: 'relatorios', label: 'Relatórios' }]} />
       {aba === 'aparelhos' && <Aparelhos models={models.data ?? []} />}
       {aba === 'modelos' && <Modelos models={models.data ?? []} loading={models.isLoading} />}
       {aba === 'movimentacoes' && <Movimentacoes models={models.data ?? []} />}
+      {aba === 'relatorios' && <RelatoriosDoInventario />}
       <Movimentar open={mover} onClose={() => setMover(false)} />
     </Pagina>
   );
@@ -429,7 +434,7 @@ function Movimentacoes({ models }: { models: DeviceModel[] }) {
         {temFiltro && <button className="btn-ghost btn-sm text-muted" onClick={() => setSp({ aba: 'movimentacoes' }, { replace: true })}>limpar filtros</button>}
       </div>
       {lista.isLoading ? <Carregando /> : !lista.data?.items.length ? <Vazio titulo="Nenhuma movimentação" texto={temFiltro ? 'Nenhuma movimentação com esses filtros.' : undefined} /> : (
-        <div className="card overflow-x-auto"><table className="table"><thead><tr><th className="w-6" /><ThN /><Th o={o} col="createdAt">Quando</Th><Th o={o} col="modality">Modalidade</Th><Th o={o} col="fromName">De</Th><Th o={o} col="toName">Para</Th><Th o={o} col="unit">Unidade</Th><th>Itens</th><th>Condição</th><Th o={o} col="userName">Por</Th></tr></thead>
+        <div className="card overflow-x-auto"><table className="table"><thead><tr><th className="w-6" /><ThN /><Th o={o} col="createdAt">Quando</Th><Th o={o} col="modality">Modalidade</Th><Th o={o} col="fromName">De</Th><Th o={o} col="toName">Para</Th><Th o={o} col="unit">Unidade</Th><th>Itens</th><th title="Recibo de entrega">Recibo</th><th>Condição</th><Th o={o} col="userName">Por</Th></tr></thead>
           <tbody>{lista.data.items.map((m, i) => {
             const abrir = aberta === m.id;
             return (
@@ -439,13 +444,14 @@ function Movimentacoes({ models }: { models: DeviceModel[] }) {
                   <TdN n={numero(i)} /><td className="tnum whitespace-nowrap">{data(m.createdAt, true)}</td><td><Chip tone={m.modality === 'devolucao' ? 'neutral' : m.modality === 'venda' ? 'accent' : m.modality === 'comodato' ? 'signal' : 'ok'}>{m.modalityName}</Chip></td>
                   <td>{m.fromClientId ? <Link className="link" to={`/clientes/${m.fromClientId}`} onClick={(e) => e.stopPropagation()}>{m.fromName}</Link> : 'Estoque'}</td><td>{m.toClientId ? <Link className="link" to={`/clientes/${m.toClientId}`} onClick={(e) => e.stopPropagation()}>{m.toName}</Link> : 'Estoque'}</td>
                   <td>{m.unit ?? <span className="text-muted">—</span>}</td>
-                  <td>{m.items.map((x) => `${x.quantity}× ${x.modelName}`).join(', ')}</td><td className="text-muted">{m.newCondition ? condicaoNome[m.newCondition] : '—'}</td><td className="text-muted">{m.userName}</td>
+                  <td>{m.items.map((x) => `${x.quantity}× ${x.modelName}`).join(', ')}</td><td><MarcaRecibo recibos={m.recibos} /></td><td className="text-muted">{m.newCondition ? condicaoNome[m.newCondition] : '—'}</td><td className="text-muted">{m.userName}</td>
                 </tr>
                 {abrir && (
                   <tr className="bg-surface-2">
-                    <td /><td colSpan={9} className="py-2">
+                    <td /><td colSpan={10} className="py-2">
                       <ul className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">{m.devices.map((d) => <li key={d.id}><Link className="link" to={`/inventario/aparelhos/${d.id}`}>{d.identificacao}</Link> <span className="text-muted">· {d.modelName}</span></li>)}</ul>
                       {m.note && <p className="text-muted italic text-[12.5px] mt-1">{m.note}</p>}
+                      <RecibosDaMovimentacao m={m} />
                     </td>
                   </tr>
                 )}

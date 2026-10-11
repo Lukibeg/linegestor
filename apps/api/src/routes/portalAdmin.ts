@@ -2,20 +2,20 @@
  * Portal do cliente — o lado da equipe (Patch 1.8, decisão 0040): os tutoriais, os arquivos
  * (vídeo, print, arquivo para baixar), os acessos das pessoas dos clientes e os ajustes.
  * Ver é de todo mundo da equipe (`records.read`); escrever tutorial é `portal.write`; dar e tirar
- * acesso é `portal.access`; os ajustes (nome do portal, contato do suporte) são `admin.manage`.
- * Tudo o que muda vai para a auditoria (`entityType = portal`) — nunca o código do convite.
+ * acesso é `portal.access` — inclusive criar e ver a senha da pessoa (decisão 0045, 1.9); os ajustes
+ * (nome do portal, contato do suporte) são `admin.manage`.
+ * Tudo o que muda vai para a auditoria (`entityType = portal`), e ver a senha também — nunca a senha.
  */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import multipart from '@fastify/multipart';
 import { z } from 'zod';
-import { AcessoCriarSchema, caminhoDoTutorial, LIMITES_PORTAL, PortalAjustesSchema, TIPOS_ARQUIVO_PORTAL, TutorialGravarSchema, TutoriaisListarSchema } from '@gestor/shared';
+import { AcessoCorrigirSchema, AcessoCriarSchema, AcessoSenhaSchema, caminhoDoTutorial, LIMITES_PORTAL, PortalAjustesSchema, TIPOS_ARQUIVO_PORTAL, TutorialGravarSchema, TutoriaisListarSchema } from '@gestor/shared';
 import { BadRequest } from '../plugins/errors.js';
 import * as svc from '../services/portal.js';
 import { mandarArquivo } from './portalArquivo.js';
 
 const Numero = z.object({ numero: z.coerce.number().int().min(1) });
 const Id = z.object({ id: z.string().min(1) });
-const caminhoDoConvite = (codigo: string) => `/portal/convite/${codigo}`;
 
 const routes: FastifyPluginAsyncZod = async (app) => {
   // um arquivo por vez; o tamanho de cada tipo é conferido no pedido (o vídeo vai até 300 MB)
@@ -95,31 +95,42 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/clientes/:id/acessos', { ...ver, schema: { ...tag, summary: 'Os acessos de um cliente, e se ele está na base (a aba Portal da ficha)', params: Id } },
     async (req) => svc.acessosDoCliente(app.db, req.params.id));
 
-  app.post('/clientes/:id/acessos', { ...acessos, schema: { ...tag, summary: 'Dar acesso a uma pessoa do cliente: devolve o link do convite (a pessoa cria a senha)', params: Id, body: AcessoCriarSchema } },
+  app.post('/clientes/:id/acessos', { ...acessos, schema: { ...tag, summary: 'Dar acesso a uma pessoa do cliente, com o login e a senha que o suporte escolheu', params: Id, body: AcessoCriarSchema } },
     async (req, reply) => {
-      const { acesso, cliente, codigo } = await svc.criarAcesso(app.db, req.params.id, req.body, quem(req));
-      await app.audit(req, { action: 'create', entityType: 'portal', entityId: acesso.id, summary: `Deu acesso ao portal a ${acesso.name} (${acesso.email}), de ${cliente}` });
-      return reply.status(201).send({ id: acesso.id, convite: caminhoDoConvite(codigo) });
+      const { acesso, cliente } = await svc.criarAcesso(app.db, app.vault, req.params.id, req.body, quem(req));
+      await app.audit(req, { action: 'create', entityType: 'portal', entityId: acesso.id, summary: `Deu acesso ao portal a ${acesso.name} (login ${acesso.login}), de ${cliente}` });
+      return reply.status(201).send({ id: acesso.id });
     });
 
-  app.post('/acessos/:id/convite', { ...acessos, schema: { ...tag, summary: 'Um convite novo (o primeiro venceu, ou a pessoa esqueceu a senha)', params: Id } },
-    async (req) => {
-      const { acesso, codigo } = await svc.novoConvite(app.db, req.params.id);
-      await app.audit(req, { action: 'update', entityType: 'portal', entityId: acesso.id, summary: `Gerou um convite novo para ${acesso.name} (${acesso.email}) entrar no portal` });
-      return { id: acesso.id, convite: caminhoDoConvite(codigo) };
-    });
+  app.post('/acessos/:id/senha', {
+    ...acessos, config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    schema: { ...tag, summary: 'Trocar a senha da pessoa (esqueceu, ou o acesso do 1.8 ainda não tinha): as sessões abertas caem', params: Id, body: AcessoSenhaSchema },
+  }, async (req) => {
+    const { acesso, cliente } = await svc.definirSenha(app.db, app.vault, req.params.id, req.body.senha, quem(req));
+    await app.audit(req, { action: 'update', entityType: 'portal', entityId: acesso.id, summary: `Trocou a senha do portal de ${acesso.name} (login ${acesso.login}), de ${cliente}` });
+    return { ok: true };
+  });
+
+  app.post('/acessos/:id/ver-senha', {
+    ...acessos, config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    schema: { ...tag, summary: 'Ver a senha guardada da pessoa (fica na auditoria)', params: Id },
+  }, async (req) => {
+    const { acesso, cliente, senha } = await svc.verSenha(app.db, app.vault, req.params.id);
+    await app.audit(req, { action: 'reveal_secret', entityType: 'portal', entityId: acesso.id, summary: `${req.user!.name} viu a senha do portal de ${acesso.name} (login ${acesso.login}), de ${cliente}` });
+    return { senha, visivelPorSegundos: app.config.REVEAL_SECONDS };
+  });
 
   app.post('/acessos/:id/bloqueio', { ...acessos, schema: { ...tag, summary: 'Bloquear (a sessão aberta cai na hora) ou desbloquear o acesso', params: Id, body: z.object({ bloquear: z.boolean() }) } },
     async (req) => {
       const u = await svc.bloquearAcesso(app.db, req.params.id, req.body.bloquear);
-      await app.audit(req, { action: 'update', entityType: 'portal', entityId: u.id, summary: `${req.body.bloquear ? 'Bloqueou' : 'Desbloqueou'} o acesso de ${u.name} (${u.email}) ao portal` });
+      await app.audit(req, { action: 'update', entityType: 'portal', entityId: u.id, summary: `${req.body.bloquear ? 'Bloqueou' : 'Desbloqueou'} o acesso de ${u.name} (login ${u.login}) ao portal` });
       return { ok: true };
     });
 
-  app.put('/acessos/:id', { ...acessos, schema: { ...tag, summary: 'Corrigir o nome ou o e-mail', params: Id, body: AcessoCriarSchema } },
+  app.put('/acessos/:id', { ...acessos, schema: { ...tag, summary: 'Corrigir o nome ou o login (a senha fica a mesma)', params: Id, body: AcessoCorrigirSchema } },
     async (req) => {
       const { antes, depois } = await svc.atualizarAcesso(app.db, req.params.id, req.body);
-      await app.audit(req, { action: 'update', entityType: 'portal', entityId: depois.id, summary: `Corrigiu o acesso de ${depois.name} ao portal`, before: { nome: antes.name, email: antes.email }, after: { nome: depois.name, email: depois.email } });
+      await app.audit(req, { action: 'update', entityType: 'portal', entityId: depois.id, summary: `Corrigiu o acesso de ${depois.name} ao portal`, before: { nome: antes.name, login: antes.login }, after: { nome: depois.name, login: depois.login } });
       return { ok: true };
     });
 
