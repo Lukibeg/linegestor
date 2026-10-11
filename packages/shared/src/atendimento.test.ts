@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AJUSTES_PRAZOS_PADRAO, ajustesPrazosCompletos, alertasDevidos, estadoDosPrazos, instanteLocal, minutosUteisEntre, prioridadeSugerida, proximaExecucao,
+  AJUSTES_PRAZOS_PADRAO, ajustesPrazosCompletos, alertasDevidos, estadoDosPrazos, instanteLocal, minutosUteisEntre, NOME_SITUACAO_PRAZO, prioridadeSugerida, proximaExecucao,
   somarDiasUteis, somarMinutosUteis, textoDaRegra, textoDoPrazo, type AjustesPrazos, type Calendario, type RegraAgendado,
 } from './atendimento-prazos.js';
 import {
@@ -259,6 +259,17 @@ describe('a lista: busca, filtros e ordem', () => {
     const csv = csvDosChamados([cartao({ titulo: 'Ramal; mudo' })], { painel: () => 'Suporte', etapa: () => 'N1' });
     expect(csv.startsWith('﻿Código;Título;Painel')).toBe(true);
     expect(csv).toContain('SUP-1;"Ramal; mudo";Suporte;N1;Em aberto;Clínica Aurora');
+  });
+  it('o CSV escreve a situação do prazo por extenso', () => {
+    const vencido = { situacao: 'vencido' as const, limite: 60, usado: 90, percentual: 150, venceEm: null, cumpridoEm: null, conta: 'uteis' as const };
+    const csv = csvDosChamados([cartao({ prazos: { resposta: { ...vencido, situacao: 'cumprido' }, solucao: vencido } })], { painel: () => 'Suporte', etapa: () => 'N1' });
+    expect(csv).not.toMatch(/;cumprido;|;vencido;/);
+    expect(csv).toContain(`;${NOME_SITUACAO_PRAZO.cumprido};${NOME_SITUACAO_PRAZO.vencido};`);
+  });
+  it('"prazo parado" é só quem espera o cliente: esperando a operadora, o prazo corre', () => {
+    const espera = (tipo: 'cliente' | 'operadora') => ({ tipo, motivo: 'm', desde: '2026-10-13T12:00:00.000Z' });
+    const l = [cartao({ espera: espera('cliente') }), cartao({ id: 'y', codigo: 'SUP-2', espera: espera('operadora') }), cartao({ id: 'z', codigo: 'SUP-3' })];
+    expect(filtrarCartoes(l, { prazo: 'parados' }, ctx).map((c) => c.codigo)).toEqual(['SUP-1']);
   });
 });
 

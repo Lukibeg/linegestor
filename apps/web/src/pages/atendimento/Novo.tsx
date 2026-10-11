@@ -1,8 +1,771 @@
 /**
- * Chamados do Gestor (Patch 1.10): Abrir um chamado: à mão, ou pelo botão "Abrir chamado" da conversa do LineChat (que manda o telefone, o nome e a sessão no endereço).
+ * Chamados do Gestor (Patch 1.10, decisão 0047) — ABRIR CHAMADO.
+ *
+ * Abre-se à mão no Gestor ou pelo botão "Abrir chamado" da conversa do LineChat, que chega aqui com
+ * `?telefone=…&nome=…&sessao=…` (o contato e o WhatsApp já vêm preenchidos, e o chamado guarda a
+ * sessão para o link da conversa). Outros atalhos pelo endereço: `?painel=` (o painel), `?pai=SUP-3`
+ * (o filho nasce ligado ao pai) e `?tipo=problema&incidente=SUP-5` (o problema nasce juntando o incidente).
+ *
+ * O que o Luan pediu e está aqui:
+ *  - ao escolher o cliente, os chamados recentes dele aparecem com "Reabrir este em vez de abrir
+ *    outro": o cliente que volta à tarde com o mesmo ramal reabre o chamado da manhã;
+ *  - a prioridade vem sugerida pela gravidade e pelo alcance (a matriz dos Ajustes › Prazos); trocar a
+ *    sugerida pede o motivo, que fica no histórico;
+ *  - o cliente só recebe aviso quando o atendente marca (desmarcado por padrão).
+ *
+ * As regras (o que o painel pede para abrir, a prioridade sugerida, o caminho do assunto) vêm do
+ * `@gestor/shared`; quem decide é o servidor, e o erro dele aparece perto do botão.
  */
-import { CabecalhoAtendimento } from './comum.js';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, X } from 'lucide-react';
+import {
+  ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, NOME_ALCANCE, NOME_AFETADO, NOME_CAMPO, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
+  caminhoDoAssunto, emOrdemDeArvore, etiquetasUnicas, numeroWhatsApp, paraBusca, prioridadeSugerida,
+  type Afetado, type Alcance, type CadastroDoCliente, type CampoObrigatorio, type CartaoChamado, type ChamadoCriarEntrada,
+  type FichaChamado, type Gravidade, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado,
+} from '@gestor/shared';
+import { api } from '../../api/index.js';
+import { ApiError } from '../../api/types.js';
+import { Carregando, Chip, EscolherComBusca, Spinner, Vazio, mensagemErro, useToast, type OpcaoBusca } from '../../components/ui/index.js';
+import { useAuth } from '../../lib/auth.js';
+import {
+  CabecalhoAtendimento, ChipSituacao, CodigoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto, painelDe, telefoneLegivel,
+  useDepoisDeMudar, useFicha, useOpcoes, usePode,
+} from './comum.js';
 
+/** O motivo que o "Reabrir este" grava (o pedido do Luan: o cliente voltou com o mesmo problema). */
+const MOTIVO_REABRIR = 'O cliente voltou com o mesmo problema';
+
+/** Os campos que o formulário tem; o resto (solução, causa, checklist, tempo) só existe depois de aberto. */
+const CAMPOS_DO_FORMULARIO: CampoObrigatorio[] = [
+  'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'afetados', 'responsavel',
+];
+
+/** A cor de cada prioridade no botão escolhido (as mesmas do chip da prioridade). */
+const COR_PRIORIDADE: Record<Prioridade, string> = {
+  critica: 'border-bad bg-bad-soft text-bad',
+  alta: 'border-signal bg-signal-soft text-signal',
+  media: 'border-amarelo bg-amarelo-soft text-amarelo-ink',
+  baixa: 'border-line-strong bg-surface-2 text-ink-2',
+};
+
+type Form = {
+  painelId: string;
+  tipoChamado: TipoChamado;
+  clienteId: string;
+  contatoNome: string;
+  contatoTelefone: string;
+  titulo: string;
+  relato: string;
+  descricao: string;
+  assuntoId: string;
+  tipo: string;
+  gravidade: Gravidade | null;
+  alcance: Alcance | null;
+  /** nula = segue a sugerida */
+  prioridade: Prioridade | null;
+  motivoPrioridade: string;
+  produtos: string[];
+  operadoras: string[];
+  afetados: Afetado[];
+  /** '' = ninguém (o chamado fica na fila da entrada) */
+  responsavelId: string;
+  etiquetas: string[];
+  avisarCliente: boolean;
+};
+
+/**
+ * O endereço muda (o botão "Abrir chamado" do cabeçalho, outro filho, outra conversa): o formulário
+ * começa do zero, sem levar o que estava escrito no anterior.
+ */
 export function NovoChamado() {
-  return <div><CabecalhoAtendimento /><div className="card p-6 text-muted">Em construção.</div></div>;
+  const { search } = useLocation();
+  return <Carregador key={search} />;
+}
+
+function Carregador() {
+  const opcoes = useOpcoes();
+  const pode = usePode();
+  if (opcoes.isLoading) return <div><CabecalhoAtendimento sub="Abrir chamado" /><Carregando /></div>;
+  if (opcoes.isError || !opcoes.data) return <div><CabecalhoAtendimento sub="Abrir chamado" /><p className="text-bad text-sm" role="alert">{mensagemErro(opcoes.error)}</p></div>;
+  if (!pode.trabalhar) {
+    return <div><CabecalhoAtendimento sub="Abrir chamado" /><Vazio titulo="Abrir chamado é de quem trabalha nos chamados" texto="Você pode ver os chamados, mas abrir e mexer pede a permissão de trabalhar neles. Fale com a administração." /></div>;
+  }
+  const paineis = opcoes.data.paineis.filter((p) => p.ativo);
+  if (!paineis.length) {
+    return <div><CabecalhoAtendimento sub="Abrir chamado" /><Vazio titulo="Nenhum painel aberto para você" texto="Para abrir um chamado é preciso um painel ativo que você veja. Quem cuida dos chamados cria e libera os painéis em Chamados › Ajustes." /></div>;
+  }
+  return <Formulario opcoes={opcoes.data} paineis={paineis} />;
+}
+
+function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: Painel[] }) {
+  const [sp] = useSearchParams();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const depois = useDepoisDeMudar();
+  const { user } = useAuth();
+  const local = useLocation();
+  // "Cancelar" volta para onde a pessoa estava (o quadro, a lista); aberto direto (o botão do LineChat), vai para o Meu dia
+  const cancelar = () => (local.key !== 'default' ? navigate(-1) : navigate('/atendimento'));
+
+  // o que veio no endereço (o botão da conversa do LineChat, o "Abrir filho", o "Abrir problema")
+  const sessao = sp.get('sessao')?.trim() || null;
+  const refPai = sp.get('pai')?.trim() || undefined;
+  const refIncidente = sp.get('incidente')?.trim() || undefined;
+  const pedidoPainel = sp.get('painel')?.trim() ?? '';
+
+  const [f, setF] = useState<Form>(() => {
+    const fone = sp.get('telefone')?.trim() ?? '';
+    const painel = paineis.find((p) => p.id === pedidoPainel || p.sigla === pedidoPainel.toUpperCase()) ?? paineis[0]!;
+    const eu = user && opcoes.pessoas.some((p) => p.id === user.id && p.ativo) ? user.id : '';
+    return {
+      painelId: painel.id,
+      tipoChamado: sp.get('tipo') === 'problema' ? 'problema' : 'chamado',
+      clienteId: '',
+      contatoNome: sp.get('nome')?.trim() ?? '',
+      // o LineChat manda só os dígitos (5571999990000): a caixa mostra do jeito que se lê
+      contatoTelefone: fone ? telefoneLegivel(numeroWhatsApp(fone) ?? fone) : '',
+      titulo: '', relato: '', descricao: '',
+      assuntoId: '', tipo: '', gravidade: null, alcance: null, prioridade: null, motivoPrioridade: '',
+      produtos: [], operadoras: [], afetados: [],
+      responsavelId: eu,
+      etiquetas: [],
+      avisarCliente: false,
+    };
+  });
+  const mudar = (o: Partial<Form>) => { setF((x) => ({ ...x, ...o })); setMexeu(true); };
+  const [mexeu, setMexeu] = useState(false);
+  const [descricaoAberta, setDescricaoAberta] = useState(false);
+  const [erro, setErro] = useState('');
+  /** os campos que o servidor disse que faltam (ficam marcados até a pessoa mexer de novo) */
+  const [faltando, setFaltando] = useState<Set<string>>(new Set());
+  const [enviando, setEnviando] = useState(false);
+
+  const painel = paineis.find((p) => p.id === f.painelId) ?? paineis[0]!;
+  const pede = (c: CampoObrigatorio) => painel.ajustes.obrigatoriosAoAbrir.includes(c);
+  const falta = (c: CampoObrigatorio) => faltando.has(c);
+
+  // ---------- o pai e o incidente (pelo código, do endereço) ----------
+  const pai = useFicha(refPai);
+  const incidente = useFicha(refIncidente);
+  // o filho costuma ser do mesmo cliente do pai (o Desenvolvimento ajudando o Suporte): já vem escolhido
+  const trouxeClienteDoPai = useRef(false);
+  useEffect(() => {
+    if (trouxeClienteDoPai.current || !pai.data?.cliente) return;
+    trouxeClienteDoPai.current = true;
+    setF((x) => (x.clienteId ? x : { ...x, clienteId: pai.data!.cliente!.id }));
+  }, [pai.data]);
+
+  // ---------- o cliente e o cadastro dele ----------
+  const clientes = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options(), staleTime: 5 * 60_000 });
+  const opcoesClientes = useMemo<OpcaoBusca[]>(() => (clientes.data ?? []).map((c) => ({ id: c.id, nome: c.name })), [clientes.data]);
+  const cadastro = useQuery({ queryKey: ['atendimento', 'cadastro', f.clienteId], queryFn: () => api.atendimento.cadastroDoCliente(f.clienteId), enabled: !!f.clienteId });
+
+  // ---------- os assuntos do painel (o caminho inteiro; os ativos) ----------
+  const assuntosDoPainel = useMemo(() => opcoes.assuntos.filter((a) => a.painelId === painel.id), [opcoes.assuntos, painel.id]);
+  const opcoesAssunto = useMemo<OpcaoBusca[]>(() => emOrdemDeArvore(assuntosDoPainel)
+    .filter((a) => a.ativo)
+    .map((a) => ({ id: a.id, nome: caminhoDoAssunto(a.id, assuntosDoPainel), dica: a.descricao ?? undefined })), [assuntosDoPainel]);
+  const assunto = assuntosDoPainel.find((a) => a.id === f.assuntoId);
+
+  // ---------- a prioridade sugerida ----------
+  const sugerida = prioridadeSugerida(f.gravidade, f.alcance, opcoes.prazos.matriz);
+  const prioridadeFinal = f.prioridade ?? sugerida;
+  const precisaMotivo = !!f.prioridade && !!sugerida && f.prioridade !== sugerida;
+
+  const foneValido = numeroWhatsApp(f.contatoTelefone);
+  const foneInvalido = !!f.contatoTelefone.trim() && !foneValido;
+  const podeAvisar = opcoes.whatsapp.cliente && !!foneValido;
+
+  // o que o painel pede e o formulário não tem (uma regra mal escolhida nos Ajustes): diz logo, em vez de travar no fim
+  const pedeForaDoFormulario = painel.ajustes.obrigatoriosAoAbrir.filter((c) => !CAMPOS_DO_FORMULARIO.includes(c));
+
+  // não sair sem querer com o relato pela metade
+  const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim());
+  useEffect(() => {
+    if (!escreveu) return;
+    const aviso = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener('beforeunload', aviso);
+    return () => window.removeEventListener('beforeunload', aviso);
+  }, [escreveu]);
+
+  /** Outro painel: o assunto e o tipo que não existem lá saem. */
+  const trocarPainel = (id: string) => {
+    const novo = paineis.find((p) => p.id === id);
+    if (!novo) return;
+    const assuntoFica = opcoes.assuntos.some((a) => a.id === f.assuntoId && a.painelId === novo.id && a.ativo);
+    const tipoFica = novo.ajustes.tipos.find((t) => paraBusca(t) === paraBusca(f.tipo));
+    mudar({ painelId: novo.id, assuntoId: assuntoFica ? f.assuntoId : '', tipo: tipoFica ?? '' });
+    setFaltando(new Set());
+  };
+  /** Outro cliente: o que foi afetado era do cadastro do anterior. */
+  const trocarCliente = (id: string) => { mudar({ clienteId: id, afetados: [] }); tirarFalta('cliente'); };
+  const tirarFalta = (c: string) => setFaltando((s) => { if (!s.has(c)) return s; const n = new Set(s); n.delete(c); return n; });
+
+  /** Escolher a prioridade: a sugerida volta a "seguir a sugestão"; outra pede o motivo. */
+  const escolherPrioridade = (p: Prioridade) => {
+    if (sugerida) mudar({ prioridade: p === sugerida ? null : p });
+    else mudar({ prioridade: f.prioridade === p ? null : p });
+    tirarFalta('prioridade');
+  };
+
+  const abrir = async () => {
+    setErro('');
+    if (f.titulo.trim().length < 3) { setErro('Escreva um título (pelo menos 3 letras).'); document.getElementById('novo-titulo')?.focus(); return; }
+    if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
+    if (precisaMotivo && !f.motivoPrioridade.trim()) { setErro('Trocar a prioridade sugerida pede o motivo.'); document.getElementById('novo-motivo-prioridade')?.focus(); return; }
+    const d: ChamadoCriarEntrada = {
+      painelId: painel.id,
+      tipoChamado: f.tipoChamado,
+      titulo: f.titulo.trim(),
+      relato: f.relato.trim() || null,
+      descricao: f.descricao.trim() || null,
+      clienteId: f.clienteId || null,
+      contatoNome: f.contatoNome.trim() || null,
+      contatoTelefone: f.contatoTelefone.trim() || null,
+      sessaoId: sessao,
+      assuntoId: f.assuntoId || null,
+      tipo: f.tipo || null,
+      gravidade: f.gravidade,
+      alcance: f.alcance,
+      prioridade: f.prioridade,
+      motivoPrioridade: precisaMotivo ? f.motivoPrioridade.trim() : null,
+      produtos: f.produtos,
+      operadoras: f.operadoras,
+      afetados: f.afetados,
+      etiquetas: f.etiquetas,
+      responsavelId: f.responsavelId || null,
+      paiId: pai.data?.id ?? null,
+      incidentes: f.tipoChamado === 'problema' && incidente.data ? [incidente.data.id] : [],
+      avisarCliente: podeAvisar && f.avisarCliente,
+      origem: sessao ? 'botao' : 'manual',
+    };
+    setEnviando(true);
+    try {
+      const r = await depois(api.atendimento.criar(d));
+      setMexeu(false);
+      if (r.aviso && !r.aviso.ok) toast.push('erro', `${r.codigo} foi aberto, mas o aviso ao cliente pelo WhatsApp não foi: ${r.aviso.mensagem}`);
+      else toast.push('ok', r.aviso?.ok ? `${r.codigo} aberto, e o cliente recebeu o número pelo WhatsApp` : `${r.codigo} aberto`);
+      navigate(`/atendimento/${encodeURIComponent(r.codigo)}`);
+    } catch (e) {
+      setErro(mensagemErro(e));
+      if (e instanceof ApiError && e.details && typeof e.details === 'object' && !Array.isArray(e.details)) {
+        const faltam = (e.details as { faltam?: string[] }).faltam;
+        if (faltam?.length) setFaltando(new Set(faltam));
+      }
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  // ---------- reabrir um recente em vez de abrir outro ----------
+  const [reabrindo, setReabrindo] = useState<string | null>(null);
+  const [erroReabrir, setErroReabrir] = useState<{ id: string; msg: string } | null>(null);
+  const reabrir = async (c: CartaoChamado) => {
+    setReabrindo(c.id); setErroReabrir(null);
+    try {
+      let ficha: FichaChamado = await depois(api.atendimento.reabrir(c.id, { motivo: MOTIVO_REABRIR }));
+      // o que já foi escrito aqui não se perde: o relato novo vai como anotação do chamado reaberto
+      const relato = f.relato.trim();
+      let anotou = false;
+      if (relato) {
+        try { ficha = await depois(api.atendimento.anotar(c.id, { texto: `Relato do cliente ao voltar: ${relato}`, anexos: [] })); anotou = true; }
+        catch (e) { toast.push('erro', `${ficha.codigo} foi reaberto, mas o relato escrito aqui não entrou nas anotações: ${mensagemErro(e)}`); }
+      }
+      setMexeu(false);
+      toast.push('ok', `${ficha.codigo} reaberto${anotou ? ', com o relato novo nas anotações' : ''}`);
+      navigate(`/atendimento/${encodeURIComponent(ficha.codigo)}`);
+    } catch (e) {
+      setErroReabrir({ id: c.id, msg: mensagemErro(e) });
+    } finally {
+      setReabrindo(null);
+    }
+  };
+
+  const pessoas = opcoes.pessoas.filter((p) => p.ativo);
+  const opcoesResponsavel: OpcaoBusca[] = pessoas.map((p) => ({ id: p.id, nome: p.nome, dica: p.id === user?.id ? 'você' : undefined }));
+
+  return (
+    <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); void abrir(); }}
+      onKeyDown={(e) => {
+        // o formulário é comprido: o Enter num campo de uma linha não abre o chamado pela metade (Ctrl+Enter abre, de qualquer campo)
+        if (e.key !== 'Enter') return;
+        if (e.ctrlKey || e.metaKey) { e.preventDefault(); if (!enviando) void abrir(); return; }
+        const alvo = e.target as HTMLElement;
+        if (alvo.tagName === 'INPUT' && (alvo as HTMLInputElement).type !== 'checkbox') e.preventDefault();
+      }}>
+      <CabecalhoAtendimento sub="Abrir chamado: o que o cliente contou, de quem é e quem cuida." />
+
+      <div className="grid grid-cols-1 gap-4 max-w-4xl">
+        {/* de onde veio: a conversa do LineChat, o pai, o incidente */}
+        {(sessao || refPai || refIncidente) && (
+          <div className="flex flex-col gap-2">
+            {sessao && (
+              <AvisoTopo icone={<MessageCircle size={15} />}>
+                Veio da conversa do LineChat: o contato e o WhatsApp já estão preenchidos, e o chamado guarda o link da conversa.
+              </AvisoTopo>
+            )}
+            {refPai && <ChamadoLigado rotulo="Filho de" icone={<GitBranch size={15} />} consulta={pai} referencia={refPai} opcoes={opcoes}
+              dica="O filho nasce ligado a este chamado (pode ser de outro painel). O pai só fecha com os filhos fechados, se o painel dele pedir." />}
+            {refIncidente && <ChamadoLigado rotulo={f.tipoChamado === 'problema' ? 'O problema junta o incidente' : 'Incidente (só um problema junta incidentes)'} icone={<Layers size={15} />}
+              consulta={incidente} referencia={refIncidente} opcoes={opcoes} apagado={f.tipoChamado !== 'problema'}
+              dica={f.tipoChamado === 'problema' ? 'O problema nasce juntando este chamado; outros incidentes se juntam pela ficha.' : 'Marque "Problema" em Registro para juntar este incidente.'} />}
+          </div>
+        )}
+
+        {pedeForaDoFormulario.length > 0 && (
+          <p className="text-[13px] rounded-lg bg-signal-soft text-signal p-2.5" role="alert">
+            O painel {painel.nome} pede para abrir: {pedeForaDoFormulario.map((c) => NOME_CAMPO[c]).join(', ')} — e isso só se preenche depois de aberto.
+            Peça a quem cuida dos chamados para rever as regras do painel (Chamados › Ajustes › Painéis).
+          </p>
+        )}
+
+        {/* ---------- onde ---------- */}
+        <Secao titulo="Onde">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <Rotulado rotulo="Painel" id="novo-painel" grupo>
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Painel" id="novo-painel">
+                {paineis.map((p) => {
+                  const ativo = p.id === painel.id;
+                  return (
+                    <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => trocarPainel(p.id)}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+                      <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
+                    </button>
+                  );
+                })}
+              </div>
+            </Rotulado>
+            <Rotulado rotulo="Registro" id="novo-registro" grupo>
+              <Segmentos<TipoChamado> id="novo-registro" rotulo="Registro" valor={f.tipoChamado} onChange={(v) => mudar({ tipoChamado: v })}
+                opcoes={[{ id: 'chamado', nome: 'Chamado' }, { id: 'problema', nome: 'Problema', dica: 'A causa comum de vários chamados (ITIL): junta os incidentes de várias empresas' }]} />
+            </Rotulado>
+          </div>
+          {painel.descricao && <p className="text-[12.5px] text-muted mt-2">{painel.descricao}</p>}
+        </Secao>
+
+        {/* ---------- quem ---------- */}
+        <Secao titulo="Quem">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Rotulado rotulo="Cliente" id="novo-cliente" obrigatorio={pede('cliente')} falta={falta('cliente')} className="sm:col-span-2">
+              <EscolherComBusca valor={f.clienteId} onChange={trocarCliente} opcoes={opcoesClientes} vazio="Sem cliente (ainda)" placeholder={clientes.isLoading ? 'Carregando os clientes…' : 'Escolha o cliente…'}
+                procurar="Procurar cliente…" className="input w-full" id="novo-cliente" rotulo="Cliente" largura="w-[420px]" />
+            </Rotulado>
+            <Rotulado rotulo="Contato (nome)" id="novo-contato" obrigatorio={pede('contato')} falta={falta('contato')} dica={pede('contato') ? 'o nome ou o WhatsApp' : undefined}>
+              <input className="input" id="novo-contato" value={f.contatoNome} maxLength={120} placeholder="Quem pediu (ex.: Maria, da recepção)"
+                onChange={(e) => { mudar({ contatoNome: e.target.value }); tirarFalta('contato'); }} />
+            </Rotulado>
+            <Rotulado rotulo="WhatsApp do contato" id="novo-whatsapp" erro={foneInvalido ? 'Use DDD + número, como (71) 99999-0000.' : undefined}>
+              <input className="input tnum" id="novo-whatsapp" inputMode="tel" value={f.contatoTelefone} maxLength={40} placeholder="(71) 99999-0000"
+                onChange={(e) => { mudar({ contatoTelefone: e.target.value }); tirarFalta('contato'); }} />
+            </Rotulado>
+          </div>
+          {f.clienteId && <Recentes cadastro={cadastro.data} carregando={cadastro.isLoading} erroCarregar={cadastro.isError ? mensagemErro(cadastro.error) : ''}
+            opcoes={opcoes} reabrindo={reabrindo} erro={erroReabrir} onReabrir={reabrir} levaRelato={!!f.relato.trim()} />}
+        </Secao>
+
+        {/* ---------- o que aconteceu ---------- */}
+        <Secao titulo="O que aconteceu">
+          <div className="grid grid-cols-1 gap-3">
+            <Rotulado rotulo="Título" id="novo-titulo" obrigatorio dica="Uma frase, como alguém procuraria depois (o cliente já aparece à parte).">
+              <input className="input" id="novo-titulo" value={f.titulo} maxLength={200} placeholder="Ex.: Ramal 203 sem áudio desde a manhã"
+                onChange={(e) => mudar({ titulo: e.target.value })} />
+            </Rotulado>
+            <Rotulado rotulo="Relato do cliente" id="novo-relato" obrigatorio={pede('relato')} falta={falta('relato')} dica="O que o cliente disse, nas palavras dele.">
+              <textarea className="input min-h-[96px]" id="novo-relato" value={f.relato} maxLength={20_000}
+                onChange={(e) => { mudar({ relato: e.target.value }); tirarFalta('relato'); }} />
+            </Rotulado>
+            {descricaoAberta || pede('descricao') || f.descricao ? (
+              <Rotulado rotulo="Descrição" id="novo-descricao" obrigatorio={pede('descricao')} falta={falta('descricao')} dica="O que já foi feito e os dados técnicos (ramal, número, IP, horário).">
+                <textarea className="input min-h-[84px]" id="novo-descricao" value={f.descricao} maxLength={20_000} autoFocus={descricaoAberta && !f.descricao}
+                  onChange={(e) => { mudar({ descricao: e.target.value }); tirarFalta('descricao'); }} />
+              </Rotulado>
+            ) : (
+              <button type="button" id="novo-incluir-descricao" className="justify-self-start inline-flex items-start gap-1.5 rounded-lg px-2 py-1 -ml-2 text-left text-[13px] font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink"
+                onClick={() => setDescricaoAberta(true)}>
+                <Plus size={14} className="mt-0.5 shrink-0" /> <span>Incluir a descrição <span className="text-muted font-normal">(opcional: o que já foi feito, dados técnicos)</span></span>
+              </button>
+            )}
+          </div>
+        </Secao>
+
+        {/* ---------- a classificação e a prioridade ---------- */}
+        <Secao titulo="Classificação">
+          <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Rotulado rotulo="Assunto" id="novo-assunto" obrigatorio={pede('assunto')} falta={falta('assunto')} className="sm:col-span-2"
+                dica={!opcoesAssunto.length ? `O painel ${painel.nome} ainda não tem assuntos (Chamados › Ajustes › Assuntos).` : undefined}>
+                <EscolherComBusca valor={f.assuntoId} onChange={(v) => { mudar({ assuntoId: v }); tirarFalta('assunto'); }} opcoes={opcoesAssunto} vazio="Sem assunto (ainda)"
+                  placeholder="Escolha o assunto…" procurar="Procurar pelo caminho (ex.: ramal config)…" className="input w-full" id="novo-assunto" rotulo="Assunto" largura="w-[520px]"
+                  desativado={!opcoesAssunto.length} />
+                {assunto && (assunto.descricao || assunto.checklist.length > 0) && (
+                  <p className="text-[12.5px] text-muted mt-1">
+                    {assunto.descricao && <>Quando usar: {assunto.descricao}</>}
+                    {assunto.descricao && assunto.checklist.length > 0 && ' · '}
+                    {assunto.checklist.length > 0 && <>traz {assunto.checklist.length} {assunto.checklist.length === 1 ? 'passo' : 'passos'} para o checklist</>}
+                  </p>
+                )}
+              </Rotulado>
+              {painel.ajustes.tipos.length > 0 && (
+                <Rotulado rotulo="Tipo" id="novo-tipo" grupo obrigatorio={pede('tipo')} falta={falta('tipo')} className="sm:col-span-2">
+                  <Segmentos id="novo-tipo" rotulo="Tipo" valor={f.tipo} desmarcavel onChange={(v) => { mudar({ tipo: v }); tirarFalta('tipo'); }}
+                    opcoes={painel.ajustes.tipos.map((t) => ({ id: t, nome: t }))} />
+                </Rotulado>
+              )}
+            </div>
+
+            <Rotulado rotulo="Gravidade" id="novo-gravidade" grupo obrigatorio={pede('gravidade')} falta={falta('gravidade')}>
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Gravidade" id="novo-gravidade">
+                {GRAVIDADES.map((g) => {
+                  const ativa = f.gravidade === g;
+                  return (
+                    <button key={g} type="button" role="radio" aria-checked={ativa} onClick={() => { mudar({ gravidade: ativa ? null : g }); tirarFalta('gravidade'); }}
+                      className={`text-left rounded-lg border px-3 py-2 min-w-0 ${ativa ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2'}`}>
+                      <span className={`block text-[13.5px] font-semibold ${ativa ? 'text-accent-ink' : 'text-ink'}`}>{NOME_GRAVIDADE[g]}</span>
+                      <span className="block text-[12px] text-muted leading-snug">{DICA_GRAVIDADE[g]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Rotulado>
+
+            <Rotulado rotulo="Alcance" id="novo-alcance" grupo obrigatorio={pede('alcance')} falta={falta('alcance')} dica="Quantos o problema atinge no cliente.">
+              <Segmentos<Alcance | ''> id="novo-alcance" rotulo="Alcance" valor={f.alcance ?? ''} desmarcavel onChange={(v) => { mudar({ alcance: v || null }); tirarFalta('alcance'); }}
+                opcoes={ALCANCES.map((a) => ({ id: a, nome: NOME_ALCANCE[a] }))} />
+            </Rotulado>
+
+            <Rotulado rotulo="Prioridade" id="novo-prioridade" grupo obrigatorio={pede('prioridade')} falta={falta('prioridade')}>
+              <div className="rounded-lg border border-line bg-surface-2 p-3 flex flex-col gap-2" id="novo-prioridade">
+                <div className="text-[13px] text-ink-2" aria-live="polite">
+                  {sugerida
+                    ? <>Sugerida: <b className="text-ink">{NOME_PRIORIDADE[sugerida]}</b> <span className="text-muted">({NOME_GRAVIDADE[f.gravidade!]} × {NOME_ALCANCE[f.alcance!].toLowerCase()})</span></>
+                    : <span className="text-muted">Escolha a gravidade e o alcance: o Gestor sugere a prioridade. Ou escolha direto.</span>}
+                </div>
+                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Prioridade">
+                  {PRIORIDADES.map((p) => {
+                    const ativa = prioridadeFinal === p;
+                    return (
+                      <button key={p} type="button" role="radio" aria-checked={ativa} title={DICA_PRIORIDADE[p]} onClick={() => escolherPrioridade(p)}
+                        className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-[13px] font-semibold ${ativa ? COR_PRIORIDADE[p] : 'border-line text-ink-2 hover:bg-surface'}`}>
+                        {p === 'critica' && <Siren size={13} />}{NOME_PRIORIDADE[p]}
+                        {p === sugerida && <span className="font-normal text-[11.5px] opacity-80">· sugerida</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {prioridadeFinal && <p className="text-[12px] text-muted">{NOME_PRIORIDADE[prioridadeFinal]}: {DICA_PRIORIDADE[prioridadeFinal].toLowerCase()}.</p>}
+                {precisaMotivo && (
+                  <div>
+                    <label className="label" htmlFor="novo-motivo-prioridade">Por que {NOME_PRIORIDADE[f.prioridade!]} e não {NOME_PRIORIDADE[sugerida!]}? <span className="text-bad">*</span></label>
+                    <textarea className="input min-h-[60px]" id="novo-motivo-prioridade" value={f.motivoPrioridade} maxLength={300}
+                      placeholder="Ex.: o cliente tem um evento hoje à tarde" onChange={(e) => mudar({ motivoPrioridade: e.target.value })} />
+                    <button type="button" className="link text-[12.5px] mt-1" onClick={() => mudar({ prioridade: null, motivoPrioridade: '' })}>Usar a sugerida ({NOME_PRIORIDADE[sugerida!]})</button>
+                  </div>
+                )}
+              </div>
+            </Rotulado>
+          </div>
+        </Secao>
+
+        {/* ---------- produtos, operadoras e o que foi afetado ---------- */}
+        <Secao titulo="Produtos e operadoras" dica={f.clienteId ? 'Os do cliente aparecem primeiro; os outros vêm do catálogo.' : 'Escolha o cliente para ver primeiro os produtos e as operadoras dele.'}>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Rotulado rotulo="Produtos" id="novo-produtos" grupo obrigatorio={pede('produto')} falta={falta('produto')}>
+              <EscolherVarios id="novo-produtos" rotulo="produto" valor={f.produtos} onChange={(v) => { mudar({ produtos: v }); tirarFalta('produto'); }}
+                doCliente={(cadastro.data?.produtos ?? []).map((p) => ({ id: p.id, nome: p.nome }))}
+                catalogo={opcoes.produtos.map((p) => ({ id: p.id, nome: p.nome }))} />
+            </Rotulado>
+            <Rotulado rotulo="Operadoras" id="novo-operadoras" grupo obrigatorio={pede('operadora')} falta={falta('operadora')}>
+              <EscolherVarios id="novo-operadoras" rotulo="operadora" valor={f.operadoras} onChange={(v) => { mudar({ operadoras: v }); tirarFalta('operadora'); }}
+                doCliente={(cadastro.data?.operadoras ?? []).map((o) => ({ id: o.id, nome: o.nome }))}
+                catalogo={opcoes.operadoras.map((o) => ({ id: o.id, nome: o.nome }))} />
+            </Rotulado>
+            {(f.clienteId || pede('afetados')) && (
+              <Rotulado rotulo="O que foi afetado" id="novo-afetados" grupo obrigatorio={pede('afetados')} falta={falta('afetados')} className="sm:col-span-2"
+                dica={f.clienteId ? 'Do cadastro do cliente: circuitos, DIDs, aparelhos e unidades (é o que acha todos os afetados por uma queda).' : 'Escolha o cliente para ver o cadastro dele.'}>
+                {f.clienteId && <EscolherAfetados id="novo-afetados" cadastro={cadastro.data} valor={f.afetados} onChange={(v) => { mudar({ afetados: v }); tirarFalta('afetados'); }} />}
+              </Rotulado>
+            )}
+          </div>
+        </Secao>
+
+        {/* ---------- quem cuida ---------- */}
+        <Secao titulo="Quem cuida">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Rotulado rotulo="Responsável" id="novo-responsavel" obrigatorio={pede('responsavel')} falta={falta('responsavel')}
+              dica={f.responsavelId ? (f.responsavelId === user?.id ? 'Você fica com o chamado.' : 'A pessoa recebe o aviso de que o chamado é dela.') : 'O chamado fica na fila da entrada, para alguém assumir.'}>
+              <EscolherComBusca valor={f.responsavelId} onChange={(v) => { mudar({ responsavelId: v }); tirarFalta('responsavel'); }} opcoes={opcoesResponsavel}
+                vazio="Ninguém (fica na fila)" procurar="Procurar pessoa…" className="input w-full" id="novo-responsavel" rotulo="Responsável" />
+            </Rotulado>
+            <Rotulado rotulo="Etiquetas" id="novo-etiquetas">
+              <CampoEtiquetas id="novo-etiquetas" valor={f.etiquetas} sugestoes={opcoes.etiquetas} onChange={(v) => mudar({ etiquetas: v })} />
+            </Rotulado>
+          </div>
+        </Secao>
+
+        {/* ---------- abrir ---------- */}
+        <div className="card p-4 flex flex-col gap-3">
+          {podeAvisar && (
+            <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+              <input type="checkbox" className="mt-1 accent-[var(--accent)]" id="novo-avisar" checked={f.avisarCliente} onChange={(e) => mudar({ avisarCliente: e.target.checked })} />
+              <span>
+                Avisar o cliente pelo WhatsApp com o número do chamado
+                <span className="block text-[12.5px] text-muted">Vai para {telefoneLegivel(foneValido)}{f.contatoNome.trim() ? ` (${f.contatoNome.trim()})` : ''}, pelo número oficial, com o modelo de mensagem dos Ajustes.</span>
+              </span>
+            </label>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="submit" className="btn-primary" id="novo-abrir" disabled={enviando}>{enviando ? <Spinner className="text-white" /> : <Plus size={16} />} Abrir chamado</button>
+            <button type="button" className="btn-ghost" onClick={cancelar}>Cancelar</button>
+            <span className="text-[12.5px] text-muted">
+              Nasce em <b className="text-ink-2">{painel.etapas.find((e) => e.tipo === 'entrada')?.nome ?? painel.etapas[0]?.nome ?? '—'}</b>, no painel {painel.nome}
+              {prioridadeFinal ? <>, com a prioridade <b className="text-ink-2">{NOME_PRIORIDADE[prioridadeFinal]}</b></> : ''}.
+            </span>
+          </div>
+          {erro && <p className="text-bad text-[13px]" role="alert" id="novo-erro">{erro}</p>}
+        </div>
+      </div>
+    </form>
+  );
+}
+
+// =====================================================================
+//  AS PEÇAS DO FORMULÁRIO
+// =====================================================================
+
+function Secao({ titulo, dica, children }: { titulo: string; dica?: string; children: ReactNode }) {
+  return (
+    <section className="card p-4 sm:p-5 min-w-0">
+      <h2 className="font-display font-semibold text-[15px]">{titulo}</h2>
+      {dica && <p className="text-[12.5px] text-muted -mt-0.5">{dica}</p>}
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+/**
+ * Um campo com o rótulo: o asterisco quando o painel pede o campo para abrir, e a marca vermelha
+ * quando o servidor disse que ele faltou.
+ */
+function Rotulado({ rotulo, id, obrigatorio, falta, erro, dica, grupo = false, className = '', children }: {
+  rotulo: string; id: string; obrigatorio?: boolean; falta?: boolean; erro?: string; dica?: string;
+  /** um grupo de botões (o painel, a gravidade, os produtos): o título não é um <label> de campo */
+  grupo?: boolean; className?: string; children: ReactNode;
+}) {
+  const texto = <>{rotulo}{obrigatorio && <span className="text-bad" title="Obrigatório para abrir"> *</span>}</>;
+  return (
+    <div className={`min-w-0 ${className}`}>
+      {grupo ? <div className="label" id={`${id}-rotulo`}>{texto}</div> : <label className="label" htmlFor={id}>{texto}</label>}
+      <div className={falta ? 'rounded-lg ring-2 ring-bad ring-offset-2 ring-offset-surface' : ''}>{children}</div>
+      {falta ? <div className="text-bad text-[12.5px] mt-1">O painel pede este campo para abrir.</div>
+        : erro ? <div className="text-bad text-[12.5px] mt-1">{erro}</div>
+          : dica ? <div className="text-muted text-[12.5px] mt-1">{dica}</div> : null}
+    </div>
+  );
+}
+
+/** Botões lado a lado para escolher uma opção (o tipo, o alcance, o registro). */
+function Segmentos<T extends string>({ id, rotulo, valor, opcoes, onChange, desmarcavel = false }: {
+  id: string; rotulo: string; valor: T; opcoes: Array<{ id: T; nome: string; dica?: string }>; onChange: (v: T) => void; desmarcavel?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={rotulo} id={id}>
+      {opcoes.map((o) => {
+        const ativo = o.id === valor;
+        return (
+          <button key={o.id} type="button" role="radio" aria-checked={ativo} title={o.dica}
+            onClick={() => onChange(ativo && desmarcavel ? ('' as T) : o.id)}
+            className={`rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+            {o.nome}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function AvisoTopo({ icone, children }: { icone: ReactNode; children: ReactNode }) {
+  return <p className="text-[13px] rounded-lg bg-accent-soft text-accent-ink p-2.5 flex items-start gap-2"><span className="mt-0.5 shrink-0">{icone}</span><span>{children}</span></p>;
+}
+
+/** O pai (ou o incidente) que veio no endereço: o código, o título e o cliente, para conferir. */
+function ChamadoLigado({ rotulo, icone, consulta, referencia, opcoes, dica, apagado = false }: {
+  rotulo: string; icone: ReactNode; consulta: { data?: FichaChamado; isLoading: boolean; isError: boolean; error: unknown }; referencia: string; opcoes: OpcoesAtendimento; dica: string; apagado?: boolean;
+}) {
+  if (consulta.isLoading) return <div className="card p-3 text-[13px] text-muted flex items-center gap-2"><Spinner /> Procurando o {referencia.toUpperCase()}…</div>;
+  if (consulta.isError || !consulta.data) {
+    return <p className="text-[13px] rounded-lg bg-bad-soft text-bad p-2.5" role="alert">{rotulo} {referencia.toUpperCase()}: {mensagemErro(consulta.error)}. O chamado abre sem essa ligação.</p>;
+  }
+  const c = consulta.data;
+  return (
+    <div className={`card p-3 flex flex-col gap-1 ${apagado ? 'opacity-60' : ''}`}>
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
+        <span className="text-muted inline-flex items-center gap-1.5">{icone} {rotulo}</span>
+        <CodigoChamado codigo={c.codigo} cor={painelDe(opcoes, c.painelId)?.cor} />
+        <ChipSituacao s={c.situacao} />
+        <span className="font-semibold text-ink min-w-0 break-words">{c.titulo}</span>
+        {c.cliente && <span className="text-muted">· {c.cliente.nome}</span>}
+      </div>
+      <p className="text-[12px] text-muted">{dica}</p>
+    </div>
+  );
+}
+
+/**
+ * Os chamados recentes do cliente (abertos, ou criados nos últimos 7 dias): o pedido do Luan — o
+ * cliente que volta à tarde com o mesmo ramal reabre o chamado da manhã, em vez de abrir outro.
+ */
+function Recentes({ cadastro, carregando, erroCarregar, opcoes, reabrindo, erro, onReabrir, levaRelato }: {
+  cadastro: CadastroDoCliente | undefined; carregando: boolean; erroCarregar: string; opcoes: OpcoesAtendimento;
+  reabrindo: string | null; erro: { id: string; msg: string } | null; onReabrir: (c: CartaoChamado) => void; levaRelato: boolean;
+}) {
+  if (carregando) return <div className="mt-3 text-[13px] text-muted flex items-center gap-2"><Spinner /> Procurando os chamados recentes deste cliente…</div>;
+  if (erroCarregar) return <p className="mt-3 text-[13px] text-bad">{erroCarregar}</p>;
+  const lista = cadastro?.recentes ?? [];
+  if (!lista.length) return <p className="mt-3 text-[12.5px] text-muted">Nenhum chamado deste cliente aberto ou dos últimos 7 dias.</p>;
+  return (
+    <div className="mt-3 rounded-lg border border-signal bg-signal-soft p-3" id="novo-recentes">
+      <div className="text-[13px] font-semibold text-ink">Chamados recentes deste cliente <span className="text-muted font-normal">— é o mesmo problema? Reabra em vez de abrir outro.</span></div>
+      <ul className="mt-2 flex flex-col divide-y divide-line">
+        {lista.map((c) => {
+          const cor = painelDe(opcoes, c.painelId)?.cor;
+          const etapa = etapaDe(opcoes, c.painelId, c.etapaId)?.nome;
+          const fechado = c.situacao !== 'aberto';
+          return (
+            <li key={c.id} className="py-2 first:pt-0 last:pb-0 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3 min-w-0">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <CodigoChamado codigo={c.codigo} cor={cor} />
+                  <ChipSituacao s={c.situacao} />
+                  {etapa && paraBusca(etapa) !== paraBusca(NOME_SITUACAO_CHAMADO[c.situacao]) && <span className="text-[12px] text-muted">{etapa}</span>}
+                </div>
+                <div className="text-[13.5px] font-semibold text-ink mt-0.5 break-words">{c.titulo}</div>
+                <div className="text-[12px] text-muted">
+                  aberto {dataHoraCurta(c.criadoEm)} ({haQuanto(c.criadoEm)})
+                  {c.fechadoEm ? ` · fechado ${dataHoraCurta(c.fechadoEm)}` : c.resolvidoEm ? ` · resolvido ${dataHoraCurta(c.resolvidoEm)}` : ''}
+                  {c.contato?.nome ? ` · ${c.contato.nome}` : ''}
+                  {c.responsavel ? ` · com ${c.responsavel.nome}` : ''}
+                </div>
+                {erro?.id === c.id && <p className="text-bad text-[12.5px] mt-1" role="alert">{erro.msg}</p>}
+              </div>
+              {fechado ? (
+                <button type="button" className="btn-secondary btn-sm shrink-0 self-start sm:self-center" disabled={!!reabrindo} onClick={() => onReabrir(c)}
+                  title={`Volta o ${c.codigo} para o atendimento com o motivo "${MOTIVO_REABRIR}"${levaRelato ? ', e o relato escrito aqui vai junto, como anotação' : ''}`}>
+                  {reabrindo === c.id ? <Spinner /> : <RotateCcw size={14} />} Reabrir este em vez de abrir outro
+                </button>
+              ) : (
+                <Link to={`/atendimento/${encodeURIComponent(c.codigo)}`} className="btn-secondary btn-sm shrink-0 self-start sm:self-center">Abrir este</Link>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * Vários de uma lista (os produtos, as operadoras): os do cliente aparecem para marcar com um
+ * clique; os outros do catálogo, pelo "Outro do catálogo".
+ */
+function EscolherVarios({ id, rotulo, valor, onChange, doCliente, catalogo }: {
+  id: string; rotulo: string; valor: string[]; onChange: (v: string[]) => void; doCliente: OpcaoBusca[]; catalogo: OpcaoBusca[];
+}) {
+  const nomes = new Map([...catalogo, ...doCliente].map((o) => [o.id, o.nome]));
+  const doClienteIds = new Set(doCliente.map((o) => o.id));
+  const sugeridos = doCliente.filter((o) => !valor.includes(o.id));
+  const resto: OpcaoBusca[] = catalogo.filter((o) => !valor.includes(o.id)).map((o) => ({ ...o, dica: doClienteIds.has(o.id) ? 'do cliente' : undefined }));
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 min-h-[38px]" id={id}>
+      {valor.map((v) => (
+        <span key={v} className="chip bg-accent-soft text-accent-ink">
+          {nomes.get(v) ?? v}
+          <button type="button" onClick={() => onChange(valor.filter((x) => x !== v))} aria-label={`Tirar ${nomes.get(v) ?? v}`} className="hover:opacity-70"><X size={12} /></button>
+        </span>
+      ))}
+      {sugeridos.map((o) => (
+        <button key={o.id} type="button" onClick={() => onChange([...valor, o.id])} title={`Marcar ${o.nome} (do cliente)`}
+          className="chip border border-dashed border-line-strong text-ink-2 hover:bg-surface-2 font-medium">
+          <Plus size={12} /> {o.nome}
+        </button>
+      ))}
+      {resto.length > 0 && (
+        <EscolherComBusca valor="" opcoes={resto} onChange={(v) => v && onChange([...valor, v])} procurar={`Procurar ${rotulo}…`} rotulo={`Incluir ${rotulo}`}
+          gatilho={(abrir) => (
+            <button type="button" className="btn-ghost btn-sm text-muted" onClick={abrir}>
+              <Plus size={13} /> {doCliente.length ? 'Outro do catálogo' : `Incluir ${rotulo}`} <ChevronDown size={13} />
+            </button>
+          )} />
+      )}
+      {!valor.length && !sugeridos.length && !resto.length && <span className="text-[12.5px] text-muted">Nada no cadastro.</span>}
+    </div>
+  );
+}
+
+/** O que foi afetado: do cadastro do cliente (circuito, DID, aparelho, unidade), pela busca — um cliente pode ter centenas de DIDs. */
+function EscolherAfetados({ id, cadastro, valor, onChange }: { id: string; cadastro: CadastroDoCliente | undefined; valor: Afetado[]; onChange: (v: Afetado[]) => void }) {
+  const todos = useMemo<Afetado[]>(() => (cadastro ? [
+    ...cadastro.circuitos.map((c) => ({ tipo: 'circuito' as const, id: c.id, nome: c.operadora ? `${c.nome} (${c.operadora})` : c.nome })),
+    ...cadastro.dids.map((d) => ({ tipo: 'did' as const, id: d.id, nome: d.circuito ? `${d.numero} (${d.circuito})` : d.numero })),
+    ...cadastro.aparelhos.map((a) => ({ tipo: 'aparelho' as const, id: a.id, nome: a.nome })),
+    ...cadastro.unidades.map((u) => ({ tipo: 'unidade' as const, id: u.id, nome: u.nome })),
+  ] : []), [cadastro]);
+  const chave = (a: Pick<Afetado, 'tipo' | 'id'>) => `${a.tipo}:${a.id}`;
+  const ja = new Set(valor.map(chave));
+  const opcoes: OpcaoBusca[] = todos.filter((a) => !ja.has(chave(a))).map((a) => ({ id: chave(a), nome: `${NOME_AFETADO[a.tipo]}: ${a.nome}` }));
+  if (!cadastro) return <div className="text-[12.5px] text-muted flex items-center gap-2 min-h-[38px]"><Spinner /> Lendo o cadastro do cliente…</div>;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 min-h-[38px]" id={id}>
+      {valor.map((a) => (
+        <span key={chave(a)} className="chip bg-surface-2 text-ink-2">
+          <span className="text-muted font-normal">{NOME_AFETADO[a.tipo]}</span> {a.nome}
+          <button type="button" onClick={() => onChange(valor.filter((x) => chave(x) !== chave(a)))} aria-label={`Tirar ${a.nome}`} className="hover:opacity-70"><X size={12} /></button>
+        </span>
+      ))}
+      {opcoes.length > 0 ? (
+        <EscolherComBusca valor="" opcoes={opcoes} largura="w-[400px]" procurar="Procurar circuito, DID, aparelho ou unidade…" rotulo="Incluir o que foi afetado"
+          onChange={(v) => { const a = todos.find((x) => chave(x) === v); if (a) onChange([...valor, a]); }}
+          gatilho={(abrir) => <button type="button" className="btn-ghost btn-sm text-muted" onClick={abrir}><Plus size={13} /> Incluir <ChevronDown size={13} /></button>} />
+      ) : !valor.length && <span className="text-[12.5px] text-muted">O cadastro deste cliente não tem circuitos, DIDs, aparelhos nem unidades.</span>}
+    </div>
+  );
+}
+
+/** As etiquetas: digita e Enter (ou vírgula); as já usadas aparecem como sugestão. */
+function CampoEtiquetas({ id, valor, sugestoes, onChange }: { id: string; valor: string[]; sugestoes: string[]; onChange: (v: string[]) => void }) {
+  const [t, setT] = useState('');
+  const somar = (texto: string) => {
+    const novas = texto.split(/[,;\n]/).map((x) => x.trim().slice(0, 40)).filter(Boolean);
+    if (novas.length) onChange(etiquetasUnicas([...valor, ...novas]).slice(0, 20));
+    setT('');
+  };
+  const ja = new Set(valor.map((v) => paraBusca(v)));
+  const b = paraBusca(t);
+  const achadas = sugestoes.filter((s) => !ja.has(paraBusca(s)) && (!b || paraBusca(s).includes(b))).slice(0, 8);
+  return (
+    <div>
+      <div className="input flex flex-wrap items-center gap-1.5 py-1.5 min-h-[40px]">
+        {valor.map((e) => (
+          <span key={e} className="chip bg-surface-2 text-ink-2 font-medium">{e}<button type="button" onClick={() => onChange(valor.filter((x) => x !== e))} aria-label={`Tirar a etiqueta ${e}`} className="hover:opacity-70"><X size={12} /></button></span>
+        ))}
+        <input className="flex-1 min-w-[120px] bg-transparent outline-none text-sm py-0.5" id={id} autoComplete="off" value={t} maxLength={40}
+          placeholder={valor.length ? '' : 'digite e aperte Enter'}
+          onChange={(e) => setT(e.target.value)} onBlur={() => t.trim() && somar(t)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); somar(t); } else if (e.key === 'Backspace' && !t && valor.length) onChange(valor.slice(0, -1)); }} />
+      </div>
+      {achadas.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 mt-1.5">
+          <span className="text-[12px] text-muted mr-0.5">{t ? 'Já usadas:' : 'Usadas antes:'}</span>
+          {achadas.map((s) => (
+            // o clique não pode tirar o foco antes de somar (senão o onBlur soma o texto pela metade)
+            <button key={s} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => somar(s)} className="chip border border-dashed border-line-strong text-ink-2 hover:bg-surface-2 font-medium">
+              <Plus size={11} /> {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }

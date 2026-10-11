@@ -1,8 +1,418 @@
 /**
- * Chamados do Gestor (Patch 1.10): O quadro de um painel: uma coluna por etapa, arrastar para mover (escalonar pede o motivo), filtros e a comemoração ao fechar.
+ * Chamados › Quadro (Patch 1.10, decisão 0047): o Kanban de um painel. Uma coluna por etapa, na
+ * ordem do painel — N1, N2 e N3 são colunas, a escolha do Luan. Arrastar o cartão para outra coluna
+ * muda a etapa: subir de nível é escalonar e pede o motivo, faltando algo a janela diz o quê, e
+ * fechar comemora (tudo isso mora no `useMover`, o mesmo da ficha). Quem está no celular ou usa o
+ * teclado tem o botão "Mover" no pé do cartão.
+ *
+ * O painel e os filtros ficam no endereço (?painel=…&responsavel=eu), e o quadro relê a cada minuto:
+ * o prazo anda com o relógio. O Fechado mostra só os 30 mais recentes; o resto fica na lista.
  */
-import { CabecalhoAtendimento } from './comum.js';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode, type RefObject } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Archive, ArrowRightLeft, CircleCheck, Clock, Filter, Inbox, List, Moon } from 'lucide-react';
+import {
+  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararUrgencia, movimentoDeNivel,
+  type CartaoChamado, type ColunaQuadro, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type QuadroAtendimento, type TipoEspera,
+} from '@gestor/shared';
+import { api } from '../../api/index.js';
+import { Carregando, EscolherComBusca, Popover, Spinner, Vazio, mensagemErro } from '../../components/ui/index.js';
+import { CabecalhoAtendimento, dataHoraCurta, haQuanto, useOpcoes, usePode } from './comum.js';
+import { useMover } from './mover.js';
+import { CartaoComRodape, cliqueAbreAFicha } from './quadro/cartao.js';
+import {
+  CAIXA_FILTRO, CampoBusca, FiltrosEscritos, PontoDoPainel, SelectFiltro, nomeDoAssunto, nomeDoResponsavel, opcoesDeAssunto, opcoesDeResponsavel,
+  useClientesParaFiltro, useFiltrosNoEndereco, type FiltroEscrito,
+} from './quadro/filtros.js';
+
+/** Os filtros do quadro — com os mesmos nomes da lista, para o "Ver na lista" levar tudo junto. */
+const FILTROS = ['q', 'responsavel', 'prioridade', 'espera', 'cliente', 'assunto'] as const;
+type Filtros = Partial<Record<(typeof FILTROS)[number], string>>;
+
+const ESPERAS: Array<{ id: TipoEspera; nome: string }> = [{ id: 'cliente', nome: NOME_ESPERA.cliente }, { id: 'operadora', nome: NOME_ESPERA.operadora }];
+
+/** O endereço da lista com o painel e os filtros do quadro (todas as situações, como o quadro mostra). */
+function enderecoDaLista(painelId: string, filtros: Filtros, etapaId?: string) {
+  const n = new URLSearchParams({ painel: painelId, situacao: 'todos' });
+  if (etapaId) n.set('etapa', etapaId);
+  for (const [k, v] of Object.entries(filtros)) if (v) n.set(k, v);
+  return `/atendimento/lista?${n}`;
+}
 
 export function Quadro() {
-  return <div><CabecalhoAtendimento /><div className="card p-6 text-muted">Em construção.</div></div>;
+  const opcoes = useOpcoes();
+  const { valor } = useFiltrosNoEndereco();
+  const paineis = opcoes.data?.paineis ?? [];
+  const pedido = valor('painel');
+  // o painel do endereço (pelo id ou pela sigla); sem ele, o primeiro ativo
+  const painel = paineis.find((p) => p.id === pedido) ?? paineis.find((p) => p.sigla === pedido.toUpperCase())
+    ?? paineis.find((p) => p.ativo) ?? paineis[0];
+  const filtros = useMemo<Filtros>(() => Object.fromEntries(FILTROS.map((k) => [k, valor(k)]).filter(([, v]) => v)), [valor]);
+
+  return (
+    <div>
+      <CabecalhoAtendimento acoes={painel && <Link className="btn-secondary" to={enderecoDaLista(painel.id, filtros)} title="Os mesmos chamados, numa tabela que ordena e exporta"><List size={15} /> Ver na lista</Link>} />
+      {opcoes.isLoading ? <Carregando /> : opcoes.isError ? <ErroComTentar erro={opcoes.error} tentar={() => void opcoes.refetch()} /> : !painel ? (
+        <Vazio titulo="Nenhum painel para você" texto="Os painéis de chamados aparecem aqui quando a administração cria um (ou inclui você num painel com acesso escolhido)." />
+      ) : (
+        // trocar de painel começa um quadro novo: nada do arrasto do outro painel fica para trás
+        <QuadroDoPainel key={painel.id} painel={painel} opcoes={opcoes.data!} filtros={filtros} />
+      )}
+    </div>
+  );
+}
+
+function ErroComTentar({ erro, tentar }: { erro: unknown; tentar: () => void }) {
+  return (
+    <div className="card p-4 text-sm" role="alert">
+      <p className="text-bad">{mensagemErro(erro)}</p>
+      <button type="button" className="btn-secondary btn-sm mt-2" onClick={tentar}>Tentar de novo</button>
+    </div>
+  );
+}
+
+/** Os painéis que a pessoa vê, como abas: o nome e quantos estão em aberto. */
+function FaixaDePaineis({ paineis, atual, className = '' }: { paineis: Painel[]; atual: Painel; className?: string }) {
+  const { sp } = useFiltrosNoEndereco();
+  // o painel desativado só aparece se for o do endereço (um link antigo)
+  const visiveis = paineis.filter((p) => p.ativo || p.id === atual.id);
+  const para = (p: Painel) => {
+    const n = new URLSearchParams(sp);
+    n.set('painel', p.id);
+    // o assunto é de um painel só: no outro, não existe
+    n.delete('assunto');
+    return `?${n}`;
+  };
+  return (
+    <nav aria-label="Painéis" className={`flex gap-1.5 overflow-x-auto sem-barra -mx-4 px-4 sm:mx-0 sm:px-0 ${className}`} id="quadro-paineis">
+      {visiveis.map((p) => {
+        const ativo = p.id === atual.id;
+        return (
+          <Link
+            key={p.id} to={{ search: para(p) }} aria-current={ativo ? 'page' : undefined}
+            className={`shrink-0 inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] font-semibold transition-colors ${ativo ? 'bg-surface border-line-strong text-ink shadow-sm' : 'border-transparent text-ink-2 hover:bg-surface-2 hover:text-ink'}`}
+          >
+            <PontoDoPainel cor={p.cor} />
+            {p.nome}
+            {!p.ativo && <span className="font-normal text-[12px] text-muted">(desativado)</span>}
+            <span className={`tnum text-[12px] font-semibold rounded-md px-1.5 leading-5 ${ativo ? 'bg-accent-soft text-accent-ink' : 'bg-surface-2 text-muted'}`} title={`${p.abertos} ${p.abertos === 1 ? 'chamado em aberto' : 'chamados em aberto'}`}>
+              {p.abertos}
+            </span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+/**
+ * O chamado mudou (a ficha nova chegou do servidor): ele vai para a coluna nova na hora, sem esperar
+ * o quadro inteiro reler — senão, entre a resposta e a releitura, o cartão "voltava" um instante
+ * para a coluna de onde saiu. A releitura que vem logo depois acerta a ordem e os filtros.
+ */
+function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado): QuadroAtendimento {
+  const fica = f.painelId === q.painelId;
+  return {
+    ...q,
+    colunas: q.colunas.map((col): ColunaQuadro => {
+      const sem = col.chamados.filter((x) => x.id !== f.id);
+      const estava = sem.length !== col.chamados.length;
+      if (fica && col.etapa.id === f.etapaId) {
+        // no Resolvido e no Fechado, o mais recente primeiro; nas outras, o mais urgente primeiro
+        const chamados = col.etapa.tipo === 'resolvido' || col.etapa.tipo === 'fechado' ? [f, ...sem] : [...sem, f].sort(compararUrgencia);
+        return { ...col, chamados, total: col.total + (estava ? 0 : 1) };
+      }
+      return estava ? { ...col, chamados: sem, total: Math.max(0, col.total - 1) } : col;
+    }),
+  };
+}
+
+function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: OpcoesAtendimento; filtros: Filtros }) {
+  const pode = usePode();
+  const qc = useQueryClient();
+  const { valor, mudar } = useFiltrosNoEndereco();
+  const chave = useMemo(() => ['atendimento', 'quadro', painel.id, filtros], [painel.id, filtros]);
+  const quadro = useQuery({
+    queryKey: chave,
+    queryFn: () => api.atendimento.quadro({ painel: painel.id, ...filtros }),
+    // o prazo muda com o relógio: o quadro relê sozinho a cada minuto
+    refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const { mover, janelas, ocupado } = useMover();
+
+  // Toda ficha que muda (o mover devolve a ficha inteira, inclusive depois da janela de escalonar)
+  // já põe o cartão no lugar novo.
+  useEffect(() => qc.getQueryCache().subscribe((ev) => {
+    if (ev.type !== 'updated' || ev.action.type !== 'success') return;
+    const k = ev.query.queryKey;
+    if (k[0] !== 'atendimento' || k[1] !== 'chamado') return;
+    const f = ev.query.state.data as FichaChamado | undefined;
+    if (!f || typeof f !== 'object' || !('etapaId' in f)) return;
+    // só o que já está no quadro: um chamado de fora dos filtros não entra por aqui
+    qc.setQueryData<QuadroAtendimento>(chave, (q) => (q && q.colunas.some((c) => c.chamados.some((x) => x.id === f.id)) ? comCartaoNovo(q, f) : q));
+  }), [qc, chave]);
+
+  // ---------- arrastar (HTML5): o cartão vai, a coluna recebe ----------
+  const arrastado = useRef<CartaoChamado | null>(null);
+  const [arrastando, setArrastando] = useState<{ id: string; etapaId: string } | null>(null);
+  const [sobre, setSobre] = useState<string | null>(null);
+  const comecar = (c: CartaoChamado, e: DragEvent<HTMLDivElement>) => {
+    arrastado.current = c;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', c.codigo);
+    // a imagem que acompanha o ponteiro é o cartão inteiro (o arrasto pode ter começado no título, que é um link)
+    const r = e.currentTarget.getBoundingClientRect();
+    try { e.dataTransfer.setDragImage(e.currentTarget, e.clientX - r.left, e.clientY - r.top); } catch { /* fica a imagem padrão */ }
+    // esmaecer já agora sairia na própria imagem do arrasto (o navegador "fotografa" depois deste evento)
+    requestAnimationFrame(() => setArrastando({ id: c.id, etapaId: c.etapaId }));
+  };
+  const terminar = () => { arrastado.current = null; setArrastando(null); setSobre(null); };
+  const passar = (etapa: EtapaPainel, e: DragEvent<HTMLElement>) => {
+    const c = arrastado.current;
+    // a coluna de onde ele saiu não recebe (e o que não é um cartão daqui também não)
+    if (!c || c.etapaId === etapa.id) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (sobre !== etapa.id) setSobre(etapa.id);
+  };
+  const sair = (etapa: EtapaPainel, e: DragEvent<HTMLElement>) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+    setSobre((s) => (s === etapa.id ? null : s));
+  };
+  const soltar = (etapa: EtapaPainel, e: DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    const c = arrastado.current;
+    terminar();
+    if (c && c.etapaId !== etapa.id) void mover(c, etapa.id);
+  };
+  /** Pelo menu (o teclado, o celular): depois de mover, o foco continua no cartão, já na coluna nova. */
+  const moverPeloMenu = async (c: CartaoChamado, etapaId: string) => {
+    const f = await mover(c, etapaId);
+    if (!f) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`li[data-cartao="${f.id}"] button[aria-expanded]`)?.focus();
+    }));
+  };
+
+  // ---------- os filtros ----------
+  const [filtrosAbertos, setFiltrosAbertos] = useState(false);
+  const pessoas = useMemo(() => opcoes.pessoas.filter((p) => p.ativo), [opcoes.pessoas]);
+  const clientes = useClientesParaFiltro();
+  const assuntos = useMemo(() => opcoesDeAssunto(opcoes, painel.id), [opcoes, painel.id]);
+  const ligados = FILTROS.filter((k) => k !== 'q' && valor(k)).length;
+  const escritos: FiltroEscrito[] = [];
+  const tirar = (k: string) => () => mudar({ [k]: null });
+  if (valor('q')) escritos.push({ chave: 'q', nome: 'Procurando', valor: `“${valor('q')}”`, tirar: tirar('q') });
+  if (valor('responsavel')) escritos.push({ chave: 'responsavel', nome: 'Responsável', valor: nomeDoResponsavel(valor('responsavel'), opcoes.pessoas), tirar: tirar('responsavel') });
+  if (valor('prioridade')) escritos.push({ chave: 'prioridade', nome: 'Prioridade', valor: NOME_PRIORIDADE[valor('prioridade') as keyof typeof NOME_PRIORIDADE] ?? valor('prioridade'), tirar: tirar('prioridade') });
+  if (valor('espera')) escritos.push({ chave: 'espera', nome: 'Espera', valor: NOME_ESPERA[valor('espera') as TipoEspera] ?? valor('espera'), tirar: tirar('espera') });
+  if (valor('cliente')) escritos.push({ chave: 'cliente', nome: 'Cliente', valor: clientes.find((c) => c.id === valor('cliente'))?.nome ?? '…', tirar: tirar('cliente') });
+  if (valor('assunto')) escritos.push({ chave: 'assunto', nome: 'Assunto', valor: nomeDoAssunto(valor('assunto'), opcoes), tirar: tirar('assunto') });
+
+  // o prazo em horas úteis para fora do horário; o de horas corridas, não
+  const todasUteis = PRIORIDADES.every((p) => opcoes.prazos.prazos[p]?.conta !== 'corridas');
+  const colunas = quadro.data?.painelId === painel.id ? quadro.data.colunas : undefined;
+  const nenhum = !!colunas && colunas.every((c) => c.total === 0);
+  const etapas = useMemo(() => colunas?.map((c) => c.etapa) ?? painel.etapas, [colunas, painel.etapas]);
+  const podeMover = pode.trabalhar && opcoes.pode.trabalhar;
+  const quadroRef = useRef<HTMLDivElement>(null);
+  const alturaDasColunas = useAlturaQueSobra(quadroRef, [!!colunas, escritos.length, !!quadro.data?.foraDoHorario, nenhum, filtrosAbertos]);
+
+  return (
+    <>
+      {/* os painéis e, do lado, a busca (no celular, a busca desce para a linha de baixo, com o botão dos filtros) */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
+        <FaixaDePaineis paineis={opcoes.paineis} atual={painel} className="flex-1 min-w-0 basis-full md:basis-auto" />
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <CampoBusca className="flex-1 md:flex-none md:w-[320px]" id="quadro-busca" valor={valor('q')} onChange={(v) => mudar({ q: v })}
+            placeholder="Código, título, cliente…" titulo="Acha pelo código, título, cliente, contato, telefone e pelo que foi escrito (sem acento)" />
+          <button type="button" className="btn-secondary md:hidden" aria-expanded={filtrosAbertos} aria-controls="quadro-filtros" onClick={() => setFiltrosAbertos((v) => !v)}>
+            <Filter size={15} /> Filtros{ligados > 0 && <span className="text-accent tnum">({ligados})</span>}
+          </button>
+        </div>
+      </div>
+      <div id="quadro-filtros" className={`${filtrosAbertos ? 'flex' : 'hidden'} md:flex flex-wrap items-center gap-2 mb-3`}>
+        <EscolherComBusca className={CAIXA_FILTRO} rotulo="Responsável" valor={valor('responsavel')} vazio="Todos os responsáveis" opcoes={opcoesDeResponsavel(pessoas)} procurar="Procurar pessoa…" onChange={(v) => mudar({ responsavel: v })} />
+        <SelectFiltro rotulo="Prioridade" valor={valor('prioridade')} vazio="Todas as prioridades" opcoes={PRIORIDADES.map((p) => ({ id: p, nome: NOME_PRIORIDADE[p] }))} onChange={(v) => mudar({ prioridade: v })} />
+        <SelectFiltro rotulo="Espera" valor={valor('espera')} vazio="Esperando ou não" opcoes={ESPERAS} onChange={(v) => mudar({ espera: v })} />
+        <EscolherComBusca className={CAIXA_FILTRO} rotulo="Cliente" valor={valor('cliente')} vazio="Todos os clientes" opcoes={clientes} procurar="Procurar cliente…" onChange={(v) => mudar({ cliente: v })} />
+        {(assuntos.length > 0 || valor('assunto')) && (
+          <EscolherComBusca className={CAIXA_FILTRO} largura="w-[380px]" rotulo="Assunto" valor={valor('assunto')} vazio="Todos os assuntos" opcoes={assuntos} procurar="Procurar assunto…" onChange={(v) => mudar({ assunto: v })} />
+        )}
+      </div>
+      <FiltrosEscritos itens={escritos} onLimpar={() => mudar(Object.fromEntries(FILTROS.map((k) => [k, null])))} />
+
+      {quadro.data?.foraDoHorario && painel.ajustes.contaPrazo && (
+        <p className="flex items-center gap-2 rounded-lg bg-surface-2 text-ink-2 text-[12.5px] px-3 py-1.5 mb-3" id="quadro-fora-do-horario">
+          <Moon size={14} className="text-muted shrink-0" aria-hidden />
+          Fora do horário de atendimento: {todasUteis ? 'os prazos estão parados.' : 'os prazos em horas úteis estão parados.'}
+        </p>
+      )}
+      {nenhum && escritos.length > 0 && <p className="text-[13px] text-muted mb-2">Nenhum chamado neste painel com esses filtros.</p>}
+
+      {!colunas ? (quadro.isError ? <ErroComTentar erro={quadro.error} tentar={() => void quadro.refetch()} /> : <Carregando />) : (
+        // as colunas rolam para o lado dentro do quadro (a página não); no celular, uma por vez, com encaixe
+        <div
+          ref={quadroRef} id="quadro-colunas" className="overflow-x-auto -mx-4 sm:mx-0 pb-3 snap-x snap-mandatory scroll-pl-4 sm:snap-none sm:scroll-pl-0"
+          style={alturaDasColunas ? ({ '--altura-colunas': `${alturaDasColunas}px` } as CSSProperties) : undefined}
+        >
+          <div className="flex items-start gap-3 w-max sm:w-auto px-4 sm:px-0">
+            {colunas.map((col) => (
+              <Coluna
+                key={col.etapa.id} col={col} painel={painel} filtros={filtros}
+                // a coluna de onde o cartão saiu não é destino: só as outras ficam tracejadas
+                arrastando={!!arrastando && arrastando.etapaId !== col.etapa.id} sobre={sobre === col.etapa.id}
+                onPassar={(e) => passar(col.etapa, e)} onSair={(e) => sair(col.etapa, e)} onSoltar={(e) => soltar(col.etapa, e)}
+                cartao={(c) => (
+                  <CartaoNoQuadro
+                    key={c.id} c={c} painel={painel} etapas={etapas} podeMover={podeMover}
+                    ocupado={ocupado === c.id} esmaecido={arrastando?.id === c.id}
+                    onComecar={comecar} onTerminar={terminar} onMover={(etapaId) => void moverPeloMenu(c, etapaId)}
+                  />
+                )}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      {janelas}
+    </>
+  );
+}
+
+/**
+ * Quanto sobra da janela abaixo do quadro: no computador, as colunas ficam desta altura e rolam por
+ * dentro — assim o quadro inteiro cabe na tela e a rolagem de lado fica à vista, sem descer a página.
+ */
+function useAlturaQueSobra(ref: RefObject<HTMLElement>, mudancas: unknown[]): number | null {
+  const [altura, setAltura] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const medir = () => {
+      const el = ref.current;
+      if (!el) return;
+      const topo = el.getBoundingClientRect().top + window.scrollY;
+      // o cabeçalho da coluna, as margens, o "e mais N fechados" e a barra de rolagem de lado
+      setAltura(Math.max(280, Math.round(window.innerHeight - topo - 96)));
+    };
+    medir();
+    window.addEventListener('resize', medir);
+    return () => window.removeEventListener('resize', medir);
+  }, mudancas); // eslint-disable-line react-hooks/exhaustive-deps
+  return altura;
+}
+
+/** O ícone do que a etapa significa: a entrada, o resolvido, o fechado (o andamento não precisa). */
+function IconeDaEtapa({ tipo }: { tipo: EtapaPainel['tipo'] }) {
+  if (tipo === 'entrada') return <Inbox size={14} className="text-muted shrink-0" aria-hidden />;
+  if (tipo === 'resolvido') return <CircleCheck size={14} className="text-ok shrink-0" aria-hidden />;
+  if (tipo === 'fechado') return <Archive size={14} className="text-muted shrink-0" aria-hidden />;
+  return null;
+}
+
+function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onSoltar, cartao }: {
+  col: ColunaQuadro; painel: Painel; filtros: Filtros; arrastando: boolean; sobre: boolean;
+  onPassar: (e: DragEvent<HTMLElement>) => void; onSair: (e: DragEvent<HTMLElement>) => void; onSoltar: (e: DragEvent<HTMLElement>) => void;
+  cartao: (c: CartaoChamado) => ReactNode;
+}) {
+  const { etapa, chamados, total, escondidos } = col;
+  const nivel = etapa.nivel ? `N${etapa.nivel}` : null;
+  // a etapa que já se chama "N2" não precisa do chip "N2" do lado: o nome vira o próprio chip
+  const soNivel = !!nivel && etapa.nome.trim().toUpperCase() === nivel;
+  const chipNivel = 'chip bg-surface border border-line-strong text-ink font-mono';
+  const idTitulo = `etapa-${etapa.id}`;
+  return (
+    <section
+      aria-labelledby={idTitulo} data-etapa={etapa.id}
+      onDragOver={onPassar} onDragLeave={onSair} onDrop={onSoltar}
+      className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_272px] sm:max-w-[340px] rounded-xl border p-2 flex flex-col gap-2 transition-colors ${
+        sobre ? 'border-accent bg-accent-soft' : arrastando ? 'border-dashed border-line-strong bg-surface-2' : 'border-line bg-surface-2'}`}
+    >
+      <header className="flex items-center gap-1.5 px-1 pt-0.5 min-w-0" title={DICA_TIPO_ETAPA[etapa.tipo]}>
+        <IconeDaEtapa tipo={etapa.tipo} />
+        {soNivel ? <h2 id={idTitulo} className={chipNivel} title={`Nível ${etapa.nivel}`}>{nivel}</h2> : (
+          <>
+            <h2 id={idTitulo} className="font-display font-semibold text-[13.5px] truncate">{etapa.nome}</h2>
+            {nivel && <span className={chipNivel} title={`Nível ${etapa.nivel}`}>{nivel}</span>}
+          </>
+        )}
+        <span className="ml-auto tnum text-[12px] font-semibold text-muted" title={`${total} ${total === 1 ? 'chamado' : 'chamados'}`}>{total}</span>
+      </header>
+      <ul className="flex flex-col gap-2 sm:max-h-[var(--altura-colunas,70vh)] sm:overflow-y-auto sm:-mr-1 sm:pr-1" aria-label={`Chamados em ${etapa.nome}`}>
+        {chamados.map((c) => cartao(c))}
+        {!chamados.length && <li className="rounded-lg border border-dashed border-line-strong text-muted text-[12.5px] text-center py-5">Nenhum chamado</li>}
+      </ul>
+      {escondidos > 0 && (
+        <Link to={enderecoDaLista(painel.id, filtros, etapa.id)} className="link text-[12.5px] px-1 pb-0.5">
+          e mais {escondidos} {escondidos === 1 ? 'fechado' : 'fechados'} — ver na lista
+        </Link>
+      )}
+    </section>
+  );
+}
+
+function CartaoNoQuadro({ c, painel, etapas, podeMover, ocupado, esmaecido, onComecar, onTerminar, onMover }: {
+  c: CartaoChamado; painel: Painel; etapas: EtapaPainel[]; podeMover: boolean; ocupado: boolean; esmaecido: boolean;
+  onComecar: (c: CartaoChamado, e: DragEvent<HTMLDivElement>) => void; onTerminar: () => void; onMover: (etapaId: string) => void;
+}) {
+  const nav = useNavigate();
+  const arrastavel = podeMover && !ocupado;
+  return (
+    <li data-cartao={c.id} data-codigo={c.codigo}>
+      <CartaoComRodape
+        c={c} cor={painel.cor} arrastavel={arrastavel} draggable={arrastavel}
+        onDragStart={(e) => onComecar(c, e)} onDragEnd={onTerminar}
+        // clicar no cartão (fora dos links e do pé) abre a ficha, como no título
+        onClick={(e) => { if (cliqueAbreAFicha(e)) nav(`/atendimento/${encodeURIComponent(c.codigo)}`); }}
+        aria-busy={ocupado || undefined}
+        className={`cursor-pointer transition-opacity ${ocupado ? 'opacity-50 pointer-events-none' : esmaecido ? 'opacity-40' : ''}`}
+        rodape={(
+          <>
+            {ocupado ? <span className="inline-flex items-center gap-1.5 text-[12px] text-muted"><Spinner className="!w-3.5 !h-3.5" /> Movendo…</span>
+              : podeMover ? <MenuMover c={c} etapas={etapas} onMover={onMover} /> : null}
+            <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-muted whitespace-nowrap" title={`Última atividade: ${dataHoraCurta(c.ultimaAtividadeEm)}`}>
+              <Clock size={11} aria-hidden /> {haQuanto(c.ultimaAtividadeEm)}
+            </span>
+          </>
+        )}
+      />
+    </li>
+  );
+}
+
+/** O "Mover" do pé do cartão: a lista das etapas (para o celular, o teclado e quem prefere clicar). */
+function MenuMover({ c, etapas, onMover }: { c: CartaoChamado; etapas: EtapaPainel[]; onMover: (etapaId: string) => void }) {
+  // o Popover não fecha por fora: depois de escolher, a chave nova o remonta fechado
+  const [vez, setVez] = useState(0);
+  const atual = etapas.find((e) => e.id === c.etapaId);
+  return (
+    <Popover
+      key={vez} largura="w-[250px]" alinhar="esquerda" titulo={`Mover ${c.codigo} para outra etapa`}
+      classe="btn-ghost btn-sm px-2 py-1 -ml-1.5 text-[12.5px] text-ink-2"
+      botao={() => <><ArrowRightLeft size={13} aria-hidden /> Mover</>}
+    >
+      <p className="text-[12.5px] text-muted mb-1">Mover <span className="font-mono text-ink-2">{c.codigo}</span> para:</p>
+      <ul className="flex flex-col">
+        {etapas.map((e) => {
+          const aqui = e.id === c.etapaId;
+          const sentido = movimentoDeNivel(atual, e);
+          return (
+            <li key={e.id}>
+              <button
+                type="button" disabled={aqui} onClick={() => { setVez((v) => v + 1); onMover(e.id); }}
+                className="w-full text-left rounded-md px-2 py-1.5 text-[13.5px] flex items-center gap-2 hover:bg-surface-2 disabled:hover:bg-transparent disabled:cursor-default"
+              >
+                <span className={`flex-1 min-w-0 truncate ${aqui ? 'text-muted' : 'text-ink'}`}>{e.nome}</span>
+                {aqui ? <span className="text-[11.5px] text-muted">está aqui</span>
+                  : sentido === 'sobe' ? <span className="text-[11.5px] text-signal" title="Subir de nível pede o motivo">escalonar</span>
+                    : sentido === 'desce' ? <span className="text-[11.5px] text-muted" title="Descer de nível pede o motivo">voltar de nível</span>
+                      : e.tipo === 'fechado' ? <span className="text-[11.5px] text-ok">fecha</span> : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </Popover>
+  );
 }

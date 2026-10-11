@@ -40,6 +40,11 @@ export function registerErrorHandler(app: FastifyInstance) {
     if ((err as any)?.code === '23503') {
       return reply.status(409).send({ error: 'Não é possível: existem registros ligados a este', details: (err as any).detail ?? null });
     }
+    // o limite de pedidos (@fastify/rate-limit) responde em inglês ("Rate limit exceeded…"): a tela
+    // mostra a mensagem do servidor como veio, então ela sai daqui já em português
+    if ((err as any)?.statusCode === 429) {
+      return reply.status(429).send({ error: 'Muitas tentativas seguidas: espere um minuto e tente de novo.', details: null });
+    }
     if ((err as any)?.statusCode && (err as any).statusCode < 500) {
       return reply.status((err as any).statusCode).send({ error: err.message, details: null });
     }

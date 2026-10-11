@@ -16,7 +16,7 @@ import { z } from 'zod';
 import { paraBusca } from './formatos.js';
 import { numeroWhatsApp } from './envio.js';
 import {
-  ALCANCES, GRAVIDADES, NOME_ALCANCE, NOME_ESPERA, NOME_GRAVIDADE, NOME_PRIORIDADE, PESO_PRIORIDADE, PRIORIDADES, RegraAgendadoSchema,
+  ALCANCES, ESPERA_PARA_O_PRAZO, GRAVIDADES, NOME_ALCANCE, NOME_ESPERA, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_PRAZO, PESO_PRIORIDADE, PRIORIDADES, RegraAgendadoSchema,
   type Alcance, type AjustesPrazos, type Espera, type EstadoPrazo, type Gravidade, type Prioridade, type RegraAgendado, type TipoEspera,
 } from './atendimento-prazos.js';
 
@@ -1157,7 +1157,8 @@ export function filtrarCartoes<T extends CartaoParaLista>(lista: T[], f: Partial
     if (sit === 'fechados' && c.situacao !== 'fechado') return false;
     if (f.prazo === 'vencidos' && c.prazos.solucao.situacao !== 'vencido' && c.prazos.resposta.situacao !== 'vencido') return false;
     if (f.prazo === 'perto' && c.prazos.solucao.situacao !== 'perto' && c.prazos.resposta.situacao !== 'perto') return false;
-    if (f.prazo === 'parados' && !c.espera) return false;
+    // "parados": só a espera que para o prazo (o cliente); esperando a operadora, o prazo continua correndo
+    if (f.prazo === 'parados' && !(c.espera && ESPERA_PARA_O_PRAZO[c.espera.tipo])) return false;
     if (f.responsavel === 'eu' && c.responsavel?.id !== ctx.euId) return false;
     if (f.responsavel === 'ninguem' && c.responsavel) return false;
     if (f.responsavel && f.responsavel !== 'eu' && f.responsavel !== 'ninguem' && c.responsavel?.id !== f.responsavel) return false;
@@ -1229,7 +1230,7 @@ export function csvDosChamados(lista: CartaoChamado[], nomes: { painel: (id: str
     c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome, c.contato?.nome, c.contato?.telefone,
     c.responsavel?.nome, c.assunto?.caminho, c.tipo, c.gravidade ? NOME_GRAVIDADE[c.gravidade] : '', c.alcance ? NOME_ALCANCE[c.alcance] : '',
     c.prioridade ? NOME_PRIORIDADE[c.prioridade] : '', c.etiquetas.join(', '), c.espera ? NOME_ESPERA[c.espera.tipo] : '',
-    c.prazos.resposta.situacao === 'sem' ? '' : c.prazos.resposta.situacao, c.prazos.solucao.situacao === 'sem' ? '' : c.prazos.solucao.situacao,
+    c.prazos.resposta.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.resposta.situacao], c.prazos.solucao.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.solucao.situacao],
     dataHora(c.criadoEm), dataHora(c.resolvidoEm), dataHora(c.fechadoEm), NOME_ORIGEM[c.origem],
   ].map(celula).join(';'));
   return '﻿' + [cab.join(';'), ...linhas].join('\r\n');

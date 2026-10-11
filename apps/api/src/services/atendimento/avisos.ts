@@ -12,7 +12,7 @@ import { newId, ticketNotifications, users } from '@gestor/db';
 import { type EventoAviso, type TipoAviso } from '@gestor/shared';
 import { enderecoPublico } from '../envio.js';
 import { registrarEvento } from './contexto.js';
-import { lerAvisos, mandarWhatsApp } from './whatsapp.js';
+import { lerAvisos, mandarWhatsApp, whatsAppPronto } from './whatsapp.js';
 
 const pendentes = new Set<Promise<unknown>>();
 
@@ -52,6 +52,9 @@ export async function avisarEquipe(
   if (!canais.whatsapp || !v.ativo || !v.numeroEquipe) return;
   const numeros = quem.map((u) => ({ u, p: v.pessoas.find((x) => x.userId === u.id && x.ativo && x.numero) })).filter((x) => !!x.p);
   if (!numeros.length) return;
+  // Sem a chave, nem tenta: enquanto a configuração não termina, cada aviso deixaria um "não foi: falta
+  // a chave" no histórico do chamado. A tela de Avisos já mostra o que falta.
+  if (!(await whatsAppPronto(app.db)).equipe) return;
   const texto = `${a.texto}\n${a.chamado.codigo} · ${a.chamado.titulo}\n${linkDoChamado(app, a.chamado.codigo)}`;
   emSegundoPlano(app, async () => {
     for (const { u, p } of numeros) {

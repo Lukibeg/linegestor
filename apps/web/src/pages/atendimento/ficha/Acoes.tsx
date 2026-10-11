@@ -1,0 +1,263 @@
+/**
+ * A barra de ações da ficha: Assumir, Mover (o menu das etapas do painel, cada uma dizendo o que falta
+ * para ir para ela e os filhos que travam), o atalho "Escalonar para N2", Esperar (o cliente ou a
+ * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, Resposta pronta, Preencher com IA e
+ * o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, acompanhar, lixeira).
+ *
+ * Mover usa o `useMover()` comum: ele pede o motivo ao subir ou descer de nível e mostra o que falta
+ * quando o servidor recusa. O erro das ações diretas (assumir, parar de esperar…) aparece logo
+ * embaixo da barra, com o nome da ação.
+ */
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  ArrowRightLeft, ArrowUpRight, Columns3, Copy, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, MessageCircle, MoreHorizontal, RotateCcw, Sparkles, Trash2, Unlink, UserCheck, Zap,
+} from 'lucide-react';
+import { etapaAoAssumir, movimentoDeNivel, NOME_CAMPO, type RespostaPronta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
+import { api } from '../../../api/index.js';
+import { Confirmar, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
+import { paraALista } from '../../../lib/voltar.js';
+import { chaveDaFicha } from '../comum.js';
+import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, linkDaFicha, lista, nomeComNivel, useAberta, useAcao } from './base.js';
+import { JanelaIa, pedirSugestao } from './Ia.js';
+import { JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaResposta, JanelaTrocarPainel, resumoDaResposta } from './Janelas.js';
+
+type Janela =
+  | { tipo: 'esperar'; espera: TipoEspera }
+  | { tipo: 'avisar' }
+  | { tipo: 'resposta'; resposta: RespostaPronta }
+  | { tipo: 'ia'; s: SugestaoIa }
+  | { tipo: 'ligar' }
+  | { tipo: 'pai' }
+  | { tipo: 'problema' }
+  | { tipo: 'painel' }
+  | { tipo: 'reabrir' }
+  | { tipo: 'lixeira' };
+
+export function BarraDeAcoes() {
+  const { f, opcoes, painel, etapa, cuida, eu, mover } = useAberta();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const acao = useAcao();
+  const [qual, setQual] = useState('');
+  const [janela, setJanela] = useState<Janela | null>(null);
+  const [lendo, setLendo] = useState(false);
+  const [apagando, setApagando] = useState(false);
+  const fechar = () => setJanela(null);
+
+  const aberto = f.situacao === 'aberto';
+  const meu = !!eu && f.responsavel?.id === eu.id;
+  const etapas = painel?.etapas ?? [];
+  const nomeEtapa = (id: string) => nomeComNivel(etapas.find((e) => e.id === id));
+  // o atalho: o próximo nível acima (N1 → N2), quando o chamado está numa etapa com nível
+  const acima = aberto && etapa?.nivel ? etapas.filter((e) => e.nivel && e.nivel > etapa.nivel!).sort((a, b) => a.nivel! - b.nivel!)[0] : undefined;
+  const respostas = opcoes.respostas.filter((r) => r.ativa && (!r.painelId || r.painelId === f.painelId)).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const podeAvisar = opcoes.whatsapp.cliente && !!f.contato?.telefone;
+
+  /** Uma ação direta: o erro fica embaixo da barra, com o nome dela. */
+  const direta = async <T,>(nome: string, fazer: () => Promise<T>, ok?: string) => {
+    setQual(nome);
+    return acao.rodar(fazer, ok);
+  };
+
+  const assumir = async () => {
+    const r = await direta('Assumir', () => api.atendimento.assumir(f.id), `${f.codigo} agora é seu`);
+    // na entrada, o Assumir leva para a primeira etapa de andamento — se não faltar nada para ela
+    if (r.ok && etapa?.tipo === 'entrada' && r.r.etapaId === f.etapaId) {
+      const alvo = etapaAoAssumir(etapas, f.etapaId);
+      const faltam = alvo ? r.r.faltam[alvo.id] ?? [] : [];
+      if (alvo && faltam.length) toast.push('info', `Ficou com você, mas continua em ${etapa.nome}: para ir para ${alvo.nome}, falta ${lista(faltam.map((x) => NOME_CAMPO[x]))}.`);
+    }
+  };
+
+  const pedirIa = async () => {
+    setQual('Preencher com IA');
+    acao.limpar();
+    setLendo(true);
+    const r = await pedirSugestao(f.id);
+    setLendo(false);
+    if (r.ok) setJanela({ tipo: 'ia', s: r.s });
+    else acao.setErro(r.erro);
+  };
+
+  const copiarLink = async () => {
+    try { await navigator.clipboard.writeText(linkDaFicha(f.codigo)); toast.push('ok', `Link do ${f.codigo} copiado`); } catch { toast.push('erro', `Não deu para copiar: o código é ${f.codigo}`); }
+  };
+
+  const mandarParaLixeira = async () => {
+    setApagando(true);
+    try {
+      await api.atendimento.remover(f.id);
+      navigate(paraALista('/atendimento/lista'));
+      // sai da ficha antes de esquecê-la (senão ela pede de novo o chamado que acabou de sair)
+      window.setTimeout(() => {
+        qc.removeQueries({ queryKey: chaveDaFicha(f.codigo) });
+        qc.removeQueries({ queryKey: chaveDaFicha(f.id) });
+        for (const k of ['quadro', 'lista', 'meu-dia', 'opcoes']) void qc.invalidateQueries({ queryKey: ['atendimento', k] });
+      }, 0);
+      toast.push('ok', `${f.codigo} foi para a lixeira`);
+    } catch (e) {
+      setJanela(null);
+      setQual('Mandar para a lixeira');
+      acao.setErro(mensagemErro(e));
+    } finally {
+      setApagando(false);
+    }
+  };
+
+  const ocupadoMover = mover.ocupado === f.id;
+
+  return (
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Ações do chamado">
+        {!meu && f.situacao !== 'fechado' && (
+          <button type="button" className="btn-primary btn-sm" disabled={acao.ocupado} onClick={() => void assumir()} title="Ficar com o chamado (na entrada, ele vai para o andamento)">
+            {acao.ocupado && qual === 'Assumir' ? <Spinner className="text-white" /> : <UserCheck size={15} />} Assumir
+          </button>
+        )}
+
+        <MenuSuspenso classe="btn-secondary btn-sm" largura="w-[320px]" titulo="Mover para outra etapa (ou escalonar)"
+          rotulo={<>{ocupadoMover ? <Spinner /> : <ArrowRightLeft size={15} />} Mover</>}>
+          {(fecharMenu) => (
+            <>
+              <div className="px-2.5 pt-1 pb-1.5 eyebrow">Etapas do {painel?.nome ?? 'painel'}</div>
+              {etapas.map((e) => {
+                const atual = e.id === f.etapaId;
+                const faltam = f.faltam[e.id] ?? [];
+                const filhos = f.filhosTravam[e.id] ?? [];
+                const sentido = atual ? null : movimentoDeNivel(etapa, e);
+                return (
+                  <ItemMenu key={e.id} desativado={atual} marcado={atual}
+                    onClick={() => { fecharMenu(); void mover.mover(f, e.id); }}
+                    dica={atual ? 'o chamado está aqui' : (faltam.length || filhos.length) ? (
+                      <span className="text-signal">
+                        {faltam.length > 0 && <>Falta: {lista(faltam.map((x) => NOME_CAMPO[x]))}.</>}
+                        {faltam.length > 0 && filhos.length > 0 && ' '}
+                        {filhos.length > 0 && <>Filhos em aberto: {filhos.join(', ')}.</>}
+                      </span>
+                    ) : sentido === 'sobe' ? 'escalonar: pede o motivo' : sentido === 'desce' ? 'voltar de nível: pede o motivo' : undefined}>
+                    <span className="flex items-center gap-2">
+                      <span className={atual ? 'font-semibold' : ''}>{nomeComNivel(e)}</span>
+                      {sentido === 'sobe' && <ArrowUpRight size={13} className="text-muted" aria-label="sobe de nível" />}
+                    </span>
+                  </ItemMenu>
+                );
+              })}
+            </>
+          )}
+        </MenuSuspenso>
+
+        {acima && (
+          <button type="button" className="btn-secondary btn-sm" disabled={ocupadoMover} onClick={() => void mover.mover(f, acima.id)} title={`Passar para o ${acima.nome} (pede o motivo)`}>
+            <ArrowUpRight size={15} /> Escalonar para {acima.nome}
+          </button>
+        )}
+
+        {aberto && (f.espera ? (
+          <button type="button" className="btn-secondary btn-sm" disabled={acao.ocupado}
+            onClick={() => void direta('Parar de esperar', () => api.atendimento.esperar(f.id, { tipo: null }), 'A marca de espera saiu')}
+            title={f.espera.tipo === 'cliente' ? 'Tirar a marca: o prazo volta a correr' : 'Tirar a marca de espera'}>
+            {acao.ocupado && qual === 'Parar de esperar' ? <Spinner /> : <Hourglass size={15} />} Parar de esperar
+          </button>
+        ) : (
+          <MenuSuspenso classe="btn-secondary btn-sm" largura="w-[290px]" titulo="Marcar que o chamado está esperando alguém" rotulo={<><Hourglass size={15} /> Esperar</>}>
+            {(fecharMenu) => (
+              <>
+                <ItemMenu dica="O prazo para de correr enquanto espera." onClick={() => { fecharMenu(); setJanela({ tipo: 'esperar', espera: 'cliente' }); }}>Esperar o cliente…</ItemMenu>
+                <ItemMenu dica="O prazo continua correndo." onClick={() => { fecharMenu(); setJanela({ tipo: 'esperar', espera: 'operadora' }); }}>Esperar a operadora…</ItemMenu>
+              </>
+            )}
+          </MenuSuspenso>
+        ))}
+
+        {podeAvisar && (
+          <button type="button" className="btn-secondary btn-sm" onClick={() => setJanela({ tipo: 'avisar' })} title="Mandar uma mensagem ao contato pelo WhatsApp oficial">
+            <MessageCircle size={15} /> Avisar o cliente
+          </button>
+        )}
+
+        {respostas.length > 0 && (
+          <MenuSuspenso classe="btn-secondary btn-sm" largura="w-[320px]" titulo="Mandar um texto pronto e mudar o chamado de uma vez" rotulo={<><Zap size={15} /> Resposta pronta</>}>
+            {(fecharMenu) => respostas.map((r) => (
+              <ItemMenu key={r.id} dica={resumoDaResposta(r, nomeEtapa)} onClick={() => { fecharMenu(); setJanela({ tipo: 'resposta', resposta: r }); }}>{r.nome}</ItemMenu>
+            ))}
+          </MenuSuspenso>
+        )}
+
+        {opcoes.ia.ativa && (
+          <button type="button" className="btn-secondary btn-sm" disabled={lendo} onClick={() => void pedirIa()}
+            title={f.sessaoId ? 'A IA lê a conversa no LineChat e sugere o preenchimento (nada é gravado sem você aplicar)' : 'A IA lê o chamado e sugere o preenchimento (nada é gravado sem você aplicar)'}>
+            {lendo ? <><Spinner /> A IA está lendo…</> : <><Sparkles size={15} /> Preencher com IA</>}
+          </button>
+        )}
+
+        {!aberto && (
+          <button type="button" className="btn-secondary btn-sm" onClick={() => setJanela({ tipo: 'reabrir' })}><RotateCcw size={15} /> Reabrir</button>
+        )}
+
+        <MenuSuspenso classe="btn-ghost btn-sm" largura="w-[300px]" alinhar="direita" titulo="Mais ações" rotuloAcessivel="Mais ações" rotulo={<><MoreHorizontal size={16} /> Mais</>}>
+          {(fecharMenu) => {
+            const ir = (fazer: () => void) => () => { fecharMenu(); fazer(); };
+            return (
+              <>
+                <ItemMenu icone={<Link2 size={15} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica="relacionado, duplicado de, repete">Ligar a outro chamado…</ItemMenu>
+                <ItemMenu icone={<GitBranch size={15} />} onClick={ir(() => navigate(`/atendimento/novo?pai=${encodeURIComponent(f.codigo)}`))} dica="pode ser em outro painel (o Desenvolvimento)">Criar um filho</ItemMenu>
+                <ItemMenu icone={<GitBranch size={15} className="rotate-180" />} onClick={ir(() => setJanela({ tipo: 'pai' }))}>{f.pai ? `Trocar o pai (${f.pai.codigo})…` : 'Definir o pai…'}</ItemMenu>
+                {f.pai && <ItemMenu icone={<Unlink size={15} />} onClick={ir(() => void direta('Tirar o pai', () => api.atendimento.definirPai(f.id, null), `${f.codigo} não é mais filho de ${f.pai!.codigo}`))}>Tirar o pai ({f.pai.codigo})</ItemMenu>}
+                {f.tipoChamado === 'chamado' && (
+                  <>
+                    <SeparadorMenu />
+                    <ItemMenu icone={<Layers size={15} />} onClick={ir(() => setJanela({ tipo: 'problema' }))} dica="o problema junta os incidentes iguais de várias empresas">
+                      {f.problema ? `Trocar o problema (${f.problema.codigo})…` : 'Ligar a um problema…'}
+                    </ItemMenu>
+                    {f.problema && <ItemMenu icone={<Unlink size={15} />} onClick={ir(() => void direta('Tirar do problema', () => api.atendimento.definirProblema(f.id, null), `${f.codigo} saiu do problema ${f.problema!.codigo}`))}>Tirar do problema ({f.problema.codigo})</ItemMenu>}
+                    <ItemMenu icone={<Layers size={15} />} onClick={ir(() => navigate(`/atendimento/novo?tipo=problema&incidente=${encodeURIComponent(f.codigo)}`))} dica="este chamado vira o primeiro incidente dele">Abrir um problema a partir deste</ItemMenu>
+                  </>
+                )}
+                <SeparadorMenu />
+                <ItemMenu icone={<Columns3 size={15} />} onClick={ir(() => setJanela({ tipo: 'painel' }))} dica="o código não muda">Trocar de painel…</ItemMenu>
+                {!aberto && <ItemMenu icone={<RotateCcw size={15} />} onClick={ir(() => setJanela({ tipo: 'reabrir' }))}>Reabrir…</ItemMenu>}
+                <ItemMenu icone={f.observando ? <EyeOff size={15} /> : <Eye size={15} />}
+                  onClick={ir(() => void direta(f.observando ? 'Deixar de acompanhar' : 'Acompanhar', () => api.atendimento.observar(f.id, !f.observando), f.observando ? 'Você deixou de acompanhar' : 'Você passou a acompanhar: ele aparece no seu Meu dia'))}
+                  dica={f.observando ? undefined : 'aparece no seu Meu dia'}>
+                  {f.observando ? 'Deixar de acompanhar' : 'Acompanhar'}
+                </ItemMenu>
+                <ItemMenu icone={<Copy size={15} />} onClick={ir(() => void copiarLink())} dica="para colar na conversa ou no WhatsApp">Copiar o link</ItemMenu>
+                {cuida && (
+                  <>
+                    <SeparadorMenu />
+                    <ItemMenu icone={<Trash2 size={15} />} perigoso onClick={ir(() => setJanela({ tipo: 'lixeira' }))}>Mandar para a lixeira…</ItemMenu>
+                  </>
+                )}
+              </>
+            );
+          }}
+        </MenuSuspenso>
+      </div>
+      <ErroPerto erro={acao.erro ? `${qual}: ${acao.erro}` : null} />
+
+      {janela?.tipo === 'esperar' && <JanelaEsperar tipo={janela.espera} onFechar={fechar} />}
+      {janela?.tipo === 'avisar' && <JanelaAvisar onFechar={fechar} />}
+      {janela?.tipo === 'resposta' && <JanelaResposta resposta={janela.resposta} onFechar={fechar} />}
+      {janela?.tipo === 'ia' && <JanelaIa s={janela.s} onFechar={fechar} />}
+      {janela?.tipo === 'ligar' && <JanelaLigar onFechar={fechar} />}
+      {janela?.tipo === 'pai' && (
+        <JanelaEscolherChamado titulo={f.pai ? `Trocar o pai de ${f.codigo}` : `O pai de ${f.codigo}`} botao="Definir o pai" excluir={f.pai ? [f.pai.codigo] : []}
+          texto={<>O pai pode ser de outro painel. {painel?.ajustes.paiEsperaFilhos ? 'Ele só resolve e fecha depois que os filhos fecharem.' : ''}</>}
+          fazer={(c) => api.atendimento.definirPai(f.id, c)} ok={(c) => `${f.codigo} agora é filho de ${c}`} onFechar={fechar} />
+      )}
+      {janela?.tipo === 'problema' && (
+        <JanelaEscolherChamado titulo={`Ligar ${f.codigo} a um problema`} botao="Ligar ao problema" tipoChamado="problema" excluir={f.problema ? [f.problema.codigo] : []}
+          texto="O problema junta os incidentes iguais (de uma ou de várias empresas). A lista mostra só os problemas."
+          fazer={(c) => api.atendimento.definirProblema(f.id, c)} ok={(c) => `${f.codigo} agora é incidente do problema ${c}`} onFechar={fechar} />
+      )}
+      {janela?.tipo === 'painel' && <JanelaTrocarPainel onFechar={fechar} />}
+      {janela?.tipo === 'reabrir' && <JanelaReabrir onFechar={fechar} />}
+      {janela?.tipo === 'lixeira' && <Confirmar open onClose={fechar} onConfirm={() => void mandarParaLixeira()} loading={apagando} perigoso
+        titulo={`Mandar ${f.codigo} para a lixeira`} botao="Mandar para a lixeira"
+        texto={<>O chamado <b>{f.titulo}</b> sai do quadro e da lista para todo mundo. O número {f.codigo} não volta a ser usado. Dá para restaurar em Administração › Lixeira.</>} />}
+    </div>
+  );
+}

@@ -319,8 +319,19 @@ export const FAIXA_ABAS = 'flex gap-1 mb-4 overflow-x-auto overflow-y-hidden sem
 export const classeAba = (ativa: boolean) => `px-3 py-2 text-sm font-semibold border-b-2 whitespace-nowrap ${ativa ? 'border-accent text-accent' : 'border-transparent text-ink-2 hover:text-ink'}`;
 
 export function Abas<T extends string>({ abas, atual, onChange }: { abas: Array<{ id: T; label: ReactNode }>; atual: T; onChange: (t: T) => void }) {
+  const faixa = useRef<HTMLDivElement>(null);
+  // A aba escolhida fica à vista: no celular a faixa rola para o lado, e a aba da direita (aberta pelo
+  // endereço) ficava cortada. Mexe só na rolagem da faixa, nunca na da página.
+  useEffect(() => {
+    const f = faixa.current;
+    const b = f?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!f || !b) return;
+    const fr = f.getBoundingClientRect(); const br = b.getBoundingClientRect();
+    if (br.left < fr.left) f.scrollLeft -= fr.left - br.left + 8;
+    else if (br.right > fr.right) f.scrollLeft += br.right - fr.right + 8;
+  }, [atual]);
   return (
-    <div className={FAIXA_ABAS} role="tablist">
+    <div ref={faixa} className={FAIXA_ABAS} role="tablist">
       {abas.map((a) => (
         <button key={a.id} role="tab" aria-selected={atual === a.id} onClick={() => onChange(a.id)} className={classeAba(atual === a.id)}>{a.label}</button>
       ))}
