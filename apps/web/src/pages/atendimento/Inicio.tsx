@@ -5,8 +5,8 @@
  *
  * Um cartão por painel: a sigla e o nome, quem vê, os números (em aberto, vencidos, sem dono, os
  * meus) e quantos estão em cada etapa. Clicar no cartão abre o quadro; cada número abre a lista já
- * filtrada; "Configurar" leva às etapas e às regras daquele painel (quem cuida dos chamados). O Meu
- * dia virou uma aba ao lado.
+ * filtrada; "Configurar" abre a janela daquele painel nos Ajustes — o nome, quem vê, as etapas e as
+ * regras, tudo junto (quem cuida dos chamados). O Meu dia virou uma aba ao lado.
  */
 import { useMemo, useState, type MouseEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -131,7 +131,7 @@ function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPa
         <span className="text-[12px] text-muted">{r?.ultimaAtividadeEm ? `mexido ${haQuanto(r.ultimaAtividadeEm)}` : carregando ? '' : 'nenhum chamado ainda'}</span>
         <div className="ml-auto flex items-center gap-1">
           {cuidar && (
-            <Link to={`/atendimento/ajustes?aba=paineis&painel=${encodeURIComponent(p.id)}`} className="btn-ghost btn-sm" title="As etapas, as regras e quem vê este painel">
+            <Link to={`/atendimento/ajustes?aba=paineis&editar=${encodeURIComponent(p.id)}`} className="btn-ghost btn-sm" title="As etapas, as regras e quem vê este painel">
               <Settings2 size={15} aria-hidden /> Configurar
             </Link>
           )}

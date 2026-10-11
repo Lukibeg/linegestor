@@ -206,7 +206,7 @@ def roteiro(page):
     apontar(page, page.locator('nav a:has-text("Chamados")').first, 1300)
     apontar(page, page.locator('nav a:has-text("Chamados do LineChat")').first, 1700)
     suporte = page.locator('article[data-painel="SUP"]').first
-    legenda(page, next(n), 'Os painéis', 'Cada painel com os números de agora e as etapas. Clique para abrir o quadro; Configurar leva às regras.', 900)
+    legenda(page, next(n), 'Os painéis', 'Cada painel com os números de agora e as etapas. Clique para abrir o quadro; Configurar abre as etapas e as regras.', 900)
     apontar(page, suporte.locator('a:has-text("Vencidos")').first, 1500)
     apontar(page, suporte.locator('ul a').first, 1300)
     apontar(page, suporte.locator('a:has-text("Configurar")').first, 1500)
@@ -285,11 +285,17 @@ def roteiro(page):
     rolar(page, 300); esperar(page, 1200)
     clicar(page, janela.get_by_role('button', name='Aplicar os marcados')); esperar(page, 2000)
 
-    # 10. os Ajustes do módulo
+    # 10. os Ajustes do módulo: a janela do painel, com as etapas dentro (ao criar e ao editar)
     ir(page, '/atendimento/ajustes?aba=paineis', 1500)
-    legenda(page, next(n), 'Os Ajustes do módulo', 'Os painéis e as etapas são da equipe. E os assuntos, os prazos, os avisos, as respostas prontas e a IA.', 1600)
-    rolar(page, 360); esperar(page, 1400)
-    topo(page)
+    legenda(page, next(n), 'Os Ajustes do módulo', 'Tudo de um painel numa janela só: quem vê, as etapas e as regras. Ao criar e ao editar.', 900)
+    clicar(page, page.locator('section[data-painel="SUP"]').get_by_role('button', name='Editar o painel Suporte')); esperar(page, 1500)
+    clicar(page, page.locator('#painel-partes button', has_text='As etapas')); esperar(page, 2200)
+    clicar(page, page.get_by_role('button', name='Editar N2')); esperar(page, 2200)
+    page.keyboard.press('Escape'); esperar(page, 600)
+    # a pergunta de fechar sem salvar só aparece com mudança (aqui não houve)
+    if page.locator('[role="dialog"]').count():
+        page.keyboard.press('Escape'); esperar(page, 400)
+    legenda(page, next(n), 'E o resto dos Ajustes', 'Os assuntos, os prazos, os avisos e o WhatsApp, as respostas prontas, os agendados e a IA.', 600)
     clicar(page, page.get_by_role('tab', name='Assuntos')); esperar(page, 2000)
     clicar(page, page.get_by_role('tab', name='Avisos e WhatsApp')); esperar(page, 2200)
 

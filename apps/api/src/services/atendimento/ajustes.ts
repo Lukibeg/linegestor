@@ -18,9 +18,9 @@ import type { z } from 'zod';
 import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { newId, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
 import {
-  assuntoEDescendentes, caminhoDoAssunto, etiquetasUnicas, lerListaDeAssuntos, MAX_NIVEL_ASSUNTO, nivelDoAssunto, paraBusca, situacaoDaEtapa,
-  type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type EtapasGravarSchema,
-  type Painel, type PainelGravarSchema, type TipoEtapa,
+  assuntoEDescendentes, caminhoDoAssunto, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, lerListaDeAssuntos, MAX_NIVEL_ASSUNTO, nivelDoAssunto, paraBusca, situacaoDaEtapa,
+  type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type CampoObrigatorio, type EtapasGravarSchema,
+  type Nivel, type Painel, type PainelGravarSchema, type TipoEtapa,
 } from '@gestor/shared';
 import { BadRequest, Conflict, NotFound } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
@@ -29,18 +29,13 @@ import { gravarTeste, lerAvisos, mandarWhatsApp, type AvisosGuardados } from './
 
 type PainelGravar = z.infer<typeof PainelGravarSchema>;
 type EtapasGravar = z.infer<typeof EtapasGravarSchema>;
+type EtapaGravar = EtapasGravar['etapas'][number];
 type AssuntoGravar = z.infer<typeof AssuntoGravarSchema>;
+type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+type LinhaDaEtapa = typeof ticketStages.$inferSelect;
 
 /** O resultado de uma mudança e o que vai para a auditoria. */
 export type Gravado<T> = { valor: T; resumo: string; antes?: unknown; depois?: unknown };
-
-/** As etapas com que um painel novo nasce: o mínimo para funcionar (a equipe ajusta depois). */
-export const ETAPAS_DO_PAINEL_NOVO: Array<{ nome: string; tipo: TipoEtapa }> = [
-  { nome: 'Novo', tipo: 'entrada' },
-  { nome: 'Em andamento', tipo: 'andamento' },
-  { nome: 'Resolvido', tipo: 'resolvido' },
-  { nome: 'Fechado', tipo: 'fechado' },
-];
 
 /** A mensagem do teste do WhatsApp (a mesma da prévia). */
 export const TEXTO_DO_TESTE = 'Teste do Ingline Gestão: os avisos dos chamados vão chegar por aqui.';
@@ -76,10 +71,12 @@ async function conferirPessoas(db: Db, ids: string[]) {
   if (achadas.length !== pedidas.length) throw new BadRequest('Uma das pessoas escolhidas não existe mais. Recarregue a tela e escolha de novo.');
 }
 
-/** O painel no "antes/depois" da auditoria (sem as etapas, que têm a sua própria mudança). */
+/** O painel no "antes/depois" da auditoria (as etapas vão junto quando mudam na mesma janela). */
 const painelParaAuditoria = (p: Painel) => ({
   nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, acesso: p.acesso, pessoas: p.pessoas, ajustes: p.ajustes, ativo: p.ativo,
 });
+const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[] }) =>
+  ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar });
 
 // =====================================================================
 //  OS PAINÉIS
@@ -88,9 +85,14 @@ const painelParaAuditoria = (p: Painel) => ({
 /**
  * Cria (sem `id`) ou muda um painel. A sigla é única para sempre — um painel que saiu continua dono
  * dos códigos dos chamados dele (SUP-12 não pode passar a ser de outro) — e não muda depois do
- * primeiro chamado. O painel novo nasce com as quatro etapas básicas.
+ * primeiro chamado.
+ *
+ * As etapas podem vir junto (a janela do painel tem as etapas, ao criar e ao editar): ao criar, o
+ * painel nasce com elas (sem a lista, com as quatro básicas); ao mudar, valem as regras de
+ * `salvarEtapas`, e o painel e as etapas são gravados na mesma transação — se a etapa que sai tem
+ * chamados sem destino, nada muda, nem o nome do painel.
  */
-export async function gravarPainel(app: FastifyInstance, id: string | null, d: PainelGravar): Promise<Gravado<Painel>> {
+export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string | null, d: PainelGravar): Promise<Gravado<Painel>> {
   const db = app.db;
   const atual = id ? await linhaDoPainel(db, id) : null;
   const sigla = d.sigla;
@@ -114,30 +116,46 @@ export async function gravarPainel(app: FastifyInstance, id: string | null, d: P
   };
   await conferirPessoas(db, [...pessoas, ...ajustes.supervisores]);
   const campos = { name: d.nome, key: sigla, description: d.descricao, color: d.cor, access: d.acesso, memberIds: pessoas, settings: ajustes, active: d.ativo };
+  const agora = new Date();
 
   if (!atual) {
     const novoId = newId();
+    // as etapas da janela (todas novas: um painel novo não tem etapa nenhuma ainda) ou as quatro básicas
+    const plano = await planejarEtapas(db, novoId, d.etapas ?? ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, avisar: [] })), {});
     await db.transaction(async (tx) => {
       const [ultimo] = await tx.select({ n: sql<number>`coalesce(max(${ticketPanels.sortOrder}), -1)::int` }).from(ticketPanels);
       await tx.insert(ticketPanels).values({ id: novoId, ...campos, sortOrder: Number(ultimo?.n ?? -1) + 1 });
-      await tx.insert(ticketStages).values(ETAPAS_DO_PAINEL_NOVO.map((e, i) => ({ id: newId(), panelId: novoId, name: e.nome, kind: e.tipo, level: null, sortOrder: i })));
+      await aplicarEtapas(tx, ator, plano, agora);
     });
     const painel = await painelPronto(db, novoId);
-    return { valor: painel, resumo: `Criou o painel ${painel.nome} (${painel.sigla})`, depois: painelParaAuditoria(painel) };
+    return {
+      valor: painel,
+      resumo: `Criou o painel ${painel.nome} (${painel.sigla}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`,
+      depois: { ...painelParaAuditoria(painel), etapas: painel.etapas.map(etapaParaAuditoria) },
+    };
   }
 
+  // as etapas que vieram junto: conferidas antes de gravar qualquer coisa (o destino dos chamados também)
+  const plano = d.etapas ? await planejarEtapas(db, atual.id, d.etapas, d.destino) : null;
   const antes = painelParaAuditoria(painelDaLinha(atual, []));
-  await db.update(ticketPanels).set({ ...campos, updatedAt: new Date() }).where(eq(ticketPanels.id, atual.id));
+  let movidos: Movido[] = [];
+  await db.transaction(async (tx) => {
+    await tx.update(ticketPanels).set({ ...campos, updatedAt: agora }).where(eq(ticketPanels.id, atual.id));
+    if (plano) movidos = await aplicarEtapas(tx, ator, plano, agora);
+  });
   const painel = await painelPronto(db, atual.id);
+  const etapas = plano ? resumoDasEtapas(plano, movidos) : null;
   const mudancas = [
     antes.nome !== painel.nome ? `antes se chamava ${antes.nome}` : '',
     antes.sigla !== painel.sigla ? `a sigla era ${antes.sigla}` : '',
     antes.ativo !== painel.ativo ? (painel.ativo ? 'reativou' : 'desativou') : '',
   ].filter(Boolean);
+  const partes = [mudancas.join(', '), etapas?.partes.length ? `nas etapas, ${etapas.partes.join('; ')}` : ''].filter(Boolean);
   return {
     valor: painel,
-    resumo: `Alterou o painel ${painel.nome} (${painel.sigla})${mudancas.length ? `: ${mudancas.join(', ')}` : ''}`,
-    antes, depois: painelParaAuditoria(painel),
+    resumo: `Alterou o painel ${painel.nome} (${painel.sigla})${partes.length ? `: ${partes.join('; ')}` : ''}`,
+    antes: etapas ? { ...antes, etapas: etapas.antes } : antes,
+    depois: etapas ? { ...painelParaAuditoria(painel), etapas: etapas.depois } : painelParaAuditoria(painel),
   };
 }
 
@@ -192,24 +210,62 @@ function datasDaSituacao(tipo: TipoEtapa, agora: Date) {
  * O que NÃO acontece nesse movimento (é arrumação do painel, não trabalho no chamado): não confere os
  * obrigatórios do destino, não conta como primeira resposta nem como "reaberto", não avisa a equipe
  * e não dispara webhook — mudar 300 fechados de etapa não pode virar 300 mensagens.
+ *
+ * A janela do painel grava as etapas junto com o painel (`gravarPainel`); esta é a entrada só das
+ * etapas (as mesmas regras: `planejarEtapas` confere, `aplicarEtapas` grava).
  */
 export async function salvarEtapas(app: FastifyInstance, ator: Ator, painelId: string, d: EtapasGravar): Promise<Gravado<Painel>> {
   const db = app.db;
   const p = await linhaDoPainel(db, painelId);
+  const plano = await planejarEtapas(db, painelId, d.etapas, d.destino);
+  const agora = new Date();
+  let movidos: Movido[] = [];
+  await db.transaction(async (tx) => {
+    movidos = await aplicarEtapas(tx, ator, plano, agora);
+    await tx.update(ticketPanels).set({ updatedAt: agora }).where(eq(ticketPanels.id, painelId));
+  });
+  const r = resumoDasEtapas(plano, movidos);
+  return {
+    valor: await painelPronto(db, painelId),
+    resumo: `Mudou as etapas do painel ${p.name}${r.partes.length ? `: ${r.partes.join('; ')}` : ''}`,
+    antes: r.antes, depois: r.depois,
+  };
+}
+
+/** Os chamados que mudaram de etapa porque a etapa deles saiu (para a frase da auditoria). */
+type Movido = { de: string; para: string; n: number };
+/** A lista de etapas já conferida contra o banco, pronta para gravar (nada foi gravado ainda). */
+type PlanoDasEtapas = {
+  painelId: string;
+  atuais: LinhaDaEtapa[];
+  porId: Map<string, LinhaDaEtapa>;
+  /** a lista final, na ordem: as novas já com o id que vão ter */
+  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: CampoObrigatorio[]; avisar: string[] }>;
+  saem: LinhaDaEtapa[];
+  destino: Record<string, string>;
+};
+
+/**
+ * Confere a lista de etapas contra o banco, sem gravar nada: as que vêm com id são deste painel (uma
+ * vez só), as pessoas avisadas existem, e a etapa que sai com chamados tem destino (senão, 400 com
+ * as etapas e quantos chamados cada uma tem — a tela pergunta para onde vão). Num painel novo não há
+ * etapa nenhuma: toda etapa com id é recusada.
+ */
+async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], destino: Record<string, string>): Promise<PlanoDasEtapas> {
   const atuais = await db.select().from(ticketStages)
     .where(and(eq(ticketStages.panelId, painelId), isNull(ticketStages.deletedAt))).orderBy(asc(ticketStages.sortOrder));
   const porId = new Map(atuais.map((e) => [e.id, e]));
 
   // as que vêm com id são deste painel, uma vez só
   const ficam = new Set<string>();
-  for (const e of d.etapas) {
+  for (const e of etapas) {
     if (!e.id) continue;
     if (!porId.has(e.id)) throw new BadRequest(`A etapa ${e.nome} não é deste painel (ou já saiu). Recarregue a tela e tente de novo.`);
     if (ficam.has(e.id)) throw new BadRequest(`A etapa ${e.nome} apareceu duas vezes na lista.`);
     ficam.add(e.id);
   }
   // as novas ganham o id já aqui (para a resposta e para o destino dos chamados da lixeira)
-  const novas = d.etapas.map((e, ordem) => ({
+  const novas = etapas.map((e, ordem) => ({
     id: e.id ?? newId(), nova: !e.id, ordem, nome: e.nome, tipo: e.tipo, nivel: e.nivel,
     obrigatorios: [...new Set(e.obrigatorios)], avisar: unicos(e.avisar),
   }));
@@ -224,69 +280,84 @@ export async function salvarEtapas(app: FastifyInstance, ator: Ator, painelId: s
   const chamadosEm = new Map(contagem.map((c) => [c.stageId, Number(c.n)]));
   const semDestino = saem
     .map((e) => ({ id: e.id, nome: e.name, chamados: chamadosEm.get(e.id) ?? 0 }))
-    .filter((e) => e.chamados > 0 && !ficam.has(d.destino[e.id] ?? ''));
+    .filter((e) => e.chamados > 0 && !ficam.has(destino[e.id] ?? ''));
   if (semDestino.length) {
     throw new BadRequest(
       semDestino.map((e) => `A etapa ${e.nome} tem ${plural(e.chamados, 'chamado', 'chamados')}: escolha para onde ${e.chamados === 1 ? 'ele vai' : 'eles vão'}.`).join(' '),
       { etapas: semDestino },
     );
   }
+  return { painelId, atuais, porId, novas, saem, destino };
+}
 
-  const agora = new Date();
+/** Grava o plano dentro da transação de quem chamou e devolve os chamados que mudaram de etapa. */
+async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, agora: Date): Promise<Movido[]> {
+  const { painelId, porId, novas, saem, destino } = plano;
   const finais = new Map(novas.map((e) => [e.id, e]));
   /** Sem destino escolhido (a etapa só tinha chamados na lixeira): uma do mesmo tipo, senão a de entrada. */
-  const destinoDe = (e: (typeof saem)[number]) =>
-    finais.get(d.destino[e.id] ?? '') ?? novas.find((x) => x.tipo === e.kind) ?? novas.find((x) => x.tipo === 'entrada') ?? novas[0]!;
-  const movidos: Array<{ de: string; para: string; n: number }> = [];
+  const destinoDe = (e: LinhaDaEtapa) =>
+    finais.get(destino[e.id] ?? '') ?? novas.find((x) => x.tipo === e.kind) ?? novas.find((x) => x.tipo === 'entrada') ?? novas[0]!;
+  const movidos: Movido[] = [];
 
-  await db.transaction(async (tx) => {
-    for (const e of novas) {
-      const campos = { name: e.nome, kind: e.tipo, level: e.nivel, sortOrder: e.ordem, requiredFields: e.obrigatorios, notifyUserIds: e.avisar };
-      if (e.nova) await tx.insert(ticketStages).values({ id: e.id, panelId: painelId, ...campos });
-      else await tx.update(ticketStages).set(campos).where(eq(ticketStages.id, e.id));
+  for (const e of novas) {
+    const campos = { name: e.nome, kind: e.tipo, level: e.nivel, sortOrder: e.ordem, requiredFields: e.obrigatorios, notifyUserIds: e.avisar };
+    if (e.nova) await tx.insert(ticketStages).values({ id: e.id, panelId: painelId, ...campos });
+    else await tx.update(ticketStages).set(campos).where(eq(ticketStages.id, e.id));
+  }
+  // a etapa que mudou de tipo muda o que os chamados dela são (aberto, resolvido, fechado): as datas acompanham
+  for (const e of novas) {
+    const antes = porId.get(e.id);
+    if (antes && situacaoDaEtapa(antes.kind as TipoEtapa) !== situacaoDaEtapa(e.tipo)) {
+      await tx.update(tickets).set({ ...datasDaSituacao(e.tipo, agora), updatedAt: agora }).where(eq(tickets.stageId, e.id));
     }
-    // a etapa que mudou de tipo muda o que os chamados dela são (aberto, resolvido, fechado): as datas acompanham
-    for (const e of novas) {
-      const antes = porId.get(e.id);
-      if (antes && situacaoDaEtapa(antes.kind as TipoEtapa) !== situacaoDaEtapa(e.tipo)) {
-        await tx.update(tickets).set({ ...datasDaSituacao(e.tipo, agora), updatedAt: agora }).where(eq(tickets.stageId, e.id));
+  }
+  // os chamados das que saem vão para o destino (os da lixeira também: restaurados, voltam para uma etapa que existe)
+  for (const e of saem) {
+    const para = destinoDe(e);
+    const linhas = await tx.select({ id: tickets.id, deletedAt: tickets.deletedAt }).from(tickets).where(eq(tickets.stageId, e.id));
+    if (linhas.length) {
+      const mudaSituacao = situacaoDaEtapa(e.kind as TipoEtapa) !== situacaoDaEtapa(para.tipo);
+      await tx.update(tickets).set({ stageId: para.id, updatedAt: agora, ...(mudaSituacao ? datasDaSituacao(para.tipo, agora) : {}) })
+        .where(eq(tickets.stageId, e.id));
+      for (const t of linhas) {
+        await registrarEvento(tx, t.id, 'etapa', ator, {
+          de: { id: e.id, nome: e.name, nivel: e.level }, para: { id: para.id, nome: para.nome, nivel: para.nivel },
+          motivo: `a etapa ${e.name} saiu do painel`, sentido: null,
+        }, agora);
       }
+      const vivos = linhas.filter((t) => !t.deletedAt).length;
+      if (vivos) movidos.push({ de: e.name, para: para.nome, n: vivos });
     }
-    // os chamados das que saem vão para o destino (os da lixeira também: restaurados, voltam para uma etapa que existe)
-    for (const e of saem) {
-      const para = destinoDe(e);
-      const linhas = await tx.select({ id: tickets.id, deletedAt: tickets.deletedAt }).from(tickets).where(eq(tickets.stageId, e.id));
-      if (linhas.length) {
-        const mudaSituacao = situacaoDaEtapa(e.kind as TipoEtapa) !== situacaoDaEtapa(para.tipo);
-        await tx.update(tickets).set({ stageId: para.id, updatedAt: agora, ...(mudaSituacao ? datasDaSituacao(para.tipo, agora) : {}) })
-          .where(eq(tickets.stageId, e.id));
-        for (const t of linhas) {
-          await registrarEvento(tx, t.id, 'etapa', ator, {
-            de: { id: e.id, nome: e.name, nivel: e.level }, para: { id: para.id, nome: para.nome, nivel: para.nivel },
-            motivo: `a etapa ${e.name} saiu do painel`, sentido: null,
-          }, agora);
-        }
-        const vivos = linhas.filter((t) => !t.deletedAt).length;
-        if (vivos) movidos.push({ de: e.name, para: para.nome, n: vivos });
-      }
-      await tx.update(ticketStages).set({ deletedAt: agora }).where(eq(ticketStages.id, e.id));
-    }
-    await tx.update(ticketPanels).set({ updatedAt: agora }).where(eq(ticketPanels.id, painelId));
-  });
+    await tx.update(ticketStages).set({ deletedAt: agora }).where(eq(ticketStages.id, e.id));
+  }
+  return movidos;
+}
 
+/**
+ * O que mudou nas etapas, em frase ("entrou X; saiu Y; renomeou A → B; mudou a ordem; ajustou N2"), e
+ * o antes/depois da auditoria (onde está o detalhe de cada etapa).
+ */
+function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
+  const { atuais, porId, novas, saem } = plano;
   const entraram = novas.filter((e) => e.nova).map((e) => e.nome);
-  const renomeadas = novas.filter((e) => !e.nova && porId.get(e.id)!.name !== e.nome).map((e) => `${porId.get(e.id)!.name} → ${e.nome}`);
+  const ficaram = novas.filter((e) => !e.nova);
+  const renomeadas = ficaram.filter((e) => porId.get(e.id)!.name !== e.nome).map((e) => `${porId.get(e.id)!.name} → ${e.nome}`);
+  const mesmaLista = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
+  const ajustadas = ficaram.filter((e) => {
+    const a = porId.get(e.id)!;
+    return a.kind !== e.tipo || (a.level ?? null) !== e.nivel || !mesmaLista(a.requiredFields, e.obrigatorios) || !mesmaLista(a.notifyUserIds, e.avisar);
+  }).map((e) => e.nome);
+  const ordemAntes = atuais.filter((e) => ficaram.some((x) => x.id === e.id)).map((e) => e.id).join();
   const partes = [
     entraram.length ? `entrou ${lista(entraram)}` : '',
     saem.length ? `saiu ${lista(saem.map((e) => e.name))}` : '',
     renomeadas.length ? `renomeou ${lista(renomeadas)}` : '',
     ...movidos.map((m) => `${plural(m.n, 'chamado foi', 'chamados foram')} de ${m.de} para ${m.para}`),
+    ordemAntes !== ficaram.map((e) => e.id).join() ? 'mudou a ordem' : '',
+    ajustadas.length ? `ajustou ${lista(ajustadas)}` : '',
   ].filter(Boolean);
-  const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[] }) =>
-    ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar });
   return {
-    valor: await painelPronto(db, painelId),
-    resumo: `Mudou as etapas do painel ${p.name}${partes.length ? `: ${partes.join('; ')}` : ''}`,
+    partes,
     antes: atuais.map((e) => etapaParaAuditoria({ nome: e.name, tipo: e.kind, nivel: e.level, obrigatorios: e.requiredFields, avisar: e.notifyUserIds })),
     depois: novas.map(etapaParaAuditoria),
   };

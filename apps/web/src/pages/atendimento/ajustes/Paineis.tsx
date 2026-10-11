@@ -1,29 +1,34 @@
 /**
- * Chamados › Ajustes (Patch 1.10, decisão 0047) — PAINÉIS E ETAPAS.
+ * Chamados › Ajustes (Patch 1.10, decisão 0047) — OS PAINÉIS.
  *
  * Cada painel é uma fila de chamados (Suporte, Desenvolvimento, Interno…) com a sua sigla (SUP-12),
- * a sua cor, quem vê e as suas regras: as opções do campo Tipo, se conta prazo, se o Resolvido fecha
- * sozinho, o que é obrigatório para abrir, se o pai espera os filhos e quem supervisiona.
+ * a sua cor, quem vê, as suas etapas e as suas regras: as opções do campo Tipo, se conta prazo, se o
+ * Resolvido fecha sozinho, o que é obrigatório para abrir, se o pai espera os filhos e quem
+ * supervisiona.
+ *
+ * Tudo de um painel fica numa janela só, ao criar e ao editar — o pedido do Luan na prévia: "essa
+ * parte das etapas pode ficar dentro de editar e também quando vou criar o painel". Salvar grava o
+ * painel e as etapas juntos: se uma etapa que sai tem chamados, o servidor diz quais e a janela
+ * pergunta para onde eles vão; até a resposta, nada muda (nem o nome do painel).
  *
  * As etapas são da equipe (o Luan: "as etapas têm que ser editáveis"): criar, renomear, tirar e mudar
  * a ordem (arrastando ou pelas setas), e em cada uma o tipo, o nível (N1, N2 e N3 continuam sendo
- * colunas), o que precisa estar preenchido para entrar e quem recebe o aviso. A lista vai inteira
- * para o servidor; a etapa que sai com chamados pede o destino deles — o servidor diz quais, e a
- * janela pergunta para onde vão.
+ * colunas), o que precisa estar preenchido para entrar e quem recebe o aviso. O painel novo começa
+ * com Novo, Em andamento, Resolvido e Fechado — ou com as etapas de um painel que já existe.
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, ListOrdered, Pencil, Plus, RotateCcw, Trash2, Undo2, UserPlus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, Pencil, Plus, Trash2, Undo2, UserPlus, X } from 'lucide-react';
 import {
-  AJUSTES_PAINEL_PADRAO, CAMPOS_CHAMADO, CORES_PAINEL, DICA_TIPO_ETAPA, EtapasGravarSchema, NOME_CAMPO, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA,
-  etiquetasUnicas, paraBusca,
+  AJUSTES_PAINEL_PADRAO, CAMPOS_CHAMADO, CORES_PAINEL, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL, NOME_CAMPO,
+  NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, etiquetasUnicas, paraBusca,
   type CampoObrigatorio, type CorPainel, type EtapaGravarEntrada, type EtapaPainel, type Nivel, type Painel, type PainelGravarEntrada, type PessoaCurta, type TipoEtapa,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
-import { Carregando, Chip, EscolherComBusca, Modal, Spinner, Toggle, mensagemErro, type OpcaoBusca } from '../../../components/ui/index.js';
+import { Carregando, Chip, Confirmar, EscolherComBusca, Modal, Spinner, Toggle, mensagemErro, type OpcaoBusca } from '../../../components/ui/index.js';
 import { useArrastar } from '../../../lib/arrastar.js';
 import { CodigoChamado, TOM_DO_PAINEL, useDepoisDeMudar, useOpcoes } from '../comum.js';
 
@@ -52,58 +57,57 @@ export function AjustesPaineis() {
   const [sp, setSp] = useSearchParams();
   /** a janela do painel: um painel (editar), 'novo', ou fechada */
   const [janela, setJanela] = useState<Painel | 'novo' | null>(null);
-  const editor = useRef<HTMLDivElement>(null);
   const chegou = useRef(false);
-  // vindo da tela inicial dos chamados: "Configurar" desce até as etapas daquele painel; "Novo
-  // painel" abre a janela (e o pedido sai do endereço, para o Voltar não abrir de novo)
+  /** o painel em que se mexeu fica no endereço (?painel=): a aba Assuntos abre no mesmo */
+  const lembrar = useCallback((id: string | null, tirar?: string) => setSp((s) => {
+    const n = new URLSearchParams(s);
+    if (id) n.set('painel', id);
+    if (tirar) n.delete(tirar);
+    return n;
+  }, { replace: true }), [setSp]);
+
+  // vindo da tela inicial dos chamados ou do quadro: "Configurar" (?editar=) abre a janela daquele
+  // painel e "Novo painel" (?novo=1), a do painel novo. O pedido sai do endereço, para o Voltar não
+  // abrir a janela de novo
   useEffect(() => {
     if (!opcoes.data || chegou.current) return;
     chegou.current = true;
+    const editar = sp.get('editar');
     if (sp.get('novo') === '1') {
       setJanela('novo');
-      setSp((s) => { const n = new URLSearchParams(s); n.delete('novo'); return n; }, { replace: true });
-    } else if (sp.get('painel')) {
-      window.setTimeout(() => editor.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+      lembrar(null, 'novo');
+    } else if (editar) {
+      const p = opcoes.data.paineis.find((x) => x.id === editar);
+      if (p) setJanela(p);
+      lembrar(p ? p.id : null, 'editar');
     }
-  }, [opcoes.data, sp, setSp]);
+  }, [opcoes.data, sp, lembrar]);
 
   if (opcoes.isLoading) return <Carregando />;
   if (opcoes.isError || !opcoes.data) return <p className="text-bad text-sm" role="alert">{mensagemErro(opcoes.error)}</p>;
   const { paineis } = opcoes.data;
   const pessoas = opcoes.data.pessoas.filter((p) => p.ativo);
-  // o painel das etapas fica no endereço (?painel=): a aba Assuntos abre no mesmo
-  const escolhido = paineis.find((p) => p.id === sp.get('painel')) ?? paineis[0];
-  const escolher = (id: string, rolar = false) => {
-    setSp((s) => { const n = new URLSearchParams(s); n.set('painel', id); return n; }, { replace: true });
-    if (rolar) window.setTimeout(() => editor.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-  };
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-[13.5px] text-ink-2 max-w-3xl">
           Cada painel é uma fila de chamados, com a sua sigla (o começo do código, como <b>SUP</b>-12), as suas etapas e as suas regras.
-          As etapas são as colunas do quadro, da esquerda para a direita.
+          Tudo fica em <b>Editar</b>, numa janela só; as etapas são as colunas do quadro, da esquerda para a direita.
         </p>
         <button type="button" className="btn-primary" id="painel-novo" onClick={() => setJanela('novo')}><Plus size={16} /> Novo painel</button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" id="paineis-ajustes">
         {paineis.map((p) => (
-          <CartaoPainel key={p.id} p={p} pessoas={opcoes.data.pessoas} escolhido={p.id === escolhido?.id}
-            onEditar={() => setJanela(p)} onEtapas={() => escolher(p.id, true)} />
+          <CartaoPainel key={p.id} p={p} pessoas={opcoes.data.pessoas} onEditar={() => { setJanela(p); lembrar(p.id); }} />
         ))}
       </div>
 
-      {escolhido && (
-        <div ref={editor} className="scroll-mt-20">
-          <EditorDeEtapas key={escolhido.id} painel={escolhido} pessoas={pessoas} todasAsPessoas={opcoes.data.pessoas} />
-        </div>
-      )}
-
       {janela && (
-        <JanelaPainel painel={janela === 'novo' ? null : janela} pessoas={pessoas} todasAsPessoas={opcoes.data.pessoas}
-          onFechar={() => setJanela(null)} onSalvo={(p) => { setJanela(null); escolher(p.id); }} />
+        <JanelaPainel key={janela === 'novo' ? 'novo' : janela.id} painel={janela === 'novo' ? null : janela} paineis={paineis}
+          pessoas={pessoas} todasAsPessoas={opcoes.data.pessoas}
+          onFechar={() => setJanela(null)} onSalvo={(p) => { setJanela(null); lembrar(p.id); }} />
       )}
     </div>
   );
@@ -113,7 +117,7 @@ export function AjustesPaineis() {
 //  O PAINEL NUM CARTÃO
 // =====================================================================
 
-function CartaoPainel({ p, pessoas, escolhido, onEditar, onEtapas }: { p: Painel; pessoas: PessoaCurta[]; escolhido: boolean; onEditar: () => void; onEtapas: () => void }) {
+function CartaoPainel({ p, pessoas, onEditar }: { p: Painel; pessoas: PessoaCurta[]; onEditar: () => void }) {
   const a = p.ajustes;
   const quemVe = p.acesso === 'todos'
     ? 'Todos que veem chamados'
@@ -127,7 +131,7 @@ function CartaoPainel({ p, pessoas, escolhido, onEditar, onEtapas }: { p: Painel
     a.supervisores.length ? `Supervisão: ${listaDeNomes(a.supervisores.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Sem supervisores',
   ];
   return (
-    <section className={`card p-4 flex flex-col gap-2.5 min-w-0 ${escolhido ? 'border-accent ring-1 ring-accent' : ''}`} aria-label={`Painel ${p.nome}`}>
+    <section className="card p-4 flex flex-col gap-2.5 min-w-0" aria-label={`Painel ${p.nome}`} data-painel={p.sigla}>
       <div className="flex items-start gap-2.5">
         <span className={`w-3 h-3 rounded-full mt-1.5 shrink-0 ${COR_CHEIA[p.cor]}`} aria-hidden />
         <div className="min-w-0 flex-1">
@@ -153,9 +157,8 @@ function CartaoPainel({ p, pessoas, escolhido, onEditar, onEtapas }: { p: Painel
         {regras.map((r) => <li key={r} className="break-words">{r}</li>)}
       </ul>
       <div className="flex flex-wrap gap-2 mt-auto pt-1">
-        <button type="button" className="btn-secondary btn-sm" onClick={onEditar} aria-label={`Editar o painel ${p.nome}`}><Pencil size={14} /> Editar</button>
-        <button type="button" className={escolhido ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'} onClick={onEtapas} aria-pressed={escolhido} aria-label={`As etapas do painel ${p.nome}`}>
-          <ListOrdered size={14} /> Etapas ({p.etapas.length})
+        <button type="button" className="btn-secondary btn-sm" onClick={onEditar} aria-label={`Editar o painel ${p.nome}`} title="O nome, quem vê, as etapas e as regras">
+          <Pencil size={14} /> Editar
         </button>
       </div>
     </section>
@@ -163,7 +166,7 @@ function CartaoPainel({ p, pessoas, escolhido, onEditar, onEtapas }: { p: Painel
 }
 
 // =====================================================================
-//  A JANELA DO PAINEL (novo ou editar): o nome, a sigla, a cor, quem vê e as regras
+//  A JANELA DO PAINEL (novo ou editar): o nome, a sigla, a cor, quem vê, as etapas e as regras
 // =====================================================================
 
 type FormPainel = {
@@ -182,14 +185,72 @@ function formDoPainel(p: Painel | null): FormPainel {
   };
 }
 
-function JanelaPainel({ painel, pessoas, todasAsPessoas, onFechar, onSalvo }: {
-  painel: Painel | null; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[]; onFechar: () => void; onSalvo: (p: Painel) => void;
+type EtapaRascunho = EtapaGravarEntrada & { chave: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: CampoObrigatorio[]; avisar: string[] };
+type Saindo = { etapa: EtapaRascunho; posicao: number };
+type EtapaComChamados = { id: string; nome: string; chamados: number };
+
+let sequencia = 0;
+const daEtapa = (e: EtapaPainel): EtapaRascunho => ({ chave: e.id, id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar] });
+/** Uma etapa que ainda não existe (sem id): a do painel novo, a copiada de outro painel ou a incluída agora. */
+const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[] }): EtapaRascunho =>
+  ({ chave: `nova-${++sequencia}`, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...(e.avisar ?? [])] });
+const paraGravar = ({ chave: _chave, ...e }: EtapaRascunho): EtapaGravarEntrada => ({ ...e, nome: e.nome.trim() });
+const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
+/** As etapas de um painel que já existe, copiadas para o novo (sem os ids: no painel novo, todas nascem), ou as básicas. */
+function etapasDoModelo(modelo: Painel | undefined): EtapaRascunho[] {
+  const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[] }> = modelo ? modelo.etapas : ETAPAS_DO_PAINEL_NOVO;
+  return fonte.map((e) => etapaNova(e));
+}
+
+/** "Andamento · N2 · pede: Cliente, Relato do cliente, Assunto · avisa: Pedro". */
+function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[]): string {
+  const pede = CAMPOS_CHAMADO.filter((c) => e.obrigatorios.includes(c)).map((c) => NOME_CAMPO[c]);
+  return [
+    TIPO_CURTO[e.tipo],
+    e.nivel ? `N${e.nivel}` : '',
+    pede.length ? `pede: ${pede.join(', ')}` : 'não pede nada',
+    e.avisar.length ? `avisa: ${listaDeNomes(e.avisar.map((id) => nomeDaPessoa(pessoas, id)))}` : '',
+  ].filter(Boolean).join(' · ');
+}
+
+/** As partes da janela (a barra de cima leva a cada uma). */
+const PARTES = [
+  { id: 'painel-geral', nome: 'O painel' },
+  { id: 'painel-etapas', nome: 'As etapas' },
+  { id: 'painel-regras', nome: 'As regras' },
+] as const;
+const irPara = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, onFechar, onSalvo }: {
+  painel: Painel | null; paineis: Painel[]; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[]; onFechar: () => void; onSalvo: (p: Painel) => void;
 }) {
   const depois = useDepoisDeMudar();
-  const [f, setF] = useState<FormPainel>(() => formDoPainel(painel));
+  const [inicio] = useState(() => ({ form: formDoPainel(painel), etapas: painel ? painel.etapas.map(daEtapa) : etapasDoModelo(undefined) }));
+  const [f, setF] = useState<FormPainel>(inicio.form);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [fechar, setFechar] = useState(false);
   const mudar = (o: Partial<FormPainel>) => { setF((x) => ({ ...x, ...o })); setErro(''); };
+
+  // ---- as etapas, na mesma janela ----
+  const [rascunho, setRascunho] = useState<EtapaRascunho[]>(inicio.etapas);
+  const [saindo, setSaindo] = useState<Saindo[]>([]);
+  const [abertas, setAbertas] = useState<Set<string>>(new Set());
+  /** o painel novo começa com as etapas básicas ou com as de um painel que já existe */
+  const [modelo, setModelo] = useState('');
+  /** o servidor disse que estas etapas saem com chamados: a janela pergunta para onde eles vão */
+  const [semDestino, setSemDestino] = useState<{ mensagem: string; etapas: EtapaComChamados[] } | null>(null);
+  /** o que vai para o servidor: no painel novo, sempre; ao editar, só se a lista mudou (editar só o nome não mexe nas etapas) */
+  const etapasMudaram = !painel || assinatura(rascunho) !== assinatura(inicio.etapas) || saindo.length > 0;
+  /** para o "Fechar sem salvar?": no painel novo, só escolher de onde vêm as etapas não conta como mexer */
+  const mexeuNasEtapas = painel ? etapasMudaram : assinatura(rascunho) !== assinatura(etapasDoModeloAtual(modelo, paineis, inicio.etapas));
+  const mudouAlgo = mexeuNasEtapas || JSON.stringify(f) !== JSON.stringify(inicio.form);
+
+  // quantos chamados há em cada etapa (o quadro do painel conta), para tirar uma etapa sabendo o que ela tem
+  const quadro = useQuery({
+    queryKey: ['atendimento', 'quadro', 'ajustes', painel?.id], queryFn: () => api.atendimento.quadro({ painel: painel!.id }), enabled: !!painel, staleTime: 30_000,
+  });
+  const chamadosNa = (id: string | undefined) => (id ? quadro.data?.colunas.find((c) => c.etapa.id === id)?.total ?? null : null);
 
   const sigla = f.sigla.trim().toUpperCase();
   const siglaOk = SiglaSchema.safeParse(sigla);
@@ -198,9 +259,27 @@ function JanelaPainel({ painel, pessoas, todasAsPessoas, onFechar, onSalvo }: {
   const dias = Number(f.fecharSozinhoDias);
   const diasOk = Number.isInteger(dias) && dias >= 1 && dias <= 60;
 
-  const salvar = async () => {
-    if (!f.nome.trim()) { setErro('Dê um nome ao painel.'); document.getElementById('painel-nome')?.focus(); return; }
+  const mexer = (fn: (xs: EtapaRascunho[]) => EtapaRascunho[]) => { setRascunho(fn); setErro(''); };
+  const usarModelo = (id: string) => {
+    setModelo(id);
+    setRascunho(etapasDoModelo(paineis.find((p) => p.id === id)));
+    setAbertas(new Set()); setErro('');
+  };
+
+  const salvar = async (destino: Record<string, string> = {}) => {
+    if (!f.nome.trim()) { setErro('Dê um nome ao painel.'); irPara('painel-geral'); document.getElementById('painel-nome')?.focus(); return; }
     if (!siglaOk.success) { setErro('A sigla tem de 2 a 5 letras, sem acento (ex.: SUP).'); document.getElementById('painel-sigla')?.focus(); return; }
+    // as mesmas conferências do servidor (o schema do @gestor/shared), ditas com o número da etapa
+    const etapas = rascunho.map(paraGravar);
+    const conferido = ListaDeEtapasSchema.safeParse(etapas);
+    if (!conferido.success) {
+      const i = conferido.error.issues[0]!;
+      const n = typeof i.path[0] === 'number' ? i.path[0] : null;
+      setErro(n !== null ? `Etapa ${n + 1}: ${i.message}.` : `${i.message}.`);
+      const k = n !== null ? rascunho[n]?.chave : undefined;
+      if (k) { setAbertas((s) => new Set(s).add(k)); window.setTimeout(() => document.getElementById(`etapa-nome-${k}`)?.focus(), 30); } else irPara('painel-etapas');
+      return;
+    }
     if (f.fecharSozinho && !diasOk) { setErro('O "fecha sozinho" vai de 1 a 60 dias úteis.'); document.getElementById('painel-dias')?.focus(); return; }
     const d: PainelGravarEntrada = {
       nome: f.nome.trim(), sigla, descricao: f.descricao.trim() || null, cor: f.cor, acesso: f.acesso,
@@ -210,75 +289,115 @@ function JanelaPainel({ painel, pessoas, todasAsPessoas, onFechar, onSalvo }: {
         tipos: f.tipos, contaPrazo: f.contaPrazo, fecharSozinhoDias: f.fecharSozinho ? dias : null,
         obrigatoriosAoAbrir: CAMPOS_CHAMADO.filter((c) => f.obrigatoriosAoAbrir.includes(c)), paiEsperaFilhos: f.paiEsperaFilhos, supervisores: f.supervisores,
       },
+      ...(etapasMudaram ? { etapas, destino } : {}),
     };
     setSalvando(true); setErro('');
     try {
       const p = await depois(api.atendimento.salvarPainel(painel?.id ?? null, d),
-        painel ? `Painel ${d.nome} salvo` : `Painel ${d.nome} criado, com as etapas Novo, Em andamento, Resolvido e Fechado`);
+        painel ? `Painel ${d.nome} salvo` : `Painel ${d.nome} criado, com as etapas ${listaDeNomes(etapas.map((e) => e.nome))}`);
+      setSemDestino(null);
       onSalvo(p);
     } catch (e) {
-      setErro(mensagemErro(e));
+      const det = e instanceof ApiError && e.status === 400 && e.details && typeof e.details === 'object' && !Array.isArray(e.details)
+        ? (e.details as { etapas?: EtapaComChamados[] }).etapas : undefined;
+      if (det?.length) setSemDestino({ mensagem: e instanceof Error ? e.message : '', etapas: det });
+      else { setSemDestino(null); setErro(mensagemErro(e)); }
     } finally {
       setSalvando(false);
     }
   };
+  // fechar com mudanças pergunta antes (um clique fora da janela não perde o que foi feito)
+  const pedirParaFechar = () => { if (mudouAlgo) setFechar(true); else onFechar(); };
 
   return (
-    <Modal open onClose={onFechar} largura="max-w-2xl" titulo={painel ? `Editar o painel ${painel.nome}` : 'Novo painel'}
+    <Modal open onClose={pedirParaFechar} largura="max-w-3xl" titulo={painel ? `Editar o painel ${painel.nome}` : 'Novo painel'}
       rodape={<>
         {erro && <p className="text-bad text-[13px] mr-auto basis-full sm:basis-auto sm:flex-1" role="alert" id="painel-erro">{erro}</p>}
-        <button type="button" className="btn-secondary" onClick={onFechar}>Cancelar</button>
-        <button type="button" className="btn-primary" id="painel-salvar" disabled={salvando} onClick={salvar}>{salvando ? <Spinner className="text-white" /> : painel ? 'Salvar' : 'Criar painel'}</button>
+        <button type="button" className="btn-secondary" onClick={pedirParaFechar}>Cancelar</button>
+        <button type="button" className="btn-primary" id="painel-salvar" disabled={salvando} onClick={() => void salvar()}>
+          {salvando ? <Spinner className="text-white" /> : painel ? 'Salvar' : 'Criar painel'}
+        </button>
       </>}>
       <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); void salvar(); }} className="flex flex-col gap-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
-          <CampoRotulo rotulo="Nome" id="painel-nome">
-            <input className="input" id="painel-nome" value={f.nome} maxLength={40} placeholder="Ex.: Interno" autoFocus={!painel} onChange={(e) => mudar({ nome: e.target.value })} />
-          </CampoRotulo>
-          <CampoRotulo rotulo="Sigla" id="painel-sigla" erro={f.sigla && !siglaOk.success ? 'De 2 a 5 letras, sem acento.' : undefined}>
-            <input className="input font-mono uppercase" id="painel-sigla" value={f.sigla} maxLength={5} placeholder={siglaSugerida.length >= 2 ? siglaSugerida : 'SUP'}
-              onChange={(e) => mudar({ sigla: e.target.value.toUpperCase().replace(/[^A-Za-z]/g, '') })} />
-          </CampoRotulo>
-        </div>
-        <p className="text-[12.5px] text-muted -mt-2.5">
-          A sigla é o começo do código dos chamados, como <CodigoChamado codigo={`${siglaOk.success ? sigla : siglaSugerida.length >= 2 ? siglaSugerida : 'SUP'}-12`} cor={f.cor} link={false} />.
-          {' '}<b className="text-ink-2">Ela não muda depois do primeiro chamado</b> (os códigos já dados continuam valendo).
-        </p>
+        {/* a janela é comprida: a barra leva a cada parte. Ela gruda no alto da caixa que rola (o -top-4
+            desconta o espaço de cima da caixa; sem ele, o texto passava por cima da barra) */}
+        <nav className="sticky -top-4 z-10 -mx-5 -mt-4 px-4 py-1.5 bg-surface border-b border-line flex gap-1 overflow-x-auto" aria-label="Partes da janela" id="painel-partes">
+          {PARTES.map((x) => (
+            <button key={x.id} type="button" className="btn-ghost btn-sm whitespace-nowrap" onClick={() => irPara(x.id)}>
+              {x.nome}{x.id === 'painel-etapas' ? ` (${rascunho.length})` : ''}
+            </button>
+          ))}
+        </nav>
 
-        <CampoRotulo rotulo="Descrição" id="painel-descricao" dica="Para que serve o painel (aparece no formulário de abrir chamado).">
-          <textarea className="input min-h-[60px]" id="painel-descricao" value={f.descricao} maxLength={300} onChange={(e) => mudar({ descricao: e.target.value })} />
-        </CampoRotulo>
-
-        <CampoRotulo rotulo="Cor" id="painel-cor" grupo>
-          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Cor do painel" id="painel-cor">
-            {CORES_PAINEL.map((c) => (
-              <button key={c} type="button" role="radio" aria-checked={f.cor === c} onClick={() => mudar({ cor: c })}
-                className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[13px] ${f.cor === c ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
-                <span className={`w-3.5 h-3.5 rounded-full ${COR_CHEIA[c]}`} aria-hidden /> {NOME_COR[c]}
-              </button>
-            ))}
+        <section id="painel-geral" className="scroll-mt-14 flex flex-col gap-4" aria-label="O painel">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
+            <CampoRotulo rotulo="Nome" id="painel-nome">
+              <input className="input" id="painel-nome" value={f.nome} maxLength={40} placeholder="Ex.: Interno" autoFocus={!painel} onChange={(e) => mudar({ nome: e.target.value })} />
+            </CampoRotulo>
+            <CampoRotulo rotulo="Sigla" id="painel-sigla" erro={f.sigla && !siglaOk.success ? 'De 2 a 5 letras, sem acento.' : undefined}>
+              <input className="input font-mono uppercase" id="painel-sigla" value={f.sigla} maxLength={5} placeholder={siglaSugerida.length >= 2 ? siglaSugerida : 'SUP'}
+                onChange={(e) => mudar({ sigla: e.target.value.toUpperCase().replace(/[^A-Za-z]/g, '') })} />
+            </CampoRotulo>
           </div>
-        </CampoRotulo>
+          <p className="text-[12.5px] text-muted -mt-2.5">
+            A sigla é o começo do código dos chamados, como <CodigoChamado codigo={`${siglaOk.success ? sigla : siglaSugerida.length >= 2 ? siglaSugerida : 'SUP'}-12`} cor={f.cor} link={false} />.
+            {' '}<b className="text-ink-2">Ela não muda depois do primeiro chamado</b> (os códigos já dados continuam valendo).
+          </p>
 
-        <CampoRotulo rotulo="Quem vê" id="painel-acesso" grupo dica="Quem cuida dos chamados vê todos os painéis, mesmo os de pessoas escolhidas. Para os outros, o chamado de um painel que não veem não existe.">
-          <div className="flex flex-col gap-2" role="radiogroup" aria-label="Quem vê" id="painel-acesso">
-            <Opcao ativo={f.acesso === 'todos'} onClick={() => mudar({ acesso: 'todos' })} titulo="Todos que veem chamados" texto="O Suporte, por exemplo." />
-            <Opcao ativo={f.acesso === 'escolhidos'} onClick={() => mudar({ acesso: 'escolhidos' })} titulo="Só as pessoas escolhidas" texto="Um painel Interno ou Administrativo." />
-            {f.acesso === 'escolhidos' && (
-              <div className="pl-3 border-l-2 border-line ml-1.5">
-                <EscolherPessoas id="painel-pessoas" rotulo="Quem vê o painel" valor={f.pessoas} pessoas={pessoas} todasAsPessoas={todasAsPessoas}
-                  vazio="Ninguém escolhido: só quem cuida dos chamados vai ver." onChange={(v) => mudar({ pessoas: v })} />
-              </div>
-            )}
-          </div>
-        </CampoRotulo>
+          <CampoRotulo rotulo="Descrição" id="painel-descricao" dica="Para que serve o painel (aparece no formulário de abrir chamado).">
+            <textarea className="input min-h-[60px]" id="painel-descricao" value={f.descricao} maxLength={300} onChange={(e) => mudar({ descricao: e.target.value })} />
+          </CampoRotulo>
 
-        <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-          <Toggle checked={f.ativo} onChange={(v) => mudar({ ativo: v })} />
-          <span>Painel ativo <span className="block text-[12.5px] text-muted">Desativado, o painel não recebe chamado novo; os que já existem continuam lá.</span></span>
-        </label>
+          <CampoRotulo rotulo="Cor" id="painel-cor" grupo>
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Cor do painel" id="painel-cor">
+              {CORES_PAINEL.map((c) => (
+                <button key={c} type="button" role="radio" aria-checked={f.cor === c} onClick={() => mudar({ cor: c })}
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[13px] ${f.cor === c ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+                  <span className={`w-3.5 h-3.5 rounded-full ${COR_CHEIA[c]}`} aria-hidden /> {NOME_COR[c]}
+                </button>
+              ))}
+            </div>
+          </CampoRotulo>
 
-        <section className="border-t border-line pt-4 flex flex-col gap-4">
+          <CampoRotulo rotulo="Quem vê" id="painel-acesso" grupo dica="Quem cuida dos chamados vê todos os painéis, mesmo os de pessoas escolhidas. Para os outros, o chamado de um painel que não veem não existe.">
+            <div className="flex flex-col gap-2" role="radiogroup" aria-label="Quem vê" id="painel-acesso">
+              <Opcao ativo={f.acesso === 'todos'} onClick={() => mudar({ acesso: 'todos' })} titulo="Todos que veem chamados" texto="O Suporte, por exemplo." />
+              <Opcao ativo={f.acesso === 'escolhidos'} onClick={() => mudar({ acesso: 'escolhidos' })} titulo="Só as pessoas escolhidas" texto="Um painel Interno ou Administrativo." />
+              {f.acesso === 'escolhidos' && (
+                <div className="pl-3 border-l-2 border-line ml-1.5">
+                  <EscolherPessoas id="painel-pessoas" rotulo="Quem vê o painel" valor={f.pessoas} pessoas={pessoas} todasAsPessoas={todasAsPessoas}
+                    vazio="Ninguém escolhido: só quem cuida dos chamados vai ver." onChange={(v) => mudar({ pessoas: v })} />
+                </div>
+              )}
+            </div>
+          </CampoRotulo>
+
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+            <Toggle checked={f.ativo} onChange={(v) => mudar({ ativo: v })} />
+            <span>Painel ativo <span className="block text-[12.5px] text-muted">Desativado, o painel não recebe chamado novo; os que já existem continuam lá.</span></span>
+          </label>
+        </section>
+
+        <section id="painel-etapas" className="scroll-mt-14 border-t border-line pt-4 flex flex-col gap-2" aria-label="As etapas">
+          <h4 className="font-display font-semibold text-[14px]">As etapas</h4>
+          <p className="text-[12.5px] text-muted -mt-1">
+            As colunas do quadro, da esquerda para a direita. Arraste pela alça (ou use as setas) para mudar a ordem; o lápis abre a etapa. O
+            chamado novo cai na primeira etapa de <b>Entrada</b>; mover para um nível acima (N1 → N2) é escalonar e pede o motivo.
+          </p>
+          {!painel && paineis.length > 0 && (
+            <label className="flex flex-wrap items-center gap-2 text-[13px] text-ink-2" htmlFor="painel-modelo">
+              Começar com as etapas
+              <select className="input w-auto max-w-full py-1.5" id="painel-modelo" value={modelo} onChange={(e) => usarModelo(e.target.value)}>
+                <option value="">básicas (Novo, Em andamento, Resolvido e Fechado)</option>
+                {paineis.map((p) => <option key={p.id} value={p.id}>do painel {p.nome} ({p.etapas.length})</option>)}
+              </select>
+            </label>
+          )}
+          <ListaDeEtapas rascunho={rascunho} mexer={mexer} saindo={saindo} setSaindo={setSaindo} abertas={abertas} setAbertas={setAbertas}
+            pessoas={pessoas} todasAsPessoas={todasAsPessoas} existe={!!painel} chamadosNa={chamadosNa} />
+        </section>
+
+        <section id="painel-regras" className="scroll-mt-14 border-t border-line pt-4 flex flex-col gap-4" aria-label="As regras">
           <h4 className="font-display font-semibold text-[14px]">As regras</h4>
 
           <CampoRotulo rotulo="As opções do campo Tipo" id="painel-tipos" dica='O Tipo responde "que tratativa foi essa?". Digite e aperte Enter; o × tira.'>
@@ -324,62 +443,36 @@ function JanelaPainel({ painel, pessoas, todasAsPessoas, onFechar, onSalvo }: {
         {/* o Enter num campo de texto salva (o botão de verdade fica no rodapé) */}
         <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
       </form>
+
+      {semDestino && (
+        <JanelaDestino mensagem={semDestino.mensagem} saem={semDestino.etapas} ficam={rascunho.filter((e) => !!e.id)} saindo={saindo}
+          salvando={salvando} onFechar={() => setSemDestino(null)} onConfirmar={(destino) => void salvar(destino)} />
+      )}
+      <Confirmar open={fechar} onClose={() => setFechar(false)} onConfirm={() => { setFechar(false); onFechar(); }} titulo="Fechar sem salvar?"
+        texto={painel ? `O que você mudou no painel ${painel.nome} (inclusive nas etapas) não é gravado.` : 'O painel novo não é criado.'} botao="Fechar sem salvar" perigoso />
     </Modal>
   );
 }
 
-// =====================================================================
-//  AS ETAPAS DO PAINEL
-// =====================================================================
-
-type EtapaRascunho = EtapaGravarEntrada & { chave: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: CampoObrigatorio[]; avisar: string[] };
-type Saindo = { etapa: EtapaRascunho; posicao: number };
-type EtapaComChamados = { id: string; nome: string; chamados: number };
-
-const daEtapa = (e: EtapaPainel): EtapaRascunho => ({ chave: e.id, id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar] });
-const paraGravar = ({ chave: _chave, ...e }: EtapaRascunho): EtapaGravarEntrada => ({ ...e, nome: e.nome.trim() });
-const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
-let sequencia = 0;
-/** O limite do servidor (EtapasGravarSchema). */
-const MAX_ETAPAS = 20;
-
-/** "Andamento · N2 · pede: Cliente, Relato do cliente, Assunto · avisa: Pedro". */
-function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[]): string {
-  const pede = CAMPOS_CHAMADO.filter((c) => e.obrigatorios.includes(c)).map((c) => NOME_CAMPO[c]);
-  return [
-    TIPO_CURTO[e.tipo],
-    e.nivel ? `N${e.nivel}` : '',
-    pede.length ? `pede: ${pede.join(', ')}` : 'não pede nada',
-    e.avisar.length ? `avisa: ${listaDeNomes(e.avisar.map((id) => nomeDaPessoa(pessoas, id)))}` : '',
-  ].filter(Boolean).join(' · ');
+/** As etapas que o painel novo tem agora no modelo escolhido (para saber se a pessoa já mexeu nelas). */
+function etapasDoModeloAtual(modelo: string, paineis: Painel[], inicio: EtapaRascunho[]): EtapaRascunho[] {
+  const origem = paineis.find((p) => p.id === modelo);
+  return origem ? origem.etapas.map((e) => ({ ...daEtapa(e), id: undefined })) : inicio;
 }
 
-function EditorDeEtapas({ painel, pessoas, todasAsPessoas }: { painel: Painel; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[] }) {
-  const depois = useDepoisDeMudar();
-  const [rascunho, setRascunho] = useState<EtapaRascunho[]>(() => painel.etapas.map(daEtapa));
-  /** as etapas como estão no servidor (para saber se mudou e para o "Desfazer") */
-  const [base, setBase] = useState<EtapaRascunho[]>(() => painel.etapas.map(daEtapa));
-  const [saindo, setSaindo] = useState<Saindo[]>([]);
-  const [abertas, setAbertas] = useState<Set<string>>(new Set());
-  const [erro, setErro] = useState('');
-  const [salvando, setSalvando] = useState(false);
-  /** o servidor disse que estas etapas saem com chamados: a janela pergunta para onde eles vão */
-  const [semDestino, setSemDestino] = useState<{ mensagem: string; etapas: EtapaComChamados[] } | null>(null);
-  const [salvoAgora, setSalvoAgora] = useState(false);
+// =====================================================================
+//  AS ETAPAS (dentro da janela do painel)
+// =====================================================================
 
-  const mudou = assinatura(rascunho) !== assinatura(base) || saindo.length > 0;
-  // outra pessoa (ou a janela do painel) mudou o painel: sem mudança aqui, a lista acompanha
-  const doServidor = assinatura(painel.etapas.map(daEtapa));
-  useEffect(() => {
-    if (mudou) return;
-    if (doServidor !== assinatura(base)) { const n = painel.etapas.map(daEtapa); setRascunho(n); setBase(n); }
-  }, [doServidor]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // quantos chamados há em cada etapa (o quadro do painel conta), para tirar uma etapa sabendo o que ela tem
-  const quadro = useQuery({ queryKey: ['atendimento', 'quadro', 'ajustes', painel.id], queryFn: () => api.atendimento.quadro({ painel: painel.id }), staleTime: 30_000 });
-  const chamadosNa = (id: string | undefined) => (id ? quadro.data?.colunas.find((c) => c.etapa.id === id)?.total ?? null : null);
-
-  const mexer = (fn: (xs: EtapaRascunho[]) => EtapaRascunho[]) => { setRascunho(fn); setErro(''); setSalvoAgora(false); };
+function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas, pessoas, todasAsPessoas, existe, chamadosNa }: {
+  rascunho: EtapaRascunho[]; mexer: (fn: (xs: EtapaRascunho[]) => EtapaRascunho[]) => void;
+  saindo: Saindo[]; setSaindo: (fn: (xs: Saindo[]) => Saindo[]) => void;
+  abertas: Set<string>; setAbertas: (fn: (s: Set<string>) => Set<string>) => void;
+  pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[];
+  /** o painel já existe (editar): mostra o que é novo e quantos chamados cada etapa tem */
+  existe: boolean;
+  chamadosNa: (id: string | undefined) => number | null;
+}) {
   const mudarEtapa = (chave: string, o: Partial<EtapaRascunho>) => mexer((xs) => xs.map((e) => (e.chave === chave ? { ...e, ...o } : e)));
   const moverPara = (chave: string, delta: number) => mexer((xs) => {
     const i = xs.findIndex((e) => e.chave === chave);
@@ -392,15 +485,14 @@ function EditorDeEtapas({ painel, pessoas, todasAsPessoas }: { painel: Painel; p
   const alternar = (chave: string) => setAbertas((s) => { const n = new Set(s); if (n.has(chave)) n.delete(chave); else n.add(chave); return n; });
 
   const incluir = () => {
-    const chave = `nova-${++sequencia}`;
-    const nova: EtapaRascunho = { chave, nome: '', tipo: 'andamento', nivel: null, obrigatorios: [], avisar: [] };
+    const nova = etapaNova({ nome: '', tipo: 'andamento', nivel: null, obrigatorios: [] });
     // a etapa nova costuma ser de andamento: entra antes do Resolvido (dá para mudar de lugar depois)
     mexer((xs) => {
       const i = xs.findIndex((e) => e.tipo === 'resolvido' || e.tipo === 'fechado');
       return i < 0 ? [...xs, nova] : [...xs.slice(0, i), nova, ...xs.slice(i)];
     });
-    setAbertas((s) => new Set(s).add(chave));
-    window.setTimeout(() => document.getElementById(`etapa-nome-${chave}`)?.focus(), 30);
+    setAbertas((s) => new Set(s).add(nova.chave));
+    window.setTimeout(() => document.getElementById(`etapa-nome-${nova.chave}`)?.focus(), 30);
   };
   const tirar = (e: EtapaRascunho) => {
     const posicao = rascunho.findIndex((x) => x.chave === e.chave);
@@ -412,48 +504,13 @@ function EditorDeEtapas({ painel, pessoas, todasAsPessoas }: { painel: Painel; p
     setSaindo((xs) => xs.filter((x) => x.etapa.chave !== s.etapa.chave));
     mexer((xs) => [...xs.slice(0, s.posicao), s.etapa, ...xs.slice(s.posicao)]);
   };
-  const desfazer = () => { setRascunho(base); setSaindo([]); setAbertas(new Set()); setErro(''); };
 
   const arrasto = useArrastar(rascunho.map((e) => e.chave), (nova) => mexer((xs) => nova.map((k) => xs.find((e) => e.chave === k)!).filter(Boolean)));
-
-  const enviar = async (destino: Record<string, string>) => {
-    // as mesmas conferências do servidor (o schema do @gestor/shared), ditas com o número da etapa
-    const conferido = EtapasGravarSchema.safeParse({ etapas: rascunho.map(paraGravar), destino });
-    if (!conferido.success) {
-      const i = conferido.error.issues[0]!;
-      const n = typeof i.path[1] === 'number' ? i.path[1] : null;
-      setErro(n !== null ? `Etapa ${n + 1}: ${i.message}.` : `${i.message}.`);
-      if (n !== null) { const k = rascunho[n]?.chave; if (k) setAbertas((s) => new Set(s).add(k)); }
-      return;
-    }
-    setSalvando(true); setErro('');
-    try {
-      const p = await depois(api.atendimento.salvarEtapas(painel.id, { etapas: rascunho.map(paraGravar), destino }), `Etapas do ${painel.nome} salvas`);
-      const n = p.etapas.map(daEtapa);
-      setRascunho(n); setBase(n); setSaindo([]); setAbertas(new Set()); setSemDestino(null); setSalvoAgora(true);
-    } catch (e) {
-      const d = e instanceof ApiError && e.status === 400 && e.details && typeof e.details === 'object' && !Array.isArray(e.details)
-        ? (e.details as { etapas?: EtapaComChamados[] }).etapas : undefined;
-      if (d?.length) setSemDestino({ mensagem: e instanceof Error ? e.message : '', etapas: d });
-      else setErro(mensagemErro(e));
-    } finally {
-      setSalvando(false);
-    }
-  };
-
   const nomeDaChave = (k: string) => rascunho.find((e) => e.chave === k)?.nome || 'etapa nova';
-  return (
-    <section className="card p-4 sm:p-5 min-w-0" aria-label={`As etapas do painel ${painel.nome}`} id="etapas">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="font-display font-semibold text-[16px]">As etapas do painel {painel.nome}</h2>
-        <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip>
-      </div>
-      <p className="text-[12.5px] text-muted mt-0.5 max-w-3xl">
-        Na ordem do quadro, da esquerda para a direita. Arraste pela alça (ou use as setas) para mudar a ordem. O chamado novo cai na
-        primeira etapa de <b>Entrada</b>; mover para um nível acima (N1 → N2) é escalonar e pede o motivo.
-      </p>
 
-      <ol className="mt-3 flex flex-col gap-2" id="etapas-lista">
+  return (
+    <div id="etapas" className="min-w-0">
+      <ol className="flex flex-col gap-2" id="etapas-lista">
         {rascunho.map((e, i) => {
           const aberta = abertas.has(e.chave);
           const n = chamadosNa(e.id);
@@ -461,39 +518,37 @@ function EditorDeEtapas({ painel, pessoas, todasAsPessoas }: { painel: Painel; p
             <li key={e.chave} data-arrastavel={e.chave}
               className={`rounded-lg border bg-surface min-w-0 transition-opacity ${arrasto.arrastando === e.chave ? 'opacity-40 border-accent ring-2 ring-accent' : 'border-line'}`}>
               <div className="p-2 sm:p-2.5">
-              <div className="flex items-start gap-1.5">
-                <button type="button" onPointerDown={(ev) => arrasto.iniciar(e.chave, ev)}
-                  onKeyDown={(ev) => {
-                    if (ev.key === 'ArrowUp') { ev.preventDefault(); moverPara(e.chave, -1); }
-                    if (ev.key === 'ArrowDown') { ev.preventDefault(); moverPara(e.chave, 1); }
-                  }}
-                  className="touch-none cursor-grab active:cursor-grabbing rounded-md p-1 text-muted hover:bg-surface-2 hover:text-ink shrink-0"
-                  aria-label={`Mudar ${e.nome || 'a etapa nova'} de lugar: arraste, ou use as setas do teclado`} title="Arraste para mudar de lugar (ou use as setas do teclado)">
-                  <GripVertical size={16} />
-                </button>
-                <span className="tnum text-[12px] text-muted w-4 text-right mt-1 shrink-0 select-none">{i + 1}</span>
-                <button type="button" className="min-w-0 flex-1 text-left mt-0.5" onClick={() => alternar(e.chave)} aria-expanded={aberta}>
-                  <span className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-semibold text-ink break-words">{e.nome.trim() || <span className="text-muted italic font-normal">sem nome</span>}</span>
-                    {/* o nível em chip, menos quando o nome já é o nível (a etapa "N2") */}
-                    {e.nivel && paraBusca(e.nome) !== `n${e.nivel}` && <Chip tone="accent">N{e.nivel}</Chip>}
-                    {!e.id && <Chip tone="ok">nova</Chip>}
+                <div className="flex items-start gap-1.5">
+                  <button type="button" onPointerDown={(ev) => arrasto.iniciar(e.chave, ev)}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'ArrowUp') { ev.preventDefault(); moverPara(e.chave, -1); }
+                      if (ev.key === 'ArrowDown') { ev.preventDefault(); moverPara(e.chave, 1); }
+                    }}
+                    className="touch-none cursor-grab active:cursor-grabbing rounded-md p-1 text-muted hover:bg-surface-2 hover:text-ink shrink-0"
+                    aria-label={`Mudar ${e.nome || 'a etapa nova'} de lugar: arraste, ou use as setas do teclado`} title="Arraste para mudar de lugar (ou use as setas do teclado)">
+                    <GripVertical size={16} />
+                  </button>
+                  <span className="tnum text-[12px] text-muted w-4 text-right mt-1 shrink-0 select-none">{i + 1}</span>
+                  <button type="button" className="min-w-0 flex-1 text-left mt-0.5" onClick={() => alternar(e.chave)} aria-expanded={aberta}>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-semibold text-ink break-words">{e.nome.trim() || <span className="text-muted italic font-normal">sem nome</span>}</span>
+                      {/* o nível em chip, menos quando o nome já é o nível (a etapa "N2") */}
+                      {e.nivel && paraBusca(e.nome) !== `n${e.nivel}` && <Chip tone="accent">N{e.nivel}</Chip>}
+                      {existe && !e.id && <Chip tone="ok">nova</Chip>}
+                    </span>
+                  </button>
+                  <span className="flex items-center shrink-0">
+                    <BotaoIcone rotulo={`Subir ${e.nome || 'a etapa'}`} desativado={i === 0} onClick={() => moverPara(e.chave, -1)}><ArrowUp size={15} /></BotaoIcone>
+                    <BotaoIcone rotulo={`Descer ${e.nome || 'a etapa'}`} desativado={i === rascunho.length - 1} onClick={() => moverPara(e.chave, 1)}><ArrowDown size={15} /></BotaoIcone>
+                    <BotaoIcone rotulo={aberta ? `Fechar ${e.nome || 'a etapa'}` : `Editar ${e.nome || 'a etapa'}`} onClick={() => alternar(e.chave)}>{aberta ? <ChevronUp size={15} /> : <Pencil size={15} />}</BotaoIcone>
+                    <BotaoIcone rotulo={`Tirar ${e.nome || 'a etapa'}`} onClick={() => tirar(e)} perigo><Trash2 size={15} /></BotaoIcone>
                   </span>
-                </button>
-                <span className="flex items-center shrink-0">
-                  <BotaoIcone rotulo={`Subir ${e.nome || 'a etapa'}`} desativado={i === 0} onClick={() => moverPara(e.chave, -1)}><ArrowUp size={15} /></BotaoIcone>
-                  <BotaoIcone rotulo={`Descer ${e.nome || 'a etapa'}`} desativado={i === rascunho.length - 1} onClick={() => moverPara(e.chave, 1)}><ArrowDown size={15} /></BotaoIcone>
-                  <BotaoIcone rotulo={aberta ? `Fechar ${e.nome || 'a etapa'}` : `Editar ${e.nome || 'a etapa'}`} onClick={() => alternar(e.chave)}>{aberta ? <ChevronUp size={15} /> : <Pencil size={15} />}</BotaoIcone>
-                  <BotaoIcone rotulo={`Tirar ${e.nome || 'a etapa'}`} onClick={() => tirar(e)} perigo><Trash2 size={15} /></BotaoIcone>
-                </span>
-              </div>
-              {/* o resumo na largura toda (no celular, ao lado dos botões, ficava espremido) */}
-              <p className="text-[12.5px] text-muted leading-snug pl-[52px] pr-1 break-words cursor-pointer" onClick={() => alternar(e.chave)}>
-                {resumoDaEtapa(e, todasAsPessoas)}
-                {/* o número leva à lista com os chamados desta etapa */}
-                {n !== null && n > 0 && e.id && <> · <Link to={`/atendimento/lista?painel=${encodeURIComponent(painel.id)}&etapa=${encodeURIComponent(e.id)}&situacao=todos`}
-                  className="font-semibold text-ink-2 hover:text-accent tnum" onClick={(ev) => ev.stopPropagation()} title={`Ver os chamados de ${e.nome} na lista`}>{n} {n === 1 ? 'chamado' : 'chamados'}</Link></>}
-              </p>
+                </div>
+                {/* o resumo na largura toda (no celular, ao lado dos botões, ficava espremido) */}
+                <p className="text-[12.5px] text-muted leading-snug pl-[52px] pr-1 break-words cursor-pointer" onClick={() => alternar(e.chave)}>
+                  {resumoDaEtapa(e, todasAsPessoas)}
+                  {n !== null && n > 0 && e.id && <> · <span className="font-semibold text-ink-2 tnum">{n} {n === 1 ? 'chamado' : 'chamados'}</span></>}
+                </p>
               </div>
               {aberta && <EditarEtapa e={e} pessoas={pessoas} todasAsPessoas={todasAsPessoas} onMudar={(o) => mudarEtapa(e.chave, o)} />}
             </li>
@@ -518,36 +573,20 @@ function EditorDeEtapas({ painel, pessoas, todasAsPessoas }: { painel: Painel; p
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-secondary btn-sm" id="etapas-incluir" onClick={incluir} disabled={rascunho.length >= MAX_ETAPAS}><Plus size={14} /> Incluir etapa</button>
-        {rascunho.length >= MAX_ETAPAS && <span className="text-[12.5px] text-muted">Um painel vai até {MAX_ETAPAS} etapas.</span>}
-      </div>
-
-      <div className="mt-4 pt-3 border-t border-line flex flex-wrap items-center gap-2">
-        <button type="button" className="btn-primary" id="etapas-salvar" disabled={!mudou || salvando} onClick={() => void enviar({})}>
-          {salvando ? <Spinner className="text-white" /> : null} Salvar as etapas
-        </button>
-        <button type="button" className="btn-ghost" disabled={!mudou || salvando} onClick={desfazer}><RotateCcw size={15} /> Desfazer as mudanças</button>
-        <span className={`text-[12.5px] ${mudou ? 'text-signal font-semibold' : salvoAgora ? 'text-ok font-semibold' : 'text-muted'}`} aria-live="polite">
-          {mudou ? 'Há mudanças não salvas.' : salvoAgora ? 'Salvo.' : 'Nenhuma mudança.'}
-        </span>
-        {erro && <p className="text-bad text-[13px] basis-full" role="alert" id="etapas-erro">{erro}</p>}
+      <div className="mt-2.5 flex flex-wrap items-center gap-2">
+        <button type="button" className="btn-secondary btn-sm" id="etapas-incluir" onClick={incluir} disabled={rascunho.length >= MAX_ETAPAS_DO_PAINEL}><Plus size={14} /> Incluir etapa</button>
+        {rascunho.length >= MAX_ETAPAS_DO_PAINEL && <span className="text-[12.5px] text-muted">Um painel vai até {MAX_ETAPAS_DO_PAINEL} etapas.</span>}
       </div>
 
       {/* o nome da etapa acompanha o ponteiro enquanto se arrasta */}
       {arrasto.arrastando && createPortal(
-        <div ref={arrasto.fantasma} className="fixed left-0 top-0 z-50 pointer-events-none card shadow-lg px-3 py-2 text-sm font-semibold flex items-center gap-2"
+        <div ref={arrasto.fantasma} className="fixed left-0 top-0 z-[60] pointer-events-none card shadow-lg px-3 py-2 text-sm font-semibold flex items-center gap-2"
           style={{ transform: `translate(${arrasto.posicao.current.x + 14}px, ${arrasto.posicao.current.y + 10}px)` }}>
           <GripVertical size={15} className="text-muted" /> {nomeDaChave(arrasto.arrastando)}
         </div>,
         document.body,
       )}
-
-      {semDestino && (
-        <JanelaDestino mensagem={semDestino.mensagem} saem={semDestino.etapas} ficam={rascunho.filter((e) => !!e.id)} saindo={saindo}
-          salvando={salvando} onFechar={() => setSemDestino(null)} onConfirmar={(destino) => void enviar(destino)} />
-      )}
-    </section>
+    </div>
   );
 }
 
@@ -614,7 +653,7 @@ function JanelaDestino({ mensagem, saem, ficam, saindo, salvando, onFechar, onCo
       rodape={<>
         <button type="button" className="btn-secondary" onClick={onFechar}>Voltar</button>
         <button type="button" className="btn-primary" id="destino-confirmar" disabled={!completo || salvando} onClick={() => onConfirmar(destino)}>
-          {salvando ? <Spinner className="text-white" /> : 'Mover e salvar as etapas'}
+          {salvando ? <Spinner className="text-white" /> : 'Mover e salvar o painel'}
         </button>
       </>}>
       <p className="text-sm text-ink-2">{mensagem}</p>
@@ -635,7 +674,7 @@ function JanelaDestino({ mensagem, saem, ficam, saindo, salvando, onFechar, onCo
           ))}
           <p className="text-[12.5px] text-muted">
             O histórico de cada chamado diz que ele mudou de etapa porque a etapa saiu do painel, e ninguém é avisado (é arrumação, não
-            trabalho no chamado). Só as etapas que já existiam servem de destino: a nova ganha o seu lugar quando a lista é salva.
+            trabalho no chamado). Só as etapas que já existiam servem de destino: a nova ganha o seu lugar quando o painel é salvo.
           </p>
         </div>
       )}
@@ -727,4 +766,3 @@ function ListaDeTextos({ id, valor, onChange, max, maxLetras, placeholder }: { i
     </div>
   );
 }
-

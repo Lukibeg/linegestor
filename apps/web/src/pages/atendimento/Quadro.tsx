@@ -127,7 +127,7 @@ function CabecalhoDoPainel({ paineis, atual, className = '' }: { paineis: Painel
         </Popover>
       )}
       {pode.cuidar && (
-        <Link to={`/atendimento/ajustes?aba=paineis&painel=${encodeURIComponent(atual.id)}`} className="btn-ghost btn-sm text-ink-2" title="As etapas, as regras e quem vê este painel">
+        <Link to={`/atendimento/ajustes?aba=paineis&editar=${encodeURIComponent(atual.id)}`} className="btn-ghost btn-sm text-ink-2" title="As etapas, as regras e quem vê este painel">
           <Settings2 size={15} aria-hidden /> Configurar
         </Link>
       )}

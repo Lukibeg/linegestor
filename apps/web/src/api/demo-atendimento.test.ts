@@ -464,6 +464,37 @@ describe('as regras do servidor valem na prévia', () => {
     expect((await api.chamado(r.codigo)).id).toBe(r.id);
   }, DEMORA);
 
+  it('a janela do painel: nasce com as etapas escolhidas; editar com as etapas grava tudo junto (e nada, sem o destino)', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const p = await api.salvarPainel(null, {
+      nome: 'Ativações', sigla: 'ATVX', acesso: 'todos', pessoas: [], ajustes: {},
+      etapas: [{ nome: 'Pedido', tipo: 'entrada' }, { nome: 'Instalação', tipo: 'andamento', nivel: 1 }, { nome: 'Encerrado', tipo: 'fechado' }],
+    });
+    expect(p.etapas.map((e) => [e.nome, e.tipo, e.nivel])).toEqual([['Pedido', 'entrada', null], ['Instalação', 'andamento', 1], ['Encerrado', 'fechado', null]]);
+    const auditoria = async () => (await demoApi.admin.audit({ entityType: 'ticket_panel', pageSize: 1 } as never)).items[0]!.summary;
+    expect(await auditoria()).toBe('Criou o painel Ativações (ATVX), com as etapas Pedido, Instalação e Encerrado');
+    // a lista segue as regras de sempre (a mesma mensagem do servidor)
+    const repetida = await erroDe(api.salvarPainel(null, { nome: 'Outro', sigla: 'OUTX', ajustes: {}, etapas: [{ nome: 'Novo', tipo: 'entrada' }, { nome: 'novo', tipo: 'fechado' }] }));
+    expect(repetida.status).toBe(400);
+    expect((await api.opcoes()).paineis.some((x) => x.sigla === 'OUTX')).toBe(false);
+
+    const t = await api.criar({ ...(await baseDoSuporte(op, 'Ativar o ramal (teste da janela do painel)')), painelId: p.id });
+    const [pedido, instalacao, encerrado] = p.etapas;
+    const comId = (e: typeof pedido) => ({ id: e!.id, nome: e!.nome, tipo: e!.tipo, nivel: e!.nivel, obrigatorios: e!.obrigatorios, avisar: e!.avisar });
+    const pedidoNovo = { nome: 'Ativações e visitas', sigla: 'ATVX', acesso: 'todos' as const, pessoas: [], ajustes: {}, etapas: [comId(instalacao), { nome: 'Visita', tipo: 'andamento' as const }, comId(encerrado)] };
+    const semDestino = await erroDe(api.salvarPainel(p.id, pedidoNovo));
+    expect([semDestino.status, semDestino.message]).toEqual([400, 'A etapa Pedido tem 1 chamado: escolha para onde ele vai.']);
+    expect(semDestino.details).toEqual({ etapas: [{ id: pedido!.id, nome: 'Pedido', chamados: 1 }] });
+    const igual = (await api.opcoes()).paineis.find((x) => x.id === p.id)!;
+    expect([igual.nome, igual.etapas.map((e) => e.nome)]).toEqual(['Ativações', ['Pedido', 'Instalação', 'Encerrado']]);
+
+    const ok = await api.salvarPainel(p.id, { ...pedidoNovo, destino: { [pedido!.id]: instalacao!.id } });
+    expect([ok.nome, ok.etapas.map((e) => e.nome)]).toEqual(['Ativações e visitas', ['Instalação', 'Visita', 'Encerrado']]);
+    expect((await api.chamado(t.codigo)).etapaId).toBe(instalacao!.id);
+    expect(await auditoria()).toBe('Alterou o painel Ativações e visitas (ATVX): antes se chamava Ativações; nas etapas, entrou Visita; saiu Pedido; 1 chamado foi de Pedido para Instalação');
+  }, DEMORA);
+
   it('a lixeira: o chamado sai e volta pela Administração, com o histórico', async () => {
     await entrar('tecnico');
     const op = await api.opcoes();

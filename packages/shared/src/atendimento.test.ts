@@ -4,6 +4,7 @@ import {
   somarDiasUteis, somarMinutosUteis, textoDaRegra, textoDoPrazo, type AjustesPrazos, type Calendario, type RegraAgendado,
 } from './atendimento-prazos.js';
 import {
+  ETAPAS_DO_PAINEL_NOVO, EtapasGravarSchema, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL, PainelGravarSchema,
   caminhoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
   lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes, pareceAgradecimento,
   pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
@@ -149,6 +150,30 @@ describe('as etapas', () => {
     expect(etapaDeEntrada(etapas)?.id).toBe('novo');
     expect(etapaAoAssumir(etapas, 'novo')?.id).toBe('n1');
     expect(etapaAoAssumir(etapas, 'n1')).toBeNull();
+  });
+  it('a lista de etapas: as mesmas regras ao criar o painel (na mesma janela) e ao mudar as etapas', () => {
+    const painel = { nome: 'Ativações', sigla: 'atv', ajustes: {} };
+    const mensagem = (r: { success: boolean; error?: { issues: Array<{ message: string }> } }) => (r.success ? '' : r.error!.issues[0]!.message);
+    // sem a lista, o painel continua valendo (nasce com as etapas básicas)
+    expect(PainelGravarSchema.parse(painel)).toMatchObject({ sigla: 'ATV', destino: {} });
+    expect(PainelGravarSchema.parse(painel).etapas).toBeUndefined();
+    expect(ETAPAS_DO_PAINEL_NOVO.map((e) => e.nome)).toEqual(['Novo', 'Em andamento', 'Resolvido', 'Fechado']);
+    const ok = PainelGravarSchema.parse({ ...painel, etapas: [{ nome: ' Pedido ', tipo: 'entrada' }, { nome: 'Encerrado', tipo: 'fechado' }] });
+    expect(ok.etapas).toEqual([
+      { nome: 'Pedido', tipo: 'entrada', nivel: null, obrigatorios: [], avisar: [] },
+      { nome: 'Encerrado', tipo: 'fechado', nivel: null, obrigatorios: [], avisar: [] },
+    ]);
+    expect(mensagem(PainelGravarSchema.safeParse({ ...painel, etapas: [{ nome: 'Pedido', tipo: 'entrada' }, { nome: 'Fazendo', tipo: 'andamento' }] })))
+      .toBe('Pelo menos uma etapa precisa fechar o chamado');
+    expect(mensagem(ListaDeEtapasSchema.safeParse([{ nome: 'Resolvido', tipo: 'resolvido' }, { nome: 'Fechado', tipo: 'fechado' }])))
+      .toBe('Pelo menos uma etapa precisa ser de entrada ou de andamento');
+    expect(mensagem(EtapasGravarSchema.safeParse({ etapas: [{ nome: 'Novo', tipo: 'entrada' }, { nome: 'NOVO', tipo: 'fechado' }] }))).toBe('Duas etapas com o nome NOVO');
+    expect(mensagem(ListaDeEtapasSchema.safeParse([{ nome: 'Só uma', tipo: 'fechado' }]))).toBe('O painel precisa de pelo menos duas etapas');
+    const muitas = Array.from({ length: MAX_ETAPAS_DO_PAINEL + 1 }, (_, i) => ({ nome: `Etapa ${i + 1}`, tipo: i === 0 ? 'entrada' : 'fechado' }));
+    expect(mensagem(ListaDeEtapasSchema.safeParse(muitas))).toBe(`Um painel vai até ${MAX_ETAPAS_DO_PAINEL} etapas`);
+    // o erro de uma etapa diz qual (a tela mostra "Etapa 2: …")
+    const semNome = ListaDeEtapasSchema.safeParse([{ nome: 'Novo', tipo: 'entrada' }, { nome: '  ', tipo: 'fechado' }]);
+    expect(semNome.success ? null : semNome.error.issues[0]!.path).toEqual([1, 'nome']);
   });
 });
 

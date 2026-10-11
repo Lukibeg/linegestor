@@ -22,7 +22,7 @@
 import {
   AcaoRespostaSchema, AgendadoGravarSchema, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AplicarRespostaSchema, AssuntoGravarSchema,
   AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema,
-  ChecklistSchema, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
+  ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_AFETADO, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
   OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema, RespostaProntaGravarSchema,
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema,
@@ -1857,20 +1857,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   //  OS AJUSTES DO MÓDULO
   // =====================================================================
 
-  const ETAPAS_DO_PAINEL_NOVO: Array<{ nome: string; tipo: TipoEtapa }> = [
-    { nome: 'Novo', tipo: 'entrada' }, { nome: 'Em andamento', tipo: 'andamento' }, { nome: 'Resolvido', tipo: 'resolvido' }, { nome: 'Fechado', tipo: 'fechado' },
-  ];
   function conferirPessoas(ids: string[]) {
     if (unicos(ids).some((id) => !S.users.some((u) => u.id === id))) throw bad('Uma das pessoas escolhidas não existe mais. Recarregue a tela e escolha de novo.');
   }
   const painelParaAuditoria = (p: Painel) => ({ nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, acesso: p.acesso, pessoas: p.pessoas, ajustes: p.ajustes, ativo: p.ativo });
+  const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[] }) => ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar] });
   function linhaDoPainel(id: string) {
     const p = A.paineis.find((x) => x.id === id && !x.deletedAt);
     if (!p) throw naoAchado('Painel');
     return p;
   }
 
-  function gravarPainel(id: string | null, d: ReturnType<typeof PainelGravarSchema.parse>): { valor: Painel; resumo: string; antes?: unknown; depois?: unknown } {
+  /** Cria ou muda o painel; as etapas, quando vêm junto (a janela do painel), pelas regras de `salvarEtapas` e tudo de uma vez. */
+  function gravarPainel(ator: Ator, id: string | null, d: ReturnType<typeof PainelGravarSchema.parse>, agora: Date): { valor: Painel; resumo: string; antes?: unknown; depois?: unknown } {
     const atual = id ? linhaDoPainel(id) : null;
     const sigla = d.sigla;
     if (atual && atual.sigla !== sigla && atual.proximoNumero > 1) throw bad(`A sigla ${atual.sigla} não muda mais: o painel já tem chamados (${atual.sigla}-1 em diante).`);
@@ -1886,58 +1885,89 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     };
     conferirPessoas([...pessoas, ...ajustes.supervisores]);
     if (!atual) {
+      const novoPainel = novoId();
+      // as etapas da janela (todas novas) ou as quatro básicas; conferidas antes de criar qualquer coisa
+      const plano = planejarEtapas(novoPainel, d.etapas ?? ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, avisar: [] })), {});
       const novo: PainelRow = {
-        id: novoId(), nome: d.nome, sigla, descricao: d.descricao ?? null, cor: d.cor, ordem: Math.max(-1, ...A.paineis.map((p) => p.ordem)) + 1,
+        id: novoPainel, nome: d.nome, sigla, descricao: d.descricao ?? null, cor: d.cor, ordem: Math.max(-1, ...A.paineis.map((p) => p.ordem)) + 1,
         acesso: d.acesso, pessoas, ajustes, ativo: d.ativo, proximoNumero: 1, deletedAt: null,
       };
       A.paineis.push(novo);
-      ETAPAS_DO_PAINEL_NOVO.forEach((e, i) => A.etapas.push({ id: novoId(), painelId: novo.id, nome: e.nome, tipo: e.tipo, nivel: null, ordem: i, obrigatorios: [], avisar: [], deletedAt: null }));
+      aplicarEtapas(ator, plano, agora);
       const painel = painelPorId(novo.id)!;
-      return { valor: painel, resumo: `Criou o painel ${painel.nome} (${painel.sigla})`, depois: painelParaAuditoria(painel) };
+      return {
+        valor: painel, resumo: `Criou o painel ${painel.nome} (${painel.sigla}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`,
+        depois: { ...painelParaAuditoria(painel), etapas: painel.etapas.map(etapaParaAuditoria) },
+      };
     }
+    // as etapas que vieram junto são conferidas antes de mudar qualquer coisa (o destino dos chamados também)
+    const plano = d.etapas ? planejarEtapas(atual.id, d.etapas, d.destino) : null;
     const antes = painelParaAuditoria(painelPorId(atual.id)!);
     Object.assign(atual, { nome: d.nome, sigla, descricao: d.descricao ?? null, cor: d.cor, acesso: d.acesso, pessoas, ajustes, ativo: d.ativo });
+    const etapas = plano ? resumoDasEtapas(plano, aplicarEtapas(ator, plano, agora)) : null;
     const painel = painelPorId(atual.id)!;
     const mudancas = [
       antes.nome !== painel.nome ? `antes se chamava ${antes.nome}` : '',
       antes.sigla !== painel.sigla ? `a sigla era ${antes.sigla}` : '',
       antes.ativo !== painel.ativo ? (painel.ativo ? 'reativou' : 'desativou') : '',
     ].filter(Boolean);
-    return { valor: painel, resumo: `Alterou o painel ${painel.nome} (${painel.sigla})${mudancas.length ? `: ${mudancas.join(', ')}` : ''}`, antes, depois: painelParaAuditoria(painel) };
+    const partes = [mudancas.join(', '), etapas?.partes.length ? `nas etapas, ${etapas.partes.join('; ')}` : ''].filter(Boolean);
+    return {
+      valor: painel, resumo: `Alterou o painel ${painel.nome} (${painel.sigla})${partes.length ? `: ${partes.join('; ')}` : ''}`,
+      antes: etapas ? { ...antes, etapas: etapas.antes } : antes,
+      depois: etapas ? { ...painelParaAuditoria(painel), etapas: etapas.depois } : painelParaAuditoria(painel),
+    };
   }
 
+  /** Só as etapas (a mesma conferência e a mesma gravação da janela do painel). */
   function salvarEtapasDoPainel(ator: Ator, painelId: string, d: ReturnType<typeof EtapasGravarSchema.parse>, agora: Date) {
     const p = linhaDoPainel(painelId);
+    const plano = planejarEtapas(painelId, d.etapas, d.destino);
+    const r = resumoDasEtapas(plano, aplicarEtapas(ator, plano, agora));
+    return { valor: painelPorId(painelId)!, resumo: `Mudou as etapas do painel ${p.nome}${r.partes.length ? `: ${r.partes.join('; ')}` : ''}`, antes: r.antes, depois: r.depois };
+  }
+
+  type PlanoDasEtapas = {
+    painelId: string; atuais: EtapaRow[]; porId: Map<string, EtapaRow>; saem: EtapaRow[]; destino: Record<string, string>;
+    novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: CampoObrigatorio[]; avisar: string[] }>;
+    /** o retrato de antes (aplicar muda as mesmas linhas): o nome, o tipo e o que vai para a auditoria */
+    fotoAntes: Array<ReturnType<typeof etapaParaAuditoria> & { id: string }>;
+  };
+  /** Confere a lista contra o que existe, sem mudar nada (as mesmas mensagens do servidor). */
+  function planejarEtapas(painelId: string, etapas: ReturnType<typeof EtapasGravarSchema.parse>['etapas'], destino: Record<string, string>): PlanoDasEtapas {
     const atuais = A.etapas.filter((e) => e.painelId === painelId && !e.deletedAt).sort((a, b) => a.ordem - b.ordem);
     const porId = new Map(atuais.map((e) => [e.id, e]));
     const ficam = new Set<string>();
-    for (const e of d.etapas) {
+    for (const e of etapas) {
       if (!e.id) continue;
       if (!porId.has(e.id)) throw bad(`A etapa ${e.nome} não é deste painel (ou já saiu). Recarregue a tela e tente de novo.`);
       if (ficam.has(e.id)) throw bad(`A etapa ${e.nome} apareceu duas vezes na lista.`);
       ficam.add(e.id);
     }
-    const novas = d.etapas.map((e, ordem) => ({ id: e.id ?? novoId(), nova: !e.id, ordem, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...new Set(e.obrigatorios)], avisar: unicos(e.avisar) }));
+    const novas = etapas.map((e, ordem) => ({ id: e.id ?? novoId(), nova: !e.id, ordem, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...new Set(e.obrigatorios)], avisar: unicos(e.avisar) }));
     conferirPessoas(novas.flatMap((e) => e.avisar));
     const saem = atuais.filter((e) => !ficam.has(e.id));
     const semDestino = saem
       .map((e) => ({ id: e.id, nome: e.nome, chamados: A.chamados.filter((t) => t.etapaId === e.id && !t.deletedAt).length }))
-      .filter((e) => e.chamados > 0 && !ficam.has(d.destino[e.id] ?? ''));
+      .filter((e) => e.chamados > 0 && !ficam.has(destino[e.id] ?? ''));
     if (semDestino.length) {
       throw bad(semDestino.map((e) => `A etapa ${e.nome} tem ${plural(e.chamados, 'chamado', 'chamados')}: escolha para onde ${e.chamados === 1 ? 'ele vai' : 'eles vão'}.`).join(' '), { etapas: semDestino });
     }
+    return { painelId, atuais, porId, novas, saem, destino, fotoAntes: atuais.map((e) => ({ id: e.id, ...etapaParaAuditoria(e) })) };
+  }
+  /** Grava o plano e devolve os chamados que mudaram de etapa porque a etapa deles saiu. */
+  function aplicarEtapas(ator: Ator, plano: PlanoDasEtapas, agora: Date): Array<{ de: string; para: string; n: number }> {
+    const { painelId, porId, novas, saem, destino } = plano;
     const finais = new Map(novas.map((e) => [e.id, e]));
-    const destinoDe = (e: EtapaRow) => finais.get(d.destino[e.id] ?? '') ?? novas.find((x) => x.tipo === e.tipo) ?? novas.find((x) => x.tipo === 'entrada') ?? novas[0]!;
+    const destinoDe = (e: EtapaRow) => finais.get(destino[e.id] ?? '') ?? novas.find((x) => x.tipo === e.tipo) ?? novas.find((x) => x.tipo === 'entrada') ?? novas[0]!;
     /** As datas que acompanham a situação nova (resolvido ganha a data de resolvido; aberto limpa as duas). */
     const datasDaSituacao = (t: ChamadoRow, tipo: TipoEtapa) => {
       const s = situacaoDaEtapa(tipo);
       if (s === 'resolvido') { t.resolvidoEm = t.resolvidoEm ?? iso(agora); t.fechadoEm = null; } else if (s === 'fechado') { t.fechadoEm = iso(agora); t.resolvidoEm = t.resolvidoEm ?? iso(agora); } else { t.resolvidoEm = null; t.fechadoEm = null; }
     };
     const movidos: Array<{ de: string; para: string; n: number }> = [];
-    // o retrato de antes (o Object.assign abaixo muda as mesmas linhas): o nome, o tipo e o que vai para a auditoria
-    const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[] }) => ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar] });
-    const fotoAntes = atuais.map(etapaParaAuditoria);
-    const antesDe = new Map(atuais.map((e) => [e.id, { nome: e.nome, tipo: e.tipo }]));
+    // o Object.assign abaixo muda as mesmas linhas: o tipo de antes vem do retrato do plano
+    const antesDe = new Map(plano.fotoAntes.map((e) => [e.id, e]));
     for (const e of novas) {
       const campos = { nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: e.ordem, obrigatorios: e.obrigatorios, avisar: e.avisar };
       if (e.nova) A.etapas.push({ id: e.id, painelId, ...campos, deletedAt: null });
@@ -1946,7 +1976,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // a etapa que mudou de tipo muda o que os chamados dela são: as datas acompanham
     for (const e of novas) {
       const antes = antesDe.get(e.id);
-      if (antes && situacaoDaEtapa(antes.tipo) !== situacaoDaEtapa(e.tipo)) for (const t of A.chamados) if (t.etapaId === e.id) { datasDaSituacao(t, e.tipo); t.atualizadoEm = iso(agora); }
+      if (antes && situacaoDaEtapa(antes.tipo as TipoEtapa) !== situacaoDaEtapa(e.tipo)) for (const t of A.chamados) if (t.etapaId === e.id) { datasDaSituacao(t, e.tipo); t.atualizadoEm = iso(agora); }
     }
     for (const e of saem) {
       const para = destinoDe(e);
@@ -1963,15 +1993,30 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       }
       e.deletedAt = iso(agora);
     }
+    return movidos;
+  }
+  /** O que mudou nas etapas, em frase (as mesmas do servidor), e o antes/depois da auditoria. */
+  function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Array<{ de: string; para: string; n: number }>) {
+    const { novas, saem, fotoAntes } = plano;
+    const antesDe = new Map(fotoAntes.map((e) => [e.id, e]));
     const entraram = novas.filter((e) => e.nova).map((e) => e.nome);
-    const renomeadas = novas.filter((e) => !e.nova && antesDe.get(e.id)?.nome !== e.nome).map((e) => `${antesDe.get(e.id)?.nome} → ${e.nome}`);
+    const ficaram = novas.filter((e) => !e.nova);
+    const renomeadas = ficaram.filter((e) => antesDe.get(e.id)?.nome !== e.nome).map((e) => `${antesDe.get(e.id)?.nome} → ${e.nome}`);
+    const mesmaLista = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
+    const ajustadas = ficaram.filter((e) => {
+      const a = antesDe.get(e.id)!;
+      return a.tipo !== e.tipo || (a.nivel ?? null) !== e.nivel || !mesmaLista(a.obrigatorios, e.obrigatorios) || !mesmaLista(a.avisar, e.avisar);
+    }).map((e) => e.nome);
+    const ordemAntes = fotoAntes.filter((e) => ficaram.some((x) => x.id === e.id)).map((e) => e.id).join();
     const partes = [
       entraram.length ? `entrou ${lista(entraram)}` : '',
-      saem.length ? `saiu ${lista(saem.map((e) => e.nome))}` : '',
+      saem.length ? `saiu ${lista(saem.map((e) => antesDe.get(e.id)?.nome ?? e.nome))}` : '',
       renomeadas.length ? `renomeou ${lista(renomeadas)}` : '',
       ...movidos.map((m) => `${plural(m.n, 'chamado foi', 'chamados foram')} de ${m.de} para ${m.para}`),
+      ordemAntes !== ficaram.map((e) => e.id).join() ? 'mudou a ordem' : '',
+      ajustadas.length ? `ajustou ${lista(ajustadas)}` : '',
     ].filter(Boolean);
-    return { valor: painelPorId(painelId)!, resumo: `Mudou as etapas do painel ${p.nome}${partes.length ? `: ${partes.join('; ')}` : ''}`, antes: fotoAntes, depois: novas.map(etapaParaAuditoria) };
+    return { partes, antes: fotoAntes.map(({ id: _id, ...e }) => e), depois: novas.map(etapaParaAuditoria) };
   }
 
   // ---------- os assuntos ----------
@@ -2528,7 +2573,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       await ctx.wait(200);
       const dados = ler(PainelGravarSchema, d);
       ctx.requirePerm('tickets.manage'); preparar();
-      const r = gravarPainel(id, dados);
+      const r = gravarPainel(eu(), id, dados, agoraReal());
       auditar(id ? 'update' : 'create', 'ticket_panel', r.resumo, r.valor.id, { before: r.antes, after: r.depois });
       return r.valor;
     },

@@ -39,19 +39,23 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   //  OS PAINÉIS E AS ETAPAS
   // =====================================================================
 
-  app.post('/paineis', { ...cuidar, schema: { tags, summary: 'Criar um painel (nasce com Novo, Em andamento, Resolvido e Fechado; a sigla é única)', body: PainelGravarSchema } },
-    async (req, reply) => {
-      const r = await ajustes.gravarPainel(app, null, req.body);
-      await app.audit(req, { action: 'create', entityType: 'ticket_panel', entityId: r.valor.id, summary: r.resumo, after: r.depois });
-      return reply.status(201).send(r.valor);
-    });
+  app.post('/paineis', {
+    ...cuidar,
+    schema: { tags, summary: 'Criar um painel, já com as etapas da lista (sem a lista, nasce com Novo, Em andamento, Resolvido e Fechado; a sigla é única)', body: PainelGravarSchema },
+  }, async (req, reply) => {
+    const r = await ajustes.gravarPainel(app, atorDaPessoa(req.user!), null, req.body);
+    await app.audit(req, { action: 'create', entityType: 'ticket_panel', entityId: r.valor.id, summary: r.resumo, after: r.depois });
+    return reply.status(201).send(r.valor);
+  });
 
-  app.put('/paineis/:id', { ...cuidar, schema: { tags, summary: 'Mudar um painel (a sigla não muda depois do primeiro chamado)', params: Id, body: PainelGravarSchema } },
-    async (req) => {
-      const r = await ajustes.gravarPainel(app, req.params.id, req.body);
-      await app.audit(req, { action: 'update', entityType: 'ticket_panel', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
-      return r.valor;
-    });
+  app.put('/paineis/:id', {
+    ...cuidar,
+    schema: { tags, summary: 'Mudar um painel e, se vierem, as etapas (as regras do PUT /etapas, tudo junto: ou grava tudo, ou nada; a sigla não muda depois do primeiro chamado)', params: Id, body: PainelGravarSchema },
+  }, async (req) => {
+    const r = await ajustes.gravarPainel(app, atorDaPessoa(req.user!), req.params.id, req.body);
+    await app.audit(req, { action: 'update', entityType: 'ticket_panel', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
+    return r.valor;
+  });
 
   app.delete('/paineis/:id', { ...cuidar, schema: { tags, summary: 'Tirar um painel (só sem chamados por fechar)', params: Id } },
     async (req) => {

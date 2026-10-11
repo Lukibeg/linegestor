@@ -11,7 +11,7 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 - **Painéis** (a primeira tela, como no Helena): um cartão por painel (Suporte, Desenvolvimento…), com
   os números de agora (em aberto, vencidos, sem dono, os seus) e quantos estão em cada etapa. Clique no
   painel para abrir o **quadro**; cada número abre a lista já filtrada; **Configurar** (quem cuida dos
-  chamados) leva às etapas e às regras daquele painel; **Novo painel** cria outro.
+  chamados) abre a janela daquele painel, com as etapas e as regras; **Novo painel** cria outro.
 - **Quadro**: o de um painel, uma coluna por etapa. **Arraste** o cartão para mover; no celular ou pelo
   teclado, use **Mover** no pé do cartão. Em cima, **Trocar** abre o quadro de outro painel e
   **Painéis** volta à primeira tela. O fechado mostra os 30 mais recentes (o resto, na lista).
@@ -72,7 +72,7 @@ nome), **pelo robô** e **pelos agendados** (seção 5).
 
 | Aba | O que se arruma |
 |---|---|
-| **Painéis e etapas** | Criar painéis; as etapas de cada um (nome, tipo, nível, o que é obrigatório, quem é avisado), as regras e quem vê |
+| **Painéis e etapas** | Criar e editar os painéis. Tudo de um painel fica numa janela só (**Novo painel** ou **Editar**): o nome, a sigla, a cor e quem vê; **as etapas** (nome, tipo, nível, o que é obrigatório, quem é avisado; arrastar ou as setas mudam a ordem); e as regras. O painel novo começa com Novo, Em andamento, Resolvido e Fechado, ou com as etapas de outro painel ("Começar com as etapas"). **Salvar** grava tudo junto: se uma etapa que sai tem chamados, a janela pergunta para onde eles vão, e até lá nada muda |
 | **Assuntos** | A árvore (até 3 níveis), com descrição ("quando usar"), checklist e de-para. **Nasce em branco**: cole a lista da equipe quando ela fechar (um por linha, no formato "Ramal - Configuração - Identidade") |
 | **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance |
 | **Avisos e WhatsApp** | Os dois números (o do cliente, oficial, e o da equipe), o número de cada pessoa, quais avisos vão pela tela e pelo WhatsApp, e o teste |

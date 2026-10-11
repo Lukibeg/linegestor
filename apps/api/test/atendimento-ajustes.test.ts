@@ -212,6 +212,104 @@ describe('as etapas', () => {
 
 // =====================================================================
 
+describe('a janela do painel: as etapas junto, ao criar e ao editar', () => {
+  const semId = (e: any) => ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar });
+  const comId = (e: any) => ({ id: e.id, ...semId(e) });
+  const nomes = (p: any) => p.etapas.map((e: any) => e.nome);
+  const doServidor = async (id: string) => (await s.get('/atendimento/opcoes')).json().paineis.find((p: any) => p.id === id);
+
+  it('o painel novo nasce com as etapas da janela: a ordem, o tipo, o nível, o que pede e quem avisa', async () => {
+    const r = await s.post('/atendimento/paineis', painel({
+      nome: 'Ativações', sigla: 'ATV', etapas: [
+        { nome: 'Pedido', tipo: 'entrada' },
+        { nome: 'Instalação', tipo: 'andamento', nivel: 1, obrigatorios: ['cliente'], avisar: [marinaId] },
+        { nome: 'Ativado', tipo: 'resolvido', obrigatorios: ['cliente', 'solucao'] },
+        { nome: 'Encerrado', tipo: 'fechado' },
+      ],
+    }));
+    expect(r.statusCode, r.body).toBe(201);
+    const p = r.json();
+    expect(p.etapas.map((e: any) => [e.nome, e.tipo, e.nivel])).toEqual([
+      ['Pedido', 'entrada', null], ['Instalação', 'andamento', 1], ['Ativado', 'resolvido', null], ['Encerrado', 'fechado', null],
+    ]);
+    expect(p.etapas[1]).toMatchObject({ obrigatorios: ['cliente'], avisar: [marinaId] });
+    expect(p.etapas[2].obrigatorios).toEqual(['cliente', 'solucao']);
+    // o chamado novo cai na etapa de entrada da lista
+    const t = await abrir(p.id, 'Ativar o ramal novo');
+    expect(t.codigo).toBe('ATV-1');
+    expect((await ficha(t.codigo)).etapaId).toBe(p.etapas[0].id);
+    expect(await auditoria()).toContain('Criou o painel Ativações (ATV), com as etapas Pedido, Instalação, Ativado e Encerrado');
+  });
+
+  it('a lista do painel novo segue as regras de sempre, e o recusado não deixa nada pela metade', async () => {
+    const tentar = (etapas: unknown[], o: Record<string, unknown> = {}) => s.post('/atendimento/paineis', painel({ nome: 'Compras 2', sigla: 'CPR', etapas, ...o }));
+    // num painel novo não existe etapa nenhuma: etapa com id (de outro painel) é recusada
+    const comIdDeOutro = await tentar([{ id: 'etapa-suporte-n1', nome: 'N1', tipo: 'andamento' }, { nome: 'Fim', tipo: 'fechado' }]);
+    expect(comIdDeOutro.statusCode).toBe(400);
+    expect(comIdDeOutro.json().error).toMatch(/não é deste painel/);
+    const semFechar = await tentar([{ nome: 'Novo', tipo: 'entrada' }, { nome: 'Fazendo', tipo: 'andamento' }]);
+    expect(semFechar.statusCode).toBe(400);
+    expect(semFechar.json().details[0].message).toBe('Pelo menos uma etapa precisa fechar o chamado');
+    const repetida = await tentar([{ nome: 'Novo', tipo: 'entrada' }, { nome: 'novo ', tipo: 'fechado' }]);
+    expect(repetida.statusCode).toBe(400);
+    expect(repetida.json().details[0].message).toBe('Duas etapas com o nome novo');
+    expect((await tentar([{ nome: 'Só uma', tipo: 'fechado' }])).statusCode).toBe(400);
+    const quemNaoExiste = await tentar([{ nome: 'Novo', tipo: 'entrada', avisar: ['nao-existe'] }, { nome: 'Fim', tipo: 'fechado' }]);
+    expect(quemNaoExiste.statusCode).toBe(400);
+    // nenhuma tentativa criou o painel: a sigla continua livre
+    expect((await s.get('/atendimento/opcoes')).json().paineis.map((p: any) => p.sigla)).not.toContain('CPR');
+    const ok = await tentar([{ nome: 'Novo', tipo: 'entrada' }, { nome: 'Fim', tipo: 'fechado' }]);
+    expect(ok.statusCode, ok.body).toBe(201);
+    expect(nomes(ok.json())).toEqual(['Novo', 'Fim']);
+  });
+
+  it('editar o painel e as etapas numa vez só: a etapa com chamados pede o destino e, sem ele, nada muda (nem o nome)', async () => {
+    const p = (await s.post('/atendimento/paineis', painel({ nome: 'Logística', sigla: 'LOG' }))).json();
+    const t = await abrir(p.id, 'Enviar o aparelho');
+    const [novo, andamento, resolvido, fechado] = p.etapas;
+    const pedido = painel({
+      nome: 'Logística e envios', sigla: 'LOG',
+      etapas: [{ ...comId(andamento), nivel: 1 }, { nome: 'Em trânsito', tipo: 'andamento' }, comId(resolvido), comId(fechado)],
+    });
+
+    const r = await s.put(`/atendimento/paineis/${p.id}`, pedido);
+    expect(r.statusCode).toBe(400);
+    expect(r.json().error).toBe('A etapa Novo tem 1 chamado: escolha para onde ele vai.');
+    expect(r.json().details.etapas).toEqual([{ id: novo.id, nome: 'Novo', chamados: 1 }]);
+    const igual = await doServidor(p.id);
+    expect(igual.nome).toBe('Logística');
+    expect(nomes(igual)).toEqual(['Novo', 'Em andamento', 'Resolvido', 'Fechado']);
+
+    const ok = await s.put(`/atendimento/paineis/${p.id}`, { ...pedido, destino: { [novo.id]: andamento.id } });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json().nome).toBe('Logística e envios');
+    expect(nomes(ok.json())).toEqual(['Em andamento', 'Em trânsito', 'Resolvido', 'Fechado']);
+    expect(ok.json().etapas[0]).toMatchObject({ id: andamento.id, nivel: 1 });
+    expect((await ficha(t.codigo)).etapaId).toBe(andamento.id);
+    expect(await auditoria()).toContain(
+      'Alterou o painel Logística e envios (LOG): antes se chamava Logística; nas etapas, entrou Em trânsito; saiu Novo; 1 chamado foi de Novo para Em andamento; ajustou Em andamento',
+    );
+
+    // sem a lista, o painel muda e as etapas ficam como estão
+    const so = await s.put(`/atendimento/paineis/${p.id}`, painel({ nome: 'Logística', sigla: 'LOG' }));
+    expect(so.statusCode, so.body).toBe(200);
+    expect(nomes(so.json())).toEqual(['Em andamento', 'Em trânsito', 'Resolvido', 'Fechado']);
+
+    // mudar só a ordem também fica dito na auditoria
+    const [a, b, c, d] = so.json().etapas;
+    const ordem = await s.put(`/atendimento/paineis/${p.id}`, painel({ nome: 'Logística', sigla: 'LOG', etapas: [comId(b), comId(a), comId(c), comId(d)] }));
+    expect(nomes(ordem.json())).toEqual(['Em trânsito', 'Em andamento', 'Resolvido', 'Fechado']);
+    expect(await auditoria()).toContain('Alterou o painel Logística (LOG): nas etapas, mudou a ordem');
+  });
+
+  it('o Operador não cria painel com etapas nem muda as etapas pela janela: 403', async () => {
+    expect((await operador.post('/atendimento/paineis', painel({ sigla: 'OPX', etapas: [{ nome: 'A', tipo: 'entrada' }, { nome: 'B', tipo: 'fechado' }] }))).statusCode).toBe(403);
+    expect((await operador.put(`/atendimento/paineis/${SUP}`, painel({ nome: 'Suporte', sigla: 'SUP', etapas: [{ nome: 'A', tipo: 'entrada' }, { nome: 'B', tipo: 'fechado' }] }))).statusCode).toBe(403);
+  });
+});
+
+// =====================================================================
+
 describe('os assuntos', () => {
   let ramal = '';
   let config = '';

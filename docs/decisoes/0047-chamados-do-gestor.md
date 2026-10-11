@@ -34,7 +34,11 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   resolvido, fechado —, o nível N1/N2/N3, o que é obrigatório para entrar nela e quem é avisado),
   as **regras** (as opções de Tipo, se conta prazo, se o Resolvido fecha sozinho em N dias úteis, o
   que é obrigatório para abrir, se o pai espera os filhos, os supervisores) e **quem vê** (todos ou
-  só as pessoas escolhidas — para os outros, o chamado não existe).
+  só as pessoas escolhidas — para os outros, o chamado não existe). Tudo isso fica **numa janela só**,
+  ao criar e ao editar (o pedido dele na prévia: "essa parte das etapas pode ficar dentro de editar e
+  também quando vou criar o painel"); o painel novo começa com Novo, Em andamento, Resolvido e
+  Fechado ou com as etapas de outro painel. Salvar grava o painel e as etapas juntos, numa transação:
+  se uma etapa que sai tem chamados, a janela pergunta para onde eles vão e, até lá, nada muda.
 - **N1, N2 e N3 são colunas** (a escolha dele: "prefiro por colunas mesmo"). O Suporte nasce com
   Novo · N1 · N2 · N3 · Em observação · Resolvido · Fechado.
 - **Sem migração.** Os chamados do Helena ficam lá para consulta e a numeração começa do zero

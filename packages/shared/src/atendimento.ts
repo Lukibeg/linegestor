@@ -378,6 +378,27 @@ export const AjustesDoPainelSchema = z.object({
   paiEsperaFilhos: z.boolean().default(true),
   supervisores: z.array(z.string()).max(30).default([]),
 });
+/** Um painel vai até 20 etapas (colunas do quadro). */
+export const MAX_ETAPAS_DO_PAINEL = 20;
+/**
+ * As etapas de um painel, na ordem do quadro. As mesmas regras ao criar o painel (já com as etapas,
+ * na mesma janela — o pedido do Luan na prévia) e ao mudar as etapas depois.
+ */
+export const ListaDeEtapasSchema = z.array(EtapaGravarSchema)
+  .min(2, 'O painel precisa de pelo menos duas etapas')
+  .max(MAX_ETAPAS_DO_PAINEL, `Um painel vai até ${MAX_ETAPAS_DO_PAINEL} etapas`)
+  .superRefine((etapas, ctx) => {
+    if (!etapas.some((e) => e.tipo === 'fechado')) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pelo menos uma etapa precisa fechar o chamado' });
+    if (!etapas.some((e) => e.tipo === 'entrada' || e.tipo === 'andamento')) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Pelo menos uma etapa precisa ser de entrada ou de andamento' });
+    const vistos = new Set<string>();
+    for (const e of etapas) {
+      const k = paraBusca(e.nome);
+      if (vistos.has(k)) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Duas etapas com o nome ${e.nome}` }); break; }
+      vistos.add(k);
+    }
+  });
+/** As etapas que saíram e têm chamados: para onde eles vão (id da que saiu → id de uma que fica). */
+const DestinoDosChamadosSchema = z.record(z.string(), z.string()).default({});
 export const PainelGravarSchema = z.object({
   nome: z.string().trim().min(1, 'Dê um nome ao painel').max(40),
   sigla: SiglaSchema,
@@ -387,17 +408,26 @@ export const PainelGravarSchema = z.object({
   pessoas: z.array(z.string()).max(200).default([]),
   ajustes: AjustesDoPainelSchema,
   ativo: z.boolean().default(true),
+  /**
+   * As etapas, na ordem (opcional). Ao criar, o painel nasce com elas (sem a lista, com Novo, Em
+   * andamento, Resolvido e Fechado). Ao mudar, valem as regras de `EtapasGravarSchema`, gravadas junto
+   * com o painel: ou vai tudo, ou nada.
+   */
+  etapas: ListaDeEtapasSchema.optional(),
+  destino: DestinoDosChamadosSchema,
 });
 export const EtapasGravarSchema = z.object({
-  etapas: z.array(EtapaGravarSchema).min(2, 'O painel precisa de pelo menos duas etapas').max(20),
-  /** as etapas que saíram e têm chamados: para onde eles vão (id da que saiu → id de uma que fica) */
-  destino: z.record(z.string(), z.string()).default({}),
-}).superRefine((d, ctx) => {
-  if (!d.etapas.some((e) => e.tipo === 'fechado')) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['etapas'], message: 'Pelo menos uma etapa precisa fechar o chamado' });
-  if (!d.etapas.some((e) => e.tipo === 'entrada' || e.tipo === 'andamento')) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['etapas'], message: 'Pelo menos uma etapa precisa ser de entrada ou de andamento' });
-  const nomes = d.etapas.map((e) => paraBusca(e.nome));
-  if (new Set(nomes).size !== nomes.length) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['etapas'], message: 'Duas etapas com o mesmo nome' });
+  etapas: ListaDeEtapasSchema,
+  destino: DestinoDosChamadosSchema,
 });
+
+/** As etapas com que um painel novo nasce, se ninguém mudar a lista: o mínimo para funcionar. */
+export const ETAPAS_DO_PAINEL_NOVO: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'>> = [
+  { nome: 'Novo', tipo: 'entrada', nivel: null, obrigatorios: [] },
+  { nome: 'Em andamento', tipo: 'andamento', nivel: null, obrigatorios: [] },
+  { nome: 'Resolvido', tipo: 'resolvido', nivel: null, obrigatorios: [] },
+  { nome: 'Fechado', tipo: 'fechado', nivel: null, obrigatorios: [] },
+];
 
 export const AssuntoGravarSchema = z.object({
   paiId: z.string().nullish().transform((v) => v || null),
