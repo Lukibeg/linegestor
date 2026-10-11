@@ -20,10 +20,10 @@ import {
 import {
   AcaoRespostaSchema, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, etiquetasUnicas, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugerida,
-  referenciasNoTexto, situacaoDaEtapa, trajetoria,
+  referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
   type AcaoResposta, type Afetado, type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
   type CartaoParaLista, type CasoOperadora, type DadosObrigatorios, type FichaChamado, type FiltrosAtendimento, type Gravidade, type ItemChecklist,
-  type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Prioridade, type QuadroAtendimento, type RespostaPronta,
+  type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Prioridade, type QuadroAtendimento, type RespostaPronta, type ResumoDoPainel,
   type ReferenciaMostrada, type SituacaoDoChamado, type TipoAviso, type TipoChamado, type TipoLigacaoChamado,
 } from '@gestor/shared';
 import { NotFound } from '../../plugins/errors.js';
@@ -211,6 +211,13 @@ export async function exportar(app: FastifyInstance, ator: Ator, f: FiltrosAtend
 
 const apertado = (c: CartaoChamado) =>
   c.prazos.resposta.situacao === 'perto' || c.prazos.resposta.situacao === 'vencido' || c.prazos.solucao.situacao === 'perto' || c.prazos.solucao.situacao === 'vencido';
+
+/** A tela inicial (os painéis): os números de cada painel que a pessoa vê, contados pela regra do shared. */
+export async function resumoDosPaineisVisiveis(app: FastifyInstance, ator: Ator): Promise<ResumoDoPainel[]> {
+  const ctx = await carregarContexto(app.db);
+  const todos = await carregarCartoes(app.db, ator, ctx);
+  return resumoDosPaineis(ctx.paineis.filter((p) => podeVerPainel(p, ator)), todos, ator.tipo === 'pessoa' ? ator.id : null);
+}
 
 export async function meuDia(app: FastifyInstance, ator: Ator): Promise<MeuDia> {
   const db = app.db;

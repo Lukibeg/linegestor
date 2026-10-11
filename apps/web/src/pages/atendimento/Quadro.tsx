@@ -7,11 +7,15 @@
  *
  * O painel e os filtros ficam no endereço (?painel=…&responsavel=eu), e o quadro relê a cada minuto:
  * o prazo anda com o relógio. O Fechado mostra só os 30 mais recentes; o resto fica na lista.
+ *
+ * O quadro se abre pela tela inicial dos chamados (os painéis, como no Helena): em cima, o caminho de
+ * volta, o painel aberto, "Trocar" (a lista dos outros painéis) e "Configurar" (quem cuida). As abas
+ * de painéis saíram — com muitos painéis, não cabiam (o Luan, na prévia).
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode, type RefObject } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowRightLeft, CircleCheck, Clock, Filter, Inbox, List, Moon } from 'lucide-react';
+import { Archive, ArrowLeft, ArrowRightLeft, ChevronsUpDown, CircleCheck, Clock, Filter, Inbox, List, Moon, Settings2 } from 'lucide-react';
 import {
   DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararUrgencia, movimentoDeNivel,
   type CartaoChamado, type ColunaQuadro, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type QuadroAtendimento, type TipoEspera,
@@ -45,16 +49,19 @@ export function Quadro() {
   const { valor } = useFiltrosNoEndereco();
   const paineis = opcoes.data?.paineis ?? [];
   const pedido = valor('painel');
-  // o painel do endereço (pelo id ou pela sigla); sem ele, o primeiro ativo
-  const painel = paineis.find((p) => p.id === pedido) ?? paineis.find((p) => p.sigla === pedido.toUpperCase())
-    ?? paineis.find((p) => p.ativo) ?? paineis[0];
+  // o painel do endereço (pelo id ou pela sigla)
+  const painel = pedido ? paineis.find((p) => p.id === pedido) ?? paineis.find((p) => p.sigla === pedido.toUpperCase()) : undefined;
   const filtros = useMemo<Filtros>(() => Object.fromEntries(FILTROS.map((k) => [k, valor(k)]).filter(([, v]) => v)), [valor]);
+
+  // sem o painel no endereço (um link antigo, a aba Quadro de antes): a escolha é na tela inicial
+  if (!pedido) return <Navigate to="/atendimento" replace />;
 
   return (
     <div>
       <CabecalhoAtendimento acoes={painel && <Link className="btn-secondary" to={enderecoDaLista(painel.id, filtros)} title="Os mesmos chamados, numa tabela que ordena e exporta"><List size={15} /> Ver na lista</Link>} />
       {opcoes.isLoading ? <Carregando /> : opcoes.isError ? <ErroComTentar erro={opcoes.error} tentar={() => void opcoes.refetch()} /> : !painel ? (
-        <Vazio titulo="Nenhum painel para você" texto="Os painéis de chamados aparecem aqui quando a administração cria um (ou inclui você num painel com acesso escolhido)." />
+        <Vazio titulo="Painel não encontrado" texto="Ele pode ter saído, ou ser de acesso escolhido sem você na lista."
+          acao={<Link to="/atendimento" className="btn-secondary"><ArrowLeft size={15} /> Ver os painéis</Link>} />
       ) : (
         // trocar de painel começa um quadro novo: nada do arrasto do outro painel fica para trás
         <QuadroDoPainel key={painel.id} painel={painel} opcoes={opcoes.data!} filtros={filtros} />
@@ -72,11 +79,15 @@ function ErroComTentar({ erro, tentar }: { erro: unknown; tentar: () => void }) 
   );
 }
 
-/** Os painéis que a pessoa vê, como abas: o nome e quantos estão em aberto. */
-function FaixaDePaineis({ paineis, atual, className = '' }: { paineis: Painel[]; atual: Painel; className?: string }) {
+/**
+ * Em cima do quadro: o caminho de volta para os painéis, o painel aberto (a cor, o nome e a sigla),
+ * "Trocar" (os outros painéis, com quantos estão em aberto) e "Configurar" (as etapas e as regras).
+ */
+function CabecalhoDoPainel({ paineis, atual, className = '' }: { paineis: Painel[]; atual: Painel; className?: string }) {
+  const pode = usePode();
   const { sp } = useFiltrosNoEndereco();
-  // o painel desativado só aparece se for o do endereço (um link antigo)
-  const visiveis = paineis.filter((p) => p.ativo || p.id === atual.id);
+  // o desativado só aparece se for o aberto (um link antigo)
+  const outros = paineis.filter((p) => p.ativo || p.id === atual.id);
   const para = (p: Painel) => {
     const n = new URLSearchParams(sp);
     n.set('painel', p.id);
@@ -85,24 +96,42 @@ function FaixaDePaineis({ paineis, atual, className = '' }: { paineis: Painel[];
     return `?${n}`;
   };
   return (
-    <nav aria-label="Painéis" className={`flex gap-1.5 overflow-x-auto sem-barra -mx-4 px-4 sm:mx-0 sm:px-0 ${className}`} id="quadro-paineis">
-      {visiveis.map((p) => {
-        const ativo = p.id === atual.id;
-        return (
-          <Link
-            key={p.id} to={{ search: para(p) }} aria-current={ativo ? 'page' : undefined}
-            className={`shrink-0 inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] font-semibold transition-colors ${ativo ? 'bg-surface border-line-strong text-ink shadow-sm' : 'border-transparent text-ink-2 hover:bg-surface-2 hover:text-ink'}`}
-          >
-            <PontoDoPainel cor={p.cor} />
-            {p.nome}
-            {!p.ativo && <span className="font-normal text-[12px] text-muted">(desativado)</span>}
-            <span className={`tnum text-[12px] font-semibold rounded-md px-1.5 leading-5 ${ativo ? 'bg-accent-soft text-accent-ink' : 'bg-surface-2 text-muted'}`} title={`${p.abertos} ${p.abertos === 1 ? 'chamado em aberto' : 'chamados em aberto'}`}>
-              {p.abertos}
-            </span>
-          </Link>
-        );
-      })}
-    </nav>
+    <div className={`flex items-center gap-x-2 gap-y-1 flex-wrap min-w-0 ${className}`} id="quadro-painel">
+      <Link to="/atendimento" className="btn-ghost btn-sm -ml-2 text-ink-2" title="Voltar à tela dos painéis"><ArrowLeft size={15} aria-hidden /> Painéis</Link>
+      <span className="text-line-strong" aria-hidden>/</span>
+      <h2 className="font-display font-semibold text-[17px] flex items-center gap-2 min-w-0">
+        <PontoDoPainel cor={atual.cor} />
+        <span className="truncate">{atual.nome}</span>
+        <span className="chip bg-surface-2 text-muted font-mono">{atual.sigla}</span>
+        {!atual.ativo && <span className="font-normal text-[12px] text-muted">(desativado)</span>}
+      </h2>
+      {outros.length > 1 && (
+        <Popover classe="btn-ghost btn-sm text-ink-2" alinhar="esquerda" largura="w-[290px]" titulo="Abrir o quadro de outro painel"
+          botao={() => <><ChevronsUpDown size={14} aria-hidden /> Trocar</>}>
+          <p className="text-[12.5px] text-muted mb-1">Abrir o quadro de:</p>
+          <ul className="flex flex-col" aria-label="Painéis">
+            {outros.map((p) => {
+              const aqui = p.id === atual.id;
+              return (
+                <li key={p.id}>
+                  <Link to={{ search: para(p) }} aria-current={aqui ? 'page' : undefined}
+                    className={`rounded-md px-2 py-1.5 text-[13.5px] flex items-center gap-2 ${aqui ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink hover:bg-surface-2'}`}>
+                    <PontoDoPainel cor={p.cor} />
+                    <span className="flex-1 min-w-0 truncate">{p.nome}</span>
+                    <span className="tnum text-[12px] text-muted" title={`${p.abertos} ${p.abertos === 1 ? 'chamado em aberto' : 'chamados em aberto'}`}>{p.abertos}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </Popover>
+      )}
+      {pode.cuidar && (
+        <Link to={`/atendimento/ajustes?aba=paineis&painel=${encodeURIComponent(atual.id)}`} className="btn-ghost btn-sm text-ink-2" title="As etapas, as regras e quem vê este painel">
+          <Settings2 size={15} aria-hidden /> Configurar
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -222,9 +251,9 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
 
   return (
     <>
-      {/* os painéis e, do lado, a busca (no celular, a busca desce para a linha de baixo, com o botão dos filtros) */}
+      {/* o painel aberto e, do lado, a busca (no celular, a busca desce para a linha de baixo, com o botão dos filtros) */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
-        <FaixaDePaineis paineis={opcoes.paineis} atual={painel} className="flex-1 min-w-0 basis-full md:basis-auto" />
+        <CabecalhoDoPainel paineis={opcoes.paineis} atual={painel} className="flex-1 min-w-0 basis-full md:basis-auto" />
         <div className="flex items-center gap-2 w-full md:w-auto">
           <CampoBusca className="flex-1 md:flex-none md:w-[320px]" id="quadro-busca" valor={valor('q')} onChange={(v) => mudar({ q: v })}
             placeholder="Código, título, cliente…" titulo="Acha pelo código, título, cliente, contato, telefone e pelo que foi escrito (sem acento)" />

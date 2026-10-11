@@ -72,6 +72,9 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return reply.header('Content-Type', 'text/csv; charset=utf-8').header('Content-Disposition', `attachment; filename="${r.nome}"`).send(r.csv);
     });
 
+  app.get('/paineis/resumo', { ...ler, schema: { tags, summary: 'A tela inicial: os números de cada painel (em aberto, meus, sem dono, vencidos, perto, esperando e por etapa)' } },
+    async (req) => leitura.resumoDosPaineisVisiveis(app, ator(req)));
+
   app.get('/meu-dia', { ...ler, schema: { tags, summary: 'Os meus, os que vencem, os sem dono, os esperando o cliente, os que acompanho e os agendados de hoje' } },
     async (req) => leitura.meuDia(app, ator(req)));
 

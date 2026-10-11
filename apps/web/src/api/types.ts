@@ -513,7 +513,7 @@ export class ApiError extends Error {
 
 // ---------- os chamados do Gestor (1.10, decisão 0047): os formatos moram no @gestor/shared ----------
 export type {
-  OpcoesAtendimento, QuadroAtendimento, ColunaQuadro, CartaoChamado, FichaChamado, MeuDia, AvisosNaTela, AvisoNaTela, CadastroDoCliente, Painel, EtapaPainel,
+  OpcoesAtendimento, QuadroAtendimento, ColunaQuadro, CartaoChamado, FichaChamado, MeuDia, ResumoDoPainel, AvisosNaTela, AvisoNaTela, CadastroDoCliente, Painel, EtapaPainel,
   AjustesDoPainel, Assunto, AssuntoCurto, EventoChamado, AnotacaoChamado, AnexoChamado, TempoGasto, CasoOperadora, PassoTrajetoria, LigacaoMostradaChamado,
   ReferenciaMostrada, GrafoChamado, NoGrafo, ArestaGrafo, RespostaPronta, Agendado, AvisosChamadosTela, WebhookTela, ChaveApiTela, IntegracoesTela, SugestaoIa,
   TipoLigacaoChamado, ChamadoCriarEntrada, ChamadoAlterarEntrada, MoverEntrada, ChecklistEntrada, TempoEntrada, OperadoraCasoEntrada, PainelGravarEntrada,

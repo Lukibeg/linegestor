@@ -8,12 +8,16 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 
 ## 1. O dia a dia
 
-- **Meu dia** (a primeira tela): os seus em aberto, os que estão **vencendo**, os **sem dono** na fila
+- **Painéis** (a primeira tela, como no Helena): um cartão por painel (Suporte, Desenvolvimento…), com
+  os números de agora (em aberto, vencidos, sem dono, os seus) e quantos estão em cada etapa. Clique no
+  painel para abrir o **quadro**; cada número abre a lista já filtrada; **Configurar** (quem cuida dos
+  chamados) leva às etapas e às regras daquele painel; **Novo painel** cria outro.
+- **Quadro**: o de um painel, uma coluna por etapa. **Arraste** o cartão para mover; no celular ou pelo
+  teclado, use **Mover** no pé do cartão. Em cima, **Trocar** abre o quadro de outro painel e
+  **Painéis** volta à primeira tela. O fechado mostra os 30 mais recentes (o resto, na lista).
+- **Meu dia** (a aba ao lado): os seus em aberto, os que estão **vencendo**, os **sem dono** na fila
   (com o botão **Assumir**), os que esperam o cliente, os que você acompanha e os agendados de hoje.
   Cada número leva para a lista já filtrada.
-- **Quadro**: um painel por vez (Suporte, Desenvolvimento…), uma coluna por etapa. **Arraste** o cartão
-  para mover; no celular ou pelo teclado, use **Mover** no pé do cartão. O fechado mostra os 30 mais
-  recentes (o resto, na lista).
 - **Lista**: a busca (código, título, cliente, contato, telefone, o que o cliente disse — sem acento),
   os filtros, os atalhos (Meus, Vencidos, Perto de vencer, Sem dono, Esperando o cliente), as colunas
   que ordenam e **Exportar (CSV)**.

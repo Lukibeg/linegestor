@@ -30,14 +30,14 @@ import {
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca, pareceAgradecimento,
-  preencherModelo, prioridadeSugerida, proximaExecucao, referenciasNoTexto, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
+  preencherModelo, prioridadeSugerida, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   type AcaoResposta, type Afetado, type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
   type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoObrigatorio, type CartaoChamado, type CartaoParaLista,
   type CasoOperadora, type ChamadoAlterar, type ChamadoCriar, type ChaveApiTela, type CorPainel, type DadosObrigatorios, type Espera, type EstadoPrazo,
   type EtapaPainel, type EventoAviso, type EventoChamado, type EventoWebhook, type FichaChamado, type FiltrosAtendimento, type Gravidade,
   type IntegracoesTela, type ItemChecklist, type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Origem, type Painel,
-  type Prioridade, type ProvedorIa, type QuadroAtendimento, type ReferenciaMostrada, type RegraAgendado, type RespostaPronta, type SituacaoDoChamado,
+  type Prioridade, type ProvedorIa, type QuadroAtendimento, type ReferenciaMostrada, type RegraAgendado, type RespostaPronta, type ResumoDoPainel, type SituacaoDoChamado,
   type SugestaoIa, type TipoAviso, type TipoChamado, type TipoEspera, type TipoEtapa, type TipoEvento, type TipoLigacaoChamado, type WebhookTela,
 } from '@gestor/shared';
 import type { Api } from './index.js';
@@ -2440,6 +2440,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // a prévia não tem servidor para montar o CSV: a tela monta com o `csvDosChamados` (e a auditoria fica com ela)
     exportarUrl() { return null; },
     async meuDia() { await ctx.wait(); ctx.requirePerm('support.read'); preparar(); return meuDia(eu()); },
+    async resumoDosPaineis(): Promise<ResumoDoPainel[]> {
+      await ctx.wait(); ctx.requirePerm('support.read'); preparar();
+      const ator = eu();
+      // as mesmas contas do servidor (resumoDosPaineis do shared), sobre os chamados que a pessoa vê
+      return resumoDosPaineis(paineis().filter((p) => podeVerPainel(p, ator)), cartoesVisiveis(ator, agoraReal()), ator.tipo === 'pessoa' ? ator.id : null);
+    },
     async avisos() { await ctx.wait(60); ctx.requirePerm('support.read'); preparar(); return avisosNaTela(S.me!.id); },
     async marcarAvisosLidos(ids) {
       await ctx.wait(60); ctx.requirePerm('support.read'); semear();

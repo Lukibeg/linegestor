@@ -7,7 +7,7 @@
  * mesmas do servidor e da prévia.
  */
 import { useCallback, type ReactNode } from 'react';
-import { Link, NavLink } from 'react-router-dom';
+import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, TriangleAlert } from 'lucide-react';
 import {
@@ -67,9 +67,13 @@ export const etapaDe = (opcoes: OpcoesAtendimento | undefined, painelId: string,
 //  O CABEÇALHO DO MÓDULO
 // =====================================================================
 
-const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar' }> = [
-  { to: '/atendimento', label: 'Meu dia', fim: true },
-  { to: '/atendimento/quadro', label: 'Quadro' },
+/**
+ * As abas do módulo. A primeira são os Painéis (a tela inicial, como no Helena): o quadro de cada
+ * painel se abre por ela, e a aba continua marcada lá dentro.
+ */
+const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tambem?: string }> = [
+  { to: '/atendimento', label: 'Painéis', fim: true, tambem: '/atendimento/quadro' },
+  { to: '/atendimento/meu-dia', label: 'Meu dia' },
   { to: '/atendimento/lista', label: 'Lista' },
   { to: '/atendimento/ajustes', label: 'Ajustes', so: 'cuidar' },
 ];
@@ -77,6 +81,7 @@ const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar' }> =
 /** O título "Chamados", as abas do módulo e o botão de abrir chamado (quem trabalha). */
 export function CabecalhoAtendimento({ sub, acoes }: { sub?: ReactNode; acoes?: ReactNode }) {
   const pode = usePode();
+  const { pathname } = useLocation();
   return (
     <div className="mb-4">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
@@ -91,7 +96,7 @@ export function CabecalhoAtendimento({ sub, acoes }: { sub?: ReactNode; acoes?: 
       </div>
       <nav className={FAIXA_ABAS} aria-label="Partes do módulo de chamados">
         {ABAS.filter((a) => !a.so || pode.cuidar || pode.integrar).map((a) => (
-          <NavLink key={a.to} to={a.to} end={a.fim} className={({ isActive }) => classeAba(isActive)}>{a.label}</NavLink>
+          <NavLink key={a.to} to={a.to} end={a.fim} className={({ isActive }) => classeAba(isActive || (!!a.tambem && pathname.startsWith(a.tambem)))}>{a.label}</NavLink>
         ))}
       </nav>
     </div>

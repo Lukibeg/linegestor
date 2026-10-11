@@ -143,7 +143,7 @@ function NaoAbriu({ codigo, erro, tentar }: { codigo: string; erro: unknown; ten
       <div className="max-w-xl mx-auto mt-8">
         <Vazio titulo="Chamado não encontrado"
           texto={`Não achei o ${codigo}. O código pode estar errado, o chamado pode ter ido para a lixeira, ou ele é de um painel que você não vê.`}
-          acao={<div className="flex flex-wrap justify-center gap-2">{voltar}<Link to="/atendimento/quadro" className="btn-ghost">Ir para o quadro</Link></div>} />
+          acao={<div className="flex flex-wrap justify-center gap-2">{voltar}<Link to="/atendimento" className="btn-ghost">Ver os painéis</Link></div>} />
       </div>
     );
   }

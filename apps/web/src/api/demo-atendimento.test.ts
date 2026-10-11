@@ -199,6 +199,15 @@ describe('os exemplos da prévia', () => {
     expect((await api.lista({ painel: sup.id, situacao: 'resolvidos' })).total).toBe(total(['resolvido']));
     expect((await api.lista({ painel: sup.id, situacao: 'fechados' })).total).toBe(total(['fechado']));
 
+    // a tela inicial (os painéis): os números de cada painel batem com a lista filtrada
+    const resumo = (await api.resumoDosPaineis()).find((r) => r.painelId === sup.id)!;
+    expect(resumo.abertos).toBe((await api.lista({ painel: sup.id })).total);
+    expect(resumo.semDono).toBe((await api.lista({ painel: sup.id, responsavel: 'ninguem' })).total);
+    expect(resumo.meus).toBe((await api.lista({ painel: sup.id, responsavel: 'eu' })).total);
+    expect(resumo.vencidos).toBe((await api.lista({ painel: sup.id, prazo: 'vencidos' })).total);
+    expect(resumo.porEtapa.map((e) => e.etapaId)).toEqual(q.colunas.filter((c) => c.etapa.tipo !== 'fechado').map((c) => c.etapa.id));
+    for (const e of resumo.porEtapa) expect(e.total).toBe(q.colunas.find((c) => c.etapa.id === e.etapaId)!.total);
+
     // o filtro de prazo da lista
     const vencidos = await api.lista({ prazo: 'vencidos', pageSize: 1000 });
     expect(vencidos.total).toBeGreaterThan(0);

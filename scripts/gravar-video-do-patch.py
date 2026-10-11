@@ -201,12 +201,20 @@ def entrar_atras_da_capa(page):
 
 def roteiro(page):
     n = iter(range(1, 100))
-    # 1 e 2. o módulo novo: o Meu dia (a tela que já está aberta atrás da capa)
+    # o módulo novo: a tela dos painéis (a que já está aberta atrás da capa)
     legenda(page, next(n), 'Os chamados agora são do Gestor', 'Os chamados nascem, andam e fecham aqui. Os antigos ficam em Chamados do LineChat.', 1400)
     apontar(page, page.locator('nav a:has-text("Chamados")').first, 1300)
     apontar(page, page.locator('nav a:has-text("Chamados do LineChat")').first, 1700)
+    suporte = page.locator('article[data-painel="SUP"]').first
+    legenda(page, next(n), 'Os painéis', 'Cada painel com os números de agora e as etapas. Clique para abrir o quadro; Configurar leva às regras.', 900)
+    apontar(page, suporte.locator('a:has-text("Vencidos")').first, 1500)
+    apontar(page, suporte.locator('ul a').first, 1300)
+    apontar(page, suporte.locator('a:has-text("Configurar")').first, 1500)
+
+    # o Meu dia (a aba ao lado)
+    clicar(page, page.get_by_role('link', name='Meu dia', exact=True)); esperar(page, 1300)
     legenda(page, next(n), 'Meu dia', 'Os seus, os que estão vencendo e os sem dono na fila, com o botão Assumir.', 1200)
-    rolar(page, 520); esperar(page, 2000)
+    rolar(page, 520); esperar(page, 1800)
     topo(page)
 
     # o sininho, o tema e o Sair: no rodapé do menu (no computador, a barra de cima saiu)
@@ -216,14 +224,17 @@ def roteiro(page):
     apontar(page, page.get_by_role('button', name='Tema claro/escuro').first, 900)
     apontar(page, page.get_by_role('button', name='Sair').first, 1200)
 
-    # 3. o quadro: mover pelo Mover do cartão; subir de nível pede o motivo
-    clicar(page, page.get_by_role('link', name='Quadro', exact=True)); esperar(page, 1500)
+    # o quadro, aberto pelo painel: mover pelo Mover do cartão; subir de nível pede o motivo
+    clicar(page, page.get_by_role('link', name='Painéis', exact=True).first); esperar(page, 1200)
+    clicar(page, page.locator('article[data-painel="SUP"] a:has-text("Abrir o quadro")').first); esperar(page, 1600)
     legenda(page, next(n), 'O quadro', 'N1, N2 e N3 continuam como colunas. Arraste o cartão ou use Mover: escalonar pede o motivo.', 1600)
     cartao = page.locator('li[data-codigo="SUP-27"]').first
     clicar(page, cartao.get_by_role('button', name='Mover')); esperar(page, 900)
     clicar(page, cartao.locator('button:has(span:text-is("N2"))').first); esperar(page, 900)
     page.keyboard.type('Precisa de acesso ao servidor do cliente para trocar o áudio da fila', delay=40); esperar(page, 600)
-    clicar(page, page.locator('[role="dialog"]').get_by_role('button', name='Escalonar')); esperar(page, 2200)
+    clicar(page, page.locator('[role="dialog"]').get_by_role('button', name='Escalonar')); esperar(page, 2000)
+    clicar(page, page.get_by_role('button', name='Trocar')); esperar(page, 1600)
+    page.keyboard.press('Escape'); esperar(page, 400)
 
     # 4. a ficha do chamado
     ir(page, '/atendimento/SUP-22', 1600)

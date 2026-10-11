@@ -6,7 +6,7 @@ import {
 import {
   caminhoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
   lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes, pareceAgradecimento,
-  pedacosComReferencias, preencherModelo, referenciasNoTexto, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
+  pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
   type CartaoChamado, type CartaoParaLista, type DadosObrigatorios, type EtapaPainel, type NoParaGrafo,
 } from './atendimento.js';
 
@@ -270,6 +270,29 @@ describe('a lista: busca, filtros e ordem', () => {
     const espera = (tipo: 'cliente' | 'operadora') => ({ tipo, motivo: 'm', desde: '2026-10-13T12:00:00.000Z' });
     const l = [cartao({ espera: espera('cliente') }), cartao({ id: 'y', codigo: 'SUP-2', espera: espera('operadora') }), cartao({ id: 'z', codigo: 'SUP-3' })];
     expect(filtrarCartoes(l, { prazo: 'parados' }, ctx).map((c) => c.codigo)).toEqual(['SUP-1']);
+  });
+});
+
+describe('a tela inicial: os números de cada painel', () => {
+  it('conta abertos, meus, sem dono, vencidos, perto, esperando e cada etapa que não fecha', () => {
+    const prazo = (situacao: 'vencido' | 'perto' | 'no_prazo') => ({ situacao, limite: 60, usado: 30, percentual: 50, venceEm: null, cumpridoEm: null, conta: 'uteis' as const });
+    const etapas = [{ id: 'novo', tipo: 'entrada' }, { id: 'n1', tipo: 'andamento' }, { id: 'res', tipo: 'resolvido' }, { id: 'fec', tipo: 'fechado' }] as EtapaPainel[];
+    const l = [
+      cartao({ id: 'a', etapaId: 'novo', responsavel: null, prazos: { resposta: prazo('vencido'), solucao: prazo('no_prazo') }, ultimaAtividadeEm: '2026-10-13T15:00:00.000Z' }),
+      cartao({ id: 'b', etapaId: 'n1', responsavel: { id: 'eu', nome: 'Eu' }, prazos: { resposta: prazo('no_prazo'), solucao: prazo('perto') } }),
+      cartao({ id: 'c', etapaId: 'n1', responsavel: { id: 'outro', nome: 'Outro' }, espera: { tipo: 'cliente', motivo: 'm', desde: '2026-10-13T12:00:00.000Z' } }),
+      cartao({ id: 'd', etapaId: 'res', situacao: 'resolvido' }),
+      cartao({ id: 'e', etapaId: 'fec', situacao: 'fechado' }),
+      cartao({ id: 'f', painelId: 'outro-painel', etapaId: 'x' }),
+    ];
+    const [r] = resumoDosPaineis([{ id: 'p', etapas }], l, 'eu');
+    expect(r).toEqual({
+      painelId: 'p', abertos: 3, meus: 1, semDono: 1, vencidos: 1, perto: 1, esperando: 1, resolvidos: 1,
+      porEtapa: [{ etapaId: 'novo', total: 1 }, { etapaId: 'n1', total: 2 }, { etapaId: 'res', total: 1 }],
+      ultimaAtividadeEm: '2026-10-13T15:00:00.000Z',
+    });
+    // sem ninguém olhando (a integração), "meus" é zero
+    expect(resumoDosPaineis([{ id: 'p', etapas }], l, null)[0]!.meus).toBe(0);
   });
 });
 

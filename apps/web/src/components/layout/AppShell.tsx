@@ -6,7 +6,7 @@
  * de cima continua, porque é onde fica o botão que abre o menu (e o sininho, à mão).
  */
 import { useEffect, useState, type ReactNode } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { BookOpen, Boxes, Building2, Cable, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, LifeBuoy, ListChecks, LogOut, Menu, Moon, Settings, Sparkles, Sun, Ticket, Upload, UserRound, X } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
@@ -63,6 +63,8 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const items = NAV.filter((n) => (Array.isArray(n.perm) ? n.perm.some(can) : can(n.perm)));
   const sair = async () => { await logout(); nav('/entrar'); };
+  // nos chamados, a tela usa a largura toda e a margem é menor: o quadro e a ficha precisam de lugar
+  const largo = useLocation().pathname.startsWith('/atendimento');
   const temSino = can('support.read');
   // o número no menu: quantas notas de novidade esta pessoa ainda não leu
   const novidades = useQuery({ queryKey: ['novidades'], queryFn: () => api.novidades.lista(), enabled: !!user, staleTime: 5 * 60_000 });
@@ -128,7 +130,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             {temSino && <SinoDeAvisos lado="baixo" />}
           </div>
         </header>
-        <main className="flex-1 px-4 md:px-6 py-5 max-w-[1400px] w-full mx-auto">{children}</main>
+        <main className={`flex-1 px-4 py-5 w-full mx-auto ${largo ? 'md:px-4' : 'md:px-6 max-w-[1400px]'}`}>{children}</main>
       </div>
       {/* a nota mais recente abre uma vez por pessoa, em qualquer tela */}
       <NovidadesPopup />

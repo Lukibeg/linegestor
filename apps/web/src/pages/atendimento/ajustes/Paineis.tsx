@@ -53,6 +53,19 @@ export function AjustesPaineis() {
   /** a janela do painel: um painel (editar), 'novo', ou fechada */
   const [janela, setJanela] = useState<Painel | 'novo' | null>(null);
   const editor = useRef<HTMLDivElement>(null);
+  const chegou = useRef(false);
+  // vindo da tela inicial dos chamados: "Configurar" desce até as etapas daquele painel; "Novo
+  // painel" abre a janela (e o pedido sai do endereço, para o Voltar não abrir de novo)
+  useEffect(() => {
+    if (!opcoes.data || chegou.current) return;
+    chegou.current = true;
+    if (sp.get('novo') === '1') {
+      setJanela('novo');
+      setSp((s) => { const n = new URLSearchParams(s); n.delete('novo'); return n; }, { replace: true });
+    } else if (sp.get('painel')) {
+      window.setTimeout(() => editor.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 120);
+    }
+  }, [opcoes.data, sp, setSp]);
 
   if (opcoes.isLoading) return <Carregando />;
   if (opcoes.isError || !opcoes.data) return <p className="text-bad text-sm" role="alert">{mensagemErro(opcoes.error)}</p>;

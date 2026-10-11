@@ -281,6 +281,8 @@ export type Api = {
     /** o CSV da lista com os filtros (null na prévia: baixa montado na própria tela) */
     exportarUrl(q: Record<string, unknown>): string | null;
     meuDia(): Promise<T.MeuDia>;
+    /** a tela inicial (os painéis): os números de cada painel que a pessoa vê */
+    resumoDosPaineis(): Promise<T.ResumoDoPainel[]>;
     avisos(): Promise<T.AvisosNaTela>;
     /** sem ids = todos */
     marcarAvisosLidos(ids?: string[]): Promise<{ ok: boolean }>;

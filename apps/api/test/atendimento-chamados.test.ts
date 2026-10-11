@@ -960,6 +960,33 @@ describe('o Meu dia', () => {
   });
 });
 
+describe('a tela inicial (os painéis)', () => {
+  it('os números de cada painel que a pessoa vê, e o painel dos escolhidos fica de fora para os outros', async () => {
+    // os testes de cima já abriram chamados no Suporte: aqui conta o que estes dois mudam
+    const doSuporte = async () => ((await operador.get('/atendimento/paineis/resumo')).json() as any[]).find((x) => x.painelId === SUP);
+    const antes = await doSuporte();
+    const meu = await abrir(operador, { titulo: 'Meu chamado', responsavelId: marinaId });
+    await abrir(s, { titulo: 'Ninguém pegou' });
+    await operador.post(`/atendimento/chamados/${meu.id}/esperar`, { tipo: 'cliente', motivo: 'testar amanhã' });
+    const sup = await doSuporte();
+    const mais = (k: string) => sup[k] - antes[k];
+    expect({ abertos: mais('abertos'), meus: mais('meus'), semDono: mais('semDono'), esperando: mais('esperando'), resolvidos: mais('resolvidos') })
+      .toEqual({ abertos: 2, meus: 1, semDono: 1, esperando: 1, resolvidos: 0 });
+    expect(sup.porEtapa.length).toBeGreaterThan(0);
+    // as etapas contam os em aberto e os resolvidos (o Fechado não entra)
+    expect(sup.porEtapa.reduce((t: number, e: any) => t + e.total, 0)).toBe(sup.abertos + sup.resolvidos);
+    // um painel só dos escolhidos (sem a Marina): não aparece para ela
+    const criado = await s.post('/atendimento/paineis', { nome: 'Diretoria', sigla: 'DIRX', acesso: 'escolhidos', pessoas: [], ajustes: {} });
+    expect(criado.statusCode).toBe(201);
+    const dir = criado.json();
+    expect((await s.get('/atendimento/paineis/resumo')).json().some((x: any) => x.painelId === dir.id)).toBe(true);
+    expect((await operador.get('/atendimento/paineis/resumo')).json().some((x: any) => x.painelId === dir.id)).toBe(false);
+    // o painel de teste sai, para os testes de baixo verem só o Suporte e o Desenvolvimento
+    await app.db.delete(ticketStages).where(eq(ticketStages.panelId, dir.id));
+    await app.db.delete(ticketPanels).where(eq(ticketPanels.id, dir.id));
+  });
+});
+
 // =====================================================================
 
 describe('o cadastro do cliente (para o chamado)', () => {

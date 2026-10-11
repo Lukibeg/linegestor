@@ -21,8 +21,13 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 
 **Decisão.**
 
-- **Um módulo novo, Chamados** (menu Chamados, endereço `/atendimento`): **Meu dia**, **Quadro**,
-  **Lista**, a **ficha do chamado**, **Abrir chamado** e os **Ajustes** do módulo.
+- **Um módulo novo, Chamados** (menu Chamados, endereço `/atendimento`). A primeira tela são os
+  **Painéis**, como no Helena (o pedido dele na prévia: com muitos painéis, alternar por abas não fica
+  bom): um cartão por painel com os números de agora e as etapas, que abre o **quadro** daquele painel
+  (com **Trocar**, para ir a outro) e leva às configurações dele. Ao lado, o **Meu dia** e a **Lista**;
+  e a **ficha do chamado**, **Abrir chamado** e os **Ajustes** do módulo. No módulo, a tela usa a
+  largura toda. No computador, a barra de cima do sistema saiu: o sininho, o tema e o Sair ficam no
+  rodapé do menu lateral (também pedido dele na prévia).
 - **Os painéis são da equipe.** O módulo nasce com **Suporte** (sigla SUP) e **Desenvolvimento**
   (DEV); quem cuida dos chamados cria outros (Interno, Comercial, Administrativo…) quando quiser, cada
   um com: as **etapas** (criar, renomear, tirar, mudar a ordem; o tipo — entrada, andamento,

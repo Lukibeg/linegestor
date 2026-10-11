@@ -29,6 +29,7 @@ import { Conta } from './pages/Conta.js';
 import { Admin } from './pages/admin/Index.js';
 import { PortalDaEquipe } from './pages/portal/Index.js';
 import { MeuDia } from './pages/atendimento/MeuDia.js';
+import { PaineisDeChamados } from './pages/atendimento/Inicio.js';
 import { Quadro } from './pages/atendimento/Quadro.js';
 import { ListaDeChamados } from './pages/atendimento/Lista.js';
 import { NovoChamado } from './pages/atendimento/Novo.js';
@@ -64,7 +65,8 @@ export function Equipe() {
         <Route path="/projetos" element={<Protegido><ProjetosLista /></Protegido>} />
         <Route path="/projetos/:id" element={<Protegido><ProjetoFicha /></Protegido>} />
         {/* os chamados do Gestor (1.10, decisão 0047): o Meu dia, o quadro, a lista, abrir, a ficha e os ajustes */}
-        <Route path="/atendimento" element={<Protegido><MeuDia /></Protegido>} />
+        <Route path="/atendimento" element={<Protegido><PaineisDeChamados /></Protegido>} />
+        <Route path="/atendimento/meu-dia" element={<Protegido><MeuDia /></Protegido>} />
         <Route path="/atendimento/quadro" element={<Protegido><Quadro /></Protegido>} />
         <Route path="/atendimento/lista" element={<Protegido><ListaDeChamados /></Protegido>} />
         <Route path="/atendimento/novo" element={<Protegido><NovoChamado /></Protegido>} />

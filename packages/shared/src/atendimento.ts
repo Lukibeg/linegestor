@@ -822,6 +822,32 @@ export type TipoAviso = (typeof TIPOS_AVISO)[number];
 export type AvisoNaTela = { id: string; tipo: TipoAviso; texto: string; chamado: { id: string; codigo: string; titulo: string } | null; em: string; lido: boolean };
 export type AvisosNaTela = { naoLidos: number; itens: AvisoNaTela[] };
 
+/**
+ * A tela inicial dos chamados (os painéis, como no Helena: o Luan escolhe o quadro ali, e não numa
+ * faixa de abas que não cabe quando houver muitos painéis): os números de cada painel.
+ */
+export type ResumoDoPainel = {
+  painelId: string;
+  /** em aberto (fora do Resolvido e do Fechado) */
+  abertos: number;
+  /** abertos com quem está vendo */
+  meus: number;
+  /** abertos sem responsável */
+  semDono: number;
+  /** abertos com a resposta ou a solução vencida */
+  vencidos: number;
+  /** abertos perto de vencer (e ainda não vencidos) */
+  perto: number;
+  /** abertos esperando o cliente ou a operadora */
+  esperando: number;
+  /** no Resolvido: esperam o cliente confirmar (ou fecham sozinhos) */
+  resolvidos: number;
+  /** quantos em cada etapa que não fecha, na ordem do painel */
+  porEtapa: Array<{ etapaId: string; total: number }>;
+  /** o último movimento num chamado do painel */
+  ultimaAtividadeEm: string | null;
+};
+
 export type MeuDia = {
   meus: CartaoChamado[];
   vencendo: CartaoChamado[];
@@ -1172,6 +1198,32 @@ export function filtrarCartoes<T extends CartaoParaLista>(lista: T[], f: Partial
     // a busca pelo código exato acha o chamado, mesmo fechado de outro jeito na tela
     if (termos.length && !(codigo && c.codigo === `${codigo.sigla}-${codigo.numero}`) && !termos.every((t) => c.busca.includes(t))) return false;
     return true;
+  });
+}
+
+const prazoVencido = (c: CartaoChamado) => c.prazos.resposta.situacao === 'vencido' || c.prazos.solucao.situacao === 'vencido';
+const prazoPerto = (c: CartaoChamado) => !prazoVencido(c) && (c.prazos.resposta.situacao === 'perto' || c.prazos.solucao.situacao === 'perto');
+
+/** Os números de cada painel para a tela inicial (o servidor e a prévia contam igual). */
+export function resumoDosPaineis(paineis: Array<Pick<Painel, 'id' | 'etapas'>>, cartoes: CartaoChamado[], euId: string | null): ResumoDoPainel[] {
+  return paineis.map((p) => {
+    const doPainel = cartoes.filter((c) => c.painelId === p.id);
+    const abertos = doPainel.filter((c) => c.situacao === 'aberto');
+    const porEtapa = new Map<string, number>();
+    for (const c of doPainel) if (c.situacao !== 'fechado') porEtapa.set(c.etapaId, (porEtapa.get(c.etapaId) ?? 0) + 1);
+    const ultima = doPainel.reduce<string | null>((m, c) => (!m || c.ultimaAtividadeEm > m ? c.ultimaAtividadeEm : m), null);
+    return {
+      painelId: p.id,
+      abertos: abertos.length,
+      meus: euId ? abertos.filter((c) => c.responsavel?.id === euId).length : 0,
+      semDono: abertos.filter((c) => !c.responsavel).length,
+      vencidos: abertos.filter(prazoVencido).length,
+      perto: abertos.filter(prazoPerto).length,
+      esperando: abertos.filter((c) => !!c.espera).length,
+      resolvidos: doPainel.filter((c) => c.situacao === 'resolvido').length,
+      porEtapa: p.etapas.filter((e) => e.tipo !== 'fechado').map((e) => ({ etapaId: e.id, total: porEtapa.get(e.id) ?? 0 })),
+      ultimaAtividadeEm: ultima,
+    };
   });
 }
 
