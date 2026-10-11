@@ -347,7 +347,7 @@ function Organizar({ aba, a, mudou, salvando, ultimaArrumacao, mover, estrela, e
   const botao = 'p-1.5 rounded-md text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent';
   return (
     <div className="flex flex-col gap-3">
-      <div className="sticky top-16 z-10 rounded-xl border border-accent bg-accent-soft px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 shadow-sm">
+      <div className="sticky top-16 md:top-2 z-10 rounded-xl border border-accent bg-accent-soft px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 shadow-sm">
         <LayoutGrid size={17} className="text-accent shrink-0" />
         <div className="text-[13px] text-accent-ink flex-1 min-w-[240px] leading-snug">
           <b>Organizando os Relatórios para a equipe toda.</b> Em cada aba, mude a ordem com as setas, esconda o que não usa e marque a estrela <Star size={12} className="inline -mt-0.5" /> para pôr nos Favoritos.

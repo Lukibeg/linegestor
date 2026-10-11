@@ -1,5 +1,9 @@
 /**
- * A moldura de todas as telas: menu lateral (recolhível para só ícones), barra superior com busca global (Ctrl+K), usuário e tema.
+ * A moldura de todas as telas: o menu lateral (recolhível para só ícones) e o conteúdo.
+ *
+ * No computador não há barra em cima (1.10, o pedido do Luan: "acabamos perdendo espaço"): o
+ * sininho dos chamados, o tema e o Sair ficam no rodapé do menu, ao lado da conta. No celular a barra
+ * de cima continua, porque é onde fica o botão que abre o menu (e o sininho, à mão).
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
@@ -58,6 +62,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { collapsed, toggle: toggleSidebar } = useSidebar();
 
   const items = NAV.filter((n) => (Array.isArray(n.perm) ? n.perm.some(can) : can(n.perm)));
+  const sair = async () => { await logout(); nav('/entrar'); };
+  const temSino = can('support.read');
   // o número no menu: quantas notas de novidade esta pessoa ainda não leu
   const novidades = useQuery({ queryKey: ['novidades'], queryFn: () => api.novidades.lista(), enabled: !!user, staleTime: 5 * 60_000 });
   const naoLidas = novidades.data?.naoLidas ?? 0;
@@ -91,14 +97,21 @@ export function AppShell({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <NavLink to="/conta" onClick={() => setOpen(false)} title={collapsed ? 'Minha conta' : undefined}
-          className={({ isActive }) => `p-3 border-t border-line text-[12px] flex items-center gap-2 ${collapsed ? 'md:justify-center' : ''} ${isActive ? 'bg-accent-soft text-accent-ink' : 'text-muted hover:bg-surface-2'}`}>
-          <UserRound size={16} className="shrink-0" />
-          <span className={`min-w-0 ${hide}`}>
-            <span className="font-semibold text-ink-2 truncate block">{user?.name}</span>
-            <span className="truncate block">{user?.roleName}</span>
-          </span>
-        </NavLink>
+        {/* o rodapé: a conta e, ao lado, o sininho, o tema e Sair (com o menu recolhido, um embaixo do outro) */}
+        <div className={`border-t border-line p-2 flex items-center gap-0.5 ${collapsed ? 'md:flex-col md:px-0' : ''}`}>
+          <NavLink to="/conta" onClick={() => setOpen(false)} title={collapsed ? `Minha conta (${user?.name ?? ''})` : 'Minha conta'}
+            className={({ isActive }) => `flex-1 min-w-0 rounded-lg px-2 py-1.5 text-[12px] flex items-center gap-2 ${collapsed ? 'md:flex-none md:justify-center md:w-10' : ''} ${isActive ? 'bg-accent-soft text-accent-ink' : 'text-muted hover:bg-surface-2'}`}>
+            <UserRound size={16} className="shrink-0" />
+            <span className={`min-w-0 ${hide}`}>
+              <span className="font-semibold text-ink-2 truncate block">{user?.name}</span>
+              <span className="truncate block">{user?.roleName}</span>
+            </span>
+          </NavLink>
+          {/* no celular o sininho fica na barra de cima, sempre à vista */}
+          {temSino && <div className="hidden md:block"><SinoDeAvisos lado={collapsed ? 'lado' : 'cima'} /></div>}
+          <button className="btn-ghost btn-sm px-2" onClick={toggle} title="Tema claro/escuro" aria-label="Tema claro/escuro">{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
+          <button className="btn-ghost btn-sm px-2" onClick={sair} title="Sair" aria-label="Sair"><LogOut size={16} /></button>
+        </div>
         <button className="hidden md:flex items-center justify-center gap-2 h-10 border-t border-line text-muted hover:text-ink hover:bg-surface-2 text-[12px]" onClick={toggleSidebar} title={collapsed ? 'Expandir menu' : 'Recolher menu'} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
           {collapsed ? <ChevronsRight size={16} /> : <><ChevronsLeft size={16} /> Recolher menu</>}
         </button>
@@ -107,13 +120,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       {/* conteúdo */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="h-14 sticky top-0 z-20 bg-bg backdrop-blur border-b border-line flex items-center gap-2 px-4">
-          <button className="md:hidden btn-ghost btn-sm" onClick={() => setOpen(true)} aria-label="Abrir menu"><Menu size={18} /></button>
+        {/* só no celular: o botão do menu e o sininho (no computador, tudo isso está no menu lateral) */}
+        <header className="md:hidden h-14 sticky top-0 z-20 bg-bg border-b border-line flex items-center gap-2 px-4">
+          <button className="btn-ghost btn-sm" onClick={() => setOpen(true)} aria-label="Abrir menu"><Menu size={18} /></button>
+          <Simbolo tamanho={22} />
           <div className="ml-auto flex items-center gap-1">
-            {collapsed && <span className="hidden md:inline text-[12px] text-muted mr-1">{user?.name}</span>}
-            {can('support.read') && <SinoDeAvisos />}
-            <button className="btn-ghost btn-sm" onClick={toggle} title="Tema claro/escuro">{theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}</button>
-            <button className="btn-ghost btn-sm" onClick={async () => { await logout(); nav('/entrar'); }} title="Sair"><LogOut size={16} /></button>
+            {temSino && <SinoDeAvisos lado="baixo" />}
           </div>
         </header>
         <main className="flex-1 px-4 md:px-6 py-5 max-w-[1400px] w-full mx-auto">{children}</main>

@@ -1,7 +1,11 @@
 /**
- * O sininho dos chamados (Patch 1.10), na barra de cima: os avisos que chegaram para a pessoa —
- * recebeu um chamado, o prazo está vencendo, o cliente respondeu, chegou um Crítico. O número é o
- * que ela ainda não viu; abrir a lista marca como lidos.
+ * O sininho dos chamados (Patch 1.10): os avisos que chegaram para a pessoa — recebeu um chamado, o
+ * prazo está vencendo, o cliente respondeu, chegou um Crítico. O número é o que ela ainda não viu;
+ * abrir a lista marca como lidos.
+ *
+ * Mora no rodapé do menu lateral (no computador a barra de cima saiu, para sobrar espaço — o pedido
+ * do Luan) e na barra do celular. `lado` diz para onde a lista abre: para cima no rodapé do menu,
+ * para o lado com o menu recolhido, para baixo na barra do celular.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -17,7 +21,13 @@ const ICONE: Record<AvisoNaTela['tipo'], { Icone: LucideIcon; cor: string }> = {
   cliente_respondeu: { Icone: MessageSquare, cor: 'text-ok' }, pai: { Icone: GitBranch, cor: 'text-muted' },
 };
 
-export function SinoDeAvisos() {
+const LUGAR_DA_LISTA = {
+  cima: 'left-0 bottom-full mb-2',
+  lado: 'left-full ml-3 bottom-0',
+  baixo: 'right-0 top-full mt-1',
+} as const;
+
+export function SinoDeAvisos({ lado = 'baixo' }: { lado?: keyof typeof LUGAR_DA_LISTA }) {
   const [aberto, setAberto] = useState(false);
   const caixa = useRef<HTMLDivElement>(null);
   const nav = useNavigate();
@@ -52,7 +62,7 @@ export function SinoDeAvisos() {
         {naoLidos > 0 && <span className="absolute -top-0.5 -right-0.5 tnum text-[10px] font-semibold rounded-full bg-bad text-white min-w-4 h-4 px-1 flex items-center justify-center">{naoLidos > 99 ? '99+' : naoLidos}</span>}
       </button>
       {aberto && (
-        <div className="absolute right-0 top-full mt-1 z-40 card shadow-lg w-[min(380px,calc(100vw-24px))] max-h-[70vh] flex flex-col" style={{ boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}>
+        <div className={`absolute ${LUGAR_DA_LISTA[lado]} z-40 card shadow-lg w-[min(380px,calc(100vw-24px))] max-h-[70vh] flex flex-col`} style={{ boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}>
           <div className="flex items-center justify-between px-3 py-2 border-b border-line">
             <span className="font-display font-semibold text-[14px]">Avisos dos chamados</span>
             {naoLidos > 0 && <button className="btn-ghost btn-sm text-[12px]" onClick={marcarTodos}><CheckCheck size={14} /> Marcar todos como lidos</button>}

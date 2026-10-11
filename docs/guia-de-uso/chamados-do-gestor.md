@@ -17,8 +17,9 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 - **Lista**: a busca (código, título, cliente, contato, telefone, o que o cliente disse — sem acento),
   os filtros, os atalhos (Meus, Vencidos, Perto de vencer, Sem dono, Esperando o cliente), as colunas
   que ordenam e **Exportar (CSV)**.
-- O **sininho**, no alto: os avisos (recebeu um chamado, chegou na sua etapa, o prazo está vencendo, o
-  cliente respondeu…).
+- O **sininho**, no rodapé do menu lateral, ao lado do seu nome (no celular, no alto): os avisos
+  (recebeu um chamado, chegou na sua etapa, o prazo está vencendo, o cliente respondeu…). O tema e o
+  Sair também ficam ali — no computador, a barra de cima saiu, para sobrar espaço.
 
 ## 2. Abrir um chamado
 

@@ -370,7 +370,7 @@ export function Chamados() {
 
           {/* ---------- organizar (só a administração) ---------- */}
           {organizando && rascunho && (
-            <div className="sticky top-16 z-10 rounded-xl border border-accent bg-accent-soft px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 shadow-sm">
+            <div className="sticky top-16 md:top-2 z-10 rounded-xl border border-accent bg-accent-soft px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 shadow-sm">
               <LayoutGrid size={17} className="text-accent shrink-0" />
               <div className="text-[13px] text-accent-ink flex-1 min-w-[240px] leading-snug">
                 <b>Organizando a tela para a equipe toda.</b> Arraste pela alça <GripVertical size={13} className="inline -mt-0.5" /> (ou use as setas),
