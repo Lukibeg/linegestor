@@ -34,10 +34,11 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
   (recebeu um chamado, chegou na sua etapa, o prazo está vencendo, o cliente respondeu…). O tema e o
   Sair também ficam ali — no computador, a barra de cima saiu, para sobrar espaço.
 - O aviso que chega com o Gestor aberto também aparece num **cartão** perto do sininho (no celular,
-  embaixo da barra de cima), com **Abrir o chamado**. Some sozinho em 20 segundos — com o mouse em
-  cima, espera —; o **Crítico** e o **prazo vencido** ficam até você fechar. Embaixo da lista do
-  sininho, em **Além do sininho**: ligar e desligar o cartão e a **notificação do navegador** (a do
-  Windows ou do Mac, que aparece mesmo com o Gestor em outra aba ou minimizado; o navegador pergunta se
+  embaixo da barra de cima), com **Abrir o chamado**. O cartão **fica até você abrir o chamado ou
+  fechar no X** (fechar não marca como lido: continua no sininho). Aparecem os 3 mais novos; os outros
+  esperam a vez, e **Fechar todos** limpa. Embaixo da lista do sininho, em **Além do sininho**: ligar e
+  desligar o cartão e a **notificação do navegador** (a do Windows ou do Mac, que aparece mesmo com o
+  Gestor em outra aba ou minimizado e também fica até você clicar ou fechar; o navegador pergunta se
   pode, e clicar nela abre o chamado). **Testar o aviso** mostra como chega. Vale para o navegador em
   que você ligou.
 

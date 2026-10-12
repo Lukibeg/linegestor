@@ -124,7 +124,7 @@ function AlemDoSininho({ onTestar }: { onTestar: () => void }) {
       <label className="flex items-center gap-3 cursor-pointer">
         <span className="min-w-0 flex-1">
           <span className="block text-[13px] font-semibold text-ink">Cartão na tela</span>
-          <span className="block text-[12px] text-muted">Aparece no canto quando chega um aviso</span>
+          <span className="block text-[12px] text-muted">No canto, até você abrir ou fechar</span>
         </span>
         <Interruptor ligado={como.tela} onChange={(v) => mudarComoAvisar({ tela: v })} rotulo="Cartão na tela" />
       </label>

@@ -138,9 +138,10 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   **sem dono** e **fecha sozinho o Resolvido** depois de N dias úteis; a mensagem do cliente reabre o
   Resolvido, menos "obrigado".
 - **Os avisos.** O **sininho** na tela (inclusive o dos observadores) e, o que chega com o Gestor
-  aberto, um **cartão** perto dele (some em 20 s; o Crítico e o prazo vencido ficam) e, para quem
-  ligar, a **notificação do navegador** (só com o Gestor fora da frente) — o pedido dele na prévia:
-  "além do sininho, notificação no navegador, e uma menos sucinta". Cada pessoa liga e desliga no
+  aberto, um **cartão** perto dele e, para quem ligar, a **notificação do navegador** (só com o Gestor
+  fora da frente) — o pedido dele na prévia: "além do sininho, notificação no navegador, e uma menos
+  sucinta". Os dois **ficam até a pessoa abrir o chamado ou fechar** (também pedido dele: "fixo até o
+  usuário clicar para entrar ou no X"); na tela, os 3 mais novos, e os outros esperam a vez. Cada pessoa liga e desliga no
   próprio sininho (vale para aquele navegador); a tela relê os avisos a cada 30 s. O **WhatsApp da
   equipe** por um número não oficial, com o número de cada pessoa nos Ajustes (o pedido dele) e a
   escolha de quais avisos vão por onde; o **cliente só recebe quando o atendente manda**, pelo número
