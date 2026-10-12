@@ -9,10 +9,10 @@
 import { useCallback, useMemo, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, type LinkProps, type Location } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, TriangleAlert } from 'lucide-react';
+import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, TriangleAlert, X } from 'lucide-react';
 import {
-  NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, telefoneLegivel, textoDoPrazo,
-  type CartaoChamado, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type TipoEspera,
+  CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, telefoneLegivel, textoDoPrazo,
+  type CartaoChamado, type CorEtiqueta, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { useAuth } from '../../lib/auth.js';
@@ -249,10 +249,62 @@ export function Avatar({ nome, tamanho = 24, title }: { nome: string; tamanho?: 
   );
 }
 
-/** As etiquetas inteiras (o pedido do Eider: nada de nome cortado). */
+// ---------- as etiquetas, com a cor ----------
+
+/** O tom do chip de cada cor de etiqueta (o cinza é o discreto de antes). */
+export const TOM_DA_ETIQUETA: Record<CorEtiqueta, TomChip> = {
+  neutral: 'muted', accent: 'accent', roxo: 'roxo', turquesa: 'turquesa', ok: 'ok', amarelo: 'amarelo', signal: 'signal', bad: 'bad', rosa: 'rosa',
+};
+/** A amostra cheia de cada cor (a bolinha; as classes escritas inteiras para o Tailwind achar). */
+export const AMOSTRA_DA_COR: Record<CorEtiqueta, string> = {
+  neutral: 'bg-muted', accent: 'bg-accent', roxo: 'bg-roxo', turquesa: 'bg-turquesa', ok: 'bg-ok', amarelo: 'bg-amarelo', signal: 'bg-signal', bad: 'bg-bad', rosa: 'bg-rosa',
+};
+
+/** Uma etiqueta inteira (nada de nome cortado), na cor dela; com `onTirar`, o × que tira. */
+export function ChipDaEtiqueta({ nome, cor, onTirar, desligado = false }: { nome: string; cor: CorEtiqueta; onTirar?: () => void; desligado?: boolean }) {
+  return (
+    // o formato de etiqueta (redonda, com a bolinha da cor) não se confunde com a prioridade e o prazo do cartão
+    <Chip tone={TOM_DA_ETIQUETA[cor]} className="font-medium max-w-full rounded-full pl-1.5" title={`Etiqueta ${nome} (${NOME_COR_ETIQUETA[cor].toLowerCase()})`}>
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${AMOSTRA_DA_COR[cor]}`} aria-hidden />
+      <span className="break-words" data-etiqueta={nome} data-cor={cor}>{nome}</span>
+      {onTirar && (
+        <button type="button" onClick={onTirar} disabled={desligado} aria-label={`Tirar a etiqueta ${nome}`} className="-mr-0.5 opacity-70 hover:opacity-100 disabled:opacity-40">
+          <X size={12} />
+        </button>
+      )}
+    </Chip>
+  );
+}
+
+/** As etiquetas do chamado (o cartão do quadro, o Meu dia), cada uma na cor dela. */
 export function Etiquetas({ lista }: { lista: string[] }) {
+  const op = useOpcoes();
   if (!lista.length) return null;
-  return <span className="inline-flex flex-wrap gap-1">{lista.map((e) => <Chip key={e} tone="muted" className="font-medium">{e}</Chip>)}</span>;
+  const cores = op.data?.etiquetas ?? [];
+  return <span className="inline-flex flex-wrap gap-1">{lista.map((e) => <ChipDaEtiqueta key={e} nome={e} cor={corDaEtiqueta(cores, e)} />)}</span>;
+}
+
+/**
+ * A escolha da cor de uma etiqueta: uma bolinha por cor (o nome aparece ao passar o mouse e para o
+ * leitor de tela). `manterFoco`: o clique não tira o foco do campo onde se escreve a etiqueta.
+ */
+export function CoresDaEtiqueta({ valor, onChange, rotulo = 'Cor da etiqueta', id, manterFoco = false, desligado = false }: {
+  valor: CorEtiqueta; onChange: (c: CorEtiqueta) => void; rotulo?: string; id?: string; manterFoco?: boolean; desligado?: boolean;
+}) {
+  return (
+    <div className="inline-flex flex-wrap items-center gap-0.5" role="radiogroup" aria-label={rotulo} id={id}>
+      {CORES_ETIQUETA.map((c) => {
+        const ativa = valor === c;
+        return (
+          <button key={c} type="button" role="radio" aria-checked={ativa} aria-label={NOME_COR_ETIQUETA[c]} title={NOME_COR_ETIQUETA[c]} data-cor={c} disabled={desligado}
+            onMouseDown={manterFoco ? (e) => e.preventDefault() : undefined} onClick={() => onChange(c)}
+            className={`w-7 h-7 rounded-full grid place-items-center border-2 transition-colors disabled:opacity-50 ${ativa ? 'border-ink' : 'border-transparent hover:border-line-strong'}`}>
+            <span className={`w-[18px] h-[18px] rounded-full ${AMOSTRA_DA_COR[c]}`} aria-hidden />
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 // ---------- datas ----------

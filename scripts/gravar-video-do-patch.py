@@ -308,6 +308,14 @@ def roteiro(page):
     recentes.scroll_into_view_if_needed(); esperar(page, 400)
     apontar(page, recentes.get_by_role('button', name='Reabrir este em vez de abrir outro').first, 2600)
 
+    # 8a. as etiquetas com cor: ao criar, escolhe a cor (trocar depois: Ajustes › Etiquetas)
+    etiquetas = page.locator('#novo-etiquetas')
+    etiquetas.scroll_into_view_if_needed(); esperar(page, 400)
+    legenda(page, next(n), 'Etiquetas com cor', 'Ao criar a etiqueta, escolha a cor. Para trocar depois: Ajustes › Etiquetas.', 600)
+    digitar(page, etiquetas, 'cliente vip'); esperar(page, 500)
+    clicar(page, page.locator('#novo-etiquetas-cor [data-cor="bad"]')); esperar(page, 800)
+    clicar(page, page.locator('#novo-etiquetas-criar')); esperar(page, 2000)
+
     # 8b. os contatos do cliente: a aba nova na ficha do cliente (o Abrir chamado puxa de lá)
     clicar(page, page.locator('nav a:has-text("Clientes")').first); esperar(page, 1200)
     clicar(page, page.locator('a[href*="/clientes/"]:has-text("Supermercado Bom Preço")').first); esperar(page, 1400)

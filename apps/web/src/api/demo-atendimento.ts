@@ -26,7 +26,7 @@ import {
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
   OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema, RespostaProntaGravarSchema,
-  SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema,
+  SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaCorSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta,
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
@@ -37,7 +37,7 @@ import {
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   type AcaoResposta, type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
   type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoDoSistema, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista,
-  type Obrigatorio, type OpcaoDoCampo, type ValoresDosCampos,
+  type Obrigatorio, type OpcaoDoCampo, type ValoresDosCampos, type CorEtiqueta, type EtiquetaComCor, type EtiquetaDoCatalogo,
   type CasoOperadora, type ChamadoAlterar, type ChamadoCriar, type ChaveApiTela, type CorPainel, type DadosObrigatorios, type Espera, type EstadoPrazo,
   type EtapaPainel, type EventoAviso, type EventoChamado, type EventoWebhook, type FichaChamado, type FiltrosAtendimento, type Gravidade,
   type IntegracoesTela, type ItemChecklist, type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Origem, type Painel,
@@ -48,7 +48,7 @@ import type { Api } from './index.js';
 import { ApiError, type Page, type TrashItem } from './types.js';
 import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import {
-  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, DESLIGADOS_NO_DESENVOLVIMENTO, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
+  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, CORES_DAS_ETIQUETAS, DESLIGADOS_NO_DESENVOLVIMENTO, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, RESPOSTAS_PRONTAS, WHATSAPP_DA_EQUIPE,
   type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
@@ -137,6 +137,8 @@ type AgendadoRow = {
   ultimoCodigo: string | null; criadoEm: string; deletedAt: string | null;
 };
 type RespostaRow = { id: string; painelId: string | null; nome: string; texto: string; acao: AcaoResposta; ordem: number; ativa: boolean; deletedAt: string | null };
+/** Uma etiqueta e a cor dela (o catálogo, como o `ticket_tags` do servidor). */
+type EtiquetaRow = { id: string; nome: string; chave: string; cor: CorEtiqueta; criadoPorId: string | null; criadoEm: string; atualizadoEm: string };
 type AvisoRow = { id: string; userId: string; chamadoId: string | null; tipo: TipoAviso; texto: string; em: string; lidoEm: string | null };
 type WebhookRow = {
   id: string; nome: string; url: string; eventos: EventoWebhook[]; ativo: boolean; temSegredo: boolean;
@@ -279,6 +281,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     chamados: [] as ChamadoRow[], eventos: [] as EventoRow[], notas: [] as NotaRow[], anexos: [] as AnexoRow[], ligacoes: [] as LigacaoRow[],
     tempos: [] as TempoRow[], casos: [] as CasoRow[], agendados: [] as AgendadoRow[], respostas: [] as RespostaRow[],
     contatos: new Map<string, { clienteId: string; nome: string | null }>(),
+    /** as etiquetas com a cor (o catálogo, como o `ticket_tags` do servidor) */
+    etiquetas: [] as EtiquetaRow[],
     avisos: [] as AvisoRow[], webhooks: [] as WebhookRow[], chaves: [] as ChaveRow[],
     prazos: JSON.parse(JSON.stringify(AJUSTES_PRAZOS_PADRAO)) as AjustesPrazos,
     whats: { ...AVISOS_CHAMADOS_PADRAO, eventos: { ...AVISOS_CHAMADOS_PADRAO.eventos }, pessoas: [] } as AvisosGuardados,
@@ -728,7 +732,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       id, painelId: painel.id, etapaId: etapa.id, numero, codigo, tipoChamado, titulo: d.titulo,
       relato: dados.relato, descricao: dados.descricao, clienteId, contatoNome, contatoTelefone: telefone, sessaoId: d.sessaoId ?? null, origem,
       responsavelId: d.responsavelId ?? null, assuntoId: assunto?.id ?? null, tipo, gravidade, alcance,
-      prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasUnicas(d.etiquetas ?? []),
+      prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasDoCatalogo(d.etiquetas ?? [], d.coresDasEtiquetas ?? {}, pessoa, agora),
       paiId: pai?.id ?? null, problemaId: problema?.id ?? null, checklist, campos,
       solucao: null, causa: null, contorno: null, validacao: null, esperas: [], observadores,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
@@ -883,7 +887,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       longo(chave, nome, t[chave]);
     }
     if (d.etiquetas !== undefined) {
-      const novas = etiquetasUnicas(d.etiquetas);
+      // como estão no catálogo; a nova entra nele com a cor escolhida na tela (ou cinza)
+      const novas = etiquetasDoCatalogo(d.etiquetas, d.coresDasEtiquetas ?? {}, pessoaDoAtor(ator), agora);
       if (novas.join('\n') !== t.etiquetas.join('\n')) { set.etiquetas = novas; campo('etiquetas', 'Etiquetas', juntar(t.etiquetas), juntar(novas), t.etiquetas); }
     }
     let observadoresNovos: string[] = [];
@@ -1671,13 +1676,55 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   // =====================================================================
+  //  AS ETIQUETAS COM COR (o catálogo; as mesmas regras do servidor)
+  // =====================================================================
+
+  /** Os nomes como estão no catálogo, sem repetir; a que falta entra nele com a cor escolhida na tela (ou cinza). */
+  function etiquetasDoCatalogo(nomes: string[], cores: Record<string, CorEtiqueta>, pessoa: string | null, quando: Date): string[] {
+    const corDa = new Map(Object.entries(cores).map(([n, c]) => [chaveDaEtiqueta(n), c]));
+    return etiquetasUnicas(etiquetasUnicas(nomes).map((n) => {
+      const k = chaveDaEtiqueta(n);
+      const ja = A.etiquetas.find((e) => e.chave === k);
+      if (ja) return ja.nome;
+      A.etiquetas.push({ id: novoId(), nome: n, chave: k, cor: corDa.get(k) ?? 'neutral', criadoPorId: pessoa, criadoEm: iso(quando), atualizadoEm: iso(quando) });
+      return n;
+    }));
+  }
+  /** As etiquetas usadas nos chamados (fora da lixeira), pela chave: o nome e em quantos chamados está. */
+  function usosDasEtiquetas(paineis?: string[]) {
+    const n = new Map<string, { nome: string; chamados: number }>();
+    for (const t of A.chamados) {
+      if (t.deletedAt || (paineis && !paineis.includes(t.painelId))) continue;
+      for (const nome of etiquetasUnicas(t.etiquetas)) {
+        const u = n.get(chaveDaEtiqueta(nome));
+        if (u) u.chamados += 1; else n.set(chaveDaEtiqueta(nome), { nome, chamados: 1 });
+      }
+    }
+    return n;
+  }
+  const ordemDoNome = (a: { nome: string }, b: { nome: string }) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
+  /** As que a pessoa vê: as usadas nos painéis dela e as que nenhum chamado usa (a de um painel que ela não vê não aparece). */
+  function etiquetasParaAPessoa(paineis: string[]): EtiquetaComCor[] {
+    const aqui = usosDasEtiquetas(paineis);
+    const emTodos = usosDasEtiquetas();
+    const lista: EtiquetaComCor[] = A.etiquetas.filter((e) => aqui.has(e.chave) || !emTodos.has(e.chave)).map((e) => ({ nome: e.nome, cor: e.cor }));
+    for (const [k, u] of aqui) if (!A.etiquetas.some((e) => e.chave === k)) lista.push({ nome: u.nome, cor: 'neutral' });
+    return lista.sort(ordemDoNome);
+  }
+  const etiquetaParaTela = (e: EtiquetaRow): EtiquetaDoCatalogo => ({ id: e.id, nome: e.nome, cor: e.cor, chamados: usosDasEtiquetas().get(e.chave)?.chamados ?? 0, criadaEm: e.criadoEm });
+  const etiquetaPorId = (id: string) => {
+    const e = A.etiquetas.find((x) => x.id === id);
+    if (!e) throw erro(404, 'Etiqueta não encontrada');
+    return e;
+  };
+
+  // =====================================================================
   //  A LEITURA (as opções, o quadro, a lista, o Meu dia, o sininho, o cadastro, a ficha)
   // =====================================================================
 
   function opcoes(ator: Ator): OpcoesAtendimento {
     const vistos = paineis().filter((p) => podeVerPainel(p, ator));
     const ids = vistos.map((p) => p.id);
-    const usadas = A.chamados.filter((t) => !t.deletedAt && ids.includes(t.painelId)).flatMap((t) => t.etiquetas);
     const ia = S.ajustesIa;
     // "ligada" como o `situacaoIa` do servidor: ligada, com a chave que serve para o provedor escolhido e com o modelo
     const chaveServe = ia.temChave && ia.chaveDe === ia.provedor && (ia.provedor !== 'compativel' || (!!ia.chaveEndereco && ia.chaveEndereco === hostDoEndereco(ia.endereco)));
@@ -1688,7 +1735,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       campos: vistos.flatMap((p) => camposDoPainel(p.id).map(campoParaTela)),
       produtos: S.products.filter((p) => !p.deletedAt && p.active).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)).map((p) => ({ id: p.id, nome: p.name, cor: p.color })),
       operadoras: S.carriers.filter((c) => c.active).sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ id: c.id, nome: c.name })),
-      etiquetas: etiquetasUnicas(usadas).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+      etiquetas: etiquetasParaAPessoa(ids),
       prazos: JSON.parse(JSON.stringify(A.prazos)) as AjustesPrazos,
       respostas: respostasVivas().filter((m) => m.ativa && (!m.painelId || ids.includes(m.painelId))).map(respostaParaTela),
       whatsapp: whatsAppPronto(),
@@ -2547,6 +2594,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     A.webhooks.push(webhook);
     A.integ = { sites: ['https://inglinechat.com.br'], linkConversa: 'https://inglinechat.com.br/chat/{sessao}' };
 
+    // ---- as etiquetas com cor (a equipe já pintou algumas; as outras nascem cinza nos chamados) ----
+    for (const [nome, cor] of CORES_DAS_ETIQUETAS) {
+      const quando = iso(voltarUteis(agora, 20 * 600));
+      A.etiquetas.push({ id: novoId(), nome, chave: chaveDaEtiqueta(nome), cor, criadoPorId: luan, criadoEm: quando, atualizadoEm: quando });
+    }
+
     // ---- as respostas prontas ----
     const etapaId = (painel: 'SUP' | 'DEV', chave: string) => `etapa-${painel === 'SUP' ? 'suporte' : 'desenvolvimento'}-${chave}`;
 
@@ -2928,6 +2981,45 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const r = ordenarCampos(painelId, dados.ids);
       auditar('update', 'ticket_panel', r.resumo, painelId);
       return r.valor;
+    },
+    // as etiquetas com a cor (Ajustes › Etiquetas): as mesmas regras e frases do servidor
+    async etiquetas() {
+      await ctx.wait(80);
+      ctx.requirePerm('tickets.manage'); preparar();
+      return A.etiquetas.map(etiquetaParaTela).sort(ordemDoNome);
+    },
+    async criarEtiqueta(d) {
+      await ctx.wait(150);
+      const dados = ler(EtiquetaGravarSchema, d);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const chave = chaveDaEtiqueta(dados.nome);
+      const igual = A.etiquetas.find((e) => e.chave === chave);
+      if (igual) throw conflito(`A etiqueta ${igual.nome} já existe.`);
+      const agora = iso(agoraReal());
+      const e: EtiquetaRow = { id: novoId(), nome: dados.nome, chave, cor: dados.cor, criadoPorId: S.me?.id ?? null, criadoEm: agora, atualizadoEm: agora };
+      A.etiquetas.push(e);
+      auditar('create', 'ticket_tag', `Criou a etiqueta ${e.nome} (${NOME_COR_ETIQUETA[e.cor]})`, e.id, { after: { nome: e.nome, cor: e.cor } });
+      return etiquetaParaTela(e);
+    },
+    async corDaEtiqueta(id, cor) {
+      await ctx.wait(120);
+      const dados = ler(EtiquetaCorSchema, { cor });
+      ctx.requirePerm('tickets.manage'); preparar();
+      const e = etiquetaPorId(id);
+      const de = e.cor;
+      e.cor = dados.cor; e.atualizadoEm = iso(agoraReal());
+      auditar('update', 'ticket_tag', de === e.cor ? `Salvou a etiqueta ${e.nome} sem mudanças` : `Trocou a cor da etiqueta ${e.nome}: ${NOME_COR_ETIQUETA[de]} → ${NOME_COR_ETIQUETA[e.cor]}`, e.id, { before: { cor: de }, after: { cor: e.cor } });
+      return etiquetaParaTela(e);
+    },
+    async removerEtiqueta(id) {
+      await ctx.wait(120);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const e = etiquetaPorId(id);
+      const n = usosDasEtiquetas().get(e.chave)?.chamados ?? 0;
+      if (n) throw conflito(`A etiqueta ${e.nome} está em ${n} ${n === 1 ? 'chamado' : 'chamados'}: tire dos chamados antes.`);
+      A.etiquetas = A.etiquetas.filter((x) => x.id !== e.id);
+      auditar('delete', 'ticket_tag', `Tirou a etiqueta ${e.nome} das sugestões`, e.id, { before: { nome: e.nome, cor: e.cor } });
+      return { ok: true as const };
     },
     async ajustesPrazos() { await ctx.wait(80); ctx.requirePerm('tickets.manage'); preparar(); return JSON.parse(JSON.stringify(A.prazos)) as AjustesPrazos; },
     async salvarPrazos(a) {

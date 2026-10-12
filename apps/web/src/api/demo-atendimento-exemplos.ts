@@ -18,7 +18,7 @@
  * Os telefones são fictícios ((71) 99999-…): na prévia nada é enviado, mas nenhum número de verdade fica
  * escrito aqui.
  */
-import type { Alcance, Gravidade, Prioridade, RegraAgendado, TipoChamado, TipoLigacaoChamado } from '@gestor/shared';
+import type { Alcance, CorEtiqueta, Gravidade, Prioridade, RegraAgendado, TipoChamado, TipoLigacaoChamado } from '@gestor/shared';
 
 // =====================================================================
 //  A EQUIPE
@@ -314,6 +314,15 @@ const VIVERBEM = 'Home Care Viver Bem';
  * exemplo, com o cargo. Os do robô (Ricardo, Joana, Rafael) ficam de fora: o robô abre sem saber o
  * cliente. Uma ex-recepcionista desativada, para a tela ter o exemplo. Os e-mails são de exemplo.
  */
+/**
+ * As cores das etiquetas dos exemplos (1.10, o pedido do Luan na prévia: escolher a cor ao criar). As que
+ * não estão aqui nasceram cinza nos chamados (como as do robô e das respostas prontas).
+ */
+export const CORES_DAS_ETIQUETAS: Array<[string, CorEtiqueta]> = [
+  ['urgente', 'bad'], ['vip', 'amarelo'], ['algar', 'roxo'], ['reincidente', 'signal'], ['fop2', 'turquesa'], ['whatsapp', 'ok'], ['ramal', 'accent'],
+  ['casa de apoio', 'rosa'],
+];
+
 export const CONTATOS_DOS_CLIENTES: Array<{ cliente: string; contato: Contato; cargo: string; email?: string; ativo?: boolean }> = [
   { cliente: AURORA, contato: MARIA, cargo: 'Recepção', email: 'recepcao@aurora.exemplo.com.br' },
   { cliente: AURORA, contato: JULIANA, cargo: 'Gerência' },

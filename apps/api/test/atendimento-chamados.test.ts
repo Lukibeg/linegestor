@@ -1254,8 +1254,11 @@ describe('as opções da tela', () => {
     expect(op.assuntos.filter((a: any) => a.painelId === SUP).map((a: any) => a.nome)).toEqual(['Ramal', 'Sem áudio']);
     expect(op.produtos.map((p: any) => p.id)).toContain(linepbx);
     expect(op.operadoras.map((o: any) => o.id)).toEqual(expect.arrayContaining([operadoraA, operadoraB]));
-    expect(op.etiquetas).toEqual(expect.arrayContaining(['aguardando-teste', 'audio', 'vip']));
-    expect([...op.etiquetas].sort((a: string, b: string) => a.localeCompare(b, 'pt-BR'))).toEqual(op.etiquetas);
+    // as etiquetas vêm com a cor (a que ninguém escolheu, cinza), em ordem de nome
+    const nomes = op.etiquetas.map((e: any) => e.nome);
+    expect(nomes).toEqual(expect.arrayContaining(['aguardando-teste', 'audio', 'vip']));
+    expect([...nomes].sort((a: string, b: string) => a.localeCompare(b, 'pt-BR'))).toEqual(nomes);
+    expect(op.etiquetas.find((e: any) => e.nome === 'vip')).toEqual({ nome: 'vip', cor: 'neutral' });
     expect(op.respostas.find((r: any) => r.nome === 'Resolver')).toMatchObject({ painelId: SUP, acao: { etapaId: E.resolvido, avisarCliente: false, esperar: null, assumir: false } });
     expect(op.prazos.matriz.inoperancia.empresa).toBe('critica');
     expect(op.whatsapp).toEqual({ cliente: false, equipe: false });
@@ -1263,5 +1266,68 @@ describe('as opções da tela', () => {
     expect(op.linechatUrl).toBeNull();
     expect(op.pode).toEqual({ trabalhar: true, cuidar: true, integrar: true });
     expect((await operador.get('/atendimento/opcoes')).json().pode).toEqual({ trabalhar: true, cuidar: false, integrar: false });
+  });
+});
+
+// =====================================================================
+
+describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao criar)', () => {
+  const cor = async (sess: Session, nome: string) => (await sess.get('/atendimento/opcoes')).json().etiquetas.find((e: any) => e.nome === nome)?.cor;
+  let ficha = { id: '', codigo: '' };
+
+  it('a nova nasce com a cor escolhida; a que já existe fica com a dela; o chamado segue o nome do catálogo', async () => {
+    ficha = await abrir(operador, { titulo: 'Etiquetas com cor', etiquetas: ['Cliente VIP', 'audio'], coresDasEtiquetas: { 'cliente vip': 'bad', audio: 'roxo' } });
+    expect(await cor(operador, 'Cliente VIP')).toBe('bad');
+    // o "audio" já existia (cinza): a cor pedida não vale para ela
+    expect(await cor(operador, 'audio')).toBe('neutral');
+    // escrita de outro jeito, é a mesma; a nova sem cor escolhida nasce cinza
+    const f = (await operador.patch(`/atendimento/chamados/${ficha.id}`, { etiquetas: ['cliente  vip', 'Retorno amanhã', 'Peça'], coresDasEtiquetas: { 'retorno amanha': 'ok' } })).json();
+    expect(f.etiquetas).toEqual(['Cliente VIP', 'Retorno amanhã', 'Peça']);
+    expect(await cor(operador, 'Retorno amanhã')).toBe('ok');
+    expect(await cor(operador, 'Peça')).toBe('neutral');
+    // a cor que não existe é recusada
+    expect((await operador.patch(`/atendimento/chamados/${ficha.id}`, { etiquetas: ['x'], coresDasEtiquetas: { x: 'dourado' } })).statusCode).toBe(400);
+  });
+
+  it('Ajustes › Etiquetas: quem cuida cria, troca a cor (vale em todos os chamados) e tira a que nenhum chamado usa', async () => {
+    expect((await operador.get('/atendimento/etiquetas')).statusCode).toBe(403);
+    expect((await operador.post('/atendimento/etiquetas', { nome: 'Teste', cor: 'ok' })).statusCode).toBe(403);
+    const lista = (await s.get('/atendimento/etiquetas')).json();
+    const vip = lista.find((e: any) => e.nome === 'Cliente VIP');
+    expect(vip).toMatchObject({ cor: 'bad', chamados: 1 });
+    const nova = await s.post('/atendimento/etiquetas', { nome: 'Aguardando peça', cor: 'signal' });
+    expect(nova.statusCode, nova.body).toBe(201);
+    expect(nova.json()).toMatchObject({ nome: 'Aguardando peça', cor: 'signal', chamados: 0 });
+    const dup = await s.post('/atendimento/etiquetas', { nome: 'aguardando  PECA' });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().error).toBe('A etiqueta Aguardando peça já existe.');
+    // a que ninguém usa já aparece para todos (para sugerir)
+    expect(await cor(tecnico, 'Aguardando peça')).toBe('signal');
+
+    const r = await s.put(`/atendimento/etiquetas/${vip.id}`, { cor: 'rosa' });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toMatchObject({ nome: 'Cliente VIP', cor: 'rosa', chamados: 1 });
+    expect(await cor(operador, 'Cliente VIP')).toBe('rosa');
+    const resumos = (await s.get('/admin/audit?entityType=ticket_tag&pageSize=50')).json().items.map((i: any) => i.summary);
+    expect(resumos).toEqual(expect.arrayContaining(['Criou a etiqueta Aguardando peça (Laranja)', 'Trocou a cor da etiqueta Cliente VIP: Vermelho → Rosa']));
+
+    // a que está num chamado não sai das sugestões; a que ninguém usa sai
+    const usada = await s.del(`/atendimento/etiquetas/${vip.id}`);
+    expect(usada.statusCode).toBe(409);
+    expect(usada.json().error).toBe('A etiqueta Cliente VIP está em 1 chamado: tire dos chamados antes.');
+    expect((await s.del(`/atendimento/etiquetas/${nova.json().id}`)).statusCode).toBe(200);
+    expect(await cor(tecnico, 'Aguardando peça')).toBeUndefined();
+    expect((await s.put('/atendimento/etiquetas/nao-existe', { cor: 'ok' })).json().error).toBe('Etiqueta não encontrada');
+  });
+
+  it('a etiqueta usada só num painel que a pessoa não vê não aparece para ela', async () => {
+    await app.db.update(ticketPanels).set({ access: 'escolhidos', memberIds: [marinaId] }).where(eq(ticketPanels.id, DEV));
+    try {
+      await abrir(s, { painelId: DEV, titulo: 'Pedido reservado', etiquetas: ['Só da diretoria'], coresDasEtiquetas: { 'Só da diretoria': 'roxo' } });
+      expect(await cor(operador, 'Só da diretoria')).toBe('roxo');
+      expect(await cor(tecnico, 'Só da diretoria')).toBeUndefined();
+    } finally {
+      await app.db.update(ticketPanels).set({ access: 'todos', memberIds: [] }).where(eq(ticketPanels.id, DEV));
+    }
   });
 });

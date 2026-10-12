@@ -1,3 +1,15 @@
+CREATE TABLE "ticket_tags" (
+	"id" text PRIMARY KEY NOT NULL,
+	"name" text NOT NULL,
+	"name_key" text NOT NULL,
+	"color" text DEFAULT 'neutral' NOT NULL,
+	"created_by_id" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "ticket_tags" ADD CONSTRAINT "ticket_tags_created_by_id_users_id_fk" FOREIGN KEY ("created_by_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "ticket_tags_name_key_uq" ON "ticket_tags" USING btree ("name_key");--> statement-breakpoint
 CREATE TABLE "client_contacts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"client_id" text NOT NULL,

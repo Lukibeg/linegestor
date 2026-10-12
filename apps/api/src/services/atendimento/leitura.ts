@@ -18,7 +18,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  AcaoRespostaSchema, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, etiquetasUnicas, faltaParaEtapa,
+  AcaoRespostaSchema, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugeridaDoPainel,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
   type AcaoResposta, type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
@@ -27,6 +27,7 @@ import {
   type ReferenciaMostrada, type SituacaoDoChamado, type TipoAviso, type TipoChamado, type TipoLigacaoChamado, type ValoresDosCampos,
 } from '@gestor/shared';
 import { NotFound } from '../../plugins/errors.js';
+import { etiquetasParaAPessoa } from './etiquetas.js';
 import * as integ from '../integracoes.js';
 import { situacaoIa } from '../baseIa.js';
 import { lerAjustes as lerAjustesLineChat } from '../linechat.js';
@@ -122,9 +123,8 @@ export async function opcoes(app: FastifyInstance, ator: Ator): Promise<OpcoesAt
     db.select({ id: products.id, nome: products.name, cor: products.color }).from(products)
       .where(and(isNull(products.deletedAt), eq(products.active, true))).orderBy(asc(products.sortOrder), asc(products.name)),
     db.select({ id: carriers.id, nome: carriers.name }).from(carriers).where(eq(carriers.active, true)).orderBy(asc(carriers.name)),
-    ids.length
-      ? db.selectDistinct({ e: sql<string>`unnest(${tickets.tags})` }).from(tickets).where(and(isNull(tickets.deletedAt), inArray(tickets.panelId, ids)))
-      : Promise.resolve([] as Array<{ e: string }>),
+    // as etiquetas com a cor: as dos painéis que a pessoa vê e as que nenhum chamado usa ainda
+    etiquetasParaAPessoa(db, ids),
     db.select().from(ticketMacros).where(and(isNull(ticketMacros.deletedAt), eq(ticketMacros.active, true))).orderBy(asc(ticketMacros.sortOrder), asc(ticketMacros.name)),
     whatsAppPronto(db),
     situacaoIa(db),
@@ -143,7 +143,7 @@ export async function opcoes(app: FastifyInstance, ator: Ator): Promise<OpcoesAt
     campos: paineis.flatMap((p) => ctx.campos.filter((c) => c.painelId === p.id)),
     produtos: prods,
     operadoras: ops,
-    etiquetas: etiquetasUnicas(usadas.map((u) => u.e).filter(Boolean)).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    etiquetas: usadas,
     prazos: ctx.prazos,
     respostas,
     whatsapp,

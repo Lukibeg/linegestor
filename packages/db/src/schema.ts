@@ -1825,6 +1825,29 @@ export const ticketMacros = pgTable('ticket_macros', {
 });
 
 /**
+ * Uma ETIQUETA e a COR dela (1.10, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher
+ * a cor"). O chamado guarda os nomes (`tickets.tags`), sempre escritos como aqui. A etiqueta nova nasce
+ * com a cor escolhida na tela, ou cinza (o robô, a IA, a resposta pronta); quem cuida dos chamados troca
+ * a cor em Ajustes › Etiquetas.
+ */
+export const ticketTags = pgTable(
+  'ticket_tags',
+  {
+    id: id(),
+    /** O nome como a equipe escreveu ("Cliente VIP") */
+    name: text('name').notNull(),
+    /** O nome para comparar (minúsculo, sem acento, um espaço só): não se repete */
+    nameKey: text('name_key').notNull(),
+    /** A cor: neutral (cinza), accent (azul), roxo, turquesa, ok (verde), amarelo, signal (laranja), bad (vermelho), rosa */
+    color: text('color').notNull().default('neutral'),
+    createdById: text('created_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('ticket_tags_name_key_uq').on(t.nameKey)],
+);
+
+/**
  * O TELEFONE QUE O GESTOR JÁ CONHECE: o WhatsApp de um contato e o cliente dele, aprendido dos
  * chamados. É o que faz o chamado que chega pelo robô já vir com o cliente preenchido.
  */

@@ -53,8 +53,10 @@ dele — e a **descrição** (o andamento e os dados técnicos).
 - **Observadores** (como no Helena): as pessoas que recebem o aviso de tudo o que acontece no chamado —
   a anotação, a mudança de etapa e de responsável, a espera, o cliente que respondeu, os campos (estes,
   juntos num aviso só enquanto não for lido). Põe ao abrir ou na ficha.
-- **Etiquetas**: as já usadas aparecem para pôr com um clique; uma nova se cria ali mesmo (digite e
-  clique em **Criar**).
+- **Etiquetas**: as já usadas aparecem para pôr com um clique, cada uma com a cor dela; uma nova se
+  cria ali mesmo: digite, **escolha a cor** e clique em **Criar** (a cor da última criada continua à
+  mão para trocar). A que chega pelo robô, pela IA ou por uma resposta pronta nasce cinza. Escrita de
+  outro jeito ("cliente VIP" e "Cliente vip"), é a mesma etiqueta.
 - O formulário mostra **só os campos que o painel usa**: os do sistema que estão ligados nele e, em
   **"Do painel …"**, os campos que a equipe criou para ele. O que é obrigatório para abrir vem com `*`;
   faltando, a tela diz o quê. (O robô, os agendados e as integrações abrem mesmo sem eles: quem
@@ -113,6 +115,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 |---|---|
 | **Painéis e etapas** | Criar e editar os painéis. Tudo de um painel fica numa janela só (**Novo painel** ou **Editar**): o nome, a sigla, a cor e quem vê; **as etapas** (nome, tipo, nível, o que é obrigatório, quem é avisado; arrastar ou as setas mudam a ordem); e as regras. O painel novo começa com Novo, Em andamento, Resolvido e Fechado, ou com as etapas de outro painel ("Começar com as etapas"). **Salvar** grava tudo junto: se uma etapa que sai tem chamados, a janela pergunta para onde eles vão, e até lá nada muda |
 | **Campos** | Os campos **de cada painel** (escolha o painel em cima). **Os do sistema** — assunto, tipo, gravidade, alcance, produtos, operadoras — ligam e desligam em cada painel (o Desenvolvimento, por exemplo, não usa assunto; o **alcance** nasce desligado em todos, por enquanto); as opções do **Tipo** se editam aqui. **O Assunto** abre a árvore do painel (até 3 níveis, com descrição, checklist e de-para; **nasce em branco**: cole a lista da equipe, um por linha, no formato "Ramal - Configuração - Identidade"). **Novo campo** cria os do painel: texto curto, texto longo, número, data, sim/não ou lista (escolhe uma ou várias opções), com uma dica, e **obrigatório para abrir** ou **para entrar** nas etapas que você marcar. As setas mudam a ordem. Desligar ou desativar **não apaga**: some da tela e das regras, e o que os chamados já têm volta se o campo voltar. O tipo de um campo não muda depois de criado |
+| **Etiquetas** | As etiquetas de todos os painéis, com a cor e em quantos chamados cada uma está: criar uma já com a cor, **trocar a cor** (vale em todos os chamados que a têm) e **tirar das sugestões** a que nenhum chamado usa |
 | **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a prioridade sugerida: a coluna **Só a gravidade** (o painel sem o alcance) e a matriz gravidade × alcance (o painel que usa o alcance) |
 | **Avisos e WhatsApp** | Os dois números (o do cliente, oficial, e o da equipe), o número de cada pessoa, quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início) e o teste |
 | **Respostas prontas** | O texto e o que ela faz no chamado (avisa o cliente, move, marca a espera, põe a etiqueta, assume) |
@@ -120,7 +123,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 | **Integrações** | As chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
 | **IA** | O provedor e a chave do **Preencher com IA** (é a mesma IA da Base de conhecimento) |
 
-Painéis, campos, prazos, avisos, respostas e agendados: quem **cuida dos chamados**. Integrações e
+Painéis, campos, etiquetas, prazos, avisos, respostas e agendados: quem **cuida dos chamados**. Integrações e
 IA: a **administração**.
 
 ## 5. Ligar com o LineChat e o n8n (Chamados › Ajustes › Integrações)

@@ -678,6 +678,33 @@ describe('as regras do servidor valem na prévia', () => {
     expect(historico).toContain('Desativou o contato Roberta Dias de Clínica Aurora');
   }, DEMORA);
 
+  it('as etiquetas com cor (como o servidor): a nova nasce com a cor escolhida, a que existe fica com a dela, e Ajustes › Etiquetas', async () => {
+    await entrar('operador');
+    const op = await api.opcoes();
+    // os exemplos: algumas pintadas pela equipe (o urgente, vermelho); as outras, cinza
+    expect(op.etiquetas.find((e) => e.nome === 'urgente')).toEqual({ nome: 'urgente', cor: 'bad' });
+    expect(op.etiquetas.find((e) => e.nome === 'omniboard')?.cor).toBe('neutral');
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Etiquetas com cor (teste)')), etiquetas: ['Cliente VIP', 'URGENTE'], coresDasEtiquetas: { 'cliente vip': 'rosa', urgente: 'ok' } });
+    // o chamado segue o nome do catálogo; a que já existia fica com a cor dela
+    expect((await api.chamado(r.codigo)).etiquetas).toEqual(['Cliente VIP', 'urgente']);
+    const cor = async (nome: string) => (await api.opcoes()).etiquetas.find((e) => e.nome === nome)?.cor;
+    expect(await cor('Cliente VIP')).toBe('rosa');
+    expect(await cor('urgente')).toBe('bad');
+    // Ajustes › Etiquetas é de quem cuida dos chamados
+    expect((await erroDe(api.etiquetas())).status).toBe(403);
+    await entrar('admin');
+    const vip = (await api.etiquetas()).find((e) => e.nome === 'Cliente VIP')!;
+    expect(vip).toMatchObject({ cor: 'rosa', chamados: 1 });
+    expect((await api.corDaEtiqueta(vip.id, 'signal')).cor).toBe('signal');
+    expect(await cor('Cliente VIP')).toBe('signal');
+    expect((await erroDe(api.criarEtiqueta({ nome: 'cliente  vip' }))).message).toBe('A etiqueta Cliente VIP já existe.');
+    const nova = await api.criarEtiqueta({ nome: 'Aguardando peça', cor: 'turquesa' });
+    expect(nova).toMatchObject({ nome: 'Aguardando peça', cor: 'turquesa', chamados: 0 });
+    expect((await erroDe(api.removerEtiqueta(vip.id))).message).toBe('A etiqueta Cliente VIP está em 1 chamado: tire dos chamados antes.');
+    expect(await api.removerEtiqueta(nova.id)).toEqual({ ok: true });
+    expect(await cor('Aguardando peça')).toBeUndefined();
+  }, DEMORA);
+
   it('as integrações: a chave nova aparece uma vez e não fica guardada', async () => {
     await entrar('admin');
     const antes = await api.integracoes();

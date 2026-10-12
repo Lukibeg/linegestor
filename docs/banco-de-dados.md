@@ -79,6 +79,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [ticket_carrier_cases](#ticket_carrier_cases) — O CHAMADO ABERTO NA OPERADORA: o protocolo, quando abriu, o prazo que a operadora prometeu e as cobranças — num lugar só, em vez de perdido nas anotações.
 - [ticket_schedules](#ticket_schedules) — Um CHAMADO AGENDADO: nasce sozinho na hora marcada (a verificação dos DIDs todo dia 15).
 - [ticket_macros](#ticket_macros) — Uma RESPOSTA PRONTA: um clique manda a mensagem e muda o chamado ("Pedir teste ao cliente" manda o texto e marca que o chamado espera o cliente).
+- [ticket_tags](#ticket_tags) — Uma ETIQUETA e a COR dela (1.10, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor").
 - [ticket_contacts](#ticket_contacts) — O TELEFONE QUE O GESTOR JÁ CONHECE: o WhatsApp de um contato e o cliente dele, aprendido dos chamados.
 - [ticket_notifications](#ticket_notifications) — Um AVISO NA TELA (o sininho): recebeu um chamado, o prazo está vencendo, o cliente respondeu…
 - [ticket_webhooks](#ticket_webhooks) — Um AVISO PARA FORA (webhook): o Gestor manda o que aconteceu com os chamados para outro sistema (o n8n).
@@ -1289,6 +1290,20 @@ Uma RESPOSTA PRONTA: um clique manda a mensagem e muda o chamado ("Pedir teste a
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_tags
+
+Uma ETIQUETA e a COR dela (1.10, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor"). O chamado guarda os nomes (`tickets.tags`), sempre escritos como aqui. A etiqueta nova nasce com a cor escolhida na tela, ou cinza (o robô, a IA, a resposta pronta); quem cuida dos chamados troca a cor em Ajustes › Etiquetas.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | O nome como a equipe escreveu ("Cliente VIP") | obrigatório |
+| `name_key` | texto | O nome para comparar (minúsculo, sem acento, um espaço só): não se repete | obrigatório |
+| `color` | texto | A cor: neutral (cinza), accent (azul), roxo, turquesa, ok (verde), amarelo, signal (laranja), bad (vermelho), rosa | obrigatório · padrão: 'neutral' |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
 
 ## ticket_contacts
 

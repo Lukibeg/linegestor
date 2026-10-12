@@ -314,7 +314,7 @@ function EditorResposta({ id, inicial, opcoes, onFechar }: { id: string | null; 
             </Campo>
             <Campo label="Põe a etiqueta" dica="vazio = não põe" className="min-w-0">
               <input className="input" id="resposta-etiqueta" maxLength={40} list="resposta-etiquetas" placeholder="ex.: aguardando teste" value={f.etiqueta} onChange={(e) => mudar({ etiqueta: e.target.value })} />
-              <datalist id="resposta-etiquetas">{(opcoes?.etiquetas ?? []).map((t) => <option key={t} value={t} />)}</datalist>
+              <datalist id="resposta-etiquetas">{(opcoes?.etiquetas ?? []).map((t) => <option key={t.nome} value={t.nome} />)}</datalist>
             </Campo>
             <Campo label="Move para a etapa" className="sm:col-span-2 min-w-0"
               dica={painel ? 'vazio = o chamado fica onde está' : 'escolha um painel em "Vale em" para mover: a etapa é de um painel só'}>

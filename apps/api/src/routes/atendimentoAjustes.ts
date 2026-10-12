@@ -2,8 +2,9 @@
  * Chamados do Gestor (Patch 1.10, decisão 0047): os ajustes do módulo e as integrações.
  *
  *  - Ajustes (quem cuida dos chamados, `tickets.manage`): os painéis, as etapas de cada um, os campos
- *    de cada painel (os do sistema ligados ou não, e os criados pela equipe), a árvore de assuntos (e a
- *    lista colada), os prazos e os avisos (o WhatsApp dos chamados e o teste).
+ *    de cada painel (os do sistema ligados ou não, e os criados pela equipe), as etiquetas e a cor de
+ *    cada uma, a árvore de assuntos (e a lista colada), os prazos e os avisos (o WhatsApp dos chamados e
+ *    o teste).
  *  - Integrações (a administração, `admin.manage`): os webhooks, as chaves de API, os sites que podem
  *    abrir o Gestor dentro deles (o menu do LineChat) e o link da conversa.
  *
@@ -15,10 +16,12 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
   AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
+  EtiquetaCorSchema, EtiquetaGravarSchema,
   LinkConversaSchema, OrdemDosCamposSchema, PainelGravarSchema, SitesIframeSchema, WebhookGravarSchema,
 } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as ajustes from '../services/atendimento/ajustes.js';
+import * as etiquetas from '../services/atendimento/etiquetas.js';
 import * as integracoes from '../services/atendimento/integracoes.js';
 
 const tags = ['Chamados do Gestor › Ajustes'];
@@ -113,6 +116,34 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     await app.audit(req, { action: 'update', entityType: 'ticket_panel', entityId: req.params.id, summary: r.resumo });
     return r.valor;
   });
+
+  // =====================================================================
+  //  AS ETIQUETAS (com a cor; as mesmas em todos os painéis)
+  // =====================================================================
+
+  app.get('/etiquetas', { ...cuidar, schema: { tags, summary: 'As etiquetas, com a cor e em quantos chamados cada uma está (Ajustes › Etiquetas)' } },
+    async () => etiquetas.listarEtiquetas(app.db));
+
+  app.post('/etiquetas', { ...cuidar, schema: { tags, summary: 'Criar uma etiqueta com a cor (o nome não se repete, sem ligar para maiúscula e acento)', body: EtiquetaGravarSchema } },
+    async (req, reply) => {
+      const r = await etiquetas.criarEtiqueta(app.db, req.body, req.user!.id);
+      await app.audit(req, { action: 'create', entityType: 'ticket_tag', entityId: r.valor.id, summary: r.resumo, after: r.depois });
+      return reply.status(201).send(r.valor);
+    });
+
+  app.put('/etiquetas/:id', { ...cuidar, schema: { tags, summary: 'Trocar a cor de uma etiqueta (vale para todos os chamados que a têm)', params: Id, body: EtiquetaCorSchema } },
+    async (req) => {
+      const r = await etiquetas.trocarCorDaEtiqueta(app.db, req.params.id, req.body.cor);
+      await app.audit(req, { action: 'update', entityType: 'ticket_tag', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
+      return r.valor;
+    });
+
+  app.delete('/etiquetas/:id', { ...cuidar, schema: { tags, summary: 'Tirar uma etiqueta das sugestões (só a que nenhum chamado usa)', params: Id } },
+    async (req) => {
+      const r = await etiquetas.removerEtiqueta(app.db, req.params.id);
+      await app.audit(req, { action: 'delete', entityType: 'ticket_tag', entityId: req.params.id, summary: r.resumo, before: r.antes });
+      return r.valor;
+    });
 
   // =====================================================================
   //  OS ASSUNTOS

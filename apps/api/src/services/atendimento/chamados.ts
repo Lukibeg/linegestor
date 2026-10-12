@@ -25,7 +25,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, diaLocal, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas,
+  caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, diaLocal, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada,
   faltaParaAbrir, faltaParaEtapa, filhosQueTravam, lerCamposDoPedido, mensagemDoQueFalta, mesmoValorDoCampo, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO,
   NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, preencherModelo, prioridadeSugeridaDoPainel, situacaoDaEtapa, textoDoValor,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
@@ -36,6 +36,7 @@ import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.
 import { lerConteudo } from '../projects.js';
 import { tipoDaImagem } from '../portal.js';
 import { avisarEquipe, avisarObservadores, trecho } from './avisos.js';
+import { etiquetasDoCatalogo } from './etiquetas.js';
 import {
   camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, exigirTrabalhar, integracaoDoAtor, pessoaCurta, pessoaDoAtor, podeCuidar, podeVerPainel,
   registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
@@ -300,12 +301,14 @@ export async function criarChamado(
     const numero = Number(n!.numero);
     const codigo = codigoDoChamado(painel.sigla, numero);
     const id = newId();
+    // as etiquetas como estão no catálogo; a nova entra nele com a cor escolhida na tela (ou cinza)
+    const etiquetas = await etiquetasDoCatalogo(tx, d.etiquetas ?? [], d.coresDasEtiquetas ?? {}, pessoa);
     await tx.insert(tickets).values({
       id, panelId: painel.id, stageId: etapa.id, number: numero, code: codigo, kind: tipoChamado, title: d.titulo,
       customerReport: dados.relato, description: dados.descricao, clientId: clienteId, contactName: contatoNome, contactPhone: telefone,
       sessionId: d.sessaoId ?? null, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
-      productIds: produtos, carrierIds: operadoras, tags: etiquetasUnicas(d.etiquetas ?? []), customFields: campos,
+      productIds: produtos, carrierIds: operadoras, tags: etiquetas, customFields: campos,
       parentId: pai?.id ?? null, problemId: problema?.id ?? null, checklist, watcherIds: observadores,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       firstResponseAt: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? agora : null,
@@ -501,7 +504,8 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     longo(chave, nome, t[coluna]);
   }
   if (d.etiquetas !== undefined) {
-    const novas = etiquetasUnicas(d.etiquetas);
+    // como estão no catálogo; a nova entra nele com a cor escolhida na tela (ou cinza)
+    const novas = await etiquetasDoCatalogo(db, d.etiquetas, d.coresDasEtiquetas ?? {}, pessoaDoAtor(ator));
     if (novas.join('\n') !== t.tags.join('\n')) { set.tags = novas; campo('etiquetas', NOME_ETIQUETAS, juntar(t.tags), juntar(novas), t.tags); }
   }
   let observadoresNovos: string[] = [];

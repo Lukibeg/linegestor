@@ -12,6 +12,7 @@ import {
   lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes, pareceAgradecimento,
   pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
   type CartaoChamado, type CartaoParaLista, type DadosObrigatorios, type EtapaPainel, type NoParaGrafo,
+  chaveDaEtiqueta, corDaEtiqueta, etiquetasUnicas,
 } from './atendimento.js';
 
 const em = (dia: string, hora: string) => instanteLocal(dia, hora);
@@ -460,5 +461,30 @@ describe('a IA, as respostas prontas e o histórico', () => {
   it('o link da conversa só existe com o modelo das Integrações', () => {
     expect(linkDaConversa('https://app.exemplo.com.br/chat/{sessao}', 'abc 1')).toBe('https://app.exemplo.com.br/chat/abc%201');
     expect(linkDaConversa('', 'abc')).toBeNull();
+  });
+});
+
+describe('as etiquetas com cor (1.10, o pedido do Luan na prévia)', () => {
+  it('a mesma etiqueta escrita de outro jeito: sem maiúscula, sem acento e com um espaço só', () => {
+    expect(chaveDaEtiqueta('  Cliente   VIP ')).toBe('cliente vip');
+    expect(chaveDaEtiqueta('Peça')).toBe(chaveDaEtiqueta('peca'));
+    expect(etiquetasUnicas(['Cliente  VIP', 'cliente vip', ' áudio', 'Audio', ''])).toEqual(['Cliente VIP', 'áudio']);
+  });
+
+  it('a cor pelo nome: a da lista; a nova, a escolhida agora; a que não está em lugar nenhum, cinza', () => {
+    const lista = [{ nome: 'Cliente VIP', cor: 'bad' as const }, { nome: 'algar', cor: 'roxo' as const }];
+    expect(corDaEtiqueta(lista, 'cliente  vip')).toBe('bad');
+    expect(corDaEtiqueta(lista, 'Retorno amanhã', { 'retorno amanha': 'ok' })).toBe('ok');
+    // a que já existe fica com a cor dela, mesmo com outra escolhida
+    expect(corDaEtiqueta(lista, 'ALGAR', { algar: 'ok' })).toBe('roxo');
+    expect(corDaEtiqueta(lista, 'nova')).toBe('neutral');
+  });
+
+  it('o pedido leva a cor das novas (só as cores que existem); o nome fica com um espaço só', () => {
+    const d = ChamadoCriarSchema.parse({ painelId: 'p', titulo: 'Teste', etiquetas: ['cliente   vip'], coresDasEtiquetas: { 'cliente vip': 'rosa' } });
+    expect(d.etiquetas).toEqual(['cliente vip']);
+    expect(d.coresDasEtiquetas).toEqual({ 'cliente vip': 'rosa' });
+    expect(ChamadoCriarSchema.parse({ painelId: 'p', titulo: 'Teste' }).coresDasEtiquetas).toEqual({});
+    expect(ChamadoAlterarSchema.safeParse({ coresDasEtiquetas: { x: 'dourado' } }).success).toBe(false);
   });
 });

@@ -641,7 +641,28 @@ export function pareceAgradecimento(texto: string | null | undefined): boolean {
 const Texto = (max: number) => z.string().max(max).transform((s) => s.replace(/\r\n?/g, '\n'));
 const TextoOpcional = (max: number) => Texto(max).nullish().transform((s) => (s && s.trim() ? s.trim() : null));
 const Lista = (max = 50) => z.array(z.string().trim().min(1).max(120)).max(max);
-const EtiquetaSchema = z.string().trim().min(1).max(40);
+/** O nome de uma etiqueta: até 40 letras, com um espaço só entre as palavras. */
+const EtiquetaSchema = z.string().trim().min(1).max(40).transform((s) => s.replace(/\s+/g, ' '));
+/**
+ * As cores das etiquetas (o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor"),
+ * na ordem da escolha. A que ninguém escolheu (o robô, a IA, a resposta pronta) nasce cinza; quem cuida
+ * dos chamados troca a cor em Ajustes › Etiquetas.
+ */
+export const CORES_ETIQUETA = ['neutral', 'accent', 'roxo', 'turquesa', 'ok', 'amarelo', 'signal', 'bad', 'rosa'] as const;
+export type CorEtiqueta = (typeof CORES_ETIQUETA)[number];
+export const NOME_COR_ETIQUETA: Record<CorEtiqueta, string> = {
+  neutral: 'Cinza', accent: 'Azul', roxo: 'Roxo', turquesa: 'Turquesa', ok: 'Verde', amarelo: 'Amarelo', signal: 'Laranja', bad: 'Vermelho', rosa: 'Rosa',
+};
+export const CorEtiquetaSchema = z.enum(CORES_ETIQUETA);
+/** A cor de cada etiqueta NOVA, pelo nome (a que já existe fica com a cor dela). */
+const CoresDasEtiquetasSchema = z.record(z.string().trim().min(1).max(40), CorEtiquetaSchema)
+  .refine((r) => Object.keys(r).length <= 20, 'Etiquetas demais no pedido');
+/** Criar uma etiqueta em Ajustes › Etiquetas: o nome e a cor. */
+export const EtiquetaGravarSchema = z.object({ nome: EtiquetaSchema, cor: CorEtiquetaSchema.default('neutral') });
+export type EtiquetaGravar = z.infer<typeof EtiquetaGravarSchema>;
+export type EtiquetaGravarEntrada = z.input<typeof EtiquetaGravarSchema>;
+/** Trocar a cor de uma etiqueta (Ajustes › Etiquetas). */
+export const EtiquetaCorSchema = z.object({ cor: CorEtiquetaSchema });
 const TelefoneSchema = z.string().trim().max(40).nullish().transform((v, ctx) => {
   if (!v) return null;
   const n = numeroWhatsApp(v);
@@ -831,6 +852,8 @@ export const ChamadoCriarSchema = z.object({
   produtos: Lista().default([]),
   operadoras: Lista().default([]),
   etiquetas: z.array(EtiquetaSchema).max(20).default([]),
+  /** a cor de cada etiqueta nova (pelo nome); a que já existe fica com a cor dela */
+  coresDasEtiquetas: CoresDasEtiquetasSchema.default({}),
   responsavelId: z.string().nullish().transform((v) => v || null),
   /** quem observa: recebe os avisos de toda atualização do chamado (como no Helena) */
   observadores: z.array(z.string()).max(30).default([]),
@@ -866,6 +889,8 @@ export const ChamadoAlterarSchema = z.object({
   produtos: Lista().optional(),
   operadoras: Lista().optional(),
   etiquetas: z.array(EtiquetaSchema).max(20).optional(),
+  /** a cor de cada etiqueta nova (pelo nome); a que já existe fica com a cor dela */
+  coresDasEtiquetas: CoresDasEtiquetasSchema.optional(),
   solucao: TextoOpcional(20_000).optional(),
   causa: TextoOpcional(5_000).optional(),
   contorno: TextoOpcional(10_000).optional(),
@@ -1215,8 +1240,11 @@ export type OpcoesAtendimento = {
   campos: CampoPersonalizado[];
   produtos: Array<{ id: string; nome: string; cor: string }>;
   operadoras: Array<{ id: string; nome: string }>;
-  /** as etiquetas já usadas (para sugerir) */
-  etiquetas: string[];
+  /**
+   * as etiquetas, com a cor: as usadas nos painéis que a pessoa vê e as que ninguém usa ainda (para
+   * sugerir e desenhar; a de um painel que ela não vê não aparece)
+   */
+  etiquetas: EtiquetaComCor[];
   prazos: AjustesPrazos;
   respostas: RespostaPronta[];
   /** o WhatsApp está pronto para mandar ao cliente? e à equipe? */
@@ -1801,11 +1829,36 @@ export function lerMensagemDoLineChat(m: unknown): { deCliente: boolean; texto: 
 //  ETIQUETAS E CONTATOS
 // =====================================================================
 
-/** Etiquetas sem repetir (sem ligar para maiúscula e acento), na ordem em que vieram. */
+/** A chave de uma etiqueta para comparar: minúscula, sem acento, com um espaço só ("Cliente  VIP" = "cliente vip"). */
+export function chaveDaEtiqueta(nome: string): string {
+  return paraBusca(nome).replace(/\s+/g, ' ');
+}
+
+/** Etiquetas sem repetir (sem ligar para maiúscula, acento e espaço a mais), na ordem em que vieram. */
 export function etiquetasUnicas(xs: string[]): string[] {
   const vistas = new Map<string, string>();
-  for (const x of xs) { const t = x.trim(); if (t && !vistas.has(paraBusca(t))) vistas.set(paraBusca(t), t); }
+  for (const x of xs) {
+    const t = x.trim().replace(/\s+/g, ' ');
+    if (t && !vistas.has(chaveDaEtiqueta(t))) vistas.set(chaveDaEtiqueta(t), t);
+  }
   return [...vistas.values()];
+}
+
+/** Uma etiqueta e a cor dela (o que a tela precisa para desenhar). */
+export type EtiquetaComCor = { nome: string; cor: CorEtiqueta };
+/** Uma etiqueta em Ajustes › Etiquetas: em quantos chamados ela está (fora da lixeira). */
+export type EtiquetaDoCatalogo = EtiquetaComCor & { id: string; chamados: number; criadaEm: string };
+
+/**
+ * A cor de uma etiqueta pelo nome (sem ligar para maiúscula e acento). A que não está na lista: a cor
+ * escolhida para ela agora (`novas`, no Abrir chamado), ou cinza.
+ */
+export function corDaEtiqueta(lista: readonly EtiquetaComCor[], nome: string, novas?: Record<string, CorEtiqueta>): CorEtiqueta {
+  const k = chaveDaEtiqueta(nome);
+  const achada = lista.find((e) => chaveDaEtiqueta(e.nome) === k);
+  if (achada) return achada.cor;
+  const nova = novas ? Object.entries(novas).find(([n]) => chaveDaEtiqueta(n) === k) : undefined;
+  return nova ? nova[1] : 'neutral';
 }
 
 /**

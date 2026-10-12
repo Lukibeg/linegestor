@@ -101,6 +101,14 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   dentro do painel de suporte, quero abrir no painel de suporte" —; fora dele (Painéis, Meu dia, o
   botão da conversa), a pessoa escolhe o painel, e o filho também (pode ser de outro painel). A
   descrição já vem aberta, e uma etiqueta nova se cria ali mesmo (pedidos dele na prévia).
+- **As etiquetas com cor** (o pedido dele na prévia: "na hora de criar as etiquetas, escolher a cor"):
+  um catálogo, o mesmo em todos os painéis, guarda o nome e a cor de cada etiqueta (nove cores). A nova
+  nasce com a cor escolhida no Abrir chamado ou na ficha; a do robô, da IA e da resposta pronta, cinza.
+  O chamado guarda o nome como está no catálogo ("cliente VIP" escrito de novo vira a que existe). No
+  quadro e na ficha a etiqueta é redonda, com a bolinha da cor, para não se confundir com a prioridade
+  e o prazo. Quem cuida dos chamados troca a cor (vale em todos os chamados) e tira das sugestões a que
+  nenhum chamado usa (Ajustes › Etiquetas). Cada pessoa só vê sugerida a etiqueta dos painéis que vê
+  (e as que nenhum chamado usa ainda).
 - **Os observadores** (como no Helena, o pedido dele na prévia): quem é posto como observador — ao
   abrir ou na ficha — recebe o aviso de toda atualização do chamado: a anotação, a mudança de etapa e
   de responsável (e o reabrir, o painel novo), a espera, a mensagem ao cliente, o caso na operadora, o
@@ -155,9 +163,9 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   algo confere de onde veio (`Origin`): de outro site, é recusado — menos a entrada das integrações,
   que não usa cookie.
 - **Quem pode o quê.** Ver: `support.read` (todos, inclusive o Leitor). Trabalhar (`tickets.work`,
-  nova): Operador, Técnico e Administrador. Cuidar — painéis, etapas, campos e assuntos, prazos, avisos,
-  respostas prontas, agendados e a lixeira dos chamados (`tickets.manage`, nova): Administrador.
-  Integrações e IA: `admin.manage`. Tudo o que muda vai para a auditoria; nada se apaga de verdade.
+  nova): Operador, Técnico e Administrador. Cuidar — painéis, etapas, campos e assuntos, etiquetas,
+  prazos, avisos, respostas prontas, agendados e a lixeira dos chamados (`tickets.manage`, nova):
+  Administrador. Integrações e IA: `admin.manage`. Tudo o que muda vai para a auditoria; nada se apaga de verdade.
 
 **Ficou de fora, por decisão dele.** A pesquisa de satisfação (já existe em outro módulo); os
 chamados no Portal do cliente; o "pedido interno que mexe no cadastro"; o aviso de senha no chamado
@@ -169,14 +177,14 @@ afetados.
 
 **Consequências.**
 
-- Migração `0015_chamados_do_gestor`: 18 tabelas novas — `client_contacts` (os contatos do cliente,
+- Migração `0015_chamados_do_gestor`: 19 tabelas novas — `client_contacts` (os contatos do cliente,
   junto do cadastro; rotas `/api/clients/:id/contatos`: ver com `records.read` ou `support.read`,
-  mexer com `records.write` ou `tickets.work`, auditoria no cliente) e as 17 do grupo 10
+  mexer com `records.write` ou `tickets.work`, auditoria no cliente) e as 18 do grupo 10
   (`ticket_panels`, `ticket_stages`, `ticket_subjects`, `ticket_fields` — os campos de cada painel; o
   valor fica em `tickets.custom_fields`, pelo id do campo —, `tickets`, `ticket_events`, `ticket_notes`,
   `ticket_attachments`, `ticket_links`, `ticket_time_entries`, `ticket_carrier_cases`,
-  `ticket_schedules`, `ticket_macros`, `ticket_contacts`, `ticket_notifications`, `ticket_webhooks`,
-  `ticket_api_keys`); e mais as duas permissões novas nos papéis e os dois painéis iniciais. Os ajustes ficam em `settings`
+  `ticket_schedules`, `ticket_macros`, `ticket_tags` — as etiquetas e a cor, pelo nome sem maiúscula
+  e sem acento —, `ticket_contacts`, `ticket_notifications`, `ticket_webhooks`, `ticket_api_keys`); e mais as duas permissões novas nos papéis e os dois painéis iniciais. Os ajustes ficam em `settings`
   (`atendimento-prazos`, `atendimento-avisos`, `atendimento-integracoes`); a chave própria do
   WhatsApp e os segredos dos webhooks, no cofre.
 - As regras moram em `@gestor/shared` (`atendimento.ts` e `atendimento-prazos.ts`), as mesmas no

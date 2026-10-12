@@ -22,8 +22,9 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, UserRoundPlus, X } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
-  acharContato, caminhoDoAssunto, campoLigado, chaveDoCampo, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel,
-  valorPreenchido,
+  acharContato, caminhoDoAssunto, campoLigado, chaveDaEtiqueta, chaveDoCampo, corDaEtiqueta, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
+  paraBusca, prioridadeSugeridaDoPainel, valorPreenchido,
+  type CorEtiqueta, type EtiquetaComCor,
   type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
   type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo,
 } from '@gestor/shared';
@@ -33,8 +34,8 @@ import { Carregando, Chip, EscolherComBusca, Spinner, Vazio, mensagemErro, useTo
 import { useAuth } from '../../lib/auth.js';
 import { JanelaContato, usePodeMexerNosContatos } from '../clientes/Contatos.js';
 import {
-  CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto, painelDe, telefoneLegivel,
-  useDepoisDeMudar, useFicha, useOpcoes, usePode,
+  AMOSTRA_DA_COR, CabecalhoAtendimento, ChipDaEtiqueta, ChipSituacao, CodigoChamado, CoresDaEtiqueta, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
+  painelDe, telefoneLegivel, useDepoisDeMudar, useFicha, useOpcoes, usePode,
 } from './comum.js';
 
 /** O motivo que o "Reabrir este" grava (o pedido do Luan: o cliente voltou com o mesmo problema). */
@@ -76,6 +77,8 @@ type Form = {
   /** quem observa: recebe os avisos de toda atualização (como no Helena) */
   observadores: string[];
   etiquetas: string[];
+  /** a cor de cada etiqueta NOVA (pela chave do nome); a que já existe tem a dela */
+  coresNovas: Record<string, CorEtiqueta>;
   avisarCliente: boolean;
   /** os campos do painel (pelo id do campo) */
   campos: Record<string, ValorDoCampo>;
@@ -146,6 +149,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       responsavelId: eu,
       observadores: [],
       etiquetas: [],
+      coresNovas: {},
       avisarCliente: false,
       campos: {},
     };
@@ -266,6 +270,10 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       operadoras: usa('operadoras') ? f.operadoras : [],
       campos: Object.fromEntries(camposDoPainel.filter((c) => valorPreenchido(f.campos[c.id])).map((c) => [c.id, f.campos[c.id]!])),
       etiquetas: f.etiquetas,
+      // a cor das novas (a que já existe fica com a dela)
+      coresDasEtiquetas: Object.fromEntries(f.etiquetas
+        .filter((e) => !opcoes.etiquetas.some((x) => chaveDaEtiqueta(x.nome) === chaveDaEtiqueta(e)))
+        .map((e) => [e, f.coresNovas[chaveDaEtiqueta(e)] ?? 'neutral'])),
       responsavelId: f.responsavelId || null,
       observadores: f.observadores,
       paiId: pai.data?.id ?? null,
@@ -563,7 +571,8 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
                 doCliente={[]} catalogo={pessoas.map((p) => ({ id: p.id, nome: p.nome, dica: p.id === user?.id ? 'você' : undefined }))} />
             </Rotulado>
             <Rotulado rotulo="Etiquetas" id="novo-etiquetas" className="sm:col-span-2">
-              <CampoEtiquetas id="novo-etiquetas" valor={f.etiquetas} sugestoes={opcoes.etiquetas} onChange={(v) => mudar({ etiquetas: v })} />
+              <CampoEtiquetas id="novo-etiquetas" valor={f.etiquetas} sugestoes={opcoes.etiquetas} onChange={(v) => mudar({ etiquetas: v })}
+                cores={f.coresNovas} onCores={(c) => mudar({ coresNovas: c })} />
             </Rotulado>
           </div>
         </Secao>
@@ -877,31 +886,51 @@ function EscolherVarios({ id, rotulo, valor, onChange, doCliente, catalogo }: {
 
 /**
  * As etiquetas: as já usadas aparecem para pôr com um clique, e uma nova se cria aqui mesmo (o pedido
- * do Luan na prévia): digita o nome e clica em Criar (ou Enter, ou vírgula).
+ * do Luan na prévia): digita o nome, escolhe a cor e clica em Criar (ou Enter, ou vírgula). A cor da
+ * última nova continua à mão depois de criada, para trocar (a que já existe tem a cor dela).
  */
-function CampoEtiquetas({ id, valor, sugestoes, onChange }: { id: string; valor: string[]; sugestoes: string[]; onChange: (v: string[]) => void }) {
+function CampoEtiquetas({ id, valor, sugestoes, onChange, cores, onCores }: {
+  id: string; valor: string[]; sugestoes: EtiquetaComCor[]; onChange: (v: string[]) => void;
+  cores: Record<string, CorEtiqueta>; onCores: (c: Record<string, CorEtiqueta>) => void;
+}) {
   const [t, setT] = useState('');
+  /** a cor escolhida para a etiqueta nova que está sendo escrita */
+  const [corDaNova, setCorDaNova] = useState<CorEtiqueta>('neutral');
+  /** a última nova criada aqui: a cor dela continua à mão */
+  const [ultimaNova, setUltimaNova] = useState<string | null>(null);
+  const existe = (n: string) => sugestoes.some((s) => chaveDaEtiqueta(s.nome) === chaveDaEtiqueta(n));
   const somar = (texto: string) => {
     const novas = texto.split(/[,;\n]/).map((x) => x.trim().slice(0, 40)).filter(Boolean);
-    if (novas.length) onChange(etiquetasUnicas([...valor, ...novas]).slice(0, 20));
+    if (novas.length) {
+      onChange(etiquetasUnicas([...valor, ...novas]).slice(0, 20));
+      const criadas = novas.filter((n) => !existe(n));
+      if (criadas.length) {
+        onCores({ ...cores, ...Object.fromEntries(criadas.map((n) => [chaveDaEtiqueta(n), corDaNova])) });
+        setUltimaNova(criadas[criadas.length - 1]!);
+      }
+    }
     setT('');
   };
-  const ja = new Set(valor.map((v) => paraBusca(v)));
+  const ja = new Set(valor.map((v) => chaveDaEtiqueta(v)));
   const b = paraBusca(t);
-  const achadas = sugestoes.filter((s) => !ja.has(paraBusca(s)) && (!b || paraBusca(s).includes(b))).slice(0, 8);
+  const achadas = sugestoes.filter((s) => !ja.has(chaveDaEtiqueta(s.nome)) && (!b || paraBusca(s.nome).includes(b))).slice(0, 8);
   // o que está escrito: uma etiqueta nova, uma já usada (pôr) ou uma que o chamado já tem
   const escrito = t.trim();
-  const jaTem = !!escrito && ja.has(paraBusca(escrito));
-  const usada = !!escrito && sugestoes.some((s) => paraBusca(s) === paraBusca(escrito));
+  const jaTem = !!escrito && ja.has(chaveDaEtiqueta(escrito));
+  const usada = !!escrito && existe(escrito);
   const cheio = valor.length >= 20;
+  const cor = (e: string) => corDaEtiqueta(sugestoes, e, cores);
+  // a cor à mão: a da nova que está sendo escrita, ou a da última nova criada aqui (se ainda está no chamado)
+  const ultima = ultimaNova && valor.some((v) => chaveDaEtiqueta(v) === chaveDaEtiqueta(ultimaNova)) && !existe(ultimaNova) ? valor.find((v) => chaveDaEtiqueta(v) === chaveDaEtiqueta(ultimaNova))! : null;
+  const escolhendo = escrito && !jaTem && !usada && !cheio
+    ? { nome: escrito, cor: corDaNova, mudar: setCorDaNova, nova: true }
+    : !escrito && ultima ? { nome: ultima, cor: cor(ultima), mudar: (c: CorEtiqueta) => onCores({ ...cores, [chaveDaEtiqueta(ultima)]: c }), nova: false } : null;
   return (
     <div>
       <div className="flex items-start gap-1.5">
         {/* a caixa inteira acende quando o campo de dentro está em foco (o campo não ganha a borda própria) */}
         <div className="input flex flex-1 flex-wrap items-center gap-1.5 py-1.5 min-h-[40px] min-w-0 focus-within:border-accent">
-          {valor.map((e) => (
-            <span key={e} className="chip bg-surface-2 text-ink-2 font-medium max-w-full"><span className="break-words">{e}</span><button type="button" onClick={() => onChange(valor.filter((x) => x !== e))} aria-label={`Tirar a etiqueta ${e}`} className="hover:opacity-70"><X size={12} /></button></span>
-          ))}
+          {valor.map((e) => <ChipDaEtiqueta key={e} nome={e} cor={cor(e)} onTirar={() => onChange(valor.filter((x) => x !== e))} />)}
           <input className="flex-1 min-w-[120px] bg-transparent outline-none focus-visible:outline-none text-sm py-0.5" id={id} autoComplete="off" value={t} maxLength={40} disabled={cheio}
             placeholder={cheio ? 'no máximo 20 etiquetas' : valor.length ? 'outra etiqueta' : 'Nova etiqueta, ou uma já usada'}
             onChange={(e) => setT(e.target.value)} onBlur={() => t.trim() && somar(t)}
@@ -913,14 +942,21 @@ function CampoEtiquetas({ id, valor, sugestoes, onChange }: { id: string; valor:
           <Plus size={15} /> {usada ? 'Pôr' : 'Criar'}
         </button>
       </div>
-      {escrito && !jaTem && !usada && <p className="text-[12px] text-muted mt-1">Etiqueta nova: <b className="text-ink-2">{escrito}</b>. Ela fica nas sugestões dos próximos chamados.</p>}
+      {escolhendo && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5" id={`${id}-cor`}>
+          <span className="text-[12px] text-muted">
+            {escolhendo.nova ? <>Etiqueta nova: <b className="text-ink-2">{escolhendo.nome}</b>. A cor:</> : <>A cor de <b className="text-ink-2">{escolhendo.nome}</b>:</>}
+          </span>
+          <CoresDaEtiqueta valor={escolhendo.cor} onChange={escolhendo.mudar} manterFoco rotulo={`A cor da etiqueta ${escolhendo.nome}`} />
+        </div>
+      )}
       {achadas.length > 0 && (
         <div className="flex flex-wrap items-center gap-1 mt-1.5">
           <span className="text-[12px] text-muted mr-0.5">{t ? 'Já usadas:' : 'Usadas antes:'}</span>
           {achadas.map((s) => (
             // o clique não pode tirar o foco antes de somar (senão o onBlur soma o texto pela metade)
-            <button key={s} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => somar(s)} className="chip border border-dashed border-line-strong text-ink-2 hover:bg-surface-2 font-medium">
-              <Plus size={11} /> {s}
+            <button key={s.nome} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => somar(s.nome)} className="chip rounded-full pl-1.5 border border-dashed border-line-strong text-ink-2 hover:bg-surface-2 font-medium">
+              <span className={`w-2 h-2 rounded-full shrink-0 ${AMOSTRA_DA_COR[s.cor]}`} aria-hidden /> {s.nome}
             </button>
           ))}
         </div>

@@ -249,7 +249,7 @@ function TopoDaLista({ opcoes, situacao, painel, totais }: { opcoes: OpcoesAtend
         )}
         <EscolherComBusca className={CAIXA_FILTRO} rotulo="Cliente" valor={valor('cliente')} vazio="Todos os clientes" opcoes={clientes} procurar="Procurar cliente…" onChange={(v) => mudar({ cliente: v })} />
         {(opcoes.etiquetas.length > 0 || valor('etiqueta')) && (
-          <EscolherComBusca className={CAIXA_FILTRO} rotulo="Etiqueta" valor={valor('etiqueta')} vazio="Todas as etiquetas" opcoes={opcoes.etiquetas.map((e) => ({ id: e, nome: e }))} procurar="Procurar etiqueta…" onChange={(v) => mudar({ etiqueta: v })} />
+          <EscolherComBusca className={CAIXA_FILTRO} rotulo="Etiqueta" valor={valor('etiqueta')} vazio="Todas as etiquetas" opcoes={opcoes.etiquetas.map((e) => ({ id: e.nome, nome: e.nome }))} procurar="Procurar etiqueta…" onChange={(v) => mudar({ etiqueta: v })} />
         )}
         <span className="inline-flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
           Aberto de

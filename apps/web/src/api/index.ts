@@ -339,6 +339,11 @@ export type Api = {
     salvarCampo(painelId: string, id: string | null, d: T.CampoGravarEntrada): Promise<T.CampoPersonalizado>;
     /** a ordem dos campos do painel (todos os ids) */
     ordenarCampos(painelId: string, ids: string[]): Promise<T.CampoPersonalizado[]>;
+    /** as etiquetas com a cor (Ajustes › Etiquetas): criar, trocar a cor e tirar a que nenhum chamado usa */
+    etiquetas(): Promise<T.EtiquetaDoCatalogo[]>;
+    criarEtiqueta(d: T.EtiquetaGravarEntrada): Promise<T.EtiquetaDoCatalogo>;
+    corDaEtiqueta(id: string, cor: T.CorEtiqueta): Promise<T.EtiquetaDoCatalogo>;
+    removerEtiqueta(id: string): Promise<{ ok: true }>;
     ajustesPrazos(): Promise<T.AjustesPrazos>;
     salvarPrazos(a: T.AjustesPrazos): Promise<T.AjustesPrazos>;
     ajustesAvisos(): Promise<T.AvisosChamadosTela>;
