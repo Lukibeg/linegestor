@@ -5,7 +5,8 @@ import {
 } from './atendimento-prazos.js';
 import {
   AJUSTES_PAINEL_PADRAO, CampoGravarSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ETAPAS_DO_PAINEL_NOVO, EtapasGravarSchema, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL,
-  PainelGravarSchema, acharCampo, chaveDoCampo, faltaParaAbrir, limparObrigatorios, normalizarValorDoCampo, obrigatoriosDoPainel, textoDoValor, textosDosCampos,
+  PainelGravarSchema, acharCampo, ajustesDoPainelCompletos, chaveDoCampo, faltaParaAbrir, limparObrigatorios, normalizarValorDoCampo, obrigatoriosDoPainel,
+  prioridadeSugeridaDoPainel, textoDoValor, textosDosCampos,
   valoresVisiveis, type CampoPersonalizado,
   caminhoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
   lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes, pareceAgradecimento,
@@ -235,13 +236,32 @@ describe('os campos de cada painel', () => {
     expect(faltaParaAbrir(dados(), { obrigatoriosAoAbrir: ['campo:sis', 'relato', 'assunto'] })).toEqual(['assunto', 'campo:sis']);
   });
   it('o que pode ser pedido num painel: sem os campos do sistema desligados, com os campos ativos dele', () => {
-    const doPainel = obrigatoriosDoPainel({ camposDesligados: ['assunto', 'gravidadeAlcance'] }, [lista, { ...varios, ativo: false }]);
+    const doPainel = obrigatoriosDoPainel({ camposDesligados: ['assunto', 'alcance'] }, [lista, { ...varios, ativo: false }]);
     expect(doPainel).not.toContain('assunto');
     expect(doPainel).not.toContain('alcance');
+    // a gravidade e o alcance ligam e desligam separados
+    expect(doPainel).toContain('gravidade');
     expect(doPainel).toContain('tipo');
     expect(doPainel.slice(-1)).toEqual(['campo:sis']);
     expect(limparObrigatorios(['campo:sis', 'assunto', 'campo:mods', 'relato', 'relato'], doPainel)).toEqual(['relato', 'campo:sis']);
-    expect(AJUSTES_PAINEL_PADRAO.camposDesligados).toEqual([]);
+    // "não precisa desse alcance por enquanto": o painel novo (e o gravado sem a escolha) nasce sem ele
+    expect(AJUSTES_PAINEL_PADRAO.camposDesligados).toEqual(['alcance']);
+    expect(ajustesDoPainelCompletos({ tipos: ['A'] }).camposDesligados).toEqual(['alcance']);
+    expect(ajustesDoPainelCompletos({ camposDesligados: [] }).camposDesligados).toEqual([]);
+  });
+  it('a prioridade sugerida pelos campos do painel: com o alcance, a matriz; sem ele, só a gravidade; sem a gravidade, nenhuma', () => {
+    const prazos = { matriz: AJUSTES_PRAZOS_PADRAO.matriz, semAlcance: { ...AJUSTES_PRAZOS_PADRAO.semAlcance, inoperancia: 'critica' as const } };
+    expect(prioridadeSugeridaDoPainel({ camposDesligados: [] }, 'inoperancia', 'pessoa', prazos)).toBe('media');
+    expect(prioridadeSugeridaDoPainel({ camposDesligados: [] }, 'inoperancia', null, prazos)).toBeNull();
+    expect(prioridadeSugeridaDoPainel({ camposDesligados: ['alcance'] }, 'inoperancia', null, prazos)).toBe('critica');
+    // o alcance guardado de antes não conta no painel sem o alcance
+    expect(prioridadeSugeridaDoPainel({ camposDesligados: ['alcance'] }, 'inoperancia', 'pessoa', prazos)).toBe('critica');
+    expect(prioridadeSugeridaDoPainel({ camposDesligados: ['alcance'] }, 'performance', null, prazos)).toBe(AJUSTES_PRAZOS_PADRAO.semAlcance.performance);
+    expect(prioridadeSugeridaDoPainel({ camposDesligados: ['gravidade'] }, 'inoperancia', 'empresa', prazos)).toBeNull();
+    // a coluna "só a gravidade" começa como "um setor ou unidade"
+    expect(AJUSTES_PRAZOS_PADRAO.semAlcance).toEqual({ inoperancia: 'alta', intermitencia: 'media', performance: 'media', disfuncional: 'media', nao_se_aplica: 'baixa' });
+    // os ajustes gravados antes da coluna existir ganham o padrão
+    expect(ajustesPrazosCompletos({ alertaPercentual: 70 } as Partial<AjustesPrazos>).semAlcance).toEqual(AJUSTES_PRAZOS_PADRAO.semAlcance);
   });
   it('os formatos: o campo novo, a lista sem opção, o valor no pedido e a regra com o campo', () => {
     const msg = (r: { success: boolean; error?: { issues: Array<{ message: string }> } }) => (r.success ? '' : r.error!.issues[0]!.message);

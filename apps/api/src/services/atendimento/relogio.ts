@@ -25,7 +25,7 @@ import {
 } from '@gestor/shared';
 import { AppError } from '../../plugins/errors.js';
 import * as audit from '../audit.js';
-import { avisarEquipe } from './avisos.js';
+import { avisarEquipe, avisarObservadores } from './avisos.js';
 import { carregarContexto, cartaoDaLinha, lerPrazos, registrarEvento, type Ator, type Contexto, type LinhaChamado, type Parentes } from './contexto.js';
 import { filhosDoChamado } from './leitura.js';
 import { criarDoAgendado, lerRegra } from './rotina.js';
@@ -267,6 +267,10 @@ async function fecharUm(app: FastifyInstance, ctx: Contexto, t: LinhaChamado, ag
   // depois de gravado, o que o mover também faz: quem a etapa avisa, o pai (quando um filho fecha) e os webhooks
   const chamado = { id: t.id, codigo: t.code, titulo: t.title };
   if (para.avisar.length) await avisarEquipe(app, { evento: 'etapa', para: para.avisar, chamado, texto: `${t.code} chegou em ${para.nome}` });
+  await avisarObservadores(app, {
+    chamado, observadores: t.watcherIds, jaAvisados: para.avisar,
+    texto: `O ${t.code} fechou sozinho: ${dias} ${dias === 1 ? 'dia útil' : 'dias úteis'} no ${de?.nome ?? 'Resolvido'} sem resposta do cliente`,
+  });
   if (t.parentId) {
     const [pai] = await app.db.select({ id: tickets.id, code: tickets.code, title: tickets.title, assigneeId: tickets.assigneeId }).from(tickets)
       .where(and(eq(tickets.id, t.parentId), isNull(tickets.deletedAt))).limit(1);

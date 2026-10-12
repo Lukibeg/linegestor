@@ -66,6 +66,28 @@ export function prioridadeSugerida(gravidade: Gravidade | null | undefined, alca
   return matriz[gravidade]?.[alcance] ?? MATRIZ_PADRAO[gravidade][alcance];
 }
 
+/** A prioridade de cada gravidade quando o painel não usa o alcance. */
+export type PrioridadePorGravidade = Record<Gravidade, Prioridade>;
+/**
+ * No painel sem o alcance (o pedido do Luan na prévia: "não precisa desse alcance por enquanto"), a
+ * sugestão sai só da gravidade. Começa como a coluna "Um setor ou unidade" da matriz (o meio-termo).
+ */
+export const SEM_ALCANCE_PADRAO: PrioridadePorGravidade = Object.fromEntries(GRAVIDADES.map((g) => [g, MATRIZ_PADRAO[g].setor])) as PrioridadePorGravidade;
+
+/**
+ * A sugestão conforme os campos que o painel usa: sem a gravidade, nenhuma; com o alcance, a matriz
+ * (precisa dos dois); sem o alcance, só a gravidade (a coluna "Só a gravidade" de Ajustes › Prazos).
+ */
+export function sugestaoPelosCampos(
+  usa: { gravidade: boolean; alcance: boolean },
+  gravidade: Gravidade | null | undefined, alcance: Alcance | null | undefined,
+  prazos: { matriz: Matriz; semAlcance?: PrioridadePorGravidade },
+): Prioridade | null {
+  if (!usa.gravidade || !gravidade) return null;
+  if (usa.alcance) return prioridadeSugerida(gravidade, alcance, prazos.matriz);
+  return prazos.semAlcance?.[gravidade] ?? SEM_ALCANCE_PADRAO[gravidade];
+}
+
 // ---------- o calendário ----------
 
 export const NOMES_DOS_DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'] as const;
@@ -87,6 +109,8 @@ export type AjustesPrazos = {
   calendario: Calendario;
   prazos: Record<Prioridade, PrazoDaPrioridade>;
   matriz: Matriz;
+  /** A sugestão só pela gravidade, nos painéis que não usam o alcance (Ajustes › Campos). */
+  semAlcance: PrioridadePorGravidade;
   /** Avisa "o prazo chegou a X%" (o documento sugere 80). */
   alertaPercentual: number;
   /** Avisa o supervisor do chamado que ficou sem responsável por X minutos (o documento sugere 15). */
@@ -123,6 +147,7 @@ export const AJUSTES_PRAZOS_PADRAO: AjustesPrazos = {
     baixa: { resposta: 4 * 60, solucao: 50 * 60, conta: 'uteis' },
   },
   matriz: MATRIZ_PADRAO,
+  semAlcance: SEM_ALCANCE_PADRAO,
   alertaPercentual: 80,
   semDonoMinutos: 15,
 };
@@ -144,6 +169,7 @@ export const AjustesPrazosSchema = z.object({
   }),
   prazos: z.object({ critica: PrazoSchema, alta: PrazoSchema, media: PrazoSchema, baixa: PrazoSchema }),
   matriz: z.object(Object.fromEntries(GRAVIDADES.map((g) => [g, z.object({ empresa: PrioridadeSchema, setor: PrioridadeSchema, pessoa: PrioridadeSchema })])) as Record<Gravidade, z.ZodObject<{ empresa: typeof PrioridadeSchema; setor: typeof PrioridadeSchema; pessoa: typeof PrioridadeSchema }>>),
+  semAlcance: z.object(Object.fromEntries(GRAVIDADES.map((g) => [g, PrioridadeSchema])) as Record<Gravidade, typeof PrioridadeSchema>),
   alertaPercentual: z.number().int().min(10).max(99),
   semDonoMinutos: z.number().int().min(1).max(24 * 60),
 });
@@ -156,6 +182,7 @@ export function ajustesPrazosCompletos(v: Partial<AjustesPrazos> | null | undefi
     calendario: { horario: v.calendario?.horario?.length === 7 ? v.calendario.horario : p.calendario.horario, feriados: v.calendario?.feriados ?? p.calendario.feriados },
     prazos: { ...p.prazos, ...(v.prazos ?? {}) },
     matriz: Object.fromEntries(GRAVIDADES.map((g) => [g, { ...p.matriz[g], ...(v.matriz?.[g] ?? {}) }])) as Matriz,
+    semAlcance: { ...p.semAlcance, ...(v.semAlcance ?? {}) },
     alertaPercentual: v.alertaPercentual ?? p.alertaPercentual,
     semDonoMinutos: v.semDonoMinutos ?? p.semDonoMinutos,
   };

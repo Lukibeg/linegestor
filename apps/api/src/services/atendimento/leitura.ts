@@ -19,7 +19,7 @@ import {
 } from '@gestor/db';
 import {
   AcaoRespostaSchema, campoLigado, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, etiquetasUnicas, faltaParaEtapa,
-  filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugerida,
+  filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugeridaDoPainel,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
   type AcaoResposta, type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
   type CartaoParaLista, type CasoOperadora, type DadosObrigatorios, type FichaChamado, type FiltrosAtendimento, type Gravidade, type ItemChecklist,
@@ -488,8 +488,8 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     ...cartao,
     relato: t.customerReport, descricao: t.description, solucao: t.solution, causa: t.cause, contorno: t.workaround, validacao: t.validation,
     motivoPrioridade: t.priorityReason,
-    // sem a gravidade e o alcance no painel, não há sugestão (o que ficou guardado de antes não conta)
-    prioridadeSugerida: campoLigado(painel.ajustes, 'gravidadeAlcance') ? prioridadeSugerida(t.severity as Gravidade | null, t.reach as Alcance | null, ctx.prazos.matriz) : null,
+    // pelos campos que o painel usa: sem o alcance, só a gravidade; sem a gravidade, nenhuma (o que ficou guardado de antes não conta)
+    prioridadeSugerida: prioridadeSugeridaDoPainel(painel.ajustes, t.severity as Gravidade | null, t.reach as Alcance | null, ctx.prazos),
     sessaoId: t.sessionId,
     conversaUrl: linkDaConversa(integracoes.valor.linkConversa, t.sessionId),
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],

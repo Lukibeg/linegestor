@@ -3,8 +3,8 @@
  *
  * O documento "Prioridade e prazos dos chamados" (o ICI-12) virou esta tela: o horário de atendimento
  * (os 7 dias), os feriados, os dois prazos de cada prioridade (a primeira resposta e a solução, em
- * horas úteis ou corridas), a matriz que sugere a prioridade pela gravidade e pelo alcance, e os
- * alertas (o "perto de vencer" e o "sem dono").
+ * horas úteis ou corridas), a matriz que sugere a prioridade pela gravidade e pelo alcance (e a coluna
+ * "Só a gravidade", para os painéis que não usam o alcance), e os alertas (o "perto de vencer" e o "sem dono").
  *
  * As contas são as do `@gestor/shared` (as mesmas do relógio que avisa): o prazo de um chamado é
  * calculado na hora, então mudar aqui muda a conta de todos os chamados abertos.
@@ -14,14 +14,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarPlus, Trash2 } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, NOME_ALCANCE, NOME_CONTA, NOME_GRAVIDADE, NOME_PRIORIDADE, NOMES_DOS_DIAS, PRIORIDADES,
-  AjustesPrazosSchema, duracaoDoPrazo, hhmm,
+  AjustesPrazosSchema, campoLigado, duracaoDoPrazo, hhmm,
   type AjustesPrazos, type ContaPrazo, type Feriado, type HorarioDoDia, type Prioridade,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Carregando, Chip, Spinner, Toggle, mensagemErro } from '../../../components/ui/index.js';
 import { ThN, TdN } from '../../../lib/contagem.js';
 import { Th, ordenarLista, useOrdenacaoLocal } from '../../../lib/ordenacao.js';
-import { ChipPrioridade, useDepoisDeMudar } from '../comum.js';
+import { ChipPrioridade, useDepoisDeMudar, useOpcoes } from '../comum.js';
 
 const CHAVE = ['atendimento', 'ajustes', 'prazos'];
 /** A semana começa na segunda (o índice 0 do horário é o domingo). */
@@ -128,6 +128,10 @@ function Formulario({ inicial }: { inicial: AjustesPrazos }) {
     setF((x) => ({ ...x, matriz: { ...x.matriz, [g]: { ...x.matriz[g], [a]: p } } }));
     mexeu();
   };
+  const mudarSemAlcance = (g: (typeof GRAVIDADES)[number], p: Prioridade) => { setF((x) => ({ ...x, semAlcance: { ...x.semAlcance, [g]: p } })); mexeu(); };
+  // quais painéis usam o alcance (Ajustes › Campos): nos outros, vale a coluna "Só a gravidade"
+  const opcoes = useOpcoes();
+  const comAlcance = (opcoes.data?.paineis ?? []).filter((p) => p.ativo && campoLigado(p.ajustes, 'gravidade') && campoLigado(p.ajustes, 'alcance'));
 
   const salvar = async () => {
     const problema = problemaNoFormulario(montado);
@@ -215,14 +219,23 @@ function Formulario({ inicial }: { inicial: AjustesPrazos }) {
       </Cartao>
 
       {/* ---------- a matriz ---------- */}
-      <Cartao titulo="A prioridade sugerida: gravidade × alcance" dica="Ao abrir um chamado, a gravidade e o alcance sugerem a prioridade. Trocar a sugestão pede o motivo, que fica no histórico.">
-        {/* no celular, uma gravidade por bloco (a tabela com três escolhas por linha não cabe sem rolar de lado) */}
+      <Cartao titulo="A prioridade sugerida" dica="Ao abrir um chamado, a gravidade sugere a prioridade: no painel que usa o alcance (Ajustes › Campos), cruzada com ele; no painel sem o alcance, pela coluna Só a gravidade. Trocar a sugestão pede o motivo, que fica no histórico.">
+        <p className="text-[12.5px] text-ink-2 mb-3" id="prazos-quem-usa-alcance">
+          {comAlcance.length
+            ? <>Usam o alcance: <b>{comAlcance.map((p) => p.nome).join(', ')}</b>. Os outros painéis seguem a coluna <b>Só a gravidade</b>.</>
+            : <>Nenhum painel usa o alcance agora: vale a coluna <b>Só a gravidade</b>. O alcance liga em Chamados › Ajustes › Campos.</>}
+        </p>
+        {/* no celular, uma gravidade por bloco (a tabela com várias escolhas por linha não cabe sem rolar de lado) */}
         <div className="sm:hidden flex flex-col gap-2" id="prazos-matriz-celular">
           {GRAVIDADES.map((g) => (
             <div key={g} className="rounded-lg border border-line p-3">
               <div className="text-[13.5px] font-semibold text-ink">{NOME_GRAVIDADE[g]}</div>
               <div className="text-[12px] text-muted leading-snug mb-2">{DICA_GRAVIDADE[g]}</div>
               <div className="grid grid-cols-1 gap-1.5">
+                <label className="flex items-center justify-between gap-2 text-[13px]">
+                  <span className="text-ink font-semibold">Só a gravidade</span>
+                  <EscolhaDaMatriz valor={f.semAlcance[g]} rotulo={`${NOME_GRAVIDADE[g]}, no painel sem o alcance`} onChange={(p) => mudarSemAlcance(g, p)} />
+                </label>
                 {ALCANCES.map((a) => (
                   <label key={a} className="flex items-center justify-between gap-2 text-[13px]">
                     <span className="text-ink-2">{NOME_ALCANCE[a]}</span>
@@ -235,11 +248,16 @@ function Formulario({ inicial }: { inicial: AjustesPrazos }) {
         </div>
         {/* a matriz não é uma lista: a ordem das linhas e das colunas é a do documento (sem # e sem ordenar) */}
         <div className="hidden sm:block overflow-x-auto -mx-1 px-1">
-          <table className="table min-w-[600px]" id="prazos-matriz">
+          <table className="table min-w-[760px]" id="prazos-matriz">
             <thead>
               <tr>
-                <th>Gravidade</th>
-                {ALCANCES.map((a) => <th key={a} className="!text-center">{NOME_ALCANCE[a]}</th>)}
+                <th rowSpan={2} className="align-bottom">Gravidade</th>
+                <th rowSpan={2} className="!text-center align-bottom">Só a gravidade<span className="block text-[11px] font-normal normal-case tracking-normal text-muted">painel sem o alcance</span></th>
+                <th colSpan={ALCANCES.length} className="!text-center">Com o alcance</th>
+              </tr>
+              <tr>
+                {/* a segunda linha do cabeçalho não arredonda os cantos (os cantos são da primeira) */}
+                {ALCANCES.map((a) => <th key={a} className="!text-center !rounded-none">{NOME_ALCANCE[a]}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -249,6 +267,9 @@ function Formulario({ inicial }: { inicial: AjustesPrazos }) {
                     <span className="block text-[13.5px] font-semibold text-ink">{NOME_GRAVIDADE[g]}</span>
                     <span className="block text-[12px] text-muted leading-snug">{DICA_GRAVIDADE[g]}</span>
                   </th>
+                  <td className="text-center">
+                    <EscolhaDaMatriz valor={f.semAlcance[g]} rotulo={`${NOME_GRAVIDADE[g]}, no painel sem o alcance`} onChange={(p) => mudarSemAlcance(g, p)} />
+                  </td>
                   {ALCANCES.map((a) => (
                     <td key={a} className="text-center">
                       <EscolhaDaMatriz valor={f.matriz[g][a]} rotulo={`${NOME_GRAVIDADE[g]} com alcance "${NOME_ALCANCE[a]}"`} onChange={(p) => mudarMatriz(g, a, p)} />

@@ -151,7 +151,9 @@ export const DETALHES_DOS_ASSUNTOS: Array<{ caminho: string; descricao?: string;
  * a Versão publicada (pedida para entrar em Entregue), a Previsão de entrega e o Como reproduzir. O
  * Suporte usa todos os do sistema e ganhou a Responsabilidade (de quem era a falha, para os relatórios).
  */
-export const DESLIGADOS_NO_DESENVOLVIMENTO = ['assunto', 'operadoras'] as const;
+export const DESLIGADOS_NO_DESENVOLVIMENTO = ['assunto', 'alcance', 'operadoras'] as const;
+/** O Suporte usa todos, menos o alcance ("não precisa desse alcance por enquanto", o Luan na prévia). */
+export const DESLIGADOS_NO_SUPORTE = ['alcance'] as const;
 export const CAMPOS_DE_EXEMPLO: Array<{
   painel: 'SUP' | 'DEV'; nome: string; tipo: 'texto' | 'texto_longo' | 'numero' | 'data' | 'sim_nao' | 'lista' | 'lista_varios';
   dica?: string; opcoes?: string[]; paraAbrir?: boolean; etapas?: ChaveEtapa[];

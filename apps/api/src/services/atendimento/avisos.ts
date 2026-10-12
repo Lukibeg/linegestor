@@ -7,9 +7,9 @@
  * com `esperarSegundoPlano()`.
  */
 import type { FastifyInstance } from 'fastify';
-import { inArray } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
 import { newId, ticketNotifications, users } from '@gestor/db';
-import { type EventoAviso, type TipoAviso } from '@gestor/shared';
+import { EVENTOS_AVISO_PADRAO, type EventoAviso, type TipoAviso } from '@gestor/shared';
 import { enderecoPublico } from '../envio.js';
 import { registrarEvento } from './contexto.js';
 import { lerAvisos, mandarWhatsApp, whatsAppPronto } from './whatsapp.js';
@@ -26,6 +26,9 @@ export function emSegundoPlano(app: Pick<FastifyInstance, 'log'>, tarefa: () => 
 export async function esperarSegundoPlano() {
   while (pendentes.size) await Promise.allSettled([...pendentes]);
 }
+
+/** O começo de um texto, para caber num aviso ("…" no fim quando corta). */
+export const trecho = (t: string, max: number) => (t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t);
 
 /** O endereço do chamado no Gestor (vai no aviso do WhatsApp). */
 export const linkDoChamado = (app: FastifyInstance, codigo: string) => `${enderecoPublico(app)}/atendimento/${encodeURIComponent(codigo)}`;
@@ -62,4 +65,60 @@ export async function avisarEquipe(
       await registrarEvento(app.db, a.chamado.id, 'aviso_equipe', null, { para: u.name, ok: r.ok, ...(r.ok ? {} : { erro: r.mensagem }) });
     }
   });
+}
+
+/** Os campos que mudaram, no aviso do observador: "Marina mudou no SUP-12: Descrição · Solução". */
+export const SEPARADOR_DE_CAMPOS = ' · ';
+/** Por quanto tempo as mudanças de campo de uma pessoa juntam no mesmo aviso (enquanto ele não foi lido). */
+const JUNTA_POR_MINUTOS = 30;
+
+/**
+ * Avisa quem observa o chamado (o pedido do Luan na prévia: como no Helena, o observador recebe toda
+ * atualização — a anotação, a mudança de etapa, o responsável, a espera, o cliente que respondeu…).
+ * Quem fez não recebe, nem quem já recebeu outro aviso da mesma ação (o responsável que recebeu o
+ * chamado, quem a etapa avisa).
+ *
+ * `campos`: as mudanças de campo (o relato, a solução, a classificação…) de uma pessoa juntam num
+ * aviso só, na tela, enquanto ele não foi lido (por 30 minutos): editar cinco campos seguidos não vira
+ * cinco avisos — nem cinco WhatsApps (a mudança de campo só avisa na tela).
+ */
+export async function avisarObservadores(
+  app: FastifyInstance,
+  a: {
+    chamado: { id: string; codigo: string; titulo: string };
+    observadores: string[];
+    texto?: string;
+    menos?: string | null;
+    jaAvisados?: Array<string | null | undefined>;
+    campos?: { quem: string; nomes: string[] };
+  },
+) {
+  const fora = new Set([a.menos, ...(a.jaAvisados ?? [])].filter((x): x is string => !!x));
+  const para = [...new Set(a.observadores)].filter((x) => !fora.has(x));
+  if (!para.length) return;
+  if (!a.campos) {
+    if (a.texto) await avisarEquipe(app, { evento: 'observador', para, chamado: a.chamado, texto: a.texto });
+    return;
+  }
+  const nomes = [...new Set(a.campos.nomes.filter(Boolean))];
+  if (!nomes.length) return;
+  const { valor: v } = await lerAvisos(app.db);
+  if (!(v.eventos.observador ?? EVENTOS_AVISO_PADRAO.observador).tela) return;
+  const ativos = await app.db.select({ id: users.id, active: users.active }).from(users).where(inArray(users.id, para));
+  const inicio = `${a.campos.quem} mudou no ${a.chamado.codigo}: `;
+  const desde = new Date(Date.now() - JUNTA_POR_MINUTOS * 60_000);
+  for (const u of ativos.filter((x) => x.active)) {
+    const recentes = await app.db.select().from(ticketNotifications)
+      .where(and(eq(ticketNotifications.userId, u.id), eq(ticketNotifications.ticketId, a.chamado.id), eq(ticketNotifications.kind, 'observador'),
+        isNull(ticketNotifications.readAt), gt(ticketNotifications.createdAt, desde)))
+      .orderBy(desc(ticketNotifications.createdAt)).limit(5);
+    const junta = recentes.find((n) => n.body.startsWith(inicio));
+    if (junta) {
+      const todos = [...new Set([...junta.body.slice(inicio.length).split(SEPARADOR_DE_CAMPOS), ...nomes])];
+      // o aviso sobe para o alto da lista, com o que mudou de novo
+      await app.db.update(ticketNotifications).set({ body: inicio + todos.join(SEPARADOR_DE_CAMPOS), createdAt: new Date() }).where(eq(ticketNotifications.id, junta.id));
+    } else {
+      await app.db.insert(ticketNotifications).values({ id: newId(), userId: u.id, ticketId: a.chamado.id, kind: 'observador', body: inicio + nomes.join(SEPARADOR_DE_CAMPOS) });
+    }
+  }
 }

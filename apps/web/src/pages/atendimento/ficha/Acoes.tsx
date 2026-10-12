@@ -2,7 +2,7 @@
  * A barra de ações da ficha: Assumir, Mover (o menu das etapas do painel, cada uma dizendo o que falta
  * para ir para ela e os filhos que travam), o atalho "Escalonar para N2", Esperar (o cliente ou a
  * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, Resposta pronta, Preencher com IA e
- * o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, acompanhar, lixeira).
+ * o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
  *
  * Mover usa o `useMover()` comum: ele pede o motivo ao subir ou descer de nível e mostra o que falta
  * quando o servidor recusa. O erro das ações diretas (assumir, parar de esperar…) aparece logo
@@ -224,9 +224,9 @@ export function BarraDeAcoes() {
                 <ItemMenu icone={<Columns3 size={15} />} onClick={ir(() => setJanela({ tipo: 'painel' }))} dica="o código não muda">Trocar de painel…</ItemMenu>
                 {!aberto && <ItemMenu icone={<RotateCcw size={15} />} onClick={ir(() => setJanela({ tipo: 'reabrir' }))}>Reabrir…</ItemMenu>}
                 <ItemMenu icone={f.observando ? <EyeOff size={15} /> : <Eye size={15} />}
-                  onClick={ir(() => void direta(f.observando ? 'Deixar de acompanhar' : 'Acompanhar', () => api.atendimento.observar(f.id, !f.observando), f.observando ? 'Você deixou de acompanhar' : 'Você passou a acompanhar: ele aparece no seu Meu dia'))}
+                  onClick={ir(() => void direta(f.observando ? 'Deixar de observar' : 'Observar', () => api.atendimento.observar(f.id, !f.observando), f.observando ? 'Você deixou de observar' : 'Você passou a observar: recebe os avisos dele e o vê no seu Meu dia'))}
                   dica={f.observando ? undefined : 'aparece no seu Meu dia'}>
-                  {f.observando ? 'Deixar de acompanhar' : 'Acompanhar'}
+                  {f.observando ? 'Deixar de observar' : 'Observar'}
                 </ItemMenu>
                 <ItemMenu icone={<Copy size={15} />} onClick={ir(() => void copiarLink())} dica="para colar na conversa ou no WhatsApp">Copiar o link</ItemMenu>
                 {cuida && (

@@ -17,6 +17,7 @@ import { paraBusca } from './formatos.js';
 import { numeroWhatsApp } from './envio.js';
 import {
   ALCANCES, ESPERA_PARA_O_PRAZO, GRAVIDADES, NOME_ALCANCE, NOME_ESPERA, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_PRAZO, PESO_PRIORIDADE, PRIORIDADES, RegraAgendadoSchema,
+  sugestaoPelosCampos,
   type Alcance, type AjustesPrazos, type Espera, type EstadoPrazo, type Gravidade, type Prioridade, type RegraAgendado, type TipoEspera,
 } from './atendimento-prazos.js';
 
@@ -135,8 +136,12 @@ export type Painel = {
   abertos: number;
 };
 
+/**
+ * O painel novo (e o que foi gravado antes de existir a escolha) nasce sem o alcance: "não precisa
+ * desse alcance por enquanto" (o Luan, na prévia). Liga em Chamados › Ajustes › Campos.
+ */
 export const AJUSTES_PAINEL_PADRAO: AjustesDoPainel = {
-  tipos: TIPOS_PADRAO, contaPrazo: true, fecharSozinhoDias: 3, obrigatoriosAoAbrir: [], paiEsperaFilhos: true, supervisores: [], camposDesligados: [],
+  tipos: TIPOS_PADRAO, contaPrazo: true, fecharSozinhoDias: 3, obrigatoriosAoAbrir: [], paiEsperaFilhos: true, supervisores: [], camposDesligados: ['alcance'],
 };
 
 /** Os ajustes guardados podem ser de antes de um campo novo: completa com o padrão. */
@@ -217,23 +222,34 @@ export function movimentoDeNivel(de: Pick<EtapaPainel, 'nivel'> | null | undefin
  * contato, relato, descrição, prioridade, responsável, solução, causa, etiquetas) está em todo painel:
  * é o próprio chamado.
  */
-export const CAMPOS_DO_SISTEMA = ['assunto', 'tipo', 'gravidadeAlcance', 'produtos', 'operadoras'] as const;
+export const CAMPOS_DO_SISTEMA = ['assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras'] as const;
 export type CampoDoSistema = (typeof CAMPOS_DO_SISTEMA)[number];
 export const NOME_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
-  assunto: 'Assunto', tipo: 'Tipo', gravidadeAlcance: 'Gravidade e alcance', produtos: 'Produtos', operadoras: 'Operadoras',
+  assunto: 'Assunto', tipo: 'Tipo', gravidade: 'Gravidade', alcance: 'Alcance', produtos: 'Produtos', operadoras: 'Operadoras',
 };
 export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   assunto: 'A árvore de assuntos (até 3 níveis), com a descrição, o checklist e o de-para de cada um.',
   tipo: '"Que tratativa foi essa?": as opções são deste painel.',
-  gravidadeAlcance: 'Os dois juntos sugerem a prioridade (a matriz de Ajustes › Prazos).',
+  gravidade: 'Quanto o problema pesa (de Inoperância a Não se aplica). Sugere a prioridade (Ajustes › Prazos).',
+  alcance: 'Quantos o problema atinge no cliente (a empresa toda, um setor, uma pessoa). Com a gravidade, sugere a prioridade.',
   produtos: 'Os do cliente aparecem primeiro; os outros vêm do catálogo.',
   operadoras: 'As dos circuitos do cliente aparecem primeiro.',
 };
 /** O que deixa de ser pedido quando o campo é desligado. */
 export const OBRIGATORIOS_DO_CAMPO: Record<CampoDoSistema, CampoObrigatorio[]> = {
-  assunto: ['assunto'], tipo: ['tipo'], gravidadeAlcance: ['gravidade', 'alcance'], produtos: ['produto'], operadoras: ['operadora'],
+  assunto: ['assunto'], tipo: ['tipo'], gravidade: ['gravidade'], alcance: ['alcance'], produtos: ['produto'], operadoras: ['operadora'],
 };
 export const campoLigado = (ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, c: CampoDoSistema) => !ajustes.camposDesligados.includes(c);
+/**
+ * A prioridade que o painel sugere, pelos campos que ele usa: com a gravidade e o alcance, a matriz;
+ * só com a gravidade, a coluna "Só a gravidade" (Ajustes › Prazos); sem a gravidade, nenhuma.
+ */
+export function prioridadeSugeridaDoPainel(
+  ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, gravidade: Gravidade | null | undefined, alcance: Alcance | null | undefined,
+  prazos: Pick<AjustesPrazos, 'matriz'> & Partial<Pick<AjustesPrazos, 'semAlcance'>>,
+): Prioridade | null {
+  return sugestaoPelosCampos({ gravidade: campoLigado(ajustes, 'gravidade'), alcance: campoLigado(ajustes, 'alcance') }, gravidade, alcance, prazos);
+}
 
 /** Os campos que quem cuida dos chamados cria em cada painel. O tipo não muda depois de criado. */
 export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios'] as const;
@@ -780,6 +796,8 @@ export const ChamadoCriarSchema = z.object({
   operadoras: Lista().default([]),
   etiquetas: z.array(EtiquetaSchema).max(20).default([]),
   responsavelId: z.string().nullish().transform((v) => v || null),
+  /** quem observa: recebe os avisos de toda atualização do chamado (como no Helena) */
+  observadores: z.array(z.string()).max(30).default([]),
   /** filho de quem (pode ser de outro painel) */
   paiId: z.string().nullish().transform((v) => v || null),
   /** incidente de qual problema */
@@ -924,7 +942,7 @@ export const AgendadoGravarSchema = z.object({
 });
 
 /** Os avisos: quem recebe o quê, na tela e no WhatsApp. */
-export const EVENTOS_AVISO = ['recebeu', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu'] as const;
+export const EVENTOS_AVISO = ['recebeu', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'observador'] as const;
 export type EventoAviso = (typeof EVENTOS_AVISO)[number];
 export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: string }> = {
   recebeu: { titulo: 'Recebeu um chamado (atribuído ou escalonado)', quem: 'quem recebeu' },
@@ -934,13 +952,15 @@ export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: stri
   sem_dono: { titulo: 'Sem responsável depois do tempo combinado', quem: 'os supervisores' },
   critico: { titulo: 'Chegou um chamado Crítico', quem: 'os supervisores' },
   cliente_respondeu: { titulo: 'O cliente respondeu', quem: 'o responsável' },
+  // como no Helena (o pedido do Luan na prévia): quem observa recebe toda atualização do chamado
+  observador: { titulo: 'Novidade num chamado que a pessoa observa (anotação, etapa, responsável, espera, campos)', quem: 'os observadores' },
 };
 export type CanaisDoAviso = { tela: boolean; whatsapp: boolean };
 /** O que o documento de prioridade sugeriu (a tabela "Alertas e escalonamento"). */
 export const EVENTOS_AVISO_PADRAO: Record<EventoAviso, CanaisDoAviso> = {
   recebeu: { tela: true, whatsapp: true }, etapa: { tela: true, whatsapp: true }, prazo_perto: { tela: true, whatsapp: true },
   prazo_vencido: { tela: true, whatsapp: true }, sem_dono: { tela: true, whatsapp: false }, critico: { tela: true, whatsapp: true },
-  cliente_respondeu: { tela: true, whatsapp: false },
+  cliente_respondeu: { tela: true, whatsapp: false }, observador: { tela: true, whatsapp: false },
 };
 const CanaisSchema = z.object({ tela: z.boolean(), whatsapp: z.boolean() });
 
@@ -1174,7 +1194,7 @@ export type OpcoesAtendimento = {
 export type ColunaQuadro = { etapa: EtapaPainel; chamados: CartaoChamado[]; total: number; escondidos: number };
 export type QuadroAtendimento = { painelId: string; colunas: ColunaQuadro[]; foraDoHorario: boolean; agora: string };
 
-export const TIPOS_AVISO = ['recebeu', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai'] as const;
+export const TIPOS_AVISO = ['recebeu', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai', 'observador'] as const;
 export type TipoAviso = (typeof TIPOS_AVISO)[number];
 export type AvisoNaTela = { id: string; tipo: TipoAviso; texto: string; chamado: { id: string; codigo: string; titulo: string } | null; em: string; lido: boolean };
 export type AvisosNaTela = { naoLidos: number; itens: AvisoNaTela[] };
@@ -1299,7 +1319,7 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     case 'cliente_respondeu': return d.reabriu ? `o cliente respondeu e o chamado reabriu: "${d.texto}"` : `o cliente respondeu: "${d.texto}"`;
     case 'prazo': return d.texto ?? 'alerta de prazo';
     case 'fechou_sozinho': return `fechou sozinho: ${d.dias} ${d.dias === 1 ? 'dia útil' : 'dias úteis'} no ${d.etapa ?? 'Resolvido'} sem resposta do cliente`;
-    case 'observador': return d.acao === 'saiu' ? `deixou de acompanhar` : `passou a acompanhar`;
+    case 'observador': return d.acao === 'saiu' ? `deixou de observar` : `passou a observar`;
     case 'lixeira': return d.acao === 'restaurou' ? 'restaurou da lixeira' : 'mandou para a lixeira';
     default: return String(tipo);
   }
@@ -1708,7 +1728,7 @@ export function sugestaoDoQueOPainelUsa<T extends Pick<SugestaoIa, 'assuntoId' |
   const usa = (c: CampoDoSistema) => campoLigado(ajustes, c);
   return {
     ...s, assuntoId: usa('assunto') ? s.assuntoId : null, tipo: usa('tipo') ? s.tipo : null,
-    gravidade: usa('gravidadeAlcance') ? s.gravidade : null, alcance: usa('gravidadeAlcance') ? s.alcance : null, produtos: usa('produtos') ? s.produtos : [],
+    gravidade: usa('gravidade') ? s.gravidade : null, alcance: usa('alcance') ? s.alcance : null, produtos: usa('produtos') ? s.produtos : [],
   };
 }
 

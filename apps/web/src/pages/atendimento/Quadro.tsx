@@ -54,7 +54,7 @@ export function Quadro() {
 
   return (
     <div>
-      <CabecalhoAtendimento />
+      <CabecalhoAtendimento painelId={painel?.id} />
       {opcoes.isLoading ? <Carregando /> : opcoes.isError ? <ErroComTentar erro={opcoes.error} tentar={() => void opcoes.refetch()} /> : !painel ? (
         <Vazio titulo="Painel não encontrado" texto="Ele pode ter saído, ou ser de acesso escolhido sem você na lista."
           acao={<Link to="/atendimento" className="btn-secondary"><ArrowLeft size={15} /> Ver os painéis</Link>} />

@@ -20,7 +20,7 @@ import {
   circuits, clientUnits, clients, deviceModels, devices, dids, newId, subscriptions, ticketMacros, ticketPanels, ticketSchedules, ticketStages,
   ticketSubjects, ticketWebhooks, tickets,
 } from '@gestor/db';
-import { AVISOS_CHAMADOS_PADRAO, ChamadoCriarSchema, diaLocal } from '@gestor/shared';
+import { AJUSTES_PAINEL_PADRAO, AVISOS_CHAMADOS_PADRAO, ChamadoCriarSchema, diaLocal } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 import * as integ from '../src/services/integracoes.js';
 import { esperarSegundoPlano } from '../src/services/atendimento/avisos.js';
@@ -118,6 +118,9 @@ beforeAll(async () => {
     { id: semAudio, panelId: SUP, parentId: ramal, name: 'Sem áudio', checklist: ['Pedir print do erro', 'Testar o ramal'] },
     { id: assuntoDev, panelId: DEV, name: 'Correção de tela' },
   ]);
+  // o alcance nasce desligado ("por enquanto"); estes testes conferem a matriz gravidade × alcance, então o
+  // Suporte o liga (o painel sem o alcance tem o teste dele, em "abrir")
+  await ajustarPainel(SUP, { camposDesligados: [] });
 
   // nada sai do servidor nos testes: o WhatsApp e os webhooks só funcionam com o fetch falso de cada teste
   const recusar = (async () => { throw new Error('rede desligada nos testes'); }) as unknown as typeof fetch;
@@ -172,6 +175,25 @@ describe('abrir', () => {
     expect(await ficha(s, codigo)).toMatchObject({ prioridade: 'alta', prioridadeSugerida: 'critica', motivoPrioridade: 'só um ramal de teste caiu' });
     // sem gravidade e alcance não há sugestão: escolher não pede motivo
     expect((await ficha(s, (await abrir(s, { prioridade: 'baixa' })).codigo)).prioridade).toBe('baixa');
+  });
+
+  it('no painel sem o alcance (o padrão), a sugestão sai só da gravidade, e o alcance que vier fica de fora', async () => {
+    expect(AJUSTES_PAINEL_PADRAO.camposDesligados).toEqual(['alcance']);
+    await ajustarPainel(SUP, { camposDesligados: ['alcance'] });
+    const { codigo } = await abrir(s, { gravidade: 'inoperancia', alcance: 'empresa' });
+    expect(await ficha(s, codigo)).toMatchObject({ prioridade: 'alta', prioridadeSugerida: 'alta', alcance: null, motivoPrioridade: null });
+    const [t] = await app.db.select().from(tickets).where(eq(tickets.code, codigo));
+    expect(t!.reach).toBeNull();
+    // trocar a sugerida (só pela gravidade) também pede o motivo
+    const r = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Queda geral', gravidade: 'inoperancia', prioridade: 'critica' });
+    expect(r.json().error).toBe('Trocar a prioridade sugerida pede o motivo.');
+    // a coluna "só a gravidade" é dos Ajustes › Prazos
+    const prazos = (await s.get('/atendimento/ajustes/prazos')).json();
+    expect(prazos.semAlcance.inoperancia).toBe('alta');
+    expect((await s.put('/atendimento/ajustes/prazos', { ...prazos, semAlcance: { ...prazos.semAlcance, inoperancia: 'critica' } })).statusCode).toBe(200);
+    expect((await ficha(s, (await abrir(s, { gravidade: 'inoperancia' })).codigo)).prioridade).toBe('critica');
+    expect((await s.put('/atendimento/ajustes/prazos', prazos)).statusCode).toBe(200);
+    await ajustarPainel(SUP, { camposDesligados: [] });
   });
 
   it('o telefone que o Gestor já conhece preenche o cliente e o nome do contato', async () => {
@@ -653,12 +675,12 @@ describe('checklist, tempo, operadora, acompanhar e trocar de painel', () => {
     expect((await operador.post(`/atendimento/chamados/${id}/operadora/${caso.id}`, { acao: 'cobrar' })).statusCode).toBe(400);
   });
 
-  it('acompanhar e deixar de acompanhar', async () => {
+  it('observar e deixar de observar', async () => {
     const f = (await tecnico.post(`/atendimento/chamados/${id}/observar`, { observar: true })).json();
     expect(f).toMatchObject({ observando: true, observadores: [{ id: brunoId, nome: 'Bruno Técnico' }] });
     const g = (await tecnico.post(`/atendimento/chamados/${id}/observar`, { observar: false })).json();
     expect(g).toMatchObject({ observando: false, observadores: [] });
-    expect(eventos(g, 'observador').map((e: any) => e.texto)).toEqual(['passou a acompanhar', 'deixou de acompanhar']);
+    expect(eventos(g, 'observador').map((e: any) => e.texto)).toEqual(['passou a observar', 'deixou de observar']);
   });
 
   it('trocar de painel: o código fica; o assunto sai, e o tipo que o painel novo não tem também', async () => {
@@ -789,6 +811,82 @@ describe('os avisos na tela (o sininho)', () => {
     expect(bruno.itens[0]).toMatchObject({ tipo: 'etapa', texto: `${codigo} chegou em N2` });
     await ajustarPainel(SUP, { supervisores: [] });
     await app.db.update(ticketStages).set({ notifyUserIds: [] }).where(eq(ticketStages.id, E.n2));
+  });
+});
+
+// =====================================================================
+
+describe('os observadores (como no Helena: recebem toda atualização do chamado)', () => {
+  const avisos = async (sess: Session) => (await sess.get('/atendimento/avisos')).json().itens.filter((i: any) => i.tipo === 'observador');
+  // os chamados destes testes ficam sem observador, sem responsável e sem espera no fim (o Meu dia, mais
+  // adiante, conta os que a Marina observa e os que ela espera do cliente)
+  const criados: string[] = [];
+  afterAll(async () => {
+    for (const id of criados) {
+      await s.patch(`/atendimento/chamados/${id}`, { observadores: [], responsavelId: null });
+      await s.post(`/atendimento/chamados/${id}/esperar`, { tipo: null });
+    }
+  });
+  it('abrir com observadores avisa cada um; quem não existe é recusado', async () => {
+    const r = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Fila sem tocar', observadores: ['nao-existe'] });
+    expect(r.statusCode).toBe(400);
+    expect(r.json().error).toMatch(/^Um dos observadores escolhidos/);
+    const { id, codigo } = await abrir(s, { titulo: 'Fila sem tocar', observadores: [marinaId, brunoId] });
+    criados.push(id);
+    const f = await ficha(s, codigo);
+    expect(f.observadores.map((o: any) => o.id).sort()).toEqual([marinaId, brunoId].sort());
+    expect((await avisos(operador))[0]).toMatchObject({ texto: `Administrador pôs você como observador do ${codigo}`, chamado: { codigo }, lido: false });
+    expect((await avisos(tecnico))[0].texto).toBe(`Administrador pôs você como observador do ${codigo}`);
+  });
+
+  it('a anotação, a etapa e o responsável chegam para quem observa (menos para quem fez)', async () => {
+    const { id, codigo } = await abrir(s, { titulo: 'Ramal 210 mudo', clienteId: aurora, observadores: [marinaId, brunoId] });
+    criados.push(id);
+    await operador.post(`/atendimento/chamados/${id}/anotacoes`, { texto: 'Liguei para o cliente:\n o cabo estava solto' });
+    expect((await avisos(tecnico))[0].texto).toBe(`Marina Costa anotou no ${codigo}: "Liguei para o cliente: o cabo estava solto"`);
+    expect((await avisos(operador)).some((a: any) => a.texto.startsWith('Marina Costa anotou'))).toBe(false);
+    await mover(s, id, E.n1);
+    expect((await avisos(operador))[0].texto).toBe(`Administrador moveu o ${codigo} para N1`);
+    expect((await avisos(tecnico))[0].texto).toBe(`Administrador moveu o ${codigo} para N1`);
+    // passar para a Marina: ela recebe o "Você recebeu" (e não o do observador); o Bruno fica sabendo
+    await s.patch(`/atendimento/chamados/${id}`, { responsavelId: marinaId });
+    expect((await avisos(tecnico))[0].texto).toBe(`Administrador passou o ${codigo} para Marina Costa`);
+    expect((await avisos(operador)).some((a: any) => a.texto.includes('passou o'))).toBe(false);
+    const esperar = await operador.post(`/atendimento/chamados/${id}/esperar`, { tipo: 'cliente', motivo: 'vai testar à tarde' });
+    expect(esperar.statusCode, esperar.body).toBe(200);
+    expect((await avisos(tecnico))[0].texto).toBe(`Marina Costa marcou o ${codigo}: esperando o cliente (vai testar à tarde)`);
+  });
+
+  it('as mudanças de campo juntam num aviso só enquanto ele não foi lido (nem viram cinco avisos)', async () => {
+    const { id, codigo } = await abrir(s, { titulo: 'URA muda', observadores: [brunoId] });
+    criados.push(id);
+    const antes = (await avisos(tecnico)).length;
+    await s.patch(`/atendimento/chamados/${id}`, { descricao: 'A URA não fala o menu' });
+    await s.patch(`/atendimento/chamados/${id}`, { solucao: 'Regravamos o áudio', etiquetas: ['ura'] });
+    await s.patch(`/atendimento/chamados/${id}`, { descricao: 'A URA não fala o menu principal' });
+    const depois = await avisos(tecnico);
+    expect(depois.length).toBe(antes + 1);
+    expect(depois[0].texto).toBe(`Administrador mudou no ${codigo}: Descrição · Solução · Etiquetas`);
+    // lido, a próxima mudança vira um aviso novo
+    await tecnico.post('/atendimento/avisos/lidos', { ids: [depois[0].id] });
+    await s.patch(`/atendimento/chamados/${id}`, { causa: 'Áudio apagado na troca do servidor' });
+    const novo = await avisos(tecnico);
+    expect(novo.length).toBe(antes + 2);
+    expect(novo[0]).toMatchObject({ texto: `Administrador mudou no ${codigo}: Causa`, lido: false });
+  });
+
+  it('pôr alguém como observador pela ficha avisa só quem entrou; o "observar" é o mesmo nome', async () => {
+    const { id, codigo } = await abrir(s, { titulo: 'Gravação falhando' });
+    criados.push(id);
+    await s.patch(`/atendimento/chamados/${id}`, { observadores: [brunoId] });
+    expect((await avisos(tecnico))[0].texto).toBe(`Administrador pôs você como observador do ${codigo}`);
+    const f = (await operador.post(`/atendimento/chamados/${id}/observar`, { observar: true })).json();
+    expect(f.observando).toBe(true);
+    expect(eventos(f, 'observador').at(-1).texto).toBe('passou a observar');
+    // a Marina anota: o Bruno recebe; o administrador (que não observa) não
+    await operador.post(`/atendimento/chamados/${id}/anotacoes`, { texto: 'Conferi o disco do servidor' });
+    expect((await avisos(tecnico))[0].texto).toBe(`Marina Costa anotou no ${codigo}: "Conferi o disco do servidor"`);
+    expect((await avisos(s)).some((a: any) => a.chamado?.codigo === codigo)).toBe(false);
   });
 });
 

@@ -20,7 +20,7 @@
  * último evento e a IA monta a sugestão com as palavras do próprio chamado.
  */
 import {
-  AcaoRespostaSchema, AgendadoGravarSchema, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AplicarRespostaSchema, AssuntoGravarSchema,
+  AcaoRespostaSchema, AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AplicarRespostaSchema, AssuntoGravarSchema,
   AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, CAMPOS_DO_SISTEMA,
   ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema, MAX_CAMPOS_DO_PAINEL, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, OrdemDosCamposSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
@@ -33,7 +33,7 @@ import {
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca, pareceAgradecimento,
-  preencherModelo, prioridadeSugerida, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
+  preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   type AcaoResposta, type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
   type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoDoSistema, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista,
@@ -48,7 +48,7 @@ import type { Api } from './index.js';
 import { ApiError, type Page, type TrashItem } from './types.js';
 import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import {
-  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, DESLIGADOS_NO_DESENVOLVIMENTO, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
+  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, DESLIGADOS_NO_DESENVOLVIMENTO, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, RESPOSTAS_PRONTAS, WHATSAPP_DA_EQUIPE,
   type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
@@ -325,7 +325,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       id: p.id, nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, ordem: p.ordem, acesso: p.acesso, pessoas: [...p.pessoas],
       ajustes: {
         ...p.ajustes, tipos: [...p.ajustes.tipos], obrigatoriosAoAbrir: [...p.ajustes.obrigatoriosAoAbrir], supervisores: [...p.ajustes.supervisores],
-        camposDesligados: [...(p.ajustes.camposDesligados ?? [])],
+        camposDesligados: [...(p.ajustes.camposDesligados ?? AJUSTES_PAINEL_PADRAO.camposDesligados)],
       },
       etapas: A.etapas.filter((e) => e.painelId === p.id && !e.deletedAt).sort((a, b) => a.ordem - b.ordem).map(etapaParaTela),
       ativo: p.ativo, abertos,
@@ -380,7 +380,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const e = etapaPorId(t.etapaId);
     const aberta = esperaAberta(t.esperas);
     const p = A.paineis.find((x) => x.id === t.painelId);
-    const usa = (c: CampoDoSistema) => !p || campoLigado({ camposDesligados: p.ajustes.camposDesligados ?? [] }, c);
+    const usa = (c: CampoDoSistema) => !p || campoLigado({ camposDesligados: p.ajustes.camposDesligados ?? AJUSTES_PAINEL_PADRAO.camposDesligados }, c);
     const assunto = t.assuntoId && usa('assunto') ? A.assuntos.find((a) => a.id === t.assuntoId) : undefined;
     const filhos = par.filhos.get(t.id) ?? [];
     return {
@@ -389,7 +389,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       cliente: t.clienteId ? { id: t.clienteId, nome: nomeCliente(t.clienteId)! } : null,
       contato: t.contatoNome || t.contatoTelefone ? { nome: t.contatoNome, telefone: t.contatoTelefone } : null,
       responsavel: pessoaCurta(t.responsavelId),
-      prioridade: t.prioridade, gravidade: usa('gravidadeAlcance') ? t.gravidade : null, alcance: usa('gravidadeAlcance') ? t.alcance : null, tipo: usa('tipo') ? t.tipo : null,
+      prioridade: t.prioridade, gravidade: usa('gravidade') ? t.gravidade : null, alcance: usa('alcance') ? t.alcance : null, tipo: usa('tipo') ? t.tipo : null,
       assunto: assunto ? { id: assunto.id, nome: assunto.nome, caminho: caminhoDoAssunto(assunto.id, A.assuntos), ativo: assunto.ativo } : null,
       produtos: usa('produtos') ? t.produtos.map((id) => { const x = S.products.find((y) => y.id === id); return { id, nome: x?.name ?? '?', cor: x?.color ?? '#888888' }; }) : [],
       operadoras: usa('operadoras') ? t.operadoras.map((id) => ({ id, nome: S.carriers.find((x) => x.id === id)?.name ?? '?' })) : [],
@@ -491,6 +491,44 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       registrarEvento(a.chamado.id, 'aviso_equipe', null, { para: u.name, ok: r.ok, ...(r.ok ? {} : { erro: r.mensagem }) }, new Date(em.getTime() + 100 + i));
     });
   }
+
+  /** O começo de um texto, para caber num aviso. */
+  const trechoDoAviso = (t: string, max: number) => (t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t);
+  const SEPARADOR_DE_CAMPOS = ' · ';
+  /**
+   * Os observadores recebem toda atualização (como o servidor): quem fez não recebe, nem quem já recebeu
+   * outro aviso da mesma ação; as mudanças de campo de uma pessoa juntam num aviso só, na tela, enquanto
+   * ele não foi lido (por 30 minutos).
+   */
+  function avisarObservadores(
+    a: {
+      chamado: { id: string; codigo: string; titulo: string }; observadores: string[]; texto?: string; menos?: string | null;
+      jaAvisados?: Array<string | null | undefined>; campos?: { quem: string; nomes: string[] };
+    },
+    em: Date,
+  ) {
+    const fora = new Set([a.menos, ...(a.jaAvisados ?? [])].filter((x): x is string => !!x));
+    const para = [...new Set(a.observadores)].filter((x) => !fora.has(x));
+    if (!para.length) return;
+    if (!a.campos) { if (a.texto) avisarEquipe({ evento: 'observador', para, chamado: a.chamado, texto: a.texto }, em); return; }
+    const nomes = [...new Set(a.campos.nomes.filter(Boolean))];
+    if (!nomes.length || !(A.whats.eventos.observador ?? { tela: true }).tela) return;
+    const inicio = `${a.campos.quem} mudou no ${a.chamado.codigo}: `;
+    const desde = em.getTime() - 30 * MINUTO;
+    for (const u of S.users.filter((x) => para.includes(x.id) && x.active)) {
+      const junta = [...A.avisos].reverse().find((n) => n.userId === u.id && n.chamadoId === a.chamado.id && n.tipo === 'observador' && !n.lidoEm && Date.parse(n.em) > desde && n.texto.startsWith(inicio));
+      if (junta) {
+        junta.texto = inicio + [...new Set([...junta.texto.slice(inicio.length).split(SEPARADOR_DE_CAMPOS), ...nomes])].join(SEPARADOR_DE_CAMPOS);
+        junta.em = iso(em);
+      } else {
+        A.avisos.push({ id: novoId(), userId: u.id, chamadoId: a.chamado.id, tipo: 'observador', texto: inicio + nomes.join(SEPARADOR_DE_CAMPOS), em: iso(em), lidoEm: null });
+      }
+    }
+  }
+  const contarAosObservadores = (ator: Ator, t: ChamadoRow, texto: string, em: Date) =>
+    avisarObservadores({ chamado: curto(t), observadores: t.observadores, texto, menos: pessoaDoAtor(ator) }, em);
+  const camposAosObservadores = (ator: Ator, t: ChamadoRow, nomes: string[], em: Date) =>
+    avisarObservadores({ chamado: curto(t), observadores: t.observadores, menos: pessoaDoAtor(ator), campos: { quem: ator.nome, nomes } }, em);
 
   /** O webhook "recebe" o evento: na prévia, só fica anotado como último envio (nada sai). */
   function emitir(evento: EventoWebhook, _ticketId: string, _extra: Record<string, unknown> = {}) {
@@ -623,12 +661,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
     const assunto = d.assuntoId && usa('assunto') ? conferirAssunto(d.assuntoId, painel) : null;
     const tipo = usa('tipo') ? conferirTipo(d.tipo, painel) : null;
-    const gravidade = usa('gravidadeAlcance') ? d.gravidade ?? null : null;
-    const alcance = usa('gravidadeAlcance') ? d.alcance ?? null : null;
+    const gravidade = usa('gravidade') ? d.gravidade ?? null : null;
+    const alcance = usa('alcance') ? d.alcance ?? null : null;
     const checklist = [...(assunto?.checklist ?? []).map((x) => itemNovo(x, true)), ...(opts.checklistExtra ?? []).map((x) => itemNovo(x, false))];
     const campos: ValoresDosCampos = {};
     for (const i of lerCampos(painel, d.campos ?? {})) if (i.valor !== null) campos[i.campo.id] = i.valor;
-    const sugerida = prioridadeSugerida(gravidade, alcance, A.prazos.matriz);
+    // pelos campos do painel: sem o alcance, só a gravidade (como no servidor)
+    const sugerida = prioridadeSugeridaDoPainel(painel.ajustes, gravidade, alcance, A.prazos);
     const prioridade = d.prioridade ?? sugerida;
     const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
     const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
@@ -648,6 +687,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     conferirProdutos(produtos);
     conferirOperadoras(operadoras);
     if (d.responsavelId) conferirPessoa(d.responsavelId);
+    const observadores = unicos(d.observadores ?? []);
+    for (const x of observadores) conferirPessoa(x, 'Um dos observadores escolhidos');
     const pai = d.paiId ? outroChamado(d.paiId, ator) : null;
     const problema = d.problemaId ? outroChamado(d.problemaId, ator) : null;
     if (problema && problema.tipoChamado !== 'problema') throw bad(`${problema.codigo} não é um problema.`);
@@ -673,7 +714,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       responsavelId: d.responsavelId ?? null, assuntoId: assunto?.id ?? null, tipo, gravidade, alcance,
       prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasUnicas(d.etiquetas ?? []),
       paiId: pai?.id ?? null, problemaId: problema?.id ?? null, checklist, campos,
-      solucao: null, causa: null, contorno: null, validacao: null, esperas: [], observadores: [],
+      solucao: null, causa: null, contorno: null, validacao: null, esperas: [], observadores,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       respondidoEm: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? iso(agora) : null,
       resolvidoEm: null, fechadoEm: null, reaberto: 0, alertas: {}, agendadoId: opts.agendadoId ?? null, criadoPorId: pessoa,
@@ -704,6 +745,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const chamado = { id, codigo, titulo: d.titulo };
     if (d.responsavelId) avisarEquipe({ evento: 'recebeu', para: [d.responsavelId], chamado, texto: `Você recebeu o chamado ${codigo}`, menos: pessoa }, agora);
     if (prioridade === 'critica') avisarEquipe({ evento: 'critico', para: painel.ajustes.supervisores, chamado, texto: `Chegou um chamado Crítico: ${codigo}`, menos: pessoa }, agora);
+    avisarObservadores({ chamado, observadores, texto: `${ator.nome} pôs você como observador do ${codigo}`, menos: pessoa, jaAvisados: [d.responsavelId] }, agora);
     let aviso: { ok: boolean; mensagem: string } | undefined;
     if (d.avisarCliente) aviso = mandarAoCliente(ator, t, 'Abrimos este chamado para o seu atendimento. Qualquer novidade, avisamos por aqui.', quando());
     emitir('chamado.criado', id);
@@ -723,7 +765,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const d: ChamadoAlterar = {
       ...pedido,
       ...(usa('assunto') ? {} : { assuntoId: undefined }), ...(usa('tipo') ? {} : { tipo: undefined }),
-      ...(usa('gravidadeAlcance') ? {} : { gravidade: undefined, alcance: undefined }),
+      ...(usa('gravidade') ? {} : { gravidade: undefined }), ...(usa('alcance') ? {} : { alcance: undefined }),
       ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
     };
     const set: Partial<ChamadoRow> = {};
@@ -763,13 +805,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (novo !== t.tipo) { set.tipo = novo; campo('tipo', NOME_CAMPO.tipo, t.tipo, novo, t.tipo); }
     }
     // a gravidade, o alcance e a prioridade (que pode seguir a sugestão)
-    const g0 = usa('gravidadeAlcance') ? t.gravidade : null; const a0 = usa('gravidadeAlcance') ? t.alcance : null; const p0 = t.prioridade;
+    const g0 = usa('gravidade') ? t.gravidade : null; const a0 = usa('alcance') ? t.alcance : null; const p0 = t.prioridade;
     const g1 = d.gravidade !== undefined ? d.gravidade : g0;
     const a1 = d.alcance !== undefined ? d.alcance : a0;
     if (g1 !== g0) { set.gravidade = g1; campo('gravidade', NOME_CAMPO.gravidade, g0 ? NOME_GRAVIDADE[g0] : null, g1 ? NOME_GRAVIDADE[g1] : null, g0); }
     if (a1 !== a0) { set.alcance = a1; campo('alcance', NOME_CAMPO.alcance, a0 ? NOME_ALCANCE[a0] : null, a1 ? NOME_ALCANCE[a1] : null, a0); }
-    const sug0 = prioridadeSugerida(g0, a0, A.prazos.matriz);
-    const sug1 = prioridadeSugerida(g1, a1, A.prazos.matriz);
+    const sug0 = prioridadeSugeridaDoPainel(painel.ajustes, g0, a0, A.prazos);
+    const sug1 = prioridadeSugeridaDoPainel(painel.ajustes, g1, a1, A.prazos);
     let p1 = p0;
     let motivo: string | null = t.motivoPrioridade;
     if (d.prioridade !== undefined && d.prioridade !== p0) {
@@ -828,10 +870,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const novas = etiquetasUnicas(d.etiquetas);
       if (novas.join('\n') !== t.etiquetas.join('\n')) { set.etiquetas = novas; campo('etiquetas', 'Etiquetas', juntar(t.etiquetas), juntar(novas), t.etiquetas); }
     }
+    let observadoresNovos: string[] = [];
     if (d.observadores !== undefined) {
       const novos = unicos(d.observadores);
       for (const id of novos.filter((x) => !t.observadores.includes(x))) conferirPessoa(id, 'Um dos observadores escolhidos');
-      if (!mesmoConjunto(novos, t.observadores)) { set.observadores = novos; campo('observadores', 'Observadores', nomesPessoas(t.observadores), nomesPessoas(novos), t.observadores); }
+      if (!mesmoConjunto(novos, t.observadores)) {
+        set.observadores = novos;
+        observadoresNovos = novos.filter((x) => !t.observadores.includes(x));
+        campo('observadores', 'Observadores', nomesPessoas(t.observadores), nomesPessoas(novos), t.observadores);
+      }
     }
     // o responsável: avisa quem recebeu; passar o chamado a alguém é a primeira resposta de uma pessoa
     let recebeu: string | null = null;
@@ -850,7 +897,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     tocar(t, agora);
     for (const [tipo, dados] of eventos) registrarEvento(t.id, tipo, ator, dados, e.quando());
     if (set.clienteId !== undefined || set.contatoTelefone !== undefined) aprenderTelefone(t.contatoTelefone, t.clienteId, t.contatoNome);
-    if (recebeu) avisarEquipe({ evento: 'recebeu', para: [recebeu], chamado: curto(t), texto: `Você recebeu o chamado ${t.codigo}`, menos: pessoaDoAtor(ator) }, agora);
+    const menos = pessoaDoAtor(ator);
+    if (recebeu) avisarEquipe({ evento: 'recebeu', para: [recebeu], chamado: curto(t), texto: `Você recebeu o chamado ${t.codigo}`, menos }, agora);
+    // os observadores (como o servidor): quem entrou fica sabendo; os outros recebem o que mudou
+    if (observadoresNovos.length) avisarObservadores({ chamado: curto(t), observadores: observadoresNovos, texto: `${ator.nome} pôs você como observador do ${t.codigo}`, menos, jaAvisados: [recebeu] }, agora);
+    const observadores = t.observadores.filter((x) => !observadoresNovos.includes(x));
+    if (set.responsavelId !== undefined) {
+      const texto = set.responsavelId ? `${ator.nome} passou o ${t.codigo} para ${pessoaCurta(set.responsavelId)?.nome ?? 'outra pessoa'}` : `${ator.nome} deixou o ${t.codigo} sem responsável`;
+      avisarObservadores({ chamado: curto(t), observadores, texto, menos, jaAvisados: [recebeu] }, agora);
+    }
+    const camposMudados = nomes.filter((n) => n !== 'Observadores' && n !== NOME_CAMPO.responsavel);
+    if (camposMudados.length) avisarObservadores({ chamado: curto(t), observadores, menos, campos: { quem: ator.nome, nomes: camposMudados } }, agora);
     emitir('chamado.alterado', t.id, { mudancas });
     return { id: t.id, codigo: t.codigo, titulo: t.titulo, resumo: `Alterou ${t.codigo} "${t.titulo}": ${nomes.join(', ')}`, antes, depois };
   }
@@ -859,7 +916,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   //  MOVER (escalonar, resolver, fechar, reabrir)
   // =====================================================================
 
-  type Movimento = { de: EtapaPainel | null; para: EtapaPainel; antes: SituacaoDoChamado; depois: SituacaoDoChamado; reabriu: boolean; novoResponsavel: string | null };
+  type Movimento = { de: EtapaPainel | null; para: EtapaPainel; antes: SituacaoDoChamado; depois: SituacaoDoChamado; reabriu: boolean; novoResponsavel: string | null; nomeDoNovoResponsavel: string | null };
 
   /** O que falta preencher, os filhos que travam e, quando é escalonar ou voltar de nível, o motivo. */
   function conferirMovimento(e: Estado, para: EtapaPainel, o: { painel?: Painel; motivo: string | null; responsavelId?: string | null; nivel: boolean }): 'sobe' | 'desce' | null {
@@ -898,14 +955,22 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     registrarEvento(t.id, 'etapa', ator, { de: etapaCurta(e.etapa), para: etapaCurta(para), motivo: o.motivo, sentido: o.sentido }, e.quando());
     if (reabriu) registrarEvento(t.id, 'reaberto', ator, { motivo: o.motivoReabriu !== undefined ? o.motivoReabriu : o.motivo }, e.quando());
     if (trocaResponsavel) registrarEvento(t.id, 'responsavel', ator, { de: pessoaCurta(responsavelAntes), para: pessoaCurta(o.responsavelId) }, e.quando());
-    return { de: e.etapa, para, antes, depois, reabriu, novoResponsavel: trocaResponsavel ? o.responsavelId ?? null : null };
+    return {
+      de: e.etapa, para, antes, depois, reabriu, novoResponsavel: trocaResponsavel ? o.responsavelId ?? null : null,
+      nomeDoNovoResponsavel: trocaResponsavel && o.responsavelId ? pessoaCurta(o.responsavelId)?.nome ?? null : null,
+    };
   }
 
-  /** Depois de gravado: quem a etapa avisa, quem recebeu, o pai (quando um filho fecha) e os webhooks. */
-  function depoisDoMovimento(ator: Ator, t: ChamadoRow, m: Movimento, agora: Date) {
+  /** Depois de gravado: quem a etapa avisa, quem recebeu, os observadores, o pai (quando um filho fecha) e os webhooks. */
+  function depoisDoMovimento(ator: Ator, t: ChamadoRow, m: Movimento, agora: Date, opts: { painelNovo?: string; observadores?: boolean } = {}) {
     const menos = pessoaDoAtor(ator);
     if (m.para.avisar.length) avisarEquipe({ evento: 'etapa', para: m.para.avisar, chamado: curto(t), texto: `${t.codigo} chegou em ${m.para.nome}`, menos }, agora);
     if (m.novoResponsavel) avisarEquipe({ evento: 'recebeu', para: [m.novoResponsavel], chamado: curto(t), texto: `Você recebeu o chamado ${t.codigo}`, menos }, agora);
+    if (opts.observadores !== false) {
+      const onde = opts.painelNovo ? `para o painel ${opts.painelNovo} (${m.para.nome})` : `para ${m.para.nome}`;
+      const texto = `${ator.nome} ${m.reabriu ? `reabriu o ${t.codigo} (${m.para.nome})` : `${opts.painelNovo ? 'passou' : 'moveu'} o ${t.codigo} ${onde}`}${m.nomeDoNovoResponsavel ? `, com ${m.nomeDoNovoResponsavel}` : ''}`;
+      avisarObservadores({ chamado: curto(t), observadores: t.observadores, texto, menos, jaAvisados: [...m.para.avisar, m.novoResponsavel] }, agora);
+    }
     if (m.depois === 'fechado' && m.antes !== 'fechado' && t.paiId) {
       const pai = A.chamados.find((x) => x.id === t.paiId && !x.deletedAt);
       if (pai?.responsavelId) avisarEquipe({ evento: 'etapa', tipo: 'pai', para: [pai.responsavelId], chamado: curto(pai), texto: `O filho ${t.codigo} do ${pai.codigo} foi fechado`, menos }, agora);
@@ -959,6 +1024,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       registrarEvento(t.id, 'responsavel', ator, { de: pessoaCurta(antes), para: pessoaCurta(ator.id) }, e.quando());
     }
     if (m) depoisDoMovimento(ator, t, m, agora);
+    else contarAosObservadores(ator, t, `${ator.nome} assumiu o ${t.codigo}`, agora);
     if (trocaResponsavel) emitir('chamado.alterado', t.id, { mudancas: ['responsavelId'] });
     return { ...nada(t), resumo: `Assumiu ${t.codigo}${para ? ` (foi para ${para.nome})` : ''}` };
   }
@@ -986,10 +1052,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     tocar(t, agora);
     registrarEvento(t.id, 'espera', ator, dados, e.quando());
+    contarAosObservadores(ator, t, d.tipo ? `${ator.nome} marcou o ${t.codigo}: ${NOME_ESPERA[d.tipo].toLocaleLowerCase('pt-BR')} (${motivo})` : `${ator.nome} tirou a marca de espera do ${t.codigo}`, agora);
     return { ...nada(t), resumo };
   }
 
-  function reabrir(ator: Ator, ref: string, d: { motivo?: string | null; etapaId?: string | null }, agora: Date = agoraReal()): Feito {
+  function reabrir(ator: Ator, ref: string, d: { motivo?: string | null; etapaId?: string | null }, agora: Date = agoraReal(), opts: { observadores?: boolean } = {}): Feito {
     exigirTrabalhar(ator);
     const e = carregar(ator, ref, agora);
     const { t, painel } = e;
@@ -1004,7 +1071,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     const motivo = d.motivo?.trim() || null;
     const m = gravarMovimento(e, ator, para, { motivo: null, sentido: null, motivoReabriu: motivo });
-    depoisDoMovimento(ator, t, m, agora);
+    depoisDoMovimento(ator, t, m, agora, opts);
     if (t.responsavelId) avisarEquipe({ evento: 'recebeu', para: [t.responsavelId], chamado: curto(t), texto: `O ${t.codigo} foi reaberto`, menos: pessoaDoAtor(ator) }, agora);
     return { ...nada(t), resumo: `Reabriu ${t.codigo} (foi para ${para.nome})${motivo ? `: ${motivo}` : ''}` };
   }
@@ -1027,7 +1094,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (t.assuntoId) registrarEvento(t.id, 'campo', ator, { campo: NOME_CAMPO.assunto, de: caminho(t.assuntoId), para: null }, e.quando());
     if (t.tipo && tipoNovo !== t.tipo) registrarEvento(t.id, 'campo', ator, { campo: NOME_CAMPO.tipo, de: t.tipo, para: tipoNovo }, e.quando());
     const m = gravarMovimento(e, ator, para, { motivo: null, sentido: null, extra: { painelId: novo.id, assuntoId: null, tipo: tipoNovo } });
-    depoisDoMovimento(ator, t, m, agora);
+    depoisDoMovimento(ator, t, m, agora, { painelNovo: novo.nome });
     return { ...nada(t), resumo: `Passou ${t.codigo} do painel ${painel.nome} para ${novo.nome} (${para.nome})` };
   }
 
@@ -1065,6 +1132,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     tocar(t, agora);
     if (ator.tipo === 'pessoa' && !t.respondidoEm) t.respondidoEm = iso(agora);
     emitir('chamado.anotacao', t.id, { anotacao: { texto, por: ator.nome } });
+    const comAnexo = guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : '';
+    contarAosObservadores(ator, t, texto ? `${ator.nome} anotou no ${t.codigo}${comAnexo}: "${trechoDoAviso(texto.replace(/\s+/g, ' '), 140)}"` : `${ator.nome} anexou ${plural(guardar.length, 'arquivo', 'arquivos')} no ${t.codigo}`, agora);
     return { ...nada(t), resumo: `Anotou em ${t.codigo}${guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : ''}`, depois: { texto, anexos: guardar.map((a) => a.nome) } };
   }
 
@@ -1100,6 +1169,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     registrarEvento(t.id, 'ligacao', ator, { acao: 'ligou', tipo: d.tipo, com: outro.codigo, texto: nome.de }, e.quando());
     registrarEvento(outro.id, 'ligacao', ator, { acao: 'ligou', tipo: d.tipo, com: t.codigo, texto: nome.para }, e.quando());
     tocar(t, agora); tocar(outro, agora);
+    camposAosObservadores(ator, t, ['Ligações'], agora); camposAosObservadores(ator, outro, ['Ligações'], agora);
     return { ...nada(t), resumo: `Ligou ${t.codigo} a ${outro.codigo} (${nome.de} ${outro.codigo})` };
   }
 
@@ -1116,6 +1186,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     registrarEvento(t.id, 'ligacao', ator, { acao: 'desligou', tipo: l.tipo, com: outro?.codigo ?? '?', texto: deste ? nome.de : nome.para }, e.quando());
     if (outro) registrarEvento(outro.id, 'ligacao', ator, { acao: 'desligou', tipo: l.tipo, com: t.codigo, texto: deste ? nome.para : nome.de }, e.quando());
     tocar(t, agora); if (outro) tocar(outro, agora);
+    camposAosObservadores(ator, t, ['Ligações'], agora);
     return { ...nada(t), resumo: `Desligou ${t.codigo} de ${outro?.codigo ?? '?'}` };
   }
 
@@ -1149,6 +1220,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       t.paiId = null; tocar(t, agora);
       registrarEvento(t.id, 'pai', ator, { acao: 'tirou', pai: antigo?.codigo ?? '?' }, e.quando());
       if (antigo) registrarEvento(antigo.id, 'filho', ator, { acao: 'tirou', filho: t.codigo }, e.quando());
+      camposAosObservadores(ator, t, ['Pai'], agora);
       return { ...nada(t), resumo: `Tirou ${t.codigo} de filho de ${antigo?.codigo ?? '?'}` };
     }
     const pai = outroChamado(paiRef, ator);
@@ -1161,6 +1233,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     registrarEvento(t.id, 'pai', ator, { acao: 'ligou', pai: pai.codigo }, e.quando());
     registrarEvento(pai.id, 'filho', ator, { acao: 'ligou', filho: t.codigo, painel: e.painel.nome }, e.quando());
     tocar(pai, agora);
+    camposAosObservadores(ator, t, ['Pai'], agora); camposAosObservadores(ator, pai, ['Filhos'], agora);
     return { ...nada(t), resumo: `Pôs ${t.codigo} como filho de ${pai.codigo}` };
   }
 
@@ -1174,6 +1247,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       t.problemaId = null; tocar(t, agora);
       registrarEvento(t.id, 'problema', ator, { acao: 'tirou', problema: antigo?.codigo ?? '?' }, e.quando());
       if (antigo) registrarEvento(antigo.id, 'incidente', ator, { acao: 'tirou', incidente: t.codigo }, e.quando());
+      camposAosObservadores(ator, t, ['Problema'], agora);
       return { ...nada(t), resumo: `Tirou ${t.codigo} do problema ${antigo?.codigo ?? '?'}` };
     }
     const problema = outroChamado(problemaRef, ator);
@@ -1185,6 +1259,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     registrarEvento(t.id, 'problema', ator, { acao: 'ligou', problema: problema.codigo }, e.quando());
     registrarEvento(problema.id, 'incidente', ator, { acao: 'ligou', incidente: t.codigo }, e.quando());
     tocar(problema, agora);
+    camposAosObservadores(ator, t, ['Problema'], agora); camposAosObservadores(ator, problema, ['Incidentes'], agora);
     return { ...nada(t), resumo: `Ligou ${t.codigo} ao problema ${problema.codigo}` };
   }
 
@@ -1222,6 +1297,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     t.checklist = lista; tocar(t, agora);
     registrarEvento(t.id, 'checklist', ator, dados, e.quando());
+    camposAosObservadores(ator, t, ['Checklist'], agora);
     return { ...nada(t), resumo };
   }
 
@@ -1234,6 +1310,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     A.tempos.push({ id: novoId(), chamadoId: t.id, userId: pessoaDoAtor(ator), minutos: d.minutos, nota, dia, em: iso(agora), deletedAt: null });
     registrarEvento(t.id, 'tempo', ator, { minutos: d.minutos, duracao: duracaoDoPrazo(d.minutos), nota }, e.quando());
     tocar(t, agora);
+    camposAosObservadores(ator, t, ['Tempo gasto'], agora);
     return { ...nada(t), resumo: `Registrou ${duracaoDoPrazo(d.minutos)} de trabalho em ${t.codigo}${dia !== diaLocal(agora) ? ` (no dia ${dia})` : ''}` };
   }
 
@@ -1281,6 +1358,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       registrarEvento(t.id, 'espera', ator, { tipo: 'operadora', motivo: motivoEspera }, e.quando());
     }
     tocar(t, agora);
+    contarAosObservadores(ator, t, `${ator.nome} abriu o protocolo ${protocolo} na ${nome} para o ${t.codigo}`, agora);
     return { ...nada(t), resumo: `Abriu o protocolo ${protocolo} na ${nome} para ${t.codigo}` };
   }
 
@@ -1303,6 +1381,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       registrarEvento(t.id, 'espera', ator, { tipo: null, antes: 'operadora', minutos, duracao: duracaoDoPrazo(minutos) }, e.quando());
     }
     tocar(t, agora);
+    contarAosObservadores(ator, t, acao === 'fechou'
+      ? `${ator.nome} fechou o protocolo ${c.protocolo} da ${c.operadoraNome} no ${t.codigo}`
+      : `${ator.nome} cobrou a ${c.operadoraNome} (protocolo ${c.protocolo}) no ${t.codigo}`, agora);
     return {
       ...nada(t),
       resumo: acao === 'fechou' ? `Fechou o protocolo ${c.protocolo} da ${c.operadoraNome} em ${t.codigo}` : `Cobrou a ${c.operadoraNome} (protocolo ${c.protocolo}) em ${t.codigo}`,
@@ -1311,14 +1392,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   function observar(ator: Ator, ref: string, acompanhar: boolean, agora: Date = agoraReal()): Feito {
     exigirTrabalhar(ator);
-    if (ator.tipo !== 'pessoa') throw bad('Só uma pessoa acompanha um chamado.');
+    if (ator.tipo !== 'pessoa') throw bad('Só uma pessoa observa um chamado.');
     const e = carregar(ator, ref, agora);
     const { t } = e;
     if (t.observadores.includes(ator.id) === acompanhar) return nada(t);
     t.observadores = acompanhar ? [...t.observadores, ator.id] : t.observadores.filter((x) => x !== ator.id);
     t.atualizadoEm = iso(agora);
     registrarEvento(t.id, 'observador', ator, { acao: acompanhar ? 'entrou' : 'saiu' }, e.quando());
-    return { ...nada(t), resumo: `${acompanhar ? 'Passou a acompanhar' : 'Deixou de acompanhar'} ${t.codigo}` };
+    return { ...nada(t), resumo: `${acompanhar ? 'Passou a observar' : 'Deixou de observar'} ${t.codigo}` };
   }
 
   // =====================================================================
@@ -1334,6 +1415,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!r.ok) return { ...nada(t), resumo: `Tentou avisar o cliente de ${t.codigo} pelo WhatsApp, mas não foi: ${r.mensagem}`, erro: r.mensagem };
     tocar(t, agora);
     if (ator.tipo === 'pessoa' && !t.respondidoEm) t.respondidoEm = iso(agora);
+    contarAosObservadores(ator, t, `${ator.nome} mandou ao cliente, no ${t.codigo}: "${trechoDoAviso(texto.trim().replace(/\s+/g, ' '), 140)}"`, agora);
     return { ...nada(t), resumo: `Avisou o cliente de ${t.codigo} pelo WhatsApp`, depois: { texto } };
   }
 
@@ -1363,6 +1445,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (!r.ok) return { ...nada(t), resumo: `Tentou usar a resposta pronta "${m.nome}" em ${t.codigo}, mas o WhatsApp não foi: ${r.mensagem}`, erro: r.mensagem };
       tocar(t, agora);
       if (ator.tipo === 'pessoa' && !t.respondidoEm) t.respondidoEm = iso(agora);
+      contarAosObservadores(ator, t, `${ator.nome} mandou ao cliente, no ${t.codigo}: "${trechoDoAviso(texto.replace(/\s+/g, ' '), 140)}"`, agora);
     }
     registrarEvento(t.id, 'resposta_pronta', ator, { nome: m.nome }, e.quando());
     // cada passo é a mesma função da tela, um instante depois do anterior (o histórico fica na ordem)
@@ -1391,6 +1474,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const { t } = e;
     t.deletedAt = iso(agora); t.atualizadoEm = iso(agora);
     registrarEvento(t.id, 'lixeira', ator, { acao: 'mandou' }, e.quando());
+    contarAosObservadores(ator, t, `${ator.nome} mandou o ${t.codigo} para a lixeira`, agora);
     return { ...nada(t), resumo: `Mandou ${t.codigo} "${t.titulo}" para a lixeira` };
   }
 
@@ -1401,6 +1485,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!t.deletedAt) throw bad(`O ${t.codigo} não está na lixeira.`);
     t.deletedAt = null; t.atualizadoEm = iso(agora);
     registrarEvento(t.id, 'lixeira', ator, { acao: 'restaurou' }, e.quando());
+    contarAosObservadores(ator, t, `${ator.nome} tirou o ${t.codigo} da lixeira`, agora);
     return { ...nada(t), resumo: `Restaurou ${t.codigo} "${t.titulo}" da lixeira` };
   }
 
@@ -1419,14 +1504,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const para = painel ? etapaAoReabrir(painel.etapas) : null;
       if (para && (para.tipo === 'entrada' || para.tipo === 'andamento')) {
         registrarEvento(t.id, 'cliente_respondeu', ator, { texto: trecho(texto, 1000), reabriu: true }, new Date(agora.getTime() - 1));
-        reabrir(ator, t.id, { motivo: 'o cliente respondeu' }, agora);
-        avisarEquipe({ evento: 'cliente_respondeu', para: [t.responsavelId], chamado: curto(t), texto: `O cliente respondeu no ${t.codigo} e o chamado reabriu: "${trecho(texto, 120)}"` }, agora);
+        // (os observadores recebem um aviso só: o do cliente que respondeu, não o do "reabriu")
+        reabrir(ator, t.id, { motivo: 'o cliente respondeu' }, agora, { observadores: false });
+        const aviso = `O cliente respondeu no ${t.codigo} e o chamado reabriu: "${trecho(texto, 120)}"`;
+        avisarEquipe({ evento: 'cliente_respondeu', para: [t.responsavelId], chamado: curto(t), texto: aviso }, agora);
+        avisarObservadores({ chamado: curto(t), observadores: t.observadores, texto: aviso, jaAvisados: [t.responsavelId] }, agora);
         return;
       }
     }
     registrarEvento(t.id, 'cliente_respondeu', ator, { texto: trecho(texto, 1000), reabriu: false }, agora);
     tocar(t, agora);
-    avisarEquipe({ evento: 'cliente_respondeu', para: [t.responsavelId], chamado: curto(t), texto: `O cliente respondeu no ${t.codigo}: "${trecho(texto, 120)}"` }, agora);
+    const aviso = `O cliente respondeu no ${t.codigo}: "${trecho(texto, 120)}"`;
+    avisarEquipe({ evento: 'cliente_respondeu', para: [t.responsavelId], chamado: curto(t), texto: aviso }, agora);
+    avisarObservadores({ chamado: curto(t), observadores: t.observadores, texto: aviso, jaAvisados: [t.responsavelId] }, agora);
   }
 
   // =====================================================================
@@ -1508,6 +1598,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       registrarEvento(t.id, 'etapa', null, { de: etapaCurta(de), para: etapaCurta(para), motivo: null, sentido: null }, quando());
       registrarEvento(t.id, 'fechou_sozinho', null, { dias, etapa: de?.nome ?? 'Resolvido' }, quando());
       if (para.avisar.length) avisarEquipe({ evento: 'etapa', para: para.avisar, chamado: curto(t), texto: `${t.codigo} chegou em ${para.nome}` }, agora);
+      avisarObservadores({
+        chamado: curto(t), observadores: t.observadores, jaAvisados: para.avisar,
+        texto: `O ${t.codigo} fechou sozinho: ${dias} ${dias === 1 ? 'dia útil' : 'dias úteis'} no ${de?.nome ?? 'Resolvido'} sem resposta do cliente`,
+      }, agora);
       if (t.paiId) {
         const pai = A.chamados.find((x) => x.id === t.paiId && !x.deletedAt);
         if (pai?.responsavelId) avisarEquipe({ evento: 'etapa', tipo: 'pai', para: [pai.responsavelId], chamado: curto(pai), texto: `O filho ${t.codigo} do ${pai.codigo} foi fechado` }, agora);
@@ -1798,8 +1892,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ...esteCartao,
       relato: t.relato, descricao: t.descricao, solucao: t.solucao, causa: t.causa, contorno: t.contorno, validacao: t.validacao,
       motivoPrioridade: t.motivoPrioridade,
-      // sem a gravidade e o alcance no painel, não há sugestão (o que ficou guardado de antes não conta)
-      prioridadeSugerida: campoLigado(painel.ajustes, 'gravidadeAlcance') ? prioridadeSugerida(t.gravidade, t.alcance, A.prazos.matriz) : null,
+      // pelos campos do painel: sem o alcance, só a gravidade; sem a gravidade, nenhuma (como no servidor)
+      prioridadeSugerida: prioridadeSugeridaDoPainel(painel.ajustes, t.gravidade, t.alcance, A.prazos),
       sessaoId: t.sessaoId,
       conversaUrl: linkDaConversa(A.integ.linkConversa, t.sessaoId),
       checklist: t.checklist.map((i) => ({ ...i })),
@@ -1918,7 +2012,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return p;
   }
   /** O que pode ser pedido no painel agora: os campos do sistema que ele usa e os campos ativos dele. */
-  const obrigatoriosValidos = (p: PainelRow) => obrigatoriosDoPainel({ camposDesligados: p.ajustes.camposDesligados ?? [] }, camposDoPainel(p.id));
+  const obrigatoriosValidos = (p: PainelRow) => obrigatoriosDoPainel({ camposDesligados: p.ajustes.camposDesligados ?? AJUSTES_PAINEL_PADRAO.camposDesligados }, camposDoPainel(p.id));
   /** As regras das etapas sem o que não vale mais no painel; devolve os nomes das etapas que mudaram. */
   function limparRegrasDasEtapas(painelId: string, validos: Obrigatorio[]): string[] {
     const mudaram: string[] = [];
@@ -1944,7 +2038,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     const pessoas = unicos(d.pessoas);
     // os campos do sistema que o painel usa: sem a lista no pedido, ficam como estão (quem muda é a aba Campos)
-    const camposDesligados = d.ajustes.camposDesligados ?? atual?.ajustes.camposDesligados ?? [];
+    // sem a lista no pedido, ficam como estão; o painel novo nasce com o padrão (sem o alcance, por enquanto)
+    const camposDesligados = d.ajustes.camposDesligados ?? atual?.ajustes.camposDesligados ?? AJUSTES_PAINEL_PADRAO.camposDesligados;
     // o que pode ser pedido neste painel: o resto sai das regras
     const validos = obrigatoriosDoPainel({ camposDesligados }, atual ? camposDoPainel(atual.id) : []);
     const ajustes: AjustesDoPainel = {
@@ -2189,7 +2284,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   /** Liga e desliga os campos do sistema e grava as opções do Tipo (o que sai do painel sai das regras). */
   function salvarCamposDoSistema(painelId: string, d: ReturnType<typeof CamposDoSistemaSchema.parse>) {
     const p = linhaDoPainel(painelId);
-    const antes = { ...p.ajustes, camposDesligados: p.ajustes.camposDesligados ?? [] };
+    const antes = { ...p.ajustes, camposDesligados: p.ajustes.camposDesligados ?? AJUSTES_PAINEL_PADRAO.camposDesligados };
     const desligados = CAMPOS_DO_SISTEMA.filter((c) => d.desligados.includes(c));
     const campos = camposDoPainel(painelId);
     const igual = campos.find((x) => x.ativo && nomeDoSistemaIgual(x.nome, { camposDesligados: desligados }) && !nomeDoSistemaIgual(x.nome, antes));
@@ -2216,7 +2311,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
   /** O nome não repete (nem o de um campo que o chamado já tem); a opção que não veio fica desativada. */
   function conferirCampo(p: PainelRow, d: ReturnType<typeof CampoGravarSchema.parse>, atual: CampoPersonalizado | null): OpcaoDoCampo[] {
-    const doSistema = nomeDoSistemaIgual(d.nome, { camposDesligados: p.ajustes.camposDesligados ?? [] });
+    const doSistema = nomeDoSistemaIgual(d.nome, { camposDesligados: p.ajustes.camposDesligados ?? AJUSTES_PAINEL_PADRAO.camposDesligados });
     if (doSistema) throw conflito(`Todo chamado do painel ${p.nome} já tem o campo ${doSistema}: escolha outro nome.`);
     const igual = camposDoPainel(p.id).find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome));
     if (igual) throw conflito(`O painel ${p.nome} já tem o campo ${igual.nome}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
@@ -2390,8 +2485,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         id, nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, ordem: i, acesso: 'todos', pessoas: [],
         ajustes: {
           ...p.ajustes, tipos: [...p.ajustes.tipos], obrigatoriosAoAbrir: [...p.ajustes.obrigatoriosAoAbrir], supervisores: p.chave === 'suporte' ? [luan] : [],
-          // o Desenvolvimento não usa assunto nem operadora: no lugar, os campos dele (Ajustes › Campos)
-          camposDesligados: p.chave === 'desenvolvimento' ? [...DESLIGADOS_NO_DESENVOLVIMENTO] : [],
+          // o Desenvolvimento não usa assunto nem operadora: no lugar, os campos dele (Ajustes › Campos);
+          // nenhum dos dois usa o alcance, por enquanto
+          camposDesligados: p.chave === 'desenvolvimento' ? [...DESLIGADOS_NO_DESENVOLVIMENTO] : [...DESLIGADOS_NO_SUPORTE],
         },
         ativo: true, proximoNumero: 1, deletedAt: null,
       });
@@ -2619,15 +2715,16 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     volta(agora);
 
     // ---- o sininho: o que é antigo já foi lido ----
-    // O Luan vê os 5 de que mais precisa (o Crítico que chegou, o cliente que respondeu, o prazo perto,
-    // o chamado que recebeu e o que está sem dono); os outros, os 3 mais recentes.
+    // O Luan vê os 6 de que mais precisa (o Crítico que chegou, o cliente que respondeu, o prazo perto,
+    // o chamado que recebeu, o que está sem dono e a novidade de um chamado que ele observa); os outros,
+    // os 3 mais recentes.
     const porPessoa = new Map<string, AvisoRow[]>();
     for (const a of A.avisos) porPessoa.set(a.userId, [...(porPessoa.get(a.userId) ?? []), a]);
     for (const [userId, avisos] of porPessoa) {
       const novos = [...avisos].sort((a, b) => b.em.localeCompare(a.em));
       const manter = new Set<string>();
       if (userId === luan) {
-        for (const tipo of ['critico', 'cliente_respondeu', 'prazo_perto', 'sem_dono'] as TipoAviso[]) { const a = novos.find((x) => x.tipo === tipo); if (a) manter.add(a.id); }
+        for (const tipo of ['critico', 'cliente_respondeu', 'prazo_perto', 'sem_dono', 'observador'] as TipoAviso[]) { const a = novos.find((x) => x.tipo === tipo); if (a) manter.add(a.id); }
         const recebeu = novos.find((x) => x.tipo === 'recebeu' && x.texto.startsWith('Você recebeu')) ?? novos.find((x) => x.tipo === 'recebeu');
         if (recebeu) manter.add(recebeu.id);
       } else novos.slice(0, 3).forEach((a) => manter.add(a.id));

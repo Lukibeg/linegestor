@@ -6,7 +6,7 @@
  * leem os exemplos, depois os que abrem e mexem nos próprios chamados de teste.
  */
 import { describe, expect, it } from 'vitest';
-import { caminhoDoAssunto, mensagemDoQueFalta, prioridadeSugerida, type CartaoChamado } from '@gestor/shared';
+import { caminhoDoAssunto, mensagemDoQueFalta, prioridadeSugeridaDoPainel, type CartaoChamado } from '@gestor/shared';
 import { demoApi } from './demo.js';
 import { diagnosticoDosChamadosDemo } from './demo-atendimento.js';
 import { ApiError, type ChamadoCriarEntrada, type OpcoesAtendimento } from './types.js';
@@ -227,10 +227,10 @@ describe('os exemplos da prévia', () => {
     }
     expect(md.vencendo.length).toBeGreaterThan(0);
 
-    // o sininho do Luan: os cinco que ele precisa ver
+    // o sininho do Luan: os seis que ele precisa ver (um é a novidade de um chamado que ele observa)
     const av = await api.avisos();
-    expect(av.naoLidos).toBe(5);
-    expect(new Set(av.itens.filter((a) => !a.lido).map((a) => a.tipo))).toEqual(new Set(['critico', 'cliente_respondeu', 'prazo_perto', 'recebeu', 'sem_dono']));
+    expect(av.naoLidos).toBe(6);
+    expect(new Set(av.itens.filter((a) => !a.lido).map((a) => a.tipo))).toEqual(new Set(['critico', 'cliente_respondeu', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
     // quem fez a ação não é avisado: nenhum aviso do Luan sobre o que ele mesmo fez
     for (const a of av.itens.filter((x) => x.tipo === 'recebeu' && x.texto.startsWith('Você recebeu'))) {
       const f = await api.chamado(a.chamado!.codigo);
@@ -253,13 +253,17 @@ describe('as regras do servidor valem na prévia', () => {
 
     const maior = Math.max(...(await todosOsChamados()).filter((c) => c.painelId === sup.id).map((c) => c.numero));
     const base = await baseDoSuporte(op, 'Central sem receber ligações (teste)');
-    const sugerida = prioridadeSugerida('inoperancia', 'empresa', op.prazos.matriz)!;
+    // o Suporte não usa o alcance (por enquanto): a sugestão sai só da gravidade, e o alcance que vier fica de fora
+    expect(sup.ajustes.camposDesligados).toEqual(['alcance']);
+    const sugerida = prioridadeSugeridaDoPainel(sup.ajustes, 'inoperancia', 'empresa', op.prazos)!;
+    expect(sugerida).toBe(op.prazos.semAlcance.inoperancia);
     const r = await api.criar({ ...base, gravidade: 'inoperancia', alcance: 'empresa' });
     expect(r.codigo).toBe(`SUP-${maior + 1}`);
     const f = await api.chamado(r.codigo);
     expect(f.etapaId).toBe(etapa(op, 'SUP', 'Novo').id);
     expect(f.prioridade).toBe(sugerida);
     expect(f.prioridadeSugerida).toBe(sugerida);
+    expect(f.alcance).toBeNull();
     expect(f.motivoPrioridade).toBeNull();
     expect(f.criadoPor?.id).toBe(lucio.id);
     // quem abre na tela já está falando com o cliente: a abertura é a primeira resposta
@@ -505,7 +509,7 @@ describe('as regras do servidor valem na prévia', () => {
     await entrar('admin');
     let op = await api.opcoes();
     const dev = painel(op, 'DEV');
-    expect(dev.ajustes.camposDesligados).toEqual(['assunto', 'operadoras']);
+    expect(dev.ajustes.camposDesligados).toEqual(['assunto', 'alcance', 'operadoras']);
     expect(op.campos.filter((c) => c.painelId === dev.id).map((c) => c.nome)).toEqual(['Sistema', 'Como reproduzir', 'Versão publicada', 'Previsão de entrega']);
     // os chamados do Desenvolvimento têm o Sistema; nenhum mostra assunto
     const doDev = (await todosOsChamados()).filter((c) => c.painelId === dev.id);
@@ -602,6 +606,33 @@ describe('as regras do servidor valem na prévia', () => {
     expect((await erroDe(api.avisarCliente(semFone.id, 'Oi'))).message).toBe('O chamado não tem o WhatsApp do contato.');
     await entrar('admin');
     expect(await api.testarAvisos({ de: 'equipe' })).toEqual({ ok: true, mensagem: 'Prévia: nada foi enviado de verdade' });
+  }, DEMORA);
+
+  it('os observadores recebem toda atualização (como o servidor): abrir, anotar, mover e os campos juntos num aviso só', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const lucio = op.pessoas.find((p) => p.nome === 'Lúcio Andrade')!;
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Teste dos observadores')), observadores: [lucio.id] });
+    const f = await api.chamado(r.codigo);
+    expect(f.observadores.map((o) => o.id)).toEqual([lucio.id]);
+    await api.anotar(f.id, { texto: 'Conferi o cabo:\n está bom', anexos: [] });
+    await api.alterar(f.id, { descricao: 'O ramal 203 está mudo' });
+    await api.alterar(f.id, { solucao: 'Trocamos o cabo', etiquetas: ['cabo'] });
+    await api.mover(f.id, { etapaId: etapa(op, 'SUP', 'N1').id });
+    // um observador que não existe é recusado, como no servidor
+    expect((await erroDe(api.criar({ ...(await baseDoSuporte(op, 'Teste dos observadores 2')), observadores: ['nao-existe'] }))).message).toMatch(/^Um dos observadores escolhidos/);
+    await entrar('tecnico');
+    const textos = (await api.avisos()).itens.filter((a) => a.tipo === 'observador' && a.chamado?.codigo === r.codigo).map((a) => a.texto);
+    expect(textos).toHaveLength(4);
+    expect(textos).toEqual(expect.arrayContaining([
+      `Luan França pôs você como observador do ${r.codigo}`,
+      `Luan França anotou no ${r.codigo}: "Conferi o cabo: está bom"`,
+      `Luan França mudou no ${r.codigo}: Descrição · Solução · Etiquetas`,
+      `Luan França moveu o ${r.codigo} para N1`,
+    ]));
+    // quem fez não é avisado do que fez
+    await entrar('admin');
+    expect((await api.avisos()).itens.some((a) => a.tipo === 'observador' && a.chamado?.codigo === r.codigo)).toBe(false);
   }, DEMORA);
 
   it('as integrações: a chave nova aparece uma vez e não fica guardada', async () => {

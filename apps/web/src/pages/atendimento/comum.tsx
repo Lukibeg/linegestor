@@ -129,15 +129,19 @@ const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tam
   { to: '/atendimento/ajustes', label: 'Ajustes', so: 'cuidar' },
 ];
 
-/** O título "Chamados", as abas do módulo e o botão de abrir chamado (quem trabalha). */
 /**
  * O alto das telas do módulo, numa linha só: o nome, as abas e as ações (o pedido do Luan na prévia:
  * o alto ficava comprido e tomava o espaço dos cartões). No celular, as abas descem para a linha de
  * baixo. O `sub` (uma frase curta, como a do Meu dia) vem embaixo, só onde diz algo.
+ *
+ * `painelId`: a tela é de um painel (o quadro, a lista do painel). O "Abrir chamado" abre já nele, sem
+ * escolher outro (o pedido do Luan na prévia: "se eu estou dentro do painel de suporte, quero abrir no
+ * painel de suporte").
  */
-export function CabecalhoAtendimento({ sub, acoes }: { sub?: ReactNode; acoes?: ReactNode }) {
+export function CabecalhoAtendimento({ sub, acoes, painelId }: { sub?: ReactNode; acoes?: ReactNode; painelId?: string }) {
   const pode = usePode();
   const { pathname } = useLocation();
+  const abrir = painelId ? `/atendimento/novo?painel=${encodeURIComponent(painelId)}` : '/atendimento/novo';
   return (
     <div className="mb-3" id="cabecalho-chamados">
       <div className="flex flex-wrap items-center gap-x-4 shadow-[inset_0_-1px_0_var(--line)]">
@@ -149,7 +153,7 @@ export function CabecalhoAtendimento({ sub, acoes }: { sub?: ReactNode; acoes?: 
         </nav>
         <div className="ml-auto flex flex-wrap items-center gap-2 py-1.5">
           {acoes}
-          {pode.trabalhar && <Link to="/atendimento/novo" className="btn-primary"><Plus size={16} /> Abrir chamado</Link>}
+          {pode.trabalhar && <Link to={abrir} className="btn-primary" id="cabecalho-abrir-chamado"><Plus size={16} /> Abrir chamado</Link>}
         </div>
       </div>
       {sub && <div className="text-muted text-[13px] mt-2">{sub}</div>}

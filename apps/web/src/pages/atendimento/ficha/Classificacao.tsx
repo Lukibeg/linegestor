@@ -7,7 +7,7 @@
  * Luan.) O que o painel desligou na aba Campos não aparece; os campos que ele criou entram aqui (o
  * texto longo fica junto do relato).
  *
- * E o cartão do responsável e de quem acompanha o chamado.
+ * E o cartão do responsável e dos observadores (como no Helena: recebem os avisos de toda atualização).
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Plus, Tags, UserRound, X } from 'lucide-react';
@@ -91,8 +91,8 @@ export function Classificacao() {
           ) : <p className="text-[14px]">{f.tipo ?? <span className="text-muted">—</span>}</p>}
         </Linha>}
 
-        {/* a gravidade e o alcance, juntos, sugerem a prioridade (logo embaixo) */}
-        {usa('gravidadeAlcance') && <Linha id="campo-gravidade" campo="gravidade" rotulo="Gravidade" ocupado={grav.ocupado} erro={grav.erro}>
+        {/* a gravidade (e o alcance, no painel que o usa) sugere a prioridade (logo embaixo) */}
+        {usa('gravidade') && <Linha id="campo-gravidade" campo="gravidade" rotulo="Gravidade" ocupado={grav.ocupado} erro={grav.erro}>
           {pode ? (
             <select className="input" value={f.gravidade ?? ''} onChange={(e) => mudar(grav, { gravidade: (e.target.value || null) as Gravidade | null })} aria-label="Gravidade">
               <option value="">—</option>
@@ -102,7 +102,7 @@ export function Classificacao() {
           {f.gravidade && <p className="text-[12px] text-muted mt-1">{DICA_GRAVIDADE[f.gravidade]}</p>}
         </Linha>}
 
-        {usa('gravidadeAlcance') && <Linha id="campo-alcance" campo="alcance" rotulo="Alcance" ocupado={alc.ocupado} erro={alc.erro}>
+        {usa('alcance') && <Linha id="campo-alcance" campo="alcance" rotulo="Alcance" ocupado={alc.ocupado} erro={alc.erro}>
           {pode ? (
             <select className="input" value={f.alcance ?? ''} onChange={(e) => mudar(alc, { alcance: (e.target.value || null) as Alcance | null })} aria-label="Alcance">
               <option value="">—</option>
@@ -122,11 +122,11 @@ export function Classificacao() {
             </select>
           ) : <p className="text-[14px]">{f.prioridade ? NOME_PRIORIDADE[f.prioridade] : <span className="text-muted">—</span>}</p>}
           {f.prioridade && <p className="text-[12px] text-muted mt-1">{NOME_PRIORIDADE[f.prioridade]}: {DICA_PRIORIDADE[f.prioridade].toLocaleLowerCase('pt-BR')}.</p>}
-          {usa('gravidadeAlcance') && (
+          {usa('gravidade') && (
             <p className="text-[12px] text-muted mt-0.5">
               {sugerida
-                ? <>Sugerida: <b className="text-ink-2">{NOME_PRIORIDADE[sugerida]}</b>, pela gravidade e pelo alcance.</>
-                : 'Escolha a gravidade e o alcance para o Gestor sugerir a prioridade.'}
+                ? <>Sugerida: <b className="text-ink-2">{NOME_PRIORIDADE[sugerida]}</b>, {usa('alcance') ? 'pela gravidade e pelo alcance' : 'pela gravidade'}.</>
+                : usa('alcance') ? 'Escolha a gravidade e o alcance para o Gestor sugerir a prioridade.' : 'Escolha a gravidade para o Gestor sugerir a prioridade.'}
             </p>
           )}
           {f.motivoPrioridade && f.prioridade !== sugerida && (
@@ -145,7 +145,8 @@ export function Classificacao() {
 
 /** Trocar a prioridade sugerida pede o motivo: ele vai junto no pedido e fica embaixo da prioridade. */
 function JanelaMotivoPrioridade({ para, onFechar }: { para: Prioridade; onFechar: () => void }) {
-  const { f } = useAberta();
+  const { f, painel } = useAberta();
+  const comAlcance = !painel || campoLigado(painel.ajustes, 'alcance');
   const acao = useAcao();
   const [motivo, setMotivo] = useState('');
   const texto = useRef<HTMLTextAreaElement>(null);
@@ -161,7 +162,7 @@ function JanelaMotivoPrioridade({ para, onFechar }: { para: Prioridade; onFechar
         <button type="button" className="btn-primary" disabled={acao.ocupado} onClick={() => void trocar()}>{acao.ocupado ? <Spinner className="text-white" /> : 'Trocar a prioridade'}</button>
       </>}>
       <p className="text-sm text-ink-2 mb-3">
-        Pela gravidade e pelo alcance, o Gestor sugere <b>{f.prioridadeSugerida ? NOME_PRIORIDADE[f.prioridadeSugerida] : '—'}</b>. A prioridade muda o prazo do chamado; o motivo fica no histórico e embaixo da prioridade.
+        {comAlcance ? 'Pela gravidade e pelo alcance' : 'Pela gravidade'}, o Gestor sugere <b>{f.prioridadeSugerida ? NOME_PRIORIDADE[f.prioridadeSugerida] : '—'}</b>. A prioridade muda o prazo do chamado; o motivo fica no histórico e embaixo da prioridade.
       </p>
       <Campo label="Por que outra prioridade?">
         <textarea ref={texto} className="input min-h-[80px]" autoFocus maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)}
@@ -408,7 +409,7 @@ export function Responsavel() {
   const ativas = opcoes.pessoas.filter((p) => p.ativo);
   const opcoesPessoas = ativas.map((p) => ({ id: p.id, nome: p.nome }));
   const fora = ativas.filter((p) => !f.observadores.some((o) => o.id === p.id)).map((p) => ({ id: p.id, nome: p.nome }));
-  const acompanhar = (ids: string[], ok: string) => void obs.rodar(() => api.atendimento.alterar(f.id, { observadores: ids }), ok);
+  const observar = (ids: string[], ok: string) => void obs.rodar(() => api.atendimento.alterar(f.id, { observadores: ids }), ok);
   return (
     <Secao titulo="Responsável" icone={<UserRound size={16} />}>
       <Linha id="campo-responsavel" campo="responsavel" rotulo="Quem está com o chamado" ocupado={resp.ocupado} erro={resp.erro}>
@@ -424,10 +425,10 @@ export function Responsavel() {
       </Linha>
 
       <div className="mt-3.5">
-        <Linha id="campo-observadores" campo="observadores" rotulo="Quem acompanha" ocupado={obs.ocupado} erro={obs.erro}
+        <Linha id="campo-observadores" campo="observadores" rotulo="Observadores" ocupado={obs.ocupado} erro={obs.erro}
           extra={pode && fora.length > 0 && (
-            <EscolherComBusca valor="" opcoes={fora} rotulo="Incluir quem acompanha" procurar="Procurar pessoa…"
-              onChange={(id) => { const p = ativas.find((x) => x.id === id); if (p) acompanhar([...f.observadores.map((o) => o.id), id], `${p.nome} passou a acompanhar`); }}
+            <EscolherComBusca valor="" opcoes={fora} rotulo="Incluir observador" procurar="Procurar pessoa…"
+              onChange={(id) => { const p = ativas.find((x) => x.id === id); if (p) observar([...f.observadores.map((o) => o.id), id], `${p.nome} passou a observar`); }}
               gatilho={(abrir) => <button type="button" className="btn-ghost btn-sm -my-1 text-[12.5px]" onClick={abrir}><Plus size={13} /> Incluir</button>} />
           )}>
           {f.observadores.length ? (
@@ -435,12 +436,13 @@ export function Responsavel() {
               {f.observadores.map((o) => (
                 <li key={o.id} className="chip bg-surface-2 text-ink-2 font-medium">
                   <Avatar nome={o.nome} tamanho={16} /> {o.nome}{eu?.id === o.id ? ' (você)' : ''}
-                  {pode && <button type="button" className="text-muted hover:text-bad -mr-0.5" disabled={obs.ocupado} aria-label={`Tirar ${o.nome} de quem acompanha`}
-                    onClick={() => acompanhar(f.observadores.filter((x) => x.id !== o.id).map((x) => x.id), `${o.nome} deixou de acompanhar`)}><X size={12} /></button>}
+                  {pode && <button type="button" className="text-muted hover:text-bad -mr-0.5" disabled={obs.ocupado} aria-label={`Tirar ${o.nome} dos observadores`}
+                    onClick={() => observar(f.observadores.filter((x) => x.id !== o.id).map((x) => x.id), `${o.nome} deixou de observar`)}><X size={12} /></button>}
                 </li>
               ))}
             </ul>
-          ) : <p className="text-[13px] text-muted">Ninguém. Quem acompanha vê o chamado no Meu dia.</p>}
+          ) : null}
+          <p className="text-[12px] text-muted mt-1">{f.observadores.length ? 'Recebem' : 'Ninguém. Os observadores recebem'} os avisos de tudo o que acontece no chamado (anotação, etapa, responsável, espera) e o veem no Meu dia.</p>
         </Linha>
       </div>
     </Secao>

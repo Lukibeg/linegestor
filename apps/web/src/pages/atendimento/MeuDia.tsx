@@ -1,7 +1,7 @@
 /**
  * Chamados › Meu dia (Patch 1.10, decisão 0047): a primeira tela do módulo. O que é da pessoa hoje,
  * sem precisar filtrar nada: o que está vencendo, os seus em aberto, os sem dono na fila (com o
- * Assumir ali mesmo), os que esperam o cliente, os que ela acompanha e os agendados que nascem hoje.
+ * Assumir ali mesmo), os que esperam o cliente, os que ela observa e os agendados que nascem hoje.
  *
  * Os números de cima levam para a lista já filtrada (o "Vencendo" desce até a seção: ele junta os
  * seus e os sem dono, e a lista não tem esse filtro). Relê a cada minuto, porque o prazo anda.
@@ -153,8 +153,8 @@ export function MeuDia() {
                 vazio="Nenhum chamado seu esperando o cliente.">
                 <Cartoes itens={d.esperandoCliente} render={cartao} estreita />
               </Secao>
-              <Secao id="meudia-acompanhando" titulo="Acompanhando" icone={<Eye size={16} aria-hidden />} n={d.observando.length}
-                vazio="Os chamados que você acompanha, mesmo sem ser o responsável, aparecem aqui.">
+              <Secao id="meudia-acompanhando" titulo="Observando" icone={<Eye size={16} aria-hidden />} n={d.observando.length}
+                vazio="Os chamados que você observa, mesmo sem ser o responsável, aparecem aqui (e os avisos deles chegam no sininho).">
                 <Cartoes itens={d.observando} render={cartao} estreita />
               </Secao>
             </div>

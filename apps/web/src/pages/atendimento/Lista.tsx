@@ -122,7 +122,7 @@ export function ListaDeChamados() {
 
   return (
     <div>
-      <CabecalhoAtendimento acoes={opcoes.data && <Exportar filtros={filtros} ordem={pedidoDeOrdem} opcoes={opcoes.data} />} />
+      <CabecalhoAtendimento painelId={painel?.id} acoes={opcoes.data && <Exportar filtros={filtros} ordem={pedidoDeOrdem} opcoes={opcoes.data} />} />
       {opcoes.isLoading ? <Carregando /> : opcoes.isError ? (
         <div className="card p-4 text-sm" role="alert"><p className="text-bad">{mensagemErro(opcoes.error)}</p><button className="btn-secondary btn-sm mt-2" onClick={() => void opcoes.refetch()}>Tentar de novo</button></div>
       ) : (

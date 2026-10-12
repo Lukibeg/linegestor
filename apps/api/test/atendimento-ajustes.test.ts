@@ -329,14 +329,16 @@ describe('os campos de cada painel (o painel sem assuntos, com os campos dele)',
         { nome: 'Entregue', tipo: 'resolvido' }, { nome: 'Fechado', tipo: 'fechado' },
       ],
     }))).json();
-    const r = await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['operadoras', 'assunto'], tipos: ['Correção', 'Melhoria', 'correção'] });
+    // o painel novo nasce sem o alcance ("não precisa desse alcance por enquanto")
+    expect(p.ajustes.camposDesligados).toEqual(['alcance']);
+    const r = await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['operadoras', 'alcance', 'assunto'], tipos: ['Correção', 'Melhoria', 'correção'] });
     expect(r.statusCode, r.body).toBe(200);
-    expect(r.json().ajustes).toMatchObject({ camposDesligados: ['assunto', 'operadoras'], tipos: ['Correção', 'Melhoria'], obrigatoriosAoAbrir: ['relato'] });
+    expect(r.json().ajustes).toMatchObject({ camposDesligados: ['assunto', 'alcance', 'operadoras'], tipos: ['Correção', 'Melhoria'], obrigatoriosAoAbrir: ['relato'] });
     expect(r.json().etapas[1].obrigatorios).toEqual(['cliente']);
     expect(await auditoria()).toContain('Mudou os campos do painel Projetos: desligou Assunto e Operadoras (deixou de ser pedido em: para abrir e Fazendo); as opções do Tipo ficaram Correção, Melhoria');
     // a janela do painel (sem a lista dos desligados) não liga de novo, nem devolve o que não vale às regras
     const janela = await s.put(`/atendimento/paineis/${p.id}`, painel({ nome: 'Projetos', sigla: 'PRJ', ajustes: { tipos: ['Correção', 'Melhoria'], obrigatoriosAoAbrir: ['assunto', 'relato'] } }));
-    expect(janela.json().ajustes).toMatchObject({ camposDesligados: ['assunto', 'operadoras'], obrigatoriosAoAbrir: ['relato'] });
+    expect(janela.json().ajustes).toMatchObject({ camposDesligados: ['assunto', 'alcance', 'operadoras'], obrigatoriosAoAbrir: ['relato'] });
     // o assunto e a operadora que vierem ficam de fora (o robô e o n8n não travam por isso)
     const [assuntoDoSup] = await app.db.select().from(ticketSubjects).limit(1);
     const t = await abrirCom({ relato: 'Trava acima de 10 mil linhas', assuntoId: assuntoDoSup?.id ?? null, operadoras: ['qualquer'] });

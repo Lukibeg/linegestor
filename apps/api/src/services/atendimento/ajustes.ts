@@ -18,7 +18,7 @@ import type { z } from 'zod';
 import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { newId, ticketFields, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
 import {
-  ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, ehLista, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas,
+  AJUSTES_PAINEL_PADRAO, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, ehLista, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas,
   lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
   obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
   type AjustesDoPainel, type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type CampoDoSistema,
@@ -130,8 +130,10 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
       : `A sigla ${sigla} já é de outro painel.`);
   }
   const pessoas = unicos(d.pessoas);
-  // os campos do sistema que o painel usa: sem a lista no pedido, ficam como estão (quem muda é a aba Campos)
-  const camposDesligados = d.ajustes.camposDesligados ?? (atual ? ajustesDoPainelCompletos(atual.settings as Partial<AjustesDoPainel>).camposDesligados : []);
+  // os campos do sistema que o painel usa: sem a lista no pedido, ficam como estão (quem muda é a aba
+  // Campos); o painel novo nasce com o padrão (sem o alcance, "por enquanto")
+  const camposDesligados = d.ajustes.camposDesligados
+    ?? (atual ? ajustesDoPainelCompletos(atual.settings as Partial<AjustesDoPainel>).camposDesligados : AJUSTES_PAINEL_PADRAO.camposDesligados);
   // o que pode ser pedido neste painel (os campos do sistema ligados e os campos dele): o resto sai das regras
   const validos = obrigatoriosDoPainel({ camposDesligados }, atual ? await carregarCampos(db, atual.id) : []);
   const ajustes: AjustesDoPainel = {
@@ -544,7 +546,7 @@ export async function colarAssuntos(app: FastifyInstance, painelId: string, text
 const campoParaAuditoria = (c: CampoPersonalizado) => ({ nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.opcoes, ativo: c.ativo });
 
 /**
- * Liga e desliga os campos do sistema no painel (o Assunto, o Tipo, a Gravidade e o alcance, os
+ * Liga e desliga os campos do sistema no painel (o Assunto, o Tipo, a Gravidade, o Alcance, os
  * Produtos, as Operadoras) e grava as opções do Tipo. O que deixa de existir no painel sai das regras
  * (para abrir e de cada etapa) na mesma transação: um campo desligado nunca trava um chamado. O valor
  * que os chamados já tinham fica guardado (volta se o campo for ligado de novo).
@@ -706,7 +708,7 @@ export async function ordenarCampos(app: FastifyInstance, painelId: string, ids:
 
 export { lerPrazos };
 
-/** Grava o horário, os feriados (em ordem de data), os prazos por prioridade e a matriz da prioridade sugerida. */
+/** Grava o horário, os feriados (em ordem de data), os prazos por prioridade e a prioridade sugerida (a matriz e a coluna "só a gravidade"). */
 export async function gravarPrazos(app: FastifyInstance, d: AjustesPrazos, userId: string): Promise<Gravado<AjustesPrazos>> {
   const antes = await lerPrazos(app.db);
   const novo: AjustesPrazos = { ...d, calendario: { ...d.calendario, feriados: [...d.calendario.feriados].sort((a, b) => a.data.localeCompare(b.data)) } };
@@ -717,7 +719,7 @@ export async function gravarPrazos(app: FastifyInstance, d: AjustesPrazos, userI
     mudou(antes.calendario.horario, depois.calendario.horario) ? 'o horário de atendimento' : '',
     mudou(antes.calendario.feriados, depois.calendario.feriados) ? 'os feriados' : '',
     mudou(antes.prazos, depois.prazos) ? 'os prazos por prioridade' : '',
-    mudou(antes.matriz, depois.matriz) ? 'a prioridade sugerida' : '',
+    mudou(antes.matriz, depois.matriz) || mudou(antes.semAlcance, depois.semAlcance) ? 'a prioridade sugerida' : '',
     antes.alertaPercentual !== depois.alertaPercentual ? `o aviso de prazo (${depois.alertaPercentual}%)` : '',
     antes.semDonoMinutos !== depois.semDonoMinutos ? `o aviso de sem responsável (${depois.semDonoMinutos} min)` : '',
   ].filter(Boolean);

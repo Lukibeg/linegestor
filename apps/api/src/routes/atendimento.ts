@@ -171,7 +171,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.post('/chamados/:id/resposta-pronta', { ...trabalhar, schema: { tags, summary: 'Usar uma resposta pronta: manda o texto e muda o chamado de uma vez', params: Id, body: AplicarRespostaSchema } },
     async (req) => fichaDepois(req, await svc.usarResposta(app, ator(req), req.params.id, req.body)));
 
-  app.post('/chamados/:id/observar', { ...trabalhar, schema: { tags, summary: 'Acompanhar (ou deixar de acompanhar) o chamado', params: Id, body: ObservarSchema } },
+  app.post('/chamados/:id/observar', { ...trabalhar, schema: { tags, summary: 'Observar (ou deixar de observar) o chamado: quem observa recebe os avisos de toda atualização', params: Id, body: ObservarSchema } },
     async (req) => fichaDepois(req, await svc.observar(app, ator(req), req.params.id, req.body.observar)));
 
   // ---------- a lixeira (quem cuida dos chamados) ----------

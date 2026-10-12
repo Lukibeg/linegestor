@@ -27,7 +27,7 @@ import {
 import {
   caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, diaLocal, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas,
   faltaParaAbrir, faltaParaEtapa, filhosQueTravam, lerCamposDoPedido, mensagemDoQueFalta, mesmoValorDoCampo, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO,
-  NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, preencherModelo, prioridadeSugerida, situacaoDaEtapa, textoDoValor,
+  NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, preencherModelo, prioridadeSugeridaDoPainel, situacaoDaEtapa, textoDoValor,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos,
@@ -35,7 +35,7 @@ import {
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
 import { lerConteudo } from '../projects.js';
 import { tipoDaImagem } from '../portal.js';
-import { avisarEquipe } from './avisos.js';
+import { avisarEquipe, avisarObservadores, trecho } from './avisos.js';
 import {
   camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, exigirTrabalhar, integracaoDoAtor, pessoaCurta, pessoaDoAtor, podeCuidar, podeVerPainel,
   registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
@@ -84,6 +84,14 @@ async function carregar(app: FastifyInstance, ator: Ator, ref: string, opts: { l
 
 const nada = (t: Pick<LinhaChamado, 'id' | 'code' | 'title'>): Feito => ({ id: t.id, codigo: t.code, titulo: t.title, resumo: null });
 const curto = (t: Pick<LinhaChamado, 'id' | 'code' | 'title'>) => ({ id: t.id, codigo: t.code, titulo: t.title });
+
+type ParaObservar = Pick<LinhaChamado, 'id' | 'code' | 'title' | 'watcherIds'>;
+/** Os observadores recebem o que aconteceu (quem fez, não). */
+const contarAosObservadores = (app: FastifyInstance, ator: Ator, t: ParaObservar, texto: string) =>
+  avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, texto, menos: pessoaDoAtor(ator) });
+/** ...e o que mudou nele (num aviso só, enquanto não for lido). */
+const camposAosObservadores = (app: FastifyInstance, ator: Ator, t: ParaObservar, nomes: string[]) =>
+  avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, menos: pessoaDoAtor(ator), campos: { quem: ator.nome, nomes } });
 const etapaCurta = (e: EtapaPainel | null) => (e ? { id: e.id, nome: e.nome, nivel: e.nivel } : null);
 
 // ---------- os nomes legíveis (o histórico mostra o que a pessoa vê na tela, não o id) ----------
@@ -226,14 +234,15 @@ export async function criarChamado(
   // o assunto (do mesmo painel, ativo) traz o checklist dele; o tipo é uma opção do painel
   const assunto = d.assuntoId && usa('assunto') ? conferirAssunto(ctx, d.assuntoId, painel) : null;
   const tipo = usa('tipo') ? conferirTipo(d.tipo, painel) : null;
-  const gravidade = usa('gravidadeAlcance') ? d.gravidade ?? null : null;
-  const alcance = usa('gravidadeAlcance') ? d.alcance ?? null : null;
+  const gravidade = usa('gravidade') ? d.gravidade ?? null : null;
+  const alcance = usa('alcance') ? d.alcance ?? null : null;
   const checklist = [...(assunto?.checklist ?? []).map((x) => itemNovo(x, true)), ...(opts.checklistExtra ?? []).map((x) => itemNovo(x, false))];
   const campos: ValoresDosCampos = {};
   for (const i of lerCampos(ctx, painel, d.campos ?? {})) if (i.valor !== null) campos[i.campo.id] = i.valor;
 
-  // 4. a prioridade: sem escolha, a sugerida (gravidade × alcance); trocar a sugerida pede o motivo
-  const sugerida = prioridadeSugerida(gravidade, alcance, ctx.prazos.matriz);
+  // 4. a prioridade: sem escolha, a sugerida (gravidade × alcance; no painel sem o alcance, só a
+  // gravidade); trocar a sugerida pede o motivo
+  const sugerida = prioridadeSugeridaDoPainel(painel.ajustes, gravidade, alcance, ctx.prazos);
   const prioridade = d.prioridade ?? sugerida;
   const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
   const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
@@ -257,6 +266,8 @@ export async function criarChamado(
   await conferirProdutos(db, produtos);
   conferirOperadoras(ctx, operadoras);
   if (d.responsavelId) conferirPessoa(ctx, d.responsavelId);
+  const observadores = unicos(d.observadores ?? []);
+  for (const id of observadores) conferirPessoa(ctx, id, 'Um dos observadores escolhidos');
   const pai = d.paiId ? await outroChamado(db, d.paiId, ator, ctx) : null;
   const problema = d.problemaId ? await outroChamado(db, d.problemaId, ator, ctx) : null;
   if (problema && problema.kind !== 'problema') throw new BadRequest(`${problema.code} não é um problema.`);
@@ -285,7 +296,7 @@ export async function criarChamado(
       sessionId: d.sessaoId ?? null, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
       productIds: produtos, carrierIds: operadoras, tags: etiquetasUnicas(d.etiquetas ?? []), customFields: campos,
-      parentId: pai?.id ?? null, problemId: problema?.id ?? null, checklist,
+      parentId: pai?.id ?? null, problemId: problema?.id ?? null, checklist, watcherIds: observadores,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       firstResponseAt: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? agora : null,
       lastActivityAt: agora, scheduleId: opts.agendadoId ?? null, createdById: pessoa, createdAt: agora, updatedAt: agora,
@@ -316,6 +327,8 @@ export async function criarChamado(
   const chamado = { id: criado.id, codigo: criado.codigo, titulo: d.titulo };
   if (d.responsavelId) await avisarEquipe(app, { evento: 'recebeu', para: [d.responsavelId], chamado, texto: `Você recebeu o chamado ${criado.codigo}`, menos: pessoa });
   if (prioridade === 'critica') await avisarEquipe(app, { evento: 'critico', para: painel.ajustes.supervisores, chamado, texto: `Chegou um chamado Crítico: ${criado.codigo}`, menos: pessoa });
+  // quem foi posto como observador fica sabendo (e, dali em diante, recebe toda atualização)
+  await avisarObservadores(app, { chamado, observadores, texto: `${ator.nome} pôs você como observador do ${criado.codigo}`, menos: pessoa, jaAvisados: [d.responsavelId] });
 
   // 12. o número do chamado ao cliente (o chamado fica criado mesmo se o WhatsApp não for)
   let aviso: { ok: boolean; mensagem: string } | undefined;
@@ -347,7 +360,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   const d: ChamadoAlterar = {
     ...pedido,
     ...(usa('assunto') ? {} : { assuntoId: undefined }), ...(usa('tipo') ? {} : { tipo: undefined }),
-    ...(usa('gravidadeAlcance') ? {} : { gravidade: undefined, alcance: undefined }),
+    ...(usa('gravidade') ? {} : { gravidade: undefined }), ...(usa('alcance') ? {} : { alcance: undefined }),
     ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
   };
   const set: SetChamado = {};
@@ -400,17 +413,17 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     if (novo !== t.type) { set.type = novo; campo('tipo', NOME_CAMPO.tipo, t.type, novo, t.type); }
   }
 
-  // a gravidade, o alcance e a prioridade (que pode seguir a sugestão); sem a gravidade e o alcance no
-  // painel, não há sugestão (o que ficou guardado de antes não conta)
-  const g0 = usa('gravidadeAlcance') ? (t.severity as Gravidade | null) ?? null : null;
-  const a0 = usa('gravidadeAlcance') ? (t.reach as Alcance | null) ?? null : null;
+  // a gravidade, o alcance e a prioridade (que pode seguir a sugestão); o campo que o painel não usa não
+  // conta na sugestão (o que ficou guardado de antes não vale): sem o alcance, a sugestão é só a da gravidade
+  const g0 = usa('gravidade') ? (t.severity as Gravidade | null) ?? null : null;
+  const a0 = usa('alcance') ? (t.reach as Alcance | null) ?? null : null;
   const p0 = (t.priority as Prioridade | null) ?? null;
   const g1 = d.gravidade !== undefined ? d.gravidade : g0;
   const a1 = d.alcance !== undefined ? d.alcance : a0;
   if (g1 !== g0) { set.severity = g1; campo('gravidade', NOME_CAMPO.gravidade, g0 ? NOME_GRAVIDADE[g0] : null, g1 ? NOME_GRAVIDADE[g1] : null, g0); }
   if (a1 !== a0) { set.reach = a1; campo('alcance', NOME_CAMPO.alcance, a0 ? NOME_ALCANCE[a0] : null, a1 ? NOME_ALCANCE[a1] : null, a0); }
-  const sug0 = prioridadeSugerida(g0, a0, ctx.prazos.matriz);
-  const sug1 = prioridadeSugerida(g1, a1, ctx.prazos.matriz);
+  const sug0 = prioridadeSugeridaDoPainel(painel.ajustes, g0, a0, ctx.prazos);
+  const sug1 = prioridadeSugeridaDoPainel(painel.ajustes, g1, a1, ctx.prazos);
   let p1 = p0;
   let motivo: string | null = t.priorityReason;
   if (d.prioridade !== undefined && d.prioridade !== p0) {
@@ -481,11 +494,13 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     const novas = etiquetasUnicas(d.etiquetas);
     if (novas.join('\n') !== t.tags.join('\n')) { set.tags = novas; campo('etiquetas', NOME_ETIQUETAS, juntar(t.tags), juntar(novas), t.tags); }
   }
+  let observadoresNovos: string[] = [];
   if (d.observadores !== undefined) {
     const novos = unicos(d.observadores);
     for (const id of novos.filter((x) => !t.watcherIds.includes(x))) conferirPessoa(ctx, id, 'Um dos observadores escolhidos');
     if (!mesmoConjunto(novos, t.watcherIds)) {
       set.watcherIds = novos;
+      observadoresNovos = novos.filter((x) => !t.watcherIds.includes(x));
       campo('observadores', NOME_OBSERVADORES, nomesPessoas(ctx, t.watcherIds), nomesPessoas(ctx, novos), t.watcherIds);
     }
   }
@@ -514,7 +529,19 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   });
 
   const titulo = set.title ?? t.title;
-  if (recebeu) await avisarEquipe(app, { evento: 'recebeu', para: [recebeu], chamado: { id: t.id, codigo: t.code, titulo }, texto: `Você recebeu o chamado ${t.code}`, menos: pessoaDoAtor(ator) });
+  const chamado = { id: t.id, codigo: t.code, titulo };
+  const menos = pessoaDoAtor(ator);
+  if (recebeu) await avisarEquipe(app, { evento: 'recebeu', para: [recebeu], chamado, texto: `Você recebeu o chamado ${t.code}`, menos });
+  // os observadores: quem entrou fica sabendo; os outros recebem o que mudou (o responsável, num aviso
+  // próprio; os campos, juntos num aviso só enquanto não for lido)
+  if (observadoresNovos.length) await avisarObservadores(app, { chamado, observadores: observadoresNovos, texto: `${ator.nome} pôs você como observador do ${t.code}`, menos, jaAvisados: [recebeu] });
+  const observadores = (set.watcherIds ?? t.watcherIds).filter((x) => !observadoresNovos.includes(x));
+  if (set.assigneeId !== undefined) {
+    const texto = set.assigneeId ? `${ator.nome} passou o ${t.code} para ${pessoaCurta(ctx, set.assigneeId)?.nome ?? 'outra pessoa'}` : `${ator.nome} deixou o ${t.code} sem responsável`;
+    await avisarObservadores(app, { chamado, observadores, texto, menos, jaAvisados: [recebeu] });
+  }
+  const camposMudados = nomes.filter((n) => n !== NOME_OBSERVADORES && n !== NOME_CAMPO.responsavel);
+  if (camposMudados.length) await avisarObservadores(app, { chamado, observadores, menos, campos: { quem: ator.nome, nomes: camposMudados } });
   emitir(app, 'chamado.alterado', t.id, { mudancas });
   const { updatedAt: _u, lastActivityAt: _l, ...depois } = set;
   return { id: t.id, codigo: t.code, titulo, resumo: `Alterou ${t.code} "${titulo}": ${nomes.join(', ')}`, antes, depois };
@@ -532,6 +559,8 @@ type Movimento = {
   reabriu: boolean;
   /** quem passou a ser o responsável neste movimento (para o aviso "recebeu") */
   novoResponsavel: string | null;
+  /** o nome dele (para o aviso dos observadores) */
+  nomeDoNovoResponsavel: string | null;
 };
 
 /**
@@ -579,15 +608,22 @@ async function gravarMovimento(
   await registrarEvento(tx, t.id, 'etapa', ator, { de: etapaCurta(e.etapa), para: etapaCurta(para), motivo: o.motivo, sentido: o.sentido }, e.quando());
   if (reabriu) await registrarEvento(tx, t.id, 'reaberto', ator, { motivo: o.motivoReabriu !== undefined ? o.motivoReabriu : o.motivo }, e.quando());
   if (trocaResponsavel) await registrarEvento(tx, t.id, 'responsavel', ator, { de: pessoaCurta(e.ctx, t.assigneeId), para: pessoaCurta(e.ctx, o.responsavelId) }, e.quando());
-  return { de: e.etapa, para, antes, depois, reabriu, novoResponsavel: trocaResponsavel ? o.responsavelId ?? null : null };
+  return {
+    de: e.etapa, para, antes, depois, reabriu, novoResponsavel: trocaResponsavel ? o.responsavelId ?? null : null,
+    nomeDoNovoResponsavel: trocaResponsavel && o.responsavelId ? pessoaCurta(e.ctx, o.responsavelId)?.nome ?? null : null,
+  };
 }
 
-/** Depois de gravado: quem a etapa avisa, quem recebeu, o pai (quando um filho fecha) e os webhooks. */
-async function depoisDoMovimento(app: FastifyInstance, ator: Ator, t: LinhaChamado, m: Movimento, extra: Record<string, unknown> = {}) {
+/** Depois de gravado: quem a etapa avisa, quem recebeu, os observadores, o pai (quando um filho fecha) e os webhooks. */
+async function depoisDoMovimento(app: FastifyInstance, ator: Ator, t: LinhaChamado, m: Movimento, extra: Record<string, unknown> = {}, opts: { observadores?: boolean } = {}) {
   const menos = pessoaDoAtor(ator);
   const chamado = curto(t);
   if (m.para.avisar.length) await avisarEquipe(app, { evento: 'etapa', para: m.para.avisar, chamado, texto: `${t.code} chegou em ${m.para.nome}`, menos });
   if (m.novoResponsavel) await avisarEquipe(app, { evento: 'recebeu', para: [m.novoResponsavel], chamado, texto: `Você recebeu o chamado ${t.code}`, menos });
+  const painel = extra.painel as { para?: { nome: string } } | undefined;
+  const onde = painel?.para ? `para o painel ${painel.para.nome} (${m.para.nome})` : `para ${m.para.nome}`;
+  const texto = `${ator.nome} ${m.reabriu ? `reabriu o ${t.code} (${m.para.nome})` : `${painel?.para ? 'passou' : 'moveu'} o ${t.code} ${onde}`}${m.nomeDoNovoResponsavel ? `, com ${m.nomeDoNovoResponsavel}` : ''}`;
+  if (opts.observadores !== false) await avisarObservadores(app, { chamado, observadores: t.watcherIds, texto, menos, jaAvisados: [...m.para.avisar, m.novoResponsavel] });
   if (m.depois === 'fechado' && m.antes !== 'fechado' && t.parentId) {
     const [pai] = await app.db.select({ id: tickets.id, code: tickets.code, title: tickets.title, assigneeId: tickets.assigneeId }).from(tickets)
       .where(and(eq(tickets.id, t.parentId), isNull(tickets.deletedAt))).limit(1);
@@ -658,6 +694,7 @@ export async function assumir(app: FastifyInstance, ator: Ator, ref: string, opt
     return null;
   });
   if (m) await depoisDoMovimento(app, ator, t, m);
+  else await avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, texto: `${ator.nome} assumiu o ${t.code}`, menos: ator.id });
   if (trocaResponsavel) emitir(app, 'chamado.alterado', t.id, { mudancas: ['responsavelId'] });
   return { ...nada(t), resumo: `Assumiu ${t.code}${para ? ` (foi para ${para.nome})` : ''}` };
 }
@@ -693,11 +730,14 @@ export async function esperar(app: FastifyInstance, ator: Ator, ref: string, d: 
     await tx.update(tickets).set({ waits: lista, updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
     await registrarEvento(tx, t.id, 'espera', ator, dados, e.quando());
   });
+  const texto = d.tipo ? `${ator.nome} marcou o ${t.code}: ${NOME_ESPERA[d.tipo].toLocaleLowerCase('pt-BR')} (${motivo})` : `${ator.nome} tirou a marca de espera do ${t.code}`;
+  await avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, texto, menos: pessoaDoAtor(ator) });
   return { ...nada(t), resumo };
 }
 
 /** Só o resolvido ou fechado reabre: vai para a etapa escolhida (de entrada ou andamento) ou a primeira de andamento. */
-export async function reabrir(app: FastifyInstance, ator: Ator, ref: string, d: { motivo?: string | null; etapaId?: string | null }): Promise<Feito> {
+/** `observadores: false`: quem chama avisa os observadores do jeito dele (o cliente que respondeu e reabriu). */
+export async function reabrir(app: FastifyInstance, ator: Ator, ref: string, d: { motivo?: string | null; etapaId?: string | null }, opts: { observadores?: boolean } = {}): Promise<Feito> {
   exigirTrabalhar(ator);
   const e = await carregar(app, ator, ref);
   const { t, painel } = e;
@@ -713,7 +753,7 @@ export async function reabrir(app: FastifyInstance, ator: Ator, ref: string, d: 
   const motivo = d.motivo?.trim() || null;
   const destino = para;
   const m = await app.db.transaction((tx) => gravarMovimento(tx, e, ator, destino, { motivo: null, sentido: null, motivoReabriu: motivo }));
-  await depoisDoMovimento(app, ator, t, m);
+  await depoisDoMovimento(app, ator, t, m, {}, opts);
   if (t.assigneeId) await avisarEquipe(app, { evento: 'recebeu', para: [t.assigneeId], chamado: curto(t), texto: `O ${t.code} foi reaberto`, menos: pessoaDoAtor(ator) });
   return { ...nada(t), resumo: `Reabriu ${t.code} (foi para ${destino.nome})${motivo ? `: ${motivo}` : ''}` };
 }
@@ -782,6 +822,11 @@ export async function anotar(app: FastifyInstance, ator: Ator, ref: string, d: {
     await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora, ...(ator.tipo === 'pessoa' && !t.firstResponseAt ? { firstResponseAt: agora } : {}) }).where(eq(tickets.id, t.id));
   });
   emitir(app, 'chamado.anotacao', t.id, { anotacao: { texto, por: ator.nome } });
+  const comAnexo = guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : '';
+  await avisarObservadores(app, {
+    chamado: curto(t), observadores: t.watcherIds, menos: pessoa,
+    texto: texto ? `${ator.nome} anotou no ${t.code}${comAnexo}: "${trecho(texto.replace(/\s+/g, ' '), 140)}"` : `${ator.nome} anexou ${plural(guardar.length, 'arquivo', 'arquivos')} no ${t.code}`,
+  });
   return {
     ...nada(t),
     resumo: `Anotou em ${t.code}${guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : ''}`,
@@ -834,6 +879,8 @@ export async function ligar(app: FastifyInstance, ator: Ator, ref: string, d: { 
     await registrarEvento(tx, outro.id, 'ligacao', ator, { acao: 'ligou', tipo: d.tipo, com: t.code, texto: nome.para }, e.quando());
     await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(inArray(tickets.id, [t.id, outro.id]));
   });
+  await camposAosObservadores(app, ator, t, ['Ligações']);
+  await camposAosObservadores(app, ator, outro, ['Ligações']);
   return { ...nada(t), resumo: `Ligou ${t.code} a ${outro.code} (${nome.de} ${outro.code})` };
 }
 
@@ -854,6 +901,7 @@ export async function desligar(app: FastifyInstance, ator: Ator, ref: string, li
     if (outro) await registrarEvento(tx, outro.id, 'ligacao', ator, { acao: 'desligou', tipo, com: t.code, texto: deste ? nome.para : nome.de }, e.quando());
     await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(inArray(tickets.id, [t.id, outroId]));
   });
+  await camposAosObservadores(app, ator, t, ['Ligações']);
   return { ...nada(t), resumo: `Desligou ${t.code} de ${outro?.code ?? '?'}` };
 }
 
@@ -895,6 +943,7 @@ export async function definirPai(app: FastifyInstance, ator: Ator, ref: string, 
       await registrarEvento(tx, t.id, 'pai', ator, { acao: 'tirou', pai: antigo?.code ?? '?' }, e.quando());
       if (antigo) await registrarEvento(tx, antigo.id, 'filho', ator, { acao: 'tirou', filho: t.code }, e.quando());
     });
+    await camposAosObservadores(app, ator, t, ['Pai']);
     return { ...nada(t), resumo: `Tirou ${t.code} de filho de ${antigo?.code ?? '?'}` };
   }
   const pai = await outroChamado(app.db, paiRef, ator, e.ctx);
@@ -909,6 +958,8 @@ export async function definirPai(app: FastifyInstance, ator: Ator, ref: string, 
     await registrarEvento(tx, pai.id, 'filho', ator, { acao: 'ligou', filho: t.code, painel: e.painel.nome }, e.quando());
     await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, pai.id));
   });
+  await camposAosObservadores(app, ator, t, ['Pai']);
+  await camposAosObservadores(app, ator, pai, ['Filhos']);
   return { ...nada(t), resumo: `Pôs ${t.code} como filho de ${pai.code}` };
 }
 
@@ -925,6 +976,7 @@ export async function definirProblema(app: FastifyInstance, ator: Ator, ref: str
       await registrarEvento(tx, t.id, 'problema', ator, { acao: 'tirou', problema: antigo?.code ?? '?' }, e.quando());
       if (antigo) await registrarEvento(tx, antigo.id, 'incidente', ator, { acao: 'tirou', incidente: t.code }, e.quando());
     });
+    await camposAosObservadores(app, ator, t, ['Problema']);
     return { ...nada(t), resumo: `Tirou ${t.code} do problema ${antigo?.code ?? '?'}` };
   }
   const problema = await outroChamado(app.db, problemaRef, ator, e.ctx);
@@ -938,6 +990,8 @@ export async function definirProblema(app: FastifyInstance, ator: Ator, ref: str
     await registrarEvento(tx, problema.id, 'incidente', ator, { acao: 'ligou', incidente: t.code }, e.quando());
     await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, problema.id));
   });
+  await camposAosObservadores(app, ator, t, ['Problema']);
+  await camposAosObservadores(app, ator, problema, ['Incidentes']);
   return { ...nada(t), resumo: `Ligou ${t.code} ao problema ${problema.code}` };
 }
 
@@ -978,6 +1032,7 @@ export async function mexerNoChecklist(app: FastifyInstance, ator: Ator, ref: st
     await tx.update(tickets).set({ checklist: lista, updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
     await registrarEvento(tx, t.id, 'checklist', ator, dados, e.quando());
   });
+  await camposAosObservadores(app, ator, t, ['Checklist']);
   return { ...nada(t), resumo };
 }
 
@@ -993,6 +1048,7 @@ export async function registrarTempo(app: FastifyInstance, ator: Ator, ref: stri
     await registrarEvento(tx, t.id, 'tempo', ator, { minutos: d.minutos, duracao: duracaoDoPrazo(d.minutos), nota }, e.quando());
     await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
   });
+  await camposAosObservadores(app, ator, t, ['Tempo gasto']);
   return { ...nada(t), resumo: `Registrou ${duracaoDoPrazo(d.minutos)} de trabalho em ${t.code}${dia !== diaLocal(agora) ? ` (no dia ${dia})` : ''}` };
 }
 
@@ -1056,6 +1112,7 @@ export async function abrirNaOperadora(
       await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
     }
   });
+  await contarAosObservadores(app, ator, t, `${ator.nome} abriu o protocolo ${protocolo} na ${nome} para o ${t.code}`);
   return { ...nada(t), resumo: `Abriu o protocolo ${protocolo} na ${nome} para ${t.code}` };
 }
 
@@ -1084,16 +1141,19 @@ export async function andamentoNaOperadora(app: FastifyInstance, ator: Ator, ref
     }
     await tx.update(tickets).set(set).where(eq(tickets.id, t.id));
   });
+  await contarAosObservadores(app, ator, t, acao === 'fechou'
+    ? `${ator.nome} fechou o protocolo ${c.protocol} da ${c.carrierName} no ${t.code}`
+    : `${ator.nome} cobrou a ${c.carrierName} (protocolo ${c.protocol}) no ${t.code}`);
   return {
     ...nada(t),
     resumo: acao === 'fechou' ? `Fechou o protocolo ${c.protocol} da ${c.carrierName} em ${t.code}` : `Cobrou a ${c.carrierName} (protocolo ${c.protocol}) em ${t.code}`,
   };
 }
 
-/** Acompanhar o chamado sem ser o responsável (os avisos na tela chegam para quem acompanha). */
+/** Observar o chamado sem ser o responsável: os avisos de toda atualização chegam para quem observa (como no Helena). */
 export async function observar(app: FastifyInstance, ator: Ator, ref: string, acompanhar: boolean): Promise<Feito> {
   exigirTrabalhar(ator);
-  if (ator.tipo !== 'pessoa') throw new BadRequest('Só uma pessoa acompanha um chamado.');
+  if (ator.tipo !== 'pessoa') throw new BadRequest('Só uma pessoa observa um chamado.');
   const e = await carregar(app, ator, ref);
   const { t, agora } = e;
   if (t.watcherIds.includes(ator.id) === acompanhar) return nada(t);
@@ -1102,7 +1162,7 @@ export async function observar(app: FastifyInstance, ator: Ator, ref: string, ac
     await tx.update(tickets).set({ watcherIds: lista, updatedAt: agora }).where(eq(tickets.id, t.id));
     await registrarEvento(tx, t.id, 'observador', ator, { acao: acompanhar ? 'entrou' : 'saiu' }, e.quando());
   });
-  return { ...nada(t), resumo: `${acompanhar ? 'Passou a acompanhar' : 'Deixou de acompanhar'} ${t.code}` };
+  return { ...nada(t), resumo: `${acompanhar ? 'Passou a observar' : 'Deixou de observar'} ${t.code}` };
 }
 
 // =====================================================================
@@ -1121,6 +1181,7 @@ export async function avisarCliente(app: FastifyInstance, ator: Ator, ref: strin
   const r = await mandarAoCliente(app, ator, t, texto.trim(), e.quando());
   if (!r.ok) return { ...nada(t), resumo: `Tentou avisar o cliente de ${t.code} pelo WhatsApp, mas não foi: ${r.mensagem}`, erro: r.mensagem };
   await app.db.update(tickets).set({ updatedAt: agora, lastActivityAt: agora, ...(ator.tipo === 'pessoa' && !t.firstResponseAt ? { firstResponseAt: agora } : {}) }).where(eq(tickets.id, t.id));
+  await contarAosObservadores(app, ator, t, `${ator.nome} mandou ao cliente, no ${t.code}: "${trecho(texto.trim().replace(/\s+/g, ' '), 140)}"`);
   return { ...nada(t), resumo: `Avisou o cliente de ${t.code} pelo WhatsApp`, depois: { texto } };
 }
 
@@ -1157,6 +1218,7 @@ export async function usarResposta(app: FastifyInstance, ator: Ator, ref: string
     const r = await mandarAoCliente(app, ator, t, texto, e.quando());
     if (!r.ok) return { ...nada(t), resumo: `Tentou usar a resposta pronta "${m.name}" em ${t.code}, mas o WhatsApp não foi: ${r.mensagem}`, erro: r.mensagem };
     await app.db.update(tickets).set({ updatedAt: e.agora, lastActivityAt: e.agora, ...(ator.tipo === 'pessoa' && !t.firstResponseAt ? { firstResponseAt: e.agora } : {}) }).where(eq(tickets.id, t.id));
+    await contarAosObservadores(app, ator, t, `${ator.nome} mandou ao cliente, no ${t.code}: "${trecho(texto.replace(/\s+/g, ' '), 140)}"`);
   }
   await registrarEvento(app.db, t.id, 'resposta_pronta', ator, { nome: m.name }, e.quando());
   if (!acao.avisarCliente && texto) await anotar(app, ator, t.id, { texto, anexos: [] });
@@ -1185,6 +1247,7 @@ export async function mandarParaLixeira(app: FastifyInstance, ator: Ator, ref: s
     await tx.update(tickets).set({ deletedAt: agora, updatedAt: agora }).where(eq(tickets.id, t.id));
     await registrarEvento(tx, t.id, 'lixeira', ator, { acao: 'mandou' }, e.quando());
   });
+  await contarAosObservadores(app, ator, t, `${ator.nome} mandou o ${t.code} para a lixeira`);
   return { ...nada(t), resumo: `Mandou ${t.code} "${t.title}" para a lixeira` };
 }
 
@@ -1197,6 +1260,7 @@ export async function restaurar(app: FastifyInstance, ator: Ator, ref: string): 
     await tx.update(tickets).set({ deletedAt: null, updatedAt: agora }).where(eq(tickets.id, t.id));
     await registrarEvento(tx, t.id, 'lixeira', ator, { acao: 'restaurou' }, e.quando());
   });
+  await contarAosObservadores(app, ator, t, `${ator.nome} tirou o ${t.code} da lixeira`);
   return { ...nada(t), resumo: `Restaurou ${t.code} "${t.title}" da lixeira` };
 }
 
@@ -1215,6 +1279,6 @@ export async function moverChamado(app: FastifyInstance, ator: Ator, ref: string
 export async function anotarChamado(app: FastifyInstance, ator: Ator, ref: string, d: { texto: string; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<void> {
   await anotar(app, ator, ref, d);
 }
-export async function reabrirChamado(app: FastifyInstance, ator: Ator, ref: string, d: { motivo?: string | null; etapaId?: string | null }): Promise<void> {
-  await reabrir(app, ator, ref, d);
+export async function reabrirChamado(app: FastifyInstance, ator: Ator, ref: string, d: { motivo?: string | null; etapaId?: string | null }, opts: { observadores?: boolean } = {}): Promise<void> {
+  await reabrir(app, ator, ref, d, opts);
 }

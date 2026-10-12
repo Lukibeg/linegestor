@@ -24,7 +24,7 @@ import {
   type Assunto, type CartaoChamado, type ChamadoAlterar, type Painel, type SituacaoDoChamado, type TipoCampo, type ValorDoCampo,
 } from '@gestor/shared';
 import { BadRequest, Unauthorized } from '../../plugins/errors.js';
-import { avisarEquipe, linkDoChamado } from './avisos.js';
+import { avisarEquipe, avisarObservadores, linkDoChamado, trecho } from './avisos.js';
 import { alterarChamado, anotarChamado, criarChamado, moverChamado, reabrirChamado } from './chamados.js';
 import { camposDoPainel, carregarContexto, carregarPaineis, cartoesDe, chamadoOu404, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
 
@@ -215,7 +215,6 @@ async function chamadoDoContato(db: Db, m: { sessaoId?: string; fone: string | n
 /** Até onde o texto do cliente vai para o histórico e para o aviso (a conversa inteira está no LineChat). */
 const NO_HISTORICO = 1000;
 const NO_AVISO = 120;
-const trecho = (t: string, max: number) => (t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t);
 
 export type ResultadoMensagem = { acao: 'reaberto' | 'registrado' | 'ignorado'; codigo?: string; id?: string };
 
@@ -248,15 +247,20 @@ async function responderNoChamado(app: FastifyInstance, ator: Ator, t: LinhaCham
       // primeiro o que o cliente disse, depois o "reabriu" (o histórico lê na ordem em que aconteceu): um
       // milésimo antes, porque o reabrir marca a hora dele em seguida e o mesmo milésimo embaralharia a ordem
       await registrarEvento(app.db, t.id, 'cliente_respondeu', ator, { texto, reabriu: true }, new Date(Date.now() - 1));
-      await reabrirChamado(app, ator, t.id, { motivo: 'o cliente respondeu' });
-      await avisarEquipe(app, { evento: 'cliente_respondeu', para: [t.assigneeId], chamado, texto: `O cliente respondeu no ${t.code} e o chamado reabriu: "${trecho(texto, NO_AVISO)}"` });
+      // (os observadores recebem um aviso só: o do cliente que respondeu, não o do "reabriu")
+      await reabrirChamado(app, ator, t.id, { motivo: 'o cliente respondeu' }, { observadores: false });
+      const aviso = `O cliente respondeu no ${t.code} e o chamado reabriu: "${trecho(texto, NO_AVISO)}"`;
+      await avisarEquipe(app, { evento: 'cliente_respondeu', para: [t.assigneeId], chamado, texto: aviso });
+      await avisarObservadores(app, { chamado, observadores: t.watcherIds, texto: aviso, jaAvisados: [t.assigneeId] });
       return { acao: 'reaberto', ...feito };
     }
     // (um painel sem etapa para reabrir: a resposta fica registrada, como num aberto)
   }
   await registrarEvento(app.db, t.id, 'cliente_respondeu', ator, { texto, reabriu: false });
   await tocar(app.db, t.id);
-  await avisarEquipe(app, { evento: 'cliente_respondeu', para: [t.assigneeId], chamado, texto: `O cliente respondeu no ${t.code}: "${trecho(texto, NO_AVISO)}"` });
+  const aviso = `O cliente respondeu no ${t.code}: "${trecho(texto, NO_AVISO)}"`;
+  await avisarEquipe(app, { evento: 'cliente_respondeu', para: [t.assigneeId], chamado, texto: aviso });
+  await avisarObservadores(app, { chamado, observadores: t.watcherIds, texto: aviso, jaAvisados: [t.assigneeId] });
   return { acao: 'registrado', ...feito };
 }
 

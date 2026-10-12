@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Bell, CheckCheck, GitBranch, Hourglass, Inbox, MessageSquare, Siren, TriangleAlert, UserX, type LucideIcon } from 'lucide-react';
+import { ArrowRight, Bell, CheckCheck, Eye, GitBranch, Hourglass, Inbox, MessageSquare, Siren, TriangleAlert, UserX, type LucideIcon } from 'lucide-react';
 import type { AvisoNaTela } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { haQuanto, useAbrirChamado } from './comum.js';
@@ -18,6 +18,8 @@ const ICONE: Record<AvisoNaTela['tipo'], { Icone: LucideIcon; cor: string }> = {
   recebeu: { Icone: Inbox, cor: 'text-accent' }, etapa: { Icone: ArrowRight, cor: 'text-accent' }, prazo_perto: { Icone: Hourglass, cor: 'text-signal' },
   prazo_vencido: { Icone: TriangleAlert, cor: 'text-bad' }, sem_dono: { Icone: UserX, cor: 'text-signal' }, critico: { Icone: Siren, cor: 'text-bad' },
   cliente_respondeu: { Icone: MessageSquare, cor: 'text-ok' }, pai: { Icone: GitBranch, cor: 'text-muted' },
+  // o chamado que a pessoa observa (como no Helena: toda atualização)
+  observador: { Icone: Eye, cor: 'text-roxo' },
 };
 
 const LUGAR_DA_LISTA = {

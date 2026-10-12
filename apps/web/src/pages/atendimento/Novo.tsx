@@ -22,7 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, X } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
-  caminhoDoAssunto, campoLigado, chaveDoCampo, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp, paraBusca, prioridadeSugerida,
+  caminhoDoAssunto, campoLigado, chaveDoCampo, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel,
   valorPreenchido,
   type Alcance, type CadastroDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
   type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo,
@@ -72,6 +72,8 @@ type Form = {
   operadoras: string[];
   /** '' = ninguém (o chamado fica na fila da entrada) */
   responsavelId: string;
+  /** quem observa: recebe os avisos de toda atualização (como no Helena) */
+  observadores: string[];
   etiquetas: string[];
   avisarCliente: boolean;
   /** os campos do painel (pelo id do campo) */
@@ -117,10 +119,18 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
   const refPai = sp.get('pai')?.trim() || undefined;
   const refIncidente = sp.get('incidente')?.trim() || undefined;
   const pedidoPainel = sp.get('painel')?.trim() ?? '';
+  /** o painel do endereço (pelo id ou pela sigla) */
+  const painelDoEndereco = pedidoPainel ? paineis.find((p) => p.id === pedidoPainel || p.sigla === pedidoPainel.toUpperCase()) : undefined;
+  /**
+   * Aberto de dentro de um painel (o "Abrir chamado" do quadro e da lista), o chamado é dele: não há
+   * painel para escolher (o pedido do Luan na prévia). O filho (?pai=) escolhe, porque pode nascer em
+   * outro painel (o Desenvolvimento ajudando o Suporte).
+   */
+  const painelFixo = !!painelDoEndereco && !refPai;
 
   const [f, setF] = useState<Form>(() => {
     const fone = sp.get('telefone')?.trim() ?? '';
-    const painel = paineis.find((p) => p.id === pedidoPainel || p.sigla === pedidoPainel.toUpperCase()) ?? paineis[0]!;
+    const painel = painelDoEndereco ?? paineis[0]!;
     const eu = user && opcoes.pessoas.some((p) => p.id === user.id && p.ativo) ? user.id : '';
     return {
       painelId: painel.id,
@@ -133,6 +143,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       assuntoId: '', tipo: '', gravidade: null, alcance: null, prioridade: null, motivoPrioridade: '',
       produtos: [], operadoras: [],
       responsavelId: eu,
+      observadores: [],
       etiquetas: [],
       avisarCliente: false,
       campos: {},
@@ -140,7 +151,6 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
   });
   const mudar = (o: Partial<Form>) => { setF((x) => ({ ...x, ...o })); setMexeu(true); };
   const [mexeu, setMexeu] = useState(false);
-  const [descricaoAberta, setDescricaoAberta] = useState(false);
   const [erro, setErro] = useState('');
   /** os campos que o servidor disse que faltam (ficam marcados até a pessoa mexer de novo) */
   const [faltando, setFaltando] = useState<Set<string>>(new Set());
@@ -178,7 +188,8 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
   const assunto = assuntosDoPainel.find((a) => a.id === f.assuntoId);
 
   // ---------- a prioridade sugerida ----------
-  const sugerida = usa('gravidadeAlcance') ? prioridadeSugerida(f.gravidade, f.alcance, opcoes.prazos.matriz) : null;
+  // pelos campos que o painel usa: com o alcance, a matriz; sem ele, só a gravidade (Ajustes › Prazos)
+  const sugerida = prioridadeSugeridaDoPainel(painel.ajustes, f.gravidade, f.alcance, opcoes.prazos);
   const prioridadeFinal = f.prioridade ?? sugerida;
   const precisaMotivo = !!f.prioridade && !!sugerida && f.prioridade !== sugerida;
 
@@ -236,8 +247,8 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       // o que o painel desligou não vai (o servidor também não guardaria)
       assuntoId: usa('assunto') ? f.assuntoId || null : null,
       tipo: usa('tipo') ? f.tipo || null : null,
-      gravidade: usa('gravidadeAlcance') ? f.gravidade : null,
-      alcance: usa('gravidadeAlcance') ? f.alcance : null,
+      gravidade: usa('gravidade') ? f.gravidade : null,
+      alcance: usa('alcance') ? f.alcance : null,
       prioridade: f.prioridade,
       motivoPrioridade: precisaMotivo ? f.motivoPrioridade.trim() : null,
       produtos: usa('produtos') ? f.produtos : [],
@@ -245,6 +256,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       campos: Object.fromEntries(camposDoPainel.filter((c) => valorPreenchido(f.campos[c.id])).map((c) => [c.id, f.campos[c.id]!])),
       etiquetas: f.etiquetas,
       responsavelId: f.responsavelId || null,
+      observadores: f.observadores,
       paiId: pai.data?.id ?? null,
       incidentes: f.tipoChamado === 'problema' && incidente.data ? [incidente.data.id] : [],
       avisarCliente: podeAvisar && f.avisarCliente,
@@ -304,7 +316,8 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
         const alvo = e.target as HTMLElement;
         if (alvo.tagName === 'INPUT' && (alvo as HTMLInputElement).type !== 'checkbox') e.preventDefault();
       }}>
-      <CabecalhoAtendimento sub="Abrir chamado: o que o cliente contou, de quem é e quem cuida." />
+      <CabecalhoAtendimento painelId={painelFixo ? painel.id : undefined}
+        sub={painelFixo ? `Abrir chamado no painel ${painel.nome}: o que o cliente contou, de quem é e quem cuida.` : 'Abrir chamado: o que o cliente contou, de quem é e quem cuida.'} />
 
       <div className="grid grid-cols-1 gap-4 max-w-4xl">
         {/* de onde veio: a conversa do LineChat, o pai, o incidente */}
@@ -334,17 +347,24 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
         <Secao titulo="Onde">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
             <Rotulado rotulo="Painel" id="novo-painel" grupo>
-              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Painel" id="novo-painel">
-                {paineis.map((p) => {
-                  const ativo = p.id === painel.id;
-                  return (
-                    <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => trocarPainel(p.id)}
-                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
-                      <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
-                    </button>
-                  );
-                })}
-              </div>
+              {painelFixo ? (
+                // aberto de dentro do painel: ele é o painel do chamado, sem outra opção
+                <p className="flex items-center gap-2 py-1.5 text-[14px] font-semibold text-ink" id="novo-painel" data-fixo="">
+                  <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip> {painel.nome}
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Painel" id="novo-painel">
+                  {paineis.map((p) => {
+                    const ativo = p.id === painel.id;
+                    return (
+                      <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => trocarPainel(p.id)}
+                        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+                        <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </Rotulado>
             <Rotulado rotulo="Registro" id="novo-registro" grupo>
               <Segmentos<TipoChamado> id="novo-registro" rotulo="Registro" valor={f.tipoChamado} onChange={(v) => mudar({ tipoChamado: v })}
@@ -385,17 +405,11 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
               <textarea className="input min-h-[96px]" id="novo-relato" value={f.relato} maxLength={20_000}
                 onChange={(e) => { mudar({ relato: e.target.value }); tirarFalta('relato'); }} />
             </Rotulado>
-            {descricaoAberta || pede('descricao') || f.descricao ? (
-              <Rotulado rotulo="Descrição" id="novo-descricao" obrigatorio={pede('descricao')} falta={falta('descricao')} dica="O que já foi feito e os dados técnicos (ramal, número, IP, horário).">
-                <textarea className="input min-h-[84px]" id="novo-descricao" value={f.descricao} maxLength={20_000} autoFocus={descricaoAberta && !f.descricao}
-                  onChange={(e) => { mudar({ descricao: e.target.value }); tirarFalta('descricao'); }} />
-              </Rotulado>
-            ) : (
-              <button type="button" id="novo-incluir-descricao" className="justify-self-start inline-flex items-start gap-1.5 rounded-lg px-2 py-1 -ml-2 text-left text-[13px] font-semibold text-ink-2 hover:bg-surface-2 hover:text-ink"
-                onClick={() => setDescricaoAberta(true)}>
-                <Plus size={14} className="mt-0.5 shrink-0" /> <span>Incluir a descrição <span className="text-muted font-normal">(opcional: o que já foi feito, dados técnicos)</span></span>
-              </button>
-            )}
+            {/* a descrição está sempre aqui (o pedido do Luan na prévia: "sempre vai ter a descrição") */}
+            <Rotulado rotulo="Descrição" id="novo-descricao" obrigatorio={pede('descricao')} falta={falta('descricao')} dica="O que já foi feito e os dados técnicos (ramal, número, IP, horário).">
+              <textarea className="input min-h-[84px]" id="novo-descricao" value={f.descricao} maxLength={20_000}
+                onChange={(e) => { mudar({ descricao: e.target.value }); tirarFalta('descricao'); }} />
+            </Rotulado>
           </div>
         </Secao>
 
@@ -424,7 +438,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
               )}
             </div>}
 
-            {usa('gravidadeAlcance') && <Rotulado rotulo="Gravidade" id="novo-gravidade" grupo obrigatorio={pede('gravidade')} falta={falta('gravidade')}>
+            {usa('gravidade') && <Rotulado rotulo="Gravidade" id="novo-gravidade" grupo obrigatorio={pede('gravidade')} falta={falta('gravidade')}>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Gravidade" id="novo-gravidade">
                 {GRAVIDADES.map((g) => {
                   const ativa = f.gravidade === g;
@@ -439,7 +453,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
               </div>
             </Rotulado>}
 
-            {usa('gravidadeAlcance') && <Rotulado rotulo="Alcance" id="novo-alcance" grupo obrigatorio={pede('alcance')} falta={falta('alcance')} dica="Quantos o problema atinge no cliente.">
+            {usa('alcance') && <Rotulado rotulo="Alcance" id="novo-alcance" grupo obrigatorio={pede('alcance')} falta={falta('alcance')} dica="Quantos o problema atinge no cliente.">
               <Segmentos<Alcance | ''> id="novo-alcance" rotulo="Alcance" valor={f.alcance ?? ''} desmarcavel onChange={(v) => { mudar({ alcance: v || null }); tirarFalta('alcance'); }}
                 opcoes={ALCANCES.map((a) => ({ id: a, nome: NOME_ALCANCE[a] }))} />
             </Rotulado>}
@@ -448,8 +462,9 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
               <div className="rounded-lg border border-line bg-surface-2 p-3 flex flex-col gap-2" id="novo-prioridade">
                 <div className="text-[13px] text-ink-2" aria-live="polite">
                   {sugerida
-                    ? <>Sugerida: <b className="text-ink">{NOME_PRIORIDADE[sugerida]}</b> <span className="text-muted">({NOME_GRAVIDADE[f.gravidade!]} × {NOME_ALCANCE[f.alcance!].toLowerCase()})</span></>
-                    : <span className="text-muted">{usa('gravidadeAlcance') ? 'Escolha a gravidade e o alcance: o Gestor sugere a prioridade. Ou escolha direto.' : 'Escolha a prioridade (ela define o prazo).'}</span>}
+                    ? <>Sugerida: <b className="text-ink">{NOME_PRIORIDADE[sugerida]}</b> <span className="text-muted">({usa('alcance') && f.alcance ? `${NOME_GRAVIDADE[f.gravidade!]} × ${NOME_ALCANCE[f.alcance].toLowerCase()}` : `pela gravidade: ${NOME_GRAVIDADE[f.gravidade!]}`})</span></>
+                    : <span className="text-muted">{!usa('gravidade') ? 'Escolha a prioridade (ela define o prazo).'
+                      : usa('alcance') ? 'Escolha a gravidade e o alcance: o Gestor sugere a prioridade. Ou escolha direto.' : 'Escolha a gravidade: o Gestor sugere a prioridade. Ou escolha direto.'}</span>}
                 </div>
                 <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Prioridade">
                   {PRIORIDADES.map((p) => {
@@ -514,7 +529,12 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
               <EscolherComBusca valor={f.responsavelId} onChange={(v) => { mudar({ responsavelId: v }); tirarFalta('responsavel'); }} opcoes={opcoesResponsavel}
                 vazio="Ninguém (fica na fila)" procurar="Procurar pessoa…" className="input w-full" id="novo-responsavel" rotulo="Responsável" />
             </Rotulado>
-            <Rotulado rotulo="Etiquetas" id="novo-etiquetas">
+            {/* os observadores (o pedido do Luan na prévia: como no Helena, recebem toda atualização do chamado) */}
+            <Rotulado rotulo="Observadores" id="novo-observadores" grupo dica="Recebem os avisos de tudo o que acontece no chamado: anotação, etapa, responsável, espera.">
+              <EscolherVarios id="novo-observadores" rotulo="observador" valor={f.observadores} onChange={(v) => mudar({ observadores: v })}
+                doCliente={[]} catalogo={pessoas.map((p) => ({ id: p.id, nome: p.nome, dica: p.id === user?.id ? 'você' : undefined }))} />
+            </Rotulado>
+            <Rotulado rotulo="Etiquetas" id="novo-etiquetas" className="sm:col-span-2">
               <CampoEtiquetas id="novo-etiquetas" valor={f.etiquetas} sugestoes={opcoes.etiquetas} onChange={(v) => mudar({ etiquetas: v })} />
             </Rotulado>
           </div>
@@ -756,7 +776,7 @@ function EscolherVarios({ id, rotulo, valor, onChange, doCliente, catalogo }: {
   const nomes = new Map([...catalogo, ...doCliente].map((o) => [o.id, o.nome]));
   const doClienteIds = new Set(doCliente.map((o) => o.id));
   const sugeridos = doCliente.filter((o) => !valor.includes(o.id));
-  const resto: OpcaoBusca[] = catalogo.filter((o) => !valor.includes(o.id)).map((o) => ({ ...o, dica: doClienteIds.has(o.id) ? 'do cliente' : undefined }));
+  const resto: OpcaoBusca[] = catalogo.filter((o) => !valor.includes(o.id)).map((o) => ({ ...o, dica: doClienteIds.has(o.id) ? 'do cliente' : o.dica }));
   return (
     <div className="flex flex-wrap items-center gap-1.5 min-h-[38px]" id={id}>
       {valor.map((v) => (
@@ -784,7 +804,10 @@ function EscolherVarios({ id, rotulo, valor, onChange, doCliente, catalogo }: {
   );
 }
 
-/** As etiquetas: digita e Enter (ou vírgula); as já usadas aparecem como sugestão. */
+/**
+ * As etiquetas: as já usadas aparecem para pôr com um clique, e uma nova se cria aqui mesmo (o pedido
+ * do Luan na prévia): digita o nome e clica em Criar (ou Enter, ou vírgula).
+ */
 function CampoEtiquetas({ id, valor, sugestoes, onChange }: { id: string; valor: string[]; sugestoes: string[]; onChange: (v: string[]) => void }) {
   const [t, setT] = useState('');
   const somar = (texto: string) => {
@@ -795,17 +818,31 @@ function CampoEtiquetas({ id, valor, sugestoes, onChange }: { id: string; valor:
   const ja = new Set(valor.map((v) => paraBusca(v)));
   const b = paraBusca(t);
   const achadas = sugestoes.filter((s) => !ja.has(paraBusca(s)) && (!b || paraBusca(s).includes(b))).slice(0, 8);
+  // o que está escrito: uma etiqueta nova, uma já usada (pôr) ou uma que o chamado já tem
+  const escrito = t.trim();
+  const jaTem = !!escrito && ja.has(paraBusca(escrito));
+  const usada = !!escrito && sugestoes.some((s) => paraBusca(s) === paraBusca(escrito));
+  const cheio = valor.length >= 20;
   return (
     <div>
-      <div className="input flex flex-wrap items-center gap-1.5 py-1.5 min-h-[40px]">
-        {valor.map((e) => (
-          <span key={e} className="chip bg-surface-2 text-ink-2 font-medium">{e}<button type="button" onClick={() => onChange(valor.filter((x) => x !== e))} aria-label={`Tirar a etiqueta ${e}`} className="hover:opacity-70"><X size={12} /></button></span>
-        ))}
-        <input className="flex-1 min-w-[120px] bg-transparent outline-none text-sm py-0.5" id={id} autoComplete="off" value={t} maxLength={40}
-          placeholder={valor.length ? '' : 'digite e aperte Enter'}
-          onChange={(e) => setT(e.target.value)} onBlur={() => t.trim() && somar(t)}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); somar(t); } else if (e.key === 'Backspace' && !t && valor.length) onChange(valor.slice(0, -1)); }} />
+      <div className="flex items-start gap-1.5">
+        {/* a caixa inteira acende quando o campo de dentro está em foco (o campo não ganha a borda própria) */}
+        <div className="input flex flex-1 flex-wrap items-center gap-1.5 py-1.5 min-h-[40px] min-w-0 focus-within:border-accent">
+          {valor.map((e) => (
+            <span key={e} className="chip bg-surface-2 text-ink-2 font-medium max-w-full"><span className="break-words">{e}</span><button type="button" onClick={() => onChange(valor.filter((x) => x !== e))} aria-label={`Tirar a etiqueta ${e}`} className="hover:opacity-70"><X size={12} /></button></span>
+          ))}
+          <input className="flex-1 min-w-[120px] bg-transparent outline-none focus-visible:outline-none text-sm py-0.5" id={id} autoComplete="off" value={t} maxLength={40} disabled={cheio}
+            placeholder={cheio ? 'no máximo 20 etiquetas' : valor.length ? 'outra etiqueta' : 'Nova etiqueta, ou uma já usada'}
+            onChange={(e) => setT(e.target.value)} onBlur={() => t.trim() && somar(t)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); somar(t); } else if (e.key === 'Backspace' && !t && valor.length) onChange(valor.slice(0, -1)); }} />
+        </div>
+        {/* o clique não tira o foco antes de somar (senão o onBlur soma primeiro e o botão some) */}
+        <button type="button" className="btn-secondary h-10 shrink-0" id={`${id}-criar`} disabled={!escrito || jaTem || cheio}
+          onMouseDown={(e) => e.preventDefault()} onClick={() => somar(t)} title={jaTem ? 'O chamado já tem esta etiqueta' : undefined}>
+          <Plus size={15} /> {usada ? 'Pôr' : 'Criar'}
+        </button>
       </div>
+      {escrito && !jaTem && !usada && <p className="text-[12px] text-muted mt-1">Etiqueta nova: <b className="text-ink-2">{escrito}</b>. Ela fica nas sugestões dos próximos chamados.</p>}
       {achadas.length > 0 && (
         <div className="flex flex-wrap items-center gap-1 mt-1.5">
           <span className="text-[12px] text-muted mr-0.5">{t ? 'Já usadas:' : 'Usadas antes:'}</span>

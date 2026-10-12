@@ -50,11 +50,14 @@ function listasDoPainel(painel: Painel, ctx: Contexto, produtos: Array<{ nome: s
     .map((a) => caminhoDoAssunto(a.id, ctx.assuntos));
   // o que o painel não usa vai como "devolva vazio" (a IA não escolhe o que não existe no painel)
   const usa = (c: Parameters<typeof campoLigado>[1]) => campoLigado(painel.ajustes, c);
+  // a gravidade e o alcance têm as opções fixas (nas instruções): o que o painel não usa volta vazio
+  const naoUsa = [usa('gravidade') ? '' : 'gravidade', usa('alcance') ? '' : 'alcance'].filter(Boolean);
   return [
     `Lista de assuntos do painel ${painel.nome} (escolha um caminho exatamente como está escrito):`,
     !usa('assunto') ? '(este painel não usa assuntos: devolva "")' : caminhos.length ? caminhos.map((c) => `- ${c}`).join('\n') : '(o painel ainda não tem assuntos: devolva "")',
     `Opções de tipo: ${usa('tipo') && painel.ajustes.tipos.length ? painel.ajustes.tipos.join(', ') : '(nenhuma: devolva "")'}`,
     `Produtos: ${usa('produtos') && produtos.length ? produtos.map((p) => p.nome).join(', ') : '(nenhum)'}`,
+    ...(naoUsa.length ? [`Este painel não usa: ${naoUsa.join(' e ')} (devolva "" ${naoUsa.length > 1 ? 'nesses campos' : 'nesse campo'}).`] : []),
   ].join('\n');
 }
 

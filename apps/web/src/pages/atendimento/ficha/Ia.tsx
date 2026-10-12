@@ -7,7 +7,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { BookOpenText, MessagesSquare, Sparkles } from 'lucide-react';
 import {
-  caminhoDoAssunto, campoLigado, etiquetasUnicas, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, prioridadeSugerida,
+  caminhoDoAssunto, campoLigado, etiquetasUnicas, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, prioridadeSugeridaDoPainel,
   type CampoDoSistema, type ChamadoAlterarEntrada, type SugestaoIa,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -16,7 +16,7 @@ import { ErroPerto, lista, useAberta, useAcao } from './base.js';
 
 type Chave = 'titulo' | 'relato' | 'descricao' | 'assuntoId' | 'tipo' | 'gravidade' | 'alcance' | 'produtos' | 'etiquetas';
 /** De que campo do sistema cada sugestão depende (o painel pode ter desligado). */
-const DO_CAMPO: Partial<Record<Chave, CampoDoSistema>> = { assuntoId: 'assunto', tipo: 'tipo', gravidade: 'gravidadeAlcance', alcance: 'gravidadeAlcance', produtos: 'produtos' };
+const DO_CAMPO: Partial<Record<Chave, CampoDoSistema>> = { assuntoId: 'assunto', tipo: 'tipo', gravidade: 'gravidade', alcance: 'alcance', produtos: 'produtos' };
 type Linha = {
   chave: Chave; rotulo: string; atual: ReactNode; sugerido: ReactNode;
   /** a IA sugeriu algo diferente do que está */
@@ -80,7 +80,8 @@ export function JanelaIa({ s, onFechar }: { s: SugestaoIa; onFechar: () => void 
   // a gravidade e o alcance mudam a prioridade sugerida (e a prioridade, se ela seguia a sugestão)
   const g = marcados.has('gravidade') ? s.gravidade : f.gravidade;
   const al = marcados.has('alcance') ? s.alcance : f.alcance;
-  const novaSugerida = prioridadeSugerida(g, al, opcoes.prazos.matriz);
+  // pelos campos do painel (sem o alcance, só a gravidade)
+  const novaSugerida = painel ? prioridadeSugeridaDoPainel(painel.ajustes, g, al, opcoes.prazos) : null;
   const mudaSugestao = (marcados.has('gravidade') || marcados.has('alcance')) && novaSugerida && novaSugerida !== f.prioridadeSugerida;
   const seguia = !f.prioridade || f.prioridade === f.prioridadeSugerida;
 

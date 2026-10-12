@@ -53,8 +53,8 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   a **solução** e a **causa** (no problema, também o contorno e a validação); a **empresa** e o
   **contato** (nome e WhatsApp) em destaque; a **classificação** (o que o painel usa: abaixo) — o **assunto** (árvore de até 3
   níveis, com descrição, checklist e de-para; **nasce em branco** para a equipe montar), o tipo, a
-  **gravidade** e o **alcance** → a **prioridade sugerida** pela matriz (trocar pede o motivo, que
-  fica à vista) —; **produtos e operadoras** (vários, os do cliente primeiro: "tem cliente com duas
+  **gravidade** (e o **alcance**, no painel que o usa) → a **prioridade sugerida** (trocar pede o
+  motivo, que fica à vista) —; **produtos e operadoras** (vários, os do cliente primeiro: "tem cliente com duas
   operadoras e dois produtos"); **etiquetas inteiras**; o checklist; o responsável e quem acompanha; os **prazos**; o
   caso **na operadora** (protocolo, prometido para, cobrar a cada X horas); o **tempo gasto**; as
   **anotações com anexos** (até 5 de 10 MB, colar print); e a **linha do tempo** (tudo, anotações,
@@ -63,8 +63,11 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 - **Os campos de cada painel** (o pedido dele na prévia, 11/10: "vou ter outros painéis, então nem
   sempre vai ser assuntos… o correto é você fazer ajustes e campos personalizados"). A aba que era
   Assuntos virou **Chamados › Ajustes › Campos**, painel por painel:
-  - **Os do sistema que cada painel usa ou não**: assunto, tipo, gravidade e alcance (os dois juntos,
-    porque sugerem a prioridade), produtos e operadoras. O resto (cliente, contato, título, relato,
+  - **Os do sistema que cada painel usa ou não**: assunto, tipo, gravidade, alcance, produtos e
+    operadoras. **O alcance nasce desligado** em todo painel ("não precisa desse alcance por
+    enquanto", o Luan na prévia): sem ele, a prioridade sugerida sai só da gravidade, pela coluna
+    **Só a gravidade** de Ajustes › Prazos (começa como a coluna "Um setor ou unidade" da matriz);
+    ligado, vale a matriz gravidade × alcance, como antes. Sem a gravidade, não há sugestão. O resto (cliente, contato, título, relato,
     descrição, prioridade, responsável, solução, causa, etiquetas) é de todo chamado. Desligar some da
     ficha, do Abrir chamado, dos cartões, da busca e do CSV daquele painel e sai do que é pedido para
     abrir e nas etapas (a confirmação diz de onde); **o valor fica guardado** e volta se ligar de novo.
@@ -94,6 +97,18 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   clientes diferentes e só resolve com a causa, a solução e a validação; as **ligações** (relacionado,
   duplicado de, repete) são **manuais** — nada automático, como ele pediu —, e o código citado no
   texto vira link. A ficha desenha as ligações (cada tipo com um traço e a legenda escrita).
+- **Abrir chamado**: dentro de um painel (o quadro, a lista), o chamado já nasce nele — "se eu estou
+  dentro do painel de suporte, quero abrir no painel de suporte" —; fora dele (Painéis, Meu dia, o
+  botão da conversa), a pessoa escolhe o painel, e o filho também (pode ser de outro painel). A
+  descrição já vem aberta, e uma etiqueta nova se cria ali mesmo (pedidos dele na prévia).
+- **Os observadores** (como no Helena, o pedido dele na prévia): quem é posto como observador — ao
+  abrir ou na ficha — recebe o aviso de toda atualização do chamado: a anotação, a mudança de etapa e
+  de responsável (e o reabrir, o painel novo), a espera, a mensagem ao cliente, o caso na operadora, o
+  cliente que respondeu, o fechar sozinho e a lixeira. As mudanças de campo (o relato, a classificação,
+  o checklist, as ligações…) de uma pessoa juntam num aviso só enquanto ele não foi lido (30 minutos),
+  e só na tela. Quem fez não recebe, nem quem já recebeu outro aviso da mesma ação. O aviso é um evento
+  próprio em Avisos e WhatsApp (na tela, ligado; no WhatsApp, desligado de início). O "Acompanhar" da
+  ficha virou **Observar**, e o Meu dia mostra os que a pessoa observa.
 - **O chamado nasce de três jeitos**: à mão no Gestor; pelo **botão Abrir chamado** na conversa do
   LineChat (uma ação personalizada que abre o formulário já com o telefone, o nome e a sessão); e
   pelo **robô** (o bloco de webhook manda para o Gestor, com uma chave de API, e recebe o código para
@@ -105,7 +120,7 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   perto de vencer e quando vence (o responsável; vencido, também os supervisores), avisa o chamado
   **sem dono** e **fecha sozinho o Resolvido** depois de N dias úteis; a mensagem do cliente reabre o
   Resolvido, menos "obrigado".
-- **Os avisos.** O **sininho** na tela; o **WhatsApp da equipe** por um número não oficial, com o
+- **Os avisos.** O **sininho** na tela (inclusive o dos observadores); o **WhatsApp da equipe** por um número não oficial, com o
   número de cada pessoa nos Ajustes (o pedido dele) e a escolha de quais avisos vão por onde; o
   **cliente só recebe quando o atendente manda**, pelo número oficial **(71) 3034-8350** (com o modelo
   aprovado quando a conversa passou de 24 h). O aviso da equipe só sai com a chave guardada (sem ela,

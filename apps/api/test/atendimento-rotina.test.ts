@@ -487,7 +487,8 @@ describe('a IA no chamado', () => {
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json()).toEqual({
       titulo: 'Ramal 203 sem áudio', relato: 'O cliente diz que o ramal 203 não toca.', descricao: '- cabo testado', assuntoId: semAudio, tipo: 'Incidente',
-      gravidade: 'inoperancia', alcance: 'pessoa', produtos: [linepbx], etiquetas: ['ramal', 'audio', 'cabo'], resumo: 'O cabo foi testado; falta conferir o registro.',
+      // o Suporte não usa o alcance ("por enquanto"): o que a IA mandar para ele fica de fora
+      gravidade: 'inoperancia', alcance: null, produtos: [linepbx], etiquetas: ['ramal', 'audio', 'cabo'], resumo: 'O cabo foi testado; falta conferir o registro.',
       fonte: 'chamado', modelo: 'Claude de Teste', provedor: 'Anthropic (Claude)', custo: null,
     });
 
@@ -501,6 +502,7 @@ describe('a IA no chamado', () => {
     expect(msg).toContain('- Marina Costa: Testei o cabo: está bom');
     expect(msg).toContain('- Ramal\n- Ramal › Sem áudio');
     expect(msg).toContain('Opções de tipo: Incidente, Requisição, Dúvida, Mudança');
+    expect(msg).toContain('Este painel não usa: alcance (devolva "" nesse campo).');
     expect(msg).toContain('LinePBX');
     expect(msg).not.toContain('Correção de tela'); // o assunto do Desenvolvimento
 

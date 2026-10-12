@@ -23,7 +23,7 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
   Voltar do navegador) volta para ela. **Página inteira** abre a ficha sozinha — o endereço dela
   (`/atendimento/SUP-12`) é o que dá para mandar para alguém.
 - **Meu dia** (a aba ao lado): os seus em aberto, os que estão **vencendo**, os **sem dono** na fila
-  (com o botão **Assumir**), os que esperam o cliente, os que você acompanha e os agendados de hoje.
+  (com o botão **Assumir**), os que esperam o cliente, os que você observa e os agendados de hoje.
   Cada número leva para a lista já filtrada.
 - **Lista** (dentro do painel, em **Quadro | Lista**): a busca (código, título, cliente, contato,
   telefone, o que o cliente disse — sem acento), os atalhos (Meus, Vencidos, Perto de vencer, Sem dono,
@@ -36,14 +36,22 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 
 ## 2. Abrir um chamado
 
-**Abrir chamado** (no alto de qualquer tela do módulo). Escolha o painel, o cliente, o contato (nome
-e WhatsApp), o título e o **relato do cliente** — o que ele disse, nas palavras dele.
+**Abrir chamado** (no alto de qualquer tela do módulo). **Dentro de um painel** (no quadro ou na lista),
+o chamado já nasce nele, sem escolher outro; fora (Painéis, Meu dia), escolha o painel. Depois: o
+cliente, o contato (nome e WhatsApp), o título, o **relato do cliente** — o que ele disse, nas palavras
+dele — e a **descrição** (o andamento e os dados técnicos).
 
 - Ao escolher o cliente, aparecem os chamados recentes dele. **Se é o mesmo problema de antes, use
   "Reabrir este em vez de abrir outro"**: o cliente que volta à tarde com o mesmo ramal reabre o
   chamado da manhã.
-- **Gravidade** e **alcance** sugerem a **prioridade** (pela matriz da tela de Prazos). Trocar a
+- A **gravidade** sugere a **prioridade** (pela tela de Prazos). No painel que usa o **alcance** — ele
+  nasce desligado, "por enquanto"; liga em Ajustes › Campos —, os dois juntos, pela matriz. Trocar a
   sugerida pede o motivo.
+- **Observadores** (como no Helena): as pessoas que recebem o aviso de tudo o que acontece no chamado —
+  a anotação, a mudança de etapa e de responsável, a espera, o cliente que respondeu, os campos (estes,
+  juntos num aviso só enquanto não for lido). Põe ao abrir ou na ficha.
+- **Etiquetas**: as já usadas aparecem para pôr com um clique; uma nova se cria ali mesmo (digite e
+  clique em **Criar**).
 - O formulário mostra **só os campos que o painel usa**: os do sistema que estão ligados nele e, em
   **"Do painel …"**, os campos que a equipe criou para ele. O que é obrigatório para abrir vem com `*`;
   faltando, a tela diz o quê. (O robô, os agendados e as integrações abrem mesmo sem eles: quem
@@ -61,12 +69,12 @@ nome), **pelo robô** e **pelos agendados** (seção 5).
 - Um código citado no texto (SUP-12, ou um card antigo do LineChat como IS-4280) vira link.
 - Do lado: a **empresa** e o **contato**, a **classificação** (os campos que o painel usa — assunto,
   tipo, gravidade, alcance, prioridade, produtos, operadoras —, os campos do próprio painel e as
-  etiquetas), o responsável e quem acompanha, os **prazos**, o caso **na operadora** e o **tempo
+  etiquetas), o responsável e os **observadores**, os **prazos**, o caso **na operadora** e o **tempo
   gasto**. O campo de texto longo do painel (ex.: "Como reproduzir") fica junto do relato.
 - A barra de cima: **Assumir**, **Mover**, **Escalonar** (pede o motivo), **Esperar** o cliente ou a
   operadora (pede o motivo), **Avisar o cliente**, **Resposta pronta**, **Preencher com IA** e **Mais**
   (ligar a outro chamado, criar um filho, definir o pai, ligar a um problema, trocar de painel,
-  reabrir, acompanhar, lixeira).
+  reabrir, observar, lixeira).
 - A **linha do tempo**: as anotações (com anexos: até 5 arquivos de 10 MB; cole o print com Ctrl+V),
   o histórico de tudo e a **trajetória** (por onde o chamado passou, quanto tempo ficou em cada etapa e
   o motivo de cada escalonamento).
@@ -88,9 +96,9 @@ nome), **pelo robô** e **pelos agendados** (seção 5).
 | Aba | O que se arruma |
 |---|---|
 | **Painéis e etapas** | Criar e editar os painéis. Tudo de um painel fica numa janela só (**Novo painel** ou **Editar**): o nome, a sigla, a cor e quem vê; **as etapas** (nome, tipo, nível, o que é obrigatório, quem é avisado; arrastar ou as setas mudam a ordem); e as regras. O painel novo começa com Novo, Em andamento, Resolvido e Fechado, ou com as etapas de outro painel ("Começar com as etapas"). **Salvar** grava tudo junto: se uma etapa que sai tem chamados, a janela pergunta para onde eles vão, e até lá nada muda |
-| **Campos** | Os campos **de cada painel** (escolha o painel em cima). **Os do sistema** — assunto, tipo, gravidade e alcance, produtos, operadoras — ligam e desligam em cada painel (o Desenvolvimento, por exemplo, não usa assunto); as opções do **Tipo** se editam aqui. **O Assunto** abre a árvore do painel (até 3 níveis, com descrição, checklist e de-para; **nasce em branco**: cole a lista da equipe, um por linha, no formato "Ramal - Configuração - Identidade"). **Novo campo** cria os do painel: texto curto, texto longo, número, data, sim/não ou lista (escolhe uma ou várias opções), com uma dica, e **obrigatório para abrir** ou **para entrar** nas etapas que você marcar. As setas mudam a ordem. Desligar ou desativar **não apaga**: some da tela e das regras, e o que os chamados já têm volta se o campo voltar. O tipo de um campo não muda depois de criado |
-| **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance |
-| **Avisos e WhatsApp** | Os dois números (o do cliente, oficial, e o da equipe), o número de cada pessoa, quais avisos vão pela tela e pelo WhatsApp, e o teste |
+| **Campos** | Os campos **de cada painel** (escolha o painel em cima). **Os do sistema** — assunto, tipo, gravidade, alcance, produtos, operadoras — ligam e desligam em cada painel (o Desenvolvimento, por exemplo, não usa assunto; o **alcance** nasce desligado em todos, por enquanto); as opções do **Tipo** se editam aqui. **O Assunto** abre a árvore do painel (até 3 níveis, com descrição, checklist e de-para; **nasce em branco**: cole a lista da equipe, um por linha, no formato "Ramal - Configuração - Identidade"). **Novo campo** cria os do painel: texto curto, texto longo, número, data, sim/não ou lista (escolhe uma ou várias opções), com uma dica, e **obrigatório para abrir** ou **para entrar** nas etapas que você marcar. As setas mudam a ordem. Desligar ou desativar **não apaga**: some da tela e das regras, e o que os chamados já têm volta se o campo voltar. O tipo de um campo não muda depois de criado |
+| **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a prioridade sugerida: a coluna **Só a gravidade** (o painel sem o alcance) e a matriz gravidade × alcance (o painel que usa o alcance) |
+| **Avisos e WhatsApp** | Os dois números (o do cliente, oficial, e o da equipe), o número de cada pessoa, quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início) e o teste |
 | **Respostas prontas** | O texto e o que ela faz no chamado (avisa o cliente, move, marca a espera, põe a etiqueta, assume) |
 | **Agendados** | O chamado que nasce sozinho (todo dia, toda semana, todo mês ou uma vez) |
 | **Integrações** | As chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
