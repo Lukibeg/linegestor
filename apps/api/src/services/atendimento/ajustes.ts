@@ -745,8 +745,8 @@ export async function avisosParaTela(app: FastifyInstance): Promise<AvisosChamad
   // campo a campo, de propósito: o que estiver guardado a mais nunca chega à tela
   return {
     ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
-    modeloCliente: v.modeloCliente, template: v.template, eventos: v.eventos,
-    temChavePropria, temChaveLineChat: linechat.temSegredo,
+    envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template, equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda,
+    eventos: v.eventos, temChavePropria, temChaveLineChat: linechat.temSegredo,
     pessoas: ativos.map((u) => {
       const p = v.pessoas.find((x) => x.userId === u.id);
       // sem número guardado, a pessoa já vem marcada: pôr o número é querer receber
@@ -759,7 +759,8 @@ export async function avisosParaTela(app: FastifyInstance): Promise<AvisosChamad
 /** O que vai para a auditoria: tudo, menos a chave (que nem fica guardada aqui: está no cofre). */
 const avisosParaAuditoria = (v: Omit<AvisosGuardados, 'ultimoTesteEm' | 'ultimoTesteOk' | 'ultimoTesteMsg'>) => ({
   ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
-  modeloCliente: v.modeloCliente, template: v.template, eventos: v.eventos, pessoas: v.pessoas,
+  envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template, equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda,
+  eventos: v.eventos, pessoas: v.pessoas,
 });
 
 /**
@@ -789,7 +790,8 @@ export async function gravarAvisos(app: FastifyInstance, d: AvisosChamadosGravar
   const novo: AvisosGuardados = {
     ...valor,
     ativo: d.ativo, url: d.url, usarChaveDoLineChat: d.usarChaveDoLineChat, numeroCliente: d.numeroCliente, numeroEquipe: d.numeroEquipe,
-    modeloCliente: d.modeloCliente, template: d.template?.id ? d.template : null, eventos: d.eventos, pessoas,
+    envioCliente: d.envioCliente, modeloCliente: d.modeloCliente, template: d.template?.id ? d.template : null,
+    equipeLineChat: d.equipeLineChat, atribuirAQuemManda: d.atribuirAQuemManda, eventos: d.eventos, pessoas,
   };
   await integ.gravar(db, 'atendimento-avisos', novo, { secretId, userId });
   return {
@@ -818,7 +820,11 @@ export async function testarAvisos(
     }
     para = p.numero;
   }
-  const r = await mandarWhatsApp(app.db, app.vault, { de: d.de ?? 'equipe', para, texto: TEXTO_DO_TESTE });
+  // pelo número oficial, o teste sai como uma mensagem ao cliente (pelo modelo aprovado, com valores de exemplo)
+  const r = await mandarWhatsApp(app.db, app.vault, {
+    de: d.de ?? 'equipe', para, texto: TEXTO_DO_TESTE,
+    valores: { contato: 'Teste', codigo: 'SUP-0', titulo: 'Mensagem de teste', cliente: 'Ingline', texto: TEXTO_DO_TESTE },
+  });
   await gravarTeste(app.db, r.ok, r.mensagem);
   return { ok: r.ok, mensagem: r.mensagem, para };
 }

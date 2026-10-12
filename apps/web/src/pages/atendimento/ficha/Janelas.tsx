@@ -10,12 +10,13 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, CircleAlert, Hourglass, MessageCircle, Search, StickyNote, Tag, UserCheck } from 'lucide-react';
 import {
-  etapaAoReabrir, etapaDeEntrada, lerCodigo, movimentoDeNivel, nomeDoObrigatorio, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO, preencherModelo,
+  etapaAoReabrir, etapaDeEntrada, lerCodigo, mensagemPreenchida, movimentoDeNivel, nomeDoObrigatorio, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO, preencherModelo,
   type CartaoChamado, type FichaChamado, type RespostaPronta, type TipoEspera, type TipoLigacaoChamado,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Modal, Spinner } from '../../../components/ui/index.js';
 import { painelDe, telefoneLegivel } from '../comum.js';
+import { BalaoDeMensagem } from '../ajustes/Avisos.js';
 import { ErroPerto, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 
 /** Os botões do rodapé: Cancelar e o que confirma (com a rodinha enquanto vai). */
@@ -75,19 +76,46 @@ export function JanelaAvisar({ onFechar }: { onFechar: () => void }) {
     if (r.ok) onFechar(); else recarregar();
   };
   return (
-    <Modal open onClose={onFechar} titulo="Avisar o cliente pelo WhatsApp"
+    <Modal open onClose={onFechar} titulo="Avisar o cliente pelo WhatsApp" largura="max-w-xl"
       rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} botao={<><MessageCircle size={15} /> Mandar</>} onConfirmar={mandar} />}>
       <p className="text-sm text-ink-2 mb-3">
         Para <b>{f.contato?.nome ?? 'o contato'}</b> · <span className="font-mono tnum">{telefoneLegivel(f.contato?.telefone)}</span>
       </p>
-      <Campo label="Mensagem" dica="O Gestor põe a sua mensagem dentro do modelo combinado (Olá, nome do contato! Sobre o seu chamado…) e manda pelo número oficial do suporte. Fica no histórico do chamado.">
-        <textarea className="input min-h-[130px]" autoFocus maxLength={3000} value={texto} onChange={(e) => setTexto(e.target.value)}
+      <Campo label="Mensagem" dica="Sai pelo número oficial do suporte e fica no histórico do chamado.">
+        <textarea className="input min-h-[110px]" autoFocus maxLength={3000} value={texto} onChange={(e) => setTexto(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void mandar(); }}
           placeholder="Ex.: Ajustamos a rota de saída. Pode testar uma ligação para celular e nos dizer se melhorou?" />
       </Campo>
       <div className="text-right text-[11.5px] text-muted tnum mt-0.5">{texto.length}/3000</div>
+      <ComoChegaAoCliente texto={texto} />
       <ErroPerto erro={acao.erro} />
     </Modal>
+  );
+}
+
+/**
+ * A mensagem como chega ao cliente: o texto do atendente dentro do que os Ajustes mandam — o modelo
+ * aprovado do WhatsApp oficial (cada variável como vai para a API: sem quebra de linha) ou o texto livre.
+ */
+function ComoChegaAoCliente({ texto }: { texto: string }) {
+  const { f, opcoes, eu } = useAberta();
+  const m = opcoes.whatsapp.mensagemCliente;
+  if (!m) return null;
+  const previa = mensagemPreenchida(m, {
+    contato: f.contato?.nome ?? null, codigo: f.codigo, cliente: f.cliente?.nome ?? null, titulo: f.titulo,
+    responsavel: f.responsavel?.nome ?? null, eu: eu?.nome ?? null, texto: texto.trim() || '(a sua mensagem)',
+  });
+  const levaOTexto = m.peloModelo ? m.variaveis.some((v) => v.valor.includes('{texto}')) : m.texto.includes('{texto}');
+  return (
+    <div className="mt-2" id="ficha-como-chega">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
+        <span className="eyebrow">Como chega ao cliente</span>
+        {m.peloModelo && <span className="chip bg-ok-soft text-ok" title="O modelo aprovado do WhatsApp oficial (Chamados › Ajustes › Avisos e WhatsApp)">pelo modelo <span className="font-mono font-normal">{m.nomeDoModelo ?? 'aprovado'}</span></span>}
+      </div>
+      <BalaoDeMensagem texto={previa} />
+      {m.peloModelo && /\n/.test(texto.trim()) && levaOTexto && <p className="text-[12px] text-muted mt-1.5">No modelo aprovado, a quebra de linha vira " · " (o WhatsApp não aceita quebra dentro da variável).</p>}
+      {!levaOTexto && <p className="text-[12.5px] text-signal mt-1.5">O modelo não tem lugar para o seu texto: o cliente recebe só o que está acima, e o seu texto fica no histórico do chamado.</p>}
+    </div>
   );
 }
 
@@ -160,6 +188,7 @@ export function JanelaResposta({ resposta, onFechar }: { resposta: RespostaPront
       <Campo label={a.avisarCliente ? 'Mensagem ao cliente (WhatsApp)' : 'Anotação'} dica="Já preenchido com os dados deste chamado. Dá para mudar antes de aplicar.">
         <textarea className="input min-h-[120px]" maxLength={3000} value={texto} onChange={(e) => setTexto(e.target.value)} autoFocus />
       </Campo>
+      {a.avisarCliente && !semWhats && <ComoChegaAoCliente texto={texto} />}
       <div className="mt-4">
         <div className="eyebrow mb-1.5">O que ela vai fazer</div>
         {faz.length ? (

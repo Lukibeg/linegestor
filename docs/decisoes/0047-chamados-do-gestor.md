@@ -137,11 +137,22 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   perto de vencer e quando vence (o responsável; vencido, também os supervisores), avisa o chamado
   **sem dono** e **fecha sozinho o Resolvido** depois de N dias úteis; a mensagem do cliente reabre o
   Resolvido, menos "obrigado".
-- **Os avisos.** O **sininho** na tela (inclusive o dos observadores); o **WhatsApp da equipe** por um número não oficial, com o
-  número de cada pessoa nos Ajustes (o pedido dele) e a escolha de quais avisos vão por onde; o
-  **cliente só recebe quando o atendente manda**, pelo número oficial **(71) 3034-8350** (com o modelo
-  aprovado quando a conversa passou de 24 h). O aviso da equipe só sai com a chave guardada (sem ela,
-  nem tenta). Na ficha e no histórico fica quem foi avisado.
+- **Os avisos.** O **sininho** na tela (inclusive o dos observadores) e, o que chega com o Gestor
+  aberto, um **cartão** perto dele (some em 20 s; o Crítico e o prazo vencido ficam) e, para quem
+  ligar, a **notificação do navegador** (só com o Gestor fora da frente) — o pedido dele na prévia:
+  "além do sininho, notificação no navegador, e uma menos sucinta". Cada pessoa liga e desliga no
+  próprio sininho (vale para aquele navegador); a tela relê os avisos a cada 30 s. O **WhatsApp da
+  equipe** por um número não oficial, com o número de cada pessoa nos Ajustes (o pedido dele) e a
+  escolha de quais avisos vão por onde; o **cliente só recebe quando o atendente manda**, pelo número
+  oficial **(71) 3034-8350**. Esse número é o **WhatsApp oficial**, então a mensagem ao cliente sai
+  **pelo modelo aprovado** (o template; o pedido dele na prévia): o id, as variáveis — cada uma com um
+  valor do chamado ou um texto fixo, sem quebra de linha e nunca vazia, como a Meta exige — e o arquivo
+  do cabeçalho, conferidos na API do LineChat (`POST /chat/v1/message/send-sync`, que espera o
+  WhatsApp e diz se falhou; `GET /chat/v1/template`, que lista os aprovados do canal). O texto livre
+  fica como opção (só até 24 h da última mensagem do cliente; recusado, vai o modelo). A conversa
+  que a mensagem abrir vai para a equipe escolhida e, se ligado, para quem mandou (pelo e-mail). Sem
+  o modelo escolhido, a ficha nem mostra o botão. O aviso da equipe só sai com a chave guardada (sem
+  ela, nem tenta). Na ficha e no histórico fica quem foi avisado.
 - **A rotina.** As **respostas prontas** (o texto e o que ela faz: avisa o cliente, move, marca a
   espera, põe a etiqueta, assume) e os **agendados** (o chamado que nasce sozinho: todo dia, toda
   semana, todo mês ou uma vez).

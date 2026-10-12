@@ -3,7 +3,8 @@
  *
  * No computador não há barra em cima (1.10, o pedido do Luan: "acabamos perdendo espaço"): o
  * sininho dos chamados, o tema e o Sair ficam no rodapé do menu, ao lado da conta. No celular a barra
- * de cima continua, porque é onde fica o botão que abre o menu (e o sininho, à mão).
+ * de cima continua, porque é onde fica o botão que abre o menu (e o sininho, à mão). O aviso que chega
+ * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  */
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
@@ -12,6 +13,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
 import { NovidadesPopup } from '../../pages/novidades/Index.js';
 import { SinoDeAvisos } from '../../pages/atendimento/Sino.js';
+import { AvisosQueChegam } from '../../pages/atendimento/AvisosQueChegam.js';
 import { useAuth } from '../../lib/auth.js';
 import { IS_DEMO } from '../../api/index.js';
 import { Logotipo, Simbolo } from '../Marca.js';
@@ -132,6 +134,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <main className={`flex-1 px-4 py-5 w-full mx-auto ${largo ? 'md:px-4' : 'md:px-6 max-w-[1400px]'}`}>{children}</main>
       </div>
+      {/* os avisos que chegam: o cartão sai do canto do sininho (no computador, ao lado do menu) */}
+      {temSino && <AvisosQueChegam esquerda={collapsed ? 'calc(4rem + 12px)' : 'calc(16rem + 12px)'} />}
       {/* a nota mais recente abre uma vez por pessoa, em qualquer tela */}
       <NovidadesPopup />
     </div>

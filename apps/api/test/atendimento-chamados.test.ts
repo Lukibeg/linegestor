@@ -20,7 +20,7 @@ import {
   circuits, clientUnits, clients, deviceModels, devices, dids, newId, subscriptions, ticketMacros, ticketPanels, ticketSchedules, ticketStages,
   ticketSubjects, ticketWebhooks, tickets,
 } from '@gestor/db';
-import { AJUSTES_PAINEL_PADRAO, AVISOS_CHAMADOS_PADRAO, ChamadoCriarSchema, diaLocal } from '@gestor/shared';
+import { AJUSTES_PAINEL_PADRAO, AVISOS_CHAMADOS_PADRAO, ChamadoCriarSchema, diaLocal, mensagemPreenchida } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 import * as integ from '../src/services/integracoes.js';
 import { esperarSegundoPlano } from '../src/services/atendimento/avisos.js';
@@ -697,17 +697,22 @@ describe('checklist, tempo, operadora, acompanhar e trocar de painel', () => {
 describe('avisar o cliente pelo WhatsApp', () => {
   const enviados: Array<{ url: string; corpo: any; auth: string }> = [];
   let falhar = false;
+  /** o que o LineChat responde no envio que espera o WhatsApp (o send-sync) */
+  let resposta: Record<string, unknown> = { status: 'SENT' };
   let chave = '';
+  let secretId = '';
+  const ajustar = (o: Record<string, unknown>) => integ.gravar(app.db, 'atendimento-avisos', {
+    ...AVISOS_CHAMADOS_PADRAO, ativo: true, usarChaveDoLineChat: false, url: 'https://api.exemplo.com.br/chat/v1/message/send', numeroCliente: '557130348350', pessoas: [], ...o,
+  }, { secretId });
   beforeAll(async () => {
     chave = `chave-falsa-${Math.random()}`;
-    const secretId = await app.vault.save(app.db, { label: 'WhatsApp dos chamados', plain: chave });
-    await integ.gravar(app.db, 'atendimento-avisos', {
-      ...AVISOS_CHAMADOS_PADRAO, ativo: true, usarChaveDoLineChat: false, url: 'https://api.exemplo.com.br/chat/v1/message/send', numeroCliente: '557130348350', pessoas: [],
-    }, { secretId });
+    secretId = await app.vault.save(app.db, { label: 'WhatsApp dos chamados', plain: chave });
+    // o texto livre (os testes do modelo aprovado ficam no fim)
+    await ajustar({ envioCliente: 'texto' });
     trocarFerramentasWhatsApp({
       fetchFn: (async (url: string, init: RequestInit) => {
         enviados.push({ url, corpo: JSON.parse(String(init.body)), auth: String((init.headers as Record<string, string>).Authorization) });
-        return falhar ? new Response('erro interno', { status: 500 }) : new Response('{"ok":true}', { status: 200 });
+        return falhar ? new Response('erro interno', { status: 500 }) : new Response(JSON.stringify(resposta), { status: 200 });
       }) as unknown as typeof fetch,
     });
   });
@@ -728,7 +733,8 @@ describe('avisar o cliente pelo WhatsApp', () => {
     const r = await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Pode testar agora?' });
     expect(r.statusCode, r.body).toBe(200);
     const ultimo = enviados.at(-1)!;
-    expect(ultimo.url).toBe('https://api.exemplo.com.br/chat/v1/message/send');
+    // a mensagem ao cliente espera o WhatsApp responder (o send-sync)
+    expect(ultimo.url).toBe('https://api.exemplo.com.br/chat/v1/message/send-sync');
     expect(ultimo.auth).toBe(`Bearer ${chave}`);
     expect(ultimo.corpo).toEqual({
       from: '557130348350', to: '5571988887777',
@@ -750,7 +756,7 @@ describe('avisar o cliente pelo WhatsApp', () => {
 
   it('ao abrir, pode mandar o número do chamado ao cliente', async () => {
     const r = await abrir(s, { contatoNome: 'Joana', contatoTelefone: '(71) 98888-7777', avisarCliente: true });
-    expect(r.aviso).toEqual({ ok: true, mensagem: 'Aceito pelo LineChat (200).' });
+    expect(r.aviso).toEqual({ ok: true, mensagem: 'Mandado (o WhatsApp confirmou: SENT).' });
     expect(enviados.at(-1)!.corpo.body.text).toContain(`${r.codigo} (Ramal mudo):\n\nAbrimos este chamado para o seu atendimento.`);
   });
 
@@ -771,6 +777,81 @@ describe('avisar o cliente pelo WhatsApp', () => {
     expect(enviados.at(-1)!.corpo.body.text).toContain(`Fizemos o ajuste no ${codigo}. Pode testar?`);
     expect(f.anotacoesLista).toHaveLength(0);
     expect(f.espera).toMatchObject({ tipo: 'cliente', motivo: 'Aguardando teste' });
+  });
+
+  // ---- o modelo aprovado (o pedido do Luan na prévia: o WhatsApp oficial só manda template) ----
+  const MODELO = {
+    id: '2f1e7a90-4d3b-4c8e-9a51-6b0d2c7e8f13', nome: 'ticket_atualizacao', texto: 'Olá, {{nome}}! Novidade no chamado {{chamado}}: {{mensagem}}',
+    variaveis: [{ nome: 'nome', valor: '{contato}' }, { nome: 'chamado', valor: '{codigo}' }, { nome: 'mensagem', valor: '{texto}' }],
+    tipoArquivo: 'UNDEFINED', arquivo: '',
+  };
+
+  it('pelo modelo aprovado: o id, as variáveis com o chamado (sem quebra de linha) e quem fica com a conversa', async () => {
+    await ajustar({ envioCliente: 'modelo', template: MODELO, equipeLineChat: 'Suporte N1', atribuirAQuemManda: true });
+    const { id, codigo } = await abrir(s, { titulo: 'Ramal mudo', contatoNome: 'Joana', contatoTelefone: '(71) 98888-7777' });
+    const r = await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Trocamos o cabo.\n\nPode testar?' });
+    expect(r.statusCode, r.body).toBe(200);
+    const ultimo = enviados.at(-1)!;
+    expect(ultimo.url).toBe('https://api.exemplo.com.br/chat/v1/message/send-sync');
+    expect(ultimo.corpo).toEqual({
+      from: '557130348350', to: '5571988887777',
+      body: { templateId: MODELO.id, parameters: { nome: 'Joana', chamado: codigo, mensagem: 'Trocamos o cabo. · Pode testar?' } },
+      department: { name: 'Suporte N1' }, user: { email: 'admin@gestor.local' },
+    });
+    expect(eventos(r.json(), 'aviso_cliente').at(-1)).toMatchObject({ texto: 'avisou o cliente pelo WhatsApp (com o modelo aprovado)', dados: { ok: true, modelo: true } });
+    // a ficha mostra antes de mandar: o texto do modelo e o que vai em cada variável (ela preenche com o chamado)
+    const m = (await s.get('/atendimento/opcoes')).json().whatsapp.mensagemCliente;
+    expect(m).toEqual({ peloModelo: true, nomeDoModelo: 'ticket_atualizacao', texto: MODELO.texto, variaveis: MODELO.variaveis });
+    expect(mensagemPreenchida(m, { contato: 'Joana', codigo, texto: 'Trocamos o cabo.\nPode testar?' }))
+      .toBe(`Olá, Joana! Novidade no chamado ${codigo}: Trocamos o cabo. · Pode testar?`);
+    // o contato sem nome (um número que o Gestor não conhece): a variável não vai vazia (o WhatsApp recusaria o modelo)
+    const semNome = await abrir(s, { contatoTelefone: '(71) 98111-2121' });
+    await s.post(`/atendimento/chamados/${semNome.id}/avisar-cliente`, { texto: 'Oi' });
+    expect(enviados.at(-1)!.corpo.body.parameters.nome).toBe('-');
+  });
+
+  it('o WhatsApp recusou o modelo (o send-sync diz FAILED): 400 com o motivo', async () => {
+    const { id } = await abrir(s, { contatoNome: 'Joana', contatoTelefone: '(71) 98888-7777' });
+    resposta = { status: 'FAILED', failedReason: 'Template parameters mismatch' };
+    const r = await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Pode testar?' });
+    resposta = { status: 'SENT' };
+    expect(r.statusCode).toBe(400);
+    expect(r.json().error).toBe('O WhatsApp não mandou: Template parameters mismatch.');
+  });
+
+  it('sem o modelo escolhido (ou sem o arquivo que ele pede), nada sai e a ficha não oferece o botão', async () => {
+    await ajustar({ envioCliente: 'modelo', template: null });
+    const { id } = await abrir(s, { contatoNome: 'Joana', contatoTelefone: '(71) 98888-7777' });
+    const antes = enviados.length;
+    let r = await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Pode testar?' });
+    expect(r.json().error).toBe('Falta escolher o modelo aprovado da mensagem ao cliente (Chamados › Ajustes › Avisos e WhatsApp).');
+    expect((await s.get('/atendimento/opcoes')).json().whatsapp.cliente).toBe(false);
+    await ajustar({ envioCliente: 'modelo', template: { ...MODELO, nome: 'promocao', tipoArquivo: 'IMAGE', arquivo: '' } });
+    r = await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Pode testar?' });
+    expect(r.json().error).toBe('O modelo promocao tem imagem no cabeçalho: falta o endereço do arquivo (Chamados › Ajustes › Avisos e WhatsApp).');
+    expect(enviados.length).toBe(antes);
+    await ajustar({ envioCliente: 'modelo', template: { ...MODELO, tipoArquivo: 'IMAGE', arquivo: 'https://exemplo.com.br/logo.png' } });
+    expect((await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Pode testar?' })).statusCode).toBe(200);
+    expect(enviados.at(-1)!.corpo.body.fileUrl).toBe('https://exemplo.com.br/logo.png');
+    expect((await s.get('/atendimento/opcoes')).json().whatsapp.cliente).toBe(true);
+  });
+
+  it('no texto livre, recusado (passou de 24 h), vai de novo pelo modelo aprovado', async () => {
+    await ajustar({ envioCliente: 'texto', template: MODELO });
+    const { id } = await abrir(s, { contatoNome: 'Joana', contatoTelefone: '(71) 98888-7777' });
+    const antes = enviados.length;
+    let tentativas = 0;
+    trocarFerramentasWhatsApp({
+      fetchFn: (async (url: string, init: RequestInit) => {
+        enviados.push({ url, corpo: JSON.parse(String(init.body)), auth: '' });
+        tentativas += 1;
+        return tentativas === 1 ? new Response('{"text":"Fora da janela de 24 horas"}', { status: 400 }) : new Response('{"status":"QUEUED"}', { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    const r = await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Pode testar?' });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(enviados.slice(antes).map((e) => Object.keys(e.corpo.body))).toEqual([['text'], ['templateId', 'parameters']]);
+    expect(eventos(r.json(), 'aviso_cliente').at(-1).dados).toMatchObject({ ok: true, modelo: true });
   });
 });
 
@@ -1261,7 +1342,7 @@ describe('as opções da tela', () => {
     expect(op.etiquetas.find((e: any) => e.nome === 'vip')).toEqual({ nome: 'vip', cor: 'neutral' });
     expect(op.respostas.find((r: any) => r.nome === 'Resolver')).toMatchObject({ painelId: SUP, acao: { etapaId: E.resolvido, avisarCliente: false, esperar: null, assumir: false } });
     expect(op.prazos.matriz.inoperancia.empresa).toBe('critica');
-    expect(op.whatsapp).toEqual({ cliente: false, equipe: false });
+    expect(op.whatsapp).toEqual({ cliente: false, equipe: false, mensagemCliente: null });
     expect(op.ia).toEqual({ ativa: false, modelo: null });
     expect(op.linechatUrl).toBeNull();
     expect(op.pode).toEqual({ trabalhar: true, cuidar: true, integrar: true });

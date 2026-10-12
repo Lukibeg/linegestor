@@ -21,7 +21,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
   clientContacts, clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketLinks, ticketMacros, ticketNotes, ticketPanels,
-  ticketTimeEntries, tickets,
+  ticketTimeEntries, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
@@ -43,7 +43,7 @@ import {
 } from './contexto.js';
 import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, lerAcao, minutosGastos } from './leitura.js';
 import { emitir } from './webhooks.js';
-import { lerAvisos, mandarWhatsApp } from './whatsapp.js';
+import { mandarWhatsApp } from './whatsapp.js';
 
 export { fichaDoChamado } from './leitura.js';
 
@@ -175,16 +175,30 @@ async function aprenderTelefone(db: Db, telefone: string | null, clienteId: stri
 }
 
 /**
- * Manda ao contato pelo WhatsApp oficial (o modelo da mensagem é o dos Ajustes) e registra no
- * histórico — mesmo quando não vai, para ficar o porquê.
+ * Manda ao contato pelo WhatsApp oficial (pelo modelo aprovado, ou no texto livre dos Ajustes) e
+ * registra no histórico — mesmo quando não vai, para ficar o porquê.
  */
-async function mandarAoCliente(app: FastifyInstance, ator: Ator, t: Pick<LinhaChamado, 'id' | 'code' | 'title' | 'contactName' | 'contactPhone'>, texto: string, em: Date) {
+async function mandarAoCliente(
+  app: FastifyInstance, ator: Ator, t: Pick<LinhaChamado, 'id' | 'code' | 'title' | 'contactName' | 'contactPhone' | 'clientId' | 'assigneeId'>, texto: string, em: Date,
+) {
   let r: { ok: boolean; mensagem: string; modelo?: boolean };
   if (!t.contactPhone) r = { ok: false, mensagem: 'O chamado não tem o WhatsApp do contato.' };
   else {
-    const { valor } = await lerAvisos(app.db);
-    const mensagem = preencherModelo(valor.modeloCliente, { contato: t.contactName, codigo: t.code, titulo: t.title, texto });
-    r = await mandarWhatsApp(app.db, app.vault, { de: 'cliente', para: t.contactPhone, texto: mensagem, modelo: { codigo: t.code, contato: t.contactName, texto } });
+    // os valores do chamado (as variáveis do modelo e os marcadores do texto livre) e quem manda
+    const [cliente, pessoas] = await Promise.all([
+      t.clientId ? app.db.select({ nome: clients.tradeName }).from(clients).where(eq(clients.id, t.clientId)).limit(1) : Promise.resolve([]),
+      app.db.select({ id: users.id, nome: users.name, email: users.email }).from(users)
+        .where(inArray(users.id, [t.assigneeId, ator.tipo === 'pessoa' ? ator.id : null].filter((x): x is string => !!x).concat('-'))),
+    ]);
+    const quem = ator.tipo === 'pessoa' ? pessoas.find((p) => p.id === ator.id) ?? null : null;
+    r = await mandarWhatsApp(app.db, app.vault, {
+      de: 'cliente', para: t.contactPhone, texto,
+      valores: {
+        contato: t.contactName, codigo: t.code, titulo: t.title, cliente: cliente[0]?.nome ?? null, texto,
+        responsavel: pessoas.find((p) => p.id === t.assigneeId)?.nome ?? null, eu: ator.nome,
+      },
+      quem: quem ? { email: quem.email } : null,
+    });
   }
   await registrarEvento(app.db, t.id, 'aviso_cliente', ator, { texto, ok: r.ok, ...(r.ok ? (r.modelo ? { modelo: true } : {}) : { erro: r.mensagem }) }, em);
   return { ok: r.ok, mensagem: r.mensagem };
@@ -346,7 +360,7 @@ export async function criarChamado(
   // 12. o número do chamado ao cliente (o chamado fica criado mesmo se o WhatsApp não for)
   let aviso: { ok: boolean; mensagem: string } | undefined;
   if (d.avisarCliente) {
-    aviso = await mandarAoCliente(app, ator, { id: criado.id, code: criado.codigo, title: d.titulo, contactName: contatoNome, contactPhone: telefone },
+    aviso = await mandarAoCliente(app, ator, { id: criado.id, code: criado.codigo, title: d.titulo, contactName: contatoNome, contactPhone: telefone, clientId: clienteId, assigneeId: d.responsavelId ?? null },
       'Abrimos este chamado para o seu atendimento. Qualquer novidade, avisamos por aqui.', quando());
   }
 

@@ -586,7 +586,7 @@ describe('os avisos (o WhatsApp dos chamados)', () => {
   let falhar = false;
   const avisos = (o: Record<string, unknown> = {}) => ({
     ativo: true, url: 'https://api.exemplo.com.br/chat/v1/message/send', usarChaveDoLineChat: false,
-    numeroCliente: '(71) 3034-8350', numeroEquipe: '71 99999-0000', modeloCliente: AVISOS_CHAMADOS_PADRAO.modeloCliente, template: null,
+    numeroCliente: '(71) 3034-8350', numeroEquipe: '71 99999-0000', envioCliente: 'texto', modeloCliente: AVISOS_CHAMADOS_PADRAO.modeloCliente, template: null,
     pessoas: [{ userId: marinaId, numero: '(71) 98888-7777', ativo: true }], eventos: EVENTOS_AVISO_PADRAO, ...o,
   });
 
@@ -665,6 +665,63 @@ describe('os avisos (o WhatsApp dos chamados)', () => {
     // quem não tem número guardado: 400 (nada sai)
     expect((await s.post('/atendimento/ajustes/avisos/testar', { userId: brunoId })).statusCode).toBe(400);
     expect(enviados).toHaveLength(3);
+  });
+
+  it('o modelo aprovado: as variáveis, o arquivo e quem fica com a conversa são conferidos ao salvar', async () => {
+    const modelo = { id: 'b6a1f0c2-1111-4c2d-9e3f-0a1b2c3d4e5f', nome: 'ticket_atualizacao', variaveis: [{ nome: '1', valor: '{contato}' }, { nome: '2', valor: '{codigo}' }] };
+    const r = await s.put('/atendimento/ajustes/avisos', avisos({ envioCliente: 'modelo', template: modelo, equipeLineChat: 'Suporte', atribuirAQuemManda: true }));
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toMatchObject({ envioCliente: 'modelo', template: { ...modelo, texto: '', tipoArquivo: 'UNDEFINED', arquivo: '' }, equipeLineChat: 'Suporte', atribuirAQuemManda: true });
+    expect(await auditoria()).toContain('ticket_atualizacao');
+    const ruim = (o: Record<string, unknown>) => s.put('/atendimento/ajustes/avisos', avisos({ envioCliente: 'modelo', template: { ...modelo, ...o } }));
+    expect((await ruim({ variaveis: [{ nome: '1', valor: '{contato}' }, { nome: '1', valor: '{codigo}' }] })).json().details[0].message).toBe('Uma variável repetida no modelo');
+    expect((await ruim({ tipoArquivo: 'IMAGE', arquivo: 'http://exemplo.com.br/a.png' })).json().details[0].message).toBe('O arquivo do cabeçalho precisa de um endereço com https://');
+    expect((await ruim({ id: '' })).statusCode).toBe(400);
+  });
+
+  it('busca os modelos aprovados do número oficial no LineChat (o canal pelo número; só os aprovados)', async () => {
+    const pedidos: string[] = [];
+    trocarFerramentasWhatsApp({
+      fetchFn: (async (url: string) => {
+        pedidos.push(url);
+        if (url.includes('/chat/v1/channel')) {
+          return new Response(JSON.stringify([
+            { id: 'canal-equipe', type: 'ZAPI_WhatsApp', number: '5571999990000' },
+            { id: 'canal-oficial', type: 'CloudAPI_WhatsApp', number: '557130348350' },
+          ]), { status: 200 });
+        }
+        return new Response(JSON.stringify({
+          hasMorePages: false,
+          items: [
+            { id: 'm2', name: 'ticket_atualizacao', text: 'Olá, {{nome}}! Novidade no {{chamado}}: {{mensagem}}', status: 'Approved', active: true, fileType: 'UNDEFINED', params: [{ name: 'nome' }, { name: 'chamado' }, { name: 'mensagem' }], categoryName: 'Utilidade' },
+            { id: 'm1', name: 'boas_vindas', text: 'Bem-vindo!', status: 'Approved', active: true, fileType: 'IMAGE', params: [], footerText: 'Ingline' },
+            { id: 'm3', name: 'rascunho', text: 'x', status: 'Draft', active: true, params: [] },
+          ],
+        }), { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    try {
+      const r = await s.get('/atendimento/ajustes/avisos/modelos');
+      expect(r.statusCode, r.body).toBe(200);
+      expect(r.json()).toEqual({
+        canal: { id: 'canal-oficial', numero: '557130348350', oficial: true },
+        modelos: [
+          { id: 'm1', nome: 'boas_vindas', texto: 'Bem-vindo!', rodape: 'Ingline', variaveis: [], tipoArquivo: 'IMAGE', categoria: null },
+          { id: 'm2', nome: 'ticket_atualizacao', texto: 'Olá, {{nome}}! Novidade no {{chamado}}: {{mensagem}}', rodape: null, variaveis: ['nome', 'chamado', 'mensagem'], tipoArquivo: 'UNDEFINED', categoria: 'Utilidade' },
+        ],
+      });
+      expect(pedidos[0]).toBe('https://api.exemplo.com.br/chat/v1/channel?ChannelType=Whatsapp');
+      expect(pedidos[1]).toContain('https://api.exemplo.com.br/chat/v1/template?ChannelId=canal-oficial&ApprovedOnly=true');
+      expect(pedidos[1]).toContain('IncludeDetails=Params');
+      // o número que não é canal do LineChat
+      await s.put('/atendimento/ajustes/avisos', avisos({ numeroCliente: '(71) 3333-4444' }));
+      const fora = await s.get('/atendimento/ajustes/avisos/modelos');
+      expect(fora.statusCode).toBe(400);
+      expect(fora.json().error).toBe('O número (71) 3333-4444 não está entre os canais de WhatsApp do LineChat. Confira o número para o cliente.');
+      expect((await operador.get('/atendimento/ajustes/avisos/modelos')).statusCode).toBe(403);
+    } finally {
+      trocarFerramentasWhatsApp({ fetchFn: recusar });
+    }
   });
 });
 

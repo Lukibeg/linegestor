@@ -6,7 +6,7 @@
  * leem os exemplos, depois os que abrem e mexem nos próprios chamados de teste.
  */
 import { describe, expect, it } from 'vitest';
-import { caminhoDoAssunto, mensagemDoQueFalta, prioridadeSugeridaDoPainel, type CartaoChamado } from '@gestor/shared';
+import { caminhoDoAssunto, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, type CartaoChamado } from '@gestor/shared';
 import { demoApi } from './demo.js';
 import { diagnosticoDosChamadosDemo } from './demo-atendimento.js';
 import { ApiError, type ChamadoCriarEntrada, type OpcoesAtendimento } from './types.js';
@@ -596,16 +596,41 @@ describe('as regras do servidor valem na prévia', () => {
   it('avisar o cliente e testar o WhatsApp conferem como o servidor, sem mandar nada', async () => {
     await entrar('operador');
     const op = await api.opcoes();
-    expect(op.whatsapp).toEqual({ cliente: true, equipe: true });
+    // a prévia já vem com o modelo aprovado escolhido (o WhatsApp oficial): a ficha mostra a mensagem antes
+    expect(op.whatsapp).toMatchObject({ cliente: true, equipe: true, mensagemCliente: { peloModelo: true, nomeDoModelo: 'ticket_atualizacao' } });
+    expect(mensagemPreenchida(op.whatsapp.mensagemCliente!, { contato: 'Maria', codigo: 'SUP-9', texto: 'Trocamos o cabo.\nPode testar?' }))
+      .toBe('Olá, Maria! Temos uma novidade sobre o seu chamado SUP-9:\n\nTrocamos o cabo. · Pode testar?\n\nSe precisar, é só responder por aqui.');
     const r = await api.criar({ ...(await baseDoSuporte(op, 'Aviso ao cliente (teste)')), contatoNome: 'Maria', contatoTelefone: '(71) 99999-0042' });
     const f = await api.avisarCliente(r.id, 'Estamos verificando o seu ramal.');
     const ultimo = f.historico[f.historico.length - 1]!;
     expect(ultimo.tipo).toBe('aviso_cliente');
-    expect(ultimo.dados).toEqual(expect.objectContaining({ ok: true, texto: 'Estamos verificando o seu ramal.' }));
+    expect(ultimo.dados).toEqual(expect.objectContaining({ ok: true, texto: 'Estamos verificando o seu ramal.', modelo: true }));
     const semFone = await api.criar(await baseDoSuporte(op, 'Sem telefone (teste)'));
     expect((await erroDe(api.avisarCliente(semFone.id, 'Oi'))).message).toBe('O chamado não tem o WhatsApp do contato.');
     await entrar('admin');
     expect(await api.testarAvisos({ de: 'equipe' })).toEqual({ ok: true, mensagem: 'Prévia: nada foi enviado de verdade' });
+
+    // os modelos do número oficial (o Buscar dos Ajustes): os aprovados, com as variáveis e o arquivo do cabeçalho
+    const { canal, modelos } = await api.modelosDoLineChat();
+    expect(canal.oficial).toBe(true);
+    expect(modelos.map((m) => [m.nome, m.variaveis, m.tipoArquivo])).toEqual([
+      ['manutencao_programada', ['1', '2'], 'IMAGE'], ['ticket_aberto', ['1', '2'], 'UNDEFINED'], ['ticket_atualizacao', ['nome', 'chamado', 'mensagem'], 'UNDEFINED'],
+    ]);
+    // sem o modelo escolhido, o cliente não fica pronto (a ficha nem mostra o botão) e o aviso diz o que falta
+    const antes = await api.ajustesAvisos();
+    const gravar = (m: Partial<typeof antes>) => api.salvarAvisos({ ...antes, pessoas: antes.pessoas.map((p) => ({ userId: p.userId, numero: p.numero, ativo: p.ativo })), ...m });
+    await gravar({ template: null });
+    expect((await api.opcoes()).whatsapp).toMatchObject({ cliente: false, mensagemCliente: null });
+    expect((await erroDe(api.avisarCliente(r.id, 'Oi'))).message).toMatch(/Falta escolher o modelo aprovado/);
+    // o modelo com imagem no cabeçalho pede o endereço do arquivo
+    const comImagem = modelos.find((m) => m.tipoArquivo === 'IMAGE')!;
+    await gravar({ template: { id: comImagem.id, nome: comImagem.nome, texto: comImagem.texto, tipoArquivo: 'IMAGE', arquivo: '', variaveis: [{ nome: '1', valor: '{contato}' }, { nome: '2', valor: 'sábado, 22h' }] } });
+    expect((await erroDe(api.avisarCliente(r.id, 'Oi'))).message).toMatch(/tem imagem no cabeçalho: falta o endereço do arquivo/);
+    // no texto livre, o cliente fica pronto mesmo sem o modelo (ele vale depois das 24 horas)
+    await gravar({ envioCliente: 'texto', template: null });
+    expect((await api.opcoes()).whatsapp.mensagemCliente).toMatchObject({ peloModelo: false, nomeDoModelo: null, variaveis: [] });
+    await gravar({});
+    expect((await api.opcoes()).whatsapp.mensagemCliente).toMatchObject({ peloModelo: true, nomeDoModelo: 'ticket_atualizacao' });
   }, DEMORA);
 
   it('os observadores recebem toda atualização (como o servidor): abrir, anotar, mover e os campos juntos num aviso só', async () => {

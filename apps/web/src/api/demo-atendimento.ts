@@ -27,6 +27,7 @@ import {
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
   OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema, RespostaProntaGravarSchema,
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaCorSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta,
+  faltaNoModeloAprovado, mensagemAoCliente, parametrosDoModelo, telefoneLegivel,
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
@@ -48,7 +49,7 @@ import type { Api } from './index.js';
 import { ApiError, type Page, type TrashItem } from './types.js';
 import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import {
-  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, CORES_DAS_ETIQUETAS, DESLIGADOS_NO_DESENVOLVIMENTO, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
+  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, CORES_DAS_ETIQUETAS, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, RESPOSTAS_PRONTAS, WHATSAPP_DA_EQUIPE,
   type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
@@ -475,12 +476,20 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const de = p.de === 'cliente' ? v.numeroCliente : v.numeroEquipe;
     if (!de) return { ok: false, mensagem: `Falta o número que envia para ${p.de === 'cliente' ? 'o cliente' : 'a equipe'} (Chamados › Ajustes › Avisos).` };
     if (!numeroWhatsApp(p.para)) return { ok: false, mensagem: `O número ${p.para} não é um WhatsApp válido.` };
+    // ao cliente, pelo modelo aprovado (o WhatsApp oficial exige): sem o modelo (ou sem o arquivo dele), nada sai
+    const peloModelo = p.de === 'cliente' && v.envioCliente === 'modelo';
+    if (peloModelo) { const falta = faltaNoModeloAprovado(v.template); if (falta) return { ok: false, mensagem: falta }; }
     if (!temChaveDoEnvio()) return { ok: false, mensagem: v.usarChaveDoLineChat ? 'Falta a chave do LineChat (Administração › Ajustes › Chamados do LineChat).' : 'Falta a chave da API (Chamados › Ajustes › Avisos).' };
-    return { ok: true, mensagem: PREVIA, modelo: false };
+    return { ok: true, mensagem: PREVIA, modelo: peloModelo };
   }
-  const whatsAppPronto = () => {
+  const whatsAppPronto = (): OpcoesAtendimento['whatsapp'] => {
     const v = A.whats; const chave = temChaveDoEnvio();
-    return { cliente: v.ativo && chave && !!v.numeroCliente, equipe: v.ativo && chave && !!v.numeroEquipe };
+    const peloModelo = v.envioCliente === 'modelo';
+    const cliente = v.ativo && chave && !!v.numeroCliente && (!peloModelo || !faltaNoModeloAprovado(v.template));
+    return {
+      cliente, equipe: v.ativo && chave && !!v.numeroEquipe,
+      mensagemCliente: cliente ? mensagemAoCliente(v) : null,
+    };
   };
 
   /** Avisa a equipe: o sininho e o WhatsApp, conforme os Ajustes. Quem fez a ação (`menos`) não recebe. */
@@ -625,8 +634,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   /** Manda ao contato pelo WhatsApp oficial e registra no histórico — mesmo quando não vai, para ficar o porquê. */
   function mandarAoCliente(ator: Ator, t: ChamadoRow, texto: string, em: Date) {
     const r = t.contatoTelefone ? mandarWhatsApp({ de: 'cliente', para: t.contatoTelefone }) : { ok: false, mensagem: 'O chamado não tem o WhatsApp do contato.' };
-    // (o texto que iria: o modelo dos Ajustes preenchido; na prévia, ele só serve para a conta)
-    void preencherModelo(A.whats.modeloCliente, { contato: t.contatoNome, codigo: t.codigo, titulo: t.titulo, texto });
+    // (o que iria: as variáveis do modelo aprovado, ou o texto livre, preenchidos; na prévia, só servem para a conta)
+    const valores = { contato: t.contatoNome, codigo: t.codigo, titulo: t.titulo, cliente: nomeCliente(t.clienteId), texto, responsavel: pessoaCurta(t.responsavelId)?.nome ?? null, eu: ator.nome };
+    void (A.whats.envioCliente === 'modelo' && A.whats.template ? parametrosDoModelo(A.whats.template, valores) : preencherModelo(A.whats.modeloCliente, valores));
     registrarEvento(t.id, 'aviso_cliente', ator, { texto, ok: r.ok, ...(r.ok ? (r.modelo ? { modelo: true } : {}) : { erro: r.mensagem }) }, em);
     return { ok: r.ok, mensagem: r.mensagem };
   }
@@ -2461,7 +2471,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const v = A.whats;
     return {
       ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
-      modeloCliente: v.modeloCliente, template: v.template ? { ...v.template } : null, eventos: JSON.parse(JSON.stringify(v.eventos)) as AvisosChamadosTela['eventos'],
+      envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template ? { ...v.template, variaveis: v.template.variaveis.map((x) => ({ ...x })) } : null,
+      equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda, eventos: JSON.parse(JSON.stringify(v.eventos)) as AvisosChamadosTela['eventos'],
       temChavePropria: A.temChavePropria, temChaveLineChat: S.ajustesLineChat.temToken,
       pessoas: S.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((u) => {
         const p = v.pessoas.find((x) => x.userId === u.id);
@@ -2473,7 +2484,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
   const avisosParaAuditoria = (v: AvisosGuardados) => ({
     ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
-    modeloCliente: v.modeloCliente, template: v.template, eventos: v.eventos, pessoas: v.pessoas,
+    envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template, equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda,
+    eventos: v.eventos, pessoas: v.pessoas,
   });
 
   // ---------- as integrações ----------
@@ -2579,6 +2591,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // ---- o WhatsApp dos chamados ligado (pela chave do LineChat), com a equipe e o número dela ----
     A.whats = {
       ...A.whats, ativo: true, numeroEquipe: NUMERO_DA_EQUIPE,
+      // a mensagem ao cliente pelo modelo aprovado do número oficial (o de atualização do chamado)
+      envioCliente: 'modelo', template: { ...MODELO_ESCOLHIDO, variaveis: MODELO_ESCOLHIDO.variaveis.map((x) => ({ ...x })) },
       pessoas: (Object.keys(WHATSAPP_DA_EQUIPE) as Pessoa[]).map((p) => ({ userId: idDa(p), numero: WHATSAPP_DA_EQUIPE[p], ativo: true })),
       ultimoTesteEm: iso(voltarUteis(agora, 9 * 600)), ultimoTesteOk: true, ultimoTesteMsg: PREVIA,
     };
@@ -3059,10 +3073,23 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (d.chave) A.temChavePropria = true;
       A.whats = {
         ...antes, ativo: d.ativo, url: d.url, usarChaveDoLineChat: d.usarChaveDoLineChat, numeroCliente: d.numeroCliente, numeroEquipe: d.numeroEquipe,
-        modeloCliente: d.modeloCliente, template: d.template?.id ? d.template : null, eventos: d.eventos, pessoas,
+        envioCliente: d.envioCliente, modeloCliente: d.modeloCliente, template: d.template?.id ? d.template : null,
+        equipeLineChat: d.equipeLineChat, atribuirAQuemManda: d.atribuirAQuemManda, eventos: d.eventos, pessoas,
       };
       auditar('settings_atendimento_avisos', 'settings', `${d.ativo ? 'Ligou' : 'Desligou'} o WhatsApp dos chamados${d.chave ? ' e trocou a chave da API' : ''}`, 'atendimento-avisos', { before: avisosParaAuditoria(antes), after: avisosParaAuditoria(A.whats) });
       return avisosParaTela();
+    },
+    async modelosDoLineChat() {
+      await ctx.wait(500);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const v = A.whats;
+      if (!v.numeroCliente) throw bad('Falta o número para o cliente (o oficial): salve o número antes de buscar os modelos.');
+      if (!temChaveDoEnvio()) throw bad(v.usarChaveDoLineChat ? 'Falta a chave do LineChat (Administração › Ajustes › Chamados do LineChat).' : 'Falta a chave da API: salve a chave antes de buscar os modelos.');
+      // na prévia, o número oficial do exemplo é o canal do LineChat; outro número não está lá (como o servidor diria)
+      if (v.numeroCliente !== AVISOS_CHAMADOS_PADRAO.numeroCliente) throw bad(`O número ${telefoneLegivel(v.numeroCliente)} não está entre os canais de WhatsApp do LineChat. Confira o número para o cliente.`);
+      // pelo nome, como o servidor devolve
+      const modelos = MODELOS_DO_LINECHAT.map((m) => ({ ...m, variaveis: [...m.variaveis] })).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+      return { canal: { id: 'canal-oficial-da-previa', numero: v.numeroCliente, oficial: true }, modelos };
     },
     async testarAvisos(d) {
       await ctx.wait(400);

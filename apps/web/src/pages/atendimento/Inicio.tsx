@@ -15,7 +15,7 @@ import { ArrowRight, Lock, Plus, Search, Settings2 } from 'lucide-react';
 import { paraBusca, type Painel, type ResumoDoPainel } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, Chip, Vazio, mensagemErro } from '../../components/ui/index.js';
-import { CabecalhoAtendimento, haQuanto, useOpcoes, usePode } from './comum.js';
+import { CabecalhoAtendimento, useOpcoes, usePode } from './comum.js';
 
 /** O fundo e a letra do quadradinho da sigla, na cor do painel (as classes inteiras, para o Tailwind achar). */
 const SIGLA_DO_PAINEL: Record<Painel['cor'], string> = {
@@ -128,7 +128,8 @@ function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPa
       )}
 
       <footer className="mt-auto pt-2.5 border-t border-line flex items-center gap-2 flex-wrap">
-        <span className="text-[12px] text-muted">{r?.ultimaAtividadeEm ? `mexido ${haQuanto(r.ultimaAtividadeEm)}` : carregando ? '' : 'nenhum chamado ainda'}</span>
+        {/* o "mexido há…" saiu (o pedido do Luan na prévia: "não precisa"); o painel vazio ainda diz que está vazio */}
+        {r && !r.ultimaAtividadeEm && <span className="text-[12px] text-muted">nenhum chamado ainda</span>}
         <div className="ml-auto flex items-center gap-1">
           {cuidar && (
             <Link to={`/atendimento/ajustes?aba=paineis&editar=${encodeURIComponent(p.id)}`} className="btn-ghost btn-sm" title="As etapas, as regras e quem vê este painel">

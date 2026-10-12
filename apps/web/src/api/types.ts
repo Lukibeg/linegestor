@@ -521,4 +521,5 @@ export type {
   CampoObrigatorio, TipoEtapa, ItemChecklist, SituacaoDoChamado, Prioridade, Gravidade, Alcance, EstadoPrazo, TipoEspera, PessoaCurta, AcaoResposta, RegraAgendado,
   EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, Nivel, CampoPersonalizado, CampoGravarEntrada, CamposDoSistemaEntrada, CampoDoSistema, TipoCampo,
   OpcaoDoCampo, ValorDoCampo, ValoresDosCampos, Obrigatorio, CorEtiqueta, EtiquetaComCor, EtiquetaDoCatalogo, EtiquetaGravarEntrada,
+  ModelosDoLineChat, ModeloDoLineChat, ModeloAprovado, EnvioAoCliente, TipoArquivoDoModelo,
 } from '@gestor/shared';

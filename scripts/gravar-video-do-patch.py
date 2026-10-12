@@ -145,6 +145,11 @@ def legenda(page, n, t, s, ms=900):
     esperar(page, ms)
 
 
+def legenda_no_alto(page, sim=True):
+    """A legenda sobe para o alto da tela (e volta): quando o que se mostra está embaixo, como o cartão do aviso."""
+    page.evaluate("(sim) => { const l = document.getElementById('__legenda'); l.style.top = sim ? '20px' : ''; l.style.bottom = sim ? 'auto' : ''; }", sim)
+
+
 def rolar(page, dy, passos=12):
     for _ in range(passos):
         page.mouse.wheel(0, dy / passos)
@@ -245,8 +250,15 @@ def roteiro(page):
 
     # o sininho, o tema e o Sair: no rodapé do menu (no computador, a barra de cima saiu)
     legenda(page, next(n), 'O sininho, o tema e o Sair', 'A barra de cima saiu, para sobrar espaço: eles ficam no rodapé do menu, ao lado do seu nome.', 900)
-    clicar(page, page.get_by_role('button', name='Avisos dos chamados').first); esperar(page, 2600)
-    page.keyboard.press('Escape'); esperar(page, 500)
+    clicar(page, page.get_by_role('button', name='Avisos dos chamados').first); esperar(page, 2200)
+    # o aviso que chega: o cartão perto do sininho (o Testar mostra), e a notificação do navegador
+    legenda(page, next(n), 'O aviso que chega', 'Aparece num cartão perto do sininho, com Abrir o chamado. Ali embaixo, ligue também a notificação do navegador.', 600)
+    apontar(page, page.get_by_role('switch', name='Notificação do navegador').first, 1400)
+    # o cartão aparece embaixo, perto do sininho: a legenda sobe para não cobrir
+    legenda_no_alto(page)
+    clicar(page, page.get_by_role('button', name='Testar o aviso').first); esperar(page, 3400)
+    clicar(page, page.get_by_role('button', name='Fechar o aviso').first); esperar(page, 500)
+    legenda_no_alto(page, False)
     apontar(page, page.get_by_role('button', name='Tema claro/escuro').first, 900)
     apontar(page, page.get_by_role('button', name='Sair').first, 1200)
 
@@ -296,6 +308,14 @@ def roteiro(page):
     prazos = page.locator('section:has(h2:has-text("Prazos"))').first
     prazos.scroll_into_view_if_needed(); esperar(page, 500)
     apontar(page, prazos, 2400)
+
+    # 7b. avisar o cliente: pelo modelo aprovado do WhatsApp oficial, e a ficha mostra antes como chega (nada sai na prévia)
+    ir(page, f'/atendimento/{COD["ficha"]}', 1500)
+    legenda(page, next(n), 'A mensagem ao cliente', 'Sai pelo modelo aprovado do WhatsApp oficial. Antes de mandar, a ficha mostra como chega.', 600)
+    clicar(page, page.get_by_role('button', name='Avisar o cliente').first); esperar(page, 800)
+    page.keyboard.type('Trocamos a rota de saída. Pode testar uma ligação e nos dizer se completou?', delay=35); esperar(page, 600)
+    apontar(page, page.locator('#ficha-como-chega'), 2600)
+    page.keyboard.press('Escape'); esperar(page, 600)
 
     # 8. abrir chamado: os contatos do cliente (um clique preenche) e o cliente que volta com o mesmo problema reabre o de antes
     ir(page, '/atendimento/novo', 1400)
@@ -358,7 +378,16 @@ def roteiro(page):
     if page.locator('#campo-nome').count():
         page.keyboard.press('Escape'); esperar(page, 600)
     legenda(page, next(n), 'E o resto dos Ajustes', 'Os prazos, os avisos e o WhatsApp, as respostas prontas, os agendados e a IA.', 600)
-    clicar(page, page.get_by_role('tab', name='Avisos e WhatsApp')); esperar(page, 2200)
+    clicar(page, page.get_by_role('tab', name='Avisos e WhatsApp')); esperar(page, 1600)
+    # o modelo aprovado: o Buscar traz os aprovados do número oficial; cada variável recebe um valor do chamado
+    modelo = page.locator('#avisos-modelo')
+    modelo.scroll_into_view_if_needed(); esperar(page, 500)
+    legenda(page, next(n), 'O modelo aprovado', 'Buscar traz os modelos aprovados do número oficial no LineChat; cada variável recebe um valor do chamado.', 600)
+    # a lista e as variáveis ocupam a tela até embaixo: a legenda sobe
+    legenda_no_alto(page)
+    clicar(page, page.locator('#avisos-buscar-modelos')); esperar(page, 2400)
+    rolar(page, 260); esperar(page, 600)
+    apontar(page, page.locator('#avisos-variaveis'), 2400)
 
 
 # ---------- o roteiro do Patch 1.9 (o exemplo de antes) ----------

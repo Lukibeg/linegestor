@@ -1025,6 +1025,43 @@ export const EVENTOS_AVISO_PADRAO: Record<EventoAviso, CanaisDoAviso> = {
 };
 const CanaisSchema = z.object({ tela: z.boolean(), whatsapp: z.boolean() });
 
+/**
+ * Como a mensagem ao cliente sai pelo número oficial (o pedido do Luan na prévia: "vou usar no meu
+ * WhatsApp oficial, então temos que usar os templates pré-criados na plataforma"): pelo modelo aprovado
+ * — o WhatsApp oficial só começa conversa com ele —, ou texto livre (só até 24 h depois da última
+ * mensagem do cliente; passou disso, vai o modelo).
+ */
+export const ENVIOS_AO_CLIENTE = ['modelo', 'texto'] as const;
+export type EnvioAoCliente = (typeof ENVIOS_AO_CLIENTE)[number];
+/** O arquivo do cabeçalho do modelo, como o LineChat diz (UNDEFINED = sem arquivo). */
+export const TIPOS_ARQUIVO_DO_MODELO = ['UNDEFINED', 'IMAGE', 'VIDEO', 'DOCUMENT'] as const;
+export type TipoArquivoDoModelo = (typeof TIPOS_ARQUIVO_DO_MODELO)[number];
+export const NOME_TIPO_ARQUIVO_DO_MODELO: Record<TipoArquivoDoModelo, string> = { UNDEFINED: 'sem arquivo', IMAGE: 'imagem', VIDEO: 'vídeo', DOCUMENT: 'documento' };
+/**
+ * O modelo aprovado (template) da API do LineChat (`POST /chat/v1/message/send`, `body.templateId`,
+ * `body.parameters` e `body.fileUrl`): o id, as variáveis — cada uma com o que vai nela, um texto com os
+ * marcadores do chamado — e o arquivo do cabeçalho, quando o modelo tem imagem, vídeo ou documento.
+ */
+export const ModeloAprovadoSchema = z.object({
+  id: z.string().trim().min(1, 'Escolha o modelo aprovado (ou escreva o id dele)').max(120),
+  /** o nome do modelo no LineChat (para mostrar) */
+  nome: z.string().trim().max(200).default(''),
+  /** o texto do modelo como foi aprovado (para a prévia), com as variáveis {{nome}} */
+  texto: z.string().max(2000).default(''),
+  variaveis: z.array(z.object({
+    /** o nome da variável no modelo, como o LineChat mostra (ex.: 1, nome, chamado) */
+    nome: z.string().trim().min(1, 'Escreva o nome da variável').max(60),
+    /** o que vai nela: um texto com os marcadores {contato}, {codigo}, {titulo}, {cliente}, {texto}… */
+    valor: z.string().trim().max(1000),
+  })).max(20).default([])
+    .refine((vs) => new Set(vs.map((v) => v.nome.toLowerCase())).size === vs.length, 'Uma variável repetida no modelo'),
+  tipoArquivo: z.enum(TIPOS_ARQUIVO_DO_MODELO).default('UNDEFINED'),
+  /** a URL pública do arquivo do cabeçalho (`fileUrl`) */
+  arquivo: z.string().trim().max(500).default('')
+    .refine((u) => !u || /^https:\/\/\S+$/i.test(u), 'O arquivo do cabeçalho precisa de um endereço com https://'),
+});
+export type ModeloAprovado = z.infer<typeof ModeloAprovadoSchema>;
+
 /** O WhatsApp dos chamados: o número oficial para o cliente, um não oficial para a equipe. */
 export const AvisosChamadosSchema = z.object({
   /** liga o envio pelo WhatsApp (os avisos na tela valem sempre) */
@@ -1037,15 +1074,16 @@ export const AvisosChamadosSchema = z.object({
   chave: z.string().trim().max(500).optional(),
   numeroCliente: z.string().trim().max(30).transform((v) => numeroWhatsApp(v) ?? ''),
   numeroEquipe: z.string().trim().max(30).transform((v) => numeroWhatsApp(v) ?? ''),
-  /** o texto que abre a mensagem ao cliente: {contato}, {codigo}, {titulo}, {texto} */
+  /** como a mensagem ao cliente sai: pelo modelo aprovado (o WhatsApp oficial exige) ou texto livre */
+  envioCliente: z.enum(ENVIOS_AO_CLIENTE).default('modelo'),
+  /** o texto livre ao cliente: {contato}, {codigo}, {titulo}, {cliente}, {texto} */
   modeloCliente: z.string().trim().max(2000),
-  /** o modelo aprovado (template) para quando a conversa com o cliente passou de 24 h (opcional) */
-  template: z.object({
-    id: z.string().trim().max(120),
-    parametroCodigo: z.string().trim().max(60).default(''),
-    parametroTexto: z.string().trim().max(60).default(''),
-    parametroContato: z.string().trim().max(60).default(''),
-  }).nullable().default(null),
+  /** o modelo aprovado (template) do número oficial: sempre, ou só depois das 24 h no texto livre */
+  template: ModeloAprovadoSchema.nullable().default(null),
+  /** a equipe do LineChat que fica com a conversa que a mensagem abrir (`department.name`; vazio = o LineChat decide) */
+  equipeLineChat: z.string().trim().max(120).default(''),
+  /** quem manda a mensagem fica com a conversa que ela abrir, pelo e-mail (o mesmo do LineChat: `user.email`) */
+  atribuirAQuemManda: z.boolean().default(false),
   pessoas: z.array(z.object({ userId: z.string(), numero: z.string().trim().max(30), ativo: z.boolean() })).max(300)
     .transform((xs, ctx) => xs.filter((p) => p.numero).map((p) => {
       const n = numeroWhatsApp(p.numero);
@@ -1248,7 +1286,14 @@ export type OpcoesAtendimento = {
   prazos: AjustesPrazos;
   respostas: RespostaPronta[];
   /** o WhatsApp está pronto para mandar ao cliente? e à equipe? */
-  whatsapp: { cliente: boolean; equipe: boolean };
+  whatsapp: {
+    cliente: boolean; equipe: boolean;
+    /**
+     * a mensagem ao cliente, para a ficha preencher com o chamado e mostrar antes de mandar (pelo modelo
+     * aprovado ou no texto livre); nula quando o cliente não está pronto
+     */
+    mensagemCliente: MensagemAoCliente | null;
+  };
   ia: { ativa: boolean; modelo: string | null };
   /** o endereço do LineChat (para abrir a conversa e o card antigo) */
   linechatUrl: string | null;
@@ -1310,8 +1355,9 @@ export const AVISOS_CHAMADOS_PADRAO: Omit<AvisosChamadosTela, 'pessoas' | 'temCh
   ativo: false, url: 'https://api.inglinechat.com.br/chat/v1/message/send', usarChaveDoLineChat: true,
   // o número oficial do suporte, o mesmo do "não ajudou" do portal
   numeroCliente: '557130348350', numeroEquipe: '',
+  envioCliente: 'modelo',
   modeloCliente: 'Olá, {contato}! Sobre o seu chamado {codigo} ({titulo}):\n\n{texto}\n\nEquipe de suporte Ingline',
-  template: null, eventos: EVENTOS_AVISO_PADRAO,
+  template: null, equipeLineChat: '', atribuirAQuemManda: false, eventos: EVENTOS_AVISO_PADRAO,
   ultimoTesteEm: null, ultimoTesteOk: null, ultimoTesteMsg: null,
 };
 
@@ -1589,6 +1635,93 @@ export function preencherModelo(modelo: string, v: Partial<Record<'contato' | 'c
     .replace(/,\s*!/g, '!').replace(/\(\s*\)/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ +([,.!?:;])/g, '$1')
     .trim();
 }
+
+// =====================================================================
+//  O MODELO APROVADO (template) DO WHATSAPP OFICIAL
+// =====================================================================
+
+/** Os valores que a mensagem ao cliente usa (os marcadores do chamado). */
+export type ValoresDaMensagem = Partial<Record<'contato' | 'codigo' | 'cliente' | 'titulo' | 'responsavel' | 'eu' | 'texto', string | null>>;
+
+/**
+ * O valor de uma variável do modelo, do jeito que o WhatsApp aceita: sem quebra de linha nem tabulação,
+ * sem mais de 3 espaços seguidos, até 1.000 letras e nunca vazio (vazio, ele recusa o modelo inteiro).
+ */
+export function valorDaVariavel(valor: string): string {
+  const v = valor.replace(/\s*[\r\n]+\s*/g, ' · ').replace(/\t/g, ' ').replace(/ {4,}/g, '   ').trim();
+  return (v.length > 1000 ? `${v.slice(0, 999)}…` : v) || '-';
+}
+
+/** As variáveis do modelo preenchidas com os valores deste chamado (o `parameters` da API). */
+export function parametrosDoModelo(m: Pick<ModeloAprovado, 'variaveis'>, valores: ValoresDaMensagem): Record<string, string> {
+  return Object.fromEntries(m.variaveis.map((v) => [v.nome, valorDaVariavel(preencherModelo(v.valor, valores))]));
+}
+
+/** Troca as variáveis {{nome}} do texto do modelo pelo que vai em cada uma (a prévia). */
+export function textoDoModelo(texto: string, valores: Record<string, string>): string {
+  return texto.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (todo, nome: string) => {
+    const achado = Object.entries(valores).find(([k]) => k.toLowerCase() === nome.trim().toLowerCase());
+    return achado ? achado[1] : todo;
+  });
+}
+
+/**
+ * A mensagem ao cliente do jeito que os Ajustes mandam: pelo modelo aprovado (o texto dele e o que vai
+ * em cada variável) ou o texto livre (com os marcadores). A ficha preenche com o chamado e mostra antes.
+ */
+export type MensagemAoCliente = { peloModelo: boolean; nomeDoModelo: string | null; texto: string; variaveis: Array<{ nome: string; valor: string }> };
+
+export function mensagemAoCliente(a: { envioCliente: EnvioAoCliente; modeloCliente: string; template: ModeloAprovado | null }): MensagemAoCliente {
+  const m = a.envioCliente === 'modelo' ? a.template : null;
+  return m
+    ? { peloModelo: true, nomeDoModelo: m.nome || m.id || null, texto: m.texto, variaveis: m.variaveis.map((v) => ({ nome: v.nome, valor: v.valor })) }
+    : { peloModelo: false, nomeDoModelo: null, texto: a.modeloCliente, variaveis: [] };
+}
+
+/**
+ * A mensagem como o cliente vai receber, com os valores do chamado: pelo modelo, o texto dele com cada
+ * variável como vai para a API (sem quebra de linha, nunca vazia) — sem o texto do modelo, as variáveis
+ * uma por linha; no texto livre, o próprio texto com os marcadores trocados.
+ */
+export function mensagemPreenchida(m: Pick<MensagemAoCliente, 'peloModelo' | 'texto' | 'variaveis'>, valores: ValoresDaMensagem): string {
+  if (!m.peloModelo) return preencherModelo(m.texto, valores);
+  const p = parametrosDoModelo(m, valores);
+  return m.texto.trim() ? textoDoModelo(m.texto, p) : m.variaveis.map((v) => `${v.nome}: ${p[v.nome] ?? ''}`).join('\n');
+}
+
+/**
+ * O que vai em cada variável quando o modelo chega do LineChat: pelo nome dela (nome, cliente, chamado,
+ * mensagem…); com número (1, 2, 3), na ordem de um aviso de chamado — o contato, o código e o texto.
+ */
+export function valorSugeridoDaVariavel(nome: string, posicao: number): string {
+  const n = paraBusca(nome).replace(/[^a-z0-9]/g, '');
+  if (/^(nome|contato|cliente_?nome)/.test(n) || n.includes('contato')) return '{contato}';
+  if (/(codigo|chamado|ticket|protocolo|numero)/.test(n)) return '{codigo}';
+  if (/(texto|mensagem|atualiza|descri|resposta|detalhe)/.test(n)) return '{texto}';
+  if (/(titulo|assunto|problema)/.test(n)) return '{titulo}';
+  if (/(empresa|cliente)/.test(n)) return '{cliente}';
+  if (/(atendente|responsavel|tecnico)/.test(n)) return '{responsavel}';
+  if (/^\d+$/.test(n)) return ['{contato}', '{codigo}', '{texto}', '{titulo}', '{cliente}'][Number(n) - 1] ?? '';
+  return ['{contato}', '{codigo}', '{texto}'][posicao] ?? '';
+}
+
+/** Por que o modelo aprovado ainda não serve para mandar (nulo = pronto): sem modelo, ou sem o arquivo que ele pede. */
+export function faltaNoModeloAprovado(m: ModeloAprovado | null | undefined): string | null {
+  if (!m?.id) return 'Falta escolher o modelo aprovado da mensagem ao cliente (Chamados › Ajustes › Avisos e WhatsApp).';
+  if (m.tipoArquivo !== 'UNDEFINED' && !m.arquivo) return `O modelo ${m.nome || m.id} tem ${NOME_TIPO_ARQUIVO_DO_MODELO[m.tipoArquivo]} no cabeçalho: falta o endereço do arquivo (Chamados › Ajustes › Avisos e WhatsApp).`;
+  return null;
+}
+
+/** Um modelo aprovado no LineChat, para escolher em Ajustes › Avisos e WhatsApp. */
+export type ModeloDoLineChat = {
+  id: string; nome: string; texto: string; rodape: string | null; variaveis: string[];
+  tipoArquivo: TipoArquivoDoModelo; categoria: string | null;
+};
+export type ModelosDoLineChat = {
+  /** o canal do número oficial no LineChat (os modelos são dele) */
+  canal: { id: string; numero: string; oficial: boolean };
+  modelos: ModeloDoLineChat[];
+};
 
 // =====================================================================
 //  A BUSCA E A ORDEM DA LISTA (as mesmas no servidor e na prévia)

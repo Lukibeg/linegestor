@@ -33,6 +33,13 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 - O **sininho**, no rodapé do menu lateral, ao lado do seu nome (no celular, no alto): os avisos
   (recebeu um chamado, chegou na sua etapa, o prazo está vencendo, o cliente respondeu…). O tema e o
   Sair também ficam ali — no computador, a barra de cima saiu, para sobrar espaço.
+- O aviso que chega com o Gestor aberto também aparece num **cartão** perto do sininho (no celular,
+  embaixo da barra de cima), com **Abrir o chamado**. Some sozinho em 20 segundos — com o mouse em
+  cima, espera —; o **Crítico** e o **prazo vencido** ficam até você fechar. Embaixo da lista do
+  sininho, em **Além do sininho**: ligar e desligar o cartão e a **notificação do navegador** (a do
+  Windows ou do Mac, que aparece mesmo com o Gestor em outra aba ou minimizado; o navegador pergunta se
+  pode, e clicar nela abre o chamado). **Testar o aviso** mostra como chega. Vale para o navegador em
+  que você ligou.
 
 ## 2. Abrir um chamado
 
@@ -92,7 +99,10 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 - A barra de cima: **Assumir**, **Mover**, **Escalonar** (pede o motivo), **Esperar** o cliente ou a
   operadora (pede o motivo), **Avisar o cliente**, **Resposta pronta**, **Preencher com IA** e **Mais**
   (ligar a outro chamado, criar um filho, definir o pai, ligar a um problema, trocar de painel,
-  reabrir, observar, lixeira).
+  reabrir, observar, lixeira). **Avisar o cliente** (e a resposta pronta que manda ao cliente) mostra,
+  antes de mandar, **como a mensagem chega**: dentro do modelo aprovado do WhatsApp oficial, com o
+  nome do contato, o código e o seu texto (a quebra de linha vira " · ": o WhatsApp não aceita quebra
+  dentro do modelo).
 - A **linha do tempo**: as anotações (com anexos: até 5 arquivos de 10 MB; cole o print com Ctrl+V),
   o histórico de tudo e a **trajetória** (por onde o chamado passou, quanto tempo ficou em cada etapa e
   o motivo de cada escalonamento).
@@ -117,7 +127,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 | **Campos** | Os campos **de cada painel** (escolha o painel em cima). **Os do sistema** — assunto, tipo, gravidade, alcance, produtos, operadoras — ligam e desligam em cada painel (o Desenvolvimento, por exemplo, não usa assunto; o **alcance** nasce desligado em todos, por enquanto); as opções do **Tipo** se editam aqui. **O Assunto** abre a árvore do painel (até 3 níveis, com descrição, checklist e de-para; **nasce em branco**: cole a lista da equipe, um por linha, no formato "Ramal - Configuração - Identidade"). **Novo campo** cria os do painel: texto curto, texto longo, número, data, sim/não ou lista (escolhe uma ou várias opções), com uma dica, e **obrigatório para abrir** ou **para entrar** nas etapas que você marcar. As setas mudam a ordem. Desligar ou desativar **não apaga**: some da tela e das regras, e o que os chamados já têm volta se o campo voltar. O tipo de um campo não muda depois de criado |
 | **Etiquetas** | As etiquetas de todos os painéis, com a cor e em quantos chamados cada uma está: criar uma já com a cor, **trocar a cor** (vale em todos os chamados que a têm) e **tirar das sugestões** a que nenhum chamado usa |
 | **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a prioridade sugerida: a coluna **Só a gravidade** (o painel sem o alcance) e a matriz gravidade × alcance (o painel que usa o alcance) |
-| **Avisos e WhatsApp** | Os dois números (o do cliente, oficial, e o da equipe), o número de cada pessoa, quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início) e o teste |
+| **Avisos e WhatsApp** | No primeiro cartão, os dois números (o do cliente, oficial, e o da equipe), a chave e o **Testar**. **A mensagem ao cliente**: pelo **modelo aprovado** (o template do WhatsApp oficial — o único jeito de começar uma conversa) ou em texto livre (só até 24 horas da última mensagem do cliente; depois disso, vai o modelo). **Buscar os modelos no LineChat** traz os aprovados do número oficial; ao escolher um, o Gestor preenche o **id** (templateId) e as **variáveis**, e cada uma recebe um valor do chamado (o nome do contato, o código, o título, a empresa, o responsável, quem manda, **o que o atendente escreveu**) ou um texto fixo. O modelo com imagem, vídeo ou documento no cabeçalho pede o **endereço do arquivo** (https://). A prévia mostra a mensagem com um chamado de exemplo. **Quem fica com a conversa no LineChat**: a equipe (pelo nome) e, ligado, quem manda (pelo e-mail, o mesmo nos dois). Depois, o número de cada pessoa e quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início) |
 | **Respostas prontas** | O texto e o que ela faz no chamado (avisa o cliente, move, marca a espera, põe a etiqueta, assume) |
 | **Agendados** | O chamado que nasce sozinho (todo dia, toda semana, todo mês ou uma vez) |
 | **Integrações** | As chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |

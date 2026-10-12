@@ -13,6 +13,8 @@ import {
   pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
   type CartaoChamado, type CartaoParaLista, type DadosObrigatorios, type EtapaPainel, type NoParaGrafo,
   chaveDaEtiqueta, corDaEtiqueta, etiquetasUnicas,
+  AvisosChamadosSchema, EVENTOS_AVISO, ModeloAprovadoSchema, faltaNoModeloAprovado, mensagemAoCliente, mensagemPreenchida, parametrosDoModelo, textoDoModelo,
+  valorDaVariavel, valorSugeridoDaVariavel,
 } from './atendimento.js';
 
 const em = (dia: string, hora: string) => instanteLocal(dia, hora);
@@ -486,5 +488,60 @@ describe('as etiquetas com cor (1.10, o pedido do Luan na prévia)', () => {
     expect(d.coresDasEtiquetas).toEqual({ 'cliente vip': 'rosa' });
     expect(ChamadoCriarSchema.parse({ painelId: 'p', titulo: 'Teste' }).coresDasEtiquetas).toEqual({});
     expect(ChamadoAlterarSchema.safeParse({ coresDasEtiquetas: { x: 'dourado' } }).success).toBe(false);
+  });
+});
+
+describe('a mensagem ao cliente pelo modelo aprovado (1.10, o WhatsApp oficial do Luan)', () => {
+  const modelo = ModeloAprovadoSchema.parse({
+    id: 'tpl-1', nome: 'ticket_atualizacao', texto: 'Olá, {{nome}}! Sobre o chamado {{ chamado }}: {{mensagem}}',
+    variaveis: [{ nome: 'nome', valor: '{contato}' }, { nome: 'chamado', valor: '{codigo}' }, { nome: 'mensagem', valor: '{texto}' }],
+  });
+
+  it('a variável vai do jeito que o WhatsApp aceita: sem quebra de linha, sem 4 espaços, nunca vazia', () => {
+    expect(valorDaVariavel('Trocamos o cabo.\n\nPode testar?')).toBe('Trocamos o cabo. · Pode testar?');
+    expect(valorDaVariavel('a\tb     c')).toBe('a b   c');
+    expect(valorDaVariavel('   ')).toBe('-');
+    expect(valorDaVariavel('x'.repeat(1200))).toHaveLength(1000);
+  });
+
+  it('cada variável recebe o valor do chamado; a prévia troca as {{variáveis}} do texto do modelo', () => {
+    const p = parametrosDoModelo(modelo, { contato: 'Joana', codigo: 'SUP-12', texto: 'Pode testar?' });
+    expect(p).toEqual({ nome: 'Joana', chamado: 'SUP-12', mensagem: 'Pode testar?' });
+    expect(textoDoModelo(modelo.texto, p)).toBe('Olá, Joana! Sobre o chamado SUP-12: Pode testar?');
+    // sem o contato, a variável não vai vazia (o WhatsApp recusaria o modelo inteiro)
+    expect(parametrosDoModelo(modelo, { codigo: 'SUP-12', texto: 'Oi' }).nome).toBe('-');
+  });
+
+  it('a ficha mostra a mensagem como vai sair: pelo modelo, ou o texto livre com os marcadores', () => {
+    const valores = { contato: 'Joana', codigo: 'SUP-12', texto: 'Linha 1\nLinha 2' };
+    const pelo = mensagemAoCliente({ envioCliente: 'modelo', modeloCliente: '{texto}', template: modelo });
+    expect(pelo).toMatchObject({ peloModelo: true, nomeDoModelo: 'ticket_atualizacao' });
+    expect(mensagemPreenchida(pelo, valores)).toBe('Olá, Joana! Sobre o chamado SUP-12: Linha 1 · Linha 2');
+    const livre = mensagemAoCliente({ envioCliente: 'texto', modeloCliente: 'Olá, {contato}!\n{texto}', template: modelo });
+    expect(livre).toEqual({ peloModelo: false, nomeDoModelo: null, texto: 'Olá, {contato}!\n{texto}', variaveis: [] });
+    expect(mensagemPreenchida(livre, valores)).toBe('Olá, Joana!\nLinha 1\nLinha 2');
+    // o modelo sem o texto guardado: as variáveis, uma por linha
+    expect(mensagemPreenchida({ ...pelo, texto: '' }, valores)).toBe('nome: Joana\nchamado: SUP-12\nmensagem: Linha 1 · Linha 2');
+  });
+
+  it('o valor sugerido quando o modelo chega do LineChat: pelo nome, ou pela ordem de um aviso de chamado', () => {
+    expect(valorSugeridoDaVariavel('Nome do cliente', 0)).toBe('{contato}');
+    expect(valorSugeridoDaVariavel('protocolo', 0)).toBe('{codigo}');
+    expect(valorSugeridoDaVariavel('mensagem', 0)).toBe('{texto}');
+    expect(['1', '2', '3'].map((n, i) => valorSugeridoDaVariavel(n, i))).toEqual(['{contato}', '{codigo}', '{texto}']);
+  });
+
+  it('o que falta para mandar: o modelo, e o arquivo do cabeçalho quando ele tem imagem', () => {
+    expect(faltaNoModeloAprovado(null)).toMatch(/Falta escolher o modelo aprovado/);
+    expect(faltaNoModeloAprovado({ ...modelo, tipoArquivo: 'IMAGE', arquivo: '' })).toMatch(/tem imagem no cabeçalho/);
+    expect(faltaNoModeloAprovado({ ...modelo, tipoArquivo: 'IMAGE', arquivo: 'https://exemplo.com/logo.png' })).toBeNull();
+    expect(ModeloAprovadoSchema.safeParse({ ...modelo, arquivo: 'http://inseguro.com/a.png' }).success).toBe(false);
+    expect(ModeloAprovadoSchema.safeParse({ ...modelo, variaveis: [{ nome: 'a', valor: '' }, { nome: 'a', valor: '' }] }).success).toBe(false);
+    // o pedido sem nada do modelo (a tela de antes) continua valendo: pelo modelo, sem ele escolhido ainda
+    const antes = AvisosChamadosSchema.parse({
+      ativo: false, url: 'https://api.exemplo.com.br/chat/v1/message/send', usarChaveDoLineChat: true, numeroCliente: '', numeroEquipe: '',
+      modeloCliente: '{texto}', pessoas: [], eventos: Object.fromEntries(EVENTOS_AVISO.map((e) => [e, { tela: true, whatsapp: false }])),
+    });
+    expect(antes).toMatchObject({ envioCliente: 'modelo', template: null, equipeLineChat: '', atribuirAQuemManda: false });
   });
 });

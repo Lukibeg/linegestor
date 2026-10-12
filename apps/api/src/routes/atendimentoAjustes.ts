@@ -23,6 +23,7 @@ import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as ajustes from '../services/atendimento/ajustes.js';
 import * as etiquetas from '../services/atendimento/etiquetas.js';
 import * as integracoes from '../services/atendimento/integracoes.js';
+import { modelosDoLineChat } from '../services/atendimento/whatsapp.js';
 
 const tags = ['Chamados do Gestor › Ajustes'];
 const tagsIntegracoes = ['Chamados do Gestor › Integrações'];
@@ -195,6 +196,13 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       await app.audit(req, { action: 'settings_atendimento_avisos', entityType: 'settings', entityId: 'atendimento-avisos', summary: r.resumo, before: r.antes, after: r.depois });
       return r.valor;
     });
+
+  app.get('/ajustes/avisos/modelos', {
+    ...cuidar,
+    // cada leitura é uma ida ao LineChat
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+    schema: { tags, summary: 'Os modelos aprovados (templates) do número oficial, lidos do LineChat com a chave guardada: o id, o texto e as variáveis de cada um' },
+  }, async () => modelosDoLineChat(app.db, app.vault));
 
   app.post('/ajustes/avisos/testar', {
     ...cuidar,

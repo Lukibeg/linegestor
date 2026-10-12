@@ -18,7 +18,7 @@
  * Os telefones são fictícios ((71) 99999-…): na prévia nada é enviado, mas nenhum número de verdade fica
  * escrito aqui.
  */
-import type { Alcance, CorEtiqueta, Gravidade, Prioridade, RegraAgendado, TipoChamado, TipoLigacaoChamado } from '@gestor/shared';
+import type { Alcance, CorEtiqueta, Gravidade, ModeloAprovado, ModeloDoLineChat, Prioridade, RegraAgendado, TipoChamado, TipoLigacaoChamado } from '@gestor/shared';
 
 // =====================================================================
 //  A EQUIPE
@@ -44,6 +44,35 @@ export const WHATSAPP_DA_EQUIPE: Record<Pessoa, string> = {
   luan: '5571999990101', lucio: '5571999990102', marina: '5571999990103', bruno: '5571999990104', camila: '5571999990105', diego: '5571999990106',
 };
 export const NUMERO_DA_EQUIPE = '5571999990100';
+
+/**
+ * Os modelos aprovados do número oficial, como o LineChat devolve (o "Buscar os modelos" dos Ajustes,
+ * 1.10: o pedido do Luan — "vou usar o meu WhatsApp oficial, então temos que usar os templates"). Os
+ * ids são de exemplo; os nomes e textos imitam os da Meta (o texto com as variáveis {{…}}).
+ */
+export const MODELOS_DO_LINECHAT: ModeloDoLineChat[] = [
+  {
+    id: '6b1f2c9e-3d4a-4b7e-9c10-2a8e5f7d1c01', nome: 'ticket_atualizacao', categoria: 'Utilidade', tipoArquivo: 'UNDEFINED', rodape: 'Ingline Systems',
+    // o corpo do modelo pode ter quebra de linha (a variável é que não pode)
+    texto: 'Olá, {{nome}}! Temos uma novidade sobre o seu chamado {{chamado}}:\n\n{{mensagem}}\n\nSe precisar, é só responder por aqui.',
+    variaveis: ['nome', 'chamado', 'mensagem'],
+  },
+  {
+    id: '6b1f2c9e-3d4a-4b7e-9c10-2a8e5f7d1c02', nome: 'ticket_aberto', categoria: 'Utilidade', tipoArquivo: 'UNDEFINED', rodape: null,
+    texto: 'Olá, {{1}}! Abrimos o chamado {{2}} para o seu atendimento. Qualquer novidade, avisamos por aqui.',
+    variaveis: ['1', '2'],
+  },
+  {
+    id: '6b1f2c9e-3d4a-4b7e-9c10-2a8e5f7d1c03', nome: 'manutencao_programada', categoria: 'Utilidade', tipoArquivo: 'IMAGE', rodape: 'Ingline Systems',
+    texto: 'Olá, {{1}}! Haverá uma manutenção programada em {{2}}. Durante a janela, as ligações podem cair por alguns minutos.',
+    variaveis: ['1', '2'],
+  },
+];
+/** O modelo que a prévia já traz escolhido (o de atualização do chamado, com as variáveis ligadas ao chamado). */
+export const MODELO_ESCOLHIDO: ModeloAprovado = {
+  id: MODELOS_DO_LINECHAT[0]!.id, nome: MODELOS_DO_LINECHAT[0]!.nome, texto: MODELOS_DO_LINECHAT[0]!.texto, tipoArquivo: 'UNDEFINED', arquivo: '',
+  variaveis: [{ nome: 'nome', valor: '{contato}' }, { nome: 'chamado', valor: '{codigo}' }, { nome: 'mensagem', valor: '{texto}' }],
+};
 
 // =====================================================================
 //  OS ASSUNTOS

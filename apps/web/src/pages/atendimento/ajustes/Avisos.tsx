@@ -5,9 +5,11 @@
  * manda (e só quando ele manda — a escolha do Luan), e um não oficial, pelo qual a equipe recebe os
  * avisos (recebeu um chamado, o prazo vencendo, chegou um Crítico…). Aqui ficam o endereço da API de
  * mensagens, a chave (a do LineChat ou uma própria, que vai para o cofre e nunca volta para a tela),
- * os dois números, o modelo da mensagem ao cliente (e o modelo aprovado para depois das 24 h), o
- * WhatsApp de cada pessoa da equipe — o pedido do Luan: "definir os números dos colaboradores que vão
- * receber essas notificações" — e quais avisos vão por onde (na tela, no WhatsApp).
+ * os dois números e o teste; a mensagem ao cliente — pelo modelo aprovado do WhatsApp oficial (o
+ * template: o pedido do Luan, "vou usar o meu WhatsApp oficial, então temos que usar os templates"),
+ * com as variáveis ligadas ao chamado, ou em texto livre —; o WhatsApp de cada pessoa da equipe — o
+ * pedido dele: "definir os números dos colaboradores que vão receber essas notificações" — e quais
+ * avisos vão por onde (na tela, no WhatsApp).
  *
  * As peças dos cartões de ajustes (o cartão, a explicação, o resultado de um teste, a última vez, os
  * marcadores do texto e a prévia da mensagem) moram aqui e servem também às outras telas de ajustes
@@ -16,10 +18,12 @@
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, CheckCircle2, KeyRound, MessageCircle, MessageSquareText, Send, TriangleAlert, Users } from 'lucide-react';
+import { BellRing, CheckCircle2, Download, FileImage, KeyRound, MessageCircle, MessageSquareText, Plus, Send, TriangleAlert, Users, X } from 'lucide-react';
 import {
-  EVENTOS_AVISO, NOME_EVENTO_AVISO, numeroWhatsApp, preencherModelo,
-  type AvisosChamadosEntrada, type AvisosChamadosTela, type CanaisDoAviso, type EventoAviso,
+  EVENTOS_AVISO, NOME_EVENTO_AVISO, NOME_TIPO_ARQUIVO_DO_MODELO, TIPOS_ARQUIVO_DO_MODELO, mensagemPreenchida, numeroWhatsApp, preencherModelo,
+  valorSugeridoDaVariavel,
+  type AvisosChamadosEntrada, type AvisosChamadosTela, type CanaisDoAviso, type EnvioAoCliente, type EventoAviso, type ModeloDoLineChat,
+  type ModelosDoLineChat, type TipoArquivoDoModelo,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
@@ -120,7 +124,7 @@ export type Marcador = { chave: string; dica: string };
  * Os botões que põem um marcador ({contato}, {codigo}…) onde está o cursor do texto — digitar a
  * chave certa à mão é o jeito mais fácil de errar ("{cotato}" sai no WhatsApp do cliente).
  */
-export function Marcadores({ marcadores, campo, valor, onChange }: { marcadores: Marcador[]; campo: RefObject<HTMLTextAreaElement | null>; valor: string; onChange: (v: string) => void }) {
+export function Marcadores({ marcadores, campo, valor, onChange }: { marcadores: Marcador[]; campo: RefObject<HTMLTextAreaElement | HTMLInputElement | null>; valor: string; onChange: (v: string) => void }) {
   const inserir = (chave: string) => {
     const el = campo.current;
     const marca = `{${chave}}`;
@@ -166,27 +170,45 @@ const MARCADORES_CLIENTE: Marcador[] = [
   { chave: 'contato', dica: 'o nome do contato' },
   { chave: 'codigo', dica: 'o código do chamado (SUP-12)' },
   { chave: 'titulo', dica: 'o título do chamado' },
+  { chave: 'cliente', dica: 'a empresa' },
   { chave: 'texto', dica: 'o que o atendente escreveu' },
 ];
 const EXEMPLO_CLIENTE = {
-  contato: 'Maria', codigo: 'SUP-12', titulo: 'Ligações de saída não completam',
+  contato: 'Maria', codigo: 'SUP-12', titulo: 'Ligações de saída não completam', cliente: 'Clínica Aurora', responsavel: 'Lúcio Andrade', eu: 'Luan França',
   texto: 'Ajustamos a rota de saída do seu PABX. Pode testar e nos dizer se voltou ao normal?',
 };
+/** O que pode ir numa variável do modelo: um valor do chamado, ou um texto fixo (que também aceita os marcadores). */
+const VALORES_DA_VARIAVEL: Array<{ valor: string; nome: string }> = [
+  { valor: '{contato}', nome: 'o nome do contato' },
+  { valor: '{codigo}', nome: 'o código do chamado (SUP-12)' },
+  { valor: '{titulo}', nome: 'o título do chamado' },
+  { valor: '{cliente}', nome: 'a empresa' },
+  { valor: '{texto}', nome: 'o que o atendente escreveu' },
+  { valor: '{responsavel}', nome: 'o responsável pelo chamado' },
+  { valor: '{eu}', nome: 'quem manda a mensagem' },
+];
+const TEXTO_FIXO = '__fixo';
 
 type PessoaForm = { userId: string; nome: string; numero: string; ativo: boolean };
-type ModeloAprovado = { id: string; parametroCodigo: string; parametroTexto: string; parametroContato: string };
+type VariavelForm = { nome: string; valor: string };
+type ModeloForm = { id: string; nome: string; texto: string; variaveis: VariavelForm[]; tipoArquivo: TipoArquivoDoModelo; arquivo: string };
 type Form = {
-  ativo: boolean; url: string; usarChaveDoLineChat: boolean;
-  numeroCliente: string; numeroEquipe: string; modeloCliente: string; template: ModeloAprovado;
+  ativo: boolean; url: string; usarChaveDoLineChat: boolean; numeroCliente: string; numeroEquipe: string;
+  envioCliente: EnvioAoCliente; modeloCliente: string; template: ModeloForm; equipeLineChat: string; atribuirAQuemManda: boolean;
   pessoas: PessoaForm[]; eventos: Record<EventoAviso, CanaisDoAviso>;
 };
-const SEM_MODELO: ModeloAprovado = { id: '', parametroCodigo: '', parametroTexto: '', parametroContato: '' };
+const SEM_MODELO: ModeloForm = { id: '', nome: '', texto: '', variaveis: [], tipoArquivo: 'UNDEFINED', arquivo: '' };
 
 /** O que veio do servidor, no jeito do formulário: os números legíveis, como a pessoa escreve. */
 const doServidor = (a: AvisosChamadosTela): Form => ({
   ativo: a.ativo, url: a.url, usarChaveDoLineChat: a.usarChaveDoLineChat,
-  numeroCliente: telefoneLegivel(a.numeroCliente), numeroEquipe: telefoneLegivel(a.numeroEquipe), modeloCliente: a.modeloCliente,
-  template: a.template ? { id: a.template.id, parametroCodigo: a.template.parametroCodigo ?? '', parametroTexto: a.template.parametroTexto ?? '', parametroContato: a.template.parametroContato ?? '' } : SEM_MODELO,
+  numeroCliente: telefoneLegivel(a.numeroCliente), numeroEquipe: telefoneLegivel(a.numeroEquipe),
+  envioCliente: a.envioCliente ?? 'modelo', modeloCliente: a.modeloCliente,
+  template: a.template ? {
+    id: a.template.id, nome: a.template.nome ?? '', texto: a.template.texto ?? '', tipoArquivo: a.template.tipoArquivo ?? 'UNDEFINED', arquivo: a.template.arquivo ?? '',
+    variaveis: (a.template.variaveis ?? []).map((v) => ({ nome: v.nome, valor: v.valor })),
+  } : SEM_MODELO,
+  equipeLineChat: a.equipeLineChat ?? '', atribuirAQuemManda: !!a.atribuirAQuemManda,
   pessoas: a.pessoas.map((p) => ({ userId: p.userId, nome: p.nome, numero: telefoneLegivel(p.numero), ativo: p.ativo })),
   eventos: Object.fromEntries(EVENTOS_AVISO.map((e) => [e, { tela: a.eventos[e]?.tela ?? true, whatsapp: a.eventos[e]?.whatsapp ?? false }])) as Record<EventoAviso, CanaisDoAviso>,
 });
@@ -195,9 +217,11 @@ const doServidor = (a: AvisosChamadosTela): Form => ({
 const arrumarNumero = (v: string) => { const n = numeroWhatsApp(v); return n ? telefoneLegivel(n) : v; };
 
 /** Por que um número de quem envia ainda não serve (nulo = pronto). */
-function oQueFalta(a: AvisosChamadosTela, numero: string): string | null {
+function oQueFalta(a: AvisosChamadosTela, numero: string, cliente = false): string | null {
   const temChave = a.usarChaveDoLineChat ? a.temChaveLineChat : a.temChavePropria;
-  return !temChave ? 'falta a chave' : !numero ? 'falta o número' : null;
+  return !temChave ? 'falta a chave' : !numero ? 'falta o número'
+    : cliente && a.envioCliente === 'modelo' && !a.template?.id ? 'falta o modelo'
+      : cliente && a.envioCliente === 'modelo' && a.template && a.template.tipoArquivo !== 'UNDEFINED' && !a.template.arquivo ? 'falta o arquivo do modelo' : null;
 }
 
 /**
@@ -212,15 +236,19 @@ function conferir(f: Form, chave: string, inicial: AvisosChamadosTela): { geral:
   let urlOk = false;
   try { const u = new URL(f.url.trim()); urlOk = u.protocol === 'https:' || u.protocol === 'http:'; } catch { /* fica falso */ }
   const t = f.template;
+  const nomes = t.variaveis.map((v) => v.nome.trim().toLowerCase());
   const geral = !urlOk ? 'O endereço da API de mensagens está inválido: comece com https:// (o do LineChat é https://api.inglinechat.com.br/chat/v1/message/send).'
     : f.numeroCliente.trim() && !numeroWhatsApp(f.numeroCliente) ? 'O número para o cliente não é um WhatsApp: use DDD + número, como (71) 3034-8350.'
       : f.numeroEquipe.trim() && !numeroWhatsApp(f.numeroEquipe) ? 'O número para a equipe não é um WhatsApp: use DDD + número, como (71) 99999-0000.'
-        : !f.modeloCliente.includes('{texto}') ? 'A mensagem ao cliente precisa do {texto}: é onde entra o que o atendente escreveu.'
+        : f.envioCliente === 'texto' && !f.modeloCliente.includes('{texto}') ? 'A mensagem ao cliente precisa do {texto}: é onde entra o que o atendente escreveu.'
           : f.modeloCliente.trim().length > 2000 ? 'A mensagem ao cliente passou de 2.000 letras.'
-            : !t.id.trim() && (t.parametroCodigo.trim() || t.parametroTexto.trim() || t.parametroContato.trim()) ? 'Escreva o id do modelo aprovado (ou apague os nomes dos parâmetros).'
-              : erradas.length ? `Confira o WhatsApp de ${emLista(erradas)}: use DDD + número, como (71) 99999-0000.`
-                : f.ativo && !f.usarChaveDoLineChat && !inicial.temChavePropria && !chave.trim() ? 'Cole a chave própria da API (ou escolha usar a chave do LineChat).'
-                  : null;
+            : !t.id.trim() && t.variaveis.length ? 'Escreva o id do modelo aprovado (ou tire as variáveis).'
+              : nomes.some((n) => !n) ? 'Cada variável do modelo precisa do nome (como está no LineChat).'
+                : new Set(nomes).size !== nomes.length ? 'Uma variável do modelo está repetida.'
+                  : t.arquivo.trim() && !/^https:\/\/\S+$/i.test(t.arquivo.trim()) ? 'O arquivo do cabeçalho do modelo precisa de um endereço com https://.'
+                    : erradas.length ? `Confira o WhatsApp de ${emLista(erradas)}: use DDD + número, como (71) 99999-0000.`
+                      : f.ativo && !f.usarChaveDoLineChat && !inicial.temChavePropria && !chave.trim() ? 'Cole a chave própria da API (ou escolha usar a chave do LineChat).'
+                        : null;
   return { geral, pessoas };
 }
 
@@ -238,7 +266,6 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [errosPessoas, setErrosPessoas] = useState<Record<string, string>>({});
-  const modelo = useRef<HTMLTextAreaElement>(null);
   const chaveNova = !f.usarChaveDoLineChat && !!chave.trim();
   const mudou = JSON.stringify(f) !== JSON.stringify(doServidor(inicial)) || chaveNova;
   const mudar = (m: Partial<Form>) => { setF((x) => ({ ...x, ...m })); setErro(null); };
@@ -248,7 +275,6 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
     setErro(null);
   };
   const recebem = f.pessoas.filter((p) => numeroWhatsApp(p.numero) && p.ativo).length;
-  const previa = preencherModelo(f.modeloCliente, EXEMPLO_CLIENTE);
 
   const salvar = async () => {
     const c = conferir(f, chave, inicial);
@@ -261,8 +287,12 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
         ativo: f.ativo, url: f.url.trim(), usarChaveDoLineChat: f.usarChaveDoLineChat,
         // a chave só vai quando a pessoa escreveu uma (vazio = mantém a guardada)
         ...(chaveNova ? { chave: chave.trim() } : {}),
-        numeroCliente: f.numeroCliente.trim(), numeroEquipe: f.numeroEquipe.trim(), modeloCliente: f.modeloCliente.trim(),
-        template: t.id.trim() ? { id: t.id.trim(), parametroCodigo: t.parametroCodigo.trim(), parametroTexto: t.parametroTexto.trim(), parametroContato: t.parametroContato.trim() } : null,
+        numeroCliente: f.numeroCliente.trim(), numeroEquipe: f.numeroEquipe.trim(), envioCliente: f.envioCliente, modeloCliente: f.modeloCliente.trim(),
+        template: t.id.trim() ? {
+          id: t.id.trim(), nome: t.nome.trim(), texto: t.texto, tipoArquivo: t.tipoArquivo, arquivo: t.tipoArquivo === 'UNDEFINED' ? '' : t.arquivo.trim(),
+          variaveis: t.variaveis.map((v) => ({ nome: v.nome.trim(), valor: v.valor.trim() })),
+        } : null,
+        equipeLineChat: f.equipeLineChat.trim(), atribuirAQuemManda: f.atribuirAQuemManda,
         pessoas: f.pessoas.map((p) => ({ userId: p.userId, numero: p.numero.trim(), ativo: p.ativo })),
         eventos: f.eventos,
       };
@@ -275,7 +305,7 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
     } catch (e) { setErro(erroLegivel(e)); } finally { setSalvando(false); }
   };
 
-  const faltaCliente = oQueFalta(inicial, inicial.numeroCliente);
+  const faltaCliente = oQueFalta(inicial, inicial.numeroCliente, true);
   const faltaEquipe = oQueFalta(inicial, inicial.numeroEquipe);
 
   return (
@@ -298,7 +328,7 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
               oficial, os dois ligados no LineChat.
             </p>
             <p>
-              Os avisos na tela (o sininho, no alto) valem sempre. Aqui se liga o WhatsApp: a mensagem sai pela API de mensagens do
+              Os avisos na tela (o sininho e o cartão no canto) valem sempre. Aqui se liga o WhatsApp: a mensagem sai pela API de mensagens do
               LineChat, a mesma do envio automático do PDF. O aviso da equipe vai escondido, sem virar conversa no LineChat.
             </p>
           </Explicacao>
@@ -363,53 +393,12 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
               </div>
             </fieldset>
           </div>
+          {/* o teste fica aqui dentro, junto dos números e da chave (o pedido do Luan na prévia) */}
+          <ParteDoTeste inicial={inicial} mudou={mudou} />
         </CartaoAjuste>
 
-        {/* ---------- a mensagem ao cliente ---------- */}
-        <CartaoAjuste icone={<MessageSquareText size={18} />} titulo="A mensagem ao cliente">
-          <Explicacao>
-            <p>
-              O que chega ao cliente quando o atendente manda (no "Avisar o cliente" da ficha e nas respostas prontas que mandam ao
-              cliente). Cada marcador vira o valor do chamado; o <code className="font-mono text-[12.5px]">{'{texto}'}</code> é o que o atendente escreveu.
-            </p>
-          </Explicacao>
-          <div className="flex flex-col gap-2">
-            <Marcadores marcadores={MARCADORES_CLIENTE} campo={modelo} valor={f.modeloCliente} onChange={(v) => mudar({ modeloCliente: v })} />
-            <textarea ref={modelo} className="input text-[13.5px]" id="avisos-modelo" rows={6} maxLength={2000} aria-label="O modelo da mensagem ao cliente"
-              value={f.modeloCliente} onChange={(e) => mudar({ modeloCliente: e.target.value })} />
-            <div className="mt-1">
-              <div className="eyebrow mb-1.5">Prévia, com um exemplo</div>
-              <BalaoDeMensagem texto={previa} />
-              {!f.modeloCliente.includes('{texto}') && <p className="text-[12.5px] text-signal mt-1.5">Falta o {'{texto}'}: sem ele, o que o atendente escrever não vai.</p>}
-            </div>
-          </div>
-
-          <details className="mt-4 text-sm">
-            <summary className="cursor-pointer text-ink-2 font-medium">
-              O modelo aprovado, para depois de 24 horas (opcional)
-              {inicial.template?.id ? <span className="font-normal text-muted"> — configurado: <span className="font-mono">{inicial.template.id}</span></span> : <span className="font-normal text-muted"> — nenhum</span>}
-            </summary>
-            <p className="text-[13px] text-muted mt-2 leading-relaxed">
-              O WhatsApp só aceita mensagem solta até 24 horas depois da última mensagem do cliente. Passou disso, o Gestor tenta de novo
-              com um modelo aprovado no LineChat (como o "Ticket Atualização"), pondo nos parâmetros dele o código, o texto e o contato.
-              Sem modelo, a mensagem que passou das 24 horas não vai (a ficha mostra o porquê).
-            </p>
-            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mt-3">
-              <Campo label="Id do modelo" dica="o id do modelo aprovado no LineChat" className="sm:col-span-2 min-w-0">
-                <input className="input font-mono text-[13px]" id="avisos-modelo-id" spellCheck={false} value={f.template.id} onChange={(e) => mudar({ template: { ...f.template, id: e.target.value } })} />
-              </Campo>
-              <Campo label="Parâmetro do código" dica="o nome do parâmetro que recebe SUP-12 (ex.: TICKET)" className="min-w-0">
-                <input className="input font-mono text-[13px]" id="avisos-param-codigo" spellCheck={false} value={f.template.parametroCodigo} onChange={(e) => mudar({ template: { ...f.template, parametroCodigo: e.target.value } })} />
-              </Campo>
-              <Campo label="Parâmetro do texto" dica="o que recebe a mensagem (ex.: ATUALIZACAO)" className="min-w-0">
-                <input className="input font-mono text-[13px]" id="avisos-param-texto" spellCheck={false} value={f.template.parametroTexto} onChange={(e) => mudar({ template: { ...f.template, parametroTexto: e.target.value } })} />
-              </Campo>
-              <Campo label="Parâmetro do contato" dica="o que recebe o nome do contato (se o modelo tiver)" className="min-w-0">
-                <input className="input font-mono text-[13px]" id="avisos-param-contato" spellCheck={false} value={f.template.parametroContato} onChange={(e) => mudar({ template: { ...f.template, parametroContato: e.target.value } })} />
-              </Campo>
-            </div>
-          </details>
-        </CartaoAjuste>
+        {/* ---------- a mensagem ao cliente: o modelo aprovado (o template) ou o texto livre ---------- */}
+        <CartaoMensagemAoCliente f={f} mudar={mudar} />
 
         {/* ---------- as pessoas ---------- */}
         <CartaoAjuste icone={<Users size={18} />} titulo="Quem da equipe recebe no WhatsApp"
@@ -427,8 +416,9 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
         <CartaoAjuste icone={<BellRing size={18} />} titulo="Quais avisos vão por onde">
           <Explicacao>
             <p>
-              Cada aviso vai para quem está escrito embaixo dele. Na tela é o sininho, no alto; no WhatsApp, pelo número da equipe, para
-              quem tem o número na lista de cima.
+              Cada aviso vai para quem está escrito embaixo dele. Na tela, ele chega no sininho e num cartão no canto da tela; quem quiser
+              recebe também no navegador, mesmo com o Gestor em outra aba (cada pessoa liga no sininho, em cada computador). No WhatsApp,
+              vai pelo número da equipe, para quem tem o número na lista de cima.
             </p>
           </Explicacao>
           {!f.ativo && <p className="text-[12.5px] text-signal mb-2">O WhatsApp está desligado: por enquanto vale só a tela.</p>}
@@ -446,8 +436,6 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
           </div>
         </div>
       </form>
-
-      <CartaoTeste inicial={inicial} mudou={mudou} />
     </div>
   );
 }
@@ -542,11 +530,11 @@ function TabelaEventos({ eventos, salvos, onMudar }: { eventos: Record<EventoAvi
   );
 }
 
-// ---------- o teste ----------
+// ---------- o teste (dentro do cartão do WhatsApp) ----------
 
 const OUTRO = '__outro';
 
-function CartaoTeste({ inicial, mudou }: { inicial: AvisosChamadosTela; mudou: boolean }) {
+function ParteDoTeste({ inicial, mudou }: { inicial: AvisosChamadosTela; mudou: boolean }) {
   const qc = useQueryClient(); const { user } = useAuth();
   const [de, setDe] = useState<'equipe' | 'cliente'>('equipe');
   // o teste lê o que está salvo: só quem já tem o número guardado pode ser escolhido
@@ -572,13 +560,12 @@ function CartaoTeste({ inicial, mudou }: { inicial: AvisosChamadosTela; mudou: b
 
   const numeroDe = de === 'cliente' ? inicial.numeroCliente : inicial.numeroEquipe;
   return (
-    <CartaoAjuste icone={<Send size={18} />} titulo="Testar">
-      <Explicacao>
-        <p>
-          Manda <i>"Teste do Ingline Gestão: os avisos dos chamados vão chegar por aqui."</i> — uma mensagem de verdade, com o que
-          está salvo (salve antes).
-        </p>
-      </Explicacao>
+    <section className="border-t border-line mt-4 pt-4" id="avisos-teste" aria-labelledby="avisos-teste-titulo">
+      <h3 className="font-semibold text-[14px] flex items-center gap-2" id="avisos-teste-titulo"><Send size={15} className="text-muted" aria-hidden /> Testar</h3>
+      <p className="text-[12.5px] text-muted mt-0.5 mb-3">
+        Manda <i>"Teste do Ingline Gestão: os avisos dos chamados vão chegar por aqui."</i> — uma mensagem de verdade, com o que está salvo
+        (salve antes). Pelo número oficial, vai como a mensagem ao cliente: pelo modelo aprovado, com valores de exemplo.
+      </p>
       <div className="flex flex-col gap-3">
         <div className="grid gap-2 grid-cols-1 sm:grid-cols-2" role="radiogroup" aria-label="Por qual número sai o teste">
           {([['equipe', 'Como aviso para a equipe', inicial.numeroEquipe, 'sai pelo número da equipe'], ['cliente', 'Como mensagem ao cliente', inicial.numeroCliente, 'sai pelo número oficial']] as const).map(([v, titulo, n, como]) => (
@@ -617,6 +604,222 @@ function CartaoTeste({ inicial, mudou }: { inicial: AvisosChamadosTela; mudou: b
       </div>
       <Resultado r={res} />
       <UltimaVez rotulo="Último teste" em={inicial.ultimoTesteEm} ok={inicial.ultimoTesteOk} msg={inicial.ultimoTesteMsg} />
+    </section>
+  );
+}
+
+// ---------- a mensagem ao cliente ----------
+
+/**
+ * A mensagem ao cliente: como ela sai (o modelo aprovado ou o texto livre), o modelo — escolhido entre
+ * os aprovados do número oficial no LineChat, com o que vai em cada variável e o arquivo do cabeçalho —
+ * e quem fica com a conversa que a mensagem abrir.
+ */
+function CartaoMensagemAoCliente({ f, mudar }: { f: Form; mudar: (m: Partial<Form>) => void }) {
+  const campoTexto = useRef<HTMLTextAreaElement>(null);
+  const [lista, setLista] = useState<ModelosDoLineChat | null>(null);
+  const [buscando, setBuscando] = useState(false);
+  const [erroBusca, setErroBusca] = useState<string | null>(null);
+  const t = f.template;
+  const peloModelo = f.envioCliente === 'modelo';
+  const mudarModelo = (m: Partial<ModeloForm>) => mudar({ template: { ...t, ...m } });
+  const mudarVariavel = (i: number, m: Partial<VariavelForm>) => mudarModelo({ variaveis: t.variaveis.map((v, j) => (j === i ? { ...v, ...m } : v)) });
+
+  const buscar = async () => {
+    setBuscando(true); setErroBusca(null);
+    try { setLista(await api.atendimento.modelosDoLineChat()); } catch (e) { setLista(null); setErroBusca(erroLegivel(e)); } finally { setBuscando(false); }
+  };
+  /** Usar um modelo da lista: o que já estava numa variável de mesmo nome continua; a nova vem com o valor que o nome sugere. */
+  const usar = (m: ModeloDoLineChat) => {
+    const antes = new Map(t.variaveis.map((v) => [v.nome.trim().toLowerCase(), v.valor]));
+    mudarModelo({
+      id: m.id, nome: m.nome, texto: m.texto, tipoArquivo: m.tipoArquivo, arquivo: m.tipoArquivo === t.tipoArquivo ? t.arquivo : '',
+      variaveis: m.variaveis.map((nome, i) => ({ nome, valor: antes.get(nome.toLowerCase()) ?? valorSugeridoDaVariavel(nome, i) })),
+    });
+  };
+  // a prévia com um chamado de exemplo: a mesma conta da ficha (cada variável como vai para a API)
+  const previaDoModelo = mensagemPreenchida({ peloModelo: true, texto: t.texto, variaveis: t.variaveis }, EXEMPLO_CLIENTE);
+  const faltaArquivo = t.id && t.tipoArquivo !== 'UNDEFINED' && !t.arquivo.trim();
+
+  return (
+    <CartaoAjuste icone={<MessageSquareText size={18} />} titulo="A mensagem ao cliente" id="avisos-mensagem-cliente"
+      situacao={peloModelo ? (t.id ? <Chip tone="ok">pelo modelo {t.nome || 'aprovado'}</Chip> : <Chip tone="signal">falta escolher o modelo</Chip>) : <Chip tone="muted">texto livre</Chip>}>
+      <Explicacao>
+        <p>
+          O que chega ao cliente quando o atendente manda: no "Avisar o cliente" da ficha, nas respostas prontas que mandam ao cliente e no
+          número do chamado ao abrir. O WhatsApp oficial só começa uma conversa com um <b>modelo aprovado</b> pela Meta — o template, que fica no
+          LineChat (Ajustes › Modelos de mensagem). Cada variável do modelo recebe um valor do chamado; a do <i>o que o atendente escreveu</i> leva a mensagem dele.
+        </p>
+      </Explicacao>
+
+      <div className="grid gap-2 grid-cols-1 sm:grid-cols-2" role="radiogroup" aria-label="Como a mensagem sai" id="avisos-envio">
+        {([['modelo', 'Pelo modelo aprovado', 'o template do número oficial: vale sempre, até para começar a conversa'], ['texto', 'Texto livre', 'só até 24 horas depois da última mensagem do cliente; passou disso, vai o modelo aprovado']] as const).map(([v, titulo, dica]) => (
+          <label key={v} className={`flex items-start gap-2 rounded-lg border p-2.5 cursor-pointer text-sm min-w-0 ${f.envioCliente === v ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2'}`}>
+            <input type="radio" name="avisos-envio" id={`avisos-envio-${v}`} className="mt-1 shrink-0" checked={f.envioCliente === v} onChange={() => mudar({ envioCliente: v })} />
+            <span className="min-w-0"><span className="font-semibold">{titulo}</span><span className="block text-[12.5px] text-muted">{dica}</span></span>
+          </label>
+        ))}
+      </div>
+
+      {/* ---- o modelo aprovado (no texto livre, ele vale depois das 24 horas) ---- */}
+      <section className="mt-4 rounded-xl border border-line p-3 sm:p-4 min-w-0" id="avisos-modelo" aria-labelledby="avisos-modelo-titulo">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-semibold text-[14px]" id="avisos-modelo-titulo">
+            O modelo aprovado {!peloModelo && <span className="font-normal text-muted">(para depois das 24 horas)</span>}
+          </h3>
+          <button type="button" className="btn-secondary btn-sm sm:ml-auto" id="avisos-buscar-modelos" disabled={buscando} onClick={() => void buscar()}
+            title="Lê os modelos aprovados do número para o cliente no LineChat, com o número e a chave que estão salvos">
+            {buscando ? <Spinner /> : <Download size={14} />} Buscar os modelos no LineChat
+          </button>
+        </div>
+        {erroBusca && <Resultado r={{ ok: false, mensagem: erroBusca }} className="mt-2" />}
+        {lista && <ListaDeModelos lista={lista} escolhido={t.id} onUsar={usar} onFechar={() => setLista(null)} />}
+
+        <Campo label="Id do modelo (templateId)" dica={t.nome ? `o modelo ${t.nome}, do LineChat` : 'o "Buscar os modelos" preenche; ou cole o id do modelo no LineChat'} className="mt-3 min-w-0">
+          <input className="input font-mono text-[13px]" id="avisos-modelo-id" spellCheck={false} maxLength={120} placeholder="ex.: 6b1f2c9e-3d4a-4b7e-9c10-2a8e5f7d1c01" value={t.id}
+            onChange={(e) => mudarModelo({ id: e.target.value, ...(e.target.value.trim() !== t.id.trim() ? { nome: '', texto: '' } : {}) })} />
+        </Campo>
+
+        <VariaveisDoModelo variaveis={t.variaveis} onMudar={mudarVariavel}
+          onIncluir={() => mudarModelo({ variaveis: [...t.variaveis, { nome: String(t.variaveis.length + 1), valor: valorSugeridoDaVariavel(String(t.variaveis.length + 1), t.variaveis.length) }] })}
+          onTirar={(i) => mudarModelo({ variaveis: t.variaveis.filter((_, j) => j !== i) })} />
+
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-[200px_minmax(0,1fr)] mt-3" id="avisos-arquivo">
+          <Campo label="Arquivo no cabeçalho" dica="o modelo com imagem, vídeo ou documento" className="min-w-0">
+            <select className="input" id="avisos-modelo-tipo-arquivo" value={t.tipoArquivo} onChange={(e) => mudarModelo({ tipoArquivo: e.target.value as TipoArquivoDoModelo })}>
+              {TIPOS_ARQUIVO_DO_MODELO.map((x) => <option key={x} value={x}>{x === 'UNDEFINED' ? 'Sem arquivo' : NOME_TIPO_ARQUIVO_DO_MODELO[x][0]!.toUpperCase() + NOME_TIPO_ARQUIVO_DO_MODELO[x].slice(1)}</option>)}
+            </select>
+          </Campo>
+          {t.tipoArquivo !== 'UNDEFINED' && (
+            <Campo label="Endereço do arquivo (https://)" dica="um link público: o WhatsApp baixa o arquivo dali a cada mensagem" className="min-w-0">
+              <div className="relative">
+                <FileImage size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" aria-hidden />
+                <input className="input font-mono text-[13px] pl-8" id="avisos-modelo-arquivo" spellCheck={false} maxLength={500} placeholder="https://…/logo.png" value={t.arquivo}
+                  onChange={(e) => mudarModelo({ arquivo: e.target.value })} />
+              </div>
+            </Campo>
+          )}
+        </div>
+        {faltaArquivo && <p className="text-[12.5px] text-signal mt-1.5">O modelo tem {NOME_TIPO_ARQUIVO_DO_MODELO[t.tipoArquivo]} no cabeçalho: sem o endereço do arquivo, a mensagem não sai.</p>}
+        {t.id.trim() && t.variaveis.length > 0 && !t.variaveis.some((v) => v.valor.includes('{texto}')) && (
+          <p className="text-[12.5px] text-signal mt-1.5">Nenhuma variável leva <i>o que o atendente escreveu</i>: o cliente recebe só o texto do modelo.</p>
+        )}
+
+        {t.id.trim() && (
+          <div className="mt-3">
+            <div className="eyebrow mb-1.5">Prévia, com um exemplo</div>
+            <BalaoDeMensagem texto={previaDoModelo} vazio="sem o texto do modelo: escolha pelo Buscar para ver a prévia" />
+          </div>
+        )}
+        {peloModelo && !t.id.trim() && <p className="text-[12.5px] text-signal mt-2">Sem o modelo, a mensagem ao cliente não sai (a ficha nem mostra o botão).</p>}
+      </section>
+
+      {/* ---- o texto livre ---- */}
+      {!peloModelo && (
+        <section className="mt-4 rounded-xl border border-line p-3 sm:p-4 min-w-0" id="avisos-texto-livre" aria-labelledby="avisos-texto-livre-titulo">
+          <h3 className="font-semibold text-[14px] mb-2" id="avisos-texto-livre-titulo">O texto livre</h3>
+          <div className="flex flex-col gap-2">
+            <Marcadores marcadores={MARCADORES_CLIENTE} campo={campoTexto} valor={f.modeloCliente} onChange={(v) => mudar({ modeloCliente: v })} />
+            <textarea ref={campoTexto} className="input text-[13.5px]" id="avisos-modelo" rows={6} maxLength={2000} aria-label="O texto livre da mensagem ao cliente"
+              value={f.modeloCliente} onChange={(e) => mudar({ modeloCliente: e.target.value })} />
+            <div className="mt-1">
+              <div className="eyebrow mb-1.5">Prévia, com um exemplo</div>
+              <BalaoDeMensagem texto={preencherModelo(f.modeloCliente, EXEMPLO_CLIENTE)} />
+              {!f.modeloCliente.includes('{texto}') && <p className="text-[12.5px] text-signal mt-1.5">Falta o {'{texto}'}: sem ele, o que o atendente escrever não vai.</p>}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ---- quem fica com a conversa ---- */}
+      <section className="mt-4 min-w-0" id="avisos-quem-fica" aria-labelledby="avisos-quem-fica-titulo">
+        <h3 className="font-semibold text-[14px]" id="avisos-quem-fica-titulo">Quem fica com a conversa no LineChat</h3>
+        <p className="text-[12.5px] text-muted">Vale quando a mensagem abre uma conversa nova. Vazio e desligado, o LineChat decide, como hoje.</p>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 mt-2 items-start">
+          <Campo label="Equipe" dica="o nome da equipe no LineChat (ex.: Suporte)" className="min-w-0">
+            <input className="input" id="avisos-equipe-linechat" maxLength={120} placeholder="LineChat decide" value={f.equipeLineChat} onChange={(e) => mudar({ equipeLineChat: e.target.value })} />
+          </Campo>
+          <div className="flex items-start gap-2.5 text-sm sm:mt-6">
+            <Interruptor ligado={f.atribuirAQuemManda} onChange={(v) => mudar({ atribuirAQuemManda: v })} rotulo="Quem manda fica com a conversa" />
+            <span className="min-w-0">Quem manda fica com a conversa <span className="block text-[12.5px] text-muted">pelo e-mail: precisa ser o mesmo no Gestor e no LineChat</span></span>
+          </div>
+        </div>
+      </section>
     </CartaoAjuste>
+  );
+}
+
+/** As variáveis do modelo: o nome (como está no LineChat) e o que vai nela — um valor do chamado ou um texto fixo. */
+function VariaveisDoModelo({ variaveis, onMudar, onIncluir, onTirar }: {
+  variaveis: VariavelForm[]; onMudar: (i: number, m: Partial<VariavelForm>) => void; onIncluir: () => void; onTirar: (i: number) => void;
+}) {
+  return (
+    <div className="mt-3 min-w-0" id="avisos-variaveis">
+      <div className="label">As variáveis do modelo</div>
+      {!variaveis.length ? (
+        <p className="text-[12.5px] text-muted">Nenhuma: o modelo vai como foi aprovado. Se ele tiver variáveis ({'{{1}}'}, {'{{nome}}'}…), inclua uma para cada.</p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {variaveis.map((v, i) => {
+            const opcao = VALORES_DA_VARIAVEL.find((o) => o.valor === v.valor.trim());
+            return (
+              <li key={i} data-variavel={v.nome} className="flex flex-wrap items-center gap-2 min-w-0">
+                <input className="input font-mono text-[13px] w-24 shrink-0" aria-label={`Nome da variável ${i + 1}`} maxLength={60} value={v.nome} onChange={(e) => onMudar(i, { nome: e.target.value })} />
+                <span className="text-muted text-[13px]" aria-hidden>recebe</span>
+                <select className="input flex-1 basis-48 min-w-0" aria-label={`O que vai na variável ${v.nome || i + 1}`} value={opcao ? opcao.valor : TEXTO_FIXO}
+                  onChange={(e) => onMudar(i, { valor: e.target.value === TEXTO_FIXO ? '' : e.target.value })}>
+                  {VALORES_DA_VARIAVEL.map((o) => <option key={o.valor} value={o.valor}>{o.nome}</option>)}
+                  <option value={TEXTO_FIXO}>um texto fixo…</option>
+                </select>
+                {!opcao && (
+                  <input className="input flex-1 basis-48 min-w-0" aria-label={`O texto da variável ${v.nome || i + 1}`} maxLength={1000} placeholder="ex.: Equipe Ingline (aceita {contato}, {codigo}…)"
+                    value={v.valor} onChange={(e) => onMudar(i, { valor: e.target.value })} />
+                )}
+                <button type="button" className="btn-ghost btn-sm px-1.5 text-muted hover:text-bad" onClick={() => onTirar(i)} aria-label={`Tirar a variável ${v.nome || i + 1}`}><X size={14} /></button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      <button type="button" className="btn-ghost btn-sm mt-1.5" id="avisos-variavel-incluir" onClick={onIncluir}><Plus size={14} /> Incluir variável</button>
+    </div>
+  );
+}
+
+/** Os modelos aprovados do número oficial, como o LineChat devolveu: um clique escolhe. */
+function ListaDeModelos({ lista, escolhido, onUsar, onFechar }: { lista: ModelosDoLineChat; escolhido: string; onUsar: (m: ModeloDoLineChat) => void; onFechar: () => void }) {
+  return (
+    <div className="mt-3 rounded-lg border border-line bg-surface-2 p-2 min-w-0" id="avisos-lista-modelos">
+      <div className="flex items-center gap-2 px-1 pb-1.5">
+        <span className="text-[12.5px] text-muted min-w-0">
+          {lista.modelos.length} {lista.modelos.length === 1 ? 'modelo aprovado' : 'modelos aprovados'} do número <span className="font-mono">{telefoneLegivel(lista.canal.numero)}</span>
+          {!lista.canal.oficial && ' (este canal não é da API oficial do WhatsApp)'}
+        </span>
+        <button type="button" className="btn-ghost btn-sm px-1.5 ml-auto shrink-0" onClick={onFechar} aria-label="Fechar a lista de modelos"><X size={14} /></button>
+      </div>
+      {!lista.modelos.length ? (
+        <p className="text-[12.5px] text-muted px-1 pb-1">Nenhum modelo aprovado neste número. Crie no LineChat (Ajustes › Modelos de mensagem) e espere a aprovação da Meta.</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5 max-h-[360px] overflow-y-auto">
+          {lista.modelos.map((m) => {
+            const emUso = m.id === escolhido;
+            return (
+              <li key={m.id} data-modelo={m.nome} className={`rounded-lg border bg-surface p-2.5 ${emUso ? 'border-accent' : 'border-line'}`}>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-mono text-[13px] font-semibold break-all">{m.nome}</span>
+                  {m.categoria && <Chip tone="muted">{m.categoria}</Chip>}
+                  {m.tipoArquivo !== 'UNDEFINED' && <Chip tone="accent"><FileImage size={12} aria-hidden /> {NOME_TIPO_ARQUIVO_DO_MODELO[m.tipoArquivo]}</Chip>}
+                  <span className="text-[12px] text-muted">{m.variaveis.length ? `variáveis: ${m.variaveis.join(', ')}` : 'sem variáveis'}</span>
+                  <button type="button" className={`${emUso ? 'btn-ghost' : 'btn-secondary'} btn-sm ml-auto`} disabled={emUso} onClick={() => onUsar(m)}>
+                    {emUso ? <><CheckCircle2 size={14} /> Em uso</> : 'Usar este'}
+                  </button>
+                </div>
+                {m.texto && <p className="text-[12.5px] text-ink-2 mt-1 whitespace-pre-wrap break-words line-clamp-3">{m.texto}</p>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }

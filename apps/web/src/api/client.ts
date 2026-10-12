@@ -323,6 +323,7 @@ export const realApi: Api = {
     salvarPrazos: (a) => http('PUT', '/atendimento/ajustes/prazos', a),
     ajustesAvisos: () => http('GET', '/atendimento/ajustes/avisos'),
     salvarAvisos: (a) => http('PUT', '/atendimento/ajustes/avisos', a),
+    modelosDoLineChat: () => http('GET', '/atendimento/ajustes/avisos/modelos'),
     testarAvisos: (d) => http('POST', '/atendimento/ajustes/avisos/testar', d),
     respostas: () => http('GET', '/atendimento/respostas'),
     salvarResposta: (id, d) => (id ? http('PUT', `/atendimento/respostas/${id}`, d) : http('POST', '/atendimento/respostas', d)),

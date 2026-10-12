@@ -348,6 +348,8 @@ export type Api = {
     salvarPrazos(a: T.AjustesPrazos): Promise<T.AjustesPrazos>;
     ajustesAvisos(): Promise<T.AvisosChamadosTela>;
     salvarAvisos(a: T.AvisosChamadosEntrada): Promise<T.AvisosChamadosTela>;
+    /** os modelos aprovados (templates) do número oficial, lidos do LineChat com a chave guardada */
+    modelosDoLineChat(): Promise<T.ModelosDoLineChat>;
     /** manda uma mensagem de teste para uma pessoa da equipe (ou um número) */
     testarAvisos(d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string }): Promise<{ ok: boolean; mensagem: string }>;
     respostas(): Promise<T.RespostaPronta[]>;
