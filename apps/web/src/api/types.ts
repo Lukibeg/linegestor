@@ -159,7 +159,7 @@ export type Subscription = {
 export type ClientNetwork = { ipAddress: string | null; subnetMask: string | null; defaultRouter: string | null; dns1: string | null; dns2: string | null; note: string | null; wirelessPassword: SecretRef; updatedAt: string };
 /** Login e senha padrão dos aparelhos de um MODELO no cliente (todos os GXP1610 dele usam o mesmo). A senha só diz se existe. */
 export type ClientDeviceLogin = { id: string; modelId: string; modelName: string; username: string | null; password: SecretRef; note: string | null; updatedAt: string };
-export type ClientFull = ClientListItem & { subscriptions: Subscription[]; unitCount: number; network: ClientNetwork | null; deviceLogins: ClientDeviceLogin[] };
+export type ClientFull = ClientListItem & { subscriptions: Subscription[]; unitCount: number; contactCount: number; network: ClientNetwork | null; deviceLogins: ClientDeviceLogin[] };
 /** Uma unidade do cliente (Matriz, filial, loja), com endereço e o IP fixo de saída da rede dela. */
 export type ClientUnit = { id: string; name: string; isMain: boolean; address: string | null; egressIp: string | null; note: string | null; createdAt: string; deviceCount: number };
 

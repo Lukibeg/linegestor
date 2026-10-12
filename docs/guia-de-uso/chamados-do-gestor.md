@@ -41,7 +41,10 @@ o chamado já nasce nele, sem escolher outro; fora (Painéis, Meu dia), escolha 
 cliente, o contato (nome e WhatsApp), o título, o **relato do cliente** — o que ele disse, nas palavras
 dele — e a **descrição** (o andamento e os dados técnicos).
 
-- Ao escolher o cliente, aparecem os chamados recentes dele. **Se é o mesmo problema de antes, use
+- Ao escolher o cliente, aparecem **os contatos dele**: um clique preenche o nome e o WhatsApp. **Novo
+  contato** inclui ali mesmo (e já escolhe); o nome escrito à mão que não está na lista mostra
+  **Salvar nos contatos**.
+- Aparecem também os chamados recentes dele. **Se é o mesmo problema de antes, use
   "Reabrir este em vez de abrir outro"**: o cliente que volta à tarde com o mesmo ramal reabre o
   chamado da manhã.
 - A **gravidade** sugere a **prioridade** (pela tela de Prazos). No painel que usa o **alcance** — ele
@@ -62,12 +65,25 @@ dele — e a **descrição** (o andamento e os dados técnicos).
 O chamado também nasce **pelo botão "Abrir chamado" na conversa do LineChat** (já com o telefone e o
 nome), **pelo robô** e **pelos agendados** (seção 5).
 
+### Os contatos do cliente (Clientes › ficha do cliente › Contatos)
+
+As pessoas do cliente com quem a equipe fala: o **nome**, o **WhatsApp**, o **e-mail** e o **cargo ou
+setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; quem só lê, vê.
+
+- O mesmo WhatsApp não se repete entre os contatos ativos de um cliente.
+- Nada se apaga: **desativar** tira o contato do Abrir chamado; os chamados que já têm o contato
+  continuam com ele. **Ver os desativados** mostra os que saíram.
+- Cada contato mostra quantos chamados o WhatsApp dele tem.
+- O chamado que chega só com o WhatsApp (o robô, o botão na conversa) acha o cliente e o nome pelos
+  contatos. Se o número está em dois clientes, o cliente não é adivinhado: a equipe escolhe.
+
 ## 3. A ficha do chamado
 
 - **Relato do cliente**, **Descrição** (o andamento e os dados técnicos), **Solução** e **Causa**. O
   que a próxima etapa pede e está vazio fica marcado ("falta para ir para Resolvido").
 - Um código citado no texto (SUP-12, ou um card antigo do LineChat como IS-4280) vira link.
-- Do lado: a **empresa** e o **contato**, a **classificação** (os campos que o painel usa — assunto,
+- Do lado: a **empresa** e o **contato** (em **Editar**, os contatos do cliente: um clique troca; o
+  contato escrito à mão ganha **Salvar nos contatos**), a **classificação** (os campos que o painel usa — assunto,
   tipo, gravidade, alcance, prioridade, produtos, operadoras —, os campos do próprio painel e as
   etiquetas), o responsável e os **observadores**, os **prazos**, o caso **na operadora** e o **tempo
   gasto**. O campo de texto longo do painel (ex.: "Como reproduzir") fica junto do relato.
@@ -120,6 +136,8 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    relato, o telefone, o nome e a sessão (as variáveis do LineChat) e, se quiser, os campos do painel
    pelo nome (`"campos": {"Sistema": "LinePBX"}`; numa lista, o nome da opção). A resposta traz o
    **código** do chamado, para o robô mandar ao cliente. A mesma conversa não abre dois chamados. O
+   cliente vem pelo telefone: primeiro dos **contatos dos clientes**, depois do que o Gestor aprendeu
+   dos chamados anteriores. O
    assunto (ou outro campo do sistema) que o painel não usa é ignorado; um campo que o painel não tem
    é recusado, e a resposta diz qual.
 3. **O botão "Abrir chamado" na conversa**: nas **ações personalizadas** do LineChat, na conversa, o

@@ -114,6 +114,15 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   pelo **robô** (o bloco de webhook manda para o Gestor, com uma chave de API, e recebe o código para
   mandar ao cliente). Ao escolher o cliente, o formulário mostra os chamados recentes dele com
   **"Reabrir este em vez de abrir outro"** (o exemplo dele: o mesmo ramal à tarde reabre o da manhã).
+- **Os contatos do cliente** (o pedido dele na prévia: "uma aba de contatos dos clientes, aí ele já
+  puxaria de lá; e criar um contato por aqui"): a ficha do cliente ganhou a aba **Contatos** (o nome,
+  o WhatsApp, o e-mail e o cargo ou setor). O Abrir chamado mostra os contatos do cliente escolhido —
+  um clique preenche o nome e o WhatsApp — e inclui um novo ali mesmo; a ficha do chamado troca o
+  contato pela lista e guarda nela o que foi escrito à mão. O WhatsApp não se repete entre os
+  contatos ativos de um cliente; nada se apaga (desativa, e some do Abrir chamado). O chamado que
+  chega só com o telefone (o robô, o botão da conversa) acha o cliente e o nome pelos contatos — o
+  mesmo número em dois clientes não é adivinhado — e, depois, pelo que o Gestor aprendeu dos chamados.
+  Incluem e editam quem cuida do cadastro e quem trabalha nos chamados.
 - **Os prazos** (o pedido do Carlos): resposta e solução por prioridade, em **horas úteis**, com o
   horário de atendimento e os **feriados** (os de Salvador e da Bahia já cadastrados); **esperando o
   cliente, o prazo para**; esperando a operadora, **continua correndo**. O relógio do Gestor avisa
@@ -160,12 +169,14 @@ afetados.
 
 **Consequências.**
 
-- Migração `0015_chamados_do_gestor`: 17 tabelas novas (grupo 10: `ticket_panels`, `ticket_stages`,
-  `ticket_subjects`, `ticket_fields` (os campos de cada painel; o valor fica em
-  `tickets.custom_fields`, pelo id do campo), `tickets`, `ticket_events`, `ticket_notes`, `ticket_attachments`,
-  `ticket_links`, `ticket_time_entries`, `ticket_carrier_cases`, `ticket_schedules`, `ticket_macros`,
-  `ticket_contacts`, `ticket_notifications`, `ticket_webhooks`, `ticket_api_keys`), as duas
-  permissões novas nos papéis e os dois painéis iniciais. Os ajustes ficam em `settings`
+- Migração `0015_chamados_do_gestor`: 18 tabelas novas — `client_contacts` (os contatos do cliente,
+  junto do cadastro; rotas `/api/clients/:id/contatos`: ver com `records.read` ou `support.read`,
+  mexer com `records.write` ou `tickets.work`, auditoria no cliente) e as 17 do grupo 10
+  (`ticket_panels`, `ticket_stages`, `ticket_subjects`, `ticket_fields` — os campos de cada painel; o
+  valor fica em `tickets.custom_fields`, pelo id do campo —, `tickets`, `ticket_events`, `ticket_notes`,
+  `ticket_attachments`, `ticket_links`, `ticket_time_entries`, `ticket_carrier_cases`,
+  `ticket_schedules`, `ticket_macros`, `ticket_contacts`, `ticket_notifications`, `ticket_webhooks`,
+  `ticket_api_keys`); e mais as duas permissões novas nos papéis e os dois painéis iniciais. Os ajustes ficam em `settings`
   (`atendimento-prazos`, `atendimento-avisos`, `atendimento-integracoes`); a chave própria do
   WhatsApp e os segredos dos webhooks, no cofre.
 - As regras moram em `@gestor/shared` (`atendimento.ts` e `atendimento-prazos.ts`), as mesmas no

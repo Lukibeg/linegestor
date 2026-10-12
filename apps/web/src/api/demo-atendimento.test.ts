@@ -635,6 +635,49 @@ describe('as regras do servidor valem na prévia', () => {
     expect((await api.avisos()).itens.some((a) => a.tipo === 'observador' && a.chamado?.codigo === r.codigo)).toBe(false);
   }, DEMORA);
 
+  it('os contatos do cliente (como o servidor): incluir, o WhatsApp que não se repete, desativar e o chamado que acha o cliente pelo WhatsApp', async () => {
+    await entrar('leitor');
+    const clientes = await demoApi.clients.options();
+    const aurora = clientes.find((c) => c.name === 'Clínica Aurora')!;
+    const hospital = clientes.find((c) => c.name === 'Hospital Vale Verde')!;
+    // os exemplos: a Maria e a Juliana ativas, a ex-recepcionista desativada (por último)
+    expect((await demoApi.clients.contatos(aurora.id)).map((c) => [c.nome, c.ativo])).toEqual([['Juliana Prates', true], ['Maria Souza', true], ['Lúcia Ramos', false]]);
+    // o Leitor vê, mas não inclui
+    expect((await erroDe(demoApi.clients.salvarContato(aurora.id, null, { nome: 'Outra Pessoa' }))).status).toBe(403);
+
+    await entrar('operador');
+    const roberta = await demoApi.clients.salvarContato(aurora.id, null, { nome: 'Roberta Dias', whatsapp: '(71) 98123-4567', cargo: 'Financeiro', email: '' });
+    expect(roberta).toMatchObject({ clienteId: aurora.id, nome: 'Roberta Dias', whatsapp: '5571981234567', cargo: 'Financeiro', email: null, ativo: true, chamados: 0 });
+    const dup = await erroDe(demoApi.clients.salvarContato(aurora.id, null, { nome: 'Roberta (outra)', whatsapp: '71 98123-4567' }));
+    expect(dup.status).toBe(409);
+    expect(dup.message).toBe('O contato Roberta Dias já tem esse WhatsApp neste cliente.');
+    expect((await erroDe(demoApi.clients.salvarContato(aurora.id, null, { nome: 'João Lima', email: 'joao@' }))).details).toEqual([{ field: 'email', message: 'E-mail inválido' }]);
+
+    // o chamado que chega só com o WhatsApp de um contato já vem com o cliente e o nome
+    const op = await api.opcoes();
+    const sup = painel(op, 'SUP');
+    const base = { painelId: sup.id, relato: 'O cliente ligou relatando o problema (chamado de teste).' };
+    const f = await api.chamado((await api.criar({ ...base, titulo: 'Ligou do celular (teste)', contatoTelefone: '71 98123-4567' })).codigo);
+    expect(f.cliente).toEqual({ id: aurora.id, nome: 'Clínica Aurora' });
+    expect(f.contato).toEqual({ nome: 'Roberta Dias', telefone: '5571981234567' });
+    expect((await demoApi.clients.contatos(aurora.id)).find((c) => c.nome === 'Roberta Dias')!.chamados).toBe(1);
+    // o mesmo número em dois clientes: o cliente não é adivinhado; com o cliente escolhido, o nome vem do contato dele
+    await demoApi.clients.salvarContato(hospital.id, null, { nome: 'Recepção do hospital', whatsapp: '(71) 96666-2222' });
+    await demoApi.clients.salvarContato(aurora.id, null, { nome: 'Recepção da clínica', whatsapp: '(71) 96666-2222' });
+    expect((await api.chamado((await api.criar({ ...base, titulo: 'Número dividido (teste)', contatoTelefone: '71 96666-2222' })).codigo)).cliente).toBeNull();
+    const doHospital = await api.chamado((await api.criar({ ...base, titulo: 'Do hospital (teste)', clienteId: hospital.id, contatoTelefone: '71 96666-2222' })).codigo);
+    expect(doHospital.contato).toEqual({ nome: 'Recepção do hospital', telefone: '5571966662222' });
+
+    // desativar: some do Abrir chamado (o cadastro do cliente) e libera o WhatsApp
+    await demoApi.clients.salvarContato(aurora.id, roberta.id, { ...roberta, ativo: false });
+    expect((await api.cadastroDoCliente(aurora.id)).contatos.map((c) => c.nome)).not.toContain('Roberta Dias');
+    expect((await demoApi.clients.salvarContato(aurora.id, null, { nome: 'Roberta (nova)', whatsapp: '71 98123-4567' })).ativo).toBe(true);
+    await entrar('admin');
+    const historico = (await demoApi.clients.history(aurora.id)).items.map((a) => a.summary);
+    expect(historico).toContain('Incluiu o contato Roberta Dias (Financeiro) em Clínica Aurora');
+    expect(historico).toContain('Desativou o contato Roberta Dias de Clínica Aurora');
+  }, DEMORA);
+
   it('as integrações: a chave nova aparece uma vez e não fica guardada', async () => {
     await entrar('admin');
     const antes = await api.integracoes();

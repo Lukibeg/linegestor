@@ -2,17 +2,20 @@
  * A empresa e o contato, em destaque no topo da coluna do lado (o pedido do Eider, com o nome do
  * contato que o Luan pediu): o nome grande com o link para a ficha do cliente, os produtos e as
  * operadoras do cadastro dele, quantos circuitos, DIDs e aparelhos; o contato com o WhatsApp legível
- * e o link "Conversa no LineChat". Dá para trocar o cliente, o nome do contato e o WhatsApp.
+ * e o link "Conversa no LineChat". Dá para trocar o cliente, o nome do contato e o WhatsApp — e o
+ * contato sai da lista do cliente (a aba Contatos, 1.10): um clique troca; o que não está na lista se
+ * salva lá com um clique.
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, ExternalLink, MessagesSquare, Pencil, Phone, UserRound } from 'lucide-react';
-import { numeroWhatsApp } from '@gestor/shared';
+import { Building2, ExternalLink, MessagesSquare, Pencil, Phone, UserRound, UserRoundPlus } from 'lucide-react';
+import { acharContato, numeroWhatsApp, type ContatoDoCliente } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Chip, Copiar, EscolherComBusca, Spinner } from '../../../components/ui/index.js';
 import { telefoneLegivel } from '../comum.js';
 import { ErroPerto, MarcaFalta, useAberta, useAcao } from './base.js';
+import { JanelaContato, usePodeMexerNosContatos } from '../../clientes/Contatos.js';
 
 export function Empresa() {
   const { f, cadastro, pode } = useAberta();
@@ -65,11 +68,21 @@ export function Empresa() {
 }
 
 function Contato() {
-  const { f, pode } = useAberta();
+  const { f, pode, cadastro } = useAberta();
   const [editando, setEditando] = useState(false);
   const acao = useAcao();
   const [nome, setNome] = useState('');
   const [fone, setFone] = useState('');
+  // os contatos do cliente (a aba Contatos): o deste chamado, se estiver lá (pelo WhatsApp ou pelo nome)
+  const contatos = f.cliente ? cadastro?.contatos ?? [] : [];
+  const doCadastro = acharContato(contatos, { nome: f.contato?.nome, telefone: f.contato?.telefone });
+  const podeContatos = usePodeMexerNosContatos();
+  const [salvarNaLista, setSalvarNaLista] = useState(false);
+  /** Trocar pelo contato da lista: um clique. */
+  const usar = async (c: ContatoDoCliente) => {
+    const r = await acao.rodar(() => api.atendimento.alterar(f.id, { contatoNome: c.nome, contatoTelefone: c.whatsapp }), `Contato: ${c.nome}`);
+    if (r.ok) setEditando(false);
+  };
   const abrir = () => { setNome(f.contato?.nome ?? ''); setFone(f.contato?.telefone ? telefoneLegivel(f.contato.telefone) : ''); acao.limpar(); setEditando(true); };
   const salvar = async () => {
     // a mesma conta do servidor: o número precisa virar um WhatsApp (DDD + número)
@@ -90,7 +103,21 @@ function Contato() {
       </div>
       {editando ? (
         <form className="flex flex-col gap-2" autoComplete="off" onSubmit={(e) => { e.preventDefault(); void salvar(); }}>
-          <Campo label="Nome do contato"><input className="input" autoFocus maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Maria (recepção)" /></Campo>
+          {contatos.length > 0 && (
+            <div id="ficha-contatos-do-cliente">
+              <div className="label">Contatos de {f.cliente!.nome}</div>
+              <div className="flex flex-wrap gap-1.5">
+                {contatos.map((c) => (
+                  <button key={c.id} type="button" disabled={acao.ocupado} onClick={() => void usar(c)} title={c.whatsapp ? telefoneLegivel(c.whatsapp) : 'sem WhatsApp'}
+                    className={`text-left rounded-lg border px-2.5 py-1 text-[13px] ${c.id === doCadastro?.id ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+                    {c.nome}{c.cargo && <span className="text-[12px] text-muted font-normal"> · {c.cargo}</span>}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[12px] text-muted mt-1">Um clique troca o contato. Ou escreva abaixo.</div>
+            </div>
+          )}
+          <Campo label="Nome do contato"><input className="input" autoFocus maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Maria Souza" /></Campo>
           <Campo label="WhatsApp" dica="DDD + número, como (71) 99999-0000"><input className="input font-mono" inputMode="tel" maxLength={40} value={fone} onChange={(e) => setFone(e.target.value)} placeholder="(71) 99999-0000" /></Campo>
           <div className="flex gap-2">
             <button type="submit" className="btn-primary btn-sm" disabled={acao.ocupado}>{acao.ocupado ? <Spinner className="text-white" /> : 'Salvar'}</button>
@@ -100,7 +127,11 @@ function Contato() {
         </form>
       ) : temContato ? (
         <div className="min-w-0">
-          {f.contato?.nome && <div className="text-[16px] font-semibold text-ink break-words">{f.contato.nome}</div>}
+          {f.contato?.nome && (
+            <div className="text-[16px] font-semibold text-ink break-words">
+              {f.contato.nome}{doCadastro?.cargo && <span className="text-[13px] font-normal text-muted"> · {doCadastro.cargo}</span>}
+            </div>
+          )}
           {f.contato?.telefone && (
             <div className="flex items-center gap-1 text-[14px] text-ink-2">
               <Phone size={13} className="text-muted shrink-0" aria-hidden />
@@ -110,6 +141,22 @@ function Contato() {
           )}
         </div>
       ) : <p className="text-[13px] text-muted">Sem contato.</p>}
+      {/* o contato escrito à mão (ou da conversa) que não está na lista do cliente: guardar lá com um clique */}
+      {!editando && f.cliente && f.contato?.nome && !doCadastro && pode && podeContatos && (
+        <button type="button" className="link text-[12.5px] mt-1 inline-flex items-center gap-1" id="ficha-contato-salvar" onClick={() => setSalvarNaLista(true)}>
+          <UserRoundPlus size={13} /> Salvar nos contatos de {f.cliente.nome}
+        </button>
+      )}
+      {salvarNaLista && f.cliente && (
+        <JanelaContato clienteId={f.cliente.id} clienteNome={f.cliente.nome} contato={null}
+          inicial={{ nome: f.contato?.nome ?? '', whatsapp: f.contato?.telefone ? telefoneLegivel(f.contato.telefone) : '' }}
+          onFechar={() => setSalvarNaLista(false)}
+          onSalvo={(c) => {
+            setSalvarNaLista(false);
+            // o nome (ou o WhatsApp) corrigido na janela vale também para o chamado
+            if (c.nome !== f.contato?.nome || (c.whatsapp ?? null) !== (f.contato?.telefone ?? null)) void usar(c);
+          }} />
+      )}
       {!editando && (f.conversaUrl || f.sessaoId) && (
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
           {f.conversaUrl && (

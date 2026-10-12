@@ -19,18 +19,19 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, X } from 'lucide-react';
+import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, UserRoundPlus, X } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
-  caminhoDoAssunto, campoLigado, chaveDoCampo, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel,
+  acharContato, caminhoDoAssunto, campoLigado, chaveDoCampo, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel,
   valorPreenchido,
-  type Alcance, type CadastroDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
+  type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
   type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
 import { Carregando, Chip, EscolherComBusca, Spinner, Vazio, mensagemErro, useToast, type OpcaoBusca } from '../../components/ui/index.js';
 import { useAuth } from '../../lib/auth.js';
+import { JanelaContato, usePodeMexerNosContatos } from '../clientes/Contatos.js';
 import {
   CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto, painelDe, telefoneLegivel,
   useDepoisDeMudar, useFicha, useOpcoes, usePode,
@@ -194,6 +195,16 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
   const precisaMotivo = !!f.prioridade && !!sugerida && f.prioridade !== sugerida;
 
   const foneValido = numeroWhatsApp(f.contatoTelefone);
+  // ---------- os contatos do cliente (a aba Contatos): escolher um preenche o nome e o WhatsApp ----------
+  const contatosDoCliente = cadastro.data?.contatos ?? [];
+  const contatoEscolhido = f.clienteId ? acharContato(contatosDoCliente, { nome: f.contatoNome, telefone: f.contatoTelefone }) : undefined;
+  const nomeDoCliente = opcoesClientes.find((o) => o.id === f.clienteId)?.nome ?? 'o cliente';
+  const podeContatos = usePodeMexerNosContatos();
+  const [janelaContato, setJanelaContato] = useState<{ inicial?: { nome?: string; whatsapp?: string } } | null>(null);
+  const escolherContato = (c: ContatoDoCliente) => {
+    mudar({ contatoNome: c.nome, contatoTelefone: c.whatsapp ? telefoneLegivel(c.whatsapp) : '' });
+    tirarFalta('contato');
+  };
   const foneInvalido = !!f.contatoTelefone.trim() && !foneValido;
   const podeAvisar = opcoes.whatsapp.cliente && !!foneValido;
 
@@ -381,6 +392,12 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
               <EscolherComBusca valor={f.clienteId} onChange={trocarCliente} opcoes={opcoesClientes} vazio="Sem cliente (ainda)" placeholder={clientes.isLoading ? 'Carregando os clientes…' : 'Escolha o cliente…'}
                 procurar="Procurar cliente…" className="input w-full" id="novo-cliente" rotulo="Cliente" largura="w-[420px]" />
             </Rotulado>
+            {/* os contatos do cliente (o pedido do Luan na prévia): um clique preenche o nome e o WhatsApp; um novo nasce aqui */}
+            {f.clienteId && (
+              <ContatosParaEscolher className="sm:col-span-2" cliente={nomeDoCliente} contatos={contatosDoCliente} carregando={cadastro.isLoading}
+                escolhido={contatoEscolhido?.id ?? null} onEscolher={escolherContato} podeIncluir={podeContatos}
+                onNovo={() => setJanelaContato({ inicial: contatoEscolhido ? {} : { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim() } })} />
+            )}
             <Rotulado rotulo="Contato (nome)" id="novo-contato" obrigatorio={pede('contato')} falta={falta('contato')} dica={pede('contato') ? 'o nome ou o WhatsApp' : undefined}>
               <input className="input" id="novo-contato" value={f.contatoNome} maxLength={120} placeholder="Quem pediu (ex.: Maria, da recepção)"
                 onChange={(e) => { mudar({ contatoNome: e.target.value }); tirarFalta('contato'); }} />
@@ -389,7 +406,18 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
               <input className="input tnum" id="novo-whatsapp" inputMode="tel" value={f.contatoTelefone} maxLength={40} placeholder="(71) 99999-0000"
                 onChange={(e) => { mudar({ contatoTelefone: e.target.value }); tirarFalta('contato'); }} />
             </Rotulado>
+            {/* escrito à mão (ou vindo da conversa do LineChat) e fora dos contatos do cliente: guardar com um clique */}
+            {f.clienteId && !contatoEscolhido && !cadastro.isLoading && podeContatos && f.contatoNome.trim().length >= 2 && !foneInvalido && (
+              <p className="sm:col-span-2 text-[12.5px] text-muted -mt-1" id="novo-contato-fora">
+                {f.contatoNome.trim()} não está nos contatos de {nomeDoCliente}.{' '}
+                <button type="button" className="link" onClick={() => setJanelaContato({ inicial: { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim() } })}>Salvar nos contatos</button>
+              </p>
+            )}
           </div>
+          {janelaContato && f.clienteId && (
+            <JanelaContato clienteId={f.clienteId} clienteNome={nomeDoCliente} contato={null} inicial={janelaContato.inicial}
+              onFechar={() => setJanelaContato(null)} onSalvo={(c) => { escolherContato(c); setJanelaContato(null); }} />
+          )}
           {f.clienteId && <Recentes cadastro={cadastro.data} carregando={cadastro.isLoading} erroCarregar={cadastro.isError ? mensagemErro(cadastro.error) : ''}
             opcoes={opcoes} reabrindo={reabrindo} erro={erroReabrir} onReabrir={reabrir} levaRelato={!!f.relato.trim()} />}
         </Secao>
@@ -762,6 +790,49 @@ function Recentes({ cadastro, carregando, erroCarregar, opcoes, reabrindo, erro,
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/**
+ * Os contatos do cliente no Abrir chamado: um clique preenche o nome e o WhatsApp (até 8, em botões; mais
+ * que isso, na caixa de procurar). "Novo contato" abre a janela do contato e já o escolhe.
+ */
+function ContatosParaEscolher({ cliente, contatos, carregando, escolhido, onEscolher, onNovo, podeIncluir, className = '' }: {
+  cliente: string; contatos: ContatoDoCliente[]; carregando: boolean; escolhido: string | null;
+  onEscolher: (c: ContatoDoCliente) => void; onNovo: () => void; podeIncluir: boolean; className?: string;
+}) {
+  const novo = podeIncluir && (
+    <button type="button" className="btn-ghost btn-sm" id="novo-contato-novo" onClick={onNovo}><UserRoundPlus size={14} /> Novo contato</button>
+  );
+  return (
+    <div className={`min-w-0 ${className}`} id="novo-contatos">
+      <div className="label" id="novo-contatos-rotulo">Contatos de {cliente}</div>
+      {carregando ? <p className="text-[13px] text-muted flex items-center gap-2"><Spinner /> Procurando os contatos…</p>
+        : !contatos.length ? (
+          <div className="flex flex-wrap items-center gap-2 text-[13px] text-muted">{cliente} ainda não tem contatos cadastrados.{novo}</div>
+        ) : contatos.length <= 8 ? (
+          <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-labelledby="novo-contatos-rotulo">
+            {contatos.map((c) => {
+              const ativo = c.id === escolhido;
+              return (
+                <button key={c.id} type="button" role="radio" aria-checked={ativo} onClick={() => onEscolher(c)} title={c.whatsapp ? telefoneLegivel(c.whatsapp) : 'sem WhatsApp'}
+                  className={`text-left rounded-lg border px-3 py-1.5 text-[13.5px] min-w-0 ${ativo ? 'border-accent bg-accent-soft text-accent-ink' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+                  <span className={ativo ? 'font-semibold' : 'font-medium text-ink'}>{c.nome}</span>
+                  {c.cargo && <span className="text-[12px] text-muted"> · {c.cargo}</span>}
+                </button>
+              );
+            })}
+            {novo}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <EscolherComBusca valor={escolhido ?? ''} onChange={(id) => { const c = contatos.find((x) => x.id === id); if (c) onEscolher(c); }}
+              opcoes={contatos.map((c) => ({ id: c.id, nome: c.nome, dica: [c.cargo, c.whatsapp ? telefoneLegivel(c.whatsapp) : null].filter(Boolean).join(' · ') || undefined }))}
+              placeholder="Escolha um contato…" procurar="Procurar contato…" className="input w-full sm:w-[360px]" rotulo={`Contatos de ${cliente}`} />
+            {novo}
+          </div>
+        )}
     </div>
   );
 }

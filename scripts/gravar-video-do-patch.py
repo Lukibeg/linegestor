@@ -11,7 +11,8 @@ visível, uma legenda numerada para cada mudança e uma capa no começo e no fim
        e `pnpm novidades:demo` + `build:demo` de novo (a prévia passa a abrir com o vídeo)
 
 Precisa do Playwright (Python) e do ffmpeg. **Cada patch tem o seu roteiro**: troque a função
-`roteiro()`, a `PRIMEIRA_TELA` e os textos da capa pelos do patch novo — o roteiro do 1.9 fica como
+`roteiro()` (e o `antes_do_roteiro()`, o que roda atrás da capa), a `PRIMEIRA_TELA` e os textos da
+capa pelos do patch novo — o roteiro do 1.9 fica como
 exemplo (`roteiro_1_9`). O jeito do vídeo
 (o que o Luan aprovou em 10/10): uns 2 minutos, sem som (o que importa vai na legenda), os dados de
 exemplo da prévia, e a capa e o fim falando com a equipe — nada de "prévia" nem de "quando você der
@@ -199,6 +200,31 @@ def entrar_atras_da_capa(page):
 
 # ---------- o roteiro do Patch 1.10 (troque pelo do patch novo) ----------
 
+# Os chamados do roteiro, pelo título: na prévia, os números depois do SUP-16 mudam conforme o dia
+# em que ela abre (o agendado de toda segunda troca de lugar com os mais novos). O código de cada um
+# sai do quadro do Suporte, atrás da capa (`antes_do_roteiro`).
+CHAMADOS = {
+    'mover': 'Fila do SAC sem música de espera',
+    'ficha': 'Ligações para o hospital caindo e às vezes sem completar',
+    'problema': 'Quedas no tronco da Algar em Salvador',
+    'esperar': 'Firewall bloqueando o IP novo do CD de Feira de Santana',
+    'ia': 'Chamado pelo WhatsApp',
+}
+COD = {}
+
+
+def antes_do_roteiro(page):
+    ir(page, '/atendimento/quadro?painel=painel-suporte', 1800)
+    COD.update(page.evaluate("""(titulos) => Object.fromEntries(Object.entries(titulos).map(([k, t]) => {
+        const li = [...document.querySelectorAll('li[data-codigo]')].find((x) => x.querySelector('a.line-clamp-2')?.textContent.trim() === t);
+        return [k, li ? li.getAttribute('data-codigo') : null];
+    }))""", CHAMADOS))
+    faltam = [CHAMADOS[k] for k, v in COD.items() if not v]
+    if faltam:
+        raise SystemExit(f'Não achei no quadro do Suporte: {faltam}')
+    print('os chamados do roteiro:', COD)
+
+
 def roteiro(page):
     n = iter(range(1, 100))
     # o módulo novo: a tela dos painéis (a que já está aberta atrás da capa)
@@ -228,7 +254,7 @@ def roteiro(page):
     clicar(page, page.get_by_role('link', name='Painéis', exact=True).first); esperar(page, 1200)
     clicar(page, page.locator('article[data-painel="SUP"] a:has-text("Abrir o quadro")').first); esperar(page, 1600)
     legenda(page, next(n), 'O quadro', 'N1, N2 e N3 continuam como colunas. Arraste o cartão ou use Mover: escalonar pede o motivo.', 1600)
-    cartao = page.locator('li[data-codigo="SUP-27"]').first
+    cartao = page.locator(f'li[data-codigo="{COD["mover"]}"]').first
     clicar(page, cartao.get_by_role('button', name='Mover')); esperar(page, 900)
     clicar(page, cartao.locator('button:has(span:text-is("N2"))').first); esperar(page, 900)
     page.keyboard.type('Precisa de acesso ao servidor do cliente para trocar o áudio da fila', delay=40); esperar(page, 600)
@@ -240,7 +266,7 @@ def roteiro(page):
     clicar(page, page.locator('#quadro-botao-filtros')); esperar(page, 500)
 
     # 4. a ficha do chamado: clicar no cartão abre a janela grande, por cima do quadro
-    clicar(page, page.locator('li[data-codigo="SUP-22"] a.line-clamp-2').first); esperar(page, 1600)
+    clicar(page, page.locator(f'li[data-codigo="{COD["ficha"]}"] a.line-clamp-2').first); esperar(page, 1600)
     legenda(page, next(n), 'A ficha do chamado', 'Abre numa janela grande, por cima do quadro: o relato, a solução, a empresa e a classificação. Fechou, voltou.', 1800)
     rolar(page, 380); esperar(page, 1800)
     rolar(page, 420); esperar(page, 1600)
@@ -252,7 +278,7 @@ def roteiro(page):
     clicar(page, linha.get_by_role('tab', name='Trajetória')); esperar(page, 2600)
 
     # 6. o problema junta os incidentes; a ficha desenha as ligações (o link troca o chamado da janela)
-    clicar(page, page.locator('[role="dialog"] a[href$="SUP-23"]').first); esperar(page, 1500)
+    clicar(page, page.locator(f'[role="dialog"] a[href$="/{COD["problema"]}"]').first); esperar(page, 1500)
     legenda(page, next(n), 'Problema, pai e filhos', 'O problema junta os incidentes de clientes diferentes. O pai não fecha com filho aberto.', 900)
     ligacoes = page.locator('section:has(h2:has-text("Filhos e ligações")), section:has(h2:has-text("Incidentes"))').first
     ligacoes.scroll_into_view_if_needed(); esperar(page, 600)
@@ -261,7 +287,7 @@ def roteiro(page):
     page.keyboard.press('Escape'); esperar(page, 1200)
 
     # 7. esperar o cliente: o prazo para
-    ir(page, '/atendimento/SUP-39', 1500)
+    ir(page, f'/atendimento/{COD["esperar"]}', 1500)
     legenda(page, next(n), 'Prazos que param', 'Em horas úteis, com os feriados. Esperando o cliente, o prazo para; esperando a operadora, corre.', 900)
     clicar(page, page.get_by_role('button', name='Esperar', exact=True)); esperar(page, 700)
     clicar(page, page.get_by_role('menuitem', name='Esperar o cliente')); esperar(page, 700)
@@ -271,18 +297,27 @@ def roteiro(page):
     prazos.scroll_into_view_if_needed(); esperar(page, 500)
     apontar(page, prazos, 2400)
 
-    # 8. abrir chamado: o cliente que volta com o mesmo problema reabre o de antes
+    # 8. abrir chamado: os contatos do cliente (um clique preenche) e o cliente que volta com o mesmo problema reabre o de antes
     ir(page, '/atendimento/novo', 1400)
-    legenda(page, next(n), 'Abrir, ou reabrir o de antes', 'Ao escolher o cliente, aparecem os chamados recentes dele: é o mesmo problema? Reabra.', 800)
+    legenda(page, next(n), 'Abrir, ou reabrir o de antes', 'Ao escolher o cliente, aparecem os contatos dele e os chamados recentes: é o mesmo problema? Reabra.', 800)
     clicar(page, page.locator('button#novo-cliente')); esperar(page, 500)
     page.keyboard.type('Supermercado', delay=60); esperar(page, 500)
     page.keyboard.press('Enter'); esperar(page, 1400)
+    clicar(page, page.locator('#novo-contatos [role="radio"]', has_text='Fernanda Rocha')); esperar(page, 1400)
     recentes = page.locator('#novo-recentes')
     recentes.scroll_into_view_if_needed(); esperar(page, 400)
     apontar(page, recentes.get_by_role('button', name='Reabrir este em vez de abrir outro').first, 2600)
 
+    # 8b. os contatos do cliente: a aba nova na ficha do cliente (o Abrir chamado puxa de lá)
+    clicar(page, page.locator('nav a:has-text("Clientes")').first); esperar(page, 1200)
+    clicar(page, page.locator('a[href*="/clientes/"]:has-text("Supermercado Bom Preço")').first); esperar(page, 1400)
+    clicar(page, page.get_by_role('tab', name='Contatos')); esperar(page, 800)
+    legenda(page, next(n), 'Os contatos do cliente', 'A aba nova na ficha do cliente: o nome, o WhatsApp, o e-mail e o cargo. O Abrir chamado puxa daqui.', 1800)
+    clicar(page, page.locator('#contatos-novo')); esperar(page, 2000)
+    page.keyboard.press('Escape'); esperar(page, 600)
+
     # 9. Preencher com IA
-    ir(page, '/atendimento/SUP-45', 1400)
+    ir(page, f'/atendimento/{COD["ia"]}', 1400)
     legenda(page, next(n), 'Preencher com IA', 'A IA lê a conversa do cliente no LineChat e sugere os campos. Nada entra sozinho.', 800)
     clicar(page, page.get_by_role('button', name='Preencher com IA')); esperar(page, 2600)
     janela = page.locator('[role="dialog"] > div.relative').first
@@ -416,6 +451,7 @@ def gravar(pasta):
         page.goto(URL)
         esperar(page, 1200)
         entrar_atras_da_capa(page)
+        antes_do_roteiro(page)
         # o aviso "Novidades marcadas como lidas" dura 4 s: a capa só sai depois dele
         ir(page, PRIMEIRA_TELA, 4600)
         page.mouse.move(700, 380)

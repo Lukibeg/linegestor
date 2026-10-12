@@ -108,6 +108,30 @@ export const clientUnits = pgTable(
 );
 
 /**
+ * OS CONTATOS DO CLIENTE (1.10, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe
+ * fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor). O Abrir chamado puxa daqui, e um contato
+ * novo nasce lá também. O WhatsApp acha o cliente quando o robô abre o chamado. Não se apaga: desativa.
+ */
+export const clientContacts = pgTable(
+  'client_contacts',
+  {
+    id: id(),
+    clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Só os dígitos, com o 55 */
+    phone: text('phone'),
+    email: text('email'),
+    /** O cargo ou o setor: "Recepção", "TI", "Financeiro" */
+    role: text('role'),
+    active: boolean('active').notNull().default(true),
+    createdById: text('created_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('client_contacts_client_idx').on(t.clientId), index('client_contacts_phone_idx').on(t.phone)],
+);
+
+/**
  * LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente
  * entram com o mesmo login e senha; os DP722, com outro. Uma linha por cliente × modelo.
  * A senha nunca fica aqui — vai para o cofre (`secrets`). Faz par com a rede padrão.

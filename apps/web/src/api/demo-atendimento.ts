@@ -71,6 +71,8 @@ export type EstadoDaPrevia = {
   models: Array<{ id: string; name: string }>;
   devices: Array<{ id: string; modelId: string; mac: string | null; serialNumber: string | null; clientId: string | null; deletedAt: string | null }>;
   units: Array<{ id: string; clientId: string; name: string; isMain: boolean; deletedAt: string | null }>;
+  /** os contatos dos clientes (1.10, a aba Contatos): o Abrir chamado puxa daqui, e o robô acha o cliente pelo WhatsApp */
+  contatos: Array<{ id: string; clientId: string; nome: string; whatsapp: string | null; email: string | null; cargo: string | null; ativo: boolean; criadoEm: string; atualizadoEm: string }>;
   ajustesIa: {
     ativo: boolean; provedor: ProvedorIa; modelo: string; modeloNome: string | null; precoEntrada: number | null; precoSaida: number | null;
     endereco: string | null; temChave: boolean; chaveDe: ProvedorIa | null; chaveEndereco: string | null;
@@ -229,7 +231,10 @@ function ipInterno(ip: string): boolean {
 //  A LIXEIRA DA ADMINISTRAÇÃO (o demo.ts chama estas duas)
 // =====================================================================
 
-type Instancia = { lixeira: () => TrashItem[]; restaurarDaLixeira: (id: string) => { ok: boolean }; diagnostico: () => { erros: string[]; chamados: number } };
+type Instancia = {
+  lixeira: () => TrashItem[]; restaurarDaLixeira: (id: string) => { ok: boolean }; diagnostico: () => { erros: string[]; chamados: number };
+  chamadosDoContato: (clienteId: string, whatsapp: string) => number;
+};
 let instancia: Instancia | null = null;
 
 /** Os chamados na lixeira, para a Administração › Lixeira (como o `listTrash` do servidor). */
@@ -240,6 +245,10 @@ export function lixeiraDosChamadosDemo(): TrashItem[] {
 export function restaurarChamadoDaLixeiraDemo(id: string): { ok: boolean } {
   if (!instancia) throw naoAchado('Chamado');
   return instancia.restaurarDaLixeira(id);
+}
+/** Quantos chamados do cliente têm este WhatsApp (a coluna "Chamados" da aba Contatos do cliente). */
+export function chamadosDoContatoDemo(clienteId: string, whatsapp: string): number {
+  return instancia?.chamadosDoContato(clienteId, whatsapp) ?? 0;
 }
 /** Para o teste da prévia: o que deu errado ao montar os exemplos (deve ser nada) e quantos chamados há. */
 export function diagnosticoDosChamadosDemo() {
@@ -651,6 +660,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     let clienteId = d.clienteId ?? null;
     let contatoNome = d.contatoNome ?? null;
     if (telefone) {
+      // primeiro os contatos cadastrados dos clientes (a aba Contatos); o mesmo número em dois clientes não adivinha o cliente
+      const cadastrados = S.contatos.filter((c) => c.whatsapp === telefone && c.ativo && clienteVivo(c.clientId));
+      const doCadastro = clienteId ? cadastrados.find((c) => c.clientId === clienteId) : cadastrados.length === 1 ? cadastrados[0] : undefined;
+      if (doCadastro) {
+        if (!clienteId) clienteId = doCadastro.clientId;
+        if (!contatoNome) contatoNome = doCadastro.nome;
+      }
       const conhecido = A.contatos.get(telefone);
       if (conhecido) {
         if (!clienteId && conhecido.clienteId && clienteVivo(conhecido.clienteId)) clienteId = conhecido.clienteId;
@@ -1781,6 +1797,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       aparelhos: aparelhos.map(({ d, modelo }) => ({ id: d.id, nome: `${modelo} · ${d.mac ? macFormatado(d.mac) : d.serialNumber ? `N/S ${d.serialNumber}` : 'sem identificação'}` })),
       unidades: unidades.map((u) => ({ id: u.id, nome: u.name })),
       recentes,
+      // os contatos dele (a aba Contatos do cliente), os ativos, pelo nome
+      contatos: S.contatos.filter((c) => c.clientId === clienteId && c.ativo)
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+        .map((c) => ({ ...c, clienteId: c.clientId, chamados: c.whatsapp ? A.chamados.filter((t) => !t.deletedAt && t.clienteId === clienteId && t.contatoTelefone === c.whatsapp).length : 0 }))
+        .map(({ clientId: _c, ...c }) => c),
     };
   }
 
@@ -3158,6 +3179,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   // a lixeira da Administração (o demo.ts chama pelas funções exportadas lá em cima)
   instancia = {
+    chamadosDoContato: (clienteId, whatsapp) => {
+      semear();
+      return A.chamados.filter((t) => !t.deletedAt && t.clienteId === clienteId && t.contatoTelefone === whatsapp).length;
+    },
     lixeira: () => {
       semear();
       return A.chamados.filter((t) => t.deletedAt).map((t) => ({ type: 'ticket', id: t.id, label: `${t.codigo} · ${t.titulo}`, deletedAt: t.deletedAt! }));

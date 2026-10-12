@@ -32,7 +32,9 @@ import {
   TIPOS_IMAGEM_PORTAL, TutoriaisListarSchema, TutorialGravarSchema, tutorialValePara, type PortalAjustes, type TipoArquivoPortal, type TutorialGravar,
 } from '@gestor/shared';
 import type { Api } from './index.js';
-import { criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo } from './demo-atendimento.js';
+import { chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo } from './demo-atendimento.js';
+import { CONTATOS_DOS_CLIENTES } from './demo-atendimento-exemplos.js';
+import { ContatoGravarSchema, MAX_CONTATOS_DO_CLIENTE, numeroWhatsApp as foneDoWhatsApp, type ContatoDoCliente } from '@gestor/shared';
 import { NOTA_DEMO } from './novidades-demo.js';
 import { PDF_MANUAL_RAMAL, VIDEO_TRANSFERIR } from './portal-demo-midia.js';
 import { RECIBO_FOTO_DEMO, RECIBO_PDF_DEMO } from './recibo-demo-midia.js';
@@ -63,6 +65,8 @@ type MovRow = { id: string; modality: string; fromClientId: string | null; toCli
 /** O recibo de entrega da movimentação (1.9): o arquivo embutido ("data:…"), como os anexos dos projetos na demonstração */
 type ReciboRow = { id: string; movementId: string; fileName: string; mimeType: string; sizeBytes: number; conteudo: string; uploadedById: string | null; createdAt: string; deletedAt: string | null };
 type UnitRow = { id: string; clientId: string; name: string; isMain: boolean; address: string | null; egressIp: string | null; note: string | null; createdAt: string; deletedAt: string | null };
+/** Um contato do cliente (1.10): o WhatsApp só com os dígitos, como no servidor. */
+type ContatoRow = { id: string; clientId: string; nome: string; whatsapp: string | null; email: string | null; cargo: string | null; ativo: boolean; criadoPorId: string | null; criadoEm: string; atualizadoEm: string };
 /** Login e senha padrão dos aparelhos de um modelo no cliente (a senha mora em `S.secrets`) */
 type LoginRow = { id: string; clientId: string; modelId: string; username: string | null; passwordSecretId: string | null; note: string | null; updatedAt: string; deletedAt: string | null };
 /** Rede padrão dos aparelhos do cliente */
@@ -110,6 +114,7 @@ type RoleRow = { id: string; key: string | null; name: string; description: stri
 
 const S = {
   clients: [] as Client[], subs: [] as Sub[], circuits: [] as CircuitRow[], dids: [] as DidRow[], models: [] as ModelRow[], devices: [] as DeviceRow[], movements: [] as MovRow[], recibos: [] as ReciboRow[], units: [] as UnitRow[], deviceLogins: [] as LoginRow[], networks: [] as NetRow[],
+  contatos: [] as ContatoRow[],
   users: [] as UserRow[], roles: [] as RoleRow[], secrets: new Map<string, { label: string; value: string }>(),
   notas: [] as NotaRow[], leituras: [] as Array<{ noteId: string; userId: string; readAt: string }>, videosNotas: [] as VideoNotaRow[],
   projetos: [] as ProjRow[], etapas: [] as StepRow[], projClientes: [] as PClientRow[], marcas: [] as CheckRow[],
@@ -193,6 +198,19 @@ function audit(action: string, entityType: string, summary: string, entityId: st
 }
 const notFound = (w = 'Registro') => new ApiError(404, `${w} não encontrado`);
 const bad = (m: string) => new ApiError(400, m);
+/** O contato como a tela recebe: com quantos chamados deste cliente têm o WhatsApp dele. */
+function contatoParaTela(x: ContatoRow): ContatoDoCliente {
+  return {
+    id: x.id, clienteId: x.clientId, nome: x.nome, whatsapp: x.whatsapp, email: x.email, cargo: x.cargo, ativo: x.ativo,
+    chamados: x.whatsapp ? chamadosDoContatoDemo(x.clientId, x.whatsapp) : 0, criadoEm: x.criadoEm, atualizadoEm: x.atualizadoEm,
+  };
+}
+/** A porta de quem tem pelo menos uma das permissões (como o `requireAnyPermission` do servidor). */
+function requireAnyPerm(...ps: string[]) {
+  if (!S.me) throw new ApiError(401, 'Faça login para continuar');
+  const r = S.roles.find((x) => x.id === S.me!.roleId)!;
+  if (!ps.some((p) => r.permissions.includes(p))) throw new ApiError(403, `Esta ação exige uma das permissões: ${ps.map((p) => `"${p}"`).join(', ')}`);
+}
 function requirePerm(p: string) { if (!S.me) throw new ApiError(401, 'Faça login para continuar'); const r = S.roles.find((x) => x.id === S.me!.roleId)!; if (!r.permissions.includes(p)) throw new ApiError(403, `Esta ação exige a permissão "${p}"`); }
 
 // ---------------- fotos dos modelos (desenhos simples, só para a prévia) ----------------
@@ -453,6 +471,12 @@ function seed() {
   for (const [cli, nomes] of Object.entries(UNIDADES_DEMO)) {
     for (const nome of nomes) if (nome !== 'Matriz') S.units.push({ id: id(), clientId: byName[cli]!, name: nome, isMain: false, address: nome === 'Unidade Simões Filho' ? 'Av. Eixo Urbano Central, 1200 — Simões Filho/BA' : null, egressIp: nome === 'Unidade Simões Filho' ? '200.180.10.5' : null, note: null, createdAt: daysAgo(90), deletedAt: null });
   }
+  // os contatos dos clientes (1.10): os mesmos dos chamados de exemplo, com o cargo
+  CONTATOS_DOS_CLIENTES.forEach((c, i) => {
+    const clientId = byName[c.cliente]; if (!clientId) return;
+    const em = daysAgo(200 - i * 9);
+    S.contatos.push({ id: id(), clientId, nome: c.contato[0] ?? '?', whatsapp: foneDoWhatsApp(c.contato[1]), email: c.email ?? null, cargo: c.cargo, ativo: c.ativo ?? true, criadoPorId: null, criadoEm: em, atualizadoEm: em });
+  });
   // a Matriz do Hospital tem endereço e IP fixo de saída, para a tela ter um exemplo preenchido
   const matrizHosp = S.units.find((u) => u.clientId === byName['Hospital Vale Verde'] && u.isMain)!;
   matrizHosp.address = 'Rua das Hortênsias, 45 — Salvador/BA'; matrizHosp.egressIp = '177.10.20.30';
@@ -1044,7 +1068,7 @@ const fullClient = (idc: string): ClientFull => {
   }).sort((a: any, b: any) => a.sortOrder - b.sortOrder);
   const net = S.networks.find((n) => n.clientId === idc);
   return {
-    ...listItem(c), subscriptions: subs, unitCount: unidadesDe(idc).length,
+    ...listItem(c), subscriptions: subs, unitCount: unidadesDe(idc).length, contactCount: S.contatos.filter((x) => x.clientId === idc && x.ativo).length,
     network: net ? { ipAddress: net.ipAddress, subnetMask: net.subnetMask, defaultRouter: net.defaultRouter, dns1: net.dns1, dns2: net.dns2, note: net.note, wirelessPassword: secretRef(net.wirelessPasswordSecretId), updatedAt: net.updatedAt } : null,
     deviceLogins: S.deviceLogins.filter((k) => k.clientId === idc && !k.deletedAt).map(shapeLogin).sort((a, b) => a.modelName.localeCompare(b.modelName, 'pt-BR')),
   };
@@ -2191,6 +2215,39 @@ export const demoApi: Api = {
       u.name = nome; if (d.note !== undefined) u.note = d.note ?? null; if (d.address !== undefined) u.address = (d.address as string) ?? null; if (d.egressIp !== undefined) u.egressIp = ipOuErro(d.egressIp, 'egressIp');
       audit('update', 'client', antigo === nome ? `Editou a unidade "${nome}"` : `Renomeou a unidade "${antigo}" para "${nome}"`, idc);
       return shapeUnit(u);
+    },
+    // os contatos (1.10): as mesmas regras do servidor (o cadastro mexe, e quem trabalha nos chamados também)
+    async contatos(idc) {
+      await wait(60); requireAnyPerm('records.read', 'support.read');
+      const c = S.clients.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Cliente');
+      return S.contatos.filter((x) => x.clientId === idc)
+        .sort((a, b) => Number(b.ativo) - Number(a.ativo) || a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
+        .map(contatoParaTela);
+    },
+    async salvarContato(idc, contatoId, entrada) {
+      await wait(); requireAnyPerm('records.write', 'tickets.work');
+      const r = ContatoGravarSchema.safeParse(entrada);
+      if (!r.success) throw new ApiError(400, 'Dados inválidos', r.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })));
+      const d = r.data;
+      const c = S.clients.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Cliente');
+      const atual = contatoId ? S.contatos.find((x) => x.id === contatoId && x.clientId === idc) : null;
+      if (contatoId && !atual) throw notFound('Contato');
+      if (!atual && S.contatos.filter((x) => x.clientId === idc).length >= MAX_CONTATOS_DO_CLIENTE) throw bad(`O cliente ${c.tradeName} já tem ${MAX_CONTATOS_DO_CLIENTE} contatos: desative ou edite um dos que existem.`);
+      // o mesmo WhatsApp não se repete entre os contatos ativos do cliente
+      const outro = d.ativo && d.whatsapp ? S.contatos.find((x) => x.clientId === idc && x.ativo && x.whatsapp === d.whatsapp && x.id !== contatoId) : undefined;
+      if (outro) throw new ApiError(409, `O contato ${outro.nome} já tem esse WhatsApp neste cliente.`);
+      if (!atual) {
+        const novo: ContatoRow = { id: id(), clientId: idc, nome: d.nome, whatsapp: d.whatsapp, email: d.email, cargo: d.cargo, ativo: d.ativo, criadoPorId: S.me?.id ?? null, criadoEm: now(), atualizadoEm: now() };
+        S.contatos.push(novo);
+        audit('create', 'client', `Incluiu o contato ${novo.nome}${novo.cargo ? ` (${novo.cargo})` : ''} em ${c.tradeName}`, idc);
+        return contatoParaTela(novo);
+      }
+      const antes = { ...atual };
+      Object.assign(atual, { nome: d.nome, whatsapp: d.whatsapp, email: d.email, cargo: d.cargo, ativo: d.ativo, atualizadoEm: now() });
+      const mudou = [antes.nome !== atual.nome ? 'Nome' : '', antes.whatsapp !== atual.whatsapp ? 'WhatsApp' : '', antes.email !== atual.email ? 'E-mail' : '', antes.cargo !== atual.cargo ? 'Cargo' : ''].filter(Boolean);
+      audit('update', 'client', antes.ativo !== atual.ativo ? `${atual.ativo ? 'Reativou' : 'Desativou'} o contato ${atual.nome} de ${c.tradeName}`
+        : mudou.length ? `Alterou o contato ${atual.nome} de ${c.tradeName}: ${mudou.join(', ')}` : `Salvou o contato ${atual.nome} de ${c.tradeName} sem mudanças`, idc);
+      return contatoParaTela(atual);
     },
     async removeUnit(idc, unitId) {
       await wait(); requirePerm('records.write');

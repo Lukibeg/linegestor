@@ -3,6 +3,7 @@
  * Em produção ela aponta para o servidor (client.ts); na prévia publicada aponta para a versão de mentira (demo.ts).
  */
 import type * as T from './types.js';
+import type { ContatoDoCliente, ContatoGravarEntrada } from '@gestor/shared';
 import { API_BASE } from './base.js';
 
 export type Api = {
@@ -43,6 +44,10 @@ export type Api = {
     createUnit(id: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
     updateUnit(id: string, unitId: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
     removeUnit(id: string, unitId: string): Promise<{ ok: boolean }>;
+    /** Os contatos do cliente (1.10): os ativos primeiro, com quantos chamados cada WhatsApp tem */
+    contatos(id: string): Promise<ContatoDoCliente[]>;
+    /** Incluir (contatoId nulo) ou editar, desativar e reativar um contato */
+    salvarContato(id: string, contatoId: string | null, d: ContatoGravarEntrada): Promise<ContatoDoCliente>;
     /** Login e senha padrão dos aparelhos, por modelo (um por modelo; gravar de novo atualiza) */
     saveDeviceLogin(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
     removeDeviceLogin(id: string, loginId: string): Promise<T.ClientFull>;

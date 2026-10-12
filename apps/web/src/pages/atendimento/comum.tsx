@@ -11,7 +11,7 @@ import { Link, NavLink, useLocation, useNavigate, type LinkProps, type Location 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, TriangleAlert } from 'lucide-react';
 import {
-  NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, textoDoPrazo,
+  NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, telefoneLegivel, textoDoPrazo,
   type CartaoChamado, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -286,13 +286,8 @@ export function haQuanto(iso: string | null | undefined): string {
   return `há ${d} ${d === 1 ? 'dia' : 'dias'}`;
 }
 
-/** "+55 (71) 99999-0000" a partir de "5571999990000". */
-export function telefoneLegivel(n: string | null | undefined): string {
-  const d = (n ?? '').replace(/\D/g, '');
-  if (!d.startsWith('55') || (d.length !== 12 && d.length !== 13)) return n ?? '';
-  const ddd = d.slice(2, 4); const resto = d.slice(4);
-  return `(${ddd}) ${resto.slice(0, resto.length - 4)}-${resto.slice(-4)}`;
-}
+/** "(71) 99999-0000" a partir de "5571999990000" (mora no @gestor/shared desde o 1.10: a aba Contatos do cliente também usa). */
+export { telefoneLegivel };
 
 // =====================================================================
 //  O CARTÃO DO CHAMADO (o quadro e o Meu dia)

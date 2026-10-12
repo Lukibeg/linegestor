@@ -18,7 +18,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  AcaoRespostaSchema, campoLigado, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, etiquetasUnicas, faltaParaEtapa,
+  AcaoRespostaSchema, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, etiquetasUnicas, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugeridaDoPainel,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
   type AcaoResposta, type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
@@ -31,6 +31,7 @@ import * as integ from '../integracoes.js';
 import { situacaoIa } from '../baseIa.js';
 import { lerAjustes as lerAjustesLineChat } from '../linechat.js';
 import { tipoDaImagem } from '../portal.js';
+import { listarContatos } from '../clients.js';
 import {
   carregarCartoes, carregarContexto, carregarPaineis, cartoesDe, chamadoVisivel, eventoParaTela, pessoaCurta, podeCuidar, podeTrabalhar, podeVerPainel,
   type Ator, type Contexto, type LinhaChamado,
@@ -338,6 +339,8 @@ export async function cadastroDoCliente(app: FastifyInstance, ator: Ator, client
     aparelhos: aparelhos.map((a) => ({ id: a.id, nome: `${a.modelo} · ${a.mac ? macFormatado(a.mac) : a.serial ? `N/S ${a.serial}` : 'sem identificação'}` })),
     unidades,
     recentes,
+    // os contatos dele (a aba Contatos do cliente): o Abrir chamado puxa daqui
+    contatos: await listarContatos(db, clienteId, { soAtivos: true }),
   };
 }
 

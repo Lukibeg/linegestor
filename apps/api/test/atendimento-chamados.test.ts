@@ -1033,6 +1033,53 @@ describe('o quadro', () => {
 
 // =====================================================================
 
+describe('os contatos do cliente (a aba Contatos; o Abrir chamado puxa de lá e o robô acha o cliente pelo WhatsApp)', () => {
+  let maria: any;
+  it('quem trabalha nos chamados inclui e edita; o Leitor só vê; o WhatsApp não se repete entre os ativos', async () => {
+    const r = await operador.post(`/clients/${aurora}/contatos`, { nome: 'Maria Souza', whatsapp: '(71) 98123-4567', cargo: 'Recepção', email: '' });
+    expect(r.statusCode, r.body).toBe(201);
+    maria = r.json();
+    expect(maria).toMatchObject({ clienteId: aurora, nome: 'Maria Souza', whatsapp: '5571981234567', cargo: 'Recepção', email: null, ativo: true });
+    expect((await leitor.post(`/clients/${aurora}/contatos`, { nome: 'Outra Pessoa' })).statusCode).toBe(403);
+    expect((await leitor.get(`/clients/${aurora}/contatos`)).statusCode).toBe(200);
+    const dup = await s.post(`/clients/${aurora}/contatos`, { nome: 'Maria (outra)', whatsapp: '71 98123-4567' });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().error).toBe('O contato Maria Souza já tem esse WhatsApp neste cliente.');
+    expect((await s.post(`/clients/${aurora}/contatos`, { nome: 'João Lima', email: 'joao@' })).json().details[0].message).toBe('E-mail inválido');
+    const joao = (await s.post(`/clients/${aurora}/contatos`, { nome: 'João Lima', whatsapp: '(71) 97777-1111', cargo: 'TI', email: 'joao@aurora.com.br' })).json();
+    const lista = (await s.get(`/clients/${aurora}/contatos`)).json();
+    expect(lista.map((c: any) => c.nome)).toEqual(['João Lima', 'Maria Souza']);
+    // desativar: some do Abrir chamado e libera o WhatsApp; a auditoria diz o quê
+    const des = await s.put(`/clients/${aurora}/contatos/${joao.id}`, { ...joao, ativo: false });
+    expect(des.statusCode, des.body).toBe(200);
+    const a = (await s.get(`/admin/audit?entityType=client&pageSize=50`)).json().items.map((i: any) => i.summary);
+    expect(a).toContain('Incluiu o contato Maria Souza (Recepção) em Clínica Aurora');
+    expect(a).toContain('Desativou o contato João Lima de Clínica Aurora');
+    expect((await s.get(`/clients/${aurora}/contatos`)).json().map((c: any) => [c.nome, c.ativo])).toEqual([['Maria Souza', true], ['João Lima', false]]);
+    const cad = (await operador.get(`/atendimento/cadastro/${aurora}`)).json();
+    expect(cad.contatos.map((c: any) => c.nome)).toEqual(['Maria Souza']);
+    expect((await s.put(`/clients/${aurora}/contatos/${joao.id}`, { ...joao, nome: 'João Lima Jr.', ativo: false })).statusCode).toBe(200);
+    expect((await s.get(`/admin/audit?entityType=client&pageSize=50`)).json().items[0].summary).toBe('Alterou o contato João Lima Jr. de Clínica Aurora: Nome');
+  });
+
+  it('o chamado que chega só com o WhatsApp de um contato cadastrado já vem com o cliente e o nome', async () => {
+    const { codigo } = await abrir(operador, { titulo: 'Ligou do celular', contatoTelefone: '71 98123-4567' });
+    const f = await ficha(s, codigo);
+    expect(f.cliente).toEqual({ id: aurora, nome: 'Clínica Aurora' });
+    expect(f.contato).toEqual({ nome: 'Maria Souza', telefone: '5571981234567' });
+    // o mesmo número em dois clientes: o cliente não é adivinhado
+    await s.post(`/clients/${hospital}/contatos`, { nome: 'Recepção do hospital', whatsapp: '(71) 96666-2222' });
+    await s.post(`/clients/${aurora}/contatos`, { nome: 'Recepção da clínica', whatsapp: '(71) 96666-2222' });
+    const outro = await ficha(s, (await abrir(operador, { titulo: 'Número dividido', contatoTelefone: '71 96666-2222' })).codigo);
+    expect(outro.cliente).toBeNull();
+    // ...mas com o cliente escolhido, o nome vem do contato dele
+    const doHospital = await ficha(s, (await abrir(operador, { titulo: 'Do hospital', clienteId: hospital, contatoTelefone: '71 96666-2222' })).codigo);
+    expect(doHospital.contato).toEqual({ nome: 'Recepção do hospital', telefone: '5571966662222' });
+    // a lista conta os chamados de cada WhatsApp no cliente
+    expect((await s.get(`/clients/${aurora}/contatos`)).json().find((c: any) => c.nome === 'Maria Souza').chamados).toBe(1);
+  });
+});
+
 describe('o Meu dia', () => {
   it('os meus, os sem dono, os que espero do cliente, os que acompanho e os agendados de hoje', async () => {
     const meu = await abrir(operador, { titulo: 'Meu chamado', responsavelId: marinaId, gravidade: 'performance', alcance: 'pessoa' });

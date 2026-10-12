@@ -16,10 +16,13 @@
  */
 import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import {
-  clientDeviceLogins, clientLogos, clientNetworkSettings, clients, clientUnits, deviceModels, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, type Db,
+  clientContacts, clientDeviceLogins, clientLogos, clientNetworkSettings, clients, clientUnits, deviceModels, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, tickets, type Db,
 } from '@gestor/db';
-import { PRODUTOS_SEM_DATA_DE_ATIVACAO, type AssinaturaGravar, type ClienteAtualizar, type ClienteCriar, type ClienteListar, type LoginModeloGravar, type ModuloGravar, type RedePadrao, type UnidadeGravar } from '@gestor/shared';
-import { BadRequest, NotFound } from '../plugins/errors.js';
+import {
+  MAX_CONTATOS_DO_CLIENTE, PRODUTOS_SEM_DATA_DE_ATIVACAO,
+  type AssinaturaGravar, type ClienteAtualizar, type ClienteCriar, type ClienteListar, type ContatoDoCliente, type ContatoGravar, type LoginModeloGravar, type ModuloGravar, type RedePadrao, type UnidadeGravar,
+} from '@gestor/shared';
+import { BadRequest, Conflict, NotFound } from '../plugins/errors.js';
 import type { SecretsVault } from './secrets.js';
 
 /**
@@ -277,6 +280,7 @@ export async function get(db: Db, id: string) {
     .from(devices).innerJoin(deviceModels, eq(deviceModels.id, devices.modelId))
     .where(and(eq(devices.clientId, id), isNull(devices.deletedAt), sql`coalesce(${devices.currentModality}, '') <> 'venda'`));
   const [unC] = await db.select({ n: sql<number>`count(*)` }).from(clientUnits).where(and(eq(clientUnits.clientId, id), isNull(clientUnits.deletedAt)));
+  const [conC] = await db.select({ n: sql<number>`count(*)` }).from(clientContacts).where(and(eq(clientContacts.clientId, id), eq(clientContacts.active, true)));
   const [logo] = await db.select({ updatedAt: clientLogos.updatedAt }).from(clientLogos).where(eq(clientLogos.clientId, id));
   const [rede] = await db.select().from(clientNetworkSettings).where(eq(clientNetworkSettings.clientId, id));
   const logins = await listDeviceLogins(db, id);
@@ -294,6 +298,8 @@ export async function get(db: Db, id: string) {
     deviceValueCents: Number(devC?.v ?? 0),
     // todo cliente tem ao menos a Matriz (criada na primeira vez que alguém olha as unidades)
     unitCount: Math.max(1, Number(unC?.n ?? 0)),
+    // os contatos ativos (a aba Contatos, 1.10)
+    contactCount: Number(conC?.n ?? 0),
   };
 }
 
@@ -706,4 +712,69 @@ export async function removeLogo(db: Db, clientId: string) {
   if (!row) throw new NotFound('Logo');
   const [client] = await db.select({ name: clients.tradeName }).from(clients).where(eq(clients.id, clientId));
   return { clientName: client?.name ?? clientId };
+}
+
+// =====================================================================
+//  OS CONTATOS DO CLIENTE (1.10, o pedido do Luan na prévia: "uma aba de contatos dos clientes, aí o
+//  Abrir chamado já puxaria de lá; e criar um contato por ali")
+// =====================================================================
+
+type LinhaContato = typeof clientContacts.$inferSelect;
+const contatoDaLinha = (r: LinhaContato, chamados = 0): ContatoDoCliente => ({
+  id: r.id, clienteId: r.clientId, nome: r.name, whatsapp: r.phone, email: r.email, cargo: r.role, ativo: r.active, chamados,
+  criadoEm: r.createdAt.toISOString(), atualizadoEm: r.updatedAt.toISOString(),
+});
+
+async function clienteVivo(db: Db, clientId: string) {
+  const [c] = await db.select({ id: clients.id, nome: clients.tradeName }).from(clients).where(and(eq(clients.id, clientId), isNull(clients.deletedAt))).limit(1);
+  if (!c) throw new NotFound('Cliente');
+  return c;
+}
+
+/**
+ * Os contatos do cliente: os ativos primeiro, pelo nome. Cada um com quantos chamados do Gestor deste
+ * cliente têm o WhatsApp dele (`soAtivos`: só os ativos, para o Abrir chamado).
+ */
+export async function listarContatos(db: Db, clientId: string, opts: { soAtivos?: boolean } = {}): Promise<ContatoDoCliente[]> {
+  await clienteVivo(db, clientId);
+  const rows = await db.select().from(clientContacts)
+    .where(and(eq(clientContacts.clientId, clientId), opts.soAtivos ? eq(clientContacts.active, true) : undefined))
+    .orderBy(desc(clientContacts.active), sql`lower(${clientContacts.name})`);
+  const fones = [...new Set(rows.map((r) => r.phone).filter((x): x is string => !!x))];
+  const cont = fones.length
+    ? await db.select({ fone: tickets.contactPhone, n: sql<number>`count(*)` }).from(tickets)
+      .where(and(eq(tickets.clientId, clientId), isNull(tickets.deletedAt), inArray(tickets.contactPhone, fones))).groupBy(tickets.contactPhone)
+    : [];
+  const porFone = new Map(cont.map((c) => [c.fone, Number(c.n)]));
+  return rows.map((r) => contatoDaLinha(r, r.phone ? porFone.get(r.phone) ?? 0 : 0));
+}
+
+/** O mesmo WhatsApp não se repete entre os contatos ativos de um cliente. */
+async function whatsappLivre(db: Db, clientId: string, fone: string | null, exceto?: string) {
+  if (!fone) return;
+  const iguais = await db.select({ id: clientContacts.id, nome: clientContacts.name }).from(clientContacts)
+    .where(and(eq(clientContacts.clientId, clientId), eq(clientContacts.phone, fone), eq(clientContacts.active, true)));
+  const outro = iguais.find((x) => x.id !== exceto);
+  if (outro) throw new Conflict(`O contato ${outro.nome} já tem esse WhatsApp neste cliente.`);
+}
+
+export async function criarContato(db: Db, clientId: string, d: ContatoGravar, userId: string | null) {
+  const cliente = await clienteVivo(db, clientId);
+  const [n] = await db.select({ n: sql<number>`count(*)` }).from(clientContacts).where(eq(clientContacts.clientId, clientId));
+  if (Number(n?.n ?? 0) >= MAX_CONTATOS_DO_CLIENTE) throw new BadRequest(`O cliente ${cliente.nome} já tem ${MAX_CONTATOS_DO_CLIENTE} contatos: desative ou edite um dos que existem.`);
+  if (d.ativo) await whatsappLivre(db, clientId, d.whatsapp);
+  const [row] = await db.insert(clientContacts).values({
+    id: newId(), clientId, name: d.nome, phone: d.whatsapp, email: d.email, role: d.cargo, active: d.ativo, createdById: userId,
+  }).returning();
+  return { contato: contatoDaLinha(row!), cliente: cliente.nome };
+}
+
+export async function alterarContato(db: Db, clientId: string, contatoId: string, d: ContatoGravar) {
+  const cliente = await clienteVivo(db, clientId);
+  const [atual] = await db.select().from(clientContacts).where(and(eq(clientContacts.id, contatoId), eq(clientContacts.clientId, clientId))).limit(1);
+  if (!atual) throw new NotFound('Contato');
+  if (d.ativo) await whatsappLivre(db, clientId, d.whatsapp, contatoId);
+  const [row] = await db.update(clientContacts).set({ name: d.nome, phone: d.whatsapp, email: d.email, role: d.cargo, active: d.ativo, updatedAt: new Date() })
+    .where(eq(clientContacts.id, contatoId)).returning();
+  return { antes: contatoDaLinha(atual), depois: contatoDaLinha(row!), cliente: cliente.nome };
 }

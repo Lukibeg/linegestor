@@ -227,7 +227,7 @@ export const AGENDADOS_DE_EXEMPLO: AgendadoDeExemplo[] = [
 //  OS CHAMADOS
 // =====================================================================
 
-type Contato = [nome: string | null, telefone: string];
+export type Contato = [nome: string | null, telefone: string];
 
 /** Os campos do chamado pelos nomes que a pessoa vê (o cliente, o caminho do assunto, o código do produto…). */
 export type DadosDoExemplo = {
@@ -286,18 +286,18 @@ export type Exemplo = {
   passos?: Passo[];
 };
 
-// os contatos dos clientes (os telefones são fictícios)
-const MARIA: Contato = ['Maria Souza (recepção)', '(71) 99999-2010'];
-const JULIANA: Contato = ['Juliana Prates (gerência)', '(71) 99999-2030'];
-const CARLOS: Contato = ['Carlos Menezes (TI)', '(71) 99999-3321'];
-const RENATA: Contato = ['Renata Lopes (TI)', '(71) 99999-4455'];
-const FABIO: Contato = ['Dr. Fábio Nunes (diretoria)', '(71) 99999-4566'];
+// os contatos dos clientes (os telefones são fictícios); o cargo de cada um mora na aba Contatos do cliente
+const MARIA: Contato = ['Maria Souza', '(71) 99999-2010'];
+const JULIANA: Contato = ['Juliana Prates', '(71) 99999-2030'];
+const CARLOS: Contato = ['Carlos Menezes', '(71) 99999-3321'];
+const RENATA: Contato = ['Renata Lopes', '(71) 99999-4455'];
+const FABIO: Contato = ['Dr. Fábio Nunes', '(71) 99999-4566'];
 const RICARDO_ROBO: Contato = ['Ricardo Prado', '(71) 99999-5566'];
-const FERNANDA: Contato = ['Fernanda Rocha (administrativo)', '(71) 99999-6677'];
-const ANTONIO: Contato = ['Antônio Reis (Loja Simões Filho)', '(71) 99999-7788'];
-const SERGIO: Contato = ['Sérgio Almeida (TI)', '(71) 99999-8899'];
+const FERNANDA: Contato = ['Fernanda Rocha', '(71) 99999-6677'];
+const ANTONIO: Contato = ['Antônio Reis', '(71) 99999-7788'];
+const SERGIO: Contato = ['Sérgio Almeida', '(71) 99999-8899'];
 const PAULO: Contato = ['Eng. Paulo Matos', '(71) 99999-9900'];
-const PATRICIA: Contato = ['Patrícia Gomes (coordenação)', '(71) 99999-0011'];
+const PATRICIA: Contato = ['Patrícia Gomes', '(71) 99999-0011'];
 const JOANA_ROBO: Contato = ['Joana Silva', '(71) 99999-1122'];
 const RAFAEL: Contato = ['Rafael (não disse a empresa)', '(71) 99999-2233'];
 
@@ -308,6 +308,25 @@ const BOMPRECO = 'Supermercado Bom Preço';
 const EXAME = 'Laboratório Exame Certo';
 const HORIZONTE = 'Construtora Horizonte';
 const VIVERBEM = 'Home Care Viver Bem';
+
+/**
+ * Os contatos dos clientes (a aba Contatos, 1.10, o pedido do Luan na prévia): os mesmos dos chamados de
+ * exemplo, com o cargo. Os do robô (Ricardo, Joana, Rafael) ficam de fora: o robô abre sem saber o
+ * cliente. Uma ex-recepcionista desativada, para a tela ter o exemplo. Os e-mails são de exemplo.
+ */
+export const CONTATOS_DOS_CLIENTES: Array<{ cliente: string; contato: Contato; cargo: string; email?: string; ativo?: boolean }> = [
+  { cliente: AURORA, contato: MARIA, cargo: 'Recepção', email: 'recepcao@aurora.exemplo.com.br' },
+  { cliente: AURORA, contato: JULIANA, cargo: 'Gerência' },
+  { cliente: AURORA, contato: ['Lúcia Ramos', '(71) 99999-2099'], cargo: 'Recepção (saiu em agosto)', ativo: false },
+  { cliente: NORTE, contato: CARLOS, cargo: 'TI', email: 'carlos@norte.exemplo.com.br' },
+  { cliente: HOSPITAL, contato: RENATA, cargo: 'TI' },
+  { cliente: HOSPITAL, contato: FABIO, cargo: 'Diretoria' },
+  { cliente: BOMPRECO, contato: FERNANDA, cargo: 'Administrativo' },
+  { cliente: BOMPRECO, contato: ANTONIO, cargo: 'Gerente da Loja Simões Filho' },
+  { cliente: EXAME, contato: SERGIO, cargo: 'TI' },
+  { cliente: HORIZONTE, contato: PAULO, cargo: 'Engenharia' },
+  { cliente: VIVERBEM, contato: PATRICIA, cargo: 'Coordenação' },
+];
 
 /**
  * Os chamados, do mais antigo para o mais novo. O número de cada um sai da ordem em que foram abertos:

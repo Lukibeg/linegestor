@@ -87,7 +87,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return { ok: true };
     });
 
-  app.get('/cadastro/:clienteId', { ...ler, schema: { tags, summary: 'O cadastro do cliente para o chamado: produtos, operadoras, circuitos, DIDs, aparelhos, unidades e os chamados recentes', params: z.object({ clienteId: z.string().min(1) }) } },
+  app.get('/cadastro/:clienteId', { ...ler, schema: { tags, summary: 'O cadastro do cliente para o chamado: produtos, operadoras, circuitos, DIDs, aparelhos, unidades, os contatos e os chamados recentes', params: z.object({ clienteId: z.string().min(1) }) } },
     async (req) => leitura.cadastroDoCliente(app, ator(req), req.params.clienteId));
 
   app.get('/chamados/:ref', { ...ler, schema: { tags, summary: 'A ficha do chamado (pelo código, como SUP-12, ou pelo id)', params: z.object({ ref: z.string().min(1) }) } },

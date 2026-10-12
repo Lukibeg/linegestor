@@ -1,3 +1,20 @@
+CREATE TABLE "client_contacts" (
+	"id" text PRIMARY KEY NOT NULL,
+	"client_id" text NOT NULL,
+	"name" text NOT NULL,
+	"phone" text,
+	"email" text,
+	"role" text,
+	"active" boolean DEFAULT true NOT NULL,
+	"created_by_id" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+ALTER TABLE "client_contacts" ADD CONSTRAINT "client_contacts_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "client_contacts" ADD CONSTRAINT "client_contacts_created_by_id_users_id_fk" FOREIGN KEY ("created_by_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "client_contacts_client_idx" ON "client_contacts" USING btree ("client_id");--> statement-breakpoint
+CREATE INDEX "client_contacts_phone_idx" ON "client_contacts" USING btree ("phone");--> statement-breakpoint
 CREATE TABLE "ticket_api_keys" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,

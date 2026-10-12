@@ -649,6 +649,42 @@ const TelefoneSchema = z.string().trim().max(40).nullish().transform((v, ctx) =>
   return n;
 });
 
+// ---------- os contatos do cliente (o pedido do Luan na prévia: "uma aba de contatos dos clientes, aí
+// ele já puxaria de lá; e criar um contato por aqui") ----------
+
+/** Uma pessoa do cliente com quem a equipe fala. O WhatsApp (só os dígitos, com o 55) acha o cliente quando o robô abre o chamado. */
+export type ContatoDoCliente = {
+  id: string;
+  clienteId: string;
+  nome: string;
+  whatsapp: string | null;
+  email: string | null;
+  /** o cargo ou o setor (Recepção, TI, Financeiro…) */
+  cargo: string | null;
+  ativo: boolean;
+  /** quantos chamados do Gestor deste cliente têm este WhatsApp */
+  chamados: number;
+  criadoEm: string;
+  atualizadoEm: string;
+};
+export const MAX_CONTATOS_DO_CLIENTE = 300;
+export const ContatoGravarSchema = z.object({
+  nome: z.string().trim().min(2, 'Escreva o nome do contato (pelo menos 2 letras)').max(120),
+  whatsapp: TelefoneSchema,
+  email: z.preprocess((v) => (typeof v === 'string' && !v.trim() ? null : v), z.string().trim().max(200).email('E-mail inválido').nullish()).transform((v) => v ?? null),
+  cargo: TextoOpcional(80),
+  ativo: z.boolean().default(true),
+});
+export type ContatoGravar = z.infer<typeof ContatoGravarSchema>;
+export type ContatoGravarEntrada = z.input<typeof ContatoGravarSchema>;
+/** O contato pelo WhatsApp (os dígitos) ou, sem o WhatsApp, pelo nome (sem ligar para acento e maiúscula). */
+export function acharContato<T extends Pick<ContatoDoCliente, 'nome' | 'whatsapp'>>(contatos: T[], c: { nome?: string | null; telefone?: string | null }): T | undefined {
+  const fone = c.telefone ? numeroWhatsApp(c.telefone) : null;
+  if (fone) return contatos.find((x) => x.whatsapp === fone);
+  const nome = paraBusca(c.nome ?? '');
+  return nome ? contatos.find((x) => paraBusca(x.nome) === nome) : undefined;
+}
+
 /** Um obrigatório: um campo do sistema ("assunto") ou um campo do painel ("campo:<id>"). */
 const ChaveDeCampoSchema = z.custom<ChaveDeCampo>((v) => typeof v === 'string' && /^campo:[A-Za-z0-9_-]{1,60}$/.test(v), 'Campo inválido');
 export const ObrigatorioSchema = z.union([z.enum(CAMPOS_CHAMADO), ChaveDeCampoSchema]);
@@ -1282,6 +1318,8 @@ export type CadastroDoCliente = {
   unidades: Array<{ id: string; nome: string }>;
   /** os chamados dos últimos 7 dias deste cliente (para reabrir em vez de abrir outro) */
   recentes: CartaoChamado[];
+  /** os contatos dele (os ativos, pelo nome): o Abrir chamado puxa daqui */
+  contatos: ContatoDoCliente[];
 };
 
 // =====================================================================

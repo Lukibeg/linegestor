@@ -20,7 +20,7 @@
 import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
-  clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketLinks, ticketMacros, ticketNotes, ticketPanels,
+  clientContacts, clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketLinks, ticketMacros, ticketNotes, ticketPanels,
   ticketTimeEntries, tickets,
   type Db,
 } from '@gestor/db';
@@ -216,11 +216,21 @@ export async function criarChamado(
   const origem: Origem = opts.origem ?? d.origem ?? 'manual';
   const tipoChamado = d.tipoChamado ?? 'chamado';
 
-  // 2. o telefone que o Gestor já conhece preenche o cliente (e o nome do contato, se faltou)
+  // 2. o telefone que o Gestor já conhece preenche o cliente (e o nome do contato, se faltou): primeiro os
+  // contatos cadastrados dos clientes (a aba Contatos); depois, o que ele aprendeu dos chamados
   const telefone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone.trim() : null;
   let clienteId = d.clienteId ?? null;
   let contatoNome = d.contatoNome ?? null;
   if (telefone) {
+    const cadastrados = await db.select({ clientId: clientContacts.clientId, nome: clientContacts.name }).from(clientContacts)
+      .innerJoin(clients, eq(clients.id, clientContacts.clientId))
+      .where(and(eq(clientContacts.phone, telefone), eq(clientContacts.active, true), isNull(clients.deletedAt)));
+    // o mesmo número em dois clientes: o cliente não é adivinhado (vale o aprendido, ou a pessoa escolhe)
+    const doCadastro = clienteId ? cadastrados.find((c) => c.clientId === clienteId) : cadastrados.length === 1 ? cadastrados[0] : undefined;
+    if (doCadastro) {
+      if (!clienteId) clienteId = doCadastro.clientId;
+      if (!contatoNome) contatoNome = doCadastro.nome;
+    }
     const [conhecido] = await db.select().from(ticketContacts).where(eq(ticketContacts.phone, telefone)).limit(1);
     if (conhecido) {
       if (!clienteId && conhecido.clientId && (await clienteExiste(db, conhecido.clientId))) clienteId = conhecido.clientId;

@@ -11,6 +11,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [clients](#clients) — Uma linha por empresa.
 - [client_logos](#client_logos) — A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo).
 - [client_units](#client_units) — As UNIDADES de um cliente: matriz, filiais, lojas, andares.
+- [client_contacts](#client_contacts) — OS CONTATOS DO CLIENTE (1.10, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor).
 - [client_device_logins](#client_device_logins) — LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente entram com o mesmo login e senha; os DP722, com outro.
 - [client_network_settings](#client_network_settings) — CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita nos telefones na hora de configurar (IP, máscara, gateway, DNS) e a senha do ramal sem fio.
 - [products](#products) — Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
@@ -134,6 +135,23 @@ As UNIDADES de um cliente: matriz, filiais, lojas, andares. Todo cliente tem a "
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## client_contacts
+
+OS CONTATOS DO CLIENTE (1.10, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor). O Abrir chamado puxa daqui, e um contato novo nasce lá também. O WhatsApp acha o cliente quando o robô abre o chamado. Não se apaga: desativa.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `client_id` | texto | — | obrigatório · liga com **clients** |
+| `name` | texto | — | obrigatório |
+| `phone` | texto | Só os dígitos, com o 55 | — |
+| `email` | texto | — | — |
+| `role` | texto | O cargo ou o setor: "Recepção", "TI", "Financeiro" | — |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
 
 ## client_device_logins
 

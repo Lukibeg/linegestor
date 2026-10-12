@@ -33,6 +33,8 @@ declare module 'fastify' {
   }
   interface FastifyInstance {
     requirePermission: (perm: Permission) => (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    /** A porta de quem tem pelo menos uma das permissões (os contatos do cliente: o cadastro ou quem trabalha nos chamados). */
+    requireAnyPermission: (...perms: Permission[]) => (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
     requireLogin: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
     /** `embutido`: a tela de entrada está dentro de outro site (o Gestor no menu do LineChat, num iframe). */
     createSession: (req: FastifyRequest, reply: FastifyReply, userId: string, opts?: { pendingTotp?: boolean; embutido?: boolean }) => Promise<void>;
@@ -108,6 +110,11 @@ export default fp(async function authPlugin(app: FastifyInstance) {
   app.decorate('requirePermission', (perm: Permission) => async (req: FastifyRequest) => {
     if (!req.user) throw new Unauthorized();
     if (!req.user.permissions.includes(perm)) throw new Forbidden(`Esta ação exige a permissão "${perm}"`);
+  });
+
+  app.decorate('requireAnyPermission', (...perms: Permission[]) => async (req: FastifyRequest) => {
+    if (!req.user) throw new Unauthorized();
+    if (!perms.some((p) => req.user!.permissions.includes(p))) throw new Forbidden(`Esta ação exige uma das permissões: ${perms.map((p) => `"${p}"`).join(', ')}`);
   });
 
   app.decorate('createSession', async (req: FastifyRequest, reply: FastifyReply, userId: string, opts?: { pendingTotp?: boolean; embutido?: boolean }) => {
