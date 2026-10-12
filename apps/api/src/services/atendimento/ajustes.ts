@@ -16,21 +16,26 @@
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
 import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
-import { newId, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
+import { newId, ticketFields, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
 import {
-  assuntoEDescendentes, caminhoDoAssunto, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, lerListaDeAssuntos, MAX_NIVEL_ASSUNTO, nivelDoAssunto, paraBusca, situacaoDaEtapa,
-  type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type CampoObrigatorio, type EtapasGravarSchema,
-  type Nivel, type Painel, type PainelGravarSchema, type TipoEtapa,
+  ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, ehLista, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas,
+  lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
+  obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
+  type AjustesDoPainel, type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type CampoDoSistema,
+  type CampoGravarSchema, type CampoPersonalizado, type CamposDoSistemaSchema, type EtapasGravarSchema, type Nivel, type Obrigatorio, type OpcaoDoCampo,
+  type Painel, type PainelGravarSchema, type TipoEtapa,
 } from '@gestor/shared';
 import { BadRequest, Conflict, NotFound } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
-import { assuntoDaLinha, carregarPaineis, lerPrazos, painelDaLinha, registrarEvento, type Ator } from './contexto.js';
+import { assuntoDaLinha, campoDaLinha, carregarCampos, carregarPaineis, lerPrazos, painelDaLinha, registrarEvento, type Ator } from './contexto.js';
 import { gravarTeste, lerAvisos, mandarWhatsApp, type AvisosGuardados } from './whatsapp.js';
 
 type PainelGravar = z.infer<typeof PainelGravarSchema>;
 type EtapasGravar = z.infer<typeof EtapasGravarSchema>;
 type EtapaGravar = EtapasGravar['etapas'][number];
 type AssuntoGravar = z.infer<typeof AssuntoGravarSchema>;
+type CampoGravar = z.infer<typeof CampoGravarSchema>;
+type CamposDoSistemaGravar = z.infer<typeof CamposDoSistemaSchema>;
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type LinhaDaEtapa = typeof ticketStages.$inferSelect;
 
@@ -78,6 +83,24 @@ const painelParaAuditoria = (p: Painel) => ({
 const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[] }) =>
   ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar });
 
+/** O que pode ser pedido no painel agora: os campos do sistema que ele usa e os campos ativos dele. */
+async function obrigatoriosValidos(db: Db, p: typeof ticketPanels.$inferSelect): Promise<Obrigatorio[]> {
+  return obrigatoriosDoPainel(ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>), await carregarCampos(db, p.id));
+}
+
+/** As regras das etapas sem o que não vale mais no painel (o campo desligado ou desativado sai de todas). */
+async function limparRegrasDasEtapas(tx: Tx, painelId: string, validos: Obrigatorio[]): Promise<string[]> {
+  const etapas = await tx.select().from(ticketStages).where(and(eq(ticketStages.panelId, painelId), isNull(ticketStages.deletedAt))).orderBy(asc(ticketStages.sortOrder));
+  const mudaram: string[] = [];
+  for (const e of etapas) {
+    const limpos = limparObrigatorios(e.requiredFields, validos);
+    if (limpos.length === e.requiredFields.length) continue;
+    await tx.update(ticketStages).set({ requiredFields: limpos }).where(eq(ticketStages.id, e.id));
+    mudaram.push(e.name);
+  }
+  return mudaram;
+}
+
 // =====================================================================
 //  OS PAINÉIS
 // =====================================================================
@@ -107,12 +130,17 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
       : `A sigla ${sigla} já é de outro painel.`);
   }
   const pessoas = unicos(d.pessoas);
-  const ajustes = {
+  // os campos do sistema que o painel usa: sem a lista no pedido, ficam como estão (quem muda é a aba Campos)
+  const camposDesligados = d.ajustes.camposDesligados ?? (atual ? ajustesDoPainelCompletos(atual.settings as Partial<AjustesDoPainel>).camposDesligados : []);
+  // o que pode ser pedido neste painel (os campos do sistema ligados e os campos dele): o resto sai das regras
+  const validos = obrigatoriosDoPainel({ camposDesligados }, atual ? await carregarCampos(db, atual.id) : []);
+  const ajustes: AjustesDoPainel = {
     ...d.ajustes,
     // as opções do Tipo sem repetir (sem ligar para maiúscula e acento)
     tipos: etiquetasUnicas(d.ajustes.tipos),
     supervisores: unicos(d.ajustes.supervisores),
-    obrigatoriosAoAbrir: [...new Set(d.ajustes.obrigatoriosAoAbrir)],
+    obrigatoriosAoAbrir: limparObrigatorios(d.ajustes.obrigatoriosAoAbrir, validos),
+    camposDesligados: CAMPOS_DO_SISTEMA.filter((c) => camposDesligados.includes(c)),
   };
   await conferirPessoas(db, [...pessoas, ...ajustes.supervisores]);
   const campos = { name: d.nome, key: sigla, description: d.descricao, color: d.cor, access: d.acesso, memberIds: pessoas, settings: ajustes, active: d.ativo };
@@ -121,7 +149,7 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
   if (!atual) {
     const novoId = newId();
     // as etapas da janela (todas novas: um painel novo não tem etapa nenhuma ainda) ou as quatro básicas
-    const plano = await planejarEtapas(db, novoId, d.etapas ?? ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, avisar: [] })), {});
+    const plano = await planejarEtapas(db, novoId, d.etapas ?? ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, avisar: [] })), {}, validos);
     await db.transaction(async (tx) => {
       const [ultimo] = await tx.select({ n: sql<number>`coalesce(max(${ticketPanels.sortOrder}), -1)::int` }).from(ticketPanels);
       await tx.insert(ticketPanels).values({ id: novoId, ...campos, sortOrder: Number(ultimo?.n ?? -1) + 1 });
@@ -136,12 +164,14 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
   }
 
   // as etapas que vieram junto: conferidas antes de gravar qualquer coisa (o destino dos chamados também)
-  const plano = d.etapas ? await planejarEtapas(db, atual.id, d.etapas, d.destino) : null;
+  const plano = d.etapas ? await planejarEtapas(db, atual.id, d.etapas, d.destino, validos) : null;
   const antes = painelParaAuditoria(painelDaLinha(atual, []));
   let movidos: Movido[] = [];
   await db.transaction(async (tx) => {
     await tx.update(ticketPanels).set({ ...campos, updatedAt: agora }).where(eq(ticketPanels.id, atual.id));
     if (plano) movidos = await aplicarEtapas(tx, ator, plano, agora);
+    // sem as etapas no pedido, as regras delas também deixam de pedir o que o painel não usa mais
+    else await limparRegrasDasEtapas(tx, atual.id, validos);
   });
   const painel = await painelPronto(db, atual.id);
   const etapas = plano ? resumoDasEtapas(plano, movidos) : null;
@@ -217,7 +247,7 @@ function datasDaSituacao(tipo: TipoEtapa, agora: Date) {
 export async function salvarEtapas(app: FastifyInstance, ator: Ator, painelId: string, d: EtapasGravar): Promise<Gravado<Painel>> {
   const db = app.db;
   const p = await linhaDoPainel(db, painelId);
-  const plano = await planejarEtapas(db, painelId, d.etapas, d.destino);
+  const plano = await planejarEtapas(db, painelId, d.etapas, d.destino, await obrigatoriosValidos(db, p));
   const agora = new Date();
   let movidos: Movido[] = [];
   await db.transaction(async (tx) => {
@@ -240,7 +270,7 @@ type PlanoDasEtapas = {
   atuais: LinhaDaEtapa[];
   porId: Map<string, LinhaDaEtapa>;
   /** a lista final, na ordem: as novas já com o id que vão ter */
-  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: CampoObrigatorio[]; avisar: string[] }>;
+  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[] }>;
   saem: LinhaDaEtapa[];
   destino: Record<string, string>;
 };
@@ -251,7 +281,7 @@ type PlanoDasEtapas = {
  * as etapas e quantos chamados cada uma tem — a tela pergunta para onde vão). Num painel novo não há
  * etapa nenhuma: toda etapa com id é recusada.
  */
-async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], destino: Record<string, string>): Promise<PlanoDasEtapas> {
+async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], destino: Record<string, string>, validos: Obrigatorio[]): Promise<PlanoDasEtapas> {
   const atuais = await db.select().from(ticketStages)
     .where(and(eq(ticketStages.panelId, painelId), isNull(ticketStages.deletedAt))).orderBy(asc(ticketStages.sortOrder));
   const porId = new Map(atuais.map((e) => [e.id, e]));
@@ -265,9 +295,10 @@ async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], d
     ficam.add(e.id);
   }
   // as novas ganham o id já aqui (para a resposta e para o destino dos chamados da lixeira)
+  // o que a etapa pede, só o que vale no painel (o campo desligado ou desativado não trava ninguém)
   const novas = etapas.map((e, ordem) => ({
     id: e.id ?? newId(), nova: !e.id, ordem, nome: e.nome, tipo: e.tipo, nivel: e.nivel,
-    obrigatorios: [...new Set(e.obrigatorios)], avisar: unicos(e.avisar),
+    obrigatorios: limparObrigatorios(e.obrigatorios, validos), avisar: unicos(e.avisar),
   }));
   await conferirPessoas(db, novas.flatMap((e) => e.avisar));
 
@@ -504,6 +535,169 @@ export async function colarAssuntos(app: FastifyInstance, painelId: string, text
     resumo: `Colou a lista de assuntos no painel ${p.name}: ${plural(criados, 'criado', 'criados')}, ${plural(jaExistiam, 'já existia', 'já existiam')}`,
     depois: { criados: novos },
   };
+}
+
+// =====================================================================
+//  OS CAMPOS DE CADA PAINEL (o pedido do Luan na prévia: o painel sem assuntos, com outros campos)
+// =====================================================================
+
+const campoParaAuditoria = (c: CampoPersonalizado) => ({ nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.opcoes, ativo: c.ativo });
+
+/**
+ * Liga e desliga os campos do sistema no painel (o Assunto, o Tipo, a Gravidade e o alcance, os
+ * Produtos, as Operadoras) e grava as opções do Tipo. O que deixa de existir no painel sai das regras
+ * (para abrir e de cada etapa) na mesma transação: um campo desligado nunca trava um chamado. O valor
+ * que os chamados já tinham fica guardado (volta se o campo for ligado de novo).
+ */
+export async function salvarCamposDoSistema(app: FastifyInstance, painelId: string, d: CamposDoSistemaGravar): Promise<Gravado<Painel>> {
+  const db = app.db;
+  const p = await linhaDoPainel(db, painelId);
+  const antes = ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>);
+  const desligados = CAMPOS_DO_SISTEMA.filter((c) => d.desligados.includes(c));
+  const campos = await carregarCampos(db, painelId);
+  // ligar de novo um campo do sistema com o mesmo nome de um campo do painel daria dois "Assunto" na ficha
+  const igual = campos.find((x) => x.ativo && nomeDoSistemaIgual(x.nome, { camposDesligados: desligados }) && !nomeDoSistemaIgual(x.nome, antes));
+  if (igual) {
+    throw new Conflict(`O painel ${p.name} tem o campo ${igual.nome}: renomeie ou desative esse campo antes de ligar o ${nomeDoSistemaIgual(igual.nome, { camposDesligados: desligados })} do sistema.`);
+  }
+  const validos = obrigatoriosDoPainel({ camposDesligados: desligados }, campos);
+  const depois: AjustesDoPainel = {
+    ...antes, camposDesligados: desligados, tipos: etiquetasUnicas(d.tipos),
+    obrigatoriosAoAbrir: limparObrigatorios(antes.obrigatoriosAoAbrir, validos),
+  };
+  const agora = new Date();
+  let etapasLimpas: string[] = [];
+  await db.transaction(async (tx) => {
+    await tx.update(ticketPanels).set({ settings: depois, updatedAt: agora }).where(eq(ticketPanels.id, painelId));
+    etapasLimpas = await limparRegrasDasEtapas(tx, painelId, validos);
+  });
+  const nomes = (xs: CampoDoSistema[]) => lista(xs.map((c) => NOME_CAMPO_DO_SISTEMA[c]));
+  const desligou = desligados.filter((c) => !antes.camposDesligados.includes(c));
+  const ligou = antes.camposDesligados.filter((c) => !desligados.includes(c));
+  const saiuDe = [...(depois.obrigatoriosAoAbrir.length !== antes.obrigatoriosAoAbrir.length ? ['para abrir'] : []), ...etapasLimpas];
+  const partes = [
+    desligou.length ? `desligou ${nomes(desligou)}${saiuDe.length ? ` (deixou de ser pedido em: ${lista(saiuDe)})` : ''}` : '',
+    ligou.length ? `ligou ${nomes(ligou)}` : '',
+    antes.tipos.join('\n') !== depois.tipos.join('\n') ? `as opções do Tipo ficaram ${depois.tipos.join(', ') || '(nenhuma)'}` : '',
+  ].filter(Boolean);
+  return {
+    valor: await painelPronto(db, painelId),
+    resumo: `Mudou os campos do painel ${p.name}${partes.length ? `: ${partes.join('; ')}` : ' (nada mudou)'}`,
+    antes: { camposDesligados: antes.camposDesligados, tipos: antes.tipos, obrigatoriosAoAbrir: antes.obrigatoriosAoAbrir },
+    depois: { camposDesligados: depois.camposDesligados, tipos: depois.tipos, obrigatoriosAoAbrir: depois.obrigatoriosAoAbrir },
+  };
+}
+
+/**
+ * Confere o campo contra os outros do painel (o nome não repete, nem o de um campo que o chamado já
+ * tem) e monta as opções: a que vem com id é do campo; a sem id é nova; a que não veio fica desativada
+ * (o chamado que já a tem continua com ela).
+ */
+function conferirCampo(p: typeof ticketPanels.$inferSelect, outros: CampoPersonalizado[], d: CampoGravar, atual: CampoPersonalizado | null): OpcaoDoCampo[] {
+  const ajustes = ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>);
+  const doSistema = nomeDoSistemaIgual(d.nome, ajustes);
+  if (doSistema) throw new Conflict(`Todo chamado do painel ${p.name} já tem o campo ${doSistema}: escolha outro nome.`);
+  const igual = outros.find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome));
+  if (igual) throw new Conflict(`O painel ${p.name} já tem o campo ${igual.nome}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
+  if (atual && atual.tipo !== d.tipo) throw new BadRequest(`O tipo do campo não muda depois de criado (${atual.nome} é ${NOME_TIPO_CAMPO[atual.tipo]}). Crie outro campo e desative este.`);
+  if (!ehLista(d.tipo)) return [];
+  const existentes = atual?.opcoes ?? [];
+  const opcoes: OpcaoDoCampo[] = d.opcoes.map((o) => {
+    if (!o.id) return { id: newId(), nome: o.nome, ativa: o.ativa };
+    if (!existentes.some((x) => x.id === o.id)) throw new BadRequest(`A opção ${o.nome} não é deste campo. Recarregue a tela e tente de novo.`);
+    return { id: o.id, nome: o.nome, ativa: o.ativa };
+  });
+  for (const x of existentes) if (!opcoes.some((o) => o.id === x.id)) opcoes.push({ ...x, ativa: false });
+  const vistas = new Set<string>();
+  for (const o of opcoes) {
+    if (vistas.has(paraBusca(o.nome))) throw new BadRequest(`Duas opções com o nome ${o.nome} (uma delas pode estar desativada).`);
+    vistas.add(paraBusca(o.nome));
+  }
+  return opcoes;
+}
+
+/**
+ * Onde o campo é obrigatório: para abrir (as regras do painel) e para entrar nas etapas escolhidas. O
+ * campo desativado não é pedido em lugar nenhum. Grava dentro da transação de quem chamou e devolve os
+ * nomes de onde ele passou a ser pedido.
+ */
+async function gravarOndeEPedido(tx: Tx, p: typeof ticketPanels.$inferSelect, campoId: string, ativo: boolean, d: Pick<CampoGravar, 'obrigatorioAoAbrir' | 'etapas'>): Promise<string[]> {
+  const chave = chaveDoCampo(campoId);
+  const etapas = await tx.select().from(ticketStages).where(and(eq(ticketStages.panelId, p.id), isNull(ticketStages.deletedAt))).orderBy(asc(ticketStages.sortOrder));
+  const pedidas = new Set(ativo ? d.etapas : []);
+  for (const id of pedidas) if (!etapas.some((e) => e.id === id)) throw new BadRequest('Uma das etapas escolhidas não é deste painel. Recarregue a tela e tente de novo.');
+  const ajustes = ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>);
+  const abrir = ativo && d.obrigatorioAoAbrir;
+  const obrigatoriosAoAbrir = [...ajustes.obrigatoriosAoAbrir.filter((k) => k !== chave), ...(abrir ? [chave] : [])];
+  await tx.update(ticketPanels).set({ settings: { ...ajustes, obrigatoriosAoAbrir } }).where(eq(ticketPanels.id, p.id));
+  for (const e of etapas) {
+    const tem = e.requiredFields.includes(chave);
+    if (tem === pedidas.has(e.id)) continue;
+    await tx.update(ticketStages).set({ requiredFields: tem ? e.requiredFields.filter((k) => k !== chave) : [...e.requiredFields, chave] }).where(eq(ticketStages.id, e.id));
+  }
+  return [...(abrir ? ['para abrir'] : []), ...etapas.filter((e) => pedidas.has(e.id)).map((e) => e.name)];
+}
+
+export async function criarCampo(app: FastifyInstance, painelId: string, d: CampoGravar): Promise<Gravado<CampoPersonalizado>> {
+  const db = app.db;
+  const p = await linhaDoPainel(db, painelId);
+  const outros = await carregarCampos(db, painelId);
+  if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw new BadRequest(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos (os desativados contam).`);
+  const opcoes = conferirCampo(p, outros, d, null);
+  const id = newId();
+  let pedido: string[] = [];
+  await db.transaction(async (tx) => {
+    await tx.insert(ticketFields).values({
+      id, panelId: painelId, name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo,
+      sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1,
+    });
+    pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
+  });
+  const [linha] = await db.select().from(ticketFields).where(eq(ticketFields.id, id)).limit(1);
+  const c = campoDaLinha(linha!);
+  return {
+    valor: c,
+    resumo: `Criou o campo ${c.nome} (${NOME_TIPO_CAMPO[c.tipo]}) no painel ${p.name}${pedido.length ? `, obrigatório ${lista(pedido.map((x) => (x === 'para abrir' ? x : `em ${x}`)))}` : ''}`,
+    depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
+  };
+}
+
+export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGravar): Promise<Gravado<CampoPersonalizado>> {
+  const db = app.db;
+  const [linha] = await db.select().from(ticketFields).where(eq(ticketFields.id, id)).limit(1);
+  if (!linha) throw new NotFound('Campo');
+  // o campo de um painel que saiu saiu junto
+  const p = await linhaDoPainel(db, linha.panelId).catch(() => { throw new NotFound('Campo'); });
+  const antes = campoDaLinha(linha);
+  const opcoes = conferirCampo(p, await carregarCampos(db, p.id), d, antes);
+  let pedido: string[] = [];
+  await db.transaction(async (tx) => {
+    await tx.update(ticketFields).set({ name: d.nome, help: d.dica, options: opcoes, active: d.ativo, updatedAt: new Date() }).where(eq(ticketFields.id, id));
+    pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
+  });
+  const [nova] = await db.select().from(ticketFields).where(eq(ticketFields.id, id)).limit(1);
+  const c = campoDaLinha(nova!);
+  const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
+  return {
+    valor: c,
+    resumo: `${como} o campo ${c.nome} no painel ${p.name}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}`,
+    antes: campoParaAuditoria(antes), depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
+  };
+}
+
+/** A ordem dos campos do painel (na ficha e no Abrir chamado): todos os ids, na ordem nova. */
+export async function ordenarCampos(app: FastifyInstance, painelId: string, ids: string[]): Promise<Gravado<CampoPersonalizado[]>> {
+  const db = app.db;
+  const p = await linhaDoPainel(db, painelId);
+  const campos = await carregarCampos(db, painelId);
+  if (ids.length !== campos.length || new Set(ids).size !== ids.length || ids.some((x) => !campos.some((c) => c.id === x))) {
+    throw new BadRequest('A lista de campos mudou enquanto você mexia. Recarregue a tela e tente de novo.');
+  }
+  await db.transaction(async (tx) => {
+    for (const [ordem, id] of ids.entries()) await tx.update(ticketFields).set({ sortOrder: ordem }).where(eq(ticketFields.id, id));
+  });
+  const depois = await carregarCampos(db, painelId);
+  return { valor: depois, resumo: `Mudou a ordem dos campos do painel ${p.name}: ${depois.map((c) => c.nome).join(', ')}` };
 }
 
 // =====================================================================

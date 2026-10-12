@@ -9,13 +9,15 @@
  */
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
-  carriers, clients, newId, products, ticketEvents, ticketNotes, ticketPanels, ticketStages, ticketSubjects, tickets, users,
+  carriers, clients, newId, products, ticketEvents, ticketFields, ticketNotes, ticketPanels, ticketStages, ticketSubjects, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
-  ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, estadoDosPrazos, situacaoDaEtapa, textoDeBusca, textoDoEvento,
-  type AjustesPrazos, type Assunto, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel, type EventoChamado,
-  type Nivel, type Origem, type Painel, type TipoEvento, type CampoObrigatorio, type Gravidade, type Alcance, type Prioridade, type TipoChamado,
+  ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, estadoDosPrazos, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
+  valoresVisiveis,
+  type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
+  type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
+  type Prioridade, type TipoChamado, type ValoresDosCampos,
 } from '@gestor/shared';
 import { NotFound, Forbidden } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
@@ -56,7 +58,7 @@ export type LinhaChamado = typeof tickets.$inferSelect;
 export function etapaDaLinha(e: LinhaEtapa): EtapaPainel {
   return {
     id: e.id, nome: e.name, tipo: e.kind as EtapaPainel['tipo'], nivel: (e.level as Nivel | null) ?? null,
-    obrigatorios: e.requiredFields as CampoObrigatorio[], avisar: e.notifyUserIds,
+    obrigatorios: e.requiredFields as Obrigatorio[], avisar: e.notifyUserIds,
   };
 }
 
@@ -105,6 +107,8 @@ export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas'>, a: Ator): b
 export type Contexto = {
   agora: Date;
   paineis: Painel[];
+  /** os campos de todos os painéis (os desativados também), na ordem de cada painel */
+  campos: CampoPersonalizado[];
   /** todas as etapas (inclusive as que saíram), pelo id, com o painel */
   etapas: Map<string, { etapa: EtapaPainel; painelId: string; ordem: number; saiu: boolean }>;
   pessoas: Map<string, { nome: string; ativo: boolean }>;
@@ -124,9 +128,26 @@ export function assuntoDaLinha(s: typeof ticketSubjects.$inferSelect): Assunto {
   return { id: s.id, painelId: s.panelId, paiId: s.parentId, nome: s.name, descricao: s.description, ativo: s.active, ordem: s.sortOrder, checklist: s.checklist, dePara: s.aliases };
 }
 
+export function campoDaLinha(c: typeof ticketFields.$inferSelect): CampoPersonalizado {
+  return {
+    id: c.id, painelId: c.panelId, nome: c.name, tipo: c.kind as TipoCampo, dica: c.help,
+    opcoes: ((c.options as OpcaoDoCampo[] | null) ?? []).map((o) => ({ id: o.id, nome: o.nome, ativa: o.ativa !== false })),
+    ativo: c.active, ordem: c.sortOrder,
+  };
+}
+/** Os campos dos painéis, na ordem de cada painel (o painel que saiu leva os dele). */
+export async function carregarCampos(db: Db, painelId?: string): Promise<CampoPersonalizado[]> {
+  const linhas = await db.select().from(ticketFields).where(painelId ? eq(ticketFields.panelId, painelId) : sql`true`);
+  return linhas.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR')).map(campoDaLinha);
+}
+/** Os campos de um painel (todos, ou só os ativos). */
+export const camposDoPainel = (ctx: Pick<Contexto, 'campos'>, painelId: string, soAtivos = false) =>
+  ctx.campos.filter((c) => c.painelId === painelId && (!soAtivos || c.ativo));
+
 export async function carregarContexto(db: Db, agora: Date = new Date()): Promise<Contexto> {
-  const [{ paineis, todasAsEtapas }, ps, cs, prs, ops, as, prazos] = await Promise.all([
+  const [{ paineis, todasAsEtapas }, campos, ps, cs, prs, ops, as, prazos] = await Promise.all([
     carregarPaineis(db),
+    carregarCampos(db),
     db.select({ id: users.id, name: users.name, active: users.active }).from(users),
     db.select({ id: clients.id, nome: clients.tradeName }).from(clients),
     db.select({ id: products.id, nome: products.name, cor: products.color }).from(products),
@@ -135,7 +156,7 @@ export async function carregarContexto(db: Db, agora: Date = new Date()): Promis
     lerPrazos(db),
   ]);
   return {
-    agora, paineis,
+    agora, paineis, campos,
     etapas: new Map(todasAsEtapas.map((e) => [e.id, { etapa: etapaDaLinha(e), painelId: e.panelId, ordem: e.sortOrder, saiu: !!e.deletedAt }])),
     pessoas: new Map(ps.map((p) => [p.id, { nome: p.name, ativo: p.active }])),
     clientes: new Map(cs.map((c) => [c.id, c.nome])),
@@ -171,9 +192,14 @@ export type Parentes = {
   codigos: Map<string, string>;
 };
 
+/**
+ * O chamado no quadro e na lista. Os campos do sistema que o painel desligou não aparecem (o valor fica
+ * guardado: volta se o campo for ligado de novo), e dos campos do painel só os ativos.
+ */
 export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): CartaoChamado {
   const e = ctx.etapas.get(t.stageId);
   const painel = ctx.paineis.find((p) => p.id === t.panelId);
+  const usa = (c: Parameters<typeof campoLigado>[1]) => !painel || campoLigado(painel.ajustes, c);
   const situacao = situacaoDaEtapa(e?.etapa.tipo ?? 'andamento');
   const waits = (t.waits as Espera[]) ?? [];
   const aberta = esperaAberta(waits);
@@ -190,12 +216,15 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     cliente: t.clientId ? { id: t.clientId, nome: ctx.clientes.get(t.clientId) ?? '(cliente removido)' } : null,
     contato: t.contactName || t.contactPhone ? { nome: t.contactName, telefone: t.contactPhone } : null,
     responsavel: pessoaCurta(ctx, t.assigneeId),
-    prioridade: (t.priority as Prioridade | null) ?? null, gravidade: (t.severity as Gravidade | null) ?? null, alcance: (t.reach as Alcance | null) ?? null,
-    tipo: t.type,
-    assunto: assunto ? { id: assunto.id, nome: assunto.nome, caminho: caminhoDoAssunto(assunto.id, ctx.assuntos), ativo: assunto.ativo } : null,
-    produtos: t.productIds.map((id) => ({ id, nome: ctx.produtos.get(id)?.nome ?? '?', cor: ctx.produtos.get(id)?.cor ?? '#888888' })),
-    operadoras: t.carrierIds.map((id) => ({ id, nome: ctx.operadoras.get(id) ?? '?' })),
+    prioridade: (t.priority as Prioridade | null) ?? null,
+    gravidade: usa('gravidadeAlcance') ? (t.severity as Gravidade | null) ?? null : null,
+    alcance: usa('gravidadeAlcance') ? (t.reach as Alcance | null) ?? null : null,
+    tipo: usa('tipo') ? t.type : null,
+    assunto: assunto && usa('assunto') ? { id: assunto.id, nome: assunto.nome, caminho: caminhoDoAssunto(assunto.id, ctx.assuntos), ativo: assunto.ativo } : null,
+    produtos: usa('produtos') ? t.productIds.map((id) => ({ id, nome: ctx.produtos.get(id)?.nome ?? '?', cor: ctx.produtos.get(id)?.cor ?? '#888888' })) : [],
+    operadoras: usa('operadoras') ? t.carrierIds.map((id) => ({ id, nome: ctx.operadoras.get(id) ?? '?' })) : [],
     etiquetas: t.tags,
+    campos: valoresVisiveis(ctx.campos, t.panelId, t.customFields as ValoresDosCampos | null),
     espera: aberta ? { tipo: aberta.tipo, motivo: aberta.motivo, desde: aberta.inicio } : null,
     prazos,
     pai: t.parentId ? { id: t.parentId, codigo: par.codigos.get(t.parentId) ?? '?' } : null,
@@ -225,7 +254,7 @@ export async function carregarCartoes(db: Db, ator: Ator, ctx: Contexto, opts: {
     .filter((t) => visiveis.includes(t.panelId))
     .map((t) => {
       const c = cartaoDaLinha(t, ctx, par);
-      return { ...c, busca: textoDeBusca(c, [t.customerReport, t.description, t.solution, t.cause]) };
+      return { ...c, busca: textoDeBusca(c, [t.customerReport, t.description, t.solution, t.cause, ...textosDosCampos(camposDoPainel(ctx, t.panelId, true), c.campos)]) };
     });
 }
 

@@ -10,7 +10,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, CircleAlert, Hourglass, MessageCircle, Search, StickyNote, Tag, UserCheck } from 'lucide-react';
 import {
-  etapaAoReabrir, etapaDeEntrada, lerCodigo, movimentoDeNivel, NOME_CAMPO, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO, preencherModelo,
+  etapaAoReabrir, etapaDeEntrada, lerCodigo, movimentoDeNivel, nomeDoObrigatorio, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO, preencherModelo,
   type CartaoChamado, type FichaChamado, type RespostaPronta, type TipoEspera, type TipoLigacaoChamado,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -129,7 +129,7 @@ export function JanelaResposta({ resposta, onFechar }: { resposta: RespostaPront
   const travas: string[] = [
     ...(semTelefone ? ['O chamado não tem o WhatsApp do contato: preencha o contato para mandar a mensagem.'] : []),
     ...(!semTelefone && semWhats ? ['O WhatsApp do cliente não está ligado (Chamados › Ajustes › Avisos e WhatsApp): a mensagem não sairia.'] : []),
-    ...(para && faltam.length ? [`Para ir para ${para.nome}, falta preencher: ${lista(faltam.map((x) => NOME_CAMPO[x]))}.`] : []),
+    ...(para && faltam.length ? [`Para ir para ${para.nome}, falta preencher: ${lista(faltam.map((x) => nomeDoObrigatorio(x, opcoes.campos)))}.`] : []),
     ...(para && filhos.length ? [`Os filhos em aberto precisam fechar antes de ir para ${para.nome}: ${filhos.join(', ')}.`] : []),
     ...(etapaFora ? ['A etapa desta resposta não é deste painel.'] : []),
   ];

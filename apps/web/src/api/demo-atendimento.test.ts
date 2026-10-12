@@ -332,7 +332,10 @@ describe('as regras do servidor valem na prévia', () => {
     });
     await api.mover(pai.id, { etapaId: etapa(op, 'SUP', 'N1').id });
     await api.alterar(pai.id, { solucao: 'Corrigido no Desenvolvimento.', causa: 'Erro na conta do relatório.' });
-    const filho = await api.criar({ painelId: painel(op, 'DEV').id, titulo: 'Corrigir a conta do relatório (teste de filho)', relato: 'Vem do suporte.', paiId: pai.codigo });
+    // o Desenvolvimento pede o Sistema para abrir (um campo do painel)
+    const semSistema = await erroDe(api.criar({ painelId: painel(op, 'DEV').id, titulo: 'Corrigir a conta do relatório (teste de filho)', relato: 'Vem do suporte.', paiId: pai.codigo }));
+    expect(semSistema.message).toBe('Falta preencher: Sistema.');
+    const filho = await api.criar({ painelId: painel(op, 'DEV').id, titulo: 'Corrigir a conta do relatório (teste de filho)', relato: 'Vem do suporte.', paiId: pai.codigo, campos: { Sistema: 'LineReports' } });
     expect(filho.codigo).toMatch(/^DEV-/);
 
     for (const nome of ['Resolvido', 'Fechado']) {
@@ -343,6 +346,9 @@ describe('as regras do servidor valem na prévia', () => {
     }
     // o filho entregue (resolvido) já deixa o pai resolver; fechar, só com o filho fechado
     await api.alterar(filho.id, { solucao: 'Conta corrigida.' });
+    // o Entregue pede a Versão publicada (outro campo do painel)
+    expect((await erroDe(api.mover(filho.id, { etapaId: etapa(op, 'DEV', 'Entregue').id }))).message).toBe('Para ir para Entregue, falta preencher: Versão publicada.');
+    await api.alterar(filho.id, { campos: { 'Versão publicada': 'LineReports 4.3' } });
     await api.mover(filho.id, { etapaId: etapa(op, 'DEV', 'Entregue').id });
     expect((await api.mover(pai.id, { etapaId: etapa(op, 'SUP', 'Resolvido').id })).situacao).toBe('resolvido');
     expect((await erroDe(api.mover(pai.id, { etapaId: etapa(op, 'SUP', 'Fechado').id }))).details).toEqual({ filhos: [filho.codigo] });
@@ -493,6 +499,60 @@ describe('as regras do servidor valem na prévia', () => {
     expect([ok.nome, ok.etapas.map((e) => e.nome)]).toEqual(['Ativações e visitas', ['Instalação', 'Visita', 'Encerrado']]);
     expect((await api.chamado(t.codigo)).etapaId).toBe(instalacao!.id);
     expect(await auditoria()).toBe('Alterou o painel Ativações e visitas (ATVX): antes se chamava Ativações; nas etapas, entrou Visita; saiu Pedido; 1 chamado foi de Pedido para Instalação');
+  }, DEMORA);
+
+  it('os campos de cada painel: o Desenvolvimento sem assunto; criar, pedir, mudar e desativar um campo (as regras do servidor)', async () => {
+    await entrar('admin');
+    let op = await api.opcoes();
+    const dev = painel(op, 'DEV');
+    expect(dev.ajustes.camposDesligados).toEqual(['assunto', 'operadoras']);
+    expect(op.campos.filter((c) => c.painelId === dev.id).map((c) => c.nome)).toEqual(['Sistema', 'Como reproduzir', 'Versão publicada', 'Previsão de entrega']);
+    // os chamados do Desenvolvimento têm o Sistema; nenhum mostra assunto
+    const doDev = (await todosOsChamados()).filter((c) => c.painelId === dev.id);
+    const sistema = op.campos.find((c) => c.painelId === dev.id && c.nome === 'Sistema')!;
+    expect(doDev.every((c) => !c.assunto && typeof c.campos[sistema.id] === 'string')).toBe(true);
+
+    // criar um campo no Suporte, obrigatório para entrar no N2
+    const sup = painel(op, 'SUP');
+    const n2 = etapa(op, 'SUP', 'N2');
+    const campo = await api.salvarCampo(sup.id, null, { nome: 'Ramal afetado', tipo: 'numero', dica: 'o número do ramal', etapas: [n2.id] });
+    expect(campo).toMatchObject({ nome: 'Ramal afetado', tipo: 'numero', ativo: true });
+    op = await api.opcoes();
+    expect(etapa(op, 'SUP', 'N2').obrigatorios).toContain(`campo:${campo.id}`);
+    expect((await erroDe(api.salvarCampo(sup.id, null, { nome: 'ramal AFETADO', tipo: 'texto' }))).message).toBe('O painel Suporte já tem o campo Ramal afetado.');
+    expect((await erroDe(api.salvarCampo(sup.id, null, { nome: 'Assunto', tipo: 'texto' }))).message).toBe('Todo chamado do painel Suporte já tem o campo Assunto: escolha outro nome.');
+
+    const t = await api.criar({ ...(await baseDoSuporte(op, 'Ramal sem áudio (teste dos campos)')), assuntoId: assuntoSimples(op).id });
+    await api.mover(t.id, { etapaId: etapa(op, 'SUP', 'N1').id });
+    const falta = await erroDe(api.mover(t.id, { etapaId: n2.id, motivo: 'Precisa do N2' }));
+    expect([falta.message, falta.details]).toEqual(['Para ir para N2, falta preencher: Ramal afetado.', { faltam: [`campo:${campo.id}`] }]);
+    expect((await erroDe(api.alterar(t.id, { campos: { [campo.id]: 'duzentos' } }))).message).toBe('Ramal afetado: escreva um número');
+    const f = await api.alterar(t.id, { campos: { 'Ramal afetado': '203' } });
+    expect(f.campos[campo.id]).toBe(203);
+    expect(f.historico.at(-1)!.texto).toBe('mudou Ramal afetado para "203"');
+    expect((await api.mover(t.id, { etapaId: n2.id, motivo: 'Precisa do N2' })).etapaId).toBe(n2.id);
+
+    // desligar o Tipo no Suporte: sai das regras e da ficha; ligar de novo, volta
+    const comTipo = sup.ajustes.obrigatoriosAoAbrir.includes('tipo') || sup.etapas.some((e) => e.obrigatorios.includes('tipo'));
+    expect(comTipo).toBe(true);
+    const semTipo = await api.salvarCamposDoSistema(sup.id, { desligados: ['tipo'], tipos: sup.ajustes.tipos });
+    expect(semTipo.etapas.some((e) => e.obrigatorios.includes('tipo'))).toBe(false);
+    const tipoAntes = (await api.chamado('SUP-1')).tipo;
+    expect((await api.chamado('SUP-1')).tipo).toBeNull();
+    await api.salvarCamposDoSistema(sup.id, { desligados: [], tipos: sup.ajustes.tipos });
+    expect(tipoAntes).toBeNull();
+    expect((await api.chamado('SUP-1')).tipo).not.toBeNull();
+
+    // desativar o campo: some da ficha e das regras; o valor fica guardado
+    await api.salvarCampo(sup.id, campo.id, { nome: 'Ramal afetado', tipo: 'numero', ativo: false });
+    expect((await api.chamado(t.codigo)).campos[campo.id]).toBeUndefined();
+    expect(etapa(await api.opcoes(), 'SUP', 'N2').obrigatorios).not.toContain(`campo:${campo.id}`);
+    await api.salvarCampo(sup.id, campo.id, { nome: 'Ramal afetado', tipo: 'numero', ativo: true });
+    expect((await api.chamado(t.codigo)).campos[campo.id]).toBe(203);
+    // o tipo não muda; o Operador não mexe
+    expect((await erroDe(api.salvarCampo(sup.id, campo.id, { nome: 'Ramal afetado', tipo: 'texto' }))).message).toMatch(/^O tipo do campo não muda/);
+    await entrar('operador');
+    expect((await erroDe(api.salvarCampo(sup.id, null, { nome: 'Outro', tipo: 'texto' }))).status).toBe(403);
   }, DEMORA);
 
   it('a lixeira: o chamado sai e volta pela Administração, com o histórico', async () => {

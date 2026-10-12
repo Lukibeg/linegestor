@@ -1511,6 +1511,33 @@ export const ticketSubjects = pgTable(
 );
 
 /**
+ * Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, então nem sempre vai ser
+ * assuntos"): os que cada equipe cria além dos do sistema — o "Sistema" e a "Versão publicada" no
+ * Desenvolvimento, por exemplo. O tipo (texto, texto longo, número, data, sim ou não, lista de uma ou de
+ * várias opções) não muda depois de criado. O campo que não serve mais é desativado, nunca apagado: o
+ * valor fica no chamado (`tickets.custom_fields`, pelo id do campo).
+ */
+export const ticketFields = pgTable(
+  'ticket_fields',
+  {
+    id: id(),
+    panelId: text('panel_id').notNull().references(() => ticketPanels.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** texto | texto_longo | numero | data | sim_nao | lista | lista_varios */
+    kind: text('kind').notNull(),
+    /** A explicação que aparece embaixo do campo (na ficha e no Abrir chamado) */
+    help: text('help'),
+    /** As opções das listas: [{id, nome, ativa}] (a que sai fica desativada: o chamado que a tem continua com ela) */
+    options: jsonb('options').notNull().default([]),
+    active: boolean('active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('ticket_fields_panel_idx').on(t.panelId)],
+);
+
+/**
  * Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se o chamado passar de
  * painel. O relato é o que o cliente disse; a descrição, o andamento e os dados técnicos; as
  * anotações ficam em `ticket_notes`, e o histórico de tudo em `ticket_events`.
@@ -1560,6 +1587,8 @@ export const tickets = pgTable(
     /** As operadoras envolvidas (ids de `carriers`) — o cliente pode ter mais de uma */
     carrierIds: text('carrier_ids').array().notNull().default([]),
     tags: text('tags').array().notNull().default([]),
+    /** Os valores dos campos do painel ({id do campo: valor}); o de um campo desativado fica guardado */
+    customFields: jsonb('custom_fields').notNull().default({}),
     /** A solução dada */
     solution: text('solution'),
     /** A causa (no problema: a causa raiz, ou a justificativa de não ter achado) */

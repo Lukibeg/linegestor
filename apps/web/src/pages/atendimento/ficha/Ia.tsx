@@ -7,14 +7,16 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { BookOpenText, MessagesSquare, Sparkles } from 'lucide-react';
 import {
-  caminhoDoAssunto, etiquetasUnicas, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, prioridadeSugerida,
-  type ChamadoAlterarEntrada, type SugestaoIa,
+  caminhoDoAssunto, campoLigado, etiquetasUnicas, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, prioridadeSugerida,
+  type CampoDoSistema, type ChamadoAlterarEntrada, type SugestaoIa,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Modal, Spinner, mensagemErro } from '../../../components/ui/index.js';
 import { ErroPerto, lista, useAberta, useAcao } from './base.js';
 
 type Chave = 'titulo' | 'relato' | 'descricao' | 'assuntoId' | 'tipo' | 'gravidade' | 'alcance' | 'produtos' | 'etiquetas';
+/** De que campo do sistema cada sugestão depende (o painel pode ter desligado). */
+const DO_CAMPO: Partial<Record<Chave, CampoDoSistema>> = { assuntoId: 'assunto', tipo: 'tipo', gravidade: 'gravidadeAlcance', alcance: 'gravidadeAlcance', produtos: 'produtos' };
 type Linha = {
   chave: Chave; rotulo: string; atual: ReactNode; sugerido: ReactNode;
   /** a IA sugeriu algo diferente do que está */
@@ -27,9 +29,11 @@ type Linha = {
 const vazio = <span className="text-muted italic">vazio</span>;
 
 export function JanelaIa({ s, onFechar }: { s: SugestaoIa; onFechar: () => void }) {
-  const { f, opcoes } = useAberta();
+  const { f, opcoes, painel } = useAberta();
   const acao = useAcao();
   const [anotarResumo, setAnotarResumo] = useState(false);
+  /** o que o painel não usa (desligado em Ajustes › Campos) nem aparece para escolher */
+  const usa = (c: CampoDoSistema) => !painel || campoLigado(painel.ajustes, c);
 
   const linhas = useMemo<Linha[]>(() => {
     const nomeProduto = (id: string) => opcoes.produtos.find((p) => p.id === id)?.nome ?? id;
@@ -68,7 +72,7 @@ export function JanelaIa({ s, onFechar }: { s: SugestaoIa; onFechar: () => void 
         difere: novasEtiquetas.length > 0 && etiquetas.length <= 20, motivo: !s.etiquetas.length ? 'a IA não sugeriu' : !novasEtiquetas.length ? 'já estão no chamado' : etiquetas.length > 20 ? 'passaria de 20 etiquetas' : undefined,
       },
     ];
-  }, [f, s, opcoes.produtos, opcoes.assuntos]);
+  }, [f, s, opcoes.produtos, opcoes.assuntos]).filter((l) => !DO_CAMPO[l.chave] || usa(DO_CAMPO[l.chave]!));
 
   const [marcados, setMarcados] = useState<Set<Chave>>(() => new Set(linhas.filter((l) => l.difere).map((l) => l.chave)));
   const alternar = (c: Chave) => setMarcados((m) => { const n = new Set(m); if (n.has(c)) n.delete(c); else n.add(c); return n; });

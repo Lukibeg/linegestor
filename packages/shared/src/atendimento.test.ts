@@ -4,7 +4,9 @@ import {
   somarDiasUteis, somarMinutosUteis, textoDaRegra, textoDoPrazo, type AjustesPrazos, type Calendario, type RegraAgendado,
 } from './atendimento-prazos.js';
 import {
-  ETAPAS_DO_PAINEL_NOVO, EtapasGravarSchema, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL, PainelGravarSchema,
+  AJUSTES_PAINEL_PADRAO, CampoGravarSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ETAPAS_DO_PAINEL_NOVO, EtapasGravarSchema, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL,
+  PainelGravarSchema, acharCampo, chaveDoCampo, faltaParaAbrir, limparObrigatorios, normalizarValorDoCampo, obrigatoriosDoPainel, textoDoValor, textosDosCampos,
+  valoresVisiveis, type CampoPersonalizado,
   caminhoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
   lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes, pareceAgradecimento,
   pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
@@ -116,7 +118,7 @@ const etapas: EtapaPainel[] = [
 const dados = (d: Partial<DadosObrigatorios> = {}): DadosObrigatorios => ({
   tipoChamado: 'chamado', clienteId: 'c1', contatoNome: null, contatoTelefone: null, relato: 'Ramal mudo', descricao: null, assuntoId: null, tipo: null,
   gravidade: null, alcance: null, prioridade: null, produtos: [], operadoras: [], responsavelId: null, solucao: null, causa: null, validacao: null,
-  checklist: [], tempoMinutos: 0, ...d,
+  checklist: [], tempoMinutos: 0, campos: {}, ...d,
 });
 
 describe('as etapas', () => {
@@ -174,6 +176,91 @@ describe('as etapas', () => {
     // o erro de uma etapa diz qual (a tela mostra "Etapa 2: …")
     const semNome = ListaDeEtapasSchema.safeParse([{ nome: 'Novo', tipo: 'entrada' }, { nome: '  ', tipo: 'fechado' }]);
     expect(semNome.success ? null : semNome.error.issues[0]!.path).toEqual([1, 'nome']);
+  });
+});
+
+describe('os campos de cada painel', () => {
+  const lista: CampoPersonalizado = {
+    id: 'sis', painelId: 'dev', nome: 'Sistema', tipo: 'lista', dica: null, ativo: true, ordem: 0,
+    opcoes: [{ id: 'o1', nome: 'LinePBX', ativa: true }, { id: 'o2', nome: 'LineChat', ativa: true }, { id: 'o3', nome: 'Fortics', ativa: false }],
+  };
+  const varios: CampoPersonalizado = { ...lista, id: 'mods', nome: 'Módulos', tipo: 'lista_varios' };
+  const campo = (tipo: CampoPersonalizado['tipo'], d: Partial<CampoPersonalizado> = {}): CampoPersonalizado => ({ ...lista, id: tipo, nome: 'Campo', tipo, opcoes: [], ...d });
+
+  it('cada tipo confere e arruma o valor (o número com vírgula, a data em dia/mês/ano, a opção pelo nome)', () => {
+    expect(normalizarValorDoCampo(campo('texto'), '  versão 2.3 \n final ')).toEqual({ ok: true, valor: 'versão 2.3 final' });
+    expect(normalizarValorDoCampo(campo('texto_longo'), 'linha 1\r\nlinha 2 ')).toEqual({ ok: true, valor: 'linha 1\nlinha 2' });
+    expect(normalizarValorDoCampo(campo('texto'), 'x'.repeat(301))).toEqual({ ok: false, erro: 'Campo: vai até 300 letras' });
+    expect(normalizarValorDoCampo(campo('numero'), '1.234,5')).toEqual({ ok: true, valor: 1234.5 });
+    expect(normalizarValorDoCampo(campo('numero'), 0)).toEqual({ ok: true, valor: 0 });
+    expect(normalizarValorDoCampo(campo('numero'), 'doze')).toEqual({ ok: false, erro: 'Campo: escreva um número' });
+    expect(normalizarValorDoCampo(campo('data'), '5/3/2027')).toEqual({ ok: true, valor: '2027-03-05' });
+    expect(normalizarValorDoCampo(campo('data'), '2027-02-30')).toEqual({ ok: false, erro: 'Campo: escreva a data (dia/mês/ano)' });
+    expect(normalizarValorDoCampo(campo('sim_nao'), 'Não')).toEqual({ ok: true, valor: false });
+    expect(normalizarValorDoCampo(campo('sim_nao'), true)).toEqual({ ok: true, valor: true });
+    expect(normalizarValorDoCampo(lista, 'linechat')).toEqual({ ok: true, valor: 'o2' });
+    expect(normalizarValorDoCampo(lista, 'o1')).toEqual({ ok: true, valor: 'o1' });
+    expect(normalizarValorDoCampo(lista, 'Asterisk')).toEqual({ ok: false, erro: 'Sistema: "Asterisk" não é uma das opções (LinePBX, LineChat)' });
+    expect(normalizarValorDoCampo(varios, ['LinePBX', 'o2', 'linepbx'])).toEqual({ ok: true, valor: ['o1', 'o2'] });
+    expect(normalizarValorDoCampo(varios, 'LinePBX; LineChat')).toEqual({ ok: true, valor: ['o1', 'o2'] });
+    // vazio tira o valor
+    expect(normalizarValorDoCampo(lista, '')).toEqual({ ok: true, valor: null });
+    expect(normalizarValorDoCampo(varios, [])).toEqual({ ok: true, valor: null });
+  });
+  it('a opção desativada não entra num chamado novo, mas o chamado que já tinha continua com ela', () => {
+    expect(normalizarValorDoCampo(lista, 'Fortics').ok).toBe(false);
+    expect(normalizarValorDoCampo(lista, 'Fortics', 'o3')).toEqual({ ok: true, valor: 'o3' });
+    expect(normalizarValorDoCampo(varios, ['o3', 'o1'], ['o3'])).toEqual({ ok: true, valor: ['o3', 'o1'] });
+  });
+  it('o valor como se lê, e a busca acha o texto dos campos', () => {
+    expect(textoDoValor(campo('numero'), 1234.5)).toBe('1.234,5');
+    expect(textoDoValor(campo('data'), '2027-03-05')).toBe('05/03/2027');
+    expect(textoDoValor(campo('sim_nao'), false)).toBe('Não');
+    expect(textoDoValor(varios, ['o1', 'o3'])).toBe('LinePBX, Fortics');
+    expect(textoDoValor(lista, null)).toBe('');
+    expect(textosDosCampos([lista, campo('texto', { id: 't' })], { sis: 'o2', t: 'v2.3' })).toEqual(['LineChat', 'v2.3']);
+    // o chamado mostra só os campos ativos do painel dele
+    expect(valoresVisiveis([lista, { ...campo('texto', { id: 'off' }), ativo: false }, { ...lista, id: 'outro', painelId: 'sup' }], 'dev', { sis: 'o1', off: 'x', outro: 'o2' }))
+      .toEqual({ sis: 'o1' });
+    expect(acharCampo([lista, varios], 'MODULOS')?.id).toBe('mods');
+  });
+  it('obrigatório: o campo do painel ("campo:<id>") entra na mesma regra, com o nome na mensagem', () => {
+    const versao = campo('texto', { id: 'ver', nome: 'Versão publicada' });
+    const entregue: Pick<EtapaPainel, 'tipo' | 'obrigatorios'> = { tipo: 'resolvido', obrigatorios: [chaveDoCampo('ver'), 'solucao'] };
+    expect(faltaParaEtapa(dados({ solucao: 'ok' }), entregue)).toEqual(['campo:ver']);
+    expect(faltaParaEtapa(dados({ solucao: 'ok', campos: { ver: '2026.10' } }), entregue)).toEqual([]);
+    // o "não" e o zero contam como respondidos
+    expect(faltaParaEtapa(dados({ solucao: 'ok', campos: { ver: false } }), entregue)).toEqual([]);
+    expect(mensagemDoQueFalta(['assunto', 'campo:ver'], 'Entregue', [versao])).toBe('Para ir para Entregue, falta preencher: Assunto e Versão publicada.');
+    expect(faltaParaAbrir(dados(), { obrigatoriosAoAbrir: ['campo:sis', 'relato', 'assunto'] })).toEqual(['assunto', 'campo:sis']);
+  });
+  it('o que pode ser pedido num painel: sem os campos do sistema desligados, com os campos ativos dele', () => {
+    const doPainel = obrigatoriosDoPainel({ camposDesligados: ['assunto', 'gravidadeAlcance'] }, [lista, { ...varios, ativo: false }]);
+    expect(doPainel).not.toContain('assunto');
+    expect(doPainel).not.toContain('alcance');
+    expect(doPainel).toContain('tipo');
+    expect(doPainel.slice(-1)).toEqual(['campo:sis']);
+    expect(limparObrigatorios(['campo:sis', 'assunto', 'campo:mods', 'relato', 'relato'], doPainel)).toEqual(['relato', 'campo:sis']);
+    expect(AJUSTES_PAINEL_PADRAO.camposDesligados).toEqual([]);
+  });
+  it('os formatos: o campo novo, a lista sem opção, o valor no pedido e a regra com o campo', () => {
+    const msg = (r: { success: boolean; error?: { issues: Array<{ message: string }> } }) => (r.success ? '' : r.error!.issues[0]!.message);
+    expect(CampoGravarSchema.parse({ nome: ' Versão ', tipo: 'texto' })).toMatchObject({ nome: 'Versão', opcoes: [], ativo: true, obrigatorioAoAbrir: false, etapas: [] });
+    expect(msg(CampoGravarSchema.safeParse({ nome: 'Sistema', tipo: 'lista', opcoes: [] }))).toBe('A lista precisa de pelo menos uma opção');
+    expect(msg(CampoGravarSchema.safeParse({ nome: 'Sistema', tipo: 'lista', opcoes: [{ nome: 'PBX' }, { nome: 'pbx' }] }))).toBe('Duas opções com o nome pbx');
+    expect(ChamadoCriarSchema.parse({ painelId: 'p', titulo: 'Teste' }).campos).toEqual({});
+    expect(ChamadoAlterarSchema.parse({ campos: { sis: 'o1', ver: null } }).campos).toEqual({ sis: 'o1', ver: null });
+    expect(EtapasGravarSchema.parse({ etapas: [{ nome: 'Novo', tipo: 'entrada', obrigatorios: ['campo:sis'] }, { nome: 'Fim', tipo: 'fechado' }] }).etapas[0]!.obrigatorios).toEqual(['campo:sis']);
+    expect(EtapasGravarSchema.safeParse({ etapas: [{ nome: 'Novo', tipo: 'entrada', obrigatorios: ['campo:'] }, { nome: 'Fim', tipo: 'fechado' }] }).success).toBe(false);
+    // sem a lista dos desligados, o painel fica como está (quem liga e desliga é a aba Campos)
+    expect(PainelGravarSchema.parse({ nome: 'X', sigla: 'xx', ajustes: {} }).ajustes.camposDesligados).toBeUndefined();
+  });
+  it('o CSV ganha uma coluna por campo do painel', () => {
+    const c = cartao({ painelId: 'dev', campos: { sis: 'o2' } });
+    const csv = csvDosChamados([c], { painel: () => 'Desenvolvimento', etapa: () => 'Novo' }, [lista]);
+    const [cab, linha] = csv.slice(1).split('\r\n');
+    expect(cab!.split(';').pop()).toBe('Sistema');
+    expect(linha!.split(';').pop()).toBe('LineChat');
   });
 });
 
@@ -249,7 +336,7 @@ const cartao = (d: Partial<CartaoChamado> = {}, relato = 'o cliente disse que o 
   const c: CartaoChamado = {
     id: 'x', codigo: 'SUP-1', numero: 1, tipoChamado: 'chamado', titulo: 'Ramal mudo', painelId: 'p', etapaId: 'n1', situacao: 'aberto', nivel: 1,
     cliente: { id: 'c1', nome: 'Clínica Aurora' }, contato: { nome: 'Maria', telefone: '5571999990000' }, responsavel: null, prioridade: 'media',
-    gravidade: null, alcance: null, tipo: null, assunto: null, produtos: [], operadoras: [], etiquetas: [], espera: null,
+    gravidade: null, alcance: null, tipo: null, assunto: null, produtos: [], operadoras: [], etiquetas: [], campos: {}, espera: null,
     prazos: { resposta: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' }, solucao: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' } },
     pai: null, problema: null, filhos: { total: 0, abertos: 0 }, incidentes: 0, anotacoes: 0, origem: 'manual', reaberto: 0,
     criadoEm: '2026-10-13T12:00:00.000Z', atualizadoEm: '2026-10-13T12:00:00.000Z', ultimaAtividadeEm: '2026-10-13T12:00:00.000Z', resolvidoEm: null, fechadoEm: null, ...d,

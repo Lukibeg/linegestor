@@ -2,17 +2,19 @@
  * A classificação do chamado, na coluna do lado: o assunto (o caminho inteiro, só os ativos do
  * painel), o tipo (as opções do painel), a gravidade (com a dica de cada uma), o alcance e a
  * prioridade — com a sugerida ao lado; escolher outra pede o motivo, que vai junto e fica à vista.
- * Depois, os produtos e as operadoras (os do cliente primeiro, e os outros do catálogo) e as
- * etiquetas, inteiras. ("O que foi afetado" saiu na prévia: "não precisa desse campo", o Luan.)
+ * Depois, os produtos e as operadoras (os do cliente primeiro, e os outros do catálogo), os campos do
+ * painel e as etiquetas, inteiras. ("O que foi afetado" saiu na prévia: "não precisa desse campo", o
+ * Luan.) O que o painel desligou na aba Campos não aparece; os campos que ele criou entram aqui (o
+ * texto longo fica junto do relato).
  *
  * E o cartão do responsável e de quem acompanha o chamado.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Plus, Tags, UserRound, X } from 'lucide-react';
 import {
-  ALCANCES, caminhoDoAssunto, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasUnicas, GRAVIDADES, NOME_ALCANCE, NOME_GRAVIDADE,
-  NOME_PRIORIDADE, paraBusca, PRIORIDADES,
-  type Alcance, type ChamadoAlterarEntrada, type Gravidade, type Prioridade,
+  ALCANCES, caminhoDoAssunto, campoLigado, chaveDoCampo, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasUnicas, GRAVIDADES, MAX_LETRAS_DO_CAMPO,
+  mesmoValorDoCampo, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, paraBusca, PRIORIDADES, textoDoValor,
+  type Alcance, type CampoDoSistema, type CampoPersonalizado, type ChamadoAlterarEntrada, type Gravidade, type Prioridade, type ValorDoCampo,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Chip, EscolherComBusca, Modal, Spinner } from '../../../components/ui/index.js';
@@ -54,6 +56,8 @@ export function Classificacao() {
   const descricaoDoAssunto = f.assunto ? opcoes.assuntos.find((a) => a.id === f.assunto!.id)?.descricao : null;
   const tipos = painel?.ajustes.tipos ?? [];
   const sugerida = f.prioridadeSugerida;
+  /** o painel usa este campo do sistema? (desligado na aba Campos, ele some daqui) */
+  const usa = (c: CampoDoSistema) => !painel || campoLigado(painel.ajustes, c);
 
   const escolherPrioridade = (p: Prioridade | null) => {
     if (p === f.prioridade) return;
@@ -65,7 +69,7 @@ export function Classificacao() {
   return (
     <Secao titulo="Classificação" icone={<Tags size={16} />}>
       <div className="flex flex-col gap-3.5">
-        <Linha id="campo-assunto" campo="assunto" rotulo="Assunto" ocupado={assunto.ocupado} erro={assunto.erro}>
+        {usa('assunto') && <Linha id="campo-assunto" campo="assunto" rotulo="Assunto" ocupado={assunto.ocupado} erro={assunto.erro}>
           {pode ? (
             <EscolherComBusca valor={f.assunto?.id ?? ''} opcoes={assuntos} onChange={(id) => mudar(assunto, { assuntoId: id || null })} vazio="Sem assunto"
               placeholder="Escolha o assunto…" procurar="Procurar assunto (ex.: rota, ramal)…" className="input w-full" largura="w-[420px]" rotulo="Assunto" />
@@ -74,10 +78,10 @@ export function Classificacao() {
           {pode && f.assunto && f.assunto.caminho.length > 32 && <p className="text-[12px] text-ink-2 mt-1 break-words">{f.assunto.caminho}</p>}
           {f.assunto && !f.assunto.ativo && <p className="text-[12px] text-signal mt-1">Este assunto foi desativado nos Ajustes.</p>}
           {descricaoDoAssunto && <p className="text-[12px] text-muted mt-1">{descricaoDoAssunto}</p>}
-          {!assuntos.length && pode && <p className="text-[12px] text-muted mt-1">O painel {painel?.nome} ainda não tem assuntos (Chamados › Ajustes › Assuntos).</p>}
-        </Linha>
+          {!assuntos.length && pode && <p className="text-[12px] text-muted mt-1">O painel {painel?.nome} ainda não tem assuntos (Chamados › Ajustes › Campos).</p>}
+        </Linha>}
 
-        <Linha id="campo-tipo" campo="tipo" rotulo="Tipo" ocupado={tipo.ocupado} erro={tipo.erro}>
+        {usa('tipo') && <Linha id="campo-tipo" campo="tipo" rotulo="Tipo" ocupado={tipo.ocupado} erro={tipo.erro}>
           {pode ? (
             <select className="input" value={f.tipo ?? ''} onChange={(e) => mudar(tipo, { tipo: e.target.value || null })} aria-label="Tipo">
               <option value="">—</option>
@@ -85,10 +89,10 @@ export function Classificacao() {
               {f.tipo && !tipos.includes(f.tipo) && <option value={f.tipo}>{f.tipo} (fora do painel)</option>}
             </select>
           ) : <p className="text-[14px]">{f.tipo ?? <span className="text-muted">—</span>}</p>}
-        </Linha>
+        </Linha>}
 
         {/* a gravidade e o alcance, juntos, sugerem a prioridade (logo embaixo) */}
-        <Linha id="campo-gravidade" campo="gravidade" rotulo="Gravidade" ocupado={grav.ocupado} erro={grav.erro}>
+        {usa('gravidadeAlcance') && <Linha id="campo-gravidade" campo="gravidade" rotulo="Gravidade" ocupado={grav.ocupado} erro={grav.erro}>
           {pode ? (
             <select className="input" value={f.gravidade ?? ''} onChange={(e) => mudar(grav, { gravidade: (e.target.value || null) as Gravidade | null })} aria-label="Gravidade">
               <option value="">—</option>
@@ -96,16 +100,16 @@ export function Classificacao() {
             </select>
           ) : <p className="text-[14px]">{f.gravidade ? NOME_GRAVIDADE[f.gravidade] : <span className="text-muted">—</span>}</p>}
           {f.gravidade && <p className="text-[12px] text-muted mt-1">{DICA_GRAVIDADE[f.gravidade]}</p>}
-        </Linha>
+        </Linha>}
 
-        <Linha id="campo-alcance" campo="alcance" rotulo="Alcance" ocupado={alc.ocupado} erro={alc.erro}>
+        {usa('gravidadeAlcance') && <Linha id="campo-alcance" campo="alcance" rotulo="Alcance" ocupado={alc.ocupado} erro={alc.erro}>
           {pode ? (
             <select className="input" value={f.alcance ?? ''} onChange={(e) => mudar(alc, { alcance: (e.target.value || null) as Alcance | null })} aria-label="Alcance">
               <option value="">—</option>
               {ALCANCES.map((a) => <option key={a} value={a}>{NOME_ALCANCE[a]}</option>)}
             </select>
           ) : <p className="text-[14px]">{f.alcance ? NOME_ALCANCE[f.alcance] : <span className="text-muted">—</span>}</p>}
-        </Linha>
+        </Linha>}
 
         <Linha id="campo-prioridade" campo="prioridade" rotulo="Prioridade" ocupado={prio.ocupado} erro={prio.erro}
           extra={pode && sugerida && f.prioridade !== sugerida && (
@@ -118,17 +122,20 @@ export function Classificacao() {
             </select>
           ) : <p className="text-[14px]">{f.prioridade ? NOME_PRIORIDADE[f.prioridade] : <span className="text-muted">—</span>}</p>}
           {f.prioridade && <p className="text-[12px] text-muted mt-1">{NOME_PRIORIDADE[f.prioridade]}: {DICA_PRIORIDADE[f.prioridade].toLocaleLowerCase('pt-BR')}.</p>}
-          <p className="text-[12px] text-muted mt-0.5">
-            {sugerida
-              ? <>Sugerida: <b className="text-ink-2">{NOME_PRIORIDADE[sugerida]}</b>, pela gravidade e pelo alcance.</>
-              : 'Escolha a gravidade e o alcance para o Gestor sugerir a prioridade.'}
-          </p>
+          {usa('gravidadeAlcance') && (
+            <p className="text-[12px] text-muted mt-0.5">
+              {sugerida
+                ? <>Sugerida: <b className="text-ink-2">{NOME_PRIORIDADE[sugerida]}</b>, pela gravidade e pelo alcance.</>
+                : 'Escolha a gravidade e o alcance para o Gestor sugerir a prioridade.'}
+            </p>
+          )}
           {f.motivoPrioridade && f.prioridade !== sugerida && (
             <p className="text-[12.5px] mt-1 rounded-md bg-surface-2 px-2 py-1"><span className="text-muted">Trocada à mão:</span> {f.motivoPrioridade}</p>
           )}
         </Linha>
 
         <ProdutosEOperadoras />
+        <CamposDoPainel />
         <Etiquetas />
       </div>
       {trocando && <JanelaMotivoPrioridade para={trocando} onFechar={() => setTrocando(null)} />}
@@ -237,7 +244,8 @@ function EscolherVarios({ titulo, grupos, escolhidos, onSalvar, ocupado }: { tit
 }
 
 function ProdutosEOperadoras() {
-  const { f, opcoes, cadastro, pode } = useAberta();
+  const { f, opcoes, cadastro, pode, painel } = useAberta();
+  const usa = (c: CampoDoSistema) => !painel || campoLigado(painel.ajustes, c);
   const prod = useAcao();
   const oper = useAcao();
   const doCliente = new Set(cadastro?.produtos.map((p) => p.id) ?? []);
@@ -253,19 +261,98 @@ function ProdutosEOperadoras() {
   const salvar = (a: ReturnType<typeof useAcao>, d: ChamadoAlterarEntrada) => a.rodar(() => api.atendimento.alterar(f.id, d)).then((r) => r.ok);
   return (
     <>
-      <Linha id="campo-produtos" campo="produto" rotulo="Produtos" ocupado={prod.ocupado} erro={prod.erro}
+      {usa('produtos') && <Linha id="campo-produtos" campo="produto" rotulo="Produtos" ocupado={prod.ocupado} erro={prod.erro}
         extra={pode && <EscolherVarios titulo="Produtos do chamado" grupos={gruposProdutos} escolhidos={f.produtos.map((p) => p.id)} ocupado={prod.ocupado} onSalvar={(ids) => salvar(prod, { produtos: ids })} />}>
         {f.produtos.length ? (
           <div className="flex flex-wrap gap-1">{f.produtos.map((p) => <Chip key={p.id} color={p.cor}>{p.nome}</Chip>)}</div>
         ) : <p className="text-[13px] text-muted">Nenhum.</p>}
-      </Linha>
-      <Linha id="campo-operadoras" campo="operadora" rotulo="Operadoras" ocupado={oper.ocupado} erro={oper.erro}
+      </Linha>}
+      {usa('operadoras') && <Linha id="campo-operadoras" campo="operadora" rotulo="Operadoras" ocupado={oper.ocupado} erro={oper.erro}
         extra={pode && <EscolherVarios titulo="Operadoras do chamado" grupos={gruposOperadoras} escolhidos={f.operadoras.map((o) => o.id)} ocupado={oper.ocupado} onSalvar={(ids) => salvar(oper, { operadoras: ids })} />}>
         {f.operadoras.length ? (
           <div className="flex flex-wrap gap-1">{f.operadoras.map((o) => <Chip key={o.id} tone="neutral">{o.nome}</Chip>)}</div>
         ) : <p className="text-[13px] text-muted">Nenhuma.</p>}
-      </Linha>
+      </Linha>}
     </>
+  );
+}
+
+// =====================================================================
+//  OS CAMPOS DO PAINEL (os que a equipe cria em Ajustes › Campos)
+// =====================================================================
+
+/**
+ * Cada tipo com o seu controle: a lista, o sim/não e a data gravam ao escolher; o texto curto e o
+ * número, ao sair da caixa (ou com Enter; o Esc desfaz). O texto longo fica junto do relato (Textos).
+ */
+function CamposDoPainel() {
+  const { f, opcoes } = useAberta();
+  const campos = opcoes.campos.filter((c) => c.painelId === f.painelId && c.ativo && c.tipo !== 'texto_longo');
+  return <>{campos.map((c) => <CampoNaFicha key={c.id} c={c} />)}</>;
+}
+
+function CampoNaFicha({ c }: { c: CampoPersonalizado }) {
+  const { f, pode } = useAberta();
+  const acao = useAcao();
+  const valor: ValorDoCampo | null = f.campos[c.id] ?? null;
+  const gravar = async (v: ValorDoCampo | null) => {
+    if (mesmoValorDoCampo(valor, v)) return true;
+    return (await acao.rodar(() => api.atendimento.alterar(f.id, { campos: { [c.id]: v } }))).ok;
+  };
+  const opcao = (id: string) => c.opcoes.find((o) => o.id === id);
+  let controle: ReactNode;
+  let extra: ReactNode = null;
+  if (!pode) controle = <p className="text-[14px] break-words">{textoDoValor(c, valor) || <span className="text-muted">—</span>}</p>;
+  else if (c.tipo === 'lista') {
+    const atual = typeof valor === 'string' ? valor : '';
+    const fora = atual && !opcao(atual)?.ativa ? opcao(atual) : undefined;
+    controle = (
+      <select className="input" value={atual} onChange={(e) => void gravar(e.target.value || null)} aria-label={c.nome}>
+        <option value="">—</option>
+        {c.opcoes.filter((o) => o.ativa).map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+        {fora && <option value={fora.id}>{fora.nome} (desativada)</option>}
+      </select>
+    );
+  } else if (c.tipo === 'sim_nao') {
+    controle = (
+      <select className="input" value={valor === true ? 'sim' : valor === false ? 'nao' : ''} aria-label={c.nome}
+        onChange={(e) => void gravar(e.target.value === 'sim' ? true : e.target.value === 'nao' ? false : null)}>
+        <option value="">—</option><option value="sim">Sim</option><option value="nao">Não</option>
+      </select>
+    );
+  } else if (c.tipo === 'data') {
+    controle = <input type="date" className="input" value={typeof valor === 'string' ? valor : ''} aria-label={c.nome} onChange={(e) => void gravar(e.target.value || null)} />;
+  } else if (c.tipo === 'lista_varios') {
+    const marcados = Array.isArray(valor) ? valor : [];
+    const itens = c.opcoes.filter((o) => o.ativa || marcados.includes(o.id)).map((o) => ({ id: o.id, nome: o.ativa ? o.nome : `${o.nome} (desativada)` }));
+    extra = <EscolherVarios titulo={c.nome} grupos={[{ titulo: 'As opções', itens }]} escolhidos={marcados} ocupado={acao.ocupado} onSalvar={(ids) => gravar(ids.length ? ids : null)} />;
+    controle = marcados.length
+      ? <div className="flex flex-wrap gap-1">{marcados.map((id) => <Chip key={id} tone="neutral">{opcao(id)?.nome ?? '(opção que saiu)'}</Chip>)}</div>
+      : <p className="text-[13px] text-muted">Nenhuma.</p>;
+  } else {
+    // o texto curto e o número: a caixa guarda o que está sendo escrito (a chave reinicia quando o valor gravado muda)
+    const inicial = valor === null ? '' : c.tipo === 'numero' && typeof valor === 'number' ? String(valor).replace('.', ',') : String(valor);
+    controle = <CaixaDoCampo key={inicial} inicial={inicial} numero={c.tipo === 'numero'} rotulo={c.nome} onGravar={(t) => void gravar(t.trim() ? t : null)} />;
+  }
+  return (
+    <Linha id={`campo-c-${c.id}`} campo={chaveDoCampo(c.id)} rotulo={c.nome} ocupado={acao.ocupado} erro={acao.erro} extra={pode ? extra : null}>
+      {controle}
+      {c.dica && <p className="text-[12px] text-muted mt-1">{c.dica}</p>}
+    </Linha>
+  );
+}
+
+function CaixaDoCampo({ inicial, numero, rotulo, onGravar }: { inicial: string; numero: boolean; rotulo: string; onGravar: (t: string) => void }) {
+  const [t, setT] = useState(inicial);
+  const enviar = () => { if (t.trim() !== inicial.trim()) onGravar(t); };
+  return (
+    <input className="input" value={t} aria-label={rotulo} maxLength={MAX_LETRAS_DO_CAMPO.texto} inputMode={numero ? 'decimal' : undefined}
+      placeholder={numero ? 'Ex.: 12,5' : undefined} onChange={(e) => setT(e.target.value)} onBlur={enviar}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); enviar(); }
+        // o Esc desfaz o que foi escrito (e não fecha a janela do chamado)
+        else if (e.key === 'Escape' && t !== inicial) { e.preventDefault(); setT(inicial); }
+      }} />
   );
 }
 

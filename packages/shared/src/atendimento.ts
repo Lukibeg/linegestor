@@ -94,8 +94,8 @@ export type EtapaPainel = {
   tipo: TipoEtapa;
   /** N1, N2, N3: mover para um nível acima é escalonar (pede o motivo); para um abaixo, voltar de nível */
   nivel: Nivel | null;
-  /** o que precisa estar preenchido para o chamado entrar aqui */
-  obrigatorios: CampoObrigatorio[];
+  /** o que precisa estar preenchido para o chamado entrar aqui (os campos do sistema e os do painel) */
+  obrigatorios: Obrigatorio[];
   /** quem recebe o aviso quando um chamado chega nesta etapa (a fila do N2, o Desenvolvimento…) */
   avisar: string[];
 };
@@ -108,11 +108,13 @@ export type AjustesDoPainel = {
   /** o Resolvido vira Fechado sozinho depois de N dias úteis sem resposta (nulo = nunca) */
   fecharSozinhoDias: number | null;
   /** o que precisa para abrir */
-  obrigatoriosAoAbrir: CampoObrigatorio[];
+  obrigatoriosAoAbrir: Obrigatorio[];
   /** o pai só resolve e fecha com os filhos fechados (e diz quais faltam) */
   paiEsperaFilhos: boolean;
   /** quem recebe o que vence, o que fica sem dono e o que chega Crítico */
   supervisores: string[];
+  /** os campos do sistema que este painel não usa (um painel sem assuntos, por exemplo) */
+  camposDesligados: CampoDoSistema[];
 };
 
 export type Painel = {
@@ -134,7 +136,7 @@ export type Painel = {
 };
 
 export const AJUSTES_PAINEL_PADRAO: AjustesDoPainel = {
-  tipos: TIPOS_PADRAO, contaPrazo: true, fecharSozinhoDias: 3, obrigatoriosAoAbrir: [], paiEsperaFilhos: true, supervisores: [],
+  tipos: TIPOS_PADRAO, contaPrazo: true, fecharSozinhoDias: 3, obrigatoriosAoAbrir: [], paiEsperaFilhos: true, supervisores: [], camposDesligados: [],
 };
 
 /** Os ajustes guardados podem ser de antes de um campo novo: completa com o padrão. */
@@ -204,6 +206,271 @@ export function movimentoDeNivel(de: Pick<EtapaPainel, 'nivel'> | null | undefin
 }
 
 // =====================================================================
+//  OS CAMPOS DE CADA PAINEL (o pedido do Luan na prévia: "vou ter outros painéis, então nem sempre
+//  vai ser assuntos")
+// =====================================================================
+
+/**
+ * Os campos que já vêm com o módulo e que cada painel liga ou desliga. Desligado, o campo some da
+ * ficha, do Abrir chamado, do cartão e da lista daquele painel e deixa de ser pedido nas regras; o que
+ * já estava preenchido fica guardado (volta se o campo for ligado de novo). O resto do chamado (cliente,
+ * contato, relato, descrição, prioridade, responsável, solução, causa, etiquetas) está em todo painel:
+ * é o próprio chamado.
+ */
+export const CAMPOS_DO_SISTEMA = ['assunto', 'tipo', 'gravidadeAlcance', 'produtos', 'operadoras'] as const;
+export type CampoDoSistema = (typeof CAMPOS_DO_SISTEMA)[number];
+export const NOME_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
+  assunto: 'Assunto', tipo: 'Tipo', gravidadeAlcance: 'Gravidade e alcance', produtos: 'Produtos', operadoras: 'Operadoras',
+};
+export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
+  assunto: 'A árvore de assuntos (até 3 níveis), com a descrição, o checklist e o de-para de cada um.',
+  tipo: '"Que tratativa foi essa?": as opções são deste painel.',
+  gravidadeAlcance: 'Os dois juntos sugerem a prioridade (a matriz de Ajustes › Prazos).',
+  produtos: 'Os do cliente aparecem primeiro; os outros vêm do catálogo.',
+  operadoras: 'As dos circuitos do cliente aparecem primeiro.',
+};
+/** O que deixa de ser pedido quando o campo é desligado. */
+export const OBRIGATORIOS_DO_CAMPO: Record<CampoDoSistema, CampoObrigatorio[]> = {
+  assunto: ['assunto'], tipo: ['tipo'], gravidadeAlcance: ['gravidade', 'alcance'], produtos: ['produto'], operadoras: ['operadora'],
+};
+export const campoLigado = (ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, c: CampoDoSistema) => !ajustes.camposDesligados.includes(c);
+
+/** Os campos que quem cuida dos chamados cria em cada painel. O tipo não muda depois de criado. */
+export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios'] as const;
+export type TipoCampo = (typeof TIPOS_CAMPO)[number];
+export const NOME_TIPO_CAMPO: Record<TipoCampo, string> = {
+  texto: 'Texto curto', texto_longo: 'Texto longo', numero: 'Número', data: 'Data', sim_nao: 'Sim ou não',
+  lista: 'Lista (escolhe uma opção)', lista_varios: 'Lista (escolhe várias)',
+};
+export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
+  texto: 'Uma linha (até 300 letras): um protocolo, uma versão, um número de série.',
+  texto_longo: 'Várias linhas; na ficha, fica junto do relato e da descrição.',
+  numero: 'Só número (aceita vírgula).',
+  data: 'Um dia, como a previsão de entrega.',
+  sim_nao: 'Sim ou não (fica vazio até alguém responder).',
+  lista: 'Uma das opções que você escrever.',
+  lista_varios: 'Uma ou mais das opções que você escrever.',
+};
+export const ehLista = (t: TipoCampo) => t === 'lista' || t === 'lista_varios';
+export const MAX_CAMPOS_DO_PAINEL = 30;
+export const MAX_OPCOES_DO_CAMPO = 50;
+/** Até quantas letras cabem no texto curto e no longo. */
+export const MAX_LETRAS_DO_CAMPO = { texto: 300, texto_longo: 5000 } as const;
+
+export type OpcaoDoCampo = { id: string; nome: string; ativa: boolean };
+export type CampoPersonalizado = {
+  id: string;
+  painelId: string;
+  nome: string;
+  tipo: TipoCampo;
+  /** a explicação que aparece embaixo do campo (na ficha e no Abrir chamado) */
+  dica: string | null;
+  /** as opções, só nas listas (a que sai fica desativada: o chamado que já a tem continua com ela) */
+  opcoes: OpcaoDoCampo[];
+  /** desativado, some da ficha e do Abrir chamado; o que já foi preenchido fica guardado */
+  ativo: boolean;
+  ordem: number;
+};
+/** O valor de um campo no chamado: texto, número, sim/não, a data (AAAA-MM-DD) ou o id das opções. */
+export type ValorDoCampo = string | number | boolean | string[];
+/** Os valores dos campos do painel num chamado, pelo id do campo. */
+export type ValoresDosCampos = Record<string, ValorDoCampo>;
+
+/** Nas regras (o que é obrigatório), o campo do painel aparece como "campo:<id>", ao lado dos do sistema. */
+export type ChaveDeCampo = `campo:${string}`;
+export type Obrigatorio = CampoObrigatorio | ChaveDeCampo;
+export const chaveDoCampo = (id: string): ChaveDeCampo => `campo:${id}`;
+export const idDaChave = (k: string): string | null => (k.startsWith('campo:') ? k.slice(6) : null);
+
+/**
+ * O que pode ser pedido num painel, na ordem da ficha: os campos do sistema que ele usa (sem o assunto,
+ * se o assunto está desligado) e os campos dele que estão ativos.
+ */
+export function obrigatoriosDoPainel(ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, campos: Array<Pick<CampoPersonalizado, 'id' | 'ativo'>>): Obrigatorio[] {
+  const fora = new Set<string>(ajustes.camposDesligados.flatMap((c) => OBRIGATORIOS_DO_CAMPO[c]));
+  return [...CAMPOS_CHAMADO.filter((c) => !fora.has(c)), ...campos.filter((c) => c.ativo).map((c) => chaveDoCampo(c.id))];
+}
+/** Só o que vale no painel, sem repetir e na ordem da ficha (o que não pode ser pedido lá sai). */
+export function limparObrigatorios(xs: readonly string[], validos: readonly Obrigatorio[]): Obrigatorio[] {
+  const pedidos = new Set(xs);
+  return validos.filter((v) => pedidos.has(v));
+}
+/**
+ * O nome que um campo do painel não pode ter: o de um campo que todo chamado já tem (Cliente, Solução…)
+ * ou o de um campo do sistema que o painel usa (com o Assunto desligado, "Assunto" pode ser um campo do
+ * painel). Devolve o nome do campo do sistema que bate, ou nulo.
+ */
+export function nomeDoSistemaIgual(nome: string, ajustes: Pick<AjustesDoPainel, 'camposDesligados'>): string | null {
+  const fora = new Set<string>(ajustes.camposDesligados.flatMap((c) => OBRIGATORIOS_DO_CAMPO[c]));
+  const nomes = [
+    'Título', 'Etiquetas', 'Checklist', 'Tempo gasto', 'Solução de contorno', 'Validação',
+    ...CAMPOS_CHAMADO.filter((c) => !fora.has(c)).map((c) => NOME_CAMPO[c]),
+    ...CAMPOS_DO_SISTEMA.filter((c) => !ajustes.camposDesligados.includes(c)).map((c) => NOME_CAMPO_DO_SISTEMA[c]),
+  ];
+  return nomes.find((n) => paraBusca(n) === paraBusca(nome)) ?? null;
+}
+
+/** O nome de um obrigatório para a tela e as mensagens ("Assunto", "Versão publicada"). */
+export function nomeDoObrigatorio(k: string, campos: ReadonlyArray<Pick<CampoPersonalizado, 'id' | 'nome'>> = []): string {
+  const id = idDaChave(k);
+  if (id) return campos.find((c) => c.id === id)?.nome ?? 'um campo do painel';
+  return NOME_CAMPO[k as keyof typeof NOME_CAMPO] ?? k;
+}
+
+/** Tem valor? (o zero e o "não" contam como respondidos; o texto em branco e a lista vazia, não) */
+export function valorPreenchido(v: unknown): boolean {
+  if (v === null || v === undefined) return false;
+  if (typeof v === 'string') return v.trim().length > 0;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'number') return Number.isFinite(v);
+  return typeof v === 'boolean';
+}
+
+const DATA_ISO = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATA_BR = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+const diaExiste = (a: number, m: number, d: number) => {
+  const x = new Date(Date.UTC(a, m - 1, d));
+  return a >= 1900 && a <= 2200 && x.getUTCFullYear() === a && x.getUTCMonth() === m - 1 && x.getUTCDate() === d;
+};
+const SIM = new Set(['sim', 's', 'true', '1', 'yes', 'y', 'verdadeiro']);
+const NAO = new Set(['nao', 'n', 'false', '0', 'no', 'falso']);
+
+export type ValorConferido = { ok: true; valor: ValorDoCampo | null } | { ok: false; erro: string };
+
+/**
+ * Confere e arruma o valor de um campo (o que vem da tela, do n8n ou do robô): o número com vírgula, a
+ * data em dia/mês/ano, o "sim" escrito, a opção da lista pelo id ou pelo nome. Vazio vale como "tirar o
+ * valor". A opção desativada só fica se o chamado já estava com ela (`atual`).
+ */
+export function normalizarValorDoCampo(campo: Pick<CampoPersonalizado, 'nome' | 'tipo' | 'opcoes'>, v: unknown, atual: ValorDoCampo | null = null): ValorConferido {
+  const erro = (m: string): ValorConferido => ({ ok: false, erro: `${campo.nome}: ${m}` });
+  if (v === null || v === undefined || (typeof v === 'string' && !v.trim()) || (Array.isArray(v) && !v.length)) return { ok: true, valor: null };
+  switch (campo.tipo) {
+    case 'texto':
+    case 'texto_longo': {
+      if (typeof v !== 'string' && typeof v !== 'number') return erro('escreva um texto');
+      const s = String(v).replace(/\r\n?/g, '\n').trim();
+      const max = MAX_LETRAS_DO_CAMPO[campo.tipo];
+      if (s.length > max) return erro(`vai até ${max} letras`);
+      return { ok: true, valor: campo.tipo === 'texto' ? s.replace(/\s*\n\s*/g, ' ') : s };
+    }
+    case 'numero': {
+      let n = Number.NaN;
+      if (typeof v === 'number') n = v;
+      else if (typeof v === 'string') {
+        const s = v.trim().replace(/\s/g, '');
+        // "1.234,5" (do jeito brasileiro) e "1234.5"
+        n = Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s);
+      }
+      if (!Number.isFinite(n) || Math.abs(n) > 1e12) return erro('escreva um número');
+      return { ok: true, valor: n };
+    }
+    case 'data': {
+      if (typeof v !== 'string') return erro('escreva a data (dia/mês/ano)');
+      const s = v.trim();
+      const iso = DATA_ISO.exec(s.slice(0, 10));
+      if (iso && diaExiste(Number(iso[1]), Number(iso[2]), Number(iso[3]))) return { ok: true, valor: `${iso[1]}-${iso[2]}-${iso[3]}` };
+      const br = DATA_BR.exec(s);
+      if (br && diaExiste(Number(br[3]), Number(br[2]), Number(br[1]))) return { ok: true, valor: `${br[3]}-${br[2]!.padStart(2, '0')}-${br[1]!.padStart(2, '0')}` };
+      return erro('escreva a data (dia/mês/ano)');
+    }
+    case 'sim_nao': {
+      if (typeof v === 'boolean') return { ok: true, valor: v };
+      const s = paraBusca(String(v)).trim();
+      if (SIM.has(s)) return { ok: true, valor: true };
+      if (NAO.has(s)) return { ok: true, valor: false };
+      return erro('responda sim ou não');
+    }
+    case 'lista':
+    case 'lista_varios': {
+      const pedidos: unknown[] | null = Array.isArray(v) ? v : typeof v === 'string' ? (campo.tipo === 'lista_varios' ? v.split(/[;\n]/) : [v]) : null;
+      if (!pedidos || pedidos.some((x) => typeof x !== 'string')) return erro('escolha uma das opções');
+      const ja = new Set(Array.isArray(atual) ? atual : typeof atual === 'string' ? [atual] : []);
+      const ids: string[] = [];
+      for (const bruto of pedidos as string[]) {
+        const t = bruto.trim();
+        if (!t) continue;
+        const o = campo.opcoes.find((x) => x.id === t) ?? campo.opcoes.find((x) => paraBusca(x.nome) === paraBusca(t));
+        if (!o || (!o.ativa && !ja.has(o.id))) {
+          const ativas = campo.opcoes.filter((x) => x.ativa).map((x) => x.nome);
+          return erro(`"${t}" não é uma das opções${ativas.length ? ` (${ativas.join(', ')})` : ''}`);
+        }
+        if (!ids.includes(o.id)) ids.push(o.id);
+      }
+      if (!ids.length) return { ok: true, valor: null };
+      if (campo.tipo === 'lista' && ids.length > 1) return erro('escolha uma opção só');
+      return { ok: true, valor: campo.tipo === 'lista' ? ids[0]! : ids };
+    }
+    default:
+      return erro('tipo de campo desconhecido');
+  }
+}
+
+/** O valor como se lê: "Sim", "12/10/2026", "1.234,5", os nomes das opções. Vazio = "". */
+export function textoDoValor(campo: Pick<CampoPersonalizado, 'tipo' | 'opcoes'>, v: ValorDoCampo | null | undefined): string {
+  if (!valorPreenchido(v)) return '';
+  switch (campo.tipo) {
+    case 'numero': return typeof v === 'number' ? v.toLocaleString('pt-BR', { maximumFractionDigits: 6 }) : String(v);
+    case 'data': { const m = DATA_ISO.exec(String(v)); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v); }
+    case 'sim_nao': return v === true ? 'Sim' : v === false ? 'Não' : String(v);
+    case 'lista':
+    case 'lista_varios': {
+      const ids = Array.isArray(v) ? v : [String(v)];
+      return ids.map((id) => campo.opcoes.find((o) => o.id === id)?.nome ?? '(opção que saiu)').join(', ');
+    }
+    default: return String(v);
+  }
+}
+
+/** Os valores dos campos ativos, como se leem (para a busca da lista). */
+export function textosDosCampos(campos: ReadonlyArray<Pick<CampoPersonalizado, 'id' | 'tipo' | 'opcoes' | 'ativo'>>, valores: ValoresDosCampos): string[] {
+  return campos.filter((c) => c.ativo).map((c) => textoDoValor(c, valores[c.id])).filter(Boolean);
+}
+
+/** Os valores que o chamado mostra: só os dos campos ativos do painel dele (o resto fica guardado). */
+export function valoresVisiveis(campos: ReadonlyArray<Pick<CampoPersonalizado, 'id' | 'painelId' | 'ativo'>>, painelId: string, valores: ValoresDosCampos | null | undefined): ValoresDosCampos {
+  const out: ValoresDosCampos = {};
+  for (const c of campos) if (c.painelId === painelId && c.ativo && valorPreenchido(valores?.[c.id])) out[c.id] = valores![c.id]!;
+  return out;
+}
+
+/**
+ * Acha o campo do painel pelo id ou pelo nome (o n8n e o robô podem mandar "Versão publicada" em vez do
+ * id), sem ligar para maiúscula e acento.
+ */
+export function acharCampo<T extends Pick<CampoPersonalizado, 'id' | 'nome'>>(campos: readonly T[], chave: string): T | undefined {
+  const k = chave.trim();
+  return campos.find((c) => c.id === k) ?? campos.find((c) => paraBusca(c.nome) === paraBusca(k));
+}
+
+/** O mesmo valor? (a ordem das opções marcadas não conta) */
+export function mesmoValorDoCampo(a: ValorDoCampo | null | undefined, b: ValorDoCampo | null | undefined): boolean {
+  const norm = (v: ValorDoCampo | null | undefined) => (!valorPreenchido(v) ? null : Array.isArray(v) ? [...v].sort() : v);
+  return JSON.stringify(norm(a)) === JSON.stringify(norm(b));
+}
+
+/**
+ * Os campos que vieram num pedido (abrir ou mudar o chamado), conferidos contra os campos do painel: o
+ * campo existe (pelo id ou pelo nome) e está ativo, e o valor serve (`normalizarValorDoCampo`). O
+ * servidor e a prévia leem igual, com as mesmas mensagens.
+ */
+export function lerCamposDoPedido(
+  doPainel: readonly CampoPersonalizado[], painelNome: string, pedidos: Record<string, unknown>, atuais: ValoresDosCampos = {},
+): { ok: true; itens: Array<{ campo: CampoPersonalizado; valor: ValorDoCampo | null }> } | { ok: false; erro: string } {
+  const itens: Array<{ campo: CampoPersonalizado; valor: ValorDoCampo | null }> = [];
+  for (const [chave, v] of Object.entries(pedidos)) {
+    const c = acharCampo(doPainel, chave);
+    if (!c) return { ok: false, erro: `O painel ${painelNome} não tem o campo "${chave}".` };
+    if (!c.ativo) return { ok: false, erro: `O campo ${c.nome} foi desativado no painel ${painelNome}.` };
+    if (itens.some((i) => i.campo.id === c.id)) return { ok: false, erro: `O campo ${c.nome} veio duas vezes.` };
+    const r = normalizarValorDoCampo(c, v, atuais[c.id] ?? null);
+    if (!r.ok) return { ok: false, erro: r.erro };
+    itens.push({ campo: c, valor: r.valor });
+  }
+  return { ok: true, itens };
+}
+
+// =====================================================================
 //  O CÓDIGO DO CHAMADO E AS REFERÊNCIAS NO TEXTO
 // =====================================================================
 
@@ -250,12 +517,16 @@ export type DadosObrigatorios = {
   solucao: string | null; causa: string | null; validacao: string | null;
   checklist: ItemChecklist[];
   tempoMinutos: number;
+  /** os valores dos campos do painel (pelo id do campo) */
+  campos: ValoresDosCampos;
 };
 
 const preenchido = (v: string | null | undefined) => !!v && v.trim().length > 0;
 
-function falta(c: DadosObrigatorios, campo: CampoObrigatorio): boolean {
-  switch (campo) {
+function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
+  const id = idDaChave(campo);
+  if (id) return !valorPreenchido(c.campos[id]);
+  switch (campo as CampoObrigatorio) {
     case 'cliente': return !c.clienteId;
     case 'contato': return !preenchido(c.contatoNome) && !preenchido(c.contatoTelefone);
     case 'relato': return !preenchido(c.relato);
@@ -281,21 +552,29 @@ function falta(c: DadosObrigatorios, campo: CampoObrigatorio): boolean {
  * O que falta para o chamado entrar na etapa (na ordem da lista de campos). O problema (ITIL) só
  * resolve e fecha com a causa, a solução e a validação, em qualquer painel — o pedido do Eider.
  */
-export function faltaParaEtapa(c: DadosObrigatorios, etapa: Pick<EtapaPainel, 'tipo' | 'obrigatorios'>): Array<CampoObrigatorio | 'validacao'> {
-  const campos = new Set<CampoObrigatorio>(etapa.obrigatorios);
+export function faltaParaEtapa(c: DadosObrigatorios, etapa: Pick<EtapaPainel, 'tipo' | 'obrigatorios'>): Array<Obrigatorio | 'validacao'> {
+  const campos = new Set<Obrigatorio>(etapa.obrigatorios);
   const fechando = etapa.tipo === 'resolvido' || etapa.tipo === 'fechado';
   if (c.tipoChamado === 'problema' && fechando) { campos.add('causa'); campos.add('solucao'); }
-  const faltam: Array<CampoObrigatorio | 'validacao'> = CAMPOS_CHAMADO.filter((k) => campos.has(k) && falta(c, k));
+  // os do sistema na ordem da lista de campos; os do painel na ordem em que a etapa os pede
+  const faltam: Array<Obrigatorio | 'validacao'> = [
+    ...CAMPOS_CHAMADO.filter((k) => campos.has(k) && falta(c, k)),
+    ...[...new Set(etapa.obrigatorios)].filter((k) => idDaChave(k) && falta(c, k)),
+  ];
   if (c.tipoChamado === 'problema' && fechando && !preenchido(c.validacao)) faltam.push('validacao');
   return faltam;
 }
-export function faltaParaAbrir(c: DadosObrigatorios, ajustes: Pick<AjustesDoPainel, 'obrigatoriosAoAbrir'>): CampoObrigatorio[] {
-  return ajustes.obrigatoriosAoAbrir.filter((k) => falta(c, k));
+export function faltaParaAbrir(c: DadosObrigatorios, ajustes: Pick<AjustesDoPainel, 'obrigatoriosAoAbrir'>): Obrigatorio[] {
+  const pedidos = new Set<Obrigatorio>(ajustes.obrigatoriosAoAbrir);
+  return [
+    ...CAMPOS_CHAMADO.filter((k) => pedidos.has(k) && falta(c, k)),
+    ...[...pedidos].filter((k) => idDaChave(k) && falta(c, k)),
+  ];
 }
-/** "Falta o Assunto e a Causa" — a mensagem que aparece ao lado do botão. */
-export function mensagemDoQueFalta(faltam: Array<CampoObrigatorio | 'validacao' | 'filhos'>, etapa?: string): string {
+/** "Falta o Assunto e a Causa" — a mensagem que aparece ao lado do botão (os campos do painel pelo nome). */
+export function mensagemDoQueFalta(faltam: Array<Obrigatorio | 'validacao' | 'filhos'>, etapa?: string, campos: ReadonlyArray<Pick<CampoPersonalizado, 'id' | 'nome'>> = []): string {
   if (!faltam.length) return '';
-  const nomes = faltam.map((f) => NOME_CAMPO[f]);
+  const nomes = faltam.map((f) => nomeDoObrigatorio(f, campos));
   const lista = nomes.length === 1 ? nomes[0]! : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
   return `${etapa ? `Para ir para ${etapa}, falta` : 'Falta'} preencher: ${lista}.`;
 }
@@ -354,22 +633,29 @@ const TelefoneSchema = z.string().trim().max(40).nullish().transform((v, ctx) =>
   return n;
 });
 
+/** Um obrigatório: um campo do sistema ("assunto") ou um campo do painel ("campo:<id>"). */
+const ChaveDeCampoSchema = z.custom<ChaveDeCampo>((v) => typeof v === 'string' && /^campo:[A-Za-z0-9_-]{1,60}$/.test(v), 'Campo inválido');
+export const ObrigatorioSchema = z.union([z.enum(CAMPOS_CHAMADO), ChaveDeCampoSchema]);
+const MAX_OBRIGATORIOS = CAMPOS_CHAMADO.length + MAX_CAMPOS_DO_PAINEL;
+
 export const EtapaGravarSchema = z.object({
   /** sem id = etapa nova */
   id: z.string().min(1).max(60).optional(),
   nome: z.string().trim().min(1, 'Dê um nome à etapa').max(40),
   tipo: z.enum(TIPOS_ETAPA),
   nivel: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullable().default(null),
-  obrigatorios: z.array(z.enum(CAMPOS_CHAMADO)).max(CAMPOS_CHAMADO.length).default([]),
+  obrigatorios: z.array(ObrigatorioSchema).max(MAX_OBRIGATORIOS).default([]),
   avisar: z.array(z.string()).max(50).default([]),
 });
 export const AjustesDoPainelSchema = z.object({
   tipos: z.array(z.string().trim().min(1).max(40)).max(30).default(TIPOS_PADRAO),
   contaPrazo: z.boolean().default(true),
   fecharSozinhoDias: z.number().int().min(1).max(60).nullable().default(3),
-  obrigatoriosAoAbrir: z.array(z.enum(CAMPOS_CHAMADO)).default([]),
+  obrigatoriosAoAbrir: z.array(ObrigatorioSchema).max(MAX_OBRIGATORIOS).default([]),
   paiEsperaFilhos: z.boolean().default(true),
   supervisores: z.array(z.string()).max(30).default([]),
+  /** sem a lista, fica como está (quem liga e desliga é a aba Campos) */
+  camposDesligados: z.array(z.enum(CAMPOS_DO_SISTEMA)).max(CAMPOS_DO_SISTEMA.length).optional(),
 });
 /** Um painel vai até 20 etapas (colunas do quadro). */
 export const MAX_ETAPAS_DO_PAINEL = 20;
@@ -433,6 +719,47 @@ export const AssuntoGravarSchema = z.object({
 });
 export const AssuntosColarSchema = z.object({ texto: Texto(50_000) });
 
+/** Criar ou mudar um campo do painel. Sem `id` na opção = opção nova; a opção que não vier fica desativada. */
+export const CampoGravarSchema = z.object({
+  nome: z.string().trim().min(1, 'Dê um nome ao campo').max(40, 'O nome do campo vai até 40 letras'),
+  tipo: z.enum(TIPOS_CAMPO),
+  dica: TextoOpcional(200),
+  opcoes: z.array(z.object({
+    id: z.string().min(1).max(60).optional(),
+    nome: z.string().trim().min(1, 'Dê um nome à opção').max(60, 'O nome da opção vai até 60 letras'),
+    ativa: z.boolean().default(true),
+  })).max(MAX_OPCOES_DO_CAMPO, `Uma lista vai até ${MAX_OPCOES_DO_CAMPO} opções`).default([]),
+  ativo: z.boolean().default(true),
+  /** o chamado só abre com ele preenchido */
+  obrigatorioAoAbrir: z.boolean().default(false),
+  /** as etapas (ids) em que ele é obrigatório para o chamado entrar */
+  etapas: z.array(z.string().min(1).max(60)).max(MAX_ETAPAS_DO_PAINEL).default([]),
+}).superRefine((c, ctx) => {
+  if (!ehLista(c.tipo)) return;
+  if (!c.opcoes.some((o) => o.ativa)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'A lista precisa de pelo menos uma opção' });
+  const vistas = new Set<string>();
+  for (const o of c.opcoes) {
+    const k = paraBusca(o.nome);
+    if (vistas.has(k)) { ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: `Duas opções com o nome ${o.nome}` }); break; }
+    vistas.add(k);
+  }
+});
+/** Os campos do sistema que o painel usa (desligados) e as opções do Tipo. */
+export const CamposDoSistemaSchema = z.object({
+  desligados: z.array(z.enum(CAMPOS_DO_SISTEMA)).max(CAMPOS_DO_SISTEMA.length).default([]),
+  tipos: z.array(z.string().trim().min(1).max(40)).max(30),
+});
+/** A ordem dos campos do painel (todos os ids, na ordem nova). */
+export const OrdemDosCamposSchema = z.object({ ids: z.array(z.string().min(1).max(60)).max(200) });
+
+/**
+ * Os valores dos campos do painel no pedido: pelo id do campo (ou pelo nome, para o n8n e o robô). Nulo
+ * ou vazio tira o valor. Cada um é conferido contra o campo com `normalizarValorDoCampo`.
+ */
+const ValorEntradaSchema = z.union([z.string().max(MAX_LETRAS_DO_CAMPO.texto_longo + 100), z.number(), z.boolean(), z.array(z.string().max(120)).max(MAX_OPCOES_DO_CAMPO)]);
+const ValoresEntradaSchema = z.record(z.string().trim().min(1).max(60), ValorEntradaSchema.nullable())
+  .refine((r) => Object.keys(r).length <= 60, 'Campos demais no pedido');
+
 export const ChamadoCriarSchema = z.object({
   painelId: z.string().min(1),
   tipoChamado: z.enum(TIPOS_CHAMADO).default('chamado'),
@@ -462,6 +789,8 @@ export const ChamadoCriarSchema = z.object({
   /** manda ao cliente o número do chamado pelo WhatsApp (o atendente escolhe: decisão "cliente", opção b) */
   avisarCliente: z.boolean().default(false),
   origem: z.enum(['manual', 'botao']).default('manual'),
+  /** os campos do painel (pelo id ou pelo nome) */
+  campos: ValoresEntradaSchema.default({}),
 });
 export type ChamadoCriar = z.infer<typeof ChamadoCriarSchema>;
 
@@ -489,6 +818,8 @@ export const ChamadoAlterarSchema = z.object({
   validacao: TextoOpcional(5_000).optional(),
   observadores: z.array(z.string()).max(30).optional(),
   responsavelId: z.string().nullish().transform((v) => v || null).optional(),
+  /** só os campos do painel que vierem (nulo ou vazio tira o valor) */
+  campos: ValoresEntradaSchema.optional(),
 });
 export type ChamadoAlterar = z.infer<typeof ChamadoAlterarSchema>;
 
@@ -680,6 +1011,8 @@ export const EntradaChamadoSchema = z.object({
   assunto: z.string().trim().max(200).optional(),
   prioridade: z.enum(PRIORIDADES).optional(),
   etiquetas: z.array(EtiquetaSchema).max(20).optional(),
+  /** os campos do painel, pelo nome ou pelo id ({"Sistema": "LinePBX"}) */
+  campos: ValoresEntradaSchema.optional(),
 }).refine((e) => !!(e.titulo || e.relato || e.telefone || e.sessaoId), 'Mande pelo menos o título, o relato, o telefone ou a sessão');
 /** O cliente escreveu (o webhook de mensagem recebida, pelo n8n): pode reabrir o Resolvido. */
 export const EntradaMensagemSchema = z.object({
@@ -723,6 +1056,8 @@ export type CartaoChamado = {
   produtos: Array<{ id: string; nome: string; cor: string }>;
   operadoras: Array<{ id: string; nome: string }>;
   etiquetas: string[];
+  /** os campos do painel que têm valor (só os ativos do painel do chamado), pelo id do campo */
+  campos: ValoresDosCampos;
   espera: { tipo: TipoEspera; motivo: string | null; desde: string } | null;
   prazos: { resposta: EstadoPrazo; solucao: EstadoPrazo };
   pai: { id: string; codigo: string } | null;
@@ -797,7 +1132,7 @@ export type FichaChamado = CartaoChamado & {
   operadora: CasoOperadora[];
   trajetoria: PassoTrajetoria[];
   /** etapa (id) → o que falta para entrar nela */
-  faltam: Record<string, Array<CampoObrigatorio | 'validacao'>>;
+  faltam: Record<string, Array<Obrigatorio | 'validacao'>>;
   /** etapa (id) → os filhos que travam (vazio = nada trava) */
   filhosTravam: Record<string, string[]>;
   grafo: GrafoChamado;
@@ -820,6 +1155,8 @@ export type OpcoesAtendimento = {
   paineis: Painel[];
   pessoas: Array<PessoaCurta & { ativo: boolean }>;
   assuntos: Assunto[];
+  /** os campos dos painéis (os desativados também: o chamado antigo pode ter valor neles), na ordem */
+  campos: CampoPersonalizado[];
   produtos: Array<{ id: string; nome: string; cor: string }>;
   operadoras: Array<{ id: string; nome: string }>;
   /** as etiquetas já usadas (para sugerir) */
@@ -1295,15 +1632,26 @@ const dataHora = (iso: string | null) => {
   const d = new Date(Date.parse(iso) - 3 * 3_600_000).toISOString();
   return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)} ${d.slice(11, 16)}`;
 };
-/** O CSV (separado por ponto e vírgula, como o Excel do Brasil abre) com as colunas da lista. */
-export function csvDosChamados(lista: CartaoChamado[], nomes: { painel: (id: string) => string; etapa: (id: string) => string }): string {
-  const cab = ['Código', 'Título', 'Painel', 'Etapa', 'Situação', 'Cliente', 'Contato', 'Telefone', 'Responsável', 'Assunto', 'Tipo', 'Gravidade', 'Alcance', 'Prioridade', 'Etiquetas', 'Esperando', 'Prazo de resposta', 'Prazo de solução', 'Aberto em', 'Resolvido em', 'Fechado em', 'Origem'];
+/**
+ * O CSV (separado por ponto e vírgula, como o Excel do Brasil abre) com as colunas da lista e, no fim,
+ * uma coluna para cada campo ativo dos painéis que estão no arquivo (com o nome do painel, quando há mais
+ * de um painel no arquivo).
+ */
+export function csvDosChamados(lista: CartaoChamado[], nomes: { painel: (id: string) => string; etapa: (id: string) => string }, campos: readonly CampoPersonalizado[] = []): string {
+  const noArquivo = new Set(lista.map((c) => c.painelId));
+  const extras = campos.filter((c) => c.ativo && noArquivo.has(c.painelId));
+  const cab = [
+    'Código', 'Título', 'Painel', 'Etapa', 'Situação', 'Cliente', 'Contato', 'Telefone', 'Responsável', 'Assunto', 'Tipo', 'Gravidade', 'Alcance', 'Prioridade', 'Etiquetas', 'Esperando',
+    'Prazo de resposta', 'Prazo de solução', 'Aberto em', 'Resolvido em', 'Fechado em', 'Origem',
+    ...extras.map((c) => (noArquivo.size > 1 ? `${c.nome} (${nomes.painel(c.painelId)})` : c.nome)),
+  ];
   const linhas = lista.map((c) => [
     c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome, c.contato?.nome, c.contato?.telefone,
     c.responsavel?.nome, c.assunto?.caminho, c.tipo, c.gravidade ? NOME_GRAVIDADE[c.gravidade] : '', c.alcance ? NOME_ALCANCE[c.alcance] : '',
     c.prioridade ? NOME_PRIORIDADE[c.prioridade] : '', c.etiquetas.join(', '), c.espera ? NOME_ESPERA[c.espera.tipo] : '',
     c.prazos.resposta.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.resposta.situacao], c.prazos.solucao.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.solucao.situacao],
     dataHora(c.criadoEm), dataHora(c.resolvidoEm), dataHora(c.fechadoEm), NOME_ORIGEM[c.origem],
+    ...extras.map((x) => (x.painelId === c.painelId ? textoDoValor(x, c.campos?.[x.id]) : '')),
   ].map(celula).join(';'));
   return '﻿' + [cab.join(';'), ...linhas].join('\r\n');
 }
@@ -1352,6 +1700,15 @@ export function lerSugestaoDaIa(
     produtos: [...new Set(lista(o.produtos).map((n) => opcoes.produtos.find((p) => paraBusca(p.nome) === paraBusca(n))?.id).filter((x): x is string => !!x))],
     etiquetas: lista(o.etiquetas).slice(0, 3).map((e) => e.slice(0, 40)),
     resumo: s(o.resumo, 1000),
+  };
+}
+
+/** A sugestão da IA sem o que o painel não usa (o assunto de um painel sem assuntos, por exemplo). */
+export function sugestaoDoQueOPainelUsa<T extends Pick<SugestaoIa, 'assuntoId' | 'tipo' | 'gravidade' | 'alcance' | 'produtos'>>(s: T, ajustes: Pick<AjustesDoPainel, 'camposDesligados'>): T {
+  const usa = (c: CampoDoSistema) => campoLigado(ajustes, c);
+  return {
+    ...s, assuntoId: usa('assunto') ? s.assuntoId : null, tipo: usa('tipo') ? s.tipo : null,
+    gravidade: usa('gravidadeAlcance') ? s.gravidade : null, alcance: usa('gravidadeAlcance') ? s.alcance : null, produtos: usa('produtos') ? s.produtos : [],
   };
 }
 
@@ -1420,3 +1777,5 @@ export type RespostaProntaGravarEntrada = z.input<typeof RespostaProntaGravarSch
 export type AgendadoGravarEntrada = z.input<typeof AgendadoGravarSchema>;
 export type AvisosChamadosEntrada = z.input<typeof AvisosChamadosSchema>;
 export type WebhookGravarEntrada = z.input<typeof WebhookGravarSchema>;
+export type CampoGravarEntrada = z.input<typeof CampoGravarSchema>;
+export type CamposDoSistemaEntrada = z.input<typeof CamposDoSistemaSchema>;

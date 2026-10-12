@@ -328,6 +328,12 @@ export type Api = {
     salvarAssunto(painelId: string, id: string | null, d: T.AssuntoGravarEntrada): Promise<T.Assunto>;
     /** a lista colada vira a árvore de uma vez */
     colarAssuntos(painelId: string, texto: string): Promise<{ criados: number; jaExistiam: number }>;
+    /** os campos do sistema que o painel usa (desligados) e as opções do Tipo */
+    salvarCamposDoSistema(painelId: string, d: T.CamposDoSistemaEntrada): Promise<T.Painel>;
+    /** criar (sem id) ou mudar um campo do painel; obrigatório para abrir e nas etapas escolhidas */
+    salvarCampo(painelId: string, id: string | null, d: T.CampoGravarEntrada): Promise<T.CampoPersonalizado>;
+    /** a ordem dos campos do painel (todos os ids) */
+    ordenarCampos(painelId: string, ids: string[]): Promise<T.CampoPersonalizado[]>;
     ajustesPrazos(): Promise<T.AjustesPrazos>;
     salvarPrazos(a: T.AjustesPrazos): Promise<T.AjustesPrazos>;
     ajustesAvisos(): Promise<T.AvisosChamadosTela>;

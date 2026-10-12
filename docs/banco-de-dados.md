@@ -68,6 +68,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [ticket_panels](#ticket_panels) — Um PAINEL (o Kanban de uma equipe): Suporte, Desenvolvimento, e os que a administração criar (Interno, Administrativo, Comercial…).
 - [ticket_stages](#ticket_stages) — Uma ETAPA (coluna) de um painel, na ordem do quadro.
 - [ticket_subjects](#ticket_subjects) — Um ASSUNTO, em árvore (até 3 níveis), de um painel.
+- [ticket_fields](#ticket_fields) — Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, então nem sempre vai ser assuntos"): os que cada equipe cria além dos do sistema — o "Sistema" e a "Versão publicada" no Desenvolvimento, por exemplo.
 - [tickets](#tickets) — Um CHAMADO.
 - [ticket_events](#ticket_events) — O HISTÓRICO do chamado: cada mudança vira uma linha (etapa, responsável, campo, prioridade, espera, ligação, aviso…), com quem fez e quando.
 - [ticket_notes](#ticket_notes) — Uma ANOTAÇÃO no chamado (o que a equipe registra no meio do caminho).
@@ -1065,6 +1066,23 @@ Um ASSUNTO, em árvore (até 3 níveis), de um painel. Só diz "o quê" (o tipo,
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 
+## ticket_fields
+
+Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, então nem sempre vai ser assuntos"): os que cada equipe cria além dos do sistema — o "Sistema" e a "Versão publicada" no Desenvolvimento, por exemplo. O tipo (texto, texto longo, número, data, sim ou não, lista de uma ou de várias opções) não muda depois de criado. O campo que não serve mais é desativado, nunca apagado: o valor fica no chamado (`tickets.custom_fields`, pelo id do campo).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `panel_id` | texto | — | obrigatório · liga com **ticketPanels** |
+| `name` | texto | — | obrigatório |
+| `kind` | texto | texto | texto_longo | numero | data | sim_nao | lista | lista_varios | obrigatório |
+| `help` | texto | A explicação que aparece embaixo do campo (na ficha e no Abrir chamado) | — |
+| `options` | JSON | As opções das listas: [{id, nome, ativa}] (a que sai fica desativada: o chamado que a tem continua com ela) | obrigatório · padrão: [] |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+
 ## tickets
 
 Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se o chamado passar de painel. O relato é o que o cliente disse; a descrição, o andamento e os dados técnicos; as anotações ficam em `ticket_notes`, e o histórico de tudo em `ticket_events`.
@@ -1096,7 +1114,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `product_ids` | texto | Os produtos envolvidos (ids de `products`) — o cliente pode ter mais de um | obrigatório · padrão: [] · lista |
 | `carrier_ids` | texto | As operadoras envolvidas (ids de `carriers`) — o cliente pode ter mais de uma | obrigatório · padrão: [] · lista |
 | `tags` | texto | — | obrigatório · padrão: [] · lista |
-| `affected` | JSON | O que foi afetado, escolhido do cadastro: [{tipo: circuito|did|aparelho|unidade, id, nome}] | obrigatório · padrão: [] |
+| `custom_fields` | JSON | Os valores dos campos do painel ({id do campo: valor}); o de um campo desativado fica guardado | obrigatório · padrão: {} |
 | `solution` | texto | A solução dada | — |
 | `cause` | texto | A causa (no problema: a causa raiz, ou a justificativa de não ter achado) | — |
 | `workaround` | texto | No problema: a solução de contorno enquanto a causa não é resolvida | — |

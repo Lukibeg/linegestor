@@ -358,3 +358,39 @@ describe('o n8n mexe no chamado', () => {
     expect((await pedido('POST', '/integracao/chamados/SUP-1/anotacoes', { texto: '   ' })).statusCode).toBe(400);
   });
 });
+
+// =====================================================================
+
+describe('os campos de cada painel pela integração', () => {
+  it('o robô abre mesmo sem o que o painel pede para abrir; os campos vêm pelo nome; o painel sem assunto ignora o assunto', async () => {
+    const campo = (await s.post(`/atendimento/paineis/${DEV}/campos`, { nome: 'Sistema', tipo: 'lista', opcoes: [{ nome: 'LinePBX' }, { nome: 'LineChat' }], obrigatorioAoAbrir: true })).json();
+    expect(campo.id).toBeTruthy();
+    const opcoes = (await s.get('/atendimento/opcoes')).json();
+    const dev = opcoes.paineis.find((p: any) => p.id === DEV);
+    await s.put(`/atendimento/paineis/${DEV}/campos-do-sistema`, { desligados: ['assunto'], tipos: dev.ajustes.tipos });
+
+    // na tela, falta o Sistema; pelo robô, o chamado abre (o que faltar é pedido para andar)
+    expect((await s.post('/atendimento/chamados', { painelId: DEV, titulo: 'Botão novo' })).json().error).toBe('Falta preencher: Sistema.');
+    const sem = await doRobo({ painel: 'DEV', titulo: 'Pedido sem sistema', relato: 'Pelo WhatsApp' });
+    expect(sem.statusCode, sem.body).toBe(201);
+
+    const com = await doRobo({ painel: 'DEV', titulo: 'Pedido do robô', relato: 'Pelo WhatsApp', assunto: 'Correção de tela', campos: { sistema: 'linechat' } });
+    expect(com.statusCode, com.body).toBe(201);
+    const f = await ficha(com.json().codigo);
+    const linechat = campo.opcoes.find((o: any) => o.nome === 'LineChat').id;
+    expect(f.campos).toEqual({ [campo.id]: linechat });
+    expect(f.assunto).toBeNull();
+    expect((await doRobo({ painel: 'DEV', titulo: 'Pedido ruim', campos: { Versão: '1.0' } })).json().error).toBe('O painel Desenvolvimento não tem o campo "Versão".');
+
+    // o n8n lê o valor pelo nome e muda pelo nome
+    const lido = (await pedido('GET', `/integracao/chamados/${com.json().codigo}`)).json();
+    expect(lido.camposDoPainel).toEqual([{ id: campo.id, nome: 'Sistema', tipo: 'lista', valor: linechat, texto: 'LineChat' }]);
+    const mudou = await pedido('PATCH', `/integracao/chamados/${com.json().codigo}`, { campos: { Sistema: 'LinePBX' }, assunto: 'Correção de tela' });
+    expect(mudou.statusCode, mudou.body).toBe(200);
+    const depois = await ficha(com.json().codigo);
+    expect(depois.campos[campo.id]).toBe(campo.opcoes.find((o: any) => o.nome === 'LinePBX').id);
+    expect(eventos(depois, 'campo').at(-1)).toMatchObject({ texto: 'mudou Sistema de "LineChat" para "LinePBX"', porNome: 'n8n' });
+    const auditoria = await auditoriaDe(depois.id);
+    expect(auditoria.map((a: any) => a.summary).join('\n')).toContain('Campos do painel');
+  });
+});

@@ -280,7 +280,7 @@ function Formulario({ inicial }: { inicial: AjustesPrazos }) {
       </Cartao>
 
       {/* o botão acompanha a rolagem: a tela é comprida e o erro precisa aparecer perto dele */}
-      <div className="sticky bottom-0 z-10 -mx-4 md:-mx-6 px-4 md:px-6 py-3 bg-bg border-t border-line flex flex-wrap items-center gap-2">
+      <div className="sticky bottom-0 z-10 -mx-4 px-4 py-3 bg-bg border-t border-line flex flex-wrap items-center gap-2">
         <button type="submit" className="btn-primary" id="prazos-salvar" disabled={salvando || !mudou}>{salvando ? <Spinner className="text-white" /> : null} Salvar</button>
         <button type="button" className="btn-ghost" disabled={salvando || !mudou} onClick={desfazer}>Desfazer as mudanças</button>
         <span className={`text-[12.5px] ${erro ? 'text-bad' : mudou ? 'text-signal font-semibold' : salvo ? 'text-ok font-semibold' : 'text-muted'}`} role={erro ? 'alert' : undefined} aria-live="polite" id="prazos-situacao">

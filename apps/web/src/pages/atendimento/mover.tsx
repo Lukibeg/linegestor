@@ -7,7 +7,7 @@
  *  - fechou: a comemoração (confete), que some sozinha e respeita quem pede menos movimento.
  */
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { NOME_CAMPO, movimentoDeNivel, type EtapaPainel, type FichaChamado, type PessoaCurta } from '@gestor/shared';
+import { movimentoDeNivel, nomeDoObrigatorio, type EtapaPainel, type FichaChamado, type PessoaCurta } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
 import { Campo, EscolherComBusca, Modal, Spinner, mensagemErro, useToast } from '../../components/ui/index.js';
@@ -122,13 +122,14 @@ function JanelaEscalonar({ e, pessoas, onFechar, onConfirmar }: { e: Escalonando
 }
 
 function JanelaTravado({ t, onFechar }: { t: Travado; onFechar: () => void }) {
+  const opcoes = useOpcoes();
   return (
     <Modal open onClose={onFechar} titulo={`${t.c.codigo} ainda não pode ir para ${t.para.nome}`}
       rodape={<><button className="btn-secondary" onClick={onFechar}>Entendi</button><LinkDoChamado codigo={t.c.codigo} className="btn-primary" onClick={onFechar}>Abrir o chamado</LinkDoChamado></>}>
       {t.faltam.length > 0 && (
         <div className="mb-3">
           <p className="text-sm text-ink-2 mb-2">Para ir para <b>{t.para.nome}</b>, falta preencher:</p>
-          <ul className="flex flex-wrap gap-1.5">{t.faltam.map((f) => <li key={f} className="chip bg-signal-soft text-signal">{NOME_CAMPO[f as keyof typeof NOME_CAMPO] ?? f}</li>)}</ul>
+          <ul className="flex flex-wrap gap-1.5">{t.faltam.map((f) => <li key={f} className="chip bg-signal-soft text-signal">{nomeDoObrigatorio(f, opcoes.data?.campos)}</li>)}</ul>
         </div>
       )}
       {t.filhos.length > 0 && (

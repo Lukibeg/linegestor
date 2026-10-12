@@ -16,7 +16,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { products, ticketNotes } from '@gestor/db';
 import {
-  caminhoDoAssunto, cortarTexto, emOrdemDeArvore, lerSugestaoDaIa,
+  caminhoDoAssunto, campoLigado, cortarTexto, emOrdemDeArvore, lerSugestaoDaIa, sugestaoDoQueOPainelUsa,
   type Painel, type SugestaoIa,
 } from '@gestor/shared';
 import { BadRequest } from '../../plugins/errors.js';
@@ -48,11 +48,13 @@ function listasDoPainel(painel: Painel, ctx: Contexto, produtos: Array<{ nome: s
   const caminhos = emOrdemDeArvore(ctx.assuntos.filter((a) => a.painelId === painel.id))
     .filter((a) => a.ativo)
     .map((a) => caminhoDoAssunto(a.id, ctx.assuntos));
+  // o que o painel não usa vai como "devolva vazio" (a IA não escolhe o que não existe no painel)
+  const usa = (c: Parameters<typeof campoLigado>[1]) => campoLigado(painel.ajustes, c);
   return [
     `Lista de assuntos do painel ${painel.nome} (escolha um caminho exatamente como está escrito):`,
-    caminhos.length ? caminhos.map((c) => `- ${c}`).join('\n') : '(o painel ainda não tem assuntos: devolva "")',
-    `Opções de tipo: ${painel.ajustes.tipos.length ? painel.ajustes.tipos.join(', ') : '(nenhuma: devolva "")'}`,
-    `Produtos: ${produtos.length ? produtos.map((p) => p.nome).join(', ') : '(nenhum)'}`,
+    !usa('assunto') ? '(este painel não usa assuntos: devolva "")' : caminhos.length ? caminhos.map((c) => `- ${c}`).join('\n') : '(o painel ainda não tem assuntos: devolva "")',
+    `Opções de tipo: ${usa('tipo') && painel.ajustes.tipos.length ? painel.ajustes.tipos.join(', ') : '(nenhuma: devolva "")'}`,
+    `Produtos: ${usa('produtos') && produtos.length ? produtos.map((p) => p.nome).join(', ') : '(nenhum)'}`,
   ].join('\n');
 }
 
@@ -93,5 +95,5 @@ export async function sugestaoDaIa(app: FastifyInstance, ator: Ator, ref: string
     tipos: painel.ajustes.tipos,
     produtos,
   });
-  return { sugestao: { ...lida, fonte, modelo: r.modelo, provedor: r.provedor, custo: r.custo }, chamado: { id: t.id, codigo: t.code } };
+  return { sugestao: { ...sugestaoDoQueOPainelUsa(lida, painel.ajustes), fonte, modelo: r.modelo, provedor: r.provedor, custo: r.custo }, chamado: { id: t.id, codigo: t.code } };
 }

@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Pencil, Play, Plus, Trash2, X } from 'lucide-react';
 import {
-  caminhoDoAssunto, emOrdemDeArvore, FREQUENCIAS, NOME_FREQUENCIA, NOME_PRIORIDADE, NOMES_DOS_DIAS, PRIORIDADES, proximaExecucao, RegraAgendadoSchema, textoDaRegra,
+  caminhoDoAssunto, campoLigado, emOrdemDeArvore, FREQUENCIAS, NOME_FREQUENCIA, NOME_PRIORIDADE, NOMES_DOS_DIAS, PRIORIDADES, proximaExecucao, RegraAgendadoSchema, textoDaRegra,
   type Agendado, type AgendadoGravarEntrada, type OpcoesAtendimento, type Painel, type Prioridade, type RegraAgendado,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -386,10 +386,13 @@ function EditorAgendado({ id, inicial, opcoes, onFechar }: { id: string | null; 
               {pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}{p.ativo ? '' : ' (desativado)'}</option>)}
             </select>
           </Campo>
-          <Campo label="Assunto (opcional)" dica={painel ? `os assuntos do painel ${painel.nome}` : undefined} className="sm:col-span-2 min-w-0">
-            <EscolherComBusca id="agendado-assunto" rotulo="Assunto" className="input w-full" largura="w-[420px]" valor={f.assuntoId} vazio="Sem assunto"
-              placeholder={assuntos.length ? 'Sem assunto' : 'O painel ainda não tem assuntos'} procurar="Procurar o assunto…" opcoes={assuntos} onChange={(v) => mudar({ assuntoId: v })} />
-          </Campo>
+          {/* o painel sem assunto (desligado em Ajustes › Campos) não mostra a escolha */}
+          {(!painel || campoLigado(painel.ajustes, 'assunto')) && (
+            <Campo label="Assunto (opcional)" dica={painel ? `os assuntos do painel ${painel.nome}` : undefined} className="sm:col-span-2 min-w-0">
+              <EscolherComBusca id="agendado-assunto" rotulo="Assunto" className="input w-full" largura="w-[420px]" valor={f.assuntoId} vazio="Sem assunto"
+                placeholder={assuntos.length ? 'Sem assunto' : 'O painel ainda não tem assuntos'} procurar="Procurar o assunto…" opcoes={assuntos} onChange={(v) => mudar({ assuntoId: v })} />
+            </Campo>
+          )}
         </div>
 
         <div className="min-w-0">

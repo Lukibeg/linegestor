@@ -300,8 +300,21 @@ def roteiro(page):
     # a pergunta de fechar sem salvar só aparece com mudança (aqui não houve)
     if page.locator('[role="dialog"]').count():
         page.keyboard.press('Escape'); esperar(page, 400)
-    legenda(page, next(n), 'E o resto dos Ajustes', 'Os assuntos, os prazos, os avisos e o WhatsApp, as respostas prontas, os agendados e a IA.', 600)
-    clicar(page, page.get_by_role('tab', name='Assuntos')); esperar(page, 2000)
+
+    # 11. os campos de cada painel: os do sistema ligam e desligam; os do painel, a equipe cria
+    clicar(page, page.get_by_role('tab', name='Campos')); esperar(page, 1000)
+    clicar(page, page.locator('#campos-painel button', has_text='Desenvolvimento')); esperar(page, 1200)
+    legenda(page, next(n), 'Os campos de cada painel', 'Cada painel liga os campos do sistema que usa e cria os dele: texto, data, lista… obrigatórios para abrir ou numa etapa.', 900)
+    apontar(page, page.locator('li[data-campo-sistema="assunto"] [role="switch"]'), 1800)
+    apontar(page, page.locator('#campos-lista li').first, 1800)
+    clicar(page, page.locator('#campos-novo')); esperar(page, 1200)
+    apontar(page, page.locator('#campo-tipo'), 1600)
+    apontar(page, page.locator('#campo-etapas'), 2000)
+    page.keyboard.press('Escape'); esperar(page, 600)
+    # a pergunta de fechar sem salvar só aparece com mudança (aqui não houve)
+    if page.locator('#campo-nome').count():
+        page.keyboard.press('Escape'); esperar(page, 600)
+    legenda(page, next(n), 'E o resto dos Ajustes', 'Os prazos, os avisos e o WhatsApp, as respostas prontas, os agendados e a IA.', 600)
     clicar(page, page.get_by_role('tab', name='Avisos e WhatsApp')); esperar(page, 2200)
 
 

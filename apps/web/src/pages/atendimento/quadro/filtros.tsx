@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Search, X } from 'lucide-react';
-import { caminhoDoAssunto, type CorPainel, type OpcoesAtendimento } from '@gestor/shared';
+import { caminhoDoAssunto, campoLigado, type CorPainel, type OpcoesAtendimento } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import type { OpcaoBusca } from '../../../components/ui/index.js';
 
@@ -90,9 +90,9 @@ export function nomeDoResponsavel(v: string, pessoas: Array<{ id: string; nome: 
 
 // ---------- o assunto, pelo caminho inteiro ----------
 
-/** "Operadora › Incidente › DID de entrada", de um painel só ou de todos (com o painel na dica). */
+/** "Operadora › Incidente › DID de entrada", de um painel só ou de todos (com o painel na dica); o painel sem assunto fica de fora. */
 export function opcoesDeAssunto(opcoes: OpcoesAtendimento, painelId?: string): OpcaoBusca[] {
-  const paineis = painelId ? opcoes.paineis.filter((p) => p.id === painelId) : opcoes.paineis;
+  const paineis = (painelId ? opcoes.paineis.filter((p) => p.id === painelId) : opcoes.paineis).filter((p) => campoLigado(p.ajustes, 'assunto'));
   return paineis.flatMap((p) => {
     const doPainel = opcoes.assuntos.filter((a) => a.painelId === p.id);
     return doPainel.map((a) => ({

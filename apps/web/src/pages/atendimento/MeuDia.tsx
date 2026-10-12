@@ -67,7 +67,7 @@ export function MeuDia() {
       const painel = painelDe(opcoes.data, f.painelId);
       const proxima = painel ? etapaAoAssumir(painel.etapas, c.etapaId) : null;
       const ficou = proxima && f.etapaId === c.etapaId;
-      if (ficou) toast.push('info', `Você assumiu ${f.codigo}. ${mensagemDoQueFalta(f.faltam[proxima.id] ?? [], proxima.nome)}`.trim());
+      if (ficou) toast.push('info', `Você assumiu ${f.codigo}. ${mensagemDoQueFalta(f.faltam[proxima.id] ?? [], proxima.nome, opcoes.data?.campos)}`.trim());
       else toast.push('ok', `Você assumiu ${f.codigo}${f.etapaId !== c.etapaId ? ` (foi para ${etapaDe(opcoes.data, f.painelId, f.etapaId)?.nome ?? 'a etapa seguinte'})` : ''}.`);
     } catch (e) {
       setErros((x) => ({ ...x, [c.id]: mensagemErro(e) }));

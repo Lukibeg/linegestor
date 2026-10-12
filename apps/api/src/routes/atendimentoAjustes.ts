@@ -1,8 +1,9 @@
 /**
  * Chamados do Gestor (Patch 1.10, decisão 0047): os ajustes do módulo e as integrações.
  *
- *  - Ajustes (quem cuida dos chamados, `tickets.manage`): os painéis, as etapas de cada um, a árvore
- *    de assuntos (e a lista colada), os prazos e os avisos (o WhatsApp dos chamados e o teste).
+ *  - Ajustes (quem cuida dos chamados, `tickets.manage`): os painéis, as etapas de cada um, os campos
+ *    de cada painel (os do sistema ligados ou não, e os criados pela equipe), a árvore de assuntos (e a
+ *    lista colada), os prazos e os avisos (o WhatsApp dos chamados e o teste).
  *  - Integrações (a administração, `admin.manage`): os webhooks, as chaves de API, os sites que podem
  *    abrir o Gestor dentro deles (o menu do LineChat) e o link da conversa.
  *
@@ -13,8 +14,8 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, ChaveCriarSchema, EtapasGravarSchema, LinkConversaSchema,
-  PainelGravarSchema, SitesIframeSchema, WebhookGravarSchema,
+  AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
+  LinkConversaSchema, OrdemDosCamposSchema, PainelGravarSchema, SitesIframeSchema, WebhookGravarSchema,
 } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as ajustes from '../services/atendimento/ajustes.js';
@@ -70,6 +71,46 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   }, async (req) => {
     const r = await ajustes.salvarEtapas(app, atorDaPessoa(req.user!), req.params.id, req.body);
     await app.audit(req, { action: 'update', entityType: 'ticket_panel', entityId: req.params.id, summary: r.resumo, before: r.antes, after: r.depois });
+    return r.valor;
+  });
+
+  // =====================================================================
+  //  OS CAMPOS DE CADA PAINEL
+  // =====================================================================
+
+  app.put('/paineis/:id/campos-do-sistema', {
+    ...cuidar,
+    schema: { tags, summary: 'Ligar e desligar os campos do sistema no painel (assunto, tipo, gravidade e alcance, produtos, operadoras) e as opções do Tipo', params: Id, body: CamposDoSistemaSchema },
+  }, async (req) => {
+    const r = await ajustes.salvarCamposDoSistema(app, req.params.id, req.body);
+    await app.audit(req, { action: 'update', entityType: 'ticket_panel', entityId: req.params.id, summary: r.resumo, before: r.antes, after: r.depois });
+    return r.valor;
+  });
+
+  app.post('/paineis/:id/campos', {
+    ...cuidar,
+    schema: { tags, summary: 'Criar um campo no painel (texto, texto longo, número, data, sim ou não, lista); obrigatório para abrir ou nas etapas escolhidas', params: Id, body: CampoGravarSchema },
+  }, async (req, reply) => {
+    const r = await ajustes.criarCampo(app, req.params.id, req.body);
+    await app.audit(req, { action: 'create', entityType: 'ticket_field', entityId: r.valor.id, summary: r.resumo, after: r.depois });
+    return reply.status(201).send(r.valor);
+  });
+
+  app.put('/campos/:id', {
+    ...cuidar,
+    schema: { tags, summary: 'Mudar um campo do painel (o tipo não muda; desativar = ativo: false; a opção que não vier fica desativada)', params: Id, body: CampoGravarSchema },
+  }, async (req) => {
+    const r = await ajustes.alterarCampo(app, req.params.id, req.body);
+    await app.audit(req, { action: 'update', entityType: 'ticket_field', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
+    return r.valor;
+  });
+
+  app.put('/paineis/:id/campos/ordem', {
+    ...cuidar,
+    schema: { tags, summary: 'A ordem dos campos do painel (todos os ids, na ordem nova)', params: Id, body: OrdemDosCamposSchema },
+  }, async (req) => {
+    const r = await ajustes.ordenarCampos(app, req.params.id, req.body.ids);
+    await app.audit(req, { action: 'update', entityType: 'ticket_panel', entityId: req.params.id, summary: r.resumo });
     return r.valor;
   });
 

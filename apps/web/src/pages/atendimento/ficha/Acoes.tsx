@@ -14,7 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRightLeft, ArrowUpRight, Columns3, Copy, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, MessageCircle, MoreHorizontal, RotateCcw, Sparkles, Trash2, Unlink, UserCheck, Zap,
 } from 'lucide-react';
-import { etapaAoAssumir, movimentoDeNivel, NOME_CAMPO, type RespostaPronta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
+import { etapaAoAssumir, movimentoDeNivel, nomeDoObrigatorio, type RespostaPronta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Confirmar, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
@@ -69,7 +69,7 @@ export function BarraDeAcoes() {
     if (r.ok && etapa?.tipo === 'entrada' && r.r.etapaId === f.etapaId) {
       const alvo = etapaAoAssumir(etapas, f.etapaId);
       const faltam = alvo ? r.r.faltam[alvo.id] ?? [] : [];
-      if (alvo && faltam.length) toast.push('info', `Ficou com você, mas continua em ${etapa.nome}: para ir para ${alvo.nome}, falta ${lista(faltam.map((x) => NOME_CAMPO[x]))}.`);
+      if (alvo && faltam.length) toast.push('info', `Ficou com você, mas continua em ${etapa.nome}: para ir para ${alvo.nome}, falta ${lista(faltam.map((x) => nomeDoObrigatorio(x, opcoes.campos)))}.`);
     }
   };
 
@@ -137,7 +137,7 @@ export function BarraDeAcoes() {
                     onClick={() => { fecharMenu(); void mover.mover(f, e.id); }}
                     dica={atual ? 'o chamado está aqui' : (faltam.length || filhos.length) ? (
                       <span className="text-signal">
-                        {faltam.length > 0 && <>Falta: {lista(faltam.map((x) => NOME_CAMPO[x]))}.</>}
+                        {faltam.length > 0 && <>Falta: {lista(faltam.map((x) => nomeDoObrigatorio(x, opcoes.campos)))}.</>}
                         {faltam.length > 0 && filhos.length > 0 && ' '}
                         {filhos.length > 0 && <>Filhos em aberto: {filhos.join(', ')}.</>}
                       </span>

@@ -2,21 +2,22 @@
  * O chamado aberto na operadora (o protocolo da Algar, da VC1…): cada protocolo com quando foi aberto,
  * o que a operadora prometeu, quando cobrar de novo e o andamento; Cobrar e Fechar registram o que a
  * operadora disse. "Abrir na operadora" registra o protocolo novo e marca "esperando a operadora"
- * sozinho (se não houver outra espera).
+ * sozinho (se não houver outra espera). O painel que não usa operadora (Ajustes › Campos) não mostra a
+ * parte — a não ser que o chamado já tenha um protocolo.
  */
 import { useState } from 'react';
 import { CalendarClock, Check, Megaphone, Plus, RadioTower } from 'lucide-react';
-import type { CasoOperadora } from '@gestor/shared';
+import { campoLigado, type CasoOperadora } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Copiar, Modal, Spinner } from '../../../components/ui/index.js';
 import { ErroPerto, Secao, useAberta, useAcao } from './base.js';
 import { dataCompleta, emQuando } from './Cabecalho.js';
 
 export function Operadora() {
-  const { f, pode } = useAberta();
+  const { f, pode, painel } = useAberta();
   const [abrindo, setAbrindo] = useState(false);
   const [verFechados, setVerFechados] = useState(false);
-  if (!f.operadora.length && !pode) return null;
+  if (!f.operadora.length && (!pode || (painel && !campoLigado(painel.ajustes, 'operadoras')))) return null;
   const abertos = f.operadora.filter((c) => c.situacao === 'aberto');
   const fechados = f.operadora.filter((c) => c.situacao === 'fechado');
   return (

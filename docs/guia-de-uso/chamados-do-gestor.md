@@ -44,6 +44,10 @@ e WhatsApp), o título e o **relato do cliente** — o que ele disse, nas palavr
   chamado da manhã.
 - **Gravidade** e **alcance** sugerem a **prioridade** (pela matriz da tela de Prazos). Trocar a
   sugerida pede o motivo.
+- O formulário mostra **só os campos que o painel usa**: os do sistema que estão ligados nele e, em
+  **"Do painel …"**, os campos que a equipe criou para ele. O que é obrigatório para abrir vem com `*`;
+  faltando, a tela diz o quê. (O robô, os agendados e as integrações abrem mesmo sem eles: quem
+  completa é a equipe, na ficha.)
 - **Avisar o cliente pelo WhatsApp** manda o número do chamado pelo número oficial. Vem desmarcado: o
   atendente decide.
 
@@ -55,9 +59,10 @@ nome), **pelo robô** e **pelos agendados** (seção 5).
 - **Relato do cliente**, **Descrição** (o andamento e os dados técnicos), **Solução** e **Causa**. O
   que a próxima etapa pede e está vazio fica marcado ("falta para ir para Resolvido").
 - Um código citado no texto (SUP-12, ou um card antigo do LineChat como IS-4280) vira link.
-- Do lado: a **empresa** e o **contato**, a **classificação** (assunto, tipo, gravidade, alcance,
-  prioridade, produtos, operadoras, etiquetas), o responsável e
-  quem acompanha, os **prazos**, o caso **na operadora** e o **tempo gasto**.
+- Do lado: a **empresa** e o **contato**, a **classificação** (os campos que o painel usa — assunto,
+  tipo, gravidade, alcance, prioridade, produtos, operadoras —, os campos do próprio painel e as
+  etiquetas), o responsável e quem acompanha, os **prazos**, o caso **na operadora** e o **tempo
+  gasto**. O campo de texto longo do painel (ex.: "Como reproduzir") fica junto do relato.
 - A barra de cima: **Assumir**, **Mover**, **Escalonar** (pede o motivo), **Esperar** o cliente ou a
   operadora (pede o motivo), **Avisar o cliente**, **Resposta pronta**, **Preencher com IA** e **Mais**
   (ligar a outro chamado, criar um filho, definir o pai, ligar a um problema, trocar de painel,
@@ -68,7 +73,8 @@ nome), **pelo robô** e **pelos agendados** (seção 5).
 
 ### As regras de andar
 
-- Cada etapa pode exigir campos (ex.: o Resolvido pede a solução e a causa). Faltando, a tela diz o quê.
+- Cada etapa pode exigir campos, os do sistema e os do painel (ex.: o Resolvido pede a solução e a
+  causa; o Entregue do Desenvolvimento, a versão publicada). Faltando, a tela diz o quê.
 - **Subir ou descer de nível (N1 → N2) pede o motivo.**
 - **O pai não fecha com filho aberto** — os filhos podem estar em outro painel (o Desenvolvimento).
 - **O problema** junta os incidentes de clientes diferentes com a mesma causa e só resolve com a
@@ -82,7 +88,7 @@ nome), **pelo robô** e **pelos agendados** (seção 5).
 | Aba | O que se arruma |
 |---|---|
 | **Painéis e etapas** | Criar e editar os painéis. Tudo de um painel fica numa janela só (**Novo painel** ou **Editar**): o nome, a sigla, a cor e quem vê; **as etapas** (nome, tipo, nível, o que é obrigatório, quem é avisado; arrastar ou as setas mudam a ordem); e as regras. O painel novo começa com Novo, Em andamento, Resolvido e Fechado, ou com as etapas de outro painel ("Começar com as etapas"). **Salvar** grava tudo junto: se uma etapa que sai tem chamados, a janela pergunta para onde eles vão, e até lá nada muda |
-| **Assuntos** | A árvore (até 3 níveis), com descrição ("quando usar"), checklist e de-para. **Nasce em branco**: cole a lista da equipe quando ela fechar (um por linha, no formato "Ramal - Configuração - Identidade") |
+| **Campos** | Os campos **de cada painel** (escolha o painel em cima). **Os do sistema** — assunto, tipo, gravidade e alcance, produtos, operadoras — ligam e desligam em cada painel (o Desenvolvimento, por exemplo, não usa assunto); as opções do **Tipo** se editam aqui. **O Assunto** abre a árvore do painel (até 3 níveis, com descrição, checklist e de-para; **nasce em branco**: cole a lista da equipe, um por linha, no formato "Ramal - Configuração - Identidade"). **Novo campo** cria os do painel: texto curto, texto longo, número, data, sim/não ou lista (escolhe uma ou várias opções), com uma dica, e **obrigatório para abrir** ou **para entrar** nas etapas que você marcar. As setas mudam a ordem. Desligar ou desativar **não apaga**: some da tela e das regras, e o que os chamados já têm volta se o campo voltar. O tipo de um campo não muda depois de criado |
 | **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance |
 | **Avisos e WhatsApp** | Os dois números (o do cliente, oficial, e o da equipe), o número de cada pessoa, quais avisos vão pela tela e pelo WhatsApp, e o teste |
 | **Respostas prontas** | O texto e o que ela faz no chamado (avisa o cliente, move, marca a espera, põe a etiqueta, assume) |
@@ -90,7 +96,7 @@ nome), **pelo robô** e **pelos agendados** (seção 5).
 | **Integrações** | As chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
 | **IA** | O provedor e a chave do **Preencher com IA** (é a mesma IA da Base de conhecimento) |
 
-Painéis, assuntos, prazos, avisos, respostas e agendados: quem **cuida dos chamados**. Integrações e
+Painéis, campos, prazos, avisos, respostas e agendados: quem **cuida dos chamados**. Integrações e
 IA: a **administração**.
 
 ## 5. Ligar com o LineChat e o n8n (Chamados › Ajustes › Integrações)
@@ -103,8 +109,11 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
 2. **O robô abre o chamado**: no robô do LineChat, um bloco de **webhook** que manda para
    `/api/atendimento/entrada/chamado`, com a chave no cabeçalho `Authorization: Bearer <chave>` (ou no
    fim do endereço, `?chave=<chave>`, se o bloco não aceitar cabeçalho). O corpo leva o título, o
-   relato, o telefone, o nome e a sessão (as variáveis do LineChat). A resposta traz o **código** do
-   chamado, para o robô mandar ao cliente. A mesma conversa não abre dois chamados.
+   relato, o telefone, o nome e a sessão (as variáveis do LineChat) e, se quiser, os campos do painel
+   pelo nome (`"campos": {"Sistema": "LinePBX"}`; numa lista, o nome da opção). A resposta traz o
+   **código** do chamado, para o robô mandar ao cliente. A mesma conversa não abre dois chamados. O
+   assunto (ou outro campo do sistema) que o painel não usa é ignorado; um campo que o painel não tem
+   é recusado, e a resposta diz qual.
 3. **O botão "Abrir chamado" na conversa**: nas **ações personalizadas** do LineChat, na conversa, o
    endereço `/atendimento/novo?telefone={{telefone_do_contato}}&nome=…&sessao=…` (a tela mostra
    inteiro). Confira o nome das variáveis no LineChat.

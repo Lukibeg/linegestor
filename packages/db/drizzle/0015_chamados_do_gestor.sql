@@ -56,6 +56,19 @@ CREATE TABLE "ticket_events" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "ticket_fields" (
+	"id" text PRIMARY KEY NOT NULL,
+	"panel_id" text NOT NULL,
+	"name" text NOT NULL,
+	"kind" text NOT NULL,
+	"help" text,
+	"options" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"active" boolean DEFAULT true NOT NULL,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "ticket_links" (
 	"id" text PRIMARY KEY NOT NULL,
 	"from_id" text NOT NULL,
@@ -218,6 +231,7 @@ CREATE TABLE "tickets" (
 	"product_ids" text[] DEFAULT '{}' NOT NULL,
 	"carrier_ids" text[] DEFAULT '{}' NOT NULL,
 	"tags" text[] DEFAULT '{}' NOT NULL,
+	"custom_fields" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"solution" text,
 	"cause" text,
 	"workaround" text,
@@ -249,6 +263,7 @@ ALTER TABLE "ticket_carrier_cases" ADD CONSTRAINT "ticket_carrier_cases_created_
 ALTER TABLE "ticket_contacts" ADD CONSTRAINT "ticket_contacts_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_events" ADD CONSTRAINT "ticket_events_ticket_id_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_events" ADD CONSTRAINT "ticket_events_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ticket_fields" ADD CONSTRAINT "ticket_fields_panel_id_ticket_panels_id_fk" FOREIGN KEY ("panel_id") REFERENCES "public"."ticket_panels"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_links" ADD CONSTRAINT "ticket_links_from_id_tickets_id_fk" FOREIGN KEY ("from_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_links" ADD CONSTRAINT "ticket_links_to_id_tickets_id_fk" FOREIGN KEY ("to_id") REFERENCES "public"."tickets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_links" ADD CONSTRAINT "ticket_links_created_by_id_users_id_fk" FOREIGN KEY ("created_by_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -283,6 +298,7 @@ CREATE INDEX "ticket_attachments_ticket_idx" ON "ticket_attachments" USING btree
 CREATE INDEX "ticket_carrier_ticket_idx" ON "ticket_carrier_cases" USING btree ("ticket_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "ticket_contacts_phone_uq" ON "ticket_contacts" USING btree ("phone");--> statement-breakpoint
 CREATE INDEX "ticket_events_ticket_idx" ON "ticket_events" USING btree ("ticket_id","created_at");--> statement-breakpoint
+CREATE INDEX "ticket_fields_panel_idx" ON "ticket_fields" USING btree ("panel_id");--> statement-breakpoint
 CREATE INDEX "ticket_links_from_idx" ON "ticket_links" USING btree ("from_id");--> statement-breakpoint
 CREATE INDEX "ticket_links_to_idx" ON "ticket_links" USING btree ("to_id");--> statement-breakpoint
 CREATE INDEX "ticket_notes_ticket_idx" ON "ticket_notes" USING btree ("ticket_id");--> statement-breakpoint

@@ -25,19 +25,20 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  caminhoDoAssunto, codigoDoChamado, diaLocal, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir,
-  faltaParaEtapa, filhosQueTravam, mensagemDoQueFalta, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE,
-  NOME_LIGACAO, numeroWhatsApp, paraBusca, preencherModelo, prioridadeSugerida, situacaoDaEtapa,
-  type Alcance, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
+  caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, diaLocal, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas,
+  faltaParaAbrir, faltaParaEtapa, filhosQueTravam, lerCamposDoPedido, mensagemDoQueFalta, mesmoValorDoCampo, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO,
+  NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, preencherModelo, prioridadeSugerida, situacaoDaEtapa, textoDoValor,
+  type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
+  type ValoresDosCampos,
 } from '@gestor/shared';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
 import { lerConteudo } from '../projects.js';
 import { tipoDaImagem } from '../portal.js';
 import { avisarEquipe } from './avisos.js';
 import {
-  carregarContexto, chamadoVisivel, esperaAberta, exigirTrabalhar, integracaoDoAtor, pessoaCurta, pessoaDoAtor, podeCuidar, podeVerPainel, registrarEvento,
-  tocar, type Ator, type Contexto, type LinhaChamado,
+  camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, exigirTrabalhar, integracaoDoAtor, pessoaCurta, pessoaDoAtor, podeCuidar, podeVerPainel,
+  registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
 } from './contexto.js';
 import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, lerAcao, minutosGastos } from './leitura.js';
 import { emitir } from './webhooks.js';
@@ -149,6 +150,13 @@ async function outroChamado(db: Db, ref: string, ator: Ator, ctx: Contexto): Pro
 }
 const itemNovo = (texto: string, doAssunto: boolean): ItemChecklist => ({ id: newId(), texto, feito: false, porId: null, em: null, doAssunto });
 
+/** Os campos do painel que vieram no pedido, conferidos (as mesmas mensagens da prévia). */
+function lerCampos(ctx: Contexto, painel: Painel, pedidos: Record<string, unknown>, atuais: ValoresDosCampos = {}) {
+  const r = lerCamposDoPedido(camposDoPainel(ctx, painel.id), painel.nome, pedidos, atuais);
+  if (!r.ok) throw new BadRequest(r.erro);
+  return r.itens;
+}
+
 /** O Gestor aprende de quem é o telefone (o próximo chamado desse WhatsApp já vem com o cliente). */
 async function aprenderTelefone(db: Db, telefone: string | null, clienteId: string | null, nome: string | null, agora: Date) {
   const fone = numeroWhatsApp(telefone);
@@ -212,26 +220,36 @@ export async function criarChamado(
     }
   }
 
+  // os campos do sistema que o painel desligou: o que vier para eles fica de fora (o robô, o n8n e o
+  // agendado não travam por isso); os campos do painel são conferidos um a um
+  const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
   // o assunto (do mesmo painel, ativo) traz o checklist dele; o tipo é uma opção do painel
-  const assunto = d.assuntoId ? conferirAssunto(ctx, d.assuntoId, painel) : null;
-  const tipo = conferirTipo(d.tipo, painel);
+  const assunto = d.assuntoId && usa('assunto') ? conferirAssunto(ctx, d.assuntoId, painel) : null;
+  const tipo = usa('tipo') ? conferirTipo(d.tipo, painel) : null;
+  const gravidade = usa('gravidadeAlcance') ? d.gravidade ?? null : null;
+  const alcance = usa('gravidadeAlcance') ? d.alcance ?? null : null;
   const checklist = [...(assunto?.checklist ?? []).map((x) => itemNovo(x, true)), ...(opts.checklistExtra ?? []).map((x) => itemNovo(x, false))];
+  const campos: ValoresDosCampos = {};
+  for (const i of lerCampos(ctx, painel, d.campos ?? {})) if (i.valor !== null) campos[i.campo.id] = i.valor;
 
   // 4. a prioridade: sem escolha, a sugerida (gravidade × alcance); trocar a sugerida pede o motivo
-  const sugerida = prioridadeSugerida(d.gravidade, d.alcance, ctx.prazos.matriz);
+  const sugerida = prioridadeSugerida(gravidade, alcance, ctx.prazos.matriz);
   const prioridade = d.prioridade ?? sugerida;
-  const produtos = unicos(d.produtos ?? []);
-  const operadoras = unicos(d.operadoras ?? []);
+  const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
+  const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
 
   // 3. o que o painel pede para abrir
   const dados: DadosObrigatorios = {
     tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
-    assuntoId: assunto?.id ?? null, tipo, gravidade: d.gravidade ?? null, alcance: d.alcance ?? null, prioridade,
+    assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
     produtos, operadoras, responsavelId: d.responsavelId ?? null,
-    solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0,
+    solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos,
   };
-  const faltam = faltaParaAbrir(dados, painel.ajustes);
-  if (faltam.length) throw new BadRequest(mensagemDoQueFalta(faltam), { faltam });
+  // o que o painel pede para abrir vale para quem abre na tela (e pelo botão da conversa); o robô e o
+  // agendado abrem sempre — o pedido do cliente não se perde por falta de um campo, e o que faltar é
+  // pedido para o chamado andar de etapa
+  const faltam = origem === 'manual' || origem === 'botao' ? faltaParaAbrir(dados, painel.ajustes) : [];
+  if (faltam.length) throw new BadRequest(mensagemDoQueFalta(faltam, undefined, ctx.campos), { faltam });
   if (d.prioridade && sugerida && d.prioridade !== sugerida && !d.motivoPrioridade) throw new BadRequest('Trocar a prioridade sugerida pede o motivo.');
 
   // 5. o que foi citado existe
@@ -265,8 +283,8 @@ export async function criarChamado(
       id, panelId: painel.id, stageId: etapa.id, number: numero, code: codigo, kind: tipoChamado, title: d.titulo,
       customerReport: dados.relato, description: dados.descricao, clientId: clienteId, contactName: contatoNome, contactPhone: telefone,
       sessionId: d.sessaoId ?? null, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
-      severity: d.gravidade ?? null, reach: d.alcance ?? null, priority: prioridade, priorityReason: motivoPrioridade,
-      productIds: produtos, carrierIds: operadoras, tags: etiquetasUnicas(d.etiquetas ?? []),
+      severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
+      productIds: produtos, carrierIds: operadoras, tags: etiquetasUnicas(d.etiquetas ?? []), customFields: campos,
       parentId: pai?.id ?? null, problemId: problema?.id ?? null, checklist,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       firstResponseAt: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? agora : null,
@@ -319,11 +337,19 @@ export async function criarChamado(
  * Muda só os campos que vieram. Cada campo que mudou vira uma linha do histórico com os nomes que a
  * pessoa vê na tela (o texto longo diz só "editou a Solução": o texto está no chamado).
  */
-export async function alterar(app: FastifyInstance, ator: Ator, ref: string, d: ChamadoAlterar): Promise<Feito> {
+export async function alterar(app: FastifyInstance, ator: Ator, ref: string, pedido: ChamadoAlterar): Promise<Feito> {
   exigirTrabalhar(ator);
   const db = app.db;
   const e = await carregar(app, ator, ref);
   const { ctx, t, painel, agora } = e;
+  // o que vier para um campo que o painel desligou fica de fora (o n8n pode mandar o assunto para qualquer painel)
+  const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
+  const d: ChamadoAlterar = {
+    ...pedido,
+    ...(usa('assunto') ? {} : { assuntoId: undefined }), ...(usa('tipo') ? {} : { tipo: undefined }),
+    ...(usa('gravidadeAlcance') ? {} : { gravidade: undefined, alcance: undefined }),
+    ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
+  };
   const set: SetChamado = {};
   const antes: Record<string, unknown> = {};
   const eventos: Array<[TipoEvento, Record<string, unknown>]> = [];
@@ -374,9 +400,10 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, d: 
     if (novo !== t.type) { set.type = novo; campo('tipo', NOME_CAMPO.tipo, t.type, novo, t.type); }
   }
 
-  // a gravidade, o alcance e a prioridade (que pode seguir a sugestão)
-  const g0 = (t.severity as Gravidade | null) ?? null;
-  const a0 = (t.reach as Alcance | null) ?? null;
+  // a gravidade, o alcance e a prioridade (que pode seguir a sugestão); sem a gravidade e o alcance no
+  // painel, não há sugestão (o que ficou guardado de antes não conta)
+  const g0 = usa('gravidadeAlcance') ? (t.severity as Gravidade | null) ?? null : null;
+  const a0 = usa('gravidadeAlcance') ? (t.reach as Alcance | null) ?? null : null;
   const p0 = (t.priority as Prioridade | null) ?? null;
   const g1 = d.gravidade !== undefined ? d.gravidade : g0;
   const a1 = d.alcance !== undefined ? d.alcance : a0;
@@ -421,6 +448,22 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, d: 
       set.carrierIds = novas;
       campo('operadoras', NOME_CAMPO.operadora, nomesOperadoras(ctx, t.carrierIds), nomesOperadoras(ctx, novas), t.carrierIds);
     }
+  }
+
+  // os campos do painel: cada um que mudou vira uma linha do histórico (o texto longo diz só que mudou)
+  if (d.campos !== undefined) {
+    const atuais = (t.customFields as ValoresDosCampos | null) ?? {};
+    const novos: ValoresDosCampos = { ...atuais };
+    let mexeu = false;
+    for (const { campo: c, valor } of lerCampos(ctx, painel, d.campos, atuais)) {
+      const antes = atuais[c.id] ?? null;
+      if (mesmoValorDoCampo(antes, valor)) continue;
+      mexeu = true;
+      if (valor === null) delete novos[c.id]; else novos[c.id] = valor;
+      if (c.tipo === 'texto_longo') longo(chaveDoCampo(c.id), c.nome, antes);
+      else campo(chaveDoCampo(c.id), c.nome, textoDoValor(c, antes) || null, textoDoValor(c, valor) || null, antes);
+    }
+    if (mexeu) set.customFields = novos;
   }
 
   // os textos longos: o histórico diz só que mudou (o texto está no chamado; a auditoria guarda o de antes)
@@ -502,7 +545,7 @@ async function conferirMovimento(
   const painel = o.painel ?? e.painel;
   const dados = { ...dadosDaLinha(e.t, await minutosGastos(db, e.t.id)), ...(o.responsavelId !== undefined ? { responsavelId: o.responsavelId } : {}) };
   const faltam = faltaParaEtapa(dados, para);
-  if (faltam.length) throw new BadRequest(mensagemDoQueFalta(faltam, para.nome), { faltam });
+  if (faltam.length) throw new BadRequest(mensagemDoQueFalta(faltam, para.nome, e.ctx.campos), { faltam });
   const travam = filhosQueTravam(await filhosDoChamado(db, e.ctx, e.t.id), para, painel.ajustes.paiEsperaFilhos);
   if (travam.length) throw new BadRequest(`O ${e.t.code} tem filhos em aberto: ${travam.join(', ')}. Feche os filhos antes.`, { filhos: travam });
   if (!o.nivel) return null;

@@ -19,14 +19,14 @@ import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { ticketApiKeys, ticketStages, tickets, type Db } from '@gestor/db';
 import {
-  caminhoDoAssunto, ChamadoCriarSchema, EntradaChamadoSchema, EntradaMensagemSchema, etapaAoReabrir, IntegracaoAlterarSchema, NOME_CAMPO,
-  numeroWhatsApp, pareceAgradecimento, paraBusca, situacaoDaEtapa,
-  type Assunto, type CartaoChamado, type ChamadoAlterar, type Painel, type SituacaoDoChamado,
+  caminhoDoAssunto, campoLigado, ChamadoCriarSchema, EntradaChamadoSchema, EntradaMensagemSchema, etapaAoReabrir, IntegracaoAlterarSchema, NOME_CAMPO,
+  numeroWhatsApp, pareceAgradecimento, paraBusca, situacaoDaEtapa, textoDoValor,
+  type Assunto, type CartaoChamado, type ChamadoAlterar, type Painel, type SituacaoDoChamado, type TipoCampo, type ValorDoCampo,
 } from '@gestor/shared';
 import { BadRequest, Unauthorized } from '../../plugins/errors.js';
 import { avisarEquipe, linkDoChamado } from './avisos.js';
 import { alterarChamado, anotarChamado, criarChamado, moverChamado, reabrirChamado } from './chamados.js';
-import { carregarContexto, carregarPaineis, cartoesDe, chamadoOu404, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
+import { camposDoPainel, carregarContexto, carregarPaineis, cartoesDe, chamadoOu404, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
 
 export type EntradaChamado = z.infer<typeof EntradaChamadoSchema>;
 export type EntradaMensagem = z.infer<typeof EntradaMensagemSchema>;
@@ -71,6 +71,8 @@ export type ChamadoParaIntegracao = CartaoChamado & {
   relato: string | null;
   descricao: string | null;
   solucao: string | null;
+  /** os campos do painel com valor, pelo nome (o `campos` do cartão vem pelo id do campo e da opção) */
+  camposDoPainel: Array<{ id: string; nome: string; tipo: TipoCampo; valor: ValorDoCampo; texto: string }>;
   /** o endereço do chamado no Gestor (o robô pode mandar ao cliente, o n8n pode pôr no aviso) */
   link: string;
 };
@@ -85,6 +87,8 @@ export async function paraIntegracao(app: FastifyInstance, t: LinhaChamado, ctx?
     painel: painel ? { id: painel.id, nome: painel.nome, sigla: painel.sigla } : null,
     etapa: etapa ? { id: etapa.id, nome: etapa.nome, tipo: etapa.tipo, nivel: etapa.nivel } : null,
     relato: t.customerReport, descricao: t.description, solucao: t.solution,
+    camposDoPainel: camposDoPainel(c, t.panelId, true).filter((x) => cartao.campos[x.id] !== undefined)
+      .map((x) => ({ id: x.id, nome: x.nome, tipo: x.tipo, valor: cartao.campos[x.id]!, texto: textoDoValor(x, cartao.campos[x.id]) })),
     link: linkDoChamado(app, t.code),
   };
 }
@@ -181,10 +185,11 @@ async function abrirAgora(app: FastifyInstance, ator: Ator, e: EntradaChamado): 
 
   const titulo = e.titulo && e.titulo.trim().length >= 3 ? e.titulo.trim()
     : e.nome?.trim() ? `Atendimento de ${e.nome.trim()}` : 'Chamado pelo WhatsApp';
-  const assuntoId = e.assunto ? acharAssunto((await carregarContexto(app.db)).assuntos, painel, e.assunto).id : null;
+  // o painel sem assunto (a aba Campos desligou) ignora o assunto que vier
+  const assuntoId = e.assunto && campoLigado(painel.ajustes, 'assunto') ? acharAssunto((await carregarContexto(app.db)).assuntos, painel, e.assunto).id : null;
   const lido = ChamadoCriarSchema.safeParse({
     painelId: painel.id, titulo, relato: e.relato, contatoNome: e.nome, contatoTelefone: e.telefone, sessaoId: e.sessaoId,
-    clienteId: e.clienteId, assuntoId, prioridade: e.prioridade, etiquetas: e.etiquetas ?? [],
+    clienteId: e.clienteId, assuntoId, prioridade: e.prioridade, etiquetas: e.etiquetas ?? [], campos: e.campos ?? {},
   });
   if (!lido.success) throw new BadRequest(lido.error.issues[0]?.message ?? 'Dados inválidos', { campos: lido.error.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message })) });
   const r = await criarChamado(app, ator, lido.data, { origem: 'robo' });
@@ -266,7 +271,7 @@ const CAMPOS_NA_AUDITORIA: Array<[keyof LinhaChamado, string]> = [
   ['severity', NOME_CAMPO.gravidade], ['reach', NOME_CAMPO.alcance], ['priority', NOME_CAMPO.prioridade], ['priorityReason', 'Motivo da prioridade'],
   ['productIds', NOME_CAMPO.produto], ['carrierIds', NOME_CAMPO.operadora], ['tags', 'Etiquetas'],
   ['solution', NOME_CAMPO.solucao], ['cause', NOME_CAMPO.causa], ['workaround', 'Solução de contorno'], ['validation', NOME_CAMPO.validacao],
-  ['watcherIds', 'Observadores'], ['assigneeId', NOME_CAMPO.responsavel],
+  ['watcherIds', 'Observadores'], ['assigneeId', NOME_CAMPO.responsavel], ['customFields', 'Campos do painel'],
 ];
 
 /** O que mudou entre duas leituras do chamado (para a auditoria dizer o quê, com o antes e o depois). */
@@ -295,7 +300,8 @@ export async function alterarPelaIntegracao(app: FastifyInstance, ator: Ator, re
     const ctx = await carregarContexto(app.db);
     const painel = ctx.paineis.find((p) => p.id === antes.panelId);
     if (!painel) throw new BadRequest('O painel deste chamado não existe mais.');
-    dados.assuntoId = assunto ? acharAssunto(ctx.assuntos, painel, assunto).id : null;
+    // o painel sem assunto ignora o assunto que vier (o n8n pode mandar para qualquer painel)
+    if (campoLigado(painel.ajustes, 'assunto')) dados.assuntoId = assunto ? acharAssunto(ctx.assuntos, painel, assunto).id : null;
   }
   await alterarChamado(app, ator, antes.id, dados);
   return { antes, depois: await chamadoOu404(app.db, antes.id) };

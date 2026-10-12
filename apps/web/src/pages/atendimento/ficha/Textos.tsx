@@ -5,11 +5,12 @@
  *
  * Cada um se edita no lugar (Editar abre a caixa; Salvar grava). Os códigos citados no texto viram
  * link (SUP-3 abre a ficha; IS-4280 abre o card antigo no LineChat). O que a próxima etapa pede e
- * está vazio fica destacado, e o aviso em cima diz tudo o que falta.
+ * está vazio fica destacado, e o aviso em cima diz tudo o que falta. Os campos de texto longo que o
+ * painel criou (Ajustes › Campos) entram aqui, depois dos do chamado.
  */
 import { useState } from 'react';
 import { CircleAlert, Pencil } from 'lucide-react';
-import { NOME_CAMPO, type ChamadoAlterarEntrada } from '@gestor/shared';
+import { chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
 import { ErroPerto, MarcaFalta, TextoComReferencias, useAberta, useAcao } from './base.js';
@@ -41,7 +42,9 @@ export const ALVO_DO_CAMPO: Record<string, string> = {
 };
 
 export function irParaOCampo(campo: string) {
-  const el = document.getElementById(ALVO_DO_CAMPO[campo] ?? '');
+  // o campo do painel ("campo:<id>") mora em "campo-c-<id>"
+  const id = idDaChave(campo);
+  const el = document.getElementById(id ? `campo-c-${id}` : ALVO_DO_CAMPO[campo] ?? '');
   if (!el) return;
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   el.classList.add('ring-2', 'ring-signal');
@@ -53,7 +56,7 @@ export function irParaOCampo(campo: string) {
  * aberto que travam a próxima etapa aparecem junto.
  */
 export function AvisoDoQueFalta() {
-  const { f, pode, proxima } = useAberta();
+  const { f, opcoes, pode, proxima } = useAberta();
   if (!pode || !proxima) return null;
   const faltam = f.faltam[proxima.id] ?? [];
   const filhos = f.filhosTravam[proxima.id] ?? [];
@@ -68,7 +71,7 @@ export function AvisoDoQueFalta() {
             {faltam.map((x, i) => (
               <span key={x}>
                 {i > 0 && (i === faltam.length - 1 ? ' e ' : ', ')}
-                <button type="button" className="font-semibold underline decoration-dotted underline-offset-2 hover:text-signal" onClick={() => irParaOCampo(x)}>{NOME_CAMPO[x]}</button>
+                <button type="button" className="font-semibold underline decoration-dotted underline-offset-2 hover:text-signal" onClick={() => irParaOCampo(x)}>{nomeDoObrigatorio(x, opcoes.campos)}</button>
               </span>
             ))}.
           </p>
@@ -80,49 +83,74 @@ export function AvisoDoQueFalta() {
 }
 
 export function Textos() {
-  const { f } = useAberta();
+  const { f, opcoes } = useAberta();
   const blocos = f.tipoChamado === 'problema' ? DO_PROBLEMA : DO_CHAMADO;
+  // os campos de texto longo do painel (os ativos), na ordem dos Ajustes
+  const longos = opcoes.campos.filter((c) => c.painelId === f.painelId && c.ativo && c.tipo === 'texto_longo');
   return (
     <section className="card p-4 flex flex-col divide-y divide-line min-w-0" aria-label="Os textos do chamado">
       {blocos.map((b) => <BlocoDeTexto key={b.campo} b={b} />)}
+      {longos.map((c) => <BlocoDoCampo key={c.id} c={c} />)}
     </section>
   );
 }
 
 function BlocoDeTexto({ b }: { b: Bloco }) {
+  const { f } = useAberta();
+  return (
+    <TextoEditavel id={`campo-${b.campo}`} chave={b.campo} titulo={b.titulo} dica={b.dica} max={b.max} exemplo={b.exemplo} valor={f[b.campo] ?? ''}
+      dados={(texto) => ({ [b.campo]: texto.trim() ? texto : null }) as ChamadoAlterarEntrada} />
+  );
+}
+
+/** Um campo de texto longo do painel (a "Passos para reproduzir" do Desenvolvimento, por exemplo). */
+function BlocoDoCampo({ c }: { c: CampoPersonalizado }) {
+  const { f } = useAberta();
+  const v = f.campos[c.id];
+  return (
+    <TextoEditavel id={`campo-c-${c.id}`} chave={chaveDoCampo(c.id)} titulo={c.nome} dica={c.dica ?? ''} max={MAX_LETRAS_DO_CAMPO.texto_longo} exemplo=""
+      valor={typeof v === 'string' ? v : ''} dados={(texto) => ({ campos: { [c.id]: texto.trim() ? texto : null } })} />
+  );
+}
+
+function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados }: {
+  id: string;
+  /** a chave do que falta ("solucao", "campo:<id>") */
+  chave: string;
+  titulo: string; dica: string; max: number; exemplo: string; valor: string;
+  dados: (texto: string) => ChamadoAlterarEntrada;
+}) {
   const { f, pode, faltando } = useAberta();
-  const valor = f[b.campo] ?? '';
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState('');
   const acao = useAcao();
-  const falta = faltando.has(b.campo);
+  const falta = faltando.has(chave);
 
   const abrir = () => { setTexto(valor); acao.limpar(); setEditando(true); };
   const desistir = () => { setEditando(false); acao.limpar(); };
   const salvar = async () => {
     if (texto.trim() === valor.trim()) { desistir(); return; }
-    const d = { [b.campo]: texto.trim() ? texto : null } as ChamadoAlterarEntrada;
-    const r = await acao.rodar(() => api.atendimento.alterar(f.id, d), `${b.titulo}: salvo`);
+    const r = await acao.rodar(() => api.atendimento.alterar(f.id, dados(texto)), `${titulo}: salvo`);
     if (r.ok) setEditando(false);
   };
   const linhas = Math.min(18, Math.max(4, texto.split('\n').length + 1));
 
   return (
-    <div id={`campo-${b.campo}`} className="py-3.5 first:pt-0 last:pb-0 min-w-0 rounded-sm scroll-mt-24 transition-shadow">
+    <div id={id} className="py-3.5 first:pt-0 last:pb-0 min-w-0 rounded-sm scroll-mt-24 transition-shadow">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
-        <h3 className="font-display font-semibold text-[14.5px]">{b.titulo}</h3>
-        <span className="text-[12px] text-muted">{b.dica}</span>
-        <MarcaFalta campo={b.campo} />
+        <h3 className="font-display font-semibold text-[14.5px]">{titulo}</h3>
+        {dica && <span className="text-[12px] text-muted">{dica}</span>}
+        <MarcaFalta campo={chave} />
         {pode && !editando && (
-          <button type="button" className="btn-ghost btn-sm ml-auto -my-1" onClick={abrir} aria-label={`${valor ? 'Editar' : 'Escrever'}: ${b.titulo}`}>
+          <button type="button" className="btn-ghost btn-sm ml-auto -my-1" onClick={abrir} aria-label={`${valor ? 'Editar' : 'Escrever'}: ${titulo}`}>
             <Pencil size={13} /> {valor ? 'Editar' : 'Escrever'}
           </button>
         )}
       </div>
       {editando ? (
         <div>
-          <textarea className="input text-[14px] leading-relaxed" rows={linhas} autoFocus maxLength={b.max} value={texto} placeholder={b.exemplo}
-            aria-label={b.titulo} onChange={(e) => setTexto(e.target.value)}
+          <textarea className="input text-[14px] leading-relaxed" rows={linhas} autoFocus maxLength={max} value={texto} placeholder={exemplo || undefined}
+            aria-label={titulo} onChange={(e) => setTexto(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void salvar(); }
               // Esc só desiste quando nada mudou: não se perde um texto escrito por engano

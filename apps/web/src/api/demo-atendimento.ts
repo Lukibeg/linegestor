@@ -21,19 +21,23 @@
  */
 import {
   AcaoRespostaSchema, AgendadoGravarSchema, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AplicarRespostaSchema, AssuntoGravarSchema,
-  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema,
+  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, CAMPOS_DO_SISTEMA,
+  ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema, MAX_CAMPOS_DO_PAINEL, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, OrdemDosCamposSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
   OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema, RespostaProntaGravarSchema,
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema,
-  alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, codigoDoChamado, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal, didFormatado,
+  alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
+  didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
+  textoDoValor, textosDosCampos, valoresVisiveis,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca, pareceAgradecimento,
   preencherModelo, prioridadeSugerida, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   type AcaoResposta, type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
-  type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoObrigatorio, type CartaoChamado, type CartaoParaLista,
+  type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoDoSistema, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista,
+  type Obrigatorio, type OpcaoDoCampo, type ValoresDosCampos,
   type CasoOperadora, type ChamadoAlterar, type ChamadoCriar, type ChaveApiTela, type CorPainel, type DadosObrigatorios, type Espera, type EstadoPrazo,
   type EtapaPainel, type EventoAviso, type EventoChamado, type EventoWebhook, type FichaChamado, type FiltrosAtendimento, type Gravidade,
   type IntegracoesTela, type ItemChecklist, type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Origem, type Painel,
@@ -44,7 +48,7 @@ import type { Api } from './index.js';
 import { ApiError, type Page, type TrashItem } from './types.js';
 import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import {
-  AGENDADOS_DE_EXEMPLO, ASSUNTOS_DO_DESENVOLVIMENTO, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
+  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, DESLIGADOS_NO_DESENVOLVIMENTO, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, RESPOSTAS_PRONTAS, WHATSAPP_DA_EQUIPE,
   type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
@@ -100,13 +104,15 @@ type PainelRow = {
   id: string; nome: string; sigla: string; descricao: string | null; cor: CorPainel; ordem: number; acesso: 'todos' | 'escolhidos'; pessoas: string[];
   ajustes: AjustesDoPainel; ativo: boolean; proximoNumero: number; deletedAt: string | null;
 };
-type EtapaRow = { id: string; painelId: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; ordem: number; obrigatorios: CampoObrigatorio[]; avisar: string[]; deletedAt: string | null };
+type EtapaRow = { id: string; painelId: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; ordem: number; obrigatorios: Obrigatorio[]; avisar: string[]; deletedAt: string | null };
 type ChamadoRow = {
   id: string; painelId: string; etapaId: string; numero: number; codigo: string; tipoChamado: TipoChamado; titulo: string;
   relato: string | null; descricao: string | null; clienteId: string | null; contatoNome: string | null; contatoTelefone: string | null; sessaoId: string | null;
   origem: Origem; responsavelId: string | null; assuntoId: string | null; tipo: string | null; gravidade: Gravidade | null; alcance: Alcance | null;
   prioridade: Prioridade | null; motivoPrioridade: string | null; produtos: string[]; operadoras: string[]; etiquetas: string[];
   paiId: string | null; problemaId: string | null; checklist: ItemChecklist[];
+  /** os valores dos campos do painel (pelo id do campo; o de um campo desativado fica guardado) */
+  campos: ValoresDosCampos;
   solucao: string | null; causa: string | null; contorno: string | null; validacao: string | null;
   esperas: Espera[]; observadores: string[];
   respondidoEm: string | null; resolvidoEm: string | null; fechadoEm: string | null; reaberto: number;
@@ -260,7 +266,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     semeado: false,
     /** durante a montagem dos exemplos: sem auditoria e sem webhook (é o passado) */
     semeando: false,
-    paineis: [] as PainelRow[], etapas: [] as EtapaRow[], assuntos: [] as Assunto[],
+    paineis: [] as PainelRow[], etapas: [] as EtapaRow[], assuntos: [] as Assunto[], campos: [] as CampoPersonalizado[],
     chamados: [] as ChamadoRow[], eventos: [] as EventoRow[], notas: [] as NotaRow[], anexos: [] as AnexoRow[], ligacoes: [] as LigacaoRow[],
     tempos: [] as TempoRow[], casos: [] as CasoRow[], agendados: [] as AgendadoRow[], respostas: [] as RespostaRow[],
     contatos: new Map<string, { clienteId: string; nome: string | null }>(),
@@ -317,7 +323,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const abertos = A.chamados.filter((t) => !t.deletedAt && t.painelId === p.id && ['entrada', 'andamento'].includes(etapaPorId(t.etapaId)?.tipo ?? '')).length;
     return {
       id: p.id, nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, ordem: p.ordem, acesso: p.acesso, pessoas: [...p.pessoas],
-      ajustes: { ...p.ajustes, tipos: [...p.ajustes.tipos], obrigatoriosAoAbrir: [...p.ajustes.obrigatoriosAoAbrir], supervisores: [...p.ajustes.supervisores] },
+      ajustes: {
+        ...p.ajustes, tipos: [...p.ajustes.tipos], obrigatoriosAoAbrir: [...p.ajustes.obrigatoriosAoAbrir], supervisores: [...p.ajustes.supervisores],
+        camposDesligados: [...(p.ajustes.camposDesligados ?? [])],
+      },
       etapas: A.etapas.filter((e) => e.painelId === p.id && !e.deletedAt).sort((a, b) => a.ordem - b.ordem).map(etapaParaTela),
       ativo: p.ativo, abertos,
     };
@@ -361,10 +370,18 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return { filhos, incidentes, anotacoes, codigos: new Map(A.chamados.map((t) => [t.id, t.codigo])) };
   }
 
+  /** Os campos do painel, na ordem dos Ajustes (todos, ou só os ativos). */
+  const camposDoPainel = (painelId: string, soAtivos = false) =>
+    A.campos.filter((c) => c.painelId === painelId && (!soAtivos || c.ativo)).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const campoParaTela = (c: CampoPersonalizado): CampoPersonalizado => ({ ...c, opcoes: c.opcoes.map((o) => ({ ...o })) });
+
+  /** O chamado no quadro e na lista: sem o que o painel desligou (fica guardado) e com os campos ativos dele. */
   function cartao(t: ChamadoRow, par: Parentes, agora: Date): CartaoChamado {
     const e = etapaPorId(t.etapaId);
     const aberta = esperaAberta(t.esperas);
-    const assunto = t.assuntoId ? A.assuntos.find((a) => a.id === t.assuntoId) : undefined;
+    const p = A.paineis.find((x) => x.id === t.painelId);
+    const usa = (c: CampoDoSistema) => !p || campoLigado({ camposDesligados: p.ajustes.camposDesligados ?? [] }, c);
+    const assunto = t.assuntoId && usa('assunto') ? A.assuntos.find((a) => a.id === t.assuntoId) : undefined;
     const filhos = par.filhos.get(t.id) ?? [];
     return {
       id: t.id, codigo: t.codigo, numero: t.numero, tipoChamado: t.tipoChamado, titulo: t.titulo,
@@ -372,11 +389,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       cliente: t.clienteId ? { id: t.clienteId, nome: nomeCliente(t.clienteId)! } : null,
       contato: t.contatoNome || t.contatoTelefone ? { nome: t.contatoNome, telefone: t.contatoTelefone } : null,
       responsavel: pessoaCurta(t.responsavelId),
-      prioridade: t.prioridade, gravidade: t.gravidade, alcance: t.alcance, tipo: t.tipo,
+      prioridade: t.prioridade, gravidade: usa('gravidadeAlcance') ? t.gravidade : null, alcance: usa('gravidadeAlcance') ? t.alcance : null, tipo: usa('tipo') ? t.tipo : null,
       assunto: assunto ? { id: assunto.id, nome: assunto.nome, caminho: caminhoDoAssunto(assunto.id, A.assuntos), ativo: assunto.ativo } : null,
-      produtos: t.produtos.map((id) => { const p = S.products.find((x) => x.id === id); return { id, nome: p?.name ?? '?', cor: p?.color ?? '#888888' }; }),
-      operadoras: t.operadoras.map((id) => ({ id, nome: S.carriers.find((x) => x.id === id)?.name ?? '?' })),
+      produtos: usa('produtos') ? t.produtos.map((id) => { const x = S.products.find((y) => y.id === id); return { id, nome: x?.name ?? '?', cor: x?.color ?? '#888888' }; }) : [],
+      operadoras: usa('operadoras') ? t.operadoras.map((id) => ({ id, nome: S.carriers.find((x) => x.id === id)?.name ?? '?' })) : [],
       etiquetas: [...t.etiquetas],
+      campos: valoresVisiveis(A.campos, t.painelId, t.campos),
       espera: aberta ? { tipo: aberta.tipo, motivo: aberta.motivo, desde: aberta.inicio } : null,
       prazos: prazosDe(t, agora),
       pai: t.paiId ? { id: t.paiId, codigo: par.codigos.get(t.paiId) ?? '?' } : null,
@@ -396,7 +414,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const par = parentes();
     return A.chamados.filter((t) => !t.deletedAt && vis.has(t.painelId)).map((t) => {
       const c = cartao(t, par, agora);
-      return { ...c, busca: textoDeBusca(c, [t.relato, t.descricao, t.solucao, t.causa]) };
+      return { ...c, busca: textoDeBusca(c, [t.relato, t.descricao, t.solucao, t.causa, ...textosDosCampos(camposDoPainel(t.painelId, true), c.campos)]) };
     });
   }
   const semBusca = (c: CartaoParaLista): CartaoChamado => { const { busca: _b, ...resto } = c; return resto; };
@@ -405,7 +423,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   function chamadoOu404(ref: string, opts: { lixeira?: boolean } = {}): ChamadoRow {
     const m = /^\s*([A-Za-z]{2,5})[\s-]*(\d{1,7})\s*$/.exec(ref);
-    const t = m ? A.chamados.find((x) => x.codigo === `${m[1]!.toUpperCase()}-${Number(m[2])}`) : A.chamados.find((x) => x.id === ref);
+    // o id primeiro: o id da prévia ("demo" e um número) também tem cara de código ("DEMO-1234")
+    const t = A.chamados.find((x) => x.id === ref) ?? (m ? A.chamados.find((x) => x.codigo === `${m[1]!.toUpperCase()}-${Number(m[2])}`) : undefined);
     if (!t || (t.deletedAt && !opts.lixeira)) throw naoAchado('Chamado');
     return t;
   }
@@ -500,8 +519,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       tipoChamado: t.tipoChamado, clienteId: t.clienteId, contatoNome: t.contatoNome, contatoTelefone: t.contatoTelefone,
       relato: t.relato, descricao: t.descricao, assuntoId: t.assuntoId, tipo: t.tipo, gravidade: t.gravidade, alcance: t.alcance, prioridade: t.prioridade,
       produtos: t.produtos, operadoras: t.operadoras, responsavelId: t.responsavelId,
-      solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id),
+      solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id), campos: t.campos,
     };
+  }
+  /** Os campos do painel que vieram no pedido, conferidos (as mesmas mensagens do servidor). */
+  function lerCampos(painel: Painel, pedidos: Record<string, unknown>, atuais: ValoresDosCampos = {}) {
+    const r = lerCamposDoPedido(camposDoPainel(painel.id), painel.nome, pedidos, atuais);
+    if (!r.ok) throw bad(r.erro);
+    return r.itens;
   }
   /** Os filhos do chamado (fora da lixeira, em qualquer painel: a regra do pai é do chamado). */
   const filhosDoChamado = (id: string) => [...A.chamados].filter((f) => f.paiId === id && !f.deletedAt)
@@ -594,22 +619,29 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         if (!contatoNome && conhecido.nome) contatoNome = conhecido.nome;
       }
     }
-    const assunto = d.assuntoId ? conferirAssunto(d.assuntoId, painel) : null;
-    const tipo = conferirTipo(d.tipo, painel);
+    // os campos do sistema que o painel desligou: o que vier para eles fica de fora (como no servidor)
+    const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
+    const assunto = d.assuntoId && usa('assunto') ? conferirAssunto(d.assuntoId, painel) : null;
+    const tipo = usa('tipo') ? conferirTipo(d.tipo, painel) : null;
+    const gravidade = usa('gravidadeAlcance') ? d.gravidade ?? null : null;
+    const alcance = usa('gravidadeAlcance') ? d.alcance ?? null : null;
     const checklist = [...(assunto?.checklist ?? []).map((x) => itemNovo(x, true)), ...(opts.checklistExtra ?? []).map((x) => itemNovo(x, false))];
-    const sugerida = prioridadeSugerida(d.gravidade, d.alcance, A.prazos.matriz);
+    const campos: ValoresDosCampos = {};
+    for (const i of lerCampos(painel, d.campos ?? {})) if (i.valor !== null) campos[i.campo.id] = i.valor;
+    const sugerida = prioridadeSugerida(gravidade, alcance, A.prazos.matriz);
     const prioridade = d.prioridade ?? sugerida;
-    const produtos = unicos(d.produtos ?? []);
-    const operadoras = unicos(d.operadoras ?? []);
+    const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
+    const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
 
     const dados: DadosObrigatorios = {
       tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
-      assuntoId: assunto?.id ?? null, tipo, gravidade: d.gravidade ?? null, alcance: d.alcance ?? null, prioridade,
+      assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
       produtos, operadoras, responsavelId: d.responsavelId ?? null,
-      solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0,
+      solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos,
     };
-    const faltam = faltaParaAbrir(dados, painel.ajustes);
-    if (faltam.length) throw bad(mensagemDoQueFalta(faltam), { faltam });
+    // o que o painel pede para abrir vale para quem abre na tela; o robô e o agendado abrem sempre
+    const faltam = origem === 'manual' || origem === 'botao' ? faltaParaAbrir(dados, painel.ajustes) : [];
+    if (faltam.length) throw bad(mensagemDoQueFalta(faltam, undefined, A.campos), { faltam });
     if (d.prioridade && sugerida && d.prioridade !== sugerida && !d.motivoPrioridade) throw bad('Trocar a prioridade sugerida pede o motivo.');
 
     if (clienteId) conferirCliente(clienteId);
@@ -638,9 +670,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const t: ChamadoRow = {
       id, painelId: painel.id, etapaId: etapa.id, numero, codigo, tipoChamado, titulo: d.titulo,
       relato: dados.relato, descricao: dados.descricao, clienteId, contatoNome, contatoTelefone: telefone, sessaoId: d.sessaoId ?? null, origem,
-      responsavelId: d.responsavelId ?? null, assuntoId: assunto?.id ?? null, tipo, gravidade: d.gravidade ?? null, alcance: d.alcance ?? null,
+      responsavelId: d.responsavelId ?? null, assuntoId: assunto?.id ?? null, tipo, gravidade, alcance,
       prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasUnicas(d.etiquetas ?? []),
-      paiId: pai?.id ?? null, problemaId: problema?.id ?? null, checklist,
+      paiId: pai?.id ?? null, problemaId: problema?.id ?? null, checklist, campos,
       solucao: null, causa: null, contorno: null, validacao: null, esperas: [], observadores: [],
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       respondidoEm: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? iso(agora) : null,
@@ -682,10 +714,18 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   //  ALTERAR
   // =====================================================================
 
-  function alterar(ator: Ator, ref: string, d: ChamadoAlterar, agora: Date = agoraReal()): Feito {
+  function alterar(ator: Ator, ref: string, pedido: ChamadoAlterar, agora: Date = agoraReal()): Feito {
     exigirTrabalhar(ator);
     const e = carregar(ator, ref, agora);
     const { t, painel } = e;
+    // o que vier para um campo que o painel desligou fica de fora (como no servidor)
+    const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
+    const d: ChamadoAlterar = {
+      ...pedido,
+      ...(usa('assunto') ? {} : { assuntoId: undefined }), ...(usa('tipo') ? {} : { tipo: undefined }),
+      ...(usa('gravidadeAlcance') ? {} : { gravidade: undefined, alcance: undefined }),
+      ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
+    };
     const set: Partial<ChamadoRow> = {};
     const antes: Record<string, unknown> = {};
     const eventos: Array<[TipoEvento, Record<string, unknown>]> = [];
@@ -723,7 +763,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (novo !== t.tipo) { set.tipo = novo; campo('tipo', NOME_CAMPO.tipo, t.tipo, novo, t.tipo); }
     }
     // a gravidade, o alcance e a prioridade (que pode seguir a sugestão)
-    const g0 = t.gravidade; const a0 = t.alcance; const p0 = t.prioridade;
+    const g0 = usa('gravidadeAlcance') ? t.gravidade : null; const a0 = usa('gravidadeAlcance') ? t.alcance : null; const p0 = t.prioridade;
     const g1 = d.gravidade !== undefined ? d.gravidade : g0;
     const a1 = d.alcance !== undefined ? d.alcance : a0;
     if (g1 !== g0) { set.gravidade = g1; campo('gravidade', NOME_CAMPO.gravidade, g0 ? NOME_GRAVIDADE[g0] : null, g1 ? NOME_GRAVIDADE[g1] : null, g0); }
@@ -758,6 +798,20 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (d.operadoras !== undefined) {
       const novas = unicos(d.operadoras);
       if (!mesmoConjunto(novas, t.operadoras)) { conferirOperadoras(novas); set.operadoras = novas; campo('operadoras', NOME_CAMPO.operadora, nomesOperadoras(t.operadoras), nomesOperadoras(novas), t.operadoras); }
+    }
+    // os campos do painel: cada um que mudou vira uma linha do histórico (o texto longo diz só que mudou)
+    if (d.campos !== undefined) {
+      const novos: ValoresDosCampos = { ...t.campos };
+      let mexeu = false;
+      for (const { campo: c, valor } of lerCampos(painel, d.campos, t.campos)) {
+        const antes = t.campos[c.id] ?? null;
+        if (mesmoValorDoCampo(antes, valor)) continue;
+        mexeu = true;
+        if (valor === null) delete novos[c.id]; else novos[c.id] = valor;
+        if (c.tipo === 'texto_longo') longo(chaveDoCampo(c.id), c.nome, antes);
+        else campo(chaveDoCampo(c.id), c.nome, textoDoValor(c, antes) || null, textoDoValor(c, valor) || null, antes);
+      }
+      if (mexeu) set.campos = novos;
     }
     // os textos longos: o histórico diz só que mudou (o texto está no chamado; a auditoria guarda o de antes)
     const textos: Array<['relato' | 'descricao' | 'solucao' | 'causa' | 'contorno' | 'validacao', string]> = [
@@ -812,7 +866,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const painel = o.painel ?? e.painel;
     const dados = { ...dadosDoChamado(e.t), ...(o.responsavelId !== undefined ? { responsavelId: o.responsavelId } : {}) };
     const faltam = faltaParaEtapa(dados, para);
-    if (faltam.length) throw bad(mensagemDoQueFalta(faltam, para.nome), { faltam });
+    if (faltam.length) throw bad(mensagemDoQueFalta(faltam, para.nome, A.campos), { faltam });
     const travam = filhosQueTravam(filhosDoChamado(e.t.id), para, painel.ajustes.paiEsperaFilhos);
     if (travam.length) throw bad(`O ${e.t.codigo} tem filhos em aberto: ${travam.join(', ')}. Feche os filhos antes.`, { filhos: travam });
     if (!o.nivel) return null;
@@ -1521,6 +1575,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       paineis: vistos,
       pessoas: S.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((u) => ({ id: u.id, nome: u.name, ativo: true })),
       assuntos: vistos.flatMap((p) => emOrdemDeArvore(A.assuntos.filter((a) => a.painelId === p.id)).map(({ profundidade: _p, ...a }) => ({ ...a, checklist: [...a.checklist], dePara: [...a.dePara] }))),
+      campos: vistos.flatMap((p) => camposDoPainel(p.id).map(campoParaTela)),
       produtos: S.products.filter((p) => !p.deletedAt && p.active).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)).map((p) => ({ id: p.id, nome: p.name, cor: p.color })),
       operadoras: S.carriers.filter((c) => c.active).sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ id: c.id, nome: c.name })),
       etiquetas: etiquetasUnicas(usadas).sort((a, b) => a.localeCompare(b, 'pt-BR')),
@@ -1743,7 +1798,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ...esteCartao,
       relato: t.relato, descricao: t.descricao, solucao: t.solucao, causa: t.causa, contorno: t.contorno, validacao: t.validacao,
       motivoPrioridade: t.motivoPrioridade,
-      prioridadeSugerida: prioridadeSugerida(t.gravidade, t.alcance, A.prazos.matriz),
+      // sem a gravidade e o alcance no painel, não há sugestão (o que ficou guardado de antes não conta)
+      prioridadeSugerida: campoLigado(painel.ajustes, 'gravidadeAlcance') ? prioridadeSugerida(t.gravidade, t.alcance, A.prazos.matriz) : null,
       sessaoId: t.sessaoId,
       conversaUrl: linkDaConversa(A.integ.linkConversa, t.sessaoId),
       checklist: t.checklist.map((i) => ({ ...i })),
@@ -1861,6 +1917,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!p) throw naoAchado('Painel');
     return p;
   }
+  /** O que pode ser pedido no painel agora: os campos do sistema que ele usa e os campos ativos dele. */
+  const obrigatoriosValidos = (p: PainelRow) => obrigatoriosDoPainel({ camposDesligados: p.ajustes.camposDesligados ?? [] }, camposDoPainel(p.id));
+  /** As regras das etapas sem o que não vale mais no painel; devolve os nomes das etapas que mudaram. */
+  function limparRegrasDasEtapas(painelId: string, validos: Obrigatorio[]): string[] {
+    const mudaram: string[] = [];
+    for (const e of A.etapas.filter((x) => x.painelId === painelId && !x.deletedAt).sort((a, b) => a.ordem - b.ordem)) {
+      const limpos = limparObrigatorios(e.obrigatorios, validos);
+      if (limpos.length === e.obrigatorios.length) continue;
+      e.obrigatorios = limpos;
+      mudaram.push(e.nome);
+    }
+    return mudaram;
+  }
 
   /** Cria ou muda o painel; as etapas, quando vêm junto (a janela do painel), pelas regras de `salvarEtapas` e tudo de uma vez. */
   function gravarPainel(ator: Ator, id: string | null, d: ReturnType<typeof PainelGravarSchema.parse>, agora: Date): { valor: Painel; resumo: string; antes?: unknown; depois?: unknown } {
@@ -1874,14 +1943,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         : `A sigla ${sigla} já é de outro painel.`);
     }
     const pessoas = unicos(d.pessoas);
+    // os campos do sistema que o painel usa: sem a lista no pedido, ficam como estão (quem muda é a aba Campos)
+    const camposDesligados = d.ajustes.camposDesligados ?? atual?.ajustes.camposDesligados ?? [];
+    // o que pode ser pedido neste painel: o resto sai das regras
+    const validos = obrigatoriosDoPainel({ camposDesligados }, atual ? camposDoPainel(atual.id) : []);
     const ajustes: AjustesDoPainel = {
-      ...d.ajustes, tipos: etiquetasUnicas(d.ajustes.tipos), supervisores: unicos(d.ajustes.supervisores), obrigatoriosAoAbrir: [...new Set(d.ajustes.obrigatoriosAoAbrir)],
+      ...d.ajustes, tipos: etiquetasUnicas(d.ajustes.tipos), supervisores: unicos(d.ajustes.supervisores),
+      obrigatoriosAoAbrir: limparObrigatorios(d.ajustes.obrigatoriosAoAbrir, validos), camposDesligados: CAMPOS_DO_SISTEMA.filter((c) => camposDesligados.includes(c)),
     };
     conferirPessoas([...pessoas, ...ajustes.supervisores]);
     if (!atual) {
       const novoPainel = novoId();
       // as etapas da janela (todas novas) ou as quatro básicas; conferidas antes de criar qualquer coisa
-      const plano = planejarEtapas(novoPainel, d.etapas ?? ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, avisar: [] })), {});
+      const plano = planejarEtapas(novoPainel, d.etapas ?? ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, avisar: [] })), {}, validos);
       const novo: PainelRow = {
         id: novoPainel, nome: d.nome, sigla, descricao: d.descricao ?? null, cor: d.cor, ordem: Math.max(-1, ...A.paineis.map((p) => p.ordem)) + 1,
         acesso: d.acesso, pessoas, ajustes, ativo: d.ativo, proximoNumero: 1, deletedAt: null,
@@ -1895,10 +1969,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       };
     }
     // as etapas que vieram junto são conferidas antes de mudar qualquer coisa (o destino dos chamados também)
-    const plano = d.etapas ? planejarEtapas(atual.id, d.etapas, d.destino) : null;
+    const plano = d.etapas ? planejarEtapas(atual.id, d.etapas, d.destino, validos) : null;
     const antes = painelParaAuditoria(painelPorId(atual.id)!);
     Object.assign(atual, { nome: d.nome, sigla, descricao: d.descricao ?? null, cor: d.cor, acesso: d.acesso, pessoas, ajustes, ativo: d.ativo });
     const etapas = plano ? resumoDasEtapas(plano, aplicarEtapas(ator, plano, agora)) : null;
+    // sem as etapas no pedido, as regras delas também deixam de pedir o que o painel não usa mais
+    if (!plano) limparRegrasDasEtapas(atual.id, validos);
     const painel = painelPorId(atual.id)!;
     const mudancas = [
       antes.nome !== painel.nome ? `antes se chamava ${antes.nome}` : '',
@@ -1916,19 +1992,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   /** Só as etapas (a mesma conferência e a mesma gravação da janela do painel). */
   function salvarEtapasDoPainel(ator: Ator, painelId: string, d: ReturnType<typeof EtapasGravarSchema.parse>, agora: Date) {
     const p = linhaDoPainel(painelId);
-    const plano = planejarEtapas(painelId, d.etapas, d.destino);
+    const plano = planejarEtapas(painelId, d.etapas, d.destino, obrigatoriosValidos(p));
     const r = resumoDasEtapas(plano, aplicarEtapas(ator, plano, agora));
     return { valor: painelPorId(painelId)!, resumo: `Mudou as etapas do painel ${p.nome}${r.partes.length ? `: ${r.partes.join('; ')}` : ''}`, antes: r.antes, depois: r.depois };
   }
 
   type PlanoDasEtapas = {
     painelId: string; atuais: EtapaRow[]; porId: Map<string, EtapaRow>; saem: EtapaRow[]; destino: Record<string, string>;
-    novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: CampoObrigatorio[]; avisar: string[] }>;
+    novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[] }>;
     /** o retrato de antes (aplicar muda as mesmas linhas): o nome, o tipo e o que vai para a auditoria */
     fotoAntes: Array<ReturnType<typeof etapaParaAuditoria> & { id: string }>;
   };
   /** Confere a lista contra o que existe, sem mudar nada (as mesmas mensagens do servidor). */
-  function planejarEtapas(painelId: string, etapas: ReturnType<typeof EtapasGravarSchema.parse>['etapas'], destino: Record<string, string>): PlanoDasEtapas {
+  function planejarEtapas(painelId: string, etapas: ReturnType<typeof EtapasGravarSchema.parse>['etapas'], destino: Record<string, string>, validos: Obrigatorio[]): PlanoDasEtapas {
     const atuais = A.etapas.filter((e) => e.painelId === painelId && !e.deletedAt).sort((a, b) => a.ordem - b.ordem);
     const porId = new Map(atuais.map((e) => [e.id, e]));
     const ficam = new Set<string>();
@@ -1938,7 +2014,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (ficam.has(e.id)) throw bad(`A etapa ${e.nome} apareceu duas vezes na lista.`);
       ficam.add(e.id);
     }
-    const novas = etapas.map((e, ordem) => ({ id: e.id ?? novoId(), nova: !e.id, ordem, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...new Set(e.obrigatorios)], avisar: unicos(e.avisar) }));
+    const novas = etapas.map((e, ordem) => ({
+      id: e.id ?? novoId(), nova: !e.id, ordem, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: limparObrigatorios(e.obrigatorios, validos), avisar: unicos(e.avisar),
+    }));
     conferirPessoas(novas.flatMap((e) => e.avisar));
     const saem = atuais.filter((e) => !ficam.has(e.id));
     const semDestino = saem
@@ -2105,6 +2183,115 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return { valor: { criados, jaExistiam }, resumo: `Colou a lista de assuntos no painel ${p.nome}: ${plural(criados, 'criado', 'criados')}, ${plural(jaExistiam, 'já existia', 'já existiam')}`, depois: { criados: novos } };
   }
 
+  // ---------- os campos de cada painel ----------
+
+  const campoParaAuditoria = (c: CampoPersonalizado) => ({ nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.opcoes.map((o) => ({ ...o })), ativo: c.ativo });
+  /** Liga e desliga os campos do sistema e grava as opções do Tipo (o que sai do painel sai das regras). */
+  function salvarCamposDoSistema(painelId: string, d: ReturnType<typeof CamposDoSistemaSchema.parse>) {
+    const p = linhaDoPainel(painelId);
+    const antes = { ...p.ajustes, camposDesligados: p.ajustes.camposDesligados ?? [] };
+    const desligados = CAMPOS_DO_SISTEMA.filter((c) => d.desligados.includes(c));
+    const campos = camposDoPainel(painelId);
+    const igual = campos.find((x) => x.ativo && nomeDoSistemaIgual(x.nome, { camposDesligados: desligados }) && !nomeDoSistemaIgual(x.nome, antes));
+    if (igual) throw conflito(`O painel ${p.nome} tem o campo ${igual.nome}: renomeie ou desative esse campo antes de ligar o ${nomeDoSistemaIgual(igual.nome, { camposDesligados: desligados })} do sistema.`);
+    const validos = obrigatoriosDoPainel({ camposDesligados: desligados }, campos);
+    const depois: AjustesDoPainel = { ...antes, camposDesligados: desligados, tipos: etiquetasUnicas(d.tipos), obrigatoriosAoAbrir: limparObrigatorios(antes.obrigatoriosAoAbrir, validos) };
+    p.ajustes = depois;
+    const etapasLimpas = limparRegrasDasEtapas(painelId, validos);
+    const nomes = (xs: CampoDoSistema[]) => lista(xs.map((c) => NOME_CAMPO_DO_SISTEMA[c]));
+    const desligou = desligados.filter((c) => !antes.camposDesligados.includes(c));
+    const ligou = antes.camposDesligados.filter((c) => !desligados.includes(c));
+    const saiuDe = [...(depois.obrigatoriosAoAbrir.length !== antes.obrigatoriosAoAbrir.length ? ['para abrir'] : []), ...etapasLimpas];
+    const partes = [
+      desligou.length ? `desligou ${nomes(desligou)}${saiuDe.length ? ` (deixou de ser pedido em: ${lista(saiuDe)})` : ''}` : '',
+      ligou.length ? `ligou ${nomes(ligou)}` : '',
+      antes.tipos.join('\n') !== depois.tipos.join('\n') ? `as opções do Tipo ficaram ${depois.tipos.join(', ') || '(nenhuma)'}` : '',
+    ].filter(Boolean);
+    return {
+      valor: painelPorId(painelId)!,
+      resumo: `Mudou os campos do painel ${p.nome}${partes.length ? `: ${partes.join('; ')}` : ' (nada mudou)'}`,
+      antes: { camposDesligados: antes.camposDesligados, tipos: antes.tipos, obrigatoriosAoAbrir: antes.obrigatoriosAoAbrir },
+      depois: { camposDesligados: depois.camposDesligados, tipos: depois.tipos, obrigatoriosAoAbrir: depois.obrigatoriosAoAbrir },
+    };
+  }
+  /** O nome não repete (nem o de um campo que o chamado já tem); a opção que não veio fica desativada. */
+  function conferirCampo(p: PainelRow, d: ReturnType<typeof CampoGravarSchema.parse>, atual: CampoPersonalizado | null): OpcaoDoCampo[] {
+    const doSistema = nomeDoSistemaIgual(d.nome, { camposDesligados: p.ajustes.camposDesligados ?? [] });
+    if (doSistema) throw conflito(`Todo chamado do painel ${p.nome} já tem o campo ${doSistema}: escolha outro nome.`);
+    const igual = camposDoPainel(p.id).find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome));
+    if (igual) throw conflito(`O painel ${p.nome} já tem o campo ${igual.nome}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
+    if (atual && atual.tipo !== d.tipo) throw bad(`O tipo do campo não muda depois de criado (${atual.nome} é ${NOME_TIPO_CAMPO[atual.tipo]}). Crie outro campo e desative este.`);
+    if (!ehLista(d.tipo)) return [];
+    const existentes = atual?.opcoes ?? [];
+    const opcoes: OpcaoDoCampo[] = d.opcoes.map((o) => {
+      if (!o.id) return { id: novoId(), nome: o.nome, ativa: o.ativa };
+      if (!existentes.some((x) => x.id === o.id)) throw bad(`A opção ${o.nome} não é deste campo. Recarregue a tela e tente de novo.`);
+      return { id: o.id, nome: o.nome, ativa: o.ativa };
+    });
+    for (const x of existentes) if (!opcoes.some((o) => o.id === x.id)) opcoes.push({ ...x, ativa: false });
+    const vistas = new Set<string>();
+    for (const o of opcoes) {
+      if (vistas.has(paraBusca(o.nome))) throw bad(`Duas opções com o nome ${o.nome} (uma delas pode estar desativada).`);
+      vistas.add(paraBusca(o.nome));
+    }
+    return opcoes;
+  }
+  /** Onde o campo é obrigatório: para abrir e nas etapas escolhidas (o desativado, em lugar nenhum). */
+  function gravarOndeEPedido(p: PainelRow, campoId: string, ativo: boolean, d: { obrigatorioAoAbrir: boolean; etapas: string[] }): string[] {
+    const chave = chaveDoCampo(campoId);
+    const etapas = A.etapas.filter((e) => e.painelId === p.id && !e.deletedAt).sort((a, b) => a.ordem - b.ordem);
+    const pedidas = new Set(ativo ? d.etapas : []);
+    for (const id of pedidas) if (!etapas.some((e) => e.id === id)) throw bad('Uma das etapas escolhidas não é deste painel. Recarregue a tela e tente de novo.');
+    const abrir = ativo && d.obrigatorioAoAbrir;
+    p.ajustes = { ...p.ajustes, obrigatoriosAoAbrir: [...p.ajustes.obrigatoriosAoAbrir.filter((k) => k !== chave), ...(abrir ? [chave] : [])] };
+    for (const e of etapas) {
+      const tem = e.obrigatorios.includes(chave);
+      if (tem === pedidas.has(e.id)) continue;
+      e.obrigatorios = tem ? e.obrigatorios.filter((k) => k !== chave) : [...e.obrigatorios, chave];
+    }
+    return [...(abrir ? ['para abrir'] : []), ...etapas.filter((e) => pedidas.has(e.id)).map((e) => e.nome)];
+  }
+  function criarCampo(painelId: string, d: ReturnType<typeof CampoGravarSchema.parse>) {
+    const p = linhaDoPainel(painelId);
+    const outros = camposDoPainel(painelId);
+    if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw bad(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos (os desativados contam).`);
+    const opcoes = conferirCampo(p, d, null);
+    const c: CampoPersonalizado = { id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1 };
+    A.campos.push(c);
+    const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
+    return {
+      valor: campoParaTela(c),
+      resumo: `Criou o campo ${c.nome} (${NOME_TIPO_CAMPO[c.tipo]}) no painel ${p.nome}${pedido.length ? `, obrigatório ${lista(pedido.map((x) => (x === 'para abrir' ? x : `em ${x}`)))}` : ''}`,
+      depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
+    };
+  }
+  function alterarCampo(id: string, d: ReturnType<typeof CampoGravarSchema.parse>) {
+    const c = A.campos.find((x) => x.id === id);
+    if (!c) throw naoAchado('Campo');
+    const p = A.paineis.find((x) => x.id === c.painelId && !x.deletedAt);
+    if (!p) throw naoAchado('Campo');
+    const antes = campoParaTela(c);
+    const opcoes = conferirCampo(p, d, antes);
+    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo });
+    const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
+    const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
+    return {
+      valor: campoParaTela(c),
+      resumo: `${como} o campo ${c.nome} no painel ${p.nome}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}`,
+      antes: campoParaAuditoria(antes), depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
+    };
+  }
+  function ordenarCampos(painelId: string, ids: string[]) {
+    const p = linhaDoPainel(painelId);
+    const campos = camposDoPainel(painelId);
+    if (ids.length !== campos.length || new Set(ids).size !== ids.length || ids.some((x) => !campos.some((c) => c.id === x))) {
+      throw bad('A lista de campos mudou enquanto você mexia. Recarregue a tela e tente de novo.');
+    }
+    ids.forEach((id, ordem) => { A.campos.find((c) => c.id === id)!.ordem = ordem; });
+    const depois = camposDoPainel(painelId);
+    return { valor: depois.map(campoParaTela), resumo: `Mudou a ordem dos campos do painel ${p.nome}: ${depois.map((c) => c.nome).join(', ')}` };
+  }
+
   // ---------- os avisos (o WhatsApp dos chamados) ----------
 
   function avisosParaTela(): AvisosChamadosTela {
@@ -2201,7 +2388,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const id = `painel-${p.chave}`;
       A.paineis.push({
         id, nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, ordem: i, acesso: 'todos', pessoas: [],
-        ajustes: { ...p.ajustes, tipos: [...p.ajustes.tipos], obrigatoriosAoAbrir: [...p.ajustes.obrigatoriosAoAbrir], supervisores: p.chave === 'suporte' ? [luan] : [] },
+        ajustes: {
+          ...p.ajustes, tipos: [...p.ajustes.tipos], obrigatoriosAoAbrir: [...p.ajustes.obrigatoriosAoAbrir], supervisores: p.chave === 'suporte' ? [luan] : [],
+          // o Desenvolvimento não usa assunto nem operadora: no lugar, os campos dele (Ajustes › Campos)
+          camposDesligados: p.chave === 'desenvolvimento' ? [...DESLIGADOS_NO_DESENVOLVIMENTO] : [],
+        },
         ativo: true, proximoNumero: 1, deletedAt: null,
       });
       p.etapas.forEach((e, j) => A.etapas.push({
@@ -2220,7 +2411,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (det.dePara) a.dePara = [...det.dePara];
       if (det.ativo !== undefined) a.ativo = det.ativo;
     }
-    ASSUNTOS_DO_DESENVOLVIMENTO.forEach((nome, i) => A.assuntos.push({ id: novoId(), painelId: 'painel-desenvolvimento', paiId: null, nome, descricao: null, ativo: true, ordem: i, checklist: [], dePara: [] }));
 
     // ---- o WhatsApp dos chamados ligado (pela chave do LineChat), com a equipe e o número dela ----
     A.whats = {
@@ -2242,6 +2432,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
     // ---- as respostas prontas ----
     const etapaId = (painel: 'SUP' | 'DEV', chave: string) => `etapa-${painel === 'SUP' ? 'suporte' : 'desenvolvimento'}-${chave}`;
+
+    // ---- os campos de cada painel (pelas mesmas regras da aba Campos: o que é obrigatório entra nas regras) ----
+    for (const c of CAMPOS_DE_EXEMPLO) {
+      criarCampo(c.painel === 'SUP' ? 'painel-suporte' : 'painel-desenvolvimento', CampoGravarSchema.parse({
+        nome: c.nome, tipo: c.tipo, dica: c.dica ?? null, opcoes: (c.opcoes ?? []).map((nome) => ({ nome })),
+        obrigatorioAoAbrir: !!c.paraAbrir, etapas: (c.etapas ?? []).map((k) => etapaId(c.painel, k)),
+      }));
+    }
     RESPOSTAS_PRONTAS.forEach((r, i) => A.respostas.push({
       id: novoId(), painelId: r.painel === 'SUP' ? 'painel-suporte' : null, nome: r.nome, texto: r.texto, ordem: i, ativa: true, deletedAt: null,
       acao: AcaoRespostaSchema.parse({ ...r.acao, etapaId: r.acao.etapa && r.painel ? etapaId(r.painel, r.acao.etapa) : null }),
@@ -2310,6 +2508,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         ...(d.produtos ? { produtos: d.produtos.map(produtoDo) } : {}), ...(d.operadoras ? { operadoras: d.operadoras.map(operadoraDa) } : {}),
         ...(d.etiquetas ? { etiquetas: d.etiquetas } : {}),
         ...(d.responsavel !== undefined ? { responsavelId: d.responsavel ? idDa(d.responsavel) : null } : {}),
+        ...(d.campos ? { campos: d.campos } : {}),
         ...(d.solucao !== undefined ? { solucao: textoCom(d.solucao, chave) } : {}), ...(d.causa !== undefined ? { causa: textoCom(d.causa, chave) } : {}),
         ...(d.contorno !== undefined ? { contorno: textoCom(d.contorno, chave) } : {}), ...(d.validacao !== undefined ? { validacao: textoCom(d.validacao, chave) } : {}),
       };
@@ -2545,7 +2744,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const ia = S.ajustesIa;
       const provedor = INFO_PROVEDORES[ia.provedor].nome;
       auditar('chamado_ia', 'ticket', `${ator.nome} pediu à IA (${provedor}) uma sugestão para ${t.codigo}, lendo ${fonte === 'conversa' ? 'a conversa do LineChat' : 'o próprio chamado'}`, t.id);
-      return { ...lida, fonte, modelo: ia.modeloNome || ia.modelo, provedor, custo: custoEstimado(uso, ia) };
+      return { ...sugestaoDoQueOPainelUsa(lida, painel.ajustes), fonte, modelo: ia.modeloNome || ia.modelo, provedor, custo: custoEstimado(uso, ia) };
     },
     async remover(id) {
       await ctx.wait(150); ctx.requirePerm('tickets.manage'); preparar();
@@ -2586,6 +2785,30 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ctx.requirePerm('tickets.manage'); preparar();
       const r = colarAssuntos(painelId, dados.texto);
       auditar('create', 'ticket_subject', r.resumo, null, { after: r.depois });
+      return r.valor;
+    },
+    async salvarCamposDoSistema(painelId, d) {
+      await ctx.wait(150);
+      const dados = ler(CamposDoSistemaSchema, d);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const r = salvarCamposDoSistema(painelId, dados);
+      auditar('update', 'ticket_panel', r.resumo, painelId, { before: r.antes, after: r.depois });
+      return r.valor;
+    },
+    async salvarCampo(painelId, id, d) {
+      await ctx.wait(150);
+      const dados = ler(CampoGravarSchema, d);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const r = id ? alterarCampo(id, dados) : criarCampo(painelId, dados);
+      auditar(id ? 'update' : 'create', 'ticket_field', r.resumo, r.valor.id, { before: 'antes' in r ? r.antes : undefined, after: r.depois });
+      return r.valor;
+    },
+    async ordenarCampos(painelId, ids) {
+      await ctx.wait(120);
+      const dados = ler(OrdemDosCamposSchema, { ids });
+      ctx.requirePerm('tickets.manage'); preparar();
+      const r = ordenarCampos(painelId, dados.ids);
+      auditar('update', 'ticket_panel', r.resumo, painelId);
       return r.valor;
     },
     async ajustesPrazos() { await ctx.wait(80); ctx.requirePerm('tickets.manage'); preparar(); return JSON.parse(JSON.stringify(A.prazos)) as AjustesPrazos; },

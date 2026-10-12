@@ -407,7 +407,7 @@ function Exportar({ filtros, ordem, opcoes }: { filtros: Record<string, string>;
     try {
       const r = await api.atendimento.lista({ ...filtros, ...ordem, page: 1, pageSize: TODOS });
       const etapas = new Map(opcoes.paineis.flatMap((p) => p.etapas.map((e) => [e.id, e.nome] as const)));
-      const csv = csvDosChamados(r.items, { painel: (id) => painelDe(opcoes, id)?.nome ?? '', etapa: (id) => etapas.get(id) ?? '' });
+      const csv = csvDosChamados(r.items, { painel: (id) => painelDe(opcoes, id)?.nome ?? '', etapa: (id) => etapas.get(id) ?? '' }, opcoes.campos);
       const link = document.createElement('a');
       link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
       link.download = `chamados-${diaLocal(new Date())}.csv`;

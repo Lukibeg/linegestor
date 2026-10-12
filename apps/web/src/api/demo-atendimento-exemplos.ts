@@ -141,8 +141,33 @@ export const DETALHES_DOS_ASSUNTOS: Array<{ caminho: string; descricao?: string;
   { caminho: 'Fortics › Solicitação', descricao: 'A Fortics é legado: só para os clientes antigos.', ativo: false },
 ];
 
-/** Os assuntos do Desenvolvimento: poucos e simples. */
-export const ASSUNTOS_DO_DESENVOLVIMENTO = ['Correção no LinePBX', 'Correção no LineChat', 'Relatórios', 'Integrações e n8n', 'Infraestrutura dos servidores'];
+// =====================================================================
+//  OS CAMPOS DE CADA PAINEL (Ajustes › Campos)
+// =====================================================================
+
+/**
+ * O Desenvolvimento não usa assunto nem operadora (o pedido do Luan na prévia: "pode ter algum painel
+ * que não tenha assuntos e sim outro campo personalizado"): no lugar, o Sistema (obrigatório para abrir),
+ * a Versão publicada (pedida para entrar em Entregue), a Previsão de entrega e o Como reproduzir. O
+ * Suporte usa todos os do sistema e ganhou a Responsabilidade (de quem era a falha, para os relatórios).
+ */
+export const DESLIGADOS_NO_DESENVOLVIMENTO = ['assunto', 'operadoras'] as const;
+export const CAMPOS_DE_EXEMPLO: Array<{
+  painel: 'SUP' | 'DEV'; nome: string; tipo: 'texto' | 'texto_longo' | 'numero' | 'data' | 'sim_nao' | 'lista' | 'lista_varios';
+  dica?: string; opcoes?: string[]; paraAbrir?: boolean; etapas?: ChaveEtapa[];
+}> = [
+  {
+    painel: 'SUP', nome: 'Responsabilidade', tipo: 'lista', opcoes: ['Ingline', 'Cliente', 'Operadora', 'Fornecedor'],
+    dica: 'De quem era a falha (para os relatórios).',
+  },
+  {
+    painel: 'DEV', nome: 'Sistema', tipo: 'lista', paraAbrir: true, opcoes: ['LinePBX', 'LineChat', 'LineReports', 'Gestor', 'Integrações e n8n', 'Servidores'],
+    dica: 'Onde está o que precisa de programação.',
+  },
+  { painel: 'DEV', nome: 'Como reproduzir', tipo: 'texto_longo', dica: 'os passos para ver o problema acontecer' },
+  { painel: 'DEV', nome: 'Versão publicada', tipo: 'texto', etapas: ['entregue'], dica: 'A versão em que a correção ou a melhoria foi publicada.' },
+  { painel: 'DEV', nome: 'Previsão de entrega', tipo: 'data' },
+];
 
 // =====================================================================
 //  AS RESPOSTAS PRONTAS E OS AGENDADOS
@@ -207,6 +232,8 @@ export type DadosDoExemplo = {
   titulo?: string; tipoChamado?: TipoChamado; relato?: string; descricao?: string; cliente?: string; contato?: Contato; sessao?: string;
   assunto?: string; tipo?: string; gravidade?: Gravidade; alcance?: Alcance; prioridade?: Prioridade; motivoPrioridade?: string;
   produtos?: string[]; operadoras?: string[]; etiquetas?: string[]; responsavel?: Pessoa;
+  /** os campos do painel, pelo nome do campo e da opção ({ Sistema: 'LineReports' }) */
+  campos?: Record<string, string | number | boolean | string[]>;
   /** a chave de outro exemplo */
   pai?: string; incidentes?: string[];
   /**
@@ -589,6 +616,7 @@ export const EXEMPLOS: Exemplo[] = [
         aos: 1250, faz: 'alterar', por: 'lucio', dados: {
           solucao: 'A correção da exportação (no {#dev-exportacao-lr}) foi publicada; exportamos o mês inteiro com a Renata.',
           causa: 'A exportação montava o arquivo inteiro na memória e estourava o tempo acima de 10 mil linhas.',
+          campos: { Responsabilidade: 'Ingline' },
         },
       },
       { aos: 1260, faz: 'mover', para: 'resolvido', por: 'lucio' },
@@ -600,7 +628,11 @@ export const EXEMPLOS: Exemplo[] = [
     dados: {
       titulo: 'Corrigir a exportação de relatórios grandes no LineReports', pai: 'exportacao-lr', responsavel: 'diego',
       relato: 'Vem do {#exportacao-lr}: acima de 10 mil ligações a exportação do LineReports estoura o tempo e não baixa nada.',
-      assunto: 'Relatórios', tipo: 'Correção', gravidade: 'disfuncional', alcance: 'setor', produtos: ['linereports'],
+      tipo: 'Correção', gravidade: 'disfuncional', alcance: 'setor', produtos: ['linereports'],
+      campos: {
+        Sistema: 'LineReports',
+        'Como reproduzir': '1. Abrir o relatório de ligações do Hospital\n2. Escolher o mês inteiro (85 mil ligações)\n3. Exportar: depois de uns 2 minutos, a tela mostra o erro',
+      },
     },
     passos: [
       { aos: 20, faz: 'assumir', por: 'diego' },
@@ -608,7 +640,7 @@ export const EXEMPLOS: Exemplo[] = [
       { aos: 125, faz: 'mover', para: 'desenvolvimento', por: 'diego' },
       { aos: 600, faz: 'mover', para: 'teste', por: 'diego' },
       { aos: 700, faz: 'anotar', por: 'diego', texto: 'Testado com 85 mil ligações do Hospital: exportou em 40 segundos.' },
-      { aos: 720, faz: 'alterar', por: 'diego', dados: { solucao: 'A exportação passou a gerar o arquivo em partes (streaming); testada com 85 mil linhas.' } },
+      { aos: 720, faz: 'alterar', por: 'diego', dados: { solucao: 'A exportação passou a gerar o arquivo em partes (streaming); testada com 85 mil linhas.', campos: { 'Versão publicada': 'LineReports 4.2.1' } } },
       { aos: 725, faz: 'mover', para: 'entregue', por: 'diego' },
       { aos: 1050, faz: 'mover', para: 'fechado', por: 'diego' },
     ],
@@ -627,7 +659,7 @@ export const EXEMPLOS: Exemplo[] = [
       { aos: 41, faz: 'marcar', por: 'camila', quantos: 1 },
       { aos: 60, faz: 'marcar', por: 'camila', quantos: 1 },
       { aos: 70, faz: 'marcar', por: 'camila', quantos: 1 },
-      { aos: 75, faz: 'alterar', por: 'camila', dados: { solucao: 'O aparelho estava com IP fixo da faixa antiga; voltamos para DHCP e o ramal registrou.', causa: 'A troca do roteador do cliente mudou a faixa de IP da rede.' } },
+      { aos: 75, faz: 'alterar', por: 'camila', dados: { solucao: 'O aparelho estava com IP fixo da faixa antiga; voltamos para DHCP e o ramal registrou.', causa: 'A troca do roteador do cliente mudou a faixa de IP da rede.', campos: { Responsabilidade: 'Cliente' } } },
       { aos: 78, faz: 'mover', para: 'resolvido', por: 'camila' },
       { aos: 82, faz: 'avisarCliente', por: 'camila', texto: 'O ramal 305 voltou a funcionar. Pode testar e nos avisar?' },
       { aos: 260, faz: 'mover', para: 'fechado', por: 'camila' },
@@ -655,7 +687,7 @@ export const EXEMPLOS: Exemplo[] = [
   {
     chave: 'dev-importar-assuntos', painel: 'DEV', idade: 4800, abre: 'luan',
     dados: {
-      titulo: 'Importar os cards antigos com a lista nova de assuntos', responsavel: 'diego', tipo: 'Melhoria', prioridade: 'baixa', assunto: 'Integrações e n8n', etiquetas: ['assuntos'],
+      titulo: 'Importar os cards antigos com a lista nova de assuntos', responsavel: 'diego', tipo: 'Melhoria', prioridade: 'baixa', campos: { Sistema: 'Gestor' }, etiquetas: ['assuntos'],
       relato: 'Quando a equipe fechar a lista nova de assuntos, importar os cards antigos do LineChat usando o de-para de cada assunto.',
     },
     passos: [
@@ -666,7 +698,7 @@ export const EXEMPLOS: Exemplo[] = [
   {
     chave: 'dev-botao-linechat', painel: 'DEV', idade: 3600, abre: 'luan',
     dados: {
-      titulo: 'Botão "Abrir chamado" dentro da conversa do LineChat', responsavel: 'diego', tipo: 'Melhoria', prioridade: 'media', assunto: 'Integrações e n8n',
+      titulo: 'Botão "Abrir chamado" dentro da conversa do LineChat', responsavel: 'diego', tipo: 'Melhoria', prioridade: 'media', campos: { Sistema: 'LineChat' },
       relato: 'Pedido da equipe: um botão no menu da conversa do LineChat que abre o chamado no Gestor já com o contato e a conversa.',
     },
     passos: [
@@ -679,6 +711,7 @@ export const EXEMPLOS: Exemplo[] = [
       {
         aos: 1810, faz: 'alterar', por: 'diego', dados: {
           solucao: 'O item "Abrir chamado no Gestor" entrou no menu da conversa: abre a tela de abrir chamado com o contato, o telefone e a conversa (origem "botão").',
+          campos: { 'Versão publicada': 'Gestor 1.10' },
         },
       },
       { aos: 1815, faz: 'mover', para: 'entregue', por: 'diego' },
@@ -707,6 +740,7 @@ export const EXEMPLOS: Exemplo[] = [
         aos: 1700, faz: 'alterar', por: 'bruno', dados: {
           solucao: 'Aplicamos o contorno do {#algar-problema}: desligamos o session timer na rota da Algar. Sem quedas desde então.',
           causa: 'Instabilidade no enlace da Algar (ver o problema {#algar-problema}).',
+          campos: { Responsabilidade: 'Operadora' },
         },
       },
       { aos: 1710, faz: 'mover', para: 'resolvido', por: 'bruno' },
@@ -757,7 +791,7 @@ export const EXEMPLOS: Exemplo[] = [
     dados: {
       titulo: 'Corrigir o cálculo do tempo de espera no relatório de filas', pai: 'filas-zerado', responsavel: 'diego',
       relato: 'Vem do {#filas-zerado}: o tempo médio de espera fica zerado quando a ligação passa por mais de uma fila.',
-      assunto: 'Relatórios', tipo: 'Correção', gravidade: 'disfuncional', alcance: 'setor', produtos: ['linereports'],
+      tipo: 'Correção', gravidade: 'disfuncional', alcance: 'setor', produtos: ['linereports'], campos: { Sistema: 'LineReports' },
     },
     passos: [
       { aos: 30, faz: 'assumir', por: 'diego' },
@@ -831,7 +865,7 @@ export const EXEMPLOS: Exemplo[] = [
   {
     chave: 'dev-alerta-backup', painel: 'DEV', idade: 1500, abre: 'lucio',
     dados: {
-      titulo: 'Avisar quando o backup de um PABX falhar', responsavel: 'diego', tipo: 'Melhoria', prioridade: 'media', assunto: 'Infraestrutura dos servidores',
+      titulo: 'Avisar quando o backup de um PABX falhar', responsavel: 'diego', tipo: 'Melhoria', prioridade: 'media', campos: { Sistema: 'Servidores' },
       relato: 'Hoje a conferência dos backups é manual (o agendado de toda segunda). A ideia: o servidor avisar no WhatsApp da equipe quando um backup falhar.',
     },
     passos: [
@@ -1050,7 +1084,7 @@ export const EXEMPLOS: Exemplo[] = [
     dados: {
       titulo: 'Ajuste no plano de discagem para números 0300 e 0800', pai: 'saida-0300', responsavel: 'diego',
       relato: 'Vem do {#saida-0300}: as ligações para 0300 e 0800 saem com o prefixo errado depois da mudança de rota da VC1.',
-      assunto: 'Correção no LinePBX', tipo: 'Correção', gravidade: 'inoperancia', alcance: 'setor', produtos: ['linepbx'],
+      tipo: 'Correção', gravidade: 'inoperancia', alcance: 'setor', produtos: ['linepbx'], campos: { Sistema: 'LinePBX' },
     },
     passos: [
       { aos: 20, faz: 'assumir', por: 'diego' },
@@ -1101,6 +1135,7 @@ export const EXEMPLOS: Exemplo[] = [
       {
         aos: 300, faz: 'alterar', por: 'lucio', dados: {
           solucao: 'Reconfiguramos o ramal do caixa 4 na VLAN de voz do switch novo.', causa: 'O switch novo veio sem a VLAN de voz configurada na porta do caixa 4.',
+          campos: { Responsabilidade: 'Cliente' },
         },
       },
       { aos: 310, faz: 'resposta', por: 'lucio', resposta: 'Resolvido: ramal reconfigurado' },
@@ -1124,7 +1159,7 @@ export const EXEMPLOS: Exemplo[] = [
   {
     chave: 'dev-perdidas', painel: 'DEV', idade: 300, abre: 'camila',
     dados: {
-      titulo: 'Relatório de ligações perdidas por ramal', tipo: 'Melhoria', prioridade: 'baixa', assunto: 'Relatórios',
+      titulo: 'Relatório de ligações perdidas por ramal', tipo: 'Melhoria', prioridade: 'baixa', campos: { Sistema: 'LineReports' },
       relato: 'Os clientes pedem muito: um relatório com as ligações perdidas de cada ramal no dia, para mandar aos gestores.',
     },
   },

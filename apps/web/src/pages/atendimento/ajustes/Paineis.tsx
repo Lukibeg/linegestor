@@ -2,9 +2,10 @@
  * Chamados › Ajustes (Patch 1.10, decisão 0047) — OS PAINÉIS.
  *
  * Cada painel é uma fila de chamados (Suporte, Desenvolvimento, Interno…) com a sua sigla (SUP-12),
- * a sua cor, quem vê, as suas etapas e as suas regras: as opções do campo Tipo, se conta prazo, se o
- * Resolvido fecha sozinho, o que é obrigatório para abrir, se o pai espera os filhos e quem
- * supervisiona.
+ * a sua cor, quem vê, as suas etapas e as suas regras: se conta prazo, se o Resolvido fecha sozinho, o
+ * que é obrigatório para abrir, se o pai espera os filhos e quem supervisiona. Os campos do chamado
+ * em cada painel (o Assunto, o Tipo e as opções dele, os campos que a equipe cria) ficam na aba Campos;
+ * aqui eles aparecem no que pode ser obrigatório.
  *
  * Tudo de um painel fica numa janela só, ao criar e ao editar — o pedido do Luan na prévia: "essa
  * parte das etapas pode ficar dentro de editar e também quando vou criar o painel". Salvar grava o
@@ -16,15 +17,16 @@
  * colunas), o que precisa estar preenchido para entrar e quem recebe o aviso. O painel novo começa
  * com Novo, Em andamento, Resolvido e Fechado — ou com as etapas de um painel que já existe.
  */
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, Pencil, Plus, Trash2, Undo2, UserPlus, X } from 'lucide-react';
 import {
-  AJUSTES_PAINEL_PADRAO, CAMPOS_CHAMADO, CORES_PAINEL, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL, NOME_CAMPO,
-  NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, etiquetasUnicas, paraBusca,
-  type CampoObrigatorio, type CorPainel, type EtapaGravarEntrada, type EtapaPainel, type Nivel, type Painel, type PainelGravarEntrada, type PessoaCurta, type TipoEtapa,
+  AJUSTES_PAINEL_PADRAO, CAMPOS_DO_SISTEMA, CORES_PAINEL, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL,
+  NOME_CAMPO_DO_SISTEMA, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, idDaChave, limparObrigatorios, nomeDoObrigatorio, obrigatoriosDoPainel, paraBusca,
+  type AjustesDoPainel, type CampoObrigatorio, type CampoPersonalizado, type CorPainel, type EtapaGravarEntrada, type EtapaPainel, type Nivel, type Obrigatorio,
+  type Painel, type PainelGravarEntrada, type PessoaCurta, type TipoEtapa,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
@@ -48,6 +50,11 @@ const TIPO_CURTO: Record<TipoEtapa, string> = { entrada: 'Entrada', andamento: '
 const CAMPOS_PARA_ABRIR: CampoObrigatorio[] = [
   'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'responsavel',
 ];
+/** O que pode ser obrigatório neste painel: para entrar nas etapas (tudo o que ele usa) e para abrir (o que o formulário de abrir tem). */
+function obrigatoriosQueValem(ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, campos: CampoPersonalizado[]) {
+  const etapas = obrigatoriosDoPainel(ajustes, campos);
+  return { etapas, abrir: etapas.filter((k) => idDaChave(k) || CAMPOS_PARA_ABRIR.includes(k as CampoObrigatorio)) };
+}
 
 const listaDeNomes = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`);
 const nomeDaPessoa = (pessoas: PessoaCurta[], id: string) => pessoas.find((p) => p.id === id)?.nome ?? '(pessoa desativada)';
@@ -100,13 +107,13 @@ export function AjustesPaineis() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" id="paineis-ajustes">
         {paineis.map((p) => (
-          <CartaoPainel key={p.id} p={p} pessoas={opcoes.data.pessoas} onEditar={() => { setJanela(p); lembrar(p.id); }} />
+          <CartaoPainel key={p.id} p={p} pessoas={opcoes.data.pessoas} campos={opcoes.data.campos.filter((c) => c.painelId === p.id)} onEditar={() => { setJanela(p); lembrar(p.id); }} />
         ))}
       </div>
 
       {janela && (
         <JanelaPainel key={janela === 'novo' ? 'novo' : janela.id} painel={janela === 'novo' ? null : janela} paineis={paineis}
-          pessoas={pessoas} todasAsPessoas={opcoes.data.pessoas}
+          pessoas={pessoas} todasAsPessoas={opcoes.data.pessoas} campos={janela === 'novo' ? [] : opcoes.data.campos.filter((c) => c.painelId === janela.id)}
           onFechar={() => setJanela(null)} onSalvo={(p) => { setJanela(null); lembrar(p.id); }} />
       )}
     </div>
@@ -117,16 +124,18 @@ export function AjustesPaineis() {
 //  O PAINEL NUM CARTÃO
 // =====================================================================
 
-function CartaoPainel({ p, pessoas, onEditar }: { p: Painel; pessoas: PessoaCurta[]; onEditar: () => void }) {
+function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: PessoaCurta[]; campos: CampoPersonalizado[]; onEditar: () => void }) {
   const a = p.ajustes;
+  const usados = [...CAMPOS_DO_SISTEMA.filter((c) => !a.camposDesligados.includes(c)).map((c) => NOME_CAMPO_DO_SISTEMA[c]), ...campos.filter((c) => c.ativo).map((c) => c.nome)];
+  const paraAbrir = limparObrigatorios(a.obrigatoriosAoAbrir, obrigatoriosDoPainel(a, campos)).map((k) => nomeDoObrigatorio(k, campos));
   const quemVe = p.acesso === 'todos'
     ? 'Todos que veem chamados'
     : p.pessoas.length ? `Só ${listaDeNomes(p.pessoas.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Só quem cuida dos chamados (ninguém escolhido)';
   const regras = [
-    a.tipos.length ? `Tipos: ${a.tipos.join(', ')}` : 'Sem opções de tipo',
+    usados.length ? `Campos: ${usados.join(', ')}` : 'Sem campos além dos do chamado',
     a.contaPrazo ? 'Conta prazo' : 'Não conta prazo',
     a.fecharSozinhoDias ? `O Resolvido fecha sozinho em ${a.fecharSozinhoDias} ${a.fecharSozinhoDias === 1 ? 'dia útil' : 'dias úteis'}` : 'O Resolvido não fecha sozinho',
-    a.obrigatoriosAoAbrir.length ? `Para abrir: ${CAMPOS_CHAMADO.filter((c) => a.obrigatoriosAoAbrir.includes(c)).map((c) => NOME_CAMPO[c]).join(', ')}` : 'Abre sem exigir nenhum campo',
+    paraAbrir.length ? `Para abrir: ${paraAbrir.join(', ')}` : 'Abre sem exigir nenhum campo',
     a.paiEsperaFilhos ? 'O pai espera os filhos fecharem' : 'O pai fecha sem esperar os filhos',
     a.supervisores.length ? `Supervisão: ${listaDeNomes(a.supervisores.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Sem supervisores',
   ];
@@ -171,7 +180,7 @@ function CartaoPainel({ p, pessoas, onEditar }: { p: Painel; pessoas: PessoaCurt
 
 type FormPainel = {
   nome: string; sigla: string; descricao: string; cor: CorPainel; acesso: 'todos' | 'escolhidos'; pessoas: string[]; ativo: boolean;
-  tipos: string[]; contaPrazo: boolean; fecharSozinho: boolean; fecharSozinhoDias: string; obrigatoriosAoAbrir: CampoObrigatorio[];
+  tipos: string[]; contaPrazo: boolean; fecharSozinho: boolean; fecharSozinhoDias: string; obrigatoriosAoAbrir: Obrigatorio[];
   paiEsperaFilhos: boolean; supervisores: string[];
 };
 
@@ -185,7 +194,7 @@ function formDoPainel(p: Painel | null): FormPainel {
   };
 }
 
-type EtapaRascunho = EtapaGravarEntrada & { chave: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: CampoObrigatorio[]; avisar: string[] };
+type EtapaRascunho = EtapaGravarEntrada & { chave: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[] };
 type Saindo = { etapa: EtapaRascunho; posicao: number };
 type EtapaComChamados = { id: string; nome: string; chamados: number };
 
@@ -196,15 +205,18 @@ const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorio
   ({ chave: `nova-${++sequencia}`, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...(e.avisar ?? [])] });
 const paraGravar = ({ chave: _chave, ...e }: EtapaRascunho): EtapaGravarEntrada => ({ ...e, nome: e.nome.trim() });
 const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
-/** As etapas de um painel que já existe, copiadas para o novo (sem os ids: no painel novo, todas nascem), ou as básicas. */
+/**
+ * As etapas de um painel que já existe, copiadas para o novo (sem os ids: no painel novo, todas nascem),
+ * ou as básicas. Os campos do painel de origem não vão junto nas regras: são daquele painel.
+ */
 function etapasDoModelo(modelo: Painel | undefined): EtapaRascunho[] {
   const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[] }> = modelo ? modelo.etapas : ETAPAS_DO_PAINEL_NOVO;
-  return fonte.map((e) => etapaNova(e));
+  return fonte.map((e) => etapaNova({ ...e, obrigatorios: e.obrigatorios.filter((k) => !idDaChave(k)) }));
 }
 
 /** "Andamento · N2 · pede: Cliente, Relato do cliente, Assunto · avisa: Pedro". */
-function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[]): string {
-  const pede = CAMPOS_CHAMADO.filter((c) => e.obrigatorios.includes(c)).map((c) => NOME_CAMPO[c]);
+function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[], campos: CampoPersonalizado[]): string {
+  const pede = e.obrigatorios.map((k) => nomeDoObrigatorio(k, campos));
   return [
     TIPO_CURTO[e.tipo],
     e.nivel ? `N${e.nivel}` : '',
@@ -221,10 +233,15 @@ const PARTES = [
 ] as const;
 const irPara = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, onFechar, onSalvo }: {
-  painel: Painel | null; paineis: Painel[]; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[]; onFechar: () => void; onSalvo: (p: Painel) => void;
+function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFechar, onSalvo }: {
+  painel: Painel | null; paineis: Painel[]; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[];
+  /** os campos deste painel (o painel novo ainda não tem nenhum) */
+  campos: CampoPersonalizado[];
+  onFechar: () => void; onSalvo: (p: Painel) => void;
 }) {
   const depois = useDepoisDeMudar();
+  // o que pode ser obrigatório neste painel (o painel novo usa todos os campos do sistema)
+  const validos = useMemo(() => obrigatoriosQueValem(painel?.ajustes ?? AJUSTES_PAINEL_PADRAO, campos), [painel, campos]);
   const [inicio] = useState(() => ({ form: formDoPainel(painel), etapas: painel ? painel.etapas.map(daEtapa) : etapasDoModelo(undefined) }));
   const [f, setF] = useState<FormPainel>(inicio.form);
   const [erro, setErro] = useState('');
@@ -287,7 +304,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, onFechar, onSa
       pessoas: f.pessoas, ativo: f.ativo,
       ajustes: {
         tipos: f.tipos, contaPrazo: f.contaPrazo, fecharSozinhoDias: f.fecharSozinho ? dias : null,
-        obrigatoriosAoAbrir: CAMPOS_CHAMADO.filter((c) => f.obrigatoriosAoAbrir.includes(c)), paiEsperaFilhos: f.paiEsperaFilhos, supervisores: f.supervisores,
+        obrigatoriosAoAbrir: validos.abrir.filter((c) => f.obrigatoriosAoAbrir.includes(c)), paiEsperaFilhos: f.paiEsperaFilhos, supervisores: f.supervisores,
       },
       ...(etapasMudaram ? { etapas, destino } : {}),
     };
@@ -394,15 +411,15 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, onFechar, onSa
             </label>
           )}
           <ListaDeEtapas rascunho={rascunho} mexer={mexer} saindo={saindo} setSaindo={setSaindo} abertas={abertas} setAbertas={setAbertas}
-            pessoas={pessoas} todasAsPessoas={todasAsPessoas} existe={!!painel} chamadosNa={chamadosNa} />
+            pessoas={pessoas} todasAsPessoas={todasAsPessoas} existe={!!painel} chamadosNa={chamadosNa} obrigatorios={validos.etapas} campos={campos} />
         </section>
 
         <section id="painel-regras" className="scroll-mt-14 border-t border-line pt-4 flex flex-col gap-4" aria-label="As regras">
           <h4 className="font-display font-semibold text-[14px]">As regras</h4>
-
-          <CampoRotulo rotulo="As opções do campo Tipo" id="painel-tipos" dica='O Tipo responde "que tratativa foi essa?". Digite e aperte Enter; o × tira.'>
-            <ListaDeTextos id="painel-tipos" valor={f.tipos} max={30} maxLetras={40} placeholder="Ex.: Visita técnica" onChange={(v) => mudar({ tipos: v })} />
-          </CampoRotulo>
+          <p className="text-[12.5px] text-muted rounded-lg bg-surface-2 px-3 py-2 -mt-1.5" id="painel-onde-campos">
+            Os campos do chamado neste painel — o Assunto e a árvore dele, o Tipo e as opções, os que a equipe cria — ficam na aba <b className="text-ink-2">Campos</b>
+            {painel ? '' : ', depois de criar o painel'}. Aqui eles aparecem no que pode ser obrigatório.
+          </p>
 
           <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <Toggle checked={f.contaPrazo} onChange={(v) => mudar({ contaPrazo: v })} />
@@ -426,8 +443,8 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, onFechar, onSa
           </div>
 
           <CampoRotulo rotulo="O que é obrigatório para abrir" id="painel-obrigatorios" grupo
-            dica="O formulário de abrir mostra um * nestes campos, e o chamado não abre sem eles. O que só existe depois de aberto (solução, causa, checklist, tempo) fica nas regras de cada etapa.">
-            <Caixinhas id="painel-obrigatorios" campos={CAMPOS_PARA_ABRIR} valor={f.obrigatoriosAoAbrir} onChange={(v) => mudar({ obrigatoriosAoAbrir: v })} />
+            dica="O formulário de abrir mostra um * nestes campos, e quem abre pela tela não abre sem eles (o robô e o agendado abrem mesmo assim: o que faltar é pedido para andar). O que só existe depois de aberto (solução, causa, checklist, tempo) fica nas regras de cada etapa.">
+            <Caixinhas id="painel-obrigatorios" campos={validos.abrir} valor={f.obrigatoriosAoAbrir} nome={(k) => nomeDoObrigatorio(k, campos)} onChange={(v) => mudar({ obrigatoriosAoAbrir: v })} />
           </CampoRotulo>
 
           <label className="flex items-start gap-2.5 text-sm cursor-pointer">
@@ -464,7 +481,7 @@ function etapasDoModeloAtual(modelo: string, paineis: Painel[], inicio: EtapaRas
 //  AS ETAPAS (dentro da janela do painel)
 // =====================================================================
 
-function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas, pessoas, todasAsPessoas, existe, chamadosNa }: {
+function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas, pessoas, todasAsPessoas, existe, chamadosNa, obrigatorios, campos }: {
   rascunho: EtapaRascunho[]; mexer: (fn: (xs: EtapaRascunho[]) => EtapaRascunho[]) => void;
   saindo: Saindo[]; setSaindo: (fn: (xs: Saindo[]) => Saindo[]) => void;
   abertas: Set<string>; setAbertas: (fn: (s: Set<string>) => Set<string>) => void;
@@ -472,6 +489,9 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
   /** o painel já existe (editar): mostra o que é novo e quantos chamados cada etapa tem */
   existe: boolean;
   chamadosNa: (id: string | undefined) => number | null;
+  /** o que pode ser obrigatório para entrar (os campos do sistema que o painel usa e os campos dele) */
+  obrigatorios: Obrigatorio[];
+  campos: CampoPersonalizado[];
 }) {
   const mudarEtapa = (chave: string, o: Partial<EtapaRascunho>) => mexer((xs) => xs.map((e) => (e.chave === chave ? { ...e, ...o } : e)));
   const moverPara = (chave: string, delta: number) => mexer((xs) => {
@@ -546,11 +566,11 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
                 </div>
                 {/* o resumo na largura toda (no celular, ao lado dos botões, ficava espremido) */}
                 <p className="text-[12.5px] text-muted leading-snug pl-[52px] pr-1 break-words cursor-pointer" onClick={() => alternar(e.chave)}>
-                  {resumoDaEtapa(e, todasAsPessoas)}
+                  {resumoDaEtapa(e, todasAsPessoas, campos)}
                   {n !== null && n > 0 && e.id && <> · <span className="font-semibold text-ink-2 tnum">{n} {n === 1 ? 'chamado' : 'chamados'}</span></>}
                 </p>
               </div>
-              {aberta && <EditarEtapa e={e} pessoas={pessoas} todasAsPessoas={todasAsPessoas} onMudar={(o) => mudarEtapa(e.chave, o)} />}
+              {aberta && <EditarEtapa e={e} pessoas={pessoas} todasAsPessoas={todasAsPessoas} obrigatorios={obrigatorios} campos={campos} onMudar={(o) => mudarEtapa(e.chave, o)} />}
             </li>
           );
         })}
@@ -600,7 +620,9 @@ function BotaoIcone({ rotulo, onClick, desativado, perigo, children }: { rotulo:
 }
 
 /** Os detalhes de uma etapa: o nome, o tipo (com a dica), o nível, o que pede para entrar e quem avisa. */
-function EditarEtapa({ e, pessoas, todasAsPessoas, onMudar }: { e: EtapaRascunho; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[]; onMudar: (o: Partial<EtapaRascunho>) => void }) {
+function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar }: {
+  e: EtapaRascunho; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[]; obrigatorios: Obrigatorio[]; campos: CampoPersonalizado[]; onMudar: (o: Partial<EtapaRascunho>) => void;
+}) {
   const base = `etapa-${e.chave}`;
   const fecha = e.tipo === 'resolvido' || e.tipo === 'fechado';
   return (
@@ -628,7 +650,7 @@ function EditarEtapa({ e, pessoas, todasAsPessoas, onMudar }: { e: EtapaRascunho
       </CampoRotulo>
       <CampoRotulo rotulo="O que precisa estar preenchido para entrar" id={`${base}-obrigatorios`} grupo className="sm:col-span-2"
         dica={fecha ? 'O problema (ITIL) sempre pede a causa, a solução e a validação para resolver e fechar, em qualquer painel.' : 'Sem o que está marcado, o chamado não entra: a tela diz o que falta.'}>
-        <Caixinhas id={`${base}-obrigatorios`} campos={[...CAMPOS_CHAMADO]} valor={e.obrigatorios} onChange={(v) => onMudar({ obrigatorios: v })} />
+        <Caixinhas id={`${base}-obrigatorios`} campos={obrigatorios} valor={e.obrigatorios} nome={(k) => nomeDoObrigatorio(k, campos)} onChange={(v) => onMudar({ obrigatorios: v })} />
       </CampoRotulo>
     </div>
   );
@@ -710,15 +732,18 @@ function Opcao({ ativo, onClick, titulo, texto }: { ativo: boolean; onClick: () 
   );
 }
 
-/** As caixinhas dos campos (o que é obrigatório), na ordem da lista de campos. */
-function Caixinhas({ id, campos, valor, onChange }: { id: string; campos: CampoObrigatorio[]; valor: CampoObrigatorio[]; onChange: (v: CampoObrigatorio[]) => void }) {
+/**
+ * As caixinhas do que é obrigatório, na ordem da ficha: os campos do sistema que o painel usa e, depois,
+ * os campos dele (com a marca "do painel").
+ */
+function Caixinhas({ id, campos, valor, nome, onChange }: { id: string; campos: Obrigatorio[]; valor: Obrigatorio[]; nome: (k: Obrigatorio) => string; onChange: (v: Obrigatorio[]) => void }) {
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-1 min-[480px]:grid-cols-2 md:grid-cols-3" id={id}>
       {campos.map((c) => (
-        <label key={c} className="flex items-center gap-2 text-[13px] cursor-pointer py-0.5">
+        <label key={c} className="flex items-center gap-2 text-[13px] cursor-pointer py-0.5 min-w-0">
           <input type="checkbox" className="accent-[var(--accent)]" checked={valor.includes(c)}
-            onChange={(e) => onChange(e.target.checked ? CAMPOS_CHAMADO.filter((x) => x === c || valor.includes(x)) : valor.filter((x) => x !== c))} />
-          {NOME_CAMPO[c]}
+            onChange={(e) => onChange(e.target.checked ? campos.filter((x) => x === c || valor.includes(x)) : valor.filter((x) => x !== c))} />
+          <span className="min-w-0 break-words">{nome(c)}{idDaChave(c) && <span className="text-[11.5px] text-muted"> · do painel</span>}</span>
         </label>
       ))}
     </div>
@@ -743,26 +768,6 @@ function EscolherPessoas({ id, rotulo, valor, pessoas, todasAsPessoas, vazio, on
         <EscolherComBusca valor="" opcoes={resto} onChange={(v) => v && onChange([...valor, v])} procurar="Procurar pessoa…" rotulo={`${rotulo}: incluir pessoa`}
           gatilho={(abrir) => <button type="button" className="btn-ghost btn-sm" onClick={abrir}><UserPlus size={14} /> Incluir <ChevronDown size={13} /></button>} />
       )}
-    </div>
-  );
-}
-
-/** Uma lista de textos curtos (as opções do Tipo): digita e Enter (ou vírgula); o × tira. */
-function ListaDeTextos({ id, valor, onChange, max, maxLetras, placeholder }: { id: string; valor: string[]; onChange: (v: string[]) => void; max: number; maxLetras: number; placeholder: string }) {
-  const [t, setT] = useState('');
-  const somar = () => {
-    const novas = t.split(/[,;\n]/).map((x) => x.trim().slice(0, maxLetras)).filter(Boolean);
-    if (novas.length) onChange(etiquetasUnicas([...valor, ...novas]).slice(0, max));
-    setT('');
-  };
-  return (
-    <div className="input flex flex-wrap items-center gap-1.5 py-1.5 min-h-[40px]">
-      {valor.map((p) => (
-        <span key={p} className="chip bg-surface-2 text-ink-2">{p}<button type="button" className="hover:opacity-70" onClick={() => onChange(valor.filter((x) => x !== p))} aria-label={`Tirar ${p}`}><X size={12} /></button></span>
-      ))}
-      <input className="flex-1 min-w-[140px] bg-transparent outline-none text-sm py-0.5" id={id} autoComplete="off" value={t} maxLength={maxLetras}
-        placeholder={valor.length ? '' : placeholder} onChange={(e) => setT(e.target.value)} onBlur={somar}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); somar(); } else if (e.key === 'Backspace' && !t && valor.length) onChange(valor.slice(0, -1)); }} />
     </div>
   );
 }

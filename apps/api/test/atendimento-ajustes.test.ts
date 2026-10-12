@@ -48,6 +48,7 @@ async function ficha(ref: string) {
   return r.json();
 }
 const auditoria = async () => JSON.stringify(await app.db.select().from(auditLog));
+const eventos = (f: any, tipo: string) => (f.historico as any[]).filter((e) => e.tipo === tipo);
 
 beforeAll(async () => {
   app = await makeApp();
@@ -305,6 +306,165 @@ describe('a janela do painel: as etapas junto, ao criar e ao editar', () => {
   it('o Operador não cria painel com etapas nem muda as etapas pela janela: 403', async () => {
     expect((await operador.post('/atendimento/paineis', painel({ sigla: 'OPX', etapas: [{ nome: 'A', tipo: 'entrada' }, { nome: 'B', tipo: 'fechado' }] }))).statusCode).toBe(403);
     expect((await operador.put(`/atendimento/paineis/${SUP}`, painel({ nome: 'Suporte', sigla: 'SUP', etapas: [{ nome: 'A', tipo: 'entrada' }, { nome: 'B', tipo: 'fechado' }] }))).statusCode).toBe(403);
+  });
+});
+
+// =====================================================================
+
+describe('os campos de cada painel (o painel sem assuntos, com os campos dele)', () => {
+  let p: any;
+  let sistema: any;
+  let versao: any;
+  let prazo: any;
+  const opcoesDoServidor = async () => (await s.get('/atendimento/opcoes')).json();
+  const painelAgora = async () => (await opcoesDoServidor()).paineis.find((x: any) => x.id === p.id);
+  const abrirCom = (d: Record<string, unknown>) => s.post('/atendimento/chamados', { painelId: p.id, titulo: 'Exportação travando', ...d });
+  const linha = async (codigo: string) => (await app.db.select().from(tickets).where(eq(tickets.code, codigo)))[0]!;
+
+  it('desligar o Assunto e as Operadoras: somem das regras (para abrir e das etapas) e do chamado', async () => {
+    p = (await s.post('/atendimento/paineis', painel({
+      nome: 'Projetos', sigla: 'PRJ', ajustes: { obrigatoriosAoAbrir: ['assunto', 'relato'] },
+      etapas: [
+        { nome: 'Pedido', tipo: 'entrada' }, { nome: 'Fazendo', tipo: 'andamento', obrigatorios: ['operadora', 'assunto', 'cliente'] },
+        { nome: 'Entregue', tipo: 'resolvido' }, { nome: 'Fechado', tipo: 'fechado' },
+      ],
+    }))).json();
+    const r = await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['operadoras', 'assunto'], tipos: ['Correção', 'Melhoria', 'correção'] });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().ajustes).toMatchObject({ camposDesligados: ['assunto', 'operadoras'], tipos: ['Correção', 'Melhoria'], obrigatoriosAoAbrir: ['relato'] });
+    expect(r.json().etapas[1].obrigatorios).toEqual(['cliente']);
+    expect(await auditoria()).toContain('Mudou os campos do painel Projetos: desligou Assunto e Operadoras (deixou de ser pedido em: para abrir e Fazendo); as opções do Tipo ficaram Correção, Melhoria');
+    // a janela do painel (sem a lista dos desligados) não liga de novo, nem devolve o que não vale às regras
+    const janela = await s.put(`/atendimento/paineis/${p.id}`, painel({ nome: 'Projetos', sigla: 'PRJ', ajustes: { tipos: ['Correção', 'Melhoria'], obrigatoriosAoAbrir: ['assunto', 'relato'] } }));
+    expect(janela.json().ajustes).toMatchObject({ camposDesligados: ['assunto', 'operadoras'], obrigatoriosAoAbrir: ['relato'] });
+    // o assunto e a operadora que vierem ficam de fora (o robô e o n8n não travam por isso)
+    const [assuntoDoSup] = await app.db.select().from(ticketSubjects).limit(1);
+    const t = await abrirCom({ relato: 'Trava acima de 10 mil linhas', assuntoId: assuntoDoSup?.id ?? null, operadoras: ['qualquer'] });
+    expect(t.statusCode, t.body).toBe(201);
+    const f = await ficha(t.json().codigo);
+    expect(f).toMatchObject({ assunto: null, operadoras: [], campos: {} });
+  });
+
+  it('criar os campos: lista (obrigatória para abrir), texto (pedido numa etapa) e data; o nome não repete nem o de um campo que todo chamado tem', async () => {
+    const criar = (d: Record<string, unknown>) => s.post(`/atendimento/paineis/${p.id}/campos`, d);
+    const r1 = await criar({ nome: 'Sistema', tipo: 'lista', dica: 'Onde está o problema', opcoes: [{ nome: 'LinePBX' }, { nome: 'LineReports' }], obrigatorioAoAbrir: true });
+    expect(r1.statusCode, r1.body).toBe(201);
+    sistema = r1.json();
+    expect(sistema).toMatchObject({ painelId: p.id, nome: 'Sistema', tipo: 'lista', dica: 'Onde está o problema', ativo: true, ordem: 0 });
+    expect(sistema.opcoes.map((o: any) => [o.nome, o.ativa])).toEqual([['LinePBX', true], ['LineReports', true]]);
+    const entregue = p.etapas[2];
+    versao = (await criar({ nome: 'Versão publicada', tipo: 'texto', etapas: [entregue.id] })).json();
+    prazo = (await criar({ nome: 'Previsão de entrega', tipo: 'data' })).json();
+    expect([versao.ordem, prazo.ordem]).toEqual([1, 2]);
+    const agora = await painelAgora();
+    expect(agora.ajustes.obrigatoriosAoAbrir).toEqual(['relato', `campo:${sistema.id}`]);
+    expect(agora.etapas.find((e: any) => e.id === entregue.id).obrigatorios).toEqual([`campo:${versao.id}`]);
+    expect((await opcoesDoServidor()).campos.filter((c: any) => c.painelId === p.id).map((c: any) => c.nome)).toEqual(['Sistema', 'Versão publicada', 'Previsão de entrega']);
+    expect(await auditoria()).toContain('Criou o campo Sistema (Lista (escolhe uma opção)) no painel Projetos, obrigatório para abrir');
+    expect(await auditoria()).toContain('Criou o campo Versão publicada (Texto curto) no painel Projetos, obrigatório em Entregue');
+
+    expect((await criar({ nome: 'sistema', tipo: 'texto' })).json().error).toBe('O painel Projetos já tem o campo Sistema.');
+    expect((await criar({ nome: 'Cliente', tipo: 'texto' })).json().error).toBe('Todo chamado do painel Projetos já tem o campo Cliente: escolha outro nome.');
+    expect((await criar({ nome: 'Lista vazia', tipo: 'lista' })).json().details[0].message).toBe('A lista precisa de pelo menos uma opção');
+    // com o Assunto desligado, "Assunto" pode ser um campo do painel
+    expect((await criar({ nome: 'Assunto', tipo: 'texto', ativo: false })).statusCode).toBe(201);
+    const ligar = await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['operadoras'], tipos: ['Correção', 'Melhoria'] });
+    expect(ligar.statusCode).toBe(200);
+    // ...mas o campo ativo com o mesmo nome impede de ligar o do sistema (seriam dois "Assunto" na ficha)
+    await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['operadoras', 'assunto'], tipos: ['Correção', 'Melhoria'] });
+    const assuntoDoPainel = (await opcoesDoServidor()).campos.find((c: any) => c.painelId === p.id && c.nome === 'Assunto');
+    await s.put(`/atendimento/campos/${assuntoDoPainel.id}`, { nome: 'Assunto', tipo: 'texto', ativo: true });
+    const recusado = await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['operadoras'], tipos: ['Correção', 'Melhoria'] });
+    expect(recusado.statusCode).toBe(409);
+    expect(recusado.json().error).toBe('O painel Projetos tem o campo Assunto: renomeie ou desative esse campo antes de ligar o Assunto do sistema.');
+    await s.put(`/atendimento/campos/${assuntoDoPainel.id}`, { nome: 'Assunto antigo', tipo: 'texto', ativo: false });
+  });
+
+  it('abrir: o campo obrigatório falta pelo nome; o valor vem pelo id ou pelo nome (e a opção pelo nome); o valor ruim diz o porquê', async () => {
+    const sem = await abrirCom({ relato: 'Trava' });
+    expect(sem.statusCode).toBe(400);
+    expect(sem.json()).toMatchObject({ error: 'Falta preencher: Sistema.', details: { faltam: [`campo:${sistema.id}`] } });
+    const ruim = await abrirCom({ relato: 'Trava', campos: { Sistema: 'Asterisk' } });
+    expect(ruim.json().error).toBe('Sistema: "Asterisk" não é uma das opções (LinePBX, LineReports)');
+    expect((await abrirCom({ relato: 'Trava', campos: { [sistema.id]: 'LineReports', 'Previsão de entrega': '31/02/2027' } })).json().error).toBe('Previsão de entrega: escreva a data (dia/mês/ano)');
+    expect((await abrirCom({ relato: 'Trava', campos: { Sistema: 'LineReports', Prioridade: 'alta' } })).json().error).toBe('O painel Projetos não tem o campo "Prioridade".');
+    const ok = await abrirCom({ relato: 'Trava', campos: { sistema: 'linereports', [prazo.id]: '15/12/2026' } });
+    expect(ok.statusCode, ok.body).toBe(201);
+    const f = await ficha(ok.json().codigo);
+    const reports = sistema.opcoes.find((o: any) => o.nome === 'LineReports').id;
+    expect(f.campos).toEqual({ [sistema.id]: reports, [prazo.id]: '2026-12-15' });
+    // a etapa Entregue pede a versão: a ficha diz, e mover sem ela é recusado com o nome do campo
+    const entregue = p.etapas[2];
+    expect(f.faltam[entregue.id]).toEqual([`campo:${versao.id}`]);
+    const mover = await s.post(`/atendimento/chamados/${f.id}/mover`, { etapaId: entregue.id });
+    expect(mover.json()).toMatchObject({ error: 'Para ir para Entregue, falta preencher: Versão publicada.', details: { faltam: [`campo:${versao.id}`] } });
+  });
+
+  it('mudar os campos no chamado: o histórico diz o de antes e o de agora; vazio tira; a busca acha', async () => {
+    const t = (await abrirCom({ titulo: 'Relatório de filas', relato: 'Zerado', campos: { Sistema: 'LinePBX' } })).json();
+    const r = await s.patch(`/atendimento/chamados/${t.id}`, { campos: { [versao.id]: ' 2026.10.2 ', Sistema: 'LineReports' } });
+    expect(r.statusCode, r.body).toBe(200);
+    const f = r.json();
+    expect(f.campos[versao.id]).toBe('2026.10.2');
+    const textos = eventos(f, 'campo').map((e: any) => e.texto);
+    expect(textos).toContain('mudou Sistema de "LinePBX" para "LineReports"');
+    expect(textos).toContain('mudou Versão publicada para "2026.10.2"');
+    // mandar o mesmo valor não vira histórico
+    const igual = await s.patch(`/atendimento/chamados/${t.id}`, { campos: { [versao.id]: '2026.10.2' } });
+    expect(eventos(igual.json(), 'campo')).toHaveLength(textos.length);
+    // agora a etapa que pede a versão aceita
+    expect((await s.post(`/atendimento/chamados/${t.id}/mover`, { etapaId: p.etapas[2].id })).statusCode).toBe(200);
+    const lista = (await s.get(`/atendimento/chamados?painel=${p.id}&situacao=todos&q=2026.10.2`)).json();
+    expect(lista.items.map((c: any) => c.codigo)).toEqual([t.codigo]);
+    const tirou = await s.patch(`/atendimento/chamados/${t.id}`, { campos: { [prazo.id]: null, [versao.id]: '' } });
+    expect(tirou.json().campos[versao.id]).toBeUndefined();
+    expect(eventos(tirou.json(), 'campo').at(-1).texto).toBe('mudou Versão publicada de "2026.10.2" para (vazio)');
+    expect((await s.patch(`/atendimento/chamados/${t.id}`, { campos: { [prazo.id]: 'amanhã' } })).json().error).toBe('Previsão de entrega: escreva a data (dia/mês/ano)');
+  });
+
+  it('a opção que sai fica desativada: o chamado que a tem continua com ela; o novo não pode escolher', async () => {
+    const t = (await abrirCom({ relato: 'PBX', campos: { Sistema: 'LinePBX' } })).json();
+    const pbx = sistema.opcoes.find((o: any) => o.nome === 'LinePBX').id;
+    const r = await s.put(`/atendimento/campos/${sistema.id}`, { nome: 'Sistema', tipo: 'lista', opcoes: [{ id: sistema.opcoes[1].id, nome: 'LineReports' }, { nome: 'LineChat' }], obrigatorioAoAbrir: true });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().opcoes.map((o: any) => [o.nome, o.ativa])).toEqual([['LineReports', true], ['LineChat', true], ['LinePBX', false]]);
+    sistema = r.json();
+    expect((await ficha(t.codigo)).campos[sistema.id]).toBe(pbx);
+    expect((await abrirCom({ relato: 'PBX', campos: { Sistema: 'LinePBX' } })).json().error).toBe('Sistema: "LinePBX" não é uma das opções (LineReports, LineChat)');
+    // o tipo não muda depois de criado
+    const tipo = await s.put(`/atendimento/campos/${sistema.id}`, { nome: 'Sistema', tipo: 'texto' });
+    expect(tipo.json().error).toBe('O tipo do campo não muda depois de criado (Sistema é Lista (escolhe uma opção)). Crie outro campo e desative este.');
+  });
+
+  it('desativar o campo: sai das regras e da ficha; o valor fica guardado (e volta se reativar)', async () => {
+    const t = (await abrirCom({ relato: 'Com versão', campos: { Sistema: 'LineChat', [versao.id]: '1.0' } })).json();
+    const r = await s.put(`/atendimento/campos/${versao.id}`, { nome: 'Versão publicada', tipo: 'texto', ativo: false, etapas: [p.etapas[2].id] });
+    expect(r.statusCode, r.body).toBe(200);
+    expect((await painelAgora()).etapas[2].obrigatorios).toEqual([]);
+    const f = await ficha(t.codigo);
+    expect(f.campos[versao.id]).toBeUndefined();
+    expect(((await linha(t.codigo)).customFields as Record<string, unknown>)[versao.id]).toBe('1.0');
+    expect((await s.patch(`/atendimento/chamados/${t.id}`, { campos: { [versao.id]: '2.0' } })).json().error).toBe('O campo Versão publicada foi desativado no painel Projetos.');
+    await s.put(`/atendimento/campos/${versao.id}`, { nome: 'Versão publicada', tipo: 'texto', ativo: true, etapas: [p.etapas[2].id] });
+    expect((await ficha(t.codigo)).campos[versao.id]).toBe('1.0');
+    expect((await painelAgora()).etapas[2].obrigatorios).toEqual([`campo:${versao.id}`]);
+    expect(await auditoria()).toContain('Desativou o campo Versão publicada no painel Projetos');
+  });
+
+  it('a ordem dos campos; o CSV ganha uma coluna por campo; quem não cuida dos chamados não mexe', async () => {
+    const todos = (await opcoesDoServidor()).campos.filter((c: any) => c.painelId === p.id);
+    const nova = [...todos].reverse().map((c: any) => c.id);
+    const r = await s.put(`/atendimento/paineis/${p.id}/campos/ordem`, { ids: nova });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().map((c: any) => c.id)).toEqual(nova);
+    expect((await s.put(`/atendimento/paineis/${p.id}/campos/ordem`, { ids: nova.slice(1) })).statusCode).toBe(400);
+    const csv = await s.get(`/atendimento/chamados/exportar?painel=${p.id}&situacao=todos`);
+    expect(csv.statusCode).toBe(200);
+    const cab = csv.body.replace(/^﻿/, '').split('\r\n')[0]!.split(';');
+    expect(cab.slice(-3)).toEqual(['Previsão de entrega', 'Versão publicada', 'Sistema']);
+    expect((await operador.post(`/atendimento/paineis/${p.id}/campos`, { nome: 'X', tipo: 'texto' })).statusCode).toBe(403);
+    expect((await operador.put(`/atendimento/campos/${sistema.id}`, { nome: 'X', tipo: 'lista', opcoes: [{ nome: 'A' }] })).statusCode).toBe(403);
+    expect((await operador.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: [], tipos: [] })).statusCode).toBe(403);
   });
 });
 

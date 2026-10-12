@@ -519,5 +519,6 @@ export type {
   TipoLigacaoChamado, ChamadoCriarEntrada, ChamadoAlterarEntrada, MoverEntrada, ChecklistEntrada, TempoEntrada, OperadoraCasoEntrada, PainelGravarEntrada,
   EtapaGravarEntrada, AssuntoGravarEntrada, RespostaProntaGravarEntrada, AgendadoGravarEntrada, AvisosChamadosEntrada, WebhookGravarEntrada, AjustesPrazos,
   CampoObrigatorio, TipoEtapa, ItemChecklist, SituacaoDoChamado, Prioridade, Gravidade, Alcance, EstadoPrazo, TipoEspera, PessoaCurta, AcaoResposta, RegraAgendado,
-  EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, Nivel,
+  EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, Nivel, CampoPersonalizado, CampoGravarEntrada, CamposDoSistemaEntrada, CampoDoSistema, TipoCampo,
+  OpcaoDoCampo, ValorDoCampo, ValoresDosCampos, Obrigatorio,
 } from '@gestor/shared';

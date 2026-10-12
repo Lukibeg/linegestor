@@ -1,7 +1,8 @@
 /**
- * Chamados › Ajustes (Patch 1.10, decisão 0047) — ASSUNTOS.
+ * Chamados › Ajustes › Campos (Patch 1.10, decisão 0047) — A ÁRVORE DE ASSUNTOS de um painel.
  *
- * A árvore de assuntos de cada painel (até 3 níveis, como Ramal › Configuração › Identidade), o
+ * É a configuração do campo Assunto (que cada painel liga ou desliga na aba Campos; daqui se volta
+ * para lá). A árvore de assuntos de cada painel (até 3 níveis, como Ramal › Configuração › Identidade), o
  * ponto principal para os relatórios: cada assunto com a descrição ("quando usar"), o checklist (os
  * passos que entram no chamado com este assunto) e o de-para (os nomes da lista antiga do LineChat
  * que viram este assunto, para os relatórios compararem o antes e o depois).
@@ -11,8 +12,7 @@
  * "Colar a lista" monta tudo de uma vez — com a prévia de como vai ficar antes de gravar.
  */
 import { useMemo, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { ArrowLeftRight, ClipboardPaste, CornerDownRight, ListChecks, Pencil, Plus, Search, X } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, ClipboardPaste, CornerDownRight, ListChecks, Pencil, Plus, Search, X } from 'lucide-react';
 import {
   MAX_NIVEL_ASSUNTO, assuntoEDescendentes, caminhoDoAssunto, emOrdemDeArvore, lerListaDeAssuntos, nivelDoAssunto, paraBusca,
   type Assunto, type AssuntoGravarEntrada, type Painel,
@@ -49,26 +49,18 @@ function alturaDoAssunto(id: string, todos: Assunto[], n = 0): number {
 /** Uma linha por item, sem as vazias (o checklist, o de-para). */
 const linhas = (t: string) => t.split('\n').map((x) => x.trim()).filter(Boolean);
 
-export function AjustesAssuntos() {
+export function AjustesAssuntos({ painel, onVoltar }: { painel: Painel; onVoltar: () => void }) {
   const opcoes = useOpcoes();
-  const [sp, setSp] = useSearchParams();
   const [busca, setBusca] = useState('');
   /** a janela de um assunto: editar (assunto) ou incluir (na raiz ou dentro de outro) */
   const [janela, setJanela] = useState<{ assunto: Assunto | null; paiId: string | null } | null>(null);
   const [colando, setColando] = useState(false);
 
-  const paineis = opcoes.data?.paineis ?? [];
-  // o painel fica no endereço (?painel=), o mesmo da aba Painéis e etapas
-  const painel = paineis.find((p) => p.id === sp.get('painel')) ?? paineis[0];
-  const assuntos = useMemo(() => (opcoes.data?.assuntos ?? []).filter((a) => a.painelId === painel?.id), [opcoes.data, painel?.id]);
+  const assuntos = useMemo(() => (opcoes.data?.assuntos ?? []).filter((a) => a.painelId === painel.id), [opcoes.data, painel.id]);
   const arvore = useMemo(() => emOrdemDeArvore(assuntos), [assuntos]);
 
   if (opcoes.isLoading) return <Carregando />;
   if (opcoes.isError || !opcoes.data) return <p className="text-bad text-sm" role="alert">{mensagemErro(opcoes.error)}</p>;
-  if (!painel) return <Vazio titulo="Nenhum painel" texto="Crie um painel em Painéis e etapas: os assuntos são de cada painel." />;
-
-  const escolher = (id: string) => { setBusca(''); setSp((s) => { const n = new URLSearchParams(s); n.set('painel', id); return n; }, { replace: true }); };
-  const contagem = (id: string) => opcoes.data!.assuntos.filter((a) => a.painelId === id).length;
   const desativados = assuntos.filter((a) => !a.ativo).length;
 
   // a busca pelo caminho: "ramal config" acha Ramal › Configuração › Identidade
@@ -77,17 +69,12 @@ export function AjustesAssuntos() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="Painel dos assuntos" id="assuntos-painel">
-        <span className="text-[12.5px] font-semibold text-ink-2 mr-1">Painel</span>
-        {paineis.map((p) => {
-          const ativo = p.id === painel.id;
-          return (
-            <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => escolher(p.id)}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
-              <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome} <span className="tnum text-muted font-normal text-[12.5px]">{contagem(p.id)}</span>
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1" id="assuntos-painel">
+        <button type="button" className="btn-ghost btn-sm -ml-2 text-ink-2" onClick={onVoltar} id="assuntos-voltar"><ArrowLeft size={15} /> Os campos</button>
+        <span className="text-line-strong" aria-hidden>/</span>
+        <h3 className="font-display font-semibold text-[15px] flex flex-wrap items-center gap-2">
+          A árvore de assuntos do painel <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip> {painel.nome}
+        </h3>
       </div>
 
       {!assuntos.length ? (

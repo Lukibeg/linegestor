@@ -37,8 +37,8 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   (DEV); quem cuida dos chamados cria outros (Interno, Comercial, Administrativo…) quando quiser, cada
   um com: as **etapas** (criar, renomear, tirar, mudar a ordem; o tipo — entrada, andamento,
   resolvido, fechado —, o nível N1/N2/N3, o que é obrigatório para entrar nela e quem é avisado),
-  as **regras** (as opções de Tipo, se conta prazo, se o Resolvido fecha sozinho em N dias úteis, o
-  que é obrigatório para abrir, se o pai espera os filhos, os supervisores) e **quem vê** (todos ou
+  as **regras** (se conta prazo, se o Resolvido fecha sozinho em N dias úteis, o que é obrigatório
+  para abrir, se o pai espera os filhos, os supervisores), **os campos** (abaixo) e **quem vê** (todos ou
   só as pessoas escolhidas — para os outros, o chamado não existe). Tudo isso fica **numa janela só**,
   ao criar e ao editar (o pedido dele na prévia: "essa parte das etapas pode ficar dentro de editar e
   também quando vou criar o painel"); o painel novo começa com Novo, Em andamento, Resolvido e
@@ -51,7 +51,7 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   (IS-4280) vira link para o card do LineChat.
 - **O chamado** tem, cada coisa no seu lugar: o **relato do cliente**, a **descrição** do andamento,
   a **solução** e a **causa** (no problema, também o contorno e a validação); a **empresa** e o
-  **contato** (nome e WhatsApp) em destaque; a **classificação** — o **assunto** (árvore de até 3
+  **contato** (nome e WhatsApp) em destaque; a **classificação** (o que o painel usa: abaixo) — o **assunto** (árvore de até 3
   níveis, com descrição, checklist e de-para; **nasce em branco** para a equipe montar), o tipo, a
   **gravidade** e o **alcance** → a **prioridade sugerida** pela matriz (trocar pede o motivo, que
   fica à vista) —; **produtos e operadoras** (vários, os do cliente primeiro: "tem cliente com duas
@@ -60,6 +60,34 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   **anotações com anexos** (até 5 de 10 MB, colar print); e a **linha do tempo** (tudo, anotações,
   histórico e a **trajetória** pelas etapas e níveis, com quanto tempo ficou em cada uma e o motivo
   de cada escalonamento).
+- **Os campos de cada painel** (o pedido dele na prévia, 11/10: "vou ter outros painéis, então nem
+  sempre vai ser assuntos… o correto é você fazer ajustes e campos personalizados"). A aba que era
+  Assuntos virou **Chamados › Ajustes › Campos**, painel por painel:
+  - **Os do sistema que cada painel usa ou não**: assunto, tipo, gravidade e alcance (os dois juntos,
+    porque sugerem a prioridade), produtos e operadoras. O resto (cliente, contato, título, relato,
+    descrição, prioridade, responsável, solução, causa, etiquetas) é de todo chamado. Desligar some da
+    ficha, do Abrir chamado, dos cartões, da busca e do CSV daquele painel e sai do que é pedido para
+    abrir e nas etapas (a confirmação diz de onde); **o valor fica guardado** e volta se ligar de novo.
+    A árvore de assuntos abre dali (é a configuração do campo Assunto do painel), e as opções do Tipo
+    também se editam ali.
+  - **Os do painel**, que a equipe cria: texto curto, texto longo, número, data, sim/não e lista
+    (escolhe uma ou várias opções), com uma dica; até 30 por painel e 50 opções por lista. Cada um pode
+    ser **obrigatório para abrir** e **para entrar** nas etapas marcadas — as mesmas regras dos campos
+    do sistema, também na janela do painel. O texto longo fica junto do relato; os outros, na
+    classificação. Entram na busca, no CSV (uma coluna por campo), no histórico e nas integrações.
+  - **Nada se apaga**: desativar esconde e guarda o valor; a opção tirada de uma lista fica inativa (o
+    que já foi escolhido continua). **O tipo não muda** depois de criado (cria-se outro e desativa
+    este), para nenhum valor guardado virar outra coisa. O nome não repete o de outro campo do painel
+    nem o de um campo de todo chamado.
+  - O que é **obrigatório para abrir** vale para quem abre na tela (à mão e pelo botão da conversa); o
+    **robô, os agendados e a API abrem mesmo sem**, e a equipe completa na ficha — o chamado do cliente
+    não se perde por um campo. Pela integração, o campo do sistema que o painel não usa é ignorado (o
+    robô não falha por isso); o campo do painel vai pelo nome (ou pelo id), e o que o painel não tem é
+    recusado com a mensagem dizendo qual.
+  - No servidor, os dois painéis nascem com os campos do sistema ligados e sem campos próprios (a
+    equipe monta, como a árvore de assuntos). Na prévia, o Desenvolvimento é o exemplo: sem assunto e
+    sem operadoras, com Sistema (lista, obrigatório para abrir), Como reproduzir, Versão publicada
+    (obrigatória no Entregue) e Previsão de entrega.
 - **Andar com regras.** Ir para uma etapa pede o que ela exige (a tela diz o que falta);
   **escalonar e voltar de nível pedem o motivo**; o **pai não fecha com filho aberto** (os filhos
   podem estar em outro painel, como o Desenvolvimento); o **problema** (ITIL) junta os incidentes de
@@ -103,7 +131,7 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   algo confere de onde veio (`Origin`): de outro site, é recusado — menos a entrada das integrações,
   que não usa cookie.
 - **Quem pode o quê.** Ver: `support.read` (todos, inclusive o Leitor). Trabalhar (`tickets.work`,
-  nova): Operador, Técnico e Administrador. Cuidar — painéis, etapas, assuntos, prazos, avisos,
+  nova): Operador, Técnico e Administrador. Cuidar — painéis, etapas, campos e assuntos, prazos, avisos,
   respostas prontas, agendados e a lixeira dos chamados (`tickets.manage`, nova): Administrador.
   Integrações e IA: `admin.manage`. Tudo o que muda vai para a auditoria; nada se apaga de verdade.
 
@@ -117,8 +145,9 @@ afetados.
 
 **Consequências.**
 
-- Migração `0015_chamados_do_gestor`: 16 tabelas novas (grupo 10: `ticket_panels`, `ticket_stages`,
-  `ticket_subjects`, `tickets`, `ticket_events`, `ticket_notes`, `ticket_attachments`,
+- Migração `0015_chamados_do_gestor`: 17 tabelas novas (grupo 10: `ticket_panels`, `ticket_stages`,
+  `ticket_subjects`, `ticket_fields` (os campos de cada painel; o valor fica em
+  `tickets.custom_fields`, pelo id do campo), `tickets`, `ticket_events`, `ticket_notes`, `ticket_attachments`,
   `ticket_links`, `ticket_time_entries`, `ticket_carrier_cases`, `ticket_schedules`, `ticket_macros`,
   `ticket_contacts`, `ticket_notifications`, `ticket_webhooks`, `ticket_api_keys`), as duas
   permissões novas nos papéis e os dois painéis iniciais. Os ajustes ficam em `settings`

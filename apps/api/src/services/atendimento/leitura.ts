@@ -18,13 +18,13 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  AcaoRespostaSchema, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, etiquetasUnicas, faltaParaEtapa,
+  AcaoRespostaSchema, campoLigado, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, etiquetasUnicas, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugerida,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
   type AcaoResposta, type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
   type CartaoParaLista, type CasoOperadora, type DadosObrigatorios, type FichaChamado, type FiltrosAtendimento, type Gravidade, type ItemChecklist,
   type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Prioridade, type QuadroAtendimento, type RespostaPronta, type ResumoDoPainel,
-  type ReferenciaMostrada, type SituacaoDoChamado, type TipoAviso, type TipoChamado, type TipoLigacaoChamado,
+  type ReferenciaMostrada, type SituacaoDoChamado, type TipoAviso, type TipoChamado, type TipoLigacaoChamado, type ValoresDosCampos,
 } from '@gestor/shared';
 import { NotFound } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
@@ -61,6 +61,7 @@ export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number): DadosObriga
     solucao: t.solution, causa: t.cause, validacao: t.validation,
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
     tempoMinutos,
+    campos: (t.customFields as ValoresDosCampos | null) ?? {},
   };
 }
 
@@ -137,6 +138,8 @@ export async function opcoes(app: FastifyInstance, ator: Ator): Promise<OpcoesAt
     paineis,
     pessoas: pessoas.map((p) => ({ ...p, ativo: true })),
     assuntos,
+    // os campos na ordem dos painéis e, dentro de cada um, na ordem dos Ajustes
+    campos: paineis.flatMap((p) => ctx.campos.filter((c) => c.painelId === p.id)),
     produtos: prods,
     operadoras: ops,
     etiquetas: etiquetasUnicas(usadas.map((u) => u.e).filter(Boolean)).sort((a, b) => a.localeCompare(b, 'pt-BR')),
@@ -201,7 +204,7 @@ export async function exportar(app: FastifyInstance, ator: Ator, f: FiltrosAtend
   const csv = csvDosChamados(todos, {
     painel: (id) => ctx.paineis.find((p) => p.id === id)?.nome ?? '',
     etapa: (id) => ctx.etapas.get(id)?.etapa.nome ?? '',
-  });
+  }, ctx.campos);
   return { csv, nome: `chamados-${diaLocal(ctx.agora)}.csv`, total: todos.length };
 }
 
@@ -485,7 +488,8 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     ...cartao,
     relato: t.customerReport, descricao: t.description, solucao: t.solution, causa: t.cause, contorno: t.workaround, validacao: t.validation,
     motivoPrioridade: t.priorityReason,
-    prioridadeSugerida: prioridadeSugerida(t.severity as Gravidade | null, t.reach as Alcance | null, ctx.prazos.matriz),
+    // sem a gravidade e o alcance no painel, não há sugestão (o que ficou guardado de antes não conta)
+    prioridadeSugerida: campoLigado(painel.ajustes, 'gravidadeAlcance') ? prioridadeSugerida(t.severity as Gravidade | null, t.reach as Alcance | null, ctx.prazos.matriz) : null,
     sessaoId: t.sessionId,
     conversaUrl: linkDaConversa(integracoes.valor.linkConversa, t.sessionId),
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],

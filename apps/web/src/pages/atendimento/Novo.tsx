@@ -21,10 +21,11 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, X } from 'lucide-react';
 import {
-  ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, NOME_ALCANCE, NOME_CAMPO, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
-  caminhoDoAssunto, emOrdemDeArvore, etiquetasUnicas, numeroWhatsApp, paraBusca, prioridadeSugerida,
-  type Alcance, type CadastroDoCliente, type CampoObrigatorio, type CartaoChamado, type ChamadoCriarEntrada,
-  type FichaChamado, type Gravidade, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado,
+  ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
+  caminhoDoAssunto, campoLigado, chaveDoCampo, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp, paraBusca, prioridadeSugerida,
+  valorPreenchido,
+  type Alcance, type CadastroDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
+  type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
@@ -73,6 +74,8 @@ type Form = {
   responsavelId: string;
   etiquetas: string[];
   avisarCliente: boolean;
+  /** os campos do painel (pelo id do campo) */
+  campos: Record<string, ValorDoCampo>;
 };
 
 /**
@@ -132,6 +135,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       responsavelId: eu,
       etiquetas: [],
       avisarCliente: false,
+      campos: {},
     };
   });
   const mudar = (o: Partial<Form>) => { setF((x) => ({ ...x, ...o })); setMexeu(true); };
@@ -143,8 +147,12 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
   const [enviando, setEnviando] = useState(false);
 
   const painel = paineis.find((p) => p.id === f.painelId) ?? paineis[0]!;
-  const pede = (c: CampoObrigatorio) => painel.ajustes.obrigatoriosAoAbrir.includes(c);
-  const falta = (c: CampoObrigatorio) => faltando.has(c);
+  const pede = (c: Obrigatorio) => painel.ajustes.obrigatoriosAoAbrir.includes(c);
+  const falta = (c: string) => faltando.has(c);
+  /** o painel usa este campo do sistema? (desligado em Ajustes › Campos, ele não aparece aqui) */
+  const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
+  /** os campos que o painel criou (os ativos), na ordem dos Ajustes */
+  const camposDoPainel = useMemo(() => opcoes.campos.filter((c) => c.painelId === painel.id && c.ativo), [opcoes.campos, painel.id]);
 
   // ---------- o pai e o incidente (pelo código, do endereço) ----------
   const pai = useFicha(refPai);
@@ -170,7 +178,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
   const assunto = assuntosDoPainel.find((a) => a.id === f.assuntoId);
 
   // ---------- a prioridade sugerida ----------
-  const sugerida = prioridadeSugerida(f.gravidade, f.alcance, opcoes.prazos.matriz);
+  const sugerida = usa('gravidadeAlcance') ? prioridadeSugerida(f.gravidade, f.alcance, opcoes.prazos.matriz) : null;
   const prioridadeFinal = f.prioridade ?? sugerida;
   const precisaMotivo = !!f.prioridade && !!sugerida && f.prioridade !== sugerida;
 
@@ -179,7 +187,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
   const podeAvisar = opcoes.whatsapp.cliente && !!foneValido;
 
   // o que o painel pede e o formulário não tem (uma regra mal escolhida nos Ajustes): diz logo, em vez de travar no fim
-  const pedeForaDoFormulario = painel.ajustes.obrigatoriosAoAbrir.filter((c) => !CAMPOS_DO_FORMULARIO.includes(c));
+  const pedeForaDoFormulario = painel.ajustes.obrigatoriosAoAbrir.filter((c) => !idDaChave(c) && !CAMPOS_DO_FORMULARIO.includes(c as CampoObrigatorio));
 
   // não sair sem querer com o relato pela metade
   const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim());
@@ -196,7 +204,8 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
     if (!novo) return;
     const assuntoFica = opcoes.assuntos.some((a) => a.id === f.assuntoId && a.painelId === novo.id && a.ativo);
     const tipoFica = novo.ajustes.tipos.find((t) => paraBusca(t) === paraBusca(f.tipo));
-    mudar({ painelId: novo.id, assuntoId: assuntoFica ? f.assuntoId : '', tipo: tipoFica ?? '' });
+    // os campos do painel são de cada painel: os do outro saem
+    mudar({ painelId: novo.id, assuntoId: assuntoFica ? f.assuntoId : '', tipo: tipoFica ?? '', campos: {} });
     setFaltando(new Set());
   };
   const trocarCliente = (id: string) => { mudar({ clienteId: id }); tirarFalta('cliente'); };
@@ -224,14 +233,16 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       contatoNome: f.contatoNome.trim() || null,
       contatoTelefone: f.contatoTelefone.trim() || null,
       sessaoId: sessao,
-      assuntoId: f.assuntoId || null,
-      tipo: f.tipo || null,
-      gravidade: f.gravidade,
-      alcance: f.alcance,
+      // o que o painel desligou não vai (o servidor também não guardaria)
+      assuntoId: usa('assunto') ? f.assuntoId || null : null,
+      tipo: usa('tipo') ? f.tipo || null : null,
+      gravidade: usa('gravidadeAlcance') ? f.gravidade : null,
+      alcance: usa('gravidadeAlcance') ? f.alcance : null,
       prioridade: f.prioridade,
       motivoPrioridade: precisaMotivo ? f.motivoPrioridade.trim() : null,
-      produtos: f.produtos,
-      operadoras: f.operadoras,
+      produtos: usa('produtos') ? f.produtos : [],
+      operadoras: usa('operadoras') ? f.operadoras : [],
+      campos: Object.fromEntries(camposDoPainel.filter((c) => valorPreenchido(f.campos[c.id])).map((c) => [c.id, f.campos[c.id]!])),
       etiquetas: f.etiquetas,
       responsavelId: f.responsavelId || null,
       paiId: pai.data?.id ?? null,
@@ -314,7 +325,7 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
 
         {pedeForaDoFormulario.length > 0 && (
           <p className="text-[13px] rounded-lg bg-signal-soft text-signal p-2.5" role="alert">
-            O painel {painel.nome} pede para abrir: {pedeForaDoFormulario.map((c) => NOME_CAMPO[c]).join(', ')} — e isso só se preenche depois de aberto.
+            O painel {painel.nome} pede para abrir: {pedeForaDoFormulario.map((c) => nomeDoObrigatorio(c, opcoes.campos)).join(', ')} — e isso só se preenche depois de aberto.
             Peça a quem cuida dos chamados para rever as regras do painel (Chamados › Ajustes › Painéis).
           </p>
         )}
@@ -391,9 +402,9 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
         {/* ---------- a classificação e a prioridade ---------- */}
         <Secao titulo="Classificação">
           <div className="grid grid-cols-1 gap-4">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Rotulado rotulo="Assunto" id="novo-assunto" obrigatorio={pede('assunto')} falta={falta('assunto')} className="sm:col-span-2"
-                dica={!opcoesAssunto.length ? `O painel ${painel.nome} ainda não tem assuntos (Chamados › Ajustes › Assuntos).` : undefined}>
+            {(usa('assunto') || (usa('tipo') && painel.ajustes.tipos.length > 0)) && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {usa('assunto') && <Rotulado rotulo="Assunto" id="novo-assunto" obrigatorio={pede('assunto')} falta={falta('assunto')} className="sm:col-span-2"
+                dica={!opcoesAssunto.length ? `O painel ${painel.nome} ainda não tem assuntos (Chamados › Ajustes › Campos).` : undefined}>
                 <EscolherComBusca valor={f.assuntoId} onChange={(v) => { mudar({ assuntoId: v }); tirarFalta('assunto'); }} opcoes={opcoesAssunto} vazio="Sem assunto (ainda)"
                   placeholder="Escolha o assunto…" procurar="Procurar pelo caminho (ex.: ramal config)…" className="input w-full" id="novo-assunto" rotulo="Assunto" largura="w-[520px]"
                   desativado={!opcoesAssunto.length} />
@@ -404,16 +415,16 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
                     {assunto.checklist.length > 0 && <>traz {assunto.checklist.length} {assunto.checklist.length === 1 ? 'passo' : 'passos'} para o checklist</>}
                   </p>
                 )}
-              </Rotulado>
-              {painel.ajustes.tipos.length > 0 && (
+              </Rotulado>}
+              {usa('tipo') && painel.ajustes.tipos.length > 0 && (
                 <Rotulado rotulo="Tipo" id="novo-tipo" grupo obrigatorio={pede('tipo')} falta={falta('tipo')} className="sm:col-span-2">
                   <Segmentos id="novo-tipo" rotulo="Tipo" valor={f.tipo} desmarcavel onChange={(v) => { mudar({ tipo: v }); tirarFalta('tipo'); }}
                     opcoes={painel.ajustes.tipos.map((t) => ({ id: t, nome: t }))} />
                 </Rotulado>
               )}
-            </div>
+            </div>}
 
-            <Rotulado rotulo="Gravidade" id="novo-gravidade" grupo obrigatorio={pede('gravidade')} falta={falta('gravidade')}>
+            {usa('gravidadeAlcance') && <Rotulado rotulo="Gravidade" id="novo-gravidade" grupo obrigatorio={pede('gravidade')} falta={falta('gravidade')}>
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3" role="radiogroup" aria-label="Gravidade" id="novo-gravidade">
                 {GRAVIDADES.map((g) => {
                   const ativa = f.gravidade === g;
@@ -426,19 +437,19 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
                   );
                 })}
               </div>
-            </Rotulado>
+            </Rotulado>}
 
-            <Rotulado rotulo="Alcance" id="novo-alcance" grupo obrigatorio={pede('alcance')} falta={falta('alcance')} dica="Quantos o problema atinge no cliente.">
+            {usa('gravidadeAlcance') && <Rotulado rotulo="Alcance" id="novo-alcance" grupo obrigatorio={pede('alcance')} falta={falta('alcance')} dica="Quantos o problema atinge no cliente.">
               <Segmentos<Alcance | ''> id="novo-alcance" rotulo="Alcance" valor={f.alcance ?? ''} desmarcavel onChange={(v) => { mudar({ alcance: v || null }); tirarFalta('alcance'); }}
                 opcoes={ALCANCES.map((a) => ({ id: a, nome: NOME_ALCANCE[a] }))} />
-            </Rotulado>
+            </Rotulado>}
 
             <Rotulado rotulo="Prioridade" id="novo-prioridade" grupo obrigatorio={pede('prioridade')} falta={falta('prioridade')}>
               <div className="rounded-lg border border-line bg-surface-2 p-3 flex flex-col gap-2" id="novo-prioridade">
                 <div className="text-[13px] text-ink-2" aria-live="polite">
                   {sugerida
                     ? <>Sugerida: <b className="text-ink">{NOME_PRIORIDADE[sugerida]}</b> <span className="text-muted">({NOME_GRAVIDADE[f.gravidade!]} × {NOME_ALCANCE[f.alcance!].toLowerCase()})</span></>
-                    : <span className="text-muted">Escolha a gravidade e o alcance: o Gestor sugere a prioridade. Ou escolha direto.</span>}
+                    : <span className="text-muted">{usa('gravidadeAlcance') ? 'Escolha a gravidade e o alcance: o Gestor sugere a prioridade. Ou escolha direto.' : 'Escolha a prioridade (ela define o prazo).'}</span>}
                 </div>
                 <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Prioridade">
                   {PRIORIDADES.map((p) => {
@@ -466,21 +477,34 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
           </div>
         </Secao>
 
+        {/* ---------- os campos do painel (Ajustes › Campos) ---------- */}
+        {camposDoPainel.length > 0 && (
+          <Secao titulo={`Do painel ${painel.nome}`} dica="Os campos que a equipe criou para este painel.">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" id="novo-campos-do-painel">
+              {camposDoPainel.map((c) => (
+                <CampoDoPainel key={c.id} c={c} valor={f.campos[c.id] ?? null} obrigatorio={pede(chaveDoCampo(c.id))} falta={falta(chaveDoCampo(c.id))}
+                  onChange={(v) => { const campos = { ...f.campos }; if (v === null) delete campos[c.id]; else campos[c.id] = v; mudar({ campos }); tirarFalta(chaveDoCampo(c.id)); }} />
+              ))}
+            </div>
+          </Secao>
+        )}
+
         {/* ---------- produtos e operadoras ---------- */}
-        <Secao titulo="Produtos e operadoras" dica={f.clienteId ? 'Os do cliente aparecem primeiro; os outros vêm do catálogo.' : 'Escolha o cliente para ver primeiro os produtos e as operadoras dele.'}>
+        {(usa('produtos') || usa('operadoras')) && <Secao titulo={usa('produtos') && usa('operadoras') ? 'Produtos e operadoras' : usa('produtos') ? 'Produtos' : 'Operadoras'}
+          dica={f.clienteId ? 'Os do cliente aparecem primeiro; os outros vêm do catálogo.' : 'Escolha o cliente para ver primeiro os do cadastro dele.'}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Rotulado rotulo="Produtos" id="novo-produtos" grupo obrigatorio={pede('produto')} falta={falta('produto')}>
+            {usa('produtos') && <Rotulado rotulo="Produtos" id="novo-produtos" grupo obrigatorio={pede('produto')} falta={falta('produto')}>
               <EscolherVarios id="novo-produtos" rotulo="produto" valor={f.produtos} onChange={(v) => { mudar({ produtos: v }); tirarFalta('produto'); }}
                 doCliente={(cadastro.data?.produtos ?? []).map((p) => ({ id: p.id, nome: p.nome }))}
                 catalogo={opcoes.produtos.map((p) => ({ id: p.id, nome: p.nome }))} />
-            </Rotulado>
-            <Rotulado rotulo="Operadoras" id="novo-operadoras" grupo obrigatorio={pede('operadora')} falta={falta('operadora')}>
+            </Rotulado>}
+            {usa('operadoras') && <Rotulado rotulo="Operadoras" id="novo-operadoras" grupo obrigatorio={pede('operadora')} falta={falta('operadora')}>
               <EscolherVarios id="novo-operadoras" rotulo="operadora" valor={f.operadoras} onChange={(v) => { mudar({ operadoras: v }); tirarFalta('operadora'); }}
                 doCliente={(cadastro.data?.operadoras ?? []).map((o) => ({ id: o.id, nome: o.nome }))}
                 catalogo={opcoes.operadoras.map((o) => ({ id: o.id, nome: o.nome }))} />
-            </Rotulado>
+            </Rotulado>}
           </div>
-        </Secao>
+        </Secao>}
 
         {/* ---------- quem cuida ---------- */}
         <Secao titulo="Quem cuida">
@@ -555,6 +579,71 @@ function Rotulado({ rotulo, id, obrigatorio, falta, erro, dica, grupo = false, c
           : dica ? <div className="text-muted text-[12.5px] mt-1">{dica}</div> : null}
     </div>
   );
+}
+
+/**
+ * Um campo do painel no formulário de abrir: o texto, o texto longo (na largura toda), o número, a data,
+ * o sim ou não e as listas (até 8 opções, em botões; mais que isso, na caixa de escolher).
+ */
+function CampoDoPainel({ c, valor, obrigatorio, falta, onChange }: {
+  c: CampoPersonalizado; valor: ValorDoCampo | null; obrigatorio: boolean; falta: boolean; onChange: (v: ValorDoCampo | null) => void;
+}) {
+  const id = `novo-campo-${c.id}`;
+  const ativas = c.opcoes.filter((o) => o.ativa);
+  const texto = typeof valor === 'string' ? valor : typeof valor === 'number' ? String(valor) : '';
+  const comum = { rotulo: c.nome, id, obrigatorio, falta, dica: c.dica ?? undefined };
+  switch (c.tipo) {
+    case 'texto_longo':
+      return (
+        <Rotulado {...comum} className="sm:col-span-2">
+          <textarea className="input min-h-[72px]" id={id} value={texto} maxLength={MAX_LETRAS_DO_CAMPO.texto_longo} onChange={(e) => onChange(e.target.value || null)} />
+        </Rotulado>
+      );
+    case 'numero':
+      return <Rotulado {...comum}><input className="input tnum" id={id} inputMode="decimal" value={texto} maxLength={30} placeholder="Ex.: 12,5" onChange={(e) => onChange(e.target.value || null)} /></Rotulado>;
+    case 'data':
+      return <Rotulado {...comum}><input className="input" id={id} type="date" value={texto} onChange={(e) => onChange(e.target.value || null)} /></Rotulado>;
+    case 'sim_nao':
+      return (
+        <Rotulado {...comum} grupo>
+          <Segmentos id={id} rotulo={c.nome} valor={valor === true ? 'sim' : valor === false ? 'nao' : ''} desmarcavel
+            opcoes={[{ id: 'sim', nome: 'Sim' }, { id: 'nao', nome: 'Não' }]} onChange={(v) => onChange(v === 'sim' ? true : v === 'nao' ? false : null)} />
+        </Rotulado>
+      );
+    case 'lista':
+      return ativas.length <= 8 ? (
+        <Rotulado {...comum} grupo className={ativas.length > 3 ? 'sm:col-span-2' : ''}>
+          <Segmentos id={id} rotulo={c.nome} valor={texto} desmarcavel opcoes={ativas.map((o) => ({ id: o.id, nome: o.nome }))} onChange={(v) => onChange(v || null)} />
+        </Rotulado>
+      ) : (
+        <Rotulado {...comum}>
+          <select className="input" id={id} value={texto} onChange={(e) => onChange(e.target.value || null)}>
+            <option value="">—</option>
+            {ativas.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+          </select>
+        </Rotulado>
+      );
+    case 'lista_varios': {
+      const marcados = Array.isArray(valor) ? valor : [];
+      return (
+        <Rotulado {...comum} grupo className="sm:col-span-2">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={c.nome} id={id}>
+            {ativas.map((o) => {
+              const ativo = marcados.includes(o.id);
+              return (
+                <button key={o.id} type="button" aria-pressed={ativo} onClick={() => onChange(ativo ? marcados.filter((x) => x !== o.id) : [...marcados, o.id])}
+                  className={`rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+                  {o.nome}
+                </button>
+              );
+            })}
+          </div>
+        </Rotulado>
+      );
+    }
+    default:
+      return <Rotulado {...comum}><input className="input" id={id} value={texto} maxLength={MAX_LETRAS_DO_CAMPO.texto} onChange={(e) => onChange(e.target.value || null)} /></Rotulado>;
+  }
 }
 
 /** Botões lado a lado para escolher uma opção (o tipo, o alcance, o registro). */
