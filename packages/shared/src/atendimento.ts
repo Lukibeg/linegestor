@@ -2,8 +2,8 @@
  * OS CHAMADOS DO GESTOR (decisão 0047, Patch 1.10) — as regras e os formatos.
  *
  * O módulo que substitui o painel de chamados do LineChat: painéis que a administração cria (Suporte,
- * Desenvolvimento, Interno…), etapas editáveis em cada um (N1, N2 e N3 continuam sendo colunas, a
- * pedido do Luan), o chamado com cada informação no seu lugar (relato do cliente, descrição, solução e
+ * Desenvolvimento, Interno…), etapas editáveis em cada um (N1, N2, N3 e DEV são colunas, a pedido do
+ * Luan), o chamado com cada informação no seu lugar (relato do cliente, descrição, solução e
  * causa), o assunto em árvore, a prioridade sugerida pela gravidade e pelo alcance, os prazos, o pai e
  * os filhos (inclusive em outro painel), o problema que junta incidentes, as ligações feitas à mão e o
  * histórico de tudo.
@@ -41,8 +41,17 @@ export const DICA_TIPO_ETAPA: Record<TipoEtapa, string> = {
   fechado: 'Acabou. Pode ter mais de uma (Fechado, Cancelado…).',
 };
 
-export const NIVEIS = [1, 2, 3] as const;
+/**
+ * Os níveis do escalonamento: N1, N2, N3 e, depois deles, o DEV (o desenvolvimento: 13/10, o Luan na
+ * prévia, "o correto aqui é ter o nível DEV também"). Guardados como número (4 = DEV), para a ordem.
+ */
+export const NIVEIS = [1, 2, 3, 4] as const;
 export type Nivel = (typeof NIVEIS)[number];
+export const NOME_DO_NIVEL: Record<Nivel, string> = { 1: 'N1', 2: 'N2', 3: 'N3', 4: 'DEV' };
+/** "N2", "DEV"… (vazio sem nível). */
+export function rotuloDoNivel(n: number | null | undefined): string {
+  return n ? NOME_DO_NIVEL[n as Nivel] ?? `N${n}` : '';
+}
 
 /** O campo Tipo responde só "que tratativa foi essa?"; as opções são de cada painel. */
 export const TIPOS_PADRAO = ['Incidente', 'Requisição', 'Dúvida', 'Mudança'];
@@ -93,7 +102,7 @@ export type EtapaPainel = {
   id: string;
   nome: string;
   tipo: TipoEtapa;
-  /** N1, N2, N3: mover para um nível acima é escalonar (pede o motivo); para um abaixo, voltar de nível */
+  /** N1, N2, N3, DEV: mover para um nível acima é escalonar (pede o motivo); para um abaixo, voltar de nível */
   nivel: Nivel | null;
   /** o que precisa estar preenchido para o chamado entrar aqui (os campos do sistema e os do painel) */
   obrigatorios: Obrigatorio[];
@@ -152,9 +161,10 @@ export function ajustesDoPainelCompletos(v: Partial<AjustesDoPainel> | null | un
 type EtapaInicial = Omit<EtapaPainel, 'id' | 'avisar'> & { chave: string };
 const CLASSIFICADO: CampoObrigatorio[] = ['cliente', 'relato', 'assunto', 'tipo', 'gravidade'];
 /**
- * Os painéis com que o módulo nasce. O Suporte segue a escolha do Luan: N1, N2 e N3 como colunas
+ * Os painéis com que o módulo nasce. O Suporte segue a escolha do Luan: N1, N2, N3 e DEV como colunas
  * (marcadas como nível, para o escalonamento e a trajetória), mais Novo, Em observação, Resolvido e
- * Fechado. As etapas são da equipe: dá para criar, renomear, tirar e mudar a ordem.
+ * Fechado. O DEV é o chamado com o desenvolvimento (a correção em si pode andar num filho, no painel
+ * Desenvolvimento). As etapas são da equipe: dá para criar, renomear, tirar e mudar a ordem.
  */
 export const PAINEIS_INICIAIS: Array<{ chave: string; nome: string; sigla: string; descricao: string; cor: CorPainel; ajustes: AjustesDoPainel; etapas: EtapaInicial[] }> = [
   {
@@ -165,6 +175,7 @@ export const PAINEIS_INICIAIS: Array<{ chave: string; nome: string; sigla: strin
       { chave: 'n1', nome: 'N1', tipo: 'andamento', nivel: 1, obrigatorios: ['cliente', 'relato'] },
       { chave: 'n2', nome: 'N2', tipo: 'andamento', nivel: 2, obrigatorios: ['cliente', 'relato', 'assunto'] },
       { chave: 'n3', nome: 'N3', tipo: 'andamento', nivel: 3, obrigatorios: ['cliente', 'relato', 'assunto'] },
+      { chave: 'dev', nome: 'DEV', tipo: 'andamento', nivel: 4, obrigatorios: ['cliente', 'relato', 'assunto'] },
       { chave: 'observacao', nome: 'Em observação', tipo: 'andamento', nivel: null, obrigatorios: ['cliente', 'relato', 'assunto', 'solucao'] },
       { chave: 'resolvido', nome: 'Resolvido', tipo: 'resolvido', nivel: null, obrigatorios: [...CLASSIFICADO, 'solucao', 'causa'] },
       { chave: 'fechado', nome: 'Fechado', tipo: 'fechado', nivel: null, obrigatorios: [...CLASSIFICADO, 'solucao', 'causa'] },
@@ -724,7 +735,7 @@ export const EtapaGravarSchema = z.object({
   id: z.string().min(1).max(60).optional(),
   nome: z.string().trim().min(1, 'Dê um nome à etapa').max(40),
   tipo: z.enum(TIPOS_ETAPA),
-  nivel: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullable().default(null),
+  nivel: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().default(null),
   obrigatorios: z.array(ObrigatorioSchema).max(MAX_OBRIGATORIOS).default([]),
   avisar: z.array(z.string()).max(50).default([]),
 });
@@ -1408,7 +1419,7 @@ export type CadastroDoCliente = {
 //  AS FRASES DO HISTÓRICO
 // =====================================================================
 
-const nomeNivel = (n: unknown) => (n ? ` (N${n})` : '');
+const nomeNivel = (n: unknown) => (n ? ` (${rotuloDoNivel(n as number)})` : '');
 /** Uma frase por evento, a mesma no servidor e na prévia. */
 export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string {
   switch (tipo) {

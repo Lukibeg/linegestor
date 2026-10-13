@@ -344,7 +344,7 @@ describe('o n8n mexe no chamado', () => {
     expect(eventos(f, 'etapa').at(-1)).toMatchObject({ porNome: 'n8n', texto: 'escalonou de N1 (N1) para N2 (N2): precisa do SBC' });
     expect((await auditoriaDe(f.id)).map((a) => a.summary)).toContain('n8n (chave de API) moveu SUP-1 de N1 para N2: precisa do SBC');
     r = await pedido('POST', '/integracao/chamados/SUP-1/mover', { etapa: 'Lugar nenhum' });
-    expect(r.json().error).toBe('Não achei a etapa "Lugar nenhum" no painel Suporte (as etapas: Novo, N1, N2, N3, Em observação, Resolvido, Fechado).');
+    expect(r.json().error).toBe('Não achei a etapa "Lugar nenhum" no painel Suporte (as etapas: Novo, N1, N2, N3, DEV, Em observação, Resolvido, Fechado).');
     // pelo id também
     expect((await pedido('POST', '/integracao/chamados/SUP-1/mover', { etapa: E.n1, motivo: 'voltou para o N1' })).json().etapa.nome).toBe('N1');
   });

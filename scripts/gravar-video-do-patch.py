@@ -266,7 +266,7 @@ def roteiro(page):
     # o quadro, aberto pelo painel: mover pelo Mover do cartão; subir de nível pede o motivo
     clicar(page, page.get_by_role('link', name='Painéis', exact=True).first); esperar(page, 1200)
     clicar(page, page.locator('article[data-painel="SUP"] a:has-text("Abrir o quadro")').first); esperar(page, 1600)
-    legenda(page, next(n), 'O quadro', 'N1, N2 e N3 continuam como colunas. Arraste o cartão ou use Mover: escalonar pede o motivo.', 1600)
+    legenda(page, next(n), 'O quadro', 'N1, N2, N3 e DEV são colunas. Arraste o cartão ou use Mover: escalonar pede o motivo.', 1600)
     cartao = page.locator(f'li[data-codigo="{COD["mover"]}"]').first
     clicar(page, cartao.get_by_role('button', name='Mover')); esperar(page, 900)
     clicar(page, cartao.locator('button:has(span:text-is("N2"))').first); esperar(page, 900)

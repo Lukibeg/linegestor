@@ -7,7 +7,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode, type RefObject } from 'react';
 import { AlertTriangle, ChevronDown, ExternalLink } from 'lucide-react';
 import {
-  NOME_SITUACAO_CHAMADO, pedacosComReferencias,
+  NOME_SITUACAO_CHAMADO, pedacosComReferencias, rotuloDoNivel,
   type CadastroDoCliente, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type SituacaoDoChamado,
 } from '@gestor/shared';
 import { mensagemErro } from '../../../components/ui/index.js';
@@ -64,10 +64,11 @@ export function proximaEtapa(etapas: EtapaPainel[], atualId: string): EtapaPaine
   return null;
 }
 
-/** "N2" quando o nome da etapa já não diz o nível. */
+/** "N2" (ou "DEV") quando o nome da etapa já não diz o nível. */
 export function nomeComNivel(e: Pick<EtapaPainel, 'nome' | 'nivel'> | undefined | null): string {
   if (!e) return '?';
-  return e.nivel && !new RegExp(`\\bN${e.nivel}\\b`, 'i').test(e.nome) ? `${e.nome} · N${e.nivel}` : e.nome;
+  const nivel = rotuloDoNivel(e.nivel);
+  return nivel && !new RegExp(`\\b${nivel}\\b`, 'i').test(e.nome) ? `${e.nome} · ${nivel}` : e.nome;
 }
 
 // =====================================================================

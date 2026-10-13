@@ -15,6 +15,7 @@ import {
   chaveDaEtiqueta, corDaEtiqueta, etiquetasUnicas, renomearEtiqueta, EtiquetaEditarPeloNomeSchema,
   AvisosChamadosSchema, EVENTOS_AVISO, ModeloAprovadoSchema, faltaNoModeloAprovado, mensagemAoCliente, mensagemPreenchida, parametrosDoModelo, textoDoModelo,
   valorDaVariavel, valorSugeridoDaVariavel,
+  EtapaGravarSchema, NIVEIS, PAINEIS_INICIAIS, rotuloDoNivel,
 } from './atendimento.js';
 
 const em = (dia: string, hora: string) => instanteLocal(dia, hora);
@@ -151,6 +152,22 @@ describe('as etapas', () => {
     expect(movimentoDeNivel(etapas[1], etapas[2])).toBe('sobe');
     expect(movimentoDeNivel(etapas[2], etapas[1])).toBe('desce');
     expect(movimentoDeNivel(etapas[2], etapas[3])).toBeNull();
+  });
+  it('o nível DEV, depois do N3 (13/10, o Luan: "o correto aqui é ter o nível DEV também")', () => {
+    expect(NIVEIS.map(rotuloDoNivel)).toEqual(['N1', 'N2', 'N3', 'DEV']);
+    expect(rotuloDoNivel(null)).toBe('');
+    // do N3 (ou de qualquer nível) para o DEV é escalonar; do DEV para o N2, voltar de nível
+    expect(movimentoDeNivel({ nivel: 3 }, { nivel: 4 })).toBe('sobe');
+    expect(movimentoDeNivel({ nivel: 4 }, { nivel: 2 })).toBe('desce');
+    // o Suporte nasce com a coluna DEV, depois do N3
+    const suporte = PAINEIS_INICIAIS.find((p) => p.chave === 'suporte')!;
+    expect(suporte.etapas.map((e) => e.nome)).toEqual(['Novo', 'N1', 'N2', 'N3', 'DEV', 'Em observação', 'Resolvido', 'Fechado']);
+    expect(suporte.etapas.find((e) => e.chave === 'dev')).toMatchObject({ tipo: 'andamento', nivel: 4 });
+    // a etapa pode ser marcada como DEV nos Ajustes; um nível que não existe, não
+    expect(EtapaGravarSchema.parse({ nome: 'Com o desenvolvimento', tipo: 'andamento', nivel: 4 }).nivel).toBe(4);
+    expect(EtapaGravarSchema.safeParse({ nome: 'X', tipo: 'andamento', nivel: 5 }).success).toBe(false);
+    expect(textoDoEvento('etapa', { de: { nome: 'N3', nivel: 3 }, para: { nome: 'DEV', nivel: 4 }, sentido: 'sobe', motivo: 'correção no plano de discagem' }))
+      .toBe('escalonou de N3 (N3) para DEV (DEV): correção no plano de discagem');
   });
   it('a entrada e o "Assumir" (da entrada para a primeira etapa de andamento)', () => {
     expect(etapaDeEntrada(etapas)?.id).toBe('novo');

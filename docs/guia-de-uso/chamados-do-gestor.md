@@ -117,7 +117,9 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 
 - Cada etapa pode exigir campos, os do sistema e os do painel (ex.: o Resolvido pede a solução e a
   causa; o Entregue do Desenvolvimento, a versão publicada). Faltando, a tela diz o quê.
-- **Subir ou descer de nível (N1 → N2) pede o motivo.**
+- **Subir ou descer de nível (N1 → N2 → N3 → DEV) pede o motivo.** O DEV é o nível do
+  desenvolvimento: o chamado fica com ele enquanto a correção anda (se quiser, num filho no painel
+  Desenvolvimento).
 - **O pai não fecha com filho aberto** — os filhos podem estar em outro painel (o Desenvolvimento).
 - **O problema** junta os incidentes de clientes diferentes com a mesma causa e só resolve com a
   causa, a solução e a **validação**. O incidente fecha sem esperar o problema.

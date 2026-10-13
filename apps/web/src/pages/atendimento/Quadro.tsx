@@ -1,6 +1,6 @@
 /**
  * Chamados › Quadro (Patch 1.10, decisão 0047): o Kanban de um painel. Uma coluna por etapa, na
- * ordem do painel — N1, N2 e N3 são colunas, a escolha do Luan. Arrastar o cartão para outra coluna
+ * ordem do painel — N1, N2, N3 e DEV são colunas, a escolha do Luan. Arrastar o cartão para outra coluna
  * muda a etapa: subir de nível é escalonar e pede o motivo, faltando algo a janela diz o quê, e
  * fechar comemora (tudo isso mora no `useMover`, o mesmo da ficha). Quem está no celular ou usa o
  * teclado tem o botão "Mover" no pé do cartão.
@@ -19,7 +19,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ArrowLeft, ArrowRightLeft, CircleCheck, Clock, Filter, Inbox, Moon } from 'lucide-react';
 import {
-  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararUrgencia, movimentoDeNivel,
+  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararUrgencia, movimentoDeNivel, rotuloDoNivel,
   type CartaoChamado, type ColunaQuadro, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type QuadroAtendimento, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -289,8 +289,8 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
   cartao: (c: CartaoChamado) => ReactNode;
 }) {
   const { etapa, chamados, total, escondidos } = col;
-  const nivel = etapa.nivel ? `N${etapa.nivel}` : null;
-  // a etapa que já se chama "N2" não precisa do chip "N2" do lado: o nome vira o próprio chip
+  const nivel = etapa.nivel ? rotuloDoNivel(etapa.nivel) : null;
+  // a etapa que já se chama "N2" (ou "DEV") não precisa do chip do lado: o nome vira o próprio chip
   const soNivel = !!nivel && etapa.nome.trim().toUpperCase() === nivel;
   const chipNivel = 'chip bg-surface border border-line-strong text-ink font-mono';
   const idTitulo = `etapa-${etapa.id}`;
@@ -303,10 +303,10 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
     >
       <header className="flex items-center gap-1.5 px-1 pt-0.5 min-w-0" title={DICA_TIPO_ETAPA[etapa.tipo]}>
         <IconeDaEtapa tipo={etapa.tipo} />
-        {soNivel ? <h2 id={idTitulo} className={chipNivel} title={`Nível ${etapa.nivel}`}>{nivel}</h2> : (
+        {soNivel ? <h2 id={idTitulo} className={chipNivel} title={`Nível ${nivel}`}>{nivel}</h2> : (
           <>
             <h2 id={idTitulo} className="font-display font-semibold text-[13.5px] truncate">{etapa.nome}</h2>
-            {nivel && <span className={chipNivel} title={`Nível ${etapa.nivel}`}>{nivel}</span>}
+            {nivel && <span className={chipNivel} title={`Nível ${nivel}`}>{nivel}</span>}
           </>
         )}
         <span className="ml-auto tnum text-[12px] font-semibold text-muted" title={`${total} ${total === 1 ? 'chamado' : 'chamados'}`}>{total}</span>

@@ -187,7 +187,7 @@ describe('os exemplos da prévia', () => {
     const op = await api.opcoes();
     const sup = painel(op, 'SUP');
     const q = await api.quadro({ painel: sup.id });
-    expect(q.colunas.map((c) => c.etapa.nome)).toEqual(['Novo', 'N1', 'N2', 'N3', 'Em observação', 'Resolvido', 'Fechado']);
+    expect(q.colunas.map((c) => c.etapa.nome)).toEqual(['Novo', 'N1', 'N2', 'N3', 'DEV', 'Em observação', 'Resolvido', 'Fechado']);
     for (const col of q.colunas) {
       for (const c of col.chamados) expect(c.etapaId).toBe(col.etapa.id);
       expect(col.total).toBe(col.chamados.length + col.escondidos);
@@ -438,7 +438,7 @@ describe('as regras do servidor valem na prévia', () => {
     const e = await erroDe(api.criar({ painelId: painel(op, 'SUP').id, titulo: 'Chamado do leitor' }));
     expect(e.status).toBe(403);
     expect(e.message).toBe('Esta ação exige a permissão "tickets.work"');
-    expect((await api.quadro({ painel: painel(op, 'SUP').id })).colunas).toHaveLength(7);
+    expect((await api.quadro({ painel: painel(op, 'SUP').id })).colunas).toHaveLength(8);
     const algum = (await todosOsChamados())[0]!;
     expect((await erroDe(api.anotar(algum.id, { texto: 'oi', anexos: [] }))).status).toBe(403);
     expect((await erroDe(api.ajustesPrazos())).status).toBe(403);

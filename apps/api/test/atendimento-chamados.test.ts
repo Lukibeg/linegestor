@@ -49,7 +49,7 @@ let assuntoDev = '';
 const SUP = 'painel-suporte';
 const DEV = 'painel-desenvolvimento';
 const E = {
-  novo: 'etapa-suporte-novo', n1: 'etapa-suporte-n1', n2: 'etapa-suporte-n2', n3: 'etapa-suporte-n3',
+  novo: 'etapa-suporte-novo', n1: 'etapa-suporte-n1', n2: 'etapa-suporte-n2', n3: 'etapa-suporte-n3', dev: 'etapa-suporte-dev',
   resolvido: 'etapa-suporte-resolvido', fechado: 'etapa-suporte-fechado',
   devNovo: 'etapa-desenvolvimento-novo', devFechado: 'etapa-desenvolvimento-fechado',
 };
@@ -388,6 +388,23 @@ describe('mover', () => {
     expect(eventos(f, 'reaberto').at(-1).texto).toBe('reabriu o chamado: voltou a falhar');
     const avisos = (await operador.get('/atendimento/avisos')).json();
     expect(avisos.itens.map((i: any) => i.texto)).toContain(`O ${cod} foi reaberto`);
+  });
+
+  it('o nível DEV, depois do N3 (13/10, o Luan): escalonar para ele pede o motivo, e voltar dele também', async () => {
+    const { id: outro, codigo: cod } = await abrir(operador, { clienteId: aurora, assuntoId: ramal });
+    expect((await mover(operador, outro, E.n3)).statusCode).toBe(200);
+    const sem = await mover(operador, outro, E.dev);
+    expect(sem.statusCode).toBe(400);
+    expect(sem.json().error).toBe('Escalonar pede o motivo.');
+    const f = (await mover(operador, outro, E.dev, { motivo: 'correção no plano de discagem' })).json();
+    expect(f).toMatchObject({ etapaId: E.dev, nivel: 4 });
+    expect(eventos(f, 'etapa').at(-1).texto).toBe('escalonou de N3 (N3) para DEV (DEV): correção no plano de discagem');
+    expect(f.trajetoria.at(-1)).toMatchObject({ etapa: 'DEV', nivel: 4, sentido: 'sobe', motivo: 'correção no plano de discagem' });
+    const a = (await s.get(`/admin/audit?entityType=ticket&entityId=${outro}`)).json();
+    expect(a.items[0].summary).toBe(`Escalonou ${cod} de N3 para DEV: correção no plano de discagem`);
+    const volta = await mover(operador, outro, E.n2);
+    expect(volta.statusCode).toBe(400);
+    expect(volta.json().error).toBe('Voltar de nível pede o motivo.');
   });
 });
 
@@ -1086,7 +1103,7 @@ describe('o quadro', () => {
     const critica = await abrir(s, { titulo: 'Tudo parado', gravidade: 'inoperancia', alcance: 'empresa' });
     const q = (await s.get(`/atendimento/quadro?painel=${SUP}`)).json();
     expect(q.painelId).toBe(SUP);
-    expect(q.colunas.map((c: any) => c.etapa.nome)).toEqual(['Novo', 'N1', 'N2', 'N3', 'Em observação', 'Resolvido', 'Fechado']);
+    expect(q.colunas.map((c: any) => c.etapa.nome)).toEqual(['Novo', 'N1', 'N2', 'N3', 'DEV', 'Em observação', 'Resolvido', 'Fechado']);
     expect(typeof q.foraDoHorario).toBe('boolean');
     const novo = q.colunas[0].chamados.map((c: any) => c.codigo);
     expect(novo.indexOf(critica.codigo)).toBeLessThan(novo.indexOf(baixa.codigo));
@@ -1329,7 +1346,7 @@ describe('a lixeira', () => {
 describe('as opções da tela', () => {
   it('os painéis, as pessoas, os assuntos, as etiquetas usadas, as respostas prontas e o que a pessoa pode', async () => {
     const op = (await s.get('/atendimento/opcoes')).json();
-    expect(op.paineis.map((p: any) => [p.sigla, p.etapas.length])).toEqual([['SUP', 7], ['DEV', 6]]);
+    expect(op.paineis.map((p: any) => [p.sigla, p.etapas.length])).toEqual([['SUP', 8], ['DEV', 6]]);
     expect(op.paineis[0].abertos).toBeGreaterThan(0);
     expect(op.pessoas.map((p: any) => p.nome)).toEqual(expect.arrayContaining(['Marina Costa', 'Bruno Técnico', 'Rita Leitora']));
     expect(op.assuntos.filter((a: any) => a.painelId === SUP).map((a: any) => a.nome)).toEqual(['Ramal', 'Sem áudio']);

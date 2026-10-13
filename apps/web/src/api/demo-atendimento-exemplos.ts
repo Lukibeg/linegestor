@@ -204,7 +204,7 @@ export const CAMPOS_DE_EXEMPLO: Array<{
 //  AS RESPOSTAS PRONTAS E OS AGENDADOS
 // =====================================================================
 
-export type ChaveEtapa = 'novo' | 'n1' | 'n2' | 'n3' | 'observacao' | 'resolvido' | 'fechado' | 'analise' | 'desenvolvimento' | 'teste' | 'entregue';
+export type ChaveEtapa = 'novo' | 'n1' | 'n2' | 'n3' | 'dev' | 'observacao' | 'resolvido' | 'fechado' | 'analise' | 'desenvolvimento' | 'teste' | 'entregue';
 
 export const RESPOSTAS_PRONTAS: Array<{
   nome: string; texto: string; painel: 'SUP' | null;
@@ -1093,6 +1093,8 @@ export const EXEMPLOS: Exemplo[] = [
       { aos: 230, faz: 'anotar', por: 'bruno', texto: 'Abri o {#dev-plano-0300} no Desenvolvimento para corrigir o plano de discagem. Enquanto isso, a recepção liga para 0800 pelo celular.' },
       { aos: 235, faz: 'alterar', por: 'bruno', dados: { contorno: 'A recepção liga para 0300 e 0800 pelo celular até a correção do plano de discagem.' } },
       { aos: 240, faz: 'tempo', por: 'bruno', minutos: 45, nota: 'Testes de rota e contato com a VC1' },
+      // o nível DEV: o chamado fica com o desenvolvimento enquanto o filho é corrigido
+      { aos: 245, faz: 'mover', para: 'dev', por: 'bruno', motivo: 'A correção é no plano de discagem: fica com o Desenvolvimento ({#dev-plano-0300})' },
     ],
   },
   {

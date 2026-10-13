@@ -12,7 +12,7 @@ import {
   AlarmClock, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, Bell, CircleDot, Columns3, Eye, Flag, GitBranch, Hourglass, Layers, Link2, ListChecks, Lock, MessageCircle,
   MessageSquareReply, Paperclip, Pencil, Plus, RotateCcw, Sparkles, Timer, Trash2, UserRound, X, Zap, History, RadioTower, Download, ExternalLink,
 } from 'lucide-react';
-import { duracaoDoPrazo, type AnexoChamado, type AnotacaoChamado, type EventoChamado, type TipoEvento } from '@gestor/shared';
+import { NIVEIS, duracaoDoPrazo, rotuloDoNivel, type AnexoChamado, type AnotacaoChamado, type EventoChamado, type TipoEvento } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Abas, Confirmar, Modal, Spinner, usePaginaLocal } from '../../../components/ui/index.js';
 import { lerComoDataUrl, tamanhoDoArquivo } from '../../../lib/arquivos.js';
@@ -89,8 +89,8 @@ const ICONE: Partial<Record<TipoEvento, typeof CircleDot>> = {
 /** Frases que já dizem quem foi ("o cliente respondeu", "fechou sozinho"): sem o nome na frente. */
 const SEM_AUTOR = new Set<TipoEvento>(['cliente_respondeu', 'prazo', 'fechou_sozinho', 'aviso_equipe']);
 
-/** "para N1 (N1)" → "para N1": a etapa que já se chama pelo nível não precisa repetir. */
-const semNivelRepetido = (t: string) => t.replace(/\b(N[1-3]) \(\1\)/g, '$1');
+/** "para N1 (N1)" → "para N1" (e "para DEV (DEV)" → "para DEV"): a etapa que já se chama pelo nível não precisa repetir. */
+const semNivelRepetido = (t: string) => t.replace(/\b(N[1-9]|DEV) \(\1\)/g, '$1');
 
 function LinhaDeEvento({ ev }: { ev: EventoChamado }) {
   const Icone = ev.tipo === 'etapa' && ev.dados?.sentido === 'sobe' ? ArrowUp : ev.tipo === 'etapa' && ev.dados?.sentido === 'desce' ? ArrowDown : ICONE[ev.tipo] ?? CircleDot;
@@ -303,13 +303,13 @@ function Trajetoria() {
     etapa: (p) => p.etapa, nivel: (p) => p.nivel, desde: (p) => p.desde, minutos: (p) => p.minutos, por: (p) => (p.i === 0 ? f.criadoPor?.nome : p.por), motivo: (p) => p.motivo,
   });
   // quanto tempo o chamado ficou em cada nível, somando as passagens (o N1 pode ter vindo duas vezes)
-  const porNivel = [1, 2, 3].map((n) => ({ n, min: f.trajetoria.filter((p) => p.nivel === n).reduce((s, p) => s + p.minutos, 0), vezes: f.trajetoria.filter((p) => p.nivel === n).length })).filter((x) => x.vezes > 0);
+  const porNivel = NIVEIS.map((n) => ({ n, min: f.trajetoria.filter((p) => p.nivel === n).reduce((s, p) => s + p.minutos, 0), vezes: f.trajetoria.filter((p) => p.nivel === n).length })).filter((x) => x.vezes > 0);
   return (
     <div className="min-w-0">
       {porNivel.length > 0 && (
         <p className="text-[12.5px] text-muted mb-2">
           Tempo em cada nível:{' '}
-          {porNivel.map((x, i) => <span key={x.n}>{i > 0 && ' · '}<b className="text-ink-2">N{x.n}</b> {duracaoDoPrazo(x.min)}{x.vezes > 1 ? ` (${x.vezes} passagens)` : ''}</span>)}
+          {porNivel.map((x, i) => <span key={x.n}>{i > 0 && ' · '}<b className="text-ink-2">{rotuloDoNivel(x.n)}</b> {duracaoDoPrazo(x.min)}{x.vezes > 1 ? ` (${x.vezes} passagens)` : ''}</span>)}
           {' '}<span>(horas corridas)</span>
         </p>
       )}
@@ -335,7 +335,7 @@ function Trajetoria() {
                   {p.sentido === 'sobe' && <span className="chip bg-accent-soft text-accent-ink ml-1.5"><ArrowUp size={11} /> escalonou</span>}
                   {p.sentido === 'desce' && <span className="chip bg-signal-soft text-signal ml-1.5"><ArrowDown size={11} /> voltou de nível</span>}
                 </td>
-                <td className="whitespace-nowrap">{p.nivel ? `N${p.nivel}` : <span className="text-muted">—</span>}</td>
+                <td className="whitespace-nowrap">{p.nivel ? rotuloDoNivel(p.nivel) : <span className="text-muted">—</span>}</td>
                 <td className="whitespace-nowrap" title={dataCompleta(p.desde)}>{dataHoraCurta(p.desde)}</td>
                 <td className="whitespace-nowrap text-right tnum">{duracaoDoPrazo(p.minutos)}{!p.ate && <span className="text-muted"> até agora</span>}</td>
                 <td className="whitespace-nowrap">{p.i === 0 ? <span className="text-muted">{f.criadoPor ? `${f.criadoPor.nome} (abriu)` : 'abriu aqui'}</span> : p.por ?? <span className="text-muted">o Gestor</span>}</td>

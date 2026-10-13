@@ -36,7 +36,7 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 - **Os painéis são da equipe.** O módulo nasce com **Suporte** (sigla SUP) e **Desenvolvimento**
   (DEV); quem cuida dos chamados cria outros (Interno, Comercial, Administrativo…) quando quiser, cada
   um com: as **etapas** (criar, renomear, tirar, mudar a ordem; o tipo — entrada, andamento,
-  resolvido, fechado —, o nível N1/N2/N3, o que é obrigatório para entrar nela e quem é avisado),
+  resolvido, fechado —, o nível N1/N2/N3/DEV, o que é obrigatório para entrar nela e quem é avisado),
   as **regras** (se conta prazo, se o Resolvido fecha sozinho em N dias úteis, o que é obrigatório
   para abrir, se o pai espera os filhos, os supervisores), **os campos** (abaixo) e **quem vê** (todos ou
   só as pessoas escolhidas — para os outros, o chamado não existe). Tudo isso fica **numa janela só**,
@@ -44,8 +44,11 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   também quando vou criar o painel"); o painel novo começa com Novo, Em andamento, Resolvido e
   Fechado ou com as etapas de outro painel. Salvar grava o painel e as etapas juntos, numa transação:
   se uma etapa que sai tem chamados, a janela pergunta para onde eles vão e, até lá, nada muda.
-- **N1, N2 e N3 são colunas** (a escolha dele: "prefiro por colunas mesmo"). O Suporte nasce com
-  Novo · N1 · N2 · N3 · Em observação · Resolvido · Fechado.
+- **N1, N2, N3 e DEV são colunas** (a escolha dele: "prefiro por colunas mesmo"). O Suporte nasce com
+  Novo · N1 · N2 · N3 · DEV · Em observação · Resolvido · Fechado. O **DEV** é o nível depois do N3 (o
+  pedido dele na prévia, em 13/10: "o correto aqui é ter o nível DEV também"): o chamado fica com o
+  desenvolvimento, e escalonar para ele (ou voltar dele) pede o motivo, como nos outros. A correção em
+  si pode andar num filho, no painel Desenvolvimento.
 - **Sem migração.** Os chamados do Helena ficam lá para consulta e a numeração começa do zero
   (SUP-1) — "começar 2027 usando tudo novo, já com os novos padrões". Um código antigo citado no texto
   (IS-4280) vira link para o card do LineChat.

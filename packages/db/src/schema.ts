@@ -1484,7 +1484,7 @@ export const ticketPanels = pgTable(
 
 /**
  * Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela significa para o chamado
- * (entrada, andamento, resolvido, fechado); o nível marca N1, N2 e N3 (escalonar = subir de nível).
+ * (entrada, andamento, resolvido, fechado); o nível marca N1, N2, N3 e DEV (escalonar = subir de nível).
  * Etapa que sai não é apagada: ganha `deleted_at`, e os chamados dela vão para outra antes.
  */
 export const ticketStages = pgTable(
@@ -1495,7 +1495,7 @@ export const ticketStages = pgTable(
     name: text('name').notNull(),
     /** entrada | andamento | resolvido | fechado */
     kind: text('kind').notNull().default('andamento'),
-    /** 1, 2 ou 3 (N1, N2, N3); nulo nas etapas que não são nível */
+    /** 1, 2, 3 ou 4 (N1, N2, N3, DEV); nulo nas etapas que não são nível */
     level: integer('level'),
     sortOrder: integer('sort_order').notNull().default(0),
     /** O que precisa estar preenchido para o chamado entrar aqui (lista de campos) */

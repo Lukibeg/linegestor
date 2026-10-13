@@ -23,6 +23,7 @@ import { useAuth } from '../../../lib/auth.js';
 import { TdN, ThN } from '../../../lib/contagem.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../../lib/ordenacao.js';
 import { TOM_DO_PAINEL, useOpcoes } from '../comum.js';
+import { nomeComNivel } from '../ficha/base.js';
 import { BalaoDeMensagem, CartaoAjuste, Explicacao, Marcadores, Resultado, erroLegivel, type Marcador } from './Avisos.js';
 
 const CHAVE = ['atendimento', 'ajustes', 'respostas'];
@@ -320,7 +321,7 @@ function EditorResposta({ id, inicial, opcoes, onFechar }: { id: string | null; 
               dica={painel ? 'vazio = o chamado fica onde está' : 'escolha um painel em "Vale em" para mover: a etapa é de um painel só'}>
               <select className="input" id="resposta-etapa" disabled={!painel} value={painel ? f.etapaId : ''} onChange={(e) => mudar({ etapaId: e.target.value })}>
                 <option value="">Não move</option>
-                {painel?.etapas.map((e) => <option key={e.id} value={e.id}>{e.nome}{e.nivel ? ` (nível ${e.nivel})` : ''}</option>)}
+                {painel?.etapas.map((e) => <option key={e.id} value={e.id}>{nomeComNivel(e)}</option>)}
               </select>
             </Campo>
           </div>

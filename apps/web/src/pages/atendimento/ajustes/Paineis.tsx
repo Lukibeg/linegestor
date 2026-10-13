@@ -13,7 +13,7 @@
  * pergunta para onde eles vão; até a resposta, nada muda (nem o nome do painel).
  *
  * As etapas são da equipe (o Luan: "as etapas têm que ser editáveis"): criar, renomear, tirar e mudar
- * a ordem (arrastando ou pelas setas), e em cada uma o tipo, o nível (N1, N2 e N3 continuam sendo
+ * a ordem (arrastando ou pelas setas), e em cada uma o tipo, o nível (N1, N2, N3 e DEV são
  * colunas), o que precisa estar preenchido para entrar e quem recebe o aviso. O painel novo começa
  * com Novo, Em andamento, Resolvido e Fechado — ou com as etapas de um painel que já existe.
  */
@@ -24,7 +24,8 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, Pencil, Plus, Trash2, Undo2, UserPlus, X } from 'lucide-react';
 import {
   AJUSTES_PAINEL_PADRAO, CAMPOS_DO_SISTEMA, CORES_PAINEL, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL,
-  NOME_CAMPO_DO_SISTEMA, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, idDaChave, limparObrigatorios, nomeDoObrigatorio, obrigatoriosDoPainel, paraBusca,
+  NIVEIS, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, idDaChave, limparObrigatorios, nomeDoObrigatorio, obrigatoriosDoPainel, paraBusca,
+  rotuloDoNivel,
   type AjustesDoPainel, type CampoObrigatorio, type CampoPersonalizado, type CorPainel, type EtapaGravarEntrada, type EtapaPainel, type Nivel, type Obrigatorio,
   type Painel, type PainelGravarEntrada, type PessoaCurta, type TipoEtapa,
 } from '@gestor/shared';
@@ -219,7 +220,7 @@ function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[], campos: CampoPe
   const pede = e.obrigatorios.map((k) => nomeDoObrigatorio(k, campos));
   return [
     TIPO_CURTO[e.tipo],
-    e.nivel ? `N${e.nivel}` : '',
+    rotuloDoNivel(e.nivel),
     pede.length ? `pede: ${pede.join(', ')}` : 'não pede nada',
     e.avisar.length ? `avisa: ${listaDeNomes(e.avisar.map((id) => nomeDaPessoa(pessoas, id)))}` : '',
   ].filter(Boolean).join(' · ');
@@ -552,8 +553,8 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
                   <button type="button" className="min-w-0 flex-1 text-left mt-0.5" onClick={() => alternar(e.chave)} aria-expanded={aberta}>
                     <span className="flex flex-wrap items-center gap-1.5">
                       <span className="font-semibold text-ink break-words">{e.nome.trim() || <span className="text-muted italic font-normal">sem nome</span>}</span>
-                      {/* o nível em chip, menos quando o nome já é o nível (a etapa "N2") */}
-                      {e.nivel && paraBusca(e.nome) !== `n${e.nivel}` && <Chip tone="accent">N{e.nivel}</Chip>}
+                      {/* o nível em chip, menos quando o nome já é o nível (a etapa "N2", a "DEV") */}
+                      {e.nivel && paraBusca(e.nome) !== paraBusca(rotuloDoNivel(e.nivel)) && <Chip tone="accent">{rotuloDoNivel(e.nivel)}</Chip>}
                       {existe && !e.id && <Chip tone="ok">nova</Chip>}
                     </span>
                   </button>
@@ -637,10 +638,10 @@ function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar
       </CampoRotulo>
       <CampoRotulo rotulo="Nível" id={`${base}-nivel`} grupo dica="Mover para um nível acima é escalonar; para um abaixo, voltar de nível (os dois pedem o motivo).">
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Nível" id={`${base}-nivel`}>
-          {([null, 1, 2, 3] as const).map((n) => (
+          {([null, ...NIVEIS] as const).map((n) => (
             <button key={n ?? 0} type="button" role="radio" aria-checked={e.nivel === n} onClick={() => onMudar({ nivel: n })}
               className={`rounded-lg border px-3 py-1.5 text-[13px] min-w-[44px] ${e.nivel === n ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
-              {n ? `N${n}` : '—'}
+              {n ? rotuloDoNivel(n) : '—'}
             </button>
           ))}
         </div>
@@ -690,7 +691,7 @@ function JanelaDestino({ mensagem, saem, ficam, saindo, salvando, onFechar, onCo
               </label>
               <select className="input" id={`destino-${s.id}`} value={destino[s.id] ?? ''} onChange={(e) => setDestino((d) => ({ ...d, [s.id]: e.target.value }))}>
                 <option value="">— escolha —</option>
-                {ficam.map((e) => <option key={e.id} value={e.id}>{e.nome} ({TIPO_CURTO[e.tipo]}{e.nivel ? ` · N${e.nivel}` : ''})</option>)}
+                {ficam.map((e) => <option key={e.id} value={e.id}>{e.nome} ({TIPO_CURTO[e.tipo]}{e.nivel ? ` · ${rotuloDoNivel(e.nivel)}` : ''})</option>)}
               </select>
             </div>
           ))}
