@@ -12,13 +12,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Plus, Tags, UserRound, X } from 'lucide-react';
 import {
-  ALCANCES, caminhoDoAssunto, campoLigado, chaveDaEtiqueta, chaveDoCampo, corDaEtiqueta, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasUnicas, GRAVIDADES,
+  ALCANCES, caminhoDoAssunto, campoLigado, chaveDoCampo, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasUnicas, GRAVIDADES,
   MAX_LETRAS_DO_CAMPO, mesmoValorDoCampo, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, paraBusca, PRIORIDADES, textoDoValor,
   type Alcance, type CampoDoSistema, type CorEtiqueta, type CampoPersonalizado, type ChamadoAlterarEntrada, type Gravidade, type Prioridade, type ValorDoCampo,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Chip, EscolherComBusca, Modal, Spinner } from '../../../components/ui/index.js';
-import { Avatar, ChipDaEtiqueta, CoresDaEtiqueta } from '../comum.js';
+import { Avatar, usePode } from '../comum.js';
+import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { ErroPerto, MarcaFalta, Secao, useAberta, useAcao, usePosicaoFlutuante } from './base.js';
 
 /** Um campo da classificação: o rótulo (com a marca do que falta e a rodinha), o controle e o erro. */
@@ -363,50 +364,15 @@ function CaixaDoCampo({ inicial, numero, rotulo, onGravar }: { inicial: string; 
 
 function Etiquetas() {
   const { f, opcoes, pode } = useAberta();
+  const podeCuidar = usePode().cuidar;
   const acao = useAcao();
-  const [nova, setNova] = useState('');
-  /** a cor da etiqueta nova (o pedido do Luan na prévia: escolher a cor ao criar) */
-  const [cor, setCor] = useState<CorEtiqueta>('neutral');
-  const mesma = (a: string, b: string) => chaveDaEtiqueta(a) === chaveDaEtiqueta(b);
-  const sugestoes = opcoes.etiquetas.filter((e) => !f.etiquetas.some((x) => mesma(x, e.nome)));
-  const escrito = nova.trim();
-  const jaTem = !!escrito && f.etiquetas.some((x) => mesma(x, escrito));
-  // a escrita não existe ainda: nasce com a cor escolhida aqui (a que já existe tem a dela)
-  const ehNova = !!escrito && !opcoes.etiquetas.some((e) => mesma(e.nome, escrito));
-  const incluir = async () => {
-    if (!escrito || jaTem) return;
-    if (f.etiquetas.length >= 20) { acao.setErro('No máximo 20 etiquetas por chamado.'); return; }
-    const r = await acao.rodar(() => api.atendimento.alterar(f.id, { etiquetas: etiquetasUnicas([...f.etiquetas, escrito]), ...(ehNova ? { coresDasEtiquetas: { [escrito]: cor } } : {}) }));
-    if (r.ok) { setNova(''); setCor('neutral'); }
-  };
+  // cada clique na lista grava (e a lista fica aberta para marcar outra); a nova nasce com a cor escolhida
+  const mudar = (etiquetas: string[], cores?: Record<string, CorEtiqueta>) =>
+    void acao.rodar(() => api.atendimento.alterar(f.id, { etiquetas, ...(cores ? { coresDasEtiquetas: cores } : {}) }));
   return (
     <Linha id="campo-etiquetas" campo="etiquetas" rotulo="Etiquetas" ocupado={acao.ocupado} erro={acao.erro}>
-      {f.etiquetas.length > 0 && (
-        <ul className="flex flex-wrap gap-1 mb-1.5">
-          {f.etiquetas.map((e) => (
-            <li key={e} className="max-w-full">
-              <ChipDaEtiqueta nome={e} cor={corDaEtiqueta(opcoes.etiquetas, e)} desligado={acao.ocupado}
-                onTirar={pode ? () => void acao.rodar(() => api.atendimento.alterar(f.id, { etiquetas: f.etiquetas.filter((x) => x !== e) })) : undefined} />
-            </li>
-          ))}
-        </ul>
-      )}
-      {!f.etiquetas.length && !pode && <p className="text-[13px] text-muted">Nenhuma.</p>}
-      {pode && (
-        <form className="flex flex-col gap-1.5" autoComplete="off" onSubmit={(e) => { e.preventDefault(); void incluir(); }}>
-          <div className="flex gap-1.5">
-            <input className="input py-1.5 text-[13px] min-w-0" id="ficha-etiqueta-nova" list="etiquetas-sugeridas" maxLength={40} value={nova} onChange={(e) => setNova(e.target.value)} placeholder="Nova etiqueta" aria-label="Nova etiqueta" />
-            <datalist id="etiquetas-sugeridas">{sugestoes.map((e) => <option key={e.nome} value={e.nome} />)}</datalist>
-            <button type="submit" className="btn-secondary btn-sm shrink-0" id="ficha-etiqueta-por" disabled={!escrito || jaTem || acao.ocupado}><Plus size={14} /> {ehNova ? 'Criar' : 'Pôr'}</button>
-          </div>
-          {ehNova && !jaTem && (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1" id="ficha-etiqueta-cor">
-              <span className="text-[12px] text-muted">Etiqueta nova. A cor:</span>
-              <CoresDaEtiqueta valor={cor} onChange={setCor} rotulo={`A cor da etiqueta ${escrito}`} />
-            </div>
-          )}
-        </form>
-      )}
+      <SeletorDeEtiquetas id="ficha-etiquetas" valor={f.etiquetas} catalogo={opcoes.etiquetas} podeMudar={pode} podeEditar={pode && podeCuidar} ocupado={acao.ocupado}
+        onMudar={(v) => mudar(v)} onCriar={(nome, cor) => mudar(etiquetasUnicas([...f.etiquetas, nome]), { [nome]: cor })} />
     </Linha>
   );
 }

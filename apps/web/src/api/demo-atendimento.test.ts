@@ -720,7 +720,7 @@ describe('as regras do servidor valem na prévia', () => {
     await entrar('admin');
     const vip = (await api.etiquetas()).find((e) => e.nome === 'Cliente VIP')!;
     expect(vip).toMatchObject({ cor: 'rosa', chamados: 1 });
-    expect((await api.corDaEtiqueta(vip.id, 'signal')).cor).toBe('signal');
+    expect((await api.editarEtiqueta(vip.id, { cor: 'signal' })).cor).toBe('signal');
     expect(await cor('Cliente VIP')).toBe('signal');
     expect((await erroDe(api.criarEtiqueta({ nome: 'cliente  vip' }))).message).toBe('A etiqueta Cliente VIP já existe.');
     const nova = await api.criarEtiqueta({ nome: 'Aguardando peça', cor: 'turquesa' });
@@ -728,6 +728,16 @@ describe('as regras do servidor valem na prévia', () => {
     expect((await erroDe(api.removerEtiqueta(vip.id))).message).toBe('A etiqueta Cliente VIP está em 1 chamado: tire dos chamados antes.');
     expect(await api.removerEtiqueta(nova.id)).toEqual({ ok: true });
     expect(await cor('Aguardando peça')).toBeUndefined();
+
+    // editar (o pedido do Luan: o nome e a cor, como no Helena): pelo nome de agora, como o seletor faz; vale no chamado
+    const editada = await api.editarEtiquetaPeloNome({ de: 'CLIENTE vip', nome: 'Cliente especial', cor: 'rosa' });
+    expect(editada).toMatchObject({ nome: 'Cliente especial', cor: 'rosa', chamados: 1 });
+    expect((await api.chamado(r.codigo)).etiquetas).toEqual(['Cliente especial', 'urgente']);
+    expect(await cor('Cliente VIP')).toBeUndefined();
+    expect((await erroDe(api.editarEtiqueta(editada.id, { nome: 'URGENTE', cor: 'ok' }))).message).toBe('A etiqueta urgente já existe: escolha outro nome.');
+    // o operador não edita
+    await entrar('operador');
+    expect((await erroDe(api.editarEtiquetaPeloNome({ de: 'urgente', nome: 'Urgentíssimo', cor: 'bad' }))).status).toBe(403);
   }, DEMORA);
 
   it('as integrações: a chave nova aparece uma vez e não fica guardada', async () => {

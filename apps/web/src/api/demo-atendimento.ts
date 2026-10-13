@@ -26,7 +26,7 @@ import {
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
   OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema, RespostaProntaGravarSchema,
-  SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaCorSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta,
+  SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta, renomearEtiqueta,
   faltaNoModeloAprovado, mensagemAoCliente, parametrosDoModelo, telefoneLegivel,
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
@@ -1727,6 +1727,46 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!e) throw erro(404, 'Etiqueta não encontrada');
     return e;
   };
+  /**
+   * Editar uma etiqueta — o nome e a cor —, como o servidor: a que só está nos chamados entra no catálogo;
+   * o nome de outra não vale; o nome novo vale nos chamados (os da lixeira também) e nas respostas prontas.
+   */
+  function editarEtiqueta(alvo: EtiquetaRow | { nome: string }, d: { nome?: string; cor: CorEtiqueta }) {
+    let e = 'id' in alvo ? alvo : A.etiquetas.find((x) => x.chave === chaveDaEtiqueta(alvo.nome));
+    if (!e && !('id' in alvo)) {
+      const usada = usosDasEtiquetas().get(chaveDaEtiqueta(alvo.nome));
+      if (usada) {
+        const agora = iso(agoraReal());
+        e = { id: novoId(), nome: usada.nome, chave: chaveDaEtiqueta(usada.nome), cor: 'neutral', criadoPorId: S.me?.id ?? null, criadoEm: agora, atualizadoEm: agora };
+        A.etiquetas.push(e);
+      }
+    }
+    if (!e) throw erro(404, 'Etiqueta não encontrada');
+    const antes = { nome: e.nome, chave: e.chave, cor: e.cor };
+    const nome = d.nome ?? e.nome;
+    const chave = chaveDaEtiqueta(nome);
+    if (chave !== e.chave) {
+      const outra = A.etiquetas.find((x) => x.chave === chave);
+      if (outra) throw conflito(`A etiqueta ${outra.nome} já existe: escolha outro nome.`);
+    }
+    e.nome = nome; e.chave = chave; e.cor = d.cor; e.atualizadoEm = iso(agoraReal());
+    let chamados = 0;
+    if (nome !== antes.nome) {
+      for (const t of A.chamados) {
+        const nova = renomearEtiqueta(t.etiquetas, antes.chave, nome);
+        if (nova) { t.etiquetas = nova; chamados += 1; }
+      }
+      for (const m of A.respostas) if (m.acao.etiqueta && chaveDaEtiqueta(m.acao.etiqueta) === antes.chave && m.acao.etiqueta !== nome) m.acao = { ...m.acao, etiqueta: nome };
+    }
+    const nos = chamados ? ` (em ${chamados} ${chamados === 1 ? 'chamado' : 'chamados'})` : '';
+    const renomeou = nome !== antes.nome;
+    const resumo = renomeou && antes.cor !== d.cor ? `Editou a etiqueta ${antes.nome}: agora ${nome}, ${NOME_COR_ETIQUETA[d.cor].toLowerCase()}${nos}`
+      : renomeou ? `Renomeou a etiqueta ${antes.nome} para ${nome}${nos}`
+        : antes.cor !== d.cor ? `Trocou a cor da etiqueta ${nome}: ${NOME_COR_ETIQUETA[antes.cor]} → ${NOME_COR_ETIQUETA[d.cor]}`
+          : `Salvou a etiqueta ${nome} sem mudanças`;
+    auditar('update', 'ticket_tag', resumo, e.id, { before: { nome: antes.nome, cor: antes.cor }, after: { nome, cor: d.cor } });
+    return etiquetaParaTela(e);
+  }
 
   // =====================================================================
   //  A LEITURA (as opções, o quadro, a lista, o Meu dia, o sininho, o cadastro, a ficha)
@@ -3015,15 +3055,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       auditar('create', 'ticket_tag', `Criou a etiqueta ${e.nome} (${NOME_COR_ETIQUETA[e.cor]})`, e.id, { after: { nome: e.nome, cor: e.cor } });
       return etiquetaParaTela(e);
     },
-    async corDaEtiqueta(id, cor) {
-      await ctx.wait(120);
-      const dados = ler(EtiquetaCorSchema, { cor });
+    async editarEtiqueta(id, d) {
+      await ctx.wait(140);
+      const dados = ler(EtiquetaEditarSchema, d);
       ctx.requirePerm('tickets.manage'); preparar();
-      const e = etiquetaPorId(id);
-      const de = e.cor;
-      e.cor = dados.cor; e.atualizadoEm = iso(agoraReal());
-      auditar('update', 'ticket_tag', de === e.cor ? `Salvou a etiqueta ${e.nome} sem mudanças` : `Trocou a cor da etiqueta ${e.nome}: ${NOME_COR_ETIQUETA[de]} → ${NOME_COR_ETIQUETA[e.cor]}`, e.id, { before: { cor: de }, after: { cor: e.cor } });
-      return etiquetaParaTela(e);
+      return editarEtiqueta(etiquetaPorId(id), dados);
+    },
+    async editarEtiquetaPeloNome(d) {
+      await ctx.wait(140);
+      const { de, ...dados } = ler(EtiquetaEditarPeloNomeSchema, d);
+      ctx.requirePerm('tickets.manage'); preparar();
+      return editarEtiqueta({ nome: de }, dados);
     },
     async removerEtiqueta(id) {
       await ctx.wait(120);

@@ -3,16 +3,18 @@
  * (o pedido do Luan na prévia: "na hora de criar as etiquetas, seria legal poder escolher a cor também").
  *
  * A etiqueta nasce no chamado (no Abrir chamado e na ficha, com a cor escolhida ali; a do robô, da IA e
- * da resposta pronta nasce cinza) ou aqui. Aqui se troca a cor — vale em todos os chamados que a têm — e
- * se tira das sugestões a que nenhum chamado usa (a escrita errada, a que caiu em desuso).
+ * da resposta pronta nasce cinza) ou aqui. Aqui se edita — o nome e a cor (o pedido do Luan: "parecido com
+ * o Helena"), que valem em todos os chamados que a têm — e se tira das sugestões a que nenhum chamado usa
+ * (a escrita errada, a que caiu em desuso). O mesmo editar mora no seletor de etiquetas, no lápis.
  */
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Tags, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Search, Tags, Trash2 } from 'lucide-react';
 import { chaveDaEtiqueta, paraBusca, type CorEtiqueta, type EtiquetaDoCatalogo } from '@gestor/shared';
 import { api } from '../../../api/index.js';
-import { Carregando, Confirmar, Spinner, mensagemErro } from '../../../components/ui/index.js';
+import { Carregando, Confirmar, Modal, Spinner, mensagemErro } from '../../../components/ui/index.js';
 import { ChipDaEtiqueta, CoresDaEtiqueta } from '../comum.js';
+import { EditorDeEtiqueta } from '../SeletorDeEtiquetas.js';
 import { CartaoAjuste, Explicacao, erroLegivel } from './Avisos.js';
 
 const CHAVE = ['atendimento', 'ajustes', 'etiquetas'];
@@ -20,14 +22,14 @@ const CHAVE = ['atendimento', 'ajustes', 'etiquetas'];
 export function AjustesEtiquetas() {
   const q = useQuery({ queryKey: CHAVE, queryFn: () => api.atendimento.etiquetas() });
   const qc = useQueryClient();
-  // a cor nova aparece nos cartões, nas fichas e no Abrir chamado (as opções do módulo)
-  const recarregar = () => Promise.all([qc.invalidateQueries({ queryKey: CHAVE }), qc.invalidateQueries({ queryKey: ['atendimento', 'opcoes'] })]);
+  // o nome e a cor novos aparecem nos cartões, nas fichas e no Abrir chamado (as opções e os chamados do módulo)
+  const recarregar = () => qc.invalidateQueries({ queryKey: ['atendimento'] });
 
   const [nome, setNome] = useState('');
   const [cor, setCor] = useState<CorEtiqueta>('neutral');
   const [criando, setCriando] = useState(false);
   const [erro, setErro] = useState('');
-  const [mudando, setMudando] = useState<string | null>(null);
+  const [editando, setEditando] = useState<EtiquetaDoCatalogo | null>(null);
   const [erros, setErros] = useState<Record<string, string>>({});
   const [tirar, setTirar] = useState<EtiquetaDoCatalogo | null>(null);
   const [tirando, setTirando] = useState(false);
@@ -50,14 +52,6 @@ export function AjustesEtiquetas() {
       setNome(''); setCor('neutral');
     } catch (e) { setErro(erroLegivel(e)); } finally { setCriando(false); }
   };
-  const trocarCor = async (e: EtiquetaDoCatalogo, c: CorEtiqueta) => {
-    if (c === e.cor) return;
-    setMudando(e.id); setErros(({ [e.id]: _, ...resto }) => resto);
-    try {
-      await api.atendimento.corDaEtiqueta(e.id, c);
-      await recarregar();
-    } catch (x) { setErros((y) => ({ ...y, [e.id]: erroLegivel(x) })); } finally { setMudando(null); }
-  };
   const confirmarTirar = async () => {
     if (!tirar) return;
     setTirando(true);
@@ -75,8 +69,9 @@ export function AjustesEtiquetas() {
         <Explicacao>
           <p>
             As etiquetas são as mesmas em todos os painéis, cada uma com a cor dela. Quem trabalha nos chamados cria uma nova no Abrir
-            chamado ou na ficha, já escolhendo a cor (a que chega pelo robô, pela IA ou por uma resposta pronta nasce cinza). Aqui se troca a
-            cor — vale em todos os chamados que a têm — e se tira das sugestões a que nenhum chamado usa.
+            chamado ou na ficha, já escolhendo a cor (a que chega pelo robô, pela IA ou por uma resposta pronta nasce cinza). Aqui se edita o
+            nome e a cor — valem em todos os chamados que a têm e nas respostas prontas que a põem — e se tira das sugestões a que nenhum
+            chamado usa. O mesmo editar está no lápis da lista de etiquetas, no Abrir chamado e na ficha.
           </p>
         </Explicacao>
 
@@ -93,7 +88,7 @@ export function AjustesEtiquetas() {
             {criando ? <Spinner className="text-white" /> : <Plus size={15} />} Criar
           </button>
         </form>
-        {igual && <p className="text-[12.5px] text-muted mt-1.5">A etiqueta <b className="text-ink-2">{igual.nome}</b> já existe: troque a cor dela na lista.</p>}
+        {igual && <p className="text-[12.5px] text-muted mt-1.5">A etiqueta <b className="text-ink-2">{igual.nome}</b> já existe: edite a cor dela na lista.</p>}
         {erro && <p className="text-bad text-[13px] mt-1.5" role="alert">{erro}</p>}
 
         {!lista.length ? (
@@ -117,10 +112,9 @@ export function AjustesEtiquetas() {
                       <ChipDaEtiqueta nome={e.nome} cor={e.cor} />
                       <span className="text-[12.5px] text-muted tnum">{e.chamados ? `${e.chamados} ${e.chamados === 1 ? 'chamado' : 'chamados'}` : 'nenhum chamado'}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <CoresDaEtiqueta valor={e.cor} onChange={(c) => void trocarCor(e, c)} desligado={mudando === e.id} rotulo={`A cor da etiqueta ${e.nome}`} />
-                      {mudando === e.id && <Spinner />}
-                    </div>
+                    <button type="button" className="btn-secondary btn-sm" onClick={() => { setErros(({ [e.id]: _, ...resto }) => resto); setEditando(e); }} aria-label={`Editar a etiqueta ${e.nome}`}>
+                      <Pencil size={14} /> Editar
+                    </button>
                     <div className="w-[76px] flex justify-end">
                       {!e.chamados && (
                         <button type="button" className="btn-ghost btn-sm text-bad" onClick={() => setTirar(e)} aria-label={`Tirar a etiqueta ${e.nome} das sugestões`}>
@@ -136,6 +130,16 @@ export function AjustesEtiquetas() {
           </div>
         )}
       </CartaoAjuste>
+      {editando && (
+        <Modal open onClose={() => setEditando(null)} titulo={`Editar a etiqueta ${editando.nome}`}>
+          <EditorDeEtiqueta naJanela titulo="Editar a etiqueta" botao="Salvar" inicial={{ nome: editando.nome, cor: editando.cor }}
+            nomesOcupados={lista.filter((x) => x.id !== editando.id).map((x) => x.nome)}
+            dica={!editando.chamados ? 'Nenhum chamado tem a etiqueta ainda.'
+              : editando.chamados === 1 ? 'O nome e a cor valem no chamado que tem a etiqueta.' : `O nome e a cor valem nos ${editando.chamados} chamados que têm a etiqueta.`}
+            onVoltar={() => setEditando(null)}
+            onSalvar={async (d) => { await api.atendimento.editarEtiqueta(editando.id, d); await recarregar(); setEditando(null); }} />
+        </Modal>
+      )}
       <Confirmar open={!!tirar} onClose={() => setTirar(null)} onConfirm={() => void confirmarTirar()} loading={tirando} perigoso botao="Tirar"
         titulo={`Tirar a etiqueta ${tirar?.nome ?? ''}?`}
         texto={<>Nenhum chamado usa esta etiqueta. Ela sai das sugestões; se alguém escrever o mesmo nome de novo, ela volta (cinza, ou com a cor escolhida).</>} />

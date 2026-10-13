@@ -661,8 +661,16 @@ const CoresDasEtiquetasSchema = z.record(z.string().trim().min(1).max(40), CorEt
 export const EtiquetaGravarSchema = z.object({ nome: EtiquetaSchema, cor: CorEtiquetaSchema.default('neutral') });
 export type EtiquetaGravar = z.infer<typeof EtiquetaGravarSchema>;
 export type EtiquetaGravarEntrada = z.input<typeof EtiquetaGravarSchema>;
-/** Trocar a cor de uma etiqueta (Ajustes › Etiquetas). */
-export const EtiquetaCorSchema = z.object({ cor: CorEtiquetaSchema });
+/**
+ * Editar uma etiqueta: o nome (sem ele, fica o de agora) e a cor — valem em todos os chamados que a têm
+ * (o pedido do Luan na prévia: "uma opção de editar a etiqueta: a cor e também o nome, parecido com o
+ * Helena"). Pelo id (Ajustes › Etiquetas) ou pelo nome de agora, `de` (o seletor de etiquetas).
+ */
+export const EtiquetaEditarSchema = z.object({ nome: EtiquetaSchema.optional(), cor: CorEtiquetaSchema });
+export type EtiquetaEditar = z.infer<typeof EtiquetaEditarSchema>;
+export type EtiquetaEditarEntrada = z.input<typeof EtiquetaEditarSchema>;
+export const EtiquetaEditarPeloNomeSchema = EtiquetaEditarSchema.extend({ de: EtiquetaSchema });
+export type EtiquetaEditarPeloNomeEntrada = z.input<typeof EtiquetaEditarPeloNomeSchema>;
 const TelefoneSchema = z.string().trim().max(40).nullish().transform((v, ctx) => {
   if (!v) return null;
   const n = numeroWhatsApp(v);
@@ -1975,6 +1983,16 @@ export function etiquetasUnicas(xs: string[]): string[] {
     if (t && !vistas.has(chaveDaEtiqueta(t))) vistas.set(chaveDaEtiqueta(t), t);
   }
   return [...vistas.values()];
+}
+
+/**
+ * As etiquetas de um chamado (ou de uma resposta pronta) com uma etiqueta renomeada — achada pela chave
+ * do nome antigo, escrita de qualquer jeito. Nula quando ela não está na lista (nada a mudar).
+ */
+export function renomearEtiqueta(lista: string[], deChave: string, para: string): string[] | null {
+  if (!lista.some((e) => chaveDaEtiqueta(e) === deChave)) return null;
+  const nova = etiquetasUnicas(lista.map((e) => (chaveDaEtiqueta(e) === deChave ? para : e)));
+  return nova.length === lista.length && nova.every((e, i) => e === lista[i]) ? null : nova;
 }
 
 /** Uma etiqueta e a cor dela (o que a tela precisa para desenhar). */

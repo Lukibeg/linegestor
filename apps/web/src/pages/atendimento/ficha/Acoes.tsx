@@ -21,7 +21,7 @@ import { paraALista } from '../../../lib/voltar.js';
 import { chaveDaFicha, fundoDaJanela } from '../comum.js';
 import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, linkDaFicha, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 import { JanelaIa, pedirSugestao } from './Ia.js';
-import { JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaResposta, JanelaTrocarPainel, resumoDaResposta } from './Janelas.js';
+import { JanelaAbrirLigado, JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaResposta, JanelaTrocarPainel, resumoDaResposta } from './Janelas.js';
 
 type Janela =
   | { tipo: 'esperar'; espera: TipoEspera }
@@ -33,7 +33,10 @@ type Janela =
   | { tipo: 'problema' }
   | { tipo: 'painel' }
   | { tipo: 'reabrir' }
-  | { tipo: 'lixeira' };
+  | { tipo: 'lixeira' }
+  // o filho e o problema a partir deste: o Abrir chamado numa janela (o pedido do Luan na prévia)
+  | { tipo: 'filho' }
+  | { tipo: 'novoProblema' };
 
 export function BarraDeAcoes() {
   const { f, opcoes, painel, etapa, cuida, eu, mover } = useAberta();
@@ -207,7 +210,7 @@ export function BarraDeAcoes() {
             return (
               <>
                 <ItemMenu icone={<Link2 size={15} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica="relacionado, duplicado de, repete">Ligar a outro chamado…</ItemMenu>
-                <ItemMenu icone={<GitBranch size={15} />} onClick={ir(() => navigate(`/atendimento/novo?pai=${encodeURIComponent(f.codigo)}`))} dica="pode ser em outro painel (o Desenvolvimento)">Criar um filho</ItemMenu>
+                <ItemMenu icone={<GitBranch size={15} />} onClick={ir(() => setJanela({ tipo: 'filho' }))} dica="pode ser em outro painel (o Desenvolvimento)">Criar um filho…</ItemMenu>
                 <ItemMenu icone={<GitBranch size={15} className="rotate-180" />} onClick={ir(() => setJanela({ tipo: 'pai' }))}>{f.pai ? `Trocar o pai (${f.pai.codigo})…` : 'Definir o pai…'}</ItemMenu>
                 {f.pai && <ItemMenu icone={<Unlink size={15} />} onClick={ir(() => void direta('Tirar o pai', () => api.atendimento.definirPai(f.id, null), `${f.codigo} não é mais filho de ${f.pai!.codigo}`))}>Tirar o pai ({f.pai.codigo})</ItemMenu>}
                 {f.tipoChamado === 'chamado' && (
@@ -217,7 +220,7 @@ export function BarraDeAcoes() {
                       {f.problema ? `Trocar o problema (${f.problema.codigo})…` : 'Ligar a um problema…'}
                     </ItemMenu>
                     {f.problema && <ItemMenu icone={<Unlink size={15} />} onClick={ir(() => void direta('Tirar do problema', () => api.atendimento.definirProblema(f.id, null), `${f.codigo} saiu do problema ${f.problema!.codigo}`))}>Tirar do problema ({f.problema.codigo})</ItemMenu>}
-                    <ItemMenu icone={<Layers size={15} />} onClick={ir(() => navigate(`/atendimento/novo?tipo=problema&incidente=${encodeURIComponent(f.codigo)}`))} dica="este chamado vira o primeiro incidente dele">Abrir um problema a partir deste</ItemMenu>
+                    <ItemMenu icone={<Layers size={15} />} onClick={ir(() => setJanela({ tipo: 'novoProblema' }))} dica="este chamado vira o primeiro incidente dele">Abrir um problema a partir deste…</ItemMenu>
                   </>
                 )}
                 <SeparadorMenu />
@@ -258,6 +261,8 @@ export function BarraDeAcoes() {
           fazer={(c) => api.atendimento.definirProblema(f.id, c)} ok={(c) => `${f.codigo} agora é incidente do problema ${c}`} onFechar={fechar} />
       )}
       {janela?.tipo === 'painel' && <JanelaTrocarPainel onFechar={fechar} />}
+      {janela?.tipo === 'filho' && <JanelaAbrirLigado tipo="filho" onFechar={fechar} />}
+      {janela?.tipo === 'novoProblema' && <JanelaAbrirLigado tipo="problema" onFechar={fechar} />}
       {janela?.tipo === 'reabrir' && <JanelaReabrir onFechar={fechar} />}
       {janela?.tipo === 'lixeira' && <Confirmar open onClose={fechar} onConfirm={() => void mandarParaLixeira()} loading={apagando} perigoso
         titulo={`Mandar ${f.codigo} para a lixeira`} botao="Mandar para a lixeira"

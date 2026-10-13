@@ -12,7 +12,7 @@ import {
   lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes, pareceAgradecimento,
   pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
   type CartaoChamado, type CartaoParaLista, type DadosObrigatorios, type EtapaPainel, type NoParaGrafo,
-  chaveDaEtiqueta, corDaEtiqueta, etiquetasUnicas,
+  chaveDaEtiqueta, corDaEtiqueta, etiquetasUnicas, renomearEtiqueta, EtiquetaEditarPeloNomeSchema,
   AvisosChamadosSchema, EVENTOS_AVISO, ModeloAprovadoSchema, faltaNoModeloAprovado, mensagemAoCliente, mensagemPreenchida, parametrosDoModelo, textoDoModelo,
   valorDaVariavel, valorSugeridoDaVariavel,
 } from './atendimento.js';
@@ -480,6 +480,18 @@ describe('as etiquetas com cor (1.10, o pedido do Luan na prévia)', () => {
     // a que já existe fica com a cor dela, mesmo com outra escolhida
     expect(corDaEtiqueta(lista, 'ALGAR', { algar: 'ok' })).toBe('roxo');
     expect(corDaEtiqueta(lista, 'nova')).toBe('neutral');
+  });
+
+  it('renomear: acha a etiqueta escrita de qualquer jeito, não repete e diz quando não há nada a mudar', () => {
+    expect(renomearEtiqueta(['Cliente VIP', 'retorno AMANHA', 'Peça'], 'retorno amanha', 'Ligar amanhã')).toEqual(['Cliente VIP', 'Ligar amanhã', 'Peça']);
+    // o nome novo já estava no chamado: fica uma vez só
+    expect(renomearEtiqueta(['vip', 'Cliente VIP'], 'vip', 'cliente vip')).toEqual(['cliente vip']);
+    // só a maiúscula muda: também é mudança
+    expect(renomearEtiqueta(['vip'], 'vip', 'VIP')).toEqual(['VIP']);
+    expect(renomearEtiqueta(['VIP'], 'vip', 'VIP')).toBeNull();
+    expect(renomearEtiqueta(['Peça'], 'vip', 'VIP')).toBeNull();
+    // o pedido de editar pelo nome: o nome novo é opcional (sem ele, troca só a cor)
+    expect(EtiquetaEditarPeloNomeSchema.parse({ de: ' Cliente   VIP ', cor: 'bad' })).toEqual({ de: 'Cliente VIP', cor: 'bad' });
   });
 
   it('o pedido leva a cor das novas (só as cores que existem); o nome fica com um espaço só', () => {

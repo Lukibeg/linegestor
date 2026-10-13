@@ -15,6 +15,10 @@
  *
  * As regras (o que o painel pede para abrir, a prioridade sugerida, o caminho do assunto) vêm do
  * `@gestor/shared`; quem decide é o servidor, e o erro dele aparece perto do botão.
+ *
+ * O mesmo formulário abre numa janela por cima da ficha (`NovoChamadoNaJanela`): o filho e o problema a
+ * partir de um chamado (o pedido do Luan na prévia: "quando eu for abrir um filho, ele tem que abrir como
+ * pop-up e não a tela inteira"). Aberto, a janela fecha e a ficha de baixo mostra o filho.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -22,9 +26,9 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, UserRoundPlus, X } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
-  acharContato, caminhoDoAssunto, campoLigado, chaveDaEtiqueta, chaveDoCampo, corDaEtiqueta, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
+  acharContato, caminhoDoAssunto, campoLigado, chaveDaEtiqueta, chaveDoCampo, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
   paraBusca, prioridadeSugeridaDoPainel, valorPreenchido,
-  type CorEtiqueta, type EtiquetaComCor,
+  type CorEtiqueta,
   type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
   type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo,
 } from '@gestor/shared';
@@ -33,8 +37,9 @@ import { ApiError } from '../../api/types.js';
 import { Carregando, Chip, EscolherComBusca, Spinner, Vazio, mensagemErro, useToast, type OpcaoBusca } from '../../components/ui/index.js';
 import { useAuth } from '../../lib/auth.js';
 import { JanelaContato, usePodeMexerNosContatos } from '../clientes/Contatos.js';
+import { SeletorDeEtiquetas } from './SeletorDeEtiquetas.js';
 import {
-  AMOSTRA_DA_COR, CabecalhoAtendimento, ChipDaEtiqueta, ChipSituacao, CodigoChamado, CoresDaEtiqueta, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
+  CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
   painelDe, telefoneLegivel, useDepoisDeMudar, useFicha, useOpcoes, usePode,
 } from './comum.js';
 
@@ -93,36 +98,58 @@ export function NovoChamado() {
   return <Carregador key={search} />;
 }
 
-function Carregador() {
+/**
+ * Abrir na janela, por cima da ficha: o filho (`pai`) ou o problema a partir de um chamado (`incidente`).
+ * `painelId` é o painel que já vem escolhido (o do chamado de baixo; o filho pode ir para outro).
+ */
+export type AbrirNaJanela = {
+  pai?: string; incidente?: string; painelId?: string;
+  /** aberto: o código do novo */
+  onAberto: (codigo: string) => void;
+  /** em vez de abrir, reabriu um recente do cliente: o código dele */
+  onReaberto: (codigo: string) => void;
+  onCancelar: () => void;
+  /** a pessoa já escreveu alguma coisa (fechar a janela pergunta antes) */
+  onEscreveu?: (sim: boolean) => void;
+};
+export function NovoChamadoNaJanela(p: AbrirNaJanela) {
+  return <Carregador naJanela={p} />;
+}
+
+function Carregador({ naJanela }: { naJanela?: AbrirNaJanela }) {
   const opcoes = useOpcoes();
   const pode = usePode();
-  if (opcoes.isLoading) return <div><CabecalhoAtendimento sub="Abrir chamado" /><Carregando /></div>;
-  if (opcoes.isError || !opcoes.data) return <div><CabecalhoAtendimento sub="Abrir chamado" /><p className="text-bad text-sm" role="alert">{mensagemErro(opcoes.error)}</p></div>;
+  // na janela, o cabeçalho do módulo não aparece (a janela tem o título dela)
+  const topo = naJanela ? null : <CabecalhoAtendimento sub="Abrir chamado" />;
+  if (opcoes.isLoading) return <div>{topo}<Carregando /></div>;
+  if (opcoes.isError || !opcoes.data) return <div>{topo}<p className="text-bad text-sm" role="alert">{mensagemErro(opcoes.error)}</p></div>;
   if (!pode.trabalhar) {
-    return <div><CabecalhoAtendimento sub="Abrir chamado" /><Vazio titulo="Abrir chamado é de quem trabalha nos chamados" texto="Você pode ver os chamados, mas abrir e mexer pede a permissão de trabalhar neles. Fale com a administração." /></div>;
+    return <div>{topo}<Vazio titulo="Abrir chamado é de quem trabalha nos chamados" texto="Você pode ver os chamados, mas abrir e mexer pede a permissão de trabalhar neles. Fale com a administração." /></div>;
   }
   const paineis = opcoes.data.paineis.filter((p) => p.ativo);
   if (!paineis.length) {
-    return <div><CabecalhoAtendimento sub="Abrir chamado" /><Vazio titulo="Nenhum painel aberto para você" texto="Para abrir um chamado é preciso um painel ativo que você veja. Quem cuida dos chamados cria e libera os painéis em Chamados › Ajustes." /></div>;
+    return <div>{topo}<Vazio titulo="Nenhum painel aberto para você" texto="Para abrir um chamado é preciso um painel ativo que você veja. Quem cuida dos chamados cria e libera os painéis em Chamados › Ajustes." /></div>;
   }
-  return <Formulario opcoes={opcoes.data} paineis={paineis} />;
+  return <Formulario opcoes={opcoes.data} paineis={paineis} naJanela={naJanela} />;
 }
 
-function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: Painel[] }) {
+function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; paineis: Painel[]; naJanela?: AbrirNaJanela }) {
   const [sp] = useSearchParams();
   const navigate = useNavigate();
   const toast = useToast();
   const depois = useDepoisDeMudar();
   const { user } = useAuth();
+  const pode = usePode();
   const local = useLocation();
-  // "Cancelar" volta para onde a pessoa estava (o quadro, a lista); aberto direto (o botão do LineChat), vai para o Meu dia
-  const cancelar = () => (local.key !== 'default' ? navigate(-1) : navigate('/atendimento'));
+  // "Cancelar" volta para onde a pessoa estava (o quadro, a lista); aberto direto (o botão do LineChat), vai para o Meu dia; na janela, fecha
+  const cancelar = () => (naJanela ? naJanela.onCancelar() : local.key !== 'default' ? navigate(-1) : navigate('/atendimento'));
 
-  // o que veio no endereço (o botão da conversa do LineChat, o "Abrir filho", o "Abrir problema")
-  const sessao = sp.get('sessao')?.trim() || null;
-  const refPai = sp.get('pai')?.trim() || undefined;
-  const refIncidente = sp.get('incidente')?.trim() || undefined;
-  const pedidoPainel = sp.get('painel')?.trim() ?? '';
+  // o que veio no endereço (o botão da conversa do LineChat, o "Abrir filho", o "Abrir problema") — ou da janela
+  const doEndereco = (k: string) => (naJanela ? null : sp.get(k)?.trim() || null);
+  const sessao = doEndereco('sessao');
+  const refPai = (naJanela ? naJanela.pai : doEndereco('pai')) || undefined;
+  const refIncidente = (naJanela ? naJanela.incidente : doEndereco('incidente')) || undefined;
+  const pedidoPainel = (naJanela ? naJanela.painelId : doEndereco('painel')) ?? '';
   /** o painel do endereço (pelo id ou pela sigla) */
   const painelDoEndereco = pedidoPainel ? paineis.find((p) => p.id === pedidoPainel || p.sigla === pedidoPainel.toUpperCase()) : undefined;
   /**
@@ -130,17 +157,17 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
    * painel para escolher (o pedido do Luan na prévia). O filho (?pai=) escolhe, porque pode nascer em
    * outro painel (o Desenvolvimento ajudando o Suporte).
    */
-  const painelFixo = !!painelDoEndereco && !refPai;
+  const painelFixo = !naJanela && !!painelDoEndereco && !refPai;
 
   const [f, setF] = useState<Form>(() => {
-    const fone = sp.get('telefone')?.trim() ?? '';
+    const fone = doEndereco('telefone') ?? '';
     const painel = painelDoEndereco ?? paineis[0]!;
     const eu = user && opcoes.pessoas.some((p) => p.id === user.id && p.ativo) ? user.id : '';
     return {
       painelId: painel.id,
-      tipoChamado: sp.get('tipo') === 'problema' ? 'problema' : 'chamado',
+      tipoChamado: (naJanela ? naJanela.incidente : doEndereco('tipo') === 'problema') ? 'problema' : 'chamado',
       clienteId: '',
-      contatoNome: sp.get('nome')?.trim() ?? '',
+      contatoNome: doEndereco('nome') ?? '',
       // o LineChat manda só os dígitos (5571999990000): a caixa mostra do jeito que se lê
       contatoTelefone: fone ? telefoneLegivel(numeroWhatsApp(fone) ?? fone) : '',
       titulo: '', relato: '', descricao: '',
@@ -217,6 +244,9 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
 
   // não sair sem querer com o relato pela metade
   const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim());
+  const avisarEscreveu = useRef(naJanela?.onEscreveu);
+  avisarEscreveu.current = naJanela?.onEscreveu;
+  useEffect(() => { avisarEscreveu.current?.(escreveu); }, [escreveu]);
   useEffect(() => {
     if (!escreveu) return;
     const aviso = (e: BeforeUnloadEvent) => { e.preventDefault(); };
@@ -285,9 +315,11 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
     try {
       const r = await depois(api.atendimento.criar(d));
       setMexeu(false);
-      if (r.aviso && !r.aviso.ok) toast.push('erro', `${r.codigo} foi aberto, mas o aviso ao cliente pelo WhatsApp não foi: ${r.aviso.mensagem}`);
-      else toast.push('ok', r.aviso?.ok ? `${r.codigo} aberto, e o cliente recebeu o número pelo WhatsApp` : `${r.codigo} aberto`);
-      navigate(`/atendimento/${encodeURIComponent(r.codigo)}`);
+      const comoFilho = pai.data ? `, filho do ${pai.data.codigo}` : '';
+      if (r.aviso && !r.aviso.ok) toast.push('erro', `${r.codigo} foi aberto${comoFilho}, mas o aviso ao cliente pelo WhatsApp não foi: ${r.aviso.mensagem}`);
+      else toast.push('ok', r.aviso?.ok ? `${r.codigo} aberto${comoFilho}, e o cliente recebeu o número pelo WhatsApp` : `${r.codigo} aberto${comoFilho}`);
+      if (naJanela) naJanela.onAberto(r.codigo);
+      else navigate(`/atendimento/${encodeURIComponent(r.codigo)}`);
     } catch (e) {
       setErro(mensagemErro(e));
       if (e instanceof ApiError && e.details && typeof e.details === 'object' && !Array.isArray(e.details)) {
@@ -315,7 +347,8 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
       }
       setMexeu(false);
       toast.push('ok', `${ficha.codigo} reaberto${anotou ? ', com o relato novo nas anotações' : ''}`);
-      navigate(`/atendimento/${encodeURIComponent(ficha.codigo)}`);
+      if (naJanela) naJanela.onReaberto(ficha.codigo);
+      else navigate(`/atendimento/${encodeURIComponent(ficha.codigo)}`);
     } catch (e) {
       setErroReabrir({ id: c.id, msg: mensagemErro(e) });
     } finally {
@@ -335,8 +368,10 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
         const alvo = e.target as HTMLElement;
         if (alvo.tagName === 'INPUT' && (alvo as HTMLInputElement).type !== 'checkbox') e.preventDefault();
       }}>
-      <CabecalhoAtendimento painelId={painelFixo ? painel.id : undefined}
-        sub={painelFixo ? `Abrir chamado no painel ${painel.nome}: o que o cliente contou, de quem é e quem cuida.` : 'Abrir chamado: o que o cliente contou, de quem é e quem cuida.'} />
+      {!naJanela && (
+        <CabecalhoAtendimento painelId={painelFixo ? painel.id : undefined}
+          sub={painelFixo ? `Abrir chamado no painel ${painel.nome}: o que o cliente contou, de quem é e quem cuida.` : 'Abrir chamado: o que o cliente contou, de quem é e quem cuida.'} />
+      )}
 
       <div className="grid grid-cols-1 gap-4 max-w-4xl">
         {/* de onde veio: a conversa do LineChat, o pai, o incidente */}
@@ -427,7 +462,8 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
               onFechar={() => setJanelaContato(null)} onSalvo={(c) => { escolherContato(c); setJanelaContato(null); }} />
           )}
           {f.clienteId && <Recentes cadastro={cadastro.data} carregando={cadastro.isLoading} erroCarregar={cadastro.isError ? mensagemErro(cadastro.error) : ''}
-            opcoes={opcoes} reabrindo={reabrindo} erro={erroReabrir} onReabrir={reabrir} levaRelato={!!f.relato.trim()} />}
+            opcoes={opcoes} reabrindo={reabrindo} erro={erroReabrir} onReabrir={reabrir} levaRelato={!!f.relato.trim()}
+            onAbrirOutro={naJanela ? (codigo) => naJanela.onReaberto(codigo) : undefined} />}
         </Secao>
 
         {/* ---------- o que aconteceu ---------- */}
@@ -570,15 +606,22 @@ function Formulario({ opcoes, paineis }: { opcoes: OpcoesAtendimento; paineis: P
               <EscolherVarios id="novo-observadores" rotulo="observador" valor={f.observadores} onChange={(v) => mudar({ observadores: v })}
                 doCliente={[]} catalogo={pessoas.map((p) => ({ id: p.id, nome: p.nome, dica: p.id === user?.id ? 'você' : undefined }))} />
             </Rotulado>
+            {/* o seletor de etiquetas (o pedido do Luan: no padrão das outras listas, e com o editar: o nome e a cor) */}
             <Rotulado rotulo="Etiquetas" id="novo-etiquetas" className="sm:col-span-2">
-              <CampoEtiquetas id="novo-etiquetas" valor={f.etiquetas} sugestoes={opcoes.etiquetas} onChange={(v) => mudar({ etiquetas: v })}
-                cores={f.coresNovas} onCores={(c) => mudar({ coresNovas: c })} />
+              <SeletorDeEtiquetas id="novo-etiquetas" valor={f.etiquetas} catalogo={opcoes.etiquetas} coresNovas={f.coresNovas} podeMudar podeEditar={pode.cuidar}
+                onMudar={(v) => mudar({ etiquetas: v })}
+                onCriar={(nome, cor) => mudar({ etiquetas: etiquetasUnicas([...f.etiquetas, nome]).slice(0, 20), coresNovas: { ...f.coresNovas, [chaveDaEtiqueta(nome)]: cor } })}
+                onEditarLocal={(de, nome, cor) => {
+                  const coresNovas = Object.fromEntries(Object.entries(f.coresNovas).filter(([k]) => k !== chaveDaEtiqueta(de)));
+                  mudar({ etiquetas: etiquetasUnicas(f.etiquetas.map((e) => (chaveDaEtiqueta(e) === chaveDaEtiqueta(de) ? nome : e))), coresNovas: { ...coresNovas, [chaveDaEtiqueta(nome)]: cor } });
+                }}
+                onEditada={(de, para) => mudar({ etiquetas: etiquetasUnicas(f.etiquetas.map((e) => (chaveDaEtiqueta(e) === chaveDaEtiqueta(de) ? para : e))) })} />
             </Rotulado>
           </div>
         </Secao>
 
-        {/* ---------- abrir ---------- */}
-        <div className="card p-4 flex flex-col gap-3">
+        {/* ---------- abrir (na janela, o botão fica sempre à vista, embaixo) ---------- */}
+        <div className={`card p-4 flex flex-col gap-3 ${naJanela ? 'sticky -bottom-4 z-10' : ''}`} style={naJanela ? { boxShadow: '0 -8px 20px rgba(0,0,0,.08)' } : undefined}>
           {podeAvisar && (
             <label className="flex items-start gap-2.5 text-sm cursor-pointer">
               <input type="checkbox" className="mt-1 accent-[var(--accent)]" id="novo-avisar" checked={f.avisarCliente} onChange={(e) => mudar({ avisarCliente: e.target.checked })} />
@@ -754,9 +797,11 @@ function ChamadoLigado({ rotulo, icone, consulta, referencia, opcoes, dica, apag
  * Os chamados recentes do cliente (abertos, ou criados nos últimos 7 dias): o pedido do Luan — o
  * cliente que volta à tarde com o mesmo ramal reabre o chamado da manhã, em vez de abrir outro.
  */
-function Recentes({ cadastro, carregando, erroCarregar, opcoes, reabrindo, erro, onReabrir, levaRelato }: {
+function Recentes({ cadastro, carregando, erroCarregar, opcoes, reabrindo, erro, onReabrir, levaRelato, onAbrirOutro }: {
   cadastro: CadastroDoCliente | undefined; carregando: boolean; erroCarregar: string; opcoes: OpcoesAtendimento;
   reabrindo: string | null; erro: { id: string; msg: string } | null; onReabrir: (c: CartaoChamado) => void; levaRelato: boolean;
+  /** na janela (o filho): abrir um recente fecha a janela antes (a ficha de baixo troca para ele) */
+  onAbrirOutro?: (codigo: string) => void;
 }) {
   if (carregando) return <div className="mt-3 text-[13px] text-muted flex items-center gap-2"><Spinner /> Procurando os chamados recentes deste cliente…</div>;
   if (erroCarregar) return <p className="mt-3 text-[13px] text-bad">{erroCarregar}</p>;
@@ -792,6 +837,8 @@ function Recentes({ cadastro, carregando, erroCarregar, opcoes, reabrindo, erro,
                   title={`Volta o ${c.codigo} para o atendimento com o motivo "${MOTIVO_REABRIR}"${levaRelato ? ', e o relato escrito aqui vai junto, como anotação' : ''}`}>
                   {reabrindo === c.id ? <Spinner /> : <RotateCcw size={14} />} Reabrir este em vez de abrir outro
                 </button>
+              ) : onAbrirOutro ? (
+                <button type="button" className="btn-secondary btn-sm shrink-0 self-start sm:self-center" onClick={() => onAbrirOutro(c.codigo)}>Abrir este</button>
               ) : (
                 <LinkDoChamado codigo={c.codigo} className="btn-secondary btn-sm shrink-0 self-start sm:self-center">Abrir este</LinkDoChamado>
               )}
@@ -880,87 +927,6 @@ function EscolherVarios({ id, rotulo, valor, onChange, doCliente, catalogo }: {
           )} />
       )}
       {!valor.length && !sugeridos.length && !resto.length && <span className="text-[12.5px] text-muted">Nada no cadastro.</span>}
-    </div>
-  );
-}
-
-/**
- * As etiquetas: as já usadas aparecem para pôr com um clique, e uma nova se cria aqui mesmo (o pedido
- * do Luan na prévia): digita o nome, escolhe a cor e clica em Criar (ou Enter, ou vírgula). A cor da
- * última nova continua à mão depois de criada, para trocar (a que já existe tem a cor dela).
- */
-function CampoEtiquetas({ id, valor, sugestoes, onChange, cores, onCores }: {
-  id: string; valor: string[]; sugestoes: EtiquetaComCor[]; onChange: (v: string[]) => void;
-  cores: Record<string, CorEtiqueta>; onCores: (c: Record<string, CorEtiqueta>) => void;
-}) {
-  const [t, setT] = useState('');
-  /** a cor escolhida para a etiqueta nova que está sendo escrita */
-  const [corDaNova, setCorDaNova] = useState<CorEtiqueta>('neutral');
-  /** a última nova criada aqui: a cor dela continua à mão */
-  const [ultimaNova, setUltimaNova] = useState<string | null>(null);
-  const existe = (n: string) => sugestoes.some((s) => chaveDaEtiqueta(s.nome) === chaveDaEtiqueta(n));
-  const somar = (texto: string) => {
-    const novas = texto.split(/[,;\n]/).map((x) => x.trim().slice(0, 40)).filter(Boolean);
-    if (novas.length) {
-      onChange(etiquetasUnicas([...valor, ...novas]).slice(0, 20));
-      const criadas = novas.filter((n) => !existe(n));
-      if (criadas.length) {
-        onCores({ ...cores, ...Object.fromEntries(criadas.map((n) => [chaveDaEtiqueta(n), corDaNova])) });
-        setUltimaNova(criadas[criadas.length - 1]!);
-      }
-    }
-    setT('');
-  };
-  const ja = new Set(valor.map((v) => chaveDaEtiqueta(v)));
-  const b = paraBusca(t);
-  const achadas = sugestoes.filter((s) => !ja.has(chaveDaEtiqueta(s.nome)) && (!b || paraBusca(s.nome).includes(b))).slice(0, 8);
-  // o que está escrito: uma etiqueta nova, uma já usada (pôr) ou uma que o chamado já tem
-  const escrito = t.trim();
-  const jaTem = !!escrito && ja.has(chaveDaEtiqueta(escrito));
-  const usada = !!escrito && existe(escrito);
-  const cheio = valor.length >= 20;
-  const cor = (e: string) => corDaEtiqueta(sugestoes, e, cores);
-  // a cor à mão: a da nova que está sendo escrita, ou a da última nova criada aqui (se ainda está no chamado)
-  const ultima = ultimaNova && valor.some((v) => chaveDaEtiqueta(v) === chaveDaEtiqueta(ultimaNova)) && !existe(ultimaNova) ? valor.find((v) => chaveDaEtiqueta(v) === chaveDaEtiqueta(ultimaNova))! : null;
-  const escolhendo = escrito && !jaTem && !usada && !cheio
-    ? { nome: escrito, cor: corDaNova, mudar: setCorDaNova, nova: true }
-    : !escrito && ultima ? { nome: ultima, cor: cor(ultima), mudar: (c: CorEtiqueta) => onCores({ ...cores, [chaveDaEtiqueta(ultima)]: c }), nova: false } : null;
-  return (
-    <div>
-      <div className="flex items-start gap-1.5">
-        {/* a caixa inteira acende quando o campo de dentro está em foco (o campo não ganha a borda própria) */}
-        <div className="input flex flex-1 flex-wrap items-center gap-1.5 py-1.5 min-h-[40px] min-w-0 focus-within:border-accent">
-          {valor.map((e) => <ChipDaEtiqueta key={e} nome={e} cor={cor(e)} onTirar={() => onChange(valor.filter((x) => x !== e))} />)}
-          <input className="flex-1 min-w-[120px] bg-transparent outline-none focus-visible:outline-none text-sm py-0.5" id={id} autoComplete="off" value={t} maxLength={40} disabled={cheio}
-            placeholder={cheio ? 'no máximo 20 etiquetas' : valor.length ? 'outra etiqueta' : 'Nova etiqueta, ou uma já usada'}
-            onChange={(e) => setT(e.target.value)} onBlur={() => t.trim() && somar(t)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); somar(t); } else if (e.key === 'Backspace' && !t && valor.length) onChange(valor.slice(0, -1)); }} />
-        </div>
-        {/* o clique não tira o foco antes de somar (senão o onBlur soma primeiro e o botão some) */}
-        <button type="button" className="btn-secondary h-10 shrink-0" id={`${id}-criar`} disabled={!escrito || jaTem || cheio}
-          onMouseDown={(e) => e.preventDefault()} onClick={() => somar(t)} title={jaTem ? 'O chamado já tem esta etiqueta' : undefined}>
-          <Plus size={15} /> {usada ? 'Pôr' : 'Criar'}
-        </button>
-      </div>
-      {escolhendo && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1.5" id={`${id}-cor`}>
-          <span className="text-[12px] text-muted">
-            {escolhendo.nova ? <>Etiqueta nova: <b className="text-ink-2">{escolhendo.nome}</b>. A cor:</> : <>A cor de <b className="text-ink-2">{escolhendo.nome}</b>:</>}
-          </span>
-          <CoresDaEtiqueta valor={escolhendo.cor} onChange={escolhendo.mudar} manterFoco rotulo={`A cor da etiqueta ${escolhendo.nome}`} />
-        </div>
-      )}
-      {achadas.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1 mt-1.5">
-          <span className="text-[12px] text-muted mr-0.5">{t ? 'Já usadas:' : 'Usadas antes:'}</span>
-          {achadas.map((s) => (
-            // o clique não pode tirar o foco antes de somar (senão o onBlur soma o texto pela metade)
-            <button key={s.nome} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => somar(s.nome)} className="chip rounded-full pl-1.5 border border-dashed border-line-strong text-ink-2 hover:bg-surface-2 font-medium">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${AMOSTRA_DA_COR[s.cor]}`} aria-hidden /> {s.nome}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

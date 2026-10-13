@@ -14,8 +14,9 @@ import {
   type CartaoChamado, type FichaChamado, type RespostaPronta, type TipoEspera, type TipoLigacaoChamado,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
-import { Campo, Modal, Spinner } from '../../../components/ui/index.js';
-import { painelDe, telefoneLegivel } from '../comum.js';
+import { Campo, Confirmar, Modal, Spinner } from '../../../components/ui/index.js';
+import { painelDe, telefoneLegivel, useAbrirChamado } from '../comum.js';
+import { NovoChamadoNaJanela } from '../Novo.js';
 import { BalaoDeMensagem } from '../ajustes/Avisos.js';
 import { ErroPerto, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 
@@ -116,6 +117,39 @@ function ComoChegaAoCliente({ texto }: { texto: string }) {
       {m.peloModelo && /\n/.test(texto.trim()) && levaOTexto && <p className="text-[12px] text-muted mt-1.5">No modelo aprovado, a quebra de linha vira " · " (o WhatsApp não aceita quebra dentro da variável).</p>}
       {!levaOTexto && <p className="text-[12.5px] text-signal mt-1.5">O modelo não tem lugar para o seu texto: o cliente recebe só o que está acima, e o seu texto fica no histórico do chamado.</p>}
     </div>
+  );
+}
+
+// =====================================================================
+//  CRIAR UM FILHO (OU UM PROBLEMA A PARTIR DESTE), NUMA JANELA
+// =====================================================================
+
+/**
+ * O formulário do Abrir chamado numa janela por cima da ficha (o pedido do Luan na prévia: "quando eu for
+ * abrir um filho, ele tem que abrir como pop-up e não a tela inteira"): o filho nasce ligado a este
+ * chamado (pode ir para outro painel); o problema nasce juntando este como incidente. Aberto, a janela
+ * fecha e a ficha mostra a ligação nova. Com algo escrito, fechar pergunta antes de descartar.
+ */
+export function JanelaAbrirLigado({ tipo, onFechar }: { tipo: 'filho' | 'problema'; onFechar: () => void }) {
+  const { f, recarregar } = useAberta();
+  const abrirChamado = useAbrirChamado();
+  const [escreveu, setEscreveu] = useState(false);
+  const [descartar, setDescartar] = useState(false);
+  const fechar = () => (escreveu ? setDescartar(true) : onFechar());
+  return (
+    <>
+      <Modal open onClose={fechar} largura="max-w-4xl"
+        titulo={tipo === 'filho' ? <>Criar um filho do <span className="font-mono">{f.codigo}</span></> : <>Abrir um problema a partir do <span className="font-mono">{f.codigo}</span></>}>
+        <div id="janela-abrir-ligado" data-tipo={tipo}>
+          <NovoChamadoNaJanela pai={tipo === 'filho' ? f.codigo : undefined} incidente={tipo === 'problema' ? f.codigo : undefined} painelId={f.painelId}
+            onEscreveu={setEscreveu} onCancelar={fechar}
+            onAberto={() => { onFechar(); recarregar(); }}
+            onReaberto={(codigo) => { onFechar(); abrirChamado(codigo); }} />
+        </div>
+      </Modal>
+      <Confirmar open={descartar} onClose={() => setDescartar(false)} onConfirm={() => { setDescartar(false); onFechar(); }} perigoso botao="Descartar"
+        titulo="Descartar o que foi escrito?" texto={`O ${tipo === 'filho' ? 'filho' : 'problema'} ainda não foi aberto: o que foi escrito nesta janela se perde.`} />
+    </>
   );
 }
 

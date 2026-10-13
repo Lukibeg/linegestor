@@ -16,7 +16,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
   AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
-  EtiquetaCorSchema, EtiquetaGravarSchema,
+  EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema,
   LinkConversaSchema, OrdemDosCamposSchema, PainelGravarSchema, SitesIframeSchema, WebhookGravarSchema,
 } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
@@ -132,9 +132,18 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return reply.status(201).send(r.valor);
     });
 
-  app.put('/etiquetas/:id', { ...cuidar, schema: { tags, summary: 'Trocar a cor de uma etiqueta (vale para todos os chamados que a têm)', params: Id, body: EtiquetaCorSchema } },
+  app.put('/etiquetas/:id', { ...cuidar, schema: { tags, summary: 'Editar uma etiqueta: o nome e a cor (valem em todos os chamados que a têm)', params: Id, body: EtiquetaEditarSchema } },
     async (req) => {
-      const r = await etiquetas.trocarCorDaEtiqueta(app.db, req.params.id, req.body.cor);
+      const r = await etiquetas.editarEtiqueta(app.db, { id: req.params.id }, req.body, req.user!.id);
+      await app.audit(req, { action: 'update', entityType: 'ticket_tag', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
+      return r.valor;
+    });
+
+  // o seletor de etiquetas (no Abrir chamado e na ficha) edita pelo nome: as opções da tela não levam o id
+  app.put('/etiquetas', { ...cuidar, schema: { tags, summary: 'Editar uma etiqueta pelo nome de agora (`de`): o nome e a cor', body: EtiquetaEditarPeloNomeSchema } },
+    async (req) => {
+      const { de, ...d } = req.body;
+      const r = await etiquetas.editarEtiqueta(app.db, { nome: de }, d, req.user!.id);
       await app.audit(req, { action: 'update', entityType: 'ticket_tag', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
       return r.valor;
     });

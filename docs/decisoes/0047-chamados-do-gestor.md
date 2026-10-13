@@ -100,15 +100,21 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 - **Abrir chamado**: dentro de um painel (o quadro, a lista), o chamado já nasce nele — "se eu estou
   dentro do painel de suporte, quero abrir no painel de suporte" —; fora dele (Painéis, Meu dia, o
   botão da conversa), a pessoa escolhe o painel, e o filho também (pode ser de outro painel). A
-  descrição já vem aberta, e uma etiqueta nova se cria ali mesmo (pedidos dele na prévia).
+  descrição já vem aberta, e uma etiqueta nova se cria ali mesmo (pedidos dele na prévia). O **filho**
+  e o **problema a partir de um chamado** abrem o mesmo formulário numa **janela por cima da ficha**,
+  e não na tela inteira (pedido dele na prévia); com algo escrito, fechar pergunta antes.
 - **As etiquetas com cor** (o pedido dele na prévia: "na hora de criar as etiquetas, escolher a cor"):
   um catálogo, o mesmo em todos os painéis, guarda o nome e a cor de cada etiqueta (nove cores). A nova
   nasce com a cor escolhida no Abrir chamado ou na ficha; a do robô, da IA e da resposta pronta, cinza.
   O chamado guarda o nome como está no catálogo ("cliente VIP" escrito de novo vira a que existe). No
   quadro e na ficha a etiqueta é redonda, com a bolinha da cor, para não se confundir com a prioridade
-  e o prazo. Quem cuida dos chamados troca a cor (vale em todos os chamados) e tira das sugestões a que
-  nenhum chamado usa (Ajustes › Etiquetas). Cada pessoa só vê sugerida a etiqueta dos painéis que vê
-  (e as que nenhum chamado usa ainda).
+  e o prazo. A escolha é uma lista como as outras do Gestor (a busca, a marca das que o chamado tem, o
+  "Criar" com a cor) — o pedido dele: "deixe no padrão do restante do sistema" —, e o **lápis** de
+  cada uma edita **o nome e a cor**, como no Helena: valem em todos os chamados que têm a etiqueta (os
+  da lixeira também) e nas respostas prontas que a põem; o histórico fica como foi. Editar é de quem
+  cuida dos chamados, ali e em Ajustes › Etiquetas (onde também se tira das sugestões a que nenhum
+  chamado usa). Cada pessoa só vê sugerida a etiqueta dos painéis que vê (e as que nenhum chamado usa
+  ainda).
 - **Os observadores** (como no Helena, o pedido dele na prévia): quem é posto como observador — ao
   abrir ou na ficha — recebe o aviso de toda atualização do chamado: a anotação, a mudança de etapa e
   de responsável (e o reabrir, o painel novo), a espera, a mensagem ao cliente, o caso na operadora, o

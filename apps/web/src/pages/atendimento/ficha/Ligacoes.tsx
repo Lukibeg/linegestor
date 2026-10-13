@@ -10,7 +10,6 @@
  * abre a ficha dele.
  */
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { GitBranch, Link2, Unlink, Waypoints } from 'lucide-react';
 import {
   NOME_SITUACAO_CHAMADO, posicoesDoGrafo,
@@ -20,13 +19,14 @@ import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
 import { ChipSituacao, CodigoChamado, LinkDoChamado, useAbrirChamado } from '../comum.js';
 import { ErroPerto, Secao, useAberta, useAcao } from './base.js';
-import { JanelaLigar } from './Janelas.js';
+import { JanelaAbrirLigado, JanelaLigar } from './Janelas.js';
 import { LinhaDeChamado } from './Partes.js';
 
 export function Ligacoes() {
   const { f, pode, painel, opcoes } = useAberta();
-  const navigate = useNavigate();
   const [ligando, setLigando] = useState(false);
+  // o filho nasce numa janela por cima da ficha (o pedido do Luan na prévia), e não na tela inteira
+  const [criandoFilho, setCriandoFilho] = useState(false);
   const tirar = useAcao();
   const [tirando, setTirando] = useState<string | null>(null);
 
@@ -54,7 +54,7 @@ export function Ligacoes() {
     <Secao titulo="Filhos e ligações" icone={<Waypoints size={16} />}
       acoes={pode && (
         <>
-          <button type="button" className="btn-secondary btn-sm" onClick={() => navigate(`/atendimento/novo?pai=${encodeURIComponent(f.codigo)}`)}><GitBranch size={14} /> Criar um filho</button>
+          <button type="button" className="btn-secondary btn-sm" onClick={() => setCriandoFilho(true)}><GitBranch size={14} /> Criar um filho</button>
           <button type="button" className="btn-secondary btn-sm" onClick={() => setLigando(true)}><Link2 size={14} /> Ligar a outro chamado</button>
         </>
       )}>
@@ -104,6 +104,7 @@ export function Ligacoes() {
 
       {temDesenho && <Desenho g={f.grafo} />}
       {ligando && <JanelaLigar onFechar={() => setLigando(false)} />}
+      {criandoFilho && <JanelaAbrirLigado tipo="filho" onFechar={() => setCriandoFilho(false)} />}
     </Secao>
   );
 }

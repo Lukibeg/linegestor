@@ -458,7 +458,7 @@ export function Popover({ botao, children, largura = 'w-[320px]', classe = 'btn-
  * borda; se não couber embaixo, abre para cima; e sempre rola por dentro. `fixed`, então nenhum
  * `overflow` de janela ou tabela corta o painel.
  */
-function usePosicaoDoPainel(aberto: boolean, ancora: React.RefObject<HTMLElement | null>, painel: React.RefObject<HTMLElement | null>, alinhar: 'direita' | 'esquerda' = 'direita') {
+export function usePosicaoDoPainel(aberto: boolean, ancora: React.RefObject<HTMLElement | null>, painel: React.RefObject<HTMLElement | null>, alinhar: 'direita' | 'esquerda' = 'direita') {
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
   useEffect(() => {
     if (!aberto) { setPos(null); return; }

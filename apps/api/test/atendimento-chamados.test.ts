@@ -1401,6 +1401,44 @@ describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao c
     expect((await s.put('/atendimento/etiquetas/nao-existe', { cor: 'ok' })).json().error).toBe('Etiqueta não encontrada');
   });
 
+  it('editar a etiqueta (o pedido do Luan: o nome e a cor, como no Helena): vale nos chamados e nas respostas prontas', async () => {
+    const resposta = (await s.post('/atendimento/respostas', { nome: 'Retornar amanhã', texto: 'Retornamos amanhã.', acao: { etiqueta: 'retorno AMANHA' } })).json();
+    const outro = await abrir(operador, { titulo: 'Outro com a etiqueta', etiquetas: ['retorno amanhã'] });
+    const lista = (await s.get('/atendimento/etiquetas')).json();
+    const retorno = lista.find((e: any) => e.nome === 'Retorno amanhã');
+    // o operador não edita (é de quem cuida dos chamados)
+    expect((await operador.put(`/atendimento/etiquetas/${retorno.id}`, { nome: 'Ligar amanhã', cor: 'ok' })).statusCode).toBe(403);
+    // pelo id (Ajustes › Etiquetas): o nome e a cor juntos
+    const r = await s.put(`/atendimento/etiquetas/${retorno.id}`, { nome: 'Ligar  amanhã', cor: 'turquesa' });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toMatchObject({ nome: 'Ligar amanhã', cor: 'turquesa', chamados: 2 });
+    expect((await s.get(`/atendimento/chamados/${ficha.id}`)).json().etiquetas).toEqual(['Cliente VIP', 'Ligar amanhã', 'Peça']);
+    expect((await s.get(`/atendimento/chamados/${outro.id}`)).json().etiquetas).toEqual(['Ligar amanhã']);
+    expect((await s.get('/atendimento/respostas')).json().find((x: any) => x.id === resposta.id).acao.etiqueta).toBe('Ligar amanhã');
+    expect(await cor(operador, 'Ligar amanhã')).toBe('turquesa');
+    expect(await cor(operador, 'Retorno amanhã')).toBeUndefined();
+    // o nome de outra etiqueta (sem ligar para maiúscula e acento) não vale
+    const dup = await s.put(`/atendimento/etiquetas/${retorno.id}`, { nome: 'peca', cor: 'ok' });
+    expect(dup.statusCode).toBe(409);
+    expect(dup.json().error).toBe('A etiqueta Peça já existe: escolha outro nome.');
+    // pelo nome de agora (o seletor da ficha e do Abrir chamado), escrito de qualquer jeito; só a maiúscula também conta
+    const p = await s.put('/atendimento/etiquetas', { de: 'LIGAR amanha', nome: 'Ligar Amanhã', cor: 'turquesa' });
+    expect(p.statusCode, p.body).toBe(200);
+    expect((await s.get(`/atendimento/chamados/${outro.id}`)).json().etiquetas).toEqual(['Ligar Amanhã']);
+    expect((await s.put('/atendimento/etiquetas', { de: 'não existe', cor: 'ok' })).json().error).toBe('Etiqueta não encontrada');
+    // a etiqueta que só está nos chamados (escrita antes do catálogo) entra nele ao editar
+    await app.db.update(tickets).set({ tags: ['Antiga do Helena'] }).where(eq(tickets.id, outro.id));
+    const antiga = await s.put('/atendimento/etiquetas', { de: 'antiga do helena', nome: 'Do Helena', cor: 'amarelo' });
+    expect(antiga.statusCode, antiga.body).toBe(200);
+    expect(antiga.json()).toMatchObject({ nome: 'Do Helena', cor: 'amarelo', chamados: 1 });
+    expect((await s.get(`/atendimento/chamados/${outro.id}`)).json().etiquetas).toEqual(['Do Helena']);
+    const resumos = (await s.get('/admin/audit?entityType=ticket_tag&pageSize=50')).json().items.map((i: any) => i.summary);
+    expect(resumos).toEqual(expect.arrayContaining([
+      'Editou a etiqueta Retorno amanhã: agora Ligar amanhã, turquesa (em 2 chamados)', 'Renomeou a etiqueta Ligar amanhã para Ligar Amanhã (em 2 chamados)',
+      'Editou a etiqueta Antiga do Helena: agora Do Helena, amarelo (em 1 chamado)',
+    ]));
+  });
+
   it('a etiqueta usada só num painel que a pessoa não vê não aparece para ela', async () => {
     await app.db.update(ticketPanels).set({ access: 'escolhidos', memberIds: [marinaId] }).where(eq(ticketPanels.id, DEV));
     try {
