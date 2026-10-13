@@ -530,6 +530,94 @@ export function pedacosComReferencias(t: string): Array<{ texto: string } | { co
 }
 
 // =====================================================================
+//  AS CITAÇÕES NAS ANOTAÇÕES (@)
+// =====================================================================
+
+/** Uma letra sem acento e minúscula: o nome citado não liga para acento nem maiúscula. */
+const letraDeBusca = (c: string) => c.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const ehLetra = (c: string | undefined) => !!c && /[\p{L}\p{N}]/u.test(c);
+const nomeLimpo = (n: string) => n.trim().replace(/\s+/g, ' ');
+
+export type CitacaoNoTexto = { id: string; nome: string; inicio: number; fim: number };
+
+/**
+ * As citações de uma anotação (13/10, o pedido do Luan na prévia: "citar colegas nos comentários, e
+ * nesse momento eles recebem notificação, sem necessariamente serem observadores"): o "@" seguido do
+ * nome de alguém da lista — o nome inteiro ("@Bruno Teixeira") ou só o primeiro, quando só uma pessoa
+ * da lista se chama assim ("@Bruno"). Maiúscula e acento não importam, e o nome mais comprido ganha.
+ * O "@" grudado numa palavra (o e-mail fulano@empresa.com) não é citação.
+ */
+export function citacoesNoTexto(texto: string, pessoas: ReadonlyArray<{ id: string; nome: string }>): CitacaoNoTexto[] {
+  if (!texto.includes('@') || !pessoas.length) return [];
+  const comOPrimeiro = new Map<string, number>();
+  for (const p of pessoas) {
+    const k = paraBusca(nomeLimpo(p.nome).split(' ')[0]);
+    comOPrimeiro.set(k, (comOPrimeiro.get(k) ?? 0) + 1);
+  }
+  const alvo = (n: string) => [...n].map(letraDeBusca).join('');
+  const candidatos = pessoas.flatMap((p) => {
+    const nome = nomeLimpo(p.nome);
+    const primeiro = nome.split(' ')[0]!;
+    const xs = [{ p, alvo: alvo(nome) }];
+    if (primeiro !== nome && comOPrimeiro.get(paraBusca(primeiro)) === 1) xs.push({ p, alvo: alvo(primeiro) });
+    return xs;
+  }).filter((c) => c.alvo).sort((a, b) => b.alvo.length - a.alvo.length);
+  const achadas: CitacaoNoTexto[] = [];
+  for (let i = 0; i < texto.length; i++) {
+    if (texto[i] !== '@' || ehLetra(texto[i - 1])) continue;
+    for (const c of candidatos) {
+      const fim = i + 1 + c.alvo.length;
+      if (fim > texto.length || ehLetra(texto[fim])) continue;
+      if (alvo(texto.slice(i + 1, fim)) !== c.alvo) continue;
+      achadas.push({ id: c.p.id, nome: nomeLimpo(c.p.nome), inicio: i, fim });
+      i = fim - 1;
+      break;
+    }
+  }
+  return achadas;
+}
+
+/** "Bruno", "Bruno e Marina", "Bruno, Marina e Lúcio". */
+export function emLista(xs: string[]): string {
+  return xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`;
+}
+
+/** Quem a anotação cita: cada pessoa uma vez, na ordem em que aparece. */
+export function citadosNoTexto(texto: string, pessoas: ReadonlyArray<{ id: string; nome: string }>): PessoaCurta[] {
+  const vistos = new Set<string>();
+  const out: PessoaCurta[] = [];
+  for (const c of citacoesNoTexto(texto, pessoas)) if (!vistos.has(c.id)) { vistos.add(c.id); out.push({ id: c.id, nome: c.nome }); }
+  return out;
+}
+
+/** O texto em pedaços: o que é citação (a tela destaca) e o que não é. */
+export function pedacosComCitacoes(texto: string, pessoas: ReadonlyArray<{ id: string; nome: string }>): Array<{ texto: string; citado?: PessoaCurta }> {
+  const out: Array<{ texto: string; citado?: PessoaCurta }> = [];
+  let ultimo = 0;
+  for (const c of citacoesNoTexto(texto, pessoas)) {
+    if (c.inicio > ultimo) out.push({ texto: texto.slice(ultimo, c.inicio) });
+    out.push({ texto: texto.slice(c.inicio, c.fim), citado: { id: c.id, nome: c.nome } });
+    ultimo = c.fim;
+  }
+  if (ultimo < texto.length) out.push({ texto: texto.slice(ultimo) });
+  return out;
+}
+
+/**
+ * Enquanto a pessoa escreve: o "@" que ela está digitando antes do cursor ("…fala com @bru" → "bru"),
+ * para abrir a lista dos colegas. Nulo quando o cursor não está numa citação.
+ */
+export function citacaoDigitando(texto: string, cursor: number): { inicio: number; busca: string } | null {
+  const antes = texto.slice(0, cursor);
+  const at = antes.lastIndexOf('@');
+  if (at < 0 || ehLetra(antes[at - 1])) return null;
+  const busca = antes.slice(at + 1);
+  // nome não tem pontuação: "@Bruno Teixeira?" já é uma citação terminada, não uma busca
+  if (busca.length > 40 || /^\s/.test(busca) || /[^\p{L}\p{N} '-]/u.test(busca) || (busca.match(/ /g) ?? []).length > 2) return null;
+  return { inicio: at, busca };
+}
+
+// =====================================================================
 //  O QUE FALTA PARA ENTRAR NUMA ETAPA
 // =====================================================================
 
@@ -1022,10 +1110,12 @@ export const AgendadoGravarSchema = z.object({
 });
 
 /** Os avisos: quem recebe o quê, na tela e no WhatsApp. */
-export const EVENTOS_AVISO = ['recebeu', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'observador'] as const;
+export const EVENTOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'observador'] as const;
 export type EventoAviso = (typeof EVENTOS_AVISO)[number];
 export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: string }> = {
   recebeu: { titulo: 'Recebeu um chamado (atribuído ou escalonado)', quem: 'quem recebeu' },
+  // o pedido do Luan na prévia (13/10): citar o colega com @ avisa na hora, mesmo quem não observa o chamado
+  citado: { titulo: 'Alguém citou a pessoa numa anotação (@)', quem: 'quem foi citado' },
   etapa: { titulo: 'Chegou um chamado na etapa', quem: 'quem a etapa avisa (Ajustes › Painéis)' },
   prazo_perto: { titulo: 'O prazo chegou ao percentual do aviso', quem: 'o responsável' },
   prazo_vencido: { titulo: 'O prazo venceu', quem: 'o responsável e os supervisores' },
@@ -1038,7 +1128,7 @@ export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: stri
 export type CanaisDoAviso = { tela: boolean; whatsapp: boolean };
 /** O que o documento de prioridade sugeriu (a tabela "Alertas e escalonamento"). */
 export const EVENTOS_AVISO_PADRAO: Record<EventoAviso, CanaisDoAviso> = {
-  recebeu: { tela: true, whatsapp: true }, etapa: { tela: true, whatsapp: true }, prazo_perto: { tela: true, whatsapp: true },
+  recebeu: { tela: true, whatsapp: true }, citado: { tela: true, whatsapp: true }, etapa: { tela: true, whatsapp: true }, prazo_perto: { tela: true, whatsapp: true },
   prazo_vencido: { tela: true, whatsapp: true }, sem_dono: { tela: true, whatsapp: false }, critico: { tela: true, whatsapp: true },
   cliente_respondeu: { tela: true, whatsapp: false }, observador: { tela: true, whatsapp: false },
 };
@@ -1232,7 +1322,11 @@ export type EventoChamado = {
 };
 
 export type AnexoChamado = { id: string; nome: string; tipo: string; tamanho: number; imagem: boolean; url: string };
-export type AnotacaoChamado = { id: string; texto: string; por: PessoaCurta | null; porNome: string | null; em: string; anexos: AnexoChamado[]; podeApagar: boolean };
+export type AnotacaoChamado = {
+  id: string; texto: string; por: PessoaCurta | null; porNome: string | null; em: string; anexos: AnexoChamado[]; podeApagar: boolean;
+  /** quem a anotação citou com @ (e recebeu o aviso) */
+  citados: PessoaCurta[];
+};
 export type TempoGasto = { id: string; minutos: number; nota: string | null; dia: string; por: PessoaCurta | null; em: string; podeApagar: boolean };
 export type CasoOperadora = {
   id: string; operadora: { id: string | null; nome: string }; protocolo: string; abertoEm: string; prometidoPara: string | null;
@@ -1258,6 +1352,8 @@ export type FichaChamado = CartaoChamado & {
   conversaUrl: string | null;
   checklist: ItemChecklist[];
   observadores: PessoaCurta[];
+  /** quem pode ser citado com @ nas anotações: as pessoas ativas que veem o painel */
+  citaveis: PessoaCurta[];
   criadoPor: PessoaCurta | null;
   esperas: Espera[];
   filhosLista: CartaoChamado[];
@@ -1322,7 +1418,7 @@ export type OpcoesAtendimento = {
 export type ColunaQuadro = { etapa: EtapaPainel; chamados: CartaoChamado[]; total: number; escondidos: number };
 export type QuadroAtendimento = { painelId: string; colunas: ColunaQuadro[]; foraDoHorario: boolean; agora: string };
 
-export const TIPOS_AVISO = ['recebeu', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai', 'observador'] as const;
+export const TIPOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai', 'observador'] as const;
 export type TipoAviso = (typeof TIPOS_AVISO)[number];
 export type AvisoNaTela = { id: string; tipo: TipoAviso; texto: string; chamado: { id: string; codigo: string; titulo: string } | null; em: string; lido: boolean };
 export type AvisosNaTela = { naoLidos: number; itens: AvisoNaTela[] };

@@ -1686,6 +1686,8 @@ export const ticketNotes = pgTable(
     userId: text('user_id').references(() => users.id),
     actorName: text('actor_name'),
     body: text('body').notNull(),
+    /** quem a anotação cita com @ (recebeu o aviso, mesmo sem observar o chamado) */
+    mentionedUserIds: text('mentioned_user_ids').array().notNull().default([]),
     createdAt: createdAt(),
     deletedAt: deletedAt(),
   },

@@ -1467,3 +1467,58 @@ describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao c
     }
   });
 });
+
+// =====================================================================
+
+describe('as citações nas anotações (@: o pedido do Luan na prévia, avisa na hora quem não observa)', () => {
+  const avisos = async (sess: Session) => (await sess.get('/atendimento/avisos')).json().itens as any[];
+
+  it('quem é citado recebe o aviso, mesmo sem observar; quem escreveu, não', async () => {
+    const { id, codigo } = await abrir(operador, { titulo: 'Ramal 305 sem áudio' });
+    const r = await operador.post(`/atendimento/chamados/${id}/anotacoes`, {
+      texto: '@Bruno Técnico, consegue olhar o SBC hoje?\nCopio a @rita leitora (e eu mesma, @Marina Costa).',
+    });
+    expect(r.statusCode, r.body).toBe(200);
+    const f = r.json();
+    expect(f.observadores).toEqual([]);
+    expect(f.anotacoesLista.at(-1).citados).toEqual([{ id: brunoId, nome: 'Bruno Técnico' }, expect.objectContaining({ nome: 'Rita Leitora' })]);
+    // quem pode ser citado: quem vê o painel (aqui, todos)
+    expect(f.citaveis.map((p: any) => p.nome)).toEqual(expect.arrayContaining(['Administrador', 'Bruno Técnico', 'Marina Costa', 'Rita Leitora']));
+    expect((await avisos(tecnico))[0]).toMatchObject({
+      tipo: 'citado', texto: `Marina Costa citou você no ${codigo}: "@Bruno Técnico, consegue olhar o SBC hoje? Copio a @rita leitora (e eu mesma, @Marina Costa)."`,
+      chamado: { codigo }, lido: false,
+    });
+    expect((await avisos(leitor))[0]).toMatchObject({ tipo: 'citado', chamado: { codigo } });
+    expect((await avisos(operador)).some((a) => a.tipo === 'citado' && a.chamado?.codigo === codigo)).toBe(false);
+    const a = (await s.get(`/admin/audit?entityType=ticket&entityId=${id}`)).json();
+    expect(a.items[0].summary).toBe(`Anotou em ${codigo}, citando Bruno Técnico e Rita Leitora`);
+  });
+
+  it('o observador citado recebe um aviso só (o da citação); o e-mail não é citação', async () => {
+    const { id, codigo } = await abrir(s, { titulo: 'Fila 2 sem música', observadores: [brunoId] });
+    const antes = (await avisos(tecnico)).length;
+    await operador.post(`/atendimento/chamados/${id}/anotacoes`, { texto: 'Pode ver isso, @Bruno?' });
+    const depois = await avisos(tecnico);
+    expect(depois.length).toBe(antes + 1);
+    expect(depois[0]).toMatchObject({ tipo: 'citado', texto: `Marina Costa citou você no ${codigo}: "Pode ver isso, @Bruno?"` });
+    // o e-mail (bruno@…) não cita ninguém: o observador recebe o aviso de sempre
+    const f = (await operador.post(`/atendimento/chamados/${id}/anotacoes`, { texto: 'Mandei para bruno@gestor.local' })).json();
+    expect(f.anotacoesLista.at(-1).citados).toEqual([]);
+    expect((await avisos(tecnico))[0]).toMatchObject({ tipo: 'observador', texto: `Marina Costa anotou no ${codigo}: "Mandei para bruno@gestor.local"` });
+    await s.patch(`/atendimento/chamados/${id}`, { observadores: [] });
+  });
+
+  it('quem não vê o painel não é citado (não receberia um aviso que não abre)', async () => {
+    await app.db.update(ticketPanels).set({ access: 'escolhidos', memberIds: [marinaId] }).where(eq(ticketPanels.id, DEV));
+    try {
+      const { id } = await abrir(operador, { painelId: DEV, titulo: 'Correção reservada' });
+      const antes = (await avisos(tecnico)).length;
+      const f = (await operador.post(`/atendimento/chamados/${id}/anotacoes`, { texto: '@Bruno Técnico, olha isso' })).json();
+      expect(f.anotacoesLista.at(-1).citados).toEqual([]);
+      expect(f.citaveis.map((p: any) => p.nome)).not.toContain('Bruno Técnico');
+      expect((await avisos(tecnico)).length).toBe(antes);
+    } finally {
+      await app.db.update(ticketPanels).set({ access: 'todos', memberIds: [] }).where(eq(ticketPanels.id, DEV));
+    }
+  });
+});

@@ -28,7 +28,7 @@ import {
   OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema, RespostaProntaGravarSchema,
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta, renomearEtiqueta,
   faltaNoModeloAprovado, mensagemAoCliente, parametrosDoModelo, telefoneLegivel,
-  alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
+  alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa,
@@ -42,7 +42,7 @@ import {
   type CasoOperadora, type ChamadoAlterar, type ChamadoCriar, type ChaveApiTela, type CorPainel, type DadosObrigatorios, type Espera, type EstadoPrazo,
   type EtapaPainel, type EventoAviso, type EventoChamado, type EventoWebhook, type FichaChamado, type FiltrosAtendimento, type Gravidade,
   type IntegracoesTela, type ItemChecklist, type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Origem, type Painel,
-  type Prioridade, type ProvedorIa, type QuadroAtendimento, type ReferenciaMostrada, type RegraAgendado, type RespostaPronta, type ResumoDoPainel, type SituacaoDoChamado,
+  type PessoaCurta, type Prioridade, type ProvedorIa, type QuadroAtendimento, type ReferenciaMostrada, type RegraAgendado, type RespostaPronta, type ResumoDoPainel, type SituacaoDoChamado,
   type SugestaoIa, type TipoAviso, type TipoChamado, type TipoEspera, type TipoEtapa, type TipoEvento, type TipoLigacaoChamado, type WebhookTela,
 } from '@gestor/shared';
 import type { Api } from './index.js';
@@ -123,7 +123,7 @@ type ChamadoRow = {
   criadoEm: string; atualizadoEm: string; ultimaAtividadeEm: string; deletedAt: string | null;
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
-type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null };
+type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null; citados: string[] };
 type AnexoRow = { id: string; chamadoId: string; notaId: string; nome: string; tipo: string; tamanho: number; url: string; porId: string | null; em: string; deletedAt: string | null };
 type LigacaoRow = { id: string; de: string; para: string; tipo: TipoLigacaoChamado; porId: string | null; em: string; deletedAt: string | null };
 type TempoRow = { id: string; chamadoId: string; userId: string | null; minutos: number; nota: string | null; dia: string; em: string; deletedAt: string | null };
@@ -356,6 +356,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return p.acesso === 'todos' || p.pessoas.includes(a.id);
   }
   const visiveis = (a: Ator) => new Set(paineis().filter((p) => podeVerPainel(p, a)).map((p) => p.id));
+  /** Quem pode ser citado com @ numa anotação do painel: as pessoas ativas que veem o painel (como o servidor). */
+  const quemVeOPainel = (p: Pick<Painel, 'acesso' | 'pessoas'>): PessoaCurta[] => S.users
+    .filter((u) => u.active && podeVerPainel(p, atorDaPessoa(u.id)))
+    .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+    .map((u) => ({ id: u.id, nome: u.name }));
 
   // ---------- o chamado para a tela (o cartão) ----------
 
@@ -1157,15 +1162,26 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const e = carregar(ator, ref, agora);
     const { t } = e;
     const pessoa = pessoaDoAtor(ator);
+    // quem a anotação cita com @ (e vê o painel) recebe o aviso na hora, mesmo sem observar (como o servidor)
+    const citados = texto.includes('@') ? citadosNoTexto(texto, quemVeOPainel(e.painel)).filter((c) => c.id !== pessoa) : [];
     const notaId = novoId();
-    A.notas.push({ id: notaId, chamadoId: t.id, userId: pessoa, actorName: integracaoDoAtor(ator), texto, em: iso(agora), deletedAt: null });
+    A.notas.push({ id: notaId, chamadoId: t.id, userId: pessoa, actorName: integracaoDoAtor(ator), texto, em: iso(agora), deletedAt: null, citados: citados.map((c) => c.id) });
     guardar.forEach((a, i) => A.anexos.push({ id: novoId(), chamadoId: t.id, notaId, ...a, porId: pessoa, em: iso(new Date(agora.getTime() + i)), deletedAt: null }));
     tocar(t, agora);
     if (ator.tipo === 'pessoa' && !t.respondidoEm) t.respondidoEm = iso(agora);
-    emitir('chamado.anotacao', t.id, { anotacao: { texto, por: ator.nome } });
+    emitir('chamado.anotacao', t.id, { anotacao: { texto, por: ator.nome, citados: citados.map((c) => c.nome) } });
     const comAnexo = guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : '';
-    contarAosObservadores(ator, t, texto ? `${ator.nome} anotou no ${t.codigo}${comAnexo}: "${trechoDoAviso(texto.replace(/\s+/g, ' '), 140)}"` : `${ator.nome} anexou ${plural(guardar.length, 'arquivo', 'arquivos')} no ${t.codigo}`, agora);
-    return { ...nada(t), resumo: `Anotou em ${t.codigo}${guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : ''}`, depois: { texto, anexos: guardar.map((a) => a.nome) } };
+    const oQueDisse = trechoDoAviso(texto.replace(/\s+/g, ' '), 140);
+    if (citados.length) avisarEquipe({ evento: 'citado', para: citados.map((c) => c.id), menos: pessoa, chamado: curto(t), texto: `${ator.nome} citou você no ${t.codigo}: "${oQueDisse}"` }, agora);
+    avisarObservadores({
+      chamado: curto(t), observadores: t.observadores, menos: pessoa, jaAvisados: citados.map((c) => c.id),
+      texto: texto ? `${ator.nome} anotou no ${t.codigo}${comAnexo}: "${oQueDisse}"` : `${ator.nome} anexou ${plural(guardar.length, 'arquivo', 'arquivos')} no ${t.codigo}`,
+    }, agora);
+    return {
+      ...nada(t),
+      resumo: `Anotou em ${t.codigo}${guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : ''}${citados.length ? `, citando ${emLista(citados.map((c) => c.nome))}` : ''}`,
+      depois: { texto, anexos: guardar.map((a) => a.nome), ...(citados.length ? { citados: citados.map((c) => c.nome) } : {}) },
+    };
   }
 
   function apagarAnotacao(ator: Ator, ref: string, notaId: string, agora: Date = agoraReal()): Feito {
@@ -1990,6 +2006,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       id: n.id, texto: n.texto, por: pessoaCurta(n.userId), porNome: n.actorName, em: n.em,
       anexos: anexos.filter((a) => a.notaId === n.id).map((a) => ({ id: a.id, nome: a.nome, tipo: a.tipo, tamanho: a.tamanho, imagem: IMAGENS_NA_TELA.includes(a.tipo), url: a.url })),
       podeApagar: cuida || meu(n.userId),
+      citados: n.citados.map((id) => pessoaCurta(id)).filter((x): x is NonNullable<typeof x> => !!x),
     }));
     const operadora: CasoOperadora[] = casos.map((c) => {
       const ultimaCobranca = [...c.historico].reverse().find((h) => h.acao === 'cobrou');
@@ -2016,6 +2033,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       conversaUrl: linkDaConversa(A.integ.linkConversa, t.sessaoId),
       checklist: t.checklist.map((i) => ({ ...i })),
       observadores: t.observadores.map((id) => pessoaCurta(id)!),
+      citaveis: quemVeOPainel(painel),
       criadoPor: pessoaCurta(t.criadoPorId),
       esperas: t.esperas.map((w) => ({ ...w })),
       filhosLista: idsFilhos.map(cartaoDe).filter((c): c is CartaoChamado => !!c),

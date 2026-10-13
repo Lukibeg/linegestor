@@ -1095,6 +1095,8 @@ export const EXEMPLOS: Exemplo[] = [
       { aos: 240, faz: 'tempo', por: 'bruno', minutos: 45, nota: 'Testes de rota e contato com a VC1' },
       // o nível DEV: o chamado fica com o desenvolvimento enquanto o filho é corrigido
       { aos: 245, faz: 'mover', para: 'dev', por: 'bruno', motivo: 'A correção é no plano de discagem: fica com o Desenvolvimento ({#dev-plano-0300})' },
+      // a citação (@): o Luan recebe o aviso sem observar o chamado
+      { aos: 250, faz: 'anotar', por: 'bruno', texto: '@Luan França, a Maria pediu um retorno da diretoria sobre o prazo da correção. Consegue ligar para ela hoje?' },
     ],
   },
   {

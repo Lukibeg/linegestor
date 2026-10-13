@@ -128,6 +128,7 @@ CREATE TABLE "ticket_notes" (
 	"user_id" text,
 	"actor_name" text,
 	"body" text NOT NULL,
+	"mentioned_user_ids" text[] DEFAULT '{}' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"deleted_at" timestamp with time zone
 );

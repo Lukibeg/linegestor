@@ -35,7 +35,7 @@ import { tipoDaImagem } from '../portal.js';
 import { listarContatos } from '../clients.js';
 import {
   carregarCartoes, carregarContexto, carregarPaineis, cartoesDe, chamadoVisivel, eventoParaTela, pessoaCurta, podeCuidar, podeTrabalhar, podeVerPainel,
-  type Ator, type Contexto, type LinhaChamado,
+  quemVeOPainel, type Ator, type Contexto, type LinhaChamado,
 } from './contexto.js';
 import { whatsAppPronto } from './whatsapp.js';
 
@@ -378,7 +378,7 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
   const painel = ctx.paineis.find((p) => p.id === t.panelId)!;
   const visiveis = new Set(ctx.paineis.filter((p) => podeVerPainel(p, ator)).map((p) => p.id));
 
-  const [eventos, notas, anexos, tempo, casos, filhos, todasLigacoes, nos, integracoes, lc] = await Promise.all([
+  const [eventos, notas, anexos, tempo, casos, filhos, todasLigacoes, nos, integracoes, lc, citaveis] = await Promise.all([
     db.select().from(ticketEvents).where(eq(ticketEvents.ticketId, t.id)).orderBy(asc(ticketEvents.createdAt), asc(ticketEvents.id)),
     db.select().from(ticketNotes).where(and(eq(ticketNotes.ticketId, t.id), isNull(ticketNotes.deletedAt))).orderBy(asc(ticketNotes.createdAt), asc(ticketNotes.id)),
     db.select({ id: ticketAttachments.id, noteId: ticketAttachments.noteId, fileName: ticketAttachments.fileName, mimeType: ticketAttachments.mimeType, sizeBytes: ticketAttachments.sizeBytes })
@@ -394,6 +394,8 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
       .from(tickets).where(isNull(tickets.deletedAt)),
     integ.ler<{ sites: string[]; linkConversa: string }>(db, 'atendimento-integracoes'),
     lerAjustesLineChat(db),
+    // quem pode ser citado com @ nas anotações: quem vê o painel
+    quemVeOPainel(db, painel),
   ]);
 
   const mapa = new Map<string, NoParaGrafo>();
@@ -472,6 +474,7 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
       id: a.id, nome: a.fileName, tipo: a.mimeType, tamanho: a.sizeBytes, imagem: IMAGENS_NA_TELA.includes(a.mimeType), url: `atendimento/anexos/${a.id}`,
     })),
     podeApagar: cuida || meu(n.userId),
+    citados: n.mentionedUserIds.map((id) => pessoaCurta(ctx, id)).filter((x): x is NonNullable<typeof x> => !!x),
   }));
 
   const operadora: CasoOperadora[] = casos.map((c) => {
@@ -497,6 +500,7 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     conversaUrl: linkDaConversa(integracoes.valor.linkConversa, t.sessionId),
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
     observadores: t.watcherIds.map((id) => pessoaCurta(ctx, id)!),
+    citaveis,
     criadoPor: pessoaCurta(ctx, t.createdById),
     esperas: (t.waits as FichaChamado['esperas'] | null) ?? [],
     filhosLista: idsFilhos.map((id) => cartoes.get(id)).filter((c): c is CartaoChamado => !!c),

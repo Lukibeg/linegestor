@@ -7,10 +7,11 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as TeclaReact, type ReactNode, type RefObject } from 'react';
 import { AlertTriangle, ChevronDown, ExternalLink } from 'lucide-react';
 import {
-  NOME_SITUACAO_CHAMADO, pedacosComReferencias, rotuloDoNivel,
-  type CadastroDoCliente, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type SituacaoDoChamado,
+  NOME_SITUACAO_CHAMADO, pedacosComCitacoes, pedacosComReferencias, rotuloDoNivel,
+  type CadastroDoCliente, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type PessoaCurta, type SituacaoDoChamado,
 } from '@gestor/shared';
 import { mensagemErro } from '../../../components/ui/index.js';
+import { useAuth } from '../../../lib/auth.js';
 import { LinkDoChamado, useDepoisDeMudar } from '../comum.js';
 import type { useMover } from '../mover.js';
 
@@ -310,11 +311,29 @@ export function Referencia({ codigo }: { codigo: string }) {
   return <>{codigo}</>;
 }
 
-/** O texto como foi escrito (as quebras de linha ficam), com os códigos e os endereços clicáveis. */
-export function TextoComReferencias({ texto, className = '' }: { texto: string; className?: string }) {
+/**
+ * O texto como foi escrito (as quebras de linha ficam), com os códigos e os endereços clicáveis — e,
+ * na anotação, quem ela citou com @ em destaque (`citados`: os que receberam o aviso).
+ */
+export function TextoComReferencias({ texto, className = '', citados }: { texto: string; className?: string; citados?: PessoaCurta[] }) {
+  const pedacos = citados?.length ? pedacosComCitacoes(texto, citados) : [{ texto }];
   return (
     <span className={`whitespace-pre-wrap break-words ${className}`}>
-      {pedacosComReferencias(texto).map((p, i) => ('codigo' in p ? <Referencia key={i} codigo={p.codigo} /> : <ComLinks key={i} texto={p.texto} />))}
+      {pedacos.map((c, j) => (c.citado
+        ? <Citacao key={j} pessoa={c.citado} texto={c.texto} />
+        : pedacosComReferencias(c.texto).map((p, i) => ('codigo' in p ? <Referencia key={`${j}-${i}`} codigo={p.codigo} /> : <ComLinks key={`${j}-${i}`} texto={p.texto} />))))}
+    </span>
+  );
+}
+
+/** "@Bruno Teixeira" na anotação: quem foi citado (e avisado). Quando é você, o destaque é mais forte. */
+function Citacao({ pessoa, texto }: { pessoa: PessoaCurta; texto: string }) {
+  const { user } = useAuth();
+  const voce = user?.id === pessoa.id;
+  return (
+    <span data-citado={pessoa.id} title={voce ? 'Citaram você: você recebeu o aviso' : `${pessoa.nome} recebeu o aviso`}
+      className={`rounded px-0.5 font-semibold ${voce ? 'bg-accent text-white' : 'bg-accent-soft text-accent-ink'}`}>
+      {texto}
     </span>
   );
 }

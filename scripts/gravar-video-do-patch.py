@@ -290,6 +290,19 @@ def roteiro(page):
     legenda(page, next(n), 'A trajetória', 'Por onde o chamado passou, quanto tempo ficou em cada nível e o motivo de cada escalonamento.', 600)
     clicar(page, linha.get_by_role('tab', name='Trajetória')); esperar(page, 2600)
 
+    # 5b. citar um colega com @ (o pedido do Luan): a lista abre no cursor, e quem for citado recebe o aviso
+    clicar(page, linha.get_by_role('tab', name='Tudo')); esperar(page, 500)
+    caixa = page.locator('#anotacao-nova')
+    caixa.scroll_into_view_if_needed(); esperar(page, 300)
+    legenda(page, next(n), 'Citar um colega', 'Na anotação, @ e o nome: quem for citado recebe o aviso na hora, mesmo sem observar o chamado.', 600)
+    clicar(page, caixa)
+    page.keyboard.type('Pode olhar o SBC hoje, @bru', delay=60); esperar(page, 1500)
+    page.keyboard.press('Enter'); esperar(page, 300)
+    page.keyboard.type('?', delay=60); esperar(page, 900)
+    apontar(page, page.locator('#anotacao-citados'), 1500)
+    clicar(page, page.get_by_role('button', name='Anotar', exact=True)); esperar(page, 1500)
+    apontar(page, page.locator('[data-citado]').first, 1800)
+
     # 6. o problema junta os incidentes; a ficha desenha as ligações (o link troca o chamado da janela)
     clicar(page, page.locator(f'[role="dialog"] a[href$="/{COD["problema"]}"]').first); esperar(page, 1500)
     legenda(page, next(n), 'Problema, pai e filhos', 'O problema junta os incidentes de clientes diferentes. O pai não fecha com filho aberto.', 900)

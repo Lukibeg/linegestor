@@ -7,16 +7,16 @@
  * `@gestor/shared/atendimento.ts` — as mesmas da prévia. São alguns milhares de chamados por ano (o
  * painel antigo tinha 3.200 em três anos): cabe com folga, e a regra fica escrita uma vez só.
  */
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
-  carriers, clients, newId, products, ticketEvents, ticketFields, ticketNotes, ticketPanels, ticketStages, ticketSubjects, tickets, users,
+  carriers, clients, newId, products, roles, ticketEvents, ticketFields, ticketNotes, ticketPanels, ticketStages, ticketSubjects, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
   ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, estadoDosPrazos, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
   valoresVisiveis,
   type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
-  type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
+  type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type PessoaCurta, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
   type Prioridade, type TipoChamado, type ValoresDosCampos,
 } from '@gestor/shared';
 import { NotFound, Forbidden } from '../../plugins/errors.js';
@@ -98,6 +98,16 @@ export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas'>, a: Ator): b
   if (a.tipo === 'integracao' || podeCuidar(a)) return true;
   if (!podeVerChamados(a)) return false;
   return p.acesso === 'todos' || p.pessoas.includes(a.id);
+}
+
+/**
+ * Quem pode ser citado com @ numa anotação do painel: as pessoas ativas que veem o painel (quem não vê
+ * receberia um aviso que não abre). Em ordem de nome.
+ */
+export async function quemVeOPainel(db: Db, p: Pick<Painel, 'acesso' | 'pessoas'>): Promise<PessoaCurta[]> {
+  const us = await db.select({ id: users.id, name: users.name, permissions: roles.permissions }).from(users)
+    .innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.active, true)).orderBy(asc(users.name));
+  return us.filter((u) => podeVerPainel(p, atorDaPessoa(u))).map((u) => ({ id: u.id, nome: u.name }));
 }
 
 // =====================================================================

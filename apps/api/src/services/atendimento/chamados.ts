@@ -25,7 +25,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  caminhoDoAssunto, campoLigado, chaveDoCampo, codigoDoChamado, diaLocal, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada,
+  caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, diaLocal, emLista, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada,
   faltaParaAbrir, faltaParaEtapa, filhosQueTravam, lerCamposDoPedido, mensagemDoQueFalta, mesmoValorDoCampo, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO,
   NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, preencherModelo, prioridadeSugeridaDoPainel, situacaoDaEtapa, textoDoValor,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
@@ -39,7 +39,7 @@ import { avisarEquipe, avisarObservadores, trecho } from './avisos.js';
 import { etiquetasDoCatalogo } from './etiquetas.js';
 import {
   camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, exigirTrabalhar, integracaoDoAtor, pessoaCurta, pessoaDoAtor, podeCuidar, podeVerPainel,
-  registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
+  quemVeOPainel, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
 } from './contexto.js';
 import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, lerAcao, minutosGastos } from './leitura.js';
 import { emitir } from './webhooks.js';
@@ -831,7 +831,11 @@ function anexoParaGuardar(a: { fileName: string; conteudo: string }) {
   };
 }
 
-/** Uma anotação (com até 5 anexos de até 10 MB cada). A anotação de uma pessoa conta como primeira resposta. */
+/**
+ * Uma anotação (com até 5 anexos de até 10 MB cada). A anotação de uma pessoa conta como primeira resposta.
+ * Quem ela cita com @ (e vê o painel) recebe o aviso na hora, mesmo sem observar o chamado (13/10, o
+ * pedido do Luan); o observador citado recebe só esse aviso, e quem escreveu não recebe nada.
+ */
 export async function anotar(app: FastifyInstance, ator: Ator, ref: string, d: { texto: string; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<Feito> {
   exigirTrabalhar(ator);
   const texto = (d.texto ?? '').replace(/\r\n?/g, '\n').trim();
@@ -842,23 +846,28 @@ export async function anotar(app: FastifyInstance, ator: Ator, ref: string, d: {
   const e = await carregar(app, ator, ref);
   const { t, agora } = e;
   const pessoa = pessoaDoAtor(ator);
+  const citados = texto.includes('@') ? citadosNoTexto(texto, await quemVeOPainel(app.db, e.painel)).filter((c) => c.id !== pessoa) : [];
   const notaId = newId();
   await app.db.transaction(async (tx) => {
-    await tx.insert(ticketNotes).values({ id: notaId, ticketId: t.id, userId: pessoa, actorName: integracaoDoAtor(ator), body: texto, createdAt: agora });
+    await tx.insert(ticketNotes).values({ id: notaId, ticketId: t.id, userId: pessoa, actorName: integracaoDoAtor(ator), body: texto, mentionedUserIds: citados.map((c) => c.id), createdAt: agora });
     // um milésimo entre um anexo e o outro: a ficha mostra na ordem em que foram escolhidos
     if (guardar.length) await tx.insert(ticketAttachments).values(guardar.map((a, i) => ({ id: newId(), ticketId: t.id, noteId: notaId, ...a, uploadedById: pessoa, createdAt: new Date(agora.getTime() + i) })));
     await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora, ...(ator.tipo === 'pessoa' && !t.firstResponseAt ? { firstResponseAt: agora } : {}) }).where(eq(tickets.id, t.id));
   });
-  emitir(app, 'chamado.anotacao', t.id, { anotacao: { texto, por: ator.nome } });
+  emitir(app, 'chamado.anotacao', t.id, { anotacao: { texto, por: ator.nome, citados: citados.map((c) => c.nome) } });
   const comAnexo = guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : '';
+  const oQueDisse = trecho(texto.replace(/\s+/g, ' '), 140);
+  if (citados.length) {
+    await avisarEquipe(app, { evento: 'citado', para: citados.map((c) => c.id), menos: pessoa, chamado: curto(t), texto: `${ator.nome} citou você no ${t.code}: "${oQueDisse}"` });
+  }
   await avisarObservadores(app, {
-    chamado: curto(t), observadores: t.watcherIds, menos: pessoa,
-    texto: texto ? `${ator.nome} anotou no ${t.code}${comAnexo}: "${trecho(texto.replace(/\s+/g, ' '), 140)}"` : `${ator.nome} anexou ${plural(guardar.length, 'arquivo', 'arquivos')} no ${t.code}`,
+    chamado: curto(t), observadores: t.watcherIds, menos: pessoa, jaAvisados: citados.map((c) => c.id),
+    texto: texto ? `${ator.nome} anotou no ${t.code}${comAnexo}: "${oQueDisse}"` : `${ator.nome} anexou ${plural(guardar.length, 'arquivo', 'arquivos')} no ${t.code}`,
   });
   return {
     ...nada(t),
-    resumo: `Anotou em ${t.code}${guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : ''}`,
-    depois: { texto, anexos: guardar.map((a) => a.fileName) },
+    resumo: `Anotou em ${t.code}${guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : ''}${citados.length ? `, citando ${emLista(citados.map((c) => c.nome))}` : ''}`,
+    depois: { texto, anexos: guardar.map((a) => a.fileName), ...(citados.length ? { citados: citados.map((c) => c.nome) } : {}) },
   };
 }
 

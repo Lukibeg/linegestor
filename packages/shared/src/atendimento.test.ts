@@ -16,6 +16,7 @@ import {
   AvisosChamadosSchema, EVENTOS_AVISO, ModeloAprovadoSchema, faltaNoModeloAprovado, mensagemAoCliente, mensagemPreenchida, parametrosDoModelo, textoDoModelo,
   valorDaVariavel, valorSugeridoDaVariavel,
   EtapaGravarSchema, NIVEIS, PAINEIS_INICIAIS, rotuloDoNivel,
+  citacaoDigitando, citadosNoTexto, emLista, pedacosComCitacoes,
 } from './atendimento.js';
 
 const em = (dia: string, hora: string) => instanteLocal(dia, hora);
@@ -572,5 +573,36 @@ describe('a mensagem ao cliente pelo modelo aprovado (1.10, o WhatsApp oficial d
       modeloCliente: '{texto}', pessoas: [], eventos: Object.fromEntries(EVENTOS_AVISO.map((e) => [e, { tela: true, whatsapp: false }])),
     });
     expect(antes).toMatchObject({ envioCliente: 'modelo', template: null, equipeLineChat: '', atribuirAQuemManda: false });
+  });
+});
+
+describe('as citações nas anotações (@, o pedido do Luan na prévia)', () => {
+  const equipe = [
+    { id: 'b', nome: 'Bruno Teixeira' }, { id: 'm', nome: 'Marina Costa' }, { id: 'l', nome: 'Lúcio Andrade' },
+    { id: 'a1', nome: 'Ana Paula' }, { id: 'a2', nome: 'Ana Souza' },
+  ];
+  it('o nome inteiro, ou só o primeiro quando só uma pessoa se chama assim', () => {
+    expect(citadosNoTexto('@Bruno Teixeira, consegue olhar o SBC? @marina também', equipe)).toEqual([{ id: 'b', nome: 'Bruno Teixeira' }, { id: 'm', nome: 'Marina Costa' }]);
+    // sem acento e em minúscula também; a mesma pessoa duas vezes conta uma
+    expect(citadosNoTexto('@lucio andrade e de novo @Lúcio', equipe)).toEqual([{ id: 'l', nome: 'Lúcio Andrade' }]);
+    // "Ana" é de duas pessoas: só vale o nome inteiro
+    expect(citadosNoTexto('@Ana, e a @Ana Souza', equipe).map((p) => p.id)).toEqual(['a2']);
+  });
+  it('o e-mail e o nome pela metade não citam; a pontuação depois do nome, sim', () => {
+    expect(citadosNoTexto('mande para bruno@empresa.com', equipe)).toEqual([]);
+    expect(citadosNoTexto('@Brunoo', equipe)).toEqual([]);
+    expect(citadosNoTexto('(@Marina Costa).', equipe).map((p) => p.id)).toEqual(['m']);
+    expect(citadosNoTexto('sem arroba', equipe)).toEqual([]);
+  });
+  it('os pedaços para destacar e o @ que está sendo digitado', () => {
+    expect(pedacosComCitacoes('Oi @Bruno, veja', equipe)).toEqual([{ texto: 'Oi ' }, { texto: '@Bruno', citado: { id: 'b', nome: 'Bruno Teixeira' } }, { texto: ', veja' }]);
+    expect(citacaoDigitando('fala com @bru', 13)).toEqual({ inicio: 9, busca: 'bru' });
+    expect(citacaoDigitando('fala com @Bruno Tei', 19)).toEqual({ inicio: 9, busca: 'Bruno Tei' });
+    expect(citacaoDigitando('@', 1)).toEqual({ inicio: 0, busca: '' });
+    expect(citacaoDigitando('e-mail bruno@emp', 16)).toBeNull();
+    expect(citacaoDigitando('@bruno\nok', 9)).toBeNull();
+    expect(citacaoDigitando('@Bruno Teixeira? Pode', 21)).toBeNull();
+    expect(citacaoDigitando('oi @d\'avila', 11)).toEqual({ inicio: 3, busca: "d'avila" });
+    expect(emLista(['Bruno', 'Marina', 'Lúcio'])).toBe('Bruno, Marina e Lúcio');
   });
 });

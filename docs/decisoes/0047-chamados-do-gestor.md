@@ -126,6 +126,17 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   e só na tela. Quem fez não recebe, nem quem já recebeu outro aviso da mesma ação. O aviso é um evento
   próprio em Avisos e WhatsApp (na tela, ligado; no WhatsApp, desligado de início). O "Acompanhar" da
   ficha virou **Observar**, e o Meu dia mostra os que a pessoa observa.
+- **Citar um colega com @ na anotação** (o pedido dele na prévia, em 13/10: "citar colegas nos
+  comentários, e nesse momento eles recebem notificação, sem necessariamente serem observadores"):
+  escrever @ abre, no cursor, a lista de quem vê o painel (procura pelo nome; as setas andam, Enter ou
+  o clique escolhe; Esc fecha só a lista); o botão **Citar**, ao lado de Anexar, faz o mesmo. Embaixo
+  da caixa aparece quem vai receber o aviso. Quem for citado recebe na hora — no sininho, no cartão na
+  tela e, se ligado, no WhatsApp: é um evento próprio em Avisos e WhatsApp (ligado nos dois, como o
+  "recebeu um chamado") —, mesmo sem observar o chamado. O observador citado recebe só o aviso da
+  citação, e quem escreveu não recebe nada. Vale o nome inteiro ("@Bruno Teixeira") ou só o primeiro,
+  quando só uma pessoa se chama assim; o "@" de um e-mail não cita ninguém. Quem não vê o painel não
+  entra na lista nem recebe (o aviso não abriria). A anotação guarda quem citou (`mentioned_user_ids`)
+  e mostra a citação em destaque; a auditoria diz "citando Fulano".
 - **O chamado nasce de três jeitos**: à mão no Gestor; pelo **botão Abrir chamado** na conversa do
   LineChat (uma ação personalizada que abre o formulário já com o telefone, o nome e a sessão); e
   pelo **robô** (o bloco de webhook manda para o Gestor, com uma chave de API, e recebe o código para

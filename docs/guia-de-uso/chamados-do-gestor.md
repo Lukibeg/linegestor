@@ -109,6 +109,12 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   antes de mandar, **como a mensagem chega**: dentro do modelo aprovado do WhatsApp oficial, com o
   nome do contato, o código e o seu texto (a quebra de linha vira " · ": o WhatsApp não aceita quebra
   dentro do modelo).
+- **Citar um colega**: na anotação, escreva **@** e o começo do nome — a lista de quem vê o painel abre
+  ali mesmo; as setas andam, **Enter** (ou o clique) escolhe e **Esc** fecha só a lista. O botão
+  **Citar**, ao lado de Anexar, faz o mesmo. Embaixo da caixa aparece quem vai receber o aviso. Quem for
+  citado recebe na hora, no sininho, no cartão na tela e no WhatsApp (se ligado em Avisos e WhatsApp),
+  **mesmo sem ser observador**. Vale o nome inteiro ou só o primeiro, quando só uma pessoa se chama
+  assim. Na anotação, a citação fica em destaque.
 - A **linha do tempo**: as anotações (com anexos: até 5 arquivos de 10 MB; cole o print com Ctrl+V),
   o histórico de tudo e a **trajetória** (por onde o chamado passou, quanto tempo ficou em cada etapa e
   o motivo de cada escalonamento).

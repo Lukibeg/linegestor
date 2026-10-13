@@ -5,17 +5,23 @@
  * moveu e por quê.
  *
  * A caixa de anotar aceita até 5 arquivos de até 10 MB cada; um print colado com Ctrl+V vira anexo.
- * A imagem aparece em miniatura e abre grande; o resto baixa.
+ * A imagem aparece em miniatura e abre grande; o resto baixa. O "@" cita um colega (13/10, o pedido do
+ * Luan): a lista de quem vê o painel abre no cursor, e quem for citado recebe o aviso na hora, mesmo sem
+ * observar o chamado.
  */
-import { useMemo, useRef, useState, type ClipboardEvent, type DragEvent } from 'react';
+import { useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type SyntheticEvent } from 'react';
 import {
-  AlarmClock, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, Bell, CircleDot, Columns3, Eye, Flag, GitBranch, Hourglass, Layers, Link2, ListChecks, Lock, MessageCircle,
+  AlarmClock, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, AtSign, Bell, CircleDot, Columns3, Eye, Flag, GitBranch, Hourglass, Layers, Link2, ListChecks, Lock, MessageCircle,
   MessageSquareReply, Paperclip, Pencil, Plus, RotateCcw, Sparkles, Timer, Trash2, UserRound, X, Zap, History, RadioTower, Download, ExternalLink,
 } from 'lucide-react';
-import { NIVEIS, duracaoDoPrazo, rotuloDoNivel, type AnexoChamado, type AnotacaoChamado, type EventoChamado, type TipoEvento } from '@gestor/shared';
+import {
+  NIVEIS, citacaoDigitando, citadosNoTexto, duracaoDoPrazo, emLista, paraBusca, rotuloDoNivel,
+  type AnexoChamado, type AnotacaoChamado, type EventoChamado, type PessoaCurta, type TipoEvento,
+} from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Abas, Confirmar, Modal, Spinner, usePaginaLocal } from '../../../components/ui/index.js';
 import { lerComoDataUrl, tamanhoDoArquivo } from '../../../lib/arquivos.js';
+import { useAuth } from '../../../lib/auth.js';
 import { contar, TdN, ThN } from '../../../lib/contagem.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../../lib/ordenacao.js';
 import { Avatar, dataHoraCurta } from '../comum.js';
@@ -142,7 +148,7 @@ function Anotacao({ n }: { n: AnotacaoChamado }) {
           </div>
           {n.texto && (
             <div className="mt-1 rounded-lg bg-surface-2 px-3 py-2 text-[14px] text-ink">
-              <TextoComReferencias texto={n.texto} />
+              <TextoComReferencias texto={n.texto} citados={n.citados} />
             </div>
           )}
           {imagens.length > 0 && (
@@ -201,8 +207,33 @@ function nomeDoPrint(a: File): File {
   return new File([a], nome, { type: a.type });
 }
 
+/**
+ * Onde fica um ponto do texto dentro da caixa (a lista dos colegas abre ali): um espelho invisível,
+ * com o mesmo estilo da caixa, escrito até aquele ponto.
+ */
+function posicaoNoTexto(el: HTMLTextAreaElement, texto: string, indice: number): { top: number; left: number; altura: number } {
+  const estilo = getComputedStyle(el);
+  const espelho = document.createElement('div');
+  for (const k of ['boxSizing', 'width', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'paddingTop', 'paddingRight', 'paddingBottom',
+    'paddingLeft', 'fontStyle', 'fontVariant', 'fontWeight', 'fontSize', 'lineHeight', 'fontFamily', 'letterSpacing', 'wordSpacing', 'textTransform', 'textIndent'] as const) {
+    espelho.style[k] = estilo[k];
+  }
+  Object.assign(espelho.style, { position: 'absolute', visibility: 'hidden', whiteSpace: 'pre-wrap', overflowWrap: 'break-word', top: '0', left: '-9999px', height: 'auto' });
+  espelho.textContent = texto.slice(0, indice);
+  const marca = document.createElement('span');
+  marca.textContent = '\u200b';
+  espelho.appendChild(marca);
+  document.body.appendChild(espelho);
+  const r = { top: marca.offsetTop - el.scrollTop, left: marca.offsetLeft - el.scrollLeft, altura: parseFloat(estilo.lineHeight) || parseFloat(estilo.fontSize) * 1.4 };
+  document.body.removeChild(espelho);
+  return r;
+}
+
+const LARGURA_DA_LISTA = 256;
+
 function Anotar() {
   const { f } = useAberta();
+  const { user } = useAuth();
   const acao = useAcao();
   const [texto, setTexto] = useState('');
   const [anexos, setAnexos] = useState<AnexoNovo[]>([]);
@@ -211,6 +242,52 @@ function Anotar() {
   const [aviso, setAviso] = useState<string | null>(null);
   const entrada = useRef<HTMLInputElement>(null);
   const seq = useRef(0);
+
+  // ---------- o @: quem pode ser citado (quem vê o painel, menos a própria pessoa) ----------
+  const caixa = useRef<HTMLTextAreaElement>(null);
+  const [cursor, setCursor] = useState(0);
+  const [marcado, setMarcado] = useState(0);
+  /** o @ (pela posição) cuja lista a pessoa fechou com o Esc: só reabre num @ novo */
+  const [fechada, setFechada] = useState<number | null>(null);
+  const [foco, setFoco] = useState(false);
+  /** o espaço que a escolha pôs depois do nome: a pontuação logo em seguida ("?", ",") toma o lugar dele */
+  const [espacoAuto, setEspacoAuto] = useState<number | null>(null);
+  const outros = useMemo(() => f.citaveis.filter((p) => p.id !== user?.id), [f.citaveis, user?.id]);
+  const digitando = citacaoDigitando(texto, cursor);
+  const sugestoes = useMemo(() => {
+    if (!digitando) return [];
+    const b = paraBusca(digitando.busca);
+    const nome = (p: PessoaCurta) => paraBusca(p.nome);
+    return [
+      ...outros.filter((p) => nome(p).startsWith(b)),
+      ...outros.filter((p) => !nome(p).startsWith(b) && (nome(p).includes(` ${b}`) || (b.length > 2 && nome(p).includes(b)))),
+    ].slice(0, 8);
+  }, [digitando?.busca, outros]); // eslint-disable-line react-hooks/exhaustive-deps
+  // sem ninguém com o nome, a lista só avisa enquanto é uma palavra (depois do espaço, a pessoa já seguiu escrevendo)
+  const aberta = foco && !!digitando && fechada !== digitando.inicio && !!outros.length && (sugestoes.length > 0 || !digitando.busca.includes(' '));
+  const citados = useMemo(() => (texto.includes('@') ? citadosNoTexto(texto, outros) : []), [texto, outros]);
+  const posicao = aberta && caixa.current ? posicaoNoTexto(caixa.current, texto, digitando!.inicio) : null;
+  const largura = caixa.current?.clientWidth ?? 600;
+
+  const lerCursor = (e: SyntheticEvent<HTMLTextAreaElement>) => setCursor(e.currentTarget.selectionStart ?? 0);
+  const irPara = (pos: number) => requestAnimationFrame(() => { const el = caixa.current; if (el) { el.focus(); el.setSelectionRange(pos, pos); } });
+  /** Escolheu na lista: o "@bru" vira "@Bruno Teixeira " e o cursor vai para depois do nome. */
+  const escolher = (p: PessoaCurta) => {
+    if (!digitando) return;
+    const antes = `${texto.slice(0, digitando.inicio)}@${p.nome} `;
+    const novo = antes + texto.slice(cursor).replace(/^ /, '');
+    // a lista deste @ fecha: o nome já está escolhido (o que vem depois não é mais busca)
+    setTexto(novo); setCursor(antes.length); setMarcado(0); setEspacoAuto(antes.length - 1); setFechada(digitando.inicio);
+    irPara(antes.length);
+  };
+  /** O botão "Citar": põe o @ onde está o cursor (com um espaço antes, se precisar) e abre a lista. */
+  const citar = () => {
+    const pos = caixa.current?.selectionStart ?? texto.length;
+    const antes = texto.slice(0, pos);
+    const at = antes && !/\s$/.test(antes) ? ' @' : '@';
+    setTexto(antes + at + texto.slice(pos)); setCursor(pos + at.length); setFechada(null); setMarcado(0);
+    irPara(pos + at.length);
+  };
 
   const incluir = async (arquivos: File[]) => {
     setAviso(null);
@@ -250,8 +327,9 @@ function Anotar() {
 
   const anotar = async () => {
     if (!texto.trim() && !anexos.length) { acao.setErro('Escreva a anotação ou anexe um arquivo.'); return; }
-    const r = await acao.rodar(() => api.atendimento.anotar(f.id, { texto: texto.trim(), anexos: anexos.map((a) => ({ fileName: a.nome, conteudo: a.conteudo })) }), 'Anotação registrada');
-    if (r.ok) { setTexto(''); setAnexos([]); setAviso(null); }
+    const avisados = citados.length ? ` (${emLista(citados.map((p) => p.nome))} ${citados.length === 1 ? 'recebeu' : 'receberam'} o aviso)` : '';
+    const r = await acao.rodar(() => api.atendimento.anotar(f.id, { texto: texto.trim(), anexos: anexos.map((a) => ({ fileName: a.nome, conteudo: a.conteudo })) }), `Anotação registrada${avisados}`);
+    if (r.ok) { setTexto(''); setAnexos([]); setAviso(null); setCursor(0); setFechada(null); }
   };
 
   return (
@@ -259,10 +337,54 @@ function Anotar() {
       onDragOver={(e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); setArrastando(true); } }}
       onDragLeave={() => setArrastando(false)} onDrop={soltar}>
       <label htmlFor="anotacao-nova" className="sr-only">Anotação</label>
-      <textarea id="anotacao-nova" className="input min-h-[76px] bg-surface" rows={Math.min(12, Math.max(3, texto.split('\n').length + 1))} maxLength={20_000} value={texto}
-        onChange={(e) => setTexto(e.target.value)} onPaste={colar}
-        onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void anotar(); } }}
-        placeholder="Escreva uma anotação… (cole um print com Ctrl+V, ou arraste o arquivo até aqui)" />
+      <div className="relative">
+        <textarea ref={caixa} id="anotacao-nova" className="input min-h-[76px] bg-surface" rows={Math.min(12, Math.max(3, texto.split('\n').length + 1))} maxLength={20_000} value={texto}
+          onChange={(e) => { setTexto(e.target.value); setCursor(e.target.selectionStart ?? 0); setMarcado(0); setEspacoAuto(null); }} onPaste={colar}
+          onSelect={lerCursor} onClick={lerCursor} onKeyUp={lerCursor} onFocus={() => setFoco(true)} onBlur={() => setFoco(false)}
+          role="combobox" aria-autocomplete="list" aria-expanded={aberta} aria-controls="anotacao-citar-lista"
+          aria-activedescendant={aberta && sugestoes[marcado] ? `anotacao-citar-${sugestoes[marcado]!.id}` : undefined}
+          onKeyDown={(e) => {
+            // com a lista aberta, as setas andam nela, o Enter (ou o Tab) escolhe e o Esc fecha só a lista (não a janela em volta)
+            if (aberta && sugestoes.length) {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                setMarcado((m) => (m + (e.key === 'ArrowDown' ? 1 : -1) + sugestoes.length) % sugestoes.length);
+                return;
+              }
+              if ((e.key === 'Enter' && !e.ctrlKey && !e.metaKey) || e.key === 'Tab') { e.preventDefault(); escolher(sugestoes[Math.min(marcado, sugestoes.length - 1)]!); return; }
+            }
+            if (aberta && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setFechada(digitando!.inicio); return; }
+            // "@Bruno Teixeira ?" vira "@Bruno Teixeira?": a pontuação logo depois da escolha fica colada no nome
+            if (espacoAuto !== null && /^[.,;:!?)]$/.test(e.key) && e.currentTarget.selectionStart === espacoAuto + 1 && texto[espacoAuto] === ' ') {
+              e.preventDefault();
+              const novo = texto.slice(0, espacoAuto) + e.key + texto.slice(espacoAuto + 1);
+              setTexto(novo); setCursor(espacoAuto + 1); setEspacoAuto(null);
+              irPara(espacoAuto + 1);
+              return;
+            }
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void anotar(); }
+          }}
+          placeholder="Escreva uma anotação… (@ cita um colega; cole um print com Ctrl+V ou arraste o arquivo até aqui)" />
+        {aberta && posicao && (
+          <div role="listbox" id="anotacao-citar-lista" aria-label="Citar um colega"
+            className="absolute z-30 card p-1 shadow-lg" onMouseDown={(e) => e.preventDefault()}
+            style={{ top: posicao.top + posicao.altura + 6, left: Math.max(4, Math.min(posicao.left, largura - LARGURA_DA_LISTA - 4)), width: LARGURA_DA_LISTA, maxWidth: 'calc(100% - 8px)', boxShadow: '0 10px 30px rgba(0,0,0,.18)' }}>
+            <div className="eyebrow px-2 pt-1 pb-1.5 flex items-center gap-1"><AtSign size={12} aria-hidden /> Citar · recebe o aviso</div>
+            {sugestoes.length ? sugestoes.map((p, i) => (
+              <div key={p.id} role="option" id={`anotacao-citar-${p.id}`} aria-selected={i === marcado} data-citar={p.id}
+                className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer text-[13.5px] ${i === marcado ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}
+                onMouseEnter={() => setMarcado(i)} onClick={() => escolher(p)}>
+                <Avatar nome={p.nome} tamanho={22} /> <span className="min-w-0 truncate">{p.nome}</span>
+              </div>
+            )) : <p className="px-2 py-1.5 text-[12.5px] text-muted">Ninguém com esse nome vê este painel.</p>}
+          </div>
+        )}
+      </div>
+      {citados.length > 0 && (
+        <p className="mt-1.5 text-[12.5px] text-accent-ink flex flex-wrap items-center gap-x-1.5" id="anotacao-citados" role="status">
+          <AtSign size={13} className="shrink-0" aria-hidden /> {citados.length === 1 ? 'Vai receber o aviso:' : 'Vão receber o aviso:'} <b className="font-semibold">{emLista(citados.map((p) => p.nome))}</b>
+        </p>
+      )}
       {anexos.length > 0 && (
         <ul className="mt-2 flex flex-wrap gap-1.5">
           {anexos.map((a) => (
@@ -280,6 +402,11 @@ function Anotar() {
         <button type="button" className="btn-ghost btn-sm" disabled={lendo || anexos.length >= MAX_ANEXOS} onClick={() => entrada.current?.click()} title="Até 5 arquivos, de até 10 MB cada">
           {lendo ? <Spinner /> : <Paperclip size={14} />} Anexar
         </button>
+        {outros.length > 0 && (
+          <button type="button" className="btn-ghost btn-sm" id="anotacao-citar" onClick={citar} title="Citar um colega: ele recebe o aviso na hora, mesmo sem observar o chamado">
+            <AtSign size={14} /> Citar
+          </button>
+        )}
         <span className="text-[11.5px] text-muted">{anexos.length ? `${anexos.length} de ${MAX_ANEXOS} arquivos` : 'até 5 arquivos de 10 MB'} · Ctrl+Enter anota</span>
         <button type="button" className="btn-primary btn-sm ml-auto" disabled={acao.ocupado || lendo || (!texto.trim() && !anexos.length)} onClick={() => void anotar()}>
           {acao.ocupado ? <Spinner className="text-white" /> : 'Anotar'}

@@ -660,6 +660,26 @@ describe('as regras do servidor valem na prévia', () => {
     expect((await api.avisos()).itens.some((a) => a.tipo === 'observador' && a.chamado?.codigo === r.codigo)).toBe(false);
   }, DEMORA);
 
+  it('as citações nas anotações (como o servidor): quem é citado recebe o aviso, mesmo sem observar; o observador citado, um aviso só', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const lucio = op.pessoas.find((p) => p.nome === 'Lúcio Andrade')!;
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Teste das citações')), observadores: [lucio.id] });
+    const f0 = await api.chamado(r.codigo);
+    expect(f0.citaveis.map((p) => p.nome)).toEqual(expect.arrayContaining(['Bruno Teixeira', 'Lúcio Andrade', 'Luan França']));
+    const texto = '@Bruno Teixeira e @Lúcio, conseguem olhar? (eu, @Luan França, acompanho)';
+    const f = await api.anotar(f0.id, { texto, anexos: [] });
+    expect(f.anotacoesLista.at(-1)!.citados.map((p) => p.nome)).toEqual(['Bruno Teixeira', 'Lúcio Andrade']);
+    await entrar('bruno');
+    expect((await api.avisos()).itens.find((a) => a.chamado?.codigo === r.codigo)).toMatchObject({ tipo: 'citado', texto: `Luan França citou você no ${r.codigo}: "${texto}"` });
+    // o Lúcio observa: recebeu o aviso de quando entrou como observador e o da citação (o da anotação, não)
+    await entrar('tecnico');
+    expect((await api.avisos()).itens.filter((a) => a.chamado?.codigo === r.codigo).map((a) => a.tipo).sort()).toEqual(['citado', 'observador']);
+    // quem escreveu não recebe nada da própria citação
+    await entrar('admin');
+    expect((await api.avisos()).itens.some((a) => a.tipo === 'citado' && a.chamado?.codigo === r.codigo)).toBe(false);
+  }, DEMORA);
+
   it('os contatos do cliente (como o servidor): incluir, o WhatsApp que não se repete, desativar e o chamado que acha o cliente pelo WhatsApp', async () => {
     await entrar('leitor');
     const clientes = await demoApi.clients.options();

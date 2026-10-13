@@ -21,7 +21,7 @@
  */
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, Bell, GitBranch, Hourglass, Inbox, MessageSquare, Eye, Siren, TriangleAlert, UserX, X, type LucideIcon } from 'lucide-react';
+import { ArrowRight, AtSign, Bell, GitBranch, Hourglass, Inbox, MessageSquare, Eye, Siren, TriangleAlert, UserX, X, type LucideIcon } from 'lucide-react';
 import type { AvisoNaTela, TipoAviso } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { useAuth } from '../../lib/auth.js';
@@ -33,6 +33,8 @@ import { useAbrirChamado } from './comum.js';
 
 export const ICONE_DO_AVISO: Record<TipoAviso, { Icone: LucideIcon; cor: string; fundo: string; titulo: string }> = {
   recebeu: { Icone: Inbox, cor: 'text-accent', fundo: 'bg-accent-soft', titulo: 'Chamado para você' },
+  // alguém citou a pessoa com @ numa anotação (o pedido do Luan: avisa mesmo quem não observa)
+  citado: { Icone: AtSign, cor: 'text-accent', fundo: 'bg-accent-soft', titulo: 'Citaram você' },
   etapa: { Icone: ArrowRight, cor: 'text-accent', fundo: 'bg-accent-soft', titulo: 'O chamado mudou de etapa' },
   prazo_perto: { Icone: Hourglass, cor: 'text-signal', fundo: 'bg-signal-soft', titulo: 'O prazo está perto' },
   prazo_vencido: { Icone: TriangleAlert, cor: 'text-bad', fundo: 'bg-bad-soft', titulo: 'Prazo vencido' },
