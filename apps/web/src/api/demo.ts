@@ -1212,6 +1212,38 @@ function ligarVideoDemo(n: NotaRow, videoId: unknown): string {
   return atual ? ' — trocou o vídeo' : ' — pôs o vídeo';
 }
 const podeEditarNovidades = () => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes('admin.manage') ?? false);
+
+/*
+ * As novidades já lidas, lembradas pelo navegador (1.10, o pedido do Luan: "toda hora que vou acessar a
+ * demo preciso ficar vendo vídeo ou lendo"). No Gestor de verdade a leitura fica no servidor e a janela
+ * abre uma vez só por pessoa; a prévia guarda tudo na memória e esquecia a cada visita. Agora este
+ * navegador lembra quem leu cada versão — pelo e-mail e pela versão, porque os ids da prévia nascem de
+ * novo a cada visita. Sem storage (aba anônima, bloqueado), volta a ser como antes: vale até fechar.
+ */
+const CHAVE_NOVIDADES_LIDAS = 'gestor.previa.novidades-lidas';
+function lidasNoNavegador(): Set<string> {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(CHAVE_NOVIDADES_LIDAS) ?? '[]');
+    return new Set(Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  } catch { return new Set(); }
+}
+function lembrarNovidadeLida(email: string, versao: string) {
+  try {
+    const lidas = lidasNoNavegador(); lidas.add(`${email}|${versao}`);
+    localStorage.setItem(CHAVE_NOVIDADES_LIDAS, JSON.stringify([...lidas].slice(-100)));
+  } catch { /* sem storage: vale até fechar */ }
+}
+/** O que este navegador já leu volta para as leituras de quem entrou (antes de ver se a janela abre). */
+function novidadesLidasAntes() {
+  const eu = S.me;
+  if (!eu) return;
+  const lidas = lidasNoNavegador();
+  for (const n of S.notas) {
+    if (n.publishedAt && lidas.has(`${eu.email}|${n.version}`) && !S.leituras.some((l) => l.noteId === n.id && l.userId === eu.id)) {
+      S.leituras.push({ noteId: n.id, userId: eu.id, readAt: now() });
+    }
+  }
+}
 const shapeNota = (n: NotaRow): Novidade => ({
   id: n.id, version: n.version, title: n.title, summary: n.summary, publishedAt: n.publishedAt, createdAt: n.createdAt, updatedAt: n.updatedAt,
   lida: S.leituras.some((l) => l.noteId === n.id && l.userId === S.me?.id),
@@ -2825,6 +2857,7 @@ export const demoApi: Api = {
     async pendente(): Promise<NovidadePendente | null> {
       await wait(60);
       if (!S.me) return null;
+      novidadesLidasAntes();
       // só a MAIS RECENTE publicada abre no login, e só enquanto não for marcada como lida
       const nota = notasVivas().filter((n) => n.publishedAt).sort((a, b) => b.publishedAt!.localeCompare(a.publishedAt!))[0];
       if (!nota || S.leituras.some((l) => l.noteId === nota.id && l.userId === S.me!.id)) return null;
@@ -2833,6 +2866,7 @@ export const demoApi: Api = {
     },
     async lista() {
       await wait(80); requirePerm('records.read');
+      novidadesLidasAntes();
       const podeEditar = podeEditarNovidades();
       const items = notasVivas().filter((n) => podeEditar || n.publishedAt)
         .sort((a, b) => (b.publishedAt ?? b.createdAt).localeCompare(a.publishedAt ?? a.createdAt)).map(shapeNota);
@@ -2843,6 +2877,7 @@ export const demoApi: Api = {
       const n = notasVivas().find((x) => x.id === idn); if (!n) throw notFound('Nota');
       if (!n.publishedAt) throw bad('Esta nota ainda é um rascunho');
       if (!S.leituras.some((l) => l.noteId === idn && l.userId === S.me!.id)) S.leituras.push({ noteId: idn, userId: S.me!.id, readAt: now() });
+      lembrarNovidadeLida(S.me!.email, n.version);
       audit('update', 'releaseNote', `${S.me!.name} ${assistiu ? 'assistiu ao vídeo das' : 'leu as'} novidades de ${n.version}`, n.id);
       return { ok: true };
     },
