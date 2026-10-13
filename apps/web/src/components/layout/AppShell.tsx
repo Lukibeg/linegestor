@@ -7,10 +7,10 @@
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
  * O menu tem grupos (1.10, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (os
- * Chamados e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje) e **Base de conhecimento**
- * (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O grupo da tela aberta abre
- * sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu recolhido, o ícone do
- * grupo abre a lista dele do lado.
+ * Chamados, os Projetos e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje) e **Base de
+ * conhecimento** (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O
+ * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
+ * recolhido, o ícone do grupo abre a lista dele do lado.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -39,14 +39,15 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   { to: '/clientes', label: 'Clientes', icon: Building2, perm: 'records.read' },
   { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
   { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
-  // tarefas que percorrem vários clientes
-  { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
-  // o suporte: os chamados do Gestor (1.10) e os Relatórios. O Relatórios abre nos tickets do LineChat (a cópia
-  // de leitura, 1.3), na aba Hoje; dali as abas levam ao Período e aos 20 relatórios (1.7), e o item fica
-  // marcado nas duas telas (13/10, o pedido do Luan: "não precisa ter tickets do LineChat, apenas relatórios")
+  // o suporte: os chamados do Gestor (1.10), os projetos (as tarefas que percorrem vários clientes) e os
+  // Relatórios. O Relatórios abre nos tickets do LineChat (a cópia de leitura, 1.3), na aba Hoje; dali as abas
+  // levam ao Período e aos 20 relatórios (1.7), e o item fica marcado nas duas telas. (13/10, os pedidos do
+  // Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos Projetos, "pode ficar dentro de
+  // suporte também")
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
       { to: '/atendimento', label: 'Chamados', icon: Ticket, perm: 'support.read' },
+      { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
     ],
   },
@@ -78,11 +79,18 @@ function useGruposAbertos(grupos: GrupoDoMenu[], pathname: string) {
   return { abertos, alternar: (g: string) => setAbertos((a) => (a.includes(g) ? a.filter((x) => x !== g) : [...a, g])) };
 }
 
-/** O número do lado do item (com o menu recolhido, em cima do ícone). */
-function Contador({ n, tom, titulo, recolhido }: { n: number; tom: 'accent' | 'signal'; titulo: string; recolhido: boolean }) {
+/** O número do lado do item. */
+function Contador({ n, tom, titulo }: { n: number; tom: 'accent' | 'signal'; titulo: string }) {
   if (n <= 0) return null;
   return (
-    <span className={`tnum text-[11px] font-semibold rounded-full text-white px-1.5 py-0.5 leading-none ${tom === 'signal' ? 'bg-signal' : 'bg-accent'} ${recolhido ? 'md:absolute md:top-0.5 md:right-1' : ''}`} title={titulo}>{n}</span>
+    <span className={`tnum text-[11px] font-semibold rounded-full text-white px-1.5 py-0.5 leading-none ${tom === 'signal' ? 'bg-signal' : 'bg-accent'}`} title={titulo}>{n}</span>
+  );
+}
+
+/** O número no canto do ícone (como no sininho): no grupo fechado e no menu recolhido. `mostrar`: as classes de quando aparece. */
+function NumeroNoIcone({ n, tom, titulo, mostrar = 'flex' }: { n: number; tom: 'accent' | 'signal'; titulo: string; mostrar?: string }) {
+  return (
+    <span className={`absolute -top-1.5 -right-2 tnum text-[10px] font-semibold rounded-full text-white min-w-4 h-4 px-1 items-center justify-center ${tom === 'signal' ? 'bg-signal' : 'bg-accent'} ${mostrar}`} title={titulo}>{n}</span>
   );
 }
 
@@ -200,8 +208,14 @@ function ItemNoMenu({ i, recolhido, contagem, aoNavegar, dentro = false }: { i: 
   return (
     <NavLink to={i.to} end={i.end} onClick={aoNavegar} title={recolhido && !dentro ? i.label : undefined}
       className={({ isActive }) => `relative flex items-center rounded-lg font-medium ${dentro ? 'gap-2 px-2.5 py-1.5 text-[13.5px]' : 'gap-2.5 px-3 py-2 text-sm'} ${recolhido && !dentro ? 'md:justify-center md:px-0' : ''} ${isActive ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
-      <i.icon size={dentro ? 15 : 17} className="shrink-0" /> <span className={`min-w-0 truncate ${hide}`}>{i.label}</span>
-      {c && <span className={recolhido && !dentro ? '' : 'ml-auto'}><Contador n={c.n} tom={c.tom} titulo={c.titulo} recolhido={recolhido && !dentro} /></span>}
+      {/* o número: do lado; com o menu recolhido, no canto do ícone, como nos grupos. Só existe quando há número:
+          a caixa vazia entrava na fila e tirava o ícone do eixo (13/10, o Luan: "o Novidades ficou meio desalinhado") */}
+      <span className="relative shrink-0">
+        <i.icon size={dentro ? 15 : 17} />
+        {c && c.n > 0 && recolhido && !dentro && <NumeroNoIcone n={c.n} tom={c.tom} titulo={c.titulo} mostrar="hidden md:flex" />}
+      </span>
+      <span className={`min-w-0 truncate ${hide}`}>{i.label}</span>
+      {c && c.n > 0 && <span className={`ml-auto ${hide}`}><Contador n={c.n} tom={c.tom} titulo={c.titulo} /></span>}
     </NavLink>
   );
 }
@@ -261,8 +275,7 @@ function GrupoNoMenu({ g, aberto, alternar, recolhido, contagem, aoNavegar }: {
         <span className="relative shrink-0">
           <g.icon size={17} />
           {soma > 0 && (!aberto || recolhido) && (
-            <span className={`absolute -top-1.5 -right-2 tnum text-[10px] font-semibold rounded-full text-white min-w-4 h-4 px-1 items-center justify-center ${tomDaSoma === 'signal' ? 'bg-signal' : 'bg-accent'} ${aberto ? 'hidden md:flex' : 'flex'}`}
-              title={`${soma} para ver dentro de ${g.label}`}>{soma}</span>
+            <NumeroNoIcone n={soma} tom={tomDaSoma} titulo={`${soma} para ver dentro de ${g.label}`} mostrar={aberto ? 'hidden md:flex' : 'flex'} />
           )}
         </span>
         <span className={`min-w-0 truncate ${hide}`}>{g.label}</span>

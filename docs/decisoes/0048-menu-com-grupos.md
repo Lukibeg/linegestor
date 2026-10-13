@@ -10,10 +10,11 @@ entrou nele.
 
 **Decisão.**
 
-- **Dois grupos no menu.** **Suporte**: **Chamados** (o módulo novo, `/atendimento`) e **Relatórios**
-  (abaixo). **Base de conhecimento**: **Base interna** (`/base`) e **Base dos clientes** (o portal do
-  cliente: os tutoriais e quem entra, `/portal-do-cliente`). Os endereços não mudaram; o título de cada
-  tela passou a ser o nome do item no menu, menos o dos tickets antigos (abaixo).
+- **Dois grupos no menu.** **Suporte**: **Chamados** (o módulo novo, `/atendimento`), **Projetos**
+  (`/projetos`) e **Relatórios** (abaixo). **Base de conhecimento**: **Base interna** (`/base`) e **Base
+  dos clientes** (o portal do cliente: os tutoriais e quem entra, `/portal-do-cliente`). Os endereços não
+  mudaram; o título de cada tela passou a ser o nome do item no menu, menos o dos tickets antigos
+  (abaixo).
 - **O Relatórios abre nos tickets do LineChat, na aba Hoje** (o segundo pedido do Luan, no mesmo dia:
   *"aqui não precisa ter tickets do LineChat, apenas relatórios, e ele vai levar para a parte de tickets
   e vai mostrar o de hoje"*). A primeira versão do grupo tinha um item **Tickets do LineChat** (`/chamados`)
@@ -21,6 +22,9 @@ entrou nele.
   `/chamados` e fica marcado nas duas telas. Dali, as abas **Hoje · Período · Relatórios** levam ao
   resto, como antes. A tela continua com o título **Tickets do LineChat** (é a parte dos tickets), e a
   dos 20 relatórios, **Relatórios**.
+- **Os Projetos também moram no Suporte** (o terceiro pedido do dia: *"esse pode ficar dentro de suporte
+  também"*), entre os Chamados e os Relatórios. Quem vê os projetos e não vê os chamados encontra o
+  grupo só com eles.
 - **O Importar / Exportar mora na Administração**, numa aba própria (`/admin/dados`), para quem pode
   importar ou exportar — a Administração aparece no menu para essas pessoas também. O endereço antigo
   (`/dados`) leva para lá.
@@ -28,11 +32,12 @@ entrou nele.
   da tela aberta abre sozinho, e cada pessoa abre e fecha os outros (o navegador lembra). Fechado, o
   grupo fica marcado quando a tela aberta é dele e mostra a soma dos números de dentro (a leitura
   obrigatória da Base interna aparece no grupo). Com o menu recolhido (só ícones), o ícone do grupo
-  abre a lista ao lado, que fecha ao escolher, com Esc ou clicando fora. No celular, o menu abre por
+  abre a lista ao lado, que fecha ao escolher, com Esc ou clicando fora; o número das Novidades fica no
+  canto do ícone, como o dos grupos, e todos os ícones ficam no mesmo eixo. No celular, o menu abre por
   cima, com os grupos.
 - **"Tickets do LineChat"** é o nome dos antigos onde eles aparecem como tela (o título e a seção da
   ficha do cliente); a parte dos Ajustes que liga a leitura continua **Administração › Ajustes ›
   Chamados do LineChat**, porque é o nome da integração.
 
-**Consequências.** O menu cai de 12 para 9 entradas no alto, e o Suporte tem dois itens. Os guias de
+**Consequências.** O menu cai de 12 para 8 entradas no alto, e o Suporte tem três itens. Os guias de
 uso, a nota do 1.10 e o vídeo falam dos nomes novos.
