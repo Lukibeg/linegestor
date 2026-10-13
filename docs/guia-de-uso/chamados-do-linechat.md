@@ -1,7 +1,8 @@
 # Chamados do LineChat — como ligar e conferir
 
-A tela **Chamados** mostra os chamados de suporte que a equipe abre no LineChat. O Gestor guarda
-uma cópia do painel e a atualiza sozinho. Ligar é coisa de uma vez, feita por quem administra.
+A tela **Tickets do LineChat** mostra os chamados de suporte que a equipe abre no LineChat. No menu,
+ela fica em **Suporte › Relatórios**, que abre nela, na aba **Hoje**. O Gestor guarda uma cópia do
+painel e a atualiza sozinho. Ligar é coisa de uma vez, feita por quem administra.
 
 ## Ligar (uma vez)
 
@@ -14,14 +15,14 @@ uma cópia do painel e a atualiza sozinho. Ligar é coisa de uma vez, feita por 
 6. Clique em **Sincronizar agora**. A primeira vez lê o painel inteiro: cerca de um minuto.
    No fim aparece algo como *"Leitura completa: 3.194 cards lidos, 3.194 novos."*
 
-Pronto: **Suporte › Tickets do LineChat** já mostra os números (e **Suporte › Relatórios**, os relatórios), e o Gestor passa a buscar sozinho, a cada minuto,
+Pronto: **Suporte › Relatórios** já mostra os números de hoje (e a aba **Relatórios**, os relatórios), e o Gestor passa a buscar sozinho, a cada minuto,
 o que mudou. A cada 10 minutos ele confere os chamados da última semana e, à meia-noite, relê o
 painel inteiro: é assim que o card **excluído no LineChat** sai da tela (excluir não conta como
 mudança para a leitura de minuto em minuto).
 
 ## Conferir que está funcionando
 
-- No topo da tela **Chamados** aparece **atualizado há X min**. Se aparecer **a leitura falhou**,
+- No topo da tela **Tickets do LineChat** aparece **atualizado há X min**. Se aparecer **a leitura falhou**,
   passe o mouse em cima para ver o motivo.
 - Em **Ajustes › Chamados do LineChat**: **Última leitura**, quantos chamados estão guardados e
   **Últimas leituras registradas**.
@@ -37,7 +38,7 @@ mudança para a leitura de minuto em minuto).
 | *Atenção: o LineChat devolveu N cards, e aqui há M* | Veio muito menos do que o esperado. Nada foi marcado como excluído. Confira o painel e a chave. |
 | *Atenção: dos N chamados abertos nos últimos 7 dias, o LineChat não devolveu M* | O mesmo, na conferência de 10 em 10 minutos. Nada foi marcado. |
 | Um card excluído no LineChat ainda aparece | Se ele foi aberto na última semana, some em até 10 minutos; se é mais antigo, à meia-noite. Para tirar na hora: **Reler tudo**. |
-| Um card sumiu dos Chamados, mas existe no LineChat | Veja em **Excluídos no LineChat** (Ajustes): o código abre o card lá. **Reler tudo** o traz de volta. |
+| Um card sumiu da tela, mas existe no LineChat | Veja em **Excluídos no LineChat** (Ajustes): o código abre o card lá. **Reler tudo** o traz de volta. |
 
 Se a leitura ficar 15 minutos seguidos falhando, o Gestor manda **um** aviso pelo mesmo caminho dos
 avisos do sistema (o WhatsApp, se estiver configurado em Ajustes › Avisos).
@@ -73,7 +74,7 @@ avisos do sistema (o WhatsApp, se estiver configurado em Ajustes › Avisos).
 
 ## Organizar a tela (quem administra)
 
-A arrumação vale para **a equipe toda**. Em **Chamados**, clique em **Organizar**:
+A arrumação vale para **a equipe toda**. Em **Suporte › Relatórios** (abas Hoje e Período), clique em **Organizar**:
 
 1. **Arraste** cada gráfico pela alça (⠿) para trocar de lugar — ou use as setas ‹ ›. Esc, no meio
    do arrasto, devolve o gráfico para onde estava.
@@ -95,8 +96,8 @@ depois.
 
 ## Relatórios (1.7)
 
-Em **Chamados › Relatórios** (a terceira aba, depois de Hoje e Período), vinte relatórios em cinco
-abas, e mais a aba **Favoritos**, a primeira:
+Na aba **Relatórios** (a terceira, depois de Hoje e Período), vinte relatórios em cinco abas, e mais
+a aba **Favoritos**, a primeira:
 
 - **Favoritos** — os relatórios que a equipe mais usa, na ordem escolhida. A página abre aqui
   quando tem algum.
@@ -120,7 +121,7 @@ abas, e mais a aba **Favoritos**, a primeira:
 - **Mês** — o *Fechamento do mês*. **Imprimir ou salvar em PDF** abre a impressão: escolha
   "Salvar como PDF".
 
-O período e os filtros são os mesmos da tela de Chamados e vão junto ao trocar de aba. Clicar num
+O período e os filtros são os mesmos das abas Hoje e Período e vão junto ao trocar de aba. Clicar num
 número, faixa, degrau ou quadrado abre os chamados por trás dele.
 
 **Quem administra — Organizar:** o botão **Organizar**, em cima da página, mostra a lista da aba

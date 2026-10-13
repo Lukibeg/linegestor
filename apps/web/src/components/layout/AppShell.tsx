@@ -7,8 +7,8 @@
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
  * O menu tem grupos (1.10, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (os
- * Chamados, os Tickets do LineChat e os Relatórios) e **Base de conhecimento** (a interna e a dos
- * clientes); o Importar / Exportar foi para dentro da Administração. O grupo da tela aberta abre
+ * Chamados e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje) e **Base de conhecimento**
+ * (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O grupo da tela aberta abre
  * sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu recolhido, o ícone do
  * grupo abre a lista dele do lado.
  */
@@ -17,7 +17,7 @@ import { createPortal } from 'react-dom';
 import { NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookLock, BookUser, Boxes, Building2, Cable, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, Library, ListChecks, LogOut,
-  Menu, MessagesSquare, Moon, Settings, Sparkles, Sun, Ticket, UserRound, X, type LucideIcon,
+  Menu, Moon, Settings, Sparkles, Sun, Ticket, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
@@ -41,12 +41,13 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
   // tarefas que percorrem vários clientes
   { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
-  // o suporte: os chamados do Gestor (1.10), os tickets antigos do LineChat (a cópia de leitura, 1.3) e os relatórios deles
+  // o suporte: os chamados do Gestor (1.10) e os Relatórios. O Relatórios abre nos tickets do LineChat (a cópia
+  // de leitura, 1.3), na aba Hoje; dali as abas levam ao Período e aos 20 relatórios (1.7), e o item fica
+  // marcado nas duas telas (13/10, o pedido do Luan: "não precisa ter tickets do LineChat, apenas relatórios")
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
       { to: '/atendimento', label: 'Chamados', icon: Ticket, perm: 'support.read' },
-      { to: '/chamados', label: 'Tickets do LineChat', icon: MessagesSquare, perm: 'support.read', end: true },
-      { to: '/chamados/relatorios', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
+      { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
     ],
   },
   // a base: a interna (o que a equipe aprendeu, 1.8) e a dos clientes (o portal: os tutoriais e quem entra, 1.8)

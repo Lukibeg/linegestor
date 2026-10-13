@@ -119,7 +119,7 @@ export function EnvioDiario() {
 
           {nGraficos > 0 && (
             <>
-              <h2 className="eyebrow mt-2">Os gráficos de hoje · como na aba Hoje dos Chamados</h2>
+              <h2 className="eyebrow mt-2">Os gráficos de hoje · como na aba Hoje dos tickets do LineChat</h2>
               <div className="grid gap-4 grid-cols-1 md:grid-cols-2 min-w-0">
                 {p.graficos.map((item) => <Grafico key={item.id} item={item} p={p} />)}
               </div>
@@ -134,7 +134,7 @@ export function EnvioDiario() {
           )}
 
           <p className="so-tela text-[12px] text-muted border-t border-line pt-3">
-            Enviado pelo Ingline Gestão. Os números de cima e os gráficos são os da aba Hoje dos Chamados; os relatórios usam o dia de hoje como período.
+            Enviado pelo Ingline Gestão. Os números de cima e os gráficos são os da aba Hoje dos tickets do LineChat; os relatórios usam o dia de hoje como período.
             O que vai neste PDF é marcado pela administração em cada gráfico e relatório ("Envio diário").
           </p>
         </main>

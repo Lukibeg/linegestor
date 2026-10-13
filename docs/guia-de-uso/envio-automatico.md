@@ -1,17 +1,17 @@
 # Envio automático do PDF dos Chamados pelo WhatsApp
 
 Todo dia, no horário escolhido, o Ingline Gestão monta um **PDF** com os números do dia e os
-gráficos e relatórios dos Chamados que a administração marcou, e manda pelo **WhatsApp** — pela API
+gráficos e relatórios dos tickets do LineChat que a administração marcou, e manda pelo **WhatsApp** — pela API
 da FlwChat — para os números da lista. Junto vai uma mensagem com os números de hoje.
 
 Os números são sempre **do dia atual**, até a hora do envio: os gráficos como na aba **Hoje** dos
-Chamados, e os relatórios com o período de hoje (o Fechamento do mês, com o mês até hoje).
+tickets do LineChat, e os relatórios com o período de hoje (o Fechamento do mês, com o mês até hoje).
 
 ---
 
 ## 1. Marcar o que vai no PDF
 
-Em **Chamados** (cada gráfico) e em **Chamados › Relatórios** (cada relatório), quem administra vê um
+Em **Suporte › Relatórios** (cada gráfico das abas Hoje e Período, e cada relatório da aba Relatórios), quem administra vê um
 **aviãozinho** discreto no canto do cartão (passe o mouse: "Envio diário"):
 
 - clicou, ele fica **azul e cheio**, e o item entra no PDF;

@@ -271,7 +271,7 @@ export function RelatoriosChamados() {
             <div className="flex flex-wrap items-center gap-2 mb-3">
               {comPeriodo && r && op && <Periodo de={r.de} ate={r.ate} hoje={r.hoje} primeiroDia={op.primeiroDia} onChange={(de, ate) => mudar((n) => { n.set('de', de); n.set('ate', ate); })} />}
               {op && <Filtros op={op} sp={sp} definirLista={definirLista} grupos={gruposSalvos} />}
-              <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Cards arquivados no LineChat. A tela de Chamados também não conta, a não ser que você ligue.">
+              <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Cards arquivados no LineChat. As abas Hoje e Período também não contam, a não ser que você ligue.">
                 <Toggle checked={sp.get('arquivados') === '1'} onChange={(v) => definir('arquivados', v ? '1' : undefined)} />
                 <Archive size={14} /> incluir arquivados
               </label>

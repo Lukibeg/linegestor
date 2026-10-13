@@ -233,9 +233,9 @@ def antes_do_roteiro(page):
 def roteiro(page):
     n = iter(range(1, 100))
     # o módulo novo: a tela dos painéis (a que já está aberta atrás da capa)
-    legenda(page, next(n), 'Os chamados agora são do Gestor', 'Em Suporte › Chamados: nascem, andam e fecham aqui. Os antigos ficam em Tickets do LineChat.', 1400)
+    legenda(page, next(n), 'Os chamados agora são do Gestor', 'Em Suporte › Chamados: nascem, andam e fecham aqui. Os antigos ficam em Suporte › Relatórios.', 1400)
     apontar(page, page.locator('nav a:has-text("Chamados")').first, 1300)
-    apontar(page, page.locator('nav a:has-text("Tickets do LineChat")').first, 1700)
+    apontar(page, page.locator('nav a:has-text("Relatórios")').first, 1700)
     suporte = page.locator('article[data-painel="SUP"]').first
     legenda(page, next(n), 'Os painéis', 'Cada painel com os números de agora e as etapas. Clique para abrir o quadro; Configurar abre as etapas e as regras.', 900)
     apontar(page, suporte.locator('a:has-text("Vencidos")').first, 1500)

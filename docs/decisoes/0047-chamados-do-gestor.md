@@ -15,7 +15,7 @@ sugestões, e a tela de Prazos já nasce com elas.
 
 Isto **revê a decisão 0029** ("o Kanban continua no LineChat; o Gestor só lê"): os chamados novos
 nascem e andam no Gestor. A cópia de leitura do painel do LineChat continua, para consultar os
-antigos (no menu, **Suporte › Tickets do LineChat**: decisão 0048), com os 20 relatórios e o envio diário
+antigos (no menu, **Suporte › Relatórios**, que abre neles: decisão 0048), com os 20 relatórios e o envio diário
 como estão. E **revê a 0016** num ponto: os cabeçalhos que impediam o Gestor de abrir dentro de outro
 sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 
