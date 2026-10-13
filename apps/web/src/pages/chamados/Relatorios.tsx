@@ -165,9 +165,9 @@ export function RelatoriosChamados() {
   const gruposSalvos = useMemo(() => new Map((painel.data?.itens ?? []).map((x) => [x.id, x.grupos ?? []])), [painel.data]);
   const temFiltro = MULTI.some((k) => sp.getAll(k).length) || !!sp.get('busca') || sp.get('arquivados') === '1';
 
-  if (opcoes.isLoading) return <Pagina titulo="Chamados"><Carregando /></Pagina>;
+  if (opcoes.isLoading) return <Pagina titulo="Relatórios"><Carregando /></Pagina>;
   if (op && !op.configurado && op.totalCards === 0) {
-    return <Pagina titulo="Chamados"><Vazio titulo="A leitura do LineChat ainda não foi ligada" texto="Os relatórios usam os chamados copiados do LineChat. A administração liga a leitura em Administração › Ajustes." /></Pagina>;
+    return <Pagina titulo="Relatórios"><Vazio titulo="A leitura do LineChat ainda não foi ligada" texto="Os relatórios usam os chamados copiados do LineChat. A administração liga a leitura em Administração › Ajustes." /></Pagina>;
   }
 
   /** Os filtros escritos, para o rodapé do Fechamento do mês (vai junto no PDF). */
@@ -225,8 +225,8 @@ export function RelatoriosChamados() {
 
   return (
     <Pagina
-      titulo="Chamados"
-      sub={<>Relatórios do painel <b className="text-ink-2">{op?.painelNome || 'de suporte'}</b> do LineChat. Clique num número, numa faixa ou num quadrado para ver os chamados.</>}
+      titulo="Relatórios"
+      sub={<>Os relatórios dos tickets do painel <b className="text-ink-2">{op?.painelNome || 'de suporte'}</b> do LineChat. Clique num número, numa faixa ou num quadrado para ver os chamados.</>}
       acoes={<>
         <Situacao op={op} />
         {op?.linkDoPainel && <a className="btn-secondary btn-sm" href={op.linkDoPainel} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Abrir no LineChat</a>}

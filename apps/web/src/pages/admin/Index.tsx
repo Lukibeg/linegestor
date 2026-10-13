@@ -1,4 +1,7 @@
-/** Administração: Usuários · Papéis · Catálogos · Produtos · Novidades · Ajustes · Envio automático · Auditoria · Lixeira. */
+/**
+ * Administração: Usuários · Papéis · Catálogos · Produtos · Novidades · Ajustes · Envio automático ·
+ * Importar / Exportar · Auditoria · Lixeira. O Importar / Exportar mudou para cá no 1.10 (saiu do menu).
+ */
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
@@ -14,12 +17,14 @@ import { ordenarLista, Th, useOrdenacao, useOrdenacaoLocal } from '../../lib/ord
 import { Ajustes } from './Ajustes.js';
 import { EnvioAutomatico } from './EnvioAutomatico.js';
 import { Novidades } from './Novidades.js';
+import { ImportarExportar } from '../dados/Index.js';
 import { contar, contarDe, TdN, ThN } from '../../lib/contagem.js';
 
 export function Admin() {
   const { can } = useAuth();
   const links = [
     ...(can('admin.manage') ? [{ to: 'usuarios', label: 'Usuários' }, { to: 'papeis', label: 'Papéis' }, { to: 'catalogos', label: 'Catálogos' }, { to: 'produtos', label: 'Produtos' }, { to: 'novidades', label: 'Novidades' }, { to: 'ajustes', label: 'Ajustes' }, { to: 'envio', label: 'Envio automático' }] : []),
+    ...(can('data.import') || can('data.export') ? [{ to: 'dados', label: 'Importar / Exportar' }] : []),
     ...(can('audit.read') ? [{ to: 'auditoria', label: 'Auditoria' }] : []),
     ...(can('records.delete') ? [{ to: 'lixeira', label: 'Lixeira' }] : []),
   ];
@@ -28,7 +33,7 @@ export function Admin() {
       <div className={FAIXA_ABAS}>{links.map((l) => <NavLink key={l.to} to={l.to} className={({ isActive }) => classeAba(isActive)}>{l.label}</NavLink>)}</div>
       <Routes>
         <Route index element={<Navigate to={links[0]?.to ?? '/'} replace />} />
-        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="novidades" element={<Novidades />} /><Route path="ajustes" element={<Ajustes />} /><Route path="envio" element={<EnvioAutomatico />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
+        <Route path="usuarios" element={<Usuarios />} /><Route path="papeis" element={<Papeis />} /><Route path="catalogos" element={<Catalogos />} /><Route path="produtos" element={<Produtos />} /><Route path="novidades" element={<Novidades />} /><Route path="ajustes" element={<Ajustes />} /><Route path="envio" element={<EnvioAutomatico />} /><Route path="dados" element={<ImportarExportar />} /><Route path="auditoria" element={<Auditoria />} /><Route path="lixeira" element={<Lixeira />} />
       </Routes>
     </Pagina>
   );

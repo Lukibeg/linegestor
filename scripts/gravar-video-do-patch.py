@@ -233,9 +233,9 @@ def antes_do_roteiro(page):
 def roteiro(page):
     n = iter(range(1, 100))
     # o módulo novo: a tela dos painéis (a que já está aberta atrás da capa)
-    legenda(page, next(n), 'Os chamados agora são do Gestor', 'Os chamados nascem, andam e fecham aqui. Os antigos ficam em Chamados do LineChat.', 1400)
+    legenda(page, next(n), 'Os chamados agora são do Gestor', 'Em Suporte › Chamados: nascem, andam e fecham aqui. Os antigos ficam em Tickets do LineChat.', 1400)
     apontar(page, page.locator('nav a:has-text("Chamados")').first, 1300)
-    apontar(page, page.locator('nav a:has-text("Chamados do LineChat")').first, 1700)
+    apontar(page, page.locator('nav a:has-text("Tickets do LineChat")').first, 1700)
     suporte = page.locator('article[data-painel="SUP"]').first
     legenda(page, next(n), 'Os painéis', 'Cada painel com os números de agora e as etapas. Clique para abrir o quadro; Configurar abre as etapas e as regras.', 900)
     apontar(page, suporte.locator('a:has-text("Vencidos")').first, 1500)
@@ -248,8 +248,9 @@ def roteiro(page):
     rolar(page, 520); esperar(page, 1800)
     topo(page)
 
-    # o sininho, o tema e o Sair: no rodapé do menu (no computador, a barra de cima saiu)
-    legenda(page, next(n), 'O sininho, o tema e o Sair', 'A barra de cima saiu, para sobrar espaço: eles ficam no rodapé do menu, ao lado do seu nome.', 900)
+    # o menu: os grupos (Suporte e Base de conhecimento) e, no rodapé, o sininho, o tema e o Sair (a barra de cima saiu)
+    legenda(page, next(n), 'O menu mudou', 'Ganhou grupos: Suporte e Base de conhecimento. O sininho, o tema e o Sair ficam no rodapé.', 900)
+    clicar(page, page.locator('button[data-grupo="base"]')); esperar(page, 1600)
     clicar(page, page.get_by_role('button', name='Avisos dos chamados').first); esperar(page, 2200)
     # o aviso que chega: o cartão perto do sininho (o Testar mostra), e a notificação do navegador
     legenda(page, next(n), 'O aviso que chega', 'Aparece num cartão perto do sininho, com Abrir o chamado. Ali embaixo, ligue também a notificação do navegador.', 600)

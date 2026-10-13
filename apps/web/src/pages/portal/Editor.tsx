@@ -241,7 +241,7 @@ function Formulario() {
 
   return (
     <Pagina
-      voltar={<Voltar rota="/portal-do-cliente" texto="Portal do cliente" />}
+      voltar={<Voltar rota="/portal-do-cliente" texto="Base dos clientes" />}
       titulo={editando ? <span className="flex flex-wrap items-center gap-2">{podeEscrever && <Pencil size={18} className="text-muted" />} Tutorial <span className="font-mono text-muted text-[15px]">#{t!.numero}</span>
         {publicado ? <Chip tone="ok">publicado</Chip> : <Chip tone="muted">rascunho · o cliente não vê</Chip>}</span> : 'Novo tutorial'}
       sub={editando

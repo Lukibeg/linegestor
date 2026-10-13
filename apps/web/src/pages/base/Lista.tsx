@@ -90,7 +90,7 @@ export function BaseLista() {
 
   return (
     <Pagina
-      titulo="Base de conhecimento"
+      titulo="Base interna"
       sub="O que a equipe descobriu resolvendo chamados, para o próximo achar em segundos."
       acoes={podeEscrever ? <button className="btn-primary" onClick={() => navigate('/base/novo')}><Plus size={15} /> Novo artigo</button> : undefined}
     >

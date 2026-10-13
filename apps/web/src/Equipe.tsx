@@ -15,7 +15,6 @@ import { CircuitoDetalhe } from './pages/circuitos/Detalhe.js';
 import { DidsRedirect } from './pages/dids/Lista.js';
 import { Inventario } from './pages/inventario/Index.js';
 import { AparelhoDetalhe } from './pages/inventario/Aparelho.js';
-import { Dados } from './pages/dados/Index.js';
 import { NovidadesPagina } from './pages/novidades/Index.js';
 import { ProjetosLista } from './pages/projetos/Lista.js';
 import { ProjetoFicha } from './pages/projetos/Ficha.js';
@@ -78,7 +77,8 @@ function Rotas() {
         <Route path="/dids" element={<DidsRedirect />} />
         <Route path="/inventario" element={<Protegido><Inventario /></Protegido>} />
         <Route path="/inventario/aparelhos/:id" element={<Protegido><AparelhoDetalhe /></Protegido>} />
-        <Route path="/dados" element={<Protegido><Dados /></Protegido>} />
+        {/* o Importar / Exportar mora na Administração desde o 1.10: o endereço antigo leva para lá */}
+        <Route path="/dados" element={<Navigate to="/admin/dados" replace />} />
         <Route path="/projetos" element={<Protegido><ProjetosLista /></Protegido>} />
         <Route path="/projetos/:id" element={<Protegido><ProjetoFicha /></Protegido>} />
         {/* os chamados do Gestor (1.10, decisão 0047): o Meu dia, o quadro, a lista, abrir, a ficha e os ajustes */}

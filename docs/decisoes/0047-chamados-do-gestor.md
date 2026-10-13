@@ -15,13 +15,13 @@ sugestões, e a tela de Prazos já nasce com elas.
 
 Isto **revê a decisão 0029** ("o Kanban continua no LineChat; o Gestor só lê"): os chamados novos
 nascem e andam no Gestor. A cópia de leitura do painel do LineChat continua, para consultar os
-antigos (o menu passa a chamá-la **Chamados do LineChat**), com os 20 relatórios e o envio diário
+antigos (no menu, **Suporte › Tickets do LineChat**: decisão 0048), com os 20 relatórios e o envio diário
 como estão. E **revê a 0016** num ponto: os cabeçalhos que impediam o Gestor de abrir dentro de outro
 sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 
 **Decisão.**
 
-- **Um módulo novo, Chamados** (menu Chamados, endereço `/atendimento`). A primeira tela são os
+- **Um módulo novo, Chamados** (menu Suporte › Chamados, endereço `/atendimento`). A primeira tela são os
   **Painéis**, como no Helena (o pedido dele na prévia: com muitos painéis, alternar por abas não fica
   bom): um cartão por painel com os números de agora e as etapas, que abre o **quadro** daquele painel
   (com **Trocar**, para ir a outro) e leva às configurações dele. Dentro do painel, **Quadro | Lista**

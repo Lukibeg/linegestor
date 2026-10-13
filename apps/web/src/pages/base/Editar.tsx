@@ -220,7 +220,7 @@ function Formulario() {
 
   return (
     <Pagina
-      voltar={<Voltar rota={editando ? `/base/${numero}` : '/base'} texto={editando ? `Voltar para o ${a?.codigo ?? 'artigo'}` : 'Base de conhecimento'} />}
+      voltar={<Voltar rota={editando ? `/base/${numero}` : '/base'} texto={editando ? `Voltar para o ${a?.codigo ?? 'artigo'}` : 'Base interna'} />}
       titulo={editando ? <span className="flex items-center gap-2"><Pencil size={18} className="text-muted" /> Editar <CodigoArtigo codigo={a!.codigo} className="text-[13px]" /></span> : 'Novo artigo'}
       sub={editando ? 'O que você mudar vira uma versão nova; a anterior fica no Histórico.' : 'Registre do jeito que o próximo vai procurar. Só o título e o "Como resolver" são obrigatórios para publicar.'}
       acoes={<button className={previa ? 'btn-primary' : 'btn-secondary'} onClick={() => setPrevia((v) => !v)}>{previa ? <><Pencil size={15} /> Voltar a escrever</> : <><Eye size={15} /> Ver como fica</>}</button>}

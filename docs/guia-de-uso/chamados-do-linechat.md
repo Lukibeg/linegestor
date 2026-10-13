@@ -14,7 +14,7 @@ uma cópia do painel e a atualiza sozinho. Ligar é coisa de uma vez, feita por 
 6. Clique em **Sincronizar agora**. A primeira vez lê o painel inteiro: cerca de um minuto.
    No fim aparece algo como *"Leitura completa: 3.194 cards lidos, 3.194 novos."*
 
-Pronto: o menu **Chamados** já mostra os números, e o Gestor passa a buscar sozinho, a cada minuto,
+Pronto: **Suporte › Tickets do LineChat** já mostra os números (e **Suporte › Relatórios**, os relatórios), e o Gestor passa a buscar sozinho, a cada minuto,
 o que mudou. A cada 10 minutos ele confere os chamados da última semana e, à meia-noite, relê o
 painel inteiro: é assim que o card **excluído no LineChat** sai da tela (excluir não conta como
 mudança para a leitura de minuto em minuto).

@@ -36,7 +36,7 @@ function PaginaDoArtigo() {
   if (q.isLoading) return <Pagina titulo="Artigo"><Carregando /></Pagina>;
   if (q.isError || !q.data) {
     return (
-      <Pagina titulo="Artigo" voltar={<Voltar rota="/base" texto="Base de conhecimento" />}>
+      <Pagina titulo="Artigo" voltar={<Voltar rota="/base" texto="Base interna" />}>
         <Vazio titulo="Artigo não encontrado" texto="Ele pode ter ido para a lixeira, ou é um rascunho de outra pessoa." />
       </Pagina>
     );
@@ -44,7 +44,7 @@ function PaginaDoArtigo() {
   const a = q.data;
   return (
     <Pagina
-      voltar={<Voltar rota="/base" texto="Base de conhecimento" />}
+      voltar={<Voltar rota="/base" texto="Base interna" />}
       titulo={<span className="flex flex-wrap items-center gap-2"><CodigoArtigo codigo={a.codigo} className="text-[13px]" />{a.titulo}{a.situacao === 'rascunho' && <Chip tone="muted">rascunho</Chip>}</span>}
       acoes={<Acoes a={a} />}
     >

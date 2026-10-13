@@ -1073,7 +1073,7 @@ function ChamadosDoCliente({ c }: { c: ClientFull }) {
   return (
     <div className="card p-4 sm:p-5 flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display font-semibold">Chamados do LineChat</h2>
+        <h2 className="font-display font-semibold">Tickets do LineChat</h2>
         <div className="flex flex-wrap items-center gap-1.5">
           {PERIODOS_DO_CLIENTE.map((x) => <button key={x.id} type="button" className={`btn-sm ${periodo === x.id ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPeriodo(x.id)} aria-pressed={periodo === x.id}>{x.rotulo}</button>)}
           <Link className="btn-secondary btn-sm" to={`/chamados/relatorios?sec=clientes&cliente=${c.id}`}>Ver nos Relatórios <ExternalLink size={13} /></Link>
