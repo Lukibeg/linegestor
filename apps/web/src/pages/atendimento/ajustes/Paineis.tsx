@@ -424,7 +424,8 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
 
           <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <Toggle checked={f.contaPrazo} onChange={(v) => mudar({ contaPrazo: v })} />
-            <span>Conta prazo <span className="block text-[12.5px] text-muted">A primeira resposta e a solução, pela prioridade (Ajustes › Prazos). O Desenvolvimento, por exemplo, não conta.</span></span>
+            {/* 13/10, o Luan: "essa parte do conta prazo, não entendi para que serve" — a dica diz o que muda */}
+            <span>Conta prazo <span className="block text-[12.5px] text-muted">Ligado, cada chamado deste painel tem um prazo para a primeira resposta e outro para a solução, conforme a prioridade (os tempos ficam em Ajustes › Prazos). O cartão mostra quanto falta, e o Gestor avisa quando o prazo está perto de vencer e quando vence. Desligado, o painel não tem prazo, como o Desenvolvimento.</span></span>
           </label>
 
           <div className="flex flex-col gap-1.5">
