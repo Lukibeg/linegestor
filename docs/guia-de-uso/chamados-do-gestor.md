@@ -50,6 +50,10 @@ o chamado já nasce nele, sem escolher outro; fora (Painéis, Meu dia), escolha 
 cliente, o contato (nome e WhatsApp), o título, o **relato do cliente** — o que ele disse, nas palavras
 dele — e a **descrição** (o andamento e os dados técnicos).
 
+- **Registro**: **Chamado** é o do dia a dia (o pedido ou a falha de um cliente). **Problema** é para a
+  mesma falha atingindo vários clientes (a operadora caiu, um defeito no sistema): ele junta os
+  chamados deles, os incidentes, que fecham sem esperar por ele; o problema só resolve com a causa, a
+  solução e a validação. A tela escreve isso embaixo da escolha.
 - Ao escolher o cliente, aparecem **os contatos dele**: um clique preenche o nome e o WhatsApp. **Novo
   contato** inclui ali mesmo (e já escolhe); o nome escrito à mão que não está na lista mostra
   **Salvar nos contatos**.

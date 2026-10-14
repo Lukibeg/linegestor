@@ -102,6 +102,12 @@ export function NovoChamado() {
  * Abrir na janela, por cima da ficha: o filho (`pai`) ou o problema a partir de um chamado (`incidente`).
  * `painelId` é o painel que já vem escolhido (o do chamado de baixo; o filho pode ir para outro).
  */
+/** O que é cada registro (Chamado ou Problema), escrito embaixo da escolha. */
+const DICA_DO_REGISTRO: Record<TipoChamado, string> = {
+  chamado: 'o pedido ou a falha de um cliente. É o do dia a dia.',
+  problema: 'a mesma falha atingindo vários clientes (a operadora caiu, um defeito no sistema). Ele junta os chamados deles, os incidentes, que fecham sem esperar por ele; o problema só resolve com a causa, a solução e a validação.',
+};
+
 export type AbrirNaJanela = {
   pai?: string; incidente?: string; painelId?: string;
   /** aberto: o código do novo */
@@ -422,10 +428,14 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             </Rotulado>
             <Rotulado rotulo="Registro" id="novo-registro" grupo>
               <Segmentos<TipoChamado> id="novo-registro" rotulo="Registro" valor={f.tipoChamado} onChange={(v) => mudar({ tipoChamado: v })}
-                opcoes={[{ id: 'chamado', nome: 'Chamado' }, { id: 'problema', nome: 'Problema', dica: 'A causa comum de vários chamados (ITIL): junta os incidentes de várias empresas' }]} />
+                opcoes={[{ id: 'chamado', nome: 'Chamado', dica: 'O pedido ou a falha de um cliente' }, { id: 'problema', nome: 'Problema', dica: 'A mesma falha em vários clientes: junta os chamados deles' }]} />
             </Rotulado>
           </div>
-          {painel.descricao && <p className="text-[12.5px] text-muted mt-2">{painel.descricao}</p>}
+          {/* o que é cada registro, à vista (14/10, o Luan: "qual a função desse registro, se é chamado ou problema?") */}
+          <p className="text-[12.5px] text-muted mt-2" id="novo-registro-dica">
+            <b className="font-semibold text-ink-2">{f.tipoChamado === 'problema' ? 'Problema' : 'Chamado'}:</b> {DICA_DO_REGISTRO[f.tipoChamado]}
+          </p>
+          {painel.descricao && <p className="text-[12.5px] text-muted mt-1">{painel.descricao}</p>}
         </Secao>
 
         {/* ---------- quem ---------- */}
