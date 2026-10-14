@@ -59,7 +59,7 @@ export default fp(async function authPlugin(app: FastifyInstance) {
     maxAge: days * 24 * 60 * 60,
   };
   /**
-   * O cookie da sessão aberta DENTRO de outro site (o Gestor no menu do LineChat, num iframe; 1.10).
+   * O cookie da sessão aberta DENTRO de outro site (o Gestor no menu do LineChat, num iframe; 2.0).
    * Com 'strict' o navegador nem manda o cookie de dentro do iframe (o site de cima é outro) e o login
    * não funcionaria. Então: 'none' + secure (o navegador só aceita os dois juntos) + partitioned (CHIPS):
    * o cookie fica preso ao site de fora — vale só dentro dele, e não serve para o Gestor aberto direto

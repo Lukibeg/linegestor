@@ -1,5 +1,5 @@
 /**
- * OS DADOS DE EXEMPLO DOS CHAMADOS NA PRÉVIA (Patch 1.10, decisão 0047) — o que o Luan vê ao abrir o
+ * OS DADOS DE EXEMPLO DOS CHAMADOS NA PRÉVIA (Patch 2.0, decisão 0047) — o que o Luan vê ao abrir o
  * módulo: a equipe, a árvore de assuntos da equipe (já arrumada em 3 níveis), as respostas prontas, os
  * agendados e uns 50 chamados com a vida inteira de cada um.
  *
@@ -47,7 +47,7 @@ export const NUMERO_DA_EQUIPE = '5571999990100';
 
 /**
  * Os modelos aprovados do número oficial, como o LineChat devolve (o "Buscar os modelos" dos Ajustes,
- * 1.10: o pedido do Luan — "vou usar o meu WhatsApp oficial, então temos que usar os templates"). Os
+ * 2.0: o pedido do Luan — "vou usar o meu WhatsApp oficial, então temos que usar os templates"). Os
  * ids são de exemplo; os nomes e textos imitam os da Meta (o texto com as variáveis {{…}}).
  */
 export const MODELOS_DO_LINECHAT: ModeloDoLineChat[] = [
@@ -339,12 +339,12 @@ const HORIZONTE = 'Construtora Horizonte';
 const VIVERBEM = 'Home Care Viver Bem';
 
 /**
- * Os contatos dos clientes (a aba Contatos, 1.10, o pedido do Luan na prévia): os mesmos dos chamados de
+ * Os contatos dos clientes (a aba Contatos, 2.0, o pedido do Luan na prévia): os mesmos dos chamados de
  * exemplo, com o cargo. Os do robô (Ricardo, Joana, Rafael) ficam de fora: o robô abre sem saber o
  * cliente. Uma ex-recepcionista desativada, para a tela ter o exemplo. Os e-mails são de exemplo.
  */
 /**
- * As cores das etiquetas dos exemplos (1.10, o pedido do Luan na prévia: escolher a cor ao criar). As que
+ * As cores das etiquetas dos exemplos (2.0, o pedido do Luan na prévia: escolher a cor ao criar). As que
  * não estão aqui nasceram cinza nos chamados (como as do robô e das respostas prontas).
  */
 export const CORES_DAS_ETIQUETAS: Array<[string, CorEtiqueta]> = [
@@ -770,7 +770,7 @@ export const EXEMPLOS: Exemplo[] = [
       {
         aos: 1810, faz: 'alterar', por: 'diego', dados: {
           solucao: 'O item "Abrir chamado no Gestor" entrou no menu da conversa: abre a tela de abrir chamado com o contato, o telefone e a conversa (origem "botão").',
-          campos: { 'Versão publicada': 'Gestor 1.10' },
+          campos: { 'Versão publicada': 'Gestor 2.0' },
         },
       },
       { aos: 1815, faz: 'mover', para: 'entregue', por: 'diego' },

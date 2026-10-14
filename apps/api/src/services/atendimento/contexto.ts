@@ -1,5 +1,5 @@
 /**
- * OS CHAMADOS DO GESTOR (Patch 1.10, decisão 0047) — o que todo o módulo usa: quem está agindo (uma
+ * OS CHAMADOS DO GESTOR (Patch 2.0, decisão 0047) — o que todo o módulo usa: quem está agindo (uma
  * pessoa ou uma integração), os painéis e quem vê cada um, os nomes (pessoas, clientes, produtos,
  * operadoras, assuntos), os prazos, o chamado montado para a tela (o cartão) e o histórico.
  *

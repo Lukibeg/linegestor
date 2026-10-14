@@ -1,5 +1,5 @@
 /**
- * As etiquetas com cor (1.10, o pedido do Luan na prévia: "na hora de criar as etiquetas, seria legal
+ * As etiquetas com cor (2.0, o pedido do Luan na prévia: "na hora de criar as etiquetas, seria legal
  * poder escolher a cor também").
  *
  * O catálogo (`ticket_tags`) guarda o nome e a cor de cada etiqueta; o chamado guarda os nomes

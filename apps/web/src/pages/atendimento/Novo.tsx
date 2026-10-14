@@ -1,5 +1,5 @@
 /**
- * Chamados do Gestor (Patch 1.10, decisão 0047) — ABRIR CHAMADO.
+ * Chamados do Gestor (Patch 2.0, decisão 0047) — ABRIR CHAMADO.
  *
  * Abre-se à mão no Gestor ou pelo botão "Abrir chamado" da conversa do LineChat, que chega aqui com
  * `?telefone=…&nome=…&sessao=…` (o contato e o WhatsApp já vêm preenchidos, e o chamado guarda a

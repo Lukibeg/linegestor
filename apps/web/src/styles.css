@@ -107,7 +107,7 @@ input, select, textarea, button { font: inherit; }
 .sem-barra { scrollbar-width: none; -ms-overflow-style: none; }
 .sem-barra::-webkit-scrollbar { display: none; width: 0; height: 0; }
 
-/* ---------- os avisos que chegam (1.10): o cartão entra devagar (e fica até abrir ou fechar) ---------- */
+/* ---------- os avisos que chegam (2.0): o cartão entra devagar (e fica até abrir ou fechar) ---------- */
 @keyframes aviso-entra { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .aviso-cartao { animation: aviso-entra 0.2s ease-out; }
 @media (prefers-reduced-motion: reduce) { .aviso-cartao { animation: none; } }

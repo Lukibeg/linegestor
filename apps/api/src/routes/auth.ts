@@ -28,7 +28,7 @@ const EntradaSchema = z.object({ needsCode: z.boolean(), user: MeSchema.nullable
 
 /**
  * O pedido de entrada. `embutido`: a tela está dentro de outro site (o Gestor no menu do LineChat,
- * num iframe; 1.10) — o cookie vai do jeito que funciona num iframe (ver `plugins/auth.ts`).
+ * num iframe; 2.0) — o cookie vai do jeito que funciona num iframe (ver `plugins/auth.ts`).
  */
 const EntrarSchema = LoginSchema.extend({ embutido: z.boolean().optional() });
 

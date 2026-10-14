@@ -1,5 +1,5 @@
 /**
- * OS CHAMADOS DO GESTOR (decisão 0047, Patch 1.10) — as regras e os formatos.
+ * OS CHAMADOS DO GESTOR (decisão 0047, Patch 2.0) — as regras e os formatos.
  *
  * O módulo que substitui o painel de chamados do LineChat: painéis que a administração cria (Suporte,
  * Desenvolvimento, Interno…), etapas editáveis em cada um (N1, N2, N3 e DEV são colunas, a pedido do

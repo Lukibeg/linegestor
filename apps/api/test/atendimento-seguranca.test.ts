@@ -1,5 +1,5 @@
 /**
- * Patch 1.10 — o Gestor dentro de outro site (o menu do LineChat, num iframe).
+ * Patch 2.0 — o Gestor dentro de outro site (o menu do LineChat, num iframe).
  *
  *  - o CSP sai do sistema em toda resposta, com as regras que o Caddy mandava, mas com o
  *    `frame-ancestors 'self'` mais os sites escolhidos nas Integrações (na hora em que são gravados);

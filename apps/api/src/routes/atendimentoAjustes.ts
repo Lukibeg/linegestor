@@ -1,5 +1,5 @@
 /**
- * Chamados do Gestor (Patch 1.10, decisão 0047): os ajustes do módulo e as integrações.
+ * Chamados do Gestor (Patch 2.0, decisão 0047): os ajustes do módulo e as integrações.
  *
  *  - Ajustes (quem cuida dos chamados, `tickets.manage`): os painéis, as etapas de cada um, os campos
  *    de cada painel (os do sistema ligados ou não, e os criados pela equipe), as etiquetas e a cor de

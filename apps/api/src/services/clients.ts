@@ -298,7 +298,7 @@ export async function get(db: Db, id: string) {
     deviceValueCents: Number(devC?.v ?? 0),
     // todo cliente tem ao menos a Matriz (criada na primeira vez que alguém olha as unidades)
     unitCount: Math.max(1, Number(unC?.n ?? 0)),
-    // os contatos ativos (a aba Contatos, 1.10)
+    // os contatos ativos (a aba Contatos, 2.0)
     contactCount: Number(conC?.n ?? 0),
   };
 }
@@ -715,7 +715,7 @@ export async function removeLogo(db: Db, clientId: string) {
 }
 
 // =====================================================================
-//  OS CONTATOS DO CLIENTE (1.10, o pedido do Luan na prévia: "uma aba de contatos dos clientes, aí o
+//  OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia: "uma aba de contatos dos clientes, aí o
 //  Abrir chamado já puxaria de lá; e criar um contato por ali")
 // =====================================================================
 

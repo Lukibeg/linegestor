@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 1.10) — Respostas prontas.
+ * Chamados › Ajustes (Patch 2.0) — Respostas prontas.
  *
  * Um clique na ficha do chamado manda o texto e muda o chamado. A resposta pronta junta o texto (com os
  * marcadores do chamado: {contato}, {codigo}, {cliente}…) e o que ela faz: manda ao cliente pelo

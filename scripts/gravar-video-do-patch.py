@@ -44,7 +44,7 @@ URL = os.environ.get('PREVIA_URL', 'http://localhost:4174/')
 SAIDA = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(RAIZ, 'o-que-mudou.mp4')
 
 # ---------- os textos do patch (troque a cada patch) ----------
-CAPA = ('Patch 1.10 — os chamados agora são do Gestor', 'Ingline Gestão · o módulo novo em 2 minutos, com dados de exemplo')
+CAPA = ('Patch 2.0 — os chamados agora são do Gestor', 'Ingline Gestão · o módulo novo em 2 minutos, com dados de exemplo')
 FIM = ('Os detalhes estão em Novidades', 'Cada mudança, com o texto e o print, fica no menu Novidades')
 # a tela que fica atrás da capa (o roteiro começa nela)
 PRIMEIRA_TELA = '/atendimento'
@@ -203,7 +203,7 @@ def entrar_atras_da_capa(page):
             esperar(page, 900)
 
 
-# ---------- o roteiro do Patch 1.10 (troque pelo do patch novo) ----------
+# ---------- o roteiro do Patch 2.0 (troque pelo do patch novo) ----------
 
 # Os chamados do roteiro, pelo título: na prévia, os números depois do SUP-16 mudam conforme o dia
 # em que ela abre (o agendado de toda segunda troca de lugar com os mais novos). O código de cada um

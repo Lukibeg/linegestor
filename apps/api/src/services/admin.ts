@@ -243,7 +243,7 @@ export async function restoreProject(db: Db, id: string) {
 }
 
 /**
- * Tira o chamado do Gestor da lixeira (1.10). O histórico do chamado registra quem restaurou, como
+ * Tira o chamado do Gestor da lixeira (2.0). O histórico do chamado registra quem restaurou, como
  * quando a restauração é feita pela própria ficha.
  */
 export async function restoreTicket(db: Db, id: string, quem: { id: string }) {

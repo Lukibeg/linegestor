@@ -1,5 +1,5 @@
 /**
- * Patch 1.10 — os chamados do Gestor (decisão 0047): os ajustes do módulo e as integrações.
+ * Patch 2.0 — os chamados do Gestor (decisão 0047): os ajustes do módulo e as integrações.
  *
  *  - painéis: o painel novo com as 4 etapas básicas, a sigla única (409) que não muda depois do
  *    primeiro chamado, as pessoas que precisam existir, tirar o painel só sem chamados por fechar

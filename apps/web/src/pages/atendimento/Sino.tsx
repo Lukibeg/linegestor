@@ -1,5 +1,5 @@
 /**
- * O sininho dos chamados (Patch 1.10): os avisos que chegaram para a pessoa — recebeu um chamado, o
+ * O sininho dos chamados (Patch 2.0): os avisos que chegaram para a pessoa — recebeu um chamado, o
  * prazo está vencendo, o cliente respondeu, chegou um Crítico. O número é o que ela ainda não viu;
  * abrir a lista marca como lidos.
  *

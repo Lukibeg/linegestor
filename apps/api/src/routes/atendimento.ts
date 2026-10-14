@@ -1,5 +1,5 @@
 /**
- * Chamados do Gestor (Patch 1.10, decisão 0047): o quadro, a lista, o Meu dia, a ficha e tudo o que
+ * Chamados do Gestor (Patch 2.0, decisão 0047): o quadro, a lista, o Meu dia, a ficha e tudo o que
  * se faz num chamado.
  *
  * Ver é de todos que veem chamados (`support.read`, inclusive o Leitor); trabalhar (abrir, mover,

@@ -1,5 +1,5 @@
 /**
- * Os avisos da equipe (Patch 1.10): na tela (o sininho, `ticket_notifications`) e no WhatsApp da
+ * Os avisos da equipe (Patch 2.0): na tela (o sininho, `ticket_notifications`) e no WhatsApp da
  * equipe, conforme os Ajustes do módulo (quem recebe o quê, e por onde). Quem fez a ação não recebe
  * aviso do que ele mesmo fez.
  *

@@ -1,5 +1,5 @@
 /**
- * Patch 1.10 — os chamados do Gestor (decisão 0047): a entrada das integrações (o robô do LineChat e
+ * Patch 2.0 — os chamados do Gestor (decisão 0047): a entrada das integrações (o robô do LineChat e
  * o n8n, com a chave de API).
  *
  *  - a chave: sem chave, errada ou revogada, 401 (antes de olhar o corpo); no cabeçalho ou no endereço;

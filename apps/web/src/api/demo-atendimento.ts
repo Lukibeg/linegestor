@@ -1,5 +1,5 @@
 /**
- * A PRÉVIA DOS CHAMADOS DO GESTOR (Patch 1.10, decisão 0047): o módulo de chamados sem servidor.
+ * A PRÉVIA DOS CHAMADOS DO GESTOR (Patch 2.0, decisão 0047): o módulo de chamados sem servidor.
  *
  * A página publicada para o Luan aprovar não tem servidor nem banco: tudo mora na memória do navegador.
  * Para a prévia não mentir, este arquivo copia o servidor (`apps/api/src/services/atendimento/`: o
@@ -72,7 +72,7 @@ export type EstadoDaPrevia = {
   models: Array<{ id: string; name: string }>;
   devices: Array<{ id: string; modelId: string; mac: string | null; serialNumber: string | null; clientId: string | null; deletedAt: string | null }>;
   units: Array<{ id: string; clientId: string; name: string; isMain: boolean; deletedAt: string | null }>;
-  /** os contatos dos clientes (1.10, a aba Contatos): o Abrir chamado puxa daqui, e o robô acha o cliente pelo WhatsApp */
+  /** os contatos dos clientes (2.0, a aba Contatos): o Abrir chamado puxa daqui, e o robô acha o cliente pelo WhatsApp */
   contatos: Array<{ id: string; clientId: string; nome: string; whatsapp: string | null; email: string | null; cargo: string | null; ativo: boolean; criadoEm: string; atualizadoEm: string }>;
   ajustesIa: {
     ativo: boolean; provedor: ProvedorIa; modelo: string; modeloNome: string | null; precoEntrada: number | null; precoSaida: number | null;

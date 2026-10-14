@@ -14,7 +14,7 @@
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
 		# O Content-Security-Policy (de onde a página carrega coisas e QUEM pode abrir o Gestor dentro
-		# de um iframe) NÃO fica mais aqui desde a 1.10: quem manda é o próprio sistema, em toda resposta
+		# de um iframe) NÃO fica mais aqui desde a 2.0: quem manda é o próprio sistema, em toda resposta
 		# (apps/api/src/plugins/seguranca.ts), num lugar só. É lá porque a lista de sites que podem abrir
 		# o Gestor dentro deles (o menu do LineChat, outros programas) é escolhida na tela, em
 		# Chamados › Ajustes › Integrações — e o Caddy não sabe ler o banco. As outras regras do CSP

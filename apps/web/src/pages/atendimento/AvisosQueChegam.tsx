@@ -1,5 +1,5 @@
 /**
- * Os avisos que chegam (1.10, o pedido do Luan na prévia: "além do sininho, você tem como mandar
+ * Os avisos que chegam (2.0, o pedido do Luan na prévia: "além do sininho, você tem como mandar
  * notificação no navegador? E também aparecer uma notificação menos sucinta do que o sininho").
  *
  * O sininho continua sendo a lista de tudo. Além dele, o que chega com o Gestor aberto aparece:

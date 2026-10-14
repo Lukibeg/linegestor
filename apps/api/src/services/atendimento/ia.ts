@@ -1,5 +1,5 @@
 /**
- * A IA NO CHAMADO (Patch 1.10, decisão 0047): a NIA de hoje, dentro do Gestor. A pessoa clica em
+ * A IA NO CHAMADO (Patch 2.0, decisão 0047): a NIA de hoje, dentro do Gestor. A pessoa clica em
  * "Preencher com a IA" e a IA lê a conversa do cliente no LineChat (ou, sem ela, o que já está no
  * chamado) e sugere o título, o relato, a descrição, o assunto, o tipo, a gravidade, o alcance, os
  * produtos, as etiquetas e um resumo do andamento.

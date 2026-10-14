@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes › IA (Patch 1.10): onde se escolhe o provedor e se cola a chave do "Preencher com
+ * Chamados › Ajustes › IA (Patch 2.0): onde se escolhe o provedor e se cola a chave do "Preencher com
  * IA" da ficha — o pedido do Luan ("em configurações, para eu definir a chave da API e o provedor").
  *
  * É a MESMA IA da Base de conhecimento (o mesmo cartão de Administração › Ajustes): uma chave só, um

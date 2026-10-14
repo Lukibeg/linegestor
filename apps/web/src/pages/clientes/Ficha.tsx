@@ -88,7 +88,7 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
     >
       <Abas atual={aba} onChange={onAba} abas={[
         { id: 'geral', label: 'Visão geral' },
-        // 1.10: as pessoas do cliente (o Abrir chamado puxa daqui)
+        // 2.0: as pessoas do cliente (o Abrir chamado puxa daqui)
         { id: 'contatos', label: <>Contatos <span className="text-muted">({c.contactCount})</span></> },
         { id: 'acessos', label: 'Acessos' },
         { id: 'dids', label: <>DIDs <span className="text-muted">({c.didCount})</span></> }, { id: 'equipamentos', label: <>Equipamentos <span className="text-muted">({c.deviceCount})</span></> },

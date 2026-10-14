@@ -1,5 +1,5 @@
 /**
- * As peças comuns das telas dos chamados do Gestor (Patch 1.10, decisão 0047): o cabeçalho do
+ * As peças comuns das telas dos chamados do Gestor (Patch 2.0, decisão 0047): o cabeçalho do
  * módulo (Painéis · Meu dia · Ajustes), o código do chamado, a prioridade, o selo do prazo,
  * a marca de espera, o responsável e o cartão do chamado (o mesmo no quadro e no Meu dia).
  *
@@ -366,7 +366,7 @@ export function haQuanto(iso: string | null | undefined): string {
   return `há ${d} ${d === 1 ? 'dia' : 'dias'}`;
 }
 
-/** "(71) 99999-0000" a partir de "5571999990000" (mora no @gestor/shared desde o 1.10: a aba Contatos do cliente também usa). */
+/** "(71) 99999-0000" a partir de "5571999990000" (mora no @gestor/shared desde o 2.0: a aba Contatos do cliente também usa). */
 export { telefoneLegivel };
 
 // =====================================================================

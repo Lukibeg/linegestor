@@ -1,5 +1,5 @@
 /**
- * PRIORIDADE E PRAZOS DOS CHAMADOS DO GESTOR (decisão 0047, Patch 1.10).
+ * PRIORIDADE E PRAZOS DOS CHAMADOS DO GESTOR (decisão 0047, Patch 2.0).
  *
  * O documento "Prioridade e prazos dos chamados" (o ICI-12) virou estas contas: a prioridade que o
  * Gestor sugere pela gravidade e pelo alcance, o horário de atendimento com os feriados, e os dois

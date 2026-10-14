@@ -78,11 +78,11 @@ function Rotas() {
         <Route path="/dids" element={<DidsRedirect />} />
         <Route path="/inventario" element={<Protegido><Inventario /></Protegido>} />
         <Route path="/inventario/aparelhos/:id" element={<Protegido><AparelhoDetalhe /></Protegido>} />
-        {/* o Importar / Exportar mora na Administração desde o 1.10: o endereço antigo leva para lá */}
+        {/* o Importar / Exportar mora na Administração desde o 2.0: o endereço antigo leva para lá */}
         <Route path="/dados" element={<Navigate to="/admin/dados" replace />} />
         <Route path="/projetos" element={<Protegido><ProjetosLista /></Protegido>} />
         <Route path="/projetos/:id" element={<Protegido><ProjetoFicha /></Protegido>} />
-        {/* os chamados do Gestor (1.10, decisão 0047): o Meu dia, o quadro, a lista, abrir, a ficha e os ajustes */}
+        {/* os chamados do Gestor (2.0, decisão 0047): o Meu dia, o quadro, a lista, abrir, a ficha e os ajustes */}
         <Route path="/atendimento" element={<Protegido><PaineisDeChamados /></Protegido>} />
         <Route path="/atendimento/meu-dia" element={<Protegido><MeuDia /></Protegido>} />
         <Route path="/atendimento/quadro" element={<Protegido><Quadro /></Protegido>} />

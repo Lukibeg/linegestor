@@ -1,5 +1,5 @@
 /**
- * OS CHAMADOS DO GESTOR — a leitura (Patch 1.10, decisão 0047): as opções da tela, o quadro, a lista
+ * OS CHAMADOS DO GESTOR — a leitura (Patch 2.0, decisão 0047): as opções da tela, o quadro, a lista
  * (e o CSV), o Meu dia, o sininho, o cadastro do cliente para o formulário de abrir e a ficha inteira.
  *
  * Tudo sai das funções do `@gestor/shared` (as mesmas da prévia): o que o quadro mostra, a ordem da

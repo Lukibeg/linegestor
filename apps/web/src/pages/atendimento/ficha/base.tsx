@@ -1,5 +1,5 @@
 /**
- * As peças da ficha do chamado (Patch 1.10, decisão 0047): o contexto da ficha aberta (o chamado, as
+ * As peças da ficha do chamado (Patch 2.0, decisão 0047): o contexto da ficha aberta (o chamado, as
  * opções do módulo, o painel, quem está olhando), o jeito de rodar uma ação com o erro aparecendo
  * perto do botão que a causou, o menu que abre embaixo de um botão, a seção (cartão com título) e o
  * texto com os códigos citados virando link.

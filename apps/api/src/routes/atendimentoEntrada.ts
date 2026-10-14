@@ -1,5 +1,5 @@
 /**
- * Chamados do Gestor (Patch 1.10, decisão 0047): a entrada das integrações — o robô do LineChat e o
+ * Chamados do Gestor (Patch 2.0, decisão 0047): a entrada das integrações — o robô do LineChat e o
  * n8n abrem e mexem nos chamados com uma chave de API (criada em Chamados › Integrações), sem sessão.
  *
  * A chave vem em `Authorization: Bearer <chave>` ou em `?chave=` (o bloco de webhook do robô pode não

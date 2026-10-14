@@ -1,5 +1,5 @@
 /**
- * OS CHAMADOS DO GESTOR — o trabalho num chamado (Patch 1.10, decisão 0047): abrir, alterar, mover
+ * OS CHAMADOS DO GESTOR — o trabalho num chamado (Patch 2.0, decisão 0047): abrir, alterar, mover
  * (e escalonar), assumir, esperar, reabrir, trocar de painel, anotar com anexos, ligar a outro
  * chamado, o pai e o problema, o checklist, o tempo, a operadora, avisar o cliente, a resposta pronta,
  * acompanhar e a lixeira.

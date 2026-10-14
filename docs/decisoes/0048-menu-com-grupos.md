@@ -2,10 +2,10 @@
 
 **Contexto.** Com o módulo de chamados (0047), o menu lateral chegou a 12 itens: Chamados e Chamados do
 LineChat lado a lado, Base de conhecimento e Portal do cliente separados, e o Importar / Exportar com
-ícone próprio. Em 13/10, na prévia do 1.10, o Luan pediu: *"está ficando muitas abas laterais, acho que
+ícone próprio. Em 13/10, na prévia do 2.0, o Luan pediu: *"está ficando muitas abas laterais, acho que
 podemos dar uma subdivisão: um ícone Suporte e dentro dele os chamados, os tickets e os relatórios; a
 exportação não precisa ter um ícone próprio, pode ficar dentro de configurações; e a base de
-conhecimento pode ter um pai, com a base interna e a base dos clientes"*. Como o 1.10 ainda não subiu,
+conhecimento pode ter um pai, com a base interna e a base dos clientes"*. Como o 2.0 ainda não subiu,
 entrou nele.
 
 **Decisão.**
@@ -40,4 +40,4 @@ entrou nele.
   Chamados do LineChat**, porque é o nome da integração.
 
 **Consequências.** O menu cai de 12 para 8 entradas no alto, e o Suporte tem três itens. Os guias de
-uso, a nota do 1.10 e o vídeo falam dos nomes novos.
+uso, a nota do 2.0 e o vídeo falam dos nomes novos.

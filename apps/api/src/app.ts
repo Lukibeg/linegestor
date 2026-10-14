@@ -104,7 +104,7 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
     // o portal do cliente (1.8): a equipe cuida em /portal-admin; o cliente usa /portal, com login próprio
     await api.register(portalAdminRoutes, { prefix: '/portal-admin' });
     await api.register(portalRoutes, { prefix: '/portal' });
-    // os chamados do Gestor (1.10): o trabalho, os ajustes do módulo e a entrada das integrações (chave de API)
+    // os chamados do Gestor (2.0): o trabalho, os ajustes do módulo e a entrada das integrações (chave de API)
     await api.register(atendimentoRoutes, { prefix: '/atendimento' });
     await api.register(atendimentoAjustesRoutes, { prefix: '/atendimento' });
     await api.register(atendimentoEntradaRoutes, { prefix: '/atendimento' });

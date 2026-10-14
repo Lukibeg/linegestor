@@ -1,5 +1,5 @@
 /**
- * O RELÓGIO DOS CHAMADOS (Patch 1.10, decisão 0047): o que o Gestor faz sozinho, a cada minuto — como o
+ * O RELÓGIO DOS CHAMADOS (Patch 2.0, decisão 0047): o que o Gestor faz sozinho, a cada minuto — como o
  * relógio do envio automático (ligado no `server.ts`, antes do `listen`; os testes não ligam o relógio:
  * chamam `voltaDoRelogioDosChamados` com a hora que quiserem).
  *

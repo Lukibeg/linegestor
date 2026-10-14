@@ -1,12 +1,12 @@
 /**
  * A moldura de todas as telas: o menu lateral (recolhível para só ícones) e o conteúdo.
  *
- * No computador não há barra em cima (1.10, o pedido do Luan: "acabamos perdendo espaço"): o
+ * No computador não há barra em cima (2.0, o pedido do Luan: "acabamos perdendo espaço"): o
  * sininho dos chamados, o tema e o Sair ficam no rodapé do menu, ao lado da conta. No celular a barra
  * de cima continua, porque é onde fica o botão que abre o menu (e o sininho, à mão). O aviso que chega
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
- * O menu tem grupos (1.10, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (os
+ * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (os
  * Chamados, os Projetos e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje) e **Base de
  * conhecimento** (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O
  * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
@@ -39,7 +39,7 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   { to: '/clientes', label: 'Clientes', icon: Building2, perm: 'records.read' },
   { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
   { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
-  // o suporte: os chamados do Gestor (1.10), os projetos (as tarefas que percorrem vários clientes) e os
+  // o suporte: os chamados do Gestor (2.0), os projetos (as tarefas que percorrem vários clientes) e os
   // Relatórios. O Relatórios abre nos tickets do LineChat (a cópia de leitura, 1.3), na aba Hoje; dali as abas
   // levam ao Período e aos 20 relatórios (1.7), e o item fica marcado nas duas telas. (13/10, os pedidos do
   // Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos Projetos, "pode ficar dentro de
@@ -60,7 +60,7 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   },
   // logo abaixo: o "o que mudou" de cada publicação
   { to: '/novidades', label: 'Novidades', icon: Sparkles, perm: 'records.read', conta: 'novidades' },
-  // as configurações (com o Importar / Exportar dentro, desde o 1.10)
+  // as configurações (com o Importar / Exportar dentro, desde o 2.0)
   { to: '/admin', label: 'Administração', icon: Settings, perm: ['admin.manage', 'audit.read', 'records.delete', 'data.import', 'data.export'] },
 ];
 

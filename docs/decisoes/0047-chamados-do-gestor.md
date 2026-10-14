@@ -234,6 +234,8 @@ afetados.
   personalizada "Abrir chamado" — o passo a passo está em `docs/guia-de-uso/chamados-do-gestor.md`.
   O Safari e navegadores que bloqueiam cookie de terceiros podem pedir o login de novo dentro do
   LineChat.
-- **Ainda não estão prontos** (entram antes de o 1.10 subir): os 20 relatórios e o envio diário lendo
-  os chamados novos (hoje leem a cópia do LineChat) e a Base de conhecimento ligada aos chamados novos
-  (o livrinho e o "Registrar na base").
+- **Ficaram para depois do 2.0** (o Luan mandou subir em 14/10): os 20 relatórios e o envio diário
+  lendo os chamados novos (por ora leem a cópia do LineChat, em Suporte › Relatórios) e a Base de
+  conhecimento ligada aos chamados novos (o livrinho e o "Registrar na base").
+- **O número do patch**: o trabalho foi feito e revisado na prévia como **1.10** (é o nome dos commits
+  e da branch de trabalho) e subiu como **2.0** — o Luan, em 14/10: "pode subir tudo como versão 2.0".

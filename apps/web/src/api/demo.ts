@@ -65,7 +65,7 @@ type MovRow = { id: string; modality: string; fromClientId: string | null; toCli
 /** O recibo de entrega da movimentação (1.9): o arquivo embutido ("data:…"), como os anexos dos projetos na demonstração */
 type ReciboRow = { id: string; movementId: string; fileName: string; mimeType: string; sizeBytes: number; conteudo: string; uploadedById: string | null; createdAt: string; deletedAt: string | null };
 type UnitRow = { id: string; clientId: string; name: string; isMain: boolean; address: string | null; egressIp: string | null; note: string | null; createdAt: string; deletedAt: string | null };
-/** Um contato do cliente (1.10): o WhatsApp só com os dígitos, como no servidor. */
+/** Um contato do cliente (2.0): o WhatsApp só com os dígitos, como no servidor. */
 type ContatoRow = { id: string; clientId: string; nome: string; whatsapp: string | null; email: string | null; cargo: string | null; ativo: boolean; criadoPorId: string | null; criadoEm: string; atualizadoEm: string };
 /** Login e senha padrão dos aparelhos de um modelo no cliente (a senha mora em `S.secrets`) */
 type LoginRow = { id: string; clientId: string; modelId: string; username: string | null; passwordSecretId: string | null; note: string | null; updatedAt: string; deletedAt: string | null };
@@ -471,7 +471,7 @@ function seed() {
   for (const [cli, nomes] of Object.entries(UNIDADES_DEMO)) {
     for (const nome of nomes) if (nome !== 'Matriz') S.units.push({ id: id(), clientId: byName[cli]!, name: nome, isMain: false, address: nome === 'Unidade Simões Filho' ? 'Av. Eixo Urbano Central, 1200 — Simões Filho/BA' : null, egressIp: nome === 'Unidade Simões Filho' ? '200.180.10.5' : null, note: null, createdAt: daysAgo(90), deletedAt: null });
   }
-  // os contatos dos clientes (1.10): os mesmos dos chamados de exemplo, com o cargo
+  // os contatos dos clientes (2.0): os mesmos dos chamados de exemplo, com o cargo
   CONTATOS_DOS_CLIENTES.forEach((c, i) => {
     const clientId = byName[c.cliente]; if (!clientId) return;
     const em = daysAgo(200 - i * 9);
@@ -1214,7 +1214,7 @@ function ligarVideoDemo(n: NotaRow, videoId: unknown): string {
 const podeEditarNovidades = () => !!S.me && (S.roles.find((r) => r.id === S.me!.roleId)?.permissions.includes('admin.manage') ?? false);
 
 /*
- * As novidades já lidas, lembradas pelo navegador (1.10, o pedido do Luan: "toda hora que vou acessar a
+ * As novidades já lidas, lembradas pelo navegador (2.0, o pedido do Luan: "toda hora que vou acessar a
  * demo preciso ficar vendo vídeo ou lendo"). No Gestor de verdade a leitura fica no servidor e a janela
  * abre uma vez só por pessoa; a prévia guarda tudo na memória e esquecia a cada visita. Agora este
  * navegador lembra quem leu cada versão — pelo e-mail e pela versão, porque os ids da prévia nascem de
@@ -2248,7 +2248,7 @@ export const demoApi: Api = {
       audit('update', 'client', antigo === nome ? `Editou a unidade "${nome}"` : `Renomeou a unidade "${antigo}" para "${nome}"`, idc);
       return shapeUnit(u);
     },
-    // os contatos (1.10): as mesmas regras do servidor (o cadastro mexe, e quem trabalha nos chamados também)
+    // os contatos (2.0): as mesmas regras do servidor (o cadastro mexe, e quem trabalha nos chamados também)
     async contatos(idc) {
       await wait(60); requireAnyPerm('records.read', 'support.read');
       const c = S.clients.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Cliente');
@@ -3750,7 +3750,7 @@ export const demoApi: Api = {
       return { ...cartaoDemo(t), texto: t.texto, publicadoEm: t.publicadoEm, arquivos, videoPrincipal: arquivos.find((a) => a.id === t.videoPrincipalId) ?? null };
     },
   },
-  // os chamados do Gestor (1.10): o módulo inteiro mora em demo-atendimento.ts
+  // os chamados do Gestor (2.0): o módulo inteiro mora em demo-atendimento.ts
   atendimento: criarAtendimentoDemo({
     S, id, wait, audit, requirePerm, temPerm,
     ia: { pronta: iaProntaDemo, limite: limiteIaDemo, uso: usoIaDemo },

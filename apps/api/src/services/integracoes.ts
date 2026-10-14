@@ -162,9 +162,9 @@ const PADROES: Record<Assunto, unknown> = {
   'envio-automatico-marcados': { relatorios: [], graficos: [], atualizadoEm: null, atualizadoPor: null },
   // a IA da Base de conhecimento (1.8): desligada até alguém escolher o provedor e pôr a chave (no cofre)
   'base-ia': IA_PADRAO,
-  // os chamados do Gestor (1.10): o horário, os feriados e os prazos (o documento de prioridade e prazos)
+  // os chamados do Gestor (2.0): o horário, os feriados e os prazos (o documento de prioridade e prazos)
   'atendimento-prazos': AJUSTES_PRAZOS_PADRAO,
-  // o WhatsApp dos chamados (1.10): desligado até a administração ligar; a chave própria, se houver, no cofre
+  // o WhatsApp dos chamados (2.0): desligado até a administração ligar; a chave própria, se houver, no cofre
   'atendimento-avisos': { ...AVISOS_CHAMADOS_PADRAO, pessoas: [] },
   // os sites que podem abrir o Gestor dentro deles (nenhum: só o próprio Gestor) e o link da conversa no LineChat
   'atendimento-integracoes': { sites: [], linkConversa: '' },

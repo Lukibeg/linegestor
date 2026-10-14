@@ -154,7 +154,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       return { ok: true };
     });
 
-  // ---- os contatos (1.10): o cadastro mexe, e quem trabalha nos chamados também (o Abrir chamado cria contato) ----
+  // ---- os contatos (2.0): o cadastro mexe, e quem trabalha nos chamados também (o Abrir chamado cria contato) ----
   app.get('/:id/contatos', { preHandler: app.requireAnyPermission('records.read', 'support.read'), schema: { tags: ['Clientes'], summary: 'Os contatos do cliente (os ativos primeiro), com quantos chamados cada WhatsApp tem', params: Id } },
     async (req) => clientsSvc.listarContatos(app.db, req.params.id));
 

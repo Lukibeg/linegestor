@@ -9,7 +9,7 @@ try {
   iniciarSincronizacaoAutomatica(app);
   // o envio automático do PDF pelo WhatsApp: confere o horário a cada minuto (1.7)
   iniciarEnvioAutomatico(app);
-  // os chamados do Gestor (1.10): os agendados, os alertas de prazo, o sem responsável e o fechar sozinho, a cada minuto
+  // os chamados do Gestor (2.0): os agendados, os alertas de prazo, o sem responsável e o fechar sozinho, a cada minuto
   iniciarRelogioDosChamados(app);
   await app.listen({ port: app.config.PORT, host: '0.0.0.0' });
   app.log.info(`Documentação em http://localhost:${app.config.PORT}/api/docs`);

@@ -1,5 +1,5 @@
 /**
- * Os contatos do cliente (1.10, o pedido do Luan na prévia: "uma aba de contatos dos clientes, aí o
+ * Os contatos do cliente (2.0, o pedido do Luan na prévia: "uma aba de contatos dos clientes, aí o
  * Abrir chamado já puxaria de lá; e criar um contato por ali"). As pessoas do cliente com quem a equipe
  * fala: o nome, o WhatsApp, o e-mail e o cargo (ou o setor). Quem mexe no cadastro e quem trabalha nos
  * chamados incluem e editam; nada se apaga — desativa (o desativado some do Abrir chamado).

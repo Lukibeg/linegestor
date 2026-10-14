@@ -1,5 +1,5 @@
 /**
- * Os avisos para fora (webhooks, Patch 1.10): o Gestor manda o que aconteceu com um chamado para os
+ * Os avisos para fora (webhooks, Patch 2.0): o Gestor manda o que aconteceu com um chamado para os
  * endereços que a administração cadastrou nas Integrações — o n8n de hoje (a NIA, a "Atualização de
  * Card") passa a ouvir o Gestor em vez do LineChat.
  *

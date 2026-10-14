@@ -1,5 +1,5 @@
 /**
- * Chamados — a primeira tela do módulo (Patch 1.10): os PAINÉIS, como no Helena. O Luan, na prévia:
+ * Chamados — a primeira tela do módulo (Patch 2.0): os PAINÉIS, como no Helena. O Luan, na prévia:
  * "quando eu clicar em chamados eu quero uma tela inicial onde eu vou poder escolher entre os quadros
  * e as configurações deles; no futuro vou ter outros painéis, e alternar por abas não fica legal".
  *

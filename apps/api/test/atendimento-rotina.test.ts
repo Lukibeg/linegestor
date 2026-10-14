@@ -1,5 +1,5 @@
 /**
- * Patch 1.10 — os chamados do Gestor (decisão 0047): a rotina, o relógio e a IA no chamado.
+ * Patch 2.0 — os chamados do Gestor (decisão 0047): a rotina, o relógio e a IA no chamado.
  *
  *  - as respostas prontas: o cadastro (inclusive as desativadas), quem pode, a etapa que precisa ser
  *    do painel da resposta

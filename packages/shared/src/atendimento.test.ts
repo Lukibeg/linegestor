@@ -484,7 +484,7 @@ describe('a IA, as respostas prontas e o histórico', () => {
   });
 });
 
-describe('as etiquetas com cor (1.10, o pedido do Luan na prévia)', () => {
+describe('as etiquetas com cor (2.0, o pedido do Luan na prévia)', () => {
   it('a mesma etiqueta escrita de outro jeito: sem maiúscula, sem acento e com um espaço só', () => {
     expect(chaveDaEtiqueta('  Cliente   VIP ')).toBe('cliente vip');
     expect(chaveDaEtiqueta('Peça')).toBe(chaveDaEtiqueta('peca'));
@@ -521,7 +521,7 @@ describe('as etiquetas com cor (1.10, o pedido do Luan na prévia)', () => {
   });
 });
 
-describe('a mensagem ao cliente pelo modelo aprovado (1.10, o WhatsApp oficial do Luan)', () => {
+describe('a mensagem ao cliente pelo modelo aprovado (2.0, o WhatsApp oficial do Luan)', () => {
   const modelo = ModeloAprovadoSchema.parse({
     id: 'tpl-1', nome: 'ticket_atualizacao', texto: 'Olá, {{nome}}! Sobre o chamado {{ chamado }}: {{mensagem}}',
     variaveis: [{ nome: 'nome', valor: '{contato}' }, { nome: 'chamado', valor: '{codigo}' }, { nome: 'mensagem', valor: '{texto}' }],

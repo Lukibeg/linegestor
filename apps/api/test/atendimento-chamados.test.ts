@@ -1,5 +1,5 @@
 /**
- * Patch 1.10 — os chamados do Gestor (decisão 0047): o núcleo do servidor.
+ * Patch 2.0 — os chamados do Gestor (decisão 0047): o núcleo do servidor.
  *
  * As contas (o que falta para cada etapa, os prazos, a busca, a ordem, o desenho das ligações) estão
  * testadas em `packages/shared/src/atendimento.test.ts`. Aqui fica o que é do servidor, com o banco

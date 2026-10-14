@@ -1,5 +1,5 @@
 /**
- * Os filtros do Quadro e da Lista dos chamados (Patch 1.10). Ficam no endereço — dá para mandar o
+ * Os filtros do Quadro e da Lista dos chamados (Patch 2.0). Ficam no endereço — dá para mandar o
  * link do jeito que está, e o Voltar da ficha devolve a lista como estava —, cada um aparece escrito
  * com o seu X, e a busca só vai para o endereço quando a pessoa para de digitar (senão cada letra
  * viraria uma consulta ao servidor).

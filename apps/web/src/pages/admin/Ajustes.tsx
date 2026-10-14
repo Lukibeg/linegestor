@@ -4,7 +4,7 @@
  *  - **Backup no Google Drive**: para onde a cópia diária sobe.
  *  - **Avisos**: para onde o sistema grita quando cai ou quando o backup falha.
  *  - **Chamados do LineChat**: de onde vêm os chamados da tela de Chamados (o token e o painel).
- *  - **IA da base e dos chamados** (1.8; os chamados no 1.10): o "Perguntar à IA", o rascunho a partir do
+ *  - **IA da base e dos chamados** (1.8; os chamados no 2.0): o "Perguntar à IA", o rascunho a partir do
  *    chamado e o "Preencher com IA" da ficha do chamado, com o provedor que a empresa escolher (Anthropic,
  *    OpenAI, Google ou outro compatível). O mesmo cartão aparece em Chamados › Ajustes › IA.
  *

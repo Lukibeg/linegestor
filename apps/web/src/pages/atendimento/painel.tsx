@@ -1,5 +1,5 @@
 /**
- * O alto da visualização de um painel (Patch 1.10): o caminho de volta para os painéis, o painel
+ * O alto da visualização de um painel (Patch 2.0): o caminho de volta para os painéis, o painel
  * aberto (a cor, o nome e a sigla), a escolha **Quadro | Lista** — a lista mora dentro do painel, como
  * pediu o Luan na prévia ("essa parte de lista não precisa aqui, apenas dentro da visualização do
  * painel") —, "Trocar" (os outros painéis, com quantos estão em aberto) e "Configurar" (quem cuida).

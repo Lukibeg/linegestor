@@ -1,5 +1,5 @@
 /**
- * AS INTEGRAÇÕES DOS CHAMADOS (Patch 1.10, decisão 0047): o que liga o Gestor aos outros sistemas —
+ * AS INTEGRAÇÕES DOS CHAMADOS (Patch 2.0, decisão 0047): o que liga o Gestor aos outros sistemas —
  * os webhooks (o Gestor avisa o n8n do que aconteceu), as chaves de API (o robô do LineChat e o n8n
  * abrem e mexem nos chamados), os sites que podem abrir o Gestor dentro deles (o menu do LineChat) e o
  * modelo do link da conversa. É da administração (`admin.manage`).

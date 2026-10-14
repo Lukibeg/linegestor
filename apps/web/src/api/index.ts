@@ -44,7 +44,7 @@ export type Api = {
     createUnit(id: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
     updateUnit(id: string, unitId: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
     removeUnit(id: string, unitId: string): Promise<{ ok: boolean }>;
-    /** Os contatos do cliente (1.10): os ativos primeiro, com quantos chamados cada WhatsApp tem */
+    /** Os contatos do cliente (2.0): os ativos primeiro, com quantos chamados cada WhatsApp tem */
     contatos(id: string): Promise<ContatoDoCliente[]>;
     /** Incluir (contatoId nulo) ou editar, desativar e reativar um contato */
     salvarContato(id: string, contatoId: string | null, d: ContatoGravarEntrada): Promise<ContatoDoCliente>;
@@ -276,7 +276,7 @@ export type Api = {
     tutorial(numero: string): Promise<T.TutorialDoCliente>;
   };
   /**
-   * Os chamados do Gestor (Patch 1.10, decisão 0047): os painéis, o quadro, a lista, o Meu dia, a
+   * Os chamados do Gestor (Patch 2.0, decisão 0047): os painéis, o quadro, a lista, o Meu dia, a
    * ficha e os ajustes do módulo. Toda mudança num chamado devolve a ficha inteira, já atualizada.
    */
   atendimento: {

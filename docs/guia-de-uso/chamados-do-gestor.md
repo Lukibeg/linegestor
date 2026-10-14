@@ -1,6 +1,6 @@
 # Chamados (o módulo do Gestor)
 
-Desde o Patch 1.10 os chamados nascem e andam no **Gestor**, em **Suporte › Chamados** (no menu
+Desde o Patch 2.0 os chamados nascem e andam no **Gestor**, em **Suporte › Chamados** (no menu
 lateral). Os chamados antigos continuam no LineChat; para consultar, **Suporte › Relatórios** abre neles,
 na aba **Hoje** (as abas levam ao Período e aos relatórios).
 A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.

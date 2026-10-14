@@ -1,5 +1,5 @@
 /**
- * O seletor das etiquetas (1.10, o pedido do Luan na prévia: "esse menu para escolher as etiquetas não
+ * O seletor das etiquetas (2.0, o pedido do Luan na prévia: "esse menu para escolher as etiquetas não
  * está legal; deixe no padrão do restante do sistema e coloque uma opção de editar a etiqueta — a cor e o
  * nome —, algo parecido com o do Helena").
  *

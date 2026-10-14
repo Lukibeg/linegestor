@@ -345,7 +345,7 @@ CREATE INDEX "tickets_parent_idx" ON "tickets" USING btree ("parent_id");--> sta
 CREATE INDEX "tickets_problem_idx" ON "tickets" USING btree ("problem_id");--> statement-breakpoint
 CREATE INDEX "tickets_session_idx" ON "tickets" USING btree ("session_id");--> statement-breakpoint
 CREATE INDEX "tickets_phone_idx" ON "tickets" USING btree ("contact_phone");--> statement-breakpoint
--- Permissões novas dos chamados do Gestor (Patch 1.10, decisão 0047). Trabalhar nos chamados é de
+-- Permissões novas dos chamados do Gestor (Patch 2.0, decisão 0047). Trabalhar nos chamados é de
 -- quem já trabalha no dia a dia (quem trabalha nos projetos: Operador, Técnico) e de quem administra;
 -- cuidar dos chamados (painéis, etapas, assuntos, prazos, avisos, lixeira) é da administração. Ver
 -- continua sendo `support.read`.

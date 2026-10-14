@@ -1,5 +1,5 @@
 /**
- * A ficha do chamado (Patch 1.10, decisão 0047) — /atendimento/SUP-12. É onde o chamado é trabalhado.
+ * A ficha do chamado (Patch 2.0, decisão 0047) — /atendimento/SUP-12. É onde o chamado é trabalhado.
  *
  *  - em cima, o cabeçalho (o caminho de volta, o código na cor do painel, a etapa, a prioridade, o
  *    título que se edita ali mesmo, quem abriu e de onde) e a barra de ações;

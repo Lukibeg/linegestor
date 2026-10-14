@@ -1,5 +1,5 @@
 /**
- * Chamados do Gestor (Patch 1.10, decisão 0047): a rotina — as respostas prontas e os agendados (quem
+ * Chamados do Gestor (Patch 2.0, decisão 0047): a rotina — as respostas prontas e os agendados (quem
  * cuida dos chamados, `tickets.manage`) e a IA no chamado (quem trabalha, `tickets.work`).
  *
  * Toda mudança vai para a auditoria. A IA não muda nada no chamado: devolve a sugestão, a tela mostra

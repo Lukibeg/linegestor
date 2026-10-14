@@ -1,5 +1,5 @@
 /**
- * Importar (com prévia) e exportar CSV. Mora em Administração › Importar / Exportar (1.10, o pedido do
+ * Importar (com prévia) e exportar CSV. Mora em Administração › Importar / Exportar (2.0, o pedido do
  * Luan: "a exportação também não precisa ter um ícone próprio, ela pode ficar dentro de configurações");
  * o endereço antigo (/dados) leva para lá.
  */

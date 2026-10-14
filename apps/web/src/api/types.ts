@@ -511,7 +511,7 @@ export class ApiError extends Error {
   constructor(public status: number, message: string, public details: Array<{ field: string; message: string }> | string | null = null) { super(message); }
 }
 
-// ---------- os chamados do Gestor (1.10, decisão 0047): os formatos moram no @gestor/shared ----------
+// ---------- os chamados do Gestor (2.0, decisão 0047): os formatos moram no @gestor/shared ----------
 export type {
   OpcoesAtendimento, QuadroAtendimento, ColunaQuadro, CartaoChamado, FichaChamado, MeuDia, ResumoDoPainel, AvisosNaTela, AvisoNaTela, CadastroDoCliente, Painel, EtapaPainel,
   AjustesDoPainel, Assunto, AssuntoCurto, EventoChamado, AnotacaoChamado, AnexoChamado, TempoGasto, CasoOperadora, PassoTrajetoria, LigacaoMostradaChamado,

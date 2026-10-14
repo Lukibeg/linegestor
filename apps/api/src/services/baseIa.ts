@@ -511,10 +511,10 @@ export async function rascunho(db: Db, vault: SecretsVault, ref: string, quem: Q
   return { ...escrito, custo: custoEstimado(r.uso, valor), modelo: nomeDoModelo(valor), provedor: INFO_PROVEDORES[valor.provedor].nome };
 }
 
-// ---------- a IA no chamado (Patch 1.10) ----------
+// ---------- a IA no chamado (Patch 2.0) ----------
 
 /**
- * A IA preenchendo um chamado do Gestor (Patch 1.10, decisão 0047): a mesma IA da base — o provedor,
+ * A IA preenchendo um chamado do Gestor (Patch 2.0, decisão 0047): a mesma IA da base — o provedor,
  * o modelo e a chave que a administração escolheu —, o mesmo limite de 30 usos por pessoa por hora e
  * a mesma conta do mês (o uso entra em "rascunhos": é a IA escrevendo para a pessoa revisar).
  *

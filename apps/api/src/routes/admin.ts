@@ -62,7 +62,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle', 'portalArticle', 'ticket']), id: z.string() }) } },
     async (req) => {
       const { type, id } = req.params;
-      // o chamado do Gestor (1.10) é da lixeira de quem cuida dos chamados
+      // o chamado do Gestor (2.0) é da lixeira de quem cuida dos chamados
       if (type === 'ticket' && !req.user!.permissions.includes('tickets.manage')) throw new Forbidden('Esta ação exige a permissão "tickets.manage"');
       let label = id;
       if (type === 'client') label = (await clientsSvc.restore(app.db, id)).tradeName;

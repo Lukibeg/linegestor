@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 1.10) — Avisos e WhatsApp.
+ * Chamados › Ajustes (Patch 2.0) — Avisos e WhatsApp.
  *
  * Dois números, os dois ligados no LineChat: o oficial, pelo qual o cliente recebe o que o atendente
  * manda (e só quando ele manda — a escolha do Luan), e um não oficial, pelo qual a equipe recebe os

@@ -1,5 +1,5 @@
 /**
- * Os avisos que chegam (1.10): o vigia só mostra o que chegou depois que a tela abriu e ainda não foi
+ * Os avisos que chegam (2.0): o vigia só mostra o que chegou depois que a tela abriu e ainda não foi
  * lido — e o aviso do observador, que junta as mudanças e volta a chegar, aparece de novo. Os cartões
  * ficam na fila até a pessoa abrir ou fechar: nenhum some sozinho.
  */

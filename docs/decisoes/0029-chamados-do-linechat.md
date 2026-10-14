@@ -75,6 +75,6 @@ tempo em cada etapa, tempo até fechar, e ligar o campo Cliente do card ao cadas
 > as finais do LineChat), e a hora do fechamento é refeita pelo histórico de etapas. A **pizza** é o
 > padrão de todos os gráficos de lista. A tabela ganhou a **Descrição**.
 
-> **Revista pela 0047 (Patch 1.10), a pedido do Luan (avisado antes):** os chamados passam a nascer e
+> **Revista pela 0047 (Patch 2.0), a pedido do Luan (avisado antes):** os chamados passam a nascer e
 > andar no Gestor (o módulo Chamados). Esta cópia de leitura continua, para consultar os chamados
 > antigos do Helena (o menu a chama de **Chamados do LineChat**), com os relatórios e o envio diário.

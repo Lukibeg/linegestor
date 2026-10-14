@@ -1,5 +1,5 @@
 /**
- * A SEGURANÇA DAS PÁGINAS (Patch 1.10): quem pode abrir o Gestor dentro de um iframe e a defesa contra
+ * A SEGURANÇA DAS PÁGINAS (Patch 2.0): quem pode abrir o Gestor dentro de um iframe e a defesa contra
  * o pedido forjado por outro site (CSRF).
  *
  * Por que mudou: o Luan pediu para o Gestor abrir dentro de outros programas ("tire esse bloqueio,

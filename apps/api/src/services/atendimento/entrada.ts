@@ -1,5 +1,5 @@
 /**
- * A ENTRADA DAS INTEGRAÇÕES (Patch 1.10, decisão 0047): o robô do LineChat e o n8n abrem e mexem nos
+ * A ENTRADA DAS INTEGRAÇÕES (Patch 2.0, decisão 0047): o robô do LineChat e o n8n abrem e mexem nos
  * chamados com uma chave de API, sem sessão.
  *
  *  - a chave vem no cabeçalho `Authorization: Bearer <chave>` ou em `?chave=` (o bloco de webhook do

@@ -1,6 +1,6 @@
 /**
  * Administração: Usuários · Papéis · Catálogos · Produtos · Novidades · Ajustes · Envio automático ·
- * Importar / Exportar · Auditoria · Lixeira. O Importar / Exportar mudou para cá no 1.10 (saiu do menu).
+ * Importar / Exportar · Auditoria · Lixeira. O Importar / Exportar mudou para cá no 2.0 (saiu do menu).
  */
 import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';

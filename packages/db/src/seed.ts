@@ -73,7 +73,7 @@ for (const o of ORGANIZACOES_INTERNAS) {
   }
 }
 
-// ---- os painéis de chamados (1.10): os mesmos que a migração 0015 cria, com os mesmos ids ----
+// ---- os painéis de chamados (2.0): os mesmos que a migração 0015 cria, com os mesmos ids ----
 // (o teste apaga todas as tabelas antes de cada arquivo e roda o seed: sem isto, o módulo nasceria sem painel)
 const [temPainel] = await db.select({ n: sql<number>`count(*)` }).from(s.ticketPanels);
 if (Number(temPainel?.n ?? 0) === 0) {

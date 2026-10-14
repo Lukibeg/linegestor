@@ -1,5 +1,5 @@
 /**
- * A janela por cima da tela (1.10): a ficha de um chamado e o Abrir chamado abrem por cima da tela de
+ * A janela por cima da tela (2.0): a ficha de um chamado e o Abrir chamado abrem por cima da tela de
  * onde vieram, que fica como estava (os pedidos do Luan na prévia). O link direto, sem a tela de baixo
  * (o endereço da ficha mandado para alguém, o botão da conversa do LineChat), abre a página inteira.
  */

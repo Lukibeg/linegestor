@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 1.10, decisão 0047) — PRAZOS.
+ * Chamados › Ajustes (Patch 2.0, decisão 0047) — PRAZOS.
  *
  * O documento "Prioridade e prazos dos chamados" (o ICI-12) virou esta tela: o horário de atendimento
  * (os 7 dias), os feriados, os dois prazos de cada prioridade (a primeira resposta e a solução, em

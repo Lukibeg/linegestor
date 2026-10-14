@@ -3,7 +3,7 @@
  * contato que o Luan pediu): o nome grande com o link para a ficha do cliente, os produtos e as
  * operadoras do cadastro dele, quantos circuitos, DIDs e aparelhos; o contato com o WhatsApp legível
  * e o link "Conversa no LineChat". Dá para trocar o cliente, o nome do contato e o WhatsApp — e o
- * contato sai da lista do cliente (a aba Contatos, 1.10): um clique troca; o que não está na lista se
+ * contato sai da lista do cliente (a aba Contatos, 2.0): um clique troca; o que não está na lista se
  * salva lá com um clique.
  */
 import { useState } from 'react';

@@ -11,7 +11,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [clients](#clients) — Uma linha por empresa.
 - [client_logos](#client_logos) — A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo).
 - [client_units](#client_units) — As UNIDADES de um cliente: matriz, filiais, lojas, andares.
-- [client_contacts](#client_contacts) — OS CONTATOS DO CLIENTE (1.10, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor).
+- [client_contacts](#client_contacts) — OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor).
 - [client_device_logins](#client_device_logins) — LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente entram com o mesmo login e senha; os DP722, com outro.
 - [client_network_settings](#client_network_settings) — CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita nos telefones na hora de configurar (IP, máscara, gateway, DNS) e a senha do ramal sem fio.
 - [products](#products) — Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
@@ -79,7 +79,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [ticket_carrier_cases](#ticket_carrier_cases) — O CHAMADO ABERTO NA OPERADORA: o protocolo, quando abriu, o prazo que a operadora prometeu e as cobranças — num lugar só, em vez de perdido nas anotações.
 - [ticket_schedules](#ticket_schedules) — Um CHAMADO AGENDADO: nasce sozinho na hora marcada (a verificação dos DIDs todo dia 15).
 - [ticket_macros](#ticket_macros) — Uma RESPOSTA PRONTA: um clique manda a mensagem e muda o chamado ("Pedir teste ao cliente" manda o texto e marca que o chamado espera o cliente).
-- [ticket_tags](#ticket_tags) — Uma ETIQUETA e a COR dela (1.10, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor").
+- [ticket_tags](#ticket_tags) — Uma ETIQUETA e a COR dela (2.0, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor").
 - [ticket_contacts](#ticket_contacts) — O TELEFONE QUE O GESTOR JÁ CONHECE: o WhatsApp de um contato e o cliente dele, aprendido dos chamados.
 - [ticket_notifications](#ticket_notifications) — Um AVISO NA TELA (o sininho): recebeu um chamado, o prazo está vencendo, o cliente respondeu…
 - [ticket_webhooks](#ticket_webhooks) — Um AVISO PARA FORA (webhook): o Gestor manda o que aconteceu com os chamados para outro sistema (o n8n).
@@ -139,7 +139,7 @@ As UNIDADES de um cliente: matriz, filiais, lojas, andares. Todo cliente tem a "
 
 ## client_contacts
 
-OS CONTATOS DO CLIENTE (1.10, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor). O Abrir chamado puxa daqui, e um contato novo nasce lá também. O WhatsApp acha o cliente quando o robô abre o chamado. Não se apaga: desativa.
+OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor). O Abrir chamado puxa daqui, e um contato novo nasce lá também. O WhatsApp acha o cliente quando o robô abre o chamado. Não se apaga: desativa.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
@@ -515,7 +515,7 @@ AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), 
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
-| `id` | texto | 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 1.10) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe, os números das pessoas e quais avisos vão por onde; a chave própria no cofre, 1.10) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 1.10) | chave primária |
+| `id` | texto | 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe, os números das pessoas e quais avisos vão por onde; a chave própria no cofre, 2.0) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) | chave primária |
 | `value` | texto | — | obrigatório · padrão: '{}' |
 | `secret_id` | texto | — | liga com **secrets** |
 | `updated_at` | data e hora | Última alteração | — |
@@ -1052,7 +1052,7 @@ Um PAINEL (o Kanban de uma equipe): Suporte, Desenvolvimento, e os que a adminis
 
 ## ticket_stages
 
-Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela significa para o chamado (entrada, andamento, resolvido, fechado); o nível marca N1, N2 e N3 (escalonar = subir de nível). Etapa que sai não é apagada: ganha `deleted_at`, e os chamados dela vão para outra antes.
+Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela significa para o chamado (entrada, andamento, resolvido, fechado); o nível marca N1, N2, N3 e DEV (escalonar = subir de nível). Etapa que sai não é apagada: ganha `deleted_at`, e os chamados dela vão para outra antes.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
@@ -1060,7 +1060,7 @@ Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela signif
 | `panel_id` | texto | — | obrigatório · liga com **ticketPanels** |
 | `name` | texto | — | obrigatório |
 | `kind` | texto | entrada | andamento | resolvido | fechado | obrigatório · padrão: 'andamento' |
-| `level` | número inteiro | 1, 2 ou 3 (N1, N2, N3); nulo nas etapas que não são nível | — |
+| `level` | número inteiro | 1, 2, 3 ou 4 (N1, N2, N3, DEV); nulo nas etapas que não são nível | — |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `required_fields` | texto | O que precisa estar preenchido para o chamado entrar aqui (lista de campos) | obrigatório · padrão: [] · lista |
 | `notify_user_ids` | texto | Quem recebe o aviso quando um chamado chega nesta etapa (ids de pessoas) | obrigatório · padrão: [] · lista |
@@ -1179,6 +1179,7 @@ Uma ANOTAÇÃO no chamado (o que a equipe registra no meio do caminho). Apagar s
 | `user_id` | texto | — | liga com **users** |
 | `actor_name` | texto | — | — |
 | `body` | texto | — | obrigatório |
+| `mentioned_user_ids` | texto | quem a anotação cita com @ (recebeu o aviso, mesmo sem observar o chamado) | obrigatório · padrão: [] · lista |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 
@@ -1293,7 +1294,7 @@ Uma RESPOSTA PRONTA: um clique manda a mensagem e muda o chamado ("Pedir teste a
 
 ## ticket_tags
 
-Uma ETIQUETA e a COR dela (1.10, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor"). O chamado guarda os nomes (`tickets.tags`), sempre escritos como aqui. A etiqueta nova nasce com a cor escolhida na tela, ou cinza (o robô, a IA, a resposta pronta); quem cuida dos chamados troca a cor em Ajustes › Etiquetas.
+Uma ETIQUETA e a COR dela (2.0, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor"). O chamado guarda os nomes (`tickets.tags`), sempre escritos como aqui. A etiqueta nova nasce com a cor escolhida na tela, ou cinza (o robô, a IA, a resposta pronta); quem cuida dos chamados troca a cor em Ajustes › Etiquetas.
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|

@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes › Campos (Patch 1.10, decisão 0047) — A ÁRVORE DE ASSUNTOS de um painel.
+ * Chamados › Ajustes › Campos (Patch 2.0, decisão 0047) — A ÁRVORE DE ASSUNTOS de um painel.
  *
  * É a configuração do campo Assunto (que cada painel liga ou desliga na aba Campos; daqui se volta
  * para lá). A árvore de assuntos de cada painel (até 3 níveis, como Ramal › Configuração › Identidade), o

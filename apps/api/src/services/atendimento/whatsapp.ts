@@ -1,5 +1,5 @@
 /**
- * O WhatsApp dos chamados (Patch 1.10): a API de mensagens da plataforma do LineChat — a mesma do
+ * O WhatsApp dos chamados (Patch 2.0): a API de mensagens da plataforma do LineChat — a mesma do
  * envio automático do PDF (`{from, to, body: {text}}` com o Bearer), confirmada em produção em 05/10.
  * A referência é a da Helena (`POST /chat/v1/message/send`, conferida em 12/10): `body` leva `text`, ou
  * `templateId` + `parameters` (+ `fileUrl`, o arquivo do cabeçalho); `department` e `user` dizem quem

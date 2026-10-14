@@ -1,5 +1,5 @@
 /**
- * OS CHAMADOS DO GESTOR — a rotina (Patch 1.10, decisão 0047): as respostas prontas e os chamados
+ * OS CHAMADOS DO GESTOR — a rotina (Patch 2.0, decisão 0047): as respostas prontas e os chamados
  * agendados, que quem cuida dos chamados cadastra em Chamados › Ajustes.
  *
  * A resposta pronta é um texto com uma ação junto (mandar ao cliente, esperar, pôr etiqueta, assumir,
