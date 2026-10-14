@@ -105,9 +105,14 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 - **Abrir chamado**: dentro de um painel (o quadro, a lista), o chamado já nasce nele — "se eu estou
   dentro do painel de suporte, quero abrir no painel de suporte" —; fora dele (Painéis, Meu dia, o
   botão da conversa), a pessoa escolhe o painel, e o filho também (pode ser de outro painel). A
-  descrição já vem aberta, e uma etiqueta nova se cria ali mesmo (pedidos dele na prévia). O **filho**
-  e o **problema a partir de um chamado** abrem o mesmo formulário numa **janela por cima da ficha**,
-  e não na tela inteira (pedido dele na prévia); com algo escrito, fechar pergunta antes.
+  descrição já vem aberta, e uma etiqueta nova se cria ali mesmo (pedidos dele na prévia). O botão
+  **Abrir chamado** do alto das telas abre o formulário numa **janela por cima da tela**, que fica
+  como estava (pedido dele na prévia, em 14/10: "o abrir chamado tem que ser como pop up e não a tela
+  toda"), como a ficha: o endereço é o do Abrir chamado (o Voltar do navegador fecha), e o chamado
+  aberto — ou o recente reaberto — vira a ficha na mesma janela. Pelo link direto (o botão da conversa
+  do LineChat, numa aba nova), ocupa a página inteira. O **filho** e o **problema a partir de um
+  chamado** abrem o mesmo formulário numa **janela por cima da ficha**, e não na tela inteira (pedido
+  dele na prévia). Em todas, com algo escrito, fechar pergunta antes.
 - **As etiquetas com cor** (o pedido dele na prévia: "na hora de criar as etiquetas, escolher a cor"):
   um catálogo, o mesmo em todos os painéis, guarda o nome e a cor de cada etiqueta (nove cores). A nova
   nasce com a cor escolhida no Abrir chamado ou na ficha; a do robô, da IA e da resposta pronta, cinza.

@@ -16,6 +16,10 @@
  * As regras (o que o painel pede para abrir, a prioridade sugerida, o caminho do assunto) vêm do
  * `@gestor/shared`; quem decide é o servidor, e o erro dele aparece perto do botão.
  *
+ * O botão "Abrir chamado" do alto das telas abre o formulário numa janela por cima da tela
+ * (`JanelaAbrirChamado`; o pedido do Luan na prévia, em 14/10: "o abrir chamado tem que ser como pop up e
+ * não a tela toda"); o link direto (o botão da conversa do LineChat, numa aba nova) abre na página inteira.
+ *
  * O mesmo formulário abre numa janela por cima da ficha (`NovoChamadoNaJanela`): o filho e o problema a
  * partir de um chamado (o pedido do Luan na prévia: "quando eu for abrir um filho, ele tem que abrir como
  * pop-up e não a tela inteira"). Aberto, a janela fecha e a ficha de baixo mostra o filho.
@@ -34,13 +38,14 @@ import {
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
-import { Carregando, Chip, EscolherComBusca, Spinner, Vazio, mensagemErro, useToast, type OpcaoBusca } from '../../components/ui/index.js';
+import { Carregando, Chip, Confirmar, EscolherComBusca, Modal, Spinner, Vazio, mensagemErro, useToast, type OpcaoBusca } from '../../components/ui/index.js';
 import { useAuth } from '../../lib/auth.js';
 import { JanelaContato, usePodeMexerNosContatos } from '../clientes/Contatos.js';
 import { SeletorDeEtiquetas } from './SeletorDeEtiquetas.js';
+import { PontoDoPainel } from './quadro/filtros.js';
 import {
   CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
-  painelDe, telefoneLegivel, useDepoisDeMudar, useFicha, useOpcoes, usePode,
+  painelDe, telefoneLegivel, useAbrirChamado, useDepoisDeMudar, useFecharJanela, useFicha, useOpcoes, usePode,
 } from './comum.js';
 
 /** O motivo que o "Reabrir este" grava (o pedido do Luan: o cliente voltou com o mesmo problema). */
@@ -98,18 +103,20 @@ export function NovoChamado() {
   return <Carregador key={search} />;
 }
 
-/**
- * Abrir na janela, por cima da ficha: o filho (`pai`) ou o problema a partir de um chamado (`incidente`).
- * `painelId` é o painel que já vem escolhido (o do chamado de baixo; o filho pode ir para outro).
- */
 /** O que é cada registro (Chamado ou Problema), escrito embaixo da escolha. */
 const DICA_DO_REGISTRO: Record<TipoChamado, string> = {
   chamado: 'o pedido ou a falha de um cliente. É o do dia a dia.',
   problema: 'a mesma falha atingindo vários clientes (a operadora caiu, um defeito no sistema). Ele junta os chamados deles, os incidentes, que fecham sem esperar por ele; o problema só resolve com a causa, a solução e a validação.',
 };
 
+/**
+ * Abrir numa janela: o "Abrir chamado" do alto das telas (`JanelaAbrirChamado`), o filho (`pai`) ou o
+ * problema a partir de um chamado (`incidente`). `painelId` é o painel que já vem escolhido (o da tela
+ * ou o do chamado de baixo); com `painelFixo`, ele é o painel do chamado, sem outra opção (o filho
+ * pode ir para outro).
+ */
 export type AbrirNaJanela = {
-  pai?: string; incidente?: string; painelId?: string;
+  pai?: string; incidente?: string; painelId?: string; painelFixo?: boolean;
   /** aberto: o código do novo */
   onAberto: (codigo: string) => void;
   /** em vez de abrir, reabriu um recente do cliente: o código dele */
@@ -120,6 +127,43 @@ export type AbrirNaJanela = {
 };
 export function NovoChamadoNaJanela(p: AbrirNaJanela) {
   return <Carregador naJanela={p} />;
+}
+
+/**
+ * O "Abrir chamado" do alto das telas do módulo, numa janela por cima da tela (o pedido do Luan na
+ * prévia, em 14/10: "o abrir chamado tem que ser como pop up e não a tela toda"). A tela de baixo fica
+ * como estava (o quadro com os filtros, a lista na mesma página); o endereço é o do Abrir chamado, e o
+ * Voltar do navegador fecha a janela, como na ficha. Aberto (ou reaberto um recente), a janela vira a
+ * ficha do chamado, por cima da mesma tela. Com algo escrito, fechar pergunta antes.
+ */
+export function JanelaAbrirChamado() {
+  const [sp] = useSearchParams();
+  const opcoes = useOpcoes();
+  const fecharJanela = useFecharJanela();
+  const abrirChamado = useAbrirChamado();
+  const [escreveu, setEscreveu] = useState(false);
+  const [descartar, setDescartar] = useState(false);
+  const fechar = () => (escreveu ? setDescartar(true) : fecharJanela());
+  // o painel da tela de onde veio (o quadro, a lista): o chamado nasce nele
+  const pedido = sp.get('painel')?.trim() || undefined;
+  const painel = pedido ? opcoes.data?.paineis.find((p) => p.ativo && (p.id === pedido || p.sigla === pedido.toUpperCase())) : undefined;
+  return (
+    <>
+      <Modal open onClose={fechar} largura="max-w-4xl" titulo={(
+        <span className="flex items-center gap-2 min-w-0">
+          {painel && <PontoDoPainel cor={painel.cor} />}
+          <span className="truncate">{painel ? `Abrir chamado no painel ${painel.nome}` : 'Abrir chamado'}</span>
+        </span>
+      )}>
+        <div id="janela-abrir-chamado">
+          <NovoChamadoNaJanela painelId={pedido} painelFixo onEscreveu={setEscreveu} onCancelar={fechar}
+            onAberto={abrirChamado} onReaberto={abrirChamado} />
+        </div>
+      </Modal>
+      <Confirmar open={descartar} onClose={() => setDescartar(false)} onConfirm={() => { setDescartar(false); fecharJanela(); }} perigoso botao="Descartar"
+        titulo="Descartar o que foi escrito?" texto="O chamado ainda não foi aberto: o que foi escrito nesta janela se perde." />
+    </>
+  );
 }
 
 function Carregador({ naJanela }: { naJanela?: AbrirNaJanela }) {
@@ -163,7 +207,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
    * painel para escolher (o pedido do Luan na prévia). O filho (?pai=) escolhe, porque pode nascer em
    * outro painel (o Desenvolvimento ajudando o Suporte).
    */
-  const painelFixo = !naJanela && !!painelDoEndereco && !refPai;
+  const painelFixo = (naJanela ? !!naJanela.painelFixo : true) && !!painelDoEndereco && !refPai;
 
   const [f, setF] = useState<Form>(() => {
     const fone = doEndereco('telefone') ?? '';

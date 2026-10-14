@@ -74,12 +74,33 @@ export function ehFichaDoChamado(pathname: string): boolean {
   if (!m) return false;
   try { return !TELAS_DO_MODULO.has(decodeURIComponent(m[1]!)); } catch { return false; }
 }
-/** O estado da navegação que leva junto a tela de baixo da janela do chamado. */
+/**
+ * O endereço do Abrir chamado. Pelo botão do alto das telas, abre numa janela por cima da tela (o
+ * pedido do Luan na prévia); pelo link direto (o botão da conversa do LineChat, numa aba nova), na
+ * página inteira.
+ */
+export const ENDERECO_ABRIR = '/atendimento/novo';
+export const ehAbrirChamado = (pathname: string) => /^\/atendimento\/novo\/?$/.test(pathname);
+/** O estado da navegação que leva junto a tela de baixo da janela (a ficha, o Abrir chamado). */
 export type ComFundo = { fundo?: Location };
-/** A tela que fica embaixo da janela do chamado — só quando o endereço é mesmo o de um chamado. */
+/** A tela que fica embaixo da janela — só quando o endereço é mesmo o de uma janela (a ficha de um chamado, o Abrir chamado). */
 export function fundoDaJanela(location: Location): Location | null {
   const fundo = (location.state as ComFundo | null)?.fundo;
-  return fundo && ehFichaDoChamado(location.pathname) ? fundo : null;
+  return fundo && (ehFichaDoChamado(location.pathname) || ehAbrirChamado(location.pathname)) ? fundo : null;
+}
+/**
+ * Fechar a janela por cima da tela: ela entrou no histórico por cima da tela, e voltar um passo é
+ * voltar para ela; aberta sem esse passo (o endereço recarregado numa aba nova), troca pela tela.
+ */
+export function useFecharJanela() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  return useCallback(() => {
+    const passo = (window.history.state as { idx?: number } | null)?.idx ?? 0;
+    const fundo = fundoDaJanela(location);
+    if (passo > 0) navigate(-1);
+    else if (fundo) navigate(`${fundo.pathname}${fundo.search}${fundo.hash}`, { replace: true, state: fundo.state });
+  }, [navigate, location]);
 }
 
 /**
@@ -87,7 +108,8 @@ export function fundoDaJanela(location: Location): Location | null {
  * central ocupando boa parte da tela, porém não direcionando para outra tela".
  *  - de qualquer tela: a janela grande por cima, com a tela de baixo do jeito que estava (o quadro
  *    com os filtros, a lista na mesma página);
- *  - dentro da janela: troca o chamado da janela, sem empilhar (o Voltar e o X voltam para a tela);
+ *  - dentro da janela (a de um chamado ou a do Abrir chamado): troca o que a janela mostra, sem
+ *    empilhar (o Voltar e o X voltam para a tela);
  *  - na ficha aberta pelo link direto (página inteira): continua página.
  */
 export function useIrParaOChamado(): { state?: ComFundo; replace?: boolean } {
@@ -137,11 +159,17 @@ const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tam
  * `painelId`: a tela é de um painel (o quadro, a lista do painel). O "Abrir chamado" abre já nele, sem
  * escolher outro (o pedido do Luan na prévia: "se eu estou dentro do painel de suporte, quero abrir no
  * painel de suporte").
+ *
+ * O "Abrir chamado" abre numa janela por cima da tela, que fica como estava (o pedido do Luan na
+ * prévia, em 14/10: "o abrir chamado tem que ser como pop up e não a tela toda"). Na página inteira do
+ * Abrir chamado (o link direto), o botão recomeça o formulário ali mesmo.
  */
 export function CabecalhoAtendimento({ sub, acoes, painelId }: { sub?: ReactNode; acoes?: ReactNode; painelId?: string }) {
   const pode = usePode();
-  const { pathname } = useLocation();
-  const abrir = painelId ? `/atendimento/novo?painel=${encodeURIComponent(painelId)}` : '/atendimento/novo';
+  const location = useLocation();
+  const { pathname } = location;
+  const abrir = painelId ? `${ENDERECO_ABRIR}?painel=${encodeURIComponent(painelId)}` : ENDERECO_ABRIR;
+  const janela: ComFundo | undefined = ehAbrirChamado(pathname) ? undefined : { fundo: location };
   return (
     <div className="mb-3" id="cabecalho-chamados">
       <div className="flex flex-wrap items-center gap-x-4 shadow-[inset_0_-1px_0_var(--line)]">
@@ -153,7 +181,7 @@ export function CabecalhoAtendimento({ sub, acoes, painelId }: { sub?: ReactNode
         </nav>
         <div className="ml-auto flex flex-wrap items-center gap-2 py-1.5">
           {acoes}
-          {pode.trabalhar && <Link to={abrir} className="btn-primary" id="cabecalho-abrir-chamado"><Plus size={16} /> Abrir chamado</Link>}
+          {pode.trabalhar && <Link to={abrir} state={janela} className="btn-primary" id="cabecalho-abrir-chamado"><Plus size={16} /> Abrir chamado</Link>}
         </div>
       </div>
       {sub && <div className="text-muted text-[13px] mt-2">{sub}</div>}

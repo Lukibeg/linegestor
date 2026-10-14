@@ -17,7 +17,7 @@
  * janela grande por cima da tela, que continua lá embaixo do jeito que estava — o pedido do Luan na
  * prévia. O link direto (/atendimento/SUP-12) abre em página inteira, e a janela tem o botão para ela.
  */
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Maximize2, RotateCcw } from 'lucide-react';
@@ -28,7 +28,7 @@ import { Carregando, Modal, Vazio, mensagemErro } from '../../components/ui/inde
 import { useAuth } from '../../lib/auth.js';
 import { paraALista } from '../../lib/voltar.js';
 import { PontoDoPainel } from './quadro/filtros.js';
-import { chaveDaFicha, enderecoDoChamado, fundoDaJanela, painelDe, useFicha, useOpcoes } from './comum.js';
+import { chaveDaFicha, enderecoDoChamado, painelDe, useFecharJanela, useFicha, useOpcoes } from './comum.js';
 import { useMover } from './mover.js';
 import { FichaAberta, proximaEtapa, type Aberta } from './ficha/base.js';
 import { Cabecalho } from './ficha/Cabecalho.js';
@@ -67,18 +67,11 @@ function useReferencia() {
  */
 export function ChamadoEmJanela() {
   const referencia = useReferencia();
-  const navigate = useNavigate();
-  const location = useLocation();
   const opcoes = useOpcoes();
   const ficha = useFicha(referencia);
   const painel = painelDe(opcoes.data, ficha.data?.painelId);
-  const fechar = useCallback(() => {
-    // a janela entrou no histórico por cima da tela: voltar um passo é voltar para ela
-    const passo = (window.history.state as { idx?: number } | null)?.idx ?? 0;
-    const fundo = fundoDaJanela(location);
-    if (passo > 0) navigate(-1);
-    else if (fundo) navigate(`${fundo.pathname}${fundo.search}${fundo.hash}`, { replace: true, state: fundo.state });
-  }, [navigate, location]);
+  // a janela entrou no histórico por cima da tela: fechar volta para ela
+  const fechar = useFecharJanela();
   return (
     <Modal open onClose={fechar} largura="max-w-[1320px] h-[calc(100vh-32px)]" titulo={(
       <span className="flex items-center gap-2 min-w-0" id="janela-do-chamado">

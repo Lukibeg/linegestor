@@ -31,7 +31,7 @@ import { MeuDia } from './pages/atendimento/MeuDia.js';
 import { PaineisDeChamados } from './pages/atendimento/Inicio.js';
 import { Quadro } from './pages/atendimento/Quadro.js';
 import { ListaDeChamados } from './pages/atendimento/Lista.js';
-import { NovoChamado } from './pages/atendimento/Novo.js';
+import { JanelaAbrirChamado, NovoChamado } from './pages/atendimento/Novo.js';
 import { ChamadoEmJanela, FichaDoChamado } from './pages/atendimento/Ficha.js';
 import { fundoDaJanela } from './pages/atendimento/comum.js';
 import { AjustesAtendimento } from './pages/atendimento/Ajustes.js';
@@ -57,7 +57,8 @@ export function Equipe() {
  * As rotas. O chamado aberto de dentro do sistema (o cartão do quadro, a linha da lista, o aviso do
  * sininho) vem com a tela de baixo no estado da navegação: ela continua desenhada como estava e a
  * ficha abre numa janela grande por cima (o pedido do Luan na prévia). O link direto do chamado
- * (/atendimento/SUP-12, sem a tela de baixo) abre a ficha em página inteira.
+ * (/atendimento/SUP-12, sem a tela de baixo) abre a ficha em página inteira. O "Abrir chamado" do
+ * alto das telas faz o mesmo: janela por cima; pelo link direto (a conversa do LineChat), página.
  */
 function Rotas() {
   const location = useLocation();
@@ -108,6 +109,8 @@ function Rotas() {
       </Routes>
       {fundo && (
         <Routes>
+          {/* o Abrir chamado do alto das telas, numa janela por cima da tela (o pedido do Luan na prévia, em 14/10) */}
+          <Route path="/atendimento/novo" element={<JanelaAbrirChamado />} />
           <Route path="/atendimento/:codigo" element={<ChamadoEmJanela />} />
         </Routes>
       )}

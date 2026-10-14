@@ -45,10 +45,14 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 
 ## 2. Abrir um chamado
 
-**Abrir chamado** (no alto de qualquer tela do módulo). **Dentro de um painel** (no quadro ou na lista),
-o chamado já nasce nele, sem escolher outro; fora (Painéis, Meu dia), escolha o painel. Depois: o
-cliente, o contato (nome e WhatsApp), o título, o **relato do cliente** — o que ele disse, nas palavras
-dele — e a **descrição** (o andamento e os dados técnicos).
+**Abrir chamado** (no alto de qualquer tela do módulo) abre o formulário **numa janela por cima da
+tela**, que fica como estava (o quadro com os filtros, a lista na mesma página). **Dentro de um
+painel** (no quadro ou na lista), o chamado já nasce nele, sem escolher outro; fora (Painéis, Meu
+dia), escolha o painel. Depois: o cliente, o contato (nome e WhatsApp), o título, o **relato do
+cliente** — o que ele disse, nas palavras dele — e a **descrição** (o andamento e os dados técnicos).
+Aberto, a janela vira a **ficha do chamado novo**; fechar volta para a tela. Com algo escrito, fechar
+a janela (o X, o Esc, o clique fora ou **Cancelar**) pergunta antes de descartar. O Voltar do
+navegador também fecha a janela.
 
 - **Registro**: **Chamado** é o do dia a dia (o pedido ou a falha de um cliente). **Problema** é para a
   mesma falha atingindo vários clientes (a operadora caiu, um defeito no sistema): ele junta os
@@ -173,7 +177,8 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    é recusado, e a resposta diz qual.
 3. **O botão "Abrir chamado" na conversa**: nas **ações personalizadas** do LineChat, na conversa, o
    endereço `/atendimento/novo?telefone={{telefone_do_contato}}&nome=…&sessao=…` (a tela mostra
-   inteiro). Confira o nome das variáveis no LineChat.
+   inteiro). Confira o nome das variáveis no LineChat. Por esse endereço, numa aba nova, o Abrir
+   chamado ocupa a aba inteira.
 4. **O cliente respondeu** (pelo n8n): `/api/atendimento/entrada/mensagem` com o telefone, o texto e
    a sessão — reabre o Resolvido, menos agradecimento, e avisa o responsável.
 5. **Webhooks** (o Gestor avisa o n8n): o endereço `https://` do fluxo e os eventos (chamado criado,

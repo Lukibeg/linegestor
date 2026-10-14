@@ -331,9 +331,11 @@ def roteiro(page):
     apontar(page, page.locator('#ficha-como-chega'), 2600)
     page.keyboard.press('Escape'); esperar(page, 600)
 
-    # 8. abrir chamado: os contatos do cliente (um clique preenche) e o cliente que volta com o mesmo problema reabre o de antes
-    ir(page, '/atendimento/novo', 1400)
-    legenda(page, next(n), 'Abrir, ou reabrir o de antes', 'Ao escolher o cliente, aparecem os contatos dele e os chamados recentes: é o mesmo problema? Reabra.', 800)
+    # 8. abrir chamado: numa janela por cima do quadro (o pedido do Luan na prévia); os contatos do cliente (um clique
+    #    preenche) e o cliente que volta com o mesmo problema reabre o de antes
+    ir(page, '/atendimento/quadro?painel=painel-suporte', 1400)
+    legenda(page, next(n), 'Abrir, ou reabrir o de antes', 'Abre numa janela por cima da tela. Com o cliente, vêm os contatos e os recentes: é o mesmo problema? Reabra.', 800)
+    clicar(page, page.locator('#cabecalho-abrir-chamado')); esperar(page, 1200)
     clicar(page, page.locator('button#novo-cliente')); esperar(page, 500)
     page.keyboard.type('Supermercado', delay=60); esperar(page, 500)
     page.keyboard.press('Enter'); esperar(page, 1400)
@@ -355,6 +357,8 @@ def roteiro(page):
     apontar(page, page.locator('#novo-etiquetas-lista button[aria-label="Editar a etiqueta urgente"]'), 1400)
     page.keyboard.press('Escape'); esperar(page, 900)
     legenda_no_alto(page, False)
+    # fechar a janela (nada escrito: fecha direto) volta para o quadro
+    clicar(page, page.locator('[role="dialog"]:has(#janela-abrir-chamado)').get_by_role('button', name='Cancelar', exact=True)); esperar(page, 900)
 
     # 8b. os contatos do cliente: a aba nova na ficha do cliente (o Abrir chamado puxa de lá)
     clicar(page, page.locator('nav a:has-text("Clientes")').first); esperar(page, 1200)
