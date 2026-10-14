@@ -98,8 +98,8 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   **escalonar e voltar de nível pedem o motivo**; o **pai não fecha com filho aberto** (os filhos
   podem estar em outro painel, como o Desenvolvimento); o **problema** (ITIL) junta os incidentes de
   clientes diferentes e só resolve com a causa, a solução e a validação — no Abrir chamado, o
-  **Registro** (Chamado ou Problema) escreve embaixo o que é cada um (a pergunta do Luan na prévia, em
-  14/10: "qual a função desse registro, se é chamado ou problema?"); as **ligações** (relacionado,
+  **Registro** (Chamado ou Problema) diz o que é cada um só na dica do mouse (o texto embaixo da
+  escolha saiu, a pedido do Luan na prévia, em 14/10: "não precisa disso"); as **ligações** (relacionado,
   duplicado de, repete) são **manuais** — nada automático, como ele pediu —, e o código citado no
   texto vira link. A ficha desenha as ligações (cada tipo com um traço e a legenda escrita).
 - **Abrir chamado**: dentro de um painel (o quadro, a lista), o chamado já nasce nele — "se eu estou
