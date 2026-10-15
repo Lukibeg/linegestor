@@ -88,7 +88,7 @@ export function Numeracao({ circuito: fixo }: { circuito?: { id: string; nome: s
 
       {/* barra de seleção */}
       {sel.size > 0 && can('dids.assign') && (
-        <div className="sticky top-14 z-10 card p-2 mb-3 flex flex-wrap items-center gap-2 border-accent bg-accent-soft backdrop-blur">
+        <div className="sticky top-14 md:top-2 z-10 card p-2 mb-3 flex flex-wrap items-center gap-2 border-accent bg-accent-soft backdrop-blur">
           <span className="font-display font-semibold tnum px-2">{sel.size.toLocaleString('pt-BR')} selecionado(s)</span>
           {lista.data && sel.size < lista.data.total && <button className="btn-ghost btn-sm" onClick={selectAllFiltered}>selecionar todos os {lista.data.total.toLocaleString('pt-BR')} filtrados</button>}
           <span className="flex-1" />

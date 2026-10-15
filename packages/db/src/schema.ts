@@ -7,7 +7,7 @@
  *
  *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico · 5. Novidades
  *          6. Projetos · 7. Chamados do LineChat (cópia só de leitura, alimentada pela sincronização)
- *          8. Base de conhecimento
+ *          8. Base de conhecimento · 9. Portal do cliente · 10. Chamados do Gestor (o módulo que substitui o painel do LineChat)
  *
  *  Convenções:
  *   - dinheiro é guardado em CENTAVOS inteiros (R$ 603,38 → 60338), sem arredondamento
@@ -105,6 +105,30 @@ export const clientUnits = pgTable(
     deletedAt: deletedAt(),
   },
   (t) => [index('client_units_client_idx').on(t.clientId)],
+);
+
+/**
+ * OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe
+ * fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor). O Abrir chamado puxa daqui, e um contato
+ * novo nasce lá também. O WhatsApp acha o cliente quando o robô abre o chamado. Não se apaga: desativa.
+ */
+export const clientContacts = pgTable(
+  'client_contacts',
+  {
+    id: id(),
+    clientId: text('client_id').notNull().references(() => clients.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Só os dígitos, com o 55 */
+    phone: text('phone'),
+    email: text('email'),
+    /** O cargo ou o setor: "Recepção", "TI", "Financeiro" */
+    role: text('role'),
+    active: boolean('active').notNull().default(true),
+    createdById: text('created_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('client_contacts_client_idx').on(t.clientId), index('client_contacts_phone_idx').on(t.phone)],
 );
 
 /**
@@ -597,7 +621,7 @@ export const users = pgTable('users', {
  *    do Google, o token da API de avisos, a chave do LineChat, o token da FlwChat e a chave da IA
  */
 export const settings = pgTable('settings', {
-  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) */
+  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe, os números das pessoas e quais avisos vão por onde; a chave própria no cofre, 2.0) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) */
   id: text('id').primaryKey(),
   value: text('value').notNull().default('{}'),
   secretId: text('secret_id').references(() => secrets.id),
@@ -1415,6 +1439,490 @@ export const portalFiles = pgTable(
     deletedAt: deletedAt(),
   },
   (t) => [index('portal_files_article_idx').on(t.articleId)],
+);
+
+// ---------------------------------------------------------------------
+// 10. CHAMADOS DO GESTOR (decisão 0047, Patch 2.0, migração 0015)
+// ---------------------------------------------------------------------
+// O módulo que substitui o painel de chamados do LineChat: aqui o chamado é aberto, trabalhado e
+// fechado (as tabelas `linechat_*` continuam sendo a cópia só de leitura do painel antigo, para
+// consulta e para os relatórios de 2026). As regras ficam em `packages/shared/src/atendimento.ts`
+// (o servidor e a prévia usam as mesmas) e os prazos em `atendimento-prazos.ts`.
+
+/**
+ * Um PAINEL (o Kanban de uma equipe): Suporte, Desenvolvimento, e os que a administração criar
+ * (Interno, Administrativo, Comercial…). Cada um tem a sua sigla e a sua numeração (SUP-12, DEV-3),
+ * as suas etapas e as suas regras.
+ */
+export const ticketPanels = pgTable(
+  'ticket_panels',
+  {
+    id: id(),
+    /** O nome do painel ("Suporte") */
+    name: text('name').notNull(),
+    /** A sigla do código: 2 a 5 letras ("SUP" → SUP-12). Não muda depois do primeiro chamado. */
+    key: text('key').notNull(),
+    description: text('description'),
+    /** A cor do painel na tela (um dos tons dos chips: accent, roxo, turquesa…) */
+    color: text('color').notNull().default('accent'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    /** O próximo número da sequência (SUP-1, SUP-2…): nunca volta, nem depois da lixeira */
+    nextNumber: integer('next_number').notNull().default(1),
+    /** todos = quem tem acesso aos chamados vê · escolhidos = só as pessoas de `member_ids` (e quem cuida dos chamados) */
+    access: text('access').notNull().default('todos'),
+    /** As pessoas que veem e trabalham neste painel, quando o acesso é "escolhidos" */
+    memberIds: text('member_ids').array().notNull().default([]),
+    /** As regras do painel (as opções de Tipo, se conta prazo, em quantos dias o Resolvido fecha, o que é obrigatório ao abrir, se o pai espera os filhos, os supervisores), em JSON */
+    settings: jsonb('settings').notNull().default({}),
+    active: boolean('active').notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [uniqueIndex('ticket_panels_key_uq').on(t.key)],
+);
+
+/**
+ * Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela significa para o chamado
+ * (entrada, andamento, resolvido, fechado); o nível marca N1, N2, N3 e DEV (escalonar = subir de nível).
+ * Etapa que sai não é apagada: ganha `deleted_at`, e os chamados dela vão para outra antes.
+ */
+export const ticketStages = pgTable(
+  'ticket_stages',
+  {
+    id: id(),
+    panelId: text('panel_id').notNull().references(() => ticketPanels.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** entrada | andamento | resolvido | fechado */
+    kind: text('kind').notNull().default('andamento'),
+    /** 1, 2, 3 ou 4 (N1, N2, N3, DEV); nulo nas etapas que não são nível */
+    level: integer('level'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    /** O que precisa estar preenchido para o chamado entrar aqui (lista de campos) */
+    requiredFields: text('required_fields').array().notNull().default([]),
+    /** Quem recebe o aviso quando um chamado chega nesta etapa (ids de pessoas) */
+    notifyUserIds: text('notify_user_ids').array().notNull().default([]),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('ticket_stages_panel_idx').on(t.panelId)],
+);
+
+/**
+ * Um ASSUNTO, em árvore (até 3 níveis), de um painel. Só diz "o quê" (o tipo, a gravidade e a
+ * operadora têm o seu próprio campo). Desativar, nunca apagar; o de-para guarda os nomes da lista
+ * antiga que viram este assunto. A tela nasce em branco: a equipe monta quando a lista fechar.
+ */
+export const ticketSubjects = pgTable(
+  'ticket_subjects',
+  {
+    id: id(),
+    panelId: text('panel_id').notNull().references(() => ticketPanels.id, { onDelete: 'cascade' }),
+    parentId: text('parent_id').references((): AnyPgColumn => ticketSubjects.id),
+    name: text('name').notNull(),
+    /** Quando usar este assunto (aparece ao escolher) */
+    description: text('description'),
+    active: boolean('active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    /** Os passos que entram no checklist do chamado quando ele ganha este assunto */
+    checklist: text('checklist').array().notNull().default([]),
+    /** De-para: os nomes da lista antiga que viram este assunto */
+    aliases: text('aliases').array().notNull().default([]),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('ticket_subjects_panel_idx').on(t.panelId)],
+);
+
+/**
+ * Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, então nem sempre vai ser
+ * assuntos"): os que cada equipe cria além dos do sistema — o "Sistema" e a "Versão publicada" no
+ * Desenvolvimento, por exemplo. O tipo (texto, texto longo, número, data, sim ou não, lista de uma ou de
+ * várias opções) não muda depois de criado. O campo que não serve mais é desativado, nunca apagado: o
+ * valor fica no chamado (`tickets.custom_fields`, pelo id do campo).
+ */
+export const ticketFields = pgTable(
+  'ticket_fields',
+  {
+    id: id(),
+    panelId: text('panel_id').notNull().references(() => ticketPanels.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** texto | texto_longo | numero | data | sim_nao | lista | lista_varios */
+    kind: text('kind').notNull(),
+    /** A explicação que aparece embaixo do campo (na ficha e no Abrir chamado) */
+    help: text('help'),
+    /** As opções das listas: [{id, nome, ativa}] (a que sai fica desativada: o chamado que a tem continua com ela) */
+    options: jsonb('options').notNull().default([]),
+    active: boolean('active').notNull().default(true),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('ticket_fields_panel_idx').on(t.panelId)],
+);
+
+/**
+ * Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se o chamado passar de
+ * painel. O relato é o que o cliente disse; a descrição, o andamento e os dados técnicos; as
+ * anotações ficam em `ticket_notes`, e o histórico de tudo em `ticket_events`.
+ */
+export const tickets = pgTable(
+  'tickets',
+  {
+    id: id(),
+    panelId: text('panel_id').notNull().references(() => ticketPanels.id),
+    stageId: text('stage_id').notNull().references(() => ticketStages.id),
+    /** O número dentro do painel em que nasceu */
+    number: integer('number').notNull(),
+    /** O código, como a equipe escreve ("SUP-12"). Único. */
+    code: text('code').notNull(),
+    /** chamado | problema (o registro ITIL que junta incidentes de várias empresas) */
+    kind: text('kind').notNull().default('chamado'),
+    title: text('title').notNull(),
+    /** O relato do cliente: o que ele disse (vem da conversa) */
+    customerReport: text('customer_report'),
+    /** A descrição: o andamento e os dados técnicos */
+    description: text('description'),
+    clientId: text('client_id').references(() => clients.id),
+    /** O nome de quem procurou o suporte (a pessoa do cliente) */
+    contactName: text('contact_name'),
+    /** O WhatsApp do contato, só dígitos com o 55 (para avisar o cliente) */
+    contactPhone: text('contact_phone'),
+    /** A sessão (conversa) do LineChat de onde o chamado veio */
+    sessionId: text('session_id'),
+    /** manual | robo | botao | agendado | api */
+    origin: text('origin').notNull().default('manual'),
+    assigneeId: text('assignee_id').references(() => users.id),
+    /** Quem acompanha o chamado sem ser o responsável (recebe os avisos na tela) */
+    watcherIds: text('watcher_ids').array().notNull().default([]),
+    subjectId: text('subject_id').references(() => ticketSubjects.id),
+    /** O Tipo ("que tratativa foi essa?"): uma das opções do painel */
+    type: text('type'),
+    /** inoperancia | intermitencia | performance | disfuncional | nao_se_aplica */
+    severity: text('severity'),
+    /** empresa | setor | pessoa */
+    reach: text('reach'),
+    /** critica | alta | media | baixa */
+    priority: text('priority'),
+    /** Por que a prioridade é diferente da sugerida (gravidade × alcance) */
+    priorityReason: text('priority_reason'),
+    /** Os produtos envolvidos (ids de `products`) — o cliente pode ter mais de um */
+    productIds: text('product_ids').array().notNull().default([]),
+    /** As operadoras envolvidas (ids de `carriers`) — o cliente pode ter mais de uma */
+    carrierIds: text('carrier_ids').array().notNull().default([]),
+    tags: text('tags').array().notNull().default([]),
+    /** Os valores dos campos do painel ({id do campo: valor}); o de um campo desativado fica guardado */
+    customFields: jsonb('custom_fields').notNull().default({}),
+    /** A solução dada */
+    solution: text('solution'),
+    /** A causa (no problema: a causa raiz, ou a justificativa de não ter achado) */
+    cause: text('cause'),
+    /** No problema: a solução de contorno enquanto a causa não é resolvida */
+    workaround: text('workaround'),
+    /** No problema: como foi validado que a causa foi resolvida */
+    validation: text('validation'),
+    parentId: text('parent_id').references((): AnyPgColumn => tickets.id),
+    /** O problema de que este chamado é incidente */
+    problemId: text('problem_id').references((): AnyPgColumn => tickets.id),
+    /** O checklist: [{id, texto, feito, porId, em, doAssunto}] */
+    checklist: jsonb('checklist').notNull().default([]),
+    /** As marcas de espera (esperando o cliente / a operadora): [{tipo, motivo, inicio, fim, porId}] */
+    waits: jsonb('waits').notNull().default([]),
+    /** Os alertas de prazo já mandados (para não avisar duas vezes): {resposta_perto: quando, …} */
+    alertsSent: jsonb('alerts_sent').notNull().default({}),
+    /** A primeira resposta de uma pessoa (assumir, anotar, avisar o cliente, sair da entrada) */
+    firstResponseAt: timestamp('first_response_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    /** Quantas vezes foi reaberto */
+    reopenCount: integer('reopen_count').notNull().default(0),
+    /** A última coisa que aconteceu (anotação, etapa, campo) — para achar o parado */
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
+    /** O agendado que criou este chamado */
+    scheduleId: text('schedule_id'),
+    createdById: text('created_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    uniqueIndex('tickets_code_uq').on(t.code),
+    index('tickets_panel_stage_idx').on(t.panelId, t.stageId),
+    index('tickets_client_idx').on(t.clientId),
+    index('tickets_assignee_idx').on(t.assigneeId),
+    index('tickets_parent_idx').on(t.parentId),
+    index('tickets_problem_idx').on(t.problemId),
+    index('tickets_session_idx').on(t.sessionId),
+    index('tickets_phone_idx').on(t.contactPhone),
+  ],
+);
+
+/**
+ * O HISTÓRICO do chamado: cada mudança vira uma linha (etapa, responsável, campo, prioridade,
+ * espera, ligação, aviso…), com quem fez e quando. `kind` e `data` seguem `textoDoEvento` do shared.
+ */
+export const ticketEvents = pgTable(
+  'ticket_events',
+  {
+    id: id(),
+    ticketId: text('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+    kind: text('kind').notNull(),
+    /** Quem fez (nulo = o próprio Gestor, ou uma integração: `actor_name`) */
+    userId: text('user_id').references(() => users.id),
+    /** O nome da integração (a chave de API usada), quando não foi uma pessoa */
+    actorName: text('actor_name'),
+    data: jsonb('data').notNull().default({}),
+    createdAt: createdAt(),
+  },
+  (t) => [index('ticket_events_ticket_idx').on(t.ticketId, t.createdAt)],
+);
+
+/** Uma ANOTAÇÃO no chamado (o que a equipe registra no meio do caminho). Apagar só marca. */
+export const ticketNotes = pgTable(
+  'ticket_notes',
+  {
+    id: id(),
+    ticketId: text('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+    userId: text('user_id').references(() => users.id),
+    actorName: text('actor_name'),
+    body: text('body').notNull(),
+    /** quem a anotação cita com @ (recebeu o aviso, mesmo sem observar o chamado) */
+    mentionedUserIds: text('mentioned_user_ids').array().notNull().default([]),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('ticket_notes_ticket_idx').on(t.ticketId)],
+);
+
+/**
+ * Um ANEXO de anotação (print, PDF, planilha, áudio), no próprio banco como os anexos dos projetos:
+ * entra no backup sem mudar nada. A imagem abre na tela; o resto sempre baixa como arquivo.
+ */
+export const ticketAttachments = pgTable(
+  'ticket_attachments',
+  {
+    id: id(),
+    ticketId: text('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+    noteId: text('note_id').references(() => ticketNotes.id, { onDelete: 'cascade' }),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull().default(0),
+    dataBase64: text('data_base64').notNull(),
+    uploadedById: text('uploaded_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('ticket_attachments_ticket_idx').on(t.ticketId)],
+);
+
+/**
+ * Uma LIGAÇÃO feita à mão entre dois chamados: relacionado, duplicado de, repete. (O pai e o
+ * problema têm coluna própria no chamado.) Tirar a ligação só marca `deleted_at`.
+ */
+export const ticketLinks = pgTable(
+  'ticket_links',
+  {
+    id: id(),
+    fromId: text('from_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+    toId: text('to_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+    /** relacionado | duplicado | repete */
+    kind: text('kind').notNull(),
+    createdById: text('created_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('ticket_links_from_idx').on(t.fromId), index('ticket_links_to_idx').on(t.toId)],
+);
+
+/** O TEMPO GASTO: quem trabalhou no chamado, quanto e quando (o relatório da visita técnica). */
+export const ticketTimeEntries = pgTable(
+  'ticket_time_entries',
+  {
+    id: id(),
+    ticketId: text('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+    userId: text('user_id').references(() => users.id),
+    minutes: integer('minutes').notNull(),
+    note: text('note'),
+    /** O dia do trabalho (AAAA-MM-DD, de Brasília) */
+    workedOn: text('worked_on').notNull(),
+    createdAt: createdAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('ticket_time_ticket_idx').on(t.ticketId)],
+);
+
+/**
+ * O CHAMADO ABERTO NA OPERADORA: o protocolo, quando abriu, o prazo que a operadora prometeu e as
+ * cobranças — num lugar só, em vez de perdido nas anotações. Tem relógio próprio (a espera pela
+ * operadora não para o prazo do chamado).
+ */
+export const ticketCarrierCases = pgTable(
+  'ticket_carrier_cases',
+  {
+    id: id(),
+    ticketId: text('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
+    carrierId: text('carrier_id').references(() => carriers.id),
+    /** O nome da operadora (quando não é uma do cadastro) */
+    carrierName: text('carrier_name').notNull(),
+    protocol: text('protocol').notNull(),
+    openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Quando a operadora prometeu resolver */
+    promisedAt: timestamp('promised_at', { withTimezone: true }),
+    /** Cobrar a operadora a cada quantas horas */
+    followUpHours: integer('follow_up_hours'),
+    /** aberto | fechado */
+    status: text('status').notNull().default('aberto'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    /** O andamento: [{em, porId, acao: abriu|cobrou|fechou, texto}] */
+    history: jsonb('history').notNull().default([]),
+    createdById: text('created_by_id').references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [index('ticket_carrier_ticket_idx').on(t.ticketId)],
+);
+
+/** Um CHAMADO AGENDADO: nasce sozinho na hora marcada (a verificação dos DIDs todo dia 15). */
+export const ticketSchedules = pgTable('ticket_schedules', {
+  id: id(),
+  panelId: text('panel_id').notNull().references(() => ticketPanels.id),
+  title: text('title').notNull(),
+  customerReport: text('customer_report'),
+  clientId: text('client_id').references(() => clients.id),
+  assigneeId: text('assignee_id').references(() => users.id),
+  subjectId: text('subject_id').references(() => ticketSubjects.id),
+  priority: text('priority'),
+  checklist: text('checklist').array().notNull().default([]),
+  /** A regra: {frequencia: diaria|semanal|mensal|uma_vez, hora, dias, diaDoMes, data, soDiasDeAtendimento} */
+  rule: jsonb('rule').notNull(),
+  active: boolean('active').notNull().default(true),
+  /** A próxima vez em que nasce (o relógio olha esta coluna) */
+  nextRunAt: timestamp('next_run_at', { withTimezone: true }),
+  lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+  /** O código do último chamado que nasceu daqui */
+  lastTicketCode: text('last_ticket_code'),
+  createdById: text('created_by_id').references(() => users.id),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+  deletedAt: deletedAt(),
+});
+
+/**
+ * Uma RESPOSTA PRONTA: um clique manda a mensagem e muda o chamado ("Pedir teste ao cliente" manda
+ * o texto e marca que o chamado espera o cliente). Sem painel = vale em todos.
+ */
+export const ticketMacros = pgTable('ticket_macros', {
+  id: id(),
+  panelId: text('panel_id').references(() => ticketPanels.id),
+  name: text('name').notNull(),
+  /** O texto, com {contato}, {codigo}, {cliente}, {titulo}, {responsavel} e {eu} */
+  body: text('body').notNull().default(''),
+  /** O que muda no chamado: {avisarCliente, etapaId, esperar, etiqueta, assumir} */
+  action: jsonb('action').notNull().default({}),
+  sortOrder: integer('sort_order').notNull().default(0),
+  active: boolean('active').notNull().default(true),
+  createdById: text('created_by_id').references(() => users.id),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+  deletedAt: deletedAt(),
+});
+
+/**
+ * Uma ETIQUETA e a COR dela (2.0, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher
+ * a cor"). O chamado guarda os nomes (`tickets.tags`), sempre escritos como aqui. A etiqueta nova nasce
+ * com a cor escolhida na tela, ou cinza (o robô, a IA, a resposta pronta); quem cuida dos chamados troca
+ * a cor em Ajustes › Etiquetas.
+ */
+export const ticketTags = pgTable(
+  'ticket_tags',
+  {
+    id: id(),
+    /** O nome como a equipe escreveu ("Cliente VIP") */
+    name: text('name').notNull(),
+    /** O nome para comparar (minúsculo, sem acento, um espaço só): não se repete */
+    nameKey: text('name_key').notNull(),
+    /** A cor: neutral (cinza), accent (azul), roxo, turquesa, ok (verde), amarelo, signal (laranja), bad (vermelho), rosa */
+    color: text('color').notNull().default('neutral'),
+    createdById: text('created_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('ticket_tags_name_key_uq').on(t.nameKey)],
+);
+
+/**
+ * O TELEFONE QUE O GESTOR JÁ CONHECE: o WhatsApp de um contato e o cliente dele, aprendido dos
+ * chamados. É o que faz o chamado que chega pelo robô já vir com o cliente preenchido.
+ */
+export const ticketContacts = pgTable(
+  'ticket_contacts',
+  {
+    id: id(),
+    /** Só dígitos, com o 55 */
+    phone: text('phone').notNull(),
+    name: text('name'),
+    clientId: text('client_id').references(() => clients.id),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex('ticket_contacts_phone_uq').on(t.phone)],
+);
+
+/** Um AVISO NA TELA (o sininho): recebeu um chamado, o prazo está vencendo, o cliente respondeu… */
+export const ticketNotifications = pgTable(
+  'ticket_notifications',
+  {
+    id: id(),
+    userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    ticketId: text('ticket_id').references(() => tickets.id, { onDelete: 'cascade' }),
+    /** recebeu | etapa | prazo_perto | prazo_vencido | sem_dono | critico | cliente_respondeu | pai */
+    kind: text('kind').notNull(),
+    body: text('body').notNull(),
+    createdAt: createdAt(),
+    readAt: timestamp('read_at', { withTimezone: true }),
+  },
+  (t) => [index('ticket_notifications_user_idx').on(t.userId, t.readAt)],
+);
+
+/**
+ * Um AVISO PARA FORA (webhook): o Gestor manda o que aconteceu com os chamados para outro sistema
+ * (o n8n). A assinatura (o segredo) fica no cofre; o resultado do último envio fica aqui.
+ */
+export const ticketWebhooks = pgTable('ticket_webhooks', {
+  id: id(),
+  name: text('name').notNull(),
+  url: text('url').notNull(),
+  /** Os eventos: chamado.criado, chamado.alterado, chamado.movido, chamado.anotacao, chamado.resolvido, chamado.fechado */
+  events: text('events').array().notNull().default([]),
+  active: boolean('active').notNull().default(true),
+  /** O segredo da assinatura (HMAC), no cofre */
+  secretId: text('secret_id').references(() => secrets.id),
+  lastAt: timestamp('last_at', { withTimezone: true }),
+  lastOk: boolean('last_ok'),
+  lastMessage: text('last_message'),
+  createdById: text('created_by_id').references(() => users.id),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+  deletedAt: deletedAt(),
+});
+
+/**
+ * Uma CHAVE DE API para o robô do LineChat e o n8n abrirem e mexerem nos chamados. A chave aparece
+ * uma vez, ao criar; no banco fica só o resumo (sha256) e o começo, para reconhecer na lista.
+ */
+export const ticketApiKeys = pgTable(
+  'ticket_api_keys',
+  {
+    id: id(),
+    name: text('name').notNull(),
+    /** Os primeiros caracteres da chave (para a pessoa reconhecer qual é) */
+    prefix: text('prefix').notNull(),
+    /** O sha256 da chave inteira */
+    hash: text('hash').notNull(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    createdById: text('created_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [uniqueIndex('ticket_api_keys_hash_uq').on(t.hash)],
 );
 
 // ---------------------------------------------------------------------

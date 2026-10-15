@@ -1,7 +1,10 @@
 /** Clientes e assinaturas de produto. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema, LoginModeloGravarSchema, LogoGravarSchema, ModuloGravarSchema, RedePadraoSchema, SEM_LIMITE, UnidadeGravarSchema, Booleano } from '@gestor/shared';
+import {
+  AssinaturaGravarSchema, ClienteAtualizarSchema, ClienteCriarSchema, ClienteListarSchema, ContatoGravarSchema, LoginModeloGravarSchema, LogoGravarSchema,
+  ModuloGravarSchema, RedePadraoSchema, SEM_LIMITE, UnidadeGravarSchema, Booleano, type ContatoDoCliente,
+} from '@gestor/shared';
 import * as clientsSvc from '../services/clients.js';
 import * as didsSvc from '../services/dids.js';
 import * as inv from '../services/inventory.js';
@@ -9,6 +12,16 @@ import * as audit from '../services/audit.js';
 import * as projetos from '../services/projects.js';
 
 const Id = z.object({ id: z.string() });
+
+/** A frase da auditoria de um contato que mudou ("Desativou o contato Maria de Clínica Aurora"; "Alterou …: WhatsApp, Cargo"). */
+function resumoDoContato(antes: ContatoDoCliente, depois: ContatoDoCliente, cliente: string): string {
+  if (antes.ativo !== depois.ativo) return `${depois.ativo ? 'Reativou' : 'Desativou'} o contato ${depois.nome} de ${cliente}`;
+  const mudou = [
+    antes.nome !== depois.nome ? 'Nome' : '', antes.whatsapp !== depois.whatsapp ? 'WhatsApp' : '',
+    antes.email !== depois.email ? 'E-mail' : '', antes.cargo !== depois.cargo ? 'Cargo' : '',
+  ].filter(Boolean);
+  return mudou.length ? `Alterou o contato ${depois.nome} de ${cliente}: ${mudou.join(', ')}` : `Salvou o contato ${depois.nome} de ${cliente} sem mudanças`;
+}
 
 const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Clientes'], summary: 'Listar clientes (busca, filtro por produtos AND/OR, arquivados)', querystring: ClienteListarSchema.extend({ includeInternal: Booleano.default(false) }) } },
@@ -139,6 +152,24 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       const row = await clientsSvc.removeUnit(app.db, req.params.id, req.params.unitId);
       await app.audit(req, { action: 'delete', entityType: 'client', entityId: req.params.id, summary: `Removeu a unidade "${row.name}"` });
       return { ok: true };
+    });
+
+  // ---- os contatos (2.0): o cadastro mexe, e quem trabalha nos chamados também (o Abrir chamado cria contato) ----
+  app.get('/:id/contatos', { preHandler: app.requireAnyPermission('records.read', 'support.read'), schema: { tags: ['Clientes'], summary: 'Os contatos do cliente (os ativos primeiro), com quantos chamados cada WhatsApp tem', params: Id } },
+    async (req) => clientsSvc.listarContatos(app.db, req.params.id));
+
+  app.post('/:id/contatos', { preHandler: app.requireAnyPermission('records.write', 'tickets.work'), schema: { tags: ['Clientes'], summary: 'Incluir um contato no cliente (o WhatsApp não se repete entre os ativos)', params: Id, body: ContatoGravarSchema } },
+    async (req, reply) => {
+      const r = await clientsSvc.criarContato(app.db, req.params.id, req.body, req.user!.id);
+      await app.audit(req, { action: 'create', entityType: 'client', entityId: req.params.id, summary: `Incluiu o contato ${r.contato.nome}${r.contato.cargo ? ` (${r.contato.cargo})` : ''} em ${r.cliente}`, after: r.contato });
+      return reply.status(201).send(r.contato);
+    });
+
+  app.put('/:id/contatos/:contatoId', { preHandler: app.requireAnyPermission('records.write', 'tickets.work'), schema: { tags: ['Clientes'], summary: 'Editar, desativar ou reativar um contato do cliente', params: Id.extend({ contatoId: z.string() }), body: ContatoGravarSchema } },
+    async (req) => {
+      const r = await clientsSvc.alterarContato(app.db, req.params.id, req.params.contatoId, req.body);
+      await app.audit(req, { action: 'update', entityType: 'client', entityId: req.params.id, summary: resumoDoContato(r.antes, r.depois, r.cliente), before: r.antes, after: r.depois });
+      return r.depois;
     });
 
   // ---- login e senha padrão dos aparelhos, por modelo ----

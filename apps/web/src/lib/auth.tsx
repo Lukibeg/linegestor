@@ -9,8 +9,8 @@ import type { Me } from '../api/types.js';
 
 type Ctx = {
   user: Me | null; loading: boolean;
-  /** Devolve true quando ainda falta o código de 6 dígitos. */
-  login: (email: string, password: string) => Promise<boolean>;
+  /** Devolve true quando ainda falta o código de 6 dígitos. `embutido`: a tela está dentro de outro site. */
+  login: (email: string, password: string, embutido?: boolean) => Promise<boolean>;
   entrarComCodigo: (code: string) => Promise<void>;
   logout: () => Promise<void>; can: (p: string) => boolean; refresh: () => Promise<void>;
 };
@@ -24,8 +24,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { void refresh(); }, [refresh]);
   const value = useMemo<Ctx>(() => ({
     user, loading, refresh,
-    login: async (email, password) => {
-      const r = await api.auth.login(email, password);
+    login: async (email, password, embutido) => {
+      const r = await api.auth.login(email, password, embutido);
       if (r.needsCode) return true;
       // cada pessoa tem as suas respostas (o que já leu das novidades, o que pode ver):
       // sem limpar, quem entra depois herda o que ficou guardado de quem saiu

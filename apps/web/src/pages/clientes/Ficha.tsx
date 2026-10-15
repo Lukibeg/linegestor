@@ -1,7 +1,7 @@
 /**
  * Ficha do cliente: uma página com endereço próprio e abas — ou a mesma ficha numa janela, por
  * cima de outra tela (`FichaEmJanela`, desde o 1.5: o cliente de um projeto abre assim).
- * Visão geral · Acessos · DIDs · Equipamentos · Produtos · Unidades · Projetos · Portal · Chamados · Histórico
+ * Visão geral · Contatos · Acessos · DIDs · Equipamentos · Produtos · Unidades · Projetos · Portal · Chamados · Histórico
  */
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +17,7 @@ import { ordenarLista, Th, useOrdenacaoLocal } from '../../lib/ordenacao.js';
 import { paraALista, Voltar } from '../../lib/voltar.js';
 import { contar, TdN, ThN } from '../../lib/contagem.js';
 import { ClienteForm } from './Form.js';
+import { ContatosDoCliente } from './Contatos.js';
 import { ChipSituacao } from '../projetos/partes.js';
 import { BarrasRanking } from '../../components/graficos.js';
 import { FiltroEmBotao } from '../../lib/filtros.js';
@@ -27,7 +28,7 @@ import { ArtigosLigados } from '../base/partes.js';
 import { AcessosDoPortal } from '../portal/Acessos.js';
 import { MarcaRecibo, RecibosDaMovimentacao } from '../inventario/Recibos.js';
 
-type Aba = 'geral' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'portal' | 'chamados' | 'historico';
+type Aba = 'geral' | 'contatos' | 'produtos' | 'dids' | 'equipamentos' | 'unidades' | 'acessos' | 'projetos' | 'portal' | 'chamados' | 'historico';
 
 /** A página da ficha (rota `/clientes/:id`): a aba escolhida mora no endereço. */
 export function ClienteFicha() {
@@ -86,7 +87,10 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
       </>}
     >
       <Abas atual={aba} onChange={onAba} abas={[
-        { id: 'geral', label: 'Visão geral' }, { id: 'acessos', label: 'Acessos' },
+        { id: 'geral', label: 'Visão geral' },
+        // 2.0: as pessoas do cliente (o Abrir chamado puxa daqui)
+        { id: 'contatos', label: <>Contatos <span className="text-muted">({c.contactCount})</span></> },
+        { id: 'acessos', label: 'Acessos' },
         { id: 'dids', label: <>DIDs <span className="text-muted">({c.didCount})</span></> }, { id: 'equipamentos', label: <>Equipamentos <span className="text-muted">({c.deviceCount})</span></> },
         { id: 'produtos', label: <>Produtos <span className="text-muted">({ativos.length})</span></> },
         { id: 'unidades', label: <>Unidades <span className="text-muted">({c.unitCount})</span></> },
@@ -98,6 +102,7 @@ function FichaDoCliente({ id, aba, onAba, emJanela = false }: { id: string; aba:
         ...(can('audit.read') ? [{ id: 'historico' as Aba, label: 'Histórico' }] : []),
       ]} />
       {aba === 'geral' && <Geral c={c} />}
+      {aba === 'contatos' && <ContatosDoCliente c={c} />}
       {aba === 'acessos' && <Acessos c={c} />}
       {aba === 'dids' && <Dids c={c} />}
       {aba === 'equipamentos' && <Equipamentos c={c} />}
@@ -1068,7 +1073,7 @@ function ChamadosDoCliente({ c }: { c: ClientFull }) {
   return (
     <div className="card p-4 sm:p-5 flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-display font-semibold">Chamados do LineChat</h2>
+        <h2 className="font-display font-semibold">Tickets do LineChat</h2>
         <div className="flex flex-wrap items-center gap-1.5">
           {PERIODOS_DO_CLIENTE.map((x) => <button key={x.id} type="button" className={`btn-sm ${periodo === x.id ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setPeriodo(x.id)} aria-pressed={periodo === x.id}>{x.rotulo}</button>)}
           <Link className="btn-secondary btn-sm" to={`/chamados/relatorios?sec=clientes&cliente=${c.id}`}>Ver nos Relatórios <ExternalLink size={13} /></Link>

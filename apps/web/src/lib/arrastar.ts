@@ -7,7 +7,8 @@
  *    ordem já muda na tela (os outros abrem espaço) e soltar só confirma;
  *  - **Esc** devolve tudo como estava antes de pegar;
  *  - mouse, caneta ou dedo (a alça não rola a página: ela leva `touch-action: none`);
- *  - perto da borda de cima ou de baixo da janela, a página rola sozinha.
+ *  - perto da borda de cima ou de baixo da janela, a página rola sozinha (dentro de uma janela que
+ *    rola por dentro, como a do painel com as etapas, é ela que rola).
  *
  * Por dentro: os cartões levam `data-arrastavel="<id>"`. A cada movimento, acha-se o cartão sob o
  * ponteiro e em que metade dele o ponteiro está (esquerda/direita num cartão de meia largura,
@@ -23,8 +24,20 @@ import { useCallback, useEffect, useRef, useState, type PointerEvent as EventoPo
 /** O cabeçalho fixo ocupa o alto da janela: a rolagem automática começa abaixo dele. */
 const BORDA_CIMA = 120;
 const BORDA_BAIXO = 70;
+/** Numa caixa que rola por dentro: a faixa perto da borda que faz rolar (em cima pode haver uma barra grudada). */
+const BORDA_CAIXA_CIMA = 70;
+const BORDA_CAIXA_BAIXO = 50;
 /** Quanto o ponteiro precisa andar (na página) entre uma troca e outra. */
 const ANDAR = 6;
+
+/** A caixa que rola em volta da lista (a janela do painel, por exemplo); sem nenhuma, quem rola é a página. */
+function caixaQueRola(el: HTMLElement | null): HTMLElement | null {
+  for (let p = el?.parentElement ?? null; p && p !== document.body; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if ((o === 'auto' || o === 'scroll') && p.scrollHeight > p.clientHeight) return p;
+  }
+  return null;
+}
 
 export function useArrastar(ordem: string[], mudar: (nova: string[]) => void) {
   const [arrastando, setArrastando] = useState<string | null>(null);
@@ -46,9 +59,12 @@ export function useArrastar(ordem: string[], mudar: (nova: string[]) => void) {
     e.preventDefault();
     parada.current?.(false);
     const antes = [...ordemRef.current];
+    const caixa = caixaQueRola(e.currentTarget);
+    /** O quanto já rolou (a página e a caixa): o ponteiro parado com a lista rolando também "anda". */
+    const rolado = () => window.scrollY + (caixa?.scrollTop ?? 0);
     let x = e.clientX;
     let y = e.clientY;
-    let ultimo = { x, y: y + window.scrollY };
+    let ultimo = { x, y: y + rolado() };
     let raf = 0;
     posicao.current = { x, y };
 
@@ -58,7 +74,7 @@ export function useArrastar(ordem: string[], mudar: (nova: string[]) => void) {
     };
 
     const testar = () => {
-      const yPagina = y + window.scrollY;
+      const yPagina = y + rolado();
       if (Math.hypot(x - ultimo.x, yPagina - ultimo.y) < ANDAR) return;
       let alvo: HTMLElement | undefined;
       for (const el of document.querySelectorAll<HTMLElement>('[data-arrastavel]')) {
@@ -82,9 +98,11 @@ export function useArrastar(ordem: string[], mudar: (nova: string[]) => void) {
     };
 
     const rolar = () => {
-      const baixo = window.innerHeight - BORDA_BAIXO;
-      const v = y < BORDA_CIMA ? -Math.ceil((BORDA_CIMA - y) / 5) : y > baixo ? Math.ceil((y - baixo) / 5) : 0;
-      if (v) { window.scrollBy(0, Math.max(-24, Math.min(24, v))); testar(); }
+      const r = caixa?.getBoundingClientRect();
+      const cima = r ? r.top + BORDA_CAIXA_CIMA : BORDA_CIMA;
+      const baixo = r ? r.bottom - BORDA_CAIXA_BAIXO : window.innerHeight - BORDA_BAIXO;
+      const v = y < cima ? -Math.ceil((cima - y) / 5) : y > baixo ? Math.ceil((y - baixo) / 5) : 0;
+      if (v) { (caixa ?? window).scrollBy(0, Math.max(-24, Math.min(24, v))); testar(); }
       raf = requestAnimationFrame(rolar);
     };
 

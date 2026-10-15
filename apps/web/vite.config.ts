@@ -19,6 +19,7 @@ const semVideoDaPrevia: Plugin = {
 
 export default defineConfig({
   plugins: [react(), semVideoDaPrevia],
-  server: { port: 5173, proxy: { '/api': { target: 'http://localhost:3333', changeOrigin: true } } },
+  // API_PROXY: para subir mais de uma interface de teste ao mesmo tempo, cada uma com o seu servidor
+  server: { port: 5173, proxy: { '/api': { target: process.env.API_PROXY ?? 'http://localhost:3333', changeOrigin: true } } },
   build: { target: 'es2022', sourcemap: false, chunkSizeWarningLimit: 900 },
 });

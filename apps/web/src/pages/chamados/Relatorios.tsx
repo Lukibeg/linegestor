@@ -165,9 +165,9 @@ export function RelatoriosChamados() {
   const gruposSalvos = useMemo(() => new Map((painel.data?.itens ?? []).map((x) => [x.id, x.grupos ?? []])), [painel.data]);
   const temFiltro = MULTI.some((k) => sp.getAll(k).length) || !!sp.get('busca') || sp.get('arquivados') === '1';
 
-  if (opcoes.isLoading) return <Pagina titulo="Chamados"><Carregando /></Pagina>;
+  if (opcoes.isLoading) return <Pagina titulo="Relatórios"><Carregando /></Pagina>;
   if (op && !op.configurado && op.totalCards === 0) {
-    return <Pagina titulo="Chamados"><Vazio titulo="A leitura do LineChat ainda não foi ligada" texto="Os relatórios usam os chamados copiados do LineChat. A administração liga a leitura em Administração › Ajustes." /></Pagina>;
+    return <Pagina titulo="Relatórios"><Vazio titulo="A leitura do LineChat ainda não foi ligada" texto="Os relatórios usam os chamados copiados do LineChat. A administração liga a leitura em Administração › Ajustes." /></Pagina>;
   }
 
   /** Os filtros escritos, para o rodapé do Fechamento do mês (vai junto no PDF). */
@@ -225,8 +225,8 @@ export function RelatoriosChamados() {
 
   return (
     <Pagina
-      titulo="Chamados"
-      sub={<>Relatórios do painel <b className="text-ink-2">{op?.painelNome || 'de suporte'}</b> do LineChat. Clique num número, numa faixa ou num quadrado para ver os chamados.</>}
+      titulo="Relatórios"
+      sub={<>Os relatórios dos tickets do painel <b className="text-ink-2">{op?.painelNome || 'de suporte'}</b> do LineChat. Clique num número, numa faixa ou num quadrado para ver os chamados.</>}
       acoes={<>
         <Situacao op={op} />
         {op?.linkDoPainel && <a className="btn-secondary btn-sm" href={op.linkDoPainel} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Abrir no LineChat</a>}
@@ -271,7 +271,7 @@ export function RelatoriosChamados() {
             <div className="flex flex-wrap items-center gap-2 mb-3">
               {comPeriodo && r && op && <Periodo de={r.de} ate={r.ate} hoje={r.hoje} primeiroDia={op.primeiroDia} onChange={(de, ate) => mudar((n) => { n.set('de', de); n.set('ate', ate); })} />}
               {op && <Filtros op={op} sp={sp} definirLista={definirLista} grupos={gruposSalvos} />}
-              <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Cards arquivados no LineChat. A tela de Chamados também não conta, a não ser que você ligue.">
+              <label className="flex items-center gap-2 text-[13px] text-ink-2 cursor-pointer ml-1" title="Cards arquivados no LineChat. As abas Hoje e Período também não contam, a não ser que você ligue.">
                 <Toggle checked={sp.get('arquivados') === '1'} onChange={(v) => definir('arquivados', v ? '1' : undefined)} />
                 <Archive size={14} /> incluir arquivados
               </label>
@@ -347,7 +347,7 @@ function Organizar({ aba, a, mudou, salvando, ultimaArrumacao, mover, estrela, e
   const botao = 'p-1.5 rounded-md text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent';
   return (
     <div className="flex flex-col gap-3">
-      <div className="sticky top-16 z-10 rounded-xl border border-accent bg-accent-soft px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 shadow-sm">
+      <div className="sticky top-16 md:top-2 z-10 rounded-xl border border-accent bg-accent-soft px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 shadow-sm">
         <LayoutGrid size={17} className="text-accent shrink-0" />
         <div className="text-[13px] text-accent-ink flex-1 min-w-[240px] leading-snug">
           <b>Organizando os Relatórios para a equipe toda.</b> Em cada aba, mude a ordem com as setas, esconda o que não usa e marque a estrela <Star size={12} className="inline -mt-0.5" /> para pôr nos Favoritos.

@@ -32,8 +32,8 @@ export function PortalDaEquipe() {
   const aba = (['tutoriais', 'acessos', 'ajustes'].includes(sp.get('aba') ?? '') ? sp.get('aba') : 'tutoriais') as Aba;
   return (
     <Pagina
-      titulo="Portal do cliente"
-      sub="O passo a passo que os clientes veem, com vídeo, print e arquivo — e quem da empresa deles pode entrar."
+      titulo="Base dos clientes"
+      sub="O portal do cliente: o passo a passo que os clientes veem, com vídeo, print e arquivo — e quem da empresa deles pode entrar."
       acoes={<>
         {/* na prévia o portal abre aqui mesmo (outra aba começaria a demonstração do zero) */}
         <a className="btn-secondary" href={IS_DEMO ? '#/portal' : '/portal'} target={IS_DEMO ? undefined : '_blank'} rel="noreferrer" title="Entre com o seu e-mail e a sua senha do Gestor"><ExternalLink size={15} /> Abrir o portal</a>

@@ -159,7 +159,7 @@ export type Subscription = {
 export type ClientNetwork = { ipAddress: string | null; subnetMask: string | null; defaultRouter: string | null; dns1: string | null; dns2: string | null; note: string | null; wirelessPassword: SecretRef; updatedAt: string };
 /** Login e senha padrão dos aparelhos de um MODELO no cliente (todos os GXP1610 dele usam o mesmo). A senha só diz se existe. */
 export type ClientDeviceLogin = { id: string; modelId: string; modelName: string; username: string | null; password: SecretRef; note: string | null; updatedAt: string };
-export type ClientFull = ClientListItem & { subscriptions: Subscription[]; unitCount: number; network: ClientNetwork | null; deviceLogins: ClientDeviceLogin[] };
+export type ClientFull = ClientListItem & { subscriptions: Subscription[]; unitCount: number; contactCount: number; network: ClientNetwork | null; deviceLogins: ClientDeviceLogin[] };
 /** Uma unidade do cliente (Matriz, filial, loja), com endereço e o IP fixo de saída da rede dela. */
 export type ClientUnit = { id: string; name: string; isMain: boolean; address: string | null; egressIp: string | null; note: string | null; createdAt: string; deviceCount: number };
 
@@ -510,3 +510,16 @@ export class ApiError extends Error {
   /** `details` costuma ser a lista de campos inválidos, mas alguns erros do banco mandam um texto. */
   constructor(public status: number, message: string, public details: Array<{ field: string; message: string }> | string | null = null) { super(message); }
 }
+
+// ---------- os chamados do Gestor (2.0, decisão 0047): os formatos moram no @gestor/shared ----------
+export type {
+  OpcoesAtendimento, QuadroAtendimento, ColunaQuadro, CartaoChamado, FichaChamado, MeuDia, ResumoDoPainel, AvisosNaTela, AvisoNaTela, CadastroDoCliente, Painel, EtapaPainel,
+  AjustesDoPainel, Assunto, AssuntoCurto, EventoChamado, AnotacaoChamado, AnexoChamado, TempoGasto, CasoOperadora, PassoTrajetoria, LigacaoMostradaChamado,
+  ReferenciaMostrada, GrafoChamado, NoGrafo, ArestaGrafo, RespostaPronta, Agendado, AvisosChamadosTela, WebhookTela, ChaveApiTela, IntegracoesTela, SugestaoIa,
+  TipoLigacaoChamado, ChamadoCriarEntrada, ChamadoAlterarEntrada, MoverEntrada, ChecklistEntrada, TempoEntrada, OperadoraCasoEntrada, PainelGravarEntrada,
+  EtapaGravarEntrada, AssuntoGravarEntrada, RespostaProntaGravarEntrada, AgendadoGravarEntrada, AvisosChamadosEntrada, WebhookGravarEntrada, AjustesPrazos,
+  CampoObrigatorio, TipoEtapa, ItemChecklist, SituacaoDoChamado, Prioridade, Gravidade, Alcance, EstadoPrazo, TipoEspera, PessoaCurta, AcaoResposta, RegraAgendado,
+  EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, Nivel, CampoPersonalizado, CampoGravarEntrada, CamposDoSistemaEntrada, CampoDoSistema, TipoCampo,
+  OpcaoDoCampo, ValorDoCampo, ValoresDosCampos, Obrigatorio, CorEtiqueta, EtiquetaComCor, EtiquetaDoCatalogo, EtiquetaGravarEntrada, EtiquetaEditarEntrada, EtiquetaEditarPeloNomeEntrada,
+  ModelosDoLineChat, ModeloDoLineChat, ModeloAprovado, EnvioAoCliente, TipoArquivoDoModelo,
+} from '@gestor/shared';

@@ -197,12 +197,14 @@ banco local e teste ali. Nunca o contrário.
 |---|---|
 | Rede | Firewall fechado; nem o banco nem a API abrem porta para a internet — só o Caddy |
 | Transporte | HTTPS obrigatório, certificado automático, HSTS de 1 ano |
-| Cabeçalhos | `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` |
+| Cabeçalhos | `nosniff`, `Referrer-Policy`, `Permissions-Policy` (no Caddy) e a política de conteúdo (no sistema, desde o 2.0): o Gestor só abre dentro dele mesmo e dos sites liberados em Chamados › Ajustes › Integrações (decisão 0047) |
+| Pedidos de outro site | Todo pedido que muda algo confere de onde veio (`Origin`): de outro site, é recusado — menos a entrada das integrações (chave de API, sem cookie) |
 | Entrada | Acesso por sessão em cookie assinado e `httpOnly`; limite de tentativas de login |
 | Senhas guardadas | Cifradas com AES-256-GCM; a chave fica no `.env`, nunca no banco |
 | Quem pode o quê | 4 papéis e 21 permissões; toda ação sensível fica na auditoria |
 | Portal do cliente | Login separado do da equipe (outro cookie, outra tabela); a pessoa cria a própria senha pelo convite; cai sozinho quando o cliente sai da base |
-| IA da base (opcional) | Desligada até a administração ligar. A chave fica no cofre e só vai para o provedor dela (no compatível, só para o serviço dela; endereço só `https://` da internet, sem seguir redirecionamento). Saem do servidor só os artigos publicados que a busca achar (com os nomes ligados a eles) e, no rascunho, o texto do card. 30 usos por pessoa por hora; perguntas, rascunhos, ajustes, testes e a busca de modelos vão para a auditoria |
+| IA da base (opcional) | Desligada até a administração ligar. A chave fica no cofre e só vai para o provedor dela (no compatível, só para o serviço dela; endereço só `https://` da internet, sem seguir redirecionamento). Saem do servidor só os artigos publicados que a busca achar (com os nomes ligados a eles), no rascunho o texto do card e, no Preencher com IA do chamado (2.0), a conversa do LineChat (ou o texto do chamado) com a lista de assuntos. 30 usos por pessoa por hora; perguntas, rascunhos, ajustes, testes e a busca de modelos vão para a auditoria |
+| Integrações dos chamados (2.0) | Chave de API para o robô e o n8n: aparece uma vez, o banco guarda só o resumo, dá para revogar; no endereço (`?chave=`) ela não vai para o log. Webhooks de saída só para endereço `https://` da internet, assinados com um segredo do cofre |
 | Dados | Nada é apagado de verdade (lixeira); exportação com senhas só em ZIP com senha e auditada |
 | Entrada (2ª etapa) | Código de 6 dígitos do celular (TOTP), opcional por pessoa, com códigos de recuperação |
 | Contêiner | Roda como usuário sem poderes, nunca como root |

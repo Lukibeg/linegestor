@@ -3,12 +3,14 @@
  * Em produção ela aponta para o servidor (client.ts); na prévia publicada aponta para a versão de mentira (demo.ts).
  */
 import type * as T from './types.js';
+import type { ContatoDoCliente, ContatoGravarEntrada } from '@gestor/shared';
 import { API_BASE } from './base.js';
 
 export type Api = {
   auth: {
     me(): Promise<T.Me>;
-    login(email: string, password: string): Promise<T.Entrada>;
+    /** `embutido`: a tela está dentro de outro site (o menu do LineChat): o servidor manda o cookie que funciona num iframe */
+    login(email: string, password: string, embutido?: boolean): Promise<T.Entrada>;
     /** Segunda etapa: o código do aplicativo, ou um código de recuperação. */
     loginCode(code: string): Promise<T.Me>;
     logout(): Promise<{ ok: boolean }>;
@@ -42,6 +44,10 @@ export type Api = {
     createUnit(id: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
     updateUnit(id: string, unitId: string, d: { name: string; address?: string | null; egressIp?: string | null; note?: string | null }): Promise<T.ClientUnit>;
     removeUnit(id: string, unitId: string): Promise<{ ok: boolean }>;
+    /** Os contatos do cliente (2.0): os ativos primeiro, com quantos chamados cada WhatsApp tem */
+    contatos(id: string): Promise<ContatoDoCliente[]>;
+    /** Incluir (contatoId nulo) ou editar, desativar e reativar um contato */
+    salvarContato(id: string, contatoId: string | null, d: ContatoGravarEntrada): Promise<ContatoDoCliente>;
     /** Login e senha padrão dos aparelhos, por modelo (um por modelo; gravar de novo atualiza) */
     saveDeviceLogin(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
     removeDeviceLogin(id: string, loginId: string): Promise<T.ClientFull>;
@@ -268,6 +274,105 @@ export type Api = {
     tutoriais(q: { q?: string; produto?: string }): Promise<{ items: T.TutorialAchado[]; total: number }>;
     /** pelo número, ou pelo pedaço do endereço ("12-como-transferir…") */
     tutorial(numero: string): Promise<T.TutorialDoCliente>;
+  };
+  /**
+   * Os chamados do Gestor (Patch 2.0, decisão 0047): os painéis, o quadro, a lista, o Meu dia, a
+   * ficha e os ajustes do módulo. Toda mudança num chamado devolve a ficha inteira, já atualizada.
+   */
+  atendimento: {
+    opcoes(): Promise<T.OpcoesAtendimento>;
+    quadro(q: Record<string, unknown>): Promise<T.QuadroAtendimento>;
+    lista(q: Record<string, unknown>): Promise<T.Page<T.CartaoChamado>>;
+    /** o CSV da lista com os filtros (null na prévia: baixa montado na própria tela) */
+    exportarUrl(q: Record<string, unknown>): string | null;
+    meuDia(): Promise<T.MeuDia>;
+    /** a tela inicial (os painéis): os números de cada painel que a pessoa vê */
+    resumoDosPaineis(): Promise<T.ResumoDoPainel[]>;
+    avisos(): Promise<T.AvisosNaTela>;
+    /** sem ids = todos */
+    marcarAvisosLidos(ids?: string[]): Promise<{ ok: boolean }>;
+    /** os produtos, operadoras, circuitos, DIDs e aparelhos do cliente, e os chamados recentes dele */
+    cadastroDoCliente(clienteId: string): Promise<T.CadastroDoCliente>;
+    /** pelo código (SUP-12) ou pelo id */
+    chamado(ref: string): Promise<T.FichaChamado>;
+    anexoUrl(id: string): string;
+    /** `aviso`: como foi o WhatsApp ao cliente, quando a pessoa pediu para avisar */
+    criar(d: T.ChamadoCriarEntrada): Promise<{ id: string; codigo: string; aviso?: { ok: boolean; mensagem: string } }>;
+    alterar(id: string, d: T.ChamadoAlterarEntrada): Promise<T.FichaChamado>;
+    /** escalonar (subir de nível) e voltar de nível pedem o motivo */
+    mover(id: string, d: T.MoverEntrada): Promise<T.FichaChamado>;
+    /** fica com o chamado; na entrada, ele vai para a primeira etapa de andamento */
+    assumir(id: string): Promise<T.FichaChamado>;
+    esperar(id: string, d: { tipo: 'cliente' | 'operadora' | null; motivo?: string | null }): Promise<T.FichaChamado>;
+    reabrir(id: string, d: { motivo?: string | null; etapaId?: string | null }): Promise<T.FichaChamado>;
+    trocarPainel(id: string, d: { painelId: string; etapaId?: string | null }): Promise<T.FichaChamado>;
+    anotar(id: string, d: { texto: string; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<T.FichaChamado>;
+    apagarAnotacao(id: string, notaId: string): Promise<T.FichaChamado>;
+    ligar(id: string, d: { para: string; tipo: T.TipoLigacaoChamado }): Promise<T.FichaChamado>;
+    desligar(id: string, ligacaoId: string): Promise<T.FichaChamado>;
+    /** o pai pelo código (null tira) */
+    definirPai(id: string, pai: string | null): Promise<T.FichaChamado>;
+    /** o problema de que este chamado é incidente, pelo código (null tira) */
+    definirProblema(id: string, problema: string | null): Promise<T.FichaChamado>;
+    checklist(id: string, d: T.ChecklistEntrada): Promise<T.FichaChamado>;
+    registrarTempo(id: string, d: T.TempoEntrada): Promise<T.FichaChamado>;
+    apagarTempo(id: string, itemId: string): Promise<T.FichaChamado>;
+    abrirNaOperadora(id: string, d: T.OperadoraCasoEntrada): Promise<T.FichaChamado>;
+    andamentoOperadora(id: string, casoId: string, d: { acao: 'cobrar' | 'fechar'; texto?: string | null }): Promise<T.FichaChamado>;
+    /** pelo WhatsApp oficial; o que foi mandado fica no histórico */
+    avisarCliente(id: string, texto: string): Promise<T.FichaChamado>;
+    usarResposta(id: string, d: { respostaId: string; texto: string }): Promise<T.FichaChamado>;
+    observar(id: string, observar: boolean): Promise<T.FichaChamado>;
+    /** a IA lê a conversa (ou o chamado) e sugere; nada é gravado até a pessoa aplicar */
+    preencherComIa(id: string): Promise<T.SugestaoIa>;
+    remover(id: string): Promise<{ ok: boolean }>;
+    restaurar(id: string): Promise<T.FichaChamado>;
+    // ---- os ajustes do módulo (quem cuida dos chamados) ----
+    salvarPainel(id: string | null, d: T.PainelGravarEntrada): Promise<T.Painel>;
+    salvarEtapas(id: string, d: { etapas: T.EtapaGravarEntrada[]; destino: Record<string, string> }): Promise<T.Painel>;
+    salvarAssunto(painelId: string, id: string | null, d: T.AssuntoGravarEntrada): Promise<T.Assunto>;
+    /** a lista colada vira a árvore de uma vez */
+    colarAssuntos(painelId: string, texto: string): Promise<{ criados: number; jaExistiam: number }>;
+    /** os campos do sistema que o painel usa (desligados) e as opções do Tipo */
+    salvarCamposDoSistema(painelId: string, d: T.CamposDoSistemaEntrada): Promise<T.Painel>;
+    /** criar (sem id) ou mudar um campo do painel; obrigatório para abrir e nas etapas escolhidas */
+    salvarCampo(painelId: string, id: string | null, d: T.CampoGravarEntrada): Promise<T.CampoPersonalizado>;
+    /** a ordem dos campos do painel (todos os ids) */
+    ordenarCampos(painelId: string, ids: string[]): Promise<T.CampoPersonalizado[]>;
+    /** as etiquetas com a cor (Ajustes › Etiquetas): criar, editar (o nome e a cor) e tirar a que nenhum chamado usa */
+    etiquetas(): Promise<T.EtiquetaDoCatalogo[]>;
+    criarEtiqueta(d: T.EtiquetaGravarEntrada): Promise<T.EtiquetaDoCatalogo>;
+    editarEtiqueta(id: string, d: T.EtiquetaEditarEntrada): Promise<T.EtiquetaDoCatalogo>;
+    /** o seletor de etiquetas edita pelo nome de agora (`de`): as opções da tela não levam o id */
+    editarEtiquetaPeloNome(d: T.EtiquetaEditarPeloNomeEntrada): Promise<T.EtiquetaDoCatalogo>;
+    removerEtiqueta(id: string): Promise<{ ok: true }>;
+    ajustesPrazos(): Promise<T.AjustesPrazos>;
+    salvarPrazos(a: T.AjustesPrazos): Promise<T.AjustesPrazos>;
+    ajustesAvisos(): Promise<T.AvisosChamadosTela>;
+    salvarAvisos(a: T.AvisosChamadosEntrada): Promise<T.AvisosChamadosTela>;
+    /** os modelos aprovados (templates) do número oficial, lidos do LineChat com a chave guardada */
+    modelosDoLineChat(): Promise<T.ModelosDoLineChat>;
+    /** manda uma mensagem de teste para uma pessoa da equipe (ou um número) */
+    testarAvisos(d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string }): Promise<{ ok: boolean; mensagem: string }>;
+    respostas(): Promise<T.RespostaPronta[]>;
+    salvarResposta(id: string | null, d: T.RespostaProntaGravarEntrada): Promise<T.RespostaPronta>;
+    removerResposta(id: string): Promise<{ ok: boolean }>;
+    agendados(): Promise<T.Agendado[]>;
+    salvarAgendado(id: string | null, d: T.AgendadoGravarEntrada): Promise<T.Agendado>;
+    removerAgendado(id: string): Promise<{ ok: boolean }>;
+    /** cria o chamado do agendado agora (sem mudar a próxima vez) */
+    rodarAgendado(id: string): Promise<{ codigo: string }>;
+    // ---- as integrações (a administração) ----
+    integracoes(): Promise<T.IntegracoesTela>;
+    /** o segredo da assinatura só volta ao criar (ou ao pedir um novo) */
+    salvarWebhook(id: string | null, d: T.WebhookGravarEntrada): Promise<{ webhook: T.WebhookTela; segredo: string | null }>;
+    removerWebhook(id: string): Promise<{ ok: boolean }>;
+    testarWebhook(id: string): Promise<{ ok: boolean; mensagem: string }>;
+    /** a chave aparece uma vez, aqui */
+    criarChave(nome: string): Promise<{ chave: T.ChaveApiTela; valor: string }>;
+    revogarChave(id: string): Promise<{ ok: boolean }>;
+    salvarSites(sites: string[]): Promise<{ sites: string[] }>;
+    salvarLinkConversa(linkConversa: string): Promise<{ linkConversa: string }>;
   };
   admin: {
     users(): Promise<T.User[]>;

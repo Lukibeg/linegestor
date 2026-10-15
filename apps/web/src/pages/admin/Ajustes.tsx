@@ -4,8 +4,9 @@
  *  - **Backup no Google Drive**: para onde a cópia diária sobe.
  *  - **Avisos**: para onde o sistema grita quando cai ou quando o backup falha.
  *  - **Chamados do LineChat**: de onde vêm os chamados da tela de Chamados (o token e o painel).
- *  - **IA da base de conhecimento** (1.8): o "Perguntar à IA" e o rascunho a partir do chamado, com o
- *    provedor que a empresa escolher (Anthropic, OpenAI, Google ou outro compatível).
+ *  - **IA da base e dos chamados** (1.8; os chamados no 2.0): o "Perguntar à IA", o rascunho a partir do
+ *    chamado e o "Preencher com IA" da ficha do chamado, com o provedor que a empresa escolher (Anthropic,
+ *    OpenAI, Google ou outro compatível). O mesmo cartão aparece em Chamados › Ajustes › IA.
  *
  * Tudo se preenche aqui, não em arquivo no servidor. Cada cartão explica o que é, o que preencher
  * e tem um botão de testar que dá a resposta na hora — nada de salvar e torcer.
@@ -413,7 +414,8 @@ const formDe = (a: AjustesIa): FormIa => ({
   precoEntrada: mostrarPreco(a.precoEntrada), precoSaida: mostrarPreco(a.precoSaida),
 });
 
-function CartaoIa({ inicial }: { inicial: AjustesIa }) {
+/** O cartão da IA. Exportado: Chamados › Ajustes › IA mostra o mesmo (uma IA só, a mesma chave e o mesmo uso). */
+export function CartaoIa({ inicial }: { inicial: AjustesIa }) {
   const qc = useQueryClient(); const toast = useToast();
   const [f, setF] = useState<FormIa>(formDe(inicial));
   const [chave, setChave] = useState('');
@@ -495,12 +497,17 @@ function CartaoIa({ inicial }: { inicial: AjustesIa }) {
   const naLista = modelos?.some((m) => m.id === f.modelo);
 
   return (
-    <Cartao icone={<Bot size={18} />} titulo="IA da base de conhecimento" ligado={ligado}>
+    <Cartao icone={<Bot size={18} />} titulo="IA da base e dos chamados" ligado={ligado}>
       <Explicacao>
         <p>
           Liga dois botões na <b>Base de conhecimento</b>: o <b>Perguntar à IA</b> (a IA responde só com os artigos
           publicados e diz de qual artigo tirou cada parte) e o <b>Escrever o rascunho com a IA</b> (ela lê o card do
           chamado e escreve o rascunho do artigo; a pessoa revisa antes de publicar).
+        </p>
+        <p>
+          E o <b>Preencher com IA</b> na ficha do <b>chamado</b>: a IA lê a conversa do cliente no LineChat (ou, sem
+          ela, o que já está escrito no chamado) e sugere o título, o relato, a descrição, o assunto, a gravidade e as
+          etiquetas. Nada entra sozinho: a pessoa marca o que quer e aplica.
         </p>
         <p>
           Escolha o provedor: <b>Anthropic</b> (Claude), <b>OpenAI</b> (ChatGPT), <b>Google</b> (Gemini) ou outro
@@ -510,6 +517,7 @@ function CartaoIa({ inicial }: { inicial: AjustesIa }) {
         <p>
           Para responder, o texto dos artigos que a busca achar <b>sai do servidor e vai para o provedor escolhido</b>,
           com os nomes do que está ligado a eles (cliente, modelo, assunto…). No rascunho, vai também o texto do card.
+          No chamado, vai a conversa (ou o texto do chamado) e a lista de assuntos do painel.
           Rascunho de artigo nunca vai. Por isso senha nunca vai em artigo: a base não é cofre.
         </p>
         <p>
@@ -521,7 +529,7 @@ function CartaoIa({ inicial }: { inicial: AjustesIa }) {
 
       <div className="flex flex-col gap-3">
         <label className="flex items-center gap-2.5 text-sm cursor-pointer">
-          <Toggle checked={f.ativo} onChange={(v) => setF({ ...f, ativo: v })} /> Ligar a IA na base de conhecimento
+          <Toggle checked={f.ativo} onChange={(v) => setF({ ...f, ativo: v })} /> Ligar a IA (base de conhecimento e chamados)
         </label>
 
         <Campo label="Provedor" dica={f.provedor === 'compativel' ? 'qualquer serviço que aceite o formato da OpenAI: basta o endereço da API' : `a chave se cria em ${info.ondeCriar}`}>
@@ -594,7 +602,7 @@ function CartaoIa({ inicial }: { inicial: AjustesIa }) {
       <Ultimo rotulo="Último teste" em={inicial.ultimoTesteEm} ok={inicial.ultimoTesteOk} msg={inicial.ultimoTesteMsg} />
       <p className="text-[12.5px] text-muted mt-1" id="ia-uso">
         Em {mes}: <b className="text-ink-2 tnum">{nf(u.perguntas)}</b> {u.perguntas === 1 ? 'pergunta' : 'perguntas'} e{' '}
-        <b className="text-ink-2 tnum">{nf(u.rascunhos)}</b> {u.rascunhos === 1 ? 'rascunho' : 'rascunhos'}
+        <b className="text-ink-2 tnum">{nf(u.rascunhos)}</b> {u.rascunhos === 1 ? 'rascunho ou chamado preenchido' : 'rascunhos e chamados preenchidos'}
         {u.entrada + u.saida > 0 && <> — <span className="tnum">{nf(u.entrada)}</span> tokens lidos e <span className="tnum">{nf(u.saida)}</span> escritos</>}
         {u.custo != null
           ? <>; uns <b className="text-ink-2 tnum">{dolar(u.custo)}</b> pelo preço informado.</>

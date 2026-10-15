@@ -11,6 +11,9 @@ escolheu **não manter uma instância de homologação na nuvem**: testar na má
   de entrada. Só o Caddy publica porta; o banco e a API só existem dentro da rede interna do Docker.
 - **Caddy** em vez de Nginx porque resolve o certificado HTTPS e a renovação sozinho, em três linhas,
   e é onde ficam os cabeçalhos de segurança (HSTS, `nosniff`, `X-Frame-Options`, `Referrer-Policy`).
+  > **Revista pela 0047 (Patch 2.0), a pedido do Luan (avisado antes):** o `X-Frame-Options` e a
+  > política de conteúdo saíram do Caddy; o sistema manda a política, com os sites que podem abrir o
+  > Gestor dentro deles (o LineChat).
 - **Homologação é a máquina local**: `docker compose up -d` com dados fictícios (`db:seed:demo`), ou
   `pnpm dev` direto. Para ensaiar uma mudança grande, restaura-se um backup de produção num banco
   local — nunca o contrário.

@@ -26,6 +26,12 @@ const MeSchema = z.object({
  */
 const EntradaSchema = z.object({ needsCode: z.boolean(), user: MeSchema.nullable() });
 
+/**
+ * O pedido de entrada. `embutido`: a tela está dentro de outro site (o Gestor no menu do LineChat,
+ * num iframe; 2.0) — o cookie vai do jeito que funciona num iframe (ver `plugins/auth.ts`).
+ */
+const EntrarSchema = LoginSchema.extend({ embutido: z.boolean().optional() });
+
 const comoMe = (u: { id: string; name: string; email: string; roleId: string; roleName: string; roleKey: string | null; permissions: string[]; totpEnabledAt?: Date | null; totpRecovery?: string | null; sshUser?: string | null }) => ({
   id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: u.roleName, roleKey: u.roleKey, permissions: u.permissions,
   twoFactor: !!u.totpEnabledAt, recoveryLeft: duasEtapas.quantosRestam(u.totpRecovery ?? null),
@@ -35,8 +41,9 @@ const comoMe = (u: { id: string; name: string; email: string; roleId: string; ro
 const routes: FastifyPluginAsyncZod = async (app) => {
   app.post('/login', {
     config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
-    schema: { tags: ['Sessão'], summary: 'Entrar com e-mail e senha', body: LoginSchema, response: { 200: EntradaSchema } },
+    schema: { tags: ['Sessão'], summary: 'Entrar com e-mail e senha (embutido: a tela está dentro de outro site)', body: EntrarSchema, response: { 200: EntradaSchema } },
   }, async (req, reply) => {
+    const embutido = req.body.embutido === true;
     const [u] = await app.db
       .select({ id: users.id, name: users.name, email: users.email, passwordHash: users.passwordHash, active: users.active, roleId: users.roleId, roleName: roles.name, roleKey: roles.key, permissions: roles.permissions, totpEnabledAt: users.totpEnabledAt, totpRecovery: users.totpRecovery, sshUser: users.sshUser })
       .from(users).innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.email, req.body.email)).limit(1);
@@ -47,12 +54,12 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     }
     // com duas etapas ligadas, a senha certa só abre meia porta: a sessão nasce pendente
     if (u.totpEnabledAt) {
-      await app.createSession(req, reply, u.id, { pendingTotp: true });
+      await app.createSession(req, reply, u.id, { pendingTotp: true, embutido });
       return { needsCode: true, user: null };
     }
-    await app.createSession(req, reply, u.id);
+    await app.createSession(req, reply, u.id, { embutido });
     await app.db.update(users).set({ lastLoginAt: new Date() }).where(eq(users.id, u.id));
-    await app.audit({ user: { id: u.id }, ip: req.ip }, { action: 'login', entityType: 'user', entityId: u.id, summary: `${u.name} entrou` });
+    await app.audit({ user: { id: u.id }, ip: req.ip }, { action: 'login', entityType: 'user', entityId: u.id, summary: `${u.name} entrou${embutido ? ' (com o Gestor aberto dentro de outro site)' : ''}` });
     return { needsCode: false, user: comoMe(u) };
   });
 

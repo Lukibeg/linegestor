@@ -28,7 +28,7 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { secrets, settings, type Db } from '@gestor/db';
-import type { ItemPainel, ProvedorIa } from '@gestor/shared';
+import { AJUSTES_PRAZOS_PADRAO, AVISOS_CHAMADOS_PADRAO, type ItemPainel, type ProvedorIa } from '@gestor/shared';
 import type { SecretsVault } from './secrets.js';
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? '/dados';
@@ -146,7 +146,7 @@ export const IA_PADRAO: AjustesIa = {
 };
 
 type Assunto = 'backup' | 'avisos' | 'linechat' | 'chamados-painel' | 'chamados-relatorios' | 'chamados-relatorios-arrumacao'
-  | 'envio-automatico' | 'envio-automatico-marcados' | 'base-ia';
+  | 'envio-automatico' | 'envio-automatico-marcados' | 'base-ia' | 'atendimento-prazos' | 'atendimento-avisos' | 'atendimento-integracoes';
 const PADROES: Record<Assunto, unknown> = {
   backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO, 'chamados-painel': { itens: [] },
   // os Relatórios dos Chamados (1.7): sem nada guardado, os campos são achados pelo nome e os clientes, ligados pelo nome
@@ -162,6 +162,12 @@ const PADROES: Record<Assunto, unknown> = {
   'envio-automatico-marcados': { relatorios: [], graficos: [], atualizadoEm: null, atualizadoPor: null },
   // a IA da Base de conhecimento (1.8): desligada até alguém escolher o provedor e pôr a chave (no cofre)
   'base-ia': IA_PADRAO,
+  // os chamados do Gestor (2.0): o horário, os feriados e os prazos (o documento de prioridade e prazos)
+  'atendimento-prazos': AJUSTES_PRAZOS_PADRAO,
+  // o WhatsApp dos chamados (2.0): desligado até a administração ligar; a chave própria, se houver, no cofre
+  'atendimento-avisos': { ...AVISOS_CHAMADOS_PADRAO, pessoas: [] },
+  // os sites que podem abrir o Gestor dentro deles (nenhum: só o próprio Gestor) e o link da conversa no LineChat
+  'atendimento-integracoes': { sites: [], linkConversa: '' },
 };
 
 export async function ler<T>(db: Db, assunto: Assunto): Promise<{ valor: T; secretId: string | null; temSegredo: boolean }> {

@@ -96,7 +96,7 @@ function Tela({ inicial }: { inicial: EnvioAjustesTela }) {
         )}
         <div className="text-[13.5px] text-ink-2 leading-relaxed border-l-2 border-line pl-3 my-3 flex flex-col gap-2">
           <p>
-            Todo dia, no horário escolhido, o Gestor monta um <b>PDF com os gráficos e os relatórios dos Chamados</b> marcados com o aviãozinho
+            Todo dia, no horário escolhido, o Gestor monta um <b>PDF com os gráficos e os relatórios dos tickets do LineChat</b> marcados com o aviãozinho
             <Send size={13} className="inline mx-1 -mt-0.5 text-accent fill-current" aria-label="Envio diário" />
             (no canto de cada um; fica azul quando marcado) e manda pelo WhatsApp, pela API da FlwChat, para os números da lista — com uma mensagem com os números do dia.
           </p>
@@ -207,7 +207,7 @@ function Tela({ inicial }: { inicial: EnvioAjustesTela }) {
         <h2 className="font-display font-semibold text-lg">O que vai no PDF</h2>
         <p className="text-[13.5px] text-ink-2 mt-1">
           Sempre: os números de cima da aba Hoje. E o que estiver marcado com o aviãozinho <Send size={12} className="inline -mt-0.5 text-accent fill-current" aria-hidden /> nos gráficos de{' '}
-          <Link className="link" to="/chamados">Chamados</Link> e nos relatórios de <Link className="link" to="/chamados/relatorios">Chamados › Relatórios</Link>, na ordem das telas.
+          <Link className="link" to="/chamados">Suporte › Relatórios</Link> e nos <Link className="link" to="/chamados/relatorios">relatórios da aba Relatórios</Link>, na ordem das telas.
         </p>
         {!nMarcados ? <p className="text-[13px] text-muted mt-3">Nada marcado ainda: o PDF sai só com os números do dia.</p> : (
           <div className="grid gap-4 sm:grid-cols-2 mt-3">

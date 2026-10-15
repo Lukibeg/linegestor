@@ -11,6 +11,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [clients](#clients) — Uma linha por empresa.
 - [client_logos](#client_logos) — A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo).
 - [client_units](#client_units) — As UNIDADES de um cliente: matriz, filiais, lojas, andares.
+- [client_contacts](#client_contacts) — OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor).
 - [client_device_logins](#client_device_logins) — LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente entram com o mesmo login e senha; os DP722, com outro.
 - [client_network_settings](#client_network_settings) — CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita nos telefones na hora de configurar (IP, máscara, gateway, DNS) e a senha do ramal sem fio.
 - [products](#products) — Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
@@ -65,6 +66,24 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [portal_sessions](#portal_sessions) — A sessão de quem entrou no portal (como `sessions`, mas do cliente).
 - [portal_articles](#portal_articles) — Um tutorial do portal.
 - [portal_files](#portal_files) — Um arquivo do portal: `imagem` (print no texto), `video` ou `arquivo` (para baixar).
+- [ticket_panels](#ticket_panels) — Um PAINEL (o Kanban de uma equipe): Suporte, Desenvolvimento, e os que a administração criar (Interno, Administrativo, Comercial…).
+- [ticket_stages](#ticket_stages) — Uma ETAPA (coluna) de um painel, na ordem do quadro.
+- [ticket_subjects](#ticket_subjects) — Um ASSUNTO, em árvore (até 3 níveis), de um painel.
+- [ticket_fields](#ticket_fields) — Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, então nem sempre vai ser assuntos"): os que cada equipe cria além dos do sistema — o "Sistema" e a "Versão publicada" no Desenvolvimento, por exemplo.
+- [tickets](#tickets) — Um CHAMADO.
+- [ticket_events](#ticket_events) — O HISTÓRICO do chamado: cada mudança vira uma linha (etapa, responsável, campo, prioridade, espera, ligação, aviso…), com quem fez e quando.
+- [ticket_notes](#ticket_notes) — Uma ANOTAÇÃO no chamado (o que a equipe registra no meio do caminho).
+- [ticket_attachments](#ticket_attachments) — Um ANEXO de anotação (print, PDF, planilha, áudio), no próprio banco como os anexos dos projetos: entra no backup sem mudar nada.
+- [ticket_links](#ticket_links) — Uma LIGAÇÃO feita à mão entre dois chamados: relacionado, duplicado de, repete.
+- [ticket_time_entries](#ticket_time_entries) — O TEMPO GASTO: quem trabalhou no chamado, quanto e quando (o relatório da visita técnica).
+- [ticket_carrier_cases](#ticket_carrier_cases) — O CHAMADO ABERTO NA OPERADORA: o protocolo, quando abriu, o prazo que a operadora prometeu e as cobranças — num lugar só, em vez de perdido nas anotações.
+- [ticket_schedules](#ticket_schedules) — Um CHAMADO AGENDADO: nasce sozinho na hora marcada (a verificação dos DIDs todo dia 15).
+- [ticket_macros](#ticket_macros) — Uma RESPOSTA PRONTA: um clique manda a mensagem e muda o chamado ("Pedir teste ao cliente" manda o texto e marca que o chamado espera o cliente).
+- [ticket_tags](#ticket_tags) — Uma ETIQUETA e a COR dela (2.0, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor").
+- [ticket_contacts](#ticket_contacts) — O TELEFONE QUE O GESTOR JÁ CONHECE: o WhatsApp de um contato e o cliente dele, aprendido dos chamados.
+- [ticket_notifications](#ticket_notifications) — Um AVISO NA TELA (o sininho): recebeu um chamado, o prazo está vencendo, o cliente respondeu…
+- [ticket_webhooks](#ticket_webhooks) — Um AVISO PARA FORA (webhook): o Gestor manda o que aconteceu com os chamados para outro sistema (o n8n).
+- [ticket_api_keys](#ticket_api_keys) — Uma CHAVE DE API para o robô do LineChat e o n8n abrirem e mexerem nos chamados.
 
 
 ---
@@ -117,6 +136,23 @@ As UNIDADES de um cliente: matriz, filiais, lojas, andares. Todo cliente tem a "
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## client_contacts
+
+OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor). O Abrir chamado puxa daqui, e um contato novo nasce lá também. O WhatsApp acha o cliente quando o robô abre o chamado. Não se apaga: desativa.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `client_id` | texto | — | obrigatório · liga com **clients** |
+| `name` | texto | — | obrigatório |
+| `phone` | texto | Só os dígitos, com o 55 | — |
+| `email` | texto | — | — |
+| `role` | texto | O cargo ou o setor: "Recepção", "TI", "Financeiro" | — |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
 
 ## client_device_logins
 
@@ -479,7 +515,7 @@ AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), 
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
-| `id` | texto | 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | chave primária |
+| `id` | texto | 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe, os números das pessoas e quais avisos vão por onde; a chave própria no cofre, 2.0) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) | chave primária |
 | `value` | texto | — | obrigatório · padrão: '{}' |
 | `secret_id` | texto | — | liga com **secrets** |
 | `updated_at` | data e hora | Última alteração | — |
@@ -992,4 +1028,342 @@ Um arquivo do portal: `imagem` (print no texto), `video` ou `arquivo` (para baix
 | `uploaded_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_panels
+
+Um PAINEL (o Kanban de uma equipe): Suporte, Desenvolvimento, e os que a administração criar (Interno, Administrativo, Comercial…). Cada um tem a sua sigla e a sua numeração (SUP-12, DEV-3), as suas etapas e as suas regras.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | O nome do painel ("Suporte") | obrigatório |
+| `key` | texto | A sigla do código: 2 a 5 letras ("SUP" → SUP-12). Não muda depois do primeiro chamado. | obrigatório |
+| `description` | texto | — | — |
+| `color` | texto | A cor do painel na tela (um dos tons dos chips: accent, roxo, turquesa…) | obrigatório · padrão: 'accent' |
+| `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
+| `next_number` | número inteiro | O próximo número da sequência (SUP-1, SUP-2…): nunca volta, nem depois da lixeira | obrigatório · padrão: 1 |
+| `access` | texto | todos = quem tem acesso aos chamados vê · escolhidos = só as pessoas de `member_ids` (e quem cuida dos chamados) | obrigatório · padrão: 'todos' |
+| `member_ids` | texto | As pessoas que veem e trabalham neste painel, quando o acesso é "escolhidos" | obrigatório · padrão: [] · lista |
+| `settings` | JSON | As regras do painel (as opções de Tipo, se conta prazo, em quantos dias o Resolvido fecha, o que é obrigatório ao abrir, se o pai espera os filhos, os supervisores), em JSON | obrigatório · padrão: {} |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_stages
+
+Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela significa para o chamado (entrada, andamento, resolvido, fechado); o nível marca N1, N2, N3 e DEV (escalonar = subir de nível). Etapa que sai não é apagada: ganha `deleted_at`, e os chamados dela vão para outra antes.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `panel_id` | texto | — | obrigatório · liga com **ticketPanels** |
+| `name` | texto | — | obrigatório |
+| `kind` | texto | entrada | andamento | resolvido | fechado | obrigatório · padrão: 'andamento' |
+| `level` | número inteiro | 1, 2, 3 ou 4 (N1, N2, N3, DEV); nulo nas etapas que não são nível | — |
+| `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
+| `required_fields` | texto | O que precisa estar preenchido para o chamado entrar aqui (lista de campos) | obrigatório · padrão: [] · lista |
+| `notify_user_ids` | texto | Quem recebe o aviso quando um chamado chega nesta etapa (ids de pessoas) | obrigatório · padrão: [] · lista |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_subjects
+
+Um ASSUNTO, em árvore (até 3 níveis), de um painel. Só diz "o quê" (o tipo, a gravidade e a operadora têm o seu próprio campo). Desativar, nunca apagar; o de-para guarda os nomes da lista antiga que viram este assunto. A tela nasce em branco: a equipe monta quando a lista fechar.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `panel_id` | texto | — | obrigatório · liga com **ticketPanels** |
+| `parent_id` | texto | — | — |
+| `name` | texto | — | obrigatório |
+| `description` | texto | Quando usar este assunto (aparece ao escolher) | — |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
+| `checklist` | texto | Os passos que entram no checklist do chamado quando ele ganha este assunto | obrigatório · padrão: [] · lista |
+| `aliases` | texto | De-para: os nomes da lista antiga que viram este assunto | obrigatório · padrão: [] · lista |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+
+## ticket_fields
+
+Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, então nem sempre vai ser assuntos"): os que cada equipe cria além dos do sistema — o "Sistema" e a "Versão publicada" no Desenvolvimento, por exemplo. O tipo (texto, texto longo, número, data, sim ou não, lista de uma ou de várias opções) não muda depois de criado. O campo que não serve mais é desativado, nunca apagado: o valor fica no chamado (`tickets.custom_fields`, pelo id do campo).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `panel_id` | texto | — | obrigatório · liga com **ticketPanels** |
+| `name` | texto | — | obrigatório |
+| `kind` | texto | texto | texto_longo | numero | data | sim_nao | lista | lista_varios | obrigatório |
+| `help` | texto | A explicação que aparece embaixo do campo (na ficha e no Abrir chamado) | — |
+| `options` | JSON | As opções das listas: [{id, nome, ativa}] (a que sai fica desativada: o chamado que a tem continua com ela) | obrigatório · padrão: [] |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+
+## tickets
+
+Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se o chamado passar de painel. O relato é o que o cliente disse; a descrição, o andamento e os dados técnicos; as anotações ficam em `ticket_notes`, e o histórico de tudo em `ticket_events`.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `panel_id` | texto | — | obrigatório · liga com **ticketPanels** |
+| `stage_id` | texto | — | obrigatório · liga com **ticketStages** |
+| `number` | número inteiro | O número dentro do painel em que nasceu | obrigatório |
+| `code` | texto | O código, como a equipe escreve ("SUP-12"). Único. | obrigatório |
+| `kind` | texto | chamado | problema (o registro ITIL que junta incidentes de várias empresas) | obrigatório · padrão: 'chamado' |
+| `title` | texto | — | obrigatório |
+| `customer_report` | texto | O relato do cliente: o que ele disse (vem da conversa) | — |
+| `description` | texto | A descrição: o andamento e os dados técnicos | — |
+| `client_id` | texto | — | liga com **clients** |
+| `contact_name` | texto | O nome de quem procurou o suporte (a pessoa do cliente) | — |
+| `contact_phone` | texto | O WhatsApp do contato, só dígitos com o 55 (para avisar o cliente) | — |
+| `session_id` | texto | A sessão (conversa) do LineChat de onde o chamado veio | — |
+| `origin` | texto | manual | robo | botao | agendado | api | obrigatório · padrão: 'manual' |
+| `assignee_id` | texto | — | liga com **users** |
+| `watcher_ids` | texto | Quem acompanha o chamado sem ser o responsável (recebe os avisos na tela) | obrigatório · padrão: [] · lista |
+| `subject_id` | texto | — | liga com **ticketSubjects** |
+| `type` | texto | O Tipo ("que tratativa foi essa?"): uma das opções do painel | — |
+| `severity` | texto | inoperancia | intermitencia | performance | disfuncional | nao_se_aplica | — |
+| `reach` | texto | empresa | setor | pessoa | — |
+| `priority` | texto | critica | alta | media | baixa | — |
+| `priority_reason` | texto | Por que a prioridade é diferente da sugerida (gravidade × alcance) | — |
+| `product_ids` | texto | Os produtos envolvidos (ids de `products`) — o cliente pode ter mais de um | obrigatório · padrão: [] · lista |
+| `carrier_ids` | texto | As operadoras envolvidas (ids de `carriers`) — o cliente pode ter mais de uma | obrigatório · padrão: [] · lista |
+| `tags` | texto | — | obrigatório · padrão: [] · lista |
+| `custom_fields` | JSON | Os valores dos campos do painel ({id do campo: valor}); o de um campo desativado fica guardado | obrigatório · padrão: {} |
+| `solution` | texto | A solução dada | — |
+| `cause` | texto | A causa (no problema: a causa raiz, ou a justificativa de não ter achado) | — |
+| `workaround` | texto | No problema: a solução de contorno enquanto a causa não é resolvida | — |
+| `validation` | texto | No problema: como foi validado que a causa foi resolvida | — |
+| `parent_id` | texto | — | — |
+| `problem_id` | texto | O problema de que este chamado é incidente | — |
+| `checklist` | JSON | O checklist: [{id, texto, feito, porId, em, doAssunto}] | obrigatório · padrão: [] |
+| `waits` | JSON | As marcas de espera (esperando o cliente / a operadora): [{tipo, motivo, inicio, fim, porId}] | obrigatório · padrão: [] |
+| `alerts_sent` | JSON | Os alertas de prazo já mandados (para não avisar duas vezes): {resposta_perto: quando, …} | obrigatório · padrão: {} |
+| `first_response_at` | data e hora | A primeira resposta de uma pessoa (assumir, anotar, avisar o cliente, sair da entrada) | — |
+| `resolved_at` | data e hora | — | — |
+| `closed_at` | data e hora | — | — |
+| `reopen_count` | número inteiro | Quantas vezes foi reaberto | obrigatório · padrão: 0 |
+| `last_activity_at` | data e hora | A última coisa que aconteceu (anotação, etapa, campo) — para achar o parado | obrigatório |
+| `schedule_id` | texto | O agendado que criou este chamado | — |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_events
+
+O HISTÓRICO do chamado: cada mudança vira uma linha (etapa, responsável, campo, prioridade, espera, ligação, aviso…), com quem fez e quando. `kind` e `data` seguem `textoDoEvento` do shared.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `ticket_id` | texto | — | obrigatório · liga com **tickets** |
+| `kind` | texto | — | obrigatório |
+| `user_id` | texto | Quem fez (nulo = o próprio Gestor, ou uma integração: `actor_name`) | liga com **users** |
+| `actor_name` | texto | O nome da integração (a chave de API usada), quando não foi uma pessoa | — |
+| `data` | JSON | — | obrigatório · padrão: {} |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+
+## ticket_notes
+
+Uma ANOTAÇÃO no chamado (o que a equipe registra no meio do caminho). Apagar só marca.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `ticket_id` | texto | — | obrigatório · liga com **tickets** |
+| `user_id` | texto | — | liga com **users** |
+| `actor_name` | texto | — | — |
+| `body` | texto | — | obrigatório |
+| `mentioned_user_ids` | texto | quem a anotação cita com @ (recebeu o aviso, mesmo sem observar o chamado) | obrigatório · padrão: [] · lista |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_attachments
+
+Um ANEXO de anotação (print, PDF, planilha, áudio), no próprio banco como os anexos dos projetos: entra no backup sem mudar nada. A imagem abre na tela; o resto sempre baixa como arquivo.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `ticket_id` | texto | — | obrigatório · liga com **tickets** |
+| `note_id` | texto | — | liga com **ticketNotes** |
+| `file_name` | texto | — | obrigatório |
+| `mime_type` | texto | — | obrigatório |
+| `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |
+| `data_base64` | texto | — | obrigatório |
+| `uploaded_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_links
+
+Uma LIGAÇÃO feita à mão entre dois chamados: relacionado, duplicado de, repete. (O pai e o problema têm coluna própria no chamado.) Tirar a ligação só marca `deleted_at`.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `from_id` | texto | — | obrigatório · liga com **tickets** |
+| `to_id` | texto | — | obrigatório · liga com **tickets** |
+| `kind` | texto | relacionado | duplicado | repete | obrigatório |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_time_entries
+
+O TEMPO GASTO: quem trabalhou no chamado, quanto e quando (o relatório da visita técnica).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `ticket_id` | texto | — | obrigatório · liga com **tickets** |
+| `user_id` | texto | — | liga com **users** |
+| `minutes` | número inteiro | — | obrigatório |
+| `note` | texto | — | — |
+| `worked_on` | texto | O dia do trabalho (AAAA-MM-DD, de Brasília) | obrigatório |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_carrier_cases
+
+O CHAMADO ABERTO NA OPERADORA: o protocolo, quando abriu, o prazo que a operadora prometeu e as cobranças — num lugar só, em vez de perdido nas anotações. Tem relógio próprio (a espera pela operadora não para o prazo do chamado).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `ticket_id` | texto | — | obrigatório · liga com **tickets** |
+| `carrier_id` | texto | — | liga com **carriers** |
+| `carrier_name` | texto | O nome da operadora (quando não é uma do cadastro) | obrigatório |
+| `protocol` | texto | — | obrigatório |
+| `opened_at` | data e hora | — | obrigatório |
+| `promised_at` | data e hora | Quando a operadora prometeu resolver | — |
+| `follow_up_hours` | número inteiro | Cobrar a operadora a cada quantas horas | — |
+| `status` | texto | aberto | fechado | obrigatório · padrão: 'aberto' |
+| `closed_at` | data e hora | — | — |
+| `history` | JSON | O andamento: [{em, porId, acao: abriu|cobrou|fechou, texto}] | obrigatório · padrão: [] |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+
+## ticket_schedules
+
+Um CHAMADO AGENDADO: nasce sozinho na hora marcada (a verificação dos DIDs todo dia 15).
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `panel_id` | texto | — | obrigatório · liga com **ticketPanels** |
+| `title` | texto | — | obrigatório |
+| `customer_report` | texto | — | — |
+| `client_id` | texto | — | liga com **clients** |
+| `assignee_id` | texto | — | liga com **users** |
+| `subject_id` | texto | — | liga com **ticketSubjects** |
+| `priority` | texto | — | — |
+| `checklist` | texto | — | obrigatório · padrão: [] · lista |
+| `rule` | JSON | A regra: {frequencia: diaria|semanal|mensal|uma_vez, hora, dias, diaDoMes, data, soDiasDeAtendimento} | obrigatório |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `next_run_at` | data e hora | A próxima vez em que nasce (o relógio olha esta coluna) | — |
+| `last_run_at` | data e hora | — | — |
+| `last_ticket_code` | texto | O código do último chamado que nasceu daqui | — |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_macros
+
+Uma RESPOSTA PRONTA: um clique manda a mensagem e muda o chamado ("Pedir teste ao cliente" manda o texto e marca que o chamado espera o cliente). Sem painel = vale em todos.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `panel_id` | texto | — | liga com **ticketPanels** |
+| `name` | texto | — | obrigatório |
+| `body` | texto | O texto, com {contato}, {codigo}, {cliente}, {titulo}, {responsavel} e {eu} | obrigatório · padrão: '' |
+| `action` | JSON | O que muda no chamado: {avisarCliente, etapaId, esperar, etiqueta, assumir} | obrigatório · padrão: {} |
+| `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_tags
+
+Uma ETIQUETA e a COR dela (2.0, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor"). O chamado guarda os nomes (`tickets.tags`), sempre escritos como aqui. A etiqueta nova nasce com a cor escolhida na tela, ou cinza (o robô, a IA, a resposta pronta); quem cuida dos chamados troca a cor em Ajustes › Etiquetas.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | O nome como a equipe escreveu ("Cliente VIP") | obrigatório |
+| `name_key` | texto | O nome para comparar (minúsculo, sem acento, um espaço só): não se repete | obrigatório |
+| `color` | texto | A cor: neutral (cinza), accent (azul), roxo, turquesa, ok (verde), amarelo, signal (laranja), bad (vermelho), rosa | obrigatório · padrão: 'neutral' |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+
+## ticket_contacts
+
+O TELEFONE QUE O GESTOR JÁ CONHECE: o WhatsApp de um contato e o cliente dele, aprendido dos chamados. É o que faz o chamado que chega pelo robô já vir com o cliente preenchido.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `phone` | texto | Só dígitos, com o 55 | obrigatório |
+| `name` | texto | — | — |
+| `client_id` | texto | — | liga com **clients** |
+| `updated_at` | data e hora | Última alteração | — |
+
+## ticket_notifications
+
+Um AVISO NA TELA (o sininho): recebeu um chamado, o prazo está vencendo, o cliente respondeu…
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `user_id` | texto | — | obrigatório · liga com **users** |
+| `ticket_id` | texto | — | liga com **tickets** |
+| `kind` | texto | recebeu | etapa | prazo_perto | prazo_vencido | sem_dono | critico | cliente_respondeu | pai | obrigatório |
+| `body` | texto | — | obrigatório |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `read_at` | data e hora | — | — |
+
+## ticket_webhooks
+
+Um AVISO PARA FORA (webhook): o Gestor manda o que aconteceu com os chamados para outro sistema (o n8n). A assinatura (o segredo) fica no cofre; o resultado do último envio fica aqui.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | — | obrigatório |
+| `url` | texto | — | obrigatório |
+| `events` | texto | Os eventos: chamado.criado, chamado.alterado, chamado.movido, chamado.anotacao, chamado.resolvido, chamado.fechado | obrigatório · padrão: [] · lista |
+| `active` | sim/não | — | obrigatório · padrão: true |
+| `secret_id` | texto | O segredo da assinatura (HMAC), no cofre | liga com **secrets** |
+| `last_at` | data e hora | — | — |
+| `last_ok` | sim/não | — | — |
+| `last_message` | texto | — | — |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## ticket_api_keys
+
+Uma CHAVE DE API para o robô do LineChat e o n8n abrirem e mexerem nos chamados. A chave aparece uma vez, ao criar; no banco fica só o resumo (sha256) e o começo, para reconhecer na lista.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | — | obrigatório |
+| `prefix` | texto | Os primeiros caracteres da chave (para a pessoa reconhecer qual é) | obrigatório |
+| `hash` | texto | O sha256 da chave inteira | obrigatório |
+| `last_used_at` | data e hora | — | — |
+| `created_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `revoked_at` | data e hora | — | — |
 

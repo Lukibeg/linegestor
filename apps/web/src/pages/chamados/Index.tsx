@@ -275,10 +275,10 @@ export function Chamados() {
     return k.ativo ? 'Clique para desfazer o filtro' : 'Clique para ver só estes chamados';
   };
 
-  if (opcoes.isLoading || painel.isLoading) return <Pagina titulo="Chamados"><Carregando /></Pagina>;
+  if (opcoes.isLoading || painel.isLoading) return <Pagina titulo="Tickets do LineChat"><Carregando /></Pagina>;
   if (op && !op.configurado && op.totalCards === 0) {
     return (
-      <Pagina titulo="Chamados" sub="Os chamados de suporte do LineChat, contados e filtrados.">
+      <Pagina titulo="Tickets do LineChat" sub="Os chamados de suporte do LineChat, contados e filtrados.">
         <Vazio
           titulo="A leitura do LineChat ainda não foi ligada"
           texto="Os chamados vêm do painel de suporte do LineChat. Para começar, alguém da administração cola a chave de API do LineChat e escolhe o painel em Administração › Ajustes. A primeira leitura traz todos os chamados de uma vez; depois, a cada minuto, só o que mudou."
@@ -307,7 +307,7 @@ export function Chamados() {
 
   return (
     <Pagina
-      titulo="Chamados"
+      titulo="Tickets do LineChat"
       sub={<>A cópia do painel <b className="text-ink-2">{op?.painelNome || 'de suporte'}</b> do LineChat. Os chamados são abertos e trabalhados lá; aqui é só leitura.</>}
       acoes={<>
         <Situacao op={op} />
@@ -370,7 +370,7 @@ export function Chamados() {
 
           {/* ---------- organizar (só a administração) ---------- */}
           {organizando && rascunho && (
-            <div className="sticky top-16 z-10 rounded-xl border border-accent bg-accent-soft px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 shadow-sm">
+            <div className="sticky top-16 md:top-2 z-10 rounded-xl border border-accent bg-accent-soft px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2 shadow-sm">
               <LayoutGrid size={17} className="text-accent shrink-0" />
               <div className="text-[13px] text-accent-ink flex-1 min-w-[240px] leading-snug">
                 <b>Organizando a tela para a equipe toda.</b> Arraste pela alça <GripVertical size={13} className="inline -mt-0.5" /> (ou use as setas),

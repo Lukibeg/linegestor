@@ -11,7 +11,7 @@ Quem lê: todo mundo. Quem escreve e comenta: Operador, Técnico e Administrador
 
 ## 1. Procurar
 
-Em **Base de conhecimento**, escreva do jeito que o cliente falou: "telefone sem linha", "não me
+Em **Base de conhecimento › Base interna**, escreva do jeito que o cliente falou: "telefone sem linha", "não me
 escutam", "cai depois de 30 segundos". A busca não liga para acento e acha pedaço de palavra. As
 palavras achadas aparecem em destaque. O código (BC-12) abre direto aquele artigo.
 

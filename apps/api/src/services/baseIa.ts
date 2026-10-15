@@ -28,7 +28,7 @@ import { isIP } from 'node:net';
 import { asc, eq, inArray } from 'drizzle-orm';
 import { linechatCardMoves, linechatFields, linechatSteps, linechatTags, settings, type Db } from '@gestor/db';
 import {
-  buscarArtigos, codigoDoArtigo, cortarTexto, custoEstimado, diaEmBrasilia, enderecoValido, hostDoEndereco, INFO_PROVEDORES, INSTRUCOES_PERGUNTA, INSTRUCOES_RASCUNHO,
+  buscarArtigos, codigoDoArtigo, cortarTexto, custoEstimado, diaEmBrasilia, enderecoValido, hostDoEndereco, INFO_PROVEDORES, INSTRUCOES_IA_CHAMADO, INSTRUCOES_PERGUNTA, INSTRUCOES_RASCUNHO,
   INSTRUCOES_TERMOS, jsonDaResposta, juntarAchados, lerRespostaComCitacoes, limparResposta, modeloDeConversa, montarPerguntaParaIa,
   normalizarEndereco, rascunhoDaIa, termosDaResposta, textoDoCard, type AjustesIaGravar, type ProvedorIa, type TrechoIa,
 } from '@gestor/shared';
@@ -509,4 +509,31 @@ export async function rascunho(db: Db, vault: SecretsVault, ref: string, quem: Q
     throw new BadRequest(r.cortada ? 'A IA não terminou o rascunho (passou do limite). Tente de novo.' : 'A IA não devolveu o rascunho no formato combinado. Tente de novo.');
   }
   return { ...escrito, custo: custoEstimado(r.uso, valor), modelo: nomeDoModelo(valor), provedor: INFO_PROVEDORES[valor.provedor].nome };
+}
+
+// ---------- a IA no chamado (Patch 2.0) ----------
+
+/**
+ * A IA preenchendo um chamado do Gestor (Patch 2.0, decisão 0047): a mesma IA da base — o provedor,
+ * o modelo e a chave que a administração escolheu —, o mesmo limite de 30 usos por pessoa por hora e
+ * a mesma conta do mês (o uso entra em "rascunhos": é a IA escrevendo para a pessoa revisar).
+ *
+ * Conversa com as instruções `INSTRUCOES_IA_CHAMADO` e devolve o JSON que ela respondeu, sem
+ * conferir: quem confere contra as opções de verdade (assuntos, tipos, produtos) é `lerSugestaoDaIa`.
+ * `texto` pode ser uma função: ela só roda depois de conferir que a IA está pronta e que a pessoa não
+ * passou do limite — ler a conversa no LineChat com a IA desligada não ajudaria ninguém.
+ */
+export async function conversarSobreChamado(
+  db: Db, vault: SecretsVault, quem: { id: string }, texto: string | (() => Promise<string>),
+): Promise<{ json: unknown; cortada: boolean; modelo: string; provedor: string; custo: number | null }> {
+  const { valor, cfg } = await prontaOuErro(db, vault);
+  conferirLimite(quem.id);
+  const mensagem = typeof texto === 'string' ? texto : await texto();
+  const r = await conversar(cfg, { sistema: INSTRUCOES_IA_CHAMADO, mensagens: [{ papel: 'user', texto: mensagem }], maxTokens: limite(cfg, TOKENS.rascunho), json: true });
+  // o que gastou entra na conta do mês mesmo se a resposta vier fora do formato (os tokens foram usados)
+  await registrarUso(db, 'rascunhos', r.uso).catch(() => undefined);
+  return {
+    json: jsonDaResposta(r.texto), cortada: r.cortada,
+    modelo: nomeDoModelo(valor), provedor: INFO_PROVEDORES[valor.provedor].nome, custo: custoEstimado(r.uso, valor),
+  };
 }

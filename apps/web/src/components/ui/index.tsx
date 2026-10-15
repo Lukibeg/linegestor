@@ -122,7 +122,8 @@ export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-
   }, [open]);
   useEffect(() => {
     if (!open || !fechavel) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && pilhaDeJanelas[pilhaDeJanelas.length - 1] === eu.current) fechar.current(); };
+    // o Esc que um campo de dentro já usou (desistir de editar o título, fechar uma lista) não fecha a janela
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented && pilhaDeJanelas[pilhaDeJanelas.length - 1] === eu.current) fechar.current(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
   }, [open, fechavel]);
@@ -135,7 +136,7 @@ export function Modal({ open, onClose, titulo, children, rodape, largura = 'max-
           <h3 className="font-display font-semibold text-[15px]">{titulo}</h3>
           {fechavel && <button type="button" onClick={onClose} className="btn-ghost btn-sm" aria-label="Fechar"><X size={16} /></button>}
         </div>
-        <div className="px-5 py-4 overflow-y-auto flex-1">{children}</div>
+        <div className="px-5 py-4 overflow-y-auto overscroll-contain flex-1">{children}</div>
         {rodape && <div className="px-5 py-3 border-t border-line flex flex-wrap items-center justify-end gap-2 bg-surface-2 rounded-b-xl">{rodape}</div>}
       </div>
     </div>
@@ -319,8 +320,19 @@ export const FAIXA_ABAS = 'flex gap-1 mb-4 overflow-x-auto overflow-y-hidden sem
 export const classeAba = (ativa: boolean) => `px-3 py-2 text-sm font-semibold border-b-2 whitespace-nowrap ${ativa ? 'border-accent text-accent' : 'border-transparent text-ink-2 hover:text-ink'}`;
 
 export function Abas<T extends string>({ abas, atual, onChange }: { abas: Array<{ id: T; label: ReactNode }>; atual: T; onChange: (t: T) => void }) {
+  const faixa = useRef<HTMLDivElement>(null);
+  // A aba escolhida fica à vista: no celular a faixa rola para o lado, e a aba da direita (aberta pelo
+  // endereço) ficava cortada. Mexe só na rolagem da faixa, nunca na da página.
+  useEffect(() => {
+    const f = faixa.current;
+    const b = f?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!f || !b) return;
+    const fr = f.getBoundingClientRect(); const br = b.getBoundingClientRect();
+    if (br.left < fr.left) f.scrollLeft -= fr.left - br.left + 8;
+    else if (br.right > fr.right) f.scrollLeft += br.right - fr.right + 8;
+  }, [atual]);
   return (
-    <div className={FAIXA_ABAS} role="tablist">
+    <div ref={faixa} className={FAIXA_ABAS} role="tablist">
       {abas.map((a) => (
         <button key={a.id} role="tab" aria-selected={atual === a.id} onClick={() => onChange(a.id)} className={classeAba(atual === a.id)}>{a.label}</button>
       ))}
@@ -446,7 +458,7 @@ export function Popover({ botao, children, largura = 'w-[320px]', classe = 'btn-
  * borda; se não couber embaixo, abre para cima; e sempre rola por dentro. `fixed`, então nenhum
  * `overflow` de janela ou tabela corta o painel.
  */
-function usePosicaoDoPainel(aberto: boolean, ancora: React.RefObject<HTMLElement | null>, painel: React.RefObject<HTMLElement | null>, alinhar: 'direita' | 'esquerda' = 'direita') {
+export function usePosicaoDoPainel(aberto: boolean, ancora: React.RefObject<HTMLElement | null>, painel: React.RefObject<HTMLElement | null>, alinhar: 'direita' | 'esquerda' = 'direita') {
   const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; maxHeight: number } | null>(null);
   useEffect(() => {
     if (!aberto) { setPos(null); return; }

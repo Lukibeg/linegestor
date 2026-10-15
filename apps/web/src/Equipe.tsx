@@ -15,7 +15,6 @@ import { CircuitoDetalhe } from './pages/circuitos/Detalhe.js';
 import { DidsRedirect } from './pages/dids/Lista.js';
 import { Inventario } from './pages/inventario/Index.js';
 import { AparelhoDetalhe } from './pages/inventario/Aparelho.js';
-import { Dados } from './pages/dados/Index.js';
 import { NovidadesPagina } from './pages/novidades/Index.js';
 import { ProjetosLista } from './pages/projetos/Lista.js';
 import { ProjetoFicha } from './pages/projetos/Ficha.js';
@@ -28,6 +27,14 @@ import { ArtigoEditor } from './pages/base/Editar.js';
 import { Conta } from './pages/Conta.js';
 import { Admin } from './pages/admin/Index.js';
 import { PortalDaEquipe } from './pages/portal/Index.js';
+import { MeuDia } from './pages/atendimento/MeuDia.js';
+import { PaineisDeChamados } from './pages/atendimento/Inicio.js';
+import { Quadro } from './pages/atendimento/Quadro.js';
+import { ListaDeChamados } from './pages/atendimento/Lista.js';
+import { JanelaAbrirChamado, NovoChamado } from './pages/atendimento/Novo.js';
+import { ChamadoEmJanela, FichaDoChamado } from './pages/atendimento/Ficha.js';
+import { fundoDaJanela } from './pages/atendimento/comum.js';
+import { AjustesAtendimento } from './pages/atendimento/Ajustes.js';
 import { TutorialEditor } from './pages/portal/Editor.js';
 
 function Protegido({ children }: { children: React.ReactNode }) {
@@ -41,7 +48,24 @@ function Protegido({ children }: { children: React.ReactNode }) {
 export function Equipe() {
   return (
     <AuthProvider>
-      <Routes>
+      <Rotas />
+    </AuthProvider>
+  );
+}
+
+/**
+ * As rotas. O chamado aberto de dentro do sistema (o cartão do quadro, a linha da lista, o aviso do
+ * sininho) vem com a tela de baixo no estado da navegação: ela continua desenhada como estava e a
+ * ficha abre numa janela grande por cima (o pedido do Luan na prévia). O link direto do chamado
+ * (/atendimento/SUP-12, sem a tela de baixo) abre a ficha em página inteira. O "Abrir chamado" do
+ * alto das telas faz o mesmo: janela por cima; pelo link direto (a conversa do LineChat), página.
+ */
+function Rotas() {
+  const location = useLocation();
+  const fundo = fundoDaJanela(location);
+  return (
+    <>
+      <Routes location={fundo ?? location}>
         <Route path="/entrar" element={<Entrar />} />
         {/* a página que vira o PDF do envio diário: o robô entra com uma chave de uso único (1.7) */}
         <Route path="/envio-diario" element={<EnvioDiario />} />
@@ -54,9 +78,19 @@ export function Equipe() {
         <Route path="/dids" element={<DidsRedirect />} />
         <Route path="/inventario" element={<Protegido><Inventario /></Protegido>} />
         <Route path="/inventario/aparelhos/:id" element={<Protegido><AparelhoDetalhe /></Protegido>} />
-        <Route path="/dados" element={<Protegido><Dados /></Protegido>} />
+        {/* o Importar / Exportar mora na Administração desde o 2.0: o endereço antigo leva para lá */}
+        <Route path="/dados" element={<Navigate to="/admin/dados" replace />} />
         <Route path="/projetos" element={<Protegido><ProjetosLista /></Protegido>} />
         <Route path="/projetos/:id" element={<Protegido><ProjetoFicha /></Protegido>} />
+        {/* os chamados do Gestor (2.0, decisão 0047): o Meu dia, o quadro, a lista, abrir, a ficha e os ajustes */}
+        <Route path="/atendimento" element={<Protegido><PaineisDeChamados /></Protegido>} />
+        <Route path="/atendimento/meu-dia" element={<Protegido><MeuDia /></Protegido>} />
+        <Route path="/atendimento/quadro" element={<Protegido><Quadro /></Protegido>} />
+        <Route path="/atendimento/lista" element={<Protegido><ListaDeChamados /></Protegido>} />
+        <Route path="/atendimento/novo" element={<Protegido><NovoChamado /></Protegido>} />
+        <Route path="/atendimento/ajustes" element={<Protegido><AjustesAtendimento /></Protegido>} />
+        <Route path="/atendimento/:codigo" element={<Protegido><FichaDoChamado /></Protegido>} />
+        {/* a cópia do painel do LineChat (1.3): os números e os relatórios dos chamados de lá */}
         <Route path="/chamados" element={<Protegido><Chamados /></Protegido>} />
         <Route path="/chamados/relatorios" element={<Protegido><RelatoriosChamados /></Protegido>} />
         {/* a base de conhecimento: o que a equipe aprendeu, com passo a passo (1.8) */}
@@ -73,6 +107,13 @@ export function Equipe() {
         <Route path="/admin/*" element={<Protegido><Admin /></Protegido>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </AuthProvider>
+      {fundo && (
+        <Routes>
+          {/* o Abrir chamado do alto das telas, numa janela por cima da tela (o pedido do Luan na prévia, em 14/10) */}
+          <Route path="/atendimento/novo" element={<JanelaAbrirChamado />} />
+          <Route path="/atendimento/:codigo" element={<ChamadoEmJanela />} />
+        </Routes>
+      )}
+    </>
   );
 }

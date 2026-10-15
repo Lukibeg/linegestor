@@ -220,3 +220,11 @@ export function formatarIpOuEndereco(v: string): string {
 export function paraBusca(v: string | null | undefined): string {
   return (v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
+
+/** O WhatsApp (5571999990000) como se lê: (71) 99999-0000. O que não for um número do Brasil volta como veio. */
+export function telefoneLegivel(n: string | null | undefined): string {
+  const d = (n ?? '').replace(/\D/g, '');
+  if (!d.startsWith('55') || (d.length !== 12 && d.length !== 13)) return n ?? '';
+  const ddd = d.slice(2, 4); const resto = d.slice(4);
+  return `(${ddd}) ${resto.slice(0, resto.length - 4)}-${resto.slice(-4)}`;
+}

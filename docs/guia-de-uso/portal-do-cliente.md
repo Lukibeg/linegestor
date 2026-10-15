@@ -5,8 +5,8 @@ arquivo para baixar. Cada pessoa do cliente entra com o login e a senha que o su
 e vê só os tutoriais dos produtos que a empresa dela tem. O endereço é o do sistema com `/portal` no fim
 (gestao.inglinesystems.com.br/portal).
 
-Do lado da equipe, fica no menu **Portal do cliente**, com três abas: **Tutoriais**, **Acessos** e
-**Ajustes**. Quem vê: todo mundo da equipe. Quem escreve tutorial e dá acesso: Operador, Técnico e
+Do lado da equipe, fica no menu **Base de conhecimento › Base dos clientes** (até o 1.9, menu
+**Portal do cliente**), com três abas: **Tutoriais**, **Acessos** e **Ajustes**. Quem vê: todo mundo da equipe. Quem escreve tutorial e dá acesso: Operador, Técnico e
 Administrador. Quem muda os Ajustes: o Administrador.
 
 E a equipe também entra no portal, com o **mesmo e-mail e a mesma senha do Gestor** — veja o item 6.
@@ -61,7 +61,7 @@ continua abrindo (o que vale é o número).
 ## 3. Dar acesso a uma pessoa do cliente
 
 Desde o 1.9, **o suporte cria o login e a senha** (antes a pessoa criava a senha por um link de
-convite, que saiu). Na **ficha do cliente**, aba **Portal** (ou em Portal do cliente › **Acessos**,
+convite, que saiu). Na **ficha do cliente**, aba **Portal** (ou em Base dos clientes › **Acessos**,
 escolhendo o cliente):
 
 1. **Dar acesso**, com o **nome** da pessoa.
@@ -129,7 +129,7 @@ Tutorial de produto que o cliente não tem não aparece, nem pela busca, nem pel
 ## 6. A equipe no portal
 
 Quem tem usuário no Gestor **entra no portal com o mesmo e-mail e a mesma senha**. Não precisa criar
-nada: vale para quem já existe e para quem for criado depois. Em Portal do cliente, **Abrir o
+nada: vale para quem já existe e para quem for criado depois. Em Base dos clientes, **Abrir o
 portal** leva até lá (ou abra `/portal`).
 
 - **Vê todos os tutoriais publicados**, de todos os produtos e módulos (o rascunho continua só aqui no
@@ -149,7 +149,7 @@ portal** leva até lá (ou abra `/portal`).
 
 ## 7. Ajustes
 
-Em Portal do cliente › **Ajustes** (mudar é de quem administra):
+Em Base dos clientes › **Ajustes** (mudar é de quem administra):
 
 - **Nome do portal** (aparece no topo e na mensagem com o acesso) e a frase de **boas-vindas**;
 - **WhatsApp**, **e-mail** e **horário do suporte** — o WhatsApp vira o botão "Falar com o suporte" e

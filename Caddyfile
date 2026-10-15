@@ -9,14 +9,21 @@
 	header {
 		# navegador só volta por https neste domínio, por 1 ano
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		# nada de adivinhar tipo de arquivo, nem abrir o sistema dentro de um iframe de terceiros
+		# nada de adivinhar tipo de arquivo
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
-		# De onde a página pode carregar coisas. Tudo vem daqui mesmo; as fontes vêm do Google Fonts.
-		# Nada de <iframe> de terceiros, nada de plugin, e o formulário só posta para o próprio site.
-		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'"
+		# O Content-Security-Policy (de onde a página carrega coisas e QUEM pode abrir o Gestor dentro
+		# de um iframe) NÃO fica mais aqui desde a 2.0: quem manda é o próprio sistema, em toda resposta
+		# (apps/api/src/plugins/seguranca.ts), num lugar só. É lá porque a lista de sites que podem abrir
+		# o Gestor dentro deles (o menu do LineChat, outros programas) é escolhida na tela, em
+		# Chamados › Ajustes › Integrações — e o Caddy não sabe ler o banco. As outras regras do CSP
+		# continuam as mesmas de antes (tudo vem daqui; as fontes, do Google Fonts; nada de plugin; o
+		# formulário só posta para o próprio site).
+		# O X-Frame-Options "DENY" saiu pelo mesmo motivo: ele só sabe dizer "ninguém" ou "só eu", e o
+		# frame-ancestors do sistema já diz quem pode (os navegadores de hoje seguem o frame-ancestors).
+		# Não ponha nenhum dos dois de volta aqui: o Caddy passaria por cima do que o sistema manda e o
+		# Gestor deixaria de abrir dentro do LineChat.
 		-Server
 	}
 

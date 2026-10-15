@@ -13,7 +13,7 @@ import './env.js';
 import argon2 from 'argon2';
 import { eq, sql } from 'drizzle-orm';
 import {
-  CATEGORIAS_APARELHO_INICIAIS, DEFAULT_ROLES, HOSPEDAGENS_INICIAIS, MODULOS_INICIAIS, OPERADORAS_INICIAIS, ORGANIZACOES_INTERNAS, PRODUTOS_INICIAIS,
+  CATEGORIAS_APARELHO_INICIAIS, DEFAULT_ROLES, HOSPEDAGENS_INICIAIS, MODULOS_INICIAIS, OPERADORAS_INICIAIS, ORGANIZACOES_INTERNAS, PAINEIS_INICIAIS, PRODUTOS_INICIAIS,
   gerarFaixaDids,
 } from '@gestor/shared';
 import { createDb } from './index.js';
@@ -70,6 +70,19 @@ for (const o of ORGANIZACOES_INTERNAS) {
       id: newId(), tradeName: o.name, legalName: o.legalName, cnpj: o.code === 'ingline' ? '00000000000191' : '00000000000272',
       isInternal: true, internalCode: o.code,
     });
+  }
+}
+
+// ---- os painéis de chamados (2.0): os mesmos que a migração 0015 cria, com os mesmos ids ----
+// (o teste apaga todas as tabelas antes de cada arquivo e roda o seed: sem isto, o módulo nasceria sem painel)
+const [temPainel] = await db.select({ n: sql<number>`count(*)` }).from(s.ticketPanels);
+if (Number(temPainel?.n ?? 0) === 0) {
+  for (const [i, p] of PAINEIS_INICIAIS.entries()) {
+    const panelId = `painel-${p.chave}`;
+    await db.insert(s.ticketPanels).values({ id: panelId, name: p.nome, key: p.sigla, description: p.descricao, color: p.cor, sortOrder: i, settings: p.ajustes }).onConflictDoNothing();
+    for (const [j, e] of p.etapas.entries()) {
+      await db.insert(s.ticketStages).values({ id: `etapa-${p.chave}-${e.chave}`, panelId, name: e.nome, kind: e.tipo, level: e.nivel, sortOrder: j, requiredFields: e.obrigatorios }).onConflictDoNothing();
+    }
   }
 }
 

@@ -1,10 +1,13 @@
-/** Importar (com prévia) e exportar CSV. */
+/**
+ * Importar (com prévia) e exportar CSV. Mora em Administração › Importar / Exportar (2.0, o pedido do
+ * Luan: "a exportação também não precisa ter um ícone próprio, ela pode ficar dentro de configurações");
+ * o endereço antigo (/dados) leva para lá.
+ */
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Download, FileUp, ShieldAlert } from 'lucide-react';
 import { api, IS_DEMO } from '../../api/index.js';
 import type { ImportPlan } from '../../api/types.js';
-import { Pagina } from '../../components/layout/AppShell.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Campo, Chip, Modal, Spinner, mensagemErro, useToast } from '../../components/ui/index.js';
 
@@ -14,7 +17,7 @@ const ENTIDADES = [
   { id: 'dids', nome: 'DIDs', colunas: 'numero; circuito (código ou nome); cliente (CNPJ ou nome, ou "livre"); observacao (o titular é do circuito: vai no CSV de circuitos)', regra: 'Número que já existe → atualiza circuito/cliente. Número novo → cria.' },
 ];
 
-export function Dados() {
+export function ImportarExportar() {
   const { can } = useAuth();
   const toast = useToast(); const qc = useQueryClient();
   const [entity, setEntity] = useState('clients'); const [delimiter, setDelim] = useState(';'); const [csv, setCsv] = useState(''); const [fileName, setFileName] = useState('');
@@ -41,7 +44,8 @@ export function Dados() {
   const exportSecrets = async () => { if (!secretsFor) return; setBusy(true); setErr(''); try { const r = await api.data.exportWithSecrets(secretsFor, pw); setZipPw(r.zipPassword); const url = URL.createObjectURL(r.blob); const a = document.createElement('a'); a.href = url; a.download = r.filename; a.click(); URL.revokeObjectURL(url); setPw(''); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
 
   return (
-    <Pagina titulo="Importar / Exportar" sub="CSV com ponto e vírgula por padrão. A importação mostra o que vai fazer antes de gravar.">
+    <div>
+      <p className="text-sm text-muted mb-3">CSV com ponto e vírgula por padrão. A importação mostra o que vai fazer antes de gravar.</p>
       {/* grid-cols-1 + min-w-0: o campo de arquivo não empurra a página para o lado no celular */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
         <Can permission="data.import" fallback={<div className="card p-4 text-muted text-sm">Você não tem permissão para importar.</div>}>
@@ -91,6 +95,6 @@ export function Dados() {
           <div className="flex flex-col gap-3"><p className="text-sm text-ink-2">Confirme a <b>sua</b> senha para exportar <b>{secretsFor === 'clients' ? 'clientes' : 'circuitos'}</b> com as senhas guardadas.</p><input type="password" className="input" placeholder="sua senha" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus />{err && <div className="text-bad text-sm">{err}</div>}</div>
         )}
       </Modal>
-    </Pagina>
+    </div>
   );
 }
