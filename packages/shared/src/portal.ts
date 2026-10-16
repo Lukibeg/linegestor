@@ -13,8 +13,7 @@
  *  - o link do tutorial (o número e o título sem acento) e as mensagens prontas para o WhatsApp
  */
 import { z } from 'zod';
-import { numeroWhatsApp } from './envio.js';
-import { paraBusca } from './formatos.js';
+import { numeroWhatsApp, paraBusca } from './formatos.js';
 import { PaginacaoSchema } from './schemas.js';
 
 // ---------- os arquivos ----------

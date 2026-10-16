@@ -26,10 +26,11 @@ import * as integ from '../integracoes.js';
 import { clienteDaApi } from '../linechat.js';
 import type { SecretsVault } from '../secrets.js';
 
-/** O que fica guardado em `settings.atendimento-avisos` (a chave própria fica no cofre). */
-export type AvisosGuardados = Omit<AvisosChamadosTela, 'temChavePropria' | 'temChaveLineChat' | 'pessoas'> & {
-  pessoas: Array<{ userId: string; numero: string; ativo: boolean }>;
-};
+/**
+ * O que fica guardado em `settings.atendimento-avisos` (a chave própria fica no cofre). O WhatsApp de
+ * cada pessoa não fica aqui desde o 2.0.1: mora no usuário (`users.whatsapp`, Administração › Usuários).
+ */
+export type AvisosGuardados = Omit<AvisosChamadosTela, 'temChavePropria' | 'temChaveLineChat' | 'pessoas'>;
 
 type Ferramentas = { fetchFn: typeof fetch };
 let ferramentas: Ferramentas = { fetchFn: (...a) => fetch(...a) };
@@ -40,7 +41,7 @@ export const fetchDoWhatsApp = () => ferramentas.fetchFn;
 export async function lerAvisos(db: Db): Promise<{ valor: AvisosGuardados; temChavePropria: boolean }> {
   const { valor, temSegredo } = await integ.ler<AvisosGuardados>(db, 'atendimento-avisos');
   return {
-    valor: { ...AVISOS_CHAMADOS_PADRAO, ...valor, eventos: { ...AVISOS_CHAMADOS_PADRAO.eventos, ...(valor.eventos ?? {}) }, pessoas: valor.pessoas ?? [] },
+    valor: { ...AVISOS_CHAMADOS_PADRAO, ...valor, eventos: { ...AVISOS_CHAMADOS_PADRAO.eventos, ...(valor.eventos ?? {}) } },
     temChavePropria: temSegredo,
   };
 }

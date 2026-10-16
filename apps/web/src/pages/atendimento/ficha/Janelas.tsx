@@ -18,7 +18,7 @@ import { Campo, Confirmar, Modal, Spinner } from '../../../components/ui/index.j
 import { painelDe, telefoneLegivel, useAbrirChamado } from '../comum.js';
 import { NovoChamadoNaJanela } from '../Novo.js';
 import { BalaoDeMensagem } from '../ajustes/Avisos.js';
-import { ErroPerto, lista, nomeComNivel, useAberta, useAcao } from './base.js';
+import { ErroPerto, nomeComNivel, useAberta, useAcao } from './base.js';
 
 /** Os botões do rodapé: Cancelar e o que confirma (com a rodinha enquanto vai). */
 function Rodape({ onFechar, ocupado, desativado, botao, onConfirmar, perigoso = false }: { onFechar: () => void; ocupado: boolean; desativado?: boolean; botao: ReactNode; onConfirmar: () => void; perigoso?: boolean }) {

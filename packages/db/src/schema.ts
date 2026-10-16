@@ -594,6 +594,15 @@ export const users = pgTable('users', {
    * por isso mora aqui, e não no cliente. O atalho "SSH" da ficha usa este usuário.
    */
   sshUser: text('ssh_user'),
+  /**
+   * O WhatsApp desta pessoa, só os dígitos com o 55 (5571999990000). Por ele chegam os avisos dos
+   * chamados (o chamado que recebeu, o prazo vencendo, o Crítico), pelo número da equipe. Vazio = os
+   * avisos só na tela. Fica em Administração › Usuários desde o 2.0.1 (no 2.0 morava nos Ajustes dos
+   * chamados — o pedido do Luan: "pode ficar na parte de usuários que já existe").
+   */
+  whatsapp: text('whatsapp'),
+  /** Recebe os avisos dos chamados no WhatsApp. Desligado (pausado), o número fica guardado e nada sai. */
+  whatsappAvisos: boolean('whatsapp_avisos').notNull().default(true),
   /** Última vez que entrou */
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   /**
@@ -621,7 +630,7 @@ export const users = pgTable('users', {
  *    do Google, o token da API de avisos, a chave do LineChat, o token da FlwChat e a chave da IA
  */
 export const settings = pgTable('settings', {
-  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe, os números das pessoas e quais avisos vão por onde; a chave própria no cofre, 2.0) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) */
+  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe e quais avisos vão por onde; a chave própria no cofre, 2.0 — o número de cada pessoa mora no usuário desde o 2.0.1) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) */
   id: text('id').primaryKey(),
   value: text('value').notNull().default('{}'),
   secretId: text('secret_id').references(() => secrets.id),

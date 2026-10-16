@@ -61,7 +61,8 @@ import {
 /** O pedaço do estado da prévia que os chamados leem (as pessoas, os clientes, o cadastro, a IA, o LineChat). */
 export type EstadoDaPrevia = {
   me: { id: string; name: string; roleId: string } | null;
-  users: Array<{ id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null }>;
+  /** `whatsapp`: o número dos avisos dos chamados (2.0.1, em Administração › Usuários); `whatsappAvisos` falso = pausado */
+  users: Array<{ id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; whatsapp?: string | null; whatsappAvisos?: boolean }>;
   roles: Array<{ id: string; key: string | null; permissions: string[] }>;
   clients: Array<{ id: string; tradeName: string; isInternal: boolean; deletedAt: string | null }>;
   products: Array<{ id: string; code: string; name: string; color: string; sortOrder: number; active: boolean; deletedAt: string | null }>;
@@ -146,7 +147,8 @@ type WebhookRow = {
 };
 type ChaveRow = { id: string; nome: string; inicio: string; criadaEm: string; criadaPorId: string | null; usadaEm: string | null; revogadaEm: string | null };
 /** O WhatsApp dos chamados como fica guardado (a chave própria ficaria no cofre: aqui só se sabe se existe). */
-type AvisosGuardados = Omit<AvisosChamadosTela, 'temChavePropria' | 'temChaveLineChat' | 'pessoas'> & { pessoas: Array<{ userId: string; numero: string; ativo: boolean }> };
+/** como o servidor: o WhatsApp de cada pessoa não fica nos ajustes desde o 2.0.1 (mora no usuário) */
+type AvisosGuardados = Omit<AvisosChamadosTela, 'temChavePropria' | 'temChaveLineChat' | 'pessoas'>;
 
 /** O que uma mudança devolve: o chamado e a frase da auditoria (nula quando nada mudou). */
 type Feito = { id: string; codigo: string; titulo: string; resumo: string | null; antes?: unknown; depois?: unknown; erro?: string };
@@ -285,7 +287,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     etiquetas: [] as EtiquetaRow[],
     avisos: [] as AvisoRow[], webhooks: [] as WebhookRow[], chaves: [] as ChaveRow[],
     prazos: JSON.parse(JSON.stringify(AJUSTES_PRAZOS_PADRAO)) as AjustesPrazos,
-    whats: { ...AVISOS_CHAMADOS_PADRAO, eventos: { ...AVISOS_CHAMADOS_PADRAO.eventos }, pessoas: [] } as AvisosGuardados,
+    whats: { ...AVISOS_CHAMADOS_PADRAO, eventos: { ...AVISOS_CHAMADOS_PADRAO.eventos } } as AvisosGuardados,
     temChavePropria: false,
     integ: { sites: [] as string[], linkConversa: '' },
     ultimaVolta: 0,
@@ -508,12 +510,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!quem.length) return;
     if (canais.tela) for (const u of quem) A.avisos.push({ id: novoId(), userId: u.id, chamadoId: a.chamado.id, tipo: a.tipo ?? a.evento, texto: a.texto, em: iso(em), lidoEm: null });
     if (!canais.whatsapp || !A.whats.ativo || !A.whats.numeroEquipe) return;
-    const numeros = quem.map((u) => ({ u, p: A.whats.pessoas.find((x) => x.userId === u.id && x.ativo && x.numero) })).filter((x) => !!x.p);
+    // o WhatsApp de cada um mora no usuário (com o número e sem a pausa)
+    const numeros = quem.filter((u) => u.whatsapp && u.whatsappAvisos !== false).map((u) => ({ u, numero: u.whatsapp! }));
     // sem a chave, nem tenta (como o servidor): o histórico não ganha um "não foi" a cada aviso
     if (!temChaveDoEnvio()) return;
     // o servidor manda em segundo plano: a linha do histórico entra logo depois dos eventos da ação
-    numeros.forEach(({ u, p }, i) => {
-      const r = mandarWhatsApp({ de: 'equipe', para: p!.numero });
+    numeros.forEach(({ u, numero }, i) => {
+      const r = mandarWhatsApp({ de: 'equipe', para: numero });
       registrarEvento(a.chamado.id, 'aviso_equipe', null, { para: u.name, ok: r.ok, ...(r.ok ? {} : { erro: r.mensagem }) }, new Date(em.getTime() + 100 + i));
     });
   }
@@ -2452,18 +2455,16 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template ? { ...v.template, variaveis: v.template.variaveis.map((x) => ({ ...x })) } : null,
       equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda, eventos: JSON.parse(JSON.stringify(v.eventos)) as AvisosChamadosTela['eventos'],
       temChavePropria: A.temChavePropria, temChaveLineChat: S.ajustesLineChat.temToken,
-      pessoas: S.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')).map((u) => {
-        const p = v.pessoas.find((x) => x.userId === u.id);
-        // sem número guardado, a pessoa já vem marcada: pôr o número é querer receber
-        return { userId: u.id, nome: u.name, numero: p?.numero ?? '', ativo: p?.ativo ?? true };
-      }),
+      // só para ler: o número (e a pausa) de cada um muda em Administração › Usuários
+      pessoas: S.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+        .map((u) => ({ userId: u.id, nome: u.name, numero: u.whatsapp ?? '', ativo: u.whatsappAvisos !== false })),
       ultimoTesteEm: v.ultimoTesteEm, ultimoTesteOk: v.ultimoTesteOk, ultimoTesteMsg: v.ultimoTesteMsg,
     };
   }
   const avisosParaAuditoria = (v: AvisosGuardados) => ({
     ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
     envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template, equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda,
-    eventos: v.eventos, pessoas: v.pessoas,
+    eventos: v.eventos,
   });
 
   // ---------- as integrações ----------
@@ -2571,9 +2572,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ...A.whats, ativo: true, numeroEquipe: NUMERO_DA_EQUIPE,
       // a mensagem ao cliente pelo modelo aprovado do número oficial (o de atualização do chamado)
       envioCliente: 'modelo', template: { ...MODELO_ESCOLHIDO, variaveis: MODELO_ESCOLHIDO.variaveis.map((x) => ({ ...x })) },
-      pessoas: (Object.keys(WHATSAPP_DA_EQUIPE) as Pessoa[]).map((p) => ({ userId: idDa(p), numero: WHATSAPP_DA_EQUIPE[p], ativo: true })),
       ultimoTesteEm: iso(voltarUteis(agora, 9 * 600)), ultimoTesteOk: true, ultimoTesteMsg: PREVIA,
     };
+    // o WhatsApp de cada pessoa da equipe, no usuário (Administração › Usuários)
+    for (const p of Object.keys(WHATSAPP_DA_EQUIPE) as Pessoa[]) {
+      const u = S.users.find((x) => x.id === idDa(p));
+      if (u && u.whatsapp === undefined) { u.whatsapp = WHATSAPP_DA_EQUIPE[p]; u.whatsappAvisos = true; }
+    }
 
     // ---- as integrações: o robô do LineChat (a chave), o n8n (o webhook), o link da conversa ----
     const chaveRobo: ChaveRow = { id: novoId(), nome: 'Robô do LineChat', inicio: 'gst_R0b5', criadaEm: iso(voltarUteis(agora, 20 * 600)), criadaPorId: luan, usadaEm: null, revogadaEm: null };
@@ -3023,21 +3028,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       await ctx.wait(200);
       const d = ler(AvisosChamadosSchema, a);
       ctx.requirePerm('tickets.manage'); preparar();
-      const ids = unicos(d.pessoas.map((p) => p.userId));
-      if (ids.some((id) => !S.users.some((u) => u.id === id))) throw bad('Uma das pessoas da lista não existe mais. Recarregue a tela e tente de novo.');
-      const naTela = new Set(S.users.filter((u) => u.active).map((u) => u.id));
       const antes = A.whats;
-      const pessoas = [
-        ...[...new Map(d.pessoas.map((p) => [p.userId, { userId: p.userId, numero: p.numero, ativo: p.ativo }])).values()],
-        // quem está desativado não aparece na tela: o número que tinha fica guardado
-        ...antes.pessoas.filter((p) => !naTela.has(p.userId) && !ids.includes(p.userId)),
-      ];
       // a chave própria iria para o cofre: na prévia, só fica marcado que existe (nunca a guardamos)
       if (d.chave) A.temChavePropria = true;
       A.whats = {
         ...antes, ativo: d.ativo, url: d.url, usarChaveDoLineChat: d.usarChaveDoLineChat, numeroCliente: d.numeroCliente, numeroEquipe: d.numeroEquipe,
         envioCliente: d.envioCliente, modeloCliente: d.modeloCliente, template: d.template?.id ? d.template : null,
-        equipeLineChat: d.equipeLineChat, atribuirAQuemManda: d.atribuirAQuemManda, eventos: d.eventos, pessoas,
+        equipeLineChat: d.equipeLineChat, atribuirAQuemManda: d.atribuirAQuemManda, eventos: d.eventos,
       };
       auditar('settings_atendimento_avisos', 'settings', `${d.ativo ? 'Ligou' : 'Desligou'} o WhatsApp dos chamados${d.chave ? ' e trocou a chave da API' : ''}`, 'atendimento-avisos', { before: avisosParaAuditoria(antes), after: avisosParaAuditoria(A.whats) });
       return avisosParaTela();
@@ -3062,9 +3059,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ctx.requirePerm('tickets.manage'); preparar();
       let para = numero ?? '';
       if (!para) {
-        const p = A.whats.pessoas.find((x) => x.userId === (userId || S.me!.id) && x.numero);
-        if (!p) throw bad(userId ? 'Essa pessoa não tem WhatsApp nos avisos. Salve o número dela antes de testar.' : 'Escolha uma pessoa com WhatsApp nos avisos (ou digite um número) para o teste.');
-        para = p.numero;
+        // pausada também testa: o teste é para conferir o número
+        const u = S.users.find((x) => x.id === (userId || S.me!.id));
+        if (!u?.whatsapp) {
+          throw bad(userId
+            ? 'Essa pessoa não tem WhatsApp. Ponha o número dela em Administração › Usuários antes de testar.'
+            : 'Escolha uma pessoa com WhatsApp (em Administração › Usuários), ou digite um número, para o teste.');
+        }
+        para = u.whatsapp;
       }
       const r = mandarWhatsApp({ de: de ?? 'equipe', para });
       A.whats = { ...A.whats, ultimoTesteEm: iso(agoraReal()), ultimoTesteOk: r.ok, ultimoTesteMsg: r.mensagem };

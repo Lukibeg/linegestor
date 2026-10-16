@@ -13,8 +13,7 @@
  * cliente, as ligações num desenho, a busca e a ordem da lista. Mudou a regra, muda aqui (e o teste).
  */
 import { z } from 'zod';
-import { paraBusca } from './formatos.js';
-import { numeroWhatsApp } from './envio.js';
+import { numeroWhatsApp, paraBusca } from './formatos.js';
 import {
   ALCANCES, ESPERA_PARA_O_PRAZO, GRAVIDADES, NOME_ALCANCE, NOME_ESPERA, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_PRAZO, PESO_PRIORIDADE, PRIORIDADES, RegraAgendadoSchema,
   sugestaoPelosCampos,
@@ -1149,12 +1148,7 @@ export const AvisosChamadosSchema = z.object({
   equipeLineChat: z.string().trim().max(120).default(''),
   /** quem manda a mensagem fica com a conversa que ela abrir, pelo e-mail (o mesmo do LineChat: `user.email`) */
   atribuirAQuemManda: z.boolean().default(false),
-  pessoas: z.array(z.object({ userId: z.string(), numero: z.string().trim().max(30), ativo: z.boolean() })).max(300)
-    .transform((xs, ctx) => xs.filter((p) => p.numero).map((p) => {
-      const n = numeroWhatsApp(p.numero);
-      if (!n) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Número inválido: ${p.numero}` });
-      return { ...p, numero: n ?? '' };
-    })),
+  // (o WhatsApp de cada pessoa saiu daqui no 2.0.1: mora no usuário, em Administração › Usuários)
   eventos: z.object(Object.fromEntries(EVENTOS_AVISO.map((e) => [e, CanaisSchema])) as Record<EventoAviso, typeof CanaisSchema>),
 });
 export type AvisosChamadosGravar = z.infer<typeof AvisosChamadosSchema>;
@@ -1408,9 +1402,13 @@ export type MeuDia = {
   abertosHoje: number;
 };
 
-export type AvisosChamadosTela = Omit<AvisosChamadosGravar, 'chave' | 'pessoas'> & {
+export type AvisosChamadosTela = Omit<AvisosChamadosGravar, 'chave'> & {
   temChavePropria: boolean;
   temChaveLineChat: boolean;
+  /**
+   * as pessoas ativas e o WhatsApp de cada uma (vazio = sem número), só para ler: o número se muda em
+   * Administração › Usuários (2.0.1). `ativo` falso = pausada (tem o número, mas não recebe)
+   */
   pessoas: Array<{ userId: string; nome: string; numero: string; ativo: boolean }>;
   ultimoTesteEm: string | null; ultimoTesteOk: boolean | null; ultimoTesteMsg: string | null;
 };

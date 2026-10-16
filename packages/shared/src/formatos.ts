@@ -221,6 +221,20 @@ export function paraBusca(v: string | null | undefined): string {
   return (v ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 }
 
+/**
+ * Um número de WhatsApp como a API quer: só dígitos, com o 55 do Brasil. Aceita como a pessoa
+ * digitar — "(71) 3512-4840", "+55 71 3512-4840", "7135124840". Devolve null se não der um número.
+ * (Mora aqui desde o 2.0.1, para o cadastro do usuário conferir o WhatsApp sem importar o envio.)
+ */
+export function numeroWhatsApp(texto: string | null | undefined): string | null {
+  let d = (texto ?? '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  // DDD + número (fixo com 8 dígitos ou celular com 9): falta o país
+  if (d.length === 10 || d.length === 11) d = `55${d}`;
+  if (d.length < 12 || d.length > 13) return null;
+  return d;
+}
+
 /** O WhatsApp (5571999990000) como se lê: (71) 99999-0000. O que não for um número do Brasil volta como veio. */
 export function telefoneLegivel(n: string | null | undefined): string {
   const d = (n ?? '').replace(/\D/g, '');

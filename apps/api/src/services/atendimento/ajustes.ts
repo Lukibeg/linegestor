@@ -734,24 +734,25 @@ export async function gravarPrazos(app: FastifyInstance, d: AjustesPrazos, userI
 //  OS AVISOS (o WhatsApp dos chamados)
 // =====================================================================
 
-/** Os ajustes do WhatsApp para a tela: as pessoas são todos os usuários ativos, com o número guardado (ou vazio). */
+/**
+ * Os ajustes do WhatsApp para a tela. As pessoas são todos os usuários ativos, com o WhatsApp de cada um
+ * (ou vazio), só para a tela contar quem recebe e o teste escolher: o número se muda em Administração ›
+ * Usuários (2.0.1).
+ */
 export async function avisosParaTela(app: FastifyInstance): Promise<AvisosChamadosTela> {
   const db = app.db;
   const [{ valor: v, temChavePropria }, linechat, ativos] = await Promise.all([
     lerAvisos(db),
     integ.ler(db, 'linechat'),
-    db.select({ id: users.id, nome: users.name }).from(users).where(eq(users.active, true)).orderBy(asc(users.name)),
+    db.select({ id: users.id, nome: users.name, whatsapp: users.whatsapp, recebe: users.whatsappAvisos }).from(users)
+      .where(eq(users.active, true)).orderBy(asc(users.name)),
   ]);
   // campo a campo, de propósito: o que estiver guardado a mais nunca chega à tela
   return {
     ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
     envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template, equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda,
     eventos: v.eventos, temChavePropria, temChaveLineChat: linechat.temSegredo,
-    pessoas: ativos.map((u) => {
-      const p = v.pessoas.find((x) => x.userId === u.id);
-      // sem número guardado, a pessoa já vem marcada: pôr o número é querer receber
-      return { userId: u.id, nome: u.nome, numero: p?.numero ?? '', ativo: p?.ativo ?? true };
-    }),
+    pessoas: ativos.map((u) => ({ userId: u.id, nome: u.nome, numero: u.whatsapp ?? '', ativo: u.recebe })),
     ultimoTesteEm: v.ultimoTesteEm, ultimoTesteOk: v.ultimoTesteOk, ultimoTesteMsg: v.ultimoTesteMsg,
   };
 }
@@ -760,7 +761,7 @@ export async function avisosParaTela(app: FastifyInstance): Promise<AvisosChamad
 const avisosParaAuditoria = (v: Omit<AvisosGuardados, 'ultimoTesteEm' | 'ultimoTesteOk' | 'ultimoTesteMsg'>) => ({
   ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
   envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template, equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda,
-  eventos: v.eventos, pessoas: v.pessoas,
+  eventos: v.eventos,
 });
 
 /**
@@ -770,18 +771,6 @@ const avisosParaAuditoria = (v: Omit<AvisosGuardados, 'ultimoTesteEm' | 'ultimoT
 export async function gravarAvisos(app: FastifyInstance, d: AvisosChamadosGravar, userId: string): Promise<Gravado<AvisosChamadosTela>> {
   const db = app.db;
   const { valor } = await lerAvisos(db);
-  const ids = unicos(d.pessoas.map((p) => p.userId));
-  const [existentes, ativos] = await Promise.all([
-    ids.length ? db.select({ id: users.id }).from(users).where(inArray(users.id, ids)) : Promise.resolve([]),
-    db.select({ id: users.id }).from(users).where(eq(users.active, true)),
-  ]);
-  if (existentes.length !== ids.length) throw new BadRequest('Uma das pessoas da lista não existe mais. Recarregue a tela e tente de novo.');
-  const naTela = new Set(ativos.map((u) => u.id));
-  const pessoas = [
-    ...[...new Map(d.pessoas.map((p) => [p.userId, { userId: p.userId, numero: p.numero, ativo: p.ativo }])).values()],
-    // quem está desativado não aparece na tela: o número que tinha fica guardado (se voltar, volta com ele)
-    ...valor.pessoas.filter((p) => !naTela.has(p.userId) && !ids.includes(p.userId)),
-  ];
   let secretId: string | undefined;
   if (d.chave) {
     const { secretId: atual } = await integ.ler(db, 'atendimento-avisos');
@@ -791,7 +780,7 @@ export async function gravarAvisos(app: FastifyInstance, d: AvisosChamadosGravar
     ...valor,
     ativo: d.ativo, url: d.url, usarChaveDoLineChat: d.usarChaveDoLineChat, numeroCliente: d.numeroCliente, numeroEquipe: d.numeroEquipe,
     envioCliente: d.envioCliente, modeloCliente: d.modeloCliente, template: d.template?.id ? d.template : null,
-    equipeLineChat: d.equipeLineChat, atribuirAQuemManda: d.atribuirAQuemManda, eventos: d.eventos, pessoas,
+    equipeLineChat: d.equipeLineChat, atribuirAQuemManda: d.atribuirAQuemManda, eventos: d.eventos,
   };
   await integ.gravar(db, 'atendimento-avisos', novo, { secretId, userId });
   return {
@@ -802,23 +791,23 @@ export async function gravarAvisos(app: FastifyInstance, d: AvisosChamadosGravar
 }
 
 /**
- * Manda a mensagem de teste: para o número digitado, ou para o WhatsApp guardado de uma pessoa (sem
- * ninguém escolhido, o de quem pediu). `de`: o número da equipe (padrão) ou o oficial, do cliente. O
+ * Manda a mensagem de teste: para o número digitado, ou para o WhatsApp de uma pessoa (o de
+ * Administração › Usuários; sem ninguém escolhido, o de quem pediu). `de`: o número da equipe (padrão) ou o oficial, do cliente. O
  * resultado fica guardado para a tela mostrar ("último teste").
  */
 export async function testarAvisos(
   app: FastifyInstance, d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string }, quem: { id: string },
 ): Promise<{ ok: boolean; mensagem: string; para: string }> {
-  const { valor } = await lerAvisos(app.db);
   let para = d.numero?.trim() ?? '';
   if (!para) {
-    const p = valor.pessoas.find((x) => x.userId === (d.userId || quem.id) && x.numero);
-    if (!p) {
+    // pausada também testa: o teste é para conferir o número
+    const [u] = await app.db.select({ whatsapp: users.whatsapp }).from(users).where(eq(users.id, d.userId || quem.id)).limit(1);
+    if (!u?.whatsapp) {
       throw new BadRequest(d.userId
-        ? 'Essa pessoa não tem WhatsApp nos avisos. Salve o número dela antes de testar.'
-        : 'Escolha uma pessoa com WhatsApp nos avisos (ou digite um número) para o teste.');
+        ? 'Essa pessoa não tem WhatsApp. Ponha o número dela em Administração › Usuários antes de testar.'
+        : 'Escolha uma pessoa com WhatsApp (em Administração › Usuários), ou digite um número, para o teste.');
     }
-    para = p.numero;
+    para = u.whatsapp;
   }
   // pelo número oficial, o teste sai como uma mensagem ao cliente (pelo modelo aprovado, com valores de exemplo)
   const r = await mandarWhatsApp(app.db, app.vault, {

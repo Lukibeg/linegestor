@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
-import { CAMPOS_PROPRIOS } from '@gestor/shared';
+import { CAMPOS_PROPRIOS, numeroWhatsApp, telefoneLegivel } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import type { Product, ProductModule, Role, User } from '../../api/types.js';
 import { Pagina } from '../../components/layout/AppShell.js';
@@ -39,29 +39,79 @@ export function Admin() {
   );
 }
 
+/**
+ * Administração › Usuários. Desde o 2.0.1 o WhatsApp de cada pessoa (os avisos dos chamados, pelo número
+ * da equipe) mora aqui, no editar do usuário — o pedido do Luan: "pode ficar na parte de usuários que já
+ * existe, n precisa de uma parte só pra isso". Pausar guarda o número e não manda nada.
+ */
 function Usuarios() {
   const q = useQuery({ queryKey: ['users'], queryFn: api.admin.users }); const roles = useQuery({ queryKey: ['roles'], queryFn: api.admin.roles });
   const o = useOrdenacaoLocal('name');
   const [edit, setEdit] = useState<User | null | 'novo'>(null); const [f, setF] = useState<Record<string, any>>({}); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
   const qc = useQueryClient(); const toast = useToast();
-  useEffect(() => { if (edit === 'novo') setF({ name: '', email: '', password: '', roleId: roles.data?.[0]?.id ?? '', active: true }); else if (edit) setF({ name: edit.name, email: edit.email, password: '', roleId: edit.roleId, active: edit.active }); setErr(''); }, [edit, roles.data]);
-  const save = async () => { setBusy(true); setErr(''); try { const body = { ...f, password: f.password || undefined }; if (edit === 'novo') await api.admin.createUser({ ...body, password: f.password }); else await api.admin.updateUser((edit as User).id, body); await qc.invalidateQueries({ queryKey: ['users'] }); toast.push('ok', 'Usuário salvo'); setEdit(null); } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); } };
+  useEffect(() => {
+    if (edit === 'novo') setF({ name: '', email: '', password: '', roleId: roles.data?.[0]?.id ?? '', active: true, whatsapp: '', whatsappAvisos: true });
+    else if (edit) setF({ name: edit.name, email: edit.email, password: '', roleId: edit.roleId, active: edit.active, whatsapp: edit.whatsapp ? telefoneLegivel(edit.whatsapp) : '', whatsappAvisos: edit.whatsappAvisos });
+    setErr('');
+  }, [edit, roles.data]);
+  const whats = String(f.whatsapp ?? '').trim();
+  const whatsInvalido = !!whats && !numeroWhatsApp(whats);
+  const save = async () => {
+    setBusy(true); setErr('');
+    try {
+      // o WhatsApp vazio tira o número (o servidor guarda só os dígitos, com o 55)
+      const body = { ...f, password: f.password || undefined, whatsapp: whats };
+      if (edit === 'novo') await api.admin.createUser({ ...body, password: f.password }); else await api.admin.updateUser((edit as User).id, body);
+      await qc.invalidateQueries({ queryKey: ['users'] });
+      // a tela de avisos dos chamados conta quem recebe
+      void qc.invalidateQueries({ queryKey: ['atendimento', 'ajustes', 'avisos'] });
+      toast.push('ok', 'Usuário salvo'); setEdit(null);
+    } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
+  };
   if (q.isLoading) return <Carregando />;
   return (
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
         {/* decisão 0044: o mesmo login entra no portal do cliente — nada a criar lá */}
-        <p className="text-sm text-muted flex-1">Cada usuário daqui também entra no <b className="text-ink-2">portal do cliente</b> com o mesmo e-mail e a mesma senha, e vê todos os tutoriais. Desativado, não entra em nenhum dos dois.</p>
+        <p className="text-sm text-muted flex-1">Cada usuário daqui também entra no <b className="text-ink-2">portal do cliente</b> com o mesmo e-mail e a mesma senha, e vê todos os tutoriais. Desativado, não entra em nenhum dos dois. O <b className="text-ink-2">WhatsApp</b> é por onde a pessoa recebe os avisos dos chamados.</p>
         <button className="btn-primary btn-sm self-end sm:self-auto shrink-0" onClick={() => setEdit('novo')}><Plus size={14} /> Novo usuário</button>
       </div>
-      <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><Th o={o} col="name">Nome</Th><Th o={o} col="email">E-mail</Th><Th o={o} col="roleName">Papel</Th><Th o={o} col="active">Situação</Th><Th o={o} col="lastLoginAt">Último acesso</Th><th /></tr></thead>
-        <tbody>{ordenarLista(q.data ?? [], o, { name: (u) => u.name, email: (u) => u.email, roleName: (u) => u.roleName, active: (u) => (u.active ? 1 : 0), lastLoginAt: (u) => u.lastLoginAt }).map((u, i) => <tr key={u.id}><TdN n={contar(i)} /><td className="font-medium">{u.name}</td><td className="text-ink-2">{u.email}</td><td><Chip tone="accent">{u.roleName}</Chip></td><td>{u.active ? <Chip tone="ok">ativo</Chip> : <Chip tone="muted">desativado</Chip>}</td><td className="text-muted">{u.lastLoginAt ? relativo(u.lastLoginAt) : 'nunca'}</td><td className="text-right"><button className="btn-ghost btn-sm" onClick={() => setEdit(u)}>Editar</button></td></tr>)}</tbody></table></div>
-      <Modal open={!!edit} onClose={() => setEdit(null)} titulo={edit === 'novo' ? 'Novo usuário' : 'Editar usuário'} rodape={<><button className="btn-secondary" onClick={() => setEdit(null)}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name || !f.email || (edit === 'novo' && (f.password?.length ?? 0) < 10)} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
+      <div className="card overflow-x-auto">
+        <table className="table">
+          <thead><tr><ThN /><Th o={o} col="name">Nome</Th><Th o={o} col="email">E-mail</Th><Th o={o} col="whatsapp">WhatsApp</Th><Th o={o} col="roleName">Papel</Th><Th o={o} col="active">Situação</Th><Th o={o} col="lastLoginAt">Último acesso</Th><th aria-label="Ações" /></tr></thead>
+          <tbody>
+            {ordenarLista(q.data ?? [], o, { name: (u) => u.name, email: (u) => u.email, whatsapp: (u) => u.whatsapp, roleName: (u) => u.roleName, active: (u) => (u.active ? 1 : 0), lastLoginAt: (u) => u.lastLoginAt }).map((u, i) => (
+              <tr key={u.id}>
+                <TdN n={contar(i)} />
+                <td className="font-medium">{u.name}</td>
+                <td className="text-ink-2">{u.email}</td>
+                <td className="whitespace-nowrap">
+                  {u.whatsapp
+                    ? <span className="inline-flex items-center gap-1.5"><span className="font-mono text-[13px] tnum">{telefoneLegivel(u.whatsapp)}</span>{!u.whatsappAvisos && <Chip tone="muted" title="Tem o número, mas não recebe os avisos dos chamados">pausado</Chip>}</span>
+                    : <span className="text-muted">—</span>}
+                </td>
+                <td><Chip tone="accent">{u.roleName}</Chip></td>
+                <td>{u.active ? <Chip tone="ok">ativo</Chip> : <Chip tone="muted">desativado</Chip>}</td>
+                <td className="text-muted">{u.lastLoginAt ? relativo(u.lastLoginAt) : 'nunca'}</td>
+                <td className="text-right"><button className="btn-ghost btn-sm" onClick={() => setEdit(u)}>Editar</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <Modal open={!!edit} onClose={() => setEdit(null)} titulo={edit === 'novo' ? 'Novo usuário' : 'Editar usuário'} rodape={<><button className="btn-secondary" onClick={() => setEdit(null)}>Cancelar</button><button className="btn-primary" disabled={busy || !f.name || !f.email || whatsInvalido || (edit === 'novo' && (f.password?.length ?? 0) < 10)} onClick={save}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button></>}>
         <div className="flex flex-col gap-3">
           <Campo label="Nome"><input className="input" value={f.name ?? ''} onChange={(e) => setF({ ...f, name: e.target.value })} autoFocus /></Campo>
           <Campo label="E-mail"><input className="input" type="email" value={f.email ?? ''} onChange={(e) => setF({ ...f, email: e.target.value })} /></Campo>
           <Campo label={edit === 'novo' ? 'Senha inicial' : 'Nova senha'} dica={edit === 'novo' ? 'mínimo 10 caracteres' : 'deixe vazio para não trocar'}><input className="input" type="password" autoComplete="new-password" value={f.password ?? ''} onChange={(e) => setF({ ...f, password: e.target.value })} /></Campo>
           <Campo label="Papel"><select className="input" value={f.roleId ?? ''} onChange={(e) => setF({ ...f, roleId: e.target.value })}>{roles.data?.map((r) => <option key={r.id} value={r.id}>{r.name} — {r.description}</option>)}</select></Campo>
+          <Campo label="WhatsApp" erro={whatsInvalido ? 'Use DDD + número, como (71) 99999-0000.' : undefined}
+            dica="por ele chegam os avisos dos chamados (o chamado que recebeu, o prazo vencendo); vazio = os avisos só na tela">
+            <input className={`input font-mono text-[13px] ${whatsInvalido ? 'border-bad' : ''}`} id="usuario-whatsapp" inputMode="tel" autoComplete="off" placeholder="(71) 99999-0000" aria-invalid={whatsInvalido}
+              value={f.whatsapp ?? ''} onChange={(e) => setF({ ...f, whatsapp: e.target.value })}
+              onBlur={(e) => { const n = numeroWhatsApp(e.target.value); if (n) setF({ ...f, whatsapp: telefoneLegivel(n) }); }} />
+          </Campo>
+          {whats && !whatsInvalido && <Toggle checked={!!f.whatsappAvisos} onChange={(v) => setF({ ...f, whatsappAvisos: v })} label="Receber os avisos dos chamados no WhatsApp (desligado, o número fica guardado)" />}
           {edit !== 'novo' && <Toggle checked={!!f.active} onChange={(v) => setF({ ...f, active: v })} label="Ativo (desativado não entra no Gestor nem no portal do cliente)" />}
           {err && <div className="text-bad text-sm">{err}</div>}
         </div>

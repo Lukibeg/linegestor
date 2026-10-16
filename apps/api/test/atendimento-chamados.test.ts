@@ -719,7 +719,7 @@ describe('avisar o cliente pelo WhatsApp', () => {
   let chave = '';
   let secretId = '';
   const ajustar = (o: Record<string, unknown>) => integ.gravar(app.db, 'atendimento-avisos', {
-    ...AVISOS_CHAMADOS_PADRAO, ativo: true, usarChaveDoLineChat: false, url: 'https://api.exemplo.com.br/chat/v1/message/send', numeroCliente: '557130348350', pessoas: [], ...o,
+    ...AVISOS_CHAMADOS_PADRAO, ativo: true, usarChaveDoLineChat: false, url: 'https://api.exemplo.com.br/chat/v1/message/send', numeroCliente: '557130348350', ...o,
   }, { secretId });
   beforeAll(async () => {
     chave = `chave-falsa-${Math.random()}`;

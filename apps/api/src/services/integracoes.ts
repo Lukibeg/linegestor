@@ -165,7 +165,8 @@ const PADROES: Record<Assunto, unknown> = {
   // os chamados do Gestor (2.0): o horário, os feriados e os prazos (o documento de prioridade e prazos)
   'atendimento-prazos': AJUSTES_PRAZOS_PADRAO,
   // o WhatsApp dos chamados (2.0): desligado até a administração ligar; a chave própria, se houver, no cofre
-  'atendimento-avisos': { ...AVISOS_CHAMADOS_PADRAO, pessoas: [] },
+  // (o WhatsApp de cada pessoa mora no usuário desde o 2.0.1)
+  'atendimento-avisos': { ...AVISOS_CHAMADOS_PADRAO },
   // os sites que podem abrir o Gestor dentro deles (nenhum: só o próprio Gestor) e o link da conversa no LineChat
   'atendimento-integracoes': { sites: [], linkConversa: '' },
 };

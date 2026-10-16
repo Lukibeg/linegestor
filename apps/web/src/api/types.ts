@@ -269,7 +269,8 @@ export type Product = {
   /** quantos clientes assinam hoje */
   activeClients?: number;
 };
-export type User = { id: string; name: string; email: string; active: boolean; roleId: string; roleName: string; lastLoginAt: string | null };
+/** `whatsapp`: só os dígitos, com o 55 (os avisos dos chamados, 2.0.1); `whatsappAvisos` falso = pausado. */
+export type User = { id: string; name: string; email: string; active: boolean; roleId: string; roleName: string; lastLoginAt: string | null; whatsapp: string | null; whatsappAvisos: boolean };
 export type Role = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean; userCount: number };
 export type AuditItem = { id: string; action: string; entityType: string; entityId: string | null; summary: string; before: unknown; after: unknown; userName: string | null; createdAt: string };
 export type TrashItem = { type: string; id: string; label: string; deletedAt: string };

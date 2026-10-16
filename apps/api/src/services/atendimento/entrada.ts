@@ -7,8 +7,8 @@
  *    revogadas, e anota quando foi usada;
  *  - quem age é a integração (`Ator` do tipo integração, com o nome da chave): o histórico e as
  *    anotações mostram "n8n", "Robô do LineChat"…; ela trabalha em todos os painéis;
- *  - as regras são as da tela: tudo passa por `criarChamado`, `alterarChamado`, `moverChamado`,
- *    `anotarChamado` e `reabrirChamado` (chamados.ts).
+ *  - as regras são as da tela: tudo passa por `criarChamado`, `alterarChamado`, `moverChamado` e
+ *    `anotarChamado` (chamados.ts).
  *
  * O que é só da entrada: a mesma conversa (sessão) aberta não vira outro chamado — o relato novo vira
  * anotação no que já existe. (A mensagem do cliente, que reabria o Resolvido, saiu no 2.0.1.)
@@ -24,7 +24,7 @@ import {
 } from '@gestor/shared';
 import { BadRequest, Unauthorized } from '../../plugins/errors.js';
 import { linkDoChamado } from './avisos.js';
-import { alterarChamado, anotarChamado, criarChamado, moverChamado, reabrirChamado } from './chamados.js';
+import { alterarChamado, anotarChamado, criarChamado, moverChamado } from './chamados.js';
 import { camposDoPainel, carregarContexto, carregarPaineis, cartoesDe, chamadoOu404, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
 
 export type EntradaChamado = z.infer<typeof EntradaChamadoSchema>;

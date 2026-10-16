@@ -21,7 +21,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.get('/users', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Listar usuários' } }, async () => svc.listUsers(app.db));
   app.post('/users', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Criar usuário', body: UsuarioCriarSchema } },
     async (req, reply) => { const row = await svc.createUser(app.db, req.body); await app.audit(req, { action: 'create', entityType: 'user', entityId: row.id, summary: `Criou o usuário ${row.name} (${row.email})` }); return reply.status(201).send(row); });
-  app.patch('/users/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Editar usuário (nome, e-mail, papel, ativo, senha)', params: Id, body: UsuarioAtualizarSchema } },
+  app.patch('/users/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Editar usuário (nome, e-mail, papel, ativo, senha, WhatsApp dos avisos)', params: Id, body: UsuarioAtualizarSchema } },
     async (req) => { const { before, after } = await svc.updateUser(app.db, req.params.id, req.body, req.user!.id); await app.audit(req, { action: 'update', entityType: 'user', entityId: after.id, summary: `Editou o usuário ${after.name}${req.body.password ? ' (senha redefinida)' : ''}`, before, after }); return after; });
 
   // ---- papéis ----

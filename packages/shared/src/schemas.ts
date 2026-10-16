@@ -6,7 +6,7 @@
  * para avisar a pessoa antes de enviar. Uma regra, escrita uma vez.
  */
 import { z } from 'zod';
-import { cnpjLimpo, cnpjValido, diaAoMeioDia, didLimpo, didValido, macLimpo, macValido, serieLimpa } from './formatos.js';
+import { cnpjLimpo, cnpjValido, diaAoMeioDia, didLimpo, didValido, macLimpo, macValido, numeroWhatsApp, serieLimpa } from './formatos.js';
 
 // ---------- Blocos reutilizáveis ----------
 
@@ -429,12 +429,28 @@ export const MinhaContaSchema = z.object({
   sshUser: z.string().trim().max(64).regex(/^[A-Za-z0-9._-]*$/, 'Use só letras, números, ponto, hífen e _').nullable(),
 });
 
+/**
+ * O WhatsApp da pessoa (os avisos dos chamados; em Administração › Usuários desde o 2.0.1). Vazio tira o
+ * número; ausente (no editar) não mexe. Guardado só com os dígitos, com o 55: 5571999990000.
+ */
+const WhatsAppDaPessoa = z.string().trim().max(30).nullish().transform((v, ctx) => {
+  if (v === undefined) return undefined;
+  if (!v) return null;
+  const n = numeroWhatsApp(v);
+  if (!n) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'WhatsApp inválido: use DDD + número, como (71) 99999-0000.' }); return z.NEVER; }
+  return n;
+});
+
 export const UsuarioCriarSchema = z.object({
   name: z.string().trim().min(2).max(120),
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(10, 'Senha precisa ter pelo menos 10 caracteres'),
   roleId: IdSchema,
   active: z.boolean().default(true),
+  /** de onde a pessoa recebe os avisos dos chamados, pelo número da equipe (vazio = só na tela) */
+  whatsapp: WhatsAppDaPessoa,
+  /** recebe os avisos dos chamados no WhatsApp; desligado, o número fica guardado e nada sai (pausado) */
+  whatsappAvisos: z.boolean().optional(),
 });
 export const UsuarioAtualizarSchema = UsuarioCriarSchema.partial();
 
