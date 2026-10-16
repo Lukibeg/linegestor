@@ -136,7 +136,7 @@ export function testarOAviso() {
     id: `teste-${Date.now()}`, tipo: 'recebeu', teste: true, lido: false, em: new Date().toISOString(), chamado: null,
     texto: navegador === 'mostrou' ? 'É assim que chega um aviso. A notificação do navegador também foi: ela aparece no canto da tela do computador.'
       : navegador === 'falhou' ? 'É assim que chega um aviso. A notificação do navegador não apareceu: este navegador não deixou.'
-        : 'É assim que chega um aviso: um chamado para você, o prazo perto, o cliente respondeu…',
+        : 'É assim que chega um aviso: um chamado para você, o prazo perto, alguém citou você…',
   }]);
 }
 

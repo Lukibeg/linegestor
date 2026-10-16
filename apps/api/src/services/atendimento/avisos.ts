@@ -76,7 +76,7 @@ const JUNTA_POR_MINUTOS = 30;
 
 /**
  * Avisa quem observa o chamado (o pedido do Luan na prévia: como no Helena, o observador recebe toda
- * atualização — a anotação, a mudança de etapa, o responsável, a espera, o cliente que respondeu…).
+ * atualização — a anotação, a mudança de etapa, o responsável, a espera, os campos…).
  * Quem fez não recebe, nem quem já recebeu outro aviso da mesma ação (o responsável que recebeu o
  * chamado, quem a etapa avisa).
  *

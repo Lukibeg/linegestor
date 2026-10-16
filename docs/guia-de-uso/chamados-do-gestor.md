@@ -32,7 +32,7 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
   assunto, etiqueta e as datas), as colunas que ordenam e **Exportar (CSV)**. Os números do Meu dia
   abrem a lista de todos os painéis.
 - O **sininho**, no rodapé do menu lateral, ao lado do seu nome (no celular, no alto): os avisos
-  (recebeu um chamado, chegou na sua etapa, o prazo está vencendo, o cliente respondeu…). O tema e o
+  (recebeu um chamado, chegou na sua etapa, o prazo está vencendo, alguém citou você…). O tema e o
   Sair também ficam ali — no computador, a barra de cima saiu, para sobrar espaço.
 - O aviso que chega com o Gestor aberto também aparece num **cartão** perto do sininho (no celular,
   embaixo da barra de cima), com **Abrir o chamado**. O cartão **fica até você abrir o chamado ou
@@ -54,10 +54,11 @@ Aberto, a janela vira a **ficha do chamado novo**; fechar volta para a tela. Com
 a janela (o X, o Esc, o clique fora ou **Cancelar**) pergunta antes de descartar. O Voltar do
 navegador também fecha a janela.
 
-- **Registro**: **Chamado** é o do dia a dia (o pedido ou a falha de um cliente). **Problema** é para a
-  mesma falha atingindo vários clientes (a operadora caiu, um defeito no sistema): ele junta os
-  chamados deles, os incidentes, que fecham sem esperar por ele; o problema só resolve com a causa, a
-  solução e a validação. Na dúvida, é Chamado.
+- O que se abre aqui é **chamado** (o pedido ou a falha de um cliente). O **problema** — a mesma falha
+  atingindo vários clientes (a operadora caiu, um defeito no sistema) — nasce na ficha de um deles:
+  **Mais › Abrir um problema a partir deste…**, e esse chamado vira o primeiro incidente. O problema
+  junta os incidentes, que fecham sem esperar por ele, e só resolve com a causa, a solução e a
+  validação. (O **Registro**, Chamado ou Problema, saiu do Abrir chamado no 2.0.1.)
 - Ao escolher o cliente, aparecem **os contatos dele**: um clique preenche o nome e o WhatsApp. **Novo
   contato** inclui ali mesmo (e já escolhe); o nome escrito à mão que não está na lista mostra
   **Salvar nos contatos**.
@@ -68,13 +69,13 @@ navegador também fecha a janela.
   nasce desligado, "por enquanto"; liga em Ajustes › Campos —, os dois juntos, pela matriz. Trocar a
   sugerida pede o motivo.
 - **Observadores** (como no Helena): as pessoas que recebem o aviso de tudo o que acontece no chamado —
-  a anotação, a mudança de etapa e de responsável, a espera, o cliente que respondeu, os campos (estes,
+  a anotação, a mudança de etapa e de responsável, a espera, os campos (estes,
   juntos num aviso só enquanto não for lido). Põe ao abrir ou na ficha.
 - **Etiquetas**: clique na caixa e a lista abre, como as outras listas do Gestor: procure, e um clique
   põe ou tira (a lista fica aberta para marcar mais de uma). O que você escreveu e não existe vira
   **Criar a etiqueta**: escolha a **cor** e crie. O **lápis** de cada uma (de quem cuida dos chamados)
   edita **o nome e a cor**, que valem em todos os chamados que têm a etiqueta. A que chega pelo robô,
-  pela IA ou por uma resposta pronta nasce cinza. Escrita de outro jeito ("cliente VIP" e "Cliente
+  ou pela IA nasce cinza. Escrita de outro jeito ("cliente VIP" e "Cliente
   vip"), é a mesma etiqueta. Na ficha, a caixa é a mesma.
 - O formulário mostra **só os campos que o painel usa**: os do sistema que estão ligados nele e, em
   **"Do painel …"**, os campos que a equipe criou para ele. O que é obrigatório para abrir vem com `*`;
@@ -109,12 +110,11 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   etiquetas), o responsável e os **observadores**, os **prazos**, o caso **na operadora** e o **tempo
   gasto**. O campo de texto longo do painel (ex.: "Como reproduzir") fica junto do relato.
 - A barra de cima: **Assumir**, **Mover**, **Escalonar** (pede o motivo), **Esperar** o cliente ou a
-  operadora (pede o motivo), **Avisar o cliente**, **Resposta pronta**, **Preencher com IA** e **Mais**
+  operadora (pede o motivo), **Avisar o cliente**, **Preencher com IA** e **Mais**
   (ligar a outro chamado, criar um filho, definir o pai, ligar a um problema, trocar de painel,
   reabrir, observar, lixeira). **Criar um filho** (e **Abrir um problema a partir deste**) abre o
   formulário do Abrir chamado numa janela por cima da ficha: aberto, a janela fecha e a ficha mostra o
-  filho. **Avisar o cliente** (e a resposta pronta que manda ao cliente) mostra,
-  antes de mandar, **como a mensagem chega**: dentro do modelo aprovado do WhatsApp oficial, com o
+  filho. **Avisar o cliente** mostra, antes de mandar, **como a mensagem chega**: dentro do modelo aprovado do WhatsApp oficial, com o
   nome do contato, o código e o seu texto (a quebra de linha vira " · ": o WhatsApp não aceita quebra
   dentro do modelo).
 - **Citar um colega**: na anotação, escreva **@** e o começo do nome — a lista de quem vê o painel abre
@@ -138,8 +138,9 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 - **O problema** junta os incidentes de clientes diferentes com a mesma causa e só resolve com a
   causa, a solução e a **validação**. O incidente fecha sem esperar o problema.
 - **Esperando o cliente, o prazo para.** Esperando a operadora, o prazo **continua correndo**.
-- O **Resolvido fecha sozinho** depois dos dias úteis do painel. A mensagem do cliente reabre — menos
-  "obrigado".
+- O **Resolvido fecha sozinho** depois dos dias úteis do painel. Se o cliente escrever que não
+  resolveu, quem atende reabre: o **Reabrir** da ficha, ou o **Reabrir este em vez de abrir outro** do
+  Abrir chamado. (Desde o 2.0.1 a mensagem do cliente não reabre sozinha.)
 
 ## 4. Os Ajustes do módulo (Chamados › Ajustes)
 
@@ -147,15 +148,14 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 |---|---|
 | **Painéis e etapas** | Criar e editar os painéis. Tudo de um painel fica numa janela só (**Novo painel** ou **Editar**): o nome, a sigla, a cor e quem vê; **as etapas** (nome, tipo, nível, o que é obrigatório, quem é avisado; arrastar ou as setas mudam a ordem); e as regras. O painel novo começa com Novo, Em andamento, Resolvido e Fechado, ou com as etapas de outro painel ("Começar com as etapas"). **Salvar** grava tudo junto: se uma etapa que sai tem chamados, a janela pergunta para onde eles vão, e até lá nada muda |
 | **Campos** | Os campos **de cada painel** (escolha o painel em cima). **Os do sistema** — assunto, tipo, gravidade, alcance, produtos, operadoras — ligam e desligam em cada painel (o Desenvolvimento, por exemplo, não usa assunto; o **alcance** nasce desligado em todos, por enquanto); as opções do **Tipo** se editam aqui. **O Assunto** abre a árvore do painel (até 3 níveis, com descrição, checklist e de-para; **nasce em branco**: cole a lista da equipe, um por linha, no formato "Ramal - Configuração - Identidade"). **Novo campo** cria os do painel: texto curto, texto longo, número, data, sim/não ou lista (escolhe uma ou várias opções), com uma dica, e **obrigatório para abrir** ou **para entrar** nas etapas que você marcar. As setas mudam a ordem. Desligar ou desativar **não apaga**: some da tela e das regras, e o que os chamados já têm volta se o campo voltar. O tipo de um campo não muda depois de criado |
-| **Etiquetas** | As etiquetas de todos os painéis, com a cor e em quantos chamados cada uma está: criar uma já com a cor, **Editar** o nome e a cor (valem em todos os chamados que a têm e nas respostas prontas que a põem; o mesmo editar está no lápis da lista de etiquetas) e **tirar das sugestões** a que nenhum chamado usa |
+| **Etiquetas** | As etiquetas de todos os painéis, com a cor e em quantos chamados cada uma está: criar uma já com a cor, **Editar** o nome e a cor (valem em todos os chamados que a têm; o mesmo editar está no lápis da lista de etiquetas) e **tirar das sugestões** a que nenhum chamado usa |
 | **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a prioridade sugerida: a coluna **Só a gravidade** (o painel sem o alcance) e a matriz gravidade × alcance (o painel que usa o alcance) |
-| **Avisos e WhatsApp** | No primeiro cartão, os dois números (o do cliente, oficial, e o da equipe), a chave e o **Testar**. **A mensagem ao cliente**: pelo **modelo aprovado** (o template do WhatsApp oficial — o único jeito de começar uma conversa) ou em texto livre (só até 24 horas da última mensagem do cliente; depois disso, vai o modelo). **Buscar os modelos no LineChat** traz os aprovados do número oficial; ao escolher um, o Gestor preenche o **id** (templateId) e as **variáveis**, e cada uma recebe um valor do chamado (o nome do contato, o código, o título, a empresa, o responsável, quem manda, **o que o atendente escreveu**) ou um texto fixo. O modelo com imagem, vídeo ou documento no cabeçalho pede o **endereço do arquivo** (https://). A prévia mostra a mensagem com um chamado de exemplo. **Quem fica com a conversa no LineChat**: a equipe (pelo nome) e, ligado, quem manda (pelo e-mail, o mesmo nos dois). Depois, o número de cada pessoa e quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início) |
-| **Respostas prontas** | O texto e o que ela faz no chamado (avisa o cliente, move, marca a espera, põe a etiqueta, assume) |
+| **Avisos e WhatsApp** | No primeiro cartão, os dois números (o do cliente, oficial, e o da equipe), a chave e o **Testar**. **A mensagem ao cliente**: pelo **modelo aprovado** (o template do WhatsApp oficial — o único jeito de começar uma conversa) ou em texto livre (só até 24 horas da última mensagem do cliente; depois disso, vai o modelo). **Buscar os modelos no LineChat** traz os aprovados do número oficial; ao escolher um, o Gestor preenche o **id** (templateId) e as **variáveis**, e cada uma recebe um valor do chamado (o nome do contato, o código, o título, a empresa, o responsável, quem manda, **o que o atendente escreveu**) ou um texto fixo. O modelo com imagem, vídeo ou documento no cabeçalho pede o **endereço do arquivo** (https://). A prévia mostra a mensagem com um chamado de exemplo. **Quem fica com a conversa no LineChat**: a equipe (pelo nome) e, ligado, quem manda (pelo e-mail, o mesmo nos dois). Depois, quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início). O **WhatsApp de cada pessoa** fica em **Administração › Usuários** (no Editar usuário; o "Receber os avisos dos chamados no WhatsApp" pausa sem apagar o número): aqui aparece quantos recebem |
 | **Agendados** | O chamado que nasce sozinho (todo dia, toda semana, todo mês ou uma vez) |
 | **Integrações** | As chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
 | **IA** | O provedor e a chave do **Preencher com IA** (é a mesma IA da Base de conhecimento) |
 
-Painéis, campos, etiquetas, prazos, avisos, respostas e agendados: quem **cuida dos chamados**. Integrações e
+Painéis, campos, etiquetas, prazos, avisos e agendados: quem **cuida dos chamados**. Integrações e
 IA: a **administração**.
 
 ## 5. Ligar com o LineChat e o n8n (Chamados › Ajustes › Integrações)
@@ -179,17 +179,15 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    endereço `/atendimento/novo?telefone={{telefone_do_contato}}&nome=…&sessao=…` (a tela mostra
    inteiro). Confira o nome das variáveis no LineChat. Por esse endereço, numa aba nova, o Abrir
    chamado ocupa a aba inteira.
-4. **O cliente respondeu** (pelo n8n): `/api/atendimento/entrada/mensagem` com o telefone, o texto e
-   a sessão — reabre o Resolvido, menos agradecimento, e avisa o responsável.
-5. **Webhooks** (o Gestor avisa o n8n): o endereço `https://` do fluxo e os eventos (chamado criado,
+4. **Webhooks** (o Gestor avisa o n8n): o endereço `https://` do fluxo e os eventos (chamado criado,
    alterado, movido, anotação, resolvido, fechado). O **segredo** aparece uma vez: cada aviso vai
    assinado no cabeçalho `X-Gestor-Assinatura` (HMAC-SHA256 do corpo). **Testar** manda um aviso de
    teste.
-6. **O Gestor dentro do LineChat**: inclua o endereço do LineChat em **Sites que podem abrir o Gestor**
+5. **O Gestor dentro do LineChat**: inclua o endereço do LineChat em **Sites que podem abrir o Gestor**
    e crie, no LineChat, um **menu personalizado** (página interna) com o endereço `/atendimento`. Lá
    dentro, cada pessoa entra uma vez com o login do Gestor. O Safari (e navegador que bloqueia cookie de
    outro site) pode pedir o login de novo.
-7. **O link da conversa**: o endereço da conversa no LineChat com `{sessao}` no lugar do número — é o
+6. **O link da conversa**: o endereço da conversa no LineChat com `{sessao}` no lugar do número — é o
    que põe o link "Conversa no LineChat" na ficha.
 
 **Na virada**, desligue (ou religue no Gestor) os dois fluxos do n8n que olham o Helena (IA Preenche

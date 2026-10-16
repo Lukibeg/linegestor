@@ -1,6 +1,6 @@
 /**
  * O sininho dos chamados (Patch 2.0): os avisos que chegaram para a pessoa — recebeu um chamado, o
- * prazo está vencendo, o cliente respondeu, chegou um Crítico. O número é o que ela ainda não viu;
+ * prazo está vencendo, alguém citou a pessoa, chegou um Crítico. O número é o que ela ainda não viu;
  * abrir a lista marca como lidos.
  *
  * Mora no rodapé do menu lateral (no computador a barra de cima saiu, para sobrar espaço — o pedido

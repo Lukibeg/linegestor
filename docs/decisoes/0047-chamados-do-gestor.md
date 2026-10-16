@@ -97,9 +97,9 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
 - **Andar com regras.** Ir para uma etapa pede o que ela exige (a tela diz o que falta);
   **escalonar e voltar de nível pedem o motivo**; o **pai não fecha com filho aberto** (os filhos
   podem estar em outro painel, como o Desenvolvimento); o **problema** (ITIL) junta os incidentes de
-  clientes diferentes e só resolve com a causa, a solução e a validação — no Abrir chamado, o
-  **Registro** (Chamado ou Problema) diz o que é cada um só na dica do mouse (o texto embaixo da
-  escolha saiu, a pedido do Luan na prévia, em 14/10: "não precisa disso"); as **ligações** (relacionado,
+  clientes diferentes e só resolve com a causa, a solução e a validação — nasce na ficha de um
+  chamado, que vira o primeiro incidente (o **Registro**, Chamado ou Problema, saiu do Abrir chamado no
+  2.0.1: ver no fim); as **ligações** (relacionado,
   duplicado de, repete) são **manuais** — nada automático, como ele pediu —, e o código citado no
   texto vira link. A ficha desenha as ligações (cada tipo com um traço e a legenda escrita).
 - **Abrir chamado**: dentro de um painel (o quadro, a lista), o chamado já nasce nele — "se eu estou
@@ -115,20 +115,20 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   dele na prévia). Em todas, com algo escrito, fechar pergunta antes.
 - **As etiquetas com cor** (o pedido dele na prévia: "na hora de criar as etiquetas, escolher a cor"):
   um catálogo, o mesmo em todos os painéis, guarda o nome e a cor de cada etiqueta (nove cores). A nova
-  nasce com a cor escolhida no Abrir chamado ou na ficha; a do robô, da IA e da resposta pronta, cinza.
+  nasce com a cor escolhida no Abrir chamado ou na ficha; a do robô e da IA, cinza.
   O chamado guarda o nome como está no catálogo ("cliente VIP" escrito de novo vira a que existe). No
   quadro e na ficha a etiqueta é redonda, com a bolinha da cor, para não se confundir com a prioridade
   e o prazo. A escolha é uma lista como as outras do Gestor (a busca, a marca das que o chamado tem, o
   "Criar" com a cor) — o pedido dele: "deixe no padrão do restante do sistema" —, e o **lápis** de
   cada uma edita **o nome e a cor**, como no Helena: valem em todos os chamados que têm a etiqueta (os
-  da lixeira também) e nas respostas prontas que a põem; o histórico fica como foi. Editar é de quem
+  da lixeira também); o histórico fica como foi. Editar é de quem
   cuida dos chamados, ali e em Ajustes › Etiquetas (onde também se tira das sugestões a que nenhum
   chamado usa). Cada pessoa só vê sugerida a etiqueta dos painéis que vê (e as que nenhum chamado usa
   ainda).
 - **Os observadores** (como no Helena, o pedido dele na prévia): quem é posto como observador — ao
   abrir ou na ficha — recebe o aviso de toda atualização do chamado: a anotação, a mudança de etapa e
   de responsável (e o reabrir, o painel novo), a espera, a mensagem ao cliente, o caso na operadora, o
-  cliente que respondeu, o fechar sozinho e a lixeira. As mudanças de campo (o relato, a classificação,
+  fechar sozinho e a lixeira. As mudanças de campo (o relato, a classificação,
   o checklist, as ligações…) de uma pessoa juntam num aviso só enquanto ele não foi lido (30 minutos),
   e só na tela. Quem fez não recebe, nem quem já recebeu outro aviso da mesma ação. O aviso é um evento
   próprio em Avisos e WhatsApp (na tela, ligado; no WhatsApp, desligado de início). O "Acompanhar" da
@@ -162,16 +162,16 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   horário de atendimento e os **feriados** (os de Salvador e da Bahia já cadastrados); **esperando o
   cliente, o prazo para**; esperando a operadora, **continua correndo**. O relógio do Gestor avisa
   perto de vencer e quando vence (o responsável; vencido, também os supervisores), avisa o chamado
-  **sem dono** e **fecha sozinho o Resolvido** depois de N dias úteis; a mensagem do cliente reabre o
-  Resolvido, menos "obrigado".
+  **sem dono** e **fecha sozinho o Resolvido** depois de N dias úteis (a mensagem do cliente, que
+  reabria o Resolvido, saiu no 2.0.1: ver no fim).
 - **Os avisos.** O **sininho** na tela (inclusive o dos observadores) e, o que chega com o Gestor
   aberto, um **cartão** perto dele e, para quem ligar, a **notificação do navegador** (só com o Gestor
   fora da frente) — o pedido dele na prévia: "além do sininho, notificação no navegador, e uma menos
   sucinta". Os dois **ficam até a pessoa abrir o chamado ou fechar** (também pedido dele: "fixo até o
   usuário clicar para entrar ou no X"); na tela, os 3 mais novos, e os outros esperam a vez. Cada pessoa liga e desliga no
   próprio sininho (vale para aquele navegador); a tela relê os avisos a cada 30 s. O **WhatsApp da
-  equipe** por um número não oficial, com o número de cada pessoa nos Ajustes (o pedido dele) e a
-  escolha de quais avisos vão por onde; o **cliente só recebe quando o atendente manda**, pelo número
+  equipe** por um número não oficial, com o número de cada pessoa no usuário (Administração ›
+  Usuários, desde o 2.0.1: ver no fim) e a escolha de quais avisos vão por onde; o **cliente só recebe quando o atendente manda**, pelo número
   oficial **(71) 3034-8350**. Esse número é o **WhatsApp oficial**, então a mensagem ao cliente sai
   **pelo modelo aprovado** (o template; o pedido dele na prévia): o id, as variáveis — cada uma com um
   valor do chamado ou um texto fixo, sem quebra de linha e nunca vazia, como a Meta exige — e o arquivo
@@ -181,9 +181,8 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   que a mensagem abrir vai para a equipe escolhida e, se ligado, para quem mandou (pelo e-mail). Sem
   o modelo escolhido, a ficha nem mostra o botão. O aviso da equipe só sai com a chave guardada (sem
   ela, nem tenta). Na ficha e no histórico fica quem foi avisado.
-- **A rotina.** As **respostas prontas** (o texto e o que ela faz: avisa o cliente, move, marca a
-  espera, põe a etiqueta, assume) e os **agendados** (o chamado que nasce sozinho: todo dia, toda
-  semana, todo mês ou uma vez).
+- **A rotina.** Os **agendados** (o chamado que nasce sozinho: todo dia, toda semana, todo mês ou uma
+  vez). As respostas prontas saíram no 2.0.1 (ver no fim).
 - **A IA** (a NIA dentro do Gestor): o **Preencher com IA** na ficha lê a conversa do cliente no
   LineChat (ou o que está no chamado) e sugere os campos; a pessoa marca o que quer e aplica. É a
   **mesma IA da Base de conhecimento** — o provedor e a chave ficam em **Chamados › Ajustes › IA**, o
@@ -203,7 +202,7 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   que não usa cookie.
 - **Quem pode o quê.** Ver: `support.read` (todos, inclusive o Leitor). Trabalhar (`tickets.work`,
   nova): Operador, Técnico e Administrador. Cuidar — painéis, etapas, campos e assuntos, etiquetas,
-  prazos, avisos, respostas prontas, agendados e a lixeira dos chamados (`tickets.manage`, nova):
+  prazos, avisos, agendados e a lixeira dos chamados (`tickets.manage`, nova):
   Administrador. Integrações e IA: `admin.manage`. Tudo o que muda vai para a auditoria; nada se apaga de verdade.
 
 **Ficou de fora, por decisão dele.** A pesquisa de satisfação (já existe em outro módulo); os
@@ -239,3 +238,25 @@ afetados.
   conhecimento ligada aos chamados novos (o livrinho e o "Registrar na base").
 - **O número do patch**: o trabalho foi feito e revisado na prévia como **1.10** (é o nome dos commits
   e da branch de trabalho) e subiu como **2.0** — o Luan, em 14/10: "pode subir tudo como versão 2.0".
+
+## Revisto no 2.0.1 (16/10/2026)
+
+Com o 2.0 no ar, o Luan passou pelas telas e pediu quatro mudanças:
+
+- **Sem o Registro no Abrir chamado** ("n tem necessidade"). O que se abre ali é chamado; o problema
+  nasce só a partir de um chamado — **Mais › Abrir um problema a partir deste…**, na ficha —, que vira o
+  primeiro incidente. O filtro Registro da Lista fica (é como se acham os problemas).
+- **Sem as respostas prontas** ("já tem no LineChat": as respostas rápidas de lá). Saíram a aba dos
+  Ajustes, o menu da ficha, as rotas e o serviço. A tabela `ticket_macros` fica no banco, sem uso (nada
+  se apaga), e o "usou a resposta pronta" antigo continua no histórico.
+- **Sem o "cliente respondeu"** pelo n8n ("isso tbm n precisa"). Saíram o endereço
+  `/api/atendimento/entrada/mensagem`, o cartão das Integrações e o aviso "O cliente respondeu" da lista
+  de avisos (o aviso antigo desse tipo ainda aparece no sininho). **O Resolvido não reabre sozinho**:
+  quem atende reabre pela ficha (Reabrir) ou pelo "Reabrir este em vez de abrir outro". O fechar
+  sozinho continua.
+- **O WhatsApp de cada pessoa em Administração › Usuários** ("pode ficar na parte de usuários que já
+  existe, n precisa de uma parte só pra isso"). O número mora no usuário (`users.whatsapp`, só os
+  dígitos com o 55) junto da pausa (`users.whatsapp_avisos`: desligada, o número fica e nada sai); os
+  Ajustes dos chamados só contam quem recebe, com o link para Usuários. Migração
+  `0016_whatsapp_dos_usuarios`: as duas colunas e a cópia dos números (e das pausas) que estavam em
+  `settings.atendimento-avisos`, que saem de lá.
