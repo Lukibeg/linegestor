@@ -10,8 +10,11 @@ regra do patch que ainda não subiu).
 
 **Decisão.**
 
-- **Onde.** No menu, **Suporte › Calendário** (`/calendario`), entre os Chamados e os Projetos. Aparece
-  para quem vê os chamados (`support.read`). Usa a largura toda da tela, como os chamados.
+- **Onde.** No menu, **Calendário** (`/calendario`), no alto, logo antes do grupo Suporte. Aparece para
+  quem vê os chamados (`support.read`). Usa a largura toda da tela, como os chamados. A primeira versão
+  ficava dentro do Suporte (Suporte › Calendário); na prévia, o Luan não achou (*"cadê, não tá na
+  demo"*: o grupo fechado escondia o item) — e o calendário é de todas as equipes, o Comercial e o
+  Administrativo também, não só do suporte. Foi para o alto do menu.
 - **Quem vê: a regra dos painéis.** Cada evento é de **um ou mais painéis** (os dos chamados: as
   equipes), e quem vê o evento é quem vê **um dos painéis dele** — o "Quem vê" do painel (Chamados ›
   Ajustes › Painéis: "Todos que veem chamados" ou "Só as pessoas escolhidas"). Quem cuida dos chamados
@@ -70,4 +73,4 @@ para o Google Agenda ou o Outlook (o arquivo .ics); a visão Semana e arrastar o
 
 **Consequências.** O calendário depende dos painéis: para uma equipe ter o seu (o Comercial, o
 Administrativo), cria-se o painel dela com "Só as pessoas escolhidas", mesmo que ela não use os
-chamados. O menu Suporte passa a ter quatro itens. O COMO-SUBIR do 2.0.1 roda a migração 0017.
+chamados. O menu ganha um item no alto (Calendário). O COMO-SUBIR do 2.0.1 roda a migração 0017.

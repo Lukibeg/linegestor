@@ -7,8 +7,7 @@
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
  * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (os
- * Chamados, o Calendário das equipes (2.0.1), os Projetos e os Relatórios, que abrem nos tickets do
- * LineChat, na aba Hoje) e **Base de
+ * Chamados, os Projetos e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje) e **Base de
  * conhecimento** (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O
  * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
  * recolhido, o ícone do grupo abre a lista dele do lado.
@@ -40,6 +39,10 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   { to: '/clientes', label: 'Clientes', icon: Building2, perm: 'records.read' },
   { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
   { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
+  // o calendário das equipes (2.0.1): as visitas, as viradas, as folgas… de todas as equipes (o Comercial e o
+  // Administrativo também), por isso no alto do menu e não dentro do Suporte — lá ele ficava escondido no
+  // grupo fechado (16/10, o Luan: "cadê, não tá na demo")
+  { to: '/calendario', label: 'Calendário', icon: CalendarDays, perm: 'support.read' },
   // o suporte: os chamados do Gestor (2.0), os projetos (as tarefas que percorrem vários clientes) e os
   // Relatórios. O Relatórios abre nos tickets do LineChat (a cópia de leitura, 1.3), na aba Hoje; dali as abas
   // levam ao Período e aos 20 relatórios (1.7), e o item fica marcado nas duas telas. (13/10, os pedidos do
@@ -48,8 +51,6 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
       { to: '/atendimento', label: 'Chamados', icon: Ticket, perm: 'support.read' },
-      // o calendário das equipes (2.0.1): as visitas, as viradas, as folgas… nos painéis dos chamados
-      { to: '/calendario', label: 'Calendário', icon: CalendarDays, perm: 'support.read' },
       { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
     ],
