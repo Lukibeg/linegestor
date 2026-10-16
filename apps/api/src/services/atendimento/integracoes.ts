@@ -1,8 +1,9 @@
 /**
  * AS INTEGRAÇÕES DOS CHAMADOS (Patch 2.0, decisão 0047): o que liga o Gestor aos outros sistemas —
  * os webhooks (o Gestor avisa o n8n do que aconteceu), as chaves de API (o robô do LineChat e o n8n
- * abrem e mexem nos chamados), os sites que podem abrir o Gestor dentro deles (o menu do LineChat) e o
- * modelo do link da conversa. É da administração (`admin.manage`).
+ * abrem e mexem nos chamados), o mapa do robô (2.0.1: de onde vem cada campo do chamado no JSON que o
+ * robô manda), os sites que podem abrir o Gestor dentro deles (o menu do LineChat) e o modelo do link
+ * da conversa. É da administração (`admin.manage`).
  *
  * Segredo nenhum fica à vista:
  *  - o segredo da assinatura do webhook vai para o cofre e aparece UMA vez, ao criar (ou ao pedir um
@@ -18,13 +19,16 @@ import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { newId, ticketApiKeys, ticketWebhooks, users, type Db } from '@gestor/db';
-import type { ChaveApiTela, EventoWebhook, IntegracoesTela, WebhookGravarSchema, WebhookTela } from '@gestor/shared';
+import {
+  CAMPOS_DO_MAPA, NOME_CAMPO_DO_MAPA,
+  type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type MapaDoRobo, type RoboTela, type WebhookGravarSchema, type WebhookTela,
+} from '@gestor/shared';
 import { BadRequest, NotFound } from '../../plugins/errors.js';
 import { esquecerSitesDoIframe } from '../../plugins/seguranca.js';
 import { enderecoPublico } from '../envio.js';
 import * as integ from '../integracoes.js';
 // o resumo é o mesmo com que a entrada das integrações confere a chave: uma definição só
-import { resumoDaChave } from './entrada.js';
+import { lerMapaDoRobo, lerUltimoDoRobo, resumoDaChave } from './entrada.js';
 import { corpoDoEvento, entregar, problemaDoEndereco } from './webhooks.js';
 
 type WebhookGravar = z.infer<typeof WebhookGravarSchema>;
@@ -185,4 +189,27 @@ export async function gravarLinkConversa(app: FastifyInstance, linkConversa: str
   const atual = await lerConfig(app.db);
   await integ.gravar(app.db, 'atendimento-integracoes', { ...atual, linkConversa }, { userId });
   return { linkConversa, antes: atual.linkConversa };
+}
+
+// =====================================================================
+//  O MAPA DO ROBÔ DO LINECHAT (2.0.1)
+// =====================================================================
+
+/** O mapa e o último pedido do robô (as variáveis dele, para montar o mapa, e o que aconteceu). */
+export async function roboDaTela(app: FastifyInstance): Promise<RoboTela> {
+  const [mapa, ultimo] = await Promise.all([lerMapaDoRobo(app.db), lerUltimoDoRobo(app.db)]);
+  return { mapa, ultimo };
+}
+
+/** Grava o mapa (os campos do painel sem texto saem: o mapa guarda só o que vem do robô). */
+export async function gravarMapaDoRobo(app: FastifyInstance, mapa: MapaDoRobo, userId: string): Promise<{ mapa: MapaDoRobo; antes: MapaDoRobo; mudou: string[] }> {
+  const antes = await lerMapaDoRobo(app.db);
+  const novo: MapaDoRobo = { ...mapa, campos: Object.fromEntries(Object.entries(mapa.campos).filter(([, t]) => t.trim())) };
+  await integ.gravar(app.db, 'atendimento-robo', novo, { userId });
+  // o que mudou, com o nome que a pessoa vê (a auditoria diz o quê)
+  const mudou: string[] = [];
+  if (antes.painel !== novo.painel) mudou.push('Painel');
+  for (const c of CAMPOS_DO_MAPA) if (antes[c] !== novo[c]) mudou.push(NOME_CAMPO_DO_MAPA[c]);
+  if (JSON.stringify(antes.campos) !== JSON.stringify(novo.campos)) mudou.push('Campos do painel');
+  return { mapa: novo, antes, mudou };
 }

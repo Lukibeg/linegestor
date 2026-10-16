@@ -8,6 +8,10 @@
  * e depois do limite de pedidos (60 por minuto), para quem tenta chaves também esbarrar no limite.
  *
  * A auditoria registra o nome da chave (não há pessoa: o usuário fica vazio).
+ *
+ * O robô do LineChat chama `/entrada/robo` com o JSON dele, do jeito que o bloco Webhook manda (2.0.1):
+ * o mapa (Chamados › Ajustes › Integrações) diz de onde vem cada campo. A `/entrada/chamado` recebe o
+ * formato do Gestor (o n8n, outros sistemas).
  */
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -38,13 +42,37 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   const ator = (req: FastifyRequest) => atores.get(req)!;
   const quem = (req: FastifyRequest) => entrada.nomeNaAuditoria(ator(req));
 
-  // ---------- o robô do LineChat ----------
+  // ---------- o robô do LineChat, com o JSON dele (o mapa diz de onde vem cada campo) ----------
+
+  app.post('/entrada/robo', {
+    ...comChave,
+    // o pedido do robô é pequeno: o limite do servidor (30 MB, para os anexos) não serve aqui
+    bodyLimit: 512 * 1024,
+    schema: {
+      tags, querystring: ChaveNoEndereco, body: z.unknown(),
+      summary: 'Abrir um chamado pelo robô do LineChat, com o JSON que o bloco Webhook manda: o mapa (Chamados › Ajustes › Integrações) diz de onde vem cada campo. O que não bate fica de fora e volta em "ignorados"; a mesma conversa aberta não abre outro (o relato vira anotação nele)',
+    },
+  }, async (req, reply) => {
+    const r = await entrada.abrirPeloRobo(app, ator(req), req.body);
+    if (r.criado) {
+      await app.audit(req, {
+        action: 'create', entityType: 'ticket', entityId: r.id,
+        summary: `${quem(req)} abriu ${r.codigo} "${r.titulo}" pelo mapa do robô${r.ignorados.length ? ` (${r.ignorados.length === 1 ? 'ficou 1 coisa de fora' : `ficaram ${r.ignorados.length} coisas de fora`})` : ''}`,
+        after: r.ignorados.length ? { ignorados: r.ignorados } : undefined,
+      });
+    } else if (r.anotou) {
+      await app.audit(req, { action: 'update', entityType: 'ticket', entityId: r.id, summary: `${quem(req)} anotou em ${r.codigo} o relato novo da mesma conversa` });
+    }
+    return reply.status(r.criado ? 201 : 200).send({ criado: r.criado, id: r.id, codigo: r.codigo, numero: r.numero, link: r.link, ignorados: r.ignorados });
+  });
+
+  // ---------- no formato do Gestor (o n8n, outros sistemas) ----------
 
   app.post('/entrada/chamado', {
     ...comChave,
     schema: {
       tags, querystring: ChaveNoEndereco, body: EntradaChamadoSchema,
-      summary: 'Abrir um chamado pelo robô (a mesma conversa aberta não abre outro: o relato vira anotação nele). Devolve o código, para o robô mandar ao cliente',
+      summary: 'Abrir um chamado no formato do Gestor (o n8n, outros sistemas; a mesma conversa aberta não abre outro: o relato vira anotação nele). Devolve o código, para mandar ao cliente',
     },
   }, async (req, reply) => {
     const r = await entrada.abrirPelaEntrada(app, ator(req), req.body);

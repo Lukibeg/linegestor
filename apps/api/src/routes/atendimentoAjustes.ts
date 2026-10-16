@@ -5,8 +5,9 @@
  *    de cada painel (os do sistema ligados ou não, e os criados pela equipe), as etiquetas e a cor de
  *    cada uma, a árvore de assuntos (e a lista colada), os prazos e os avisos (o WhatsApp dos chamados e
  *    o teste).
- *  - Integrações (a administração, `admin.manage`): os webhooks, as chaves de API, os sites que podem
- *    abrir o Gestor dentro deles (o menu do LineChat) e o link da conversa.
+ *  - Integrações (a administração, `admin.manage`): os webhooks, as chaves de API, o mapa do robô do
+ *    LineChat (2.0.1), os sites que podem abrir o Gestor dentro deles (o menu do LineChat) e o link da
+ *    conversa.
  *
  * Os agendados ficam em `atendimentoRotina.ts`. Tudo o que muda vai para a
  * auditoria — e segredo nenhum vai junto: a chave do WhatsApp, o segredo do webhook e a chave de API
@@ -16,11 +17,12 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
   AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
-  EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema,
-  LinkConversaSchema, OrdemDosCamposSchema, PainelGravarSchema, SitesIframeSchema, WebhookGravarSchema,
+  EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, ExperimentarRoboSchema,
+  LinkConversaSchema, MapaDoRoboSchema, OrdemDosCamposSchema, PainelGravarSchema, SitesIframeSchema, WebhookGravarSchema,
 } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as ajustes from '../services/atendimento/ajustes.js';
+import { experimentarRobo } from '../services/atendimento/entrada.js';
 import * as etiquetas from '../services/atendimento/etiquetas.js';
 import * as integracoes from '../services/atendimento/integracoes.js';
 import { modelosDoLineChat } from '../services/atendimento/whatsapp.js';
@@ -292,6 +294,35 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       if (!r.jaEstava) await app.audit(req, { action: 'revoke', entityType: 'ticket_api_key', entityId: r.chave.id, summary: `Revogou a chave de API ${r.chave.nome} (${r.chave.inicio}…)` });
       return { ok: true };
     });
+
+  // ---------- o mapa do robô do LineChat (2.0.1) ----------
+
+  app.get('/integracoes/robo', {
+    ...integrar,
+    schema: { tags: tagsIntegracoes, summary: 'O mapa do robô do LineChat (de onde vem cada campo do chamado no JSON que o robô manda) e o último pedido dele, com o que aconteceu' },
+  }, async () => integracoes.roboDaTela(app));
+
+  app.put('/integracoes/robo', {
+    ...integrar,
+    schema: { tags: tagsIntegracoes, summary: 'Gravar o mapa do robô: cada campo é um texto com as variáveis do pedido entre {{ }}, como "Atendimento de {{contact.name}}"', body: MapaDoRoboSchema },
+  }, async (req) => {
+    const r = await integracoes.gravarMapaDoRobo(app, req.body, req.user!.id);
+    if (r.mudou.length) {
+      await app.audit(req, {
+        action: 'settings_atendimento_robo', entityType: 'settings', entityId: 'atendimento-robo',
+        summary: `Mudou o mapa do robô do LineChat: ${r.mudou.join(', ')}`, before: r.antes, after: r.mapa,
+      });
+    }
+    return r.mapa;
+  });
+
+  app.post('/integracoes/robo/experimentar', {
+    ...integrar,
+    // "Como fica" pergunta a cada pausa na digitação
+    config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
+    bodyLimit: 1024 * 1024,
+    schema: { tags: tagsIntegracoes, summary: 'Como fica: o chamado que um pedido do robô abriria com este mapa (sem abrir nada e sem salvar o mapa)', body: ExperimentarRoboSchema },
+  }, async (req) => experimentarRobo(app, req.body.mapa, req.body.corpo));
 
   app.put('/integracoes/sites', {
     ...integrar,

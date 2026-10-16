@@ -369,6 +369,11 @@ export type Api = {
     revogarChave(id: string): Promise<{ ok: boolean }>;
     salvarSites(sites: string[]): Promise<{ sites: string[] }>;
     salvarLinkConversa(linkConversa: string): Promise<{ linkConversa: string }>;
+    /** o mapa do robô do LineChat (2.0.1) e o último pedido dele */
+    robo(): Promise<T.RoboTela>;
+    salvarMapaDoRobo(mapa: T.MapaDoRoboEntrada): Promise<T.MapaDoRobo>;
+    /** "Como fica": o chamado que o pedido abriria com este mapa (sem abrir nada e sem salvar) */
+    experimentarRobo(mapa: T.MapaDoRoboEntrada, corpo: unknown): Promise<T.PreviaDoRobo>;
   };
   admin: {
     users(): Promise<T.User[]>;

@@ -523,4 +523,5 @@ export type {
   EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, Nivel, CampoPersonalizado, CampoGravarEntrada, CamposDoSistemaEntrada, CampoDoSistema, TipoCampo,
   OpcaoDoCampo, ValorDoCampo, ValoresDosCampos, Obrigatorio, CorEtiqueta, EtiquetaComCor, EtiquetaDoCatalogo, EtiquetaGravarEntrada, EtiquetaEditarEntrada, EtiquetaEditarPeloNomeEntrada,
   ModelosDoLineChat, ModeloDoLineChat, ModeloAprovado, EnvioAoCliente, TipoArquivoDoModelo,
+  RoboTela, MapaDoRobo, MapaDoRoboEntrada, PreviaDoRobo, UltimoPedidoDoRobo,
 } from '@gestor/shared';

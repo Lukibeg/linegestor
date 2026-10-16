@@ -26,6 +26,8 @@ import {
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
   OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema,
+  ExperimentarRoboSchema, MapaDoRoboSchema, aplicarMapaDoRobo, mapaDeFabrica, resolverPedidoDoRobo, CAMPOS_DO_MAPA, NOME_CAMPO_DO_MAPA,
+  type MapaDoRobo, type UltimoPedidoDoRobo, type PreviaDoRobo, type RoboTela,
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta, renomearEtiqueta,
   faltaNoModeloAprovado, mensagemAoCliente, parametrosDoModelo, telefoneLegivel,
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
@@ -290,6 +292,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     whats: { ...AVISOS_CHAMADOS_PADRAO, eventos: { ...AVISOS_CHAMADOS_PADRAO.eventos } } as AvisosGuardados,
     temChavePropria: false,
     integ: { sites: [] as string[], linkConversa: '' },
+    /** o mapa do robô do LineChat (2.0.1); na prévia o robô não chama, então não há último pedido */
+    mapaRobo: mapaDeFabrica() as MapaDoRobo,
+    ultimoRobo: null as UltimoPedidoDoRobo | null,
     ultimaVolta: 0,
     erros: [] as string[],
     /** o robô do LineChat (a chave de API de exemplo) */
@@ -3220,6 +3225,42 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       A.integ = { ...A.integ, linkConversa: dados.linkConversa };
       auditar('settings_atendimento_link', 'settings', dados.linkConversa ? `Mudou o link da conversa no LineChat: ${dados.linkConversa}` : 'Tirou o link da conversa no LineChat', 'atendimento-integracoes', { before: { linkConversa: antes }, after: { linkConversa: dados.linkConversa } });
       return { linkConversa: dados.linkConversa };
+    },
+
+    // ---- o mapa do robô do LineChat (2.0.1): as mesmas regras do servidor (o resolvedor é o do @gestor/shared) ----
+    async robo() {
+      await ctx.wait(80); ctx.requirePerm('admin.manage'); preparar();
+      return JSON.parse(JSON.stringify({ mapa: A.mapaRobo, ultimo: A.ultimoRobo })) as RoboTela;
+    },
+    async salvarMapaDoRobo(mapa) {
+      await ctx.wait(180);
+      const dados = ler(MapaDoRoboSchema, mapa);
+      ctx.requirePerm('admin.manage'); preparar();
+      const antes = A.mapaRobo;
+      const novo: MapaDoRobo = { ...dados, campos: Object.fromEntries(Object.entries(dados.campos).filter(([, t]) => t.trim())) };
+      const mudou: string[] = [];
+      if (antes.painel !== novo.painel) mudou.push('Painel');
+      for (const c of CAMPOS_DO_MAPA) if (antes[c] !== novo[c]) mudou.push(NOME_CAMPO_DO_MAPA[c]);
+      if (JSON.stringify(antes.campos) !== JSON.stringify(novo.campos)) mudou.push('Campos do painel');
+      A.mapaRobo = novo;
+      if (mudou.length) auditar('settings_atendimento_robo', 'settings', `Mudou o mapa do robô do LineChat: ${mudou.join(', ')}`, 'atendimento-robo', { before: antes, after: novo });
+      return JSON.parse(JSON.stringify(novo)) as MapaDoRobo;
+    },
+    async experimentarRobo(mapa, corpo) {
+      await ctx.wait(120);
+      const dados = ler(ExperimentarRoboSchema, { mapa, corpo });
+      ctx.requirePerm('admin.manage'); preparar();
+      const p = aplicarMapaDoRobo(dados.mapa, dados.corpo);
+      const resolvido = resolverPedidoDoRobo(p, {
+        paineis: paineis(), assuntos: A.assuntos, campos: A.campos.map(campoParaTela),
+        clientes: S.clients.filter((c) => !c.deletedAt).map((c) => ({ id: c.id, nome: c.tradeName })),
+      });
+      // a conversa já tem um chamado aberto (entrada ou andamento)? um pedido dela agora viraria anotação nele
+      const aberto = p.sessaoId
+        ? A.chamados.filter((t) => !t.deletedAt && t.sessaoId === p.sessaoId && ['entrada', 'andamento'].includes(etapaPorId(t.etapaId)?.tipo ?? ''))
+          .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))[0]
+        : undefined;
+      return { resolvido, aberto: aberto ? { codigo: aberto.codigo, titulo: aberto.titulo } : null } satisfies PreviaDoRobo;
     },
   };
 

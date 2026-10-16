@@ -152,7 +152,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 | **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a prioridade sugerida: a coluna **Só a gravidade** (o painel sem o alcance) e a matriz gravidade × alcance (o painel que usa o alcance) |
 | **Avisos e WhatsApp** | No primeiro cartão, os dois números (o do cliente, oficial, e o da equipe), a chave e o **Testar**. **A mensagem ao cliente**: pelo **modelo aprovado** (o template do WhatsApp oficial — o único jeito de começar uma conversa) ou em texto livre (só até 24 horas da última mensagem do cliente; depois disso, vai o modelo). **Buscar os modelos no LineChat** traz os aprovados do número oficial; ao escolher um, o Gestor preenche o **id** (templateId) e as **variáveis**, e cada uma recebe um valor do chamado (o nome do contato, o código, o título, a empresa, o responsável, quem manda, **o que o atendente escreveu**) ou um texto fixo. O modelo com imagem, vídeo ou documento no cabeçalho pede o **endereço do arquivo** (https://). A prévia mostra a mensagem com um chamado de exemplo. **Quem fica com a conversa no LineChat**: a equipe (pelo nome) e, ligado, quem manda (pelo e-mail, o mesmo nos dois). Depois, quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início). O **WhatsApp de cada pessoa** fica em **Administração › Usuários** (no Editar usuário; o "Receber os avisos dos chamados no WhatsApp" pausa sem apagar o número): aqui aparece quantos recebem |
 | **Agendados** | O chamado que nasce sozinho (todo dia, toda semana, todo mês ou uma vez) |
-| **Integrações** | As chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
+| **Integrações** | O robô do LineChat e o **mapa do robô** (de onde vem cada campo do chamado no JSON que o robô manda), as chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
 | **IA** | O provedor e a chave do **Preencher com IA** (é a mesma IA da Base de conhecimento) |
 
 Painéis, campos, etiquetas, prazos, avisos e agendados: quem **cuida dos chamados**. Integrações e
@@ -166,28 +166,52 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    perder, revogue e crie outra. Uma chave para o robô e outra para o n8n deixa revogar uma sem parar
    a outra.
 2. **O robô abre o chamado**: no robô do LineChat, um bloco de **webhook** que manda para
-   `/api/atendimento/entrada/chamado`, com a chave no cabeçalho `Authorization: Bearer <chave>` (ou no
-   fim do endereço, `?chave=<chave>`, se o bloco não aceitar cabeçalho). O corpo leva o título, o
-   relato, o telefone, o nome e a sessão (as variáveis do LineChat) e, se quiser, os campos do painel
-   pelo nome (`"campos": {"Sistema": "LinePBX"}`; numa lista, o nome da opção). A resposta traz o
-   **código** do chamado, para o robô mandar ao cliente. A mesma conversa não abre dois chamados. O
-   cliente vem pelo telefone: primeiro dos **contatos dos clientes**, depois do que o Gestor aprendeu
-   dos chamados anteriores. O
-   assunto (ou outro campo do sistema) que o painel não usa é ignorado; um campo que o painel não tem
-   é recusado, e a resposta diz qual.
-3. **O botão "Abrir chamado" na conversa**: nas **ações personalizadas** do LineChat, na conversa, o
+   `/api/atendimento/entrada/robo`, com a chave no cabeçalho `Authorization: Bearer <chave>` (ou no
+   fim do endereço, `?chave=<chave>`, se o bloco não aceitar cabeçalho). Não precisa montar o corpo: o
+   bloco manda o JSON da conversa do jeito dele (o contato, a conversa, as perguntas e os menus do
+   robô, a última mensagem), e o **mapa do robô**, logo abaixo na tela, diz de onde sai cada campo do
+   chamado. A resposta traz o **código** do chamado, para o robô mandar ao cliente, e `ignorados` (o que
+   veio e ficou de fora). A mesma conversa não abre dois chamados: o relato novo vira anotação no que
+   já está aberto. O cliente vem pelo que o mapa mandar (o nome ou o CNPJ) ou, sem achar, pelo
+   telefone: primeiro dos **contatos dos clientes**, depois do que o Gestor aprendeu dos chamados
+   anteriores.
+3. **O mapa do robô**: cada campo do chamado (painel, título, relato, WhatsApp, nome, conversa,
+   etiquetas e, em **Mais campos**, descrição, cliente, assunto, prioridade e os campos do painel) é um
+   texto com as **variáveis do pedido entre `{{ }}`** — `Atendimento de {{contact.name}}`. O botão
+   **Variável** mostra as que o pedido tem, com o valor; a resposta de cada pergunta e de cada menu do
+   robô aparece com a pergunta ao lado, e a escolhida entra onde está o cursor. As variáveis vêm do
+   **último pedido do robô** (o Gestor guarda o último, com o que aconteceu), de **um pedido colado**
+   (o JSON que o LineChat mostra no histórico do bloco) ou do **exemplo do LineChat**. Embaixo de cada
+   campo, o que sai com aquele pedido; **Como fica** mostra o chamado que nasceria (com o cliente, o
+   assunto e as opções achados) e o que ficaria de fora, antes de salvar. O de fábrica já serve:
+   o nome no título, a última mensagem no relato, o WhatsApp e a conversa. Dicas:
+   - `{{a || b}}` usa a segunda quando a primeira vier vazia; `{{a || "texto"}}` termina num texto
+     fixo. O campo cujas variáveis vieram todas vazias fica vazio.
+   - O **assunto** acha pelo caminho, pelo nome ou pelo **de-para** do assunto: ponha a resposta do
+     menu ("Suporte Técnico") no de-para (Ajustes › Campos › Assunto) e ela vira o assunto.
+   - Nos **campos de lista**, a resposta enfeitada do menu ("☎️ LinePBX: Plataforma de Voz") vale pela
+     opção que aparece nela (LinePBX), se for uma só.
+   - O que não bate (o assunto que não existe, a opção que não é do campo, o telefone que não é número)
+     **fica de fora, e o chamado abre do mesmo jeito**: a resposta ao robô, a auditoria e o último
+     pedido dizem o quê. Se o robô mudar (ou for outro sistema), é só mudar o mapa.
+   - Outro sistema que monta o próprio JSON (o n8n, um script) pode mandar no **formato do Gestor**, em
+     `/api/atendimento/entrada/chamado` (o título, o relato, a descrição, o telefone, o nome, a sessão, o
+     assunto, a prioridade, as etiquetas e os campos do painel pelo nome: `"campos": {"Sistema":
+     "LinePBX"}`). Ali é mais rígido: o painel, o assunto ou o campo que não existe recusa o pedido, e a
+     resposta diz qual.
+4. **O botão "Abrir chamado" na conversa**: nas **ações personalizadas** do LineChat, na conversa, o
    endereço `/atendimento/novo?telefone={{telefone_do_contato}}&nome=…&sessao=…` (a tela mostra
    inteiro). Confira o nome das variáveis no LineChat. Por esse endereço, numa aba nova, o Abrir
    chamado ocupa a aba inteira.
-4. **Webhooks** (o Gestor avisa o n8n): o endereço `https://` do fluxo e os eventos (chamado criado,
+5. **Webhooks** (o Gestor avisa o n8n): o endereço `https://` do fluxo e os eventos (chamado criado,
    alterado, movido, anotação, resolvido, fechado). O **segredo** aparece uma vez: cada aviso vai
    assinado no cabeçalho `X-Gestor-Assinatura` (HMAC-SHA256 do corpo). **Testar** manda um aviso de
    teste.
-5. **O Gestor dentro do LineChat**: inclua o endereço do LineChat em **Sites que podem abrir o Gestor**
+6. **O Gestor dentro do LineChat**: inclua o endereço do LineChat em **Sites que podem abrir o Gestor**
    e crie, no LineChat, um **menu personalizado** (página interna) com o endereço `/atendimento`. Lá
    dentro, cada pessoa entra uma vez com o login do Gestor. O Safari (e navegador que bloqueia cookie de
    outro site) pode pedir o login de novo.
-6. **O link da conversa**: o endereço da conversa no LineChat com `{sessao}` no lugar do número — é o
+7. **O link da conversa**: o endereço da conversa no LineChat com `{sessao}` no lugar do número — é o
    que põe o link "Conversa no LineChat" na ficha.
 
 **Na virada**, desligue (ou religue no Gestor) os dois fluxos do n8n que olham o Helena (IA Preenche

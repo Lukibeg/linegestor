@@ -5,7 +5,8 @@
  * para lá). A árvore de assuntos de cada painel (até 3 níveis, como Ramal › Configuração › Identidade), o
  * ponto principal para os relatórios: cada assunto com a descrição ("quando usar"), o checklist (os
  * passos que entram no chamado com este assunto) e o de-para (os nomes da lista antiga do LineChat
- * que viram este assunto, para os relatórios compararem o antes e o depois).
+ * que viram este assunto, para os relatórios compararem o antes e o depois; desde o 2.0.1, também a
+ * resposta do menu do robô: o mapa do robô e o n8n acham o assunto por eles).
  *
  * Nada se apaga: o assunto que não serve mais é desativado (some da lista de quem abre chamado, e os
  * chamados antigos continuam com ele). A lista nasce em branco; quando a lista da equipe fechar, o
@@ -248,7 +249,7 @@ function JanelaAssunto({ painel, assuntos, assunto, paiInicial, onFechar }: {
             onChange={(e) => mudar({ checklist: e.target.value })} />
         </Rotulo>
         <Rotulo rotulo={`De-para${nomesAntigos.length ? ` (${nomesAntigos.length} ${nomesAntigos.length === 1 ? 'nome' : 'nomes'})` : ''}`} id="assunto-depara"
-          dica="Um por linha: os nomes da lista antiga (do LineChat) que viram este assunto. É o que deixa os relatórios compararem o antes e o depois.">
+          dica="Um por linha: os outros nomes que viram este assunto — os da lista antiga do LineChat (é o que deixa os relatórios compararem o antes e o depois) e a resposta do menu do robô (o mapa do robô acha o assunto por eles).">
           <textarea className="input min-h-[60px]" id="assunto-depara" value={f.dePara} placeholder={'Ramal - Identidade\nAlteração de nome de ramal'}
             onChange={(e) => mudar({ dePara: e.target.value })} />
         </Rotulo>

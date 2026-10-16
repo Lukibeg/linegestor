@@ -6,7 +6,7 @@
  * leem os exemplos, depois os que abrem e mexem nos próprios chamados de teste.
  */
 import { describe, expect, it } from 'vitest';
-import { caminhoDoAssunto, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, type CartaoChamado } from '@gestor/shared';
+import { caminhoDoAssunto, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, type CartaoChamado } from '@gestor/shared';
 import { demoApi } from './demo.js';
 import { diagnosticoDosChamadosDemo } from './demo-atendimento.js';
 import { ApiError, type ChamadoCriarEntrada, type OpcoesAtendimento } from './types.js';
@@ -770,5 +770,27 @@ describe('as regras do servidor valem na prévia', () => {
     expect(JSON.stringify(await api.integracoes())).not.toContain(valor);
     const interno = await erroDe(api.salvarWebhook(null, { nome: 'Interno', url: 'https://192.168.0.10/gancho', eventos: ['chamado.criado'], ativo: true }));
     expect(interno.status).toBe(400);
+  }, DEMORA);
+
+  it('o mapa do robô (como o servidor): "Como fica" com o exemplo do LineChat, a variável aberta recusada, salvar com a auditoria', async () => {
+    await entrar('admin');
+    const tela = await api.robo();
+    expect(tela).toEqual({ mapa: { ...MAPA_DO_ROBO_PADRAO }, ultimo: null });
+    const mapa = { ...tela.mapa, cliente: '{{questions.cb-exemplo-qst-empresa.answer}}', assunto: '{{menus.cb-exemplo-mn-setor.answer}}', prioridade: 'Alta' };
+    const p = await api.experimentarRobo(mapa, EXEMPLO_DO_LINECHAT);
+    expect(p.aberto).toBeNull();
+    if (!p.resolvido.ok) throw new Error(p.resolvido.erro);
+    expect(p.resolvido.chamado).toMatchObject({
+      painel: { sigla: 'SUP' }, titulo: 'Atendimento de Maria Souza', telefone: '5571999992010', cliente: { nome: 'Clínica Aurora' }, prioridade: 'alta', etiquetas: ['robô'],
+    });
+    expect(p.resolvido.chamado.ignorados).toEqual(['Não achei o assunto "Suporte Técnico" no painel Suporte: ficou de fora.']);
+    expect((await erroDe(api.salvarMapaDoRobo({ ...mapa, titulo: '{{contact.name' }))).status).toBe(400);
+    expect(await api.salvarMapaDoRobo({ ...mapa, campos: { 'campo-vazio': ' ' } })).toEqual({ ...mapa, campos: {} });
+    expect((await api.robo()).mapa.cliente).toBe('{{questions.cb-exemplo-qst-empresa.answer}}');
+    expect((await demoApi.admin.audit({ entityType: 'settings', pageSize: 1 } as never)).items[0]).toMatchObject({ action: 'settings_atendimento_robo', summary: 'Mudou o mapa do robô do LineChat: Cliente, Assunto, Prioridade' });
+    await api.salvarMapaDoRobo(MAPA_DO_ROBO_PADRAO);
+    await entrar('operador');
+    expect((await erroDe(api.robo())).status).toBe(403);
+    expect((await erroDe(api.experimentarRobo(mapa, EXEMPLO_DO_LINECHAT))).status).toBe(403);
   }, DEMORA);
 });

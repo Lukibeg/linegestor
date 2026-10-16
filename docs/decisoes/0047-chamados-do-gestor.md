@@ -223,7 +223,8 @@ afetados.
   `ticket_attachments`, `ticket_links`, `ticket_time_entries`, `ticket_carrier_cases`,
   `ticket_schedules`, `ticket_macros`, `ticket_tags` — as etiquetas e a cor, pelo nome sem maiúscula
   e sem acento —, `ticket_contacts`, `ticket_notifications`, `ticket_webhooks`, `ticket_api_keys`); e mais as duas permissões novas nos papéis e os dois painéis iniciais. Os ajustes ficam em `settings`
-  (`atendimento-prazos`, `atendimento-avisos`, `atendimento-integracoes`); a chave própria do
+  (`atendimento-prazos`, `atendimento-avisos`, `atendimento-integracoes`; no 2.0.1, `atendimento-robo` e
+  `atendimento-robo-ultimo`); a chave própria do
   WhatsApp e os segredos dos webhooks, no cofre.
 - As regras moram em `@gestor/shared` (`atendimento.ts` e `atendimento-prazos.ts`), as mesmas no
   servidor e na prévia. O servidor: `apps/api/src/services/atendimento/` e as rotas
@@ -241,7 +242,7 @@ afetados.
 
 ## Revisto no 2.0.1 (16/10/2026)
 
-Com o 2.0 no ar, o Luan passou pelas telas e pediu quatro mudanças:
+Com o 2.0 no ar, o Luan passou pelas telas e pediu cinco mudanças:
 
 - **Sem o Registro no Abrir chamado** ("n tem necessidade"). O que se abre ali é chamado; o problema
   nasce só a partir de um chamado — **Mais › Abrir um problema a partir deste…**, na ficha —, que vira o
@@ -260,3 +261,24 @@ Com o 2.0 no ar, o Luan passou pelas telas e pediu quatro mudanças:
   Ajustes dos chamados só contam quem recebe, com o link para Usuários. Migração
   `0016_whatsapp_dos_usuarios`: as duas colunas e a cópia dos números (e das pausas) que estavam em
   `settings.atendimento-avisos`, que saem de lá.
+- **O robô do LineChat abre pelo mapa** ("Eu quero que a gente possa alterar esse JSON… para que não
+  tenha que ser algo bem fixo… até porque depois possa trocar. Então, alguma parte onde eu possa montar
+  as referências com as variáveis"). O bloco Webhook do robô manda o JSON dele (o formato do Helena:
+  `contact`, `session`, `questions`, `menus`, `lastContactMessage`…, numa lista `[{…}]`), não o do
+  Gestor. Agora ele chama `/api/atendimento/entrada/robo`, que aceita qualquer JSON, e o **mapa**
+  (Chamados › Ajustes › Integrações, `settings.atendimento-robo`) diz de onde vem cada campo do
+  chamado: um texto com as variáveis do pedido entre `{{ }}` (`contact.name`,
+  `questions.<id>.answer`; `{{a || b}}` e `{{a || "texto"}}`). O de fábrica serve ao LineChat (o nome
+  no título, a última mensagem no relato, o WhatsApp, a conversa, a etiqueta "robô"). O Gestor guarda
+  **o último pedido** (`settings.atendimento-robo-ultimo`, os textos longos cortados) com o que
+  aconteceu: a tela lista as variáveis dele (a resposta de cada pergunta e de cada menu com a pergunta
+  ao lado), mostra o que sai em cada campo e o **Como fica** (`/integracoes/robo/experimentar`: o
+  mesmo resolvedor que abre de verdade, sem abrir). **Leniente**, de propósito: o que não bate (o
+  assunto que não existe, a opção que não é do campo, o telefone que não é número, o painel
+  desativado — que dá lugar ao primeiro ativo) fica de fora e volta em `ignorados` (na resposta, na
+  auditoria e no último pedido); só não abre quando o mapa não tira nada do pedido. O cliente sai pelo
+  nome (fantasia ou razão social) ou pelo CNPJ, quando bate com um só; a opção da lista, pela resposta
+  enfeitada do menu ("☎️ LinePBX: Plataforma de Voz" é a LinePBX), quando aparece uma só; o assunto,
+  também pelo **de-para** (vale para o n8n também: a resposta do menu vira assunto pelo nome que a
+  equipe põe no de-para). A entrada no formato do Gestor (`/entrada/chamado`) fica para o n8n e outros
+  sistemas, rígida como era, e ganhou a descrição. As regras moram em `@gestor/shared` (`robo.ts`).

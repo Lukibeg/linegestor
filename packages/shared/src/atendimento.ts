@@ -1182,6 +1182,8 @@ export const EntradaChamadoSchema = z.object({
   painel: z.string().trim().max(60).optional(),
   titulo: z.string().trim().max(200).optional(),
   relato: z.string().max(20_000).optional(),
+  /** o que a equipe lê (o relato é o que o cliente disse) */
+  descricao: z.string().max(20_000).optional(),
   telefone: z.string().trim().max(40).optional(),
   nome: z.string().trim().max(120).optional(),
   sessaoId: z.string().trim().max(120).optional(),
@@ -1612,6 +1614,44 @@ export function caminhoDoAssunto(id: string | null | undefined, assuntos: Pick<A
   let atual = porId.get(id);
   for (let n = 0; atual && n < 5; n++) { partes.unshift(atual.nome); atual = atual.paiId ? porId.get(atual.paiId) : undefined; }
   return partes.join(' › ');
+}
+
+/** "Ramal › Configuração", "ramal > configuracao", "Ramal - Configuração": o mesmo caminho. */
+const SEPARADOR_DO_CAMINHO = /\s*[>›»]\s*|\s+-\s+/;
+/** Uma parte do caminho como se compara: sem acento, maiúscula, pontuação nem emoji ("☎️ LinePBX:" = "linepbx"). */
+const parteComparavel = (s: string) => paraBusca(s).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+export const caminhoComparavel = (s: string) => s.split(SEPARADOR_DO_CAMINHO).map(parteComparavel).filter(Boolean).join(' › ');
+
+/**
+ * O assunto do painel pelo caminho inteiro, só pelo nome ou por um nome do de-para (sem ligar para
+ * acento, maiúscula e enfeite). O nome que aparece em dois lugares da árvore pede o caminho; o que não
+ * existe (ou foi desativado) volta como erro — gravar outro assunto no lugar seria pior que avisar. O
+ * n8n e o robô do LineChat procuram por aqui; o de-para entrou no 2.0.1, para a resposta do menu do
+ * robô ("Suporte Técnico") virar o assunto pelo nome que a equipe põe no de-para.
+ */
+export function procurarAssunto(
+  assuntos: Assunto[], painel: Pick<Painel, 'id' | 'nome'>, texto: string,
+): { ok: true; assunto: Assunto } | { ok: false; erro: string } {
+  const pedido = texto.trim();
+  const alvo = caminhoComparavel(pedido);
+  const doPainel = assuntos.filter((a) => a.painelId === painel.id);
+  const porCaminho = (a: Assunto) => caminhoComparavel(caminhoDoAssunto(a.id, assuntos)) === alvo;
+  const porNome = (a: Assunto) => caminhoComparavel(a.nome) === alvo;
+  const peloDePara = (a: Assunto) => a.dePara.some((d) => caminhoComparavel(d) === alvo);
+  const caminhos = (l: Assunto[]) => l.map((a) => caminhoDoAssunto(a.id, assuntos)).join(' ou ');
+  if (alvo) {
+    const ativos = doPainel.filter((a) => a.ativo);
+    const peloCaminho = ativos.filter(porCaminho);
+    if (peloCaminho.length === 1) return { ok: true, assunto: peloCaminho[0]! };
+    const peloNome = ativos.filter(porNome);
+    if (peloNome.length === 1) return { ok: true, assunto: peloNome[0]! };
+    if (peloNome.length > 1) return { ok: false, erro: `Há mais de um assunto "${pedido}" no painel ${painel.nome}: mande o caminho inteiro (${caminhos(peloNome)}).` };
+    const doDePara = ativos.filter(peloDePara);
+    if (doDePara.length === 1) return { ok: true, assunto: doDePara[0]! };
+    if (doDePara.length > 1) return { ok: false, erro: `"${pedido}" está no de-para de mais de um assunto do painel ${painel.nome} (${caminhos(doDePara)}): deixe em um só.` };
+    if (doPainel.some((a) => !a.ativo && (porCaminho(a) || porNome(a) || peloDePara(a)))) return { ok: false, erro: `O assunto "${pedido}" foi desativado no painel ${painel.nome}.` };
+  }
+  return { ok: false, erro: `Não achei o assunto "${pedido}" no painel ${painel.nome}.` };
 }
 /** O assunto e todos os de baixo (filtrar por "Ramal" acha "Ramal › Configuração"). */
 export function assuntoEDescendentes(id: string, assuntos: Pick<Assunto, 'id' | 'paiId'>[]): Set<string> {
