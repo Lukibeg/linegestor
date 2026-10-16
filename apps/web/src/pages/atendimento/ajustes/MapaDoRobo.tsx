@@ -1,65 +1,60 @@
 /**
  * Chamados › Ajustes › Integrações (Patch 2.0.1) — o MAPA DO ROBÔ: o que chega no webhook do robô do
- * LineChat e de onde vem cada campo do chamado. Os pedidos do Luan: "Eu quero que a gente possa alterar
- * esse JSON… para que não tenha que ser algo bem fixo… alguma parte onde eu possa montar as referências
- * com as variáveis" e, depois, "eu quero que eu possa alterar incluindo ou removendo parametros que vao
- * chegar no webhook e eu possa configurar isso na tela… e alem disso vc fazer um preview de como deve
- * chegar o webhook".
+ * LineChat e o que vira chamado. Os pedidos do Luan: "Eu quero que a gente possa alterar esse JSON…
+ * para que não tenha que ser algo bem fixo… alguma parte onde eu possa montar as referências com as
+ * variáveis"; depois, "eu quero que eu possa alterar incluindo ou removendo parametros que vao chegar no
+ * webhook e eu possa configurar isso na tela… e alem disso vc fazer um preview de como deve chegar o
+ * webhook"; e, revendo a tela, "como deve chegar no webhook, parece que está errado o exemplo… parece que
+ * deu uma embaralhada" — o JSON mostrava só pedaços soltos, com códigos inventados.
  *
- *  - OS PARÂMETROS: a lista do que chega, cada um com um nome curto (empresa), de onde vem no pedido (a
- *    pergunta pelo texto, o caminho no JSON, o endereço ?setor=…) e um exemplo. Inclui escolhendo no
- *    pedido (o nome e o exemplo saem sugeridos) ou escrevendo; ao lado de cada um, se veio no pedido de
- *    exemplo (o último do robô) e em que campos está. Renomear muda os campos junto; tirar avisa onde ele
- *    era usado.
- *  - "COMO DEVE CHEGAR O WEBHOOK": o endereço e o JSON que o mapa espera, montados com os parâmetros e
- *    os exemplos, para conferir e copiar (e experimentar o mapa com ele).
- *  - OS CAMPOS: cada um é um texto com os parâmetros (ou as variáveis do pedido) entre {{ }} ("Atendimento
- *    de {{nome}}"); o botão "Variável" abre a lista — os parâmetros primeiro, depois o resto do pedido,
- *    com a pergunta ao lado de cada resposta (o id do bloco, "cb-…-qst-…", não diz nada a ninguém) — e
- *    põe a escolhida onde está o cursor; embaixo de cada campo, o texto que sai com o pedido de exemplo.
- *  - O pedido de exemplo é o último do robô (o Gestor guarda), um colado (com o endereço, para os
- *    parâmetros dele) ou o exemplo do LineChat.
- *  - "Como fica" pergunta ao servidor o chamado que nasceria, sem abrir nada: é o mesmo resolvedor que
- *    abre de verdade (o cliente, o assunto e as opções achados, e o que ficaria de fora), e mostra a
- *    resposta ao robô (o bloco "Enviar webhook" do LineChat), com a mensagem ao cliente.
- *  - A resposta da pergunta entra pelo texto dela (pergunta: …), que vale nas cópias do robô (a de teste e
- *    a de produção têm os blocos com outros códigos); pelo código do bloco também dá.
+ * Em cima, CONFERIR COM: o último pedido do robô (o Gestor guarda), um pedido fictício no formato do
+ * LineChat ou um colado (com o endereço, para os parâmetros dele). Tudo embaixo sai dele. Três partes:
+ *
+ *  1. O QUE CHEGA NO WEBHOOK — os parâmetros: cada um com um nome curto (empresa), de onde vem no pedido
+ *     (a pergunta pelo texto, o caminho no JSON, o endereço ?setor=…) e um exemplo. Inclui escolhendo no
+ *     pedido (o nome e o exemplo saem sugeridos) ou escrevendo; ao lado de cada um, se veio e em que
+ *     campos está; renomear muda os campos junto; tirar avisa onde ele era usado. Embaixo, "COMO DEVE
+ *     CHEGAR O WEBHOOK": o endereço e o pedido inteiro, como o bloco Enviar webhook manda, com cada lugar
+ *     que o Gestor lê marcado (← {{nome}}); o que não veio entra no lugar dele, com o exemplo, em amarelo.
+ *  2. O QUE VIRA CHAMADO — cada campo é um texto com os parâmetros entre {{ }} ("Atendimento de {{nome}}");
+ *     o botão "Variável" lista os parâmetros (e o resto do pedido) e põe onde está o cursor; embaixo de
+ *     cada campo, o que sai.
+ *  3. COMO FICA — o servidor monta o chamado que nasceria, sem abrir nada (o mesmo resolvedor que abre de
+ *     verdade: o cliente, o assunto e as opções achados, e o que ficaria de fora), e a resposta ao robô.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Braces, ChevronDown, CircleCheck, CircleDashed, ClipboardPaste, Eye, FlaskConical, Info, ListPlus, Pencil, Plus, RotateCcw, Trash2, TriangleAlert, Undo2,
-  Waypoints, Webhook,
+  Braces, ChevronDown, CircleCheck, CircleDashed, ClipboardPaste, Info, Pencil, Plus, RotateCcw, Trash2, TriangleAlert, Undo2, Waypoints, Webhook,
 } from 'lucide-react';
 import {
-  aplicarMapaDoRobo, EXEMPLO_DO_LINECHAT, GRUPOS_DAS_VARIAVEIS, mapaDeFabrica, MENSAGEM_DO_ROBO_PADRAO, NOME_CAMPO_DO_MAPA, NOME_GRUPO_DA_VARIAVEL, paraBusca,
-  ParametroDoRoboSchema, parametroNoPedido, parametrosDaUrl, parametrosDoEndereco, pedidoEsperado, preencherMensagem, problemaDaOrigem, problemaDoModelo, renomearParametro,
-  respostaAoRobo, respostaDoRoboQueFalhou, sugerirNomeDoParametro, telefoneLegivel, usosDoParametro, variaveisDoPedido,
-  type CampoDoMapa, type CampoPersonalizado, type ContextoDoPedido, type MapaDoRobo, type ParametroDoRobo, type PreviaDoRobo, type RespostaAoRobo,
-  type RoboTela, type UltimoPedidoDoRobo, type VariavelDoPedido,
+  aplicarMapaDoRobo, EXEMPLO_DO_LINECHAT, GRUPOS_DAS_VARIAVEIS, linhasDoPedido, mapaDeFabrica, MENSAGEM_DO_ROBO_PADRAO, NOME_CAMPO_DO_MAPA,
+  NOME_GRUPO_DA_VARIAVEL, paraBusca, ParametroDoRoboSchema, parametroNoPedido, parametrosDaUrl, pedidoEsperado, preencherMensagem, problemaDaOrigem,
+  problemaDoModelo, renomearParametro, respostaAoRobo, respostaDoRoboQueFalhou, sugerirNomeDoParametro, telefoneLegivel, usosDoParametro, variaveisDoPedido,
+  type CampoDoMapa, type CampoPersonalizado, type ContextoDoPedido, type LinhaDoPedido, type MapaDoRobo, type ParametroDoRobo, type PedidoEsperado,
+  type PreviaDoRobo, type RespostaAoRobo, type RoboTela, type UltimoPedidoDoRobo, type VariavelDoPedido,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Carregando, Chip, Confirmar, Modal, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { ChipPrioridade, dataHoraCurta, Etiquetas, LinkDoChamado, useOpcoes } from '../comum.js';
-import { BlocoDeCodigo, CartaoAjuste, Copiavel, Explicacao, Resultado, erroLegivel } from './Avisos.js';
+import { BotaoCopiar, CartaoAjuste, Copiavel, Explicacao, Resultado, erroLegivel } from './Avisos.js';
 
 export const CHAVE_ROBO = ['atendimento', 'integracoes', 'robo'];
 
 type Fonte = 'ultimo' | 'exemplo' | 'colado';
-/** O pedido colado, ou o "Como deve chegar" usado de exemplo: o JSON e os parâmetros do endereço (sem a chave). */
-type Colado = { corpo: unknown; endereco: Record<string, string>; deOnde: 'colado' | 'esperado' };
+/** O pedido colado: o JSON e os parâmetros do endereço (sem a chave). */
+type Colado = { corpo: unknown; endereco: Record<string, string> };
 type Linha = { chave: CampoDoMapa; dica: ReactNode; linhas?: number; exemplo: string };
-/** Um parâmetro conferido com o pedido de exemplo: se veio (e com que valor) e onde está no mapa. */
+/** Um parâmetro conferido com o pedido: se veio (e com que valor) e onde está no mapa. */
 type Conferido = { p: ParametroDoRobo; veio: boolean; valor: string; usos: string[] };
-/** Como a tela fala do pedido de exemplo: "no último pedido", "do último pedido do robô". */
-type FalaDaFonte = { no: string; do: string };
+/** Como a tela fala do pedido de conferência: "o último pedido do robô", "no último pedido", "do último pedido do robô". */
+type FalaDaFonte = { nome: string; no: string; do: string };
 
 const SEM_ENDERECO: Readonly<Record<string, string>> = Object.freeze({});
-const FALA: Record<Fonte | 'esperado', FalaDaFonte & { botao: string }> = {
-  ultimo: { botao: 'o último pedido do robô', no: 'no último pedido', do: 'do último pedido do robô' },
-  exemplo: { botao: 'o exemplo do LineChat', no: 'no exemplo do LineChat', do: 'do exemplo do LineChat' },
-  colado: { botao: 'um pedido colado', no: 'no pedido colado', do: 'do pedido colado' },
-  esperado: { botao: 'o pedido esperado', no: 'no pedido esperado', do: 'do pedido esperado' },
+const FALA: Record<Fonte, FalaDaFonte & { botao: string }> = {
+  ultimo: { botao: 'o último pedido do robô', nome: 'o último pedido do robô', no: 'no último pedido', do: 'do último pedido do robô' },
+  exemplo: { botao: 'um pedido fictício', nome: 'o pedido fictício', no: 'no pedido fictício', do: 'do pedido fictício' },
+  colado: { botao: 'um pedido colado', nome: 'o pedido colado', no: 'no pedido colado', do: 'do pedido colado' },
 };
 
 /** Os campos que quase todo robô usa (o mapa de fábrica já preenche, com os parâmetros de fábrica). */
@@ -112,6 +107,21 @@ export function CartaoMapaDoRobo({ base }: { base: string }) {
   );
 }
 
+/** Uma das três partes do mapa: o número, o título e o que vai ao lado (a conta, o botão). */
+function Secao({ id, numero, titulo, extra, acoes, children }: { id: string; numero: number; titulo: string; extra?: ReactNode; acoes?: ReactNode; children: ReactNode }) {
+  return (
+    <section id={id} className="mt-6 min-w-0 scroll-mt-20">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 pb-2 border-b border-line">
+        <span className="w-6 h-6 rounded-full bg-accent text-white text-[12.5px] font-semibold flex items-center justify-center shrink-0" aria-hidden>{numero}</span>
+        <h3 className="font-display text-[15px] font-semibold text-ink">{titulo}</h3>
+        {extra}
+        {acoes && <div className="ml-auto flex items-center gap-2">{acoes}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function EditorDoMapa({ tela, base }: { tela: RoboTela; base: string }) {
   const qc = useQueryClient(); const toast = useToast();
   const opcoes = useOpcoes();
@@ -130,14 +140,14 @@ function EditorDoMapa({ tela, base }: { tela: RoboTela; base: string }) {
   /** os campos em que a pessoa já pôs o cursor (sem cursor, a variável entra no fim) */
   const tocados = useRef(new Set<string>());
 
-  // o último pedido que chegou depois de a tela abrir (o robô chamou agora): a lista acompanha
+  // o último pedido que chegou depois de a tela abrir (o robô chamou agora): a conferência acompanha
   useEffect(() => { if (tela.ultimo && fonte === 'exemplo' && colado === null) setFonte('ultimo'); }, [tela.ultimo]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // o pedido de exemplo: o JSON, os parâmetros do endereço (?setor=…) e como a tela fala dele
+  // o pedido de conferência: o JSON, os parâmetros do endereço (?setor=…) e como a tela fala dele
   const corpo = fonte === 'ultimo' && tela.ultimo ? tela.ultimo.corpo : fonte === 'colado' && colado ? colado.corpo : EXEMPLO_DO_LINECHAT;
   const endereco: Readonly<Record<string, string>> = fonte === 'ultimo' && tela.ultimo ? tela.ultimo.endereco ?? SEM_ENDERECO
     : fonte === 'colado' && colado ? colado.endereco : SEM_ENDERECO;
-  const fala = FALA[fonte === 'colado' && colado?.deOnde === 'esperado' ? 'esperado' : fonte];
+  const fala = FALA[fonte];
   const contexto = useMemo<ContextoDoPedido>(() => ({ parametros: form.parametros, endereco }), [form.parametros, endereco]);
   const variaveis = useMemo(() => variaveisDoPedido(corpo, 400, endereco), [corpo, endereco]);
   const pedido = useMemo(() => aplicarMapaDoRobo(form, corpo, endereco), [form, corpo, endereco]);
@@ -147,6 +157,8 @@ function EditorDoMapa({ tela, base }: { tela: RoboTela; base: string }) {
   const escolhidoSaiu = !!form.painel && !!opcoes.data && !ativos.some((p) => p.id === form.painel);
   const doPainel = (opcoes.data?.campos ?? []).filter((c) => c.painelId === painelId && c.ativo).sort((a, b) => a.ordem - b.ordem);
   const conferidos: Conferido[] = form.parametros.map((p) => ({ p, ...parametroNoPedido(p, corpo, contexto), usos: usosDoParametro(form, p.nome, doPainel) }));
+  const vieram = conferidos.filter((x) => x.veio).length;
+  const esperado = pedidoEsperado(form, corpo, endereco, doPainel);
 
   const valorDe = (chave: string) => (chave.startsWith('campo:') ? form.campos[chave.slice(6)] ?? '' : chave === 'mensagem' ? form.mensagem : form[chave as CampoDoMapa]);
   const mudar = (chave: string, v: string) => {
@@ -186,13 +198,6 @@ function EditorDoMapa({ tela, base }: { tela: RoboTela; base: string }) {
   const tirarParametro = (indice: number) => { setErro(null); setForm((f) => ({ ...f, parametros: f.parametros.filter((_, i) => i !== indice) })); };
   // o que não está em campo nenhum sai direto (nada é salvo antes do "Salvar o mapa"); o que está, pergunta antes
   const pedirParaTirar = (indice: number) => { if (conferidos[indice]?.usos.length) setTirando(indice); else tirarParametro(indice); };
-  const experimentarOEsperado = () => {
-    const e = pedidoEsperado(form);
-    // o endereço passa pelo mesmo filtro do servidor (a chave e o que não se escreve num caminho ficam de fora)
-    setColado({ corpo: [e.corpo], endereco: parametrosDoEndereco(e.endereco), deOnde: 'esperado' });
-    setFonte('colado');
-    toast.push('ok', 'O pedido esperado virou o pedido de exemplo: os parâmetros, os campos e o "Como fica" agora saem dele.');
-  };
 
   // o texto com a variável aberta não salva (nem vai para o "Como fica": o servidor recusaria)
   const problemas: Array<[string, string]> = [];
@@ -240,52 +245,59 @@ function EditorDoMapa({ tela, base }: { tela: RoboTela; base: string }) {
     <>
       <Explicacao>
         <p>
-          O robô manda o JSON da conversa do jeito dele. Aqui você diz <b>o que chega</b> — os parâmetros do webhook, cada um com um nome
-          curto — e <b>de onde sai cada campo do chamado</b>: um texto com os parâmetros entre {'{{ }}'} (<span className="font-mono">{'Atendimento de {{nome}}'}</span>),
-          que o Gestor troca pelo valor que veio. Incluiu uma pergunta no robô? Inclua o parâmetro e ponha no campo: nada de código. Se o robô
-          mudar (ou for outro sistema), é só mudar o mapa.
-        </p>
-        <p className="text-[12.5px] text-muted">
-          A resposta de uma pergunta entra pelo texto dela — <span className="font-mono">pergunta: o motivo do seu contato</span>,{' '}
-          <span className="font-mono">menu: …</span> nos menus —, que vale também na cópia do robô (a de teste e a de produção têm os blocos com
-          outros códigos). Com <span className="font-mono">||</span> vale a primeira que vier com valor, e <span className="font-mono">"texto"</span> no
-          fim é fixo. O que vier e não bater (o assunto que não existe, a opção que não é do campo) fica de fora, e o chamado abre do mesmo jeito.
+          O bloco <b>Enviar webhook</b> do LineChat manda ao Gestor o JSON da conversa. O mapa diz, em três partes, <b>o que o Gestor lê
+          dele</b> (os parâmetros, cada um com um nome), <b>o que vira cada campo do chamado</b> e <b>como fica o chamado</b>. Se o robô mudar
+          (ou for outro sistema), é só mudar o mapa: nada de código. Nada muda no robô até o <b>Salvar o mapa</b>.
         </p>
       </Explicacao>
 
       <div className="rounded-xl border border-line p-3 flex flex-col gap-2 min-w-0" id="robo-pedido">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[12.5px] font-semibold text-ink-2">O pedido de exemplo</span>
-          <div className="flex flex-wrap gap-1" role="group" aria-label="O pedido de exemplo">
+          <span className="text-[12.5px] font-semibold text-ink-2">Conferir com</span>
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Conferir com">
             {(['ultimo', 'exemplo', 'colado'] as const).map((v) => {
               const desativado = (v === 'ultimo' && !tela.ultimo) || (v === 'colado' && colado === null);
-              const nome = v === 'colado' && colado?.deOnde === 'esperado' ? FALA.esperado.botao : FALA[v].botao;
               return (
                 <button key={v} type="button" aria-pressed={fonte === v} disabled={desativado} id={`robo-fonte-${v}`} onClick={() => setFonte(v)}
                   className={`px-2 py-0.5 rounded-md border text-[12.5px] disabled:opacity-40 ${fonte === v ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-muted hover:bg-surface-2'}`}>
-                  {nome}
+                  {FALA[v].botao}
                 </button>
               );
             })}
           </div>
           <button type="button" className="btn-ghost btn-sm ml-auto" id="robo-colar" onClick={() => setColando(true)}><ClipboardPaste size={14} /> Colar um pedido</button>
         </div>
-        <p className="text-[12px] text-muted">Os parâmetros, os campos e o "Como fica" mostram o que sai com ele: nada é aberto nem salvo.</p>
+        <p className="text-[12px] text-muted">
+          O que veio de cada parâmetro, como deve chegar o webhook, o que sai em cada campo e o chamado que nasceria: tudo sai deste pedido, e nada é
+          aberto nem salvo.
+        </p>
         <SobreOUltimo ultimo={tela.ultimo} />
-        {fonte === 'exemplo' && <p className="text-[12.5px] text-muted">O exemplo é um pedido de mentira no formato do LineChat: as perguntas e os menus do seu robô aparecem no último pedido (ou no que você colar).</p>}
+        {fonte === 'exemplo' && (
+          <p className="text-[12.5px] text-muted">
+            O pedido fictício tem o formato do LineChat, com perguntas inventadas: as do seu robô aparecem no último pedido (ou no que você colar).
+          </p>
+        )}
       </div>
 
-      <ParametrosDoWebhook conferidos={conferidos} fala={fala} onIncluir={() => setEditando({ indice: null })}
-        onEditar={(i) => setEditando({ indice: i })} onTirar={pedirParaTirar} />
-
-      <ComoDeveChegar base={base} form={form} onExperimentar={experimentarOEsperado} />
-
-      <div className="mt-4 flex flex-col">
-        <h3 className="text-[13.5px] font-semibold text-ink">Os campos do chamado</h3>
-        <p className="text-[12.5px] text-muted mt-0.5 mb-1">
-          Cada campo é um texto com os parâmetros entre {'{{ }}'}: o botão <b>Variável</b> põe onde está o cursor. Embaixo, o que sai com o pedido de exemplo.
+      <Secao id="robo-parametros" numero={1} titulo="O que chega no webhook"
+        extra={conferidos.length > 0 && (
+          <Chip tone={vieram === conferidos.length ? 'ok' : 'signal'} className="text-[11.5px]">vieram {vieram} de {conferidos.length} {fala.no}</Chip>
+        )}
+        acoes={<button type="button" className="btn-secondary btn-sm" id="robo-parametro-incluir" onClick={() => setEditando({ indice: null })}><Plus size={14} /> Incluir parâmetro</button>}>
+        <p className="text-[12.5px] text-muted mt-2">
+          Os <b>parâmetros</b> são o que o Gestor lê do pedido, cada um com um nome curto: a resposta de uma pergunta do robô, um dado do contato,
+          um parâmetro do endereço (<span className="font-mono">&amp;setor=…</span>). Os campos do chamado usam o nome: <span className="font-mono">{'{{empresa}}'}</span>.
         </p>
-        <div className="grid gap-1 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-3 py-2.5 border-t border-line">
+        <ListaDeParametros conferidos={conferidos} fala={fala} onEditar={(i) => setEditando({ indice: i })} onTirar={pedirParaTirar} />
+        <ComoDeveChegar base={base} esperado={esperado} fala={fala} />
+      </Secao>
+
+      <Secao id="robo-campos" numero={2} titulo="O que vira chamado">
+        <p className="text-[12.5px] text-muted mt-2 mb-1">
+          Cada campo é um texto com os parâmetros entre {'{{ }}'}: o botão <b>Variável</b> põe onde está o cursor, e embaixo aparece o que sai.
+          O que não bater (o assunto que não existe, a opção que não é do campo) fica de fora, e o chamado abre do mesmo jeito.
+        </p>
+        <div className="grid gap-1 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-3 py-2.5">
           <label htmlFor="robo-painel" className="text-[13px] font-semibold text-ink sm:pt-2">Painel</label>
           <div className="min-w-0 flex flex-col gap-1">
             <select className="input max-w-[360px]" id="robo-painel" value={form.painel} onChange={(e) => mudar('painel', e.target.value)}>
@@ -299,7 +311,7 @@ function EditorDoMapa({ tela, base }: { tela: RoboTela; base: string }) {
           </div>
         </div>
         {PRINCIPAIS.map(linha)}
-        <button type="button" className="flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink py-2.5 border-t border-line text-left" id="robo-mais"
+        <button type="button" className="flex items-center gap-1.5 text-[13px] font-semibold text-accent-ink py-2.5 border-t border-line text-left w-full" id="robo-mais"
           aria-expanded={mais} onClick={() => setMais((m) => !m)}>
           <ChevronDown size={15} className={`transition-transform ${mais ? '' : '-rotate-90'}`} />
           Mais campos: descrição, cliente, assunto, prioridade{doPainel.length ? ` e ${doPainel.length === 1 ? 'o campo' : `os ${doPainel.length} campos`} do painel` : ''}
@@ -325,12 +337,14 @@ function EditorDoMapa({ tela, base }: { tela: RoboTela; base: string }) {
           valor={form.mensagem} saida={mensagem.texto} faltaram={mensagem.faltaram} problema={problemaDe('mensagem')} sempreSaida
           onChange={(v) => mudar('mensagem', v)} onVariavel={() => setEscolhendo({ chave: 'mensagem', rotulo: 'Mensagem ao cliente' })}
           registrar={(el) => { elementos.current.mensagem = el; }} onFoco={() => tocados.current.add('mensagem')} />
-      </div>
+      </Secao>
 
-      <ComoFica estado={previa} resposta={resposta} exemplo={!aberto}
-        problema={problemas.length ? `Conserte ${nomeDe(problemas[0]![0])} para ver como fica: ${problemas[0]![1]}` : null} />
+      <Secao id="robo-como-fica" numero={3} titulo="Como fica o chamado" extra={previa.carregando && !problemas.length && <Spinner />}>
+        <ComoFica estado={previa} resposta={resposta} exemplo={!aberto} fala={fala}
+          problema={problemas.length ? `Conserte ${nomeDe(problemas[0]![0])} para ver como fica: ${problemas[0]![1]}` : null} />
+      </Secao>
 
-      <div className="flex flex-wrap items-center gap-2 mt-3">
+      <div className="flex flex-wrap items-center gap-2 mt-4">
         <button type="button" className="btn-primary" id="robo-salvar" disabled={salvando || !mudou || problemas.length > 0} onClick={() => void salvar()}>
           {salvando ? <Spinner className="text-white" /> : 'Salvar o mapa'}
         </button>
@@ -369,72 +383,125 @@ function EditorDoMapa({ tela, base }: { tela: RoboTela; base: string }) {
 }
 
 // =====================================================================
-//  OS PARÂMETROS E O "COMO DEVE CHEGAR O WEBHOOK"
+//  1 · O QUE CHEGA NO WEBHOOK: os parâmetros e o "Como deve chegar o webhook"
 // =====================================================================
 
-function ParametrosDoWebhook({ conferidos, fala, onIncluir, onEditar, onTirar }: {
-  conferidos: Conferido[]; fala: FalaDaFonte; onIncluir: () => void; onEditar: (i: number) => void; onTirar: (i: number) => void;
+function ListaDeParametros({ conferidos, fala, onEditar, onTirar }: {
+  conferidos: Conferido[]; fala: FalaDaFonte; onEditar: (i: number) => void; onTirar: (i: number) => void;
 }) {
-  const vieram = conferidos.filter((x) => x.veio).length;
+  if (!conferidos.length) return <p className="text-[13px] text-muted mt-2.5">Nenhum parâmetro: os campos leem direto do pedido. Inclua um para dar nome ao que chega.</p>;
   return (
-    <section className="rounded-xl border border-line p-3 sm:p-4 mt-3 min-w-0" id="robo-parametros">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        <ListPlus size={15} className="text-muted shrink-0" />
-        <h3 className="text-[13.5px] font-semibold text-ink">Os parâmetros que chegam no webhook</h3>
-        {conferidos.length > 0 && (
-          <Chip tone={vieram === conferidos.length ? 'ok' : 'signal'} className="text-[11.5px]">vieram {vieram} de {conferidos.length} {fala.no}</Chip>
-        )}
-        <button type="button" className="btn-secondary btn-sm ml-auto" id="robo-parametro-incluir" onClick={onIncluir}><Plus size={14} /> Incluir parâmetro</button>
+    <ul className="mt-1 flex flex-col divide-y divide-line" id="robo-parametros-lista">
+      {conferidos.map((x, i) => (
+        <li key={`${x.p.nome}-${i}`} className="py-2.5 flex flex-col gap-1 min-w-0" id={`robo-parametro-${i}`}>
+          <div className="flex items-start gap-2 min-w-0">
+            <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
+                <code className="font-mono text-[13px] font-semibold text-accent-ink break-all">{`{{${x.p.nome}}}`}</code>
+                {x.p.descricao && <span className="text-[12.5px] text-ink-2 min-w-0 break-words">{x.p.descricao}</span>}
+              </div>
+              <div className="text-[12px] text-muted min-w-0 break-words">
+                vem de <span className="font-mono text-ink-2 break-all">{x.p.origem}</span>
+                {x.p.exemplo && <> · exemplo: <span className="text-ink-2 break-words">{encurtar(x.p.exemplo, 80)}</span></>}
+              </div>
+            </div>
+            <div className="flex items-center shrink-0">
+              <button type="button" className="btn-ghost btn-sm" id={`robo-parametro-${i}-editar`} title={`Editar o parâmetro ${x.p.nome}`}
+                aria-label={`Editar o parâmetro ${x.p.nome}`} onClick={() => onEditar(i)}>
+                <Pencil size={14} /> <span className="hidden sm:inline">Editar</span>
+              </button>
+              <button type="button" className="btn-ghost btn-sm text-bad" id={`robo-parametro-${i}-tirar`} title={`Tirar o parâmetro ${x.p.nome}`}
+                aria-label={`Tirar o parâmetro ${x.p.nome}`} onClick={() => onTirar(i)}>
+                <Trash2 size={14} /> <span className="hidden sm:inline">Tirar</span>
+              </button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-0.5 text-[12.5px] min-w-0">
+            <span className={`flex items-start gap-1.5 min-w-0 ${x.veio && x.valor ? 'text-ok' : 'text-signal'}`} id={`robo-parametro-${i}-veio`}>
+              {x.veio && x.valor ? <CircleCheck size={14} className="mt-0.5 shrink-0" /> : <CircleDashed size={14} className="mt-0.5 shrink-0" />}
+              <span className="min-w-0 break-words">
+                {!x.veio ? <>não veio {fala.no}</> : x.valor ? <>veio {fala.no}: <span className="text-ink-2">{encurtar(x.valor, 140)}</span></> : <>veio vazio {fala.no}</>}
+              </span>
+            </span>
+            <span className="text-[12px] text-muted min-w-0 break-words pl-5">
+              {x.usos.length ? <>usado em: {x.usos.join(', ')}</> : 'ainda não está em nenhum campo'}
+            </span>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * "Como deve chegar o webhook": o endereço e o pedido inteiro, como o bloco Enviar webhook manda (o de
+ * conferência), com cada lugar que o Gestor lê marcado. O que não veio entra no lugar dele, com o exemplo.
+ */
+function ComoDeveChegar({ base, esperado, fala }: { base: string; esperado: PedidoEsperado; fala: FalaDaFonte }) {
+  const linhas = linhasDoPedido(esperado.corpo, esperado.marcas);
+  const json = JSON.stringify([esperado.corpo], null, 2);
+  const endereco = `${base}/api/atendimento/entrada/robo?chave=<chave>${esperado.endereco.map((p) => `&${naUrl(p.chave)}=${naUrl(p.valor)}`).join('')}`;
+  const faltam = esperado.marcas.some((x) => !x.veio) || esperado.endereco.some((x) => !x.veio);
+  return (
+    <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3 sm:p-4 min-w-0" id="robo-como-chega">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Webhook size={15} className="text-muted shrink-0" />
+        <h4 className="text-[13.5px] font-semibold text-ink">Como deve chegar o webhook</h4>
+        <span className="text-[12px] text-muted">com {fala.nome}</span>
       </div>
-      <p className="text-[12.5px] text-muted mt-1.5">
-        Cada parâmetro dá um nome curto a uma coisa que chega — a resposta de uma pergunta do robô, um dado do contato, um parâmetro do
-        endereço (<span className="font-mono">&amp;setor=…</span>) — e os campos do chamado usam o nome: <span className="font-mono">{'{{empresa}}'}</span>.
-        Renomear muda os campos junto.
+      <p className="text-[12.5px] text-muted mt-1">
+        O bloco Enviar webhook manda o JSON da conversa inteiro, assim. Marcado, o que o Gestor lê (← o parâmetro, ou o campo que lê direto); o
+        resto ele deixa de lado — na tela, recolhido em <span className="font-mono">{'{ … }'}</span> e "… e mais", e o Copiar leva o JSON inteiro.
+        {faltam && <> <span className="text-signal font-medium">Em amarelo, o que não veio neste pedido:</span> entra com o exemplo do parâmetro,
+          no lugar onde deve chegar.</>}
       </p>
-      {!conferidos.length
-        ? <p className="text-[13px] text-muted mt-2.5 border-t border-line pt-2.5">Nenhum parâmetro: os campos leem direto do pedido. Inclua um para dar nome ao que chega.</p>
-        : (
-          <ul className="mt-2 flex flex-col" id="robo-parametros-lista">
-            {conferidos.map((x, i) => (
-              <li key={`${x.p.nome}-${i}`} className="py-2.5 border-t border-line flex flex-col gap-1 min-w-0" id={`robo-parametro-${i}`}>
-                <div className="flex items-start gap-2 min-w-0">
-                  <div className="min-w-0 flex-1 flex flex-col gap-0.5">
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 min-w-0">
-                      <code className="font-mono text-[13px] font-semibold text-accent-ink break-all">{`{{${x.p.nome}}}`}</code>
-                      {x.p.descricao && <span className="text-[12.5px] text-ink-2 min-w-0 break-words">{x.p.descricao}</span>}
-                    </div>
-                    <div className="text-[12px] text-muted min-w-0 break-words">
-                      vem de <span className="font-mono text-ink-2 break-all">{x.p.origem}</span>
-                      {x.p.exemplo && <> · exemplo: <span className="text-ink-2 break-words">{encurtar(x.p.exemplo, 80)}</span></>}
-                    </div>
-                  </div>
-                  <div className="flex items-center shrink-0">
-                    <button type="button" className="btn-ghost btn-sm" id={`robo-parametro-${i}-editar`} title={`Editar o parâmetro ${x.p.nome}`}
-                      aria-label={`Editar o parâmetro ${x.p.nome}`} onClick={() => onEditar(i)}>
-                      <Pencil size={14} /> <span className="hidden sm:inline">Editar</span>
-                    </button>
-                    <button type="button" className="btn-ghost btn-sm text-bad" id={`robo-parametro-${i}-tirar`} title={`Tirar o parâmetro ${x.p.nome}`}
-                      aria-label={`Tirar o parâmetro ${x.p.nome}`} onClick={() => onTirar(i)}>
-                      <Trash2 size={14} /> <span className="hidden sm:inline">Tirar</span>
-                    </button>
-                  </div>
-                </div>
-                <div className="flex flex-col gap-0.5 text-[12.5px] min-w-0">
-                  <span className={`flex items-start gap-1.5 min-w-0 ${x.veio && x.valor ? 'text-ok' : 'text-signal'}`} id={`robo-parametro-${i}-veio`}>
-                    {x.veio && x.valor ? <CircleCheck size={14} className="mt-0.5 shrink-0" /> : <CircleDashed size={14} className="mt-0.5 shrink-0" />}
-                    <span className="min-w-0 break-words">
-                      {!x.veio ? <>não veio {fala.no}</> : x.valor ? <>veio {fala.no}: <span className="text-ink-2">{encurtar(x.valor, 140)}</span></> : <>veio vazio {fala.no}</>}
-                    </span>
-                  </span>
-                  <span className="text-[12px] text-muted min-w-0 break-words pl-5">
-                    {x.usos.length ? <>usado em: {x.usos.join(', ')}</> : 'ainda não está em nenhum campo'}
-                  </span>
-                </div>
-              </li>
-            ))}
+      <div className="text-[12.5px] font-semibold text-ink-2 mt-3 mb-1">O endereço (POST)</div>
+      <Copiavel texto={endereco} rotulo="o endereço do webhook" id="robo-como-chega-endereco" />
+      {esperado.endereco.length > 0 && (
+        <ul className="mt-1.5 flex flex-col gap-0.5 text-[12.5px]" id="robo-como-chega-no-endereco">
+          {esperado.endereco.map((p) => (
+            <li key={p.chave} className={`min-w-0 break-words ${p.veio ? 'text-accent-ink' : 'text-signal'}`}>
+              <span className="font-mono">&amp;{p.chave}={encurtar(p.valor, 60)}</span> ← {p.quem.join(', ')}{p.veio ? '' : ' · não veio: deve chegar no endereço'}
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="text-[12.5px] font-semibold text-ink-2 mt-3 mb-1">O JSON</div>
+      <JsonDoPedido linhas={linhas} json={json} />
+      {esperado.fora.length > 0 && (
+        <div className="mt-2 rounded-lg bg-signal-soft text-signal p-2.5 text-[12.5px]" id="robo-como-chega-fora">
+          <p className="font-semibold">Os campos leem o que não está no pedido nem é parâmetro: confira o nome.</p>
+          <ul className="list-disc pl-5">
+            {esperado.fora.map((f) => <li key={f.referencia} className="break-words"><span className="font-mono">{`{{${f.referencia}}}`}</span>, em {f.onde.join(', ')}</li>)}
           </ul>
-        )}
-    </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** O JSON do pedido, linha a linha, com as marcas ao lado. Rola dentro dele (a página não); o Copiar leva o JSON inteiro. */
+function JsonDoPedido({ linhas, json }: { linhas: LinhaDoPedido[]; json: string }) {
+  return (
+    <div className="relative rounded-lg border border-line bg-surface min-w-0" id="robo-como-chega-json">
+      {/* recolhido, o pedido cabe quase sempre inteiro; a altura máxima é só para um pedido enorme */}
+      <div className="overflow-auto max-h-[1200px] overscroll-contain">
+        <div className="w-max min-w-full py-2 font-mono text-[12px] leading-[1.7]">
+          {linhas.map((l, i) => (
+            <div key={i} data-marca={l.marca ? (l.marca.veio ? 'veio' : 'falta') : undefined}
+              className={`flex items-baseline gap-3 pl-3 pr-4 whitespace-pre ${l.marca ? (l.marca.veio ? 'bg-accent-soft' : 'bg-signal-soft') : ''}`}>
+              <span className={l.recolhido ? 'text-muted' : 'text-ink'}>{'  '.repeat(l.recuo)}{l.texto}</span>
+              {l.marca && (
+                <span className={`font-sans text-[11.5px] font-semibold ${l.marca.veio ? 'text-accent-ink' : 'text-signal'}`}>
+                  ← {l.marca.quem.join(', ')}{l.marca.veio ? '' : ' · não veio: deve chegar aqui'}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+      <span className="absolute top-1 right-1"><BotaoCopiar texto={json} rotulo="Copiar o JSON" /></span>
+    </div>
   );
 }
 
@@ -571,7 +638,7 @@ function EditarParametro({ inicial, usos, outros, corpo, endereco, variaveis, fa
               <label htmlFor="robo-parametro-exemplo" className="text-[13px] font-semibold text-ink">Exemplo <span className="font-normal text-muted">(opcional)</span></label>
               <input id="robo-parametro-exemplo" className="input" maxLength={500} value={exemplo} placeholder="Line Telecom"
                 onChange={(e) => { setExemplo(e.target.value); sugeridos.current.exemplo = false; }} />
-              <p className="text-[11.5px] text-muted">Vai no "Como deve chegar o webhook".</p>
+              <p className="text-[11.5px] text-muted">Entra no "Como deve chegar o webhook" quando o pedido não traz o parâmetro.</p>
             </div>
             <div className="flex flex-col gap-1 min-w-0">
               <label htmlFor="robo-parametro-descricao" className="text-[13px] font-semibold text-ink">Para que serve <span className="font-normal text-muted">(opcional)</span></label>
@@ -591,41 +658,8 @@ function EditarParametro({ inicial, usos, outros, corpo, endereco, variaveis, fa
   );
 }
 
-/** "Como deve chegar o webhook": o endereço e o JSON que o mapa espera, montados com os parâmetros e os exemplos. */
-function ComoDeveChegar({ base, form, onExperimentar }: { base: string; form: MapaDoRobo; onExperimentar: () => void }) {
-  const esperado = useMemo(() => pedidoEsperado(form), [form]);
-  const noEndereco = Object.entries(esperado.endereco).filter(([k]) => paraBusca(k) !== 'chave');
-  const endereco = `${base}/api/atendimento/entrada/robo?chave=<chave>${noEndereco.map(([k, v]) => `&${naUrl(k)}=${naUrl(v)}`).join('')}`;
-  const vazio = !Object.keys(esperado.corpo).length && !noEndereco.length;
-  return (
-    <section className="rounded-xl border border-line p-3 sm:p-4 mt-3 min-w-0" id="robo-como-chega">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-        <Webhook size={15} className="text-muted shrink-0" />
-        <h3 className="text-[13.5px] font-semibold text-ink">Como deve chegar o webhook</h3>
-        {!vazio && (
-          <button type="button" className="btn-ghost btn-sm ml-auto" id="robo-como-chega-experimentar" onClick={onExperimentar}
-            title="Usar este pedido como o pedido de exemplo: os parâmetros, os campos e o Como fica saem dele">
-            <FlaskConical size={14} /> Experimentar o mapa com ele
-          </button>
-        )}
-      </div>
-      <p className="text-[12.5px] text-muted mt-1.5">
-        O que este mapa lê, montado com os parâmetros e o exemplo de cada um (o que um campo lê direto do pedido vai com <span className="font-mono">"&lt;…&gt;"</span>).
-        O LineChat manda isso dentro do JSON da conversa, que traz mais coisas: o resto fica de fora. Nas perguntas e nos menus, o código do bloco é
-        o do seu robô — o Gestor acha a resposta pelo texto da pergunta.
-      </p>
-      <div className="text-[12.5px] font-semibold text-ink-2 mt-3 mb-1">O endereço (POST)</div>
-      <Copiavel texto={endereco} rotulo="o endereço do webhook" id="robo-como-chega-endereco" />
-      <div className="text-[12.5px] font-semibold text-ink-2 mt-3 mb-1">O JSON</div>
-      {vazio
-        ? <p className="text-[13px] text-muted" id="robo-como-chega-vazio">O mapa ainda não lê nada do pedido: inclua um parâmetro.</p>
-        : <BlocoDeCodigo texto={JSON.stringify([esperado.corpo], null, 2)} rotulo="o JSON esperado" id="robo-como-chega-json" className="max-h-[340px] overflow-y-auto" />}
-    </section>
-  );
-}
-
 // =====================================================================
-//  AS PEÇAS
+//  2 · O QUE VIRA CHAMADO: as linhas dos campos
 // =====================================================================
 
 function LinhaDoMapa({ chave, rotulo, dica, linhas, exemplo, valor, saida, faltaram, problema, doPainel = false, sempreSaida = false, onChange, onVariavel, registrar, onFoco }: {
@@ -663,7 +697,7 @@ function LinhaDoMapa({ chave, rotulo, dica, linhas, exemplo, valor, saida, falta
   );
 }
 
-/** O que sai deste campo com o pedido de exemplo. */
+/** O que sai deste campo com o pedido de conferência. */
 function Saida({ texto, varias, faltaram, vazio = 'fica vazio com este pedido' }: { texto: string; varias: boolean; faltaram: string[]; vazio?: string }) {
   return (
     <div className="text-[12.5px] flex flex-col gap-0.5 min-w-0">
@@ -681,7 +715,7 @@ function Saida({ texto, varias, faltaram, vazio = 'fica vazio com este pedido' }
 }
 
 function SobreOUltimo({ ultimo }: { ultimo: UltimoPedidoDoRobo | null }) {
-  if (!ultimo) return <p className="text-[12.5px] text-muted" id="robo-ultimo">O robô ainda não chamou. Quando chamar, o pedido dele fica aqui, com as variáveis de verdade (as perguntas e os menus do seu robô).</p>;
+  if (!ultimo) return <p className="text-[12.5px] text-muted" id="robo-ultimo">O robô ainda não chamou. Quando chamar, o pedido dele fica aqui, com as perguntas e os menus de verdade do seu robô.</p>;
   const r = ultimo.resultado;
   const doEndereco = Object.entries(ultimo.endereco ?? {});
   return (
@@ -715,6 +749,10 @@ function SobreOUltimo({ ultimo }: { ultimo: UltimoPedidoDoRobo | null }) {
   );
 }
 
+// =====================================================================
+//  3 · COMO FICA
+// =====================================================================
+
 type EstadoDaPrevia = { previa: PreviaDoRobo | null; carregando: boolean; erro: string | null };
 
 /** O "Como fica", perguntado ao servidor a cada pausa na digitação (o mapa com problema não vai). */
@@ -735,14 +773,10 @@ function usePreviaDoRobo(mapa: MapaDoRobo | null, corpo: unknown, endereco: Read
   return estado;
 }
 
-function ComoFica({ estado, problema, resposta, exemplo }: { estado: EstadoDaPrevia; problema: string | null; resposta: RespostaAoRobo | null; exemplo: boolean }) {
+function ComoFica({ estado, problema, resposta, exemplo, fala }: { estado: EstadoDaPrevia; problema: string | null; resposta: RespostaAoRobo | null; exemplo: boolean; fala: FalaDaFonte }) {
   return (
-    <section className="rounded-xl border border-line bg-surface-2 p-3 sm:p-4 mt-3 min-w-0" id="robo-como-fica" aria-live="polite">
-      <div className="flex items-center gap-2 mb-2">
-        <Eye size={15} className="text-muted shrink-0" />
-        <h3 className="text-[13px] font-semibold text-ink">Como fica o chamado, com este pedido</h3>
-        {estado.carregando && !problema && <Spinner />}
-      </div>
+    <div className="rounded-xl border border-line bg-surface-2 p-3 sm:p-4 mt-3 min-w-0" aria-live="polite">
+      <p className="text-[12.5px] text-muted mb-2">O chamado que {fala.nome} abriria com este mapa (nada é aberto aqui), e a resposta que volta ao robô.</p>
       {problema ? <p className="text-[13px] text-bad">{problema}</p>
         : estado.erro ? <p className="text-[13px] text-bad">{estado.erro}</p>
           : estado.previa ? <ChamadoDaPrevia previa={estado.previa} />
@@ -750,14 +784,14 @@ function ComoFica({ estado, problema, resposta, exemplo }: { estado: EstadoDaPre
       {!problema && !estado.erro && resposta && (
         <div className="mt-3 flex flex-col gap-1 min-w-0" id="robo-resposta">
           <span className="text-[12.5px] font-semibold text-ink-2">
-            A resposta ao robô (HTTP 200){resposta.response === 'CHAMADO_ABERTO' && exemplo ? ' — o número é um exemplo' : ''}
+            A resposta ao robô (HTTP 200){resposta.response === 'CHAMADO_ABERTO' && exemplo ? ' — o número do chamado é um exemplo' : ''}
           </span>
           <pre className="font-mono text-[12px] leading-relaxed text-ink bg-surface border border-line rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-words">
             {JSON.stringify(resposta, null, 2)}
           </pre>
         </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -808,6 +842,10 @@ function ChamadoDaPrevia({ previa }: { previa: PreviaDoRobo }) {
     </div>
   );
 }
+
+// =====================================================================
+//  AS JANELAS: a lista do pedido e o pedido colado
+// =====================================================================
 
 /**
  * A lista para escolher. No campo (`modo: 'campo'`): os parâmetros primeiro, e embaixo o resto do pedido.
@@ -901,7 +939,7 @@ function ColarPedido({ onFechar, onUsar }: { onFechar: () => void; onUsar: (c: C
     try { corpo = JSON.parse(texto); } catch { setErro('Isso não é um JSON: copie o pedido inteiro, do { (ou do [) até o fim.'); return; }
     if (corpo === null || typeof corpo !== 'object') { setErro('O pedido precisa ser um objeto JSON (começa com { ou [).'); return; }
     // a chave, se vier no endereço colado, sai aqui mesmo (nem vai ao servidor)
-    onUsar({ corpo, endereco: url.trim() ? parametrosDaUrl(url) : {}, deOnde: 'colado' });
+    onUsar({ corpo, endereco: url.trim() ? parametrosDaUrl(url) : {} });
   };
   return (
     <Modal open onClose={onFechar} titulo="Colar um pedido" largura="max-w-2xl"
@@ -911,7 +949,7 @@ function ColarPedido({ onFechar, onUsar }: { onFechar: () => void; onUsar: (c: C
       </>}>
       <div className="flex flex-col gap-2">
         <p className="text-[13px] text-ink-2">
-          Cole o JSON que o robô mandou (o LineChat mostra no histórico do bloco Webhook) ou o de outro sistema. Ele serve só para montar o
+          Cole o JSON que o robô mandou (o LineChat mostra no histórico do bloco Webhook) ou o de outro sistema. Ele serve só para conferir o
           mapa: nada é salvo nem aberto.
         </p>
         <textarea className="input font-mono text-[12px] min-h-[220px]" id="robo-colar-texto" spellCheck={false} autoFocus value={texto}

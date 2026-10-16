@@ -184,36 +184,42 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    `{"response":"CHAMADO_FALHOU"}`, quando não deu para abrir (o porquê fica no último pedido, no mapa).
    No bloco, crie as duas respostas, `CHAMADO_ABERTO` e `CHAMADO_FALHOU`, cada uma com a sua saída. A
    chave errada (ou revogada) responde 401, e o bloco segue pela saída de falha dele.
-3. **O mapa do robô** diz o que chega e o que vira chamado — tudo na tela, sem mexer em código. Tudo
-   é conferido com **o pedido de exemplo**: o **último pedido do robô** (o Gestor guarda o último, com o
-   que aconteceu), **um pedido colado** (o JSON que o LineChat mostra no histórico do bloco e, se
-   quiser, o endereço que ele chamou, para os parâmetros do endereço; a chave, se vier junto, fica de
-   fora) ou o **exemplo do LineChat**. Nada é aberto nem salvo até o **Salvar o mapa**.
-   - **Os parâmetros que chegam no webhook**: a lista do que chega, cada um com um **nome** curto
-     (`empresa`), **de onde vem** no pedido e um **exemplo**. **Incluir parâmetro** › **Escolher no
-     pedido** lista o que o pedido de exemplo tem (as perguntas e os menus do robô com a pergunta ao
+3. **O mapa do robô** diz o que chega no webhook e o que vira chamado — tudo na tela, sem mexer em
+   código —, em três partes numeradas. Em cima, **Conferir com** escolhe o pedido com que tudo é
+   conferido: o **último pedido do robô** (o Gestor guarda o último, com o que aconteceu), **um pedido
+   fictício** (no formato do LineChat, com perguntas inventadas) ou **um pedido colado** (o JSON que o
+   LineChat mostra no histórico do bloco e, se quiser, o endereço que ele chamou, para os parâmetros do
+   endereço; a chave, se vier junto, fica de fora). Nada é aberto nem salvo até o **Salvar o mapa**.
+   - **1 · O que chega no webhook** — os **parâmetros**: o que o Gestor lê do pedido, cada um com um
+     **nome** curto (`empresa`), **de onde vem** no pedido e um **exemplo**. **Incluir parâmetro** ›
+     **Escolher no pedido** lista o que o pedido tem (as perguntas e os menus do robô com a pergunta ao
      lado, o contato, a conversa, o endereço) e já sugere o nome e o exemplo; ou escreva a origem:
      `pergunta: <o texto da pergunta>`, `menu: <o texto do menu>`, `endereço: setor` (de
      `…/robo?chave=…&setor=suporte`) ou o caminho no JSON (`contact.email`). **+ uma alternativa**
      junta outra com `||`: vale a primeira que vier, e `"texto"` no fim é fixo. Ao lado de cada
-     parâmetro, se ele **veio no pedido de exemplo** (e com que valor) e **em que campos** está.
-     **Editar** com outro nome muda os campos junto; **Tirar** um parâmetro que está em algum campo
-     pergunta antes e diz onde: o campo fica com o `{{nome}}` sem valor (o aviso "não veio" aparece
-     embaixo dele) até você trocar. O mapa de fábrica já vem com quatro: `nome`, `whatsapp`,
-     `conversa` e `mensagem` (a última mensagem do cliente).
-   - **Como deve chegar o webhook**: o endereço e o JSON que o mapa espera, montados com os
-     parâmetros e o exemplo de cada um, para conferir e copiar. É só o que o Gestor lê: o LineChat
-     manda isso dentro do JSON da conversa, com mais coisas, e o resto fica de fora. Nas perguntas, o
-     código do bloco é o do seu robô (o Gestor acha a resposta pelo texto). **Experimentar o mapa com
-     ele** usa esse pedido como o pedido de exemplo.
-   - **Os campos do chamado** (painel, título, relato, WhatsApp, nome, conversa, etiquetas e, em **Mais
-     campos**, descrição, cliente, assunto, prioridade e os campos do painel): cada um é um texto com os
-     parâmetros entre `{{ }}` — `Atendimento de {{nome}}`, `Empresa: {{empresa}}`. O botão
-     **Variável** mostra os parâmetros primeiro e, embaixo, o resto do pedido (o que não virou
-     parâmetro também vale direto: `{{contact.email}}`, `{{pergunta: …}}`); a escolhida entra onde está
-     o cursor. Embaixo de cada campo, o que sai com o pedido de exemplo; **Como fica** mostra o chamado
-     que nasceria (com o cliente, o assunto e as opções achados), o que ficaria de fora e a resposta
-     inteira ao robô.
+     parâmetro, se ele **veio no pedido** (e com que valor) e **em que campos** está. **Editar** com
+     outro nome muda os campos junto; **Tirar** um parâmetro que está em algum campo pergunta antes e
+     diz onde: o campo fica com o `{{nome}}` sem valor (o aviso "não veio" aparece embaixo dele) até
+     você trocar. O mapa de fábrica já vem com quatro: `nome`, `whatsapp`, `conversa` e `mensagem` (a
+     última mensagem do cliente).
+
+     Embaixo, **Como deve chegar o webhook**: o endereço e o JSON **inteiro**, do jeito que o bloco
+     Enviar webhook manda (`[{ "sessionId", "session", "contact", "questions", "menus", … }]`), com
+     cada lugar que o Gestor lê marcado ao lado (`← {{nome}}`, ou o campo que lê direto). As perguntas
+     aparecem com o código de verdade do bloco (`cb-a35e88f1-qst-…`). O que não veio no pedido entra no
+     lugar onde deve chegar, com o exemplo do parâmetro, **em amarelo** — a pergunta que o robô ainda
+     não faz entra num bloco com o código por preencher (`cb-…-qst-…`). O que o Gestor não lê fica
+     recolhido na tela (`{ … }`, "… e mais 11"); o **Copiar** leva o JSON inteiro. E se um campo lê o
+     que não está no pedido nem é parâmetro (um nome escrito errado, um parâmetro que saiu), o aviso
+     embaixo diz qual.
+   - **2 · O que vira chamado** — os campos (painel, título, relato, WhatsApp, nome, conversa,
+     etiquetas e, em **Mais campos**, descrição, cliente, assunto, prioridade e os campos do painel):
+     cada um é um texto com os parâmetros entre `{{ }}` — `Atendimento de {{nome}}`,
+     `Empresa: {{empresa}}`. O botão **Variável** mostra os parâmetros primeiro e, embaixo, o resto do
+     pedido (o que não virou parâmetro também vale direto: `{{contact.email}}`, `{{pergunta: …}}`); a
+     escolhida entra onde está o cursor. Embaixo de cada campo, o que sai com o pedido.
+   - **3 · Como fica o chamado** — o chamado que o pedido abriria (com o cliente, o assunto e as opções
+     achados), o que ficaria de fora e a resposta inteira ao robô.
 
    Dicas:
    - **A pergunta pelo texto**: a resposta de uma pergunta entra pela origem

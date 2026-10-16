@@ -318,14 +318,32 @@ Com o 2.0 no ar, o Luan passou pelas telas e pediu cinco mudanças:
     ao mapa como `endereço: setor`; a chave nunca (nem no último pedido, que agora guarda o endereço
     sem ela), e a origem `endereço: chave` é recusada.
   - O de fábrica vem com quatro (`nome`, `whatsapp`, `conversa`, `mensagem`) e os campos com eles. Na
-    tela: incluir escolhendo no pedido de exemplo (o nome e o exemplo saem sugeridos) ou escrevendo;
-    ao lado de cada um, se veio no pedido de exemplo e em que campos está; **renomear** muda os campos,
+    tela: incluir escolhendo no pedido (o nome e o exemplo saem sugeridos) ou escrevendo; ao lado de
+    cada um, se veio no pedido de conferência e em que campos está; **renomear** muda os campos,
     a mensagem e as origens que o usam; **tirar** o que está em uso pergunta antes e diz onde (os
     campos ficam com o nome sem valor, e o aviso "não veio" aparece). Nada vai para o robô antes do
     "Salvar o mapa" (a auditoria diz "Parâmetros").
-  - **Como deve chegar o webhook**: o endereço e o JSON que o mapa espera (`pedidoEsperado`), montados
-    com os parâmetros e os exemplos — a pergunta pelo texto vai em `questions` com `<código do bloco N>`
-    no lugar do id, e o que um campo lê direto vai com `<…>` —, para conferir e copiar; **Experimentar
-    o mapa com ele** usa esse pedido como o de exemplo. O pedido colado também aceita o endereço.
+  - **Como deve chegar o webhook**: o endereço e o JSON, para conferir e copiar. O pedido colado
+    também aceita o endereço.
   - **Nas etiquetas, cada uma vale por si**: `robô, {{setor}}` sem o setor fica com a etiqueta robô (a
     regra do "tudo vazio" ficou por etiqueta; nos outros campos continua pelo texto inteiro).
+
+  E, revendo a tela ("como deve chegar no webhook, parece que está errado o exemplo… parece que deu uma
+  embaralhada"), o **Como deve chegar o webhook foi refeito**: a primeira versão montava só os pedaços
+  que o mapa lê (`contact.name`, `sessionId`… soltos), com códigos inventados para as perguntas
+  (`<código do bloco 1>`, mesmo quando o pedido tinha o de verdade) e `"<…>"` no que um campo lia
+  direto — um parâmetro que saiu virava até uma chave solta na raiz. E o "Experimentar o mapa com ele"
+  trocava o pedido de conferência por esse pedido montado.
+  - Agora é **o pedido inteiro, no formato do bloco Enviar webhook** (`pedidoEsperado(mapa, pedido,
+    endereço)`): o pedido de conferência — o último do robô, um fictício ou um colado —, com cada lugar
+    que o Gestor lê marcado ao lado (o parâmetro, ou o campo que lê direto). A pergunta pelo texto aponta
+    o **bloco de verdade**, com o código dele. O que não veio entra no lugar onde deve chegar, com o
+    exemplo do parâmetro, marcado em amarelo; a pergunta que o pedido não tem entra num bloco com o código
+    por preencher (`cb-…-qst-…`). O que um campo lê e não existe no pedido nem é parâmetro não é
+    inventado: vira um aviso embaixo ("confira o nome"). Na tela, o que o Gestor não lê fica recolhido
+    (`{ … }`, "… e mais 11", em `linhasDoPedido`); o Copiar leva o JSON inteiro.
+  - Saiu o **Experimentar o mapa com ele**, e o cartão ficou em **três partes numeradas** — 1 · O que
+    chega no webhook (os parâmetros e o "Como deve chegar"), 2 · O que vira chamado (os campos), 3 · Como
+    fica o chamado —, com o **Conferir com** em cima (o último pedido do robô, um pedido fictício, um
+    pedido colado). O "exemplo do LineChat" virou o **pedido fictício**: "exemplo" ficou só para o exemplo
+    de cada parâmetro.

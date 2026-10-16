@@ -3,7 +3,7 @@ import { AJUSTES_PAINEL_PADRAO, procurarAssunto, type Assunto, type CampoPersona
 import {
   aplicarMapaDoRobo, apararPedido, corpoDoPedido, EXEMPLO_DO_LINECHAT, lerPrioridade, MAPA_DO_ROBO_PADRAO, mapaDeFabrica, MapaDoRoboSchema,
   ParametroDoRoboSchema, parametroNoPedido, parametrosDaUrl, parametrosDoEndereco, pedidoEsperado, renomearParametro, sugerirNomeDoParametro,
-  usosDoParametro,
+  usosDoParametro, linhasDoPedido,
   mensagemAoRobo, MENSAGEM_DO_ROBO_PADRAO, oQueNaoVeio, preencherDoPedido, problemaDoModelo, procurarCliente, resolverPedidoDoRobo, respostaAoRobo,
   respostaDoRoboQueFalhou, valorDaReferencia, valorNoCaminho, valorParaOCampo, variaveisDoPedido,
   type DadosParaORobo, type MapaDoRobo,
@@ -463,7 +463,7 @@ describe('os parâmetros do webhook (incluir e tirar na tela)', () => {
     expect(p.titulo).toBe('sem título');
   });
 
-  it('o parâmetro no pedido de exemplo: veio (com o valor) ou não', () => {
+  it('o parâmetro no pedido de conferência: veio (com o valor) ou não', () => {
     const m = comParametros({});
     const ctx = { parametros: m.parametros, endereco: { setor: 'suporte' } };
     expect(parametroNoPedido(m.parametros[4]!, DO_LINECHAT, ctx)).toEqual({ veio: true, valor: 'Empresa Teste Ingline' });
@@ -524,28 +524,90 @@ describe('os parâmetros do webhook (incluir e tirar na tela)', () => {
     expect(sugerirNomeDoParametro({ caminho: 'codigo', dica: null }, [])).toBe('codigo_1');
   });
 
-  it('"Como deve chegar o webhook": o JSON e o endereço montados com os parâmetros e os exemplos', () => {
-    const m = comParametros({ descricao: '{{menu: escolha para qual solução}} {{lastMessagesAggregated.files.0.url}}', titulo: '{{nome || "Sem nome"}}' });
-    const { corpo, endereco } = pedidoEsperado(m);
-    expect(endereco).toEqual({ setor: 'suporte' });
-    expect(corpo).toEqual({
-      contact: { name: 'Maria Souza', phonenumber: '+55|71999992010' },
-      sessionId: '5f0c2a8e-1d2b-4c3a-9e10-000000000001',
-      lastContactMessage: 'As ligações de saída não completam desde cedo',
-      questions: {
-        '<código do bloco 1>': { text: 'a empresa que você faz parte', answer: 'Clínica Aurora' },
-        '<código do bloco 2>': { text: 'o motivo do seu contato', answer: 'Sem áudio' },
-      },
-      menus: { '<código do bloco 1>': { text: 'escolha para qual solução', answer: '<…>' } },
-      lastMessagesAggregated: { files: [{ url: '<…>' }] },
-    });
-    // o parâmetro sem exemplo leva o nome; nada fora do pedido
-    const semCampos: MapaDoRobo = { ...mapaDeFabrica(), titulo: '', relato: '', telefone: '', nome: '', sessaoId: '', mensagem: '' };
-    expect(pedidoEsperado({ ...semCampos, parametros: [{ nome: 'x', origem: '__proto__.y', exemplo: '', descricao: '' }, { nome: 'z', origem: 'a.b', exemplo: '', descricao: '' }] }).corpo)
-      .toEqual({ a: { b: '<z>' } });
+  it('"Como deve chegar o webhook": o pedido inteiro, no formato do LineChat, com o que o Gestor lê marcado (os blocos de verdade)', () => {
+    const m = comParametros({ descricao: '{{menu: escolha para qual solução}} {{lastMessagesAggregated.files.0.url}}', titulo: '{{nome || "Sem nome"}}', etiquetas: 'robô, {{setor}}, {{setr}}' });
+    const e = pedidoEsperado(m, DO_LINECHAT);
+    // o pedido é o do LineChat, inteiro: nada some, e o que veio fica como veio
+    expect(Object.keys(e.corpo)).toEqual(Object.keys(DO_LINECHAT[0]!));
+    expect(e.corpo.contact).toEqual(DO_LINECHAT[0]!.contact);
+    expect(e.marcas).toEqual([
+      { caminho: ['contact', 'name'], quem: ['{{nome}}'], veio: true },
+      { caminho: ['contact', 'phonenumber'], quem: ['{{whatsapp}}'], veio: true },
+      { caminho: ['sessionId'], quem: ['{{conversa}}'], veio: true },
+      { caminho: ['lastContactMessage'], quem: ['{{mensagem}}'], veio: true },
+      // a pergunta pelo texto: o bloco de verdade, com o código dele
+      { caminho: ['questions', 'cb-a35e88f1-qst-b9e89e4b', 'answer'], quem: ['{{empresa}}'], veio: true },
+      // a alternativa (o "se não vier") é marcada quando veio
+      { caminho: ['contact', 'empresa'], quem: ['{{empresa}}'], veio: true },
+      { caminho: ['questions', 'cb-8b2a1bcb-qst-81fe01bd', 'answer'], quem: ['{{motivo}}'], veio: true },
+      // o campo que lê direto do pedido (sem parâmetro)
+      { caminho: ['menus', 'cb-a35e88f1-mn-8d2de45b', 'answer'], quem: ['Descrição'], veio: true },
+    ]);
+    // o parâmetro do endereço que não veio entra com o exemplo
+    expect(e.endereco).toEqual([{ chave: 'setor', valor: 'suporte', quem: ['{{setor}}'], veio: false }]);
+    // o que um campo lê e não existe não é inventado: o caminho que não veio e o parâmetro que saiu (setr)
+    expect(e.fora).toEqual([{ referencia: 'setr', onde: ['Etiquetas'] }, { referencia: 'lastMessagesAggregated.files.0.url', onde: ['Descrição'] }]);
+    expect(e.corpo).not.toHaveProperty('setr');
+    // com o endereço do pedido, o setor veio
+    expect(pedidoEsperado(m, DO_LINECHAT, { setor: 'financeiro', outro: 'x' }).endereco).toEqual([{ chave: 'setor', valor: 'financeiro', quem: ['{{setor}}'], veio: true }]);
+    // o pedido de antes não muda
+    expect(DO_LINECHAT[0]!.questions).not.toHaveProperty('cb-…-qst-…');
+  });
+
+  it('"Como deve chegar o webhook": o que não veio entra no lugar dele, com o exemplo (e o bloco com o código por preencher)', () => {
+    const m: MapaDoRobo = {
+      ...mapaDeFabrica(),
+      parametros: [
+        ...mapaDeFabrica().parametros,
+        { nome: 'cnpj', origem: 'pergunta: Qual o CNPJ da empresa?', exemplo: '11.222.333/0001-81', descricao: '' },
+        { nome: 'plano', origem: 'menu: Qual o seu plano?', exemplo: '', descricao: '' },
+        { nome: 'cpf', origem: 'contact.cpf', exemplo: '', descricao: '' },
+        { nome: 'sessionId', origem: 'sessionId', exemplo: '', descricao: '' },
+        { nome: 'x', origem: '__proto__.y', exemplo: 'z', descricao: '' },
+      ],
+      cliente: '{{pergunta: Qual a razão social?}}',
+    };
+    const e = pedidoEsperado(m, EXEMPLO_DO_LINECHAT);
+    const q = e.corpo.questions as Record<string, unknown>;
+    // as perguntas do pedido continuam; a que não veio entra com o código por preencher (e a do campo também)
+    expect(Object.keys(q)).toEqual(['cb-exemplo-qst-empresa', 'cb-exemplo-qst-motivo', 'cb-…-qst-…', 'cb-…-qst-… (2)']);
+    expect(q['cb-…-qst-…']).toEqual({ text: 'Qual o CNPJ da empresa?', answer: '11.222.333/0001-81', answerFile: null });
+    expect(q['cb-…-qst-… (2)']).toEqual({ text: 'Qual a razão social?', answer: '…', answerFile: null });
+    expect((e.corpo.menus as Record<string, unknown>)['cb-…-mn-…']).toEqual({ text: 'Qual o seu plano?', answer: '…', answerFile: null });
+    expect((e.corpo.contact as Record<string, unknown>).cpf).toBe('…');
+    expect(e.marcas.filter((x) => !x.veio)).toEqual([
+      { caminho: ['questions', 'cb-…-qst-…', 'answer'], quem: ['{{cnpj}}'], veio: false },
+      { caminho: ['menus', 'cb-…-mn-…', 'answer'], quem: ['{{plano}}'], veio: false },
+      { caminho: ['contact', 'cpf'], quem: ['{{cpf}}'], veio: false },
+      { caminho: ['questions', 'cb-…-qst-… (2)', 'answer'], quem: ['Cliente'], veio: false },
+    ]);
+    // o parâmetro com o nome do caminho lê o caminho (e o conversa, que aponta para ele, passa por ele); o __proto__ não entra
+    expect(e.marcas).toContainEqual({ caminho: ['sessionId'], quem: ['{{sessionId}}'], veio: true });
     expect(({} as Record<string, unknown>).y).toBeUndefined();
-    // o campo que lê direto do pedido (sem parâmetro) também aparece, com <…> no lugar do valor
-    expect(pedidoEsperado({ ...semCampos, parametros: [], titulo: '{{contact.name}}' }).corpo).toEqual({ contact: { name: '<…>' } });
+    // o pedido de conferência vazio vira o mínimo com o que o mapa lê
+    expect(pedidoEsperado(mapaDeFabrica(), null).corpo).toEqual({ contact: { name: 'Maria Souza', phonenumber: '+55|71999992010' }, sessionId: '5f0c2a8e-1d2b-4c3a-9e10-000000000001', lastContactMessage: 'As ligações de saída não completam desde cedo' });
+  });
+
+  it('as linhas do JSON: o que tem marca fica aberto, o resto recolhido; o texto longo é cortado', () => {
+    const e = pedidoEsperado(mapaDeFabrica(), DO_LINECHAT);
+    const linhas = linhasDoPedido(e.corpo, e.marcas, 30);
+    const texto = linhas.map((l) => `${'  '.repeat(l.recuo)}${l.texto}`);
+    expect(texto.slice(0, 7)).toEqual([
+      '[', '  {', '    "responseKeys": [],', '    "companyId": "c5824651-0000-4000-8000-00000…",', '    "sessionId": "33adffe5-b5e0-4138-895c-64e94…",',
+      '    "callbackUrl": null,', '    "callbackId": null,',
+    ]);
+    expect(texto).toContain('    "session": { … },');
+    expect(texto).toContain('    "questions": { … },');
+    // o contato aberto (tem o nome e o WhatsApp), com os 11 dados seguidos que o Gestor não lê recolhidos
+    expect(texto.slice(texto.indexOf('    "contact": {'), texto.indexOf('    "contact": {') + 7)).toEqual([
+      '    "contact": {', '      "id": "ct-1",', '      "name": "João Teste",', '      "first-name": "João",', '      "phonenumber": "+55|71999990123",',
+      '      … e mais 11', '    },',
+    ]);
+    expect(texto.slice(-3)).toEqual(['    "senderId": null', '  }', ']']);
+    const nome = linhas.find((l) => l.texto.startsWith('"name"'));
+    expect(nome).toMatchObject({ texto: '"name": "João Teste",', marca: { quem: ['{{nome}}'], veio: true } });
+    expect(linhas.filter((l) => l.marca).map((l) => l.marca!.quem[0])).toEqual(['{{conversa}}', '{{nome}}', '{{whatsapp}}', '{{mensagem}}']);
+    expect(linhas.find((l) => l.texto.startsWith('"session"'))!.recolhido).toBe(true);
   });
 
   it('a mensagem e a resposta ao robô também usam os parâmetros', () => {

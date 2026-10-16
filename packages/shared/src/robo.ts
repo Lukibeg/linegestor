@@ -279,13 +279,23 @@ export function valorDaReferencia(corpo: unknown, referencia: string, ctx: Conte
   const m = POR_TEXTO.exec(ref);
   if (!m) return valorNoCaminho(corpo, ref);
   const blocos = valorNoCaminho(corpo, paraBusca(m[1]) === 'menu' ? 'menus' : 'questions');
-  const alvo = limpo(m[2]);
-  if (!alvo || blocos === null || typeof blocos !== 'object' || Array.isArray(blocos)) return undefined;
-  const perguntas = Object.values(blocos as Record<string, unknown>)
-    .filter((b): b is Record<string, unknown> => b !== null && typeof b === 'object' && !Array.isArray(b) && typeof (b as Record<string, unknown>).text === 'string');
-  const iguais = perguntas.filter((b) => limpo(b.text as string) === alvo);
-  const achadas = iguais.length ? iguais : perguntas.filter((b) => aparece(alvo, limpo(b.text as string)));
-  return achadas.length === 1 ? (achadas[0]!.answer ?? null) : undefined;
+  const codigo = acharBloco(blocos, m[2]!);
+  return codigo === null ? undefined : ((blocos as Record<string, Record<string, unknown>>)[codigo]!.answer ?? null);
+}
+
+/**
+ * O bloco (a pergunta ou o menu) pelo texto, dentro de `questions` (ou `menus`): o de texto igual (sem
+ * ligar para acento, maiúscula e pontuação) ou, sem ele, o único que contém o pedaço. O código do bloco
+ * ("cb-…-qst-…"), ou null quando não acha um só.
+ */
+function acharBloco(blocos: unknown, texto: string): string | null {
+  const alvo = limpo(texto);
+  if (!alvo || blocos === null || typeof blocos !== 'object' || Array.isArray(blocos)) return null;
+  const lista = Object.entries(blocos as Record<string, unknown>)
+    .filter((e): e is [string, Record<string, unknown>] => e[1] !== null && typeof e[1] === 'object' && !Array.isArray(e[1]) && typeof (e[1] as Record<string, unknown>).text === 'string');
+  const iguais = lista.filter(([, b]) => limpo(b.text as string) === alvo);
+  const achados = iguais.length ? iguais : lista.filter(([, b]) => aparece(alvo, limpo(b.text as string)));
+  return achados.length === 1 ? achados[0]![0] : null;
 }
 
 /** O valor como texto: a lista de textos vira "a, b"; o objeto, JSON; o nulo, vazio. */
@@ -760,7 +770,7 @@ export function parametrosDaUrl(url: string): Record<string, string> {
   } catch { return {}; }
 }
 
-/** O parâmetro neste pedido: se veio e com que valor (para a lista de parâmetros conferir com o pedido de exemplo). */
+/** O parâmetro neste pedido: se veio e com que valor (a lista de parâmetros confere com o pedido de conferência). */
 export function parametroNoPedido(parametro: ParametroDoRobo, corpoBruto: unknown, ctx: ContextoDoPedido = {}): { veio: boolean; valor: string } {
   const v = valorDoParametro(corpoDoPedido(corpoBruto), parametro, ctx);
   return { veio: v !== undefined, valor: textoDoPedido(v).replace(/\s+/g, ' ').trim() };
@@ -842,40 +852,182 @@ function porNoCaminho(alvo: Record<string, unknown>, caminho: string, valor: unk
   });
 }
 
+/** Onde o Gestor lê no pedido: o caminho (as chaves, de fora para dentro), quem lê e se veio neste pedido. */
+export type MarcaDoPedido = {
+  caminho: string[];
+  /** quem lê: o parâmetro ("{{nome}}") ou o campo que lê direto do pedido ("Título") */
+  quem: string[];
+  /** `false` = não veio neste pedido: o valor é o exemplo do parâmetro, no lugar onde ele deve chegar */
+  veio: boolean;
+};
+/** Um parâmetro do endereço do webhook (?setor=…): o valor deste pedido (ou o exemplo, se não veio) e quem lê. */
+export type ParametroNoEndereco = { chave: string; valor: string; quem: string[]; veio: boolean };
+export type PedidoEsperado = {
+  /** o pedido no formato do LineChat (o objeto que vai dentro da lista `[…]`) */
+  corpo: Record<string, unknown>;
+  endereco: ParametroNoEndereco[];
+  marcas: MarcaDoPedido[];
+  /** o que os campos leem e não existe no pedido nem é parâmetro (um caminho escrito errado, um parâmetro que saiu) */
+  fora: Array<{ referencia: string; onde: string[] }>;
+};
+
+/** O código de um bloco que não veio no pedido: no robô, cada bloco tem o seu ("cb-…-qst-…"). */
+const codigoQueFalta = (grupo: 'questions' | 'menus', existentes: Record<string, unknown>) => {
+  const base = grupo === 'menus' ? 'cb-…-mn-…' : 'cb-…-qst-…';
+  let codigo = base;
+  for (let n = 2; codigo in existentes; n++) codigo = `${base} (${n})`;
+  return codigo;
+};
+
 /**
- * "Como deve chegar o webhook": o pedido que o mapa espera, montado com os parâmetros (e o exemplo de
- * cada um) e com o que os campos leem direto (sem parâmetro, com "<…>" no lugar do valor). Só o que o
- * Gestor lê: o resto do JSON do LineChat pode vir junto. A pergunta pelo texto vai em `questions` (o
- * menu, em `menus`), com o código do bloco no lugar do id, que é de cada robô.
+ * "Como deve chegar o webhook": o pedido de conferência (o último do robô, o fictício ou o colado), no
+ * formato em que o LineChat manda, com cada lugar que o Gestor lê marcado — por um parâmetro ou por um
+ * campo que lê direto. O parâmetro que não veio entra no lugar dele, com o exemplo, e a marca diz que não
+ * veio: é ali que ele deve chegar. A pergunta (e o menu) pelo texto vai no bloco de verdade, quando o
+ * pedido tem; sem ele, num bloco com o código por preencher ("cb-…-qst-…"). O que um campo lê e não
+ * existe no pedido — um caminho escrito errado, um parâmetro que saiu — não é inventado: vai em `fora`.
  */
-export function pedidoEsperado(mapa: MapaDoRobo): { corpo: Record<string, unknown>; endereco: Record<string, string> } {
-  const corpo: Record<string, unknown> = {};
-  const endereco: Record<string, string> = {};
+export function pedidoEsperado(
+  mapa: MapaDoRobo, amostra: unknown, enderecoDaAmostra: Readonly<Record<string, string>> = {},
+  camposDoPainel: ReadonlyArray<Pick<CampoPersonalizado, 'id' | 'nome'>> = [],
+): PedidoEsperado {
+  const corpo = JSON.parse(JSON.stringify(corpoDoPedido(amostra))) as Record<string, unknown>;
   const nomes = new Set((mapa.parametros ?? []).map((x) => paraBusca(x.nome)));
-  const blocos = { questions: 0, menus: 0 };
-  const por = (referencia: string, exemplo: string) => {
+  const marcas: MarcaDoPedido[] = [];
+  const endereco: ParametroNoEndereco[] = [];
+  const fora: Array<{ referencia: string; onde: string[] }> = [];
+  /** os lugares que não vieram e foram postos aqui (com o exemplo) */
+  const postos = new Set<string>();
+  const junto = (caminho: readonly string[]) => caminho.join('\u001f');
+
+  const marcar = (caminho: string[], quem: string) => {
+    const k = junto(caminho);
+    const ja = marcas.find((x) => junto(x.caminho) === k);
+    if (ja) { if (!ja.quem.includes(quem)) ja.quem.push(quem); return; }
+    marcas.push({ caminho, quem: [quem], veio: !postos.has(k) });
+  };
+  /**
+   * Uma referência de um parâmetro (ou de um campo): marca onde ela lê. `exemplo` diz o que fazer se não
+   * vier — `string`: pôr no lugar, com ele (a primeira origem de um parâmetro); `null`: só a pergunta, o
+   * menu e o endereço entram (o campo que lê direto); `undefined`: nada (uma alternativa).
+   */
+  const ler = (referencia: string, quem: string, exemplo: string | null | undefined, proprio = '') => {
     const ref = referencia.trim();
-    if (!ref || FIXO.test(ref) || nomes.has(paraBusca(ref))) return;
+    // o outro parâmetro é marcado por ele mesmo; o próprio nome, na origem dele, é o caminho no JSON (sessionId → sessionId)
+    if (!ref || FIXO.test(ref) || (nomes.has(paraBusca(ref)) && paraBusca(ref) !== paraBusca(proprio))) return;
     const e = POR_ENDERECO.exec(ref);
-    if (e) { const k = e[1]!.trim(); if (k && !(k in endereco)) endereco[k] = exemplo; return; }
+    if (e) {
+      const k = e[1]!.trim();
+      if (!k || paraBusca(k) === 'chave') return;
+      const ja = endereco.find((x) => x.chave === k);
+      if (ja) { if (!ja.quem.includes(quem)) ja.quem.push(quem); return; }
+      if (Object.prototype.hasOwnProperty.call(enderecoDaAmostra, k)) endereco.push({ chave: k, valor: enderecoDaAmostra[k]!, quem: [quem], veio: true });
+      else if (exemplo !== undefined) endereco.push({ chave: k, valor: exemplo || `<${k}>`, quem: [quem], veio: false });
+      return;
+    }
     const m = POR_TEXTO.exec(ref);
     if (m) {
       const grupo = paraBusca(m[1]) === 'menu' ? 'menus' : 'questions';
-      const lista = (corpo[grupo] ??= {}) as Record<string, unknown>;
       const texto = m[2]!.replace(/\s+/g, ' ').trim();
-      if (Object.values(lista).some((b) => limpo((b as { text?: string }).text) === limpo(texto))) return;
-      blocos[grupo]++;
-      lista[`<código do bloco ${blocos[grupo]}>`] = { text: texto, answer: exemplo };
+      let codigo = acharBloco(corpo[grupo], texto);
+      if (codigo === null) {
+        if (exemplo === undefined || !limpo(texto)) return;
+        if (corpo[grupo] === null || typeof corpo[grupo] !== 'object' || Array.isArray(corpo[grupo])) corpo[grupo] = {};
+        const blocos = corpo[grupo] as Record<string, unknown>;
+        codigo = codigoQueFalta(grupo, blocos);
+        blocos[codigo] = { text: texto, answer: exemplo || '…', answerFile: null };
+        postos.add(junto([grupo, codigo, 'answer']));
+      }
+      marcar([grupo, codigo, 'answer'], quem);
       return;
     }
-    porNoCaminho(corpo, ref, exemplo);
+    const partes = ref.split('.').map((x) => x.trim());
+    if (partes.some((x) => !x)) return;
+    if (valorNoCaminho(corpo, ref) === undefined) {
+      if (typeof exemplo !== 'string') {
+        if (exemplo === null) {
+          const ja = fora.find((x) => x.referencia === ref);
+          if (ja) { if (!ja.onde.includes(quem)) ja.onde.push(quem); } else fora.push({ referencia: ref, onde: [quem] });
+        }
+        return;
+      }
+      porNoCaminho(corpo, ref, exemplo || '…');
+      if (valorNoCaminho(corpo, ref) === undefined) return;
+      postos.add(junto(partes));
+    }
+    marcar(partes, quem);
   };
-  // os parâmetros: a primeira alternativa da origem é onde ele deve chegar
-  for (const x of mapa.parametros ?? []) por(x.origem.split('||')[0] ?? '', x.exemplo || `<${x.nome}>`);
+
+  // os parâmetros: a primeira origem é onde ele deve chegar; as outras (o "se não vier") só se vieram
+  for (const p of mapa.parametros ?? []) {
+    p.origem.split('||').forEach((alternativa, i) => ler(alternativa, `{{${p.nome}}}`, i === 0 ? p.exemplo : undefined, p.nome));
+  }
   // o que os campos (e a mensagem) leem direto do pedido, sem parâmetro
-  const textos = [...CAMPOS_DO_MAPA.map((c) => mapa[c] ?? ''), ...Object.values(mapa.campos ?? {}), mapa.mensagem ?? ''];
-  for (const t of textos) for (const r of referenciasDoTexto(t)) por(r, '<…>');
-  return { corpo, endereco };
+  const textos: Array<[string, string]> = [
+    ...CAMPOS_DO_MAPA.map((c): [string, string] => [NOME_CAMPO_DO_MAPA[c], mapa[c] ?? '']),
+    ...Object.entries(mapa.campos ?? {}).map(([id, t]): [string, string] => [camposDoPainel.find((x) => x.id === id)?.nome ?? 'Um campo do painel', t]),
+    ['Mensagem ao cliente', mapa.mensagem ?? ''],
+  ];
+  for (const [onde, texto] of textos) {
+    for (const v of texto.matchAll(VARIAVEL)) v[1]!.split('||').forEach((alternativa, i) => ler(alternativa, onde, i === 0 ? null : undefined));
+  }
+  return { corpo, endereco, marcas, fora };
+}
+
+/** Uma linha do JSON do "Como deve chegar o webhook": o texto (já com o recuo), a marca e se é um pedaço recolhido. */
+export type LinhaDoPedido = { recuo: number; texto: string; marca: MarcaDoPedido | null; recolhido: boolean };
+
+/**
+ * O pedido em linhas, como o LineChat manda (dentro de `[…]`), para a tela marcar o que o Gestor lê: o
+ * que tem uma marca dentro aparece aberto; o resto que é objeto ou lista fica recolhido ({ … }); dentro de
+ * um objeto grande (o contato tem uns 15 dados), 3 ou mais seguidos sem marca viram "… e mais N" — as
+ * chaves de fora (o formato do pedido) aparecem todas. O texto longo é cortado na tela (o Copiar leva o
+ * JSON inteiro).
+ */
+export function linhasDoPedido(corpo: Record<string, unknown>, marcas: readonly MarcaDoPedido[], maxTexto = 80): LinhaDoPedido[] {
+  const junto = (caminho: readonly string[]) => caminho.join('\u001f');
+  const porCaminho = new Map(marcas.map((x) => [junto(x.caminho), x]));
+  const temDentro = (caminho: readonly string[]) => {
+    const k = `${junto(caminho)}\u001f`;
+    return marcas.some((x) => junto(x.caminho).startsWith(k));
+  };
+  const valor = (v: unknown) => JSON.stringify(typeof v === 'string' && v.length > maxTexto ? `${v.slice(0, maxTexto - 1).trimEnd()}…` : v);
+  const linhas: LinhaDoPedido[] = [];
+  const visitar = (v: unknown, caminho: string[], recuo: number, rotulo: string, virgula: string) => {
+    const marca = caminho.length ? porCaminho.get(junto(caminho)) ?? null : null;
+    if (v !== null && typeof v === 'object') {
+      const lista = Array.isArray(v);
+      const filhos: Array<[string, unknown]> = lista ? (v as unknown[]).map((x, i) => [String(i), x]) : Object.entries(v as Record<string, unknown>);
+      const [abre, fecha] = lista ? ['[', ']'] : ['{', '}'];
+      if (!filhos.length) { linhas.push({ recuo, texto: `${rotulo}${abre}${fecha}${virgula}`, marca, recolhido: false }); return; }
+      if (caminho.length && !marca && !temDentro(caminho)) { linhas.push({ recuo, texto: `${rotulo}${abre} … ${fecha}${virgula}`, marca: null, recolhido: true }); return; }
+      linhas.push({ recuo, texto: `${rotulo}${abre}`, marca, recolhido: false });
+      const filho = (i: number) => {
+        const [k, x] = filhos[i]!;
+        visitar(x, [...caminho, k], recuo + 1, lista ? '' : `${JSON.stringify(k)}: `, i < filhos.length - 1 ? ',' : '');
+      };
+      if (caminho.length && filhos.length > 6) {
+        let seguidos: number[] = [];
+        const soltar = () => {
+          if (seguidos.length >= 3) linhas.push({ recuo: recuo + 1, texto: `… e mais ${seguidos.length}`, marca: null, recolhido: true });
+          else seguidos.forEach(filho);
+          seguidos = [];
+        };
+        filhos.forEach(([k], i) => {
+          const c = [...caminho, k];
+          if (porCaminho.has(junto(c)) || temDentro(c)) { soltar(); filho(i); } else seguidos.push(i);
+        });
+        soltar();
+      } else filhos.forEach((_, i) => filho(i));
+      linhas.push({ recuo, texto: `${fecha}${virgula}`, marca: null, recolhido: false });
+      return;
+    }
+    linhas.push({ recuo, texto: `${rotulo}${valor(v)}${virgula}`, marca, recolhido: false });
+  };
+  linhas.push({ recuo: 0, texto: '[', marca: null, recolhido: false });
+  visitar(corpo, [], 1, '', '');
+  linhas.push({ recuo: 0, texto: ']', marca: null, recolhido: false });
+  return linhas;
 }
 
 // =====================================================================
@@ -907,14 +1059,14 @@ export type PreviaDoRobo = {
 export const ExperimentarRoboSchema = z.object({
   mapa: MapaDoRoboSchema,
   corpo: z.unknown(),
-  /** os parâmetros do endereço do pedido de exemplo (?setor=…) */
+  /** os parâmetros do endereço do pedido de conferência (?setor=…) */
   endereco: z.record(z.string().max(100), z.string().max(2_000)).refine((r) => Object.keys(r).length <= 50, 'Parâmetros demais no endereço.').default({}),
 });
 
 /**
- * Um pedido de mentira no formato que o robô do LineChat manda (o do Helena), para montar o mapa antes
- * do primeiro pedido de verdade. Os ids das perguntas e dos menus são inventados: os do seu robô
- * aparecem no último pedido (ou no pedido que você colar).
+ * O pedido fictício (a tela chama assim): no formato que o robô do LineChat manda (o do Helena), para
+ * conferir o mapa antes do primeiro pedido de verdade. Os ids das perguntas e dos menus são inventados:
+ * os do seu robô aparecem no último pedido (ou no pedido que você colar).
  */
 export const EXEMPLO_DO_LINECHAT: unknown = [{
   responseKeys: [],

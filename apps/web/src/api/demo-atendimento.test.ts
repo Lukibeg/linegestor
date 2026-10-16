@@ -772,7 +772,7 @@ describe('as regras do servidor valem na prévia', () => {
     expect(interno.status).toBe(400);
   }, DEMORA);
 
-  it('o mapa do robô (como o servidor): "Como fica" com o exemplo do LineChat, a variável aberta recusada, salvar com a auditoria', async () => {
+  it('o mapa do robô (como o servidor): "Como fica" com o pedido fictício, a variável aberta recusada, salvar com a auditoria', async () => {
     await entrar('admin');
     const tela = await api.robo();
     expect(tela).toEqual({ mapa: { ...MAPA_DO_ROBO_PADRAO }, ultimo: null });
