@@ -12,6 +12,10 @@
  *    `lastMessagesAggregated.files.0.url` (o número é a posição na lista, a partir do 0);
  *  - ou a pergunta pelo texto: `{{pergunta: o motivo do seu contato}}` (`{{menu: …}}` nos menus) — o
  *    código do bloco muda de uma cópia do robô para outra (a de teste e a de produção), o texto não;
+ *  - ou um parâmetro do endereço do webhook: `{{endereço: setor}}` (de `…/entrada/robo?chave=…&setor=…`);
+ *  - ou um PARÂMETRO do mapa, pelo nome: `{{empresa}}`. O pedido do Luan: "incluindo ou removendo
+ *    parâmetros que vão chegar no webhook… na tela… e não a nível de código" — cada parâmetro tem um nome,
+ *    a origem (qualquer uma das acima) e um exemplo; a tela mostra "como deve chegar o webhook" com eles;
  *  - `{{a || b || c}}` usa a primeira que vier com valor (quantas quiser); `{{a || "texto"}}` termina
  *    num texto fixo;
  *  - o campo cujas variáveis vieram todas vazias fica vazio: o título "Atendimento de " não nasce;
@@ -60,6 +64,47 @@ const Modelo = (max: number, padrao = '') => z.string().max(max, `Vai até ${max
   .superRefine((s, ctx) => { const p = problemaDoModelo(s); if (p) ctx.addIssue({ code: z.ZodIssueCode.custom, message: p }); })
   .default(padrao);
 
+// =====================================================================
+//  OS PARÂMETROS DO WEBHOOK (o que chega, com um nome)
+// =====================================================================
+
+/** Os nomes que já querem dizer outra coisa nos textos ({codigo}, {contato}) e nas origens (pergunta:, menu:, endereço:). */
+const NOMES_RESERVADOS: ReadonlySet<string> = new Set(['codigo', 'contato', 'pergunta', 'menu', 'endereco']);
+/** O nome de um parâmetro: letras, números, _ e - (vai entre {{ }} nos campos, como {{empresa}}). */
+export const NOME_DE_PARAMETRO = /^[\p{L}\p{N}_-]{1,40}$/u;
+
+/** O que está errado na origem de um parâmetro (a tela diz perto do campo); null = está boa. */
+export function problemaDaOrigem(origem: string): string | null {
+  const o = origem.trim();
+  if (!o) return 'Diga de onde vem o parâmetro: o caminho (contact.name), a pergunta (pergunta: …) ou o endereço (endereço: setor).';
+  if (/[{}]/.test(o)) return 'Escreva a origem sem {{ }}: só o que iria dentro, como contact.name ou pergunta: o motivo do seu contato.';
+  if (o.split('||').some((x) => !x.trim())) return 'Há uma alternativa vazia: escreva a origem dos dois lados do ||.';
+  // a chave do endereço nunca chega ao mapa (sai antes, para não ir parar no último pedido nem na auditoria)
+  if (o.split('||').some((x) => { const e = POR_ENDERECO.exec(x.trim()); return !!e && paraBusca(e[1]!.trim()) === 'chave'; })) {
+    return 'A chave do endereço não chega ao mapa (o Gestor nunca guarda a chave): use outro nome no endereço, como endereço: setor.';
+  }
+  return null;
+}
+
+/**
+ * Um parâmetro do webhook: um nome curto para o que chega ("empresa"), a origem no pedido e um exemplo
+ * (o "Como deve chegar o webhook" é montado com ele). A origem é o que iria entre {{ }}: o caminho no
+ * JSON, a pergunta pelo texto, um parâmetro do endereço ou outro parâmetro, com alternativas (`a || b`)
+ * e texto fixo no fim.
+ */
+export const ParametroDoRoboSchema = z.object({
+  nome: z.string().trim()
+    .regex(NOME_DE_PARAMETRO, 'O nome do parâmetro vai só com letras, números, _ e - (sem espaço nem ponto), como empresa ou motivo_do_contato.')
+    .refine((n) => !NOMES_RESERVADOS.has(paraBusca(n)), 'Esse nome é reservado (codigo, contato, pergunta, menu, endereço): escolha outro.'),
+  origem: z.string().max(1_000, 'A origem vai até 1000 letras.')
+    .superRefine((o, ctx) => { const p = problemaDaOrigem(o); if (p) ctx.addIssue({ code: z.ZodIssueCode.custom, message: p }); })
+    .transform((o) => o.trim()),
+  exemplo: z.string().max(500, 'O exemplo vai até 500 letras.').default(''),
+  descricao: z.string().trim().max(200, 'A descrição vai até 200 letras.').default(''),
+});
+export type ParametroDoRobo = z.infer<typeof ParametroDoRoboSchema>;
+export type ParametroDoRoboEntrada = z.input<typeof ParametroDoRoboSchema>;
+
 /** A mensagem de fábrica que volta ao cliente (o texto do Luan, 16/10/2026): {codigo} é o número do chamado. */
 export const MENSAGEM_DO_ROBO_PADRAO = 'Seu chamado foi registrado com o número *{codigo}*. Guarde este número caso precise falar sobre ele depois.';
 
@@ -67,6 +112,16 @@ export const MENSAGEM_DO_ROBO_PADRAO = 'Seu chamado foi registrado com o número
 export const MapaDoRoboSchema = z.object({
   /** o painel em que o chamado nasce (o id); vazio = o primeiro ativo (o Suporte) */
   painel: z.string().trim().max(60).default(''),
+  /** os parâmetros do webhook, com nome: vão nos campos como {{nome}} */
+  parametros: z.array(ParametroDoRoboSchema).max(60, 'Parâmetros demais (até 60).')
+    .superRefine((ps, ctx) => {
+      const vistos = new Set<string>();
+      ps.forEach((x, i) => {
+        if (vistos.has(paraBusca(x.nome))) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [i, 'nome'], message: `Há dois parâmetros chamados ${x.nome}: um nome para cada.` });
+        vistos.add(paraBusca(x.nome));
+      });
+    })
+    .default([]),
   titulo: Modelo(1_000),
   relato: Modelo(4_000),
   telefone: Modelo(1_000),
@@ -101,17 +156,27 @@ const LIMITE: Record<CampoDoMapa, number> = {
   titulo: 200, relato: 20_000, telefone: 60, nome: 120, sessaoId: 120, etiquetas: 2_000, descricao: 20_000, cliente: 200, assunto: 200, prioridade: 60,
 };
 
+/** Os parâmetros de fábrica: o que o robô do LineChat manda em todo pedido. */
+const PARAMETROS_PADRAO: readonly ParametroDoRobo[] = Object.freeze([
+  Object.freeze({ nome: 'nome', origem: 'contact.name', exemplo: 'Maria Souza', descricao: 'O nome do contato.' }),
+  Object.freeze({ nome: 'whatsapp', origem: 'contact.phonenumber', exemplo: '+55|71999992010', descricao: 'O WhatsApp do contato (o Gestor arruma o "+55|").' }),
+  Object.freeze({ nome: 'conversa', origem: 'sessionId', exemplo: '5f0c2a8e-1d2b-4c3a-9e10-000000000001', descricao: 'O id da conversa no LineChat.' }),
+  Object.freeze({ nome: 'mensagem', origem: 'lastContactMessage', exemplo: 'As ligações de saída não completam desde cedo', descricao: 'A última mensagem do cliente.' }),
+]);
+
 /**
- * O mapa de fábrica: o que o robô do LineChat manda em todo pedido (o nome, o WhatsApp, a conversa, a
- * última mensagem do cliente). As perguntas e os menus têm o id de cada robô: entram pela tela.
+ * O mapa de fábrica: os parâmetros que o robô do LineChat manda em todo pedido (o nome, o WhatsApp, a
+ * conversa, a última mensagem do cliente) e os campos com eles. As perguntas e os menus são de cada robô:
+ * entram pela tela, como parâmetros novos.
  */
 export const MAPA_DO_ROBO_PADRAO: Readonly<MapaDoRobo> = Object.freeze({
   painel: '',
-  titulo: 'Atendimento de {{contact.name}}',
-  relato: '{{lastContactMessage}}',
-  telefone: '{{contact.phonenumber}}',
-  nome: '{{contact.name}}',
-  sessaoId: '{{sessionId}}',
+  parametros: PARAMETROS_PADRAO as ParametroDoRobo[],
+  titulo: 'Atendimento de {{nome}}',
+  relato: '{{mensagem}}',
+  telefone: '{{whatsapp}}',
+  nome: '{{nome}}',
+  sessaoId: '{{conversa}}',
   etiquetas: 'robô',
   descricao: '',
   cliente: '',
@@ -121,7 +186,7 @@ export const MAPA_DO_ROBO_PADRAO: Readonly<MapaDoRobo> = Object.freeze({
   mensagem: MENSAGEM_DO_ROBO_PADRAO,
 });
 /** Uma cópia do de fábrica, para mexer. */
-export const mapaDeFabrica = (): MapaDoRobo => ({ ...MAPA_DO_ROBO_PADRAO, campos: {} });
+export const mapaDeFabrica = (): MapaDoRobo => ({ ...MAPA_DO_ROBO_PADRAO, parametros: PARAMETROS_PADRAO.map((x) => ({ ...x })), campos: {} });
 
 // =====================================================================
 //  AS VARIÁVEIS DO PEDIDO
@@ -158,17 +223,61 @@ export function valorNoCaminho(corpo: unknown, caminho: string): unknown {
 
 /** A pergunta (ou o menu) pelo texto: "pergunta: o motivo do seu contato", "menu: …". */
 const POR_TEXTO = /^(pergunta|menu)\s*:\s*([\s\S]*)$/i;
+/** Um parâmetro do endereço do webhook: "endereço: setor" (de …/entrada/robo?setor=…). */
+const POR_ENDERECO = /^endere[cç]o\s*:\s*([\s\S]*)$/i;
+/** O texto fixo no lugar de uma referência: "sem empresa" (ou 'sem empresa'). */
+const FIXO = /^(["'])([\s\S]*)\1$/;
+
+/** O que mais vale na leitura do pedido: os parâmetros do mapa (pelo nome) e os do endereço do webhook. */
+export type ContextoDoPedido = {
+  parametros?: readonly ParametroDoRobo[];
+  /** os parâmetros do endereço (?setor=…), sem a chave */
+  endereco?: Readonly<Record<string, string>>;
+};
+
+/** Tem valor? (o vazio, o nulo e o que não veio, não) */
+const comValor = (v: unknown) => textoDoPedido(v).trim() !== '';
 
 /**
- * O valor de uma referência do mapa: o caminho no JSON ("contact.name") ou a pergunta pelo texto
- * ("pergunta: Por favor nos informe brevemente o motivo do seu contato"; "menu: …" para os menus). Pelo
- * texto, o mapa vale para outra cópia do robô — a de teste e a de produção têm os blocos com outros
- * códigos e as mesmas perguntas: acha a pergunta de texto igual (sem ligar para acento, maiúscula e
- * pontuação) ou, sem ela, a única que contém o texto. `undefined` = não veio no pedido.
+ * O valor de um parâmetro: a primeira alternativa da origem que vier com valor (o texto fixo no fim
+ * vale). `null` = veio, mas vazio; `undefined` = nenhuma alternativa veio. Na origem dele, o próprio nome
+ * é o caminho no JSON (o parâmetro "sessionId" com a origem "sessionId"), e não ele de novo.
  */
-export function valorDaReferencia(corpo: unknown, referencia: string): unknown {
-  const m = POR_TEXTO.exec(referencia.trim());
-  if (!m) return valorNoCaminho(corpo, referencia);
+export function valorDoParametro(corpo: unknown, parametro: ParametroDoRobo, ctx: ContextoDoPedido = {}, nivel = 0): unknown {
+  const semEle: ContextoDoPedido = { ...ctx, parametros: (ctx.parametros ?? []).filter((x) => paraBusca(x.nome) !== paraBusca(parametro.nome)) };
+  let veio = false;
+  for (const bruto of parametro.origem.split('||')) {
+    const alternativa = bruto.trim();
+    const fixo = FIXO.exec(alternativa);
+    if (fixo) { if (fixo[2]!.trim()) return fixo[2]!.trim(); continue; }
+    const v = valorDaReferencia(corpo, alternativa, semEle, nivel + 1);
+    if (v !== undefined) veio = true;
+    if (comValor(v)) return v;
+  }
+  return veio ? null : undefined;
+}
+
+/**
+ * O valor de uma referência do mapa: um parâmetro do mapa pelo nome ("empresa"), um parâmetro do
+ * endereço ("endereço: setor"), o caminho no JSON ("contact.name") ou a pergunta pelo texto ("pergunta:
+ * Por favor nos informe brevemente o motivo do seu contato"; "menu: …" para os menus). Pelo texto, o mapa
+ * vale para outra cópia do robô — a de teste e a de produção têm os blocos com outros códigos e as mesmas
+ * perguntas: acha a pergunta de texto igual (sem ligar para acento, maiúscula e pontuação) ou, sem ela, a
+ * única que contém o texto. `undefined` = não veio no pedido.
+ */
+export function valorDaReferencia(corpo: unknown, referencia: string, ctx: ContextoDoPedido = {}, nivel = 0): unknown {
+  const ref = referencia.trim();
+  // o parâmetro com esse nome (um parâmetro que aponta para outro vai até 4 voltas: o círculo para ali)
+  const parametro = nivel < 4 ? ctx.parametros?.find((x) => paraBusca(x.nome) === paraBusca(ref)) : undefined;
+  if (parametro) return valorDoParametro(corpo, parametro, ctx, nivel);
+  const e = POR_ENDERECO.exec(ref);
+  if (e) {
+    const k = e[1]!.trim();
+    const endereco = ctx.endereco ?? {};
+    return k && Object.prototype.hasOwnProperty.call(endereco, k) ? endereco[k] : undefined;
+  }
+  const m = POR_TEXTO.exec(ref);
+  if (!m) return valorNoCaminho(corpo, ref);
   const blocos = valorNoCaminho(corpo, paraBusca(m[1]) === 'menu' ? 'menus' : 'questions');
   const alvo = limpo(m[2]);
   if (!alvo || blocos === null || typeof blocos !== 'object' || Array.isArray(blocos)) return undefined;
@@ -201,7 +310,7 @@ export type Preenchido = {
  * 'texto') no lugar de um caminho é texto fixo. O texto cujas variáveis vieram todas vazias fica vazio
  * (menos com `vazioSeTudoVazio: false`: a mensagem ao cliente não some por faltar o primeiro nome).
  */
-export function preencherDoPedido(modelo: string, corpo: unknown, opcoes: { vazioSeTudoVazio?: boolean } = {}): Preenchido {
+export function preencherDoPedido(modelo: string, corpo: unknown, opcoes: { vazioSeTudoVazio?: boolean; contexto?: ContextoDoPedido } = {}): Preenchido {
   const faltaram: string[] = [];
   let variaveis = 0;
   let comValor = 0;
@@ -210,9 +319,9 @@ export function preencherDoPedido(modelo: string, corpo: unknown, opcoes: { vazi
     const ausentes: string[] = [];
     for (const bruto of dentro.split('||')) {
       const opcao = bruto.trim();
-      const fixo = /^(["'])([\s\S]*)\1$/.exec(opcao);
+      const fixo = FIXO.exec(opcao);
       const valor = fixo ? fixo[2]!.trim() : (() => {
-        const v = valorDaReferencia(corpo, opcao);
+        const v = valorDaReferencia(corpo, opcao, opcoes.contexto);
         if (v === undefined) ausentes.push(opcao.replace(/\s+/g, ' '));
         return textoDoPedido(v).trim();
       })();
@@ -235,19 +344,48 @@ export type PedidoDoRobo = Record<CampoDoMapa, string> & {
   faltaram: Record<string, string[]>;
 };
 
-/** Lê o pedido pelo mapa: o texto de cada campo, já no tamanho do chamado. */
-export function aplicarMapaDoRobo(mapa: MapaDoRobo, corpoBruto: unknown): PedidoDoRobo {
+/**
+ * Os itens de uma lista no texto do mapa (as etiquetas): separados por vírgula, ponto e vírgula ou linha
+ * fora das {{ }} — a vírgula do texto de uma pergunta ({{pergunta: Por favor, nos informe…}}) não separa.
+ */
+function itensDaLista(modelo: string): string[] {
+  const itens: string[] = [];
+  let atual = '';
+  let dentro = false;
+  for (let i = 0; i < modelo.length; i++) {
+    const c = modelo[i]!;
+    if (c === '{' && modelo[i + 1] === '{' && !dentro) { dentro = true; atual += '{{'; i++; continue; }
+    if (c === '}' && modelo[i + 1] === '}' && dentro) { dentro = false; atual += '}}'; i++; continue; }
+    if (!dentro && (c === ',' || c === ';' || c === '\n')) { itens.push(atual); atual = ''; continue; }
+    atual += c;
+  }
+  itens.push(atual);
+  return itens;
+}
+
+/** Lê o pedido pelo mapa (com os parâmetros dele e os do endereço): o texto de cada campo, já no tamanho do chamado. */
+export function aplicarMapaDoRobo(mapa: MapaDoRobo, corpoBruto: unknown, endereco: Readonly<Record<string, string>> = {}): PedidoDoRobo {
   const corpo = corpoDoPedido(corpoBruto);
+  const contexto: ContextoDoPedido = { parametros: mapa.parametros ?? [], endereco };
   const faltaram: Record<string, string[]> = {};
+  const anotar = (chave: string, refs: string[]) => {
+    for (const r of refs) if (!(faltaram[chave] ??= []).includes(r)) faltaram[chave]!.push(r);
+  };
   const ler = (chave: string, modelo: string, variasLinhas: boolean) => {
-    const r = preencherDoPedido(modelo, corpo);
-    if (r.faltaram.length) faltaram[chave] = r.faltaram;
+    const r = preencherDoPedido(modelo, corpo, { contexto });
+    if (r.faltaram.length) anotar(chave, r.faltaram);
     const t = r.texto.replace(/\r\n?/g, '\n');
     return variasLinhas ? t.replace(/[ \t]+\n/g, '\n').trim() : t.replace(/\s+/g, ' ').trim();
   };
+  // nas etiquetas, cada uma vale por si: "robô, {{setor}}" sem o setor fica "robô" (o "tudo vazio" é de cada etiqueta)
+  const lerLista = (chave: string, modelo: string) => {
+    const itens = itensDaLista(modelo).map((item) => preencherDoPedido(item, corpo, { contexto }));
+    for (const r of itens) if (r.faltaram.length) anotar(chave, r.faltaram);
+    return itens.map((r) => r.texto.replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').trim()).filter(Boolean).join(', ');
+  };
   const textos = {} as Record<CampoDoMapa, string>;
   for (const c of CAMPOS_DO_MAPA) {
-    const t = ler(c, mapa[c] ?? '', VARIAS_LINHAS.has(c));
+    const t = c === 'etiquetas' ? lerLista(c, mapa[c] ?? '') : ler(c, mapa[c] ?? '', VARIAS_LINHAS.has(c));
     // o id da conversa e o telefone não ganham reticências: cortados, continuam sendo o que são
     textos[c] = c === 'sessaoId' || c === 'telefone' ? t.slice(0, LIMITE[c]) : cortar(t, LIMITE[c]);
   }
@@ -260,11 +398,11 @@ export function aplicarMapaDoRobo(mapa: MapaDoRobo, corpoBruto: unknown): Pedido
 }
 
 /** Os grupos da lista de variáveis (o formato do LineChat; o que for de outro sistema cai em "o resto"). */
-export const GRUPOS_DAS_VARIAVEIS = ['perguntas', 'menus', 'contato', 'conversa', 'mensagens', 'outras'] as const;
+export const GRUPOS_DAS_VARIAVEIS = ['perguntas', 'menus', 'endereco', 'contato', 'conversa', 'mensagens', 'outras'] as const;
 export type GrupoDaVariavel = (typeof GRUPOS_DAS_VARIAVEIS)[number];
 export const NOME_GRUPO_DA_VARIAVEL: Record<GrupoDaVariavel, string> = {
-  perguntas: 'As perguntas do robô', menus: 'Os menus do robô', contato: 'O contato', conversa: 'A conversa e o canal',
-  mensagens: 'As mensagens', outras: 'O resto do pedido',
+  perguntas: 'As perguntas do robô', menus: 'Os menus do robô', endereco: 'O endereço do webhook (?…)', contato: 'O contato',
+  conversa: 'A conversa e o canal', mensagens: 'As mensagens', outras: 'O resto do pedido',
 };
 const GRUPO_DA_CHAVE: Record<string, GrupoDaVariavel> = {
   questions: 'perguntas', menus: 'menus', contact: 'contato', sessionId: 'conversa', session: 'conversa', channel: 'conversa',
@@ -294,9 +432,14 @@ const chaveEscrevivel = (k: string) => !!k && k === k.trim() && !/[.{}|]/.test(k
  * uma pergunta (ou de um menu) do robô leva a pergunta como dica — o id do bloco ("cb-…-qst-…") não diz
  * nada a ninguém. As perguntas e os menus vêm primeiro.
  */
-export function variaveisDoPedido(corpoBruto: unknown, limite = 400): VariavelDoPedido[] {
+export function variaveisDoPedido(corpoBruto: unknown, limite = 400, endereco: Readonly<Record<string, string>> = {}): VariavelDoPedido[] {
   const corpo = corpoDoPedido(corpoBruto);
   const lista: VariavelDoPedido[] = [];
+  // os parâmetros do endereço (?setor=…; a chave nunca chega até aqui)
+  for (const [k, v] of Object.entries(endereco)) {
+    const texto = String(v).replace(/\s+/g, ' ').trim();
+    lista.push({ caminho: `endereço: ${k}`, porTexto: null, valor: cortar(texto, 160), vazio: !texto, dica: null, grupo: 'endereco' });
+  }
   // os textos de pergunta (e de menu) que aparecem uma vez só: só eles acham a resposta pelo texto
   const unicos = new Map<string, Set<string>>();
   for (const grupo of ['questions', 'menus']) {
@@ -549,10 +692,10 @@ export function resolverPedidoDoRobo(p: PedidoDoRobo, g: DadosParaORobo): Resolv
  * variáveis do pedido entre {{ }} — aqui sem a regra do "tudo vazio": a mensagem não some por faltar o
  * primeiro nome. O que sobra de uma variável vazia ("Olá, !") é arrumado.
  */
-export function preencherMensagem(modelo: string, valores: { codigo: string; contato?: string | null }, corpo: unknown): Preenchido {
+export function preencherMensagem(modelo: string, valores: { codigo: string; contato?: string | null }, corpo: unknown, contexto: ContextoDoPedido = {}): Preenchido {
   // {{codigo}} e {{contato}} (com as duas chaves, como as variáveis do pedido) também valem
   const marcadores = modelo.replace(/\{\{\s*(codigo|contato)\s*\}\}/gi, (_t, k: string) => `{${k.toLowerCase()}}`);
-  const r = preencherDoPedido(marcadores, corpoDoPedido(corpo), { vazioSeTudoVazio: false });
+  const r = preencherDoPedido(marcadores, corpoDoPedido(corpo), { vazioSeTudoVazio: false, contexto });
   const texto = r.texto
     .replace(/\{codigo\}/g, valores.codigo)
     .replace(/\{contato\}/g, valores.contato?.trim() ?? '')
@@ -560,8 +703,8 @@ export function preencherMensagem(modelo: string, valores: { codigo: string; con
     .trim();
   return { texto, faltaram: r.faltaram };
 }
-export const mensagemAoRobo = (modelo: string, valores: { codigo: string; contato?: string | null }, corpo: unknown): string =>
-  preencherMensagem(modelo, valores, corpo).texto;
+export const mensagemAoRobo = (modelo: string, valores: { codigo: string; contato?: string | null }, corpo: unknown, contexto: ContextoDoPedido = {}): string =>
+  preencherMensagem(modelo, valores, corpo, contexto).texto;
 
 /**
  * O que volta ao bloco "Enviar webhook" do LineChat — sempre com HTTP 200 (ele conta o 201 como falha).
@@ -570,8 +713,11 @@ export const mensagemAoRobo = (modelo: string, valores: { codigo: string; contat
  */
 export type RespostaAoRobo = { response: 'CHAMADO_ABERTO'; messages: Array<{ text: string }> } | { response: 'CHAMADO_FALHOU' };
 export const respostaDoRoboQueFalhou = (): RespostaAoRobo => ({ response: 'CHAMADO_FALHOU' });
-export function respostaAoRobo(mapa: Pick<MapaDoRobo, 'mensagem'>, chamado: { codigo: string; contato?: string | null }, corpo: unknown): RespostaAoRobo {
-  const texto = mensagemAoRobo(mapa.mensagem ?? '', chamado, corpo);
+export function respostaAoRobo(
+  mapa: Pick<MapaDoRobo, 'mensagem'> & Partial<Pick<MapaDoRobo, 'parametros'>>, chamado: { codigo: string; contato?: string | null }, corpo: unknown,
+  endereco: Readonly<Record<string, string>> = {},
+): RespostaAoRobo {
+  const texto = mensagemAoRobo(mapa.mensagem ?? '', chamado, corpo, { parametros: mapa.parametros ?? [], endereco });
   return { response: 'CHAMADO_ABERTO', messages: texto ? [{ text: texto }] : [] };
 }
 
@@ -585,6 +731,154 @@ export function oQueNaoVeio(faltaram: Record<string, string[]>, campos: Readonly
 }
 
 // =====================================================================
+//  OS PARÂMETROS NA TELA (o que chega, o "Como deve chegar o webhook")
+// =====================================================================
+
+/**
+ * Os parâmetros do endereço do webhook (?setor=…), do jeito que o mapa lê ({{endereço: setor}}): a
+ * chave NUNCA entra (nem no último pedido); a lista vira "a, b"; até 50 parâmetros de 2000 letras.
+ */
+export function parametrosDoEndereco(query: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (query === null || typeof query !== 'object') return out;
+  for (const [k, v] of Object.entries(query as Record<string, unknown>)) {
+    if (Object.keys(out).length >= 50) break;
+    if (!chaveEscrevivel(k) || paraBusca(k) === 'chave' || ['__proto__', 'constructor', 'prototype'].includes(k)) continue;
+    const t = Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').join(', ') : typeof v === 'string' ? v : null;
+    if (t !== null) out[k] = t.slice(0, 2_000);
+  }
+  return out;
+}
+
+/** Os parâmetros de um endereço colado (o que o LineChat chamou), sem a chave. */
+export function parametrosDaUrl(url: string): Record<string, string> {
+  try {
+    const u = new URL(url.trim(), 'https://gestor.invalid');
+    const q: Record<string, string[]> = {};
+    for (const [k, v] of u.searchParams) (q[k] ??= []).push(v);
+    return parametrosDoEndereco(Object.fromEntries(Object.entries(q).map(([k, v]) => [k, v.length === 1 ? v[0]! : v])));
+  } catch { return {}; }
+}
+
+/** O parâmetro neste pedido: se veio e com que valor (para a lista de parâmetros conferir com o pedido de exemplo). */
+export function parametroNoPedido(parametro: ParametroDoRobo, corpoBruto: unknown, ctx: ContextoDoPedido = {}): { veio: boolean; valor: string } {
+  const v = valorDoParametro(corpoDoPedido(corpoBruto), parametro, ctx);
+  return { veio: v !== undefined, valor: textoDoPedido(v).replace(/\s+/g, ' ').trim() };
+}
+
+/** As referências de um texto do mapa (o que vai entre {{ }}, cada alternativa), sem os textos fixos. */
+const referenciasDoTexto = (texto: string) =>
+  [...texto.matchAll(VARIAVEL)].flatMap((m) => m[1]!.split('||').map((x) => x.trim())).filter((x) => x && !FIXO.test(x));
+
+/** Quem usa o parâmetro: os campos do chamado (pelo nome que a tela mostra), a mensagem e os outros parâmetros. */
+export function usosDoParametro(mapa: MapaDoRobo, nome: string, camposDoPainel: ReadonlyArray<Pick<CampoPersonalizado, 'id' | 'nome'>> = []): string[] {
+  const alvo = paraBusca(nome);
+  const usa = (t: string) => referenciasDoTexto(t).some((r) => paraBusca(r) === alvo);
+  const out: string[] = [];
+  for (const c of CAMPOS_DO_MAPA) if (usa(mapa[c] ?? '')) out.push(NOME_CAMPO_DO_MAPA[c]);
+  for (const [id, t] of Object.entries(mapa.campos ?? {})) if (usa(t)) out.push(camposDoPainel.find((x) => x.id === id)?.nome ?? 'um campo do painel');
+  if (usa(mapa.mensagem ?? '')) out.push('Mensagem ao cliente');
+  for (const x of mapa.parametros ?? []) {
+    if (paraBusca(x.nome) !== alvo && x.origem.split('||').some((a) => paraBusca(a.trim()) === alvo)) out.push(`o parâmetro ${x.nome}`);
+  }
+  return out;
+}
+
+/**
+ * Renomeia o parâmetro e tudo o que o usa: os campos, a mensagem e a origem dos outros parâmetros (na
+ * origem dele mesmo, o nome antigo é o caminho no JSON, e fica).
+ */
+export function renomearParametro(mapa: MapaDoRobo, de: string, para: string): MapaDoRobo {
+  const alvo = paraBusca(de);
+  const nasAlternativas = (dentro: string) => dentro.split('||').map((a) => (paraBusca(a.trim()) === alvo ? a.replace(a.trim(), para) : a)).join('||');
+  const noTexto = (t: string) => t.replace(VARIAVEL, (_todo, dentro: string) => `{{${nasAlternativas(dentro)}}}`);
+  const novo: MapaDoRobo = {
+    ...mapa,
+    campos: Object.fromEntries(Object.entries(mapa.campos ?? {}).map(([k, t]) => [k, noTexto(t)])),
+    mensagem: noTexto(mapa.mensagem ?? ''),
+    parametros: (mapa.parametros ?? []).map((x) => (paraBusca(x.nome) === alvo ? { ...x, nome: para } : { ...x, origem: nasAlternativas(x.origem) })),
+  };
+  for (const c of CAMPOS_DO_MAPA) novo[c] = noTexto(mapa[c] ?? '');
+  return novo;
+}
+
+const PALAVRAS_VAZIAS: ReadonlySet<string> = new Set([
+  'por', 'favor', 'nos', 'informe', 'informar', 'brevemente', 'qual', 'quais', 'dos', 'das', 'seu', 'sua', 'seus', 'suas', 'voce', 'que', 'para',
+  'com', 'faz', 'parte', 'possamos', 'salvar', 'cadastro', 'escolha', 'escolher', 'certo', 'deseja', 'listei', 'algumas', 'opcoes', 'facilitar',
+  'atendimento', 'digite', 'diga', 'sobre', 'mais', 'esta', 'este', 'isso', 'aqui', 'uma', 'pelo', 'pela', 'nas', 'aos', 'ola', 'obrigado',
+]);
+
+/**
+ * Um nome para o parâmetro novo, tirado da pergunta ("…o motivo do seu contato" → motivo_contato) ou do
+ * caminho (contact.empresa → empresa), sem repetir os que já existem. É só a sugestão: a pessoa troca.
+ */
+export function sugerirNomeDoParametro(v: Pick<VariavelDoPedido, 'caminho' | 'dica'>, existentes: readonly string[]): string {
+  let base = v.dica ? limpo(v.dica).split(' ').filter((w) => w.length > 2 && !PALAVRAS_VAZIAS.has(w)).slice(0, 3).join('_') : '';
+  if (!base) {
+    const e = POR_ENDERECO.exec(v.caminho);
+    const partes = v.caminho.split('.').filter((x) => !/^\d+$/.test(x));
+    const ultimo = e ? e[1]!.trim() : partes.at(-1) === 'answer' ? (partes[0] === 'menus' ? 'resposta_do_menu' : 'resposta') : partes.at(-1) ?? '';
+    base = paraBusca(ultimo).replace(/[^\p{L}\p{N}_-]+/gu, '_').replace(/^_+|_+$/g, '');
+  }
+  base = (base || 'parametro').slice(0, 34);
+  if (NOMES_RESERVADOS.has(base)) base = `${base}_1`;
+  const usados = new Set(existentes.map((x) => paraBusca(x)));
+  let nome = base;
+  for (let n = 2; usados.has(paraBusca(nome)); n++) nome = `${base}_${n}`;
+  return nome;
+}
+
+/** Põe o valor no caminho ("contact.name", "files.0.url"), criando o que falta (o número é posição de lista). */
+function porNoCaminho(alvo: Record<string, unknown>, caminho: string, valor: unknown) {
+  const partes = caminho.split('.').map((x) => x.trim()).filter(Boolean);
+  if (!partes.length || partes.some((x) => ['__proto__', 'constructor', 'prototype'].includes(x))) return;
+  let atual: Record<string, unknown> | unknown[] = alvo;
+  partes.forEach((parte, i) => {
+    const chave: string | number = Array.isArray(atual) ? Number(parte) : parte;
+    const lugar = atual as Record<string | number, unknown>;
+    if (i === partes.length - 1) { if (lugar[chave] === undefined) lugar[chave] = valor; return; }
+    if (lugar[chave] === null || typeof lugar[chave] !== 'object') lugar[chave] = /^\d+$/.test(partes[i + 1]!) ? [] : {};
+    atual = lugar[chave] as Record<string, unknown> | unknown[];
+  });
+}
+
+/**
+ * "Como deve chegar o webhook": o pedido que o mapa espera, montado com os parâmetros (e o exemplo de
+ * cada um) e com o que os campos leem direto (sem parâmetro, com "<…>" no lugar do valor). Só o que o
+ * Gestor lê: o resto do JSON do LineChat pode vir junto. A pergunta pelo texto vai em `questions` (o
+ * menu, em `menus`), com o código do bloco no lugar do id, que é de cada robô.
+ */
+export function pedidoEsperado(mapa: MapaDoRobo): { corpo: Record<string, unknown>; endereco: Record<string, string> } {
+  const corpo: Record<string, unknown> = {};
+  const endereco: Record<string, string> = {};
+  const nomes = new Set((mapa.parametros ?? []).map((x) => paraBusca(x.nome)));
+  const blocos = { questions: 0, menus: 0 };
+  const por = (referencia: string, exemplo: string) => {
+    const ref = referencia.trim();
+    if (!ref || FIXO.test(ref) || nomes.has(paraBusca(ref))) return;
+    const e = POR_ENDERECO.exec(ref);
+    if (e) { const k = e[1]!.trim(); if (k && !(k in endereco)) endereco[k] = exemplo; return; }
+    const m = POR_TEXTO.exec(ref);
+    if (m) {
+      const grupo = paraBusca(m[1]) === 'menu' ? 'menus' : 'questions';
+      const lista = (corpo[grupo] ??= {}) as Record<string, unknown>;
+      const texto = m[2]!.replace(/\s+/g, ' ').trim();
+      if (Object.values(lista).some((b) => limpo((b as { text?: string }).text) === limpo(texto))) return;
+      blocos[grupo]++;
+      lista[`<código do bloco ${blocos[grupo]}>`] = { text: texto, answer: exemplo };
+      return;
+    }
+    porNoCaminho(corpo, ref, exemplo);
+  };
+  // os parâmetros: a primeira alternativa da origem é onde ele deve chegar
+  for (const x of mapa.parametros ?? []) por(x.origem.split('||')[0] ?? '', x.exemplo || `<${x.nome}>`);
+  // o que os campos (e a mensagem) leem direto do pedido, sem parâmetro
+  const textos = [...CAMPOS_DO_MAPA.map((c) => mapa[c] ?? ''), ...Object.values(mapa.campos ?? {}), mapa.mensagem ?? ''];
+  for (const t of textos) for (const r of referenciasDoTexto(t)) por(r, '<…>');
+  return { corpo, endereco };
+}
+
+// =====================================================================
 //  A TELA
 // =====================================================================
 
@@ -595,6 +889,8 @@ export type UltimoPedidoDoRobo = {
   chave: string;
   /** o pedido como chegou (os textos longos cortados) */
   corpo: unknown;
+  /** os parâmetros do endereço (?setor=…), sem a chave */
+  endereco?: Record<string, string>;
   /** `faltaram`: as variáveis do mapa que não vieram neste pedido ("Cliente: {{pergunta: …}}") */
   resultado:
     | { ok: true; criado: boolean; anotou: boolean; codigo: string; ignorados: string[]; faltaram?: string[] }
@@ -608,7 +904,12 @@ export type PreviaDoRobo = {
   /** a conversa já tem um chamado aberto: um pedido dela agora viraria anotação nele */
   aberto: { codigo: string; titulo: string } | null;
 };
-export const ExperimentarRoboSchema = z.object({ mapa: MapaDoRoboSchema, corpo: z.unknown() });
+export const ExperimentarRoboSchema = z.object({
+  mapa: MapaDoRoboSchema,
+  corpo: z.unknown(),
+  /** os parâmetros do endereço do pedido de exemplo (?setor=…) */
+  endereco: z.record(z.string().max(100), z.string().max(2_000)).refine((r) => Object.keys(r).length <= 50, 'Parâmetros demais no endereço.').default({}),
+});
 
 /**
  * Um pedido de mentira no formato que o robô do LineChat manda (o do Helena), para montar o mapa antes

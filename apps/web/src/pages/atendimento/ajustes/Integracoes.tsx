@@ -19,7 +19,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AppWindow, Bot, Check, Copy, KeyRound, Link2, MousePointerClick, Pencil, Plus, Send, Trash2, TriangleAlert, Webhook, X } from 'lucide-react';
+import { AppWindow, Bot, KeyRound, Link2, MousePointerClick, Pencil, Plus, Send, Trash2, TriangleAlert, Webhook, X } from 'lucide-react';
 import {
   EVENTOS_WEBHOOK, linkDaConversa, MENSAGEM_DO_ROBO_PADRAO, NOME_EVENTO_WEBHOOK, respostaAoRobo, respostaDoRoboQueFalhou,
   type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type WebhookGravarEntrada, type WebhookTela,
@@ -29,52 +29,14 @@ import { Campo, Carregando, Chip, Confirmar, Modal, Spinner, Toggle, mensagemErr
 import { TdN, ThN } from '../../../lib/contagem.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../../lib/ordenacao.js';
 import { dataHoraCurta, haQuanto, useOpcoes } from '../comum.js';
-import { CartaoAjuste, Explicacao, Interruptor, Resultado, erroLegivel, type ResultadoTeste } from './Avisos.js';
+import { BlocoDeCodigo, BotaoCopiar, CartaoAjuste, Copiavel, Explicacao, Interruptor, Resultado, erroLegivel, type ResultadoTeste } from './Avisos.js';
 import { CartaoMapaDoRobo } from './MapaDoRobo.js';
 
 const CHAVE = ['atendimento', 'integracoes'];
 
 // =====================================================================
-//  AS PEÇAS
+//  AS PEÇAS (o copiar dos endereços e dos exemplos mora em Avisos.tsx: o mapa do robô usa também)
 // =====================================================================
-
-/** Copiar com o nome escrito no botão: quem vai colar no LineChat ou no n8n precisa achar o botão. */
-function BotaoCopiar({ texto, rotulo = 'Copiar', id }: { texto: string; rotulo?: string; id?: string }) {
-  const toast = useToast();
-  const [copiou, setCopiou] = useState(false);
-  const copiar = async () => {
-    try {
-      await navigator.clipboard.writeText(texto);
-      setCopiou(true);
-      window.setTimeout(() => setCopiou(false), 2000);
-    } catch { toast.push('erro', 'O navegador não deixou copiar: selecione o texto e copie com Ctrl+C.'); }
-  };
-  return (
-    <button type="button" id={id} className="btn-ghost btn-sm shrink-0" title={rotulo} aria-label={rotulo} onClick={() => void copiar()}>
-      {copiou ? <><Check size={13} className="text-ok" /> Copiado</> : <><Copy size={13} /> Copiar</>}
-    </button>
-  );
-}
-
-/** Um endereço (ou um cabeçalho) inteiro, quebrando onde precisar, com o Copiar ao lado. */
-function Copiavel({ texto, rotulo, id }: { texto: string; rotulo: string; id?: string }) {
-  return (
-    <div className="flex items-start gap-1 rounded-lg border border-line bg-surface-2 pl-3 pr-1 py-1 min-w-0">
-      <code id={id} className="font-mono text-[12.5px] text-ink break-all flex-1 min-w-0 py-1">{texto}</code>
-      <BotaoCopiar texto={texto} rotulo={`Copiar ${rotulo}`} />
-    </div>
-  );
-}
-
-/** Um JSON de exemplo, com o Copiar no canto. Rola para o lado dentro dele (a página não). */
-function BlocoDeCodigo({ texto, rotulo, id }: { texto: string; rotulo: string; id?: string }) {
-  return (
-    <div className="relative rounded-lg border border-line bg-surface-2 min-w-0">
-      <pre id={id} className="font-mono text-[12px] leading-relaxed text-ink p-3 pr-24 overflow-x-auto whitespace-pre">{texto}</pre>
-      <span className="absolute top-1 right-1"><BotaoCopiar texto={texto} rotulo={`Copiar ${rotulo}`} /></span>
-    </div>
-  );
-}
 
 function Rotulo({ children }: { children: ReactNode }) {
   return <div className="text-[12.5px] font-semibold text-ink-2 mt-3 mb-1">{children}</div>;
@@ -140,7 +102,7 @@ export function AjustesIntegracoes() {
         ))}
       </nav>
       <CartaoRobo base={base} paineis={paineis} />
-      <CartaoMapaDoRobo />
+      <CartaoMapaDoRobo base={base} />
       <CartaoBotao base={base} />
       <CartaoChaves chaves={t.chaves} />
       <CartaoWebhooks webhooks={t.webhooks} />
@@ -183,7 +145,8 @@ function CartaoRobo({ base, paineis }: { base: string; paineis: Array<{ sigla: s
       <Explicacao>
         <p>
           No robô do LineChat, um bloco <b>Webhook</b> manda o JSON da conversa para o endereço abaixo, do jeito que ele já manda: não precisa
-          montar nada no robô. O <b>mapa do robô</b>, logo abaixo, diz de onde sai cada campo do chamado. A mesma conversa aberta não vira dois
+          montar nada no robô. O <b>mapa do robô</b>, logo abaixo, diz quais parâmetros chegam e de onde sai cada campo do chamado (e mostra
+          como deve chegar o webhook). A mesma conversa aberta não vira dois
           chamados: o relato novo entra como anotação no que já existe. A resposta já traz a mensagem ao cliente, com o número do chamado
           (<span className="font-mono">{sigla}-12</span>).
         </p>
@@ -199,6 +162,10 @@ function CartaoRobo({ base, paineis }: { base: string; paineis: Array<{ sigla: s
           para a auditoria, nem para o registro do servidor.
         </div>
         <Copiavel texto={`${endereco}?chave=<chave>`} rotulo="o endereço com a chave" id="integ-robo-endereco-chave" />
+        <div className="text-[12.5px] text-muted">
+          Dá para mandar mais coisas no endereço, depois da chave (<span className="font-mono">&amp;setor=suporte</span>): cada uma vira um parâmetro
+          do mapa (<span className="font-mono">endereço: setor</span>).
+        </div>
         <div className="text-[12.5px] text-muted mt-1">outro sistema que aceita cabeçalho pode mandar assim:</div>
         <Copiavel texto="Authorization: Bearer <chave>" rotulo="o cabeçalho" />
       </div>

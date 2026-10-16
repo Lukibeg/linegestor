@@ -339,7 +339,7 @@ export const realApi: Api = {
     salvarLinkConversa: (linkConversa) => http('PUT', '/atendimento/integracoes/link-conversa', { linkConversa }),
     robo: () => http('GET', '/atendimento/integracoes/robo'),
     salvarMapaDoRobo: (mapa) => http('PUT', '/atendimento/integracoes/robo', mapa),
-    experimentarRobo: (mapa, corpo) => http('POST', '/atendimento/integracoes/robo/experimentar', { mapa, corpo }),
+    experimentarRobo: (mapa, corpo, endereco = {}) => http('POST', '/atendimento/integracoes/robo/experimentar', { mapa, corpo, endereco }),
   },
   admin: {
     users: () => http('GET', '/admin/users'),

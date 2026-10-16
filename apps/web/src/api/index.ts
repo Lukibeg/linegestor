@@ -372,8 +372,11 @@ export type Api = {
     /** o mapa do robô do LineChat (2.0.1) e o último pedido dele */
     robo(): Promise<T.RoboTela>;
     salvarMapaDoRobo(mapa: T.MapaDoRoboEntrada): Promise<T.MapaDoRobo>;
-    /** "Como fica": o chamado que o pedido abriria com este mapa (sem abrir nada e sem salvar) */
-    experimentarRobo(mapa: T.MapaDoRoboEntrada, corpo: unknown): Promise<T.PreviaDoRobo>;
+    /**
+     * "Como fica": o chamado que o pedido abriria com este mapa (sem abrir nada e sem salvar); `endereco`
+     * são os parâmetros do endereço do pedido (?setor=…), sem a chave
+     */
+    experimentarRobo(mapa: T.MapaDoRoboEntrada, corpo: unknown, endereco?: Record<string, string>): Promise<T.PreviaDoRobo>;
   };
   admin: {
     users(): Promise<T.User[]>;

@@ -18,7 +18,7 @@
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { EntradaChamadoSchema, IntegracaoAlterarSchema, respostaDoRoboQueFalhou } from '@gestor/shared';
+import { EntradaChamadoSchema, IntegracaoAlterarSchema, parametrosDoEndereco, respostaDoRoboQueFalhou } from '@gestor/shared';
 import { AppError } from '../plugins/errors.js';
 import type { Ator } from '../services/atendimento/contexto.js';
 import * as entrada from '../services/atendimento/entrada.js';
@@ -27,6 +27,8 @@ const tags = ['Chamados do Gestor: integrações (chave de API)'];
 const Ref = z.object({ ref: z.string().min(1).max(60) });
 /** A chave também pode vir no endereço (`?chave=`). */
 const ChaveNoEndereco = z.object({ chave: z.string().max(300).optional() });
+/** No robô, o endereço também traz os parâmetros que o mapa lê ({{endereço: setor}}, de `&setor=…`). */
+const EnderecoDoRobo = ChaveNoEndereco.catchall(z.union([z.string().max(2_000), z.array(z.string().max(2_000)).max(20)]));
 const AnotarSchema = z.object({ texto: z.string().trim().min(1, 'Escreva a anotação').max(20_000) });
 const MoverPorNomeSchema = z.object({
   /** o id da etapa, ou o nome dela (sem ligar para acento e maiúscula) */
@@ -52,13 +54,14 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     // o pedido do robô é pequeno: o limite do servidor (30 MB, para os anexos) não serve aqui
     bodyLimit: 512 * 1024,
     schema: {
-      tags, querystring: ChaveNoEndereco, body: z.unknown(),
+      tags, querystring: EnderecoDoRobo, body: z.unknown(),
       summary: 'Abrir um chamado pelo robô do LineChat, com o JSON que o bloco Webhook manda: o mapa (Chamados › Ajustes › Integrações) diz de onde vem cada campo, e o que não bate fica de fora (a auditoria e o último pedido dizem o quê). A mesma conversa aberta não abre outro (o relato vira anotação nele). Responde sempre 200, no formato do bloco "Enviar webhook": {"response":"CHAMADO_ABERTO","messages":[{"text":"…"}]} ou {"response":"CHAMADO_FALHOU"}',
     },
   }, async (req, reply) => {
     let r: entrada.ResultadoDoRobo;
     try {
-      r = await entrada.abrirPeloRobo(app, ator(req), req.body);
+      // os parâmetros do endereço (sem a chave) também são do pedido: o mapa lê como {{endereço: setor}}
+      r = await entrada.abrirPeloRobo(app, ator(req), req.body, parametrosDoEndereco(req.query));
     } catch (e) {
       // o bloco do LineChat só segue com 200: o "response" é que diz que falhou. O porquê fica no último
       // pedido (a tela do mapa mostra) e no registro do servidor — sem a chave

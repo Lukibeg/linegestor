@@ -216,8 +216,8 @@ export async function lerUltimoDoRobo(db: Db): Promise<UltimoPedidoDoRobo | null
  * Guarda o último pedido: o corpo (os textos longos cortados), o NOME da chave e o que aconteceu. A chave
  * mesma nunca: ela vem no endereço (`?chave=`), que não entra aqui, nem na auditoria, nem no registro.
  */
-async function guardarUltimoDoRobo(db: Db, ator: Ator, corpo: unknown, resultado: UltimoPedidoDoRobo['resultado']) {
-  const ultimo: UltimoPedidoDoRobo = { em: new Date().toISOString(), chave: ator.nome, corpo: apararPedido(corpo), resultado };
+async function guardarUltimoDoRobo(db: Db, ator: Ator, corpo: unknown, endereco: Record<string, string>, resultado: UltimoPedidoDoRobo['resultado']) {
+  const ultimo: UltimoPedidoDoRobo = { em: new Date().toISOString(), chave: ator.nome, corpo: apararPedido(corpo), endereco, resultado };
   await integ.gravar(db, 'atendimento-robo-ultimo', { ultimo });
 }
 
@@ -243,9 +243,9 @@ type AbertoPeloMapa = ResultadoEntrada & { ignorados: string[]; contato: string 
  * a mesma conversa aberta não abre outro (o relato vira anotação nele). O pedido fica guardado (só o
  * último), com o que aconteceu: a tela do mapa mostra as variáveis dele.
  */
-export async function abrirPeloRobo(app: FastifyInstance, ator: Ator, corpo: unknown): Promise<ResultadoDoRobo> {
+export async function abrirPeloRobo(app: FastifyInstance, ator: Ator, corpo: unknown, endereco: Record<string, string> = {}): Promise<ResultadoDoRobo> {
   const mapa = await lerMapaDoRobo(app.db);
-  const pedido = aplicarMapaDoRobo(mapa, corpo);
+  const pedido = aplicarMapaDoRobo(mapa, corpo, endereco);
   // o nome dos campos do painel só é lido quando um deles ficou sem a variável
   const precisaDosCampos = Object.keys(pedido.faltaram).some((k) => k.startsWith('campo:'));
   const faltaram = oQueNaoVeio(pedido.faltaram, precisaDosCampos ? (await carregarContexto(app.db)).campos : []);
@@ -254,14 +254,14 @@ export async function abrirPeloRobo(app: FastifyInstance, ator: Ator, corpo: unk
   try {
     r = pedido.sessaoId ? await umDeCadaVez(`sessao:${pedido.sessaoId}`, abrir) : await abrir();
   } catch (e) {
-    await guardarUltimoDoRobo(app.db, ator, corpo, { ok: false, erro: e instanceof Error ? e.message : 'O chamado não abriu.', faltaram })
+    await guardarUltimoDoRobo(app.db, ator, corpo, endereco, { ok: false, erro: e instanceof Error ? e.message : 'O chamado não abriu.', faltaram })
       .catch((x) => app.log.warn(x, 'não deu para guardar o último pedido do robô'));
     throw e;
   }
-  await guardarUltimoDoRobo(app.db, ator, corpo, { ok: true, criado: r.criado, anotou: r.anotou, codigo: r.codigo, ignorados: r.ignorados, faltaram })
+  await guardarUltimoDoRobo(app.db, ator, corpo, endereco, { ok: true, criado: r.criado, anotou: r.anotou, codigo: r.codigo, ignorados: r.ignorados, faltaram })
     .catch((x) => app.log.warn(x, 'não deu para guardar o último pedido do robô'));
   const { contato, ...resultado } = r;
-  return { ...resultado, faltaram, resposta: respostaAoRobo(mapa, { codigo: r.codigo, contato }, corpo) };
+  return { ...resultado, faltaram, resposta: respostaAoRobo(mapa, { codigo: r.codigo, contato }, corpo, endereco) };
 }
 
 async function abrirPeloMapa(app: FastifyInstance, ator: Ator, p: PedidoDoRobo): Promise<AbertoPeloMapa> {
@@ -289,8 +289,8 @@ async function abrirPeloMapa(app: FastifyInstance, ator: Ator, p: PedidoDoRobo):
 }
 
 /** "Como fica": o chamado que o pedido abriria com este mapa (ainda não salvo), sem abrir nada. */
-export async function experimentarRobo(app: FastifyInstance, mapa: MapaDoRobo, corpo: unknown): Promise<PreviaDoRobo> {
-  const p = aplicarMapaDoRobo(mapa, corpo);
+export async function experimentarRobo(app: FastifyInstance, mapa: MapaDoRobo, corpo: unknown, endereco: Record<string, string> = {}): Promise<PreviaDoRobo> {
+  const p = aplicarMapaDoRobo(mapa, corpo, endereco);
   const [resolvido, aberto] = await Promise.all([
     dadosParaORobo(app.db).then((g) => resolverPedidoDoRobo(p, g)),
     p.sessaoId ? abertoDaSessao(app.db, p.sessaoId) : Promise.resolve(null),

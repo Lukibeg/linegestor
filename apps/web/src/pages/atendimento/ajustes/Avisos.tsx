@@ -12,13 +12,14 @@
  * Usuários — o pedido do Luan: "n precisa de uma parte só pra isso"); aqui só se conta quem recebe.
  *
  * As peças dos cartões de ajustes (o cartão, a explicação, o resultado de um teste, a última vez, os
- * marcadores do texto e a prévia da mensagem) moram aqui e servem também às outras telas de ajustes
- * dos chamados (Agendados e Integrações), para as três falarem do mesmo jeito.
+ * marcadores do texto, a prévia da mensagem e o copiar dos endereços e dos exemplos) moram aqui e servem
+ * também às outras telas de ajustes dos chamados (Agendados e Integrações), para as três falarem do
+ * mesmo jeito.
  */
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, CheckCircle2, Download, FileImage, KeyRound, MessageCircle, MessageSquareText, Plus, Send, TriangleAlert, Users, X } from 'lucide-react';
+import { BellRing, Check, CheckCircle2, Copy, Download, FileImage, KeyRound, MessageCircle, MessageSquareText, Plus, Send, TriangleAlert, Users, X } from 'lucide-react';
 import {
   EVENTOS_AVISO, NOME_EVENTO_AVISO, NOME_TIPO_ARQUIVO_DO_MODELO, TIPOS_ARQUIVO_DO_MODELO, mensagemPreenchida, numeroWhatsApp, preencherModelo,
   valorSugeridoDaVariavel,
@@ -112,6 +113,44 @@ export function Interruptor({ ligado, onChange, rotulo, desativado = false }: { 
       className={`w-10 h-6 rounded-full transition-colors relative shrink-0 align-middle disabled:opacity-50 ${ligado ? 'bg-accent' : 'bg-line-strong'}`}>
       <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${ligado ? 'left-[18px]' : 'left-0.5'}`} />
     </button>
+  );
+}
+
+/** Copiar com o nome escrito no botão: quem vai colar no LineChat ou no n8n precisa achar o botão. */
+export function BotaoCopiar({ texto, rotulo = 'Copiar', id }: { texto: string; rotulo?: string; id?: string }) {
+  const toast = useToast();
+  const [copiou, setCopiou] = useState(false);
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiou(true);
+      window.setTimeout(() => setCopiou(false), 2000);
+    } catch { toast.push('erro', 'O navegador não deixou copiar: selecione o texto e copie com Ctrl+C.'); }
+  };
+  return (
+    <button type="button" id={id} className="btn-ghost btn-sm shrink-0" title={rotulo} aria-label={rotulo} onClick={() => void copiar()}>
+      {copiou ? <><Check size={13} className="text-ok" /> Copiado</> : <><Copy size={13} /> Copiar</>}
+    </button>
+  );
+}
+
+/** Um endereço (ou um cabeçalho) inteiro, quebrando onde precisar, com o Copiar ao lado. */
+export function Copiavel({ texto, rotulo, id }: { texto: string; rotulo: string; id?: string }) {
+  return (
+    <div className="flex items-start gap-1 rounded-lg border border-line bg-surface-2 pl-3 pr-1 py-1 min-w-0">
+      <code id={id} className="font-mono text-[12.5px] text-ink break-all flex-1 min-w-0 py-1">{texto}</code>
+      <BotaoCopiar texto={texto} rotulo={`Copiar ${rotulo}`} />
+    </div>
+  );
+}
+
+/** Um JSON de exemplo, com o Copiar no canto. Rola para o lado dentro dele (a página não). */
+export function BlocoDeCodigo({ texto, rotulo, id, className = '' }: { texto: string; rotulo: string; id?: string; className?: string }) {
+  return (
+    <div className="relative rounded-lg border border-line bg-surface-2 min-w-0">
+      <pre id={id} className={`font-mono text-[12px] leading-relaxed text-ink p-3 pr-24 overflow-x-auto whitespace-pre ${className}`}>{texto}</pre>
+      <span className="absolute top-1 right-1"><BotaoCopiar texto={texto} rotulo={`Copiar ${rotulo}`} /></span>
+    </div>
   );
 }
 

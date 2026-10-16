@@ -26,7 +26,7 @@ import {
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
   OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema,
-  ExperimentarRoboSchema, MapaDoRoboSchema, aplicarMapaDoRobo, mapaDeFabrica, resolverPedidoDoRobo, CAMPOS_DO_MAPA, NOME_CAMPO_DO_MAPA,
+  ExperimentarRoboSchema, MapaDoRoboSchema, aplicarMapaDoRobo, mapaDeFabrica, parametrosDoEndereco, resolverPedidoDoRobo, CAMPOS_DO_MAPA, NOME_CAMPO_DO_MAPA,
   type MapaDoRobo, type UltimoPedidoDoRobo, type PreviaDoRobo, type RoboTela,
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta, renomearEtiqueta,
   faltaNoModeloAprovado, mensagemAoCliente, parametrosDoModelo, telefoneLegivel,
@@ -3240,6 +3240,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const novo: MapaDoRobo = { ...dados, campos: Object.fromEntries(Object.entries(dados.campos).filter(([, t]) => t.trim())) };
       const mudou: string[] = [];
       if (antes.painel !== novo.painel) mudou.push('Painel');
+      if (JSON.stringify(antes.parametros) !== JSON.stringify(novo.parametros)) mudou.push('Parâmetros');
       for (const c of CAMPOS_DO_MAPA) if (antes[c] !== novo[c]) mudou.push(NOME_CAMPO_DO_MAPA[c]);
       if (JSON.stringify(antes.campos) !== JSON.stringify(novo.campos)) mudou.push('Campos do painel');
       if (antes.mensagem !== novo.mensagem) mudou.push('Mensagem ao cliente');
@@ -3247,11 +3248,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (mudou.length) auditar('settings_atendimento_robo', 'settings', `Mudou o mapa do robô do LineChat: ${mudou.join(', ')}`, 'atendimento-robo', { before: antes, after: novo });
       return JSON.parse(JSON.stringify(novo)) as MapaDoRobo;
     },
-    async experimentarRobo(mapa, corpo) {
+    async experimentarRobo(mapa, corpo, endereco = {}) {
       await ctx.wait(120);
-      const dados = ler(ExperimentarRoboSchema, { mapa, corpo });
+      const dados = ler(ExperimentarRoboSchema, { mapa, corpo, endereco });
       ctx.requirePerm('admin.manage'); preparar();
-      const p = aplicarMapaDoRobo(dados.mapa, dados.corpo);
+      // como no servidor: a chave (e o que não se escreve num caminho) não entra
+      const p = aplicarMapaDoRobo(dados.mapa, dados.corpo, parametrosDoEndereco(dados.endereco));
       const resolvido = resolverPedidoDoRobo(p, {
         paineis: paineis(), assuntos: A.assuntos, campos: A.campos.map(campoParaTela),
         clientes: S.clients.filter((c) => !c.deletedAt).map((c) => ({ id: c.id, nome: c.tradeName })),

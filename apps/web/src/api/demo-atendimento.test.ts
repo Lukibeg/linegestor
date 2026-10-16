@@ -793,4 +793,26 @@ describe('as regras do servidor valem na prévia', () => {
     expect((await erroDe(api.robo())).status).toBe(403);
     expect((await erroDe(api.experimentarRobo(mapa, EXEMPLO_DO_LINECHAT))).status).toBe(403);
   }, DEMORA);
+
+  it('os parâmetros do mapa (como o servidor): pelo nome nos campos, os do endereço sem a chave, e a auditoria diz "Parâmetros"', async () => {
+    await entrar('admin');
+    const tela = await api.robo();
+    const mapa = {
+      ...tela.mapa,
+      parametros: [...tela.mapa.parametros, { nome: 'empresa', origem: 'pergunta: a empresa que você faz parte', exemplo: 'Clínica Aurora', descricao: '' }, { nome: 'setor', origem: 'endereço: setor', exemplo: 'suporte', descricao: '' }],
+      cliente: '{{empresa}}', etiquetas: 'robô, {{setor}}',
+    };
+    // a chave no endereço do exemplo não chega ao mapa (nem como parâmetro)
+    const p = await api.experimentarRobo(mapa, EXEMPLO_DO_LINECHAT, { setor: 'suporte', chave: 'chave-falsa-do-teste' });
+    if (!p.resolvido.ok) throw new Error(p.resolvido.erro);
+    expect(p.resolvido.chamado).toMatchObject({ cliente: { nome: 'Clínica Aurora' }, etiquetas: ['robô', 'suporte'] });
+    const semSetor = await api.experimentarRobo(mapa, EXEMPLO_DO_LINECHAT);
+    if (!semSetor.resolvido.ok) throw new Error(semSetor.resolvido.erro);
+    expect(semSetor.resolvido.chamado.etiquetas).toEqual(['robô']);
+    // a origem "endereço: chave" nunca viria: é recusada
+    expect((await erroDe(api.salvarMapaDoRobo({ ...mapa, parametros: [{ nome: 'k', origem: 'endereço: chave' }] }))).status).toBe(400);
+    expect((await api.salvarMapaDoRobo(mapa)).parametros.map((x) => x.nome)).toEqual(['nome', 'whatsapp', 'conversa', 'mensagem', 'empresa', 'setor']);
+    expect((await demoApi.admin.audit({ entityType: 'settings', pageSize: 1 } as never)).items[0]).toMatchObject({ summary: 'Mudou o mapa do robô do LineChat: Parâmetros, Etiquetas, Cliente' });
+    await api.salvarMapaDoRobo(MAPA_DO_ROBO_PADRAO);
+  }, DEMORA);
 });

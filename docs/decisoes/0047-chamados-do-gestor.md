@@ -304,3 +304,28 @@ Com o 2.0 no ar, o Luan passou pelas telas e pediu cinco mudanças:
     variável que não veio (o código de outra cópia) é contada no último pedido e na auditoria
     ("faltaram"), não só na tela.
   - `{{a || b || c || d}}`: quantas alternativas quiser (já era assim; ficou no teste e na tela).
+
+  Depois, **os parâmetros do webhook** ("eu quero que eu possa alterar incluindo ou removendo
+  parametros que vao chegar no webhook e eu possa configurar isso na tela… e alem disso vc fazer um
+  preview de como deve chegar o webhook"):
+  - O mapa ganhou **a lista do que chega** (`parametros`, até 60): cada parâmetro tem um nome curto
+    (letras, números, `_` e `-`; sem repetir, sem maiúscula contar; `codigo`, `contato`, `pergunta`,
+    `menu` e `endereço` são reservados), a **origem** — o que iria entre `{{ }}`: o caminho no JSON, a
+    pergunta pelo texto, `endereço: setor` ou outro parâmetro, com `||` e texto fixo — um exemplo e
+    para que serve. Os campos usam o parâmetro pelo nome (`{{empresa}}`): o nome vale antes do caminho.
+    O que não virou parâmetro continua valendo direto no campo (o mapa de antes funciona igual).
+  - **O endereço também traz parâmetros**: o que vier depois da chave (`?chave=…&setor=suporte`) chega
+    ao mapa como `endereço: setor`; a chave nunca (nem no último pedido, que agora guarda o endereço
+    sem ela), e a origem `endereço: chave` é recusada.
+  - O de fábrica vem com quatro (`nome`, `whatsapp`, `conversa`, `mensagem`) e os campos com eles. Na
+    tela: incluir escolhendo no pedido de exemplo (o nome e o exemplo saem sugeridos) ou escrevendo;
+    ao lado de cada um, se veio no pedido de exemplo e em que campos está; **renomear** muda os campos,
+    a mensagem e as origens que o usam; **tirar** o que está em uso pergunta antes e diz onde (os
+    campos ficam com o nome sem valor, e o aviso "não veio" aparece). Nada vai para o robô antes do
+    "Salvar o mapa" (a auditoria diz "Parâmetros").
+  - **Como deve chegar o webhook**: o endereço e o JSON que o mapa espera (`pedidoEsperado`), montados
+    com os parâmetros e os exemplos — a pergunta pelo texto vai em `questions` com `<código do bloco N>`
+    no lugar do id, e o que um campo lê direto vai com `<…>` —, para conferir e copiar; **Experimentar
+    o mapa com ele** usa esse pedido como o de exemplo. O pedido colado também aceita o endereço.
+  - **Nas etiquetas, cada uma vale por si**: `robô, {{setor}}` sem o setor fica com a etiqueta robô (a
+    regra do "tudo vazio" ficou por etiqueta; nos outros campos continua pelo texto inteiro).

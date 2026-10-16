@@ -191,7 +191,7 @@ describe('o robô manda o JSON do LineChat', () => {
     expect(r.body).toBe('{"response":"CHAMADO_FALHOU"}');
     expect(await ultimo()).toMatchObject({
       corpo: { outro: 'formato' },
-      resultado: { ok: false, erro: expect.stringMatching(/^O mapa do robô não tirou nada deste pedido/), faltaram: expect.arrayContaining(['Título: {{contact.name}}', 'Conversa no LineChat: {{sessionId}}']) },
+      resultado: { ok: false, erro: expect.stringMatching(/^O mapa do robô não tirou nada deste pedido/), faltaram: expect.arrayContaining(['Título: {{nome}}', 'Conversa no LineChat: {{conversa}}']) },
     });
     expect(await quantos()).toBe(1);
   });
@@ -356,6 +356,72 @@ describe('o robô com o mapa novo', () => {
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json().response).toBe('CHAMADO_ABERTO');
     expect((await ultimo()).resultado).toMatchObject({ codigo: expect.stringMatching(/^SUP-/), ignorados: [`O painel ${dev.nome} está desativado: o chamado vai para o Suporte.`] });
+  });
+
+  it('os parâmetros cadastrados na tela: pelo nome nos campos, e os do endereço (&setor=…) — sem a chave em lugar nenhum', async () => {
+    const comParametros = {
+      ...MAPA(),
+      parametros: [
+        ...MAPA_DO_ROBO_PADRAO.parametros,
+        { nome: 'empresa', origem: 'pergunta: a empresa que você faz parte', exemplo: 'Clínica Aurora', descricao: 'a empresa do contato' },
+        { nome: 'setor', origem: 'endereço: setor', exemplo: 'suporte', descricao: 'vai no endereço do webhook' },
+      ],
+      cliente: '{{empresa}}',
+      descricao: 'Setor: {{setor}}',
+    };
+    const gravado = await s.put('/atendimento/integracoes/robo', comParametros);
+    expect(gravado.statusCode, gravado.body).toBe(200);
+    expect(gravado.json().parametros.map((x: any) => x.nome)).toEqual(['nome', 'whatsapp', 'conversa', 'mensagem', 'empresa', 'setor']);
+    expect((await auditoriaDe('atendimento-robo'))[0].summary).toContain('Parâmetros');
+
+    const r = await app.inject({
+      method: 'POST', url: `/api/atendimento/entrada/robo?chave=${encodeURIComponent(chave)}&setor=financeiro`,
+      payload: JSON.stringify(doLineChat({ sessao: 'sessao-parametros' })), headers: { 'content-type': 'application/json' },
+    });
+    expect(r.statusCode, r.body).toBe(200);
+    const codigo = /\*(SUP-\d+)\*/.exec(r.json().messages[0].text)![1]!;
+    expect(await ficha(codigo)).toMatchObject({ cliente: { id: aurora }, descricao: 'Setor: financeiro', titulo: 'Atendimento de João Teste' });
+    const u = await ultimo();
+    expect(u.endereco).toEqual({ setor: 'financeiro' });
+    expect(u.resultado).toMatchObject({ ok: true, codigo, faltaram: [] });
+    expect(JSON.stringify(u)).not.toContain(chave);
+
+    // sem o setor no endereço: o campo fica sem ele, e o último pedido diz que o parâmetro não veio
+    await doRobo(doLineChat({ sessao: 'sessao-parametros-2' }));
+    expect((await ultimo()).resultado.faltaram).toEqual(['Descrição: {{setor}}']);
+
+    // o Como fica com o endereço do pedido de exemplo (a chave, se vier, não entra)
+    const p = (await s.post('/atendimento/integracoes/robo/experimentar', { mapa: comParametros, corpo: doLineChat({ sessao: 'sessao-x2' }), endereco: { setor: 'comercial', chave: 'nao-entra' } })).json();
+    expect(p.resolvido.chamado).toMatchObject({ descricao: 'Setor: comercial', cliente: { id: aurora } });
+    // o nome repetido é recusado
+    const repetido = await s.put('/atendimento/integracoes/robo', { ...comParametros, parametros: [...comParametros.parametros, { nome: 'Empresa', origem: 'contact.empresa' }] });
+    expect(repetido.statusCode).toBe(400);
+    expect(JSON.stringify(repetido.json())).toContain('Há dois parâmetros chamados Empresa');
+    // a chave do endereço nunca chega ao mapa: a origem "endereço: chave" é recusada
+    const pelaChave = await s.put('/atendimento/integracoes/robo', { ...comParametros, parametros: [...comParametros.parametros, { nome: 'k', origem: 'endereço: chave' }] });
+    expect(pelaChave.statusCode).toBe(400);
+    expect(JSON.stringify(pelaChave.json())).toContain('A chave do endereço não chega ao mapa');
+    await s.put('/atendimento/integracoes/robo', MAPA());
+  });
+
+  it('nas etiquetas, cada uma vale por si: "robô, {{setor}}" sem o setor abre com a etiqueta robô', async () => {
+    const mapa = {
+      ...MAPA(),
+      parametros: [...MAPA_DO_ROBO_PADRAO.parametros, { nome: 'setor', origem: 'endereço: setor', exemplo: 'suporte', descricao: '' }],
+      etiquetas: 'robô, {{setor}}',
+    };
+    expect((await s.put('/atendimento/integracoes/robo', mapa)).statusCode).toBe(200);
+    const sem = await doRobo(doLineChat({ sessao: 'sessao-etiquetas-1' }));
+    const codigoSem = /\*(SUP-\d+)\*/.exec(sem.json().messages[0].text)![1]!;
+    expect((await ficha(codigoSem)).etiquetas.map((e: any) => (typeof e === 'string' ? e : e.nome))).toEqual(['robô']);
+    expect((await ultimo()).resultado.faltaram).toEqual(['Etiquetas: {{setor}}']);
+    const com = await app.inject({
+      method: 'POST', url: `/api/atendimento/entrada/robo?chave=${encodeURIComponent(chave)}&setor=financeiro`,
+      payload: JSON.stringify(doLineChat({ sessao: 'sessao-etiquetas-2' })), headers: { 'content-type': 'application/json' },
+    });
+    const codigoCom = /\*(SUP-\d+)\*/.exec(com.json().messages[0].text)![1]!;
+    expect((await ficha(codigoCom)).etiquetas.map((e: any) => (typeof e === 'string' ? e : e.nome))).toEqual(['robô', 'financeiro']);
+    await s.put('/atendimento/integracoes/robo', MAPA());
   });
 });
 

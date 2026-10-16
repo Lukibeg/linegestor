@@ -152,7 +152,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 | **Prazos** | O horário de atendimento, os feriados, os prazos por prioridade e a prioridade sugerida: a coluna **Só a gravidade** (o painel sem o alcance) e a matriz gravidade × alcance (o painel que usa o alcance) |
 | **Avisos e WhatsApp** | No primeiro cartão, os dois números (o do cliente, oficial, e o da equipe), a chave e o **Testar**. **A mensagem ao cliente**: pelo **modelo aprovado** (o template do WhatsApp oficial — o único jeito de começar uma conversa) ou em texto livre (só até 24 horas da última mensagem do cliente; depois disso, vai o modelo). **Buscar os modelos no LineChat** traz os aprovados do número oficial; ao escolher um, o Gestor preenche o **id** (templateId) e as **variáveis**, e cada uma recebe um valor do chamado (o nome do contato, o código, o título, a empresa, o responsável, quem manda, **o que o atendente escreveu**) ou um texto fixo. O modelo com imagem, vídeo ou documento no cabeçalho pede o **endereço do arquivo** (https://). A prévia mostra a mensagem com um chamado de exemplo. **Quem fica com a conversa no LineChat**: a equipe (pelo nome) e, ligado, quem manda (pelo e-mail, o mesmo nos dois). Depois, quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início). O **WhatsApp de cada pessoa** fica em **Administração › Usuários** (no Editar usuário; o "Receber os avisos dos chamados no WhatsApp" pausa sem apagar o número): aqui aparece quantos recebem |
 | **Agendados** | O chamado que nasce sozinho (todo dia, toda semana, todo mês ou uma vez) |
-| **Integrações** | O robô do LineChat e o **mapa do robô** (de onde vem cada campo do chamado no JSON que o robô manda), as chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
+| **Integrações** | O robô do LineChat e o **mapa do robô** (os parâmetros que chegam no webhook, de onde vem cada campo do chamado e como deve chegar o webhook), as chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
 | **IA** | O provedor e a chave do **Preencher com IA** (é a mesma IA da Base de conhecimento) |
 
 Painéis, campos, etiquetas, prazos, avisos e agendados: quem **cuida dos chamados**. Integrações e
@@ -171,8 +171,10 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    guarda só o **nome** da chave: ela não vai para o último pedido, nem para a auditoria, nem para os
    registros do servidor e do Caddy (lá ela aparece como `REDACTED`). Não precisa montar o corpo: o
    bloco manda o JSON da conversa do jeito dele (o contato, a conversa, as perguntas e os menus do
-   robô, a última mensagem), e o **mapa do robô**, logo abaixo na tela, diz de onde sai cada campo do
-   chamado. A mesma conversa não abre dois chamados: o relato novo vira anotação no que já está aberto.
+   robô, a última mensagem), e o **mapa do robô**, logo abaixo na tela, diz quais parâmetros chegam e de
+   onde sai cada campo do chamado. Dá para mandar mais coisas no endereço, depois da chave
+   (`&setor=suporte`): cada uma vira um parâmetro do mapa (`endereço: setor`). A mesma conversa não abre
+   dois chamados: o relato novo vira anotação no que já está aberto.
    O cliente vem pelo que o mapa mandar (o nome ou o CNPJ) ou, sem achar, pelo telefone: primeiro dos
    **contatos dos clientes**, depois do que o Gestor aprendeu dos chamados anteriores.
 
@@ -182,29 +184,54 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    `{"response":"CHAMADO_FALHOU"}`, quando não deu para abrir (o porquê fica no último pedido, no mapa).
    No bloco, crie as duas respostas, `CHAMADO_ABERTO` e `CHAMADO_FALHOU`, cada uma com a sua saída. A
    chave errada (ou revogada) responde 401, e o bloco segue pela saída de falha dele.
-3. **O mapa do robô**: cada campo do chamado (painel, título, relato, WhatsApp, nome, conversa,
-   etiquetas e, em **Mais campos**, descrição, cliente, assunto, prioridade e os campos do painel) é um
-   texto com as **variáveis do pedido entre `{{ }}`** — `Atendimento de {{contact.name}}`. O botão
-   **Variável** mostra as que o pedido tem, com o valor; a resposta de cada pergunta e de cada menu do
-   robô aparece com a pergunta ao lado, e a escolhida entra onde está o cursor. As variáveis vêm do
-   **último pedido do robô** (o Gestor guarda o último, com o que aconteceu), de **um pedido colado**
-   (o JSON que o LineChat mostra no histórico do bloco) ou do **exemplo do LineChat**. Embaixo de cada
-   campo, o que sai com aquele pedido; **Como fica** mostra o chamado que nasceria (com o cliente, o
-   assunto e as opções achados), o que ficaria de fora e a resposta inteira ao robô, antes de salvar. O
-   de fábrica já serve: o nome no título, a última mensagem no relato, o WhatsApp e a conversa. Dicas:
-   - **A pergunta pelo texto**: a resposta de uma pergunta entra como
-     `{{pergunta: Por favor nos informe brevemente o motivo do seu contato}}` (`{{menu: …}}` nos menus)
-     — é o que a lista põe. O código do bloco (`questions.cb-…-qst-….answer`) muda de uma cópia do robô
-     para outra (a de teste e a de produção); o texto da pergunta, não. Um pedaço do texto também vale,
-     se só uma pergunta o tiver. Pelo código do bloco ainda dá (a lista oferece embaixo).
-   - `{{a || b || c}}` usa a primeira que vier com valor (quantas alternativas quiser);
-     `{{a || "texto"}}` termina num texto fixo. O campo cujas variáveis vieram todas vazias fica vazio.
-   - **A variável que não vier** (o código de outra cópia do robô, o caminho escrito errado) deixa o
-     campo vazio, e o chamado abre do mesmo jeito: o último pedido e a auditoria dizem quais não
-     vieram, e na tela o aviso aparece embaixo do campo.
-   - **A mensagem ao cliente** (no fim do mapa) é a que volta na resposta: `{codigo}` é o número do
-     chamado, `{contato}` o nome do contato, e as variáveis do pedido também valem
-     (`Olá, {{contact.first-name}}!`). Vazia, o robô segue sem mensagem.
+3. **O mapa do robô** diz o que chega e o que vira chamado — tudo na tela, sem mexer em código. Tudo
+   é conferido com **o pedido de exemplo**: o **último pedido do robô** (o Gestor guarda o último, com o
+   que aconteceu), **um pedido colado** (o JSON que o LineChat mostra no histórico do bloco e, se
+   quiser, o endereço que ele chamou, para os parâmetros do endereço; a chave, se vier junto, fica de
+   fora) ou o **exemplo do LineChat**. Nada é aberto nem salvo até o **Salvar o mapa**.
+   - **Os parâmetros que chegam no webhook**: a lista do que chega, cada um com um **nome** curto
+     (`empresa`), **de onde vem** no pedido e um **exemplo**. **Incluir parâmetro** › **Escolher no
+     pedido** lista o que o pedido de exemplo tem (as perguntas e os menus do robô com a pergunta ao
+     lado, o contato, a conversa, o endereço) e já sugere o nome e o exemplo; ou escreva a origem:
+     `pergunta: <o texto da pergunta>`, `menu: <o texto do menu>`, `endereço: setor` (de
+     `…/robo?chave=…&setor=suporte`) ou o caminho no JSON (`contact.email`). **+ uma alternativa**
+     junta outra com `||`: vale a primeira que vier, e `"texto"` no fim é fixo. Ao lado de cada
+     parâmetro, se ele **veio no pedido de exemplo** (e com que valor) e **em que campos** está.
+     **Editar** com outro nome muda os campos junto; **Tirar** um parâmetro que está em algum campo
+     pergunta antes e diz onde: o campo fica com o `{{nome}}` sem valor (o aviso "não veio" aparece
+     embaixo dele) até você trocar. O mapa de fábrica já vem com quatro: `nome`, `whatsapp`,
+     `conversa` e `mensagem` (a última mensagem do cliente).
+   - **Como deve chegar o webhook**: o endereço e o JSON que o mapa espera, montados com os
+     parâmetros e o exemplo de cada um, para conferir e copiar. É só o que o Gestor lê: o LineChat
+     manda isso dentro do JSON da conversa, com mais coisas, e o resto fica de fora. Nas perguntas, o
+     código do bloco é o do seu robô (o Gestor acha a resposta pelo texto). **Experimentar o mapa com
+     ele** usa esse pedido como o pedido de exemplo.
+   - **Os campos do chamado** (painel, título, relato, WhatsApp, nome, conversa, etiquetas e, em **Mais
+     campos**, descrição, cliente, assunto, prioridade e os campos do painel): cada um é um texto com os
+     parâmetros entre `{{ }}` — `Atendimento de {{nome}}`, `Empresa: {{empresa}}`. O botão
+     **Variável** mostra os parâmetros primeiro e, embaixo, o resto do pedido (o que não virou
+     parâmetro também vale direto: `{{contact.email}}`, `{{pergunta: …}}`); a escolhida entra onde está
+     o cursor. Embaixo de cada campo, o que sai com o pedido de exemplo; **Como fica** mostra o chamado
+     que nasceria (com o cliente, o assunto e as opções achados), o que ficaria de fora e a resposta
+     inteira ao robô.
+
+   Dicas:
+   - **A pergunta pelo texto**: a resposta de uma pergunta entra pela origem
+     `pergunta: Por favor nos informe brevemente o motivo do seu contato` (`menu: …` nos menus) — é o
+     que o **Escolher no pedido** põe. O código do bloco (`questions.cb-…-qst-….answer`) muda de uma
+     cópia do robô para outra (a de teste e a de produção); o texto da pergunta, não. Um pedaço do
+     texto também vale, se só uma pergunta o tiver. Pelo código do bloco ainda dá (a lista oferece
+     embaixo).
+   - `a || b || c` usa a primeira que vier com valor (quantas alternativas quiser, na origem do
+     parâmetro ou no campo: `{{empresa || "sem empresa"}}`). O campo cujos parâmetros vieram todos vazios
+     fica vazio (o "Setor: " sozinho não aparece). **Nas etiquetas, cada uma vale por si**:
+     `robô, {{setor}}` sem o setor fica com a etiqueta robô.
+   - **O parâmetro que não vier** (o código de outra cópia do robô, a pergunta que mudou de texto)
+     deixa o campo vazio, e o chamado abre do mesmo jeito: o último pedido e a auditoria dizem quais não
+     vieram, e na tela o aviso aparece ao lado do parâmetro e embaixo do campo.
+   - **A mensagem ao cliente** (no fim dos campos) é a que volta na resposta: `{codigo}` é o número do
+     chamado, `{contato}` o nome do contato, e os parâmetros também valem (`Olá, {{nome}}!`). Vazia, o
+     robô segue sem mensagem.
    - O **assunto** acha pelo caminho, pelo nome ou pelo **de-para** do assunto: ponha a resposta do
      menu ("Suporte Técnico") no de-para (Ajustes › Campos › Assunto) e ela vira o assunto.
    - Nos **campos de lista**, a resposta enfeitada do menu ("☎️ LinePBX: Plataforma de Voz") vale pela

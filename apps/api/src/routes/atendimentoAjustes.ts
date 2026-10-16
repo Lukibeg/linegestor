@@ -18,7 +18,7 @@ import { z } from 'zod';
 import {
   AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
   EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, ExperimentarRoboSchema,
-  LinkConversaSchema, MapaDoRoboSchema, OrdemDosCamposSchema, PainelGravarSchema, SitesIframeSchema, WebhookGravarSchema,
+  LinkConversaSchema, MapaDoRoboSchema, OrdemDosCamposSchema, PainelGravarSchema, parametrosDoEndereco, SitesIframeSchema, WebhookGravarSchema,
 } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as ajustes from '../services/atendimento/ajustes.js';
@@ -322,7 +322,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     config: { rateLimit: { max: 240, timeWindow: '1 minute' } },
     bodyLimit: 1024 * 1024,
     schema: { tags: tagsIntegracoes, summary: 'Como fica: o chamado que um pedido do robô abriria com este mapa (sem abrir nada e sem salvar o mapa)', body: ExperimentarRoboSchema },
-  }, async (req) => experimentarRobo(app, req.body.mapa, req.body.corpo));
+  }, async (req) => experimentarRobo(app, req.body.mapa, req.body.corpo, parametrosDoEndereco(req.body.endereco)));
 
   app.put('/integracoes/sites', {
     ...integrar,

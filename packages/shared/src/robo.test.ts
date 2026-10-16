@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { AJUSTES_PAINEL_PADRAO, procurarAssunto, type Assunto, type CampoPersonalizado, type Painel } from './atendimento.js';
 import {
   aplicarMapaDoRobo, apararPedido, corpoDoPedido, EXEMPLO_DO_LINECHAT, lerPrioridade, MAPA_DO_ROBO_PADRAO, mapaDeFabrica, MapaDoRoboSchema,
+  ParametroDoRoboSchema, parametroNoPedido, parametrosDaUrl, parametrosDoEndereco, pedidoEsperado, renomearParametro, sugerirNomeDoParametro,
+  usosDoParametro,
   mensagemAoRobo, MENSAGEM_DO_ROBO_PADRAO, oQueNaoVeio, preencherDoPedido, problemaDoModelo, procurarCliente, resolverPedidoDoRobo, respostaAoRobo,
   respostaDoRoboQueFalhou, valorDaReferencia, valorNoCaminho, valorParaOCampo, variaveisDoPedido,
   type DadosParaORobo, type MapaDoRobo,
@@ -162,8 +164,16 @@ describe('o mapa lê o pedido', () => {
       painel: '', titulo: 'Atendimento de João Teste', relato: 'TESTE INTEGRAÇÃO - ignorar - ramal 999 sem áudio', telefone: '+55|71999990123',
       nome: 'João Teste', sessaoId: '33adffe5-b5e0-4138-895c-64e940cd740c', etiquetas: 'robô', descricao: '', cliente: '', campos: {}, faltaram: {},
     });
-    expect(MAPA_DO_ROBO_PADRAO.titulo).toBe('Atendimento de {{contact.name}}');
+    expect(MAPA_DO_ROBO_PADRAO.titulo).toBe('Atendimento de {{nome}}');
+    expect(MAPA_DO_ROBO_PADRAO.parametros.map((x) => [x.nome, x.origem])).toEqual([
+      ['nome', 'contact.name'], ['whatsapp', 'contact.phonenumber'], ['conversa', 'sessionId'], ['mensagem', 'lastContactMessage'],
+    ]);
     expect(Object.isFrozen(MAPA_DO_ROBO_PADRAO)).toBe(true);
+    expect(Object.isFrozen(MAPA_DO_ROBO_PADRAO.parametros[0])).toBe(true);
+    // a cópia de fábrica é de mexer
+    const copia = mapaDeFabrica();
+    copia.parametros[0]!.nome = 'outro';
+    expect(MAPA_DO_ROBO_PADRAO.parametros[0]!.nome).toBe('nome');
   });
 
   it('os campos de uma linha perdem as quebras; o relato guarda', () => {
@@ -178,6 +188,22 @@ describe('o mapa lê o pedido', () => {
     expect(p.titulo.endsWith('…')).toBe(true);
     expect(p.faltaram).toEqual({ nome: ['contact.nome'], 'campo:c-sistema': ['menus.x.answer'] });
     expect(p.campos).toEqual({});
+  });
+
+  it('nas etiquetas, cada uma vale por si: a do parâmetro que não veio sai, a fixa fica (a vírgula da pergunta não separa)', () => {
+    const m = mapa({
+      parametros: [...mapaDeFabrica().parametros, { nome: 'setor', origem: 'endereço: setor', exemplo: '', descricao: '' }],
+      etiquetas: 'robô, {{setor}}; Setor {{setor}}\n{{pergunta: Por favor, nos informe a empresa que você faz parte}}, {{pergunta: não existe || "sem cadastro"}}',
+    });
+    const sem = aplicarMapaDoRobo(m, DO_LINECHAT);
+    expect(sem.etiquetas).toBe('robô, Empresa Teste Ingline, sem cadastro');
+    // (o texto fixo no fim da alternativa segurou a última: ela não conta como falta)
+    expect(sem.faltaram.etiquetas).toEqual(['setor']);
+    expect(aplicarMapaDoRobo(m, DO_LINECHAT, { setor: 'suporte' }).etiquetas).toBe('robô, suporte, Setor suporte, Empresa Teste Ingline, sem cadastro');
+    // e o chamado sai com as etiquetas separadas
+    const r = resolverPedidoDoRobo(aplicarMapaDoRobo(m, DO_LINECHAT, { setor: 'suporte' }), DADOS);
+    if (!r.ok) throw new Error(r.erro);
+    expect(r.chamado.etiquetas).toEqual(['robô', 'suporte', 'Setor suporte', 'Empresa Teste Ingline', 'sem cadastro']);
   });
 });
 
@@ -395,5 +421,135 @@ describe('as alternativas e a resposta ao robô', () => {
     expect(mensagemAoRobo('Olá, {{contact.first-name}}! O seu chamado é o {codigo}.', { codigo: 'SUP-7' }, DO_LINECHAT)).toBe('Olá, João! O seu chamado é o SUP-7.');
     expect(mensagemAoRobo('Olá, {{contact.email}}! O seu chamado é o {{codigo}} ({contato}).', { codigo: 'SUP-7', contato: null }, DO_LINECHAT)).toBe('Olá! O seu chamado é o SUP-7.');
     expect(mensagemAoRobo('{contato}, anotamos: {codigo}', { codigo: 'DEV-2', contato: ' Maria ' }, {})).toBe('Maria, anotamos: DEV-2');
+  });
+});
+
+describe('os parâmetros do webhook (incluir e tirar na tela)', () => {
+  const comParametros = (m: Partial<MapaDoRobo>): MapaDoRobo => ({
+    ...mapaDeFabrica(),
+    parametros: [
+      ...mapaDeFabrica().parametros,
+      { nome: 'empresa', origem: 'pergunta: a empresa que você faz parte || contact.empresa', exemplo: 'Clínica Aurora', descricao: '' },
+      { nome: 'motivo', origem: 'pergunta: o motivo do seu contato', exemplo: 'Sem áudio', descricao: '' },
+      { nome: 'setor', origem: 'endereço: setor', exemplo: 'suporte', descricao: 'vai no endereço do webhook' },
+      { nome: 'empresa_ou_nome', origem: 'empresa || nome', exemplo: '', descricao: '' },
+    ],
+    ...m,
+  });
+
+  it('o campo usa o parâmetro pelo nome (sem ligar para maiúscula e acento); o de fábrica já vem com os quatro do LineChat', () => {
+    const p = aplicarMapaDoRobo(comParametros({ cliente: '{{Empresa}}', relato: '{{motivo}}', descricao: 'Setor: {{setor}}' }), DO_LINECHAT, { setor: 'suporte-n1' });
+    expect([p.titulo, p.nome, p.telefone, p.sessaoId]).toEqual(['Atendimento de João Teste', 'João Teste', '+55|71999990123', '33adffe5-b5e0-4138-895c-64e940cd740c']);
+    expect([p.cliente, p.relato, p.descricao]).toEqual(['Empresa Teste Ingline', 'TESTE INTEGRAÇÃO - ignorar - ramal 999 sem áudio', 'Setor: suporte-n1']);
+    expect(p.faltaram).toEqual({});
+  });
+
+  it('a origem tem alternativas e pode apontar para outro parâmetro; o que não veio é contado pelo nome', () => {
+    const semEmpresa = [{ ...DO_LINECHAT[0], questions: {}, contact: { ...DO_LINECHAT[0]!.contact, empresa: 'Da ficha do contato' } }];
+    const m = comParametros({ cliente: '{{empresa}}', descricao: '{{empresa_ou_nome}}', assunto: '{{setor}}' });
+    const p = aplicarMapaDoRobo(m, semEmpresa);
+    expect([p.cliente, p.descricao]).toEqual(['Da ficha do contato', 'Da ficha do contato']);
+    // sem o endereço: o setor não veio (o campo fica vazio e o aviso fala do parâmetro)
+    expect(p.assunto).toBe('');
+    expect(p.faltaram).toEqual({ assunto: ['setor'] });
+    const nada = aplicarMapaDoRobo(m, [{ ...semEmpresa[0], contact: { name: '' } }]);
+    expect(nada.descricao).toBe('');
+  });
+
+  it('o parâmetro com o mesmo nome do caminho (sessionId → sessionId) lê o caminho, e o círculo entre parâmetros para', () => {
+    const m: MapaDoRobo = { ...mapaDeFabrica(), parametros: [{ nome: 'sessionId', origem: 'sessionId', exemplo: '', descricao: '' }, { nome: 'a', origem: 'b', exemplo: '', descricao: '' }, { nome: 'b', origem: 'a', exemplo: '', descricao: '' }], sessaoId: '{{sessionId}}', titulo: '{{a || "sem título"}}' };
+    const p = aplicarMapaDoRobo(m, DO_LINECHAT);
+    expect(p.sessaoId).toBe('33adffe5-b5e0-4138-895c-64e940cd740c');
+    expect(p.titulo).toBe('sem título');
+  });
+
+  it('o parâmetro no pedido de exemplo: veio (com o valor) ou não', () => {
+    const m = comParametros({});
+    const ctx = { parametros: m.parametros, endereco: { setor: 'suporte' } };
+    expect(parametroNoPedido(m.parametros[4]!, DO_LINECHAT, ctx)).toEqual({ veio: true, valor: 'Empresa Teste Ingline' });
+    expect(parametroNoPedido(m.parametros[6]!, DO_LINECHAT, ctx)).toEqual({ veio: true, valor: 'suporte' });
+    expect(parametroNoPedido(m.parametros[6]!, DO_LINECHAT, { parametros: m.parametros })).toEqual({ veio: false, valor: '' });
+    expect(parametroNoPedido({ nome: 'email', origem: 'contact.email', exemplo: '', descricao: '' }, DO_LINECHAT)).toEqual({ veio: true, valor: '' });
+  });
+
+  it('os parâmetros do endereço: a chave nunca entra; a lista vira "a, b"', () => {
+    expect(parametrosDoEndereco({ chave: 'gst_x', CHAVE: 'y', setor: 'suporte', tags: ['a', 'b'], n: 3, 'a.b': 'x' })).toEqual({ setor: 'suporte', tags: 'a, b' });
+    expect(parametrosDaUrl('https://gestao.exemplo.com.br/api/atendimento/entrada/robo?chave=gst_x&setor=suporte%20N1&tag=a&tag=b')).toEqual({ setor: 'suporte N1', tag: 'a, b' });
+    expect(parametrosDaUrl('não é endereço')).toEqual({});
+    const vs = variaveisDoPedido(DO_LINECHAT, 400, { setor: 'suporte' });
+    expect(vs.find((v) => v.grupo === 'endereco')).toMatchObject({ caminho: 'endereço: setor', valor: 'suporte' });
+  });
+
+  it('o nome do parâmetro: só letras, números, _ e -; sem os reservados; sem repetir', () => {
+    expect(ParametroDoRoboSchema.safeParse({ nome: 'motivo_do-contato', origem: 'contact.name' }).success).toBe(true);
+    for (const nome of ['com espaço', 'com.ponto', '', 'codigo', 'Contato', 'endereço', 'x'.repeat(41)]) {
+      expect(ParametroDoRoboSchema.safeParse({ nome, origem: 'contact.name' }).success, nome).toBe(false);
+    }
+    expect(ParametroDoRoboSchema.safeParse({ nome: 'a', origem: '{{contact.name}}' }).success).toBe(false);
+    expect(ParametroDoRoboSchema.safeParse({ nome: 'a', origem: 'x || ' }).success).toBe(false);
+    // a chave do endereço nunca chega ao mapa: a origem com ela é recusada (com qualquer maiúscula e nas alternativas)
+    for (const origem of ['endereço: chave', 'contact.name || endereco: CHAVE']) {
+      expect(ParametroDoRoboSchema.safeParse({ nome: 'a', origem }).success, origem).toBe(false);
+    }
+    expect(ParametroDoRoboSchema.safeParse({ nome: 'a', origem: 'endereço: chave_do_setor' }).success).toBe(true);
+    expect(ParametroDoRoboSchema.parse({ nome: ' a ', origem: '  contact.name ' })).toEqual({ nome: 'a', origem: 'contact.name', exemplo: '', descricao: '' });
+    const r = MapaDoRoboSchema.safeParse({ parametros: [{ nome: 'Empresa', origem: 'a' }, { nome: 'empresa', origem: 'b' }] });
+    expect(r.success).toBe(false);
+    expect(JSON.stringify(r.error?.issues)).toContain('Há dois parâmetros chamados empresa');
+  });
+
+  it('renomear muda os campos, a mensagem e a origem dos outros; usos diz quem usa', () => {
+    const m = comParametros({ cliente: '{{empresa}}', descricao: 'Empresa: {{ empresa || "?" }}', mensagem: 'Olá, {{empresa}}! *{codigo}*', campos: { 'c-sistema': '{{empresa}}' } });
+    expect(usosDoParametro(m, 'EMPRESA', DADOS.campos)).toEqual(['Descrição', 'Cliente', 'Sistema', 'Mensagem ao cliente', 'o parâmetro empresa_ou_nome']);
+    expect(usosDoParametro(m, 'setor')).toEqual([]);
+    const r = renomearParametro(m, 'empresa', 'cliente_empresa');
+    expect([r.cliente, r.descricao, r.mensagem, r.campos['c-sistema']]).toEqual(['{{cliente_empresa}}', 'Empresa: {{ cliente_empresa || "?" }}', 'Olá, {{cliente_empresa}}! *{codigo}*', '{{cliente_empresa}}']);
+    expect(r.parametros.find((x) => x.nome === 'cliente_empresa')?.origem).toBe('pergunta: a empresa que você faz parte || contact.empresa');
+    expect(r.parametros.find((x) => x.nome === 'empresa_ou_nome')?.origem).toBe('cliente_empresa || nome');
+    // o caminho com o mesmo nome, na origem dele, fica
+    const s2 = renomearParametro({ ...mapaDeFabrica(), parametros: [{ nome: 'sessionId', origem: 'sessionId', exemplo: '', descricao: '' }], sessaoId: '{{sessionId}}' }, 'sessionId', 'conversa');
+    expect([s2.parametros[0]!.nome, s2.parametros[0]!.origem, s2.sessaoId]).toEqual(['conversa', 'sessionId', '{{conversa}}']);
+  });
+
+  it('a sugestão de nome vem da pergunta ou do caminho, sem repetir', () => {
+    const vs = variaveisDoPedido(DO_LINECHAT);
+    const de = (caminho: string) => vs.find((v) => v.caminho === caminho)!;
+    expect(sugerirNomeDoParametro(de('questions.cb-8b2a1bcb-qst-81fe01bd.answer'), [])).toBe('motivo_contato');
+    expect(sugerirNomeDoParametro(de('questions.cb-a35e88f1-qst-b9e89e4b.answer'), [])).toBe('empresa');
+    expect(sugerirNomeDoParametro(de('menus.cb-a35e88f1-mn-8d2de45b.answer'), [])).toBe('solucao');
+    expect(sugerirNomeDoParametro(de('menus.cb-a35e88f1-mn-bfb06331.answer'), [])).toBe('resposta_do_menu');
+    expect(sugerirNomeDoParametro(de('contact.empresa'), ['empresa'])).toBe('empresa_2');
+    expect(sugerirNomeDoParametro(de('contact.first-name'), [])).toBe('first-name');
+    expect(sugerirNomeDoParametro({ caminho: 'endereço: setor', dica: null }, ['setor', 'setor_2'])).toBe('setor_3');
+    expect(sugerirNomeDoParametro({ caminho: 'codigo', dica: null }, [])).toBe('codigo_1');
+  });
+
+  it('"Como deve chegar o webhook": o JSON e o endereço montados com os parâmetros e os exemplos', () => {
+    const m = comParametros({ descricao: '{{menu: escolha para qual solução}} {{lastMessagesAggregated.files.0.url}}', titulo: '{{nome || "Sem nome"}}' });
+    const { corpo, endereco } = pedidoEsperado(m);
+    expect(endereco).toEqual({ setor: 'suporte' });
+    expect(corpo).toEqual({
+      contact: { name: 'Maria Souza', phonenumber: '+55|71999992010' },
+      sessionId: '5f0c2a8e-1d2b-4c3a-9e10-000000000001',
+      lastContactMessage: 'As ligações de saída não completam desde cedo',
+      questions: {
+        '<código do bloco 1>': { text: 'a empresa que você faz parte', answer: 'Clínica Aurora' },
+        '<código do bloco 2>': { text: 'o motivo do seu contato', answer: 'Sem áudio' },
+      },
+      menus: { '<código do bloco 1>': { text: 'escolha para qual solução', answer: '<…>' } },
+      lastMessagesAggregated: { files: [{ url: '<…>' }] },
+    });
+    // o parâmetro sem exemplo leva o nome; nada fora do pedido
+    const semCampos: MapaDoRobo = { ...mapaDeFabrica(), titulo: '', relato: '', telefone: '', nome: '', sessaoId: '', mensagem: '' };
+    expect(pedidoEsperado({ ...semCampos, parametros: [{ nome: 'x', origem: '__proto__.y', exemplo: '', descricao: '' }, { nome: 'z', origem: 'a.b', exemplo: '', descricao: '' }] }).corpo)
+      .toEqual({ a: { b: '<z>' } });
+    expect(({} as Record<string, unknown>).y).toBeUndefined();
+    // o campo que lê direto do pedido (sem parâmetro) também aparece, com <…> no lugar do valor
+    expect(pedidoEsperado({ ...semCampos, parametros: [], titulo: '{{contact.name}}' }).corpo).toEqual({ contact: { name: '<…>' } });
+  });
+
+  it('a mensagem e a resposta ao robô também usam os parâmetros', () => {
+    const m = comParametros({ mensagem: 'Olá, {{nome}}! Chamado *{codigo}* ({{setor}}).' });
+    expect(respostaAoRobo(m, { codigo: 'SUP-3' }, DO_LINECHAT, { setor: 'suporte' })).toEqual({ response: 'CHAMADO_ABERTO', messages: [{ text: 'Olá, João Teste! Chamado *SUP-3* (suporte).' }] });
   });
 });
