@@ -341,6 +341,16 @@ export const realApi: Api = {
     salvarMapaDoRobo: (mapa) => http('PUT', '/atendimento/integracoes/robo', mapa),
     experimentarRobo: (mapa, corpo, endereco = {}) => http('POST', '/atendimento/integracoes/robo/experimentar', { mapa, corpo, endereco }),
   },
+  calendario: {
+    opcoes: () => http('GET', '/calendario/opcoes'),
+    eventos: (de, ate) => http('GET', `/calendario/eventos${qs({ de, ate })}`),
+    doChamado: (chamadoId) => http('GET', `/calendario/do-chamado/${encodeURIComponent(chamadoId)}`),
+    criar: (d) => http('POST', '/calendario/eventos', d),
+    alterar: (id, d) => http('PUT', `/calendario/eventos/${encodeURIComponent(id)}`, d),
+    situacao: (id, situacao) => http('POST', `/calendario/eventos/${encodeURIComponent(id)}/situacao`, { situacao }),
+    remover: (id) => http('DELETE', `/calendario/eventos/${encodeURIComponent(id)}`),
+    salvarTipos: (tipos) => http('PUT', '/calendario/tipos', { tipos }),
+  },
   admin: {
     users: () => http('GET', '/admin/users'),
     createUser: (d) => http('POST', '/admin/users', d),

@@ -33,6 +33,7 @@ import {
 } from '@gestor/shared';
 import type { Api } from './index.js';
 import { chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo } from './demo-atendimento.js';
+import { criarCalendarioDemo } from './demo-calendario.js';
 import { CONTATOS_DOS_CLIENTES } from './demo-atendimento-exemplos.js';
 import { ContatoGravarSchema, MAX_CONTATOS_DO_CLIENTE, numeroWhatsApp as foneDoWhatsApp, type ContatoDoCliente } from '@gestor/shared';
 import { NOTA_DEMO } from './novidades-demo.js';
@@ -2052,6 +2053,9 @@ function respostaDemo(pergunta: string): RespostaIa {
   };
 }
 
+/** O calendário (2.0.1): lê os painéis e quem vê cada um da prévia dos chamados (demo-calendario.ts). */
+const calendarioDemo = criarCalendarioDemo({ S, id, wait, audit, requirePerm });
+
 export const demoApi: Api = {
   auth: {
     async me() { await wait(50); if (!S.me) throw new ApiError(401, 'Faça login para continuar'); return me(S.me); },
@@ -3763,6 +3767,8 @@ export const demoApi: Api = {
     ia: { pronta: iaProntaDemo, limite: limiteIaDemo, uso: usoIaDemo },
     cardsDoLineChat: () => chamadosDemo().cards,
   }),
+  // o calendário (2.0.1): o módulo inteiro mora em demo-calendario.ts
+  calendario: calendarioDemo,
   admin: {
     async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt, whatsapp: u.whatsapp ?? null, whatsappAvisos: u.whatsappAvisos !== false })); },
     async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const w = whatsappDoUsuario(d); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null, whatsapp: w.whatsapp ?? null, whatsappAvisos: w.whatsappAvisos ?? true }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
@@ -3824,11 +3830,13 @@ export const demoApi: Api = {
         ...S.artigos.filter((c) => c.deletedAt).map((c) => ({ type: 'knowledgeArticle', id: c.id, label: `${codigoDoArtigo(c.numero)} · ${c.titulo}`, deletedAt: c.deletedAt! })),
         ...S.tutoriais.filter((c) => c.deletedAt).map((c) => ({ type: 'portalArticle', id: c.id, label: `Tutorial ${c.numero} · ${c.titulo}`, deletedAt: c.deletedAt! })),
         ...lixeiraDosChamadosDemo(),
+        ...calendarioDemo.lixeira(),
       ].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
     },
     async restore(type, idr) {
       await wait(); requirePerm('records.delete');
       if (type === 'ticket') return restaurarChamadoDaLixeiraDemo(idr);
+      if (type === 'calendarEvent') return calendarioDemo.restaurarDaLixeira(idr);
       const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'productModule' ? S.modules : type === 'releaseNote' ? S.notas : type === 'knowledgeArticle' ? S.artigos : type === 'portalArticle' ? S.tutoriais : S.devices;
       const it = list.find((x) => x.id === idr); if (!it) throw notFound();
       it.deletedAt = null;

@@ -7,7 +7,8 @@
  *    a causa raiz, o contorno e a validação), os incidentes do problema, o checklist, os filhos e as
  *    ligações (com o desenho) e a linha do tempo (tudo, anotações, histórico, trajetória);
  *  - na coluna do lado, a empresa e o contato em destaque (o pedido do Eider e do Luan), a
- *    classificação, o responsável, os prazos, a operadora e o tempo gasto.
+ *    classificação, o responsável, os prazos, a agenda (os eventos do calendário ligados ao chamado e
+ *    o Agendar, 2.0.1), a operadora e o tempo gasto.
  *
  * No celular é uma coluna só, com a empresa e a barra de ações primeiro. Toda ação chama a API, que
  * devolve a ficha inteira: `useDepoisDeMudar` põe a ficha nova no lugar e relê o quadro, a lista e o
@@ -42,6 +43,7 @@ import { Classificacao, Responsavel } from './ficha/Classificacao.js';
 import { Prazos } from './ficha/Prazos.js';
 import { Operadora } from './ficha/Operadora.js';
 import { Tempo } from './ficha/Tempo.js';
+import { NaAgenda } from './ficha/Agenda.js';
 
 /**
  * A rota. O código escrito de qualquer jeito (sup-12, SUP 12) vira o do sistema; ir de um chamado
@@ -163,6 +165,7 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
             <Classificacao />
             <Responsavel />
             <Prazos />
+            <NaAgenda />
             <Operadora />
             <Tempo />
           </div>

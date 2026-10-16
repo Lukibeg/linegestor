@@ -1,9 +1,10 @@
 /** Administração: usuários, papéis, catálogos, produtos, auditoria, lixeira. */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AuditoriaListarSchema, CatalogoItemSchema, ModuloCatalogoSchema, PapelGravarSchema, ProdutoCriarSchema, UsuarioAtualizarSchema, UsuarioCriarSchema } from '@gestor/shared';
+import { AuditoriaListarSchema, CatalogoItemSchema, ModuloCatalogoSchema, PapelGravarSchema, ProdutoCriarSchema, textoDoPeriodo, UsuarioAtualizarSchema, UsuarioCriarSchema } from '@gestor/shared';
 import * as svc from '../services/admin.js';
 import * as baseSvc from '../services/base.js';
+import * as calendarioSvc from '../services/calendario.js';
 import * as portalSvc from '../services/portal.js';
 import * as audit from '../services/audit.js';
 import * as clientsSvc from '../services/clients.js';
@@ -59,7 +60,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---- lixeira ----
   app.get('/trash', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'O que está na lixeira' } }, async () => svc.listTrash(app.db));
-  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle', 'portalArticle', 'ticket']), id: z.string() }) } },
+  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle', 'portalArticle', 'ticket', 'calendarEvent']), id: z.string() }) } },
     async (req) => {
       const { type, id } = req.params;
       // o chamado do Gestor (2.0) é da lixeira de quem cuida dos chamados
@@ -77,8 +78,10 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       else if (type === 'knowledgeArticle') { const a = await baseSvc.restaurar(app.db, id); label = `o artigo BC-${a.number} "${a.title}"`; }
       else if (type === 'portalArticle') { const t = await portalSvc.restaurarTutorial(app.db, id); label = `o tutorial ${t.number} "${t.title}" do portal`; }
       else if (type === 'ticket') { const t = await svc.restoreTicket(app.db, id, req.user!); label = `o chamado ${t.code} "${t.title}"`; }
+      else if (type === 'calendarEvent') { const e = await calendarioSvc.restaurar(app.db, id); label = `o evento do calendário "${e.title}" (${textoDoPeriodo({ inicio: e.startsOn, fim: e.endsOn })})`; }
       else throw new BadRequest('Tipo desconhecido');
-      await app.audit(req, { action: 'restore', entityType: type, entityId: id, summary: `Restaurou ${label} da lixeira` });
+      // o evento do calendário fica na auditoria com o mesmo nome das outras ações dele (calendar_event)
+      await app.audit(req, { action: 'restore', entityType: type === 'calendarEvent' ? 'calendar_event' : type, entityId: id, summary: `Restaurou ${label} da lixeira` });
       return { ok: true };
     });
 };

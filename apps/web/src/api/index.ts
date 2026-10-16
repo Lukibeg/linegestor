@@ -3,7 +3,9 @@
  * Em produção ela aponta para o servidor (client.ts); na prévia publicada aponta para a versão de mentira (demo.ts).
  */
 import type * as T from './types.js';
-import type { ContatoDoCliente, ContatoGravarEntrada } from '@gestor/shared';
+import type {
+  CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoDoCalendario, EventoGravarEntrada, SituacaoDoEvento, TipoDeEvento,
+} from '@gestor/shared';
 import { API_BASE } from './base.js';
 
 export type Api = {
@@ -377,6 +379,27 @@ export type Api = {
      * são os parâmetros do endereço do pedido (?setor=…), sem a chave
      */
     experimentarRobo(mapa: T.MapaDoRoboEntrada, corpo: unknown, endereco?: Record<string, string>): Promise<T.PreviaDoRobo>;
+  };
+  /**
+   * O calendário (Patch 2.0.1, decisão 0049): as visitas, as viradas, as folgas e os home offices de cada
+   * equipe. Quem vê um evento é quem vê um dos painéis dele (a regra dos chamados).
+   */
+  calendario: {
+    /** os tipos, os painéis que a pessoa vê (com quem vê cada um), as pessoas e o que ela pode fazer */
+    opcoes(): Promise<CalendarioOpcoes>;
+    /** os eventos que a pessoa vê e que tocam o período (AAAA-MM-DD) */
+    eventos(de: string, ate: string): Promise<EventoDoCalendario[]>;
+    /** os eventos ligados a um chamado (a ficha do chamado) */
+    doChamado(chamadoId: string): Promise<EventoDoCalendario[]>;
+    criar(d: EventoGravarEntrada): Promise<EventoDoCalendario>;
+    /** os painéis que a pessoa não vê ficam como estavam */
+    alterar(id: string, d: EventoGravarEntrada): Promise<EventoDoCalendario>;
+    /** o Feito, o Cancelar e o voltar a Agendado, sem abrir a janela */
+    situacao(id: string, situacao: SituacaoDoEvento): Promise<EventoDoCalendario>;
+    /** vai para a lixeira (volta pela Administração › Lixeira) */
+    remover(id: string): Promise<{ ok: boolean }>;
+    /** só quem cuida dos chamados; o tipo com evento não sai: desativa */
+    salvarTipos(tipos: TipoDeEvento[]): Promise<{ tipos: TipoDeEvento[] }>;
   };
   admin: {
     users(): Promise<T.User[]>;

@@ -24,8 +24,9 @@ A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
   Voltar do navegador) volta para ela. **Página inteira** abre a ficha sozinha — o endereço dela
   (`/atendimento/SUP-12`) é o que dá para mandar para alguém.
 - **Meu dia** (a aba ao lado): os seus em aberto, os que estão **vencendo**, os **sem dono** na fila
-  (com o botão **Assumir**), os que esperam o cliente, os que você observa e os agendados de hoje.
-  Cada número leva para a lista já filtrada.
+  (com o botão **Assumir**), os que esperam o cliente, os que você observa, o **Hoje na agenda** (o que
+  o [calendário](calendario.md) tem para hoje e quem está fora do escritório — 2.0.1) e os agendados de
+  hoje. Cada número leva para a lista já filtrada.
 - **Lista** (dentro do painel, em **Quadro | Lista**): a busca (código, título, cliente, contato,
   telefone, o que o cliente disse — sem acento), os atalhos (Meus, Vencidos, Perto de vencer, Sem dono,
   Esperando o cliente), a situação, **Filtros** (etapa, responsável, prioridade, prazo, cliente,
@@ -107,8 +108,10 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 - Do lado: a **empresa** e o **contato** (em **Editar**, os contatos do cliente: um clique troca; o
   contato escrito à mão ganha **Salvar nos contatos**), a **classificação** (os campos que o painel usa — assunto,
   tipo, gravidade, alcance, prioridade, produtos, operadoras —, os campos do próprio painel e as
-  etiquetas), o responsável e os **observadores**, os **prazos**, o caso **na operadora** e o **tempo
-  gasto**. O campo de texto longo do painel (ex.: "Como reproduzir") fica junto do relato.
+  etiquetas), o responsável e os **observadores**, os **prazos**, o **Na agenda** (a visita ou a virada
+  ligada ao chamado, e o **Agendar**, que põe uma no [calendário](calendario.md) já com o chamado, o
+  cliente e o painel — 2.0.1), o caso **na operadora** e o **tempo gasto**. O campo de texto longo do
+  painel (ex.: "Como reproduzir") fica junto do relato.
 - A barra de cima: **Assumir**, **Mover**, **Escalonar** (pede o motivo), **Esperar** o cliente ou a
   operadora (pede o motivo), **Avisar o cliente**, **Preencher com IA** e **Mais**
   (ligar a outro chamado, criar um filho, definir o pai, ligar a um problema, trocar de painel,

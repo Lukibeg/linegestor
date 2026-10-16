@@ -12,8 +12,8 @@
  */
 import argon2 from 'argon2';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, subscriptionModules, subscriptions, ticketEvents, tickets, users, type Db } from '@gestor/db';
-import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
+import { calendarEvents, carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, subscriptionModules, subscriptions, ticketEvents, tickets, users, type Db } from '@gestor/db';
+import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, textoDoPeriodo, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import { derrubarSessoesDaEquipe } from './portal.js';
 
@@ -273,7 +273,7 @@ export async function restoreTicket(db: Db, id: string, quem: { id: string }) {
 // ---------- Lixeira ----------
 
 export async function listTrash(db: Db) {
-  const [c, ci, d, dm, dv, pr, rn, pj, pm, ka, pa, tk] = await Promise.all([
+  const [c, ci, d, dm, dv, pr, rn, pj, pm, ka, pa, tk, ev] = await Promise.all([
     db.select({ id: clients.id, label: clients.tradeName, deletedAt: clients.deletedAt }).from(clients).where(isNotNull(clients.deletedAt)),
     db.select({ id: circuits.id, label: circuits.name, deletedAt: circuits.deletedAt }).from(circuits).where(isNotNull(circuits.deletedAt)),
     db.select({ id: dids.id, label: dids.number, deletedAt: dids.deletedAt }).from(dids).where(isNotNull(dids.deletedAt)),
@@ -286,6 +286,7 @@ export async function listTrash(db: Db) {
     db.select({ id: knowledgeArticles.id, numero: knowledgeArticles.number, titulo: knowledgeArticles.title, deletedAt: knowledgeArticles.deletedAt }).from(knowledgeArticles).where(isNotNull(knowledgeArticles.deletedAt)),
     db.select({ id: portalArticles.id, numero: portalArticles.number, titulo: portalArticles.title, deletedAt: portalArticles.deletedAt }).from(portalArticles).where(isNotNull(portalArticles.deletedAt)),
     db.select({ id: tickets.id, codigo: tickets.code, titulo: tickets.title, deletedAt: tickets.deletedAt }).from(tickets).where(isNotNull(tickets.deletedAt)),
+    db.select({ id: calendarEvents.id, titulo: calendarEvents.title, inicio: calendarEvents.startsOn, fim: calendarEvents.endsOn, deletedAt: calendarEvents.deletedAt }).from(calendarEvents).where(isNotNull(calendarEvents.deletedAt)),
   ]);
   return [
     ...c.map((x) => ({ type: 'client', ...x })), ...ci.map((x) => ({ type: 'circuit', ...x })), ...d.map((x) => ({ type: 'did', ...x })),
@@ -298,5 +299,6 @@ export async function listTrash(db: Db) {
     ...ka.map((x) => ({ type: 'knowledgeArticle', id: x.id, label: `BC-${x.numero} · ${x.titulo}`, deletedAt: x.deletedAt })),
     ...pa.map((x) => ({ type: 'portalArticle', id: x.id, label: `Tutorial ${x.numero} · ${x.titulo}`, deletedAt: x.deletedAt })),
     ...tk.map((x) => ({ type: 'ticket', id: x.id, label: `${x.codigo} · ${x.titulo}`, deletedAt: x.deletedAt })),
+    ...ev.map((x) => ({ type: 'calendarEvent', id: x.id, label: `${textoDoPeriodo({ inicio: x.inicio, fim: x.fim })} · ${x.titulo}`, deletedAt: x.deletedAt })),
   ].sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
 }

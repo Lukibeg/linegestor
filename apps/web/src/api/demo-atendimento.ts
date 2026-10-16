@@ -105,6 +105,8 @@ export type ContextoAtendimentoDemo = {
 // =====================================================================
 
 type Ator = { tipo: 'pessoa'; id: string; nome: string; permissoes: string[] } | { tipo: 'integracao'; id: string; nome: string };
+/** Quem está agindo (o calendário da prévia usa o mesmo). */
+export type AtorDemo = Ator;
 
 type PainelRow = {
   id: string; nome: string; sigla: string; descricao: string | null; cor: CorPainel; ordem: number; acesso: 'todos' | 'escolhidos'; pessoas: string[];
@@ -240,6 +242,25 @@ function ipInterno(ip: string): boolean {
 type Instancia = {
   lixeira: () => TrashItem[]; restaurarDaLixeira: (id: string) => { ok: boolean }; diagnostico: () => { erros: string[]; chamados: number };
   chamadosDoContato: (clienteId: string, whatsapp: string) => number;
+  calendario: AcessoDoCalendarioDemo;
+};
+
+/**
+ * O que o calendário da prévia (demo-calendario.ts, 2.0.1) usa dos chamados: os painéis e quem vê cada
+ * um (a mesma regra), quem está agindo e os chamados (o "ligado a um chamado" do evento).
+ */
+export type AcessoDoCalendarioDemo = {
+  /** os exemplos dos chamados (na primeira chamada) */
+  preparar: () => void;
+  eu: () => Ator;
+  atorDaPessoa: (userId: string) => Ator;
+  /** os painéis fora da lixeira, em ordem */
+  paineis: () => Painel[];
+  podeVerPainel: (p: Pick<Painel, 'acesso' | 'pessoas'>, a: Ator) => boolean;
+  /** o chamado fora da lixeira (pelo id) */
+  chamado: (id: string) => { id: string; codigo: string; titulo: string; painelId: string; clienteId: string | null } | null;
+  /** os chamados de exemplo (para ligar os eventos de exemplo a eles) */
+  chamados: () => Array<{ id: string; codigo: string; titulo: string; painelId: string; clienteId: string | null }>;
 };
 let instancia: Instancia | null = null;
 
@@ -255,6 +276,11 @@ export function restaurarChamadoDaLixeiraDemo(id: string): { ok: boolean } {
 /** Quantos chamados do cliente têm este WhatsApp (a coluna "Chamados" da aba Contatos do cliente). */
 export function chamadosDoContatoDemo(clienteId: string, whatsapp: string): number {
   return instancia?.chamadosDoContato(clienteId, whatsapp) ?? 0;
+}
+/** O calendário da prévia lê os painéis, quem vê e os chamados daqui (os chamados nascem primeiro, no demo.ts). */
+export function acessoDoCalendarioDemo(): AcessoDoCalendarioDemo {
+  if (!instancia) throw naoAchado('Painel');
+  return instancia.calendario;
 }
 /** Para o teste da prévia: o que deu errado ao montar os exemplos (deve ser nada) e quantos chamados há. */
 export function diagnosticoDosChamadosDemo() {
@@ -2561,6 +2587,24 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       }));
     });
 
+    // ---- o Administrativo e o Comercial (2.0.1, o calendário): painéis só das pessoas escolhidas, para a
+    //      prévia mostrar a regra do pedido do Luan ("se eu sou do comercial, vejo o do comercial") ----
+    const equipes: Array<{ chave: string; nome: string; sigla: string; descricao: string; cor: CorPainel; pessoas: Pessoa[] }> = [
+      { chave: 'administrativo', nome: 'Administrativo', sigla: 'ADM', descricao: 'O financeiro, as notas, os contratos e a agenda do escritório.', cor: 'turquesa', pessoas: ['marina', 'camila'] },
+      { chave: 'comercial', nome: 'Comercial', sigla: 'COM', descricao: 'As propostas, as visitas comerciais e as apresentações aos clientes.', cor: 'signal', pessoas: ['camila', 'diego'] },
+    ];
+    equipes.forEach((p, i) => {
+      const id = `painel-${p.chave}`;
+      A.paineis.push({
+        id, nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, ordem: PAINEIS_INICIAIS.length + i, acesso: 'escolhidos', pessoas: p.pessoas.map(idDa),
+        ajustes: { ...AJUSTES_PAINEL_PADRAO, tipos: [...AJUSTES_PAINEL_PADRAO.tipos], obrigatoriosAoAbrir: [], supervisores: [], camposDesligados: [...AJUSTES_PAINEL_PADRAO.camposDesligados] },
+        ativo: true, proximoNumero: 1, deletedAt: null,
+      });
+      ETAPAS_DO_PAINEL_NOVO.forEach((e, j) => A.etapas.push({
+        id: `etapa-${p.chave}-${j + 1}`, painelId: id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: j, obrigatorios: [...e.obrigatorios], avisar: [], deletedAt: null,
+      }));
+    });
+
     // ---- os assuntos: a lista da equipe (colada) e o que já foi preenchido em alguns ----
     colarAssuntos('painel-suporte', LISTA_DE_ASSUNTOS_DO_SUPORTE);
     for (const det of DETALHES_DOS_ASSUNTOS) {
@@ -3290,6 +3334,18 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       return { ok: true };
     },
     diagnostico: () => { semear(); return { erros: [...A.erros], chamados: A.chamados.length }; },
+    calendario: {
+      preparar, eu, atorDaPessoa, paineis, podeVerPainel,
+      chamado: (id) => {
+        semear();
+        const t = A.chamados.find((x) => x.id === id && !x.deletedAt);
+        return t ? { id: t.id, codigo: t.codigo, titulo: t.titulo, painelId: t.painelId, clienteId: t.clienteId } : null;
+      },
+      chamados: () => {
+        semear();
+        return A.chamados.filter((t) => !t.deletedAt).map((t) => ({ id: t.id, codigo: t.codigo, titulo: t.titulo, painelId: t.painelId, clienteId: t.clienteId }));
+      },
+    },
   };
 
   return api;

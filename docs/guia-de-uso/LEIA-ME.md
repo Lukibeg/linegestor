@@ -24,4 +24,5 @@
 - [Portal do cliente](portal-do-cliente.md) — escrever um tutorial com vídeo, print e arquivo, mandar o link pelo WhatsApp, dar acesso às pessoas do cliente e o que acontece quando o cliente sai da base.
 - [Relatórios do Inventário](relatorios-do-inventario.md) — quem tem o quê, o estoque e o valor, o vai e volta e o que corrigir no cadastro (1.9).
 - [Chamados (o módulo do Gestor)](chamados-do-gestor.md) — o dia a dia (Meu dia, quadro, lista, a ficha), abrir e reabrir, as regras de andar, os Ajustes do módulo e como ligar com o LineChat e o n8n (2.0).
+- [Calendário das equipes](calendario.md) — as visitas, as viradas, as folgas e os home offices de cada equipe; quem vê o quê (a regra dos painéis), filtrar, pôr um evento, o Agendar da ficha do chamado e os tipos (2.0.1).
 - [Recibo de entrega na movimentação](recibo-de-entrega.md) — anexar o recibo (PDF ou foto) ao movimentar para o cliente, ou depois, quando ele volta assinado; ver, baixar e tirar (1.9).

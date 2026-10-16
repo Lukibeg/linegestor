@@ -7,7 +7,8 @@
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
  * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (os
- * Chamados, os Projetos e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje) e **Base de
+ * Chamados, o Calendário das equipes (2.0.1), os Projetos e os Relatórios, que abrem nos tickets do
+ * LineChat, na aba Hoje) e **Base de
  * conhecimento** (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O
  * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
  * recolhido, o ícone do grupo abre a lista dele do lado.
@@ -16,7 +17,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 're
 import { createPortal } from 'react-dom';
 import { NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BookLock, BookUser, Boxes, Building2, Cable, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, Library, ListChecks, LogOut,
+  BookLock, BookUser, Boxes, Building2, Cable, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, Library, ListChecks, LogOut,
   Menu, Moon, Settings, Sparkles, Sun, Ticket, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -47,6 +48,8 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
       { to: '/atendimento', label: 'Chamados', icon: Ticket, perm: 'support.read' },
+      // o calendário das equipes (2.0.1): as visitas, as viradas, as folgas… nos painéis dos chamados
+      { to: '/calendario', label: 'Calendário', icon: CalendarDays, perm: 'support.read' },
       { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
     ],
@@ -129,7 +132,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { abertos, alternar } = useGruposAbertos(items.filter(ehGrupo), pathname);
   const sair = async () => { await logout(); nav('/entrar'); };
   // nos chamados, a tela usa a largura toda e a margem é menor: o quadro e a ficha precisam de lugar
-  const largo = pathname.startsWith('/atendimento');
+  const largo = pathname.startsWith('/atendimento') || pathname.startsWith('/calendario');
   const temSino = can('support.read');
   // o número no menu: quantas notas de novidade esta pessoa ainda não leu
   const novidades = useQuery({ queryKey: ['novidades'], queryFn: () => api.novidades.lista(), enabled: !!user, staleTime: 5 * 60_000 });

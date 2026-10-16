@@ -8,6 +8,7 @@
  *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico · 5. Novidades
  *          6. Projetos · 7. Chamados do LineChat (cópia só de leitura, alimentada pela sincronização)
  *          8. Base de conhecimento · 9. Portal do cliente · 10. Chamados do Gestor (o módulo que substitui o painel do LineChat)
+ *          11. Calendário (as visitas, as viradas, as folgas e os home offices de cada equipe)
  *
  *  Convenções:
  *   - dinheiro é guardado em CENTAVOS inteiros (R$ 603,38 → 60338), sem arredondamento
@@ -1932,6 +1933,58 @@ export const ticketApiKeys = pgTable(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
   },
   (t) => [uniqueIndex('ticket_api_keys_hash_uq').on(t.hash)],
+);
+
+// ---------------------------------------------------------------------
+// 11. CALENDÁRIO (decisão 0049, Patch 2.0.1, migração 0017)
+// ---------------------------------------------------------------------
+// As visitas, as viradas de sistema e para a nuvem, as folgas, os home offices e as ações no cliente
+// de cada equipe. O pedido do Luan: "quero criar um módulo de calendário, para eu poder controlar com
+// minha equipe… tem que ser integrado com os painéis". Cada evento é de um ou mais painéis (os dos
+// chamados) e quem vê é quem vê o painel — a mesma regra dos chamados. Os tipos (Visita, Folga…), com
+// nome e cor, ficam em `settings.calendario`; as regras, em `packages/shared/src/calendario.ts`.
+
+/** Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual cliente e quando. */
+export const calendarEvents = pgTable(
+  'calendar_events',
+  {
+    id: id(),
+    /** O que acontece ("Virada para nuvem — Clínica Aurora") */
+    title: text('title').notNull(),
+    /** O tipo (o id de um dos tipos de `settings.calendario`: visita, folga…) */
+    typeId: text('type_id').notNull(),
+    /** Os painéis (as equipes) do evento: quem vê um deles vê o evento */
+    panelIds: text('panel_ids').array().notNull().default([]),
+    /** As pessoas do evento (quem vai na visita, quem está de folga) */
+    participantIds: text('participant_ids').array().notNull().default([]),
+    clientId: text('client_id').references(() => clients.id),
+    /** O chamado que pediu o evento (a visita do SUP-12) */
+    ticketId: text('ticket_id').references(() => tickets.id),
+    /** O primeiro dia (AAAA-MM-DD, o dia do calendário: não tem fuso) */
+    startsOn: text('starts_on').notNull(),
+    /** O último dia (o mesmo do primeiro num evento de um dia só) */
+    endsOn: text('ends_on').notNull(),
+    /** Dia inteiro, sem hora (a folga, a virada que leva o dia) */
+    allDay: boolean('all_day').notNull().default(true),
+    /** A hora de começar e de terminar (HH:MM, a de Brasília), quando não é o dia inteiro */
+    startTime: text('start_time'),
+    endTime: text('end_time'),
+    /** Onde (o endereço da visita, "remoto") */
+    location: text('location'),
+    notes: text('notes'),
+    /** agendado | feito | cancelado (cancelar não apaga: fica riscado no calendário) */
+    status: text('status').notNull().default('agendado'),
+    createdById: text('created_by_id').references(() => users.id),
+    updatedById: text('updated_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('calendar_events_periodo_idx').on(t.startsOn, t.endsOn),
+    index('calendar_events_ticket_idx').on(t.ticketId),
+    check('calendar_events_periodo_ck', sql`${t.endsOn} >= ${t.startsOn}`),
+  ],
 );
 
 // ---------------------------------------------------------------------

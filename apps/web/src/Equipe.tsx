@@ -36,6 +36,7 @@ import { ChamadoEmJanela, FichaDoChamado } from './pages/atendimento/Ficha.js';
 import { fundoDaJanela } from './pages/atendimento/comum.js';
 import { AjustesAtendimento } from './pages/atendimento/Ajustes.js';
 import { TutorialEditor } from './pages/portal/Editor.js';
+import { Calendario } from './pages/calendario/Index.js';
 
 function Protegido({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -90,6 +91,8 @@ function Rotas() {
         <Route path="/atendimento/novo" element={<Protegido><NovoChamado /></Protegido>} />
         <Route path="/atendimento/ajustes" element={<Protegido><AjustesAtendimento /></Protegido>} />
         <Route path="/atendimento/:codigo" element={<Protegido><FichaDoChamado /></Protegido>} />
+        {/* o calendário das equipes (2.0.1, decisão 0049): quem vê um evento é quem vê um dos painéis dele */}
+        <Route path="/calendario" element={<Protegido><Calendario /></Protegido>} />
         {/* a cópia do painel do LineChat (1.3): os números e os relatórios dos chamados de lá */}
         <Route path="/chamados" element={<Protegido><Chamados /></Protegido>} />
         <Route path="/chamados/relatorios" element={<Protegido><RelatoriosChamados /></Protegido>} />
