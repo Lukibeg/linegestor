@@ -26,9 +26,9 @@ import { z } from 'zod';
 import { clients, ticketApiKeys, ticketStages, tickets, type Db } from '@gestor/db';
 import {
   aplicarMapaDoRobo, apararPedido, campoLigado, ChamadoCriarSchema, EntradaChamadoSchema, IntegracaoAlterarSchema, mapaDeFabrica, MapaDoRoboSchema,
-  NOME_CAMPO, paraBusca, procurarAssunto, resolverPedidoDoRobo, textoDoValor,
+  NOME_CAMPO, oQueNaoVeio, paraBusca, procurarAssunto, resolverPedidoDoRobo, respostaAoRobo, textoDoValor,
   type Assunto, type CartaoChamado, type ChamadoAlterar, type DadosParaORobo, type MapaDoRobo, type Painel, type PedidoDoRobo, type PreviaDoRobo,
-  type TipoCampo, type UltimoPedidoDoRobo, type ValorDoCampo,
+  type RespostaAoRobo, type TipoCampo, type UltimoPedidoDoRobo, type ValorDoCampo,
 } from '@gestor/shared';
 import { BadRequest, Unauthorized } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
@@ -212,6 +212,10 @@ export async function lerUltimoDoRobo(db: Db): Promise<UltimoPedidoDoRobo | null
   return valor.ultimo ?? null;
 }
 
+/**
+ * Guarda o último pedido: o corpo (os textos longos cortados), o NOME da chave e o que aconteceu. A chave
+ * mesma nunca: ela vem no endereço (`?chave=`), que não entra aqui, nem na auditoria, nem no registro.
+ */
 async function guardarUltimoDoRobo(db: Db, ator: Ator, corpo: unknown, resultado: UltimoPedidoDoRobo['resultado']) {
   const ultimo: UltimoPedidoDoRobo = { em: new Date().toISOString(), chave: ator.nome, corpo: apararPedido(corpo), resultado };
   await integ.gravar(db, 'atendimento-robo-ultimo', { ultimo });
@@ -226,7 +230,13 @@ async function dadosParaORobo(db: Db): Promise<DadosParaORobo> {
   return { paineis: ctx.paineis, assuntos: ctx.assuntos, campos: ctx.campos, clientes };
 }
 
-export type ResultadoDoRobo = ResultadoEntrada & { ignorados: string[] };
+/**
+ * `ignorados`: o que veio e ficou de fora; `faltaram`: as variáveis do mapa que não vieram no pedido
+ * ("Cliente: {{pergunta: …}}" — o robô de outra cópia, com outros códigos de bloco); `resposta`: o que
+ * volta ao bloco "Enviar webhook" do LineChat.
+ */
+export type ResultadoDoRobo = ResultadoEntrada & { ignorados: string[]; faltaram: string[]; resposta: RespostaAoRobo };
+type AbertoPeloMapa = ResultadoEntrada & { ignorados: string[]; contato: string | null };
 
 /**
  * O robô abre o chamado com o JSON dele: o mapa diz de onde vem cada campo. Como na entrada do Gestor,
@@ -234,27 +244,32 @@ export type ResultadoDoRobo = ResultadoEntrada & { ignorados: string[] };
  * último), com o que aconteceu: a tela do mapa mostra as variáveis dele.
  */
 export async function abrirPeloRobo(app: FastifyInstance, ator: Ator, corpo: unknown): Promise<ResultadoDoRobo> {
-  const pedido = aplicarMapaDoRobo(await lerMapaDoRobo(app.db), corpo);
+  const mapa = await lerMapaDoRobo(app.db);
+  const pedido = aplicarMapaDoRobo(mapa, corpo);
+  // o nome dos campos do painel só é lido quando um deles ficou sem a variável
+  const precisaDosCampos = Object.keys(pedido.faltaram).some((k) => k.startsWith('campo:'));
+  const faltaram = oQueNaoVeio(pedido.faltaram, precisaDosCampos ? (await carregarContexto(app.db)).campos : []);
   const abrir = () => abrirPeloMapa(app, ator, pedido);
-  let r: ResultadoDoRobo;
+  let r: AbertoPeloMapa;
   try {
     r = pedido.sessaoId ? await umDeCadaVez(`sessao:${pedido.sessaoId}`, abrir) : await abrir();
   } catch (e) {
-    await guardarUltimoDoRobo(app.db, ator, corpo, { ok: false, erro: e instanceof Error ? e.message : 'O chamado não abriu.' })
+    await guardarUltimoDoRobo(app.db, ator, corpo, { ok: false, erro: e instanceof Error ? e.message : 'O chamado não abriu.', faltaram })
       .catch((x) => app.log.warn(x, 'não deu para guardar o último pedido do robô'));
     throw e;
   }
-  await guardarUltimoDoRobo(app.db, ator, corpo, { ok: true, criado: r.criado, anotou: r.anotou, codigo: r.codigo, ignorados: r.ignorados })
+  await guardarUltimoDoRobo(app.db, ator, corpo, { ok: true, criado: r.criado, anotou: r.anotou, codigo: r.codigo, ignorados: r.ignorados, faltaram })
     .catch((x) => app.log.warn(x, 'não deu para guardar o último pedido do robô'));
-  return r;
+  const { contato, ...resultado } = r;
+  return { ...resultado, faltaram, resposta: respostaAoRobo(mapa, { codigo: r.codigo, contato }, corpo) };
 }
 
-async function abrirPeloMapa(app: FastifyInstance, ator: Ator, p: PedidoDoRobo): Promise<ResultadoDoRobo> {
+async function abrirPeloMapa(app: FastifyInstance, ator: Ator, p: PedidoDoRobo): Promise<AbertoPeloMapa> {
   if (p.sessaoId) {
     const aberto = await abertoDaSessao(app.db, p.sessaoId);
     if (aberto) {
       if (p.relato) await anotarChamado(app, ator, aberto.id, { texto: p.relato, anexos: [] });
-      return { ...respostaDaEntrada(app, aberto, false, !!p.relato), ignorados: [] };
+      return { ...respostaDaEntrada(app, aberto, false, !!p.relato), ignorados: [], contato: aberto.contactName };
     }
   }
   const r = resolverPedidoDoRobo(p, await dadosParaORobo(app.db));
@@ -267,8 +282,10 @@ async function abrirPeloMapa(app: FastifyInstance, ator: Ator, p: PedidoDoRobo):
   });
   if (!lido.success) throw new BadRequest(lido.error.issues[0]?.message ?? 'Dados inválidos', { campos: lido.error.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message })) });
   const novo = await criarChamado(app, ator, lido.data, { origem: 'robo' });
-  const [t] = await app.db.select({ id: tickets.id, code: tickets.code, number: tickets.number, title: tickets.title }).from(tickets).where(eq(tickets.id, novo.id)).limit(1);
-  return { ...respostaDaEntrada(app, t!, true, false), ignorados: c.ignorados };
+  // o nome do contato vem do chamado gravado: sem ele no pedido, o Gestor pode ter achado pelo WhatsApp
+  const [t] = await app.db.select({ id: tickets.id, code: tickets.code, number: tickets.number, title: tickets.title, contactName: tickets.contactName })
+    .from(tickets).where(eq(tickets.id, novo.id)).limit(1);
+  return { ...respostaDaEntrada(app, t!, true, false), ignorados: c.ignorados, contato: t!.contactName };
 }
 
 /** "Como fica": o chamado que o pedido abriria com este mapa (ainda não salvo), sem abrir nada. */

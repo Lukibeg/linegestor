@@ -3242,6 +3242,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (antes.painel !== novo.painel) mudou.push('Painel');
       for (const c of CAMPOS_DO_MAPA) if (antes[c] !== novo[c]) mudou.push(NOME_CAMPO_DO_MAPA[c]);
       if (JSON.stringify(antes.campos) !== JSON.stringify(novo.campos)) mudou.push('Campos do painel');
+      if (antes.mensagem !== novo.mensagem) mudou.push('Mensagem ao cliente');
       A.mapaRobo = novo;
       if (mudou.length) auditar('settings_atendimento_robo', 'settings', `Mudou o mapa do robô do LineChat: ${mudou.join(', ')}`, 'atendimento-robo', { before: antes, after: novo });
       return JSON.parse(JSON.stringify(novo)) as MapaDoRobo;

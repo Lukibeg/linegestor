@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { AJUSTES_PAINEL_PADRAO, procurarAssunto, type Assunto, type CampoPersonalizado, type Painel } from './atendimento.js';
 import {
   aplicarMapaDoRobo, apararPedido, corpoDoPedido, EXEMPLO_DO_LINECHAT, lerPrioridade, MAPA_DO_ROBO_PADRAO, mapaDeFabrica, MapaDoRoboSchema,
-  preencherDoPedido, problemaDoModelo, procurarCliente, resolverPedidoDoRobo, valorNoCaminho, valorParaOCampo, variaveisDoPedido,
+  mensagemAoRobo, MENSAGEM_DO_ROBO_PADRAO, oQueNaoVeio, preencherDoPedido, problemaDoModelo, procurarCliente, resolverPedidoDoRobo, respostaAoRobo,
+  respostaDoRoboQueFalhou, valorDaReferencia, valorNoCaminho, valorParaOCampo, variaveisDoPedido,
   type DadosParaORobo, type MapaDoRobo,
 } from './robo.js';
 
@@ -308,5 +309,91 @@ describe('as procuras do robô', () => {
     expect(achar('Nada disso')).toEqual({ ok: false, erro: 'Não achei o assunto "Nada disso" no painel Suporte.' });
     const repetidos = [...DADOS.assuntos, assunto('a-x', 'Outro', { dePara: ['Suporte Técnico'] })];
     expect(procurarAssunto(repetidos, suporte, 'Suporte Técnico')).toEqual({ ok: false, erro: expect.stringMatching(/de-para de mais de um assunto/) });
+  });
+});
+
+describe('a pergunta pelo texto (a cópia do robô com outros códigos)', () => {
+  /** a cópia de teste do robô: as mesmas perguntas, os blocos com outros códigos */
+  const COPIA = [{
+    ...DO_LINECHAT[0],
+    questions: {
+      'cb-0000aaaa-qst-11111111': { text: 'Por favor, nos informe a empresa que você faz parte, para que possamos salvar em seu cadastro:', answer: 'Clínica Aurora', answerFile: null },
+      'cb-0000aaaa-qst-22222222': { text: 'Por favor nos informe brevemente o motivo do seu contato', answer: 'Sem áudio no 204', answerFile: null },
+    },
+    menus: {
+      'cb-0000aaaa-mn-33333333': { text: 'Certo!\nPor favor, escolha para qual solução você deseja atendimento:', answer: '☎️ LinePBX: Plataforma de Voz', answerFile: null },
+    },
+  }];
+
+  it('acha a resposta pelo texto inteiro (sem ligar para acento, maiúscula, pontuação e quebra de linha), nas duas cópias', () => {
+    const ref = 'pergunta: Por favor nos informe brevemente o motivo do seu contato';
+    expect(valorDaReferencia(corpoDoPedido(DO_LINECHAT), ref)).toBe('TESTE INTEGRAÇÃO - ignorar - ramal 999 sem áudio');
+    expect(valorDaReferencia(corpoDoPedido(COPIA), ref)).toBe('Sem áudio no 204');
+    expect(valorDaReferencia(corpoDoPedido(COPIA), 'PERGUNTA:   por favor NOS INFORME brevemente o motivo do seu contato!')).toBe('Sem áudio no 204');
+    expect(valorDaReferencia(corpoDoPedido(COPIA), 'menu: Certo! Por favor, escolha para qual solução você deseja atendimento:')).toBe('☎️ LinePBX: Plataforma de Voz');
+    // o código do bloco da outra cópia não existe aqui: é isso que o texto resolve
+    expect(valorNoCaminho(corpoDoPedido(COPIA), 'questions.cb-8b2a1bcb-qst-81fe01bd.answer')).toBeUndefined();
+  });
+
+  it('um pedaço do texto vale quando só uma pergunta o tem; o pedaço de duas, e o texto que não existe, não vieram', () => {
+    const c = corpoDoPedido(COPIA);
+    expect(valorDaReferencia(c, 'pergunta: motivo do seu contato')).toBe('Sem áudio no 204');
+    expect(valorDaReferencia(c, 'pergunta: por favor')).toBeUndefined();
+    expect(valorDaReferencia(c, 'pergunta: qual o seu e-mail')).toBeUndefined();
+    expect(valorDaReferencia(c, 'menu: motivo do seu contato')).toBeUndefined();
+    expect(valorDaReferencia({ contact: {} }, 'pergunta: motivo')).toBeUndefined();
+    // a pergunta que veio sem resposta existe (vazia): não é "não veio"
+    expect(valorDaReferencia({ questions: { q: { text: 'Seu nome?', answer: null } } }, 'pergunta: Seu nome?')).toBeNull();
+  });
+
+  it('o mapa pelo texto vale para as duas cópias; a que não achou é contada no campo', () => {
+    const mapa: MapaDoRobo = { ...mapaDeFabrica(), relato: '{{pergunta: o motivo do seu contato}}', cliente: '{{pergunta: a empresa que você faz parte}}', descricao: '{{pergunta: qual o seu e-mail}}' };
+    const producao = aplicarMapaDoRobo(mapa, DO_LINECHAT);
+    const teste = aplicarMapaDoRobo(mapa, COPIA);
+    expect([producao.relato, producao.cliente]).toEqual(['TESTE INTEGRAÇÃO - ignorar - ramal 999 sem áudio', 'Empresa Teste Ingline']);
+    expect([teste.relato, teste.cliente]).toEqual(['Sem áudio no 204', 'Clínica Aurora']);
+    expect(teste.faltaram).toEqual({ descricao: ['pergunta: qual o seu e-mail'] });
+    expect(oQueNaoVeio(teste.faltaram, [])).toEqual(['Descrição: {{pergunta: qual o seu e-mail}}']);
+    expect(oQueNaoVeio({ 'campo:c-sistema': ['menus.x.answer'] }, DADOS.campos)).toEqual(['Sistema: {{menus.x.answer}}']);
+  });
+
+  it('a lista de variáveis traz a resposta pela pergunta, quando o texto é único no pedido', () => {
+    const vs = variaveisDoPedido(DO_LINECHAT);
+    expect(vs.find((v) => v.caminho === 'questions.cb-8b2a1bcb-qst-81fe01bd.answer')?.porTexto).toBe('pergunta: Por favor nos informe brevemente o motivo do seu contato');
+    expect(vs.find((v) => v.caminho === 'menus.cb-a35e88f1-mn-8d2de45b.answer')?.porTexto).toBe('menu: Certo! Por favor, escolha para qual solução você deseja atendimento:');
+    expect(vs.find((v) => v.caminho === 'contact.name')?.porTexto).toBeNull();
+    // o mesmo texto em dois blocos (o robô pergunta de novo noutro caminho): pelo texto não daria para saber qual
+    const repetido = variaveisDoPedido({ questions: { a: { text: 'Seu nome?', answer: 'Ana' }, b: { text: 'Seu nome?', answer: 'Bia' }, c: { text: 'A {chave} | barra', answer: 'x' } } });
+    expect(repetido.map((v) => v.porTexto)).toEqual([null, null, 'pergunta: A chave barra']);
+    // e o que a lista oferece acha a mesma resposta
+    expect(valorDaReferencia({ questions: { c: { text: 'A {chave} | barra', answer: 'x' } } }, 'pergunta: A chave barra')).toBe('x');
+  });
+});
+
+describe('as alternativas e a resposta ao robô', () => {
+  it('{{a || b || c || d}}: quantas alternativas quiser, a primeira com valor; o texto fixo no fim', () => {
+    const c = corpoDoPedido(DO_LINECHAT);
+    expect(preencherDoPedido('{{contact.email || contact.instagram || contact.empresa || contact.name}}', c).texto).toBe('João Teste');
+    expect(preencherDoPedido('{{contact.email || contact.nao-existe || pergunta: qual o seu e-mail || "sem contato"}}', c).texto).toBe('sem contato');
+    expect(preencherDoPedido('{{contact.email || contact.instagram || contact.empresa || contact.tags}}', c)).toEqual({ texto: '', faltaram: [] });
+    expect(preencherDoPedido('{{a || b || c || d}}', c)).toEqual({ texto: '', faltaram: ['a', 'b', 'c', 'd'] });
+  });
+
+  it('a resposta: exatamente a que o bloco "Enviar webhook" do LineChat espera', () => {
+    expect(MAPA_DO_ROBO_PADRAO.mensagem).toBe(MENSAGEM_DO_ROBO_PADRAO);
+    expect(MapaDoRoboSchema.parse({}).mensagem).toBe(MENSAGEM_DO_ROBO_PADRAO);
+    expect(respostaAoRobo(mapaDeFabrica(), { codigo: 'SUP-1' }, DO_LINECHAT)).toEqual({
+      response: 'CHAMADO_ABERTO',
+      messages: [{ text: 'Seu chamado foi registrado com o número *SUP-1*. Guarde este número caso precise falar sobre ele depois.' }],
+    });
+    expect(respostaDoRoboQueFalhou()).toEqual({ response: 'CHAMADO_FALHOU' });
+    // a mensagem vazia: o robô não manda mensagem (ele segue pela saída do CHAMADO_ABERTO do mesmo jeito)
+    expect(respostaAoRobo({ mensagem: '' }, { codigo: 'SUP-1' }, DO_LINECHAT)).toEqual({ response: 'CHAMADO_ABERTO', messages: [] });
+  });
+
+  it('a mensagem: {codigo}, {contato} e as variáveis do pedido; a variável vazia não apaga a mensagem', () => {
+    expect(mensagemAoRobo('Olá, {{contact.first-name}}! O seu chamado é o {codigo}.', { codigo: 'SUP-7' }, DO_LINECHAT)).toBe('Olá, João! O seu chamado é o SUP-7.');
+    expect(mensagemAoRobo('Olá, {{contact.email}}! O seu chamado é o {{codigo}} ({contato}).', { codigo: 'SUP-7', contato: null }, DO_LINECHAT)).toBe('Olá! O seu chamado é o SUP-7.');
+    expect(mensagemAoRobo('{contato}, anotamos: {codigo}', { codigo: 'DEV-2', contato: ' Maria ' }, {})).toBe('Maria, anotamos: DEV-2');
   });
 });

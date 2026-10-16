@@ -11,15 +11,19 @@
  *  - as variáveis vêm do último pedido do robô (o Gestor guarda), de um pedido colado ou do exemplo do
  *    LineChat; embaixo de cada campo, o texto que sai com aquele pedido;
  *  - "Como fica" pergunta ao servidor o chamado que nasceria, sem abrir nada: é o mesmo resolvedor que
- *    abre de verdade (o cliente, o assunto e as opções achados, e o que ficaria de fora).
+ *    abre de verdade (o cliente, o assunto e as opções achados, e o que ficaria de fora);
+ *  - a resposta da pergunta entra pelo texto dela ({{pergunta: …}}), que vale nas cópias do robô (a de
+ *    teste e a de produção têm os blocos com outros códigos); pelo código do bloco também dá;
+ *  - a mensagem ao cliente volta na resposta ao robô (o bloco "Enviar webhook" do LineChat), e o "Como
+ *    fica" mostra a resposta inteira.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Braces, ChevronDown, ClipboardPaste, Eye, Info, RotateCcw, TriangleAlert, Undo2, Waypoints } from 'lucide-react';
 import {
-  aplicarMapaDoRobo, EXEMPLO_DO_LINECHAT, GRUPOS_DAS_VARIAVEIS, mapaDeFabrica, NOME_CAMPO_DO_MAPA, NOME_GRUPO_DA_VARIAVEL, paraBusca, problemaDoModelo,
-  telefoneLegivel, variaveisDoPedido,
-  type CampoDoMapa, type CampoPersonalizado, type MapaDoRobo, type PreviaDoRobo, type RoboTela, type UltimoPedidoDoRobo, type VariavelDoPedido,
+  aplicarMapaDoRobo, EXEMPLO_DO_LINECHAT, GRUPOS_DAS_VARIAVEIS, mapaDeFabrica, MENSAGEM_DO_ROBO_PADRAO, NOME_CAMPO_DO_MAPA, NOME_GRUPO_DA_VARIAVEL, paraBusca,
+  preencherMensagem, problemaDoModelo, respostaAoRobo, respostaDoRoboQueFalhou, telefoneLegivel, variaveisDoPedido,
+  type CampoDoMapa, type CampoPersonalizado, type MapaDoRobo, type PreviaDoRobo, type RespostaAoRobo, type RoboTela, type UltimoPedidoDoRobo, type VariavelDoPedido,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Carregando, Chip, Modal, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
@@ -42,9 +46,9 @@ const PRINCIPAIS: Linha[] = [
 ];
 /** Os que dependem das perguntas e dos menus de cada robô. */
 const MAIS: Linha[] = [
-  { chave: 'descricao', linhas: 2, exemplo: 'Setor: {{menus…answer}}', dica: 'O que a equipe lê. Dá para juntar várias respostas num texto só.' },
-  { chave: 'cliente', exemplo: '{{questions…answer}}', dica: 'O nome (fantasia ou razão social) ou o CNPJ. Sem achar, o Gestor procura o cliente pelo WhatsApp do contato.' },
-  { chave: 'assunto', exemplo: '{{menus…answer}}', dica: 'O caminho ("Ramal › Configuração"), o nome ou um nome do de-para do assunto (Ajustes › Campos › Assunto): é assim que a resposta do menu vira assunto.' },
+  { chave: 'descricao', linhas: 2, exemplo: 'Setor: {{menu: …}}', dica: 'O que a equipe lê. Dá para juntar várias respostas num texto só.' },
+  { chave: 'cliente', exemplo: '{{pergunta: …}}', dica: 'O nome (fantasia ou razão social) ou o CNPJ. Sem achar, o Gestor procura o cliente pelo WhatsApp do contato.' },
+  { chave: 'assunto', exemplo: '{{menu: …}}', dica: 'O caminho ("Ramal › Configuração"), o nome ou um nome do de-para do assunto (Ajustes › Campos › Assunto): é assim que a resposta do menu vira assunto.' },
   { chave: 'prioridade', exemplo: 'Alta', dica: 'Crítica, Alta, Média ou Baixa: escrita aqui ou numa variável.' },
 ];
 
@@ -105,7 +109,7 @@ function EditorDoMapa({ tela }: { tela: RoboTela }) {
   const escolhidoSaiu = !!form.painel && !!opcoes.data && !ativos.some((p) => p.id === form.painel);
   const doPainel = (opcoes.data?.campos ?? []).filter((c) => c.painelId === painelId && c.ativo).sort((a, b) => a.ordem - b.ordem);
 
-  const valorDe = (chave: string) => (chave.startsWith('campo:') ? form.campos[chave.slice(6)] ?? '' : form[chave as CampoDoMapa]);
+  const valorDe = (chave: string) => (chave.startsWith('campo:') ? form.campos[chave.slice(6)] ?? '' : chave === 'mensagem' ? form.mensagem : form[chave as CampoDoMapa]);
   const mudar = (chave: string, v: string) => {
     setErro(null);
     setForm((f) => (chave.startsWith('campo:') ? { ...f, campos: { ...f.campos, [chave.slice(6)]: v } } : { ...f, [chave]: v }));
@@ -133,9 +137,20 @@ function EditorDoMapa({ tela }: { tela: RoboTela }) {
   const problemas: Array<[string, string]> = [];
   for (const l of [...PRINCIPAIS, ...MAIS]) { const p = problemaDoModelo(form[l.chave]); if (p) problemas.push([l.chave, p]); }
   for (const c of doPainel) { const p = problemaDoModelo(form.campos[c.id] ?? ''); if (p) problemas.push([`campo:${c.id}`, p]); }
+  const problemaDaMensagem = problemaDoModelo(form.mensagem);
+  if (problemaDaMensagem) problemas.push(['mensagem', problemaDaMensagem]);
   const problemaDe = (chave: string) => problemas.find(([k]) => k === chave)?.[1] ?? null;
-  const nomeDe = (chave: string) => (chave.startsWith('campo:') ? doPainel.find((c) => c.id === chave.slice(6))?.nome ?? 'um campo' : NOME_CAMPO_DO_MAPA[chave as CampoDoMapa]);
+  const nomeDe = (chave: string) => (chave.startsWith('campo:') ? doPainel.find((c) => c.id === chave.slice(6))?.nome ?? 'um campo'
+    : chave === 'mensagem' ? 'a Mensagem ao cliente' : NOME_CAMPO_DO_MAPA[chave as CampoDoMapa]);
   const previa = usePreviaDoRobo(problemas.length ? null : form, corpo);
+
+  // a mensagem e a resposta ao robô com este pedido: o número de um chamado novo ainda não existe (vai um de exemplo)
+  const sigla = ativos.find((p) => p.id === painelId)?.sigla ?? 'SUP';
+  const aberto = previa.previa?.aberto ?? null;
+  const codigoDoExemplo = aberto?.codigo ?? `${sigla}-12`;
+  const mensagem = preencherMensagem(form.mensagem, { codigo: codigoDoExemplo, contato: pedido.nome || null }, corpo);
+  const resposta: RespostaAoRobo | null = !previa.previa ? null
+    : aberto || previa.previa.resolvido.ok ? respostaAoRobo(form, { codigo: codigoDoExemplo, contato: pedido.nome || null }, corpo) : respostaDoRoboQueFalhou();
 
   const mudou = comparavel(form) !== comparavel(tela.mapa);
   const deFabrica = comparavel(form) === comparavel(mapaDeFabrica());
@@ -167,8 +182,10 @@ function EditorDoMapa({ tela }: { tela: RoboTela }) {
           cada pergunta do robô aparece com a pergunta ao lado. Se o robô mudar (ou for outro sistema), é só mudar o mapa.
         </p>
         <p className="text-[12.5px] text-muted">
-          {'{{a || b}}'} usa a segunda quando a primeira vier vazia; {'{{a || "texto"}}'} termina num texto fixo. O que vier e não bater (o
-          assunto que não existe, a opção que não é do campo) fica de fora, e o chamado abre do mesmo jeito.
+          A resposta de uma pergunta entra pelo texto dela — {'{{pergunta: o motivo do seu contato}}'}, {'{{menu: …}}'} nos menus —, que vale
+          também na cópia do robô (a de teste e a de produção têm os blocos com outros códigos). {'{{a || b || c}}'} usa a primeira que vier
+          com valor; {'{{a || "texto"}}'} termina num texto fixo. O que vier e não bater (o assunto que não existe, a opção que não é do campo)
+          fica de fora, e o chamado abre do mesmo jeito.
         </p>
       </Explicacao>
 
@@ -227,9 +244,16 @@ function EditorDoMapa({ tela }: { tela: RoboTela }) {
             })}
           </div>
         )}
+        <LinhaDoMapa chave="mensagem" rotulo="Mensagem ao cliente" linhas={2} exemplo={MENSAGEM_DO_ROBO_PADRAO}
+          dica={<>Volta na resposta ao robô (em "messages"), e o LineChat manda ao cliente. <span className="font-mono">{'{codigo}'}</span> é o número do
+            chamado; <span className="font-mono">{'{contato}'}</span>, o nome do contato; as variáveis do pedido também valem. Vazia, o robô segue sem mensagem.</>}
+          valor={form.mensagem} saida={mensagem.texto} faltaram={mensagem.faltaram} problema={problemaDe('mensagem')} sempreSaida
+          onChange={(v) => mudar('mensagem', v)} onVariavel={() => setEscolhendo({ chave: 'mensagem', rotulo: 'Mensagem ao cliente' })}
+          registrar={(el) => { elementos.current.mensagem = el; }} onFoco={() => tocados.current.add('mensagem')} />
       </div>
 
-      <ComoFica estado={previa} problema={problemas.length ? `Conserte ${nomeDe(problemas[0]![0])} para ver como fica: ${problemas[0]![1]}` : null} />
+      <ComoFica estado={previa} resposta={resposta} exemplo={!aberto}
+        problema={problemas.length ? `Conserte ${nomeDe(problemas[0]![0])} para ver como fica: ${problemas[0]![1]}` : null} />
 
       <div className="flex flex-wrap items-center gap-2 mt-3">
         <button type="button" className="btn-primary" id="robo-salvar" disabled={salvando || !mudou || problemas.length > 0} onClick={() => void salvar()}>
@@ -257,9 +281,9 @@ function EditorDoMapa({ tela }: { tela: RoboTela }) {
 //  AS PEÇAS
 // =====================================================================
 
-function LinhaDoMapa({ chave, rotulo, dica, linhas, exemplo, valor, saida, faltaram, problema, doPainel = false, onChange, onVariavel, registrar, onFoco }: {
+function LinhaDoMapa({ chave, rotulo, dica, linhas, exemplo, valor, saida, faltaram, problema, doPainel = false, sempreSaida = false, onChange, onVariavel, registrar, onFoco }: {
   chave: string; rotulo: string; dica: ReactNode; linhas?: number; exemplo: string; valor: string; saida: string; faltaram: string[]; problema: string | null;
-  doPainel?: boolean; onChange: (v: string) => void; onVariavel: () => void;
+  doPainel?: boolean; sempreSaida?: boolean; onChange: (v: string) => void; onVariavel: () => void;
   registrar: (el: HTMLInputElement | HTMLTextAreaElement | null) => void; onFoco: () => void;
 }) {
   const id = `robo-${chave.replace(':', '-')}`;
@@ -285,7 +309,7 @@ function LinhaDoMapa({ chave, rotulo, dica, linhas, exemplo, valor, saida, falta
         </div>
         {problema
           ? <p className="text-[12px] text-bad" role="alert">{problema}</p>
-          : valor.trim() && <Saida texto={saida} varias={!!linhas} faltaram={faltaram} />}
+          : (valor.trim() || sempreSaida) && <Saida texto={saida} varias={!!linhas} faltaram={faltaram} vazio={sempreSaida ? 'sem mensagem: o robô segue sem mandar nada' : undefined} />}
         <p className="text-[11.5px] text-muted">{dica}</p>
       </div>
     </div>
@@ -293,14 +317,14 @@ function LinhaDoMapa({ chave, rotulo, dica, linhas, exemplo, valor, saida, falta
 }
 
 /** O que sai deste campo com o pedido de exemplo. */
-function Saida({ texto, varias, faltaram }: { texto: string; varias: boolean; faltaram: string[] }) {
+function Saida({ texto, varias, faltaram, vazio = 'fica vazio com este pedido' }: { texto: string; varias: boolean; faltaram: string[]; vazio?: string }) {
   return (
     <div className="text-[12.5px] flex flex-col gap-0.5 min-w-0">
       <div className="flex items-start gap-1.5 min-w-0">
         <span className="text-muted shrink-0" aria-hidden>→</span>
         {texto
           ? <span className={`text-ink-2 min-w-0 break-words ${varias ? 'whitespace-pre-wrap line-clamp-3' : ''}`}>{texto}</span>
-          : <span className="text-muted italic">fica vazio com este pedido</span>}
+          : <span className="text-muted italic">{vazio}</span>}
       </div>
       {faltaram.length > 0 && (
         <span className="text-signal break-words">Não veio neste pedido: {faltaram.map((c) => `{{${c}}}`).join(', ')}. Confira o nome na lista de variáveis.</span>
@@ -327,6 +351,13 @@ function SobreOUltimo({ ultimo }: { ultimo: UltimoPedidoDoRobo | null }) {
           <ul className="list-disc pl-5">{r.ignorados.map((x) => <li key={x} className="break-words">{x}</li>)}</ul>
         </div>
       )}
+      {(r.faltaram ?? []).length > 0 && (
+        <div className="text-signal" id="robo-ultimo-faltaram">
+          Não vieram neste pedido (o campo ficou vazio):
+          <ul className="list-disc pl-5">{(r.faltaram ?? []).map((x) => <li key={x} className="break-words font-mono text-[12px]">{x}</li>)}</ul>
+          <span className="text-muted">É outra cópia do robô? A pergunta pelo texto ({'{{pergunta: …}}'}) vale nas duas.</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -351,7 +382,7 @@ function usePreviaDoRobo(mapa: MapaDoRobo | null, corpo: unknown): EstadoDaPrevi
   return estado;
 }
 
-function ComoFica({ estado, problema }: { estado: EstadoDaPrevia; problema: string | null }) {
+function ComoFica({ estado, problema, resposta, exemplo }: { estado: EstadoDaPrevia; problema: string | null; resposta: RespostaAoRobo | null; exemplo: boolean }) {
   return (
     <section className="rounded-xl border border-line bg-surface-2 p-3 sm:p-4 mt-3 min-w-0" id="robo-como-fica" aria-live="polite">
       <div className="flex items-center gap-2 mb-2">
@@ -363,6 +394,16 @@ function ComoFica({ estado, problema }: { estado: EstadoDaPrevia; problema: stri
         : estado.erro ? <p className="text-[13px] text-bad">{estado.erro}</p>
           : estado.previa ? <ChamadoDaPrevia previa={estado.previa} />
             : <p className="text-[13px] text-muted">Montando…</p>}
+      {!problema && !estado.erro && resposta && (
+        <div className="mt-3 flex flex-col gap-1 min-w-0" id="robo-resposta">
+          <span className="text-[12.5px] font-semibold text-ink-2">
+            A resposta ao robô (HTTP 200){resposta.response === 'CHAMADO_ABERTO' && exemplo ? ' — o número é um exemplo' : ''}
+          </span>
+          <pre className="font-mono text-[12px] leading-relaxed text-ink bg-surface border border-line rounded-lg p-2.5 overflow-x-auto whitespace-pre-wrap break-words">
+            {JSON.stringify(resposta, null, 2)}
+          </pre>
+        </div>
+      )}
     </section>
   );
 }
@@ -428,7 +469,10 @@ function EscolherVariavel({ rotulo, variaveis, fonte, onEscolher, onFechar }: {
       <div className="flex flex-col gap-3" id="robo-variaveis">
         <div className="sticky -top-4 z-10 bg-surface pt-1 pb-2 -mt-1 flex flex-col gap-1">
           <input className="input" id="robo-variaveis-busca" autoFocus placeholder="Procurar: a pergunta, o valor ou o caminho" value={busca} onChange={(e) => setBusca(e.target.value)} />
-          <p className="text-[12px] text-muted">As variáveis {deOnde}, com o valor que veio nele. O caminho que não está aqui também vale: escreva {'{{caminho}}'} no campo.</p>
+          <p className="text-[12px] text-muted">
+            As variáveis {deOnde}, com o valor que veio nele. A resposta de pergunta e de menu entra pelo texto da pergunta (vale nas cópias do
+            robô); o código do bloco fica embaixo. O caminho que não está aqui também vale: escreva {'{{caminho}}'} no campo.
+          </p>
         </div>
         {!achadas.length && <p className="text-[13px] text-muted">{variaveis.length ? 'Nada com esse texto.' : 'Este pedido não tem nenhuma variável.'}</p>}
         {GRUPOS_DAS_VARIAVEIS.map((g) => {
@@ -439,12 +483,18 @@ function EscolherVariavel({ rotulo, variaveis, fonte, onEscolher, onFechar }: {
               <h4 className="text-[11.5px] font-semibold uppercase tracking-wide text-muted">{NOME_GRUPO_DA_VARIAVEL[g]}</h4>
               <ul className="flex flex-col gap-1">
                 {doGrupo.map((v) => (
-                  <li key={v.caminho}>
-                    <button type="button" onClick={() => onEscolher(v.caminho)} className="w-full text-left rounded-lg border border-line px-3 py-2 hover:border-accent hover:bg-accent-soft min-w-0 flex flex-col gap-0.5">
+                  <li key={v.caminho} className="rounded-lg border border-line hover:border-accent min-w-0 overflow-hidden">
+                    <button type="button" onClick={() => onEscolher(v.porTexto ?? v.caminho)} className="w-full text-left px-3 py-2 hover:bg-accent-soft min-w-0 flex flex-col gap-0.5"
+                      title={v.porTexto ? 'Põe a resposta pelo texto da pergunta (vale nas cópias do robô)' : undefined}>
                       {v.dica && <span className="text-[13px] font-medium text-ink break-words">{v.dica}</span>}
-                      <span className="font-mono text-[12px] text-accent-ink break-all">{`{{${v.caminho}}}`}</span>
+                      <span className="font-mono text-[12px] text-accent-ink break-all">{v.porTexto ? `{{${v.porTexto.replace(/^(pergunta|menu): (.{60}).+$/s, '$1: $2…')}}}` : `{{${v.caminho}}}`}</span>
                       <span className="text-[12.5px] text-muted break-words">{v.vazio ? <i>vazio neste pedido</i> : <>→ {v.valor}</>}</span>
                     </button>
+                    {v.porTexto && (
+                      <button type="button" onClick={() => onEscolher(v.caminho)} className="w-full text-left px-3 py-1.5 border-t border-line text-[12px] text-muted hover:bg-surface-2 hover:text-ink min-w-0 break-all">
+                        ou pelo código do bloco: <span className="font-mono">{`{{${v.caminho}}}`}</span>
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>

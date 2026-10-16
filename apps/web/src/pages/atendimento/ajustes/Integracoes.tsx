@@ -21,7 +21,7 @@ import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AppWindow, Bot, Check, Copy, KeyRound, Link2, MousePointerClick, Pencil, Plus, Send, Trash2, TriangleAlert, Webhook, X } from 'lucide-react';
 import {
-  EVENTOS_WEBHOOK, linkDaConversa, NOME_EVENTO_WEBHOOK,
+  EVENTOS_WEBHOOK, linkDaConversa, MENSAGEM_DO_ROBO_PADRAO, NOME_EVENTO_WEBHOOK, respostaAoRobo, respostaDoRoboQueFalhou,
   type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type WebhookGravarEntrada, type WebhookTela,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -172,7 +172,8 @@ function CartaoRobo({ base, paineis }: { base: string; paineis: Array<{ sigla: s
   const endereco = `${base}/api/atendimento/entrada/robo`;
   const doGestor = `${base}/api/atendimento/entrada/chamado`;
   const sigla = paineis[0]?.sigla ?? 'SUP';
-  const resposta = JSON.stringify({ criado: true, id: '…', codigo: `${sigla}-12`, numero: 12, link: `${base}/atendimento/${sigla}-12`, ignorados: [] }, null, 2);
+  const abriu = JSON.stringify(respostaAoRobo({ mensagem: MENSAGEM_DO_ROBO_PADRAO }, { codigo: `${sigla}-12` }, {}), null, 2);
+  const falhou = JSON.stringify(respostaDoRoboQueFalhou());
   const exemplo = JSON.stringify({
     painel: sigla, titulo: 'Ramal 204 sem áudio', relato: 'O ramal 204 está sem áudio desde cedo', telefone: '(71) 99999-0000', nome: 'Maria Souza',
     sessaoId: '5f0c2a8e-…', etiquetas: ['n8n'],
@@ -183,28 +184,36 @@ function CartaoRobo({ base, paineis }: { base: string; paineis: Array<{ sigla: s
         <p>
           No robô do LineChat, um bloco <b>Webhook</b> manda o JSON da conversa para o endereço abaixo, do jeito que ele já manda: não precisa
           montar nada no robô. O <b>mapa do robô</b>, logo abaixo, diz de onde sai cada campo do chamado. A mesma conversa aberta não vira dois
-          chamados: o relato novo entra como anotação no que já existe. A resposta traz o código (<span className="font-mono">{sigla}-12</span>),
-          para o robô mandar ao cliente.
+          chamados: o relato novo entra como anotação no que já existe. A resposta já traz a mensagem ao cliente, com o número do chamado
+          (<span className="font-mono">{sigla}-12</span>).
         </p>
       </Explicacao>
 
       <Rotulo>O endereço (POST)</Rotulo>
       <Copiavel texto={endereco} rotulo="o endereço do robô" id="integ-robo-endereco" />
 
-      <Rotulo>A chave (crie uma em Chaves de API, mais abaixo), de um destes jeitos</Rotulo>
+      <Rotulo>A chave (crie uma em Chaves de API, mais abaixo)</Rotulo>
       <div className="flex flex-col gap-1.5">
-        <div className="text-[12.5px] text-muted">no cabeçalho (o melhor):</div>
+        <div className="text-[12.5px] text-muted">
+          no LineChat, no fim do endereço (o bloco não aceita cabeçalho). O Gestor guarda só o nome da chave: ela não vai para o último pedido, nem
+          para a auditoria, nem para o registro do servidor.
+        </div>
+        <Copiavel texto={`${endereco}?chave=<chave>`} rotulo="o endereço com a chave" id="integ-robo-endereco-chave" />
+        <div className="text-[12.5px] text-muted mt-1">outro sistema que aceita cabeçalho pode mandar assim:</div>
         <Copiavel texto="Authorization: Bearer <chave>" rotulo="o cabeçalho" />
-        <div className="text-[12.5px] text-muted mt-1">ou no fim do endereço, quando o bloco do robô não aceitar cabeçalho (o endereço com a chave pode ficar guardado em registro: prefira o cabeçalho):</div>
-        <Copiavel texto={`${endereco}?chave=<chave>`} rotulo="o endereço com a chave" />
       </div>
 
-      <Rotulo>A resposta</Rotulo>
-      <BlocoDeCodigo texto={resposta} rotulo="o exemplo da resposta" />
+      <Rotulo>A resposta (sempre HTTP 200, no formato do bloco "Enviar webhook")</Rotulo>
+      <div className="flex flex-col gap-1.5" id="integ-robo-resposta">
+        <div className="text-[12.5px] text-muted">abriu (ou a conversa já tinha chamado aberto: vai o número dele):</div>
+        <BlocoDeCodigo texto={abriu} rotulo="a resposta de quando abre" />
+        <div className="text-[12.5px] text-muted mt-1">não deu para abrir (o porquê fica no último pedido, no mapa abaixo):</div>
+        <BlocoDeCodigo texto={falhou} rotulo="a resposta de quando falha" />
+      </div>
       <p className="text-[12.5px] text-muted mt-1.5">
-        <span className="font-mono">"criado": false</span> quando a conversa já tinha um chamado aberto (o código é o dele).{' '}
-        <span className="font-mono">"ignorados"</span>: o que veio no pedido e ficou de fora (o assunto que não existe, a opção que não é do campo) — o
-        chamado abre do mesmo jeito. Para o cliente, o robô manda o <span className="font-mono">codigo</span>: "Seu chamado é o {sigla}-12".
+        No bloco, crie as duas respostas, <span className="font-mono">CHAMADO_ABERTO</span> e <span className="font-mono">CHAMADO_FALHOU</span>, cada
+        uma com a saída dela. A mensagem do <span className="font-mono">CHAMADO_ABERTO</span> muda no mapa do robô (Mensagem ao cliente). A chave
+        errada (ou revogada) responde 401: o bloco segue pela saída de falha dele.
       </p>
 
       <details className="text-sm mt-3" id="integ-robo-gestor">

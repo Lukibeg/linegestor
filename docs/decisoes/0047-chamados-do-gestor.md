@@ -282,3 +282,25 @@ Com o 2.0 no ar, o Luan passou pelas telas e pediu cinco mudanças:
   também pelo **de-para** (vale para o n8n também: a resposta do menu vira assunto pelo nome que a
   equipe põe no de-para). A entrada no formato do Gestor (`/entrada/chamado`) fica para o n8n e outros
   sistemas, rígida como era, e ganhou a descrição. As regras moram em `@gestor/shared` (`robo.ts`).
+
+  Ajustado no mesmo dia, pelo que o Luan viu no bloco "Enviar webhook" do LineChat:
+  - **A resposta é a do bloco**: sempre HTTP 200 (ele conta o 201 como falha), com
+    `{"response":"CHAMADO_ABERTO","messages":[{"text":"Seu chamado foi registrado com o número *SUP-1*. Guarde este número caso precise falar sobre ele depois."}]}`
+    — também quando a conversa já tinha chamado aberto (vai o número dele) — ou
+    `{"response":"CHAMADO_FALHOU"}`, quando não deu para abrir (o erro fica no último pedido e no
+    registro do servidor). A mensagem é do mapa ("Mensagem ao cliente": `{codigo}`, `{contato}` e as
+    variáveis do pedido); a de fábrica é o texto dele. A chave errada continua **401**: não é o robô
+    falando, e o erro aparece logo no teste do bloco.
+  - **A chave vai no endereço** (`?chave=`: o bloco não aceita cabeçalho). Ela já ficava fora do
+    registro do sistema (o `req` do log troca a chave por "…"), da auditoria e do último pedido (só o
+    nome da chave); faltava o **Caddy**, que escrevia o endereço inteiro no registro de acesso e no de
+    erros. O `Caddyfile` ganhou o filtro (`request>uri query { replace chave REDACTED }`, no registro de
+    acesso e no padrão) — por isso o 2.0.1 pede o Caddy recriado na subida, e a chave usada nos testes
+    de antes deve ser trocada (revogar e criar outra).
+  - **A pergunta pelo texto**: `{{pergunta: …}}` (e `{{menu: …}}`) acha a resposta pelo texto da
+    pergunta — igual, sem ligar para acento, maiúscula e pontuação, ou o único texto que contém o pedaço.
+    O código do bloco muda de uma cópia do robô para outra (a de teste e a de produção); o texto não. A
+    lista de variáveis põe pelo texto quando ele é único no pedido (pelo código continua dando). E a
+    variável que não veio (o código de outra cópia) é contada no último pedido e na auditoria
+    ("faltaram"), não só na tela.
+  - `{{a || b || c || d}}`: quantas alternativas quiser (já era assim; ficou no teste e na tela).

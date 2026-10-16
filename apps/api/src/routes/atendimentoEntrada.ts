@@ -10,13 +10,16 @@
  * A auditoria registra o nome da chave (não há pessoa: o usuário fica vazio).
  *
  * O robô do LineChat chama `/entrada/robo` com o JSON dele, do jeito que o bloco Webhook manda (2.0.1):
- * o mapa (Chamados › Ajustes › Integrações) diz de onde vem cada campo. A `/entrada/chamado` recebe o
- * formato do Gestor (o n8n, outros sistemas).
+ * o mapa (Chamados › Ajustes › Integrações) diz de onde vem cada campo. A resposta é a que o bloco
+ * "Enviar webhook" entende: sempre 200 (ele conta o 201 como falha), com `{"response":"CHAMADO_ABERTO",
+ * "messages":[{"text":…}]}` ou `{"response":"CHAMADO_FALHOU"}`. A chave errada continua 401: não é o
+ * robô falando. A `/entrada/chamado` recebe o formato do Gestor (o n8n, outros sistemas).
  */
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { EntradaChamadoSchema, IntegracaoAlterarSchema } from '@gestor/shared';
+import { EntradaChamadoSchema, IntegracaoAlterarSchema, respostaDoRoboQueFalhou } from '@gestor/shared';
+import { AppError } from '../plugins/errors.js';
 import type { Ator } from '../services/atendimento/contexto.js';
 import * as entrada from '../services/atendimento/entrada.js';
 
@@ -50,20 +53,31 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     bodyLimit: 512 * 1024,
     schema: {
       tags, querystring: ChaveNoEndereco, body: z.unknown(),
-      summary: 'Abrir um chamado pelo robô do LineChat, com o JSON que o bloco Webhook manda: o mapa (Chamados › Ajustes › Integrações) diz de onde vem cada campo. O que não bate fica de fora e volta em "ignorados"; a mesma conversa aberta não abre outro (o relato vira anotação nele)',
+      summary: 'Abrir um chamado pelo robô do LineChat, com o JSON que o bloco Webhook manda: o mapa (Chamados › Ajustes › Integrações) diz de onde vem cada campo, e o que não bate fica de fora (a auditoria e o último pedido dizem o quê). A mesma conversa aberta não abre outro (o relato vira anotação nele). Responde sempre 200, no formato do bloco "Enviar webhook": {"response":"CHAMADO_ABERTO","messages":[{"text":"…"}]} ou {"response":"CHAMADO_FALHOU"}',
     },
   }, async (req, reply) => {
-    const r = await entrada.abrirPeloRobo(app, ator(req), req.body);
+    let r: entrada.ResultadoDoRobo;
+    try {
+      r = await entrada.abrirPeloRobo(app, ator(req), req.body);
+    } catch (e) {
+      // o bloco do LineChat só segue com 200: o "response" é que diz que falhou. O porquê fica no último
+      // pedido (a tela do mapa mostra) e no registro do servidor — sem a chave
+      const esperado = e instanceof AppError && e.status < 500;
+      req.log[esperado ? 'warn' : 'error']({ err: e }, 'o robô do LineChat não abriu o chamado');
+      return reply.status(200).send(respostaDoRoboQueFalhou());
+    }
+    const fora = r.ignorados.length + r.faltaram.length;
+    const detalhes = fora ? { ...(r.ignorados.length ? { ignorados: r.ignorados } : {}), ...(r.faltaram.length ? { faltaram: r.faltaram } : {}) } : undefined;
     if (r.criado) {
       await app.audit(req, {
         action: 'create', entityType: 'ticket', entityId: r.id,
-        summary: `${quem(req)} abriu ${r.codigo} "${r.titulo}" pelo mapa do robô${r.ignorados.length ? ` (${r.ignorados.length === 1 ? 'ficou 1 coisa de fora' : `ficaram ${r.ignorados.length} coisas de fora`})` : ''}`,
-        after: r.ignorados.length ? { ignorados: r.ignorados } : undefined,
+        summary: `${quem(req)} abriu ${r.codigo} "${r.titulo}" pelo mapa do robô${r.ignorados.length ? ` (${r.ignorados.length === 1 ? 'ficou 1 coisa de fora' : `ficaram ${r.ignorados.length} coisas de fora`})` : ''}${r.faltaram.length ? ` (${r.faltaram.length === 1 ? '1 variável do mapa não veio' : `${r.faltaram.length} variáveis do mapa não vieram`})` : ''}`,
+        after: detalhes,
       });
     } else if (r.anotou) {
       await app.audit(req, { action: 'update', entityType: 'ticket', entityId: r.id, summary: `${quem(req)} anotou em ${r.codigo} o relato novo da mesma conversa` });
     }
-    return reply.status(r.criado ? 201 : 200).send({ criado: r.criado, id: r.id, codigo: r.codigo, numero: r.numero, link: r.link, ignorados: r.ignorados });
+    return reply.status(200).send(r.resposta);
   });
 
   // ---------- no formato do Gestor (o n8n, outros sistemas) ----------

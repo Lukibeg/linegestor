@@ -10,7 +10,10 @@
  *
  *  - a variável é o caminho no JSON, com ponto: `contact.name`, `questions.<id>.answer`,
  *    `lastMessagesAggregated.files.0.url` (o número é a posição na lista, a partir do 0);
- *  - `{{a || b}}` usa a primeira que vier com valor; `{{a || "texto"}}` termina num texto fixo;
+ *  - ou a pergunta pelo texto: `{{pergunta: o motivo do seu contato}}` (`{{menu: …}}` nos menus) — o
+ *    código do bloco muda de uma cópia do robô para outra (a de teste e a de produção), o texto não;
+ *  - `{{a || b || c}}` usa a primeira que vier com valor (quantas quiser); `{{a || "texto"}}` termina
+ *    num texto fixo;
  *  - o campo cujas variáveis vieram todas vazias fica vazio: o título "Atendimento de " não nasce;
  *  - o pedido em lista (`[{…}]`, como o LineChat manda) vale pelo primeiro item.
  *
@@ -18,6 +21,10 @@
  * os campos, os clientes): o servidor abre com ele, e a tela mostra "Como fica" com o mesmo resultado.
  * É leniente: o que não bate (o assunto que não existe, a opção que não é do campo, o telefone que não
  * é número) fica de fora e volta escrito em `ignorados` — o pedido do cliente não se perde por isso.
+ *
+ * A resposta ao robô (`respostaAoRobo`) é a que o bloco "Enviar webhook" do LineChat entende: sempre
+ * 200 (o 201 ele conta como falha), com o "response" que escolhe a saída do bloco — CHAMADO_ABERTO,
+ * com a mensagem ao cliente em "messages", ou CHAMADO_FALHOU.
  */
 import { z } from 'zod';
 import { numeroWhatsApp, paraBusca } from './formatos.js';
@@ -34,6 +41,11 @@ import {
 /** Uma variável no texto: {{caminho}}, {{ caminho }}, {{a || b}}. */
 const VARIAVEL = /\{\{([^{}]*)\}\}/g;
 
+/** Sem acento, maiúscula, pontuação nem emoji: "☎️ LinePBX: Plataforma" = "linepbx plataforma". */
+const limpo = (s: string | null | undefined) => paraBusca(s).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+/** A palavra (ou as palavras) inteira dentro do texto: "linepbx" está em "linepbx plataforma de voz", "line" não. */
+const aparece = (nome: string, texto: string) => !!nome && ` ${texto} `.includes(` ${nome} `);
+
 /** O que está errado num texto do mapa (a tela diz perto do campo); null = está bom. */
 export function problemaDoModelo(texto: string): string | null {
   const variaveis = [...texto.matchAll(VARIAVEL)];
@@ -44,28 +56,33 @@ export function problemaDoModelo(texto: string): string | null {
   return null;
 }
 
-const Modelo = (max: number) => z.string().max(max, `Vai até ${max} letras.`)
+const Modelo = (max: number, padrao = '') => z.string().max(max, `Vai até ${max} letras.`)
   .superRefine((s, ctx) => { const p = problemaDoModelo(s); if (p) ctx.addIssue({ code: z.ZodIssueCode.custom, message: p }); })
-  .default('');
+  .default(padrao);
+
+/** A mensagem de fábrica que volta ao cliente (o texto do Luan, 16/10/2026): {codigo} é o número do chamado. */
+export const MENSAGEM_DO_ROBO_PADRAO = 'Seu chamado foi registrado com o número *{codigo}*. Guarde este número caso precise falar sobre ele depois.';
 
 /** O mapa: de onde vem cada campo do chamado. Vazio = o campo não vem do robô. */
 export const MapaDoRoboSchema = z.object({
   /** o painel em que o chamado nasce (o id); vazio = o primeiro ativo (o Suporte) */
   painel: z.string().trim().max(60).default(''),
-  titulo: Modelo(400),
-  relato: Modelo(2_000),
-  telefone: Modelo(300),
-  nome: Modelo(300),
-  sessaoId: Modelo(300),
-  etiquetas: Modelo(600),
-  descricao: Modelo(2_000),
-  cliente: Modelo(300),
-  assunto: Modelo(300),
-  prioridade: Modelo(300),
+  titulo: Modelo(1_000),
+  relato: Modelo(4_000),
+  telefone: Modelo(1_000),
+  nome: Modelo(1_000),
+  sessaoId: Modelo(1_000),
+  etiquetas: Modelo(1_000),
+  descricao: Modelo(4_000),
+  cliente: Modelo(1_000),
+  assunto: Modelo(1_000),
+  prioridade: Modelo(1_000),
   /** os campos do painel: o texto de cada um, pelo id do campo */
-  campos: z.record(z.string().trim().min(1).max(60), Modelo(1_000))
+  campos: z.record(z.string().trim().min(1).max(60), Modelo(2_000))
     .refine((r) => Object.keys(r).length <= 60, 'Campos demais no mapa.')
     .default({}),
+  /** a mensagem que volta ao cliente na resposta ao robô ({codigo} e as variáveis do pedido); vazia, não vai mensagem */
+  mensagem: Modelo(2_000, MENSAGEM_DO_ROBO_PADRAO),
 });
 export type MapaDoRobo = z.infer<typeof MapaDoRoboSchema>;
 export type MapaDoRoboEntrada = z.input<typeof MapaDoRoboSchema>;
@@ -101,6 +118,7 @@ export const MAPA_DO_ROBO_PADRAO: Readonly<MapaDoRobo> = Object.freeze({
   assunto: '',
   prioridade: '',
   campos: Object.freeze({}) as Record<string, string>,
+  mensagem: MENSAGEM_DO_ROBO_PADRAO,
 });
 /** Uma cópia do de fábrica, para mexer. */
 export const mapaDeFabrica = (): MapaDoRobo => ({ ...MAPA_DO_ROBO_PADRAO, campos: {} });
@@ -138,6 +156,29 @@ export function valorNoCaminho(corpo: unknown, caminho: string): unknown {
   return atual;
 }
 
+/** A pergunta (ou o menu) pelo texto: "pergunta: o motivo do seu contato", "menu: …". */
+const POR_TEXTO = /^(pergunta|menu)\s*:\s*([\s\S]*)$/i;
+
+/**
+ * O valor de uma referência do mapa: o caminho no JSON ("contact.name") ou a pergunta pelo texto
+ * ("pergunta: Por favor nos informe brevemente o motivo do seu contato"; "menu: …" para os menus). Pelo
+ * texto, o mapa vale para outra cópia do robô — a de teste e a de produção têm os blocos com outros
+ * códigos e as mesmas perguntas: acha a pergunta de texto igual (sem ligar para acento, maiúscula e
+ * pontuação) ou, sem ela, a única que contém o texto. `undefined` = não veio no pedido.
+ */
+export function valorDaReferencia(corpo: unknown, referencia: string): unknown {
+  const m = POR_TEXTO.exec(referencia.trim());
+  if (!m) return valorNoCaminho(corpo, referencia);
+  const blocos = valorNoCaminho(corpo, paraBusca(m[1]) === 'menu' ? 'menus' : 'questions');
+  const alvo = limpo(m[2]);
+  if (!alvo || blocos === null || typeof blocos !== 'object' || Array.isArray(blocos)) return undefined;
+  const perguntas = Object.values(blocos as Record<string, unknown>)
+    .filter((b): b is Record<string, unknown> => b !== null && typeof b === 'object' && !Array.isArray(b) && typeof (b as Record<string, unknown>).text === 'string');
+  const iguais = perguntas.filter((b) => limpo(b.text as string) === alvo);
+  const achadas = iguais.length ? iguais : perguntas.filter((b) => aparece(alvo, limpo(b.text as string)));
+  return achadas.length === 1 ? (achadas[0]!.answer ?? null) : undefined;
+}
+
 /** O valor como texto: a lista de textos vira "a, b"; o objeto, JSON; o nulo, vazio. */
 export function textoDoPedido(v: unknown): string {
   if (v === null || v === undefined) return '';
@@ -156,10 +197,11 @@ export type Preenchido = {
 };
 
 /**
- * Troca as variáveis pelo valor do pedido. `{{a || b}}`: a primeira com valor; `"texto"` (ou 'texto')
- * no lugar de um caminho é texto fixo. O texto cujas variáveis vieram todas vazias fica vazio.
+ * Troca as variáveis pelo valor do pedido. `{{a || b || c}}`: a primeira com valor; `"texto"` (ou
+ * 'texto') no lugar de um caminho é texto fixo. O texto cujas variáveis vieram todas vazias fica vazio
+ * (menos com `vazioSeTudoVazio: false`: a mensagem ao cliente não some por faltar o primeiro nome).
  */
-export function preencherDoPedido(modelo: string, corpo: unknown): Preenchido {
+export function preencherDoPedido(modelo: string, corpo: unknown, opcoes: { vazioSeTudoVazio?: boolean } = {}): Preenchido {
   const faltaram: string[] = [];
   let variaveis = 0;
   let comValor = 0;
@@ -170,8 +212,8 @@ export function preencherDoPedido(modelo: string, corpo: unknown): Preenchido {
       const opcao = bruto.trim();
       const fixo = /^(["'])([\s\S]*)\1$/.exec(opcao);
       const valor = fixo ? fixo[2]!.trim() : (() => {
-        const v = valorNoCaminho(corpo, opcao);
-        if (v === undefined) ausentes.push(opcao);
+        const v = valorDaReferencia(corpo, opcao);
+        if (v === undefined) ausentes.push(opcao.replace(/\s+/g, ' '));
         return textoDoPedido(v).trim();
       })();
       if (valor) { comValor++; return valor; }
@@ -179,7 +221,7 @@ export function preencherDoPedido(modelo: string, corpo: unknown): Preenchido {
     for (const a of ausentes) if (a && !faltaram.includes(a)) faltaram.push(a);
     return '';
   });
-  return { texto: variaveis > 0 && comValor === 0 ? '' : texto, faltaram };
+  return { texto: (opcoes.vazioSeTudoVazio ?? true) && variaveis > 0 && comValor === 0 ? '' : texto, faltaram };
 }
 
 const cortar = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
@@ -231,6 +273,11 @@ const GRUPO_DA_CHAVE: Record<string, GrupoDaVariavel> = {
 
 export type VariavelDoPedido = {
   caminho: string;
+  /**
+   * a mesma resposta pela pergunta ("pergunta: o motivo do seu contato"): só na resposta de pergunta ou
+   * de menu cujo texto aparece uma vez só no pedido (o texto repetido não diria qual)
+   */
+  porTexto: string | null;
   /** o valor neste pedido, como texto (cortado, para mostrar) */
   valor: string;
   vazio: boolean;
@@ -248,7 +295,29 @@ const chaveEscrevivel = (k: string) => !!k && k === k.trim() && !/[.{}|]/.test(k
  * nada a ninguém. As perguntas e os menus vêm primeiro.
  */
 export function variaveisDoPedido(corpoBruto: unknown, limite = 400): VariavelDoPedido[] {
+  const corpo = corpoDoPedido(corpoBruto);
   const lista: VariavelDoPedido[] = [];
+  // os textos de pergunta (e de menu) que aparecem uma vez só: só eles acham a resposta pelo texto
+  const unicos = new Map<string, Set<string>>();
+  for (const grupo of ['questions', 'menus']) {
+    const contagem = new Map<string, number>();
+    const blocos = corpo[grupo];
+    if (blocos !== null && typeof blocos === 'object' && !Array.isArray(blocos)) {
+      for (const b of Object.values(blocos as Record<string, unknown>)) {
+        const t = b !== null && typeof b === 'object' ? (b as Record<string, unknown>).text : null;
+        if (typeof t === 'string' && limpo(t)) contagem.set(limpo(t), (contagem.get(limpo(t)) ?? 0) + 1);
+      }
+    }
+    unicos.set(grupo, new Set([...contagem].filter(([, n]) => n === 1).map(([t]) => t)));
+  }
+  const pelaPergunta = (caminho: string[], pergunta: string | null): string | null => {
+    const [grupo, , chave] = caminho;
+    if (caminho.length !== 3 || chave !== 'answer' || pergunta === null || (grupo !== 'questions' && grupo !== 'menus')) return null;
+    if (!unicos.get(grupo)!.has(limpo(pergunta))) return null;
+    // as chaves e a barra não entram (são do jeito de escrever as variáveis); para achar, não fazem falta
+    const texto = pergunta.replace(/[{}|]/g, ' ').replace(/\s+/g, ' ').trim();
+    return texto ? `${grupo === 'menus' ? 'menu' : 'pergunta'}: ${texto}` : null;
+  };
   const visitar = (v: unknown, caminho: string[], dica: string | null) => {
     if (lista.length >= limite || caminho.length > 8) return;
     if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
@@ -269,11 +338,11 @@ export function variaveisDoPedido(corpoBruto: unknown, limite = 400): VariavelDo
     if (!caminho.length || (Array.isArray(v) && !v.length)) return;
     const texto = textoDoPedido(v).replace(/\s+/g, ' ').trim();
     lista.push({
-      caminho: caminho.join('.'), valor: cortar(texto, 160), vazio: !texto,
+      caminho: caminho.join('.'), porTexto: pelaPergunta(caminho, dica), valor: cortar(texto, 160), vazio: !texto,
       dica: dica ? cortar(dica.replace(/\s+/g, ' ').trim(), 160) : null, grupo: GRUPO_DA_CHAVE[caminho[0]!] ?? 'outras',
     });
   };
-  visitar(corpoDoPedido(corpoBruto), [], null);
+  visitar(corpo, [], null);
   const ordem = (g: GrupoDaVariavel) => GRUPOS_DAS_VARIAVEIS.indexOf(g);
   return lista.map((x, i) => ({ x, i })).sort((a, b) => ordem(a.x.grupo) - ordem(b.x.grupo) || a.i - b.i).map(({ x }) => x);
 }
@@ -293,11 +362,6 @@ export function apararPedido(v: unknown, nivel = 0): unknown {
 // =====================================================================
 //  O CHAMADO QUE NASCE (o servidor abre com ele; a tela mostra "Como fica")
 // =====================================================================
-
-/** Sem acento, maiúscula, pontuação nem emoji: "☎️ LinePBX: Plataforma" = "linepbx plataforma". */
-const limpo = (s: string | null | undefined) => paraBusca(s).replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-/** A palavra (ou as palavras) inteira dentro do texto: "linepbx" está em "linepbx plataforma de voz", "line" não. */
-const aparece = (nome: string, texto: string) => !!nome && ` ${texto} `.includes(` ${nome} `);
 
 export type ClienteParaAchar = { id: string; nome: string; razao?: string | null; cnpj?: string | null };
 
@@ -477,17 +541,64 @@ export function resolverPedidoDoRobo(p: PedidoDoRobo, g: DadosParaORobo): Resolv
 }
 
 // =====================================================================
+//  A RESPOSTA AO ROBÔ
+// =====================================================================
+
+/**
+ * A mensagem que volta ao cliente: {codigo} (o número do chamado), {contato} (o nome do contato) e as
+ * variáveis do pedido entre {{ }} — aqui sem a regra do "tudo vazio": a mensagem não some por faltar o
+ * primeiro nome. O que sobra de uma variável vazia ("Olá, !") é arrumado.
+ */
+export function preencherMensagem(modelo: string, valores: { codigo: string; contato?: string | null }, corpo: unknown): Preenchido {
+  // {{codigo}} e {{contato}} (com as duas chaves, como as variáveis do pedido) também valem
+  const marcadores = modelo.replace(/\{\{\s*(codigo|contato)\s*\}\}/gi, (_t, k: string) => `{${k.toLowerCase()}}`);
+  const r = preencherDoPedido(marcadores, corpoDoPedido(corpo), { vazioSeTudoVazio: false });
+  const texto = r.texto
+    .replace(/\{codigo\}/g, valores.codigo)
+    .replace(/\{contato\}/g, valores.contato?.trim() ?? '')
+    .replace(/,\s*!/g, '!').replace(/\(\s*\)/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ +([,.!?:;])/g, '$1')
+    .trim();
+  return { texto, faltaram: r.faltaram };
+}
+export const mensagemAoRobo = (modelo: string, valores: { codigo: string; contato?: string | null }, corpo: unknown): string =>
+  preencherMensagem(modelo, valores, corpo).texto;
+
+/**
+ * O que volta ao bloco "Enviar webhook" do LineChat — sempre com HTTP 200 (ele conta o 201 como falha).
+ * O "response" escolhe a saída do bloco: CHAMADO_ABERTO (também quando a conversa já tinha chamado
+ * aberto), com a mensagem ao cliente em "messages"; ou CHAMADO_FALHOU, quando não deu para abrir.
+ */
+export type RespostaAoRobo = { response: 'CHAMADO_ABERTO'; messages: Array<{ text: string }> } | { response: 'CHAMADO_FALHOU' };
+export const respostaDoRoboQueFalhou = (): RespostaAoRobo => ({ response: 'CHAMADO_FALHOU' });
+export function respostaAoRobo(mapa: Pick<MapaDoRobo, 'mensagem'>, chamado: { codigo: string; contato?: string | null }, corpo: unknown): RespostaAoRobo {
+  const texto = mensagemAoRobo(mapa.mensagem ?? '', chamado, corpo);
+  return { response: 'CHAMADO_ABERTO', messages: texto ? [{ text: texto }] : [] };
+}
+
+/** O que não veio no pedido, para o último pedido e a auditoria: "Cliente: {{pergunta: …}}". */
+export function oQueNaoVeio(faltaram: Record<string, string[]>, campos: ReadonlyArray<Pick<CampoPersonalizado, 'id' | 'nome'>>): string[] {
+  return Object.entries(faltaram).map(([chave, refs]) => {
+    const nome = chave.startsWith('campo:') ? campos.find((c) => c.id === chave.slice(6))?.nome ?? 'Um campo do painel'
+      : NOME_CAMPO_DO_MAPA[chave as CampoDoMapa] ?? chave;
+    return `${nome}: ${refs.map((r) => `{{${r}}}`).join(', ')}`;
+  });
+}
+
+// =====================================================================
 //  A TELA
 // =====================================================================
 
 /** O último pedido do robô: guardado para o mapa mostrar as variáveis de verdade (e o que aconteceu). */
 export type UltimoPedidoDoRobo = {
   em: string;
-  /** o nome da chave que chamou */
+  /** o nome da chave que chamou (o nome, nunca a chave) */
   chave: string;
   /** o pedido como chegou (os textos longos cortados) */
   corpo: unknown;
-  resultado: { ok: true; criado: boolean; anotou: boolean; codigo: string; ignorados: string[] } | { ok: false; erro: string };
+  /** `faltaram`: as variáveis do mapa que não vieram neste pedido ("Cliente: {{pergunta: …}}") */
+  resultado:
+    | { ok: true; criado: boolean; anotou: boolean; codigo: string; ignorados: string[]; faltaram?: string[] }
+    | { ok: false; erro: string; faltaram?: string[] };
 };
 export type RoboTela = { mapa: MapaDoRobo; ultimo: UltimoPedidoDoRobo | null };
 

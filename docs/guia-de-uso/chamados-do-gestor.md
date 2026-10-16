@@ -165,16 +165,23 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
 1. **Crie uma chave de API** (ex.: "Robô do LineChat"). Ela aparece **uma vez só**: copie na hora. Se
    perder, revogue e crie outra. Uma chave para o robô e outra para o n8n deixa revogar uma sem parar
    a outra.
-2. **O robô abre o chamado**: no robô do LineChat, um bloco de **webhook** que manda para
-   `/api/atendimento/entrada/robo`, com a chave no cabeçalho `Authorization: Bearer <chave>` (ou no
-   fim do endereço, `?chave=<chave>`, se o bloco não aceitar cabeçalho). Não precisa montar o corpo: o
+2. **O robô abre o chamado**: no robô do LineChat, um bloco **Enviar webhook** que manda para
+   `/api/atendimento/entrada/robo?chave=<chave>` — a chave vai no fim do endereço, porque o bloco não
+   aceita cabeçalho (outro sistema pode mandar no cabeçalho `Authorization: Bearer <chave>`). O Gestor
+   guarda só o **nome** da chave: ela não vai para o último pedido, nem para a auditoria, nem para os
+   registros do servidor e do Caddy (lá ela aparece como `REDACTED`). Não precisa montar o corpo: o
    bloco manda o JSON da conversa do jeito dele (o contato, a conversa, as perguntas e os menus do
    robô, a última mensagem), e o **mapa do robô**, logo abaixo na tela, diz de onde sai cada campo do
-   chamado. A resposta traz o **código** do chamado, para o robô mandar ao cliente, e `ignorados` (o que
-   veio e ficou de fora). A mesma conversa não abre dois chamados: o relato novo vira anotação no que
-   já está aberto. O cliente vem pelo que o mapa mandar (o nome ou o CNPJ) ou, sem achar, pelo
-   telefone: primeiro dos **contatos dos clientes**, depois do que o Gestor aprendeu dos chamados
-   anteriores.
+   chamado. A mesma conversa não abre dois chamados: o relato novo vira anotação no que já está aberto.
+   O cliente vem pelo que o mapa mandar (o nome ou o CNPJ) ou, sem achar, pelo telefone: primeiro dos
+   **contatos dos clientes**, depois do que o Gestor aprendeu dos chamados anteriores.
+
+   **A resposta** é sempre **HTTP 200** (o bloco conta o 201 como falha), no formato dele:
+   `{"response":"CHAMADO_ABERTO","messages":[{"text":"Seu chamado foi registrado com o número *SUP-1*. Guarde este número caso precise falar sobre ele depois."}]}`
+   — também quando a conversa já tinha chamado aberto (vai o número dele) — ou
+   `{"response":"CHAMADO_FALHOU"}`, quando não deu para abrir (o porquê fica no último pedido, no mapa).
+   No bloco, crie as duas respostas, `CHAMADO_ABERTO` e `CHAMADO_FALHOU`, cada uma com a sua saída. A
+   chave errada (ou revogada) responde 401, e o bloco segue pela saída de falha dele.
 3. **O mapa do robô**: cada campo do chamado (painel, título, relato, WhatsApp, nome, conversa,
    etiquetas e, em **Mais campos**, descrição, cliente, assunto, prioridade e os campos do painel) é um
    texto com as **variáveis do pedido entre `{{ }}`** — `Atendimento de {{contact.name}}`. O botão
@@ -183,22 +190,33 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    **último pedido do robô** (o Gestor guarda o último, com o que aconteceu), de **um pedido colado**
    (o JSON que o LineChat mostra no histórico do bloco) ou do **exemplo do LineChat**. Embaixo de cada
    campo, o que sai com aquele pedido; **Como fica** mostra o chamado que nasceria (com o cliente, o
-   assunto e as opções achados) e o que ficaria de fora, antes de salvar. O de fábrica já serve:
-   o nome no título, a última mensagem no relato, o WhatsApp e a conversa. Dicas:
-   - `{{a || b}}` usa a segunda quando a primeira vier vazia; `{{a || "texto"}}` termina num texto
-     fixo. O campo cujas variáveis vieram todas vazias fica vazio.
+   assunto e as opções achados), o que ficaria de fora e a resposta inteira ao robô, antes de salvar. O
+   de fábrica já serve: o nome no título, a última mensagem no relato, o WhatsApp e a conversa. Dicas:
+   - **A pergunta pelo texto**: a resposta de uma pergunta entra como
+     `{{pergunta: Por favor nos informe brevemente o motivo do seu contato}}` (`{{menu: …}}` nos menus)
+     — é o que a lista põe. O código do bloco (`questions.cb-…-qst-….answer`) muda de uma cópia do robô
+     para outra (a de teste e a de produção); o texto da pergunta, não. Um pedaço do texto também vale,
+     se só uma pergunta o tiver. Pelo código do bloco ainda dá (a lista oferece embaixo).
+   - `{{a || b || c}}` usa a primeira que vier com valor (quantas alternativas quiser);
+     `{{a || "texto"}}` termina num texto fixo. O campo cujas variáveis vieram todas vazias fica vazio.
+   - **A variável que não vier** (o código de outra cópia do robô, o caminho escrito errado) deixa o
+     campo vazio, e o chamado abre do mesmo jeito: o último pedido e a auditoria dizem quais não
+     vieram, e na tela o aviso aparece embaixo do campo.
+   - **A mensagem ao cliente** (no fim do mapa) é a que volta na resposta: `{codigo}` é o número do
+     chamado, `{contato}` o nome do contato, e as variáveis do pedido também valem
+     (`Olá, {{contact.first-name}}!`). Vazia, o robô segue sem mensagem.
    - O **assunto** acha pelo caminho, pelo nome ou pelo **de-para** do assunto: ponha a resposta do
      menu ("Suporte Técnico") no de-para (Ajustes › Campos › Assunto) e ela vira o assunto.
    - Nos **campos de lista**, a resposta enfeitada do menu ("☎️ LinePBX: Plataforma de Voz") vale pela
      opção que aparece nela (LinePBX), se for uma só.
    - O que não bate (o assunto que não existe, a opção que não é do campo, o telefone que não é número)
-     **fica de fora, e o chamado abre do mesmo jeito**: a resposta ao robô, a auditoria e o último
-     pedido dizem o quê. Se o robô mudar (ou for outro sistema), é só mudar o mapa.
+     **fica de fora, e o chamado abre do mesmo jeito**: a auditoria e o último pedido dizem o quê. Se o
+     robô mudar (ou for outro sistema), é só mudar o mapa.
    - Outro sistema que monta o próprio JSON (o n8n, um script) pode mandar no **formato do Gestor**, em
      `/api/atendimento/entrada/chamado` (o título, o relato, a descrição, o telefone, o nome, a sessão, o
      assunto, a prioridade, as etiquetas e os campos do painel pelo nome: `"campos": {"Sistema":
      "LinePBX"}`). Ali é mais rígido: o painel, o assunto ou o campo que não existe recusa o pedido, e a
-     resposta diz qual.
+     resposta (400) diz qual.
 4. **O botão "Abrir chamado" na conversa**: nas **ações personalizadas** do LineChat, na conversa, o
    endereço `/atendimento/novo?telefone={{telefone_do_contato}}&nome=…&sessao=…` (a tela mostra
    inteiro). Confira o nome das variáveis no LineChat. Por esse endereço, numa aba nova, o Abrir

@@ -211,5 +211,6 @@ export async function gravarMapaDoRobo(app: FastifyInstance, mapa: MapaDoRobo, u
   if (antes.painel !== novo.painel) mudou.push('Painel');
   for (const c of CAMPOS_DO_MAPA) if (antes[c] !== novo[c]) mudou.push(NOME_CAMPO_DO_MAPA[c]);
   if (JSON.stringify(antes.campos) !== JSON.stringify(novo.campos)) mudou.push('Campos do painel');
+  if (antes.mensagem !== novo.mensagem) mudou.push('Mensagem ao cliente');
   return { mapa: novo, antes, mudou };
 }
