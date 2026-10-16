@@ -13,7 +13,7 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AnotacaoSchema, AplicarRespostaSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, LigarChamadoSchema,
+  AnotacaoSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, LigarChamadoSchema,
   ListarChamadosSchema, MoverSchema, ObservarSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
 } from '@gestor/shared';
@@ -56,7 +56,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---------- ler ----------
 
-  app.get('/opcoes', { ...ler, schema: { tags, summary: 'Os painéis que a pessoa vê, as pessoas, os assuntos, os produtos, as operadoras, as etiquetas, os prazos e as respostas prontas' } },
+  app.get('/opcoes', { ...ler, schema: { tags, summary: 'Os painéis que a pessoa vê, as pessoas, os assuntos, os produtos, as operadoras, as etiquetas e os prazos' } },
     async (req) => leitura.opcoes(app, ator(req)));
 
   app.get('/quadro', { ...ler, schema: { tags, summary: 'O quadro de um painel: uma coluna por etapa (o Fechado mostra só os 30 mais recentes)', querystring: QuadroSchema } },
@@ -167,9 +167,6 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/chamados/:id/avisar-cliente', { ...trabalhar, schema: { tags, summary: 'Mandar uma mensagem ao contato pelo WhatsApp oficial (fica no histórico, mesmo se não for)', params: Id, body: AvisarClienteSchema } },
     async (req) => fichaDepois(req, await svc.avisarCliente(app, ator(req), req.params.id, req.body.texto)));
-
-  app.post('/chamados/:id/resposta-pronta', { ...trabalhar, schema: { tags, summary: 'Usar uma resposta pronta: manda o texto e muda o chamado de uma vez', params: Id, body: AplicarRespostaSchema } },
-    async (req) => fichaDepois(req, await svc.usarResposta(app, ator(req), req.params.id, req.body)));
 
   app.post('/chamados/:id/observar', { ...trabalhar, schema: { tags, summary: 'Observar (ou deixar de observar) o chamado: quem observa recebe os avisos de toda atualização', params: Id, body: ObservarSchema } },
     async (req) => fichaDepois(req, await svc.observar(app, ator(req), req.params.id, req.body.observar)));

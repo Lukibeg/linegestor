@@ -8,7 +8,7 @@
  *  - Integrações (a administração, `admin.manage`): os webhooks, as chaves de API, os sites que podem
  *    abrir o Gestor dentro deles (o menu do LineChat) e o link da conversa.
  *
- * As respostas prontas e os agendados ficam em `atendimentoRotina.ts`. Tudo o que muda vai para a
+ * Os agendados ficam em `atendimentoRotina.ts`. Tudo o que muda vai para a
  * auditoria — e segredo nenhum vai junto: a chave do WhatsApp, o segredo do webhook e a chave de API
  * aparecem (quando aparecem) só na resposta de quem pediu, uma vez.
  */

@@ -14,16 +14,16 @@ import type { FastifyInstance } from 'fastify';
 import { and, arrayContains, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import {
   carriers, circuits, clientUnits, clients, deviceModels, devices, dids, linechatCards, products, subscriptions, ticketAttachments, ticketCarrierCases,
-  ticketEvents, ticketLinks, ticketMacros, ticketNotes, ticketNotifications, ticketSchedules, ticketTimeEntries, tickets, users,
+  ticketEvents, ticketLinks, ticketNotes, ticketNotifications, ticketSchedules, ticketTimeEntries, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
-  AcaoRespostaSchema, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
+  compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugeridaDoPainel,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
-  type AcaoResposta, type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
+  type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
   type CartaoParaLista, type CasoOperadora, type DadosObrigatorios, type FichaChamado, type FiltrosAtendimento, type Gravidade, type ItemChecklist,
-  type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Prioridade, type QuadroAtendimento, type RespostaPronta, type ResumoDoPainel,
+  type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Prioridade, type QuadroAtendimento, type ResumoDoPainel,
   type ReferenciaMostrada, type SituacaoDoChamado, type TipoAviso, type TipoChamado, type TipoLigacaoChamado, type ValoresDosCampos,
 } from '@gestor/shared';
 import { NotFound } from '../../plugins/errors.js';
@@ -84,12 +84,6 @@ export async function filhosDoChamado(db: Db, ctx: Contexto, ticketId: string): 
   return linhas.map((f) => ({ id: f.id, codigo: f.code, painelId: f.panelId, situacao: situacaoDaEtapa(ctx.etapas.get(f.stageId)?.etapa.tipo ?? 'andamento') }));
 }
 
-/** A ação da resposta pronta, como foi guardada (o que faltar vem com o padrão). */
-export function lerAcao(v: unknown): AcaoResposta {
-  const r = AcaoRespostaSchema.safeParse(v ?? {});
-  return r.success ? r.data : { avisarCliente: false, etapaId: null, esperar: null, etiqueta: null, assumir: false };
-}
-
 /** O cartão sem o texto de busca (que só serve para filtrar e é grande: leva o relato inteiro). */
 export function semBusca(c: CartaoParaLista): CartaoChamado {
   const { busca: _busca, ...cartao } = c;
@@ -118,23 +112,19 @@ export async function opcoes(app: FastifyInstance, ator: Ator): Promise<OpcoesAt
   const ctx = await carregarContexto(db);
   const paineis = ctx.paineis.filter((p) => podeVerPainel(p, ator));
   const ids = paineis.map((p) => p.id);
-  const [pessoas, prods, ops, usadas, macros, whatsapp, ia, lc] = await Promise.all([
+  const [pessoas, prods, ops, usadas, whatsapp, ia, lc] = await Promise.all([
     db.select({ id: users.id, nome: users.name }).from(users).where(eq(users.active, true)).orderBy(asc(users.name)),
     db.select({ id: products.id, nome: products.name, cor: products.color }).from(products)
       .where(and(isNull(products.deletedAt), eq(products.active, true))).orderBy(asc(products.sortOrder), asc(products.name)),
     db.select({ id: carriers.id, nome: carriers.name }).from(carriers).where(eq(carriers.active, true)).orderBy(asc(carriers.name)),
     // as etiquetas com a cor: as dos painéis que a pessoa vê e as que nenhum chamado usa ainda
     etiquetasParaAPessoa(db, ids),
-    db.select().from(ticketMacros).where(and(isNull(ticketMacros.deletedAt), eq(ticketMacros.active, true))).orderBy(asc(ticketMacros.sortOrder), asc(ticketMacros.name)),
     whatsAppPronto(db),
     situacaoIa(db),
     lerAjustesLineChat(db),
   ]);
   // os assuntos em ordem de árvore, painel por painel (a tela monta o "Ramal › Configuração")
   const assuntos: Assunto[] = paineis.flatMap((p) => emOrdemDeArvore(ctx.assuntos.filter((a) => a.painelId === p.id)).map(({ profundidade: _p, ...a }) => a));
-  const respostas: RespostaPronta[] = macros
-    .filter((m) => !m.panelId || ids.includes(m.panelId))
-    .map((m) => ({ id: m.id, nome: m.name, texto: m.body, painelId: m.panelId, acao: lerAcao(m.action), ordem: m.sortOrder, ativa: m.active }));
   return {
     paineis,
     pessoas: pessoas.map((p) => ({ ...p, ativo: true })),
@@ -145,7 +135,6 @@ export async function opcoes(app: FastifyInstance, ator: Ator): Promise<OpcoesAt
     operadoras: ops,
     etiquetas: usadas,
     prazos: ctx.prazos,
-    respostas,
     whatsapp,
     ia: { ativa: ia.ativa, modelo: ia.modelo || null },
     linechatUrl: lc.valor.ativo && lc.valor.appUrl ? lc.valor.appUrl.replace(/\/+$/, '') : null,

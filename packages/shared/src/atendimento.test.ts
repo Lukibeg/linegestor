@@ -9,7 +9,7 @@ import {
   prioridadeSugeridaDoPainel, textoDoValor, textosDosCampos,
   valoresVisiveis, type CampoPersonalizado,
   caminhoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
-  lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes, pareceAgradecimento,
+  lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes,
   pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
   type CartaoChamado, type CartaoParaLista, type DadosObrigatorios, type EtapaPainel, type NoParaGrafo,
   chaveDaEtiqueta, corDaEtiqueta, etiquetasUnicas, renomearEtiqueta, EtiquetaEditarPeloNomeSchema,
@@ -305,15 +305,6 @@ describe('os campos de cada painel', () => {
   });
 });
 
-describe('o cliente respondeu ao Resolvido', () => {
-  it('agradecer ou confirmar não reabre', () => {
-    for (const t of ['Obrigado!', 'ok, funcionou 👍', 'Valeu, deu certo', 'blz', '👍', 'boa tarde, obrigada pela ajuda', 'pode fechar']) expect(pareceAgradecimento(t), t).toBe(true);
-  });
-  it('qualquer outra coisa reabre (na dúvida, reabre)', () => {
-    for (const t of ['ainda está caindo', 'obrigado, mas continua sem áudio', 'funcionou?', 'o ramal 203 voltou a ficar mudo']) expect(pareceAgradecimento(t), t).toBe(false);
-  });
-});
-
 describe('o código e as referências no texto', () => {
   it('lê o código de vários jeitos', () => {
     expect(lerCodigo('sup-12')).toEqual({ sigla: 'SUP', numero: 12 });
@@ -449,7 +440,7 @@ describe('a tela inicial: os números de cada painel', () => {
   });
 });
 
-describe('a IA, as respostas prontas e o histórico', () => {
+describe('a IA e o histórico', () => {
   it('a sugestão da IA só aceita o que existe nas opções', () => {
     const s = lerSugestaoDaIa(
       { titulo: 'Ramal 203 mudo', assunto: 'ramal › configuracao', gravidade: 'inoperancia', alcance: 'galáxia', tipo: 'incidente', produtos: ['LinePBX', 'Netflix'], etiquetas: ['ramal', 'audio', 'x', 'y'] },

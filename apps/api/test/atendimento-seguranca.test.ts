@@ -115,7 +115,7 @@ describe('a origem do pedido (a defesa contra o pedido forjado)', () => {
   });
 
   it('a entrada das integrações (servidor para servidor, com chave de API) não é barrada pela origem', async () => {
-    for (const url of ['/api/atendimento/entrada/chamado', '/api/atendimento/entrada/mensagem', '/api/atendimento/integracao/chamados/SUP-1/anotacoes']) {
+    for (const url of ['/api/atendimento/entrada/chamado', '/api/atendimento/integracao/chamados/SUP-1/anotacoes']) {
       const r = await app.inject({ method: 'POST', url, headers: { origin: 'https://n8n.exemplo.com.br' }, payload: { telefone: '71999990000', texto: 'oi' } });
       // sem chave de API válida a rota recusa do jeito dela (ou não existe ainda): o que não pode é ser o 403 da origem
       expect(r.json().error, `${url}: ${r.statusCode}`).not.toBe(RECUSADO);

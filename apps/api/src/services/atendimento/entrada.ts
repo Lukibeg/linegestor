@@ -11,25 +11,23 @@
  *    `anotarChamado` e `reabrirChamado` (chamados.ts).
  *
  * O que é só da entrada: a mesma conversa (sessão) aberta não vira outro chamado — o relato novo vira
- * anotação no que já existe; e a mensagem do cliente reabre o Resolvido, menos o "obrigado".
+ * anotação no que já existe. (A mensagem do cliente, que reabria o Resolvido, saiu no 2.0.1.)
  */
 import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { ticketApiKeys, ticketStages, tickets, type Db } from '@gestor/db';
 import {
-  caminhoDoAssunto, campoLigado, ChamadoCriarSchema, EntradaChamadoSchema, EntradaMensagemSchema, etapaAoReabrir, IntegracaoAlterarSchema, NOME_CAMPO,
-  numeroWhatsApp, pareceAgradecimento, paraBusca, situacaoDaEtapa, textoDoValor,
-  type Assunto, type CartaoChamado, type ChamadoAlterar, type Painel, type SituacaoDoChamado, type TipoCampo, type ValorDoCampo,
+  caminhoDoAssunto, campoLigado, ChamadoCriarSchema, EntradaChamadoSchema, IntegracaoAlterarSchema, NOME_CAMPO, paraBusca, textoDoValor,
+  type Assunto, type CartaoChamado, type ChamadoAlterar, type Painel, type TipoCampo, type ValorDoCampo,
 } from '@gestor/shared';
 import { BadRequest, Unauthorized } from '../../plugins/errors.js';
-import { avisarEquipe, avisarObservadores, linkDoChamado, trecho } from './avisos.js';
+import { linkDoChamado } from './avisos.js';
 import { alterarChamado, anotarChamado, criarChamado, moverChamado, reabrirChamado } from './chamados.js';
-import { camposDoPainel, carregarContexto, carregarPaineis, cartoesDe, chamadoOu404, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
+import { camposDoPainel, carregarContexto, carregarPaineis, cartoesDe, chamadoOu404, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
 
 export type EntradaChamado = z.infer<typeof EntradaChamadoSchema>;
-export type EntradaMensagem = z.infer<typeof EntradaMensagemSchema>;
 export type IntegracaoAlterar = z.infer<typeof IntegracaoAlterarSchema>;
 
 /** Como a integração aparece na auditoria (a auditoria não tem pessoa: o nome da chave diz quem foi). */
@@ -195,73 +193,6 @@ async function abrirAgora(app: FastifyInstance, ator: Ator, e: EntradaChamado): 
   const r = await criarChamado(app, ator, lido.data, { origem: 'robo' });
   const [t] = await app.db.select({ id: tickets.id, code: tickets.code, number: tickets.number, title: tickets.title }).from(tickets).where(eq(tickets.id, r.id)).limit(1);
   return resposta(t!, true, false);
-}
-
-// =====================================================================
-//  O CLIENTE ESCREVEU (o webhook de mensagem recebida, pelo n8n)
-// =====================================================================
-
-/** O chamado do contato que ainda não fechou (o mais novo): pela conversa e, sem ela, pelo telefone. */
-async function chamadoDoContato(db: Db, m: { sessaoId?: string; fone: string | null }): Promise<LinhaChamado | null> {
-  const procurar = async (onde: ReturnType<typeof eq>) => {
-    const [r] = await db.select({ t: tickets }).from(tickets).innerJoin(ticketStages, eq(ticketStages.id, tickets.stageId))
-      .where(and(onde, isNull(tickets.deletedAt), ne(ticketStages.kind, 'fechado')))
-      .orderBy(desc(tickets.createdAt)).limit(1);
-    return r?.t ?? null;
-  };
-  return (m.sessaoId ? await procurar(eq(tickets.sessionId, m.sessaoId)) : null) ?? (m.fone ? await procurar(eq(tickets.contactPhone, m.fone)) : null);
-}
-
-/** Até onde o texto do cliente vai para o histórico e para o aviso (a conversa inteira está no LineChat). */
-const NO_HISTORICO = 1000;
-const NO_AVISO = 120;
-
-export type ResultadoMensagem = { acao: 'reaberto' | 'registrado' | 'ignorado'; codigo?: string; id?: string };
-
-/**
- * O cliente escreveu. No chamado Resolvido, a mensagem reabre — menos o "obrigado", o "ok, funcionou",
- * a figurinha (`pareceAgradecimento`); no aberto, fica no histórico. Nos dois casos, o responsável é
- * avisado. Sem chamado do contato (ou só fechados), nada acontece.
- */
-export async function mensagemDoCliente(app: FastifyInstance, ator: Ator, m: EntradaMensagem): Promise<ResultadoMensagem> {
-  const achado = await chamadoDoContato(app.db, { sessaoId: m.sessaoId, fone: numeroWhatsApp(m.telefone) });
-  if (!achado) return { acao: 'ignorado' };
-  // duas mensagens seguidas no mesmo Resolvido ("ainda está caindo", "e o 204 também"): uma de cada vez,
-  // e lendo o chamado de novo — a segunda já o encontra aberto e só fica registrada
-  return umDeCadaVez(`chamado:${achado.id}`, async () => responderNoChamado(app, ator, await chamadoOu404(app.db, achado.id), m));
-}
-
-async function responderNoChamado(app: FastifyInstance, ator: Ator, t: LinhaChamado, m: EntradaMensagem): Promise<ResultadoMensagem> {
-  const ctx = await carregarContexto(app.db);
-  const painel = ctx.paineis.find((p) => p.id === t.panelId);
-  const situacao: SituacaoDoChamado = situacaoDaEtapa(ctx.etapas.get(t.stageId)?.etapa.tipo ?? 'andamento');
-  const bruto = (m.texto ?? '').replace(/\r\n?/g, '\n').trim();
-  const texto = trecho(bruto || '(mensagem sem texto: figurinha, foto, áudio ou arquivo)', NO_HISTORICO);
-  const chamado = { id: t.id, codigo: t.code, titulo: t.title };
-  const feito = { codigo: t.code, id: t.id };
-
-  if (situacao === 'resolvido') {
-    if (pareceAgradecimento(bruto)) return { acao: 'ignorado', ...feito };
-    const para = painel ? etapaAoReabrir(painel.etapas) : null;
-    if (para && (para.tipo === 'entrada' || para.tipo === 'andamento')) {
-      // primeiro o que o cliente disse, depois o "reabriu" (o histórico lê na ordem em que aconteceu): um
-      // milésimo antes, porque o reabrir marca a hora dele em seguida e o mesmo milésimo embaralharia a ordem
-      await registrarEvento(app.db, t.id, 'cliente_respondeu', ator, { texto, reabriu: true }, new Date(Date.now() - 1));
-      // (os observadores recebem um aviso só: o do cliente que respondeu, não o do "reabriu")
-      await reabrirChamado(app, ator, t.id, { motivo: 'o cliente respondeu' }, { observadores: false });
-      const aviso = `O cliente respondeu no ${t.code} e o chamado reabriu: "${trecho(texto, NO_AVISO)}"`;
-      await avisarEquipe(app, { evento: 'cliente_respondeu', para: [t.assigneeId], chamado, texto: aviso });
-      await avisarObservadores(app, { chamado, observadores: t.watcherIds, texto: aviso, jaAvisados: [t.assigneeId] });
-      return { acao: 'reaberto', ...feito };
-    }
-    // (um painel sem etapa para reabrir: a resposta fica registrada, como num aberto)
-  }
-  await registrarEvento(app.db, t.id, 'cliente_respondeu', ator, { texto, reabriu: false });
-  await tocar(app.db, t.id);
-  const aviso = `O cliente respondeu no ${t.code}: "${trecho(texto, NO_AVISO)}"`;
-  await avisarEquipe(app, { evento: 'cliente_respondeu', para: [t.assigneeId], chamado, texto: aviso });
-  await avisarObservadores(app, { chamado, observadores: t.watcherIds, texto: aviso, jaAvisados: [t.assigneeId] });
-  return { acao: 'registrado', ...feito };
 }
 
 // =====================================================================

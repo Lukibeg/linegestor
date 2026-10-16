@@ -13,7 +13,7 @@
  *
  * As peças dos cartões de ajustes (o cartão, a explicação, o resultado de um teste, a última vez, os
  * marcadores do texto e a prévia da mensagem) moram aqui e servem também às outras telas de ajustes
- * dos chamados (Respostas prontas, Agendados e Integrações), para as quatro falarem do mesmo jeito.
+ * dos chamados (Agendados e Integrações), para as três falarem do mesmo jeito.
  */
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
@@ -646,8 +646,7 @@ function CartaoMensagemAoCliente({ f, mudar }: { f: Form; mudar: (m: Partial<For
       situacao={peloModelo ? (t.id ? <Chip tone="ok">pelo modelo {t.nome || 'aprovado'}</Chip> : <Chip tone="signal">falta escolher o modelo</Chip>) : <Chip tone="muted">texto livre</Chip>}>
       <Explicacao>
         <p>
-          O que chega ao cliente quando o atendente manda: no "Avisar o cliente" da ficha, nas respostas prontas que mandam ao cliente e no
-          número do chamado ao abrir. O WhatsApp oficial só começa uma conversa com um <b>modelo aprovado</b> pela Meta — o template, que fica no
+          O que chega ao cliente quando o atendente manda: no "Avisar o cliente" da ficha e no número do chamado ao abrir. O WhatsApp oficial só começa uma conversa com um <b>modelo aprovado</b> pela Meta — o template, que fica no
           LineChat (Ajustes › Modelos de mensagem). Cada variável do modelo recebe um valor do chamado; a do <i>o que o atendente escreveu</i> leva a mensagem dele.
         </p>
       </Explicacao>

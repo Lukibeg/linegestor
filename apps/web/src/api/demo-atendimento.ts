@@ -20,12 +20,12 @@
  * último evento e a IA monta a sugestão com as palavras do próprio chamado.
  */
 import {
-  AcaoRespostaSchema, AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AplicarRespostaSchema, AssuntoGravarSchema,
+  AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AssuntoGravarSchema,
   AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, CAMPOS_DO_SISTEMA,
   ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema, MAX_CAMPOS_DO_PAINEL, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, OrdemDosCamposSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
-  OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema, RespostaProntaGravarSchema,
+  OperadoraCasoSchema, PAINEIS_INICIAIS, PaiSchema, PainelGravarSchema, ProblemaSchema, ReabrirSchema, RegraAgendadoSchema,
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta, renomearEtiqueta,
   faltaNoModeloAprovado, mensagemAoCliente, parametrosDoModelo, telefoneLegivel,
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
@@ -33,16 +33,16 @@ import {
   textoDoValor, textosDosCampos, valoresVisiveis,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
-  mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca, pareceAgradecimento,
+  mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca,
   preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
-  type AcaoResposta, type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
+  type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
   type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoDoSistema, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista,
   type Obrigatorio, type OpcaoDoCampo, type ValoresDosCampos, type CorEtiqueta, type EtiquetaComCor, type EtiquetaDoCatalogo,
   type CasoOperadora, type ChamadoAlterar, type ChamadoCriar, type ChaveApiTela, type CorPainel, type DadosObrigatorios, type Espera, type EstadoPrazo,
   type EtapaPainel, type EventoAviso, type EventoChamado, type EventoWebhook, type FichaChamado, type FiltrosAtendimento, type Gravidade,
   type IntegracoesTela, type ItemChecklist, type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Origem, type Painel,
-  type PessoaCurta, type Prioridade, type ProvedorIa, type QuadroAtendimento, type ReferenciaMostrada, type RegraAgendado, type RespostaPronta, type ResumoDoPainel, type SituacaoDoChamado,
+  type PessoaCurta, type Prioridade, type ProvedorIa, type QuadroAtendimento, type ReferenciaMostrada, type RegraAgendado, type ResumoDoPainel, type SituacaoDoChamado,
   type SugestaoIa, type TipoAviso, type TipoChamado, type TipoEspera, type TipoEtapa, type TipoEvento, type TipoLigacaoChamado, type WebhookTela,
 } from '@gestor/shared';
 import type { Api } from './index.js';
@@ -50,7 +50,7 @@ import { ApiError, type Page, type TrashItem } from './types.js';
 import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import {
   AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, CORES_DAS_ETIQUETAS, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
-  NUMERO_DA_EQUIPE, RESPOSTAS_PRONTAS, WHATSAPP_DA_EQUIPE,
+  NUMERO_DA_EQUIPE, WHATSAPP_DA_EQUIPE,
   type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
 
@@ -137,7 +137,6 @@ type AgendadoRow = {
   prioridade: Prioridade | null; checklist: string[]; regra: RegraAgendado; ativo: boolean; proximaEm: string | null; ultimaEm: string | null;
   ultimoCodigo: string | null; criadoEm: string; deletedAt: string | null;
 };
-type RespostaRow = { id: string; painelId: string | null; nome: string; texto: string; acao: AcaoResposta; ordem: number; ativa: boolean; deletedAt: string | null };
 /** Uma etiqueta e a cor dela (o catálogo, como o `ticket_tags` do servidor). */
 type EtiquetaRow = { id: string; nome: string; chave: string; cor: CorEtiqueta; criadoPorId: string | null; criadoEm: string; atualizadoEm: string };
 type AvisoRow = { id: string; userId: string; chamadoId: string | null; tipo: TipoAviso; texto: string; em: string; lidoEm: string | null };
@@ -280,7 +279,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     semeando: false,
     paineis: [] as PainelRow[], etapas: [] as EtapaRow[], assuntos: [] as Assunto[], campos: [] as CampoPersonalizado[],
     chamados: [] as ChamadoRow[], eventos: [] as EventoRow[], notas: [] as NotaRow[], anexos: [] as AnexoRow[], ligacoes: [] as LigacaoRow[],
-    tempos: [] as TempoRow[], casos: [] as CasoRow[], agendados: [] as AgendadoRow[], respostas: [] as RespostaRow[],
+    tempos: [] as TempoRow[], casos: [] as CasoRow[], agendados: [] as AgendadoRow[],
     contatos: new Map<string, { clienteId: string; nome: string | null }>(),
     /** as etiquetas com a cor (o catálogo, como o `ticket_tags` do servidor) */
     etiquetas: [] as EtiquetaRow[],
@@ -1466,51 +1465,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return { ...nada(t), resumo: `Avisou o cliente de ${t.codigo} pelo WhatsApp`, depois: { texto } };
   }
 
-  function usarResposta(ator: Ator, ref: string, d: { respostaId: string; texto?: string | null }, agora: Date = agoraReal()): Feito {
-    exigirTrabalhar(ator);
-    const e = carregar(ator, ref, agora);
-    const { t, painel } = e;
-    const m = A.respostas.find((x) => x.id === d.respostaId && !x.deletedAt);
-    if (!m || !m.ativa || (m.painelId && m.painelId !== t.painelId)) throw bad('Essa resposta pronta não existe (ou não vale neste painel).');
-    const acao = m.acao;
-    const texto = d.texto?.trim() || preencherModelo(m.texto, {
-      contato: t.contatoNome, codigo: t.codigo, cliente: nomeCliente(t.clienteId), titulo: t.titulo, responsavel: pessoaCurta(t.responsavelId)?.nome ?? null, eu: ator.nome,
-    });
-    const assume = acao.assumir && ator.tipo === 'pessoa';
-    // antes de tudo, o movimento: faltando algo para a etapa, nada acontece
-    let para: EtapaPainel | null = null;
-    if (acao.etapaId) {
-      para = painel.etapas.find((x) => x.id === acao.etapaId) ?? null;
-      if (!para) throw bad(`A resposta pronta "${m.nome}" leva para uma etapa que não é do painel ${painel.nome}.`);
-      if (para.id === t.etapaId) para = null;
-    }
-    if (para) conferirMovimento(e, para, { motivo: m.nome, responsavelId: assume ? ator.id : undefined, nivel: true });
-    if (acao.avisarCliente) {
-      if (!t.contatoTelefone) throw bad('O chamado não tem o WhatsApp do contato.');
-      if (!texto) throw bad(`A resposta pronta "${m.nome}" está sem texto para mandar ao cliente.`);
-      const r = mandarAoCliente(ator, t, texto, e.quando());
-      if (!r.ok) return { ...nada(t), resumo: `Tentou usar a resposta pronta "${m.nome}" em ${t.codigo}, mas o WhatsApp não foi: ${r.mensagem}`, erro: r.mensagem };
-      tocar(t, agora);
-      if (ator.tipo === 'pessoa' && !t.respondidoEm) t.respondidoEm = iso(agora);
-      contarAosObservadores(ator, t, `${ator.nome} mandou ao cliente, no ${t.codigo}: "${trechoDoAviso(texto.replace(/\s+/g, ' '), 140)}"`, agora);
-    }
-    registrarEvento(t.id, 'resposta_pronta', ator, { nome: m.nome }, e.quando());
-    // cada passo é a mesma função da tela, um instante depois do anterior (o histórico fica na ordem)
-    let passo = 1;
-    const depois = () => new Date(agora.getTime() + 10 * passo++);
-    if (!acao.avisarCliente && texto) anotar(ator, t.id, { texto, anexos: [] }, depois());
-    if (acao.esperar === 'cliente' || acao.esperar === 'operadora') esperar(ator, t.id, { tipo: acao.esperar, motivo: m.nome }, depois());
-    else if (acao.esperar === 'nada') esperar(ator, t.id, { tipo: null }, depois());
-    const etiquetas = [...t.etiquetas];
-    if (acao.etiqueta && !etiquetas.some((x) => paraBusca(x) === paraBusca(acao.etiqueta!))) alterar(ator, t.id, { etiquetas: [...etiquetas, acao.etiqueta] }, depois());
-    if (assume) assumir(ator, t.id, { mover: !para }, depois());
-    if (para) {
-      const de = etapaDe(t.etapaId);
-      mover(ator, t.id, { etapaId: para.id, motivo: movimentoDeNivel(de, para) ? m.nome : null }, depois());
-    }
-    return { ...nada(t), resumo: `Usou a resposta pronta "${m.nome}" em ${t.codigo}`, depois: { texto } };
-  }
-
   // =====================================================================
   //  A LIXEIRA
   // =====================================================================
@@ -1534,36 +1488,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     registrarEvento(t.id, 'lixeira', ator, { acao: 'restaurou' }, e.quando());
     contarAosObservadores(ator, t, `${ator.nome} tirou o ${t.codigo} da lixeira`, agora);
     return { ...nada(t), resumo: `Restaurou ${t.codigo} "${t.titulo}" da lixeira` };
-  }
-
-  // =====================================================================
-  //  O CLIENTE ESCREVEU (o robô repassa a mensagem; só a montagem dos exemplos usa)
-  // =====================================================================
-
-  function mensagemDoCliente(ator: Ator, t: ChamadoRow, textoBruto: string, agora: Date) {
-    const situacao = situacaoDe(t);
-    const bruto = textoBruto.replace(/\r\n?/g, '\n').trim();
-    const texto = bruto || '(mensagem sem texto: figurinha, foto, áudio ou arquivo)';
-    const trecho = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
-    const painel = painelPorId(t.painelId);
-    if (situacao === 'resolvido') {
-      if (pareceAgradecimento(bruto)) return;
-      const para = painel ? etapaAoReabrir(painel.etapas) : null;
-      if (para && (para.tipo === 'entrada' || para.tipo === 'andamento')) {
-        registrarEvento(t.id, 'cliente_respondeu', ator, { texto: trecho(texto, 1000), reabriu: true }, new Date(agora.getTime() - 1));
-        // (os observadores recebem um aviso só: o do cliente que respondeu, não o do "reabriu")
-        reabrir(ator, t.id, { motivo: 'o cliente respondeu' }, agora, { observadores: false });
-        const aviso = `O cliente respondeu no ${t.codigo} e o chamado reabriu: "${trecho(texto, 120)}"`;
-        avisarEquipe({ evento: 'cliente_respondeu', para: [t.responsavelId], chamado: curto(t), texto: aviso }, agora);
-        avisarObservadores({ chamado: curto(t), observadores: t.observadores, texto: aviso, jaAvisados: [t.responsavelId] }, agora);
-        return;
-      }
-    }
-    registrarEvento(t.id, 'cliente_respondeu', ator, { texto: trecho(texto, 1000), reabriu: false }, agora);
-    tocar(t, agora);
-    const aviso = `O cliente respondeu no ${t.codigo}: "${trecho(texto, 120)}"`;
-    avisarEquipe({ evento: 'cliente_respondeu', para: [t.responsavelId], chamado: curto(t), texto: aviso }, agora);
-    avisarObservadores({ chamado: curto(t), observadores: t.observadores, texto: aviso, jaAvisados: [t.responsavelId] }, agora);
   }
 
   // =====================================================================
@@ -1676,8 +1600,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   //  A ROTINA: AS RESPOSTAS PRONTAS E OS AGENDADOS
   // =====================================================================
 
-  const respostaParaTela = (m: RespostaRow): RespostaPronta => ({ id: m.id, nome: m.nome, texto: m.texto, painelId: m.painelId, acao: { ...m.acao }, ordem: m.ordem, ativa: m.ativa });
-  const respostasVivas = () => A.respostas.filter((m) => !m.deletedAt).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
 
   function agendadoParaTela(a: AgendadoRow): Agendado {
     return {
@@ -1745,7 +1667,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   };
   /**
    * Editar uma etiqueta — o nome e a cor —, como o servidor: a que só está nos chamados entra no catálogo;
-   * o nome de outra não vale; o nome novo vale nos chamados (os da lixeira também) e nas respostas prontas.
+   * o nome de outra não vale; o nome novo vale nos chamados (os da lixeira também).
    */
   function editarEtiqueta(alvo: EtiquetaRow | { nome: string }, d: { nome?: string; cor: CorEtiqueta }) {
     let e = 'id' in alvo ? alvo : A.etiquetas.find((x) => x.chave === chaveDaEtiqueta(alvo.nome));
@@ -1772,7 +1694,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         const nova = renomearEtiqueta(t.etiquetas, antes.chave, nome);
         if (nova) { t.etiquetas = nova; chamados += 1; }
       }
-      for (const m of A.respostas) if (m.acao.etiqueta && chaveDaEtiqueta(m.acao.etiqueta) === antes.chave && m.acao.etiqueta !== nome) m.acao = { ...m.acao, etiqueta: nome };
     }
     const nos = chamados ? ` (em ${chamados} ${chamados === 1 ? 'chamado' : 'chamados'})` : '';
     const renomeou = nome !== antes.nome;
@@ -1803,7 +1724,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       operadoras: S.carriers.filter((c) => c.active).sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ id: c.id, nome: c.name })),
       etiquetas: etiquetasParaAPessoa(ids),
       prazos: JSON.parse(JSON.stringify(A.prazos)) as AjustesPrazos,
-      respostas: respostasVivas().filter((m) => m.ativa && (!m.painelId || ids.includes(m.painelId))).map(respostaParaTela),
       whatsapp: whatsAppPronto(),
       ia: { ativa: ia.ativo && chaveServe && !!ia.modelo, modelo: (ia.modeloNome || ia.modelo) || null },
       linechatUrl: S.ajustesLineChat.ativo && S.ajustesLineChat.appUrl ? S.ajustesLineChat.appUrl.replace(/\/+$/, '') : null,
@@ -2672,7 +2592,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       A.etiquetas.push({ id: novoId(), nome, chave: chaveDaEtiqueta(nome), cor, criadoPorId: luan, criadoEm: quando, atualizadoEm: quando });
     }
 
-    // ---- as respostas prontas ----
+    // ---- a etapa de exemplo pela chave (os campos, os agendados e as histórias) ----
     const etapaId = (painel: 'SUP' | 'DEV', chave: string) => `etapa-${painel === 'SUP' ? 'suporte' : 'desenvolvimento'}-${chave}`;
 
     // ---- os campos de cada painel (pelas mesmas regras da aba Campos: o que é obrigatório entra nas regras) ----
@@ -2682,11 +2602,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         obrigatorioAoAbrir: !!c.paraAbrir, etapas: (c.etapas ?? []).map((k) => etapaId(c.painel, k)),
       }));
     }
-    RESPOSTAS_PRONTAS.forEach((r, i) => A.respostas.push({
-      id: novoId(), painelId: r.painel === 'SUP' ? 'painel-suporte' : null, nome: r.nome, texto: r.texto, ordem: i, ativa: true, deletedAt: null,
-      acao: AcaoRespostaSchema.parse({ ...r.acao, etapaId: r.acao.etapa && r.painel ? etapaId(r.painel, r.acao.etapa) : null }),
-    }));
-
     // ---- os agendados ----
     const idDoCliente = (nome: string) => {
       const c = S.clients.find((x) => x.tradeName === nome && !x.deletedAt);
@@ -2814,20 +2729,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           break;
         }
         case 'avisarCliente': { const r = avisarCliente(atorDe(p.por), id, p.texto, quando); if (r.erro) throw new Error(r.erro); break; }
-        case 'resposta': {
-          const m = A.respostas.find((x) => x.nome === p.resposta);
-          if (!m) throw new Error(`a resposta pronta ${p.resposta} não existe`);
-          const r = usarResposta(atorDe(p.por), id, { respostaId: m.id, texto: '' }, quando);
-          if (r.erro) throw new Error(r.erro);
-          break;
-        }
         case 'ligar': ligar(atorDe(p.por), id, { para: codigoDa.get(p.com) ?? `faltou-${p.com}`, tipo: p.tipo }, quando); break;
         case 'observar': observar(atorDe(p.por), id, true, quando); break;
-        case 'clienteRespondeu': {
-          mensagemDoCliente(A.robo!, t, p.texto, quando);
-          A.chaves.find((x) => x.id === A.robo!.id)!.usadaEm = iso(quando);
-          break;
-        }
+        // o cliente escreveu no WhatsApp e o atendente reabriu (desde o 2.0.1 o Gestor não ouve as mensagens do cliente)
+        case 'reabrir': reabrir(atorDe(p.por), id, { motivo: textoCom(p.motivo, ex.chave) ?? null }, quando); break;
       }
     };
 
@@ -2861,16 +2766,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     volta(agora);
 
     // ---- o sininho: o que é antigo já foi lido ----
-    // O Luan vê os 6 de que mais precisa (o Crítico que chegou, o cliente que respondeu, o prazo perto,
-    // o chamado que recebeu, o que está sem dono e a novidade de um chamado que ele observa); os outros,
-    // os 3 mais recentes.
+    // O Luan vê os 5 de que mais precisa (o Crítico que chegou, o prazo perto, o chamado que recebeu, o
+    // que está sem dono e a novidade de um chamado que ele observa); os outros, os 3 mais recentes.
     const porPessoa = new Map<string, AvisoRow[]>();
     for (const a of A.avisos) porPessoa.set(a.userId, [...(porPessoa.get(a.userId) ?? []), a]);
     for (const [userId, avisos] of porPessoa) {
       const novos = [...avisos].sort((a, b) => b.em.localeCompare(a.em));
       const manter = new Set<string>();
       if (userId === luan) {
-        for (const tipo of ['critico', 'cliente_respondeu', 'prazo_perto', 'sem_dono', 'observador'] as TipoAviso[]) { const a = novos.find((x) => x.tipo === tipo); if (a) manter.add(a.id); }
+        for (const tipo of ['critico', 'prazo_perto', 'sem_dono', 'observador'] as TipoAviso[]) { const a = novos.find((x) => x.tipo === tipo); if (a) manter.add(a.id); }
         const recebeu = novos.find((x) => x.tipo === 'recebeu' && x.texto.startsWith('Você recebeu')) ?? novos.find((x) => x.tipo === 'recebeu');
         if (recebeu) manter.add(recebeu.id);
       } else novos.slice(0, 3).forEach((a) => manter.add(a.id));
@@ -2962,7 +2866,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async abrirNaOperadora(id, d) { await ctx.wait(150); const dados = ler(OperadoraCasoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(abrirNaOperadora(eu(), id, dados)); },
     async andamentoOperadora(id, casoId, d) { await ctx.wait(150); const dados = ler(OperadoraAndamentoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(andamentoNaOperadora(eu(), id, casoId, dados)); },
     async avisarCliente(id, texto) { await ctx.wait(250); const dados = ler(AvisarClienteSchema, { texto }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(avisarCliente(eu(), id, dados.texto)); },
-    async usarResposta(id, d) { await ctx.wait(200); const dados = ler(AplicarRespostaSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(usarResposta(eu(), id, dados)); },
     async observar(id, acompanhar) { await ctx.wait(120); const dados = ler(ObservarSchema, { observar: acompanhar }); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(observar(eu(), id, dados.observar)); },
     async preencherComIa(id) {
       await ctx.wait(1200);
@@ -3167,44 +3070,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       A.whats = { ...A.whats, ultimoTesteEm: iso(agoraReal()), ultimoTesteOk: r.ok, ultimoTesteMsg: r.mensagem };
       auditar('settings_atendimento_avisos_test', 'settings', `Testou o WhatsApp dos chamados (${de === 'cliente' ? 'número do cliente' : 'número da equipe'} para ${para}): ${r.ok ? 'funcionou' : `falhou — ${r.mensagem}`}`, 'atendimento-avisos');
       return { ok: r.ok, mensagem: r.mensagem };
-    },
-    async respostas() { await ctx.wait(80); ctx.requirePerm('tickets.manage'); preparar(); return respostasVivas().map(respostaParaTela); },
-    async salvarResposta(id, d) {
-      await ctx.wait(150);
-      const dados = ler(RespostaProntaGravarSchema, d);
-      ctx.requirePerm('tickets.manage'); preparar();
-      const painel = dados.painelId ? painelPorId(dados.painelId) ?? null : null;
-      const atual = id ? A.respostas.find((m) => m.id === id && !m.deletedAt) : null;
-      if (id && !atual) throw naoAchado('Resposta pronta');
-      if (dados.painelId && !painel) throw bad('O painel escolhido não existe (ou foi removido).');
-      if (dados.acao.etapaId) {
-        if (!painel) throw bad('Para mover o chamado, escolha o painel da resposta: a etapa é de um painel.');
-        if (!painel.etapas.some((e) => e.id === dados.acao.etapaId)) throw bad(`Essa etapa não é do painel ${painel.nome}.`);
-      }
-      if (!atual) {
-        const m: RespostaRow = {
-          id: novoId(), painelId: dados.painelId, nome: dados.nome, texto: dados.texto, acao: dados.acao, ativa: dados.ativa, deletedAt: null,
-          ordem: Math.max(-1, ...A.respostas.filter((x) => !x.deletedAt).map((x) => x.ordem)) + 1,
-        };
-        A.respostas.push(m);
-        const resposta = respostaParaTela(m);
-        auditar('create', 'ticket_macro', `Criou a resposta pronta "${resposta.nome}" (${painel ? `painel ${painel.nome}` : 'todos os painéis'})`, m.id, { after: resposta });
-        return resposta;
-      }
-      const antes = respostaParaTela(atual);
-      Object.assign(atual, { painelId: dados.painelId, nome: dados.nome, texto: dados.texto, acao: dados.acao, ativa: dados.ativa });
-      const depois = respostaParaTela(atual);
-      const ligou = antes.ativa !== depois.ativa ? (depois.ativa ? ' (reativou)' : ' (desativou)') : '';
-      auditar('update', 'ticket_macro', `Alterou a resposta pronta "${depois.nome}"${ligou}`, atual.id, { before: antes, after: depois });
-      return depois;
-    },
-    async removerResposta(id) {
-      await ctx.wait(120); ctx.requirePerm('tickets.manage'); preparar();
-      const m = A.respostas.find((x) => x.id === id && !x.deletedAt);
-      if (!m) throw naoAchado('Resposta pronta');
-      m.deletedAt = iso(agoraReal());
-      auditar('delete', 'ticket_macro', `Removeu a resposta pronta "${m.nome}"`, m.id, { before: respostaParaTela(m) });
-      return { ok: true };
     },
     async agendados() { await ctx.wait(80); ctx.requirePerm('tickets.manage'); preparar(); return agendadosVivos().map(agendadoParaTela); },
     async salvarAgendado(id, d) {

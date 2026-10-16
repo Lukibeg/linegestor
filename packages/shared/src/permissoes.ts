@@ -24,7 +24,7 @@ export const PERMISSIONS = {
   'projects.manage': 'Criar e encerrar projetos, definir etapas e a lista de clientes',
   'support.read': 'Ver os chamados: os do Gestor (nos painéis que a pessoa vê) e a cópia do painel do LineChat',
   'tickets.work': 'Trabalhar nos chamados: abrir, assumir, mover, escalonar, anotar, ligar e avisar o cliente',
-  'tickets.manage': 'Cuidar dos chamados: painéis, etapas, assuntos, prazos, avisos, respostas prontas, agendados e a lixeira dos chamados',
+  'tickets.manage': 'Cuidar dos chamados: painéis, etapas, assuntos, prazos, avisos, agendados e a lixeira dos chamados',
   'knowledge.write': 'Escrever na base de conhecimento: criar artigos e melhorar os de qualquer pessoa',
   'knowledge.manage': 'Cuidar da base de conhecimento: leitura obrigatória, rascunhos de todos e mandar artigo para a lixeira',
   'portal.write': 'Escrever no portal do cliente: tutoriais com passo a passo, prints, vídeos e arquivos',

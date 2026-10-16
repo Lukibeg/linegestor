@@ -17,7 +17,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
-  circuits, clientUnits, clients, deviceModels, devices, dids, newId, subscriptions, ticketMacros, ticketPanels, ticketSchedules, ticketStages,
+  circuits, clientUnits, clients, deviceModels, devices, dids, newId, subscriptions, ticketPanels, ticketSchedules, ticketStages,
   ticketSubjects, ticketWebhooks, tickets,
 } from '@gestor/db';
 import { AJUSTES_PAINEL_PADRAO, AVISOS_CHAMADOS_PADRAO, ChamadoCriarSchema, diaLocal, mensagemPreenchida } from '@gestor/shared';
@@ -777,25 +777,6 @@ describe('avisar o cliente pelo WhatsApp', () => {
     expect(enviados.at(-1)!.corpo.body.text).toContain(`${r.codigo} (Ramal mudo):\n\nAbrimos este chamado para o seu atendimento.`);
   });
 
-  it('a resposta pronta que avisa o cliente: manda (sem virar anotação); se o WhatsApp recusar, nada mais muda', async () => {
-    const macro = newId();
-    await app.db.insert(ticketMacros).values({ id: macro, name: 'Aguardando teste', body: 'Fizemos o ajuste no {codigo}. Pode testar?', action: { avisarCliente: true, esperar: 'cliente' } });
-    const { id, codigo } = await abrir(s, { contatoNome: 'Joana', contatoTelefone: '(71) 98888-7777' });
-    falhar = true;
-    const r = await operador.post(`/atendimento/chamados/${id}/resposta-pronta`, { respostaId: macro, texto: '' });
-    falhar = false;
-    expect(r.statusCode).toBe(400);
-    let f = await ficha(s, id);
-    expect(f.espera).toBeNull();
-    expect(eventos(f, 'resposta_pronta')).toHaveLength(0);
-    expect(eventos(f, 'aviso_cliente').at(-1).dados.ok).toBe(false);
-    expect((await operador.post(`/atendimento/chamados/${id}/resposta-pronta`, { respostaId: macro, texto: '' })).statusCode).toBe(200);
-    f = await ficha(s, id);
-    expect(enviados.at(-1)!.corpo.body.text).toContain(`Fizemos o ajuste no ${codigo}. Pode testar?`);
-    expect(f.anotacoesLista).toHaveLength(0);
-    expect(f.espera).toMatchObject({ tipo: 'cliente', motivo: 'Aguardando teste' });
-  });
-
   // ---- o modelo aprovado (o pedido do Luan na prévia: o WhatsApp oficial só manda template) ----
   const MODELO = {
     id: '2f1e7a90-4d3b-4c8e-9a51-6b0d2c7e8f13', nome: 'ticket_atualizacao', texto: 'Olá, {{nome}}! Novidade no chamado {{chamado}}: {{mensagem}}',
@@ -1270,37 +1251,6 @@ describe('o cadastro do cliente (para o chamado)', () => {
 
 // =====================================================================
 
-describe('a resposta pronta', () => {
-  it('um clique: a anotação, a espera, a etiqueta e assumir (que leva da entrada para o N1)', async () => {
-    const macro = newId();
-    await app.db.insert(ticketMacros).values({
-      id: macro, name: 'Pedir teste ao cliente', body: 'Olá {contato}, pode testar o {codigo}?',
-      action: { avisarCliente: false, etapaId: null, esperar: 'cliente', etiqueta: 'aguardando-teste', assumir: true },
-    });
-    const { id, codigo } = await abrir(s, { clienteId: aurora, contatoNome: 'Maria' });
-    const r = await operador.post(`/atendimento/chamados/${id}/resposta-pronta`, { respostaId: macro, texto: '' });
-    expect(r.statusCode, r.body).toBe(200);
-    const f = r.json();
-    expect(f.anotacoesLista.at(-1).texto).toBe(`Olá Maria, pode testar o ${codigo}?`);
-    expect(f).toMatchObject({ espera: { tipo: 'cliente', motivo: 'Pedir teste ao cliente' }, etiquetas: ['aguardando-teste'], responsavel: { id: marinaId }, etapaId: E.n1 });
-    expect(eventos(f, 'resposta_pronta')[0].texto).toBe('usou a resposta pronta "Pedir teste ao cliente"');
-  });
-
-  it('se a resposta move para uma etapa e falta algo, nada acontece', async () => {
-    const macro = newId();
-    await app.db.insert(ticketMacros).values({ id: macro, panelId: SUP, name: 'Resolver', body: 'Resolvido!', action: { etapaId: E.resolvido } });
-    const { id } = await abrir(s);
-    const r = await operador.post(`/atendimento/chamados/${id}/resposta-pronta`, { respostaId: macro, texto: '' });
-    expect(r.statusCode).toBe(400);
-    expect(r.json().details.faltam).toEqual(expect.arrayContaining(['solucao', 'causa']));
-    const f = await ficha(s, id);
-    expect(f.anotacoesLista).toHaveLength(0);
-    expect(eventos(f, 'resposta_pronta')).toHaveLength(0);
-  });
-});
-
-// =====================================================================
-
 describe('a lixeira', () => {
   let alvo = { id: '', codigo: '' };
   beforeAll(async () => { alvo = await abrir(s, { titulo: 'Aberto por engano' }); });
@@ -1344,7 +1294,7 @@ describe('a lixeira', () => {
 // =====================================================================
 
 describe('as opções da tela', () => {
-  it('os painéis, as pessoas, os assuntos, as etiquetas usadas, as respostas prontas e o que a pessoa pode', async () => {
+  it('os painéis, as pessoas, os assuntos, as etiquetas usadas e o que a pessoa pode', async () => {
     const op = (await s.get('/atendimento/opcoes')).json();
     expect(op.paineis.map((p: any) => [p.sigla, p.etapas.length])).toEqual([['SUP', 8], ['DEV', 6]]);
     expect(op.paineis[0].abertos).toBeGreaterThan(0);
@@ -1354,13 +1304,14 @@ describe('as opções da tela', () => {
     expect(op.operadoras.map((o: any) => o.id)).toEqual(expect.arrayContaining([operadoraA, operadoraB]));
     // as etiquetas vêm com a cor (a que ninguém escolheu, cinza), em ordem de nome
     const nomes = op.etiquetas.map((e: any) => e.nome);
-    expect(nomes).toEqual(expect.arrayContaining(['aguardando-teste', 'audio', 'vip']));
+    expect(nomes).toEqual(expect.arrayContaining(['audio', 'vip']));
     expect([...nomes].sort((a: string, b: string) => a.localeCompare(b, 'pt-BR'))).toEqual(nomes);
     expect(op.etiquetas.find((e: any) => e.nome === 'vip')).toEqual({ nome: 'vip', cor: 'neutral' });
-    expect(op.respostas.find((r: any) => r.nome === 'Resolver')).toMatchObject({ painelId: SUP, acao: { etapaId: E.resolvido, avisarCliente: false, esperar: null, assumir: false } });
     expect(op.prazos.matriz.inoperancia.empresa).toBe('critica');
     expect(op.whatsapp).toEqual({ cliente: false, equipe: false, mensagemCliente: null });
     expect(op.ia).toEqual({ ativa: false, modelo: null });
+    // as respostas prontas saíram no 2.0.1
+    expect(op.respostas).toBeUndefined();
     expect(op.linechatUrl).toBeNull();
     expect(op.pode).toEqual({ trabalhar: true, cuidar: true, integrar: true });
     expect((await operador.get('/atendimento/opcoes')).json().pode).toEqual({ trabalhar: true, cuidar: false, integrar: false });
@@ -1418,8 +1369,7 @@ describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao c
     expect((await s.put('/atendimento/etiquetas/nao-existe', { cor: 'ok' })).json().error).toBe('Etiqueta não encontrada');
   });
 
-  it('editar a etiqueta (o pedido do Luan: o nome e a cor, como no Helena): vale nos chamados e nas respostas prontas', async () => {
-    const resposta = (await s.post('/atendimento/respostas', { nome: 'Retornar amanhã', texto: 'Retornamos amanhã.', acao: { etiqueta: 'retorno AMANHA' } })).json();
+  it('editar a etiqueta (o pedido do Luan: o nome e a cor, como no Helena): vale nos chamados', async () => {
     const outro = await abrir(operador, { titulo: 'Outro com a etiqueta', etiquetas: ['retorno amanhã'] });
     const lista = (await s.get('/atendimento/etiquetas')).json();
     const retorno = lista.find((e: any) => e.nome === 'Retorno amanhã');
@@ -1431,7 +1381,6 @@ describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao c
     expect(r.json()).toMatchObject({ nome: 'Ligar amanhã', cor: 'turquesa', chamados: 2 });
     expect((await s.get(`/atendimento/chamados/${ficha.id}`)).json().etiquetas).toEqual(['Cliente VIP', 'Ligar amanhã', 'Peça']);
     expect((await s.get(`/atendimento/chamados/${outro.id}`)).json().etiquetas).toEqual(['Ligar amanhã']);
-    expect((await s.get('/atendimento/respostas')).json().find((x: any) => x.id === resposta.id).acao.etiqueta).toBe('Ligar amanhã');
     expect(await cor(operador, 'Ligar amanhã')).toBe('turquesa');
     expect(await cor(operador, 'Retorno amanhã')).toBeUndefined();
     // o nome de outra etiqueta (sem ligar para maiúscula e acento) não vale

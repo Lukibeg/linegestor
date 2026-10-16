@@ -1,17 +1,17 @@
 /**
  * As janelas das ações da ficha: esperar (o cliente ou a operadora, com o motivo), avisar o cliente
- * pelo WhatsApp, a resposta pronta (o texto já preenchido e o que ela vai fazer), ligar a outro
- * chamado, escolher o pai, o problema ou um incidente, trocar de painel e reabrir.
+ * pelo WhatsApp, ligar a outro chamado, escolher o pai, o problema ou um incidente, trocar de painel e
+ * reabrir. (A resposta pronta saiu no 2.0.1: o LineChat já tem as respostas rápidas.)
  *
  * Cada janela só existe enquanto está aberta (o estado nasce no `useState`), e o erro aparece ali
  * dentro, perto do botão que confirma.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, CircleAlert, Hourglass, MessageCircle, Search, StickyNote, Tag, UserCheck } from 'lucide-react';
+import { MessageCircle, Search } from 'lucide-react';
 import {
-  etapaAoReabrir, etapaDeEntrada, lerCodigo, mensagemPreenchida, movimentoDeNivel, nomeDoObrigatorio, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO, preencherModelo,
-  type CartaoChamado, type FichaChamado, type RespostaPronta, type TipoEspera, type TipoLigacaoChamado,
+  etapaAoReabrir, etapaDeEntrada, lerCodigo, mensagemPreenchida, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO,
+  type CartaoChamado, type FichaChamado, type TipoEspera, type TipoLigacaoChamado,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Confirmar, Modal, Spinner } from '../../../components/ui/index.js';
@@ -150,99 +150,6 @@ export function JanelaAbrirLigado({ tipo, onFechar }: { tipo: 'filho' | 'problem
       <Confirmar open={descartar} onClose={() => setDescartar(false)} onConfirm={() => { setDescartar(false); onFechar(); }} perigoso botao="Descartar"
         titulo="Descartar o que foi escrito?" texto={`O ${tipo === 'filho' ? 'filho' : 'problema'} ainda não foi aberto: o que foi escrito nesta janela se perde.`} />
     </>
-  );
-}
-
-// =====================================================================
-//  RESPOSTA PRONTA
-// =====================================================================
-
-/** Para o menu: o que a resposta faz, em poucas palavras. */
-export function resumoDaResposta(r: RespostaPronta, nomeEtapa: (id: string) => string): string {
-  const a = r.acao;
-  const partes = [
-    a.avisarCliente ? 'manda ao cliente' : r.texto.trim() ? 'anota' : null,
-    a.esperar === 'cliente' ? 'espera o cliente' : a.esperar === 'operadora' ? 'espera a operadora' : a.esperar === 'nada' ? 'tira a espera' : null,
-    a.etiqueta ? `etiqueta ${a.etiqueta}` : null,
-    a.assumir ? 'você assume' : null,
-    a.etapaId ? `vai para ${nomeEtapa(a.etapaId)}` : null,
-  ].filter(Boolean) as string[];
-  return partes.length ? lista(partes) : 'só o texto';
-}
-
-export function JanelaResposta({ resposta, onFechar }: { resposta: RespostaPronta; onFechar: () => void }) {
-  const { f, opcoes, painel, eu } = useAberta();
-  const acao = useAcao();
-  const a = resposta.acao;
-  const [texto, setTexto] = useState(() => preencherModelo(resposta.texto, {
-    contato: f.contato?.nome ?? null, codigo: f.codigo, cliente: f.cliente?.nome ?? null, titulo: f.titulo,
-    responsavel: f.responsavel?.nome ?? null, eu: eu?.nome ?? null,
-  }));
-  const etapaAtual = painel?.etapas.find((e) => e.id === f.etapaId);
-  const para = a.etapaId && a.etapaId !== f.etapaId ? painel?.etapas.find((e) => e.id === a.etapaId) : undefined;
-  const etapaFora = !!a.etapaId && !painel?.etapas.some((e) => e.id === a.etapaId);
-  const faltam = para ? f.faltam[para.id] ?? [] : [];
-  const filhos = para ? f.filhosTravam[para.id] ?? [] : [];
-  const sentido = para ? movimentoDeNivel(etapaAtual, para) : null;
-  const semTelefone = a.avisarCliente && !f.contato?.telefone;
-  const semWhats = a.avisarCliente && !opcoes.whatsapp.cliente;
-  const temEtiqueta = !!a.etiqueta && f.etiquetas.some((x) => x.toLocaleLowerCase('pt-BR') === a.etiqueta!.toLocaleLowerCase('pt-BR'));
-  const jaEMeu = !!eu && f.responsavel?.id === eu.id;
-  const travas: string[] = [
-    ...(semTelefone ? ['O chamado não tem o WhatsApp do contato: preencha o contato para mandar a mensagem.'] : []),
-    ...(!semTelefone && semWhats ? ['O WhatsApp do cliente não está ligado (Chamados › Ajustes › Avisos e WhatsApp): a mensagem não sairia.'] : []),
-    ...(para && faltam.length ? [`Para ir para ${para.nome}, falta preencher: ${lista(faltam.map((x) => nomeDoObrigatorio(x, opcoes.campos)))}.`] : []),
-    ...(para && filhos.length ? [`Os filhos em aberto precisam fechar antes de ir para ${para.nome}: ${filhos.join(', ')}.`] : []),
-    ...(etapaFora ? ['A etapa desta resposta não é deste painel.'] : []),
-  ];
-
-  const aplicar = async () => {
-    const r = await acao.rodar(() => api.atendimento.usarResposta(f.id, { respostaId: resposta.id, texto: texto.trim() }), `Resposta "${resposta.nome}" aplicada`);
-    if (r.ok) onFechar();
-  };
-
-  const faz: Array<{ icone: ReactNode; texto: ReactNode; nota?: string }> = [
-    a.avisarCliente
-      ? { icone: <MessageCircle size={14} />, texto: <>Manda o texto ao cliente pelo WhatsApp{f.contato?.nome ? ` (${f.contato.nome})` : ''}</> }
-      : texto.trim() ? { icone: <StickyNote size={14} />, texto: 'O texto vira uma anotação no chamado' } : null,
-    a.esperar === 'cliente' || a.esperar === 'operadora' ? { icone: <Hourglass size={14} />, texto: `Marca: ${NOME_ESPERA[a.esperar]} (o motivo é o nome da resposta)` } : null,
-    a.esperar === 'nada' ? { icone: <Hourglass size={14} />, texto: 'Tira a marca de espera', nota: f.espera ? undefined : 'não há espera marcada agora' } : null,
-    a.etiqueta ? { icone: <Tag size={14} />, texto: <>Põe a etiqueta <b>{a.etiqueta}</b></>, nota: temEtiqueta ? 'o chamado já tem' : undefined } : null,
-    a.assumir ? { icone: <UserCheck size={14} />, texto: 'Você assume o chamado', nota: jaEMeu ? 'já é seu' : undefined } : null,
-    a.etapaId ? {
-      icone: <ArrowRight size={14} />,
-      texto: <>Move para <b>{para ? nomeComNivel(para) : nomeComNivel(etapaAtual)}</b>{sentido === 'sobe' ? ' (escalona)' : sentido === 'desce' ? ' (volta de nível)' : ''}</>,
-      nota: !para && !etapaFora ? 'já está nela' : sentido ? 'o motivo é o nome da resposta' : undefined,
-    } : null,
-  ].filter(Boolean) as Array<{ icone: ReactNode; texto: ReactNode; nota?: string }>;
-
-  return (
-    <Modal open onClose={onFechar} titulo={`Resposta pronta: ${resposta.nome}`} largura="max-w-xl"
-      rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} desativado={travas.length > 0} botao="Aplicar" onConfirmar={aplicar} />}>
-      <Campo label={a.avisarCliente ? 'Mensagem ao cliente (WhatsApp)' : 'Anotação'} dica="Já preenchido com os dados deste chamado. Dá para mudar antes de aplicar.">
-        <textarea className="input min-h-[120px]" maxLength={3000} value={texto} onChange={(e) => setTexto(e.target.value)} autoFocus />
-      </Campo>
-      {a.avisarCliente && !semWhats && <ComoChegaAoCliente texto={texto} />}
-      <div className="mt-4">
-        <div className="eyebrow mb-1.5">O que ela vai fazer</div>
-        {faz.length ? (
-          <ul className="flex flex-col gap-1.5 text-[13.5px]">
-            {faz.map((x, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span className="text-muted mt-0.5 shrink-0" aria-hidden>{x.icone}</span>
-                <span>{x.texto}{x.nota && <span className="text-muted"> — {x.nota}</span>}</span>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="text-[13.5px] text-muted">Nada além de registrar que a resposta foi usada.</p>}
-      </div>
-      {travas.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-1">
-          {travas.map((t) => <li key={t} className="flex items-start gap-1.5 text-[12.5px] text-signal"><CircleAlert size={13} className="shrink-0 mt-0.5" /> {t}</li>)}
-        </ul>
-      )}
-      <ErroPerto erro={acao.erro} />
-    </Modal>
   );
 }
 

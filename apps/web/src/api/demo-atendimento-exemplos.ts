@@ -1,7 +1,7 @@
 /**
  * OS DADOS DE EXEMPLO DOS CHAMADOS NA PRÉVIA (Patch 2.0, decisão 0047) — o que o Luan vê ao abrir o
- * módulo: a equipe, a árvore de assuntos da equipe (já arrumada em 3 níveis), as respostas prontas, os
- * agendados e uns 50 chamados com a vida inteira de cada um.
+ * módulo: a equipe, a árvore de assuntos da equipe (já arrumada em 3 níveis), os agendados e uns 50
+ * chamados com a vida inteira de cada um.
  *
  * Os chamados não estão escritos "prontos" (com etapa, datas e histórico à mão): cada um é uma história
  * — quem abriu, quando assumiu, para quem escalonou e por quê, o que anotou, quando resolveu — que o
@@ -201,32 +201,10 @@ export const CAMPOS_DE_EXEMPLO: Array<{
 ];
 
 // =====================================================================
-//  AS RESPOSTAS PRONTAS E OS AGENDADOS
+//  OS AGENDADOS
 // =====================================================================
 
 export type ChaveEtapa = 'novo' | 'n1' | 'n2' | 'n3' | 'dev' | 'observacao' | 'resolvido' | 'fechado' | 'analise' | 'desenvolvimento' | 'teste' | 'entregue';
-
-export const RESPOSTAS_PRONTAS: Array<{
-  nome: string; texto: string; painel: 'SUP' | null;
-  acao: { avisarCliente?: boolean; etapa?: ChaveEtapa; esperar?: 'cliente' | 'operadora' | 'nada'; etiqueta?: string; assumir?: boolean };
-}> = [
-  {
-    nome: 'Pedir teste ao cliente', painel: null, acao: { avisarCliente: true, esperar: 'cliente' },
-    texto: 'Olá, {contato}! Fizemos o ajuste no seu chamado {codigo}. Pode testar e nos contar se funcionou?',
-  },
-  {
-    nome: 'Escalonar para o N2 (sem acesso)', painel: 'SUP', acao: { etapa: 'n2' },
-    texto: 'Escalonado para o N2: o N1 não tem acesso ao servidor (ou ao SBC) do cliente para seguir.',
-  },
-  {
-    nome: 'Aguardando a operadora', painel: null, acao: { esperar: 'operadora' },
-    texto: 'Abrimos o chamado na operadora e estamos acompanhando. Avisamos o cliente assim que houver retorno.',
-  },
-  {
-    nome: 'Resolvido: ramal reconfigurado', painel: 'SUP', acao: { etapa: 'resolvido' },
-    texto: 'Reconfiguramos o ramal e fizemos uma ligação de teste com o cliente: está funcionando.',
-  },
-];
 
 export type AgendadoDeExemplo = {
   chave: string; titulo: string; relato: string; cliente: string | null; responsavel: Pessoa | null; prioridade: Prioridade | null;
@@ -299,10 +277,10 @@ export type Passo =
   | { aos: number; faz: 'operadora'; por: Pessoa; operadora: string; protocolo: string; cobrarACadaHoras?: number; prometidoEmHoras?: number; nota?: string }
   | { aos: number; faz: 'cobrar' | 'fecharProtocolo'; por: Pessoa; texto: string }
   | { aos: number; faz: 'avisarCliente'; por: Pessoa; texto: string }
-  | { aos: number; faz: 'resposta'; por: Pessoa; resposta: string }
   | { aos: number; faz: 'ligar'; por: Pessoa; com: string; tipo: TipoLigacaoChamado }
   | { aos: number; faz: 'observar'; por: Pessoa }
-  | { aos: number; faz: 'clienteRespondeu'; texto: string };
+  /** o cliente escreveu no WhatsApp que não resolveu, e o atendente reabriu */
+  | { aos: number; faz: 'reabrir'; por: Pessoa; motivo: string };
 
 export type Exemplo = {
   chave: string;
@@ -345,7 +323,7 @@ const VIVERBEM = 'Home Care Viver Bem';
  */
 /**
  * As cores das etiquetas dos exemplos (2.0, o pedido do Luan na prévia: escolher a cor ao criar). As que
- * não estão aqui nasceram cinza nos chamados (como as do robô e das respostas prontas).
+ * não estão aqui nasceram cinza nos chamados (como as do robô).
  */
 export const CORES_DAS_ETIQUETAS: Array<[string, CorEtiqueta]> = [
   ['urgente', 'bad'], ['vip', 'amarelo'], ['algar', 'roxo'], ['reincidente', 'signal'], ['fop2', 'turquesa'], ['whatsapp', 'ok'], ['ramal', 'accent'],
@@ -547,9 +525,6 @@ export const EXEMPLOS: Exemplo[] = [
       { aos: 62, faz: 'avisarCliente', por: 'camila', texto: 'Mandamos o relatório para o seu e-mail. Qualquer dúvida, é só chamar por aqui.' },
       { aos: 65, faz: 'alterar', por: 'camila', dados: { solucao: 'Exportamos o relatório de atendimentos do mês e enviamos por e-mail.', causa: 'Pedido do cliente.' } },
       { aos: 66, faz: 'mover', para: 'resolvido', por: 'camila' },
-      // o "obrigado" do cliente não reabre (e nem fica registrado). (Com "Recebi, obrigado!" reabriria:
-      // "recebi" não está nas palavras de agradecimento do `pareceAgradecimento`.)
-      { aos: 130, faz: 'clienteRespondeu', texto: 'Ok, muito obrigado!' },
       { aos: 300, faz: 'mover', para: 'fechado', por: 'camila' },
     ],
   },
@@ -979,13 +954,13 @@ export const EXEMPLOS: Exemplo[] = [
     },
     passos: [
       { aos: 6, faz: 'assumir', por: 'lucio' },
-      { aos: 30, faz: 'resposta', por: 'lucio', resposta: 'Escalonar para o N2 (sem acesso)' },
+      { aos: 30, faz: 'mover', para: 'n2', por: 'lucio', motivo: 'O N1 não tem acesso ao SBC para liberar o IP novo' },
       { aos: 35, faz: 'alterar', por: 'lucio', dados: { responsavel: 'bruno' } },
       { aos: 300, faz: 'anotar', por: 'bruno', texto: 'Liberado o IP novo no SBC; falta o cliente testar uma ligação de saída.' },
     ],
   },
   {
-    // reaberto: o cliente respondeu no Resolvido ("ainda está…")
+    // reaberto: o cliente escreveu no WhatsApp que ainda não resolveu, e o responsável reabriu
     chave: 'fila-sac', painel: 'SUP', idade: 1100, abre: 'marina',
     dados: {
       titulo: 'Fila do SAC sem música de espera', cliente: NORTE, contato: CARLOS, responsavel: 'luan',
@@ -997,7 +972,7 @@ export const EXEMPLOS: Exemplo[] = [
       { aos: 200, faz: 'anotar', por: 'luan', texto: 'A música de espera da fila do SAC apontava para um arquivo apagado na limpeza do servidor. Subi o arquivo de novo.' },
       { aos: 210, faz: 'alterar', por: 'luan', dados: { solucao: 'Subimos de novo o arquivo da música de espera e apontamos a fila do SAC para ele.', causa: 'O arquivo da música foi apagado na limpeza do servidor.' } },
       { aos: 700, faz: 'mover', para: 'resolvido', por: 'luan' },
-      { aos: 1010, faz: 'clienteRespondeu', texto: 'Ainda está sem música para quem liga do celular.' },
+      { aos: 1010, faz: 'reabrir', por: 'luan', motivo: 'O Carlos disse no WhatsApp que ainda está sem música para quem liga do celular' },
     ],
   },
   {
@@ -1110,7 +1085,8 @@ export const EXEMPLOS: Exemplo[] = [
       { aos: 4, faz: 'assumir', por: 'camila' },
       { aos: 30, faz: 'anotar', por: 'camila', texto: 'Login criado (bianca.lima). Mandei o acesso para o e-mail da Renata.' },
       // avisa o cliente pelo WhatsApp e marca "esperando o cliente"
-      { aos: 32, faz: 'resposta', por: 'camila', resposta: 'Pedir teste ao cliente' },
+      { aos: 32, faz: 'avisarCliente', por: 'camila', texto: 'O login da Bianca está pronto e o acesso foi para o seu e-mail. Pode testar e nos contar se funcionou?' },
+      { aos: 32, faz: 'esperar', por: 'camila', tipo: 'cliente', motivo: 'Pedimos o teste do login ao cliente' },
     ],
   },
   {
@@ -1185,7 +1161,7 @@ export const EXEMPLOS: Exemplo[] = [
     ],
   },
   {
-    // resolvido com a resposta pronta
+    // resolvido: a anotação do teste e o movimento
     chave: 'caixa4', painel: 'SUP', idade: 450, abre: 'lucio',
     dados: {
       titulo: 'Ramal do caixa 4 sem registro depois da troca do switch', cliente: BOMPRECO, contato: ANTONIO,
@@ -1201,7 +1177,8 @@ export const EXEMPLOS: Exemplo[] = [
           campos: { Responsabilidade: 'Cliente' },
         },
       },
-      { aos: 310, faz: 'resposta', por: 'lucio', resposta: 'Resolvido: ramal reconfigurado' },
+      { aos: 310, faz: 'anotar', por: 'lucio', texto: 'Reconfiguramos o ramal e fizemos uma ligação de teste com o cliente: está funcionando.' },
+      { aos: 310, faz: 'mover', para: 'resolvido', por: 'lucio' },
     ],
   },
   {

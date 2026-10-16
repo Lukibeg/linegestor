@@ -179,7 +179,6 @@ describe('os exemplos da prévia', () => {
     expect(ag.map((a) => a.titulo).sort()).toEqual(['Conferir os backups dos PABX', 'Verificar os DIDs em uso']);
     const rodou = ag.find((a) => a.ultimoCodigo)!;
     expect(todos.find((c) => c.codigo === rodou.ultimoCodigo)?.origem).toBe('agendado');
-    expect(await api.respostas()).toHaveLength(4);
   }, DEMORA);
 
   it('o quadro, a lista e o Meu dia contam os mesmos chamados', async () => {
@@ -227,10 +226,10 @@ describe('os exemplos da prévia', () => {
     }
     expect(md.vencendo.length).toBeGreaterThan(0);
 
-    // o sininho do Luan: os seis que ele precisa ver (um é a novidade de um chamado que ele observa)
+    // o sininho do Luan: os cinco que ele precisa ver (um é a novidade de um chamado que ele observa)
     const av = await api.avisos();
-    expect(av.naoLidos).toBe(6);
-    expect(new Set(av.itens.filter((a) => !a.lido).map((a) => a.tipo))).toEqual(new Set(['critico', 'cliente_respondeu', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
+    expect(av.naoLidos).toBe(5);
+    expect(new Set(av.itens.filter((a) => !a.lido).map((a) => a.tipo))).toEqual(new Set(['critico', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
     // quem fez a ação não é avisado: nenhum aviso do Luan sobre o que ele mesmo fez
     for (const a of av.itens.filter((x) => x.tipo === 'recebeu' && x.texto.startsWith('Você recebeu'))) {
       const f = await api.chamado(a.chamado!.codigo);

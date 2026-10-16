@@ -1,8 +1,7 @@
 /**
  * A barra de ações da ficha: Assumir, Mover (o menu das etapas do painel, cada uma dizendo o que falta
  * para ir para ela e os filhos que travam), o atalho "Escalonar para N2", Esperar (o cliente ou a
- * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, Resposta pronta, Preencher com IA e
- * o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
+ * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, Preencher com IA e o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
  *
  * Mover usa o `useMover()` comum: ele pede o motivo ao subir ou descer de nível e mostra o que falta
  * quando o servidor recusa. O erro das ações diretas (assumir, parar de esperar…) aparece logo
@@ -12,21 +11,20 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowRightLeft, ArrowUpRight, Columns3, Copy, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, MessageCircle, MoreHorizontal, RotateCcw, Sparkles, Trash2, Unlink, UserCheck, Zap,
+  ArrowRightLeft, ArrowUpRight, Columns3, Copy, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, MessageCircle, MoreHorizontal, RotateCcw, Sparkles, Trash2, Unlink, UserCheck,
 } from 'lucide-react';
-import { etapaAoAssumir, movimentoDeNivel, nomeDoObrigatorio, type RespostaPronta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
+import { etapaAoAssumir, movimentoDeNivel, nomeDoObrigatorio, type SugestaoIa, type TipoEspera } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Confirmar, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
 import { chaveDaFicha, fundoDaJanela } from '../comum.js';
 import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, linkDaFicha, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 import { JanelaIa, pedirSugestao } from './Ia.js';
-import { JanelaAbrirLigado, JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaResposta, JanelaTrocarPainel, resumoDaResposta } from './Janelas.js';
+import { JanelaAbrirLigado, JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaTrocarPainel } from './Janelas.js';
 
 type Janela =
   | { tipo: 'esperar'; espera: TipoEspera }
   | { tipo: 'avisar' }
-  | { tipo: 'resposta'; resposta: RespostaPronta }
   | { tipo: 'ia'; s: SugestaoIa }
   | { tipo: 'ligar' }
   | { tipo: 'pai' }
@@ -54,10 +52,8 @@ export function BarraDeAcoes() {
   const aberto = f.situacao === 'aberto';
   const meu = !!eu && f.responsavel?.id === eu.id;
   const etapas = painel?.etapas ?? [];
-  const nomeEtapa = (id: string) => nomeComNivel(etapas.find((e) => e.id === id));
   // o atalho: o próximo nível acima (N1 → N2), quando o chamado está numa etapa com nível
   const acima = aberto && etapa?.nivel ? etapas.filter((e) => e.nivel && e.nivel > etapa.nivel!).sort((a, b) => a.nivel! - b.nivel!)[0] : undefined;
-  const respostas = opcoes.respostas.filter((r) => r.ativa && (!r.painelId || r.painelId === f.painelId)).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
   const podeAvisar = opcoes.whatsapp.cliente && !!f.contato?.telefone;
 
   /** Uma ação direta: o erro fica embaixo da barra, com o nome dela. */
@@ -185,14 +181,6 @@ export function BarraDeAcoes() {
           </button>
         )}
 
-        {respostas.length > 0 && (
-          <MenuSuspenso classe="btn-secondary btn-sm" largura="w-[320px]" titulo="Mandar um texto pronto e mudar o chamado de uma vez" rotulo={<><Zap size={15} /> Resposta pronta</>}>
-            {(fecharMenu) => respostas.map((r) => (
-              <ItemMenu key={r.id} dica={resumoDaResposta(r, nomeEtapa)} onClick={() => { fecharMenu(); setJanela({ tipo: 'resposta', resposta: r }); }}>{r.nome}</ItemMenu>
-            ))}
-          </MenuSuspenso>
-        )}
-
         {opcoes.ia.ativa && (
           <button type="button" className="btn-secondary btn-sm" disabled={lendo} onClick={() => void pedirIa()}
             title={f.sessaoId ? 'A IA lê a conversa no LineChat e sugere o preenchimento (nada é gravado sem você aplicar)' : 'A IA lê o chamado e sugere o preenchimento (nada é gravado sem você aplicar)'}>
@@ -247,7 +235,6 @@ export function BarraDeAcoes() {
 
       {janela?.tipo === 'esperar' && <JanelaEsperar tipo={janela.espera} onFechar={fechar} />}
       {janela?.tipo === 'avisar' && <JanelaAvisar onFechar={fechar} />}
-      {janela?.tipo === 'resposta' && <JanelaResposta resposta={janela.resposta} onFechar={fechar} />}
       {janela?.tipo === 'ia' && <JanelaIa s={janela.s} onFechar={fechar} />}
       {janela?.tipo === 'ligar' && <JanelaLigar onFechar={fechar} />}
       {janela?.tipo === 'pai' && (

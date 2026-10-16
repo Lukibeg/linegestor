@@ -1,6 +1,7 @@
 /**
- * Chamados do Gestor (Patch 2.0, decisão 0047): a rotina — as respostas prontas e os agendados (quem
- * cuida dos chamados, `tickets.manage`) e a IA no chamado (quem trabalha, `tickets.work`).
+ * Chamados do Gestor (Patch 2.0, decisão 0047): a rotina — os agendados (quem cuida dos chamados,
+ * `tickets.manage`) e a IA no chamado (quem trabalha, `tickets.work`). As respostas prontas saíram no
+ * 2.0.1 (o LineChat já tem as respostas rápidas).
  *
  * Toda mudança vai para a auditoria. A IA não muda nada no chamado: devolve a sugestão, a tela mostra
  * e a pessoa aplica com o PATCH de sempre (que registra o histórico).
@@ -8,7 +9,7 @@
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AgendadoGravarSchema, RespostaProntaGravarSchema } from '@gestor/shared';
+import { AgendadoGravarSchema } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as ia from '../services/atendimento/ia.js';
 import * as rotina from '../services/atendimento/rotina.js';
@@ -20,36 +21,6 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   const trabalhar = { preHandler: app.requirePermission('tickets.work') };
   const cuidar = { preHandler: app.requirePermission('tickets.manage') };
   const ator = (req: FastifyRequest) => atorDaPessoa(req.user!);
-
-  // ---------- as respostas prontas ----------
-
-  app.get('/respostas', { ...cuidar, schema: { tags, summary: 'As respostas prontas, inclusive as desativadas (a tela de Ajustes)' } },
-    async () => rotina.listarRespostas(app.db));
-
-  app.post('/respostas', { ...cuidar, schema: { tags, summary: 'Criar uma resposta pronta (a que move o chamado precisa do painel: a etapa é dele)', body: RespostaProntaGravarSchema } },
-    async (req, reply) => {
-      const { resposta, painel } = await rotina.criarResposta(app.db, req.body, req.user!.id);
-      await app.audit(req, {
-        action: 'create', entityType: 'ticket_macro', entityId: resposta.id,
-        summary: `Criou a resposta pronta "${resposta.nome}" (${painel ? `painel ${painel.nome}` : 'todos os painéis'})`, after: resposta,
-      });
-      return reply.status(201).send(resposta);
-    });
-
-  app.put('/respostas/:id', { ...cuidar, schema: { tags, summary: 'Mudar uma resposta pronta (ativa: false a tira da tela de trabalho)', params: Id, body: RespostaProntaGravarSchema } },
-    async (req) => {
-      const { antes, depois } = await rotina.alterarResposta(app.db, req.params.id, req.body);
-      const ligou = antes.ativa !== depois.ativa ? (depois.ativa ? ' (reativou)' : ' (desativou)') : '';
-      await app.audit(req, { action: 'update', entityType: 'ticket_macro', entityId: depois.id, summary: `Alterou a resposta pronta "${depois.nome}"${ligou}`, before: antes, after: depois });
-      return depois;
-    });
-
-  app.delete('/respostas/:id', { ...cuidar, schema: { tags, summary: 'Remover uma resposta pronta', params: Id } },
-    async (req) => {
-      const r = await rotina.removerResposta(app.db, req.params.id);
-      await app.audit(req, { action: 'delete', entityType: 'ticket_macro', entityId: r.id, summary: `Removeu a resposta pronta "${r.nome}"`, before: r });
-      return { ok: true };
-    });
 
   // ---------- os agendados ----------
 

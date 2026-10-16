@@ -2,8 +2,9 @@
  * Chamados › Ajustes (Patch 2.0) — Integrações (a administração, `admin.manage`): o que liga o Gestor
  * aos outros sistemas.
  *
- *  - O LineChat falando com o Gestor: o robô abre o chamado (com uma chave de API), o botão "Abrir
- *    chamado" na conversa (com o login da própria pessoa) e o n8n avisando que o cliente respondeu.
+ *  - O LineChat falando com o Gestor: o robô abre o chamado (com uma chave de API) e o botão "Abrir
+ *    chamado" na conversa (com o login da própria pessoa). O "cliente respondeu" (o n8n avisando a
+ *    mensagem do cliente) saiu no 2.0.1: o pedido do Luan, "isso tbm n precisa".
  *  - As chaves de API (a do robô, a do n8n): aparecem uma vez, ao criar; perdeu, revoga e cria outra.
  *  - Os webhooks: o Gestor avisa o n8n do que aconteceu com um chamado, com a assinatura no cabeçalho.
  *  - Os sites que podem abrir o Gestor dentro deles — o pedido do Luan: "tire esse bloqueio, quero que
@@ -16,7 +17,7 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AppWindow, Bot, Check, Copy, KeyRound, Link2, MousePointerClick, Pencil, Plus, Reply, Send, Trash2, TriangleAlert, Webhook, X } from 'lucide-react';
+import { AppWindow, Bot, Check, Copy, KeyRound, Link2, MousePointerClick, Pencil, Plus, Send, Trash2, TriangleAlert, Webhook, X } from 'lucide-react';
 import {
   EVENTOS_WEBHOOK, linkDaConversa, NOME_EVENTO_WEBHOOK,
   type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type WebhookGravarEntrada, type WebhookTela,
@@ -105,7 +106,6 @@ function SegredoUmaVez({ titulo, explicacao, valor, aviso, onFechar }: { titulo:
 const SECOES = [
   { id: 'integ-robo', nome: 'O robô abre o chamado' },
   { id: 'integ-botao', nome: 'O botão na conversa' },
-  { id: 'integ-cliente', nome: 'O cliente respondeu' },
   { id: 'integ-chaves', nome: 'Chaves de API' },
   { id: 'integ-webhooks', nome: 'Webhooks' },
   { id: 'integ-iframe', nome: 'Dentro de outros sistemas' },
@@ -137,7 +137,6 @@ export function AjustesIntegracoes() {
       </nav>
       <CartaoRobo base={base} paineis={paineis} />
       <CartaoBotao base={base} />
-      <CartaoClienteRespondeu base={base} />
       <CartaoChaves chaves={t.chaves} />
       <CartaoWebhooks webhooks={t.webhooks} />
       <CartaoSites inicial={t.sites} base={base} />
@@ -236,39 +235,6 @@ function CartaoBotao({ base }: { base: string }) {
       <Rotulo>O endereço da ação</Rotulo>
       <Copiavel texto={endereco} rotulo="o endereço do botão" id="integ-botao-endereco" />
       <AvisoDasVariaveis />
-    </CartaoAjuste>
-  );
-}
-
-// ---------- o cliente respondeu (o n8n) ----------
-
-function CartaoClienteRespondeu({ base }: { base: string }) {
-  const endereco = `${base}/api/atendimento/entrada/mensagem`;
-  const corpo = JSON.stringify({ telefone: '5571999990000', texto: 'Ainda está caindo a ligação', sessaoId: '8f3c2a10' }, null, 2);
-  const resposta = JSON.stringify({ acao: 'reaberto', codigo: 'SUP-12' }, null, 2);
-  return (
-    <CartaoAjuste id="integ-cliente" icone={<Reply size={18} />} titulo="O cliente respondeu (para o n8n)">
-      <Explicacao>
-        <p>
-          Quando o cliente escreve no WhatsApp, o n8n (com o evento de mensagem recebida do LineChat) avisa este endereço. O chamado
-          Resolvido dele <b>reabre</b>, menos quando é só um agradecimento ("obrigado", "ok, funcionou", uma figurinha); no aberto, a
-          mensagem fica no histórico. Nos dois casos, o responsável é avisado.
-        </p>
-      </Explicacao>
-      <Rotulo>O endereço (POST), com a chave como no robô</Rotulo>
-      <Copiavel texto={endereco} rotulo="o endereço do cliente respondeu" id="integ-cliente-endereco" />
-      <Rotulo>O corpo (JSON)</Rotulo>
-      <BlocoDeCodigo texto={corpo} rotulo="o exemplo do cliente respondeu" />
-      <p className="text-[12.5px] text-muted mt-1.5">
-        <span className="font-mono">telefone</span> é obrigatório; <span className="font-mono">sessaoId</span> (o id da conversa) acha o chamado
-        certo quando o contato tem mais de um; sem ele, vale o mais novo do telefone.
-      </p>
-      <Rotulo>A resposta</Rotulo>
-      <BlocoDeCodigo texto={resposta} rotulo="o exemplo da resposta" />
-      <p className="text-[12.5px] text-muted mt-1.5">
-        <span className="font-mono">reaberto</span>, <span className="font-mono">registrado</span> (o chamado estava aberto) ou{' '}
-        <span className="font-mono">ignorado</span> (um agradecimento, ou nenhum chamado desse contato).
-      </p>
     </CartaoAjuste>
   );
 }

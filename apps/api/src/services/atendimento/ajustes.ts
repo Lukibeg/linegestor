@@ -1,7 +1,7 @@
 /**
  * OS AJUSTES DO MÓDULO DE CHAMADOS (Patch 2.0, decisão 0047): os painéis, as etapas de cada painel,
  * a árvore de assuntos, os prazos e os avisos (o WhatsApp dos chamados). É de quem cuida dos chamados
- * (`tickets.manage`). As respostas prontas e os agendados moram em outro arquivo (a rotina).
+ * (`tickets.manage`). Os agendados moram em outro arquivo (a rotina).
  *
  * As regras são as do `@gestor/shared` (as mesmas da prévia): o que um painel e uma etapa aceitam vem
  * dos schemas; a profundidade do assunto, de `nivelDoAssunto`; a lista colada, de `lerListaDeAssuntos`.

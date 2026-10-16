@@ -321,7 +321,6 @@ export type Api = {
     andamentoOperadora(id: string, casoId: string, d: { acao: 'cobrar' | 'fechar'; texto?: string | null }): Promise<T.FichaChamado>;
     /** pelo WhatsApp oficial; o que foi mandado fica no histórico */
     avisarCliente(id: string, texto: string): Promise<T.FichaChamado>;
-    usarResposta(id: string, d: { respostaId: string; texto: string }): Promise<T.FichaChamado>;
     observar(id: string, observar: boolean): Promise<T.FichaChamado>;
     /** a IA lê a conversa (ou o chamado) e sugere; nada é gravado até a pessoa aplicar */
     preencherComIa(id: string): Promise<T.SugestaoIa>;
@@ -354,9 +353,6 @@ export type Api = {
     modelosDoLineChat(): Promise<T.ModelosDoLineChat>;
     /** manda uma mensagem de teste para uma pessoa da equipe (ou um número) */
     testarAvisos(d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string }): Promise<{ ok: boolean; mensagem: string }>;
-    respostas(): Promise<T.RespostaPronta[]>;
-    salvarResposta(id: string | null, d: T.RespostaProntaGravarEntrada): Promise<T.RespostaPronta>;
-    removerResposta(id: string): Promise<{ ok: boolean }>;
     agendados(): Promise<T.Agendado[]>;
     salvarAgendado(id: string | null, d: T.AgendadoGravarEntrada): Promise<T.Agendado>;
     removerAgendado(id: string): Promise<{ ok: boolean }>;

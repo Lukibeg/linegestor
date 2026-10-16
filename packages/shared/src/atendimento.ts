@@ -709,30 +709,6 @@ export function filhosQueTravam(filhos: Array<{ codigo: string; situacao: Situac
 //  O CLIENTE RESPONDEU: REABRE OU NÃO?
 // =====================================================================
 
-/** Palavras de quem só agradece ou confirma: com elas (e só elas), o Resolvido não reabre. */
-const EDUCADAS = new Set([
-  'obrigado', 'obrigada', 'obrigadao', 'obg', 'brigado', 'brigada', 'agradeco', 'agradecido', 'agradecida', 'grato', 'grata', 'valeu', 'vlw', 'tmj',
-  'ok', 'okay', 'oki', 'blz', 'beleza', 'certo', 'certinho', 'show', 'perfeito', 'otimo', 'otima', 'top', 'joia', 'massa', 'combinado', 'entendi',
-  'resolvido', 'resolveu', 'funcionou', 'funcionando', 'deu', 'tudo', 'certo', 'sim', 'pode', 'fechar', 'encerrar', 'finalizar',
-  'muito', 'mt', 'mto', 'bom', 'boa', 'dia', 'tarde', 'noite', 'de', 'nada', 'ta', 'esta', 'agora', 'ja', 'e', 'o', 'a', 'pela', 'pelo', 'ajuda', 'atencao',
-  'abraco', 'abracos', 'abs', 'att', 'atenciosamente', 'ate', 'mais', 'amem', 'kkk', 'kkkk', 'rs', 'haha',
-]);
-
-/**
- * O cliente respondeu ao chamado Resolvido. "Obrigado", "ok, funcionou", uma figurinha: não reabre.
- * Qualquer outra coisa — uma pergunta, "ainda está caindo" — reabre. Na dúvida, reabre (é melhor um
- * chamado aberto à toa do que um cliente sem resposta).
- */
-export function pareceAgradecimento(texto: string | null | undefined): boolean {
-  const bruto = texto ?? '';
-  if (bruto.includes('?')) return false;
-  const t = paraBusca(bruto).replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
-  // só emoji ou figurinha
-  if (!t) return true;
-  if (t.length > 80) return false;
-  return t.split(' ').every((p) => EDUCADAS.has(p) || /^(k+|ha(ha)+|rs+)$/.test(p));
-}
-
 // =====================================================================
 //  OS FORMATOS DE ENTRADA (o que a tela e as integrações mandam)
 // =====================================================================
@@ -744,7 +720,7 @@ const Lista = (max = 50) => z.array(z.string().trim().min(1).max(120)).max(max);
 const EtiquetaSchema = z.string().trim().min(1).max(40).transform((s) => s.replace(/\s+/g, ' '));
 /**
  * As cores das etiquetas (o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor"),
- * na ordem da escolha. A que ninguém escolheu (o robô, a IA, a resposta pronta) nasce cinza; quem cuida
+ * na ordem da escolha. A que ninguém escolheu (o robô, a IA) nasce cinza; quem cuida
  * dos chamados troca a cor em Ajustes › Etiquetas.
  */
 export const CORES_ETIQUETA = ['neutral', 'accent', 'roxo', 'turquesa', 'ok', 'amarelo', 'signal', 'bad', 'rosa'] as const;
@@ -1049,7 +1025,6 @@ export const OperadoraCasoSchema = z.object({
 });
 export const OperadoraAndamentoSchema = z.object({ acao: z.enum(['cobrar', 'fechar']), texto: TextoOpcional(500) });
 export const AvisarClienteSchema = z.object({ texto: z.string().trim().min(1, 'Escreva a mensagem').max(3000) });
-export const AplicarRespostaSchema = z.object({ respostaId: z.string().min(1), texto: z.string().trim().max(3000).default('') });
 export const ObservarSchema = z.object({ observar: z.boolean() });
 
 export const ListarChamadosSchema = z.object({
@@ -1074,28 +1049,6 @@ export const ListarChamadosSchema = z.object({
 });
 export type FiltrosAtendimento = z.infer<typeof ListarChamadosSchema>;
 
-/** As mensagens prontas: um clique manda o texto e muda o chamado. */
-export const AcaoRespostaSchema = z.object({
-  /** manda o texto ao cliente pelo WhatsApp (senão, vira anotação) */
-  avisarCliente: z.boolean().default(false),
-  /** move para esta etapa (do mesmo painel) */
-  etapaId: z.string().nullish().transform((v) => v || null),
-  /** marca a espera (null = não mexe; 'nada' = tira a marca) */
-  esperar: z.enum(['cliente', 'operadora', 'nada']).nullish().transform((v) => v ?? null),
-  /** põe esta etiqueta */
-  etiqueta: z.string().trim().max(40).nullish().transform((v) => v || null),
-  /** quem usa assume o chamado */
-  assumir: z.boolean().default(false),
-});
-export type AcaoResposta = z.infer<typeof AcaoRespostaSchema>;
-export const RespostaProntaGravarSchema = z.object({
-  nome: z.string().trim().min(1, 'Dê um nome').max(60),
-  texto: z.string().trim().max(3000).default(''),
-  painelId: z.string().nullish().transform((v) => v || null),
-  acao: AcaoRespostaSchema,
-  ativa: z.boolean().default(true),
-});
-
 export const AgendadoGravarSchema = z.object({
   painelId: z.string().min(1),
   titulo: z.string().trim().min(3).max(200),
@@ -1110,7 +1063,11 @@ export const AgendadoGravarSchema = z.object({
 });
 
 /** Os avisos: quem recebe o quê, na tela e no WhatsApp. */
-export const EVENTOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'observador'] as const;
+/**
+ * O "cliente respondeu" saiu da lista no 2.0.1 (o Gestor não ouve mais as mensagens do cliente pelo n8n); o
+ * aviso antigo desse tipo continua aparecendo no sininho (`TIPOS_AVISO`).
+ */
+export const EVENTOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'observador'] as const;
 export type EventoAviso = (typeof EVENTOS_AVISO)[number];
 export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: string }> = {
   recebeu: { titulo: 'Recebeu um chamado (atribuído ou escalonado)', quem: 'quem recebeu' },
@@ -1121,7 +1078,6 @@ export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: stri
   prazo_vencido: { titulo: 'O prazo venceu', quem: 'o responsável e os supervisores' },
   sem_dono: { titulo: 'Sem responsável depois do tempo combinado', quem: 'os supervisores' },
   critico: { titulo: 'Chegou um chamado Crítico', quem: 'os supervisores' },
-  cliente_respondeu: { titulo: 'O cliente respondeu', quem: 'o responsável' },
   // como no Helena (o pedido do Luan na prévia): quem observa recebe toda atualização do chamado
   observador: { titulo: 'Novidade num chamado que a pessoa observa (anotação, etapa, responsável, espera, campos)', quem: 'os observadores' },
 };
@@ -1130,7 +1086,7 @@ export type CanaisDoAviso = { tela: boolean; whatsapp: boolean };
 export const EVENTOS_AVISO_PADRAO: Record<EventoAviso, CanaisDoAviso> = {
   recebeu: { tela: true, whatsapp: true }, citado: { tela: true, whatsapp: true }, etapa: { tela: true, whatsapp: true }, prazo_perto: { tela: true, whatsapp: true },
   prazo_vencido: { tela: true, whatsapp: true }, sem_dono: { tela: true, whatsapp: false }, critico: { tela: true, whatsapp: true },
-  cliente_respondeu: { tela: true, whatsapp: false }, observador: { tela: true, whatsapp: false },
+  observador: { tela: true, whatsapp: false },
 };
 const CanaisSchema = z.object({ tela: z.boolean(), whatsapp: z.boolean() });
 
@@ -1242,12 +1198,6 @@ export const EntradaChamadoSchema = z.object({
   /** os campos do painel, pelo nome ou pelo id ({"Sistema": "LinePBX"}) */
   campos: ValoresEntradaSchema.optional(),
 }).refine((e) => !!(e.titulo || e.relato || e.telefone || e.sessaoId), 'Mande pelo menos o título, o relato, o telefone ou a sessão');
-/** O cliente escreveu (o webhook de mensagem recebida, pelo n8n): pode reabrir o Resolvido. */
-export const EntradaMensagemSchema = z.object({
-  telefone: z.string().trim().min(8).max(40),
-  texto: z.string().max(5000).default(''),
-  sessaoId: z.string().trim().max(120).optional(),
-});
 /** O n8n mexendo num chamado (a NIA, as atualizações). */
 export const IntegracaoAlterarSchema = ChamadoAlterarSchema.extend({
   /** o assunto pelo nome ou pelo caminho ("Ramal › Configuração") */
@@ -1378,7 +1328,6 @@ export type NoGrafo = { id: string; codigo: string; titulo: string; situacao: Si
 export type ArestaGrafo = { de: string; para: string; tipo: 'filho' | 'incidente' | 'citado' | TipoLigacaoChamado };
 export type GrafoChamado = { nos: NoGrafo[]; arestas: ArestaGrafo[]; cortado: boolean };
 
-export type RespostaPronta = { id: string; nome: string; texto: string; painelId: string | null; acao: AcaoResposta; ordem: number; ativa: boolean };
 export type Agendado = {
   id: string; painelId: string; titulo: string; relato: string | null; clienteId: string | null; clienteNome: string | null;
   responsavelId: string | null; responsavelNome: string | null; assuntoId: string | null; prioridade: Prioridade | null; checklist: string[];
@@ -1399,7 +1348,6 @@ export type OpcoesAtendimento = {
    */
   etiquetas: EtiquetaComCor[];
   prazos: AjustesPrazos;
-  respostas: RespostaPronta[];
   /** o WhatsApp está pronto para mandar ao cliente? e à equipe? */
   whatsapp: {
     cliente: boolean; equipe: boolean;
@@ -2093,7 +2041,7 @@ export function etiquetasUnicas(xs: string[]): string[] {
 }
 
 /**
- * As etiquetas de um chamado (ou de uma resposta pronta) com uma etiqueta renomeada — achada pela chave
+ * As etiquetas de um chamado com uma etiqueta renomeada — achada pela chave
  * do nome antigo, escrita de qualquer jeito. Nula quando ela não está na lista (nada a mudar).
  */
 export function renomearEtiqueta(lista: string[], deChave: string, para: string): string[] | null {
@@ -2142,7 +2090,6 @@ export type OperadoraCasoEntrada = z.input<typeof OperadoraCasoSchema>;
 export type PainelGravarEntrada = z.input<typeof PainelGravarSchema>;
 export type EtapaGravarEntrada = z.input<typeof EtapaGravarSchema>;
 export type AssuntoGravarEntrada = z.input<typeof AssuntoGravarSchema>;
-export type RespostaProntaGravarEntrada = z.input<typeof RespostaProntaGravarSchema>;
 export type AgendadoGravarEntrada = z.input<typeof AgendadoGravarSchema>;
 export type AvisosChamadosEntrada = z.input<typeof AvisosChamadosSchema>;
 export type WebhookGravarEntrada = z.input<typeof WebhookGravarSchema>;

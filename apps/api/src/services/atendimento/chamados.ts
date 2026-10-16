@@ -1,8 +1,8 @@
 /**
  * OS CHAMADOS DO GESTOR — o trabalho num chamado (Patch 2.0, decisão 0047): abrir, alterar, mover
  * (e escalonar), assumir, esperar, reabrir, trocar de painel, anotar com anexos, ligar a outro
- * chamado, o pai e o problema, o checklist, o tempo, a operadora, avisar o cliente, a resposta pronta,
- * acompanhar e a lixeira.
+ * chamado, o pai e o problema, o checklist, o tempo, a operadora, avisar o cliente, acompanhar e a
+ * lixeira. (A resposta pronta saiu no 2.0.1.)
  *
  * As regras moram no `@gestor/shared` (as mesmas da prévia); aqui fica o que é do servidor: conferir
  * o pedido contra o banco, gravar o chamado e o histórico juntos (numa transação quando o número ou
@@ -20,14 +20,14 @@
 import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
-  clientContacts, clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketLinks, ticketMacros, ticketNotes, ticketPanels,
+  clientContacts, clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketLinks, ticketNotes, ticketPanels,
   ticketTimeEntries, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
   caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, diaLocal, emLista, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada,
   faltaParaAbrir, faltaParaEtapa, filhosQueTravam, lerCamposDoPedido, mensagemDoQueFalta, mesmoValorDoCampo, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO,
-  NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, preencherModelo, prioridadeSugeridaDoPainel, situacaoDaEtapa, textoDoValor,
+  NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel, situacaoDaEtapa, textoDoValor,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos,
@@ -41,7 +41,7 @@ import {
   camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, exigirTrabalhar, integracaoDoAtor, pessoaCurta, pessoaDoAtor, podeCuidar, podeVerPainel,
   quemVeOPainel, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
 } from './contexto.js';
-import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, lerAcao, minutosGastos } from './leitura.js';
+import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, minutosGastos } from './leitura.js';
 import { emitir } from './webhooks.js';
 import { mandarWhatsApp } from './whatsapp.js';
 
@@ -698,7 +698,7 @@ export async function mover(
 /**
  * Fica com o chamado. Na entrada, ele vai para a primeira etapa de andamento — se não faltar nada para
  * entrar nela; faltando, fica na entrada (a ficha mostra o que falta). `mover: false` só troca o
- * responsável (a resposta pronta que já leva o chamado para uma etapa).
+ * responsável.
  */
 export async function assumir(app: FastifyInstance, ator: Ator, ref: string, opts: { mover?: boolean } = {}): Promise<Feito> {
   exigirTrabalhar(ator);
@@ -1220,56 +1220,6 @@ export async function avisarCliente(app: FastifyInstance, ator: Ator, ref: strin
   await app.db.update(tickets).set({ updatedAt: agora, lastActivityAt: agora, ...(ator.tipo === 'pessoa' && !t.firstResponseAt ? { firstResponseAt: agora } : {}) }).where(eq(tickets.id, t.id));
   await contarAosObservadores(app, ator, t, `${ator.nome} mandou ao cliente, no ${t.code}: "${trecho(texto.trim().replace(/\s+/g, ' '), 140)}"`);
   return { ...nada(t), resumo: `Avisou o cliente de ${t.code} pelo WhatsApp`, depois: { texto } };
-}
-
-/**
- * A resposta pronta: um clique manda o texto e muda o chamado. Antes de tudo, confere o movimento (se
- * a resposta leva o chamado para uma etapa): faltando algo, nada acontece. Depois, na ordem: o aviso
- * ao cliente (se falhar, para aí) ou a anotação; a espera; a etiqueta; assumir; a etapa.
- */
-export async function usarResposta(app: FastifyInstance, ator: Ator, ref: string, d: { respostaId: string; texto?: string | null }): Promise<Feito> {
-  exigirTrabalhar(ator);
-  const e = await carregar(app, ator, ref);
-  const { ctx, t, painel } = e;
-  const [m] = await app.db.select().from(ticketMacros).where(and(eq(ticketMacros.id, d.respostaId), isNull(ticketMacros.deletedAt))).limit(1);
-  if (!m || !m.active || (m.panelId && m.panelId !== t.panelId)) throw new BadRequest('Essa resposta pronta não existe (ou não vale neste painel).');
-  const acao = lerAcao(m.action);
-  const texto = d.texto?.trim() || preencherModelo(m.body, {
-    contato: t.contactName, codigo: t.code, cliente: nomeCliente(ctx, t.clientId), titulo: t.title,
-    responsavel: pessoaCurta(ctx, t.assigneeId)?.nome ?? null, eu: ator.nome,
-  });
-  const assume = acao.assumir && ator.tipo === 'pessoa';
-
-  // antes de tudo, o movimento: faltando algo para a etapa, nada acontece
-  let para: EtapaPainel | null = null;
-  if (acao.etapaId) {
-    para = painel.etapas.find((x) => x.id === acao.etapaId) ?? null;
-    if (!para) throw new BadRequest(`A resposta pronta "${m.name}" leva para uma etapa que não é do painel ${painel.nome}.`);
-    if (para.id === t.stageId) para = null;
-  }
-  if (para) await conferirMovimento(app.db, e, para, { motivo: m.name, responsavelId: assume ? ator.id : undefined, nivel: true });
-
-  if (acao.avisarCliente) {
-    if (!t.contactPhone) throw new BadRequest('O chamado não tem o WhatsApp do contato.');
-    if (!texto) throw new BadRequest(`A resposta pronta "${m.name}" está sem texto para mandar ao cliente.`);
-    const r = await mandarAoCliente(app, ator, t, texto, e.quando());
-    if (!r.ok) return { ...nada(t), resumo: `Tentou usar a resposta pronta "${m.name}" em ${t.code}, mas o WhatsApp não foi: ${r.mensagem}`, erro: r.mensagem };
-    await app.db.update(tickets).set({ updatedAt: e.agora, lastActivityAt: e.agora, ...(ator.tipo === 'pessoa' && !t.firstResponseAt ? { firstResponseAt: e.agora } : {}) }).where(eq(tickets.id, t.id));
-    await contarAosObservadores(app, ator, t, `${ator.nome} mandou ao cliente, no ${t.code}: "${trecho(texto.replace(/\s+/g, ' '), 140)}"`);
-  }
-  await registrarEvento(app.db, t.id, 'resposta_pronta', ator, { nome: m.name }, e.quando());
-  if (!acao.avisarCliente && texto) await anotar(app, ator, t.id, { texto, anexos: [] });
-  if (acao.esperar === 'cliente' || acao.esperar === 'operadora') await esperar(app, ator, t.id, { tipo: acao.esperar, motivo: m.name });
-  else if (acao.esperar === 'nada') await esperar(app, ator, t.id, { tipo: null });
-  if (acao.etiqueta && !t.tags.some((x) => paraBusca(x) === paraBusca(acao.etiqueta!))) await alterar(app, ator, t.id, { etiquetas: [...t.tags, acao.etiqueta] });
-  if (assume) await assumir(app, ator, t.id, { mover: !para });
-  if (para) {
-    // o motivo só vai quando o movimento é de nível (escalonar ou voltar): o nome da resposta explica
-    const [linha] = await app.db.select({ stageId: tickets.stageId }).from(tickets).where(eq(tickets.id, t.id)).limit(1);
-    const de = linha ? ctx.etapas.get(linha.stageId)?.etapa ?? null : null;
-    await mover(app, ator, t.id, { etapaId: para.id, motivo: movimentoDeNivel(de, para) ? m.name : null });
-  }
-  return { ...nada(t), resumo: `Usou a resposta pronta "${m.name}" em ${t.code}`, depois: { texto } };
 }
 
 // =====================================================================

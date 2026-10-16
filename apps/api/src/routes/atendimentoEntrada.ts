@@ -12,7 +12,7 @@
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { EntradaChamadoSchema, EntradaMensagemSchema, IntegracaoAlterarSchema } from '@gestor/shared';
+import { EntradaChamadoSchema, IntegracaoAlterarSchema } from '@gestor/shared';
 import type { Ator } from '../services/atendimento/contexto.js';
 import * as entrada from '../services/atendimento/entrada.js';
 
@@ -54,23 +54,6 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       await app.audit(req, { action: 'update', entityType: 'ticket', entityId: r.id, summary: `${quem(req)} anotou em ${r.codigo} o relato novo da mesma conversa` });
     }
     return reply.status(r.criado ? 201 : 200).send({ criado: r.criado, id: r.id, codigo: r.codigo, numero: r.numero, link: r.link });
-  });
-
-  app.post('/entrada/mensagem', {
-    ...comChave,
-    schema: {
-      tags, querystring: ChaveNoEndereco, body: EntradaMensagemSchema,
-      summary: 'O cliente escreveu: reabre o chamado Resolvido (menos o "obrigado") ou registra no aberto, e avisa o responsável',
-    },
-  }, async (req) => {
-    const r = await entrada.mensagemDoCliente(app, ator(req), req.body);
-    if (r.acao !== 'ignorado') {
-      await app.audit(req, {
-        action: 'update', entityType: 'ticket', entityId: r.id ?? null,
-        summary: r.acao === 'reaberto' ? `${quem(req)}: o cliente respondeu e ${r.codigo} reabriu` : `${quem(req)}: o cliente respondeu em ${r.codigo}`,
-      });
-    }
-    return { acao: r.acao, ...(r.codigo ? { codigo: r.codigo } : {}) };
   });
 
   // ---------- o n8n mexendo num chamado ----------

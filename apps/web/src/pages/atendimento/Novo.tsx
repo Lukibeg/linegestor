@@ -4,7 +4,11 @@
  * Abre-se à mão no Gestor ou pelo botão "Abrir chamado" da conversa do LineChat, que chega aqui com
  * `?telefone=…&nome=…&sessao=…` (o contato e o WhatsApp já vêm preenchidos, e o chamado guarda a
  * sessão para o link da conversa). Outros atalhos pelo endereço: `?painel=` (o painel), `?pai=SUP-3`
- * (o filho nasce ligado ao pai) e `?tipo=problema&incidente=SUP-5` (o problema nasce juntando o incidente).
+ * (o filho nasce ligado ao pai) e `?incidente=SUP-5` (o problema nasce juntando o incidente).
+ *
+ * Desde o 2.0.1 não há o "Registro" (Chamado ou Problema) para escolher — o pedido do Luan, em 16/10:
+ * "n tem necessidade". O que se abre aqui é chamado; o problema nasce só a partir de um chamado (na ficha,
+ * "Abrir um problema a partir deste…"), que vira o primeiro incidente dele.
  *
  * O que o Luan pediu e está aqui:
  *  - ao escolher o cliente, os chamados recentes dele aparecem com "Reabrir este em vez de abrir
@@ -66,7 +70,6 @@ const COR_PRIORIDADE: Record<Prioridade, string> = {
 
 type Form = {
   painelId: string;
-  tipoChamado: TipoChamado;
   clienteId: string;
   contatoNome: string;
   contatoTelefone: string;
@@ -193,6 +196,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const sessao = doEndereco('sessao');
   const refPai = (naJanela ? naJanela.pai : doEndereco('pai')) || undefined;
   const refIncidente = (naJanela ? naJanela.incidente : doEndereco('incidente')) || undefined;
+  /** com o incidente (o "Abrir um problema a partir deste…" da ficha), é um problema; o resto é chamado */
+  const tipoChamado: TipoChamado = refIncidente ? 'problema' : 'chamado';
   const pedidoPainel = (naJanela ? naJanela.painelId : doEndereco('painel')) ?? '';
   /** o painel do endereço (pelo id ou pela sigla) */
   const painelDoEndereco = pedidoPainel ? paineis.find((p) => p.id === pedidoPainel || p.sigla === pedidoPainel.toUpperCase()) : undefined;
@@ -209,7 +214,6 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     const eu = user && opcoes.pessoas.some((p) => p.id === user.id && p.ativo) ? user.id : '';
     return {
       painelId: painel.id,
-      tipoChamado: (naJanela ? naJanela.incidente : doEndereco('tipo') === 'problema') ? 'problema' : 'chamado',
       clienteId: '',
       contatoNome: doEndereco('nome') ?? '',
       // o LineChat manda só os dígitos (5571999990000): a caixa mostra do jeito que se lê
@@ -325,7 +329,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     if (precisaMotivo && !f.motivoPrioridade.trim()) { setErro('Trocar a prioridade sugerida pede o motivo.'); document.getElementById('novo-motivo-prioridade')?.focus(); return; }
     const d: ChamadoCriarEntrada = {
       painelId: painel.id,
-      tipoChamado: f.tipoChamado,
+      tipoChamado,
       titulo: f.titulo.trim(),
       relato: f.relato.trim() || null,
       descricao: f.descricao.trim() || null,
@@ -351,7 +355,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       responsavelId: f.responsavelId || null,
       observadores: f.observadores,
       paiId: pai.data?.id ?? null,
-      incidentes: f.tipoChamado === 'problema' && incidente.data ? [incidente.data.id] : [],
+      incidentes: tipoChamado === 'problema' && incidente.data ? [incidente.data.id] : [],
       avisarCliente: podeAvisar && f.avisarCliente,
       origem: sessao ? 'botao' : 'manual',
     };
@@ -428,9 +432,9 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             )}
             {refPai && <ChamadoLigado rotulo="Filho de" icone={<GitBranch size={15} />} consulta={pai} referencia={refPai} opcoes={opcoes}
               dica="O filho nasce ligado a este chamado (pode ser de outro painel). O pai só fecha com os filhos fechados, se o painel dele pedir." />}
-            {refIncidente && <ChamadoLigado rotulo={f.tipoChamado === 'problema' ? 'O problema junta o incidente' : 'Incidente (só um problema junta incidentes)'} icone={<Layers size={15} />}
-              consulta={incidente} referencia={refIncidente} opcoes={opcoes} apagado={f.tipoChamado !== 'problema'}
-              dica={f.tipoChamado === 'problema' ? 'O problema nasce juntando este chamado; outros incidentes se juntam pela ficha.' : 'Marque "Problema" em Registro para juntar este incidente.'} />}
+            {refIncidente && <ChamadoLigado rotulo="O problema junta o incidente" icone={<Layers size={15} />}
+              consulta={incidente} referencia={refIncidente} opcoes={opcoes}
+              dica="O problema nasce juntando este chamado; outros incidentes se juntam pela ficha." />}
           </div>
         )}
 
@@ -443,32 +447,27 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
 
         {/* ---------- onde ---------- */}
         <Secao titulo="Onde">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <Rotulado rotulo="Painel" id="novo-painel" grupo>
-              {painelFixo ? (
-                // aberto de dentro do painel: ele é o painel do chamado, sem outra opção
-                <p className="flex items-center gap-2 py-1.5 text-[14px] font-semibold text-ink" id="novo-painel" data-fixo="">
-                  <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip> {painel.nome}
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Painel" id="novo-painel">
-                  {paineis.map((p) => {
-                    const ativo = p.id === painel.id;
-                    return (
-                      <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => trocarPainel(p.id)}
-                        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
-                        <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </Rotulado>
-            <Rotulado rotulo="Registro" id="novo-registro" grupo>
-              <Segmentos<TipoChamado> id="novo-registro" rotulo="Registro" valor={f.tipoChamado} onChange={(v) => mudar({ tipoChamado: v })}
-                opcoes={[{ id: 'chamado', nome: 'Chamado', dica: 'O pedido ou a falha de um cliente' }, { id: 'problema', nome: 'Problema', dica: 'A mesma falha em vários clientes: junta os chamados deles' }]} />
-            </Rotulado>
-          </div>
+          {/* o Registro (Chamado ou Problema) saiu daqui no 2.0.1: o problema nasce pela ficha de um chamado */}
+          <Rotulado rotulo="Painel" id="novo-painel" grupo>
+            {painelFixo ? (
+              // aberto de dentro do painel: ele é o painel do chamado, sem outra opção
+              <p className="flex items-center gap-2 py-1.5 text-[14px] font-semibold text-ink" id="novo-painel" data-fixo="">
+                <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip> {painel.nome}
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Painel" id="novo-painel">
+                {paineis.map((p) => {
+                  const ativo = p.id === painel.id;
+                  return (
+                    <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => trocarPainel(p.id)}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+                      <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Rotulado>
           {painel.descricao && <p className="text-[12.5px] text-muted mt-2">{painel.descricao}</p>}
         </Secao>
 
