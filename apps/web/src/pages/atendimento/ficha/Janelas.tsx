@@ -111,7 +111,7 @@ function ComoChegaAoCliente({ texto }: { texto: string }) {
     <div className="mt-2" id="ficha-como-chega">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
         <span className="eyebrow">Como chega ao cliente</span>
-        {m.peloModelo && <span className="chip bg-ok-soft text-ok" title="O modelo aprovado do WhatsApp oficial (Chamados › Ajustes › Avisos e WhatsApp)">pelo modelo <span className="font-mono font-normal">{m.nomeDoModelo ?? 'aprovado'}</span></span>}
+        {m.peloModelo && <span className="chip bg-ok-soft text-ok" title="O modelo aprovado do WhatsApp oficial (Painéis › Ajustes › Avisos e WhatsApp)">pelo modelo <span className="font-mono font-normal">{m.nomeDoModelo ?? 'aprovado'}</span></span>}
       </div>
       <BalaoDeMensagem texto={previa} />
       {m.peloModelo && /\n/.test(texto.trim()) && levaOTexto && <p className="text-[12px] text-muted mt-1.5">No modelo aprovado, a quebra de linha vira " · " (o WhatsApp não aceita quebra dentro da variável).</p>}
@@ -159,7 +159,8 @@ export function JanelaAbrirLigado({ tipo, onFechar }: { tipo: 'filho' | 'problem
 
 /**
  * Achar um chamado digitando: o código (SUP-12) ou um pedaço do título, do cliente, do contato. A
- * lista mostra os que a pessoa vê (de qualquer painel), os mais recentes primeiro.
+ * lista mostra os que a pessoa vê (de qualquer painel de Gestão), os mais recentes primeiro. As
+ * negociações ficam de fora: não se ligam a nada, nem são pai, problema ou incidente (decisão 0050).
  */
 function EscolherChamado({ valor, onChange, tipoChamado, excluir, onEnter }: {
   valor: string; onChange: (v: string) => void; tipoChamado?: 'chamado' | 'problema'; excluir: string[]; onEnter: () => void;
@@ -174,7 +175,7 @@ function EscolherChamado({ valor, onChange, tipoChamado, excluir, onEnter }: {
     enabled: q.length >= 2,
     staleTime: 30_000,
   });
-  const itens = (achados.data?.items ?? []).filter((c) => !excluir.includes(c.codigo));
+  const itens = (achados.data?.items ?? []).filter((c) => !excluir.includes(c.codigo) && painelDe(opcoes, c.painelId)?.tipo !== 'vendas');
   const escolhido = lerCodigo(valor);
   const escolher = (c: CartaoChamado) => { onChange(c.codigo); setMarcado(-1); };
   return (
@@ -235,23 +236,21 @@ const TIPOS_LIGAR: Array<{ id: TipoLigacaoChamado; nome: string; dica: string }>
 ];
 
 export function JanelaLigar({ onFechar }: { onFechar: () => void }) {
-  const { f, painel } = useAberta();
-  // a negociação liga a um chamado (a implantação no Suporte) ou a outra negociação
-  const vendas = painel?.tipo === 'vendas';
+  const { f } = useAberta();
   const acao = useAcao();
   const [codigo, setCodigo] = useState('');
   const [tipo, setTipo] = useState<TipoLigacaoChamado>('relacionado');
   const alvo = codigoLido(codigo);
   const ligar = async () => {
-    if (!alvo) { acao.setErro(vendas ? 'Escolha na lista ou escreva o código, como SUP-12 ou COM-3.' : 'Escolha o chamado na lista ou escreva o código, como SUP-12.'); return; }
-    if (alvo === f.codigo) { acao.setErro(vendas ? 'A negociação não se liga a ela mesma.' : 'Um chamado não se liga a ele mesmo.'); return; }
+    if (!alvo) { acao.setErro('Escolha o chamado na lista ou escreva o código, como SUP-12.'); return; }
+    if (alvo === f.codigo) { acao.setErro('Um chamado não se liga a ele mesmo.'); return; }
     const r = await acao.rodar(() => api.atendimento.ligar(f.id, { para: alvo, tipo }), `${f.codigo} ligado a ${alvo}`);
     if (r.ok) onFechar();
   };
   return (
-    <Modal open onClose={onFechar} titulo={vendas ? `Ligar ${f.codigo} a um chamado ou negociação` : `Ligar ${f.codigo} a outro chamado`} largura="max-w-xl"
+    <Modal open onClose={onFechar} titulo={`Ligar ${f.codigo} a outro chamado`} largura="max-w-xl"
       rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} botao="Ligar" onConfirmar={ligar} />}>
-      <Campo label={vendas ? 'Qual (o chamado ou a negociação)' : 'Qual chamado'}>
+      <Campo label="Qual chamado">
         <EscolherChamado valor={codigo} onChange={(v) => { setCodigo(v); acao.limpar(); }} excluir={[f.codigo]} onEnter={() => void ligar()} />
       </Campo>
       <fieldset className="mt-4">
@@ -310,7 +309,7 @@ export function JanelaEscolherChamado({ titulo, texto, botao, tipoChamado, exclu
 export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
   const { f, opcoes, painel } = useAberta();
   const acao = useAcao();
-  // a negociação só passa para outro painel de Vendas, e o chamado para outro de Gestão (entre eles, o Ligar)
+  // a negociação só passa para outro painel de Vendas, e o chamado para outro de Gestão (entre eles, abre-se o outro lá)
   const vendas = painel?.tipo === 'vendas';
   const outros = useMemo(() => opcoes.paineis.filter((p) => p.ativo && p.id !== f.painelId && p.tipo === (painel?.tipo ?? 'gestao')), [opcoes.paineis, f.painelId, painel?.tipo]);
   const [painelId, setPainelId] = useState(outros[0]?.id ?? '');
@@ -329,8 +328,8 @@ export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
       {!outros.length ? (
         <p className="text-sm text-muted">
           {vendas
-            ? 'Não há outro painel de Vendas ativo para onde passar a negociação. Para levar o trabalho a um painel de Gestão (a implantação, por exemplo), abra um chamado lá e ligue os dois (Ligar a outro chamado).'
-            : 'Não há outro painel de Gestão ativo para onde passar o chamado. Para começar uma negociação a partir dele, crie a negociação no painel de Vendas e ligue os dois (Ligar a outro chamado).'}
+            ? 'Não há outro painel de Vendas ativo para onde passar a negociação. Para levar o trabalho a um painel de Gestão (a implantação, por exemplo), abra um chamado lá.'
+            : 'Não há outro painel de Gestão ativo para onde passar o chamado. Para começar uma negociação a partir dele, crie a negociação no painel de Vendas.'}
         </p>
       ) : (
         <div className="flex flex-col gap-3">

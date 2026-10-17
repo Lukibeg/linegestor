@@ -121,7 +121,7 @@ describe('a chave de API', () => {
     expect(r!.lastUsedAt).toBeNull();
   });
 
-  it('a chave criada em Chamados › Integrações entra; revogada, para na hora', async () => {
+  it('a chave criada em Painéis › Ajustes › Integrações entra; revogada, para na hora', async () => {
     const criada = await s.post('/atendimento/integracoes/chaves', { nome: 'n8n de produção' });
     expect(criada.statusCode, criada.body).toBe(201);
     const { chave, valor } = criada.json();

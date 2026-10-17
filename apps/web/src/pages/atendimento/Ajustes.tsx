@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 2.0): o que a administração arruma no módulo. Cada parte numa aba
+ * Painéis › Ajustes (Patch 2.0): o que a administração arruma no módulo. Cada parte numa aba
  * (o endereço guarda a aba: ?aba=campos). Painéis, campos (os do sistema, a árvore de assuntos e os que a
  * equipe cria em cada painel), etiquetas (a cor de cada uma), prazos, avisos e agendados são de quem
  * cuida dos chamados; as integrações e a IA (a mesma da Base de conhecimento), da

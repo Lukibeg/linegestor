@@ -7,7 +7,8 @@
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
  * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (os
- * Chamados, os Projetos e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje) e **Base de
+ * Painéis — os chamados e as negociações; até o 2.0.1 o item se chamava Chamados —, os Projetos e os
+ * Relatórios, que abrem nos tickets do LineChat, na aba Hoje) e **Base de
  * conhecimento** (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O
  * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
  * recolhido, o ícone do grupo abre a lista dele do lado.
@@ -17,7 +18,7 @@ import { createPortal } from 'react-dom';
 import { NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookLock, BookUser, Boxes, Building2, Cable, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, Library, ListChecks, LogOut,
-  Menu, Moon, Settings, Sparkles, Sun, Ticket, UserRound, X, type LucideIcon,
+  Menu, Moon, Settings, Sparkles, SquareKanban, Sun, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
@@ -43,14 +44,15 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   // Administrativo também), por isso no alto do menu e não dentro do Suporte — lá ele ficava escondido no
   // grupo fechado (16/10, o Luan: "cadê, não tá na demo")
   { to: '/calendario', label: 'Calendário', icon: CalendarDays, perm: 'support.read' },
-  // o suporte: os chamados do Gestor (2.0), os projetos (as tarefas que percorrem vários clientes) e os
+  // o suporte: os painéis do Gestor (os chamados, 2.0, e as negociações do Comercial, 2.0.1 — "isso aqui n é
+  // chamados, é paineis", o Luan em 17/10), os projetos (as tarefas que percorrem vários clientes) e os
   // Relatórios. O Relatórios abre nos tickets do LineChat (a cópia de leitura, 1.3), na aba Hoje; dali as abas
   // levam ao Período e aos 20 relatórios (1.7), e o item fica marcado nas duas telas. (13/10, os pedidos do
   // Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos Projetos, "pode ficar dentro de
   // suporte também")
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
-      { to: '/atendimento', label: 'Chamados', icon: Ticket, perm: 'support.read' },
+      { to: '/atendimento', label: 'Painéis', icon: SquareKanban, perm: 'support.read' },
       { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
     ],

@@ -2,6 +2,7 @@
  * A barra de ações da ficha: Assumir, Mover (o menu das etapas do painel, cada uma dizendo o que falta
  * para ir para ela e os filhos que travam), o atalho "Escalonar para N2", Esperar (o cliente ou a
  * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, Preencher com IA e o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
+ * Na negociação, o Mais não tem ligar, filho, pai nem problema (2.0.1, decisão 0050).
  * Na negociação (o painel de Vendas), o Mais não tem filho, pai nem problema: ela se liga pelo Ligar (o pedido do
  * Luan na prévia, em 17/10: "n precisa de pais e filhas aqui").
  *
@@ -222,9 +223,10 @@ export function BarraDeAcoes() {
             const ir = (fazer: () => void) => () => { fecharMenu(); fazer(); };
             return (
               <>
-                <ItemMenu icone={<Link2 size={15} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica={vendas ? 'o chamado da implantação, outra negociação da empresa' : 'relacionado, duplicado de, repete'}>{vendas ? 'Ligar a outro chamado ou negociação…' : 'Ligar a outro chamado…'}</ItemMenu>
+                {/* a negociação não se liga a nada nem tem pai e filhos (2.0.1, decisão 0050) */}
                 {!vendas && (
                   <>
+                    <ItemMenu icone={<Link2 size={15} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica="relacionado, duplicado de, repete">Ligar a outro chamado…</ItemMenu>
                     <ItemMenu icone={<GitBranch size={15} />} onClick={ir(() => setJanela({ tipo: 'filho' }))} dica="pode ser em outro painel (o Desenvolvimento)">Criar um filho…</ItemMenu>
                     <ItemMenu icone={<GitBranch size={15} className="rotate-180" />} onClick={ir(() => setJanela({ tipo: 'pai' }))}>{f.pai ? `Trocar o pai (${f.pai.codigo})…` : 'Definir o pai…'}</ItemMenu>
                   </>
@@ -240,7 +242,7 @@ export function BarraDeAcoes() {
                     <ItemMenu icone={<Layers size={15} />} onClick={ir(() => setJanela({ tipo: 'novoProblema' }))} dica="este chamado vira o primeiro incidente dele">Abrir um problema a partir deste…</ItemMenu>
                   </>
                 )}
-                <SeparadorMenu />
+                {!vendas && <SeparadorMenu />}
                 <ItemMenu icone={<Columns3 size={15} />} onClick={ir(() => setJanela({ tipo: 'painel' }))} dica="o código não muda">Trocar de painel…</ItemMenu>
                 {!aberto && <ItemMenu icone={<RotateCcw size={15} />} onClick={ir(() => setJanela({ tipo: 'reabrir' }))}>Reabrir…</ItemMenu>}
                 <ItemMenu icone={f.observando ? <EyeOff size={15} /> : <Eye size={15} />}

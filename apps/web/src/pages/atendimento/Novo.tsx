@@ -202,7 +202,7 @@ function Carregador({ naJanela }: { naJanela?: AbrirNaJanela }) {
   }
   const paineis = opcoes.data.paineis.filter((p) => p.ativo && (!ligado || p.tipo !== 'vendas'));
   if (!paineis.length) {
-    return <div>{topo}<Vazio titulo="Nenhum painel aberto para você" texto={`Para abrir um chamado é preciso um painel ativo${ligado ? ' de Gestão' : ''} que você veja. Quem cuida dos chamados cria e libera os painéis em Chamados › Ajustes.`} /></div>;
+    return <div>{topo}<Vazio titulo="Nenhum painel aberto para você" texto={`Para abrir um chamado é preciso um painel ativo${ligado ? ' de Gestão' : ''} que você veja. Quem cuida dos chamados cria e libera os painéis em Painéis › Ajustes.`} /></div>;
   }
   return <Formulario opcoes={opcoes.data} paineis={paineis} naJanela={naJanela} />;
 }
@@ -503,7 +503,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         {pedeForaDoFormulario.length > 0 && (
           <p className="text-[13px] rounded-lg bg-signal-soft text-signal p-2.5" role="alert">
             O painel {painel.nome} pede para abrir: {pedeForaDoFormulario.map((c) => nomeDoObrigatorio(c, opcoes.campos)).join(', ')} — e isso só se preenche depois de aberto.
-            Peça a quem cuida dos chamados para rever as regras do painel (Chamados › Ajustes › Painéis).
+            Peça a quem cuida dos chamados para rever as regras do painel (Painéis › Ajustes › Painéis).
           </p>
         )}
 
@@ -655,7 +655,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
           <div className="grid grid-cols-1 gap-4">
             {(usa('assunto') || (usa('tipo') && painel.ajustes.tipos.length > 0)) && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {usa('assunto') && <Rotulado rotulo="Assunto" id="novo-assunto" obrigatorio={pede('assunto')} falta={falta('assunto')} className="sm:col-span-2"
-                dica={!opcoesAssunto.length ? `O painel ${painel.nome} ainda não tem assuntos (Chamados › Ajustes › Campos).` : undefined}>
+                dica={!opcoesAssunto.length ? `O painel ${painel.nome} ainda não tem assuntos (Painéis › Ajustes › Campos).` : undefined}>
                 <EscolherComBusca valor={f.assuntoId} onChange={(v) => { mudar({ assuntoId: v }); tirarFalta('assunto'); }} opcoes={opcoesAssunto} vazio="Sem assunto (ainda)"
                   placeholder="Escolha o assunto…" procurar="Procurar pelo caminho (ex.: ramal config)…" className="input w-full" id="novo-assunto" rotulo="Assunto" largura="w-[520px]"
                   desativado={!opcoesAssunto.length} />

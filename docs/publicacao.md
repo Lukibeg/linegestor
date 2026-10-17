@@ -197,7 +197,7 @@ banco local e teste ali. Nunca o contrário.
 |---|---|
 | Rede | Firewall fechado; nem o banco nem a API abrem porta para a internet — só o Caddy |
 | Transporte | HTTPS obrigatório, certificado automático, HSTS de 1 ano |
-| Cabeçalhos | `nosniff`, `Referrer-Policy`, `Permissions-Policy` (no Caddy) e a política de conteúdo (no sistema, desde o 2.0): o Gestor só abre dentro dele mesmo e dos sites liberados em Chamados › Ajustes › Integrações (decisão 0047) |
+| Cabeçalhos | `nosniff`, `Referrer-Policy`, `Permissions-Policy` (no Caddy) e a política de conteúdo (no sistema, desde o 2.0): o Gestor só abre dentro dele mesmo e dos sites liberados em Painéis › Ajustes › Integrações (decisão 0047) |
 | Pedidos de outro site | Todo pedido que muda algo confere de onde veio (`Origin`): de outro site, é recusado — menos a entrada das integrações (chave de API, sem cookie) |
 | Entrada | Acesso por sessão em cookie assinado e `httpOnly`; limite de tentativas de login |
 | Senhas guardadas | Cifradas com AES-256-GCM; a chave fica no `.env`, nunca no banco |

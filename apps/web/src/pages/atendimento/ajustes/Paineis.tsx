@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 2.0, decisão 0047) — OS PAINÉIS.
+ * Painéis › Ajustes (Patch 2.0, decisão 0047) — OS PAINÉIS.
  *
  * Cada painel é uma fila de chamados (Suporte, Desenvolvimento, Interno…) com a sua sigla (SUP-12),
  * a sua cor, quem vê, as suas etapas e as suas regras: se conta prazo, se o Resolvido fecha sozinho, o

@@ -19,7 +19,7 @@ nele (a regra do patch que ainda não subiu).
 **Decisão.**
 
 - **O tipo do painel.** Como no Helena, o painel é de **Gestão** (os chamados: prazos, níveis,
-  problema) ou de **Vendas** (as negociações). O tipo é escolhido ao criar (Chamados › Ajustes ›
+  problema) ou de **Vendas** (as negociações). O tipo é escolhido ao criar (Painéis › Ajustes ›
   Painéis › Novo painel: **Chamados (Gestão)** ou **Negociações (Vendas)**) e **não muda depois**: os
   dados de um e de outro são diferentes. O painel de Vendas é o painel dos chamados com o que é de
   venda — o quadro, a lista, a ficha, as anotações e o histórico, os avisos, os observadores, quem vê,
@@ -123,22 +123,27 @@ nele (a regra do patch que ainda não subiu).
   - O período: **Este mês**, **Mês passado**, **Este trimestre**, **Últimos 90 dias**, **Este ano** ou
     dois dias; fica no endereço (dá para mandar o link). A negociação que veio de outro painel conta de
     quando entrou neste.
-- **Onde fica.** Em **Suporte › Chamados**, como os outros painéis (o Suporte, o Desenvolvimento): a
+- **Onde fica.** Em **Suporte › Painéis**, como os outros painéis (o Suporte, o Desenvolvimento): a
   tela dos painéis, o quadro, a lista, o Meu dia. A primeira versão tinha um item **Vendas** no menu; o
   Luan não quis (*"não precisa ser um botão para ele, ele vai ser um painel como o do suporte"*). Dentro
-  do painel de Vendas, o botão do alto é **Nova negociação**.
+  do painel de Vendas, o botão do alto é **Nova negociação**. O item do menu se chamava **Chamados**; com
+  o Comercial ali dentro, virou **Painéis** (17/10, nos comentários: *"isso aqui n é chamados, é
+  paineis"* — a revisão da decisão 0048).
 - **A troca de painel.** A negociação só passa para **outro painel de Vendas** (e entra numa etapa do
   funil: o Ganho e o Perdido se marcam na janela deles); o chamado só para **outro de Gestão**. Entre os
-  dois, abre-se o outro lá e os dois se **ligam** (Mais › Ligar a outro chamado ou negociação): da
-  negociação ganha, o chamado da implantação no Suporte; do chamado em que o cliente pediu um orçamento,
-  a negociação no Comercial.
-- **Sem pai e filhos.** A primeira versão deixava a negociação ter pai e filhos (era o caminho para o
-  Suporte); na prévia, em 17/10, nos comentários: *"n precisa de pais e filhas aqui"*. Na ficha da
-  negociação, a parte se chama **Ligações** (sem o Criar um filho), e o Mais não tem Criar um filho nem
-  Definir o pai; o filho e o problema abertos a partir de um chamado só escolhem painéis de Gestão. O
+  dois, abre-se o outro lá: da negociação ganha, o chamado da implantação no Suporte; do chamado em que
+  o cliente pediu um orçamento, a negociação no Comercial.
+- **Sem pai, filhos e ligações.** A primeira versão deixava a negociação ter pai e filhos (era o caminho
+  para o Suporte); na prévia, em 17/10, nos comentários: *"n precisa de pais e filhas aqui"*. A versão
+  seguinte deixou só as **Ligações** (relacionado, duplicado de, repete, com o desenho), e, ainda em
+  17/10: *"isso mesmo, n precisa ligações"*. Agora a negociação fica sozinha no painel de Vendas: a ficha
+  não tem a parte de filhos e ligações, e o Mais não tem Ligar, Criar um filho nem Definir o pai. O
   servidor (e a prévia) recusa a negociação com pai, a negociação como pai de um chamado, o problema no
-  painel de Vendas e a negociação como incidente de um problema. A ligação (relacionado, duplicado de,
-  repete) continua.
+  painel de Vendas, a negociação como incidente de um problema e a ligação com uma negociação, dos dois
+  lados (`NEGOCIACAO_SEM_LIGACAO` e `negociacaoNaoSeLiga`, no `@gestor/shared`). Ao escolher outro
+  chamado (o pai, o problema, a ligação), a lista não mostra as negociações, e o desenho das ligações de
+  um chamado não as mostra. O código escrito num texto (*"o orçamento está na COM-2"*) continua virando
+  link, na negociação e no chamado: citar não é ligar.
 - **Permissões.** As dos chamados: ver, `support.read`; trabalhar (criar, mover, ganhar, perder),
   `tickets.work`; os painéis e os ajustes, `tickets.manage`.
 - **O banco.** A migração `0018_vendas`: o tipo do painel (`ticket_panels.kind`, `gestao` ou `vendas`),

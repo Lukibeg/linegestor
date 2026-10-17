@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 2.0) — Integrações (a administração, `admin.manage`): o que liga o Gestor
+ * Painéis › Ajustes (Patch 2.0) — Integrações (a administração, `admin.manage`): o que liga o Gestor
  * aos outros sistemas.
  *
  *  - O LineChat falando com o Gestor: o robô abre o chamado (com uma chave de API) e o botão "Abrir

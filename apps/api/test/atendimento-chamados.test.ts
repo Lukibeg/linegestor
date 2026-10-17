@@ -822,11 +822,11 @@ describe('avisar o cliente pelo WhatsApp', () => {
     const { id } = await abrir(s, { contatoNome: 'Joana', contatoTelefone: '(71) 98888-7777' });
     const antes = enviados.length;
     let r = await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Pode testar?' });
-    expect(r.json().error).toBe('Falta escolher o modelo aprovado da mensagem ao cliente (Chamados › Ajustes › Avisos e WhatsApp).');
+    expect(r.json().error).toBe('Falta escolher o modelo aprovado da mensagem ao cliente (Painéis › Ajustes › Avisos e WhatsApp).');
     expect((await s.get('/atendimento/opcoes')).json().whatsapp.cliente).toBe(false);
     await ajustar({ envioCliente: 'modelo', template: { ...MODELO, nome: 'promocao', tipoArquivo: 'IMAGE', arquivo: '' } });
     r = await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Pode testar?' });
-    expect(r.json().error).toBe('O modelo promocao tem imagem no cabeçalho: falta o endereço do arquivo (Chamados › Ajustes › Avisos e WhatsApp).');
+    expect(r.json().error).toBe('O modelo promocao tem imagem no cabeçalho: falta o endereço do arquivo (Painéis › Ajustes › Avisos e WhatsApp).');
     expect(enviados.length).toBe(antes);
     await ajustar({ envioCliente: 'modelo', template: { ...MODELO, tipoArquivo: 'IMAGE', arquivo: 'https://exemplo.com.br/logo.png' } });
     expect((await s.post(`/atendimento/chamados/${id}/avisar-cliente`, { texto: 'Pode testar?' })).statusCode).toBe(200);

@@ -398,7 +398,15 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
       situacao: situacaoDaEtapa(ctx.etapas.get(n.stageId)?.etapa.tipo ?? 'andamento'),
     });
   }
-  const minhasLigacoes = todasLigacoes.filter((l) => (l.de === t.id || l.para === t.id) && mapa.has(l.de === t.id ? l.para : l.de));
+  // a negociação não se liga a nada (2.0.1, decisão 0050): fica fora das ligações e do desenho — o dela fica
+  // vazio, e os dos chamados não a mostram (o código citado num texto continua virando link: é o `mapa`)
+  const ehNegociacao = (painelId: string) => ctx.paineis.find((p) => p.id === painelId)?.tipo === 'vendas';
+  const doDesenho = new Map<string, NoParaGrafo>();
+  for (const n of nos) {
+    const no = mapa.get(n.id);
+    if (no && (n.id === t.id || (!ehNegociacao(n.panelId) && !ehNegociacao(t.panelId)))) doDesenho.set(n.id, no);
+  }
+  const minhasLigacoes = todasLigacoes.filter((l) => (l.de === t.id || l.para === t.id) && doDesenho.has(l.de === t.id ? l.para : l.de));
   const idsFilhos = nos.filter((n) => n.parentId === t.id && mapa.has(n.id)).map((n) => n.id);
   const idsIncidentes = nos.filter((n) => n.problemId === t.id && mapa.has(n.id)).map((n) => n.id);
   const idsLigados = minhasLigacoes.map((l) => (l.de === t.id ? l.para : l.de));
@@ -435,7 +443,7 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     ...referencias.filter((r) => r.id).map((r) => ({ de: t.id, para: r.id! })),
     ...[...new Set([...citamNoTexto, ...citamNaAnotacao].map((c) => c.id))].map((id) => ({ de: id, para: t.id })),
   ];
-  const grafo = grafoDeLigacoes(t.id, mapa, todasLigacoes.map((l) => ({ de: l.de, para: l.para, tipo: l.tipo as TipoLigacaoChamado })), citacoes);
+  const grafo = grafoDeLigacoes(t.id, doDesenho, todasLigacoes.map((l) => ({ de: l.de, para: l.para, tipo: l.tipo as TipoLigacaoChamado })), citacoes);
 
   // a trajetória: a etapa em que nasceu (o evento "criado") e cada movimento depois
   const criado = eventos.find((e) => e.kind === 'criado');

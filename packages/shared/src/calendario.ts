@@ -7,7 +7,7 @@
  * do adm e do suporte e do dev eu vou ver atividades de datas de todos".
  *
  * Cada evento é de UM OU MAIS PAINÉIS (os dos chamados: as equipes), e quem vê o evento é quem vê um dos
- * painéis dele — a regra dos chamados (o "Quem vê" do painel, em Chamados › Ajustes › Painéis). O dia é
+ * painéis dele — a regra dos chamados (o "Quem vê" do painel, em Painéis › Ajustes › Painéis). O dia é
  * o do calendário (AAAA-MM-DD, sem fuso: o "hoje" é o de Brasília) e a hora, a de Brasília (HH:MM).
  * As regras moram aqui: o servidor e a prévia usam as mesmas.
  */
@@ -47,7 +47,7 @@ export const TipoDeEventoSchema = z.object({
   ativo: z.boolean().default(true),
 });
 
-/** Os tipos do calendário (Chamados › … o botão Tipos do calendário): pelo menos um ativo, sem repetir o nome. */
+/** Os tipos do calendário (Calendário › o botão Tipos): pelo menos um ativo, sem repetir o nome. */
 export const TiposDoCalendarioSchema = z.object({
   tipos: z.array(TipoDeEventoSchema).min(1).max(40, 'Tipos demais (até 40).')
     .superRefine((ts, ctx) => {

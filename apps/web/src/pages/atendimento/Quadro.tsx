@@ -1,5 +1,5 @@
 /**
- * Chamados › Quadro (Patch 2.0, decisão 0047): o Kanban de um painel. Uma coluna por etapa, na
+ * Painéis › Quadro (Patch 2.0, decisão 0047): o Kanban de um painel. Uma coluna por etapa, na
  * ordem do painel — N1, N2, N3 e DEV são colunas, a escolha do Luan. Arrastar o cartão para outra coluna
  * muda a etapa: subir de nível é escalonar e pede o motivo, faltando algo a janela diz o quê, e
  * fechar comemora (tudo isso mora no `useMover`, o mesmo da ficha). Quem está no celular ou usa o

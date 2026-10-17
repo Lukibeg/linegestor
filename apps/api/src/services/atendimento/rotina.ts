@@ -1,6 +1,6 @@
 /**
  * OS CHAMADOS DO GESTOR — a rotina (Patch 2.0, decisão 0047): os chamados agendados, que quem cuida
- * dos chamados cadastra em Chamados › Ajustes.
+ * dos chamados cadastra em Painéis › Ajustes.
  *
  * O agendado é o chamado que nasce sozinho na hora marcada (a verificação dos DIDs todo dia 15): aqui
  * se cadastra e se cria "agora"; na hora marcada, quem cria é o relógio (`relogio.ts`) — os dois pela

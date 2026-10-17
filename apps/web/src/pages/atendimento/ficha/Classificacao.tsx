@@ -80,7 +80,7 @@ export function Classificacao() {
           {pode && f.assunto && f.assunto.caminho.length > 32 && <p className="text-[12px] text-ink-2 mt-1 break-words">{f.assunto.caminho}</p>}
           {f.assunto && !f.assunto.ativo && <p className="text-[12px] text-signal mt-1">Este assunto foi desativado nos Ajustes.</p>}
           {descricaoDoAssunto && <p className="text-[12px] text-muted mt-1">{descricaoDoAssunto}</p>}
-          {!assuntos.length && pode && <p className="text-[12px] text-muted mt-1">O painel {painel?.nome} ainda não tem assuntos (Chamados › Ajustes › Campos).</p>}
+          {!assuntos.length && pode && <p className="text-[12px] text-muted mt-1">O painel {painel?.nome} ainda não tem assuntos (Painéis › Ajustes › Campos).</p>}
         </Linha>}
 
         {usa('tipo') && <Linha id="campo-tipo" campo="tipo" rotulo="Tipo" ocupado={tipo.ocupado} erro={tipo.erro}>

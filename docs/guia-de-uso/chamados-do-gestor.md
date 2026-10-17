@@ -1,7 +1,7 @@
-# Chamados (o módulo do Gestor)
+# Painéis: os chamados do Gestor
 
-Desde o Patch 2.0 os chamados nascem e andam no **Gestor**, em **Suporte › Chamados** (no menu
-lateral). Os chamados antigos continuam no LineChat; para consultar, **Suporte › Relatórios** abre neles,
+Desde o Patch 2.0 os chamados nascem e andam no **Gestor**, em **Suporte › Painéis** (no menu
+lateral; até o 2.0.1 o item se chamava Chamados — agora o Comercial também mora ali). Os chamados antigos continuam no LineChat; para consultar, **Suporte › Relatórios** abre neles,
 na aba **Hoje** (as abas levam ao Período e aos relatórios).
 A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho e o Perdido): veja
@@ -11,7 +11,7 @@ O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho 
 
 ## 1. O dia a dia
 
-- **Painéis** (a primeira tela, como no Helena): um cartão por painel (Suporte, Desenvolvimento…), com
+- **Todos** (a primeira aba, como a tela dos painéis do Helena): um cartão por painel (Suporte, Desenvolvimento…), com
   os números de agora (em aberto, vencidos, sem dono, os seus) e quantos estão em cada etapa. Clique no
   painel para abrir o **quadro**; cada número abre a lista já filtrada; **Configurar** (quem cuida dos
   chamados) abre a janela daquele painel, com as etapas e as regras; **Novo painel** cria outro.
@@ -148,7 +148,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   resolveu, quem atende reabre: o **Reabrir** da ficha, ou o **Reabrir este em vez de abrir outro** do
   Abrir chamado. (Desde o 2.0.1 a mensagem do cliente não reabre sozinha.)
 
-## 4. Os Ajustes do módulo (Chamados › Ajustes)
+## 4. Os Ajustes do módulo (Painéis › Ajustes)
 
 | Aba | O que se arruma |
 |---|---|
@@ -164,7 +164,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 Painéis, campos, etiquetas, prazos, avisos e agendados: quem **cuida dos chamados**. Integrações e
 IA: a **administração**.
 
-## 5. Ligar com o LineChat e o n8n (Chamados › Ajustes › Integrações)
+## 5. Ligar com o LineChat e o n8n (Painéis › Ajustes › Integrações)
 
 A tela já mostra cada endereço pronto para copiar, com o endereço deste Gestor.
 

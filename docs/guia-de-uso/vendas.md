@@ -3,7 +3,7 @@
 O Comercial acompanha as negociações num painel igual ao dos chamados — o quadro, a lista, a ficha, as
 anotações, os avisos —, com o que é de venda: o **valor** — a **mensalidade** e a **ativação**, cada uma
 de um valor só ou por produto, com o total —, o **Ganho** e o **Perdido** (com o motivo), a **empresa que
-ainda não é cliente** e a **meta do mês**. Fica em **Suporte › Chamados**, como os outros painéis (o
+ainda não é cliente** e a **meta do mês**. Fica em **Suporte › Painéis**, como os outros painéis (o
 Suporte, o Desenvolvimento). A decisão inteira está em
 `docs/decisoes/0050-painel-de-vendas.md`.
 
@@ -11,7 +11,7 @@ Suporte, o Desenvolvimento). A decisão inteira está em
 
 ## 1. Criar o painel do Comercial (uma vez, quem cuida dos chamados)
 
-1. **Suporte › Chamados › Ajustes › Painéis › Novo painel** (ou o **Novo painel** da tela dos painéis).
+1. **Suporte › Painéis › Ajustes › Painéis › Novo painel** (ou o **Novo painel** da tela dos painéis).
 2. Em **O painel é de**, escolha **Negociações (Vendas)**. Isso não muda depois.
 3. Dê o nome (Comercial) e a sigla (COM): as negociações ficam COM-1, COM-2…
 4. Em **Quem vê**, **Só as pessoas escolhidas**, e marque a equipe do Comercial.
@@ -116,13 +116,12 @@ painel).
 
 ## 7. Do Comercial para o Suporte (e o contrário)
 
-A negociação não vira chamado trocando de painel (nem o chamado vira negociação), e não tem pai nem
-filhos. Os dois se **ligam**:
+A negociação não vira chamado trocando de painel (nem o chamado vira negociação), não tem pai nem
+filhos e não se liga a chamados. Cada um fica no seu painel:
 
-- Ganhou e precisa implantar? Abra o chamado no painel do Suporte e, na ficha da negociação, **Mais ›
-  Ligar a outro chamado ou negociação** (digite o código do chamado).
-- O cliente pediu um orçamento num chamado? Crie a negociação no Comercial e ligue os dois do mesmo
-  jeito.
+- Ganhou e precisa implantar? Abra o chamado no painel do Suporte. Se quiser, escreva o código da
+  negociação no chamado (*"venda da COM-24"*): ele vira um link.
+- O cliente pediu um orçamento num chamado? Crie a negociação no Comercial e, se quiser, escreva o
+  código do chamado no **Sobre a negociação**.
 
-A ligação aparece na parte **Ligações** da ficha dos dois, com o desenho. **Trocar de painel** (em
-Mais) só leva a negociação para outro painel de Vendas.
+**Trocar de painel** (em Mais) só leva a negociação para outro painel de Vendas.

@@ -1,5 +1,5 @@
 /**
- * Chamados › Meu dia (Patch 2.0, decisão 0047): a primeira tela do módulo. O que é da pessoa hoje,
+ * Painéis › Meu dia (Patch 2.0, decisão 0047): a primeira tela do módulo. O que é da pessoa hoje,
  * sem precisar filtrar nada: o que está vencendo, os seus em aberto, os sem dono na fila (com o
  * Assumir ali mesmo), os que esperam o cliente, os que ela observa e os agendados que nascem hoje.
  *

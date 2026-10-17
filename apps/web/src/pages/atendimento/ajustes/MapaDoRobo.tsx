@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes › Integrações (Patch 2.0.1) — o MAPA DO ROBÔ: o que chega no webhook do robô do
+ * Painéis › Ajustes › Integrações (Patch 2.0.1) — o MAPA DO ROBÔ: o que chega no webhook do robô do
  * LineChat e o que vira chamado. Os pedidos do Luan: "Eu quero que a gente possa alterar esse JSON…
  * para que não tenha que ser algo bem fixo… alguma parte onde eu possa montar as referências com as
  * variáveis"; depois, "eu quero que eu possa alterar incluindo ou removendo parametros que vao chegar no

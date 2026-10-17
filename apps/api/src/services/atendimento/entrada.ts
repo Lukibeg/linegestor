@@ -14,7 +14,7 @@
  * anotação no que já existe. (A mensagem do cliente, que reabria o Resolvido, saiu no 2.0.1.)
  *
  * O robô do LineChat manda o JSON dele (o formato do Helena), e não o do Gestor: desde o 2.0.1 ele chama
- * `/entrada/robo`, e o MAPA (Chamados › Ajustes › Integrações, `robo.ts` em @gestor/shared) diz de onde
+ * `/entrada/robo`, e o MAPA (Painéis › Ajustes › Integrações, `robo.ts` em @gestor/shared) diz de onde
  * vem cada campo. Ali tudo é leniente: o que não bate fica de fora e volta escrito (`ignorados`). A
  * `/entrada/chamado`, no formato do Gestor, continua para o n8n e outros sistemas, e recusa o que não
  * bate.
@@ -197,7 +197,7 @@ async function abrirAgora(app: FastifyInstance, ator: Ator, e: EntradaChamado): 
 // =====================================================================
 
 /**
- * O mapa guardado (Chamados › Ajustes › Integrações). O que não passar na conferência (um mapa mexido à
+ * O mapa guardado (Painéis › Ajustes › Integrações). O que não passar na conferência (um mapa mexido à
  * mão no banco) volta ao de fábrica: o robô não para por isso.
  */
 export async function lerMapaDoRobo(db: Db): Promise<MapaDoRobo> {

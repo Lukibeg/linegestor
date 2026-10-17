@@ -16,7 +16,7 @@ regra do patch que ainda não subiu).
   demo"*: o grupo fechado escondia o item) — e o calendário é de todas as equipes, o Comercial e o
   Administrativo também, não só do suporte. Foi para o alto do menu.
 - **Quem vê: a regra dos painéis.** Cada evento é de **um ou mais painéis** (os dos chamados: as
-  equipes), e quem vê o evento é quem vê **um dos painéis dele** — o "Quem vê" do painel (Chamados ›
+  equipes), e quem vê o evento é quem vê **um dos painéis dele** — o "Quem vê" do painel (Painéis ›
   Ajustes › Painéis: "Todos que veem chamados" ou "Só as pessoas escolhidas"). Quem cuida dos chamados
   (`tickets.manage`, o Administrador) vê todos. O evento que a pessoa não vê não existe para ela (o
   servidor responde 404, como no chamado). Assim, a equipe do Comercial vira um painel "Comercial" com

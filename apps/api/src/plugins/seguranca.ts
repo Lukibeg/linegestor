@@ -8,7 +8,7 @@
  * `SameSite=Strict`, que já segurava o CSRF sozinho. Agora:
  *
  *  1. **O Content-Security-Policy sai daqui, em toda resposta**, com as mesmas regras que o Caddy
- *     mandava — menos o `frame-ancestors`, que passa a ser `'self'` mais os sites escolhidos em Chamados ›
+ *     mandava — menos o `frame-ancestors`, que passa a ser `'self'` mais os sites escolhidos em Painéis ›
  *     Ajustes › Integrações (`settings.atendimento-integracoes.sites`). A lista fica 30 segundos na
  *     memória (para não ler o banco a cada pedido) e é esquecida na hora em que alguém a grava. O Caddy
  *     não manda mais CSP nenhum: num lugar só, a regra não briga com ela mesma. A rota que já põe o seu

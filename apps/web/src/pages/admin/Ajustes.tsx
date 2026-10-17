@@ -6,7 +6,7 @@
  *  - **Chamados do LineChat**: de onde vêm os chamados da tela de Chamados (o token e o painel).
  *  - **IA da base e dos chamados** (1.8; os chamados no 2.0): o "Perguntar à IA", o rascunho a partir do
  *    chamado e o "Preencher com IA" da ficha do chamado, com o provedor que a empresa escolher (Anthropic,
- *    OpenAI, Google ou outro compatível). O mesmo cartão aparece em Chamados › Ajustes › IA.
+ *    OpenAI, Google ou outro compatível). O mesmo cartão aparece em Painéis › Ajustes › IA.
  *
  * Tudo se preenche aqui, não em arquivo no servidor. Cada cartão explica o que é, o que preencher
  * e tem um botão de testar que dá a resposta na hora — nada de salvar e torcer.
@@ -414,7 +414,7 @@ const formDe = (a: AjustesIa): FormIa => ({
   precoEntrada: mostrarPreco(a.precoEntrada), precoSaida: mostrarPreco(a.precoSaida),
 });
 
-/** O cartão da IA. Exportado: Chamados › Ajustes › IA mostra o mesmo (uma IA só, a mesma chave e o mesmo uso). */
+/** O cartão da IA. Exportado: Painéis › Ajustes › IA mostra o mesmo (uma IA só, a mesma chave e o mesmo uso). */
 export function CartaoIa({ inicial }: { inicial: AjustesIa }) {
   const qc = useQueryClient(); const toast = useToast();
   const [f, setF] = useState<FormIa>(formDe(inicial));

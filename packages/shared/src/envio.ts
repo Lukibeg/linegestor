@@ -55,6 +55,11 @@ export const AjustesEnvioSchema = z.object({
   dias: z.array(z.number().int().min(0).max(6)).min(1, 'Escolha ao menos um dia.').max(7).transform((xs) => [...new Set(xs)].sort()),
   destinatarios: z.array(DestinatarioSchema).max(30, 'No máximo 30 números.')
     .refine((xs) => new Set(xs.map((x) => x.numero)).size === xs.length, 'Um número apareceu duas vezes na lista.'),
+  /**
+   * concluir a conversa logo depois de mandar (2.0.1, o pedido do Luan: "ele envia e conclui… ele é só um
+   * aviso"): a mensagem não deixa a conversa pendente na FlwChat. Vem ligado; guardado antes, vale ligado.
+   */
+  concluirConversa: z.boolean().default(true),
   /** só quando a pessoa digita um token novo; em branco = manter o guardado */
   token: z.string().trim().max(500).optional(),
 }).superRefine((a, ctx) => {

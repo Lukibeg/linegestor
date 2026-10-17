@@ -173,6 +173,8 @@ const S = {
   envio: {
     ativo: false, url: 'https://api.flw.chat/chat/v1/message/send', remetente: '', horario: '18:00', dias: [0, 1, 2, 3, 4, 5, 6],
     destinatarios: [] as Array<{ id: string; nome: string; numero: string; ativo: boolean }>,
+    // 2.0.1: a conversa é concluída logo depois de mandar (vem ligado, como no servidor)
+    concluirConversa: true,
     temToken: false, configuradoEm: null as string | null, configuradoPor: null as string | null,
     ultimoAgendado: null as UltimoEnvioAgendado,
     historico: [] as RegistroEnvio[],
@@ -1297,7 +1299,7 @@ async function envioDemo(gatilho: 'manual' | 'teste' | 'agendado', destinatarioI
   const destinatarios = falta ? [] : lista.map((d) => ({ nome: d.nome, numero: d.numero, ok: true, mensagem: 'Simulação da prévia: nada foi enviado.' }));
   const r: RegistroEnvio = {
     id: id(), em: agora.toISOString(), dia: momento.dia, gatilho, quem: gatilho === 'agendado' ? null : S.me?.name ?? null, ok: !falta,
-    mensagem: falta ?? `Simulação da prévia: nada foi para o WhatsApp. No sistema de verdade, ${gatilho === 'teste' ? 'a mensagem de teste' : 'o PDF'} iria para ${destinatarios.length} ${destinatarios.length === 1 ? 'número' : 'números'}.`,
+    mensagem: falta ?? `Simulação da prévia: nada foi para o WhatsApp. No sistema de verdade, ${gatilho === 'teste' ? 'a mensagem de teste' : 'o PDF'} iria para ${destinatarios.length} ${destinatarios.length === 1 ? 'número' : 'números'}${e.concluirConversa ? `, e ${destinatarios.length === 1 ? 'a conversa seria concluída' : 'as conversas seriam concluídas'} logo depois` : ''}.`,
     pdf: falta || gatilho === 'teste' ? null : { id: id(), nome: `chamados-${momento.dia.slice(8, 10)}-${momento.dia.slice(5, 7)}-${momento.dia.slice(0, 4)}.pdf`, bytes: 0 },
     itens, destinatarios,
   };
@@ -2802,6 +2804,7 @@ export const demoApi: Api = {
       const e = S.envio;
       return {
         ativo: e.ativo, url: e.url, remetente: e.remetente, horario: e.horario, dias: e.dias, destinatarios: e.destinatarios,
+        concluirConversa: e.concluirConversa,
         temToken: e.temToken, configuradoEm: e.configuradoEm, configuradoPor: e.configuradoPor,
         proximo: proximoEnvio(e, new Date(), e.ultimoAgendado),
         hoje: envioDeHoje(e, new Date(), e.ultimoAgendado, e.historico),

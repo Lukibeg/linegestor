@@ -176,7 +176,7 @@ export type Painel = {
 
 /**
  * O painel novo (e o que foi gravado antes de existir a escolha) nasce sem o alcance: "não precisa
- * desse alcance por enquanto" (o Luan, na prévia). Liga em Chamados › Ajustes › Campos.
+ * desse alcance por enquanto" (o Luan, na prévia). Liga em Painéis › Ajustes › Campos.
  */
 export const AJUSTES_PAINEL_PADRAO: AjustesDoPainel = {
   tipos: TIPOS_PADRAO, contaPrazo: true, fecharSozinhoDias: 3, obrigatoriosAoAbrir: [], paiEsperaFilhos: true, supervisores: [], camposDesligados: ['alcance'],
@@ -1051,19 +1051,22 @@ export function problemaNasEtapasDoTipo(tipo: TipoDePainel, etapas: ReadonlyArra
 }
 /**
  * A troca de painel não muda o que o registro é: a negociação só passa para outro painel de Vendas, e o
- * chamado para outro de Gestão (entre os dois, abre-se o outro lá e liga-se pelo Ligar).
+ * chamado para outro de Gestão (entre os dois, abre-se o outro lá: a negociação não se liga a chamados).
  */
 export const trocaEntreTiposDePainel = (codigo: string, de: { tipo: TipoDePainel }, para: { nome: string }) => (de.tipo === 'vendas'
-  ? `${codigo} é uma negociação: só passa para outro painel de Vendas. Para levar o trabalho ao ${para.nome}, abra um chamado lá e ligue os dois (Ligar a outro chamado).`
-  : `O ${para.nome} é um painel de Vendas: um chamado não vira negociação trocando de painel. Crie a negociação lá e ligue os dois (Ligar a outro chamado).`);
+  ? `${codigo} é uma negociação: só passa para outro painel de Vendas. Para levar o trabalho ao ${para.nome}, abra um chamado lá.`
+  : `O ${para.nome} é um painel de Vendas: um chamado não vira negociação trocando de painel. Crie a negociação lá.`);
 /**
- * A negociação não tem pai nem filhos (o pedido do Luan na prévia, em 17/10: "n precisa de pais e filhas
- * aqui"), nem entra num problema: com outro chamado ou negociação, ela se liga pelo Ligar.
+ * A negociação fica sozinha no painel de Vendas (os pedidos do Luan na prévia, em 17/10): não tem pai nem
+ * filhos ("n precisa de pais e filhas aqui"), não entra num problema e não se liga a chamados nem a outras
+ * negociações ("n precisa ligações"). O código citado num texto continua virando link (não é ligação).
  */
-export const NEGOCIACAO_SEM_PAI = 'A negociação não tem pai nem filhos: para juntá-la a outro chamado ou negociação, use o Ligar.';
-export const negociacaoNaoEPai = (codigo: string) => `${codigo} é uma negociação, e a negociação não tem filhos: para juntar os dois, use o Ligar.`;
+export const NEGOCIACAO_SEM_PAI = 'A negociação não tem pai nem filhos.';
+export const negociacaoNaoEPai = (codigo: string) => `${codigo} é uma negociação, e a negociação não tem filhos.`;
 export const NEGOCIACAO_SEM_PROBLEMA = 'A negociação não entra em problema: o problema junta os chamados dos painéis de Gestão.';
 export const negociacaoNaoEIncidente = (codigo: string) => `${codigo} é uma negociação: o incidente de um problema é um chamado.`;
+export const NEGOCIACAO_SEM_LIGACAO = 'A negociação não se liga a chamados nem a outras negociações.';
+export const negociacaoNaoSeLiga = (codigo: string) => `${codigo} é uma negociação, e a negociação não se liga a chamados nem a outras negociações.`;
 /** Na troca entre painéis de Vendas, a negociação entra no funil: o resultado se marca na janela dele. */
 export const TROCA_ENTRA_NO_FUNIL = 'Na troca de painel, a negociação entra numa etapa do funil: o Ganho e o Perdido se marcam depois (com o valor ou o motivo).';
 
@@ -2094,8 +2097,8 @@ export function valorSugeridoDaVariavel(nome: string, posicao: number): string {
 
 /** Por que o modelo aprovado ainda não serve para mandar (nulo = pronto): sem modelo, ou sem o arquivo que ele pede. */
 export function faltaNoModeloAprovado(m: ModeloAprovado | null | undefined): string | null {
-  if (!m?.id) return 'Falta escolher o modelo aprovado da mensagem ao cliente (Chamados › Ajustes › Avisos e WhatsApp).';
-  if (m.tipoArquivo !== 'UNDEFINED' && !m.arquivo) return `O modelo ${m.nome || m.id} tem ${NOME_TIPO_ARQUIVO_DO_MODELO[m.tipoArquivo]} no cabeçalho: falta o endereço do arquivo (Chamados › Ajustes › Avisos e WhatsApp).`;
+  if (!m?.id) return 'Falta escolher o modelo aprovado da mensagem ao cliente (Painéis › Ajustes › Avisos e WhatsApp).';
+  if (m.tipoArquivo !== 'UNDEFINED' && !m.arquivo) return `O modelo ${m.nome || m.id} tem ${NOME_TIPO_ARQUIVO_DO_MODELO[m.tipoArquivo]} no cabeçalho: falta o endereço do arquivo (Painéis › Ajustes › Avisos e WhatsApp).`;
   return null;
 }
 

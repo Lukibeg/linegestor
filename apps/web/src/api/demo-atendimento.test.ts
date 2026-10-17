@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
-  NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA,
+  NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   type CartaoChamado,
 } from '@gestor/shared';
 import { demoApi } from './demo.js';
@@ -912,7 +912,7 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect(bytes.length).toBe(proposta.tamanho);
   }, DEMORA);
 
-  it('a troca de painel fica entre os de Vendas (com o Suporte, a negociação se liga)', async () => {
+  it('a troca de painel fica entre os de Vendas; a negociação não tem pai, filhos nem ligações', async () => {
     await entrar('admin');
     const op = await api.opcoes();
     const estrela = await chamadoPeloTitulo('PABX em nuvem — 40 ramais');
@@ -923,13 +923,16 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     const paraOComercial = await erroDe(api.trocarPainel(chamado.id, { painelId: painel(op, 'COM').id }));
     expect(paraOComercial.status).toBe(400);
     expect(paraOComercial.message).toContain('um chamado não vira negociação trocando de painel');
-    // a negociação não tem pai nem filhos, nem problema (como no servidor): com o chamado, ela se liga
+    // a negociação não tem pai nem filhos, nem problema, e não se liga a nada (como no servidor)
     expect((await erroDe(api.criar({ painelId: painel(op, 'COM').id, titulo: 'Mais 10 ramais', paiId: chamado.codigo }))).message).toBe(NEGOCIACAO_SEM_PAI);
     expect((await erroDe(api.definirPai(estrela.id, chamado.codigo))).message).toBe(NEGOCIACAO_SEM_PAI);
     expect((await erroDe(api.definirPai(chamado.id, estrela.codigo))).message).toBe(negociacaoNaoEPai(estrela.codigo));
     expect((await erroDe(api.criar({ painelId: painel(op, 'COM').id, titulo: 'Queda geral', tipoChamado: 'problema' }))).message).toBe(NEGOCIACAO_SEM_PROBLEMA);
-    const ligada = await api.ligar(estrela.id, { para: chamado.codigo, tipo: 'relacionado' });
-    expect(ligada.ligacoes.map((l) => l.chamado.codigo)).toContain(chamado.codigo);
+    expect((await erroDe(api.ligar(estrela.id, { para: chamado.codigo, tipo: 'relacionado' }))).message).toBe(NEGOCIACAO_SEM_LIGACAO);
+    expect((await erroDe(api.ligar(chamado.id, { para: estrela.codigo, tipo: 'relacionado' }))).message).toBe(negociacaoNaoSeLiga(estrela.codigo));
+    const semLigacoes = await api.chamado(estrela.codigo);
+    expect(semLigacoes.ligacoes).toEqual([]);
+    expect(semLigacoes.grafo.arestas).toEqual([]);
     // entre dois de Vendas: entra no funil, nunca direto no Ganho
     const rev = await api.salvarPainel(null, { nome: 'Revenda', sigla: 'REV', cor: 'roxo', tipo: 'vendas', acesso: 'todos', ajustes: {} });
     const ganhoRev = rev.etapas.find((e) => e.resultado === 'ganho')!;

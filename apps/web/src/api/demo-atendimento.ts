@@ -33,7 +33,7 @@ import {
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
-  duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
+  duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
   VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, type ValoresDosProdutos,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
@@ -536,14 +536,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   /** Manda pelo WhatsApp — na prévia, confere tudo como o servidor e para aí: nada sai. */
   function mandarWhatsApp(p: { de: 'cliente' | 'equipe'; para: string }): { ok: boolean; mensagem: string; modelo?: boolean } {
     const v = A.whats;
-    if (!v.ativo) return { ok: false, mensagem: 'O WhatsApp dos chamados está desligado (Chamados › Ajustes › Avisos).' };
+    if (!v.ativo) return { ok: false, mensagem: 'O WhatsApp dos chamados está desligado (Painéis › Ajustes › Avisos).' };
     const de = p.de === 'cliente' ? v.numeroCliente : v.numeroEquipe;
-    if (!de) return { ok: false, mensagem: `Falta o número que envia para ${p.de === 'cliente' ? 'o cliente' : 'a equipe'} (Chamados › Ajustes › Avisos).` };
+    if (!de) return { ok: false, mensagem: `Falta o número que envia para ${p.de === 'cliente' ? 'o cliente' : 'a equipe'} (Painéis › Ajustes › Avisos).` };
     if (!numeroWhatsApp(p.para)) return { ok: false, mensagem: `O número ${p.para} não é um WhatsApp válido.` };
     // ao cliente, pelo modelo aprovado (o WhatsApp oficial exige): sem o modelo (ou sem o arquivo dele), nada sai
     const peloModelo = p.de === 'cliente' && v.envioCliente === 'modelo';
     if (peloModelo) { const falta = faltaNoModeloAprovado(v.template); if (falta) return { ok: false, mensagem: falta }; }
-    if (!temChaveDoEnvio()) return { ok: false, mensagem: v.usarChaveDoLineChat ? 'Falta a chave do LineChat (Administração › Ajustes › Chamados do LineChat).' : 'Falta a chave da API (Chamados › Ajustes › Avisos).' };
+    if (!temChaveDoEnvio()) return { ok: false, mensagem: v.usarChaveDoLineChat ? 'Falta a chave do LineChat (Administração › Ajustes › Chamados do LineChat).' : 'Falta a chave da API (Painéis › Ajustes › Avisos).' };
     return { ok: true, mensagem: PREVIA, modelo: peloModelo };
   }
   const whatsAppPronto = (): OpcoesAtendimento['whatsapp'] => {
@@ -1383,8 +1383,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     exigirTrabalhar(ator);
     const e = carregar(ator, ref, agora);
     const { t } = e;
+    // a negociação não se liga a nada (2.0.1, decisão 0050), como no servidor
+    if (e.painel.tipo === 'vendas') throw bad(NEGOCIACAO_SEM_LIGACAO);
     const outro = outroChamado(d.para, ator);
     if (outro.id === t.id) throw bad('Um chamado não se liga a ele mesmo.');
+    if (ehNegociacao(outro)) throw bad(negociacaoNaoSeLiga(outro.codigo));
     const ja = A.ligacoes.some((l) => !l.deletedAt && ((l.de === t.id && l.para === outro.id) || (l.de === outro.id && l.para === t.id)));
     if (ja) throw conflito('Esses chamados já estão ligados.');
     const nome = NOME_LIGACAO[d.tipo];
@@ -2088,7 +2091,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (n.deletedAt || !vis.has(n.painelId)) continue;
       mapa.set(n.id, { id: n.id, codigo: n.codigo, titulo: n.titulo, tipoChamado: n.tipoChamado, paiId: n.paiId, problemaId: n.problemaId, situacao: situacaoDe(n) });
     }
-    const minhasLigacoes = todasLigacoes.filter((l) => (l.de === t.id || l.para === t.id) && mapa.has(l.de === t.id ? l.para : l.de));
+    // a negociação não se liga a nada (2.0.1, decisão 0050): fica fora das ligações e do desenho, como no
+    // servidor — o código citado num texto continua virando link (é o `mapa`)
+    const doDesenho = new Map<string, NoParaGrafo>();
+    for (const n of A.chamados) {
+      const no = mapa.get(n.id);
+      if (no && (n.id === t.id || (!ehNegociacao(n) && !ehNegociacao(t)))) doDesenho.set(n.id, no);
+    }
+    const minhasLigacoes = todasLigacoes.filter((l) => (l.de === t.id || l.para === t.id) && doDesenho.has(l.de === t.id ? l.para : l.de));
     const idsFilhos = A.chamados.filter((n) => !n.deletedAt && n.paiId === t.id && mapa.has(n.id)).map((n) => n.id);
     const idsIncidentes = A.chamados.filter((n) => !n.deletedAt && n.problemaId === t.id && mapa.has(n.id)).map((n) => n.id);
     const cartaoDe = (id: string) => { const x = A.chamados.find((c) => c.id === id); return x ? cartao(x, par, agora) : null; };
@@ -2114,7 +2124,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     for (const n of A.notas) if (!n.deletedAt && n.chamadoId !== t.id && padrao.test(n.texto)) citam.add(n.chamadoId);
     const citacoes = [...referencias.filter((r) => r.id).map((r) => ({ de: t.id, para: r.id! })), ...[...citam].map((id) => ({ de: id, para: t.id }))];
-    const grafo = grafoDeLigacoes(t.id, mapa, todasLigacoes.map((l) => ({ de: l.de, para: l.para, tipo: l.tipo })), citacoes);
+    const grafo = grafoDeLigacoes(t.id, doDesenho, todasLigacoes.map((l) => ({ de: l.de, para: l.para, tipo: l.tipo })), citacoes);
 
     // a trajetória: a etapa em que nasceu (o evento "criado") e cada movimento depois
     const criado = eventos.find((e) => e.tipo === 'criado');

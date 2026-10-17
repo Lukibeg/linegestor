@@ -1,5 +1,5 @@
 /**
- * Chamados › Lista (Patch 2.0, decisão 0047): os chamados numa tabela. Mora dentro do painel
+ * Painéis › Lista (Patch 2.0, decisão 0047): os chamados numa tabela. Mora dentro do painel
  * (Quadro | Lista, no alto da visualização do painel — o pedido do Luan na prévia); sem painel no
  * endereço (os números do Meu dia), é a lista de todos os painéis que a pessoa vê.
  *

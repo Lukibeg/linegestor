@@ -3,7 +3,7 @@
  *
  * O bloco Webhook do robô do LineChat manda o JSON dele — o formato do Helena: `contact`, `session`,
  * `questions`, `menus`, `lastContactMessage`… —, e não o do Gestor. Em vez de o robô montar outro
- * JSON, o Gestor guarda um MAPA (Chamados › Ajustes › Integrações): cada campo do chamado é um texto
+ * JSON, o Gestor guarda um MAPA (Painéis › Ajustes › Integrações): cada campo do chamado é um texto
  * com as variáveis do pedido entre {{ }}, como "Atendimento de {{contact.name}}". O pedido do Luan:
  * "para que não tenha que ser algo bem fixo… até porque depois possa trocar". Trocar o robô (ou o
  * sistema que chama) é trocar o mapa, na tela.
@@ -621,7 +621,7 @@ export function resolverPedidoDoRobo(p: PedidoDoRobo, g: DadosParaORobo): Resolv
   }
 
   if (!p.titulo && !p.relato && !p.telefone && !p.sessaoId) {
-    return { ok: false, erro: 'O mapa do robô não tirou nada deste pedido: o título, o relato, o WhatsApp e a conversa vieram vazios. Confira o mapa em Chamados › Ajustes › Integrações.' };
+    return { ok: false, erro: 'O mapa do robô não tirou nada deste pedido: o título, o relato, o WhatsApp e a conversa vieram vazios. Confira o mapa em Painéis › Ajustes › Integrações.' };
   }
 
   let telefone: string | null = null;

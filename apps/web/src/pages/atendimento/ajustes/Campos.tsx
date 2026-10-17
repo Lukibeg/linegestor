@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 2.0, decisão 0047) — OS CAMPOS DE CADA PAINEL.
+ * Painéis › Ajustes (Patch 2.0, decisão 0047) — OS CAMPOS DE CADA PAINEL.
  *
  * O pedido do Luan na prévia: "vou ter outros painéis, então nem sempre vai ser assuntos; pode ter
  * algum painel que não tenha assuntos e sim outro campo personalizado — o correto é fazer ajustes e

@@ -25,6 +25,7 @@ import { tickets } from '@gestor/db';
 import {
   AJUSTES_DO_PAINEL_DE_VENDAS, diaLocal, instanteLocal, MOTIVOS_DE_PERDA_PADRAO, reais, somarDias, textoDoEvento, TROCA_ENTRA_NO_FUNIL,
   NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEIncidente, negociacaoNaoEPai, VALOR_E_A_SOMA, VALOR_SO_DOS_PRODUTOS, CAMPOS_DO_PAINEL_DE_VENDAS,
+  NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   ATIVACAO_E_A_SOMA,
   type CampoPersonalizado,
   type EtapaPainel, type Painel, type RelatorioDeVendas,
@@ -347,21 +348,35 @@ describe('o histórico e a troca de painel', () => {
     expect((f.historico as any[]).find((e) => e.tipo === 'criado').texto).toBe('criou a negociação em Lead');
   });
 
-  it('a negociação não passa para o Suporte, nem o chamado para o Comercial: os dois se ligam', async () => {
+  it('a negociação não passa para o Suporte, nem o chamado para o Comercial: abre-se o outro lá', async () => {
     const paraOSuporte = await s.post(`/atendimento/chamados/COM-2/painel`, { painelId: SUP });
     expect(paraOSuporte.statusCode).toBe(400);
-    expect(paraOSuporte.json().error).toContain('COM-2 é uma negociação: só passa para outro painel de Vendas');
+    expect(paraOSuporte.json().error).toBe('COM-2 é uma negociação: só passa para outro painel de Vendas. Para levar o trabalho ao Suporte, abra um chamado lá.');
     const chamado = (await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Quer o orçamento de mais ramais' })).json() as { id: string; codigo: string };
     const paraOComercial = await s.post(`/atendimento/chamados/${chamado.id}/painel`, { painelId: com.id });
     expect(paraOComercial.statusCode).toBe(400);
-    expect(paraOComercial.json().error).toContain('um chamado não vira negociação trocando de painel');
-    // a negociação nasce no Comercial e se liga ao chamado do Suporte
-    const negociacao = await abrir(s, { titulo: 'Mais 10 ramais', valor: 90_000 });
-    const ligou = await s.post(`/atendimento/chamados/${negociacao.id}/ligacoes`, { para: chamado.codigo, tipo: 'relacionado' });
-    expect(ligou.statusCode, ligou.body).toBe(200);
+    expect(paraOComercial.json().error).toBe('O Comercial é um painel de Vendas: um chamado não vira negociação trocando de painel. Crie a negociação lá.');
+  });
+
+  it('a negociação não se liga a nada (o pedido do Luan: "n precisa ligações"); o código citado no texto continua virando link', async () => {
+    const chamado = (await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Quer o orçamento de mais ramais', relato: 'O orçamento está na COM-2.' })).json() as { id: string; codigo: string };
+    const negociacao = await abrir(s, { titulo: 'Mais 10 ramais', valor: 90_000, descricao: `Pedido no chamado ${chamado.codigo}.` });
+    const dela = await s.post(`/atendimento/chamados/${negociacao.id}/ligacoes`, { para: chamado.codigo, tipo: 'relacionado' });
+    expect(dela.statusCode).toBe(400);
+    expect(dela.json().error).toBe(NEGOCIACAO_SEM_LIGACAO);
+    const doChamado = await s.post(`/atendimento/chamados/${chamado.id}/ligacoes`, { para: negociacao.codigo, tipo: 'relacionado' });
+    expect(doChamado.statusCode).toBe(400);
+    expect(doChamado.json().error).toBe(negociacaoNaoSeLiga(negociacao.codigo));
+    // a negociação: sem ligações e sem desenho; o código citado na descrição é um link
     const f = await ficha(negociacao.codigo);
-    expect(f).toMatchObject({ painelId: com.id, valor: 90_000, pai: null });
-    expect((f.ligacoes as Array<{ chamado: { codigo: string } }>).map((l) => l.chamado.codigo)).toEqual([chamado.codigo]);
+    expect(f).toMatchObject({ ligacoes: [], filhosLista: [] });
+    expect(f.grafo.arestas).toEqual([]);
+    expect(f.referencias).toContainEqual(expect.objectContaining({ codigo: chamado.codigo, existe: true }));
+    // o chamado do Suporte: a negociação citada no relato é um link, mas não entra no desenho
+    const c = await ficha(chamado.codigo);
+    expect(c.referencias).toContainEqual(expect.objectContaining({ codigo: 'COM-2', existe: true }));
+    expect((c.grafo.nos as Array<{ codigo: string }>).map((n) => n.codigo)).not.toContain('COM-2');
+    expect((c.grafo.nos as Array<{ codigo: string }>).map((n) => n.codigo)).not.toContain(negociacao.codigo);
   });
 
   it('os campos do Comercial: a negociação nasce com eles preenchidos (pelo nome, como o robô e o n8n mandam)', async () => {

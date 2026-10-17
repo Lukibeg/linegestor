@@ -29,6 +29,7 @@ import {
   faltaParaAbrir, faltaParaEtapa, filhosQueTravam, lerCamposDoPedido, mensagemDoQueFalta, mesmoValorDoCampo, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO,
   instanteLocal, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel, reais, situacaoDaEtapa, textoDoValor,
   trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
+  NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
   VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
@@ -316,7 +317,7 @@ export async function criarChamado(
   if (d.responsavelId) conferirPessoa(ctx, d.responsavelId);
   const observadores = unicos(d.observadores ?? []);
   for (const id of observadores) conferirPessoa(ctx, id, 'Um dos observadores escolhidos');
-  // a negociação não tem pai nem filhos, nem problema (2.0.1, decisão 0050): liga-se pelo Ligar
+  // a negociação não tem pai nem filhos, nem problema (2.0.1, decisão 0050): fica sozinha no painel de Vendas
   if (vendas && d.paiId) throw new BadRequest(NEGOCIACAO_SEM_PAI);
   if (vendas && (tipoChamado === 'problema' || d.problemaId)) throw new BadRequest(NEGOCIACAO_SEM_PROBLEMA);
   const ehNegociacao = (c: LinhaChamado) => ctx.paineis.find((p) => p.id === c.panelId)?.tipo === 'vendas';
@@ -918,7 +919,7 @@ export async function trocarPainel(app: FastifyInstance, ator: Ator, ref: string
   if (!novo || !podeVerPainel(novo, ator)) throw new NotFound('Painel');
   if (novo.id === painel.id) return nada(t);
   if (!novo.ativo) throw new BadRequest(`O painel ${novo.nome} está desativado: escolha outro.`);
-  // a negociação fica entre os painéis de Vendas, e o chamado entre os de Gestão (entre eles, o Ligar)
+  // a negociação fica entre os painéis de Vendas, e o chamado entre os de Gestão (entre eles, abre-se o outro lá)
   if (novo.tipo !== painel.tipo) throw new BadRequest(trocaEntreTiposDePainel(t.code, painel, novo));
   const para = d.etapaId ? novo.etapas.find((x) => x.id === d.etapaId) : etapaDeEntrada(novo.etapas);
   if (!para) throw new BadRequest(d.etapaId ? `Essa etapa não é do painel ${novo.nome}.` : `O painel ${novo.nome} não tem etapas.`);
@@ -1020,13 +1021,18 @@ export async function apagarAnotacao(app: FastifyInstance, ator: Ator, ref: stri
 //  LIGAÇÕES, PAI E PROBLEMA
 // =====================================================================
 
-/** Liga dois chamados à mão (relacionado, duplicado, repete). O histórico registra nos dois, cada um do seu lado. */
+/**
+ * Liga dois chamados à mão (relacionado, duplicado, repete). O histórico registra nos dois, cada um do seu
+ * lado. A negociação não se liga a nada (2.0.1, decisão 0050: "n precisa ligações").
+ */
 export async function ligar(app: FastifyInstance, ator: Ator, ref: string, d: { para: string; tipo: TipoLigacaoChamado }): Promise<Feito> {
   exigirTrabalhar(ator);
   const e = await carregar(app, ator, ref);
   const { t, agora } = e;
+  if (e.painel.tipo === 'vendas') throw new BadRequest(NEGOCIACAO_SEM_LIGACAO);
   const outro = await outroChamado(app.db, d.para, ator, e.ctx);
   if (outro.id === t.id) throw new BadRequest('Um chamado não se liga a ele mesmo.');
+  if (e.ctx.paineis.find((p) => p.id === outro.panelId)?.tipo === 'vendas') throw new BadRequest(negociacaoNaoSeLiga(outro.code));
   const [ja] = await app.db.select({ id: ticketLinks.id }).from(ticketLinks).where(and(isNull(ticketLinks.deletedAt), or(
     and(eq(ticketLinks.fromId, t.id), eq(ticketLinks.toId, outro.id)),
     and(eq(ticketLinks.fromId, outro.id), eq(ticketLinks.toId, t.id)),

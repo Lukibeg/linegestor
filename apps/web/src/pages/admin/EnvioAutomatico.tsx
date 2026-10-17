@@ -3,7 +3,8 @@
  * com os gráficos e relatórios dos Chamados marcados vai pelo WhatsApp (API da FlwChat) para os
  * números da lista. Aqui ficam o horário, os dias, os números, o número que envia, o endereço da API
  * e o token (que vai para o cofre e nunca volta para a tela). O que vai no PDF é marcado nos
- * próprios gráficos e relatórios, no aviãozinho "Envio diário" do canto de cada um.
+ * próprios gráficos e relatórios, no aviãozinho "Envio diário" do canto de cada um. Depois de mandar,
+ * o Gestor conclui a conversa na FlwChat (2.0.1: "ele envia e conclui… ele é só um aviso").
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,10 +17,10 @@ import { Campo, Carregando, Chip, Confirmar, Spinner, Toggle, mensagemErro, useT
 import { data } from '../../lib/format.js';
 
 type Linha = { id: string; nome: string; numero: string; ativo: boolean };
-type Form = { ativo: boolean; url: string; remetente: string; horario: string; dias: number[]; destinatarios: Linha[] };
+type Form = { ativo: boolean; url: string; remetente: string; horario: string; dias: number[]; destinatarios: Linha[]; concluirConversa: boolean };
 
 const doServidor = (a: EnvioAjustesTela): Form => ({
-  ativo: a.ativo, url: a.url, remetente: a.remetente ? numeroLegivel(a.remetente) : '', horario: a.horario, dias: a.dias,
+  ativo: a.ativo, url: a.url, remetente: a.remetente ? numeroLegivel(a.remetente) : '', horario: a.horario, dias: a.dias, concluirConversa: a.concluirConversa,
   destinatarios: a.destinatarios.map((d) => ({ id: d.id, nome: d.nome, numero: numeroLegivel(d.numero), ativo: d.ativo })),
 });
 const novoId = () => Math.random().toString(36).slice(2, 10);
@@ -183,6 +184,13 @@ function Tela({ inicial }: { inicial: EnvioAjustesTela }) {
           A FlwChat baixa o PDF de <span className="font-mono">{inicial.enderecoPublico}</span>, num link difícil de adivinhar que vence em {inicial.linkValeDias} dias.
           O arquivo continua guardado aqui no histórico.
         </p>
+        <label className="flex items-start gap-2.5 text-sm cursor-pointer mt-3" id="envio-concluir">
+          <Toggle checked={f.concluirConversa} onChange={(v) => setF({ ...f, concluirConversa: v })} />
+          <span>
+            Concluir a conversa depois de mandar
+            <span className="block text-[12.5px] text-muted">O relatório é só um aviso: logo depois de mandar, o Gestor conclui a conversa na FlwChat, e ela não fica pendente esperando alguém. Vale também para o Testar.</span>
+          </span>
+        </label>
 
         <div className="flex flex-wrap gap-2 mt-4 items-center">
           <button className="btn-primary" disabled={busy || !mudou} onClick={salvar}>{busy ? <Spinner className="text-white" /> : 'Salvar'}</button>

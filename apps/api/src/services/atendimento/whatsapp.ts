@@ -86,7 +86,7 @@ function lerJson(r: Resposta): Record<string, unknown> {
 }
 
 const mensagemDoErro = (r: { status: number; texto: string }) =>
-  r.status === 401 || r.status === 403 ? `O LineChat recusou a chave (${r.status}). Confira em Chamados › Ajustes › Avisos.`
+  r.status === 401 || r.status === 403 ? `O LineChat recusou a chave (${r.status}). Confira em Painéis › Ajustes › Avisos.`
     : r.status === 0 ? `${r.texto[0]!.toUpperCase()}${r.texto.slice(1)}. Confira o endereço da API.`
       : `O LineChat respondeu ${r.status}${r.texto ? `: ${r.texto}` : ''}`;
 
@@ -128,9 +128,9 @@ export async function mandarWhatsApp(
   p: { de: 'cliente' | 'equipe'; para: string; texto: string; valores?: ValoresDaMensagem; quem?: { email: string | null } | null },
 ): Promise<ResultadoWhatsApp> {
   const { valor: v } = await lerAvisos(db);
-  if (!v.ativo) return { ok: false, mensagem: 'O WhatsApp dos chamados está desligado (Chamados › Ajustes › Avisos).' };
+  if (!v.ativo) return { ok: false, mensagem: 'O WhatsApp dos chamados está desligado (Painéis › Ajustes › Avisos).' };
   const de = p.de === 'cliente' ? v.numeroCliente : v.numeroEquipe;
-  if (!de) return { ok: false, mensagem: `Falta o número que envia para ${p.de === 'cliente' ? 'o cliente' : 'a equipe'} (Chamados › Ajustes › Avisos).` };
+  if (!de) return { ok: false, mensagem: `Falta o número que envia para ${p.de === 'cliente' ? 'o cliente' : 'a equipe'} (Painéis › Ajustes › Avisos).` };
   const para = numeroWhatsApp(p.para);
   if (!para) return { ok: false, mensagem: `O número ${p.para} não é um WhatsApp válido.` };
   if (p.de === 'cliente' && v.envioCliente === 'modelo') {
@@ -138,7 +138,7 @@ export async function mandarWhatsApp(
     if (falta) return { ok: false, mensagem: falta };
   }
   const token = await chaveDoEnvio(db, vault, v);
-  if (!token) return { ok: false, mensagem: v.usarChaveDoLineChat ? 'Falta a chave do LineChat (Administração › Ajustes › Chamados do LineChat).' : 'Falta a chave da API (Chamados › Ajustes › Avisos).' };
+  if (!token) return { ok: false, mensagem: v.usarChaveDoLineChat ? 'Falta a chave do LineChat (Administração › Ajustes › Chamados do LineChat).' : 'Falta a chave da API (Painéis › Ajustes › Avisos).' };
 
   // a equipe: o texto, escondido (não vira conversa no LineChat)
   if (p.de === 'equipe') return resultadoDoEnvio(await postar(v.url, token, { from: de, to: para, body: { text: p.texto }, options: { hiddenSession: true } }), false);

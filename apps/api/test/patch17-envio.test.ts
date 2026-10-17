@@ -8,7 +8,9 @@
  *  - a página do PDF só abre com a chave de uso único ou com a sessão;
  *  - o envio: monta o PDF, guarda, manda o link público para a FlwChat (que baixa de lá) e anota
  *    no histórico e na auditoria; o link vence em 7 dias, o arquivo fica para a administração;
- *  - o teste manda só texto; erro da FlwChat aparece na resposta.
+ *  - o teste manda só texto; erro da FlwChat aparece na resposta;
+ *  - 2.0.1: depois de mandar, conclui a conversa na FlwChat (a opção vem ligada); se não deixar, a
+ *    mensagem continua entregue e o histórico diz que a conversa ficou aberta.
  *
  * Sem Chromium e sem FlwChat de verdade: as duas ferramentas são trocadas por imitações.
  */
@@ -28,8 +30,14 @@ let s: Session;
 const TOKEN = `teste-${randomUUID()}`;
 const horasAtras = (h: number) => new Date(Date.now() - h * 3_600_000);
 /** O que a "FlwChat" recebeu. */
-let recebidos: Array<{ url: string; auth: string; corpo: any }> = [];
+let recebidos: Array<{ url: string; metodo: string; auth: string; corpo: any }> = [];
 let respostaDaFlwChat = 200;
+/** o que a "FlwChat" responde ao envio (a mensagem, com a conversa em que ela entrou) */
+let respostaDoEnvio: Record<string, unknown> = { id: 'msg-1', sessionId: 'sessao-1' };
+/** como a "FlwChat" responde ao concluir a conversa */
+let respostaDaConclusao = 200;
+/** só os envios de mensagem (sem as perguntas e as conclusões das conversas) */
+const envios = () => recebidos.filter((r) => r.metodo === 'POST');
 
 beforeAll(async () => {
   app = await makeApp();
@@ -60,9 +68,14 @@ beforeAll(async () => {
       return Buffer.from('%PDF-1.4 PDF de teste');
     },
     fetchFn: (async (url: string, init: RequestInit) => {
-      recebidos.push({ url, auth: String((init.headers as Record<string, string>).Authorization), corpo: JSON.parse(String(init.body)) });
-      return new Response(respostaDaFlwChat === 200 ? '{"id":"msg-1"}' : '{"error":"recusado"}', { status: respostaDaFlwChat });
+      const metodo = init.method ?? 'GET';
+      recebidos.push({ url, metodo, auth: String((init.headers as Record<string, string>).Authorization), corpo: init.body ? JSON.parse(String(init.body)) : null });
+      // concluir a conversa; perguntar pela mensagem (a conversa dela); mandar
+      if (metodo === 'PUT') return new Response(respostaDaConclusao === 200 ? '{}' : '{"text":"Sessão não encontrada"}', { status: respostaDaConclusao });
+      if (metodo === 'GET') return new Response(JSON.stringify({ id: url.split('/').pop(), sessionId: 'sessao-da-fila' }), { status: 200 });
+      return new Response(respostaDaFlwChat === 200 ? JSON.stringify(respostaDoEnvio) : '{"error":"recusado"}', { status: respostaDaFlwChat });
     }) as typeof fetch,
+    esperar: async () => {},
   });
 });
 afterAll(async () => { await app.close(); });
@@ -152,10 +165,17 @@ describe('O envio', () => {
     expect(r.statusCode).toBe(200);
     const e = r.json();
     expect(e.ok).toBe(true);
-    expect(e.mensagem).toBe('Enviado para 2 números.');
+    expect(e.mensagem).toBe('Enviado para 2 números (as conversas foram concluídas).');
     expect(e.itens).toEqual(['Chamados abertos hoje, por hora', 'Por assunto', 'Relógio do chamado', 'Os poucos que pesam muito']);
-    expect(recebidos).toHaveLength(2);
-    const [m] = recebidos;
+    expect(envios()).toHaveLength(2);
+    // 2.0.1: depois de cada envio, a conversa é concluída (é só um aviso)
+    expect(recebidos.map((r) => r.metodo)).toEqual(['POST', 'PUT', 'POST', 'PUT']);
+    expect(recebidos.filter((r) => r.metodo === 'PUT').map((r) => [r.url, r.auth, r.corpo])).toEqual([
+      ['https://api.exemplo.com/chat/v1/session/sessao-1/complete', `Bearer ${TOKEN}`, { reactivateOnNewMessage: false, stopBotInExecution: false }],
+      ['https://api.exemplo.com/chat/v1/session/sessao-1/complete', `Bearer ${TOKEN}`, { reactivateOnNewMessage: false, stopBotInExecution: false }],
+    ]);
+    expect(e.destinatarios.map((d: any) => d.conversa)).toEqual(['concluida', 'concluida']);
+    const [m] = envios();
     expect(m!.url).toBe(AJUSTES.url);
     expect(m!.auth).toBe(`Bearer ${TOKEN}`);
     expect(m!.corpo.from).toBe('557135120000');
@@ -190,10 +210,11 @@ describe('O envio', () => {
     recebidos = [];
     const e = (await s.post('/envio/testar', { destinatarioId: 'd2' })).json();
     expect(e.ok).toBe(true);
-    expect(recebidos).toHaveLength(1);
-    expect(recebidos[0]!.corpo.to).toBe('5571999990002');
-    expect(recebidos[0]!.corpo.body.fileUrl).toBeUndefined();
-    expect(recebidos[0]!.corpo.body.text).toContain('Teste do Ingline Gestão');
+    expect(e.mensagem).toBe('Teste enviado para 1 número (a conversa foi concluída).');
+    expect(envios()).toHaveLength(1);
+    expect(envios()[0]!.corpo.to).toBe('5571999990002');
+    expect(envios()[0]!.corpo.body.fileUrl).toBeUndefined();
+    expect(envios()[0]!.corpo.body.text).toContain('Teste do Ingline Gestão');
   });
   it('a FlwChat recusou: aparece o motivo, e o agendado conta a tentativa', async () => {
     respostaDaFlwChat = 401;
@@ -246,7 +267,7 @@ describe('O relógio (1.7.1)', () => {
     recebidos = [];
     expect(await volta('2026-10-05', '18:39')).toBeNull();
     expect((await volta('2026-10-05', '18:40'))?.ok).toBe(true);
-    expect(recebidos.map((r) => r.corpo.to)).toEqual(['5571999990001', '5571999990002']);
+    expect(envios().map((r) => r.corpo.to)).toEqual(['5571999990001', '5571999990002']);
     expect(await volta('2026-10-05', '18:41')).toBeNull(); // uma vez só
     envio.trocarFerramentas({ agora: as('2026-10-05', '18:42') });
     const fim = await tela();
@@ -283,6 +304,68 @@ describe('O relógio (1.7.1)', () => {
     soltar();
     expect((await primeira)?.ok).toBe(true);
     expect(await volta('2026-10-07', '18:42')).toBeNull();
-    expect(recebidos).toHaveLength(2); // um para cada número ativo, uma vez
+    expect(envios()).toHaveLength(2); // um para cada número ativo, uma vez
+  });
+});
+
+/**
+ * 2.0.1 — "ele envia e deixa a conversa em aberto. O correto é já concluir a conversa assim que ele vier…
+ * ele é só um aviso" (o Luan, em 17/10). Depois de mandar, o Gestor conclui a conversa na FlwChat.
+ */
+describe('Concluir a conversa depois de mandar (2.0.1)', () => {
+  afterAll(() => { respostaDoEnvio = { id: 'msg-1', sessionId: 'sessao-1' }; respostaDaConclusao = 200; });
+
+  it('o endereço da API: o de envio sem o /chat/v1/message/send', () => {
+    expect(envio.baseDaApi('https://api.exemplo.com/chat/v1/message/send')).toBe('https://api.exemplo.com');
+    expect(envio.baseDaApi('https://api.exemplo.com/chat/v1/message/send-sync')).toBe('https://api.exemplo.com');
+    expect(envio.baseDaApi('https://exemplo.com/api/chat/v2/message/send/')).toBe('https://exemplo.com/api');
+    expect(envio.baseDaApi('https://outro.exemplo.com/mandar')).toBe('https://outro.exemplo.com');
+    // a conversa vem como sessionId ou dentro de session
+    expect(envio.conversaDaResposta({ sessionId: 'a' })).toBe('a');
+    expect(envio.conversaDaResposta({ session: { id: 'b' } })).toBe('b');
+    expect(envio.conversaDaResposta({ id: 'msg' })).toBeNull();
+  });
+
+  it('a tela mostra a opção ligada (também para quem salvou antes do 2.0.1)', async () => {
+    expect((await s.get('/envio/ajustes')).json().concluirConversa).toBe(true);
+  });
+
+  it('a resposta do envio não diz a conversa: pergunta pela mensagem e conclui a dela', async () => {
+    respostaDoEnvio = { id: 'msg-9', status: 'QUEUED' };
+    recebidos = [];
+    const e = (await s.post('/envio/testar', { destinatarioId: 'd1' })).json();
+    expect(e).toMatchObject({ ok: true, mensagem: 'Teste enviado para 1 número (a conversa foi concluída).' });
+    expect(recebidos.map((r) => [r.metodo, r.url])).toEqual([
+      ['POST', 'https://api.exemplo.com/chat/v1/message/send'],
+      ['GET', 'https://api.exemplo.com/chat/v1/message/msg-9'],
+      ['PUT', 'https://api.exemplo.com/chat/v1/session/sessao-da-fila/complete'],
+    ]);
+  });
+
+  it('a FlwChat não deixou concluir: a mensagem foi, e o histórico diz que a conversa ficou aberta e por quê', async () => {
+    respostaDoEnvio = { id: 'msg-1', sessionId: 'sessao-1' };
+    respostaDaConclusao = 404;
+    const e = (await s.post('/envio/testar', { destinatarioId: 'd1' })).json();
+    respostaDaConclusao = 200;
+    expect(e.ok).toBe(true);
+    expect(e.mensagem).toBe('Teste enviado para 1 número; 1 conversa ficou aberta (Luan: a FlwChat respondeu 404: {"text":"Sessão não encontrada"}).');
+    expect(e.destinatarios[0]).toMatchObject({ ok: true, conversa: 'aberta' });
+    expect(e.destinatarios[0].mensagem).toContain('Aceito pela FlwChat (200); a conversa ficou aberta');
+    // sem a conversa na resposta nem na mensagem: fica aberta, dizendo isso
+    respostaDoEnvio = {};
+    const sem = (await s.post('/envio/testar', { destinatarioId: 'd1' })).json();
+    respostaDoEnvio = { id: 'msg-1', sessionId: 'sessao-1' };
+    expect(sem.mensagem).toBe('Teste enviado para 1 número; 1 conversa ficou aberta (Luan: a FlwChat não disse qual é a conversa).');
+  });
+
+  it('desligada: só manda, como antes', async () => {
+    const t = (await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40', concluirConversa: false })).json();
+    expect(t.concluirConversa).toBe(false);
+    recebidos = [];
+    const e = (await s.post('/envio/testar', { destinatarioId: 'd1' })).json();
+    expect(e.mensagem).toBe('Teste enviado para 1 número.');
+    expect(recebidos.map((r) => r.metodo)).toEqual(['POST']);
+    expect(e.destinatarios[0].conversa).toBeUndefined();
+    expect((await s.put('/envio/ajustes', { ...AJUSTES, horario: '18:40' })).json().concluirConversa).toBe(true);
   });
 });

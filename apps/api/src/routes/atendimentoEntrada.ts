@@ -1,6 +1,6 @@
 /**
  * Chamados do Gestor (Patch 2.0, decisão 0047): a entrada das integrações — o robô do LineChat e o
- * n8n abrem e mexem nos chamados com uma chave de API (criada em Chamados › Integrações), sem sessão.
+ * n8n abrem e mexem nos chamados com uma chave de API (criada em Painéis › Ajustes › Integrações), sem sessão.
  *
  * A chave vem em `Authorization: Bearer <chave>` ou em `?chave=` (o bloco de webhook do robô pode não
  * aceitar cabeçalho; quando der, prefira o cabeçalho: o endereço com a chave pode ir parar em log).
@@ -10,7 +10,7 @@
  * A auditoria registra o nome da chave (não há pessoa: o usuário fica vazio).
  *
  * O robô do LineChat chama `/entrada/robo` com o JSON dele, do jeito que o bloco Webhook manda (2.0.1):
- * o mapa (Chamados › Ajustes › Integrações) diz de onde vem cada campo. A resposta é a que o bloco
+ * o mapa (Painéis › Ajustes › Integrações) diz de onde vem cada campo. A resposta é a que o bloco
  * "Enviar webhook" entende: sempre 200 (ele conta o 201 como falha), com `{"response":"CHAMADO_ABERTO",
  * "messages":[{"text":…}]}` ou `{"response":"CHAMADO_FALHOU"}`. A chave errada continua 401: não é o
  * robô falando. A `/entrada/chamado` recebe o formato do Gestor (o n8n, outros sistemas).
@@ -55,7 +55,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     bodyLimit: 512 * 1024,
     schema: {
       tags, querystring: EnderecoDoRobo, body: z.unknown(),
-      summary: 'Abrir um chamado pelo robô do LineChat, com o JSON que o bloco Webhook manda: o mapa (Chamados › Ajustes › Integrações) diz de onde vem cada campo, e o que não bate fica de fora (a auditoria e o último pedido dizem o quê). A mesma conversa aberta não abre outro (o relato vira anotação nele). Responde sempre 200, no formato do bloco "Enviar webhook": {"response":"CHAMADO_ABERTO","messages":[{"text":"…"}]} ou {"response":"CHAMADO_FALHOU"}',
+      summary: 'Abrir um chamado pelo robô do LineChat, com o JSON que o bloco Webhook manda: o mapa (Painéis › Ajustes › Integrações) diz de onde vem cada campo, e o que não bate fica de fora (a auditoria e o último pedido dizem o quê). A mesma conversa aberta não abre outro (o relato vira anotação nele). Responde sempre 200, no formato do bloco "Enviar webhook": {"response":"CHAMADO_ABERTO","messages":[{"text":"…"}]} ou {"response":"CHAMADO_FALHOU"}',
     },
   }, async (req, reply) => {
     let r: entrada.ResultadoDoRobo;

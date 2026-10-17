@@ -144,12 +144,13 @@ export const etapaDe = (opcoes: OpcoesAtendimento | undefined, painelId: string,
 // =====================================================================
 
 /**
- * As abas do módulo. A primeira são os Painéis (a tela inicial, como no Helena): o quadro e a lista
+ * As abas do módulo. A primeira são Todos os painéis (a tela inicial, como no Helena): o quadro e a lista
  * de cada painel se abrem por ela, e a aba continua marcada lá dentro. A lista não é aba: mora dentro
- * do painel (Quadro | Lista), o pedido do Luan na prévia.
+ * do painel (Quadro | Lista), o pedido do Luan na prévia. O módulo se chama **Painéis** (2.0.1: "isso
+ * aqui n é chamados, é paineis" — o Comercial também mora aqui), e a aba, **Todos**.
  */
 const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tambem?: string[] }> = [
-  { to: '/atendimento', label: 'Painéis', fim: true, tambem: ['/atendimento/quadro', '/atendimento/lista', '/atendimento/relatorio'] },
+  { to: '/atendimento', label: 'Todos', fim: true, tambem: ['/atendimento/quadro', '/atendimento/lista', '/atendimento/relatorio'] },
   { to: '/atendimento/meu-dia', label: 'Meu dia' },
   { to: '/atendimento/ajustes', label: 'Ajustes', so: 'cuidar' },
 ];
@@ -180,8 +181,8 @@ export function CabecalhoAtendimento({ sub, acoes, painelId }: { sub?: ReactNode
   return (
     <div className="mb-3" id="cabecalho-chamados">
       <div className="flex flex-wrap items-center gap-x-4 shadow-[inset_0_-1px_0_var(--line)]">
-        <h1 className="font-display text-xl font-semibold py-1.5">Chamados</h1>
-        <nav className="order-last basis-full sm:order-none sm:basis-auto self-stretch flex items-end gap-1 overflow-x-auto overflow-y-hidden sem-barra" aria-label="Partes do módulo de chamados">
+        <h1 className="font-display text-xl font-semibold py-1.5">Painéis</h1>
+        <nav className="order-last basis-full sm:order-none sm:basis-auto self-stretch flex items-end gap-1 overflow-x-auto overflow-y-hidden sem-barra" aria-label="Partes dos painéis">
           {ABAS.filter((a) => !a.so || pode.cuidar || pode.integrar).map((a) => (
             <NavLink key={a.to} to={a.to} end={a.fim} className={({ isActive }) => classeAba(isActive || !!a.tambem?.some((t) => pathname.startsWith(t)))}>{a.label}</NavLink>
           ))}

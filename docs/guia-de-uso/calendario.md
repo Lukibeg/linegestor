@@ -11,7 +11,7 @@ Cada evento é de **um ou mais painéis** (os mesmos dos chamados), e quem vê o
 - Quem é do **Administrativo**, do **Suporte** e do **Desenvolvimento** vê os três.
 - Quem cuida dos chamados (o Administrador) vê todos.
 
-O "quem é de qual painel" é o **Quem vê** do painel, em Chamados › Ajustes › Painéis: **Todos que veem
+O "quem é de qual painel" é o **Quem vê** do painel, em Painéis › Ajustes › Painéis: **Todos que veem
 chamados** ou **Só as pessoas escolhidas**. Para uma equipe ter o seu calendário (o Comercial, por
 exemplo), crie o painel dela com **Só as pessoas escolhidas** e marque as pessoas — mesmo que ela não
 use os chamados.

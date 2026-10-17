@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 2.0) — Etiquetas: as mesmas em todos os painéis, cada uma com a cor dela
+ * Painéis › Ajustes (Patch 2.0) — Etiquetas: as mesmas em todos os painéis, cada uma com a cor dela
  * (o pedido do Luan na prévia: "na hora de criar as etiquetas, seria legal poder escolher a cor também").
  *
  * A etiqueta nasce no chamado (no Abrir chamado e na ficha, com a cor escolhida ali; a do robô e da IA

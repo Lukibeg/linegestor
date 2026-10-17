@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 2.0) — Chamados agendados: o chamado que nasce sozinho na hora marcada
+ * Painéis › Ajustes (Patch 2.0) — Chamados agendados: o chamado que nasce sozinho na hora marcada
  * (a verificação dos DIDs em uso, todo dia 15). Quem cria é o relógio do servidor, a cada minuto, pelas
  * mesmas regras do "Abrir chamado" (o painel ativo, o assunto do painel, o responsável ativo), com os
  * passos do agendado no checklist. "Criar agora" faz o mesmo na hora, sem mudar a próxima vez.
