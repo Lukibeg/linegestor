@@ -65,6 +65,14 @@ nele (a regra do patch que ainda não subiu).
     antes. A **meta do mês** (numa barra) e as frases de **destaque** também entraram nessa volta e saíram
     na prévia (17/10, nos comentários: *"n quero isso de meta"*, *"n quero esses destaques"*). A meta
     continua no cartão do painel, na tela dos painéis.
+  - **Os ganhos mês a mês** (17/10, nos comentários: *"eu quero um relatório que compare meus ganhos mes
+    a mes, algo parecido com o que tem hoje no helena"*). Uma coluna por mês, os 12 meses que terminam
+    no mês do fim do período, com o valor em cima e, embaixo, quanto mudou em relação ao mês anterior
+    (verde quando subiu, laranja quando caiu). O mês que ainda não acabou (o de hoje, ou o período que
+    termina no meio do mês) conta até o fim do período e é comparado com o mesmo pedaço do mês anterior
+    (marcado com \*). Do lado, o total dos 12 meses. No celular, os 6 últimos. Clicar num mês mostra as
+    negociações ganhas nele. O relatório de vendas do Helena não foi visto (o navegador desta conversa não
+    abre o LineChat): o desenho segue o dos relatórios do Suporte.
   - **O funil.** Das que entraram no período, quantas chegaram a cada etapa (a etapa mais adiante por
     onde passaram; a ganha chegou ao fim), com a porcentagem das que entraram, quantas se perderam em cada
     uma (a etapa em que estavam ao perder) e quantas foram ganhas. As barras, alinhadas à esquerda.
@@ -91,9 +99,9 @@ nele (a regra do patch que ainda não subiu).
   perda (`tickets.lost_reason`). O fim (`closed_at`) é o dia em que a negociação acabou (num dia que já
   passou, ao meio-dia de Brasília). As contas do relatório moram no `@gestor/shared` (`vendas.ts`): o
   servidor e a prévia contam igual.
-- **A prévia.** O painel **Comercial (COM)**, da Camila e do Diego, com 24 negociações de exemplo (as
-  ganhas e as perdidas dos últimos meses, três delas no começo do mês passado, para a comparação do Este
-  mês, e o funil de agora) e a meta de R$ 40 mil.
+- **A prévia.** O painel **Comercial (COM)**, da Camila e do Diego, com 32 negociações de exemplo (as
+  ganhas e as perdidas do último ano, uma ou mais por mês para os ganhos mês a mês, três delas no começo
+  do mês passado para a comparação do Este mês, e o funil de agora) e a meta de R$ 40 mil.
 
 **Alternativas consideradas.**
 

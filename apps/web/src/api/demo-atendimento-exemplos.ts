@@ -1316,6 +1316,31 @@ export type NegociacaoDeExemplo = {
 export const META_DO_COMERCIAL = 40_000;
 
 export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
+  // ---- o ano que passou (os ganhos mês a mês do relatório) ----
+  { chave: 'norte-pabx', titulo: 'PABX em nuvem — 12 ramais', cliente: 'Distribuidora Norte', contato: ['Paulo', '5571999990202'], valor: 6_500, produtos: ['linepbx'],
+    por: 'diego', responsavel: 'diego', abriu: 352, passos: [{ para: 'Qualificação', dias: 349 }, { para: 'Proposta enviada', dias: 343 }, { para: 'Negociação', dias: 336 }],
+    fim: { resultado: 'ganho', dias: 330 } },
+  { chave: 'exame-ura', titulo: 'URA com fila de espera', cliente: 'Laboratório Exame Certo', contato: ['Beatriz', '5571999990216'], valor: 9_800, produtos: ['linepbx'],
+    por: 'camila', responsavel: 'camila', abriu: 318, passos: [{ para: 'Qualificação', dias: 315 }, { para: 'Proposta enviada', dias: 310 }],
+    fim: { resultado: 'ganho', dias: 300 } },
+  { chave: 'mar-azul', titulo: 'PABX para o hotel', empresa: 'Hotel Mar Azul', contato: ['Ricardo', '5571999990221'], valor: 11_000, produtos: ['linepbx'],
+    por: 'camila', responsavel: 'camila', abriu: 300, passos: [{ para: 'Qualificação', dias: 297 }, { para: 'Proposta enviada', dias: 290 }],
+    fim: { resultado: 'perdido', dias: 281, motivo: 'Fechou com a concorrência' } },
+  { chave: 'sol-nascente', titulo: 'LineChat — 3 atendentes', empresa: 'Pousada Sol Nascente', contato: ['Marta', '5571999990220'], valor: 4_200, produtos: ['linechat'],
+    por: 'camila', responsavel: 'camila', abriu: 285, passos: [{ para: 'Qualificação', dias: 282 }, { para: 'Proposta enviada', dias: 277 }],
+    fim: { resultado: 'ganho', dias: 270 } },
+  { chave: 'horizonte-matriz', titulo: 'Central da matriz com 50 ramais', cliente: 'Construtora Horizonte', contato: ['Edson', '5571999990211'], valor: 12_000, produtos: ['linepbx', 'equipamentos'],
+    por: 'diego', responsavel: 'diego', abriu: 262, passos: [{ para: 'Qualificação', dias: 259 }, { para: 'Proposta enviada', dias: 252 }, { para: 'Negociação', dias: 246 }],
+    fim: { resultado: 'ganho', dias: 240 } },
+  { chave: 'clinica-vida', titulo: 'LineChat — 5 atendentes', empresa: 'Clínica Vida', contato: ['Sônia', '5571999990222'], valor: 4_900, produtos: ['linechat'],
+    por: 'diego', responsavel: 'diego', abriu: 240, passos: [{ para: 'Qualificação', dias: 238 }],
+    fim: { resultado: 'perdido', dias: 229, motivo: 'Preço' } },
+  { chave: 'prado-tronco', titulo: 'Tronco SIP para o escritório', cliente: 'Escritório Prado & Lima', contato: ['Dra. Lívia', '5571999990218'], valor: 7_900, produtos: ['voicenet'],
+    por: 'camila', responsavel: 'camila', abriu: 226, passos: [{ para: 'Qualificação', dias: 223 }, { para: 'Proposta enviada', dias: 218 }],
+    fim: { resultado: 'ganho', dias: 210 } },
+  { chave: 'bompreco-filiais', titulo: 'Telefonia das 3 filiais', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 15_500, produtos: ['linepbx', 'voicenet'],
+    por: 'diego', responsavel: 'diego', abriu: 198, passos: [{ para: 'Qualificação', dias: 196 }, { para: 'Proposta enviada', dias: 191 }, { para: 'Negociação', dias: 186 }],
+    fim: { resultado: 'ganho', dias: 180 } },
   // ---- as que acabaram nos últimos meses ----
   { chave: 'aurora-fop2', titulo: 'LinePBX com FOP2 — 25 ramais', cliente: 'Clínica Aurora', contato: ['Débora', '5571999990201'], valor: 11_200, produtos: ['linepbx'],
     por: 'camila', responsavel: 'camila', abriu: 170, passos: [{ para: 'Qualificação', dias: 166 }, { para: 'Proposta enviada', dias: 160 }, { para: 'Negociação', dias: 153 }],

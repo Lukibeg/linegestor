@@ -11,8 +11,8 @@
  *  - o histórico e a auditoria falam de venda ("marcou como perdido: Preço"); reabrir volta para a etapa
  *    de antes; assumir só fica com a negociação
  *  - o quadro soma o valor de cada coluna; o resumo do painel traz o ganho do mês e a meta
- *  - o relatório de vendas (o que o Luan escolheu, 17/10): os números do período e o funil; só dos
- *    painéis de Vendas e de quem vê o painel
+ *  - o relatório de vendas (o que o Luan escolheu, 17/10): os números do período com a comparação, os
+ *    ganhos mês a mês e o funil; só dos painéis de Vendas e de quem vê o painel
  *  - o CSV só de negociações
  *  - o histórico diz "criou a negociação"; a troca de painel fica entre os painéis de Vendas (entrando no
  *    funil): a negociação não vira chamado nem o chamado vira negociação; o caminho entre eles é o filho
@@ -302,6 +302,12 @@ describe('o quadro, o resumo, o relatório e o CSV', () => {
     expect(r.numeros.ganhos.valor).toBe((ontemNoMes ? 1_250_000 : 0) + 900_000 + 600_000);
     expect(r.anterior.nome).toMatch(/^o mesmo período de /);
     expect(r.anterior.numeros.ganhos.qtd).toBe(0);
+    // os ganhos mês a mês: os 12 meses até o de hoje; o de hoje com as ganhas do período, e a janela acha cada uma
+    expect(r.meses).toHaveLength(12);
+    expect(r.meses.at(-1)).toMatchObject({ mes, ganho: r.numeros.ganhos.valor, qtd: r.numeros.ganhos.qtd });
+    // (a de ontem pode ser do mês passado, no dia 1º; antes dele, nada)
+    expect(r.meses.slice(0, -2).every((m) => m.ganho === 0)).toBe(true);
+    expect(r.meses.at(-1)!.ids.every((id) => r.negociacoes.some((n) => n.id === id))).toBe(true);
   });
 
   it('o relatório só de painel de Vendas e de quem vê o painel', async () => {

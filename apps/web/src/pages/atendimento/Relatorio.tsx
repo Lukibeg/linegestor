@@ -8,6 +8,8 @@
  *  - **O período em números**: o ganho, as novas, as perdidas, a conversão e o ticket médio, cada um
  *    com a seta do que mudou em relação ao período anterior (a meta do mês e as frases de destaque
  *    entraram e saíram, 17/10: "n quero isso de meta", "n quero esses destaques");
+ *  - **Os ganhos mês a mês** (17/10: "eu quero um relatório que compare meus ganhos mes a mes"): uma
+ *    coluna por mês, os 12 até o do fim do período, com quanto mudou em relação ao mês anterior;
  *  - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
  *    entraram), quantas se perderam em cada uma e quantas foram ganhas.
  *
@@ -18,7 +20,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarRange, Filter as Funnel, Info, Target, TrendingDown, TrendingUp, X } from 'lucide-react';
+import { ArrowLeft, CalendarRange, ChartColumn, Filter as Funnel, Info, Target, TrendingDown, TrendingUp, X } from 'lucide-react';
 import {
   diaComAno, periodosDoRelatorio, reaisCurto, reaisInteiros,
   type NegociacaoDoRelatorio, type OpcoesAtendimento, type Painel, type RelatorioDeVendas,
@@ -108,6 +110,7 @@ function RelatorioDeVendasDoPainel({ painel, opcoes }: { painel: Painel; opcoes:
             lado={<span title={`${diaComAno(r.anterior.de)} a ${diaComAno(r.anterior.ate)}`}>comparado com {r.anterior.nome} ({diaCurto(r.anterior.de)} a {diaCurto(r.anterior.ate)})</span>}>
             <Numeros r={r} nomeDoPeriodo={nomeDoPeriodo} abrir={setAberta} />
           </Secao>
+          <MesAMes r={r} abrir={setAberta} />
           <Secao id="relatorio-funil" titulo="O funil" icone={Funnel}
             pergunta={`Das ${plural(r.numeros.novos.qtd, 'negociação que entrou', 'negociações que entraram')} ${nomeDoPeriodo}: até onde chegaram, onde se perderam e quantas foram ganhas.`}
             rodape="Conta a etapa mais adiante por onde a negociação passou (a ganha chegou ao fim) e, na perdida, a etapa em que ela estava quando foi perdida. A porcentagem é das que entraram. Clique para ver as negociações.">
@@ -206,6 +209,74 @@ function Numeros({ r, nomeDoPeriodo, abrir }: { r: RelatorioDeVendas; nomeDoPeri
         sub="o valor médio do ganho"
         diferenca={<Diferenca agora={n.ticketMedio} antes={a.ticketMedio} formato="reais" contra={contra} />} />
     </div>
+  );
+}
+
+/** Os ganhos mês a mês: o bloco, com o total dos 12 meses do lado e, no pé, como o mês pela metade é comparado. */
+function MesAMes({ r, abrir }: { r: RelatorioDeVendas; abrir: (a: Aberta) => void }) {
+  const total = r.meses.reduce((t, m) => t + m.ganho, 0);
+  const qtd = r.meses.reduce((t, m) => t + m.qtd, 0);
+  const ultimo = r.meses.at(-1);
+  const pedaco = ultimo?.parcial ? ` O * é ${ultimo.nome.split(' de ')[0]} até ${diaCurto(ultimo.ate)}: ele é comparado com o mesmo pedaço do mês anterior.` : '';
+  return (
+    <Secao id="relatorio-meses" titulo="Os ganhos mês a mês" icone={ChartColumn}
+      pergunta="Quanto foi ganho em cada mês, e quanto mudou em relação ao mês anterior."
+      lado={<span>12 meses: <b className="text-ink-2 tnum">{reaisInteiros(total)}</b> em {plural(qtd, 'negociação', 'negociações')}</span>}
+      rodape={`O ganho conta no mês em que a negociação foi ganha. Clique num mês para ver as negociações.${pedaco}`}>
+      <GanhosMesAMes meses={r.meses} abrir={abrir} />
+    </Secao>
+  );
+}
+
+/** As colunas dos meses (no celular, os 6 últimos): o valor em cima, o mês e a mudança embaixo. */
+function GanhosMesAMes({ meses, abrir }: { meses: RelatorioDeVendas['meses']; abrir: (a: Aberta) => void }) {
+  if (!meses.some((m) => m.ganho > 0)) return <p className="text-muted text-sm py-4">Nada ganho nos últimos 12 meses.</p>;
+  const max = Math.max(1, ...meses.map((m) => m.ganho));
+  const altura = 190;
+  const util = altura - 24;
+  const mostra = (i: number) => (i < meses.length - 6 ? 'hidden sm:flex' : 'flex');
+  const nomeDoMes = (m: RelatorioDeVendas['meses'][number]) => `${m.nome}${m.parcial ? ` (até ${diaCurto(m.ate)})` : ''}`;
+  return (
+    <div id="relatorio-colunas-meses">
+      <div className="flex items-end gap-1.5 sm:gap-2" style={{ height: altura }}>
+        {meses.map((m, i) => {
+          const ultimo = i === meses.length - 1;
+          return (
+            <button key={m.mes} type="button" disabled={!m.qtd} data-mes={m.mes}
+              onClick={() => abrir({ titulo: `Ganhas em ${nomeDoMes(m)}`, ids: m.ids })}
+              title={`${nomeDoMes(m)}: ${reaisInteiros(m.ganho)} em ${plural(m.qtd, 'negociação ganha', 'negociações ganhas')}`}
+              aria-label={`${nomeDoMes(m)}: ${reaisInteiros(m.ganho)}`}
+              className={`${mostra(i)} flex-1 min-w-0 h-full flex-col justify-end items-center group enabled:cursor-pointer`}>
+              {m.ganho > 0 && <span className={`text-[10.5px] sm:text-[11px] tnum leading-none mb-1 whitespace-nowrap ${ultimo ? 'text-ink font-semibold' : 'text-ink-2'}`}>{reaisCurto(m.ganho)}</span>}
+              <span className={`block w-full max-w-[64px] rounded-t bg-accent transition-opacity ${ultimo ? '' : 'opacity-55'} group-enabled:group-hover:opacity-100`}
+                style={{ height: m.ganho ? Math.max(3, (m.ganho / max) * util) : 0 }} />
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex gap-1.5 sm:gap-2 border-t border-line mt-0.5 pt-1.5">
+        {meses.map((m, i) => (
+          <span key={m.mes} className={`${mostra(i)} flex-1 min-w-0 flex-col items-center text-center leading-tight gap-0.5`}>
+            <span className={`text-[11px] ${i === meses.length - 1 ? 'text-accent font-semibold' : 'text-muted'}`}>{m.curto}{m.parcial ? '*' : ''}</span>
+            <MudancaDoMes m={m} />
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** "▲ 23%" (verde) ou "▼ 8%" (laranja) em relação ao mês anterior; sem ganho antes, um traço. */
+function MudancaDoMes({ m }: { m: RelatorioDeVendas['meses'][number] }) {
+  if (!m.antes) return <span className="text-[10.5px] text-muted" title="O mês anterior não teve ganho">—</span>;
+  const d = m.ganho - m.antes;
+  if (d === 0) return <span className="text-[10.5px] text-muted" title="Igual ao mês anterior">=</span>;
+  const sobe = d > 0;
+  return (
+    <span className={`text-[10.5px] font-semibold tnum whitespace-nowrap ${sobe ? 'text-ok' : 'text-signal'}`}
+      title={`${sobe ? 'Mais' : 'Menos'} que o mês anterior${m.parcial ? ' (no mesmo pedaço)' : ''}: ${reaisInteiros(m.antes)}`}>
+      {sobe ? '▲' : '▼'} {Math.round((Math.abs(d) / m.antes) * 100)}%
+    </span>
   );
 }
 

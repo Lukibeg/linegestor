@@ -67,10 +67,13 @@ painel).
     **conversão** (das que acabaram, quantas foram ganhas) e o **ticket médio** (o valor médio do ganho);
   - embaixo de cada número, a **seta**: quanto mudou em relação ao período anterior (no Este mês, o
     mesmo pedaço do mês passado). Verde é melhor.
+- **Os ganhos mês a mês**: o ganho de cada mês, nos 12 meses até o do fim do período, e quanto mudou
+  em relação ao mês anterior (verde subiu, laranja caiu). O mês de hoje, ainda pela metade (com \*),
+  é comparado com o mesmo pedaço do mês anterior. No celular, aparecem os 6 últimos.
 - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
   entraram), quantas se perderam em cada uma e quantas foram ganhas.
-- **Clique em qualquer número** (o ganho, as novas, o perdido, uma etapa do funil, as perdidas de uma
-  etapa) para ver as negociações por trás dele; o código abre a negociação.
+- **Clique em qualquer número** (o ganho, as novas, o perdido, um mês, uma etapa do funil, as perdidas
+  de uma etapa) para ver as negociações por trás dele; o código abre a negociação.
 
 ## 6. Do Comercial para o Suporte (e o contrário)
 

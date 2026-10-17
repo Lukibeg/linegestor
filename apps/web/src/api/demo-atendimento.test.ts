@@ -827,7 +827,7 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     const com = painel(op, 'COM');
     expect(com.tipo).toBe('vendas');
     expect(com.etapas.filter((e) => e.resultado).map((e) => e.resultado)).toEqual(['ganho', 'perdido']);
-    expect((await todosOsChamados()).filter((c) => c.painelId === com.id)).toHaveLength(24);
+    expect((await todosOsChamados()).filter((c) => c.painelId === com.id)).toHaveLength(32);
     // o histórico: a negociação é criada
     const estrela = await chamadoPeloTitulo('PABX em nuvem — 40 ramais');
     expect(estrela.historico.find((e) => e.tipo === 'criado')?.texto).toMatch(/^criou a negociação/);
@@ -853,6 +853,12 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     // o mês: comparado com o mesmo pedaço do mês passado (que tem as três negociações do começo dele)
     const doMes = await api.relatorioDeVendas({ painel: 'COM', de: `${hoje.slice(0, 7)}-01`, ate: hoje });
     expect(doMes.anterior.nome).toMatch(/^o mesmo período de /);
+    // os ganhos mês a mês: os 12 meses, o último é o de hoje; cada mês com as ganhas dele (a janela acha todas)
+    expect(doMes.meses).toHaveLength(12);
+    expect(doMes.meses.at(-1)).toMatchObject({ mes: hoje.slice(0, 7), ganho: doMes.numeros.ganhos.valor });
+    expect(doMes.meses.filter((m) => m.ganho > 0).length).toBeGreaterThanOrEqual(9);
+    const ids = new Set(doMes.negociacoes.map((n) => n.id));
+    expect(doMes.meses.flatMap((m) => m.ids).every((id) => ids.has(id))).toBe(true);
   }, DEMORA);
 
   it('a negociação: nasce no Lead sem prioridade; o Perdido pede o motivo; o Ganho fecha', async () => {

@@ -6,7 +6,9 @@
  * ficou legal, dê uma melhorada"), no jeito dos relatórios do Suporte: cada número comparado com o
  * período anterior e, clicando num número, as negociações por trás dele. A meta do mês e as frases de
  * destaque também entraram e saíram (17/10: "n quero isso de meta", "n quero esses destaques"); a meta
- * continua no cartão do painel.
+ * continua no cartão do painel. E, no mesmo dia, **os ganhos mês a mês** ("eu quero um relatório que
+ * compare meus ganhos mes a mes, algo parecido com o que tem hoje no helena"): os 12 meses que terminam
+ * no mês do fim do período, cada um com o que mudou em relação ao mês anterior.
  *
  * As contas moram aqui: o servidor e a prévia usam as mesmas. O dia é o de Brasília; o ganho e a perda
  * contam no dia em que a negociação acabou (quem marca escolhe o dia, como o "Data de conclusão" do Helena).
@@ -15,7 +17,7 @@ import { z } from 'zod';
 import { diaLocal } from './atendimento-prazos.js';
 import type { EtapaPainel, Painel, ResultadoDaVenda } from './atendimento.js';
 import { diasEntre, somarDias } from './chamados.js';
-import { nomeDoMes, somarMeses } from './relatorios.js';
+import { mesCurto, nomeDoMes, somarMeses } from './relatorios.js';
 
 /** Uma negociação, com o que o relatório precisa (a trajetória pelas etapas já montada). */
 export type NegociacaoParaRelatorio = {
@@ -91,7 +93,14 @@ export type RelatorioDeVendas = {
   funil: Array<{ etapaId: string; nome: string; chegaram: string[]; perdidas: string[] }>;
   /** as que entraram no período e foram ganhas (o fim do funil) */
   funilGanhas: string[];
-  /** as negociações por trás dos números (as que entraram, as ganhas e as perdidas do período) */
+  /**
+   * Os ganhos mês a mês: os 12 meses que terminam no mês do fim do período (o mais antigo primeiro).
+   * O último conta até o fim do período (`ate`): `parcial` quando o período acaba antes do fim do mês.
+   * `antes`: o ganho do mês anterior — no parcial, do mesmo pedaço do mês anterior (do dia 1 até o mesmo
+   * dia), para comparar o que é comparável.
+   */
+  meses: Array<{ mes: string; nome: string; curto: string; ganho: number; qtd: number; ids: string[]; parcial: boolean; ate: string; antes: number }>;
+  /** as negociações por trás dos números (as que entraram, as ganhas e as perdidas do período, e as ganhas de cada mês) */
   negociacoes: NegociacaoDoRelatorio[];
 };
 
@@ -197,15 +206,33 @@ export function relatorioDeVendas(
   });
   const funilGanhas = novas.filter((n) => n.resultado === 'ganho').map((n) => n.id);
 
-  // as negociações por trás dos números (as que entraram, as ganhas e as perdidas), as mais novas primeiro
-  const ids = new Set([...numeros.novos.ids, ...numeros.ganhos.ids, ...numeros.perdidos.ids]);
+  // os ganhos mês a mês: os 12 meses que terminam no mês do fim do período (o último, até o fim dele)
+  const ganhasEntre = (a: string, b: string) => negociacoes.filter((n) => n.resultado === 'ganho' && n.fechadoEm && noPeriodo(dia(n.fechadoEm), a, b));
+  const ultimoMes = ate.slice(0, 7);
+  const meses: RelatorioDeVendas['meses'] = [];
+  for (let i = 11; i >= 0; i--) {
+    const mes = somarMeses(ultimoMes, -i);
+    const parcial = i === 0 && ate < fimDoMes(mes);
+    const fim = i === 0 ? ate : fimDoMes(mes);
+    const doMes = ganhasEntre(`${mes}-01`, fim);
+    const antes = somarMeses(mes, -1);
+    // no parcial, o mesmo pedaço do mês anterior (o dia que ele não tem fica no último dia dele)
+    const fimAntes = parcial ? (`${antes}-${fim.slice(8, 10)}` > fimDoMes(antes) ? fimDoMes(antes) : `${antes}-${fim.slice(8, 10)}`) : fimDoMes(antes);
+    meses.push({
+      mes, nome: nomeDoMes(mes), curto: mesCurto(mes), ganho: peca(doMes).valor, qtd: doMes.length, ids: doMes.map((n) => n.id),
+      parcial, ate: fim, antes: peca(ganhasEntre(`${antes}-01`, fimAntes)).valor,
+    });
+  }
+
+  // as negociações por trás dos números (as que entraram, as ganhas e as perdidas, as ganhas de cada mês), as mais novas primeiro
+  const ids = new Set([...numeros.novos.ids, ...numeros.ganhos.ids, ...numeros.perdidos.ids, ...meses.flatMap((m) => m.ids)]);
   const lista = [...ids].map((id) => porId.get(id)!).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).map((n): NegociacaoDoRelatorio => ({
     id: n.id, codigo: n.codigo, titulo: n.titulo, empresa: n.empresa, responsavel: n.responsavel, valor: n.valor,
     etapa: nomeDaEtapa(n.etapaId), resultado: n.resultado, motivoPerda: n.resultado === 'perdido' ? n.motivoPerda : null,
     criadoEm: n.criadoEm, fechadoEm: n.fechadoEm,
   }));
 
-  return { painelId: painel.id, periodo: { de, ate }, numeros, anterior, funil, funilGanhas, negociacoes: lista };
+  return { painelId: painel.id, periodo: { de, ate }, numeros, anterior, funil, funilGanhas, meses, negociacoes: lista };
 }
 
 /** O período padrão do relatório: do primeiro dia do mês até hoje (Brasília). */

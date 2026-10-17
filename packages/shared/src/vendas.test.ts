@@ -119,8 +119,9 @@ describe('o relatório de vendas', () => {
       conversao: 66.7,
       ticketMedio: 750_000,
     });
-    // a janela: as que entraram, as ganhas e as perdidas, as mais novas primeiro; o motivo só na perdida
-    expect(r.negociacoes.map((x) => x.codigo)).toEqual(['COM-e', 'COM-b', 'COM-d', 'COM-a', 'COM-c']);
+    // a janela: as que entraram, as ganhas e as perdidas (e as ganhas de cada mês: a de setembro), as mais novas primeiro;
+    // o motivo só na perdida
+    expect(r.negociacoes.map((x) => x.codigo)).toEqual(['COM-e', 'COM-b', 'COM-d', 'COM-a', 'COM-c', 'COM-g']);
     expect(r.negociacoes.find((x) => x.id === 'c')).toMatchObject({ etapa: 'Perdido', resultado: 'perdido', motivoPerda: 'Preço', valor: 300_000 });
     expect(r.negociacoes.find((x) => x.id === 'd')).toMatchObject({ etapa: 'Negociação', resultado: null, motivoPerda: null });
   });
@@ -132,6 +133,19 @@ describe('o relatório de vendas', () => {
     const setembro = relatorioDeVendas(painel, todas, { de: '2026-09-01', ate: '2026-09-30' });
     expect(setembro.anterior).toMatchObject({ de: '2026-08-01', ate: '2026-08-31', nome: 'agosto' });
     expect(setembro.numeros.ganhos).toMatchObject({ qtd: 1, valor: 700_000 });
+  });
+  it('os ganhos mês a mês: os 12 meses até o do fim do período, o último até o fim dele', () => {
+    expect(r.meses.map((m) => m.mes)).toEqual([
+      '2025-11', '2025-12', '2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09', '2026-10',
+    ]);
+    expect(r.meses.at(-1)).toEqual({
+      mes: '2026-10', nome: 'outubro de 2026', curto: 'out/26', ganho: 1_500_000, qtd: 2, ids: ['a', 'b'],
+      // outubro até o dia 16, comparado com setembro até o dia 16 (a do dia 15)
+      parcial: true, ate: '2026-10-16', antes: 700_000,
+    });
+    expect(r.meses.at(-2)).toMatchObject({ mes: '2026-09', ganho: 700_000, qtd: 1, parcial: false, ate: '2026-09-30', antes: 0 });
+    // a janela do mês mostra as ganhas dele, mesmo as que não são do período (a de setembro)
+    expect(r.negociacoes.map((x) => x.id)).toContain('g');
   });
   it('o funil: até onde chegaram as que entraram no período, onde se perderam e quantas foram ganhas', () => {
     expect(r.funil.map((f) => [f.nome, f.chegaram, f.perdidas])).toEqual([
