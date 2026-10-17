@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { instanteLocal } from './atendimento-prazos.js';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, campoDoTipo, ETAPAS_DO_PAINEL_DE_VENDAS, faltaParaEtapa, mensagemDoQueFalta, problemaNasEtapasDoTipo, textoDoEvento,
+  AJUSTES_DO_PAINEL_DE_VENDAS, campoDoTipo, ETAPAS_DO_PAINEL_DE_VENDAS, faltaParaEtapa, linhasDoValorPorProduto, mensagemDoQueFalta, mesmoValorPorProduto,
+  problemaNasEtapasDoTipo, somaDosProdutos, textoDoEvento, textoDoValorPorProduto, VALOR_E_A_SOMA, VALOR_SO_DOS_PRODUTOS, valorPorProduto,
   type DadosObrigatorios, type EtapaPainel,
 } from './atendimento.js';
 import { reais } from './formatos.js';
@@ -29,6 +30,54 @@ describe('as etapas do painel de Vendas', () => {
     expect(campoDoTipo('vendas', 'gravidade')).toBe(false);
     expect(campoDoTipo('gestao', 'valor')).toBe(false);
     expect(campoDoTipo('gestao', 'relato')).toBe(true);
+  });
+});
+
+describe('o valor por produto (o pedido do Luan: "dividir o valor por produtos e no final tenha o total")', () => {
+  const sem = { produtos: ['pbx', 'tronco'], valores: {}, valor: 1_000_000 };
+  const dividida = { produtos: ['pbx', 'tronco'], valores: { pbx: 980_000, tronco: 270_000 }, valor: 1_250_000 };
+
+  it('o total é a soma; sem nenhum produto com valor, não há total', () => {
+    expect(somaDosProdutos({ pbx: 980_000, tronco: 270_000 })).toBe(1_250_000);
+    expect(somaDosProdutos({ cortesia: 0 })).toBe(0);
+    expect(somaDosProdutos({})).toBeNull();
+    expect(somaDosProdutos(null)).toBeNull();
+  });
+
+  it('com valor por produto, o valor da negociação é o total', () => {
+    expect(valorPorProduto(sem, { valores: { pbx: 980_000, tronco: 270_000 } })).toEqual({ ok: true, ...dividida });
+    // um produto sem valor fica de fora da soma
+    expect(valorPorProduto(sem, { valores: { pbx: 980_000 } })).toMatchObject({ ok: true, valor: 980_000, valores: { pbx: 980_000 } });
+    // o mesmo total junto não atrapalha; outro valor é recusado
+    expect(valorPorProduto(sem, { valores: { pbx: 980_000, tronco: 270_000 }, valor: 1_250_000 })).toMatchObject({ ok: true, valor: 1_250_000 });
+    expect(valorPorProduto(dividida, { valor: 1_000_000 })).toEqual({ ok: false, erro: VALOR_E_A_SOMA });
+    // só dos produtos da negociação (os que vêm no mesmo pedido contam)
+    expect(valorPorProduto(sem, { valores: { ura: 100 } })).toEqual({ ok: false, erro: VALOR_SO_DOS_PRODUTOS });
+    expect(valorPorProduto(sem, { produtos: ['pbx', 'tronco', 'ura'], valores: { ura: 100 } })).toMatchObject({ ok: true, valor: 100 });
+  });
+
+  it('o produto que sai leva o valor dele; sem nenhum, a negociação fica sem valor', () => {
+    expect(valorPorProduto(dividida, { produtos: ['pbx'] })).toEqual({ ok: true, produtos: ['pbx'], valores: { pbx: 980_000 }, valor: 980_000 });
+    expect(valorPorProduto(dividida, { produtos: [] })).toEqual({ ok: true, produtos: [], valores: {}, valor: null });
+    // o produto que entra (sem valor) não muda o total
+    expect(valorPorProduto(dividida, { produtos: ['pbx', 'tronco', 'ura'] })).toMatchObject({ ok: true, valor: 1_250_000 });
+  });
+
+  it('de volta a um valor só: o valor que vier (o total, na tela); sem divisão, o valor único de sempre', () => {
+    expect(valorPorProduto(dividida, { valores: {}, valor: 1_250_000 })).toEqual({ ok: true, produtos: ['pbx', 'tronco'], valores: {}, valor: 1_250_000 });
+    expect(valorPorProduto(dividida, { valores: null })).toMatchObject({ ok: true, valores: {}, valor: 1_250_000 });
+    expect(valorPorProduto(sem, { valor: 2_000_000 })).toMatchObject({ ok: true, valor: 2_000_000 });
+    expect(valorPorProduto(sem, { produtos: ['pbx'] })).toMatchObject({ ok: true, valor: 1_000_000 });
+  });
+
+  it('o texto do histórico e a comparação', () => {
+    const nomes = [{ id: 'pbx', nome: 'LinePBX' }, { id: 'tronco', nome: 'VoiceNet' }, { id: 'chat', nome: 'LineChat' }];
+    expect(textoDoValorPorProduto(nomes, dividida.valores)).toBe(`LinePBX ${reais(980_000)} · VoiceNet ${reais(270_000)}`);
+    expect(textoDoValorPorProduto(nomes, {})).toBeNull();
+    expect(linhasDoValorPorProduto(nomes, dividida.valores).map((l) => l.nome)).toEqual(['LinePBX', 'VoiceNet']);
+    expect(mesmoValorPorProduto({ a: 1, b: 2 }, { b: 2, a: 1 })).toBe(true);
+    expect(mesmoValorPorProduto({ a: 1 }, { a: 2 })).toBe(false);
+    expect(mesmoValorPorProduto({}, null)).toBe(true);
   });
 });
 

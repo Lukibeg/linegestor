@@ -1,11 +1,12 @@
 /**
- * As peças da negociação (o painel de Vendas, 2.0.1, decisão 0050): o campo do valor em reais e a
- * janela de marcar como Ganho ou Perdido (o quadro e a ficha usam a mesma).
+ * As peças da negociação (o painel de Vendas, 2.0.1, decisão 0050): o campo do valor em reais, o valor
+ * da negociação (um só ou por produto, com o total) e a janela de marcar como Ganho ou Perdido (o
+ * quadro e a ficha usam a mesma).
  */
 import { useId, useRef, useState } from 'react';
-import { Trophy, ThumbsDown } from 'lucide-react';
-import { diaLocal, lerReais, paraBusca, reais, type EtapaPainel, type Painel } from '@gestor/shared';
-import { Campo, Modal, Spinner } from '../../components/ui/index.js';
+import { ChevronDown, Plus, Trophy, ThumbsDown, X } from 'lucide-react';
+import { diaLocal, lerReais, paraBusca, reais, somaDosProdutos, type EtapaPainel, type Painel, type ValoresDosProdutos } from '@gestor/shared';
+import { Campo, EscolherComBusca, Modal, Spinner, type OpcaoBusca } from '../../components/ui/index.js';
 
 /** Os centavos como a pessoa escreve no campo: 12.500,00. */
 export const valorNoCampo = (centavos: number | null | undefined) =>
@@ -44,6 +45,116 @@ export function CampoValor({ centavos, onChange, id, autoFocus, desativado, onEn
   );
 }
 
+/** Como é o valor da negociação: um só, ou o de cada produto (com o total). */
+export type ModoDoValor = 'unico' | 'produto';
+
+/**
+ * O VALOR DA NEGOCIAÇÃO (o pedido do Luan na prévia, em 17/10: "quero que tenha como dividir o valor por
+ * produtos e no final tenha o total"): **Um valor só** (o campo de sempre) ou **Por produto** — cada
+ * produto da negociação com o seu valor e, no fim, o **Total**, que vira o valor da negociação. Os produtos
+ * entram e saem aqui mesmo. Controlado: o formulário guarda até criar; a ficha grava ao sair de cada campo.
+ * `gravados` (só a ficha) refaz o campo de um produto quando o valor dele muda no servidor.
+ */
+export function ValorDaNegociacao({
+  id, modo, onModo, valor, onValor, valores, onValorDoProduto, produtos, catalogo, onIncluir, onTirar,
+  onSair, onSairDoProduto, gravados, podeDividir = true, valorAntes, desativado,
+}: {
+  id: string;
+  modo: ModoDoValor; onModo: (m: ModoDoValor) => void;
+  valor: number | null; onValor: (centavos: number | null, valido: boolean) => void;
+  /** o valor de cada produto (o que está escrito e vale); o total é a soma */
+  valores: ValoresDosProdutos; onValorDoProduto: (produtoId: string, centavos: number | null, valido: boolean) => void;
+  /** os produtos da negociação, na ordem */
+  produtos: Array<{ id: string; nome: string }>;
+  /** os produtos para incluir (os que ainda não estão) */
+  catalogo: OpcaoBusca[];
+  onIncluir: (produtoId: string) => void; onTirar: (produtoId: string) => void;
+  onSair?: () => void; onSairDoProduto?: (produtoId: string) => void;
+  gravados?: ValoresDosProdutos;
+  /** o painel usa os produtos? (sem eles, é sempre um valor só) */
+  podeDividir?: boolean;
+  /** o valor único de antes (a ficha avisa que o total fica no lugar dele) */
+  valorAntes?: number | null;
+  desativado?: boolean;
+}) {
+  const total = somaDosProdutos(valores);
+  const porProduto = podeDividir && modo === 'produto';
+  return (
+    <div className="flex flex-col gap-2 min-w-0" id={id} data-modo={porProduto ? 'produto' : 'unico'}>
+      {podeDividir && (
+        <div className="inline-flex self-start rounded-lg border border-line p-0.5 bg-surface" role="radiogroup" aria-label="Como é o valor">
+          {(['unico', 'produto'] as const).map((m) => (
+            <button key={m} type="button" role="radio" aria-checked={modo === m} disabled={desativado} onClick={() => modo !== m && onModo(m)}
+              className={`rounded-md px-2.5 py-1 text-[12.5px] ${modo === m ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-2 hover:bg-surface-2'}`}>
+              {m === 'unico' ? 'Um valor só' : 'Por produto'}
+            </button>
+          ))}
+        </div>
+      )}
+      {!porProduto ? (
+        <div className="max-w-[260px]">
+          <CampoValor id={`${id}-unico`} centavos={valor} onChange={onValor} onSair={onSair} onEnter={onSair} rotulo="Valor da negociação" desativado={desativado} />
+        </div>
+      ) : (
+        <div className="rounded-lg border border-line bg-surface min-w-0 max-w-[560px]">
+          {produtos.length ? (
+            <ul className="divide-y divide-line" aria-label="O valor de cada produto">
+              {produtos.map((p) => (
+                <li key={p.id} className="flex items-center gap-2 pl-3 pr-1 py-1.5" data-produto={p.nome}>
+                  <span className="flex-1 min-w-0 text-[13.5px] text-ink break-words">{p.nome}</span>
+                  <div className="w-[150px] shrink-0">
+                    <CampoValor key={`${p.id}:${gravados?.[p.id] ?? ''}`} centavos={valores[p.id] ?? null} rotulo={`Valor de ${p.nome}`} desativado={desativado}
+                      onChange={(c, ok) => onValorDoProduto(p.id, c, ok)} onSair={() => onSairDoProduto?.(p.id)} onEnter={() => onSairDoProduto?.(p.id)} />
+                  </div>
+                  <button type="button" className="btn-ghost btn-sm text-muted px-1.5" disabled={desativado} onClick={() => onTirar(p.id)} aria-label={`Tirar ${p.nome} da negociação`} title={`Tirar ${p.nome}`}>
+                    <X size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="px-3 py-2 text-[13px] text-muted">Inclua os produtos da negociação e escreva o valor de cada um.</p>}
+          {catalogo.length > 0 && (
+            <div className="px-1.5 py-1 border-t border-line">
+              <EscolherComBusca valor="" opcoes={catalogo} onChange={(v) => v && onIncluir(v)} procurar="Procurar produto…" rotulo="Incluir produto"
+                gatilho={(abrir) => (
+                  <button type="button" className="btn-ghost btn-sm text-ink-2" onClick={abrir} disabled={desativado}>
+                    <Plus size={13} /> Incluir produto <ChevronDown size={13} />
+                  </button>
+                )} />
+            </div>
+          )}
+          <div className="flex items-baseline justify-between gap-2 px-3 py-2 border-t border-line bg-surface-2 rounded-b-lg">
+            <span className="text-[13px] font-semibold text-ink-2">Total</span>
+            <b className="font-display text-[17px] font-semibold tnum" id={`${id}-total`}>{total === null ? '—' : reais(total)}</b>
+          </div>
+        </div>
+      )}
+      {porProduto && total === null && valorAntes != null && (
+        <p className="text-[12px] text-muted">Ao escrever o valor dos produtos, o total fica no lugar do valor de {reais(valorAntes)}.</p>
+      )}
+    </div>
+  );
+}
+
+/** O valor por produto só para ler (quem não mexe na negociação, a janela do Ganho): cada produto e o total. */
+export function ValorPorProdutoLido({ linhas, className = '' }: { linhas: Array<{ id: string; nome: string; valor: number }>; className?: string }) {
+  return (
+    <div className={`rounded-lg border border-line min-w-0 ${className}`}>
+      <ul className="divide-y divide-line" aria-label="O valor de cada produto">
+        {linhas.map((l) => (
+          <li key={l.id} className="flex items-baseline justify-between gap-2 px-3 py-1.5 text-[13.5px]">
+            <span className="min-w-0 break-words">{l.nome}</span><span className="tnum shrink-0">{reais(l.valor)}</span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex items-baseline justify-between gap-2 px-3 py-2 border-t border-line bg-surface-2 rounded-b-lg">
+        <span className="text-[13px] font-semibold text-ink-2">Total</span>
+        <b className="font-display text-[16px] font-semibold tnum">{reais(linhas.reduce((t, l) => t + l.valor, 0))}</b>
+      </div>
+    </div>
+  );
+}
+
 /** O que a janela devolve: o motivo da perda, o dia em que acabou e, no Ganho, o valor (se mudou). */
 export type ResultadoEscolhido = { motivoPerda: string | null; concluidoEm: string | null; valor?: number | null };
 
@@ -52,8 +163,10 @@ export type ResultadoEscolhido = { motivoPerda: string | null; concluidoEm: stri
  * que fechou; no Perdido, o motivo (um dos motivos do painel; "Outro" pede para escrever) e o dia.
  * O dia é hoje ou antes (quem lança uma venda antiga escolhe o dia em que ela fechou de verdade).
  */
-export function JanelaResultado({ codigo, valor, para, painel, onFechar, onConfirmar }: {
+export function JanelaResultado({ codigo, valor, porProduto = [], para, painel, onFechar, onConfirmar }: {
   codigo: string; valor: number | null | undefined; para: EtapaPainel; painel: Painel | undefined;
+  /** o valor por produto da negociação: com ele, o valor fechado é o total (muda-se na ficha, produto a produto) */
+  porProduto?: Array<{ id: string; nome: string; valor: number }>;
   onFechar: () => void; onConfirmar: (r: ResultadoEscolhido) => Promise<void>;
 }) {
   const hoje = diaLocal(new Date());
@@ -71,13 +184,14 @@ export function JanelaResultado({ codigo, valor, para, painel, onFechar, onConfi
   const ehOutro = paraBusca(motivo) === 'outro';
   const motivoFinal = ehOutro ? outro.trim() || null : motivo || null;
   const pedeValor = ganho && para.obrigatorios.includes('valor');
+  const dividido = porProduto.length > 0;
   const falta = ganho ? (pedeValor && centavos === null) || !valido : !motivoFinal;
   const diaOk = !!dia && dia <= hoje;
   const confirmar = async () => {
     if (falta || !diaOk || indo) { if (ehOutro && !outro.trim()) campoOutro.current?.focus(); return; }
     setIndo(true);
     try {
-      await onConfirmar({ motivoPerda: ganho ? null : motivoFinal, concluidoEm: dia === hoje ? null : dia, ...(ganho && centavos !== (valor ?? null) ? { valor: centavos } : {}) });
+      await onConfirmar({ motivoPerda: ganho ? null : motivoFinal, concluidoEm: dia === hoje ? null : dia, ...(ganho && !dividido && centavos !== (valor ?? null) ? { valor: centavos } : {}) });
     } finally { setIndo(false); }
   };
   return (
@@ -96,7 +210,13 @@ export function JanelaResultado({ codigo, valor, para, painel, onFechar, onConfi
             ? 'A negociação sai do funil e entra no ganho do mês (e no relatório de vendas).'
             : 'A negociação sai do funil. O motivo fica na negociação (e na planilha do Exportar).'}
         </p>
-        {ganho ? (
+        {ganho && dividido ? (
+          <div>
+            <p className="text-[13px] font-medium text-ink-2 mb-1.5">Valor fechado (por produto)</p>
+            <ValorPorProdutoLido linhas={porProduto} />
+            <p className="text-[12px] text-muted mt-1.5">O valor é o total dos produtos. Se mudou, mude o valor de cada produto na ficha antes de marcar.</p>
+          </div>
+        ) : ganho ? (
           <Campo label={pedeValor ? 'Valor fechado' : 'Valor fechado (se quiser)'} erro={!valido ? 'Escreva o valor como 12.500,00' : undefined}>
             <CampoValor id={idValor} centavos={centavos} autoFocus onChange={(v, ok) => { setCentavos(v); setValido(ok); }} onEnter={confirmar} />
           </Campo>
@@ -123,7 +243,7 @@ export function JanelaResultado({ codigo, valor, para, painel, onFechar, onConfi
         <Campo label={ganho ? 'Fechou em' : 'Perdeu em'} erro={dia && dia > hoje ? 'O dia é hoje ou um dia que já passou' : undefined}>
           <input type="date" className="input w-[180px]" value={dia} max={hoje} onChange={(e) => setDia(e.target.value)} id="resultado-dia" required />
         </Campo>
-        {ganho && valor != null && centavos !== null && centavos !== valor && (
+        {ganho && !dividido && valor != null && centavos !== null && centavos !== valor && (
           <p className="text-[12.5px] text-muted">O valor da negociação muda de {reais(valor)} para {reais(centavos)} (fica no histórico).</p>
         )}
       </div>

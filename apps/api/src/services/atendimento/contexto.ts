@@ -248,6 +248,8 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     resolvidoEm: iso(t.resolvedAt), fechadoEm: iso(t.closedAt),
     // a negociação (painel de Vendas): nos outros painéis, tudo vazio
     valor: t.valueCents ?? null, empresa: t.prospect ?? null,
+    // o valor por produto: só dos produtos que o cartão mostra (o painel que desligou os produtos não mostra a divisão)
+    valoresDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.productValues ?? {}).filter(([id]) => t.productIds.includes(id))) : {},
     resultado: e?.etapa.resultado ?? null, motivoPerda: e?.etapa.resultado === 'perdido' ? t.lostReason ?? null : null,
   };
 }

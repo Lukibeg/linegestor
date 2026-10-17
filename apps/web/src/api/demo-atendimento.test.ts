@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
+  NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA,
   type CartaoChamado,
 } from '@gestor/shared';
 import { demoApi } from './demo.js';
@@ -877,7 +878,29 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect(ganha.historico.map((e) => e.texto)).toContain(`marcou como ganho (${reais(100_000)}), estava em Lead`);
   }, DEMORA);
 
-  it('a troca de painel fica entre os de Vendas (o caminho para o Suporte é o filho)', async () => {
+  it('o valor por produto: o total é o valor; o produto que sai leva o valor dele (como no servidor)', async () => {
+    await entrar('camila');
+    const estrela = await api.chamado((await chamadoPeloTitulo('PABX em nuvem — 40 ramais')).codigo);
+    const pbx = estrela.produtos.find((p) => p.nome === 'LinePBX')!;
+    const tronco = estrela.produtos.find((p) => p.nome === 'VoiceNet')!;
+    expect(estrela).toMatchObject({ valor: 1_250_000, valoresDosProdutos: { [pbx.id]: 980_000, [tronco.id]: 270_000 } });
+    const mudou = await api.alterar(estrela.id, { valoresDosProdutos: { [pbx.id]: 900_000, [tronco.id]: 270_000 } });
+    expect(mudou.valor).toBe(1_170_000);
+    expect(mudou.historico.map((e) => e.texto).join('\n')).toContain(`LinePBX ${reais(900_000)} · VoiceNet ${reais(270_000)}`);
+    expect((await erroDe(api.alterar(estrela.id, { valor: 1_000_000 }))).message).toBe(VALOR_E_A_SOMA);
+    const saiu = await api.alterar(estrela.id, { produtos: [pbx.id] });
+    expect(saiu).toMatchObject({ valor: 900_000, valoresDosProdutos: { [pbx.id]: 900_000 } });
+    const unico = await api.alterar(estrela.id, { valoresDosProdutos: {}, valor: 900_000 });
+    expect(unico).toMatchObject({ valor: 900_000, valoresDosProdutos: {} });
+    // a proposta anexada (o PDF que abre no leitor do Gestor): os bytes do arquivo, sem baixar
+    const proposta = estrela.anotacoesLista.flatMap((n) => n.anexos).find((a) => a.nome.endsWith('.pdf'))!;
+    expect(proposta).toMatchObject({ tipo: 'application/pdf', imagem: false });
+    const bytes = new Uint8Array(await api.anexoBytes(proposta.id));
+    expect(String.fromCharCode(...bytes.slice(0, 5))).toBe('%PDF-');
+    expect(bytes.length).toBe(proposta.tamanho);
+  }, DEMORA);
+
+  it('a troca de painel fica entre os de Vendas (com o Suporte, a negociação se liga)', async () => {
     await entrar('admin');
     const op = await api.opcoes();
     const estrela = await chamadoPeloTitulo('PABX em nuvem — 40 ramais');
@@ -888,6 +911,13 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     const paraOComercial = await erroDe(api.trocarPainel(chamado.id, { painelId: painel(op, 'COM').id }));
     expect(paraOComercial.status).toBe(400);
     expect(paraOComercial.message).toContain('um chamado não vira negociação trocando de painel');
+    // a negociação não tem pai nem filhos, nem problema (como no servidor): com o chamado, ela se liga
+    expect((await erroDe(api.criar({ painelId: painel(op, 'COM').id, titulo: 'Mais 10 ramais', paiId: chamado.codigo }))).message).toBe(NEGOCIACAO_SEM_PAI);
+    expect((await erroDe(api.definirPai(estrela.id, chamado.codigo))).message).toBe(NEGOCIACAO_SEM_PAI);
+    expect((await erroDe(api.definirPai(chamado.id, estrela.codigo))).message).toBe(negociacaoNaoEPai(estrela.codigo));
+    expect((await erroDe(api.criar({ painelId: painel(op, 'COM').id, titulo: 'Queda geral', tipoChamado: 'problema' }))).message).toBe(NEGOCIACAO_SEM_PROBLEMA);
+    const ligada = await api.ligar(estrela.id, { para: chamado.codigo, tipo: 'relacionado' });
+    expect(ligada.ligacoes.map((l) => l.chamado.codigo)).toContain(chamado.codigo);
     // entre dois de Vendas: entra no funil, nunca direto no Ganho
     const rev = await api.salvarPainel(null, { nome: 'Revenda', sigla: 'REV', cor: 'roxo', tipo: 'vendas', acesso: 'todos', ajustes: {} });
     const ganhoRev = rev.etapas.find((e) => e.resultado === 'ganho')!;

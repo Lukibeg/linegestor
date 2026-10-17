@@ -18,7 +18,7 @@
  *   - toda tabela tem `id` em texto (cuid), gerado pela aplicação
  * =====================================================================
  */
-import { boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { bigint, boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
 const id = () => text('id').primaryKey();
@@ -1654,8 +1654,10 @@ export const tickets = pgTable(
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
     /** O agendado que criou este chamado */
     scheduleId: text('schedule_id'),
-    /** A negociação (painel de Vendas, 2.0.1): o valor, em centavos */
-    valueCents: integer('value_cents'),
+    /** A negociação (painel de Vendas, 2.0.1): o valor, em centavos (até R$ 100 milhões: não cabe num integer) */
+    valueCents: bigint('value_cents', { mode: 'number' }),
+    /** A negociação: o valor de cada produto ({id do produto: centavos}); com ele, value_cents é a soma */
+    productValues: jsonb('product_values').$type<Record<string, number>>().notNull().default({}),
     /** A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) */
     prospect: text('prospect'),
     /** Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) */

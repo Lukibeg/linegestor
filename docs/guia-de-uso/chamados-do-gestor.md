@@ -128,7 +128,8 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   citado recebe na hora, no sininho, no cartão na tela e no WhatsApp (se ligado em Avisos e WhatsApp),
   **mesmo sem ser observador**. Vale o nome inteiro ou só o primeiro, quando só uma pessoa se chama
   assim. Na anotação, a citação fica em destaque.
-- A **linha do tempo**: as anotações (com anexos: até 5 arquivos de 10 MB; cole o print com Ctrl+V),
+- A **linha do tempo**: as anotações (com anexos: até 5 arquivos de 10 MB; cole o print ou o arquivo
+  copiado da pasta com Ctrl+V, ou arraste; a imagem abre grande e o **PDF abre na tela, sem baixar**),
   o histórico de tudo e a **trajetória** (por onde o chamado passou, quanto tempo ficou em cada etapa e
   o motivo de cada escalonamento).
 

@@ -33,7 +33,8 @@ import {
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
-  duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL,
+  duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
+  valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, type ValoresDosProdutos,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca,
   preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
@@ -53,6 +54,7 @@ import {
 import type { Api } from './index.js';
 import { ApiError, type Page, type TrashItem } from './types.js';
 import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
+import { PROPOSTA_PDF_DEMO } from './proposta-demo-midia.js';
 import {
   AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, META_DO_COMERCIAL, NEGOCIACOES_DE_EXEMPLO, CORES_DAS_ETIQUETAS, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, WHATSAPP_DA_EQUIPE,
@@ -137,6 +139,8 @@ type ChamadoRow = {
   criadoEm: string; atualizadoEm: string; ultimaAtividadeEm: string; deletedAt: string | null;
   /** a negociação (painel de Vendas): o valor em centavos, a empresa que ainda não é cliente e o motivo da perda */
   valor: number | null; empresa: string | null; motivoPerda: string | null;
+  /** a negociação: o valor de cada produto ({id do produto: centavos}); com ele, o valor é a soma */
+  valoresDosProdutos: ValoresDosProdutos;
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
 type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null; citados: string[] };
@@ -470,6 +474,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       resolvidoEm: t.resolvidoEm, fechadoEm: t.fechadoEm,
       // a negociação (painel de Vendas): nos outros painéis, tudo vazio
       valor: t.valor, empresa: t.empresa,
+      // o valor por produto: só dos produtos que o cartão mostra (como no servidor)
+      valoresDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.valoresDosProdutos).filter(([id]) => t.produtos.includes(id))) : {},
       resultado: e?.resultado ?? null, motivoPerda: e?.resultado === 'perdido' ? t.motivoPerda : null,
     };
   }
@@ -645,6 +651,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   /** Os filhos do chamado (fora da lixeira, em qualquer painel: a regra do pai é do chamado). */
   const filhosDoChamado = (id: string) => [...A.chamados].filter((f) => f.paiId === id && !f.deletedAt)
     .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm)).map((f) => ({ id: f.id, codigo: f.codigo, painelId: f.painelId, situacao: situacaoDe(f) }));
+  /** A negociação (o registro de um painel de Vendas): não tem pai, filhos nem problema. */
+  const ehNegociacao = (c: ChamadoRow) => A.paineis.find((p) => p.id === c.painelId)?.tipo === 'vendas';
 
   // ---------- conferir o que o pedido cita ----------
 
@@ -757,7 +765,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const prioridade = vendas ? null : d.prioridade ?? sugerida;
     const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
     const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
-    const valor = vendas ? d.valor ?? null : null;
+    // o valor: um só, ou o total do valor por produto (como no servidor)
+    const conta = vendas
+      ? valorPorProduto({ produtos, valores: {}, valor: null }, { valores: usa('produtos') ? d.valoresDosProdutos ?? {} : {}, ...(d.valor !== null ? { valor: d.valor } : {}) })
+      : null;
+    if (conta && !conta.ok) throw bad(conta.erro);
+    const valor = conta?.ok ? conta.valor : null;
+    const valoresDosProdutos = conta?.ok ? conta.valores : {};
     const empresa = vendas && !clienteId ? d.empresa ?? null : null;
 
     const dados: DadosObrigatorios = {
@@ -777,7 +791,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (d.responsavelId) conferirPessoa(d.responsavelId);
     const observadores = unicos(d.observadores ?? []);
     for (const x of observadores) conferirPessoa(x, 'Um dos observadores escolhidos');
+    // a negociação não tem pai nem filhos, nem problema (2.0.1, decisão 0050): liga-se pelo Ligar
+    if (vendas && d.paiId) throw bad(NEGOCIACAO_SEM_PAI);
+    if (vendas && (tipoChamado === 'problema' || d.problemaId)) throw bad(NEGOCIACAO_SEM_PROBLEMA);
     const pai = d.paiId ? outroChamado(d.paiId, ator) : null;
+    if (pai && ehNegociacao(pai)) throw bad(negociacaoNaoEPai(pai.codigo));
     const problema = d.problemaId ? outroChamado(d.problemaId, ator) : null;
     if (problema && problema.tipoChamado !== 'problema') throw bad(`${problema.codigo} não é um problema.`);
     if ((d.incidentes ?? []).length && tipoChamado !== 'problema') throw bad('Só um problema junta incidentes.');
@@ -785,6 +803,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     for (const ref of unicos(d.incidentes ?? [])) {
       const inc = outroChamado(ref, ator);
       if (inc.tipoChamado !== 'chamado') throw bad(`${inc.codigo} é um problema: o incidente precisa ser um chamado.`);
+      if (ehNegociacao(inc)) throw bad(negociacaoNaoEIncidente(inc.codigo));
       if (!incidentes.some((i) => i.id === inc.id)) incidentes.push(inc);
     }
     const pessoa = pessoaDoAtor(ator);
@@ -807,7 +826,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       respondidoEm: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? iso(agora) : null,
       resolvidoEm: null, fechadoEm: null, reaberto: 0, alertas: {}, agendadoId: opts.agendadoId ?? null, criadoPorId: pessoa,
       criadoEm: iso(agora), atualizadoEm: iso(agora), ultimaAtividadeEm: iso(agora), deletedAt: null,
-      valor, empresa, motivoPerda: null,
+      valor, empresa, motivoPerda: null, valoresDosProdutos,
     };
     A.chamados.push(t);
     registrarEvento(id, 'criado', ator, { origem, etapa: etapa.nome, etapaId: etapa.id, painel: painel.nome, ...(vendas ? { venda: true } : {}) }, quando());
@@ -884,10 +903,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // (que só a perdida tem)
     if (painel.tipo === 'vendas') {
       if (d.empresa !== undefined && d.empresa !== t.empresa) { set.empresa = d.empresa; campo('empresa', 'Empresa', t.empresa, d.empresa, t.empresa); }
-      if (d.valor !== undefined && d.valor !== t.valor) {
-        set.valor = d.valor;
-        campo('valor', NOME_CAMPO.valor, t.valor === null ? null : reais(t.valor), d.valor === null ? null : reais(d.valor), t.valor);
-      }
       if (d.motivoPerda !== undefined && d.motivoPerda !== t.motivoPerda) {
         if (e.etapa?.resultado !== 'perdido') throw bad('O motivo da perda é só da negociação perdida.');
         if (!d.motivoPerda) throw bad('A negociação perdida precisa do motivo.');
@@ -942,6 +957,25 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (d.produtos !== undefined) {
       const novos = unicos(d.produtos);
       if (!mesmoConjunto(novos, t.produtos)) { conferirProdutos(novos); set.produtos = novos; campo('produtos', NOME_CAMPO.produto, nomesProdutos(t.produtos), nomesProdutos(novos), t.produtos); }
+    }
+    // o valor da negociação, depois dos produtos: um só, ou o total do valor por produto (o produto que saiu
+    // leva o valor dele junto) — como no servidor
+    if (painel.tipo === 'vendas') {
+      const produtosAgora = set.produtos ?? t.produtos;
+      const conta = valorPorProduto(
+        { produtos: t.produtos, valores: t.valoresDosProdutos, valor: t.valor },
+        { produtos: produtosAgora, ...(d.valoresDosProdutos !== undefined && usa('produtos') ? { valores: d.valoresDosProdutos } : {}), ...(d.valor !== undefined ? { valor: d.valor } : {}) },
+      );
+      if (!conta.ok) throw bad(conta.erro);
+      if (!mesmoValorPorProduto(conta.valores, t.valoresDosProdutos)) {
+        set.valoresDosProdutos = conta.valores;
+        const nomes = (ids: string[]) => ids.map((id) => ({ id, nome: S.products.find((x) => x.id === id)?.name ?? '?' }));
+        campo('valoresDosProdutos', NOME_VALOR_POR_PRODUTO, textoDoValorPorProduto(nomes(t.produtos), t.valoresDosProdutos), textoDoValorPorProduto(nomes(produtosAgora), conta.valores), t.valoresDosProdutos);
+      }
+      if (conta.valor !== t.valor) {
+        set.valor = conta.valor;
+        campo('valor', NOME_CAMPO.valor, t.valor === null ? null : reais(t.valor), conta.valor === null ? null : reais(conta.valor), t.valor);
+      }
     }
     if (d.operadoras !== undefined) {
       const novas = unicos(d.operadoras);
@@ -1239,7 +1273,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!novo || !podeVerPainel(novo, ator)) throw naoAchado('Painel');
     if (novo.id === painel.id) return nada(t);
     if (!novo.ativo) throw bad(`O painel ${novo.nome} está desativado: escolha outro.`);
-    // a negociação fica entre os painéis de Vendas, e o chamado entre os de Gestão (o caminho entre eles é o filho)
+    // a negociação fica entre os painéis de Vendas, e o chamado entre os de Gestão (entre eles, o Ligar)
     if (novo.tipo !== painel.tipo) throw bad(trocaEntreTiposDePainel(t.codigo, painel, novo));
     const para = d.etapaId ? novo.etapas.find((x) => x.id === d.etapaId) : etapaDeEntrada(novo.etapas);
     if (!para) throw bad(d.etapaId ? `Essa etapa não é do painel ${novo.nome}.` : `O painel ${novo.nome} não tem etapas.`);
@@ -1378,10 +1412,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return null;
   }
 
+  /** A negociação não tem pai nem filhos (2.0.1): tirar o pai que ela já tinha, pode (como no servidor). */
   function definirPai(ator: Ator, ref: string, paiRef: string | null, agora: Date = agoraReal()): Feito {
     exigirTrabalhar(ator);
     const e = carregar(ator, ref, agora);
     const { t } = e;
+    if (paiRef?.trim() && e.painel.tipo === 'vendas') throw bad(NEGOCIACAO_SEM_PAI);
     const antigo = t.paiId ? A.chamados.find((x) => x.id === t.paiId) ?? null : null;
     if (!paiRef?.trim()) {
       if (!t.paiId) return nada(t);
@@ -1394,6 +1430,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const pai = outroChamado(paiRef, ator);
     if (pai.id === t.paiId) return nada(t);
     if (pai.id === t.id) throw bad(`Isso faria um círculo: ${t.codigo} não pode ser pai dele mesmo.`);
+    if (ehNegociacao(pai)) throw bad(negociacaoNaoEPai(pai.codigo));
     const ciclo = caminhoAteDescendente(t.id, pai.id);
     if (ciclo) throw bad(`Isso faria um círculo: ${pai.codigo} já está abaixo de ${t.codigo} (${ciclo.join(' › ')}).`);
     t.paiId = pai.id; tocar(t, agora);
@@ -1418,6 +1455,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       camposAosObservadores(ator, t, ['Problema'], agora);
       return { ...nada(t), resumo: `Tirou ${t.codigo} do problema ${antigo?.codigo ?? '?'}` };
     }
+    if (e.painel.tipo === 'vendas') throw bad(NEGOCIACAO_SEM_PROBLEMA);
     const problema = outroChamado(problemaRef, ator);
     if (problema.id === t.id) throw bad('Um chamado não é incidente dele mesmo.');
     if (problema.tipoChamado !== 'problema') throw bad(`${problema.codigo} não é um problema.`);
@@ -2980,10 +3018,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           painelId: com.id, titulo: n.titulo, ...(n.cliente ? { clienteId: idDoCliente(n.cliente) } : { empresa: n.empresa }),
           ...(n.contato ? { contatoNome: n.contato[0], contatoTelefone: n.contato[1] } : {}),
           valor: n.valor !== undefined ? Math.round(n.valor * 100) : null,
+          ...(n.porProduto ? { valoresDosProdutos: Object.fromEntries(Object.entries(n.porProduto).map(([codigo, v]) => [produtoDo(codigo), Math.round(v * 100)])) } : {}),
           produtos: (n.produtos ?? []).map(produtoDo), responsavelId: n.responsavel ? idDa(n.responsavel) : null, descricao: n.descricao ?? null,
         }), { origem: 'manual' }, noDia(n.abriu, '09:30'));
         for (const p of n.passos ?? []) mover(dono, r.id, { etapaId: etapaDoComercial(p.para) }, noDia(p.dias, '11:00'));
-        if (n.anotacao) anotar(atorDaPessoa(idDa(n.anotacao.por)), r.id, { texto: n.anotacao.texto, anexos: [] }, noDia(n.anotacao.dias, '15:00'));
+        if (n.anotacao) {
+          anotar(atorDaPessoa(idDa(n.anotacao.por)), r.id, {
+            texto: n.anotacao.texto, anexos: n.anotacao.proposta ? [{ fileName: n.anotacao.proposta, conteudo: PROPOSTA_PDF_DEMO }] : [],
+          }, noDia(n.anotacao.dias, '15:00'));
+        }
         if (n.fim) {
           mover(dono, r.id, {
             etapaId: etapaDoResultado(n.fim.resultado), motivoPerda: n.fim.motivo ?? null,
@@ -3075,6 +3118,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (!S.me) return '';
       const a = anexoVisivel(id, eu());
       return a ? a.url : '';
+    },
+    async anexoBytes(id) {
+      await ctx.wait(120);
+      ctx.requirePerm('support.read');
+      preparar();
+      const a = anexoVisivel(id, eu());
+      if (!a) throw new ApiError(404, 'Anexo não encontrado');
+      // o anexo da prévia fica guardado como data: URL (base64)
+      const b64 = a.url.slice(a.url.indexOf(',') + 1);
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes.buffer;
     },
     async criar(d) {
       await ctx.wait(200);

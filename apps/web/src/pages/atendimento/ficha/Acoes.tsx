@@ -2,6 +2,8 @@
  * A barra de ações da ficha: Assumir, Mover (o menu das etapas do painel, cada uma dizendo o que falta
  * para ir para ela e os filhos que travam), o atalho "Escalonar para N2", Esperar (o cliente ou a
  * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, Preencher com IA e o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
+ * Na negociação (o painel de Vendas), o Mais não tem filho, pai nem problema: ela se liga pelo Ligar (o pedido do
+ * Luan na prévia, em 17/10: "n precisa de pais e filhas aqui").
  *
  * Mover usa o `useMover()` comum: ele pede o motivo ao subir ou descer de nível e mostra o que falta
  * quando o servidor recusa. O erro das ações diretas (assumir, parar de esperar…) aparece logo
@@ -220,9 +222,13 @@ export function BarraDeAcoes() {
             const ir = (fazer: () => void) => () => { fecharMenu(); fazer(); };
             return (
               <>
-                <ItemMenu icone={<Link2 size={15} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica="relacionado, duplicado de, repete">{vendas ? 'Ligar a outro chamado ou negociação…' : 'Ligar a outro chamado…'}</ItemMenu>
-                <ItemMenu icone={<GitBranch size={15} />} onClick={ir(() => setJanela({ tipo: 'filho' }))} dica={vendas ? 'a implantação no Suporte, por exemplo' : 'pode ser em outro painel (o Desenvolvimento)'}>Criar um filho…</ItemMenu>
-                <ItemMenu icone={<GitBranch size={15} className="rotate-180" />} onClick={ir(() => setJanela({ tipo: 'pai' }))}>{f.pai ? `Trocar o pai (${f.pai.codigo})…` : 'Definir o pai…'}</ItemMenu>
+                <ItemMenu icone={<Link2 size={15} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica={vendas ? 'o chamado da implantação, outra negociação da empresa' : 'relacionado, duplicado de, repete'}>{vendas ? 'Ligar a outro chamado ou negociação…' : 'Ligar a outro chamado…'}</ItemMenu>
+                {!vendas && (
+                  <>
+                    <ItemMenu icone={<GitBranch size={15} />} onClick={ir(() => setJanela({ tipo: 'filho' }))} dica="pode ser em outro painel (o Desenvolvimento)">Criar um filho…</ItemMenu>
+                    <ItemMenu icone={<GitBranch size={15} className="rotate-180" />} onClick={ir(() => setJanela({ tipo: 'pai' }))}>{f.pai ? `Trocar o pai (${f.pai.codigo})…` : 'Definir o pai…'}</ItemMenu>
+                  </>
+                )}
                 {f.pai && <ItemMenu icone={<Unlink size={15} />} onClick={ir(() => void direta('Tirar o pai', () => api.atendimento.definirPai(f.id, null), `${f.codigo} não é mais filho de ${f.pai!.codigo}`))}>Tirar o pai ({f.pai.codigo})</ItemMenu>}
                 {f.tipoChamado === 'chamado' && !vendas && (
                   <>

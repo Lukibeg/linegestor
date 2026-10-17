@@ -875,7 +875,74 @@ export const EtapaGravarSchema = z.object({
   resultado: z.enum(RESULTADOS_DA_VENDA).nullable().default(null),
 });
 /** A meta e o valor: em centavos (R$ 1.234,56 = 123456), até R$ 100 milhões. */
-export const ValorEmCentavosSchema = z.number().int('O valor vai em centavos').min(0, 'O valor não pode ser negativo').max(10_000_000_000, 'Valor alto demais');
+export const MAX_VALOR_EM_CENTAVOS = 10_000_000_000;
+export const ValorEmCentavosSchema = z.number().int('O valor vai em centavos').min(0, 'O valor não pode ser negativo').max(MAX_VALOR_EM_CENTAVOS, 'Valor alto demais');
+
+/**
+ * O VALOR POR PRODUTO da negociação (o pedido do Luan na prévia, em 17/10: "quero que tenha como dividir o
+ * valor por produtos e no final tenha o total"): o valor de cada produto da negociação, em centavos, pelo
+ * id do produto. Com pelo menos um produto com valor, o valor da negociação é o **total** (a soma) — é ele
+ * que vai para o quadro, o relatório e a meta; sem nenhum, vale o valor único. O produto que sai da
+ * negociação leva o valor dele junto. Só o valor, sem quantidade.
+ */
+export type ValoresDosProdutos = Record<string, number>;
+export const ValoresDosProdutosSchema = z.record(z.string().trim().min(1).max(60), ValorEmCentavosSchema)
+  .refine((r) => Object.keys(r).length <= 50, 'Produtos demais no valor por produto');
+export const NOME_VALOR_POR_PRODUTO = 'Valor por produto';
+export const VALOR_E_A_SOMA = 'O valor desta negociação é o total dos produtos: mude o valor de cada produto (ou volte para Um valor só).';
+export const VALOR_SO_DOS_PRODUTOS = 'O valor por produto é só dos produtos da negociação.';
+
+/** O total do valor por produto (nulo: a negociação não está dividida por produto). */
+export function somaDosProdutos(v: ValoresDosProdutos | null | undefined): number | null {
+  const valores = Object.values(v ?? {});
+  return valores.length ? valores.reduce((s, x) => s + x, 0) : null;
+}
+
+/** Os produtos com valor, na ordem dos produtos da negociação (para mostrar e para o histórico). */
+export function linhasDoValorPorProduto<P extends { id: string }>(produtos: P[], valores: ValoresDosProdutos | null | undefined): Array<P & { valor: number }> {
+  return produtos.filter((p) => valores?.[p.id] !== undefined).map((p) => ({ ...p, valor: valores![p.id]! }));
+}
+
+export type ValorDaNegociacao = { produtos: string[]; valores: ValoresDosProdutos; valor: number | null };
+
+/**
+ * O que fica gravado depois de criar ou mudar a negociação: os produtos, o valor por produto e o valor.
+ * `pedido.valores` troca o valor por produto inteiro (vazio ou nulo: volta para o valor único); sem ele,
+ * o valor por produto fica como estava, menos o dos produtos que saíram. Com valor por produto, o valor
+ * é a soma (um valor diferente no pedido é recusado); a divisão que acabou porque os produtos saíram leva
+ * o valor junto. O servidor e a prévia usam esta mesma conta.
+ */
+export function valorPorProduto(
+  atual: ValorDaNegociacao,
+  pedido: { produtos?: string[]; valores?: ValoresDosProdutos | null; valor?: number | null },
+): ({ ok: true } & ValorDaNegociacao) | { ok: false; erro: string } {
+  const produtos = pedido.produtos ?? atual.produtos;
+  if (pedido.valores && Object.keys(pedido.valores).some((id) => !produtos.includes(id))) return { ok: false, erro: VALOR_SO_DOS_PRODUTOS };
+  const valores: ValoresDosProdutos = pedido.valores !== undefined
+    ? { ...(pedido.valores ?? {}) }
+    : Object.fromEntries(Object.entries(atual.valores).filter(([id]) => produtos.includes(id)));
+  const soma = somaDosProdutos(valores);
+  if (soma !== null) {
+    if (soma > MAX_VALOR_EM_CENTAVOS) return { ok: false, erro: 'Valor alto demais' };
+    if (pedido.valor !== undefined && pedido.valor !== soma) return { ok: false, erro: VALOR_E_A_SOMA };
+    return { ok: true, produtos, valores, valor: soma };
+  }
+  const dividida = somaDosProdutos(atual.valores) !== null;
+  const valor = pedido.valor !== undefined ? pedido.valor : dividida && pedido.valores === undefined ? null : atual.valor;
+  return { ok: true, produtos, valores: {}, valor };
+}
+
+/** O mesmo valor por produto? (a ordem não conta) */
+export function mesmoValorPorProduto(a: ValoresDosProdutos | null | undefined, b: ValoresDosProdutos | null | undefined): boolean {
+  const ka = Object.keys(a ?? {});
+  return ka.length === Object.keys(b ?? {}).length && ka.every((k) => (a ?? {})[k] === (b ?? {})[k]);
+}
+
+/** O valor por produto em texto, para o histórico: "PABX em nuvem R$ 8.000,00 · URA R$ 1.500,00" (vazio: nulo). */
+export function textoDoValorPorProduto(produtos: Array<{ id: string; nome: string }>, valores: ValoresDosProdutos | null | undefined): string | null {
+  const linhas = linhasDoValorPorProduto(produtos, valores);
+  return linhas.length ? linhas.map((l) => `${l.nome} ${reais(l.valor)}`).join(' · ') : null;
+}
 export const AjustesDoPainelSchema = z.object({
   /** as opções do Tipo (sem a lista, ficam como estão; o painel novo nasce com as do tipo de painel) */
   tipos: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
@@ -956,11 +1023,19 @@ export function problemaNasEtapasDoTipo(tipo: TipoDePainel, etapas: ReadonlyArra
 }
 /**
  * A troca de painel não muda o que o registro é: a negociação só passa para outro painel de Vendas, e o
- * chamado para outro de Gestão (o caminho entre os dois é o filho, que fica ligado).
+ * chamado para outro de Gestão (entre os dois, abre-se o outro lá e liga-se pelo Ligar).
  */
 export const trocaEntreTiposDePainel = (codigo: string, de: { tipo: TipoDePainel }, para: { nome: string }) => (de.tipo === 'vendas'
-  ? `${codigo} é uma negociação: só passa para outro painel de Vendas. Para levar o trabalho ao ${para.nome}, crie um filho lá.`
-  : `O ${para.nome} é um painel de Vendas: um chamado não vira negociação trocando de painel. Crie um filho lá (a negociação fica ligada a ${codigo}).`);
+  ? `${codigo} é uma negociação: só passa para outro painel de Vendas. Para levar o trabalho ao ${para.nome}, abra um chamado lá e ligue os dois (Ligar a outro chamado).`
+  : `O ${para.nome} é um painel de Vendas: um chamado não vira negociação trocando de painel. Crie a negociação lá e ligue os dois (Ligar a outro chamado).`);
+/**
+ * A negociação não tem pai nem filhos (o pedido do Luan na prévia, em 17/10: "n precisa de pais e filhas
+ * aqui"), nem entra num problema: com outro chamado ou negociação, ela se liga pelo Ligar.
+ */
+export const NEGOCIACAO_SEM_PAI = 'A negociação não tem pai nem filhos: para juntá-la a outro chamado ou negociação, use o Ligar.';
+export const negociacaoNaoEPai = (codigo: string) => `${codigo} é uma negociação, e a negociação não tem filhos: para juntar os dois, use o Ligar.`;
+export const NEGOCIACAO_SEM_PROBLEMA = 'A negociação não entra em problema: o problema junta os chamados dos painéis de Gestão.';
+export const negociacaoNaoEIncidente = (codigo: string) => `${codigo} é uma negociação: o incidente de um problema é um chamado.`;
 /** Na troca entre painéis de Vendas, a negociação entra no funil: o resultado se marca na janela dele. */
 export const TROCA_ENTRA_NO_FUNIL = 'Na troca de painel, a negociação entra numa etapa do funil: o Ganho e o Perdido se marcam depois (com o valor ou o motivo).';
 
@@ -1066,6 +1141,8 @@ export const ChamadoCriarSchema = z.object({
   campos: ValoresEntradaSchema.default({}),
   /** a negociação (painel de Vendas): o valor em centavos e a empresa que ainda não é cliente */
   valor: ValorEmCentavosSchema.nullish().transform((v) => v ?? null),
+  /** a negociação: o valor de cada produto (com ele, o valor é o total) */
+  valoresDosProdutos: ValoresDosProdutosSchema.optional(),
   empresa: TextoOpcional(120),
 });
 export type ChamadoCriar = z.infer<typeof ChamadoCriarSchema>;
@@ -1098,8 +1175,9 @@ export const ChamadoAlterarSchema = z.object({
   responsavelId: z.string().nullish().transform((v) => v || null).optional(),
   /** só os campos do painel que vierem (nulo ou vazio tira o valor) */
   campos: ValoresEntradaSchema.optional(),
-  /** a negociação (painel de Vendas) */
+  /** a negociação (painel de Vendas); o valor por produto vem inteiro (vazio ou nulo: volta para o valor único) */
   valor: ValorEmCentavosSchema.nullable().optional(),
+  valoresDosProdutos: ValoresDosProdutosSchema.nullable().optional(),
   empresa: TextoOpcional(120).optional(),
   motivoPerda: TextoOpcional(200).optional(),
 });
@@ -1374,6 +1452,8 @@ export type CartaoChamado = {
   fechadoEm: string | null;
   /** a negociação (painel de Vendas): o valor em centavos e a empresa que ainda não é cliente */
   valor: number | null;
+  /** a negociação: o valor de cada produto, pelo id (vazio: o valor é um só; com ele, o valor é o total) */
+  valoresDosProdutos: ValoresDosProdutos;
   empresa: string | null;
   /** como acabou (a etapa final do painel de Vendas: Ganho ou Perdido) e, no Perdido, o motivo */
   resultado: ResultadoDaVenda | null;
@@ -2170,6 +2250,9 @@ export function csvDosChamados(
     valorNaPlanilha(c.valor), c.resultado ? NOME_RESULTADO_DA_VENDA[c.resultado] : '', c.motivoPerda,
   ];
   const cabVenda = ['Valor (R$)', 'Resultado', 'Motivo da perda'];
+  // na negociação com valor por produto, a coluna dos produtos leva o valor de cada um
+  const produtosDaVenda = (c: CartaoChamado) => c.produtos
+    .map((p) => (c.valoresDosProdutos?.[p.id] !== undefined ? `${p.nome} (${reais(c.valoresDosProdutos[p.id]!)})` : p.nome)).join(', ');
   const cabExtras = extras.map((c) => (noArquivo.size > 1 ? `${c.nome} (${nomes.painel(c.painelId)})` : c.nome));
   const valoresExtras = (c: CartaoChamado) => extras.map((x) => (x.painelId === c.painelId ? textoDoValor(x, c.campos?.[x.id]) : ''));
   const cab = soVendas ? [
@@ -2181,7 +2264,7 @@ export function csvDosChamados(
   ];
   const linhas = lista.map((c) => (soVendas ? [
     c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome ?? c.empresa, c.contato?.nome, c.contato?.telefone,
-    c.responsavel?.nome, ...venda(c), c.produtos.map((p) => p.nome).join(', '), c.tipo, c.etiquetas.join(', '),
+    c.responsavel?.nome, ...venda(c), produtosDaVenda(c), c.tipo, c.etiquetas.join(', '),
     dataHora(c.criadoEm), dataHora(c.fechadoEm), NOME_ORIGEM[c.origem], ...valoresExtras(c),
   ] : [
     c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome ?? c.empresa, c.contato?.nome, c.contato?.telefone,
@@ -2189,7 +2272,7 @@ export function csvDosChamados(
     c.prioridade ? NOME_PRIORIDADE[c.prioridade] : '', c.etiquetas.join(', '), c.espera ? NOME_ESPERA[c.espera.tipo] : '',
     c.prazos.resposta.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.resposta.situacao], c.prazos.solucao.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.solucao.situacao],
     dataHora(c.criadoEm), dataHora(c.resolvidoEm), dataHora(c.fechadoEm), NOME_ORIGEM[c.origem],
-    ...(deVendas.length ? (nomes.vendas?.(c.painelId) ? venda(c) : ['', '', '', '']) : []), ...valoresExtras(c),
+    ...(deVendas.length ? (nomes.vendas?.(c.painelId) ? venda(c) : cabVenda.map(() => '')) : []), ...valoresExtras(c),
   ]).map(celula).join(';'));
   return '﻿' + [cab.join(';'), ...linhas].join('\r\n');
 }

@@ -372,7 +372,7 @@ const cartao = (d: Partial<CartaoChamado> = {}, relato = 'o cliente disse que o 
     prazos: { resposta: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' }, solucao: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' } },
     pai: null, problema: null, filhos: { total: 0, abertos: 0 }, incidentes: 0, anotacoes: 0, origem: 'manual', reaberto: 0,
     criadoEm: '2026-10-13T12:00:00.000Z', atualizadoEm: '2026-10-13T12:00:00.000Z', ultimaAtividadeEm: '2026-10-13T12:00:00.000Z', resolvidoEm: null, fechadoEm: null,
-    valor: null, empresa: null, resultado: null, motivoPerda: null, ...d,
+    valor: null, valoresDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ...d,
   };
   return { ...c, busca: textoDeBusca(c, [relato]) };
 };

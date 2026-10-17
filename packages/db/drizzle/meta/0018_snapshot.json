@@ -1,5 +1,5 @@
 {
-  "id": "5a0c51d3-e46f-47d6-83f8-4eb93a84fcf3",
+  "id": "1e2c18ad-c294-4528-8b8f-42092ed59953",
   "prevId": "9f1d7ab3-0191-4226-8e87-d32d13868ee2",
   "version": "7",
   "dialect": "postgresql",
@@ -8611,9 +8611,16 @@
         },
         "value_cents": {
           "name": "value_cents",
-          "type": "integer",
+          "type": "bigint",
           "primaryKey": false,
           "notNull": false
+        },
+        "product_values": {
+          "name": "product_values",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "prospect": {
           "name": "prospect",

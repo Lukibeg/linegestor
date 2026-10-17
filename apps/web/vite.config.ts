@@ -17,8 +17,25 @@ const semVideoDaPrevia: Plugin = {
   },
 };
 
+/**
+ * O worker do leitor de PDF (o PDF.js, decisão 0051) vem minificado pela biblioteca com caracteres de
+ * controle crus dentro das strings (o ESC, por exemplo). O navegador lê igual, mas a prévia publicada no
+ * claude.ai recusa arquivo de texto com eles: aqui eles viram `\xNN`, que dentro de string, de regex e
+ * de comentário querem dizer a mesma coisa. Vale para os dois builds (o arquivo fica igual no sentido).
+ */
+const workerDoPdfSemControles: Plugin = {
+  name: 'worker-do-pdf-sem-controles',
+  generateBundle(_opcoes, pacote) {
+    for (const arquivo of Object.values(pacote)) {
+      if (arquivo.type !== 'asset' || !/pdf\.worker[^/]*\.m?js$/.test(arquivo.fileName)) continue;
+      const texto = typeof arquivo.source === 'string' ? arquivo.source : new TextDecoder().decode(arquivo.source);
+      arquivo.source = texto.replace(/[\x00-\x08\x0e-\x1f\x7f]/g, (c) => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
+    }
+  },
+};
+
 export default defineConfig({
-  plugins: [react(), semVideoDaPrevia],
+  plugins: [react(), semVideoDaPrevia, workerDoPdfSemControles],
   // API_PROXY: para subir mais de uma interface de teste ao mesmo tempo, cada uma com o seu servidor
   server: { port: 5173, proxy: { '/api': { target: process.env.API_PROXY ?? 'http://localhost:3333', changeOrigin: true } } },
   build: { target: 'es2022', sourcemap: false, chunkSizeWarningLimit: 900 },

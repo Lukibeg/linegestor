@@ -4,15 +4,16 @@
  * por quais etapas e níveis o chamado passou, desde quando, quanto tempo ficou em cada uma, quem
  * moveu e por quê.
  *
- * A caixa de anotar aceita até 5 arquivos de até 10 MB cada; um print colado com Ctrl+V vira anexo.
- * A imagem aparece em miniatura e abre grande; o resto baixa. O "@" cita um colega (13/10, o pedido do
+ * A caixa de anotar aceita até 5 arquivos de até 10 MB cada; o que for colado com Ctrl+V (o print, ou o
+ * arquivo copiado da pasta, como o PDF da proposta) vira anexo. A imagem aparece em miniatura e abre
+ * grande; o PDF abre no leitor do Gestor, sem baixar (2.0.1, o pedido do Luan na prévia); o resto baixa. O "@" cita um colega (13/10, o pedido do
  * Luan): a lista de quem vê o painel abre no cursor, e quem for citado recebe o aviso na hora, mesmo sem
  * observar o chamado.
  */
-import { useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type SyntheticEvent } from 'react';
+import { lazy, Suspense, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type SyntheticEvent } from 'react';
 import {
   AlarmClock, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, AtSign, Bell, CircleDot, Columns3, Eye, Flag, GitBranch, Hourglass, Layers, Link2, ListChecks, Lock, MessageCircle,
-  MessageSquareReply, Paperclip, Pencil, Plus, RotateCcw, Sparkles, Timer, Trash2, UserRound, X, Zap, History, RadioTower, Download, ExternalLink,
+  MessageSquareReply, Paperclip, Pencil, Plus, RotateCcw, Sparkles, Timer, Trash2, UserRound, X, Zap, History, RadioTower, Download, ExternalLink, FileText,
 } from 'lucide-react';
 import {
   NIVEIS, citacaoDigitando, citadosNoTexto, duracaoDoPrazo, emLista, paraBusca, rotuloDoNivel,
@@ -27,6 +28,11 @@ import { ordenarLista, Th, useOrdenacaoLocal } from '../../../lib/ordenacao.js';
 import { Avatar, dataHoraCurta } from '../comum.js';
 import { ErroPerto, Secao, TextoComReferencias, comMaiuscula, useAberta, useAcao } from './base.js';
 import { dataCompleta } from './Cabecalho.js';
+
+/** O leitor de PDF (o PDF.js) só carrega quando um PDF abre. */
+const LeitorDePdf = lazy(() => import('../../../components/LeitorDePdf.js'));
+/** O PDF abre no leitor do Gestor (pelo tipo ou, se o navegador não disse o tipo, pelo nome). */
+const ehPdf = (a: AnexoChamado) => a.tipo === 'application/pdf' || /\.pdf$/i.test(a.nome);
 
 type Aba = 'tudo' | 'anotacoes' | 'historico' | 'trajetoria';
 type Item = { tipo: 'nota'; em: string; id: string; nota: AnotacaoChamado } | { tipo: 'evento'; em: string; id: string; ev: EventoChamado };
@@ -127,6 +133,7 @@ function Anotacao({ n }: { n: AnotacaoChamado }) {
   const { f, pode } = useAberta();
   const [apagar, setApagar] = useState(false);
   const [grande, setGrande] = useState<AnexoChamado | null>(null);
+  const [pdf, setPdf] = useState<AnexoChamado | null>(null);
   const acao = useAcao();
   const autor = n.por?.nome ?? n.porNome ?? 'Integração';
   const imagens = n.anexos.filter((a) => a.imagem);
@@ -164,9 +171,16 @@ function Anotacao({ n }: { n: AnotacaoChamado }) {
             <ul className="mt-1.5 flex flex-wrap gap-1.5">
               {arquivos.map((a) => (
                 <li key={a.id}>
-                  <a href={api.atendimento.anexoUrl(a.id)} download={a.nome} className="chip bg-surface-2 text-ink-2 hover:text-accent font-medium max-w-full">
-                    <Paperclip size={12} className="shrink-0" /> <span className="truncate max-w-[220px]">{a.nome}</span> <span className="text-muted font-normal">· {tamanhoDoArquivo(a.tamanho)}</span>
-                  </a>
+                  {ehPdf(a) ? (
+                    // o PDF abre no leitor do Gestor, sem baixar (o Baixar fica na janela)
+                    <button type="button" onClick={() => setPdf(a)} className="chip bg-surface-2 text-ink-2 hover:text-accent font-medium max-w-full" title={`Ver ${a.nome} sem baixar`} data-pdf="">
+                      <FileText size={12} className="shrink-0" /> <span className="truncate max-w-[220px]">{a.nome}</span> <span className="text-muted font-normal">· {tamanhoDoArquivo(a.tamanho)}</span>
+                    </button>
+                  ) : (
+                    <a href={api.atendimento.anexoUrl(a.id)} download={a.nome} className="chip bg-surface-2 text-ink-2 hover:text-accent font-medium max-w-full">
+                      <Paperclip size={12} className="shrink-0" /> <span className="truncate max-w-[220px]">{a.nome}</span> <span className="text-muted font-normal">· {tamanhoDoArquivo(a.tamanho)}</span>
+                    </a>
+                  )}
                 </li>
               ))}
             </ul>
@@ -185,6 +199,17 @@ function Anotacao({ n }: { n: AnotacaoChamado }) {
           </>}>
           <img src={api.atendimento.anexoUrl(grande.id)} alt={grande.nome} className="max-w-full max-h-[72vh] mx-auto rounded-md" />
           <p className="text-center text-[12px] text-muted mt-2">{tamanhoDoArquivo(grande.tamanho)} · anexado por {autor} {dataHoraCurta(n.em)}</p>
+        </Modal>
+      )}
+      {pdf && (
+        <Modal open onClose={() => setPdf(null)} titulo={pdf.nome} largura="max-w-4xl"
+          rodape={<a className="btn-primary" href={api.atendimento.anexoUrl(pdf.id)} download={pdf.nome}><Download size={15} /> Baixar</a>}>
+          <div id="janela-pdf" className="min-w-0">
+            <Suspense fallback={<p className="flex items-center justify-center gap-2 py-10 text-[13px] text-muted"><Spinner /> Abrindo o PDF…</p>}>
+              <LeitorDePdf id={pdf.id} nome={pdf.nome} carregar={() => api.atendimento.anexoBytes(pdf.id)} />
+            </Suspense>
+            <p className="text-center text-[12px] text-muted mt-2">{tamanhoDoArquivo(pdf.tamanho)} · anexado por {autor} {dataHoraCurta(n.em)}</p>
+          </div>
         </Modal>
       )}
     </li>
@@ -364,7 +389,7 @@ function Anotar() {
             }
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void anotar(); }
           }}
-          placeholder="Escreva uma anotação… (@ cita um colega; cole um print com Ctrl+V ou arraste o arquivo até aqui)" />
+          placeholder="Escreva uma anotação… (@ cita um colega; cole um print ou um arquivo com Ctrl+V, ou arraste o arquivo até aqui)" />
         {aberta && posicao && (
           <div role="listbox" id="anotacao-citar-lista" aria-label="Citar um colega"
             className="absolute z-30 card p-1 shadow-lg" onMouseDown={(e) => e.preventDefault()}

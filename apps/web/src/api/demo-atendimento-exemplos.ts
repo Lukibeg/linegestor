@@ -1302,6 +1302,8 @@ export type NegociacaoDeExemplo = {
   /** um cliente da prévia (venda para a base) ou a empresa que ainda não é cliente */
   cliente?: string; empresa?: string;
   contato?: Contato; valor?: number; produtos?: string[];
+  /** o valor por produto, em reais, pelo código do produto (a soma é o valor) */
+  porProduto?: Record<string, number>;
   por: Pessoa; responsavel: Pessoa | null;
   abriu: number;
   /** as etapas do funil por onde passou, com o dia */
@@ -1309,7 +1311,8 @@ export type NegociacaoDeExemplo = {
   /** como acabou: o dia em que foi marcada e, se for outro, o dia em que fechou de verdade */
   fim?: { resultado: 'ganho' | 'perdido'; dias: number; motivo?: string; fechouHaDias?: number };
   descricao?: string;
-  anotacao?: { dias: number; por: Pessoa; texto: string };
+  /** a anotação, e o arquivo anexado nela (só a proposta de exemplo: o PDF que abre no leitor do Gestor) */
+  anotacao?: { dias: number; por: Pessoa; texto: string; proposta?: string };
 };
 
 /** A meta do mês do Comercial, em reais. */
@@ -1339,6 +1342,7 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     por: 'camila', responsavel: 'camila', abriu: 226, passos: [{ para: 'Qualificação', dias: 223 }, { para: 'Proposta enviada', dias: 218 }],
     fim: { resultado: 'ganho', dias: 210 } },
   { chave: 'bompreco-filiais', titulo: 'Telefonia das 3 filiais', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 15_500, produtos: ['linepbx', 'voicenet'],
+    porProduto: { linepbx: 9_700, voicenet: 5_800 },
     por: 'diego', responsavel: 'diego', abriu: 198, passos: [{ para: 'Qualificação', dias: 196 }, { para: 'Proposta enviada', dias: 191 }, { para: 'Negociação', dias: 186 }],
     fim: { resultado: 'ganho', dias: 180 } },
   // ---- as que acabaram nos últimos meses ----
@@ -1397,14 +1401,16 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     por: 'diego', responsavel: 'diego', abriu: 33, passos: [{ para: 'Qualificação', dias: 31 }, { para: 'Proposta enviada', dias: 23 }, { para: 'Negociação', dias: 14 }],
     descricao: 'Hotel com 60 apartamentos, recepção 24h e central de reservas. Hoje usam uma central analógica alugada.' },
   { chave: 'estrela', titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214'], valor: 12_500, produtos: ['linepbx', 'voicenet'],
+    porProduto: { linepbx: 9_800, voicenet: 2_700 },
     por: 'camila', responsavel: 'camila', abriu: 18, passos: [{ para: 'Qualificação', dias: 16 }, { para: 'Proposta enviada', dias: 10 }, { para: 'Negociação', dias: 3 }],
     descricao: 'Três lojas e a fábrica. Querem o mesmo número para todas as lojas e a fila do delivery.',
-    anotacao: { dias: 1, por: 'camila', texto: 'Mandei a proposta revisada com 10% de desconto na implantação. A Rosa vai falar com o sócio e responde até sexta.' } },
+    anotacao: { dias: 1, por: 'camila', texto: 'Mandei a proposta revisada com 10% de desconto na implantação. A Rosa vai falar com o sócio e responde até sexta.', proposta: 'Proposta Padaria Estrela - revisão 2.pdf' } },
   { chave: 'horizonte-canteiro', titulo: 'Central telefônica para o canteiro', cliente: 'Construtora Horizonte', contato: ['Edson', '5571999990211'], valor: 9_400, produtos: ['linepbx', 'equipamentos'],
     por: 'diego', responsavel: 'diego', abriu: 13, passos: [{ para: 'Qualificação', dias: 12 }, { para: 'Proposta enviada', dias: 6 }] },
   { chave: 'bompreco-chat', titulo: 'LineChat com 8 atendentes', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 6_800, produtos: ['linechat'],
     por: 'camila', responsavel: 'diego', abriu: 9, passos: [{ para: 'Qualificação', dias: 8 }, { para: 'Proposta enviada', dias: 4 }] },
   { chave: 'farma-mais', titulo: 'Migração das filiais para a nuvem', empresa: 'Rede Farma Mais', contato: ['Gustavo', '5571999990215'], valor: 30_000, produtos: ['linepbx', 'voicenet', 'linechat'],
+    porProduto: { linepbx: 16_000, voicenet: 8_500, linechat: 5_500 },
     por: 'camila', responsavel: 'camila', abriu: 7, passos: [{ para: 'Qualificação', dias: 5 }],
     descricao: '14 farmácias com central própria em cada uma. Querem uma só central e o atendimento do WhatsApp das lojas junto.' },
   { chave: 'exame-gravacao', titulo: 'Gravação de chamadas', cliente: 'Laboratório Exame Certo', contato: ['Beatriz', '5571999990216'], valor: 3_600, produtos: ['linepbx'],

@@ -28,7 +28,8 @@ import {
   caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, diaComAno, diaLocal, emLista, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada,
   faltaParaAbrir, faltaParaEtapa, filhosQueTravam, lerCamposDoPedido, mensagemDoQueFalta, mesmoValorDoCampo, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO,
   instanteLocal, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel, reais, situacaoDaEtapa, textoDoValor,
-  trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL,
+  trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
+  valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos,
@@ -278,7 +279,13 @@ export async function criarChamado(
   const prioridade = vendas ? null : d.prioridade ?? sugerida;
   const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
   const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
-  const valor = vendas ? d.valor ?? null : null;
+  // o valor: um só, ou o total do valor por produto (a soma de cada produto da negociação)
+  const conta = vendas
+    ? valorPorProduto({ produtos, valores: {}, valor: null }, { valores: usa('produtos') ? d.valoresDosProdutos ?? {} : {}, ...(d.valor !== null ? { valor: d.valor } : {}) })
+    : null;
+  if (conta && !conta.ok) throw new BadRequest(conta.erro);
+  const valor = conta?.ok ? conta.valor : null;
+  const valoresDosProdutos = conta?.ok ? conta.valores : {};
   const empresa = vendas && !clienteId ? d.empresa ?? null : null;
 
   // 3. o que o painel pede para abrir
@@ -302,7 +309,12 @@ export async function criarChamado(
   if (d.responsavelId) conferirPessoa(ctx, d.responsavelId);
   const observadores = unicos(d.observadores ?? []);
   for (const id of observadores) conferirPessoa(ctx, id, 'Um dos observadores escolhidos');
+  // a negociação não tem pai nem filhos, nem problema (2.0.1, decisão 0050): liga-se pelo Ligar
+  if (vendas && d.paiId) throw new BadRequest(NEGOCIACAO_SEM_PAI);
+  if (vendas && (tipoChamado === 'problema' || d.problemaId)) throw new BadRequest(NEGOCIACAO_SEM_PROBLEMA);
+  const ehNegociacao = (c: LinhaChamado) => ctx.paineis.find((p) => p.id === c.panelId)?.tipo === 'vendas';
   const pai = d.paiId ? await outroChamado(db, d.paiId, ator, ctx) : null;
+  if (pai && ehNegociacao(pai)) throw new BadRequest(negociacaoNaoEPai(pai.code));
   const problema = d.problemaId ? await outroChamado(db, d.problemaId, ator, ctx) : null;
   if (problema && problema.kind !== 'problema') throw new BadRequest(`${problema.code} não é um problema.`);
   if ((d.incidentes ?? []).length && tipoChamado !== 'problema') throw new BadRequest('Só um problema junta incidentes.');
@@ -310,6 +322,7 @@ export async function criarChamado(
   for (const ref of unicos(d.incidentes ?? [])) {
     const inc = await outroChamado(db, ref, ator, ctx);
     if (inc.kind !== 'chamado') throw new BadRequest(`${inc.code} é um problema: o incidente precisa ser um chamado.`);
+    if (ehNegociacao(inc)) throw new BadRequest(negociacaoNaoEIncidente(inc.code));
     if (!incidentes.some((i) => i.id === inc.id)) incidentes.push(inc);
   }
 
@@ -332,7 +345,7 @@ export async function criarChamado(
       sessionId: d.sessaoId ?? null, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
       productIds: produtos, carrierIds: operadoras, tags: etiquetas, customFields: campos,
-      valueCents: valor, prospect: empresa,
+      valueCents: valor, productValues: valoresDosProdutos, prospect: empresa,
       parentId: pai?.id ?? null, problemId: problema?.id ?? null, checklist, watcherIds: observadores,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       firstResponseAt: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? agora : null,
@@ -439,10 +452,6 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   // (que só a perdida tem)
   if (painel.tipo === 'vendas') {
     if (d.empresa !== undefined && d.empresa !== t.prospect) { set.prospect = d.empresa; campo('empresa', NOME_EMPRESA, t.prospect, d.empresa, t.prospect); }
-    if (d.valor !== undefined && d.valor !== t.valueCents) {
-      set.valueCents = d.valor;
-      campo('valor', NOME_CAMPO.valor, t.valueCents === null ? null : reais(t.valueCents), d.valor === null ? null : reais(d.valor), t.valueCents);
-    }
     if (d.motivoPerda !== undefined && d.motivoPerda !== t.lostReason) {
       if (e.etapa?.resultado !== 'perdido') throw new BadRequest('O motivo da perda é só da negociação perdida.');
       if (!d.motivoPerda) throw new BadRequest('A negociação perdida precisa do motivo.');
@@ -507,6 +516,26 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
       await conferirProdutos(db, novos);
       set.productIds = novos;
       campo('produtos', NOME_CAMPO.produto, nomesProdutos(ctx, t.productIds), nomesProdutos(ctx, novos), t.productIds);
+    }
+  }
+  // o valor da negociação, depois dos produtos: um só, ou o total do valor por produto (o produto que saiu
+  // leva o valor dele junto)
+  if (painel.tipo === 'vendas') {
+    const produtosAgora = set.productIds ?? t.productIds;
+    const valoresAntes = t.productValues ?? {};
+    const conta = valorPorProduto(
+      { produtos: t.productIds, valores: valoresAntes, valor: t.valueCents },
+      { produtos: produtosAgora, ...(d.valoresDosProdutos !== undefined && usa('produtos') ? { valores: d.valoresDosProdutos } : {}), ...(d.valor !== undefined ? { valor: d.valor } : {}) },
+    );
+    if (!conta.ok) throw new BadRequest(conta.erro);
+    if (!mesmoValorPorProduto(conta.valores, valoresAntes)) {
+      set.productValues = conta.valores;
+      const nomes = (ids: string[]) => ids.map((id) => ({ id, nome: ctx.produtos.get(id)?.nome ?? '?' }));
+      campo('valoresDosProdutos', NOME_VALOR_POR_PRODUTO, textoDoValorPorProduto(nomes(t.productIds), valoresAntes), textoDoValorPorProduto(nomes(produtosAgora), conta.valores), valoresAntes);
+    }
+    if (conta.valor !== t.valueCents) {
+      set.valueCents = conta.valor;
+      campo('valor', NOME_CAMPO.valor, t.valueCents === null ? null : reais(t.valueCents), conta.valor === null ? null : reais(conta.valor), t.valueCents);
     }
   }
   if (d.operadoras !== undefined) {
@@ -874,7 +903,7 @@ export async function trocarPainel(app: FastifyInstance, ator: Ator, ref: string
   if (!novo || !podeVerPainel(novo, ator)) throw new NotFound('Painel');
   if (novo.id === painel.id) return nada(t);
   if (!novo.ativo) throw new BadRequest(`O painel ${novo.nome} está desativado: escolha outro.`);
-  // a negociação fica entre os painéis de Vendas, e o chamado entre os de Gestão (o caminho entre eles é o filho)
+  // a negociação fica entre os painéis de Vendas, e o chamado entre os de Gestão (entre eles, o Ligar)
   if (novo.tipo !== painel.tipo) throw new BadRequest(trocaEntreTiposDePainel(t.code, painel, novo));
   const para = d.etapaId ? novo.etapas.find((x) => x.id === d.etapaId) : etapaDeEntrada(novo.etapas);
   if (!para) throw new BadRequest(d.etapaId ? `Essa etapa não é do painel ${novo.nome}.` : `O painel ${novo.nome} não tem etapas.`);
@@ -1046,11 +1075,15 @@ async function caminhoAteDescendente(db: Db, de: string, ate: string): Promise<s
   return null;
 }
 
-/** O pai pelo código (nulo tira). O pai pode ser de outro painel; nunca um descendente (seria um círculo). */
+/**
+ * O pai pelo código (nulo tira). O pai pode ser de outro painel; nunca um descendente (seria um círculo)
+ * nem uma negociação — a negociação não tem pai nem filhos (2.0.1): tirar o pai que ela já tinha, pode.
+ */
 export async function definirPai(app: FastifyInstance, ator: Ator, ref: string, paiRef: string | null): Promise<Feito> {
   exigirTrabalhar(ator);
   const e = await carregar(app, ator, ref);
   const { t, agora } = e;
+  if (paiRef?.trim() && e.painel.tipo === 'vendas') throw new BadRequest(NEGOCIACAO_SEM_PAI);
   const antigo = t.parentId ? await app.db.select({ id: tickets.id, code: tickets.code }).from(tickets).where(eq(tickets.id, t.parentId)).limit(1).then((r) => r[0] ?? null) : null;
   if (!paiRef?.trim()) {
     if (!t.parentId) return nada(t);
@@ -1065,6 +1098,7 @@ export async function definirPai(app: FastifyInstance, ator: Ator, ref: string, 
   const pai = await outroChamado(app.db, paiRef, ator, e.ctx);
   if (pai.id === t.parentId) return nada(t);
   if (pai.id === t.id) throw new BadRequest(`Isso faria um círculo: ${t.code} não pode ser pai dele mesmo.`);
+  if (e.ctx.paineis.find((p) => p.id === pai.panelId)?.tipo === 'vendas') throw new BadRequest(negociacaoNaoEPai(pai.code));
   const ciclo = await caminhoAteDescendente(app.db, t.id, pai.id);
   if (ciclo) throw new BadRequest(`Isso faria um círculo: ${pai.code} já está abaixo de ${t.code} (${ciclo.join(' › ')}).`);
   await app.db.transaction(async (tx) => {
@@ -1095,6 +1129,7 @@ export async function definirProblema(app: FastifyInstance, ator: Ator, ref: str
     await camposAosObservadores(app, ator, t, ['Problema']);
     return { ...nada(t), resumo: `Tirou ${t.code} do problema ${antigo?.code ?? '?'}` };
   }
+  if (e.painel.tipo === 'vendas') throw new BadRequest(NEGOCIACAO_SEM_PROBLEMA);
   const problema = await outroChamado(app.db, problemaRef, ator, e.ctx);
   if (problema.id === t.id) throw new BadRequest(`Um chamado não é incidente dele mesmo.`);
   if (problema.kind !== 'problema') throw new BadRequest(`${problema.code} não é um problema.`);

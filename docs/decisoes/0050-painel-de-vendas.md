@@ -23,8 +23,8 @@ nele (a regra do patch que ainda não subiu).
   Painéis › Novo painel: **Chamados (Gestão)** ou **Negociações (Vendas)**) e **não muda depois**: os
   dados de um e de outro são diferentes. O painel de Vendas é o painel dos chamados com o que é de
   venda — o quadro, a lista, a ficha, as anotações e o histórico, os avisos, os observadores, quem vê,
-  o Esperar o cliente, o Agendar e os filhos e ligações são os mesmos. Não tem prazo, níveis,
-  prioridade, problema, operadora nem o tempo gasto.
+  o Esperar o cliente, o Agendar e as ligações são os mesmos. Não tem prazo, níveis, prioridade,
+  problema, pai e filhos, operadora nem o tempo gasto.
 - **As etapas.** Vêm **Lead → Qualificação → Proposta enviada → Negociação → Ganho / Perdido**
   (até o print das colunas do Comercial do Helena, quando os nomes passam a ser os de lá). As finais
   são duas, **Ganho** e **Perdido**: o painel de Vendas tem uma de cada (o nome muda, a etapa não sai),
@@ -34,6 +34,19 @@ nele (a regra do patch que ainda não subiu).
   ficha liga os dois); o contato e o WhatsApp; o **valor** (em R$); o **Sobre a negociação**; os
   produtos; quem cuida (o responsável); as etiquetas. A **Proposta enviada** pede o valor (a regra da
   etapa, que muda nos Ajustes como as outras).
+- **O valor por produto.** Na prévia, em 17/10, nos comentários: *"eu quero que tenha como dividir o
+  valor por produtos e no final tenha o total"*. O Valor da negociação (na ficha e na nova negociação)
+  tem **Um valor só** (o campo de sempre) ou **Por produto**: cada produto da negociação com o seu valor
+  e, no fim, o **Total**, que vira o valor da negociação — é ele que vai para o quadro, o relatório, a
+  meta e o Ganho. Os produtos entram e saem ali mesmo (**Incluir produto**, o ×); o produto que sai leva
+  o valor dele junto. Com a divisão, o valor não muda direto (o servidor recusa: muda-se produto a
+  produto, ou volta-se para **Um valor só**, e o total fica como o valor único). O produto sem valor
+  escrito fica de fora da soma. Só o valor de cada produto, sem quantidade. Na ficha, a linha Produtos
+  da Classificação some enquanto o valor está por produto (os produtos ficam no Valor). A janela do
+  **Ganho** mostra cada produto e o total, só para ler (o valor fechado, por produto, muda-se na ficha).
+  O histórico diz os dois — *"Valor por produto: LinePBX R$ 9.800,00 · VoiceNet R$ 2.700,00"* e o Valor —, e
+  no **Exportar** a coluna Produtos leva o valor de cada um (*"LinePBX (R$ 9.800,00), VoiceNet (R$
+  2.700,00)"*). A conta (`valorPorProduto`, no `@gestor/shared`) é a mesma no servidor e na prévia.
 - **Ganho e Perdido.** Na ficha, **Ganhou** e **Perdeu** (ou arrastar para a coluna no quadro, ou o
   Mover) abrem a janela: no Ganho, o valor fechado (se mudou, o valor da negociação muda junto e fica
   no histórico) e o dia em que fechou; no Perdido, **o motivo** (sempre: um da lista do painel, e o
@@ -88,20 +101,31 @@ nele (a regra do patch que ainda não subiu).
   Luan não quis (*"não precisa ser um botão para ele, ele vai ser um painel como o do suporte"*). Dentro
   do painel de Vendas, o botão do alto é **Nova negociação**.
 - **A troca de painel.** A negociação só passa para **outro painel de Vendas** (e entra numa etapa do
-  funil: o Ganho e o Perdido se marcam na janela deles); o chamado só para **outro de Gestão**. O caminho
-  entre os dois é o **filho**: da negociação ganha, um filho no Suporte (a implantação); do chamado em
-  que o cliente pediu um orçamento, um filho no Comercial. O filho fica ligado.
+  funil: o Ganho e o Perdido se marcam na janela deles); o chamado só para **outro de Gestão**. Entre os
+  dois, abre-se o outro lá e os dois se **ligam** (Mais › Ligar a outro chamado ou negociação): da
+  negociação ganha, o chamado da implantação no Suporte; do chamado em que o cliente pediu um orçamento,
+  a negociação no Comercial.
+- **Sem pai e filhos.** A primeira versão deixava a negociação ter pai e filhos (era o caminho para o
+  Suporte); na prévia, em 17/10, nos comentários: *"n precisa de pais e filhas aqui"*. Na ficha da
+  negociação, a parte se chama **Ligações** (sem o Criar um filho), e o Mais não tem Criar um filho nem
+  Definir o pai; o filho e o problema abertos a partir de um chamado só escolhem painéis de Gestão. O
+  servidor (e a prévia) recusa a negociação com pai, a negociação como pai de um chamado, o problema no
+  painel de Vendas e a negociação como incidente de um problema. A ligação (relacionado, duplicado de,
+  repete) continua.
 - **Permissões.** As dos chamados: ver, `support.read`; trabalhar (criar, mover, ganhar, perder),
   `tickets.work`; os painéis e os ajustes, `tickets.manage`.
 - **O banco.** A migração `0018_vendas`: o tipo do painel (`ticket_panels.kind`, `gestao` ou `vendas`),
   o resultado da etapa final (`ticket_stages.outcome`, `ganho` ou `perdido`), e na negociação o valor em
-  centavos (`tickets.value_cents`), a empresa que ainda não é cliente (`tickets.prospect`) e o motivo da
-  perda (`tickets.lost_reason`). O fim (`closed_at`) é o dia em que a negociação acabou (num dia que já
+  centavos (`tickets.value_cents`, `bigint`: o valor vai até R$ 100 milhões, que não cabe num `integer`),
+  o valor por produto (`tickets.product_values`, `{id do produto: centavos}`), a empresa que ainda não é
+  cliente (`tickets.prospect`) e o motivo da perda (`tickets.lost_reason`). O fim (`closed_at`) é o dia em que a negociação acabou (num dia que já
   passou, ao meio-dia de Brasília). As contas do relatório moram no `@gestor/shared` (`vendas.ts`): o
   servidor e a prévia contam igual.
 - **A prévia.** O painel **Comercial (COM)**, da Camila e do Diego, com 32 negociações de exemplo (as
   ganhas e as perdidas do último ano, uma ou mais por mês para os ganhos mês a mês, três delas no começo
-  do mês passado para a comparação do Este mês, e o funil de agora) e a meta de R$ 40 mil.
+  do mês passado para a comparação do Este mês, e o funil de agora) e a meta de R$ 40 mil. Três têm o
+  valor por produto (a Padaria Estrela, a Rede Farma Mais e as filiais do Bom Preço), e a da Padaria
+  Estrela tem a proposta em PDF anexada, que abre sem baixar (decisão 0051).
 
 **Alternativas consideradas.**
 

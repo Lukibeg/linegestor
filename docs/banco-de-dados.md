@@ -1154,7 +1154,8 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `reopen_count` | número inteiro | Quantas vezes foi reaberto | obrigatório · padrão: 0 |
 | `last_activity_at` | data e hora | A última coisa que aconteceu (anotação, etapa, campo) — para achar o parado | obrigatório |
 | `schedule_id` | texto | O agendado que criou este chamado | — |
-| `value_cents` | número inteiro | A negociação (painel de Vendas, 2.0.1): o valor, em centavos | — |
+| `value_cents` | bigint | A negociação (painel de Vendas, 2.0.1): o valor, em centavos (até R$ 100 milhões: não cabe num integer) | — |
+| `product_values` | JSON | A negociação: o valor de cada produto ({id do produto: centavos}); com ele, value_cents é a soma | obrigatório · padrão: {} |
 | `prospect` | texto | A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) | — |
 | `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |
 | `created_by_id` | texto | — | liga com **users** |

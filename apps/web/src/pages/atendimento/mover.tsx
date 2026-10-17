@@ -9,15 +9,18 @@
  *    que fechou, ou o motivo da perda — e o confete é do Ganho.
  */
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { movimentoDeNivel, nomeDoObrigatorio, type EtapaPainel, type FichaChamado, type Painel, type PessoaCurta } from '@gestor/shared';
+import { linhasDoValorPorProduto, movimentoDeNivel, nomeDoObrigatorio, type EtapaPainel, type FichaChamado, type Painel, type PessoaCurta, type ValoresDosProdutos } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
 import { Campo, EscolherComBusca, Modal, Spinner, mensagemErro, useToast } from '../../components/ui/index.js';
 import { LinkDoChamado, ehDeVendas, painelDe, useDepoisDeMudar, useOpcoes } from './comum.js';
 import { JanelaResultado, type ResultadoEscolhido } from './venda.js';
 
-/** O que o mover precisa saber do chamado (o valor: a janela do Ganho já vem com ele). */
-export type Movivel = { id: string; codigo: string; painelId: string; etapaId: string; responsavel: PessoaCurta | null; valor?: number | null };
+/** O que o mover precisa saber do chamado (o valor e o valor por produto: a janela do Ganho já vem com eles). */
+export type Movivel = {
+  id: string; codigo: string; painelId: string; etapaId: string; responsavel: PessoaCurta | null; valor?: number | null;
+  produtos?: Array<{ id: string; nome: string }>; valoresDosProdutos?: ValoresDosProdutos;
+};
 
 type Escalonando = { c: Movivel; para: EtapaPainel; de: EtapaPainel | undefined; sentido: 'sobe' | 'desce' };
 type Marcando = { c: Movivel; para: EtapaPainel; painel: Painel | undefined };
@@ -115,6 +118,7 @@ export function useMover(): { mover: (c: Movivel, etapaId: string) => Promise<Fi
         onConfirmar={async (motivo, responsavelId) => { const e = escalonando; setEscalonando(null); await executar(e.c, e.para, { motivo, responsavelId }); }} />}
       {travado && <JanelaTravado t={travado} onFechar={() => setTravado(null)} />}
       {marcando && <JanelaResultado codigo={marcando.c.codigo} valor={marcando.c.valor} para={marcando.para} painel={marcando.painel}
+        porProduto={linhasDoValorPorProduto(marcando.c.produtos ?? [], marcando.c.valoresDosProdutos)}
         onFechar={() => setMarcando(null)} onConfirmar={(r) => marcar(marcando, r)} />}
     </>
   );

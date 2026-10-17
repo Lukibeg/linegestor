@@ -310,7 +310,7 @@ export function JanelaEscolherChamado({ titulo, texto, botao, tipoChamado, exclu
 export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
   const { f, opcoes, painel } = useAberta();
   const acao = useAcao();
-  // a negociação só passa para outro painel de Vendas, e o chamado para outro de Gestão (o caminho entre eles é o filho)
+  // a negociação só passa para outro painel de Vendas, e o chamado para outro de Gestão (entre eles, o Ligar)
   const vendas = painel?.tipo === 'vendas';
   const outros = useMemo(() => opcoes.paineis.filter((p) => p.ativo && p.id !== f.painelId && p.tipo === (painel?.tipo ?? 'gestao')), [opcoes.paineis, f.painelId, painel?.tipo]);
   const [painelId, setPainelId] = useState(outros[0]?.id ?? '');
@@ -329,8 +329,8 @@ export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
       {!outros.length ? (
         <p className="text-sm text-muted">
           {vendas
-            ? 'Não há outro painel de Vendas ativo para onde passar a negociação. Para levar o trabalho a um painel de Gestão (a implantação, por exemplo), crie um filho lá.'
-            : 'Não há outro painel de Gestão ativo para onde passar o chamado. Para começar uma negociação a partir dele, crie um filho no painel de Vendas.'}
+            ? 'Não há outro painel de Vendas ativo para onde passar a negociação. Para levar o trabalho a um painel de Gestão (a implantação, por exemplo), abra um chamado lá e ligue os dois (Ligar a outro chamado).'
+            : 'Não há outro painel de Gestão ativo para onde passar o chamado. Para começar uma negociação a partir dele, crie a negociação no painel de Vendas e ligue os dois (Ligar a outro chamado).'}
         </p>
       ) : (
         <div className="flex flex-col gap-3">

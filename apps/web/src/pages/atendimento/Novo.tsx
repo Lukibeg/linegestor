@@ -29,8 +29,9 @@
  * pop-up e não a tela inteira"). Aberto, a janela fecha e a ficha de baixo mostra o filho.
  *
  * No painel de Vendas (2.0.1, decisão 0050), o formulário é o da **nova negociação**: a empresa (um
- * cliente ou uma que ainda não é), o contato, o que está sendo negociado, o valor, os produtos e quem
- * cuida — sem relato, classificação, prioridade e aviso ao cliente.
+ * cliente ou uma que ainda não é), o contato, o que está sendo negociado, o valor (um só, ou por produto
+ * com o total: os produtos entram ali mesmo), os produtos e quem cuida — sem relato, classificação,
+ * prioridade e aviso ao cliente.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -42,7 +43,7 @@ import {
   paraBusca, prioridadeSugeridaDoPainel, valorPreenchido,
   type CorEtiqueta,
   type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
-  type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo,
+  type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo, type ValoresDosProdutos,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
@@ -55,7 +56,7 @@ import {
   CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
   painelDe, telefoneLegivel, useAbrirChamado, useDepoisDeMudar, useFecharJanela, useFicha, useOpcoes, usePode,
 } from './comum.js';
-import { CampoValor } from './venda.js';
+import { ValorDaNegociacao, type ModoDoValor } from './venda.js';
 
 /** O motivo que o "Reabrir este" grava (o pedido do Luan: o cliente voltou com o mesmo problema). */
 const MOTIVO_REABRIR = 'O cliente voltou com o mesmo problema';
@@ -105,6 +106,11 @@ type Form = {
   empresa: string;
   valor: number | null;
   valorValido: boolean;
+  /** a negociação: um valor só, ou o valor de cada produto (o total vira o valor) */
+  modoValor: ModoDoValor;
+  valores: ValoresDosProdutos;
+  /** os produtos com o valor escrito errado */
+  valoresInvalidos: string[];
 };
 
 /**
@@ -177,6 +183,10 @@ export function JanelaAbrirChamado() {
 function Carregador({ naJanela }: { naJanela?: AbrirNaJanela }) {
   const opcoes = useOpcoes();
   const pode = usePode();
+  const [sp] = useSearchParams();
+  // o filho e o problema a partir de um chamado nascem num painel de Gestão: a negociação não tem pai nem
+  // problema (2.0.1, o pedido do Luan na prévia: "n precisa de pais e filhas aqui")
+  const ligado = naJanela ? !!(naJanela.pai || naJanela.incidente) : !!(sp.get('pai')?.trim() || sp.get('incidente')?.trim());
   // na janela, o cabeçalho do módulo não aparece (a janela tem o título dela)
   const topo = naJanela ? null : <CabecalhoAtendimento sub="Abrir chamado" />;
   if (opcoes.isLoading) return <div>{topo}<Carregando /></div>;
@@ -184,9 +194,9 @@ function Carregador({ naJanela }: { naJanela?: AbrirNaJanela }) {
   if (!pode.trabalhar) {
     return <div>{topo}<Vazio titulo="Abrir chamado é de quem trabalha nos chamados" texto="Você pode ver os chamados, mas abrir e mexer pede a permissão de trabalhar neles. Fale com a administração." /></div>;
   }
-  const paineis = opcoes.data.paineis.filter((p) => p.ativo);
+  const paineis = opcoes.data.paineis.filter((p) => p.ativo && (!ligado || p.tipo !== 'vendas'));
   if (!paineis.length) {
-    return <div>{topo}<Vazio titulo="Nenhum painel aberto para você" texto="Para abrir um chamado é preciso um painel ativo que você veja. Quem cuida dos chamados cria e libera os painéis em Chamados › Ajustes." /></div>;
+    return <div>{topo}<Vazio titulo="Nenhum painel aberto para você" texto={`Para abrir um chamado é preciso um painel ativo${ligado ? ' de Gestão' : ''} que você veja. Quem cuida dos chamados cria e libera os painéis em Chamados › Ajustes.`} /></div>;
   }
   return <Formulario opcoes={opcoes.data} paineis={paineis} naJanela={naJanela} />;
 }
@@ -239,6 +249,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       avisarCliente: false,
       campos: {},
       jaECliente: true, empresa: '', valor: null, valorValido: true,
+      modoValor: 'unico', valores: {}, valoresInvalidos: [],
     };
   });
   const mudar = (o: Partial<Form>) => { setF((x) => ({ ...x, ...o })); setMexeu(true); };
@@ -274,6 +285,16 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const opcoesClientes = useMemo<OpcaoBusca[]>(() => (clientes.data ?? []).map((c) => ({ id: c.id, nome: c.name })), [clientes.data]);
   const cadastro = useQuery({ queryKey: ['atendimento', 'cadastro', f.clienteId], queryFn: () => api.atendimento.cadastroDoCliente(f.clienteId), enabled: !!f.clienteId });
 
+  // ---------- a negociação: o valor por produto (os produtos entram e saem no próprio Valor) ----------
+  const porProduto = vendas && f.modoValor === 'produto' && usa('produtos');
+  const nomeDoProduto = (id: string) => opcoes.produtos.find((p) => p.id === id)?.nome ?? cadastro.data?.produtos.find((p) => p.id === id)?.nome ?? '?';
+  const produtosDoCliente = new Set(cadastro.data?.produtos.map((p) => p.id) ?? []);
+  const catalogoDoValor = opcoes.produtos.filter((p) => !f.produtos.includes(p.id))
+    .map((p) => ({ id: p.id, nome: p.nome, dica: produtosDoCliente.has(p.id) ? 'do cliente' : undefined }))
+    .sort((a, b) => Number(!!b.dica) - Number(!!a.dica));
+  /** o valor de cada produto que ainda está na negociação */
+  const valoresQueVao: ValoresDosProdutos = Object.fromEntries(Object.entries(f.valores).filter(([id]) => f.produtos.includes(id)));
+
   // ---------- os assuntos do painel (o caminho inteiro; os ativos) ----------
   const assuntosDoPainel = useMemo(() => opcoes.assuntos.filter((a) => a.painelId === painel.id), [opcoes.assuntos, painel.id]);
   const opcoesAssunto = useMemo<OpcaoBusca[]>(() => emOrdemDeArvore(assuntosDoPainel)
@@ -305,7 +326,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const pedeForaDoFormulario = painel.ajustes.obrigatoriosAoAbrir.filter((c) => !idDaChave(c) && !CAMPOS_DO_FORMULARIO.includes(c as CampoObrigatorio));
 
   // não sair sem querer com o relato pela metade
-  const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim() || f.empresa.trim() || f.valor !== null);
+  const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim() || f.empresa.trim() || f.valor !== null || Object.keys(f.valores).length);
   const avisarEscreveu = useRef(naJanela?.onEscreveu);
   avisarEscreveu.current = naJanela?.onEscreveu;
   useEffect(() => { avisarEscreveu.current?.(escreveu); }, [escreveu]);
@@ -341,7 +362,9 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     if (f.titulo.trim().length < 3) { setErro('Escreva um título (pelo menos 3 letras).'); document.getElementById('novo-titulo')?.focus(); return; }
     if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
     if (precisaMotivo && !f.motivoPrioridade.trim()) { setErro('Trocar a prioridade sugerida pede o motivo.'); document.getElementById('novo-motivo-prioridade')?.focus(); return; }
-    if (vendas && !f.valorValido) { setErro('Escreva o valor como 12.500,00.'); document.getElementById('novo-valor')?.focus(); return; }
+    if (vendas && !porProduto && !f.valorValido) { setErro('Escreva o valor como 12.500,00.'); document.getElementById('novo-valor-unico')?.focus(); return; }
+    const errado = porProduto ? f.produtos.find((id) => f.valoresInvalidos.includes(id)) : undefined;
+    if (errado) { setErro(`Escreva o valor de ${nomeDoProduto(errado)} como 12.500,00.`); document.querySelector<HTMLInputElement>(`#novo-valor [data-produto="${CSS.escape(nomeDoProduto(errado))}"] input`)?.focus(); return; }
     // a negociação: um cliente da base ou a empresa que ainda não é (escrita à mão)
     const clienteId = vendas && !f.jaECliente ? '' : f.clienteId;
     const d: ChamadoCriarEntrada = {
@@ -351,7 +374,12 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       relato: vendas ? null : f.relato.trim() || null,
       descricao: f.descricao.trim() || null,
       clienteId: clienteId || null,
-      ...(vendas ? { valor: f.valor, empresa: !f.jaECliente ? f.empresa.trim() || null : null } : {}),
+      // por produto (com algum valor escrito), o valor é o total; sem nenhum, vale o valor único
+      ...(vendas ? {
+        valor: porProduto && Object.keys(valoresQueVao).length ? null : f.valorValido ? f.valor : null,
+        ...(porProduto ? { valoresDosProdutos: valoresQueVao } : {}),
+        empresa: !f.jaECliente ? f.empresa.trim() || null : null,
+      } : {}),
       contatoNome: f.contatoNome.trim() || null,
       contatoTelefone: f.contatoTelefone.trim() || null,
       sessaoId: sessao,
@@ -553,11 +581,25 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                 onChange={(e) => mudar({ titulo: e.target.value })} />
             </Rotulado>
             {vendas && (
-              <Rotulado rotulo="Valor" id="novo-valor" obrigatorio={pede('valor')} falta={falta('valor')} erro={!f.valorValido ? 'Escreva o valor como 12.500,00' : undefined}
-                dica="O valor da proposta (pode vir depois: a Proposta enviada pede).">
-                <div className="max-w-[260px]">
-                  <CampoValor id="novo-valor" centavos={f.valor} onChange={(v, ok) => { mudar({ valor: v, valorValido: ok }); tirarFalta('valor'); }} />
-                </div>
+              <Rotulado rotulo="Valor" id="novo-valor" grupo obrigatorio={pede('valor')} falta={falta('valor')}
+                erro={!porProduto && !f.valorValido ? 'Escreva o valor como 12.500,00' : porProduto && f.valoresInvalidos.some((id) => f.produtos.includes(id)) ? 'Escreva cada valor como 12.500,00' : undefined}
+                dica={porProduto ? 'Cada produto com o seu valor; o total vira o valor da negociação.' : 'O valor da proposta (pode vir depois: a Proposta enviada pede). Por produto, cada um tem o seu valor e o total soma sozinho.'}>
+                <ValorDaNegociacao id="novo-valor" modo={f.modoValor} onModo={(m) => mudar({ modoValor: m })} podeDividir={usa('produtos')}
+                  valor={f.valor} onValor={(v, ok) => { mudar({ valor: v, valorValido: ok }); tirarFalta('valor'); }}
+                  valores={valoresQueVao} valorAntes={f.valorValido ? f.valor : null}
+                  onValorDoProduto={(id, c, ok) => {
+                    const valores = { ...f.valores };
+                    if (ok && c !== null) valores[id] = c; else delete valores[id];
+                    mudar({ valores, valoresInvalidos: ok ? f.valoresInvalidos.filter((x) => x !== id) : [...new Set([...f.valoresInvalidos, id])] });
+                    tirarFalta('valor');
+                  }}
+                  produtos={f.produtos.map((id) => ({ id, nome: nomeDoProduto(id) }))} catalogo={catalogoDoValor}
+                  onIncluir={(id) => { mudar({ produtos: [...f.produtos, id] }); tirarFalta('produto'); }}
+                  onTirar={(id) => {
+                    const valores = { ...f.valores };
+                    delete valores[id];
+                    mudar({ produtos: f.produtos.filter((x) => x !== id), valores, valoresInvalidos: f.valoresInvalidos.filter((x) => x !== id) });
+                  }} />
               </Rotulado>
             )}
             {!vendas && <Rotulado rotulo="Relato do cliente" id="novo-relato" obrigatorio={pede('relato')} falta={falta('relato')} dica="O que o cliente disse, nas palavras dele.">
@@ -665,10 +707,11 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         )}
 
         {/* ---------- produtos e operadoras ---------- */}
-        {(usa('produtos') || usa('operadoras')) && <Secao titulo={usa('produtos') && usa('operadoras') ? 'Produtos e operadoras' : usa('produtos') ? 'Produtos' : 'Operadoras'}
+        {/* na negociação por produto, os produtos ficam no Valor (cada um com o seu valor) */}
+        {((usa('produtos') && !porProduto) || usa('operadoras')) && <Secao titulo={usa('produtos') && !porProduto && usa('operadoras') ? 'Produtos e operadoras' : usa('produtos') && !porProduto ? 'Produtos' : 'Operadoras'}
           dica={f.clienteId ? 'Os do cliente aparecem primeiro; os outros vêm do catálogo.' : 'Escolha o cliente para ver primeiro os do cadastro dele.'}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {usa('produtos') && <Rotulado rotulo="Produtos" id="novo-produtos" grupo obrigatorio={pede('produto')} falta={falta('produto')}>
+            {usa('produtos') && !porProduto && <Rotulado rotulo="Produtos" id="novo-produtos" grupo obrigatorio={pede('produto')} falta={falta('produto')}>
               <EscolherVarios id="novo-produtos" rotulo="produto" valor={f.produtos} onChange={(v) => { mudar({ produtos: v }); tirarFalta('produto'); }}
                 doCliente={(cadastro.data?.produtos ?? []).map((p) => ({ id: p.id, nome: p.nome }))}
                 catalogo={opcoes.produtos.map((p) => ({ id: p.id, nome: p.nome }))} />

@@ -300,6 +300,8 @@ export type Api = {
     /** pelo código (SUP-12) ou pelo id */
     chamado(ref: string): Promise<T.FichaChamado>;
     anexoUrl(id: string): string;
+    /** os bytes de um anexo (o leitor de PDF desenha sem baixar o arquivo) */
+    anexoBytes(id: string): Promise<ArrayBuffer>;
     /** `aviso`: como foi o WhatsApp ao cliente, quando a pessoa pediu para avisar */
     criar(d: T.ChamadoCriarEntrada): Promise<{ id: string; codigo: string; aviso?: { ok: boolean; mensagem: string } }>;
     alterar(id: string, d: T.ChamadoAlterarEntrada): Promise<T.FichaChamado>;

@@ -285,6 +285,7 @@ export const realApi: Api = {
     cadastroDoCliente: (id) => http('GET', `/atendimento/cadastro/${encodeURIComponent(id)}`),
     chamado: (ref) => http('GET', `/atendimento/chamados/${encodeURIComponent(ref)}`),
     anexoUrl: (id) => `${BASE}/atendimento/anexos/${encodeURIComponent(id)}`,
+    anexoBytes: async (id) => (await http<Response>('GET', `/atendimento/anexos/${encodeURIComponent(id)}`, undefined, true)).arrayBuffer(),
     criar: (d) => http('POST', '/atendimento/chamados', d),
     alterar: (id, d) => http('PATCH', `/atendimento/chamados/${id}`, d),
     mover: (id, d) => http('POST', `/atendimento/chamados/${id}/mover`, d),

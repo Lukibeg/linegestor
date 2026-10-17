@@ -8,6 +8,9 @@
  * tracejado miúdo, pontilhado) e a legenda escrita embaixo — nunca só a cor. A cor do chamado é a
  * situação (e a palavra vai escrita no próprio nó); o problema tem a borda dupla. Clicar num chamado
  * abre a ficha dele.
+ *
+ * Na negociação (o painel de Vendas), a parte é só **Ligações**: sem criar filho (o pedido do Luan na
+ * prévia, em 17/10: "n precisa de pais e filhas aqui"). O pai ou os filhos só aparecem se já existirem.
  */
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { GitBranch, Link2, Unlink, Waypoints } from 'lucide-react';
@@ -53,16 +56,16 @@ export function Ligacoes() {
   if (vazio && !pode && !temDesenho) return null;
 
   return (
-    <Secao titulo="Filhos e ligações" icone={<Waypoints size={16} />}
+    <Secao titulo={vendas ? 'Ligações' : 'Filhos e ligações'} icone={<Waypoints size={16} />}
       acoes={pode && (
         <>
-          <button type="button" className="btn-secondary btn-sm" onClick={() => setCriandoFilho(true)}><GitBranch size={14} /> Criar um filho</button>
+          {!vendas && <button type="button" className="btn-secondary btn-sm" onClick={() => setCriandoFilho(true)}><GitBranch size={14} /> Criar um filho</button>}
           <button type="button" className="btn-secondary btn-sm" onClick={() => setLigando(true)}><Link2 size={14} /> {vendas ? 'Ligar a outro chamado ou negociação' : 'Ligar a outro chamado'}</button>
         </>
       )}>
       {vazio && (
         <p className="text-[13px] text-muted">
-          {vendas ? 'Nenhum pai, filho ou ligação. Os códigos citados no texto aparecem no desenho.' : 'Nenhum pai, filho, problema ou ligação. Os chamados citados no texto aparecem no desenho.'}
+          {vendas ? 'Nenhuma ligação ainda: ligue o chamado da implantação ou outra negociação da empresa. Os códigos citados no texto aparecem no desenho.' : 'Nenhum pai, filho, problema ou ligação. Os chamados citados no texto aparecem no desenho.'}
         </p>
       )}
 

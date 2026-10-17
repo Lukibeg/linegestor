@@ -15,13 +15,16 @@
  *    ganhos mês a mês e o funil; só dos painéis de Vendas e de quem vê o painel
  *  - o CSV só de negociações
  *  - o histórico diz "criou a negociação"; a troca de painel fica entre os painéis de Vendas (entrando no
- *    funil): a negociação não vira chamado nem o chamado vira negociação; o caminho entre eles é o filho
+ *    funil): a negociação não vira chamado nem o chamado vira negociação; entre eles, o Ligar
+ *  - a negociação não tem pai nem filhos, nem entra num problema (o pedido do Luan na prévia, 17/10: "n
+ *    precisa de pais e filhas aqui")
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { tickets } from '@gestor/db';
 import {
   AJUSTES_DO_PAINEL_DE_VENDAS, diaLocal, instanteLocal, MOTIVOS_DE_PERDA_PADRAO, reais, somarDias, textoDoEvento, TROCA_ENTRA_NO_FUNIL,
+  NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEIncidente, negociacaoNaoEPai, VALOR_E_A_SOMA, VALOR_SO_DOS_PRODUTOS,
   type EtapaPainel, type Painel, type RelatorioDeVendas,
 } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
@@ -337,7 +340,7 @@ describe('o histórico e a troca de painel', () => {
     expect((f.historico as any[]).find((e) => e.tipo === 'criado').texto).toBe('criou a negociação em Lead');
   });
 
-  it('a negociação não passa para o Suporte, nem o chamado para o Comercial: o caminho é o filho', async () => {
+  it('a negociação não passa para o Suporte, nem o chamado para o Comercial: os dois se ligam', async () => {
     const paraOSuporte = await s.post(`/atendimento/chamados/COM-2/painel`, { painelId: SUP });
     expect(paraOSuporte.statusCode).toBe(400);
     expect(paraOSuporte.json().error).toContain('COM-2 é uma negociação: só passa para outro painel de Vendas');
@@ -345,9 +348,34 @@ describe('o histórico e a troca de painel', () => {
     const paraOComercial = await s.post(`/atendimento/chamados/${chamado.id}/painel`, { painelId: com.id });
     expect(paraOComercial.statusCode).toBe(400);
     expect(paraOComercial.json().error).toContain('um chamado não vira negociação trocando de painel');
-    // o filho no Comercial: a negociação nasce ligada ao chamado do Suporte
-    const filho = await abrir(s, { titulo: 'Mais 10 ramais', paiId: chamado.codigo, valor: 90_000 });
-    expect(await ficha(filho.codigo)).toMatchObject({ painelId: com.id, pai: { codigo: chamado.codigo }, valor: 90_000 });
+    // a negociação nasce no Comercial e se liga ao chamado do Suporte
+    const negociacao = await abrir(s, { titulo: 'Mais 10 ramais', valor: 90_000 });
+    const ligou = await s.post(`/atendimento/chamados/${negociacao.id}/ligacoes`, { para: chamado.codigo, tipo: 'relacionado' });
+    expect(ligou.statusCode, ligou.body).toBe(200);
+    const f = await ficha(negociacao.codigo);
+    expect(f).toMatchObject({ painelId: com.id, valor: 90_000, pai: null });
+    expect((f.ligacoes as Array<{ chamado: { codigo: string } }>).map((l) => l.chamado.codigo)).toEqual([chamado.codigo]);
+  });
+
+  it('a negociação não tem pai nem filhos, nem entra num problema', async () => {
+    const chamado = (await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'A implantação do PABX' })).json() as { id: string; codigo: string };
+    const recusa = async (r: { statusCode: number; json: () => any }, erro: string) => {
+      expect(r.statusCode).toBe(400);
+      expect(r.json().error).toBe(erro);
+    };
+    // nascer como filha de um chamado, ou o chamado nascer como filho dela
+    await recusa(await s.post('/atendimento/chamados', { painelId: com.id, titulo: 'Mais 10 ramais', paiId: chamado.codigo }), NEGOCIACAO_SEM_PAI);
+    await recusa(await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Implantar', paiId: 'COM-2' }), negociacaoNaoEPai('COM-2'));
+    // o pai depois: nem dela, nem ela de pai
+    await recusa(await s.post('/atendimento/chamados/COM-2/pai', { pai: chamado.codigo }), NEGOCIACAO_SEM_PAI);
+    await recusa(await s.post(`/atendimento/chamados/${chamado.id}/pai`, { pai: 'COM-2' }), negociacaoNaoEPai('COM-2'));
+    // o problema: nem no painel de Vendas, nem com a negociação de incidente
+    await recusa(await s.post('/atendimento/chamados', { painelId: com.id, titulo: 'Queda geral', tipoChamado: 'problema' }), NEGOCIACAO_SEM_PROBLEMA);
+    await recusa(await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Queda geral', tipoChamado: 'problema', incidentes: ['COM-2'] }), negociacaoNaoEIncidente('COM-2'));
+    const problema = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Queda geral', tipoChamado: 'problema' });
+    expect(problema.statusCode, problema.body).toBe(201);
+    await recusa(await s.post('/atendimento/chamados/COM-2/problema', { problema: problema.json().codigo }), NEGOCIACAO_SEM_PROBLEMA);
+    expect(await ficha('COM-2')).toMatchObject({ pai: null, problema: null, filhosLista: [] });
   });
 
   it('entre os painéis de Vendas, passa com o valor e entra no funil (o Ganho se marca na janela dele)', async () => {
@@ -361,5 +389,50 @@ describe('o histórico e a troca de painel', () => {
     const vai = await s.post(`/atendimento/chamados/COM-2/painel`, { painelId: rev.id });
     expect(vai.statusCode, vai.body).toBe(200);
     expect(vai.json()).toMatchObject({ codigo: 'COM-2', painelId: rev.id, etapaId: rev.etapas[0]!.id, empresa: 'Mercado Bom Preço', resultado: null });
+  });
+});
+
+describe('o valor por produto (o pedido do Luan: "dividir o valor por produtos e no final tenha o total")', () => {
+  it('cada produto com o seu valor: o total é o valor da negociação; o produto que sai leva o valor dele', async () => {
+    const catalogo = (await s.get('/admin/products')).json() as Array<{ id: string; code: string; name: string }>;
+    const produto = (codigo: string) => catalogo.find((p) => p.code === codigo)!;
+    const pbx = produto('linepbx');
+    const tronco = produto('voicenet');
+    const chat = produto('linechat');
+    const n = await abrir(camila, { titulo: 'Central e tronco para a matriz', empresa: 'Grupo Teste', produtos: [pbx.id, tronco.id], valoresDosProdutos: { [pbx.id]: 980_000, [tronco.id]: 270_000 } });
+    expect(await ficha(n.codigo)).toMatchObject({ valor: 1_250_000, valoresDosProdutos: { [pbx.id]: 980_000, [tronco.id]: 270_000 } });
+    // só os produtos da negociação têm valor
+    const fora = await camila.post('/atendimento/chamados', { painelId: com.id, titulo: 'Outra', empresa: 'X', produtos: [pbx.id], valoresDosProdutos: { [chat.id]: 100 } });
+    expect(fora.statusCode).toBe(400);
+    expect(fora.json().error).toBe(VALOR_SO_DOS_PRODUTOS);
+
+    // o valor de um produto muda: o total acompanha, e o histórico diz os dois
+    const mudou = await camila.patch(`/atendimento/chamados/${n.id}`, { valoresDosProdutos: { [pbx.id]: 900_000, [tronco.id]: 270_000 } });
+    expect(mudou.statusCode, mudou.body).toBe(200);
+    expect(mudou.json()).toMatchObject({ valor: 1_170_000 });
+    const historico = textos(mudou.json()).join('\n');
+    expect(historico).toContain(`${pbx.name} ${reais(900_000)} · ${tronco.name} ${reais(270_000)}`);
+    expect(historico).toContain(reais(1_170_000));
+    // o valor direto, com a divisão: recusado
+    const direto = await camila.patch(`/atendimento/chamados/${n.id}`, { valor: 1_000_000 });
+    expect(direto.statusCode).toBe(400);
+    expect(direto.json().error).toBe(VALOR_E_A_SOMA);
+
+    // o produto que sai leva o valor dele; o que entra fica sem valor
+    const saiu = (await camila.patch(`/atendimento/chamados/${n.id}`, { produtos: [pbx.id, chat.id] })).json();
+    expect(saiu).toMatchObject({ valor: 900_000, valoresDosProdutos: { [pbx.id]: 900_000 } });
+    expect(Object.keys(saiu.valoresDosProdutos)).toEqual([pbx.id]);
+    // na planilha, a coluna dos produtos leva o valor de cada um
+    const csv = (await camila.get(`/atendimento/chamados/exportar?painel=${com.id}&situacao=todos`)).body as string;
+    expect(csv.split('\r\n').find((l) => l.includes('Central e tronco para a matriz'))).toContain(`;9000,00;;;${pbx.name} (${reais(900_000)}), ${chat.name};`);
+
+    // de volta a um valor só: o total fica, e o valor volta a mudar direto
+    expect((await camila.patch(`/atendimento/chamados/${n.id}`, { valoresDosProdutos: {}, valor: 900_000 })).json()).toMatchObject({ valor: 900_000, valoresDosProdutos: {} });
+    expect((await camila.patch(`/atendimento/chamados/${n.id}`, { valor: 950_000 })).json()).toMatchObject({ valor: 950_000 });
+  });
+
+  it('o valor vai até R$ 100 milhões (mais do que cabe num integer)', async () => {
+    const n = await abrir(camila, { titulo: 'Rede nacional', empresa: 'Grande Cliente', valor: 3_000_000_000 });
+    expect(await ficha(n.codigo)).toMatchObject({ valor: 3_000_000_000 });
   });
 });

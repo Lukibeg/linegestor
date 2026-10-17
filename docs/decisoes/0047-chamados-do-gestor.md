@@ -60,7 +60,8 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   motivo, que fica à vista) —; **produtos e operadoras** (vários, os do cliente primeiro: "tem cliente com duas
   operadoras e dois produtos"); **etiquetas inteiras**; o checklist; o responsável e quem acompanha; os **prazos**; o
   caso **na operadora** (protocolo, prometido para, cobrar a cada X horas); o **tempo gasto**; as
-  **anotações com anexos** (até 5 de 10 MB, colar print); e a **linha do tempo** (tudo, anotações,
+  **anotações com anexos** (até 5 de 10 MB, colar o print ou o arquivo; o PDF abre sem baixar, decisão
+  0051); e a **linha do tempo** (tudo, anotações,
   histórico e a **trajetória** pelas etapas e níveis, com quanto tempo ficou em cada uma e o motivo
   de cada escalonamento).
 - **Os campos de cada painel** (o pedido dele na prévia, 11/10: "vou ter outros painéis, então nem
