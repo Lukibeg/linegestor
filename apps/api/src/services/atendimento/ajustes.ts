@@ -18,7 +18,7 @@ import type { z } from 'zod';
 import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { newId, ticketFields, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, ehLista,
+  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, ehLista,
   ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL, problemaNasEtapasDoTipo,
   lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
   obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
@@ -167,16 +167,25 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
     // as etapas da janela (todas novas: um painel novo não tem etapa nenhuma ainda) ou as de fábrica do tipo
     const etapas = d.etapas ?? (tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null }))).map((e) => ({ ...e, avisar: [] }));
     const plano = await planejarEtapas(db, novoId, etapas, {}, validos, tipo);
+    // o painel de Vendas nasce com os campos do Comercial do Helena (CNPJ, contatos, origem, indicação)
+    const camposDeFabrica = tipo === 'vendas' ? CAMPOS_DO_PAINEL_DE_VENDAS : [];
     await db.transaction(async (tx) => {
       const [ultimo] = await tx.select({ n: sql<number>`coalesce(max(${ticketPanels.sortOrder}), -1)::int` }).from(ticketPanels);
       await tx.insert(ticketPanels).values({ id: novoId, ...campos, kind: tipo, sortOrder: Number(ultimo?.n ?? -1) + 1 });
       await aplicarEtapas(tx, ator, plano, agora);
+      if (camposDeFabrica.length) {
+        await tx.insert(ticketFields).values(camposDeFabrica.map((c, ordem) => ({
+          id: newId(), panelId: novoId, name: c.nome, kind: c.tipo, help: c.dica, active: true, sortOrder: ordem,
+          options: c.opcoes.map((nome) => ({ id: newId(), nome, ativa: true })),
+        })));
+      }
     });
     const painel = await painelPronto(db, novoId);
     return {
       valor: painel,
-      resumo: `Criou o painel ${painel.nome} (${painel.sigla}${tipo === 'vendas' ? `, de ${NOME_TIPO_DE_PAINEL.vendas}` : ''}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`,
-      depois: { ...painelParaAuditoria(painel), etapas: painel.etapas.map(etapaParaAuditoria) },
+      resumo: `Criou o painel ${painel.nome} (${painel.sigla}${tipo === 'vendas' ? `, de ${NOME_TIPO_DE_PAINEL.vendas}` : ''}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`
+        + (camposDeFabrica.length ? ` e os campos ${lista(camposDeFabrica.map((c) => c.nome))}` : ''),
+      depois: { ...painelParaAuditoria(painel), etapas: painel.etapas.map(etapaParaAuditoria), ...(camposDeFabrica.length ? { campos: camposDeFabrica.map((c) => c.nome) } : {}) },
     };
   }
 

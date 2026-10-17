@@ -39,7 +39,7 @@ import {
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca,
   preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
-  AJUSTES_DO_PAINEL_DE_VENDAS, compararNegociacoes, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
+  AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNegociacoes, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
   type NegociacaoParaRelatorio, type RelatorioDeVendas, type ResultadoDaVenda, type TipoDePainel,
   type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
@@ -2316,10 +2316,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       };
       A.paineis.push(novo);
       aplicarEtapas(ator, plano, agora);
+      // o painel de Vendas nasce com os campos do Comercial do Helena (como no servidor)
+      const camposDeFabrica = camposDeFabricaDoPainel(novo.id, tipo);
       const painel = painelPorId(novo.id)!;
       return {
-        valor: painel, resumo: `Criou o painel ${painel.nome} (${painel.sigla}${tipo === 'vendas' ? `, de ${NOME_TIPO_DE_PAINEL.vendas}` : ''}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`,
-        depois: { ...painelParaAuditoria(painel), etapas: painel.etapas.map(etapaParaAuditoria) },
+        valor: painel, resumo: `Criou o painel ${painel.nome} (${painel.sigla}${tipo === 'vendas' ? `, de ${NOME_TIPO_DE_PAINEL.vendas}` : ''}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`
+          + (camposDeFabrica.length ? ` e os campos ${lista(camposDeFabrica)}` : ''),
+        depois: { ...painelParaAuditoria(painel), etapas: painel.etapas.map(etapaParaAuditoria), ...(camposDeFabrica.length ? { campos: camposDeFabrica } : {}) },
       };
     }
     // as etapas que vieram junto são conferidas antes de mudar qualquer coisa (o destino dos chamados também)
@@ -2609,6 +2612,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     return [...(abrir ? ['para abrir'] : []), ...etapas.filter((e) => pedidas.has(e.id)).map((e) => e.nome)];
   }
+  /** Os campos com que o painel nasce (só o de Vendas tem: os do Comercial do Helena); devolve os nomes. */
+  function camposDeFabricaDoPainel(painelId: string, tipo: TipoDePainel): string[] {
+    if (tipo !== 'vendas') return [];
+    CAMPOS_DO_PAINEL_DE_VENDAS.forEach((c, ordem) => A.campos.push({
+      id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: c.dica, ativo: true, ordem,
+      opcoes: c.opcoes.map((nome) => ({ id: novoId(), nome, ativa: true })),
+    }));
+    return CAMPOS_DO_PAINEL_DE_VENDAS.map((c) => c.nome);
+  }
   function criarCampo(painelId: string, d: ReturnType<typeof CampoGravarSchema.parse>) {
     const p = linhaDoPainel(painelId);
     const outros = camposDoPainel(painelId);
@@ -2783,6 +2795,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         id: `etapa-${p.chave}-${j + 1}`, painelId: id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: j, obrigatorios: [...e.obrigatorios], avisar: [], deletedAt: null,
         resultado: e.resultado,
       }));
+      // o Comercial nasce com os campos do Helena (CNPJ, contatos principais, origem de lead, indicação)
+      camposDeFabricaDoPainel(id, p.tipo);
     });
 
     // ---- os assuntos: a lista da equipe (colada) e o que já foi preenchido em alguns ----
@@ -3019,6 +3033,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           ...(n.contato ? { contatoNome: n.contato[0], contatoTelefone: n.contato[1] } : {}),
           valor: n.valor !== undefined ? Math.round(n.valor * 100) : null,
           ...(n.porProduto ? { valoresDosProdutos: Object.fromEntries(Object.entries(n.porProduto).map(([codigo, v]) => [produtoDo(codigo), Math.round(v * 100)])) } : {}),
+          // os campos do painel, pelo nome (como o robô e o n8n mandam)
+          ...(n.campos ? { campos: n.campos } : {}),
           produtos: (n.produtos ?? []).map(produtoDo), responsavelId: n.responsavel ? idDa(n.responsavel) : null, descricao: n.descricao ?? null,
         }), { origem: 'manual' }, noDia(n.abriu, '09:30'));
         for (const p of n.passos ?? []) mover(dono, r.id, { etapaId: etapaDoComercial(p.para) }, noDia(p.dias, '11:00'));

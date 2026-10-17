@@ -884,6 +884,12 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     const pbx = estrela.produtos.find((p) => p.nome === 'LinePBX')!;
     const tronco = estrela.produtos.find((p) => p.nome === 'VoiceNet')!;
     expect(estrela).toMatchObject({ valor: 1_250_000, valoresDosProdutos: { [pbx.id]: 980_000, [tronco.id]: 270_000 } });
+    // os campos do Comercial do Helena (menos a Área de atuação), com a origem da Padaria Estrela
+    const op = await api.opcoes();
+    const campos = op.campos.filter((c) => c.painelId === painel(op, 'COM').id);
+    expect(campos.map((c) => c.nome)).toEqual(['CNPJ', 'Contatos principais', 'Origem de lead', 'Indicação']);
+    const origem = campos.find((c) => c.nome === 'Origem de lead')!;
+    expect(estrela.campos[origem.id]).toBe(origem.opcoes.find((o) => o.nome === 'Instagram')!.id);
     const mudou = await api.alterar(estrela.id, { valoresDosProdutos: { [pbx.id]: 900_000, [tronco.id]: 270_000 } });
     expect(mudou.valor).toBe(1_170_000);
     expect(mudou.historico.map((e) => e.texto).join('\n')).toContain(`LinePBX ${reais(900_000)} · VoiceNet ${reais(270_000)}`);

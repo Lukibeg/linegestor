@@ -1304,6 +1304,8 @@ export type NegociacaoDeExemplo = {
   contato?: Contato; valor?: number; produtos?: string[];
   /** o valor por produto, em reais, pelo código do produto (a soma é o valor) */
   porProduto?: Record<string, number>;
+  /** os campos do painel (os do Comercial do Helena), pelo nome do campo */
+  campos?: Record<string, string>;
   por: Pessoa; responsavel: Pessoa | null;
   abriu: number;
   /** as etapas do funil por onde passou, com o dia */
@@ -1398,19 +1400,23 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     fim: { resultado: 'ganho', dias: 1 } },
   // ---- o funil de agora ----
   { chave: 'beira-mar', titulo: 'Atendimento com URA e filas', empresa: 'Hotel Beira Mar', contato: ['Vânia', '5571999990213'], valor: 15_800, produtos: ['linepbx', 'linechat'],
+    campos: { 'Origem de lead': 'Site' },
     por: 'diego', responsavel: 'diego', abriu: 33, passos: [{ para: 'Qualificação', dias: 31 }, { para: 'Proposta enviada', dias: 23 }, { para: 'Negociação', dias: 14 }],
     descricao: 'Hotel com 60 apartamentos, recepção 24h e central de reservas. Hoje usam uma central analógica alugada.' },
   { chave: 'estrela', titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214'], valor: 12_500, produtos: ['linepbx', 'voicenet'],
     porProduto: { linepbx: 9_800, voicenet: 2_700 },
+    campos: { 'Origem de lead': 'Instagram', 'Contatos principais': 'Rosa (sócia): decide e assina, (71) 99999-0214\nCarlos (gerente da fábrica): vai usar a central e a fila do delivery' },
     por: 'camila', responsavel: 'camila', abriu: 18, passos: [{ para: 'Qualificação', dias: 16 }, { para: 'Proposta enviada', dias: 10 }, { para: 'Negociação', dias: 3 }],
     descricao: 'Três lojas e a fábrica. Querem o mesmo número para todas as lojas e a fila do delivery.',
     anotacao: { dias: 1, por: 'camila', texto: 'Mandei a proposta revisada com 10% de desconto na implantação. A Rosa vai falar com o sócio e responde até sexta.', proposta: 'Proposta Padaria Estrela - revisão 2.pdf' } },
   { chave: 'horizonte-canteiro', titulo: 'Central telefônica para o canteiro', cliente: 'Construtora Horizonte', contato: ['Edson', '5571999990211'], valor: 9_400, produtos: ['linepbx', 'equipamentos'],
     por: 'diego', responsavel: 'diego', abriu: 13, passos: [{ para: 'Qualificação', dias: 12 }, { para: 'Proposta enviada', dias: 6 }] },
   { chave: 'bompreco-chat', titulo: 'LineChat com 8 atendentes', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 6_800, produtos: ['linechat'],
+    campos: { 'Origem de lead': 'Cliente da base' },
     por: 'camila', responsavel: 'diego', abriu: 9, passos: [{ para: 'Qualificação', dias: 8 }, { para: 'Proposta enviada', dias: 4 }] },
   { chave: 'farma-mais', titulo: 'Migração das filiais para a nuvem', empresa: 'Rede Farma Mais', contato: ['Gustavo', '5571999990215'], valor: 30_000, produtos: ['linepbx', 'voicenet', 'linechat'],
     porProduto: { linepbx: 16_000, voicenet: 8_500, linechat: 5_500 },
+    campos: { 'Origem de lead': 'Indicação', 'Indicação': 'Anderson, do Supermercado Bom Preço', 'Contatos principais': 'Gustavo (diretor de operações): decide\nPatrícia (TI): cuida da migração das lojas' },
     por: 'camila', responsavel: 'camila', abriu: 7, passos: [{ para: 'Qualificação', dias: 5 }],
     descricao: '14 farmácias com central própria em cada uma. Querem uma só central e o atendimento do WhatsApp das lojas junto.' },
   { chave: 'exame-gravacao', titulo: 'Gravação de chamadas', cliente: 'Laboratório Exame Certo', contato: ['Beatriz', '5571999990216'], valor: 3_600, produtos: ['linepbx'],

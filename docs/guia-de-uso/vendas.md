@@ -18,6 +18,9 @@ painéis (o Suporte, o Desenvolvimento). A decisão inteira está em
    Perdido. Mude os nomes e inclua etapas como quiser; o Ganho e o Perdido mudam de nome, mas não saem.
 6. Em **As regras**, confira os **motivos de perda** (a lista que aparece ao marcar como perdida) e
    ponha a **meta do mês**, em R$ (vazia: sem meta).
+7. O painel já vem com os campos do Comercial: **CNPJ**, **Contatos principais**, **Origem de lead** e
+   **Indicação**. Para mudar o nome, as opções da Origem de lead ou a ordem, ou para incluir outro campo:
+   **Ajustes › Campos**, no painel do Comercial.
 
 ## 2. O dia a dia
 
@@ -40,6 +43,8 @@ painéis (o Suporte, o Desenvolvimento). A decisão inteira está em
 - O **valor** (pode vir depois: a **Proposta enviada** pede o valor) — **Um valor só** ou **Por
   produto** (veja abaixo).
 - **Sobre a negociação**: o que o cliente precisa, quem decide, a concorrência.
+- **Do painel Comercial**: o CNPJ, os contatos principais, a origem de lead e quem indicou (na ficha,
+  ficam em Detalhes; os contatos, junto do Sobre a negociação).
 - Os produtos e quem cuida.
 
 A negociação nasce no **Lead**.

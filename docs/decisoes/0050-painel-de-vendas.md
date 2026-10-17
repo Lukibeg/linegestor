@@ -34,6 +34,15 @@ nele (a regra do patch que ainda não subiu).
   ficha liga os dois); o contato e o WhatsApp; o **valor** (em R$); o **Sobre a negociação**; os
   produtos; quem cuida (o responsável); as etiquetas. A **Proposta enviada** pede o valor (a regra da
   etapa, que muda nos Ajustes como as outras).
+- **Os campos do Comercial.** O painel de Vendas nasce com os campos do painel Ingline - Comercial do
+  Helena (17/10, no print do Luan: *"vc n colocou esses campos personalizados aqui, só n precisa colocar o
+  do área de atuação"*): **CNPJ** (texto curto), **Contatos principais** (texto longo: na ficha, fica junto
+  do Sobre a negociação), **Origem de lead** (lista: Indicação, Site, Instagram, Google, WhatsApp, Evento,
+  Prospecção ativa e Cliente da base) e **Indicação** (texto curto: quem indicou). A **Área de atuação**
+  ficou de fora. São campos do painel como os outros (`CAMPOS_DO_PAINEL_DE_VENDAS`, no `@gestor/shared`):
+  a equipe muda o nome, as opções e a ordem, desativa e inclui em Ajustes › Campos; na nova negociação,
+  aparecem em "Do painel Comercial", e na ficha, em Detalhes. O robô e o n8n preenchem pelo nome do
+  campo e da opção, como nos chamados.
 - **O valor por produto.** Na prévia, em 17/10, nos comentários: *"eu quero que tenha como dividir o
   valor por produtos e no final tenha o total"*. O Valor da negociação (na ficha e na nova negociação)
   tem **Um valor só** (o campo de sempre) ou **Por produto**: cada produto da negociação com o seu valor
@@ -125,7 +134,8 @@ nele (a regra do patch que ainda não subiu).
   ganhas e as perdidas do último ano, uma ou mais por mês para os ganhos mês a mês, três delas no começo
   do mês passado para a comparação do Este mês, e o funil de agora) e a meta de R$ 40 mil. Três têm o
   valor por produto (a Padaria Estrela, a Rede Farma Mais e as filiais do Bom Preço), e a da Padaria
-  Estrela tem a proposta em PDF anexada, que abre sem baixar (decisão 0051).
+  Estrela tem a proposta em PDF anexada, que abre sem baixar (decisão 0051). Algumas têm os campos do
+  Comercial preenchidos (a origem, quem indicou, os contatos principais).
 
 **Alternativas consideradas.**
 

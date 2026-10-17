@@ -210,6 +210,22 @@ export const ETAPAS_DO_PAINEL_DE_VENDAS: Array<Pick<EtapaPainel, 'nome' | 'tipo'
   { nome: 'Perdido', tipo: 'fechado', nivel: null, obrigatorios: [], resultado: 'perdido' },
 ];
 
+/**
+ * Os campos com que o painel de Vendas nasce: os do painel Ingline - Comercial do Helena (o print do Luan,
+ * em 17/10: "vc n colocou esses campos personalizados aqui, só n precisa colocar o do área de atuação").
+ * São campos do painel como os outros: a equipe muda o nome, as opções e a ordem, desativa e inclui em
+ * Ajustes › Campos.
+ */
+export const CAMPOS_DO_PAINEL_DE_VENDAS: ReadonlyArray<{ nome: string; tipo: TipoCampo; dica: string; opcoes: string[] }> = [
+  { nome: 'CNPJ', tipo: 'texto', dica: 'O CNPJ da empresa (o de quem já é cliente também está no cadastro).', opcoes: [] },
+  { nome: 'Contatos principais', tipo: 'texto_longo', dica: 'Quem decide e quem vai usar: o nome, o cargo e o telefone de cada um.', opcoes: [] },
+  {
+    nome: 'Origem de lead', tipo: 'lista', dica: 'Por onde a empresa chegou até a Ingline.',
+    opcoes: ['Indicação', 'Site', 'Instagram', 'Google', 'WhatsApp', 'Evento', 'Prospecção ativa', 'Cliente da base'],
+  },
+  { nome: 'Indicação', tipo: 'texto', dica: 'Quem indicou: a pessoa ou a empresa.', opcoes: [] },
+];
+
 /** Os ajustes guardados podem ser de antes de um campo novo: completa com o padrão. */
 export function ajustesDoPainelCompletos(v: Partial<AjustesDoPainel> | null | undefined): AjustesDoPainel {
   return { ...AJUSTES_PAINEL_PADRAO, ...(v ?? {}) };

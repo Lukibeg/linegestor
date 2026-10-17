@@ -24,7 +24,8 @@ import { eq } from 'drizzle-orm';
 import { tickets } from '@gestor/db';
 import {
   AJUSTES_DO_PAINEL_DE_VENDAS, diaLocal, instanteLocal, MOTIVOS_DE_PERDA_PADRAO, reais, somarDias, textoDoEvento, TROCA_ENTRA_NO_FUNIL,
-  NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEIncidente, negociacaoNaoEPai, VALOR_E_A_SOMA, VALOR_SO_DOS_PRODUTOS,
+  NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEIncidente, negociacaoNaoEPai, VALOR_E_A_SOMA, VALOR_SO_DOS_PRODUTOS, CAMPOS_DO_PAINEL_DE_VENDAS,
+  type CampoPersonalizado,
   type EtapaPainel, type Painel, type RelatorioDeVendas,
 } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
@@ -105,6 +106,11 @@ describe('o painel de Vendas', () => {
       camposDesligados: expect.arrayContaining(['assunto', 'gravidade', 'operadoras']),
     });
     expect(await auditoriaDe(com.id)).toEqual([expect.stringContaining('Criou o painel Comercial (COM, de Vendas)')]);
+    // os campos do Comercial do Helena (o print do Luan, 17/10), menos a Área de atuação
+    const campos = ((await s.get('/atendimento/opcoes')).json().campos as CampoPersonalizado[]).filter((c) => c.painelId === com.id);
+    expect(campos.map((c) => `${c.nome}:${c.tipo}`)).toEqual(['CNPJ:texto', 'Contatos principais:texto_longo', 'Origem de lead:lista', 'Indicação:texto']);
+    expect(campos.find((c) => c.nome === 'Origem de lead')!.opcoes.map((o) => o.nome)).toEqual(CAMPOS_DO_PAINEL_DE_VENDAS[2]!.opcoes);
+    expect(await auditoriaDe(com.id)).toEqual([expect.stringContaining('e os campos CNPJ, Contatos principais, Origem de lead e Indicação')]);
   });
 
   it('o tipo não muda depois; os motivos e a meta ficam quando não vêm', async () => {
@@ -355,6 +361,20 @@ describe('o histórico e a troca de painel', () => {
     const f = await ficha(negociacao.codigo);
     expect(f).toMatchObject({ painelId: com.id, valor: 90_000, pai: null });
     expect((f.ligacoes as Array<{ chamado: { codigo: string } }>).map((l) => l.chamado.codigo)).toEqual([chamado.codigo]);
+  });
+
+  it('os campos do Comercial: a negociação nasce com eles preenchidos (pelo nome, como o robô e o n8n mandam)', async () => {
+    const n = await abrir(camila, {
+      titulo: 'Central para a clínica nova', empresa: 'Clínica Sorriso', campos: { CNPJ: '11.444.777/0001-61', 'Origem de lead': 'indicação', 'Indicação': 'Dra. Lívia, do Prado & Lima' },
+    });
+    const f = await ficha(n.codigo);
+    const campos = ((await s.get('/atendimento/opcoes')).json().campos as CampoPersonalizado[]).filter((c) => c.painelId === com.id);
+    const id = (nome: string) => campos.find((c) => c.nome === nome)!.id;
+    const origem = campos.find((c) => c.nome === 'Origem de lead')!.opcoes.find((o) => o.nome === 'Indicação')!.id;
+    expect(f.campos).toEqual({ [id('CNPJ')]: '11.444.777/0001-61', [id('Origem de lead')]: origem, [id('Indicação')]: 'Dra. Lívia, do Prado & Lima' });
+    const errada = await camila.post('/atendimento/chamados', { painelId: com.id, titulo: 'Outra', empresa: 'X', campos: { 'Origem de lead': 'Rádio' } });
+    expect(errada.statusCode).toBe(400);
+    expect(errada.json().error).toContain('"Rádio" não é uma das opções');
   });
 
   it('a negociação não tem pai nem filhos, nem entra num problema', async () => {
