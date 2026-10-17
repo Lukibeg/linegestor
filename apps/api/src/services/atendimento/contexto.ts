@@ -250,6 +250,9 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     valor: t.valueCents ?? null, empresa: t.prospect ?? null,
     // o valor por produto: só dos produtos que o cartão mostra (o painel que desligou os produtos não mostra a divisão)
     valoresDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.productValues ?? {}).filter(([id]) => t.productIds.includes(id))) : {},
+    // a ativação (só registro: não soma no quadro, no relatório nem na meta)
+    ativacao: t.setupCents ?? null,
+    ativacoesDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.productSetup ?? {}).filter(([id]) => t.productIds.includes(id))) : {},
     resultado: e?.etapa.resultado ?? null, motivoPerda: e?.etapa.resultado === 'perdido' ? t.lostReason ?? null : null,
   };
 }

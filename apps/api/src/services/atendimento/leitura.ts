@@ -64,7 +64,7 @@ export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number): DadosObriga
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
     tempoMinutos,
     campos: (t.customFields as ValoresDosCampos | null) ?? {},
-    valor: t.valueCents ?? null, empresa: t.prospect ?? null, motivoPerda: t.lostReason ?? null,
+    valor: t.valueCents ?? null, ativacao: t.setupCents ?? null, empresa: t.prospect ?? null, motivoPerda: t.lostReason ?? null,
   };
 }
 

@@ -9,17 +9,17 @@
  *    que fechou, ou o motivo da perda — e o confete é do Ganho.
  */
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { linhasDoValorPorProduto, movimentoDeNivel, nomeDoObrigatorio, type EtapaPainel, type FichaChamado, type Painel, type PessoaCurta, type ValoresDosProdutos } from '@gestor/shared';
+import { movimentoDeNivel, nomeDoObrigatorio, type EtapaPainel, type FichaChamado, type Painel, type PessoaCurta, type ValoresDosProdutos } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
 import { Campo, EscolherComBusca, Modal, Spinner, mensagemErro, useToast } from '../../components/ui/index.js';
 import { LinkDoChamado, ehDeVendas, painelDe, useDepoisDeMudar, useOpcoes } from './comum.js';
-import { JanelaResultado, type ResultadoEscolhido } from './venda.js';
+import { JanelaResultado, linhasDoValor, type ResultadoEscolhido } from './venda.js';
 
-/** O que o mover precisa saber do chamado (o valor e o valor por produto: a janela do Ganho já vem com eles). */
+/** O que o mover precisa saber do chamado (a mensalidade, a ativação e o valor por produto: a janela do Ganho já vem com eles). */
 export type Movivel = {
   id: string; codigo: string; painelId: string; etapaId: string; responsavel: PessoaCurta | null; valor?: number | null;
-  produtos?: Array<{ id: string; nome: string }>; valoresDosProdutos?: ValoresDosProdutos;
+  ativacao?: number | null; produtos?: Array<{ id: string; nome: string }>; valoresDosProdutos?: ValoresDosProdutos; ativacoesDosProdutos?: ValoresDosProdutos;
 };
 
 type Escalonando = { c: Movivel; para: EtapaPainel; de: EtapaPainel | undefined; sentido: 'sobe' | 'desce' };
@@ -101,11 +101,11 @@ export function useMover(): { mover: (c: Movivel, etapaId: string) => Promise<Fi
     return executar(c, para);
   }, [opcoes.data, executar]);
 
-  /** O resultado escolhido na janela: o valor que mudou vai antes (fica no histórico), depois o movimento. */
+  /** O resultado escolhido na janela: a mensalidade e a ativação que mudaram vão antes (ficam no histórico), depois o movimento. */
   const marcar = useCallback(async (m: Marcando, r: ResultadoEscolhido) => {
-    if (r.valor !== undefined) {
+    if (r.valor !== undefined || r.ativacao !== undefined) {
       try {
-        await depois(api.atendimento.alterar(m.c.id, { valor: r.valor }));
+        await depois(api.atendimento.alterar(m.c.id, { ...(r.valor !== undefined ? { valor: r.valor } : {}), ...(r.ativacao !== undefined ? { ativacao: r.ativacao } : {}) }));
       } catch (e) { toast.push('erro', mensagemErro(e)); return; }
     }
     setMarcando(null);
@@ -118,7 +118,7 @@ export function useMover(): { mover: (c: Movivel, etapaId: string) => Promise<Fi
         onConfirmar={async (motivo, responsavelId) => { const e = escalonando; setEscalonando(null); await executar(e.c, e.para, { motivo, responsavelId }); }} />}
       {travado && <JanelaTravado t={travado} onFechar={() => setTravado(null)} />}
       {marcando && <JanelaResultado codigo={marcando.c.codigo} valor={marcando.c.valor} para={marcando.para} painel={marcando.painel}
-        porProduto={linhasDoValorPorProduto(marcando.c.produtos ?? [], marcando.c.valoresDosProdutos)}
+        ativacao={marcando.c.ativacao ?? null} porProduto={linhasDoValor(marcando.c.produtos ?? [], marcando.c.valoresDosProdutos, marcando.c.ativacoesDosProdutos)}
         onFechar={() => setMarcando(null)} onConfirmar={(r) => marcar(marcando, r)} />}
     </>
   );

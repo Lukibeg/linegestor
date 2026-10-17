@@ -1654,10 +1654,17 @@ export const tickets = pgTable(
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
     /** O agendado que criou este chamado */
     scheduleId: text('schedule_id'),
-    /** A negociação (painel de Vendas, 2.0.1): o valor, em centavos (até R$ 100 milhões: não cabe num integer) */
+    /**
+     * A negociação (painel de Vendas, 2.0.1): o valor — a MENSALIDADE —, em centavos (até R$ 100 milhões:
+     * não cabe num integer). É o que conta no quadro, no relatório e na meta.
+     */
     valueCents: bigint('value_cents', { mode: 'number' }),
-    /** A negociação: o valor de cada produto ({id do produto: centavos}); com ele, value_cents é a soma */
+    /** A negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, value_cents é a soma */
     productValues: jsonb('product_values').$type<Record<string, number>>().notNull().default({}),
+    /** A negociação: a ATIVAÇÃO (paga uma vez), em centavos — só registro: não entra no relatório nem na meta */
+    setupCents: bigint('setup_cents', { mode: 'number' }),
+    /** A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma */
+    productSetup: jsonb('product_setup').$type<Record<string, number>>().notNull().default({}),
     /** A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) */
     prospect: text('prospect'),
     /** Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) */

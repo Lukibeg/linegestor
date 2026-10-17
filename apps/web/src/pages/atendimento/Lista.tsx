@@ -341,7 +341,7 @@ function Tabela({ itens, total, opcoes, ordem, mostrarPainel, vendas = false, pa
               <Th o={ordem} col={vendas ? 'empresa' : 'cliente'}>{vendas ? 'Empresa' : 'Cliente'}</Th>
               <Th o={ordem} col="etapa">Etapa</Th>
               {vendas ? (
-                <Th o={ordem} col="valor">Valor</Th>
+                <Th o={ordem} col="valor">Mensalidade</Th>
               ) : (
                 <>
                   <Th o={ordem} col="prioridade">Prioridade</Th>

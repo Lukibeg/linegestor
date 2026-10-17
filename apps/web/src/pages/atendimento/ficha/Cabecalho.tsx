@@ -62,7 +62,7 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
         {vendas ? (
           <>
             <ChipResultado r={f.resultado} motivo={f.motivoPerda} />
-            {f.valor !== null && <Chip tone="neutral" className="tnum font-semibold" title="O valor da negociação">{reaisInteiros(f.valor)}</Chip>}
+            {f.valor !== null && <Chip tone="neutral" className="tnum font-semibold" title="A mensalidade da negociação (o que conta no relatório e na meta)">{reaisInteiros(f.valor)}/mês</Chip>}
           </>
         ) : <ChipPrioridade p={f.prioridade} />}
         {f.tipoChamado === 'problema' && <Chip tone="rosa" title="Problema: junta os incidentes de várias empresas"><Layers size={12} /> Problema</Chip>}

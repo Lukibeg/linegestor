@@ -34,7 +34,8 @@ import {
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
-  valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, type ValoresDosProdutos,
+  valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
+  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, type ValoresDosProdutos,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca,
   preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
@@ -139,8 +140,11 @@ type ChamadoRow = {
   criadoEm: string; atualizadoEm: string; ultimaAtividadeEm: string; deletedAt: string | null;
   /** a negociação (painel de Vendas): o valor em centavos, a empresa que ainda não é cliente e o motivo da perda */
   valor: number | null; empresa: string | null; motivoPerda: string | null;
-  /** a negociação: o valor de cada produto ({id do produto: centavos}); com ele, o valor é a soma */
+  /** a negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, o valor é a soma */
   valoresDosProdutos: ValoresDosProdutos;
+  /** a negociação: a ativação (só registro), única ou por produto */
+  ativacao: number | null;
+  ativacoesDosProdutos: ValoresDosProdutos;
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
 type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null; citados: string[] };
@@ -476,6 +480,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       valor: t.valor, empresa: t.empresa,
       // o valor por produto: só dos produtos que o cartão mostra (como no servidor)
       valoresDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.valoresDosProdutos).filter(([id]) => t.produtos.includes(id))) : {},
+      ativacao: t.ativacao,
+      ativacoesDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.ativacoesDosProdutos).filter(([id]) => t.produtos.includes(id))) : {},
       resultado: e?.resultado ?? null, motivoPerda: e?.resultado === 'perdido' ? t.motivoPerda : null,
     };
   }
@@ -639,7 +645,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       relato: t.relato, descricao: t.descricao, assuntoId: t.assuntoId, tipo: t.tipo, gravidade: t.gravidade, alcance: t.alcance, prioridade: t.prioridade,
       produtos: t.produtos, operadoras: t.operadoras, responsavelId: t.responsavelId,
       solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id), campos: t.campos,
-      valor: t.valor, empresa: t.empresa, motivoPerda: t.motivoPerda,
+      valor: t.valor, ativacao: t.ativacao, empresa: t.empresa, motivoPerda: t.motivoPerda,
     };
   }
   /** Os campos do painel que vieram no pedido, conferidos (as mesmas mensagens do servidor). */
@@ -770,15 +776,21 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ? valorPorProduto({ produtos, valores: {}, valor: null }, { valores: usa('produtos') ? d.valoresDosProdutos ?? {} : {}, ...(d.valor !== null ? { valor: d.valor } : {}) })
       : null;
     if (conta && !conta.ok) throw bad(conta.erro);
+    const contaAtivacao = vendas
+      ? valorPorProduto({ produtos, valores: {}, valor: null }, { valores: usa('produtos') ? d.ativacoesDosProdutos ?? {} : {}, ...(d.ativacao !== null ? { valor: d.ativacao } : {}) }, ATIVACAO_E_A_SOMA)
+      : null;
+    if (contaAtivacao && !contaAtivacao.ok) throw bad(contaAtivacao.erro);
     const valor = conta?.ok ? conta.valor : null;
     const valoresDosProdutos = conta?.ok ? conta.valores : {};
+    const ativacao = contaAtivacao?.ok ? contaAtivacao.valor : null;
+    const ativacoesDosProdutos = contaAtivacao?.ok ? contaAtivacao.valores : {};
     const empresa = vendas && !clienteId ? d.empresa ?? null : null;
 
     const dados: DadosObrigatorios = {
       tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
       assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
       produtos, operadoras, responsavelId: d.responsavelId ?? null,
-      solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, empresa,
+      solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, ativacao, empresa,
     };
     // o que o painel pede para abrir vale para quem abre na tela; o robô e o agendado abrem sempre
     const faltam = origem === 'manual' || origem === 'botao' ? faltaParaAbrir(dados, painel.ajustes) : [];
@@ -826,7 +838,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       respondidoEm: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? iso(agora) : null,
       resolvidoEm: null, fechadoEm: null, reaberto: 0, alertas: {}, agendadoId: opts.agendadoId ?? null, criadoPorId: pessoa,
       criadoEm: iso(agora), atualizadoEm: iso(agora), ultimaAtividadeEm: iso(agora), deletedAt: null,
-      valor, empresa, motivoPerda: null, valoresDosProdutos,
+      valor, empresa, motivoPerda: null, valoresDosProdutos, ativacao, ativacoesDosProdutos,
     };
     A.chamados.push(t);
     registrarEvento(id, 'criado', ator, { origem, etapa: etapa.nome, etapaId: etapa.id, painel: painel.nome, ...(vendas ? { venda: true } : {}) }, quando());
@@ -962,19 +974,28 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // leva o valor dele junto) — como no servidor
     if (painel.tipo === 'vendas') {
       const produtosAgora = set.produtos ?? t.produtos;
-      const conta = valorPorProduto(
-        { produtos: t.produtos, valores: t.valoresDosProdutos, valor: t.valor },
-        { produtos: produtosAgora, ...(d.valoresDosProdutos !== undefined && usa('produtos') ? { valores: d.valoresDosProdutos } : {}), ...(d.valor !== undefined ? { valor: d.valor } : {}) },
-      );
-      if (!conta.ok) throw bad(conta.erro);
-      if (!mesmoValorPorProduto(conta.valores, t.valoresDosProdutos)) {
-        set.valoresDosProdutos = conta.valores;
-        const nomes = (ids: string[]) => ids.map((id) => ({ id, nome: S.products.find((x) => x.id === id)?.name ?? '?' }));
-        campo('valoresDosProdutos', NOME_VALOR_POR_PRODUTO, textoDoValorPorProduto(nomes(t.produtos), t.valoresDosProdutos), textoDoValorPorProduto(nomes(produtosAgora), conta.valores), t.valoresDosProdutos);
-      }
-      if (conta.valor !== t.valor) {
-        set.valor = conta.valor;
-        campo('valor', NOME_CAMPO.valor, t.valor === null ? null : reais(t.valor), conta.valor === null ? null : reais(conta.valor), t.valor);
+      const nomes = (ids: string[]) => ids.map((id) => ({ id, nome: S.products.find((x) => x.id === id)?.name ?? '?' }));
+      const partes = [
+        { valorAntes: t.valor, valoresAntes: t.valoresDosProdutos, pedidoValor: d.valor, pedidoValores: d.valoresDosProdutos, erro: VALOR_E_A_SOMA,
+          nome: NOME_MENSALIDADE, nomePorProduto: NOME_VALOR_POR_PRODUTO, chave: 'valor', chavePorProduto: 'valoresDosProdutos' },
+        { valorAntes: t.ativacao, valoresAntes: t.ativacoesDosProdutos, pedidoValor: d.ativacao, pedidoValores: d.ativacoesDosProdutos, erro: ATIVACAO_E_A_SOMA,
+          nome: NOME_ATIVACAO, nomePorProduto: NOME_ATIVACAO_POR_PRODUTO, chave: 'ativacao', chavePorProduto: 'ativacoesDosProdutos' },
+      ] as const;
+      for (const x of partes) {
+        const conta = valorPorProduto(
+          { produtos: t.produtos, valores: x.valoresAntes, valor: x.valorAntes },
+          { produtos: produtosAgora, ...(x.pedidoValores !== undefined && usa('produtos') ? { valores: x.pedidoValores } : {}), ...(x.pedidoValor !== undefined ? { valor: x.pedidoValor } : {}) },
+          x.erro,
+        );
+        if (!conta.ok) throw bad(conta.erro);
+        if (!mesmoValorPorProduto(conta.valores, x.valoresAntes)) {
+          set[x.chavePorProduto] = conta.valores;
+          campo(x.chavePorProduto, x.nomePorProduto, textoDoValorPorProduto(nomes(t.produtos), x.valoresAntes), textoDoValorPorProduto(nomes(produtosAgora), conta.valores), x.valoresAntes);
+        }
+        if (conta.valor !== x.valorAntes) {
+          set[x.chave] = conta.valor;
+          campo(x.chave, x.nome, x.valorAntes === null ? null : reais(x.valorAntes), conta.valor === null ? null : reais(conta.valor), x.valorAntes);
+        }
       }
     }
     if (d.operadoras !== undefined) {
@@ -1152,7 +1173,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   function frasesDoMovimento(codigo: string, m: Movimento, sentido: 'sobe' | 'desce' | null, motivo: string | null, venda?: { valor: number | null; motivoPerda: string | null } | null) {
-    if (m.para.resultado === 'ganho') return `Marcou ${codigo} como ganho${venda?.valor != null ? ` (${reais(venda.valor)})` : ''}, estava em ${m.de?.nome ?? '?'}`;
+    if (m.para.resultado === 'ganho') return `Marcou ${codigo} como ganho${venda?.valor != null ? ` (${reais(venda.valor)}/mês)` : ''}, estava em ${m.de?.nome ?? '?'}`;
     if (m.para.resultado === 'perdido') return `Marcou ${codigo} como perdido${venda?.motivoPerda ? `: ${venda.motivoPerda}` : ''} (estava em ${m.de?.nome ?? '?'})`;
     const verbo = sentido === 'sobe' ? 'Escalonou' : sentido === 'desce' ? 'Voltou' : 'Moveu';
     return `${verbo} ${codigo} de ${m.de?.nome ?? '?'} para ${m.para.nome}${m.reabriu ? ' (reabriu)' : ''}${motivo ? `: ${motivo}` : ''}`;
@@ -3033,6 +3054,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           ...(n.contato ? { contatoNome: n.contato[0], contatoTelefone: n.contato[1] } : {}),
           valor: n.valor !== undefined ? Math.round(n.valor * 100) : null,
           ...(n.porProduto ? { valoresDosProdutos: Object.fromEntries(Object.entries(n.porProduto).map(([codigo, v]) => [produtoDo(codigo), Math.round(v * 100)])) } : {}),
+          ativacao: n.ativacao !== undefined ? Math.round(n.ativacao * 100) : null,
+          ...(n.ativacaoPorProduto ? { ativacoesDosProdutos: Object.fromEntries(Object.entries(n.ativacaoPorProduto).map(([codigo, v]) => [produtoDo(codigo), Math.round(v * 100)])) } : {}),
           // os campos do painel, pelo nome (como o robô e o n8n mandam)
           ...(n.campos ? { campos: n.campos } : {}),
           produtos: (n.produtos ?? []).map(produtoDo), responsavelId: n.responsavel ? idDa(n.responsavel) : null, descricao: n.descricao ?? null,

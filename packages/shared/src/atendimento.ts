@@ -708,8 +708,9 @@ export type DadosObrigatorios = {
   tempoMinutos: number;
   /** os valores dos campos do painel (pelo id do campo) */
   campos: ValoresDosCampos;
-  /** a negociação (painel de Vendas): o valor em centavos, a empresa que ainda não é cliente e o motivo da perda */
+  /** a negociação (painel de Vendas): o valor (a mensalidade) e a ativação em centavos, a empresa que ainda não é cliente e o motivo da perda */
   valor?: number | null;
+  ativacao?: number | null;
   empresa?: string | null;
   motivoPerda?: string | null;
 };
@@ -723,7 +724,8 @@ function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
     // na negociação, a empresa que ainda não é cliente (escrita à mão) também conta como o cliente
     case 'cliente': return !c.clienteId && !preenchido(c.empresa);
     case 'contato': return !preenchido(c.contatoNome) && !preenchido(c.contatoTelefone);
-    case 'valor': return c.valor === null || c.valor === undefined;
+    // a proposta tem valor: a mensalidade ou a ativação (a venda só de ativação também anda)
+    case 'valor': return (c.valor ?? null) === null && (c.ativacao ?? null) === null;
     case 'relato': return !preenchido(c.relato);
     case 'descricao': return !preenchido(c.descricao);
     case 'assunto': return !c.assuntoId;
@@ -895,17 +897,25 @@ export const MAX_VALOR_EM_CENTAVOS = 10_000_000_000;
 export const ValorEmCentavosSchema = z.number().int('O valor vai em centavos').min(0, 'O valor não pode ser negativo').max(MAX_VALOR_EM_CENTAVOS, 'Valor alto demais');
 
 /**
- * O VALOR POR PRODUTO da negociação (o pedido do Luan na prévia, em 17/10: "quero que tenha como dividir o
- * valor por produtos e no final tenha o total"): o valor de cada produto da negociação, em centavos, pelo
- * id do produto. Com pelo menos um produto com valor, o valor da negociação é o **total** (a soma) — é ele
- * que vai para o quadro, o relatório e a meta; sem nenhum, vale o valor único. O produto que sai da
- * negociação leva o valor dele junto. Só o valor, sem quantidade.
+ * O VALOR DA NEGOCIAÇÃO: a **mensalidade** e a **ativação** (o pedido do Luan na prévia, em 17/10: "aqui
+ * tem q ter mensalidade e ativação" — e "a ativação n muda nada nos relatórios, ela só vai ter registro").
+ * O valor que conta (o quadro, o relatório, a meta) é a **mensalidade** (`valor`); a **ativação** (paga uma
+ * vez) fica registrada na negociação, no Ganho e na planilha, e não soma em lugar nenhum.
+ *
+ * As duas podem ser **por produto** (o pedido do mesmo dia: "dividir o valor por produtos e no final tenha
+ * o total"): a de cada produto da negociação, em centavos, pelo id do produto. Com pelo menos um produto
+ * com valor, a da negociação é o **total** (a soma); sem nenhum, vale a única. O produto que sai da
+ * negociação leva os valores dele junto. Sem quantidade.
  */
 export type ValoresDosProdutos = Record<string, number>;
 export const ValoresDosProdutosSchema = z.record(z.string().trim().min(1).max(60), ValorEmCentavosSchema)
   .refine((r) => Object.keys(r).length <= 50, 'Produtos demais no valor por produto');
-export const NOME_VALOR_POR_PRODUTO = 'Valor por produto';
-export const VALOR_E_A_SOMA = 'O valor desta negociação é o total dos produtos: mude o valor de cada produto (ou volte para Um valor só).';
+export const NOME_MENSALIDADE = 'Mensalidade';
+export const NOME_ATIVACAO = 'Ativação';
+export const NOME_VALOR_POR_PRODUTO = 'Mensalidade por produto';
+export const NOME_ATIVACAO_POR_PRODUTO = 'Ativação por produto';
+export const VALOR_E_A_SOMA = 'A mensalidade desta negociação é o total dos produtos: mude a de cada produto (ou volte para Um valor só).';
+export const ATIVACAO_E_A_SOMA = 'A ativação desta negociação é o total dos produtos: mude a de cada produto (ou volte para Um valor só).';
 export const VALOR_SO_DOS_PRODUTOS = 'O valor por produto é só dos produtos da negociação.';
 
 /** O total do valor por produto (nulo: a negociação não está dividida por produto). */
@@ -931,6 +941,8 @@ export type ValorDaNegociacao = { produtos: string[]; valores: ValoresDosProduto
 export function valorPorProduto(
   atual: ValorDaNegociacao,
   pedido: { produtos?: string[]; valores?: ValoresDosProdutos | null; valor?: number | null },
+  /** a mensagem quando o pedido traz um total diferente da soma (a mensalidade ou a ativação) */
+  erroDaSoma: string = VALOR_E_A_SOMA,
 ): ({ ok: true } & ValorDaNegociacao) | { ok: false; erro: string } {
   const produtos = pedido.produtos ?? atual.produtos;
   if (pedido.valores && Object.keys(pedido.valores).some((id) => !produtos.includes(id))) return { ok: false, erro: VALOR_SO_DOS_PRODUTOS };
@@ -940,7 +952,7 @@ export function valorPorProduto(
   const soma = somaDosProdutos(valores);
   if (soma !== null) {
     if (soma > MAX_VALOR_EM_CENTAVOS) return { ok: false, erro: 'Valor alto demais' };
-    if (pedido.valor !== undefined && pedido.valor !== soma) return { ok: false, erro: VALOR_E_A_SOMA };
+    if (pedido.valor !== undefined && pedido.valor !== soma) return { ok: false, erro: erroDaSoma };
     return { ok: true, produtos, valores, valor: soma };
   }
   const dividida = somaDosProdutos(atual.valores) !== null;
@@ -1157,8 +1169,11 @@ export const ChamadoCriarSchema = z.object({
   campos: ValoresEntradaSchema.default({}),
   /** a negociação (painel de Vendas): o valor em centavos e a empresa que ainda não é cliente */
   valor: ValorEmCentavosSchema.nullish().transform((v) => v ?? null),
-  /** a negociação: o valor de cada produto (com ele, o valor é o total) */
+  /** a negociação: a mensalidade de cada produto (com ela, o valor é o total) */
   valoresDosProdutos: ValoresDosProdutosSchema.optional(),
+  /** a negociação: a ativação (paga uma vez; só registro), única ou por produto */
+  ativacao: ValorEmCentavosSchema.nullish().transform((v) => v ?? null),
+  ativacoesDosProdutos: ValoresDosProdutosSchema.optional(),
   empresa: TextoOpcional(120),
 });
 export type ChamadoCriar = z.infer<typeof ChamadoCriarSchema>;
@@ -1194,6 +1209,8 @@ export const ChamadoAlterarSchema = z.object({
   /** a negociação (painel de Vendas); o valor por produto vem inteiro (vazio ou nulo: volta para o valor único) */
   valor: ValorEmCentavosSchema.nullable().optional(),
   valoresDosProdutos: ValoresDosProdutosSchema.nullable().optional(),
+  ativacao: ValorEmCentavosSchema.nullable().optional(),
+  ativacoesDosProdutos: ValoresDosProdutosSchema.nullable().optional(),
   empresa: TextoOpcional(120).optional(),
   motivoPerda: TextoOpcional(200).optional(),
 });
@@ -1468,8 +1485,12 @@ export type CartaoChamado = {
   fechadoEm: string | null;
   /** a negociação (painel de Vendas): o valor em centavos e a empresa que ainda não é cliente */
   valor: number | null;
-  /** a negociação: o valor de cada produto, pelo id (vazio: o valor é um só; com ele, o valor é o total) */
+  /** a negociação: a mensalidade de cada produto, pelo id (vazio: o valor é um só; com ela, o valor é o total) */
   valoresDosProdutos: ValoresDosProdutos;
+  /** a negociação: a ativação (paga uma vez; só registro: não soma no quadro, no relatório nem na meta) */
+  ativacao: number | null;
+  /** a ativação de cada produto, pelo id */
+  ativacoesDosProdutos: ValoresDosProdutos;
   empresa: string | null;
   /** como acabou (a etapa final do painel de Vendas: Ganho ou Perdido) e, no Perdido, o motivo */
   resultado: ResultadoDaVenda | null;
@@ -1704,8 +1725,8 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     // a negociação (o painel de Vendas) é criada; o chamado é aberto
     case 'criado': return `${d.venda ? 'criou a negociação' : 'abriu o chamado'}${d.origem && d.origem !== 'manual' ? ` (${NOME_ORIGEM[d.origem as Origem] ?? d.origem})` : ''}${d.etapa ? ` em ${d.etapa}` : ''}`;
     case 'etapa': {
-      // a negociação que acabou: "marcou como ganho (R$ 12.000,00), estava em Negociação"
-      if (d.resultado === 'ganho') return `marcou como ganho${typeof d.valor === 'number' ? ` (${reais(d.valor)})` : ''}, estava em ${d.de?.nome ?? '?'}${d.concluidoEm ? ` — fechou em ${diaComAno(d.concluidoEm)}` : ''}`;
+      // a negociação que acabou: "marcou como ganho (R$ 12.000,00/mês), estava em Negociação" (o valor é a mensalidade)
+      if (d.resultado === 'ganho') return `marcou como ganho${typeof d.valor === 'number' ? ` (${reais(d.valor)}/mês)` : ''}, estava em ${d.de?.nome ?? '?'}${d.concluidoEm ? ` — fechou em ${diaComAno(d.concluidoEm)}` : ''}`;
       if (d.resultado === 'perdido') return `marcou como perdido${d.motivoPerda ? `: ${d.motivoPerda}` : ''} (estava em ${d.de?.nome ?? '?'})${d.concluidoEm ? ` — em ${diaComAno(d.concluidoEm)}` : ''}`;
       const verbo = d.sentido === 'sobe' ? 'escalonou' : d.sentido === 'desce' ? 'voltou de nível' : 'moveu';
       return `${verbo} de ${d.de?.nome ?? '?'}${nomeNivel(d.de?.nivel)} para ${d.para?.nome ?? '?'}${nomeNivel(d.para?.nivel)}${d.motivo ? `: ${d.motivo}` : ''}`;
@@ -2263,12 +2284,16 @@ export function csvDosChamados(
   const deVendas = [...noArquivo].filter((id) => nomes.vendas?.(id));
   const soVendas = deVendas.length > 0 && deVendas.length === noArquivo.size;
   const venda = (c: CartaoChamado) => [
-    valorNaPlanilha(c.valor), c.resultado ? NOME_RESULTADO_DA_VENDA[c.resultado] : '', c.motivoPerda,
+    valorNaPlanilha(c.valor), valorNaPlanilha(c.ativacao), c.resultado ? NOME_RESULTADO_DA_VENDA[c.resultado] : '', c.motivoPerda,
   ];
-  const cabVenda = ['Valor (R$)', 'Resultado', 'Motivo da perda'];
-  // na negociação com valor por produto, a coluna dos produtos leva o valor de cada um
-  const produtosDaVenda = (c: CartaoChamado) => c.produtos
-    .map((p) => (c.valoresDosProdutos?.[p.id] !== undefined ? `${p.nome} (${reais(c.valoresDosProdutos[p.id]!)})` : p.nome)).join(', ');
+  const cabVenda = ['Mensalidade (R$)', 'Ativação (R$)', 'Resultado', 'Motivo da perda'];
+  // na negociação por produto, a coluna dos produtos leva a mensalidade e a ativação de cada um
+  const produtosDaVenda = (c: CartaoChamado) => c.produtos.map((p) => {
+    const m = c.valoresDosProdutos?.[p.id];
+    const a = c.ativacoesDosProdutos?.[p.id];
+    const partes = [m !== undefined ? `${reais(m)}/mês` : '', a !== undefined ? `ativação ${reais(a)}` : ''].filter(Boolean);
+    return partes.length ? `${p.nome} (${partes.join(', ')})` : p.nome;
+  }).join(', ');
   const cabExtras = extras.map((c) => (noArquivo.size > 1 ? `${c.nome} (${nomes.painel(c.painelId)})` : c.nome));
   const valoresExtras = (c: CartaoChamado) => extras.map((x) => (x.painelId === c.painelId ? textoDoValor(x, c.campos?.[x.id]) : ''));
   const cab = soVendas ? [

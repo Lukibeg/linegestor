@@ -180,10 +180,10 @@ function NumerosDaVenda({ p, r, carregando, lista }: { p: Painel; r: ResumoDoPai
   return (
     <div className="flex flex-col gap-2" data-vendas>
       <div className="grid grid-cols-2 gap-1.5">
-        <Numero rotulo="Em negociação" valor={v ? reaisCurto(v.emAndamento) : undefined} carregando={carregando} para={lista()} titulo="A soma do valor das negociações abertas"
+        <Numero rotulo="Em negociação" valor={v ? reaisCurto(v.emAndamento) : undefined} carregando={carregando} para={lista()} titulo="A soma das mensalidades das negociações abertas (a ativação não soma)"
           sub={v ? plural(v.emAndamentoQtd, 'aberta', 'abertas') : undefined} />
         <Numero rotulo="Ganho no mês" valor={v ? reaisCurto(v.ganhoNoMes) : undefined} carregando={carregando} para={enderecoDoRelatorio(p.id)} tom={v?.ganhoNoMes ? 'ok' : undefined}
-          titulo="O que foi ganho neste mês (pelo dia em que fechou)" sub={v ? `${plural(v.ganhosNoMes, 'ganha', 'ganhas')}, ${plural(v.perdidosNoMes, 'perdida', 'perdidas')}` : undefined} />
+          titulo="As mensalidades ganhas neste mês (pelo dia em que fechou; a ativação não soma)" sub={v ? `${plural(v.ganhosNoMes, 'ganha', 'ganhas')}, ${plural(v.perdidosNoMes, 'perdida', 'perdidas')}` : undefined} />
         <Numero rotulo="Sem dono" valor={r?.semDono} carregando={carregando} para={lista({ responsavel: 'ninguem' })} tom={r?.semDono ? 'signal' : undefined} titulo="Negociações sem responsável" />
         <Numero rotulo="Minhas" valor={r?.meus} carregando={carregando} para={lista({ responsavel: 'eu' })} titulo="As suas em aberto" />
       </div>

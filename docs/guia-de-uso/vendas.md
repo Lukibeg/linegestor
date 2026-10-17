@@ -1,9 +1,10 @@
 # Vendas: o painel do Comercial (Patch 2.0.1)
 
 O Comercial acompanha as negociações num painel igual ao dos chamados — o quadro, a lista, a ficha, as
-anotações, os avisos —, com o que é de venda: o **valor** (um só ou por produto, com o total), o
-**Ganho** e o **Perdido** (com o motivo), a **empresa que ainda não é cliente** e a **meta do mês**. Fica em **Suporte › Chamados**, como os outros
-painéis (o Suporte, o Desenvolvimento). A decisão inteira está em
+anotações, os avisos —, com o que é de venda: o **valor** — a **mensalidade** e a **ativação**, cada uma
+de um valor só ou por produto, com o total —, o **Ganho** e o **Perdido** (com o motivo), a **empresa que
+ainda não é cliente** e a **meta do mês**. Fica em **Suporte › Chamados**, como os outros painéis (o
+Suporte, o Desenvolvimento). A decisão inteira está em
 `docs/decisoes/0050-painel-de-vendas.md`.
 
 ---
@@ -17,7 +18,7 @@ painéis (o Suporte, o Desenvolvimento). A decisão inteira está em
 5. Em **As etapas**, o painel vem com Lead, Qualificação, Proposta enviada, Negociação, Ganho e
    Perdido. Mude os nomes e inclua etapas como quiser; o Ganho e o Perdido mudam de nome, mas não saem.
 6. Em **As regras**, confira os **motivos de perda** (a lista que aparece ao marcar como perdida) e
-   ponha a **meta do mês**, em R$ (vazia: sem meta).
+   ponha a **meta do mês**, em R$ de mensalidades (vazia: sem meta).
 7. O painel já vem com os campos do Comercial: **CNPJ**, **Contatos principais**, **Origem de lead** e
    **Indicação**. Para mudar o nome, as opções da Origem de lead ou a ordem, ou para incluir outro campo:
    **Ajustes › Campos**, no painel do Comercial.
@@ -26,10 +27,10 @@ painéis (o Suporte, o Desenvolvimento). A decisão inteira está em
 
 - **A tela dos painéis** mostra o cartão do Comercial: quanto está **em negociação** (e quantas), o
   **ganho no mês** (e quantas ganhas e perdidas), **sem dono**, as **suas** e a **barra da meta**.
-- **O quadro**: cada coluna soma o valor das negociações dela, e a de maior valor vem primeiro. Arraste
-  o cartão para mudar de etapa.
-- **A lista**: o valor no lugar da prioridade e do prazo; **Em aberto**, **Ganhas e perdidas** ou
-  **Todas**; **Exportar (CSV)** leva o valor, o resultado e o motivo da perda.
+- **O quadro**: cada coluna soma as mensalidades das negociações dela, e a de maior mensalidade vem
+  primeiro. Arraste o cartão para mudar de etapa.
+- **A lista**: a mensalidade no lugar da prioridade e do prazo; **Em aberto**, **Ganhas e perdidas** ou
+  **Todas**; **Exportar (CSV)** leva a mensalidade, a ativação, o resultado e o motivo da perda.
 - **Meu dia**, **observar**, **citar** um colega (@) e os **avisos** funcionam como nos chamados.
 
 ## 3. Uma negociação nova
@@ -41,7 +42,7 @@ painéis (o Suporte, o Desenvolvimento). A decisão inteira está em
 - O **contato** e o WhatsApp.
 - **O que está sendo negociado** (uma frase: "PABX em nuvem com 40 ramais").
 - O **valor** (pode vir depois: a **Proposta enviada** pede o valor) — **Um valor só** ou **Por
-  produto** (veja abaixo).
+  produto** (veja abaixo), com a **mensalidade** e a **ativação**.
 - **Sobre a negociação**: o que o cliente precisa, quem decide, a concorrência.
 - **Do painel Comercial**: o CNPJ, os contatos principais, a origem de lead e quem indicou (na ficha,
   ficam em Detalhes; os contatos, junto do Sobre a negociação).
@@ -49,18 +50,28 @@ painéis (o Suporte, o Desenvolvimento). A decisão inteira está em
 
 A negociação nasce no **Lead**.
 
+### A mensalidade e a ativação
+
+- A **mensalidade** (o que o cliente paga por mês) é **a que conta**: o quadro, o cartão do painel (Em
+  negociação, Ganho no mês e a meta), o relatório e o Ganho usam ela. Na tela, vem com o **/mês**.
+- A **ativação** (paga uma vez, no começo) **fica só registrada**: aparece na ficha, no Ganho, no histórico
+  e no Exportar, mas não entra em soma nenhuma. A negociação só com a ativação mostra no cartão
+  *"só ativação"*.
+- As duas são opcionais; a **Proposta enviada** aceita qualquer uma.
+
 ### O valor por produto
 
 No **Valor** (na nova negociação e na ficha), escolha **Por produto**:
 
-- cada produto da negociação aparece com o seu campo de valor; **Incluir produto** põe outro, e o **×**
-  tira (o produto sai da negociação com o valor dele);
-- embaixo fica o **Total**, que é o valor da negociação: o quadro, o relatório, a meta e o Ganho usam ele;
+- cada produto da negociação aparece com a sua **mensalidade** e a sua **ativação**; **Incluir produto**
+  põe outro, e o **×** tira (o produto sai da negociação com os valores dele);
+- embaixo ficam os dois **Totais**, que são a mensalidade e a ativação da negociação (o quadro, o
+  relatório, a meta e o Ganho usam o total das mensalidades);
 - o produto sem valor escrito fica de fora da soma;
-- para voltar a um valor só, **Um valor só**: o total fica como o valor.
+- para voltar a um valor só, **Um valor só**: os totais ficam como a mensalidade e a ativação.
 
-Com o valor por produto, o valor da negociação muda pelos produtos (não dá para escrever outro total).
-No **Exportar**, a coluna Produtos leva o valor de cada um.
+Com o valor por produto, a mensalidade e a ativação da negociação mudam pelos produtos (não dá para
+escrever outro total). No **Exportar**, a coluna Produtos leva os valores de cada um.
 
 ## 4. A proposta (o PDF)
 
@@ -73,9 +84,9 @@ embaixo). A imagem também abre grande; Word e Excel continuam baixando.
 
 Na ficha, **Ganhou** ou **Perdeu** (ou arraste o cartão para a coluna Ganho ou Perdido):
 
-- **Ganho**: confira o **valor fechado** (se mudou, o valor da negociação muda junto e fica no
-  histórico) e o **dia em que fechou**. Com o valor por produto, a janela mostra cada produto e o total:
-  se o valor fechado mudou, mude o valor de cada produto na ficha antes de marcar.
+- **Ganho**: confira a **mensalidade fechada** e a **ativação** (se mudaram, as da negociação mudam
+  junto e ficam no histórico) e o **dia em que fechou**. Com o valor por produto, a janela mostra cada
+  produto e os totais: se o valor fechado mudou, mude os valores de cada produto na ficha antes de marcar.
 - **Perdido**: escolha **o motivo** (o **Outro** pede para escrever) e o dia.
 
 O dia é hoje ou um que já passou: quem lança uma venda antiga marca o dia em que ela acabou de verdade.
@@ -89,9 +100,10 @@ painel).
 
 - **O período**: Este mês, Mês passado, Este trimestre, Últimos 90 dias, Este ano, ou dois dias. Fica
   no endereço da página: dá para mandar o link do jeito que está.
-- **O período em números**:
+- **O período em números** (em mensalidades; a ativação não entra):
   - o **ganho**, as **novas** (quantas entraram e quanto somam em propostas), o **perdido**, a
-    **conversão** (das que acabaram, quantas foram ganhas) e o **ticket médio** (o valor médio do ganho);
+    **conversão** (das que acabaram, quantas foram ganhas) e o **ticket médio** (a mensalidade média do
+    ganho);
   - embaixo de cada número, a **seta**: quanto mudou em relação ao período anterior (no Este mês, o
     mesmo pedaço do mês passado). Verde é melhor.
 - **Os ganhos mês a mês**: o ganho de cada mês, nos 12 meses até o do fim do período, e quanto mudou

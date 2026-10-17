@@ -106,11 +106,17 @@ type Form = {
   empresa: string;
   valor: number | null;
   valorValido: boolean;
-  /** a negociação: um valor só, ou o valor de cada produto (o total vira o valor) */
+  /** a negociação: um valor só, ou o de cada produto (os totais viram os da negociação) */
   modoValor: ModoDoValor;
+  /** a mensalidade de cada produto */
   valores: ValoresDosProdutos;
-  /** os produtos com o valor escrito errado */
+  /** os produtos com a mensalidade escrita errado */
   valoresInvalidos: string[];
+  /** a ativação (só registro): a única e a de cada produto */
+  ativacao: number | null;
+  ativacaoValida: boolean;
+  ativacoes: ValoresDosProdutos;
+  ativacoesInvalidas: string[];
 };
 
 /**
@@ -249,7 +255,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       avisarCliente: false,
       campos: {},
       jaECliente: true, empresa: '', valor: null, valorValido: true,
-      modoValor: 'unico', valores: {}, valoresInvalidos: [],
+      modoValor: 'unico', valores: {}, valoresInvalidos: [], ativacao: null, ativacaoValida: true, ativacoes: {}, ativacoesInvalidas: [],
     };
   });
   const mudar = (o: Partial<Form>) => { setF((x) => ({ ...x, ...o })); setMexeu(true); };
@@ -292,8 +298,9 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const catalogoDoValor = opcoes.produtos.filter((p) => !f.produtos.includes(p.id))
     .map((p) => ({ id: p.id, nome: p.nome, dica: produtosDoCliente.has(p.id) ? 'do cliente' : undefined }))
     .sort((a, b) => Number(!!b.dica) - Number(!!a.dica));
-  /** o valor de cada produto que ainda está na negociação */
+  /** a mensalidade e a ativação de cada produto que ainda está na negociação */
   const valoresQueVao: ValoresDosProdutos = Object.fromEntries(Object.entries(f.valores).filter(([id]) => f.produtos.includes(id)));
+  const ativacoesQueVao: ValoresDosProdutos = Object.fromEntries(Object.entries(f.ativacoes).filter(([id]) => f.produtos.includes(id)));
 
   // ---------- os assuntos do painel (o caminho inteiro; os ativos) ----------
   const assuntosDoPainel = useMemo(() => opcoes.assuntos.filter((a) => a.painelId === painel.id), [opcoes.assuntos, painel.id]);
@@ -326,7 +333,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const pedeForaDoFormulario = painel.ajustes.obrigatoriosAoAbrir.filter((c) => !idDaChave(c) && !CAMPOS_DO_FORMULARIO.includes(c as CampoObrigatorio));
 
   // não sair sem querer com o relato pela metade
-  const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim() || f.empresa.trim() || f.valor !== null || Object.keys(f.valores).length);
+  const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim() || f.empresa.trim() || f.valor !== null || f.ativacao !== null
+    || Object.keys(f.valores).length || Object.keys(f.ativacoes).length);
   const avisarEscreveu = useRef(naJanela?.onEscreveu);
   avisarEscreveu.current = naJanela?.onEscreveu;
   useEffect(() => { avisarEscreveu.current?.(escreveu); }, [escreveu]);
@@ -362,9 +370,14 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     if (f.titulo.trim().length < 3) { setErro('Escreva um título (pelo menos 3 letras).'); document.getElementById('novo-titulo')?.focus(); return; }
     if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
     if (precisaMotivo && !f.motivoPrioridade.trim()) { setErro('Trocar a prioridade sugerida pede o motivo.'); document.getElementById('novo-motivo-prioridade')?.focus(); return; }
-    if (vendas && !porProduto && !f.valorValido) { setErro('Escreva o valor como 12.500,00.'); document.getElementById('novo-valor-unico')?.focus(); return; }
-    const errado = porProduto ? f.produtos.find((id) => f.valoresInvalidos.includes(id)) : undefined;
-    if (errado) { setErro(`Escreva o valor de ${nomeDoProduto(errado)} como 12.500,00.`); document.querySelector<HTMLInputElement>(`#novo-valor [data-produto="${CSS.escape(nomeDoProduto(errado))}"] input`)?.focus(); return; }
+    if (vendas && !porProduto && !f.valorValido) { setErro('Escreva a mensalidade como 1.200,00.'); document.getElementById('novo-valor-unico')?.focus(); return; }
+    if (vendas && !porProduto && !f.ativacaoValida) { setErro('Escreva a ativação como 1.500,00.'); document.getElementById('novo-valor-ativacao')?.focus(); return; }
+    const errado = porProduto ? f.produtos.find((id) => f.valoresInvalidos.includes(id) || f.ativacoesInvalidas.includes(id)) : undefined;
+    if (errado) {
+      setErro(`Escreva os valores de ${nomeDoProduto(errado)} como 1.200,00.`);
+      document.querySelector<HTMLInputElement>(`#novo-valor [data-produto="${CSS.escape(nomeDoProduto(errado))}"] input`)?.focus();
+      return;
+    }
     // a negociação: um cliente da base ou a empresa que ainda não é (escrita à mão)
     const clienteId = vendas && !f.jaECliente ? '' : f.clienteId;
     const d: ChamadoCriarEntrada = {
@@ -374,10 +387,12 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       relato: vendas ? null : f.relato.trim() || null,
       descricao: f.descricao.trim() || null,
       clienteId: clienteId || null,
-      // por produto (com algum valor escrito), o valor é o total; sem nenhum, vale o valor único
+      // por produto (com algum valor escrito), a mensalidade e a ativação são os totais; sem nenhum, valem as únicas
       ...(vendas ? {
         valor: porProduto && Object.keys(valoresQueVao).length ? null : f.valorValido ? f.valor : null,
         ...(porProduto ? { valoresDosProdutos: valoresQueVao } : {}),
+        ativacao: porProduto && Object.keys(ativacoesQueVao).length ? null : f.ativacaoValida ? f.ativacao : null,
+        ...(porProduto ? { ativacoesDosProdutos: ativacoesQueVao } : {}),
         empresa: !f.jaECliente ? f.empresa.trim() || null : null,
       } : {}),
       contatoNome: f.contatoNome.trim() || null,
@@ -582,23 +597,43 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             </Rotulado>
             {vendas && (
               <Rotulado rotulo="Valor" id="novo-valor" grupo obrigatorio={pede('valor')} falta={falta('valor')}
-                erro={!porProduto && !f.valorValido ? 'Escreva o valor como 12.500,00' : porProduto && f.valoresInvalidos.some((id) => f.produtos.includes(id)) ? 'Escreva cada valor como 12.500,00' : undefined}
-                dica={porProduto ? 'Cada produto com o seu valor; o total vira o valor da negociação.' : 'O valor da proposta (pode vir depois: a Proposta enviada pede). Por produto, cada um tem o seu valor e o total soma sozinho.'}>
+                erro={!porProduto && (!f.valorValido || !f.ativacaoValida) ? 'Escreva como 1.200,00'
+                  : porProduto && f.produtos.some((id) => f.valoresInvalidos.includes(id) || f.ativacoesInvalidas.includes(id)) ? 'Escreva cada valor como 1.200,00' : undefined}
+                dica={porProduto ? 'Cada produto com a mensalidade e a ativação dele; os totais viram os da negociação.'
+                  : 'A mensalidade e a ativação da proposta (podem vir depois: a Proposta enviada pede o valor). Por produto, cada um tem os seus e os totais somam sozinhos.'}>
                 <ValorDaNegociacao id="novo-valor" modo={f.modoValor} onModo={(m) => mudar({ modoValor: m })} podeDividir={usa('produtos')}
-                  valor={f.valor} onValor={(v, ok) => { mudar({ valor: v, valorValido: ok }); tirarFalta('valor'); }}
-                  valores={valoresQueVao} valorAntes={f.valorValido ? f.valor : null}
-                  onValorDoProduto={(id, c, ok) => {
-                    const valores = { ...f.valores };
-                    if (ok && c !== null) valores[id] = c; else delete valores[id];
-                    mudar({ valores, valoresInvalidos: ok ? f.valoresInvalidos.filter((x) => x !== id) : [...new Set([...f.valoresInvalidos, id])] });
-                    tirarFalta('valor');
+                  valorAntes={f.valorValido ? f.valor : null}
+                  mensalidade={{
+                    valor: f.valor, onValor: (v, ok) => { mudar({ valor: v, valorValido: ok }); tirarFalta('valor'); },
+                    valores: valoresQueVao,
+                    onValorDoProduto: (id, c, ok) => {
+                      const valores = { ...f.valores };
+                      if (ok && c !== null) valores[id] = c; else delete valores[id];
+                      mudar({ valores, valoresInvalidos: ok ? f.valoresInvalidos.filter((x) => x !== id) : [...new Set([...f.valoresInvalidos, id])] });
+                      tirarFalta('valor');
+                    },
+                  }}
+                  ativacao={{
+                    valor: f.ativacao, onValor: (v, ok) => { mudar({ ativacao: v, ativacaoValida: ok }); tirarFalta('valor'); },
+                    valores: ativacoesQueVao,
+                    onValorDoProduto: (id, c, ok) => {
+                      const ativacoes = { ...f.ativacoes };
+                      if (ok && c !== null) ativacoes[id] = c; else delete ativacoes[id];
+                      mudar({ ativacoes, ativacoesInvalidas: ok ? f.ativacoesInvalidas.filter((x) => x !== id) : [...new Set([...f.ativacoesInvalidas, id])] });
+                      tirarFalta('valor');
+                    },
                   }}
                   produtos={f.produtos.map((id) => ({ id, nome: nomeDoProduto(id) }))} catalogo={catalogoDoValor}
                   onIncluir={(id) => { mudar({ produtos: [...f.produtos, id] }); tirarFalta('produto'); }}
                   onTirar={(id) => {
                     const valores = { ...f.valores };
+                    const ativacoes = { ...f.ativacoes };
                     delete valores[id];
-                    mudar({ produtos: f.produtos.filter((x) => x !== id), valores, valoresInvalidos: f.valoresInvalidos.filter((x) => x !== id) });
+                    delete ativacoes[id];
+                    mudar({
+                      produtos: f.produtos.filter((x) => x !== id), valores, ativacoes,
+                      valoresInvalidos: f.valoresInvalidos.filter((x) => x !== id), ativacoesInvalidas: f.ativacoesInvalidas.filter((x) => x !== id),
+                    });
                   }} />
               </Rotulado>
             )}

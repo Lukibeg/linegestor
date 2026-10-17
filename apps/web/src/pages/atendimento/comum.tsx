@@ -447,8 +447,10 @@ function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: {
           : <div className="text-signal text-[12px] font-medium">sem empresa</div>}
         {c.contato && (c.contato.nome || c.contato.telefone) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? telefoneLegivel(c.contato.telefone)}</div>}
       </div>
+      {/* o valor que conta é a mensalidade; a negociação só de ativação mostra a ativação (que não soma) */}
       <div className={c.valor === null ? 'text-[12px] text-muted' : 'font-display font-semibold text-[15px] tnum text-ink'} data-valor>
-        {c.valor === null ? 'sem valor' : reaisInteiros(c.valor)}
+        {c.valor !== null ? <>{reaisInteiros(c.valor)}<span className="text-[11.5px] font-normal text-muted">/mês</span></>
+          : c.ativacao !== null ? `só ativação: ${reaisInteiros(c.ativacao)}` : 'sem valor'}
       </div>
       {c.resultado === 'perdido' && c.motivoPerda && <div className="text-[12px] text-muted truncate" title={`Motivo da perda: ${c.motivoPerda}`}>{c.motivoPerda}</div>}
       <div className="flex items-center gap-1.5 flex-wrap">

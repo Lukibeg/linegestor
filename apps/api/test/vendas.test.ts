@@ -25,6 +25,7 @@ import { tickets } from '@gestor/db';
 import {
   AJUSTES_DO_PAINEL_DE_VENDAS, diaLocal, instanteLocal, MOTIVOS_DE_PERDA_PADRAO, reais, somarDias, textoDoEvento, TROCA_ENTRA_NO_FUNIL,
   NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEIncidente, negociacaoNaoEPai, VALOR_E_A_SOMA, VALOR_SO_DOS_PRODUTOS, CAMPOS_DO_PAINEL_DE_VENDAS,
+  ATIVACAO_E_A_SOMA,
   type CampoPersonalizado,
   type EtapaPainel, type Painel, type RelatorioDeVendas,
 } from '@gestor/shared';
@@ -175,14 +176,14 @@ describe('a negociação', () => {
     expect(r.json()).toMatchObject({ etapaId: etapa('Lead').id, responsavel: { id: ids.diego } });
   });
 
-  it('a Proposta pede o valor; o valor muda com o histórico em reais', async () => {
+  it('a Proposta pede o valor; a mensalidade muda com o histórico em reais', async () => {
     const sem = await abrir(camila, { titulo: 'Central para a filial', empresa: 'Auto Peças Rocha' });
     const r = await mover(sem.id, 'Proposta enviada');
     expect(r.statusCode).toBe(400);
     expect(r.json().error).toBe('Para ir para Proposta enviada, falta preencher: Valor.');
     const valor = await camila.patch(`/atendimento/chamados/${sem.id}`, { valor: 480_000 });
     expect(valor.statusCode, valor.body).toBe(200);
-    expect(textos(valor.json())).toContain(`mudou Valor para "${reais(480_000)}"`);
+    expect(textos(valor.json())).toContain(`mudou Mensalidade para "${reais(480_000)}"`);
     expect((await mover(sem.id, 'Proposta enviada')).statusCode).toBe(200);
     // o motivo da perda é só da perdida
     const motivo = await camila.patch(`/atendimento/chamados/${sem.id}`, { motivoPerda: 'Preço' });
@@ -225,8 +226,8 @@ describe('a negociação', () => {
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json()).toMatchObject({ resultado: 'ganho', motivoPerda: null, fechadoEm: instanteLocal(ontem, '12:00').toISOString() });
     const [y, m, d] = ontem.split('-');
-    expect(textos(r.json())).toContain(`marcou como ganho (${reais(1_250_000)}), estava em Negociação — fechou em ${d}/${m}/${y}`);
-    expect(await auditoriaDe(estrela.id)).toContain(`Marcou COM-1 como ganho (${reais(1_250_000)}), estava em Negociação`);
+    expect(textos(r.json())).toContain(`marcou como ganho (${reais(1_250_000)}/mês), estava em Negociação — fechou em ${d}/${m}/${y}`);
+    expect(await auditoriaDe(estrela.id)).toContain(`Marcou COM-1 como ganho (${reais(1_250_000)}/mês), estava em Negociação`);
   });
 
   it('quem não vê o painel não vê a negociação', async () => {
@@ -333,7 +334,7 @@ describe('o quadro, o resumo, o relatório e o CSV', () => {
     const r = await camila.get(`/atendimento/chamados/exportar?painel=${com.id}&situacao=todos`);
     expect(r.statusCode, r.body).toBe(200);
     const [cab, ...linhas] = r.body.replace(/^﻿/, '').split('\r\n');
-    expect(cab).toContain('Valor (R$);Resultado;Motivo da perda;Produtos');
+    expect(cab).toContain('Mensalidade (R$);Ativação (R$);Resultado;Motivo da perda;Produtos');
     expect(cab).not.toContain('Gravidade');
     expect(linhas.find((l) => l.startsWith('COM-6;'))).toContain(';30000,00;');
     expect(linhas.find((l) => l.includes('Escola Aprender'))).toContain(';Perdido;Preço;');
@@ -444,11 +445,42 @@ describe('o valor por produto (o pedido do Luan: "dividir o valor por produtos e
     expect(Object.keys(saiu.valoresDosProdutos)).toEqual([pbx.id]);
     // na planilha, a coluna dos produtos leva o valor de cada um
     const csv = (await camila.get(`/atendimento/chamados/exportar?painel=${com.id}&situacao=todos`)).body as string;
-    expect(csv.split('\r\n').find((l) => l.includes('Central e tronco para a matriz'))).toContain(`;9000,00;;;${pbx.name} (${reais(900_000)}), ${chat.name};`);
+    expect(csv.split('\r\n').find((l) => l.includes('Central e tronco para a matriz'))).toContain(`;9000,00;;;;${pbx.name} (${reais(900_000)}/mês), ${chat.name};`);
 
     // de volta a um valor só: o total fica, e o valor volta a mudar direto
     expect((await camila.patch(`/atendimento/chamados/${n.id}`, { valoresDosProdutos: {}, valor: 900_000 })).json()).toMatchObject({ valor: 900_000, valoresDosProdutos: {} });
     expect((await camila.patch(`/atendimento/chamados/${n.id}`, { valor: 950_000 })).json()).toMatchObject({ valor: 950_000 });
+  });
+
+  it('a ativação é só registro: única ou por produto, não entra no relatório; a etapa que pede o valor aceita só a ativação', async () => {
+    const catalogo = (await s.get('/admin/products')).json() as Array<{ id: string; code: string; name: string }>;
+    const pbx = catalogo.find((p) => p.code === 'linepbx')!;
+    const tronco = catalogo.find((p) => p.code === 'voicenet')!;
+    // por produto: a mensalidade e a ativação de cada um, e os dois totais
+    const n = await abrir(camila, {
+      titulo: 'Central nova com tronco', empresa: 'Grupo Ativação', produtos: [pbx.id, tronco.id],
+      valoresDosProdutos: { [pbx.id]: 98_000, [tronco.id]: 27_000 }, ativacoesDosProdutos: { [pbx.id]: 150_000, [tronco.id]: 40_000 },
+    });
+    expect(await ficha(n.codigo)).toMatchObject({ valor: 125_000, ativacao: 190_000, ativacoesDosProdutos: { [pbx.id]: 150_000, [tronco.id]: 40_000 } });
+    const direto = await camila.patch(`/atendimento/chamados/${n.id}`, { ativacao: 100_000 });
+    expect(direto.statusCode).toBe(400);
+    expect(direto.json().error).toBe(ATIVACAO_E_A_SOMA);
+    const mudou = (await camila.patch(`/atendimento/chamados/${n.id}`, { ativacoesDosProdutos: { [pbx.id]: 120_000 } })).json();
+    expect(mudou).toMatchObject({ valor: 125_000, ativacao: 120_000 });
+    expect(textos(mudou).join('\n')).toContain(`Ativação por produto`);
+    // só a ativação (uma venda de instalação): a Proposta enviada, que pede o valor, aceita
+    const so = await abrir(camila, { titulo: 'Instalação dos aparelhos', empresa: 'Grupo Ativação', ativacao: 80_000 });
+    expect((await mover(so.id, 'Proposta enviada')).statusCode).toBe(200);
+    // ganha: a ativação não entra no relatório (o ganho é das mensalidades)
+    const hojeAqui = hoje();
+    const antes = (await camila.get(`/atendimento/vendas?painel=${com.id}&de=${hojeAqui}&ate=${hojeAqui}`)).json() as RelatorioDeVendas;
+    expect((await mover(so.id, 'Ganho')).statusCode).toBe(200);
+    const depois = (await camila.get(`/atendimento/vendas?painel=${com.id}&de=${hojeAqui}&ate=${hojeAqui}`)).json() as RelatorioDeVendas;
+    expect(depois.numeros.ganhos.qtd).toBe(antes.numeros.ganhos.qtd + 1);
+    expect(depois.numeros.ganhos.valor).toBe(antes.numeros.ganhos.valor);
+    // na planilha, a coluna da ativação
+    const csv = (await camila.get(`/atendimento/chamados/exportar?painel=${com.id}&situacao=todos`)).body as string;
+    expect(csv.split('\r\n').find((l) => l.includes('Instalação dos aparelhos'))).toContain(';;800,00;Ganho;');
   });
 
   it('o valor vai até R$ 100 milhões (mais do que cabe num integer)', async () => {

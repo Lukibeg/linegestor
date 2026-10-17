@@ -106,7 +106,7 @@ function RelatorioDeVendasDoPainel({ painel, opcoes }: { painel: Painel; opcoes:
       {rel.isError ? <p className="text-bad text-sm" role="alert">{mensagemErro(rel.error)}</p> : !r ? <Carregando /> : (
         <div className={`flex flex-col gap-3 transition-opacity ${rel.isFetching && rel.isPlaceholderData ? 'opacity-60' : ''}`} id="relatorio-vendas">
           <Secao id="relatorio-numeros" titulo="O período em números" icone={Target}
-            pergunta={`Quanto entrou, quanto foi ganho e quanto foi perdido ${nomeDoPeriodo}.`}
+            pergunta={`Quanto entrou, quanto foi ganho e quanto foi perdido ${nomeDoPeriodo}, em mensalidades (a ativação fica só registrada na negociação).`}
             lado={<span title={`${diaComAno(r.anterior.de)} a ${diaComAno(r.anterior.ate)}`}>comparado com {r.anterior.nome} ({diaCurto(r.anterior.de)} a {diaCurto(r.anterior.ate)})</span>}>
             <Numeros r={r} nomeDoPeriodo={nomeDoPeriodo} abrir={setAberta} />
           </Secao>
@@ -205,8 +205,8 @@ function Numeros({ r, nomeDoPeriodo, abrir }: { r: RelatorioDeVendas; nomeDoPeri
       <Tile rotulo="Conversão" valor={pct(n.conversao)} titulo="Das que acabaram no período (ganhas e perdidas), quantas foram ganhas" abrir={abrir}
         sub={n.conversao === null ? 'nenhuma acabou no período' : `${n.ganhos.qtd} de ${n.ganhos.qtd + n.perdidos.qtd} que acabaram`}
         diferenca={<Diferenca agora={n.conversao} antes={a.conversao} formato="pontos" bomSubir contra={contra} />} />
-      <Tile rotulo="Ticket médio" valor={n.ticketMedio === null ? '—' : reaisInteiros(Math.round(n.ticketMedio / 100) * 100)} titulo="O valor médio do que foi ganho" abrir={abrir}
-        sub="o valor médio do ganho"
+      <Tile rotulo="Ticket médio" valor={n.ticketMedio === null ? '—' : reaisInteiros(Math.round(n.ticketMedio / 100) * 100)} titulo="A mensalidade média do que foi ganho" abrir={abrir}
+        sub="a mensalidade média do ganho"
         diferenca={<Diferenca agora={n.ticketMedio} antes={a.ticketMedio} formato="reais" contra={contra} />} />
     </div>
   );
@@ -333,7 +333,7 @@ function JanelaDasNegociacoes({ aberta, r, onFechar }: { aberta: Aberta; r: Rela
             <LinkDoChamado codigo={n.codigo} onClick={onFechar} className="min-w-0 hover:text-accent">
               <span className="font-mono text-[12px] text-muted mr-1.5">{n.codigo}</span><span className="font-semibold">{n.titulo}</span>
             </LinkDoChamado>
-            <span className="tnum font-semibold text-right">{n.valor === null ? <span className="text-muted font-normal">sem valor</span> : reaisInteiros(n.valor)}</span>
+            <span className="tnum font-semibold text-right">{n.valor === null ? <span className="text-muted font-normal">sem mensalidade</span> : <>{reaisInteiros(n.valor)}<span className="font-normal text-muted">/mês</span></>}</span>
             <span className="text-[12.5px] text-muted min-w-0 truncate">{[n.empresa ?? 'sem empresa', n.responsavel ?? 'sem dono'].join(' · ')}</span>
             <span className="text-right text-[12.5px]">
               {n.resultado ? <ChipResultado r={n.resultado} motivo={n.motivoPerda} em={n.fechadoEm} /> : <span className="text-ink-2">{n.etapa}</span>}

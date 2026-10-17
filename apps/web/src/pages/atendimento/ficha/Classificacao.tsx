@@ -266,7 +266,7 @@ function ProdutosEOperadoras() {
   return (
     <>
       {/* na negociação com valor por produto, os produtos ficam no Valor (cada um com o seu valor) */}
-      {usa('produtos') && !(painel?.tipo === 'vendas' && Object.keys(f.valoresDosProdutos).length > 0) && <Linha id="campo-produtos" campo="produto" rotulo="Produtos" ocupado={prod.ocupado} erro={prod.erro}
+      {usa('produtos') && !(painel?.tipo === 'vendas' && (Object.keys(f.valoresDosProdutos).length > 0 || Object.keys(f.ativacoesDosProdutos).length > 0)) && <Linha id="campo-produtos" campo="produto" rotulo="Produtos" ocupado={prod.ocupado} erro={prod.erro}
         extra={pode && <EscolherVarios titulo="Produtos do chamado" grupos={gruposProdutos} escolhidos={f.produtos.map((p) => p.id)} ocupado={prod.ocupado} onSalvar={(ids) => salvar(prod, { produtos: ids })} />}>
         {f.produtos.length ? (
           <div className="flex flex-wrap gap-1">{f.produtos.map((p) => <Chip key={p.id} color={p.cor}>{p.nome}</Chip>)}</div>

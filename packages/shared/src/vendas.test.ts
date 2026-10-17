@@ -104,7 +104,7 @@ describe('o que falta para a negociação andar', () => {
     expect(textoDoEvento('criado', { origem: 'manual', etapa: 'Lead', venda: true })).toBe('criou a negociação em Lead');
     expect(textoDoEvento('criado', { origem: 'manual', etapa: 'Novo' })).toBe('abriu o chamado em Novo');
     expect(textoDoEvento('etapa', { de: { nome: 'Negociação' }, para: { nome: 'Ganho' }, resultado: 'ganho', valor: 1_250_000 }))
-      .toBe(`marcou como ganho (${reais(1_250_000)}), estava em Negociação`);
+      .toBe(`marcou como ganho (${reais(1_250_000)}/mês), estava em Negociação`);
     expect(textoDoEvento('etapa', { de: { nome: 'Proposta enviada' }, para: { nome: 'Perdido' }, resultado: 'perdido', motivoPerda: 'Preço', concluidoEm: '2026-10-09' }))
       .toBe('marcou como perdido: Preço (estava em Proposta enviada) — em 09/10/2026');
   });

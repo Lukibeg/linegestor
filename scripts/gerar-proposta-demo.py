@@ -4,10 +4,12 @@ apps/web/src/api/proposta-demo-midia.ts. Só para a prévia: no sistema de verda
 proposta que mandou ao cliente (colando o arquivo com Ctrl+V, arrastando ou pelo clipe).
 
   - o PDF da proposta revisada da Padaria Estrela (a negociação "PABX em nuvem — 40 ramais" do
-    Comercial), em duas páginas: o resumo com o valor de cada produto e o total, e as condições.
+    Comercial), em duas páginas: o resumo com a mensalidade e a ativação de cada produto e os totais, e
+    as condições.
 
-Os valores batem com os da prévia (demo-atendimento-exemplos.ts): LinePBX R$ 9.800,00 e VoiceNet
-R$ 2.700,00, total R$ 12.500,00, com 10% de desconto na implantação (a anotação da Camila).
+Os valores batem com os da prévia (demo-atendimento-exemplos.ts): LinePBX R$ 980,00 por mês e
+R$ 1.500,00 de ativação, VoiceNet R$ 270,00 por mês e R$ 400,00 de ativação — total R$ 1.250,00 por mês
+e R$ 1.900,00 de ativação, com 10% de desconto na ativação (a anotação da Camila).
 
   python3 scripts/gerar-proposta-demo.py      (precisa do Playwright)
 """
@@ -51,11 +53,11 @@ def proposta():
       <table class="d"><tr><td>Cliente</td><td><b>Padaria Estrela</b></td></tr><tr><td>Contato</td><td>Rosa · (71) 99999-0214</td></tr>
       <tr><td>Data</td><td>{dia(1)}</td></tr><tr><td>Válida até</td><td>{validade}</td></tr><tr><td>Responsável</td><td>Camila Duarte (Comercial)</td></tr></table>
       <h2>O valor por produto</h2>
-      <table class="i"><tr><th>Produto</th><th>O que entra</th><th class="v">Valor</th></tr>
-        <tr><td><b>LinePBX</b></td><td>40 ramais em nuvem, URA, fila do delivery, gravação e o painel da recepção</td><td class="v">R$ 9.800,00</td></tr>
-        <tr><td><b>VoiceNet</b></td><td>Tronco SIP com 10 canais e o número único para as quatro unidades</td><td class="v">R$ 2.700,00</td></tr>
-        <tr class="total"><td colspan="2">Total</td><td class="v">R$ 12.500,00</td></tr></table>
-      <div class="nota">Revisão 2: <b>10% de desconto na implantação</b>, como combinado com a Rosa. O total já está com o desconto.</div>
+      <table class="i"><tr><th>Produto</th><th>O que entra</th><th class="v">Mensalidade</th><th class="v">Ativação</th></tr>
+        <tr><td><b>LinePBX</b></td><td>40 ramais em nuvem, URA, fila do delivery, gravação e o painel da recepção</td><td class="v">R$ 980,00</td><td class="v">R$ 1.500,00</td></tr>
+        <tr><td><b>VoiceNet</b></td><td>Tronco SIP com 10 canais e o número único para as quatro unidades</td><td class="v">R$ 270,00</td><td class="v">R$ 400,00</td></tr>
+        <tr class="total"><td colspan="2">Total</td><td class="v">R$ 1.250,00/mês</td><td class="v">R$ 1.900,00</td></tr></table>
+      <div class="nota">Revisão 2: <b>10% de desconto na ativação</b>, como combinado com a Rosa. O total da ativação já está com o desconto.</div>
       <h2>Como fica</h2>
       <ul><li>As quatro unidades atendem pelo mesmo número; a URA leva o cliente para a loja certa ou para o delivery.</li>
       <li>A fila do delivery avisa a posição de quem espera e grava as ligações.</li>
@@ -67,7 +69,7 @@ def proposta():
       <ul><li><b>Implantação</b> em até 10 dias úteis depois do aceite, com a configuração dos ramais e a URA gravada.</li>
       <li><b>Aparelhos</b>: os da Padaria continuam; os que faltarem podem vir em comodato (proposta à parte).</li>
       <li><b>Suporte</b> pelo WhatsApp e pelo telefone, de segunda a sábado, das 8h às 20h.</li>
-      <li><b>Pagamento</b>: a implantação em até 3 vezes; a mensalidade no boleto, todo dia 10.</li>
+      <li><b>Pagamento</b>: a ativação em até 3 vezes; a mensalidade no boleto, todo dia 10.</li>
       <li><b>Validade</b>: esta proposta vale até {validade}.</li></ul>
       <h2>Próximos passos</h2>
       <p>Com o aceite, o Comercial passa a negociação para o Suporte, que agenda a implantação com a Rosa.</p>

@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
-  NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA,
+  NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA,
   type CartaoChamado,
 } from '@gestor/shared';
 import { demoApi } from './demo.js';
@@ -839,8 +839,8 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     const hoje = diaLocal(new Date());
     const r = await api.relatorioDeVendas({ painel: 'COM', de: somarDias(hoje, -28), ate: hoje });
     expect(r.numeros).toMatchObject({
-      novos: { qtd: 12, valor: 10_080_000 }, ganhos: { qtd: 4, valor: 2_980_000 }, perdidos: { qtd: 2, valor: 990_000 },
-      conversao: 66.7, ticketMedio: 745_000,
+      novos: { qtd: 12, valor: 1_008_000 }, ganhos: { qtd: 4, valor: 298_000 }, perdidos: { qtd: 2, valor: 99_000 },
+      conversao: 66.7, ticketMedio: 74_500,
     });
     expect(r.funil.map((f) => [f.nome, f.chegaram.length, f.perdidas.length])).toEqual([
       ['Lead', 12, 0], ['Qualificação', 10, 0], ['Proposta enviada', 8, 1], ['Negociação', 5, 1],
@@ -875,29 +875,35 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect(semMotivo.message).toBe(mensagemDoQueFalta(['motivoPerda'], 'Perdido'));
     const ganha = await api.mover(nova.id, { etapaId: etapa(op, 'COM', 'Ganho').id });
     expect(ganha).toMatchObject({ resultado: 'ganho', situacao: 'fechado' });
-    expect(ganha.historico.map((e) => e.texto)).toContain(`marcou como ganho (${reais(100_000)}), estava em Lead`);
+    expect(ganha.historico.map((e) => e.texto)).toContain(`marcou como ganho (${reais(100_000)}/mês), estava em Lead`);
   }, DEMORA);
 
-  it('o valor por produto: o total é o valor; o produto que sai leva o valor dele (como no servidor)', async () => {
+  it('a mensalidade e a ativação por produto: os totais; o produto que sai leva os valores dele (como no servidor)', async () => {
     await entrar('camila');
     const estrela = await api.chamado((await chamadoPeloTitulo('PABX em nuvem — 40 ramais')).codigo);
     const pbx = estrela.produtos.find((p) => p.nome === 'LinePBX')!;
     const tronco = estrela.produtos.find((p) => p.nome === 'VoiceNet')!;
-    expect(estrela).toMatchObject({ valor: 1_250_000, valoresDosProdutos: { [pbx.id]: 980_000, [tronco.id]: 270_000 } });
+    expect(estrela).toMatchObject({
+      valor: 125_000, valoresDosProdutos: { [pbx.id]: 98_000, [tronco.id]: 27_000 },
+      ativacao: 190_000, ativacoesDosProdutos: { [pbx.id]: 150_000, [tronco.id]: 40_000 },
+    });
     // os campos do Comercial do Helena (menos a Área de atuação), com a origem da Padaria Estrela
     const op = await api.opcoes();
     const campos = op.campos.filter((c) => c.painelId === painel(op, 'COM').id);
     expect(campos.map((c) => c.nome)).toEqual(['CNPJ', 'Contatos principais', 'Origem de lead', 'Indicação']);
     const origem = campos.find((c) => c.nome === 'Origem de lead')!;
     expect(estrela.campos[origem.id]).toBe(origem.opcoes.find((o) => o.nome === 'Instagram')!.id);
-    const mudou = await api.alterar(estrela.id, { valoresDosProdutos: { [pbx.id]: 900_000, [tronco.id]: 270_000 } });
-    expect(mudou.valor).toBe(1_170_000);
-    expect(mudou.historico.map((e) => e.texto).join('\n')).toContain(`LinePBX ${reais(900_000)} · VoiceNet ${reais(270_000)}`);
-    expect((await erroDe(api.alterar(estrela.id, { valor: 1_000_000 }))).message).toBe(VALOR_E_A_SOMA);
+    const mudou = await api.alterar(estrela.id, { valoresDosProdutos: { [pbx.id]: 90_000, [tronco.id]: 27_000 }, ativacoesDosProdutos: { [pbx.id]: 120_000, [tronco.id]: 40_000 } });
+    expect(mudou).toMatchObject({ valor: 117_000, ativacao: 160_000 });
+    const historico = mudou.historico.map((e) => e.texto).join('\n');
+    expect(historico).toContain(`LinePBX ${reais(90_000)} · VoiceNet ${reais(27_000)}`);
+    expect(historico).toContain(`LinePBX ${reais(120_000)} · VoiceNet ${reais(40_000)}`);
+    expect((await erroDe(api.alterar(estrela.id, { valor: 100_000 }))).message).toBe(VALOR_E_A_SOMA);
+    expect((await erroDe(api.alterar(estrela.id, { ativacao: 100_000 }))).message).toBe(ATIVACAO_E_A_SOMA);
     const saiu = await api.alterar(estrela.id, { produtos: [pbx.id] });
-    expect(saiu).toMatchObject({ valor: 900_000, valoresDosProdutos: { [pbx.id]: 900_000 } });
-    const unico = await api.alterar(estrela.id, { valoresDosProdutos: {}, valor: 900_000 });
-    expect(unico).toMatchObject({ valor: 900_000, valoresDosProdutos: {} });
+    expect(saiu).toMatchObject({ valor: 90_000, valoresDosProdutos: { [pbx.id]: 90_000 }, ativacao: 120_000, ativacoesDosProdutos: { [pbx.id]: 120_000 } });
+    const unico = await api.alterar(estrela.id, { valoresDosProdutos: {}, valor: 90_000, ativacoesDosProdutos: {}, ativacao: 120_000 });
+    expect(unico).toMatchObject({ valor: 90_000, valoresDosProdutos: {}, ativacao: 120_000, ativacoesDosProdutos: {} });
     // a proposta anexada (o PDF que abre no leitor do Gestor): os bytes do arquivo, sem baixar
     const proposta = estrela.anotacoesLista.flatMap((n) => n.anexos).find((a) => a.nome.endsWith('.pdf'))!;
     expect(proposta).toMatchObject({ tipo: 'application/pdf', imagem: false });

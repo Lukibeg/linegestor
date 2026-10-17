@@ -29,7 +29,8 @@ import {
   faltaParaAbrir, faltaParaEtapa, filhosQueTravam, lerCamposDoPedido, mensagemDoQueFalta, mesmoValorDoCampo, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO,
   instanteLocal, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel, reais, situacaoDaEtapa, textoDoValor,
   trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
-  valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO,
+  valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
+  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos,
@@ -279,13 +280,19 @@ export async function criarChamado(
   const prioridade = vendas ? null : d.prioridade ?? sugerida;
   const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
   const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
-  // o valor: um só, ou o total do valor por produto (a soma de cada produto da negociação)
+  // o valor (a mensalidade) e a ativação: cada um único, ou o total por produto (a soma de cada produto)
   const conta = vendas
     ? valorPorProduto({ produtos, valores: {}, valor: null }, { valores: usa('produtos') ? d.valoresDosProdutos ?? {} : {}, ...(d.valor !== null ? { valor: d.valor } : {}) })
     : null;
   if (conta && !conta.ok) throw new BadRequest(conta.erro);
+  const contaAtivacao = vendas
+    ? valorPorProduto({ produtos, valores: {}, valor: null }, { valores: usa('produtos') ? d.ativacoesDosProdutos ?? {} : {}, ...(d.ativacao !== null ? { valor: d.ativacao } : {}) }, ATIVACAO_E_A_SOMA)
+    : null;
+  if (contaAtivacao && !contaAtivacao.ok) throw new BadRequest(contaAtivacao.erro);
   const valor = conta?.ok ? conta.valor : null;
   const valoresDosProdutos = conta?.ok ? conta.valores : {};
+  const ativacao = contaAtivacao?.ok ? contaAtivacao.valor : null;
+  const ativacoesDosProdutos = contaAtivacao?.ok ? contaAtivacao.valores : {};
   const empresa = vendas && !clienteId ? d.empresa ?? null : null;
 
   // 3. o que o painel pede para abrir
@@ -293,7 +300,7 @@ export async function criarChamado(
     tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
     assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
     produtos, operadoras, responsavelId: d.responsavelId ?? null,
-    solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, empresa,
+    solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, ativacao, empresa,
   };
   // o que o painel pede para abrir vale para quem abre na tela (e pelo botão da conversa); o robô e o
   // agendado abrem sempre — o pedido do cliente não se perde por falta de um campo, e o que faltar é
@@ -345,7 +352,7 @@ export async function criarChamado(
       sessionId: d.sessaoId ?? null, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
       productIds: produtos, carrierIds: operadoras, tags: etiquetas, customFields: campos,
-      valueCents: valor, productValues: valoresDosProdutos, prospect: empresa,
+      valueCents: valor, productValues: valoresDosProdutos, setupCents: ativacao, productSetup: ativacoesDosProdutos, prospect: empresa,
       parentId: pai?.id ?? null, problemId: problema?.id ?? null, checklist, watcherIds: observadores,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       firstResponseAt: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? agora : null,
@@ -518,24 +525,32 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
       campo('produtos', NOME_CAMPO.produto, nomesProdutos(ctx, t.productIds), nomesProdutos(ctx, novos), t.productIds);
     }
   }
-  // o valor da negociação, depois dos produtos: um só, ou o total do valor por produto (o produto que saiu
-  // leva o valor dele junto)
+  // o valor da negociação, depois dos produtos: a mensalidade (o que conta) e a ativação (só registro), cada
+  // uma única ou o total por produto (o produto que saiu leva os valores dele junto)
   if (painel.tipo === 'vendas') {
     const produtosAgora = set.productIds ?? t.productIds;
-    const valoresAntes = t.productValues ?? {};
-    const conta = valorPorProduto(
-      { produtos: t.productIds, valores: valoresAntes, valor: t.valueCents },
-      { produtos: produtosAgora, ...(d.valoresDosProdutos !== undefined && usa('produtos') ? { valores: d.valoresDosProdutos } : {}), ...(d.valor !== undefined ? { valor: d.valor } : {}) },
-    );
-    if (!conta.ok) throw new BadRequest(conta.erro);
-    if (!mesmoValorPorProduto(conta.valores, valoresAntes)) {
-      set.productValues = conta.valores;
-      const nomes = (ids: string[]) => ids.map((id) => ({ id, nome: ctx.produtos.get(id)?.nome ?? '?' }));
-      campo('valoresDosProdutos', NOME_VALOR_POR_PRODUTO, textoDoValorPorProduto(nomes(t.productIds), valoresAntes), textoDoValorPorProduto(nomes(produtosAgora), conta.valores), valoresAntes);
-    }
-    if (conta.valor !== t.valueCents) {
-      set.valueCents = conta.valor;
-      campo('valor', NOME_CAMPO.valor, t.valueCents === null ? null : reais(t.valueCents), conta.valor === null ? null : reais(conta.valor), t.valueCents);
+    const nomes = (ids: string[]) => ids.map((id) => ({ id, nome: ctx.produtos.get(id)?.nome ?? '?' }));
+    const partes = [
+      { valorAntes: t.valueCents, valoresAntes: t.productValues ?? {}, pedidoValor: d.valor, pedidoValores: d.valoresDosProdutos, erro: VALOR_E_A_SOMA,
+        nome: NOME_MENSALIDADE, nomePorProduto: NOME_VALOR_POR_PRODUTO, chave: 'valor', chavePorProduto: 'valoresDosProdutos', colunas: ['valueCents', 'productValues'] },
+      { valorAntes: t.setupCents, valoresAntes: t.productSetup ?? {}, pedidoValor: d.ativacao, pedidoValores: d.ativacoesDosProdutos, erro: ATIVACAO_E_A_SOMA,
+        nome: NOME_ATIVACAO, nomePorProduto: NOME_ATIVACAO_POR_PRODUTO, chave: 'ativacao', chavePorProduto: 'ativacoesDosProdutos', colunas: ['setupCents', 'productSetup'] },
+    ] as const;
+    for (const x of partes) {
+      const conta = valorPorProduto(
+        { produtos: t.productIds, valores: x.valoresAntes, valor: x.valorAntes },
+        { produtos: produtosAgora, ...(x.pedidoValores !== undefined && usa('produtos') ? { valores: x.pedidoValores } : {}), ...(x.pedidoValor !== undefined ? { valor: x.pedidoValor } : {}) },
+        x.erro,
+      );
+      if (!conta.ok) throw new BadRequest(conta.erro);
+      if (!mesmoValorPorProduto(conta.valores, x.valoresAntes)) {
+        set[x.colunas[1]] = conta.valores;
+        campo(x.chavePorProduto, x.nomePorProduto, textoDoValorPorProduto(nomes(t.productIds), x.valoresAntes), textoDoValorPorProduto(nomes(produtosAgora), conta.valores), x.valoresAntes);
+      }
+      if (conta.valor !== x.valorAntes) {
+        set[x.colunas[0]] = conta.valor;
+        campo(x.chave, x.nome, x.valorAntes === null ? null : reais(x.valorAntes), conta.valor === null ? null : reais(conta.valor), x.valorAntes);
+      }
     }
   }
   if (d.operadoras !== undefined) {
@@ -756,7 +771,7 @@ async function depoisDoMovimento(app: FastifyInstance, ator: Ator, t: LinhaChama
 }
 
 function frasesDoMovimento(codigo: string, m: Movimento, sentido: 'sobe' | 'desce' | null, motivo: string | null, venda?: { valor: number | null; motivoPerda: string | null } | null) {
-  if (m.para.resultado === 'ganho') return `Marcou ${codigo} como ganho${venda?.valor != null ? ` (${reais(venda.valor)})` : ''}, estava em ${m.de?.nome ?? '?'}`;
+  if (m.para.resultado === 'ganho') return `Marcou ${codigo} como ganho${venda?.valor != null ? ` (${reais(venda.valor)}/mês)` : ''}, estava em ${m.de?.nome ?? '?'}`;
   if (m.para.resultado === 'perdido') return `Marcou ${codigo} como perdido${venda?.motivoPerda ? `: ${venda.motivoPerda}` : ''} (estava em ${m.de?.nome ?? '?'})`;
   const verbo = sentido === 'sobe' ? 'Escalonou' : sentido === 'desce' ? 'Voltou' : 'Moveu';
   return `${verbo} ${codigo} de ${m.de?.nome ?? '?'} para ${m.para.nome}${m.reabriu ? ' (reabriu)' : ''}${motivo ? `: ${motivo}` : ''}`;

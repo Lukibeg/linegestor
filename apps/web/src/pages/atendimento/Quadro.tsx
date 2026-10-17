@@ -322,10 +322,10 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
         )}
         <span className="ml-auto tnum text-[12px] font-semibold text-muted" title={`${total} ${nome(total)}`}>{total}</span>
       </header>
-      {/* na venda, a soma do valor da coluna (o que está em cada etapa do funil, o ganho e o perdido) */}
+      {/* na venda, a soma das mensalidades da coluna (o que está em cada etapa do funil, o ganho e o perdido) */}
       {vendas && (
-        <div className="px-1 -mt-1 text-[12.5px] tnum font-semibold text-ink-2" data-valor-da-coluna title={`A soma do valor das ${total} ${nome(total)} desta etapa`}>
-          {reaisInteiros(col.valor)}
+        <div className="px-1 -mt-1 text-[12.5px] tnum font-semibold text-ink-2" data-valor-da-coluna title={`A soma das mensalidades das ${total} ${nome(total)} desta etapa (a ativação não soma)`}>
+          {reaisInteiros(col.valor)}<span className="font-normal text-muted">/mês</span>
         </div>
       )}
       <ul className="flex flex-col gap-1.5 sm:max-h-[var(--altura-colunas,70vh)] sm:overflow-y-auto sm:-mr-1 sm:pr-1" aria-label={`Chamados em ${etapa.nome}`}>
