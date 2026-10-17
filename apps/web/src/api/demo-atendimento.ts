@@ -1902,7 +1902,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         resultado: etapaPorId(t.etapaId)?.resultado ?? null, motivoPerda: t.motivoPerda, passagens,
       };
     });
-    return relatorioDeVendas(painel, negociacoes, f, diaLocal(agoraReal()));
+    return relatorioDeVendas(painel, negociacoes, f);
   }
 
   function ordemDasEtapas(): Map<string, number> {

@@ -56,15 +56,15 @@ nele (a regra do patch que ainda não subiu).
 - **O relatório, só do Comercial.** No painel, ao lado de Quadro e Lista: **Relatório** (e o botão
   Relatório no cartão do painel). O conteúdo é o que o Luan escolheu (os números do período e o funil);
   a forma, depois do "dê uma melhorada", é a dos relatórios do Suporte:
-  - **O período em números.** A **meta do mês**, numa barra (o ganho contra ela, quanto falta e, no mês
-    de hoje, quantos dias), quando o período é um mês (do dia 1 em diante: Este mês, Mês passado) e o
-    painel tem meta. O **ganho** (quanto e quantas), as **novas** (quantas entraram e quanto somam em
-    propostas), o **perdido** (quanto e quantas, pelo dia em que acabaram), a **conversão** (das que
-    acabaram, quantas foram ganhas) e o **ticket médio** — cada um com a **seta** do que mudou em relação
-    ao período anterior (verde quando melhorou: mais ganho, mais novas, mais conversão; o perdido e o
-    ticket, sem cor). O período anterior: o mês inteiro com o mês anterior inteiro, o pedaço de um mês
+  - **O período em números.** O **ganho** (quanto e quantas), as **novas** (quantas entraram e quanto
+    somam em propostas), o **perdido** (quanto e quantas, pelo dia em que acabaram), a **conversão** (das
+    que acabaram, quantas foram ganhas) e o **ticket médio** — cada um com a **seta** do que mudou em
+    relação ao período anterior (verde quando melhorou: mais ganho, mais novas, mais conversão; o perdido
+    e o ticket, sem cor). O período anterior: o mês inteiro com o mês anterior inteiro, o pedaço de um mês
     (do dia 1 até hoje) com o mesmo pedaço do mês anterior, e o resto com o período de mesmo tamanho logo
-    antes. E as frases de **destaque**: o ganho comparado, a meta, a maior venda e onde mais se perde.
+    antes. A **meta do mês** (numa barra) e as frases de **destaque** também entraram nessa volta e saíram
+    na prévia (17/10, nos comentários: *"n quero isso de meta"*, *"n quero esses destaques"*). A meta
+    continua no cartão do painel, na tela dos painéis.
   - **O funil.** Das que entraram no período, quantas chegaram a cada etapa (a etapa mais adiante por
     onde passaram; a ganha chegou ao fim), com a porcentagem das que entraram, quantas se perderam em cada
     uma (a etapa em que estavam ao perder) e quantas foram ganhas. As barras, alinhadas à esquerda.

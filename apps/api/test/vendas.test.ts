@@ -291,21 +291,17 @@ describe('o quadro, o resumo, o relatório e o CSV', () => {
     expect(rel.negociacoes.find((n) => n.id === rel.numeros.perdidos.ids[0])).toMatchObject({
       titulo: '10 ramais a mais', empresa: 'Escola Aprender', responsavel: 'Diego Farias', resultado: 'perdido', motivoPerda: 'Preço', valor: 300_000,
     });
-    // trinta dias para trás não é um mês: sem meta, comparado com os trinta dias de antes
-    expect(rel.meta).toBeNull();
+    // trinta dias para trás não é um mês: comparado com os trinta dias de antes
     expect(rel.anterior).toMatchObject({ nome: 'o período anterior', ate: somarDias(de, -1) });
-    expect(rel.destaques[0]).toMatch(/^Ganhou /);
   });
 
-  it('o relatório do mês: a meta, com o ganho e os dias que faltam', async () => {
+  it('o relatório do mês: comparado com o mesmo pedaço do mês passado', async () => {
     const mes = hoje().slice(0, 7);
     const r = (await camila.get(`/atendimento/vendas?painel=COM&de=${mes}-01&ate=${hoje()}`)).json() as RelatorioDeVendas;
     const ontemNoMes = somarDias(hoje(), -1).startsWith(mes);
-    const ganho = (ontemNoMes ? 1_250_000 : 0) + 900_000 + 600_000;
-    expect(r.meta).toMatchObject({ mes, valor: 5_000_000, ganho, pct: Math.round((ganho / 5_000_000) * 100) });
-    expect(r.meta!.diasRestantes).toBeGreaterThanOrEqual(0);
+    expect(r.numeros.ganhos.valor).toBe((ontemNoMes ? 1_250_000 : 0) + 900_000 + 600_000);
     expect(r.anterior.nome).toMatch(/^o mesmo período de /);
-    expect(r.destaques).toContainEqual(expect.stringMatching(/^Faltam .* para a meta de /));
+    expect(r.anterior.numeros.ganhos.qtd).toBe(0);
   });
 
   it('o relatório só de painel de Vendas e de quem vê o painel', async () => {

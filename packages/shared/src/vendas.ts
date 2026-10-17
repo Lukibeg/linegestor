@@ -4,15 +4,16 @@
  * quantidade e em R$, a conversão e o ticket médio) e o **funil** (das que entraram no período, quantas
  * chegaram a cada etapa, quantas se perderam em cada uma e quantas foram ganhas). Na segunda volta ("não
  * ficou legal, dê uma melhorada"), no jeito dos relatórios do Suporte: cada número comparado com o
- * período anterior, a **meta do mês**, umas frases de **destaque** e, clicando num número, as negociações
- * por trás dele.
+ * período anterior e, clicando num número, as negociações por trás dele. A meta do mês e as frases de
+ * destaque também entraram e saíram (17/10: "n quero isso de meta", "n quero esses destaques"); a meta
+ * continua no cartão do painel.
  *
  * As contas moram aqui: o servidor e a prévia usam as mesmas. O dia é o de Brasília; o ganho e a perda
  * contam no dia em que a negociação acabou (quem marca escolhe o dia, como o "Data de conclusão" do Helena).
  */
 import { z } from 'zod';
 import { diaLocal } from './atendimento-prazos.js';
-import { reaisInteiros, type EtapaPainel, type Painel, type ResultadoDaVenda } from './atendimento.js';
+import type { EtapaPainel, Painel, ResultadoDaVenda } from './atendimento.js';
 import { diasEntre, somarDias } from './chamados.js';
 import { nomeDoMes, somarMeses } from './relatorios.js';
 
@@ -83,11 +84,6 @@ export type RelatorioDeVendas = {
    */
   anterior: { de: string; ate: string; nome: string; numeros: NumerosDeVendas };
   /**
-   * A meta do mês do painel, quando o período é de um mês só (do dia 1 em diante): o ganho do período
-   * contra ela e, no mês de hoje, quantos dias faltam.
-   */
-  meta: { mes: string; nome: string; valor: number; ganho: number; pct: number; diasRestantes: number | null } | null;
-  /**
    * O funil das que entraram no período, nas etapas que não fecham (na ordem do painel): as que chegaram
    * até cada uma (a etapa mais adiante por onde passaram; a ganha chegou ao fim) e as que se perderam nela
    * (a etapa em que estavam ao perder). Os ids: a contagem é o tamanho da lista.
@@ -95,8 +91,6 @@ export type RelatorioDeVendas = {
   funil: Array<{ etapaId: string; nome: string; chegaram: string[]; perdidas: string[] }>;
   /** as que entraram no período e foram ganhas (o fim do funil) */
   funilGanhas: string[];
-  /** as frases do alto: o ganho comparado, a meta, a maior venda e onde mais se perde */
-  destaques: string[];
   /** as negociações por trás dos números (as que entraram, as ganhas e as perdidas do período) */
   negociacoes: NegociacaoDoRelatorio[];
 };
@@ -105,7 +99,6 @@ const dia = (iso: string) => diaLocal(new Date(iso));
 const noPeriodo = (d: string, de: string, ate: string) => d >= de && d <= ate;
 const peca = (xs: readonly NegociacaoParaRelatorio[]): PecaDeVendas => ({ qtd: xs.length, valor: xs.reduce((t, n) => t + (n.valor ?? 0), 0), ids: xs.map((n) => n.id) });
 const porcento = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
-const plural = (n: number, um: string, varios: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`;
 /** O último dia do mês (AAAA-MM). */
 const fimDoMes = (mes: string) => somarDias(`${somarMeses(mes, 1)}-01`, -1);
 /** "setembro" */
@@ -174,12 +167,11 @@ function numerosDoPeriodo(negociacoes: readonly NegociacaoParaRelatorio[], de: s
   };
 }
 
-/** O relatório de um painel de Vendas no período (`hoje`: o dia de Brasília, para os dias que faltam no mês). */
+/** O relatório de um painel de Vendas no período. */
 export function relatorioDeVendas(
-  painel: Pick<Painel, 'id' | 'etapas'> & { ajustes: Pick<Painel['ajustes'], 'metaMensal'> },
+  painel: Pick<Painel, 'id' | 'etapas'>,
   negociacoes: readonly NegociacaoParaRelatorio[],
   filtro: Pick<FiltroDoRelatorioDeVendas, 'de' | 'ate'>,
-  hoje: string = diaLocal(new Date()),
 ): RelatorioDeVendas {
   const { de, ate } = filtro;
   const ordem = new Map(painel.etapas.map((e, i) => [e.id, i]));
@@ -205,39 +197,6 @@ export function relatorioDeVendas(
   });
   const funilGanhas = novas.filter((n) => n.resultado === 'ganho').map((n) => n.id);
 
-  // a meta: o período é de um mês só, do dia 1 em diante
-  const mes = de.slice(0, 7);
-  const metaMensal = painel.ajustes.metaMensal;
-  const meta = metaMensal && de.endsWith('-01') && ate.slice(0, 7) === mes ? {
-    mes, nome: mesPorExtenso(mes), valor: metaMensal, ganho: numeros.ganhos.valor,
-    pct: Math.round((numeros.ganhos.valor / metaMensal) * 100),
-    diasRestantes: ate === hoje ? diasEntre(hoje, fimDoMes(mes)) : null,
-  } : null;
-
-  // os destaques
-  const destaques: string[] = [];
-  const g = numeros.ganhos; const ga = anterior.numeros.ganhos;
-  if (g.qtd) {
-    const d = g.valor - ga.valor;
-    const comparado = !ga.qtd ? `; ${anterior.nome} não teve venda` : d === 0 ? `, o mesmo que ${anterior.nome}` : `, ${reaisInteiros(Math.abs(d))} a ${d > 0 ? 'mais' : 'menos'} que ${anterior.nome}`;
-    destaques.push(`Ganhou ${reaisInteiros(g.valor)} em ${plural(g.qtd, 'negociação', 'negociações')}${comparado}.`);
-  } else {
-    destaques.push(`Nenhuma negociação ganha no período${ga.qtd ? ` (${anterior.nome}: ${reaisInteiros(ga.valor)})` : ''}.`);
-  }
-  if (meta) {
-    if (meta.ganho >= meta.valor) destaques.push(`Bateu a meta de ${meta.nome}: ${reaisInteiros(meta.ganho)} de ${reaisInteiros(meta.valor)}.`);
-    else if (meta.diasRestantes !== null) {
-      const dias = meta.diasRestantes ? `, com ${plural(meta.diasRestantes, 'dia', 'dias')} pela frente` : ', no último dia do mês';
-      destaques.push(`Faltam ${reaisInteiros(meta.valor - meta.ganho)} para a meta de ${meta.nome} (${meta.pct}% feitos)${dias}.`);
-    } else destaques.push(`Fez ${meta.pct}% da meta de ${meta.nome} (${reaisInteiros(meta.ganho)} de ${reaisInteiros(meta.valor)}).`);
-  }
-  const maior = g.ids.map((id) => porId.get(id)!).filter((n) => (n.valor ?? 0) > 0).sort((a, b) => b.valor! - a.valor!)[0];
-  if (maior) destaques.push(`A maior venda: ${maior.titulo}${maior.empresa ? `, ${maior.empresa}` : ''} (${reaisInteiros(maior.valor!)}).`);
-  const perdidasDoFunil = funil.reduce((t, f) => t + f.perdidas.length, 0);
-  const pior = [...funil].sort((a, b) => b.perdidas.length - a.perdidas.length)[0];
-  if (pior && perdidasDoFunil === 1) destaques.push(`Das que entraram no período, a perdida parou em ${pior.nome}.`);
-  else if (pior && perdidasDoFunil > 1) destaques.push(`Das que entraram no período, onde mais se perde: ${pior.nome} (${pior.perdidas.length} de ${perdidasDoFunil}).`);
-
   // as negociações por trás dos números (as que entraram, as ganhas e as perdidas), as mais novas primeiro
   const ids = new Set([...numeros.novos.ids, ...numeros.ganhos.ids, ...numeros.perdidos.ids]);
   const lista = [...ids].map((id) => porId.get(id)!).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).map((n): NegociacaoDoRelatorio => ({
@@ -246,7 +205,7 @@ export function relatorioDeVendas(
     criadoEm: n.criadoEm, fechadoEm: n.fechadoEm,
   }));
 
-  return { painelId: painel.id, periodo: { de, ate }, numeros, anterior, meta, funil, funilGanhas, destaques, negociacoes: lista };
+  return { painelId: painel.id, periodo: { de, ate }, numeros, anterior, funil, funilGanhas, negociacoes: lista };
 }
 
 /** O período padrão do relatório: do primeiro dia do mês até hoje (Brasília). */

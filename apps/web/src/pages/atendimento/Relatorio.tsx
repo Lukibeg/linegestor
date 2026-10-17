@@ -5,9 +5,9 @@
  * volta ("não ficou legal, dê uma melhorada"), no jeito dos relatórios do Suporte:
  *
  *  - em cima, o período (os atalhos ou dois dias), que fica no endereço como os filtros do quadro;
- *  - **O período em números**: a meta do mês (quando o período é um mês), o ganho, as novas, as
- *    perdidas, a conversão e o ticket médio, cada um com a seta do que mudou em relação ao período
- *    anterior, e as frases de **destaque**;
+ *  - **O período em números**: o ganho, as novas, as perdidas, a conversão e o ticket médio, cada um
+ *    com a seta do que mudou em relação ao período anterior (a meta do mês e as frases de destaque
+ *    entraram e saíram, 17/10: "n quero isso de meta", "n quero esses destaques");
  *  - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
  *    entraram), quantas se perderam em cada uma e quantas foram ganhas.
  *
@@ -18,7 +18,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarRange, Filter as Funnel, Info, Sparkles, Target, TrendingDown, TrendingUp, X } from 'lucide-react';
+import { ArrowLeft, CalendarRange, Filter as Funnel, Info, Target, TrendingDown, TrendingUp, X } from 'lucide-react';
 import {
   diaComAno, periodosDoRelatorio, reaisCurto, reaisInteiros,
   type NegociacaoDoRelatorio, type OpcoesAtendimento, type Painel, type RelatorioDeVendas,
@@ -106,11 +106,7 @@ function RelatorioDeVendasDoPainel({ painel, opcoes }: { painel: Painel; opcoes:
           <Secao id="relatorio-numeros" titulo="O período em números" icone={Target}
             pergunta={`Quanto entrou, quanto foi ganho e quanto foi perdido ${nomeDoPeriodo}.`}
             lado={<span title={`${diaComAno(r.anterior.de)} a ${diaComAno(r.anterior.ate)}`}>comparado com {r.anterior.nome} ({diaCurto(r.anterior.de)} a {diaCurto(r.anterior.ate)})</span>}>
-            {r.meta ? <Meta m={r.meta} /> : painel.ajustes.metaMensal === null && de.endsWith('-01') && de.slice(0, 7) === ate.slice(0, 7) && (
-              <p className="text-[12.5px] text-muted -mt-1">Sem meta do mês: ela fica nos Ajustes do painel (Configurar › As regras).</p>
-            )}
             <Numeros r={r} nomeDoPeriodo={nomeDoPeriodo} abrir={setAberta} />
-            <Destaques frases={r.destaques} />
           </Secao>
           <Secao id="relatorio-funil" titulo="O funil" icone={Funnel}
             pergunta={`Das ${plural(r.numeros.novos.qtd, 'negociação que entrou', 'negociações que entraram')} ${nomeDoPeriodo}: até onde chegaram, onde se perderam e quantas foram ganhas.`}
@@ -140,33 +136,6 @@ function Secao({ id, titulo, pergunta, icone: Icone, lado, rodape, children }: {
       {children}
       {rodape && <p className="text-[12.5px] text-muted flex gap-1.5 leading-snug border-t border-line pt-3 mt-auto"><Info size={13} className="shrink-0 mt-0.5" aria-hidden /><span>{rodape}</span></p>}
     </section>
-  );
-}
-
-/** A meta do mês: o ganho contra ela, numa barra, e quanto falta (no mês de hoje, em quantos dias). */
-function Meta({ m }: { m: NonNullable<RelatorioDeVendas['meta']> }) {
-  const bateu = m.ganho >= m.valor;
-  const largura = Math.min(100, m.pct);
-  return (
-    <div className="rounded-xl border border-line p-4 flex flex-col gap-2" id="relatorio-meta">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <span className="eyebrow">Meta de {m.nome}</span>
-        <span className="tnum text-[13px] text-ink-2">
-          <b className={`font-display text-[22px] font-semibold ${bateu ? 'text-ok' : 'text-ink'}`}>{reaisInteiros(m.ganho)}</b> de {reaisInteiros(m.valor)}
-        </span>
-      </div>
-      <div className="h-3 rounded-full bg-surface-2 overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={largura} aria-label={`O ganho contra a meta de ${m.nome}`}>
-        <div className="h-full rounded-full bg-ok transition-[width]" style={{ width: `${largura}%` }} />
-      </div>
-      <div className="flex flex-wrap justify-between gap-x-3 text-[12.5px]">
-        <span className={bateu ? 'text-ok font-semibold' : 'text-ink-2'}>{bateu ? `Meta batida: ${m.pct}%` : `${m.pct}% feitos`}</span>
-        {!bateu && (
-          <span className="text-muted tnum">
-            faltam {reaisInteiros(m.valor - m.ganho)}{m.diasRestantes !== null ? (m.diasRestantes ? ` · ${plural(m.diasRestantes, 'dia', 'dias')} pela frente` : ' · último dia do mês') : ''}
-          </span>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -236,17 +205,6 @@ function Numeros({ r, nomeDoPeriodo, abrir }: { r: RelatorioDeVendas; nomeDoPeri
       <Tile rotulo="Ticket médio" valor={n.ticketMedio === null ? '—' : reaisInteiros(Math.round(n.ticketMedio / 100) * 100)} titulo="O valor médio do que foi ganho" abrir={abrir}
         sub="o valor médio do ganho"
         diferenca={<Diferenca agora={n.ticketMedio} antes={a.ticketMedio} formato="reais" contra={contra} />} />
-    </div>
-  );
-}
-
-/** As frases do alto (o ganho comparado, a meta, a maior venda, onde mais se perde). */
-function Destaques({ frases }: { frases: string[] }) {
-  if (!frases.length) return null;
-  return (
-    <div className="rounded-xl bg-surface-2 px-4 py-3" id="relatorio-destaques">
-      <div className="eyebrow mb-1.5 flex items-center gap-1.5"><Sparkles size={12} aria-hidden /> Destaques</div>
-      <ul className="list-disc pl-5 text-[14px] text-ink-2 flex flex-col gap-1">{frases.map((f) => <li key={f}>{f}</li>)}</ul>
     </div>
   );
 }

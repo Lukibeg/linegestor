@@ -850,9 +850,8 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect(perdidas.map((n) => [n.titulo, n.empresa, n.motivoPerda]).sort()).toEqual([
       ['LineReports para a supervisão', 'Distribuidora Norte', 'Adiou a decisão'], ['URA para o SAC', 'Transportadora Rota Sul', 'Preço'],
     ]);
-    // o mês: a meta do Comercial (R$ 40 mil) e o mesmo pedaço do mês passado
+    // o mês: comparado com o mesmo pedaço do mês passado (que tem as três negociações do começo dele)
     const doMes = await api.relatorioDeVendas({ painel: 'COM', de: `${hoje.slice(0, 7)}-01`, ate: hoje });
-    expect(doMes.meta).toMatchObject({ valor: 4_000_000, ganho: doMes.numeros.ganhos.valor });
     expect(doMes.anterior.nome).toMatch(/^o mesmo período de /);
   }, DEMORA);
 

@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { ticketEvents, tickets } from '@gestor/db';
 import {
-  diaLocal, passagensDosEventos, passagensNoPainel, relatorioDeVendas,
+  passagensDosEventos, passagensNoPainel, relatorioDeVendas,
   type FiltroDoRelatorioDeVendas, type NegociacaoParaRelatorio, type RelatorioDeVendas,
 } from '@gestor/shared';
 import { BadRequest, NotFound } from '../../plugins/errors.js';
@@ -50,5 +50,5 @@ export async function relatorioDoPainelDeVendas(app: FastifyInstance, ator: Ator
       passagens,
     };
   });
-  return relatorioDeVendas(painel, negociacoes, filtro, diaLocal(ctx.agora));
+  return relatorioDeVendas(painel, negociacoes, filtro);
 }

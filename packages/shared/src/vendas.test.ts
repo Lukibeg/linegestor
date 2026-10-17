@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { instanteLocal } from './atendimento-prazos.js';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, campoDoTipo, ETAPAS_DO_PAINEL_DE_VENDAS, faltaParaEtapa, mensagemDoQueFalta, problemaNasEtapasDoTipo, reaisInteiros, textoDoEvento,
+  AJUSTES_DO_PAINEL_DE_VENDAS, campoDoTipo, ETAPAS_DO_PAINEL_DE_VENDAS, faltaParaEtapa, mensagemDoQueFalta, problemaNasEtapasDoTipo, textoDoEvento,
   type DadosObrigatorios, type EtapaPainel,
 } from './atendimento.js';
 import { reais } from './formatos.js';
@@ -109,7 +109,7 @@ describe('o relatório de vendas', () => {
     n({ id: 'f', etapaId: 'qual', valor: 200_000, criadoEm: em('2026-09-20'), passagens: passou(['lead', '2026-09-20'], ['qual', '2026-09-25']) }),
     n({ id: 'g', etapaId: 'ganho', valor: 700_000, criadoEm: em('2026-09-01'), fechadoEm: em('2026-09-15'), passagens: passou(['lead', '2026-09-01'], ['ganho', '2026-09-15']) }),
   ];
-  const r = relatorioDeVendas(painel, todas, { de: '2026-10-01', ate: '2026-10-16' }, '2026-10-16');
+  const r = relatorioDeVendas(painel, todas, { de: '2026-10-01', ate: '2026-10-16' });
 
   it('os números do período, com as negociações por trás', () => {
     expect(r.numeros).toEqual({
@@ -128,20 +128,10 @@ describe('o relatório de vendas', () => {
     expect(r.anterior).toMatchObject({ de: '2026-09-01', ate: '2026-09-16', nome: 'o mesmo período de setembro' });
     expect(r.anterior.numeros).toMatchObject({ novos: { qtd: 1, valor: 700_000 }, ganhos: { qtd: 1, valor: 700_000 }, perdidos: { qtd: 0 }, conversao: 100 });
   });
-  it('a meta do mês e as frases de destaque', () => {
-    expect(r.meta).toEqual({ mes: '2026-10', nome: 'outubro', valor: 5_000_000, ganho: 1_500_000, pct: 30, diasRestantes: 15 });
-    expect(r.destaques).toEqual([
-      `Ganhou ${reaisInteiros(1_500_000)} em 2 negociações, ${reaisInteiros(800_000)} a mais que o mesmo período de setembro.`,
-      `Faltam ${reaisInteiros(3_500_000)} para a meta de outubro (30% feitos), com 15 dias pela frente.`,
-      `A maior venda: Negociação a, Padaria Estrela (${reaisInteiros(1_000_000)}).`,
-      'Das que entraram no período, a perdida parou em Proposta enviada.',
-    ]);
-    // o mês que já passou: quanto da meta foi feito; um período que não é de um mês, sem meta
-    const setembro = relatorioDeVendas(painel, todas, { de: '2026-09-01', ate: '2026-09-30' }, '2026-10-16');
-    expect(setembro.meta).toMatchObject({ mes: '2026-09', pct: 14, diasRestantes: null });
-    expect(setembro.destaques).toContain(`Fez 14% da meta de setembro (${reaisInteiros(700_000)} de ${reaisInteiros(5_000_000)}).`);
-    expect(setembro.anterior.nome).toBe('agosto');
-    expect(relatorioDeVendas(painel, todas, { de: '2026-07-19', ate: '2026-10-16' }, '2026-10-16').meta).toBeNull();
+  it('o mês que já passou: comparado com o mês anterior inteiro', () => {
+    const setembro = relatorioDeVendas(painel, todas, { de: '2026-09-01', ate: '2026-09-30' });
+    expect(setembro.anterior).toMatchObject({ de: '2026-08-01', ate: '2026-08-31', nome: 'agosto' });
+    expect(setembro.numeros.ganhos).toMatchObject({ qtd: 1, valor: 700_000 });
   });
   it('o funil: até onde chegaram as que entraram no período, onde se perderam e quantas foram ganhas', () => {
     expect(r.funil.map((f) => [f.nome, f.chegaram, f.perdidas])).toEqual([
@@ -155,10 +145,9 @@ describe('o relatório de vendas', () => {
     expect(r.funilGanhas).toEqual(['a', 'b']);
   });
   it('sem nada que acabou, a conversão e o ticket ficam vazios (não zero)', () => {
-    const vazio = relatorioDeVendas(painel, [], { de: '2026-10-01', ate: '2026-10-16' }, '2026-10-16');
+    const vazio = relatorioDeVendas(painel, [], { de: '2026-10-01', ate: '2026-10-16' });
     expect(vazio.numeros).toMatchObject({ conversao: null, ticketMedio: null, novos: { qtd: 0, valor: 0, ids: [] } });
     expect(vazio.funil.map((f) => f.chegaram.length)).toEqual([0, 0, 0, 0]);
-    expect(vazio.destaques[0]).toBe('Nenhuma negociação ganha no período.');
   });
   it('o período: os atalhos, a comparação e o filtro', () => {
     const agora = new Date(em('2026-10-16', '15:00'));

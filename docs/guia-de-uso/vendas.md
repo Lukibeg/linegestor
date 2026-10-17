@@ -63,13 +63,10 @@ painel).
 - **O período**: Este mês, Mês passado, Este trimestre, Últimos 90 dias, Este ano, ou dois dias. Fica
   no endereço da página: dá para mandar o link do jeito que está.
 - **O período em números**:
-  - a **meta do mês** (quando o período é um mês e o painel tem meta): o ganho contra ela, quanto falta e
-    quantos dias faltam;
   - o **ganho**, as **novas** (quantas entraram e quanto somam em propostas), o **perdido**, a
     **conversão** (das que acabaram, quantas foram ganhas) e o **ticket médio** (o valor médio do ganho);
   - embaixo de cada número, a **seta**: quanto mudou em relação ao período anterior (no Este mês, o
-    mesmo pedaço do mês passado). Verde é melhor;
-  - os **destaques**: o ganho comparado, a meta, a maior venda e onde mais se perde.
+    mesmo pedaço do mês passado). Verde é melhor.
 - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
   entraram), quantas se perderam em cada uma e quantas foram ganhas.
 - **Clique em qualquer número** (o ganho, as novas, o perdido, uma etapa do funil, as perdidas de uma
