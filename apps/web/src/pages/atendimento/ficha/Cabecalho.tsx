@@ -8,11 +8,11 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Bot, CalendarClock, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
-import { DICA_TIPO_ETAPA, NOME_ORIGEM, type Origem } from '@gestor/shared';
+import { DICA_TIPO_ETAPA, NOME_ORIGEM, reaisInteiros, type Origem } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Chip, Spinner, type TomChip } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
-import { ChipEspera, ChipPrioridade, CodigoChamado, SeloPrazo, dataHoraCurta, haQuanto } from '../comum.js';
+import { ChipEspera, ChipPrioridade, ChipResultado, CodigoChamado, SeloPrazo, dataHoraCurta, haQuanto } from '../comum.js';
 import { ErroPerto, nomeComNivel, useAberta, useAcao } from './base.js';
 
 const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bot, botao: MessageSquare, agendado: CalendarClock, api: Plug };
@@ -40,6 +40,8 @@ function paraOPainel(rota: '/atendimento/quadro' | '/atendimento/lista', painelI
 export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
   const { f, painel, etapa } = useAberta();
   const Icone = ICONE_ORIGEM[f.origem] ?? Monitor;
+  // a negociação (o painel de Vendas): o valor e o resultado no lugar da prioridade e do prazo
+  const vendas = painel?.tipo === 'vendas';
   return (
     <header className="flex flex-col gap-2 min-w-0">
       {!emJanela && (
@@ -54,10 +56,15 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <CodigoChamado codigo={f.codigo} cor={painel?.cor} link={false} className="!text-[16px] !leading-6 !px-2.5 !py-1" />
         <span className="text-[13px] text-muted font-medium">{painel?.nome ?? 'Painel'}</span>
-        {etapa && (
-          <Chip tone={TOM_SITUACAO[f.situacao] ?? 'neutral'} title={`Etapa ${etapa.nome}: ${DICA_TIPO_ETAPA[etapa.tipo]}`}>{nomeComNivel(etapa)}</Chip>
+        {etapa && !etapa.resultado && (
+          <Chip tone={TOM_SITUACAO[f.situacao] ?? 'neutral'} title={vendas ? `Etapa ${etapa.nome}` : `Etapa ${etapa.nome}: ${DICA_TIPO_ETAPA[etapa.tipo]}`}>{nomeComNivel(etapa)}</Chip>
         )}
-        <ChipPrioridade p={f.prioridade} />
+        {vendas ? (
+          <>
+            <ChipResultado r={f.resultado} motivo={f.motivoPerda} />
+            {f.valor !== null && <Chip tone="neutral" className="tnum font-semibold" title="O valor da negociação">{reaisInteiros(f.valor)}</Chip>}
+          </>
+        ) : <ChipPrioridade p={f.prioridade} />}
         {f.tipoChamado === 'problema' && <Chip tone="rosa" title="Problema: junta os incidentes de várias empresas"><Layers size={12} /> Problema</Chip>}
         {f.reaberto > 0 && <Chip tone="signal" title={`Reaberto ${f.reaberto} ${f.reaberto === 1 ? 'vez' : 'vezes'}`}><RotateCcw size={11} /> Reaberto {f.reaberto === 1 ? '1 vez' : `${f.reaberto} vezes`}</Chip>}
         <ChipEspera e={f.espera} mostrarDesde />
@@ -68,12 +75,12 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px] text-muted">
         <span>
-          Aberto {f.criadoPor && <>por <b className="text-ink-2 font-semibold">{f.criadoPor.nome}</b> </>}
+          {vendas ? 'Criada' : 'Aberto'} {f.criadoPor && <>por <b className="text-ink-2 font-semibold">{f.criadoPor.nome}</b> </>}
           <time dateTime={f.criadoEm} title={dataCompleta(f.criadoEm)}>{emQuando(f.criadoEm)}</time>
         </span>
         <span className="inline-flex items-center gap-1" title="De onde o chamado veio"><Icone size={13} aria-hidden /> {NOME_ORIGEM[f.origem] ?? f.origem}</span>
         <span title={`Última atividade: ${dataCompleta(f.ultimaAtividadeEm)}`}>mexido {haQuanto(f.ultimaAtividadeEm)}</span>
-        {f.fechadoEm ? <span>fechado {emQuando(f.fechadoEm)}</span> : f.resolvidoEm ? <span>resolvido {emQuando(f.resolvidoEm)}</span> : null}
+        {f.fechadoEm ? <span>{f.resultado === 'ganho' ? 'ganha' : f.resultado === 'perdido' ? 'perdida' : 'fechado'} {emQuando(f.fechadoEm)}</span> : f.resolvidoEm ? <span>resolvido {emQuando(f.resolvidoEm)}</span> : null}
       </div>
     </header>
   );

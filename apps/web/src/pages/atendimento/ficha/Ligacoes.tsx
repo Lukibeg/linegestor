@@ -24,6 +24,8 @@ import { LinhaDeChamado } from './Partes.js';
 
 export function Ligacoes() {
   const { f, pode, painel, opcoes } = useAberta();
+  // a negociação (o painel de Vendas) não tem problema: liga a chamados e a outras negociações
+  const vendas = painel?.tipo === 'vendas';
   const [ligando, setLigando] = useState(false);
   // o filho nasce numa janela por cima da ficha (o pedido do Luan na prévia), e não na tela inteira
   const [criandoFilho, setCriandoFilho] = useState(false);
@@ -55,10 +57,14 @@ export function Ligacoes() {
       acoes={pode && (
         <>
           <button type="button" className="btn-secondary btn-sm" onClick={() => setCriandoFilho(true)}><GitBranch size={14} /> Criar um filho</button>
-          <button type="button" className="btn-secondary btn-sm" onClick={() => setLigando(true)}><Link2 size={14} /> Ligar a outro chamado</button>
+          <button type="button" className="btn-secondary btn-sm" onClick={() => setLigando(true)}><Link2 size={14} /> {vendas ? 'Ligar a outro chamado ou negociação' : 'Ligar a outro chamado'}</button>
         </>
       )}>
-      {vazio && <p className="text-[13px] text-muted">Nenhum pai, filho, problema ou ligação. Os chamados citados no texto aparecem no desenho.</p>}
+      {vazio && (
+        <p className="text-[13px] text-muted">
+          {vendas ? 'Nenhum pai, filho ou ligação. Os códigos citados no texto aparecem no desenho.' : 'Nenhum pai, filho, problema ou ligação. Os chamados citados no texto aparecem no desenho.'}
+        </p>
+      )}
 
       {(f.pai || f.problema) && (
         <ul className="flex flex-col divide-y divide-line">

@@ -18,7 +18,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
+  compararNegociacoes, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugeridaDoPainel,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
   type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
@@ -64,6 +64,7 @@ export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number): DadosObriga
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
     tempoMinutos,
     campos: (t.customFields as ValoresDosCampos | null) ?? {},
+    valor: t.valueCents ?? null, empresa: t.prospect ?? null, motivoPerda: t.lostReason ?? null,
   };
 }
 
@@ -163,13 +164,14 @@ export async function quadro(app: FastifyInstance, ator: Ator, f: FiltrosQuadro)
   const lista = filtrarCartoes(doPainel, { ...f, painel: painel.id, situacao: 'todos' }, { euId: ator.id, assuntos: ctx.assuntos });
   const colunas = painel.etapas.map((etapa) => {
     const daqui = lista.filter((c) => c.etapaId === etapa.id);
+    // a negociação (painel de Vendas) não tem prazo: a de maior valor primeiro
     const ordenados = etapa.tipo === 'resolvido'
       ? [...daqui].sort((a, b) => maisRecente(a.resolvidoEm ?? a.ultimaAtividadeEm, b.resolvidoEm ?? b.ultimaAtividadeEm))
       : etapa.tipo === 'fechado'
         ? [...daqui].sort((a, b) => maisRecente(a.fechadoEm ?? a.ultimaAtividadeEm, b.fechadoEm ?? b.ultimaAtividadeEm))
-        : [...daqui].sort(compararUrgencia);
+        : [...daqui].sort(painel.tipo === 'vendas' ? compararNegociacoes : compararUrgencia);
     const mostrados = etapa.tipo === 'fechado' ? ordenados.slice(0, FECHADOS_NO_QUADRO) : ordenados;
-    return { etapa, chamados: mostrados.map(semBusca), total: daqui.length, escondidos: daqui.length - mostrados.length };
+    return { etapa, chamados: mostrados.map(semBusca), total: daqui.length, escondidos: daqui.length - mostrados.length, valor: daqui.reduce((t, c) => t + (c.valor ?? 0), 0) };
   });
   return { painelId: painel.id, colunas, foraDoHorario: !dentroDoHorario(ctx.agora, ctx.prazos.calendario), agora: ctx.agora.toISOString() };
 }
@@ -194,6 +196,7 @@ export async function exportar(app: FastifyInstance, ator: Ator, f: FiltrosAtend
   const csv = csvDosChamados(todos, {
     painel: (id) => ctx.paineis.find((p) => p.id === id)?.nome ?? '',
     etapa: (id) => ctx.etapas.get(id)?.etapa.nome ?? '',
+    vendas: (id) => ctx.paineis.find((p) => p.id === id)?.tipo === 'vendas',
   }, ctx.campos);
   return { csv, nome: `chamados-${diaLocal(ctx.agora)}.csv`, total: todos.length };
 }
@@ -209,7 +212,7 @@ const apertado = (c: CartaoChamado) =>
 export async function resumoDosPaineisVisiveis(app: FastifyInstance, ator: Ator): Promise<ResumoDoPainel[]> {
   const ctx = await carregarContexto(app.db);
   const todos = await carregarCartoes(app.db, ator, ctx);
-  return resumoDosPaineis(ctx.paineis.filter((p) => podeVerPainel(p, ator)), todos, ator.tipo === 'pessoa' ? ator.id : null);
+  return resumoDosPaineis(ctx.paineis.filter((p) => podeVerPainel(p, ator)), todos, ator.tipo === 'pessoa' ? ator.id : null, ctx.agora);
 }
 
 export async function meuDia(app: FastifyInstance, ator: Ator): Promise<MeuDia> {

@@ -35,7 +35,7 @@ const DO_LINECHAT = [{
 }];
 
 const painel = (id: string, sigla: string, nome: string, extra: Partial<Painel> = {}): Painel => ({
-  id, nome, sigla, descricao: null, cor: 'accent', ordem: 0, acesso: 'todos', pessoas: [], ajustes: { ...AJUSTES_PAINEL_PADRAO }, etapas: [], ativo: true, abertos: 0, ...extra,
+  id, nome, sigla, descricao: null, cor: 'accent', tipo: 'gestao', ordem: 0, acesso: 'todos', pessoas: [], ajustes: { ...AJUSTES_PAINEL_PADRAO }, etapas: [], ativo: true, abertos: 0, ...extra,
 });
 const assunto = (id: string, nome: string, extra: Partial<Assunto> = {}): Assunto => ({
   id, painelId: 'p-sup', paiId: null, nome, descricao: null, ativo: true, ordem: 0, checklist: [], dePara: [], ...extra,

@@ -279,6 +279,7 @@ export const realApi: Api = {
     exportarUrl: (q) => `${BASE}/atendimento/chamados/exportar${qs(q)}`,
     meuDia: () => http('GET', '/atendimento/meu-dia'),
     resumoDosPaineis: () => http('GET', '/atendimento/paineis/resumo'),
+    relatorioDeVendas: (q) => http('GET', `/atendimento/vendas${qs(q)}`),
     avisos: () => http('GET', '/atendimento/avisos'),
     marcarAvisosLidos: (ids) => http('POST', '/atendimento/avisos/lidos', ids ? { ids } : {}),
     cadastroDoCliente: (id) => http('GET', `/atendimento/cadastro/${encodeURIComponent(id)}`),

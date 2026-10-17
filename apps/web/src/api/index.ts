@@ -290,6 +290,8 @@ export type Api = {
     meuDia(): Promise<T.MeuDia>;
     /** a tela inicial (os painéis): os números de cada painel que a pessoa vê */
     resumoDosPaineis(): Promise<T.ResumoDoPainel[]>;
+    /** o relatório de um painel de Vendas no período (painel, de e ate) */
+    relatorioDeVendas(q: T.FiltroDoRelatorioDeVendas): Promise<T.RelatorioDeVendas>;
     avisos(): Promise<T.AvisosNaTela>;
     /** sem ids = todos */
     marcarAvisosLidos(ids?: string[]): Promise<{ ok: boolean }>;

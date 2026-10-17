@@ -1287,3 +1287,95 @@ export const EXEMPLOS: Exemplo[] = [
     ],
   },
 ];
+
+// =====================================================================
+//  O COMERCIAL (2.0.1, decisão 0050): AS NEGOCIAÇÕES DO PAINEL DE VENDAS
+// =====================================================================
+
+/**
+ * Uma negociação de exemplo, vivida pelas mesmas funções da tela (abrir, mover, marcar como ganha ou
+ * perdida). Os dias contam para trás a partir de hoje (dias corridos, às 10h de Brasília). O valor é em
+ * reais; os produtos, pelo código.
+ */
+export type NegociacaoDeExemplo = {
+  chave: string; titulo: string;
+  /** um cliente da prévia (venda para a base) ou a empresa que ainda não é cliente */
+  cliente?: string; empresa?: string;
+  contato?: Contato; valor?: number; produtos?: string[];
+  por: Pessoa; responsavel: Pessoa | null;
+  abriu: number;
+  /** as etapas do funil por onde passou, com o dia */
+  passos?: Array<{ para: 'Qualificação' | 'Proposta enviada' | 'Negociação'; dias: number }>;
+  /** como acabou: o dia em que foi marcada e, se for outro, o dia em que fechou de verdade */
+  fim?: { resultado: 'ganho' | 'perdido'; dias: number; motivo?: string; fechouHaDias?: number };
+  descricao?: string;
+  anotacao?: { dias: number; por: Pessoa; texto: string };
+};
+
+/** A meta do mês do Comercial, em reais. */
+export const META_DO_COMERCIAL = 40_000;
+
+export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
+  // ---- as que acabaram nos últimos meses ----
+  { chave: 'aurora-fop2', titulo: 'LinePBX com FOP2 — 25 ramais', cliente: 'Clínica Aurora', contato: ['Débora', '5571999990201'], valor: 11_200, produtos: ['linepbx'],
+    por: 'camila', responsavel: 'camila', abriu: 170, passos: [{ para: 'Qualificação', dias: 166 }, { para: 'Proposta enviada', dias: 160 }, { para: 'Negociação', dias: 153 }],
+    fim: { resultado: 'ganho', dias: 147 } },
+  { chave: 'norte-chat', titulo: 'LineChat — 4 atendentes', cliente: 'Distribuidora Norte', contato: ['Paulo', '5571999990202'], valor: 4_900, produtos: ['linechat'],
+    por: 'diego', responsavel: 'diego', abriu: 131, passos: [{ para: 'Qualificação', dias: 129 }, { para: 'Proposta enviada', dias: 124 }],
+    fim: { resultado: 'ganho', dias: 117 } },
+  { chave: 'nova-era', titulo: 'PABX para 80 ramais', empresa: 'Faculdade Nova Era', contato: ['Sérgio', '5571999990203'], valor: 24_000, produtos: ['linepbx', 'voicenet'],
+    por: 'camila', responsavel: 'camila', abriu: 112, passos: [{ para: 'Qualificação', dias: 108 }, { para: 'Proposta enviada', dias: 101 }, { para: 'Negociação', dias: 94 }],
+    fim: { resultado: 'perdido', dias: 86, motivo: 'Fechou com a concorrência' } },
+  { chave: 'vale-tronco', titulo: 'Tronco SIP com 60 canais', cliente: 'Hospital Vale Verde', contato: ['Renata', '5571999990204'], valor: 18_000, produtos: ['voicenet'],
+    por: 'diego', responsavel: 'diego', abriu: 104, passos: [{ para: 'Qualificação', dias: 103 }, { para: 'Proposta enviada', dias: 99 }, { para: 'Negociação', dias: 93 }],
+    fim: { resultado: 'ganho', dias: 88 } },
+  { chave: 'amigo-fiel', titulo: 'LineChat — 6 atendentes', empresa: 'Pet Shop Amigo Fiel', contato: ['Lúcia', '5571999990205'], valor: 3_900, produtos: ['linechat'],
+    por: 'diego', responsavel: 'diego', abriu: 75, passos: [{ para: 'Qualificação', dias: 74 }, { para: 'Proposta enviada', dias: 70 }],
+    fim: { resultado: 'perdido', dias: 61, motivo: 'Preço' } },
+  { chave: 'bompreco-loja', titulo: 'Central para a nova loja', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 7_300, produtos: ['linepbx', 'equipamentos'],
+    por: 'camila', responsavel: 'camila', abriu: 68, passos: [{ para: 'Qualificação', dias: 67 }, { para: 'Proposta enviada', dias: 64 }, { para: 'Negociação', dias: 60 }],
+    fim: { resultado: 'ganho', dias: 57 } },
+  { chave: 'sao-jorge', titulo: 'Troca de operadora — 10 linhas', empresa: 'Mercadinho São Jorge', contato: ['Jorge', '5571999990207'], valor: 1_800, produtos: ['voicenet'],
+    por: 'camila', responsavel: 'diego', abriu: 44, passos: [{ para: 'Qualificação', dias: 41 }],
+    fim: { resultado: 'perdido', dias: 30, motivo: 'Sem retorno do cliente' } },
+  { chave: 'viver-bem', titulo: 'Omniboard e pesquisa de satisfação', cliente: 'Home Care Viver Bem', contato: ['Cláudia', '5571999990208'], valor: 5_400, produtos: ['linepbx'],
+    por: 'diego', responsavel: 'diego', abriu: 39, passos: [{ para: 'Qualificação', dias: 38 }, { para: 'Proposta enviada', dias: 34 }, { para: 'Negociação', dias: 31 }],
+    fim: { resultado: 'ganho', dias: 27 } },
+  // ---- as que acabaram neste mês ----
+  { chave: 'visao-clara', titulo: 'PABX em nuvem — 15 ramais', empresa: 'Ótica Visão Clara', contato: ['Fernanda', '5571999990209'], valor: 6_100, produtos: ['linepbx', 'voicenet'],
+    por: 'camila', responsavel: 'camila', abriu: 24, passos: [{ para: 'Qualificação', dias: 22 }, { para: 'Proposta enviada', dias: 17 }, { para: 'Negociação', dias: 13 }],
+    fim: { resultado: 'ganho', dias: 9 } },
+  { chave: 'rota-sul', titulo: 'URA para o SAC', empresa: 'Transportadora Rota Sul', contato: ['Marcos', '5571999990210'], valor: 7_500, produtos: ['linepbx'],
+    por: 'diego', responsavel: 'diego', abriu: 26, passos: [{ para: 'Qualificação', dias: 25 }, { para: 'Proposta enviada', dias: 19 }, { para: 'Negociação', dias: 12 }],
+    fim: { resultado: 'perdido', dias: 5, motivo: 'Preço' } },
+  { chave: 'horizonte-renova', titulo: 'Renovação do contrato de telefonia', cliente: 'Construtora Horizonte', contato: ['Edson', '5571999990211'], valor: 8_400, produtos: ['voicenet'],
+    por: 'camila', responsavel: 'camila', abriu: 20, passos: [{ para: 'Proposta enviada', dias: 16 }, { para: 'Negociação', dias: 8 }],
+    fim: { resultado: 'ganho', dias: 2, fechouHaDias: 3 } },
+  { chave: 'norte-reports', titulo: 'LineReports para a supervisão', cliente: 'Distribuidora Norte', contato: ['Paulo', '5571999990202'], valor: 2_400, produtos: ['linereports'],
+    por: 'diego', responsavel: 'diego', abriu: 15, passos: [{ para: 'Qualificação', dias: 14 }, { para: 'Proposta enviada', dias: 10 }],
+    fim: { resultado: 'perdido', dias: 2, motivo: 'Adiou a decisão' } },
+  { chave: 'movimento', titulo: 'LineChat — 12 atendentes', empresa: 'Academia Movimento', contato: ['Tiago', '5571999990212'], valor: 9_900, produtos: ['linechat'],
+    por: 'diego', responsavel: 'diego', abriu: 12, passos: [{ para: 'Qualificação', dias: 11 }, { para: 'Proposta enviada', dias: 7 }, { para: 'Negociação', dias: 4 }],
+    fim: { resultado: 'ganho', dias: 1 } },
+  // ---- o funil de agora ----
+  { chave: 'beira-mar', titulo: 'Atendimento com URA e filas', empresa: 'Hotel Beira Mar', contato: ['Vânia', '5571999990213'], valor: 15_800, produtos: ['linepbx', 'linechat'],
+    por: 'diego', responsavel: 'diego', abriu: 33, passos: [{ para: 'Qualificação', dias: 31 }, { para: 'Proposta enviada', dias: 23 }, { para: 'Negociação', dias: 14 }],
+    descricao: 'Hotel com 60 apartamentos, recepção 24h e central de reservas. Hoje usam uma central analógica alugada.' },
+  { chave: 'estrela', titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214'], valor: 12_500, produtos: ['linepbx', 'voicenet'],
+    por: 'camila', responsavel: 'camila', abriu: 18, passos: [{ para: 'Qualificação', dias: 16 }, { para: 'Proposta enviada', dias: 10 }, { para: 'Negociação', dias: 3 }],
+    descricao: 'Três lojas e a fábrica. Querem o mesmo número para todas as lojas e a fila do delivery.',
+    anotacao: { dias: 1, por: 'camila', texto: 'Mandei a proposta revisada com 10% de desconto na implantação. A Rosa vai falar com o sócio e responde até sexta.' } },
+  { chave: 'horizonte-canteiro', titulo: 'Central telefônica para o canteiro', cliente: 'Construtora Horizonte', contato: ['Edson', '5571999990211'], valor: 9_400, produtos: ['linepbx', 'equipamentos'],
+    por: 'diego', responsavel: 'diego', abriu: 13, passos: [{ para: 'Qualificação', dias: 12 }, { para: 'Proposta enviada', dias: 6 }] },
+  { chave: 'bompreco-chat', titulo: 'LineChat com 8 atendentes', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 6_800, produtos: ['linechat'],
+    por: 'camila', responsavel: 'diego', abriu: 9, passos: [{ para: 'Qualificação', dias: 8 }, { para: 'Proposta enviada', dias: 4 }] },
+  { chave: 'farma-mais', titulo: 'Migração das filiais para a nuvem', empresa: 'Rede Farma Mais', contato: ['Gustavo', '5571999990215'], valor: 30_000, produtos: ['linepbx', 'voicenet', 'linechat'],
+    por: 'camila', responsavel: 'camila', abriu: 7, passos: [{ para: 'Qualificação', dias: 5 }],
+    descricao: '14 farmácias com central própria em cada uma. Querem uma só central e o atendimento do WhatsApp das lojas junto.' },
+  { chave: 'exame-gravacao', titulo: 'Gravação de chamadas', cliente: 'Laboratório Exame Certo', contato: ['Beatriz', '5571999990216'], valor: 3_600, produtos: ['linepbx'],
+    por: 'camila', responsavel: 'camila', abriu: 6, passos: [{ para: 'Qualificação', dias: 4 }] },
+  { chave: 'saber', titulo: 'Troca de operadora — 30 linhas', empresa: 'Colégio Saber', contato: ['Helena', '5571999990217'], valor: 4_200, produtos: ['voicenet'],
+    por: 'camila', responsavel: 'camila', abriu: 3 },
+  { chave: 'prado-remoto', titulo: 'Ramais para o home office', cliente: 'Escritório Prado & Lima', contato: ['Dra. Lívia', '5571999990218'], produtos: ['linepbx'],
+    por: 'luan', responsavel: null, abriu: 1, descricao: 'Pediram pelo WhatsApp: 6 advogados trabalhando de casa, com o ramal no celular.' },
+];

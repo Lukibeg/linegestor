@@ -17,7 +17,7 @@ import { JanelaEscolherChamado } from './Janelas.js';
 // =====================================================================
 
 export function Checklist() {
-  const { f, pode } = useAberta();
+  const { f, pode, painel } = useAberta();
   // sem itens, o checklist só aparece para quem pode incluir — e no chamado ainda aberto
   if (!f.checklist.length && (!pode || f.situacao !== 'aberto')) return null;
   const feitos = f.checklist.filter((i) => i.feito).length;
@@ -33,7 +33,13 @@ export function Checklist() {
           <ul className="flex flex-col">{f.checklist.map((i) => <ItemDoChecklist key={i.id} i={i} />)}</ul>
         </>
       )}
-      {!f.checklist.length && <p className="text-[13px] text-muted mb-2">Nenhum item. Os itens do assunto entram sozinhos quando o assunto é escolhido.</p>}
+      {!f.checklist.length && (
+        <p className="text-[13px] text-muted mb-2">
+          {painel?.tipo === 'vendas'
+            ? 'Nenhum item. Inclua o que falta para fechar (ex.: mandar a proposta, apresentar ao sócio).'
+            : 'Nenhum item. Os itens do assunto entram sozinhos quando o assunto é escolhido.'}
+        </p>
+      )}
       {pode && <IncluirNoChecklist />}
     </Secao>
   );

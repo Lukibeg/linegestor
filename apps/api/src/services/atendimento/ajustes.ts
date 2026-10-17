@@ -18,9 +18,11 @@ import type { z } from 'zod';
 import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { newId, ticketFields, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
 import {
-  AJUSTES_PAINEL_PADRAO, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, ehLista, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas,
+  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, ehLista,
+  ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL, problemaNasEtapasDoTipo,
   lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
   obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
+  type ResultadoDaVenda, type TipoDePainel,
   type AjustesDoPainel, type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type CampoDoSistema,
   type CampoGravarSchema, type CampoPersonalizado, type CamposDoSistemaSchema, type EtapasGravarSchema, type Nivel, type Obrigatorio, type OpcaoDoCampo,
   type Painel, type PainelGravarSchema, type TipoEtapa,
@@ -78,14 +80,16 @@ async function conferirPessoas(db: Db, ids: string[]) {
 
 /** O painel no "antes/depois" da auditoria (as etapas vão junto quando mudam na mesma janela). */
 const painelParaAuditoria = (p: Painel) => ({
-  nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, acesso: p.acesso, pessoas: p.pessoas, ajustes: p.ajustes, ativo: p.ativo,
+  nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, tipo: p.tipo, acesso: p.acesso, pessoas: p.pessoas, ajustes: p.ajustes, ativo: p.ativo,
 });
-const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[] }) =>
-  ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar });
+const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[]; resultado?: string | null }) =>
+  ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar, ...(e.resultado ? { resultado: e.resultado } : {}) });
+/** O tipo do painel guardado (Gestão, se for de antes do 2.0.1). */
+const tipoDaLinha = (p: { kind: string }): TipoDePainel => (p.kind === 'vendas' ? 'vendas' : 'gestao');
 
 /** O que pode ser pedido no painel agora: os campos do sistema que ele usa e os campos ativos dele. */
 async function obrigatoriosValidos(db: Db, p: typeof ticketPanels.$inferSelect): Promise<Obrigatorio[]> {
-  return obrigatoriosDoPainel(ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>), await carregarCampos(db, p.id));
+  return obrigatoriosDoPainel(ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>), await carregarCampos(db, p.id), tipoDaLinha(p));
 }
 
 /** As regras das etapas sem o que não vale mais no painel (o campo desligado ou desativado sai de todas). */
@@ -130,43 +134,54 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
       : `A sigla ${sigla} já é de outro painel.`);
   }
   const pessoas = unicos(d.pessoas);
+  // o tipo (Gestão ou Vendas) é escolhido ao criar e não muda depois (o pedido de mudar fica de fora)
+  const tipo: TipoDePainel = atual ? tipoDaLinha(atual) : d.tipo;
+  const guardados = atual ? ajustesDoPainelCompletos(atual.settings as Partial<AjustesDoPainel>) : null;
+  const deFabrica = tipo === 'vendas' ? AJUSTES_DO_PAINEL_DE_VENDAS : AJUSTES_PAINEL_PADRAO;
   // os campos do sistema que o painel usa: sem a lista no pedido, ficam como estão (quem muda é a aba
-  // Campos); o painel novo nasce com o padrão (sem o alcance, "por enquanto")
-  const camposDesligados = d.ajustes.camposDesligados
-    ?? (atual ? ajustesDoPainelCompletos(atual.settings as Partial<AjustesDoPainel>).camposDesligados : AJUSTES_PAINEL_PADRAO.camposDesligados);
+  // Campos); o painel novo nasce com o padrão (sem o alcance, "por enquanto"; o de Vendas, só com os produtos)
+  const camposDesligados = d.ajustes.camposDesligados ?? guardados?.camposDesligados ?? deFabrica.camposDesligados;
   // o que pode ser pedido neste painel (os campos do sistema ligados e os campos dele): o resto sai das regras
-  const validos = obrigatoriosDoPainel({ camposDesligados }, atual ? await carregarCampos(db, atual.id) : []);
+  const validos = obrigatoriosDoPainel({ camposDesligados }, atual ? await carregarCampos(db, atual.id) : [], tipo);
   const ajustes: AjustesDoPainel = {
     ...d.ajustes,
-    // as opções do Tipo sem repetir (sem ligar para maiúscula e acento)
-    tipos: etiquetasUnicas(d.ajustes.tipos),
+    // as opções do Tipo sem repetir (sem ligar para maiúscula e acento); sem a lista, ficam como estão
+    tipos: etiquetasUnicas(d.ajustes.tipos ?? guardados?.tipos ?? deFabrica.tipos),
+    paiEsperaFilhos: d.ajustes.paiEsperaFilhos ?? guardados?.paiEsperaFilhos ?? deFabrica.paiEsperaFilhos,
     supervisores: unicos(d.ajustes.supervisores),
     obrigatoriosAoAbrir: limparObrigatorios(d.ajustes.obrigatoriosAoAbrir, validos),
     camposDesligados: CAMPOS_DO_SISTEMA.filter((c) => camposDesligados.includes(c)),
+    // os motivos de perda e a meta (do painel de Vendas): sem o campo no pedido, ficam como estão
+    motivosDePerda: etiquetasUnicas(d.ajustes.motivosDePerda ?? guardados?.motivosDePerda ?? deFabrica.motivosDePerda),
+    metaMensal: d.ajustes.metaMensal !== undefined ? d.ajustes.metaMensal : guardados?.metaMensal ?? null,
+    // a negociação não tem prazo nem fecha sozinha
+    ...(tipo === 'vendas' ? { contaPrazo: false, fecharSozinhoDias: null } : {}),
   };
+  if (tipo === 'vendas' && !ajustes.motivosDePerda.length) throw new BadRequest('O painel de Vendas precisa de pelo menos um motivo de perda.');
   await conferirPessoas(db, [...pessoas, ...ajustes.supervisores]);
   const campos = { name: d.nome, key: sigla, description: d.descricao, color: d.cor, access: d.acesso, memberIds: pessoas, settings: ajustes, active: d.ativo };
   const agora = new Date();
 
   if (!atual) {
     const novoId = newId();
-    // as etapas da janela (todas novas: um painel novo não tem etapa nenhuma ainda) ou as quatro básicas
-    const plano = await planejarEtapas(db, novoId, d.etapas ?? ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, avisar: [] })), {}, validos);
+    // as etapas da janela (todas novas: um painel novo não tem etapa nenhuma ainda) ou as de fábrica do tipo
+    const etapas = d.etapas ?? (tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null }))).map((e) => ({ ...e, avisar: [] }));
+    const plano = await planejarEtapas(db, novoId, etapas, {}, validos, tipo);
     await db.transaction(async (tx) => {
       const [ultimo] = await tx.select({ n: sql<number>`coalesce(max(${ticketPanels.sortOrder}), -1)::int` }).from(ticketPanels);
-      await tx.insert(ticketPanels).values({ id: novoId, ...campos, sortOrder: Number(ultimo?.n ?? -1) + 1 });
+      await tx.insert(ticketPanels).values({ id: novoId, ...campos, kind: tipo, sortOrder: Number(ultimo?.n ?? -1) + 1 });
       await aplicarEtapas(tx, ator, plano, agora);
     });
     const painel = await painelPronto(db, novoId);
     return {
       valor: painel,
-      resumo: `Criou o painel ${painel.nome} (${painel.sigla}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`,
+      resumo: `Criou o painel ${painel.nome} (${painel.sigla}${tipo === 'vendas' ? `, de ${NOME_TIPO_DE_PAINEL.vendas}` : ''}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`,
       depois: { ...painelParaAuditoria(painel), etapas: painel.etapas.map(etapaParaAuditoria) },
     };
   }
 
   // as etapas que vieram junto: conferidas antes de gravar qualquer coisa (o destino dos chamados também)
-  const plano = d.etapas ? await planejarEtapas(db, atual.id, d.etapas, d.destino, validos) : null;
+  const plano = d.etapas ? await planejarEtapas(db, atual.id, d.etapas, d.destino, validos, tipo) : null;
   const antes = painelParaAuditoria(painelDaLinha(atual, []));
   let movidos: Movido[] = [];
   await db.transaction(async (tx) => {
@@ -249,7 +264,7 @@ function datasDaSituacao(tipo: TipoEtapa, agora: Date) {
 export async function salvarEtapas(app: FastifyInstance, ator: Ator, painelId: string, d: EtapasGravar): Promise<Gravado<Painel>> {
   const db = app.db;
   const p = await linhaDoPainel(db, painelId);
-  const plano = await planejarEtapas(db, painelId, d.etapas, d.destino, await obrigatoriosValidos(db, p));
+  const plano = await planejarEtapas(db, painelId, d.etapas, d.destino, await obrigatoriosValidos(db, p), tipoDaLinha(p));
   const agora = new Date();
   let movidos: Movido[] = [];
   await db.transaction(async (tx) => {
@@ -272,7 +287,7 @@ type PlanoDasEtapas = {
   atuais: LinhaDaEtapa[];
   porId: Map<string, LinhaDaEtapa>;
   /** a lista final, na ordem: as novas já com o id que vão ter */
-  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[] }>;
+  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[]; resultado: ResultadoDaVenda | null }>;
   saem: LinhaDaEtapa[];
   destino: Record<string, string>;
 };
@@ -283,7 +298,10 @@ type PlanoDasEtapas = {
  * as etapas e quantos chamados cada uma tem — a tela pergunta para onde vão). Num painel novo não há
  * etapa nenhuma: toda etapa com id é recusada.
  */
-async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], destino: Record<string, string>, validos: Obrigatorio[]): Promise<PlanoDasEtapas> {
+async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], destino: Record<string, string>, validos: Obrigatorio[], tipo: TipoDePainel): Promise<PlanoDasEtapas> {
+  // o painel de Vendas acaba em Ganho e Perdido (uma de cada, as duas fechando); o de Gestão não tem resultado
+  const problema = problemaNasEtapasDoTipo(tipo, etapas);
+  if (problema) throw new BadRequest(problema);
   const atuais = await db.select().from(ticketStages)
     .where(and(eq(ticketStages.panelId, painelId), isNull(ticketStages.deletedAt))).orderBy(asc(ticketStages.sortOrder));
   const porId = new Map(atuais.map((e) => [e.id, e]));
@@ -300,7 +318,7 @@ async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], d
   // o que a etapa pede, só o que vale no painel (o campo desligado ou desativado não trava ninguém)
   const novas = etapas.map((e, ordem) => ({
     id: e.id ?? newId(), nova: !e.id, ordem, nome: e.nome, tipo: e.tipo, nivel: e.nivel,
-    obrigatorios: limparObrigatorios(e.obrigatorios, validos), avisar: unicos(e.avisar),
+    obrigatorios: limparObrigatorios(e.obrigatorios, validos), avisar: unicos(e.avisar), resultado: e.resultado ?? null,
   }));
   await conferirPessoas(db, novas.flatMap((e) => e.avisar));
 
@@ -333,7 +351,7 @@ async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, agora: D
   const movidos: Movido[] = [];
 
   for (const e of novas) {
-    const campos = { name: e.nome, kind: e.tipo, level: e.nivel, sortOrder: e.ordem, requiredFields: e.obrigatorios, notifyUserIds: e.avisar };
+    const campos = { name: e.nome, kind: e.tipo, level: e.nivel, sortOrder: e.ordem, requiredFields: e.obrigatorios, notifyUserIds: e.avisar, outcome: e.resultado };
     if (e.nova) await tx.insert(ticketStages).values({ id: e.id, panelId: painelId, ...campos });
     else await tx.update(ticketStages).set(campos).where(eq(ticketStages.id, e.id));
   }
@@ -378,7 +396,7 @@ function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   const mesmaLista = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
   const ajustadas = ficaram.filter((e) => {
     const a = porId.get(e.id)!;
-    return a.kind !== e.tipo || (a.level ?? null) !== e.nivel || !mesmaLista(a.requiredFields, e.obrigatorios) || !mesmaLista(a.notifyUserIds, e.avisar);
+    return a.kind !== e.tipo || (a.level ?? null) !== e.nivel || (a.outcome ?? null) !== e.resultado || !mesmaLista(a.requiredFields, e.obrigatorios) || !mesmaLista(a.notifyUserIds, e.avisar);
   }).map((e) => e.nome);
   const ordemAntes = atuais.filter((e) => ficaram.some((x) => x.id === e.id)).map((e) => e.id).join();
   const partes = [
@@ -391,7 +409,7 @@ function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   ].filter(Boolean);
   return {
     partes,
-    antes: atuais.map((e) => etapaParaAuditoria({ nome: e.name, tipo: e.kind, nivel: e.level, obrigatorios: e.requiredFields, avisar: e.notifyUserIds })),
+    antes: atuais.map((e) => etapaParaAuditoria({ nome: e.name, tipo: e.kind, nivel: e.level, obrigatorios: e.requiredFields, avisar: e.notifyUserIds, resultado: e.outcome })),
     depois: novas.map(etapaParaAuditoria),
   };
 }

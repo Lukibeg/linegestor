@@ -13,7 +13,7 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AnotacaoSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, LigarChamadoSchema,
+  AnotacaoSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema, LigarChamadoSchema,
   ListarChamadosSchema, MoverSchema, ObservarSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
 } from '@gestor/shared';
@@ -21,6 +21,7 @@ import { BadRequest } from '../plugins/errors.js';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as svc from '../services/atendimento/chamados.js';
 import * as leitura from '../services/atendimento/leitura.js';
+import { relatorioDoPainelDeVendas } from '../services/atendimento/vendas.js';
 
 const tags = ['Chamados do Gestor'];
 const Id = z.object({ id: z.string().min(1) });
@@ -74,6 +75,14 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.get('/paineis/resumo', { ...ler, schema: { tags, summary: 'A tela inicial: os números de cada painel (em aberto, meus, sem dono, vencidos, perto, esperando e por etapa)' } },
     async (req) => leitura.resumoDosPaineisVisiveis(app, ator(req)));
+
+  app.get('/vendas', {
+    ...ler,
+    schema: {
+      tags, querystring: FiltroDoRelatorioDeVendasSchema,
+      summary: 'O relatório de um painel de Vendas no período: os números, o funil, o tempo em cada etapa, os meses × a meta, os vendedores e os motivos de perda',
+    },
+  }, async (req) => relatorioDoPainelDeVendas(app, ator(req), req.query));
 
   app.get('/meu-dia', { ...ler, schema: { tags, summary: 'Os meus, os que vencem, os sem dono, os esperando o cliente, os que acompanho e os agendados de hoje' } },
     async (req) => leitura.meuDia(app, ator(req)));

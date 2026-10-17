@@ -15,3 +15,4 @@ export * from './atendimento-prazos.js';
 export * from './atendimento.js';
 export * from './robo.js';
 export * from './calendario.js';
+export * from './vendas.js';

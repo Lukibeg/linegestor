@@ -44,6 +44,7 @@ import { Prazos } from './ficha/Prazos.js';
 import { Operadora } from './ficha/Operadora.js';
 import { Tempo } from './ficha/Tempo.js';
 import { NaAgenda } from './ficha/Agenda.js';
+import { Negociacao } from './ficha/Negociacao.js';
 
 /**
  * A rota. O código escrito de qualquer jeito (sup-12, SUP 12) vira o do sistema; ir de um chamado
@@ -139,7 +140,7 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
     };
   }, [f, opcoes.data, user, mover, cadastro.data, qc]);
 
-  if (q.isLoading || opcoes.isLoading) return <Carregando texto="Abrindo o chamado…" />;
+  if (q.isLoading || opcoes.isLoading) return <Carregando texto="Abrindo…" />;
   if (q.isError || !f) return <NaoAbriu codigo={referencia} erro={q.error} tentar={() => void q.refetch()} />;
   if (opcoes.isError || !aberta) return <NaoAbriu codigo={referencia} erro={opcoes.error} tentar={() => void opcoes.refetch()} />;
 
@@ -162,12 +163,14 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
             <LinhaDoTempo />
           </div>
           <div className="min-w-0 flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
+            {/* a negociação (o painel de Vendas): o valor e o resultado — sem prazo, operadora e tempo gasto */}
+            <Negociacao />
             <Classificacao />
             <Responsavel />
-            <Prazos />
+            {aberta.painel?.tipo !== 'vendas' && <Prazos />}
             <NaAgenda />
             <Operadora />
-            <Tempo />
+            {aberta.painel?.tipo !== 'vendas' && <Tempo />}
           </div>
         </div>
       </div>

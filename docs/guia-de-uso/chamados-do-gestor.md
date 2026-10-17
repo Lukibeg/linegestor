@@ -4,6 +4,8 @@ Desde o Patch 2.0 os chamados nascem e andam no **Gestor**, em **Suporte › Cha
 lateral). Os chamados antigos continuam no LineChat; para consultar, **Suporte › Relatórios** abre neles,
 na aba **Hoje** (as abas levam ao Período e aos relatórios).
 A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
+O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho e o Perdido): veja
+[Vendas: o painel do Comercial](vendas.md).
 
 ---
 

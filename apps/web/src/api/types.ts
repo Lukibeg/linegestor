@@ -524,4 +524,5 @@ export type {
   OpcaoDoCampo, ValorDoCampo, ValoresDosCampos, Obrigatorio, CorEtiqueta, EtiquetaComCor, EtiquetaDoCatalogo, EtiquetaGravarEntrada, EtiquetaEditarEntrada, EtiquetaEditarPeloNomeEntrada,
   ModelosDoLineChat, ModeloDoLineChat, ModeloAprovado, EnvioAoCliente, TipoArquivoDoModelo,
   RoboTela, MapaDoRobo, MapaDoRoboEntrada, PreviaDoRobo, UltimoPedidoDoRobo,
+  TipoDePainel, ResultadoDaVenda, RelatorioDeVendas, FiltroDoRelatorioDeVendas,
 } from '@gestor/shared';

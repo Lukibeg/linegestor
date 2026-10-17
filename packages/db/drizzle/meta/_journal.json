@@ -127,6 +127,13 @@
       "when": 1792188643217,
       "tag": "0017_calendario",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792246867771,
+      "tag": "0018_vendas",
+      "breakpoints": true
     }
   ]
 }

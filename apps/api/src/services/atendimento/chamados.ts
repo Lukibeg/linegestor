@@ -18,16 +18,17 @@
  * arquivo): as mesmas regras, sem o `Feito` (quem chama escreve a própria auditoria).
  */
 import type { FastifyInstance } from 'fastify';
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
-  clientContacts, clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketLinks, ticketNotes, ticketPanels,
+  clientContacts, clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketEvents, ticketLinks, ticketNotes, ticketPanels,
   ticketTimeEntries, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
-  caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, diaLocal, emLista, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada,
+  caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, diaComAno, diaLocal, emLista, duracaoDoPrazo, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada,
   faltaParaAbrir, faltaParaEtapa, filhosQueTravam, lerCamposDoPedido, mensagemDoQueFalta, mesmoValorDoCampo, movimentoDeNivel, NOME_ALCANCE, NOME_CAMPO,
-  NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel, situacaoDaEtapa, textoDoValor,
+  instanteLocal, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, numeroWhatsApp, paraBusca, prioridadeSugeridaDoPainel, reais, situacaoDaEtapa, textoDoValor,
+  trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos,
@@ -102,6 +103,8 @@ const NOME_CONTORNO = 'Solução de contorno';
 const NOME_TELEFONE = 'WhatsApp do contato';
 const NOME_ETIQUETAS = 'Etiquetas';
 const NOME_OBSERVADORES = 'Observadores';
+const NOME_EMPRESA = 'Empresa';
+const NOME_MOTIVO_PERDA = 'Motivo da perda';
 
 const juntar = (xs: Array<string | null | undefined>) => xs.filter(Boolean).join(', ') || null;
 const nomeCliente = (ctx: Contexto, id: string | null) => (id ? ctx.clientes.get(id) ?? '(cliente removido)' : null);
@@ -265,26 +268,32 @@ export async function criarChamado(
   const campos: ValoresDosCampos = {};
   for (const i of lerCampos(ctx, painel, d.campos ?? {})) if (i.valor !== null) campos[i.campo.id] = i.valor;
 
+  // a negociação (só no painel de Vendas): o valor e a empresa que ainda não é cliente; a venda não tem
+  // prioridade (nem o aviso do Crítico)
+  const vendas = painel.tipo === 'vendas';
+
   // 4. a prioridade: sem escolha, a sugerida (gravidade × alcance; no painel sem o alcance, só a
   // gravidade); trocar a sugerida pede o motivo
-  const sugerida = prioridadeSugeridaDoPainel(painel.ajustes, gravidade, alcance, ctx.prazos);
-  const prioridade = d.prioridade ?? sugerida;
+  const sugerida = vendas ? null : prioridadeSugeridaDoPainel(painel.ajustes, gravidade, alcance, ctx.prazos);
+  const prioridade = vendas ? null : d.prioridade ?? sugerida;
   const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
   const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
+  const valor = vendas ? d.valor ?? null : null;
+  const empresa = vendas && !clienteId ? d.empresa ?? null : null;
 
   // 3. o que o painel pede para abrir
   const dados: DadosObrigatorios = {
     tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
     assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
     produtos, operadoras, responsavelId: d.responsavelId ?? null,
-    solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos,
+    solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, empresa,
   };
   // o que o painel pede para abrir vale para quem abre na tela (e pelo botão da conversa); o robô e o
   // agendado abrem sempre — o pedido do cliente não se perde por falta de um campo, e o que faltar é
   // pedido para o chamado andar de etapa
   const faltam = origem === 'manual' || origem === 'botao' ? faltaParaAbrir(dados, painel.ajustes) : [];
   if (faltam.length) throw new BadRequest(mensagemDoQueFalta(faltam, undefined, ctx.campos), { faltam });
-  if (d.prioridade && sugerida && d.prioridade !== sugerida && !d.motivoPrioridade) throw new BadRequest('Trocar a prioridade sugerida pede o motivo.');
+  if (prioridade && sugerida && prioridade !== sugerida && !d.motivoPrioridade) throw new BadRequest('Trocar a prioridade sugerida pede o motivo.');
 
   // 5. o que foi citado existe
   if (clienteId) await conferirCliente(db, clienteId);
@@ -323,12 +332,13 @@ export async function criarChamado(
       sessionId: d.sessaoId ?? null, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
       productIds: produtos, carrierIds: operadoras, tags: etiquetas, customFields: campos,
+      valueCents: valor, prospect: empresa,
       parentId: pai?.id ?? null, problemId: problema?.id ?? null, checklist, watcherIds: observadores,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
       firstResponseAt: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? agora : null,
       lastActivityAt: agora, scheduleId: opts.agendadoId ?? null, createdById: pessoa, createdAt: agora, updatedAt: agora,
     });
-    await registrarEvento(tx, id, 'criado', ator, { origem, etapa: etapa.nome, etapaId: etapa.id, painel: painel.nome }, quando());
+    await registrarEvento(tx, id, 'criado', ator, { origem, etapa: etapa.nome, etapaId: etapa.id, painel: painel.nome, ...(vendas ? { venda: true } : {}) }, quando());
     if (pai) {
       await registrarEvento(tx, id, 'pai', ator, { acao: 'ligou', pai: pai.code }, quando());
       await registrarEvento(tx, pai.id, 'filho', ator, { acao: 'ligou', filho: codigo, painel: painel.nome }, quando());
@@ -389,6 +399,8 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     ...(usa('assunto') ? {} : { assuntoId: undefined }), ...(usa('tipo') ? {} : { tipo: undefined }),
     ...(usa('gravidade') ? {} : { gravidade: undefined }), ...(usa('alcance') ? {} : { alcance: undefined }),
     ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
+    // a negociação não tem prioridade
+    ...(painel.tipo === 'vendas' ? { prioridade: undefined, motivoPrioridade: undefined } : {}),
   };
   const set: SetChamado = {};
   const antes: Record<string, unknown> = {};
@@ -421,6 +433,22 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   if (d.contatoTelefone !== undefined) {
     const fone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone : null;
     if (fone !== t.contactPhone) { set.contactPhone = fone; campo('contatoTelefone', NOME_TELEFONE, t.contactPhone, fone, t.contactPhone); }
+  }
+
+  // a negociação (só no painel de Vendas): a empresa que ainda não é cliente, o valor e o motivo da perda
+  // (que só a perdida tem)
+  if (painel.tipo === 'vendas') {
+    if (d.empresa !== undefined && d.empresa !== t.prospect) { set.prospect = d.empresa; campo('empresa', NOME_EMPRESA, t.prospect, d.empresa, t.prospect); }
+    if (d.valor !== undefined && d.valor !== t.valueCents) {
+      set.valueCents = d.valor;
+      campo('valor', NOME_CAMPO.valor, t.valueCents === null ? null : reais(t.valueCents), d.valor === null ? null : reais(d.valor), t.valueCents);
+    }
+    if (d.motivoPerda !== undefined && d.motivoPerda !== t.lostReason) {
+      if (e.etapa?.resultado !== 'perdido') throw new BadRequest('O motivo da perda é só da negociação perdida.');
+      if (!d.motivoPerda) throw new BadRequest('A negociação perdida precisa do motivo.');
+      set.lostReason = d.motivoPerda;
+      campo('motivoPerda', NOME_MOTIVO_PERDA, t.lostReason, d.motivoPerda, t.lostReason);
+    }
   }
 
   // o assunto novo traz os itens do checklist dele que ainda não estão
@@ -591,16 +619,37 @@ type Movimento = {
   nomeDoNovoResponsavel: string | null;
 };
 
+/** Marcar a negociação como ganha ou perdida: o motivo da perda e o dia em que ela acabou (nulo = agora). */
+type Resultado = { motivoPerda: string | null; concluidoEm: string | null };
+
+/**
+ * O Ganho e o Perdido (o painel de Vendas): o dia em que a negociação acabou é hoje ou antes (sem ele,
+ * agora); o Perdido pede o motivo (o `conferirMovimento` cobra). Nos outros movimentos, nada disso vale.
+ */
+function conferirResultado(e: Estado, para: EtapaPainel, d: { motivoPerda?: string | null; concluidoEm?: string | null }): Resultado | null {
+  if (!para.resultado) return null;
+  const concluidoEm = d.concluidoEm || null;
+  if (concluidoEm && concluidoEm > diaLocal(e.agora)) throw new BadRequest('O dia em que a negociação acabou é hoje ou um dia que já passou.');
+  return { motivoPerda: para.resultado === 'perdido' ? d.motivoPerda?.trim() || null : null, concluidoEm };
+}
+/** O instante do dia em que a negociação acabou: hoje é agora; um dia que passou, o meio-dia dele (Brasília). */
+const momentoDoDia = (dia: string, agora: Date) => (dia === diaLocal(agora) ? agora : instanteLocal(dia, '12:00'));
+
 /**
  * Confere se o chamado pode entrar na etapa: o que falta preencher, os filhos que travam (o pai só
  * resolve e fecha com os filhos fechados) e, quando é escalonar ou voltar de nível, o motivo.
  */
 async function conferirMovimento(
   db: Db, e: Estado, para: EtapaPainel,
-  o: { painel?: Painel; motivo: string | null; responsavelId?: string | null; nivel: boolean },
+  o: { painel?: Painel; motivo: string | null; responsavelId?: string | null; nivel: boolean; venda?: Resultado | null },
 ): Promise<'sobe' | 'desce' | null> {
   const painel = o.painel ?? e.painel;
-  const dados = { ...dadosDaLinha(e.t, await minutosGastos(db, e.t.id)), ...(o.responsavelId !== undefined ? { responsavelId: o.responsavelId } : {}) };
+  const dados = {
+    ...dadosDaLinha(e.t, await minutosGastos(db, e.t.id)),
+    ...(o.responsavelId !== undefined ? { responsavelId: o.responsavelId } : {}),
+    // o motivo da perda vem junto com o marcar como perdido (o de antes, de uma perda desfeita, não vale)
+    ...(para.resultado === 'perdido' ? { motivoPerda: o.venda?.motivoPerda ?? null } : {}),
+  };
   const faltam = faltaParaEtapa(dados, para);
   if (faltam.length) throw new BadRequest(mensagemDoQueFalta(faltam, para.nome, e.ctx.campos), { faltam });
   const travam = filhosQueTravam(await filhosDoChamado(db, e.ctx, e.t.id), para, painel.ajustes.paiEsperaFilhos);
@@ -618,7 +667,7 @@ async function conferirMovimento(
  */
 async function gravarMovimento(
   tx: Db, e: Estado, ator: Ator, para: EtapaPainel,
-  o: { motivo: string | null; sentido: 'sobe' | 'desce' | null; responsavelId?: string | null; motivoReabriu?: string | null; extra?: SetChamado },
+  o: { motivo: string | null; sentido: 'sobe' | 'desce' | null; responsavelId?: string | null; motivoReabriu?: string | null; extra?: SetChamado; venda?: Resultado | null },
 ): Promise<Movimento> {
   const { t, agora } = e;
   const deTipo = e.etapa?.tipo ?? 'andamento';
@@ -629,11 +678,24 @@ async function gravarMovimento(
   if (para.tipo === 'resolvido') { set.resolvedAt = t.resolvedAt ?? agora; set.closedAt = null; }
   if (para.tipo === 'fechado') { set.closedAt = antes === 'fechado' ? t.closedAt ?? agora : agora; set.resolvedAt = t.resolvedAt ?? agora; }
   if (reabriu) { set.resolvedAt = null; set.closedAt = null; set.reopenCount = t.reopenCount + 1; }
+  // a negociação: o Ganho e o Perdido acabam no dia dito (ou agora, quando o resultado muda); o motivo da
+  // perda fica só enquanto ela está perdida (o histórico guarda o de antes)
+  if (para.resultado) {
+    const quando = o.venda?.concluidoEm ? momentoDoDia(o.venda.concluidoEm, agora) : para.resultado !== (e.etapa?.resultado ?? null) ? agora : null;
+    if (quando) { set.closedAt = quando; set.resolvedAt = quando; }
+  }
+  if (para.resultado === 'perdido') set.lostReason = o.venda?.motivoPerda ?? t.lostReason;
+  else if (t.lostReason) set.lostReason = null;
   if (deTipo === 'entrada' && para.tipo !== 'entrada' && ator.tipo === 'pessoa' && !t.firstResponseAt && set.firstResponseAt === undefined) set.firstResponseAt = agora;
   const trocaResponsavel = o.responsavelId !== undefined && o.responsavelId !== t.assigneeId;
   if (trocaResponsavel) set.assigneeId = o.responsavelId ?? null;
   await tx.update(tickets).set(set).where(eq(tickets.id, t.id));
-  await registrarEvento(tx, t.id, 'etapa', ator, { de: etapaCurta(e.etapa), para: etapaCurta(para), motivo: o.motivo, sentido: o.sentido }, e.quando());
+  const venda = para.resultado ? {
+    resultado: para.resultado, valor: t.valueCents ?? null,
+    ...(para.resultado === 'perdido' ? { motivoPerda: set.lostReason ?? null } : {}),
+    ...(o.venda?.concluidoEm && o.venda.concluidoEm !== diaLocal(agora) ? { concluidoEm: o.venda.concluidoEm } : {}),
+  } : {};
+  await registrarEvento(tx, t.id, 'etapa', ator, { de: etapaCurta(e.etapa), para: etapaCurta(para), motivo: o.motivo, sentido: o.sentido, ...venda }, e.quando());
   if (reabriu) await registrarEvento(tx, t.id, 'reaberto', ator, { motivo: o.motivoReabriu !== undefined ? o.motivoReabriu : o.motivo }, e.quando());
   if (trocaResponsavel) await registrarEvento(tx, t.id, 'responsavel', ator, { de: pessoaCurta(e.ctx, t.assigneeId), para: pessoaCurta(e.ctx, o.responsavelId) }, e.quando());
   return {
@@ -664,7 +726,9 @@ async function depoisDoMovimento(app: FastifyInstance, ator: Ator, t: LinhaChama
   if (m.depois === 'fechado' && m.antes !== 'fechado') emitir(app, 'chamado.fechado', t.id);
 }
 
-function frasesDoMovimento(codigo: string, m: Movimento, sentido: 'sobe' | 'desce' | null, motivo: string | null) {
+function frasesDoMovimento(codigo: string, m: Movimento, sentido: 'sobe' | 'desce' | null, motivo: string | null, venda?: { valor: number | null; motivoPerda: string | null } | null) {
+  if (m.para.resultado === 'ganho') return `Marcou ${codigo} como ganho${venda?.valor != null ? ` (${reais(venda.valor)})` : ''}, estava em ${m.de?.nome ?? '?'}`;
+  if (m.para.resultado === 'perdido') return `Marcou ${codigo} como perdido${venda?.motivoPerda ? `: ${venda.motivoPerda}` : ''} (estava em ${m.de?.nome ?? '?'})`;
   const verbo = sentido === 'sobe' ? 'Escalonou' : sentido === 'desce' ? 'Voltou' : 'Moveu';
   return `${verbo} ${codigo} de ${m.de?.nome ?? '?'} para ${m.para.nome}${m.reabriu ? ' (reabriu)' : ''}${motivo ? `: ${motivo}` : ''}`;
 }
@@ -675,7 +739,7 @@ function frasesDoMovimento(codigo: string, m: Movimento, sentido: 'sobe' | 'desc
  */
 export async function mover(
   app: FastifyInstance, ator: Ator, ref: string,
-  d: { etapaId: string; motivo?: string | null; responsavelId?: string | null },
+  d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null },
 ): Promise<Feito> {
   exigirTrabalhar(ator);
   const e = await carregar(app, ator, ref);
@@ -685,10 +749,11 @@ export async function mover(
   const motivo = d.motivo?.trim() || null;
   const responsavelId = d.responsavelId === undefined ? undefined : d.responsavelId || null;
   if (responsavelId) conferirPessoa(e.ctx, responsavelId);
-  const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true });
-  const m = await app.db.transaction((tx) => gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId }));
+  const venda = conferirResultado(e, para, d);
+  const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true, venda });
+  const m = await app.db.transaction((tx) => gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda }));
   await depoisDoMovimento(app, ator, e.t, m);
-  return { ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo) };
+  return { ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo, venda && { valor: e.t.valueCents, motivoPerda: venda.motivoPerda }) };
 }
 
 // =====================================================================
@@ -706,7 +771,8 @@ export async function assumir(app: FastifyInstance, ator: Ator, ref: string, opt
   const e = await carregar(app, ator, ref);
   const { t, agora } = e;
   let para: EtapaPainel | null = null;
-  if (opts.mover !== false && e.etapa?.tipo === 'entrada') {
+  // na negociação, assumir é só ficar com ela: o lead não passa sozinho para a etapa seguinte
+  if (opts.mover !== false && e.painel.tipo !== 'vendas' && e.etapa?.tipo === 'entrada') {
     const alvo = etapaAoAssumir(e.painel.etapas, t.stageId);
     if (alvo) {
       const dados = { ...dadosDaLinha(t, await minutosGastos(app.db, t.id)), responsavelId: ator.id };
@@ -763,6 +829,15 @@ export async function esperar(app: FastifyInstance, ator: Ator, ref: string, d: 
   return { ...nada(t), resumo };
 }
 
+/** A etapa aberta de onde a negociação saiu para o Ganho ou o Perdido (a última mudança de etapa que a levou para onde está). */
+async function etapaAntesDoResultado(db: Db, e: Estado): Promise<EtapaPainel | null> {
+  const [ultima] = await db.select({ dados: ticketEvents.data }).from(ticketEvents)
+    .where(and(eq(ticketEvents.ticketId, e.t.id), eq(ticketEvents.kind, 'etapa'))).orderBy(desc(ticketEvents.createdAt)).limit(1);
+  const de = (ultima?.dados as { de?: { id?: string } | null } | undefined)?.de?.id;
+  const etapa = de ? e.painel.etapas.find((x) => x.id === de) : undefined;
+  return etapa && (etapa.tipo === 'entrada' || etapa.tipo === 'andamento') ? etapa : null;
+}
+
 /** Só o resolvido ou fechado reabre: vai para a etapa escolhida (de entrada ou andamento) ou a primeira de andamento. */
 /** `observadores: false`: quem chama avisa os observadores do jeito dele (o cliente que respondeu e reabriu). */
 export async function reabrir(app: FastifyInstance, ator: Ator, ref: string, d: { motivo?: string | null; etapaId?: string | null }, opts: { observadores?: boolean } = {}): Promise<Feito> {
@@ -775,7 +850,8 @@ export async function reabrir(app: FastifyInstance, ator: Ator, ref: string, d: 
     para = painel.etapas.find((x) => x.id === d.etapaId && (x.tipo === 'entrada' || x.tipo === 'andamento')) ?? null;
     if (!para) throw new BadRequest('Para reabrir, escolha uma etapa de entrada ou de andamento deste painel.');
   } else {
-    para = etapaAoReabrir(painel.etapas);
+    // a negociação volta para a etapa em que estava antes do ganho ou da perda (se ela ainda existe)
+    para = (painel.tipo === 'vendas' ? await etapaAntesDoResultado(app.db, e) : null) ?? etapaAoReabrir(painel.etapas);
     if (!para || (para.tipo !== 'entrada' && para.tipo !== 'andamento')) throw new BadRequest(`O painel ${painel.nome} não tem etapa de entrada nem de andamento para reabrir.`);
   }
   const motivo = d.motivo?.trim() || null;
@@ -798,8 +874,11 @@ export async function trocarPainel(app: FastifyInstance, ator: Ator, ref: string
   if (!novo || !podeVerPainel(novo, ator)) throw new NotFound('Painel');
   if (novo.id === painel.id) return nada(t);
   if (!novo.ativo) throw new BadRequest(`O painel ${novo.nome} está desativado: escolha outro.`);
+  // a negociação fica entre os painéis de Vendas, e o chamado entre os de Gestão (o caminho entre eles é o filho)
+  if (novo.tipo !== painel.tipo) throw new BadRequest(trocaEntreTiposDePainel(t.code, painel, novo));
   const para = d.etapaId ? novo.etapas.find((x) => x.id === d.etapaId) : etapaDeEntrada(novo.etapas);
   if (!para) throw new BadRequest(d.etapaId ? `Essa etapa não é do painel ${novo.nome}.` : `O painel ${novo.nome} não tem etapas.`);
+  if (para.resultado) throw new BadRequest(TROCA_ENTRA_NO_FUNIL);
   const tipoNovo = t.type ? novo.ajustes.tipos.find((x) => paraBusca(x) === paraBusca(t.type!)) ?? (novo.ajustes.tipos.length ? null : t.type) : null;
   // o destino é conferido com o chamado já sem o que sai (o assunto e o tipo do painel antigo)
   const semOQueSai: Estado = { ...e, t: { ...t, subjectId: null, type: tipoNovo } };

@@ -17,9 +17,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowLeft, ArrowRightLeft, CircleCheck, Clock, Filter, Inbox, Moon } from 'lucide-react';
+import { Archive, ArrowLeft, ArrowRightLeft, CircleCheck, Clock, Filter, Inbox, Moon, ThumbsDown, Trophy } from 'lucide-react';
 import {
-  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararUrgencia, movimentoDeNivel, rotuloDoNivel,
+  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararNegociacoes, compararUrgencia, movimentoDeNivel, reaisInteiros, rotuloDoNivel,
   type CartaoChamado, type ColunaQuadro, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type QuadroAtendimento, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -80,25 +80,30 @@ function ErroComTentar({ erro, tentar }: { erro: unknown; tentar: () => void }) 
  * o quadro inteiro reler — senão, entre a resposta e a releitura, o cartão "voltava" um instante
  * para a coluna de onde saiu. A releitura que vem logo depois acerta a ordem e os filtros.
  */
-function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado): QuadroAtendimento {
+function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, vendas: boolean): QuadroAtendimento {
   const fica = f.painelId === q.painelId;
+  // o valor da coluna acompanha o cartão que entra e o que sai (a releitura acerta o resto)
+  const valorDe = (c: CartaoChamado | undefined) => c?.valor ?? 0;
   return {
     ...q,
     colunas: q.colunas.map((col): ColunaQuadro => {
+      const antes = col.chamados.find((x) => x.id === f.id);
       const sem = col.chamados.filter((x) => x.id !== f.id);
-      const estava = sem.length !== col.chamados.length;
+      const estava = !!antes;
       if (fica && col.etapa.id === f.etapaId) {
-        // no Resolvido e no Fechado, o mais recente primeiro; nas outras, o mais urgente primeiro
-        const chamados = col.etapa.tipo === 'resolvido' || col.etapa.tipo === 'fechado' ? [f, ...sem] : [...sem, f].sort(compararUrgencia);
-        return { ...col, chamados, total: col.total + (estava ? 0 : 1) };
+        // no Resolvido e no Fechado, o mais recente primeiro; nas outras, o mais urgente (ou, na venda, a que fecha antes) primeiro
+        const chamados = col.etapa.tipo === 'resolvido' || col.etapa.tipo === 'fechado' ? [f, ...sem] : [...sem, f].sort(vendas ? compararNegociacoes : compararUrgencia);
+        return { ...col, chamados, total: col.total + (estava ? 0 : 1), valor: col.valor - valorDe(antes) + valorDe(f) };
       }
-      return estava ? { ...col, chamados: sem, total: Math.max(0, col.total - 1) } : col;
+      return estava ? { ...col, chamados: sem, total: Math.max(0, col.total - 1), valor: col.valor - valorDe(antes) } : col;
     }),
   };
 }
 
 function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: OpcoesAtendimento; filtros: Filtros }) {
   const pode = usePode();
+  // o painel de Vendas (2.0.1): a negociação tem valor, e não prioridade, prazo e assunto
+  const vendas = painel.tipo === 'vendas';
   const qc = useQueryClient();
   const { valor, mudar } = useFiltrosNoEndereco();
   const chave = useMemo(() => ['atendimento', 'quadro', painel.id, filtros], [painel.id, filtros]);
@@ -120,8 +125,8 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
     const f = ev.query.state.data as FichaChamado | undefined;
     if (!f || typeof f !== 'object' || !('etapaId' in f)) return;
     // só o que já está no quadro: um chamado de fora dos filtros não entra por aqui
-    qc.setQueryData<QuadroAtendimento>(chave, (q) => (q && q.colunas.some((c) => c.chamados.some((x) => x.id === f.id)) ? comCartaoNovo(q, f) : q));
-  }), [qc, chave]);
+    qc.setQueryData<QuadroAtendimento>(chave, (q) => (q && q.colunas.some((c) => c.chamados.some((x) => x.id === f.id)) ? comCartaoNovo(q, f, vendas) : q));
+  }), [qc, chave, vendas]);
 
   // ---------- arrastar (HTML5): o cartão vai, a coluna recebe ----------
   const arrastado = useRef<CartaoChamado | null>(null);
@@ -175,7 +180,7 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
   const tirar = (k: string) => () => mudar({ [k]: null });
   if (valor('q')) escritos.push({ chave: 'q', nome: 'Procurando', valor: `“${valor('q')}”`, tirar: tirar('q') });
   if (valor('responsavel')) escritos.push({ chave: 'responsavel', nome: 'Responsável', valor: nomeDoResponsavel(valor('responsavel'), opcoes.pessoas), tirar: tirar('responsavel') });
-  if (valor('prioridade')) escritos.push({ chave: 'prioridade', nome: 'Prioridade', valor: NOME_PRIORIDADE[valor('prioridade') as keyof typeof NOME_PRIORIDADE] ?? valor('prioridade'), tirar: tirar('prioridade') });
+  if (valor('prioridade') && !vendas) escritos.push({ chave: 'prioridade', nome: 'Prioridade', valor: NOME_PRIORIDADE[valor('prioridade') as keyof typeof NOME_PRIORIDADE] ?? valor('prioridade'), tirar: tirar('prioridade') });
   if (valor('espera')) escritos.push({ chave: 'espera', nome: 'Espera', valor: NOME_ESPERA[valor('espera') as TipoEspera] ?? valor('espera'), tirar: tirar('espera') });
   if (valor('cliente')) escritos.push({ chave: 'cliente', nome: 'Cliente', valor: clientes.find((c) => c.id === valor('cliente'))?.nome ?? '…', tirar: tirar('cliente') });
   if (valor('assunto')) escritos.push({ chave: 'assunto', nome: 'Assunto', valor: nomeDoAssunto(valor('assunto'), opcoes), tirar: tirar('assunto') });
@@ -204,16 +209,18 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
         )}
         <div className="flex items-center gap-2 w-full md:w-auto md:flex-1 md:min-w-[220px] md:max-w-[420px] md:ml-auto">
           <CampoBusca className="flex-1" id="quadro-busca" valor={valor('q')} onChange={(v) => mudar({ q: v })}
-            placeholder="Código, título, cliente…" titulo="Acha pelo código, título, cliente, contato, telefone e pelo que foi escrito (sem acento)" />
+            placeholder={vendas ? 'Código, título, empresa…' : 'Código, título, cliente…'}
+            titulo={vendas ? 'Acha pelo código, título, empresa, contato, telefone e pelo que foi escrito (sem acento)' : 'Acha pelo código, título, cliente, contato, telefone e pelo que foi escrito (sem acento)'} />
           <button type="button" className={`btn-secondary ${filtrosAbertos ? 'border-accent text-accent-ink bg-accent-soft' : ''}`} aria-expanded={filtrosAbertos} aria-controls="quadro-filtros"
-            id="quadro-botao-filtros" onClick={() => setFiltrosAbertos((v) => !v)} title={filtrosAbertos ? 'Esconder as caixas dos filtros' : 'Filtrar por responsável, prioridade, espera, cliente e assunto'}>
+            id="quadro-botao-filtros" onClick={() => setFiltrosAbertos((v) => !v)}
+            title={filtrosAbertos ? 'Esconder as caixas dos filtros' : vendas ? 'Filtrar por responsável, espera e cliente' : 'Filtrar por responsável, prioridade, espera, cliente e assunto'}>
             <Filter size={15} /> Filtros{ligados > 0 && <span className="text-accent tnum">({ligados})</span>}
           </button>
         </div>
       </div>
       <div id="quadro-filtros" className={`${filtrosAbertos ? 'flex' : 'hidden'} flex-wrap items-center gap-2 mb-2.5`}>
         <EscolherComBusca className={CAIXA_FILTRO} rotulo="Responsável" valor={valor('responsavel')} vazio="Todos os responsáveis" opcoes={opcoesDeResponsavel(pessoas)} procurar="Procurar pessoa…" onChange={(v) => mudar({ responsavel: v })} />
-        <SelectFiltro rotulo="Prioridade" valor={valor('prioridade')} vazio="Todas as prioridades" opcoes={PRIORIDADES.map((p) => ({ id: p, nome: NOME_PRIORIDADE[p] }))} onChange={(v) => mudar({ prioridade: v })} />
+        {!vendas && <SelectFiltro rotulo="Prioridade" valor={valor('prioridade')} vazio="Todas as prioridades" opcoes={PRIORIDADES.map((p) => ({ id: p, nome: NOME_PRIORIDADE[p] }))} onChange={(v) => mudar({ prioridade: v })} />}
         <SelectFiltro rotulo="Espera" valor={valor('espera')} vazio="Esperando ou não" opcoes={ESPERAS} onChange={(v) => mudar({ espera: v })} />
         <EscolherComBusca className={CAIXA_FILTRO} rotulo="Cliente" valor={valor('cliente')} vazio="Todos os clientes" opcoes={clientes} procurar="Procurar cliente…" onChange={(v) => mudar({ cliente: v })} />
         {(assuntos.length > 0 || valor('assunto')) && (
@@ -221,7 +228,7 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
         )}
       </div>
       <FiltrosEscritos itens={escritos} onLimpar={() => mudar(Object.fromEntries(FILTROS.map((k) => [k, null])))} />
-      {nenhum && escritos.length > 0 && <p className="text-[13px] text-muted mb-2">Nenhum chamado neste painel com esses filtros.</p>}
+      {nenhum && escritos.length > 0 && <p className="text-[13px] text-muted mb-2">{vendas ? 'Nenhuma negociação neste painel com esses filtros.' : 'Nenhum chamado neste painel com esses filtros.'}</p>}
 
       {!colunas ? (quadro.isError ? <ErroComTentar erro={quadro.error} tentar={() => void quadro.refetch()} /> : <Carregando />) : (
         // as colunas rolam para o lado dentro do quadro (a página não); no celular, uma por vez, com encaixe
@@ -275,8 +282,10 @@ function useAlturaQueSobra(ref: RefObject<HTMLElement>, mudancas: unknown[]): nu
   return altura;
 }
 
-/** O ícone do que a etapa significa: a entrada, o resolvido, o fechado (o andamento não precisa). */
-function IconeDaEtapa({ tipo }: { tipo: EtapaPainel['tipo'] }) {
+/** O ícone do que a etapa significa: a entrada, o resolvido, o fechado (o andamento não precisa); na venda, o Ganho e o Perdido. */
+function IconeDaEtapa({ tipo, resultado }: { tipo: EtapaPainel['tipo']; resultado?: EtapaPainel['resultado'] }) {
+  if (resultado === 'ganho') return <Trophy size={14} className="text-ok shrink-0" aria-hidden />;
+  if (resultado === 'perdido') return <ThumbsDown size={14} className="text-bad shrink-0" aria-hidden />;
   if (tipo === 'entrada') return <Inbox size={14} className="text-muted shrink-0" aria-hidden />;
   if (tipo === 'resolvido') return <CircleCheck size={14} className="text-ok shrink-0" aria-hidden />;
   if (tipo === 'fechado') return <Archive size={14} className="text-muted shrink-0" aria-hidden />;
@@ -289,6 +298,8 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
   cartao: (c: CartaoChamado) => ReactNode;
 }) {
   const { etapa, chamados, total, escondidos } = col;
+  const vendas = painel.tipo === 'vendas';
+  const nome = (n: number) => (vendas ? (n === 1 ? 'negociação' : 'negociações') : n === 1 ? 'chamado' : 'chamados');
   const nivel = etapa.nivel ? rotuloDoNivel(etapa.nivel) : null;
   // a etapa que já se chama "N2" (ou "DEV") não precisa do chip do lado: o nome vira o próprio chip
   const soNivel = !!nivel && etapa.nome.trim().toUpperCase() === nivel;
@@ -301,23 +312,29 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
       className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_236px] sm:max-w-[290px] rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
         sobre ? 'border-accent bg-accent-soft' : arrastando ? 'border-dashed border-line-strong bg-surface-2' : 'border-line bg-surface-2'}`}
     >
-      <header className="flex items-center gap-1.5 px-1 pt-0.5 min-w-0" title={DICA_TIPO_ETAPA[etapa.tipo]}>
-        <IconeDaEtapa tipo={etapa.tipo} />
+      <header className="flex items-center gap-1.5 px-1 pt-0.5 min-w-0" title={vendas ? undefined : DICA_TIPO_ETAPA[etapa.tipo]}>
+        <IconeDaEtapa tipo={etapa.tipo} resultado={etapa.resultado} />
         {soNivel ? <h2 id={idTitulo} className={chipNivel} title={`Nível ${nivel}`}>{nivel}</h2> : (
           <>
             <h2 id={idTitulo} className="font-display font-semibold text-[13.5px] truncate">{etapa.nome}</h2>
             {nivel && <span className={chipNivel} title={`Nível ${nivel}`}>{nivel}</span>}
           </>
         )}
-        <span className="ml-auto tnum text-[12px] font-semibold text-muted" title={`${total} ${total === 1 ? 'chamado' : 'chamados'}`}>{total}</span>
+        <span className="ml-auto tnum text-[12px] font-semibold text-muted" title={`${total} ${nome(total)}`}>{total}</span>
       </header>
+      {/* na venda, a soma do valor da coluna (o que está em cada etapa do funil, o ganho e o perdido) */}
+      {vendas && (
+        <div className="px-1 -mt-1 text-[12.5px] tnum font-semibold text-ink-2" data-valor-da-coluna title={`A soma do valor das ${total} ${nome(total)} desta etapa`}>
+          {reaisInteiros(col.valor)}
+        </div>
+      )}
       <ul className="flex flex-col gap-1.5 sm:max-h-[var(--altura-colunas,70vh)] sm:overflow-y-auto sm:-mr-1 sm:pr-1" aria-label={`Chamados em ${etapa.nome}`}>
         {chamados.map((c) => cartao(c))}
-        {!chamados.length && <li className="rounded-lg border border-dashed border-line-strong text-muted text-[12.5px] text-center py-5">Nenhum chamado</li>}
+        {!chamados.length && <li className="rounded-lg border border-dashed border-line-strong text-muted text-[12.5px] text-center py-5">{vendas ? 'Nenhuma negociação' : 'Nenhum chamado'}</li>}
       </ul>
       {escondidos > 0 && (
         <Link to={enderecoDaLista(painel.id, filtros, etapa.id)} className="link text-[12.5px] px-1 pb-0.5">
-          e mais {escondidos} {escondidos === 1 ? 'fechado' : 'fechados'} — ver na lista
+          e mais {escondidos} {vendas ? (escondidos === 1 ? 'antiga' : 'antigas') : escondidos === 1 ? 'fechado' : 'fechados'} — ver na lista
         </Link>
       )}
     </section>
@@ -377,9 +394,11 @@ function MenuMover({ c, etapas, onMover }: { c: CartaoChamado; etapas: EtapaPain
               >
                 <span className={`flex-1 min-w-0 truncate ${aqui ? 'text-muted' : 'text-ink'}`}>{e.nome}</span>
                 {aqui ? <span className="text-[11.5px] text-muted">está aqui</span>
-                  : sentido === 'sobe' ? <span className="text-[11.5px] text-signal" title="Subir de nível pede o motivo">escalonar</span>
-                    : sentido === 'desce' ? <span className="text-[11.5px] text-muted" title="Descer de nível pede o motivo">voltar de nível</span>
-                      : e.tipo === 'fechado' ? <span className="text-[11.5px] text-ok">fecha</span> : null}
+                  : e.resultado === 'ganho' ? <span className="text-[11.5px] text-ok inline-flex items-center gap-1"><Trophy size={11} aria-hidden /> ganhou</span>
+                    : e.resultado === 'perdido' ? <span className="text-[11.5px] text-bad inline-flex items-center gap-1" title="Pede o motivo da perda"><ThumbsDown size={11} aria-hidden /> perdeu</span>
+                      : sentido === 'sobe' ? <span className="text-[11.5px] text-signal" title="Subir de nível pede o motivo">escalonar</span>
+                        : sentido === 'desce' ? <span className="text-[11.5px] text-muted" title="Descer de nível pede o motivo">voltar de nível</span>
+                          : e.tipo === 'fechado' ? <span className="text-[11.5px] text-ok">fecha</span> : null}
               </button>
             </li>
           );

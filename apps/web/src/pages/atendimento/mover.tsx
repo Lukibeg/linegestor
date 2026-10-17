@@ -4,18 +4,23 @@
  *    do nível); descer é **voltar de nível**, também com o motivo (o pedido do Miguel);
  *  - faltou o que a etapa pede (a solução, a causa…) ou o pai tem filhos em aberto: a janela diz o
  *    quê, e leva à ficha para preencher;
- *  - fechou: a comemoração (confete), que some sozinha e respeita quem pede menos movimento.
+ *  - fechou: a comemoração (confete), que some sozinha e respeita quem pede menos movimento;
+ *  - no painel de Vendas (2.0.1), o Ganho e o Perdido abrem a janela do resultado: o valor e o dia em
+ *    que fechou, ou o motivo da perda — e o confete é do Ganho.
  */
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { movimentoDeNivel, nomeDoObrigatorio, type EtapaPainel, type FichaChamado, type PessoaCurta } from '@gestor/shared';
+import { movimentoDeNivel, nomeDoObrigatorio, type EtapaPainel, type FichaChamado, type Painel, type PessoaCurta } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
 import { Campo, EscolherComBusca, Modal, Spinner, mensagemErro, useToast } from '../../components/ui/index.js';
-import { LinkDoChamado, painelDe, useDepoisDeMudar, useOpcoes } from './comum.js';
+import { LinkDoChamado, ehDeVendas, painelDe, useDepoisDeMudar, useOpcoes } from './comum.js';
+import { JanelaResultado, type ResultadoEscolhido } from './venda.js';
 
-export type Movivel = { id: string; codigo: string; painelId: string; etapaId: string; responsavel: PessoaCurta | null };
+/** O que o mover precisa saber do chamado (o valor: a janela do Ganho já vem com ele). */
+export type Movivel = { id: string; codigo: string; painelId: string; etapaId: string; responsavel: PessoaCurta | null; valor?: number | null };
 
 type Escalonando = { c: Movivel; para: EtapaPainel; de: EtapaPainel | undefined; sentido: 'sobe' | 'desce' };
+type Marcando = { c: Movivel; para: EtapaPainel; painel: Painel | undefined };
 type Travado = { c: Movivel; para: EtapaPainel; mensagem: string; faltam: string[]; filhos: string[] };
 
 /** O confete do "fechou!" — sem biblioteca: uns papeizinhos que caem e somem. */
@@ -54,13 +59,18 @@ export function useMover(): { mover: (c: Movivel, etapaId: string) => Promise<Fi
   const toast = useToast();
   const [escalonando, setEscalonando] = useState<Escalonando | null>(null);
   const [travado, setTravado] = useState<Travado | null>(null);
+  const [marcando, setMarcando] = useState<Marcando | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
 
-  const executar = useCallback(async (c: Movivel, para: EtapaPainel, extra: { motivo?: string | null; responsavelId?: string | null } = {}): Promise<FichaChamado | null> => {
+  const executar = useCallback(async (
+    c: Movivel, para: EtapaPainel,
+    extra: { motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null } = {},
+  ): Promise<FichaChamado | null> => {
     setOcupado(c.id);
     try {
       const f = await depois(api.atendimento.mover(c.id, { etapaId: para.id, ...extra }));
-      if (para.tipo === 'fechado') comemorar();
+      // o confete: o chamado que fechou; na negociação, só a ganha
+      if (para.resultado ? para.resultado === 'ganho' : para.tipo === 'fechado') comemorar();
       toast.push('ok', `${c.codigo} foi para ${para.nome}`);
       return f;
     } catch (e) {
@@ -81,16 +91,31 @@ export function useMover(): { mover: (c: Movivel, etapaId: string) => Promise<Fi
     const para = painel?.etapas.find((e) => e.id === etapaId);
     if (!para) return null;
     const de = painel?.etapas.find((e) => e.id === c.etapaId);
+    // o Ganho e o Perdido pedem o resultado (o valor e o dia, ou o motivo)
+    if (para.resultado) { setMarcando({ c, para, painel }); return null; }
     const sentido = movimentoDeNivel(de, para);
     if (sentido) { setEscalonando({ c, para, de, sentido }); return null; }
     return executar(c, para);
   }, [opcoes.data, executar]);
+
+  /** O resultado escolhido na janela: o valor que mudou vai antes (fica no histórico), depois o movimento. */
+  const marcar = useCallback(async (m: Marcando, r: ResultadoEscolhido) => {
+    if (r.valor !== undefined) {
+      try {
+        await depois(api.atendimento.alterar(m.c.id, { valor: r.valor }));
+      } catch (e) { toast.push('erro', mensagemErro(e)); return; }
+    }
+    setMarcando(null);
+    await executar(m.c, m.para, { motivoPerda: r.motivoPerda, concluidoEm: r.concluidoEm });
+  }, [depois, executar, toast]);
 
   const janelas = (
     <>
       {escalonando && <JanelaEscalonar e={escalonando} pessoas={opcoes.data?.pessoas.filter((p) => p.ativo) ?? []} onFechar={() => setEscalonando(null)}
         onConfirmar={async (motivo, responsavelId) => { const e = escalonando; setEscalonando(null); await executar(e.c, e.para, { motivo, responsavelId }); }} />}
       {travado && <JanelaTravado t={travado} onFechar={() => setTravado(null)} />}
+      {marcando && <JanelaResultado codigo={marcando.c.codigo} valor={marcando.c.valor} para={marcando.para} painel={marcando.painel}
+        onFechar={() => setMarcando(null)} onConfirmar={(r) => marcar(marcando, r)} />}
     </>
   );
   return { mover, janelas, ocupado };
@@ -123,9 +148,10 @@ function JanelaEscalonar({ e, pessoas, onFechar, onConfirmar }: { e: Escalonando
 
 function JanelaTravado({ t, onFechar }: { t: Travado; onFechar: () => void }) {
   const opcoes = useOpcoes();
+  const vendas = ehDeVendas(opcoes.data, t.c.painelId);
   return (
     <Modal open onClose={onFechar} titulo={`${t.c.codigo} ainda não pode ir para ${t.para.nome}`}
-      rodape={<><button className="btn-secondary" onClick={onFechar}>Entendi</button><LinkDoChamado codigo={t.c.codigo} className="btn-primary" onClick={onFechar}>Abrir o chamado</LinkDoChamado></>}>
+      rodape={<><button className="btn-secondary" onClick={onFechar}>Entendi</button><LinkDoChamado codigo={t.c.codigo} className="btn-primary" onClick={onFechar}>{vendas ? 'Abrir a negociação' : 'Abrir o chamado'}</LinkDoChamado></>}>
       {t.faltam.length > 0 && (
         <div className="mb-3">
           <p className="text-sm text-ink-2 mb-2">Para ir para <b>{t.para.nome}</b>, falta preencher:</p>

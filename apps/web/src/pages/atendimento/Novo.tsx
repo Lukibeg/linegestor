@@ -27,6 +27,10 @@
  * O mesmo formulário abre numa janela por cima da ficha (`NovoChamadoNaJanela`): o filho e o problema a
  * partir de um chamado (o pedido do Luan na prévia: "quando eu for abrir um filho, ele tem que abrir como
  * pop-up e não a tela inteira"). Aberto, a janela fecha e a ficha de baixo mostra o filho.
+ *
+ * No painel de Vendas (2.0.1, decisão 0050), o formulário é o da **nova negociação**: a empresa (um
+ * cliente ou uma que ainda não é), o contato, o que está sendo negociado, o valor, os produtos e quem
+ * cuida — sem relato, classificação, prioridade e aviso ao cliente.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -51,13 +55,14 @@ import {
   CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
   painelDe, telefoneLegivel, useAbrirChamado, useDepoisDeMudar, useFecharJanela, useFicha, useOpcoes, usePode,
 } from './comum.js';
+import { CampoValor } from './venda.js';
 
 /** O motivo que o "Reabrir este" grava (o pedido do Luan: o cliente voltou com o mesmo problema). */
 const MOTIVO_REABRIR = 'O cliente voltou com o mesmo problema';
 
 /** Os campos que o formulário tem; o resto (solução, causa, checklist, tempo) só existe depois de aberto. */
 const CAMPOS_DO_FORMULARIO: CampoObrigatorio[] = [
-  'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'responsavel',
+  'cliente', 'contato', 'valor', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'responsavel',
 ];
 
 /** A cor de cada prioridade no botão escolhido (as mesmas do chip da prioridade). */
@@ -95,6 +100,11 @@ type Form = {
   avisarCliente: boolean;
   /** os campos do painel (pelo id do campo) */
   campos: Record<string, ValorDoCampo>;
+  /** a negociação (painel de Vendas): a empresa que ainda não é cliente e o valor (centavos) */
+  jaECliente: boolean;
+  empresa: string;
+  valor: number | null;
+  valorValido: boolean;
 };
 
 /**
@@ -144,12 +154,13 @@ export function JanelaAbrirChamado() {
   // o painel da tela de onde veio (o quadro, a lista): o chamado nasce nele
   const pedido = sp.get('painel')?.trim() || undefined;
   const painel = pedido ? opcoes.data?.paineis.find((p) => p.ativo && (p.id === pedido || p.sigla === pedido.toUpperCase())) : undefined;
+  const vendas = painel?.tipo === 'vendas';
   return (
     <>
       <Modal open onClose={fechar} largura="max-w-4xl" titulo={(
         <span className="flex items-center gap-2 min-w-0">
           {painel && <PontoDoPainel cor={painel.cor} />}
-          <span className="truncate">{painel ? `Abrir chamado no painel ${painel.nome}` : 'Abrir chamado'}</span>
+          <span className="truncate">{painel ? `${vendas ? 'Nova negociação' : 'Abrir chamado'} no painel ${painel.nome}` : 'Abrir chamado'}</span>
         </span>
       )}>
         <div id="janela-abrir-chamado">
@@ -158,7 +169,7 @@ export function JanelaAbrirChamado() {
         </div>
       </Modal>
       <Confirmar open={descartar} onClose={() => setDescartar(false)} onConfirm={() => { setDescartar(false); fecharJanela(); }} perigoso botao="Descartar"
-        titulo="Descartar o que foi escrito?" texto="O chamado ainda não foi aberto: o que foi escrito nesta janela se perde." />
+        titulo="Descartar o que foi escrito?" texto={vendas ? 'A negociação ainda não foi criada: o que foi escrito nesta janela se perde.' : 'O chamado ainda não foi aberto: o que foi escrito nesta janela se perde.'} />
     </>
   );
 }
@@ -227,6 +238,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       coresNovas: {},
       avisarCliente: false,
       campos: {},
+      jaECliente: true, empresa: '', valor: null, valorValido: true,
     };
   });
   const mudar = (o: Partial<Form>) => { setF((x) => ({ ...x, ...o })); setMexeu(true); };
@@ -237,6 +249,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const [enviando, setEnviando] = useState(false);
 
   const painel = paineis.find((p) => p.id === f.painelId) ?? paineis[0]!;
+  // o painel de Vendas: a nova negociação (sem relato, classificação, prioridade e aviso ao cliente)
+  const vendas = painel.tipo === 'vendas';
   const pede = (c: Obrigatorio) => painel.ajustes.obrigatoriosAoAbrir.includes(c);
   const falta = (c: string) => faltando.has(c);
   /** o painel usa este campo do sistema? (desligado em Ajustes › Campos, ele não aparece aqui) */
@@ -269,7 +283,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
 
   // ---------- a prioridade sugerida ----------
   // pelos campos que o painel usa: com o alcance, a matriz; sem ele, só a gravidade (Ajustes › Prazos)
-  const sugerida = prioridadeSugeridaDoPainel(painel.ajustes, f.gravidade, f.alcance, opcoes.prazos);
+  const sugerida = vendas ? null : prioridadeSugeridaDoPainel(painel.ajustes, f.gravidade, f.alcance, opcoes.prazos);
   const prioridadeFinal = f.prioridade ?? sugerida;
   const precisaMotivo = !!f.prioridade && !!sugerida && f.prioridade !== sugerida;
 
@@ -285,13 +299,13 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     tirarFalta('contato');
   };
   const foneInvalido = !!f.contatoTelefone.trim() && !foneValido;
-  const podeAvisar = opcoes.whatsapp.cliente && !!foneValido;
+  const podeAvisar = !vendas && opcoes.whatsapp.cliente && !!foneValido;
 
   // o que o painel pede e o formulário não tem (uma regra mal escolhida nos Ajustes): diz logo, em vez de travar no fim
   const pedeForaDoFormulario = painel.ajustes.obrigatoriosAoAbrir.filter((c) => !idDaChave(c) && !CAMPOS_DO_FORMULARIO.includes(c as CampoObrigatorio));
 
   // não sair sem querer com o relato pela metade
-  const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim());
+  const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim() || f.empresa.trim() || f.valor !== null);
   const avisarEscreveu = useRef(naJanela?.onEscreveu);
   avisarEscreveu.current = naJanela?.onEscreveu;
   useEffect(() => { avisarEscreveu.current?.(escreveu); }, [escreveu]);
@@ -327,13 +341,17 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     if (f.titulo.trim().length < 3) { setErro('Escreva um título (pelo menos 3 letras).'); document.getElementById('novo-titulo')?.focus(); return; }
     if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
     if (precisaMotivo && !f.motivoPrioridade.trim()) { setErro('Trocar a prioridade sugerida pede o motivo.'); document.getElementById('novo-motivo-prioridade')?.focus(); return; }
+    if (vendas && !f.valorValido) { setErro('Escreva o valor como 12.500,00.'); document.getElementById('novo-valor')?.focus(); return; }
+    // a negociação: um cliente da base ou a empresa que ainda não é (escrita à mão)
+    const clienteId = vendas && !f.jaECliente ? '' : f.clienteId;
     const d: ChamadoCriarEntrada = {
       painelId: painel.id,
       tipoChamado,
       titulo: f.titulo.trim(),
-      relato: f.relato.trim() || null,
+      relato: vendas ? null : f.relato.trim() || null,
       descricao: f.descricao.trim() || null,
-      clienteId: f.clienteId || null,
+      clienteId: clienteId || null,
+      ...(vendas ? { valor: f.valor, empresa: !f.jaECliente ? f.empresa.trim() || null : null } : {}),
       contatoNome: f.contatoNome.trim() || null,
       contatoTelefone: f.contatoTelefone.trim() || null,
       sessaoId: sessao,
@@ -342,7 +360,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       tipo: usa('tipo') ? f.tipo || null : null,
       gravidade: usa('gravidade') ? f.gravidade : null,
       alcance: usa('alcance') ? f.alcance : null,
-      prioridade: f.prioridade,
+      prioridade: vendas ? null : f.prioridade,
       motivoPrioridade: precisaMotivo ? f.motivoPrioridade.trim() : null,
       produtos: usa('produtos') ? f.produtos : [],
       operadoras: usa('operadoras') ? f.operadoras : [],
@@ -365,7 +383,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       setMexeu(false);
       const comoFilho = pai.data ? `, filho do ${pai.data.codigo}` : '';
       if (r.aviso && !r.aviso.ok) toast.push('erro', `${r.codigo} foi aberto${comoFilho}, mas o aviso ao cliente pelo WhatsApp não foi: ${r.aviso.mensagem}`);
-      else toast.push('ok', r.aviso?.ok ? `${r.codigo} aberto${comoFilho}, e o cliente recebeu o número pelo WhatsApp` : `${r.codigo} aberto${comoFilho}`);
+      else toast.push('ok', vendas ? `${r.codigo} criada: a negociação está em ${painel.etapas.find((e) => e.tipo === 'entrada')?.nome ?? 'entrada'}` : r.aviso?.ok ? `${r.codigo} aberto${comoFilho}, e o cliente recebeu o número pelo WhatsApp` : `${r.codigo} aberto${comoFilho}`);
       if (naJanela) naJanela.onAberto(r.codigo);
       else navigate(`/atendimento/${encodeURIComponent(r.codigo)}`);
     } catch (e) {
@@ -418,7 +436,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       }}>
       {!naJanela && (
         <CabecalhoAtendimento painelId={painelFixo ? painel.id : undefined}
-          sub={painelFixo ? `Abrir chamado no painel ${painel.nome}: o que o cliente contou, de quem é e quem cuida.` : 'Abrir chamado: o que o cliente contou, de quem é e quem cuida.'} />
+          sub={vendas ? `Nova negociação no painel ${painel.nome}: a empresa, o que está sendo negociado, o valor e quem cuida.`
+            : painelFixo ? `Abrir chamado no painel ${painel.nome}: o que o cliente contou, de quem é e quem cuida.` : 'Abrir chamado: o que o cliente contou, de quem é e quem cuida.'} />
       )}
 
       <div className="grid grid-cols-1 gap-4 max-w-4xl">
@@ -472,20 +491,35 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         </Secao>
 
         {/* ---------- quem ---------- */}
-        <Secao titulo="Quem">
+        <Secao titulo={vendas ? 'Com quem' : 'Quem'}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Rotulado rotulo="Cliente" id="novo-cliente" obrigatorio={pede('cliente')} falta={falta('cliente')} className="sm:col-span-2">
-              <EscolherComBusca valor={f.clienteId} onChange={trocarCliente} opcoes={opcoesClientes} vazio="Sem cliente (ainda)" placeholder={clientes.isLoading ? 'Carregando os clientes…' : 'Escolha o cliente…'}
-                procurar="Procurar cliente…" className="input w-full" id="novo-cliente" rotulo="Cliente" largura="w-[420px]" />
-            </Rotulado>
+            {/* na venda: a empresa já é cliente (venda para a base) ou ainda não é (escrita à mão) */}
+            {vendas && (
+              <Rotulado rotulo="A empresa" id="novo-ja-e-cliente" grupo className="sm:col-span-2">
+                <Segmentos id="novo-ja-e-cliente" rotulo="A empresa" valor={f.jaECliente ? 'sim' : 'nao'}
+                  onChange={(v) => { mudar({ jaECliente: v === 'sim' }); tirarFalta('cliente'); }}
+                  opcoes={[{ id: 'sim', nome: 'Já é cliente' }, { id: 'nao', nome: 'Ainda não é cliente' }]} />
+              </Rotulado>
+            )}
+            {vendas && !f.jaECliente ? (
+              <Rotulado rotulo="Empresa" id="novo-empresa" obrigatorio={pede('cliente')} falta={falta('cliente')} className="sm:col-span-2" dica="Quando ela entrar no cadastro de clientes, o “Virou cliente?” da negociação faz a ligação.">
+                <input className="input" id="novo-empresa" value={f.empresa} maxLength={120} placeholder="Ex.: Padaria Estrela"
+                  onChange={(e) => { mudar({ empresa: e.target.value }); tirarFalta('cliente'); }} />
+              </Rotulado>
+            ) : (
+              <Rotulado rotulo="Cliente" id="novo-cliente" obrigatorio={pede('cliente')} falta={falta('cliente')} className="sm:col-span-2">
+                <EscolherComBusca valor={f.clienteId} onChange={trocarCliente} opcoes={opcoesClientes} vazio="Sem cliente (ainda)" placeholder={clientes.isLoading ? 'Carregando os clientes…' : 'Escolha o cliente…'}
+                  procurar="Procurar cliente…" className="input w-full" id="novo-cliente" rotulo="Cliente" largura="w-[420px]" />
+              </Rotulado>
+            )}
             {/* os contatos do cliente (o pedido do Luan na prévia): um clique preenche o nome e o WhatsApp; um novo nasce aqui */}
-            {f.clienteId && (
+            {f.clienteId && (!vendas || f.jaECliente) && (
               <ContatosParaEscolher className="sm:col-span-2" cliente={nomeDoCliente} contatos={contatosDoCliente} carregando={cadastro.isLoading}
                 escolhido={contatoEscolhido?.id ?? null} onEscolher={escolherContato} podeIncluir={podeContatos}
                 onNovo={() => setJanelaContato({ inicial: contatoEscolhido ? {} : { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim() } })} />
             )}
             <Rotulado rotulo="Contato (nome)" id="novo-contato" obrigatorio={pede('contato')} falta={falta('contato')} dica={pede('contato') ? 'o nome ou o WhatsApp' : undefined}>
-              <input className="input" id="novo-contato" value={f.contatoNome} maxLength={120} placeholder="Quem pediu (ex.: Maria, da recepção)"
+              <input className="input" id="novo-contato" value={f.contatoNome} maxLength={120} placeholder={vendas ? 'Com quem você fala (ex.: Rosa, a sócia)' : 'Quem pediu (ex.: Maria, da recepção)'}
                 onChange={(e) => { mudar({ contatoNome: e.target.value }); tirarFalta('contato'); }} />
             </Rotulado>
             <Rotulado rotulo="WhatsApp do contato" id="novo-whatsapp" erro={foneInvalido ? 'Use DDD + número, como (71) 99999-0000.' : undefined}>
@@ -493,7 +527,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                 onChange={(e) => { mudar({ contatoTelefone: e.target.value }); tirarFalta('contato'); }} />
             </Rotulado>
             {/* escrito à mão (ou vindo da conversa do LineChat) e fora dos contatos do cliente: guardar com um clique */}
-            {f.clienteId && !contatoEscolhido && !cadastro.isLoading && podeContatos && f.contatoNome.trim().length >= 2 && !foneInvalido && (
+            {f.clienteId && (!vendas || f.jaECliente) && !contatoEscolhido && !cadastro.isLoading && podeContatos && f.contatoNome.trim().length >= 2 && !foneInvalido && (
               <p className="sm:col-span-2 text-[12.5px] text-muted -mt-1" id="novo-contato-fora">
                 {f.contatoNome.trim()} não está nos contatos de {nomeDoCliente}.{' '}
                 <button type="button" className="link" onClick={() => setJanelaContato({ inicial: { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim() } })}>Salvar nos contatos</button>
@@ -504,32 +538,43 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             <JanelaContato clienteId={f.clienteId} clienteNome={nomeDoCliente} contato={null} inicial={janelaContato.inicial}
               onFechar={() => setJanelaContato(null)} onSalvo={(c) => { escolherContato(c); setJanelaContato(null); }} />
           )}
-          {f.clienteId && <Recentes cadastro={cadastro.data} carregando={cadastro.isLoading} erroCarregar={cadastro.isError ? mensagemErro(cadastro.error) : ''}
+          {/* "Reabrir este em vez de abrir outro" é dos chamados (a negociação nova é sempre nova) */}
+          {f.clienteId && !vendas && <Recentes cadastro={cadastro.data} carregando={cadastro.isLoading} erroCarregar={cadastro.isError ? mensagemErro(cadastro.error) : ''}
             opcoes={opcoes} reabrindo={reabrindo} erro={erroReabrir} onReabrir={reabrir} levaRelato={!!f.relato.trim()}
             onAbrirOutro={naJanela ? (codigo) => naJanela.onReaberto(codigo) : undefined} />}
         </Secao>
 
-        {/* ---------- o que aconteceu ---------- */}
-        <Secao titulo="O que aconteceu">
+        {/* ---------- o que aconteceu (na venda, a negociação) ---------- */}
+        <Secao titulo={vendas ? 'A negociação' : 'O que aconteceu'}>
           <div className="grid grid-cols-1 gap-3">
-            <Rotulado rotulo="Título" id="novo-titulo" obrigatorio dica="Uma frase, como alguém procuraria depois (o cliente já aparece à parte).">
-              <input className="input" id="novo-titulo" value={f.titulo} maxLength={200} placeholder="Ex.: Ramal 203 sem áudio desde a manhã"
+            <Rotulado rotulo={vendas ? 'O que está sendo negociado' : 'Título'} id="novo-titulo" obrigatorio
+              dica={vendas ? 'Uma frase, como a equipe vai achar depois (a empresa já aparece à parte).' : 'Uma frase, como alguém procuraria depois (o cliente já aparece à parte).'}>
+              <input className="input" id="novo-titulo" value={f.titulo} maxLength={200} placeholder={vendas ? 'Ex.: PABX em nuvem com 40 ramais' : 'Ex.: Ramal 203 sem áudio desde a manhã'}
                 onChange={(e) => mudar({ titulo: e.target.value })} />
             </Rotulado>
-            <Rotulado rotulo="Relato do cliente" id="novo-relato" obrigatorio={pede('relato')} falta={falta('relato')} dica="O que o cliente disse, nas palavras dele.">
+            {vendas && (
+              <Rotulado rotulo="Valor" id="novo-valor" obrigatorio={pede('valor')} falta={falta('valor')} erro={!f.valorValido ? 'Escreva o valor como 12.500,00' : undefined}
+                dica="O valor da proposta (pode vir depois: a Proposta enviada pede).">
+                <div className="max-w-[260px]">
+                  <CampoValor id="novo-valor" centavos={f.valor} onChange={(v, ok) => { mudar({ valor: v, valorValido: ok }); tirarFalta('valor'); }} />
+                </div>
+              </Rotulado>
+            )}
+            {!vendas && <Rotulado rotulo="Relato do cliente" id="novo-relato" obrigatorio={pede('relato')} falta={falta('relato')} dica="O que o cliente disse, nas palavras dele.">
               <textarea className="input min-h-[96px]" id="novo-relato" value={f.relato} maxLength={20_000}
                 onChange={(e) => { mudar({ relato: e.target.value }); tirarFalta('relato'); }} />
-            </Rotulado>
+            </Rotulado>}
             {/* a descrição está sempre aqui (o pedido do Luan na prévia: "sempre vai ter a descrição") */}
-            <Rotulado rotulo="Descrição" id="novo-descricao" obrigatorio={pede('descricao')} falta={falta('descricao')} dica="O que já foi feito e os dados técnicos (ramal, número, IP, horário).">
+            <Rotulado rotulo={vendas ? 'Sobre a negociação' : 'Descrição'} id="novo-descricao" obrigatorio={pede('descricao')} falta={falta('descricao')}
+              dica={vendas ? 'O que o cliente precisa, quem decide, a concorrência, o que já foi conversado.' : 'O que já foi feito e os dados técnicos (ramal, número, IP, horário).'}>
               <textarea className="input min-h-[84px]" id="novo-descricao" value={f.descricao} maxLength={20_000}
                 onChange={(e) => { mudar({ descricao: e.target.value }); tirarFalta('descricao'); }} />
             </Rotulado>
           </div>
         </Secao>
 
-        {/* ---------- a classificação e a prioridade ---------- */}
-        <Secao titulo="Classificação">
+        {/* ---------- a classificação e a prioridade (na venda, só o que o painel ligou) ---------- */}
+        {(!vendas || usa('assunto') || (usa('tipo') && painel.ajustes.tipos.length > 0) || usa('gravidade') || usa('alcance')) && <Secao titulo="Classificação">
           <div className="grid grid-cols-1 gap-4">
             {(usa('assunto') || (usa('tipo') && painel.ajustes.tipos.length > 0)) && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {usa('assunto') && <Rotulado rotulo="Assunto" id="novo-assunto" obrigatorio={pede('assunto')} falta={falta('assunto')} className="sm:col-span-2"
@@ -573,7 +618,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                 opcoes={ALCANCES.map((a) => ({ id: a, nome: NOME_ALCANCE[a] }))} />
             </Rotulado>}
 
-            <Rotulado rotulo="Prioridade" id="novo-prioridade" grupo obrigatorio={pede('prioridade')} falta={falta('prioridade')}>
+            {!vendas && <Rotulado rotulo="Prioridade" id="novo-prioridade" grupo obrigatorio={pede('prioridade')} falta={falta('prioridade')}>
               <div className="rounded-lg border border-line bg-surface-2 p-3 flex flex-col gap-2" id="novo-prioridade">
                 <div className="text-[13px] text-ink-2" aria-live="polite">
                   {sugerida
@@ -603,9 +648,9 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                   </div>
                 )}
               </div>
-            </Rotulado>
+            </Rotulado>}
           </div>
-        </Secao>
+        </Secao>}
 
         {/* ---------- os campos do painel (Ajustes › Campos) ---------- */}
         {camposDoPainel.length > 0 && (
@@ -639,13 +684,14 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         {/* ---------- quem cuida ---------- */}
         <Secao titulo="Quem cuida">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Rotulado rotulo="Responsável" id="novo-responsavel" obrigatorio={pede('responsavel')} falta={falta('responsavel')}
-              dica={f.responsavelId ? (f.responsavelId === user?.id ? 'Você fica com o chamado.' : 'A pessoa recebe o aviso de que o chamado é dela.') : 'O chamado fica na fila da entrada, para alguém assumir.'}>
+            <Rotulado rotulo={vendas ? 'Vendedor (responsável)' : 'Responsável'} id="novo-responsavel" obrigatorio={pede('responsavel')} falta={falta('responsavel')}
+              dica={vendas ? (f.responsavelId ? (f.responsavelId === user?.id ? 'Você fica com a negociação.' : 'A pessoa recebe o aviso de que a negociação é dela.') : 'A negociação fica sem dono, para alguém assumir.')
+                : f.responsavelId ? (f.responsavelId === user?.id ? 'Você fica com o chamado.' : 'A pessoa recebe o aviso de que o chamado é dela.') : 'O chamado fica na fila da entrada, para alguém assumir.'}>
               <EscolherComBusca valor={f.responsavelId} onChange={(v) => { mudar({ responsavelId: v }); tirarFalta('responsavel'); }} opcoes={opcoesResponsavel}
                 vazio="Ninguém (fica na fila)" procurar="Procurar pessoa…" className="input w-full" id="novo-responsavel" rotulo="Responsável" />
             </Rotulado>
             {/* os observadores (o pedido do Luan na prévia: como no Helena, recebem toda atualização do chamado) */}
-            <Rotulado rotulo="Observadores" id="novo-observadores" grupo dica="Recebem os avisos de tudo o que acontece no chamado: anotação, etapa, responsável, espera.">
+            <Rotulado rotulo="Observadores" id="novo-observadores" grupo dica={vendas ? 'Recebem os avisos de tudo o que acontece na negociação: anotação, etapa, responsável.' : 'Recebem os avisos de tudo o que acontece no chamado: anotação, etapa, responsável, espera.'}>
               <EscolherVarios id="novo-observadores" rotulo="observador" valor={f.observadores} onChange={(v) => mudar({ observadores: v })}
                 doCliente={[]} catalogo={pessoas.map((p) => ({ id: p.id, nome: p.nome, dica: p.id === user?.id ? 'você' : undefined }))} />
             </Rotulado>
@@ -675,11 +721,11 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             </label>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <button type="submit" className="btn-primary" id="novo-abrir" disabled={enviando}>{enviando ? <Spinner className="text-white" /> : <Plus size={16} />} Abrir chamado</button>
+            <button type="submit" className="btn-primary" id="novo-abrir" disabled={enviando}>{enviando ? <Spinner className="text-white" /> : <Plus size={16} />} {vendas ? 'Criar a negociação' : 'Abrir chamado'}</button>
             <button type="button" className="btn-ghost" onClick={cancelar}>Cancelar</button>
             <span className="text-[12.5px] text-muted">
               Nasce em <b className="text-ink-2">{painel.etapas.find((e) => e.tipo === 'entrada')?.nome ?? painel.etapas[0]?.nome ?? '—'}</b>, no painel {painel.nome}
-              {prioridadeFinal ? <>, com a prioridade <b className="text-ink-2">{NOME_PRIORIDADE[prioridadeFinal]}</b></> : ''}.
+              {prioridadeFinal && !vendas ? <>, com a prioridade <b className="text-ink-2">{NOME_PRIORIDADE[prioridadeFinal]}</b></> : ''}.
             </span>
           </div>
           {erro && <p className="text-bad text-[13px]" role="alert" id="novo-erro">{erro}</p>}

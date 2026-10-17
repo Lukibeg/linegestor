@@ -7,15 +7,19 @@
  * meus) e quantos estão em cada etapa. Clicar no cartão abre o quadro; cada número abre a lista já
  * filtrada; "Configurar" abre a janela daquele painel nos Ajustes — o nome, quem vê, as etapas e as
  * regras, tudo junto (quem cuida dos chamados). O Meu dia virou uma aba ao lado.
+ *
+ * O painel de Vendas (2.0.1, o Comercial) mostra os números da venda: o que está em negociação, o ganho
+ * do mês contra a meta, o que está sem dono e as suas — e o Relatório.
  */
-import { useMemo, useState, type MouseEvent } from 'react';
+import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, Lock, Plus, Search, Settings2 } from 'lucide-react';
-import { paraBusca, type Painel, type ResumoDoPainel } from '@gestor/shared';
+import { ArrowRight, ChartColumn, Lock, Plus, Search, Settings2 } from 'lucide-react';
+import { paraBusca, reaisCurto, type Painel, type ResumoDoPainel } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, Chip, Vazio, mensagemErro } from '../../components/ui/index.js';
 import { CabecalhoAtendimento, useOpcoes, usePode } from './comum.js';
+import { enderecoDoRelatorio } from './painel.js';
 
 /** O fundo e a letra do quadradinho da sigla, na cor do painel (as classes inteiras, para o Tailwind achar). */
 const SIGLA_DO_PAINEL: Record<Painel['cor'], string> = {
@@ -106,18 +110,20 @@ function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPa
         </div>
       </header>
 
-      <div className="grid grid-cols-4 gap-1.5">
-        <Numero rotulo="Em aberto" valor={r?.abertos} carregando={carregando} para={lista()} titulo="Os chamados em aberto deste painel" />
-        <Numero rotulo="Vencidos" valor={r?.vencidos} carregando={carregando} para={lista({ prazo: 'vencidos' })} tom={r?.vencidos ? 'bad' : undefined} titulo="Com a resposta ou a solução vencida" />
-        <Numero rotulo="Sem dono" valor={r?.semDono} carregando={carregando} para={lista({ responsavel: 'ninguem' })} tom={r?.semDono ? 'signal' : undefined} titulo="Na fila, sem responsável" />
-        <Numero rotulo="Meus" valor={r?.meus} carregando={carregando} para={lista({ responsavel: 'eu' })} titulo="Os seus em aberto" />
-      </div>
+      {p.tipo === 'vendas' ? <NumerosDaVenda p={p} r={r} carregando={carregando} lista={lista} /> : (
+        <div className="grid grid-cols-4 gap-1.5">
+          <Numero rotulo="Em aberto" valor={r?.abertos} carregando={carregando} para={lista()} titulo="Os chamados em aberto deste painel" />
+          <Numero rotulo="Vencidos" valor={r?.vencidos} carregando={carregando} para={lista({ prazo: 'vencidos' })} tom={r?.vencidos ? 'bad' : undefined} titulo="Com a resposta ou a solução vencida" />
+          <Numero rotulo="Sem dono" valor={r?.semDono} carregando={carregando} para={lista({ responsavel: 'ninguem' })} tom={r?.semDono ? 'signal' : undefined} titulo="Na fila, sem responsável" />
+          <Numero rotulo="Meus" valor={r?.meus} carregando={carregando} para={lista({ responsavel: 'eu' })} titulo="Os seus em aberto" />
+        </div>
+      )}
 
       {etapas.length > 0 && (
-        <ul className="flex flex-wrap gap-1.5" aria-label={`Chamados por etapa em ${p.nome}`}>
+        <ul className="flex flex-wrap gap-1.5" aria-label={`${p.tipo === 'vendas' ? 'Negociações' : 'Chamados'} por etapa em ${p.nome}`}>
           {etapas.map((e) => (
             <li key={e.id}>
-              <Link to={lista({ etapa: e.id, situacao: 'todos' })} title={`Ver os chamados em ${e.nome}`}
+              <Link to={lista({ etapa: e.id, situacao: 'todos' })} title={`Ver ${p.tipo === 'vendas' ? 'as negociações' : 'os chamados'} em ${e.nome}`}
                 className="inline-flex items-center gap-1.5 rounded-md bg-surface-2 hover:bg-line px-2 py-0.5 text-[12px] text-ink-2">
                 {e.nome}
                 <span className="tnum font-semibold text-ink">{carregando ? '…' : naEtapa.get(e.id) ?? 0}</span>
@@ -129,8 +135,13 @@ function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPa
 
       <footer className="mt-auto pt-2.5 border-t border-line flex items-center gap-2 flex-wrap">
         {/* o "mexido há…" saiu (o pedido do Luan na prévia: "não precisa"); o painel vazio ainda diz que está vazio */}
-        {r && !r.ultimaAtividadeEm && <span className="text-[12px] text-muted">nenhum chamado ainda</span>}
+        {r && !r.ultimaAtividadeEm && <span className="text-[12px] text-muted">{p.tipo === 'vendas' ? 'nenhuma negociação ainda' : 'nenhum chamado ainda'}</span>}
         <div className="ml-auto flex items-center gap-1">
+          {p.tipo === 'vendas' && (
+            <Link to={enderecoDoRelatorio(p.id)} className="btn-ghost btn-sm" title="O relatório de vendas: os números do período e o funil">
+              <ChartColumn size={15} aria-hidden /> Relatório
+            </Link>
+          )}
           {cuidar && (
             <Link to={`/atendimento/ajustes?aba=paineis&editar=${encodeURIComponent(p.id)}`} className="btn-ghost btn-sm" title="As etapas, as regras e quem vê este painel">
               <Settings2 size={15} aria-hidden /> Configurar
@@ -144,12 +155,49 @@ function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPa
 }
 
 /** Um número do painel: clicar abre a lista já filtrada (o número escrito, nunca só a cor). */
-function Numero({ rotulo, valor, carregando, para, tom, titulo }: { rotulo: string; valor: number | undefined; carregando: boolean; para: string; tom?: 'bad' | 'signal'; titulo: string }) {
-  const cor = tom === 'bad' ? 'text-bad' : tom === 'signal' ? 'text-signal' : 'text-ink';
+function Numero({ rotulo, valor, carregando, para, tom, titulo, sub }: {
+  rotulo: string; valor: ReactNode | undefined; carregando: boolean; para: string; tom?: 'bad' | 'signal' | 'ok'; titulo: string; sub?: ReactNode;
+}) {
+  const cor = tom === 'bad' ? 'text-bad' : tom === 'signal' ? 'text-signal' : tom === 'ok' ? 'text-ok' : 'text-ink';
   return (
     <Link to={para} title={titulo} className="rounded-lg bg-surface-2 hover:bg-line px-2 py-1.5 min-w-0">
-      <span className={`block font-display text-[20px] font-semibold tnum leading-tight ${cor}`}>{carregando ? '…' : valor ?? 0}</span>
+      <span className={`block font-display text-[20px] font-semibold tnum leading-tight truncate ${cor}`}>{carregando ? '…' : valor ?? 0}</span>
       <span className="block text-[11.5px] text-muted truncate">{rotulo}</span>
+      {sub && !carregando && <span className="block text-[11px] text-muted truncate">{sub}</span>}
     </Link>
+  );
+}
+
+/**
+ * Os números do painel de Vendas: o que está em negociação (e quantas), o ganho do mês (com a meta, numa
+ * barra), o que está sem dono e as suas (como no cartão dos chamados).
+ */
+function NumerosDaVenda({ p, r, carregando, lista }: { p: Painel; r: ResumoDoPainel | undefined; carregando: boolean; lista: (extra?: Record<string, string>) => string }) {
+  const v = r?.vendas;
+  const meta = v?.metaMensal ?? null;
+  const parte = meta ? Math.min(100, Math.round(((v?.ganhoNoMes ?? 0) / meta) * 100)) : 0;
+  const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
+  return (
+    <div className="flex flex-col gap-2" data-vendas>
+      <div className="grid grid-cols-2 gap-1.5">
+        <Numero rotulo="Em negociação" valor={v ? reaisCurto(v.emAndamento) : undefined} carregando={carregando} para={lista()} titulo="A soma do valor das negociações abertas"
+          sub={v ? plural(v.emAndamentoQtd, 'aberta', 'abertas') : undefined} />
+        <Numero rotulo="Ganho no mês" valor={v ? reaisCurto(v.ganhoNoMes) : undefined} carregando={carregando} para={enderecoDoRelatorio(p.id)} tom={v?.ganhoNoMes ? 'ok' : undefined}
+          titulo="O que foi ganho neste mês (pelo dia em que fechou)" sub={v ? `${plural(v.ganhosNoMes, 'ganha', 'ganhas')}, ${plural(v.perdidosNoMes, 'perdida', 'perdidas')}` : undefined} />
+        <Numero rotulo="Sem dono" valor={r?.semDono} carregando={carregando} para={lista({ responsavel: 'ninguem' })} tom={r?.semDono ? 'signal' : undefined} titulo="Negociações sem responsável" />
+        <Numero rotulo="Minhas" valor={r?.meus} carregando={carregando} para={lista({ responsavel: 'eu' })} titulo="As suas em aberto" />
+      </div>
+      {meta !== null && v && (
+        <div title={`Ganho no mês: ${reaisCurto(v.ganhoNoMes)} de ${reaisCurto(meta)}`}>
+          <div className="flex items-baseline justify-between gap-2 text-[12px]">
+            <span className="text-muted">Meta do mês: <b className="text-ink-2 tnum">{reaisCurto(meta)}</b></span>
+            <span className={`tnum font-semibold ${parte >= 100 ? 'text-ok' : 'text-ink-2'}`}>{Math.round(((v.ganhoNoMes) / meta) * 100)}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-surface-2 mt-1 overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={parte} aria-label="O ganho do mês contra a meta">
+            <div className="h-full rounded-full bg-ok" style={{ width: `${parte}%` }} />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

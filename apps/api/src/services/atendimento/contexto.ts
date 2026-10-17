@@ -59,12 +59,13 @@ export function etapaDaLinha(e: LinhaEtapa): EtapaPainel {
   return {
     id: e.id, nome: e.name, tipo: e.kind as EtapaPainel['tipo'], nivel: (e.level as Nivel | null) ?? null,
     obrigatorios: e.requiredFields as Obrigatorio[], avisar: e.notifyUserIds,
+    resultado: e.outcome === 'ganho' || e.outcome === 'perdido' ? e.outcome : null,
   };
 }
 
 export function painelDaLinha(p: LinhaPainel, etapas: LinhaEtapa[], abertos = 0): Painel {
   return {
-    id: p.id, nome: p.name, sigla: p.key, descricao: p.description, cor: p.color as CorPainel, ordem: p.sortOrder,
+    id: p.id, nome: p.name, sigla: p.key, descricao: p.description, cor: p.color as CorPainel, tipo: p.kind === 'vendas' ? 'vendas' : 'gestao', ordem: p.sortOrder,
     acesso: p.access === 'escolhidos' ? 'escolhidos' : 'todos', pessoas: p.memberIds,
     ajustes: ajustesDoPainelCompletos(p.settings as Partial<Painel['ajustes']>),
     etapas: etapas.filter((e) => e.panelId === p.id && !e.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map(etapaDaLinha),
@@ -245,6 +246,9 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     origem: t.origin as Origem, reaberto: t.reopenCount,
     criadoEm: t.createdAt.toISOString(), atualizadoEm: t.updatedAt.toISOString(), ultimaAtividadeEm: t.lastActivityAt.toISOString(),
     resolvidoEm: iso(t.resolvedAt), fechadoEm: iso(t.closedAt),
+    // a negociação (painel de Vendas): nos outros painéis, tudo vazio
+    valor: t.valueCents ?? null, empresa: t.prospect ?? null,
+    resultado: e?.etapa.resultado ?? null, motivoPerda: e?.etapa.resultado === 'perdido' ? t.lostReason ?? null : null,
   };
 }
 

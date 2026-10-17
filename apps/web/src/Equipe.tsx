@@ -31,6 +31,7 @@ import { MeuDia } from './pages/atendimento/MeuDia.js';
 import { PaineisDeChamados } from './pages/atendimento/Inicio.js';
 import { Quadro } from './pages/atendimento/Quadro.js';
 import { ListaDeChamados } from './pages/atendimento/Lista.js';
+import { RelatorioDoPainel } from './pages/atendimento/Relatorio.js';
 import { JanelaAbrirChamado, NovoChamado } from './pages/atendimento/Novo.js';
 import { ChamadoEmJanela, FichaDoChamado } from './pages/atendimento/Ficha.js';
 import { fundoDaJanela } from './pages/atendimento/comum.js';
@@ -88,6 +89,7 @@ function Rotas() {
         <Route path="/atendimento/meu-dia" element={<Protegido><MeuDia /></Protegido>} />
         <Route path="/atendimento/quadro" element={<Protegido><Quadro /></Protegido>} />
         <Route path="/atendimento/lista" element={<Protegido><ListaDeChamados /></Protegido>} />
+        <Route path="/atendimento/relatorio" element={<Protegido><RelatorioDoPainel /></Protegido>} />
         <Route path="/atendimento/novo" element={<Protegido><NovoChamado /></Protegido>} />
         <Route path="/atendimento/ajustes" element={<Protegido><AjustesAtendimento /></Protegido>} />
         <Route path="/atendimento/:codigo" element={<Protegido><FichaDoChamado /></Protegido>} />

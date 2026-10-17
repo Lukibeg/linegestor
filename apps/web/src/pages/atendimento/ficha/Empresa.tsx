@@ -5,6 +5,9 @@
  * e o link "Conversa no LineChat". Dá para trocar o cliente, o nome do contato e o WhatsApp — e o
  * contato sai da lista do cliente (a aba Contatos, 2.0): um clique troca; o que não está na lista se
  * salva lá com um clique.
+ *
+ * Na negociação (o painel de Vendas, 2.0.1), a empresa pode ainda não ser cliente: o nome escrito à mão
+ * aparece aqui (e se edita); quando ela virar cliente, "Escolher" liga a negociação ao cadastro.
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -18,11 +21,12 @@ import { ErroPerto, MarcaFalta, useAberta, useAcao } from './base.js';
 import { JanelaContato, usePodeMexerNosContatos } from '../../clientes/Contatos.js';
 
 export function Empresa() {
-  const { f, cadastro, pode } = useAberta();
+  const { f, cadastro, pode, painel } = useAberta();
   const trocar = useAcao();
+  const vendas = painel?.tipo === 'vendas';
   const clientes = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options(), enabled: pode, staleTime: 5 * 60_000 });
   const opcoesClientes = (clientes.data ?? []).map((c) => ({ id: c.id, nome: c.name }));
-  const escolher = (id: string) => void trocar.rodar(() => api.atendimento.alterar(f.id, { clienteId: id || null }), id ? 'Empresa trocada' : 'O chamado ficou sem empresa');
+  const escolher = (id: string) => void trocar.rodar(() => api.atendimento.alterar(f.id, { clienteId: id || null }), id ? 'Empresa trocada' : vendas ? 'A negociação ficou sem o cliente' : 'O chamado ficou sem empresa');
 
   const contagem = cadastro ? [
     cadastro.circuitos.length ? `${cadastro.circuitos.length} ${cadastro.circuitos.length === 1 ? 'circuito' : 'circuitos'}` : null,
@@ -41,7 +45,7 @@ export function Empresa() {
             {trocar.ocupado && <Spinner />}
             {pode && (
               <EscolherComBusca valor={f.cliente?.id ?? ''} opcoes={opcoesClientes} onChange={escolher} vazio="Sem empresa" rotulo="Trocar a empresa" procurar="Procurar empresa…"
-                gatilho={(abrir) => <button type="button" className="btn-ghost btn-sm -my-1 text-[12.5px]" onClick={abrir}>{f.cliente ? 'Trocar' : 'Escolher'}</button>} />
+                gatilho={(abrir) => <button type="button" className="btn-ghost btn-sm -my-1 text-[12.5px]" onClick={abrir} title={vendas && !f.cliente ? 'A empresa já é (ou virou) cliente: ligar ao cadastro' : undefined}>{f.cliente ? 'Trocar' : vendas && f.empresa ? 'Virou cliente?' : 'Escolher'}</button>} />
             )}
           </span>
         </div>
@@ -49,7 +53,7 @@ export function Empresa() {
           <Link to={`/clientes/${f.cliente.id}`} className="font-display text-[19px] font-semibold leading-snug text-ink hover:text-accent break-words" title="Abrir a ficha do cliente">
             {f.cliente.nome}
           </Link>
-        ) : (
+        ) : vendas && (f.empresa || pode) ? <EmpresaQueNaoECliente /> : (
           <p className="font-display text-[17px] font-semibold text-signal">Sem empresa</p>
         )}
         {cadastro && (cadastro.produtos.length > 0 || cadastro.operadoras.length > 0) && (
@@ -170,6 +174,45 @@ function Contato() {
             </span>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** A empresa da negociação que ainda não é cliente: o nome escrito à mão, que se edita aqui. */
+function EmpresaQueNaoECliente() {
+  const { f, pode } = useAberta();
+  const [editando, setEditando] = useState(false);
+  const [nome, setNome] = useState('');
+  const acao = useAcao();
+  const gravar = async () => {
+    const t = nome.trim();
+    if (t === (f.empresa ?? '')) { setEditando(false); return; }
+    const r = await acao.rodar(() => api.atendimento.alterar(f.id, { empresa: t || null }), t ? 'Empresa salva' : 'A empresa saiu');
+    if (r.ok) setEditando(false);
+  };
+  if (editando) {
+    return (
+      <div>
+        <div className="flex items-center gap-2">
+          <input className="input" autoFocus maxLength={120} value={nome} placeholder="O nome da empresa" aria-label="O nome da empresa"
+            onChange={(e) => setNome(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void gravar(); } else if (e.key === 'Escape') setEditando(false); }} />
+          <button type="button" className="btn-primary btn-sm" disabled={acao.ocupado} onClick={() => void gravar()}>{acao.ocupado ? <Spinner className="text-white" /> : 'Salvar'}</button>
+        </div>
+        <ErroPerto erro={acao.erro} />
+      </div>
+    );
+  }
+  return (
+    <div className="flex items-start gap-2 min-w-0" id="ficha-empresa">
+      <div className="min-w-0">
+        <p className={`font-display text-[19px] font-semibold leading-snug break-words ${f.empresa ? 'text-ink' : 'text-signal'}`}>{f.empresa ?? 'Sem empresa'}</p>
+        {f.empresa && <p className="text-[12px] text-muted mt-0.5">ainda não é cliente</p>}
+      </div>
+      {pode && (
+        <button type="button" className="btn-ghost btn-sm ml-auto -my-1 shrink-0" onClick={() => { setNome(f.empresa ?? ''); acao.limpar(); setEditando(true); }} aria-label="Editar o nome da empresa">
+          <Pencil size={13} /> {f.empresa ? 'Editar' : 'Escrever'}
+        </button>
       )}
     </div>
   );

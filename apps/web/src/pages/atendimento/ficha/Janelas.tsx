@@ -235,21 +235,23 @@ const TIPOS_LIGAR: Array<{ id: TipoLigacaoChamado; nome: string; dica: string }>
 ];
 
 export function JanelaLigar({ onFechar }: { onFechar: () => void }) {
-  const { f } = useAberta();
+  const { f, painel } = useAberta();
+  // a negociação liga a um chamado (a implantação no Suporte) ou a outra negociação
+  const vendas = painel?.tipo === 'vendas';
   const acao = useAcao();
   const [codigo, setCodigo] = useState('');
   const [tipo, setTipo] = useState<TipoLigacaoChamado>('relacionado');
   const alvo = codigoLido(codigo);
   const ligar = async () => {
-    if (!alvo) { acao.setErro('Escolha o chamado na lista ou escreva o código, como SUP-12.'); return; }
-    if (alvo === f.codigo) { acao.setErro('Um chamado não se liga a ele mesmo.'); return; }
+    if (!alvo) { acao.setErro(vendas ? 'Escolha na lista ou escreva o código, como SUP-12 ou COM-3.' : 'Escolha o chamado na lista ou escreva o código, como SUP-12.'); return; }
+    if (alvo === f.codigo) { acao.setErro(vendas ? 'A negociação não se liga a ela mesma.' : 'Um chamado não se liga a ele mesmo.'); return; }
     const r = await acao.rodar(() => api.atendimento.ligar(f.id, { para: alvo, tipo }), `${f.codigo} ligado a ${alvo}`);
     if (r.ok) onFechar();
   };
   return (
-    <Modal open onClose={onFechar} titulo={`Ligar ${f.codigo} a outro chamado`} largura="max-w-xl"
+    <Modal open onClose={onFechar} titulo={vendas ? `Ligar ${f.codigo} a um chamado ou negociação` : `Ligar ${f.codigo} a outro chamado`} largura="max-w-xl"
       rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} botao="Ligar" onConfirmar={ligar} />}>
-      <Campo label="Qual chamado">
+      <Campo label={vendas ? 'Qual (o chamado ou a negociação)' : 'Qual chamado'}>
         <EscolherChamado valor={codigo} onChange={(v) => { setCodigo(v); acao.limpar(); }} excluir={[f.codigo]} onEnter={() => void ligar()} />
       </Campo>
       <fieldset className="mt-4">
@@ -308,10 +310,14 @@ export function JanelaEscolherChamado({ titulo, texto, botao, tipoChamado, exclu
 export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
   const { f, opcoes, painel } = useAberta();
   const acao = useAcao();
-  const outros = useMemo(() => opcoes.paineis.filter((p) => p.ativo && p.id !== f.painelId), [opcoes.paineis, f.painelId]);
+  // a negociação só passa para outro painel de Vendas, e o chamado para outro de Gestão (o caminho entre eles é o filho)
+  const vendas = painel?.tipo === 'vendas';
+  const outros = useMemo(() => opcoes.paineis.filter((p) => p.ativo && p.id !== f.painelId && p.tipo === (painel?.tipo ?? 'gestao')), [opcoes.paineis, f.painelId, painel?.tipo]);
   const [painelId, setPainelId] = useState(outros[0]?.id ?? '');
   const novo = outros.find((p) => p.id === painelId);
   const [etapaId, setEtapaId] = useState(() => (outros[0] ? etapaDeEntrada(outros[0].etapas)?.id ?? '' : ''));
+  // na venda, entra numa etapa do funil (o Ganho e o Perdido têm a janela deles)
+  const etapasDoNovo = novo ? novo.etapas.filter((e) => !e.resultado) : [];
   const trocar = async () => {
     if (!novo) return;
     const r = await acao.rodar(() => api.atendimento.trocarPainel(f.id, { painelId: novo.id, etapaId: etapaId || null }), `${f.codigo} passou para o painel ${novo.nome}`);
@@ -320,12 +326,24 @@ export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
   return (
     <Modal open onClose={onFechar} titulo={`Passar ${f.codigo} para outro painel`}
       rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} desativado={!novo} botao="Trocar de painel" onConfirmar={trocar} />}>
-      {!outros.length ? <p className="text-sm text-muted">Não há outro painel ativo para onde passar o chamado.</p> : (
+      {!outros.length ? (
+        <p className="text-sm text-muted">
+          {vendas
+            ? 'Não há outro painel de Vendas ativo para onde passar a negociação. Para levar o trabalho a um painel de Gestão (a implantação, por exemplo), crie um filho lá.'
+            : 'Não há outro painel de Gestão ativo para onde passar o chamado. Para começar uma negociação a partir dele, crie um filho no painel de Vendas.'}
+        </p>
+      ) : (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-ink-2">
-            O código continua <b className="font-mono">{f.codigo}</b>. O assunto é de cada painel, então sai; o tipo sai se o painel novo não tiver o mesmo.
-            Hoje ele está no painel <b>{painel?.nome}</b>.
-          </p>
+          {vendas ? (
+            <p className="text-sm text-ink-2">
+              O código continua <b className="font-mono">{f.codigo}</b>, e o valor e as anotações vão junto. Hoje ela está no painel <b>{painel?.nome}</b>.
+            </p>
+          ) : (
+            <p className="text-sm text-ink-2">
+              O código continua <b className="font-mono">{f.codigo}</b>. O assunto é de cada painel, então sai; o tipo sai se o painel novo não tiver o mesmo.
+              Hoje ele está no painel <b>{painel?.nome}</b>.
+            </p>
+          )}
           <Campo label="Para qual painel">
             <select className="input" value={painelId} onChange={(e) => { const p = outros.find((x) => x.id === e.target.value); setPainelId(e.target.value); setEtapaId(p ? etapaDeEntrada(p.etapas)?.id ?? '' : ''); }}>
               {outros.map((p) => <option key={p.id} value={p.id}>{p.nome} ({p.sigla})</option>)}
@@ -334,7 +352,7 @@ export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
           {novo && (
             <Campo label="Em qual etapa" dica="Sem escolher, vai para a entrada do painel.">
               <select className="input" value={etapaId} onChange={(e) => setEtapaId(e.target.value)}>
-                {novo.etapas.map((e) => <option key={e.id} value={e.id}>{nomeComNivel(e)}</option>)}
+                {etapasDoNovo.map((e) => <option key={e.id} value={e.id}>{nomeComNivel(e)}</option>)}
               </select>
             </Campo>
           )}
@@ -352,8 +370,18 @@ export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
 export function JanelaReabrir({ onFechar }: { onFechar: () => void }) {
   const { f, painel } = useAberta();
   const acao = useAcao();
+  const vendas = painel?.tipo === 'vendas';
   const etapas = (painel?.etapas ?? []).filter((e) => e.tipo === 'entrada' || e.tipo === 'andamento');
-  const [etapaId, setEtapaId] = useState(() => (painel ? etapaAoReabrir(painel.etapas)?.id ?? '' : ''));
+  const [etapaId, setEtapaId] = useState(() => {
+    if (!painel) return '';
+    // a negociação volta para a etapa em que estava antes do Ganho ou do Perdido (como o servidor)
+    if (vendas) {
+      const ultima = [...f.historico].reverse().find((e) => e.tipo === 'etapa');
+      const de = ultima?.dados?.de?.id as string | undefined;
+      if (de && etapas.some((e) => e.id === de)) return de;
+    }
+    return etapaAoReabrir(painel.etapas)?.id ?? '';
+  });
   const [motivo, setMotivo] = useState('');
   const reabrir = async () => {
     const r = await acao.rodar(() => api.atendimento.reabrir(f.id, { motivo: motivo.trim() || null, etapaId: etapaId || null }), `${f.codigo} reaberto`);
@@ -363,14 +391,17 @@ export function JanelaReabrir({ onFechar }: { onFechar: () => void }) {
     <Modal open onClose={onFechar} titulo={`Reabrir ${f.codigo}`}
       rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} botao="Reabrir" onConfirmar={reabrir} />}>
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-ink-2">O chamado volta a ficar aberto e conta mais uma reabertura. {f.responsavel ? `${f.responsavel.nome} recebe o aviso.` : ''}</p>
+        <p className="text-sm text-ink-2">
+          {vendas ? 'A negociação volta para o funil (sai do ganho ou da perda do mês).' : 'O chamado volta a ficar aberto e conta mais uma reabertura.'} {f.responsavel ? `${f.responsavel.nome} recebe o aviso.` : ''}
+        </p>
         <Campo label="Volta para">
           <select className="input" value={etapaId} onChange={(e) => setEtapaId(e.target.value)}>
             {etapas.map((e) => <option key={e.id} value={e.id}>{nomeComNivel(e)}</option>)}
           </select>
         </Campo>
         <Campo label="Por que reabrir? (opcional)">
-          <textarea className="input min-h-[72px]" autoFocus maxLength={500} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: o cliente disse que voltou a cair à tarde" />
+          <textarea className="input min-h-[72px]" autoFocus maxLength={500} value={motivo} onChange={(e) => setMotivo(e.target.value)}
+            placeholder={vendas ? 'Ex.: o cliente voltou a negociar' : 'Ex.: o cliente disse que voltou a cair à tarde'} />
         </Campo>
       </div>
       <ErroPerto erro={acao.erro} />

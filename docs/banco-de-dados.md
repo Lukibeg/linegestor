@@ -1043,6 +1043,7 @@ Um PAINEL (o Kanban de uma equipe): Suporte, Desenvolvimento, e os que a adminis
 | `key` | texto | A sigla do código: 2 a 5 letras ("SUP" → SUP-12). Não muda depois do primeiro chamado. | obrigatório |
 | `description` | texto | — | — |
 | `color` | texto | A cor do painel na tela (um dos tons dos chips: accent, roxo, turquesa…) | obrigatório · padrão: 'accent' |
+| `kind` | texto | gestao (os chamados) ou vendas (as negociações do comercial, 2.0.1, decisão 0050) — não muda depois de criado | obrigatório · padrão: 'gestao' |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `next_number` | número inteiro | O próximo número da sequência (SUP-1, SUP-2…): nunca volta, nem depois da lixeira | obrigatório · padrão: 1 |
 | `access` | texto | todos = quem tem acesso aos chamados vê · escolhidos = só as pessoas de `member_ids` (e quem cuida dos chamados) | obrigatório · padrão: 'todos' |
@@ -1067,6 +1068,7 @@ Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela signif
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `required_fields` | texto | O que precisa estar preenchido para o chamado entrar aqui (lista de campos) | obrigatório · padrão: [] · lista |
 | `notify_user_ids` | texto | Quem recebe o aviso quando um chamado chega nesta etapa (ids de pessoas) | obrigatório · padrão: [] · lista |
+| `outcome` | texto | No painel de Vendas: ganho ou perdido (a etapa final que diz como a negociação acabou); nas outras, nulo | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 
@@ -1152,6 +1154,9 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `reopen_count` | número inteiro | Quantas vezes foi reaberto | obrigatório · padrão: 0 |
 | `last_activity_at` | data e hora | A última coisa que aconteceu (anotação, etapa, campo) — para achar o parado | obrigatório |
 | `schedule_id` | texto | O agendado que criou este chamado | — |
+| `value_cents` | número inteiro | A negociação (painel de Vendas, 2.0.1): o valor, em centavos | — |
+| `prospect` | texto | A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) | — |
+| `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |

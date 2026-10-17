@@ -6,7 +6,10 @@
  * leem os exemplos, depois os que abrem e mexem nos próprios chamados de teste.
  */
 import { describe, expect, it } from 'vitest';
-import { caminhoDoAssunto, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, type CartaoChamado } from '@gestor/shared';
+import {
+  caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
+  type CartaoChamado,
+} from '@gestor/shared';
 import { demoApi } from './demo.js';
 import { diagnosticoDosChamadosDemo } from './demo-atendimento.js';
 import { ApiError, type ChamadoCriarEntrada, type OpcoesAtendimento } from './types.js';
@@ -814,5 +817,71 @@ describe('as regras do servidor valem na prévia', () => {
     expect((await api.salvarMapaDoRobo(mapa)).parametros.map((x) => x.nome)).toEqual(['nome', 'whatsapp', 'conversa', 'mensagem', 'empresa', 'setor']);
     expect((await demoApi.admin.audit({ entityType: 'settings', pageSize: 1 } as never)).items[0]).toMatchObject({ summary: 'Mudou o mapa do robô do LineChat: Parâmetros, Etiquetas, Cliente' });
     await api.salvarMapaDoRobo(MAPA_DO_ROBO_PADRAO);
+  }, DEMORA);
+});
+
+describe('o painel de Vendas na prévia (como o servidor)', () => {
+  it('o Comercial: as negociações de exemplo, o quadro que soma e o relatório do período', async () => {
+    await entrar('camila');
+    const op = await api.opcoes();
+    const com = painel(op, 'COM');
+    expect(com.tipo).toBe('vendas');
+    expect(com.etapas.filter((e) => e.resultado).map((e) => e.resultado)).toEqual(['ganho', 'perdido']);
+    expect((await todosOsChamados()).filter((c) => c.painelId === com.id)).toHaveLength(21);
+    // o histórico: a negociação é criada
+    const estrela = await chamadoPeloTitulo('PABX em nuvem — 40 ramais');
+    expect(estrela.historico.find((e) => e.tipo === 'criado')?.texto).toMatch(/^criou a negociação/);
+    // o quadro soma o valor de cada coluna (o das abertas em cada etapa)
+    const q = await api.quadro({ painel: com.id });
+    for (const col of q.colunas.filter((c) => !c.etapa.resultado)) expect(col.valor).toBe(col.chamados.reduce((t, c) => t + (c.valor ?? 0), 0));
+    // os últimos 28 dias: 12 entraram; 4 ganhas e 2 perdidas acabaram
+    const hoje = diaLocal(new Date());
+    const r = await api.relatorioDeVendas({ painel: 'COM', de: somarDias(hoje, -28), ate: hoje });
+    expect(r.numeros).toEqual({
+      novos: { qtd: 12, valor: 10_080_000 }, ganhos: { qtd: 4, valor: 2_980_000 }, perdidos: { qtd: 2, valor: 990_000 },
+      conversao: 66.7, ticketMedio: 745_000,
+    });
+    expect(r.funil.map((f) => [f.nome, f.chegaram, f.perdidas])).toEqual([
+      ['Lead', 12, 0], ['Qualificação', 10, 0], ['Proposta enviada', 8, 1], ['Negociação', 5, 1],
+    ]);
+    expect(r.funilGanhas).toBe(3);
+  }, DEMORA);
+
+  it('a negociação: nasce no Lead sem prioridade; o Perdido pede o motivo; o Ganho fecha', async () => {
+    await entrar('camila');
+    const op = await api.opcoes();
+    const com = painel(op, 'COM');
+    const nova = await api.criar({ painelId: com.id, titulo: 'Venda de teste', empresa: 'Empresa de Teste', valor: 100_000, prioridade: 'alta' });
+    const f = await api.chamado(nova.codigo);
+    expect(f).toMatchObject({ etapaId: etapa(op, 'COM', 'Lead').id, valor: 100_000, empresa: 'Empresa de Teste', prioridade: null, resultado: null });
+    expect(f.historico.find((e) => e.tipo === 'criado')?.texto).toBe('criou a negociação em Lead');
+    const semMotivo = await erroDe(api.mover(nova.id, { etapaId: etapa(op, 'COM', 'Perdido').id }));
+    expect(semMotivo.status).toBe(400);
+    expect(semMotivo.message).toBe(mensagemDoQueFalta(['motivoPerda'], 'Perdido'));
+    const ganha = await api.mover(nova.id, { etapaId: etapa(op, 'COM', 'Ganho').id });
+    expect(ganha).toMatchObject({ resultado: 'ganho', situacao: 'fechado' });
+    expect(ganha.historico.map((e) => e.texto)).toContain(`marcou como ganho (${reais(100_000)}), estava em Lead`);
+  }, DEMORA);
+
+  it('a troca de painel fica entre os de Vendas (o caminho para o Suporte é o filho)', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const estrela = await chamadoPeloTitulo('PABX em nuvem — 40 ramais');
+    const paraOSuporte = await erroDe(api.trocarPainel(estrela.id, { painelId: painel(op, 'SUP').id }));
+    expect(paraOSuporte.status).toBe(400);
+    expect(paraOSuporte.message).toContain('é uma negociação: só passa para outro painel de Vendas');
+    const chamado = await api.criar(await baseDoSuporte(op, 'Quer orçamento de mais ramais (teste)'));
+    const paraOComercial = await erroDe(api.trocarPainel(chamado.id, { painelId: painel(op, 'COM').id }));
+    expect(paraOComercial.status).toBe(400);
+    expect(paraOComercial.message).toContain('um chamado não vira negociação trocando de painel');
+    // entre dois de Vendas: entra no funil, nunca direto no Ganho
+    const rev = await api.salvarPainel(null, { nome: 'Revenda', sigla: 'REV', cor: 'roxo', tipo: 'vendas', acesso: 'todos', ajustes: {} });
+    const ganhoRev = rev.etapas.find((e) => e.resultado === 'ganho')!;
+    expect((await erroDe(api.trocarPainel(estrela.id, { painelId: rev.id, etapaId: ganhoRev.id }))).message).toBe(TROCA_ENTRA_NO_FUNIL);
+    // o relatório de vendas é só dos painéis de Vendas
+    const hoje = diaLocal(new Date());
+    const doSuporte = await erroDe(api.relatorioDeVendas({ painel: 'SUP', de: hoje, ate: hoje }));
+    expect(doSuporte.status).toBe(400);
+    expect(doSuporte.message).toContain('não é de vendas');
   }, DEMORA);
 });

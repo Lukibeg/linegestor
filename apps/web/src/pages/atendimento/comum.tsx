@@ -9,10 +9,11 @@
 import { useCallback, useMemo, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, type LinkProps, type Location } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, TriangleAlert, X } from 'lucide-react';
+import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, ThumbsDown, TriangleAlert, Trophy, X } from 'lucide-react';
 import {
-  CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, telefoneLegivel, textoDoPrazo,
-  type CartaoChamado, type CorEtiqueta, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type TipoEspera,
+  CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, reaisInteiros, telefoneLegivel, textoDoPrazo,
+  type CartaoChamado, type CorEtiqueta, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type ResultadoDaVenda,
+  type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { useAuth } from '../../lib/auth.js';
@@ -67,7 +68,7 @@ export function usePode() {
 /** O endereço da ficha do chamado (o link direto, que abre a ficha em página inteira). */
 export const enderecoDoChamado = (codigo: string) => `/atendimento/${encodeURIComponent(codigo)}`;
 /** As telas do módulo: o resto de /atendimento/… é o código de um chamado. */
-const TELAS_DO_MODULO = new Set(['meu-dia', 'quadro', 'lista', 'novo', 'ajustes']);
+const TELAS_DO_MODULO = new Set(['meu-dia', 'quadro', 'lista', 'relatorio', 'novo', 'ajustes']);
 /** O endereço é a ficha de um chamado (/atendimento/SUP-12)? */
 export function ehFichaDoChamado(pathname: string): boolean {
   const m = /^\/atendimento\/([^/]+)\/?$/.exec(pathname);
@@ -134,6 +135,8 @@ export function LinkDoChamado({ codigo, ...props }: Omit<LinkProps, 'to' | 'stat
 }
 
 export const painelDe = (opcoes: OpcoesAtendimento | undefined, id: string | null | undefined): Painel | undefined => opcoes?.paineis.find((p) => p.id === id);
+/** O painel é de Vendas (2.0.1, decisão 0050)? A negociação tem o valor, o Ganho e o Perdido no lugar do prazo e dos níveis. */
+export const ehDeVendas = (opcoes: OpcoesAtendimento | undefined, painelId: string | null | undefined) => painelDe(opcoes, painelId)?.tipo === 'vendas';
 export const etapaDe = (opcoes: OpcoesAtendimento | undefined, painelId: string, etapaId: string) => painelDe(opcoes, painelId)?.etapas.find((e) => e.id === etapaId);
 
 // =====================================================================
@@ -146,7 +149,7 @@ export const etapaDe = (opcoes: OpcoesAtendimento | undefined, painelId: string,
  * do painel (Quadro | Lista), o pedido do Luan na prévia.
  */
 const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tambem?: string[] }> = [
-  { to: '/atendimento', label: 'Painéis', fim: true, tambem: ['/atendimento/quadro', '/atendimento/lista'] },
+  { to: '/atendimento', label: 'Painéis', fim: true, tambem: ['/atendimento/quadro', '/atendimento/lista', '/atendimento/relatorio'] },
   { to: '/atendimento/meu-dia', label: 'Meu dia' },
   { to: '/atendimento/ajustes', label: 'Ajustes', so: 'cuidar' },
 ];
@@ -166,6 +169,9 @@ const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tam
  */
 export function CabecalhoAtendimento({ sub, acoes, painelId }: { sub?: ReactNode; acoes?: ReactNode; painelId?: string }) {
   const pode = usePode();
+  const opcoes = useOpcoes();
+  // no painel de Vendas (o quadro, a lista e o relatório do Comercial), o alto fala de vendas
+  const vendas = ehDeVendas(opcoes.data, painelId);
   const location = useLocation();
   const { pathname } = location;
   const abrir = painelId ? `${ENDERECO_ABRIR}?painel=${encodeURIComponent(painelId)}` : ENDERECO_ABRIR;
@@ -173,7 +179,7 @@ export function CabecalhoAtendimento({ sub, acoes, painelId }: { sub?: ReactNode
   return (
     <div className="mb-3" id="cabecalho-chamados">
       <div className="flex flex-wrap items-center gap-x-4 shadow-[inset_0_-1px_0_var(--line)]">
-        <h1 className="font-display text-xl font-semibold py-1.5">Chamados</h1>
+        <h1 className="font-display text-xl font-semibold py-1.5">{vendas ? 'Vendas' : 'Chamados'}</h1>
         <nav className="order-last basis-full sm:order-none sm:basis-auto self-stretch flex items-end gap-1 overflow-x-auto overflow-y-hidden sem-barra" aria-label="Partes do módulo de chamados">
           {ABAS.filter((a) => !a.so || pode.cuidar || pode.integrar).map((a) => (
             <NavLink key={a.to} to={a.to} end={a.fim} className={({ isActive }) => classeAba(isActive || !!a.tambem?.some((t) => pathname.startsWith(t)))}>{a.label}</NavLink>
@@ -181,7 +187,7 @@ export function CabecalhoAtendimento({ sub, acoes, painelId }: { sub?: ReactNode
         </nav>
         <div className="ml-auto flex flex-wrap items-center gap-2 py-1.5">
           {acoes}
-          {pode.trabalhar && <Link to={abrir} state={janela} className="btn-primary" id="cabecalho-abrir-chamado"><Plus size={16} /> Abrir chamado</Link>}
+          {pode.trabalhar && <Link to={abrir} state={janela} className="btn-primary" id="cabecalho-abrir-chamado"><Plus size={16} /> {vendas ? 'Nova negociação' : 'Abrir chamado'}</Link>}
         </div>
       </div>
       {sub && <div className="text-muted text-[13px] mt-2">{sub}</div>}
@@ -229,6 +235,16 @@ export function ChipEspera({ e, mostrarDesde = false }: { e: { tipo: TipoEspera;
       <Hourglass size={12} /> {NOME_ESPERA[e.tipo]}{mostrarDesde && e.desde ? ` desde ${dataHoraCurta(e.desde)}` : ''}
     </Chip>
   );
+}
+
+/** Como a negociação acabou: Ganho ou Perdido (com o motivo ao passar o mouse) e, se vier, o dia. */
+export function ChipResultado({ r, motivo, em }: { r: ResultadoDaVenda | null; motivo?: string | null; em?: string | null }) {
+  if (!r) return null;
+  const dia = em ? ` ${dataCurta(em).slice(0, 5)}` : '';
+  const quando = em ? ` em ${dataCurta(em)}` : '';
+  return r === 'ganho'
+    ? <Chip tone="ok" title={`Negociação ganha${quando}`}><Trophy size={12} aria-hidden /> Ganho{dia}</Chip>
+    : <Chip tone="bad" title={`Negociação perdida${quando}${motivo ? `: ${motivo}` : ''}`}><ThumbsDown size={12} aria-hidden /> Perdido{dia}</Chip>;
 }
 
 const TOM_PRAZO: Record<EstadoPrazo['situacao'], TomChip> = { vencido: 'bad', perto: 'signal', no_prazo: 'neutral', pausado: 'muted', cumprido: 'ok', estourou: 'bad', sem: 'muted' };
@@ -378,6 +394,8 @@ export { telefoneLegivel };
  * o contato (o pedido do Eider, com o nome do contato que o Luan pediu); o assunto; quem está com ele.
  */
 export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel = false }: { c: CartaoChamado; cor?: CorPainel; mostrarEtapa?: boolean; nomeDaEtapa?: string; arrastavel?: boolean }) {
+  const opcoes = useOpcoes();
+  if (ehDeVendas(opcoes.data, c.painelId)) return <CartaoDaNegociacao c={c} cor={cor} mostrarEtapa={mostrarEtapa} nomeDaEtapa={nomeDaEtapa} arrastavel={arrastavel} />;
   return (
     <div className={`card p-2.5 text-[13px] leading-snug flex flex-col gap-1 ${c.prazos.solucao.situacao === 'vencido' || c.prazos.resposta.situacao === 'vencido' ? 'border-l-4 border-l-bad' : c.prioridade === 'critica' ? 'border-l-4 border-l-signal' : ''} ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`}>
       <div className="flex items-center gap-1.5 flex-wrap">
@@ -401,6 +419,41 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
         {c.filhos.total > 0 && <Chip tone="neutral" title={`${c.filhos.abertos} de ${c.filhos.total} filhos em aberto`}><GitBranch size={11} /> {c.filhos.abertos}/{c.filhos.total}</Chip>}
         {c.pai && <span className="text-[11.5px] text-muted">filho de <span className="font-mono">{c.pai.codigo}</span></span>}
         {c.problema && <span className="text-[11.5px] text-muted">incidente de <span className="font-mono">{c.problema.codigo}</span></span>}
+        {c.anotacoes > 0 && <span className="text-[11.5px] text-muted inline-flex items-center gap-0.5" title={`${c.anotacoes} anotações`}><MessageSquare size={11} /> {c.anotacoes}</span>}
+        <span className="ml-auto">{c.responsavel ? <Avatar nome={c.responsavel.nome} /> : <span className="text-[11.5px] text-muted italic">sem dono</span>}</span>
+      </div>
+      {c.etiquetas.length > 0 && <Etiquetas lista={c.etiquetas} />}
+    </div>
+  );
+}
+
+/**
+ * A negociação num cartão (o painel de Vendas, 2.0.1): o código (e, quando acabou, o Ganho ou o Perdido)
+ * em cima; o título; a empresa e o contato; o valor em destaque; quem está com ela.
+ */
+function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: { c: CartaoChamado; cor?: CorPainel; mostrarEtapa?: boolean; nomeDaEtapa?: string; arrastavel: boolean }) {
+  const empresa = c.cliente?.nome ?? c.empresa;
+  return (
+    <div className={`card p-2.5 text-[13px] leading-snug flex flex-col gap-1 ${arrastavel ? 'cursor-grab active:cursor-grabbing' : ''}`} data-negociacao>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <CodigoChamado codigo={c.codigo} cor={cor} />
+        {c.resultado && <span className="ml-auto"><ChipResultado r={c.resultado} motivo={c.motivoPerda} em={c.fechadoEm} /></span>}
+      </div>
+      <LinkDoChamado codigo={c.codigo} className="font-semibold text-ink hover:text-accent line-clamp-2" onClick={(e) => e.stopPropagation()}>{c.titulo}</LinkDoChamado>
+      <div className="min-w-0">
+        {empresa
+          ? <div className="font-semibold text-ink-2 truncate" title={c.cliente ? 'Já é cliente' : 'Ainda não é cliente'}>{empresa}</div>
+          : <div className="text-signal text-[12px] font-medium">sem empresa</div>}
+        {c.contato && (c.contato.nome || c.contato.telefone) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? telefoneLegivel(c.contato.telefone)}</div>}
+      </div>
+      <div className={c.valor === null ? 'text-[12px] text-muted' : 'font-display font-semibold text-[15px] tnum text-ink'} data-valor>
+        {c.valor === null ? 'sem valor' : reaisInteiros(c.valor)}
+      </div>
+      {c.resultado === 'perdido' && c.motivoPerda && <div className="text-[12px] text-muted truncate" title={`Motivo da perda: ${c.motivoPerda}`}>{c.motivoPerda}</div>}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <ChipEspera e={c.espera} />
+        {mostrarEtapa && nomeDaEtapa && <Chip tone="neutral">{nomeDaEtapa}</Chip>}
+        {c.reaberto > 0 && <Chip tone="signal" title={`Reaberta ${c.reaberto} ${c.reaberto === 1 ? 'vez' : 'vezes'}`}><RotateCcw size={11} /> {c.reaberto}</Chip>}
         {c.anotacoes > 0 && <span className="text-[11.5px] text-muted inline-flex items-center gap-0.5" title={`${c.anotacoes} anotações`}><MessageSquare size={11} /> {c.anotacoes}</span>}
         <span className="ml-auto">{c.responsavel ? <Avatar nome={c.responsavel.nome} /> : <span className="text-[11.5px] text-muted italic">sem dono</span>}</span>
       </div>

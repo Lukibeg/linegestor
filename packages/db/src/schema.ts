@@ -1475,6 +1475,8 @@ export const ticketPanels = pgTable(
     description: text('description'),
     /** A cor do painel na tela (um dos tons dos chips: accent, roxo, turquesa…) */
     color: text('color').notNull().default('accent'),
+    /** gestao (os chamados) ou vendas (as negociações do comercial, 2.0.1, decisão 0050) — não muda depois de criado */
+    kind: text('kind').notNull().default('gestao'),
     sortOrder: integer('sort_order').notNull().default(0),
     /** O próximo número da sequência (SUP-1, SUP-2…): nunca volta, nem depois da lixeira */
     nextNumber: integer('next_number').notNull().default(1),
@@ -1512,6 +1514,8 @@ export const ticketStages = pgTable(
     requiredFields: text('required_fields').array().notNull().default([]),
     /** Quem recebe o aviso quando um chamado chega nesta etapa (ids de pessoas) */
     notifyUserIds: text('notify_user_ids').array().notNull().default([]),
+    /** No painel de Vendas: ganho ou perdido (a etapa final que diz como a negociação acabou); nas outras, nulo */
+    outcome: text('outcome'),
     createdAt: createdAt(),
     deletedAt: deletedAt(),
   },
@@ -1650,6 +1654,12 @@ export const tickets = pgTable(
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
     /** O agendado que criou este chamado */
     scheduleId: text('schedule_id'),
+    /** A negociação (painel de Vendas, 2.0.1): o valor, em centavos */
+    valueCents: integer('value_cents'),
+    /** A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) */
+    prospect: text('prospect'),
+    /** Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) */
+    lostReason: text('lost_reason'),
     createdById: text('created_by_id').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

@@ -13,10 +13,10 @@
  * cliente, as ligações num desenho, a busca e a ordem da lista. Mudou a regra, muda aqui (e o teste).
  */
 import { z } from 'zod';
-import { numeroWhatsApp, paraBusca } from './formatos.js';
+import { numeroWhatsApp, paraBusca, reais } from './formatos.js';
 import {
   ALCANCES, ESPERA_PARA_O_PRAZO, GRAVIDADES, NOME_ALCANCE, NOME_ESPERA, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_PRAZO, PESO_PRIORIDADE, PRIORIDADES, RegraAgendadoSchema,
-  sugestaoPelosCampos,
+  diaLocal, sugestaoPelosCampos,
   type Alcance, type AjustesPrazos, type Espera, type EstadoPrazo, type Gravidade, type Prioridade, type RegraAgendado, type TipoEspera,
 } from './atendimento-prazos.js';
 
@@ -63,6 +63,23 @@ export const ORIGENS = ['manual', 'robo', 'botao', 'agendado', 'api'] as const;
 export type Origem = (typeof ORIGENS)[number];
 export const NOME_ORIGEM: Record<Origem, string> = { manual: 'Aberto no Gestor', robo: 'O robô do LineChat', botao: 'O botão na conversa', agendado: 'Chamado agendado', api: 'Integração (n8n)' };
 
+/**
+ * O tipo do painel (2.0.1, decisão 0050), como no Helena: **Gestão** (os chamados: prazos, níveis,
+ * problema) ou **Vendas** (as negociações do comercial: o valor, o ganho e a perda). Escolhido ao
+ * criar o painel; não muda depois.
+ */
+export const TIPOS_DE_PAINEL = ['gestao', 'vendas'] as const;
+export type TipoDePainel = (typeof TIPOS_DE_PAINEL)[number];
+export const NOME_TIPO_DE_PAINEL: Record<TipoDePainel, string> = { gestao: 'Gestão', vendas: 'Vendas' };
+export const DICA_TIPO_DE_PAINEL: Record<TipoDePainel, string> = {
+  gestao: 'Chamados: prazos, níveis (N1, N2, N3), problema, solução e causa.',
+  vendas: 'Negociações do comercial: o valor, o ganho e a perda (com o motivo) e o Relatório de Vendas.',
+};
+/** O fim de uma negociação: as duas etapas finais do painel de Vendas (que fecham o cartão). */
+export const RESULTADOS_DA_VENDA = ['ganho', 'perdido'] as const;
+export type ResultadoDaVenda = (typeof RESULTADOS_DA_VENDA)[number];
+export const NOME_RESULTADO_DA_VENDA: Record<ResultadoDaVenda, string> = { ganho: 'Ganho', perdido: 'Perdido' };
+
 /** As ligações feitas à mão (o pai, o filho e o problema têm o seu próprio lugar). */
 export const TIPOS_LIGACAO_CHAMADO = ['relacionado', 'duplicado', 'repete'] as const;
 export type TipoLigacaoChamado = (typeof TIPOS_LIGACAO_CHAMADO)[number];
@@ -75,16 +92,21 @@ export const NOME_LIGACAO: Record<TipoLigacaoChamado, { de: string; para: string
 
 /** O que pode ser obrigatório para entrar numa etapa (as regras de cada painel). */
 export const CAMPOS_CHAMADO = [
-  'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade',
+  'cliente', 'contato', 'valor', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade',
   'produto', 'operadora', 'responsavel', 'solucao', 'causa', 'checklist', 'tempo',
 ] as const;
 export type CampoObrigatorio = (typeof CAMPOS_CHAMADO)[number];
-export const NOME_CAMPO: Record<CampoObrigatorio | 'validacao' | 'filhos', string> = {
-  cliente: 'Cliente', contato: 'Contato', relato: 'Relato do cliente', descricao: 'Descrição', assunto: 'Assunto', tipo: 'Tipo',
-  gravidade: 'Gravidade', alcance: 'Alcance', prioridade: 'Prioridade', produto: 'Produto', operadora: 'Operadora',
+export const NOME_CAMPO: Record<CampoObrigatorio | 'validacao' | 'filhos' | 'motivoPerda', string> = {
+  cliente: 'Cliente', contato: 'Contato', valor: 'Valor', relato: 'Relato do cliente', descricao: 'Descrição',
+  assunto: 'Assunto', tipo: 'Tipo', gravidade: 'Gravidade', alcance: 'Alcance', prioridade: 'Prioridade', produto: 'Produto', operadora: 'Operadora',
   responsavel: 'Responsável', solucao: 'Solução', causa: 'Causa', checklist: 'O checklist inteiro marcado', tempo: 'O tempo gasto',
-  validacao: 'A validação (problema)', filhos: 'Os filhos fechados',
+  validacao: 'A validação (problema)', filhos: 'Os filhos fechados', motivoPerda: 'O motivo da perda',
 };
+/** O que só existe num tipo de painel: o valor é da negociação; o resto, do chamado. */
+export const CAMPOS_SO_DE_VENDAS: readonly CampoObrigatorio[] = ['valor'];
+export const CAMPOS_SO_DE_GESTAO: readonly CampoObrigatorio[] = ['relato', 'gravidade', 'alcance', 'prioridade', 'operadora', 'solucao', 'causa', 'tempo'];
+/** O campo vale neste tipo de painel? */
+export const campoDoTipo = (tipo: TipoDePainel, c: CampoObrigatorio) => !(tipo === 'vendas' ? CAMPOS_SO_DE_GESTAO : CAMPOS_SO_DE_VENDAS).includes(c);
 
 
 /** As cores de um painel (as mesmas dos chips do sistema). */
@@ -107,6 +129,8 @@ export type EtapaPainel = {
   obrigatorios: Obrigatorio[];
   /** quem recebe o aviso quando um chamado chega nesta etapa (a fila do N2, o Desenvolvimento…) */
   avisar: string[];
+  /** no painel de Vendas: a etapa final que diz como a negociação acabou (Ganho ou Perdido); nas outras, nulo */
+  resultado: ResultadoDaVenda | null;
 };
 
 export type AjustesDoPainel = {
@@ -124,6 +148,10 @@ export type AjustesDoPainel = {
   supervisores: string[];
   /** os campos do sistema que este painel não usa (um painel sem assuntos, por exemplo) */
   camposDesligados: CampoDoSistema[];
+  /** no painel de Vendas: os motivos de perda que a equipe escolhe ao marcar Perdido */
+  motivosDePerda: string[];
+  /** no painel de Vendas: a meta de cada mês, em centavos (nulo = sem meta) */
+  metaMensal: number | null;
 };
 
 export type Painel = {
@@ -133,6 +161,8 @@ export type Painel = {
   sigla: string;
   descricao: string | null;
   cor: CorPainel;
+  /** Gestão (os chamados) ou Vendas (as negociações do comercial) */
+  tipo: TipoDePainel;
   ordem: number;
   /** todos com acesso aos chamados veem; ou só as pessoas escolhidas (um painel Interno, Administrativo…) */
   acesso: 'todos' | 'escolhidos';
@@ -150,14 +180,42 @@ export type Painel = {
  */
 export const AJUSTES_PAINEL_PADRAO: AjustesDoPainel = {
   tipos: TIPOS_PADRAO, contaPrazo: true, fecharSozinhoDias: 3, obrigatoriosAoAbrir: [], paiEsperaFilhos: true, supervisores: [], camposDesligados: ['alcance'],
+  motivosDePerda: [], metaMensal: null,
 };
+
+/** Os motivos de perda com que o painel de Vendas nasce (a equipe muda nos Ajustes do painel). */
+export const MOTIVOS_DE_PERDA_PADRAO = [
+  'Preço', 'Fechou com a concorrência', 'Sem retorno do cliente', 'Adiou a decisão', 'Sem orçamento', 'Não atende o que precisa', 'Outro',
+];
+/**
+ * O painel de Vendas nasce sem prazo (a negociação não tem SLA), sem fechar sozinho e só com os campos do
+ * sistema que fazem sentido numa venda (os produtos; o assunto, o tipo, a gravidade, o alcance e a
+ * operadora ficam desligados — dá para ligar em Ajustes › Campos).
+ */
+export const AJUSTES_DO_PAINEL_DE_VENDAS: AjustesDoPainel = {
+  ...AJUSTES_PAINEL_PADRAO, tipos: ['Novo cliente', 'Mais produtos (cliente da base)', 'Renovação'], contaPrazo: false, fecharSozinhoDias: null,
+  paiEsperaFilhos: false, camposDesligados: ['assunto', 'tipo', 'gravidade', 'alcance', 'operadoras'], motivosDePerda: MOTIVOS_DE_PERDA_PADRAO,
+};
+/**
+ * As etapas com que o painel de Vendas nasce: o funil (o lead, a qualificação, a proposta, a negociação)
+ * e as duas finais, Ganho e Perdido. A equipe renomeia, inclui e muda a ordem do funil; as finais não
+ * saem (podem mudar de nome). O Ganho pede o valor; o Perdido, o motivo (sempre).
+ */
+export const ETAPAS_DO_PAINEL_DE_VENDAS: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios' | 'resultado'>> = [
+  { nome: 'Lead', tipo: 'entrada', nivel: null, obrigatorios: [], resultado: null },
+  { nome: 'Qualificação', tipo: 'andamento', nivel: null, obrigatorios: [], resultado: null },
+  { nome: 'Proposta enviada', tipo: 'andamento', nivel: null, obrigatorios: ['valor'], resultado: null },
+  { nome: 'Negociação', tipo: 'andamento', nivel: null, obrigatorios: ['valor'], resultado: null },
+  { nome: 'Ganho', tipo: 'fechado', nivel: null, obrigatorios: ['valor'], resultado: 'ganho' },
+  { nome: 'Perdido', tipo: 'fechado', nivel: null, obrigatorios: [], resultado: 'perdido' },
+];
 
 /** Os ajustes guardados podem ser de antes de um campo novo: completa com o padrão. */
 export function ajustesDoPainelCompletos(v: Partial<AjustesDoPainel> | null | undefined): AjustesDoPainel {
   return { ...AJUSTES_PAINEL_PADRAO, ...(v ?? {}) };
 }
 
-type EtapaInicial = Omit<EtapaPainel, 'id' | 'avisar'> & { chave: string };
+type EtapaInicial = Omit<EtapaPainel, 'id' | 'avisar' | 'resultado'> & { chave: string };
 const CLASSIFICADO: CampoObrigatorio[] = ['cliente', 'relato', 'assunto', 'tipo', 'gravidade'];
 /**
  * Os painéis com que o módulo nasce. O Suporte segue a escolha do Luan: N1, N2, N3 e DEV como colunas
@@ -312,9 +370,9 @@ export const idDaChave = (k: string): string | null => (k.startsWith('campo:') ?
  * O que pode ser pedido num painel, na ordem da ficha: os campos do sistema que ele usa (sem o assunto,
  * se o assunto está desligado) e os campos dele que estão ativos.
  */
-export function obrigatoriosDoPainel(ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, campos: Array<Pick<CampoPersonalizado, 'id' | 'ativo'>>): Obrigatorio[] {
+export function obrigatoriosDoPainel(ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, campos: Array<Pick<CampoPersonalizado, 'id' | 'ativo'>>, tipo: TipoDePainel = 'gestao'): Obrigatorio[] {
   const fora = new Set<string>(ajustes.camposDesligados.flatMap((c) => OBRIGATORIOS_DO_CAMPO[c]));
-  return [...CAMPOS_CHAMADO.filter((c) => !fora.has(c)), ...campos.filter((c) => c.ativo).map((c) => chaveDoCampo(c.id))];
+  return [...CAMPOS_CHAMADO.filter((c) => !fora.has(c) && campoDoTipo(tipo, c)), ...campos.filter((c) => c.ativo).map((c) => chaveDoCampo(c.id))];
 }
 /** Só o que vale no painel, sem repetir e na ordem da ficha (o que não pode ser pedido lá sai). */
 export function limparObrigatorios(xs: readonly string[], validos: readonly Obrigatorio[]): Obrigatorio[] {
@@ -326,11 +384,12 @@ export function limparObrigatorios(xs: readonly string[], validos: readonly Obri
  * ou o de um campo do sistema que o painel usa (com o Assunto desligado, "Assunto" pode ser um campo do
  * painel). Devolve o nome do campo do sistema que bate, ou nulo.
  */
-export function nomeDoSistemaIgual(nome: string, ajustes: Pick<AjustesDoPainel, 'camposDesligados'>): string | null {
+export function nomeDoSistemaIgual(nome: string, ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, tipo: TipoDePainel = 'gestao'): string | null {
   const fora = new Set<string>(ajustes.camposDesligados.flatMap((c) => OBRIGATORIOS_DO_CAMPO[c]));
   const nomes = [
     'Título', 'Etiquetas', 'Checklist', 'Tempo gasto', 'Solução de contorno', 'Validação',
-    ...CAMPOS_CHAMADO.filter((c) => !fora.has(c)).map((c) => NOME_CAMPO[c]),
+    ...(tipo === 'vendas' ? ['Empresa', 'Motivo da perda'] : []),
+    ...CAMPOS_CHAMADO.filter((c) => !fora.has(c) && campoDoTipo(tipo, c)).map((c) => NOME_CAMPO[c]),
     ...CAMPOS_DO_SISTEMA.filter((c) => !ajustes.camposDesligados.includes(c)).map((c) => NOME_CAMPO_DO_SISTEMA[c]),
   ];
   return nomes.find((n) => paraBusca(n) === paraBusca(nome)) ?? null;
@@ -633,6 +692,10 @@ export type DadosObrigatorios = {
   tempoMinutos: number;
   /** os valores dos campos do painel (pelo id do campo) */
   campos: ValoresDosCampos;
+  /** a negociação (painel de Vendas): o valor em centavos, a empresa que ainda não é cliente e o motivo da perda */
+  valor?: number | null;
+  empresa?: string | null;
+  motivoPerda?: string | null;
 };
 
 const preenchido = (v: string | null | undefined) => !!v && v.trim().length > 0;
@@ -641,8 +704,10 @@ function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
   const id = idDaChave(campo);
   if (id) return !valorPreenchido(c.campos[id]);
   switch (campo as CampoObrigatorio) {
-    case 'cliente': return !c.clienteId;
+    // na negociação, a empresa que ainda não é cliente (escrita à mão) também conta como o cliente
+    case 'cliente': return !c.clienteId && !preenchido(c.empresa);
     case 'contato': return !preenchido(c.contatoNome) && !preenchido(c.contatoTelefone);
+    case 'valor': return c.valor === null || c.valor === undefined;
     case 'relato': return !preenchido(c.relato);
     case 'descricao': return !preenchido(c.descricao);
     case 'assunto': return !c.assuntoId;
@@ -666,16 +731,18 @@ function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
  * O que falta para o chamado entrar na etapa (na ordem da lista de campos). O problema (ITIL) só
  * resolve e fecha com a causa, a solução e a validação, em qualquer painel — o pedido do Eider.
  */
-export function faltaParaEtapa(c: DadosObrigatorios, etapa: Pick<EtapaPainel, 'tipo' | 'obrigatorios'>): Array<Obrigatorio | 'validacao'> {
+export function faltaParaEtapa(c: DadosObrigatorios, etapa: Pick<EtapaPainel, 'tipo' | 'obrigatorios'> & { resultado?: ResultadoDaVenda | null }): Array<Obrigatorio | 'validacao' | 'motivoPerda'> {
   const campos = new Set<Obrigatorio>(etapa.obrigatorios);
   const fechando = etapa.tipo === 'resolvido' || etapa.tipo === 'fechado';
   if (c.tipoChamado === 'problema' && fechando) { campos.add('causa'); campos.add('solucao'); }
   // os do sistema na ordem da lista de campos; os do painel na ordem em que a etapa os pede
-  const faltam: Array<Obrigatorio | 'validacao'> = [
+  const faltam: Array<Obrigatorio | 'validacao' | 'motivoPerda'> = [
     ...CAMPOS_CHAMADO.filter((k) => campos.has(k) && falta(c, k)),
     ...[...new Set(etapa.obrigatorios)].filter((k) => idDaChave(k) && falta(c, k)),
   ];
   if (c.tipoChamado === 'problema' && fechando && !preenchido(c.validacao)) faltam.push('validacao');
+  // a negociação perdida sempre diz por quê (o motivo vem na hora de marcar)
+  if (etapa.resultado === 'perdido' && !preenchido(c.motivoPerda)) faltam.push('motivoPerda');
   return faltam;
 }
 export function faltaParaAbrir(c: DadosObrigatorios, ajustes: Pick<AjustesDoPainel, 'obrigatoriosAoAbrir'>): Obrigatorio[] {
@@ -686,7 +753,7 @@ export function faltaParaAbrir(c: DadosObrigatorios, ajustes: Pick<AjustesDoPain
   ];
 }
 /** "Falta o Assunto e a Causa" — a mensagem que aparece ao lado do botão (os campos do painel pelo nome). */
-export function mensagemDoQueFalta(faltam: Array<Obrigatorio | 'validacao' | 'filhos'>, etapa?: string, campos: ReadonlyArray<Pick<CampoPersonalizado, 'id' | 'nome'>> = []): string {
+export function mensagemDoQueFalta(faltam: Array<Obrigatorio | 'validacao' | 'filhos' | 'motivoPerda'>, etapa?: string, campos: ReadonlyArray<Pick<CampoPersonalizado, 'id' | 'nome'>> = []): string {
   if (!faltam.length) return '';
   const nomes = faltam.map((f) => nomeDoObrigatorio(f, campos));
   const lista = nomes.length === 1 ? nomes[0]! : `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}`;
@@ -715,6 +782,9 @@ export function filhosQueTravam(filhos: Array<{ codigo: string; situacao: Situac
 const Texto = (max: number) => z.string().max(max).transform((s) => s.replace(/\r\n?/g, '\n'));
 const TextoOpcional = (max: number) => Texto(max).nullish().transform((s) => (s && s.trim() ? s.trim() : null));
 const Lista = (max = 50) => z.array(z.string().trim().min(1).max(120)).max(max);
+/** Um dia (AAAA-MM-DD) que existe: o dia em que a negociação acabou. */
+const DiaSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'A data vai como dia/mês/ano')
+  .refine((d) => { const t = new Date(`${d}T12:00:00Z`); return !Number.isNaN(t.getTime()) && t.toISOString().slice(0, 10) === d; }, 'Esse dia não existe');
 /** O nome de uma etiqueta: até 40 letras, com um espaço só entre as palavras. */
 const EtiquetaSchema = z.string().trim().min(1).max(40).transform((s) => s.replace(/\s+/g, ' '));
 /**
@@ -801,16 +871,26 @@ export const EtapaGravarSchema = z.object({
   nivel: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).nullable().default(null),
   obrigatorios: z.array(ObrigatorioSchema).max(MAX_OBRIGATORIOS).default([]),
   avisar: z.array(z.string()).max(50).default([]),
+  /** no painel de Vendas: Ganho ou Perdido (só numa etapa que fecha) */
+  resultado: z.enum(RESULTADOS_DA_VENDA).nullable().default(null),
 });
+/** A meta e o valor: em centavos (R$ 1.234,56 = 123456), até R$ 100 milhões. */
+export const ValorEmCentavosSchema = z.number().int('O valor vai em centavos').min(0, 'O valor não pode ser negativo').max(10_000_000_000, 'Valor alto demais');
 export const AjustesDoPainelSchema = z.object({
-  tipos: z.array(z.string().trim().min(1).max(40)).max(30).default(TIPOS_PADRAO),
+  /** as opções do Tipo (sem a lista, ficam como estão; o painel novo nasce com as do tipo de painel) */
+  tipos: z.array(z.string().trim().min(1).max(40)).max(30).optional(),
   contaPrazo: z.boolean().default(true),
   fecharSozinhoDias: z.number().int().min(1).max(60).nullable().default(3),
   obrigatoriosAoAbrir: z.array(ObrigatorioSchema).max(MAX_OBRIGATORIOS).default([]),
-  paiEsperaFilhos: z.boolean().default(true),
+  /** sem o campo, fica como está (o painel novo de Gestão espera os filhos; o de Vendas, não) */
+  paiEsperaFilhos: z.boolean().optional(),
   supervisores: z.array(z.string()).max(30).default([]),
   /** sem a lista, fica como está (quem liga e desliga é a aba Campos) */
   camposDesligados: z.array(z.enum(CAMPOS_DO_SISTEMA)).max(CAMPOS_DO_SISTEMA.length).optional(),
+  /** no painel de Vendas: os motivos de perda (sem a lista, ficam como estão) */
+  motivosDePerda: z.array(z.string().trim().min(1, 'Dê um nome ao motivo').max(60, 'O motivo vai até 60 letras')).max(30, 'Até 30 motivos').optional(),
+  /** no painel de Vendas: a meta do mês, em centavos (nulo = sem meta; sem o campo, fica como está) */
+  metaMensal: ValorEmCentavosSchema.nullable().optional(),
 });
 /** Um painel vai até 20 etapas (colunas do quadro). */
 export const MAX_ETAPAS_DO_PAINEL = 20;
@@ -838,6 +918,8 @@ export const PainelGravarSchema = z.object({
   sigla: SiglaSchema,
   descricao: TextoOpcional(300),
   cor: z.enum(CORES_PAINEL).default('accent'),
+  /** Gestão ou Vendas: vale ao criar (depois, o tipo não muda) */
+  tipo: z.enum(TIPOS_DE_PAINEL).default('gestao'),
   acesso: z.enum(['todos', 'escolhidos']).default('todos'),
   pessoas: z.array(z.string()).max(200).default([]),
   ajustes: AjustesDoPainelSchema,
@@ -850,6 +932,38 @@ export const PainelGravarSchema = z.object({
   etapas: ListaDeEtapasSchema.optional(),
   destino: DestinoDosChamadosSchema,
 });
+/**
+ * As etapas de um painel de Vendas: uma etapa Ganho e uma Perdido, as duas finais (que fecham a
+ * negociação); nenhuma de Resolvido nem de nível. Nas de Gestão, nenhuma etapa tem resultado. Devolve a
+ * primeira frase do que não serve (ou nulo).
+ */
+export function problemaNasEtapasDoTipo(tipo: TipoDePainel, etapas: ReadonlyArray<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel'> & { resultado?: ResultadoDaVenda | null }>): string | null {
+  if (tipo === 'gestao') {
+    return etapas.some((e) => e.resultado) ? 'Ganho e Perdido são etapas do painel de Vendas.' : null;
+  }
+  for (const r of RESULTADOS_DA_VENDA) {
+    const n = etapas.filter((e) => e.resultado === r).length;
+    if (!n) return `O painel de Vendas precisa da etapa ${NOME_RESULTADO_DA_VENDA[r]}.`;
+    if (n > 1) return `O painel de Vendas tem uma etapa ${NOME_RESULTADO_DA_VENDA[r]} só (a lista tem ${n}).`;
+  }
+  const errada = etapas.find((e) => e.resultado && e.tipo !== 'fechado');
+  if (errada) return `A etapa ${errada.nome} fecha a negociação: o tipo dela é Fechado.`;
+  const fechaSemResultado = etapas.find((e) => e.tipo === 'fechado' && !e.resultado);
+  if (fechaSemResultado) return `No painel de Vendas, só o Ganho e o Perdido fecham a negociação (${fechaSemResultado.nome} não pode fechar).`;
+  if (etapas.some((e) => e.tipo === 'resolvido')) return 'O painel de Vendas não tem a etapa Resolvido: a negociação acaba em Ganho ou Perdido.';
+  if (etapas.some((e) => e.nivel)) return 'O painel de Vendas não tem níveis (N1, N2, N3).';
+  return null;
+}
+/**
+ * A troca de painel não muda o que o registro é: a negociação só passa para outro painel de Vendas, e o
+ * chamado para outro de Gestão (o caminho entre os dois é o filho, que fica ligado).
+ */
+export const trocaEntreTiposDePainel = (codigo: string, de: { tipo: TipoDePainel }, para: { nome: string }) => (de.tipo === 'vendas'
+  ? `${codigo} é uma negociação: só passa para outro painel de Vendas. Para levar o trabalho ao ${para.nome}, crie um filho lá.`
+  : `O ${para.nome} é um painel de Vendas: um chamado não vira negociação trocando de painel. Crie um filho lá (a negociação fica ligada a ${codigo}).`);
+/** Na troca entre painéis de Vendas, a negociação entra no funil: o resultado se marca na janela dele. */
+export const TROCA_ENTRA_NO_FUNIL = 'Na troca de painel, a negociação entra numa etapa do funil: o Ganho e o Perdido se marcam depois (com o valor ou o motivo).';
+
 export const EtapasGravarSchema = z.object({
   etapas: ListaDeEtapasSchema,
   destino: DestinoDosChamadosSchema,
@@ -950,6 +1064,9 @@ export const ChamadoCriarSchema = z.object({
   origem: z.enum(['manual', 'botao']).default('manual'),
   /** os campos do painel (pelo id ou pelo nome) */
   campos: ValoresEntradaSchema.default({}),
+  /** a negociação (painel de Vendas): o valor em centavos e a empresa que ainda não é cliente */
+  valor: ValorEmCentavosSchema.nullish().transform((v) => v ?? null),
+  empresa: TextoOpcional(120),
 });
 export type ChamadoCriar = z.infer<typeof ChamadoCriarSchema>;
 
@@ -981,6 +1098,10 @@ export const ChamadoAlterarSchema = z.object({
   responsavelId: z.string().nullish().transform((v) => v || null).optional(),
   /** só os campos do painel que vierem (nulo ou vazio tira o valor) */
   campos: ValoresEntradaSchema.optional(),
+  /** a negociação (painel de Vendas) */
+  valor: ValorEmCentavosSchema.nullable().optional(),
+  empresa: TextoOpcional(120).optional(),
+  motivoPerda: TextoOpcional(200).optional(),
 });
 export type ChamadoAlterar = z.infer<typeof ChamadoAlterarSchema>;
 
@@ -990,6 +1111,10 @@ export const MoverSchema = z.object({
   motivo: TextoOpcional(500),
   /** para quem, ao escalonar (sem ninguém = fica na fila do nível) */
   responsavelId: z.string().nullish(),
+  /** marcar como Perdido pede o motivo (um dos motivos do painel, ou outro escrito) */
+  motivoPerda: TextoOpcional(200),
+  /** Ganho e Perdido: o dia em que a negociação acabou (hoje ou antes; sem ele, agora) */
+  concluidoEm: DiaSchema.nullish().transform((v) => v || null),
 });
 export const EsperarSchema = z.object({ tipo: z.enum(['cliente', 'operadora']).nullable(), motivo: TextoOpcional(300) });
 export const ReabrirSchema = z.object({ motivo: TextoOpcional(500), etapaId: z.string().nullish() });
@@ -1247,6 +1372,12 @@ export type CartaoChamado = {
   ultimaAtividadeEm: string;
   resolvidoEm: string | null;
   fechadoEm: string | null;
+  /** a negociação (painel de Vendas): o valor em centavos e a empresa que ainda não é cliente */
+  valor: number | null;
+  empresa: string | null;
+  /** como acabou (a etapa final do painel de Vendas: Ganho ou Perdido) e, no Perdido, o motivo */
+  resultado: ResultadoDaVenda | null;
+  motivoPerda: string | null;
 };
 
 export const TIPOS_EVENTO = [
@@ -1312,7 +1443,7 @@ export type FichaChamado = CartaoChamado & {
   operadora: CasoOperadora[];
   trajetoria: PassoTrajetoria[];
   /** etapa (id) → o que falta para entrar nela */
-  faltam: Record<string, Array<Obrigatorio | 'validacao'>>;
+  faltam: Record<string, Array<Obrigatorio | 'validacao' | 'motivoPerda'>>;
   /** etapa (id) → os filhos que travam (vazio = nada trava) */
   filhosTravam: Record<string, string[]>;
   grafo: GrafoChamado;
@@ -1359,7 +1490,8 @@ export type OpcoesAtendimento = {
   pode: { trabalhar: boolean; cuidar: boolean; integrar: boolean };
 };
 
-export type ColunaQuadro = { etapa: EtapaPainel; chamados: CartaoChamado[]; total: number; escondidos: number };
+/** Uma coluna do quadro; no painel de Vendas, `valor` é a soma (em centavos) das negociações dela (as escondidas também). */
+export type ColunaQuadro = { etapa: EtapaPainel; chamados: CartaoChamado[]; total: number; escondidos: number; valor: number };
 export type QuadroAtendimento = { painelId: string; colunas: ColunaQuadro[]; foraDoHorario: boolean; agora: string };
 
 export const TIPOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai', 'observador'] as const;
@@ -1391,6 +1523,12 @@ export type ResumoDoPainel = {
   porEtapa: Array<{ etapaId: string; total: number }>;
   /** o último movimento num chamado do painel */
   ultimaAtividadeEm: string | null;
+  /** no painel de Vendas: o que está em negociação e o que foi ganho no mês (com a meta) */
+  vendas: {
+    emAndamento: number; emAndamentoQtd: number;
+    ganhoNoMes: number; ganhosNoMes: number; perdidosNoMes: number;
+    metaMensal: number | null;
+  } | null;
 };
 
 export type MeuDia = {
@@ -1467,8 +1605,12 @@ const nomeNivel = (n: unknown) => (n ? ` (${rotuloDoNivel(n as number)})` : '');
 /** Uma frase por evento, a mesma no servidor e na prévia. */
 export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string {
   switch (tipo) {
-    case 'criado': return `abriu o chamado${d.origem && d.origem !== 'manual' ? ` (${NOME_ORIGEM[d.origem as Origem] ?? d.origem})` : ''}${d.etapa ? ` em ${d.etapa}` : ''}`;
+    // a negociação (o painel de Vendas) é criada; o chamado é aberto
+    case 'criado': return `${d.venda ? 'criou a negociação' : 'abriu o chamado'}${d.origem && d.origem !== 'manual' ? ` (${NOME_ORIGEM[d.origem as Origem] ?? d.origem})` : ''}${d.etapa ? ` em ${d.etapa}` : ''}`;
     case 'etapa': {
+      // a negociação que acabou: "marcou como ganho (R$ 12.000,00), estava em Negociação"
+      if (d.resultado === 'ganho') return `marcou como ganho${typeof d.valor === 'number' ? ` (${reais(d.valor)})` : ''}, estava em ${d.de?.nome ?? '?'}${d.concluidoEm ? ` — fechou em ${diaComAno(d.concluidoEm)}` : ''}`;
+      if (d.resultado === 'perdido') return `marcou como perdido${d.motivoPerda ? `: ${d.motivoPerda}` : ''} (estava em ${d.de?.nome ?? '?'})${d.concluidoEm ? ` — em ${diaComAno(d.concluidoEm)}` : ''}`;
       const verbo = d.sentido === 'sobe' ? 'escalonou' : d.sentido === 'desce' ? 'voltou de nível' : 'moveu';
       return `${verbo} de ${d.de?.nome ?? '?'}${nomeNivel(d.de?.nivel)} para ${d.para?.nome ?? '?'}${nomeNivel(d.para?.nivel)}${d.motivo ? `: ${d.motivo}` : ''}`;
     }
@@ -1499,6 +1641,33 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     default: return String(tipo);
   }
 }
+
+/** "R$ 12 mil", "R$ 1,2 mi" — o valor curto, para o alto das colunas e os números grandes. */
+export function reaisCurto(centavos: number): string {
+  const r = centavos / 100;
+  if (Math.abs(r) >= 1_000_000) return `R$ ${(r / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`;
+  if (Math.abs(r) >= 10_000) return `R$ ${Math.round(r / 1000).toLocaleString('pt-BR')} mil`;
+  return r.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+}
+/** "R$ 12.500" (os centavos só quando há: "R$ 12.500,50") — o valor no cartão, na coluna e nos números. */
+export function reaisInteiros(centavos: number): string {
+  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: centavos % 100 ? 2 : 0, maximumFractionDigits: 2 });
+}
+/**
+ * O valor escrito pela pessoa ("12.000", "12000,50", "R$ 1.234,56", "1,5 mil") em centavos; nulo se não
+ * for um valor. Ponto como milhar, vírgula como decimal (o jeito do Brasil).
+ */
+export function lerReais(texto: string): number | null {
+  let t = texto.trim().toLowerCase().replace(/r\$\s*/g, '').replace(/\s+/g, '');
+  if (!t) return null;
+  let mult = 1;
+  if (t.endsWith('mil')) { mult = 1000; t = t.slice(0, -3); } else if (/(mi|milhão|milhões|milhao|milhoes)$/.test(t)) { mult = 1_000_000; t = t.replace(/(mi|milhão|milhões|milhao|milhoes)$/, ''); }
+  if (!/^\d{1,3}(\.\d{3})*(,\d{1,2})?$|^\d+(,\d{1,2})?$/.test(t)) return null;
+  const n = Number(t.replace(/\./g, '').replace(',', '.')) * mult;
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+}
+/** O dia (AAAA-MM-DD) como a pessoa lê: 31/10/2026. */
+export const diaComAno = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}`;
 
 // =====================================================================
 //  A TRAJETÓRIA (quem passou, quando, por quê, quanto tempo em cada nível)
@@ -1834,7 +2003,7 @@ export type CartaoParaLista = CartaoChamado & { busca: string };
 /** O texto de busca de um chamado: código, título, cliente, contato, telefone, assunto, etiquetas e os textos. */
 export function textoDeBusca(c: CartaoChamado, textos: Array<string | null | undefined> = []): string {
   return paraBusca([
-    c.codigo, c.titulo, c.cliente?.nome, c.contato?.nome, c.contato?.telefone, c.assunto?.caminho, c.tipo,
+    c.codigo, c.titulo, c.cliente?.nome, c.empresa, c.contato?.nome, c.contato?.telefone, c.assunto?.caminho, c.tipo,
     ...c.etiquetas, ...c.produtos.map((p) => p.nome), ...c.operadoras.map((o) => o.nome), ...textos,
   ].filter(Boolean).join(' \n '));
 }
@@ -1882,7 +2051,8 @@ const prazoVencido = (c: CartaoChamado) => c.prazos.resposta.situacao === 'venci
 const prazoPerto = (c: CartaoChamado) => !prazoVencido(c) && (c.prazos.resposta.situacao === 'perto' || c.prazos.solucao.situacao === 'perto');
 
 /** Os números de cada painel para a tela inicial (o servidor e a prévia contam igual). */
-export function resumoDosPaineis(paineis: Array<Pick<Painel, 'id' | 'etapas'>>, cartoes: CartaoChamado[], euId: string | null): ResumoDoPainel[] {
+export function resumoDosPaineis(paineis: Array<Pick<Painel, 'id' | 'etapas'> & Partial<Pick<Painel, 'tipo' | 'ajustes'>>>, cartoes: CartaoChamado[], euId: string | null, agora: Date = new Date()): ResumoDoPainel[] {
+  const mes = diaLocal(agora).slice(0, 7);
   return paineis.map((p) => {
     const doPainel = cartoes.filter((c) => c.painelId === p.id);
     const abertos = doPainel.filter((c) => c.situacao === 'aberto');
@@ -1900,8 +2070,22 @@ export function resumoDosPaineis(paineis: Array<Pick<Painel, 'id' | 'etapas'>>, 
       resolvidos: doPainel.filter((c) => c.situacao === 'resolvido').length,
       porEtapa: p.etapas.filter((e) => e.tipo !== 'fechado').map((e) => ({ etapaId: e.id, total: porEtapa.get(e.id) ?? 0 })),
       ultimaAtividadeEm: ultima,
+      vendas: p.tipo === 'vendas' ? resumoDeVendas(doPainel, mes, p.ajustes?.metaMensal ?? null) : null,
     };
   });
+}
+
+/** Os números do painel de Vendas no cartão da tela dos painéis (o mês é o de Brasília). */
+function resumoDeVendas(cartoes: CartaoChamado[], mes: string, metaMensal: number | null): NonNullable<ResumoDoPainel['vendas']> {
+  const abertas = cartoes.filter((c) => c.situacao === 'aberto');
+  const doMes = (c: CartaoChamado) => !!c.fechadoEm && diaLocal(new Date(c.fechadoEm)).startsWith(mes);
+  const ganhas = cartoes.filter((c) => c.resultado === 'ganho' && doMes(c));
+  return {
+    emAndamento: abertas.reduce((t, c) => t + (c.valor ?? 0), 0), emAndamentoQtd: abertas.length,
+    ganhoNoMes: ganhas.reduce((t, c) => t + (c.valor ?? 0), 0), ganhosNoMes: ganhas.length,
+    perdidosNoMes: cartoes.filter((c) => c.resultado === 'perdido' && doMes(c)).length,
+    metaMensal,
+  };
 }
 
 const URGENCIA: Record<EstadoPrazo['situacao'], number> = { vencido: 0, perto: 1, no_prazo: 2, pausado: 3, sem: 4, estourou: 5, cumprido: 6 };
@@ -1917,6 +2101,16 @@ export function compararUrgencia(a: CartaoChamado, b: CartaoChamado): number {
   return a.criadoEm.localeCompare(b.criadoEm);
 }
 
+/**
+ * A ordem das negociações abertas (o painel de Vendas não tem prazo): a de maior valor primeiro (a sem
+ * valor no fim), depois a mais antiga.
+ */
+export function compararNegociacoes(a: CartaoChamado, b: CartaoChamado): number {
+  const va = a.valor ?? -1; const vb = b.valor ?? -1;
+  if (va !== vb) return vb - va;
+  return a.criadoEm.localeCompare(b.criadoEm);
+}
+
 export function ordenarCartoes<T extends CartaoChamado>(lista: T[], sort: string | undefined, dir: 'asc' | 'desc' | undefined, ordemDasEtapas: Map<string, number>): T[] {
   const col = sort || 'urgencia';
   const valores: Record<string, (c: T) => string | number | null> = {
@@ -1924,11 +2118,13 @@ export function ordenarCartoes<T extends CartaoChamado>(lista: T[], sort: string
     etapa: (c) => ordemDasEtapas.get(c.etapaId) ?? 999, prioridade: (c) => (c.prioridade ? PESO_PRIORIDADE[c.prioridade] : null),
     responsavel: (c) => c.responsavel?.nome.toLocaleLowerCase('pt-BR') ?? null, assunto: (c) => c.assunto?.caminho.toLocaleLowerCase('pt-BR') ?? null,
     prazo: (c) => c.prazos.solucao.venceEm ?? (c.prazos.solucao.situacao === 'vencido' ? '0' : null), criado: (c) => c.criadoEm, atualizado: (c) => c.ultimaAtividadeEm,
+    // a negociação: o valor (o maior primeiro) e a empresa (o cliente ou a que ainda não é)
+    valor: (c) => c.valor, empresa: (c) => (c.cliente?.nome ?? c.empresa)?.toLocaleLowerCase('pt-BR') ?? null,
   };
   if (col === 'urgencia' || !valores[col]) return [...lista].sort((a, b) => (dir === 'desc' ? -1 : 1) * compararUrgencia(a, b));
   const pegar = valores[col]!;
-  // datas e o "atualizado" nascem do mais novo; o resto, crescendo. O vazio fica sempre no fim.
-  const sentido = dir ?? (col === 'criado' || col === 'atualizado' ? 'desc' : 'asc');
+  // datas, o "atualizado" e o valor nascem do maior; o resto, crescendo. O vazio fica sempre no fim.
+  const sentido = dir ?? (col === 'criado' || col === 'atualizado' || col === 'valor' ? 'desc' : 'asc');
   return [...lista].sort((a, b) => {
     const x = pegar(a); const y = pegar(b);
     if (x === null && y === null) return 0;
@@ -1952,27 +2148,49 @@ const dataHora = (iso: string | null) => {
   const d = new Date(Date.parse(iso) - 3 * 3_600_000).toISOString();
   return `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)} ${d.slice(11, 16)}`;
 };
+/** O valor (centavos) como o Excel do Brasil lê um número: 12345,67. */
+const valorNaPlanilha = (centavos: number | null) => (centavos === null ? '' : (centavos / 100).toFixed(2).replace('.', ','));
+
 /**
  * O CSV (separado por ponto e vírgula, como o Excel do Brasil abre) com as colunas da lista e, no fim,
  * uma coluna para cada campo ativo dos painéis que estão no arquivo (com o nome do painel, quando há mais
- * de um painel no arquivo).
+ * de um painel no arquivo). As negociações (os painéis de Vendas) levam o valor, o resultado e o motivo
+ * da perda; o arquivo só de negociações deixa de fora o que é do chamado (o assunto, a gravidade,
+ * os prazos…) e leva os produtos.
  */
-export function csvDosChamados(lista: CartaoChamado[], nomes: { painel: (id: string) => string; etapa: (id: string) => string }, campos: readonly CampoPersonalizado[] = []): string {
+export function csvDosChamados(
+  lista: CartaoChamado[], nomes: { painel: (id: string) => string; etapa: (id: string) => string; vendas?: (painelId: string) => boolean },
+  campos: readonly CampoPersonalizado[] = [],
+): string {
   const noArquivo = new Set(lista.map((c) => c.painelId));
   const extras = campos.filter((c) => c.ativo && noArquivo.has(c.painelId));
-  const cab = [
-    'Código', 'Título', 'Painel', 'Etapa', 'Situação', 'Cliente', 'Contato', 'Telefone', 'Responsável', 'Assunto', 'Tipo', 'Gravidade', 'Alcance', 'Prioridade', 'Etiquetas', 'Esperando',
-    'Prazo de resposta', 'Prazo de solução', 'Aberto em', 'Resolvido em', 'Fechado em', 'Origem',
-    ...extras.map((c) => (noArquivo.size > 1 ? `${c.nome} (${nomes.painel(c.painelId)})` : c.nome)),
+  const deVendas = [...noArquivo].filter((id) => nomes.vendas?.(id));
+  const soVendas = deVendas.length > 0 && deVendas.length === noArquivo.size;
+  const venda = (c: CartaoChamado) => [
+    valorNaPlanilha(c.valor), c.resultado ? NOME_RESULTADO_DA_VENDA[c.resultado] : '', c.motivoPerda,
   ];
-  const linhas = lista.map((c) => [
-    c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome, c.contato?.nome, c.contato?.telefone,
+  const cabVenda = ['Valor (R$)', 'Resultado', 'Motivo da perda'];
+  const cabExtras = extras.map((c) => (noArquivo.size > 1 ? `${c.nome} (${nomes.painel(c.painelId)})` : c.nome));
+  const valoresExtras = (c: CartaoChamado) => extras.map((x) => (x.painelId === c.painelId ? textoDoValor(x, c.campos?.[x.id]) : ''));
+  const cab = soVendas ? [
+    'Código', 'Título', 'Painel', 'Etapa', 'Situação', 'Cliente', 'Contato', 'Telefone', 'Responsável', ...cabVenda, 'Produtos', 'Tipo', 'Etiquetas',
+    'Aberto em', 'Fechado em', 'Origem', ...cabExtras,
+  ] : [
+    'Código', 'Título', 'Painel', 'Etapa', 'Situação', 'Cliente', 'Contato', 'Telefone', 'Responsável', 'Assunto', 'Tipo', 'Gravidade', 'Alcance', 'Prioridade', 'Etiquetas', 'Esperando',
+    'Prazo de resposta', 'Prazo de solução', 'Aberto em', 'Resolvido em', 'Fechado em', 'Origem', ...(deVendas.length ? cabVenda : []), ...cabExtras,
+  ];
+  const linhas = lista.map((c) => (soVendas ? [
+    c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome ?? c.empresa, c.contato?.nome, c.contato?.telefone,
+    c.responsavel?.nome, ...venda(c), c.produtos.map((p) => p.nome).join(', '), c.tipo, c.etiquetas.join(', '),
+    dataHora(c.criadoEm), dataHora(c.fechadoEm), NOME_ORIGEM[c.origem], ...valoresExtras(c),
+  ] : [
+    c.codigo, c.titulo, nomes.painel(c.painelId), nomes.etapa(c.etapaId), NOME_SITUACAO_CHAMADO[c.situacao], c.cliente?.nome ?? c.empresa, c.contato?.nome, c.contato?.telefone,
     c.responsavel?.nome, c.assunto?.caminho, c.tipo, c.gravidade ? NOME_GRAVIDADE[c.gravidade] : '', c.alcance ? NOME_ALCANCE[c.alcance] : '',
     c.prioridade ? NOME_PRIORIDADE[c.prioridade] : '', c.etiquetas.join(', '), c.espera ? NOME_ESPERA[c.espera.tipo] : '',
     c.prazos.resposta.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.resposta.situacao], c.prazos.solucao.situacao === 'sem' ? '' : NOME_SITUACAO_PRAZO[c.prazos.solucao.situacao],
     dataHora(c.criadoEm), dataHora(c.resolvidoEm), dataHora(c.fechadoEm), NOME_ORIGEM[c.origem],
-    ...extras.map((x) => (x.painelId === c.painelId ? textoDoValor(x, c.campos?.[x.id]) : '')),
-  ].map(celula).join(';'));
+    ...(deVendas.length ? (nomes.vendas?.(c.painelId) ? venda(c) : ['', '', '', '']) : []), ...valoresExtras(c),
+  ]).map(celula).join(';'));
   return '﻿' + [cab.join(';'), ...linhas].join('\r\n');
 }
 

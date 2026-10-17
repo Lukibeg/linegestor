@@ -25,4 +25,5 @@
 - [Relatórios do Inventário](relatorios-do-inventario.md) — quem tem o quê, o estoque e o valor, o vai e volta e o que corrigir no cadastro (1.9).
 - [Chamados (o módulo do Gestor)](chamados-do-gestor.md) — o dia a dia (Meu dia, quadro, lista, a ficha), abrir e reabrir, as regras de andar, os Ajustes do módulo e como ligar com o LineChat e o n8n (2.0).
 - [Calendário das equipes](calendario.md) — as visitas, as viradas, as folgas e os home offices de cada equipe; quem vê o quê (a regra dos painéis), filtrar, pôr um evento, o Agendar da ficha do chamado e os tipos (2.0.1).
+- [Vendas: o painel do Comercial](vendas.md) — criar o painel de Vendas, o dia a dia (o quadro que soma, a lista), uma negociação nova, o Ganho e o Perdido, o relatório (os números do período e o funil) e o caminho para o Suporte (2.0.1).
 - [Recibo de entrega na movimentação](recibo-de-entrega.md) — anexar o recibo (PDF ou foto) ao movimentar para o cliente, ou depois, quando ele volta assinado; ver, baixar e tirar (1.9).
