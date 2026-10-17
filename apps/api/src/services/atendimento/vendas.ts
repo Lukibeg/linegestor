@@ -7,7 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { ticketEvents, tickets } from '@gestor/db';
 import {
-  passagensDosEventos, passagensNoPainel, relatorioDeVendas,
+  diaLocal, passagensDosEventos, passagensNoPainel, relatorioDeVendas,
   type FiltroDoRelatorioDeVendas, type NegociacaoParaRelatorio, type RelatorioDeVendas,
 } from '@gestor/shared';
 import { BadRequest, NotFound } from '../../plugins/errors.js';
@@ -38,13 +38,17 @@ export async function relatorioDoPainelDeVendas(app: FastifyInstance, ator: Ator
     const etapa = ctx.etapas.get(t.stageId)?.etapa ?? null;
     const passagens = passagensNoPainel(passagensDosEventos(t.createdAt.toISOString(), t.stageId, porChamado.get(t.id) ?? []), doPainel);
     return {
-      id: t.id, valor: t.valueCents ?? null,
+      id: t.id, codigo: t.code, titulo: t.title,
+      empresa: t.clientId ? ctx.clientes.get(t.clientId) ?? null : t.prospect ?? null,
+      responsavel: t.assigneeId ? ctx.pessoas.get(t.assigneeId)?.nome ?? null : null,
+      valor: t.valueCents ?? null, etapaId: t.stageId,
       // a que veio de outro painel conta de quando entrou neste
       criadoEm: passagens[0]?.desde ?? t.createdAt.toISOString(),
       fechadoEm: t.closedAt?.toISOString() ?? null,
       resultado: etapa?.resultado ?? null,
+      motivoPerda: t.lostReason ?? null,
       passagens,
     };
   });
-  return relatorioDeVendas(painel, negociacoes, filtro);
+  return relatorioDeVendas(painel, negociacoes, filtro, diaLocal(ctx.agora));
 }

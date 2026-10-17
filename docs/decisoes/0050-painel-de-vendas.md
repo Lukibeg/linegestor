@@ -10,8 +10,11 @@ fizemos com o painel de chamados do suporte, pq eu n quero nada muito complexo"*
 marcou: **o valor**, **o Ganho e o Perdido** (o perdido pede o motivo), **a empresa sem cadastro**, **a
 meta do mês** e, no relatório, **os números do período** e **o funil**; as etapas, **as do Helena**.
 Ficaram de fora a previsão de fechamento e, no relatório, os vendedores, os motivos de perda, o tempo
-em cada etapa, os meses e as maiores em aberto. Como o 2.0.1 não subiu, o painel entrou nele (a regra
-do patch que ainda não subiu).
+em cada etapa, os meses e as maiores em aberto. Na prévia dessa versão, ainda em 17/10: *"copie as
+mesmas etapas que estão no linechat e o relatório tbm n gostei muito n. e n precisa ser um botão para
+ele, ele vai ser um painel como o do suporte"* — e, sobre o relatório, *"quero que vc faça um só pra
+ele, mas esse que vc fez n ficou legal n, dê uma melhorada"*. Como o 2.0.1 não subiu, o painel entrou
+nele (a regra do patch que ainda não subiu).
 
 **Decisão.**
 
@@ -50,16 +53,32 @@ do patch que ainda não subiu).
   Perdido, com o dia. Na lista, o **Valor** fica no lugar da prioridade e do prazo, a ordem é pelo
   valor e **Ganhas e perdidas** fica no lugar de Resolvidos e Fechados. O **Exportar** leva o valor, o
   resultado e o motivo da perda.
-- **O relatório.** No painel, ao lado de Quadro e Lista: **Relatório**. Só o que o Luan escolheu:
-  **os números do período** — as **novas** (quantas entraram e quanto somam), as **ganhas** e as
-  **perdidas** (quantas e quanto, pelo dia em que acabaram), a **taxa de conversão** (das que acabaram,
-  quantas foram ganhas) e o **ticket médio** (o valor médio do que foi ganho) — e **o funil**: das que
-  entraram no período, quantas chegaram a cada etapa (a etapa mais adiante por onde passaram; a ganha
-  chegou ao fim), quantas se perderam em cada uma e quantas foram ganhas. O período: **Este mês**,
-  **Mês passado**, **Este trimestre**, **Últimos 90 dias**, **Este ano** ou dois dias; fica no endereço
-  (dá para mandar o link). A negociação que veio de outro painel conta de quando entrou neste.
-- **O menu.** Quem vê um painel de Vendas ganha o item **Vendas** no alto do menu, logo depois do
-  Calendário: abre o quadro do painel de Vendas, e as telas das negociações ficam com ele marcado.
+- **O relatório, só do Comercial.** No painel, ao lado de Quadro e Lista: **Relatório** (e o botão
+  Relatório no cartão do painel). O conteúdo é o que o Luan escolheu (os números do período e o funil);
+  a forma, depois do "dê uma melhorada", é a dos relatórios do Suporte:
+  - **O período em números.** A **meta do mês**, numa barra (o ganho contra ela, quanto falta e, no mês
+    de hoje, quantos dias), quando o período é um mês (do dia 1 em diante: Este mês, Mês passado) e o
+    painel tem meta. O **ganho** (quanto e quantas), as **novas** (quantas entraram e quanto somam em
+    propostas), o **perdido** (quanto e quantas, pelo dia em que acabaram), a **conversão** (das que
+    acabaram, quantas foram ganhas) e o **ticket médio** — cada um com a **seta** do que mudou em relação
+    ao período anterior (verde quando melhorou: mais ganho, mais novas, mais conversão; o perdido e o
+    ticket, sem cor). O período anterior: o mês inteiro com o mês anterior inteiro, o pedaço de um mês
+    (do dia 1 até hoje) com o mesmo pedaço do mês anterior, e o resto com o período de mesmo tamanho logo
+    antes. E as frases de **destaque**: o ganho comparado, a meta, a maior venda e onde mais se perde.
+  - **O funil.** Das que entraram no período, quantas chegaram a cada etapa (a etapa mais adiante por
+    onde passaram; a ganha chegou ao fim), com a porcentagem das que entraram, quantas se perderam em cada
+    uma (a etapa em que estavam ao perder) e quantas foram ganhas. As barras, alinhadas à esquerda.
+  - **Clicar mostra as negociações por trás** (a regra dos gráficos do sistema): o ganho, as novas, o
+    perdido, cada etapa do funil e as perdidas de cada etapa abrem a janela com as negociações — o
+    código (abre a negociação), a empresa, quem cuida, o valor e como está (a etapa, o Ganho ou o
+    Perdido, com o motivo).
+  - O período: **Este mês**, **Mês passado**, **Este trimestre**, **Últimos 90 dias**, **Este ano** ou
+    dois dias; fica no endereço (dá para mandar o link). A negociação que veio de outro painel conta de
+    quando entrou neste.
+- **Onde fica.** Em **Suporte › Chamados**, como os outros painéis (o Suporte, o Desenvolvimento): a
+  tela dos painéis, o quadro, a lista, o Meu dia. A primeira versão tinha um item **Vendas** no menu; o
+  Luan não quis (*"não precisa ser um botão para ele, ele vai ser um painel como o do suporte"*). Dentro
+  do painel de Vendas, o botão do alto é **Nova negociação**.
 - **A troca de painel.** A negociação só passa para **outro painel de Vendas** (e entra numa etapa do
   funil: o Ganho e o Perdido se marcam na janela deles); o chamado só para **outro de Gestão**. O caminho
   entre os dois é o **filho**: da negociação ganha, um filho no Suporte (a implantação); do chamado em
@@ -72,8 +91,9 @@ do patch que ainda não subiu).
   perda (`tickets.lost_reason`). O fim (`closed_at`) é o dia em que a negociação acabou (num dia que já
   passou, ao meio-dia de Brasília). As contas do relatório moram no `@gestor/shared` (`vendas.ts`): o
   servidor e a prévia contam igual.
-- **A prévia.** O painel **Comercial (COM)**, da Camila e do Diego, com 21 negociações de exemplo (as
-  ganhas e as perdidas dos últimos meses e o funil de agora) e a meta de R$ 40 mil.
+- **A prévia.** O painel **Comercial (COM)**, da Camila e do Diego, com 24 negociações de exemplo (as
+  ganhas e as perdidas dos últimos meses, três delas no começo do mês passado, para a comparação do Este
+  mês, e o funil de agora) e a meta de R$ 40 mil.
 
 **Alternativas consideradas.**
 
@@ -83,6 +103,7 @@ do patch que ainda não subiu).
 - **O relatório inteiro do Helena** (os vendedores, os motivos de perda, o tempo em cada etapa, os meses
   contra a meta, as maiores em aberto) e a **previsão de fechamento**: foram montados na primeira versão e
   saíram quando o Luan escolheu (*"nada muito complexo"*). Voltam, se a equipe pedir, como um patch.
+- **Um item Vendas no menu** (a primeira versão): saiu, o Comercial é um painel como os outros.
 - **Ganho e Perdido como uma marca do cartão** (e não como etapas): no Helena é assim, mas como etapas
   eles aparecem no quadro (as colunas somam o ganho e a perda), seguem as regras de etapa que o Gestor
   já tem (o que falta para entrar, o aviso, o arrastar) e o Reabrir funciona igual ao dos chamados.

@@ -170,7 +170,8 @@ const ABAS: Array<{ to: string; label: string; fim?: boolean; so?: 'cuidar'; tam
 export function CabecalhoAtendimento({ sub, acoes, painelId }: { sub?: ReactNode; acoes?: ReactNode; painelId?: string }) {
   const pode = usePode();
   const opcoes = useOpcoes();
-  // no painel de Vendas (o quadro, a lista e o relatório do Comercial), o alto fala de vendas
+  // no painel de Vendas (o Comercial), o botão do alto cria a negociação; o resto é o dos chamados
+  // (o Comercial é um painel como o Suporte e o DEV, 17/10)
   const vendas = ehDeVendas(opcoes.data, painelId);
   const location = useLocation();
   const { pathname } = location;
@@ -179,7 +180,7 @@ export function CabecalhoAtendimento({ sub, acoes, painelId }: { sub?: ReactNode
   return (
     <div className="mb-3" id="cabecalho-chamados">
       <div className="flex flex-wrap items-center gap-x-4 shadow-[inset_0_-1px_0_var(--line)]">
-        <h1 className="font-display text-xl font-semibold py-1.5">{vendas ? 'Vendas' : 'Chamados'}</h1>
+        <h1 className="font-display text-xl font-semibold py-1.5">Chamados</h1>
         <nav className="order-last basis-full sm:order-none sm:basis-auto self-stretch flex items-end gap-1 overflow-x-auto overflow-y-hidden sem-barra" aria-label="Partes do módulo de chamados">
           {ABAS.filter((a) => !a.so || pode.cuidar || pode.integrar).map((a) => (
             <NavLink key={a.to} to={a.to} end={a.fim} className={({ isActive }) => classeAba(isActive || !!a.tambem?.some((t) => pathname.startsWith(t)))}>{a.label}</NavLink>

@@ -269,22 +269,43 @@ describe('o quadro, o resumo, o relatório e o CSV', () => {
     expect(r.json().find((x: any) => x.painelId === SUP).vendas).toBeNull();
   });
 
-  it('o relatório: os números do período e o funil', async () => {
+  it('o relatório: os números do período, o funil e as negociações por trás', async () => {
     const de = somarDias(hoje(), -30);
     const r = await camila.get(`/atendimento/vendas?painel=COM&de=${de}&ate=${hoje()}`);
     expect(r.statusCode, r.body).toBe(200);
     rel = r.json();
-    expect(rel.numeros).toEqual({
+    expect(rel.numeros).toMatchObject({
       novos: { qtd: 7, valor: 1_250_000 + 480_000 + 900_000 + 300_000 + 3_000_000 + 600_000 },
       ganhos: { qtd: 3, valor: 2_750_000 }, perdidos: { qtd: 1, valor: 300_000 },
       conversao: 75, ticketMedio: Math.round(2_750_000 / 3),
     });
+    expect(rel.numeros.novos.ids).toHaveLength(7);
     expect(rel.funil.map((f) => f.nome)).toEqual(['Lead', 'Qualificação', 'Proposta enviada', 'Negociação']);
-    expect(rel.funil[0]).toMatchObject({ chegaram: 7, perdidas: 0 });
+    expect(rel.funil[0]!.chegaram).toHaveLength(7);
     // chegaram à Qualificação: a perdida (passou por ela), a da Proposta, a do Ganho de ontem (passou pela Negociação) e as duas ganhas direto do Lead
     // — e a perdida foi perdida lá
-    expect(rel.funil[1]).toMatchObject({ chegaram: 5, perdidas: 1 });
-    expect(rel.funilGanhas).toBe(3);
+    expect(rel.funil[1]!.chegaram).toHaveLength(5);
+    expect(rel.funil[1]!.perdidas).toEqual(rel.numeros.perdidos.ids);
+    expect(rel.funilGanhas).toHaveLength(3);
+    // a janela do número: a negociação com a empresa, quem cuida, o resultado e o motivo
+    expect(rel.negociacoes.find((n) => n.id === rel.numeros.perdidos.ids[0])).toMatchObject({
+      titulo: '10 ramais a mais', empresa: 'Escola Aprender', responsavel: 'Diego Farias', resultado: 'perdido', motivoPerda: 'Preço', valor: 300_000,
+    });
+    // trinta dias para trás não é um mês: sem meta, comparado com os trinta dias de antes
+    expect(rel.meta).toBeNull();
+    expect(rel.anterior).toMatchObject({ nome: 'o período anterior', ate: somarDias(de, -1) });
+    expect(rel.destaques[0]).toMatch(/^Ganhou /);
+  });
+
+  it('o relatório do mês: a meta, com o ganho e os dias que faltam', async () => {
+    const mes = hoje().slice(0, 7);
+    const r = (await camila.get(`/atendimento/vendas?painel=COM&de=${mes}-01&ate=${hoje()}`)).json() as RelatorioDeVendas;
+    const ontemNoMes = somarDias(hoje(), -1).startsWith(mes);
+    const ganho = (ontemNoMes ? 1_250_000 : 0) + 900_000 + 600_000;
+    expect(r.meta).toMatchObject({ mes, valor: 5_000_000, ganho, pct: Math.round((ganho / 5_000_000) * 100) });
+    expect(r.meta!.diasRestantes).toBeGreaterThanOrEqual(0);
+    expect(r.anterior.nome).toMatch(/^o mesmo período de /);
+    expect(r.destaques).toContainEqual(expect.stringMatching(/^Faltam .* para a meta de /));
   });
 
   it('o relatório só de painel de Vendas e de quem vê o painel', async () => {

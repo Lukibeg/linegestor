@@ -11,18 +11,14 @@
  * conhecimento** (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O
  * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
  * recolhido, o ícone do grupo abre a lista dele do lado.
- *
- * **Vendas** (2.0.1, o painel de Vendas do Comercial) aparece no alto para quem vê um painel de Vendas e
- * abre o quadro dele; enquanto a tela é de um painel de Vendas, é ele que fica marcado (e não o Chamados).
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BookLock, BookUser, Boxes, Building2, Cable, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, HandCoins, Headset, LayoutDashboard, Library, ListChecks, LogOut,
+  BookLock, BookUser, Boxes, Building2, Cable, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Headset, LayoutDashboard, Library, ListChecks, LogOut,
   Menu, Moon, Settings, Sparkles, Sun, Ticket, UserRound, X, type LucideIcon,
 } from 'lucide-react';
-import type { Painel } from '@gestor/shared';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
 import { NovidadesPopup } from '../../pages/novidades/Index.js';
@@ -32,12 +28,8 @@ import { useAuth } from '../../lib/auth.js';
 import { IS_DEMO } from '../../api/index.js';
 import { Logotipo, Simbolo } from '../Marca.js';
 
-/**
- * Um item do menu; `conta` põe o número do lado (as novidades não lidas, a leitura obrigatória da base).
- * `ativo`: quem decide se o item está marcado é a tela (o Vendas e o Chamados dividem os endereços dos
- * chamados: o painel aberto diz qual dos dois é).
- */
-type ItemDoMenu = { to: string; label: string; icon: LucideIcon; perm: string | string[]; end?: boolean; conta?: 'novidades' | 'leituras'; ativo?: boolean };
+/** Um item do menu; `conta` põe o número do lado (as novidades não lidas, a leitura obrigatória da base). */
+type ItemDoMenu = { to: string; label: string; icon: LucideIcon; perm: string | string[]; end?: boolean; conta?: 'novidades' | 'leituras' };
 /** Um grupo do menu: abre e fecha, com os itens dentro. */
 type GrupoDoMenu = { grupo: string; label: string; icon: LucideIcon; itens: ItemDoMenu[] };
 const ehGrupo = (x: ItemDoMenu | GrupoDoMenu): x is GrupoDoMenu => 'grupo' in x;
@@ -77,21 +69,7 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
 ];
 
 /** O item está aberto na tela? (as mesmas regras do NavLink) */
-const ehAtivo = (i: ItemDoMenu, pathname: string) => i.ativo ?? !!matchPath({ path: i.to, end: !!i.end }, pathname);
-
-/**
- * A tela aberta é de um painel de Vendas? O quadro, a lista, o relatório e o abrir (pelo `painel` do
- * endereço) e a ficha (pela sigla do código: COM-12).
- */
-function telaDeVendas(pathname: string, search: string, vendas: Painel[]): boolean {
-  if (!vendas.length) return false;
-  if (/^\/atendimento\/(quadro|lista|relatorio|novo)\/?$/.test(pathname)) {
-    const p = new URLSearchParams(search).get('painel') ?? '';
-    return vendas.some((v) => v.id === p || v.sigla === p.toUpperCase());
-  }
-  const ficha = /^\/atendimento\/([A-Za-z0-9]+)-\d+\/?$/.exec(pathname);
-  return !!ficha && vendas.some((v) => v.sigla === ficha[1]!.toUpperCase());
-}
+const ehAtivo = (i: ItemDoMenu, pathname: string) => !!matchPath({ path: i.to, end: !!i.end }, pathname);
 
 /** Os grupos abertos, lembrados por navegador. O grupo da tela aberta abre sozinho (e fica até a pessoa fechar). */
 function useGruposAbertos(grupos: GrupoDoMenu[], pathname: string) {
@@ -145,24 +123,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { collapsed, toggle: toggleSidebar } = useSidebar();
 
   const pode = (i: ItemDoMenu) => (Array.isArray(i.perm) ? i.perm.some(can) : can(i.perm));
-  const { pathname, search } = useLocation();
-  // os painéis de Vendas que a pessoa vê (a mesma leitura das telas dos chamados: o cache é um só)
-  const opcoesDosChamados = useQuery({ queryKey: ['atendimento', 'opcoes'], queryFn: () => api.atendimento.opcoes(), enabled: !!user && can('support.read'), staleTime: 60_000 });
-  const vendas = (opcoesDosChamados.data?.paineis ?? []).filter((p) => p.ativo && p.tipo === 'vendas');
-  const naVenda = telaDeVendas(pathname, search, vendas);
   // os grupos ficam com os itens que a pessoa pode ver (e somem sem nenhum)
   const items = NAV.flatMap((n): Array<ItemDoMenu | GrupoDoMenu> => {
-    if (!ehGrupo(n)) {
-      if (!pode(n)) return [];
-      // o Vendas logo depois do Calendário, para quem vê um painel de Vendas
-      if (n.to === '/calendario' && vendas.length) {
-        return [n, { to: `/atendimento/quadro?painel=${encodeURIComponent(vendas[0]!.id)}`, label: 'Vendas', icon: HandCoins, perm: 'support.read', ativo: naVenda }];
-      }
-      return [n];
-    }
-    const itens = n.itens.filter(pode).map((i) => (i.to === '/atendimento' && vendas.length ? { ...i, ativo: pathname.startsWith('/atendimento') && !naVenda } : i));
+    if (!ehGrupo(n)) return pode(n) ? [n] : [];
+    const itens = n.itens.filter(pode);
     return itens.length ? [{ ...n, itens }] : [];
   });
+  const { pathname } = useLocation();
   const { abertos, alternar } = useGruposAbertos(items.filter(ehGrupo), pathname);
   const sair = async () => { await logout(); nav('/entrar'); };
   // nos chamados, a tela usa a largura toda e a margem é menor: o quadro e a ficha precisam de lugar
@@ -242,19 +209,9 @@ type Contagem = (i: ItemDoMenu) => { n: number; tom: 'accent' | 'signal'; titulo
 function ItemNoMenu({ i, recolhido, contagem, aoNavegar, dentro = false }: { i: ItemDoMenu; recolhido: boolean; contagem: Contagem; aoNavegar: () => void; dentro?: boolean }) {
   const c = contagem(i);
   const hide = recolhido && !dentro ? 'md:hidden' : '';
-  const classe = (ativo: boolean) => `relative flex items-center rounded-lg font-medium ${dentro ? 'gap-2 px-2.5 py-1.5 text-[13.5px]' : 'gap-2.5 px-3 py-2 text-sm'} ${recolhido && !dentro ? 'md:justify-center md:px-0' : ''} ${ativo ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`;
-  // o item que a tela marca (o Vendas, o Chamados): um link comum, com o "está aqui" dito pela tela
-  if (i.ativo !== undefined) {
-    return (
-      <Link to={i.to} onClick={aoNavegar} title={recolhido && !dentro ? i.label : undefined} aria-current={i.ativo ? 'page' : undefined} className={classe(i.ativo)} data-menu={i.label}>
-        <span className="relative shrink-0"><i.icon size={dentro ? 15 : 17} /></span>
-        <span className={`min-w-0 truncate ${hide}`}>{i.label}</span>
-      </Link>
-    );
-  }
   return (
     <NavLink to={i.to} end={i.end} onClick={aoNavegar} title={recolhido && !dentro ? i.label : undefined}
-      className={({ isActive }) => classe(isActive)}>
+      className={({ isActive }) => `relative flex items-center rounded-lg font-medium ${dentro ? 'gap-2 px-2.5 py-1.5 text-[13.5px]' : 'gap-2.5 px-3 py-2 text-sm'} ${recolhido && !dentro ? 'md:justify-center md:px-0' : ''} ${isActive ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
       {/* o número: do lado; com o menu recolhido, no canto do ícone, como nos grupos. Só existe quando há número:
           a caixa vazia entrava na fila e tirava o ícone do eixo (13/10, o Luan: "o Novidades ficou meio desalinhado") */}
       <span className="relative shrink-0">

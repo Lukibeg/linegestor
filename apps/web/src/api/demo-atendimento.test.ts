@@ -827,7 +827,7 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     const com = painel(op, 'COM');
     expect(com.tipo).toBe('vendas');
     expect(com.etapas.filter((e) => e.resultado).map((e) => e.resultado)).toEqual(['ganho', 'perdido']);
-    expect((await todosOsChamados()).filter((c) => c.painelId === com.id)).toHaveLength(21);
+    expect((await todosOsChamados()).filter((c) => c.painelId === com.id)).toHaveLength(24);
     // o histórico: a negociação é criada
     const estrela = await chamadoPeloTitulo('PABX em nuvem — 40 ramais');
     expect(estrela.historico.find((e) => e.tipo === 'criado')?.texto).toMatch(/^criou a negociação/);
@@ -837,14 +837,23 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     // os últimos 28 dias: 12 entraram; 4 ganhas e 2 perdidas acabaram
     const hoje = diaLocal(new Date());
     const r = await api.relatorioDeVendas({ painel: 'COM', de: somarDias(hoje, -28), ate: hoje });
-    expect(r.numeros).toEqual({
+    expect(r.numeros).toMatchObject({
       novos: { qtd: 12, valor: 10_080_000 }, ganhos: { qtd: 4, valor: 2_980_000 }, perdidos: { qtd: 2, valor: 990_000 },
       conversao: 66.7, ticketMedio: 745_000,
     });
-    expect(r.funil.map((f) => [f.nome, f.chegaram, f.perdidas])).toEqual([
+    expect(r.funil.map((f) => [f.nome, f.chegaram.length, f.perdidas.length])).toEqual([
       ['Lead', 12, 0], ['Qualificação', 10, 0], ['Proposta enviada', 8, 1], ['Negociação', 5, 1],
     ]);
-    expect(r.funilGanhas).toBe(3);
+    expect(r.funilGanhas).toHaveLength(3);
+    // a janela dos números: as negociações por trás, com a empresa e quem cuida
+    const perdidas = r.numeros.perdidos.ids.map((id) => r.negociacoes.find((n) => n.id === id)!);
+    expect(perdidas.map((n) => [n.titulo, n.empresa, n.motivoPerda]).sort()).toEqual([
+      ['LineReports para a supervisão', 'Distribuidora Norte', 'Adiou a decisão'], ['URA para o SAC', 'Transportadora Rota Sul', 'Preço'],
+    ]);
+    // o mês: a meta do Comercial (R$ 40 mil) e o mesmo pedaço do mês passado
+    const doMes = await api.relatorioDeVendas({ painel: 'COM', de: `${hoje.slice(0, 7)}-01`, ate: hoje });
+    expect(doMes.meta).toMatchObject({ valor: 4_000_000, ganho: doMes.numeros.ganhos.valor });
+    expect(doMes.anterior.nome).toMatch(/^o mesmo período de /);
   }, DEMORA);
 
   it('a negociação: nasce no Lead sem prioridade; o Perdido pede o motivo; o Ganho fecha', async () => {

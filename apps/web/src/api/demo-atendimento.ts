@@ -1893,13 +1893,16 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const negociacoes: NegociacaoParaRelatorio[] = linhas.map((t) => {
       const passagens = passagensNoPainel(passagensDosEventos(t.criadoEm, t.etapaId, porChamado.get(t.id) ?? []), doPainel);
       return {
-        id: t.id, valor: t.valor,
+        id: t.id, codigo: t.codigo, titulo: t.titulo,
+        empresa: t.clienteId ? nomeCliente(t.clienteId) : t.empresa,
+        responsavel: t.responsavelId ? S.users.find((u) => u.id === t.responsavelId)?.name ?? null : null,
+        valor: t.valor, etapaId: t.etapaId,
         // a que veio de outro painel conta de quando entrou neste
         criadoEm: passagens[0]?.desde ?? t.criadoEm, fechadoEm: t.fechadoEm,
-        resultado: etapaPorId(t.etapaId)?.resultado ?? null, passagens,
+        resultado: etapaPorId(t.etapaId)?.resultado ?? null, motivoPerda: t.motivoPerda, passagens,
       };
     });
-    return relatorioDeVendas(painel, negociacoes, f);
+    return relatorioDeVendas(painel, negociacoes, f, diaLocal(agoraReal()));
   }
 
   function ordemDasEtapas(): Map<string, number> {

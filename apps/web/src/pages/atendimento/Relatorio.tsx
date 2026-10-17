@@ -1,31 +1,41 @@
 /**
- * Vendas › Relatório (Patch 2.0.1, decisão 0050): o relatório de um painel de Vendas. O pedido do Luan:
- * "veja tbm a parte de relatório pq é importante termos algo parecido tbm para o comercial" — e, na hora
- * de escolher (17/10), "nada muito complexo": só os **números do período** e o **funil**.
+ * O relatório do Comercial (Patch 2.0.1, decisão 0050): o relatório de um painel de Vendas. O pedido do
+ * Luan: "veja tbm a parte de relatório pq é importante termos algo parecido tbm para o comercial"; na
+ * hora de escolher (17/10), "nada muito complexo": os **números do período** e o **funil**. Na segunda
+ * volta ("não ficou legal, dê uma melhorada"), no jeito dos relatórios do Suporte:
  *
- * Em cima, o período (os atalhos ou dois dias), que fica no endereço como os filtros do quadro. Os
- * números: as novas, as ganhas e as perdidas (em quantidade e em R$), a conversão e o ticket médio.
- * Embaixo, o funil: das que entraram no período, quantas chegaram a cada etapa, quantas se perderam em
- * cada uma e quantas foram ganhas.
+ *  - em cima, o período (os atalhos ou dois dias), que fica no endereço como os filtros do quadro;
+ *  - **O período em números**: a meta do mês (quando o período é um mês), o ganho, as novas, as
+ *    perdidas, a conversão e o ticket médio, cada um com a seta do que mudou em relação ao período
+ *    anterior, e as frases de **destaque**;
+ *  - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
+ *    entraram), quantas se perderam em cada uma e quantas foram ganhas.
  *
- * As contas moram no `@gestor/shared` (`vendas.ts`): o servidor e a prévia contam igual.
+ * A regra dos gráficos do sistema vale aqui: o número sempre escrito, e clicar mostra as negociações por
+ * trás dele (numa janela; o código abre a negociação). As contas moram no `@gestor/shared` (`vendas.ts`):
+ * o servidor e a prévia contam igual.
  */
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarRange, Filter as Funnel, Info } from 'lucide-react';
+import { ArrowLeft, CalendarRange, Filter as Funnel, Info, Sparkles, Target, TrendingDown, TrendingUp, X } from 'lucide-react';
 import {
   diaComAno, periodosDoRelatorio, reaisCurto, reaisInteiros,
-  type OpcoesAtendimento, type Painel, type RelatorioDeVendas,
+  type NegociacaoDoRelatorio, type OpcoesAtendimento, type Painel, type RelatorioDeVendas,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
-import { Carregando, Kpi, Vazio, mensagemErro } from '../../components/ui/index.js';
-import { CabecalhoAtendimento, useOpcoes } from './comum.js';
+import { Carregando, Modal, Vazio, mensagemErro } from '../../components/ui/index.js';
+import { CabecalhoAtendimento, ChipResultado, LinkDoChamado, useOpcoes } from './comum.js';
 import { CabecalhoDoPainel } from './painel.js';
 import { useFiltrosNoEndereco } from './quadro/filtros.js';
 
-const pct = (n: number | null) => (n === null ? '—' : `${n.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`);
+const nf = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+const pct = (n: number | null) => (n === null ? '—' : `${nf(n)}%`);
 const plural = (n: number, um: string, varios: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`;
+const diaCurto = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
+
+/** O que a janela mostra: o nome do que foi clicado e as negociações por trás. */
+type Aberta = { titulo: string; ids: string[] };
 
 export function RelatorioDoPainel() {
   const opcoes = useOpcoes();
@@ -56,6 +66,7 @@ function RelatorioDeVendasDoPainel({ painel, opcoes }: { painel: Painel; opcoes:
   const de = valor('de') || atalhos[0]!.de;
   const ate = valor('ate') || atalhos[0]!.ate;
   const atalho = atalhos.find((a) => a.de === de && a.ate === ate)?.id ?? null;
+  const [aberta, setAberta] = useState<Aberta | null>(null);
   const rel = useQuery({
     queryKey: ['atendimento', 'vendas', painel.id, de, ate],
     queryFn: () => api.atendimento.relatorioDeVendas({ painel: painel.id, de, ate }),
@@ -92,27 +103,39 @@ function RelatorioDeVendasDoPainel({ painel, opcoes }: { painel: Painel; opcoes:
 
       {rel.isError ? <p className="text-bad text-sm" role="alert">{mensagemErro(rel.error)}</p> : !r ? <Carregando /> : (
         <div className={`flex flex-col gap-3 transition-opacity ${rel.isFetching && rel.isPlaceholderData ? 'opacity-60' : ''}`} id="relatorio-vendas">
-          <Numeros r={r} nomeDoPeriodo={nomeDoPeriodo} />
+          <Secao id="relatorio-numeros" titulo="O período em números" icone={Target}
+            pergunta={`Quanto entrou, quanto foi ganho e quanto foi perdido ${nomeDoPeriodo}.`}
+            lado={<span title={`${diaComAno(r.anterior.de)} a ${diaComAno(r.anterior.ate)}`}>comparado com {r.anterior.nome} ({diaCurto(r.anterior.de)} a {diaCurto(r.anterior.ate)})</span>}>
+            {r.meta ? <Meta m={r.meta} /> : painel.ajustes.metaMensal === null && de.endsWith('-01') && de.slice(0, 7) === ate.slice(0, 7) && (
+              <p className="text-[12.5px] text-muted -mt-1">Sem meta do mês: ela fica nos Ajustes do painel (Configurar › As regras).</p>
+            )}
+            <Numeros r={r} nomeDoPeriodo={nomeDoPeriodo} abrir={setAberta} />
+            <Destaques frases={r.destaques} />
+          </Secao>
           <Secao id="relatorio-funil" titulo="O funil" icone={Funnel}
             pergunta={`Das ${plural(r.numeros.novos.qtd, 'negociação que entrou', 'negociações que entraram')} ${nomeDoPeriodo}: até onde chegaram, onde se perderam e quantas foram ganhas.`}
-            rodape="Conta a etapa mais adiante por onde a negociação passou (a ganha chegou ao fim) e, na perdida, a etapa em que ela estava quando foi perdida.">
-            <Funil r={r} />
+            rodape="Conta a etapa mais adiante por onde a negociação passou (a ganha chegou ao fim) e, na perdida, a etapa em que ela estava quando foi perdida. A porcentagem é das que entraram. Clique para ver as negociações.">
+            <Funil r={r} abrir={setAberta} />
           </Secao>
         </div>
       )}
+      {aberta && r && <JanelaDasNegociacoes aberta={aberta} r={r} onFechar={() => setAberta(null)} />}
     </div>
   );
 }
 
-/** Um bloco do relatório: o título, a pergunta que ele responde e uma nota no pé. */
-function Secao({ id, titulo, pergunta, icone: Icone, rodape, children }: {
-  id: string; titulo: string; pergunta: string; icone: typeof Info; rodape?: string; children: ReactNode;
+/** Um bloco do relatório: o título, a pergunta que ele responde, o que vai do lado e uma nota no pé. */
+function Secao({ id, titulo, pergunta, icone: Icone, lado, rodape, children }: {
+  id: string; titulo: string; pergunta: string; icone: typeof Info; lado?: ReactNode; rodape?: string; children: ReactNode;
 }) {
   return (
-    <section id={id} className="card p-4 sm:p-5 min-w-0 flex flex-col gap-3" aria-labelledby={`${id}-t`}>
-      <header>
-        <h2 id={`${id}-t`} className="font-display font-semibold text-[17px] leading-tight flex items-center gap-2"><Icone size={17} className="text-muted shrink-0" aria-hidden />{titulo}</h2>
-        <p className="text-[13px] text-ink-2 mt-0.5">{pergunta}</p>
+    <section id={id} className="card p-4 sm:p-5 min-w-0 flex flex-col gap-4" aria-labelledby={`${id}-t`}>
+      <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+        <div className="min-w-0">
+          <h2 id={`${id}-t`} className="font-display font-semibold text-[17px] leading-tight flex items-center gap-2"><Icone size={17} className="text-muted shrink-0" aria-hidden />{titulo}</h2>
+          <p className="text-[13px] text-ink-2 mt-0.5">{pergunta}</p>
+        </div>
+        {lado && <div className="text-[12px] text-muted sm:text-right sm:mt-1">{lado}</div>}
       </header>
       {children}
       {rodape && <p className="text-[12.5px] text-muted flex gap-1.5 leading-snug border-t border-line pt-3 mt-auto"><Info size={13} className="shrink-0 mt-0.5" aria-hidden /><span>{rodape}</span></p>}
@@ -120,52 +143,176 @@ function Secao({ id, titulo, pergunta, icone: Icone, rodape, children }: {
   );
 }
 
-/** Os números do período. */
-function Numeros({ r, nomeDoPeriodo }: { r: RelatorioDeVendas; nomeDoPeriodo: string }) {
-  const n = r.numeros;
+/** A meta do mês: o ganho contra ela, numa barra, e quanto falta (no mês de hoje, em quantos dias). */
+function Meta({ m }: { m: NonNullable<RelatorioDeVendas['meta']> }) {
+  const bateu = m.ganho >= m.valor;
+  const largura = Math.min(100, m.pct);
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2" id="relatorio-numeros">
-      <Kpi label="Novas" valor={n.novos.qtd.toLocaleString('pt-BR')} sub={`${reaisCurto(n.novos.valor)} em propostas ${nomeDoPeriodo}`} tone="accent" />
-      <Kpi label="Ganhas" valor={reaisCurto(n.ganhos.valor)} sub={plural(n.ganhos.qtd, 'negociação ganha', 'negociações ganhas')} tone="ok" />
-      <Kpi label="Perdidas" valor={reaisCurto(n.perdidos.valor)} sub={plural(n.perdidos.qtd, 'negociação perdida', 'negociações perdidas')} tone="bad" />
-      <Kpi label="Taxa de conversão" valor={pct(n.conversao)} sub={n.conversao === null ? 'nenhuma acabou no período' : 'das que acabaram, as ganhas'}
-        titulo="Das que acabaram no período (ganhas e perdidas), quantas foram ganhas" />
-      <Kpi label="Ticket médio" valor={n.ticketMedio === null ? '—' : reaisInteiros(Math.round(n.ticketMedio / 100) * 100)} sub="o valor médio do que foi ganho" />
+    <div className="rounded-xl border border-line p-4 flex flex-col gap-2" id="relatorio-meta">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <span className="eyebrow">Meta de {m.nome}</span>
+        <span className="tnum text-[13px] text-ink-2">
+          <b className={`font-display text-[22px] font-semibold ${bateu ? 'text-ok' : 'text-ink'}`}>{reaisInteiros(m.ganho)}</b> de {reaisInteiros(m.valor)}
+        </span>
+      </div>
+      <div className="h-3 rounded-full bg-surface-2 overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={largura} aria-label={`O ganho contra a meta de ${m.nome}`}>
+        <div className="h-full rounded-full bg-ok transition-[width]" style={{ width: `${largura}%` }} />
+      </div>
+      <div className="flex flex-wrap justify-between gap-x-3 text-[12.5px]">
+        <span className={bateu ? 'text-ok font-semibold' : 'text-ink-2'}>{bateu ? `Meta batida: ${m.pct}%` : `${m.pct}% feitos`}</span>
+        {!bateu && (
+          <span className="text-muted tnum">
+            faltam {reaisInteiros(m.valor - m.ganho)}{m.diasRestantes !== null ? (m.diasRestantes ? ` · ${plural(m.diasRestantes, 'dia', 'dias')} pela frente` : ' · último dia do mês') : ''}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
 
-/** O funil: até onde chegaram as que entraram no período, onde se perderam e quantas foram ganhas. */
-function Funil({ r }: { r: RelatorioDeVendas }) {
-  if (!r.numeros.novos.qtd) return <p className="text-muted text-sm py-4">Nenhuma negociação entrou no período.</p>;
-  const topo = Math.max(1, r.funil[0]?.chegaram ?? 0);
+/** "▲ R$ 8 mil", "▼ 2", "= igual": o que mudou em relação ao período anterior (a cor diz se foi bom). */
+function Diferenca({ agora, antes, formato, bomSubir, contra }: {
+  agora: number | null; antes: number | null; formato: 'reais' | 'n' | 'pontos'; bomSubir?: boolean; contra: string;
+}) {
+  if (agora === null || antes === null) return <span className="text-muted" title={`sem comparação com ${contra}`}>—</span>;
+  const d = agora - antes;
+  const antesEscrito = formato === 'reais' ? reaisInteiros(antes) : formato === 'pontos' ? `${nf(antes)}%` : nf(antes);
+  if (Math.abs(d) < 1e-9) return <span className="text-muted" title={`${contra}: ${antesEscrito}`}>= igual</span>;
+  const sobe = d > 0;
+  const cor = bomSubir === undefined ? 'text-ink-2' : sobe === bomSubir ? 'text-ok' : 'text-signal';
+  const texto = formato === 'reais' ? reaisInteiros(Math.round(Math.abs(d) / 100) * 100) : formato === 'pontos' ? `${nf(Math.abs(d))} ${Math.abs(d) === 1 ? 'ponto' : 'pontos'}` : nf(Math.abs(d));
+  const Seta = sobe ? TrendingUp : TrendingDown;
+  return (
+    <span className={`inline-flex items-center gap-1 font-semibold ${cor}`} title={`${sobe ? 'Mais' : 'Menos'} que ${contra} (${antesEscrito})`}>
+      <Seta size={13} aria-hidden /> {texto} <span className="font-normal text-muted">{sobe ? 'a mais' : 'a menos'}</span>
+    </span>
+  );
+}
+
+/** Um número do período: clicar mostra as negociações por trás dele. */
+function Tile({ rotulo, valor, sub, diferenca, tom, ids, janela, titulo, abrir, className = '' }: {
+  rotulo: string; valor: string; sub: ReactNode; diferenca: ReactNode; tom?: 'ok' | 'bad'; ids?: string[];
+  /** o título da janela que abre ao clicar (as negociações por trás) */
+  janela?: string; titulo?: string;
+  abrir: (a: Aberta) => void; className?: string;
+}) {
+  const corpo = (
+    <>
+      <span className="eyebrow block">{rotulo}</span>
+      <span className={`block font-display text-[24px] font-semibold tnum leading-tight mt-1 ${tom === 'ok' ? 'text-ok' : tom === 'bad' ? 'text-bad' : 'text-ink'}`}>{valor}</span>
+      <span className="block text-[12.5px] text-muted leading-snug mt-0.5">{sub}</span>
+      <span className="block text-[12.5px] mt-1.5">{diferenca}</span>
+    </>
+  );
+  const classe = `rounded-xl border border-line p-3.5 text-left min-w-0 ${className}`;
+  if (!ids?.length) return <div className={classe} title={titulo}>{corpo}</div>;
+  return (
+    <button type="button" className={`${classe} hover:border-line-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors`}
+      onClick={() => abrir({ titulo: janela ?? rotulo, ids })} title={titulo ?? 'Clique para ver as negociações'}>
+      {corpo}
+    </button>
+  );
+}
+
+/** O ganho, as novas, as perdidas, a conversão e o ticket médio, comparados com o período anterior. */
+function Numeros({ r, nomeDoPeriodo, abrir }: { r: RelatorioDeVendas; nomeDoPeriodo: string; abrir: (a: Aberta) => void }) {
+  const n = r.numeros;
+  const a = r.anterior.numeros;
+  const contra = r.anterior.nome;
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5" id="relatorio-tiles">
+      <Tile rotulo="Ganho" valor={reaisInteiros(n.ganhos.valor)} tom="ok" ids={n.ganhos.ids} janela={`Ganhas ${nomeDoPeriodo}`} abrir={abrir} className="col-span-2 sm:col-span-1"
+        sub={plural(n.ganhos.qtd, 'negociação ganha', 'negociações ganhas')}
+        diferenca={<Diferenca agora={n.ganhos.valor} antes={a.ganhos.valor} formato="reais" bomSubir contra={contra} />} />
+      <Tile rotulo="Novas" valor={n.novos.qtd.toLocaleString('pt-BR')} ids={n.novos.ids} janela={`Novas ${nomeDoPeriodo}`} abrir={abrir}
+        sub={`${reaisCurto(n.novos.valor)} em propostas`}
+        diferenca={<Diferenca agora={n.novos.qtd} antes={a.novos.qtd} formato="n" bomSubir contra={contra} />} />
+      <Tile rotulo="Perdido" valor={reaisInteiros(n.perdidos.valor)} tom="bad" ids={n.perdidos.ids} janela={`Perdidas ${nomeDoPeriodo}`} abrir={abrir}
+        sub={plural(n.perdidos.qtd, 'negociação perdida', 'negociações perdidas')}
+        diferenca={<Diferenca agora={n.perdidos.valor} antes={a.perdidos.valor} formato="reais" contra={contra} />} />
+      <Tile rotulo="Conversão" valor={pct(n.conversao)} titulo="Das que acabaram no período (ganhas e perdidas), quantas foram ganhas" abrir={abrir}
+        sub={n.conversao === null ? 'nenhuma acabou no período' : `${n.ganhos.qtd} de ${n.ganhos.qtd + n.perdidos.qtd} que acabaram`}
+        diferenca={<Diferenca agora={n.conversao} antes={a.conversao} formato="pontos" bomSubir contra={contra} />} />
+      <Tile rotulo="Ticket médio" valor={n.ticketMedio === null ? '—' : reaisInteiros(Math.round(n.ticketMedio / 100) * 100)} titulo="O valor médio do que foi ganho" abrir={abrir}
+        sub="o valor médio do ganho"
+        diferenca={<Diferenca agora={n.ticketMedio} antes={a.ticketMedio} formato="reais" contra={contra} />} />
+    </div>
+  );
+}
+
+/** As frases do alto (o ganho comparado, a meta, a maior venda, onde mais se perde). */
+function Destaques({ frases }: { frases: string[] }) {
+  if (!frases.length) return null;
+  return (
+    <div className="rounded-xl bg-surface-2 px-4 py-3" id="relatorio-destaques">
+      <div className="eyebrow mb-1.5 flex items-center gap-1.5"><Sparkles size={12} aria-hidden /> Destaques</div>
+      <ul className="list-disc pl-5 text-[14px] text-ink-2 flex flex-col gap-1">{frases.map((f) => <li key={f}>{f}</li>)}</ul>
+    </div>
+  );
+}
+
+/** O funil: as barras alinhadas à esquerda, quantas chegaram (e a porcentagem das que entraram) e as perdidas. */
+function Funil({ r, abrir }: { r: RelatorioDeVendas; abrir: (a: Aberta) => void }) {
+  if (!r.numeros.novos.qtd) return <p className="text-muted text-sm py-2">Nenhuma negociação entrou no período.</p>;
+  const total = r.numeros.novos.qtd;
   const linhas = [
-    ...r.funil.map((f) => ({ id: f.etapaId, nome: f.nome, n: f.chegaram, perdidas: f.perdidas, ganho: false })),
-    { id: 'ganhas', nome: 'Ganhas', n: r.funilGanhas, perdidas: 0, ganho: true },
+    ...r.funil.map((f) => ({ id: f.etapaId, nome: f.nome, chegaram: f.chegaram, perdidas: f.perdidas, ganho: false })),
+    { id: 'ganhas', nome: 'Ganhas', chegaram: r.funilGanhas, perdidas: [] as string[], ganho: true },
   ];
   return (
-    <ol className="flex flex-col gap-1.5" aria-label="O funil">
-      {linhas.map((l, i) => {
-        const largura = Math.max(4, (l.n / topo) * 100);
-        const anterior = i > 0 ? linhas[i - 1]!.n : null;
-        const passou = anterior ? Math.round((l.n / anterior) * 100) : null;
+    <ol className="flex flex-col gap-2.5" aria-label="O funil">
+      {linhas.map((l) => {
+        const n = l.chegaram.length;
+        const parte = Math.round((n / total) * 100);
+        const ver = () => abrir({ titulo: l.ganho ? 'As que entraram e foram ganhas' : `Chegaram a ${l.nome}`, ids: l.chegaram });
         return (
-          // no celular, o nome e as perdidas em cima e a barra embaixo, na largura toda; da tela média para cima, numa linha só
-          <li key={l.id} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,130px)_1fr_minmax(0,96px)] items-center gap-x-2 gap-y-1 text-[13px]" data-funil={l.nome}>
-            <span className={`truncate ${l.ganho ? 'font-semibold text-ok' : 'text-ink-2'}`} title={l.nome}>{l.nome}</span>
-            <span className="sm:order-last text-[12px] text-right whitespace-nowrap tnum truncate">
-              {l.perdidas > 0 ? <span className="text-bad" title={`${plural(l.perdidas, 'foi perdida', 'foram perdidas')} em ${l.nome}`}>{plural(l.perdidas, 'perdida', 'perdidas')}</span> : null}
+          // no celular, o nome e os números em cima e a barra embaixo; da tela média para cima, numa linha só
+          <li key={l.id} className="grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,160px)_1fr_minmax(0,190px)] items-center gap-x-3 gap-y-1 text-[13px]" data-funil={l.nome}>
+            <button type="button" onClick={ver} disabled={!n} className={`text-left truncate font-medium ${l.ganho ? 'text-ok' : 'text-ink-2'} enabled:hover:text-accent`} title={n ? 'Ver as negociações' : undefined}>
+              {l.nome}
+            </button>
+            <span className="sm:order-last flex items-center justify-end gap-2 whitespace-nowrap">
+              <span className="tnum"><b className="text-ink">{n}</b> <span className="text-muted">· {parte}%</span></span>
+              {l.perdidas.length > 0 && (
+                <button type="button" onClick={() => abrir({ titulo: `Perdidas em ${l.nome}`, ids: l.perdidas })}
+                  className="chip bg-bad-soft text-bad hover:brightness-95" title={`Ver as que foram perdidas em ${l.nome}`}>
+                  <X size={11} aria-hidden /> {plural(l.perdidas.length, 'perdida', 'perdidas')}
+                </button>
+              )}
             </span>
-            {/* a barra (o desenho do funil); o número e, da segunda em diante, quantas da etapa de cima chegaram aqui */}
-            <div className="col-span-2 sm:col-span-1 h-7 relative flex justify-center" title={passou !== null ? `${l.n} de ${anterior} (${passou}%) chegaram a ${l.nome}` : `${l.n} entraram`}>
-              <div className={`h-full rounded ${l.ganho ? 'bg-ok' : 'bg-accent'}`} style={{ width: `${largura}%`, opacity: l.ganho ? 1 : Math.max(0.45, 1 - i * 0.12) }} />
-              <span className="absolute inset-0 flex items-center justify-center text-[12px] font-semibold tnum text-ink pointer-events-none">
-                <span className="rounded bg-surface px-1.5 shadow-sm">{l.n}{passou !== null && <span className="font-normal text-muted"> · {passou}%</span>}</span>
-              </span>
-            </div>
+            <button type="button" onClick={ver} disabled={!n} tabIndex={-1} aria-hidden className="col-span-2 sm:col-span-1 h-6 rounded-md bg-surface-2 overflow-hidden text-left enabled:cursor-pointer">
+              <span className={`block h-full rounded-md ${l.ganho ? 'bg-ok' : 'bg-accent'}`} style={{ width: `${n ? Math.max(2, parte) : 0}%` }} />
+            </button>
           </li>
         );
       })}
     </ol>
+  );
+}
+
+/** A janela das negociações por trás de um número: o código (abre a negociação), a empresa, o valor e como está. */
+function JanelaDasNegociacoes({ aberta, r, onFechar }: { aberta: Aberta; r: RelatorioDeVendas; onFechar: () => void }) {
+  const porId = useMemo(() => new Map(r.negociacoes.map((n) => [n.id, n])), [r.negociacoes]);
+  const lista = aberta.ids.map((id) => porId.get(id)).filter((n): n is NegociacaoDoRelatorio => !!n);
+  const soma = lista.reduce((t, n) => t + (n.valor ?? 0), 0);
+  return (
+    <Modal open onClose={onFechar} largura="max-w-2xl" titulo={aberta.titulo}>
+      <p className="text-[13px] text-muted mb-2" id="janela-negociacoes-total">{plural(lista.length, 'negociação', 'negociações')}{soma ? ` · ${reaisInteiros(soma)}` : ''}</p>
+      <ul className="divide-y divide-line -mx-1" id="janela-negociacoes">
+        {lista.map((n) => (
+          <li key={n.id} className="py-2.5 px-1 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 text-[13.5px]">
+            <LinkDoChamado codigo={n.codigo} onClick={onFechar} className="min-w-0 hover:text-accent">
+              <span className="font-mono text-[12px] text-muted mr-1.5">{n.codigo}</span><span className="font-semibold">{n.titulo}</span>
+            </LinkDoChamado>
+            <span className="tnum font-semibold text-right">{n.valor === null ? <span className="text-muted font-normal">sem valor</span> : reaisInteiros(n.valor)}</span>
+            <span className="text-[12.5px] text-muted min-w-0 truncate">{[n.empresa ?? 'sem empresa', n.responsavel ?? 'sem dono'].join(' · ')}</span>
+            <span className="text-right text-[12.5px]">
+              {n.resultado ? <ChipResultado r={n.resultado} motivo={n.motivoPerda} em={n.fechadoEm} /> : <span className="text-ink-2">{n.etapa}</span>}
+            </span>
+            {n.resultado === 'perdido' && n.motivoPerda && <span className="col-span-2 text-[12.5px] text-muted">Motivo: {n.motivoPerda}</span>}
+          </li>
+        ))}
+      </ul>
+    </Modal>
   );
 }

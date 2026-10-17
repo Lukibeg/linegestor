@@ -2,8 +2,8 @@
 
 O Comercial acompanha as negociações num painel igual ao dos chamados — o quadro, a lista, a ficha, as
 anotações, os avisos —, com o que é de venda: o **valor**, o **Ganho** e o **Perdido** (com o motivo), a
-**empresa que ainda não é cliente** e a **meta do mês**. Fica no menu lateral, em **Vendas** (logo
-depois do Calendário), para quem é do painel. A decisão inteira está em
+**empresa que ainda não é cliente** e a **meta do mês**. Fica em **Suporte › Chamados**, como os outros
+painéis (o Suporte, o Desenvolvimento). A decisão inteira está em
 `docs/decisoes/0050-painel-de-vendas.md`.
 
 ---
@@ -62,11 +62,18 @@ painel).
 
 - **O período**: Este mês, Mês passado, Este trimestre, Últimos 90 dias, Este ano, ou dois dias. Fica
   no endereço da página: dá para mandar o link do jeito que está.
-- **Os números do período**: as **novas** (quantas entraram e quanto somam), as **ganhas** e as
-  **perdidas** (quantas e quanto, pelo dia em que acabaram), a **taxa de conversão** (das que acabaram,
-  quantas foram ganhas) e o **ticket médio** (o valor médio do que foi ganho).
-- **O funil**: das que entraram no período, quantas chegaram a cada etapa, quantas se perderam em cada
-  uma e quantas foram ganhas.
+- **O período em números**:
+  - a **meta do mês** (quando o período é um mês e o painel tem meta): o ganho contra ela, quanto falta e
+    quantos dias faltam;
+  - o **ganho**, as **novas** (quantas entraram e quanto somam em propostas), o **perdido**, a
+    **conversão** (das que acabaram, quantas foram ganhas) e o **ticket médio** (o valor médio do ganho);
+  - embaixo de cada número, a **seta**: quanto mudou em relação ao período anterior (no Este mês, o
+    mesmo pedaço do mês passado). Verde é melhor;
+  - os **destaques**: o ganho comparado, a meta, a maior venda e onde mais se perde.
+- **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
+  entraram), quantas se perderam em cada uma e quantas foram ganhas.
+- **Clique em qualquer número** (o ganho, as novas, o perdido, uma etapa do funil, as perdidas de uma
+  etapa) para ver as negociações por trás dele; o código abre a negociação.
 
 ## 6. Do Comercial para o Suporte (e o contrário)
 

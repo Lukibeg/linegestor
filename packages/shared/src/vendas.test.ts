@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { instanteLocal } from './atendimento-prazos.js';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, campoDoTipo, ETAPAS_DO_PAINEL_DE_VENDAS, faltaParaEtapa, mensagemDoQueFalta, problemaNasEtapasDoTipo, textoDoEvento,
+  AJUSTES_DO_PAINEL_DE_VENDAS, campoDoTipo, ETAPAS_DO_PAINEL_DE_VENDAS, faltaParaEtapa, mensagemDoQueFalta, problemaNasEtapasDoTipo, reaisInteiros, textoDoEvento,
   type DadosObrigatorios, type EtapaPainel,
 } from './atendimento.js';
 import { reais } from './formatos.js';
 import {
-  FiltroDoRelatorioDeVendasSchema, passagensDosEventos, passagensNoPainel, periodosDoRelatorio, relatorioDeVendas, type NegociacaoParaRelatorio,
+  FiltroDoRelatorioDeVendasSchema, passagensDosEventos, passagensNoPainel, periodoDeComparacao, periodosDoRelatorio, relatorioDeVendas, type NegociacaoParaRelatorio,
 } from './vendas.js';
 
 const etapas: EtapaPainel[] = ETAPAS_DO_PAINEL_DE_VENDAS.map((e, i) => ({ ...e, id: ['lead', 'qual', 'prop', 'neg', 'ganho', 'perdido'][i]!, avisar: [] }));
@@ -84,65 +84,92 @@ describe('a trajetória pelas etapas', () => {
 });
 
 describe('o relatório de vendas', () => {
-  const n = (d: Partial<NegociacaoParaRelatorio> & Pick<NegociacaoParaRelatorio, 'id'> & { etapaId: string }): NegociacaoParaRelatorio => {
-    const { etapaId, ...resto } = d;
-    const etapa = etapas.find((e) => e.id === etapaId)!;
+  const n = (d: Partial<NegociacaoParaRelatorio> & Pick<NegociacaoParaRelatorio, 'id' | 'etapaId'>): NegociacaoParaRelatorio => {
+    const etapa = etapas.find((e) => e.id === d.etapaId)!;
     return {
-      valor: null, criadoEm: em('2026-10-01'), fechadoEm: null, resultado: etapa.resultado,
-      passagens: [{ etapaId, desde: d.criadoEm ?? em('2026-10-01'), ate: null }], ...resto,
+      codigo: `COM-${d.id}`, titulo: `Negociação ${d.id}`, empresa: null, responsavel: 'Camila Souza', valor: null, criadoEm: em('2026-10-01'), fechadoEm: null,
+      resultado: etapa.resultado, motivoPerda: null, passagens: [{ etapaId: d.etapaId, desde: d.criadoEm ?? em('2026-10-01'), ate: null }], ...d,
     };
   };
   const passou = (...xs: Array<[string, string]>) => xs.map(([etapaId, dia], i) => ({ etapaId, desde: em(dia), ate: xs[i + 1] ? em(xs[i + 1]![1]) : null }));
   const todas = [
     // ganha em 10 dias, passando pelo funil todo
-    n({ id: 'a', etapaId: 'ganho', valor: 1_000_000, fechadoEm: em('2026-10-11'),
+    n({ id: 'a', etapaId: 'ganho', valor: 1_000_000, fechadoEm: em('2026-10-11'), empresa: 'Padaria Estrela',
       passagens: passou(['lead', '2026-10-01'], ['qual', '2026-10-02'], ['prop', '2026-10-04'], ['neg', '2026-10-08'], ['ganho', '2026-10-11']) }),
     // ganha em 4 dias, pulando a Qualificação e a Negociação
     n({ id: 'b', etapaId: 'ganho', valor: 500_000, criadoEm: em('2026-10-05'), fechadoEm: em('2026-10-09'),
       passagens: passou(['lead', '2026-10-05'], ['prop', '2026-10-06'], ['ganho', '2026-10-09']) }),
     // perdida na Proposta
-    n({ id: 'c', etapaId: 'perdido', valor: 300_000, fechadoEm: em('2026-10-12'),
+    n({ id: 'c', etapaId: 'perdido', valor: 300_000, fechadoEm: em('2026-10-12'), motivoPerda: 'Preço',
       passagens: passou(['lead', '2026-10-01'], ['qual', '2026-10-03'], ['prop', '2026-10-06'], ['perdido', '2026-10-12']) }),
     // abertas: uma grande que pulou a Proposta, uma sem valor
     n({ id: 'd', etapaId: 'neg', valor: 2_000_000, criadoEm: em('2026-10-02'), passagens: passou(['lead', '2026-10-02'], ['qual', '2026-10-06'], ['neg', '2026-10-13']) }),
     n({ id: 'e', etapaId: 'lead', criadoEm: em('2026-10-14') }),
-    // de setembro (fora do período): uma aberta e uma ganha
+    // de setembro: uma aberta (do dia 20) e uma ganha (do mesmo período de setembro, a comparação)
     n({ id: 'f', etapaId: 'qual', valor: 200_000, criadoEm: em('2026-09-20'), passagens: passou(['lead', '2026-09-20'], ['qual', '2026-09-25']) }),
     n({ id: 'g', etapaId: 'ganho', valor: 700_000, criadoEm: em('2026-09-01'), fechadoEm: em('2026-09-15'), passagens: passou(['lead', '2026-09-01'], ['ganho', '2026-09-15']) }),
   ];
-  const r = relatorioDeVendas(painel, todas, { de: '2026-10-01', ate: '2026-10-16' });
+  const r = relatorioDeVendas(painel, todas, { de: '2026-10-01', ate: '2026-10-16' }, '2026-10-16');
 
-  it('os números do período', () => {
+  it('os números do período, com as negociações por trás', () => {
     expect(r.numeros).toEqual({
-      novos: { qtd: 5, valor: 1_000_000 + 500_000 + 300_000 + 2_000_000 },
-      ganhos: { qtd: 2, valor: 1_500_000 },
-      perdidos: { qtd: 1, valor: 300_000 },
+      novos: { qtd: 5, valor: 1_000_000 + 500_000 + 300_000 + 2_000_000, ids: ['a', 'b', 'c', 'd', 'e'] },
+      ganhos: { qtd: 2, valor: 1_500_000, ids: ['a', 'b'] },
+      perdidos: { qtd: 1, valor: 300_000, ids: ['c'] },
       conversao: 66.7,
       ticketMedio: 750_000,
     });
+    // a janela: as que entraram, as ganhas e as perdidas, as mais novas primeiro; o motivo só na perdida
+    expect(r.negociacoes.map((x) => x.codigo)).toEqual(['COM-e', 'COM-b', 'COM-d', 'COM-a', 'COM-c']);
+    expect(r.negociacoes.find((x) => x.id === 'c')).toMatchObject({ etapa: 'Perdido', resultado: 'perdido', motivoPerda: 'Preço', valor: 300_000 });
+    expect(r.negociacoes.find((x) => x.id === 'd')).toMatchObject({ etapa: 'Negociação', resultado: null, motivoPerda: null });
   });
-  it('o funil: até onde chegaram as criadas no período, onde se perderam e quantas foram ganhas', () => {
-    expect(r.funil.map((f) => [f.nome, f.chegaram, f.perdidas])).toEqual([
-      ['Lead', 5, 0],
-      ['Qualificação', 4, 0],
-      // a que pulou a Proposta (d) chegou até ela: o funil conta a etapa mais adiante; a perdida (c) estava nela
-      ['Proposta enviada', 4, 1],
-      // a ganha chegou ao fim, por onde quer que tenha passado (b)
-      ['Negociação', 3, 0],
+  it('comparado com o mesmo pedaço de setembro', () => {
+    expect(r.anterior).toMatchObject({ de: '2026-09-01', ate: '2026-09-16', nome: 'o mesmo período de setembro' });
+    expect(r.anterior.numeros).toMatchObject({ novos: { qtd: 1, valor: 700_000 }, ganhos: { qtd: 1, valor: 700_000 }, perdidos: { qtd: 0 }, conversao: 100 });
+  });
+  it('a meta do mês e as frases de destaque', () => {
+    expect(r.meta).toEqual({ mes: '2026-10', nome: 'outubro', valor: 5_000_000, ganho: 1_500_000, pct: 30, diasRestantes: 15 });
+    expect(r.destaques).toEqual([
+      `Ganhou ${reaisInteiros(1_500_000)} em 2 negociações, ${reaisInteiros(800_000)} a mais que o mesmo período de setembro.`,
+      `Faltam ${reaisInteiros(3_500_000)} para a meta de outubro (30% feitos), com 15 dias pela frente.`,
+      `A maior venda: Negociação a, Padaria Estrela (${reaisInteiros(1_000_000)}).`,
+      'Das que entraram no período, a perdida parou em Proposta enviada.',
     ]);
-    expect(r.funilGanhas).toBe(2);
+    // o mês que já passou: quanto da meta foi feito; um período que não é de um mês, sem meta
+    const setembro = relatorioDeVendas(painel, todas, { de: '2026-09-01', ate: '2026-09-30' }, '2026-10-16');
+    expect(setembro.meta).toMatchObject({ mes: '2026-09', pct: 14, diasRestantes: null });
+    expect(setembro.destaques).toContain(`Fez 14% da meta de setembro (${reaisInteiros(700_000)} de ${reaisInteiros(5_000_000)}).`);
+    expect(setembro.anterior.nome).toBe('agosto');
+    expect(relatorioDeVendas(painel, todas, { de: '2026-07-19', ate: '2026-10-16' }, '2026-10-16').meta).toBeNull();
+  });
+  it('o funil: até onde chegaram as que entraram no período, onde se perderam e quantas foram ganhas', () => {
+    expect(r.funil.map((f) => [f.nome, f.chegaram, f.perdidas])).toEqual([
+      ['Lead', ['a', 'b', 'c', 'd', 'e'], []],
+      ['Qualificação', ['a', 'b', 'c', 'd'], []],
+      // a que pulou a Proposta (d) chegou até ela: o funil conta a etapa mais adiante; a perdida (c) estava nela
+      ['Proposta enviada', ['a', 'b', 'c', 'd'], ['c']],
+      // a ganha chegou ao fim, por onde quer que tenha passado (b)
+      ['Negociação', ['a', 'b', 'd'], []],
+    ]);
+    expect(r.funilGanhas).toEqual(['a', 'b']);
   });
   it('sem nada que acabou, a conversão e o ticket ficam vazios (não zero)', () => {
-    const vazio = relatorioDeVendas(painel, [], { de: '2026-10-01', ate: '2026-10-16' });
-    expect(vazio.numeros).toMatchObject({ conversao: null, ticketMedio: null, novos: { qtd: 0, valor: 0 } });
-    expect(vazio.funil.map((f) => f.chegaram)).toEqual([0, 0, 0, 0]);
+    const vazio = relatorioDeVendas(painel, [], { de: '2026-10-01', ate: '2026-10-16' }, '2026-10-16');
+    expect(vazio.numeros).toMatchObject({ conversao: null, ticketMedio: null, novos: { qtd: 0, valor: 0, ids: [] } });
+    expect(vazio.funil.map((f) => f.chegaram.length)).toEqual([0, 0, 0, 0]);
+    expect(vazio.destaques[0]).toBe('Nenhuma negociação ganha no período.');
   });
-  it('o período: os atalhos e o filtro', () => {
+  it('o período: os atalhos, a comparação e o filtro', () => {
     const agora = new Date(em('2026-10-16', '15:00'));
     expect(periodosDoRelatorio(agora).map((p) => [p.id, p.de, p.ate])).toEqual([
       ['mes', '2026-10-01', '2026-10-16'], ['anterior', '2026-09-01', '2026-09-30'], ['trimestre', '2026-10-01', '2026-10-16'],
       ['90', '2026-07-19', '2026-10-16'], ['ano', '2026-01-01', '2026-10-16'],
     ]);
+    expect(periodoDeComparacao('2026-03-01', '2026-03-31')).toEqual({ de: '2026-02-01', ate: '2026-02-28', nome: 'fevereiro' });
+    // o dia que o mês de antes não tem fica no último dia dele
+    expect(periodoDeComparacao('2026-03-01', '2026-03-30')).toEqual({ de: '2026-02-01', ate: '2026-02-28', nome: 'o mesmo período de fevereiro' });
+    expect(periodoDeComparacao('2026-07-19', '2026-10-16')).toEqual({ de: '2026-04-20', ate: '2026-07-18', nome: 'o período anterior' });
     expect(FiltroDoRelatorioDeVendasSchema.safeParse({ painel: 'COM', de: '2026-10-16', ate: '2026-10-01' }).success).toBe(false);
     expect(FiltroDoRelatorioDeVendasSchema.safeParse({ painel: 'COM', de: '2020-01-01', ate: '2026-10-01' }).success).toBe(false);
     expect(FiltroDoRelatorioDeVendasSchema.parse({ painel: 'COM', de: '2026-10-01', ate: '2026-10-16' })).toEqual({ painel: 'COM', de: '2026-10-01', ate: '2026-10-16' });
