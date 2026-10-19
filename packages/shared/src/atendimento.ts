@@ -97,7 +97,7 @@ export const CAMPOS_CHAMADO = [
 ] as const;
 export type CampoObrigatorio = (typeof CAMPOS_CHAMADO)[number];
 export const NOME_CAMPO: Record<CampoObrigatorio | 'validacao' | 'filhos' | 'motivoPerda', string> = {
-  cliente: 'Cliente', contato: 'Contato', valor: 'Valor', relato: 'Relato do cliente', descricao: 'Descrição',
+  cliente: 'Cliente', contato: 'Contato', valor: 'Mensalidade', relato: 'Relato do cliente', descricao: 'Descrição',
   assunto: 'Assunto', tipo: 'Tipo', gravidade: 'Gravidade', alcance: 'Alcance', prioridade: 'Prioridade', produto: 'Produto', operadora: 'Operadora',
   responsavel: 'Responsável', solucao: 'Solução', causa: 'Causa', checklist: 'O checklist inteiro marcado', tempo: 'O tempo gasto',
   validacao: 'A validação (problema)', filhos: 'Os filhos fechados', motivoPerda: 'O motivo da perda',
@@ -724,8 +724,9 @@ function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
     // na negociação, a empresa que ainda não é cliente (escrita à mão) também conta como o cliente
     case 'cliente': return !c.clienteId && !preenchido(c.empresa);
     case 'contato': return !preenchido(c.contatoNome) && !preenchido(c.contatoTelefone);
-    // a proposta tem valor: a mensalidade ou a ativação (a venda só de ativação também anda)
-    case 'valor': return (c.valor ?? null) === null && (c.ativacao ?? null) === null;
+    // o valor que a etapa pede é a mensalidade: não há venda só de ativação (o Luan, em 19/10: "n temos caso
+    // de ter só venda, no caso ativação") — a ativação sozinha não basta
+    case 'valor': return (c.valor ?? null) === null;
     case 'relato': return !preenchido(c.relato);
     case 'descricao': return !preenchido(c.descricao);
     case 'assunto': return !c.assuntoId;

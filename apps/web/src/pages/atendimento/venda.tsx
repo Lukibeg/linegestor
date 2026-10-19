@@ -244,8 +244,9 @@ export function JanelaResultado({ codigo, valor, ativacao = null, porProduto = [
   const motivoFinal = ehOutro ? outro.trim() || null : motivo || null;
   const pedeValor = ganho && para.obrigatorios.includes('valor');
   const dividido = porProduto.length > 0;
-  // a etapa que pede o valor aceita a mensalidade ou a ativação (a venda só de ativação também fecha)
-  const falta = ganho ? (!dividido && pedeValor && centavos === null && ativ === null) || !valido || !ativValida : !motivoFinal;
+  // a etapa que pede o valor pede a mensalidade (não há venda só de ativação, 19/10); por produto, o total delas
+  const semMensalidade = dividido ? (valor ?? null) === null : centavos === null;
+  const falta = ganho ? (pedeValor && semMensalidade) || !valido || !ativValida : !motivoFinal;
   const diaOk = !!dia && dia <= hoje;
   const confirmar = async () => {
     if (falta || !diaOk || indo) { if (ehOutro && !outro.trim()) campoOutro.current?.focus(); return; }

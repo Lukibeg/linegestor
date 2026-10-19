@@ -600,7 +600,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                 erro={!porProduto && (!f.valorValido || !f.ativacaoValida) ? 'Escreva como 1.200,00'
                   : porProduto && f.produtos.some((id) => f.valoresInvalidos.includes(id) || f.ativacoesInvalidas.includes(id)) ? 'Escreva cada valor como 1.200,00' : undefined}
                 dica={porProduto ? 'Cada produto com a mensalidade e a ativação dele; os totais viram os da negociação.'
-                  : 'A mensalidade e a ativação da proposta (podem vir depois: a Proposta enviada pede o valor). Por produto, cada um tem os seus e os totais somam sozinhos.'}>
+                  : 'A mensalidade e a ativação da proposta (podem vir depois: a Proposta enviada pede a mensalidade). Por produto, cada um tem os seus e os totais somam sozinhos.'}>
                 <ValorDaNegociacao id="novo-valor" modo={f.modoValor} onModo={(m) => mudar({ modoValor: m })} podeDividir={usa('produtos')}
                   valorAntes={f.valorValido ? f.valor : null}
                   mensalidade={{
@@ -614,13 +614,13 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                     },
                   }}
                   ativacao={{
-                    valor: f.ativacao, onValor: (v, ok) => { mudar({ ativacao: v, ativacaoValida: ok }); tirarFalta('valor'); },
+                    // a ativação sozinha não satisfaz o que a etapa pede (não há venda só de ativação, 19/10)
+                    valor: f.ativacao, onValor: (v, ok) => { mudar({ ativacao: v, ativacaoValida: ok }); },
                     valores: ativacoesQueVao,
                     onValorDoProduto: (id, c, ok) => {
                       const ativacoes = { ...f.ativacoes };
                       if (ok && c !== null) ativacoes[id] = c; else delete ativacoes[id];
                       mudar({ ativacoes, ativacoesInvalidas: ok ? f.ativacoesInvalidas.filter((x) => x !== id) : [...new Set([...f.ativacoesInvalidas, id])] });
-                      tirarFalta('valor');
                     },
                   }}
                   produtos={f.produtos.map((id) => ({ id, nome: nomeDoProduto(id) }))} catalogo={catalogoDoValor}

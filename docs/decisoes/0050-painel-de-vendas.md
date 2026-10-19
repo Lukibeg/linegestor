@@ -33,8 +33,7 @@ nele (a regra do patch que ainda não subiu).
   uma que ainda não é (o nome escrito à mão; quando ela entra no cadastro, o **Virou cliente?** da
   ficha liga os dois); o contato e o WhatsApp; o **valor** — a **mensalidade** e a **ativação** (em R$);
   o **Sobre a negociação**; os produtos; quem cuida (o responsável); as etiquetas. A **Proposta
-  enviada** pede o valor (a mensalidade ou a ativação; a regra da etapa, que muda nos Ajustes como as
-  outras).
+  enviada** pede o valor (a mensalidade; a regra da etapa, que muda nos Ajustes como as outras).
 - **Os campos do Comercial.** O painel de Vendas nasce com os campos do painel Ingline - Comercial do
   Helena (17/10, no print do Luan: *"vc n colocou esses campos personalizados aqui, só n precisa colocar o
   do área de atuação"*): **CNPJ** (texto curto), **Contatos principais** (texto longo: na ficha, fica junto
@@ -51,12 +50,14 @@ nele (a regra do patch que ainda não subiu).
     Em negociação, o Ganho no mês e a meta do cartão do painel, os números e os ganhos mês a mês do
     relatório e o Ganho. Na tela, vem com o **/mês** (*"R$ 980/mês"*);
   - a **Ativação** (paga uma vez, no começo) **fica só registrada**: aparece na ficha, na janela do Ganho,
-    no histórico e no Exportar, e não entra em soma nenhuma. A negociação só com a ativação (uma venda
-    só de instalação) mostra no cartão *"só ativação: R$ 1.500"*.
+    no histórico e no Exportar, e não entra em soma nenhuma. O cartão mostra só a mensalidade.
 
-  As duas são **opcionais**; a etapa que pede o valor (a Proposta enviada) aceita qualquer uma. Na janela
-  do **Ganho**, as duas (a **Mensalidade fechada** e a **Ativação**); na nova negociação e na ficha, uma
-  embaixo da outra. O histórico diz qual mudou (*"mudou Mensalidade para "R$ 1.250,00""*, *"mudou Ativação
+  **Não há venda só de ativação** (19/10, nos comentários: *"n temos caso de ter só venda, no caso
+  ativação"*): o valor que as etapas pedem (a Proposta enviada, a Negociação e o Ganho, nas regras de
+  fábrica) é a **mensalidade** — a regra se chama **Mensalidade** nos Ajustes, e a ativação sozinha não
+  basta (*"Para ir para Proposta enviada, falta preencher: Mensalidade."*). Enquanto a negociação está no
+  começo, as duas podem ficar em branco. Na janela do **Ganho**, as duas (a **Mensalidade fechada** e a
+  **Ativação**); na nova negociação e na ficha, uma embaixo da outra. O histórico diz qual mudou (*"mudou Mensalidade para "R$ 1.250,00""*, *"mudou Ativação
   para "R$ 1.900,00""*), e o Exportar tem as colunas **Mensalidade (R$)** e **Ativação (R$)**. No banco, a
   ativação é `tickets.setup_cents` (e `tickets.product_setup`, por produto).
 - **O valor por produto.** Na prévia, em 17/10, nos comentários: *"eu quero que tenha como dividir o

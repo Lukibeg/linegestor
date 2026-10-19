@@ -41,7 +41,7 @@ Suporte, o Desenvolvimento). A decisão inteira está em
   Quando ela entrar no cadastro de clientes, o **Virou cliente?** da ficha liga a negociação a ela.
 - O **contato** e o WhatsApp.
 - **O que está sendo negociado** (uma frase: "PABX em nuvem com 40 ramais").
-- O **valor** (pode vir depois: a **Proposta enviada** pede o valor) — **Um valor só** ou **Por
+- O **valor** (pode vir depois: a **Proposta enviada** pede a mensalidade) — **Um valor só** ou **Por
   produto** (veja abaixo), com a **mensalidade** e a **ativação**.
 - **Sobre a negociação**: o que o cliente precisa, quem decide, a concorrência.
 - **Do painel Comercial**: o CNPJ, os contatos principais, a origem de lead e quem indicou (na ficha,
@@ -55,9 +55,9 @@ A negociação nasce no **Lead**.
 - A **mensalidade** (o que o cliente paga por mês) é **a que conta**: o quadro, o cartão do painel (Em
   negociação, Ganho no mês e a meta), o relatório e o Ganho usam ela. Na tela, vem com o **/mês**.
 - A **ativação** (paga uma vez, no começo) **fica só registrada**: aparece na ficha, no Ganho, no histórico
-  e no Exportar, mas não entra em soma nenhuma. A negociação só com a ativação mostra no cartão
-  *"só ativação"*.
-- As duas são opcionais; a **Proposta enviada** aceita qualquer uma.
+  e no Exportar, mas não entra em soma nenhuma.
+- Não há venda só de ativação: a **Proposta enviada**, a **Negociação** e o **Ganho** pedem a
+  **mensalidade** (a ativação sozinha não basta). No começo da negociação, as duas podem ficar em branco.
 
 ### O valor por produto
 

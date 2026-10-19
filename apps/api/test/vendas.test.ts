@@ -181,7 +181,7 @@ describe('a negociação', () => {
     const sem = await abrir(camila, { titulo: 'Central para a filial', empresa: 'Auto Peças Rocha' });
     const r = await mover(sem.id, 'Proposta enviada');
     expect(r.statusCode).toBe(400);
-    expect(r.json().error).toBe('Para ir para Proposta enviada, falta preencher: Valor.');
+    expect(r.json().error).toBe('Para ir para Proposta enviada, falta preencher: Mensalidade.');
     const valor = await camila.patch(`/atendimento/chamados/${sem.id}`, { valor: 480_000 });
     expect(valor.statusCode, valor.body).toBe(200);
     expect(textos(valor.json())).toContain(`mudou Mensalidade para "${reais(480_000)}"`);
@@ -467,7 +467,7 @@ describe('o valor por produto (o pedido do Luan: "dividir o valor por produtos e
     expect((await camila.patch(`/atendimento/chamados/${n.id}`, { valor: 950_000 })).json()).toMatchObject({ valor: 950_000 });
   });
 
-  it('a ativação é só registro: única ou por produto, não entra no relatório; a etapa que pede o valor aceita só a ativação', async () => {
+  it('a ativação é só registro: única ou por produto, não entra no relatório; a etapa que pede o valor pede a mensalidade', async () => {
     const catalogo = (await s.get('/admin/products')).json() as Array<{ id: string; code: string; name: string }>;
     const pbx = catalogo.find((p) => p.code === 'linepbx')!;
     const tronco = catalogo.find((p) => p.code === 'voicenet')!;
@@ -483,19 +483,23 @@ describe('o valor por produto (o pedido do Luan: "dividir o valor por produtos e
     const mudou = (await camila.patch(`/atendimento/chamados/${n.id}`, { ativacoesDosProdutos: { [pbx.id]: 120_000 } })).json();
     expect(mudou).toMatchObject({ valor: 125_000, ativacao: 120_000 });
     expect(textos(mudou).join('\n')).toContain(`Ativação por produto`);
-    // só a ativação (uma venda de instalação): a Proposta enviada, que pede o valor, aceita
+    // não há venda só de ativação (o Luan, em 19/10): a Proposta enviada, que pede o valor, pede a mensalidade
     const so = await abrir(camila, { titulo: 'Instalação dos aparelhos', empresa: 'Grupo Ativação', ativacao: 80_000 });
+    const semMensalidade = await mover(so.id, 'Proposta enviada');
+    expect(semMensalidade.statusCode).toBe(400);
+    expect(semMensalidade.json().error).toBe('Para ir para Proposta enviada, falta preencher: Mensalidade.');
+    expect((await camila.patch(`/atendimento/chamados/${so.id}`, { valor: 50_000 })).statusCode).toBe(200);
     expect((await mover(so.id, 'Proposta enviada')).statusCode).toBe(200);
-    // ganha: a ativação não entra no relatório (o ganho é das mensalidades)
+    // ganha: só a mensalidade entra no relatório (a ativação fica registrada)
     const hojeAqui = hoje();
     const antes = (await camila.get(`/atendimento/vendas?painel=${com.id}&de=${hojeAqui}&ate=${hojeAqui}`)).json() as RelatorioDeVendas;
     expect((await mover(so.id, 'Ganho')).statusCode).toBe(200);
     const depois = (await camila.get(`/atendimento/vendas?painel=${com.id}&de=${hojeAqui}&ate=${hojeAqui}`)).json() as RelatorioDeVendas;
     expect(depois.numeros.ganhos.qtd).toBe(antes.numeros.ganhos.qtd + 1);
-    expect(depois.numeros.ganhos.valor).toBe(antes.numeros.ganhos.valor);
-    // na planilha, a coluna da ativação
+    expect(depois.numeros.ganhos.valor).toBe(antes.numeros.ganhos.valor + 50_000);
+    // na planilha, as duas colunas
     const csv = (await camila.get(`/atendimento/chamados/exportar?painel=${com.id}&situacao=todos`)).body as string;
-    expect(csv.split('\r\n').find((l) => l.includes('Instalação dos aparelhos'))).toContain(';;800,00;Ganho;');
+    expect(csv.split('\r\n').find((l) => l.includes('Instalação dos aparelhos'))).toContain(';500,00;800,00;Ganho;');
   });
 
   it('o valor vai até R$ 100 milhões (mais do que cabe num integer)', async () => {
