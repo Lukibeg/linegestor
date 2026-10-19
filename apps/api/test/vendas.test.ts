@@ -18,6 +18,8 @@
  *    funil): a negociação não vira chamado nem o chamado vira negociação; entre eles, o Ligar
  *  - a negociação não tem pai nem filhos, nem entra num problema (o pedido do Luan na prévia, 17/10: "n
  *    precisa de pais e filhas aqui")
+ *  - o Comercial tem permissão própria (`sales.read`, 19/10: "isso tbm tem q ter um nível de permissão"):
+ *    sem ela, os painéis de Vendas não aparecem; só com ela (sem ver os chamados), o Comercial funciona
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
@@ -35,10 +37,10 @@ import { esperarSegundoPlano } from '../src/services/atendimento/avisos.js';
 
 let app: App;
 let s: Session;        // a administração (cuida dos chamados)
-let camila: Session;   // Comercial
-let diego: Session;    // Comercial
-let marina: Session;   // só o Suporte: não vê o Comercial
-let lia: Session;      // Leitor, no Comercial
+let camila: Session;   // Comercial (o papel Comercial)
+let diego: Session;    // Comercial (o papel Comercial)
+let marina: Session;   // só o Suporte (Operador): não vê o Comercial
+let lia: Session;      // só lê o Comercial (um papel com ver os chamados e ver o Comercial, sem trabalhar)
 const ids = { admin: '', camila: '', diego: '', marina: '', lia: '' };
 let com: Painel;
 const SUP = 'painel-suporte';
@@ -50,7 +52,8 @@ const etapa = (nome: string): EtapaPainel => {
 };
 async function pessoa(nome: string, email: string, papel: string) {
   const papeis = (await s.get('/admin/roles')).json();
-  const r = await s.post('/admin/users', { name: nome, email, password: 'SenhaDeTeste!123', roleId: papeis.find((x: any) => x.key === papel).id });
+  // o papel pela chave (os do sistema) ou pelo nome (os criados pela tela)
+  const r = await s.post('/admin/users', { name: nome, email, password: 'SenhaDeTeste!123', roleId: papeis.find((x: any) => x.key === papel || x.name === papel).id });
   expect(r.statusCode, r.body).toBe(201);
   const sessao = new Session(app);
   await sessao.login(email, 'SenhaDeTeste!123');
@@ -77,10 +80,12 @@ beforeAll(async () => {
   app = await makeApp();
   s = new Session(app);
   ids.admin = (await s.login()).id;
-  const c = await pessoa('Camila Souza', 'camila@gestor.local', 'operador');
-  const d = await pessoa('Diego Farias', 'diego@gestor.local', 'operador');
+  const c = await pessoa('Camila Souza', 'camila@gestor.local', 'comercial');
+  const d = await pessoa('Diego Farias', 'diego@gestor.local', 'comercial');
   const m = await pessoa('Marina Costa', 'marina@gestor.local', 'operador');
-  const l = await pessoa('Lia Rocha', 'lia@gestor.local', 'leitor');
+  const leitura = await s.post('/admin/roles', { name: 'Leitor do Comercial', description: 'só lê', permissions: ['records.read', 'support.read', 'sales.read'] });
+  expect(leitura.statusCode, leitura.body).toBe(201);
+  const l = await pessoa('Lia Rocha', 'lia@gestor.local', 'Leitor do Comercial');
   camila = c.sessao; diego = d.sessao; marina = m.sessao; lia = l.sessao;
   Object.assign(ids, { camila: c.id, diego: d.id, marina: m.id, lia: l.id });
 });
@@ -505,5 +510,47 @@ describe('o valor por produto (o pedido do Luan: "dividir o valor por produtos e
   it('o valor vai até R$ 100 milhões (mais do que cabe num integer)', async () => {
     const n = await abrir(camila, { titulo: 'Rede nacional', empresa: 'Grande Cliente', valor: 3_000_000_000 });
     expect(await ficha(n.codigo)).toMatchObject({ valor: 3_000_000_000 });
+  });
+});
+
+describe('o Comercial tem permissão própria (19/10: "isso tbm tem q ter um nível de permissão")', () => {
+  it('os papéis: o Administrador e o Comercial vêm com ela; o Operador, o Técnico e o Leitor, não', async () => {
+    const papeis = (await s.get('/admin/roles')).json() as Array<{ key: string | null; permissions: string[] }>;
+    const tem = (k: string) => papeis.find((p) => p.key === k)!.permissions.includes('sales.read');
+    expect([tem('administrador'), tem('comercial'), tem('operador'), tem('tecnico'), tem('leitor')]).toEqual([true, true, false, false, false]);
+    expect(((await s.get('/admin/permissions')).json() as Array<{ key: string }>).map((p) => p.key)).toContain('sales.read');
+  });
+
+  it('sem ela, o painel de Vendas não existe, nem o "Todos que veem" (como o painel de escolhidos: 404, nunca 403)', async () => {
+    const rev = ((await s.get('/atendimento/opcoes')).json().paineis as Painel[]).find((p) => p.sigla === 'REV')!;
+    expect(rev).toMatchObject({ tipo: 'vendas', acesso: 'todos' });
+    const daMarina = (await marina.get('/atendimento/opcoes')).json().paineis as Painel[];
+    expect(daMarina.some((p) => p.tipo === 'vendas')).toBe(false);
+    expect(daMarina.map((p) => p.id)).toContain(SUP);
+    expect((await marina.get(`/atendimento/quadro?painel=${rev.id}`)).statusCode).toBe(404);
+    expect((await marina.get(`/atendimento/vendas?painel=${rev.id}&de=${hoje()}&ate=${hoje()}`)).statusCode).toBe(404);
+    expect((await marina.post('/atendimento/chamados', { painelId: rev.id, titulo: 'Tentar vender', empresa: 'X' })).statusCode).toBe(404);
+    expect(((await marina.get('/atendimento/paineis/resumo')).json() as Array<{ painelId: string }>).map((r) => r.painelId)).not.toContain(rev.id);
+  });
+
+  it('só com ela (sem ver os chamados): o Comercial funciona, e o Suporte não aparece', async () => {
+    const r = await s.post('/admin/roles', { name: 'Só o Comercial', description: 'vendas, sem os chamados', permissions: ['records.read', 'sales.read', 'tickets.work'] });
+    expect(r.statusCode, r.body).toBe(201);
+    const v = await pessoa('Vera Lima', 'vera@gestor.local', 'Só o Comercial');
+    const opcoes = await v.sessao.get('/atendimento/opcoes');
+    expect(opcoes.statusCode, opcoes.body).toBe(200);
+    const paineis = opcoes.json().paineis as Painel[];
+    // a Revenda é de todos; o Comercial, só dos escolhidos (a Vera não está)
+    expect(paineis.map((p) => p.sigla)).toEqual(['REV']);
+    const rev = paineis[0]!;
+    expect((await v.sessao.get(`/atendimento/quadro?painel=${rev.id}`)).statusCode).toBe(200);
+    expect((await v.sessao.get(`/atendimento/quadro?painel=${SUP}`)).statusCode).toBe(404);
+    expect((await v.sessao.get(`/atendimento/vendas?painel=${rev.id}&de=${hoje()}&ate=${hoje()}`)).statusCode).toBe(200);
+    const nova = await v.sessao.post('/atendimento/chamados', { painelId: rev.id, titulo: 'Central para a loja nova', empresa: 'Loja Nova', valor: 45_000 });
+    expect(nova.statusCode, nova.body).toBe(201);
+    expect((await v.sessao.get('/atendimento/meu-dia')).statusCode).toBe(200);
+    expect((await v.sessao.get('/calendario/eventos?de=2026-10-01&ate=2026-10-31')).statusCode).not.toBe(403);
+    // a cópia dos tickets do LineChat (Suporte › Relatórios) continua de quem vê os chamados
+    expect((await v.sessao.get('/chamados/resumo')).statusCode).toBe(403);
   });
 });

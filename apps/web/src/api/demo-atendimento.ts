@@ -97,6 +97,8 @@ export type ContextoAtendimentoDemo = {
   wait: (ms?: number) => Promise<unknown>;
   audit: (action: string, entityType: string, summary: string, entityId?: string | null, extra?: { before?: unknown; after?: unknown }) => void;
   requirePerm: (perm: string) => void;
+  /** a porta de quem tem pelo menos uma das permissões (como o `requireAnyPermission` do servidor) */
+  requireAnyPerm: (...perms: string[]) => void;
   temPerm: (perm: string) => boolean;
   /** a IA da Base de conhecimento da prévia: as mesmas conferências (ligada, chave, limite de 30 por hora) e a conta do mês */
   ia: { pronta: () => void; limite: () => void; uso: () => { rascunhos: number; entrada: number; saida: number } };
@@ -275,7 +277,7 @@ export type AcessoDoCalendarioDemo = {
   atorDaPessoa: (userId: string) => Ator;
   /** os painéis fora da lixeira, em ordem */
   paineis: () => Painel[];
-  podeVerPainel: (p: Pick<Painel, 'acesso' | 'pessoas'>, a: Ator) => boolean;
+  podeVerPainel: (p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>, a: Ator) => boolean;
   /** o chamado fora da lixeira (pelo id) */
   chamado: (id: string) => { id: string; codigo: string; titulo: string; painelId: string; clienteId: string | null } | null;
   /** os chamados de exemplo (para ligar os eventos de exemplo a eles) */
@@ -362,6 +364,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return atorDaPessoa(S.me.id);
   }
   const podeVerChamados = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('support.read');
+  /** O Comercial (2.0.1): os painéis de Vendas são de quem tem a permissão dele (como no servidor). */
+  const podeVerVendas = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('sales.read');
   const podeTrabalhar = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('tickets.work');
   const podeCuidar = (a: Ator) => a.tipo === 'pessoa' && a.permissoes.includes('tickets.manage');
   const pessoaDoAtor = (a: Ator | null) => (a?.tipo === 'pessoa' ? a.id : null);
@@ -402,14 +406,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const painelPorId = (id: string) => paineis().find((p) => p.id === id);
 
   /** Quem cuida dos chamados vê todos; num painel "escolhidos", só as pessoas da lista; a integração vê todos. */
-  function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas'>, a: Ator): boolean {
-    if (a.tipo === 'integracao' || podeCuidar(a)) return true;
-    if (!podeVerChamados(a)) return false;
+  function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>, a: Ator): boolean {
+    if (a.tipo === 'integracao') return true;
+    const vendas = p.tipo === 'vendas';
+    if (vendas && !podeVerVendas(a)) return false;
+    if (podeCuidar(a)) return true;
+    if (!vendas && !podeVerChamados(a)) return false;
     return p.acesso === 'todos' || p.pessoas.includes(a.id);
   }
   const visiveis = (a: Ator) => new Set(paineis().filter((p) => podeVerPainel(p, a)).map((p) => p.id));
   /** Quem pode ser citado com @ numa anotação do painel: as pessoas ativas que veem o painel (como o servidor). */
-  const quemVeOPainel = (p: Pick<Painel, 'acesso' | 'pessoas'>): PessoaCurta[] => S.users
+  const quemVeOPainel = (p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>): PessoaCurta[] => S.users
     .filter((u) => u.active && podeVerPainel(p, atorDaPessoa(u.id)))
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
     .map((u) => ({ id: u.id, nome: u.name }));
@@ -3126,21 +3133,21 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   };
 
   const api: Api['atendimento'] = {
-    async opcoes() { await ctx.wait(80); ctx.requirePerm('support.read'); preparar(); return opcoes(eu()); },
-    async quadro(q) { await ctx.wait(); const f = lerQuadro(q); ctx.requirePerm('support.read'); preparar(); return quadro(eu(), f); },
+    async opcoes() { await ctx.wait(80); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return opcoes(eu()); },
+    async quadro(q) { await ctx.wait(); const f = lerQuadro(q); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return quadro(eu(), f); },
     async lista(q) {
       await ctx.wait();
       const f = ler(ListarChamadosSchema, limparQuery(q));
-      ctx.requirePerm('support.read'); preparar();
+      ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       const todos = filtrados(eu(), f);
       const inicio = (f.page - 1) * f.pageSize;
       return { items: todos.slice(inicio, inicio + f.pageSize).map(semBusca), total: todos.length, page: f.page, pageSize: f.pageSize } satisfies Page<CartaoChamado>;
     },
     // a prévia não tem servidor para montar o CSV: a tela monta com o `csvDosChamados` (e a auditoria fica com ela)
     exportarUrl() { return null; },
-    async meuDia() { await ctx.wait(); ctx.requirePerm('support.read'); preparar(); return meuDia(eu()); },
+    async meuDia() { await ctx.wait(); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return meuDia(eu()); },
     async resumoDosPaineis(): Promise<ResumoDoPainel[]> {
-      await ctx.wait(); ctx.requirePerm('support.read'); preparar();
+      await ctx.wait(); ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       const ator = eu();
       // as mesmas contas do servidor (resumoDosPaineis do shared), sobre os chamados que a pessoa vê
       const agora = agoraReal();
@@ -3149,19 +3156,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async relatorioDeVendas(q) {
       await ctx.wait();
       const f = ler(FiltroDoRelatorioDeVendasSchema, limparQuery(q));
-      ctx.requirePerm('support.read'); preparar();
+      ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       return relatorioDoPainelDeVendas(eu(), f);
     },
-    async avisos() { await ctx.wait(60); ctx.requirePerm('support.read'); preparar(); return avisosNaTela(S.me!.id); },
+    async avisos() { await ctx.wait(60); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return avisosNaTela(S.me!.id); },
     async marcarAvisosLidos(ids) {
-      await ctx.wait(60); ctx.requirePerm('support.read'); semear();
+      await ctx.wait(60); ctx.requireAnyPerm('support.read', 'sales.read'); semear();
       if (ids && !ids.length) return { ok: true };
       const agora = iso(agoraReal());
       for (const a of A.avisos) if (a.userId === S.me!.id && !a.lidoEm && (!ids || ids.includes(a.id))) a.lidoEm = agora;
       return { ok: true };
     },
-    async cadastroDoCliente(clienteId) { await ctx.wait(); ctx.requirePerm('support.read'); preparar(); return cadastroDoCliente(eu(), clienteId); },
-    async chamado(ref) { await ctx.wait(); ctx.requirePerm('support.read'); preparar(); return ficha(eu(), ref); },
+    async cadastroDoCliente(clienteId) { await ctx.wait(); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return cadastroDoCliente(eu(), clienteId); },
+    async chamado(ref) { await ctx.wait(); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return ficha(eu(), ref); },
     anexoUrl(id) {
       semear();
       if (!S.me) return '';
@@ -3170,7 +3177,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     },
     async anexoBytes(id) {
       await ctx.wait(120);
-      ctx.requirePerm('support.read');
+      ctx.requireAnyPerm('support.read', 'sales.read');
       preparar();
       const a = anexoVisivel(id, eu());
       if (!a) throw new ApiError(404, 'Anexo não encontrado');

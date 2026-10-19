@@ -3,13 +3,21 @@
 O Comercial acompanha as negociações num painel igual ao dos chamados — o quadro, a lista, a ficha, as
 anotações, os avisos —, com o que é de venda: o **valor** — a **mensalidade** e a **ativação**, cada uma
 de um valor só ou por produto, com o total —, o **Ganho** e o **Perdido** (com o motivo), a **empresa que
-ainda não é cliente** e a **meta do mês**. Fica em **Suporte › Painéis**, como os outros painéis (o
-Suporte, o Desenvolvimento). A decisão inteira está em
+ainda não é cliente** e a **meta do mês**. No menu, o grupo **Comercial** leva direto às **Negociações**
+e aos **Relatórios**; o painel também fica em **Suporte › Painéis**, como os outros (o Suporte, o
+Desenvolvimento). O Comercial tem permissão própria: **Ver o Comercial**. A decisão inteira está em
 `docs/decisoes/0050-painel-de-vendas.md`.
 
 ---
 
 ## 1. Criar o painel do Comercial (uma vez, quem cuida dos chamados)
+
+Antes, a permissão: em **Administração › Usuários**, dê o papel **Comercial** a quem é do Comercial (ele
+vem com ver os clientes, ver os chamados, trabalhar e **Ver o Comercial**). Quem precisa de outro papel
+ganha a permissão **Ver o Comercial** nele, em **Administração › Papéis**. **Sem ela, a pessoa não vê o
+Comercial em lugar nenhum** — nem o grupo do menu, nem o painel, nem os relatórios —, mesmo que o painel
+seja de todos. O Administrador já vem com ela. Quem deve ver só o Comercial (e não os chamados do
+Suporte) fica com um papel sem o **Ver os chamados**.
 
 1. **Suporte › Painéis › Ajustes › Painéis › Novo painel** (ou o **Novo painel** da tela dos painéis).
 2. Em **O painel é de**, escolha **Negociações (Vendas)**. Isso não muda depois.
@@ -25,6 +33,9 @@ Suporte, o Desenvolvimento). A decisão inteira está em
 
 ## 2. O dia a dia
 
+- **No menu, o grupo Comercial**: **Negociações** abre direto o quadro do Comercial, e **Relatórios**, o
+  relatório. Com mais de um painel de Vendas, abre o último que você usou (o **Trocar**, no alto do
+  quadro, leva aos outros).
 - **A tela dos painéis** mostra o cartão do Comercial: quanto está **em negociação** (e quantas), o
   **ganho no mês** (e quantas ganhas e perdidas), **sem dono**, as **suas** e a **barra da meta**.
 - **O quadro**: cada coluna soma as mensalidades das negociações dela, e a de maior mensalidade vem
@@ -95,8 +106,8 @@ ela estava.
 
 ## 6. O relatório
 
-No painel, ao lado de **Quadro** e **Lista**: **Relatório** (ou o botão **Relatório** no cartão do
-painel).
+No menu, **Comercial › Relatórios** (ou, no painel, ao lado de **Quadro** e **Lista**: **Relatório**, ou o
+botão **Relatório** no cartão do painel).
 
 - **O período**: Este mês, Mês passado, Este trimestre, Últimos 90 dias, Este ano, ou dois dias. Fica
   no endereço da página: dá para mandar o link do jeito que está.

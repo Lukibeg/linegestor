@@ -27,6 +27,8 @@ export type ContextoCalendarioDemo = {
   wait: (ms?: number) => Promise<unknown>;
   audit: (action: string, entityType: string, summary: string, entityId?: string | null, extra?: { before?: unknown; after?: unknown }) => void;
   requirePerm: (perm: string) => void;
+  /** a porta de quem tem pelo menos uma das permissões (o calendário: quem vê os chamados ou o Comercial) */
+  requireAnyPerm: (...perms: string[]) => void;
   /** a hora de agora (os testes podem adiantar o relógio) */
   agora?: () => Date;
 };
@@ -244,7 +246,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
 
   const api: CalendarioDemo = {
     async opcoes() {
-      await ctx.wait(80); ctx.requirePerm('support.read'); preparar();
+      await ctx.wait(80); ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       const a = eu();
       const { visiveis } = paineisDe(a);
       return {
@@ -257,13 +259,13 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
     async eventos(de, ate) {
       await ctx.wait();
       const p = ler(EventosDoPeriodoSchema, { de, ate });
-      ctx.requirePerm('support.read'); preparar();
+      ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       const ids = new Set(paineisDe(eu()).visiveis.map((v) => v.id));
       return C.eventos.filter((e) => !e.deletedAt && e.inicio <= p.ate && e.fim >= p.de && eventoVisivel(e, ids)).map(paraTela);
     },
     async doChamado(chamadoId) {
       await ctx.wait();
-      ctx.requirePerm('support.read'); preparar();
+      ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       const a = eu();
       const { todos, visiveis } = paineisDe(a);
       const t = x().chamado(chamadoId);

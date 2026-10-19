@@ -2056,7 +2056,7 @@ function respostaDemo(pergunta: string): RespostaIa {
 }
 
 /** O calendário (2.0.1): lê os painéis e quem vê cada um da prévia dos chamados (demo-calendario.ts). */
-const calendarioDemo = criarCalendarioDemo({ S, id, wait, audit, requirePerm });
+const calendarioDemo = criarCalendarioDemo({ S, id, wait, audit, requirePerm, requireAnyPerm });
 
 export const demoApi: Api = {
   auth: {
@@ -3766,7 +3766,7 @@ export const demoApi: Api = {
   },
   // os chamados do Gestor (2.0): o módulo inteiro mora em demo-atendimento.ts
   atendimento: criarAtendimentoDemo({
-    S, id, wait, audit, requirePerm, temPerm,
+    S, id, wait, audit, requirePerm, requireAnyPerm, temPerm,
     ia: { pronta: iaProntaDemo, limite: limiteIaDemo, uso: usoIaDemo },
     cardsDoLineChat: () => chamadosDemo().cards,
   }),

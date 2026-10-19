@@ -55,10 +55,10 @@ export function useDepoisDeMudar() {
   }, [qc, toast]);
 }
 
-/** O que a pessoa pode fazer no módulo. */
+/** O que a pessoa pode fazer no módulo. Ver: os chamados (os painéis de Gestão) ou o Comercial (os de Vendas, 2.0.1). */
 export function usePode() {
   const { can } = useAuth();
-  return { ver: can('support.read'), trabalhar: can('tickets.work'), cuidar: can('tickets.manage'), integrar: can('admin.manage') };
+  return { ver: can('support.read') || can('sales.read'), trabalhar: can('tickets.work'), cuidar: can('tickets.manage'), integrar: can('admin.manage') };
 }
 
 // =====================================================================

@@ -346,7 +346,10 @@ describe('o relógio: os prazos, o sem responsável e o fechar sozinho', () => {
     expect((await volta(quando))!.fechados).toContain(r.codigo);
     const f = await ficha(r.codigo);
     expect(f).toMatchObject({ etapaId: E.fechado, situacao: 'fechado', fechadoEm: quando.toISOString(), resolvidoEm: resolvido.toISOString() });
-    const [etapa, fechou] = f.historico.slice(-2);
+    // os dois eventos do fechar sozinho, um depois do outro (pelo tipo: o "criado" é de agora, e o relógio
+    // do teste está num dia fixo — depois de 19/10/2026, o "criado" ficava por último e o teste quebrava)
+    const i = f.historico.findIndex((e: any) => e.tipo === 'fechou_sozinho');
+    const [etapa, fechou] = [f.historico[i - 1], f.historico[i]];
     expect(etapa).toMatchObject({ tipo: 'etapa', por: null, porNome: null, dados: { de: { nome: 'Resolvido' }, para: { nome: 'Fechado' } } });
     expect(fechou).toMatchObject({ tipo: 'fechou_sozinho', por: null, porNome: null, dados: { dias: 3, etapa: 'Resolvido' }, texto: 'fechou sozinho: 3 dias úteis no Resolvido sem resposta do cliente' });
     expect(f.trajetoria.at(-1)).toMatchObject({ etapa: 'Fechado', por: null });

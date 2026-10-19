@@ -2,7 +2,8 @@
  * O Calendário (Patch 2.0.1, decisão 0049): as visitas, as viradas, as folgas e os home offices de cada
  * equipe, nos painéis dos chamados.
  *
- * Ver é de quem vê chamados (`support.read`) — e só os eventos dos painéis que a pessoa vê; criar, mudar,
+ * Ver é de quem vê chamados (`support.read`) ou o Comercial (`sales.read`, 2.0.1) — e só os eventos dos
+ * painéis que a pessoa vê; criar, mudar,
  * marcar como feito ou cancelado e mandar para a lixeira é de quem trabalha nos chamados (`tickets.work`);
  * os tipos (Visita, Folga…) são de quem cuida dos chamados (`tickets.manage`). Tudo o que muda vai para a
  * auditoria (`calendar_event`; os tipos, `settings`).
@@ -17,7 +18,8 @@ const tags = ['Calendário'];
 const Id = z.object({ id: z.string().min(1) });
 
 const routes: FastifyPluginAsyncZod = async (app) => {
-  const ver = { preHandler: app.requirePermission('support.read') };
+  // o calendário mostra os eventos dos painéis que a pessoa vê: os de Gestão ou os de Vendas (o Comercial, 2.0.1)
+  const ver = { preHandler: app.requireAnyPermission('support.read', 'sales.read') };
   const trabalhar = { preHandler: app.requirePermission('tickets.work') };
   const cuidar = { preHandler: app.requirePermission('tickets.manage') };
   const ator = (req: { user: Parameters<typeof atorDaPessoa>[0] | null }) => atorDaPessoa(req.user!);

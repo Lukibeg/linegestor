@@ -130,7 +130,7 @@ function Papeis() {
   if (roles.isLoading || perms.isLoading) return <Carregando />;
   return (
     <div>
-      <p className="text-sm text-muted mb-3">Um papel é uma lista de permissões. Os quatro do sistema não podem ser apagados; você pode criar outros marcando caixinhas.</p>
+      <p className="text-sm text-muted mb-3">Um papel é uma lista de permissões. Os do sistema não podem ser apagados; você pode criar outros marcando caixinhas.</p>
       <div className="flex justify-end mb-3"><button className="btn-primary btn-sm" onClick={() => setEdit('novo')}><Plus size={14} /> Novo papel</button></div>
       <div className="card overflow-x-auto"><table className="table"><thead><tr><ThN /><th>Papel</th>{perms.data?.map((p) => <th key={p.key} className="text-center text-[10.5px] font-normal leading-tight max-w-[80px]" title={p.label}>{p.label.split(' ').slice(0, 3).join(' ')}</th>)}<th /></tr></thead>
         <tbody>{roles.data?.map((r, i) => <tr key={r.id}><TdN n={contar(i)} /><td><div className="font-medium">{r.name} {r.isSystem && <Chip tone="muted">sistema</Chip>}</div><div className="text-[12px] text-muted">{r.userCount} usuário(s)</div></td>{perms.data?.map((p) => <td key={p.key} className="text-center">{r.permissions.includes(p.key) ? <span className="inline-block w-3 h-3 rounded-full bg-ok" /> : <span className="inline-block w-3 h-3 rounded-full border border-line-strong" />}</td>)}<td className="text-right whitespace-nowrap"><button className="btn-ghost btn-sm" onClick={() => setEdit(r)}>Editar</button>{!r.isSystem && <button className="btn-ghost btn-sm text-bad" onClick={() => remove(r)}>Apagar</button>}</td></tr>)}</tbody></table></div>

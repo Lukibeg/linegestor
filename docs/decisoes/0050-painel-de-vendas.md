@@ -130,6 +130,15 @@ nele (a regra do patch que ainda não subiu).
   do painel de Vendas, o botão do alto é **Nova negociação**. O item do menu se chamava **Chamados**; com
   o Comercial ali dentro, virou **Painéis** (17/10, nos comentários: *"isso aqui n é chamados, é
   paineis"* — a revisão da decisão 0048).
+- **O grupo Comercial no menu (19/10).** O Luan pediu *"uma aba lateral só para o comercial… onde vai ter
+  um acesso direto ao painel do comercial e aos relatórios do comercial… isso tbm tem q ter um nível de
+  permissão"*. Avisado de que mudava o *"não precisa ser um botão"* de 17/10, respondeu *"pode fazer"*.
+  O menu ganhou o grupo **Comercial**, abaixo do Suporte, com **Negociações** (abre direto o quadro do
+  painel de Vendas) e **Relatórios** (o relatório dele). O Comercial continua sendo um painel: ele segue
+  em Painéis, e o grupo é o atalho. Na tela de um painel de Vendas (o quadro, a lista, o relatório, a
+  nova negociação e a ficha de uma negociação), o menu marca o Comercial, e não Painéis. Com mais de um
+  painel de Vendas, o atalho abre o último aberto neste navegador (o **Trocar**, no alto do quadro, leva
+  aos outros). Sem nenhum, a tela diz como criar um.
 - **A troca de painel.** A negociação só passa para **outro painel de Vendas** (e entra numa etapa do
   funil: o Ganho e o Perdido se marcam na janela deles); o chamado só para **outro de Gestão**. Entre os
   dois, abre-se o outro lá: da negociação ganha, o chamado da implantação no Suporte; do chamado em que
@@ -145,8 +154,18 @@ nele (a regra do patch que ainda não subiu).
   chamado (o pai, o problema, a ligação), a lista não mostra as negociações, e o desenho das ligações de
   um chamado não as mostra. O código escrito num texto (*"o orçamento está na COM-2"*) continua virando
   link, na negociação e no chamado: citar não é ligar.
-- **Permissões.** As dos chamados: ver, `support.read`; trabalhar (criar, mover, ganhar, perder),
-  `tickets.work`; os painéis e os ajustes, `tickets.manage`.
+- **Permissões.** O Comercial tem a dele (19/10): **Ver o Comercial** (`sales.read`) — o grupo Comercial
+  do menu, os painéis de Vendas (as negociações) e os relatórios de vendas. **Sem ela, o painel de Vendas
+  não existe para a pessoa**, nem o "Todos que veem", nem para quem cuida dos chamados: some da tela dos
+  painéis, do Meu dia, da busca, do calendário, dos avisos e das citações (e o endereço dá 404, como o
+  painel de escolhidos). Só com ela, sem **Ver os chamados**, o Comercial funciona (as portas do módulo
+  abrem para uma ou outra), e os painéis de Gestão e a cópia dos tickets do LineChat não aparecem.
+  Trabalhar (criar, mover, ganhar, perder) continua `tickets.work`; os painéis e os ajustes,
+  `tickets.manage`. Uma permissão só (e não uma para ver e outra para mexer), porque para mexer nas
+  negociações já vale a de trabalhar nos chamados. O **papel Comercial** (novo, do sistema) vem com ver
+  os clientes, ver os chamados, trabalhar e ver o Comercial; o Administrador ganha a permissão; o
+  Operador, o Técnico e o Leitor, não. A migração `0019_comercial` dá a permissão ao Administrador e cria
+  o papel (se já houver um papel com esse nome, ele fica como está).
 - **O banco.** A migração `0018_vendas`: o tipo do painel (`ticket_panels.kind`, `gestao` ou `vendas`),
   o resultado da etapa final (`ticket_stages.outcome`, `ganho` ou `perdido`), e na negociação o valor em
   centavos — a mensalidade (`tickets.value_cents`, `bigint`: o valor vai até R$ 100 milhões, que não cabe
@@ -160,7 +179,8 @@ nele (a regra do patch que ainda não subiu).
   do mês passado para a comparação do Este mês, e o funil de agora) e a meta de R$ 4 mil por mês (as
   mensalidades, de R$ 180 a R$ 3 mil). Três têm o valor por produto (a Padaria Estrela, a Rede Farma Mais
   e as filiais do Bom Preço, com a ativação de cada produto), algumas têm a ativação de um valor só, e a
-  da Padaria Estrela tem a proposta em PDF anexada, que abre sem baixar (decisão 0051). Algumas têm os campos do
+  da Padaria Estrela tem a proposta em PDF anexada, que abre sem baixar (decisão 0051). A Camila e o Diego
+  têm o papel Comercial; a Marina (Operador) e o Paulo (Leitor) não veem o Comercial. Algumas têm os campos do
   Comercial preenchidos (a origem, quem indicou, os contatos principais).
 
 **Alternativas consideradas.**

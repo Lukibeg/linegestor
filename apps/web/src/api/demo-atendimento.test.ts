@@ -944,3 +944,27 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect(doSuporte.message).toContain('não é de vendas');
   }, DEMORA);
 });
+
+describe('o Comercial tem permissão própria na prévia (como no servidor)', () => {
+  it('sem ela, o painel de Vendas não existe; com ela, sim; e só com ela, o Comercial funciona sem os chamados', async () => {
+    // a Marina (Operador) não vê o Comercial: nem na lista de painéis, nem pelo endereço
+    await entrar('operador');
+    const daMarina = await api.opcoes();
+    expect(daMarina.paineis.some((p) => p.tipo === 'vendas')).toBe(false);
+    expect((await erroDe(api.quadro({ painel: 'painel-comercial' }))).status).toBe(404);
+    // a Camila (papel Comercial) vê o Comercial e o Suporte
+    await entrar('camila');
+    const daCamila = await api.opcoes();
+    expect(daCamila.paineis.map((p) => p.sigla)).toEqual(expect.arrayContaining(['COM', 'SUP']));
+    // um papel só com o Comercial (sem ver os chamados): as portas do módulo abrem, e o Suporte some
+    await entrar('admin');
+    const papel = await demoApi.admin.createRole({ name: 'Só o Comercial', description: 'vendas, sem os chamados', permissions: ['records.read', 'sales.read', 'tickets.work'] });
+    await demoApi.admin.createUser({ name: 'Vera Lima', email: 'vera@gestor.local', password: SENHA_DA_PREVIA, roleId: papel.id, active: true });
+    await demoApi.auth.logout();
+    await demoApi.auth.login('vera@gestor.local', SENHA_DA_PREVIA);
+    const daVera = await api.opcoes();
+    expect(daVera.paineis.some((p) => p.sigla === 'SUP')).toBe(false);
+    expect((await erroDe(api.quadro({ painel: 'painel-suporte' }))).status).toBe(404);
+    expect(Array.isArray((await api.meuDia()).meus)).toBe(true);
+  }, DEMORA);
+});

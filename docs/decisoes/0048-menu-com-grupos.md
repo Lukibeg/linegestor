@@ -54,6 +54,11 @@ entrou nele.
     Comercial com as negociações e a **Nova negociação**. O endereço continua `/atendimento`;
   - no alto do menu continua o **Painel** (a tela inicial do Gestor, no singular), como antes;
   - a nota do 2.0 e os guias das versões antigas ficam como estavam (contam o que era).
+- **Revisto no 2.0.1 (19/10/2026): o grupo Comercial.** Um terceiro grupo, **Comercial**, abaixo do
+  Suporte, com **Negociações** e **Relatórios** — o atalho para o painel de Vendas e o relatório dele, de
+  quem tem a permissão **Ver o Comercial** (decisão 0050). Na tela de um painel de Vendas, o menu marca
+  o Comercial, e não Painéis (quem decide é o painel aberto, e não só o endereço). O **Calendário** e o
+  sininho passaram a aparecer também para quem só vê o Comercial.
 
 **Consequências.** O menu cai de 12 para 8 entradas no alto, e o Suporte tem três itens. Os guias de
 uso, a nota do 2.0 e o vídeo falam dos nomes novos.

@@ -32,11 +32,15 @@ export const EMAIL_DA_PESSOA: Record<Pessoa, string> = {
   bruno: 'bruno@gestor.local', camila: 'camila@gestor.local', diego: 'diego@gestor.local',
 };
 
-/** As pessoas que entram na prévia com o módulo (os mesmos nomes dos chamados do LineChat da prévia). */
-export const EQUIPE_NOVA: Array<{ nome: string; email: string; papel: 'tecnico' | 'operador' }> = [
+/**
+ * As pessoas que entram na prévia com o módulo (os mesmos nomes dos chamados do LineChat da prévia). A
+ * Camila e o Diego são o Comercial (2.0.1): o papel Comercial vê o menu Comercial e os painéis de Vendas,
+ * e trabalha também nos chamados que vê (como nos exemplos do Suporte e do Desenvolvimento).
+ */
+export const EQUIPE_NOVA: Array<{ nome: string; email: string; papel: 'tecnico' | 'operador' | 'comercial' }> = [
   { nome: 'Bruno Teixeira', email: 'bruno@gestor.local', papel: 'tecnico' },
-  { nome: 'Camila Duarte', email: 'camila@gestor.local', papel: 'operador' },
-  { nome: 'Diego Farias', email: 'diego@gestor.local', papel: 'tecnico' },
+  { nome: 'Camila Duarte', email: 'camila@gestor.local', papel: 'comercial' },
+  { nome: 'Diego Farias', email: 'diego@gestor.local', papel: 'comercial' },
 ];
 
 /** O WhatsApp de cada pessoa nos avisos (fictício: na prévia nada sai). */

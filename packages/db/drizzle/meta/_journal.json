@@ -134,6 +134,13 @@
       "when": 1792257652553,
       "tag": "0018_vendas",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792434532705,
+      "tag": "0019_comercial",
+      "breakpoints": true
     }
   ]
 }

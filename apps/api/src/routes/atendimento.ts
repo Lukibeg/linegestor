@@ -2,9 +2,10 @@
  * Chamados do Gestor (Patch 2.0, decisão 0047): o quadro, a lista, o Meu dia, a ficha e tudo o que
  * se faz num chamado.
  *
- * Ver é de todos que veem chamados (`support.read`, inclusive o Leitor); trabalhar (abrir, mover,
- * anotar…) é `tickets.work`; a lixeira dos chamados é de quem cuida deles (`tickets.manage`). O
- * painel "escolhidos" não existe para quem não está nele: o chamado dele dá 404, nunca 403.
+ * Ver é de todos que veem chamados (`support.read`, inclusive o Leitor) — e, nos painéis de Vendas, de
+ * quem tem a permissão do Comercial (`sales.read`, 2.0.1); trabalhar (abrir, mover, anotar…) é
+ * `tickets.work`; a lixeira dos chamados é de quem cuida deles (`tickets.manage`). O painel que a pessoa
+ * não vê ("escolhidos", ou de Vendas sem a permissão) não existe para ela: o chamado dele dá 404, nunca 403.
  *
  * Toda mudança vai para a auditoria e devolve a ficha inteira, já atualizada (menos o abrir, que
  * devolve o código, e o mandar para a lixeira).
@@ -43,7 +44,8 @@ function contentDisposition(tipo: 'inline' | 'attachment', fileName: string) {
 }
 
 const routes: FastifyPluginAsyncZod = async (app) => {
-  const ler = { preHandler: app.requirePermission('support.read') };
+  // ver: quem vê os chamados (os painéis de Gestão) ou o Comercial (os de Vendas, 2.0.1); cada painel confere o resto
+  const ler = { preHandler: app.requireAnyPermission('support.read', 'sales.read') };
   const trabalhar = { preHandler: app.requirePermission('tickets.work') };
   const cuidar = { preHandler: app.requirePermission('tickets.manage') };
   const ator = (req: FastifyRequest) => atorDaPessoa(req.user!);
