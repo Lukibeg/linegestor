@@ -1156,7 +1156,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `schedule_id` | texto | O agendado que criou este chamado | — |
 | `value_cents` | bigint | A negociação (painel de Vendas, 2.0.1): o valor — a MENSALIDADE —, em centavos (até R$ 100 milhões: não cabe num integer). É o que conta no quadro, no relatório e na meta. | — |
 | `product_values` | JSON | A negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, value_cents é a soma | obrigatório · padrão: {} |
-| `setup_cents` | bigint | A negociação: a ATIVAÇÃO (paga uma vez), em centavos — só registro: não entra no relatório nem na meta | — |
+| `setup_cents` | bigint | A negociação: a ATIVAÇÃO (paga uma vez), em centavos — à parte: não soma no quadro nem na meta; o relatório tem as contas dela (o número Ativação e As ativações mês a mês) | — |
 | `product_setup` | JSON | A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma | obrigatório · padrão: {} |
 | `prospect` | texto | A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) | — |
 | `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |

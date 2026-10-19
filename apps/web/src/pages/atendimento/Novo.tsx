@@ -112,7 +112,7 @@ type Form = {
   valores: ValoresDosProdutos;
   /** os produtos com a mensalidade escrita errado */
   valoresInvalidos: string[];
-  /** a ativação (só registro): a única e a de cada produto */
+  /** a ativação (à parte da mensalidade): a única e a de cada produto */
   ativacao: number | null;
   ativacaoValida: boolean;
   ativacoes: ValoresDosProdutos;

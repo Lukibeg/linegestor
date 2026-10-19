@@ -10,6 +10,11 @@
  * compare meus ganhos mes a mes, algo parecido com o que tem hoje no helena"): os 12 meses que terminam
  * no mês do fim do período, cada um com o que mudou em relação ao mês anterior.
  *
+ * Tudo isso é em mensalidades: a ativação (paga uma vez) não entra em nenhuma dessas somas. Em 19/10 ela
+ * ganhou as contas dela, à parte ("quero que gere um kpi desse para ganho de ativações bem simples como
+ * os que tem hoje", "um gráfico desse mas sobre apenas ativação"): o quanto de ativação foi ganho no
+ * período e mês a mês, pelo mesmo dia em que a negociação foi ganha.
+ *
  * As contas moram aqui: o servidor e a prévia usam as mesmas. O dia é o de Brasília; o ganho e a perda
  * contam no dia em que a negociação acabou (quem marca escolhe o dia, como o "Data de conclusão" do Helena).
  */
@@ -28,8 +33,10 @@ export type NegociacaoParaRelatorio = {
   empresa: string | null;
   /** o nome de quem cuida */
   responsavel: string | null;
-  /** em centavos (nulo = sem valor ainda) */
+  /** a mensalidade, em centavos (nulo = sem valor ainda) */
   valor: number | null;
+  /** a ativação (paga uma vez), em centavos: só nas contas da ativação */
+  ativacao: number | null;
   /** a etapa em que está agora */
   etapaId: string;
   criadoEm: string;
@@ -52,7 +59,8 @@ export type FiltroDoRelatorioDeVendas = z.infer<typeof FiltroDoRelatorioDeVendas
 /** Uma negociação na janela que abre ao clicar num número (o que está por trás dele). */
 export type NegociacaoDoRelatorio = {
   id: string; codigo: string; titulo: string; empresa: string | null; responsavel: string | null;
-  valor: number | null;
+  /** a mensalidade e a ativação, em centavos */
+  valor: number | null; ativacao: number | null;
   /** o nome da etapa em que está agora */
   etapa: string;
   resultado: ResultadoDaVenda | null; motivoPerda: string | null;
@@ -69,6 +77,8 @@ export type NumerosDeVendas = {
   /** ganhas e perdidas no período (pelo dia em que acabaram) */
   ganhos: PecaDeVendas;
   perdidos: PecaDeVendas;
+  /** a ativação das ganhas no período: as que têm ativação, quantas e quanto (à parte da mensalidade) */
+  ativacoes: PecaDeVendas;
   /** ganhas ÷ (ganhas + perdidas), em % (nulo sem nenhuma que acabou) */
   conversao: number | null;
   /** o valor médio do que foi ganho (nulo sem ganho com valor) */
@@ -99,14 +109,24 @@ export type RelatorioDeVendas = {
    * `antes`: o ganho do mês anterior — no parcial, do mesmo pedaço do mês anterior (do dia 1 até o mesmo
    * dia), para comparar o que é comparável.
    */
-  meses: Array<{ mes: string; nome: string; curto: string; ganho: number; qtd: number; ids: string[]; parcial: boolean; ate: string; antes: number }>;
+  meses: MesDeVendas[];
+  /** a ativação mês a mês: os mesmos 12 meses, com a ativação das ganhas em cada um (só as que têm ativação) */
+  mesesDaAtivacao: MesDeVendas[];
   /** as negociações por trás dos números (as que entraram, as ganhas e as perdidas do período, e as ganhas de cada mês) */
   negociacoes: NegociacaoDoRelatorio[];
 };
 
+/** Um mês do mês a mês: quanto foi ganho nele (em centavos), quantas e quais, e quanto no mês anterior. */
+export type MesDeVendas = { mes: string; nome: string; curto: string; ganho: number; qtd: number; ids: string[]; parcial: boolean; ate: string; antes: number };
+
 const dia = (iso: string) => diaLocal(new Date(iso));
 const noPeriodo = (d: string, de: string, ate: string) => d >= de && d <= ate;
 const peca = (xs: readonly NegociacaoParaRelatorio[]): PecaDeVendas => ({ qtd: xs.length, valor: xs.reduce((t, n) => t + (n.valor ?? 0), 0), ids: xs.map((n) => n.id) });
+/** A ativação de um grupo de ganhas: só as que têm ativação contam (quantas e quais). */
+const pecaDaAtivacao = (xs: readonly NegociacaoParaRelatorio[]): PecaDeVendas => {
+  const com = xs.filter((n) => (n.ativacao ?? 0) > 0);
+  return { qtd: com.length, valor: com.reduce((t, n) => t + n.ativacao!, 0), ids: com.map((n) => n.id) };
+};
 const porcento = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : null);
 /** O último dia do mês (AAAA-MM). */
 const fimDoMes = (mes: string) => somarDias(`${somarMeses(mes, 1)}-01`, -1);
@@ -170,7 +190,7 @@ function numerosDoPeriodo(negociacoes: readonly NegociacaoParaRelatorio[], de: s
   const comValor = ganhas.filter((n) => n.valor !== null);
   return {
     novos: peca(negociacoes.filter((n) => noPeriodo(dia(n.criadoEm), de, ate))),
-    ganhos: peca(ganhas), perdidos: peca(perdidas),
+    ganhos: peca(ganhas), perdidos: peca(perdidas), ativacoes: pecaDaAtivacao(ganhas),
     conversao: porcento(ganhas.length, ganhas.length + perdidas.length),
     ticketMedio: comValor.length ? Math.round(comValor.reduce((t, n) => t + n.valor!, 0) / comValor.length) : null,
   };
@@ -206,10 +226,12 @@ export function relatorioDeVendas(
   });
   const funilGanhas = novas.filter((n) => n.resultado === 'ganho').map((n) => n.id);
 
-  // os ganhos mês a mês: os 12 meses que terminam no mês do fim do período (o último, até o fim dele)
+  // o mês a mês: os 12 meses que terminam no mês do fim do período (o último, até o fim dele) — o da
+  // mensalidade (os ganhos) e o da ativação, com as mesmas ganhas e os mesmos dias
   const ganhasEntre = (a: string, b: string) => negociacoes.filter((n) => n.resultado === 'ganho' && n.fechadoEm && noPeriodo(dia(n.fechadoEm), a, b));
   const ultimoMes = ate.slice(0, 7);
-  const meses: RelatorioDeVendas['meses'] = [];
+  const meses: MesDeVendas[] = [];
+  const mesesDaAtivacao: MesDeVendas[] = [];
   for (let i = 11; i >= 0; i--) {
     const mes = somarMeses(ultimoMes, -i);
     const parcial = i === 0 && ate < fimDoMes(mes);
@@ -218,21 +240,22 @@ export function relatorioDeVendas(
     const antes = somarMeses(mes, -1);
     // no parcial, o mesmo pedaço do mês anterior (o dia que ele não tem fica no último dia dele)
     const fimAntes = parcial ? (`${antes}-${fim.slice(8, 10)}` > fimDoMes(antes) ? fimDoMes(antes) : `${antes}-${fim.slice(8, 10)}`) : fimDoMes(antes);
-    meses.push({
-      mes, nome: nomeDoMes(mes), curto: mesCurto(mes), ganho: peca(doMes).valor, qtd: doMes.length, ids: doMes.map((n) => n.id),
-      parcial, ate: fim, antes: peca(ganhasEntre(`${antes}-01`, fimAntes)).valor,
-    });
+    const doMesAntes = ganhasEntre(`${antes}-01`, fimAntes);
+    const base = { mes, nome: nomeDoMes(mes), curto: mesCurto(mes), parcial, ate: fim };
+    meses.push({ ...base, ganho: peca(doMes).valor, qtd: doMes.length, ids: doMes.map((n) => n.id), antes: peca(doMesAntes).valor });
+    const ativacao = pecaDaAtivacao(doMes);
+    mesesDaAtivacao.push({ ...base, ganho: ativacao.valor, qtd: ativacao.qtd, ids: ativacao.ids, antes: pecaDaAtivacao(doMesAntes).valor });
   }
 
   // as negociações por trás dos números (as que entraram, as ganhas e as perdidas, as ganhas de cada mês), as mais novas primeiro
   const ids = new Set([...numeros.novos.ids, ...numeros.ganhos.ids, ...numeros.perdidos.ids, ...meses.flatMap((m) => m.ids)]);
   const lista = [...ids].map((id) => porId.get(id)!).sort((a, b) => b.criadoEm.localeCompare(a.criadoEm)).map((n): NegociacaoDoRelatorio => ({
-    id: n.id, codigo: n.codigo, titulo: n.titulo, empresa: n.empresa, responsavel: n.responsavel, valor: n.valor,
+    id: n.id, codigo: n.codigo, titulo: n.titulo, empresa: n.empresa, responsavel: n.responsavel, valor: n.valor, ativacao: n.ativacao,
     etapa: nomeDaEtapa(n.etapaId), resultado: n.resultado, motivoPerda: n.resultado === 'perdido' ? n.motivoPerda : null,
     criadoEm: n.criadoEm, fechadoEm: n.fechadoEm,
   }));
 
-  return { painelId: painel.id, periodo: { de, ate }, numeros, anterior, funil, funilGanhas, meses, negociacoes: lista };
+  return { painelId: painel.id, periodo: { de, ate }, numeros, anterior, funil, funilGanhas, meses, mesesDaAtivacao, negociacoes: lista };
 }
 
 /** O período padrão do relatório: do primeiro dia do mês até hoje (Brasília). */

@@ -49,8 +49,13 @@ nele (a regra do patch que ainda não subiu).
   - a **Mensalidade** (o que o cliente paga por mês) é **a que conta**: a soma das colunas do quadro, o
     Em negociação, o Ganho no mês e a meta do cartão do painel, os números e os ganhos mês a mês do
     relatório e o Ganho. Na tela, vem com o **/mês** (*"R$ 980/mês"*);
-  - a **Ativação** (paga uma vez, no começo) **fica só registrada**: aparece na ficha, na janela do Ganho,
-    no histórico e no Exportar, e não entra em soma nenhuma. O cartão mostra só a mensalidade.
+  - a **Ativação** (paga uma vez, no começo) fica **à parte**: aparece na ficha, na janela do Ganho, no
+    histórico e no Exportar, e não entra em nenhuma soma da mensalidade (o quadro, a meta, o Ganho, o
+    ticket médio, os ganhos mês a mês). O cartão mostra só a mensalidade. Em 19/10 ela ganhou as contas
+    dela no relatório (nos comentários da prévia: *"quero que gere um kpi desse para ganho de ativações
+    bem simples como os que tem hoje"* e *"quero que vc gere pra mim um gráfico desse mas sobre apenas
+    ativação"*; avisado de que isso mudava o "só registro" de 17/10, *"faça o que falei"*): o número
+    **Ativação** e **As ativações mês a mês** (veja O relatório).
 
   **Não há venda só de ativação** (19/10, nos comentários: *"n temos caso de ter só venda, no caso
   ativação"*): o valor que as etapas pedem (a Proposta enviada, a Negociação e o Ganho, nas regras de
@@ -97,7 +102,9 @@ nele (a regra do patch que ainda não subiu).
 - **O relatório, só do Comercial.** No painel, ao lado de Quadro e Lista: **Relatório** (e o botão
   Relatório no cartão do painel). O conteúdo é o que o Luan escolheu (os números do período e o funil);
   a forma, depois do "dê uma melhorada", é a dos relatórios do Suporte:
-  - **O período em números**, em mensalidades. O **ganho** (quanto e quantas), as **novas** (quantas
+  - **O período em números**, em mensalidades. O **ganho** (quanto e quantas), a **ativação** (19/10: a
+    soma das ativações das ganhas no período e quantas tinham ativação, com a seta como o ganho; clicar
+    abre a janela com a ativação de cada uma), as **novas** (quantas
     entraram e quanto somam em propostas), o **perdido** (quanto e quantas, pelo dia em que acabaram), a **conversão** (das
     que acabaram, quantas foram ganhas) e o **ticket médio** — cada um com a **seta** do que mudou em
     relação ao período anterior (verde quando melhorou: mais ganho, mais novas, mais conversão; o perdido
@@ -114,13 +121,18 @@ nele (a regra do patch que ainda não subiu).
     (marcado com \*). Do lado, o total dos 12 meses. No celular, os 6 últimos. Clicar num mês mostra as
     negociações ganhas nele. O relatório de vendas do Helena não foi visto (o navegador desta conversa não
     abre o LineChat): o desenho segue o dos relatórios do Suporte.
+  - **As ativações mês a mês** (19/10, *"um gráfico desse mas sobre apenas ativação"*). Embaixo dos ganhos,
+    o mesmo gráfico (os mesmos 12 meses, o mesmo mês pela metade, o total do lado), em verde, só com a
+    ativação das negociações ganhas em cada mês, pelo mesmo dia do ganho; as ganhas sem ativação não
+    entram. Clicar num mês mostra as negociações com a ativação de cada uma.
   - **O funil.** Das que entraram no período, quantas chegaram a cada etapa (a etapa mais adiante por
     onde passaram; a ganha chegou ao fim), com a porcentagem das que entraram, quantas se perderam em cada
     uma (a etapa em que estavam ao perder) e quantas foram ganhas. As barras, alinhadas à esquerda.
-  - **Clicar mostra as negociações por trás** (a regra dos gráficos do sistema): o ganho, as novas, o
-    perdido, cada etapa do funil e as perdidas de cada etapa abrem a janela com as negociações — o
-    código (abre a negociação), a empresa, quem cuida, o valor e como está (a etapa, o Ganho ou o
-    Perdido, com o motivo).
+  - **Clicar mostra as negociações por trás** (a regra dos gráficos do sistema): o ganho, a ativação, as
+    novas, o perdido, cada mês, cada etapa do funil e as perdidas de cada etapa abrem a janela com as
+    negociações — o código (abre a negociação), a empresa, quem cuida, o valor e como está (a etapa, o
+    Ganho ou o Perdido, com o motivo). O valor é a mensalidade; na janela da ativação (o número e os
+    meses dela), a ativação de cada uma, e a soma também.
   - O período: **Este mês**, **Mês passado**, **Este trimestre**, **Últimos 90 dias**, **Este ano** ou
     dois dias; fica no endereço (dá para mandar o link). A negociação que veio de outro painel conta de
     quando entrou neste.
@@ -178,7 +190,8 @@ nele (a regra do patch que ainda não subiu).
   ganhas e as perdidas do último ano, uma ou mais por mês para os ganhos mês a mês, três delas no começo
   do mês passado para a comparação do Este mês, e o funil de agora) e a meta de R$ 4 mil por mês (as
   mensalidades, de R$ 180 a R$ 3 mil). Três têm o valor por produto (a Padaria Estrela, a Rede Farma Mais
-  e as filiais do Bom Preço, com a ativação de cada produto), algumas têm a ativação de um valor só, e a
+  e as filiais do Bom Preço, com a ativação de cada produto), a maioria das ganhas tem a ativação de um
+  valor só (de R$ 350 a R$ 3.200, para As ativações mês a mês), e a
   da Padaria Estrela tem a proposta em PDF anexada, que abre sem baixar (decisão 0051). A Camila e o Diego
   têm o papel Comercial; a Marina (Operador) e o Paulo (Leitor) não veem o Comercial. Algumas têm os campos do
   Comercial preenchidos (a origem, quem indicou, os contatos principais).

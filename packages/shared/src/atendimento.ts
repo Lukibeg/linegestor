@@ -1175,7 +1175,7 @@ export const ChamadoCriarSchema = z.object({
   valor: ValorEmCentavosSchema.nullish().transform((v) => v ?? null),
   /** a negociação: a mensalidade de cada produto (com ela, o valor é o total) */
   valoresDosProdutos: ValoresDosProdutosSchema.optional(),
-  /** a negociação: a ativação (paga uma vez; só registro), única ou por produto */
+  /** a negociação: a ativação (paga uma vez; à parte da mensalidade), única ou por produto */
   ativacao: ValorEmCentavosSchema.nullish().transform((v) => v ?? null),
   ativacoesDosProdutos: ValoresDosProdutosSchema.optional(),
   empresa: TextoOpcional(120),
@@ -1491,7 +1491,7 @@ export type CartaoChamado = {
   valor: number | null;
   /** a negociação: a mensalidade de cada produto, pelo id (vazio: o valor é um só; com ela, o valor é o total) */
   valoresDosProdutos: ValoresDosProdutos;
-  /** a negociação: a ativação (paga uma vez; só registro: não soma no quadro, no relatório nem na meta) */
+  /** a negociação: a ativação (paga uma vez: não soma no quadro nem na meta; o relatório tem as contas dela) */
   ativacao: number | null;
   /** a ativação de cada produto, pelo id */
   ativacoesDosProdutos: ValoresDosProdutos;

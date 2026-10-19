@@ -1,7 +1,7 @@
 /**
  * A negociação na ficha (o painel de Vendas, 2.0.1, decisão 0050), na coluna do lado, logo depois da
  * empresa: o valor — a **mensalidade** (o que conta no quadro, no relatório e na meta) e a **ativação**
- * (só registro), cada uma única ou **por produto**, com os totais (os pedidos do Luan na prévia, em 17/10);
+ * (à parte), cada uma única ou **por produto**, com os totais (os pedidos do Luan na prévia, em 17/10);
  * grava ao sair de cada campo — e, quando acabou, o Ganho ou o Perdido com o dia e o motivo da perda, que
  * dá para trocar (fica no histórico).
  */
@@ -31,7 +31,7 @@ function Linha({ id, campo, rotulo, ocupado, erro, children }: { id: string; cam
 
 /** O que está escrito num campo (ainda não gravado). */
 type Rascunho = { centavos: number | null; valido: boolean };
-/** As duas partes do valor: a mensalidade (o que conta) e a ativação (só registro). */
+/** As duas partes do valor: a mensalidade (o que conta) e a ativação (à parte). */
 type Parte = 'mensalidade' | 'ativacao';
 const NOME: Record<Parte, string> = { mensalidade: 'mensalidade', ativacao: 'ativação' };
 const SUFIXO: Record<Parte, string> = { mensalidade: '/mês', ativacao: '' };

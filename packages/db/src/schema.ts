@@ -1661,7 +1661,7 @@ export const tickets = pgTable(
     valueCents: bigint('value_cents', { mode: 'number' }),
     /** A negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, value_cents é a soma */
     productValues: jsonb('product_values').$type<Record<string, number>>().notNull().default({}),
-    /** A negociação: a ATIVAÇÃO (paga uma vez), em centavos — só registro: não entra no relatório nem na meta */
+    /** A negociação: a ATIVAÇÃO (paga uma vez), em centavos — à parte: não soma no quadro nem na meta; o relatório tem as contas dela */
     setupCents: bigint('setup_cents', { mode: 'number' }),
     /** A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma */
     productSetup: jsonb('product_setup').$type<Record<string, number>>().notNull().default({}),

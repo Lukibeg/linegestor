@@ -144,7 +144,7 @@ type ChamadoRow = {
   valor: number | null; empresa: string | null; motivoPerda: string | null;
   /** a negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, o valor é a soma */
   valoresDosProdutos: ValoresDosProdutos;
-  /** a negociação: a ativação (só registro), única ou por produto */
+  /** a negociação: a ativação (paga uma vez, à parte da mensalidade), única ou por produto */
   ativacao: number | null;
   ativacoesDosProdutos: ValoresDosProdutos;
 };
@@ -1965,7 +1965,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         id: t.id, codigo: t.codigo, titulo: t.titulo,
         empresa: t.clienteId ? nomeCliente(t.clienteId) : t.empresa,
         responsavel: t.responsavelId ? S.users.find((u) => u.id === t.responsavelId)?.name ?? null : null,
-        valor: t.valor, etapaId: t.etapaId,
+        valor: t.valor, ativacao: t.ativacao, etapaId: t.etapaId,
         // a que veio de outro painel conta de quando entrou neste
         criadoEm: passagens[0]?.desde ?? t.criadoEm, fechadoEm: t.fechadoEm,
         resultado: etapaPorId(t.etapaId)?.resultado ?? null, motivoPerda: t.motivoPerda, passagens,

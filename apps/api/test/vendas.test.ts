@@ -472,7 +472,7 @@ describe('o valor por produto (o pedido do Luan: "dividir o valor por produtos e
     expect((await camila.patch(`/atendimento/chamados/${n.id}`, { valor: 950_000 })).json()).toMatchObject({ valor: 950_000 });
   });
 
-  it('a ativação é só registro: única ou por produto, não entra no relatório; a etapa que pede o valor pede a mensalidade', async () => {
+  it('a ativação: única ou por produto, à parte da mensalidade no relatório (o número e o mês a mês dela); a etapa que pede o valor pede a mensalidade', async () => {
     const catalogo = (await s.get('/admin/products')).json() as Array<{ id: string; code: string; name: string }>;
     const pbx = catalogo.find((p) => p.code === 'linepbx')!;
     const tronco = catalogo.find((p) => p.code === 'voicenet')!;
@@ -495,13 +495,18 @@ describe('o valor por produto (o pedido do Luan: "dividir o valor por produtos e
     expect(semMensalidade.json().error).toBe('Para ir para Proposta enviada, falta preencher: Mensalidade.');
     expect((await camila.patch(`/atendimento/chamados/${so.id}`, { valor: 50_000 })).statusCode).toBe(200);
     expect((await mover(so.id, 'Proposta enviada')).statusCode).toBe(200);
-    // ganha: só a mensalidade entra no relatório (a ativação fica registrada)
+    // ganha: a mensalidade entra no Ganho; a ativação, só no número e no mês a mês dela (19/10)
     const hojeAqui = hoje();
     const antes = (await camila.get(`/atendimento/vendas?painel=${com.id}&de=${hojeAqui}&ate=${hojeAqui}`)).json() as RelatorioDeVendas;
     expect((await mover(so.id, 'Ganho')).statusCode).toBe(200);
     const depois = (await camila.get(`/atendimento/vendas?painel=${com.id}&de=${hojeAqui}&ate=${hojeAqui}`)).json() as RelatorioDeVendas;
     expect(depois.numeros.ganhos.qtd).toBe(antes.numeros.ganhos.qtd + 1);
     expect(depois.numeros.ganhos.valor).toBe(antes.numeros.ganhos.valor + 50_000);
+    expect(depois.numeros.ativacoes).toMatchObject({ qtd: antes.numeros.ativacoes.qtd + 1, valor: antes.numeros.ativacoes.valor + 80_000 });
+    expect(depois.numeros.ativacoes.ids).toContain(so.id);
+    expect(depois.mesesDaAtivacao).toHaveLength(12);
+    expect(depois.mesesDaAtivacao.at(-1)).toMatchObject({ mes: hojeAqui.slice(0, 7), ganho: 80_000, qtd: 1, ids: [so.id] });
+    expect(depois.negociacoes.find((x) => x.id === so.id)).toMatchObject({ valor: 50_000, ativacao: 80_000 });
     // na planilha, as duas colunas
     const csv = (await camila.get(`/atendimento/chamados/exportar?painel=${com.id}&situacao=todos`)).body as string;
     expect(csv.split('\r\n').find((l) => l.includes('Instalação dos aparelhos'))).toContain(';500,00;800,00;Ganho;');

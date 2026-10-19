@@ -65,8 +65,9 @@ A negociação nasce no **Lead**.
 
 - A **mensalidade** (o que o cliente paga por mês) é **a que conta**: o quadro, o cartão do painel (Em
   negociação, Ganho no mês e a meta), o relatório e o Ganho usam ela. Na tela, vem com o **/mês**.
-- A **ativação** (paga uma vez, no começo) **fica só registrada**: aparece na ficha, no Ganho, no histórico
-  e no Exportar, mas não entra em soma nenhuma.
+- A **ativação** (paga uma vez, no começo) fica **à parte**: aparece na ficha, no Ganho, no histórico e no
+  Exportar, e tem as contas dela no relatório (o número **Ativação** e **As ativações mês a mês**). Ela não
+  entra no quadro, na meta, no Ganho nem no ticket médio.
 - Não há venda só de ativação: a **Proposta enviada**, a **Negociação** e o **Ganho** pedem a
   **mensalidade** (a ativação sozinha não basta). No começo da negociação, as duas podem ficar em branco.
 
@@ -111,8 +112,9 @@ botão **Relatório** no cartão do painel).
 
 - **O período**: Este mês, Mês passado, Este trimestre, Últimos 90 dias, Este ano, ou dois dias. Fica
   no endereço da página: dá para mandar o link do jeito que está.
-- **O período em números** (em mensalidades; a ativação não entra):
-  - o **ganho**, as **novas** (quantas entraram e quanto somam em propostas), o **perdido**, a
+- **O período em números** (em mensalidades; a ativação tem o número dela):
+  - o **ganho**, a **ativação** (a soma das ativações das negociações ganhas no período, e quantas tinham
+    ativação), as **novas** (quantas entraram e quanto somam em propostas), o **perdido**, a
     **conversão** (das que acabaram, quantas foram ganhas) e o **ticket médio** (a mensalidade média do
     ganho);
   - embaixo de cada número, a **seta**: quanto mudou em relação ao período anterior (no Este mês, o
@@ -120,10 +122,13 @@ botão **Relatório** no cartão do painel).
 - **Os ganhos mês a mês**: o ganho de cada mês, nos 12 meses até o do fim do período, e quanto mudou
   em relação ao mês anterior (verde subiu, laranja caiu). O mês de hoje, ainda pela metade (com \*),
   é comparado com o mesmo pedaço do mês anterior. No celular, aparecem os 6 últimos.
+- **As ativações mês a mês**: o mesmo gráfico, só com a ativação das negociações ganhas em cada mês (as
+  sem ativação não entram). Clicar num mês mostra as negociações com a ativação de cada uma.
 - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
   entraram), quantas se perderam em cada uma e quantas foram ganhas.
-- **Clique em qualquer número** (o ganho, as novas, o perdido, um mês, uma etapa do funil, as perdidas
-  de uma etapa) para ver as negociações por trás dele; o código abre a negociação.
+- **Clique em qualquer número** (o ganho, a ativação, as novas, o perdido, um mês, uma etapa do funil, as
+  perdidas de uma etapa) para ver as negociações por trás dele; o código abre a negociação. Na janela da
+  ativação, cada negociação aparece com a ativação dela; nas outras, com a mensalidade.
 
 ## 7. Do Comercial para o Suporte (e o contrário)
 

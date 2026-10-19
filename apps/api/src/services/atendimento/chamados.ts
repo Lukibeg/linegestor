@@ -526,7 +526,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
       campo('produtos', NOME_CAMPO.produto, nomesProdutos(ctx, t.productIds), nomesProdutos(ctx, novos), t.productIds);
     }
   }
-  // o valor da negociação, depois dos produtos: a mensalidade (o que conta) e a ativação (só registro), cada
+  // o valor da negociação, depois dos produtos: a mensalidade (o que conta) e a ativação (à parte), cada
   // uma única ou o total por produto (o produto que saiu leva os valores dele junto)
   if (painel.tipo === 'vendas') {
     const produtosAgora = set.productIds ?? t.productIds;

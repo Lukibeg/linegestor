@@ -41,7 +41,7 @@ export async function relatorioDoPainelDeVendas(app: FastifyInstance, ator: Ator
       id: t.id, codigo: t.code, titulo: t.title,
       empresa: t.clientId ? ctx.clientes.get(t.clientId) ?? null : t.prospect ?? null,
       responsavel: t.assigneeId ? ctx.pessoas.get(t.assigneeId)?.nome ?? null : null,
-      valor: t.valueCents ?? null, etapaId: t.stageId,
+      valor: t.valueCents ?? null, ativacao: t.setupCents ?? null, etapaId: t.stageId,
       // a que veio de outro painel conta de quando entrou neste
       criadoEm: passagens[0]?.desde ?? t.createdAt.toISOString(),
       fechadoEm: t.closedAt?.toISOString() ?? null,

@@ -3,8 +3,9 @@
  * da negociação — a **mensalidade** e a **ativação**, cada uma única ou por produto, com os totais — e a
  * janela de marcar como Ganho ou Perdido (o quadro e a ficha usam a mesma).
  *
- * A mensalidade é o que conta (o quadro, o relatório, a meta); a ativação fica só registrada (o pedido do
- * Luan na prévia, em 17/10: "a ativação n muda nada nos relatórios, ela só vai ter registro").
+ * A mensalidade é o que conta (o quadro, o relatório, a meta); a ativação fica à parte (o pedido do Luan
+ * na prévia, em 17/10: "a ativação n muda nada nos relatórios, ela só vai ter registro") — desde 19/10, com
+ * as contas dela no relatório (o número Ativação e As ativações mês a mês).
  */
 import { useId, useRef, useState } from 'react';
 import { ChevronDown, Plus, Trophy, ThumbsDown, X } from 'lucide-react';
@@ -65,8 +66,8 @@ export type ParteDoValor = {
   gravados?: ValoresDosProdutos;
 };
 
-/** A nota de sempre: o que conta e o que é só registro. */
-export const SO_A_MENSALIDADE_CONTA = 'Só a mensalidade conta no quadro, no relatório e na meta; a ativação fica registrada.';
+/** A nota de sempre: o que conta, e onde a ativação aparece. */
+export const SO_A_MENSALIDADE_CONTA = 'Só a mensalidade conta no quadro, na meta e no Ganho; a ativação tem as contas dela no relatório.';
 
 /**
  * O VALOR DA NEGOCIAÇÃO (os pedidos do Luan na prévia, em 17/10: "quero que tenha como dividir o valor por

@@ -136,27 +136,27 @@ describe('o relatório de vendas', () => {
   const n = (d: Partial<NegociacaoParaRelatorio> & Pick<NegociacaoParaRelatorio, 'id' | 'etapaId'>): NegociacaoParaRelatorio => {
     const etapa = etapas.find((e) => e.id === d.etapaId)!;
     return {
-      codigo: `COM-${d.id}`, titulo: `Negociação ${d.id}`, empresa: null, responsavel: 'Camila Souza', valor: null, criadoEm: em('2026-10-01'), fechadoEm: null,
+      codigo: `COM-${d.id}`, titulo: `Negociação ${d.id}`, empresa: null, responsavel: 'Camila Souza', valor: null, ativacao: null, criadoEm: em('2026-10-01'), fechadoEm: null,
       resultado: etapa.resultado, motivoPerda: null, passagens: [{ etapaId: d.etapaId, desde: d.criadoEm ?? em('2026-10-01'), ate: null }], ...d,
     };
   };
   const passou = (...xs: Array<[string, string]>) => xs.map(([etapaId, dia], i) => ({ etapaId, desde: em(dia), ate: xs[i + 1] ? em(xs[i + 1]![1]) : null }));
   const todas = [
-    // ganha em 10 dias, passando pelo funil todo
-    n({ id: 'a', etapaId: 'ganho', valor: 1_000_000, fechadoEm: em('2026-10-11'), empresa: 'Padaria Estrela',
+    // ganha em 10 dias, passando pelo funil todo (com ativação)
+    n({ id: 'a', etapaId: 'ganho', valor: 1_000_000, ativacao: 150_000, fechadoEm: em('2026-10-11'), empresa: 'Padaria Estrela',
       passagens: passou(['lead', '2026-10-01'], ['qual', '2026-10-02'], ['prop', '2026-10-04'], ['neg', '2026-10-08'], ['ganho', '2026-10-11']) }),
-    // ganha em 4 dias, pulando a Qualificação e a Negociação
+    // ganha em 4 dias, pulando a Qualificação e a Negociação (sem ativação)
     n({ id: 'b', etapaId: 'ganho', valor: 500_000, criadoEm: em('2026-10-05'), fechadoEm: em('2026-10-09'),
       passagens: passou(['lead', '2026-10-05'], ['prop', '2026-10-06'], ['ganho', '2026-10-09']) }),
-    // perdida na Proposta
-    n({ id: 'c', etapaId: 'perdido', valor: 300_000, fechadoEm: em('2026-10-12'), motivoPerda: 'Preço',
+    // perdida na Proposta (a ativação da perdida não conta)
+    n({ id: 'c', etapaId: 'perdido', valor: 300_000, ativacao: 50_000, fechadoEm: em('2026-10-12'), motivoPerda: 'Preço',
       passagens: passou(['lead', '2026-10-01'], ['qual', '2026-10-03'], ['prop', '2026-10-06'], ['perdido', '2026-10-12']) }),
     // abertas: uma grande que pulou a Proposta, uma sem valor
     n({ id: 'd', etapaId: 'neg', valor: 2_000_000, criadoEm: em('2026-10-02'), passagens: passou(['lead', '2026-10-02'], ['qual', '2026-10-06'], ['neg', '2026-10-13']) }),
     n({ id: 'e', etapaId: 'lead', criadoEm: em('2026-10-14') }),
     // de setembro: uma aberta (do dia 20) e uma ganha (do mesmo período de setembro, a comparação)
     n({ id: 'f', etapaId: 'qual', valor: 200_000, criadoEm: em('2026-09-20'), passagens: passou(['lead', '2026-09-20'], ['qual', '2026-09-25']) }),
-    n({ id: 'g', etapaId: 'ganho', valor: 700_000, criadoEm: em('2026-09-01'), fechadoEm: em('2026-09-15'), passagens: passou(['lead', '2026-09-01'], ['ganho', '2026-09-15']) }),
+    n({ id: 'g', etapaId: 'ganho', valor: 700_000, ativacao: 90_000, criadoEm: em('2026-09-01'), fechadoEm: em('2026-09-15'), passagens: passou(['lead', '2026-09-01'], ['ganho', '2026-09-15']) }),
   ];
   const r = relatorioDeVendas(painel, todas, { de: '2026-10-01', ate: '2026-10-16' });
 
@@ -165,6 +165,8 @@ describe('o relatório de vendas', () => {
       novos: { qtd: 5, valor: 1_000_000 + 500_000 + 300_000 + 2_000_000, ids: ['a', 'b', 'c', 'd', 'e'] },
       ganhos: { qtd: 2, valor: 1_500_000, ids: ['a', 'b'] },
       perdidos: { qtd: 1, valor: 300_000, ids: ['c'] },
+      // a ativação das ganhas: só a que tem (a da perdida não conta)
+      ativacoes: { qtd: 1, valor: 150_000, ids: ['a'] },
       conversao: 66.7,
       ticketMedio: 750_000,
     });
@@ -173,10 +175,11 @@ describe('o relatório de vendas', () => {
     expect(r.negociacoes.map((x) => x.codigo)).toEqual(['COM-e', 'COM-b', 'COM-d', 'COM-a', 'COM-c', 'COM-g']);
     expect(r.negociacoes.find((x) => x.id === 'c')).toMatchObject({ etapa: 'Perdido', resultado: 'perdido', motivoPerda: 'Preço', valor: 300_000 });
     expect(r.negociacoes.find((x) => x.id === 'd')).toMatchObject({ etapa: 'Negociação', resultado: null, motivoPerda: null });
+    expect(r.negociacoes.find((x) => x.id === 'a')).toMatchObject({ valor: 1_000_000, ativacao: 150_000 });
   });
   it('comparado com o mesmo pedaço de setembro', () => {
     expect(r.anterior).toMatchObject({ de: '2026-09-01', ate: '2026-09-16', nome: 'o mesmo período de setembro' });
-    expect(r.anterior.numeros).toMatchObject({ novos: { qtd: 1, valor: 700_000 }, ganhos: { qtd: 1, valor: 700_000 }, perdidos: { qtd: 0 }, conversao: 100 });
+    expect(r.anterior.numeros).toMatchObject({ novos: { qtd: 1, valor: 700_000 }, ganhos: { qtd: 1, valor: 700_000 }, perdidos: { qtd: 0 }, ativacoes: { qtd: 1, valor: 90_000 }, conversao: 100 });
   });
   it('o mês que já passou: comparado com o mês anterior inteiro', () => {
     const setembro = relatorioDeVendas(painel, todas, { de: '2026-09-01', ate: '2026-09-30' });
@@ -196,6 +199,18 @@ describe('o relatório de vendas', () => {
     // a janela do mês mostra as ganhas dele, mesmo as que não são do período (a de setembro)
     expect(r.negociacoes.map((x) => x.id)).toContain('g');
   });
+  it('a ativação mês a mês: os mesmos meses, só com as ganhas que têm ativação (à parte da mensalidade)', () => {
+    expect(r.mesesDaAtivacao.map((m) => m.mes)).toEqual(r.meses.map((m) => m.mes));
+    expect(r.mesesDaAtivacao.at(-1)).toEqual({
+      mes: '2026-10', nome: 'outubro de 2026', curto: 'out/26', ganho: 150_000, qtd: 1, ids: ['a'],
+      // o mesmo pedaço de setembro (a ativação da do dia 15)
+      parcial: true, ate: '2026-10-16', antes: 90_000,
+    });
+    expect(r.mesesDaAtivacao.at(-2)).toMatchObject({ mes: '2026-09', ganho: 90_000, qtd: 1, ids: ['g'], antes: 0 });
+    expect(r.mesesDaAtivacao.slice(0, -2).every((m) => m.ganho === 0 && m.qtd === 0)).toBe(true);
+    // a mensalidade não muda por causa da ativação
+    expect(r.meses.at(-1)).toMatchObject({ ganho: 1_500_000, qtd: 2 });
+  });
   it('o funil: até onde chegaram as que entraram no período, onde se perderam e quantas foram ganhas', () => {
     expect(r.funil.map((f) => [f.nome, f.chegaram, f.perdidas])).toEqual([
       ['Lead', ['a', 'b', 'c', 'd', 'e'], []],
@@ -209,7 +224,7 @@ describe('o relatório de vendas', () => {
   });
   it('sem nada que acabou, a conversão e o ticket ficam vazios (não zero)', () => {
     const vazio = relatorioDeVendas(painel, [], { de: '2026-10-01', ate: '2026-10-16' });
-    expect(vazio.numeros).toMatchObject({ conversao: null, ticketMedio: null, novos: { qtd: 0, valor: 0, ids: [] } });
+    expect(vazio.numeros).toMatchObject({ conversao: null, ticketMedio: null, novos: { qtd: 0, valor: 0, ids: [] }, ativacoes: { qtd: 0, valor: 0, ids: [] } });
     expect(vazio.funil.map((f) => f.chegaram.length)).toEqual([0, 0, 0, 0]);
   });
   it('o período: os atalhos, a comparação e o filtro', () => {

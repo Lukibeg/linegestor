@@ -860,6 +860,13 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect(doMes.meses.filter((m) => m.ganho > 0).length).toBeGreaterThanOrEqual(9);
     const ids = new Set(doMes.negociacoes.map((n) => n.id));
     expect(doMes.meses.flatMap((m) => m.ids).every((id) => ids.has(id))).toBe(true);
+    // a ativação, à parte (19/10): a das ganhas do mês, e o mês a mês dela com os mesmos meses
+    const comAtivacao = doMes.numeros.ganhos.ids.map((id) => doMes.negociacoes.find((n) => n.id === id)!).filter((n) => (n.ativacao ?? 0) > 0);
+    expect(doMes.numeros.ativacoes).toMatchObject({ qtd: comAtivacao.length, valor: comAtivacao.reduce((t, n) => t + n.ativacao!, 0) });
+    expect(doMes.numeros.ativacoes.qtd).toBeGreaterThan(0);
+    expect(doMes.mesesDaAtivacao.map((m) => m.mes)).toEqual(doMes.meses.map((m) => m.mes));
+    expect(doMes.mesesDaAtivacao.at(-1)).toMatchObject({ ganho: doMes.numeros.ativacoes.valor, qtd: doMes.numeros.ativacoes.qtd });
+    expect(doMes.mesesDaAtivacao.filter((m) => m.ganho > 0).length).toBeGreaterThanOrEqual(9);
   }, DEMORA);
 
   it('a negociação: nasce no Lead sem prioridade; o Perdido pede o motivo; o Ganho fecha', async () => {

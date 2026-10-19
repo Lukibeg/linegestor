@@ -10,6 +10,9 @@
  *    entraram e saíram, 17/10: "n quero isso de meta", "n quero esses destaques");
  *  - **Os ganhos mês a mês** (17/10: "eu quero um relatório que compare meus ganhos mes a mes"): uma
  *    coluna por mês, os 12 até o do fim do período, com quanto mudou em relação ao mês anterior;
+ *  - a **ativação** à parte da mensalidade (19/10: "um kpi desse para ganho de ativações bem simples como
+ *    os que tem hoje", "um gráfico desse mas sobre apenas ativação"): o número Ativação, ao lado do
+ *    Ganho, e **As ativações mês a mês**, embaixo dos ganhos — o resto continua só com a mensalidade;
  *  - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
  *    entraram), quantas se perderam em cada uma e quantas foram ganhas.
  *
@@ -23,7 +26,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, CalendarRange, ChartColumn, Filter as Funnel, Info, Target, TrendingDown, TrendingUp, X } from 'lucide-react';
 import {
   diaComAno, periodosDoRelatorio, reaisCurto, reaisInteiros,
-  type NegociacaoDoRelatorio, type OpcoesAtendimento, type Painel, type RelatorioDeVendas,
+  type MesDeVendas, type NegociacaoDoRelatorio, type OpcoesAtendimento, type Painel, type RelatorioDeVendas,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, Modal, Vazio, mensagemErro } from '../../components/ui/index.js';
@@ -36,8 +39,11 @@ const pct = (n: number | null) => (n === null ? '—' : `${nf(n)}%`);
 const plural = (n: number, um: string, varios: string) => `${n.toLocaleString('pt-BR')} ${n === 1 ? um : varios}`;
 const diaCurto = (dia: string) => `${dia.slice(8, 10)}/${dia.slice(5, 7)}`;
 
-/** O que a janela mostra: o nome do que foi clicado e as negociações por trás. */
-type Aberta = { titulo: string; ids: string[] };
+/**
+ * O que a janela mostra: o nome do que foi clicado e as negociações por trás. `medida`: o valor que cada
+ * negociação mostra (e que a janela soma) — a mensalidade, ou a ativação no que é da ativação.
+ */
+type Aberta = { titulo: string; ids: string[]; medida?: 'mensalidade' | 'ativacao' };
 
 export function RelatorioDoPainel() {
   const opcoes = useOpcoes();
@@ -106,11 +112,12 @@ function RelatorioDeVendasDoPainel({ painel, opcoes }: { painel: Painel; opcoes:
       {rel.isError ? <p className="text-bad text-sm" role="alert">{mensagemErro(rel.error)}</p> : !r ? <Carregando /> : (
         <div className={`flex flex-col gap-3 transition-opacity ${rel.isFetching && rel.isPlaceholderData ? 'opacity-60' : ''}`} id="relatorio-vendas">
           <Secao id="relatorio-numeros" titulo="O período em números" icone={Target}
-            pergunta={`Quanto entrou, quanto foi ganho e quanto foi perdido ${nomeDoPeriodo}, em mensalidades (a ativação fica só registrada na negociação).`}
+            pergunta={`Quanto entrou, quanto foi ganho e quanto foi perdido ${nomeDoPeriodo}, em mensalidades. A ativação, paga uma vez, tem o número dela.`}
             lado={<span title={`${diaComAno(r.anterior.de)} a ${diaComAno(r.anterior.ate)}`}>comparado com {r.anterior.nome} ({diaCurto(r.anterior.de)} a {diaCurto(r.anterior.ate)})</span>}>
             <Numeros r={r} nomeDoPeriodo={nomeDoPeriodo} abrir={setAberta} />
           </Secao>
           <MesAMes r={r} abrir={setAberta} />
+          <MesAMesDaAtivacao r={r} abrir={setAberta} />
           <Secao id="relatorio-funil" titulo="O funil" icone={Funnel}
             pergunta={`Das ${plural(r.numeros.novos.qtd, 'negociação que entrou', 'negociações que entraram')} ${nomeDoPeriodo}: até onde chegaram, onde se perderam e quantas foram ganhas.`}
             rodape="Conta a etapa mais adiante por onde a negociação passou (a ganha chegou ao fim) e, na perdida, a etapa em que ela estava quando foi perdida. A porcentagem é das que entraram. Clique para ver as negociações.">
@@ -162,10 +169,10 @@ function Diferenca({ agora, antes, formato, bomSubir, contra }: {
 }
 
 /** Um número do período: clicar mostra as negociações por trás dele. */
-function Tile({ rotulo, valor, sub, diferenca, tom, ids, janela, titulo, abrir, className = '' }: {
+function Tile({ rotulo, valor, sub, diferenca, tom, ids, janela, medida, titulo, abrir, className = '' }: {
   rotulo: string; valor: string; sub: ReactNode; diferenca: ReactNode; tom?: 'ok' | 'bad'; ids?: string[];
-  /** o título da janela que abre ao clicar (as negociações por trás) */
-  janela?: string; titulo?: string;
+  /** o título da janela que abre ao clicar (as negociações por trás) e o valor que ela mostra */
+  janela?: string; medida?: Aberta['medida']; titulo?: string;
   abrir: (a: Aberta) => void; className?: string;
 }) {
   const corpo = (
@@ -180,22 +187,26 @@ function Tile({ rotulo, valor, sub, diferenca, tom, ids, janela, titulo, abrir, 
   if (!ids?.length) return <div className={classe} title={titulo}>{corpo}</div>;
   return (
     <button type="button" className={`${classe} hover:border-line-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors`}
-      onClick={() => abrir({ titulo: janela ?? rotulo, ids })} title={titulo ?? 'Clique para ver as negociações'}>
+      onClick={() => abrir({ titulo: janela ?? rotulo, ids, medida })} title={titulo ?? 'Clique para ver as negociações'}>
       {corpo}
     </button>
   );
 }
 
-/** O ganho, as novas, as perdidas, a conversão e o ticket médio, comparados com o período anterior. */
+/** O ganho, a ativação, as novas, as perdidas, a conversão e o ticket médio, comparados com o período anterior. */
 function Numeros({ r, nomeDoPeriodo, abrir }: { r: RelatorioDeVendas; nomeDoPeriodo: string; abrir: (a: Aberta) => void }) {
   const n = r.numeros;
   const a = r.anterior.numeros;
   const contra = r.anterior.nome;
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5" id="relatorio-tiles">
-      <Tile rotulo="Ganho" valor={reaisInteiros(n.ganhos.valor)} tom="ok" ids={n.ganhos.ids} janela={`Ganhas ${nomeDoPeriodo}`} abrir={abrir} className="col-span-2 sm:col-span-1"
+    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5" id="relatorio-tiles">
+      <Tile rotulo="Ganho" valor={reaisInteiros(n.ganhos.valor)} tom="ok" ids={n.ganhos.ids} janela={`Ganhas ${nomeDoPeriodo}`} abrir={abrir}
         sub={plural(n.ganhos.qtd, 'negociação ganha', 'negociações ganhas')}
         diferenca={<Diferenca agora={n.ganhos.valor} antes={a.ganhos.valor} formato="reais" bomSubir contra={contra} />} />
+      <Tile rotulo="Ativação" valor={reaisInteiros(n.ativacoes.valor)} tom="ok" ids={n.ativacoes.ids} janela={`Ativação das ganhas ${nomeDoPeriodo}`} medida="ativacao" abrir={abrir}
+        titulo="A ativação (paga uma vez) das negociações ganhas no período: fica à parte do Ganho, que é em mensalidades"
+        sub={n.ativacoes.qtd ? plural(n.ativacoes.qtd, 'ganha com ativação', 'ganhas com ativação') : 'nenhuma ganha com ativação'}
+        diferenca={<Diferenca agora={n.ativacoes.valor} antes={a.ativacoes.valor} formato="reais" bomSubir contra={contra} />} />
       <Tile rotulo="Novas" valor={n.novos.qtd.toLocaleString('pt-BR')} ids={n.novos.ids} janela={`Novas ${nomeDoPeriodo}`} abrir={abrir}
         sub={`${reaisCurto(n.novos.valor)} em propostas`}
         diferenca={<Diferenca agora={n.novos.qtd} antes={a.novos.qtd} formato="n" bomSubir contra={contra} />} />
@@ -212,43 +223,83 @@ function Numeros({ r, nomeDoPeriodo, abrir }: { r: RelatorioDeVendas; nomeDoPeri
   );
 }
 
-/** Os ganhos mês a mês: o bloco, com o total dos 12 meses do lado e, no pé, como o mês pela metade é comparado. */
+/** O que muda de um mês a mês para o outro (o dos ganhos e o da ativação). */
+type Medida = {
+  /** o id do bloco e o das colunas (as conferências da tela e os prints usam) */
+  id: string; colunas: string;
+  /** o que a janela mostra e soma; o nome do que foi ganho ("ganho", "ativação") */
+  medida: NonNullable<Aberta['medida']>; oQue: string;
+  /** a cor da coluna; "Ganhas em", "Ativação das ganhas em"; o que aparece sem nada nos 12 meses */
+  cor: string; janela: string; vazio: string;
+  /** o fim da dica de cada coluna: "em 3 negociações ganhas" */
+  emQuantas: (qtd: number) => string;
+};
+const DOS_GANHOS: Medida = {
+  id: 'relatorio-meses', colunas: 'relatorio-colunas-meses', medida: 'mensalidade', oQue: 'ganho', cor: 'bg-accent', janela: 'Ganhas em',
+  vazio: 'Nada ganho nos últimos 12 meses.', emQuantas: (qtd) => `em ${plural(qtd, 'negociação ganha', 'negociações ganhas')}`,
+};
+const DA_ATIVACAO: Medida = {
+  id: 'relatorio-meses-ativacao', colunas: 'relatorio-colunas-ativacao', medida: 'ativacao', oQue: 'ativação', cor: 'bg-ok', janela: 'Ativação das ganhas em',
+  vazio: 'Nenhuma ativação ganha nos últimos 12 meses.', emQuantas: (qtd) => `em ${plural(qtd, 'ganha com ativação', 'ganhas com ativação')}`,
+};
+
+/** O pé dos dois mês a mês: como o mês pela metade é comparado. */
+function pedacoDoMes(meses: MesDeVendas[]) {
+  const ultimo = meses.at(-1);
+  return ultimo?.parcial ? ` O * é ${ultimo.nome.split(' de ')[0]} até ${diaCurto(ultimo.ate)}: ele é comparado com o mesmo pedaço do mês anterior.` : '';
+}
+/** "12 meses: R$ 9.500 em 14 negociações", do lado do título. */
+function TotalDosMeses({ meses }: { meses: MesDeVendas[] }) {
+  const total = meses.reduce((t, m) => t + m.ganho, 0);
+  const qtd = meses.reduce((t, m) => t + m.qtd, 0);
+  return <span>12 meses: <b className="text-ink-2 tnum">{reaisInteiros(total)}</b> em {plural(qtd, 'negociação', 'negociações')}</span>;
+}
+
+/** Os ganhos mês a mês (em mensalidades): o bloco, com o total dos 12 meses do lado e, no pé, como o mês pela metade é comparado. */
 function MesAMes({ r, abrir }: { r: RelatorioDeVendas; abrir: (a: Aberta) => void }) {
-  const total = r.meses.reduce((t, m) => t + m.ganho, 0);
-  const qtd = r.meses.reduce((t, m) => t + m.qtd, 0);
-  const ultimo = r.meses.at(-1);
-  const pedaco = ultimo?.parcial ? ` O * é ${ultimo.nome.split(' de ')[0]} até ${diaCurto(ultimo.ate)}: ele é comparado com o mesmo pedaço do mês anterior.` : '';
   return (
-    <Secao id="relatorio-meses" titulo="Os ganhos mês a mês" icone={ChartColumn}
+    <Secao id={DOS_GANHOS.id} titulo="Os ganhos mês a mês" icone={ChartColumn}
       pergunta="Quanto foi ganho em cada mês, e quanto mudou em relação ao mês anterior."
-      lado={<span>12 meses: <b className="text-ink-2 tnum">{reaisInteiros(total)}</b> em {plural(qtd, 'negociação', 'negociações')}</span>}
-      rodape={`O ganho conta no mês em que a negociação foi ganha. Clique num mês para ver as negociações.${pedaco}`}>
-      <GanhosMesAMes meses={r.meses} abrir={abrir} />
+      lado={<TotalDosMeses meses={r.meses} />}
+      rodape={`O ganho conta no mês em que a negociação foi ganha. Clique num mês para ver as negociações.${pedacoDoMes(r.meses)}`}>
+      <ColunasDosMeses meses={r.meses} medida={DOS_GANHOS} abrir={abrir} />
+    </Secao>
+  );
+}
+
+/** As ativações mês a mês (19/10): os mesmos 12 meses, só com a ativação das ganhas — à parte da mensalidade. */
+function MesAMesDaAtivacao({ r, abrir }: { r: RelatorioDeVendas; abrir: (a: Aberta) => void }) {
+  return (
+    <Secao id={DA_ATIVACAO.id} titulo="As ativações mês a mês" icone={ChartColumn}
+      pergunta="Quanto de ativação foi ganho em cada mês, e quanto mudou em relação ao mês anterior."
+      lado={<TotalDosMeses meses={r.mesesDaAtivacao} />}
+      rodape={`A ativação (paga uma vez) conta no mês em que a negociação foi ganha; entram só as ganhas com ativação. Clique num mês para ver as negociações.${pedacoDoMes(r.mesesDaAtivacao)}`}>
+      <ColunasDosMeses meses={r.mesesDaAtivacao} medida={DA_ATIVACAO} abrir={abrir} />
     </Secao>
   );
 }
 
 /** As colunas dos meses (no celular, os 6 últimos): o valor em cima, o mês e a mudança embaixo. */
-function GanhosMesAMes({ meses, abrir }: { meses: RelatorioDeVendas['meses']; abrir: (a: Aberta) => void }) {
-  if (!meses.some((m) => m.ganho > 0)) return <p className="text-muted text-sm py-4">Nada ganho nos últimos 12 meses.</p>;
+function ColunasDosMeses({ meses, medida, abrir }: { meses: MesDeVendas[]; medida: Medida; abrir: (a: Aberta) => void }) {
+  if (!meses.some((m) => m.ganho > 0)) return <p className="text-muted text-sm py-4">{medida.vazio}</p>;
   const max = Math.max(1, ...meses.map((m) => m.ganho));
   const altura = 190;
   const util = altura - 24;
   const mostra = (i: number) => (i < meses.length - 6 ? 'hidden sm:flex' : 'flex');
-  const nomeDoMes = (m: RelatorioDeVendas['meses'][number]) => `${m.nome}${m.parcial ? ` (até ${diaCurto(m.ate)})` : ''}`;
+  const nomeDoMes = (m: MesDeVendas) => `${m.nome}${m.parcial ? ` (até ${diaCurto(m.ate)})` : ''}`;
   return (
-    <div id="relatorio-colunas-meses">
+    <div id={medida.colunas}>
       <div className="flex items-end gap-1.5 sm:gap-2" style={{ height: altura }}>
         {meses.map((m, i) => {
           const ultimo = i === meses.length - 1;
           return (
             <button key={m.mes} type="button" disabled={!m.qtd} data-mes={m.mes}
-              onClick={() => abrir({ titulo: `Ganhas em ${nomeDoMes(m)}`, ids: m.ids })}
-              title={`${nomeDoMes(m)}: ${reaisInteiros(m.ganho)} em ${plural(m.qtd, 'negociação ganha', 'negociações ganhas')}`}
+              onClick={() => abrir({ titulo: `${medida.janela} ${nomeDoMes(m)}`, ids: m.ids, medida: medida.medida })}
+              title={`${nomeDoMes(m)}: ${reaisInteiros(m.ganho)} ${medida.emQuantas(m.qtd)}`}
               aria-label={`${nomeDoMes(m)}: ${reaisInteiros(m.ganho)}`}
               className={`${mostra(i)} flex-1 min-w-0 h-full flex-col justify-end items-center group enabled:cursor-pointer`}>
               {m.ganho > 0 && <span className={`text-[10.5px] sm:text-[11px] tnum leading-none mb-1 whitespace-nowrap ${ultimo ? 'text-ink font-semibold' : 'text-ink-2'}`}>{reaisCurto(m.ganho)}</span>}
-              <span className={`block w-full max-w-[64px] rounded-t bg-accent transition-opacity ${ultimo ? '' : 'opacity-55'} group-enabled:group-hover:opacity-100`}
+              <span className={`block w-full max-w-[64px] rounded-t ${medida.cor} transition-opacity ${ultimo ? '' : 'opacity-55'} group-enabled:group-hover:opacity-100`}
                 style={{ height: m.ganho ? Math.max(3, (m.ganho / max) * util) : 0 }} />
             </button>
           );
@@ -258,7 +309,7 @@ function GanhosMesAMes({ meses, abrir }: { meses: RelatorioDeVendas['meses']; ab
         {meses.map((m, i) => (
           <span key={m.mes} className={`${mostra(i)} flex-1 min-w-0 flex-col items-center text-center leading-tight gap-0.5`}>
             <span className={`text-[11px] ${i === meses.length - 1 ? 'text-accent font-semibold' : 'text-muted'}`}>{m.curto}{m.parcial ? '*' : ''}</span>
-            <MudancaDoMes m={m} />
+            <MudancaDoMes m={m} oQue={medida.oQue} />
           </span>
         ))}
       </div>
@@ -266,9 +317,9 @@ function GanhosMesAMes({ meses, abrir }: { meses: RelatorioDeVendas['meses']; ab
   );
 }
 
-/** "▲ 23%" (verde) ou "▼ 8%" (laranja) em relação ao mês anterior; sem ganho antes, um traço. */
-function MudancaDoMes({ m }: { m: RelatorioDeVendas['meses'][number] }) {
-  if (!m.antes) return <span className="text-[10.5px] text-muted" title="O mês anterior não teve ganho">—</span>;
+/** "▲ 23%" (verde) ou "▼ 8%" (laranja) em relação ao mês anterior; sem nada antes, um traço. */
+function MudancaDoMes({ m, oQue }: { m: MesDeVendas; oQue: string }) {
+  if (!m.antes) return <span className="text-[10.5px] text-muted" title={`O mês anterior não teve ${oQue}`}>—</span>;
   const d = m.ganho - m.antes;
   if (d === 0) return <span className="text-[10.5px] text-muted" title="Igual ao mês anterior">=</span>;
   const sobe = d > 0;
@@ -319,21 +370,29 @@ function Funil({ r, abrir }: { r: RelatorioDeVendas; abrir: (a: Aberta) => void 
   );
 }
 
-/** A janela das negociações por trás de um número: o código (abre a negociação), a empresa, o valor e como está. */
+/**
+ * A janela das negociações por trás de um número: o código (abre a negociação), a empresa, o valor e como
+ * está. O valor é a mensalidade; no que é da ativação, a ativação (e a soma também).
+ */
 function JanelaDasNegociacoes({ aberta, r, onFechar }: { aberta: Aberta; r: RelatorioDeVendas; onFechar: () => void }) {
   const porId = useMemo(() => new Map(r.negociacoes.map((n) => [n.id, n])), [r.negociacoes]);
   const lista = aberta.ids.map((id) => porId.get(id)).filter((n): n is NegociacaoDoRelatorio => !!n);
-  const soma = lista.reduce((t, n) => t + (n.valor ?? 0), 0);
+  const daAtivacao = aberta.medida === 'ativacao';
+  const soma = lista.reduce((t, n) => t + ((daAtivacao ? n.ativacao : n.valor) ?? 0), 0);
   return (
     <Modal open onClose={onFechar} largura="max-w-2xl" titulo={aberta.titulo}>
-      <p className="text-[13px] text-muted mb-2" id="janela-negociacoes-total">{plural(lista.length, 'negociação', 'negociações')}{soma ? ` · ${reaisInteiros(soma)}` : ''}</p>
+      <p className="text-[13px] text-muted mb-2" id="janela-negociacoes-total">{plural(lista.length, 'negociação', 'negociações')}{soma ? ` · ${reaisInteiros(soma)}${daAtivacao ? ' de ativação' : ''}` : ''}</p>
       <ul className="divide-y divide-line -mx-1" id="janela-negociacoes">
         {lista.map((n) => (
           <li key={n.id} className="py-2.5 px-1 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 text-[13.5px]">
             <LinkDoChamado codigo={n.codigo} onClick={onFechar} className="min-w-0 hover:text-accent">
               <span className="font-mono text-[12px] text-muted mr-1.5">{n.codigo}</span><span className="font-semibold">{n.titulo}</span>
             </LinkDoChamado>
-            <span className="tnum font-semibold text-right">{n.valor === null ? <span className="text-muted font-normal">sem mensalidade</span> : <>{reaisInteiros(n.valor)}<span className="font-normal text-muted">/mês</span></>}</span>
+            <span className="tnum font-semibold text-right">
+              {daAtivacao
+                ? (n.ativacao === null ? <span className="text-muted font-normal">sem ativação</span> : <>{reaisInteiros(n.ativacao)}<span className="font-normal text-muted"> de ativação</span></>)
+                : (n.valor === null ? <span className="text-muted font-normal">sem mensalidade</span> : <>{reaisInteiros(n.valor)}<span className="font-normal text-muted">/mês</span></>)}
+            </span>
             <span className="text-[12.5px] text-muted min-w-0 truncate">{[n.empresa ?? 'sem empresa', n.responsavel ?? 'sem dono'].join(' · ')}</span>
             <span className="text-right text-[12.5px]">
               {n.resultado ? <ChipResultado r={n.resultado} motivo={n.motivoPerda} em={n.fechadoEm} /> : <span className="text-ink-2">{n.etapa}</span>}
