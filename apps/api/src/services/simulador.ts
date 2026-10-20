@@ -166,8 +166,9 @@ export async function ler(db: Db, ator: Ator, id: string): Promise<Simulacao> {
  * simulação exporta; a rota registra na auditoria.
  */
 export async function planilha(db: Db, ator: Ator, id: string): Promise<{ bytes: Uint8Array; nome: string; simulacao: string }> {
-  const [s, ajustes] = await Promise.all([ler(db, ator, id), lerAjustes(db)]);
-  return { ...planilhaDaSimulacao({ simulacao: s, faixas: ajustes, quem: ator.nome, quando: new Date() }), simulacao: s.nome };
+  const [s, ajustes, produtos] = await Promise.all([ler(db, ator, id), lerAjustes(db), produtosDoCatalogo(db)]);
+  const nomesDosProdutos = Object.fromEntries(produtos.map((x) => [x.codigo, x.nome]));
+  return { ...planilhaDaSimulacao({ simulacao: s, faixas: ajustes, quem: ator.nome, quando: new Date(), nomesDosProdutos }), simulacao: s.nome };
 }
 
 /** As simulações ligadas a uma negociação (a ficha dela). Quem não vê a negociação não vê nada. */

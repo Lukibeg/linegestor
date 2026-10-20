@@ -76,8 +76,22 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   - **a quantidade pelos ramais**: as linhas "por ramal" acompanham os ramais do cenário;
   - **os modelos prontos por produto**: a simulação nova começa em branco ou com as linhas de um modelo
     (os custos da tabela, com a quantidade de cada um ou "por ramal"). Cada modelo diz **o produto** do
-    catálogo (LinePBX, LineChat, VoiceNet…; o "LinePBX + LineChat" fica sem), e **cada cenário tem os
-    produtos** da venda: o modelo traz o dele, e a pessoa põe e tira;
+    catálogo (LinePBX, LineChat, VoiceNet…), e **cada cenário tem os produtos** da venda: o modelo traz o
+    dele, e a pessoa põe e tira;
+  - **vários produtos, cada um com o seu preço**: o Luan, num comentário na prévia: *"tem tbm a voicenet,
+    faça um multi seleção, que no caso é uma proposta separada, porém uma negociação única"*. A **Nova
+    simulação** marca quantos modelos a pessoa quiser (no lugar dos modelos prontos com dois produtos, como o
+    "LinePBX + LineChat" da prévia, que saiu). A simulação começa com os custos de todos: cada produto traz
+    os dele (os canais de voz do VoiceNet e os do PABX; a instalação de cada um), e só a comissão, que é
+    sobre o preço inteiro, não repete; cada linha guarda o produto do modelo de onde veio. Com dois produtos
+    ou mais, o preço é **um valor só** ou **por produto** (o mesmo "Um valor só | Por produto" da
+    negociação): a mensalidade e a ativação de cada produto, e a do cenário é a soma — a conta e a margem
+    são as da negociação inteira. Ao passar para "por produto", o valor de agora fica no primeiro; pôr um
+    produto começa com zero, tirar leva o preço dele. O **Levar** põe o valor de cada produto na
+    negociação (o valor por produto que ela já tem), com o aluguel e a venda de cada aparelho no produto da
+    linha dele (a linha sem produto, no primeiro); o **Simular** de uma negociação com o valor por produto
+    começa com o preço de cada produto dela. O Excel põe a tabela do preço de cada produto ao lado do que o
+    cliente paga (até 8 produtos), e a mensalidade e a ativação viram as somas;
   - **levar para a negociação**: na simulação ligada a uma negociação em aberto, o **Levar para a COM-x**
     põe na negociação o que o cliente paga no cenário principal — a mensalidade (com o aluguel dos
     aparelhos), a ativação (com os aparelhos vendidos) e os produtos do cenário (sem produto no cenário,
@@ -151,11 +165,12 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   `ticket_id` —, os cenários num `jsonb`, o principal e a lixeira). Os Ajustes ficam em
   `settings.comercial-simulador`.
 - **A prévia.** A tabela da Helena e a do PABX (os telefones sem valor, a nuvem por ramal, os números, os
-  canais, a configuração e as comissões), os modelos LinePBX em nuvem, LineChat (Helena), VoiceNet e
-  LinePBX + LineChat, e sete simulações: a **Padaria Estrela** com três cenários — comodato em 24 meses, os
+  canais, a configuração e as comissões), os modelos LinePBX em nuvem, LineChat (Helena) e VoiceNet, e
+  sete simulações: a **Padaria Estrela** com três cenários — comodato em 24 meses, os
   telefones vendidos em 12 meses com a ativação em 3x, e 10% de desconto em 36 meses —, o **Hotel Beira
-  Mar** (o PABX e o LineChat, os telefones comprados em 10 vezes, a ativação em 3x; a conta refeita pede
-  R$ 1.690, e a negociação ainda está com R$ 1.580: o Levar mostra a troca), a **Clínica Vida** no amarelo (o LineChat, sem negociação), as três
+  Mar** (o LinePBX a R$ 1.190 e o LineChat a R$ 500, cada um com o seu preço; os telefones comprados em 10
+  vezes; a ativação em 3x; a conta refeita pede R$ 1.690, e a negociação ainda está com R$ 1.580, num valor
+  só: o Levar mostra a troca e põe o valor de cada produto), a **Clínica Vida** no amarelo (o LineChat, sem negociação), as três
   ganhas do mês para a margem no relatório — a **Ótica Visão Clara** e a **Construtora Horizonte** (da
   Camila) no verde e a **Academia Movimento** (do Diego, o LineChat com 12 usuários) no vermelho — e a
   contraproposta da **Escola Mundo Kids** no vermelho (a negociação perdida). Na prévia publicada, o

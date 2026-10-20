@@ -6,7 +6,8 @@
  *
  * Cada linha mostra o cenário principal: o que o cliente paga por mês, o que sobra, a margem com o sinal
  * (verde, amarelo, vermelho, pelas faixas dos Ajustes) e quando a venda se paga. A Nova simulação começa em
- * branco ou de um modelo (os produtos: LinePBX, LineChat da Helena…).
+ * branco ou dos modelos marcados — quantos a pessoa quiser (o Luan, 20/10: "faça um multi seleção, que no caso
+ * é uma proposta separada, porém uma negociação única"): os custos de todos, e cada produto com o seu preço.
  */
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -26,25 +27,36 @@ export function SemOComercial() {
   return <Vazio titulo="O Simulador é de quem tem o Comercial" texto='Peça à administração o papel Comercial (ou a permissão "Ver o Comercial" no seu papel).' />;
 }
 
-/** O botão Nova simulação: em branco ou de um modelo. */
+/** O botão Nova simulação: em branco ou dos modelos marcados (um ou mais). */
 export function NovaSimulacao({ modelos }: { modelos: ModeloDeSimulacao[] }) {
   const nav = useNavigate();
-  const ir = (modelo?: string) => nav(`/comercial/simulador/nova${modelo ? `?modelo=${encodeURIComponent(modelo)}` : ''}`);
-  if (!modelos.length) return <button type="button" className="btn-primary" onClick={() => ir()} id="simulador-nova"><Plus size={16} /> Nova simulação</button>;
+  const [marcados, setMarcados] = useState<string[]>([]);
+  // os modelos vão na ordem da lista (o primeiro marcado não manda)
+  const ir = (ids: string[]) => nav(`/comercial/simulador/nova${ids.length ? `?modelo=${ids.map(encodeURIComponent).join(',')}` : ''}`);
+  const escolhidos = modelos.filter((m) => marcados.includes(m.id)).map((m) => m.id);
+  if (!modelos.length) return <button type="button" className="btn-primary" onClick={() => ir([])} id="simulador-nova"><Plus size={16} /> Nova simulação</button>;
   return (
-    <Popover classe="btn-primary" largura="w-[290px]" titulo="Nova simulação"
+    <Popover classe="btn-primary" largura="w-[310px]" titulo="Nova simulação"
       botao={() => <span className="inline-flex items-center gap-1.5" id="simulador-nova"><Plus size={16} /> Nova simulação</span>}>
       <div className="p-1.5 flex flex-col" id="simulador-nova-opcoes">
-        <div className="eyebrow px-2 pt-1 pb-1.5">Começar de um modelo</div>
+        <div className="eyebrow px-2 pt-1">Os produtos da venda</div>
+        <p className="px-2 pb-1.5 text-[12px] text-muted">Marque um ou mais. A simulação começa com os custos de todos, e cada produto tem o seu preço: a proposta de cada um, numa negociação só.</p>
         {modelos.map((m) => (
-          <button key={m.id} type="button" className="text-left px-2 py-1.5 rounded-md hover:bg-surface-2 text-sm" onClick={() => ir(m.id)} data-modelo={m.id}>
-            <span className="font-semibold">{m.nome}</span>
-            <span className="block text-[12px] text-muted">{m.linhas.length} {m.linhas.length === 1 ? 'custo' : 'custos'} da tabela</span>
-          </button>
+          <label key={m.id} className="flex items-start gap-2 px-2 py-1.5 rounded-md hover:bg-surface-2 text-sm cursor-pointer select-none" data-modelo={m.id}>
+            <input type="checkbox" className="mt-1" checked={marcados.includes(m.id)}
+              onChange={(e) => setMarcados((x) => (e.target.checked ? [...x, m.id] : x.filter((y) => y !== m.id)))} />
+            <span className="min-w-0">
+              <span className="font-semibold">{m.nome}</span>
+              <span className="block text-[12px] text-muted">{m.linhas.length} {m.linhas.length === 1 ? 'custo' : 'custos'} da tabela</span>
+            </span>
+          </label>
         ))}
-        <div className="border-t border-line mt-1 pt-1">
-          <button type="button" className="w-full text-left px-2 py-1.5 rounded-md hover:bg-surface-2 text-sm inline-flex items-center gap-2" onClick={() => ir()} data-modelo="">
+        <div className="border-t border-line mt-1 pt-1.5 px-1 flex items-center justify-between gap-2">
+          <button type="button" className="btn-ghost btn-sm" onClick={() => ir([])} data-modelo="">
             <FilePlus2 size={15} className="text-muted" /> Em branco
+          </button>
+          <button type="button" className="btn-primary btn-sm" disabled={!escolhidos.length} onClick={() => ir(escolhidos)} id="simulador-nova-comecar">
+            {escolhidos.length > 1 ? `Começar com os ${escolhidos.length}` : 'Começar'}
           </button>
         </div>
       </div>

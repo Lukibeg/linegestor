@@ -302,6 +302,28 @@ describe('a simulação', () => {
   });
 });
 
+describe('o preço por produto ("uma proposta separada, porém uma negociação única")', () => {
+  it('cada produto com o seu preço, na ordem dos produtos; o cenário soma; a auditoria diz quando muda', async () => {
+    const c = {
+      ...cenarioDaAurora(), id: 'p', produtos: ['linepbx', 'voicenet'], mensalidade: 1,
+      porProduto: [{ produto: 'voicenet', mensalidade: 42_000, ativacao: 0 }, { produto: 'linepbx', mensalidade: 99_000, ativacao: 150_000 }],
+    };
+    const r = await camila.post('/comercial/simulador/simulacoes', { nome: 'Colégio Saber', negociacaoId: null, cenarios: [c], principal: 'p' });
+    expect(r.statusCode, r.body).toBe(201);
+    const s: Simulacao = r.json();
+    expect(s.cenarios[0]).toMatchObject({
+      mensalidade: 141_000, ativacao: 150_000,
+      porProduto: [{ produto: 'linepbx', mensalidade: 99_000, ativacao: 150_000 }, { produto: 'voicenet', mensalidade: 42_000, ativacao: 0 }],
+    });
+    // as linhas do modelo guardam o produto dele
+    expect(s.cenarios[0]!.linhas.every((l) => l.produto === 'linepbx')).toBe(true);
+    const u = await camila.put(`/comercial/simulador/simulacoes/${s.id}`, { nome: 'Colégio Saber', negociacaoId: null, cenarios: [{ ...s.cenarios[0]!, porProduto: null }], principal: 'p' });
+    expect(u.statusCode, u.body).toBe(200);
+    expect(u.json().cenarios[0]).toMatchObject({ porProduto: null, mensalidade: 141_000 });
+    expect((await auditoriaDe(s.id))[0]).toBe('Mudou a simulação "Colégio Saber": no Cenário A, o preço voltou a ser um só');
+  });
+});
+
 describe('a margem no relatório do Comercial', () => {
   it('a ganha com simulação entra na margem das ganhas: no total, por vendedor e por produto', async () => {
     const linepbx = ((await camila.get('/comercial/simulador/opcoes')).json().produtos as Array<{ id: string; codigo: string; nome: string }>).find((x) => x.codigo === 'linepbx')!;

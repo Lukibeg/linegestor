@@ -5,7 +5,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, ajustesDoSimulador, cenarioNovo, contasDoCenario,
-  custoPorFaixas, dividirEmParcelas, duplicarCenario, linhaDaTabela, mudancasDaSimulacao, mudancasDosAjustes, precoDaUnidade, proximoNomeDeCenario, resumoDoCenario,
+  comPrecoPorProduto, custoPorFaixas, dividirEmParcelas, duplicarCenario, linhaDaTabela, linhasDoModelo, mudancasDaSimulacao, mudancasDosAjustes, normalizarPorProduto,
+  pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, resumoDoCenario,
   sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, margemDasGanhas, textoDoValorUnitario, lerPercentual, textoDoPercentual,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario,
 } from './simulador.js';
@@ -167,6 +168,53 @@ describe('a conta do cenário', () => {
     expect(contasDoCenario({ ...c, prazo: 6 }, FAIXAS).linhas.find((l) => l.id === 'tel')!.parcelas).toBe(6);
   });
 
+  it('o preço por produto ("uma proposta separada, porém uma negociação única"): um preço para cada produto, e o cenário soma', () => {
+    const c = { ...exemplo(), produtos: ['linepbx', 'voicenet'] };
+    // passar para o preço por produto: o valor de agora fica no primeiro, os outros começam com zero
+    const p = comPrecoPorProduto(c);
+    expect(p.porProduto).toEqual([{ produto: 'linepbx', mensalidade: 99_000, ativacao: 150_000 }, { produto: 'voicenet', mensalidade: 0, ativacao: 0 }]);
+    expect([p.mensalidade, p.ativacao]).toEqual([99_000, 150_000]);
+    // a gravação refaz as somas, põe na ordem dos produtos e completa o que falta
+    const s = SimulacaoGravarSchema.parse({ nome: 'Colégio', negociacaoId: null, principal: 'a', cenarios: [{
+      ...c, produtos: ['linepbx', 'voicenet', 'linechat'], mensalidade: 1, ativacao: 2,
+      porProduto: [{ produto: 'voicenet', mensalidade: 42_000, ativacao: 0 }, { produto: 'linepbx', mensalidade: 125_000, ativacao: 190_000 }, { produto: 'saiu', mensalidade: 5_000, ativacao: 0 }],
+    }] });
+    expect(s.cenarios[0]!.porProduto).toEqual([
+      { produto: 'linepbx', mensalidade: 125_000, ativacao: 190_000 }, { produto: 'voicenet', mensalidade: 42_000, ativacao: 0 }, { produto: 'linechat', mensalidade: 0, ativacao: 0 },
+    ]);
+    expect([s.cenarios[0]!.mensalidade, s.cenarios[0]!.ativacao]).toEqual([167_000, 190_000]);
+    // com um produto só, volta a um valor só: o preço do produto que ficou (o que saiu leva o dele)
+    const um = normalizarPorProduto({ ...s.cenarios[0]!, produtos: ['linepbx'] });
+    expect(um.porProduto).toBeNull();
+    expect([um.mensalidade, um.ativacao]).toEqual([125_000, 190_000]);
+    // um valor só, sem o preço por produto: nada muda
+    expect(normalizarPorProduto({ ...exemplo(), porProduto: undefined })).toMatchObject({ porProduto: null, mensalidade: 99_000 });
+    // a simulação de antes (sem o campo) grava com um valor só
+    expect(SimulacaoGravarSchema.parse({ nome: 'X', negociacaoId: null, principal: 'a', cenarios: [exemplo()] }).cenarios[0]!.porProduto).toBeNull();
+  });
+
+  it('o que o cliente paga em cada produto: o aparelho vendido ou alugado entra no produto da linha (a sem produto, no primeiro)', () => {
+    const c: CenarioDaSimulacao = {
+      ...exemplo(), produtos: ['linepbx', 'linechat'],
+      porProduto: [{ produto: 'linepbx', mensalidade: 80_000, ativacao: 100_000 }, { produto: 'linechat', mensalidade: 19_000, ativacao: 50_000 }],
+      linhas: [
+        linha({ id: 'tel', tipo: 'aparelho', qtd: 10, valor: 39_000, modalidade: 'venda', preco: 45_000, produto: 'linepbx' }),
+        linha({ id: 'fone', tipo: 'aparelho', qtd: 2, valor: 18_000, modalidade: 'locacao', preco: 1_500, produto: 'linechat' }),
+        linha({ id: 'head', tipo: 'aparelho', qtd: 4, valor: 10_000, modalidade: 'locacao', preco: 1_000 }),
+      ],
+    };
+    const k = contasDoCenario(c, FAIXAS);
+    const r = pagamentoPorProduto(c, k)!;
+    expect(r).toEqual([
+      { produto: 'linepbx', mensalidade: 80_000, ativacao: 100_000, aluguel: 4_000, venda: 450_000 },
+      { produto: 'linechat', mensalidade: 19_000, ativacao: 50_000, aluguel: 3_000, venda: 0 },
+    ]);
+    // as somas são o que o cliente paga no cenário
+    expect(r.reduce((s, x) => s + x.mensalidade + x.aluguel, 0)).toBe(k.mensalTotal);
+    expect(r.reduce((s, x) => s + x.ativacao + x.venda, 0)).toBe(k.entradaTotal);
+    expect(pagamentoPorProduto({ ...c, porProduto: null }, k)).toBeNull();
+  });
+
   it('a compra parcelada só no aparelho: à vista não guarda nada; até 24 vezes', () => {
     const c = exemplo();
     const comParcelas = (o: Record<string, number>) => ({ ...c, linhas: c.linhas.map((l) => (o[l.id] ? { ...l, parcelas: o[l.id] } : l)) });
@@ -213,6 +261,13 @@ describe('montar o cenário', () => {
     expect(dois.linhas).toHaveLength(3 + MODELO_DA_HELENA.linhas.length);
     // o mesmo modelo duas vezes: as linhas não repetem
     expect(cenarioNovo(ajustes, { modelos: [ajustes.modelos[0]!, ajustes.modelos[0]!] }).linhas).toHaveLength(3);
+    // dois produtos com o mesmo custo: cada um traz o seu (uma proposta por produto); a comissão, sobre o preço inteiro, uma vez só
+    const voicenet = { id: 'vn', nome: 'VoiceNet', produto: 'voicenet', linhas: [{ custoId: 'nuvem', qtd: 4, porRamal: false }, { custoId: 'rec', qtd: 1, porRamal: false }] };
+    const juntos = cenarioNovo(ajustes, { modelos: [ajustes.modelos[0]!, voicenet] });
+    expect(juntos.linhas.map((l) => [l.custoId, l.produto, l.porRamal ? 'ramal' : l.qtd])).toEqual([
+      ['yealink', 'linepbx', 'ramal'], ['nuvem', 'linepbx', 'ramal'], ['rec', 'linepbx', 1], ['nuvem', 'voicenet', 4],
+    ]);
+    expect(juntos.produtos).toEqual(['linepbx', 'voicenet']);
     expect(c.linhas.map((l) => [l.nome, l.tipo, l.custoId, l.porRamal, l.valor])).toEqual([
       ['Yealink T31P', 'aparelho', 'yealink', true, null], // o aparelho sem valor: preenche em cada simulação
       ['Nuvem por ramal', 'mensal', 'nuvem', true, 900],
@@ -297,6 +352,21 @@ describe('o que mudou (a auditoria)', () => {
       'o principal passou a ser o Cenário B',
     ]);
     expect(mudancasDaSimulacao(depois, { ...depois, cenarios: [depois.cenarios[0]!], principal: 'a' })).toEqual(['tirou o Cenário B', 'o principal passou a ser o Cenário A']);
+    // o preço por produto: passou a ser, mudou, voltou a ser um só
+    const dois = { ...exemplo(), produtos: ['linepbx', 'voicenet'] };
+    const porProduto = comPrecoPorProduto(dois);
+    const s = (c: CenarioDaSimulacao) => ({ nome: 'Clínica', negociacaoId: null, cenarios: [c], principal: 'a' });
+    expect(mudancasDaSimulacao(s(dois), s(porProduto))).toEqual(['no Cenário A, o preço passou a ser por produto']);
+    const mudou = normalizarPorProduto({ ...porProduto, porProduto: [{ produto: 'linepbx', mensalidade: 99_000, ativacao: 150_000 }, { produto: 'voicenet', mensalidade: 42_000, ativacao: 0 }] });
+    expect(mudancasDaSimulacao(s(porProduto), s(mudou)).map((x) => x.replace(/\u00a0/g, ' '))).toEqual(['no Cenário A, a mensalidade de R$ 990,00 para R$ 1.410,00, o preço de cada produto']);
+    expect(mudancasDaSimulacao(s(mudou), s({ ...mudou, porProduto: null }))).toEqual(['no Cenário A, o preço voltou a ser um só']);
+  });
+
+  it('o modelo põe o produto dele em cada linha (o aparelho vendido ou alugado entra nele, no preço por produto)', () => {
+    const linhas = linhasDoModelo(AJUSTES_DO_SIMULADOR_PADRAO, MODELO_DA_HELENA);
+    expect(linhas.length).toBeGreaterThan(0);
+    expect(linhas.every((l) => l.produto === MODELO_DA_HELENA.produto)).toBe(true);
+    expect('produto' in linhasDoModelo(AJUSTES_DO_SIMULADOR_PADRAO, { ...MODELO_DA_HELENA, produto: null })[0]!).toBe(false);
   });
 
   it('nos Ajustes', () => {

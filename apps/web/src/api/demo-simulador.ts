@@ -8,9 +8,12 @@
  *
  * Os exemplos: a tabela de custos — a da Helena (o LineChat, por faixas: a de fábrica) e a do PABX (os
  * aparelhos sem valor: o Luan preenche em cada simulação, "pq pode alterar esses valores por data") —, os
- * modelos LinePBX em nuvem, LineChat (Helena) e LinePBX + LineChat, e quatro simulações: a Padaria Estrela com três cenários (comodato em 24 meses, os telefones vendidos em 12 meses e
- * 10% de desconto), o Hotel Beira Mar com a ativação em 3 vezes, a Clínica Vida no amarelo (sem negociação)
- * e a contraproposta da Escola Mundo Kids no vermelho (a negociação perdida).
+ * modelos LinePBX em nuvem, LineChat (Helena) e VoiceNet (a simulação nova marca quantos quiser: "uma proposta
+ * separada, porém uma negociação única"), e as simulações: a Padaria Estrela com três cenários (comodato em 24
+ * meses, os telefones vendidos em 12 meses e 10% de desconto), o Hotel Beira Mar (o LinePBX e o LineChat, cada
+ * um com o seu preço; os telefones comprados em 10 vezes; a ativação em 3 vezes), a Clínica Vida no amarelo
+ * (sem negociação), as três ganhas do mês (a margem no relatório) e a contraproposta da Escola Mundo Kids no
+ * vermelho (a negociação perdida).
  */
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, cenarioNovo, cenarioPrincipal, mudancasDaSimulacao,
@@ -74,7 +77,6 @@ const MODELOS_DE_EXEMPLO: ModeloDeSimulacao[] = [
   { id: 'linepbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [l('t31p', 1, true), l('nuvem', 1, true), l('did', 2), l('canal', 2), l('config'), ...COMISSOES] },
   { ...MODELO_DA_HELENA, linhas: [...MODELO_DA_HELENA.linhas, l('config'), ...COMISSOES] },
   { id: 'voicenet', nome: 'VoiceNet (os canais de voz)', produto: 'voicenet', linhas: [l('canal', 10), l('did', 4), ...COMISSOES] },
-  { id: 'pbx-chat', nome: 'LinePBX + LineChat', produto: null, linhas: [l('t31p', 1, true), l('nuvem', 1, true), l('did', 2), l('canal', 2), ...MODELO_DA_HELENA.linhas, l('config'), ...COMISSOES] },
 ];
 export const AJUSTES_DO_SIMULADOR_DEMO: AjustesDoSimulador = { ...AJUSTES_DO_SIMULADOR_PADRAO, custos: [...CUSTOS_DA_HELENA, ...CUSTOS_DO_PABX], modelos: MODELOS_DE_EXEMPLO };
 
@@ -150,8 +152,8 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
     const a = X.ajustes;
     const modelo = (id: string) => a.modelos.find((m) => m.id === id)!;
     /** O cenário de um modelo, com os números e os valores dos aparelhos (o que o vendedor preencheu). */
-    const cenario = (id: string, nome: string, modeloId: string, n: Partial<CenarioDaSimulacao>, mudar: (l: LinhaDoCenario) => LinhaDoCenario | null = (x2) => x2): CenarioDaSimulacao => {
-      const c = cenarioNovo(a, { id, nome, modelo: modelo(modeloId) });
+    const cenario = (id: string, nome: string, modeloId: string | string[], n: Partial<CenarioDaSimulacao>, mudar: (l: LinhaDoCenario) => LinhaDoCenario | null = (x2) => x2): CenarioDaSimulacao => {
+      const c = cenarioNovo(a, { id, nome, modelos: (Array.isArray(modeloId) ? modeloId : [modeloId]).map(modelo) });
       return { ...c, ...n, linhas: c.linhas.map(mudar).filter((x2): x2 is LinhaDoCenario => !!x2) };
     };
     const telefone = (valor: number, extra: Partial<LinhaDoCenario> = {}) => (x2: LinhaDoCenario) => (x2.custoId === 't31p' ? { ...x2, valor, ...extra } : x2);
@@ -181,7 +183,11 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       nome: 'Hotel Beira Mar — URA, filas e LineChat', negociacaoId: negociacao('Atendimento com URA e filas'), principal: 'a',
       criadoPorId: pessoa('diego'), criadoEm: dias(12), alteradoEm: dias(4, 11),
       cenarios: [
-        cenario('a', 'Cenário A', 'pbx-chat', { mensalidade: 169_000, ativacao: 250_000, ramais: 30, prazo: 36, parcelas: 3, produtos: ['linepbx', 'linechat'] },
+        // os dois produtos, cada um com o seu preço (a proposta de cada um, numa negociação só): R$ 1.190 + R$ 500
+        cenario('a', 'Cenário A', ['linepbx', 'linechat-helena'], {
+          mensalidade: 169_000, ativacao: 250_000, ramais: 30, prazo: 36, parcelas: 3, produtos: ['linepbx', 'linechat'],
+          porProduto: [{ produto: 'linepbx', mensalidade: 119_000, ativacao: 200_000 }, { produto: 'linechat', mensalidade: 50_000, ativacao: 50_000 }],
+        },
           (x2) => (x2.custoId === 't31p' ? { ...x2, porRamal: false, qtd: 20, valor: 39_000, parcelas: 10 } : quantidade(x2, { 'helena-usuarios': 4, 'helena-canais': 2, 'helena-zapi': 1, 'helena-contatos': 8_000 }))),
       ],
     });
@@ -312,7 +318,8 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       ctx.requirePerm('sales.read'); preparar();
       const a = x().eu();
       const s = paraTela(linhaOu404(id), a);
-      const r = planilhaDaSimulacao({ simulacao: s, faixas: X.ajustes, quem: a.tipo === 'pessoa' ? nomeDe(a.id) : null, quando: agora() });
+      const nomesDosProdutos = Object.fromEntries(produtos().map((x) => [x.codigo, x.nome]));
+      const r = planilhaDaSimulacao({ simulacao: s, faixas: X.ajustes, quem: a.tipo === 'pessoa' ? nomeDe(a.id) : null, quando: agora(), nomesDosProdutos });
       ctx.audit('export', 'sales_simulation', `Exportou a simulação "${s.nome}" para o Excel`, id);
       return r;
     },

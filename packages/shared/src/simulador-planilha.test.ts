@@ -146,6 +146,15 @@ describe('a planilha da simulação', () => {
     expect(Number(l.get('C10')!.v)).toBeCloseTo(contasDoCenario(b, A).sobraMensal / 100, 2);
   });
 
+  it('o preço por produto: a tabela ao lado, e a mensalidade e a ativação são as somas', () => {
+    const c = { ...pbx(), produtos: ['linepbx', 'voicenet'], porProduto: [{ produto: 'linepbx', mensalidade: 125_000, ativacao: 190_000 }, { produto: 'voicenet', mensalidade: 42_000, ativacao: 0 }], mensalidade: 167_000 };
+    const r = planilhaDaSimulacao({ simulacao: simulacao([c]), faixas: A, quem: null, quando: QUANDO, nomesDosProdutos: { linepbx: 'LinePBX', voicenet: 'VoiceNet' } });
+    const cel = celulas(new TextDecoder().decode(lerZipSemCompressao(r.bytes).get('xl/worksheets/sheet1.xml')));
+    expect([cel.get('H6')!.v, cel.get('H7')!.v, cel.get('H8')!.v, cel.get('I8')!.v, cel.get('J8')!.v, cel.get('H9')!.v, cel.get('I9')!.v]).toEqual(['O preço de cada produto', 'Produto', 'LinePBX', '1250', '1900', 'VoiceNet', '420']);
+    expect(cel.get('B7')).toEqual({ f: 'SUM(I8:I9)', v: '1670' });
+    expect(cel.get('B8')).toEqual({ f: 'SUM(J8:J9)', v: '1900' });
+  });
+
   it('um cenário só: sem a "Lado a lado"; a negociação de outro painel não aparece', () => {
     const c = { ...cenarioNovo(A, { id: 'h', nome: 'LineChat', modelo: MODELO_DA_HELENA }), mensalidade: 99_000 };
     const r = planilhaDaSimulacao({ simulacao: { ...simulacao([c], 'Clínica'), negociacao: null }, faixas: A, quem: null, quando: QUANDO });

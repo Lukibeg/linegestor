@@ -10,9 +10,10 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Copy, FileSpreadsheet, Link2, Send, Star, Trash2, X } from 'lucide-react';
 import {
-  MAX_CENARIOS, MAX_PARCELAS, PRAZOS_COMUNS, TIPO_DO_XLSX, cenarioNovo, cenarioPrincipal, contasDoCenario, duplicarCenario, idLocal, percentual, proximoNomeDeCenario,
-  textoDoSePagaEm,
-  type AjustesDoSimulador, type CenarioDaSimulacao, type FichaChamado, type NegociacaoDaSimulacao, type ProdutoDoSimulador, type Simulacao, type SimulacaoGravar,
+  MAX_CENARIOS, MAX_PARCELAS, PRAZOS_COMUNS, TIPO_DO_XLSX, cenarioNovo, cenarioPrincipal, comPrecoPorProduto, contasDoCenario, duplicarCenario, idLocal,
+  mesmoValorPorProduto, normalizarPorProduto, pagamentoPorProduto, percentual, proximoNomeDeCenario, textoDoSePagaEm,
+  type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario, type FichaChamado, type ModeloDeSimulacao, type NegociacaoDaSimulacao, type ProdutoDoSimulador,
+  type Simulacao, type SimulacaoGravar,
 } from '@gestor/shared';
 import { IS_DEMO, api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
@@ -59,8 +60,10 @@ export function SimulacaoDoComercial() {
   const ajustes = op.data!.ajustes;
   const produtos = op.data!.produtos;
   const inicial: Rascunho = nova ? (ficha.data ? daFicha(ficha.data, ajustes, produtos) : (() => {
-    const modelo = ajustes.modelos.find((m) => m.id === params.get('modelo')) ?? null;
-    const a = cenarioNovo(ajustes, { id: idLocal(), nome: 'Cenário A', modelo });
+    // os modelos marcados na Nova simulação (um ou mais, na ordem da lista); com dois produtos ou mais, cada um
+    // com o seu preço ("uma proposta separada, porém uma negociação única")
+    const modelos = (params.get('modelo') ?? '').split(',').map((x) => ajustes.modelos.find((m) => m.id === x.trim())).filter((m): m is ModeloDeSimulacao => !!m);
+    const a = comPrecoPorProduto(cenarioNovo(ajustes, { id: idLocal(), nome: 'Cenário A', modelos }));
     return { nome: '', negociacaoId: null, negociacao: null, cenarios: [a], principal: a.id };
   })()) : doServidor(lida.data!);
   return <Editor key={nova ? `nova-${params.get('modelo') ?? ''}-${daNegociacao ?? ''}` : id} id={nova ? null : id} inicial={inicial} simulacao={nova ? null : lida.data!} ajustes={ajustes} produtos={produtos} podeEditar={op.data!.podeEditar} />;
@@ -74,7 +77,15 @@ export function SimulacaoDoComercial() {
 function daFicha(f: FichaChamado, ajustes: AjustesDoSimulador, produtos: ProdutoDoSimulador[]): Rascunho {
   const codigos = f.produtos.map((p) => produtos.find((x) => x.id === p.id)?.codigo).filter((x): x is string => !!x);
   const modelos = ajustes.modelos.filter((m) => m.produto && codigos.includes(m.produto));
-  const a = { ...cenarioNovo(ajustes, { id: idLocal(), nome: 'Cenário A', modelos, produtos: codigos }), mensalidade: f.valor ?? 0, ativacao: f.ativacao ?? 0 };
+  const base = { ...cenarioNovo(ajustes, { id: idLocal(), nome: 'Cenário A', modelos, produtos: codigos }), mensalidade: f.valor ?? 0, ativacao: f.ativacao ?? 0 };
+  // a negociação com o valor por produto: o preço de cada produto vem dela (o valor único, no primeiro)
+  const porProduto = Object.keys(f.valoresDosProdutos ?? {}).length > 0 || Object.keys(f.ativacoesDosProdutos ?? {}).length > 0;
+  const idDe = (cod: string) => produtos.find((p) => p.codigo === cod)?.id ?? '';
+  const doProduto = (v: Record<string, number> | null | undefined, unico: number | null, cod: string, i: number) =>
+    (Object.keys(v ?? {}).length ? v?.[idDe(cod)] ?? 0 : i === 0 ? unico ?? 0 : 0);
+  const a = base.produtos.length >= 2 && porProduto
+    ? normalizarPorProduto({ ...base, porProduto: base.produtos.map((cod, i) => ({ produto: cod, mensalidade: doProduto(f.valoresDosProdutos, f.valor, cod, i), ativacao: doProduto(f.ativacoesDosProdutos, f.ativacao, cod, i) })) })
+    : base;
   const empresa = f.cliente?.nome ?? f.empresa ?? null;
   return {
     nome: [empresa, f.titulo].filter(Boolean).join(' — ').slice(0, 120), negociacaoId: f.id, cenarios: [a], principal: a.id,
@@ -219,15 +230,21 @@ function Editor({ id, inicial, simulacao, ajustes, produtos, podeEditar }: {
                 </div>
               )}
             </div>
+            <ProdutosDoCenario c={c} produtos={produtos} mudar={mudarCenario} podeEditar={podeEditar} />
+            {c.porProduto && <PrecoPorProduto c={c} k={k} produtos={produtos} mudar={mudarCenario} podeEditar={podeEditar} />}
             <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
-              <label className="min-w-0">
-                <span className="label">Mensalidade</span>
-                <CampoDeReais valor={c.mensalidade} onChange={(v) => mudarCenario({ mensalidade: v ?? 0 })} disabled={!podeEditar} id="simulador-mensalidade" />
-              </label>
-              <label className="min-w-0">
-                <span className="label">Ativação</span>
-                <CampoDeReais valor={c.ativacao} onChange={(v) => mudarCenario({ ativacao: v ?? 0 })} disabled={!podeEditar} id="simulador-ativacao" />
-              </label>
+              {!c.porProduto && (
+                <>
+                  <label className="min-w-0">
+                    <span className="label">Mensalidade</span>
+                    <CampoDeReais valor={c.mensalidade} onChange={(v) => mudarCenario({ mensalidade: v ?? 0 })} disabled={!podeEditar} id="simulador-mensalidade" />
+                  </label>
+                  <label className="min-w-0">
+                    <span className="label">Ativação</span>
+                    <CampoDeReais valor={c.ativacao} onChange={(v) => mudarCenario({ ativacao: v ?? 0 })} disabled={!podeEditar} id="simulador-ativacao" />
+                  </label>
+                </>
+              )}
               <label className="min-w-0">
                 <span className="label">A ativação em</span>
                 <select className="input" value={c.parcelas} onChange={(e) => mudarCenario({ parcelas: Number(e.target.value) })} disabled={!podeEditar} id="simulador-parcelas">
@@ -262,7 +279,6 @@ function Editor({ id, inicial, simulacao, ajustes, produtos, podeEditar }: {
                 )}
               </label>
             </div>
-            <ProdutosDoCenario c={c} produtos={produtos} mudar={mudarCenario} podeEditar={podeEditar} />
             <p className="mt-3 pt-3 border-t border-line text-[13px] text-ink-2" id="simulador-o-cliente-paga">
               O cliente paga <b className="tabular-nums">{reaisLimpo(k.mensalTotal)}</b> por mês
               {k.aluguel > 0 && <span className="text-muted"> (com {reaisLimpo(k.aluguel)} de aluguel dos aparelhos)</span>}
@@ -382,26 +398,92 @@ function Negociacao({ r, mudar, podeEditar }: { r: Rascunho; mudar: (n: Negociac
   );
 }
 
-/** Os produtos do catálogo que a venda leva (o "Levar para a negociação" põe estes nela). */
+/**
+ * Os produtos do catálogo que a venda leva (o "Levar para a negociação" põe estes nela). Pôr ou tirar um produto
+ * refaz o preço por produto (o que entra começa com zero; o que sai leva o preço dele). Com dois produtos ou
+ * mais, o preço é um só ou por produto (a proposta de cada um, numa negociação só).
+ */
 function ProdutosDoCenario({ c, produtos, mudar, podeEditar }: { c: CenarioDaSimulacao; produtos: ProdutoDoSimulador[]; mudar: (m: Partial<CenarioDaSimulacao>) => void; podeEditar: boolean }) {
   const nome = (codigo: string) => produtos.find((p) => p.codigo === codigo)?.nome ?? codigo;
   const fora = produtos.filter((p) => !c.produtos.includes(p.codigo));
+  const comProdutos = (lista: string[]) => {
+    const n = normalizarPorProduto({ ...c, produtos: lista });
+    return { produtos: n.produtos, porProduto: n.porProduto, mensalidade: n.mensalidade, ativacao: n.ativacao };
+  };
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[12.5px]" id="simulador-produtos">
+    <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[12.5px]" id="simulador-produtos">
       <span className="text-ink-2 font-semibold mr-0.5">Produtos</span>
       {c.produtos.map((cod) => (
         <span key={cod} className="chip bg-surface-2 text-ink-2" data-produto={cod}>
           {nome(cod)}
-          {podeEditar && <button type="button" className="text-muted hover:text-bad" onClick={() => mudar({ produtos: c.produtos.filter((x) => x !== cod) })} aria-label={`Tirar ${nome(cod)}`}><X size={12} /></button>}
+          {podeEditar && <button type="button" className="text-muted hover:text-bad" onClick={() => mudar(comProdutos(c.produtos.filter((x) => x !== cod)))} aria-label={`Tirar ${nome(cod)}`}><X size={12} /></button>}
         </span>
       ))}
       {!c.produtos.length && <span className="text-muted">nenhum</span>}
       {podeEditar && fora.length > 0 && (
-        <select className="input !w-auto !py-0.5 !pl-2 !text-[12.5px]" value="" onChange={(e) => e.target.value && mudar({ produtos: [...c.produtos, e.target.value] })} aria-label="Pôr um produto" id="simulador-produto-incluir">
+        <select className="input !w-auto !py-0.5 !pl-2 !text-[12.5px]" value="" onChange={(e) => e.target.value && mudar(comProdutos([...c.produtos, e.target.value]))} aria-label="Pôr um produto" id="simulador-produto-incluir">
           <option value="">+ produto</option>
           {fora.map((p) => <option key={p.codigo} value={p.codigo}>{p.nome}</option>)}
         </select>
       )}
+      {c.produtos.length >= 2 && (
+        <span className="ml-auto inline-flex rounded-lg border border-line-strong overflow-hidden" role="radiogroup" aria-label="O preço" id="simulador-modo-do-preco">
+          {([['um', 'Um valor só'], ['produto', 'Por produto']] as const).map(([v, rotulo]) => {
+            const marcado = v === 'produto' ? !!c.porProduto : !c.porProduto;
+            return (
+              <button key={v} type="button" role="radio" aria-checked={marcado} disabled={!podeEditar} data-modo={v}
+                onClick={() => { if (marcado) return; const n = v === 'produto' ? comPrecoPorProduto(c) : { ...c, porProduto: null }; mudar({ porProduto: n.porProduto, mensalidade: n.mensalidade, ativacao: n.ativacao }); }}
+                className={`px-2.5 py-1 text-[12px] font-semibold border-r border-line-strong last:border-r-0 ${marcado ? 'bg-accent-soft text-accent-ink' : 'bg-surface text-ink-2 hover:bg-surface-2'}`}>
+                {rotulo}
+              </button>
+            );
+          })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * O preço de cada produto (a proposta de cada um, numa negociação só): a mensalidade e a ativação de cada
+ * produto, e o total, que é o do cenário. O aparelho vendido ou alugado entra no produto da linha dele.
+ */
+function PrecoPorProduto({ c, k, produtos, mudar, podeEditar }: {
+  c: CenarioDaSimulacao; k: ContasDoCenario; produtos: ProdutoDoSimulador[]; mudar: (m: Partial<CenarioDaSimulacao>) => void; podeEditar: boolean;
+}) {
+  const nome = (codigo: string) => produtos.find((p) => p.codigo === codigo)?.nome ?? codigo;
+  const pagamento = pagamentoPorProduto(c, k) ?? [];
+  const mudarPreco = (produto: string, m: { mensalidade?: number; ativacao?: number }) => {
+    const n = normalizarPorProduto({ ...c, porProduto: (c.porProduto ?? []).map((x) => (x.produto === produto ? { ...x, ...m } : x)) });
+    mudar({ porProduto: n.porProduto, mensalidade: n.mensalidade, ativacao: n.ativacao });
+  };
+  return (
+    <div className="mb-3 rounded-lg border border-line p-3" id="simulador-por-produto">
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,132px)_minmax(0,132px)] gap-x-2 gap-y-1.5 items-center">
+        <span className="text-[11.5px] font-semibold text-muted">Produto</span>
+        <span className="text-[11.5px] font-semibold text-muted">Mensalidade</span>
+        <span className="text-[11.5px] font-semibold text-muted">Ativação</span>
+        {(c.porProduto ?? []).map((x) => {
+          const pg = pagamento.find((y) => y.produto === x.produto);
+          return (
+            <div key={x.produto} className="contents" data-produto-preco={x.produto}>
+              <span className="min-w-0 text-[13px] font-semibold text-ink-2">
+                <span className="block truncate">{nome(x.produto)}</span>
+                {pg && (pg.aluguel > 0 || pg.venda > 0) && (
+                  <span className="block text-[11.5px] font-normal text-muted">
+                    + {[pg.aluguel > 0 ? `${reaisLimpo(pg.aluguel)}/mês de aluguel` : '', pg.venda > 0 ? `${reaisLimpo(pg.venda)} de aparelhos vendidos` : ''].filter(Boolean).join(' e ')}
+                  </span>
+                )}
+              </span>
+              <CampoDeReais valor={x.mensalidade} onChange={(v) => mudarPreco(x.produto, { mensalidade: v ?? 0 })} disabled={!podeEditar} aria-label={`A mensalidade do ${nome(x.produto)}`} data-campo="mensalidade-do-produto" />
+              <CampoDeReais valor={x.ativacao} onChange={(v) => mudarPreco(x.produto, { ativacao: v ?? 0 })} disabled={!podeEditar} aria-label={`A ativação do ${nome(x.produto)}`} data-campo="ativacao-do-produto" />
+            </div>
+          );
+        })}
+        <span className="text-[13px] font-semibold pt-1.5 border-t border-line">Total</span>
+        <span className="text-[13.5px] font-semibold tabular-nums text-right pt-1.5 border-t border-line pr-3" id="simulador-mensalidade-total">{reaisLimpo(c.mensalidade)}</span>
+        <span className="text-[13.5px] font-semibold tabular-nums text-right pt-1.5 border-t border-line pr-3" id="simulador-ativacao-total">{reaisLimpo(c.ativacao)}</span>
+      </div>
     </div>
   );
 }
@@ -419,11 +501,18 @@ function LevarParaANegociacao({ negociacao, cenario, ajustes, produtos, onFechar
   const toast = useToast();
   const ficha = useQuery({ queryKey: ['simulador-levar', negociacao.id], queryFn: () => api.atendimento.chamado(negociacao.id), staleTime: 0 });
   const k = contasDoCenario(cenario, ajustes);
-  const ids = cenario.produtos.map((cod) => produtos.find((p) => p.codigo === cod)?.id).filter((x): x is string => !!x);
+  const idDe = (cod: string) => produtos.find((p) => p.codigo === cod)?.id;
+  const ids = cenario.produtos.map(idDe).filter((x): x is string => !!x);
   const nomes = cenario.produtos.map((cod) => produtos.find((p) => p.codigo === cod)?.nome ?? cod);
+  // o preço por produto vai como o valor por produto da negociação (todos os produtos no catálogo); o aparelho
+  // vendido ou alugado entra no produto dele
+  const pagamento = ids.length === cenario.produtos.length ? pagamentoPorProduto(cenario, k) : null;
+  const valores = pagamento ? Object.fromEntries(pagamento.map((x) => [idDe(x.produto)!, x.mensalidade + x.aluguel])) : null;
+  const ativacoes = pagamento && pagamento.some((x) => x.ativacao + x.venda > 0) ? Object.fromEntries(pagamento.map((x) => [idDe(x.produto)!, x.ativacao + x.venda])) : null;
   const levar = useMutation({
     mutationFn: () => api.atendimento.alterar(negociacao.id, {
-      valor: k.mensalTotal || null, valoresDosProdutos: null, ativacao: k.entradaTotal || null, ativacoesDosProdutos: null,
+      valor: valores ? k.mensalTotal : k.mensalTotal || null, valoresDosProdutos: valores,
+      ativacao: ativacoes ? k.entradaTotal : k.entradaTotal || null, ativacoesDosProdutos: ativacoes,
       ...(ids.length ? { produtos: ids } : {}),
     }),
     onSuccess: (f) => {
@@ -436,9 +525,10 @@ function LevarParaANegociacao({ negociacao, cenario, ajustes, produtos, onFechar
   });
   const f = ficha.data;
   const porProduto = !!f && (Object.keys(f.valoresDosProdutos ?? {}).length > 0 || Object.keys(f.ativacoesDosProdutos ?? {}).length > 0);
-  // nada a levar: a negociação já está com estes números (e estes produtos)
+  // nada a levar: a negociação já está com estes números (e estes produtos, e o mesmo valor de cada um)
   const mesmosProdutos = !!f && (!ids.length || (ids.length === f.produtos.length && ids.every((x) => f.produtos.some((p) => p.id === x))));
-  const igual = !!f && !porProduto && (f.valor ?? 0) === k.mensalTotal && (f.ativacao ?? 0) === k.entradaTotal && mesmosProdutos;
+  const igual = !!f && (f.valor ?? 0) === k.mensalTotal && (f.ativacao ?? 0) === k.entradaTotal && mesmosProdutos
+    && mesmoValorPorProduto(f.valoresDosProdutos, valores) && mesmoValorPorProduto(f.ativacoesDosProdutos, ativacoes);
   return (
     <Modal open onClose={onFechar} titulo={`Levar para a ${negociacao.codigo}`}
       rodape={<>
@@ -456,7 +546,20 @@ function LevarParaANegociacao({ negociacao, cenario, ajustes, produtos, onFechar
               <tr className="border-t border-line"><td className="py-1.5 text-ink-2">Produtos</td><td>{f.produtos.map((p) => p.nome).join(', ') || '—'}</td><td className="font-semibold">{ids.length ? nomes.join(', ') : 'ficam como estão'}</td></tr>
             </tbody>
           </table>
-          {porProduto && <p className="text-[12.5px] text-signal">A {f.codigo} tem o valor por produto: ela passa a ter um valor só (o da simulação não é dividido por produto).</p>}
+          {pagamento && (
+            <div className="rounded-lg bg-surface-2 px-3 py-2" id="simulador-levar-por-produto">
+              <div className="text-[12px] font-semibold text-muted mb-1">O valor de cada produto (fica)</div>
+              <ul className="flex flex-col gap-0.5">
+                {pagamento.map((x) => (
+                  <li key={x.produto} className="flex flex-wrap justify-between gap-x-3">
+                    <span className="text-ink-2">{produtos.find((p) => p.codigo === x.produto)?.nome ?? x.produto}</span>
+                    <span className="tabular-nums"><b>{reaisLimpo(x.mensalidade + x.aluguel)}</b>/mês{x.ativacao + x.venda > 0 ? <> · <b>{reaisLimpo(x.ativacao + x.venda)}</b> de ativação</> : ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {porProduto && !pagamento && <p className="text-[12.5px] text-signal">A {f.codigo} tem o valor por produto: ela passa a ter um valor só (esta simulação tem um preço só).</p>}
           {igual
             ? <p className="text-[12.5px] text-ok font-semibold" id="simulador-levar-igual">A {f.codigo} já está com estes números: não há o que levar.</p>
             : <p className="text-[12.5px] text-muted">A mudança fica no histórico da negociação. A margem dela aparece na ficha, em Simulações.</p>}

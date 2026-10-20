@@ -24,7 +24,12 @@ export type PedidoDaPlanilha = {
   faixas: FaixasDoSinal;
   quem: string | null;
   quando: Date;
+  /** os nomes dos produtos do catálogo, pelo código (o preço por produto escreve o nome; sem ele, o código) */
+  nomesDosProdutos?: Record<string, string>;
 };
+
+/** O preço por produto cabe ao lado do que o cliente paga (da linha 8 à 15): até 8 produtos. */
+const MAX_PRODUTOS_NA_PLANILHA = 8;
 
 /** O nome do arquivo: "simulacao-padaria-estrela-40-ramais-2026-10-20.xlsx". */
 export function nomeDaPlanilhaDaSimulacao(nome: string, quando: Date): string {
@@ -105,10 +110,25 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   const dia = diaLocal(p.quando).split('-').reverse().join('/');
   g.por(4, 0, { v: `Exportada do Gestor em ${dia} às ${horaLocal(p.quando)}${p.quem ? `, por ${p.quem}` : ''}. Mude as células amarelas: o resto da conta se refaz sozinho.`, s: 'nota' });
 
-  // o que o cliente paga
+  // o que o cliente paga; com o preço por produto, a mensalidade e a ativação são as somas da tabela ao lado
+  // (H a J: as notas da coluna C cabem até a G)
   g.por(6, 0, { v: 'O QUE O CLIENTE PAGA', s: 'secao' });
-  g.item(L_MENSALIDADE, 'Mensalidade', { v: reais(c.mensalidade), s: 'reaisEntrada' });
-  g.item(L_ATIVACAO, 'Ativação', { v: reais(c.ativacao), s: 'reaisEntrada' });
+  const precos = c.porProduto && c.porProduto.length >= 2 && c.porProduto.length <= MAX_PRODUTOS_NA_PLANILHA ? c.porProduto : null;
+  if (precos) {
+    const fim = 7 + precos.length;
+    g.por(6, 7, { v: 'O preço de cada produto', s: 'forte' });
+    ['Produto', 'Mensalidade', 'Ativação'].forEach((x, i) => g.por(7, 7 + i, { v: x, s: 'cabecalho' }));
+    precos.forEach((x, i) => {
+      g.por(8 + i, 7, { v: p.nomesDosProdutos?.[x.produto] ?? x.produto });
+      g.por(8 + i, 8, { v: reais(x.mensalidade), s: 'reaisEntrada' });
+      g.por(8 + i, 9, { v: reais(x.ativacao), s: 'reaisEntrada' });
+    });
+    g.item(L_MENSALIDADE, 'Mensalidade', { f: `SUM(I8:I${fim})`, v: reais(c.mensalidade), s: 'reais' }, 'a soma dos produtos (ao lado)');
+    g.item(L_ATIVACAO, 'Ativação', { f: `SUM(J8:J${fim})`, v: reais(c.ativacao), s: 'reais' }, 'a soma dos produtos (ao lado)');
+  } else {
+    g.item(L_MENSALIDADE, 'Mensalidade', { v: reais(c.mensalidade), s: 'reaisEntrada' });
+    g.item(L_ATIVACAO, 'Ativação', { v: reais(c.ativacao), s: 'reaisEntrada' });
+  }
   g.item(L_VEZES, 'A ativação em (vezes)', { v: c.parcelas, s: 'inteiroEntrada' }, 'à vista = 1; a primeira parcela entra na assinatura');
   g.item(L_PRAZO, 'O prazo do contrato (meses)', { v: c.prazo, s: 'inteiroEntrada' }, `até ${MAX_PRAZO} meses`);
   g.item(L_RAMAIS, 'Ramais', { v: c.ramais, s: 'inteiroEntrada' }, 'as linhas "por ramal" acompanham');

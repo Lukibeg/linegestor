@@ -168,6 +168,11 @@ export type LinhaDoCenario = {
    * nos meses seguintes. Ausente = à vista. Só no aparelho.
    */
   parcelas?: number;
+  /**
+   * O produto da linha (o do modelo de onde ela veio). No preço por produto, o que o aparelho vendido ou alugado
+   * traz entra no produto dele; a linha sem produto, no primeiro.
+   */
+  produto?: string | null;
 };
 
 /**
@@ -202,7 +207,16 @@ export type CenarioDaSimulacao = {
    * negociação, e o "Levar para a negociação" põe estes produtos nela.
    */
   produtos: string[];
+  /**
+   * O preço de cada produto (o Luan, 20/10: "uma proposta separada, porém uma negociação única"): com dois
+   * produtos ou mais, a mensalidade e a ativação de cada um, na ordem dos produtos; a mensalidade e a ativação
+   * do cenário são as somas. Nulo (ou ausente, nas simulações de antes) = um valor só para tudo.
+   */
+  porProduto?: PrecoDoProduto[] | null;
 };
+
+/** O preço de um produto no cenário: a mensalidade e a ativação do serviço dele, em centavos. */
+export type PrecoDoProduto = { produto: string; mensalidade: number; ativacao: number };
 
 /** Um custo da tabela (os Ajustes do Simulador). */
 export type CustoDaTabela = {
@@ -436,8 +450,9 @@ export const LinhaDoCenarioSchema = z.object({
   unidade: UnidadeSchema,
   parcelas: z.number({ invalid_type_error: 'As parcelas da compra vão em número.' }).int('As parcelas da compra vão inteiras.')
     .min(1, 'A compra vai em pelo menos 1 vez.').max(MAX_PARCELAS_DA_COMPRA, `A compra do aparelho vai em até ${MAX_PARCELAS_DA_COMPRA} vezes.`).optional(),
+  produto: z.string().trim().max(40).nullable().optional(),
 }).superRefine(conferirValor).transform((l): LinhaDoCenario => {
-  const { parcelas, ...resto } = l;
+  const { parcelas, produto, ...resto } = l;
   const pct = ehPercentual(l.tipo);
   const aparelho = l.tipo === 'aparelho';
   const faixas = comFaixas(l.tipo, l.faixas);
@@ -451,7 +466,14 @@ export const LinhaDoCenarioSchema = z.object({
     faixas,
     // à vista não guarda nada (a linha fica como era antes da compra parcelada)
     ...(aparelho && parcelas && parcelas > 1 ? { parcelas } : {}),
+    ...(produto ? { produto } : {}),
   };
+});
+
+const PrecoDoProdutoSchema = z.object({
+  produto: z.string().trim().min(1).max(40),
+  mensalidade: Centavos('A mensalidade do produto'),
+  ativacao: Centavos('A ativação do produto'),
 });
 
 export const CenarioDaSimulacaoSchema = z.object({
@@ -469,6 +491,7 @@ export const CenarioDaSimulacaoSchema = z.object({
   margemAlvo: Percentual('A margem que você quer', 95),
   linhas: z.array(LinhaDoCenarioSchema).max(MAX_LINHAS_DO_CENARIO, `Até ${MAX_LINHAS_DO_CENARIO} custos por cenário.`),
   produtos: z.array(z.string().trim().min(1).max(40)).max(20, 'Até 20 produtos.').default([]).transform((xs) => [...new Set(xs)]),
+  porProduto: z.array(PrecoDoProdutoSchema).max(20, 'Até 20 produtos.').nullable().optional(),
 }).superRefine((c, ctx) => {
   if (c.parcelas > c.prazo) ctx.addIssue({ code: 'custom', path: ['parcelas'], message: `${c.nome}: a ativação vai em até ${c.prazo} ${c.prazo === 1 ? 'vez' : 'vezes'} (o prazo do contrato).` });
   const ids = new Set<string>();
@@ -476,7 +499,11 @@ export const CenarioDaSimulacaoSchema = z.object({
     if (ids.has(l.id)) ctx.addIssue({ code: 'custom', path: ['linhas'], message: `${c.nome}: dois custos com o mesmo id.` });
     ids.add(l.id);
   }
-});
+  if (c.porProduto) {
+    const n = normalizarPorProduto(c);
+    if (n.mensalidade > MAX_CENTAVOS || n.ativacao > MAX_CENTAVOS) ctx.addIssue({ code: 'custom', path: ['porProduto'], message: `${c.nome}: a soma dos produtos passa do máximo.` });
+  }
+}).transform((c): CenarioDaSimulacao => normalizarPorProduto(c));
 
 export const SimulacaoGravarSchema = z.object({
   nome: z.string({ invalid_type_error: 'Dê um nome à simulação.' }).trim().min(1, 'Dê um nome à simulação (o cliente, a proposta).').max(120, 'O nome vai até 120 letras.'),
@@ -621,7 +648,60 @@ export function proximoNomeDeCenario(cenarios: ReadonlyArray<{ nome: string }>):
 
 /** As linhas de um modelo (os custos da tabela, com a quantidade de cada um). */
 export function linhasDoModelo(a: Pick<AjustesDoSimulador, 'custos'>, m: ModeloDeSimulacao): LinhaDoCenario[] {
-  return m.linhas.flatMap((l) => { const c = a.custos.find((x) => x.id === l.custoId); return c ? [linhaDaTabela(c, { qtd: l.qtd, porRamal: l.porRamal })] : []; });
+  return m.linhas.flatMap((l) => {
+    const c = a.custos.find((x) => x.id === l.custoId);
+    // a linha guarda o produto do modelo (no preço por produto, o aparelho vendido ou alugado entra nele)
+    return c ? [{ ...linhaDaTabela(c, { qtd: l.qtd, porRamal: l.porRamal }), ...(m.produto ? { produto: m.produto } : {}) }] : [];
+  });
+}
+
+/**
+ * O preço por produto em ordem: um preço para cada produto do cenário, na ordem deles (o produto que entrou
+ * começa com zero; o que saiu leva o preço dele), e a mensalidade e a ativação do cenário passam a ser as
+ * somas. Com menos de dois produtos, o cenário volta a um valor só: o preço do produto que ficou.
+ */
+export function normalizarPorProduto<C extends Pick<CenarioDaSimulacao, 'produtos' | 'porProduto' | 'mensalidade' | 'ativacao'>>(c: C): C {
+  if (!c.porProduto) return { ...c, porProduto: null };
+  if (c.produtos.length < 2) {
+    // de volta a um valor só: fica o preço do produto que ficou (o que saiu leva o dele)
+    const ficou = c.porProduto.filter((x) => c.produtos.includes(x.produto));
+    return ficou.length
+      ? { ...c, porProduto: null, mensalidade: ficou.reduce((s, x) => s + x.mensalidade, 0), ativacao: ficou.reduce((s, x) => s + x.ativacao, 0) }
+      : { ...c, porProduto: null };
+  }
+  const precos = c.produtos.map((produto) => {
+    const x = c.porProduto!.find((y) => y.produto === produto);
+    return { produto, mensalidade: x?.mensalidade ?? 0, ativacao: x?.ativacao ?? 0 };
+  });
+  return {
+    ...c, porProduto: precos,
+    mensalidade: precos.reduce((s, x) => s + x.mensalidade, 0),
+    ativacao: precos.reduce((s, x) => s + x.ativacao, 0),
+  };
+}
+
+/** Passar para o preço por produto: o valor de agora fica no primeiro produto, e os outros começam com zero. */
+export function comPrecoPorProduto<C extends Pick<CenarioDaSimulacao, 'produtos' | 'porProduto' | 'mensalidade' | 'ativacao'>>(c: C): C {
+  if (c.produtos.length < 2) return { ...c, porProduto: null };
+  return normalizarPorProduto({ ...c, porProduto: [{ produto: c.produtos[0]!, mensalidade: c.mensalidade, ativacao: c.ativacao }] });
+}
+
+/**
+ * O que o cliente paga em cada produto (o preço por produto e o "Levar para a negociação"): o preço do produto e,
+ * dos aparelhos vendidos ou alugados, o que entra no produto deles — o do modelo de onde a linha veio; a linha
+ * sem produto (ou de um produto que saiu), no primeiro. As somas são o que o cliente paga no cenário.
+ */
+export function pagamentoPorProduto(c: CenarioDaSimulacao, k: Pick<ContasDoCenario, 'linhas'>): Array<PrecoDoProduto & { aluguel: number; venda: number }> | null {
+  if (!c.porProduto?.length) return null;
+  const r = c.porProduto.map((x) => ({ ...x, aluguel: 0, venda: 0 }));
+  c.linhas.forEach((l, i) => {
+    if (l.tipo !== 'aparelho' || (l.modalidade !== 'venda' && l.modalidade !== 'locacao')) return;
+    const receita = k.linhas[i]?.receita ?? 0;
+    if (!receita) return;
+    const alvo = r.find((x) => x.produto === l.produto) ?? r[0]!;
+    if (l.modalidade === 'venda') alvo.venda += receita; else alvo.aluguel += receita;
+  });
+  return r;
 }
 
 /**
@@ -629,15 +709,17 @@ export function linhasDoModelo(a: Pick<AjustesDoSimulador, 'custos'>, m: ModeloD
  * modelos: a simulação a partir de uma negociação usa os dos produtos dela), e os produtos, os deles.
  */
 export function cenarioNovo(a: AjustesDoSimulador, o: { id?: string; nome?: string; modelo?: ModeloDeSimulacao | null; modelos?: ModeloDeSimulacao[]; produtos?: string[] } = {}): CenarioDaSimulacao {
-  const modelos = [...(o.modelo ? [o.modelo] : []), ...(o.modelos ?? [])];
-  // de vários modelos, o custo que já entrou não repete (a configuração, as comissões)
-  const vistos = new Set<string>();
-  const linhas = modelos.flatMap((m) => linhasDoModelo(a, m)).filter((l) => !l.custoId || (!vistos.has(l.custoId) && !!vistos.add(l.custoId)));
+  const modelos = [...(o.modelo ? [o.modelo] : []), ...(o.modelos ?? [])].filter((m, i, todos) => todos.findIndex((x) => x.id === m.id) === i);
+  // de vários modelos, cada produto traz os custos dele (os canais de voz do VoiceNet e os do PABX, as duas
+  // instalações): é uma proposta por produto. Só a comissão, que é sobre o preço inteiro, não repete.
+  const comissoes = new Set<string>();
+  const linhas = modelos.flatMap((m) => linhasDoModelo(a, m))
+    .filter((l) => !ehPercentual(l.tipo) || !l.custoId || (!comissoes.has(l.custoId) && !!comissoes.add(l.custoId)));
   const produtos = [...new Set([...(o.produtos ?? []), ...modelos.map((m) => m.produto).filter((x): x is string => !!x)])];
   return {
     id: o.id ?? idLocal(), nome: o.nome ?? 'Cenário A',
     mensalidade: 0, ativacao: 0, parcelas: 1, prazo: a.prazo, ramais: 0,
-    imposto: a.imposto, margemAlvo: a.verde, linhas, produtos,
+    imposto: a.imposto, margemAlvo: a.verde, linhas, produtos, porProduto: null,
   };
 }
 
@@ -969,6 +1051,7 @@ export function mudancasDaSimulacao(antes: SimulacaoGravar, depois: SimulacaoGra
     }
     if (!iguais(a.linhas, c.linhas)) aqui.push('os custos');
     if (!iguais(a.produtos ?? [], c.produtos ?? [])) aqui.push('os produtos');
+    if (!iguais(a.porProduto ?? null, c.porProduto ?? null)) aqui.push(c.porProduto ? (a.porProduto ? 'o preço de cada produto' : 'o preço passou a ser por produto') : 'o preço voltou a ser um só');
     if (aqui.length) m.push(`no ${a.nome}, ${aqui.join(', ')}`);
   }
   for (const a of antes.cenarios) if (!depois.cenarios.some((c) => c.id === a.id)) m.push(`tirou o ${a.nome}`);

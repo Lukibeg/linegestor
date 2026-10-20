@@ -7,8 +7,9 @@ Ajustes (a tabela de custos, os modelos, o imposto e o sinal) são de quem cuida
 
 ## Uma simulação nova
 
-1. **Nova simulação** e escolha um modelo (o produto: **LinePBX em nuvem**, **LineChat (Helena)**…) ou
-   **Em branco**. O modelo já traz as linhas de custo, com a quantidade de cada uma.
+1. **Nova simulação** e marque um ou mais modelos (os produtos da venda: **LinePBX em nuvem**,
+   **LineChat (Helena)**, **VoiceNet**…) e **Começar**, ou **Em branco**. Os modelos trazem as linhas de
+   custo, com a quantidade de cada uma: cada produto traz os custos dele, e a comissão entra uma vez só.
 2. Dê um **nome** (o cliente, a proposta: "Padaria Estrela — 40 ramais").
 3. Se quiser, **ligue a uma negociação**: escreva o código (COM-12) ao lado do nome e clique em **Ligar**.
    A ficha da negociação passa a mostrar a simulação, com a margem e o sinal. (Pela negociação é mais
@@ -28,6 +29,10 @@ Os números mudam enquanto você escreve. Nada é gravado até o **Salvar** (a t
   quando os dois diferem, aparece "Nos Ajustes: 6% · usar".
 - **Produtos**: os produtos do catálogo que a venda leva (o modelo traz o dele; **+ produto** põe outro, o
   **×** tira). O **Levar para a negociação** põe estes na negociação.
+- **Um valor só | Por produto** (com dois produtos ou mais): cada produto é uma proposta, numa negociação só.
+  **Por produto**, cada um tem a sua mensalidade e a sua ativação, e o total é o do cenário (a conta e a
+  margem são as da negociação inteira). Ao passar para por produto, o valor de agora fica no primeiro; o
+  produto que entra começa com zero, e o que sai leva o preço dele.
 
 ## Os custos
 
@@ -95,13 +100,16 @@ A mesma venda em versões diferentes (comodato ou venda dos aparelhos, 12 ou 24 
 - **Simular a partir da negociação**: na ficha da negociação, a parte **Simulações** mostra as simulações
   ligadas a ela (o cenário principal, com a margem e o sinal) e tem o **Simular**: ele abre uma simulação
   nova já ligada, com o nome (a empresa e o título), os produtos da negociação, as linhas dos modelos
-  desses produtos e a mensalidade e a ativação que ela já tem. Preencha o que falta e **Crie a simulação**.
+  desses produtos e a mensalidade e a ativação que ela já tem (com o valor por produto, o preço de cada
+  produto). Preencha o que falta e **Crie a simulação**.
 - **Levar para a negociação**: na simulação ligada a uma negociação em aberto, o **Levar para a COM-12**
   põe nela o que o cliente paga no cenário principal: a **mensalidade** (com o aluguel dos aparelhos), a
   **ativação** (com os aparelhos vendidos) e os **produtos** do cenário (sem produto no cenário, os da
-  negociação ficam). A janela mostra o que a negociação tem hoje e o que fica, antes do **Levar**. Se a
-  negociação tem o valor por produto, ela passa a ter um valor só. A mudança fica no histórico da
-  negociação. Salve a simulação antes (o botão espera o Salvar).
+  negociação ficam). Com o preço por produto, a negociação recebe o valor de cada produto (o aluguel e a
+  venda dos aparelhos entram no produto deles). A janela mostra o que a negociação tem hoje e o que fica,
+  antes do **Levar**. Com um valor só na simulação, a negociação que tinha o valor por produto passa a ter
+  um valor só. A mudança fica no histórico da negociação. Salve a simulação antes (o botão espera o
+  Salvar).
 - **A margem no relatório**: o relatório do Comercial (Comercial › Relatórios) tem **A margem das
   ganhas**: das ganhas do período que têm simulação, a margem do total, por vendedor e por produto.
 
