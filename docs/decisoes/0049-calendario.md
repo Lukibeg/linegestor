@@ -120,6 +120,21 @@ menu, está na decisão 0048). Como o 2.0.2 não subiu, entraram nele:
   - O evento cancelado, o feito e o da lixeira não lembram, e nem o que passou enquanto estava na
     lixeira.
   - Mudar os lembretes aparece na auditoria do evento ("Lembretes").
+- **O aviso de que o evento entrou (opcional).** O Luan, num comentário da prévia: *"quero tbm uma
+  notificação de inclusão opcional, que vai notificar quando eu incluir uma agenda e tbm deve ter as
+  opções de as pessoas do evento ou todos que veem o evento"* (li "agente" como "agenda": pôr um evento
+  no calendário). No evento novo (e no Duplicar), o grupo **Avisar** tem a caixa **Avisar agora, ao pôr
+  no calendário**, desmarcada de início. Marcada, aparecem as duas escolhas, **As pessoas do evento** ou
+  **Todos que veem o evento**, e quantas pessoas vão receber.
+  - O aviso sai na hora de salvar, no sininho (com o ícone de calendário com +; o clique abre o evento)
+    e no WhatsApp.
+  - **Quem pôs o evento não recebe**, como nos avisos dos chamados.
+  - É um aviso próprio em Avisos e WhatsApp: **"Um evento entrou no calendário"**, ligado na tela e no
+    WhatsApp de fábrica. Tem a mensagem dele: as variáveis do evento, mais `{quem}`, que é quem pôs.
+  - No evento de vários dias, o aviso diz até quando: "…, até 25/10".
+  - A auditoria do evento conta: *"… e avisou 2 pessoas (as pessoas do evento)"*. Se ninguém recebeu,
+    diz *"pediu o aviso, mas não havia quem avisar"*.
+  - Editar o evento não avisa. A caixa só aparece no evento novo.
 - **Os painéis numa lista.** O filtro dos painéis virou o botão **Painéis**: ele abre a lista com uma
   caixa por painel, para marcar quantos quiser. O botão mostra quantos estão marcados ("Painéis (2)").
   Nenhum marcado, ou todos, mostra os eventos de todos (e a lista diz isso). O que foi marcado fica no

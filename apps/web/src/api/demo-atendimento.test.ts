@@ -236,7 +236,7 @@ describe('os exemplos da prévia', () => {
     const av = await api.avisos();
     const naoLidos = av.itens.filter((a) => !a.lido);
     expect(av.naoLidos).toBe(naoLidos.length);
-    const dosChamados = naoLidos.filter((a) => a.tipo !== 'lembrete');
+    const dosChamados = naoLidos.filter((a) => !a.evento);
     expect(dosChamados).toHaveLength(5);
     expect(new Set(dosChamados.map((a) => a.tipo))).toEqual(new Set(['critico', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
     expect(naoLidos.some((a) => a.tipo === 'lembrete' && !!a.evento && a.texto.includes('Retorno — Clínica Aurora'))).toBe(true);

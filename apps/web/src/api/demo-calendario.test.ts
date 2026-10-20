@@ -165,3 +165,26 @@ describe('os lembretes na prévia (2.0.2), como no servidor', () => {
   });
 });
 
+
+describe('o aviso de que o evento entrou na prévia (2.0.2), como no servidor', () => {
+  const doAviso = async (id: string) => (await demoApi.atendimento.avisos()).itens.filter((a) => a.tipo === 'evento_novo' && a.evento?.id === id);
+
+  it('as pessoas do evento recebem na hora; quem pôs, não; sem pedir, ninguém', async () => {
+    const luan = await entrar('admin');
+    const marina = (await api.opcoes()).pessoas.find((p) => p.nome.startsWith('Marina'))!;
+    const dia = somarDias(hoje, 12);
+    const com = await api.criar({ titulo: 'Visita com aviso', tipoId: 'visita', paineis: ['painel-suporte'], pessoas: [luan.id, marina.id], inicio: dia, fim: dia, lembretes: [], avisar: 'pessoas' });
+    const sem = await api.criar({ titulo: 'Visita sem aviso', tipoId: 'visita', paineis: ['painel-suporte'], pessoas: [luan.id, marina.id], inicio: dia, fim: dia, lembretes: [] });
+    expect(await doAviso(com.id)).toEqual([]);
+    await entrar('operador');
+    const [a] = await doAviso(com.id);
+    expect(a).toMatchObject({ lido: false, chamado: null, texto: expect.stringMatching(/^Luan França pôs no calendário: Visita com aviso, /), evento: { id: com.id, inicio: dia } });
+    expect(await doAviso(sem.id)).toEqual([]);
+    // todos que veem: o Desenvolvimento é de todos (o Lúcio recebe, o Luan não)
+    await entrar('admin');
+    const todos = await api.criar({ titulo: 'Reunião do Desenvolvimento', tipoId: 'reuniao', paineis: ['painel-desenvolvimento'], inicio: dia, fim: dia, lembretes: [], avisar: 'paineis' });
+    expect(await doAviso(todos.id)).toEqual([]);
+    await entrar('tecnico');
+    expect(await doAviso(todos.id)).toHaveLength(1);
+  });
+});

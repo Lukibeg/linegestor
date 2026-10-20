@@ -291,7 +291,8 @@ export type AcessoDoCalendarioDemo = {
    * O lembrete de um evento (2.0.2): o sininho de cada pessoa ativa, conforme os Ajustes dos avisos (o WhatsApp,
    * na prévia, não aparece em lugar nenhum). `lido`: o lembrete antigo dos exemplos já foi visto. Devolve quantos receberam.
    */
-  avisarDoCalendario: (a: { para: string[]; evento: { id: string; titulo: string; inicio: string }; texto: string }, em: Date, lido?: boolean) => number;
+  /** o lembrete (padrão) ou o aviso de que o evento entrou (`qual`, 2.0.2) */
+  avisarDoCalendario: (a: { qual?: 'lembrete' | 'evento_novo'; para: string[]; evento: { id: string; titulo: string; inicio: string }; texto: string }, em: Date, lido?: boolean) => number;
 };
 /** Os relógios de fora (o do calendário, 2.0.2): andam junto com o dos chamados, a cada leitura da prévia. */
 const relogiosDeFora: Array<(agora: Date) => void> = [];
@@ -3679,10 +3680,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         return A.chamados.filter((t) => !t.deletedAt).map((t) => ({ id: t.id, codigo: t.codigo, titulo: t.titulo, painelId: t.painelId, clienteId: t.clienteId }));
       },
       avisarDoCalendario: (a, em, lido = false) => {
-        const canais = A.whats.eventos.lembrete ?? AVISOS_CHAMADOS_PADRAO.eventos.lembrete;
+        const qual = a.qual ?? 'lembrete';
+        const canais = A.whats.eventos[qual] ?? AVISOS_CHAMADOS_PADRAO.eventos[qual];
         const quem = S.users.filter((u) => a.para.includes(u.id) && u.active);
         if (canais.tela) {
-          for (const u of quem) A.avisos.push({ id: novoId(), userId: u.id, chamadoId: null, evento: { ...a.evento }, tipo: 'lembrete', texto: a.texto, em: iso(em), lidoEm: lido ? iso(em) : null });
+          for (const u of quem) A.avisos.push({ id: novoId(), userId: u.id, chamadoId: null, evento: { ...a.evento }, tipo: qual, texto: a.texto, em: iso(em), lidoEm: lido ? iso(em) : null });
         }
         return quem.length;
       },

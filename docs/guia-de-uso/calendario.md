@@ -48,8 +48,11 @@ atrás do botão **Filtros**.
 5. **Pessoas**: só aparecem as que veem um dos painéis escolhidos.
 6. **Cliente**, **Chamado ligado** (o código, como SUP-12: o cliente dele vem junto), **Local** e
    **Observação**, se quiser.
-7. **Lembretes**: já vêm os do tipo (abaixo). Mude se quiser e escolha quem recebe.
-8. **Pôr no calendário**.
+7. **Avisar** (opcional): marque **Avisar agora, ao pôr no calendário** para quem precisa saber já. Escolha
+   **As pessoas do evento** ou **Todos que veem o evento**; embaixo aparece quantas pessoas vão receber
+   (você não recebe o aviso do que você mesmo pôs).
+8. **Lembretes**: já vêm os do tipo (abaixo). Mude se quiser e escolha quem recebe.
+9. **Pôr no calendário**.
 
 A folga e o home office (os tipos "da equipe") pedem as pessoas e não mostram o cliente nem o local.
 
@@ -79,6 +82,9 @@ Cada evento lembra antes de acontecer, no **sininho** e no **WhatsApp** de quem 
   dia ou a hora faz os lembretes valerem de novo. O evento cancelado, o feito e o da lixeira não lembram.
 - No sininho, o lembrete tem o ícone do calendário: o clique abre o calendário no dia, com o evento
   aberto.
+- O **aviso de que o evento entrou** (o Avisar, ao pôr o evento) chega do mesmo jeito, na hora: "Luan
+  França pôs no calendário: Visita — Clínica Aurora, amanhã, 21/10, às 09:00". Ele é um aviso próprio
+  nos Ajustes: **"Um evento entrou no calendário"**.
 - O **WhatsApp** sai para quem tem o número em Administração › Usuários. Em Painéis › Ajustes › Avisos e
   WhatsApp, o aviso **"Lembrete de um evento do calendário"** liga e desliga a tela e o WhatsApp, e o
   cartão **A mensagem de cada aviso no WhatsApp** muda o texto (as variáveis do evento: `{evento}`,

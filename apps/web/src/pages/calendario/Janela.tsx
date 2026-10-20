@@ -14,6 +14,7 @@
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Ban, Bell, Building2, CalendarDays, Check, Copy, Link2, MapPin, Pencil, StickyNote, Ticket, Trash2, Undo2, Users, X,
 } from 'lucide-react';
@@ -39,6 +40,8 @@ type Rascunho = {
   local: string; observacao: string; situacao: SituacaoDoEvento;
   /** os lembretes (minutos antes): os do tipo, até a pessoa mexer (`lembretesMexidos`) */
   lembretes: number[]; lembretesMexidos: boolean; lembrarQuem: QuemRecebeOLembrete;
+  /** o aviso de que o evento entrou (2.0.2, só no evento novo): avisar agora, e quem */
+  avisar: boolean; avisarQuem: QuemRecebeOLembrete;
 };
 
 /** O que vem preenchido num evento novo (o dia clicado, o chamado do Agendar…); `clienteNome` entra no título sugerido. */
@@ -53,6 +56,7 @@ function doEvento(e: EventoDoCalendario): Rascunho {
     inicio: e.inicio, fim: e.fim, diaInteiro: e.diaInteiro, horaInicio: e.horaInicio ?? '', horaFim: e.horaFim ?? '',
     local: e.local, observacao: e.observacao, situacao: e.situacao,
     lembretes: [...e.lembretes], lembretesMexidos: true, lembrarQuem: e.lembrarQuem,
+    avisar: false, avisarQuem: 'pessoas',
   };
 }
 
@@ -71,6 +75,8 @@ function novoRascunho(n: NovoEvento, opcoes: CalendarioOpcoes, nomes: ReadonlyMa
     local: n.local ?? '', observacao: n.observacao ?? '', situacao: 'agendado',
     // os lembretes do tipo (a Visita, 1 dia antes e 1 hora antes) acompanham o tipo até a pessoa mexer neles
     lembretes: n.lembretes ?? [...(tipo?.lembretes ?? [])], lembretesMexidos: !!n.lembretes, lembrarQuem: n.lembrarQuem ?? 'pessoas',
+    // o aviso de que o evento entrou é opcional: desligado até a pessoa pedir
+    avisar: n.avisar ?? false, avisarQuem: n.avisarQuem ?? 'pessoas',
   };
 }
 
@@ -79,7 +85,17 @@ const paraGravar = (r: Rascunho): EventoGravarEntrada => ({
   inicio: r.inicio, fim: r.fim, diaInteiro: r.diaInteiro,
   horaInicio: r.diaInteiro ? null : r.horaInicio || null, horaFim: r.diaInteiro ? null : r.horaFim || null,
   local: r.local, observacao: r.observacao, situacao: r.situacao, lembretes: r.lembretes, lembrarQuem: r.lembrarQuem,
+  avisar: r.avisar ? r.avisarQuem : null,
 });
+
+/**
+ * Quantas pessoas o aviso de que o evento entrou alcança (a mesma conta do servidor): as pessoas do evento
+ * ou todos que veem um dos painéis dele, menos quem pôs.
+ */
+function quantosAvisados(r: Pick<Rascunho, 'avisarQuem' | 'pessoas'>, possiveis: ReadonlySet<string>, eu: string | undefined): number {
+  const para = r.avisarQuem === 'paineis' ? [...possiveis] : r.pessoas.filter((p) => possiveis.has(p));
+  return para.filter((p) => p !== eu).length;
+}
 
 /** As frases do que não serve (as mesmas do servidor), sem repetir. */
 function problemas(r: Rascunho): string[] {
@@ -98,6 +114,8 @@ export function JanelaDoEvento({ abertura, opcoes, onFechar }: { abertura: Abert
   const toast = useToast();
   const recarregar = useRecarregarCalendario();
   const clientes = useClientesParaFiltro();
+  const { user } = useAuth();
+  const qc = useQueryClient();
 
   const editando = modo !== 'ver';
   const tipo = tipoDoEvento(opcoes.tipos, editando ? rascunho.tipoId : evento!.tipoId);
@@ -111,9 +129,13 @@ export function JanelaDoEvento({ abertura, opcoes, onFechar }: { abertura: Abert
     if (p.length) { setErro(p.join(' ')); return; }
     setOcupado(true); setErro('');
     try {
-      const salvo = evento && modo === 'editar' ? await api.calendario.alterar(evento.id, paraGravar(r)) : await api.calendario.criar(paraGravar(r));
+      const editar = !!evento && modo === 'editar';
+      const salvo = editar ? await api.calendario.alterar(evento.id, paraGravar({ ...r, avisar: false })) : await api.calendario.criar(paraGravar(r));
       void recarregar();
-      toast.push('ok', evento && modo === 'editar' ? 'Evento salvo.' : `"${salvo.titulo}" está no calendário.`);
+      // o aviso de que o evento entrou sai na hora (o sininho de quem recebe já mostra)
+      const avisados = !editar && r.avisar ? quantosAvisados(r, pessoasPossiveis(opcoes.paineis, r.paineis), user?.id) : null;
+      toast.push('ok', editar ? 'Evento salvo.' : `"${salvo.titulo}" está no calendário.${avisados === null ? '' : avisados ? ` O aviso saiu para ${avisados === 1 ? '1 pessoa' : `${avisados} pessoas`}.` : ' Não havia ninguém para avisar.'}`);
+      if (avisados) void qc.invalidateQueries({ queryKey: ['atendimento', 'avisos'] });
       onFechar();
     } catch (e) {
       setErro(erroDoEvento(e));
@@ -447,6 +469,8 @@ function Formulario({ r, mudar, opcoes, nomes, existente, onSalvar }: {
           placeholder={tipo.daEquipe ? 'Algum combinado (opcional)' : 'O que levar, o que fazer, quem procurar… (opcional)'} />
       </div>
 
+      {!existente && <AvisarAoIncluir r={r} mudar={mudar} possiveis={possiveis} eu={user?.id} />}
+
       <Lembretes r={r} mudar={mudar} vaoVer={vaoVer} />
 
       {existente && (
@@ -463,6 +487,42 @@ function Formulario({ r, mudar, opcoes, nomes, existente, onSalvar }: {
         </fieldset>
       )}
     </form>
+  );
+}
+
+/**
+ * O aviso de que o evento entrou (2.0.2, só no evento novo; o pedido do Luan: "uma notificação de inclusão
+ * opcional… com as opções as pessoas do evento ou todos que veem o evento"): sai na hora de pôr no
+ * calendário, pelo sininho e pelo WhatsApp de cada pessoa, conforme os Ajustes dos avisos. Quem pôs não recebe.
+ */
+function AvisarAoIncluir({ r, mudar, possiveis, eu }: { r: Rascunho; mudar: (m: Partial<Rascunho>) => void; possiveis: ReadonlySet<string>; eu: string | undefined }) {
+  const n = quantosAvisados(r, possiveis, eu);
+  const quem = r.avisarQuem === 'paineis' && !r.paineis.length ? 'Escolha o painel do evento: quem vê o painel recebe.'
+    : !n ? (r.avisarQuem === 'pessoas' ? 'Ninguém recebe: o evento ainda não tem outras pessoas além de você.' : 'Ninguém recebe: só você vê o painel do evento.')
+      : `${n === 1 ? 'Vai receber 1 pessoa' : `Vão receber ${n} pessoas`}, agora: ${r.avisarQuem === 'paineis' ? `quem vê ${r.paineis.length === 1 ? 'o painel' : 'um dos painéis'} do evento` : 'as pessoas do evento'}.`;
+  return (
+    <fieldset id="evento-avisar">
+      <legend className="label">Avisar <span className="font-normal text-muted">— que o evento entrou no calendário (opcional)</span></legend>
+      <label className="inline-flex items-center gap-2 text-sm cursor-pointer select-none">
+        <input type="checkbox" className="w-4 h-4 accent-[var(--accent)]" checked={r.avisar} id="evento-avisar-ligado" onChange={(e) => mudar({ avisar: e.target.checked })} />
+        Avisar agora, ao pôr no calendário
+      </label>
+      {r.avisar && (
+        <div className="mt-2 flex flex-col gap-1.5">
+          <div className="inline-flex flex-wrap rounded-lg border border-line-strong p-0.5 bg-surface self-start" role="radiogroup" aria-label="Quem recebe o aviso" id="evento-avisar-quem">
+            {QUEM_RECEBE_O_LEMBRETE.map((q) => (
+              <button key={q} type="button" role="radio" aria-checked={r.avisarQuem === q} onClick={() => mudar({ avisarQuem: q })} data-quem={q}
+                className={`px-2.5 py-1 rounded-md text-[12.5px] font-semibold ${r.avisarQuem === q ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2'}`}>
+                {NOME_QUEM_RECEBE_O_LEMBRETE[q]}
+              </button>
+            ))}
+          </div>
+          <p className="text-[12px] text-muted" id="evento-avisar-quantos">
+            {quem} No sininho e no WhatsApp de cada um (o número fica em Administração › Usuários). Você não recebe o aviso do que você mesmo pôs.
+          </p>
+        </div>
+      )}
+    </fieldset>
   );
 }
 

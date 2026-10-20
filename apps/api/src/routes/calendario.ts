@@ -10,7 +10,7 @@
  */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { EventoGravarSchema, EventosDoPeriodoSchema, SituacaoDoEventoSchema, TiposDoCalendarioSchema } from '@gestor/shared';
+import { EventoGravarSchema, EventosDoPeriodoSchema, NOME_QUEM_RECEBE_O_LEMBRETE, SituacaoDoEventoSchema, TiposDoCalendarioSchema } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as svc from '../services/calendario.js';
 
@@ -36,7 +36,13 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.post('/eventos', { ...trabalhar, schema: { tags, summary: 'Pôr um evento no calendário (de um ou mais painéis que a pessoa vê)', body: EventoGravarSchema } },
     async (req, reply) => {
       const r = await svc.criar(app.db, ator(req), req.body);
-      await app.audit(req, { action: 'create', entityType: 'calendar_event', entityId: r.evento.id, summary: r.resumo, after: r.depois });
+      // o aviso de que o evento entrou (2.0.2, opcional): na hora, para quem a pessoa escolheu
+      const avisar = req.body.avisar;
+      const avisados = avisar ? await svc.avisarDaInclusao(app, ator(req), r.evento.id, avisar) : null;
+      const comAviso = avisar
+        ? `${r.resumo} e ${avisados ? `avisou ${avisados === 1 ? '1 pessoa' : `${avisados} pessoas`}` : 'pediu o aviso, mas não havia quem avisar'} (${NOME_QUEM_RECEBE_O_LEMBRETE[avisar].toLocaleLowerCase('pt-BR')})`
+        : r.resumo;
+      await app.audit(req, { action: 'create', entityType: 'calendar_event', entityId: r.evento.id, summary: comAviso, after: r.depois });
       return reply.status(201).send(r.evento);
     });
 

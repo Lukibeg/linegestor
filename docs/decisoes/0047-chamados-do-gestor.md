@@ -359,7 +359,7 @@ quem comentou, o Cliente e o Link, cada um numa linha, com emoji e negrito. Como
 entrou nele.
 
 - **Cada aviso tem a sua mensagem no WhatsApp**, em **Painéis › Ajustes › Avisos e WhatsApp**, no cartão
-  novo **A mensagem de cada aviso no WhatsApp**: a lista dos nove avisos (no celular, uma caixa de
+  novo **A mensagem de cada aviso no WhatsApp**: a lista dos dez avisos (no celular, uma caixa de
   escolha), o texto, os **botões das variáveis** (põem a variável onde está o cursor) e a **prévia no
   balão**, com um exemplo e o negrito (`*assim*`), o itálico (`_assim_`) e o riscado (`~assim~`) do
   WhatsApp. Na tabela "Quais avisos vão por onde", cada aviso ganhou o link **a mensagem** (ou "a
@@ -376,7 +376,10 @@ entrou nele.
     para Bruno Técnico", "Marcou: esperando o cliente (…)", "Mandou para a lixeira"…) só no observador —
     na anotação ela fica vazia, porque a nota já é a novidade;
   - as do lembrete do calendário (decisão 0049): `{aviso}`, `{evento}`, `{tipo}`, `{quando}`, `{local}`,
-    `{cliente}`, `{chamado}`, `{pessoas}`, `{paineis}`, `{observacao}` e `{link}`.
+    `{cliente}`, `{chamado}`, `{pessoas}`, `{paineis}`, `{observacao}` e `{link}`;
+  - as do aviso **"Um evento entrou no calendário"** (o décimo aviso, também do 2.0.2: decisão 0049), as
+    mesmas do lembrete e mais `{quem}` (quem pôs o evento). A mensagem padrão dele começa por
+    `🗓️ *Novo no calendário:*` e termina com `👤 *Quem pôs:*` e o link.
 - **A linha em que todas as variáveis vêm vazias não vai** (a escolha foi minha, avisada a ele: no print,
   o "Cliente:" chegava em branco). A linha só de texto vai sempre; linhas em branco seguidas viram uma.
   A mensagem vai até 4.000 letras.

@@ -3,7 +3,7 @@ import {
   chaveDoLembrete, comecoDoEvento, diaPorExtenso, diasDaGradeDoMes, emUnidade, EventoGravarSchema, eventosDoDia, eventoVisivel, filtrarEventos,
   FILTRO_DO_CALENDARIO_VAZIO, LembretesSchema, lembretesAoGravar, lembretesDevidos, paineisDepoisDaEdicao, pessoasPossiveis, quemEstaFora,
   quemRecebeOLembrete, textoDoAntes, textoDoHorario, textoDoLembrete, textoDoMes, textoDoPeriodo, textoDosLembretes, TIPOS_DE_EVENTO_PADRAO,
-  tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, tituloSugerido, EventosDoPeriodoSchema,
+  tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, tituloSugerido, EventosDoPeriodoSchema, quandoDoEvento, quemRecebeAInclusao, textoDaInclusao,
   type EventoDoCalendario,
 } from './calendario.js';
 
@@ -230,5 +230,31 @@ describe('os lembretes (2.0.2)', () => {
     expect(textoDoLembrete({ titulo: 'Visita — Clínica Aurora', inicio: '2026-10-21', diaInteiro: false, horaInicio: '09:00' }, agora)).toBe('Lembrete: Visita — Clínica Aurora, amanhã, 21/10, às 09:00');
     expect(textoDoLembrete({ titulo: 'Reunião', inicio: '2026-10-20', diaInteiro: false, horaInicio: '15:00' }, agora)).toBe('Lembrete: Reunião, hoje, 20/10, às 15:00');
     expect(textoDoLembrete({ titulo: 'Virada para nuvem', inicio: '2026-10-23', diaInteiro: true, horaInicio: null }, agora)).toBe('Lembrete: Virada para nuvem, sexta, 23/10 (dia inteiro)');
+  });
+});
+
+describe('o aviso de que o evento entrou (2.0.2, opcional)', () => {
+  const agora = new Date('2026-10-20T12:00:00Z');
+
+  it('a janela manda quem avisar; sem pedir, não avisa; só as duas escolhas', () => {
+    const base = { titulo: 'Visita', tipoId: 'visita', paineis: ['p-sup'], inicio: '2026-10-21', fim: '2026-10-21' };
+    expect(EventoGravarSchema.parse(base).avisar).toBeNull();
+    expect(EventoGravarSchema.parse({ ...base, avisar: 'paineis' }).avisar).toBe('paineis');
+    expect(EventoGravarSchema.safeParse({ ...base, avisar: 'todos' }).success).toBe(false);
+  });
+
+  it('o texto: quem pôs, o evento e quando (no de vários dias, até quando)', () => {
+    expect(textoDaInclusao('Luan França', { titulo: 'Visita — Clínica Aurora', inicio: '2026-10-21', fim: '2026-10-21', diaInteiro: false, horaInicio: '09:00' }, agora))
+      .toBe('Luan França pôs no calendário: Visita — Clínica Aurora, amanhã, 21/10, às 09:00');
+    expect(quandoDoEvento({ inicio: '2026-10-23', fim: '2026-10-25', diaInteiro: true, horaInicio: null }, agora)).toBe('sexta, 23/10 (dia inteiro), até 25/10');
+  });
+
+  it('quem recebe: as pessoas do evento ou quem vê os painéis, sempre menos quem pôs', () => {
+    const quemVe = new Map([['p-sup', ['luan', 'lucio', 'marina']], ['p-com', ['camila']]]);
+    expect(quemRecebeAInclusao({ paineis: ['p-sup'], pessoas: ['luan', 'lucio'], avisar: 'pessoas' }, quemVe, 'luan')).toEqual(['lucio']);
+    expect(quemRecebeAInclusao({ paineis: ['p-sup'], pessoas: [], avisar: 'pessoas' }, quemVe, 'luan')).toEqual([]);
+    expect(quemRecebeAInclusao({ paineis: ['p-sup', 'p-com'], pessoas: [], avisar: 'paineis' }, quemVe, 'luan').sort()).toEqual(['camila', 'lucio', 'marina']);
+    // quem pôs pela integração (sem pessoa): todos que a regra diz
+    expect(quemRecebeAInclusao({ paineis: ['p-sup'], pessoas: ['luan'], avisar: 'pessoas' }, quemVe, null)).toEqual(['luan']);
   });
 });

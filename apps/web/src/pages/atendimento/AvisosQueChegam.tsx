@@ -22,7 +22,7 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, AtSign, Bell, CalendarClock, GitBranch, Hourglass, Inbox, MessageSquare, Eye, Siren, TriangleAlert, UserX, X, type LucideIcon } from 'lucide-react';
+import { ArrowRight, AtSign, Bell, CalendarClock, CalendarPlus, GitBranch, Hourglass, Inbox, MessageSquare, Eye, Siren, TriangleAlert, UserX, X, type LucideIcon } from 'lucide-react';
 import { diaCurto, type AvisoNaTela, type TipoAviso } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { useAuth } from '../../lib/auth.js';
@@ -48,6 +48,8 @@ export const ICONE_DO_AVISO: Record<TipoAviso, { Icone: LucideIcon; cor: string;
   observador: { Icone: Eye, cor: 'text-roxo', fundo: 'bg-roxo-soft', titulo: 'Novidade num chamado que você observa' },
   // o lembrete de um evento do calendário (2.0.2: "quanto tempo antes", escolhido no evento)
   lembrete: { Icone: CalendarClock, cor: 'text-turquesa-ink', fundo: 'bg-turquesa-soft', titulo: 'Lembrete do calendário' },
+  // o aviso de que um evento entrou no calendário (2.0.2, opcional: quem põe o evento escolhe avisar)
+  evento_novo: { Icone: CalendarPlus, cor: 'text-turquesa-ink', fundo: 'bg-turquesa-soft', titulo: 'Novo no calendário' },
 };
 const doTipo = (t: TipoAviso) => ICONE_DO_AVISO[t] ?? ICONE_DO_AVISO.recebeu;
 

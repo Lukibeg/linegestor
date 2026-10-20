@@ -122,35 +122,37 @@ export async function avisarEquipe(
 }
 
 /**
- * O lembrete de um evento do calendário (2.0.2): o sininho e o WhatsApp de cada pessoa, conforme os Ajustes
- * (o aviso "Lembrete de um evento do calendário", em Painéis › Ajustes › Avisos e WhatsApp). Não é de um
+ * Os avisos do calendário (2.0.2): o lembrete de um evento e o aviso de que um evento entrou (`qual`), no
+ * sininho e no WhatsApp de cada pessoa, conforme os Ajustes (os avisos "Lembrete de um evento do
+ * calendário" e "Um evento entrou no calendário", em Painéis › Ajustes › Avisos e WhatsApp). Não é de um
  * chamado: o aviso guarda o evento, e o WhatsApp que falhar vai para o registro do servidor (não há
  * histórico de chamado onde contar). O WhatsApp sai pela mensagem do aviso (os Ajustes), com os `valores`
- * do evento (`valoresDoLembrete`). Devolve quantas pessoas receberam.
+ * do evento (`valoresDoLembrete`, `valoresDaInclusao`). Devolve quantas pessoas receberam.
  */
 export async function avisarDoCalendario(
   app: FastifyInstance,
-  a: { para: string[]; evento: { id: string; titulo: string }; texto: string; valores: ValoresDoAviso },
+  a: { qual?: 'lembrete' | 'evento_novo'; para: string[]; evento: { id: string; titulo: string }; texto: string; valores: ValoresDoAviso },
 ): Promise<number> {
+  const qual = a.qual ?? 'lembrete';
   const para = [...new Set(a.para)];
   if (!para.length) return 0;
   const { valor: v } = await lerAvisos(app.db);
-  const canais = v.eventos.lembrete ?? EVENTOS_AVISO_PADRAO.lembrete;
+  const canais = v.eventos[qual] ?? EVENTOS_AVISO_PADRAO[qual];
   const ativos = await app.db.select({ id: users.id, name: users.name, active: users.active, whatsapp: users.whatsapp, recebe: users.whatsappAvisos })
     .from(users).where(inArray(users.id, para));
   const quem = ativos.filter((u) => u.active);
   if (!quem.length) return 0;
   if (canais.tela) {
-    await app.db.insert(ticketNotifications).values(quem.map((u) => ({ id: newId(), userId: u.id, calendarEventId: a.evento.id, kind: 'lembrete', body: a.texto })));
+    await app.db.insert(ticketNotifications).values(quem.map((u) => ({ id: newId(), userId: u.id, calendarEventId: a.evento.id, kind: qual, body: a.texto })));
   }
   if (!canais.whatsapp || !v.ativo || !v.numeroEquipe) return quem.length;
   const numeros = quem.filter((u) => u.recebe && u.whatsapp).map((u) => ({ u, numero: u.whatsapp! }));
   if (!numeros.length || !(await whatsAppPronto(app.db)).equipe) return quem.length;
-  const texto = preencherAviso('lembrete', modeloDoAviso(v.modelos, 'lembrete'), a.valores);
+  const texto = preencherAviso(qual, modeloDoAviso(v.modelos, qual), a.valores);
   emSegundoPlano(app, async () => {
     for (const { u, numero } of numeros) {
       const r = await mandarWhatsApp(app.db, app.vault, { de: 'equipe', para: numero, texto });
-      if (!r.ok) app.log.warn({ evento: a.evento.id, para: u.name, erro: r.mensagem }, 'calendário: o lembrete não foi pelo WhatsApp');
+      if (!r.ok) app.log.warn({ evento: a.evento.id, para: u.name, erro: r.mensagem }, `calendário: o ${qual === 'lembrete' ? 'lembrete' : 'aviso do evento novo'} não foi pelo WhatsApp`);
     }
   });
   return quem.length;

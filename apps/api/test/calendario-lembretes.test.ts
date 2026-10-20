@@ -198,6 +198,51 @@ describe('os lembretes do calendário', () => {
     await app.db.delete(calendarEvents).where(eq(calendarEvents.id, e.id));
   });
 
+  it('o aviso de que o evento entrou (2.0.2, opcional): na hora, para quem a pessoa escolheu, menos ela', async () => {
+    const doAviso = async (quem: Session) => ((await quem.get('/atendimento/avisos')).json().itens as Array<{ tipo: string; texto: string; evento: { id: string } | null }>)
+      .filter((a) => a.tipo === 'evento_novo');
+    // sem pedir o aviso, ninguém recebe nada
+    const calado = await criar({ titulo: 'Sem aviso', inicio: '2030-07-01', fim: '2030-07-01', lembretes: [] });
+    expect(await doAviso(marina)).toEqual([]);
+
+    // as pessoas do evento: a Marina recebe no sininho e no WhatsApp; quem pôs não recebe
+    enviados.length = 0;
+    const r = await s.post('/calendario/eventos', evento({ titulo: 'Visita avisada', inicio: '2030-07-02', fim: '2030-07-03', lembretes: [], avisar: 'pessoas', observacao: 'Levar o reserva.' }));
+    expect(r.statusCode, r.body).toBe(201);
+    const id = r.json().id as string;
+    await esperarSegundoPlano();
+    const [aviso] = await doAviso(marina);
+    expect(aviso).toMatchObject({ texto: 'Administrador pôs no calendário: Visita avisada, terça, 02/07, às 09:00, até 03/07', evento: { id } });
+    expect(await doAviso(s)).toEqual([]);
+    expect(await doAviso(carlos)).toEqual([]);
+    expect(enviados).toHaveLength(1);
+    expect(enviados[0]!.para).toBe('5571988887777');
+    expect(enviados[0]!.texto.split('\n')).toEqual([
+      expect.stringMatching(/ \*Novo no calendário:\* Visita avisada$/),
+      expect.stringMatching(/ \*Quando:\* terça, 02\/07, às 09:00, até 03\/07$/),
+      '📍 *Local:* Av. Tancredo Neves, 1632',
+      expect.stringMatching(/ \*Cliente:\* Clínica Aurora$/),
+      expect.stringMatching(/ \*Pessoas:\* Marina Costa$/),
+      '📝 *Observação:* Levar o reserva.',
+      '👤 *Quem pôs:* Administrador',
+      `🔗 *Link:* ${linkDoEvento(app, { id, inicio: '2030-07-02' })}`,
+    ]);
+    expect(await auditoriaDe(id)).toContain('Pôs no calendário: "Visita avisada" (Visita, 02 a 03/07, Suporte, Clínica Aurora) e avisou 1 pessoa (as pessoas do evento)');
+
+    // todos que veem o evento: quem vê o Suporte (a Marina e o Carlos); a Lia, só do Comercial, não
+    const todos = await s.post('/calendario/eventos', evento({ titulo: 'Reunião da equipe', tipoId: 'reuniao', inicio: '2030-07-04', fim: '2030-07-04', pessoas: [], clienteId: null, lembretes: [], avisar: 'paineis' }));
+    expect(todos.statusCode, todos.body).toBe(201);
+    await esperarSegundoPlano();
+    expect((await doAviso(carlos)).map((a) => a.evento?.id)).toEqual([todos.json().id]);
+    expect((await doAviso(marina)).map((a) => a.evento?.id)).toContain(todos.json().id);
+    expect(await doAviso(lia)).toEqual([]);
+
+    // ninguém a avisar (as pessoas do evento, sem pessoas): diz na auditoria
+    const sozinho = await s.post('/calendario/eventos', evento({ titulo: 'Só eu', inicio: '2030-07-05', fim: '2030-07-05', pessoas: [], lembretes: [], avisar: 'pessoas' }));
+    expect(await auditoriaDe(sozinho.json().id)).toContain('Pôs no calendário: "Só eu" (Visita, 05/07, Suporte, Clínica Aurora) e pediu o aviso, mas não havia quem avisar (as pessoas do evento)');
+    for (const x of [calado.id, id, todos.json().id, sozinho.json().id]) await app.db.delete(calendarEvents).where(eq(calendarEvents.id, x));
+  });
+
   it('o cancelado e o da lixeira não lembram; o desligado nos Ajustes não vai pelo WhatsApp', async () => {
     const cancelado = await criar({ titulo: 'Cancelado', inicio: '2030-06-03', fim: '2030-06-03', pessoas: [ids.marina], lembretes: [60] });
     const lixeira = await criar({ titulo: 'Na lixeira', inicio: '2030-06-03', fim: '2030-06-03', pessoas: [ids.marina], lembretes: [60] });

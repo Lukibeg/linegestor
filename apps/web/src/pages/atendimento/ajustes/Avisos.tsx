@@ -569,6 +569,7 @@ function TabelaEventos({ eventos, salvos, onMudar, onMensagem, editadas }: {
 const NOME_CURTO_DO_AVISO: Record<EventoAviso, string> = {
   recebeu: 'Recebeu um chamado', citado: 'Citado numa anotação', etapa: 'Chegou na etapa', prazo_perto: 'Prazo perto de vencer',
   prazo_vencido: 'Prazo vencido', sem_dono: 'Sem responsável', critico: 'Chamado Crítico', observador: 'Observadores', lembrete: 'Lembrete do calendário',
+  evento_novo: 'Novo no calendário',
 };
 
 /**

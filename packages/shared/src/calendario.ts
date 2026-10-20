@@ -177,6 +177,29 @@ export function textoDoLembrete(e: { titulo: string; inicio: string; diaInteiro:
   return `Lembrete: ${e.titulo}, ${quandoDoLembrete(e, agora)}`;
 }
 
+/** Quando é o evento, para o aviso de que ele entrou: o começo e, no de vários dias, até quando ("sexta, 24/10 (dia inteiro), até 25/10"). */
+export function quandoDoEvento(e: { inicio: string; fim?: string | null; diaInteiro: boolean; horaInicio: string | null }, agora: Date): string {
+  const ate = e.fim && e.fim > e.inicio ? `, até ${diaCurto(e.fim)}` : '';
+  return `${quandoDoLembrete(e, agora)}${ate}`;
+}
+
+/** O aviso de que o evento entrou no calendário (o sininho, e o {aviso} do WhatsApp): "Luan França pôs no calendário: Visita — Clínica Aurora, amanhã, 21/10, às 09:00". */
+export function textoDaInclusao(quem: string, e: { titulo: string; inicio: string; fim?: string | null; diaInteiro: boolean; horaInicio: string | null }, agora: Date): string {
+  return `${quem} pôs no calendário: ${e.titulo}, ${quandoDoEvento(e, agora)}`;
+}
+
+/**
+ * Quem recebe o aviso de que o evento entrou: como no lembrete (as pessoas do evento, ou todos que veem
+ * um dos painéis dele), menos quem pôs — ninguém é avisado do que ele mesmo fez.
+ */
+export function quemRecebeAInclusao(
+  e: { paineis: readonly string[]; pessoas: readonly string[]; avisar: QuemRecebeOLembrete },
+  quemVe: ReadonlyMap<string, readonly string[]>,
+  quemPos: string | null,
+): string[] {
+  return quemRecebeOLembrete({ paineis: e.paineis, pessoas: e.pessoas, lembrarQuem: e.avisar, criadoPorId: null }, quemVe).filter((p) => p !== quemPos);
+}
+
 /**
  * As variáveis da mensagem do lembrete no WhatsApp (2.0.2: a mensagem de cada aviso, em Avisos e WhatsApp).
  * Os nomes (o tipo, o cliente, o chamado, as pessoas e os painéis) vêm de quem chama: o servidor e a prévia.
@@ -191,6 +214,16 @@ export function valoresDoLembrete(
     cliente: nomes.cliente ?? '', chamado: nomes.chamado ?? '', pessoas: nomes.pessoas.join(', '), paineis: nomes.paineis.join(', '),
     observacao: e.observacao ?? '', link: nomes.link,
   };
+}
+
+/** As variáveis do aviso de que o evento entrou (as do lembrete, com quem pôs e o período inteiro). */
+export function valoresDaInclusao(
+  e: { titulo: string; inicio: string; fim: string; diaInteiro: boolean; horaInicio: string | null; local: string | null; observacao: string | null },
+  nomes: { tipo: string; cliente: string | null; chamado: string | null; pessoas: string[]; paineis: string[]; link: string },
+  agora: Date,
+  quem: string,
+): Record<string, string> {
+  return { ...valoresDoLembrete(e, nomes, agora), aviso: textoDaInclusao(quem, e, agora), quando: quandoDoEvento(e, agora), quem };
 }
 
 /**
@@ -304,6 +337,11 @@ export const EventoGravarSchema = z.object({
   /** os lembretes (2.0.2): minutos antes do começo; quem recebe */
   lembretes: LembretesSchema.default([]),
   lembrarQuem: z.enum(QUEM_RECEBE_O_LEMBRETE).default('pessoas'),
+  /**
+   * o aviso de que o evento entrou no calendário (2.0.2, opcional): na hora de pôr o evento, avisar as
+   * pessoas dele ou todos que veem (nulo = não avisa). Só vale ao criar; quem pôs não recebe.
+   */
+  avisar: z.enum(QUEM_RECEBE_O_LEMBRETE).nullable().default(null),
 }).superRefine((e, ctx) => {
   if (diaValido(e.inicio) && diaValido(e.fim)) {
     if (e.fim < e.inicio) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['fim'], message: 'O último dia vem depois do primeiro.' });

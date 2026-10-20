@@ -16,6 +16,7 @@ import { calendarEvents, clients, newId, roles, tickets, users, type Db } from '
 import {
   chaveDoLembrete, comecoDoEvento, eventoVisivel, hojeNoCalendario, lembretesAoGravar, lembretesDevidos, NOME_SITUACAO_DO_EVENTO, paineisDepoisDaEdicao,
   quemRecebeOLembrete, somarDias, textoDoLembrete, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, valoresDoLembrete,
+  quemRecebeAInclusao, textoDaInclusao, valoresDaInclusao,
   MAX_ANTES_DO_LEMBRETE,
   type CalendarioOpcoes, type EventoDoCalendario, type EventoGravar, type Painel, type QuemRecebeOLembrete, type SituacaoDoEvento, type TipoDeEvento,
   type TiposDoCalendario,
@@ -245,6 +246,27 @@ export async function criar(db: Db, ator: Ator, e: EventoGravar, agora = new Dat
   const [evento] = await paraTela(db, [linha!]);
   const onde = [textoDoPeriodo(e), c.paineis.map((p) => p.nome).join(', '), c.clienteNome].filter(Boolean).join(', ');
   return { evento: evento!, depois: valores(e), resumo: `Pôs no calendário: "${e.titulo}" (${c.tipo.nome}, ${onde})` };
+}
+
+/**
+ * O aviso de que o evento entrou (2.0.2, opcional; o pedido do Luan: "uma notificação de inclusão… com as
+ * opções as pessoas do evento ou todos que veem o evento"): na hora de pôr o evento, no sininho e no
+ * WhatsApp de quem o evento avisa — menos quem pôs. Devolve quantas pessoas receberam.
+ */
+export async function avisarDaInclusao(app: FastifyInstance, ator: Ator, id: string, quem: QuemRecebeOLembrete, agora = new Date()): Promise<number> {
+  const [l] = await app.db.select().from(calendarEvents).where(and(eq(calendarEvents.id, id), isNull(calendarEvents.deletedAt))).limit(1);
+  if (!l) return 0;
+  const [{ paineis }, pessoas, tipos] = await Promise.all([carregarPaineis(app.db), pessoasAtivas(app.db), lerTipos(app.db)]);
+  const para = quemRecebeAInclusao(
+    { paineis: l.panelIds, pessoas: l.participantIds, avisar: quem }, new Map(paineis.map((p) => [p.id, quemVe(p, pessoas)])), ator.tipo === 'pessoa' ? ator.id : null,
+  );
+  if (!para.length) return 0;
+  const evento = { id: l.id, titulo: l.title, inicio: l.startsOn, fim: l.endsOn, diaInteiro: l.allDay, horaInicio: l.startTime, local: l.location, observacao: l.notes };
+  const nomes = await nomesDoLembrete(app.db, l, { nomeDoPainel: new Map(paineis.map((p) => [p.id, p.nome])), tipos }, linkDoEvento(app, evento));
+  return avisarDoCalendario(app, {
+    qual: 'evento_novo', para, evento: { id: l.id, titulo: l.title },
+    texto: textoDaInclusao(ator.nome, evento, agora), valores: valoresDaInclusao(evento, nomes, agora, ator.nome),
+  });
 }
 
 /** O que mudou, nas palavras da tela (para a auditoria). */

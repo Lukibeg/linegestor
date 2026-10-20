@@ -17,6 +17,7 @@ import {
   chaveDoLembrete, comecoDoEvento, EventoGravarSchema, EventosDoPeriodoSchema, lembretesAoGravar, lembretesDevidos, momentoDoLembrete,
   NOME_SITUACAO_DO_EVENTO, quemRecebeOLembrete, SituacaoDoEventoSchema, TiposDoCalendarioSchema, diaDaSemana, diaEmBrasilia, eventoVisivel,
   hojeNoCalendario, paineisDepoisDaEdicao, somarDias, textoDoLembrete, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tiposDeFabrica,
+  NOME_QUEM_RECEBE_O_LEMBRETE, quemRecebeAInclusao, textoDaInclusao,
   type CalendarioOpcoes, type EventoDoCalendario, type EventoGravar, type Painel, type QuemRecebeOLembrete, type SituacaoDoEvento, type TipoDeEvento,
 } from '@gestor/shared';
 import type { Api } from './index.js';
@@ -193,6 +194,13 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
     return { linha, depois: paraAuditoria(valores(e)), resumo: `Pôs no calendário: "${e.titulo}" (${c.tipo.nome}, ${onde})` };
   }
 
+  /** O aviso de que o evento entrou (2.0.2): o sininho de quem o evento avisa, menos quem pôs. Devolve quantas pessoas. */
+  function avisarDaInclusao(a: AtorDemo, e: EventoRow, quem: QuemRecebeOLembrete, quando = agora()): number {
+    const para = quemRecebeAInclusao({ paineis: e.paineis, pessoas: e.pessoas, avisar: quem }, quemVePorPainel(), a.tipo === 'pessoa' ? a.id : null);
+    if (!para.length) return 0;
+    return x().avisarDoCalendario({ qual: 'evento_novo', para, evento: { id: e.id, titulo: e.titulo, inicio: e.inicio }, texto: textoDaInclusao(a.nome, e, quando) }, quando);
+  }
+
   // ---------- os lembretes (2.0.2): as mesmas contas do servidor ----------
 
   /** Quem vê cada painel (as pessoas ativas). */
@@ -351,8 +359,14 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       await ctx.wait(200);
       const dados = ler(EventoGravarSchema, d);
       ctx.requirePerm('tickets.work'); preparar();
-      const r = criar(eu(), dados);
-      ctx.audit('create', 'calendar_event', r.resumo, r.linha.id, { after: r.depois });
+      const a = eu();
+      const r = criar(a, dados);
+      // o aviso de que o evento entrou (2.0.2, opcional), como o servidor: na hora, menos para quem pôs
+      const avisados = dados.avisar ? avisarDaInclusao(a, r.linha, dados.avisar) : null;
+      const resumo = dados.avisar
+        ? `${r.resumo} e ${avisados ? `avisou ${avisados === 1 ? '1 pessoa' : `${avisados} pessoas`}` : 'pediu o aviso, mas não havia quem avisar'} (${NOME_QUEM_RECEBE_O_LEMBRETE[dados.avisar].toLocaleLowerCase('pt-BR')})`
+        : r.resumo;
+      ctx.audit('create', 'calendar_event', resumo, r.linha.id, { after: r.depois });
       return paraTela(r.linha);
     },
     async alterar(id, d) {

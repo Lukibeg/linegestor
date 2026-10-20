@@ -1306,7 +1306,7 @@ export const AgendadoGravarSchema = z.object({
  * O "cliente respondeu" saiu da lista no 2.0.1 (o Gestor não ouve mais as mensagens do cliente pelo n8n); o
  * aviso antigo desse tipo continua aparecendo no sininho (`TIPOS_AVISO`).
  */
-export const EVENTOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'observador', 'lembrete'] as const;
+export const EVENTOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'observador', 'lembrete', 'evento_novo'] as const;
 export type EventoAviso = (typeof EVENTOS_AVISO)[number];
 export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: string }> = {
   recebeu: { titulo: 'Recebeu um chamado (atribuído ou escalonado)', quem: 'quem recebeu' },
@@ -1321,13 +1321,15 @@ export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: stri
   observador: { titulo: 'Novidade num chamado que a pessoa observa (anotação, etapa, responsável, espera, campos)', quem: 'os observadores' },
   // o lembrete do calendário (2.0.2): "quanto tempo antes", escolhido no evento
   lembrete: { titulo: 'Lembrete de um evento do calendário', quem: 'quem o evento lembra (as pessoas dele, ou todos que veem)' },
+  // o aviso de que o evento entrou (2.0.2, o pedido do Luan: "uma notificação de inclusão opcional"): quem põe o evento escolhe
+  evento_novo: { titulo: 'Um evento entrou no calendário (quando quem pôs pede o aviso)', quem: 'quem o evento avisa (as pessoas dele, ou todos que veem), menos quem pôs' },
 };
 export type CanaisDoAviso = { tela: boolean; whatsapp: boolean };
 /** O que o documento de prioridade sugeriu (a tabela "Alertas e escalonamento"). */
 export const EVENTOS_AVISO_PADRAO: Record<EventoAviso, CanaisDoAviso> = {
   recebeu: { tela: true, whatsapp: true }, citado: { tela: true, whatsapp: true }, etapa: { tela: true, whatsapp: true }, prazo_perto: { tela: true, whatsapp: true },
   prazo_vencido: { tela: true, whatsapp: true }, sem_dono: { tela: true, whatsapp: false }, critico: { tela: true, whatsapp: true },
-  observador: { tela: true, whatsapp: false }, lembrete: { tela: true, whatsapp: true },
+  observador: { tela: true, whatsapp: false }, lembrete: { tela: true, whatsapp: true }, evento_novo: { tela: true, whatsapp: true },
 };
 const CanaisSchema = z.object({ tela: z.boolean(), whatsapp: z.boolean() });
 
@@ -1358,9 +1360,9 @@ const QUEM_FEZ = variavel('quem', 'quem fez');
 const A_NOTA = variavel('nota', 'o texto da anotação');
 /** Só no do observador: o que mudou, sem quem fez ("Moveu para N2"). Na anotação fica vazia: a {nota} já diz. */
 const A_NOVIDADE = variavel('novidade', 'o que mudou ("Moveu para N2"; na anotação, vazio: vale a nota)');
-/** As do lembrete do calendário: as do evento. */
-const VARIAVEIS_DO_LEMBRETE: readonly VariavelDoAviso[] = [
-  variavel('aviso', 'o lembrete numa frase, como no sininho'), variavel('evento', 'o que é (o título do evento)'),
+/** As do evento do calendário: valem no lembrete e no aviso de que o evento entrou. */
+const VARIAVEIS_DO_EVENTO: readonly VariavelDoAviso[] = [
+  variavel('evento', 'o que é (o título do evento)'),
   variavel('tipo', 'o tipo (Visita, Reunião…)'), variavel('quando', 'o dia e a hora'), variavel('local', 'onde'),
   variavel('cliente', 'a empresa'), variavel('chamado', 'o chamado ligado (SUP-12)'), variavel('pessoas', 'as pessoas do evento'),
   variavel('paineis', 'os painéis do evento'), variavel('observacao', 'a observação'), variavel('link', 'o endereço do evento no Gestor'),
@@ -1368,7 +1370,8 @@ const VARIAVEIS_DO_LEMBRETE: readonly VariavelDoAviso[] = [
 
 /** As variáveis de um aviso, na ordem dos botões: primeiro as do que aconteceu, depois as do chamado (ou do evento). */
 export function variaveisDoAviso(e: EventoAviso): readonly VariavelDoAviso[] {
-  if (e === 'lembrete') return VARIAVEIS_DO_LEMBRETE;
+  if (e === 'lembrete') return [variavel('aviso', 'o lembrete numa frase, como no sininho'), ...VARIAVEIS_DO_EVENTO];
+  if (e === 'evento_novo') return [variavel('aviso', 'o aviso numa frase, como no sininho'), variavel('quem', 'quem pôs o evento'), ...VARIAVEIS_DO_EVENTO];
   const doQueAconteceu = e === 'observador' ? [AVISO_NUMA_FRASE, A_NOVIDADE, QUEM_FEZ, A_NOTA]
     : e === 'citado' ? [AVISO_NUMA_FRASE, QUEM_FEZ, A_NOTA]
       // o relógio do Gestor avisa os prazos e o sem responsável: ninguém "fez"
@@ -1390,6 +1393,7 @@ export const MODELOS_DOS_AVISOS_PADRAO: Readonly<Record<EventoAviso, string>> = 
   critico: `🔴 *{aviso}*\n🔎 *Painel:* {painel}\n📌 *Card:* {codigo} · {titulo}\n📝 *Relato:* {relato}\n👤 *Quem abriu:* {quem}\n${FIM_DO_CHAMADO}`,
   observador: '🔎 *Painel:* {painel}\n📌 *Card:* {codigo} · {titulo}\n🔔 *Novidade:* {novidade}\n📝 *Nota:* {nota}\n👤 *Quem:* {quem}\n👨‍💼 *Cliente:* {cliente}\n🔗 *Link do Card/Painel:* {link}',
   lembrete: '⏰ *Lembrete:* {evento}\n🗓️ *Quando:* {quando}\n📍 *Local:* {local}\n👨‍💼 *Cliente:* {cliente}\n📌 *Chamado:* {chamado}\n📝 *Observação:* {observacao}\n🔗 *Link:* {link}',
+  evento_novo: '🗓️ *Novo no calendário:* {evento}\n⏰ *Quando:* {quando}\n📍 *Local:* {local}\n👨‍💼 *Cliente:* {cliente}\n📌 *Chamado:* {chamado}\n👥 *Pessoas:* {pessoas}\n📝 *Observação:* {observacao}\n👤 *Quem pôs:* {quem}\n🔗 *Link:* {link}',
 });
 
 /** O tamanho de cada mensagem: até 2.000 letras escritas; a mensagem cheia vai até 4.000 (o WhatsApp aceita 4.096). */
@@ -1456,6 +1460,12 @@ export const EXEMPLOS_DOS_AVISOS: Readonly<Record<EventoAviso, ValoresDoAviso>> 
   lembrete: {
     aviso: 'Lembrete: Visita — Clínica Aurora, amanhã, 21/10, às 09:00', evento: 'Visita — Clínica Aurora', tipo: 'Visita',
     quando: 'amanhã, 21/10, às 09:00', local: 'Av. Tancredo Neves, 1632 — Salvador', cliente: 'Clínica Aurora', chamado: 'SUP-12',
+    pessoas: 'Luan França, Lúcio Andrade', paineis: 'Suporte', observacao: 'Levar o aparelho reserva.',
+    link: 'https://gestao.inglinesystems.com.br/calendario?mes=2026-10&dia=2026-10-21',
+  },
+  evento_novo: {
+    aviso: 'Luan França pôs no calendário: Visita — Clínica Aurora, amanhã, 21/10, às 09:00', quem: 'Luan França', evento: 'Visita — Clínica Aurora',
+    tipo: 'Visita', quando: 'amanhã, 21/10, às 09:00', local: 'Av. Tancredo Neves, 1632 — Salvador', cliente: 'Clínica Aurora', chamado: 'SUP-12',
     pessoas: 'Luan França, Lúcio Andrade', paineis: 'Suporte', observacao: 'Levar o aparelho reserva.',
     link: 'https://gestao.inglinesystems.com.br/calendario?mes=2026-10&dia=2026-10-21',
   },
@@ -1775,7 +1785,7 @@ export type OpcoesAtendimento = {
 export type ColunaQuadro = { etapa: EtapaPainel; chamados: CartaoChamado[]; total: number; escondidos: number; valor: number };
 export type QuadroAtendimento = { painelId: string; colunas: ColunaQuadro[]; foraDoHorario: boolean; agora: string };
 
-export const TIPOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai', 'observador', 'lembrete'] as const;
+export const TIPOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai', 'observador', 'lembrete', 'evento_novo'] as const;
 export type TipoAviso = (typeof TIPOS_AVISO)[number];
 /** Um aviso do sininho: de um chamado, ou (2.0.2) o lembrete de um evento do calendário. */
 export type AvisoNaTela = {
