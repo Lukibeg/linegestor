@@ -426,6 +426,8 @@ export type Api = {
     duplicar(id: string): Promise<Simulacao>;
     /** vai para a lixeira (volta pela Administração › Lixeira) */
     remover(id: string): Promise<{ ok: boolean }>;
+    /** a planilha do Excel, com as fórmulas (o que está salvo); fica na auditoria */
+    planilha(id: string): Promise<{ bytes: Uint8Array; nome: string }>;
     /** só quem cuida dos painéis; as simulações já feitas não mudam */
     salvarAjustes(a: AjustesDoSimuladorEntrada): Promise<AjustesDoSimulador>;
   };

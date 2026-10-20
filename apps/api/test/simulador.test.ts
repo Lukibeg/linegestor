@@ -12,10 +12,11 @@
  *    auditoria diz o que mudou), duplicar, a lixeira e a volta dela
  *  - a negociação ligada: só de painel de Vendas que a pessoa vê; quem não vê o painel não vê a negociação
  *    (e a ligação fica como estava quando ela salva); a ficha da negociação lista as simulações
+ *  - o Excel: quem vê exporta a planilha com as fórmulas (uma folha por cenário e a "Lado a lado"), na auditoria
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
-  AJUSTES_DO_SIMULADOR_PADRAO, CUSTOS_DA_HELENA, MODELO_DA_HELENA, cenarioNovo, contasDoCenario,
+  AJUSTES_DO_SIMULADOR_PADRAO, CUSTOS_DA_HELENA, MODELO_DA_HELENA, TIPO_DO_XLSX, cenarioNovo, contasDoCenario, diaLocal, lerZipSemCompressao, resumoDoCenario,
   type AjustesDoSimulador, type CenarioDaSimulacao, type Painel, type Simulacao, type SimulacaoNaLista,
 } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
@@ -57,7 +58,7 @@ const AJUSTES: AjustesDoSimulador = {
   ],
   modelos: [
     MODELO_DA_HELENA,
-    { id: 'pbx', nome: 'LinePBX em nuvem', linhas: [{ custoId: 'yealink', qtd: 1, porRamal: true }, { custoId: 'nuvem', qtd: 1, porRamal: true }, { custoId: 'dids', qtd: 3, porRamal: false }, { custoId: 'comissao', qtd: 1, porRamal: false }] },
+    { id: 'pbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [{ custoId: 'yealink', qtd: 1, porRamal: true }, { custoId: 'nuvem', qtd: 1, porRamal: true }, { custoId: 'dids', qtd: 3, porRamal: false }, { custoId: 'comissao', qtd: 1, porRamal: false }] },
   ],
 };
 
@@ -110,7 +111,9 @@ describe('quem vê e quem mexe', () => {
     expect((await marina.get('/comercial/simulador/simulacoes')).statusCode).toBe(403);
     const op = await lia.get('/comercial/simulador/opcoes');
     expect(op.statusCode, op.body).toBe(200);
-    expect(op.json()).toEqual({ ajustes: AJUSTES_DO_SIMULADOR_PADRAO, podeEditar: false, podeCuidar: false });
+    expect(op.json()).toMatchObject({ ajustes: AJUSTES_DO_SIMULADOR_PADRAO, podeEditar: false, podeCuidar: false });
+    // os produtos do catálogo, com o código (o modelo e o cenário usam o código)
+    expect((op.json().produtos as Array<{ codigo: string; nome: string }>).map((x) => x.codigo)).toEqual(expect.arrayContaining(['linepbx', 'linechat']));
     expect((await camila.get('/comercial/simulador/opcoes')).json()).toMatchObject({ podeEditar: true, podeCuidar: false });
     expect((await s.get('/comercial/simulador/opcoes')).json()).toMatchObject({ podeEditar: true, podeCuidar: true });
     const corpo = { nome: 'Teste', negociacaoId: null, cenarios: [cenarioDaAurora()], principal: 'a' };
@@ -260,6 +263,28 @@ describe('a simulação', () => {
     expect((await lia.post(`/comercial/simulador/simulacoes/${aurora.id}/duplicar`)).statusCode).toBe(403);
   });
 
+  it('o Excel: quem vê exporta a planilha com as fórmulas, uma folha por cenário e a "Lado a lado"; a auditoria conta', async () => {
+    const atual: Simulacao = (await lia.get(`/comercial/simulador/simulacoes/${aurora.id}`)).json();
+    const r = await lia.get(`/comercial/simulador/simulacoes/${aurora.id}/planilha`);
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.headers['content-type']).toBe(TIPO_DO_XLSX);
+    expect(r.headers['content-disposition']).toBe(`attachment; filename="simulacao-clinica-aurora-${diaLocal(new Date())}.xlsx"`);
+    const arquivos = lerZipSemCompressao(new Uint8Array(r.rawPayload));
+    const texto = (nome: string) => new TextDecoder().decode(arquivos.get(nome));
+    const folhas = [...texto('xl/workbook.xml').matchAll(/<sheet name="([^"]+)"/g)].map((m) => m[1]);
+    expect(folhas).toEqual(['Lado a lado', ...atual.cenarios.map((c) => c.nome)]);
+    // a folha do cenário: a mensalidade (amarela), a conta em fórmula e quem exportou; a Lado a lado puxa de lá
+    const b = texto('xl/worksheets/sheet3.xml');
+    expect(b).toContain('<c r="B7" s="11"><v>890</v></c>');
+    expect(b).toContain('<f>B7+K');
+    expect(b).toContain('por Lia Rocha');
+    expect(texto('xl/worksheets/sheet1.xml')).toContain(`'Cenário B'!$B$`);
+    expect(await auditoriaDe(aurora.id)).toContain('Exportou a simulação "Clínica Aurora" para o Excel');
+    // sem o Comercial, não; a que não existe, 404
+    expect((await marina.get(`/comercial/simulador/simulacoes/${aurora.id}/planilha`)).statusCode).toBe(403);
+    expect((await camila.get('/comercial/simulador/simulacoes/nao-existe/planilha')).statusCode).toBe(404);
+  });
+
   it('a lixeira: some da lista e da negociação; volta pela Administração › Lixeira', async () => {
     expect((await lia.del(`/comercial/simulador/simulacoes/${aurora.id}`)).statusCode).toBe(403);
     const r = await camila.del(`/comercial/simulador/simulacoes/${aurora.id}`);
@@ -274,5 +299,28 @@ describe('a simulação', () => {
     expect(volta.statusCode, volta.body).toBe(200);
     expect((await camila.get(`/comercial/simulador/simulacoes/${aurora.id}`)).statusCode).toBe(200);
     expect((await auditoriaDe(aurora.id))[0]).toBe('Restaurou a simulação "Clínica Aurora" do Comercial da lixeira');
+  });
+});
+
+describe('a margem no relatório do Comercial', () => {
+  it('a ganha com simulação entra na margem das ganhas: no total, por vendedor e por produto', async () => {
+    const linepbx = ((await camila.get('/comercial/simulador/opcoes')).json().produtos as Array<{ id: string; codigo: string; nome: string }>).find((x) => x.codigo === 'linepbx')!;
+    // quem cuida e o produto da negociação; depois, o Ganho
+    const p = await camila.patch(`/atendimento/chamados/${negociacao.id}`, { responsavelId: ids.camila, produtos: [linepbx.id] });
+    expect(p.statusCode, p.body).toBe(200);
+    const ganho = com.etapas.find((e) => e.nome === 'Ganho')!;
+    const m = await camila.post(`/atendimento/chamados/${negociacao.id}/mover`, { etapaId: ganho.id });
+    expect(m.statusCode, m.body).toBe(200);
+    const hoje = diaLocal(new Date());
+    const r = await camila.get(`/atendimento/vendas?painel=${com.id}&de=${hoje}&ate=${hoje}`);
+    expect(r.statusCode, r.body).toBe(200);
+    const sim: Simulacao = (await camila.get(`/comercial/simulador/simulacoes/${(await camila.get(`/comercial/simulador/da-negociacao/${negociacao.id}`)).json()[0].id}`)).json();
+    const principal = resumoDoCenario(sim.cenarios.find((c) => c.id === sim.principal)!, AJUSTES);
+    expect(r.json().margem).toMatchObject({
+      ganhas: 1, comSimulacao: 1,
+      geral: { qtd: 1, mensalidade: principal.mensalTotal, sobra: principal.sobraMensal, sinal: principal.sinal },
+      porVendedor: [{ nome: 'Camila Souza', qtd: 1 }],
+      porProduto: [{ nome: linepbx.nome, qtd: 1 }],
+    });
   });
 });

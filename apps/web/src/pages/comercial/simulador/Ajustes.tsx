@@ -12,7 +12,7 @@ import { Layers, Plus, Trash2, X } from 'lucide-react';
 import {
   AJUDA_DO_TIPO_DE_CUSTO, MAX_FAIXAS_DE_PRECO, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE, NOME_DO_TIPO_DE_CUSTO, TIPOS_DE_CUSTO, ehPercentual, idLocal,
   textoDasFaixasDePreco,
-  type AjustesDoSimulador, type CustoDaTabela, type FaixaDePreco, type ModeloDeSimulacao, type TipoDeCusto,
+  type AjustesDoSimulador, type CustoDaTabela, type FaixaDePreco, type ModeloDeSimulacao, type ProdutoDoSimulador, type TipoDeCusto,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Pagina } from '../../../components/layout/AppShell.js';
@@ -32,12 +32,12 @@ export function AjustesDoSimuladorTela() {
       <AbasDoSimulador atual="ajustes" podeCuidar={!!op.data?.podeCuidar || !op.data} />
       {op.isLoading ? <Carregando /> : op.isError ? <p className="text-bad text-sm" role="alert">{erroDoSimulador(op.error)}</p> : !op.data!.podeCuidar ? (
         <Vazio titulo="Os Ajustes do Simulador são de quem cuida dos painéis" texto='Precisa da permissão "Cuidar dos chamados" (a mesma dos Ajustes do Comercial). Fale com a administração.' />
-      ) : <Formulario inicial={op.data!.ajustes} />}
+      ) : <Formulario inicial={op.data!.ajustes} produtos={op.data!.produtos} />}
     </Pagina>
   );
 }
 
-function Formulario({ inicial }: { inicial: AjustesDoSimulador }) {
+function Formulario({ inicial, produtos }: { inicial: AjustesDoSimulador; produtos: ProdutoDoSimulador[] }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [a, setA] = useState<AjustesDoSimulador>(() => copia(inicial));
@@ -114,14 +114,14 @@ function Formulario({ inicial }: { inicial: AjustesDoSimulador }) {
         <header className="flex flex-wrap items-center justify-between gap-2 mb-1">
           <h2 className="font-display font-semibold text-[15px]">Os modelos <span className="font-body font-normal text-[12.5px] text-muted">{a.modelos.length}</span></h2>
           <button type="button" className="btn-secondary btn-sm" id="ajustes-novo-modelo"
-            onClick={() => setA((x) => ({ ...x, modelos: [...x.modelos, { id: idLocal(), nome: '', linhas: [] }] }))}>
+            onClick={() => setA((x) => ({ ...x, modelos: [...x.modelos, { id: idLocal(), nome: '', produto: null, linhas: [] }] }))}>
             <Plus size={14} /> Modelo
           </button>
         </header>
-        <p className="text-[12.5px] text-muted mb-3">Um modelo por produto (LinePBX, LineChat…): a simulação nova começa com as linhas dele, com a quantidade de cada uma (ou por ramal).</p>
+        <p className="text-[12.5px] text-muted mb-3">Um modelo por produto (LinePBX, LineChat…): a simulação nova começa com as linhas dele, com a quantidade de cada uma (ou por ramal). O produto do catálogo liga o modelo à negociação: o Simular da negociação usa os modelos dos produtos dela.</p>
         <div className="flex flex-col gap-3">
           {a.modelos.map((m) => (
-            <Modelo key={m.id} m={m} custos={a.custos} mudar={(x) => mudarModelo(m.id, x)} tirar={() => setA((x) => ({ ...x, modelos: x.modelos.filter((y) => y.id !== m.id) }))} />
+            <Modelo key={m.id} m={m} custos={a.custos} produtos={produtos} mudar={(x) => mudarModelo(m.id, x)} tirar={() => setA((x) => ({ ...x, modelos: x.modelos.filter((y) => y.id !== m.id) }))} />
           ))}
           {!a.modelos.length && <p className="text-sm text-muted">Nenhum modelo. A simulação nova começa em branco.</p>}
         </div>
@@ -260,13 +260,21 @@ function EditorDeFaixas({ faixas, unidade, mudar }: { faixas: FaixaDePreco[]; un
   );
 }
 
-function Modelo({ m, custos, mudar, tirar }: { m: ModeloDeSimulacao; custos: CustoDaTabela[]; mudar: (x: Partial<ModeloDeSimulacao>) => void; tirar: () => void }) {
+function Modelo({ m, custos, produtos, mudar, tirar }: { m: ModeloDeSimulacao; custos: CustoDaTabela[]; produtos: ProdutoDoSimulador[]; mudar: (x: Partial<ModeloDeSimulacao>) => void; tirar: () => void }) {
   const fora = custos.filter((c) => !m.linhas.some((l) => l.custoId === c.id));
   const mudarLinha = (custoId: string, x: Partial<ModeloDeSimulacao['linhas'][number]>) => mudar({ linhas: m.linhas.map((l) => (l.custoId === custoId ? { ...l, ...x } : l)) });
   return (
     <div className="rounded-lg border border-line p-3" data-modelo={m.id}>
-      <div className="flex items-center gap-2 mb-2">
-        <input className="input font-semibold" value={m.nome} onChange={(e) => mudar({ nome: e.target.value })} placeholder="O produto (LinePBX em nuvem)" aria-label="O nome do modelo" maxLength={80} data-campo="nome" />
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <input className="input font-semibold flex-1 basis-[220px]" value={m.nome} onChange={(e) => mudar({ nome: e.target.value })} placeholder="O produto (LinePBX em nuvem)" aria-label="O nome do modelo" maxLength={80} data-campo="nome" />
+        <label className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-2">
+          do produto
+          <select className="input !w-auto !py-1.5" value={m.produto ?? ''} onChange={(e) => mudar({ produto: e.target.value || null })} aria-label="O produto do catálogo" data-campo="produto">
+            <option value="">nenhum</option>
+            {produtos.map((p) => <option key={p.codigo} value={p.codigo}>{p.nome}</option>)}
+            {m.produto && !produtos.some((p) => p.codigo === m.produto) && <option value={m.produto}>{m.produto} (fora do catálogo)</option>}
+          </select>
+        </label>
         <button type="button" className="btn-ghost btn-sm px-1.5 text-muted shrink-0" onClick={tirar} aria-label={`Tirar o modelo ${m.nome}`} title="Tirar o modelo"><Trash2 size={15} /></button>
       </div>
       <ul className="flex flex-col gap-1.5">

@@ -13,14 +13,14 @@
  * e a contraproposta da Escola Mundo Kids no vermelho (a negociação perdida).
  */
 import {
-  AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, cenarioNovo, cenarioPrincipal, mudancasDaSimulacao, mudancasDosAjustes,
-  resumoDoCenario,
-  type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario, type ModeloDeSimulacao, type NegociacaoDaSimulacao,
+  AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, cenarioNovo, cenarioPrincipal, mudancasDaSimulacao,
+  mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario,
+  type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario, type MargemDaNegociacao, type ModeloDeSimulacao, type NegociacaoDaSimulacao,
   type Simulacao, type SimulacaoGravar,
 } from '@gestor/shared';
 import type { Api } from './index.js';
 import { ApiError, type TrashItem } from './types.js';
-import { acessoDoCalendarioDemo, type AtorDemo, type EstadoDaPrevia } from './demo-atendimento.js';
+import { acessoDoCalendarioDemo, fonteDasMargensDemo, type AtorDemo, type EstadoDaPrevia } from './demo-atendimento.js';
 import { EMAIL_DA_PESSOA, type Pessoa } from './demo-atendimento-exemplos.js';
 
 export type ContextoSimuladorDemo = {
@@ -71,9 +71,10 @@ const CUSTOS_DO_PABX: CustoDaTabela[] = [
 const l = (custoId: string, qtd = 1, porRamal = false) => ({ custoId, qtd, porRamal });
 const COMISSOES = [l('comissao'), l('recorrente')];
 const MODELOS_DE_EXEMPLO: ModeloDeSimulacao[] = [
-  { id: 'linepbx', nome: 'LinePBX em nuvem', linhas: [l('t31p', 1, true), l('nuvem', 1, true), l('did', 2), l('canal', 2), l('config'), ...COMISSOES] },
+  { id: 'linepbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [l('t31p', 1, true), l('nuvem', 1, true), l('did', 2), l('canal', 2), l('config'), ...COMISSOES] },
   { ...MODELO_DA_HELENA, linhas: [...MODELO_DA_HELENA.linhas, l('config'), ...COMISSOES] },
-  { id: 'pbx-chat', nome: 'LinePBX + LineChat', linhas: [l('t31p', 1, true), l('nuvem', 1, true), l('did', 2), l('canal', 2), ...MODELO_DA_HELENA.linhas, l('config'), ...COMISSOES] },
+  { id: 'voicenet', nome: 'VoiceNet (os canais de voz)', produto: 'voicenet', linhas: [l('canal', 10), l('did', 4), ...COMISSOES] },
+  { id: 'pbx-chat', nome: 'LinePBX + LineChat', produto: null, linhas: [l('t31p', 1, true), l('nuvem', 1, true), l('did', 2), l('canal', 2), ...MODELO_DA_HELENA.linhas, l('config'), ...COMISSOES] },
 ];
 export const AJUSTES_DO_SIMULADOR_DEMO: AjustesDoSimulador = { ...AJUSTES_DO_SIMULADOR_PADRAO, custos: [...CUSTOS_DA_HELENA, ...CUSTOS_DO_PABX], modelos: MODELOS_DE_EXEMPLO };
 
@@ -92,6 +93,21 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
     X.semeado = true;
     semear();
   }
+
+  // a margem das ganhas no relatório do Comercial: de cada negociação, a simulação mexida por último
+  fonteDasMargensDemo(() => {
+    preparar();
+    const margens = new Map<string, MargemDaNegociacao>();
+    for (const r of [...X.simulacoes].filter((s) => !s.deletedAt && s.negociacaoId).sort((p, q) => q.alteradoEm.localeCompare(p.alteradoEm))) {
+      if (margens.has(r.negociacaoId!)) continue;
+      const k = resumoDoCenario(cenarioPrincipal(r), X.ajustes);
+      margens.set(r.negociacaoId!, { simulacaoId: r.id, simulacao: r.nome, mensalTotal: k.mensalTotal, sobraMensal: k.sobraMensal });
+    }
+    return { margens, faixas: X.ajustes };
+  });
+  /** Os produtos do catálogo (ativos, fora da lixeira), com o código. */
+  const produtos = () => [...S.products].filter((p) => p.active && !p.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR'))
+    .map((p) => ({ id: p.id, codigo: p.code, nome: p.name }));
 
   const pessoa = (p: Pessoa) => S.users.find((u) => u.email === EMAIL_DA_PESSOA[p])?.id ?? null;
   const nomeDe = (id: string | null) => (id ? S.users.find((u) => u.id === id)?.name ?? null : null);
@@ -158,12 +174,13 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
         cenario('c', '10% de desconto, 36 meses', 'linepbx', { mensalidade: 112_500, ativacao: 171_000, ramais: 40, prazo: 36 }, (x2) => (x2.custoId === 'did' || x2.custoId === 'canal' ? { ...x2, qtd: 4 } : telefone(39_000)(x2))),
       ],
     });
-    // o Hotel Beira Mar: o PABX e o LineChat; 20 telefones para 30 ramais; a ativação em 3 vezes
+    // o Hotel Beira Mar: o PABX e o LineChat; 20 telefones para 30 ramais; a ativação em 3 vezes. A conta
+    // refeita pede R$ 1.690 (a negociação ainda está com R$ 1.580): o Levar para a negociação mostra a troca
     nova({
       nome: 'Hotel Beira Mar — URA, filas e LineChat', negociacaoId: negociacao('Atendimento com URA e filas'), principal: 'a',
       criadoPorId: pessoa('diego'), criadoEm: dias(12), alteradoEm: dias(4, 11),
       cenarios: [
-        cenario('a', 'Cenário A', 'pbx-chat', { mensalidade: 158_000, ativacao: 250_000, ramais: 30, prazo: 36, parcelas: 3 },
+        cenario('a', 'Cenário A', 'pbx-chat', { mensalidade: 169_000, ativacao: 250_000, ramais: 30, prazo: 36, parcelas: 3, produtos: ['linepbx', 'linechat'] },
           (x2) => (x2.custoId === 't31p' ? { ...x2, porRamal: false, qtd: 20, valor: 39_000 } : quantidade(x2, { 'helena-usuarios': 4, 'helena-canais': 2, 'helena-zapi': 1, 'helena-contatos': 8_000 }))),
       ],
     });
@@ -173,6 +190,24 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       criadoPorId: pessoa('camila'), criadoEm: dias(6, 15),
       cenarios: [cenario('a', 'Cenário A', 'linechat-helena', { mensalidade: 49_000, ativacao: 0, prazo: 12 },
         (x2) => (x2.custoId === 'config' ? null : quantidade(x2, { 'helena-usuarios': 5, 'helena-canais': 2, 'helena-zapi': 1 })))],
+    });
+    // as ganhas do mês (a margem no relatório do Comercial): a Ótica (Camila) e a Construtora (Camila) no verde, a
+    // Academia (Diego, o LineChat com 12 usuários) no vermelho
+    nova({
+      nome: 'Ótica Visão Clara — 15 ramais', negociacaoId: negociacao('PABX em nuvem — 15 ramais'), principal: 'a',
+      criadoPorId: pessoa('camila'), criadoEm: dias(16, 11),
+      cenarios: [cenario('a', 'Cenário A', 'linepbx', { mensalidade: 61_000, ativacao: 110_000, ramais: 15, produtos: ['linepbx', 'voicenet'] }, telefone(39_000))],
+    });
+    nova({
+      nome: 'Academia Movimento — LineChat, 12 atendentes', negociacaoId: negociacao('LineChat — 12 atendentes'), principal: 'a',
+      criadoPorId: pessoa('diego'), criadoEm: dias(6, 14),
+      cenarios: [cenario('a', 'Cenário A', 'linechat-helena', { mensalidade: 99_000, ativacao: 90_000, prazo: 12 },
+        (x2) => quantidade(x2, { 'helena-usuarios': 12, 'helena-canais': 2, 'helena-zapi': 1, 'helena-contatos': 12_000 }))],
+    });
+    nova({
+      nome: 'Construtora Horizonte — renovação da telefonia', negociacaoId: negociacao('Renovação do contrato de telefonia'), principal: 'a',
+      criadoPorId: pessoa('camila'), criadoEm: dias(12, 10),
+      cenarios: [cenario('a', 'Cenário A', 'voicenet', { mensalidade: 84_000, ativacao: 0 })],
     });
     // a Escola Mundo Kids: a contraproposta que ficou no vermelho (a negociação foi perdida)
     nova({
@@ -191,7 +226,7 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       await ctx.wait(60);
       ctx.requirePerm('sales.read'); preparar();
       const a = x().eu();
-      return { ajustes: copia(X.ajustes), podeEditar: podeEditar(a), podeCuidar: podeCuidar(a) };
+      return { ajustes: copia(X.ajustes), podeEditar: podeEditar(a), podeCuidar: podeCuidar(a), produtos: produtos() };
     },
     async listar() {
       await ctx.wait(80);
@@ -269,6 +304,16 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       r.alteradoPorId = a.tipo === 'pessoa' ? a.id : null;
       ctx.audit('delete', 'sales_simulation', `Mandou a simulação "${r.nome}" para a lixeira`, id);
       return { ok: true };
+    },
+    async planilha(id) {
+      // a mesma planilha do servidor (o `planilhaDaSimulacao` do shared), montada aqui; a mesma frase na auditoria
+      await ctx.wait(150);
+      ctx.requirePerm('sales.read'); preparar();
+      const a = x().eu();
+      const s = paraTela(linhaOu404(id), a);
+      const r = planilhaDaSimulacao({ simulacao: s, faixas: X.ajustes, quem: a.tipo === 'pessoa' ? nomeDe(a.id) : null, quando: agora() });
+      ctx.audit('export', 'sales_simulation', `Exportou a simulação "${s.nome}" para o Excel`, id);
+      return r;
     },
     async salvarAjustes(entrada) {
       await ctx.wait(200);

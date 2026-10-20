@@ -167,6 +167,11 @@ export type CenarioDaSimulacao = {
   /** a margem que se quer (%): a mensalidade mínima é a que dá esta margem */
   margemAlvo: number;
   linhas: LinhaDoCenario[];
+  /**
+   * Os produtos do catálogo que a venda leva (os códigos: linepbx, linechat…): vêm do modelo ou da
+   * negociação, e o "Levar para a negociação" põe estes produtos nela.
+   */
+  produtos: string[];
 };
 
 /** Um custo da tabela (os Ajustes do Simulador). */
@@ -187,8 +192,12 @@ export type CustoDaTabela = {
 };
 /** Uma linha de um modelo: um custo da tabela, com a quantidade (ou por ramal). */
 export type LinhaDoModelo = { custoId: string; qtd: number; porRamal: boolean };
-/** Um modelo pronto (por produto): a simulação nova começa com as linhas dele. */
-export type ModeloDeSimulacao = { id: string; nome: string; linhas: LinhaDoModelo[] };
+/**
+ * Um modelo pronto (por produto): a simulação nova começa com as linhas dele. `produto`: o código do
+ * produto do catálogo (linepbx, linechat…) — a simulação feita a partir de uma negociação usa os modelos
+ * dos produtos dela.
+ */
+export type ModeloDeSimulacao = { id: string; nome: string; produto: string | null; linhas: LinhaDoModelo[] };
 
 /** Os Ajustes do Simulador (`settings.comercial-simulador`). */
 export type AjustesDoSimulador = FaixasDoSinal & {
@@ -219,7 +228,7 @@ export const CUSTOS_DA_HELENA: CustoDaTabela[] = [
 ];
 /** O modelo do LineChat: a planilha da Helena, com o que vem na licença (3 usuários, 1 canal, 5.000 contatos). */
 export const MODELO_DA_HELENA: ModeloDeSimulacao = {
-  id: 'linechat-helena', nome: 'LineChat (Helena)',
+  id: 'linechat-helena', nome: 'LineChat (Helena)', produto: 'linechat',
   linhas: [
     { custoId: 'helena-licenca', qtd: 1, porRamal: false }, { custoId: 'helena-usuarios', qtd: 3, porRamal: false },
     { custoId: 'helena-canais', qtd: 1, porRamal: false }, { custoId: 'helena-zapi', qtd: 0, porRamal: false },
@@ -293,7 +302,11 @@ export type SimuladorOpcoes = {
   podeEditar: boolean;
   /** os Ajustes do Simulador (quem cuida dos painéis) */
   podeCuidar: boolean;
+  /** os produtos do catálogo (o código liga o modelo e o cenário ao produto da negociação) */
+  produtos: ProdutoDoSimulador[];
 };
+/** Um produto do catálogo, como o Simulador usa. */
+export type ProdutoDoSimulador = { id: string; codigo: string; nome: string };
 
 // =====================================================================
 //  OS FORMATOS
@@ -420,6 +433,7 @@ export const CenarioDaSimulacaoSchema = z.object({
   imposto: Percentual('O imposto'),
   margemAlvo: Percentual('A margem que você quer', 95),
   linhas: z.array(LinhaDoCenarioSchema).max(MAX_LINHAS_DO_CENARIO, `Até ${MAX_LINHAS_DO_CENARIO} custos por cenário.`),
+  produtos: z.array(z.string().trim().min(1).max(40)).max(20, 'Até 20 produtos.').default([]).transform((xs) => [...new Set(xs)]),
 }).superRefine((c, ctx) => {
   if (c.parcelas > c.prazo) ctx.addIssue({ code: 'custom', path: ['parcelas'], message: `${c.nome}: a ativação vai em até ${c.prazo} ${c.prazo === 1 ? 'vez' : 'vezes'} (o prazo do contrato).` });
   const ids = new Set<string>();
@@ -467,6 +481,7 @@ export const CustoDaTabelaSchema = z.object({
 export const ModeloDeSimulacaoSchema = z.object({
   id: Id,
   nome: z.string({ invalid_type_error: 'Dê um nome ao modelo.' }).trim().min(1, 'Dê um nome a cada modelo (o produto: LinePBX, LineChat…).').max(80, 'O nome do modelo vai até 80 letras.'),
+  produto: z.string().trim().max(40).nullable().default(null).transform((x) => (x ? x : null)),
   linhas: z.array(z.object({
     custoId: Id,
     qtd: z.number().int('A quantidade vai inteira.').min(0, 'A quantidade não é negativa.').max(MAX_QUANTIDADE).default(1),
@@ -569,17 +584,25 @@ export function proximoNomeDeCenario(cenarios: ReadonlyArray<{ nome: string }>):
   return `Cenário ${cenarios.length + 1}`;
 }
 
-/** O cenário novo: o imposto, o prazo e a margem que se quer vêm dos Ajustes; as linhas, do modelo (se houver). */
-export function cenarioNovo(a: AjustesDoSimulador, o: { id?: string; nome?: string; modelo?: ModeloDeSimulacao | null } = {}): CenarioDaSimulacao {
-  const linhas: LinhaDoCenario[] = [];
-  for (const l of o.modelo?.linhas ?? []) {
-    const c = a.custos.find((x) => x.id === l.custoId);
-    if (c) linhas.push(linhaDaTabela(c, { qtd: l.qtd, porRamal: l.porRamal }));
-  }
+/** As linhas de um modelo (os custos da tabela, com a quantidade de cada um). */
+export function linhasDoModelo(a: Pick<AjustesDoSimulador, 'custos'>, m: ModeloDeSimulacao): LinhaDoCenario[] {
+  return m.linhas.flatMap((l) => { const c = a.custos.find((x) => x.id === l.custoId); return c ? [linhaDaTabela(c, { qtd: l.qtd, porRamal: l.porRamal })] : []; });
+}
+
+/**
+ * O cenário novo: o imposto, o prazo e a margem que se quer vêm dos Ajustes; as linhas, do modelo (ou dos
+ * modelos: a simulação a partir de uma negociação usa os dos produtos dela), e os produtos, os deles.
+ */
+export function cenarioNovo(a: AjustesDoSimulador, o: { id?: string; nome?: string; modelo?: ModeloDeSimulacao | null; modelos?: ModeloDeSimulacao[]; produtos?: string[] } = {}): CenarioDaSimulacao {
+  const modelos = [...(o.modelo ? [o.modelo] : []), ...(o.modelos ?? [])];
+  // de vários modelos, o custo que já entrou não repete (a configuração, as comissões)
+  const vistos = new Set<string>();
+  const linhas = modelos.flatMap((m) => linhasDoModelo(a, m)).filter((l) => !l.custoId || (!vistos.has(l.custoId) && !!vistos.add(l.custoId)));
+  const produtos = [...new Set([...(o.produtos ?? []), ...modelos.map((m) => m.produto).filter((x): x is string => !!x)])];
   return {
     id: o.id ?? idLocal(), nome: o.nome ?? 'Cenário A',
     mensalidade: 0, ativacao: 0, parcelas: 1, prazo: a.prazo, ramais: 0,
-    imposto: a.imposto, margemAlvo: a.verde, linhas,
+    imposto: a.imposto, margemAlvo: a.verde, linhas, produtos,
   };
 }
 
@@ -593,11 +616,15 @@ export function duplicarCenario(c: CenarioDaSimulacao, o: { id?: string; nome: s
 // =====================================================================
 
 /** Quando a venda se paga: já na entrada, num mês (talvez depois do prazo) ou nunca (a sobra do mês não cobre). */
-export type SePagaEm = { tipo: 'entrada' } | { tipo: 'mes'; mes: number; depoisDoPrazo: boolean } | { tipo: 'nunca' };
+export type SePagaEm = { tipo: 'entrada' } | { tipo: 'sem-custo' } | { tipo: 'mes'; mes: number; depoisDoPrazo: boolean } | { tipo: 'nunca' };
 
-/** "já na ativação", "em 7 meses", "em 30 meses (depois do prazo)", "não se paga" */
+/**
+ * "já na ativação" (a ativação cobre o que sai antes), "desde o 1º mês" (não sai nada antes, nem entra
+ * ativação: a sobra já é lucro), "em 7 meses", "em 30 meses (depois do prazo)", "não se paga"
+ */
 export function textoDoSePagaEm(s: SePagaEm): string {
   if (s.tipo === 'entrada') return 'já na ativação';
+  if (s.tipo === 'sem-custo') return 'desde o 1º mês';
   if (s.tipo === 'nunca') return 'não se paga';
   return `em ${s.mes} ${s.mes === 1 ? 'mês' : 'meses'}${s.depoisDoPrazo ? ' (depois do prazo)' : ''}`;
 }
@@ -776,7 +803,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   for (let m = serie.length - 1; m >= 0; m--) if (serie[m]! < 0) { ultimoNegativo = m; break; }
   const sobra = Math.round(sobraMensal);
   let sePagaEm: SePagaEm;
-  if (ultimoNegativo === -1) sePagaEm = { tipo: 'entrada' };
+  if (ultimoNegativo === -1) sePagaEm = custoUnico > 0 || entradaTotal > 0 ? { tipo: 'entrada' } : { tipo: 'sem-custo' };
   else if (ultimoNegativo < c.prazo) sePagaEm = { tipo: 'mes', mes: ultimoNegativo + 1, depoisDoPrazo: false };
   else if (sobra > 0) sePagaEm = { tipo: 'mes', mes: c.prazo + Math.ceil(-serie[c.prazo]! / sobra), depoisDoPrazo: true };
   else sePagaEm = { tipo: 'nunca' };
@@ -812,6 +839,49 @@ export function resumoDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): R
 export const cenarioPrincipal = (s: Pick<Simulacao, 'cenarios' | 'principal'>) => s.cenarios.find((c) => c.id === s.principal) ?? s.cenarios[0]!;
 
 // =====================================================================
+//  A MARGEM DAS GANHAS (o relatório do Comercial)
+// =====================================================================
+
+/*
+ * O pedido (a ideia marcada "agora", 20/10): "a margem média das negociações ganhas no período, por vendedor
+ * e por produto". Cada ganha com simulação ligada entra com o cenário principal da simulação (a mais recente,
+ * se houver mais de uma). A margem do grupo é a sobra de todas sobre a mensalidade de todas (a média pesada
+ * pelo valor: a venda grande pesa mais que a pequena), com o sinal pelas faixas dos Ajustes.
+ */
+
+/** A simulação de uma negociação, para o relatório: o cenário principal (da mais recente, se houver mais de uma). */
+export type MargemDaNegociacao = { simulacaoId: string; simulacao: string; mensalTotal: number; sobraMensal: number };
+/** Um grupo da margem: quantas ganhas (com simulação), a mensalidade e a sobra somadas e a margem (sobra ÷ mensalidade). */
+export type GrupoDaMargem = { nome: string; qtd: number; mensalidade: number; sobra: number; margem: number | null; sinal: Sinal | null; ids: string[] };
+/** A margem das ganhas do período: no total, por vendedor (quem cuida) e por produto. */
+export type MargemDasGanhas = { ganhas: number; comSimulacao: number; geral: GrupoDaMargem; porVendedor: GrupoDaMargem[]; porProduto: GrupoDaMargem[] };
+
+export function margemDasGanhas(
+  ganhas: ReadonlyArray<{ id: string; responsavel: string | null; produtos?: readonly string[] }>,
+  margens: ReadonlyMap<string, MargemDaNegociacao>,
+  faixas: FaixasDoSinal,
+): MargemDasGanhas {
+  const grupo = (nome: string, ids: string[]): GrupoDaMargem => {
+    const ms = ids.map((id) => margens.get(id)!);
+    const mensalidade = ms.reduce((s, m) => s + m.mensalTotal, 0);
+    const sobra = ms.reduce((s, m) => s + m.sobraMensal, 0);
+    const margem = mensalidade > 0 ? sobra / mensalidade : null;
+    return { nome, qtd: ids.length, mensalidade, sobra, margem, sinal: margem == null ? null : sinalDaMargem(margem, faixas), ids };
+  };
+  const com = ganhas.filter((g) => margens.has(g.id));
+  const juntar = (chaves: (g: (typeof com)[number]) => string[]) => {
+    const m = new Map<string, string[]>();
+    for (const g of com) for (const k of chaves(g)) m.set(k, [...(m.get(k) ?? []), g.id]);
+    return [...m].map(([nome, ids]) => grupo(nome, ids)).sort((x, y) => y.mensalidade - x.mensalidade || x.nome.localeCompare(y.nome, 'pt-BR'));
+  };
+  return {
+    ganhas: ganhas.length, comSimulacao: com.length, geral: grupo('Todas', com.map((g) => g.id)),
+    porVendedor: juntar((g) => [g.responsavel ?? 'Sem responsável']),
+    porProduto: juntar((g) => (g.produtos?.length ? [...new Set(g.produtos)] : ['Sem produto'])),
+  };
+}
+
+// =====================================================================
 //  O QUE MUDOU (a auditoria)
 // =====================================================================
 
@@ -842,6 +912,7 @@ export function mudancasDaSimulacao(antes: SimulacaoGravar, depois: SimulacaoGra
       if (de !== para) aqui.push(`${nome} de ${fmt(de)} para ${fmt(para)}`);
     }
     if (!iguais(a.linhas, c.linhas)) aqui.push('os custos');
+    if (!iguais(a.produtos ?? [], c.produtos ?? [])) aqui.push('os produtos');
     if (aqui.length) m.push(`no ${a.nome}, ${aqui.join(', ')}`);
   }
   for (const a of antes.cenarios) if (!depois.cenarios.some((c) => c.id === a.id)) m.push(`tirou o ${a.nome}`);

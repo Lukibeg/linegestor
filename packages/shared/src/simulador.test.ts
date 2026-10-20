@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, ajustesDoSimulador, cenarioNovo, contasDoCenario,
   custoPorFaixas, dividirEmParcelas, duplicarCenario, linhaDaTabela, mudancasDaSimulacao, mudancasDosAjustes, precoDaUnidade, proximoNomeDeCenario, resumoDoCenario,
-  sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, textoDoValorUnitario, lerPercentual, textoDoPercentual,
+  sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, margemDasGanhas, textoDoValorUnitario, lerPercentual, textoDoPercentual,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario,
 } from './simulador.js';
 
@@ -19,7 +19,7 @@ const custo = (c: Partial<CustoDaTabela> & Pick<CustoDaTabela, 'id' | 'nome' | '
 /** O exemplo da página de opções (20/10): R$ 990 por mês, R$ 1.500 de ativação, 24 meses. */
 function exemplo(): CenarioDaSimulacao {
   return {
-    id: 'a', nome: 'Cenário A', mensalidade: 99_000, ativacao: 150_000, parcelas: 1, prazo: 24, ramais: 10, imposto: 6, margemAlvo: 30,
+    id: 'a', nome: 'Cenário A', mensalidade: 99_000, ativacao: 150_000, parcelas: 1, prazo: 24, ramais: 10, imposto: 6, margemAlvo: 30, produtos: ['linepbx'],
     linhas: [
       linha({ id: 'tel', nome: 'Telefone IP', tipo: 'aparelho', qtd: 10, valor: 39_000 }),
       linha({ id: 'head', nome: 'Headset USB', tipo: 'aparelho', qtd: 4, valor: 18_000 }),
@@ -137,6 +137,14 @@ describe('a conta do cenário', () => {
     expect(k3.sobraMensal).toBeLessThan(0);
     expect(k3.sePagaEm).toEqual({ tipo: 'nunca' });
     expect(k3.sinal).toBe('vermelho');
+    // nada sai antes e não há ativação: a sobra já é lucro desde o 1º mês (e não "já na ativação")
+    const sem = exemplo();
+    const k4 = contasDoCenario({ ...sem, ativacao: 0, linhas: sem.linhas.filter((l) => l.tipo !== 'aparelho' && l.tipo !== 'unica') }, FAIXAS);
+    expect(k4.investimento).toBe(0);
+    expect(k4.sePagaEm).toEqual({ tipo: 'sem-custo' });
+    expect(textoDoSePagaEm(k4.sePagaEm)).toBe('desde o 1º mês');
+    // com ativação e nada antes: a ativação entra como lucro, já na ativação
+    expect(contasDoCenario({ ...sem, linhas: sem.linhas.filter((l) => l.tipo !== 'aparelho' && l.tipo !== 'unica') }, FAIXAS).sePagaEm).toEqual({ tipo: 'entrada' });
   });
 
   it('os ramais: as linhas "por ramal" acompanham; as outras ficam com a quantidade delas', () => {
@@ -161,12 +169,18 @@ describe('montar o cenário', () => {
       custo({ id: 'nuvem', nome: 'Nuvem por ramal', tipo: 'mensal', valor: 900, porRamal: true }),
       custo({ id: 'rec', nome: 'Comissão recorrente', tipo: 'pct_mensalidade', valor: 2 }),
     ],
-    modelos: [{ id: 'pbx', nome: 'LinePBX em nuvem', linhas: [{ custoId: 'yealink', qtd: 1, porRamal: true }, { custoId: 'nuvem', qtd: 1, porRamal: true }, { custoId: 'rec', qtd: 1, porRamal: false }] }],
+    modelos: [{ id: 'pbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [{ custoId: 'yealink', qtd: 1, porRamal: true }, { custoId: 'nuvem', qtd: 1, porRamal: true }, { custoId: 'rec', qtd: 1, porRamal: false }] }],
   };
 
   it('o cenário novo traz o imposto, o prazo e o verde dos Ajustes; do modelo, as linhas da tabela', () => {
     const c = cenarioNovo(ajustes, { modelo: ajustes.modelos[0] });
-    expect(c).toMatchObject({ nome: 'Cenário A', imposto: 8, prazo: 36, margemAlvo: 35, parcelas: 1, mensalidade: 0 });
+    expect(c).toMatchObject({ nome: 'Cenário A', imposto: 8, prazo: 36, margemAlvo: 35, parcelas: 1, mensalidade: 0, produtos: ['linepbx'] });
+    // de vários modelos (a simulação a partir da negociação): as linhas de todos, e os produtos
+    const dois = cenarioNovo({ ...ajustes, custos: [...ajustes.custos, ...CUSTOS_DA_HELENA] }, { modelos: [ajustes.modelos[0]!, MODELO_DA_HELENA] });
+    expect(dois.produtos).toEqual(['linepbx', 'linechat']);
+    expect(dois.linhas).toHaveLength(3 + MODELO_DA_HELENA.linhas.length);
+    // o mesmo modelo duas vezes: as linhas não repetem
+    expect(cenarioNovo(ajustes, { modelos: [ajustes.modelos[0]!, ajustes.modelos[0]!] }).linhas).toHaveLength(3);
     expect(c.linhas.map((l) => [l.nome, l.tipo, l.custoId, l.porRamal, l.valor])).toEqual([
       ['Yealink T31P', 'aparelho', 'yealink', true, null], // o aparelho sem valor: preenche em cada simulação
       ['Nuvem por ramal', 'mensal', 'nuvem', true, 900],
@@ -331,5 +345,27 @@ describe('o que a pessoa escreve', () => {
     expect(lerPercentual('6,5%')).toBe(6.5);
     expect(lerPercentual('2,255')).toBeNull();
     expect(textoDoPercentual(6.5)).toBe('6,5');
+  });
+});
+
+describe('a margem das ganhas (o relatório do Comercial)', () => {
+  it('a sobra de todas sobre a mensalidade de todas, por vendedor e por produto; só as ganhas com simulação', () => {
+    const margens = new Map([
+      ['n1', { simulacaoId: 's1', simulacao: 'A', mensalTotal: 100_000, sobraMensal: 60_000 }],
+      ['n2', { simulacaoId: 's2', simulacao: 'B', mensalTotal: 50_000, sobraMensal: 10_000 }],
+      ['n3', { simulacaoId: 's3', simulacao: 'C', mensalTotal: 30_000, sobraMensal: 12_000 }],
+    ]);
+    const ganhas = [
+      { id: 'n1', responsavel: 'Camila', produtos: ['LinePBX', 'VoiceNet'] },
+      { id: 'n2', responsavel: 'Diego', produtos: ['LineChat'] },
+      { id: 'n3', responsavel: 'Camila', produtos: ['LinePBX'] },
+      { id: 'n4', responsavel: 'Diego', produtos: ['LinePBX'] }, // sem simulação: não entra na margem
+    ];
+    const m = margemDasGanhas(ganhas, margens, FAIXAS);
+    expect([m.ganhas, m.comSimulacao]).toEqual([4, 3]);
+    expect(m.geral).toMatchObject({ qtd: 3, mensalidade: 180_000, sobra: 82_000, sinal: 'verde' });
+    expect(Math.round(m.geral.margem! * 1000) / 10).toBe(45.6);
+    expect(m.porVendedor.map((g) => [g.nome, g.qtd, Math.round(g.margem! * 100), g.sinal])).toEqual([['Camila', 2, 55, 'verde'], ['Diego', 1, 20, 'amarelo']]);
+    expect(m.porProduto.map((g) => [g.nome, g.qtd])).toEqual([['LinePBX', 2], ['VoiceNet', 1], ['LineChat', 1]]);
   });
 });

@@ -362,6 +362,11 @@ export const realApi: Api = {
     alterar: (id, d) => http('PUT', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`, d),
     duplicar: (id) => http('POST', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}/duplicar`),
     remover: (id) => http('DELETE', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`),
+    planilha: async (id) => {
+      const r = await http<Response>('GET', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}/planilha`, undefined, true);
+      const nome = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') ?? '')?.[1] ?? 'simulacao.xlsx';
+      return { bytes: new Uint8Array(await r.arrayBuffer()), nome };
+    },
     salvarAjustes: (a) => http('PUT', '/comercial/simulador/ajustes', a),
   },
   admin: {

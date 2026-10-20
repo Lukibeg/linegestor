@@ -10,12 +10,12 @@
  * nas negociações). Os Ajustes: quem cuida dos painéis (`tickets.manage`, como os ajustes do Comercial).
  * A negociação ligada só aparece para quem vê o painel dela; ligar uma pede que a pessoa a veja.
  */
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
-import { clients, newId, salesSimulations, ticketStages, tickets, users, type Db } from '@gestor/db';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { clients, newId, products, salesSimulations, ticketStages, tickets, users, type Db } from '@gestor/db';
 import {
-  AjustesDoSimuladorSchema, SimulacaoGravarSchema, ajustesDoSimulador, cenarioPrincipal, mudancasDaSimulacao, mudancasDosAjustes, resumoDoCenario,
-  type AjustesDoSimulador, type CenarioDaSimulacao, type NegociacaoDaSimulacao, type Simulacao, type SimulacaoDaNegociacao, type SimulacaoGravar,
-  type SimulacaoGravarEntrada, type SimulacaoNaLista, type SimuladorOpcoes,
+  AjustesDoSimuladorSchema, SimulacaoGravarSchema, ajustesDoSimulador, cenarioPrincipal, mudancasDaSimulacao, mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario,
+  type AjustesDoSimulador, type CenarioDaSimulacao, type MargemDaNegociacao, type NegociacaoDaSimulacao, type ProdutoDoSimulador, type Simulacao,
+  type SimulacaoDaNegociacao, type SimulacaoGravar, type SimulacaoGravarEntrada, type SimulacaoNaLista, type SimuladorOpcoes,
 } from '@gestor/shared';
 import { BadRequest, Forbidden, NotFound } from '../plugins/errors.js';
 import { carregarPaineis, podeCuidar, podeTrabalhar, podeVerPainel, podeVerVendas, type Ator } from './atendimento/contexto.js';
@@ -32,8 +32,34 @@ export async function lerAjustes(db: Db): Promise<AjustesDoSimulador> {
   return ajustesDoSimulador(valor);
 }
 
+/** Os produtos do catálogo (ativos, fora da lixeira): o código liga o modelo e o cenário ao produto da negociação. */
+export async function produtosDoCatalogo(db: Db): Promise<ProdutoDoSimulador[]> {
+  const ps = await db.select({ id: products.id, codigo: products.code, nome: products.name }).from(products)
+    .where(and(eq(products.active, true), isNull(products.deletedAt))).orderBy(asc(products.sortOrder), asc(products.name));
+  return ps;
+}
+
 export async function opcoes(db: Db, ator: Ator): Promise<SimuladorOpcoes> {
-  return { ajustes: await lerAjustes(db), podeEditar: podeEditar(ator), podeCuidar: podeCuidar(ator) && podeVerVendas(ator) };
+  const [ajustes, produtos] = await Promise.all([lerAjustes(db), produtosDoCatalogo(db)]);
+  return { ajustes, podeEditar: podeEditar(ator), podeCuidar: podeCuidar(ator) && podeVerVendas(ator), produtos };
+}
+
+/**
+ * As simulações das negociações, para o relatório do Comercial (a margem das ganhas): de cada negociação, a
+ * simulação mexida por último, com o cenário principal resumido.
+ */
+export async function margensDasNegociacoes(db: Db, negociacoes: string[]): Promise<{ margens: Map<string, MargemDaNegociacao>; ajustes: AjustesDoSimulador }> {
+  const ajustes = await lerAjustes(db);
+  const margens = new Map<string, MargemDaNegociacao>();
+  if (!negociacoes.length) return { margens, ajustes };
+  const linhas = await db.select().from(salesSimulations)
+    .where(and(inArray(salesSimulations.ticketId, negociacoes), isNull(salesSimulations.deletedAt))).orderBy(desc(salesSimulations.updatedAt));
+  for (const l of linhas) {
+    if (!l.ticketId || margens.has(l.ticketId)) continue;
+    const r = resumoDoCenario(cenarioPrincipal({ cenarios: cenariosDaLinha(l), principal: l.principal }), ajustes);
+    margens.set(l.ticketId, { simulacaoId: l.id, simulacao: l.name, mensalTotal: r.mensalTotal, sobraMensal: r.sobraMensal });
+  }
+  return { margens, ajustes };
 }
 
 const podeEditar = (a: Ator) => podeVerVendas(a) && podeTrabalhar(a);
@@ -132,6 +158,16 @@ export async function ler(db: Db, ator: Ator, id: string): Promise<Simulacao> {
   const l = await linhaOu404(db, id);
   const negociacoes = await negociacoesVisiveis(db, ator, l.ticketId ? [l.ticketId] : []);
   return paraTela(l, negociacoes, await nomesDasPessoas(db, [l.createdById, l.updatedById]));
+}
+
+/**
+ * A simulação numa planilha do Excel, com as fórmulas (a ideia "excel" do Luan): uma folha por cenário e, com
+ * dois ou mais, a "Lado a lado". A planilha é a do `@gestor/shared` (a prévia monta a mesma). Quem vê a
+ * simulação exporta; a rota registra na auditoria.
+ */
+export async function planilha(db: Db, ator: Ator, id: string): Promise<{ bytes: Uint8Array; nome: string; simulacao: string }> {
+  const [s, ajustes] = await Promise.all([ler(db, ator, id), lerAjustes(db)]);
+  return { ...planilhaDaSimulacao({ simulacao: s, faixas: ajustes, quem: ator.nome, quando: new Date() }), simulacao: s.nome };
 }
 
 /** As simulações ligadas a uma negociação (a ficha dela). Quem não vê a negociação não vê nada. */

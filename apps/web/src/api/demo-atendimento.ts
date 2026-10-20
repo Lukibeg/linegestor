@@ -43,7 +43,7 @@ import {
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNegociacoes, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
-  type NegociacaoParaRelatorio, type RelatorioDeVendas, type ResultadoDaVenda, type TipoDePainel,
+  type NegociacaoParaRelatorio, type RelatorioDeVendas, type ResultadoDaVenda, type TipoDePainel, type MargemDaNegociacao, type FaixasDoSinal,
   type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
   type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoDoSistema, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista,
   type Obrigatorio, type OpcaoDoCampo, type ValoresDosCampos, type CorEtiqueta, type EtiquetaComCor, type EtiquetaDoCatalogo,
@@ -299,6 +299,12 @@ export type AcessoDoCalendarioDemo = {
   /** o lembrete (padrão) ou o aviso de que o evento entrou (`qual`, 2.0.2) */
   avisarDoCalendario: (a: { qual?: 'lembrete' | 'evento_novo'; para: string[]; evento: { id: string; titulo: string; inicio: string }; texto: string }, em: Date, lido?: boolean) => number;
 };
+/**
+ * A margem das ganhas no relatório do Comercial (2.0.2): o Simulador da prévia (demo-simulador.ts) diz, de cada
+ * negociação, a simulação mexida por último (o cenário principal) e as faixas do sinal.
+ */
+let fonteDasMargens: (() => { margens: ReadonlyMap<string, MargemDaNegociacao>; faixas: FaixasDoSinal }) | null = null;
+export function fonteDasMargensDemo(f: typeof fonteDasMargens) { fonteDasMargens = f; }
 /** Os relógios de fora (o do calendário, 2.0.2): andam junto com o dos chamados, a cada leitura da prévia. */
 const relogiosDeFora: Array<(agora: Date) => void> = [];
 export function aoVoltarORelogioDemo(f: (agora: Date) => void) { relogiosDeFora.push(f); }
@@ -1992,9 +1998,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         // a que veio de outro painel conta de quando entrou neste
         criadoEm: passagens[0]?.desde ?? t.criadoEm, fechadoEm: t.fechadoEm,
         resultado: etapaPorId(t.etapaId)?.resultado ?? null, motivoPerda: t.motivoPerda, passagens,
+        produtos: t.produtos.map((id) => S.products.find((x) => x.id === id)?.name ?? '?'),
       };
     });
-    return relatorioDeVendas(painel, negociacoes, f);
+    // a margem das ganhas (2.0.2): as simulações da prévia do Simulador
+    return relatorioDeVendas(painel, negociacoes, f, fonteDasMargens?.() ?? undefined);
   }
 
   function ordemDasEtapas(): Map<string, number> {

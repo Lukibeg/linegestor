@@ -8,14 +8,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Copy, Link2, Star, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Copy, FileSpreadsheet, Link2, Send, Star, Trash2, X } from 'lucide-react';
 import {
-  MAX_CENARIOS, MAX_PARCELAS, PRAZOS_COMUNS, cenarioNovo, contasDoCenario, duplicarCenario, idLocal, percentual, proximoNomeDeCenario, textoDoSePagaEm,
-  type AjustesDoSimulador, type CenarioDaSimulacao, type NegociacaoDaSimulacao, type Simulacao, type SimulacaoGravar,
+  MAX_CENARIOS, MAX_PARCELAS, PRAZOS_COMUNS, TIPO_DO_XLSX, cenarioNovo, cenarioPrincipal, contasDoCenario, duplicarCenario, idLocal, percentual, proximoNomeDeCenario,
+  textoDoSePagaEm,
+  type AjustesDoSimulador, type CenarioDaSimulacao, type FichaChamado, type NegociacaoDaSimulacao, type ProdutoDoSimulador, type Simulacao, type SimulacaoGravar,
 } from '@gestor/shared';
-import { api } from '../../../api/index.js';
+import { IS_DEMO, api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
-import { Carregando, Confirmar, Spinner, Vazio, useToast } from '../../../components/ui/index.js';
+import { Carregando, Confirmar, Modal, Spinner, Vazio, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { useAuth } from '../../../lib/auth.js';
 import { CHAVE_DO_SIMULADOR, CampoDePercentual, CampoDeReais, CampoInteiro, ChipDoSinal, PONTO_DO_SINAL, erroDoSimulador, reaisLimpo, useOpcoesDoSimulador } from './comum.js';
 import { OsCustos } from './Custos.js';
@@ -35,9 +36,18 @@ export function SimulacaoDoComercial() {
   const [params] = useSearchParams();
   const op = useOpcoesDoSimulador();
   const lida = useQuery({ queryKey: [...CHAVE_DO_SIMULADOR, 'simulacao', id], queryFn: () => api.simulador.ler(id), enabled: !nova && can('sales.read') });
+  // a simulação a partir de uma negociação (o Simular da ficha): a empresa, os produtos e os valores dela
+  const daNegociacao = nova ? params.get('negociacao') : null;
+  const ficha = useQuery({ queryKey: ['simulador-ficha', daNegociacao], queryFn: () => api.atendimento.chamado(daNegociacao!), enabled: !!daNegociacao && can('sales.read'), staleTime: 0 });
   if (!can('sales.read')) return <SemOComercial />;
-  if (op.isLoading || (!nova && lida.isLoading)) return <Carregando />;
+  if (op.isLoading || (!nova && lida.isLoading) || (daNegociacao && ficha.isLoading)) return <Carregando />;
   if (op.isError) return <p className="text-bad text-sm" role="alert">{erroDoSimulador(op.error)}</p>;
+  if (daNegociacao && ficha.isError) {
+    return (
+      <Vazio titulo="Não deu para abrir a negociação" texto={ficha.error instanceof ApiError && ficha.error.status === 404 ? 'Ela pode ter ido para a lixeira, ou ser de um painel que você não vê.' : mensagemErro(ficha.error)}
+        acao={<Link to="/comercial/simulador" className="btn-secondary"><ArrowLeft size={15} /> Ver as simulações</Link>} />
+    );
+  }
   if (!nova && lida.isError) {
     const sumiu = lida.error instanceof ApiError && lida.error.status === 404;
     return (
@@ -46,15 +56,34 @@ export function SimulacaoDoComercial() {
     );
   }
   const ajustes = op.data!.ajustes;
-  const inicial: Rascunho = nova ? (() => {
+  const produtos = op.data!.produtos;
+  const inicial: Rascunho = nova ? (ficha.data ? daFicha(ficha.data, ajustes, produtos) : (() => {
     const modelo = ajustes.modelos.find((m) => m.id === params.get('modelo')) ?? null;
     const a = cenarioNovo(ajustes, { id: idLocal(), nome: 'Cenário A', modelo });
     return { nome: '', negociacaoId: null, negociacao: null, cenarios: [a], principal: a.id };
-  })() : doServidor(lida.data!);
-  return <Editor key={nova ? `nova-${params.get('modelo') ?? ''}` : id} id={nova ? null : id} inicial={inicial} simulacao={nova ? null : lida.data!} ajustes={ajustes} podeEditar={op.data!.podeEditar} />;
+  })()) : doServidor(lida.data!);
+  return <Editor key={nova ? `nova-${params.get('modelo') ?? ''}-${daNegociacao ?? ''}` : id} id={nova ? null : id} inicial={inicial} simulacao={nova ? null : lida.data!} ajustes={ajustes} produtos={produtos} podeEditar={op.data!.podeEditar} />;
 }
 
-function Editor({ id, inicial, simulacao, ajustes, podeEditar }: { id: string | null; inicial: Rascunho; simulacao: Simulacao | null; ajustes: AjustesDoSimulador; podeEditar: boolean }) {
+/**
+ * A simulação nova a partir da negociação (o Simular da ficha, a ideia "simular a partir da negociação"): o
+ * nome (a empresa e o título), ligada a ela, com os produtos dela, as linhas dos modelos desses produtos e
+ * a mensalidade e a ativação que ela já tem.
+ */
+function daFicha(f: FichaChamado, ajustes: AjustesDoSimulador, produtos: ProdutoDoSimulador[]): Rascunho {
+  const codigos = f.produtos.map((p) => produtos.find((x) => x.id === p.id)?.codigo).filter((x): x is string => !!x);
+  const modelos = ajustes.modelos.filter((m) => m.produto && codigos.includes(m.produto));
+  const a = { ...cenarioNovo(ajustes, { id: idLocal(), nome: 'Cenário A', modelos, produtos: codigos }), mensalidade: f.valor ?? 0, ativacao: f.ativacao ?? 0 };
+  const empresa = f.cliente?.nome ?? f.empresa ?? null;
+  return {
+    nome: [empresa, f.titulo].filter(Boolean).join(' — ').slice(0, 120), negociacaoId: f.id, cenarios: [a], principal: a.id,
+    negociacao: { id: f.id, codigo: f.codigo, titulo: f.titulo, empresa, resultado: f.resultado === 'ganho' || f.resultado === 'perdido' ? f.resultado : null },
+  };
+}
+
+function Editor({ id, inicial, simulacao, ajustes, produtos, podeEditar }: {
+  id: string | null; inicial: Rascunho; simulacao: Simulacao | null; ajustes: AjustesDoSimulador; produtos: ProdutoDoSimulador[]; podeEditar: boolean;
+}) {
   const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
@@ -62,6 +91,7 @@ function Editor({ id, inicial, simulacao, ajustes, podeEditar }: { id: string | 
   const [salvo, setSalvo] = useState(() => (id ? assinatura(inicial) : ''));
   const [aberto, setAberto] = useState(inicial.principal);
   const [lixeira, setLixeira] = useState(false);
+  const [levar, setLevar] = useState(false);
   const sujo = assinatura(r) !== salvo;
   const c = r.cenarios.find((x) => x.id === aberto) ?? r.cenarios[0]!;
   const contas = useMemo(() => r.cenarios.map((x) => contasDoCenario(x, ajustes)), [r.cenarios, ajustes]);
@@ -125,10 +155,17 @@ function Editor({ id, inicial, simulacao, ajustes, podeEditar }: { id: string | 
             {simulacao && <span>Mexida em {new Date(simulacao.alteradoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{simulacao.alteradoPor ? ` por ${simulacao.alteradoPor}` : ''}</span>}
           </div>
         </div>
-        {podeEditar && (
+        {(podeEditar || id) && (
           <div className="flex flex-wrap items-center gap-2">
-            {sujo && id && <span className="text-[12.5px] text-signal font-semibold" role="status">Não salvo</span>}
-            {id && (
+            {podeEditar && sujo && id && <span className="text-[12.5px] text-signal font-semibold" role="status">Não salvo</span>}
+            {podeEditar && id && r.negociacao && !r.negociacao.resultado && (
+              <button type="button" className="btn-secondary btn-sm" onClick={() => setLevar(true)} disabled={sujo} id="simulador-levar"
+                title={sujo ? 'Salve antes de levar' : `Põe a mensalidade, a ativação e os produtos do cenário principal na ${r.negociacao.codigo}`}>
+                <Send size={14} /> Levar para a {r.negociacao.codigo}
+              </button>
+            )}
+            {id && <BotaoDoExcel id={id} sujo={sujo} />}
+            {podeEditar && id && (
               <>
                 <button type="button" className="btn-ghost btn-sm" onClick={() => duplicar.mutate()} disabled={duplicar.isPending || sujo} title={sujo ? 'Salve antes de duplicar' : 'Fazer uma cópia para outra proposta'} id="simulador-duplicar">
                   {duplicar.isPending ? <Spinner /> : <Copy size={14} />} Duplicar
@@ -136,9 +173,11 @@ function Editor({ id, inicial, simulacao, ajustes, podeEditar }: { id: string | 
                 <button type="button" className="btn-ghost btn-sm text-bad" onClick={() => setLixeira(true)} id="simulador-lixeira"><Trash2 size={14} /> Lixeira</button>
               </>
             )}
-            <button type="button" className="btn-primary" onClick={() => salvar.mutate()} disabled={salvar.isPending || (!!id && !sujo)} id="simulador-salvar">
-              {salvar.isPending && <Spinner className="!text-white" />} {id ? 'Salvar' : 'Criar a simulação'}
-            </button>
+            {podeEditar && (
+              <button type="button" className="btn-primary" onClick={() => salvar.mutate()} disabled={salvar.isPending || (!!id && !sujo)} id="simulador-salvar">
+                {salvar.isPending && <Spinner className="!text-white" />} {id ? 'Salvar' : 'Criar a simulação'}
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -222,6 +261,7 @@ function Editor({ id, inicial, simulacao, ajustes, podeEditar }: { id: string | 
                 )}
               </label>
             </div>
+            <ProdutosDoCenario c={c} produtos={produtos} mudar={mudarCenario} podeEditar={podeEditar} />
             <p className="mt-3 pt-3 border-t border-line text-[13px] text-ink-2" id="simulador-o-cliente-paga">
               O cliente paga <b className="tabular-nums">{reaisLimpo(k.mensalTotal)}</b> por mês
               {k.aluguel > 0 && <span className="text-muted"> (com {reaisLimpo(k.aluguel)} de aluguel dos aparelhos)</span>}
@@ -257,9 +297,42 @@ function Editor({ id, inicial, simulacao, ajustes, podeEditar }: { id: string | 
         </div>
       )}
 
+      {levar && r.negociacao && (
+        <LevarParaANegociacao negociacao={r.negociacao} cenario={cenarioPrincipal(r)} ajustes={ajustes} produtos={produtos} onFechar={() => setLevar(false)} />
+      )}
       <Confirmar open={lixeira} onClose={() => setLixeira(false)} onConfirm={() => { setLixeira(false); remover.mutate(); }} perigoso botao="Mandar para a lixeira"
         titulo="Mandar a simulação para a lixeira?" texto={<>A simulação <b>{r.nome}</b> sai da lista. Quem pode restaurar tira de volta pela Administração › Lixeira.</>} loading={remover.isPending} />
     </div>
+  );
+}
+
+/**
+ * O Excel (a ideia "excel" que o Luan marcou "agora"): a simulação numa planilha com as fórmulas — uma folha por
+ * cenário e, com dois ou mais, a "Lado a lado". Sai do que está salvo (com mudança na tela, salve antes) e fica
+ * na auditoria. Na prévia, a planilha é montada aqui mesmo (a mesma do servidor); o navegador da prévia publicada
+ * pode não deixar baixar, e o aviso diz isso.
+ */
+function BotaoDoExcel({ id, sujo }: { id: string; sujo: boolean }) {
+  const toast = useToast();
+  const baixar = useMutation({
+    mutationFn: () => api.simulador.planilha(id),
+    onSuccess: ({ bytes, nome }) => {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([bytes as Uint8Array<ArrayBuffer>], { type: TIPO_DO_XLSX }));
+      link.download = nome;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(link.href), 10_000);
+      if (IS_DEMO) toast.push('ok', `A planilha ${nome} ficou pronta. Na prévia, o navegador pode não deixar baixar; no Gestor, ela baixa.`);
+    },
+    onError: (e) => toast.push('erro', erroDoSimulador(e)),
+  });
+  return (
+    <button type="button" className="btn-ghost btn-sm" onClick={() => baixar.mutate()} disabled={baixar.isPending || sujo} id="simulador-excel"
+      title={sujo ? 'Salve antes: a planilha sai do que está salvo' : 'A simulação numa planilha do Excel, com as fórmulas: uma folha por cenário'}>
+      {baixar.isPending ? <Spinner /> : <FileSpreadsheet size={14} />} Excel
+    </button>
   );
 }
 
@@ -307,4 +380,86 @@ function Negociacao({ r, mudar, podeEditar }: { r: Rascunho; mudar: (n: Negociac
   );
 }
 
+/** Os produtos do catálogo que a venda leva (o "Levar para a negociação" põe estes nela). */
+function ProdutosDoCenario({ c, produtos, mudar, podeEditar }: { c: CenarioDaSimulacao; produtos: ProdutoDoSimulador[]; mudar: (m: Partial<CenarioDaSimulacao>) => void; podeEditar: boolean }) {
+  const nome = (codigo: string) => produtos.find((p) => p.codigo === codigo)?.nome ?? codigo;
+  const fora = produtos.filter((p) => !c.produtos.includes(p.codigo));
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[12.5px]" id="simulador-produtos">
+      <span className="text-ink-2 font-semibold mr-0.5">Produtos</span>
+      {c.produtos.map((cod) => (
+        <span key={cod} className="chip bg-surface-2 text-ink-2" data-produto={cod}>
+          {nome(cod)}
+          {podeEditar && <button type="button" className="text-muted hover:text-bad" onClick={() => mudar({ produtos: c.produtos.filter((x) => x !== cod) })} aria-label={`Tirar ${nome(cod)}`}><X size={12} /></button>}
+        </span>
+      ))}
+      {!c.produtos.length && <span className="text-muted">nenhum</span>}
+      {podeEditar && fora.length > 0 && (
+        <select className="input !w-auto !py-0.5 !pl-2 !text-[12.5px]" value="" onChange={(e) => e.target.value && mudar({ produtos: [...c.produtos, e.target.value] })} aria-label="Pôr um produto" id="simulador-produto-incluir">
+          <option value="">+ produto</option>
+          {fora.map((p) => <option key={p.codigo} value={p.codigo}>{p.nome}</option>)}
+        </select>
+      )}
+    </div>
+  );
+}
 
+/**
+ * Levar para a negociação (a ideia marcada "agora"): a mensalidade, a ativação e os produtos do cenário
+ * principal vão para a negociação — o que ela tem hoje e o que vai ficar, antes do ok. O valor por produto
+ * dela vira o valor único (a simulação não divide a mensalidade por produto). A mudança fica no histórico da
+ * negociação, como qualquer outra.
+ */
+function LevarParaANegociacao({ negociacao, cenario, ajustes, produtos, onFechar }: {
+  negociacao: NegociacaoDaSimulacao; cenario: CenarioDaSimulacao; ajustes: AjustesDoSimulador; produtos: ProdutoDoSimulador[]; onFechar: () => void;
+}) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const ficha = useQuery({ queryKey: ['simulador-levar', negociacao.id], queryFn: () => api.atendimento.chamado(negociacao.id), staleTime: 0 });
+  const k = contasDoCenario(cenario, ajustes);
+  const ids = cenario.produtos.map((cod) => produtos.find((p) => p.codigo === cod)?.id).filter((x): x is string => !!x);
+  const nomes = cenario.produtos.map((cod) => produtos.find((p) => p.codigo === cod)?.nome ?? cod);
+  const levar = useMutation({
+    mutationFn: () => api.atendimento.alterar(negociacao.id, {
+      valor: k.mensalTotal || null, valoresDosProdutos: null, ativacao: k.entradaTotal || null, ativacoesDosProdutos: null,
+      ...(ids.length ? { produtos: ids } : {}),
+    }),
+    onSuccess: (f) => {
+      void qc.invalidateQueries({ queryKey: ['atendimento'] });
+      void qc.invalidateQueries({ queryKey: ['simulador-da-negociacao'] });
+      toast.push('ok', `A ${f.codigo} ficou com a mensalidade de ${reaisLimpo(f.valor ?? 0)} e a ativação de ${reaisLimpo(f.ativacao ?? 0)}.`);
+      onFechar();
+    },
+    onError: (e) => toast.push('erro', mensagemErro(e)),
+  });
+  const f = ficha.data;
+  const porProduto = !!f && (Object.keys(f.valoresDosProdutos ?? {}).length > 0 || Object.keys(f.ativacoesDosProdutos ?? {}).length > 0);
+  // nada a levar: a negociação já está com estes números (e estes produtos)
+  const mesmosProdutos = !!f && (!ids.length || (ids.length === f.produtos.length && ids.every((x) => f.produtos.some((p) => p.id === x))));
+  const igual = !!f && !porProduto && (f.valor ?? 0) === k.mensalTotal && (f.ativacao ?? 0) === k.entradaTotal && mesmosProdutos;
+  return (
+    <Modal open onClose={onFechar} titulo={`Levar para a ${negociacao.codigo}`}
+      rodape={<>
+        <button type="button" className="btn-ghost" onClick={onFechar}>Cancelar</button>
+        <button type="button" className="btn-primary" onClick={() => levar.mutate()} disabled={levar.isPending || !f || igual} id="simulador-levar-confirmar">{levar.isPending && <Spinner className="!text-white" />} Levar</button>
+      </>}>
+      {ficha.isLoading ? <Carregando /> : ficha.isError ? <p className="text-bad text-sm">{mensagemErro(ficha.error)}</p> : f && (
+        <div className="flex flex-col gap-3 text-[13.5px]" id="simulador-levar-janela">
+          <p className="text-ink-2">O cenário <b>{cenario.nome}</b> vai para a negociação <b>{f.codigo} · {f.titulo}</b>:</p>
+          <table className="w-full">
+            <thead><tr className="text-[12px] text-muted text-left"><th className="font-semibold py-1" /><th className="font-semibold py-1">Hoje</th><th className="font-semibold py-1">Fica</th></tr></thead>
+            <tbody>
+              <tr className="border-t border-line"><td className="py-1.5 text-ink-2">Mensalidade</td><td className="tabular-nums">{f.valor == null ? '—' : reaisLimpo(f.valor)}</td><td className="tabular-nums font-semibold">{reaisLimpo(k.mensalTotal)}</td></tr>
+              <tr className="border-t border-line"><td className="py-1.5 text-ink-2">Ativação</td><td className="tabular-nums">{f.ativacao == null ? '—' : reaisLimpo(f.ativacao)}</td><td className="tabular-nums font-semibold">{reaisLimpo(k.entradaTotal)}</td></tr>
+              <tr className="border-t border-line"><td className="py-1.5 text-ink-2">Produtos</td><td>{f.produtos.map((p) => p.nome).join(', ') || '—'}</td><td className="font-semibold">{ids.length ? nomes.join(', ') : 'ficam como estão'}</td></tr>
+            </tbody>
+          </table>
+          {porProduto && <p className="text-[12.5px] text-signal">A {f.codigo} tem o valor por produto: ela passa a ter um valor só (o da simulação não é dividido por produto).</p>}
+          {igual
+            ? <p className="text-[12.5px] text-ok font-semibold" id="simulador-levar-igual">A {f.codigo} já está com estes números: não há o que levar.</p>
+            : <p className="text-[12.5px] text-muted">A mudança fica no histórico da negociação. A margem dela aparece na ficha, em Simulações.</p>}
+        </div>
+      )}
+    </Modal>
+  );
+}

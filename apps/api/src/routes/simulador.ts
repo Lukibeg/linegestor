@@ -2,14 +2,14 @@
  * O Simulador do Comercial (Patch 2.0.2, decisão 0052): a conta de uma venda antes de fechar.
  *
  * Ver (a lista, a simulação, as da negociação) é de quem tem o Comercial (`sales.read`), com os custos e a
- * margem; criar, mudar, duplicar e mandar para a lixeira, de quem também trabalha nas negociações
+ * margem, e exportar para o Excel; criar, mudar, duplicar e mandar para a lixeira, de quem também trabalha nas negociações
  * (`tickets.work`); os Ajustes do Simulador (a tabela de custos, os modelos, o imposto, o sinal), de quem
  * cuida dos painéis (`tickets.manage`). Tudo o que muda vai para a auditoria (`sales_simulation`; os
  * Ajustes, `settings`).
  */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { AjustesDoSimuladorSchema, SimulacaoGravarSchema } from '@gestor/shared';
+import { AjustesDoSimuladorSchema, SimulacaoGravarSchema, TIPO_DO_XLSX } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as svc from '../services/simulador.js';
 
@@ -30,6 +30,13 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.get('/simulacoes/:id', { ...ver, schema: { tags, summary: 'Uma simulação, com os cenários inteiros', params: Id } },
     async (req) => svc.ler(app.db, ator(req), req.params.id));
+
+  app.get('/simulacoes/:id/planilha', { ...ver, schema: { tags, summary: 'A simulação numa planilha do Excel, com as fórmulas: uma folha por cenário e, com dois ou mais, a "Lado a lado"', params: Id } },
+    async (req, reply) => {
+      const r = await svc.planilha(app.db, ator(req), req.params.id);
+      await app.audit(req, { action: 'export', entityType: 'sales_simulation', entityId: req.params.id, summary: `Exportou a simulação "${r.simulacao}" para o Excel` });
+      return reply.header('Content-Type', TIPO_DO_XLSX).header('Content-Disposition', `attachment; filename="${r.nome}"`).send(Buffer.from(r.bytes));
+    });
 
   app.get('/da-negociacao/:id', { ...ver, schema: { tags, summary: 'As simulações ligadas a uma negociação (a ficha dela)', params: Id } },
     async (req) => svc.daNegociacao(app.db, ator(req), req.params.id));

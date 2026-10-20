@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react';
 import { Layers, ListPlus, PackagePlus, Plus, Search, X } from 'lucide-react';
 import {
   AJUDA_DA_MODALIDADE, AJUDA_DO_TIPO_DE_CUSTO, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE, NOME_DO_TIPO_DE_CUSTO, TIPOS_DE_CUSTO, ehPercentual, linhaDaTabela,
-  linhaNova, paraBusca, percentual, precoDaUnidade, textoDasFaixasDePreco,
+  linhaNova, linhasDoModelo, paraBusca, percentual, precoDaUnidade, textoDasFaixasDePreco,
   type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario, type CustoDaTabela, type LinhaDoCenario, type TipoDeCusto,
 } from '@gestor/shared';
 import { Popover } from '../../../components/ui/index.js';
@@ -32,6 +32,9 @@ export function OsCustos({ c, k, ajustes, mudar, podeEditar }: {
   const mudarLinha = (id: string, m: Partial<LinhaDoCenario>) => mudar({ linhas: c.linhas.map((l) => (l.id === id ? { ...l, ...m } : l)) });
   const tirar = (id: string) => mudar({ linhas: c.linhas.filter((l) => l.id !== id) });
   const incluir = (novas: LinhaDoCenario[]) => mudar({ linhas: [...c.linhas, ...novas] });
+  // as linhas de um modelo entram no fim, e o produto dele entra nos produtos do cenário
+  const incluirDoModelo = (novas: LinhaDoCenario[], produto: string | null) =>
+    mudar({ linhas: [...c.linhas, ...novas], ...(produto && !c.produtos.includes(produto) ? { produtos: [...c.produtos, produto] } : {}) });
   const umaVez = k.linhas.filter((l) => l.quando === 'uma-vez').reduce((s, l) => s + l.custo, 0);
   const porMes = k.custoMensalFixo + k.comissaoMensal;
   return (
@@ -43,7 +46,7 @@ export function OsCustos({ c, k, ajustes, mudar, podeEditar }: {
         {podeEditar && (
           <div className="flex flex-wrap gap-1.5">
             <DaTabela custos={ajustes.custos} incluir={(x) => incluir([linhaDaTabela(x)])} />
-            {ajustes.modelos.length > 0 && <DoModelo ajustes={ajustes} incluir={incluir} />}
+            {ajustes.modelos.length > 0 && <DoModelo ajustes={ajustes} incluir={incluirDoModelo} />}
             <button type="button" className="btn-secondary btn-sm" onClick={() => incluir([linhaNova('mensal')])} id="simulador-digitar-custo"><Plus size={14} /> Digitar um custo</button>
           </div>
         )}
@@ -203,7 +206,7 @@ function DaTabela({ custos, incluir }: { custos: CustoDaTabela[]; incluir: (c: C
 }
 
 /** Um modelo pronto: as linhas dele entram no fim (as que já estão ficam). */
-function DoModelo({ ajustes, incluir }: { ajustes: AjustesDoSimulador; incluir: (l: LinhaDoCenario[]) => void }) {
+function DoModelo({ ajustes, incluir }: { ajustes: AjustesDoSimulador; incluir: (l: LinhaDoCenario[], produto: string | null) => void }) {
   const [feito, setFeito] = useState<string | null>(null);
   return (
     <Popover largura="w-[300px]" titulo="Pôr as linhas de um modelo"
@@ -211,10 +214,7 @@ function DoModelo({ ajustes, incluir }: { ajustes: AjustesDoSimulador; incluir: 
       <div className="flex flex-col -mx-1">
         {ajustes.modelos.map((m) => (
           <button key={m.id} type="button" className="text-left px-2 py-1.5 rounded-md hover:bg-surface-2" data-modelo={m.id}
-            onClick={() => {
-              incluir(m.linhas.flatMap((x) => { const c = ajustes.custos.find((y) => y.id === x.custoId); return c ? [linhaDaTabela(c, { qtd: x.qtd, porRamal: x.porRamal })] : []; }));
-              setFeito(m.id);
-            }}>
+            onClick={() => { incluir(linhasDoModelo(ajustes, m), m.produto); setFeito(m.id); }}>
             <span className="text-[13px] font-semibold">{m.nome}</span>
             {feito === m.id && <span className="ml-1.5 text-[11.5px] text-ok font-semibold">entrou</span>}
             <span className="block text-[12px] text-muted">{m.linhas.length} {m.linhas.length === 1 ? 'custo' : 'custos'}: as linhas entram no fim</span>

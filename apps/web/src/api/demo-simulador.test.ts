@@ -5,7 +5,7 @@
  * não veem o Comercial.
  */
 import { describe, expect, it } from 'vitest';
-import { contasDoCenario, duplicarCenario, linhaDaTabela, textoDoSePagaEm, type CenarioDaSimulacao } from '@gestor/shared';
+import { contasDoCenario, duplicarCenario, lerZipSemCompressao, linhaDaTabela, textoDoSePagaEm, type CenarioDaSimulacao } from '@gestor/shared';
 import { demoApi } from './demo.js';
 import { ApiError } from './types.js';
 import { AJUSTES_DO_SIMULADOR_DEMO } from './demo-simulador.js';
@@ -41,15 +41,21 @@ describe('os exemplos e quem vê', () => {
     expect(await api.opcoes()).toMatchObject({ podeEditar: true, podeCuidar: true });
   });
 
-  it('as quatro simulações de exemplo, com o sinal de cada uma; os aparelhos da tabela vêm sem valor', async () => {
+  it('as simulações de exemplo, com o sinal de cada uma; os aparelhos da tabela vêm sem valor', async () => {
     await entrar('camila');
     const lista = await api.listar();
+    const com = expect.stringMatching(/^COM-\d+$/);
     expect(lista.map((s) => [s.nome, s.cenarios, s.principal.sinal, s.negociacao?.codigo ?? null])).toEqual([
-      ['Padaria Estrela — 40 ramais', 3, 'verde', expect.stringMatching(/^COM-\d+$/)],
-      ['Hotel Beira Mar — URA, filas e LineChat', 1, 'verde', expect.stringMatching(/^COM-\d+$/)],
+      ['Padaria Estrela — 40 ramais', 3, 'verde', com],
+      ['Hotel Beira Mar — URA, filas e LineChat', 1, 'verde', com],
       ['Clínica Vida — LineChat, 5 atendentes', 1, 'amarelo', null],
-      ['Escola Mundo Kids — contraproposta', 1, 'vermelho', expect.stringMatching(/^COM-\d+$/)],
+      ['Academia Movimento — LineChat, 12 atendentes', 1, 'vermelho', com],
+      ['Construtora Horizonte — renovação da telefonia', 1, 'verde', com],
+      ['Ótica Visão Clara — 15 ramais', 1, 'verde', com],
+      ['Escola Mundo Kids — contraproposta', 1, 'vermelho', com],
     ]);
+    // as das ganhas (a margem no relatório) estão ligadas a negociações ganhas
+    expect(lista.filter((s) => s.negociacao?.resultado === 'ganho').map((s) => s.nome.split(' — ')[0])).toEqual(['Academia Movimento', 'Construtora Horizonte', 'Ótica Visão Clara']);
     expect(lista.find((s) => s.nome.startsWith('Escola'))!.negociacao!.resultado).toBe('perdido');
     expect(lista.every((s) => s.principal.faltam === 0)).toBe(true);
     const tabela = (await api.opcoes()).ajustes.custos;
@@ -83,7 +89,7 @@ describe('criar, mudar, duplicar e a lixeira (como o servidor)', () => {
     const modelo = op.ajustes.modelos.find((m) => m.nome === 'LineChat (Helena)')!;
     const estrela = (await api.listar()).find((s) => s.nome.startsWith('Padaria'))!;
     const linhas = modelo.linhas.map((l, i) => linhaDaTabela(op.ajustes.custos.find((x) => x.id === l.custoId)!, { id: `l${i}`, qtd: l.qtd, porRamal: l.porRamal }));
-    const a: CenarioDaSimulacao = { id: 'a', nome: 'Cenário A', mensalidade: 50_000, ativacao: 45_000, parcelas: 1, prazo: 12, ramais: 0, imposto: 6, margemAlvo: 35, linhas };
+    const a: CenarioDaSimulacao = { id: 'a', nome: 'Cenário A', mensalidade: 50_000, ativacao: 45_000, parcelas: 1, prazo: 12, ramais: 0, imposto: 6, margemAlvo: 35, linhas, produtos: ['linechat'] };
     const nova = await api.criar({ nome: 'Pousada Sol Nascente', negociacaoId: estrela.negociacao!.id, cenarios: [a], principal: 'a' });
     expect(nova).toMatchObject({ nome: 'Pousada Sol Nascente', criadoPor: 'Camila Duarte', negociacao: { codigo: estrela.negociacao!.codigo } });
     expect((await auditoria())[0]!.summary).toBe(`Criou a simulação "Pousada Sol Nascente" (ligada à ${estrela.negociacao!.codigo})`);
@@ -149,5 +155,35 @@ describe('criar, mudar, duplicar e a lixeira (como o servidor)', () => {
     expect(r.imposto).toBe(8);
     expect((await auditoria('admin'))[0]!.summary).toBe('Mudou nos Ajustes do Simulador: o imposto de 6% para 8%');
     await api.salvarAjustes({ ...op.ajustes, imposto: 6 });
+  });
+});
+
+describe('a margem no relatório do Comercial (a prévia)', () => {
+  it('as ganhas do mês com simulação: no total, por vendedor e por produto', async () => {
+    await entrar('camila');
+    const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+    const r = await demoApi.atendimento.relatorioDeVendas({ painel: 'COM', de: `${hoje.slice(0, 7)}-01`, ate: hoje });
+    expect(r.margem).not.toBeNull();
+    const m = r.margem!;
+    expect(m.comSimulacao).toBeGreaterThanOrEqual(1);
+    expect(m.comSimulacao).toBeLessThanOrEqual(m.ganhas);
+    // a soma dos grupos por vendedor é o total
+    expect(m.porVendedor.reduce((s, g) => s + g.qtd, 0)).toBe(m.comSimulacao);
+    expect(m.geral.sobra).toBe(m.porVendedor.reduce((s, g) => s + g.sobra, 0));
+  });
+});
+
+describe('o Excel (a prévia)', () => {
+  it('a mesma planilha do servidor: uma folha por cenário e a "Lado a lado"; a auditoria conta; sem o Comercial, não', async () => {
+    await entrar('camila');
+    const estrela = (await api.listar()).find((s) => s.nome.startsWith('Padaria Estrela'))!;
+    const r = await api.planilha(estrela.id);
+    expect(r.nome).toMatch(/^simulacao-padaria-estrela-40-ramais-\d{4}-\d{2}-\d{2}\.xlsx$/);
+    const workbook = new TextDecoder().decode(lerZipSemCompressao(r.bytes).get('xl/workbook.xml'));
+    const s = await api.ler(estrela.id);
+    expect([...workbook.matchAll(/<sheet name="([^"]+)"/g)].map((m) => m[1])).toEqual(['Lado a lado', ...s.cenarios.map((c) => c.nome)]);
+    expect((await auditoria())[0]!.summary).toBe('Exportou a simulação "Padaria Estrela — 40 ramais" para o Excel');
+    await entrar('operador');
+    expect((await erroDe(api.planilha(estrela.id))).status).toBe(403);
   });
 });

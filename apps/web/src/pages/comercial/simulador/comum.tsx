@@ -43,12 +43,13 @@ export const FUNDO_DO_SINAL: Record<Sinal, string> = { verde: 'bg-ok-soft text-o
 export const PONTO_DO_SINAL: Record<Sinal, string> = { verde: 'bg-ok', amarelo: 'bg-amarelo', vermelho: 'bg-bad' };
 
 /** O sinal com a margem: "● Verde · 60,2%". Sem mensalidade, sem sinal. */
-export function ChipDoSinal({ sinal, margem, curto = false, className = '' }: { sinal: Sinal | null; margem: number | null; curto?: boolean; className?: string }) {
+/** O sinal da margem: "Verde · 42%"; `curto`, só a margem ("42%"); `soOSinal`, só o nome ("Verde", ao lado da margem grande). */
+export function ChipDoSinal({ sinal, margem, curto = false, soOSinal = false, className = '' }: { sinal: Sinal | null; margem: number | null; curto?: boolean; soOSinal?: boolean; className?: string }) {
   if (!sinal || margem == null) return <span className={`chip whitespace-nowrap bg-surface-2 text-muted ${className}`}>sem mensalidade</span>;
   return (
     <span className={`chip whitespace-nowrap ${FUNDO_DO_SINAL[sinal]} ${className}`} title={`Margem ${percentualDaFracao(margem)}: ${NOME_DO_SINAL[sinal].toLocaleLowerCase('pt-BR')}`}>
       <span className={`w-2 h-2 rounded-full ${PONTO_DO_SINAL[sinal]}`} aria-hidden />
-      {curto ? percentualDaFracao(margem) : `${NOME_DO_SINAL[sinal]} · ${percentualDaFracao(margem)}`}
+      {soOSinal ? NOME_DO_SINAL[sinal] : curto ? percentualDaFracao(margem) : `${NOME_DO_SINAL[sinal]} · ${percentualDaFracao(margem)}`}
     </span>
   );
 }

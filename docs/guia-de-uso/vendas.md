@@ -93,6 +93,11 @@ Chrome e no Edge), ou arraste o arquivo, ou use o **Anexar**. Até 5 arquivos de
 Depois, clique no PDF na anotação: **ele abre na tela, página por página, sem baixar** (o **Baixar** fica
 embaixo). A imagem também abre grande; Word e Excel continuam baixando.
 
+Para fazer a conta da venda antes de mandar a proposta (os custos, a margem, quando se paga), use o
+**Simulador** (Comercial › Simulador): na ficha, a parte **Simulações** tem o **Simular**, que abre uma
+simulação já ligada à negociação, e a simulação tem o **Levar para a COM-x**, que traz a mensalidade, a
+ativação e os produtos para a negociação. Veja o guia do [Simulador](simulador.md).
+
 ## 5. Ganhou ou perdeu
 
 Na ficha, **Ganhou** ou **Perdeu** (ou arraste o cartão para a coluna Ganho ou Perdido):
@@ -125,6 +130,12 @@ botão **Relatório** no cartão do painel).
   é comparado com o mesmo pedaço do mês anterior. No celular, aparecem os 6 últimos.
 - **As ativações mês a mês**: o mesmo gráfico, só com a ativação das negociações ganhas em cada mês (as
   sem ativação não entram). Clicar num mês mostra as negociações com a ativação de cada uma.
+- **A margem das ganhas** (2.0.2): das negociações ganhas no período, as que têm uma simulação ligada (o
+  Simulador do Comercial): quanto sobra por mês e a **margem**, com o sinal (verde, amarelo, vermelho), no
+  total, **por vendedor** e **por produto** (a que tem dois produtos conta nos dois). Cada negociação entra
+  com o cenário principal da simulação dela; a margem do grupo é a sobra de todas sobre a mensalidade de
+  todas. "2 de 3 com simulação" diz quantas das ganhas entraram. Veja o guia do
+  [Simulador](simulador.md).
 - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
   entraram), quantas se perderam em cada uma e quantas foram ganhas.
 - **Clique em qualquer número** (o ganho, a ativação, as novas, o perdido, um mês, uma etapa do funil, as

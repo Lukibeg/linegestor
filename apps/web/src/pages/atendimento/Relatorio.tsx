@@ -13,6 +13,8 @@
  *  - a **ativação** à parte da mensalidade (19/10: "um kpi desse para ganho de ativações bem simples como
  *    os que tem hoje", "um gráfico desse mas sobre apenas ativação"): o número Ativação, ao lado do
  *    Ganho, e **As ativações mês a mês**, embaixo dos ganhos — o resto continua só com a mensalidade;
+ *  - **A margem das ganhas** (2.0.2, o Simulador do Comercial: "a margem média das negociações ganhas no
+ *    período, por vendedor e por produto"): as ganhas que têm simulação ligada, com a margem e o sinal;
  *  - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
  *    entraram), quantas se perderam em cada uma e quantas foram ganhas.
  *
@@ -23,14 +25,15 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { ArrowLeft, CalendarRange, ChartColumn, Filter as Funnel, Info, Target, TrendingDown, TrendingUp, X } from 'lucide-react';
+import { ArrowLeft, Calculator, CalendarRange, ChartColumn, Filter as Funnel, Info, Target, TrendingDown, TrendingUp, X } from 'lucide-react';
 import {
-  diaComAno, periodosDoRelatorio, reaisCurto, reaisInteiros,
-  type MesDeVendas, type NegociacaoDoRelatorio, type OpcoesAtendimento, type Painel, type RelatorioDeVendas,
+  diaComAno, percentualDaFracao, periodosDoRelatorio, reaisCurto, reaisInteiros,
+  type GrupoDaMargem, type MesDeVendas, type NegociacaoDoRelatorio, type OpcoesAtendimento, type Painel, type RelatorioDeVendas,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, Modal, Vazio, mensagemErro } from '../../components/ui/index.js';
 import { CabecalhoAtendimento, ChipResultado, LinkDoChamado, useOpcoes } from './comum.js';
+import { ChipDoSinal } from '../comercial/simulador/comum.js';
 import { CabecalhoDoPainel } from './painel.js';
 import { useFiltrosNoEndereco } from './quadro/filtros.js';
 
@@ -118,6 +121,14 @@ function RelatorioDeVendasDoPainel({ painel, opcoes }: { painel: Painel; opcoes:
           </Secao>
           <MesAMes r={r} abrir={setAberta} />
           <MesAMesDaAtivacao r={r} abrir={setAberta} />
+          {r.margem && (
+            <Secao id="relatorio-margem" titulo="A margem das ganhas" icone={Calculator}
+              pergunta={`As negociações ganhas ${nomeDoPeriodo} que têm simulação ligada: quanto sobra por mês, no total, por vendedor e por produto.`}
+              lado={r.margem.ganhas ? `${r.margem.comSimulacao} de ${r.margem.ganhas} com simulação` : undefined}
+              rodape="A margem do grupo é a sobra de todas sobre a mensalidade de todas (a venda grande pesa mais). Cada negociação entra com o cenário principal da simulação ligada a ela (a mexida por último, se houver mais de uma); a que tem dois produtos conta nos dois. Clique para ver as negociações.">
+              <MargemDasGanhas r={r} abrir={setAberta} />
+            </Secao>
+          )}
           <Secao id="relatorio-funil" titulo="O funil" icone={Funnel}
             pergunta={`Das ${plural(r.numeros.novos.qtd, 'negociação que entrou', 'negociações que entraram')} ${nomeDoPeriodo}: até onde chegaram, onde se perderam e quantas foram ganhas.`}
             rodape="Conta a etapa mais adiante por onde a negociação passou (a ganha chegou ao fim) e, na perdida, a etapa em que ela estava quando foi perdida. A porcentagem é das que entraram. Clique para ver as negociações.">
@@ -328,6 +339,49 @@ function MudancaDoMes({ m, oQue }: { m: MesDeVendas; oQue: string }) {
       title={`${sobe ? 'Mais' : 'Menos'} que o mês anterior${m.parcial ? ' (no mesmo pedaço)' : ''}: ${reaisInteiros(m.antes)}`}>
       {sobe ? '▲' : '▼'} {Math.round((Math.abs(d) / m.antes) * 100)}%
     </span>
+  );
+}
+
+/** A margem das ganhas (2.0.2): o total, por vendedor e por produto; o clique mostra as negociações. */
+function MargemDasGanhas({ r, abrir }: { r: RelatorioDeVendas; abrir: (a: Aberta) => void }) {
+  const m = r.margem!;
+  if (!m.comSimulacao) {
+    return (
+      <p className="text-muted text-sm py-1">
+        {m.ganhas ? 'Nenhuma das ganhas do período tem simulação ligada. No Simulador (Comercial › Simulador), ligue a simulação à negociação, ou use o Simular da ficha.' : 'Nenhuma negociação ganha no período.'}
+      </p>
+    );
+  }
+  const Grupo = ({ g, titulo }: { g: GrupoDaMargem; titulo: string }) => (
+    <button type="button" onClick={() => abrir({ titulo, ids: g.ids })} className="w-full grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_132px_auto] items-center gap-x-3 py-1.5 px-2 text-left text-[13px] hover:bg-surface-2 rounded-md" data-margem={g.nome}>
+      <span className="min-w-0">
+        <span className="block font-medium text-ink-2 truncate">{g.nome}</span>
+        <span className="block text-[12px] text-muted tnum">
+          {plural(g.qtd, 'ganha', 'ganhas')} · {reaisInteiros(g.mensalidade)}/mês<span className="sm:hidden"> · sobra {reaisInteiros(g.sobra)}</span>
+        </span>
+      </span>
+      <span className="hidden sm:block text-right tnum">sobra <b className="text-ink">{reaisInteiros(g.sobra)}</b></span>
+      <ChipDoSinal sinal={g.sinal} margem={g.margem} curto />
+    </button>
+  );
+  return (
+    <div className="flex flex-col gap-4">
+      <button type="button" onClick={() => abrir({ titulo: 'As ganhas com simulação', ids: m.geral.ids })} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-left group" id="relatorio-margem-geral">
+        <span className="font-display text-[28px] leading-none font-semibold tnum group-hover:text-accent">{m.geral.margem == null ? '—' : percentualDaFracao(m.geral.margem)}</span>
+        <ChipDoSinal sinal={m.geral.sinal} margem={m.geral.margem} soOSinal />
+        <span className="text-[13px] text-ink-2">sobram <b className="tnum">{reaisInteiros(m.geral.sobra)}</b> por mês de <b className="tnum">{reaisInteiros(m.geral.mensalidade)}</b> em mensalidades</span>
+      </button>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="min-w-0">
+          <div className="eyebrow mb-1">Por vendedor</div>
+          <div className="divide-y divide-line -mx-2">{m.porVendedor.map((g) => <Grupo key={g.nome} g={g} titulo={`As ganhas de ${g.nome}`} />)}</div>
+        </div>
+        <div className="min-w-0">
+          <div className="eyebrow mb-1">Por produto</div>
+          <div className="divide-y divide-line -mx-2">{m.porProduto.map((g) => <Grupo key={g.nome} g={g} titulo={`As ganhas com ${g.nome}`} />)}</div>
+        </div>
+      </div>
+    </div>
   );
 }
 

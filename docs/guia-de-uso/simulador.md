@@ -11,7 +11,8 @@ Ajustes (a tabela de custos, os modelos, o imposto e o sinal) são de quem cuida
    **Em branco**. O modelo já traz as linhas de custo, com a quantidade de cada uma.
 2. Dê um **nome** (o cliente, a proposta: "Padaria Estrela — 40 ramais").
 3. Se quiser, **ligue a uma negociação**: escreva o código (COM-12) ao lado do nome e clique em **Ligar**.
-   A ficha da negociação passa a mostrar a simulação, com a margem e o sinal.
+   A ficha da negociação passa a mostrar a simulação, com a margem e o sinal. (Pela negociação é mais
+   rápido: abaixo, **Simular a partir da negociação**.)
 4. Preencha o que o cliente paga e os custos (abaixo) e clique em **Criar a simulação**.
 
 Os números mudam enquanto você escreve. Nada é gravado até o **Salvar** (a tela avisa "Não salvo").
@@ -25,6 +26,8 @@ Os números mudam enquanto você escreve. Nada é gravado até o **Salvar** (a t
 - **Ramais**: as linhas marcadas "por ramal" (o telefone, a nuvem) acompanham este número.
 - **Imposto**: um percentual só, sobre tudo o que o cliente paga. A simulação nova vem com o dos Ajustes;
   quando os dois diferem, aparece "Nos Ajustes: 6% · usar".
+- **Produtos**: os produtos do catálogo que a venda leva (o modelo traz o dele; **+ produto** põe outro, o
+  **×** tira). O **Levar para a negociação** põe estes na negociação.
 
 ## Os custos
 
@@ -58,8 +61,9 @@ Cada linha tem o nome, **como entra**, a quantidade, o valor de cada um e o tota
   **margem** (a sobra sobre o que o cliente paga por mês) com o **sinal**: verde, amarelo ou vermelho, pelas
   faixas dos Ajustes.
 - **Sai antes**: o pior momento do contrato — os aparelhos e o resto, antes de a venda se pagar.
-- **Se paga**: o mês em que o acumulado fica positivo ("já na ativação" quando a ativação cobre tudo; "não
-  se paga" quando a sobra do mês não cobre).
+- **Se paga**: o mês em que o acumulado fica positivo ("já na ativação" quando a ativação cobre o que sai
+  antes; "desde o 1º mês" quando não sai nada antes e não há ativação; "não se paga" quando a sobra do mês
+  não cobre).
 - **No contrato**: o que fica no fim do prazo.
 - **A linha do tempo**: o acumulado mês a mês, do vermelho do começo ao mês em que vira lucro.
 - **O preço**: escreva a margem que você quer e veja a mensalidade mínima para ela; e o **desconto máximo**
@@ -73,6 +77,40 @@ A mesma venda em versões diferentes (comodato ou venda dos aparelhos, 12 ou 24 
 - **Os cenários lado a lado** mostra os números de cada um, coluna por coluna.
 - **Tornar o principal**: o principal (a estrela) é o que a lista e a negociação mostram.
 - Dê um nome a cada cenário no campo do alto ("Comodato, 24 meses").
+
+## A simulação e a negociação
+
+- **Simular a partir da negociação**: na ficha da negociação, a parte **Simulações** mostra as simulações
+  ligadas a ela (o cenário principal, com a margem e o sinal) e tem o **Simular**: ele abre uma simulação
+  nova já ligada, com o nome (a empresa e o título), os produtos da negociação, as linhas dos modelos
+  desses produtos e a mensalidade e a ativação que ela já tem. Preencha o que falta e **Crie a simulação**.
+- **Levar para a negociação**: na simulação ligada a uma negociação em aberto, o **Levar para a COM-12**
+  põe nela o que o cliente paga no cenário principal: a **mensalidade** (com o aluguel dos aparelhos), a
+  **ativação** (com os aparelhos vendidos) e os **produtos** do cenário (sem produto no cenário, os da
+  negociação ficam). A janela mostra o que a negociação tem hoje e o que fica, antes do **Levar**. Se a
+  negociação tem o valor por produto, ela passa a ter um valor só. A mudança fica no histórico da
+  negociação. Salve a simulação antes (o botão espera o Salvar).
+- **A margem no relatório**: o relatório do Comercial (Comercial › Relatórios) tem **A margem das
+  ganhas**: das ganhas do período que têm simulação, a margem do total, por vendedor e por produto.
+
+## O Excel
+
+O **Excel**, no alto da simulação, baixa a simulação numa planilha **com as fórmulas** (quem vê a simulação
+pode baixar; a auditoria registra):
+
+- **uma folha por cenário** e, com dois ou mais, a folha **Lado a lado**, que puxa os números de cada um;
+- na folha do cenário, **as células amarelas** são as que você muda: a mensalidade, a ativação, as vezes,
+  o prazo, os ramais, o imposto, a margem que você quer e, em cada custo, a quantidade, o valor de cada e o
+  preço ou o aluguel do aparelho. O resto se refaz sozinho: **os custos** (quando sai e quando entra), **os
+  números** (a sobra, a margem, o sinal, o que sai antes, quando se paga, o que fica no contrato), **o
+  preço** (a mensalidade mínima e o desconto máximo) e **a linha do tempo**, mês a mês;
+- os custos por faixas (os usuários, os canais e os contatos da Helena) viram uma fórmula com as faixas: a
+  quantidade nova dá o custo novo;
+- a planilha sai do que está **salvo** (com mudança na tela, salve antes) e imprime deitada, com a largura
+  numa página.
+
+Na prévia, a planilha é montada na própria página; o navegador da prévia publicada pode não deixar baixar
+(o aviso diz). No Gestor, ela baixa.
 
 ## Duplicar e a lixeira
 
