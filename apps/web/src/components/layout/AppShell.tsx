@@ -6,9 +6,9 @@
  * de cima continua, porque é onde fica o botão que abre o menu (e o sininho, à mão). O aviso que chega
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
- * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (o Painel
- * do Suporte — o atalho para o quadro dele, 2.0.2 —, o Meu dia, 2.0.2, os Projetos e os Relatórios, que
- * abrem nos tickets do LineChat, na aba Hoje), **Técnico** (2.0.2: os Circuitos e DIDs e o Inventário),
+ * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Técnico** (2.0.2: os
+ * Circuitos e DIDs e o Inventário), **Suporte** (o Painel do Suporte — o atalho para o quadro dele, 2.0.2 —,
+ * o Meu dia, 2.0.2, os Projetos e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje),
  * **Comercial** (2.0.1: o Painel do Comercial — o atalho para o painel de Vendas — e o relatório dele, de
  * quem tem a permissão do Comercial; 2.0.2: o Simulador) e **Base de conhecimento** (a interna e a dos clientes); o Importar /
  * Exportar foi para dentro da Administração. Os
@@ -44,7 +44,7 @@ const ehGrupo = (x: ItemDoMenu | GrupoDoMenu): x is GrupoDoMenu => 'grupo' in x;
 export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   { to: '/', label: 'Painel', icon: LayoutDashboard, perm: 'records.read', end: true },
   { to: '/clientes', label: 'Clientes', icon: Building2, perm: 'records.read' },
-  // os Circuitos e DIDs e o Inventário moram no grupo Técnico (2.0.2), abaixo do Suporte
+  // os Circuitos e DIDs e o Inventário moram no grupo Técnico (2.0.2), acima do Suporte
   // o calendário das equipes (2.0.1): as visitas, as viradas, as folgas… de todas as equipes (o Comercial e o
   // Administrativo também), por isso no alto do menu e não dentro do Suporte — lá ele ficava escondido no
   // grupo fechado (16/10, o Luan: "cadê, não tá na demo")
@@ -53,6 +53,16 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   // paineis", o Luan em 17/10): um item próprio, como o Calendário (2.0.2, 20/10: "o paineis vai ter um campo
   // próprio como o calendário"). Abre a tela de todos os painéis (Todos, Meu dia e Ajustes).
   { to: '/atendimento', label: 'Painéis', icon: SquareKanban, perm: 'support.read' },
+  // o técnico (2.0.2, 20/10, num comentário na prévia: "quero q vc faça uma nova aba de técnico e esses 2
+  // pontos vao ficar dentro dele"): os circuitos com a numeração (0010) e o inventário dos aparelhos, que
+  // moravam no alto do menu. Logo acima do Suporte (no mesmo dia, outro comentário: "quero q o técnico fique
+  // acima de suporte"; a primeira versão o punha abaixo)
+  {
+    grupo: 'tecnico', label: 'Técnico', icon: Wrench, itens: [
+      { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
+      { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
+    ],
+  },
   // o suporte: o Painel do Suporte (2.0.2, o atalho para o quadro do painel Suporte, "como fizemos no
   // comercial"), o Meu dia (2.0.2: "o meu dia pode ter um botão aqui tbm"), os projetos (as tarefas que
   // percorrem vários clientes) e os Relatórios. O Relatórios abre nos tickets do LineChat (a cópia de leitura,
@@ -65,16 +75,6 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
       { to: '/atendimento/meu-dia', label: 'Meu dia', icon: SunMedium, perm: 'support.read' },
       { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
-    ],
-  },
-  // o técnico (2.0.2, 20/10, num comentário na prévia: "quero q vc faça uma nova aba de técnico e esses 2
-  // pontos vao ficar dentro dele"): os circuitos com a numeração (0010) e o inventário dos aparelhos, que
-  // moravam no alto do menu. Logo abaixo do Suporte: as áreas em grupos (Suporte, Técnico, Comercial), e é a
-  // mesma gente do suporte que olha os circuitos e os aparelhos
-  {
-    grupo: 'tecnico', label: 'Técnico', icon: Wrench, itens: [
-      { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
-      { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
     ],
   },
   // o Comercial (2.0.1, 19/10: "uma aba lateral só para o comercial… com acesso direto ao painel do comercial

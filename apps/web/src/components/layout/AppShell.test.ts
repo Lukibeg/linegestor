@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest';
 import { NAV, eDoSuporte } from './AppShell.js';
 
 describe('o grupo Técnico (2.0.2)', () => {
-  it('os Circuitos e DIDs e o Inventário moram nele, logo abaixo do Suporte, e não mais no alto', () => {
+  it('os Circuitos e DIDs e o Inventário moram nele, logo acima do Suporte ("quero q o técnico fique acima de suporte"), e não mais no alto', () => {
     const nomes = NAV.map((x) => ('grupo' in x ? `[${x.label}]` : x.label));
-    expect(nomes).toEqual(['Painel', 'Clientes', 'Calendário', 'Painéis', '[Suporte]', '[Técnico]', '[Comercial]', '[Base de conhecimento]', 'Novidades', 'Administração']);
+    expect(nomes).toEqual(['Painel', 'Clientes', 'Calendário', 'Painéis', '[Técnico]', '[Suporte]', '[Comercial]', '[Base de conhecimento]', 'Novidades', 'Administração']);
     const tecnico = NAV.find((x) => 'grupo' in x && x.grupo === 'tecnico');
     expect(tecnico && 'itens' in tecnico ? tecnico.itens.map((i) => [i.label, i.to]) : null).toEqual([['Circuitos e DIDs', '/circuitos'], ['Inventário', '/inventario']]);
     // o Simulador (2.0.2) mora no Comercial

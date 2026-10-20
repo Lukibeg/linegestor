@@ -88,8 +88,10 @@ entrou nele.
   *"quero q vc faça uma nova aba de técnico e esses 2 pontos vao ficar dentro dele"*. Os dois pontos são
   os itens técnicos que moravam no alto do menu. Agora:
   - um quarto grupo, **Técnico** (o ícone da chave), com **Circuitos e DIDs** e **Inventário**. Ele fica
-    logo abaixo do Suporte: as áreas ficam em grupos (Suporte, Técnico, Comercial), e é a mesma gente do
-    suporte que olha os circuitos e os aparelhos;
+    **logo acima do Suporte**: a primeira versão o pôs abaixo (as áreas em grupos, e é a mesma gente do
+    suporte que olha os circuitos e os aparelhos), e o Luan, noutro comentário no mesmo dia, pediu: *"quero
+    q o técnico fique acima de suporte"*. A ordem dos grupos é **Técnico, Suporte, Comercial, Base de
+    conhecimento**;
   - no alto do menu ficam **Painel**, **Clientes**, **Calendário** e **Painéis**;
   - os endereços e os títulos das telas não mudaram (`/circuitos`, `/inventario`). O grupo se comporta como
     os outros: abre sozinho nas telas dele e, com o menu recolhido, abre a lista ao lado;
