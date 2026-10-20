@@ -42,6 +42,20 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
 - **Cada aparelho diz como vai:** **comodato** (a Ingline compra e empresta: só o custo, uma vez),
   **venda** (o preço de cada um entra na ativação) ou **locação** (o aluguel de cada um entra na
   mensalidade).
+- **A compra dos aparelhos parcelada.** O Luan, num comentário na prévia: *"no caso de equipamentos, tem q
+  ter a opção tbm se eu vou querer parcelar essa compra, no caso o custo tbm seria diluído"*. Cada aparelho
+  diz **"A compra em"**: à vista ou em até 24 vezes, e nunca mais que o prazo do contrato. A primeira parcela
+  sai na assinatura e as outras nos meses seguintes (a primeira leva o resto da divisão, como na ativação). O
+  custo se dilui na linha do tempo: mudam o "Sai antes", o "Se paga" e o mês a mês. A sobra por mês e a
+  margem não mudam (a compra parcelada não é custo de todo mês), e o fim do contrato também não (o aparelho
+  é pago inteiro dentro do prazo).
+- **O mês a mês.** O Luan, sobre o gráfico pequeno do acumulado: *"isso aqui ta bacana, quero esse gráfico
+  mais detalhado mensalmente, por exemplo, com os valores acumulado e lucro por mês; acho q vai ter q ficar
+  maior"*. Embaixo dos custos entrou o quadro **Mês a mês**: em cima, o acumulado (a linha, com o pior
+  momento e o mês em que a venda se paga); embaixo, o lucro de cada mês (as barras; a da assinatura, muito
+  maior que as outras, é cortada e diz o valor). Passar o mouse num mês, ou tocar no celular, mostra o lucro
+  dele e o acumulado; a tabela embaixo tem todos os meses. O gráfico pequeno, nos números, ganhou o "Ver mês
+  a mês".
 - **Quem vê:** quem tem o Comercial (`sales.read`) vê tudo, com os custos e a margem. Criar, mudar,
   duplicar e mandar para a lixeira é de quem também trabalha nas negociações (`tickets.work`, como nelas);
   os **Ajustes do Simulador**, de quem cuida dos painéis (`tickets.manage`, como os do Comercial). Sem
@@ -90,7 +104,8 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
 - **A planilha do Excel.** Uma folha por cenário e, com dois cenários ou mais, a **Lado a lado** (os
   números de cada um, puxados da folha dele). Na folha do cenário: o que o cliente paga, nas **células
   amarelas** (a mensalidade, a ativação, as vezes, o prazo, os ramais, o imposto, a margem que se quer, e
-  em cada custo a quantidade, o valor de cada e o preço ou aluguel do aparelho); os custos linha a linha
+  em cada custo a quantidade, o valor de cada, o preço ou aluguel do aparelho e em quantas vezes ele é
+  comprado); os custos linha a linha
   (quando sai, quando entra, e a observação: as faixas, o que falta preencher); **os números**, **o preço**
   e **a linha do tempo** mês a mês (até 120 meses: mudar o prazo na planilha também funciona). Cada número
   é uma fórmula que faz a conta do `contasDoCenario` — o preço por faixas vira uma fórmula com as faixas, a
@@ -139,8 +154,8 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   canais, a configuração e as comissões), os modelos LinePBX em nuvem, LineChat (Helena), VoiceNet e
   LinePBX + LineChat, e sete simulações: a **Padaria Estrela** com três cenários — comodato em 24 meses, os
   telefones vendidos em 12 meses com a ativação em 3x, e 10% de desconto em 36 meses —, o **Hotel Beira
-  Mar** (o PABX e o LineChat, a ativação em 3x; a conta refeita pede R$ 1.690, e a negociação ainda está
-  com R$ 1.580: o Levar mostra a troca), a **Clínica Vida** no amarelo (o LineChat, sem negociação), as três
+  Mar** (o PABX e o LineChat, os telefones comprados em 10 vezes, a ativação em 3x; a conta refeita pede
+  R$ 1.690, e a negociação ainda está com R$ 1.580: o Levar mostra a troca), a **Clínica Vida** no amarelo (o LineChat, sem negociação), as três
   ganhas do mês para a margem no relatório — a **Ótica Visão Clara** e a **Construtora Horizonte** (da
   Camila) no verde e a **Academia Movimento** (do Diego, o LineChat com 12 usuários) no vermelho — e a
   contraproposta da **Escola Mundo Kids** no vermelho (a negociação perdida). Na prévia publicada, o

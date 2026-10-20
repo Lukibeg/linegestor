@@ -124,7 +124,9 @@ export function LinhaDoTempo({ k, prazo }: { k: ContasDoCenario; prazo: number }
       </svg>
       <figcaption className="text-[12px] text-muted mt-1">
         {pagou != null && <span className="text-ink-2 font-semibold"><span className="inline-block w-2 h-2 rounded-full bg-ok mr-1 align-middle" aria-hidden />Vira lucro no mês {pagou}. </span>}
-        O acumulado mês a mês: começa com o que é pago de uma vez (os aparelhos), e cada mês soma a sobra.
+        O acumulado mês a mês: começa com o que é pago de uma vez (os aparelhos), e cada mês soma a sobra.{' '}
+        <button type="button" className="link" id="simulador-ver-mes-a-mes"
+          onClick={() => document.getElementById('simulador-mes-a-mes')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Ver mês a mês</button>
       </figcaption>
     </figure>
   );

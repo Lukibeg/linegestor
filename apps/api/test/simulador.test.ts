@@ -276,7 +276,7 @@ describe('a simulação', () => {
     // a folha do cenário: a mensalidade (amarela), a conta em fórmula e quem exportou; a Lado a lado puxa de lá
     const b = texto('xl/worksheets/sheet3.xml');
     expect(b).toContain('<c r="B7" s="11"><v>890</v></c>');
-    expect(b).toContain('<f>B7+K');
+    expect(b).toContain('<f>B7+L');
     expect(b).toContain('por Lia Rocha');
     expect(texto('xl/worksheets/sheet1.xml')).toContain(`'Cenário B'!$B$`);
     expect(await auditoriaDe(aurora.id)).toContain('Exportou a simulação "Clínica Aurora" para o Excel');

@@ -53,6 +53,8 @@ export const MAX_CUSTOS_NA_TABELA = 200;
 export const MAX_MODELOS = 50;
 /** A ativação vai em até 12 vezes (e não mais que o prazo). */
 export const MAX_PARCELAS = 12;
+/** Em até quantas vezes a Ingline compra um aparelho (o custo dele se dilui nos meses; nunca mais que o prazo). */
+export const MAX_PARCELAS_DA_COMPRA = 24;
 /** O contrato vai até 10 anos. */
 export const MAX_PRAZO = 120;
 export const MAX_RAMAIS = 10_000;
@@ -160,6 +162,12 @@ export type LinhaDoCenario = {
   faixas: FaixaDePreco[] | null;
   /** o nome de uma unidade ("usuário", "canal", "contato"), para a tela dizer "5 usuários" */
   unidade: string | null;
+  /**
+   * O aparelho comprado parcelado (o Luan, 20/10: "tem q ter a opção tbm se eu vou querer parcelar essa compra,
+   * no caso o custo tbm seria diluído"): em quantas vezes a Ingline paga — a primeira na assinatura, as outras
+   * nos meses seguintes. Ausente = à vista. Só no aparelho.
+   */
+  parcelas?: number;
 };
 
 /**
@@ -426,18 +434,23 @@ export const LinhaDoCenarioSchema = z.object({
   preco: Centavos('O preço do aparelho').nullable().default(null),
   faixas: FaixasDePrecoSchema.nullable().default(null),
   unidade: UnidadeSchema,
+  parcelas: z.number({ invalid_type_error: 'As parcelas da compra vão em número.' }).int('As parcelas da compra vão inteiras.')
+    .min(1, 'A compra vai em pelo menos 1 vez.').max(MAX_PARCELAS_DA_COMPRA, `A compra do aparelho vai em até ${MAX_PARCELAS_DA_COMPRA} vezes.`).optional(),
 }).superRefine(conferirValor).transform((l): LinhaDoCenario => {
+  const { parcelas, ...resto } = l;
   const pct = ehPercentual(l.tipo);
   const aparelho = l.tipo === 'aparelho';
   const faixas = comFaixas(l.tipo, l.faixas);
   return {
-    ...l,
+    ...resto,
     qtd: pct ? 1 : l.qtd,
     porRamal: pct ? false : l.porRamal,
     valor: faixas || l.valor == null ? null : pct ? duasCasas(l.valor) : l.valor,
     modalidade: aparelho ? l.modalidade : null,
     preco: aparelho && l.modalidade !== 'comodato' ? l.preco : null,
     faixas,
+    // à vista não guarda nada (a linha fica como era antes da compra parcelada)
+    ...(aparelho && parcelas && parcelas > 1 ? { parcelas } : {}),
   };
 });
 
@@ -663,6 +676,8 @@ export type LinhaNaConta = {
   receita: number;
   /** a linha (ou o preço do aparelho) ainda sem valor */
   falta: boolean;
+  /** o aparelho comprado parcelado: em quantas vezes (1 = à vista; nunca mais que o prazo) */
+  parcelas: number;
 };
 
 export type ContasDoCenario = {
@@ -676,8 +691,11 @@ export type ContasDoCenario = {
   entradaTotal: number;
   /** o valor de cada parcela da ativação (a primeira leva o resto da divisão) */
   parcelas: number[];
-  /** os custos que se pagam uma vez (os aparelhos e o resto), na assinatura */
+  /** os custos que se pagam uma vez (os aparelhos e o resto), somados — os aparelhos parcelados, inteiros */
   custoUnico: number;
+  /** o que sai de cada mês, do mês 0 (a assinatura) ao fim do prazo, pelos custos de uma vez: na assinatura,
+   *  tudo menos as parcelas que ficam para depois; nos meses seguintes, as parcelas dos aparelhos comprados parcelado */
+  saidas: number[];
   /** os custos fixos do mês (as linhas "por mês") */
   custoMensalFixo: number;
   /** o imposto e a comissão de cada mês */
@@ -748,6 +766,10 @@ export function textoDasFaixasDePreco(faixas: readonly FaixaDePreco[]): string {
 export const quantidadeDaLinha = (l: Pick<LinhaDoCenario, 'tipo' | 'qtd' | 'porRamal'>, c: Pick<CenarioDaSimulacao, 'ramais'>) =>
   (ehPercentual(l.tipo) ? 1 : l.porRamal ? c.ramais : l.qtd);
 
+/** Em quantas vezes a compra do aparelho sai de verdade: de 1 ao máximo, e nunca mais que o prazo do contrato. */
+export const vezesDaCompra = (l: Pick<LinhaDoCenario, 'tipo' | 'parcelas'>, prazo: number) =>
+  (l.tipo === 'aparelho' ? Math.max(1, Math.min(Math.floor(l.parcelas ?? 1), MAX_PARCELAS_DA_COMPRA, Math.max(1, Math.floor(prazo)))) : 1);
+
 /** O valor da ativação em N parcelas iguais, em centavos; a primeira leva o resto da divisão. */
 export function dividirEmParcelas(total: number, n: number): number[] {
   const vezes = Math.max(1, Math.floor(n));
@@ -768,6 +790,8 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   const imposto = c.imposto / 100;
   let aluguel = 0; let vendaDeAparelhos = 0; let custoUnico = 0; let custoMensalFixo = 0; let pctMensalidade = 0; let pctAtivacao = 0;
   const faltam: string[] = [];
+  // os aparelhos comprados parcelado: o custo de cada um se dilui nos meses (a primeira parcela na assinatura)
+  const compras: Array<{ total: number; vezes: number }> = [];
   // as linhas de percentual só têm o custo depois de saber a mensalidade e a ativação (fica para o fim)
   const conta: Array<Omit<LinhaNaConta, 'custo'> & { custo: number; sobre: 'mensal' | 'entrada' | null; pct: number }> = [];
   for (const l of c.linhas) {
@@ -783,21 +807,23 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
         receita = qtd * (l.preco ?? 0);
         if (l.modalidade === 'venda') vendaDeAparelhos += receita; else aluguel += receita;
       }
-      conta.push({ id: l.id, qtd, custo: qtd * valor, quando: 'uma-vez', receita, falta, sobre: null, pct: 0 });
+      const vezes = vezesDaCompra(l, c.prazo);
+      if (vezes > 1) compras.push({ total: qtd * valor, vezes });
+      conta.push({ id: l.id, qtd, custo: qtd * valor, quando: 'uma-vez', receita, falta, sobre: null, pct: 0, parcelas: vezes });
     } else if (l.tipo === 'unica') {
       const custo = faixas ? custoPorFaixas(qtd, faixas) : qtd * valor;
       custoUnico += custo;
-      conta.push({ id: l.id, qtd, custo, quando: 'uma-vez', receita: 0, falta, sobre: null, pct: 0 });
+      conta.push({ id: l.id, qtd, custo, quando: 'uma-vez', receita: 0, falta, sobre: null, pct: 0, parcelas: 1 });
     } else if (l.tipo === 'mensal') {
       const custo = faixas ? custoPorFaixas(qtd, faixas) : qtd * valor;
       custoMensalFixo += custo;
-      conta.push({ id: l.id, qtd, custo, quando: 'por-mes', receita: 0, falta, sobre: null, pct: 0 });
+      conta.push({ id: l.id, qtd, custo, quando: 'por-mes', receita: 0, falta, sobre: null, pct: 0, parcelas: 1 });
     } else if (l.tipo === 'pct_mensalidade') {
       pctMensalidade += valor / 100;
-      conta.push({ id: l.id, qtd: 1, custo: 0, quando: 'por-mes', receita: 0, falta, sobre: 'mensal', pct: valor / 100 });
+      conta.push({ id: l.id, qtd: 1, custo: 0, quando: 'por-mes', receita: 0, falta, sobre: 'mensal', pct: valor / 100, parcelas: 1 });
     } else {
       pctAtivacao += valor / 100;
-      conta.push({ id: l.id, qtd: 1, custo: 0, quando: 'uma-vez', receita: 0, falta, sobre: 'entrada', pct: valor / 100 });
+      conta.push({ id: l.id, qtd: 1, custo: 0, quando: 'uma-vez', receita: 0, falta, sobre: 'entrada', pct: valor / 100, parcelas: 1 });
     }
     if (falta) faltam.push(l.nome);
   }
@@ -811,11 +837,19 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   const parcelas = dividirEmParcelas(entradaTotal, vezes);
   const retidoDaEntrada = imposto + pctAtivacao;
 
-  // o acumulado: no mês 0, o que é de uma vez e a primeira parcela; depois, a sobra de cada mês e as outras parcelas
+  // o que sai em cada mês pelos custos de uma vez: tudo na assinatura, menos as parcelas dos aparelhos comprados
+  // parcelado, que saem nos meses seguintes (a primeira leva o resto da divisão, como na ativação)
+  const saidas = Array.from({ length: c.prazo + 1 }, (_, m) => (m === 0 ? custoUnico : 0));
+  for (const compra of compras) {
+    saidas[0]! -= compra.total;
+    dividirEmParcelas(Math.round(compra.total), compra.vezes).forEach((p, k) => { saidas[k]! += p; });
+  }
+  // o acumulado: no mês 0, o que sai na assinatura e a primeira parcela da ativação; depois, a sobra de cada mês,
+  // as outras parcelas da ativação e as dos aparelhos
   const serieExata: number[] = [];
   let acumulado = 0;
   for (let m = 0; m <= c.prazo; m++) {
-    acumulado += m === 0 ? -custoUnico : sobraMensal;
+    acumulado += (m === 0 ? 0 : sobraMensal) - saidas[m]!;
     if (m < parcelas.length) acumulado += parcelas[m]! * (1 - retidoDaEntrada);
     serieExata.push(acumulado);
   }
@@ -834,7 +868,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   const minima = mensalidadeMinima(c.margemAlvo, custoMensalFixo, aluguel, imposto + pctMensalidade);
   const minimaVerde = mensalidadeMinima(faixas.verde, custoMensalFixo, aluguel, imposto + pctMensalidade);
   return {
-    aluguel, vendaDeAparelhos, mensalTotal, entradaTotal, parcelas, custoUnico: Math.round(custoUnico), custoMensalFixo: Math.round(custoMensalFixo),
+    aluguel, vendaDeAparelhos, mensalTotal, entradaTotal, parcelas, custoUnico: Math.round(custoUnico), saidas: saidas.map((v) => Math.round(v)), custoMensalFixo: Math.round(custoMensalFixo),
     impostoMensal: Math.round(impostoMensal), comissaoMensal: Math.round(comissaoMensal), custoMensal: Math.round(custoMensal),
     impostoDaEntrada: Math.round(imposto * entradaTotal), comissaoDaEntrada: Math.round(pctAtivacao * entradaTotal),
     sobraMensal: sobra, margem, sinal: margem == null ? null : sinalDaMargem(margem, faixas),

@@ -52,6 +52,9 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
 - **Por ramal**: a quantidade passa a ser a dos ramais.
 - **O aparelho** diz como vai: **Comodato** (a Ingline compra e empresta: só o custo), **Venda** (o
   preço de cada um entra na ativação) ou **Locação** (o aluguel de cada um entra na mensalidade).
+- **A compra em**: o aparelho que a Ingline compra parcelado (à vista ou em até 24 vezes, nunca mais que o
+  prazo). O custo se dilui: a primeira parcela sai na assinatura e as outras nos meses seguintes. Mudam o
+  "Sai antes", o "Se paga" e o mês a mês; a sobra por mês e a margem não mudam.
 - **Os aparelhos vêm sem valor** da tabela (o preço muda de uma compra para outra): preencha o custo de
   cada um. Enquanto falta um valor, o campo fica marcado e os números avisam.
 - **Por faixas**: os custos do LineChat da Helena (os usuários, os canais, os contatos) têm o preço que
@@ -72,6 +75,9 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
   não cobre).
 - **No contrato**: o que fica no fim do prazo.
 - **A linha do tempo**: o acumulado mês a mês, do vermelho do começo ao mês em que vira lucro.
+- **Mês a mês** (embaixo dos custos, ou o "Ver mês a mês" do gráfico pequeno): o acumulado de cada mês (a
+  linha, com o pior momento e o mês em que a venda se paga) e o lucro de cada mês (as barras). Passe o mouse
+  num mês — ou toque, no celular — para ver os dois valores; a tabela embaixo tem todos os meses.
 - **O preço**: escreva a margem que você quer e veja a mensalidade mínima para ela; e o **desconto máximo**
   sem sair do verde — a resposta para "dá para fazer mais barato?".
 

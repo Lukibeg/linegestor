@@ -21,6 +21,7 @@ import { useAuth } from '../../../lib/auth.js';
 import { CHAVE_DO_SIMULADOR, CampoDePercentual, CampoDeReais, CampoInteiro, ChipDoSinal, PONTO_DO_SINAL, erroDoSimulador, reaisLimpo, useOpcoesDoSimulador } from './comum.js';
 import { OsCustos } from './Custos.js';
 import { SemOComercial } from './Lista.js';
+import { MesAMes } from './MesAMes.js';
 import { LadoALado, OsNumeros } from './Numeros.js';
 
 /** O que a tela edita: o que vai para o servidor e a negociação ligada, para mostrar. */
@@ -280,6 +281,7 @@ function Editor({ id, inicial, simulacao, ajustes, produtos, podeEditar }: {
             <div className="text-[12.5px] text-ink-2">Se paga {textoDoSePagaEm(k.sePagaEm)}</div>
           </div>
           <OsCustos c={c} k={k} ajustes={ajustes} mudar={mudarCenario} podeEditar={podeEditar} />
+          <MesAMes k={k} prazo={c.prazo} />
           {r.cenarios.length > 1 && <LadoALado cenarios={r.cenarios} contas={contas} principal={r.principal} aberto={c.id} abrir={setAberto} />}
         </div>
         <div className="min-w-0 lg:sticky lg:top-4">

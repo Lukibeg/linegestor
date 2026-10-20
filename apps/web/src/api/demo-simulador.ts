@@ -174,14 +174,15 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
         cenario('c', '10% de desconto, 36 meses', 'linepbx', { mensalidade: 112_500, ativacao: 171_000, ramais: 40, prazo: 36 }, (x2) => (x2.custoId === 'did' || x2.custoId === 'canal' ? { ...x2, qtd: 4 } : telefone(39_000)(x2))),
       ],
     });
-    // o Hotel Beira Mar: o PABX e o LineChat; 20 telefones para 30 ramais; a ativação em 3 vezes. A conta
-    // refeita pede R$ 1.690 (a negociação ainda está com R$ 1.580): o Levar para a negociação mostra a troca
+    // o Hotel Beira Mar: o PABX e o LineChat; 20 telefones para 30 ramais, comprados em 10 vezes (o custo se
+    // dilui); a ativação em 3 vezes. A conta refeita pede R$ 1.690 (a negociação ainda está com R$ 1.580): o
+    // Levar para a negociação mostra a troca
     nova({
       nome: 'Hotel Beira Mar — URA, filas e LineChat', negociacaoId: negociacao('Atendimento com URA e filas'), principal: 'a',
       criadoPorId: pessoa('diego'), criadoEm: dias(12), alteradoEm: dias(4, 11),
       cenarios: [
         cenario('a', 'Cenário A', 'pbx-chat', { mensalidade: 169_000, ativacao: 250_000, ramais: 30, prazo: 36, parcelas: 3, produtos: ['linepbx', 'linechat'] },
-          (x2) => (x2.custoId === 't31p' ? { ...x2, porRamal: false, qtd: 20, valor: 39_000 } : quantidade(x2, { 'helena-usuarios': 4, 'helena-canais': 2, 'helena-zapi': 1, 'helena-contatos': 8_000 }))),
+          (x2) => (x2.custoId === 't31p' ? { ...x2, porRamal: false, qtd: 20, valor: 39_000, parcelas: 10 } : quantidade(x2, { 'helena-usuarios': 4, 'helena-canais': 2, 'helena-zapi': 1, 'helena-contatos': 8_000 }))),
       ],
     });
     // a Clínica Vida: o LineChat, sem negociação ligada (a conta de antes de abrir o lead); no amarelo

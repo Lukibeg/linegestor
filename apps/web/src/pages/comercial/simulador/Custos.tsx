@@ -12,9 +12,9 @@
 import { useMemo, useState } from 'react';
 import { Layers, ListPlus, PackagePlus, Plus, Search, X } from 'lucide-react';
 import {
-  AJUDA_DA_MODALIDADE, AJUDA_DO_GRUPO, AJUDA_DO_TIPO_DE_CUSTO, GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE, NOME_DO_GRUPO,
-  NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, ehPercentual, linhaDaTabela, linhaNova, linhasDoModelo, paraBusca, percentual, precoDaUnidade,
-  textoDasFaixasDePreco,
+  AJUDA_DA_MODALIDADE, AJUDA_DO_GRUPO, AJUDA_DO_TIPO_DE_CUSTO, GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_PARCELAS_DA_COMPRA, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE,
+  NOME_DO_GRUPO, NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, dividirEmParcelas, ehPercentual, linhaDaTabela, linhaNova, linhasDoModelo, paraBusca,
+  percentual, precoDaUnidade, textoDasFaixasDePreco,
   type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario, type CustoDaTabela, type GrupoDeCusto, type LinhaDoCenario, type TipoDeCusto,
 } from '@gestor/shared';
 import { Popover } from '../../../components/ui/index.js';
@@ -68,6 +68,8 @@ function GrupoDeCustos({ grupo, c, k, ajustes, podeEditar, mudarLinha, tirar, in
   const total = grupo === 'fixo'
     ? k.linhas.filter((l) => l.quando === 'uma-vez').reduce((s, l) => s + l.custo, 0)
     : k.custoMensalFixo + k.comissaoMensal;
+  // os aparelhos comprados parcelado: o custo deles sai nas parcelas (a linha do tempo mostra)
+  const parcelado = grupo === 'fixo' ? k.linhas.filter((l) => l.parcelas > 1).reduce((s, l) => s + l.custo, 0) : 0;
   return (
     <div className="mt-4" data-grupo={grupo} id={`simulador-grupo-${grupo}`}>
       <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-line">
@@ -100,6 +102,7 @@ function GrupoDeCustos({ grupo, c, k, ajustes, podeEditar, mudarLinha, tirar, in
       <div className="pt-2 border-t border-line flex flex-wrap justify-end items-baseline gap-x-1.5 text-[13px]" data-total={grupo}>
         <span className="text-muted">{grupo === 'fixo' ? 'Os fixos, uma vez:' : 'Os mensais, por mês:'}</span>
         <b className="tabular-nums">{reais(total)}</b>
+        {parcelado > 0 && <span className="text-muted text-[12px]">({reaisLimpo(parcelado)} na compra parcelada)</span>}
         {grupo === 'mensal' && <span className="text-muted text-[12px]">mais o imposto ({percentual(c.imposto)})</span>}
       </div>
     </div>
@@ -121,6 +124,9 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar }: {
     mudar(mudou);
   };
   const falta = conta.falta;
+  // a compra do aparelho parcelada: até 24 vezes e não mais que o prazo (a conta corta igual)
+  const maxDaCompra = Math.max(1, Math.min(MAX_PARCELAS_DA_COMPRA, c.prazo));
+  const compra = aparelho && conta.parcelas > 1 ? dividirEmParcelas(Math.round(conta.custo), conta.parcelas) : null;
   return (
     <li className="py-2.5" data-linha={l.id}>
       <div className={`grid grid-cols-2 gap-2 ${COLUNAS} md:items-start`}>
@@ -161,7 +167,7 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar }: {
         <div className="min-w-0 md:text-right md:pt-2">
           <span className="md:hidden label">Total</span>
           <div className="tabular-nums font-semibold text-[13.5px]" data-campo="total">{reaisLimpo(conta.custo)}</div>
-          <div className="text-[11.5px] text-muted">{conta.quando === 'por-mes' ? 'por mês' : 'uma vez'}</div>
+          <div className="text-[11.5px] text-muted">{conta.quando === 'por-mes' ? 'por mês' : conta.parcelas > 1 ? `em ${conta.parcelas}x` : 'uma vez'}</div>
         </div>
         <div className="flex items-start justify-end md:pt-1.5">
           {podeEditar && <button type="button" className="btn-ghost btn-sm px-1.5 text-muted" onClick={tirar} aria-label={`Tirar ${l.nome}`} title="Tirar este custo"><X size={15} /></button>}
@@ -183,6 +189,13 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar }: {
               </button>
             ))}
           </div>
+          <label className="flex items-center gap-2 text-[12.5px]" title="A Ingline pode comprar o aparelho parcelado: o custo se dilui nos meses (a primeira parcela na assinatura)">
+            <span className="text-ink-2 whitespace-nowrap">A compra em</span>
+            <select className="input !w-auto !py-1 !pl-2 !text-[12.5px]" value={Math.min(l.parcelas ?? 1, maxDaCompra)} disabled={!podeEditar} data-campo="parcelas"
+              onChange={(e) => { const n = Number(e.target.value); mudar({ parcelas: n > 1 ? n : undefined }); }} aria-label="Em quantas vezes a Ingline compra o aparelho">
+              {Array.from({ length: maxDaCompra }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n === 1 ? 'à vista' : `${n}x`}</option>)}
+            </select>
+          </label>
           {l.modalidade && l.modalidade !== 'comodato' && (
             <label className="flex items-center gap-2 text-[12.5px]">
               <span className="text-ink-2 whitespace-nowrap">{l.modalidade === 'venda' ? 'Preço de cada' : 'Aluguel de cada, por mês'}</span>
@@ -192,6 +205,7 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar }: {
           <span className="text-[12px] text-muted">
             {l.modalidade ? AJUDA_DA_MODALIDADE[l.modalidade] : ''}
             {conta.receita > 0 && <> Entra <b className="text-ink-2">{reaisLimpo(conta.receita)}</b> {l.modalidade === 'venda' ? 'na ativação' : 'por mês'}.</>}
+            {compra && <> A compra sai em <b className="text-ink-2">{conta.parcelas}x</b>: {reaisLimpo(compra[0]!)} na assinatura e {conta.parcelas - 1} de {reaisLimpo(compra[1]!)} nos meses seguintes.</>}
           </span>
         </div>
       )}

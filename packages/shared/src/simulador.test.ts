@@ -147,6 +147,38 @@ describe('a conta do cenário', () => {
     expect(contasDoCenario({ ...sem, linhas: sem.linhas.filter((l) => l.tipo !== 'aparelho' && l.tipo !== 'unica') }, FAIXAS).sePagaEm).toEqual({ tipo: 'entrada' });
   });
 
+  it('o aparelho comprado parcelado: o custo se dilui (a primeira parcela na assinatura); a sobra e o fim do contrato não mudam', () => {
+    const base = contasDoCenario(exemplo(), FAIXAS);
+    const c = exemplo();
+    c.linhas = c.linhas.map((l) => (l.id === 'tel' ? { ...l, parcelas: 10 } : l));
+    const k = contasDoCenario(c, FAIXAS);
+    // os telefones (R$ 3.900) em 10x de R$ 390: na assinatura saem os headsets, a instalação e a 1ª parcela
+    expect(k.linhas.find((l) => l.id === 'tel')).toMatchObject({ custo: 390_000, parcelas: 10 });
+    expect(k.saidas.slice(0, 11)).toEqual([108_000 + 39_000, 39_000, 39_000, 39_000, 39_000, 39_000, 39_000, 39_000, 39_000, 39_000, 0]);
+    expect(k.custoUnico).toBe(498_000);
+    expect(k.sobraMensal).toBe(base.sobraMensal);
+    expect(k.serie[0]).toBe(base.serie[0]! + 351_000);
+    expect(k.investimento).toBe(21_000);
+    expect(k.resultado).toBe(base.resultado);
+    // à vista, nada muda: as saídas são o custo de uma vez na assinatura
+    expect(base.saidas[0]).toBe(498_000);
+    expect(base.saidas.slice(1).every((v) => v === 0)).toBe(true);
+    // nunca mais que o prazo: em 6 meses de contrato, a compra em 10x vira 6x
+    expect(contasDoCenario({ ...c, prazo: 6 }, FAIXAS).linhas.find((l) => l.id === 'tel')!.parcelas).toBe(6);
+  });
+
+  it('a compra parcelada só no aparelho: à vista não guarda nada; até 24 vezes', () => {
+    const c = exemplo();
+    const comParcelas = (o: Record<string, number>) => ({ ...c, linhas: c.linhas.map((l) => (o[l.id] ? { ...l, parcelas: o[l.id] } : l)) });
+    const s = SimulacaoGravarSchema.parse({ nome: 'Clínica', negociacaoId: null, cenarios: [comParcelas({ tel: 10, head: 1, inst: 3 })], principal: 'a' });
+    const ls = s.cenarios[0]!.linhas;
+    expect(ls.find((l) => l.id === 'tel')!.parcelas).toBe(10);
+    expect('parcelas' in ls.find((l) => l.id === 'head')!).toBe(false);
+    expect('parcelas' in ls.find((l) => l.id === 'inst')!).toBe(false);
+    const r = SimulacaoGravarSchema.safeParse({ nome: 'Clínica', negociacaoId: null, cenarios: [comParcelas({ tel: 25 })], principal: 'a' });
+    expect(r.success ? '' : r.error.issues[0]!.message).toBe('A compra do aparelho vai em até 24 vezes.');
+  });
+
   it('os ramais: as linhas "por ramal" acompanham; as outras ficam com a quantidade delas', () => {
     const k = contasDoCenario({ ...exemplo(), ramais: 15 }, FAIXAS);
     expect(k.linhas.find((l) => l.id === 'nuvem')).toMatchObject({ qtd: 15, custo: 13_500 });
