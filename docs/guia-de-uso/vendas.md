@@ -3,9 +3,9 @@
 O Comercial acompanha as negociações num painel igual ao dos chamados — o quadro, a lista, a ficha, as
 anotações, os avisos —, com o que é de venda: o **valor** — a **mensalidade** e a **ativação**, cada uma
 de um valor só ou por produto, com o total —, o **Ganho** e o **Perdido** (com o motivo), a **empresa que
-ainda não é cliente** e a **meta do mês**. No menu, o grupo **Comercial** leva direto às **Negociações**
-e aos **Relatórios**; o painel também fica em **Suporte › Painéis**, como os outros (o Suporte, o
-Desenvolvimento). O Comercial tem permissão própria: **Ver o Comercial**. A decisão inteira está em
+ainda não é cliente** e a **meta do mês**. No menu, o grupo **Comercial** leva direto ao **Painel do
+Comercial** (até o 2.0.1, Negociações) e aos **Relatórios**; o painel também fica em **Painéis**, como
+os outros (o Suporte, o Desenvolvimento). O Comercial tem permissão própria: **Ver o Comercial**. A decisão inteira está em
 `docs/decisoes/0050-painel-de-vendas.md`.
 
 ---
@@ -19,7 +19,7 @@ Comercial em lugar nenhum** — nem o grupo do menu, nem o painel, nem os relat�
 seja de todos. O Administrador já vem com ela. Quem deve ver só o Comercial (e não os chamados do
 Suporte) fica com um papel sem o **Ver os chamados**.
 
-1. **Suporte › Painéis › Ajustes › Painéis › Novo painel** (ou o **Novo painel** da tela dos painéis).
+1. **Painéis › Ajustes › Painéis › Novo painel** (ou o **Novo painel** da tela dos painéis).
 2. Em **O painel é de**, escolha **Negociações (Vendas)**. Isso não muda depois.
 3. Dê o nome (Comercial) e a sigla (COM): as negociações ficam COM-1, COM-2…
 4. Em **Quem vê**, **Só as pessoas escolhidas**, e marque a equipe do Comercial.

@@ -61,9 +61,25 @@ entrou nele.
   sininho passaram a aparecer também para quem só vê o Comercial.
 - **Revisto no 2.0.2 (20/10/2026): o Meu dia no menu.** O Luan, com o print da lista do Suporte no menu
   recolhido: *"O meu dia pode ter um botão aqui tbm"*. O Suporte ganhou o item **Meu dia**
-  (`/atendimento/meu-dia`, o ícone do sol), logo depois de Painéis. Na tela do Meu dia, o menu marca o Meu
-  dia, e não Painéis — também com a janela de um chamado aberta por cima dele (quem decide é a tela de
-  baixo). A aba Meu dia, dentro de Painéis, continua.
+  (`/atendimento/meu-dia`, o ícone do sol). Na tela do Meu dia, o menu marca o Meu dia, e não Painéis —
+  também com a janela de um chamado aberta por cima dele (quem decide é a tela de baixo). A aba Meu dia,
+  dentro de Painéis, continua.
+- **Revisto no 2.0.2 (20/10/2026): Painéis no alto, e os atalhos "Painel do…".** O Luan, num comentário
+  na prévia: *"o paineis vai ter um campo próprio como o calendário e dentro de suporte vai ter o 'painel
+  do suporte' já apontando para o painel do suporte como um atalho, como fizemos no comercial que vc tbm
+  deve mudar o nome do atalho para painel do comercial"*. Avisado de que mudava esta decisão, respondeu
+  *"pode fazer"*. Agora:
+  - **Painéis** é um item próprio no alto do menu, logo abaixo do Calendário: a tela de todos os
+    painéis (Todos, Meu dia e Ajustes), como antes. O ícone continua o do quadro.
+  - O **Suporte** tem **Painel do Suporte** (`/suporte`, o atalho que abre direto o quadro do painel
+    Suporte), **Meu dia**, **Projetos** e **Relatórios**.
+  - O painel do Suporte é o que veio com o sistema (`painel-suporte`, a sigla SUP), mesmo que o nome dele
+    mude. Quem não vê esse painel, ou com ele desativado, vai para a tela dos Painéis.
+  - No **Comercial**, o atalho **Negociações** passou a se chamar **Painel do Comercial** (o mesmo
+    caminho). Os dois atalhos têm o mesmo ícone, o das colunas.
+  - **O item marcado.** No quadro, na lista e no relatório do Suporte, no Abrir chamado dele e na ficha de
+    um chamado SUP, fica marcado o **Painel do Suporte**, como o Comercial já fazia. Na aba Todos, nos
+    Ajustes e nos outros painéis (o Desenvolvimento), fica marcado **Painéis**.
 - **Revisto no 2.0.2 (20/10/2026): o sininho chama-se Avisos.** Com os lembretes do calendário (decisão
   0049), o sininho deixou de ser só dos chamados: o nome dele (o que aparece ao passar o mouse e o título
   da lista) passou de "Avisos dos chamados" para **Avisos**. O lembrete aparece com o ícone do calendário;

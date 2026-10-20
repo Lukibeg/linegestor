@@ -33,6 +33,7 @@ import { Quadro } from './pages/atendimento/Quadro.js';
 import { ListaDeChamados } from './pages/atendimento/Lista.js';
 import { RelatorioDoPainel } from './pages/atendimento/Relatorio.js';
 import { IrParaOComercial } from './pages/atendimento/Comercial.js';
+import { IrParaOSuporte } from './pages/atendimento/Suporte.js';
 import { JanelaAbrirChamado, NovoChamado } from './pages/atendimento/Novo.js';
 import { ChamadoEmJanela, FichaDoChamado } from './pages/atendimento/Ficha.js';
 import { fundoDaJanela } from './pages/atendimento/comum.js';
@@ -94,6 +95,8 @@ function Rotas() {
         <Route path="/atendimento/novo" element={<Protegido><NovoChamado /></Protegido>} />
         <Route path="/atendimento/ajustes" element={<Protegido><AjustesAtendimento /></Protegido>} />
         <Route path="/atendimento/:codigo" element={<Protegido><FichaDoChamado /></Protegido>} />
+        {/* o Suporte no menu (2.0.2): o atalho para o quadro do painel Suporte */}
+        <Route path="/suporte" element={<Protegido><IrParaOSuporte /></Protegido>} />
         {/* o Comercial no menu (2.0.1): o atalho para o quadro e o relatório do painel de Vendas */}
         <Route path="/comercial" element={<Protegido><IrParaOComercial parte="quadro" /></Protegido>} />
         <Route path="/comercial/relatorio" element={<Protegido><IrParaOComercial parte="relatorio" /></Protegido>} />

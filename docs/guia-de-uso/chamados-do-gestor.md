@@ -1,7 +1,9 @@
 # Painéis: os chamados do Gestor
 
-Desde o Patch 2.0 os chamados nascem e andam no **Gestor**, em **Suporte › Painéis** (no menu
-lateral; até o 2.0.1 o item se chamava Chamados — agora o Comercial também mora ali). Os chamados antigos continuam no LineChat; para consultar, **Suporte › Relatórios** abre neles,
+Desde o Patch 2.0 os chamados nascem e andam no **Gestor**, em **Painéis** (no menu lateral, logo abaixo
+do Calendário desde o 2.0.2; antes ficava dentro do Suporte e, até o 2.0.1, se chamava Chamados — o
+Comercial também mora ali). O atalho **Suporte › Painel do Suporte** abre direto o quadro do Suporte. Os
+chamados antigos continuam no LineChat; para consultar, **Suporte › Relatórios** abre neles,
 na aba **Hoje** (as abas levam ao Período e aos relatórios).
 A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho e o Perdido): veja
@@ -29,7 +31,7 @@ O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho 
   (com o botão **Assumir**), os que esperam o cliente, os que você observa, o **Hoje na agenda** (o que
   o [calendário](calendario.md) tem para hoje e quem está fora do escritório — 2.0.1) e os agendados de
   hoje. Cada número leva para a lista já filtrada. Desde o 2.0.2, o Meu dia também está no menu, no
-  grupo Suporte, logo abaixo de Painéis.
+  grupo Suporte, logo abaixo do Painel do Suporte.
 - **Lista** (dentro do painel, em **Quadro | Lista**): a busca (código, título, cliente, contato,
   telefone, o que o cliente disse — sem acento), os atalhos (Meus, Vencidos, Perto de vencer, Sem dono,
   Esperando o cliente), a situação, **Filtros** (etapa, responsável, prioridade, prazo, cliente,
