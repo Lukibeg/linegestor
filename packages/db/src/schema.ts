@@ -1902,7 +1902,9 @@ export const ticketNotifications = pgTable(
     id: id(),
     userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     ticketId: text('ticket_id').references(() => tickets.id, { onDelete: 'cascade' }),
-    /** recebeu | etapa | prazo_perto | prazo_vencido | sem_dono | critico | cliente_respondeu | pai */
+    /** O evento do calendário do lembrete (2.0.2): o aviso é do calendário, e não de um chamado */
+    calendarEventId: text('calendar_event_id').references(() => calendarEvents.id, { onDelete: 'cascade' }),
+    /** recebeu | etapa | prazo_perto | prazo_vencido | sem_dono | critico | cliente_respondeu | pai | observador | lembrete (o do calendário, 2.0.2) */
     kind: text('kind').notNull(),
     body: text('body').notNull(),
     createdAt: createdAt(),
@@ -1993,6 +1995,12 @@ export const calendarEvents = pgTable(
     notes: text('notes'),
     /** agendado | feito | cancelado (cancelar não apaga: fica riscado no calendário) */
     status: text('status').notNull().default('agendado'),
+    /** Os lembretes (2.0.2): quantos minutos antes do começo cada um sai (0 = na hora; o dia inteiro começa às 8h) */
+    reminders: integer('reminders').array().notNull().default([]),
+    /** Quem recebe o lembrete: pessoas (as do evento; sem pessoas, quem criou) | paineis (todos que veem o evento) */
+    remindWho: text('remind_who').notNull().default('pessoas'),
+    /** Os lembretes que já saíram (ou foram pulados): {"<minutos>@<começo>": quando}; mudar o dia ou a hora muda o começo, e o lembrete volta a valer */
+    remindersSent: jsonb('reminders_sent').notNull().default({}),
     createdById: text('created_by_id').references(() => users.id),
     updatedById: text('updated_by_id').references(() => users.id),
     createdAt: createdAt(),

@@ -4,7 +4,7 @@
  */
 import type * as T from './types.js';
 import type {
-  CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoDoCalendario, EventoGravarEntrada, SituacaoDoEvento, TipoDeEvento,
+  CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada, SituacaoDoEvento, TipoDeEvento,
 } from '@gestor/shared';
 import { API_BASE } from './base.js';
 
@@ -358,7 +358,8 @@ export type Api = {
     /** os modelos aprovados (templates) do número oficial, lidos do LineChat com a chave guardada */
     modelosDoLineChat(): Promise<T.ModelosDoLineChat>;
     /** manda uma mensagem de teste para uma pessoa da equipe (ou um número) */
-    testarAvisos(d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string }): Promise<{ ok: boolean; mensagem: string }>;
+    /** o teste do WhatsApp; com `evento`, o exemplo da mensagem daquele aviso (a `modelo` como está na tela), pelo número da equipe */
+    testarAvisos(d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string; evento?: EventoAviso; modelo?: string }): Promise<{ ok: boolean; mensagem: string }>;
     agendados(): Promise<T.Agendado[]>;
     salvarAgendado(id: string | null, d: T.AgendadoGravarEntrada): Promise<T.Agendado>;
     removerAgendado(id: string): Promise<{ ok: boolean }>;

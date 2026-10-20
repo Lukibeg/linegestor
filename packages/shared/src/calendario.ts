@@ -1,6 +1,6 @@
 /**
- * O CALENDÁRIO (Patch 2.0.1, decisão 0049) — as visitas, as viradas de sistema e para a nuvem, as folgas,
- * os home offices e as ações no cliente de cada equipe. O pedido do Luan: "quero criar um módulo de
+ * O CALENDÁRIO (Patch 2.0.1, decisão 0049; os lembretes no 2.0.2) — as visitas, as viradas de sistema e
+ * para a nuvem, as folgas, os home offices e as ações no cliente de cada equipe. O pedido do Luan: "quero criar um módulo de
  * calendário, para eu poder controlar com minha equipe visitas, viradas de sistemas, virada para nuvem,
  * folgas, home offices, ações que temos que tomar durante o mês no cliente… tem que ser integrado com os
  * painéis… se eu só sou participante do painel do suporte eu só vou ver a do suporte, se eu sou do painel
@@ -21,22 +21,195 @@ import { diaDaSemana, nomeDoMes, somarMeses } from './relatorios.js';
 //  OS TIPOS (Visita, Folga…): nome e cor, a equipe edita
 // =====================================================================
 
+// =====================================================================
+//  OS LEMBRETES (Patch 2.0.2): quanto tempo antes de o evento começar
+// =====================================================================
+
+/*
+ * O pedido do Luan (20/10): "o nosso sistema de calendário tem que ter lembretes e avisos configuráveis,
+ * para eu alertar quando for acontecer algo e em quanto tempo antes". Cada evento tem até 5 lembretes, cada
+ * um "quanto tempo antes" de o evento começar (em minutos: 0 = na hora, 60 = 1 hora antes, 1440 = 1 dia
+ * antes; até 4 semanas), e quem recebe: as pessoas do evento (sem pessoas, quem pôs o evento) ou todos que
+ * veem o evento. Cada tipo traz os lembretes dele (a Visita, 1 dia antes e 1 hora antes), que o evento novo já
+ * vem com. O evento de dia inteiro começa, para o lembrete, às 8h do primeiro dia.
+ *
+ * O lembrete sai uma vez para cada começo: a chave de "já saiu" é o lembrete e o começo (`chaveDoLembrete`),
+ * e mudar o dia ou a hora muda o começo — o lembrete volta a valer para o dia novo. O que já tinha passado
+ * quando o evento foi gravado não sai (quem gravou acabou de ver o evento); com o sistema fora do ar na hora,
+ * sai quando ele voltar, até 3 horas depois, desde que o evento ainda não tenha começado.
+ */
+
+/** Até quantos lembretes um evento (ou um tipo) tem. */
+export const MAX_LEMBRETES = 5;
+/** O mais cedo que um lembrete sai: 4 semanas antes (em minutos). */
+export const MAX_ANTES_DO_LEMBRETE = 4 * 7 * 24 * 60;
+/** O evento de dia inteiro começa, para o lembrete, a esta hora do primeiro dia (a de Brasília). */
+export const HORA_DO_DIA_INTEIRO = '08:00';
+/** Com o sistema fora do ar na hora, o lembrete ainda sai até este tempo depois (em minutos). */
+const ATRASO_DO_LEMBRETE = 3 * 60;
+/** O lembrete "na hora" ainda sai até este tempo depois de o evento começar (o relógio passa de minuto em minuto). */
+const FOLGA_DO_COMECO = 5;
+
+export const UNIDADES_DO_LEMBRETE = ['minutos', 'horas', 'dias', 'semanas'] as const;
+export type UnidadeDoLembrete = (typeof UNIDADES_DO_LEMBRETE)[number];
+export const MINUTOS_DA_UNIDADE: Record<UnidadeDoLembrete, number> = { minutos: 1, horas: 60, dias: 24 * 60, semanas: 7 * 24 * 60 };
+const NOME_DA_UNIDADE: Record<UnidadeDoLembrete, [string, string]> = {
+  minutos: ['minuto', 'minutos'], horas: ['hora', 'horas'], dias: ['dia', 'dias'], semanas: ['semana', 'semanas'],
+};
+
+/** Os lembretes: minutos antes do começo, sem repetir, do mais cedo para o mais tarde. */
+export const LembretesSchema = z.array(
+  z.number({ invalid_type_error: 'O lembrete vai em minutos.' }).int('O lembrete vai em minutos inteiros.')
+    .min(0, 'O lembrete é antes do evento (ou na hora).').max(MAX_ANTES_DO_LEMBRETE, 'O lembrete vai até 4 semanas antes.'),
+).max(MAX_LEMBRETES, `Até ${MAX_LEMBRETES} lembretes.`)
+  .transform((xs) => [...new Set(xs)].sort((a, b) => b - a));
+
+/** Quem recebe o lembrete do evento. */
+export const QUEM_RECEBE_O_LEMBRETE = ['pessoas', 'paineis'] as const;
+export type QuemRecebeOLembrete = (typeof QUEM_RECEBE_O_LEMBRETE)[number];
+export const NOME_QUEM_RECEBE_O_LEMBRETE: Record<QuemRecebeOLembrete, string> = {
+  pessoas: 'As pessoas do evento',
+  paineis: 'Todos que veem o evento',
+};
+
+/** O lembrete na unidade maior que dá conta inteira: 1440 → 1 dia; 90 → 90 minutos; 0 → 0 minutos. */
+export function emUnidade(minutos: number): { quanto: number; unidade: UnidadeDoLembrete } {
+  for (const u of ['semanas', 'dias', 'horas'] as const) {
+    if (minutos > 0 && minutos % MINUTOS_DA_UNIDADE[u] === 0) return { quanto: minutos / MINUTOS_DA_UNIDADE[u], unidade: u };
+  }
+  return { quanto: minutos, unidade: 'minutos' };
+}
+/** "15 minutos", "1 hora", "2 dias" (sem o "antes"). */
+function quantoTempo(minutos: number): string {
+  const { quanto, unidade } = emUnidade(minutos);
+  return `${quanto} ${NOME_DA_UNIDADE[unidade][quanto === 1 ? 0 : 1]}`;
+}
+/** Um lembrete: "Na hora", "15 minutos antes", "1 dia antes". */
+export const textoDoAntes = (minutos: number) => (minutos === 0 ? 'Na hora' : `${quantoTempo(minutos)} antes`);
+/**
+ * Os lembretes numa frase, cada um com o seu "antes" (o "1 dia e 1 hora antes" pareceria um lembrete só, de
+ * 25 horas): "1 dia antes e 1 hora antes", "1 hora antes e na hora", "na hora"; nenhum, "sem lembrete".
+ */
+export function textoDosLembretes(lembretes: readonly number[]): string {
+  const cada = [...new Set(lembretes)].sort((a, b) => b - a).map((m) => (m === 0 ? 'na hora' : `${quantoTempo(m)} antes`));
+  if (!cada.length) return 'sem lembrete';
+  return cada.length > 1 ? `${cada.slice(0, -1).join(', ')} e ${cada.at(-1)}` : cada[0]!;
+}
+
+/**
+ * O começo do evento, para o lembrete: o primeiro dia, na hora de começar (Brasília, sem horário de verão:
+ * -03:00 o ano inteiro); o de dia inteiro, às 8h.
+ */
+export function comecoDoEvento(e: { inicio: string; diaInteiro: boolean; horaInicio: string | null }): Date {
+  const hora = !e.diaInteiro && e.horaInicio ? e.horaInicio : HORA_DO_DIA_INTEIRO;
+  return new Date(`${e.inicio}T${hora}:00-03:00`);
+}
+/** A chave de "já saiu" de um lembrete: ele e o começo (mudou o dia ou a hora, é outro lembrete). */
+export const chaveDoLembrete = (antes: number, comeco: Date) => `${antes}@${comeco.toISOString()}`;
+/** Quando o lembrete sai. */
+export const momentoDoLembrete = (comeco: Date, antes: number) => new Date(comeco.getTime() - antes * 60_000);
+
+/** O que o evento precisa para os lembretes. */
+export type EventoComLembretes = { inicio: string; diaInteiro: boolean; horaInicio: string | null; situacao: SituacaoDoEvento; lembretes: readonly number[] };
+
+/**
+ * Os lembretes "já saíram" depois de gravar o evento: os que continuam valendo (o mesmo lembrete, o mesmo
+ * começo) ficam; os que já passaram agora entram como pulados — quem gravou acabou de ver o evento, e o
+ * lembrete de ontem não sai hoje. O que é de outro começo (o dia mudou) sai da conta.
+ */
+export function lembretesAoGravar(e: EventoComLembretes, antes: Readonly<Record<string, string>>, agora: Date): Record<string, string> {
+  const comeco = comecoDoEvento(e);
+  const out: Record<string, string> = {};
+  for (const m of e.lembretes) {
+    const chave = chaveDoLembrete(m, comeco);
+    if (antes[chave]) out[chave] = antes[chave]!;
+    else if (momentoDoLembrete(comeco, m).getTime() <= agora.getTime()) out[chave] = 'pulado';
+  }
+  return out;
+}
+
+/**
+ * Os lembretes que saem agora (os minutos de cada um): o evento agendado, o momento chegou (até 3 horas de
+ * atraso, com o sistema fora do ar), o evento ainda não começou (o "na hora" sai até 5 minutos depois) e
+ * ainda não saiu para este começo.
+ */
+export function lembretesDevidos(e: EventoComLembretes, enviados: Readonly<Record<string, string>>, agora: Date): number[] {
+  if (e.situacao !== 'agendado' || !e.lembretes.length) return [];
+  const comeco = comecoDoEvento(e);
+  const t = agora.getTime();
+  return e.lembretes.filter((m) => {
+    if (enviados[chaveDoLembrete(m, comeco)]) return false;
+    const momento = momentoDoLembrete(comeco, m).getTime();
+    // depois de o evento começar, só o "na hora" (por uns minutos: o relógio passa de minuto em minuto)
+    const limite = comeco.getTime() + (m === 0 ? FOLGA_DO_COMECO * 60_000 : 0);
+    return momento <= t && t <= Math.min(momento + ATRASO_DO_LEMBRETE * 60_000, limite);
+  });
+}
+
+/**
+ * Quem recebe o lembrete: as pessoas do evento (sem pessoas, quem pôs o evento) ou todos que veem o evento —
+ * sempre entre quem vê um dos painéis dele (quem não vê nem saberia do evento). `quemVe`: de cada painel,
+ * quem vê (as pessoas ativas).
+ */
+export function quemRecebeOLembrete(
+  e: { paineis: readonly string[]; pessoas: readonly string[]; lembrarQuem: QuemRecebeOLembrete; criadoPorId: string | null },
+  quemVe: ReadonlyMap<string, readonly string[]>,
+): string[] {
+  const veem = new Set(e.paineis.flatMap((p) => quemVe.get(p) ?? []));
+  if (e.lembrarQuem === 'paineis') return [...veem];
+  const pessoas = e.pessoas.length ? e.pessoas : e.criadoPorId ? [e.criadoPorId] : [];
+  return [...new Set(pessoas)].filter((p) => veem.has(p));
+}
+
+/**
+ * Quando é o evento do lembrete: "amanhã, 21/10, às 09:00", "hoje, 20/10 (dia inteiro)". O dia vai escrito
+ * também, porque o aviso fica no sininho depois do "amanhã".
+ */
+export function quandoDoLembrete(e: { inicio: string; diaInteiro: boolean; horaInicio: string | null }, agora: Date): string {
+  const hoje = diaEmBrasilia(agora);
+  const dia = e.inicio === hoje ? 'hoje' : e.inicio === somarDias(hoje, 1) ? 'amanhã' : DIAS_POR_EXTENSO[diaDaSemana(e.inicio)];
+  const hora = !e.diaInteiro && e.horaInicio ? `, às ${e.horaInicio}` : ' (dia inteiro)';
+  return `${dia}, ${diaCurto(e.inicio)}${hora}`;
+}
+
+/** O texto do lembrete (o sininho, e o {aviso} do WhatsApp): "Lembrete: Visita — Clínica Aurora, amanhã, 21/10, às 09:00". */
+export function textoDoLembrete(e: { titulo: string; inicio: string; diaInteiro: boolean; horaInicio: string | null }, agora: Date): string {
+  return `Lembrete: ${e.titulo}, ${quandoDoLembrete(e, agora)}`;
+}
+
+/**
+ * As variáveis da mensagem do lembrete no WhatsApp (2.0.2: a mensagem de cada aviso, em Avisos e WhatsApp).
+ * Os nomes (o tipo, o cliente, o chamado, as pessoas e os painéis) vêm de quem chama: o servidor e a prévia.
+ */
+export function valoresDoLembrete(
+  e: { titulo: string; inicio: string; diaInteiro: boolean; horaInicio: string | null; local: string | null; observacao: string | null },
+  nomes: { tipo: string; cliente: string | null; chamado: string | null; pessoas: string[]; paineis: string[]; link: string },
+  agora: Date,
+): Record<string, string> {
+  return {
+    aviso: textoDoLembrete(e, agora), evento: e.titulo, tipo: nomes.tipo, quando: quandoDoLembrete(e, agora), local: e.local ?? '',
+    cliente: nomes.cliente ?? '', chamado: nomes.chamado ?? '', pessoas: nomes.pessoas.join(', '), paineis: nomes.paineis.join(', '),
+    observacao: e.observacao ?? '', link: nomes.link,
+  };
+}
+
 /**
  * Um tipo de evento. `daEquipe`: é sobre a equipe, não sobre um cliente (a folga, o home office) — entra
  * no "Hoje, fora do escritório" e a janela pede primeiro as pessoas. O tipo que sai é desativado, não
- * apagado: os eventos dele continuam com o nome e a cor.
+ * apagado: os eventos dele continuam com o nome e a cor. `lembretes` (2.0.2): os que o evento novo do tipo
+ * já traz (minutos antes; a pessoa muda no evento).
  */
-export type TipoDeEvento = { id: string; nome: string; cor: CorEtiqueta; daEquipe: boolean; ativo: boolean };
+export type TipoDeEvento = { id: string; nome: string; cor: CorEtiqueta; daEquipe: boolean; ativo: boolean; lembretes: number[] };
 
-/** Os tipos que já vêm (os do pedido do Luan, e a reunião). */
+/** Os tipos que já vêm (os do pedido do Luan, e a reunião), com os lembretes de cada um. */
 export const TIPOS_DE_EVENTO_PADRAO: readonly TipoDeEvento[] = Object.freeze([
-  { id: 'visita', nome: 'Visita', cor: 'accent', daEquipe: false, ativo: true },
-  { id: 'virada-sistema', nome: 'Virada de sistema', cor: 'roxo', daEquipe: false, ativo: true },
-  { id: 'virada-nuvem', nome: 'Virada para nuvem', cor: 'turquesa', daEquipe: false, ativo: true },
-  { id: 'acao-cliente', nome: 'Ação no cliente', cor: 'signal', daEquipe: false, ativo: true },
-  { id: 'reuniao', nome: 'Reunião', cor: 'amarelo', daEquipe: false, ativo: true },
-  { id: 'folga', nome: 'Folga', cor: 'ok', daEquipe: true, ativo: true },
-  { id: 'home-office', nome: 'Home office', cor: 'rosa', daEquipe: true, ativo: true },
+  { id: 'visita', nome: 'Visita', cor: 'accent', daEquipe: false, ativo: true, lembretes: [1440, 60] },
+  { id: 'virada-sistema', nome: 'Virada de sistema', cor: 'roxo', daEquipe: false, ativo: true, lembretes: [1440, 60] },
+  { id: 'virada-nuvem', nome: 'Virada para nuvem', cor: 'turquesa', daEquipe: false, ativo: true, lembretes: [1440] },
+  { id: 'acao-cliente', nome: 'Ação no cliente', cor: 'signal', daEquipe: false, ativo: true, lembretes: [60] },
+  { id: 'reuniao', nome: 'Reunião', cor: 'amarelo', daEquipe: false, ativo: true, lembretes: [15] },
+  { id: 'folga', nome: 'Folga', cor: 'ok', daEquipe: true, ativo: true, lembretes: [] },
+  { id: 'home-office', nome: 'Home office', cor: 'rosa', daEquipe: true, ativo: true, lembretes: [] },
 ].map((t) => Object.freeze(t as TipoDeEvento)));
 
 export const TipoDeEventoSchema = z.object({
@@ -45,6 +218,7 @@ export const TipoDeEventoSchema = z.object({
   cor: z.enum(CORES_ETIQUETA),
   daEquipe: z.boolean().default(false),
   ativo: z.boolean().default(true),
+  lembretes: LembretesSchema.default([]),
 });
 
 /** Os tipos do calendário (Calendário › o botão Tipos): pelo menos um ativo, sem repetir o nome. */
@@ -64,15 +238,29 @@ export const TiposDoCalendarioSchema = z.object({
 export type TiposDoCalendario = z.infer<typeof TiposDoCalendarioSchema>;
 export type TiposDoCalendarioEntrada = z.input<typeof TiposDoCalendarioSchema>;
 
-/** Os tipos guardados (ou os de fábrica, enquanto ninguém mexeu). */
-export function tiposDoCalendario(guardado: Partial<TiposDoCalendario> | null | undefined): TipoDeEvento[] {
-  const r = TiposDoCalendarioSchema.safeParse(guardado ?? {});
-  return r.success ? r.data.tipos : TIPOS_DE_EVENTO_PADRAO.map((t) => ({ ...t }));
+/** Os tipos de fábrica, numa cópia (os lembretes também: quem mexe na cópia não mexe na fábrica). */
+export const tiposDeFabrica = (): TipoDeEvento[] => TIPOS_DE_EVENTO_PADRAO.map((t) => ({ ...t, lembretes: [...t.lembretes] }));
+
+/**
+ * Os tipos guardados (ou os de fábrica, enquanto ninguém mexeu). O tipo guardado antes do 2.0.2 não tem
+ * os lembretes: o de fábrica (a Visita, a Reunião…) fica com os da fábrica; o que a equipe incluiu, sem.
+ */
+export function tiposDoCalendario(guardado: { tipos?: unknown } | null | undefined): TipoDeEvento[] {
+  const tipos = (guardado as { tipos?: unknown } | null | undefined)?.tipos;
+  const comLembretes = Array.isArray(tipos)
+    ? tipos.map((t: unknown) => {
+      if (!t || typeof t !== 'object' || 'lembretes' in t) return t;
+      const fabrica = TIPOS_DE_EVENTO_PADRAO.find((f) => f.id === (t as { id?: unknown }).id);
+      return { ...t, lembretes: fabrica ? [...fabrica.lembretes] : [] };
+    })
+    : tipos;
+  const r = TiposDoCalendarioSchema.safeParse({ ...(guardado ?? {}), tipos: comLembretes });
+  return r.success ? r.data.tipos : tiposDeFabrica();
 }
 
 /** O tipo pelo id; o que não existe mais vira um "Outro" cinza (o evento não some por isso). */
 export function tipoDoEvento(tipos: readonly TipoDeEvento[], id: string): TipoDeEvento {
-  return tipos.find((t) => t.id === id) ?? { id, nome: 'Outro', cor: 'neutral', daEquipe: false, ativo: false };
+  return tipos.find((t) => t.id === id) ?? { id, nome: 'Outro', cor: 'neutral', daEquipe: false, ativo: false, lembretes: [] };
 }
 
 // =====================================================================
@@ -113,6 +301,9 @@ export const EventoGravarSchema = z.object({
   local: z.string().trim().max(300, 'O local vai até 300 letras.').default(''),
   observacao: z.string().trim().max(4_000, 'A observação vai até 4000 letras.').default(''),
   situacao: z.enum(SITUACOES_DO_EVENTO).default('agendado'),
+  /** os lembretes (2.0.2): minutos antes do começo; quem recebe */
+  lembretes: LembretesSchema.default([]),
+  lembrarQuem: z.enum(QUEM_RECEBE_O_LEMBRETE).default('pessoas'),
 }).superRefine((e, ctx) => {
   if (diaValido(e.inicio) && diaValido(e.fim)) {
     if (e.fim < e.inicio) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['fim'], message: 'O último dia vem depois do primeiro.' });
@@ -154,6 +345,9 @@ export type EventoDoCalendario = {
   local: string;
   observacao: string;
   situacao: SituacaoDoEvento;
+  /** os lembretes (2.0.2): minutos antes do começo, do mais cedo para o mais tarde */
+  lembretes: number[];
+  lembrarQuem: QuemRecebeOLembrete;
   criadoPor: string | null;
   criadoEm: string;
   alteradoPor: string | null;
@@ -268,6 +462,10 @@ export function textoDoPeriodo(e: Pick<EventoDoCalendario, 'inicio' | 'fim'>): s
 //  OS FILTROS E O "HOJE, FORA DO ESCRITÓRIO"
 // =====================================================================
 
+/**
+ * Os filtros do calendário. O filtro de cliente saiu no 2.0.2 (o Luan, 20/10: "n precisa de filtro por
+ * cliente"): a busca acha o evento pelo nome do cliente.
+ */
 export type FiltroDoCalendario = {
   /** os painéis escolhidos (vazio = todos os que a pessoa vê) */
   paineis: string[];
@@ -275,12 +473,11 @@ export type FiltroDoCalendario = {
   tipos: string[];
   /** só os eventos desta pessoa ("Só os meus") */
   pessoa: string | null;
-  cliente: string | null;
   /** mostrar os cancelados (riscados) */
   cancelados: boolean;
   busca: string;
 };
-export const FILTRO_DO_CALENDARIO_VAZIO: FiltroDoCalendario = { paineis: [], tipos: [], pessoa: null, cliente: null, cancelados: true, busca: '' };
+export const FILTRO_DO_CALENDARIO_VAZIO: FiltroDoCalendario = { paineis: [], tipos: [], pessoa: null, cancelados: true, busca: '' };
 
 /** Os eventos que passam no filtro (a busca acha o título, o cliente, o local, a observação e o chamado). */
 export function filtrarEventos(eventos: readonly EventoDoCalendario[], f: FiltroDoCalendario, nomesDasPessoas?: ReadonlyMap<string, string>): EventoDoCalendario[] {
@@ -289,7 +486,6 @@ export function filtrarEventos(eventos: readonly EventoDoCalendario[], f: Filtro
     if (f.paineis.length && !e.paineis.some((p) => f.paineis.includes(p))) return false;
     if (f.tipos.length && !f.tipos.includes(e.tipoId)) return false;
     if (f.pessoa && !e.pessoas.includes(f.pessoa)) return false;
-    if (f.cliente && e.clienteId !== f.cliente) return false;
     if (!f.cancelados && e.situacao === 'cancelado') return false;
     if (termo) {
       const pessoas = nomesDasPessoas ? e.pessoas.map((p) => nomesDasPessoas.get(p) ?? '').join(' ') : '';

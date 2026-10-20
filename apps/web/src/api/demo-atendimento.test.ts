@@ -230,10 +230,16 @@ describe('os exemplos da prévia', () => {
     }
     expect(md.vencendo.length).toBeGreaterThan(0);
 
-    // o sininho do Luan: os cinco que ele precisa ver (um é a novidade de um chamado que ele observa)
+    // o sininho do Luan: os cinco dos chamados que ele precisa ver (um é a novidade de um chamado que ele
+    // observa) e, desde o 2.0.2, o lembrete do calendário (o retorno da Clínica Aurora, daqui a pouco). Os
+    // lembretes dos outros exemplos dependem da hora em que o teste roda: contam à parte.
     const av = await api.avisos();
-    expect(av.naoLidos).toBe(5);
-    expect(new Set(av.itens.filter((a) => !a.lido).map((a) => a.tipo))).toEqual(new Set(['critico', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
+    const naoLidos = av.itens.filter((a) => !a.lido);
+    expect(av.naoLidos).toBe(naoLidos.length);
+    const dosChamados = naoLidos.filter((a) => a.tipo !== 'lembrete');
+    expect(dosChamados).toHaveLength(5);
+    expect(new Set(dosChamados.map((a) => a.tipo))).toEqual(new Set(['critico', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
+    expect(naoLidos.some((a) => a.tipo === 'lembrete' && !!a.evento && a.texto.includes('Retorno — Clínica Aurora'))).toBe(true);
     // quem fez a ação não é avisado: nenhum aviso do Luan sobre o que ele mesmo fez
     for (const a of av.itens.filter((x) => x.tipo === 'recebeu' && x.texto.startsWith('Você recebeu'))) {
       const f = await api.chamado(a.chamado!.codigo);

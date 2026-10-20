@@ -1156,7 +1156,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `schedule_id` | texto | O agendado que criou este chamado | — |
 | `value_cents` | bigint | A negociação (painel de Vendas, 2.0.1): o valor — a MENSALIDADE —, em centavos (até R$ 100 milhões: não cabe num integer). É o que conta no quadro, no relatório e na meta. | — |
 | `product_values` | JSON | A negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, value_cents é a soma | obrigatório · padrão: {} |
-| `setup_cents` | bigint | A negociação: a ATIVAÇÃO (paga uma vez), em centavos — à parte: não soma no quadro nem na meta; o relatório tem as contas dela (o número Ativação e As ativações mês a mês) | — |
+| `setup_cents` | bigint | A negociação: a ATIVAÇÃO (paga uma vez), em centavos — à parte: não soma no quadro nem na meta; o relatório tem as contas dela | — |
 | `product_setup` | JSON | A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma | obrigatório · padrão: {} |
 | `prospect` | texto | A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) | — |
 | `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |
@@ -1338,7 +1338,8 @@ Um AVISO NA TELA (o sininho): recebeu um chamado, o prazo está vencendo, o clie
 | `id` | texto | Identificador único da linha | chave primária |
 | `user_id` | texto | — | obrigatório · liga com **users** |
 | `ticket_id` | texto | — | liga com **tickets** |
-| `kind` | texto | recebeu | etapa | prazo_perto | prazo_vencido | sem_dono | critico | cliente_respondeu | pai | obrigatório |
+| `calendar_event_id` | texto | O evento do calendário do lembrete (2.0.2): o aviso é do calendário, e não de um chamado | liga com **calendarEvents** |
+| `kind` | texto | recebeu | etapa | prazo_perto | prazo_vencido | sem_dono | critico | cliente_respondeu | pai | observador | lembrete (o do calendário, 2.0.2) | obrigatório |
 | `body` | texto | — | obrigatório |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `read_at` | data e hora | — | — |
@@ -1399,6 +1400,9 @@ Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual clien
 | `location` | texto | Onde (o endereço da visita, "remoto") | — |
 | `notes` | texto | — | — |
 | `status` | texto | agendado | feito | cancelado (cancelar não apaga: fica riscado no calendário) | obrigatório · padrão: 'agendado' |
+| `reminders` | número inteiro | Os lembretes (2.0.2): quantos minutos antes do começo cada um sai (0 = na hora; o dia inteiro começa às 8h) | obrigatório · padrão: [] · lista |
+| `remind_who` | texto | Quem recebe o lembrete: pessoas (as do evento; sem pessoas, quem criou) | paineis (todos que veem o evento) | obrigatório · padrão: 'pessoas' |
+| `reminders_sent` | JSON | Os lembretes que já saíram (ou foram pulados): {"<minutos>@<começo>": quando}; mudar o dia ou a hora muda o começo, e o lembrete volta a valer | obrigatório · padrão: {} |
 | `created_by_id` | texto | — | liga com **users** |
 | `updated_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |

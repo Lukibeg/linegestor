@@ -20,11 +20,13 @@
  * no sininho, e vale para este navegador.
  */
 import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowRight, AtSign, Bell, GitBranch, Hourglass, Inbox, MessageSquare, Eye, Siren, TriangleAlert, UserX, X, type LucideIcon } from 'lucide-react';
-import type { AvisoNaTela, TipoAviso } from '@gestor/shared';
+import { ArrowRight, AtSign, Bell, CalendarClock, GitBranch, Hourglass, Inbox, MessageSquare, Eye, Siren, TriangleAlert, UserX, X, type LucideIcon } from 'lucide-react';
+import { diaCurto, type AvisoNaTela, type TipoAviso } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { useAuth } from '../../lib/auth.js';
+import { enderecoDoEvento } from '../calendario/comum.js';
 import { useAbrirChamado } from './comum.js';
 
 // =====================================================================
@@ -44,6 +46,8 @@ export const ICONE_DO_AVISO: Record<TipoAviso, { Icone: LucideIcon; cor: string;
   pai: { Icone: GitBranch, cor: 'text-muted', fundo: 'bg-surface-2', titulo: 'Um filho foi fechado' },
   // o chamado que a pessoa observa (como no Helena: toda atualização)
   observador: { Icone: Eye, cor: 'text-roxo', fundo: 'bg-roxo-soft', titulo: 'Novidade num chamado que você observa' },
+  // o lembrete de um evento do calendário (2.0.2: "quanto tempo antes", escolhido no evento)
+  lembrete: { Icone: CalendarClock, cor: 'text-turquesa-ink', fundo: 'bg-turquesa-soft', titulo: 'Lembrete do calendário' },
 };
 const doTipo = (t: TipoAviso) => ICONE_DO_AVISO[t] ?? ICONE_DO_AVISO.recebeu;
 
@@ -103,6 +107,9 @@ function notificar(titulo: string, corpo: string, marca: string, clicou: () => v
   } catch { return false; } // o Chrome do celular só mostra pelo app instalado
 }
 const corpoDoAviso = (a: AvisoNaTela) => (a.chamado ? `${a.texto}\n${a.chamado.codigo} · ${a.chamado.titulo}` : a.texto);
+/** A segunda linha do aviso: o chamado (SUP-12 · título) ou, no lembrete, o calendário e o dia. */
+export const segundaLinhaDoAviso = (a: Pick<AvisoNaTela, 'chamado' | 'evento'>) =>
+  (a.chamado ? null : a.evento ? `Calendário · ${diaCurto(a.evento.inicio)}` : null);
 
 // =====================================================================
 //  OS CARTÕES NA TELA
@@ -133,7 +140,7 @@ export function testarOAviso() {
   const navegador = !comoAvisar.navegador ? 'desligada'
     : notificar('Aviso de teste · Ingline Gestão', 'É assim que chega um aviso dos chamados.', 'gestor-teste', () => undefined) ? 'mostrou' : 'falhou';
   porCartoes([{
-    id: `teste-${Date.now()}`, tipo: 'recebeu', teste: true, lido: false, em: new Date().toISOString(), chamado: null,
+    id: `teste-${Date.now()}`, tipo: 'recebeu', teste: true, lido: false, em: new Date().toISOString(), chamado: null, evento: null,
     texto: navegador === 'mostrou' ? 'É assim que chega um aviso. A notificação do navegador também foi: ela aparece no canto da tela do computador.'
       : navegador === 'falhou' ? 'É assim que chega um aviso. A notificação do navegador não apareceu: este navegador não deixou.'
         : 'É assim que chega um aviso: um chamado para você, o prazo perto, alguém citou você…',
@@ -160,12 +167,15 @@ export function AvisosQueChegam({ esquerda }: { esquerda: string }) {
   const { user } = useAuth();
   const qc = useQueryClient();
   const abrirChamado = useAbrirChamado();
+  const navegar = useNavigate();
   const fila = useSyncExternalStore(assinarCartoes, () => cartoes);
   const q = useQuery({ ...consultaDosAvisos, refetchInterval: 30_000, refetchIntervalInBackground: true });
 
-  // o abrir muda com a tela (a janela do chamado guarda a tela de baixo): a notificação usa o de agora
-  const abrir = useRef(abrirChamado);
-  abrir.current = abrirChamado;
+  // o abrir muda com a tela (a janela do chamado guarda a tela de baixo): a notificação usa o de agora;
+  // o lembrete do calendário (2.0.2) abre o calendário no dia do evento, com a janela dele
+  const abrirOAviso = (a: AvisoNaTela) => { if (a.chamado) abrirChamado(a.chamado.codigo); else if (a.evento) navegar(enderecoDoEvento(a.evento)); };
+  const abrir = useRef(abrirOAviso);
+  abrir.current = abrirOAviso;
   const marcarLido = async (id: string) => {
     await api.atendimento.marcarAvisosLidos([id]).catch(() => undefined);
     void qc.invalidateQueries({ queryKey: consultaDosAvisos.queryKey });
@@ -191,7 +201,7 @@ export function AvisosQueChegam({ esquerda }: { esquerda: string }) {
         for (const a of novos) {
           notificar(doTipo(a.tipo).titulo, corpoDoAviso(a), a.id, () => {
             tirarCartao(a.id);
-            if (a.chamado) { void marcarLido(a.id); abrir.current(a.chamado.codigo); }
+            if (a.chamado || a.evento) { void marcarLido(a.id); abrir.current(a); }
           });
         }
       }
@@ -207,7 +217,7 @@ export function AvisosQueChegam({ esquerda }: { esquerda: string }) {
       {fila.slice(0, NA_TELA).map((c) => (
         // o aviso que voltou a chegar (o do observador, com mais mudanças) entra de novo
         <CartaoDoAviso key={`${c.id}@${c.em}`} c={c} fechar={() => tirarCartao(c.id)}
-          abrir={c.chamado ? () => { const codigo = c.chamado!.codigo; tirarCartao(c.id); void marcarLido(c.id); abrirChamado(codigo); } : undefined} />
+          abrir={c.chamado || c.evento ? () => { tirarCartao(c.id); void marcarLido(c.id); abrir.current(c); } : undefined} />
       ))}
       {esperando > 0 && (
         <div className="pointer-events-auto self-start card shadow px-3 py-1.5 text-[12px] text-ink-2 flex items-center gap-2" id="avisos-esperando">
@@ -232,7 +242,8 @@ function CartaoDoAviso({ c, fechar, abrir }: { c: Cartao; fechar: () => void; ab
           </div>
           <p className="text-[13px] text-ink-2 mt-0.5">{c.texto}</p>
           {c.chamado && <p className="text-[12px] text-muted truncate mt-0.5"><span className="font-mono">{c.chamado.codigo}</span> · {c.chamado.titulo}</p>}
-          {abrir && <button className="btn-primary btn-sm mt-2" onClick={abrir}>Abrir o chamado</button>}
+          {segundaLinhaDoAviso(c) && <p className="text-[12px] text-muted truncate mt-0.5">{segundaLinhaDoAviso(c)}</p>}
+          {abrir && <button className="btn-primary btn-sm mt-2" onClick={abrir}>{c.evento && !c.chamado ? 'Abrir no calendário' : 'Abrir o chamado'}</button>}
         </div>
       </div>
     </div>

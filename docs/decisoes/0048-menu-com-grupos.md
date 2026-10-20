@@ -59,6 +59,15 @@ entrou nele.
   quem tem a permissão **Ver o Comercial** (decisão 0050). Na tela de um painel de Vendas, o menu marca
   o Comercial, e não Painéis (quem decide é o painel aberto, e não só o endereço). O **Calendário** e o
   sininho passaram a aparecer também para quem só vê o Comercial.
+- **Revisto no 2.0.2 (20/10/2026): o Meu dia no menu.** O Luan, com o print da lista do Suporte no menu
+  recolhido: *"O meu dia pode ter um botão aqui tbm"*. O Suporte ganhou o item **Meu dia**
+  (`/atendimento/meu-dia`, o ícone do sol), logo depois de Painéis. Na tela do Meu dia, o menu marca o Meu
+  dia, e não Painéis — também com a janela de um chamado aberta por cima dele (quem decide é a tela de
+  baixo). A aba Meu dia, dentro de Painéis, continua.
+- **Revisto no 2.0.2 (20/10/2026): o sininho chama-se Avisos.** Com os lembretes do calendário (decisão
+  0049), o sininho deixou de ser só dos chamados: o nome dele (o que aparece ao passar o mouse e o título
+  da lista) passou de "Avisos dos chamados" para **Avisos**. O lembrete aparece com o ícone do calendário;
+  o clique abre o calendário no evento.
 
 **Consequências.** O menu cai de 12 para 8 entradas no alto, e o Suporte tem três itens. Os guias de
 uso, a nota do 2.0 e o vídeo falam dos nomes novos.

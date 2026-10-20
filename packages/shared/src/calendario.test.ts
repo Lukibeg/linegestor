@@ -1,15 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-  diaPorExtenso, diasDaGradeDoMes, EventoGravarSchema, eventosDoDia, eventoVisivel, filtrarEventos, FILTRO_DO_CALENDARIO_VAZIO, paineisDepoisDaEdicao,
-  pessoasPossiveis, quemEstaFora, textoDoHorario, textoDoMes, textoDoPeriodo, TIPOS_DE_EVENTO_PADRAO, tipoDoEvento, tiposDoCalendario,
-  TiposDoCalendarioSchema, tituloSugerido, EventosDoPeriodoSchema,
+  chaveDoLembrete, comecoDoEvento, diaPorExtenso, diasDaGradeDoMes, emUnidade, EventoGravarSchema, eventosDoDia, eventoVisivel, filtrarEventos,
+  FILTRO_DO_CALENDARIO_VAZIO, LembretesSchema, lembretesAoGravar, lembretesDevidos, paineisDepoisDaEdicao, pessoasPossiveis, quemEstaFora,
+  quemRecebeOLembrete, textoDoAntes, textoDoHorario, textoDoLembrete, textoDoMes, textoDoPeriodo, textoDosLembretes, TIPOS_DE_EVENTO_PADRAO,
+  tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, tituloSugerido, EventosDoPeriodoSchema,
   type EventoDoCalendario,
 } from './calendario.js';
 
 const evento = (e: Partial<EventoDoCalendario>): EventoDoCalendario => ({
   id: 'e1', titulo: 'Visita — Clínica Aurora', tipoId: 'visita', paineis: ['p-sup'], pessoas: [], clienteId: null, clienteNome: null, chamadoId: null, chamadoCodigo: null,
   inicio: '2026-10-20', fim: '2026-10-20', diaInteiro: true, horaInicio: null, horaFim: null, local: '', observacao: '', situacao: 'agendado',
-  criadoPor: null, criadoEm: '2026-10-16T12:00:00.000Z', alteradoPor: null, alteradoEm: '2026-10-16T12:00:00.000Z', ...e,
+  lembretes: [], lembrarQuem: 'pessoas', criadoPor: null, criadoEm: '2026-10-16T12:00:00.000Z', alteradoPor: null, alteradoEm: '2026-10-16T12:00:00.000Z', ...e,
 });
 
 describe('o evento (a janela)', () => {
@@ -49,6 +50,10 @@ describe('os tipos', () => {
     expect(TIPOS_DE_EVENTO_PADRAO.filter((t) => t.daEquipe).map((t) => t.id)).toEqual(['folga', 'home-office']);
     expect(tiposDoCalendario(null)).toEqual(TIPOS_DE_EVENTO_PADRAO);
     expect(tiposDoCalendario({ tipos: [{ id: 'x', nome: 'Treinamento', cor: 'roxo', daEquipe: false, ativo: true }] }).map((t) => t.nome)).toEqual(['Treinamento']);
+    // a cópia não mexe na fábrica
+    const copia = tiposDoCalendario(null);
+    copia[0]!.lembretes.push(5);
+    expect(TIPOS_DE_EVENTO_PADRAO[0]!.lembretes).toEqual([1440, 60]);
   });
 
   it('sem repetir o nome, e pelo menos um ativo; o tipo que sumiu vira "Outro"', () => {
@@ -113,12 +118,11 @@ describe('os filtros e quem está fora', () => {
   ];
   const f = (x: Partial<typeof FILTRO_DO_CALENDARIO_VAZIO>) => filtrarEventos(lista, { ...FILTRO_DO_CALENDARIO_VAZIO, ...x }, new Map([['ana', 'Ana Souza'], ['caio', 'Caio Lima']])).map((e) => e.id);
 
-  it('por painel, tipo, pessoa, cliente, cancelados e a busca (que acha também a pessoa)', () => {
+  it('por painel, tipo, pessoa, cancelados e a busca (que acha também o cliente e a pessoa)', () => {
     expect(f({})).toEqual(['v', 'f', 'h', 'x']);
     expect(f({ paineis: ['p-dev'] })).toEqual(['f', 'h']);
     expect(f({ tipos: ['folga'] })).toEqual(['f', 'x']);
     expect(f({ pessoa: 'ana' })).toEqual(['v', 'h']);
-    expect(f({ cliente: 'c1' })).toEqual(['v']);
     expect(f({ cancelados: false })).toEqual(['v', 'f', 'h']);
     expect(f({ busca: 'aurora' })).toEqual(['v']);
     expect(f({ busca: 'flores' })).toEqual(['v']);
@@ -137,5 +141,94 @@ describe('os filtros e quem está fora', () => {
     expect(tituloSugerido({ nome: 'Visita', daEquipe: false }, 'Clínica Aurora', ['Ana'])).toBe('Visita — Clínica Aurora');
     expect(tituloSugerido({ nome: 'Folga', daEquipe: true }, null, ['Caio Lima'])).toBe('Folga — Caio Lima');
     expect(tituloSugerido({ nome: 'Reunião', daEquipe: false }, null, [])).toBe('Reunião');
+  });
+});
+
+describe('os lembretes (2.0.2)', () => {
+  it('o tempo antes, por extenso, na unidade que dá conta inteira', () => {
+    expect([0, 15, 60, 90, 1440, 2880, 10080].map(textoDoAntes)).toEqual(['Na hora', '15 minutos antes', '1 hora antes', '90 minutos antes', '1 dia antes', '2 dias antes', '1 semana antes']);
+    expect(emUnidade(2880)).toEqual({ quanto: 2, unidade: 'dias' });
+    expect(emUnidade(0)).toEqual({ quanto: 0, unidade: 'minutos' });
+    expect(textoDosLembretes([60, 1440])).toBe('1 dia antes e 1 hora antes');
+    expect(textoDosLembretes([0, 60])).toBe('1 hora antes e na hora');
+    expect(textoDosLembretes([10080, 1440, 15])).toBe('1 semana antes, 1 dia antes e 15 minutos antes');
+    expect(textoDosLembretes([0])).toBe('na hora');
+    expect(textoDosLembretes([])).toBe('sem lembrete');
+  });
+
+  it('a lista: sem repetir, do mais cedo para o mais tarde, até 5 e até 4 semanas antes', () => {
+    expect(LembretesSchema.parse([60, 1440, 60, 0])).toEqual([1440, 60, 0]);
+    expect(LembretesSchema.safeParse([1, 2, 3, 4, 5, 6]).error?.issues[0]?.message).toBe('Até 5 lembretes.');
+    expect(LembretesSchema.safeParse([40321]).error?.issues[0]?.message).toBe('O lembrete vai até 4 semanas antes.');
+    expect(LembretesSchema.safeParse([-5]).success).toBe(false);
+    expect(EventoGravarSchema.parse({ titulo: 'Visita', tipoId: 'visita', paineis: ['p'], inicio: '2026-10-21', fim: '2026-10-21' }))
+      .toMatchObject({ lembretes: [], lembrarQuem: 'pessoas' });
+  });
+
+  it('os tipos guardados antes do 2.0.2: o de fábrica fica com os lembretes da fábrica; o da equipe, sem', () => {
+    const guardado = { tipos: [{ id: 'visita', nome: 'Visita técnica', cor: 'accent', daEquipe: false, ativo: true }, { id: 'treino', nome: 'Treinamento', cor: 'roxo', daEquipe: false, ativo: true }] };
+    expect(tiposDoCalendario(guardado).map((t) => [t.nome, t.lembretes])).toEqual([['Visita técnica', [1440, 60]], ['Treinamento', []]]);
+    // o que a equipe tirou continua tirado
+    expect(tiposDoCalendario({ tipos: [{ id: 'visita', nome: 'Visita', cor: 'accent', daEquipe: false, ativo: true, lembretes: [] }] })[0]!.lembretes).toEqual([]);
+  });
+
+  const ev = (m: Partial<Parameters<typeof lembretesDevidos>[0]> = {}) => ({ inicio: '2026-10-21', diaInteiro: false, horaInicio: '09:00', situacao: 'agendado' as const, lembretes: [1440, 60], ...m });
+  const em = (s: string) => new Date(s);
+
+  it('o começo: a hora de Brasília; o dia inteiro, às 8h', () => {
+    expect(comecoDoEvento(ev()).toISOString()).toBe('2026-10-21T12:00:00.000Z');
+    expect(comecoDoEvento(ev({ diaInteiro: true, horaInicio: null })).toISOString()).toBe('2026-10-21T11:00:00.000Z');
+  });
+
+  it('sai na hora, uma vez, até 3 horas de atraso e nunca depois de o evento começar', () => {
+    // 1 dia antes: 20/10 às 09:00 (12:00 em UTC)
+    expect(lembretesDevidos(ev(), {}, em('2026-10-20T11:59:00Z'))).toEqual([]);
+    expect(lembretesDevidos(ev(), {}, em('2026-10-20T12:00:00Z'))).toEqual([1440]);
+    expect(lembretesDevidos(ev(), {}, em('2026-10-20T14:59:00Z'))).toEqual([1440]);
+    expect(lembretesDevidos(ev(), {}, em('2026-10-20T15:01:00Z'))).toEqual([]);
+    // já saiu para este começo
+    const comeco = comecoDoEvento(ev());
+    expect(lembretesDevidos(ev(), { [chaveDoLembrete(1440, comeco)]: '2026-10-20T12:00:00.000Z' }, em('2026-10-20T12:01:00Z'))).toEqual([]);
+    // 1 hora antes: 08:00; às 09:00 o evento começou
+    expect(lembretesDevidos(ev(), {}, em('2026-10-21T11:00:00Z'))).toEqual([60]);
+    expect(lembretesDevidos(ev(), {}, em('2026-10-21T12:00:30Z'))).toEqual([]);
+    // o "na hora" sai até 5 minutos depois do começo
+    expect(lembretesDevidos(ev({ lembretes: [0] }), {}, em('2026-10-21T12:04:00Z'))).toEqual([0]);
+    expect(lembretesDevidos(ev({ lembretes: [0] }), {}, em('2026-10-21T12:06:00Z'))).toEqual([]);
+    // o feito e o cancelado não lembram
+    expect(lembretesDevidos(ev({ situacao: 'cancelado' }), {}, em('2026-10-20T12:00:00Z'))).toEqual([]);
+    expect(lembretesDevidos(ev({ situacao: 'feito' }), {}, em('2026-10-20T12:00:00Z'))).toEqual([]);
+  });
+
+  it('ao gravar: o que já passou fica pulado, o que já saiu continua, e mudar o dia vale de novo', () => {
+    const comeco = comecoDoEvento(ev());
+    // gravado no próprio 20/10 às 10:00: o "1 dia antes" (20/10 às 09:00) já passou
+    const gravado = lembretesAoGravar(ev(), {}, em('2026-10-20T13:00:00Z'));
+    expect(gravado).toEqual({ [chaveDoLembrete(1440, comeco)]: 'pulado' });
+    expect(lembretesDevidos(ev(), gravado, em('2026-10-20T13:01:00Z'))).toEqual([]);
+    // gravado de novo, sem mudar a hora: o que saiu continua saído
+    const saiu = { [chaveDoLembrete(60, comeco)]: '2026-10-21T11:00:00.000Z' };
+    expect(lembretesAoGravar(ev(), saiu, em('2026-10-21T11:30:00Z'))).toEqual({ ...saiu, [chaveDoLembrete(1440, comeco)]: 'pulado' });
+    // o evento foi para o dia 23: os dois valem de novo
+    const depois = ev({ inicio: '2026-10-23' });
+    expect(lembretesAoGravar(depois, saiu, em('2026-10-21T11:30:00Z'))).toEqual({});
+    expect(lembretesDevidos(depois, {}, em('2026-10-22T12:00:00Z'))).toEqual([1440]);
+  });
+
+  it('quem recebe: as pessoas do evento (sem pessoas, quem criou) ou todos que veem — sempre quem vê', () => {
+    const quemVe = new Map([['p-sup', ['ana', 'bia', 'luan']], ['p-dev', ['caio', 'luan']]]);
+    const e = { paineis: ['p-sup'], pessoas: ['ana', 'caio'], lembrarQuem: 'pessoas' as const, criadoPorId: 'luan' };
+    // o Caio não vê o Suporte: não recebe
+    expect(quemRecebeOLembrete(e, quemVe)).toEqual(['ana']);
+    expect(quemRecebeOLembrete({ ...e, pessoas: [] }, quemVe)).toEqual(['luan']);
+    expect(quemRecebeOLembrete({ ...e, lembrarQuem: 'paineis' }, quemVe).sort()).toEqual(['ana', 'bia', 'luan']);
+    expect(quemRecebeOLembrete({ ...e, paineis: ['p-sup', 'p-dev'], lembrarQuem: 'paineis' }, quemVe).sort()).toEqual(['ana', 'bia', 'caio', 'luan']);
+  });
+
+  it('o texto: hoje, amanhã ou o dia da semana, com a data (o aviso fica no sininho depois)', () => {
+    const agora = em('2026-10-20T13:00:00Z');
+    expect(textoDoLembrete({ titulo: 'Visita — Clínica Aurora', inicio: '2026-10-21', diaInteiro: false, horaInicio: '09:00' }, agora)).toBe('Lembrete: Visita — Clínica Aurora, amanhã, 21/10, às 09:00');
+    expect(textoDoLembrete({ titulo: 'Reunião', inicio: '2026-10-20', diaInteiro: false, horaInicio: '15:00' }, agora)).toBe('Lembrete: Reunião, hoje, 20/10, às 15:00');
+    expect(textoDoLembrete({ titulo: 'Virada para nuvem', inicio: '2026-10-23', diaInteiro: true, horaInicio: null }, agora)).toBe('Lembrete: Virada para nuvem, sexta, 23/10 (dia inteiro)');
   });
 });

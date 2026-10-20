@@ -348,3 +348,57 @@ Com o 2.0 no ar, o Luan passou pelas telas e pediu cinco mudanças:
     fica o chamado —, com o **Conferir com** em cima (o último pedido do robô, um pedido fictício, um
     pedido colado). O "exemplo do LineChat" virou o **pedido fictício**: "exemplo" ficou só para o exemplo
     de cada parâmetro.
+
+## Revisto no 2.0.2 (20/10/2026): a mensagem de cada aviso no WhatsApp
+
+O Luan mandou o print do aviso antigo do observador (o do fluxo **Atualização de Card** do n8n, que
+ainda roda no Helena) e pediu: *"a notificação dos observadores tbm n ficou legal, veja como tínhamos
+antes, era bem melhor, faça algo que dê para nós personalizarmos inclusive as variáveis"*. O WhatsApp da
+equipe saía numa frase só, mais o código, o título e o link; o antigo trazia o Painel, o Card, a Nota,
+quem comentou, o Cliente e o Link, cada um numa linha, com emoji e negrito. Como o 2.0.2 não subiu,
+entrou nele.
+
+- **Cada aviso tem a sua mensagem no WhatsApp**, em **Painéis › Ajustes › Avisos e WhatsApp**, no cartão
+  novo **A mensagem de cada aviso no WhatsApp**: a lista dos nove avisos (no celular, uma caixa de
+  escolha), o texto, os **botões das variáveis** (põem a variável onde está o cursor) e a **prévia no
+  balão**, com um exemplo e o negrito (`*assim*`), o itálico (`_assim_`) e o riscado (`~assim~`) do
+  WhatsApp. Na tabela "Quais avisos vão por onde", cada aviso ganhou o link **a mensagem** (ou "a
+  mensagem (editada)"). **Voltar à padrão** desfaz; **Mandar o exemplo para mim** manda a mensagem da
+  tela (salva ou não), com o exemplo, para o WhatsApp de quem está na tela, pelo número da equipe e com a
+  primeira linha *"Teste do Ingline Gestão: um exemplo…"* (quem recebe não confunde com um chamado).
+- **As variáveis**, entre chaves e sem distinguir maiúscula:
+  - as do chamado, em todos os avisos de chamado: `{painel}`, `{etapa}`, `{codigo}`, `{titulo}`,
+    `{prioridade}`, `{cliente}`, `{contato}`, `{responsavel}`, `{assunto}`, `{relato}` (o começo, até 300
+    letras) e `{link}` — lidas na hora de mandar;
+  - as do que aconteceu: `{aviso}` (a frase do sininho, sem o trecho da nota) em todos; `{quem}` (quem fez)
+    em todos menos os do relógio (os prazos e o sem responsável); `{nota}` (a anotação inteira, até 1.500
+    letras) na citação e no observador; `{novidade}` (o que mudou, sem quem fez: "Moveu para N2", "Passou
+    para Bruno Técnico", "Marcou: esperando o cliente (…)", "Mandou para a lixeira"…) só no observador —
+    na anotação ela fica vazia, porque a nota já é a novidade;
+  - as do lembrete do calendário (decisão 0049): `{aviso}`, `{evento}`, `{tipo}`, `{quando}`, `{local}`,
+    `{cliente}`, `{chamado}`, `{pessoas}`, `{paineis}`, `{observacao}` e `{link}`.
+- **A linha em que todas as variáveis vêm vazias não vai** (a escolha foi minha, avisada a ele: no print,
+  o "Cliente:" chegava em branco). A linha só de texto vai sempre; linhas em branco seguidas viram uma.
+  A mensagem vai até 4.000 letras.
+- **As padrão** seguem o jeito antigo. A do observador é a do print, com o Card levando o código:
+  `🔎 *Painel:*` · `📌 *Card:* {codigo} · {titulo}` · `🔔 *Novidade:*` · `📝 *Nota:*` · `👤 *Quem:*` ·
+  `👨‍💼 *Cliente:*` · `🔗 *Link do Card/Painel:*`. As outras começam pela frase do aviso em negrito, com
+  o emoji dele (📥 recebeu e etapa, 💬 citado, ⏰ prazo perto, 🚨 prazo vencido, 🙋 sem responsável, 🔴
+  Crítico), e trazem o painel, o card, a prioridade, o responsável, o cliente e o link, conforme o aviso.
+  A do lembrete: `⏰ *Lembrete:*`, `🗓️ *Quando:*`, `📍 *Local:*`, `👨‍💼 *Cliente:*`, `📌 *Chamado:*`,
+  `📝 *Observação:*` e `🔗 *Link:*`.
+- **Guardado** em `settings.atendimento-avisos` (`modelos`), só as que mudaram da padrão: a vazia e a
+  igual à padrão voltam a seguir a padrão (que pode melhorar numa versão nova). Ao salvar, a variável que
+  o aviso não tem é recusada, dizendo qual e em que aviso (*"{cotato} não é variável dele"*) — o erro de
+  digitação sairia no WhatsApp entre chaves; a tela avisa enquanto se escreve. A auditoria diz *"mudou a
+  mensagem do aviso: …"* (ou *"(voltou à padrão)"*), com o antes e o depois, e o exemplo mandado também
+  entra nela.
+- **O sininho não muda**: continua com a frase curta (é o mesmo texto de antes).
+- **O que não mudou**: quem recebe, por onde (a tabela "Quais avisos vão por onde") e o observador no
+  WhatsApp **desligado de início** — quem quiser liga na tabela. As mudanças de campo continuam só na
+  tela.
+- **No código**: as regras (`variaveisDoAviso`, `MODELOS_DOS_AVISOS_PADRAO`, `preencherAviso`,
+  `variaveisDesconhecidas`, `modelosParaGuardar`, `EXEMPLOS_DOS_AVISOS`) em
+  `packages/shared/src/atendimento.ts`; o servidor monta a mensagem em segundo plano
+  (`mensagemDoAvisoDoChamado`, em `services/atendimento/avisos.ts`), com o que cada ação contou (`quem`,
+  `nota`, `novidade`, `aviso`). A prévia confere e guarda do mesmo jeito (nada sai de verdade).

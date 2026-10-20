@@ -16,13 +16,13 @@
  * também às outras telas de ajustes dos chamados (Agendados e Integrações), para as três falarem do
  * mesmo jeito.
  */
-import { useRef, useState, type ReactNode, type RefObject } from 'react';
+import { Fragment, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, Check, CheckCircle2, Copy, Download, FileImage, KeyRound, MessageCircle, MessageSquareText, Plus, Send, TriangleAlert, Users, X } from 'lucide-react';
+import { BellRing, Check, CheckCircle2, Copy, Download, FileImage, KeyRound, MessageCircle, MessageSquareText, MessagesSquare, Plus, RotateCcw, Send, TriangleAlert, Users, X } from 'lucide-react';
 import {
-  EVENTOS_AVISO, NOME_EVENTO_AVISO, NOME_TIPO_ARQUIVO_DO_MODELO, TIPOS_ARQUIVO_DO_MODELO, mensagemPreenchida, numeroWhatsApp, preencherModelo,
-  valorSugeridoDaVariavel,
+  EVENTOS_AVISO, EXEMPLOS_DOS_AVISOS, MAX_MODELO_DO_AVISO, MODELOS_DOS_AVISOS_PADRAO, NOME_EVENTO_AVISO, NOME_TIPO_ARQUIVO_DO_MODELO, TIPOS_ARQUIVO_DO_MODELO,
+  mensagemPreenchida, modeloDoAviso, numeroWhatsApp, preencherAviso, preencherModelo, valorSugeridoDaVariavel, variaveisDesconhecidas, variaveisDoAviso,
   type AvisosChamadosEntrada, type AvisosChamadosTela, type CanaisDoAviso, type EnvioAoCliente, type EventoAviso, type ModeloDoLineChat,
   type ModelosDoLineChat, type TipoArquivoDoModelo,
 } from '@gestor/shared';
@@ -186,11 +186,40 @@ export function Marcadores({ marcadores, campo, valor, onChange }: { marcadores:
   );
 }
 
-/** A mensagem como vai chegar no WhatsApp (a prévia, com valores de exemplo). */
-export function BalaoDeMensagem({ texto, vazio = 'a mensagem fica vazia' }: { texto: string; vazio?: string }) {
+/**
+ * O negrito, o itálico e o riscado do WhatsApp (*assim*, _assim_, ~assim~): a marca vale no começo e no fim
+ * de palavra, como lá — o "_" no meio de um endereço não vira itálico.
+ */
+const FORMATO_DO_WHATSAPP = /(^|[\s(])([*_~])(?!\s)([^\n]*?\S)\2(?=$|[\s.,;:!?)])/gm;
+export type ParteDoWhatsApp = { texto: string; estilo: 'normal' | 'negrito' | 'italico' | 'riscado' };
+/** O texto em pedaços, cada um com o estilo do WhatsApp (a prévia desenha; o teste confere). */
+export function partesDoWhatsApp(texto: string): ParteDoWhatsApp[] {
+  const partes: ParteDoWhatsApp[] = [];
+  let desde = 0;
+  for (const m of texto.matchAll(FORMATO_DO_WHATSAPP)) {
+    const ini = m.index + m[1]!.length;
+    const dentro = m[3]!;
+    if (ini > desde) partes.push({ texto: texto.slice(desde, ini), estilo: 'normal' });
+    partes.push({ texto: dentro, estilo: m[2] === '*' ? 'negrito' : m[2] === '_' ? 'italico' : 'riscado' });
+    desde = ini + dentro.length + 2;
+  }
+  if (desde < texto.length) partes.push({ texto: texto.slice(desde), estilo: 'normal' });
+  return partes;
+}
+export function TextoDoWhatsApp({ texto }: { texto: string }) {
   return (
-    <div className="rounded-xl rounded-tl-sm border border-line bg-ok-soft text-ink px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap break-words max-w-[560px]">
-      {texto || <span className="text-muted italic">{vazio}</span>}
+    <>
+      {partesDoWhatsApp(texto).map((p, i) => (p.estilo === 'negrito' ? <strong key={i}>{p.texto}</strong> : p.estilo === 'italico' ? <em key={i}>{p.texto}</em>
+        : p.estilo === 'riscado' ? <s key={i}>{p.texto}</s> : <Fragment key={i}>{p.texto}</Fragment>))}
+    </>
+  );
+}
+
+/** A mensagem como vai chegar no WhatsApp (a prévia, com valores de exemplo), com o negrito e o itálico de lá. */
+export function BalaoDeMensagem({ texto, vazio = 'a mensagem fica vazia', id }: { texto: string; vazio?: string; id?: string }) {
+  return (
+    <div id={id} className="rounded-xl rounded-tl-sm border border-line bg-ok-soft text-ink px-3.5 py-2.5 text-[13.5px] leading-relaxed whitespace-pre-wrap break-words max-w-[560px]">
+      {texto ? <TextoDoWhatsApp texto={texto} /> : <span className="text-muted italic">{vazio}</span>}
     </div>
   );
 }
@@ -231,6 +260,8 @@ type Form = {
   ativo: boolean; url: string; usarChaveDoLineChat: boolean; numeroCliente: string; numeroEquipe: string;
   envioCliente: EnvioAoCliente; modeloCliente: string; template: ModeloForm; equipeLineChat: string; atribuirAQuemManda: boolean;
   eventos: Record<EventoAviso, CanaisDoAviso>;
+  /** a mensagem de cada aviso no WhatsApp, como vale (a escrita ou a padrão) */
+  modelos: Record<EventoAviso, string>;
 };
 const SEM_MODELO: ModeloForm = { id: '', nome: '', texto: '', variaveis: [], tipoArquivo: 'UNDEFINED', arquivo: '' };
 
@@ -245,6 +276,7 @@ const doServidor = (a: AvisosChamadosTela): Form => ({
   } : SEM_MODELO,
   equipeLineChat: a.equipeLineChat ?? '', atribuirAQuemManda: !!a.atribuirAQuemManda,
   eventos: Object.fromEntries(EVENTOS_AVISO.map((e) => [e, { tela: a.eventos[e]?.tela ?? true, whatsapp: a.eventos[e]?.whatsapp ?? false }])) as Record<EventoAviso, CanaisDoAviso>,
+  modelos: Object.fromEntries(EVENTOS_AVISO.map((e) => [e, modeloDoAviso(a.modelos, e)])) as Record<EventoAviso, string>,
 });
 
 /** Ao sair do campo, o número válido fica escrito do jeito de ler: "71999990000" vira "(71) 99999-0000". */
@@ -268,6 +300,9 @@ function conferir(f: Form, chave: string, inicial: AvisosChamadosTela): string |
   try { const u = new URL(f.url.trim()); urlOk = u.protocol === 'https:' || u.protocol === 'http:'; } catch { /* fica falso */ }
   const t = f.template;
   const nomes = t.variaveis.map((v) => v.nome.trim().toLowerCase());
+  // a mensagem de cada aviso: só com as variáveis dele, e até 2.000 letras
+  const comErro = EVENTOS_AVISO.map((e) => ({ e, fora: variaveisDesconhecidas(e, f.modelos[e]) })).find((x) => x.fora.length);
+  const longa = EVENTOS_AVISO.find((e) => f.modelos[e].length > MAX_MODELO_DO_AVISO);
   const geral = !urlOk ? 'O endereço da API de mensagens está inválido: comece com https:// (o do LineChat é https://api.inglinechat.com.br/chat/v1/message/send).'
     : f.numeroCliente.trim() && !numeroWhatsApp(f.numeroCliente) ? 'O número para o cliente não é um WhatsApp: use DDD + número, como (71) 3034-8350.'
       : f.numeroEquipe.trim() && !numeroWhatsApp(f.numeroEquipe) ? 'O número para a equipe não é um WhatsApp: use DDD + número, como (71) 99999-0000.'
@@ -278,7 +313,9 @@ function conferir(f: Form, chave: string, inicial: AvisosChamadosTela): string |
                 : new Set(nomes).size !== nomes.length ? 'Uma variável do modelo está repetida.'
                   : t.arquivo.trim() && !/^https:\/\/\S+$/i.test(t.arquivo.trim()) ? 'O arquivo do cabeçalho do modelo precisa de um endereço com https://.'
                     : f.ativo && !f.usarChaveDoLineChat && !inicial.temChavePropria && !chave.trim() ? 'Cole a chave própria da API (ou escolha usar a chave do LineChat).'
-                      : null;
+                      : comErro ? `Na mensagem do aviso "${NOME_CURTO_DO_AVISO[comErro.e]}", ${comErro.fora.join(', ')} não ${comErro.fora.length === 1 ? 'é variável' : 'são variáveis'} dele: confira o nome (os botões põem certo).`
+                        : longa ? `A mensagem do aviso "${NOME_CURTO_DO_AVISO[longa]}" passou de 2.000 letras.`
+                          : null;
   return geral;
 }
 
@@ -297,7 +334,17 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
   const [erro, setErro] = useState<string | null>(null);
   const chaveNova = !f.usarChaveDoLineChat && !!chave.trim();
   const mudou = JSON.stringify(f) !== JSON.stringify(doServidor(inicial)) || chaveNova;
+  // o exemplo de um aviso sai com a mensagem da tela, mas com o número e a chave salvos: só eles precisam estar salvos
+  const { modelos: _m, ...semAsMensagens } = f;
+  const { modelos: _ms, ...salvoSemAsMensagens } = doServidor(inicial);
+  const mudouOWhatsApp = JSON.stringify(semAsMensagens) !== JSON.stringify(salvoSemAsMensagens) || chaveNova;
   const mudar = (m: Partial<Form>) => { setF((x) => ({ ...x, ...m })); setErro(null); };
+  // o aviso aberto no cartão das mensagens: o dos observadores, o do pedido (20/10)
+  const [avisoAberto, setAvisoAberto] = useState<EventoAviso>('observador');
+  const abrirMensagem = (e: EventoAviso) => {
+    setAvisoAberto(e);
+    requestAnimationFrame(() => document.getElementById('avisos-mensagens')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
   // quem recebe no WhatsApp: o número (e a pausa) de cada um mora em Administração › Usuários
   const recebem = inicial.pessoas.filter((p) => p.numero && p.ativo).length;
 
@@ -318,6 +365,8 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
         } : null,
         equipeLineChat: f.equipeLineChat.trim(), atribuirAQuemManda: f.atribuirAQuemManda,
         eventos: f.eventos,
+        // todas vão: o servidor guarda só as que mudaram da padrão
+        modelos: f.modelos,
       };
       const novo = await api.atendimento.salvarAvisos(entrada);
       qc.setQueryData(CHAVE, novo);
@@ -442,8 +491,12 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
             </span>
           </p>
           {!f.ativo && <p className="text-[12.5px] text-signal mb-2">O WhatsApp está desligado: por enquanto vale só a tela.</p>}
-          <TabelaEventos eventos={f.eventos} salvos={doServidor(inicial).eventos} onMudar={(e, c) => mudar({ eventos: { ...f.eventos, [e]: c } })} />
+          <TabelaEventos eventos={f.eventos} salvos={doServidor(inicial).eventos} onMudar={(e, c) => mudar({ eventos: { ...f.eventos, [e]: c } })}
+            onMensagem={abrirMensagem} editadas={EVENTOS_AVISO.filter((e) => f.modelos[e] !== MODELOS_DOS_AVISOS_PADRAO[e])} />
         </CartaoAjuste>
+
+        {/* ---------- a mensagem de cada aviso no WhatsApp (2.0.2) ---------- */}
+        <CartaoMensagensDosAvisos f={f} mudar={mudar} aberto={avisoAberto} onAbrir={setAvisoAberto} inicial={inicial} mudouOWhatsApp={mudouOWhatsApp} />
 
         {/* ---------- salvar: com mudança por salvar, fica preso embaixo (trocou um número lá em cima, não precisa rolar até o fim) ---------- */}
         <div className={mudou || erro ? 'sticky bottom-0 z-10 pb-2' : ''}>
@@ -462,7 +515,10 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
 
 // ---------- quais avisos vão por onde ----------
 
-function TabelaEventos({ eventos, salvos, onMudar }: { eventos: Record<EventoAviso, CanaisDoAviso>; salvos: Record<EventoAviso, CanaisDoAviso>; onMudar: (e: EventoAviso, c: CanaisDoAviso) => void }) {
+function TabelaEventos({ eventos, salvos, onMudar, onMensagem, editadas }: {
+  eventos: Record<EventoAviso, CanaisDoAviso>; salvos: Record<EventoAviso, CanaisDoAviso>; onMudar: (e: EventoAviso, c: CanaisDoAviso) => void;
+  onMensagem: (e: EventoAviso) => void; editadas: EventoAviso[];
+}) {
   // sem clicar em coluna nenhuma, a ordem é a do catálogo (do mais comum ao mais raro)
   const o = useOrdenacaoLocal('ordem');
   const linhas = EVENTOS_AVISO.map((e, i) => ({ e, i }));
@@ -489,7 +545,12 @@ function TabelaEventos({ eventos, salvos, onMudar }: { eventos: Record<EventoAvi
                 <TdN n={contar(i)} />
                 <td className="min-w-[170px]">
                   <div className="font-medium leading-snug">{n.titulo}</div>
-                  <div className="text-[12.5px] text-muted leading-snug mt-0.5">para {n.quem}</div>
+                  <div className="text-[12.5px] text-muted leading-snug mt-0.5">
+                    para {n.quem} ·{' '}
+                    <button type="button" className="link" data-mensagem-do-aviso={e} onClick={() => onMensagem(e)}>
+                      {editadas.includes(e) ? 'a mensagem (editada)' : 'a mensagem'}
+                    </button>
+                  </div>
                 </td>
                 <td className="text-center w-[1%]"><input type="checkbox" className="w-4 h-4 cursor-pointer align-middle" aria-label={`${n.titulo}: na tela`} checked={eventos[e].tela} onChange={(x) => onMudar(e, { ...eventos[e], tela: x.target.checked })} /></td>
                 <td className="text-center w-[1%]"><input type="checkbox" className="w-4 h-4 cursor-pointer align-middle" aria-label={`${n.titulo}: no WhatsApp`} checked={eventos[e].whatsapp} onChange={(x) => onMudar(e, { ...eventos[e], whatsapp: x.target.checked })} /></td>
@@ -499,6 +560,126 @@ function TabelaEventos({ eventos, salvos, onMudar }: { eventos: Record<EventoAvi
         </tbody>
       </table>
     </div>
+  );
+}
+
+// ---------- a mensagem de cada aviso no WhatsApp (2.0.2) ----------
+
+/** O nome curto de cada aviso: a lista do cartão das mensagens e os erros. */
+const NOME_CURTO_DO_AVISO: Record<EventoAviso, string> = {
+  recebeu: 'Recebeu um chamado', citado: 'Citado numa anotação', etapa: 'Chegou na etapa', prazo_perto: 'Prazo perto de vencer',
+  prazo_vencido: 'Prazo vencido', sem_dono: 'Sem responsável', critico: 'Chamado Crítico', observador: 'Observadores', lembrete: 'Lembrete do calendário',
+};
+
+/**
+ * A mensagem de cada aviso no WhatsApp. O pedido do Luan, em 20/10: "veja como tínhamos antes, era bem
+ * melhor, faça algo que dê para nós personalizarmos inclusive as variáveis". O cartão tem a lista dos
+ * avisos, o texto com os botões das variáveis e a prévia no balão, com um exemplo. A mensagem padrão segue
+ * a do fluxo antigo do n8n. O "Mandar o exemplo para mim" usa a mensagem da tela (salva ou não), com o
+ * número e a chave já salvos.
+ */
+function CartaoMensagensDosAvisos({ f, mudar, aberto, onAbrir, inicial, mudouOWhatsApp }: {
+  f: Form; mudar: (m: Partial<Form>) => void; aberto: EventoAviso; onAbrir: (e: EventoAviso) => void; inicial: AvisosChamadosTela; mudouOWhatsApp: boolean;
+}) {
+  const qc = useQueryClient(); const { user } = useAuth();
+  const campo = useRef<HTMLTextAreaElement>(null);
+  const [mandando, setMandando] = useState(false);
+  const [res, setRes] = useState<ResultadoTeste | null>(null);
+  const e = aberto;
+  const texto = f.modelos[e];
+  const padrao = MODELOS_DOS_AVISOS_PADRAO[e];
+  const editadas = EVENTOS_AVISO.filter((x) => f.modelos[x] !== MODELOS_DOS_AVISOS_PADRAO[x]);
+  const fora = variaveisDesconhecidas(e, texto);
+  // vazia, vale a padrão (como o servidor faz)
+  const previa = preencherAviso(e, modeloDoAviso({ [e]: texto }, e), EXEMPLOS_DOS_AVISOS[e]);
+  const meuNumero = inicial.pessoas.find((p) => p.userId === user?.id)?.numero ?? '';
+  const mudarTexto = (v: string) => { mudar({ modelos: { ...f.modelos, [e]: v } }); setRes(null); };
+  const abrir = (x: EventoAviso) => { onAbrir(x); setRes(null); };
+  const porQueNaoManda = !inicial.ativo ? 'O WhatsApp dos chamados está desligado: ligue no primeiro cartão e salve.'
+    : mudouOWhatsApp ? 'Salve antes: o exemplo sai com o número e a chave que estão salvos.'
+      : !meuNumero ? 'Para mandar o exemplo, ponha o seu WhatsApp em Administração › Usuários.'
+        : fora.length ? 'Arrume as variáveis antes de mandar.' : null;
+
+  const mandarExemplo = async () => {
+    setMandando(true); setRes(null);
+    try {
+      setRes(await api.atendimento.testarAvisos({ evento: e, modelo: texto }));
+    } catch (err) { setRes({ ok: false, mensagem: erroLegivel(err) }); } finally {
+      setMandando(false);
+      void qc.invalidateQueries({ queryKey: CHAVE });
+    }
+  };
+
+  return (
+    <CartaoAjuste id="avisos-mensagens" icone={<MessagesSquare size={18} />} titulo="A mensagem de cada aviso no WhatsApp"
+      situacao={editadas.length ? <Chip tone="accent">{editadas.length === 1 ? '1 editada' : `${editadas.length} editadas`}</Chip> : <Chip tone="muted">todas na padrão</Chip>}>
+      <Explicacao>
+        <p>
+          Como cada aviso chega no WhatsApp da equipe. As variáveis entre chaves, como <code className="font-mono text-[12.5px]">{'{painel}'}</code> e{' '}
+          <code className="font-mono text-[12.5px]">{'{nota}'}</code>, trocam pelo que vale no chamado na hora do aviso. A linha em que elas vierem vazias não vai: sem
+          cliente, a linha do Cliente não aparece. <code className="font-mono text-[12.5px]">*Assim*</code> sai em negrito e{' '}
+          <code className="font-mono text-[12.5px]">_assim_</code>, em itálico.
+        </p>
+        <p>A mensagem padrão segue a do fluxo antigo: Painel, Card, Nota, Quem, Cliente e Link. O sininho continua com a frase curta.</p>
+      </Explicacao>
+
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-[210px_minmax(0,1fr)] items-start">
+        {/* a lista dos avisos; no celular, a caixa de escolha */}
+        <label className="md:hidden min-w-0">
+          <span className="label">Aviso</span>
+          <select className="input" id="avisos-mensagem-escolha" value={e} onChange={(x) => abrir(x.target.value as EventoAviso)}>
+            {EVENTOS_AVISO.map((x) => <option key={x} value={x}>{NOME_CURTO_DO_AVISO[x]}{editadas.includes(x) ? ' (editada)' : ''}</option>)}
+          </select>
+        </label>
+        <div className="hidden md:flex flex-col gap-0.5" id="avisos-mensagens-lista" role="tablist" aria-label="Os avisos" aria-orientation="vertical">
+          {EVENTOS_AVISO.map((x) => (
+            <button key={x} type="button" role="tab" aria-selected={x === e} data-aviso={x} onClick={() => abrir(x)}
+              className={`w-full text-left rounded-lg px-2.5 py-1.5 text-[13.5px] flex items-center gap-2 ${x === e ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink-2 hover:bg-surface-2'}`}>
+              <span className="min-w-0 flex-1 truncate">{NOME_CURTO_DO_AVISO[x]}</span>
+              {editadas.includes(x) && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" title="editada" aria-label="editada" />}
+              {!f.eventos[x].whatsapp && <span className="text-[11px] font-normal text-muted shrink-0" title='Não vai pelo WhatsApp (em "Quais avisos vão por onde")'>só tela</span>}
+            </button>
+          ))}
+        </div>
+
+        <div className="min-w-0 flex flex-col gap-2" role="tabpanel" aria-labelledby="avisos-mensagem-titulo" data-aviso-aberto={e}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <h3 className="font-semibold text-[14px] min-w-0" id="avisos-mensagem-titulo">{NOME_EVENTO_AVISO[e].titulo}</h3>
+            {texto !== padrao ? <Chip tone="accent">editada</Chip> : <Chip tone="muted">a padrão</Chip>}
+          </div>
+          <p className="text-[12.5px] text-muted -mt-1.5">
+            para {NOME_EVENTO_AVISO[e].quem}
+            {!f.eventos[e].whatsapp && <span className="text-signal"> · hoje este aviso não vai pelo WhatsApp (ligue em "Quais avisos vão por onde")</span>}
+          </p>
+          <Marcadores marcadores={variaveisDoAviso(e).map((v) => ({ chave: v.chave, dica: v.dica }))} campo={campo} valor={texto} onChange={mudarTexto} />
+          <textarea ref={campo} className="input text-[13.5px] leading-relaxed" id="avisos-mensagem-texto" rows={9} maxLength={MAX_MODELO_DO_AVISO} spellCheck={false}
+            aria-label={`A mensagem do aviso ${NOME_CURTO_DO_AVISO[e]} no WhatsApp`} value={texto} onChange={(x) => mudarTexto(x.target.value)} />
+          {fora.length > 0 && (
+            <p className="text-[12.5px] text-bad" role="alert" id="avisos-mensagem-erro">
+              {fora.join(', ')} não {fora.length === 1 ? 'é variável' : 'são variáveis'} deste aviso: {fora.length === 1 ? 'sairia' : 'sairiam'} assim, entre chaves. Use os botões acima.
+            </p>
+          )}
+          {!texto.trim() && <p className="text-[12.5px] text-signal">Vazia, vale a mensagem padrão.</p>}
+          <div className="flex flex-wrap items-center gap-2">
+            {texto !== padrao && (
+              <button type="button" className="btn-ghost btn-sm" id="avisos-mensagem-padrao" onClick={() => mudarTexto(padrao)}>
+                <RotateCcw size={14} /> Voltar à padrão
+              </button>
+            )}
+            <button type="button" className="btn-secondary btn-sm" id="avisos-mensagem-exemplo" disabled={mandando || !!porQueNaoManda} onClick={() => void mandarExemplo()}
+              title={porQueNaoManda ?? `Manda esta mensagem, com o exemplo, para o seu WhatsApp (${telefoneLegivel(meuNumero)})`}>
+              {mandando ? <><Spinner /> mandando…</> : <><Send size={14} /> Mandar o exemplo para mim</>}
+            </button>
+            {porQueNaoManda && <span className="text-[12px] text-muted min-w-0">{porQueNaoManda}</span>}
+          </div>
+          <Resultado r={res} className="mt-0" />
+          <div className="mt-1 min-w-0">
+            <div className="eyebrow mb-1.5">Como chega, com um exemplo</div>
+            <BalaoDeMensagem texto={previa} id="avisos-mensagem-previa" />
+          </div>
+        </div>
+      </div>
+    </CartaoAjuste>
   );
 }
 

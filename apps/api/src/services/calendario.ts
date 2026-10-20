@@ -1,6 +1,8 @@
 /**
  * O CALENDÁRIO (Patch 2.0.1, decisão 0049): as visitas, as viradas de sistema e para a nuvem, as folgas,
- * os home offices e as ações no cliente de cada equipe.
+ * os home offices e as ações no cliente de cada equipe. Desde o 2.0.2, os LEMBRETES: cada evento diz quanto
+ * tempo antes avisar e quem; o relógio dos chamados (`relogio.ts`) chama `mandarLembretes` a cada minuto, e o
+ * aviso vai pelo sininho e pelo WhatsApp de cada pessoa (`avisarDoCalendario`), como os avisos dos chamados.
  *
  * Quem vê um evento é quem vê um dos painéis dele — a mesma regra dos chamados (`podeVerPainel`: o "Quem
  * vê" do painel; quem cuida dos chamados vê todos). O evento que a pessoa não vê não existe para ela (404,
@@ -8,15 +10,20 @@
  * pessoas do evento são as que veem um dos painéis dele. As regras de tela (os tipos, a janela, os dias)
  * estão em `@gestor/shared/calendario.ts` — as mesmas da prévia.
  */
-import { and, asc, eq, gte, inArray, isNotNull, isNull, lte } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
+import { and, asc, eq, gte, inArray, isNotNull, isNull, lte, sql } from 'drizzle-orm';
 import { calendarEvents, clients, newId, roles, tickets, users, type Db } from '@gestor/db';
 import {
-  eventoVisivel, hojeNoCalendario, NOME_SITUACAO_DO_EVENTO, paineisDepoisDaEdicao, textoDoPeriodo, tipoDoEvento, tiposDoCalendario,
-  TiposDoCalendarioSchema,
-  type CalendarioOpcoes, type EventoDoCalendario, type EventoGravar, type Painel, type SituacaoDoEvento, type TipoDeEvento, type TiposDoCalendario,
+  chaveDoLembrete, comecoDoEvento, eventoVisivel, hojeNoCalendario, lembretesAoGravar, lembretesDevidos, NOME_SITUACAO_DO_EVENTO, paineisDepoisDaEdicao,
+  quemRecebeOLembrete, somarDias, textoDoLembrete, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tiposDoCalendario, TiposDoCalendarioSchema, valoresDoLembrete,
+  MAX_ANTES_DO_LEMBRETE,
+  type CalendarioOpcoes, type EventoDoCalendario, type EventoGravar, type Painel, type QuemRecebeOLembrete, type SituacaoDoEvento, type TipoDeEvento,
+  type TiposDoCalendario,
 } from '@gestor/shared';
 import { BadRequest, Forbidden, NotFound } from '../plugins/errors.js';
+import { avisarDoCalendario } from './atendimento/avisos.js';
 import { atorDaPessoa, carregarPaineis, podeCuidar, podeTrabalhar, podeVerPainel, type Ator } from './atendimento/contexto.js';
+import { enderecoPublico } from './envio.js';
 import * as integ from './integracoes.js';
 
 type Linha = typeof calendarEvents.$inferSelect;
@@ -26,7 +33,7 @@ type Linha = typeof calendarEvents.$inferSelect;
 // =====================================================================
 
 export async function lerTipos(db: Db): Promise<TipoDeEvento[]> {
-  const { valor } = await integ.ler<Partial<TiposDoCalendario>>(db, 'calendario');
+  const { valor } = await integ.ler<{ tipos?: unknown }>(db, 'calendario');
   return tiposDoCalendario(valor);
 }
 
@@ -50,8 +57,10 @@ export async function gravarTipos(db: Db, ator: Ator, entrada: TiposDoCalendario
   for (const t of tipos) {
     const a = antes.find((x) => x.id === t.id);
     if (!a) mudou.push(`incluiu ${t.nome}`);
-    else if (a.nome !== t.nome || a.cor !== t.cor || a.daEquipe !== t.daEquipe || a.ativo !== t.ativo) {
-      mudou.push(a.ativo !== t.ativo ? `${t.ativo ? 'reativou' : 'desativou'} ${t.nome}` : `mudou ${a.nome === t.nome ? t.nome : `${a.nome} (agora ${t.nome})`}`);
+    else if (a.nome !== t.nome || a.cor !== t.cor || a.daEquipe !== t.daEquipe || a.ativo !== t.ativo || a.lembretes.join() !== t.lembretes.join()) {
+      mudou.push(a.ativo !== t.ativo ? `${t.ativo ? 'reativou' : 'desativou'} ${t.nome}`
+        : a.nome === t.nome && a.cor === t.cor && a.daEquipe === t.daEquipe ? `mudou os lembretes de ${t.nome} (${textoDosLembretes(t.lembretes)})`
+          : `mudou ${a.nome === t.nome ? t.nome : `${a.nome} (agora ${t.nome})`}`);
     }
   }
   for (const t of sairam) mudou.push(`tirou ${t.nome}`);
@@ -116,6 +125,7 @@ async function paraTela(db: Db, linhas: Linha[]): Promise<EventoDoCalendario[]> 
     chamadoId: l.ticketId, chamadoCodigo: l.ticketId ? chamado.get(l.ticketId) ?? null : null,
     inicio: l.startsOn, fim: l.endsOn, diaInteiro: l.allDay, horaInicio: l.startTime, horaFim: l.endTime,
     local: l.location ?? '', observacao: l.notes ?? '', situacao: l.status as SituacaoDoEvento,
+    lembretes: [...l.reminders].sort((a, b) => b - a), lembrarQuem: l.remindWho as QuemRecebeOLembrete,
     criadoPor: l.createdById ? pessoa.get(l.createdById) ?? null : null, criadoEm: l.createdAt.toISOString(),
     alteradoPor: l.updatedById ? pessoa.get(l.updatedById) ?? null : null, alteradoEm: l.updatedAt.toISOString(),
   }));
@@ -210,18 +220,27 @@ async function conferir(db: Db, ator: Ator, e: EventoGravar & { paineis: string[
 const valores = (e: EventoGravar & { paineis: string[] }) => ({
   title: e.titulo, typeId: e.tipoId, panelIds: e.paineis, participantIds: e.pessoas, clientId: e.clienteId, ticketId: e.chamadoId,
   startsOn: e.inicio, endsOn: e.fim, allDay: e.diaInteiro, startTime: e.horaInicio, endTime: e.horaFim,
-  location: e.local || null, notes: e.observacao || null, status: e.situacao,
+  location: e.local || null, notes: e.observacao || null, status: e.situacao, reminders: e.lembretes, remindWho: e.lembrarQuem,
 });
+
+/** O evento como as contas dos lembretes leem (a linha do banco). */
+const paraLembrete = (l: Pick<Linha, 'startsOn' | 'allDay' | 'startTime' | 'status' | 'reminders'>) => ({
+  inicio: l.startsOn, diaInteiro: l.allDay, horaInicio: l.startTime, situacao: l.status as SituacaoDoEvento, lembretes: l.reminders,
+});
+/** Os lembretes "já saíram" depois de gravar (os que já passaram ficam pulados; mudar o dia vale de novo). */
+const lembretesGravados = (l: Pick<Linha, 'startsOn' | 'allDay' | 'startTime' | 'status' | 'reminders'>, antes: unknown, agora: Date) =>
+  lembretesAoGravar(paraLembrete(l), (antes ?? {}) as Record<string, string>, agora);
 
 export type Gravado = { evento: EventoDoCalendario; resumo: string; antes?: unknown; depois: unknown };
 
-export async function criar(db: Db, ator: Ator, e: EventoGravar): Promise<Gravado> {
+export async function criar(db: Db, ator: Ator, e: EventoGravar, agora = new Date()): Promise<Gravado> {
   if (!podeTrabalhar(ator)) throw new Forbidden('Esta ação exige a permissão "tickets.work"');
   const { todos, visiveis } = await paineisDe(db, ator);
   const c = await conferir(db, ator, e, null, todos, visiveis);
   const id = newId();
   const quem = ator.tipo === 'pessoa' ? ator.id : null;
-  await db.insert(calendarEvents).values({ id, ...valores(e), createdById: quem, updatedById: quem });
+  const v = valores(e);
+  await db.insert(calendarEvents).values({ id, ...v, remindersSent: lembretesGravados(v, {}, agora), createdById: quem, updatedById: quem });
   const [linha] = await db.select().from(calendarEvents).where(eq(calendarEvents.id, id));
   const [evento] = await paraTela(db, [linha!]);
   const onde = [textoDoPeriodo(e), c.paineis.map((p) => p.nome).join(', '), c.clienteNome].filter(Boolean).join(', ');
@@ -241,10 +260,11 @@ function oQueMudou(a: Linha, d: ReturnType<typeof valores>): string[] {
   if ((a.location ?? null) !== d.location) out.push('Local');
   if ((a.notes ?? null) !== d.notes) out.push('Observação');
   if (a.status !== d.status) out.push(`Situação (${NOME_SITUACAO_DO_EVENTO[d.status as SituacaoDoEvento]})`);
+  if ([...a.reminders].sort().join() !== [...d.reminders].sort().join() || a.remindWho !== d.remindWho) out.push('Lembretes');
   return out;
 }
 
-export async function alterar(db: Db, ator: Ator, id: string, e: EventoGravar): Promise<Gravado> {
+export async function alterar(db: Db, ator: Ator, id: string, e: EventoGravar, agora = new Date()): Promise<Gravado> {
   if (!podeTrabalhar(ator)) throw new Forbidden('Esta ação exige a permissão "tickets.work"');
   const { todos, visiveis } = await paineisDe(db, ator);
   const antes = await linhaVisivel(db, ator, id, visiveis);
@@ -252,18 +272,21 @@ export async function alterar(db: Db, ator: Ator, id: string, e: EventoGravar): 
   await conferir(db, ator, comPaineis, antes, todos, visiveis);
   const d = valores(comPaineis);
   const mudou = oQueMudou(antes, d);
-  await db.update(calendarEvents).set({ ...d, updatedById: ator.tipo === 'pessoa' ? ator.id : null, updatedAt: new Date() }).where(eq(calendarEvents.id, id));
+  await db.update(calendarEvents).set({ ...d, remindersSent: lembretesGravados(d, antes.remindersSent, agora), updatedById: ator.tipo === 'pessoa' ? ator.id : null, updatedAt: agora })
+    .where(eq(calendarEvents.id, id));
   const [linha] = await db.select().from(calendarEvents).where(eq(calendarEvents.id, id));
   const [evento] = await paraTela(db, [linha!]);
   return { evento: evento!, antes, depois: d, resumo: `Mudou no calendário "${d.title}": ${mudou.join(', ') || 'nada'}` };
 }
 
 /** O Feito e o Cancelado (e o voltar a Agendado), sem abrir a janela. */
-export async function mudarSituacao(db: Db, ator: Ator, id: string, situacao: SituacaoDoEvento): Promise<Gravado> {
+export async function mudarSituacao(db: Db, ator: Ator, id: string, situacao: SituacaoDoEvento, agora = new Date()): Promise<Gravado> {
   if (!podeTrabalhar(ator)) throw new Forbidden('Esta ação exige a permissão "tickets.work"');
   const { visiveis } = await paineisDe(db, ator);
   const antes = await linhaVisivel(db, ator, id, visiveis);
-  await db.update(calendarEvents).set({ status: situacao, updatedById: ator.tipo === 'pessoa' ? ator.id : null, updatedAt: new Date() }).where(eq(calendarEvents.id, id));
+  // o que voltou a agendado não lembra o que passou enquanto estava cancelado
+  const remindersSent = lembretesGravados({ ...antes, status: situacao }, antes.remindersSent, agora);
+  await db.update(calendarEvents).set({ status: situacao, remindersSent, updatedById: ator.tipo === 'pessoa' ? ator.id : null, updatedAt: agora }).where(eq(calendarEvents.id, id));
   const [linha] = await db.select().from(calendarEvents).where(eq(calendarEvents.id, id));
   const [evento] = await paraTela(db, [linha!]);
   const verbo = situacao === 'feito' ? 'Marcou como feito' : situacao === 'cancelado' ? 'Cancelou' : 'Voltou a agendado';
@@ -280,10 +303,86 @@ export async function mandarParaLixeira(db: Db, ator: Ator, id: string): Promise
   return { id, resumo: `Mandou para a lixeira do calendário: "${l.title}" (${tipoDoEvento(tipos, l.typeId).nome}, ${textoDoPeriodo({ inicio: l.startsOn, fim: l.endsOn })})` };
 }
 
-/** Tirar da lixeira (Administração › Lixeira). */
-export async function restaurar(db: Db, id: string): Promise<Linha> {
+/** Tirar da lixeira (Administração › Lixeira). O lembrete que passou enquanto estava lá não sai. */
+export async function restaurar(db: Db, id: string, agora = new Date()): Promise<Linha> {
   const [l] = await db.select().from(calendarEvents).where(and(eq(calendarEvents.id, id), isNotNull(calendarEvents.deletedAt))).limit(1);
   if (!l) throw new NotFound('Evento não encontrado na lixeira');
-  await db.update(calendarEvents).set({ deletedAt: null, updatedAt: new Date() }).where(eq(calendarEvents.id, id));
+  await db.update(calendarEvents).set({ deletedAt: null, remindersSent: lembretesGravados(l, l.remindersSent, agora), updatedAt: agora }).where(eq(calendarEvents.id, id));
   return l;
+}
+
+// =====================================================================
+//  OS LEMBRETES (2.0.2): o relógio dos chamados chama a cada minuto
+// =====================================================================
+
+/** O endereço do evento no Gestor (vai no WhatsApp): o calendário abre no dia, com o evento na janela. */
+export const linkDoEvento = (app: FastifyInstance, e: { id: string; inicio: string }) =>
+  `${enderecoPublico(app)}/calendario?mes=${e.inicio.slice(0, 7)}&dia=${e.inicio}&evento=${encodeURIComponent(e.id)}`;
+
+/** Os nomes do lembrete no WhatsApp: o tipo, o cliente, o chamado, as pessoas e os painéis do evento. */
+async function nomesDoLembrete(db: Db, l: Linha, volta: { nomeDoPainel: Map<string, string>; tipos: TipoDeEvento[] }, link: string) {
+  const [cliente, chamado, pessoas] = await Promise.all([
+    l.clientId ? db.select({ nome: clients.tradeName }).from(clients).where(eq(clients.id, l.clientId)).limit(1) : [],
+    l.ticketId ? db.select({ codigo: tickets.code }).from(tickets).where(eq(tickets.id, l.ticketId)).limit(1) : [],
+    l.participantIds.length ? db.select({ id: users.id, nome: users.name }).from(users).where(inArray(users.id, l.participantIds)) : [],
+  ]);
+  const nomeDaPessoa = new Map(pessoas.map((p) => [p.id, p.nome]));
+  return {
+    tipo: tipoDoEvento(volta.tipos, l.typeId).nome, cliente: cliente[0]?.nome ?? null, chamado: chamado[0]?.codigo ?? null,
+    pessoas: l.participantIds.map((id) => nomeDaPessoa.get(id)).filter((x): x is string => !!x),
+    paineis: l.panelIds.map((id) => volta.nomeDoPainel.get(id)).filter((x): x is string => !!x),
+    link,
+  };
+}
+
+/**
+ * Os lembretes que chegaram na hora: os eventos agendados que começam de ontem a daqui a 4 semanas, com
+ * lembrete. Grava primeiro que saiu (só se ninguém gravou no meio: duas voltas não mandam o mesmo lembrete)
+ * e avisa depois: se o aviso falhar, ele não sai de novo a cada minuto. Devolve quantos lembretes saíram.
+ */
+export async function mandarLembretes(app: FastifyInstance, agora: Date = new Date()): Promise<{ lembretes: number; erros: number }> {
+  const hoje = hojeNoCalendario(agora);
+  const candidatos = await app.db.select().from(calendarEvents).where(and(
+    isNull(calendarEvents.deletedAt), eq(calendarEvents.status, 'agendado'),
+    gte(calendarEvents.startsOn, somarDias(hoje, -1)), lte(calendarEvents.startsOn, somarDias(hoje, Math.ceil(MAX_ANTES_DO_LEMBRETE / 1440) + 1)),
+    sql`cardinality(${calendarEvents.reminders}) > 0`,
+  ));
+  let lembretes = 0;
+  let erros = 0;
+  let daVolta: { quemVePorPainel: Map<string, string[]>; nomeDoPainel: Map<string, string>; tipos: TipoDeEvento[] } | null = null;
+  for (const l of candidatos) {
+    try {
+      const enviados = (l.remindersSent ?? {}) as Record<string, string>;
+      const devidos = lembretesDevidos(paraLembrete(l), enviados, agora);
+      if (!devidos.length) continue;
+      const comeco = comecoDoEvento(paraLembrete(l));
+      const novos = Object.fromEntries(devidos.map((m) => [chaveDoLembrete(m, comeco), agora.toISOString()]));
+      // a vez é reservada antes de avisar: só se nenhuma das chaves já estava lá (outra volta no meio)
+      const [reservado] = await app.db.update(calendarEvents)
+        .set({ remindersSent: sql`${calendarEvents.remindersSent} || ${JSON.stringify(novos)}::jsonb` })
+        .where(and(eq(calendarEvents.id, l.id), isNull(calendarEvents.deletedAt), eq(calendarEvents.status, 'agendado'),
+          // (a lista vai como array[...]: o drizzle abre a lista do JavaScript em vários parâmetros)
+          sql`not (${calendarEvents.remindersSent} ?| array[${sql.join(Object.keys(novos).map((k) => sql`${k}`), sql`, `)}]::text[])`))
+        .returning({ id: calendarEvents.id });
+      if (!reservado) continue;
+      // quem vê cada painel, o nome dele e os tipos: lidos uma vez por volta, só quando algum lembrete sai
+      if (!daVolta) {
+        const [{ paineis }, pessoas, tipos] = await Promise.all([carregarPaineis(app.db), pessoasAtivas(app.db), lerTipos(app.db)]);
+        daVolta = { quemVePorPainel: new Map(paineis.map((p) => [p.id, quemVe(p, pessoas)])), nomeDoPainel: new Map(paineis.map((p) => [p.id, p.nome])), tipos };
+      }
+      const para = quemRecebeOLembrete(
+        { paineis: l.panelIds, pessoas: l.participantIds, lembrarQuem: l.remindWho as QuemRecebeOLembrete, criadoPorId: l.createdById }, daVolta.quemVePorPainel,
+      );
+      const evento = { id: l.id, titulo: l.title, inicio: l.startsOn, diaInteiro: l.allDay, horaInicio: l.startTime, local: l.location, observacao: l.notes };
+      const texto = textoDoLembrete(evento, agora);
+      // o WhatsApp sai pela mensagem do lembrete (Painéis › Ajustes › Avisos e WhatsApp), com as variáveis do evento
+      const valores = valoresDoLembrete(evento, await nomesDoLembrete(app.db, l, daVolta, linkDoEvento(app, evento)), agora);
+      await avisarDoCalendario(app, { para, evento: { id: l.id, titulo: l.title }, texto, valores });
+      lembretes += devidos.length;
+    } catch (err) {
+      erros++;
+      app.log.error({ err, evento: l.id }, 'calendário: o lembrete falhou');
+    }
+  }
+  return { lembretes, erros };
 }

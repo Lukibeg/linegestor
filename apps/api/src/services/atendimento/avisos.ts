@@ -8,8 +8,11 @@
  */
 import type { FastifyInstance } from 'fastify';
 import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm';
-import { newId, ticketNotifications, users } from '@gestor/db';
-import { EVENTOS_AVISO_PADRAO, type EventoAviso, type TipoAviso } from '@gestor/shared';
+import { clients, newId, ticketNotifications, ticketPanels, ticketStages, ticketSubjects, tickets, users } from '@gestor/db';
+import {
+  EVENTOS_AVISO_PADRAO, NOME_PRIORIDADE, caminhoDoAssunto, modeloDoAviso, preencherAviso,
+  type EventoAviso, type Prioridade, type TipoAviso, type ValoresDoAviso,
+} from '@gestor/shared';
 import { enderecoPublico } from '../envio.js';
 import { registrarEvento } from './contexto.js';
 import { lerAvisos, mandarWhatsApp, whatsAppPronto } from './whatsapp.js';
@@ -34,12 +37,60 @@ export const trecho = (t: string, max: number) => (t.length > max ? `${t.slice(0
 export const linkDoChamado = (app: FastifyInstance, codigo: string) => `${enderecoPublico(app)}/atendimento/${encodeURIComponent(codigo)}`;
 
 /**
+ * O que a ação conta para a mensagem do WhatsApp (2.0.2: a mensagem de cada aviso, em Avisos e WhatsApp):
+ * `quem` fez, a `nota` (a anotação inteira), a `novidade` (no do observador: o que mudou, sem quem fez;
+ * na anotação, vazia) e o `aviso` (a frase do sininho sem o trecho da nota, que vai na {nota}).
+ */
+export type DoAviso = { quem?: string | null; nota?: string | null; novidade?: string | null; aviso?: string | null };
+
+/** A nota no WhatsApp: inteira até 1.500 letras (o resto fica no chamado). */
+const MAX_NOTA_NO_WHATSAPP = 1500;
+
+/** As variáveis do chamado na mensagem do WhatsApp, lidas na hora de mandar (o painel, a etapa, o cliente…). */
+async function valoresDoChamado(app: FastifyInstance, id: string): Promise<ValoresDoAviso> {
+  const [t] = await app.db.select({
+    codigo: tickets.code, titulo: tickets.title, prioridade: tickets.priority, relato: tickets.customerReport, contato: tickets.contactName,
+    painelId: tickets.panelId, assuntoId: tickets.subjectId,
+    painel: ticketPanels.name, etapa: ticketStages.name, cliente: clients.tradeName, responsavel: users.name,
+  }).from(tickets)
+    .leftJoin(ticketPanels, eq(ticketPanels.id, tickets.panelId))
+    .leftJoin(ticketStages, eq(ticketStages.id, tickets.stageId))
+    .leftJoin(clients, eq(clients.id, tickets.clientId))
+    .leftJoin(users, eq(users.id, tickets.assigneeId))
+    .where(eq(tickets.id, id)).limit(1);
+  if (!t) return {};
+  const assuntos = t.assuntoId
+    ? await app.db.select({ id: ticketSubjects.id, paiId: ticketSubjects.parentId, nome: ticketSubjects.name }).from(ticketSubjects).where(eq(ticketSubjects.panelId, t.painelId))
+    : [];
+  return {
+    painel: t.painel, etapa: t.etapa, codigo: t.codigo, titulo: t.titulo,
+    prioridade: t.prioridade ? (NOME_PRIORIDADE[t.prioridade as Prioridade] ?? t.prioridade) : '',
+    cliente: t.cliente, contato: t.contato, responsavel: t.responsavel,
+    assunto: t.assuntoId ? caminhoDoAssunto(t.assuntoId, assuntos) : '',
+    relato: t.relato ? trecho(t.relato.replace(/\s+/g, ' ').trim(), 300) : '',
+    link: linkDoChamado(app, t.codigo),
+  };
+}
+
+/** A mensagem do aviso no WhatsApp: a dos Ajustes (ou a padrão), com o chamado e o que a ação contou. */
+export async function mensagemDoAvisoDoChamado(
+  app: FastifyInstance, modelos: Partial<Record<EventoAviso, string>> | undefined, evento: EventoAviso, chamadoId: string, texto: string, d: DoAviso,
+): Promise<string> {
+  const nota = d.nota?.replace(/\r\n?/g, '\n').trim() ?? '';
+  return preencherAviso(evento, modeloDoAviso(modelos, evento), {
+    ...(await valoresDoChamado(app, chamadoId)),
+    aviso: d.aviso ?? texto, quem: d.quem ?? '', nota: trecho(nota, MAX_NOTA_NO_WHATSAPP), novidade: d.novidade ?? '',
+  });
+}
+
+/**
  * Avisa a equipe. `evento` decide os canais (os Ajustes); `tipo` é o que aparece no sininho.
- * `menos` = quem fez a ação (não recebe).
+ * `menos` = quem fez a ação (não recebe). `texto` é a frase do sininho; o WhatsApp sai pela mensagem do
+ * aviso (os Ajustes), com o que a ação contou (`quem`, `nota`, `novidade`, `aviso`).
  */
 export async function avisarEquipe(
   app: FastifyInstance,
-  a: { evento: EventoAviso; tipo?: TipoAviso; para: Array<string | null | undefined>; chamado: { id: string; codigo: string; titulo: string }; texto: string; menos?: string | null },
+  a: { evento: EventoAviso; tipo?: TipoAviso; para: Array<string | null | undefined>; chamado: { id: string; codigo: string; titulo: string }; texto: string; menos?: string | null } & DoAviso,
 ) {
   const para = [...new Set(a.para.filter((x): x is string => !!x && x !== a.menos))];
   if (!para.length) return;
@@ -60,13 +111,49 @@ export async function avisarEquipe(
   // Sem a chave, nem tenta: enquanto a configuração não termina, cada aviso deixaria um "não foi: falta
   // a chave" no histórico do chamado. A tela de Avisos já mostra o que falta.
   if (!(await whatsAppPronto(app.db)).equipe) return;
-  const texto = `${a.texto}\n${a.chamado.codigo} · ${a.chamado.titulo}\n${linkDoChamado(app, a.chamado.codigo)}`;
   emSegundoPlano(app, async () => {
+    // lida já em segundo plano: a tela não espera
+    const texto = await mensagemDoAvisoDoChamado(app, v.modelos, a.evento, a.chamado.id, a.texto, a);
     for (const { u, numero } of numeros) {
       const r = await mandarWhatsApp(app.db, app.vault, { de: 'equipe', para: numero, texto });
       await registrarEvento(app.db, a.chamado.id, 'aviso_equipe', null, { para: u.name, ok: r.ok, ...(r.ok ? {} : { erro: r.mensagem }) });
     }
   });
+}
+
+/**
+ * O lembrete de um evento do calendário (2.0.2): o sininho e o WhatsApp de cada pessoa, conforme os Ajustes
+ * (o aviso "Lembrete de um evento do calendário", em Painéis › Ajustes › Avisos e WhatsApp). Não é de um
+ * chamado: o aviso guarda o evento, e o WhatsApp que falhar vai para o registro do servidor (não há
+ * histórico de chamado onde contar). O WhatsApp sai pela mensagem do aviso (os Ajustes), com os `valores`
+ * do evento (`valoresDoLembrete`). Devolve quantas pessoas receberam.
+ */
+export async function avisarDoCalendario(
+  app: FastifyInstance,
+  a: { para: string[]; evento: { id: string; titulo: string }; texto: string; valores: ValoresDoAviso },
+): Promise<number> {
+  const para = [...new Set(a.para)];
+  if (!para.length) return 0;
+  const { valor: v } = await lerAvisos(app.db);
+  const canais = v.eventos.lembrete ?? EVENTOS_AVISO_PADRAO.lembrete;
+  const ativos = await app.db.select({ id: users.id, name: users.name, active: users.active, whatsapp: users.whatsapp, recebe: users.whatsappAvisos })
+    .from(users).where(inArray(users.id, para));
+  const quem = ativos.filter((u) => u.active);
+  if (!quem.length) return 0;
+  if (canais.tela) {
+    await app.db.insert(ticketNotifications).values(quem.map((u) => ({ id: newId(), userId: u.id, calendarEventId: a.evento.id, kind: 'lembrete', body: a.texto })));
+  }
+  if (!canais.whatsapp || !v.ativo || !v.numeroEquipe) return quem.length;
+  const numeros = quem.filter((u) => u.recebe && u.whatsapp).map((u) => ({ u, numero: u.whatsapp! }));
+  if (!numeros.length || !(await whatsAppPronto(app.db)).equipe) return quem.length;
+  const texto = preencherAviso('lembrete', modeloDoAviso(v.modelos, 'lembrete'), a.valores);
+  emSegundoPlano(app, async () => {
+    for (const { u, numero } of numeros) {
+      const r = await mandarWhatsApp(app.db, app.vault, { de: 'equipe', para: numero, texto });
+      if (!r.ok) app.log.warn({ evento: a.evento.id, para: u.name, erro: r.mensagem }, 'calendário: o lembrete não foi pelo WhatsApp');
+    }
+  });
+  return quem.length;
 }
 
 /** Os campos que mudaram, no aviso do observador: "Marina mudou no SUP-12: Descrição · Solução". */
@@ -83,6 +170,9 @@ const JUNTA_POR_MINUTOS = 30;
  * `campos`: as mudanças de campo (o relato, a solução, a classificação…) de uma pessoa juntam num
  * aviso só, na tela, enquanto ele não foi lido (por 30 minutos): editar cinco campos seguidos não vira
  * cinco avisos — nem cinco WhatsApps (a mudança de campo só avisa na tela).
+ *
+ * No WhatsApp, a mensagem do observador (os Ajustes) usa o que a ação contou: `novidade` (o que mudou,
+ * sem quem fez: "Moveu para N2"; na anotação, vazia), `quem` e a `nota`.
  */
 export async function avisarObservadores(
   app: FastifyInstance,
@@ -93,13 +183,15 @@ export async function avisarObservadores(
     menos?: string | null;
     jaAvisados?: Array<string | null | undefined>;
     campos?: { quem: string; nomes: string[] };
-  },
+  } & DoAviso,
 ) {
   const fora = new Set([a.menos, ...(a.jaAvisados ?? [])].filter((x): x is string => !!x));
   const para = [...new Set(a.observadores)].filter((x) => !fora.has(x));
   if (!para.length) return;
   if (!a.campos) {
-    if (a.texto) await avisarEquipe(app, { evento: 'observador', para, chamado: a.chamado, texto: a.texto });
+    if (a.texto) {
+      await avisarEquipe(app, { evento: 'observador', para, chamado: a.chamado, texto: a.texto, quem: a.quem, nota: a.nota, novidade: a.novidade, aviso: a.aviso });
+    }
     return;
   }
   const nomes = [...new Set(a.campos.nomes.filter(Boolean))];

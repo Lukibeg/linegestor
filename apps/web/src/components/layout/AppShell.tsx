@@ -7,8 +7,8 @@
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
  * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (os
- * Painéis — os chamados e as negociações; até o 2.0.1 o item se chamava Chamados —, os Projetos e os
- * Relatórios, que abrem nos tickets do LineChat, na aba Hoje), **Comercial** (2.0.1: o atalho para o
+ * Painéis — os chamados e as negociações; até o 2.0.1 o item se chamava Chamados —, o Meu dia, 2.0.2, os
+ * Projetos e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje), **Comercial** (2.0.1: o atalho para o
  * painel de Vendas e o relatório dele, de quem tem a permissão do Comercial) e **Base de
  * conhecimento** (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O
  * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
@@ -19,12 +19,13 @@ import { createPortal } from 'react-dom';
 import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookLock, BookUser, Boxes, Building2, Cable, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, HandCoins, Handshake, Headset, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
-  Menu, Moon, Settings, Sparkles, SquareKanban, Sun, UserRound, X, type LucideIcon,
+  Menu, Moon, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
 import { NovidadesPopup } from '../../pages/novidades/Index.js';
 import { SinoDeAvisos } from '../../pages/atendimento/Sino.js';
+import { fundoDaJanela } from '../../pages/atendimento/comum.js';
 import { AvisosQueChegam } from '../../pages/atendimento/AvisosQueChegam.js';
 import { useAuth } from '../../lib/auth.js';
 import { lembrarPainelDoComercial } from '../../lib/comercial.js';
@@ -52,9 +53,12 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   // levam ao Período e aos 20 relatórios (1.7), e o item fica marcado nas duas telas. (13/10, os pedidos do
   // Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos Projetos, "pode ficar dentro de
   // suporte também")
+  // O Meu dia também tem o item dele (2.0.2, 20/10, o Luan: "o meu dia pode ter um botão aqui tbm"): a aba
+  // do módulo, a um clique do menu.
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
       { to: '/atendimento', label: 'Painéis', icon: SquareKanban, perm: 'support.read' },
+      { to: '/atendimento/meu-dia', label: 'Meu dia', icon: SunMedium, perm: 'support.read' },
       { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
     ],
@@ -82,7 +86,9 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
 ];
 
 /** O item está aberto na tela? (as mesmas regras do NavLink) */
-const ehAtivo = (i: ItemDoMenu, pathname: string) => !!matchPath({ path: i.to, end: !!i.end }, pathname);
+const ehAtivo = (i: Pick<ItemDoMenu, 'to' | 'end'>, pathname: string) => !!matchPath({ path: i.to, end: !!i.end }, pathname);
+/** O Meu dia (o item mora dentro de /atendimento, como os Painéis). */
+const MEU_DIA: Pick<ItemDoMenu, 'to' | 'end'> = { to: '/atendimento/meu-dia' };
 /** Quem decide se o item está marcado (o do Comercial olha o painel aberto, não o endereço). */
 type Ativo = (i: ItemDoMenu) => boolean;
 
@@ -163,7 +169,10 @@ export function AppShell({ children }: { children: ReactNode }) {
     const itens = n.itens.filter(pode);
     return itens.length ? [{ ...n, itens }] : [];
   });
-  const { pathname, search } = useLocation();
+  const location = useLocation();
+  // com a ficha (ou o Abrir chamado) numa janela por cima da tela, quem diz o item marcado é a tela de baixo:
+  // o chamado aberto do Meu dia deixa o Meu dia marcado (2.0.2)
+  const { pathname, search } = fundoDaJanela(location) ?? location;
   // o Comercial (2.0.1): na tela de um painel de Vendas, o menu marca o Comercial (e não Painéis); os
   // painéis vêm das opções do módulo (a mesma consulta das telas dele), só para quem tem a permissão
   const comercial = can('sales.read');
@@ -175,7 +184,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const ativo = useCallback<Ativo>((i) => {
     if (i.to === '/comercial') return doComercial?.parte === 'negociacoes';
     if (i.to === '/comercial/relatorio') return doComercial?.parte === 'relatorio';
-    if (i.to === '/atendimento') return !doComercial && ehAtivo(i, pathname);
+    // o Meu dia mora dentro de /atendimento: lá, o item marcado é o dele, e não Painéis
+    if (i.to === '/atendimento') return !doComercial && ehAtivo(i, pathname) && !ehAtivo(MEU_DIA, pathname);
     return ehAtivo(i, pathname);
   }, [doComercial?.parte, pathname]);
   const { abertos, alternar } = useGruposAbertos(items.filter(ehGrupo), ativo);

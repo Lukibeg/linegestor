@@ -1,14 +1,16 @@
 /**
  * As peças do calendário (Patch 2.0.1, decisão 0049) que as outras telas também usam: as consultas, as
  * cores dos tipos, a linha de um evento e o "Hoje, fora do escritório". O Meu dia (o "Hoje na agenda") e
- * a ficha do chamado (o "Na agenda", com o Agendar) montam com elas.
+ * a ficha do chamado (o "Na agenda", com o Agendar) montam com elas. Desde o 2.0.2, o editor dos
+ * lembretes (a janela do evento e os tipos).
  */
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, Check, TreePalm } from 'lucide-react';
+import { Ban, Bell, Check, Plus, TreePalm, X } from 'lucide-react';
 import {
-  NOME_SITUACAO_DO_EVENTO, quemEstaFora, textoDoHorario, textoDoPeriodo, tipoDoEvento,
-  type CalendarioOpcoes, type CorEtiqueta, type CorPainel, type EventoDoCalendario, type SituacaoDoEvento, type TipoDeEvento,
+  MAX_ANTES_DO_LEMBRETE, MAX_LEMBRETES, MINUTOS_DA_UNIDADE, NOME_SITUACAO_DO_EVENTO, quemEstaFora, textoDoAntes, textoDoHorario, textoDoPeriodo, tipoDoEvento,
+  UNIDADES_DO_LEMBRETE,
+  type CalendarioOpcoes, type CorEtiqueta, type CorPainel, type EventoDoCalendario, type SituacaoDoEvento, type TipoDeEvento, type UnidadeDoLembrete,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
@@ -17,6 +19,10 @@ import { AMOSTRA_DA_COR } from '../atendimento/comum.js';
 import { PontoDoPainel } from '../atendimento/quadro/filtros.js';
 
 export const CHAVE_DO_CALENDARIO = ['calendario'] as const;
+
+/** O endereço do evento na tela (2.0.2: o lembrete do sininho abre o calendário no dia, com o evento na janela). */
+export const enderecoDoEvento = (e: { id: string; inicio: string }) =>
+  `/calendario?mes=${e.inicio.slice(0, 7)}&dia=${e.inicio}&evento=${encodeURIComponent(e.id)}`;
 
 /** Os tipos, os painéis que a pessoa vê (com quem vê cada um), as pessoas e o que ela pode fazer. */
 export function useOpcoesDoCalendario(ligado = true) {
@@ -122,6 +128,54 @@ export function LinhaDoEvento({ e, opcoes, nomes, onAbrir, comPeriodo = false, c
         </span>
       )}
     </button>
+  );
+}
+
+// ---------- os lembretes (2.0.2) ----------
+
+/**
+ * Os lembretes de um evento (ou os que o tipo traz): cada um é "quanto tempo antes" de o evento começar —
+ * o número e a unidade —; o × tira, o Incluir põe outro (até 5, até 4 semanas antes). O pedido do Luan:
+ * "lembretes e avisos configuráveis, para eu alertar quando for acontecer algo e em quanto tempo antes".
+ */
+export function EditorDeLembretes({ valor, onChange, id, rotulo }: { valor: number[]; onChange: (v: number[]) => void; id: string; rotulo: string }) {
+  const [quanto, setQuanto] = useState('1');
+  const [unidade, setUnidade] = useState<UnidadeDoLembrete>('horas');
+  const [erro, setErro] = useState('');
+  const incluir = () => {
+    const n = Number(quanto.trim());
+    if (quanto.trim() === '' || !Number.isInteger(n) || n < 0) { setErro('Escreva quanto tempo antes, num número inteiro (0 é na hora).'); return; }
+    const minutos = n * MINUTOS_DA_UNIDADE[unidade];
+    if (minutos > MAX_ANTES_DO_LEMBRETE) { setErro('O lembrete vai até 4 semanas antes.'); return; }
+    if (valor.includes(minutos)) { setErro(`O lembrete de ${textoDoAntes(minutos).toLowerCase()} já está na lista.`); return; }
+    if (valor.length >= MAX_LEMBRETES) { setErro(`Até ${MAX_LEMBRETES} lembretes.`); return; }
+    onChange([...valor, minutos].sort((a, b) => b - a));
+    setErro('');
+  };
+  return (
+    <div className="flex flex-col gap-2" id={id}>
+      <ul className="flex flex-wrap items-center gap-1.5" aria-label={rotulo}>
+        {valor.length ? valor.map((m) => (
+          <li key={m} className="chip border border-line bg-surface text-ink-2 py-0.5 pl-2 pr-0.5 text-[12.5px]" data-lembrete={m}>
+            <Bell size={12} className="text-muted" aria-hidden /> {textoDoAntes(m)}
+            <button type="button" className="btn-ghost p-1 rounded text-muted hover:text-bad" onClick={() => { onChange(valor.filter((x) => x !== m)); setErro(''); }}
+              aria-label={`Tirar o lembrete ${textoDoAntes(m).toLowerCase()}`} title="Tirar o lembrete"><X size={12} /></button>
+          </li>
+        )) : <li className="text-[12.5px] text-muted">Sem lembrete.</li>}
+      </ul>
+      {valor.length < MAX_LEMBRETES && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <input type="number" min={0} max={999} inputMode="numeric" className="input py-1 w-[70px] tnum" value={quanto} aria-label="Quanto tempo antes"
+            onChange={(e) => { setQuanto(e.target.value); setErro(''); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); incluir(); } }} data-lembrete-quanto />
+          <select className="input py-1 w-auto" value={unidade} onChange={(e) => { setUnidade(e.target.value as UnidadeDoLembrete); setErro(''); }} aria-label="Em minutos, horas, dias ou semanas" data-lembrete-unidade>
+            {UNIDADES_DO_LEMBRETE.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+          <span className="text-[12.5px] text-muted">antes</span>
+          <button type="button" className="btn-secondary btn-sm" onClick={incluir} data-lembrete-incluir><Plus size={13} /> Incluir</button>
+          {erro && <span className="text-bad text-[12px] basis-full" role="alert">{erro}</span>}
+        </div>
+      )}
+    </div>
   );
 }
 

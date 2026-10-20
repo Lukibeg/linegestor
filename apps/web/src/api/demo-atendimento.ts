@@ -30,6 +30,7 @@ import {
   type MapaDoRobo, type UltimoPedidoDoRobo, type PreviaDoRobo, type RoboTela,
   SitesIframeSchema, TempoSchema, TrocarPainelSchema, WebhookGravarSchema, EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, NOME_COR_ETIQUETA, chaveDaEtiqueta, renomearEtiqueta,
   faltaNoModeloAprovado, mensagemAoCliente, parametrosDoModelo, telefoneLegivel,
+  EVENTOS_AVISO, MAX_MODELO_DO_AVISO, NOME_EVENTO_AVISO, modeloDoAviso, modelosParaGuardar, variaveisDesconhecidas,
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
@@ -165,7 +166,11 @@ type AgendadoRow = {
 };
 /** Uma etiqueta e a cor dela (o catálogo, como o `ticket_tags` do servidor). */
 type EtiquetaRow = { id: string; nome: string; chave: string; cor: CorEtiqueta; criadoPorId: string | null; criadoEm: string; atualizadoEm: string };
-type AvisoRow = { id: string; userId: string; chamadoId: string | null; tipo: TipoAviso; texto: string; em: string; lidoEm: string | null };
+/** Um aviso do sininho: de um chamado ou (2.0.2) o lembrete de um evento do calendário (o evento vai junto: a prévia não tem a junção do banco). */
+type AvisoRow = {
+  id: string; userId: string; chamadoId: string | null; evento?: { id: string; titulo: string; inicio: string } | null;
+  tipo: TipoAviso; texto: string; em: string; lidoEm: string | null;
+};
 type WebhookRow = {
   id: string; nome: string; url: string; eventos: EventoWebhook[]; ativo: boolean; temSegredo: boolean;
   ultimoEm: string | null; ultimoOk: boolean | null; ultimaMsg: string | null; criadoEm: string; deletedAt: string | null;
@@ -282,7 +287,15 @@ export type AcessoDoCalendarioDemo = {
   chamado: (id: string) => { id: string; codigo: string; titulo: string; painelId: string; clienteId: string | null } | null;
   /** os chamados de exemplo (para ligar os eventos de exemplo a eles) */
   chamados: () => Array<{ id: string; codigo: string; titulo: string; painelId: string; clienteId: string | null }>;
+  /**
+   * O lembrete de um evento (2.0.2): o sininho de cada pessoa ativa, conforme os Ajustes dos avisos (o WhatsApp,
+   * na prévia, não aparece em lugar nenhum). `lido`: o lembrete antigo dos exemplos já foi visto. Devolve quantos receberam.
+   */
+  avisarDoCalendario: (a: { para: string[]; evento: { id: string; titulo: string; inicio: string }; texto: string }, em: Date, lido?: boolean) => number;
 };
+/** Os relógios de fora (o do calendário, 2.0.2): andam junto com o dos chamados, a cada leitura da prévia. */
+const relogiosDeFora: Array<(agora: Date) => void> = [];
+export function aoVoltarORelogioDemo(f: (agora: Date) => void) { relogiosDeFora.push(f); }
 let instancia: Instancia | null = null;
 
 /** Os chamados na lixeira, para a Administração › Lixeira (como o `listTrash` do servidor). */
@@ -1785,6 +1798,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (agora.getTime() - A.ultimaVolta < 30_000) return;
     A.ultimaVolta = agora.getTime();
     volta(agora);
+    // os lembretes do calendário (2.0.2), como no servidor: na mesma volta
+    for (const f of relogiosDeFora) {
+      try { f(agora); } catch (err) { A.erros.push(`relógio do calendário: ${err instanceof Error ? err.message : String(err)}`); }
+    }
   }
 
   // =====================================================================
@@ -2016,7 +2033,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       naoLidos: meus.filter((a) => !a.lidoEm).length,
       itens: itens.map((a) => {
         const t = a.chamadoId ? A.chamados.find((x) => x.id === a.chamadoId) : undefined;
-        return { id: a.id, tipo: a.tipo, texto: a.texto, chamado: t ? { id: t.id, codigo: t.codigo, titulo: t.titulo } : null, em: a.em, lido: !!a.lidoEm };
+        return { id: a.id, tipo: a.tipo, texto: a.texto, chamado: t ? { id: t.id, codigo: t.codigo, titulo: t.titulo } : null, evento: a.evento ?? null, em: a.em, lido: !!a.lidoEm };
       }),
     };
   }
@@ -2708,6 +2725,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
       envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template ? { ...v.template, variaveis: v.template.variaveis.map((x) => ({ ...x })) } : null,
       equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda, eventos: JSON.parse(JSON.stringify(v.eventos)) as AvisosChamadosTela['eventos'],
+      modelos: { ...(v.modelos ?? {}) },
       temChavePropria: A.temChavePropria, temChaveLineChat: S.ajustesLineChat.temToken,
       // só para ler: o número (e a pausa) de cada um muda em Administração › Usuários
       pessoas: S.users.filter((u) => u.active).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
@@ -2718,7 +2736,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const avisosParaAuditoria = (v: AvisosGuardados) => ({
     ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
     envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template, equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda,
-    eventos: v.eventos,
+    eventos: v.eventos, modelos: v.modelos,
   });
 
   // ---------- as integrações ----------
@@ -2779,6 +2797,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       A.ultimaVolta = agoraReal().getTime();
     }
     if (A.erros.length) console.warn('[prévia dos chamados] exemplos que não passaram nas regras:', A.erros);
+    // o calendário nasce junto (2.0.2): os lembretes dos exemplos já estão no sininho na primeira leitura
+    const agora = agoraReal();
+    for (const f of relogiosDeFora) {
+      try { f(agora); } catch (err) { A.erros.push(`relógio do calendário: ${err instanceof Error ? err.message : String(err)}`); }
+    }
   }
 
   function montarExemplos() {
@@ -3378,8 +3401,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         ...antes, ativo: d.ativo, url: d.url, usarChaveDoLineChat: d.usarChaveDoLineChat, numeroCliente: d.numeroCliente, numeroEquipe: d.numeroEquipe,
         envioCliente: d.envioCliente, modeloCliente: d.modeloCliente, template: d.template?.id ? d.template : null,
         equipeLineChat: d.equipeLineChat, atribuirAQuemManda: d.atribuirAQuemManda, eventos: d.eventos,
+        // a mensagem de cada aviso (2.0.2): só as que mudaram da padrão
+        modelos: modelosParaGuardar(d.modelos),
       };
-      auditar('settings_atendimento_avisos', 'settings', `${d.ativo ? 'Ligou' : 'Desligou'} o WhatsApp dos chamados${d.chave ? ' e trocou a chave da API' : ''}`, 'atendimento-avisos', { before: avisosParaAuditoria(antes), after: avisosParaAuditoria(A.whats) });
+      const mensagens = EVENTOS_AVISO.filter((e) => modeloDoAviso(antes.modelos, e) !== modeloDoAviso(A.whats.modelos, e))
+        .map((e) => (A.whats.modelos[e] ? NOME_EVENTO_AVISO[e].titulo : `${NOME_EVENTO_AVISO[e].titulo} (voltou à padrão)`));
+      auditar('settings_atendimento_avisos', 'settings',
+        `${d.ativo ? 'Ligou' : 'Desligou'} o WhatsApp dos chamados${d.chave ? ' e trocou a chave da API' : ''}`
+          + (mensagens.length ? `; mudou a mensagem ${mensagens.length === 1 ? 'do aviso' : 'dos avisos'}: ${mensagens.join(' · ')}` : ''),
+        'atendimento-avisos', { before: avisosParaAuditoria(antes), after: avisosParaAuditoria(A.whats) });
       return avisosParaTela();
     },
     async modelosDoLineChat() {
@@ -3397,9 +3427,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async testarAvisos(d) {
       await ctx.wait(400);
       const de = d?.de; const userId = d?.userId; const numero = typeof d?.numero === 'string' ? d.numero.trim() : undefined;
+      const evento = d?.evento; const modelo = d?.modelo;
       if (de !== undefined && de !== 'cliente' && de !== 'equipe') throw new ApiError(400, 'Dados inválidos', [{ field: 'de', message: 'Invalid enum value' }]);
       if (numero !== undefined && numero.length > 30) throw new ApiError(400, 'Dados inválidos', [{ field: 'numero', message: 'String must contain at most 30 character(s)' }]);
+      if (evento !== undefined && !(EVENTOS_AVISO as readonly string[]).includes(evento)) throw new ApiError(400, 'Dados inválidos', [{ field: 'evento', message: 'Invalid enum value' }]);
+      if (modelo !== undefined && modelo.length > MAX_MODELO_DO_AVISO) throw new ApiError(400, 'Dados inválidos', [{ field: 'modelo', message: `String must contain at most ${MAX_MODELO_DO_AVISO} character(s)` }]);
       ctx.requirePerm('tickets.manage'); preparar();
+      // o exemplo de um aviso (2.0.2): a mensagem como está na tela, com os valores de exemplo (como o servidor confere)
+      if (evento) {
+        const fora = variaveisDesconhecidas(evento, modelo?.trim() ? modelo : modeloDoAviso(A.whats.modelos, evento));
+        if (fora.length) throw bad(`${fora.join(', ')} não ${fora.length === 1 ? 'é variável' : 'são variáveis'} do aviso "${NOME_EVENTO_AVISO[evento].titulo}": confira o nome (os botões põem certo).`);
+      }
       let para = numero ?? '';
       if (!para) {
         // pausada também testa: o teste é para conferir o número
@@ -3411,9 +3449,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         }
         para = u.whatsapp;
       }
-      const r = mandarWhatsApp({ de: de ?? 'equipe', para });
+      const r = mandarWhatsApp({ de: evento ? 'equipe' : de ?? 'equipe', para });
       A.whats = { ...A.whats, ultimoTesteEm: iso(agoraReal()), ultimoTesteOk: r.ok, ultimoTesteMsg: r.mensagem };
-      auditar('settings_atendimento_avisos_test', 'settings', `Testou o WhatsApp dos chamados (${de === 'cliente' ? 'número do cliente' : 'número da equipe'} para ${para}): ${r.ok ? 'funcionou' : `falhou — ${r.mensagem}`}`, 'atendimento-avisos');
+      const como = evento ? `o exemplo do aviso "${NOME_EVENTO_AVISO[evento].titulo}", pelo número da equipe` : de === 'cliente' ? 'número do cliente' : 'número da equipe';
+      auditar('settings_atendimento_avisos_test', 'settings', `Testou o WhatsApp dos chamados (${como} para ${para}): ${r.ok ? 'funcionou' : `falhou — ${r.mensagem}`}`, 'atendimento-avisos');
       return { ok: r.ok, mensagem: r.mensagem };
     },
     async agendados() { await ctx.wait(80); ctx.requirePerm('tickets.manage'); preparar(); return agendadosVivos().map(agendadoParaTela); },
@@ -3638,6 +3677,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       chamados: () => {
         semear();
         return A.chamados.filter((t) => !t.deletedAt).map((t) => ({ id: t.id, codigo: t.codigo, titulo: t.titulo, painelId: t.painelId, clienteId: t.clienteId }));
+      },
+      avisarDoCalendario: (a, em, lido = false) => {
+        const canais = A.whats.eventos.lembrete ?? AVISOS_CHAMADOS_PADRAO.eventos.lembrete;
+        const quem = S.users.filter((u) => a.para.includes(u.id) && u.active);
+        if (canais.tela) {
+          for (const u of quem) A.avisos.push({ id: novoId(), userId: u.id, chamadoId: null, evento: { ...a.evento }, tipo: 'lembrete', texto: a.texto, em: iso(em), lidoEm: lido ? iso(em) : null });
+        }
+        return quem.length;
       },
     },
   };

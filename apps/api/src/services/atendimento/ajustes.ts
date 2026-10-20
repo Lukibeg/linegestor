@@ -22,7 +22,8 @@ import {
   ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL, problemaNasEtapasDoTipo,
   lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
   obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
-  type ResultadoDaVenda, type TipoDePainel,
+  EVENTOS_AVISO, EXEMPLOS_DOS_AVISOS, NOME_EVENTO_AVISO, modeloDoAviso, modelosParaGuardar, preencherAviso, variaveisDesconhecidas,
+  type EventoAviso, type ResultadoDaVenda, type TipoDePainel,
   type AjustesDoPainel, type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type CampoDoSistema,
   type CampoGravarSchema, type CampoPersonalizado, type CamposDoSistemaSchema, type EtapasGravarSchema, type Nivel, type Obrigatorio, type OpcaoDoCampo,
   type Painel, type PainelGravarSchema, type TipoEtapa,
@@ -46,6 +47,8 @@ export type Gravado<T> = { valor: T; resumo: string; antes?: unknown; depois?: u
 
 /** A mensagem do teste do WhatsApp (a mesma da prévia). */
 export const TEXTO_DO_TESTE = 'Teste do Ingline Gestão: os avisos dos chamados vão chegar por aqui.';
+/** A primeira linha do exemplo de um aviso: quem recebe não confunde com um chamado de verdade. */
+export const TESTE_DO_AVISO = '🧪 _Teste do Ingline Gestão: um exemplo da mensagem deste aviso (não é um chamado de verdade)._';
 
 const unicos = (xs: string[]) => [...new Set(xs.map((x) => x.trim()).filter(Boolean))];
 const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
@@ -778,7 +781,7 @@ export async function avisosParaTela(app: FastifyInstance): Promise<AvisosChamad
   return {
     ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
     envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template, equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda,
-    eventos: v.eventos, temChavePropria, temChaveLineChat: linechat.temSegredo,
+    eventos: v.eventos, modelos: v.modelos, temChavePropria, temChaveLineChat: linechat.temSegredo,
     pessoas: ativos.map((u) => ({ userId: u.id, nome: u.nome, numero: u.whatsapp ?? '', ativo: u.recebe })),
     ultimoTesteEm: v.ultimoTesteEm, ultimoTesteOk: v.ultimoTesteOk, ultimoTesteMsg: v.ultimoTesteMsg,
   };
@@ -788,7 +791,7 @@ export async function avisosParaTela(app: FastifyInstance): Promise<AvisosChamad
 const avisosParaAuditoria = (v: Omit<AvisosGuardados, 'ultimoTesteEm' | 'ultimoTesteOk' | 'ultimoTesteMsg'>) => ({
   ativo: v.ativo, url: v.url, usarChaveDoLineChat: v.usarChaveDoLineChat, numeroCliente: v.numeroCliente, numeroEquipe: v.numeroEquipe,
   envioCliente: v.envioCliente, modeloCliente: v.modeloCliente, template: v.template, equipeLineChat: v.equipeLineChat, atribuirAQuemManda: v.atribuirAQuemManda,
-  eventos: v.eventos,
+  eventos: v.eventos, modelos: v.modelos,
 });
 
 /**
@@ -808,11 +811,17 @@ export async function gravarAvisos(app: FastifyInstance, d: AvisosChamadosGravar
     ativo: d.ativo, url: d.url, usarChaveDoLineChat: d.usarChaveDoLineChat, numeroCliente: d.numeroCliente, numeroEquipe: d.numeroEquipe,
     envioCliente: d.envioCliente, modeloCliente: d.modeloCliente, template: d.template?.id ? d.template : null,
     equipeLineChat: d.equipeLineChat, atribuirAQuemManda: d.atribuirAQuemManda, eventos: d.eventos,
+    // só as que mudaram da padrão (a igual à padrão, ou vazia, volta a seguir a padrão)
+    modelos: modelosParaGuardar(d.modelos),
   };
   await integ.gravar(db, 'atendimento-avisos', novo, { secretId, userId });
+  // as mensagens que mudaram, pelo nome do aviso (a auditoria guarda o antes e o depois)
+  const mensagens = EVENTOS_AVISO.filter((e) => modeloDoAviso(valor.modelos, e) !== modeloDoAviso(novo.modelos, e))
+    .map((e) => (novo.modelos[e] ? NOME_EVENTO_AVISO[e].titulo : `${NOME_EVENTO_AVISO[e].titulo} (voltou à padrão)`));
   return {
     valor: await avisosParaTela(app),
-    resumo: `${d.ativo ? 'Ligou' : 'Desligou'} o WhatsApp dos chamados${d.chave ? ' e trocou a chave da API' : ''}`,
+    resumo: `${d.ativo ? 'Ligou' : 'Desligou'} o WhatsApp dos chamados${d.chave ? ' e trocou a chave da API' : ''}`
+      + (mensagens.length ? `; mudou a mensagem ${mensagens.length === 1 ? 'do aviso' : 'dos avisos'}: ${mensagens.join(' · ')}` : ''),
     antes: avisosParaAuditoria(valor), depois: avisosParaAuditoria(novo),
   };
 }
@@ -823,8 +832,18 @@ export async function gravarAvisos(app: FastifyInstance, d: AvisosChamadosGravar
  * resultado fica guardado para a tela mostrar ("último teste").
  */
 export async function testarAvisos(
-  app: FastifyInstance, d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string }, quem: { id: string },
+  app: FastifyInstance, d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string; evento?: EventoAviso; modelo?: string }, quem: { id: string },
 ): Promise<{ ok: boolean; mensagem: string; para: string }> {
+  // o exemplo de um aviso (2.0.2): a mensagem como está na tela (salva ou não), com os valores de exemplo
+  let texto = TEXTO_DO_TESTE;
+  if (d.evento) {
+    const { valor } = await lerAvisos(app.db);
+    // vazia, vale a salva (ou a padrão), como no aviso de verdade
+    const modelo = d.modelo?.trim() ? d.modelo : modeloDoAviso(valor.modelos, d.evento);
+    const fora = variaveisDesconhecidas(d.evento, modelo);
+    if (fora.length) throw new BadRequest(`${fora.join(', ')} não ${fora.length === 1 ? 'é variável' : 'são variáveis'} do aviso "${NOME_EVENTO_AVISO[d.evento].titulo}": confira o nome (os botões põem certo).`);
+    texto = `${TESTE_DO_AVISO}\n\n${preencherAviso(d.evento, modelo, EXEMPLOS_DOS_AVISOS[d.evento])}`;
+  }
   let para = d.numero?.trim() ?? '';
   if (!para) {
     // pausada também testa: o teste é para conferir o número
@@ -838,7 +857,7 @@ export async function testarAvisos(
   }
   // pelo número oficial, o teste sai como uma mensagem ao cliente (pelo modelo aprovado, com valores de exemplo)
   const r = await mandarWhatsApp(app.db, app.vault, {
-    de: d.de ?? 'equipe', para, texto: TEXTO_DO_TESTE,
+    de: d.evento ? 'equipe' : d.de ?? 'equipe', para, texto,
     valores: { contato: 'Teste', codigo: 'SUP-0', titulo: 'Mensagem de teste', cliente: 'Ingline', texto: TEXTO_DO_TESTE },
   });
   await gravarTeste(app.db, r.ok, r.mensagem);

@@ -91,9 +91,12 @@ const nada = (t: Pick<LinhaChamado, 'id' | 'code' | 'title'>): Feito => ({ id: t
 const curto = (t: Pick<LinhaChamado, 'id' | 'code' | 'title'>) => ({ id: t.id, codigo: t.code, titulo: t.title });
 
 type ParaObservar = Pick<LinhaChamado, 'id' | 'code' | 'title' | 'watcherIds'>;
-/** Os observadores recebem o que aconteceu (quem fez, não). */
-const contarAosObservadores = (app: FastifyInstance, ator: Ator, t: ParaObservar, texto: string) =>
-  avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, texto, menos: pessoaDoAtor(ator) });
+/**
+ * Os observadores recebem o que aconteceu (quem fez, não). `texto`: a frase do sininho; `novidade`: o que
+ * mudou, sem quem fez, para a mensagem do WhatsApp ("Mandou para a lixeira").
+ */
+const contarAosObservadores = (app: FastifyInstance, ator: Ator, t: ParaObservar, texto: string, novidade: string) =>
+  avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, texto, menos: pessoaDoAtor(ator), quem: ator.nome, novidade });
 /** ...e o que mudou nele (num aviso só, enquanto não for lido). */
 const camposAosObservadores = (app: FastifyInstance, ator: Ator, t: ParaObservar, nomes: string[]) =>
   avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, menos: pessoaDoAtor(ator), campos: { quem: ator.nome, nomes } });
@@ -383,10 +386,13 @@ export async function criarChamado(
 
   // 11. os avisos: quem recebeu (menos quem abriu) e, se chegou Crítico, os supervisores do painel
   const chamado = { id: criado.id, codigo: criado.codigo, titulo: d.titulo };
-  if (d.responsavelId) await avisarEquipe(app, { evento: 'recebeu', para: [d.responsavelId], chamado, texto: `Você recebeu o chamado ${criado.codigo}`, menos: pessoa });
-  if (prioridade === 'critica') await avisarEquipe(app, { evento: 'critico', para: painel.ajustes.supervisores, chamado, texto: `Chegou um chamado Crítico: ${criado.codigo}`, menos: pessoa });
+  if (d.responsavelId) await avisarEquipe(app, { evento: 'recebeu', para: [d.responsavelId], chamado, texto: `Você recebeu o chamado ${criado.codigo}`, menos: pessoa, quem: ator.nome });
+  if (prioridade === 'critica') await avisarEquipe(app, { evento: 'critico', para: painel.ajustes.supervisores, chamado, texto: `Chegou um chamado Crítico: ${criado.codigo}`, menos: pessoa, quem: ator.nome });
   // quem foi posto como observador fica sabendo (e, dali em diante, recebe toda atualização)
-  await avisarObservadores(app, { chamado, observadores, texto: `${ator.nome} pôs você como observador do ${criado.codigo}`, menos: pessoa, jaAvisados: [d.responsavelId] });
+  await avisarObservadores(app, {
+    chamado, observadores, texto: `${ator.nome} pôs você como observador do ${criado.codigo}`, menos: pessoa, jaAvisados: [d.responsavelId],
+    quem: ator.nome, novidade: 'Pôs você como observador',
+  });
 
   // 12. o número do chamado ao cliente (o chamado fica criado mesmo se o WhatsApp não for)
   let aviso: { ok: boolean; mensagem: string } | undefined;
@@ -632,14 +638,20 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   const titulo = set.title ?? t.title;
   const chamado = { id: t.id, codigo: t.code, titulo };
   const menos = pessoaDoAtor(ator);
-  if (recebeu) await avisarEquipe(app, { evento: 'recebeu', para: [recebeu], chamado, texto: `Você recebeu o chamado ${t.code}`, menos });
+  if (recebeu) await avisarEquipe(app, { evento: 'recebeu', para: [recebeu], chamado, texto: `Você recebeu o chamado ${t.code}`, menos, quem: ator.nome });
   // os observadores: quem entrou fica sabendo; os outros recebem o que mudou (o responsável, num aviso
   // próprio; os campos, juntos num aviso só enquanto não for lido)
-  if (observadoresNovos.length) await avisarObservadores(app, { chamado, observadores: observadoresNovos, texto: `${ator.nome} pôs você como observador do ${t.code}`, menos, jaAvisados: [recebeu] });
+  if (observadoresNovos.length) {
+    await avisarObservadores(app, {
+      chamado, observadores: observadoresNovos, texto: `${ator.nome} pôs você como observador do ${t.code}`, menos, jaAvisados: [recebeu],
+      quem: ator.nome, novidade: 'Pôs você como observador',
+    });
+  }
   const observadores = (set.watcherIds ?? t.watcherIds).filter((x) => !observadoresNovos.includes(x));
   if (set.assigneeId !== undefined) {
-    const texto = set.assigneeId ? `${ator.nome} passou o ${t.code} para ${pessoaCurta(ctx, set.assigneeId)?.nome ?? 'outra pessoa'}` : `${ator.nome} deixou o ${t.code} sem responsável`;
-    await avisarObservadores(app, { chamado, observadores, texto, menos, jaAvisados: [recebeu] });
+    const novo = set.assigneeId ? pessoaCurta(ctx, set.assigneeId)?.nome ?? 'outra pessoa' : null;
+    const texto = novo ? `${ator.nome} passou o ${t.code} para ${novo}` : `${ator.nome} deixou o ${t.code} sem responsável`;
+    await avisarObservadores(app, { chamado, observadores, texto, menos, jaAvisados: [recebeu], quem: ator.nome, novidade: novo ? `Passou para ${novo}` : 'Deixou sem responsável' });
   }
   const camposMudados = nomes.filter((n) => n !== NOME_OBSERVADORES && n !== NOME_CAMPO.responsavel);
   if (camposMudados.length) await avisarObservadores(app, { chamado, observadores, menos, campos: { quem: ator.nome, nomes: camposMudados } });
@@ -753,17 +765,22 @@ async function gravarMovimento(
 async function depoisDoMovimento(app: FastifyInstance, ator: Ator, t: LinhaChamado, m: Movimento, extra: Record<string, unknown> = {}, opts: { observadores?: boolean } = {}) {
   const menos = pessoaDoAtor(ator);
   const chamado = curto(t);
-  if (m.para.avisar.length) await avisarEquipe(app, { evento: 'etapa', para: m.para.avisar, chamado, texto: `${t.code} chegou em ${m.para.nome}`, menos });
-  if (m.novoResponsavel) await avisarEquipe(app, { evento: 'recebeu', para: [m.novoResponsavel], chamado, texto: `Você recebeu o chamado ${t.code}`, menos });
+  if (m.para.avisar.length) await avisarEquipe(app, { evento: 'etapa', para: m.para.avisar, chamado, texto: `${t.code} chegou em ${m.para.nome}`, menos, quem: ator.nome });
+  if (m.novoResponsavel) await avisarEquipe(app, { evento: 'recebeu', para: [m.novoResponsavel], chamado, texto: `Você recebeu o chamado ${t.code}`, menos, quem: ator.nome });
   const painel = extra.painel as { para?: { nome: string } } | undefined;
   const onde = painel?.para ? `para o painel ${painel.para.nome} (${m.para.nome})` : `para ${m.para.nome}`;
-  const texto = `${ator.nome} ${m.reabriu ? `reabriu o ${t.code} (${m.para.nome})` : `${painel?.para ? 'passou' : 'moveu'} o ${t.code} ${onde}`}${m.nomeDoNovoResponsavel ? `, com ${m.nomeDoNovoResponsavel}` : ''}`;
-  if (opts.observadores !== false) await avisarObservadores(app, { chamado, observadores: t.watcherIds, texto, menos, jaAvisados: [...m.para.avisar, m.novoResponsavel] });
+  const com = m.nomeDoNovoResponsavel ? `, com ${m.nomeDoNovoResponsavel}` : '';
+  const texto = `${ator.nome} ${m.reabriu ? `reabriu o ${t.code} (${m.para.nome})` : `${painel?.para ? 'passou' : 'moveu'} o ${t.code} ${onde}`}${com}`;
+  // no WhatsApp, sem quem fez (vai na linha dele): "Moveu para N2, com Lúcio Andrade"
+  const novidade = `${m.reabriu ? `Reabriu (${m.para.nome})` : `${painel?.para ? 'Passou' : 'Moveu'} ${onde}`}${com}`;
+  if (opts.observadores !== false) {
+    await avisarObservadores(app, { chamado, observadores: t.watcherIds, texto, menos, jaAvisados: [...m.para.avisar, m.novoResponsavel], quem: ator.nome, novidade });
+  }
   if (m.depois === 'fechado' && m.antes !== 'fechado' && t.parentId) {
     const [pai] = await app.db.select({ id: tickets.id, code: tickets.code, title: tickets.title, assigneeId: tickets.assigneeId }).from(tickets)
       .where(and(eq(tickets.id, t.parentId), isNull(tickets.deletedAt))).limit(1);
     if (pai?.assigneeId) {
-      await avisarEquipe(app, { evento: 'etapa', tipo: 'pai', para: [pai.assigneeId], chamado: curto(pai), texto: `O filho ${t.code} do ${pai.code} foi fechado`, menos });
+      await avisarEquipe(app, { evento: 'etapa', tipo: 'pai', para: [pai.assigneeId], chamado: curto(pai), texto: `O filho ${t.code} do ${pai.code} foi fechado`, menos, quem: ator.nome });
     }
   }
   emitir(app, 'chamado.movido', t.id, { de: m.de ? { id: m.de.id, nome: m.de.nome } : null, para: { id: m.para.id, nome: m.para.nome }, ...extra });
@@ -833,7 +850,7 @@ export async function assumir(app: FastifyInstance, ator: Ator, ref: string, opt
     return null;
   });
   if (m) await depoisDoMovimento(app, ator, t, m);
-  else await avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, texto: `${ator.nome} assumiu o ${t.code}`, menos: ator.id });
+  else await avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, texto: `${ator.nome} assumiu o ${t.code}`, menos: ator.id, quem: ator.nome, novidade: 'Assumiu o chamado' });
   if (trocaResponsavel) emitir(app, 'chamado.alterado', t.id, { mudancas: ['responsavelId'] });
   return { ...nada(t), resumo: `Assumiu ${t.code}${para ? ` (foi para ${para.nome})` : ''}` };
 }
@@ -869,8 +886,11 @@ export async function esperar(app: FastifyInstance, ator: Ator, ref: string, d: 
     await tx.update(tickets).set({ waits: lista, updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
     await registrarEvento(tx, t.id, 'espera', ator, dados, e.quando());
   });
-  const texto = d.tipo ? `${ator.nome} marcou o ${t.code}: ${NOME_ESPERA[d.tipo].toLocaleLowerCase('pt-BR')} (${motivo})` : `${ator.nome} tirou a marca de espera do ${t.code}`;
-  await avisarObservadores(app, { chamado: curto(t), observadores: t.watcherIds, texto, menos: pessoaDoAtor(ator) });
+  const espera = d.tipo ? `${NOME_ESPERA[d.tipo].toLocaleLowerCase('pt-BR')} (${motivo})` : null;
+  const texto = espera ? `${ator.nome} marcou o ${t.code}: ${espera}` : `${ator.nome} tirou a marca de espera do ${t.code}`;
+  await avisarObservadores(app, {
+    chamado: curto(t), observadores: t.watcherIds, texto, menos: pessoaDoAtor(ator), quem: ator.nome, novidade: espera ? `Marcou: ${espera}` : 'Tirou a marca de espera',
+  });
   return { ...nada(t), resumo };
 }
 
@@ -903,7 +923,7 @@ export async function reabrir(app: FastifyInstance, ator: Ator, ref: string, d: 
   const destino = para;
   const m = await app.db.transaction((tx) => gravarMovimento(tx, e, ator, destino, { motivo: null, sentido: null, motivoReabriu: motivo }));
   await depoisDoMovimento(app, ator, t, m, {}, opts);
-  if (t.assigneeId) await avisarEquipe(app, { evento: 'recebeu', para: [t.assigneeId], chamado: curto(t), texto: `O ${t.code} foi reaberto`, menos: pessoaDoAtor(ator) });
+  if (t.assigneeId) await avisarEquipe(app, { evento: 'recebeu', para: [t.assigneeId], chamado: curto(t), texto: `O ${t.code} foi reaberto`, menos: pessoaDoAtor(ator), quem: ator.nome });
   return { ...nada(t), resumo: `Reabriu ${t.code} (foi para ${destino.nome})${motivo ? `: ${motivo}` : ''}` };
 }
 
@@ -981,12 +1001,20 @@ export async function anotar(app: FastifyInstance, ator: Ator, ref: string, d: {
   emitir(app, 'chamado.anotacao', t.id, { anotacao: { texto, por: ator.nome, citados: citados.map((c) => c.nome) } });
   const comAnexo = guardar.length ? ` (com ${plural(guardar.length, 'anexo', 'anexos')})` : '';
   const oQueDisse = trecho(texto.replace(/\s+/g, ' '), 140);
+  // no WhatsApp, a nota vai inteira na {nota}; o {aviso} fica sem o trecho dela
   if (citados.length) {
-    await avisarEquipe(app, { evento: 'citado', para: citados.map((c) => c.id), menos: pessoa, chamado: curto(t), texto: `${ator.nome} citou você no ${t.code}: "${oQueDisse}"` });
+    await avisarEquipe(app, {
+      evento: 'citado', para: citados.map((c) => c.id), menos: pessoa, chamado: curto(t), texto: `${ator.nome} citou você no ${t.code}: "${oQueDisse}"`,
+      quem: ator.nome, nota: texto, aviso: `${ator.nome} citou você no ${t.code}`,
+    });
   }
+  const anexou = `${plural(guardar.length, 'arquivo', 'arquivos')}`;
   await avisarObservadores(app, {
     chamado: curto(t), observadores: t.watcherIds, menos: pessoa, jaAvisados: citados.map((c) => c.id),
-    texto: texto ? `${ator.nome} anotou no ${t.code}${comAnexo}: "${oQueDisse}"` : `${ator.nome} anexou ${plural(guardar.length, 'arquivo', 'arquivos')} no ${t.code}`,
+    texto: texto ? `${ator.nome} anotou no ${t.code}${comAnexo}: "${oQueDisse}"` : `${ator.nome} anexou ${anexou} no ${t.code}`,
+    // a anotação é a própria novidade (vai na {nota}); o anexo, não
+    quem: ator.nome, nota: texto, novidade: guardar.length ? `Anexou ${anexou}` : '',
+    aviso: texto ? `${ator.nome} anotou no ${t.code}${comAnexo}` : undefined,
   });
   return {
     ...nada(t),
@@ -1284,7 +1312,7 @@ export async function abrirNaOperadora(
       await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
     }
   });
-  await contarAosObservadores(app, ator, t, `${ator.nome} abriu o protocolo ${protocolo} na ${nome} para o ${t.code}`);
+  await contarAosObservadores(app, ator, t, `${ator.nome} abriu o protocolo ${protocolo} na ${nome} para o ${t.code}`, `Abriu o protocolo ${protocolo} na ${nome}`);
   return { ...nada(t), resumo: `Abriu o protocolo ${protocolo} na ${nome} para ${t.code}` };
 }
 
@@ -1315,7 +1343,8 @@ export async function andamentoNaOperadora(app: FastifyInstance, ator: Ator, ref
   });
   await contarAosObservadores(app, ator, t, acao === 'fechou'
     ? `${ator.nome} fechou o protocolo ${c.protocol} da ${c.carrierName} no ${t.code}`
-    : `${ator.nome} cobrou a ${c.carrierName} (protocolo ${c.protocol}) no ${t.code}`);
+    : `${ator.nome} cobrou a ${c.carrierName} (protocolo ${c.protocol}) no ${t.code}`,
+  acao === 'fechou' ? `Fechou o protocolo ${c.protocol} da ${c.carrierName}` : `Cobrou a ${c.carrierName} (protocolo ${c.protocol})`);
   return {
     ...nada(t),
     resumo: acao === 'fechou' ? `Fechou o protocolo ${c.protocol} da ${c.carrierName} em ${t.code}` : `Cobrou a ${c.carrierName} (protocolo ${c.protocol}) em ${t.code}`,
@@ -1353,7 +1382,8 @@ export async function avisarCliente(app: FastifyInstance, ator: Ator, ref: strin
   const r = await mandarAoCliente(app, ator, t, texto.trim(), e.quando());
   if (!r.ok) return { ...nada(t), resumo: `Tentou avisar o cliente de ${t.code} pelo WhatsApp, mas não foi: ${r.mensagem}`, erro: r.mensagem };
   await app.db.update(tickets).set({ updatedAt: agora, lastActivityAt: agora, ...(ator.tipo === 'pessoa' && !t.firstResponseAt ? { firstResponseAt: agora } : {}) }).where(eq(tickets.id, t.id));
-  await contarAosObservadores(app, ator, t, `${ator.nome} mandou ao cliente, no ${t.code}: "${trecho(texto.trim().replace(/\s+/g, ' '), 140)}"`);
+  const oQueMandou = trecho(texto.trim().replace(/\s+/g, ' '), 140);
+  await contarAosObservadores(app, ator, t, `${ator.nome} mandou ao cliente, no ${t.code}: "${oQueMandou}"`, `Mandou ao cliente: "${oQueMandou}"`);
   return { ...nada(t), resumo: `Avisou o cliente de ${t.code} pelo WhatsApp`, depois: { texto } };
 }
 
@@ -1369,7 +1399,7 @@ export async function mandarParaLixeira(app: FastifyInstance, ator: Ator, ref: s
     await tx.update(tickets).set({ deletedAt: agora, updatedAt: agora }).where(eq(tickets.id, t.id));
     await registrarEvento(tx, t.id, 'lixeira', ator, { acao: 'mandou' }, e.quando());
   });
-  await contarAosObservadores(app, ator, t, `${ator.nome} mandou o ${t.code} para a lixeira`);
+  await contarAosObservadores(app, ator, t, `${ator.nome} mandou o ${t.code} para a lixeira`, 'Mandou para a lixeira');
   return { ...nada(t), resumo: `Mandou ${t.code} "${t.title}" para a lixeira` };
 }
 
@@ -1382,7 +1412,7 @@ export async function restaurar(app: FastifyInstance, ator: Ator, ref: string): 
     await tx.update(tickets).set({ deletedAt: null, updatedAt: agora }).where(eq(tickets.id, t.id));
     await registrarEvento(tx, t.id, 'lixeira', ator, { acao: 'restaurou' }, e.quando());
   });
-  await contarAosObservadores(app, ator, t, `${ator.nome} tirou o ${t.code} da lixeira`);
+  await contarAosObservadores(app, ator, t, `${ator.nome} tirou o ${t.code} da lixeira`, 'Tirou da lixeira');
   return { ...nada(t), resumo: `Restaurou ${t.code} "${t.title}" da lixeira` };
 }
 

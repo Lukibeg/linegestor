@@ -5,10 +5,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { AvisoNaTela } from '@gestor/shared';
-import { NA_TELA, juntarCartoes, oQueChegou } from './AvisosQueChegam.js';
+import { NA_TELA, juntarCartoes, oQueChegou, segundaLinhaDoAviso } from './AvisosQueChegam.js';
 
 const aviso = (id: string, em: string, m: Partial<AvisoNaTela> = {}): AvisoNaTela => ({
-  id, tipo: 'recebeu', texto: `Você recebeu o chamado ${id}`, chamado: { id: `c-${id}`, codigo: id, titulo: 'Ramal mudo' }, em, lido: false, ...m,
+  id, tipo: 'recebeu', texto: `Você recebeu o chamado ${id}`, chamado: { id: `c-${id}`, codigo: id, titulo: 'Ramal mudo' }, evento: null, em, lido: false, ...m,
 });
 
 describe('os avisos que chegam', () => {
@@ -46,5 +46,13 @@ describe('a fila dos cartões (ficam até abrir ou fechar)', () => {
   it('o mesmo aviso que volta (atualizado) troca de lugar, sem repetir', () => {
     const fila = juntarCartoes([aviso('n-9', '2026-10-12T10:00:00Z'), aviso('SUP-1', '2026-10-12T09:00:00Z')], [aviso('n-9', '2026-10-12T10:05:00Z', { texto: 'mais mudanças' })]);
     expect(fila.map((c) => [c.id, c.texto])).toEqual([['n-9', 'mais mudanças'], ['SUP-1', 'Você recebeu o chamado SUP-1']]);
+  });
+});
+
+describe('o lembrete do calendário (2.0.2)', () => {
+  it('a segunda linha: o calendário e o dia (o chamado tem a dele)', () => {
+    const lembrete = aviso('l1', '2026-10-20T12:00:00.000Z', { tipo: 'lembrete', texto: 'Lembrete: Visita, amanhã, 21/10, às 09:00', chamado: null, evento: { id: 'e1', titulo: 'Visita', inicio: '2026-10-21' } });
+    expect(segundaLinhaDoAviso(lembrete)).toBe('Calendário · 21/10');
+    expect(segundaLinhaDoAviso(aviso('SUP-1', '2026-10-20T12:00:00.000Z'))).toBeNull();
   });
 });

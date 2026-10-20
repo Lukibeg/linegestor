@@ -1,4 +1,4 @@
-# Calendário das equipes (Patch 2.0.1)
+# Calendário das equipes (Patch 2.0.1; os lembretes, no 2.0.2)
 
 As visitas, as viradas de sistema e para a nuvem, as folgas, os home offices, as reuniões e as ações no
 cliente, no mês. Fica no menu lateral, em **Calendário** (logo acima do Suporte).
@@ -26,9 +26,11 @@ use os chamados.
 
 ### Filtrar
 
-- **Painéis**: um clique mostra só aquele painel; outro clique soma ou tira.
+- **Painéis**: o botão abre a lista dos painéis; marque os que quer ver (um, dois, quantos quiser). O
+  botão mostra quantos estão marcados. Nenhum marcado (ou todos) mostra os eventos de todos.
 - **Só os meus**: os eventos de que você participa.
-- **Cliente** e a **busca** (acha o título, o cliente, o local, a observação, o chamado e as pessoas).
+- A **busca** acha o título, o cliente, o local, a observação, o chamado e as pessoas. (O filtro de
+  cliente saiu no 2.0.2: para achar os eventos de um cliente, escreva o nome dele na busca.)
 - **Os tipos** (Visita, Folga…) são também a legenda das cores: um clique mostra só aquele tipo.
 - **Mostrar os cancelados**: desmarcado, os cancelados somem.
 
@@ -46,9 +48,41 @@ atrás do botão **Filtros**.
 5. **Pessoas**: só aparecem as que veem um dos painéis escolhidos.
 6. **Cliente**, **Chamado ligado** (o código, como SUP-12: o cliente dele vem junto), **Local** e
    **Observação**, se quiser.
-7. **Pôr no calendário**.
+7. **Lembretes**: já vêm os do tipo (abaixo). Mude se quiser e escolha quem recebe.
+8. **Pôr no calendário**.
 
 A folga e o home office (os tipos "da equipe") pedem as pessoas e não mostram o cliente nem o local.
+
+## Os lembretes
+
+Cada evento lembra antes de acontecer, no **sininho** e no **WhatsApp** de quem recebe.
+
+- **Quanto tempo antes**: escreva o número, escolha minutos, horas, dias ou semanas e clique em
+  **Incluir**. Dá para ter até 5 lembretes por evento, de **na hora** (0 minuto) até 4 semanas antes. O
+  **×** do lembrete tira.
+- **Quem recebe**:
+  - **As pessoas do evento**. Sem pessoas, recebe quem pôs o evento.
+  - **Todos que veem o evento**: quem vê um dos painéis dele.
+
+  Embaixo aparece quantas pessoas vão receber.
+- No evento do **dia inteiro**, a conta é a partir das **8h** do primeiro dia: "1 dia antes" chega às 8h
+  da véspera.
+- Cada **tipo** já traz os seus:
+  - Visita e Virada de sistema: 1 dia antes e 1 hora antes;
+  - Virada para nuvem: 1 dia antes;
+  - Ação no cliente: 1 hora antes;
+  - Reunião: 15 minutos antes;
+  - Folga e Home office: nenhum.
+
+  Trocar o tipo troca os lembretes, se você ainda não mexeu neles.
+- O lembrete sai **uma vez**. Se a hora dele já passou quando você salvou o evento, ele não sai. Mudar o
+  dia ou a hora faz os lembretes valerem de novo. O evento cancelado, o feito e o da lixeira não lembram.
+- No sininho, o lembrete tem o ícone do calendário: o clique abre o calendário no dia, com o evento
+  aberto.
+- O **WhatsApp** sai para quem tem o número em Administração › Usuários. Em Painéis › Ajustes › Avisos e
+  WhatsApp, o aviso **"Lembrete de um evento do calendário"** liga e desliga a tela e o WhatsApp, e o
+  cartão **A mensagem de cada aviso no WhatsApp** muda o texto (as variáveis do evento: `{evento}`,
+  `{quando}`, `{local}`, `{cliente}`, `{chamado}`, `{pessoas}`, `{paineis}`, `{observacao}`, `{link}`…).
 
 ## Pelo chamado
 
@@ -75,6 +109,9 @@ Tudo o que muda fica na auditoria (Administração › Auditoria, tipo `calendar
 Quem cuida dos chamados tem o botão **Tipos**: o nome, a cor, **Da equipe** (entra no "Hoje, fora do
 escritório") e **Ativo**. **Incluir um tipo** cria outro (Treinamento, Plantão…). O tipo que já tem
 evento não sai da lista: desative, e os eventos dele continuam com o nome e a cor.
+
+Em cada tipo, **Lembretes** abre os que o evento novo daquele tipo já traz: mude ali, e os eventos novos
+vêm com eles (os que já estão no calendário ficam como estão).
 
 ## Quem pode
 

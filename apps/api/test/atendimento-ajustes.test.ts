@@ -16,10 +16,11 @@ import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { auditLog, settings, ticketApiKeys, ticketStages, ticketSubjects, ticketWebhooks, tickets } from '@gestor/db';
-import { AJUSTES_PRAZOS_PADRAO, AVISOS_CHAMADOS_PADRAO, EVENTOS_AVISO_PADRAO } from '@gestor/shared';
+import { AJUSTES_PRAZOS_PADRAO, AVISOS_CHAMADOS_PADRAO, EVENTOS_AVISO_PADRAO, EXEMPLOS_DOS_AVISOS, MODELOS_DOS_AVISOS_PADRAO, preencherAviso } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 import * as integ from '../src/services/integracoes.js';
-import { esperarSegundoPlano } from '../src/services/atendimento/avisos.js';
+import { esperarSegundoPlano, linkDoChamado } from '../src/services/atendimento/avisos.js';
+import { TESTE_DO_AVISO } from '../src/services/atendimento/ajustes.js';
 import { trocarFerramentasWhatsApp } from '../src/services/atendimento/whatsapp.js';
 import { assinatura, trocarFerramentasWebhook } from '../src/services/atendimento/webhooks.js';
 
@@ -714,6 +715,95 @@ describe('os avisos (o WhatsApp dos chamados)', () => {
     expect(enviados).toHaveLength(antes + 1);
     expect((await operador.get('/atendimento/avisos')).json().itens.map((a: any) => a.texto)).toContain(`Você recebeu o chamado ${dois.json().codigo}`);
     await s.patch(`/admin/users/${marinaId}`, { whatsappAvisos: true });
+  });
+
+  it('a mensagem de cada aviso (2.0.2): a do observador sai como a do fluxo antigo, sem a linha vazia', async () => {
+    // o observador pelo WhatsApp (o padrão é só na tela)
+    const r = await s.put('/atendimento/ajustes/avisos', avisos({ eventos: { ...EVENTOS_AVISO_PADRAO, observador: { tela: true, whatsapp: true } } }));
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().modelos).toEqual({});
+    const labchecap = (await s.post('/clients', { tradeName: 'Labchecap', legalName: 'Labchecap Diagnósticos LTDA', cnpj: '11.222.333/0001-81' })).json().id;
+    const c = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'LineChat - Labchecap - MarIA Espirometria', clienteId: labchecap, observadores: [marinaId] });
+    expect(c.statusCode, c.body).toBe(201);
+    const codigo = c.json().codigo as string;
+    await esperarSegundoPlano();
+
+    // a anotação: a nota inteira, quem anotou e o cliente (sem a "Novidade": a nota é a novidade)
+    let antes = enviados.length;
+    expect((await s.post(`/atendimento/chamados/${codigo}/anotacoes`, { texto: 'Encaminhado para Luan' })).statusCode).toBe(200);
+    await esperarSegundoPlano();
+    expect(enviados.slice(antes)).toHaveLength(1);
+    expect(enviados.at(-1)!.corpo.to).toBe('5571988887777');
+    expect(enviados.at(-1)!.corpo.body.text).toBe([
+      '🔎 *Painel:* Suporte',
+      `📌 *Card:* ${codigo} · LineChat - Labchecap - MarIA Espirometria`,
+      '📝 *Nota:* Encaminhado para Luan',
+      '👤 *Quem:* Administrador',
+      '👨‍💼 *Cliente:* Labchecap',
+      `🔗 *Link do Card/Painel:* ${linkDoChamado(app, codigo)}`,
+    ].join('\n'));
+    // o sininho continua com a frase curta
+    expect((await operador.get('/atendimento/avisos')).json().itens[0].texto).toBe(`Administrador anotou no ${codigo}: "Encaminhado para Luan"`);
+
+    // o responsável trocado: a novidade, sem quem fez (vai na linha do Quem); sem cliente, a linha some
+    const sem = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Sem cliente', observadores: [marinaId] });
+    await esperarSegundoPlano();
+    antes = enviados.length;
+    expect((await s.patch(`/atendimento/chamados/${sem.json().codigo}`, { responsavelId: brunoId })).statusCode).toBe(200);
+    await esperarSegundoPlano();
+    const texto = enviados.slice(antes).map((e) => e.corpo.body.text as string);
+    expect(texto).toHaveLength(1);
+    expect(texto[0]).toContain(`🔔 *Novidade:* Passou para Bruno Técnico\n👤 *Quem:* Administrador`);
+    expect(texto[0]).not.toContain('Cliente');
+    expect(texto[0]).not.toContain('Nota');
+  });
+
+  it('a mensagem de cada aviso: a escrita nos Ajustes vale; a igual à padrão não é guardada; a variável errada é recusada', async () => {
+    const minha = '*{codigo}* de {cliente}: {nota}\n— {QUEM}\n{link}';
+    const eventos = { ...EVENTOS_AVISO_PADRAO, observador: { tela: true, whatsapp: true } };
+    const r = await s.put('/atendimento/ajustes/avisos', avisos({ eventos, modelos: { observador: minha, recebeu: MODELOS_DOS_AVISOS_PADRAO.recebeu } }));
+    expect(r.statusCode, r.body).toBe(200);
+    // a do "recebeu" era a padrão: não fica guardada (segue a padrão se ela mudar)
+    expect(r.json().modelos).toEqual({ observador: minha });
+    expect(await auditoria()).toContain('mudou a mensagem do aviso: Novidade num chamado que a pessoa observa');
+
+    const c = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Com a mensagem própria', observadores: [marinaId] });
+    const codigo = c.json().codigo as string;
+    await esperarSegundoPlano();
+    const antes = enviados.length;
+    await s.post(`/atendimento/chamados/${codigo}/anotacoes`, { texto: 'Linha um\nLinha dois' });
+    await esperarSegundoPlano();
+    // sem cliente, a primeira linha fica (o {codigo} veio); maiúscula na variável vale
+    expect(enviados.slice(antes).map((e) => e.corpo.body.text)).toEqual([`*${codigo}* de : Linha um\nLinha dois\n— Administrador\n${linkDoChamado(app, codigo)}`]);
+
+    // a variável que o aviso não tem: recusada, dizendo qual e em que aviso
+    const ruim = await s.put('/atendimento/ajustes/avisos', avisos({ eventos, modelos: { prazo_vencido: '{aviso} — {cotato} ({quem})' } }));
+    expect(ruim.statusCode).toBe(400);
+    expect(ruim.json().details[0].message).toBe('Na mensagem do aviso "O prazo venceu", {cotato}, {quem} não são variáveis dele: confira o nome (os botões põem certo).');
+
+    // vazia volta à padrão
+    const volta = await s.put('/atendimento/ajustes/avisos', avisos({ eventos, modelos: { observador: '  ' } }));
+    expect(volta.json().modelos).toEqual({});
+    expect(await auditoria()).toContain('Novidade num chamado que a pessoa observa (anotação, etapa, responsável, espera, campos) (voltou à padrão)');
+  });
+
+  it('o exemplo de um aviso vai para o WhatsApp de quem pediu, com a mensagem da tela e os valores de exemplo', async () => {
+    const antes = enviados.length;
+    // o Administrador não tem WhatsApp: vai para a Marina
+    const r = await s.post('/atendimento/ajustes/avisos/testar', { userId: marinaId, evento: 'observador', modelo: '📌 {titulo}\n👤 {quem}\n📍 {contato}' });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(enviados.slice(antes)).toHaveLength(1);
+    expect(enviados.at(-1)!.corpo).toMatchObject({ from: '5571999990000', to: '5571988887777' });
+    expect(enviados.at(-1)!.corpo.body.text).toBe(`${TESTE_DO_AVISO}\n\n📌 LineChat - Labchecap - MarIA Espirometria\n👤 Lúcio Andrade\n📍 Maria`);
+    // sem a mensagem: a salva (aqui, a padrão do lembrete)
+    await s.post('/atendimento/ajustes/avisos/testar', { userId: marinaId, evento: 'lembrete' });
+    expect(enviados.at(-1)!.corpo.body.text).toBe(`${TESTE_DO_AVISO}\n\n${preencherAviso('lembrete', MODELOS_DOS_AVISOS_PADRAO.lembrete, EXEMPLOS_DOS_AVISOS.lembrete)}`);
+    // a variável errada não sai
+    const ruim = await s.post('/atendimento/ajustes/avisos/testar', { userId: marinaId, evento: 'citado', modelo: '{nota} {etapaa}' });
+    expect(ruim.statusCode).toBe(400);
+    expect(ruim.json().error).toBe('{etapaa} não é variável do aviso "Alguém citou a pessoa numa anotação (@)": confira o nome (os botões põem certo).');
+    expect(enviados).toHaveLength(antes + 2);
+    expect(await auditoria()).toContain('o exemplo do aviso \\"Novidade num chamado que a pessoa observa');
   });
 
   it('o modelo aprovado: as variáveis, o arquivo e quem fica com a conversa são conferidos ao salvar', async () => {

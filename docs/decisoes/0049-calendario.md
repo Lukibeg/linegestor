@@ -74,3 +74,70 @@ para o Google Agenda ou o Outlook (o arquivo .ics); a visão Semana e arrastar o
 **Consequências.** O calendário depende dos painéis: para uma equipe ter o seu (o Comercial, o
 Administrativo), cria-se o painel dela com "Só as pessoas escolhidas", mesmo que ela não use os
 chamados. O menu ganha um item no alto (Calendário). O COMO-SUBIR do 2.0.1 roda a migração 0017.
+
+## Revisto no 2.0.2 (20/10/2026): os lembretes, os painéis numa lista e sem o filtro de cliente
+
+O Luan mandou três pedidos num documento (com prints). Dois são do calendário (o terceiro, o Meu dia no
+menu, está na decisão 0048). Como o 2.0.2 não subiu, entraram nele:
+
+- *"o nosso sistema de calendário tem que ter lembretes e avisos configuráveis, para eu alertar quando
+  for acontecer algo e em quanto tempo antes"*;
+- *"nessa parte aqui eu tenho que clicar em painéis e aparecer uma multisseleção para eu selecionar os
+  que eu quero ver. N precisa de filtro por cliente"*.
+
+**Decisão.**
+
+- **Os lembretes do evento.** Na janela do evento, o grupo **Lembretes**: cada lembrete é "quanto tempo
+  antes" (um número e a unidade: minutos, horas, dias ou semanas; **na hora** também vale), até **5 por
+  evento** e até **4 semanas antes**. Também ali, **quem recebe**:
+  - **As pessoas do evento**; num evento sem pessoas, recebe quem o pôs no calendário;
+  - ou **Todos que veem o evento**.
+
+  Nos dois casos, só recebe quem vê um dos painéis do evento (a regra de cima). A janela diz quantas
+  pessoas vão receber. No evento do dia inteiro, a conta é a partir das **8h** do primeiro dia. O
+  detalhe do evento mostra os lembretes ("1 dia antes e 1 hora antes · para as pessoas do evento").
+- **Cada tipo traz os seus.** O evento novo já vem com os lembretes do tipo, e a pessoa muda no evento.
+  Trocar o tipo troca os lembretes, a menos que a pessoa já tenha mexido neles. Os de fábrica:
+  - Visita e Virada de sistema: 1 dia antes e 1 hora antes;
+  - Virada para nuvem: 1 dia antes;
+  - Ação no cliente: 1 hora antes;
+  - Reunião: 15 minutos antes;
+  - Folga e Home office: nenhum.
+
+  Quem cuida dos chamados muda os de cada tipo no botão **Tipos** ("Lembretes: …"). A auditoria conta
+  ("mudou os lembretes de Visita (2 dias antes)").
+- **Como sai.** O relógio dos chamados, a cada minuto, manda o lembrete na hora, **uma vez**:
+  - no **sininho** (com o ícone do calendário; o clique abre o calendário no dia, com o evento);
+  - no **WhatsApp** de cada pessoa, pelo número da equipe.
+
+  O aviso **"Lembrete de um evento do calendário"**, em Avisos e WhatsApp, decide os canais (de fábrica,
+  os dois), e a mensagem do WhatsApp é a dele (decisão 0047, revisão do 2.0.2: as variáveis do evento).
+  Com o sistema fora do ar na hora, o lembrete ainda sai até 3 horas depois (e nunca depois de o evento
+  começar, menos o "na hora", que tem 5 minutos).
+- **O que não lembra.**
+  - O lembrete cuja hora já tinha passado quando o evento foi gravado não sai.
+  - Mudar o dia ou a hora vale de novo: o lembrete é guardado pelo começo do evento.
+  - O evento cancelado, o feito e o da lixeira não lembram, e nem o que passou enquanto estava na
+    lixeira.
+  - Mudar os lembretes aparece na auditoria do evento ("Lembretes").
+- **Os painéis numa lista.** O filtro dos painéis virou o botão **Painéis**: ele abre a lista com uma
+  caixa por painel, para marcar quantos quiser. O botão mostra quantos estão marcados ("Painéis (2)").
+  Nenhum marcado, ou todos, mostra os eventos de todos (e a lista diz isso). O que foi marcado fica no
+  endereço, como antes (`?painel=`).
+- **Sem o filtro de cliente.** Saiu do calendário, como ele pediu. A busca continua achando pelo nome do
+  cliente.
+- **O banco.** Migração `0020_lembretes_do_calendario`:
+  - em `calendar_events`, `reminders` (os minutos antes), `remind_who` (`pessoas` ou `paineis`) e
+    `reminders_sent` (o que já saiu, ou foi pulado);
+  - em `ticket_notifications`, `calendar_event_id` (o aviso do sininho que é de um evento, e não de um
+    chamado).
+
+  As regras moram em `packages/shared/src/calendario.ts` (`lembretesDevidos`, `lembretesAoGravar`,
+  `quemRecebeOLembrete`, `textoDoLembrete`, `valoresDoLembrete`); o servidor manda pelo
+  `mandarLembretes` (em `services/calendario.ts`).
+- **Na prévia.** O exemplo **"Retorno — Clínica Aurora (o ramal da recepção)"** é sempre para daqui a
+  pouco, com lembretes 2 horas antes e 15 minutos antes. O de 2 horas já chegou no sininho do Luan, e o
+  relógio da prévia manda os outros enquanto a tela está aberta.
+
+**Fica para depois**, do que estava acima: repetir o evento, o arquivo .ics e a visão Semana. O lembrete
+no WhatsApp entrou.
