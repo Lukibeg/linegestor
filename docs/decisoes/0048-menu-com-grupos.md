@@ -84,6 +84,16 @@ entrou nele.
   0049), o sininho deixou de ser só dos chamados: o nome dele (o que aparece ao passar o mouse e o título
   da lista) passou de "Avisos dos chamados" para **Avisos**. O lembrete aparece com o ícone do calendário;
   o clique abre o calendário no evento.
+- **Revisto no 2.0.2 (20/10/2026): o grupo Técnico.** O Luan, num comentário na prévia, sobre o menu:
+  *"quero q vc faça uma nova aba de técnico e esses 2 pontos vao ficar dentro dele"*. Os dois pontos são
+  os itens técnicos que moravam no alto do menu. Agora:
+  - um quarto grupo, **Técnico** (o ícone da chave), com **Circuitos e DIDs** e **Inventário**. Ele fica
+    logo abaixo do Suporte: as áreas ficam em grupos (Suporte, Técnico, Comercial), e é a mesma gente do
+    suporte que olha os circuitos e os aparelhos;
+  - no alto do menu ficam **Painel**, **Clientes**, **Calendário** e **Painéis**;
+  - os endereços e os títulos das telas não mudaram (`/circuitos`, `/inventario`). O grupo se comporta como
+    os outros: abre sozinho nas telas dele e, com o menu recolhido, abre a lista ao lado;
+  - os guias passam a escrever o caminho pelo grupo: *Técnico › Inventário › Modelos*.
 
 **Consequências.** O menu cai de 12 para 8 entradas no alto, e o Suporte tem três itens. Os guias de
 uso, a nota do 2.0 e o vídeo falam dos nomes novos.

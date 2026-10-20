@@ -3,7 +3,16 @@
  * relatório, o Abrir chamado e a ficha de um chamado SUP —, e Painéis nas outras.
  */
 import { describe, expect, it } from 'vitest';
-import { eDoSuporte } from './AppShell.js';
+import { NAV, eDoSuporte } from './AppShell.js';
+
+describe('o grupo Técnico (2.0.2)', () => {
+  it('os Circuitos e DIDs e o Inventário moram nele, logo abaixo do Suporte, e não mais no alto', () => {
+    const nomes = NAV.map((x) => ('grupo' in x ? `[${x.label}]` : x.label));
+    expect(nomes).toEqual(['Painel', 'Clientes', 'Calendário', 'Painéis', '[Suporte]', '[Técnico]', '[Comercial]', '[Base de conhecimento]', 'Novidades', 'Administração']);
+    const tecnico = NAV.find((x) => 'grupo' in x && x.grupo === 'tecnico');
+    expect(tecnico && 'itens' in tecnico ? tecnico.itens.map((i) => [i.label, i.to]) : null).toEqual([['Circuitos e DIDs', '/circuitos'], ['Inventário', '/inventario']]);
+  });
+});
 
 describe('o Painel do Suporte no menu', () => {
   it('as telas do painel Suporte, pelo endereço (?painel=) ou pela sigla do chamado', () => {

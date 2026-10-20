@@ -67,7 +67,7 @@ ao card, ao assunto e ao cliente dele). Clique para ver quais.
 ## 4. Onde a base aparece sozinha
 
 - **Ficha do cliente**: "3 artigos sobre este cliente".
-- **Pop-up do modelo** (Inventário › Modelos): os artigos sobre aquele aparelho.
+- **Pop-up do modelo** (Técnico › Inventário › Modelos): os artigos sobre aquele aparelho.
 - **Ficha do circuito**: os artigos sobre a operadora dele.
 - **Ficha do projeto**: o **Como fazer**, com **Ligar um artigo** e **Registrar o que aprendemos**.
 

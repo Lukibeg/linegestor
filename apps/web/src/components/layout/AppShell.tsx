@@ -8,9 +8,10 @@
  *
  * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (o Painel
  * do Suporte — o atalho para o quadro dele, 2.0.2 —, o Meu dia, 2.0.2, os Projetos e os Relatórios, que
- * abrem nos tickets do LineChat, na aba Hoje), **Comercial** (2.0.1: o Painel do Comercial — o atalho
- * para o painel de Vendas — e o relatório dele, de quem tem a permissão do Comercial) e **Base de
- * conhecimento** (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. Os
+ * abrem nos tickets do LineChat, na aba Hoje), **Técnico** (2.0.2: os Circuitos e DIDs e o Inventário),
+ * **Comercial** (2.0.1: o Painel do Comercial — o atalho para o painel de Vendas — e o relatório dele, de
+ * quem tem a permissão do Comercial) e **Base de conhecimento** (a interna e a dos clientes); o Importar /
+ * Exportar foi para dentro da Administração. Os
  * **Painéis** (todos: os chamados e as negociações) são um item próprio, abaixo do Calendário (2.0.2). O
  * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
  * recolhido, o ícone do grupo abre a lista dele do lado.
@@ -20,7 +21,7 @@ import { createPortal } from 'react-dom';
 import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
   BookLock, BookUser, Boxes, Building2, Cable, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Handshake, Headset, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
-  Menu, Moon, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, X, type LucideIcon,
+  Menu, Moon, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
@@ -40,11 +41,10 @@ type ItemDoMenu = { to: string; label: string; icon: LucideIcon; perm: string | 
 type GrupoDoMenu = { grupo: string; label: string; icon: LucideIcon; itens: ItemDoMenu[] };
 const ehGrupo = (x: ItemDoMenu | GrupoDoMenu): x is GrupoDoMenu => 'grupo' in x;
 
-const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
+export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   { to: '/', label: 'Painel', icon: LayoutDashboard, perm: 'records.read', end: true },
   { to: '/clientes', label: 'Clientes', icon: Building2, perm: 'records.read' },
-  { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
-  { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
+  // os Circuitos e DIDs e o Inventário moram no grupo Técnico (2.0.2), abaixo do Suporte
   // o calendário das equipes (2.0.1): as visitas, as viradas, as folgas… de todas as equipes (o Comercial e o
   // Administrativo também), por isso no alto do menu e não dentro do Suporte — lá ele ficava escondido no
   // grupo fechado (16/10, o Luan: "cadê, não tá na demo")
@@ -65,6 +65,16 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
       { to: '/atendimento/meu-dia', label: 'Meu dia', icon: SunMedium, perm: 'support.read' },
       { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
+    ],
+  },
+  // o técnico (2.0.2, 20/10, num comentário na prévia: "quero q vc faça uma nova aba de técnico e esses 2
+  // pontos vao ficar dentro dele"): os circuitos com a numeração (0010) e o inventário dos aparelhos, que
+  // moravam no alto do menu. Logo abaixo do Suporte: as áreas em grupos (Suporte, Técnico, Comercial), e é a
+  // mesma gente do suporte que olha os circuitos e os aparelhos
+  {
+    grupo: 'tecnico', label: 'Técnico', icon: Wrench, itens: [
+      { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
+      { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
     ],
   },
   // o Comercial (2.0.1, 19/10: "uma aba lateral só para o comercial… com acesso direto ao painel do comercial

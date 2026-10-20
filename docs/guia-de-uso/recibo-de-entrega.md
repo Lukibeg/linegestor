@@ -5,7 +5,7 @@ O recibo assinado pelo cliente fica junto da movimentação que levou os aparelh
 
 ## Na hora de movimentar
 
-Inventário › **Movimentar aparelhos** (ou, na ficha do aparelho, **Movimentar**): escolha a
+Técnico › Inventário › **Movimentar aparelhos** (ou, na ficha do aparelho, **Movimentar**): escolha a
 modalidade, o cliente e os aparelhos e, embaixo, em **Recibo de entrega**, clique em **Anexar o
 recibo**.
 
@@ -20,7 +20,7 @@ movimentação fica registrada e o aviso diz qual arquivo não subiu: é só ane
 
 ## Depois, quando o recibo assinado volta
 
-Inventário › **Movimentações** (ou a ficha do cliente › **Equipamentos** › **Movimentações**):
+Técnico › Inventário › **Movimentações** (ou a ficha do cliente › **Equipamentos** › **Movimentações**):
 clique na linha da entrega para abrir e use **Anexar o recibo**. O **clipe** na coluna **Recibo**
 mostra quais entregas já têm (com o número de arquivos, quando é mais de um).
 
