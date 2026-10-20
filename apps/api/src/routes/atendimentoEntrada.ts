@@ -1,6 +1,6 @@
 /**
  * Chamados do Gestor (Patch 2.0, decisão 0047): a entrada das integrações — o robô do LineChat e o
- * n8n abrem e mexem nos chamados com uma chave de API (criada em Chamados › Integrações), sem sessão.
+ * n8n abrem e mexem nos chamados com uma chave de API (criada em Painéis › Ajustes › Integrações), sem sessão.
  *
  * A chave vem em `Authorization: Bearer <chave>` ou em `?chave=` (o bloco de webhook do robô pode não
  * aceitar cabeçalho; quando der, prefira o cabeçalho: o endereço com a chave pode ir parar em log).
@@ -8,11 +8,18 @@
  * e depois do limite de pedidos (60 por minuto), para quem tenta chaves também esbarrar no limite.
  *
  * A auditoria registra o nome da chave (não há pessoa: o usuário fica vazio).
+ *
+ * O robô do LineChat chama `/entrada/robo` com o JSON dele, do jeito que o bloco Webhook manda (2.0.1):
+ * o mapa (Painéis › Ajustes › Integrações) diz de onde vem cada campo. A resposta é a que o bloco
+ * "Enviar webhook" entende: sempre 200 (ele conta o 201 como falha), com `{"response":"CHAMADO_ABERTO",
+ * "messages":[{"text":…}]}` ou `{"response":"CHAMADO_FALHOU"}`. A chave errada continua 401: não é o
+ * robô falando. A `/entrada/chamado` recebe o formato do Gestor (o n8n, outros sistemas).
  */
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { EntradaChamadoSchema, EntradaMensagemSchema, IntegracaoAlterarSchema } from '@gestor/shared';
+import { EntradaChamadoSchema, IntegracaoAlterarSchema, parametrosDoEndereco, respostaDoRoboQueFalhou } from '@gestor/shared';
+import { AppError } from '../plugins/errors.js';
 import type { Ator } from '../services/atendimento/contexto.js';
 import * as entrada from '../services/atendimento/entrada.js';
 
@@ -20,6 +27,8 @@ const tags = ['Chamados do Gestor: integrações (chave de API)'];
 const Ref = z.object({ ref: z.string().min(1).max(60) });
 /** A chave também pode vir no endereço (`?chave=`). */
 const ChaveNoEndereco = z.object({ chave: z.string().max(300).optional() });
+/** No robô, o endereço também traz os parâmetros que o mapa lê ({{endereço: setor}}, de `&setor=…`). */
+const EnderecoDoRobo = ChaveNoEndereco.catchall(z.union([z.string().max(2_000), z.array(z.string().max(2_000)).max(20)]));
 const AnotarSchema = z.object({ texto: z.string().trim().min(1, 'Escreva a anotação').max(20_000) });
 const MoverPorNomeSchema = z.object({
   /** o id da etapa, ou o nome dela (sem ligar para acento e maiúscula) */
@@ -38,13 +47,49 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   const ator = (req: FastifyRequest) => atores.get(req)!;
   const quem = (req: FastifyRequest) => entrada.nomeNaAuditoria(ator(req));
 
-  // ---------- o robô do LineChat ----------
+  // ---------- o robô do LineChat, com o JSON dele (o mapa diz de onde vem cada campo) ----------
+
+  app.post('/entrada/robo', {
+    ...comChave,
+    // o pedido do robô é pequeno: o limite do servidor (30 MB, para os anexos) não serve aqui
+    bodyLimit: 512 * 1024,
+    schema: {
+      tags, querystring: EnderecoDoRobo, body: z.unknown(),
+      summary: 'Abrir um chamado pelo robô do LineChat, com o JSON que o bloco Webhook manda: o mapa (Painéis › Ajustes › Integrações) diz de onde vem cada campo, e o que não bate fica de fora (a auditoria e o último pedido dizem o quê). A mesma conversa aberta não abre outro (o relato vira anotação nele). Responde sempre 200, no formato do bloco "Enviar webhook": {"response":"CHAMADO_ABERTO","messages":[{"text":"…"}]} ou {"response":"CHAMADO_FALHOU"}',
+    },
+  }, async (req, reply) => {
+    let r: entrada.ResultadoDoRobo;
+    try {
+      // os parâmetros do endereço (sem a chave) também são do pedido: o mapa lê como {{endereço: setor}}
+      r = await entrada.abrirPeloRobo(app, ator(req), req.body, parametrosDoEndereco(req.query));
+    } catch (e) {
+      // o bloco do LineChat só segue com 200: o "response" é que diz que falhou. O porquê fica no último
+      // pedido (a tela do mapa mostra) e no registro do servidor — sem a chave
+      const esperado = e instanceof AppError && e.status < 500;
+      req.log[esperado ? 'warn' : 'error']({ err: e }, 'o robô do LineChat não abriu o chamado');
+      return reply.status(200).send(respostaDoRoboQueFalhou());
+    }
+    const fora = r.ignorados.length + r.faltaram.length;
+    const detalhes = fora ? { ...(r.ignorados.length ? { ignorados: r.ignorados } : {}), ...(r.faltaram.length ? { faltaram: r.faltaram } : {}) } : undefined;
+    if (r.criado) {
+      await app.audit(req, {
+        action: 'create', entityType: 'ticket', entityId: r.id,
+        summary: `${quem(req)} abriu ${r.codigo} "${r.titulo}" pelo mapa do robô${r.ignorados.length ? ` (${r.ignorados.length === 1 ? 'ficou 1 coisa de fora' : `ficaram ${r.ignorados.length} coisas de fora`})` : ''}${r.faltaram.length ? ` (${r.faltaram.length === 1 ? '1 variável do mapa não veio' : `${r.faltaram.length} variáveis do mapa não vieram`})` : ''}`,
+        after: detalhes,
+      });
+    } else if (r.anotou) {
+      await app.audit(req, { action: 'update', entityType: 'ticket', entityId: r.id, summary: `${quem(req)} anotou em ${r.codigo} o relato novo da mesma conversa` });
+    }
+    return reply.status(200).send(r.resposta);
+  });
+
+  // ---------- no formato do Gestor (o n8n, outros sistemas) ----------
 
   app.post('/entrada/chamado', {
     ...comChave,
     schema: {
       tags, querystring: ChaveNoEndereco, body: EntradaChamadoSchema,
-      summary: 'Abrir um chamado pelo robô (a mesma conversa aberta não abre outro: o relato vira anotação nele). Devolve o código, para o robô mandar ao cliente',
+      summary: 'Abrir um chamado no formato do Gestor (o n8n, outros sistemas; a mesma conversa aberta não abre outro: o relato vira anotação nele). Devolve o código, para mandar ao cliente',
     },
   }, async (req, reply) => {
     const r = await entrada.abrirPelaEntrada(app, ator(req), req.body);
@@ -54,23 +99,6 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       await app.audit(req, { action: 'update', entityType: 'ticket', entityId: r.id, summary: `${quem(req)} anotou em ${r.codigo} o relato novo da mesma conversa` });
     }
     return reply.status(r.criado ? 201 : 200).send({ criado: r.criado, id: r.id, codigo: r.codigo, numero: r.numero, link: r.link });
-  });
-
-  app.post('/entrada/mensagem', {
-    ...comChave,
-    schema: {
-      tags, querystring: ChaveNoEndereco, body: EntradaMensagemSchema,
-      summary: 'O cliente escreveu: reabre o chamado Resolvido (menos o "obrigado") ou registra no aberto, e avisa o responsável',
-    },
-  }, async (req) => {
-    const r = await entrada.mensagemDoCliente(app, ator(req), req.body);
-    if (r.acao !== 'ignorado') {
-      await app.audit(req, {
-        action: 'update', entityType: 'ticket', entityId: r.id ?? null,
-        summary: r.acao === 'reaberto' ? `${quem(req)}: o cliente respondeu e ${r.codigo} reabriu` : `${quem(req)}: o cliente respondeu em ${r.codigo}`,
-      });
-    }
-    return { acao: r.acao, ...(r.codigo ? { codigo: r.codigo } : {}) };
   });
 
   // ---------- o n8n mexendo num chamado ----------

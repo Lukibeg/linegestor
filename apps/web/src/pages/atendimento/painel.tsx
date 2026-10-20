@@ -5,15 +5,16 @@
  * painel") —, "Trocar" (os outros painéis, com quantos estão em aberto) e "Configurar" (quem cuida).
  *
  * O quadro e a lista usam os mesmos nomes de filtro: trocar de vista leva a busca e os filtros junto.
+ * O painel de Vendas (2.0.1) tem uma terceira vista, o **Relatório** de vendas.
  */
 import { Link } from 'react-router-dom';
-import { ArrowLeft, ChevronsUpDown, Kanban, List, Settings2 } from 'lucide-react';
+import { ArrowLeft, ChartColumn, ChevronsUpDown, Kanban, List, Settings2 } from 'lucide-react';
 import type { Painel } from '@gestor/shared';
 import { Popover } from '../../components/ui/index.js';
 import { usePode } from './comum.js';
 import { PontoDoPainel, useFiltrosNoEndereco } from './quadro/filtros.js';
 
-export type Vista = 'quadro' | 'lista';
+export type Vista = 'quadro' | 'lista' | 'relatorio';
 
 /** Os filtros que valem no quadro e na lista, com os mesmos nomes: trocar de vista leva todos junto. */
 export const FILTROS_DO_PAINEL = ['q', 'responsavel', 'prioridade', 'espera', 'cliente', 'assunto'] as const;
@@ -26,6 +27,12 @@ export function enderecoDaLista(painelId: string, filtros: FiltrosDoPainel, etap
   for (const [k, v] of Object.entries(filtros)) if (v) n.set(k, v);
   return `/atendimento/lista?${n}`;
 }
+/** O relatório de vendas do painel (o período, se vier). */
+export function enderecoDoRelatorio(painelId: string, extra: Record<string, string | null | undefined> = {}) {
+  const n = new URLSearchParams({ painel: painelId });
+  for (const [k, v] of Object.entries(extra)) if (v) n.set(k, v);
+  return `/atendimento/relatorio?${n}`;
+}
 /** O quadro do painel com os filtros da lista que o quadro também tem. */
 export function enderecoDoQuadro(painelId: string, filtros: FiltrosDoPainel) {
   const n = new URLSearchParams({ painel: painelId });
@@ -35,28 +42,35 @@ export function enderecoDoQuadro(painelId: string, filtros: FiltrosDoPainel) {
 
 export function CabecalhoDoPainel({ paineis, atual, vista, outraVista, className = '' }: {
   paineis: Painel[]; atual: Painel; vista: Vista;
-  /** o endereço da outra vista (o quadro ou a lista), com os filtros que valem nas duas */
-  outraVista: string;
+  /** o endereço da outra vista (o quadro ou a lista), com os filtros que valem nas duas (no relatório, não vale) */
+  outraVista?: string;
   className?: string;
 }) {
   const pode = usePode();
   const { sp } = useFiltrosNoEndereco();
+  const vendas = atual.tipo === 'vendas';
   // o desativado só aparece se for o aberto (um link antigo)
   const outros = paineis.filter((p) => p.ativo || p.id === atual.id);
   const para = (p: Painel) => {
+    // o relatório é só dos painéis de Vendas: o de Gestão abre no quadro
+    if (vista === 'relatorio') return p.tipo === 'vendas' ? enderecoDoRelatorio(p.id, { de: sp.get('de'), ate: sp.get('ate') }) : `/atendimento/quadro?painel=${encodeURIComponent(p.id)}`;
     const n = new URLSearchParams(sp);
     n.set('painel', p.id);
     // o assunto e a etapa são de um painel só (no outro, não existem); a página volta para a primeira
     n.delete('assunto'); n.delete('etapa'); n.delete('p');
-    return `?${n}`;
+    return `/atendimento/${vista}?${n}`;
   };
+  /** Para onde vai cada vista: do quadro para a lista (e de volta) com os filtros; o relatório, com o painel. */
+  const destino = (v: Vista) => (v === 'relatorio' ? enderecoDoRelatorio(atual.id)
+    : vista === 'relatorio' || !outraVista ? (v === 'quadro' ? enderecoDoQuadro(atual.id, {}) : enderecoDaLista(atual.id, {})) : outraVista);
   const opcao = (v: Vista, Icone: typeof Kanban, nome: string) => (
     vista === v ? (
       <span aria-current="page" className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-semibold bg-accent-soft text-accent-ink">
         <Icone size={14} aria-hidden /> {nome}
       </span>
     ) : (
-      <Link to={outraVista} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-semibold text-ink-2 hover:bg-surface-2" title={`Ver o ${atual.nome} em ${nome.toLocaleLowerCase('pt-BR')}`}>
+      <Link to={destino(v)} className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] font-semibold text-ink-2 hover:bg-surface-2" title={`Ver o ${atual.nome} em ${nome.toLocaleLowerCase('pt-BR')}`}
+        data-vista={v}>
         <Icone size={14} aria-hidden /> {nome}
       </Link>
     )
@@ -77,17 +91,18 @@ export function CabecalhoDoPainel({ paineis, atual, vista, outraVista, className
       <nav className="inline-flex rounded-lg border border-line bg-surface p-0.5" aria-label="Ver o painel em" id="vista-do-painel">
         {opcao('quadro', Kanban, 'Quadro')}
         {opcao('lista', List, 'Lista')}
+        {vendas && opcao('relatorio', ChartColumn, 'Relatório')}
       </nav>
       {outros.length > 1 && (
         <Popover classe="btn-ghost btn-sm text-ink-2" alinhar="esquerda" largura="w-[290px]" titulo="Trocar de painel"
           botao={() => <><ChevronsUpDown size={14} aria-hidden /> <span className="sr-only 2xl:not-sr-only">Trocar</span></>}>
-          <p className="text-[12.5px] text-muted mb-1">Abrir {vista === 'quadro' ? 'o quadro' : 'a lista'} de:</p>
+          <p className="text-[12.5px] text-muted mb-1">Abrir {vista === 'quadro' ? 'o quadro' : vista === 'lista' ? 'a lista' : 'o relatório (ou o quadro)'} de:</p>
           <ul className="flex flex-col" aria-label="Painéis">
             {outros.map((p) => {
               const aqui = p.id === atual.id;
               return (
                 <li key={p.id}>
-                  <Link to={{ search: para(p) }} aria-current={aqui ? 'page' : undefined}
+                  <Link to={para(p)} aria-current={aqui ? 'page' : undefined}
                     className={`rounded-md px-2 py-1.5 text-[13.5px] flex items-center gap-2 ${aqui ? 'bg-accent-soft text-accent-ink font-semibold' : 'text-ink hover:bg-surface-2'}`}>
                     <PontoDoPainel cor={p.cor} />
                     <span className="flex-1 min-w-0 truncate">{p.nome}</span>

@@ -2,9 +2,10 @@
  * Chamados do Gestor (Patch 2.0, decisão 0047): o quadro, a lista, o Meu dia, a ficha e tudo o que
  * se faz num chamado.
  *
- * Ver é de todos que veem chamados (`support.read`, inclusive o Leitor); trabalhar (abrir, mover,
- * anotar…) é `tickets.work`; a lixeira dos chamados é de quem cuida deles (`tickets.manage`). O
- * painel "escolhidos" não existe para quem não está nele: o chamado dele dá 404, nunca 403.
+ * Ver é de todos que veem chamados (`support.read`, inclusive o Leitor) — e, nos painéis de Vendas, de
+ * quem tem a permissão do Comercial (`sales.read`, 2.0.1); trabalhar (abrir, mover, anotar…) é
+ * `tickets.work`; a lixeira dos chamados é de quem cuida deles (`tickets.manage`). O painel que a pessoa
+ * não vê ("escolhidos", ou de Vendas sem a permissão) não existe para ela: o chamado dele dá 404, nunca 403.
  *
  * Toda mudança vai para a auditoria e devolve a ficha inteira, já atualizada (menos o abrir, que
  * devolve o código, e o mandar para a lixeira).
@@ -13,7 +14,7 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AnotacaoSchema, AplicarRespostaSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, LigarChamadoSchema,
+  AnotacaoSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema, LigarChamadoSchema,
   ListarChamadosSchema, MoverSchema, ObservarSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
 } from '@gestor/shared';
@@ -21,6 +22,7 @@ import { BadRequest } from '../plugins/errors.js';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as svc from '../services/atendimento/chamados.js';
 import * as leitura from '../services/atendimento/leitura.js';
+import { relatorioDoPainelDeVendas } from '../services/atendimento/vendas.js';
 
 const tags = ['Chamados do Gestor'];
 const Id = z.object({ id: z.string().min(1) });
@@ -42,7 +44,8 @@ function contentDisposition(tipo: 'inline' | 'attachment', fileName: string) {
 }
 
 const routes: FastifyPluginAsyncZod = async (app) => {
-  const ler = { preHandler: app.requirePermission('support.read') };
+  // ver: quem vê os chamados (os painéis de Gestão) ou o Comercial (os de Vendas, 2.0.1); cada painel confere o resto
+  const ler = { preHandler: app.requireAnyPermission('support.read', 'sales.read') };
   const trabalhar = { preHandler: app.requirePermission('tickets.work') };
   const cuidar = { preHandler: app.requirePermission('tickets.manage') };
   const ator = (req: FastifyRequest) => atorDaPessoa(req.user!);
@@ -56,7 +59,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---------- ler ----------
 
-  app.get('/opcoes', { ...ler, schema: { tags, summary: 'Os painéis que a pessoa vê, as pessoas, os assuntos, os produtos, as operadoras, as etiquetas, os prazos e as respostas prontas' } },
+  app.get('/opcoes', { ...ler, schema: { tags, summary: 'Os painéis que a pessoa vê, as pessoas, os assuntos, os produtos, as operadoras, as etiquetas e os prazos' } },
     async (req) => leitura.opcoes(app, ator(req)));
 
   app.get('/quadro', { ...ler, schema: { tags, summary: 'O quadro de um painel: uma coluna por etapa (o Fechado mostra só os 30 mais recentes)', querystring: QuadroSchema } },
@@ -74,6 +77,14 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.get('/paineis/resumo', { ...ler, schema: { tags, summary: 'A tela inicial: os números de cada painel (em aberto, meus, sem dono, vencidos, perto, esperando e por etapa)' } },
     async (req) => leitura.resumoDosPaineisVisiveis(app, ator(req)));
+
+  app.get('/vendas', {
+    ...ler,
+    schema: {
+      tags, querystring: FiltroDoRelatorioDeVendasSchema,
+      summary: 'O relatório de um painel de Vendas no período: os números, o funil, o tempo em cada etapa, os meses × a meta, os vendedores e os motivos de perda',
+    },
+  }, async (req) => relatorioDoPainelDeVendas(app, ator(req), req.query));
 
   app.get('/meu-dia', { ...ler, schema: { tags, summary: 'Os meus, os que vencem, os sem dono, os esperando o cliente, os que acompanho e os agendados de hoje' } },
     async (req) => leitura.meuDia(app, ator(req)));
@@ -167,9 +178,6 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/chamados/:id/avisar-cliente', { ...trabalhar, schema: { tags, summary: 'Mandar uma mensagem ao contato pelo WhatsApp oficial (fica no histórico, mesmo se não for)', params: Id, body: AvisarClienteSchema } },
     async (req) => fichaDepois(req, await svc.avisarCliente(app, ator(req), req.params.id, req.body.texto)));
-
-  app.post('/chamados/:id/resposta-pronta', { ...trabalhar, schema: { tags, summary: 'Usar uma resposta pronta: manda o texto e muda o chamado de uma vez', params: Id, body: AplicarRespostaSchema } },
-    async (req) => fichaDepois(req, await svc.usarResposta(app, ator(req), req.params.id, req.body)));
 
   app.post('/chamados/:id/observar', { ...trabalhar, schema: { tags, summary: 'Observar (ou deixar de observar) o chamado: quem observa recebe os avisos de toda atualização', params: Id, body: ObservarSchema } },
     async (req) => fichaDepois(req, await svc.observar(app, ator(req), req.params.id, req.body.observar)));

@@ -28,7 +28,7 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { secrets, settings, type Db } from '@gestor/db';
-import { AJUSTES_PRAZOS_PADRAO, AVISOS_CHAMADOS_PADRAO, type ItemPainel, type ProvedorIa } from '@gestor/shared';
+import { AJUSTES_PRAZOS_PADRAO, AVISOS_CHAMADOS_PADRAO, MAPA_DO_ROBO_PADRAO, TIPOS_DE_EVENTO_PADRAO, type ItemPainel, type ProvedorIa } from '@gestor/shared';
 import type { SecretsVault } from './secrets.js';
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? '/dados';
@@ -146,7 +146,8 @@ export const IA_PADRAO: AjustesIa = {
 };
 
 type Assunto = 'backup' | 'avisos' | 'linechat' | 'chamados-painel' | 'chamados-relatorios' | 'chamados-relatorios-arrumacao'
-  | 'envio-automatico' | 'envio-automatico-marcados' | 'base-ia' | 'atendimento-prazos' | 'atendimento-avisos' | 'atendimento-integracoes';
+  | 'envio-automatico' | 'envio-automatico-marcados' | 'base-ia' | 'atendimento-prazos' | 'atendimento-avisos' | 'atendimento-integracoes'
+  | 'atendimento-robo' | 'atendimento-robo-ultimo' | 'calendario';
 const PADROES: Record<Assunto, unknown> = {
   backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO, 'chamados-painel': { itens: [] },
   // os Relatórios dos Chamados (1.7): sem nada guardado, os campos são achados pelo nome e os clientes, ligados pelo nome
@@ -165,9 +166,17 @@ const PADROES: Record<Assunto, unknown> = {
   // os chamados do Gestor (2.0): o horário, os feriados e os prazos (o documento de prioridade e prazos)
   'atendimento-prazos': AJUSTES_PRAZOS_PADRAO,
   // o WhatsApp dos chamados (2.0): desligado até a administração ligar; a chave própria, se houver, no cofre
-  'atendimento-avisos': { ...AVISOS_CHAMADOS_PADRAO, pessoas: [] },
+  // (o WhatsApp de cada pessoa mora no usuário desde o 2.0.1)
+  'atendimento-avisos': { ...AVISOS_CHAMADOS_PADRAO },
   // os sites que podem abrir o Gestor dentro deles (nenhum: só o próprio Gestor) e o link da conversa no LineChat
   'atendimento-integracoes': { sites: [], linkConversa: '' },
+  // o mapa do robô do LineChat (2.0.1): de onde vem cada campo do chamado no JSON que o robô manda
+  'atendimento-robo': MAPA_DO_ROBO_PADRAO,
+  // o último pedido do robô (2.0.1), com o que aconteceu: a tela do mapa mostra as variáveis dele. Fica
+  // separado do mapa: o robô grava aqui a cada pedido, e o mapa só muda quando alguém salva
+  'atendimento-robo-ultimo': { ultimo: null },
+  // o calendário (2.0.1): os tipos de evento (Visita, Folga…), com nome e cor; sem nada guardado, os de fábrica
+  calendario: { tipos: TIPOS_DE_EVENTO_PADRAO },
 };
 
 export async function ler<T>(db: Db, assunto: Assunto): Promise<{ valor: T; secretId: string | null; temSegredo: boolean }> {

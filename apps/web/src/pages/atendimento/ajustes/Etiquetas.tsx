@@ -1,9 +1,9 @@
 /**
- * Chamados › Ajustes (Patch 2.0) — Etiquetas: as mesmas em todos os painéis, cada uma com a cor dela
+ * Painéis › Ajustes (Patch 2.0) — Etiquetas: as mesmas em todos os painéis, cada uma com a cor dela
  * (o pedido do Luan na prévia: "na hora de criar as etiquetas, seria legal poder escolher a cor também").
  *
- * A etiqueta nasce no chamado (no Abrir chamado e na ficha, com a cor escolhida ali; a do robô, da IA e
- * da resposta pronta nasce cinza) ou aqui. Aqui se edita — o nome e a cor (o pedido do Luan: "parecido com
+ * A etiqueta nasce no chamado (no Abrir chamado e na ficha, com a cor escolhida ali; a do robô e da IA
+ * nasce cinza) ou aqui. Aqui se edita — o nome e a cor (o pedido do Luan: "parecido com
  * o Helena"), que valem em todos os chamados que a têm — e se tira das sugestões a que nenhum chamado usa
  * (a escrita errada, a que caiu em desuso). O mesmo editar mora no seletor de etiquetas, no lápis.
  */
@@ -69,9 +69,8 @@ export function AjustesEtiquetas() {
         <Explicacao>
           <p>
             As etiquetas são as mesmas em todos os painéis, cada uma com a cor dela. Quem trabalha nos chamados cria uma nova no Abrir
-            chamado ou na ficha, já escolhendo a cor (a que chega pelo robô, pela IA ou por uma resposta pronta nasce cinza). Aqui se edita o
-            nome e a cor — valem em todos os chamados que a têm e nas respostas prontas que a põem — e se tira das sugestões a que nenhum
-            chamado usa. O mesmo editar está no lápis da lista de etiquetas, no Abrir chamado e na ficha.
+            chamado ou na ficha, já escolhendo a cor (a que chega pelo robô ou pela IA nasce cinza). Aqui se edita o nome e a cor — valem
+            em todos os chamados que a têm — e se tira das sugestões a que nenhum chamado usa. O mesmo editar está no lápis da lista de etiquetas, no Abrir chamado e na ficha.
           </p>
         </Explicacao>
 

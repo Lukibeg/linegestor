@@ -64,6 +64,25 @@ tudo junto como 1.7**: os Relatórios (0037) e o envio automático saem no mesmo
     (`docker compose … logs app | grep "envio automático"`).
 - Os números aceitam qualquer jeito de escrever ("(71) 99999-0000", "+55…") e são guardados só com
   dígitos, com o 55.
+- **Revisto no 2.0.1 (17/10/2026)** — o relatório chegava, mas a conversa ficava **pendente** no
+  LineChat, esperando alguém. O Luan: *"O correto é já concluir a conversa assim que ele vier. Então, ele
+  envia e conclui… Ele não tem que deixar a conversa em aberto, ele é só um aviso."* Agora, com a opção
+  **Concluir a conversa depois de mandar** (Administração › Envio automático; **vem ligada**, e quem
+  salvou antes do 2.0.1 também fica com ela ligada):
+  - logo depois de mandar para cada número, o Gestor **conclui a conversa** em que a mensagem entrou,
+    pela própria API: `PUT {base}/chat/v1/session/{id}/complete`, com `reactivateOnNewMessage: false` e
+    `stopBotInExecution: false` (o concluir de sempre: a próxima mensagem da pessoa abre uma conversa
+    nova). O `{base}` é o endereço de envio sem o `/chat/v1/message/send`;
+  - a conversa vem na resposta do envio (`sessionId`, ou `session.id`); quando não vem (a mensagem
+    ainda está na fila), o Gestor pergunta pela mensagem (`GET {base}/chat/v1/message/{id}`) até 4
+    vezes, a cada 1,5 segundo;
+  - vale para o envio do horário, o **Mandar agora** e o **Testar**;
+  - se a FlwChat não deixar concluir, **a mensagem continua entregue** (o envio dá certo) e o histórico
+    diz *"1 conversa ficou aberta"*, com o nome e o motivo. Nada se repete sozinho;
+  - quem recebe o relatório e, na mesma hora, está conversando com alguém pelo mesmo número tem essa
+    conversa concluída junto (a mensagem entra nela). Quem não quiser isso desliga a opção.
+  - A opção `hiddenSession` do envio (a usada nos avisos da equipe, que esconde a conversa) não entrou:
+    ela esconde a conversa, mas não a conclui, e o pedido foi concluir.
 
 **Consequências.**
 

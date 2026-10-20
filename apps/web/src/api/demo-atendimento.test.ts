@@ -6,7 +6,11 @@
  * leem os exemplos, depois os que abrem e mexem nos próprios chamados de teste.
  */
 import { describe, expect, it } from 'vitest';
-import { caminhoDoAssunto, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, type CartaoChamado } from '@gestor/shared';
+import {
+  caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
+  NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
+  type CartaoChamado,
+} from '@gestor/shared';
 import { demoApi } from './demo.js';
 import { diagnosticoDosChamadosDemo } from './demo-atendimento.js';
 import { ApiError, type ChamadoCriarEntrada, type OpcoesAtendimento } from './types.js';
@@ -179,7 +183,6 @@ describe('os exemplos da prévia', () => {
     expect(ag.map((a) => a.titulo).sort()).toEqual(['Conferir os backups dos PABX', 'Verificar os DIDs em uso']);
     const rodou = ag.find((a) => a.ultimoCodigo)!;
     expect(todos.find((c) => c.codigo === rodou.ultimoCodigo)?.origem).toBe('agendado');
-    expect(await api.respostas()).toHaveLength(4);
   }, DEMORA);
 
   it('o quadro, a lista e o Meu dia contam os mesmos chamados', async () => {
@@ -227,10 +230,10 @@ describe('os exemplos da prévia', () => {
     }
     expect(md.vencendo.length).toBeGreaterThan(0);
 
-    // o sininho do Luan: os seis que ele precisa ver (um é a novidade de um chamado que ele observa)
+    // o sininho do Luan: os cinco que ele precisa ver (um é a novidade de um chamado que ele observa)
     const av = await api.avisos();
-    expect(av.naoLidos).toBe(6);
-    expect(new Set(av.itens.filter((a) => !a.lido).map((a) => a.tipo))).toEqual(new Set(['critico', 'cliente_respondeu', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
+    expect(av.naoLidos).toBe(5);
+    expect(new Set(av.itens.filter((a) => !a.lido).map((a) => a.tipo))).toEqual(new Set(['critico', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
     // quem fez a ação não é avisado: nenhum aviso do Luan sobre o que ele mesmo fez
     for (const a of av.itens.filter((x) => x.tipo === 'recebeu' && x.texto.startsWith('Você recebeu'))) {
       const f = await api.chamado(a.chamado!.codigo);
@@ -771,5 +774,204 @@ describe('as regras do servidor valem na prévia', () => {
     expect(JSON.stringify(await api.integracoes())).not.toContain(valor);
     const interno = await erroDe(api.salvarWebhook(null, { nome: 'Interno', url: 'https://192.168.0.10/gancho', eventos: ['chamado.criado'], ativo: true }));
     expect(interno.status).toBe(400);
+  }, DEMORA);
+
+  it('o mapa do robô (como o servidor): "Como fica" com o pedido fictício, a variável aberta recusada, salvar com a auditoria', async () => {
+    await entrar('admin');
+    const tela = await api.robo();
+    expect(tela).toEqual({ mapa: { ...MAPA_DO_ROBO_PADRAO }, ultimo: null });
+    const mapa = { ...tela.mapa, cliente: '{{questions.cb-exemplo-qst-empresa.answer}}', assunto: '{{menus.cb-exemplo-mn-setor.answer}}', prioridade: 'Alta' };
+    const p = await api.experimentarRobo(mapa, EXEMPLO_DO_LINECHAT);
+    expect(p.aberto).toBeNull();
+    if (!p.resolvido.ok) throw new Error(p.resolvido.erro);
+    expect(p.resolvido.chamado).toMatchObject({
+      painel: { sigla: 'SUP' }, titulo: 'Atendimento de Maria Souza', telefone: '5571999992010', cliente: { nome: 'Clínica Aurora' }, prioridade: 'alta', etiquetas: ['robô'],
+    });
+    expect(p.resolvido.chamado.ignorados).toEqual(['Não achei o assunto "Suporte Técnico" no painel Suporte: ficou de fora.']);
+    expect((await erroDe(api.salvarMapaDoRobo({ ...mapa, titulo: '{{contact.name' }))).status).toBe(400);
+    expect(await api.salvarMapaDoRobo({ ...mapa, campos: { 'campo-vazio': ' ' } })).toEqual({ ...mapa, campos: {} });
+    expect((await api.robo()).mapa.cliente).toBe('{{questions.cb-exemplo-qst-empresa.answer}}');
+    expect((await demoApi.admin.audit({ entityType: 'settings', pageSize: 1 } as never)).items[0]).toMatchObject({ action: 'settings_atendimento_robo', summary: 'Mudou o mapa do robô do LineChat: Cliente, Assunto, Prioridade' });
+    await api.salvarMapaDoRobo(MAPA_DO_ROBO_PADRAO);
+    await entrar('operador');
+    expect((await erroDe(api.robo())).status).toBe(403);
+    expect((await erroDe(api.experimentarRobo(mapa, EXEMPLO_DO_LINECHAT))).status).toBe(403);
+  }, DEMORA);
+
+  it('os parâmetros do mapa (como o servidor): pelo nome nos campos, os do endereço sem a chave, e a auditoria diz "Parâmetros"', async () => {
+    await entrar('admin');
+    const tela = await api.robo();
+    const mapa = {
+      ...tela.mapa,
+      parametros: [...tela.mapa.parametros, { nome: 'empresa', origem: 'pergunta: a empresa que você faz parte', exemplo: 'Clínica Aurora', descricao: '' }, { nome: 'setor', origem: 'endereço: setor', exemplo: 'suporte', descricao: '' }],
+      cliente: '{{empresa}}', etiquetas: 'robô, {{setor}}',
+    };
+    // a chave no endereço do exemplo não chega ao mapa (nem como parâmetro)
+    const p = await api.experimentarRobo(mapa, EXEMPLO_DO_LINECHAT, { setor: 'suporte', chave: 'chave-falsa-do-teste' });
+    if (!p.resolvido.ok) throw new Error(p.resolvido.erro);
+    expect(p.resolvido.chamado).toMatchObject({ cliente: { nome: 'Clínica Aurora' }, etiquetas: ['robô', 'suporte'] });
+    const semSetor = await api.experimentarRobo(mapa, EXEMPLO_DO_LINECHAT);
+    if (!semSetor.resolvido.ok) throw new Error(semSetor.resolvido.erro);
+    expect(semSetor.resolvido.chamado.etiquetas).toEqual(['robô']);
+    // a origem "endereço: chave" nunca viria: é recusada
+    expect((await erroDe(api.salvarMapaDoRobo({ ...mapa, parametros: [{ nome: 'k', origem: 'endereço: chave' }] }))).status).toBe(400);
+    expect((await api.salvarMapaDoRobo(mapa)).parametros.map((x) => x.nome)).toEqual(['nome', 'whatsapp', 'conversa', 'mensagem', 'empresa', 'setor']);
+    expect((await demoApi.admin.audit({ entityType: 'settings', pageSize: 1 } as never)).items[0]).toMatchObject({ summary: 'Mudou o mapa do robô do LineChat: Parâmetros, Etiquetas, Cliente' });
+    await api.salvarMapaDoRobo(MAPA_DO_ROBO_PADRAO);
+  }, DEMORA);
+});
+
+describe('o painel de Vendas na prévia (como o servidor)', () => {
+  it('o Comercial: as negociações de exemplo, o quadro que soma e o relatório do período', async () => {
+    await entrar('camila');
+    const op = await api.opcoes();
+    const com = painel(op, 'COM');
+    expect(com.tipo).toBe('vendas');
+    expect(com.etapas.filter((e) => e.resultado).map((e) => e.resultado)).toEqual(['ganho', 'perdido']);
+    expect((await todosOsChamados()).filter((c) => c.painelId === com.id)).toHaveLength(32);
+    // o histórico: a negociação é criada
+    const estrela = await chamadoPeloTitulo('PABX em nuvem — 40 ramais');
+    expect(estrela.historico.find((e) => e.tipo === 'criado')?.texto).toMatch(/^criou a negociação/);
+    // o quadro soma o valor de cada coluna (o das abertas em cada etapa)
+    const q = await api.quadro({ painel: com.id });
+    for (const col of q.colunas.filter((c) => !c.etapa.resultado)) expect(col.valor).toBe(col.chamados.reduce((t, c) => t + (c.valor ?? 0), 0));
+    // os últimos 28 dias: 12 entraram; 4 ganhas e 2 perdidas acabaram
+    const hoje = diaLocal(new Date());
+    const r = await api.relatorioDeVendas({ painel: 'COM', de: somarDias(hoje, -28), ate: hoje });
+    expect(r.numeros).toMatchObject({
+      novos: { qtd: 12, valor: 1_008_000 }, ganhos: { qtd: 4, valor: 298_000 }, perdidos: { qtd: 2, valor: 99_000 },
+      conversao: 66.7, ticketMedio: 74_500,
+    });
+    expect(r.funil.map((f) => [f.nome, f.chegaram.length, f.perdidas.length])).toEqual([
+      ['Lead', 12, 0], ['Qualificação', 10, 0], ['Proposta enviada', 8, 1], ['Negociação', 5, 1],
+    ]);
+    expect(r.funilGanhas).toHaveLength(3);
+    // a janela dos números: as negociações por trás, com a empresa e quem cuida
+    const perdidas = r.numeros.perdidos.ids.map((id) => r.negociacoes.find((n) => n.id === id)!);
+    expect(perdidas.map((n) => [n.titulo, n.empresa, n.motivoPerda]).sort()).toEqual([
+      ['LineReports para a supervisão', 'Distribuidora Norte', 'Adiou a decisão'], ['URA para o SAC', 'Transportadora Rota Sul', 'Preço'],
+    ]);
+    // o mês: comparado com o mesmo pedaço do mês passado (que tem as três negociações do começo dele)
+    const doMes = await api.relatorioDeVendas({ painel: 'COM', de: `${hoje.slice(0, 7)}-01`, ate: hoje });
+    expect(doMes.anterior.nome).toMatch(/^o mesmo período de /);
+    // os ganhos mês a mês: os 12 meses, o último é o de hoje; cada mês com as ganhas dele (a janela acha todas)
+    expect(doMes.meses).toHaveLength(12);
+    expect(doMes.meses.at(-1)).toMatchObject({ mes: hoje.slice(0, 7), ganho: doMes.numeros.ganhos.valor });
+    expect(doMes.meses.filter((m) => m.ganho > 0).length).toBeGreaterThanOrEqual(9);
+    const ids = new Set(doMes.negociacoes.map((n) => n.id));
+    expect(doMes.meses.flatMap((m) => m.ids).every((id) => ids.has(id))).toBe(true);
+    // a ativação, à parte (19/10): a das ganhas do mês, e o mês a mês dela com os mesmos meses
+    const comAtivacao = doMes.numeros.ganhos.ids.map((id) => doMes.negociacoes.find((n) => n.id === id)!).filter((n) => (n.ativacao ?? 0) > 0);
+    expect(doMes.numeros.ativacoes).toMatchObject({ qtd: comAtivacao.length, valor: comAtivacao.reduce((t, n) => t + n.ativacao!, 0) });
+    expect(doMes.numeros.ativacoes.qtd).toBeGreaterThan(0);
+    expect(doMes.mesesDaAtivacao.map((m) => m.mes)).toEqual(doMes.meses.map((m) => m.mes));
+    expect(doMes.mesesDaAtivacao.at(-1)).toMatchObject({ ganho: doMes.numeros.ativacoes.valor, qtd: doMes.numeros.ativacoes.qtd });
+    expect(doMes.mesesDaAtivacao.filter((m) => m.ganho > 0).length).toBeGreaterThanOrEqual(9);
+  }, DEMORA);
+
+  it('a negociação: nasce no Lead sem prioridade; o Perdido pede o motivo; o Ganho fecha', async () => {
+    await entrar('camila');
+    const op = await api.opcoes();
+    const com = painel(op, 'COM');
+    const nova = await api.criar({ painelId: com.id, titulo: 'Venda de teste', empresa: 'Empresa de Teste', valor: 100_000, prioridade: 'alta' });
+    const f = await api.chamado(nova.codigo);
+    expect(f).toMatchObject({ etapaId: etapa(op, 'COM', 'Lead').id, valor: 100_000, empresa: 'Empresa de Teste', prioridade: null, resultado: null });
+    expect(f.historico.find((e) => e.tipo === 'criado')?.texto).toBe('criou a negociação em Lead');
+    const semMotivo = await erroDe(api.mover(nova.id, { etapaId: etapa(op, 'COM', 'Perdido').id }));
+    expect(semMotivo.status).toBe(400);
+    expect(semMotivo.message).toBe(mensagemDoQueFalta(['motivoPerda'], 'Perdido'));
+    const ganha = await api.mover(nova.id, { etapaId: etapa(op, 'COM', 'Ganho').id });
+    expect(ganha).toMatchObject({ resultado: 'ganho', situacao: 'fechado' });
+    expect(ganha.historico.map((e) => e.texto)).toContain(`marcou como ganho (${reais(100_000)}/mês), estava em Lead`);
+  }, DEMORA);
+
+  it('a mensalidade e a ativação por produto: os totais; o produto que sai leva os valores dele (como no servidor)', async () => {
+    await entrar('camila');
+    const estrela = await api.chamado((await chamadoPeloTitulo('PABX em nuvem — 40 ramais')).codigo);
+    const pbx = estrela.produtos.find((p) => p.nome === 'LinePBX')!;
+    const tronco = estrela.produtos.find((p) => p.nome === 'VoiceNet')!;
+    expect(estrela).toMatchObject({
+      valor: 125_000, valoresDosProdutos: { [pbx.id]: 98_000, [tronco.id]: 27_000 },
+      ativacao: 190_000, ativacoesDosProdutos: { [pbx.id]: 150_000, [tronco.id]: 40_000 },
+    });
+    // os campos do Comercial do Helena (menos a Área de atuação), com a origem da Padaria Estrela
+    const op = await api.opcoes();
+    const campos = op.campos.filter((c) => c.painelId === painel(op, 'COM').id);
+    expect(campos.map((c) => c.nome)).toEqual(['CNPJ', 'Contatos principais', 'Origem de lead', 'Indicação']);
+    const origem = campos.find((c) => c.nome === 'Origem de lead')!;
+    expect(estrela.campos[origem.id]).toBe(origem.opcoes.find((o) => o.nome === 'Instagram')!.id);
+    const mudou = await api.alterar(estrela.id, { valoresDosProdutos: { [pbx.id]: 90_000, [tronco.id]: 27_000 }, ativacoesDosProdutos: { [pbx.id]: 120_000, [tronco.id]: 40_000 } });
+    expect(mudou).toMatchObject({ valor: 117_000, ativacao: 160_000 });
+    const historico = mudou.historico.map((e) => e.texto).join('\n');
+    expect(historico).toContain(`LinePBX ${reais(90_000)} · VoiceNet ${reais(27_000)}`);
+    expect(historico).toContain(`LinePBX ${reais(120_000)} · VoiceNet ${reais(40_000)}`);
+    expect((await erroDe(api.alterar(estrela.id, { valor: 100_000 }))).message).toBe(VALOR_E_A_SOMA);
+    expect((await erroDe(api.alterar(estrela.id, { ativacao: 100_000 }))).message).toBe(ATIVACAO_E_A_SOMA);
+    const saiu = await api.alterar(estrela.id, { produtos: [pbx.id] });
+    expect(saiu).toMatchObject({ valor: 90_000, valoresDosProdutos: { [pbx.id]: 90_000 }, ativacao: 120_000, ativacoesDosProdutos: { [pbx.id]: 120_000 } });
+    const unico = await api.alterar(estrela.id, { valoresDosProdutos: {}, valor: 90_000, ativacoesDosProdutos: {}, ativacao: 120_000 });
+    expect(unico).toMatchObject({ valor: 90_000, valoresDosProdutos: {}, ativacao: 120_000, ativacoesDosProdutos: {} });
+    // a proposta anexada (o PDF que abre no leitor do Gestor): os bytes do arquivo, sem baixar
+    const proposta = estrela.anotacoesLista.flatMap((n) => n.anexos).find((a) => a.nome.endsWith('.pdf'))!;
+    expect(proposta).toMatchObject({ tipo: 'application/pdf', imagem: false });
+    const bytes = new Uint8Array(await api.anexoBytes(proposta.id));
+    expect(String.fromCharCode(...bytes.slice(0, 5))).toBe('%PDF-');
+    expect(bytes.length).toBe(proposta.tamanho);
+  }, DEMORA);
+
+  it('a troca de painel fica entre os de Vendas; a negociação não tem pai, filhos nem ligações', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const estrela = await chamadoPeloTitulo('PABX em nuvem — 40 ramais');
+    const paraOSuporte = await erroDe(api.trocarPainel(estrela.id, { painelId: painel(op, 'SUP').id }));
+    expect(paraOSuporte.status).toBe(400);
+    expect(paraOSuporte.message).toContain('é uma negociação: só passa para outro painel de Vendas');
+    const chamado = await api.criar(await baseDoSuporte(op, 'Quer orçamento de mais ramais (teste)'));
+    const paraOComercial = await erroDe(api.trocarPainel(chamado.id, { painelId: painel(op, 'COM').id }));
+    expect(paraOComercial.status).toBe(400);
+    expect(paraOComercial.message).toContain('um chamado não vira negociação trocando de painel');
+    // a negociação não tem pai nem filhos, nem problema, e não se liga a nada (como no servidor)
+    expect((await erroDe(api.criar({ painelId: painel(op, 'COM').id, titulo: 'Mais 10 ramais', paiId: chamado.codigo }))).message).toBe(NEGOCIACAO_SEM_PAI);
+    expect((await erroDe(api.definirPai(estrela.id, chamado.codigo))).message).toBe(NEGOCIACAO_SEM_PAI);
+    expect((await erroDe(api.definirPai(chamado.id, estrela.codigo))).message).toBe(negociacaoNaoEPai(estrela.codigo));
+    expect((await erroDe(api.criar({ painelId: painel(op, 'COM').id, titulo: 'Queda geral', tipoChamado: 'problema' }))).message).toBe(NEGOCIACAO_SEM_PROBLEMA);
+    expect((await erroDe(api.ligar(estrela.id, { para: chamado.codigo, tipo: 'relacionado' }))).message).toBe(NEGOCIACAO_SEM_LIGACAO);
+    expect((await erroDe(api.ligar(chamado.id, { para: estrela.codigo, tipo: 'relacionado' }))).message).toBe(negociacaoNaoSeLiga(estrela.codigo));
+    const semLigacoes = await api.chamado(estrela.codigo);
+    expect(semLigacoes.ligacoes).toEqual([]);
+    expect(semLigacoes.grafo.arestas).toEqual([]);
+    // entre dois de Vendas: entra no funil, nunca direto no Ganho
+    const rev = await api.salvarPainel(null, { nome: 'Revenda', sigla: 'REV', cor: 'roxo', tipo: 'vendas', acesso: 'todos', ajustes: {} });
+    const ganhoRev = rev.etapas.find((e) => e.resultado === 'ganho')!;
+    expect((await erroDe(api.trocarPainel(estrela.id, { painelId: rev.id, etapaId: ganhoRev.id }))).message).toBe(TROCA_ENTRA_NO_FUNIL);
+    // o relatório de vendas é só dos painéis de Vendas
+    const hoje = diaLocal(new Date());
+    const doSuporte = await erroDe(api.relatorioDeVendas({ painel: 'SUP', de: hoje, ate: hoje }));
+    expect(doSuporte.status).toBe(400);
+    expect(doSuporte.message).toContain('não é de vendas');
+  }, DEMORA);
+});
+
+describe('o Comercial tem permissão própria na prévia (como no servidor)', () => {
+  it('sem ela, o painel de Vendas não existe; com ela, sim; e só com ela, o Comercial funciona sem os chamados', async () => {
+    // a Marina (Operador) não vê o Comercial: nem na lista de painéis, nem pelo endereço
+    await entrar('operador');
+    const daMarina = await api.opcoes();
+    expect(daMarina.paineis.some((p) => p.tipo === 'vendas')).toBe(false);
+    expect((await erroDe(api.quadro({ painel: 'painel-comercial' }))).status).toBe(404);
+    // a Camila (papel Comercial) vê o Comercial e o Suporte
+    await entrar('camila');
+    const daCamila = await api.opcoes();
+    expect(daCamila.paineis.map((p) => p.sigla)).toEqual(expect.arrayContaining(['COM', 'SUP']));
+    // um papel só com o Comercial (sem ver os chamados): as portas do módulo abrem, e o Suporte some
+    await entrar('admin');
+    const papel = await demoApi.admin.createRole({ name: 'Só o Comercial', description: 'vendas, sem os chamados', permissions: ['records.read', 'sales.read', 'tickets.work'] });
+    await demoApi.admin.createUser({ name: 'Vera Lima', email: 'vera@gestor.local', password: SENHA_DA_PREVIA, roleId: papel.id, active: true });
+    await demoApi.auth.logout();
+    await demoApi.auth.login('vera@gestor.local', SENHA_DA_PREVIA);
+    const daVera = await api.opcoes();
+    expect(daVera.paineis.some((p) => p.sigla === 'SUP')).toBe(false);
+    expect((await erroDe(api.quadro({ painel: 'painel-suporte' }))).status).toBe(404);
+    expect(Array.isArray((await api.meuDia()).meus)).toBe(true);
   }, DEMORA);
 });

@@ -9,7 +9,7 @@
  * Entrar: qualquer um destes e-mails com a senha "demo":
  *   admin@gestor.local (Administrador) · tecnico@gestor.local (Técnico) · operador@gestor.local (Operador) · leitor@gestor.local (Leitor)
  */
-import { problemaDoRecibo, problemaParaAnexar, ReciboAnexarSchema, relatoriosInventario, tipoDoRecibo, type BaseInventario } from '@gestor/shared';
+import { problemaDoRecibo, problemaParaAnexar, ReciboAnexarSchema, relatoriosInventario, tipoDoRecibo, UsuarioAtualizarSchema, type BaseInventario } from '@gestor/shared';
 import { ALL_PERMISSIONS, DEFAULT_ROLES, FiltrosChamadosSchema, ListaChamadosSchema, MODULOS_INICIAIS, PainelChamadosSchema, type ItemPainel, PERMISSIONS, PRODUTOS_INICIAIS, VAZIO, VERSAO_PAINEL, camposDeLista, comFechamento, diaEmBrasilia, etapasDaEquipe, listarChamados, painelPadrao, primeiroDiaDe, resumirChamados, type Chamado, type ContextoChamados, cnpjLimpo, cnpjValido, diaAoMeioDia, paraBusca, temDataDeAtivacao, didFormatado, didLimpo, gerarFaixaDids, identificacaoAparelho, macFormatado, macLimpo, macValido, MODALIDADES, reais, serieLimpa } from '@gestor/shared';
 import {
   AjustesEnvioSchema, MarcadosEnvioSchema, momentoEmBrasilia, numeroLegivel, proximoEnvio, montarPainel,
@@ -33,6 +33,7 @@ import {
 } from '@gestor/shared';
 import type { Api } from './index.js';
 import { chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo } from './demo-atendimento.js';
+import { criarCalendarioDemo } from './demo-calendario.js';
 import { CONTATOS_DOS_CLIENTES } from './demo-atendimento-exemplos.js';
 import { ContatoGravarSchema, MAX_CONTATOS_DO_CLIENTE, numeroWhatsApp as foneDoWhatsApp, type ContatoDoCliente } from '@gestor/shared';
 import { NOTA_DEMO } from './novidades-demo.js';
@@ -109,7 +110,8 @@ type AcessoRow = {
   ultimoAcesso: string | null; acessos: number; criadoPorId: string | null; criadoEm: string;
 };
 
-type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null };
+/** `whatsapp`/`whatsappAvisos`: o número dos avisos dos chamados (2.0.1, Administração › Usuários); sem `whatsappAvisos` = recebe */
+type UserRow = { id: string; name: string; email: string; password: string; roleId: string; active: boolean; lastLoginAt: string | null; totpSecret?: string | null; totpOn?: boolean; recovery?: string[]; sshUser?: string | null; whatsapp?: string | null; whatsappAvisos?: boolean };
 type RoleRow = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean };
 
 const S = {
@@ -171,6 +173,8 @@ const S = {
   envio: {
     ativo: false, url: 'https://api.flw.chat/chat/v1/message/send', remetente: '', horario: '18:00', dias: [0, 1, 2, 3, 4, 5, 6],
     destinatarios: [] as Array<{ id: string; nome: string; numero: string; ativo: boolean }>,
+    // 2.0.1: a conversa é concluída logo depois de mandar (vem ligado, como no servidor)
+    concluirConversa: true,
     temToken: false, configuradoEm: null as string | null, configuradoPor: null as string | null,
     ultimoAgendado: null as UltimoEnvioAgendado,
     historico: [] as RegistroEnvio[],
@@ -1142,6 +1146,12 @@ function ordenar<T>(itens: T[], q: Record<string, unknown>, padrao: string, valo
 }
 
 const paginate = <T,>(items: T[], q: Record<string, unknown>) => { const page = Number(q.page ?? 1), pageSize = Number(q.pageSize ?? 50); return { items: items.slice((page - 1) * pageSize, page * pageSize), total: items.length, page, pageSize }; };
+/** O WhatsApp do usuário (2.0.1), conferido pelo mesmo esquema do servidor: ausente não mexe, vazio tira. */
+function whatsappDoUsuario(d: Record<string, unknown>): { whatsapp?: string | null; whatsappAvisos?: boolean } {
+  const r = UsuarioAtualizarSchema.pick({ whatsapp: true, whatsappAvisos: true }).safeParse({ whatsapp: d.whatsapp, whatsappAvisos: d.whatsappAvisos });
+  if (!r.success) throw new ApiError(400, 'Dados inválidos', r.error.issues.map((i) => ({ field: i.path.join('.'), message: i.message })));
+  return r.data;
+}
 const me = (u: UserRow): Me => { const r = S.roles.find((x) => x.id === u.roleId)!; return { id: u.id, name: u.name, email: u.email, roleId: u.roleId, roleName: r.name, roleKey: r.key, permissions: r.permissions, twoFactor: !!u.totpOn, recoveryLeft: u.recovery?.length ?? 0, sshUser: u.sshUser ?? null }; };
 
 /**
@@ -1289,7 +1299,7 @@ async function envioDemo(gatilho: 'manual' | 'teste' | 'agendado', destinatarioI
   const destinatarios = falta ? [] : lista.map((d) => ({ nome: d.nome, numero: d.numero, ok: true, mensagem: 'Simulação da prévia: nada foi enviado.' }));
   const r: RegistroEnvio = {
     id: id(), em: agora.toISOString(), dia: momento.dia, gatilho, quem: gatilho === 'agendado' ? null : S.me?.name ?? null, ok: !falta,
-    mensagem: falta ?? `Simulação da prévia: nada foi para o WhatsApp. No sistema de verdade, ${gatilho === 'teste' ? 'a mensagem de teste' : 'o PDF'} iria para ${destinatarios.length} ${destinatarios.length === 1 ? 'número' : 'números'}.`,
+    mensagem: falta ?? `Simulação da prévia: nada foi para o WhatsApp. No sistema de verdade, ${gatilho === 'teste' ? 'a mensagem de teste' : 'o PDF'} iria para ${destinatarios.length} ${destinatarios.length === 1 ? 'número' : 'números'}${e.concluirConversa ? `, e ${destinatarios.length === 1 ? 'a conversa seria concluída' : 'as conversas seriam concluídas'} logo depois` : ''}.`,
     pdf: falta || gatilho === 'teste' ? null : { id: id(), nome: `chamados-${momento.dia.slice(8, 10)}-${momento.dia.slice(5, 7)}-${momento.dia.slice(0, 4)}.pdf`, bytes: 0 },
     itens, destinatarios,
   };
@@ -2045,6 +2055,9 @@ function respostaDemo(pergunta: string): RespostaIa {
   };
 }
 
+/** O calendário (2.0.1): lê os painéis e quem vê cada um da prévia dos chamados (demo-calendario.ts). */
+const calendarioDemo = criarCalendarioDemo({ S, id, wait, audit, requirePerm, requireAnyPerm });
+
 export const demoApi: Api = {
   auth: {
     async me() { await wait(50); if (!S.me) throw new ApiError(401, 'Faça login para continuar'); return me(S.me); },
@@ -2791,6 +2804,7 @@ export const demoApi: Api = {
       const e = S.envio;
       return {
         ativo: e.ativo, url: e.url, remetente: e.remetente, horario: e.horario, dias: e.dias, destinatarios: e.destinatarios,
+        concluirConversa: e.concluirConversa,
         temToken: e.temToken, configuradoEm: e.configuradoEm, configuradoPor: e.configuradoPor,
         proximo: proximoEnvio(e, new Date(), e.ultimoAgendado),
         hoje: envioDeHoje(e, new Date(), e.ultimoAgendado, e.historico),
@@ -3752,14 +3766,16 @@ export const demoApi: Api = {
   },
   // os chamados do Gestor (2.0): o módulo inteiro mora em demo-atendimento.ts
   atendimento: criarAtendimentoDemo({
-    S, id, wait, audit, requirePerm, temPerm,
+    S, id, wait, audit, requirePerm, requireAnyPerm, temPerm,
     ia: { pronta: iaProntaDemo, limite: limiteIaDemo, uso: usoIaDemo },
     cardsDoLineChat: () => chamadosDemo().cards,
   }),
+  // o calendário (2.0.1): o módulo inteiro mora em demo-calendario.ts
+  calendario: calendarioDemo,
   admin: {
-    async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt })); },
-    async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
-    async updateUser(idu, d) { await wait(); requirePerm('admin.manage'); const u = S.users.find((x) => x.id === idu); if (!u) throw notFound('Usuário'); if ((d.active === false || (d.roleId && d.roleId !== u.roleId)) && u.roleId === 'radministrador' && !S.users.some((o) => o.id !== idu && o.roleId === 'radministrador' && o.active)) throw bad('Este é o único administrador ativo. Crie outro antes de rebaixar ou desativar.'); for (const k of ['name', 'email', 'roleId', 'active'] as const) if (d[k] !== undefined) (u as any)[k] = d[k]; if (d.password) u.password = String(d.password); if (d.password || d.active === false) derrubarPortalDaEquipeDemo(u.id); audit('update', 'user', `Editou o usuário ${u.name}`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
+    async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt, whatsapp: u.whatsapp ?? null, whatsappAvisos: u.whatsappAvisos !== false })); },
+    async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const w = whatsappDoUsuario(d); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null, whatsapp: w.whatsapp ?? null, whatsappAvisos: w.whatsappAvisos ?? true }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
+    async updateUser(idu, d) { await wait(); requirePerm('admin.manage'); const u = S.users.find((x) => x.id === idu); if (!u) throw notFound('Usuário'); if ((d.active === false || (d.roleId && d.roleId !== u.roleId)) && u.roleId === 'radministrador' && !S.users.some((o) => o.id !== idu && o.roleId === 'radministrador' && o.active)) throw bad('Este é o único administrador ativo. Crie outro antes de rebaixar ou desativar.'); const w = whatsappDoUsuario(d); for (const k of ['name', 'email', 'roleId', 'active'] as const) if (d[k] !== undefined) (u as any)[k] = d[k]; if (w.whatsapp !== undefined) u.whatsapp = w.whatsapp; if (w.whatsappAvisos !== undefined) u.whatsappAvisos = w.whatsappAvisos; if (d.password) u.password = String(d.password); if (d.password || d.active === false) derrubarPortalDaEquipeDemo(u.id); audit('update', 'user', `Editou o usuário ${u.name}`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
     async roles() { await wait(); requirePerm('admin.manage'); return S.roles.map((r) => ({ ...r, userCount: S.users.filter((u) => u.roleId === r.id).length })); },
     async permissions() { await wait(30); return ALL_PERMISSIONS.map((key) => ({ key, label: PERMISSIONS[key] })); },
     async createRole(d) { await wait(); requirePerm('admin.manage'); const r: RoleRow = { id: id(), key: null, name: String(d.name), description: (d.description as string) ?? null, permissions: (d.permissions as string[]) ?? [], isSystem: false }; S.roles.push(r); audit('create', 'role', `Criou o papel ${r.name}`, r.id); return { ...r, userCount: 0 }; },
@@ -3817,11 +3833,13 @@ export const demoApi: Api = {
         ...S.artigos.filter((c) => c.deletedAt).map((c) => ({ type: 'knowledgeArticle', id: c.id, label: `${codigoDoArtigo(c.numero)} · ${c.titulo}`, deletedAt: c.deletedAt! })),
         ...S.tutoriais.filter((c) => c.deletedAt).map((c) => ({ type: 'portalArticle', id: c.id, label: `Tutorial ${c.numero} · ${c.titulo}`, deletedAt: c.deletedAt! })),
         ...lixeiraDosChamadosDemo(),
+        ...calendarioDemo.lixeira(),
       ].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
     },
     async restore(type, idr) {
       await wait(); requirePerm('records.delete');
       if (type === 'ticket') return restaurarChamadoDaLixeiraDemo(idr);
+      if (type === 'calendarEvent') return calendarioDemo.restaurarDaLixeira(idr);
       const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'productModule' ? S.modules : type === 'releaseNote' ? S.notas : type === 'knowledgeArticle' ? S.artigos : type === 'portalArticle' ? S.tutoriais : S.devices;
       const it = list.find((x) => x.id === idr); if (!it) throw notFound();
       it.deletedAt = null;

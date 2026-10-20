@@ -115,14 +115,16 @@ describe('a origem do pedido (a defesa contra o pedido forjado)', () => {
   });
 
   it('a entrada das integrações (servidor para servidor, com chave de API) não é barrada pela origem', async () => {
-    for (const url of ['/api/atendimento/entrada/chamado', '/api/atendimento/entrada/mensagem', '/api/atendimento/integracao/chamados/SUP-1/anotacoes']) {
+    for (const url of ['/api/atendimento/entrada/chamado', '/api/atendimento/entrada/robo', '/api/atendimento/integracao/chamados/SUP-1/anotacoes']) {
       const r = await app.inject({ method: 'POST', url, headers: { origin: 'https://n8n.exemplo.com.br' }, payload: { telefone: '71999990000', texto: 'oi' } });
       // sem chave de API válida a rota recusa do jeito dela (ou não existe ainda): o que não pode é ser o 403 da origem
       expect(r.json().error, `${url}: ${r.statusCode}`).not.toBe(RECUSADO);
     }
-    // a exceção é só para esses dois caminhos: as Integrações da tela (com cookie) continuam conferidas
+    // a exceção é só para esses caminhos: as Integrações da tela (com cookie) continuam conferidas, o mapa do robô também
     const parecido = await app.inject({ method: 'POST', url: '/api/atendimento/integracoes/chaves', headers: { origin: 'https://n8n.exemplo.com.br', cookie: s.cookie }, payload: { nome: 'x' } });
     expect(parecido.json().error).toBe(RECUSADO);
+    const mapa = await app.inject({ method: 'PUT', url: '/api/atendimento/integracoes/robo', headers: { origin: 'https://n8n.exemplo.com.br', cookie: s.cookie }, payload: {} });
+    expect(mapa.json().error).toBe(RECUSADO);
   });
 });
 

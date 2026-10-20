@@ -1,93 +1,30 @@
 /**
- * OS CHAMADOS DO GESTOR — a rotina (Patch 2.0, decisão 0047): as respostas prontas e os chamados
- * agendados, que quem cuida dos chamados cadastra em Chamados › Ajustes.
+ * OS CHAMADOS DO GESTOR — a rotina (Patch 2.0, decisão 0047): os chamados agendados, que quem cuida
+ * dos chamados cadastra em Painéis › Ajustes.
  *
- * A resposta pronta é um texto com uma ação junto (mandar ao cliente, esperar, pôr etiqueta, assumir,
- * mover): aqui só se cadastra; quem usa num chamado é `usarResposta` (chamados.ts). O agendado é o
- * chamado que nasce sozinho na hora marcada (a verificação dos DIDs todo dia 15): aqui se cadastra e
- * se cria "agora"; na hora marcada, quem cria é o relógio (`relogio.ts`) — os dois pela mesma
- * `criarDoAgendado`, que passa por `criarChamado` (as mesmas regras da tela).
+ * O agendado é o chamado que nasce sozinho na hora marcada (a verificação dos DIDs todo dia 15): aqui
+ * se cadastra e se cria "agora"; na hora marcada, quem cria é o relógio (`relogio.ts`) — os dois pela
+ * mesma `criarDoAgendado`, que passa por `criarChamado` (as mesmas regras da tela).
  *
- * Nada se apaga de verdade: a resposta e o agendado removidos ganham `deleted_at`.
+ * As respostas prontas saíram no 2.0.1 (o pedido do Luan: "já tem no LineChat"); a tabela
+ * `ticket_macros` ficou no banco, sem uso. Nada se apaga de verdade: o agendado removido ganha `deleted_at`.
  */
 import type { FastifyInstance } from 'fastify';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { clients, newId, ticketMacros, ticketSchedules, users, type Db } from '@gestor/db';
+import { clients, newId, ticketSchedules, users, type Db } from '@gestor/db';
 import {
-  AgendadoGravarSchema, ChamadoCriarSchema, proximaExecucao, RegraAgendadoSchema, RespostaProntaGravarSchema, textoDaRegra,
-  type Agendado, type Painel, type Prioridade, type RegraAgendado, type RespostaPronta,
+  AgendadoGravarSchema, ChamadoCriarSchema, proximaExecucao, RegraAgendadoSchema, textoDaRegra,
+  type Agendado, type Painel, type Prioridade, type RegraAgendado,
 } from '@gestor/shared';
 import { BadRequest, NotFound } from '../../plugins/errors.js';
 import { criarChamado } from './chamados.js';
-import { carregarContexto, carregarPaineis, type Ator } from './contexto.js';
-import { lerAcao } from './leitura.js';
+import { carregarContexto, type Ator } from './contexto.js';
 
-export type RespostaGravar = z.infer<typeof RespostaProntaGravarSchema>;
 export type AgendadoGravar = z.infer<typeof AgendadoGravarSchema>;
-type LinhaResposta = typeof ticketMacros.$inferSelect;
 export type LinhaAgendado = typeof ticketSchedules.$inferSelect;
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
-
-// =====================================================================
-//  AS RESPOSTAS PRONTAS
-// =====================================================================
-
-export function respostaDaLinha(m: LinhaResposta): RespostaPronta {
-  return { id: m.id, nome: m.name, texto: m.body, painelId: m.panelId, acao: lerAcao(m.action), ordem: m.sortOrder, ativa: m.active };
-}
-
-/** Todas (inclusive as desativadas): é a lista da tela de Ajustes. A tela de trabalho lê as ativas em `/opcoes`. */
-export async function listarRespostas(db: Db): Promise<RespostaPronta[]> {
-  const linhas = await db.select().from(ticketMacros).where(isNull(ticketMacros.deletedAt)).orderBy(asc(ticketMacros.sortOrder), asc(ticketMacros.name));
-  return linhas.map(respostaDaLinha);
-}
-
-/**
- * O painel da resposta existe; e a etapa para onde ela leva o chamado é desse painel — a etapa é de
- * um painel só, então a resposta que move precisa dizer qual (a que vale em todos não pode mover).
- */
-async function conferirResposta(db: Db, d: RespostaGravar): Promise<Painel | null> {
-  const { paineis } = await carregarPaineis(db);
-  const painel = d.painelId ? paineis.find((p) => p.id === d.painelId) ?? null : null;
-  if (d.painelId && !painel) throw new BadRequest('O painel escolhido não existe (ou foi removido).');
-  if (d.acao.etapaId) {
-    if (!painel) throw new BadRequest('Para mover o chamado, escolha o painel da resposta: a etapa é de um painel.');
-    if (!painel.etapas.some((e) => e.id === d.acao.etapaId)) throw new BadRequest(`Essa etapa não é do painel ${painel.nome}.`);
-  }
-  return painel;
-}
-
-async function respostaOu404(db: Db, id: string): Promise<LinhaResposta> {
-  const [m] = await db.select().from(ticketMacros).where(and(eq(ticketMacros.id, id), isNull(ticketMacros.deletedAt))).limit(1);
-  if (!m) throw new NotFound('Resposta pronta');
-  return m;
-}
-
-/** A nova entra no fim da lista. */
-export async function criarResposta(db: Db, d: RespostaGravar, userId: string | null): Promise<{ resposta: RespostaPronta; painel: Painel | null }> {
-  const painel = await conferirResposta(db, d);
-  const [ultima] = await db.select({ n: sql<number>`coalesce(max(${ticketMacros.sortOrder}), -1)::int` }).from(ticketMacros).where(isNull(ticketMacros.deletedAt));
-  const [m] = await db.insert(ticketMacros).values({
-    id: newId(), panelId: d.painelId, name: d.nome, body: d.texto, action: d.acao, sortOrder: Number(ultima?.n ?? -1) + 1, active: d.ativa, createdById: userId,
-  }).returning();
-  return { resposta: respostaDaLinha(m!), painel };
-}
-
-export async function alterarResposta(db: Db, id: string, d: RespostaGravar): Promise<{ antes: RespostaPronta; depois: RespostaPronta }> {
-  const antes = await respostaOu404(db, id);
-  await conferirResposta(db, d);
-  const [m] = await db.update(ticketMacros).set({ panelId: d.painelId, name: d.nome, body: d.texto, action: d.acao, active: d.ativa, updatedAt: new Date() })
-    .where(eq(ticketMacros.id, id)).returning();
-  return { antes: respostaDaLinha(antes), depois: respostaDaLinha(m!) };
-}
-
-export async function removerResposta(db: Db, id: string): Promise<RespostaPronta> {
-  const m = await respostaOu404(db, id);
-  await db.update(ticketMacros).set({ deletedAt: new Date() }).where(eq(ticketMacros.id, id));
-  return respostaDaLinha(m);
-}
 
 // =====================================================================
 //  OS AGENDADOS

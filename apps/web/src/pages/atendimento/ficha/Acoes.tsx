@@ -1,8 +1,10 @@
 /**
  * A barra de ações da ficha: Assumir, Mover (o menu das etapas do painel, cada uma dizendo o que falta
  * para ir para ela e os filhos que travam), o atalho "Escalonar para N2", Esperar (o cliente ou a
- * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, Resposta pronta, Preencher com IA e
- * o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
+ * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, Preencher com IA e o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
+ * Na negociação, o Mais não tem ligar, filho, pai nem problema (2.0.1, decisão 0050).
+ * Na negociação (o painel de Vendas), o Mais não tem filho, pai nem problema: ela se liga pelo Ligar (o pedido do
+ * Luan na prévia, em 17/10: "n precisa de pais e filhas aqui").
  *
  * Mover usa o `useMover()` comum: ele pede o motivo ao subir ou descer de nível e mostra o que falta
  * quando o servidor recusa. O erro das ações diretas (assumir, parar de esperar…) aparece logo
@@ -12,21 +14,20 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowRightLeft, ArrowUpRight, Columns3, Copy, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, MessageCircle, MoreHorizontal, RotateCcw, Sparkles, Trash2, Unlink, UserCheck, Zap,
+  ArrowRightLeft, ArrowUpRight, Columns3, Copy, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, MessageCircle, MoreHorizontal, RotateCcw, Sparkles, ThumbsDown, Trash2, Trophy, Unlink, UserCheck,
 } from 'lucide-react';
-import { etapaAoAssumir, movimentoDeNivel, nomeDoObrigatorio, type RespostaPronta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
+import { etapaAoAssumir, movimentoDeNivel, nomeDoObrigatorio, type SugestaoIa, type TipoEspera } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Confirmar, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
 import { chaveDaFicha, fundoDaJanela } from '../comum.js';
 import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, linkDaFicha, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 import { JanelaIa, pedirSugestao } from './Ia.js';
-import { JanelaAbrirLigado, JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaResposta, JanelaTrocarPainel, resumoDaResposta } from './Janelas.js';
+import { JanelaAbrirLigado, JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaTrocarPainel } from './Janelas.js';
 
 type Janela =
   | { tipo: 'esperar'; espera: TipoEspera }
   | { tipo: 'avisar' }
-  | { tipo: 'resposta'; resposta: RespostaPronta }
   | { tipo: 'ia'; s: SugestaoIa }
   | { tipo: 'ligar' }
   | { tipo: 'pai' }
@@ -54,11 +55,13 @@ export function BarraDeAcoes() {
   const aberto = f.situacao === 'aberto';
   const meu = !!eu && f.responsavel?.id === eu.id;
   const etapas = painel?.etapas ?? [];
-  const nomeEtapa = (id: string) => nomeComNivel(etapas.find((e) => e.id === id));
+  // a negociação (o painel de Vendas): Ganhou e Perdeu à mão; sem escalonar, operadora, aviso ao cliente e IA
+  const vendas = painel?.tipo === 'vendas';
+  const ganho = vendas ? etapas.find((e) => e.resultado === 'ganho') : undefined;
+  const perdido = vendas ? etapas.find((e) => e.resultado === 'perdido') : undefined;
   // o atalho: o próximo nível acima (N1 → N2), quando o chamado está numa etapa com nível
   const acima = aberto && etapa?.nivel ? etapas.filter((e) => e.nivel && e.nivel > etapa.nivel!).sort((a, b) => a.nivel! - b.nivel!)[0] : undefined;
-  const respostas = opcoes.respostas.filter((r) => r.ativa && (!r.painelId || r.painelId === f.painelId)).sort((a, b) => a.ordem - b.ordem || a.nome.localeCompare(b.nome, 'pt-BR'));
-  const podeAvisar = opcoes.whatsapp.cliente && !!f.contato?.telefone;
+  const podeAvisar = !vendas && opcoes.whatsapp.cliente && !!f.contato?.telefone;
 
   /** Uma ação direta: o erro fica embaixo da barra, com o nome dela. */
   const direta = async <T,>(nome: string, fazer: () => Promise<T>, ok?: string) => {
@@ -118,9 +121,9 @@ export function BarraDeAcoes() {
 
   return (
     <div className="min-w-0">
-      <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Ações do chamado">
+      <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label={vendas ? 'Ações da negociação' : 'Ações do chamado'}>
         {!meu && f.situacao !== 'fechado' && (
-          <button type="button" className="btn-primary btn-sm" disabled={acao.ocupado} onClick={() => void assumir()} title="Ficar com o chamado (na entrada, ele vai para o andamento)">
+          <button type="button" className="btn-primary btn-sm" disabled={acao.ocupado} onClick={() => void assumir()} title={vendas ? 'Ficar com a negociação' : 'Ficar com o chamado (na entrada, ele vai para o andamento)'}>
             {acao.ocupado && qual === 'Assumir' ? <Spinner className="text-white" /> : <UserCheck size={15} />} Assumir
           </button>
         )}
@@ -156,6 +159,18 @@ export function BarraDeAcoes() {
           )}
         </MenuSuspenso>
 
+        {/* a negociação aberta: o resultado à mão (a janela pede o valor e o dia, ou o motivo da perda) */}
+        {vendas && aberto && ganho && (
+          <button type="button" className="btn-secondary btn-sm text-ok" disabled={ocupadoMover} onClick={() => void mover.mover(f, ganho.id)} id="acao-ganhou" title="Marcar como ganho: o valor e o dia em que fechou">
+            <Trophy size={15} /> Ganhou
+          </button>
+        )}
+        {vendas && aberto && perdido && (
+          <button type="button" className="btn-secondary btn-sm text-bad" disabled={ocupadoMover} onClick={() => void mover.mover(f, perdido.id)} id="acao-perdeu" title="Marcar como perdido: o motivo e o dia">
+            <ThumbsDown size={15} /> Perdeu
+          </button>
+        )}
+
         {acima && (
           <button type="button" className="btn-secondary btn-sm" disabled={ocupadoMover} onClick={() => void mover.mover(f, acima.id)} title={`Passar para o ${acima.nome} (pede o motivo)`}>
             <ArrowUpRight size={15} /> Escalonar para {acima.nome}
@@ -169,14 +184,21 @@ export function BarraDeAcoes() {
             {acao.ocupado && qual === 'Parar de esperar' ? <Spinner /> : <Hourglass size={15} />} Parar de esperar
           </button>
         ) : (
-          <MenuSuspenso classe="btn-secondary btn-sm" largura="w-[290px]" titulo="Marcar que o chamado está esperando alguém" rotulo={<><Hourglass size={15} /> Esperar</>}>
-            {(fecharMenu) => (
-              <>
-                <ItemMenu dica="O prazo para de correr enquanto espera." onClick={() => { fecharMenu(); setJanela({ tipo: 'esperar', espera: 'cliente' }); }}>Esperar o cliente…</ItemMenu>
-                <ItemMenu dica="O prazo continua correndo." onClick={() => { fecharMenu(); setJanela({ tipo: 'esperar', espera: 'operadora' }); }}>Esperar a operadora…</ItemMenu>
-              </>
-            )}
-          </MenuSuspenso>
+          vendas ? (
+            // na venda, só o cliente (a resposta à proposta, a reunião com o sócio…)
+            <button type="button" className="btn-secondary btn-sm" onClick={() => setJanela({ tipo: 'esperar', espera: 'cliente' })} title="Marcar que a negociação espera o cliente (a resposta à proposta, por exemplo)">
+              <Hourglass size={15} /> Esperar o cliente
+            </button>
+          ) : (
+            <MenuSuspenso classe="btn-secondary btn-sm" largura="w-[290px]" titulo="Marcar que o chamado está esperando alguém" rotulo={<><Hourglass size={15} /> Esperar</>}>
+              {(fecharMenu) => (
+                <>
+                  <ItemMenu dica="O prazo para de correr enquanto espera." onClick={() => { fecharMenu(); setJanela({ tipo: 'esperar', espera: 'cliente' }); }}>Esperar o cliente…</ItemMenu>
+                  <ItemMenu dica="O prazo continua correndo." onClick={() => { fecharMenu(); setJanela({ tipo: 'esperar', espera: 'operadora' }); }}>Esperar a operadora…</ItemMenu>
+                </>
+              )}
+            </MenuSuspenso>
+          )
         ))}
 
         {podeAvisar && (
@@ -185,15 +207,7 @@ export function BarraDeAcoes() {
           </button>
         )}
 
-        {respostas.length > 0 && (
-          <MenuSuspenso classe="btn-secondary btn-sm" largura="w-[320px]" titulo="Mandar um texto pronto e mudar o chamado de uma vez" rotulo={<><Zap size={15} /> Resposta pronta</>}>
-            {(fecharMenu) => respostas.map((r) => (
-              <ItemMenu key={r.id} dica={resumoDaResposta(r, nomeEtapa)} onClick={() => { fecharMenu(); setJanela({ tipo: 'resposta', resposta: r }); }}>{r.nome}</ItemMenu>
-            ))}
-          </MenuSuspenso>
-        )}
-
-        {opcoes.ia.ativa && (
+        {opcoes.ia.ativa && !vendas && (
           <button type="button" className="btn-secondary btn-sm" disabled={lendo} onClick={() => void pedirIa()}
             title={f.sessaoId ? 'A IA lê a conversa no LineChat e sugere o preenchimento (nada é gravado sem você aplicar)' : 'A IA lê o chamado e sugere o preenchimento (nada é gravado sem você aplicar)'}>
             {lendo ? <><Spinner /> A IA está lendo…</> : <><Sparkles size={15} /> Preencher com IA</>}
@@ -209,11 +223,16 @@ export function BarraDeAcoes() {
             const ir = (fazer: () => void) => () => { fecharMenu(); fazer(); };
             return (
               <>
-                <ItemMenu icone={<Link2 size={15} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica="relacionado, duplicado de, repete">Ligar a outro chamado…</ItemMenu>
-                <ItemMenu icone={<GitBranch size={15} />} onClick={ir(() => setJanela({ tipo: 'filho' }))} dica="pode ser em outro painel (o Desenvolvimento)">Criar um filho…</ItemMenu>
-                <ItemMenu icone={<GitBranch size={15} className="rotate-180" />} onClick={ir(() => setJanela({ tipo: 'pai' }))}>{f.pai ? `Trocar o pai (${f.pai.codigo})…` : 'Definir o pai…'}</ItemMenu>
+                {/* a negociação não se liga a nada nem tem pai e filhos (2.0.1, decisão 0050) */}
+                {!vendas && (
+                  <>
+                    <ItemMenu icone={<Link2 size={15} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica="relacionado, duplicado de, repete">Ligar a outro chamado…</ItemMenu>
+                    <ItemMenu icone={<GitBranch size={15} />} onClick={ir(() => setJanela({ tipo: 'filho' }))} dica="pode ser em outro painel (o Desenvolvimento)">Criar um filho…</ItemMenu>
+                    <ItemMenu icone={<GitBranch size={15} className="rotate-180" />} onClick={ir(() => setJanela({ tipo: 'pai' }))}>{f.pai ? `Trocar o pai (${f.pai.codigo})…` : 'Definir o pai…'}</ItemMenu>
+                  </>
+                )}
                 {f.pai && <ItemMenu icone={<Unlink size={15} />} onClick={ir(() => void direta('Tirar o pai', () => api.atendimento.definirPai(f.id, null), `${f.codigo} não é mais filho de ${f.pai!.codigo}`))}>Tirar o pai ({f.pai.codigo})</ItemMenu>}
-                {f.tipoChamado === 'chamado' && (
+                {f.tipoChamado === 'chamado' && !vendas && (
                   <>
                     <SeparadorMenu />
                     <ItemMenu icone={<Layers size={15} />} onClick={ir(() => setJanela({ tipo: 'problema' }))} dica="o problema junta os incidentes iguais de várias empresas">
@@ -223,7 +242,7 @@ export function BarraDeAcoes() {
                     <ItemMenu icone={<Layers size={15} />} onClick={ir(() => setJanela({ tipo: 'novoProblema' }))} dica="este chamado vira o primeiro incidente dele">Abrir um problema a partir deste…</ItemMenu>
                   </>
                 )}
-                <SeparadorMenu />
+                {!vendas && <SeparadorMenu />}
                 <ItemMenu icone={<Columns3 size={15} />} onClick={ir(() => setJanela({ tipo: 'painel' }))} dica="o código não muda">Trocar de painel…</ItemMenu>
                 {!aberto && <ItemMenu icone={<RotateCcw size={15} />} onClick={ir(() => setJanela({ tipo: 'reabrir' }))}>Reabrir…</ItemMenu>}
                 <ItemMenu icone={f.observando ? <EyeOff size={15} /> : <Eye size={15} />}
@@ -247,7 +266,6 @@ export function BarraDeAcoes() {
 
       {janela?.tipo === 'esperar' && <JanelaEsperar tipo={janela.espera} onFechar={fechar} />}
       {janela?.tipo === 'avisar' && <JanelaAvisar onFechar={fechar} />}
-      {janela?.tipo === 'resposta' && <JanelaResposta resposta={janela.resposta} onFechar={fechar} />}
       {janela?.tipo === 'ia' && <JanelaIa s={janela.s} onFechar={fechar} />}
       {janela?.tipo === 'ligar' && <JanelaLigar onFechar={fechar} />}
       {janela?.tipo === 'pai' && (
@@ -266,7 +284,9 @@ export function BarraDeAcoes() {
       {janela?.tipo === 'reabrir' && <JanelaReabrir onFechar={fechar} />}
       {janela?.tipo === 'lixeira' && <Confirmar open onClose={fechar} onConfirm={() => void mandarParaLixeira()} loading={apagando} perigoso
         titulo={`Mandar ${f.codigo} para a lixeira`} botao="Mandar para a lixeira"
-        texto={<>O chamado <b>{f.titulo}</b> sai do quadro e da lista para todo mundo. O número {f.codigo} não volta a ser usado. Dá para restaurar em Administração › Lixeira.</>} />}
+        texto={vendas
+          ? <>A negociação <b>{f.titulo}</b> sai do quadro, da lista e do relatório de vendas para todo mundo. O número {f.codigo} não volta a ser usado. Dá para restaurar em Administração › Lixeira.</>
+          : <>O chamado <b>{f.titulo}</b> sai do quadro e da lista para todo mundo. O número {f.codigo} não volta a ser usado. Dá para restaurar em Administração › Lixeira.</>} />}
     </div>
   );
 }

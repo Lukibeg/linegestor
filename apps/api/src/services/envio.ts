@@ -14,6 +14,10 @@
  * histórico quando quiser — nada é apagado.
  *
  * O token da FlwChat fica no cofre cifrado, como o do LineChat; nunca volta para a tela.
+ *
+ * Depois de mandar, o Gestor **conclui a conversa** que a mensagem abriu na FlwChat (2.0.1, o pedido do
+ * Luan: "ele envia e conclui… ele é só um aviso"), com a opção ligada (vem ligada). Se a FlwChat não
+ * deixar, a mensagem continua entregue, e o histórico diz que a conversa ficou aberta e por quê.
  */
 import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
@@ -46,7 +50,8 @@ export type RegistroEnvio = {
   pdf: { id: string; nome: string; bytes: number } | null;
   /** os títulos do que foi no PDF */
   itens: string[];
-  destinatarios: Array<{ nome: string; numero: string; ok: boolean; mensagem: string }>;
+  /** `conversa`: concluída depois de mandar, ou aberta (a FlwChat não deixou); sem ela, a opção estava desligada */
+  destinatarios: Array<{ nome: string; numero: string; ok: boolean; mensagem: string; conversa?: 'concluida' | 'aberta' }>;
 };
 
 export type AjustesEnvioGuardados = Omit<AjustesEnvio, 'token'> & {
@@ -71,12 +76,15 @@ export type Ferramentas = {
   agora: () => Date;
   /** onde os PDFs ficam guardados */
   pasta: string;
+  /** a espera entre uma pergunta e outra à FlwChat (os testes não esperam) */
+  esperar: (ms: number) => Promise<void>;
 };
 let ferramentas: Ferramentas = {
   gerarPdf: gerarPdfComChromium,
   fetchFn: (...a) => fetch(...a),
   agora: () => new Date(),
   pasta: process.env.ENVIOS_DIR ?? join(integ.CONFIG_DIR, 'envios'),
+  esperar: (ms) => new Promise((r) => setTimeout(r, ms)),
 };
 export function trocarFerramentas(f: Partial<Ferramentas>) { ferramentas = { ...ferramentas, ...f }; }
 
@@ -272,30 +280,117 @@ export async function lerPdf(id: string, soNoPrazo: boolean): Promise<Buffer | n
 
 // ---------- a FlwChat ----------
 
+const autorizacao = (token: string) => (/^bearer\s/i.test(token) ? token : `Bearer ${token}`);
+
+/** O JSON de uma resposta (vazio quando não é JSON). */
+function lerJson(texto: string): Record<string, unknown> {
+  try { const j = JSON.parse(texto) as unknown; return j && typeof j === 'object' && !Array.isArray(j) ? (j as Record<string, unknown>) : {}; } catch { return {}; }
+}
+
 /**
  * Manda uma mensagem pela API da FlwChat: o número que envia (o canal conectado lá), o destino, o
  * texto e, se houver, o endereço do arquivo (a API baixa de lá e entrega como documento, com o
  * texto de legenda). O formato é o da API da plataforma por trás dela (a mesma do LineChat).
+ * Devolve a frase para o histórico e o que a FlwChat respondeu (a mensagem, com a conversa dela).
  */
 export async function mandarMensagem(
   a: Pick<AjustesEnvioGuardados, 'url' | 'remetente'>, token: string, para: string, texto: string, arquivo?: string,
-): Promise<string> {
-  const auth = /^bearer\s/i.test(token) ? token : `Bearer ${token}`;
+): Promise<{ mensagem: string; resposta: Record<string, unknown> }> {
   const corpo = { from: a.remetente, to: para, body: { text: texto, ...(arquivo ? { fileUrl: arquivo } : {}) } };
   let r: Response;
   try {
     r = await ferramentas.fetchFn(a.url, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: auth },
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: autorizacao(token) },
       body: JSON.stringify(corpo), signal: AbortSignal.timeout(30_000),
     });
   } catch (e) {
     const motivo = e instanceof Error ? (e.name === 'TimeoutError' ? 'não respondeu em 30 segundos' : e.message) : String(e);
     throw new Error(`Não consegui falar com a FlwChat (${motivo}). Confira o endereço da API.`);
   }
-  const resposta = (await r.text().catch(() => '')).slice(0, 300);
+  const resposta = (await r.text().catch(() => '')).slice(0, 4000);
   if (r.status === 401 || r.status === 403) throw new Error(`A FlwChat recusou o token (${r.status}). Gere um novo lá e salve aqui.`);
-  if (!r.ok) throw new Error(`A FlwChat respondeu ${r.status}${resposta ? `: ${resposta}` : ''}`);
-  return `Aceito pela FlwChat (${r.status}).`;
+  if (!r.ok) throw new Error(`A FlwChat respondeu ${r.status}${resposta ? `: ${resposta.slice(0, 300)}` : ''}`);
+  return { mensagem: `Aceito pela FlwChat (${r.status}).`, resposta: lerJson(resposta) };
+}
+
+// ---------- concluir a conversa (2.0.1) ----------
+
+/** O começo do endereço da API: o de envio sem o "/chat/v1/message/send" (o resto da API mora ao lado). */
+export function baseDaApi(url: string): string {
+  const m = /^(.*?)\/chat\/v\d+\/message\/send(?:-sync)?\/?(?:\?.*)?$/i.exec(url.trim());
+  if (m) return m[1]!;
+  try { return new URL(url).origin; } catch { return url.trim().replace(/\/+$/, ''); }
+}
+
+/** A conversa (a sessão) em que a mensagem entrou, do jeito que a FlwChat responder: `sessionId` ou `session.id`. */
+export function conversaDaResposta(j: Record<string, unknown>): string | null {
+  const sessao = j.session && typeof j.session === 'object' ? (j.session as Record<string, unknown>).id : undefined;
+  const id = j.sessionId ?? sessao;
+  return typeof id === 'string' && id.trim() ? id.trim() : null;
+}
+
+/** Quantas vezes pergunta à FlwChat pela conversa da mensagem (ela entra na fila e ganha a conversa num instante). */
+const PERGUNTAS_PELA_CONVERSA = 4;
+
+async function chamarApi(url: string, metodo: 'GET' | 'PUT', token: string, corpo?: unknown) {
+  try {
+    const r = await ferramentas.fetchFn(url, {
+      method: metodo, headers: { Accept: 'application/json', Authorization: autorizacao(token), ...(corpo ? { 'Content-Type': 'application/json' } : {}) },
+      ...(corpo ? { body: JSON.stringify(corpo) } : {}), signal: AbortSignal.timeout(15_000),
+    });
+    const texto = (await r.text().catch(() => '')).slice(0, 4000);
+    return { ok: r.ok, status: r.status, texto, json: lerJson(texto) };
+  } catch (e) {
+    return { ok: false, status: 0, texto: e instanceof Error ? (e.name === 'TimeoutError' ? 'não respondeu em 15 segundos' : e.message) : String(e), json: {} };
+  }
+}
+
+/**
+ * Conclui a conversa que a mensagem abriu (ou em que entrou) na FlwChat — o relatório é só um aviso e não
+ * fica pendente esperando alguém. A conversa vem na resposta do envio; quando não vem (a mensagem ainda
+ * está na fila), pergunta pela mensagem algumas vezes. Concluída do jeito de sempre: sem reabrir sozinha
+ * e sem parar robô (`PUT /chat/v1/session/{id}/complete`). Nunca lança: devolve o que aconteceu.
+ */
+export async function concluirConversa(
+  a: Pick<AjustesEnvioGuardados, 'url'>, token: string, resposta: Record<string, unknown>,
+): Promise<{ ok: boolean; mensagem: string }> {
+  const base = baseDaApi(a.url);
+  let conversa = conversaDaResposta(resposta);
+  const idMensagem = typeof resposta.id === 'string' && resposta.id.trim() ? resposta.id.trim() : null;
+  for (let i = 0; !conversa && idMensagem && i < PERGUNTAS_PELA_CONVERSA; i++) {
+    if (i) await ferramentas.esperar(1_500);
+    const r = await chamarApi(`${base}/chat/v1/message/${encodeURIComponent(idMensagem)}`, 'GET', token);
+    if (r.ok) conversa = conversaDaResposta(r.json);
+  }
+  if (!conversa) return { ok: false, mensagem: 'a conversa ficou aberta: a FlwChat não disse qual é a conversa' };
+  const r = await chamarApi(`${base}/chat/v1/session/${encodeURIComponent(conversa)}/complete`, 'PUT', token, { reactivateOnNewMessage: false, stopBotInExecution: false });
+  if (r.ok) return { ok: true, mensagem: 'conversa concluída' };
+  const porque = r.status === 0 ? `não consegui falar com a FlwChat (${r.texto})` : `a FlwChat respondeu ${r.status}${r.texto ? `: ${r.texto.slice(0, 200)}` : ''}`;
+  return { ok: false, mensagem: `a conversa ficou aberta: ${porque}` };
+}
+
+/** Manda para uma pessoa da lista e, com a opção ligada, conclui a conversa (a falha ao concluir não desfaz o envio). */
+async function mandarPara(
+  a: AjustesEnvioGuardados, token: string, d: Destinatario, texto: string, arquivo?: string,
+): Promise<RegistroEnvio['destinatarios'][number]> {
+  try {
+    const enviado = await mandarMensagem(a, token, d.numero, texto, arquivo);
+    if (a.concluirConversa === false) return { nome: d.nome, numero: d.numero, ok: true, mensagem: enviado.mensagem };
+    const c = await concluirConversa(a, token, enviado.resposta);
+    return { nome: d.nome, numero: d.numero, ok: true, mensagem: `${enviado.mensagem.replace(/\.$/, '')}; ${c.mensagem}.`, conversa: c.ok ? 'concluida' : 'aberta' };
+  } catch (e) {
+    return { nome: d.nome, numero: d.numero, ok: false, mensagem: e instanceof Error ? e.message : 'Falhou' };
+  }
+}
+
+/** O que o histórico diz das conversas: concluídas, ou quais ficaram abertas e por quê. */
+function sobreAsConversas(ds: RegistroEnvio['destinatarios']): string {
+  const certos = ds.filter((d) => d.ok && d.conversa);
+  if (!certos.length) return '';
+  const abertas = certos.filter((d) => d.conversa === 'aberta');
+  if (!abertas.length) return certos.length === 1 ? ' (a conversa foi concluída)' : ' (as conversas foram concluídas)';
+  const porque = abertas.map((d) => `${d.nome}: ${d.mensagem.replace(/^.*?a conversa ficou aberta: /, '').replace(/\.$/, '')}`).join(' · ');
+  return `; ${abertas.length === 1 ? '1 conversa ficou aberta' : `${abertas.length} conversas ficaram abertas`} (${porque})`;
 }
 
 // ---------- o envio ----------
@@ -347,10 +442,7 @@ async function enviarAgora(
   } else if (o.gatilho === 'teste') {
     // o teste: só um texto, para conferir o token, o número que envia e o destino
     const texto = 'Teste do Ingline Gestão: o envio automático dos relatórios dos Chamados está funcionando. Pode ignorar esta mensagem.';
-    registro.destinatarios = await Promise.all(lista.map(async (d) => {
-      try { return { nome: d.nome, numero: d.numero, ok: true, mensagem: await mandarMensagem(valor, token!, d.numero, texto) }; }
-      catch (e) { return { nome: d.nome, numero: d.numero, ok: false, mensagem: e instanceof Error ? e.message : 'Falhou' }; }
-    }));
+    registro.destinatarios = await Promise.all(lista.map((d) => mandarPara(valor, token!, d, texto)));
   } else {
     try {
       const p = await pacote(db);
@@ -361,10 +453,7 @@ async function enviarAgora(
       registro.pdf = { id, nome, bytes: pdf.length };
       const link = `${enderecoPublico(app)}/api/envio/arquivo/${id}/${nome}`;
       const texto = textoDoEnvio({ dia: momento.dia, hhmm: momento.hhmm, painel: p.painelNome, numeros: p.resumo.kpis.map((k) => ({ label: k.label, valor: k.valor })), titulos: p.titulos });
-      for (const d of lista) {
-        try { registro.destinatarios.push({ nome: d.nome, numero: d.numero, ok: true, mensagem: await mandarMensagem(valor, token!, d.numero, texto, link) }); }
-        catch (e) { registro.destinatarios.push({ nome: d.nome, numero: d.numero, ok: false, mensagem: e instanceof Error ? e.message : 'Falhou' }); }
-      }
+      for (const d of lista) registro.destinatarios.push(await mandarPara(valor, token!, d, texto, link));
     } catch (e) {
       registro.mensagem = e instanceof Error ? e.message : 'Falhou ao montar o PDF';
     }
@@ -373,9 +462,10 @@ async function enviarAgora(
   const certos = registro.destinatarios.filter((d) => d.ok).length;
   registro.ok = !registro.mensagem && certos > 0 && certos === registro.destinatarios.length;
   if (!registro.mensagem) {
+    const conversas = sobreAsConversas(registro.destinatarios);
     registro.mensagem = certos === registro.destinatarios.length
-      ? `${o.gatilho === 'teste' ? 'Teste enviado' : 'Enviado'} para ${certos} ${certos === 1 ? 'número' : 'números'}.`
-      : `${certos} de ${registro.destinatarios.length} receberam; ${registro.destinatarios.filter((d) => !d.ok).map((d) => `${d.nome}: ${d.mensagem}`).join(' · ')}`;
+      ? `${o.gatilho === 'teste' ? 'Teste enviado' : 'Enviado'} para ${certos} ${certos === 1 ? 'número' : 'números'}${conversas}.`
+      : `${certos} de ${registro.destinatarios.length} receberam; ${registro.destinatarios.filter((d) => !d.ok).map((d) => `${d.nome}: ${d.mensagem}`).join(' · ')}${conversas}`;
   }
 
   await anotar(db, (v) => ({
@@ -438,6 +528,7 @@ export async function paraTela(app: FastifyInstance) {
   const t = await marcadosComTitulo(app.db);
   return {
     ativo: valor.ativo, url: valor.url, remetente: valor.remetente, horario: valor.horario, dias: valor.dias, destinatarios: valor.destinatarios,
+    concluirConversa: valor.concluirConversa !== false,
     temToken,
     configuradoEm: valor.configuradoEm ?? null, configuradoPor: valor.configuradoPor ?? null,
     proximo: proximoEnvio(valor, ferramentas.agora(), valor.ultimoAgendado ?? null),

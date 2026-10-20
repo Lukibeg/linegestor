@@ -4,7 +4,11 @@
  * Abre-se à mão no Gestor ou pelo botão "Abrir chamado" da conversa do LineChat, que chega aqui com
  * `?telefone=…&nome=…&sessao=…` (o contato e o WhatsApp já vêm preenchidos, e o chamado guarda a
  * sessão para o link da conversa). Outros atalhos pelo endereço: `?painel=` (o painel), `?pai=SUP-3`
- * (o filho nasce ligado ao pai) e `?tipo=problema&incidente=SUP-5` (o problema nasce juntando o incidente).
+ * (o filho nasce ligado ao pai) e `?incidente=SUP-5` (o problema nasce juntando o incidente).
+ *
+ * Desde o 2.0.1 não há o "Registro" (Chamado ou Problema) para escolher — o pedido do Luan, em 16/10:
+ * "n tem necessidade". O que se abre aqui é chamado; o problema nasce só a partir de um chamado (na ficha,
+ * "Abrir um problema a partir deste…"), que vira o primeiro incidente dele.
  *
  * O que o Luan pediu e está aqui:
  *  - ao escolher o cliente, os chamados recentes dele aparecem com "Reabrir este em vez de abrir
@@ -23,6 +27,11 @@
  * O mesmo formulário abre numa janela por cima da ficha (`NovoChamadoNaJanela`): o filho e o problema a
  * partir de um chamado (o pedido do Luan na prévia: "quando eu for abrir um filho, ele tem que abrir como
  * pop-up e não a tela inteira"). Aberto, a janela fecha e a ficha de baixo mostra o filho.
+ *
+ * No painel de Vendas (2.0.1, decisão 0050), o formulário é o da **nova negociação**: a empresa (um
+ * cliente ou uma que ainda não é), o contato, o que está sendo negociado, o valor (um só, ou por produto
+ * com o total: os produtos entram ali mesmo), os produtos e quem cuida — sem relato, classificação,
+ * prioridade e aviso ao cliente.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -34,7 +43,7 @@ import {
   paraBusca, prioridadeSugeridaDoPainel, valorPreenchido,
   type CorEtiqueta,
   type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
-  type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo,
+  type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo, type ValoresDosProdutos,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
@@ -47,13 +56,14 @@ import {
   CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
   painelDe, telefoneLegivel, useAbrirChamado, useDepoisDeMudar, useFecharJanela, useFicha, useOpcoes, usePode,
 } from './comum.js';
+import { ValorDaNegociacao, type ModoDoValor } from './venda.js';
 
 /** O motivo que o "Reabrir este" grava (o pedido do Luan: o cliente voltou com o mesmo problema). */
 const MOTIVO_REABRIR = 'O cliente voltou com o mesmo problema';
 
 /** Os campos que o formulário tem; o resto (solução, causa, checklist, tempo) só existe depois de aberto. */
 const CAMPOS_DO_FORMULARIO: CampoObrigatorio[] = [
-  'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'responsavel',
+  'cliente', 'contato', 'valor', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'responsavel',
 ];
 
 /** A cor de cada prioridade no botão escolhido (as mesmas do chip da prioridade). */
@@ -66,7 +76,6 @@ const COR_PRIORIDADE: Record<Prioridade, string> = {
 
 type Form = {
   painelId: string;
-  tipoChamado: TipoChamado;
   clienteId: string;
   contatoNome: string;
   contatoTelefone: string;
@@ -92,6 +101,22 @@ type Form = {
   avisarCliente: boolean;
   /** os campos do painel (pelo id do campo) */
   campos: Record<string, ValorDoCampo>;
+  /** a negociação (painel de Vendas): a empresa que ainda não é cliente e o valor (centavos) */
+  jaECliente: boolean;
+  empresa: string;
+  valor: number | null;
+  valorValido: boolean;
+  /** a negociação: um valor só, ou o de cada produto (os totais viram os da negociação) */
+  modoValor: ModoDoValor;
+  /** a mensalidade de cada produto */
+  valores: ValoresDosProdutos;
+  /** os produtos com a mensalidade escrita errado */
+  valoresInvalidos: string[];
+  /** a ativação (à parte da mensalidade): a única e a de cada produto */
+  ativacao: number | null;
+  ativacaoValida: boolean;
+  ativacoes: ValoresDosProdutos;
+  ativacoesInvalidas: string[];
 };
 
 /**
@@ -141,12 +166,13 @@ export function JanelaAbrirChamado() {
   // o painel da tela de onde veio (o quadro, a lista): o chamado nasce nele
   const pedido = sp.get('painel')?.trim() || undefined;
   const painel = pedido ? opcoes.data?.paineis.find((p) => p.ativo && (p.id === pedido || p.sigla === pedido.toUpperCase())) : undefined;
+  const vendas = painel?.tipo === 'vendas';
   return (
     <>
       <Modal open onClose={fechar} largura="max-w-4xl" titulo={(
         <span className="flex items-center gap-2 min-w-0">
           {painel && <PontoDoPainel cor={painel.cor} />}
-          <span className="truncate">{painel ? `Abrir chamado no painel ${painel.nome}` : 'Abrir chamado'}</span>
+          <span className="truncate">{painel ? `${vendas ? 'Nova negociação' : 'Abrir chamado'} no painel ${painel.nome}` : 'Abrir chamado'}</span>
         </span>
       )}>
         <div id="janela-abrir-chamado">
@@ -155,7 +181,7 @@ export function JanelaAbrirChamado() {
         </div>
       </Modal>
       <Confirmar open={descartar} onClose={() => setDescartar(false)} onConfirm={() => { setDescartar(false); fecharJanela(); }} perigoso botao="Descartar"
-        titulo="Descartar o que foi escrito?" texto="O chamado ainda não foi aberto: o que foi escrito nesta janela se perde." />
+        titulo="Descartar o que foi escrito?" texto={vendas ? 'A negociação ainda não foi criada: o que foi escrito nesta janela se perde.' : 'O chamado ainda não foi aberto: o que foi escrito nesta janela se perde.'} />
     </>
   );
 }
@@ -163,6 +189,10 @@ export function JanelaAbrirChamado() {
 function Carregador({ naJanela }: { naJanela?: AbrirNaJanela }) {
   const opcoes = useOpcoes();
   const pode = usePode();
+  const [sp] = useSearchParams();
+  // o filho e o problema a partir de um chamado nascem num painel de Gestão: a negociação não tem pai nem
+  // problema (2.0.1, o pedido do Luan na prévia: "n precisa de pais e filhas aqui")
+  const ligado = naJanela ? !!(naJanela.pai || naJanela.incidente) : !!(sp.get('pai')?.trim() || sp.get('incidente')?.trim());
   // na janela, o cabeçalho do módulo não aparece (a janela tem o título dela)
   const topo = naJanela ? null : <CabecalhoAtendimento sub="Abrir chamado" />;
   if (opcoes.isLoading) return <div>{topo}<Carregando /></div>;
@@ -170,9 +200,9 @@ function Carregador({ naJanela }: { naJanela?: AbrirNaJanela }) {
   if (!pode.trabalhar) {
     return <div>{topo}<Vazio titulo="Abrir chamado é de quem trabalha nos chamados" texto="Você pode ver os chamados, mas abrir e mexer pede a permissão de trabalhar neles. Fale com a administração." /></div>;
   }
-  const paineis = opcoes.data.paineis.filter((p) => p.ativo);
+  const paineis = opcoes.data.paineis.filter((p) => p.ativo && (!ligado || p.tipo !== 'vendas'));
   if (!paineis.length) {
-    return <div>{topo}<Vazio titulo="Nenhum painel aberto para você" texto="Para abrir um chamado é preciso um painel ativo que você veja. Quem cuida dos chamados cria e libera os painéis em Chamados › Ajustes." /></div>;
+    return <div>{topo}<Vazio titulo="Nenhum painel aberto para você" texto={`Para abrir um chamado é preciso um painel ativo${ligado ? ' de Gestão' : ''} que você veja. Quem cuida dos chamados cria e libera os painéis em Painéis › Ajustes.`} /></div>;
   }
   return <Formulario opcoes={opcoes.data} paineis={paineis} naJanela={naJanela} />;
 }
@@ -193,6 +223,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const sessao = doEndereco('sessao');
   const refPai = (naJanela ? naJanela.pai : doEndereco('pai')) || undefined;
   const refIncidente = (naJanela ? naJanela.incidente : doEndereco('incidente')) || undefined;
+  /** com o incidente (o "Abrir um problema a partir deste…" da ficha), é um problema; o resto é chamado */
+  const tipoChamado: TipoChamado = refIncidente ? 'problema' : 'chamado';
   const pedidoPainel = (naJanela ? naJanela.painelId : doEndereco('painel')) ?? '';
   /** o painel do endereço (pelo id ou pela sigla) */
   const painelDoEndereco = pedidoPainel ? paineis.find((p) => p.id === pedidoPainel || p.sigla === pedidoPainel.toUpperCase()) : undefined;
@@ -209,7 +241,6 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     const eu = user && opcoes.pessoas.some((p) => p.id === user.id && p.ativo) ? user.id : '';
     return {
       painelId: painel.id,
-      tipoChamado: (naJanela ? naJanela.incidente : doEndereco('tipo') === 'problema') ? 'problema' : 'chamado',
       clienteId: '',
       contatoNome: doEndereco('nome') ?? '',
       // o LineChat manda só os dígitos (5571999990000): a caixa mostra do jeito que se lê
@@ -223,6 +254,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       coresNovas: {},
       avisarCliente: false,
       campos: {},
+      jaECliente: true, empresa: '', valor: null, valorValido: true,
+      modoValor: 'unico', valores: {}, valoresInvalidos: [], ativacao: null, ativacaoValida: true, ativacoes: {}, ativacoesInvalidas: [],
     };
   });
   const mudar = (o: Partial<Form>) => { setF((x) => ({ ...x, ...o })); setMexeu(true); };
@@ -233,6 +266,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const [enviando, setEnviando] = useState(false);
 
   const painel = paineis.find((p) => p.id === f.painelId) ?? paineis[0]!;
+  // o painel de Vendas: a nova negociação (sem relato, classificação, prioridade e aviso ao cliente)
+  const vendas = painel.tipo === 'vendas';
   const pede = (c: Obrigatorio) => painel.ajustes.obrigatoriosAoAbrir.includes(c);
   const falta = (c: string) => faltando.has(c);
   /** o painel usa este campo do sistema? (desligado em Ajustes › Campos, ele não aparece aqui) */
@@ -256,6 +291,17 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const opcoesClientes = useMemo<OpcaoBusca[]>(() => (clientes.data ?? []).map((c) => ({ id: c.id, nome: c.name })), [clientes.data]);
   const cadastro = useQuery({ queryKey: ['atendimento', 'cadastro', f.clienteId], queryFn: () => api.atendimento.cadastroDoCliente(f.clienteId), enabled: !!f.clienteId });
 
+  // ---------- a negociação: o valor por produto (os produtos entram e saem no próprio Valor) ----------
+  const porProduto = vendas && f.modoValor === 'produto' && usa('produtos');
+  const nomeDoProduto = (id: string) => opcoes.produtos.find((p) => p.id === id)?.nome ?? cadastro.data?.produtos.find((p) => p.id === id)?.nome ?? '?';
+  const produtosDoCliente = new Set(cadastro.data?.produtos.map((p) => p.id) ?? []);
+  const catalogoDoValor = opcoes.produtos.filter((p) => !f.produtos.includes(p.id))
+    .map((p) => ({ id: p.id, nome: p.nome, dica: produtosDoCliente.has(p.id) ? 'do cliente' : undefined }))
+    .sort((a, b) => Number(!!b.dica) - Number(!!a.dica));
+  /** a mensalidade e a ativação de cada produto que ainda está na negociação */
+  const valoresQueVao: ValoresDosProdutos = Object.fromEntries(Object.entries(f.valores).filter(([id]) => f.produtos.includes(id)));
+  const ativacoesQueVao: ValoresDosProdutos = Object.fromEntries(Object.entries(f.ativacoes).filter(([id]) => f.produtos.includes(id)));
+
   // ---------- os assuntos do painel (o caminho inteiro; os ativos) ----------
   const assuntosDoPainel = useMemo(() => opcoes.assuntos.filter((a) => a.painelId === painel.id), [opcoes.assuntos, painel.id]);
   const opcoesAssunto = useMemo<OpcaoBusca[]>(() => emOrdemDeArvore(assuntosDoPainel)
@@ -265,7 +311,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
 
   // ---------- a prioridade sugerida ----------
   // pelos campos que o painel usa: com o alcance, a matriz; sem ele, só a gravidade (Ajustes › Prazos)
-  const sugerida = prioridadeSugeridaDoPainel(painel.ajustes, f.gravidade, f.alcance, opcoes.prazos);
+  const sugerida = vendas ? null : prioridadeSugeridaDoPainel(painel.ajustes, f.gravidade, f.alcance, opcoes.prazos);
   const prioridadeFinal = f.prioridade ?? sugerida;
   const precisaMotivo = !!f.prioridade && !!sugerida && f.prioridade !== sugerida;
 
@@ -281,13 +327,14 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     tirarFalta('contato');
   };
   const foneInvalido = !!f.contatoTelefone.trim() && !foneValido;
-  const podeAvisar = opcoes.whatsapp.cliente && !!foneValido;
+  const podeAvisar = !vendas && opcoes.whatsapp.cliente && !!foneValido;
 
   // o que o painel pede e o formulário não tem (uma regra mal escolhida nos Ajustes): diz logo, em vez de travar no fim
   const pedeForaDoFormulario = painel.ajustes.obrigatoriosAoAbrir.filter((c) => !idDaChave(c) && !CAMPOS_DO_FORMULARIO.includes(c as CampoObrigatorio));
 
   // não sair sem querer com o relato pela metade
-  const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim());
+  const escreveu = mexeu && !!(f.titulo.trim() || f.relato.trim() || f.descricao.trim() || f.empresa.trim() || f.valor !== null || f.ativacao !== null
+    || Object.keys(f.valores).length || Object.keys(f.ativacoes).length);
   const avisarEscreveu = useRef(naJanela?.onEscreveu);
   avisarEscreveu.current = naJanela?.onEscreveu;
   useEffect(() => { avisarEscreveu.current?.(escreveu); }, [escreveu]);
@@ -323,13 +370,31 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     if (f.titulo.trim().length < 3) { setErro('Escreva um título (pelo menos 3 letras).'); document.getElementById('novo-titulo')?.focus(); return; }
     if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
     if (precisaMotivo && !f.motivoPrioridade.trim()) { setErro('Trocar a prioridade sugerida pede o motivo.'); document.getElementById('novo-motivo-prioridade')?.focus(); return; }
+    if (vendas && !porProduto && !f.valorValido) { setErro('Escreva a mensalidade como 1.200,00.'); document.getElementById('novo-valor-unico')?.focus(); return; }
+    if (vendas && !porProduto && !f.ativacaoValida) { setErro('Escreva a ativação como 1.500,00.'); document.getElementById('novo-valor-ativacao')?.focus(); return; }
+    const errado = porProduto ? f.produtos.find((id) => f.valoresInvalidos.includes(id) || f.ativacoesInvalidas.includes(id)) : undefined;
+    if (errado) {
+      setErro(`Escreva os valores de ${nomeDoProduto(errado)} como 1.200,00.`);
+      document.querySelector<HTMLInputElement>(`#novo-valor [data-produto="${CSS.escape(nomeDoProduto(errado))}"] input`)?.focus();
+      return;
+    }
+    // a negociação: um cliente da base ou a empresa que ainda não é (escrita à mão)
+    const clienteId = vendas && !f.jaECliente ? '' : f.clienteId;
     const d: ChamadoCriarEntrada = {
       painelId: painel.id,
-      tipoChamado: f.tipoChamado,
+      tipoChamado,
       titulo: f.titulo.trim(),
-      relato: f.relato.trim() || null,
+      relato: vendas ? null : f.relato.trim() || null,
       descricao: f.descricao.trim() || null,
-      clienteId: f.clienteId || null,
+      clienteId: clienteId || null,
+      // por produto (com algum valor escrito), a mensalidade e a ativação são os totais; sem nenhum, valem as únicas
+      ...(vendas ? {
+        valor: porProduto && Object.keys(valoresQueVao).length ? null : f.valorValido ? f.valor : null,
+        ...(porProduto ? { valoresDosProdutos: valoresQueVao } : {}),
+        ativacao: porProduto && Object.keys(ativacoesQueVao).length ? null : f.ativacaoValida ? f.ativacao : null,
+        ...(porProduto ? { ativacoesDosProdutos: ativacoesQueVao } : {}),
+        empresa: !f.jaECliente ? f.empresa.trim() || null : null,
+      } : {}),
       contatoNome: f.contatoNome.trim() || null,
       contatoTelefone: f.contatoTelefone.trim() || null,
       sessaoId: sessao,
@@ -338,7 +403,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       tipo: usa('tipo') ? f.tipo || null : null,
       gravidade: usa('gravidade') ? f.gravidade : null,
       alcance: usa('alcance') ? f.alcance : null,
-      prioridade: f.prioridade,
+      prioridade: vendas ? null : f.prioridade,
       motivoPrioridade: precisaMotivo ? f.motivoPrioridade.trim() : null,
       produtos: usa('produtos') ? f.produtos : [],
       operadoras: usa('operadoras') ? f.operadoras : [],
@@ -351,7 +416,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       responsavelId: f.responsavelId || null,
       observadores: f.observadores,
       paiId: pai.data?.id ?? null,
-      incidentes: f.tipoChamado === 'problema' && incidente.data ? [incidente.data.id] : [],
+      incidentes: tipoChamado === 'problema' && incidente.data ? [incidente.data.id] : [],
       avisarCliente: podeAvisar && f.avisarCliente,
       origem: sessao ? 'botao' : 'manual',
     };
@@ -361,7 +426,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       setMexeu(false);
       const comoFilho = pai.data ? `, filho do ${pai.data.codigo}` : '';
       if (r.aviso && !r.aviso.ok) toast.push('erro', `${r.codigo} foi aberto${comoFilho}, mas o aviso ao cliente pelo WhatsApp não foi: ${r.aviso.mensagem}`);
-      else toast.push('ok', r.aviso?.ok ? `${r.codigo} aberto${comoFilho}, e o cliente recebeu o número pelo WhatsApp` : `${r.codigo} aberto${comoFilho}`);
+      else toast.push('ok', vendas ? `${r.codigo} criada: a negociação está em ${painel.etapas.find((e) => e.tipo === 'entrada')?.nome ?? 'entrada'}` : r.aviso?.ok ? `${r.codigo} aberto${comoFilho}, e o cliente recebeu o número pelo WhatsApp` : `${r.codigo} aberto${comoFilho}`);
       if (naJanela) naJanela.onAberto(r.codigo);
       else navigate(`/atendimento/${encodeURIComponent(r.codigo)}`);
     } catch (e) {
@@ -414,7 +479,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       }}>
       {!naJanela && (
         <CabecalhoAtendimento painelId={painelFixo ? painel.id : undefined}
-          sub={painelFixo ? `Abrir chamado no painel ${painel.nome}: o que o cliente contou, de quem é e quem cuida.` : 'Abrir chamado: o que o cliente contou, de quem é e quem cuida.'} />
+          sub={vendas ? `Nova negociação no painel ${painel.nome}: a empresa, o que está sendo negociado, o valor e quem cuida.`
+            : painelFixo ? `Abrir chamado no painel ${painel.nome}: o que o cliente contou, de quem é e quem cuida.` : 'Abrir chamado: o que o cliente contou, de quem é e quem cuida.'} />
       )}
 
       <div className="grid grid-cols-1 gap-4 max-w-4xl">
@@ -428,65 +494,75 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             )}
             {refPai && <ChamadoLigado rotulo="Filho de" icone={<GitBranch size={15} />} consulta={pai} referencia={refPai} opcoes={opcoes}
               dica="O filho nasce ligado a este chamado (pode ser de outro painel). O pai só fecha com os filhos fechados, se o painel dele pedir." />}
-            {refIncidente && <ChamadoLigado rotulo={f.tipoChamado === 'problema' ? 'O problema junta o incidente' : 'Incidente (só um problema junta incidentes)'} icone={<Layers size={15} />}
-              consulta={incidente} referencia={refIncidente} opcoes={opcoes} apagado={f.tipoChamado !== 'problema'}
-              dica={f.tipoChamado === 'problema' ? 'O problema nasce juntando este chamado; outros incidentes se juntam pela ficha.' : 'Marque "Problema" em Registro para juntar este incidente.'} />}
+            {refIncidente && <ChamadoLigado rotulo="O problema junta o incidente" icone={<Layers size={15} />}
+              consulta={incidente} referencia={refIncidente} opcoes={opcoes}
+              dica="O problema nasce juntando este chamado; outros incidentes se juntam pela ficha." />}
           </div>
         )}
 
         {pedeForaDoFormulario.length > 0 && (
           <p className="text-[13px] rounded-lg bg-signal-soft text-signal p-2.5" role="alert">
             O painel {painel.nome} pede para abrir: {pedeForaDoFormulario.map((c) => nomeDoObrigatorio(c, opcoes.campos)).join(', ')} — e isso só se preenche depois de aberto.
-            Peça a quem cuida dos chamados para rever as regras do painel (Chamados › Ajustes › Painéis).
+            Peça a quem cuida dos chamados para rever as regras do painel (Painéis › Ajustes › Painéis).
           </p>
         )}
 
         {/* ---------- onde ---------- */}
         <Secao titulo="Onde">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
-            <Rotulado rotulo="Painel" id="novo-painel" grupo>
-              {painelFixo ? (
-                // aberto de dentro do painel: ele é o painel do chamado, sem outra opção
-                <p className="flex items-center gap-2 py-1.5 text-[14px] font-semibold text-ink" id="novo-painel" data-fixo="">
-                  <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip> {painel.nome}
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Painel" id="novo-painel">
-                  {paineis.map((p) => {
-                    const ativo = p.id === painel.id;
-                    return (
-                      <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => trocarPainel(p.id)}
-                        className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
-                        <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </Rotulado>
-            <Rotulado rotulo="Registro" id="novo-registro" grupo>
-              <Segmentos<TipoChamado> id="novo-registro" rotulo="Registro" valor={f.tipoChamado} onChange={(v) => mudar({ tipoChamado: v })}
-                opcoes={[{ id: 'chamado', nome: 'Chamado', dica: 'O pedido ou a falha de um cliente' }, { id: 'problema', nome: 'Problema', dica: 'A mesma falha em vários clientes: junta os chamados deles' }]} />
-            </Rotulado>
-          </div>
+          {/* o Registro (Chamado ou Problema) saiu daqui no 2.0.1: o problema nasce pela ficha de um chamado */}
+          <Rotulado rotulo="Painel" id="novo-painel" grupo>
+            {painelFixo ? (
+              // aberto de dentro do painel: ele é o painel do chamado, sem outra opção
+              <p className="flex items-center gap-2 py-1.5 text-[14px] font-semibold text-ink" id="novo-painel" data-fixo="">
+                <Chip tone={TOM_DO_PAINEL[painel.cor]} className="font-mono">{painel.sigla}</Chip> {painel.nome}
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Painel" id="novo-painel">
+                {paineis.map((p) => {
+                  const ativo = p.id === painel.id;
+                  return (
+                    <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => trocarPainel(p.id)}
+                      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+                      <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Rotulado>
           {painel.descricao && <p className="text-[12.5px] text-muted mt-2">{painel.descricao}</p>}
         </Secao>
 
         {/* ---------- quem ---------- */}
-        <Secao titulo="Quem">
+        <Secao titulo={vendas ? 'Com quem' : 'Quem'}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Rotulado rotulo="Cliente" id="novo-cliente" obrigatorio={pede('cliente')} falta={falta('cliente')} className="sm:col-span-2">
-              <EscolherComBusca valor={f.clienteId} onChange={trocarCliente} opcoes={opcoesClientes} vazio="Sem cliente (ainda)" placeholder={clientes.isLoading ? 'Carregando os clientes…' : 'Escolha o cliente…'}
-                procurar="Procurar cliente…" className="input w-full" id="novo-cliente" rotulo="Cliente" largura="w-[420px]" />
-            </Rotulado>
+            {/* na venda: a empresa já é cliente (venda para a base) ou ainda não é (escrita à mão) */}
+            {vendas && (
+              <Rotulado rotulo="A empresa" id="novo-ja-e-cliente" grupo className="sm:col-span-2">
+                <Segmentos id="novo-ja-e-cliente" rotulo="A empresa" valor={f.jaECliente ? 'sim' : 'nao'}
+                  onChange={(v) => { mudar({ jaECliente: v === 'sim' }); tirarFalta('cliente'); }}
+                  opcoes={[{ id: 'sim', nome: 'Já é cliente' }, { id: 'nao', nome: 'Ainda não é cliente' }]} />
+              </Rotulado>
+            )}
+            {vendas && !f.jaECliente ? (
+              <Rotulado rotulo="Empresa" id="novo-empresa" obrigatorio={pede('cliente')} falta={falta('cliente')} className="sm:col-span-2" dica="Quando ela entrar no cadastro de clientes, o “Virou cliente?” da negociação faz a ligação.">
+                <input className="input" id="novo-empresa" value={f.empresa} maxLength={120} placeholder="Ex.: Padaria Estrela"
+                  onChange={(e) => { mudar({ empresa: e.target.value }); tirarFalta('cliente'); }} />
+              </Rotulado>
+            ) : (
+              <Rotulado rotulo="Cliente" id="novo-cliente" obrigatorio={pede('cliente')} falta={falta('cliente')} className="sm:col-span-2">
+                <EscolherComBusca valor={f.clienteId} onChange={trocarCliente} opcoes={opcoesClientes} vazio="Sem cliente (ainda)" placeholder={clientes.isLoading ? 'Carregando os clientes…' : 'Escolha o cliente…'}
+                  procurar="Procurar cliente…" className="input w-full" id="novo-cliente" rotulo="Cliente" largura="w-[420px]" />
+              </Rotulado>
+            )}
             {/* os contatos do cliente (o pedido do Luan na prévia): um clique preenche o nome e o WhatsApp; um novo nasce aqui */}
-            {f.clienteId && (
+            {f.clienteId && (!vendas || f.jaECliente) && (
               <ContatosParaEscolher className="sm:col-span-2" cliente={nomeDoCliente} contatos={contatosDoCliente} carregando={cadastro.isLoading}
                 escolhido={contatoEscolhido?.id ?? null} onEscolher={escolherContato} podeIncluir={podeContatos}
                 onNovo={() => setJanelaContato({ inicial: contatoEscolhido ? {} : { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim() } })} />
             )}
             <Rotulado rotulo="Contato (nome)" id="novo-contato" obrigatorio={pede('contato')} falta={falta('contato')} dica={pede('contato') ? 'o nome ou o WhatsApp' : undefined}>
-              <input className="input" id="novo-contato" value={f.contatoNome} maxLength={120} placeholder="Quem pediu (ex.: Maria, da recepção)"
+              <input className="input" id="novo-contato" value={f.contatoNome} maxLength={120} placeholder={vendas ? 'Com quem você fala (ex.: Rosa, a sócia)' : 'Quem pediu (ex.: Maria, da recepção)'}
                 onChange={(e) => { mudar({ contatoNome: e.target.value }); tirarFalta('contato'); }} />
             </Rotulado>
             <Rotulado rotulo="WhatsApp do contato" id="novo-whatsapp" erro={foneInvalido ? 'Use DDD + número, como (71) 99999-0000.' : undefined}>
@@ -494,7 +570,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                 onChange={(e) => { mudar({ contatoTelefone: e.target.value }); tirarFalta('contato'); }} />
             </Rotulado>
             {/* escrito à mão (ou vindo da conversa do LineChat) e fora dos contatos do cliente: guardar com um clique */}
-            {f.clienteId && !contatoEscolhido && !cadastro.isLoading && podeContatos && f.contatoNome.trim().length >= 2 && !foneInvalido && (
+            {f.clienteId && (!vendas || f.jaECliente) && !contatoEscolhido && !cadastro.isLoading && podeContatos && f.contatoNome.trim().length >= 2 && !foneInvalido && (
               <p className="sm:col-span-2 text-[12.5px] text-muted -mt-1" id="novo-contato-fora">
                 {f.contatoNome.trim()} não está nos contatos de {nomeDoCliente}.{' '}
                 <button type="button" className="link" onClick={() => setJanelaContato({ inicial: { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim() } })}>Salvar nos contatos</button>
@@ -505,36 +581,81 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             <JanelaContato clienteId={f.clienteId} clienteNome={nomeDoCliente} contato={null} inicial={janelaContato.inicial}
               onFechar={() => setJanelaContato(null)} onSalvo={(c) => { escolherContato(c); setJanelaContato(null); }} />
           )}
-          {f.clienteId && <Recentes cadastro={cadastro.data} carregando={cadastro.isLoading} erroCarregar={cadastro.isError ? mensagemErro(cadastro.error) : ''}
+          {/* "Reabrir este em vez de abrir outro" é dos chamados (a negociação nova é sempre nova) */}
+          {f.clienteId && !vendas && <Recentes cadastro={cadastro.data} carregando={cadastro.isLoading} erroCarregar={cadastro.isError ? mensagemErro(cadastro.error) : ''}
             opcoes={opcoes} reabrindo={reabrindo} erro={erroReabrir} onReabrir={reabrir} levaRelato={!!f.relato.trim()}
             onAbrirOutro={naJanela ? (codigo) => naJanela.onReaberto(codigo) : undefined} />}
         </Secao>
 
-        {/* ---------- o que aconteceu ---------- */}
-        <Secao titulo="O que aconteceu">
+        {/* ---------- o que aconteceu (na venda, a negociação) ---------- */}
+        <Secao titulo={vendas ? 'A negociação' : 'O que aconteceu'}>
           <div className="grid grid-cols-1 gap-3">
-            <Rotulado rotulo="Título" id="novo-titulo" obrigatorio dica="Uma frase, como alguém procuraria depois (o cliente já aparece à parte).">
-              <input className="input" id="novo-titulo" value={f.titulo} maxLength={200} placeholder="Ex.: Ramal 203 sem áudio desde a manhã"
+            <Rotulado rotulo={vendas ? 'O que está sendo negociado' : 'Título'} id="novo-titulo" obrigatorio
+              dica={vendas ? 'Uma frase, como a equipe vai achar depois (a empresa já aparece à parte).' : 'Uma frase, como alguém procuraria depois (o cliente já aparece à parte).'}>
+              <input className="input" id="novo-titulo" value={f.titulo} maxLength={200} placeholder={vendas ? 'Ex.: PABX em nuvem com 40 ramais' : 'Ex.: Ramal 203 sem áudio desde a manhã'}
                 onChange={(e) => mudar({ titulo: e.target.value })} />
             </Rotulado>
-            <Rotulado rotulo="Relato do cliente" id="novo-relato" obrigatorio={pede('relato')} falta={falta('relato')} dica="O que o cliente disse, nas palavras dele.">
+            {vendas && (
+              <Rotulado rotulo="Valor" id="novo-valor" grupo obrigatorio={pede('valor')} falta={falta('valor')}
+                erro={!porProduto && (!f.valorValido || !f.ativacaoValida) ? 'Escreva como 1.200,00'
+                  : porProduto && f.produtos.some((id) => f.valoresInvalidos.includes(id) || f.ativacoesInvalidas.includes(id)) ? 'Escreva cada valor como 1.200,00' : undefined}
+                dica={porProduto ? 'Cada produto com a mensalidade e a ativação dele; os totais viram os da negociação.'
+                  : 'A mensalidade e a ativação da proposta (podem vir depois: a Proposta enviada pede a mensalidade). Por produto, cada um tem os seus e os totais somam sozinhos.'}>
+                <ValorDaNegociacao id="novo-valor" modo={f.modoValor} onModo={(m) => mudar({ modoValor: m })} podeDividir={usa('produtos')}
+                  valorAntes={f.valorValido ? f.valor : null}
+                  mensalidade={{
+                    valor: f.valor, onValor: (v, ok) => { mudar({ valor: v, valorValido: ok }); tirarFalta('valor'); },
+                    valores: valoresQueVao,
+                    onValorDoProduto: (id, c, ok) => {
+                      const valores = { ...f.valores };
+                      if (ok && c !== null) valores[id] = c; else delete valores[id];
+                      mudar({ valores, valoresInvalidos: ok ? f.valoresInvalidos.filter((x) => x !== id) : [...new Set([...f.valoresInvalidos, id])] });
+                      tirarFalta('valor');
+                    },
+                  }}
+                  ativacao={{
+                    // a ativação sozinha não satisfaz o que a etapa pede (não há venda só de ativação, 19/10)
+                    valor: f.ativacao, onValor: (v, ok) => { mudar({ ativacao: v, ativacaoValida: ok }); },
+                    valores: ativacoesQueVao,
+                    onValorDoProduto: (id, c, ok) => {
+                      const ativacoes = { ...f.ativacoes };
+                      if (ok && c !== null) ativacoes[id] = c; else delete ativacoes[id];
+                      mudar({ ativacoes, ativacoesInvalidas: ok ? f.ativacoesInvalidas.filter((x) => x !== id) : [...new Set([...f.ativacoesInvalidas, id])] });
+                    },
+                  }}
+                  produtos={f.produtos.map((id) => ({ id, nome: nomeDoProduto(id) }))} catalogo={catalogoDoValor}
+                  onIncluir={(id) => { mudar({ produtos: [...f.produtos, id] }); tirarFalta('produto'); }}
+                  onTirar={(id) => {
+                    const valores = { ...f.valores };
+                    const ativacoes = { ...f.ativacoes };
+                    delete valores[id];
+                    delete ativacoes[id];
+                    mudar({
+                      produtos: f.produtos.filter((x) => x !== id), valores, ativacoes,
+                      valoresInvalidos: f.valoresInvalidos.filter((x) => x !== id), ativacoesInvalidas: f.ativacoesInvalidas.filter((x) => x !== id),
+                    });
+                  }} />
+              </Rotulado>
+            )}
+            {!vendas && <Rotulado rotulo="Relato do cliente" id="novo-relato" obrigatorio={pede('relato')} falta={falta('relato')} dica="O que o cliente disse, nas palavras dele.">
               <textarea className="input min-h-[96px]" id="novo-relato" value={f.relato} maxLength={20_000}
                 onChange={(e) => { mudar({ relato: e.target.value }); tirarFalta('relato'); }} />
-            </Rotulado>
+            </Rotulado>}
             {/* a descrição está sempre aqui (o pedido do Luan na prévia: "sempre vai ter a descrição") */}
-            <Rotulado rotulo="Descrição" id="novo-descricao" obrigatorio={pede('descricao')} falta={falta('descricao')} dica="O que já foi feito e os dados técnicos (ramal, número, IP, horário).">
+            <Rotulado rotulo={vendas ? 'Sobre a negociação' : 'Descrição'} id="novo-descricao" obrigatorio={pede('descricao')} falta={falta('descricao')}
+              dica={vendas ? 'O que o cliente precisa, quem decide, a concorrência, o que já foi conversado.' : 'O que já foi feito e os dados técnicos (ramal, número, IP, horário).'}>
               <textarea className="input min-h-[84px]" id="novo-descricao" value={f.descricao} maxLength={20_000}
                 onChange={(e) => { mudar({ descricao: e.target.value }); tirarFalta('descricao'); }} />
             </Rotulado>
           </div>
         </Secao>
 
-        {/* ---------- a classificação e a prioridade ---------- */}
-        <Secao titulo="Classificação">
+        {/* ---------- a classificação e a prioridade (na venda, só o que o painel ligou) ---------- */}
+        {(!vendas || usa('assunto') || (usa('tipo') && painel.ajustes.tipos.length > 0) || usa('gravidade') || usa('alcance')) && <Secao titulo="Classificação">
           <div className="grid grid-cols-1 gap-4">
             {(usa('assunto') || (usa('tipo') && painel.ajustes.tipos.length > 0)) && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {usa('assunto') && <Rotulado rotulo="Assunto" id="novo-assunto" obrigatorio={pede('assunto')} falta={falta('assunto')} className="sm:col-span-2"
-                dica={!opcoesAssunto.length ? `O painel ${painel.nome} ainda não tem assuntos (Chamados › Ajustes › Campos).` : undefined}>
+                dica={!opcoesAssunto.length ? `O painel ${painel.nome} ainda não tem assuntos (Painéis › Ajustes › Campos).` : undefined}>
                 <EscolherComBusca valor={f.assuntoId} onChange={(v) => { mudar({ assuntoId: v }); tirarFalta('assunto'); }} opcoes={opcoesAssunto} vazio="Sem assunto (ainda)"
                   placeholder="Escolha o assunto…" procurar="Procurar pelo caminho (ex.: ramal config)…" className="input w-full" id="novo-assunto" rotulo="Assunto" largura="w-[520px]"
                   desativado={!opcoesAssunto.length} />
@@ -574,7 +695,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                 opcoes={ALCANCES.map((a) => ({ id: a, nome: NOME_ALCANCE[a] }))} />
             </Rotulado>}
 
-            <Rotulado rotulo="Prioridade" id="novo-prioridade" grupo obrigatorio={pede('prioridade')} falta={falta('prioridade')}>
+            {!vendas && <Rotulado rotulo="Prioridade" id="novo-prioridade" grupo obrigatorio={pede('prioridade')} falta={falta('prioridade')}>
               <div className="rounded-lg border border-line bg-surface-2 p-3 flex flex-col gap-2" id="novo-prioridade">
                 <div className="text-[13px] text-ink-2" aria-live="polite">
                   {sugerida
@@ -604,9 +725,9 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                   </div>
                 )}
               </div>
-            </Rotulado>
+            </Rotulado>}
           </div>
-        </Secao>
+        </Secao>}
 
         {/* ---------- os campos do painel (Ajustes › Campos) ---------- */}
         {camposDoPainel.length > 0 && (
@@ -621,10 +742,11 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         )}
 
         {/* ---------- produtos e operadoras ---------- */}
-        {(usa('produtos') || usa('operadoras')) && <Secao titulo={usa('produtos') && usa('operadoras') ? 'Produtos e operadoras' : usa('produtos') ? 'Produtos' : 'Operadoras'}
+        {/* na negociação por produto, os produtos ficam no Valor (cada um com o seu valor) */}
+        {((usa('produtos') && !porProduto) || usa('operadoras')) && <Secao titulo={usa('produtos') && !porProduto && usa('operadoras') ? 'Produtos e operadoras' : usa('produtos') && !porProduto ? 'Produtos' : 'Operadoras'}
           dica={f.clienteId ? 'Os do cliente aparecem primeiro; os outros vêm do catálogo.' : 'Escolha o cliente para ver primeiro os do cadastro dele.'}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {usa('produtos') && <Rotulado rotulo="Produtos" id="novo-produtos" grupo obrigatorio={pede('produto')} falta={falta('produto')}>
+            {usa('produtos') && !porProduto && <Rotulado rotulo="Produtos" id="novo-produtos" grupo obrigatorio={pede('produto')} falta={falta('produto')}>
               <EscolherVarios id="novo-produtos" rotulo="produto" valor={f.produtos} onChange={(v) => { mudar({ produtos: v }); tirarFalta('produto'); }}
                 doCliente={(cadastro.data?.produtos ?? []).map((p) => ({ id: p.id, nome: p.nome }))}
                 catalogo={opcoes.produtos.map((p) => ({ id: p.id, nome: p.nome }))} />
@@ -640,13 +762,14 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         {/* ---------- quem cuida ---------- */}
         <Secao titulo="Quem cuida">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Rotulado rotulo="Responsável" id="novo-responsavel" obrigatorio={pede('responsavel')} falta={falta('responsavel')}
-              dica={f.responsavelId ? (f.responsavelId === user?.id ? 'Você fica com o chamado.' : 'A pessoa recebe o aviso de que o chamado é dela.') : 'O chamado fica na fila da entrada, para alguém assumir.'}>
+            <Rotulado rotulo={vendas ? 'Vendedor (responsável)' : 'Responsável'} id="novo-responsavel" obrigatorio={pede('responsavel')} falta={falta('responsavel')}
+              dica={vendas ? (f.responsavelId ? (f.responsavelId === user?.id ? 'Você fica com a negociação.' : 'A pessoa recebe o aviso de que a negociação é dela.') : 'A negociação fica sem dono, para alguém assumir.')
+                : f.responsavelId ? (f.responsavelId === user?.id ? 'Você fica com o chamado.' : 'A pessoa recebe o aviso de que o chamado é dela.') : 'O chamado fica na fila da entrada, para alguém assumir.'}>
               <EscolherComBusca valor={f.responsavelId} onChange={(v) => { mudar({ responsavelId: v }); tirarFalta('responsavel'); }} opcoes={opcoesResponsavel}
                 vazio="Ninguém (fica na fila)" procurar="Procurar pessoa…" className="input w-full" id="novo-responsavel" rotulo="Responsável" />
             </Rotulado>
             {/* os observadores (o pedido do Luan na prévia: como no Helena, recebem toda atualização do chamado) */}
-            <Rotulado rotulo="Observadores" id="novo-observadores" grupo dica="Recebem os avisos de tudo o que acontece no chamado: anotação, etapa, responsável, espera.">
+            <Rotulado rotulo="Observadores" id="novo-observadores" grupo dica={vendas ? 'Recebem os avisos de tudo o que acontece na negociação: anotação, etapa, responsável.' : 'Recebem os avisos de tudo o que acontece no chamado: anotação, etapa, responsável, espera.'}>
               <EscolherVarios id="novo-observadores" rotulo="observador" valor={f.observadores} onChange={(v) => mudar({ observadores: v })}
                 doCliente={[]} catalogo={pessoas.map((p) => ({ id: p.id, nome: p.nome, dica: p.id === user?.id ? 'você' : undefined }))} />
             </Rotulado>
@@ -676,11 +799,11 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             </label>
           )}
           <div className="flex flex-wrap items-center gap-2">
-            <button type="submit" className="btn-primary" id="novo-abrir" disabled={enviando}>{enviando ? <Spinner className="text-white" /> : <Plus size={16} />} Abrir chamado</button>
+            <button type="submit" className="btn-primary" id="novo-abrir" disabled={enviando}>{enviando ? <Spinner className="text-white" /> : <Plus size={16} />} {vendas ? 'Criar a negociação' : 'Abrir chamado'}</button>
             <button type="button" className="btn-ghost" onClick={cancelar}>Cancelar</button>
             <span className="text-[12.5px] text-muted">
               Nasce em <b className="text-ink-2">{painel.etapas.find((e) => e.tipo === 'entrada')?.nome ?? painel.etapas[0]?.nome ?? '—'}</b>, no painel {painel.nome}
-              {prioridadeFinal ? <>, com a prioridade <b className="text-ink-2">{NOME_PRIORIDADE[prioridadeFinal]}</b></> : ''}.
+              {prioridadeFinal && !vendas ? <>, com a prioridade <b className="text-ink-2">{NOME_PRIORIDADE[prioridadeFinal]}</b></> : ''}.
             </span>
           </div>
           {erro && <p className="text-bad text-[13px]" role="alert" id="novo-erro">{erro}</p>}

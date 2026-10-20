@@ -31,11 +31,14 @@ import { MeuDia } from './pages/atendimento/MeuDia.js';
 import { PaineisDeChamados } from './pages/atendimento/Inicio.js';
 import { Quadro } from './pages/atendimento/Quadro.js';
 import { ListaDeChamados } from './pages/atendimento/Lista.js';
+import { RelatorioDoPainel } from './pages/atendimento/Relatorio.js';
+import { IrParaOComercial } from './pages/atendimento/Comercial.js';
 import { JanelaAbrirChamado, NovoChamado } from './pages/atendimento/Novo.js';
 import { ChamadoEmJanela, FichaDoChamado } from './pages/atendimento/Ficha.js';
 import { fundoDaJanela } from './pages/atendimento/comum.js';
 import { AjustesAtendimento } from './pages/atendimento/Ajustes.js';
 import { TutorialEditor } from './pages/portal/Editor.js';
+import { Calendario } from './pages/calendario/Index.js';
 
 function Protegido({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -87,9 +90,15 @@ function Rotas() {
         <Route path="/atendimento/meu-dia" element={<Protegido><MeuDia /></Protegido>} />
         <Route path="/atendimento/quadro" element={<Protegido><Quadro /></Protegido>} />
         <Route path="/atendimento/lista" element={<Protegido><ListaDeChamados /></Protegido>} />
+        <Route path="/atendimento/relatorio" element={<Protegido><RelatorioDoPainel /></Protegido>} />
         <Route path="/atendimento/novo" element={<Protegido><NovoChamado /></Protegido>} />
         <Route path="/atendimento/ajustes" element={<Protegido><AjustesAtendimento /></Protegido>} />
         <Route path="/atendimento/:codigo" element={<Protegido><FichaDoChamado /></Protegido>} />
+        {/* o Comercial no menu (2.0.1): o atalho para o quadro e o relatório do painel de Vendas */}
+        <Route path="/comercial" element={<Protegido><IrParaOComercial parte="quadro" /></Protegido>} />
+        <Route path="/comercial/relatorio" element={<Protegido><IrParaOComercial parte="relatorio" /></Protegido>} />
+        {/* o calendário das equipes (2.0.1, decisão 0049): quem vê um evento é quem vê um dos painéis dele */}
+        <Route path="/calendario" element={<Protegido><Calendario /></Protegido>} />
         {/* a cópia do painel do LineChat (1.3): os números e os relatórios dos chamados de lá */}
         <Route path="/chamados" element={<Protegido><Chamados /></Protegido>} />
         <Route path="/chamados/relatorios" element={<Protegido><RelatoriosChamados /></Protegido>} />

@@ -24,7 +24,8 @@ export const PERMISSIONS = {
   'projects.manage': 'Criar e encerrar projetos, definir etapas e a lista de clientes',
   'support.read': 'Ver os chamados: os do Gestor (nos painéis que a pessoa vê) e a cópia do painel do LineChat',
   'tickets.work': 'Trabalhar nos chamados: abrir, assumir, mover, escalonar, anotar, ligar e avisar o cliente',
-  'tickets.manage': 'Cuidar dos chamados: painéis, etapas, assuntos, prazos, avisos, respostas prontas, agendados e a lixeira dos chamados',
+  'tickets.manage': 'Cuidar dos chamados: painéis, etapas, assuntos, prazos, avisos, agendados e a lixeira dos chamados',
+  'sales.read': 'Ver o Comercial: o menu Comercial, os painéis de Vendas (as negociações) e os relatórios de vendas',
   'knowledge.write': 'Escrever na base de conhecimento: criar artigos e melhorar os de qualquer pessoa',
   'knowledge.manage': 'Cuidar da base de conhecimento: leitura obrigatória, rascunhos de todos e mandar artigo para a lixeira',
   'portal.write': 'Escrever no portal do cliente: tutoriais com passo a passo, prints, vídeos e arquivos',
@@ -37,8 +38,9 @@ export type Permission = keyof typeof PERMISSIONS;
 export const ALL_PERMISSIONS = Object.keys(PERMISSIONS) as Permission[];
 
 /**
- * Os quatro papéis iniciais (decisão V1). A chave é o que fica no banco;
- * o nome é o que aparece na tela. Ordem = hierarquia (do menor para o maior).
+ * Os papéis iniciais (decisão V1; o Comercial entrou no 2.0.1, decisão 0050). A chave é o que fica no
+ * banco; o nome é o que aparece na tela. Ordem = hierarquia (do menor para o maior); o Comercial fica do
+ * lado: é o do time de vendas.
  */
 export const DEFAULT_ROLES: Array<{ key: string; name: string; description: string; permissions: Permission[] }> = [
   {
@@ -46,6 +48,15 @@ export const DEFAULT_ROLES: Array<{ key: string; name: string; description: stri
     name: 'Leitor',
     description: 'Só consulta. Não vê senhas, não altera nada.',
     permissions: ['records.read', 'support.read'],
+  },
+  {
+    // o time de vendas (2.0.1): o menu Comercial, as negociações e os relatórios de vendas; consulta os
+    // clientes e os chamados (o que o cliente já pediu ao Suporte). Quem não deve ver os chamados tira o
+    // "Ver os chamados" do papel: o Comercial funciona só com a permissão dele.
+    key: 'comercial',
+    name: 'Comercial',
+    description: 'O time de vendas: as negociações e os relatórios do Comercial, e a consulta dos clientes e dos chamados. Sem senhas, sem exclusão.',
+    permissions: ['records.read', 'support.read', 'tickets.work', 'sales.read'],
   },
   {
     key: 'operador',

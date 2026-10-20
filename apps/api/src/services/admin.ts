@@ -3,6 +3,7 @@
  *
  * Regras:
  *  - usuário nunca é apagado, só desativado (a auditoria precisa continuar apontando para ele)
+ *  - o WhatsApp de cada pessoa (os avisos dos chamados) mora no usuário desde o 2.0.1: o editar daqui o muda
  *  - o papel "administrador" sempre tem todas as permissões; ninguém remove o último administrador ativo
  *  - papéis do sistema (os 4 iniciais) não podem ser apagados; os criados pela tela podem, se não tiverem usuários
  *  - catálogos: nunca se apaga um item em uso — desativa
@@ -11,15 +12,21 @@
  */
 import argon2 from 'argon2';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import { carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, subscriptionModules, subscriptions, ticketEvents, tickets, users, type Db } from '@gestor/db';
-import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
+import { calendarEvents, carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, subscriptionModules, subscriptions, ticketEvents, tickets, users, type Db } from '@gestor/db';
+import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, textoDoPeriodo, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import { derrubarSessoesDaEquipe } from './portal.js';
 
 // ---------- Usuários ----------
 
+/** O que o criar e o editar devolvem (e a auditoria guarda): nunca a senha. */
+const COMO_VOLTA = { id: users.id, name: users.name, email: users.email, active: users.active, roleId: users.roleId, whatsapp: users.whatsapp, whatsappAvisos: users.whatsappAvisos };
+
 export async function listUsers(db: Db) {
-  return db.select({ id: users.id, name: users.name, email: users.email, active: users.active, roleId: users.roleId, roleName: roles.name, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt })
+  return db.select({
+    id: users.id, name: users.name, email: users.email, active: users.active, roleId: users.roleId, roleName: roles.name, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt,
+    whatsapp: users.whatsapp, whatsappAvisos: users.whatsappAvisos,
+  })
     .from(users).innerJoin(roles, eq(roles.id, users.roleId)).orderBy(asc(users.name));
 }
 
@@ -28,7 +35,10 @@ export async function createUser(db: Db, data: UsuarioCriar) {
   if (dup) throw new BadRequest('Já existe um usuário com este e-mail');
   const [role] = await db.select().from(roles).where(eq(roles.id, data.roleId));
   if (!role) throw new NotFound('Papel');
-  const [row] = await db.insert(users).values({ id: newId(), name: data.name, email: data.email, passwordHash: await argon2.hash(data.password), roleId: data.roleId, active: data.active }).returning({ id: users.id, name: users.name, email: users.email, active: users.active, roleId: users.roleId });
+  const [row] = await db.insert(users).values({
+    id: newId(), name: data.name, email: data.email, passwordHash: await argon2.hash(data.password), roleId: data.roleId, active: data.active,
+    whatsapp: data.whatsapp ?? null, whatsappAvisos: data.whatsappAvisos ?? true,
+  }).returning(COMO_VOLTA);
   return row!;
 }
 
@@ -53,12 +63,18 @@ export async function updateUser(db: Db, id: string, data: Partial<UsuarioCriar>
   if (data.roleId) set.roleId = data.roleId;
   if (data.active !== undefined) set.active = data.active;
   if (data.password) set.passwordHash = await argon2.hash(data.password);
-  const [after] = await db.update(users).set(set).where(eq(users.id, id)).returning({ id: users.id, name: users.name, email: users.email, active: users.active, roleId: users.roleId });
+  // o WhatsApp: ausente não mexe; vazio tira o número
+  if (data.whatsapp !== undefined) set.whatsapp = data.whatsapp;
+  if (data.whatsappAvisos !== undefined) set.whatsappAvisos = data.whatsappAvisos;
+  const [after] = await db.update(users).set(set).where(eq(users.id, id)).returning(COMO_VOLTA);
   // a equipe entra no portal do cliente com este mesmo login (decisão 0044): senha nova ou usuário
   // desativado derruba as sessões abertas lá — quem sabia a senha antiga não continua dentro
   if (data.password || data.active === false) await derrubarSessoesDaEquipe(db, id);
   void actorId;
-  return { before: { id: before.id, name: before.name, email: before.email, active: before.active, roleId: before.roleId }, after: after! };
+  return {
+    before: { id: before.id, name: before.name, email: before.email, active: before.active, roleId: before.roleId, whatsapp: before.whatsapp, whatsappAvisos: before.whatsappAvisos },
+    after: after!,
+  };
 }
 
 // ---------- Papéis ----------
@@ -257,7 +273,7 @@ export async function restoreTicket(db: Db, id: string, quem: { id: string }) {
 // ---------- Lixeira ----------
 
 export async function listTrash(db: Db) {
-  const [c, ci, d, dm, dv, pr, rn, pj, pm, ka, pa, tk] = await Promise.all([
+  const [c, ci, d, dm, dv, pr, rn, pj, pm, ka, pa, tk, ev] = await Promise.all([
     db.select({ id: clients.id, label: clients.tradeName, deletedAt: clients.deletedAt }).from(clients).where(isNotNull(clients.deletedAt)),
     db.select({ id: circuits.id, label: circuits.name, deletedAt: circuits.deletedAt }).from(circuits).where(isNotNull(circuits.deletedAt)),
     db.select({ id: dids.id, label: dids.number, deletedAt: dids.deletedAt }).from(dids).where(isNotNull(dids.deletedAt)),
@@ -270,6 +286,7 @@ export async function listTrash(db: Db) {
     db.select({ id: knowledgeArticles.id, numero: knowledgeArticles.number, titulo: knowledgeArticles.title, deletedAt: knowledgeArticles.deletedAt }).from(knowledgeArticles).where(isNotNull(knowledgeArticles.deletedAt)),
     db.select({ id: portalArticles.id, numero: portalArticles.number, titulo: portalArticles.title, deletedAt: portalArticles.deletedAt }).from(portalArticles).where(isNotNull(portalArticles.deletedAt)),
     db.select({ id: tickets.id, codigo: tickets.code, titulo: tickets.title, deletedAt: tickets.deletedAt }).from(tickets).where(isNotNull(tickets.deletedAt)),
+    db.select({ id: calendarEvents.id, titulo: calendarEvents.title, inicio: calendarEvents.startsOn, fim: calendarEvents.endsOn, deletedAt: calendarEvents.deletedAt }).from(calendarEvents).where(isNotNull(calendarEvents.deletedAt)),
   ]);
   return [
     ...c.map((x) => ({ type: 'client', ...x })), ...ci.map((x) => ({ type: 'circuit', ...x })), ...d.map((x) => ({ type: 'did', ...x })),
@@ -282,5 +299,6 @@ export async function listTrash(db: Db) {
     ...ka.map((x) => ({ type: 'knowledgeArticle', id: x.id, label: `BC-${x.numero} · ${x.titulo}`, deletedAt: x.deletedAt })),
     ...pa.map((x) => ({ type: 'portalArticle', id: x.id, label: `Tutorial ${x.numero} · ${x.titulo}`, deletedAt: x.deletedAt })),
     ...tk.map((x) => ({ type: 'ticket', id: x.id, label: `${x.codigo} · ${x.titulo}`, deletedAt: x.deletedAt })),
+    ...ev.map((x) => ({ type: 'calendarEvent', id: x.id, label: `${textoDoPeriodo({ inicio: x.inicio, fim: x.fim })} · ${x.titulo}`, deletedAt: x.deletedAt })),
   ].sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
 }

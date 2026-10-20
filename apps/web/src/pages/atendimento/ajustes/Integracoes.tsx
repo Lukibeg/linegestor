@@ -1,9 +1,12 @@
 /**
- * Chamados › Ajustes (Patch 2.0) — Integrações (a administração, `admin.manage`): o que liga o Gestor
+ * Painéis › Ajustes (Patch 2.0) — Integrações (a administração, `admin.manage`): o que liga o Gestor
  * aos outros sistemas.
  *
- *  - O LineChat falando com o Gestor: o robô abre o chamado (com uma chave de API), o botão "Abrir
- *    chamado" na conversa (com o login da própria pessoa) e o n8n avisando que o cliente respondeu.
+ *  - O LineChat falando com o Gestor: o robô abre o chamado (com uma chave de API) e o botão "Abrir
+ *    chamado" na conversa (com o login da própria pessoa). O "cliente respondeu" (o n8n avisando a
+ *    mensagem do cliente) saiu no 2.0.1: o pedido do Luan, "isso tbm n precisa".
+ *  - O mapa do robô (2.0.1, em MapaDoRobo.tsx): o robô manda o JSON dele, e o mapa diz de onde vem cada
+ *    campo do chamado. O formato do Gestor (/entrada/chamado) fica para o n8n e outros sistemas.
  *  - As chaves de API (a do robô, a do n8n): aparecem uma vez, ao criar; perdeu, revoga e cria outra.
  *  - Os webhooks: o Gestor avisa o n8n do que aconteceu com um chamado, com a assinatura no cabeçalho.
  *  - Os sites que podem abrir o Gestor dentro deles — o pedido do Luan: "tire esse bloqueio, quero que
@@ -16,9 +19,9 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AppWindow, Bot, Check, Copy, KeyRound, Link2, MousePointerClick, Pencil, Plus, Reply, Send, Trash2, TriangleAlert, Webhook, X } from 'lucide-react';
+import { AppWindow, Bot, KeyRound, Link2, MousePointerClick, Pencil, Plus, Send, Trash2, TriangleAlert, Webhook, X } from 'lucide-react';
 import {
-  EVENTOS_WEBHOOK, linkDaConversa, NOME_EVENTO_WEBHOOK,
+  EVENTOS_WEBHOOK, linkDaConversa, MENSAGEM_DO_ROBO_PADRAO, NOME_EVENTO_WEBHOOK, respostaAoRobo, respostaDoRoboQueFalhou,
   type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type WebhookGravarEntrada, type WebhookTela,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -26,51 +29,14 @@ import { Campo, Carregando, Chip, Confirmar, Modal, Spinner, Toggle, mensagemErr
 import { TdN, ThN } from '../../../lib/contagem.js';
 import { ordenarLista, Th, useOrdenacaoLocal } from '../../../lib/ordenacao.js';
 import { dataHoraCurta, haQuanto, useOpcoes } from '../comum.js';
-import { CartaoAjuste, Explicacao, Interruptor, Resultado, erroLegivel, type ResultadoTeste } from './Avisos.js';
+import { BlocoDeCodigo, BotaoCopiar, CartaoAjuste, Copiavel, Explicacao, Interruptor, Resultado, erroLegivel, type ResultadoTeste } from './Avisos.js';
+import { CartaoMapaDoRobo } from './MapaDoRobo.js';
 
 const CHAVE = ['atendimento', 'integracoes'];
 
 // =====================================================================
-//  AS PEÇAS
+//  AS PEÇAS (o copiar dos endereços e dos exemplos mora em Avisos.tsx: o mapa do robô usa também)
 // =====================================================================
-
-/** Copiar com o nome escrito no botão: quem vai colar no LineChat ou no n8n precisa achar o botão. */
-function BotaoCopiar({ texto, rotulo = 'Copiar', id }: { texto: string; rotulo?: string; id?: string }) {
-  const toast = useToast();
-  const [copiou, setCopiou] = useState(false);
-  const copiar = async () => {
-    try {
-      await navigator.clipboard.writeText(texto);
-      setCopiou(true);
-      window.setTimeout(() => setCopiou(false), 2000);
-    } catch { toast.push('erro', 'O navegador não deixou copiar: selecione o texto e copie com Ctrl+C.'); }
-  };
-  return (
-    <button type="button" id={id} className="btn-ghost btn-sm shrink-0" title={rotulo} aria-label={rotulo} onClick={() => void copiar()}>
-      {copiou ? <><Check size={13} className="text-ok" /> Copiado</> : <><Copy size={13} /> Copiar</>}
-    </button>
-  );
-}
-
-/** Um endereço (ou um cabeçalho) inteiro, quebrando onde precisar, com o Copiar ao lado. */
-function Copiavel({ texto, rotulo, id }: { texto: string; rotulo: string; id?: string }) {
-  return (
-    <div className="flex items-start gap-1 rounded-lg border border-line bg-surface-2 pl-3 pr-1 py-1 min-w-0">
-      <code id={id} className="font-mono text-[12.5px] text-ink break-all flex-1 min-w-0 py-1">{texto}</code>
-      <BotaoCopiar texto={texto} rotulo={`Copiar ${rotulo}`} />
-    </div>
-  );
-}
-
-/** Um JSON de exemplo, com o Copiar no canto. Rola para o lado dentro dele (a página não). */
-function BlocoDeCodigo({ texto, rotulo, id }: { texto: string; rotulo: string; id?: string }) {
-  return (
-    <div className="relative rounded-lg border border-line bg-surface-2 min-w-0">
-      <pre id={id} className="font-mono text-[12px] leading-relaxed text-ink p-3 pr-24 overflow-x-auto whitespace-pre">{texto}</pre>
-      <span className="absolute top-1 right-1"><BotaoCopiar texto={texto} rotulo={`Copiar ${rotulo}`} /></span>
-    </div>
-  );
-}
 
 function Rotulo({ children }: { children: ReactNode }) {
   return <div className="text-[12.5px] font-semibold text-ink-2 mt-3 mb-1">{children}</div>;
@@ -104,8 +70,8 @@ function SegredoUmaVez({ titulo, explicacao, valor, aviso, onFechar }: { titulo:
 
 const SECOES = [
   { id: 'integ-robo', nome: 'O robô abre o chamado' },
+  { id: 'integ-mapa', nome: 'O mapa do robô' },
   { id: 'integ-botao', nome: 'O botão na conversa' },
-  { id: 'integ-cliente', nome: 'O cliente respondeu' },
   { id: 'integ-chaves', nome: 'Chaves de API' },
   { id: 'integ-webhooks', nome: 'Webhooks' },
   { id: 'integ-iframe', nome: 'Dentro de outros sistemas' },
@@ -136,8 +102,8 @@ export function AjustesIntegracoes() {
         ))}
       </nav>
       <CartaoRobo base={base} paineis={paineis} />
+      <CartaoMapaDoRobo base={base} />
       <CartaoBotao base={base} />
-      <CartaoClienteRespondeu base={base} />
       <CartaoChaves chaves={t.chaves} />
       <CartaoWebhooks webhooks={t.webhooks} />
       <CartaoSites inicial={t.sites} base={base} />
@@ -148,74 +114,95 @@ export function AjustesIntegracoes() {
 
 // ---------- o robô do LineChat abre o chamado ----------
 
-const CAMPOS_ROBO: Array<[string, ReactNode]> = [
+/** Os campos do formato do Gestor (/entrada/chamado: o n8n, outros sistemas). */
+const CAMPOS_GESTOR: Array<[string, ReactNode]> = [
   ['painel', <>a sigla do painel (ou o id); sem painel, o primeiro ativo (o Suporte)</>],
   ['titulo', <>o título; sem título, "Atendimento de &lt;nome&gt;" (ou "Chamado pelo WhatsApp")</>],
   ['relato', <>o que o cliente disse</>],
+  ['descricao', <>o que a equipe lê</>],
   ['telefone', <>o WhatsApp do contato (DDD + número; o 55 é opcional). Com ele, o Gestor acha o cliente que já conhece</>],
   ['nome', <>o nome do contato</>],
-  ['sessaoId', <>o id da conversa no LineChat: a mesma conversa aberta não vira dois chamados, e a ficha ganha o link da conversa</>],
+  ['sessaoId', <>o id da conversa: a mesma conversa aberta não vira dois chamados, e a ficha ganha o link da conversa</>],
   ['clienteId', <>o id do cliente no Gestor (sem ele, o Gestor procura pelo telefone)</>],
-  ['assunto', <>o caminho ("Ramal › Configuração") ou só o nome do assunto, no painel do chamado</>],
+  ['assunto', <>o caminho ("Ramal › Configuração"), o nome ou um nome do de-para do assunto, no painel do chamado</>],
   ['prioridade', <><code className="font-mono">critica</code>, <code className="font-mono">alta</code>, <code className="font-mono">media</code> ou <code className="font-mono">baixa</code></>],
   ['etiquetas', <>uma lista, como <code className="font-mono">["robô", "whatsapp"]</code></>],
+  ['campos', <>os campos do painel, pelo nome: <code className="font-mono">{'{"Sistema": "LinePBX"}'}</code></>],
 ];
 
 function CartaoRobo({ base, paineis }: { base: string; paineis: Array<{ sigla: string; nome: string }> }) {
-  const endereco = `${base}/api/atendimento/entrada/chamado`;
+  const endereco = `${base}/api/atendimento/entrada/robo`;
+  const doGestor = `${base}/api/atendimento/entrada/chamado`;
   const sigla = paineis[0]?.sigla ?? 'SUP';
+  const abriu = JSON.stringify(respostaAoRobo({ mensagem: MENSAGEM_DO_ROBO_PADRAO }, { codigo: `${sigla}-12` }, {}), null, 2);
+  const falhou = JSON.stringify(respostaDoRoboQueFalhou());
   const exemplo = JSON.stringify({
-    painel: sigla,
-    titulo: 'Atendimento de {{nome_do_contato}}',
-    relato: '{{descricao_do_cliente}}',
-    telefone: '{{telefone_do_contato}}',
-    nome: '{{nome_do_contato}}',
-    sessaoId: '{{id_da_sessao}}',
-    etiquetas: ['robô'],
+    painel: sigla, titulo: 'Ramal 204 sem áudio', relato: 'O ramal 204 está sem áudio desde cedo', telefone: '(71) 99999-0000', nome: 'Maria Souza',
+    sessaoId: '5f0c2a8e-…', etiquetas: ['n8n'],
   }, null, 2);
-  const resposta = JSON.stringify({ criado: true, id: '…', codigo: `${sigla}-12`, numero: 12, link: `${base}/atendimento/${sigla}-12` }, null, 2);
   return (
     <CartaoAjuste id="integ-robo" icone={<Bot size={18} />} titulo="O robô do LineChat abre o chamado">
       <Explicacao>
         <p>
-          No robô do LineChat, um bloco <b>Webhook</b> manda os dados da conversa para o endereço abaixo, e o Gestor abre o chamado. A
-          mesma conversa aberta não vira dois chamados: o relato novo entra como anotação no que já existe. A resposta traz o código
-          (<span className="font-mono">{sigla}-12</span>), para o robô mandar ao cliente.
+          No robô do LineChat, um bloco <b>Webhook</b> manda o JSON da conversa para o endereço abaixo, do jeito que ele já manda: não precisa
+          montar nada no robô. O <b>mapa do robô</b>, logo abaixo, diz quais parâmetros chegam e de onde sai cada campo do chamado (e mostra
+          como deve chegar o webhook). A mesma conversa aberta não vira dois
+          chamados: o relato novo entra como anotação no que já existe. A resposta já traz a mensagem ao cliente, com o número do chamado
+          (<span className="font-mono">{sigla}-12</span>).
         </p>
       </Explicacao>
 
       <Rotulo>O endereço (POST)</Rotulo>
       <Copiavel texto={endereco} rotulo="o endereço do robô" id="integ-robo-endereco" />
 
-      <Rotulo>A chave (crie uma em Chaves de API, mais abaixo), de um destes jeitos</Rotulo>
+      <Rotulo>A chave (crie uma em Chaves de API, mais abaixo)</Rotulo>
       <div className="flex flex-col gap-1.5">
-        <div className="text-[12.5px] text-muted">no cabeçalho (o melhor):</div>
+        <div className="text-[12.5px] text-muted">
+          no LineChat, no fim do endereço (o bloco não aceita cabeçalho). O Gestor guarda só o nome da chave: ela não vai para o último pedido, nem
+          para a auditoria, nem para o registro do servidor.
+        </div>
+        <Copiavel texto={`${endereco}?chave=<chave>`} rotulo="o endereço com a chave" id="integ-robo-endereco-chave" />
+        <div className="text-[12.5px] text-muted">
+          Dá para mandar mais coisas no endereço, depois da chave (<span className="font-mono">&amp;setor=suporte</span>): cada uma vira um parâmetro
+          do mapa (<span className="font-mono">endereço: setor</span>).
+        </div>
+        <div className="text-[12.5px] text-muted mt-1">outro sistema que aceita cabeçalho pode mandar assim:</div>
         <Copiavel texto="Authorization: Bearer <chave>" rotulo="o cabeçalho" />
-        <div className="text-[12.5px] text-muted mt-1">ou no fim do endereço, quando o bloco do robô não aceitar cabeçalho (o endereço com a chave pode ficar guardado em registro: prefira o cabeçalho):</div>
-        <Copiavel texto={`${endereco}?chave=<chave>`} rotulo="o endereço com a chave" />
       </div>
 
-      <Rotulo>O corpo (JSON), um exemplo</Rotulo>
-      <BlocoDeCodigo texto={exemplo} rotulo="o exemplo do robô" id="integ-robo-exemplo" />
-      <AvisoDasVariaveis />
-
-      <Rotulo>Os campos que o Gestor aceita</Rotulo>
-      <p className="text-[12.5px] text-muted mb-1.5">Todos são opcionais, mas mande pelo menos o título, o relato, o telefone ou a sessão.{paineis.length > 0 && <> Os painéis: {paineis.map((p) => `${p.sigla} (${p.nome})`).join(', ')}.</>}</p>
-      <ul className="flex flex-col gap-1 text-[13px]" id="integ-robo-campos">
-        {CAMPOS_ROBO.map(([campo, o]) => (
-          <li key={campo} className="flex flex-col sm:flex-row sm:gap-2 min-w-0">
-            <code className="font-mono text-[12.5px] text-accent-ink sm:w-[88px] shrink-0">{campo}</code>
-            <span className="text-ink-2 min-w-0">{o}</span>
-          </li>
-        ))}
-      </ul>
-
-      <Rotulo>A resposta</Rotulo>
-      <BlocoDeCodigo texto={resposta} rotulo="o exemplo da resposta" />
+      <Rotulo>A resposta (sempre HTTP 200, no formato do bloco "Enviar webhook")</Rotulo>
+      <div className="flex flex-col gap-1.5" id="integ-robo-resposta">
+        <div className="text-[12.5px] text-muted">abriu (ou a conversa já tinha chamado aberto: vai o número dele):</div>
+        <BlocoDeCodigo texto={abriu} rotulo="a resposta de quando abre" />
+        <div className="text-[12.5px] text-muted mt-1">não deu para abrir (o porquê fica no último pedido, no mapa abaixo):</div>
+        <BlocoDeCodigo texto={falhou} rotulo="a resposta de quando falha" />
+      </div>
       <p className="text-[12.5px] text-muted mt-1.5">
-        <span className="font-mono">"criado": false</span> quando a conversa já tinha um chamado aberto (o código é o dele). Para o cliente, o robô
-        manda o <span className="font-mono">codigo</span>: "Seu chamado é o {sigla}-12".
+        No bloco, crie as duas respostas, <span className="font-mono">CHAMADO_ABERTO</span> e <span className="font-mono">CHAMADO_FALHOU</span>, cada
+        uma com a saída dela. A mensagem do <span className="font-mono">CHAMADO_ABERTO</span> muda no mapa do robô (Mensagem ao cliente). A chave
+        errada (ou revogada) responde 401: o bloco segue pela saída de falha dele.
       </p>
+
+      <details className="text-sm mt-3" id="integ-robo-gestor">
+        <summary className="cursor-pointer text-ink-2 font-medium">Outro sistema (o n8n, um script)? O formato do Gestor</summary>
+        <div className="mt-2 flex flex-col gap-1.5">
+          <p className="text-[12.5px] text-muted">
+            Quem monta o próprio JSON pode mandar no formato do Gestor, sem mapa. Aqui é mais rígido: o painel, o assunto ou o campo que não
+            existe recusa o pedido (400), com a mensagem. A chave vai do mesmo jeito.
+          </p>
+          <Copiavel texto={doGestor} rotulo="o endereço no formato do Gestor" id="integ-robo-gestor-endereco" />
+          <BlocoDeCodigo texto={exemplo} rotulo="o exemplo no formato do Gestor" id="integ-robo-exemplo" />
+          <p className="text-[12.5px] text-muted">Todos são opcionais, mas mande pelo menos o título, o relato, o telefone ou a sessão.{paineis.length > 0 && <> Os painéis: {paineis.map((p) => `${p.sigla} (${p.nome})`).join(', ')}.</>}</p>
+          <ul className="flex flex-col gap-1 text-[13px]" id="integ-robo-campos">
+            {CAMPOS_GESTOR.map(([campo, o]) => (
+              <li key={campo} className="flex flex-col sm:flex-row sm:gap-2 min-w-0">
+                <code className="font-mono text-[12.5px] text-accent-ink sm:w-[88px] shrink-0">{campo}</code>
+                <span className="text-ink-2 min-w-0">{o}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </details>
     </CartaoAjuste>
   );
 }
@@ -236,39 +223,6 @@ function CartaoBotao({ base }: { base: string }) {
       <Rotulo>O endereço da ação</Rotulo>
       <Copiavel texto={endereco} rotulo="o endereço do botão" id="integ-botao-endereco" />
       <AvisoDasVariaveis />
-    </CartaoAjuste>
-  );
-}
-
-// ---------- o cliente respondeu (o n8n) ----------
-
-function CartaoClienteRespondeu({ base }: { base: string }) {
-  const endereco = `${base}/api/atendimento/entrada/mensagem`;
-  const corpo = JSON.stringify({ telefone: '5571999990000', texto: 'Ainda está caindo a ligação', sessaoId: '8f3c2a10' }, null, 2);
-  const resposta = JSON.stringify({ acao: 'reaberto', codigo: 'SUP-12' }, null, 2);
-  return (
-    <CartaoAjuste id="integ-cliente" icone={<Reply size={18} />} titulo="O cliente respondeu (para o n8n)">
-      <Explicacao>
-        <p>
-          Quando o cliente escreve no WhatsApp, o n8n (com o evento de mensagem recebida do LineChat) avisa este endereço. O chamado
-          Resolvido dele <b>reabre</b>, menos quando é só um agradecimento ("obrigado", "ok, funcionou", uma figurinha); no aberto, a
-          mensagem fica no histórico. Nos dois casos, o responsável é avisado.
-        </p>
-      </Explicacao>
-      <Rotulo>O endereço (POST), com a chave como no robô</Rotulo>
-      <Copiavel texto={endereco} rotulo="o endereço do cliente respondeu" id="integ-cliente-endereco" />
-      <Rotulo>O corpo (JSON)</Rotulo>
-      <BlocoDeCodigo texto={corpo} rotulo="o exemplo do cliente respondeu" />
-      <p className="text-[12.5px] text-muted mt-1.5">
-        <span className="font-mono">telefone</span> é obrigatório; <span className="font-mono">sessaoId</span> (o id da conversa) acha o chamado
-        certo quando o contato tem mais de um; sem ele, vale o mais novo do telefone.
-      </p>
-      <Rotulo>A resposta</Rotulo>
-      <BlocoDeCodigo texto={resposta} rotulo="o exemplo da resposta" />
-      <p className="text-[12.5px] text-muted mt-1.5">
-        <span className="font-mono">reaberto</span>, <span className="font-mono">registrado</span> (o chamado estava aberto) ou{' '}
-        <span className="font-mono">ignorado</span> (um agradecimento, ou nenhum chamado desse contato).
-      </p>
     </CartaoAjuste>
   );
 }

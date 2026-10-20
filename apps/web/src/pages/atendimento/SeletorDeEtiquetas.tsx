@@ -7,8 +7,8 @@
  * abre a lista, como as outras listas do Gestor: a busca em cima ("Procurar ou criar…"), cada etiqueta
  * com a cor e a marca das que o chamado tem — um clique põe ou tira, e a lista fica aberta para marcar
  * mais de uma. O que foi escrito e não existe vira "Criar etiqueta", com a cor. O lápis de cada uma (para
- * quem cuida dos chamados) abre o editar: o nome e a cor, que valem em todos os chamados que a têm (e nas
- * respostas prontas que a põem). Usado no Abrir chamado e na ficha.
+ * quem cuida dos chamados) abre o editar: o nome e a cor, que valem em todos os chamados que a têm. Usado
+ * no Abrir chamado e na ficha.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';

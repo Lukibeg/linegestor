@@ -33,6 +33,7 @@ Em **Administração › Envio automático**:
 | **Número que envia** | O número conectado na FlwChat |
 | **Token da API da FlwChat** | Fica cifrado no cofre e **nunca** volta a aparecer na tela |
 | **Endereço de envio da API** | O endereço de enviar mensagem, da documentação da FlwChat |
+| **Concluir a conversa depois de mandar** | Vem ligada: o relatório é só um aviso, e a conversa que ele abre na FlwChat é concluída logo depois (não fica pendente esperando alguém). Vale também para o Testar e o Mandar agora |
 
 Salve, depois:
 
@@ -44,7 +45,9 @@ Salve, depois:
 ## 3. Acompanhar
 
 Embaixo, **Últimos envios**: quando, se foi no horário ou mandado à mão, se deu certo, para quantos
-números e o PDF de cada um para baixar. Tudo também fica na auditoria.
+números e o PDF de cada um para baixar. Tudo também fica na auditoria. Com a opção de concluir ligada,
+o resultado diz *"as conversas foram concluídas"* — ou, se a FlwChat não deixou, *"1 conversa ficou
+aberta"*, com o nome e o motivo (a mensagem chegou do mesmo jeito; conclua a conversa no LineChat).
 
 Lá em cima, ao lado de **próximo**, a tela diz **como foi o envio de hoje**: se saiu (e a que horas),
 se falhou e quando tenta de novo, ou se não saiu — sempre com o motivo. A tela se atualiza sozinha a

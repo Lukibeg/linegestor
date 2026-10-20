@@ -28,6 +28,9 @@
       "argon2",
       "esbuild",
       "prisma"
+    ],
+    "ignoredOptionalDependencies": [
+      "@napi-rs/canvas"
     ]
   }
 }

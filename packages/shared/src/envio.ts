@@ -8,24 +8,12 @@
  * a API) é do servidor.
  */
 import { z } from 'zod';
+import { numeroWhatsApp } from './formatos.js';
 import { CATALOGO_RELATORIOS } from './relatorios.js';
 
 const FUSO = 'America/Sao_Paulo';
 
 // ---------- números de WhatsApp ----------
-
-/**
- * Um número de WhatsApp como a API quer: só dígitos, com o 55 do Brasil. Aceita como a pessoa
- * digitar — "(71) 3512-4840", "+55 71 3512-4840", "7135124840". Devolve null se não der um número.
- */
-export function numeroWhatsApp(texto: string | null | undefined): string | null {
-  let d = (texto ?? '').replace(/\D/g, '');
-  if (d.startsWith('00')) d = d.slice(2);
-  // DDD + número (fixo com 8 dígitos ou celular com 9): falta o país
-  if (d.length === 10 || d.length === 11) d = `55${d}`;
-  if (d.length < 12 || d.length > 13) return null;
-  return d;
-}
 
 /** "5571999990000" → "+55 (71) 99999-0000" (só para mostrar). */
 export function numeroLegivel(n: string | null | undefined): string {
@@ -67,6 +55,11 @@ export const AjustesEnvioSchema = z.object({
   dias: z.array(z.number().int().min(0).max(6)).min(1, 'Escolha ao menos um dia.').max(7).transform((xs) => [...new Set(xs)].sort()),
   destinatarios: z.array(DestinatarioSchema).max(30, 'No máximo 30 números.')
     .refine((xs) => new Set(xs.map((x) => x.numero)).size === xs.length, 'Um número apareceu duas vezes na lista.'),
+  /**
+   * concluir a conversa logo depois de mandar (2.0.1, o pedido do Luan: "ele envia e conclui… ele é só um
+   * aviso"): a mensagem não deixa a conversa pendente na FlwChat. Vem ligado; guardado antes, vale ligado.
+   */
+  concluirConversa: z.boolean().default(true),
   /** só quando a pessoa digita um token novo; em branco = manter o guardado */
   token: z.string().trim().max(500).optional(),
 }).superRefine((a, ctx) => {

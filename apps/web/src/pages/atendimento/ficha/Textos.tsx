@@ -24,6 +24,10 @@ const DO_CHAMADO: Bloco[] = [
   { campo: 'solucao', titulo: 'Solução', dica: 'o que resolveu', max: 20_000, exemplo: 'Ex.: ajustada a rota de saída para o tronco 2 e testado com o cliente.' },
   { campo: 'causa', titulo: 'Causa', dica: 'por que aconteceu', max: 5_000, exemplo: 'Ex.: a operadora mudou o IP do SBC sem avisar.' },
 ];
+/** A negociação (o painel de Vendas): a descrição é "Sobre a negociação"; o relato só aparece se chegou (o robô). */
+const DA_NEGOCIACAO: Bloco[] = [
+  { campo: 'descricao', titulo: 'Sobre a negociação', dica: 'o que o cliente precisa, quem decide, a concorrência', max: 20_000, exemplo: 'Ex.: três lojas e a fábrica; querem o mesmo número para todas e a fila do delivery. Quem decide é o sócio.' },
+];
 const DO_PROBLEMA: Bloco[] = [
   { campo: 'relato', titulo: 'Relato', dica: 'o que chegou dos clientes', max: 20_000, exemplo: 'Ex.: três clientes da Algar em Salvador sem receber ligação desde as 14h.' },
   { campo: 'descricao', titulo: 'Descrição', dica: 'o andamento e os dados técnicos', max: 20_000, exemplo: 'Ex.: todos no mesmo POP da Algar; protocolo 2026101099871.' },
@@ -83,8 +87,10 @@ export function AvisoDoQueFalta() {
 }
 
 export function Textos() {
-  const { f, opcoes } = useAberta();
-  const blocos = f.tipoChamado === 'problema' ? DO_PROBLEMA : DO_CHAMADO;
+  const { f, opcoes, painel } = useAberta();
+  const blocos = painel?.tipo === 'vendas'
+    ? [...(f.relato ? [{ ...DO_CHAMADO[0]!, titulo: 'O que o cliente pediu', dica: 'como chegou (o robô, a conversa)' }] : []), ...DA_NEGOCIACAO]
+    : f.tipoChamado === 'problema' ? DO_PROBLEMA : DO_CHAMADO;
   // os campos de texto longo do painel (os ativos), na ordem dos Ajustes
   const longos = opcoes.campos.filter((c) => c.painelId === f.painelId && c.ativo && c.tipo === 'texto_longo');
   return (

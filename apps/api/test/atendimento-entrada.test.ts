@@ -6,8 +6,7 @@
  *    o uso fica anotado; a sessão de uma pessoa não serve
  *  - o robô abre: origem "robo", o código e o link de volta, o título de reserva, o painel pela sigla, o
  *    assunto pelo nome; a mesma conversa aberta não abre outro (nem com dois pedidos ao mesmo tempo)
- *  - o cliente escreveu: o "obrigado" não reabre o Resolvido, o "ainda está caindo" reabre e avisa o
- *    responsável; no aberto, fica no histórico
+ *  - a mensagem do cliente (o n8n repassando) saiu no 2.0.1: o endereço não existe mais
  *  - o n8n: lê o chamado, muda o assunto pelo caminho (ou pelo nome), move pelo nome da etapa e anota —
  *    pelas regras da tela, com a auditoria no nome da chave
  */
@@ -114,7 +113,7 @@ describe('a chave de API', () => {
     // o corpo inválido com a chave errada continua 401 (não diz nada a quem não tem a chave)
     expect((await pedido('POST', '/entrada/chamado', {}, { chave: 'errada' })).statusCode).toBe(401);
     expect((await pedido('GET', '/integracao/chamados/SUP-1', undefined, { chave: null })).statusCode).toBe(401);
-    expect((await pedido('POST', '/entrada/mensagem', { telefone: '71999990000', texto: 'oi' }, { chave: null })).statusCode).toBe(401);
+    expect((await pedido('POST', '/integracao/chamados/SUP-1/anotacoes', { texto: 'oi' }, { chave: null })).statusCode).toBe(401);
     // a sessão de uma pessoa não serve: a entrada é só pela chave
     expect((await s.post('/atendimento/entrada/chamado', { relato: 'Meu ramal parou' })).statusCode).toBe(401);
     expect(await app.db.select().from(tickets)).toHaveLength(0);
@@ -122,7 +121,7 @@ describe('a chave de API', () => {
     expect(r!.lastUsedAt).toBeNull();
   });
 
-  it('a chave criada em Chamados › Integrações entra; revogada, para na hora', async () => {
+  it('a chave criada em Painéis › Ajustes › Integrações entra; revogada, para na hora', async () => {
     const criada = await s.post('/atendimento/integracoes/chaves', { nome: 'n8n de produção' });
     expect(criada.statusCode, criada.body).toBe(201);
     const { chave, valor } = criada.json();
@@ -134,12 +133,12 @@ describe('a chave de API', () => {
   });
 
   it('o pedido que vem de outro site (o LineChat, o n8n) passa: a entrada é de servidor para servidor, com a chave', async () => {
+    // (um chamado que não existe: o pedido passou do site e da chave, e só não achou o chamado)
     const r = await app.inject({
-      method: 'POST', url: '/api/atendimento/entrada/mensagem', payload: { telefone: '(11) 90000-0000', texto: 'oi' },
+      method: 'POST', url: '/api/atendimento/integracao/chamados/SUP-999/anotacoes', payload: { texto: 'oi' },
       headers: { authorization: `Bearer ${n8n.valor}`, origin: 'https://app.inglinechat.com.br' },
     });
-    expect(r.statusCode, r.body).toBe(200);
-    expect(r.json()).toEqual({ acao: 'ignorado' });
+    expect(r.statusCode, r.body).toBe(404);
   });
 
   it('a chave no endereço (?chave=) também vale, e o uso fica anotado', async () => {
@@ -226,71 +225,12 @@ describe('o robô abre o chamado', () => {
 
 // =====================================================================
 
-describe('o cliente escreveu (o n8n repassa a mensagem)', () => {
-  let id = '';
-  beforeAll(async () => {
-    // o SUP-1 foi resolvido, com a Marina de responsável (direto no banco: o caminho até o Resolvido está testado no núcleo)
-    const [t] = await app.db.select({ id: tickets.id }).from(tickets).where(eq(tickets.code, 'SUP-1'));
-    id = t!.id;
-    await app.db.update(tickets).set({ stageId: E.resolvido, resolvedAt: new Date(), assigneeId: marinaId }).where(eq(tickets.id, id));
-  });
-
-  it('"obrigado" não reabre o Resolvido', async () => {
-    for (const texto of ['Obrigado! Funcionou 👍', 'ok, valeu', '']) {
-      const r = await pedido('POST', '/entrada/mensagem', { telefone: '(71) 99999-0000', texto });
-      expect(r.statusCode, r.body).toBe(200);
-      expect(r.json()).toEqual({ acao: 'ignorado', codigo: 'SUP-1' });
-    }
-    const f = await ficha('SUP-1');
-    expect(f.situacao).toBe('resolvido');
-    expect(eventos(f, 'cliente_respondeu')).toHaveLength(0);
-  });
-
-  it('"ainda está caindo" reabre e avisa o responsável', async () => {
-    const r = await pedido('POST', '/entrada/mensagem', { telefone: '5571999990000', sessaoId: 'sessao-1', texto: 'Ainda está caindo' });
-    expect(r.json()).toEqual({ acao: 'reaberto', codigo: 'SUP-1' });
-    const f = await ficha('SUP-1');
-    expect(f).toMatchObject({ situacao: 'aberto', etapaId: E.n1, reaberto: 1, resolvidoEm: null });
-    const [respondeu, etapa, reaberto] = f.historico.slice(-3);
-    expect(respondeu).toMatchObject({ tipo: 'cliente_respondeu', porNome: 'n8n', dados: { reabriu: true }, texto: 'o cliente respondeu e o chamado reabriu: "Ainda está caindo"' });
-    expect(etapa).toMatchObject({ tipo: 'etapa', dados: { de: { nome: 'Resolvido' }, para: { nome: 'N1' } } });
-    expect(reaberto).toMatchObject({ tipo: 'reaberto', texto: 'reabriu o chamado: o cliente respondeu' });
-    const avisos = (await operador.get('/atendimento/avisos')).json().itens.map((a: any) => [a.tipo, a.texto]);
-    expect(avisos).toEqual(expect.arrayContaining([['cliente_respondeu', 'O cliente respondeu no SUP-1 e o chamado reabriu: "Ainda está caindo"'], ['recebeu', 'O SUP-1 foi reaberto']]));
-    expect((await auditoriaDe(id)).map((a) => a.summary)).toContain('n8n (chave de API): o cliente respondeu e SUP-1 reabriu');
-  });
-
-  it('no chamado aberto, a mensagem fica no histórico e avisa o responsável', async () => {
-    const r = await pedido('POST', '/entrada/mensagem', { telefone: '71 99999-0000', texto: 'Mandei o print' });
-    expect(r.json()).toEqual({ acao: 'registrado', codigo: 'SUP-1' });
-    const f = await ficha('SUP-1');
-    expect(f.situacao).toBe('aberto');
-    expect(f.historico.at(-1)).toMatchObject({ tipo: 'cliente_respondeu', texto: 'o cliente respondeu: "Mandei o print"' });
-    expect((await operador.get('/atendimento/avisos')).json().itens[0]).toMatchObject({ tipo: 'cliente_respondeu', texto: 'O cliente respondeu no SUP-1: "Mandei o print"' });
-  });
-
-  it('duas mensagens seguidas no Resolvido: a primeira reabre, a segunda fica registrada', async () => {
-    const { id: outro, codigo } = (await doRobo({ relato: 'A fila não toca', telefone: '(71) 96666-5555', nome: 'Caio' })).json();
-    await app.db.update(tickets).set({ stageId: E.resolvido, resolvedAt: new Date() }).where(eq(tickets.id, outro));
-    const [a, b] = await Promise.all([
-      pedido('POST', '/entrada/mensagem', { telefone: '71966665555', texto: 'Ainda está caindo' }),
-      pedido('POST', '/entrada/mensagem', { telefone: '71966665555', texto: 'E agora o 204 também' }),
-    ]);
-    expect([a.statusCode, b.statusCode]).toEqual([200, 200]);
-    expect([a.json().acao, b.json().acao].sort()).toEqual(['reaberto', 'registrado']);
-    const f = await ficha(codigo);
-    expect(f.reaberto).toBe(1);
-    expect(eventos(f, 'cliente_respondeu').map((e: any) => e.dados.reabriu).sort()).toEqual([false, true]);
-  });
-
-  it('sem chamado do contato (ou só fechados): ignorado', async () => {
-    expect((await pedido('POST', '/entrada/mensagem', { telefone: '(11) 91234-5678', texto: 'Oi, tudo bem?' })).json()).toEqual({ acao: 'ignorado' });
-  });
-});
-
-// =====================================================================
-
 describe('o n8n mexe no chamado', () => {
+  beforeAll(async () => {
+    // o SUP-1 (o do robô) está no N1, com a Marina de responsável (direto no banco: o caminho até lá está testado no núcleo)
+    await app.db.update(tickets).set({ stageId: E.n1, assigneeId: marinaId }).where(eq(tickets.code, 'SUP-1'));
+  });
+
   it('lê o chamado pelo código: o cartão, o relato, a descrição e a solução', async () => {
     const r = await pedido('GET', '/integracao/chamados/sup-1');
     expect(r.statusCode, r.body).toBe(200);

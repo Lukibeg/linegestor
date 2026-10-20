@@ -59,6 +59,11 @@ export function proximaEtapa(etapas: EtapaPainel[], atualId: string): EtapaPaine
   const atual = etapas[i];
   if (!atual) return null;
   const depois = etapas.slice(i + 1);
+  // a negociação (o painel de Vendas): a próxima etapa do funil; no fim do funil, o Ganho
+  if (etapas.some((e) => e.resultado)) {
+    if (atual.resultado) return null;
+    return depois.find((e) => !e.resultado && e.tipo !== 'fechado') ?? etapas.find((e) => e.resultado === 'ganho') ?? null;
+  }
   if (atual.tipo === 'entrada') return depois.find((e) => e.tipo === 'andamento') ?? depois[0] ?? null;
   if (atual.tipo === 'andamento') return depois.find((e) => e.tipo === 'resolvido') ?? etapas.find((e) => e.tipo === 'resolvido') ?? depois.find((e) => e.tipo === 'fechado') ?? null;
   if (atual.tipo === 'resolvido') return depois.find((e) => e.tipo === 'fechado') ?? etapas.find((e) => e.tipo === 'fechado') ?? null;

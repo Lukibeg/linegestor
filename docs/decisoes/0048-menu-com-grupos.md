@@ -39,5 +39,26 @@ entrou nele.
   ficha do cliente); a parte dos Ajustes que liga a leitura continua **Administração › Ajustes ›
   Chamados do LineChat**, porque é o nome da integração.
 
+- **Revisto no 2.0.1 (17/10/2026): Chamados virou Painéis.** Com o painel de Vendas (decisão 0050), o
+  Comercial passou a morar no mesmo item que o Suporte e o Desenvolvimento, e o Luan apontou o item nos
+  comentários da prévia: *"isso aqui n é chamados, é paineis"*. Avisado de que mudava esta decisão,
+  respondeu *"pode fazer"*. Agora:
+  - o item do Suporte é **Painéis** (o ícone, um quadro de colunas), e o título das telas dele também
+    (a tela dos painéis, o quadro, a lista, o relatório do Comercial, o Meu dia e os Ajustes) — a regra
+    de cima continua: o título é o nome do item;
+  - a primeira aba, que se chamava Painéis, chama-se **Todos** (os cartões de todos os painéis); as
+    outras continuam **Meu dia** e **Ajustes**;
+  - os caminhos escritos nas telas, nas mensagens e nos guias passam de *Chamados › Ajustes* para
+    **Painéis › Ajustes** (*Painéis › Ajustes › Avisos*, *Painéis › Ajustes › Integrações*…);
+  - dentro de cada painel nada muda: o Suporte continua com os chamados e o **Abrir chamado**, e o
+    Comercial com as negociações e a **Nova negociação**. O endereço continua `/atendimento`;
+  - no alto do menu continua o **Painel** (a tela inicial do Gestor, no singular), como antes;
+  - a nota do 2.0 e os guias das versões antigas ficam como estavam (contam o que era).
+- **Revisto no 2.0.1 (19/10/2026): o grupo Comercial.** Um terceiro grupo, **Comercial**, abaixo do
+  Suporte, com **Negociações** e **Relatórios** — o atalho para o painel de Vendas e o relatório dele, de
+  quem tem a permissão **Ver o Comercial** (decisão 0050). Na tela de um painel de Vendas, o menu marca
+  o Comercial, e não Painéis (quem decide é o painel aberto, e não só o endereço). O **Calendário** e o
+  sininho passaram a aparecer também para quem só vê o Comercial.
+
 **Consequências.** O menu cai de 12 para 8 entradas no alto, e o Suporte tem três itens. Os guias de
 uso, a nota do 2.0 e o vídeo falam dos nomes novos.

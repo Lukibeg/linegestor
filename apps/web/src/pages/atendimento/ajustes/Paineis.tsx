@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 2.0, decisão 0047) — OS PAINÉIS.
+ * Painéis › Ajustes (Patch 2.0, decisão 0047) — OS PAINÉIS.
  *
  * Cada painel é uma fila de chamados (Suporte, Desenvolvimento, Interno…) com a sua sigla (SUP-12),
  * a sua cor, quem vê, as suas etapas e as suas regras: se conta prazo, se o Resolvido fecha sozinho, o
@@ -16,24 +16,30 @@
  * a ordem (arrastando ou pelas setas), e em cada uma o tipo, o nível (N1, N2, N3 e DEV são
  * colunas), o que precisa estar preenchido para entrar e quem recebe o aviso. O painel novo começa
  * com Novo, Em andamento, Resolvido e Fechado — ou com as etapas de um painel que já existe.
+ *
+ * O painel é de **Gestão** (os chamados) ou de **Vendas** (2.0.1, decisão 0050: as negociações do
+ * Comercial), escolhido ao criar — depois não muda. O de Vendas nasce com o funil (Lead, Qualificação,
+ * Proposta enviada, Negociação) e as duas finais, Ganho e Perdido, que não saem (mudam de nome); não tem
+ * prazo nem nível, e tem os motivos de perda e a meta do mês.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, Pencil, Plus, Trash2, Undo2, UserPlus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, HandCoins, Pencil, Plus, ThumbsDown, Ticket, Trash2, Trophy, Undo2, UserPlus, X } from 'lucide-react';
 import {
-  AJUSTES_PAINEL_PADRAO, CAMPOS_DO_SISTEMA, CORES_PAINEL, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL,
-  NIVEIS, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, idDaChave, limparObrigatorios, nomeDoObrigatorio, obrigatoriosDoPainel, paraBusca,
-  rotuloDoNivel,
+  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_SISTEMA, CORES_PAINEL, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema,
+  MAX_ETAPAS_DO_PAINEL, MOTIVOS_DE_PERDA_PADRAO, NIVEIS, NOME_CAMPO_DO_SISTEMA, NOME_RESULTADO_DA_VENDA, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, etiquetasUnicas, idDaChave,
+  limparObrigatorios, nomeDoObrigatorio, obrigatoriosDoPainel, paraBusca, problemaNasEtapasDoTipo, reaisInteiros, rotuloDoNivel,
   type AjustesDoPainel, type CampoObrigatorio, type CampoPersonalizado, type CorPainel, type EtapaGravarEntrada, type EtapaPainel, type Nivel, type Obrigatorio,
-  type Painel, type PainelGravarEntrada, type PessoaCurta, type TipoEtapa,
+  type Painel, type PainelGravarEntrada, type PessoaCurta, type ResultadoDaVenda, type TipoDePainel, type TipoEtapa,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
 import { Carregando, Chip, Confirmar, EscolherComBusca, Modal, Spinner, Toggle, mensagemErro, type OpcaoBusca } from '../../../components/ui/index.js';
 import { useArrastar } from '../../../lib/arrastar.js';
 import { CodigoChamado, TOM_DO_PAINEL, useDepoisDeMudar, useOpcoes } from '../comum.js';
+import { CampoValor } from '../venda.js';
 
 /** A cor cheia de cada painel (a bolinha do cartão e a amostra da escolha). */
 const COR_CHEIA: Record<CorPainel, string> = {
@@ -49,11 +55,11 @@ const TIPO_CURTO: Record<TipoEtapa, string> = { entrada: 'Entrada', andamento: '
  * só existem depois de aberto — exigi-los na abertura travaria o painel inteiro.
  */
 const CAMPOS_PARA_ABRIR: CampoObrigatorio[] = [
-  'cliente', 'contato', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'responsavel',
+  'cliente', 'contato', 'valor', 'relato', 'descricao', 'assunto', 'tipo', 'gravidade', 'alcance', 'prioridade', 'produto', 'operadora', 'responsavel',
 ];
 /** O que pode ser obrigatório neste painel: para entrar nas etapas (tudo o que ele usa) e para abrir (o que o formulário de abrir tem). */
-function obrigatoriosQueValem(ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, campos: CampoPersonalizado[]) {
-  const etapas = obrigatoriosDoPainel(ajustes, campos);
+function obrigatoriosQueValem(ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, campos: CampoPersonalizado[], tipo: TipoDePainel) {
+  const etapas = obrigatoriosDoPainel(ajustes, campos, tipo);
   return { etapas, abrir: etapas.filter((k) => idDaChave(k) || CAMPOS_PARA_ABRIR.includes(k as CampoObrigatorio)) };
 }
 
@@ -127,12 +133,20 @@ export function AjustesPaineis() {
 
 function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: PessoaCurta[]; campos: CampoPersonalizado[]; onEditar: () => void }) {
   const a = p.ajustes;
+  const vendas = p.tipo === 'vendas';
   const usados = [...CAMPOS_DO_SISTEMA.filter((c) => !a.camposDesligados.includes(c)).map((c) => NOME_CAMPO_DO_SISTEMA[c]), ...campos.filter((c) => c.ativo).map((c) => c.nome)];
-  const paraAbrir = limparObrigatorios(a.obrigatoriosAoAbrir, obrigatoriosDoPainel(a, campos)).map((k) => nomeDoObrigatorio(k, campos));
+  const paraAbrir = limparObrigatorios(a.obrigatoriosAoAbrir, obrigatoriosDoPainel(a, campos, p.tipo)).map((k) => nomeDoObrigatorio(k, campos));
   const quemVe = p.acesso === 'todos'
     ? 'Todos que veem chamados'
     : p.pessoas.length ? `Só ${listaDeNomes(p.pessoas.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Só quem cuida dos chamados (ninguém escolhido)';
-  const regras = [
+  const regras = vendas ? [
+    'Painel de Vendas: o funil, o Ganho e o Perdido (sem prazo)',
+    usados.length ? `Campos: ${usados.join(', ')}` : 'Sem campos além dos da negociação',
+    a.motivosDePerda.length ? `Motivos de perda: ${a.motivosDePerda.join(', ')}` : 'Sem motivos de perda',
+    a.metaMensal ? `Meta do mês: ${reaisInteiros(a.metaMensal)}` : 'Sem meta do mês',
+    paraAbrir.length ? `Para criar: ${paraAbrir.join(', ')}` : 'Cria sem exigir nenhum campo',
+    a.supervisores.length ? `Supervisão: ${listaDeNomes(a.supervisores.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Sem supervisores',
+  ] : [
     usados.length ? `Campos: ${usados.join(', ')}` : 'Sem campos além dos do chamado',
     a.contaPrazo ? 'Conta prazo' : 'Não conta prazo',
     a.fecharSozinhoDias ? `O Resolvido fecha sozinho em ${a.fecharSozinhoDias} ${a.fecharSozinhoDias === 1 ? 'dia útil' : 'dias úteis'}` : 'O Resolvido não fecha sozinho',
@@ -148,6 +162,7 @@ function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: Pe
           <div className="flex flex-wrap items-center gap-1.5">
             <h3 className="font-display font-semibold text-[15px] break-words">{p.nome}</h3>
             <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip>
+            {vendas && <Chip tone="ok" title="Painel de Vendas: as negociações"><HandCoins size={11} aria-hidden /> Vendas</Chip>}
             {!p.ativo && <Chip tone="muted">desativado</Chip>}
           </div>
           {p.descricao && <p className="text-[12.5px] text-muted leading-snug mt-0.5">{p.descricao}</p>}
@@ -157,7 +172,7 @@ function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: Pe
         <dt className="text-muted">Abertos</dt>
         <dd>
           <Link to={`/atendimento/lista?painel=${encodeURIComponent(p.id)}`} className="font-semibold tnum text-ink hover:text-accent" title={`Ver os chamados abertos do ${p.nome} na lista`}>
-            {p.abertos} {p.abertos === 1 ? 'chamado' : 'chamados'}
+            {p.abertos} {vendas ? (p.abertos === 1 ? 'negociação' : 'negociações') : p.abertos === 1 ? 'chamado' : 'chamados'}
           </Link>
         </dd>
         <dt className="text-muted">Quem vê</dt><dd className="text-ink-2 break-words">{quemVe}</dd>
@@ -183,43 +198,53 @@ type FormPainel = {
   nome: string; sigla: string; descricao: string; cor: CorPainel; acesso: 'todos' | 'escolhidos'; pessoas: string[]; ativo: boolean;
   tipos: string[]; contaPrazo: boolean; fecharSozinho: boolean; fecharSozinhoDias: string; obrigatoriosAoAbrir: Obrigatorio[];
   paiEsperaFilhos: boolean; supervisores: string[];
+  /** Gestão ou Vendas (só ao criar); no de Vendas, os motivos de perda e a meta do mês (centavos) */
+  tipo: TipoDePainel; motivosDePerda: string[]; meta: number | null; metaValida: boolean;
 };
 
-function formDoPainel(p: Painel | null): FormPainel {
-  const a = p?.ajustes ?? AJUSTES_PAINEL_PADRAO;
+function formDoPainel(p: Painel | null, tipo: TipoDePainel = p?.tipo ?? 'gestao'): FormPainel {
+  const a = p?.ajustes ?? (tipo === 'vendas' ? AJUSTES_DO_PAINEL_DE_VENDAS : AJUSTES_PAINEL_PADRAO);
   return {
     nome: p?.nome ?? '', sigla: p?.sigla ?? '', descricao: p?.descricao ?? '', cor: p?.cor ?? 'accent', acesso: p?.acesso ?? 'todos', pessoas: p?.pessoas ?? [],
     ativo: p?.ativo ?? true, tipos: [...a.tipos], contaPrazo: a.contaPrazo, fecharSozinho: a.fecharSozinhoDias !== null,
     fecharSozinhoDias: String(a.fecharSozinhoDias ?? AJUSTES_PAINEL_PADRAO.fecharSozinhoDias ?? 3), obrigatoriosAoAbrir: [...a.obrigatoriosAoAbrir],
     paiEsperaFilhos: a.paiEsperaFilhos, supervisores: [...a.supervisores],
+    tipo, motivosDePerda: [...(a.motivosDePerda.length || p ? a.motivosDePerda : tipo === 'vendas' ? MOTIVOS_DE_PERDA_PADRAO : [])], meta: a.metaMensal ?? null, metaValida: true,
   };
 }
 
-type EtapaRascunho = EtapaGravarEntrada & { chave: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[] };
+type EtapaRascunho = EtapaGravarEntrada & {
+  chave: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[];
+  /** no painel de Vendas: o Ganho e o Perdido (as finais, que não saem) */
+  resultado: ResultadoDaVenda | null;
+};
 type Saindo = { etapa: EtapaRascunho; posicao: number };
 type EtapaComChamados = { id: string; nome: string; chamados: number };
 
 let sequencia = 0;
-const daEtapa = (e: EtapaPainel): EtapaRascunho => ({ chave: e.id, id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar] });
+const daEtapa = (e: EtapaPainel): EtapaRascunho => ({
+  chave: e.id, id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar], resultado: e.resultado ?? null,
+});
 /** Uma etapa que ainda não existe (sem id): a do painel novo, a copiada de outro painel ou a incluída agora. */
-const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[] }): EtapaRascunho =>
-  ({ chave: `nova-${++sequencia}`, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...(e.avisar ?? [])] });
+const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null }): EtapaRascunho =>
+  ({ chave: `nova-${++sequencia}`, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...(e.avisar ?? [])], resultado: e.resultado ?? null });
 const paraGravar = ({ chave: _chave, ...e }: EtapaRascunho): EtapaGravarEntrada => ({ ...e, nome: e.nome.trim() });
 const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
 /**
  * As etapas de um painel que já existe, copiadas para o novo (sem os ids: no painel novo, todas nascem),
  * ou as básicas. Os campos do painel de origem não vão junto nas regras: são daquele painel.
  */
-function etapasDoModelo(modelo: Painel | undefined): EtapaRascunho[] {
-  const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[] }> = modelo ? modelo.etapas : ETAPAS_DO_PAINEL_NOVO;
+function etapasDoModelo(modelo: Painel | undefined, tipo: TipoDePainel = 'gestao'): EtapaRascunho[] {
+  const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null }> = modelo
+    ? modelo.etapas : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS : ETAPAS_DO_PAINEL_NOVO;
   return fonte.map((e) => etapaNova({ ...e, obrigatorios: e.obrigatorios.filter((k) => !idDaChave(k)) }));
 }
 
 /** "Andamento · N2 · pede: Cliente, Relato do cliente, Assunto · avisa: Pedro". */
 function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[], campos: CampoPersonalizado[]): string {
-  const pede = e.obrigatorios.map((k) => nomeDoObrigatorio(k, campos));
+  const pede = [...e.obrigatorios.map((k) => nomeDoObrigatorio(k, campos)), ...(e.resultado === 'perdido' ? ['o motivo da perda (sempre)'] : [])];
   return [
-    TIPO_CURTO[e.tipo],
+    e.resultado ? `Final: ${NOME_RESULTADO_DA_VENDA[e.resultado]}` : TIPO_CURTO[e.tipo],
     rotuloDoNivel(e.nivel),
     pede.length ? `pede: ${pede.join(', ')}` : 'não pede nada',
     e.avisar.length ? `avisa: ${listaDeNomes(e.avisar.map((id) => nomeDaPessoa(pessoas, id)))}` : '',
@@ -241,10 +266,11 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   onFechar: () => void; onSalvo: (p: Painel) => void;
 }) {
   const depois = useDepoisDeMudar();
-  // o que pode ser obrigatório neste painel (o painel novo usa todos os campos do sistema)
-  const validos = useMemo(() => obrigatoriosQueValem(painel?.ajustes ?? AJUSTES_PAINEL_PADRAO, campos), [painel, campos]);
   const [inicio] = useState(() => ({ form: formDoPainel(painel), etapas: painel ? painel.etapas.map(daEtapa) : etapasDoModelo(undefined) }));
   const [f, setF] = useState<FormPainel>(inicio.form);
+  const vendas = f.tipo === 'vendas';
+  // o que pode ser obrigatório neste painel (o painel novo usa os campos do sistema do tipo dele)
+  const validos = useMemo(() => obrigatoriosQueValem(painel?.ajustes ?? (vendas ? AJUSTES_DO_PAINEL_DE_VENDAS : AJUSTES_PAINEL_PADRAO), campos, f.tipo), [painel, campos, f.tipo, vendas]);
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [fechar, setFechar] = useState(false);
@@ -280,7 +306,16 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   const mexer = (fn: (xs: EtapaRascunho[]) => EtapaRascunho[]) => { setRascunho(fn); setErro(''); };
   const usarModelo = (id: string) => {
     setModelo(id);
-    setRascunho(etapasDoModelo(paineis.find((p) => p.id === id)));
+    setRascunho(etapasDoModelo(paineis.find((p) => p.id === id), f.tipo));
+    setAbertas(new Set()); setErro('');
+  };
+  /** O painel novo: Gestão ou Vendas. Trocar recomeça as etapas e as regras do tipo (o nome, a sigla, a cor e quem vê ficam). */
+  const trocarTipo = (tipo: TipoDePainel) => {
+    if (tipo === f.tipo) return;
+    const base = formDoPainel(null, tipo);
+    setF((x) => ({ ...base, nome: x.nome, sigla: x.sigla, descricao: x.descricao, cor: x.cor, acesso: x.acesso, pessoas: x.pessoas, ativo: x.ativo }));
+    setModelo('');
+    setRascunho(etapasDoModelo(undefined, tipo));
     setAbertas(new Set()); setErro('');
   };
 
@@ -298,14 +333,23 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
       if (k) { setAbertas((s) => new Set(s).add(k)); window.setTimeout(() => document.getElementById(`etapa-nome-${k}`)?.focus(), 30); } else irPara('painel-etapas');
       return;
     }
-    if (f.fecharSozinho && !diasOk) { setErro('O "fecha sozinho" vai de 1 a 60 dias úteis.'); document.getElementById('painel-dias')?.focus(); return; }
+    // o painel de Vendas acaba em Ganho e Perdido (as mesmas regras do servidor)
+    const doTipo = problemaNasEtapasDoTipo(f.tipo, rascunho);
+    if (doTipo) { setErro(doTipo); irPara('painel-etapas'); return; }
+    if (!vendas && f.fecharSozinho && !diasOk) { setErro('O "fecha sozinho" vai de 1 a 60 dias úteis.'); document.getElementById('painel-dias')?.focus(); return; }
+    const motivos = etiquetasUnicas(f.motivosDePerda);
+    if (vendas && !motivos.length) { setErro('O painel de Vendas precisa de pelo menos um motivo de perda.'); irPara('painel-regras'); return; }
+    if (vendas && !f.metaValida) { setErro('Escreva a meta do mês como 40.000,00 (ou deixe vazia).'); document.getElementById('painel-meta')?.focus(); return; }
     const d: PainelGravarEntrada = {
       nome: f.nome.trim(), sigla, descricao: f.descricao.trim() || null, cor: f.cor, acesso: f.acesso,
       // quem estava escolhido fica guardado mesmo com "todos": voltar para "escolhidos" não perde a lista
       pessoas: f.pessoas, ativo: f.ativo,
+      // o tipo vale ao criar (depois, o servidor não muda)
+      tipo: f.tipo,
       ajustes: {
-        tipos: f.tipos, contaPrazo: f.contaPrazo, fecharSozinhoDias: f.fecharSozinho ? dias : null,
-        obrigatoriosAoAbrir: validos.abrir.filter((c) => f.obrigatoriosAoAbrir.includes(c)), paiEsperaFilhos: f.paiEsperaFilhos, supervisores: f.supervisores,
+        tipos: f.tipos, contaPrazo: vendas ? false : f.contaPrazo, fecharSozinhoDias: !vendas && f.fecharSozinho ? dias : null,
+        obrigatoriosAoAbrir: validos.abrir.filter((c) => f.obrigatoriosAoAbrir.includes(c)), paiEsperaFilhos: vendas ? false : f.paiEsperaFilhos, supervisores: f.supervisores,
+        ...(vendas ? { motivosDePerda: motivos, metaMensal: f.meta } : {}),
       },
       ...(etapasMudaram ? { etapas, destino } : {}),
     };
@@ -328,7 +372,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   const pedirParaFechar = () => { if (mudouAlgo) setFechar(true); else onFechar(); };
 
   return (
-    <Modal open onClose={pedirParaFechar} largura="max-w-3xl" titulo={painel ? `Editar o painel ${painel.nome}` : 'Novo painel'}
+    <Modal open onClose={pedirParaFechar} largura="max-w-3xl" titulo={painel ? `Editar o painel ${painel.nome}` : vendas ? 'Novo painel de Vendas' : 'Novo painel'}
       rodape={<>
         {erro && <p className="text-bad text-[13px] mr-auto basis-full sm:basis-auto sm:flex-1" role="alert" id="painel-erro">{erro}</p>}
         <button type="button" className="btn-secondary" onClick={pedirParaFechar}>Cancelar</button>
@@ -348,9 +392,24 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
         </nav>
 
         <section id="painel-geral" className="scroll-mt-14 flex flex-col gap-4" aria-label="O painel">
+          {/* Gestão ou Vendas: escolhido ao criar (o de Vendas é o funil do Comercial); depois não muda */}
+          {!painel ? (
+            <CampoRotulo rotulo="O painel é de" id="painel-tipo" grupo>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="O painel é de" id="painel-tipo">
+                <OpcaoDoTipo ativo={!vendas} onClick={() => trocarTipo('gestao')} icone={<Ticket size={17} aria-hidden />} titulo="Chamados (Gestão)"
+                  texto="As etapas, os níveis (N1, N2…), o prazo e o Resolvido. O Suporte, o Desenvolvimento, o Administrativo." />
+                <OpcaoDoTipo ativo={vendas} onClick={() => trocarTipo('vendas')} icone={<HandCoins size={17} aria-hidden />} titulo="Negociações (Vendas)"
+                  texto="O funil, o valor, o Ganho e o Perdido (com o motivo) e o relatório de vendas. O Comercial." />
+              </div>
+            </CampoRotulo>
+          ) : vendas && (
+            <p className="text-[12.5px] text-ink-2 rounded-lg bg-surface-2 px-3 py-2 flex items-center gap-2" id="painel-tipo">
+              <HandCoins size={15} className="text-ok shrink-0" aria-hidden /> Painel de <b>Vendas</b>: as negociações, com o funil, o Ganho e o Perdido. O tipo não muda depois de criado.
+            </p>
+          )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
             <CampoRotulo rotulo="Nome" id="painel-nome">
-              <input className="input" id="painel-nome" value={f.nome} maxLength={40} placeholder="Ex.: Interno" autoFocus={!painel} onChange={(e) => mudar({ nome: e.target.value })} />
+              <input className="input" id="painel-nome" value={f.nome} maxLength={40} placeholder={vendas ? 'Ex.: Comercial' : 'Ex.: Interno'} autoFocus={!painel} onChange={(e) => mudar({ nome: e.target.value })} />
             </CampoRotulo>
             <CampoRotulo rotulo="Sigla" id="painel-sigla" erro={f.sigla && !siglaOk.success ? 'De 2 a 5 letras, sem acento.' : undefined}>
               <input className="input font-mono uppercase" id="painel-sigla" value={f.sigla} maxLength={5} placeholder={siglaSugerida.length >= 2 ? siglaSugerida : 'SUP'}
@@ -398,37 +457,57 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
 
         <section id="painel-etapas" className="scroll-mt-14 border-t border-line pt-4 flex flex-col gap-2" aria-label="As etapas">
           <h4 className="font-display font-semibold text-[14px]">As etapas</h4>
-          <p className="text-[12.5px] text-muted -mt-1">
-            As colunas do quadro, da esquerda para a direita. Arraste pela alça (ou use as setas) para mudar a ordem; o lápis abre a etapa. O
-            chamado novo cai na primeira etapa de <b>Entrada</b>; mover para um nível acima (N1 → N2) é escalonar e pede o motivo.
-          </p>
-          {!painel && paineis.length > 0 && (
+          {vendas ? (
+            <p className="text-[12.5px] text-muted -mt-1">
+              As colunas do quadro, da esquerda para a direita: o funil e, no fim, o <b>Ganho</b> e o <b>Perdido</b> — as duas finais não saem (mudam de nome).
+              A negociação nova cai na primeira etapa de <b>Entrada</b>. O Perdido sempre pede o motivo da perda.
+            </p>
+          ) : (
+            <p className="text-[12.5px] text-muted -mt-1">
+              As colunas do quadro, da esquerda para a direita. Arraste pela alça (ou use as setas) para mudar a ordem; o lápis abre a etapa. O
+              chamado novo cai na primeira etapa de <b>Entrada</b>; mover para um nível acima (N1 → N2) é escalonar e pede o motivo.
+            </p>
+          )}
+          {!painel && paineis.some((p) => p.tipo === f.tipo) && (
             <label className="flex flex-wrap items-center gap-2 text-[13px] text-ink-2" htmlFor="painel-modelo">
               Começar com as etapas
               <select className="input w-auto max-w-full py-1.5" id="painel-modelo" value={modelo} onChange={(e) => usarModelo(e.target.value)}>
-                <option value="">básicas (Novo, Em andamento, Resolvido e Fechado)</option>
-                {paineis.map((p) => <option key={p.id} value={p.id}>do painel {p.nome} ({p.etapas.length})</option>)}
+                <option value="">{vendas ? 'do funil (Lead, Qualificação, Proposta enviada, Negociação, Ganho e Perdido)' : 'básicas (Novo, Em andamento, Resolvido e Fechado)'}</option>
+                {paineis.filter((p) => p.tipo === f.tipo).map((p) => <option key={p.id} value={p.id}>do painel {p.nome} ({p.etapas.length})</option>)}
               </select>
             </label>
           )}
           <ListaDeEtapas rascunho={rascunho} mexer={mexer} saindo={saindo} setSaindo={setSaindo} abertas={abertas} setAbertas={setAbertas}
-            pessoas={pessoas} todasAsPessoas={todasAsPessoas} existe={!!painel} chamadosNa={chamadosNa} obrigatorios={validos.etapas} campos={campos} />
+            pessoas={pessoas} todasAsPessoas={todasAsPessoas} existe={!!painel} chamadosNa={chamadosNa} obrigatorios={validos.etapas} campos={campos} vendas={vendas} />
         </section>
 
         <section id="painel-regras" className="scroll-mt-14 border-t border-line pt-4 flex flex-col gap-4" aria-label="As regras">
           <h4 className="font-display font-semibold text-[14px]">As regras</h4>
           <p className="text-[12.5px] text-muted rounded-lg bg-surface-2 px-3 py-2 -mt-1.5" id="painel-onde-campos">
-            Os campos do chamado neste painel — o Assunto e a árvore dele, o Tipo e as opções, os que a equipe cria — ficam na aba <b className="text-ink-2">Campos</b>
+            Os campos {vendas ? 'da negociação' : 'do chamado'} neste painel — o Assunto e a árvore dele, o Tipo e as opções, os que a equipe cria — ficam na aba <b className="text-ink-2">Campos</b>
             {painel ? '' : ', depois de criar o painel'}. Aqui eles aparecem no que pode ser obrigatório.
           </p>
 
-          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+          {vendas && (
+            <>
+              <CampoRotulo rotulo="Motivos de perda" id="painel-motivos" grupo
+                dica="A lista que aparece ao marcar uma negociação como perdida. O que tem o nome Outro pede para escrever.">
+                <MotivosDePerda valor={f.motivosDePerda} onChange={(v) => mudar({ motivosDePerda: v })} />
+              </CampoRotulo>
+              <CampoRotulo rotulo="Meta do mês" id="painel-meta" erro={!f.metaValida ? 'Escreva a meta como 40.000,00 (ou deixe vazia)' : undefined}
+                dica="O ganho do mês aparece contra ela na tela dos painéis, numa barra. Vazia: sem meta.">
+                <div className="max-w-[240px]"><CampoValor id="painel-meta" centavos={f.meta} onChange={(v, ok) => mudar({ meta: v, metaValida: ok })} /></div>
+              </CampoRotulo>
+            </>
+          )}
+
+          {!vendas && <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <Toggle checked={f.contaPrazo} onChange={(v) => mudar({ contaPrazo: v })} />
             {/* 13/10, o Luan: "essa parte do conta prazo, não entendi para que serve" — a dica diz o que muda */}
             <span>Conta prazo <span className="block text-[12.5px] text-muted">Ligado, cada chamado deste painel tem um prazo para a primeira resposta e outro para a solução, conforme a prioridade (os tempos ficam em Ajustes › Prazos). O cartão mostra quanto falta, e o Gestor avisa quando o prazo está perto de vencer e quando vence. Desligado, o painel não tem prazo, como o Desenvolvimento.</span></span>
-          </label>
+          </label>}
 
-          <div className="flex flex-col gap-1.5">
+          {!vendas && <div className="flex flex-col gap-1.5">
             <label className="flex items-start gap-2.5 text-sm cursor-pointer">
               <Toggle checked={f.fecharSozinho} onChange={(v) => mudar({ fecharSozinho: v })} />
               <span>O Resolvido fecha sozinho <span className="block text-[12.5px] text-muted">Quando o cliente não responde depois da solução.</span></span>
@@ -442,19 +521,20 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
                 {!diasOk && <span className="text-bad text-[12.5px] basis-full">De 1 a 60 dias úteis.</span>}
               </div>
             ) : <p className="text-[12.5px] text-muted pl-12">Nunca: o Resolvido espera alguém fechar.</p>}
-          </div>
+          </div>}
 
-          <CampoRotulo rotulo="O que é obrigatório para abrir" id="painel-obrigatorios" grupo
-            dica="O formulário de abrir mostra um * nestes campos, e quem abre pela tela não abre sem eles (o robô e o agendado abrem mesmo assim: o que faltar é pedido para andar). O que só existe depois de aberto (solução, causa, checklist, tempo) fica nas regras de cada etapa.">
+          <CampoRotulo rotulo={vendas ? 'O que é obrigatório para criar a negociação' : 'O que é obrigatório para abrir'} id="painel-obrigatorios" grupo
+            dica={vendas ? 'O formulário da nova negociação mostra um * nestes campos e não cria sem eles. O resto fica nas regras de cada etapa (a Proposta enviada pede o valor, por exemplo).'
+              : 'O formulário de abrir mostra um * nestes campos, e quem abre pela tela não abre sem eles (o robô e o agendado abrem mesmo assim: o que faltar é pedido para andar). O que só existe depois de aberto (solução, causa, checklist, tempo) fica nas regras de cada etapa.'}>
             <Caixinhas id="painel-obrigatorios" campos={validos.abrir} valor={f.obrigatoriosAoAbrir} nome={(k) => nomeDoObrigatorio(k, campos)} onChange={(v) => mudar({ obrigatoriosAoAbrir: v })} />
           </CampoRotulo>
 
-          <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+          {!vendas && <label className="flex items-start gap-2.5 text-sm cursor-pointer">
             <Toggle checked={f.paiEsperaFilhos} onChange={(v) => mudar({ paiEsperaFilhos: v })} />
             <span>O pai só resolve e fecha com os filhos fechados <span className="block text-[12.5px] text-muted">E diz quais faltam, mesmo os filhos em outro painel.</span></span>
-          </label>
+          </label>}
 
-          <CampoRotulo rotulo="Supervisores" id="painel-supervisores" grupo dica="Recebem o aviso do que vence, do que fica sem dono e do que chega Crítico.">
+          <CampoRotulo rotulo="Supervisores" id="painel-supervisores" grupo dica={vendas ? 'Recebem o aviso do que fica sem dono.' : 'Recebem o aviso do que vence, do que fica sem dono e do que chega Crítico.'}>
             <EscolherPessoas id="painel-supervisores" rotulo="Supervisores" valor={f.supervisores} pessoas={pessoas} todasAsPessoas={todasAsPessoas}
               vazio="Ninguém." onChange={(v) => mudar({ supervisores: v })} />
           </CampoRotulo>
@@ -483,7 +563,7 @@ function etapasDoModeloAtual(modelo: string, paineis: Painel[], inicio: EtapaRas
 //  AS ETAPAS (dentro da janela do painel)
 // =====================================================================
 
-function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas, pessoas, todasAsPessoas, existe, chamadosNa, obrigatorios, campos }: {
+function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas, pessoas, todasAsPessoas, existe, chamadosNa, obrigatorios, campos, vendas = false }: {
   rascunho: EtapaRascunho[]; mexer: (fn: (xs: EtapaRascunho[]) => EtapaRascunho[]) => void;
   saindo: Saindo[]; setSaindo: (fn: (xs: Saindo[]) => Saindo[]) => void;
   abertas: Set<string>; setAbertas: (fn: (s: Set<string>) => Set<string>) => void;
@@ -494,6 +574,8 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
   /** o que pode ser obrigatório para entrar (os campos do sistema que o painel usa e os campos dele) */
   obrigatorios: Obrigatorio[];
   campos: CampoPersonalizado[];
+  /** o painel de Vendas: as finais (Ganho e Perdido) não saem e não mudam de tipo; não há nível */
+  vendas?: boolean;
 }) {
   const mudarEtapa = (chave: string, o: Partial<EtapaRascunho>) => mexer((xs) => xs.map((e) => (e.chave === chave ? { ...e, ...o } : e)));
   const moverPara = (chave: string, delta: number) => mexer((xs) => {
@@ -556,6 +638,13 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
                       <span className="font-semibold text-ink break-words">{e.nome.trim() || <span className="text-muted italic font-normal">sem nome</span>}</span>
                       {/* o nível em chip, menos quando o nome já é o nível (a etapa "N2", a "DEV") */}
                       {e.nivel && paraBusca(e.nome) !== paraBusca(rotuloDoNivel(e.nivel)) && <Chip tone="accent">{rotuloDoNivel(e.nivel)}</Chip>}
+                      {/* a final da venda: o chip diz qual é (Ganho ou Perdido); quando o nome já diz, só "final" */}
+                      {e.resultado && (
+                        <Chip tone={e.resultado === 'ganho' ? 'ok' : 'bad'} title={`A etapa final do ${NOME_RESULTADO_DA_VENDA[e.resultado]}`}>
+                          {e.resultado === 'ganho' ? <Trophy size={11} aria-hidden /> : <ThumbsDown size={11} aria-hidden />}
+                          {' '}{paraBusca(e.nome) === paraBusca(NOME_RESULTADO_DA_VENDA[e.resultado]) ? 'final' : NOME_RESULTADO_DA_VENDA[e.resultado]}
+                        </Chip>
+                      )}
                       {existe && !e.id && <Chip tone="ok">nova</Chip>}
                     </span>
                   </button>
@@ -563,16 +652,17 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
                     <BotaoIcone rotulo={`Subir ${e.nome || 'a etapa'}`} desativado={i === 0} onClick={() => moverPara(e.chave, -1)}><ArrowUp size={15} /></BotaoIcone>
                     <BotaoIcone rotulo={`Descer ${e.nome || 'a etapa'}`} desativado={i === rascunho.length - 1} onClick={() => moverPara(e.chave, 1)}><ArrowDown size={15} /></BotaoIcone>
                     <BotaoIcone rotulo={aberta ? `Fechar ${e.nome || 'a etapa'}` : `Editar ${e.nome || 'a etapa'}`} onClick={() => alternar(e.chave)}>{aberta ? <ChevronUp size={15} /> : <Pencil size={15} />}</BotaoIcone>
-                    <BotaoIcone rotulo={`Tirar ${e.nome || 'a etapa'}`} onClick={() => tirar(e)} perigo><Trash2 size={15} /></BotaoIcone>
+                    {/* as finais da venda (o Ganho e o Perdido) não saem: mudam de nome */}
+                    {e.resultado ? <span className="w-[27px]" aria-hidden /> : <BotaoIcone rotulo={`Tirar ${e.nome || 'a etapa'}`} onClick={() => tirar(e)} perigo><Trash2 size={15} /></BotaoIcone>}
                   </span>
                 </div>
                 {/* o resumo na largura toda (no celular, ao lado dos botões, ficava espremido) */}
                 <p className="text-[12.5px] text-muted leading-snug pl-[52px] pr-1 break-words cursor-pointer" onClick={() => alternar(e.chave)}>
                   {resumoDaEtapa(e, todasAsPessoas, campos)}
-                  {n !== null && n > 0 && e.id && <> · <span className="font-semibold text-ink-2 tnum">{n} {n === 1 ? 'chamado' : 'chamados'}</span></>}
+                  {n !== null && n > 0 && e.id && <> · <span className="font-semibold text-ink-2 tnum">{n} {vendas ? (n === 1 ? 'negociação' : 'negociações') : n === 1 ? 'chamado' : 'chamados'}</span></>}
                 </p>
               </div>
-              {aberta && <EditarEtapa e={e} pessoas={pessoas} todasAsPessoas={todasAsPessoas} obrigatorios={obrigatorios} campos={campos} onMudar={(o) => mudarEtapa(e.chave, o)} />}
+              {aberta && <EditarEtapa e={e} pessoas={pessoas} todasAsPessoas={todasAsPessoas} obrigatorios={obrigatorios} campos={campos} vendas={vendas} onMudar={(o) => mudarEtapa(e.chave, o)} />}
             </li>
           );
         })}
@@ -622,22 +712,25 @@ function BotaoIcone({ rotulo, onClick, desativado, perigo, children }: { rotulo:
 }
 
 /** Os detalhes de uma etapa: o nome, o tipo (com a dica), o nível, o que pede para entrar e quem avisa. */
-function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar }: {
+function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar, vendas = false }: {
   e: EtapaRascunho; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[]; obrigatorios: Obrigatorio[]; campos: CampoPersonalizado[]; onMudar: (o: Partial<EtapaRascunho>) => void;
+  vendas?: boolean;
 }) {
   const base = `etapa-${e.chave}`;
   const fecha = e.tipo === 'resolvido' || e.tipo === 'fechado';
+  // na venda: o funil é de entrada e de andamento; as finais (Ganho e Perdido) são do tipo Fechado e não mudam
+  const tipos = vendas ? (e.resultado ? (['fechado'] as TipoEtapa[]) : (['entrada', 'andamento'] as TipoEtapa[])) : TIPOS_ETAPA;
   return (
     <div className="border-t border-line p-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
       <CampoRotulo rotulo="Nome" id={`etapa-nome-${e.chave}`}>
-        <input className="input" id={`etapa-nome-${e.chave}`} value={e.nome} maxLength={40} placeholder="Ex.: Aguardando peça" autoComplete="off" onChange={(ev) => onMudar({ nome: ev.target.value })} />
+        <input className="input" id={`etapa-nome-${e.chave}`} value={e.nome} maxLength={40} placeholder={vendas ? 'Ex.: Demonstração' : 'Ex.: Aguardando peça'} autoComplete="off" onChange={(ev) => onMudar({ nome: ev.target.value })} />
       </CampoRotulo>
-      <CampoRotulo rotulo="Tipo" id={`${base}-tipo`} dica={DICA_TIPO_ETAPA[e.tipo]}>
-        <select className="input" id={`${base}-tipo`} value={e.tipo} onChange={(ev) => onMudar({ tipo: ev.target.value as TipoEtapa })}>
-          {TIPOS_ETAPA.map((t) => <option key={t} value={t}>{NOME_TIPO_ETAPA[t]}</option>)}
+      <CampoRotulo rotulo="Tipo" id={`${base}-tipo`} dica={e.resultado ? `A etapa final do ${NOME_RESULTADO_DA_VENDA[e.resultado]}: fecha a negociação.` : vendas ? (e.tipo === 'entrada' ? 'Onde a negociação nova cai.' : 'Uma etapa do funil.') : DICA_TIPO_ETAPA[e.tipo]}>
+        <select className="input" id={`${base}-tipo`} value={e.tipo} disabled={!!e.resultado} onChange={(ev) => onMudar({ tipo: ev.target.value as TipoEtapa })}>
+          {tipos.map((t) => <option key={t} value={t}>{e.resultado ? `${NOME_TIPO_ETAPA[t]} (${NOME_RESULTADO_DA_VENDA[e.resultado]})` : NOME_TIPO_ETAPA[t]}</option>)}
         </select>
       </CampoRotulo>
-      <CampoRotulo rotulo="Nível" id={`${base}-nivel`} grupo dica="Mover para um nível acima é escalonar; para um abaixo, voltar de nível (os dois pedem o motivo).">
+      {!vendas && <CampoRotulo rotulo="Nível" id={`${base}-nivel`} grupo dica="Mover para um nível acima é escalonar; para um abaixo, voltar de nível (os dois pedem o motivo).">
         <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Nível" id={`${base}-nivel`}>
           {([null, ...NIVEIS] as const).map((n) => (
             <button key={n ?? 0} type="button" role="radio" aria-checked={e.nivel === n} onClick={() => onMudar({ nivel: n })}
@@ -646,12 +739,13 @@ function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar
             </button>
           ))}
         </div>
-      </CampoRotulo>
-      <CampoRotulo rotulo="Quem recebe o aviso quando um chamado chega aqui" id={`${base}-avisar`} grupo dica="Na tela e no WhatsApp (se ligado em Avisos e WhatsApp). Quem moveu não é avisado.">
+      </CampoRotulo>}
+      <CampoRotulo rotulo={vendas ? 'Quem recebe o aviso quando uma negociação chega aqui' : 'Quem recebe o aviso quando um chamado chega aqui'} id={`${base}-avisar`} grupo dica="Na tela e no WhatsApp (se ligado em Avisos e WhatsApp). Quem moveu não é avisado.">
         <EscolherPessoas id={`${base}-avisar`} rotulo="Quem recebe o aviso" valor={e.avisar} pessoas={pessoas} todasAsPessoas={todasAsPessoas} vazio="Ninguém." onChange={(v) => onMudar({ avisar: v })} />
       </CampoRotulo>
       <CampoRotulo rotulo="O que precisa estar preenchido para entrar" id={`${base}-obrigatorios`} grupo className="sm:col-span-2"
-        dica={fecha ? 'O problema (ITIL) sempre pede a causa, a solução e a validação para resolver e fechar, em qualquer painel.' : 'Sem o que está marcado, o chamado não entra: a tela diz o que falta.'}>
+        dica={e.resultado === 'perdido' ? 'O Perdido sempre pede o motivo da perda (na janela de marcar como perdido).' : vendas ? 'Sem o que está marcado, a negociação não entra: a tela diz o que falta.'
+          : fecha ? 'O problema (ITIL) sempre pede a causa, a solução e a validação para resolver e fechar, em qualquer painel.' : 'Sem o que está marcado, o chamado não entra: a tela diz o que falta.'}>
         <Caixinhas id={`${base}-obrigatorios`} campos={obrigatorios} valor={e.obrigatorios} nome={(k) => nomeDoObrigatorio(k, campos)} onChange={(v) => onMudar({ obrigatorios: v })} />
       </CampoRotulo>
     </div>
@@ -770,6 +864,46 @@ function EscolherPessoas({ id, rotulo, valor, pessoas, todasAsPessoas, vazio, on
         <EscolherComBusca valor="" opcoes={resto} onChange={(v) => v && onChange([...valor, v])} procurar="Procurar pessoa…" rotulo={`${rotulo}: incluir pessoa`}
           gatilho={(abrir) => <button type="button" className="btn-ghost btn-sm" onClick={abrir}><UserPlus size={14} /> Incluir <ChevronDown size={13} /></button>} />
       )}
+    </div>
+  );
+}
+
+/** O tipo do painel novo: um cartão com o ícone, o nome e o que ele tem. */
+function OpcaoDoTipo({ ativo, onClick, icone, titulo, texto }: { ativo: boolean; onClick: () => void; icone: ReactNode; titulo: string; texto: string }) {
+  return (
+    <button type="button" role="radio" aria-checked={ativo} onClick={onClick}
+      className={`text-left rounded-lg border px-3 py-2.5 flex items-start gap-2.5 ${ativo ? 'border-accent bg-accent-soft' : 'border-line hover:bg-surface-2'}`}>
+      <span className={`mt-0.5 shrink-0 ${ativo ? 'text-accent-ink' : 'text-muted'}`}>{icone}</span>
+      <span><span className={`block text-[13.5px] font-semibold ${ativo ? 'text-accent-ink' : 'text-ink'}`}>{titulo}</span><span className="block text-[12px] text-muted leading-snug">{texto}</span></span>
+    </button>
+  );
+}
+
+/** Os motivos de perda do painel de Vendas: as etiquetas (com o ×) e o campo para incluir outro. */
+function MotivosDePerda({ valor, onChange }: { valor: string[]; onChange: (v: string[]) => void }) {
+  const [novo, setNovo] = useState('');
+  const incluir = () => {
+    const t = novo.trim().replace(/\s+/g, ' ').slice(0, 60);
+    if (!t) return;
+    onChange(etiquetasUnicas([...valor, t]).slice(0, 30));
+    setNovo('');
+  };
+  return (
+    <div className="flex flex-col gap-2" id="painel-motivos">
+      <div className="flex flex-wrap gap-1.5">
+        {valor.map((m) => (
+          <span key={m} className="chip bg-surface-2 text-ink-2">
+            {m}
+            <button type="button" className="hover:opacity-70" onClick={() => onChange(valor.filter((x) => x !== m))} aria-label={`Tirar o motivo ${m}`}><X size={12} /></button>
+          </span>
+        ))}
+        {!valor.length && <span className="text-[12.5px] text-bad">Nenhum motivo: inclua pelo menos um.</span>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input className="input max-w-[260px] py-1.5" value={novo} maxLength={60} placeholder="Ex.: Prazo de implantação" aria-label="Um motivo de perda novo"
+          onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); incluir(); } }} />
+        <button type="button" className="btn-secondary btn-sm" onClick={incluir} disabled={!novo.trim() || valor.length >= 30}><Plus size={14} /> Incluir motivo</button>
+      </div>
     </div>
   );
 }

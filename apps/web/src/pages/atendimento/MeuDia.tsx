@@ -1,17 +1,20 @@
 /**
- * Chamados › Meu dia (Patch 2.0, decisão 0047): a primeira tela do módulo. O que é da pessoa hoje,
+ * Painéis › Meu dia (Patch 2.0, decisão 0047): a primeira tela do módulo. O que é da pessoa hoje,
  * sem precisar filtrar nada: o que está vencendo, os seus em aberto, os sem dono na fila (com o
  * Assumir ali mesmo), os que esperam o cliente, os que ela observa e os agendados que nascem hoje.
  *
  * Os números de cima levam para a lista já filtrada (o "Vencendo" desce até a seção: ele junta os
  * seus e os sem dono, e a lista não tem esse filtro). Relê a cada minuto, porque o prazo anda.
+ *
+ * Desde o 2.0.1, o "Hoje na agenda": o que está no calendário hoje nas equipes que a pessoa vê (os de
+ * que ela participa primeiro) e quem está fora do escritório; o evento abre ali mesmo.
  */
 import { useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, Eye, Hourglass, Inbox, TriangleAlert, User, UserCheck } from 'lucide-react';
+import { CalendarClock, CalendarDays, Eye, Hourglass, Inbox, TriangleAlert, User, UserCheck } from 'lucide-react';
 import {
-  compararUrgencia, diaLocal, etapaAoAssumir, horaLocal, mensagemDoQueFalta,
+  cobreODia, compararUrgencia, diaLocal, etapaAoAssumir, horaLocal, mensagemDoQueFalta, ordemDoDia,
   type CartaoChamado, type MeuDia as DadosDoDia, type OpcoesAtendimento,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -20,6 +23,8 @@ import { useAuth } from '../../lib/auth.js';
 import { CabecalhoAtendimento, CartaoDoChamado, dataHoraCurta, etapaDe, haQuanto, painelDe, useDepoisDeMudar, useOpcoes, usePode } from './comum.js';
 import { CartaoComRodape } from './quadro/cartao.js';
 import { PontoDoPainel } from './quadro/filtros.js';
+import { ForaDoEscritorio, LinhaDoEvento, useEventosDoPeriodo, useNomesDasPessoas, useOpcoesDoCalendario } from '../calendario/comum.js';
+import { JanelaDoEvento, type AberturaDoEvento } from '../calendario/Janela.js';
 
 const CHAVE = ['atendimento', 'meu-dia'];
 /** Quantos cartões cada seção mostra antes do "Ver todos". */
@@ -148,6 +153,7 @@ export function MeuDia() {
               </Secao>
             </div>
             <div className="min-w-0 flex flex-col gap-6">
+              <HojeNaAgenda eu={user?.id ?? null} />
               <Agendados itens={d.agendadosHoje} opcoes={opcoes.data} podeVer={pode.cuidar} />
               <Secao id="meudia-esperando" titulo="Esperando o cliente" icone={<Hourglass size={16} aria-hidden />} n={d.esperandoCliente.length} link={naLista('responsavel=eu&espera=cliente')}
                 vazio="Nenhum chamado seu esperando o cliente.">
@@ -217,6 +223,34 @@ function Agendados({ itens, opcoes, podeVer }: { itens: DadosDoDia['agendadosHoj
           );
         })}
       </ul>
+    </Secao>
+  );
+}
+
+/**
+ * O que está no calendário hoje (2.0.1): os eventos das equipes que a pessoa vê, os dela primeiro, e
+ * quem está fora do escritório. Clicar abre o evento ali mesmo (com o Feito, para quem trabalha).
+ */
+function HojeNaAgenda({ eu }: { eu: string | null }) {
+  const opcoes = useOpcoesDoCalendario();
+  const hoje = opcoes.data?.hoje ?? '';
+  const eventos = useEventosDoPeriodo(hoje, hoje, !!opcoes.data);
+  const nomes = useNomesDasPessoas(opcoes.data);
+  const [janela, setJanela] = useState<AberturaDoEvento | null>(null);
+  if (!opcoes.data || !eventos.data) return null;
+  const op = opcoes.data;
+  const meu = (e: { pessoas: string[] }) => (eu && e.pessoas.includes(eu) ? 0 : 1);
+  const lista = eventos.data.filter((e) => cobreODia(e, hoje)).sort((a, b) => meu(a) - meu(b) || ordemDoDia(a, b));
+  return (
+    <Secao id="meudia-agenda" titulo="Hoje na agenda" icone={<CalendarDays size={16} aria-hidden />} n={lista.length} link="/calendario" linkTexto="Abrir o calendário"
+      vazio="Nada no calendário hoje. As visitas, as viradas, as folgas e os home offices da equipe aparecem aqui.">
+      <div className="card p-2 flex flex-col gap-2">
+        <ForaDoEscritorio eventos={lista} opcoes={op} nomes={nomes} dia={hoje} className="px-1 pt-0.5" />
+        <ul className="flex flex-col gap-0.5">
+          {lista.map((e) => <li key={e.id}><LinhaDoEvento e={e} opcoes={op} nomes={nomes} comVoce={eu} onAbrir={() => setJanela({ evento: e })} /></li>)}
+        </ul>
+      </div>
+      {janela && <JanelaDoEvento abertura={janela} opcoes={op} onFechar={() => setJanela(null)} />}
     </Secao>
   );
 }

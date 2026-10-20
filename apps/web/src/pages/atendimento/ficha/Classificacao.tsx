@@ -67,8 +67,9 @@ export function Classificacao() {
     mudar(prio, { prioridade: p });
   };
 
+  const vendas = painel?.tipo === 'vendas';
   return (
-    <Secao titulo="Classificação" icone={<Tags size={16} />}>
+    <Secao titulo={vendas ? 'Detalhes' : 'Classificação'} icone={<Tags size={16} />}>
       <div className="flex flex-col gap-3.5">
         {usa('assunto') && <Linha id="campo-assunto" campo="assunto" rotulo="Assunto" ocupado={assunto.ocupado} erro={assunto.erro}>
           {pode ? (
@@ -79,7 +80,7 @@ export function Classificacao() {
           {pode && f.assunto && f.assunto.caminho.length > 32 && <p className="text-[12px] text-ink-2 mt-1 break-words">{f.assunto.caminho}</p>}
           {f.assunto && !f.assunto.ativo && <p className="text-[12px] text-signal mt-1">Este assunto foi desativado nos Ajustes.</p>}
           {descricaoDoAssunto && <p className="text-[12px] text-muted mt-1">{descricaoDoAssunto}</p>}
-          {!assuntos.length && pode && <p className="text-[12px] text-muted mt-1">O painel {painel?.nome} ainda não tem assuntos (Chamados › Ajustes › Campos).</p>}
+          {!assuntos.length && pode && <p className="text-[12px] text-muted mt-1">O painel {painel?.nome} ainda não tem assuntos (Painéis › Ajustes › Campos).</p>}
         </Linha>}
 
         {usa('tipo') && <Linha id="campo-tipo" campo="tipo" rotulo="Tipo" ocupado={tipo.ocupado} erro={tipo.erro}>
@@ -112,7 +113,8 @@ export function Classificacao() {
           ) : <p className="text-[14px]">{f.alcance ? NOME_ALCANCE[f.alcance] : <span className="text-muted">—</span>}</p>}
         </Linha>}
 
-        <Linha id="campo-prioridade" campo="prioridade" rotulo="Prioridade" ocupado={prio.ocupado} erro={prio.erro}
+        {/* a negociação não tem prioridade (nem prazo) */}
+        {!vendas && <Linha id="campo-prioridade" campo="prioridade" rotulo="Prioridade" ocupado={prio.ocupado} erro={prio.erro}
           extra={pode && sugerida && f.prioridade !== sugerida && (
             <button type="button" className="btn-ghost btn-sm -my-1 text-[12px]" onClick={() => escolherPrioridade(sugerida)}>Usar a sugerida</button>
           )}>
@@ -133,7 +135,7 @@ export function Classificacao() {
           {f.motivoPrioridade && f.prioridade !== sugerida && (
             <p className="text-[12.5px] mt-1 rounded-md bg-surface-2 px-2 py-1"><span className="text-muted">Trocada à mão:</span> {f.motivoPrioridade}</p>
           )}
-        </Linha>
+        </Linha>}
 
         <ProdutosEOperadoras />
         <CamposDoPainel />
@@ -263,7 +265,8 @@ function ProdutosEOperadoras() {
   const salvar = (a: ReturnType<typeof useAcao>, d: ChamadoAlterarEntrada) => a.rodar(() => api.atendimento.alterar(f.id, d)).then((r) => r.ok);
   return (
     <>
-      {usa('produtos') && <Linha id="campo-produtos" campo="produto" rotulo="Produtos" ocupado={prod.ocupado} erro={prod.erro}
+      {/* na negociação com valor por produto, os produtos ficam no Valor (cada um com o seu valor) */}
+      {usa('produtos') && !(painel?.tipo === 'vendas' && (Object.keys(f.valoresDosProdutos).length > 0 || Object.keys(f.ativacoesDosProdutos).length > 0)) && <Linha id="campo-produtos" campo="produto" rotulo="Produtos" ocupado={prod.ocupado} erro={prod.erro}
         extra={pode && <EscolherVarios titulo="Produtos do chamado" grupos={gruposProdutos} escolhidos={f.produtos.map((p) => p.id)} ocupado={prod.ocupado} onSalvar={(ids) => salvar(prod, { produtos: ids })} />}>
         {f.produtos.length ? (
           <div className="flex flex-wrap gap-1">{f.produtos.map((p) => <Chip key={p.id} color={p.cor}>{p.nome}</Chip>)}</div>
@@ -382,7 +385,9 @@ function Etiquetas() {
 // =====================================================================
 
 export function Responsavel() {
-  const { f, opcoes, pode, eu } = useAberta();
+  const { f, opcoes, pode, eu, painel } = useAberta();
+  // a negociação (o painel de Vendas): quem cuida dela é o vendedor; não há fila de etapa para atender
+  const vendas = painel?.tipo === 'vendas';
   const resp = useAcao();
   const obs = useAcao();
   const ativas = opcoes.pessoas.filter((p) => p.ativo);
@@ -391,15 +396,15 @@ export function Responsavel() {
   const observar = (ids: string[], ok: string) => void obs.rodar(() => api.atendimento.alterar(f.id, { observadores: ids }), ok);
   return (
     <Secao titulo="Responsável" icone={<UserRound size={16} />}>
-      <Linha id="campo-responsavel" campo="responsavel" rotulo="Quem está com o chamado" ocupado={resp.ocupado} erro={resp.erro}>
+      <Linha id="campo-responsavel" campo="responsavel" rotulo={vendas ? 'Quem cuida da negociação' : 'Quem está com o chamado'} ocupado={resp.ocupado} erro={resp.erro}>
         {pode ? (
-          <EscolherComBusca valor={f.responsavel?.id ?? ''} opcoes={opcoesPessoas} vazio="Ninguém (fica na fila da etapa)" className="input w-full" rotulo="Responsável" procurar="Procurar pessoa…"
-            onChange={(id) => void resp.rodar(() => api.atendimento.alterar(f.id, { responsavelId: id || null }), id ? `Responsável: ${ativas.find((p) => p.id === id)?.nome ?? ''}` : 'O chamado ficou sem responsável')} />
+          <EscolherComBusca valor={f.responsavel?.id ?? ''} opcoes={opcoesPessoas} vazio={vendas ? 'Ninguém (sem vendedor)' : 'Ninguém (fica na fila da etapa)'} className="input w-full" rotulo="Responsável" procurar="Procurar pessoa…"
+            onChange={(id) => void resp.rodar(() => api.atendimento.alterar(f.id, { responsavelId: id || null }), id ? `Responsável: ${ativas.find((p) => p.id === id)?.nome ?? ''}` : vendas ? 'A negociação ficou sem responsável' : 'O chamado ficou sem responsável')} />
         ) : f.responsavel ? (
           <p className="flex items-center gap-2 text-[14px]"><Avatar nome={f.responsavel.nome} /> {f.responsavel.nome}</p>
-        ) : <p className="text-[13px] text-muted italic">Sem dono (na fila da etapa)</p>}
+        ) : <p className="text-[13px] text-muted italic">{vendas ? 'Sem vendedor' : 'Sem dono (na fila da etapa)'}</p>}
         {pode && eu && f.responsavel?.id !== eu.id && (
-          <p className="text-[12px] text-muted mt-1">Para ficar com ele, use <b>Assumir</b> na barra de cima.</p>
+          <p className="text-[12px] text-muted mt-1">Para ficar com {vendas ? 'ela' : 'ele'}, use <b>Assumir</b> na barra de cima.</p>
         )}
       </Linha>
 
@@ -421,7 +426,7 @@ export function Responsavel() {
               ))}
             </ul>
           ) : null}
-          <p className="text-[12px] text-muted mt-1">{f.observadores.length ? 'Recebem' : 'Ninguém. Os observadores recebem'} os avisos de tudo o que acontece no chamado (anotação, etapa, responsável, espera) e o veem no Meu dia.</p>
+          <p className="text-[12px] text-muted mt-1">{f.observadores.length ? 'Recebem' : 'Ninguém. Os observadores recebem'} os avisos de tudo o que acontece {vendas ? 'na negociação' : 'no chamado'} (anotação, etapa, responsável, espera) e {vendas ? 'a veem' : 'o veem'} no Meu dia.</p>
         </Linha>
       </div>
     </Secao>

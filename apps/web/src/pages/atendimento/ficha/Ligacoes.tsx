@@ -8,6 +8,9 @@
  * tracejado miúdo, pontilhado) e a legenda escrita embaixo — nunca só a cor. A cor do chamado é a
  * situação (e a palavra vai escrita no próprio nó); o problema tem a borda dupla. Clicar num chamado
  * abre a ficha dele.
+ *
+ * A negociação (o painel de Vendas) não tem esta parte: não tem pai nem filhos e não se liga a nada (os
+ * pedidos do Luan na prévia, em 17/10: "n precisa de pais e filhas aqui" e "n precisa ligações").
  */
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { GitBranch, Link2, Unlink, Waypoints } from 'lucide-react';
@@ -23,6 +26,13 @@ import { JanelaAbrirLigado, JanelaLigar } from './Janelas.js';
 import { LinhaDeChamado } from './Partes.js';
 
 export function Ligacoes() {
+  const { painel } = useAberta();
+  // a negociação fica sem a parte (2.0.1, decisão 0050)
+  if (painel?.tipo === 'vendas') return null;
+  return <FilhosELigacoes />;
+}
+
+function FilhosELigacoes() {
   const { f, pode, painel, opcoes } = useAberta();
   const [ligando, setLigando] = useState(false);
   // o filho nasce numa janela por cima da ficha (o pedido do Luan na prévia), e não na tela inteira

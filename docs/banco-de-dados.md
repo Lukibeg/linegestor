@@ -84,6 +84,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [ticket_notifications](#ticket_notifications) — Um AVISO NA TELA (o sininho): recebeu um chamado, o prazo está vencendo, o cliente respondeu…
 - [ticket_webhooks](#ticket_webhooks) — Um AVISO PARA FORA (webhook): o Gestor manda o que aconteceu com os chamados para outro sistema (o n8n).
 - [ticket_api_keys](#ticket_api_keys) — Uma CHAVE DE API para o robô do LineChat e o n8n abrirem e mexerem nos chamados.
+- [calendar_events](#calendar_events) — Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual cliente e quando.
 
 
 ---
@@ -502,6 +503,8 @@ Quem entra no sistema.
 | `role_id` | texto | — | obrigatório · liga com **roles** |
 | `active` | sim/não | — | obrigatório · padrão: true |
 | `ssh_user` | texto | O usuário SSH desta pessoa. Cada técnico tem o seu, e é o mesmo em todos os servidores — por isso mora aqui, e não no cliente. O atalho "SSH" da ficha usa este usuário. | — |
+| `whatsapp` | texto | O WhatsApp desta pessoa, só os dígitos com o 55 (5571999990000). Por ele chegam os avisos dos chamados (o chamado que recebeu, o prazo vencendo, o Crítico), pelo número da equipe. Vazio = os avisos só na tela. Fica em Administração › Usuários desde o 2.0.1 (no 2.0 morava nos Ajustes dos chamados — o pedido do Luan: "pode ficar na parte de usuários que já existe"). | — |
+| `whatsapp_avisos` | sim/não | Recebe os avisos dos chamados no WhatsApp. Desligado (pausado), o número fica guardado e nada sai. | obrigatório · padrão: true |
 | `last_login_at` | data e hora | Última vez que entrou | — |
 | `totp_secret` | texto | Verificação em duas etapas (o código de 6 dígitos do celular). `totpSecret` guarda o segredo CIFRADO com a chave-mestra, no formato "iv:tag:texto". Enquanto `totpEnabledAt` for nulo, o segredo é só um rascunho: foi gerado, mas a pessoa ainda não confirmou com um código, então o login continua só com senha. | — |
 | `totp_enabled_at` | data e hora | — | — |
@@ -515,7 +518,7 @@ AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), 
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
-| `id` | texto | 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe, os números das pessoas e quais avisos vão por onde; a chave própria no cofre, 2.0) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) | chave primária |
+| `id` | texto | 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe e quais avisos vão por onde; a chave própria no cofre, 2.0 — o número de cada pessoa mora no usuário desde o 2.0.1) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) | 'atendimento-robo' (o mapa do robô do LineChat: de onde vem cada campo do chamado no JSON que o robô manda, 2.0.1) | 'atendimento-robo-ultimo' (o último pedido do robô, com o que aconteceu: a tela do mapa mostra as variáveis dele, 2.0.1) | chave primária |
 | `value` | texto | — | obrigatório · padrão: '{}' |
 | `secret_id` | texto | — | liga com **secrets** |
 | `updated_at` | data e hora | Última alteração | — |
@@ -1040,6 +1043,7 @@ Um PAINEL (o Kanban de uma equipe): Suporte, Desenvolvimento, e os que a adminis
 | `key` | texto | A sigla do código: 2 a 5 letras ("SUP" → SUP-12). Não muda depois do primeiro chamado. | obrigatório |
 | `description` | texto | — | — |
 | `color` | texto | A cor do painel na tela (um dos tons dos chips: accent, roxo, turquesa…) | obrigatório · padrão: 'accent' |
+| `kind` | texto | gestao (os chamados) ou vendas (as negociações do comercial, 2.0.1, decisão 0050) — não muda depois de criado | obrigatório · padrão: 'gestao' |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `next_number` | número inteiro | O próximo número da sequência (SUP-1, SUP-2…): nunca volta, nem depois da lixeira | obrigatório · padrão: 1 |
 | `access` | texto | todos = quem tem acesso aos chamados vê · escolhidos = só as pessoas de `member_ids` (e quem cuida dos chamados) | obrigatório · padrão: 'todos' |
@@ -1064,6 +1068,7 @@ Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela signif
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `required_fields` | texto | O que precisa estar preenchido para o chamado entrar aqui (lista de campos) | obrigatório · padrão: [] · lista |
 | `notify_user_ids` | texto | Quem recebe o aviso quando um chamado chega nesta etapa (ids de pessoas) | obrigatório · padrão: [] · lista |
+| `outcome` | texto | No painel de Vendas: ganho ou perdido (a etapa final que diz como a negociação acabou); nas outras, nulo | — |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 
@@ -1149,6 +1154,12 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `reopen_count` | número inteiro | Quantas vezes foi reaberto | obrigatório · padrão: 0 |
 | `last_activity_at` | data e hora | A última coisa que aconteceu (anotação, etapa, campo) — para achar o parado | obrigatório |
 | `schedule_id` | texto | O agendado que criou este chamado | — |
+| `value_cents` | bigint | A negociação (painel de Vendas, 2.0.1): o valor — a MENSALIDADE —, em centavos (até R$ 100 milhões: não cabe num integer). É o que conta no quadro, no relatório e na meta. | — |
+| `product_values` | JSON | A negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, value_cents é a soma | obrigatório · padrão: {} |
+| `setup_cents` | bigint | A negociação: a ATIVAÇÃO (paga uma vez), em centavos — à parte: não soma no quadro nem na meta; o relatório tem as contas dela (o número Ativação e As ativações mês a mês) | — |
+| `product_setup` | JSON | A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma | obrigatório · padrão: {} |
+| `prospect` | texto | A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) | — |
+| `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
@@ -1366,4 +1377,31 @@ Uma CHAVE DE API para o robô do LineChat e o n8n abrirem e mexerem nos chamados
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `revoked_at` | data e hora | — | — |
+
+## calendar_events
+
+Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual cliente e quando.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `title` | texto | O que acontece ("Virada para nuvem — Clínica Aurora") | obrigatório |
+| `type_id` | texto | O tipo (o id de um dos tipos de `settings.calendario`: visita, folga…) | obrigatório |
+| `panel_ids` | texto | Os painéis (as equipes) do evento: quem vê um deles vê o evento | obrigatório · padrão: [] · lista |
+| `participant_ids` | texto | As pessoas do evento (quem vai na visita, quem está de folga) | obrigatório · padrão: [] · lista |
+| `client_id` | texto | — | liga com **clients** |
+| `ticket_id` | texto | O chamado que pediu o evento (a visita do SUP-12) | liga com **tickets** |
+| `starts_on` | texto | O primeiro dia (AAAA-MM-DD, o dia do calendário: não tem fuso) | obrigatório |
+| `ends_on` | texto | O último dia (o mesmo do primeiro num evento de um dia só) | obrigatório |
+| `all_day` | sim/não | Dia inteiro, sem hora (a folga, a virada que leva o dia) | obrigatório · padrão: true |
+| `start_time` | texto | A hora de começar e de terminar (HH:MM, a de Brasília), quando não é o dia inteiro | — |
+| `end_time` | texto | — | — |
+| `location` | texto | Onde (o endereço da visita, "remoto") | — |
+| `notes` | texto | — | — |
+| `status` | texto | agendado | feito | cancelado (cancelar não apaga: fica riscado no calendário) | obrigatório · padrão: 'agendado' |
+| `created_by_id` | texto | — | liga com **users** |
+| `updated_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 

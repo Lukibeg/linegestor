@@ -1,8 +1,6 @@
 /**
  * Patch 2.0 — os chamados do Gestor (decisão 0047): a rotina, o relógio e a IA no chamado.
  *
- *  - as respostas prontas: o cadastro (inclusive as desativadas), quem pode, a etapa que precisa ser
- *    do painel da resposta
  *  - os agendados: o cadastro, a próxima vez e a regra em palavras, o "criar agora"; o relógio cria o
  *    que venceu e calcula a próxima vez, "uma vez" desliga, e um agendado com problema não segura os outros
  *  - o relógio: o alerta de prazo (perto e vencido, uma vez cada), o sem responsável (os supervisores,
@@ -127,74 +125,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await esperarSegundoPlano();
   await app.close();
-});
-
-// =====================================================================
-
-describe('as respostas prontas', () => {
-  it('cria, lista (inclusive as desativadas), muda e remove; a tela de trabalho só vê as ativas', async () => {
-    const r1 = await s.post('/atendimento/respostas', { nome: 'Pedir print', texto: 'Pode mandar um print do erro, {contato}?', acao: { esperar: 'cliente' } });
-    expect(r1.statusCode, r1.body).toBe(201);
-    const a = r1.json();
-    expect(a).toMatchObject({
-      nome: 'Pedir print', texto: 'Pode mandar um print do erro, {contato}?', painelId: null, ativa: true, ordem: 0,
-      acao: { avisarCliente: false, etapaId: null, esperar: 'cliente', etiqueta: null, assumir: false },
-    });
-    const r2 = await s.post('/atendimento/respostas', { nome: 'Resolver', texto: 'Resolvido!', painelId: SUP, acao: { etapaId: E.resolvido } });
-    expect(r2.statusCode, r2.body).toBe(201);
-    expect(r2.json()).toMatchObject({ painelId: SUP, ordem: 1, acao: { etapaId: E.resolvido } });
-
-    const r3 = await s.put(`/atendimento/respostas/${a.id}`, { nome: 'Pedir print do erro', texto: a.texto, acao: a.acao, ativa: false });
-    expect(r3.statusCode, r3.body).toBe(200);
-    expect(r3.json()).toMatchObject({ id: a.id, nome: 'Pedir print do erro', ativa: false, ordem: 0 });
-    expect((await s.get('/atendimento/respostas')).json().map((x: any) => [x.nome, x.ativa])).toEqual([['Pedir print do erro', false], ['Resolver', true]]);
-    expect((await operador.get('/atendimento/opcoes')).json().respostas.map((x: any) => x.nome)).toEqual(['Resolver']);
-
-    expect((await s.del(`/atendimento/respostas/${a.id}`)).json()).toEqual({ ok: true });
-    expect((await s.get('/atendimento/respostas')).json().map((x: any) => x.nome)).toEqual(['Resolver']);
-    expect((await s.del(`/atendimento/respostas/${a.id}`)).statusCode).toBe(404);
-    expect((await s.put('/atendimento/respostas/nao-existe', { nome: 'X', acao: {} })).statusCode).toBe(404);
-
-    expect(await auditoria('entityType=ticket_macro')).toEqual(expect.arrayContaining([
-      'Criou a resposta pronta "Pedir print" (todos os painéis)', 'Criou a resposta pronta "Resolver" (painel Suporte)',
-      'Alterou a resposta pronta "Pedir print do erro" (desativou)', 'Removeu a resposta pronta "Pedir print do erro"',
-    ]));
-  });
-
-  it('só quem cuida dos chamados mexe (o operador e o técnico: 403)', async () => {
-    const id = (await s.get('/atendimento/respostas')).json()[0].id;
-    for (const sess of [operador, tecnico]) {
-      expect((await sess.get('/atendimento/respostas')).statusCode).toBe(403);
-      expect((await sess.post('/atendimento/respostas', { nome: 'X', acao: {} })).statusCode).toBe(403);
-      expect((await sess.put(`/atendimento/respostas/${id}`, { nome: 'Y', acao: {} })).statusCode).toBe(403);
-      expect((await sess.del(`/atendimento/respostas/${id}`)).statusCode).toBe(403);
-    }
-  });
-
-  it('a que move o chamado precisa do painel, e a etapa tem de ser dele', async () => {
-    let r = await s.post('/atendimento/respostas', { nome: 'Mandar ao N2', acao: { etapaId: E.n2 } });
-    expect(r.statusCode).toBe(400);
-    expect(r.json().error).toBe('Para mover o chamado, escolha o painel da resposta: a etapa é de um painel.');
-    r = await s.post('/atendimento/respostas', { nome: 'Mandar ao N2', painelId: DEV, acao: { etapaId: E.n2 } });
-    expect(r.statusCode).toBe(400);
-    expect(r.json().error).toBe('Essa etapa não é do painel Desenvolvimento.');
-    r = await s.post('/atendimento/respostas', { nome: 'Mandar ao N2', painelId: 'nao-existe', acao: {} });
-    expect(r.json().error).toBe('O painel escolhido não existe (ou foi removido).');
-    r = await s.post('/atendimento/respostas', { nome: 'Mandar ao N2', painelId: SUP, acao: { etapaId: E.n2 } });
-    expect(r.statusCode, r.body).toBe(201);
-    const outra = await s.put(`/atendimento/respostas/${r.json().id}`, { nome: 'Mandar ao N2', painelId: SUP, acao: { etapaId: E.devNovo } });
-    expect(outra.statusCode).toBe(400);
-    expect(outra.json().error).toBe('Essa etapa não é do painel Suporte.');
-  });
-
-  it('a resposta cadastrada aqui vale no chamado', async () => {
-    const resposta = (await s.post('/atendimento/respostas', { nome: 'Aguardando o teste', texto: 'Ajustamos o {codigo}: pode testar?', acao: { esperar: 'cliente', etiqueta: 'teste' } })).json();
-    const { id, codigo } = await abrir(operador);
-    const r = await operador.post(`/atendimento/chamados/${id}/resposta-pronta`, { respostaId: resposta.id, texto: '' });
-    expect(r.statusCode, r.body).toBe(200);
-    expect(r.json()).toMatchObject({ espera: { tipo: 'cliente', motivo: 'Aguardando o teste' }, etiquetas: ['teste'] });
-    expect(r.json().anotacoesLista[0].texto).toBe(`Ajustamos o ${codigo}: pode testar?`);
-  });
 });
 
 // =====================================================================
@@ -416,7 +346,10 @@ describe('o relógio: os prazos, o sem responsável e o fechar sozinho', () => {
     expect((await volta(quando))!.fechados).toContain(r.codigo);
     const f = await ficha(r.codigo);
     expect(f).toMatchObject({ etapaId: E.fechado, situacao: 'fechado', fechadoEm: quando.toISOString(), resolvidoEm: resolvido.toISOString() });
-    const [etapa, fechou] = f.historico.slice(-2);
+    // os dois eventos do fechar sozinho, um depois do outro (pelo tipo: o "criado" é de agora, e o relógio
+    // do teste está num dia fixo — depois de 19/10/2026, o "criado" ficava por último e o teste quebrava)
+    const i = f.historico.findIndex((e: any) => e.tipo === 'fechou_sozinho');
+    const [etapa, fechou] = [f.historico[i - 1], f.historico[i]];
     expect(etapa).toMatchObject({ tipo: 'etapa', por: null, porNome: null, dados: { de: { nome: 'Resolvido' }, para: { nome: 'Fechado' } } });
     expect(fechou).toMatchObject({ tipo: 'fechou_sozinho', por: null, porNome: null, dados: { dias: 3, etapa: 'Resolvido' }, texto: 'fechou sozinho: 3 dias úteis no Resolvido sem resposta do cliente' });
     expect(f.trajetoria.at(-1)).toMatchObject({ etapa: 'Fechado', por: null });

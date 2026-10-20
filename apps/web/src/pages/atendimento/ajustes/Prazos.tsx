@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 2.0, decisão 0047) — PRAZOS.
+ * Painéis › Ajustes (Patch 2.0, decisão 0047) — PRAZOS.
  *
  * O documento "Prioridade e prazos dos chamados" (o ICI-12) virou esta tela: o horário de atendimento
  * (os 7 dias), os feriados, os dois prazos de cada prioridade (a primeira resposta e a solução, em
@@ -223,7 +223,7 @@ function Formulario({ inicial }: { inicial: AjustesPrazos }) {
         <p className="text-[12.5px] text-ink-2 mb-3" id="prazos-quem-usa-alcance">
           {comAlcance.length
             ? <>Usam o alcance: <b>{comAlcance.map((p) => p.nome).join(', ')}</b>. Os outros painéis seguem a coluna <b>Só a gravidade</b>.</>
-            : <>Nenhum painel usa o alcance agora: vale a coluna <b>Só a gravidade</b>. O alcance liga em Chamados › Ajustes › Campos.</>}
+            : <>Nenhum painel usa o alcance agora: vale a coluna <b>Só a gravidade</b>. O alcance liga em Painéis › Ajustes › Campos.</>}
         </p>
         {/* no celular, uma gravidade por bloco (a tabela com várias escolhas por linha não cabe sem rolar de lado) */}
         <div className="sm:hidden flex flex-col gap-2" id="prazos-matriz-celular">

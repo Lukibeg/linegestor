@@ -2,6 +2,19 @@
 # O Caddy resolve HTTPS sozinho (certificado Let's Encrypt, renovação automática),
 # manda todo http para https e põe os cabeçalhos de segurança na frente do sistema.
 # O nome do domínio vem do .env (DOMINIO=gestao.inglinesystems.com.br).
+{
+	# O robô do LineChat manda a chave de API no endereço (?chave=…: o bloco "Enviar webhook" não aceita
+	# cabeçalho). O registro de erros do Caddy (o `docker compose logs caddy`) escreve o endereço inteiro;
+	# aqui a chave vira REDACTED. O cabeçalho Authorization e o cookie o Caddy já esconde sozinho.
+	log default {
+		output stderr
+		format filter {
+			request>uri query {
+				replace chave REDACTED
+			}
+		}
+	}
+}
 
 {$DOMINIO} {
 	encode zstd gzip
@@ -36,6 +49,12 @@
 		output file /var/log/caddy/acesso.log {
 			roll_size 20mb
 			roll_keep 10
+		}
+		# a chave do robô (?chave=…) não fica no registro de acesso: vira REDACTED (2.0.1)
+		format filter {
+			request>uri query {
+				replace chave REDACTED
+			}
 		}
 	}
 }

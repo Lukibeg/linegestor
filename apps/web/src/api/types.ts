@@ -92,11 +92,14 @@ export type AjustesRelatoriosTela = {
 export type RegistroEnvio = {
   id: string; em: string; dia: string; gatilho: 'agendado' | 'manual' | 'teste'; quem: string | null;
   ok: boolean; mensagem: string; pdf: { id: string; nome: string; bytes: number } | null; itens: string[];
-  destinatarios: Array<{ nome: string; numero: string; ok: boolean; mensagem: string }>;
+  /** `conversa`: concluída depois de mandar, ou aberta (a FlwChat não deixou); sem ela, a opção estava desligada (2.0.1) */
+  destinatarios: Array<{ nome: string; numero: string; ok: boolean; mensagem: string; conversa?: 'concluida' | 'aberta' }>;
 };
 /** Administração › Envio automático: os ajustes (sem o token, que fica no cofre), o que está marcado e o histórico. */
 export type EnvioAjustesTela = {
   ativo: boolean; url: string; remetente: string; horario: string; dias: number[];
+  /** concluir a conversa logo depois de mandar (2.0.1; vem ligado) */
+  concluirConversa: boolean;
   destinatarios: import('@gestor/shared').Destinatario[];
   temToken: boolean;
   configuradoEm: string | null; configuradoPor: string | null;
@@ -269,7 +272,8 @@ export type Product = {
   /** quantos clientes assinam hoje */
   activeClients?: number;
 };
-export type User = { id: string; name: string; email: string; active: boolean; roleId: string; roleName: string; lastLoginAt: string | null };
+/** `whatsapp`: só os dígitos, com o 55 (os avisos dos chamados, 2.0.1); `whatsappAvisos` falso = pausado. */
+export type User = { id: string; name: string; email: string; active: boolean; roleId: string; roleName: string; lastLoginAt: string | null; whatsapp: string | null; whatsappAvisos: boolean };
 export type Role = { id: string; key: string | null; name: string; description: string | null; permissions: string[]; isSystem: boolean; userCount: number };
 export type AuditItem = { id: string; action: string; entityType: string; entityId: string | null; summary: string; before: unknown; after: unknown; userName: string | null; createdAt: string };
 export type TrashItem = { type: string; id: string; label: string; deletedAt: string };
@@ -515,11 +519,13 @@ export class ApiError extends Error {
 export type {
   OpcoesAtendimento, QuadroAtendimento, ColunaQuadro, CartaoChamado, FichaChamado, MeuDia, ResumoDoPainel, AvisosNaTela, AvisoNaTela, CadastroDoCliente, Painel, EtapaPainel,
   AjustesDoPainel, Assunto, AssuntoCurto, EventoChamado, AnotacaoChamado, AnexoChamado, TempoGasto, CasoOperadora, PassoTrajetoria, LigacaoMostradaChamado,
-  ReferenciaMostrada, GrafoChamado, NoGrafo, ArestaGrafo, RespostaPronta, Agendado, AvisosChamadosTela, WebhookTela, ChaveApiTela, IntegracoesTela, SugestaoIa,
+  ReferenciaMostrada, GrafoChamado, NoGrafo, ArestaGrafo, Agendado, AvisosChamadosTela, WebhookTela, ChaveApiTela, IntegracoesTela, SugestaoIa,
   TipoLigacaoChamado, ChamadoCriarEntrada, ChamadoAlterarEntrada, MoverEntrada, ChecklistEntrada, TempoEntrada, OperadoraCasoEntrada, PainelGravarEntrada,
-  EtapaGravarEntrada, AssuntoGravarEntrada, RespostaProntaGravarEntrada, AgendadoGravarEntrada, AvisosChamadosEntrada, WebhookGravarEntrada, AjustesPrazos,
-  CampoObrigatorio, TipoEtapa, ItemChecklist, SituacaoDoChamado, Prioridade, Gravidade, Alcance, EstadoPrazo, TipoEspera, PessoaCurta, AcaoResposta, RegraAgendado,
+  EtapaGravarEntrada, AssuntoGravarEntrada, AgendadoGravarEntrada, AvisosChamadosEntrada, WebhookGravarEntrada, AjustesPrazos,
+  CampoObrigatorio, TipoEtapa, ItemChecklist, SituacaoDoChamado, Prioridade, Gravidade, Alcance, EstadoPrazo, TipoEspera, PessoaCurta, RegraAgendado,
   EventoAviso, CanaisDoAviso, CorPainel, TipoChamado, Origem, Nivel, CampoPersonalizado, CampoGravarEntrada, CamposDoSistemaEntrada, CampoDoSistema, TipoCampo,
   OpcaoDoCampo, ValorDoCampo, ValoresDosCampos, Obrigatorio, CorEtiqueta, EtiquetaComCor, EtiquetaDoCatalogo, EtiquetaGravarEntrada, EtiquetaEditarEntrada, EtiquetaEditarPeloNomeEntrada,
   ModelosDoLineChat, ModeloDoLineChat, ModeloAprovado, EnvioAoCliente, TipoArquivoDoModelo,
+  RoboTela, MapaDoRobo, MapaDoRoboEntrada, PreviaDoRobo, UltimoPedidoDoRobo,
+  TipoDePainel, ResultadoDaVenda, RelatorioDeVendas, FiltroDoRelatorioDeVendas,
 } from '@gestor/shared';

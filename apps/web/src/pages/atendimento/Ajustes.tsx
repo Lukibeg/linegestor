@@ -1,8 +1,8 @@
 /**
- * Chamados › Ajustes (Patch 2.0): o que a administração arruma no módulo. Cada parte numa aba
+ * Painéis › Ajustes (Patch 2.0): o que a administração arruma no módulo. Cada parte numa aba
  * (o endereço guarda a aba: ?aba=campos). Painéis, campos (os do sistema, a árvore de assuntos e os que a
- * equipe cria em cada painel), etiquetas (a cor de cada uma), prazos, avisos, respostas prontas e
- * agendados são de quem cuida dos chamados; as integrações e a IA (a mesma da Base de conhecimento), da
+ * equipe cria em cada painel), etiquetas (a cor de cada uma), prazos, avisos e agendados são de quem
+ * cuida dos chamados; as integrações e a IA (a mesma da Base de conhecimento), da
  * administração do sistema.
  */
 import { useEffect } from 'react';
@@ -14,12 +14,11 @@ import { AjustesCampos } from './ajustes/Campos.js';
 import { AjustesEtiquetas } from './ajustes/Etiquetas.js';
 import { AjustesPrazos } from './ajustes/Prazos.js';
 import { AjustesAvisos } from './ajustes/Avisos.js';
-import { AjustesRespostas } from './ajustes/Respostas.js';
 import { AjustesAgendados } from './ajustes/Agendados.js';
 import { AjustesIntegracoes } from './ajustes/Integracoes.js';
 import { AjustesIa } from './ajustes/Ia.js';
 
-type Aba = 'paineis' | 'campos' | 'etiquetas' | 'prazos' | 'avisos' | 'respostas' | 'agendados' | 'integracoes' | 'ia';
+type Aba = 'paineis' | 'campos' | 'etiquetas' | 'prazos' | 'avisos' | 'agendados' | 'integracoes' | 'ia';
 
 export function AjustesAtendimento() {
   const pode = usePode();
@@ -28,7 +27,7 @@ export function AjustesAtendimento() {
     ...(pode.cuidar ? [
       { id: 'paineis' as const, label: 'Painéis e etapas' }, { id: 'campos' as const, label: 'Campos' }, { id: 'etiquetas' as const, label: 'Etiquetas' },
       { id: 'prazos' as const, label: 'Prazos' },
-      { id: 'avisos' as const, label: 'Avisos e WhatsApp' }, { id: 'respostas' as const, label: 'Respostas prontas' }, { id: 'agendados' as const, label: 'Agendados' },
+      { id: 'avisos' as const, label: 'Avisos e WhatsApp' }, { id: 'agendados' as const, label: 'Agendados' },
     ] : []),
     ...(pode.integrar ? [{ id: 'integracoes' as const, label: 'Integrações' }, { id: 'ia' as const, label: 'IA' }] : []),
   ];
@@ -50,7 +49,6 @@ export function AjustesAtendimento() {
           {atual === 'etiquetas' && <AjustesEtiquetas />}
           {atual === 'prazos' && <AjustesPrazos />}
           {atual === 'avisos' && <AjustesAvisos />}
-          {atual === 'respostas' && <AjustesRespostas />}
           {atual === 'agendados' && <AjustesAgendados />}
           {atual === 'integracoes' && <AjustesIntegracoes />}
           {atual === 'ia' && <AjustesIa />}

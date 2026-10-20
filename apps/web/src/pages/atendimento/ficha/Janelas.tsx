@@ -1,24 +1,24 @@
 /**
  * As janelas das ações da ficha: esperar (o cliente ou a operadora, com o motivo), avisar o cliente
- * pelo WhatsApp, a resposta pronta (o texto já preenchido e o que ela vai fazer), ligar a outro
- * chamado, escolher o pai, o problema ou um incidente, trocar de painel e reabrir.
+ * pelo WhatsApp, ligar a outro chamado, escolher o pai, o problema ou um incidente, trocar de painel e
+ * reabrir. (A resposta pronta saiu no 2.0.1: o LineChat já tem as respostas rápidas.)
  *
  * Cada janela só existe enquanto está aberta (o estado nasce no `useState`), e o erro aparece ali
  * dentro, perto do botão que confirma.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowRight, CircleAlert, Hourglass, MessageCircle, Search, StickyNote, Tag, UserCheck } from 'lucide-react';
+import { MessageCircle, Search } from 'lucide-react';
 import {
-  etapaAoReabrir, etapaDeEntrada, lerCodigo, mensagemPreenchida, movimentoDeNivel, nomeDoObrigatorio, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO, preencherModelo,
-  type CartaoChamado, type FichaChamado, type RespostaPronta, type TipoEspera, type TipoLigacaoChamado,
+  etapaAoReabrir, etapaDeEntrada, lerCodigo, mensagemPreenchida, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO,
+  type CartaoChamado, type FichaChamado, type TipoEspera, type TipoLigacaoChamado,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Confirmar, Modal, Spinner } from '../../../components/ui/index.js';
 import { painelDe, telefoneLegivel, useAbrirChamado } from '../comum.js';
 import { NovoChamadoNaJanela } from '../Novo.js';
 import { BalaoDeMensagem } from '../ajustes/Avisos.js';
-import { ErroPerto, lista, nomeComNivel, useAberta, useAcao } from './base.js';
+import { ErroPerto, nomeComNivel, useAberta, useAcao } from './base.js';
 
 /** Os botões do rodapé: Cancelar e o que confirma (com a rodinha enquanto vai). */
 function Rodape({ onFechar, ocupado, desativado, botao, onConfirmar, perigoso = false }: { onFechar: () => void; ocupado: boolean; desativado?: boolean; botao: ReactNode; onConfirmar: () => void; perigoso?: boolean }) {
@@ -111,7 +111,7 @@ function ComoChegaAoCliente({ texto }: { texto: string }) {
     <div className="mt-2" id="ficha-como-chega">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
         <span className="eyebrow">Como chega ao cliente</span>
-        {m.peloModelo && <span className="chip bg-ok-soft text-ok" title="O modelo aprovado do WhatsApp oficial (Chamados › Ajustes › Avisos e WhatsApp)">pelo modelo <span className="font-mono font-normal">{m.nomeDoModelo ?? 'aprovado'}</span></span>}
+        {m.peloModelo && <span className="chip bg-ok-soft text-ok" title="O modelo aprovado do WhatsApp oficial (Painéis › Ajustes › Avisos e WhatsApp)">pelo modelo <span className="font-mono font-normal">{m.nomeDoModelo ?? 'aprovado'}</span></span>}
       </div>
       <BalaoDeMensagem texto={previa} />
       {m.peloModelo && /\n/.test(texto.trim()) && levaOTexto && <p className="text-[12px] text-muted mt-1.5">No modelo aprovado, a quebra de linha vira " · " (o WhatsApp não aceita quebra dentro da variável).</p>}
@@ -154,105 +154,13 @@ export function JanelaAbrirLigado({ tipo, onFechar }: { tipo: 'filho' | 'problem
 }
 
 // =====================================================================
-//  RESPOSTA PRONTA
-// =====================================================================
-
-/** Para o menu: o que a resposta faz, em poucas palavras. */
-export function resumoDaResposta(r: RespostaPronta, nomeEtapa: (id: string) => string): string {
-  const a = r.acao;
-  const partes = [
-    a.avisarCliente ? 'manda ao cliente' : r.texto.trim() ? 'anota' : null,
-    a.esperar === 'cliente' ? 'espera o cliente' : a.esperar === 'operadora' ? 'espera a operadora' : a.esperar === 'nada' ? 'tira a espera' : null,
-    a.etiqueta ? `etiqueta ${a.etiqueta}` : null,
-    a.assumir ? 'você assume' : null,
-    a.etapaId ? `vai para ${nomeEtapa(a.etapaId)}` : null,
-  ].filter(Boolean) as string[];
-  return partes.length ? lista(partes) : 'só o texto';
-}
-
-export function JanelaResposta({ resposta, onFechar }: { resposta: RespostaPronta; onFechar: () => void }) {
-  const { f, opcoes, painel, eu } = useAberta();
-  const acao = useAcao();
-  const a = resposta.acao;
-  const [texto, setTexto] = useState(() => preencherModelo(resposta.texto, {
-    contato: f.contato?.nome ?? null, codigo: f.codigo, cliente: f.cliente?.nome ?? null, titulo: f.titulo,
-    responsavel: f.responsavel?.nome ?? null, eu: eu?.nome ?? null,
-  }));
-  const etapaAtual = painel?.etapas.find((e) => e.id === f.etapaId);
-  const para = a.etapaId && a.etapaId !== f.etapaId ? painel?.etapas.find((e) => e.id === a.etapaId) : undefined;
-  const etapaFora = !!a.etapaId && !painel?.etapas.some((e) => e.id === a.etapaId);
-  const faltam = para ? f.faltam[para.id] ?? [] : [];
-  const filhos = para ? f.filhosTravam[para.id] ?? [] : [];
-  const sentido = para ? movimentoDeNivel(etapaAtual, para) : null;
-  const semTelefone = a.avisarCliente && !f.contato?.telefone;
-  const semWhats = a.avisarCliente && !opcoes.whatsapp.cliente;
-  const temEtiqueta = !!a.etiqueta && f.etiquetas.some((x) => x.toLocaleLowerCase('pt-BR') === a.etiqueta!.toLocaleLowerCase('pt-BR'));
-  const jaEMeu = !!eu && f.responsavel?.id === eu.id;
-  const travas: string[] = [
-    ...(semTelefone ? ['O chamado não tem o WhatsApp do contato: preencha o contato para mandar a mensagem.'] : []),
-    ...(!semTelefone && semWhats ? ['O WhatsApp do cliente não está ligado (Chamados › Ajustes › Avisos e WhatsApp): a mensagem não sairia.'] : []),
-    ...(para && faltam.length ? [`Para ir para ${para.nome}, falta preencher: ${lista(faltam.map((x) => nomeDoObrigatorio(x, opcoes.campos)))}.`] : []),
-    ...(para && filhos.length ? [`Os filhos em aberto precisam fechar antes de ir para ${para.nome}: ${filhos.join(', ')}.`] : []),
-    ...(etapaFora ? ['A etapa desta resposta não é deste painel.'] : []),
-  ];
-
-  const aplicar = async () => {
-    const r = await acao.rodar(() => api.atendimento.usarResposta(f.id, { respostaId: resposta.id, texto: texto.trim() }), `Resposta "${resposta.nome}" aplicada`);
-    if (r.ok) onFechar();
-  };
-
-  const faz: Array<{ icone: ReactNode; texto: ReactNode; nota?: string }> = [
-    a.avisarCliente
-      ? { icone: <MessageCircle size={14} />, texto: <>Manda o texto ao cliente pelo WhatsApp{f.contato?.nome ? ` (${f.contato.nome})` : ''}</> }
-      : texto.trim() ? { icone: <StickyNote size={14} />, texto: 'O texto vira uma anotação no chamado' } : null,
-    a.esperar === 'cliente' || a.esperar === 'operadora' ? { icone: <Hourglass size={14} />, texto: `Marca: ${NOME_ESPERA[a.esperar]} (o motivo é o nome da resposta)` } : null,
-    a.esperar === 'nada' ? { icone: <Hourglass size={14} />, texto: 'Tira a marca de espera', nota: f.espera ? undefined : 'não há espera marcada agora' } : null,
-    a.etiqueta ? { icone: <Tag size={14} />, texto: <>Põe a etiqueta <b>{a.etiqueta}</b></>, nota: temEtiqueta ? 'o chamado já tem' : undefined } : null,
-    a.assumir ? { icone: <UserCheck size={14} />, texto: 'Você assume o chamado', nota: jaEMeu ? 'já é seu' : undefined } : null,
-    a.etapaId ? {
-      icone: <ArrowRight size={14} />,
-      texto: <>Move para <b>{para ? nomeComNivel(para) : nomeComNivel(etapaAtual)}</b>{sentido === 'sobe' ? ' (escalona)' : sentido === 'desce' ? ' (volta de nível)' : ''}</>,
-      nota: !para && !etapaFora ? 'já está nela' : sentido ? 'o motivo é o nome da resposta' : undefined,
-    } : null,
-  ].filter(Boolean) as Array<{ icone: ReactNode; texto: ReactNode; nota?: string }>;
-
-  return (
-    <Modal open onClose={onFechar} titulo={`Resposta pronta: ${resposta.nome}`} largura="max-w-xl"
-      rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} desativado={travas.length > 0} botao="Aplicar" onConfirmar={aplicar} />}>
-      <Campo label={a.avisarCliente ? 'Mensagem ao cliente (WhatsApp)' : 'Anotação'} dica="Já preenchido com os dados deste chamado. Dá para mudar antes de aplicar.">
-        <textarea className="input min-h-[120px]" maxLength={3000} value={texto} onChange={(e) => setTexto(e.target.value)} autoFocus />
-      </Campo>
-      {a.avisarCliente && !semWhats && <ComoChegaAoCliente texto={texto} />}
-      <div className="mt-4">
-        <div className="eyebrow mb-1.5">O que ela vai fazer</div>
-        {faz.length ? (
-          <ul className="flex flex-col gap-1.5 text-[13.5px]">
-            {faz.map((x, i) => (
-              <li key={i} className="flex items-start gap-2">
-                <span className="text-muted mt-0.5 shrink-0" aria-hidden>{x.icone}</span>
-                <span>{x.texto}{x.nota && <span className="text-muted"> — {x.nota}</span>}</span>
-              </li>
-            ))}
-          </ul>
-        ) : <p className="text-[13.5px] text-muted">Nada além de registrar que a resposta foi usada.</p>}
-      </div>
-      {travas.length > 0 && (
-        <ul className="mt-3 flex flex-col gap-1">
-          {travas.map((t) => <li key={t} className="flex items-start gap-1.5 text-[12.5px] text-signal"><CircleAlert size={13} className="shrink-0 mt-0.5" /> {t}</li>)}
-        </ul>
-      )}
-      <ErroPerto erro={acao.erro} />
-    </Modal>
-  );
-}
-
-// =====================================================================
 //  ESCOLHER OUTRO CHAMADO (ligar, pai, problema, incidente)
 // =====================================================================
 
 /**
  * Achar um chamado digitando: o código (SUP-12) ou um pedaço do título, do cliente, do contato. A
- * lista mostra os que a pessoa vê (de qualquer painel), os mais recentes primeiro.
+ * lista mostra os que a pessoa vê (de qualquer painel de Gestão), os mais recentes primeiro. As
+ * negociações ficam de fora: não se ligam a nada, nem são pai, problema ou incidente (decisão 0050).
  */
 function EscolherChamado({ valor, onChange, tipoChamado, excluir, onEnter }: {
   valor: string; onChange: (v: string) => void; tipoChamado?: 'chamado' | 'problema'; excluir: string[]; onEnter: () => void;
@@ -267,7 +175,7 @@ function EscolherChamado({ valor, onChange, tipoChamado, excluir, onEnter }: {
     enabled: q.length >= 2,
     staleTime: 30_000,
   });
-  const itens = (achados.data?.items ?? []).filter((c) => !excluir.includes(c.codigo));
+  const itens = (achados.data?.items ?? []).filter((c) => !excluir.includes(c.codigo) && painelDe(opcoes, c.painelId)?.tipo !== 'vendas');
   const escolhido = lerCodigo(valor);
   const escolher = (c: CartaoChamado) => { onChange(c.codigo); setMarcado(-1); };
   return (
@@ -401,10 +309,14 @@ export function JanelaEscolherChamado({ titulo, texto, botao, tipoChamado, exclu
 export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
   const { f, opcoes, painel } = useAberta();
   const acao = useAcao();
-  const outros = useMemo(() => opcoes.paineis.filter((p) => p.ativo && p.id !== f.painelId), [opcoes.paineis, f.painelId]);
+  // a negociação só passa para outro painel de Vendas, e o chamado para outro de Gestão (entre eles, abre-se o outro lá)
+  const vendas = painel?.tipo === 'vendas';
+  const outros = useMemo(() => opcoes.paineis.filter((p) => p.ativo && p.id !== f.painelId && p.tipo === (painel?.tipo ?? 'gestao')), [opcoes.paineis, f.painelId, painel?.tipo]);
   const [painelId, setPainelId] = useState(outros[0]?.id ?? '');
   const novo = outros.find((p) => p.id === painelId);
   const [etapaId, setEtapaId] = useState(() => (outros[0] ? etapaDeEntrada(outros[0].etapas)?.id ?? '' : ''));
+  // na venda, entra numa etapa do funil (o Ganho e o Perdido têm a janela deles)
+  const etapasDoNovo = novo ? novo.etapas.filter((e) => !e.resultado) : [];
   const trocar = async () => {
     if (!novo) return;
     const r = await acao.rodar(() => api.atendimento.trocarPainel(f.id, { painelId: novo.id, etapaId: etapaId || null }), `${f.codigo} passou para o painel ${novo.nome}`);
@@ -413,12 +325,24 @@ export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
   return (
     <Modal open onClose={onFechar} titulo={`Passar ${f.codigo} para outro painel`}
       rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} desativado={!novo} botao="Trocar de painel" onConfirmar={trocar} />}>
-      {!outros.length ? <p className="text-sm text-muted">Não há outro painel ativo para onde passar o chamado.</p> : (
+      {!outros.length ? (
+        <p className="text-sm text-muted">
+          {vendas
+            ? 'Não há outro painel de Vendas ativo para onde passar a negociação. Para levar o trabalho a um painel de Gestão (a implantação, por exemplo), abra um chamado lá.'
+            : 'Não há outro painel de Gestão ativo para onde passar o chamado. Para começar uma negociação a partir dele, crie a negociação no painel de Vendas.'}
+        </p>
+      ) : (
         <div className="flex flex-col gap-3">
-          <p className="text-sm text-ink-2">
-            O código continua <b className="font-mono">{f.codigo}</b>. O assunto é de cada painel, então sai; o tipo sai se o painel novo não tiver o mesmo.
-            Hoje ele está no painel <b>{painel?.nome}</b>.
-          </p>
+          {vendas ? (
+            <p className="text-sm text-ink-2">
+              O código continua <b className="font-mono">{f.codigo}</b>, e o valor e as anotações vão junto. Hoje ela está no painel <b>{painel?.nome}</b>.
+            </p>
+          ) : (
+            <p className="text-sm text-ink-2">
+              O código continua <b className="font-mono">{f.codigo}</b>. O assunto é de cada painel, então sai; o tipo sai se o painel novo não tiver o mesmo.
+              Hoje ele está no painel <b>{painel?.nome}</b>.
+            </p>
+          )}
           <Campo label="Para qual painel">
             <select className="input" value={painelId} onChange={(e) => { const p = outros.find((x) => x.id === e.target.value); setPainelId(e.target.value); setEtapaId(p ? etapaDeEntrada(p.etapas)?.id ?? '' : ''); }}>
               {outros.map((p) => <option key={p.id} value={p.id}>{p.nome} ({p.sigla})</option>)}
@@ -427,7 +351,7 @@ export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
           {novo && (
             <Campo label="Em qual etapa" dica="Sem escolher, vai para a entrada do painel.">
               <select className="input" value={etapaId} onChange={(e) => setEtapaId(e.target.value)}>
-                {novo.etapas.map((e) => <option key={e.id} value={e.id}>{nomeComNivel(e)}</option>)}
+                {etapasDoNovo.map((e) => <option key={e.id} value={e.id}>{nomeComNivel(e)}</option>)}
               </select>
             </Campo>
           )}
@@ -445,8 +369,18 @@ export function JanelaTrocarPainel({ onFechar }: { onFechar: () => void }) {
 export function JanelaReabrir({ onFechar }: { onFechar: () => void }) {
   const { f, painel } = useAberta();
   const acao = useAcao();
+  const vendas = painel?.tipo === 'vendas';
   const etapas = (painel?.etapas ?? []).filter((e) => e.tipo === 'entrada' || e.tipo === 'andamento');
-  const [etapaId, setEtapaId] = useState(() => (painel ? etapaAoReabrir(painel.etapas)?.id ?? '' : ''));
+  const [etapaId, setEtapaId] = useState(() => {
+    if (!painel) return '';
+    // a negociação volta para a etapa em que estava antes do Ganho ou do Perdido (como o servidor)
+    if (vendas) {
+      const ultima = [...f.historico].reverse().find((e) => e.tipo === 'etapa');
+      const de = ultima?.dados?.de?.id as string | undefined;
+      if (de && etapas.some((e) => e.id === de)) return de;
+    }
+    return etapaAoReabrir(painel.etapas)?.id ?? '';
+  });
   const [motivo, setMotivo] = useState('');
   const reabrir = async () => {
     const r = await acao.rodar(() => api.atendimento.reabrir(f.id, { motivo: motivo.trim() || null, etapaId: etapaId || null }), `${f.codigo} reaberto`);
@@ -456,14 +390,17 @@ export function JanelaReabrir({ onFechar }: { onFechar: () => void }) {
     <Modal open onClose={onFechar} titulo={`Reabrir ${f.codigo}`}
       rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} botao="Reabrir" onConfirmar={reabrir} />}>
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-ink-2">O chamado volta a ficar aberto e conta mais uma reabertura. {f.responsavel ? `${f.responsavel.nome} recebe o aviso.` : ''}</p>
+        <p className="text-sm text-ink-2">
+          {vendas ? 'A negociação volta para o funil (sai do ganho ou da perda do mês).' : 'O chamado volta a ficar aberto e conta mais uma reabertura.'} {f.responsavel ? `${f.responsavel.nome} recebe o aviso.` : ''}
+        </p>
         <Campo label="Volta para">
           <select className="input" value={etapaId} onChange={(e) => setEtapaId(e.target.value)}>
             {etapas.map((e) => <option key={e.id} value={e.id}>{nomeComNivel(e)}</option>)}
           </select>
         </Campo>
         <Campo label="Por que reabrir? (opcional)">
-          <textarea className="input min-h-[72px]" autoFocus maxLength={500} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: o cliente disse que voltou a cair à tarde" />
+          <textarea className="input min-h-[72px]" autoFocus maxLength={500} value={motivo} onChange={(e) => setMotivo(e.target.value)}
+            placeholder={vendas ? 'Ex.: o cliente voltou a negociar' : 'Ex.: o cliente disse que voltou a cair à tarde'} />
         </Campo>
       </div>
       <ErroPerto erro={acao.erro} />

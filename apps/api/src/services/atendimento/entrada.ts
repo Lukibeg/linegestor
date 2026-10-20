@@ -7,29 +7,36 @@
  *    revogadas, e anota quando foi usada;
  *  - quem age é a integração (`Ator` do tipo integração, com o nome da chave): o histórico e as
  *    anotações mostram "n8n", "Robô do LineChat"…; ela trabalha em todos os painéis;
- *  - as regras são as da tela: tudo passa por `criarChamado`, `alterarChamado`, `moverChamado`,
- *    `anotarChamado` e `reabrirChamado` (chamados.ts).
+ *  - as regras são as da tela: tudo passa por `criarChamado`, `alterarChamado`, `moverChamado` e
+ *    `anotarChamado` (chamados.ts).
  *
  * O que é só da entrada: a mesma conversa (sessão) aberta não vira outro chamado — o relato novo vira
- * anotação no que já existe; e a mensagem do cliente reabre o Resolvido, menos o "obrigado".
+ * anotação no que já existe. (A mensagem do cliente, que reabria o Resolvido, saiu no 2.0.1.)
+ *
+ * O robô do LineChat manda o JSON dele (o formato do Helena), e não o do Gestor: desde o 2.0.1 ele chama
+ * `/entrada/robo`, e o MAPA (Painéis › Ajustes › Integrações, `robo.ts` em @gestor/shared) diz de onde
+ * vem cada campo. Ali tudo é leniente: o que não bate fica de fora e volta escrito (`ignorados`). A
+ * `/entrada/chamado`, no formato do Gestor, continua para o n8n e outros sistemas, e recusa o que não
+ * bate.
  */
 import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
-import { ticketApiKeys, ticketStages, tickets, type Db } from '@gestor/db';
+import { clients, ticketApiKeys, ticketStages, tickets, type Db } from '@gestor/db';
 import {
-  caminhoDoAssunto, campoLigado, ChamadoCriarSchema, EntradaChamadoSchema, EntradaMensagemSchema, etapaAoReabrir, IntegracaoAlterarSchema, NOME_CAMPO,
-  numeroWhatsApp, pareceAgradecimento, paraBusca, situacaoDaEtapa, textoDoValor,
-  type Assunto, type CartaoChamado, type ChamadoAlterar, type Painel, type SituacaoDoChamado, type TipoCampo, type ValorDoCampo,
+  aplicarMapaDoRobo, apararPedido, campoLigado, ChamadoCriarSchema, EntradaChamadoSchema, IntegracaoAlterarSchema, mapaDeFabrica, MapaDoRoboSchema,
+  NOME_CAMPO, oQueNaoVeio, paraBusca, procurarAssunto, resolverPedidoDoRobo, respostaAoRobo, textoDoValor,
+  type Assunto, type CartaoChamado, type ChamadoAlterar, type DadosParaORobo, type MapaDoRobo, type Painel, type PedidoDoRobo, type PreviaDoRobo,
+  type RespostaAoRobo, type TipoCampo, type UltimoPedidoDoRobo, type ValorDoCampo,
 } from '@gestor/shared';
 import { BadRequest, Unauthorized } from '../../plugins/errors.js';
-import { avisarEquipe, avisarObservadores, linkDoChamado, trecho } from './avisos.js';
-import { alterarChamado, anotarChamado, criarChamado, moverChamado, reabrirChamado } from './chamados.js';
-import { camposDoPainel, carregarContexto, carregarPaineis, cartoesDe, chamadoOu404, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
+import * as integ from '../integracoes.js';
+import { linkDoChamado } from './avisos.js';
+import { alterarChamado, anotarChamado, criarChamado, moverChamado } from './chamados.js';
+import { camposDoPainel, carregarContexto, carregarPaineis, cartoesDe, chamadoOu404, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
 
 export type EntradaChamado = z.infer<typeof EntradaChamadoSchema>;
-export type EntradaMensagem = z.infer<typeof EntradaMensagemSchema>;
 export type IntegracaoAlterar = z.infer<typeof IntegracaoAlterarSchema>;
 
 /** Como a integração aparece na auditoria (a auditoria não tem pessoa: o nome da chave diz quem foi). */
@@ -102,30 +109,16 @@ export async function lerChamado(app: FastifyInstance, ref: string): Promise<Cha
 //  O ASSUNTO PELO NOME OU PELO CAMINHO
 // =====================================================================
 
-/** "Ramal › Configuração", "ramal > configuracao", "Ramal - Configuração": o mesmo caminho. */
-const SEPARADOR = /\s*[>›»]\s*|\s+-\s+/;
-const caminhoNormalizado = (s: string) => s.split(SEPARADOR).map((p) => paraBusca(p).replace(/\s+/g, ' ')).filter(Boolean).join(' › ');
-
 /**
- * O assunto do painel pelo caminho inteiro ou só pelo nome (sem ligar para acento e maiúscula). O
- * nome que aparece em dois lugares da árvore pede o caminho; o que não existe (ou foi desativado) é
- * recusado — gravar outro assunto no lugar seria pior que avisar.
+ * O assunto do painel pelo caminho inteiro, só pelo nome ou pelo de-para, sem ligar para acento e
+ * maiúscula (`procurarAssunto`, em @gestor/shared: o mapa do robô procura igual). O nome que aparece em
+ * dois lugares da árvore pede o caminho; o que não existe (ou foi desativado) é recusado — gravar outro
+ * assunto no lugar seria pior que avisar.
  */
 export function acharAssunto(assuntos: Assunto[], painel: Painel, texto: string): Assunto {
-  const alvo = caminhoNormalizado(texto);
-  const doPainel = assuntos.filter((a) => a.painelId === painel.id);
-  const porCaminho = (a: Assunto) => caminhoNormalizado(caminhoDoAssunto(a.id, assuntos)) === alvo;
-  const porNome = (a: Assunto) => caminhoNormalizado(a.nome) === alvo;
-  const ativos = doPainel.filter((a) => a.ativo);
-  const peloCaminho = ativos.filter(porCaminho);
-  if (peloCaminho.length === 1) return peloCaminho[0]!;
-  const peloNome = ativos.filter(porNome);
-  if (peloNome.length === 1) return peloNome[0]!;
-  if (peloNome.length > 1) {
-    throw new BadRequest(`Há mais de um assunto "${texto}" no painel ${painel.nome}: mande o caminho inteiro (${peloNome.map((a) => caminhoDoAssunto(a.id, assuntos)).join(' ou ')}).`);
-  }
-  if (doPainel.some((a) => !a.ativo && (porCaminho(a) || porNome(a)))) throw new BadRequest(`O assunto "${texto}" foi desativado no painel ${painel.nome}.`);
-  throw new BadRequest(`Não achei o assunto "${texto}" no painel ${painel.nome}.`);
+  const r = procurarAssunto(assuntos, painel, texto);
+  if (!r.ok) throw new BadRequest(r.erro);
+  return r.assunto;
 }
 
 // =====================================================================
@@ -156,6 +149,9 @@ async function abertoDaSessao(db: Db, sessaoId: string): Promise<LinhaChamado | 
 
 export type ResultadoEntrada = { criado: boolean; id: string; codigo: string; numero: number; link: string; titulo: string; anotou: boolean };
 
+const respostaDaEntrada = (app: FastifyInstance, t: Pick<LinhaChamado, 'id' | 'code' | 'number' | 'title'>, criado: boolean, anotou: boolean): ResultadoEntrada =>
+  ({ criado, id: t.id, codigo: t.code, numero: t.number, link: linkDoChamado(app, t.code), titulo: t.title, anotou });
+
 /**
  * O robô abre o chamado. O painel pela sigla ou pelo id (sem painel, o primeiro ativo: o Suporte). Se
  * a mesma conversa já tem um chamado aberto, não abre outro: o relato vira anotação nele.
@@ -166,8 +162,7 @@ export async function abrirPelaEntrada(app: FastifyInstance, ator: Ator, e: Entr
 }
 
 async function abrirAgora(app: FastifyInstance, ator: Ator, e: EntradaChamado): Promise<ResultadoEntrada> {
-  const resposta = (t: Pick<LinhaChamado, 'id' | 'code' | 'number' | 'title'>, criado: boolean, anotou: boolean): ResultadoEntrada =>
-    ({ criado, id: t.id, codigo: t.code, numero: t.number, link: linkDoChamado(app, t.code), titulo: t.title, anotou });
+  const resposta = (t: Pick<LinhaChamado, 'id' | 'code' | 'number' | 'title'>, criado: boolean, anotou: boolean) => respostaDaEntrada(app, t, criado, anotou);
 
   if (e.sessaoId) {
     const aberto = await abertoDaSessao(app.db, e.sessaoId);
@@ -188,7 +183,7 @@ async function abrirAgora(app: FastifyInstance, ator: Ator, e: EntradaChamado): 
   // o painel sem assunto (a aba Campos desligou) ignora o assunto que vier
   const assuntoId = e.assunto && campoLigado(painel.ajustes, 'assunto') ? acharAssunto((await carregarContexto(app.db)).assuntos, painel, e.assunto).id : null;
   const lido = ChamadoCriarSchema.safeParse({
-    painelId: painel.id, titulo, relato: e.relato, contatoNome: e.nome, contatoTelefone: e.telefone, sessaoId: e.sessaoId,
+    painelId: painel.id, titulo, relato: e.relato, descricao: e.descricao, contatoNome: e.nome, contatoTelefone: e.telefone, sessaoId: e.sessaoId,
     clienteId: e.clienteId, assuntoId, prioridade: e.prioridade, etiquetas: e.etiquetas ?? [], campos: e.campos ?? {},
   });
   if (!lido.success) throw new BadRequest(lido.error.issues[0]?.message ?? 'Dados inválidos', { campos: lido.error.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message })) });
@@ -198,70 +193,109 @@ async function abrirAgora(app: FastifyInstance, ator: Ator, e: EntradaChamado): 
 }
 
 // =====================================================================
-//  O CLIENTE ESCREVEU (o webhook de mensagem recebida, pelo n8n)
+//  O ROBÔ DO LINECHAT PELO MAPA (2.0.1)
 // =====================================================================
 
-/** O chamado do contato que ainda não fechou (o mais novo): pela conversa e, sem ela, pelo telefone. */
-async function chamadoDoContato(db: Db, m: { sessaoId?: string; fone: string | null }): Promise<LinhaChamado | null> {
-  const procurar = async (onde: ReturnType<typeof eq>) => {
-    const [r] = await db.select({ t: tickets }).from(tickets).innerJoin(ticketStages, eq(ticketStages.id, tickets.stageId))
-      .where(and(onde, isNull(tickets.deletedAt), ne(ticketStages.kind, 'fechado')))
-      .orderBy(desc(tickets.createdAt)).limit(1);
-    return r?.t ?? null;
-  };
-  return (m.sessaoId ? await procurar(eq(tickets.sessionId, m.sessaoId)) : null) ?? (m.fone ? await procurar(eq(tickets.contactPhone, m.fone)) : null);
+/**
+ * O mapa guardado (Painéis › Ajustes › Integrações). O que não passar na conferência (um mapa mexido à
+ * mão no banco) volta ao de fábrica: o robô não para por isso.
+ */
+export async function lerMapaDoRobo(db: Db): Promise<MapaDoRobo> {
+  const { valor } = await integ.ler<unknown>(db, 'atendimento-robo');
+  const r = MapaDoRoboSchema.safeParse(valor);
+  return r.success ? r.data : mapaDeFabrica();
 }
 
-/** Até onde o texto do cliente vai para o histórico e para o aviso (a conversa inteira está no LineChat). */
-const NO_HISTORICO = 1000;
-const NO_AVISO = 120;
-
-export type ResultadoMensagem = { acao: 'reaberto' | 'registrado' | 'ignorado'; codigo?: string; id?: string };
+/** O último pedido do robô, com o que aconteceu (nenhum ainda = null). */
+export async function lerUltimoDoRobo(db: Db): Promise<UltimoPedidoDoRobo | null> {
+  const { valor } = await integ.ler<{ ultimo?: UltimoPedidoDoRobo | null }>(db, 'atendimento-robo-ultimo');
+  return valor.ultimo ?? null;
+}
 
 /**
- * O cliente escreveu. No chamado Resolvido, a mensagem reabre — menos o "obrigado", o "ok, funcionou",
- * a figurinha (`pareceAgradecimento`); no aberto, fica no histórico. Nos dois casos, o responsável é
- * avisado. Sem chamado do contato (ou só fechados), nada acontece.
+ * Guarda o último pedido: o corpo (os textos longos cortados), o NOME da chave e o que aconteceu. A chave
+ * mesma nunca: ela vem no endereço (`?chave=`), que não entra aqui, nem na auditoria, nem no registro.
  */
-export async function mensagemDoCliente(app: FastifyInstance, ator: Ator, m: EntradaMensagem): Promise<ResultadoMensagem> {
-  const achado = await chamadoDoContato(app.db, { sessaoId: m.sessaoId, fone: numeroWhatsApp(m.telefone) });
-  if (!achado) return { acao: 'ignorado' };
-  // duas mensagens seguidas no mesmo Resolvido ("ainda está caindo", "e o 204 também"): uma de cada vez,
-  // e lendo o chamado de novo — a segunda já o encontra aberto e só fica registrada
-  return umDeCadaVez(`chamado:${achado.id}`, async () => responderNoChamado(app, ator, await chamadoOu404(app.db, achado.id), m));
+async function guardarUltimoDoRobo(db: Db, ator: Ator, corpo: unknown, endereco: Record<string, string>, resultado: UltimoPedidoDoRobo['resultado']) {
+  const ultimo: UltimoPedidoDoRobo = { em: new Date().toISOString(), chave: ator.nome, corpo: apararPedido(corpo), endereco, resultado };
+  await integ.gravar(db, 'atendimento-robo-ultimo', { ultimo });
 }
 
-async function responderNoChamado(app: FastifyInstance, ator: Ator, t: LinhaChamado, m: EntradaMensagem): Promise<ResultadoMensagem> {
-  const ctx = await carregarContexto(app.db);
-  const painel = ctx.paineis.find((p) => p.id === t.panelId);
-  const situacao: SituacaoDoChamado = situacaoDaEtapa(ctx.etapas.get(t.stageId)?.etapa.tipo ?? 'andamento');
-  const bruto = (m.texto ?? '').replace(/\r\n?/g, '\n').trim();
-  const texto = trecho(bruto || '(mensagem sem texto: figurinha, foto, áudio ou arquivo)', NO_HISTORICO);
-  const chamado = { id: t.id, codigo: t.code, titulo: t.title };
-  const feito = { codigo: t.code, id: t.id };
+/** O que o mapa precisa do Gestor: os painéis, os assuntos, os campos e os clientes fora da lixeira. */
+async function dadosParaORobo(db: Db): Promise<DadosParaORobo> {
+  const [ctx, clientes] = await Promise.all([
+    carregarContexto(db),
+    db.select({ id: clients.id, nome: clients.tradeName, razao: clients.legalName, cnpj: clients.cnpj }).from(clients).where(isNull(clients.deletedAt)),
+  ]);
+  return { paineis: ctx.paineis, assuntos: ctx.assuntos, campos: ctx.campos, clientes };
+}
 
-  if (situacao === 'resolvido') {
-    if (pareceAgradecimento(bruto)) return { acao: 'ignorado', ...feito };
-    const para = painel ? etapaAoReabrir(painel.etapas) : null;
-    if (para && (para.tipo === 'entrada' || para.tipo === 'andamento')) {
-      // primeiro o que o cliente disse, depois o "reabriu" (o histórico lê na ordem em que aconteceu): um
-      // milésimo antes, porque o reabrir marca a hora dele em seguida e o mesmo milésimo embaralharia a ordem
-      await registrarEvento(app.db, t.id, 'cliente_respondeu', ator, { texto, reabriu: true }, new Date(Date.now() - 1));
-      // (os observadores recebem um aviso só: o do cliente que respondeu, não o do "reabriu")
-      await reabrirChamado(app, ator, t.id, { motivo: 'o cliente respondeu' }, { observadores: false });
-      const aviso = `O cliente respondeu no ${t.code} e o chamado reabriu: "${trecho(texto, NO_AVISO)}"`;
-      await avisarEquipe(app, { evento: 'cliente_respondeu', para: [t.assigneeId], chamado, texto: aviso });
-      await avisarObservadores(app, { chamado, observadores: t.watcherIds, texto: aviso, jaAvisados: [t.assigneeId] });
-      return { acao: 'reaberto', ...feito };
-    }
-    // (um painel sem etapa para reabrir: a resposta fica registrada, como num aberto)
+/**
+ * `ignorados`: o que veio e ficou de fora; `faltaram`: as variáveis do mapa que não vieram no pedido
+ * ("Cliente: {{pergunta: …}}" — o robô de outra cópia, com outros códigos de bloco); `resposta`: o que
+ * volta ao bloco "Enviar webhook" do LineChat.
+ */
+export type ResultadoDoRobo = ResultadoEntrada & { ignorados: string[]; faltaram: string[]; resposta: RespostaAoRobo };
+type AbertoPeloMapa = ResultadoEntrada & { ignorados: string[]; contato: string | null };
+
+/**
+ * O robô abre o chamado com o JSON dele: o mapa diz de onde vem cada campo. Como na entrada do Gestor,
+ * a mesma conversa aberta não abre outro (o relato vira anotação nele). O pedido fica guardado (só o
+ * último), com o que aconteceu: a tela do mapa mostra as variáveis dele.
+ */
+export async function abrirPeloRobo(app: FastifyInstance, ator: Ator, corpo: unknown, endereco: Record<string, string> = {}): Promise<ResultadoDoRobo> {
+  const mapa = await lerMapaDoRobo(app.db);
+  const pedido = aplicarMapaDoRobo(mapa, corpo, endereco);
+  // o nome dos campos do painel só é lido quando um deles ficou sem a variável
+  const precisaDosCampos = Object.keys(pedido.faltaram).some((k) => k.startsWith('campo:'));
+  const faltaram = oQueNaoVeio(pedido.faltaram, precisaDosCampos ? (await carregarContexto(app.db)).campos : []);
+  const abrir = () => abrirPeloMapa(app, ator, pedido);
+  let r: AbertoPeloMapa;
+  try {
+    r = pedido.sessaoId ? await umDeCadaVez(`sessao:${pedido.sessaoId}`, abrir) : await abrir();
+  } catch (e) {
+    await guardarUltimoDoRobo(app.db, ator, corpo, endereco, { ok: false, erro: e instanceof Error ? e.message : 'O chamado não abriu.', faltaram })
+      .catch((x) => app.log.warn(x, 'não deu para guardar o último pedido do robô'));
+    throw e;
   }
-  await registrarEvento(app.db, t.id, 'cliente_respondeu', ator, { texto, reabriu: false });
-  await tocar(app.db, t.id);
-  const aviso = `O cliente respondeu no ${t.code}: "${trecho(texto, NO_AVISO)}"`;
-  await avisarEquipe(app, { evento: 'cliente_respondeu', para: [t.assigneeId], chamado, texto: aviso });
-  await avisarObservadores(app, { chamado, observadores: t.watcherIds, texto: aviso, jaAvisados: [t.assigneeId] });
-  return { acao: 'registrado', ...feito };
+  await guardarUltimoDoRobo(app.db, ator, corpo, endereco, { ok: true, criado: r.criado, anotou: r.anotou, codigo: r.codigo, ignorados: r.ignorados, faltaram })
+    .catch((x) => app.log.warn(x, 'não deu para guardar o último pedido do robô'));
+  const { contato, ...resultado } = r;
+  return { ...resultado, faltaram, resposta: respostaAoRobo(mapa, { codigo: r.codigo, contato }, corpo, endereco) };
+}
+
+async function abrirPeloMapa(app: FastifyInstance, ator: Ator, p: PedidoDoRobo): Promise<AbertoPeloMapa> {
+  if (p.sessaoId) {
+    const aberto = await abertoDaSessao(app.db, p.sessaoId);
+    if (aberto) {
+      if (p.relato) await anotarChamado(app, ator, aberto.id, { texto: p.relato, anexos: [] });
+      return { ...respostaDaEntrada(app, aberto, false, !!p.relato), ignorados: [], contato: aberto.contactName };
+    }
+  }
+  const r = resolverPedidoDoRobo(p, await dadosParaORobo(app.db));
+  if (!r.ok) throw new BadRequest(r.erro);
+  const c = r.chamado;
+  const lido = ChamadoCriarSchema.safeParse({
+    painelId: c.painel.id, titulo: c.titulo, relato: c.relato, descricao: c.descricao, contatoNome: c.nome, contatoTelefone: c.telefone,
+    sessaoId: c.sessaoId, clienteId: c.cliente?.id ?? null, assuntoId: c.assunto?.id ?? null, prioridade: c.prioridade, etiquetas: c.etiquetas,
+    campos: Object.fromEntries(c.campos.map((x) => [x.id, x.valor])),
+  });
+  if (!lido.success) throw new BadRequest(lido.error.issues[0]?.message ?? 'Dados inválidos', { campos: lido.error.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message })) });
+  const novo = await criarChamado(app, ator, lido.data, { origem: 'robo' });
+  // o nome do contato vem do chamado gravado: sem ele no pedido, o Gestor pode ter achado pelo WhatsApp
+  const [t] = await app.db.select({ id: tickets.id, code: tickets.code, number: tickets.number, title: tickets.title, contactName: tickets.contactName })
+    .from(tickets).where(eq(tickets.id, novo.id)).limit(1);
+  return { ...respostaDaEntrada(app, t!, true, false), ignorados: c.ignorados, contato: t!.contactName };
+}
+
+/** "Como fica": o chamado que o pedido abriria com este mapa (ainda não salvo), sem abrir nada. */
+export async function experimentarRobo(app: FastifyInstance, mapa: MapaDoRobo, corpo: unknown, endereco: Record<string, string> = {}): Promise<PreviaDoRobo> {
+  const p = aplicarMapaDoRobo(mapa, corpo, endereco);
+  const [resolvido, aberto] = await Promise.all([
+    dadosParaORobo(app.db).then((g) => resolverPedidoDoRobo(p, g)),
+    p.sessaoId ? abertoDaSessao(app.db, p.sessaoId) : Promise.resolve(null),
+  ]);
+  return { resolvido, aberto: aberto ? { codigo: aberto.code, titulo: aberto.title } : null };
 }
 
 // =====================================================================

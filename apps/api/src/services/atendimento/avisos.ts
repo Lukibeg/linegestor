@@ -45,23 +45,25 @@ export async function avisarEquipe(
   if (!para.length) return;
   const { valor: v } = await lerAvisos(app.db);
   const canais = v.eventos[a.evento] ?? { tela: true, whatsapp: false };
-  // só quem está ativo recebe
-  const ativos = await app.db.select({ id: users.id, name: users.name, active: users.active }).from(users).where(inArray(users.id, para));
+  // só quem está ativo recebe; o WhatsApp de cada um mora no usuário (Administração › Usuários, 2.0.1)
+  const ativos = await app.db.select({ id: users.id, name: users.name, active: users.active, whatsapp: users.whatsapp, recebe: users.whatsappAvisos })
+    .from(users).where(inArray(users.id, para));
   const quem = ativos.filter((u) => u.active);
   if (!quem.length) return;
   if (canais.tela) {
     await app.db.insert(ticketNotifications).values(quem.map((u) => ({ id: newId(), userId: u.id, ticketId: a.chamado.id, kind: a.tipo ?? a.evento, body: a.texto })));
   }
   if (!canais.whatsapp || !v.ativo || !v.numeroEquipe) return;
-  const numeros = quem.map((u) => ({ u, p: v.pessoas.find((x) => x.userId === u.id && x.ativo && x.numero) })).filter((x) => !!x.p);
+  // com o número e sem a pausa
+  const numeros = quem.filter((u) => u.recebe && u.whatsapp).map((u) => ({ u, numero: u.whatsapp! }));
   if (!numeros.length) return;
   // Sem a chave, nem tenta: enquanto a configuração não termina, cada aviso deixaria um "não foi: falta
   // a chave" no histórico do chamado. A tela de Avisos já mostra o que falta.
   if (!(await whatsAppPronto(app.db)).equipe) return;
   const texto = `${a.texto}\n${a.chamado.codigo} · ${a.chamado.titulo}\n${linkDoChamado(app, a.chamado.codigo)}`;
   emSegundoPlano(app, async () => {
-    for (const { u, p } of numeros) {
-      const r = await mandarWhatsApp(app.db, app.vault, { de: 'equipe', para: p!.numero, texto });
+    for (const { u, numero } of numeros) {
+      const r = await mandarWhatsApp(app.db, app.vault, { de: 'equipe', para: numero, texto });
       await registrarEvento(app.db, a.chamado.id, 'aviso_equipe', null, { para: u.name, ok: r.ok, ...(r.ok ? {} : { erro: r.mensagem }) });
     }
   });
@@ -74,7 +76,7 @@ const JUNTA_POR_MINUTOS = 30;
 
 /**
  * Avisa quem observa o chamado (o pedido do Luan na prévia: como no Helena, o observador recebe toda
- * atualização — a anotação, a mudança de etapa, o responsável, a espera, o cliente que respondeu…).
+ * atualização — a anotação, a mudança de etapa, o responsável, a espera, os campos…).
  * Quem fez não recebe, nem quem já recebeu outro aviso da mesma ação (o responsável que recebeu o
  * chamado, quem a etapa avisa).
  *

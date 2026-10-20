@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   agendadoDeHoje, AjustesEnvioSchema, envioDeHoje, horaDeEnviar, MarcadosEnvioSchema, momentoEmBrasilia, nomeDoPdf, numeroLegivel,
-  numeroWhatsApp, proximoEnvio, RELATORIOS_DO_ENVIO, textoDoEnvio,
+  proximoEnvio, RELATORIOS_DO_ENVIO, textoDoEnvio,
 } from './envio.js';
+import { numeroWhatsApp } from './formatos.js';
 
 // 04/10/2026 é um domingo; 05/10, segunda. Brasília = UTC−3.
 const em = (iso: string) => new Date(iso);

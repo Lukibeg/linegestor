@@ -36,6 +36,8 @@ export type Ator =
 
 export const atorDaPessoa = (u: { id: string; name: string; permissions: string[] }): Ator => ({ tipo: 'pessoa', id: u.id, nome: u.name, permissoes: u.permissions });
 export const podeVerChamados = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('support.read');
+/** O Comercial (2.0.1): os painéis de Vendas são de quem tem a permissão dele, e só dela. */
+export const podeVerVendas = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('sales.read');
 export const podeTrabalhar = (a: Ator) => a.tipo === 'integracao' || a.permissoes.includes('tickets.work');
 export const podeCuidar = (a: Ator) => a.tipo === 'pessoa' && a.permissoes.includes('tickets.manage');
 /** O id da pessoa (para as colunas `user_id`); a integração não tem. */
@@ -59,12 +61,13 @@ export function etapaDaLinha(e: LinhaEtapa): EtapaPainel {
   return {
     id: e.id, nome: e.name, tipo: e.kind as EtapaPainel['tipo'], nivel: (e.level as Nivel | null) ?? null,
     obrigatorios: e.requiredFields as Obrigatorio[], avisar: e.notifyUserIds,
+    resultado: e.outcome === 'ganho' || e.outcome === 'perdido' ? e.outcome : null,
   };
 }
 
 export function painelDaLinha(p: LinhaPainel, etapas: LinhaEtapa[], abertos = 0): Painel {
   return {
-    id: p.id, nome: p.name, sigla: p.key, descricao: p.description, cor: p.color as CorPainel, ordem: p.sortOrder,
+    id: p.id, nome: p.name, sigla: p.key, descricao: p.description, cor: p.color as CorPainel, tipo: p.kind === 'vendas' ? 'vendas' : 'gestao', ordem: p.sortOrder,
     acesso: p.access === 'escolhidos' ? 'escolhidos' : 'todos', pessoas: p.memberIds,
     ajustes: ajustesDoPainelCompletos(p.settings as Partial<Painel['ajustes']>),
     etapas: etapas.filter((e) => e.panelId === p.id && !e.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map(etapaDaLinha),
@@ -91,12 +94,17 @@ export async function carregarPaineis(db: Db): Promise<{ paineis: Painel[]; toda
 }
 
 /**
- * Quem vê o painel: quem cuida dos chamados vê todos; num painel "escolhidos", só as pessoas da
- * lista; nos outros, quem vê chamados. A integração (robô, n8n) vê todos.
+ * Quem vê o painel: o painel de Vendas, só quem tem a permissão do Comercial (`sales.read`, 2.0.1 — sem
+ * ela, nem quem cuida dos chamados o vê); quem cuida dos chamados vê todos os outros; num painel
+ * "escolhidos", só as pessoas da lista; nos outros, quem vê chamados (os de Gestão) ou o Comercial (os de
+ * Vendas). A integração (robô, n8n) vê todos.
  */
-export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas'>, a: Ator): boolean {
-  if (a.tipo === 'integracao' || podeCuidar(a)) return true;
-  if (!podeVerChamados(a)) return false;
+export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>, a: Ator): boolean {
+  if (a.tipo === 'integracao') return true;
+  const vendas = p.tipo === 'vendas';
+  if (vendas && !podeVerVendas(a)) return false;
+  if (podeCuidar(a)) return true;
+  if (!vendas && !podeVerChamados(a)) return false;
   return p.acesso === 'todos' || p.pessoas.includes(a.id);
 }
 
@@ -104,7 +112,7 @@ export function podeVerPainel(p: Pick<Painel, 'acesso' | 'pessoas'>, a: Ator): b
  * Quem pode ser citado com @ numa anotação do painel: as pessoas ativas que veem o painel (quem não vê
  * receberia um aviso que não abre). Em ordem de nome.
  */
-export async function quemVeOPainel(db: Db, p: Pick<Painel, 'acesso' | 'pessoas'>): Promise<PessoaCurta[]> {
+export async function quemVeOPainel(db: Db, p: Pick<Painel, 'acesso' | 'pessoas' | 'tipo'>): Promise<PessoaCurta[]> {
   const us = await db.select({ id: users.id, name: users.name, permissions: roles.permissions }).from(users)
     .innerJoin(roles, eq(roles.id, users.roleId)).where(eq(users.active, true)).orderBy(asc(users.name));
   return us.filter((u) => podeVerPainel(p, atorDaPessoa(u))).map((u) => ({ id: u.id, nome: u.name }));
@@ -245,6 +253,14 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     origem: t.origin as Origem, reaberto: t.reopenCount,
     criadoEm: t.createdAt.toISOString(), atualizadoEm: t.updatedAt.toISOString(), ultimaAtividadeEm: t.lastActivityAt.toISOString(),
     resolvidoEm: iso(t.resolvedAt), fechadoEm: iso(t.closedAt),
+    // a negociação (painel de Vendas): nos outros painéis, tudo vazio
+    valor: t.valueCents ?? null, empresa: t.prospect ?? null,
+    // o valor por produto: só dos produtos que o cartão mostra (o painel que desligou os produtos não mostra a divisão)
+    valoresDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.productValues ?? {}).filter(([id]) => t.productIds.includes(id))) : {},
+    // a ativação (à parte: não soma no quadro nem na meta; o relatório tem as contas dela)
+    ativacao: t.setupCents ?? null,
+    ativacoesDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.productSetup ?? {}).filter(([id]) => t.productIds.includes(id))) : {},
+    resultado: e?.etapa.resultado ?? null, motivoPerda: e?.etapa.resultado === 'perdido' ? t.lostReason ?? null : null,
   };
 }
 

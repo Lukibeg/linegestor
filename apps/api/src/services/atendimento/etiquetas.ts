@@ -5,16 +5,16 @@
  * O catálogo (`ticket_tags`) guarda o nome e a cor de cada etiqueta; o chamado guarda os nomes
  * (`tickets.tags`), sempre escritos como no catálogo — "cliente VIP" escrito de novo vira a "Cliente VIP"
  * que já existe. A etiqueta nova nasce com a cor escolhida na tela (no Abrir chamado e na ficha), ou
- * cinza quando ninguém escolheu (o robô, a IA, a resposta pronta). Quem cuida dos chamados cria, edita
+ * cinza quando ninguém escolheu (o robô, a IA). Quem cuida dos chamados cria, edita
  * (o nome e a cor, no seletor de etiquetas e em Ajustes › Etiquetas: o pedido do Luan, "parecido com o
- * Helena") e tira a que nenhum chamado usa. O nome novo vale em todos os chamados e nas respostas
- * prontas que põem a etiqueta; o histórico dos chamados fica como foi.
+ * Helena") e tira a que nenhum chamado usa. O nome novo vale em todos os chamados; o histórico dos
+ * chamados fica como foi.
  *
  * O que cada pessoa vê para sugerir: as etiquetas usadas nos painéis que ela vê e as que nenhum chamado
  * usa ainda — a etiqueta de um painel que ela não vê não aparece (como antes do catálogo).
  */
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { newId, ticketMacros, ticketTags, tickets, type Db } from '@gestor/db';
+import { newId, ticketTags, tickets, type Db } from '@gestor/db';
 import {
   CORES_ETIQUETA, NOME_COR_ETIQUETA, chaveDaEtiqueta, etiquetasUnicas, renomearEtiqueta,
   type CorEtiqueta, type EtiquetaComCor, type EtiquetaDoCatalogo, type EtiquetaEditar, type EtiquetaGravar,
@@ -118,7 +118,7 @@ export async function criarEtiqueta(db: Db, d: EtiquetaGravar, pessoa: string | 
  * Editar uma etiqueta — o nome e a cor —, pelo id (Ajustes › Etiquetas) ou pelo nome de agora (o seletor
  * de etiquetas). A que só está nos chamados (escrita antes do catálogo) entra nele agora. O nome novo não
  * pode ser o de outra etiqueta (sem ligar para maiúscula e acento) e passa a valer nos chamados que têm a
- * etiqueta (os da lixeira também) e nas respostas prontas que a põem, tudo junto.
+ * etiqueta (os da lixeira também), tudo junto.
  */
 export async function editarEtiqueta(db: Db, alvo: { id: string } | { nome: string }, d: EtiquetaEditar, pessoa: string | null): Promise<Gravado<EtiquetaDoCatalogo>> {
   const r = await db.transaction(async (tx) => {
@@ -140,20 +140,13 @@ export async function editarEtiqueta(db: Db, alvo: { id: string } | { nome: stri
       if (outra) throw new Conflict(`A etiqueta ${outra.nome} já existe: escolha outro nome.`);
     }
     const [l] = await tx.update(ticketTags).set({ name: nome, nameKey: chave, color: d.cor, updatedAt: new Date() }).where(eq(ticketTags.id, antes.id)).returning();
-    // o nome novo nos chamados e nas respostas prontas (até a mudança só de maiúscula: "vip" vira "VIP")
+    // o nome novo nos chamados (até a mudança só de maiúscula: "vip" vira "VIP")
     let chamados = 0;
     if (nome !== antes.name) {
       const linhas = await tx.select({ id: tickets.id, tags: tickets.tags }).from(tickets).where(sql`cardinality(${tickets.tags}) > 0`);
       for (const t of linhas) {
         const nova = renomearEtiqueta(t.tags, antes.nameKey, nome);
         if (nova) { await tx.update(tickets).set({ tags: nova }).where(eq(tickets.id, t.id)); chamados += 1; }
-      }
-      const respostas = await tx.select({ id: ticketMacros.id, acao: ticketMacros.action }).from(ticketMacros);
-      for (const m of respostas) {
-        const acao = (m.acao ?? {}) as { etiqueta?: string | null };
-        if (acao.etiqueta && chaveDaEtiqueta(acao.etiqueta) === antes.nameKey && acao.etiqueta !== nome) {
-          await tx.update(ticketMacros).set({ action: { ...acao, etiqueta: nome }, updatedAt: new Date() }).where(eq(ticketMacros.id, m.id));
-        }
       }
     }
     return { antes, l: l!, chamados };

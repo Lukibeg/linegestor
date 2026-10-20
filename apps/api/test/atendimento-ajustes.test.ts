@@ -6,7 +6,8 @@
  *  - etapas: tirar a etapa com chamados pede o destino; com destino, os chamados mudam (os da lixeira
  *    também) e o histórico conta por quê; a etapa que muda de tipo leva as datas junto
  *  - assuntos: até 3 níveis, sem círculo, sem irmão repetido (sem acento e maiúscula), a lista colada
- *  - prazos; avisos: a chave vai para o cofre e nunca volta (nem na auditoria); o teste do WhatsApp
+ *  - prazos; avisos: a chave vai para o cofre e nunca volta (nem na auditoria); o teste do WhatsApp; o
+ *    WhatsApp de cada pessoa mora no usuário (2.0.1): conferido, pausado, e o aviso da equipe sai por ele
  *  - integrações: webhook só da internet, o segredo só ao criar (ou ao pedir um novo), o teste com a
  *    assinatura; a chave de API aparece uma vez (no banco, o sha256 e o começo) e é revogada
  *  - quem pode: o Operador não mexe nos ajustes; o Técnico não mexe nas integrações
@@ -587,10 +588,14 @@ describe('os avisos (o WhatsApp dos chamados)', () => {
   const avisos = (o: Record<string, unknown> = {}) => ({
     ativo: true, url: 'https://api.exemplo.com.br/chat/v1/message/send', usarChaveDoLineChat: false,
     numeroCliente: '(71) 3034-8350', numeroEquipe: '71 99999-0000', envioCliente: 'texto', modeloCliente: AVISOS_CHAMADOS_PADRAO.modeloCliente, template: null,
-    pessoas: [{ userId: marinaId, numero: '(71) 98888-7777', ativo: true }], eventos: EVENTOS_AVISO_PADRAO, ...o,
+    eventos: EVENTOS_AVISO_PADRAO, ...o,
   });
 
-  beforeAll(() => {
+  beforeAll(async () => {
+    // o WhatsApp da Marina, em Administração › Usuários (desde o 2.0.1 o número mora no usuário)
+    const r = await s.patch(`/admin/users/${marinaId}`, { whatsapp: '(71) 98888-7777' });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toMatchObject({ whatsapp: '5571988887777', whatsappAvisos: true });
     trocarFerramentasWhatsApp({
       fetchFn: (async (url: string, init: RequestInit) => {
         enviados.push({ url, corpo: JSON.parse(String(init.body)), auth: String((init.headers as Record<string, string>).Authorization) });
@@ -636,8 +641,30 @@ describe('os avisos (o WhatsApp dos chamados)', () => {
     expect(await integ.segredo(app.db, app.vault, 'atendimento-avisos')).toBe(chave);
   });
 
-  it('a pessoa da lista precisa existir', async () => {
-    expect((await s.put('/atendimento/ajustes/avisos', avisos({ pessoas: [{ userId: 'nao-existe', numero: '71988887777', ativo: true }] }))).statusCode).toBe(400);
+  it('os ajustes não guardam mais o número das pessoas (a lista antiga é ignorada): ele mora no usuário', async () => {
+    const r = await s.put('/atendimento/ajustes/avisos', avisos({ pessoas: [{ userId: brunoId, numero: '71977776666', ativo: true }] }));
+    expect(r.statusCode, r.body).toBe(200);
+    const [linha] = await app.db.select().from(settings).where(eq(settings.id, 'atendimento-avisos'));
+    expect(JSON.parse(linha!.value)).not.toHaveProperty('pessoas');
+    expect(r.json().pessoas.find((p: any) => p.userId === brunoId)).toMatchObject({ numero: '' });
+  });
+
+  it('o WhatsApp no usuário: conferido, só com os dígitos; vazio tira; a pausa fica com o número', async () => {
+    const ruim = await s.patch(`/admin/users/${brunoId}`, { whatsapp: '71 999' });
+    expect(ruim.statusCode).toBe(400);
+    expect(ruim.json().details[0].message).toBe('WhatsApp inválido: use DDD + número, como (71) 99999-0000.');
+    expect((await s.patch(`/admin/users/${brunoId}`, { whatsapp: '+55 71 97777-6666' })).json()).toMatchObject({ whatsapp: '5571977776666', whatsappAvisos: true });
+    // mexer em outra coisa não tira o número
+    expect((await s.patch(`/admin/users/${brunoId}`, { name: 'Bruno Técnico' })).json().whatsapp).toBe('5571977776666');
+    expect((await s.get('/admin/users')).json().find((u: any) => u.id === brunoId)).toMatchObject({ whatsapp: '5571977776666', whatsappAvisos: true });
+    // pausado: a tela dos avisos mostra que não recebe (com o número)
+    await s.patch(`/admin/users/${brunoId}`, { whatsappAvisos: false });
+    expect((await s.get('/atendimento/ajustes/avisos')).json().pessoas.find((p: any) => p.userId === brunoId)).toEqual({ userId: brunoId, nome: 'Bruno Técnico', numero: '5571977776666', ativo: false });
+    // vazio tira (e volta a receber quando tiver número de novo)
+    expect((await s.patch(`/admin/users/${brunoId}`, { whatsapp: '', whatsappAvisos: true })).json()).toMatchObject({ whatsapp: null, whatsappAvisos: true });
+    // só a administração mexe nos usuários
+    expect((await operador.patch(`/admin/users/${marinaId}`, { whatsapp: '71988880000' })).statusCode).toBe(403);
+    expect(await auditoria()).toContain('Editou o usuário Bruno Técnico');
   });
 
   it('testar manda a mensagem para a pessoa e guarda o resultado', async () => {
@@ -663,8 +690,30 @@ describe('os avisos (o WhatsApp dos chamados)', () => {
     falhar = false;
 
     // quem não tem número guardado: 400 (nada sai)
-    expect((await s.post('/atendimento/ajustes/avisos/testar', { userId: brunoId })).statusCode).toBe(400);
+    const semNumero = await s.post('/atendimento/ajustes/avisos/testar', { userId: brunoId });
+    expect(semNumero.statusCode).toBe(400);
+    expect(semNumero.json().error).toBe('Essa pessoa não tem WhatsApp. Ponha o número dela em Administração › Usuários antes de testar.');
     expect(enviados).toHaveLength(3);
+  });
+
+  it('o aviso da equipe sai pelo WhatsApp do usuário; pausado, só na tela', async () => {
+    const antes = enviados.length;
+    const um = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Aviso pelo WhatsApp', responsavelId: marinaId });
+    expect(um.statusCode, um.body).toBe(201);
+    await esperarSegundoPlano();
+    const novos = enviados.slice(antes);
+    expect(novos).toHaveLength(1);
+    expect(novos[0]!.corpo).toMatchObject({ from: '5571999990000', to: '5571988887777' });
+    expect(novos[0]!.corpo.body.text).toContain(`Você recebeu o chamado ${um.json().codigo}`);
+    expect(eventos(await ficha(um.json().codigo), 'aviso_equipe').at(-1).dados).toMatchObject({ para: 'Marina Costa', ok: true });
+
+    // pausada: o aviso fica só na tela (o sininho), e nada sai pelo WhatsApp
+    await s.patch(`/admin/users/${marinaId}`, { whatsappAvisos: false });
+    const dois = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Aviso com a pausa', responsavelId: marinaId });
+    await esperarSegundoPlano();
+    expect(enviados).toHaveLength(antes + 1);
+    expect((await operador.get('/atendimento/avisos')).json().itens.map((a: any) => a.texto)).toContain(`Você recebeu o chamado ${dois.json().codigo}`);
+    await s.patch(`/admin/users/${marinaId}`, { whatsappAvisos: true });
   });
 
   it('o modelo aprovado: as variáveis, o arquivo e quem fica com a conversa são conferidos ao salvar', async () => {

@@ -1,5 +1,5 @@
 /**
- * Chamados › Ajustes (Patch 2.0) — Avisos e WhatsApp.
+ * Painéis › Ajustes (Patch 2.0) — Avisos e WhatsApp.
  *
  * Dois números, os dois ligados no LineChat: o oficial, pelo qual o cliente recebe o que o atendente
  * manda (e só quando ele manda — a escolha do Luan), e um não oficial, pelo qual a equipe recebe os
@@ -7,18 +7,19 @@
  * mensagens, a chave (a do LineChat ou uma própria, que vai para o cofre e nunca volta para a tela),
  * os dois números e o teste; a mensagem ao cliente — pelo modelo aprovado do WhatsApp oficial (o
  * template: o pedido do Luan, "vou usar o meu WhatsApp oficial, então temos que usar os templates"),
- * com as variáveis ligadas ao chamado, ou em texto livre —; o WhatsApp de cada pessoa da equipe — o
- * pedido dele: "definir os números dos colaboradores que vão receber essas notificações" — e quais
- * avisos vão por onde (na tela, no WhatsApp).
+ * com as variáveis ligadas ao chamado, ou em texto livre —; e quais avisos vão por onde (na tela, no
+ * WhatsApp). O WhatsApp de cada pessoa da equipe mora no usuário desde o 2.0.1 (Administração ›
+ * Usuários — o pedido do Luan: "n precisa de uma parte só pra isso"); aqui só se conta quem recebe.
  *
  * As peças dos cartões de ajustes (o cartão, a explicação, o resultado de um teste, a última vez, os
- * marcadores do texto e a prévia da mensagem) moram aqui e servem também às outras telas de ajustes
- * dos chamados (Respostas prontas, Agendados e Integrações), para as quatro falarem do mesmo jeito.
+ * marcadores do texto, a prévia da mensagem e o copiar dos endereços e dos exemplos) moram aqui e servem
+ * também às outras telas de ajustes dos chamados (Agendados e Integrações), para as três falarem do
+ * mesmo jeito.
  */
 import { useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, CheckCircle2, Download, FileImage, KeyRound, MessageCircle, MessageSquareText, Plus, Send, TriangleAlert, Users, X } from 'lucide-react';
+import { BellRing, Check, CheckCircle2, Copy, Download, FileImage, KeyRound, MessageCircle, MessageSquareText, Plus, Send, TriangleAlert, Users, X } from 'lucide-react';
 import {
   EVENTOS_AVISO, NOME_EVENTO_AVISO, NOME_TIPO_ARQUIVO_DO_MODELO, TIPOS_ARQUIVO_DO_MODELO, mensagemPreenchida, numeroWhatsApp, preencherModelo,
   valorSugeridoDaVariavel,
@@ -27,7 +28,7 @@ import {
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
-import { Campo, Carregando, Chip, Spinner, Toggle, mensagemErro, usePaginaLocal, useToast } from '../../../components/ui/index.js';
+import { Campo, Carregando, Chip, Spinner, Toggle, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { useAuth } from '../../../lib/auth.js';
 import { TdN, ThN, contar } from '../../../lib/contagem.js';
 import { data } from '../../../lib/format.js';
@@ -115,8 +116,43 @@ export function Interruptor({ ligado, onChange, rotulo, desativado = false }: { 
   );
 }
 
-/** "Ana, José e Carla". */
-export const emLista = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`);
+/** Copiar com o nome escrito no botão: quem vai colar no LineChat ou no n8n precisa achar o botão. */
+export function BotaoCopiar({ texto, rotulo = 'Copiar', id }: { texto: string; rotulo?: string; id?: string }) {
+  const toast = useToast();
+  const [copiou, setCopiou] = useState(false);
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiou(true);
+      window.setTimeout(() => setCopiou(false), 2000);
+    } catch { toast.push('erro', 'O navegador não deixou copiar: selecione o texto e copie com Ctrl+C.'); }
+  };
+  return (
+    <button type="button" id={id} className="btn-ghost btn-sm shrink-0" title={rotulo} aria-label={rotulo} onClick={() => void copiar()}>
+      {copiou ? <><Check size={13} className="text-ok" /> Copiado</> : <><Copy size={13} /> Copiar</>}
+    </button>
+  );
+}
+
+/** Um endereço (ou um cabeçalho) inteiro, quebrando onde precisar, com o Copiar ao lado. */
+export function Copiavel({ texto, rotulo, id }: { texto: string; rotulo: string; id?: string }) {
+  return (
+    <div className="flex items-start gap-1 rounded-lg border border-line bg-surface-2 pl-3 pr-1 py-1 min-w-0">
+      <code id={id} className="font-mono text-[12.5px] text-ink break-all flex-1 min-w-0 py-1">{texto}</code>
+      <BotaoCopiar texto={texto} rotulo={`Copiar ${rotulo}`} />
+    </div>
+  );
+}
+
+/** Um JSON de exemplo, com o Copiar no canto. Rola para o lado dentro dele (a página não). */
+export function BlocoDeCodigo({ texto, rotulo, id, className = '' }: { texto: string; rotulo: string; id?: string; className?: string }) {
+  return (
+    <div className="relative rounded-lg border border-line bg-surface-2 min-w-0">
+      <pre id={id} className={`font-mono text-[12px] leading-relaxed text-ink p-3 pr-24 overflow-x-auto whitespace-pre ${className}`}>{texto}</pre>
+      <span className="absolute top-1 right-1"><BotaoCopiar texto={texto} rotulo={`Copiar ${rotulo}`} /></span>
+    </div>
+  );
+}
 
 export type Marcador = { chave: string; dica: string };
 
@@ -189,13 +225,12 @@ const VALORES_DA_VARIAVEL: Array<{ valor: string; nome: string }> = [
 ];
 const TEXTO_FIXO = '__fixo';
 
-type PessoaForm = { userId: string; nome: string; numero: string; ativo: boolean };
 type VariavelForm = { nome: string; valor: string };
 type ModeloForm = { id: string; nome: string; texto: string; variaveis: VariavelForm[]; tipoArquivo: TipoArquivoDoModelo; arquivo: string };
 type Form = {
   ativo: boolean; url: string; usarChaveDoLineChat: boolean; numeroCliente: string; numeroEquipe: string;
   envioCliente: EnvioAoCliente; modeloCliente: string; template: ModeloForm; equipeLineChat: string; atribuirAQuemManda: boolean;
-  pessoas: PessoaForm[]; eventos: Record<EventoAviso, CanaisDoAviso>;
+  eventos: Record<EventoAviso, CanaisDoAviso>;
 };
 const SEM_MODELO: ModeloForm = { id: '', nome: '', texto: '', variaveis: [], tipoArquivo: 'UNDEFINED', arquivo: '' };
 
@@ -209,7 +244,6 @@ const doServidor = (a: AvisosChamadosTela): Form => ({
     variaveis: (a.template.variaveis ?? []).map((v) => ({ nome: v.nome, valor: v.valor })),
   } : SEM_MODELO,
   equipeLineChat: a.equipeLineChat ?? '', atribuirAQuemManda: !!a.atribuirAQuemManda,
-  pessoas: a.pessoas.map((p) => ({ userId: p.userId, nome: p.nome, numero: telefoneLegivel(p.numero), ativo: p.ativo })),
   eventos: Object.fromEntries(EVENTOS_AVISO.map((e) => [e, { tela: a.eventos[e]?.tela ?? true, whatsapp: a.eventos[e]?.whatsapp ?? false }])) as Record<EventoAviso, CanaisDoAviso>,
 });
 
@@ -229,10 +263,7 @@ function oQueFalta(a: AvisosChamadosTela, numero: string, cliente = false): stri
  * que ele faz calado e que a tela precisa dizer: o número de quem envia que não é WhatsApp vira vazio
  * ao salvar, e a mensagem sem o {texto} mandaria ao cliente tudo, menos o que o atendente escreveu.
  */
-function conferir(f: Form, chave: string, inicial: AvisosChamadosTela): { geral: string | null; pessoas: Record<string, string> } {
-  const pessoas: Record<string, string> = {};
-  for (const p of f.pessoas) if (p.numero.trim() && !numeroWhatsApp(p.numero)) pessoas[p.userId] = 'não é um WhatsApp: use DDD + número';
-  const erradas = f.pessoas.filter((p) => pessoas[p.userId]).map((p) => p.nome);
+function conferir(f: Form, chave: string, inicial: AvisosChamadosTela): string | null {
   let urlOk = false;
   try { const u = new URL(f.url.trim()); urlOk = u.protocol === 'https:' || u.protocol === 'http:'; } catch { /* fica falso */ }
   const t = f.template;
@@ -246,10 +277,9 @@ function conferir(f: Form, chave: string, inicial: AvisosChamadosTela): { geral:
               : nomes.some((n) => !n) ? 'Cada variável do modelo precisa do nome (como está no LineChat).'
                 : new Set(nomes).size !== nomes.length ? 'Uma variável do modelo está repetida.'
                   : t.arquivo.trim() && !/^https:\/\/\S+$/i.test(t.arquivo.trim()) ? 'O arquivo do cabeçalho do modelo precisa de um endereço com https://.'
-                    : erradas.length ? `Confira o WhatsApp de ${emLista(erradas)}: use DDD + número, como (71) 99999-0000.`
-                      : f.ativo && !f.usarChaveDoLineChat && !inicial.temChavePropria && !chave.trim() ? 'Cole a chave própria da API (ou escolha usar a chave do LineChat).'
-                        : null;
-  return { geral, pessoas };
+                    : f.ativo && !f.usarChaveDoLineChat && !inicial.temChavePropria && !chave.trim() ? 'Cole a chave própria da API (ou escolha usar a chave do LineChat).'
+                      : null;
+  return geral;
 }
 
 export function AjustesAvisos() {
@@ -265,21 +295,15 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
   const [chave, setChave] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [errosPessoas, setErrosPessoas] = useState<Record<string, string>>({});
   const chaveNova = !f.usarChaveDoLineChat && !!chave.trim();
   const mudou = JSON.stringify(f) !== JSON.stringify(doServidor(inicial)) || chaveNova;
   const mudar = (m: Partial<Form>) => { setF((x) => ({ ...x, ...m })); setErro(null); };
-  const mudarPessoa = (userId: string, m: Partial<PessoaForm>) => {
-    setF((x) => ({ ...x, pessoas: x.pessoas.map((p) => (p.userId === userId ? { ...p, ...m } : p)) }));
-    setErrosPessoas(({ [userId]: _, ...resto }) => resto);
-    setErro(null);
-  };
-  const recebem = f.pessoas.filter((p) => numeroWhatsApp(p.numero) && p.ativo).length;
+  // quem recebe no WhatsApp: o número (e a pausa) de cada um mora em Administração › Usuários
+  const recebem = inicial.pessoas.filter((p) => p.numero && p.ativo).length;
 
   const salvar = async () => {
-    const c = conferir(f, chave, inicial);
-    setErrosPessoas(c.pessoas);
-    if (c.geral) { setErro(c.geral); return; }
+    const problema = conferir(f, chave, inicial);
+    if (problema) { setErro(problema); return; }
     setSalvando(true); setErro(null);
     try {
       const t = f.template;
@@ -293,7 +317,6 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
           variaveis: t.variaveis.map((v) => ({ nome: v.nome.trim(), valor: v.valor.trim() })),
         } : null,
         equipeLineChat: f.equipeLineChat.trim(), atribuirAQuemManda: f.atribuirAQuemManda,
-        pessoas: f.pessoas.map((p) => ({ userId: p.userId, numero: p.numero.trim(), ativo: p.ativo })),
         eventos: f.eventos,
       };
       const novo = await api.atendimento.salvarAvisos(entrada);
@@ -400,27 +423,24 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
         {/* ---------- a mensagem ao cliente: o modelo aprovado (o template) ou o texto livre ---------- */}
         <CartaoMensagemAoCliente f={f} mudar={mudar} />
 
-        {/* ---------- as pessoas ---------- */}
-        <CartaoAjuste icone={<Users size={18} />} titulo="Quem da equipe recebe no WhatsApp"
-          situacao={<span className="text-[12.5px] text-muted tnum" id="avisos-recebem">{recebem} de {f.pessoas.length} {f.pessoas.length === 1 ? 'pessoa recebe' : 'pessoas recebem'}</span>}>
-          <Explicacao>
-            <p>
-              O WhatsApp de cada pessoa. Ela recebe os avisos dela (o chamado que recebeu, o prazo vencendo, o Crítico que chegou) pelo
-              número da equipe. Sem número, a pessoa vê os avisos só na tela. Pausada, fica com o número guardado, mas não recebe.
-            </p>
-          </Explicacao>
-          <TabelaPessoas pessoas={f.pessoas} salvas={inicial.pessoas} erros={errosPessoas} onMudar={mudarPessoa} />
-        </CartaoAjuste>
-
         {/* ---------- quais avisos vão por onde ---------- */}
         <CartaoAjuste icone={<BellRing size={18} />} titulo="Quais avisos vão por onde">
           <Explicacao>
             <p>
               Cada aviso vai para quem está escrito embaixo dele. Na tela, ele chega no sininho e num cartão no canto da tela; quem quiser
               recebe também no navegador, mesmo com o Gestor em outra aba (cada pessoa liga no sininho, em cada computador). No WhatsApp,
-              vai pelo número da equipe, para quem tem o número na lista de cima.
+              vai pelo número da equipe, para quem tem o WhatsApp no cadastro do usuário.
             </p>
           </Explicacao>
+          {/* o WhatsApp de cada pessoa saiu daqui no 2.0.1: mora no usuário */}
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12.5px] text-muted mb-2" id="avisos-recebem">
+            <Users size={13} aria-hidden />
+            <span className="tnum">{recebem} de {inicial.pessoas.length} {inicial.pessoas.length === 1 ? 'pessoa recebe' : 'pessoas recebem'} no WhatsApp.</span>
+            <span>
+              O número de cada uma fica em{' '}
+              {pode.integrar ? <Link className="link" to="/admin/usuarios">Administração › Usuários</Link> : 'Administração › Usuários'}.
+            </span>
+          </p>
           {!f.ativo && <p className="text-[12.5px] text-signal mb-2">O WhatsApp está desligado: por enquanto vale só a tela.</p>}
           <TabelaEventos eventos={f.eventos} salvos={doServidor(inicial).eventos} onMudar={(e, c) => mudar({ eventos: { ...f.eventos, [e]: c } })} />
         </CartaoAjuste>
@@ -437,54 +457,6 @@ function TelaAvisos({ inicial }: { inicial: AvisosChamadosTela }) {
         </div>
       </form>
     </div>
-  );
-}
-
-// ---------- as pessoas da equipe ----------
-
-function TabelaPessoas({ pessoas, salvas, erros, onMudar }: { pessoas: PessoaForm[]; salvas: AvisosChamadosTela['pessoas']; erros: Record<string, string>; onMudar: (userId: string, m: Partial<PessoaForm>) => void }) {
-  const o = useOrdenacaoLocal('nome');
-  // a ordem segue o que está SALVO: a linha não pula de lugar enquanto a pessoa digita o número
-  const salva = new Map(salvas.map((p) => [p.userId, p]));
-  const ordenadas = ordenarLista(pessoas, o, {
-    nome: (p) => p.nome,
-    numero: (p) => salva.get(p.userId)?.numero || null,
-    ativo: (p) => { const s = salva.get(p.userId); return s?.numero ? (s.ativo ? 0 : 1) : null; },
-  });
-  const pag = usePaginaLocal(ordenadas, 100);
-  if (!pessoas.length) return <p className="text-[13px] text-muted">Nenhuma pessoa ativa no sistema.</p>;
-  return (
-    <>
-      <div className="overflow-x-auto rounded-xl border border-line">
-        {/* células mais justas: no celular, o número e o "recebe" cabem sem precisar rolar a tabela */}
-        <table className="table [&_td]:px-2.5 [&_th]:px-2.5" id="avisos-pessoas">
-          <thead><tr><ThN /><Th o={o} col="nome">Pessoa</Th><Th o={o} col="numero">WhatsApp</Th><Th o={o} col="ativo">Recebe</Th></tr></thead>
-          <tbody>
-            {pag.visiveis.map((p, i) => {
-              const erro = erros[p.userId];
-              return (
-                <tr key={p.userId}>
-                  <TdN n={pag.numero(i)} />
-                  <td className="font-medium min-w-[90px]">{p.nome}</td>
-                  <td className="min-w-[160px] w-[45%]">
-                    <input className={`input font-mono text-[13px] py-1.5 ${erro ? 'border-bad' : ''}`} inputMode="tel" placeholder="(71) 99999-0000"
-                      aria-label={`WhatsApp de ${p.nome}`} aria-invalid={!!erro} value={p.numero}
-                      onChange={(e) => onMudar(p.userId, { numero: e.target.value })} onBlur={(e) => onMudar(p.userId, { numero: arrumarNumero(e.target.value) })} />
-                    {erro && <div className="text-bad text-[12px] mt-0.5">{erro}</div>}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    {p.numero.trim()
-                      ? <Toggle checked={p.ativo} onChange={(v) => onMudar(p.userId, { ativo: v })} label={p.ativo ? 'recebe' : 'pausada'} />
-                      : <span className="text-[12.5px] text-muted">sem número</span>}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {pag.rodape}
-    </>
   );
 }
 
@@ -599,7 +571,7 @@ function ParteDoTeste({ inicial, mudou }: { inicial: AvisosChamadosTela; mudou: 
           </button>
         </div>
         {mudou && <p className="text-[12.5px] text-signal -mt-1">Salve antes de testar: o teste usa o que está salvo.</p>}
-        {!comNumero.length && <p className="text-[12.5px] text-muted -mt-1">Ninguém da equipe tem o WhatsApp salvo ainda: escolha "Outro número…", ou ponha o número da pessoa na lista e salve.</p>}
+        {!comNumero.length && <p className="text-[12.5px] text-muted -mt-1">Ninguém da equipe tem o WhatsApp ainda: escolha "Outro número…", ou ponha o número da pessoa em Administração › Usuários.</p>}
         {!numeroDe && <p className="text-[12.5px] text-muted -mt-1">Falta o número {de === 'cliente' ? 'para o cliente' : 'para a equipe'}: o teste vai dizer isso.</p>}
       </div>
       <Resultado r={res} />
@@ -646,8 +618,7 @@ function CartaoMensagemAoCliente({ f, mudar }: { f: Form; mudar: (m: Partial<For
       situacao={peloModelo ? (t.id ? <Chip tone="ok">pelo modelo {t.nome || 'aprovado'}</Chip> : <Chip tone="signal">falta escolher o modelo</Chip>) : <Chip tone="muted">texto livre</Chip>}>
       <Explicacao>
         <p>
-          O que chega ao cliente quando o atendente manda: no "Avisar o cliente" da ficha, nas respostas prontas que mandam ao cliente e no
-          número do chamado ao abrir. O WhatsApp oficial só começa uma conversa com um <b>modelo aprovado</b> pela Meta — o template, que fica no
+          O que chega ao cliente quando o atendente manda: no "Avisar o cliente" da ficha e no número do chamado ao abrir. O WhatsApp oficial só começa uma conversa com um <b>modelo aprovado</b> pela Meta — o template, que fica no
           LineChat (Ajustes › Modelos de mensagem). Cada variável do modelo recebe um valor do chamado; a do <i>o que o atendente escreveu</i> leva a mensagem dele.
         </p>
       </Explicacao>

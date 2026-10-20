@@ -113,6 +113,34 @@
       "when": 1791668676525,
       "tag": "0015_chamados_do_gestor",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792157517803,
+      "tag": "0016_whatsapp_dos_usuarios",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792188643217,
+      "tag": "0017_calendario",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1792257652553,
+      "tag": "0018_vendas",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1792434532705,
+      "tag": "0019_comercial",
+      "breakpoints": true
     }
   ]
 }

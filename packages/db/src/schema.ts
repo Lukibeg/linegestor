@@ -8,6 +8,7 @@
  *  Grupos: 1. Clientes e produtos · 2. Numeração · 3. Inventário · 4. Segurança e histórico · 5. Novidades
  *          6. Projetos · 7. Chamados do LineChat (cópia só de leitura, alimentada pela sincronização)
  *          8. Base de conhecimento · 9. Portal do cliente · 10. Chamados do Gestor (o módulo que substitui o painel do LineChat)
+ *          11. Calendário (as visitas, as viradas, as folgas e os home offices de cada equipe)
  *
  *  Convenções:
  *   - dinheiro é guardado em CENTAVOS inteiros (R$ 603,38 → 60338), sem arredondamento
@@ -17,7 +18,7 @@
  *   - toda tabela tem `id` em texto (cuid), gerado pela aplicação
  * =====================================================================
  */
-import { boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
+import { bigint, boolean, check, index, integer, jsonb, pgTable, serial, text, timestamp, uniqueIndex, type AnyPgColumn } from 'drizzle-orm/pg-core';
 import { relations, sql } from 'drizzle-orm';
 
 const id = () => text('id').primaryKey();
@@ -594,6 +595,15 @@ export const users = pgTable('users', {
    * por isso mora aqui, e não no cliente. O atalho "SSH" da ficha usa este usuário.
    */
   sshUser: text('ssh_user'),
+  /**
+   * O WhatsApp desta pessoa, só os dígitos com o 55 (5571999990000). Por ele chegam os avisos dos
+   * chamados (o chamado que recebeu, o prazo vencendo, o Crítico), pelo número da equipe. Vazio = os
+   * avisos só na tela. Fica em Administração › Usuários desde o 2.0.1 (no 2.0 morava nos Ajustes dos
+   * chamados — o pedido do Luan: "pode ficar na parte de usuários que já existe").
+   */
+  whatsapp: text('whatsapp'),
+  /** Recebe os avisos dos chamados no WhatsApp. Desligado (pausado), o número fica guardado e nada sai. */
+  whatsappAvisos: boolean('whatsapp_avisos').notNull().default(true),
   /** Última vez que entrou */
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   /**
@@ -621,7 +631,7 @@ export const users = pgTable('users', {
  *    do Google, o token da API de avisos, a chave do LineChat, o token da FlwChat e a chave da IA
  */
 export const settings = pgTable('settings', {
-  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe, os números das pessoas e quais avisos vão por onde; a chave própria no cofre, 2.0) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) */
+  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe e quais avisos vão por onde; a chave própria no cofre, 2.0 — o número de cada pessoa mora no usuário desde o 2.0.1) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) | 'atendimento-robo' (o mapa do robô do LineChat: de onde vem cada campo do chamado no JSON que o robô manda, 2.0.1) | 'atendimento-robo-ultimo' (o último pedido do robô, com o que aconteceu: a tela do mapa mostra as variáveis dele, 2.0.1) */
   id: text('id').primaryKey(),
   value: text('value').notNull().default('{}'),
   secretId: text('secret_id').references(() => secrets.id),
@@ -1465,6 +1475,8 @@ export const ticketPanels = pgTable(
     description: text('description'),
     /** A cor do painel na tela (um dos tons dos chips: accent, roxo, turquesa…) */
     color: text('color').notNull().default('accent'),
+    /** gestao (os chamados) ou vendas (as negociações do comercial, 2.0.1, decisão 0050) — não muda depois de criado */
+    kind: text('kind').notNull().default('gestao'),
     sortOrder: integer('sort_order').notNull().default(0),
     /** O próximo número da sequência (SUP-1, SUP-2…): nunca volta, nem depois da lixeira */
     nextNumber: integer('next_number').notNull().default(1),
@@ -1502,6 +1514,8 @@ export const ticketStages = pgTable(
     requiredFields: text('required_fields').array().notNull().default([]),
     /** Quem recebe o aviso quando um chamado chega nesta etapa (ids de pessoas) */
     notifyUserIds: text('notify_user_ids').array().notNull().default([]),
+    /** No painel de Vendas: ganho ou perdido (a etapa final que diz como a negociação acabou); nas outras, nulo */
+    outcome: text('outcome'),
     createdAt: createdAt(),
     deletedAt: deletedAt(),
   },
@@ -1640,6 +1654,21 @@ export const tickets = pgTable(
     lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).notNull().defaultNow(),
     /** O agendado que criou este chamado */
     scheduleId: text('schedule_id'),
+    /**
+     * A negociação (painel de Vendas, 2.0.1): o valor — a MENSALIDADE —, em centavos (até R$ 100 milhões:
+     * não cabe num integer). É o que conta no quadro, no relatório e na meta.
+     */
+    valueCents: bigint('value_cents', { mode: 'number' }),
+    /** A negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, value_cents é a soma */
+    productValues: jsonb('product_values').$type<Record<string, number>>().notNull().default({}),
+    /** A negociação: a ATIVAÇÃO (paga uma vez), em centavos — à parte: não soma no quadro nem na meta; o relatório tem as contas dela */
+    setupCents: bigint('setup_cents', { mode: 'number' }),
+    /** A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma */
+    productSetup: jsonb('product_setup').$type<Record<string, number>>().notNull().default({}),
+    /** A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) */
+    prospect: text('prospect'),
+    /** Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) */
+    lostReason: text('lost_reason'),
     createdById: text('created_by_id').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1923,6 +1952,58 @@ export const ticketApiKeys = pgTable(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
   },
   (t) => [uniqueIndex('ticket_api_keys_hash_uq').on(t.hash)],
+);
+
+// ---------------------------------------------------------------------
+// 11. CALENDÁRIO (decisão 0049, Patch 2.0.1, migração 0017)
+// ---------------------------------------------------------------------
+// As visitas, as viradas de sistema e para a nuvem, as folgas, os home offices e as ações no cliente
+// de cada equipe. O pedido do Luan: "quero criar um módulo de calendário, para eu poder controlar com
+// minha equipe… tem que ser integrado com os painéis". Cada evento é de um ou mais painéis (os dos
+// chamados) e quem vê é quem vê o painel — a mesma regra dos chamados. Os tipos (Visita, Folga…), com
+// nome e cor, ficam em `settings.calendario`; as regras, em `packages/shared/src/calendario.ts`.
+
+/** Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual cliente e quando. */
+export const calendarEvents = pgTable(
+  'calendar_events',
+  {
+    id: id(),
+    /** O que acontece ("Virada para nuvem — Clínica Aurora") */
+    title: text('title').notNull(),
+    /** O tipo (o id de um dos tipos de `settings.calendario`: visita, folga…) */
+    typeId: text('type_id').notNull(),
+    /** Os painéis (as equipes) do evento: quem vê um deles vê o evento */
+    panelIds: text('panel_ids').array().notNull().default([]),
+    /** As pessoas do evento (quem vai na visita, quem está de folga) */
+    participantIds: text('participant_ids').array().notNull().default([]),
+    clientId: text('client_id').references(() => clients.id),
+    /** O chamado que pediu o evento (a visita do SUP-12) */
+    ticketId: text('ticket_id').references(() => tickets.id),
+    /** O primeiro dia (AAAA-MM-DD, o dia do calendário: não tem fuso) */
+    startsOn: text('starts_on').notNull(),
+    /** O último dia (o mesmo do primeiro num evento de um dia só) */
+    endsOn: text('ends_on').notNull(),
+    /** Dia inteiro, sem hora (a folga, a virada que leva o dia) */
+    allDay: boolean('all_day').notNull().default(true),
+    /** A hora de começar e de terminar (HH:MM, a de Brasília), quando não é o dia inteiro */
+    startTime: text('start_time'),
+    endTime: text('end_time'),
+    /** Onde (o endereço da visita, "remoto") */
+    location: text('location'),
+    notes: text('notes'),
+    /** agendado | feito | cancelado (cancelar não apaga: fica riscado no calendário) */
+    status: text('status').notNull().default('agendado'),
+    createdById: text('created_by_id').references(() => users.id),
+    updatedById: text('updated_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [
+    index('calendar_events_periodo_idx').on(t.startsOn, t.endsOn),
+    index('calendar_events_ticket_idx').on(t.ticketId),
+    check('calendar_events_periodo_ck', sql`${t.endsOn} >= ${t.startsOn}`),
+  ],
 );
 
 // ---------------------------------------------------------------------

@@ -9,7 +9,7 @@ import {
   prioridadeSugeridaDoPainel, textoDoValor, textosDosCampos,
   valoresVisiveis, type CampoPersonalizado,
   caminhoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
-  lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes, pareceAgradecimento,
+  lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes,
   pedacosComReferencias, preencherModelo, referenciasNoTexto, resumoDosPaineis, textoDeBusca, textoDoEvento, trajetoria, linkDaConversa,
   type CartaoChamado, type CartaoParaLista, type DadosObrigatorios, type EtapaPainel, type NoParaGrafo,
   chaveDaEtiqueta, corDaEtiqueta, etiquetasUnicas, renomearEtiqueta, EtiquetaEditarPeloNomeSchema,
@@ -115,11 +115,11 @@ describe('o chamado agendado', () => {
 });
 
 const etapas: EtapaPainel[] = [
-  { id: 'novo', nome: 'Novo', tipo: 'entrada', nivel: null, obrigatorios: [], avisar: [] },
-  { id: 'n1', nome: 'N1', tipo: 'andamento', nivel: 1, obrigatorios: ['cliente', 'relato'], avisar: [] },
-  { id: 'n2', nome: 'N2', tipo: 'andamento', nivel: 2, obrigatorios: ['cliente', 'relato', 'assunto'], avisar: [] },
-  { id: 'res', nome: 'Resolvido', tipo: 'resolvido', nivel: null, obrigatorios: ['solucao', 'causa'], avisar: [] },
-  { id: 'fec', nome: 'Fechado', tipo: 'fechado', nivel: null, obrigatorios: ['solucao', 'causa', 'checklist'], avisar: [] },
+  { id: 'novo', nome: 'Novo', tipo: 'entrada', nivel: null, obrigatorios: [], avisar: [], resultado: null },
+  { id: 'n1', nome: 'N1', tipo: 'andamento', nivel: 1, obrigatorios: ['cliente', 'relato'], avisar: [], resultado: null },
+  { id: 'n2', nome: 'N2', tipo: 'andamento', nivel: 2, obrigatorios: ['cliente', 'relato', 'assunto'], avisar: [], resultado: null },
+  { id: 'res', nome: 'Resolvido', tipo: 'resolvido', nivel: null, obrigatorios: ['solucao', 'causa'], avisar: [], resultado: null },
+  { id: 'fec', nome: 'Fechado', tipo: 'fechado', nivel: null, obrigatorios: ['solucao', 'causa', 'checklist'], avisar: [], resultado: null },
 ];
 const dados = (d: Partial<DadosObrigatorios> = {}): DadosObrigatorios => ({
   tipoChamado: 'chamado', clienteId: 'c1', contatoNome: null, contatoTelefone: null, relato: 'Ramal mudo', descricao: null, assuntoId: null, tipo: null,
@@ -184,8 +184,8 @@ describe('as etapas', () => {
     expect(ETAPAS_DO_PAINEL_NOVO.map((e) => e.nome)).toEqual(['Novo', 'Em andamento', 'Resolvido', 'Fechado']);
     const ok = PainelGravarSchema.parse({ ...painel, etapas: [{ nome: ' Pedido ', tipo: 'entrada' }, { nome: 'Encerrado', tipo: 'fechado' }] });
     expect(ok.etapas).toEqual([
-      { nome: 'Pedido', tipo: 'entrada', nivel: null, obrigatorios: [], avisar: [] },
-      { nome: 'Encerrado', tipo: 'fechado', nivel: null, obrigatorios: [], avisar: [] },
+      { nome: 'Pedido', tipo: 'entrada', nivel: null, obrigatorios: [], resultado: null, avisar: [] },
+      { nome: 'Encerrado', tipo: 'fechado', nivel: null, obrigatorios: [], resultado: null, avisar: [] },
     ]);
     expect(mensagem(PainelGravarSchema.safeParse({ ...painel, etapas: [{ nome: 'Pedido', tipo: 'entrada' }, { nome: 'Fazendo', tipo: 'andamento' }] })))
       .toBe('Pelo menos uma etapa precisa fechar o chamado');
@@ -305,15 +305,6 @@ describe('os campos de cada painel', () => {
   });
 });
 
-describe('o cliente respondeu ao Resolvido', () => {
-  it('agradecer ou confirmar não reabre', () => {
-    for (const t of ['Obrigado!', 'ok, funcionou 👍', 'Valeu, deu certo', 'blz', '👍', 'boa tarde, obrigada pela ajuda', 'pode fechar']) expect(pareceAgradecimento(t), t).toBe(true);
-  });
-  it('qualquer outra coisa reabre (na dúvida, reabre)', () => {
-    for (const t of ['ainda está caindo', 'obrigado, mas continua sem áudio', 'funcionou?', 'o ramal 203 voltou a ficar mudo']) expect(pareceAgradecimento(t), t).toBe(false);
-  });
-});
-
 describe('o código e as referências no texto', () => {
   it('lê o código de vários jeitos', () => {
     expect(lerCodigo('sup-12')).toEqual({ sigla: 'SUP', numero: 12 });
@@ -380,7 +371,8 @@ const cartao = (d: Partial<CartaoChamado> = {}, relato = 'o cliente disse que o 
     gravidade: null, alcance: null, tipo: null, assunto: null, produtos: [], operadoras: [], etiquetas: [], campos: {}, espera: null,
     prazos: { resposta: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' }, solucao: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' } },
     pai: null, problema: null, filhos: { total: 0, abertos: 0 }, incidentes: 0, anotacoes: 0, origem: 'manual', reaberto: 0,
-    criadoEm: '2026-10-13T12:00:00.000Z', atualizadoEm: '2026-10-13T12:00:00.000Z', ultimaAtividadeEm: '2026-10-13T12:00:00.000Z', resolvidoEm: null, fechadoEm: null, ...d,
+    criadoEm: '2026-10-13T12:00:00.000Z', atualizadoEm: '2026-10-13T12:00:00.000Z', ultimaAtividadeEm: '2026-10-13T12:00:00.000Z', resolvidoEm: null, fechadoEm: null,
+    valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ...d,
   };
   return { ...c, busca: textoDeBusca(c, [relato]) };
 };
@@ -442,14 +434,14 @@ describe('a tela inicial: os números de cada painel', () => {
     expect(r).toEqual({
       painelId: 'p', abertos: 3, meus: 1, semDono: 1, vencidos: 1, perto: 1, esperando: 1, resolvidos: 1,
       porEtapa: [{ etapaId: 'novo', total: 1 }, { etapaId: 'n1', total: 2 }, { etapaId: 'res', total: 1 }],
-      ultimaAtividadeEm: '2026-10-13T15:00:00.000Z',
+      ultimaAtividadeEm: '2026-10-13T15:00:00.000Z', vendas: null,
     });
     // sem ninguém olhando (a integração), "meus" é zero
     expect(resumoDosPaineis([{ id: 'p', etapas }], l, null)[0]!.meus).toBe(0);
   });
 });
 
-describe('a IA, as respostas prontas e o histórico', () => {
+describe('a IA e o histórico', () => {
   it('a sugestão da IA só aceita o que existe nas opções', () => {
     const s = lerSugestaoDaIa(
       { titulo: 'Ramal 203 mudo', assunto: 'ramal › configuracao', gravidade: 'inoperancia', alcance: 'galáxia', tipo: 'incidente', produtos: ['LinePBX', 'Netflix'], etiquetas: ['ramal', 'audio', 'x', 'y'] },

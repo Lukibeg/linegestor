@@ -3,7 +3,9 @@
  * Em produção ela aponta para o servidor (client.ts); na prévia publicada aponta para a versão de mentira (demo.ts).
  */
 import type * as T from './types.js';
-import type { ContatoDoCliente, ContatoGravarEntrada } from '@gestor/shared';
+import type {
+  CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoDoCalendario, EventoGravarEntrada, SituacaoDoEvento, TipoDeEvento,
+} from '@gestor/shared';
 import { API_BASE } from './base.js';
 
 export type Api = {
@@ -288,6 +290,8 @@ export type Api = {
     meuDia(): Promise<T.MeuDia>;
     /** a tela inicial (os painéis): os números de cada painel que a pessoa vê */
     resumoDosPaineis(): Promise<T.ResumoDoPainel[]>;
+    /** o relatório de um painel de Vendas no período (painel, de e ate) */
+    relatorioDeVendas(q: T.FiltroDoRelatorioDeVendas): Promise<T.RelatorioDeVendas>;
     avisos(): Promise<T.AvisosNaTela>;
     /** sem ids = todos */
     marcarAvisosLidos(ids?: string[]): Promise<{ ok: boolean }>;
@@ -296,6 +300,8 @@ export type Api = {
     /** pelo código (SUP-12) ou pelo id */
     chamado(ref: string): Promise<T.FichaChamado>;
     anexoUrl(id: string): string;
+    /** os bytes de um anexo (o leitor de PDF desenha sem baixar o arquivo) */
+    anexoBytes(id: string): Promise<ArrayBuffer>;
     /** `aviso`: como foi o WhatsApp ao cliente, quando a pessoa pediu para avisar */
     criar(d: T.ChamadoCriarEntrada): Promise<{ id: string; codigo: string; aviso?: { ok: boolean; mensagem: string } }>;
     alterar(id: string, d: T.ChamadoAlterarEntrada): Promise<T.FichaChamado>;
@@ -321,7 +327,6 @@ export type Api = {
     andamentoOperadora(id: string, casoId: string, d: { acao: 'cobrar' | 'fechar'; texto?: string | null }): Promise<T.FichaChamado>;
     /** pelo WhatsApp oficial; o que foi mandado fica no histórico */
     avisarCliente(id: string, texto: string): Promise<T.FichaChamado>;
-    usarResposta(id: string, d: { respostaId: string; texto: string }): Promise<T.FichaChamado>;
     observar(id: string, observar: boolean): Promise<T.FichaChamado>;
     /** a IA lê a conversa (ou o chamado) e sugere; nada é gravado até a pessoa aplicar */
     preencherComIa(id: string): Promise<T.SugestaoIa>;
@@ -354,9 +359,6 @@ export type Api = {
     modelosDoLineChat(): Promise<T.ModelosDoLineChat>;
     /** manda uma mensagem de teste para uma pessoa da equipe (ou um número) */
     testarAvisos(d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string }): Promise<{ ok: boolean; mensagem: string }>;
-    respostas(): Promise<T.RespostaPronta[]>;
-    salvarResposta(id: string | null, d: T.RespostaProntaGravarEntrada): Promise<T.RespostaPronta>;
-    removerResposta(id: string): Promise<{ ok: boolean }>;
     agendados(): Promise<T.Agendado[]>;
     salvarAgendado(id: string | null, d: T.AgendadoGravarEntrada): Promise<T.Agendado>;
     removerAgendado(id: string): Promise<{ ok: boolean }>;
@@ -373,6 +375,35 @@ export type Api = {
     revogarChave(id: string): Promise<{ ok: boolean }>;
     salvarSites(sites: string[]): Promise<{ sites: string[] }>;
     salvarLinkConversa(linkConversa: string): Promise<{ linkConversa: string }>;
+    /** o mapa do robô do LineChat (2.0.1) e o último pedido dele */
+    robo(): Promise<T.RoboTela>;
+    salvarMapaDoRobo(mapa: T.MapaDoRoboEntrada): Promise<T.MapaDoRobo>;
+    /**
+     * "Como fica": o chamado que o pedido abriria com este mapa (sem abrir nada e sem salvar); `endereco`
+     * são os parâmetros do endereço do pedido (?setor=…), sem a chave
+     */
+    experimentarRobo(mapa: T.MapaDoRoboEntrada, corpo: unknown, endereco?: Record<string, string>): Promise<T.PreviaDoRobo>;
+  };
+  /**
+   * O calendário (Patch 2.0.1, decisão 0049): as visitas, as viradas, as folgas e os home offices de cada
+   * equipe. Quem vê um evento é quem vê um dos painéis dele (a regra dos chamados).
+   */
+  calendario: {
+    /** os tipos, os painéis que a pessoa vê (com quem vê cada um), as pessoas e o que ela pode fazer */
+    opcoes(): Promise<CalendarioOpcoes>;
+    /** os eventos que a pessoa vê e que tocam o período (AAAA-MM-DD) */
+    eventos(de: string, ate: string): Promise<EventoDoCalendario[]>;
+    /** os eventos ligados a um chamado (a ficha do chamado) */
+    doChamado(chamadoId: string): Promise<EventoDoCalendario[]>;
+    criar(d: EventoGravarEntrada): Promise<EventoDoCalendario>;
+    /** os painéis que a pessoa não vê ficam como estavam */
+    alterar(id: string, d: EventoGravarEntrada): Promise<EventoDoCalendario>;
+    /** o Feito, o Cancelar e o voltar a Agendado, sem abrir a janela */
+    situacao(id: string, situacao: SituacaoDoEvento): Promise<EventoDoCalendario>;
+    /** vai para a lixeira (volta pela Administração › Lixeira) */
+    remover(id: string): Promise<{ ok: boolean }>;
+    /** só quem cuida dos chamados; o tipo com evento não sai: desativa */
+    salvarTipos(tipos: TipoDeEvento[]): Promise<{ tipos: TipoDeEvento[] }>;
   };
   admin: {
     users(): Promise<T.User[]>;
