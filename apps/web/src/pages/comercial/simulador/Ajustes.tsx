@@ -5,14 +5,15 @@
  * DE CUSTOS (os de sempre, com o valor de hoje; os aparelhos podem ficar sem valor, para preencher em cada
  * simulação; o preço por faixas, como o da Helena) e os MODELOS por produto (as linhas com que a simulação
  * começa). Salvar não muda as simulações já feitas: as linhas delas guardam o valor de quando entraram.
+ * A tabela fica em dois grupos, como a simulação: os custos fixos (pagos uma vez) e os mensais.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layers, Plus, Trash2, X } from 'lucide-react';
 import {
-  AJUDA_DO_TIPO_DE_CUSTO, MAX_FAIXAS_DE_PRECO, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE, NOME_DO_TIPO_DE_CUSTO, TIPOS_DE_CUSTO, ehPercentual, idLocal,
-  textoDasFaixasDePreco,
-  type AjustesDoSimulador, type CustoDaTabela, type FaixaDePreco, type ModeloDeSimulacao, type ProdutoDoSimulador, type TipoDeCusto,
+  AJUDA_DO_GRUPO, AJUDA_DO_TIPO_DE_CUSTO, GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_FAIXAS_DE_PRECO, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE, NOME_DO_GRUPO,
+  NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, ehPercentual, idLocal, textoDasFaixasDePreco,
+  type AjustesDoSimulador, type CustoDaTabela, type FaixaDePreco, type GrupoDeCusto, type ModeloDeSimulacao, type ProdutoDoSimulador, type TipoDeCusto,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Pagina } from '../../../components/layout/AppShell.js';
@@ -97,17 +98,30 @@ function Formulario({ inicial, produtos }: { inicial: AjustesDoSimulador; produt
       </section>
 
       <section className="card p-4 min-w-0" aria-label="A tabela de custos" id="ajustes-tabela">
-        <header className="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <header className="mb-1">
           <h2 className="font-display font-semibold text-[15px]">A tabela de custos <span className="font-body font-normal text-[12.5px] text-muted">{a.custos.length}</span></h2>
-          <button type="button" className="btn-secondary btn-sm" id="ajustes-novo-custo"
-            onClick={() => setA((x) => ({ ...x, custos: [...x.custos, { id: idLocal(), nome: '', tipo: 'mensal', valor: null, porRamal: false, modalidade: null, faixas: null, unidade: null }] }))}>
-            <Plus size={14} /> Custo
-          </button>
         </header>
-        <p className="text-[12.5px] text-muted mb-3">Os custos de sempre, com o valor de hoje: entram na simulação com um clique (e mudam lá). Deixe sem valor o que muda de uma venda para outra (os aparelhos): a simulação pede o valor.</p>
-        <ul className="flex flex-col divide-y divide-line" id="ajustes-custos">
-          {a.custos.map((c) => <CustoNaTabela key={c.id} c={c} mudar={(m) => mudarCusto(c.id, m)} tirar={() => tirarCusto(c)} />)}
-        </ul>
+        <p className="text-[12.5px] text-muted">Os custos de sempre, com o valor de hoje: entram na simulação com um clique (e mudam lá). Deixe sem valor o que muda de uma venda para outra (os aparelhos): a simulação pede o valor.</p>
+        {GRUPOS_DE_CUSTO.map((g) => {
+          const custos = a.custos.filter((c) => GRUPO_DO_TIPO[c.tipo] === g);
+          return (
+            <div key={g} className="mt-4" data-grupo={g} id={`ajustes-grupo-${g}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-line">
+                <h3 className="text-[14px] font-semibold text-ink min-w-0">
+                  {NOME_DO_GRUPO[g]} <span className="font-normal text-[12.5px] text-muted">· {AJUDA_DO_GRUPO[g]}</span>
+                </h3>
+                <button type="button" className="btn-secondary btn-sm" id={`ajustes-novo-custo-${g}`}
+                  onClick={() => setA((x) => ({ ...x, custos: [...x.custos, { id: idLocal(), nome: '', tipo: TIPO_NOVO_DO_GRUPO[g], valor: null, porRamal: false, modalidade: null, faixas: null, unidade: null }] }))}>
+                  <Plus size={14} /> {g === 'fixo' ? 'Custo fixo' : 'Custo mensal'}
+                </button>
+              </div>
+              <ul className="flex flex-col divide-y divide-line" id={`ajustes-custos-${g}`}>
+                {custos.map((c) => <CustoNaTabela key={c.id} c={c} grupo={g} mudar={(m) => mudarCusto(c.id, m)} tirar={() => tirarCusto(c)} />)}
+                {!custos.length && <li className="text-[12.5px] text-muted py-2.5">{g === 'fixo' ? 'Nenhum custo fixo.' : 'Nenhum custo mensal.'}</li>}
+              </ul>
+            </div>
+          );
+        })}
       </section>
 
       <section className="card p-4 min-w-0" aria-label="Os modelos" id="ajustes-modelos">
@@ -162,7 +176,7 @@ function BarraDoSinal({ verde, vermelho }: { verde: number; vermelho: number }) 
 
 const COLUNAS = 'md:grid-cols-[minmax(0,1fr)_150px_150px_110px_30px]';
 
-function CustoNaTabela({ c, mudar, tirar }: { c: CustoDaTabela; mudar: (m: Partial<CustoDaTabela>) => void; tirar: () => void }) {
+function CustoNaTabela({ c, grupo, mudar, tirar }: { c: CustoDaTabela; grupo: GrupoDeCusto; mudar: (m: Partial<CustoDaTabela>) => void; tirar: () => void }) {
   const pct = ehPercentual(c.tipo);
   const podeFaixas = c.tipo === 'mensal' || c.tipo === 'unica';
   const trocarTipo = (tipo: TipoDeCusto) => {
@@ -182,7 +196,7 @@ function CustoNaTabela({ c, mudar, tirar }: { c: CustoDaTabela; mudar: (m: Parti
         <label className="min-w-0">
           <span className="md:hidden label">Como entra</span>
           <select className="input" value={c.tipo} onChange={(e) => trocarTipo(e.target.value as TipoDeCusto)} aria-label="Como entra" title={AJUDA_DO_TIPO_DE_CUSTO[c.tipo]} data-campo="tipo">
-            {TIPOS_DE_CUSTO.map((t) => <option key={t} value={t}>{NOME_DO_TIPO_DE_CUSTO[t]}</option>)}
+            {TIPOS_DO_GRUPO[grupo].map((t) => <option key={t} value={t}>{NOME_DO_TIPO_DE_CUSTO[t]}</option>)}
           </select>
         </label>
         <div className="min-w-0">
@@ -262,6 +276,8 @@ function EditorDeFaixas({ faixas, unidade, mudar }: { faixas: FaixaDePreco[]; un
 
 function Modelo({ m, custos, produtos, mudar, tirar }: { m: ModeloDeSimulacao; custos: CustoDaTabela[]; produtos: ProdutoDoSimulador[]; mudar: (x: Partial<ModeloDeSimulacao>) => void; tirar: () => void }) {
   const fora = custos.filter((c) => !m.linhas.some((l) => l.custoId === c.id));
+  // na tela, os fixos primeiro (como a simulação mostra)
+  const grupoDaLinha = (custoId: string) => { const c = custos.find((x) => x.id === custoId); return c && GRUPO_DO_TIPO[c.tipo] === 'mensal' ? 1 : 0; };
   const mudarLinha = (custoId: string, x: Partial<ModeloDeSimulacao['linhas'][number]>) => mudar({ linhas: m.linhas.map((l) => (l.custoId === custoId ? { ...l, ...x } : l)) });
   return (
     <div className="rounded-lg border border-line p-3" data-modelo={m.id}>
@@ -278,7 +294,7 @@ function Modelo({ m, custos, produtos, mudar, tirar }: { m: ModeloDeSimulacao; c
         <button type="button" className="btn-ghost btn-sm px-1.5 text-muted shrink-0" onClick={tirar} aria-label={`Tirar o modelo ${m.nome}`} title="Tirar o modelo"><Trash2 size={15} /></button>
       </div>
       <ul className="flex flex-col gap-1.5">
-        {m.linhas.map((l) => {
+        {[...m.linhas].sort((p, q) => grupoDaLinha(p.custoId) - grupoDaLinha(q.custoId)).map((l) => {
           const c = custos.find((x) => x.id === l.custoId);
           if (!c) return null;
           const pct = ehPercentual(c.tipo);

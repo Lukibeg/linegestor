@@ -30,6 +30,15 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   aparelhos eu vou preencher em cada negociação, pq pode alterar esses valores por data"* — na tabela, o
   custo pode ficar **sem valor**, e a simulação pede (o campo fica marcado e os números avisam o que
   falta). Por isso também não entrou o aviso de "o custo mudou".
+- **Os custos em dois grupos.** Num comentário na página de opções, o Luan pediu: *"quero que vc separe os
+  custos fixos com custos mensais e quero que sejam fixados porem configuráveis"*. A simulação, a tabela dos
+  Ajustes e o Excel mostram os custos em dois grupos, os **custos fixos** primeiro — pagos uma vez, na
+  assinatura: o aparelho, o "uma vez" e a comissão da venda (% da ativação) — e depois os **custos
+  mensais** — o "por mês" e a comissão recorrente (% da mensalidade). Cada grupo tem o total dele, a tabela
+  dele e o "digitar um custo" dele, e o "como entra" de cada linha só oferece os tipos do grupo. "Fixados,
+  porém configuráveis" é o que a tabela já faz: os custos ficam fixos na tabela dos Ajustes (quem cuida dos
+  painéis configura o nome, como entra, o valor e as faixas) e entram na simulação de lá, um a um ou pelo
+  modelo do produto; na simulação, o valor ainda pode mudar (a nota dele sobre os aparelhos).
 - **Cada aparelho diz como vai:** **comodato** (a Ingline compra e empresta: só o custo, uma vez),
   **venda** (o preço de cada um entra na ativação) ou **locação** (o aluguel de cada um entra na
   mensalidade).

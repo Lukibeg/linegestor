@@ -31,7 +31,12 @@ Os números mudam enquanto você escreve. Nada é gravado até o **Salvar** (a t
 
 ## Os custos
 
-Cada linha tem o nome, **como entra**, a quantidade, o valor de cada um e o total:
+Os custos ficam em dois grupos, cada um com o total, o **Da tabela** e o **Digitar um custo** dele:
+
+- **Custos fixos**: pagos uma vez, na assinatura — os aparelhos, a instalação, a comissão da venda;
+- **Custos mensais**: todo mês — a nuvem, os números, as licenças, a comissão recorrente.
+
+Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o valor de cada um e o total:
 
 | Como entra | Para quê | A conta |
 |---|---|---|
@@ -41,8 +46,9 @@ Cada linha tem o nome, **como entra**, a quantidade, o valor de cada um e o tota
 | % da mensalidade | a comissão recorrente | o percentual de cada mensalidade |
 | % da ativação | a comissão da venda | o percentual da ativação |
 
-- **Da tabela** põe um custo da tabela dos Ajustes, com o valor de hoje (o painel fica aberto para pôr
-  outros). **Do modelo** põe as linhas de um modelo no fim. **Digitar um custo** abre uma linha em branco.
+- **Da tabela** põe um custo da tabela dos Ajustes, com o valor de hoje (o painel mostra os custos do
+  grupo e fica aberto para pôr outros). **Do modelo**, no alto, põe as linhas de um modelo, cada uma no
+  grupo dela. **Digitar um custo** abre uma linha em branco no grupo.
 - **Por ramal**: a quantidade passa a ser a dos ramais.
 - **O aparelho** diz como vai: **Comodato** (a Ingline compra e empresta: só o custo), **Venda** (o
   preço de cada um entra na ativação) ou **Locação** (o aluguel de cada um entra na mensalidade).
@@ -123,7 +129,7 @@ Em **Comercial › Simulador › Ajustes**:
 
 - **O imposto** que a simulação nova traz, **o sinal** (verde a partir de quanto, vermelho abaixo de quanto;
   entre os dois, amarelo) e **o prazo** da simulação nova.
-- **A tabela de custos**: o nome, como entra, o valor de hoje (deixe sem valor o que muda de uma venda para
+- **A tabela de custos**, nos mesmos dois grupos (**+ Custo fixo**, **+ Custo mensal**): o nome, como entra, o valor de hoje (deixe sem valor o que muda de uma venda para
   outra, como os aparelhos), a **unidade** ("usuário", "canal": a tela escreve "5 usuários"), se entra
   "por ramal" e, no aparelho, a modalidade que já vem. Marque **o preço muda pela quantidade** para pôr as
   faixas: cada faixa vai "até" uma quantidade, com o preço de cada unidade (0 = incluso), e a última vai

@@ -111,11 +111,17 @@ describe('a planilha da simulação', () => {
     expect(c.get('A4')!.v).toMatch(/^Exportada do Gestor em 20\/10\/2026 às 14:10, por Camila Duarte\./);
     // o que o cliente paga: os valores (as células amarelas)
     expect([c.get('B7')!.v, c.get('B8')!.v, c.get('B9')!.v, c.get('B10')!.v, c.get('B11')!.v, c.get('B12')!.v, c.get('B13')!.v]).toEqual(['1250', '1900', '3', '24', '40', '0.06', '0.35']);
-    // os custos: o por ramal puxa os ramais; o vendido entra na ativação; o alugado, na mensalidade; a comissão sobre o mês
-    expect(c.get('E20')).toEqual({ f: '$B$11', v: '40' });
-    expect(c.get('J18')).toEqual({ f: 'E18*G18', v: '900' });
-    expect(c.get('K19')).toEqual({ f: 'E19*G19', v: '60' });
-    expect(c.get('I21')!.f).toMatch(/^F21\*\$B\$\d+$/);
+    // os custos em dois grupos, os fixos primeiro: o nome do grupo numa linha, e as linhas dele
+    expect([17, 18, 19, 20, 21, 22, 23, 24, 25].map((r) => c.get(`A${r}`)!.v)).toEqual([
+      'Custos fixos · pagos uma vez, na assinatura', 'Telefone T31P', 'Headset', 'Telefone sem fio', 'Comissão da venda',
+      'Custos mensais · todo mês', 'Nuvem', 'Comissão recorrente', 'Total',
+    ]);
+    // o por ramal puxa os ramais; o vendido entra na ativação; o alugado, na mensalidade; a comissão sobre o mês
+    expect(c.get('E23')).toEqual({ f: '$B$11', v: '40' });
+    expect(c.get('J19')).toEqual({ f: 'E19*G19', v: '900' });
+    expect(c.get('K20')).toEqual({ f: 'E20*G20', v: '60' });
+    expect(c.get('I24')!.f).toMatch(/^F24\*\$B\$\d+$/);
+    expect(c.get('H25')!.f).toBe('SUM(H17:H24)');
     // os números: os mesmos da tela
     expect(Number(aoLado(c, 'O cliente paga por mês')!.v)).toBe(k.mensalTotal / 100);
     expect(Number(aoLado(c, 'Sobra por mês')!.v)).toBeCloseTo(k.sobraMensal / 100, 2);

@@ -12,7 +12,8 @@
  */
 import { diaLocal, horaLocal } from './atendimento-prazos.js';
 import {
-  MAX_PRAZO, NOME_DA_MODALIDADE, NOME_DO_SINAL, NOME_DO_TIPO_DE_CUSTO, contasDoCenario, textoDasFaixas, textoDasFaixasDePreco, textoDoSePagaEm,
+  GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_PRAZO, NOME_DA_MODALIDADE, NOME_DO_GRUPO, NOME_DO_SINAL, NOME_DO_TIPO_DE_CUSTO, contasDoCenario, textoDasFaixas,
+  textoDasFaixasDePreco, textoDoSePagaEm,
   type CenarioDaSimulacao, type ContasDoCenario, type FaixaDePreco, type FaixasDoSinal, type LinhaDoCenario, type Simulacao,
 } from './simulador.js';
 import { montarXlsx, nomesDasFolhas, refDaFolha, type CelulaDaPlanilha, type FolhaDaPlanilha } from './xlsx.js';
@@ -118,7 +119,17 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   g.por(15, 0, { v: 'OS CUSTOS', s: 'secao' });
   ['Custo', 'Como entra', 'O aparelho vai em', 'Por ramal', 'Quantidade', 'Valor de cada', 'Preço ou aluguel de cada', 'Sai uma vez', 'Sai por mês', 'Entra uma vez', 'Entra por mês', 'Observação']
     .forEach((t, i) => g.por(L_CABECALHO_DOS_CUSTOS, i, { v: t, s: 'cabecalho' }));
-  const total = c.linhas.length ? L_PRIMEIRO_CUSTO + c.linhas.length : L_PRIMEIRO_CUSTO + 1;
+  // em dois grupos, como a tela: os custos fixos (pagos uma vez) e os mensais, cada um com o nome numa linha
+  const linhaDoCusto = new Map<number, number>();
+  const nomesDosGrupos: Array<[number, string]> = [];
+  let proxima = L_PRIMEIRO_CUSTO;
+  for (const grupo of GRUPOS_DE_CUSTO) {
+    const doGrupo = c.linhas.map((l, i) => ({ l, i })).filter(({ l }) => GRUPO_DO_TIPO[l.tipo] === grupo);
+    if (!doGrupo.length) continue;
+    nomesDosGrupos.push([proxima++, `${NOME_DO_GRUPO[grupo]} · ${grupo === 'fixo' ? 'pagos uma vez, na assinatura' : 'todo mês'}`]);
+    for (const { i } of doGrupo) linhaDoCusto.set(i, proxima++);
+  }
+  const total = c.linhas.length ? proxima : L_PRIMEIRO_CUSTO + 1;
   const numeros = total + 2;
   const L = {
     mensal: numeros + 1, ativacao: numeros + 2, fixosEComissao: numeros + 3, imposto: numeros + 4, custoDoMes: numeros + 5, sobra: numeros + 6,
@@ -137,8 +148,9 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   let pctMensalidade = 0;
   let pctAtivacao = 0;
   if (!c.linhas.length) g.por(L_PRIMEIRO_CUSTO, 0, { v: 'Nenhum custo neste cenário.', s: 'nota' });
+  for (const [r, nome] of nomesDosGrupos) g.por(r, 0, { v: nome, s: 'forte' });
   c.linhas.forEach((l, i) => {
-    const r = L_PRIMEIRO_CUSTO + i;
+    const r = linhaDoCusto.get(i)!;
     const conta = k.linhas[i]!;
     const faixas = faixasDaLinha(l);
     const notas: string[] = [];

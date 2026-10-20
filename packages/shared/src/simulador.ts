@@ -86,6 +86,28 @@ export const AJUDA_DO_TIPO_DE_CUSTO: Record<TipoDeCusto, string> = {
 };
 export const ehPercentual = (t: TipoDeCusto) => t === 'pct_mensalidade' || t === 'pct_ativacao';
 
+/**
+ * Os dois grupos de custo (o Luan, num comentário, 20/10: "quero que vc separe os custos fixos com custos
+ * mensais"): os **fixos**, pagos uma vez, na assinatura (o aparelho, o "uma vez" e a comissão da venda), e os
+ * **mensais**, todo mês (o "por mês" e a comissão recorrente). A simulação, os Ajustes e o Excel mostram os
+ * dois separados, os fixos primeiro.
+ */
+export const GRUPOS_DE_CUSTO = ['fixo', 'mensal'] as const;
+export type GrupoDeCusto = (typeof GRUPOS_DE_CUSTO)[number];
+export const GRUPO_DO_TIPO: Record<TipoDeCusto, GrupoDeCusto> = { aparelho: 'fixo', unica: 'fixo', pct_ativacao: 'fixo', mensal: 'mensal', pct_mensalidade: 'mensal' };
+export const TIPOS_DO_GRUPO: Record<GrupoDeCusto, readonly TipoDeCusto[]> = { fixo: ['aparelho', 'unica', 'pct_ativacao'], mensal: ['mensal', 'pct_mensalidade'] };
+export const NOME_DO_GRUPO: Record<GrupoDeCusto, string> = { fixo: 'Custos fixos', mensal: 'Custos mensais' };
+export const AJUDA_DO_GRUPO: Record<GrupoDeCusto, string> = {
+  fixo: 'pagos uma vez, na assinatura: os aparelhos, a instalação, a comissão da venda',
+  mensal: 'todo mês: a nuvem, os números, as licenças, a comissão recorrente',
+};
+/** O tipo do custo novo de cada grupo (o "Digitar um custo" de cada um). */
+export const TIPO_NOVO_DO_GRUPO: Record<GrupoDeCusto, TipoDeCusto> = { fixo: 'unica', mensal: 'mensal' };
+/** Os itens em ordem de grupo (os fixos primeiro), cada grupo na ordem em que está. */
+export function emOrdemDeGrupo<T extends { tipo: TipoDeCusto }>(itens: readonly T[]): T[] {
+  return GRUPOS_DE_CUSTO.flatMap((g) => itens.filter((x) => GRUPO_DO_TIPO[x.tipo] === g));
+}
+
 export const MODALIDADES_DO_APARELHO = ['comodato', 'venda', 'locacao'] as const;
 export type ModalidadeDoAparelho = (typeof MODALIDADES_DO_APARELHO)[number];
 export const NOME_DA_MODALIDADE: Record<ModalidadeDoAparelho, string> = { comodato: 'Comodato', venda: 'Venda', locacao: 'Locação' };
