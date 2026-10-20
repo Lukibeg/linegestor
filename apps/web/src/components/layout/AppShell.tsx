@@ -10,7 +10,7 @@
  * do Suporte — o atalho para o quadro dele, 2.0.2 —, o Meu dia, 2.0.2, os Projetos e os Relatórios, que
  * abrem nos tickets do LineChat, na aba Hoje), **Técnico** (2.0.2: os Circuitos e DIDs e o Inventário),
  * **Comercial** (2.0.1: o Painel do Comercial — o atalho para o painel de Vendas — e o relatório dele, de
- * quem tem a permissão do Comercial) e **Base de conhecimento** (a interna e a dos clientes); o Importar /
+ * quem tem a permissão do Comercial; 2.0.2: o Simulador) e **Base de conhecimento** (a interna e a dos clientes); o Importar /
  * Exportar foi para dentro da Administração. Os
  * **Painéis** (todos: os chamados e as negociações) são um item próprio, abaixo do Calendário (2.0.2). O
  * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
@@ -20,7 +20,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BookLock, BookUser, Boxes, Building2, Cable, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Handshake, Headset, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
+  BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Handshake, Headset, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
   Menu, Moon, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -85,6 +85,8 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
     grupo: 'comercial', label: 'Comercial', icon: Handshake, itens: [
       { to: '/comercial', label: 'Painel do Comercial', icon: Kanban, perm: 'sales.read' },
       { to: '/comercial/relatorio', label: 'Relatórios', icon: TrendingUp, perm: 'sales.read' },
+      // o Simulador (2.0.2, decisão 0052): a conta de uma venda antes de fechar — "dentro da aba de comercial"
+      { to: '/comercial/simulador', label: 'Simulador', icon: Calculator, perm: 'sales.read' },
     ],
   },
   // a base: a interna (o que a equipe aprendeu, 1.8) e a dos clientes (o portal: os tutoriais e quem entra, 1.8)
@@ -225,7 +227,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { abertos, alternar } = useGruposAbertos(items.filter(ehGrupo), ativo);
   const sair = async () => { await logout(); nav('/entrar'); };
   // nos chamados, a tela usa a largura toda e a margem é menor: o quadro e a ficha precisam de lugar
-  const largo = pathname.startsWith('/atendimento') || pathname.startsWith('/calendario');
+  const largo = pathname.startsWith('/atendimento') || pathname.startsWith('/calendario') || pathname.startsWith('/comercial/simulador');
   // o sininho dos avisos: de quem vê os chamados ou o Comercial (os avisos das negociações)
   const temSino = can('support.read') || comercial;
   // o número no menu: quantas notas de novidade esta pessoa ainda não leu

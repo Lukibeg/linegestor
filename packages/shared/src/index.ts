@@ -16,3 +16,4 @@ export * from './atendimento.js';
 export * from './robo.js';
 export * from './calendario.js';
 export * from './vendas.js';
+export * from './simulador.js';

@@ -44,6 +44,7 @@ import { Prazos } from './ficha/Prazos.js';
 import { Operadora } from './ficha/Operadora.js';
 import { Tempo } from './ficha/Tempo.js';
 import { NaAgenda } from './ficha/Agenda.js';
+import { SimulacoesDaNegociacao } from './ficha/Simulacoes.js';
 import { Negociacao } from './ficha/Negociacao.js';
 
 /**
@@ -165,6 +166,8 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
           <div className="min-w-0 flex flex-col gap-4 lg:col-start-2 lg:row-start-2">
             {/* a negociação (o painel de Vendas): o valor e o resultado — sem prazo, operadora e tempo gasto */}
             <Negociacao />
+            {/* as simulações ligadas (o Simulador do Comercial, 2.0.2): a margem e o sinal */}
+            <SimulacoesDaNegociacao />
             <Classificacao />
             <Responsavel />
             {aberta.painel?.tipo !== 'vendas' && <Prazos />}

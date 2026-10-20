@@ -382,7 +382,7 @@ function Auditoria() {
 
 function Lixeira() {
   const q = useQuery({ queryKey: ['trash'], queryFn: api.admin.trash }); const qc = useQueryClient(); const toast = useToast();
-  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', productModule: 'Módulo', releaseNote: 'Novidades', project: 'Projeto', knowledgeArticle: 'Artigo da base', portalArticle: 'Tutorial do portal', ticket: 'Chamado', calendarEvent: 'Evento do calendário' };
+  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', productModule: 'Módulo', releaseNote: 'Novidades', project: 'Projeto', knowledgeArticle: 'Artigo da base', portalArticle: 'Tutorial do portal', ticket: 'Chamado', calendarEvent: 'Evento do calendário', salesSimulation: 'Simulação do Comercial' };
   const o = useOrdenacaoLocal('deletedAt', 'desc');
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;

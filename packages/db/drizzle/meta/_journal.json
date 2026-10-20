@@ -148,6 +148,13 @@
       "when": 1792500715696,
       "tag": "0020_lembretes_do_calendario",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1792512074629,
+      "tag": "0021_simulador",
+      "breakpoints": true
     }
   ]
 }

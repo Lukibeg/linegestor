@@ -41,6 +41,7 @@ import atendimentoAjustesRoutes from './routes/atendimentoAjustes.js';
 import atendimentoEntradaRoutes from './routes/atendimentoEntrada.js';
 import atendimentoRotinaRoutes from './routes/atendimentoRotina.js';
 import calendarioRoutes from './routes/calendario.js';
+import simuladorRoutes from './routes/simulador.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -112,6 +113,8 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
     await api.register(atendimentoRotinaRoutes, { prefix: '/atendimento' });
     // o calendário (2.0.1): os eventos de cada equipe, nos painéis dos chamados
     await api.register(calendarioRoutes, { prefix: '/calendario' });
+    // o Simulador do Comercial (2.0.2): a conta de uma venda antes de fechar
+    await api.register(simuladorRoutes, { prefix: '/comercial/simulador' });
   }, { prefix: '/api' });
 
   // Em produção, a própria API serve a interface (apps/web/dist) e devolve o index.html para qualquer rota que não seja /api

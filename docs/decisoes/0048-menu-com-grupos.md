@@ -94,6 +94,10 @@ entrou nele.
   - os endereços e os títulos das telas não mudaram (`/circuitos`, `/inventario`). O grupo se comporta como
     os outros: abre sozinho nas telas dele e, com o menu recolhido, abre a lista ao lado;
   - os guias passam a escrever o caminho pelo grupo: *Técnico › Inventário › Modelos*.
+- **Revisto no 2.0.2 (20/10/2026): o Simulador no Comercial.** O Simulador do Comercial (decisão 0052) é o
+  terceiro item do grupo **Comercial**, abaixo do Painel do Comercial e dos Relatórios (`/comercial/simulador`,
+  o ícone da calculadora), de quem tem a permissão do Comercial. Nas telas dele (a lista, a simulação e os
+  Ajustes), o menu marca o Simulador; a tela usa a largura toda, como os painéis e o calendário.
 
 **Consequências.** O menu cai de 12 para 8 entradas no alto, e o Suporte tem três itens. Os guias de
 uso, a nota do 2.0 e o vídeo falam dos nomes novos.

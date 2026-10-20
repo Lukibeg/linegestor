@@ -4,7 +4,8 @@
  */
 import type * as T from './types.js';
 import type {
-  CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada, SituacaoDoEvento, TipoDeEvento,
+  AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
+  Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
 } from '@gestor/shared';
 import { API_BASE } from './base.js';
 
@@ -405,6 +406,28 @@ export type Api = {
     remover(id: string): Promise<{ ok: boolean }>;
     /** só quem cuida dos chamados; o tipo com evento não sai: desativa */
     salvarTipos(tipos: TipoDeEvento[]): Promise<{ tipos: TipoDeEvento[] }>;
+  };
+  /**
+   * O Simulador do Comercial (Patch 2.0.2, decisão 0052): a conta de uma venda antes de fechar. Quem tem o
+   * Comercial vê tudo; quem também trabalha nas negociações cria e muda; os Ajustes, quem cuida dos painéis.
+   */
+  simulador: {
+    /** os Ajustes (a tabela de custos, os modelos, o imposto, o sinal, o prazo) e o que a pessoa pode fazer */
+    opcoes(): Promise<SimuladorOpcoes>;
+    /** as simulações, da mexida mais recente para a mais antiga, com o cenário principal resumido */
+    listar(): Promise<SimulacaoNaLista[]>;
+    ler(id: string): Promise<Simulacao>;
+    /** as simulações ligadas a uma negociação (a ficha dela) */
+    daNegociacao(negociacaoId: string): Promise<SimulacaoDaNegociacao[]>;
+    criar(d: SimulacaoGravarEntrada): Promise<Simulacao>;
+    /** a negociação que a pessoa não vê fica como estava (ela manda o mesmo id que leu) */
+    alterar(id: string, d: SimulacaoGravarEntrada): Promise<Simulacao>;
+    /** a cópia ("… (cópia)"), com os mesmos cenários */
+    duplicar(id: string): Promise<Simulacao>;
+    /** vai para a lixeira (volta pela Administração › Lixeira) */
+    remover(id: string): Promise<{ ok: boolean }>;
+    /** só quem cuida dos painéis; as simulações já feitas não mudam */
+    salvarAjustes(a: AjustesDoSimuladorEntrada): Promise<AjustesDoSimulador>;
   };
   admin: {
     users(): Promise<T.User[]>;

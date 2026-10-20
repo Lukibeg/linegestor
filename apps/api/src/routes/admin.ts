@@ -5,6 +5,7 @@ import { AuditoriaListarSchema, CatalogoItemSchema, ModuloCatalogoSchema, PapelG
 import * as svc from '../services/admin.js';
 import * as baseSvc from '../services/base.js';
 import * as calendarioSvc from '../services/calendario.js';
+import * as simuladorSvc from '../services/simulador.js';
 import * as portalSvc from '../services/portal.js';
 import * as audit from '../services/audit.js';
 import * as clientsSvc from '../services/clients.js';
@@ -60,7 +61,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---- lixeira ----
   app.get('/trash', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'O que está na lixeira' } }, async () => svc.listTrash(app.db));
-  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle', 'portalArticle', 'ticket', 'calendarEvent']), id: z.string() }) } },
+  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle', 'portalArticle', 'ticket', 'calendarEvent', 'salesSimulation']), id: z.string() }) } },
     async (req) => {
       const { type, id } = req.params;
       // o chamado do Gestor (2.0) é da lixeira de quem cuida dos chamados
@@ -79,9 +80,10 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       else if (type === 'portalArticle') { const t = await portalSvc.restaurarTutorial(app.db, id); label = `o tutorial ${t.number} "${t.title}" do portal`; }
       else if (type === 'ticket') { const t = await svc.restoreTicket(app.db, id, req.user!); label = `o chamado ${t.code} "${t.title}"`; }
       else if (type === 'calendarEvent') { const e = await calendarioSvc.restaurar(app.db, id); label = `o evento do calendário "${e.title}" (${textoDoPeriodo({ inicio: e.startsOn, fim: e.endsOn })})`; }
+      else if (type === 'salesSimulation') { const s = await simuladorSvc.restaurar(app.db, id); label = `a simulação "${s.name}" do Comercial`; }
       else throw new BadRequest('Tipo desconhecido');
-      // o evento do calendário fica na auditoria com o mesmo nome das outras ações dele (calendar_event)
-      await app.audit(req, { action: 'restore', entityType: type === 'calendarEvent' ? 'calendar_event' : type, entityId: id, summary: `Restaurou ${label} da lixeira` });
+      // o evento do calendário e a simulação ficam na auditoria com o mesmo nome das outras ações deles (calendar_event, sales_simulation)
+      await app.audit(req, { action: 'restore', entityType: type === 'calendarEvent' ? 'calendar_event' : type === 'salesSimulation' ? 'sales_simulation' : type, entityId: id, summary: `Restaurou ${label} da lixeira` });
       return { ok: true };
     });
 };

@@ -1,7 +1,7 @@
 # Calendário das equipes (Patch 2.0.1; os lembretes, no 2.0.2)
 
 As visitas, as viradas de sistema e para a nuvem, as folgas, os home offices, as reuniões e as ações no
-cliente, no mês. Fica no menu lateral, em **Calendário** (logo acima do Suporte).
+cliente, no mês. Fica no alto do menu lateral, em **Calendário** (logo abaixo de Clientes).
 
 ## Quem vê o quê
 

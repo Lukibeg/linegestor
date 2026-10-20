@@ -288,6 +288,11 @@ export type AcessoDoCalendarioDemo = {
   /** os chamados de exemplo (para ligar os eventos de exemplo a eles) */
   chamados: () => Array<{ id: string; codigo: string; titulo: string; painelId: string; clienteId: string | null }>;
   /**
+   * A negociação (o Simulador do Comercial, 2.0.2): o chamado fora da lixeira, pelo id ou pelo código, com a
+   * empresa (o cliente ou a que ainda não é cliente) e o resultado da etapa (ganho, perdido).
+   */
+  negociacao: (ref: string) => { id: string; codigo: string; titulo: string; painelId: string; empresa: string | null; resultado: 'ganho' | 'perdido' | null } | null;
+  /**
    * O lembrete de um evento (2.0.2): o sininho de cada pessoa ativa, conforme os Ajustes dos avisos (o WhatsApp,
    * na prévia, não aparece em lugar nenhum). `lido`: o lembrete antigo dos exemplos já foi visto. Devolve quantos receberam.
    */
@@ -3678,6 +3683,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       chamados: () => {
         semear();
         return A.chamados.filter((t) => !t.deletedAt).map((t) => ({ id: t.id, codigo: t.codigo, titulo: t.titulo, painelId: t.painelId, clienteId: t.clienteId }));
+      },
+      negociacao: (ref) => {
+        semear();
+        const codigo = ref.trim().toUpperCase();
+        const t = A.chamados.find((x) => (x.id === ref || x.codigo === codigo) && !x.deletedAt);
+        if (!t) return null;
+        const r = etapaPorId(t.etapaId)?.resultado ?? null;
+        return {
+          id: t.id, codigo: t.codigo, titulo: t.titulo, painelId: t.painelId, empresa: nomeCliente(t.clienteId) ?? t.empresa,
+          resultado: r === 'ganho' || r === 'perdido' ? r : null,
+        };
       },
       avisarDoCalendario: (a, em, lido = false) => {
         const qual = a.qual ?? 'lembrete';

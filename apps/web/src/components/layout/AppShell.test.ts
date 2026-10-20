@@ -11,6 +11,9 @@ describe('o grupo Técnico (2.0.2)', () => {
     expect(nomes).toEqual(['Painel', 'Clientes', 'Calendário', 'Painéis', '[Suporte]', '[Técnico]', '[Comercial]', '[Base de conhecimento]', 'Novidades', 'Administração']);
     const tecnico = NAV.find((x) => 'grupo' in x && x.grupo === 'tecnico');
     expect(tecnico && 'itens' in tecnico ? tecnico.itens.map((i) => [i.label, i.to]) : null).toEqual([['Circuitos e DIDs', '/circuitos'], ['Inventário', '/inventario']]);
+    // o Simulador (2.0.2) mora no Comercial
+    const comercial = NAV.find((x) => 'grupo' in x && x.grupo === 'comercial');
+    expect(comercial && 'itens' in comercial ? comercial.itens.map((i) => i.label) : null).toEqual(['Painel do Comercial', 'Relatórios', 'Simulador']);
   });
 });
 

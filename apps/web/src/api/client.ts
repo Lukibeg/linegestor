@@ -353,6 +353,17 @@ export const realApi: Api = {
     remover: (id) => http('DELETE', `/calendario/eventos/${encodeURIComponent(id)}`),
     salvarTipos: (tipos) => http('PUT', '/calendario/tipos', { tipos }),
   },
+  simulador: {
+    opcoes: () => http('GET', '/comercial/simulador/opcoes'),
+    listar: () => http('GET', '/comercial/simulador/simulacoes'),
+    ler: (id) => http('GET', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`),
+    daNegociacao: (negociacaoId) => http('GET', `/comercial/simulador/da-negociacao/${encodeURIComponent(negociacaoId)}`),
+    criar: (d) => http('POST', '/comercial/simulador/simulacoes', d),
+    alterar: (id, d) => http('PUT', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`, d),
+    duplicar: (id) => http('POST', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}/duplicar`),
+    remover: (id) => http('DELETE', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`),
+    salvarAjustes: (a) => http('PUT', '/comercial/simulador/ajustes', a),
+  },
   admin: {
     users: () => http('GET', '/admin/users'),
     createUser: (d) => http('POST', '/admin/users', d),

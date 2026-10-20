@@ -631,7 +631,7 @@ export const users = pgTable('users', {
  *    do Google, o token da API de avisos, a chave do LineChat, o token da FlwChat e a chave da IA
  */
 export const settings = pgTable('settings', {
-  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe e quais avisos vão por onde; a chave própria no cofre, 2.0 — o número de cada pessoa mora no usuário desde o 2.0.1) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) | 'atendimento-robo' (o mapa do robô do LineChat: de onde vem cada campo do chamado no JSON que o robô manda, 2.0.1) | 'atendimento-robo-ultimo' (o último pedido do robô, com o que aconteceu: a tela do mapa mostra as variáveis dele, 2.0.1) */
+  /** 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe e quais avisos vão por onde; a chave própria no cofre, 2.0 — o número de cada pessoa mora no usuário desde o 2.0.1) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) | 'atendimento-robo' (o mapa do robô do LineChat: de onde vem cada campo do chamado no JSON que o robô manda, 2.0.1) | 'atendimento-robo-ultimo' (o último pedido do robô, com o que aconteceu: a tela do mapa mostra as variáveis dele, 2.0.1) | 'calendario' (os tipos de evento do calendário, 2.0.1) | 'comercial-simulador' (os Ajustes do Simulador do Comercial: o imposto, as faixas do sinal, o prazo, a tabela de custos e os modelos por produto, 2.0.2) */
   id: text('id').primaryKey(),
   value: text('value').notNull().default('{}'),
   secretId: text('secret_id').references(() => secrets.id),
@@ -2012,6 +2012,42 @@ export const calendarEvents = pgTable(
     index('calendar_events_ticket_idx').on(t.ticketId),
     check('calendar_events_periodo_ck', sql`${t.endsOn} >= ${t.startsOn}`),
   ],
+);
+
+// ---------------------------------------------------------------------
+// 12. O SIMULADOR DO COMERCIAL (decisão 0052, Patch 2.0.2, migração 0021)
+// ---------------------------------------------------------------------
+// A conta de uma venda antes de fechar: o que o cliente paga (a mensalidade e a ativação) contra o que a
+// Ingline gasta (os aparelhos, a nuvem, os números, as comissões e o imposto). Cada simulação tem um nome,
+// de um a três cenários (a mesma venda em versões diferentes) e, se a pessoa quiser, a negociação ligada. A
+// tabela de custos, os modelos por produto, o imposto e as faixas do sinal ficam em
+// `settings.comercial-simulador`; as contas, em `packages/shared/src/simulador.ts`.
+
+/** Uma SIMULAÇÃO do Comercial: o nome, os cenários e a negociação ligada. */
+export const salesSimulations = pgTable(
+  'sales_simulations',
+  {
+    id: id(),
+    /** O nome (o cliente, a proposta: "Clínica Aurora — 10 ramais") */
+    name: text('name').notNull(),
+    /** A negociação ligada (um chamado de um painel de Vendas), quando a pessoa liga */
+    ticketId: text('ticket_id').references(() => tickets.id),
+    /**
+     * Os cenários (1 a 3), cada um com todos os números: a mensalidade e a ativação em centavos, as parcelas,
+     * o prazo, os ramais, o imposto, a margem que se quer e as linhas de custo — o formato de
+     * `CenarioDaSimulacao` (`@gestor/shared`). As linhas guardam o valor de quando entraram: mudar a tabela
+     * de custos não muda a simulação já feita.
+     */
+    scenarios: jsonb('scenarios').notNull().default([]),
+    /** O id do cenário principal: o que a lista e a negociação mostram */
+    principal: text('principal').notNull(),
+    createdById: text('created_by_id').references(() => users.id),
+    updatedById: text('updated_by_id').references(() => users.id),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    deletedAt: deletedAt(),
+  },
+  (t) => [index('sales_simulations_ticket_idx').on(t.ticketId)],
 );
 
 // ---------------------------------------------------------------------

@@ -4,7 +4,8 @@ O Comercial acompanha as negociações num painel igual ao dos chamados — o qu
 anotações, os avisos —, com o que é de venda: o **valor** — a **mensalidade** e a **ativação**, cada uma
 de um valor só ou por produto, com o total —, o **Ganho** e o **Perdido** (com o motivo), a **empresa que
 ainda não é cliente** e a **meta do mês**. No menu, o grupo **Comercial** leva direto ao **Painel do
-Comercial** (até o 2.0.1, Negociações) e aos **Relatórios**; o painel também fica em **Painéis**, como
+Comercial** (até o 2.0.1, Negociações), aos **Relatórios** e ao **Simulador** (2.0.2: a conta de uma venda
+antes de fechar, no guia `simulador.md`); o painel também fica em **Painéis**, como
 os outros (o Suporte, o Desenvolvimento). O Comercial tem permissão própria: **Ver o Comercial**. A decisão inteira está em
 `docs/decisoes/0050-painel-de-vendas.md`.
 
@@ -33,8 +34,8 @@ Suporte) fica com um papel sem o **Ver os chamados**.
 
 ## 2. O dia a dia
 
-- **No menu, o grupo Comercial**: **Negociações** abre direto o quadro do Comercial, e **Relatórios**, o
-  relatório. Com mais de um painel de Vendas, abre o último que você usou (o **Trocar**, no alto do
+- **No menu, o grupo Comercial**: **Painel do Comercial** abre direto o quadro do Comercial, **Relatórios**, o
+  relatório, e **Simulador**, as simulações (a margem de cada venda; a negociação ligada a uma mostra o sinal). Com mais de um painel de Vendas, abre o último que você usou (o **Trocar**, no alto do
   quadro, leva aos outros).
 - **A tela dos painéis** mostra o cartão do Comercial: quanto está **em negociação** (e quantas), o
   **ganho no mês** (e quantas ganhas e perdidas), **sem dono**, as **suas** e a **barra da meta**.
