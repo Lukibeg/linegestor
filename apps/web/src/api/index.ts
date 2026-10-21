@@ -5,6 +5,7 @@
 import type * as T from './types.js';
 import type {
   AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
+  LeituraDoHelenaNaTela, OpcoesDoTrazerDoHelena, PreviaDoHelena, ResultadoDoTrazerDoHelena,
   Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
 } from '@gestor/shared';
 import { API_BASE } from './base.js';
@@ -432,6 +433,21 @@ export type Api = {
     planilha(id: string): Promise<{ bytes: Uint8Array; nome: string }>;
     /** só quem cuida dos painéis; as simulações já feitas não mudam */
     salvarAjustes(a: AjustesDoSimuladorEntrada): Promise<AjustesDoSimulador>;
+  };
+  /**
+   * Trazer do Helena (Patch 2.0.3, decisão 0054): o painel de vendas do Helena, com o histórico, num painel de
+   * Vendas do Gestor. Só quem importa e cuida dos painéis.
+   */
+  helena: {
+    /** os painéis do Helena (pela chave do LineChat) e os painéis de Vendas do Gestor que podem receber */
+    opcoes(): Promise<OpcoesDoTrazerDoHelena>;
+    /** começa a ler (os cards e o histórico de cada um): roda por fora, e a tela acompanha */
+    ler(painelId: string): Promise<LeituraDoHelenaNaTela>;
+    leitura(id: string): Promise<LeituraDoHelenaNaTela>;
+    /** o que vai acontecer (`destino` nulo = um painel de Vendas novo): nada é gravado */
+    previa(id: string, destino: string | null): Promise<PreviaDoHelena>;
+    /** grava o que a prévia mostrou; de novo, atualiza o que já veio */
+    trazer(id: string, destino: string | null): Promise<ResultadoDoTrazerDoHelena>;
   };
   admin: {
     users(): Promise<T.User[]>;

@@ -59,9 +59,10 @@ export const TIPOS_CHAMADO = ['chamado', 'problema'] as const;
 export type TipoChamado = (typeof TIPOS_CHAMADO)[number];
 export const NOME_TIPO_CHAMADO: Record<TipoChamado, string> = { chamado: 'Chamado', problema: 'Problema' };
 
-export const ORIGENS = ['manual', 'robo', 'botao', 'agendado', 'api'] as const;
+/** `helena`: a negociação trazida do painel de vendas do Helena (2.0.3, decisão 0054) */
+export const ORIGENS = ['manual', 'robo', 'botao', 'agendado', 'api', 'helena'] as const;
 export type Origem = (typeof ORIGENS)[number];
-export const NOME_ORIGEM: Record<Origem, string> = { manual: 'Aberto no Gestor', robo: 'O robô do LineChat', botao: 'O botão na conversa', agendado: 'Chamado agendado', api: 'Integração (n8n)' };
+export const NOME_ORIGEM: Record<Origem, string> = { manual: 'Aberto no Gestor', robo: 'O robô do LineChat', botao: 'O botão na conversa', agendado: 'Chamado agendado', api: 'Integração (n8n)', helena: 'Trazida do Helena' };
 
 /**
  * O tipo do painel (2.0.1, decisão 0050), como no Helena: **Gestão** (os chamados: prazos, níveis,
@@ -1697,6 +1698,8 @@ export const TIPOS_EVENTO = [
   'criado', 'etapa', 'responsavel', 'campo', 'prioridade', 'espera', 'ligacao', 'pai', 'filho', 'problema', 'incidente',
   'checklist', 'tempo', 'operadora', 'aviso_cliente', 'aviso_equipe', 'reaberto', 'painel', 'ia', 'resposta_pronta',
   'cliente_respondeu', 'prazo', 'fechou_sozinho', 'observador', 'lixeira',
+  // uma linha do histórico do Helena que não tem um jeito do Gestor ("A etiqueta X foi adicionada"): 2.0.3
+  'helena',
 ] as const;
 export type TipoEvento = (typeof TIPOS_EVENTO)[number];
 export type EventoChamado = {
@@ -1926,7 +1929,7 @@ const nomeNivel = (n: unknown) => (n ? ` (${rotuloDoNivel(n as number)})` : '');
 export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string {
   switch (tipo) {
     // a negociação (o painel de Vendas) é criada; o chamado é aberto
-    case 'criado': return `${d.venda ? 'criou a negociação' : 'abriu o chamado'}${d.origem && d.origem !== 'manual' ? ` (${NOME_ORIGEM[d.origem as Origem] ?? d.origem})` : ''}${d.etapa ? ` em ${d.etapa}` : ''}`;
+    case 'criado': return `${d.venda ? 'criou a negociação' : 'abriu o chamado'}${d.origem && d.origem !== 'manual' ? ` (${NOME_ORIGEM[d.origem as Origem] ?? d.origem}${d.noHelena ? `, era ${d.noHelena}` : ''})` : ''}${d.etapa ? ` em ${d.etapa}` : ''}`;
     case 'etapa': {
       // a negociação que acabou: "marcou como ganho (R$ 12.000,00/mês), estava em Negociação" (o valor é a mensalidade)
       if (d.resultado === 'ganho') return `marcou como ganho${typeof d.valor === 'number' ? ` (${reais(d.valor)}/mês)` : ''}, estava em ${d.de?.nome ?? '?'}${d.concluidoEm ? ` — fechou em ${diaComAno(d.concluidoEm)}` : ''}`;
@@ -1949,7 +1952,7 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     case 'operadora': return d.acao === 'abriu' ? `abriu chamado na ${d.operadora} (protocolo ${d.protocolo})` : d.acao === 'fechou' ? `a ${d.operadora} fechou o protocolo ${d.protocolo}${d.texto ? `: ${d.texto}` : ''}` : `cobrou a ${d.operadora} (protocolo ${d.protocolo})${d.texto ? `: ${d.texto}` : ''}`;
     case 'aviso_cliente': return d.ok ? `avisou o cliente pelo WhatsApp${d.modelo ? ' (com o modelo aprovado)' : ''}` : `tentou avisar o cliente pelo WhatsApp, mas não foi: ${d.erro ?? 'erro'}`;
     case 'aviso_equipe': return d.ok ? `o Gestor avisou ${d.para} pelo WhatsApp` : `o aviso para ${d.para} pelo WhatsApp não foi: ${d.erro ?? 'erro'}`;
-    case 'reaberto': return `reabriu o chamado${d.motivo ? `: ${d.motivo}` : ''}`;
+    case 'reaberto': return `reabriu ${d.venda ? 'a negociação' : 'o chamado'}${d.motivo ? `: ${d.motivo}` : ''}`;
     case 'painel': return `passou do painel ${d.de} para ${d.para}`;
     case 'ia': return `preencheu com a IA: ${(d.campos as string[] | undefined)?.join(', ') || 'nada mudou'}`;
     case 'resposta_pronta': return `usou a resposta pronta "${d.nome}"`;
@@ -1958,6 +1961,8 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     case 'fechou_sozinho': return `fechou sozinho: ${d.dias} ${d.dias === 1 ? 'dia útil' : 'dias úteis'} no ${d.etapa ?? 'Resolvido'} sem resposta do cliente`;
     case 'observador': return d.acao === 'saiu' ? `deixou de observar` : `passou a observar`;
     case 'lixeira': return d.acao === 'restaurou' ? 'restaurou da lixeira' : 'mandou para a lixeira';
+    // a linha do Helena como estava escrita lá ("A etiqueta P/R Ingline foi adicionada")
+    case 'helena': return `no Helena: ${d.texto ?? ''}`;
     default: return String(tipo);
   }
 }

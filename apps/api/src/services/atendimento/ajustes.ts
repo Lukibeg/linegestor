@@ -35,11 +35,11 @@ import { gravarTeste, lerAvisos, mandarWhatsApp, type AvisosGuardados } from './
 
 type PainelGravar = z.infer<typeof PainelGravarSchema>;
 type EtapasGravar = z.infer<typeof EtapasGravarSchema>;
-type EtapaGravar = EtapasGravar['etapas'][number];
+export type EtapaGravar = EtapasGravar['etapas'][number];
 type AssuntoGravar = z.infer<typeof AssuntoGravarSchema>;
 type CampoGravar = z.infer<typeof CampoGravarSchema>;
 type CamposDoSistemaGravar = z.infer<typeof CamposDoSistemaSchema>;
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type LinhaDaEtapa = typeof ticketStages.$inferSelect;
 
 /** O resultado de uma mudança e o que vai para a auditoria. */
@@ -91,7 +91,7 @@ const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | nul
 const tipoDaLinha = (p: { kind: string }): TipoDePainel => (p.kind === 'vendas' ? 'vendas' : 'gestao');
 
 /** O que pode ser pedido no painel agora: os campos do sistema que ele usa e os campos ativos dele. */
-async function obrigatoriosValidos(db: Db, p: typeof ticketPanels.$inferSelect): Promise<Obrigatorio[]> {
+export async function obrigatoriosValidos(db: Db, p: typeof ticketPanels.$inferSelect): Promise<Obrigatorio[]> {
   return obrigatoriosDoPainel(ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>), await carregarCampos(db, p.id), tipoDaLinha(p));
 }
 
@@ -292,9 +292,9 @@ export async function salvarEtapas(app: FastifyInstance, ator: Ator, painelId: s
 }
 
 /** Os chamados que mudaram de etapa porque a etapa deles saiu (para a frase da auditoria). */
-type Movido = { de: string; para: string; n: number };
+export type Movido = { de: string; para: string; n: number };
 /** A lista de etapas já conferida contra o banco, pronta para gravar (nada foi gravado ainda). */
-type PlanoDasEtapas = {
+export type PlanoDasEtapas = {
   painelId: string;
   atuais: LinhaDaEtapa[];
   porId: Map<string, LinhaDaEtapa>;
@@ -310,7 +310,7 @@ type PlanoDasEtapas = {
  * as etapas e quantos chamados cada uma tem — a tela pergunta para onde vão). Num painel novo não há
  * etapa nenhuma: toda etapa com id é recusada.
  */
-async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], destino: Record<string, string>, validos: Obrigatorio[], tipo: TipoDePainel): Promise<PlanoDasEtapas> {
+export async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], destino: Record<string, string>, validos: Obrigatorio[], tipo: TipoDePainel): Promise<PlanoDasEtapas> {
   // o painel de Vendas acaba em Ganho e Perdido (uma de cada, as duas fechando); o de Gestão não tem resultado
   const problema = problemaNasEtapasDoTipo(tipo, etapas);
   if (problema) throw new BadRequest(problema);
@@ -354,7 +354,7 @@ async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], d
 }
 
 /** Grava o plano dentro da transação de quem chamou e devolve os chamados que mudaram de etapa. */
-async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, agora: Date): Promise<Movido[]> {
+export async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, agora: Date): Promise<Movido[]> {
   const { painelId, porId, novas, saem, destino } = plano;
   const finais = new Map(novas.map((e) => [e.id, e]));
   /** Sem destino escolhido (a etapa só tinha chamados na lixeira): uma do mesmo tipo, senão a de entrada. */
@@ -400,7 +400,7 @@ async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, agora: D
  * O que mudou nas etapas, em frase ("entrou X; saiu Y; renomeou A → B; mudou a ordem; ajustou N2"), e
  * o antes/depois da auditoria (onde está o detalhe de cada etapa).
  */
-function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
+export function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   const { atuais, porId, novas, saem } = plano;
   const entraram = novas.filter((e) => e.nova).map((e) => e.nome);
   const ficaram = novas.filter((e) => !e.nova);

@@ -370,6 +370,13 @@ export const realApi: Api = {
     },
     salvarAjustes: (a) => http('PUT', '/comercial/simulador/ajustes', a),
   },
+  helena: {
+    opcoes: () => http('GET', '/comercial/helena/opcoes'),
+    ler: (painelId) => http('POST', '/comercial/helena/leituras', { painelId }),
+    leitura: (id) => http('GET', `/comercial/helena/leituras/${encodeURIComponent(id)}`),
+    previa: (id, destino) => http('GET', `/comercial/helena/leituras/${encodeURIComponent(id)}/previa${destino ? `?destino=${encodeURIComponent(destino)}` : ''}`),
+    trazer: (id, destino) => http('POST', `/comercial/helena/leituras/${encodeURIComponent(id)}/trazer`, { destino }),
+  },
   admin: {
     users: () => http('GET', '/admin/users'),
     createUser: (d) => http('POST', '/admin/users', d),

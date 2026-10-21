@@ -153,3 +153,39 @@ filhos e não se liga a chamados. Cada um fica no seu painel:
   código do chamado no **Sobre a negociação**.
 
 **Trocar de painel** (em Mais) só leva a negociação para outro painel de Vendas.
+
+## 8. Trazer do Helena (2.0.3)
+
+O painel de vendas do Helena (o **Ingline - Comercial**) vem para um painel de Vendas do Gestor, **com o
+histórico de cada negociação**: as etapas por onde passou, o ganho e a perda no dia da **Conclusão** de lá.
+Assim o relatório do Comercial já mostra os meses de antes da virada. É de quem importa e cuida dos painéis
+(o Administrador). A decisão inteira está em `docs/decisoes/0054-trazer-do-helena.md`.
+
+1. **Administração › Importar / Exportar**, no cartão **Trazer do Helena**. A leitura usa a chave de API do
+   LineChat que já está em **Administração › Ajustes** (a mesma dos chamados): sem ela, o cartão diz o porquê.
+2. Em **O painel no Helena**, o **Ingline - Comercial**. Em **Vai para o painel de Vendas**, o painel do
+   Comercial que já existe ou **Um painel de Vendas novo** (ele se chama Comercial e fica com a sigla IC: o
+   IC-34 do Helena continua IC-34).
+3. **Ler o Helena**: a barra mostra quantos cards já vieram com o histórico (um pedido por card).
+4. Confira a **prévia** — nada foi gravado ainda:
+   - os números de agora (em andamento, ganhas, perdidas) e **os ganhos mês a mês**: compare com o gráfico
+     *Meta vs Ganho mensal* do relatório do Helena;
+   - as **etapas** (as do Helena, na ordem de lá, com o Ganho e o Perdido no fim; no painel que já existe, a
+     etapa vazia que não está no Helena sai, e a que tem negociações fica);
+   - os **campos** que o painel usa, os que serão criados e os que ficam de fora (e por quê);
+   - as **pessoas** (quem do Gestor fica com cada nome do Helena), as **empresas** (o cliente do cadastro, ou
+     a empresa que ainda não é cliente), os produtos, as etiquetas e os motivos de perda;
+   - os avisos (o "(Cópia)" que sai do título, a mensalidade por produto que não soma o Valor atribuído…).
+5. **Trazer N negociações** e confirme. No fim, **Abrir o painel** e **Ver o relatório**.
+
+**O que fica igual ao Helena:** a mensalidade é o **Valor atribuído** do card (o número que o relatório de lá
+soma); o valor por produto entra quando os "Valor Mensalidade" de cada produto somam o Valor atribuído. A
+ativação é a soma dos "Valor Ativação". O ganho e a perda contam no dia da Conclusão, e a perda leva o motivo
+de lá.
+
+**O que fica no Helena:** as anotações e os anexos, a Área de atuação e os cards arquivados.
+
+**Dá para trazer de novo até a virada:** o que já veio é atualizado (fica como está no Helena, e o histórico
+que veio de lá é refeito) e o que é novo entra. O que a equipe fez no Gestor fica no histórico; a prévia avisa
+quantas negociações foram mexidas aqui (elas voltam a ficar como no Helena). A negociação que foi para a
+lixeira do Gestor fica lá.

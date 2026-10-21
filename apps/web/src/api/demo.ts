@@ -35,6 +35,7 @@ import type { Api } from './index.js';
 import { chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo } from './demo-atendimento.js';
 import { criarCalendarioDemo } from './demo-calendario.js';
 import { criarSimuladorDemo } from './demo-simulador.js';
+import { criarHelenaDemo } from './demo-helena.js';
 import { CONTATOS_DOS_CLIENTES } from './demo-atendimento-exemplos.js';
 import { CARGOS_DE_FABRICA, ContatoGravarSchema, MAX_CONTATOS_DO_CLIENTE, cargoDaLista, numeroWhatsApp as foneDoWhatsApp, type ContatoDoCliente } from '@gestor/shared';
 import { NOTA_DEMO } from './novidades-demo.js';
@@ -2067,6 +2068,8 @@ function respostaDemo(pergunta: string): RespostaIa {
 const calendarioDemo = criarCalendarioDemo({ S, id, wait, audit, requirePerm, requireAnyPerm });
 /** O Simulador do Comercial (2.0.2): as negociações e quem vê cada painel vêm da prévia dos chamados (demo-simulador.ts). */
 const simuladorDemo = criarSimuladorDemo({ S, id, wait, audit, requirePerm });
+/** O Trazer do Helena (2.0.3): um Helena de exemplo; o que é trazido entra nos chamados da prévia (demo-helena.ts). */
+const helenaDemo = criarHelenaDemo({ id, wait, audit, requirePerm });
 
 export const demoApi: Api = {
   auth: {
@@ -3792,6 +3795,8 @@ export const demoApi: Api = {
   calendario: calendarioDemo,
   // o Simulador do Comercial (2.0.2): o módulo inteiro mora em demo-simulador.ts
   simulador: simuladorDemo,
+  // o Trazer do Helena (2.0.3): o módulo inteiro mora em demo-helena.ts
+  helena: helenaDemo,
   admin: {
     async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt, whatsapp: u.whatsapp ?? null, whatsappAvisos: u.whatsappAvisos !== false })); },
     async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const w = whatsappDoUsuario(d); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null, whatsapp: w.whatsapp ?? null, whatsappAvisos: w.whatsappAvisos ?? true }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },

@@ -1683,6 +1683,11 @@ export const tickets = pgTable(
     prospect: text('prospect'),
     /** Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) */
     lostReason: text('lost_reason'),
+    /**
+     * De onde veio, quando veio de outro sistema (2.0.3, decisão 0054): "helena:<id do card>" — o Trazer do
+     * Helena acha por aqui a negociação que já trouxe (atualiza em vez de criar outra). Único.
+     */
+    externalRef: text('external_ref'),
     createdById: text('created_by_id').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1697,6 +1702,7 @@ export const tickets = pgTable(
     index('tickets_problem_idx').on(t.problemId),
     index('tickets_session_idx').on(t.sessionId),
     index('tickets_phone_idx').on(t.contactPhone),
+    uniqueIndex('tickets_external_ref_uq').on(t.externalRef),
   ],
 );
 
