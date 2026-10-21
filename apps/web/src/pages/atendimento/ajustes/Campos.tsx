@@ -37,6 +37,27 @@ function ondePede(painel: Painel, chaves: string[]): string[] {
   ];
 }
 
+/**
+ * A escolha do painel nos Ajustes que são de cada painel (os campos e, desde o 2.0.3, as etiquetas): um botão
+ * por painel, com a sigla na cor dele.
+ */
+export function EscolhaDoPainel({ paineis, atual, onEscolher, id, rotulo }: { paineis: Painel[]; atual: Painel; onEscolher: (id: string) => void; id: string; rotulo: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label={rotulo} id={id}>
+      <span className="text-[12.5px] font-semibold text-ink-2 mr-1">Painel</span>
+      {paineis.map((p) => {
+        const ativo = p.id === atual.id;
+        return (
+          <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => onEscolher(p.id)}
+            className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
+            <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function AjustesCampos() {
   const opcoes = useOpcoes();
   const [sp, setSp] = useSearchParams();
@@ -63,18 +84,7 @@ export function AjustesCampos() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="O painel dos campos" id="campos-painel">
-        <span className="text-[12.5px] font-semibold text-ink-2 mr-1">Painel</span>
-        {paineis.map((p) => {
-          const ativo = p.id === painel.id;
-          return (
-            <button key={p.id} type="button" role="radio" aria-checked={ativo} onClick={() => mudar({ painel: p.id })}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-[13.5px] ${ativo ? 'border-accent bg-accent-soft text-accent-ink font-semibold' : 'border-line text-ink-2 hover:bg-surface-2'}`}>
-              <Chip tone={TOM_DO_PAINEL[p.cor]} className="font-mono">{p.sigla}</Chip> {p.nome}
-            </button>
-          );
-        })}
-      </div>
+      <EscolhaDoPainel paineis={paineis} atual={painel} onEscolher={(id) => mudar({ painel: id })} id="campos-painel" rotulo="O painel dos campos" />
 
       <CamposDoSistema painel={painel} nAssuntos={nAssuntos} onAssuntos={() => mudar({ ver: 'assuntos' })} onTipos={() => setTipos(true)} />
       <CamposDoPainel painel={painel} campos={campos} onNovo={() => setJanela('novo')} onEditar={setJanela} />
@@ -289,6 +299,7 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
     opcoes: (campo?.opcoes ?? []).map((o): OpcaoRascunho => ({ chave: o.id, id: o.id, nome: o.nome, ativa: o.ativa })),
     obrigatorioAoAbrir: chave ? painel.ajustes.obrigatoriosAoAbrir.includes(chave) : false,
     etapas: chave ? painel.etapas.filter((e) => e.obrigatorios.includes(chave)).map((e) => e.id) : [],
+    incluirNaHora: campo?.incluirNaHora ?? false,
   }));
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -303,7 +314,8 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
     const opcoes = f.opcoes.map((o) => ({ ...o, nome: o.nome.trim() })).filter((o) => o.nome || o.id);
     if (lista_) {
       if (opcoes.some((o) => !o.nome)) { setErro('Dê um nome a cada opção (ou tire a que ficou vazia).'); return; }
-      if (!opcoes.some((o) => o.ativa)) { setErro('A lista precisa de pelo menos uma opção.'); document.getElementById('campo-opcao-nova')?.focus(); return; }
+      // a lista que inclui na hora pode começar vazia (as opções nascem nos chamados, 2.0.3)
+      if (!opcoes.some((o) => o.ativa) && !(f.tipo === 'lista' && f.incluirNaHora)) { setErro('A lista precisa de pelo menos uma opção.'); document.getElementById('campo-opcao-nova')?.focus(); return; }
       const vistas = new Set<string>();
       for (const o of opcoes) {
         if (vistas.has(paraBusca(o.nome))) { setErro(`Duas opções com o nome ${o.nome}.`); return; }
@@ -313,7 +325,7 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
     const d: CampoGravarEntrada = {
       nome, tipo: f.tipo, dica: f.dica.trim() || null, ativo: f.ativo,
       opcoes: lista_ ? opcoes.map((o) => ({ ...(o.id ? { id: o.id } : {}), nome: o.nome, ativa: o.ativa })) : [],
-      obrigatorioAoAbrir: f.obrigatorioAoAbrir, etapas: f.etapas,
+      obrigatorioAoAbrir: f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
     };
     setSalvando(true); setErro('');
     try {
@@ -348,6 +360,15 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
         <p className="text-[12.5px] text-muted -mt-2.5">{DICA_TIPO_CAMPO[f.tipo]}</p>
 
         {lista_ && <EditarOpcoes opcoes={f.opcoes} onChange={(opcoes) => mudar({ opcoes })} />}
+        {/* a lista que cresce no próprio chamado (2.0.3, a Indicação do Comercial: "eu tenho que conseguir criar por aqui mesmo") */}
+        {f.tipo === 'lista' && (
+          <label className="flex items-start gap-2.5 text-sm cursor-pointer -mt-1" id="campo-incluir-na-hora">
+            <Toggle checked={f.incluirNaHora} onChange={(v) => mudar({ incluirNaHora: v })} />
+            <span>Quem trabalha inclui uma opção ali mesmo
+              <span className="block text-[12.5px] text-muted">No Abrir chamado e na ficha, o que for escrito e não estiver na lista vira “Incluir”. Bom para listas que crescem, como a Indicação.</span>
+            </span>
+          </label>
+        )}
 
         <Rotulo rotulo="Explicação (opcional)" id="campo-dica" dica="Aparece embaixo do campo, na ficha e no Abrir chamado.">
           <input className="input" id="campo-dica" value={f.dica} maxLength={200} placeholder="Ex.: o sistema em que o problema aparece" onChange={(e) => mudar({ dica: e.target.value })} />

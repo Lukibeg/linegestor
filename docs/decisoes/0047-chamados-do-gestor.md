@@ -418,3 +418,42 @@ entrou nele.
   `packages/shared/src/atendimento.ts`; o servidor monta a mensagem em segundo plano
   (`mensagemDoAvisoDoChamado`, em `services/atendimento/avisos.ts`), com o que cada ação contou (`quem`,
   `nota`, `novidade`, `aviso`). A prévia confere e guarda do mesmo jeito (nada sai de verdade).
+
+## Revisto no 2.0.3 (21/10/2026): as etiquetas de cada painel, a barra da ficha, o quadro até o pé da tela e a lista que inclui na hora
+
+Num documento com prints (o "pacote de melhorias" de 21/10), com o 2.0.2 no ar. Avisado antes (as etiquetas
+eram as mesmas em todos os painéis; o campo não mudava de tipo), e as palavras dele pediam a mudança.
+
+- **Cada painel tem as suas etiquetas** (*"as etiquetas tem q ser por painel, cada painel vai ter suas
+  etiquetas"*). `ticket_tags` ganhou `panel_id`, e o nome não se repete **dentro do painel** (o mesmo nome
+  pode estar em dois, cada um com a sua cor). A migração `0023` pôs cada etiqueta nos painéis dos chamados
+  que a têm (os da lixeira também), com o mesmo nome e a mesma cor; a que nenhum chamado usava foi para os
+  painéis de chamados (Gestão), não para os de Vendas — as de antes nasceram no Suporte (o robô, a NIA). As
+  opções da tela trazem o painel de cada etiqueta (`EtiquetaNoPainel`; `etiquetasDoPainel` filtra); o seletor,
+  a cor dos cartões e o filtro da lista usam as do painel do chamado (na lista de Todos, os nomes de todos,
+  sem repetir). **Ajustes › Etiquetas** escolhe o painel (a mesma escolha da aba Campos, `EscolhaDoPainel`), e
+  criar pede o painel; editar renomeia só nos chamados do painel; tirar olha só os chamados do painel. O
+  editar pelo nome (o seletor) leva o painel. **Trocar de painel leva as etiquetas**: as que faltam no painel
+  novo entram nele com a cor que tinham no antigo (`levarEtiquetas`). A auditoria diz o painel.
+- **As Etiquetas e o Agendar ao lado do Mover**, na barra de ações da ficha (*"etiquetas tem q ficar fácil
+  ali do lado de mover e pra agendar tbm pode até manter o agendar abaixo que já existe"*): o botão
+  Etiquetas abre o mesmo seletor (o `SeletorDeEtiquetas` ganhou o `gatilho`, um botão no lugar da caixa) e o
+  Agendar abre a janela do evento (o `useAgendar`, o mesmo do Na agenda). A caixa das etiquetas e o Na agenda
+  continuam embaixo. **Os botões da barra ficaram menores** (*"esses botões estão muito grandes, podem ser
+  um pouco menor"*): a classe `btn-xs`.
+- **O quadro vai até o pé da tela** (*"essa barra de rolagem tem q ficar bem abaixo"*): com poucos cartões,
+  a barra de rolar para o lado ficava logo abaixo do cartão mais baixo, no meio da tela. No computador, o
+  quadro tem a altura que sobra da janela (menos a folga do pé da página, para a página não rolar), as
+  colunas esticam e cada uma rola por dentro.
+- **A lista que inclui na hora** (a Indicação do Comercial: *"a indicação tem q ser predefinido e eu tenho
+  que conseguir criar por aqui mesmo se quiser"*): a lista de uma opção ganhou a marca **"Quem trabalha
+  inclui uma opção ali mesmo"** (`ticket_fields.inline_options`, `incluirNaHora`). No Abrir chamado e na
+  ficha, a caixa de escolher mostra o **Incluir** quando o que foi escrito não é nenhuma opção
+  (`EscolherComBusca` com `criar`); a opção entra na lista do campo pela rota nova `POST
+  /api/atendimento/campos/:id/opcoes` (`tickets.work`, quem vê o painel; a mesma escrita de outro jeito volta,
+  a desativada é reativada; até as 50 opções; na auditoria). O nome que chega pela API, pelo n8n ou pelo robô
+  e não está na lista também entra nela (`incluirOpcoesEscritas`), para nada parar. A lista que inclui na
+  hora pode nascer vazia. **Revê "o tipo não muda"** num ponto só: a migração `0023` passou o campo
+  **Indicação** (texto) de cada painel de Vendas para essa lista — o que já tinha sido escrito virou opção
+  (sem repetir, sem ligar para maiúscula) e cada negociação ficou com a sua; o id do campo não muda. Na tela,
+  o tipo continua sem mudar.

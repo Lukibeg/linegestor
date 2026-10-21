@@ -86,9 +86,14 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
   );
 }
 
-/** O título, que se edita na própria linha: clicar edita, Enter grava, Esc desiste. */
+/**
+ * O título, que se edita na própria linha: clicar edita, Enter grava, Esc desiste. Na negociação ele é
+ * opcional (2.0.3, o pedido do Luan: "se eu n colocar nada vai ser o nome do cliente"): vazio, o servidor põe
+ * o nome da empresa.
+ */
 function Titulo() {
-  const { f, pode } = useAberta();
+  const { f, pode, painel } = useAberta();
+  const vendas = painel?.tipo === 'vendas';
   const [editando, setEditando] = useState(false);
   const [texto, setTexto] = useState(f.titulo);
   const acao = useAcao();
@@ -101,7 +106,10 @@ function Titulo() {
     if (fim.current) return;
     const t = texto.trim();
     if (t === f.titulo) { desistir(); return; }
-    if (t.length < 3) { acao.setErro('O título precisa de pelo menos 3 letras.'); return; }
+    if (vendas ? t.length > 0 && t.length < 3 : t.length < 3) {
+      acao.setErro(vendas ? 'Escreva pelo menos 3 letras, ou deixe vazio: fica o nome da empresa.' : 'O título precisa de pelo menos 3 letras.');
+      return;
+    }
     fim.current = true;
     const r = await acao.rodar(() => api.atendimento.alterar(f.id, { titulo: t }));
     if (r.ok) setEditando(false); else fim.current = false;
@@ -118,7 +126,7 @@ function Titulo() {
             onBlur={() => { void gravar(); }} />
           {acao.ocupado && <Spinner />}
         </div>
-        <p className="text-[12px] text-muted mt-1">Enter grava · Esc desiste</p>
+        <p className="text-[12px] text-muted mt-1">Enter grava · Esc desiste{vendas ? ' · vazio, fica o nome da empresa' : ''}</p>
         <ErroPerto erro={acao.erro} />
       </div>
     );

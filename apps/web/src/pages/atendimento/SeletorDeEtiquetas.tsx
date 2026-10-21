@@ -8,9 +8,12 @@
  * com a cor e a marca das que o chamado tem — um clique põe ou tira, e a lista fica aberta para marcar
  * mais de uma. O que foi escrito e não existe vira "Criar etiqueta", com a cor. O lápis de cada uma (para
  * quem cuida dos chamados) abre o editar: o nome e a cor, que valem em todos os chamados que a têm. Usado
- * no Abrir chamado e na ficha.
+ * no Abrir chamado e na ficha (na caixa da classificação e, desde o 2.0.3, no botão da barra de ações).
+ *
+ * Desde o 2.0.3 cada painel tem as suas etiquetas (o pedido do Luan: "as etiquetas tem q ser por painel, cada
+ * painel vai ter suas etiquetas"): o catálogo que chega é o do painel do chamado.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, ChevronDown, Pencil, Plus, Search } from 'lucide-react';
 import { chaveDaEtiqueta, corDaEtiqueta, paraBusca, type CorEtiqueta, type EtiquetaComCor } from '@gestor/shared';
@@ -24,11 +27,13 @@ const MAXIMO = 20;
 
 type Modo = { tipo: 'lista' } | { tipo: 'criar'; nome: string } | { tipo: 'editar'; nome: string; local: boolean };
 
-export function SeletorDeEtiquetas({ id, valor, catalogo, coresNovas = {}, onMudar, onCriar, onEditarLocal, onEditada, podeMudar, podeEditar, ocupado = false, rotulo = 'Etiquetas' }: {
+export function SeletorDeEtiquetas({ id, painelId, valor, catalogo, coresNovas = {}, onMudar, onCriar, onEditarLocal, onEditada, podeMudar, podeEditar, ocupado = false, rotulo = 'Etiquetas', gatilho }: {
   id: string;
+  /** o painel do chamado: cada painel tem as suas etiquetas (2.0.3) — o editar muda a deste painel */
+  painelId: string;
   /** as etiquetas do chamado (os nomes) */
   valor: string[];
-  /** as etiquetas que existem, com a cor (as opções do módulo) */
+  /** as etiquetas do painel, com a cor (as opções do módulo, só as deste painel) */
   catalogo: EtiquetaComCor[];
   /** a cor das novas que ainda não existem (no Abrir chamado, nascem ao abrir) */
   coresNovas?: Record<string, CorEtiqueta>;
@@ -44,6 +49,11 @@ export function SeletorDeEtiquetas({ id, valor, catalogo, coresNovas = {}, onMud
   podeEditar: boolean;
   ocupado?: boolean;
   rotulo?: string;
+  /**
+   * Um botão no lugar da caixa (a barra de ações da ficha, 2.0.3: "etiquetas tem q ficar fácil ali do lado de
+   * mover"): o mesmo painel de escolher abre embaixo dele.
+   */
+  gatilho?: { classe: string; conteudo: ReactNode; titulo?: string };
 }) {
   const [aberto, setAberto] = useState(false);
   const [modo, setModo] = useState<Modo>({ tipo: 'lista' });
@@ -109,8 +119,9 @@ export function SeletorDeEtiquetas({ id, valor, catalogo, coresNovas = {}, onMud
     else if (e.key === 'Tab') fechar(false);
   };
 
-  // quem só vê: as etiquetas, sem a caixa de escolher
+  // quem só vê: as etiquetas, sem a caixa de escolher (o botão da barra nem aparece)
   if (!podeMudar && !podeEditar) {
+    if (gatilho) return null;
     return valor.length
       ? <ul className="flex flex-wrap gap-1">{valor.map((n) => <li key={n} className="max-w-full"><ChipDaEtiqueta nome={n} cor={cor(n)} /></li>)}</ul>
       : <p className="text-[13px] text-muted">Nenhuma.</p>;
@@ -118,7 +129,13 @@ export function SeletorDeEtiquetas({ id, valor, catalogo, coresNovas = {}, onMud
 
   return (
     <div className="relative min-w-0" ref={caixa}>
-      {/* a caixa, como os outros campos: clicar no vazio abre a lista */}
+      {gatilho ? (
+        <button ref={botao} type="button" id={id} className={gatilho.classe} title={gatilho.titulo} aria-haspopup="dialog" aria-expanded={aberto}
+          onClick={() => { if (aberto) fechar(); else abrir(); }}>
+          {gatilho.conteudo}
+        </button>
+      ) : (
+      /* a caixa, como os outros campos: clicar no vazio abre a lista */
       <div className={`input flex flex-wrap items-center gap-1.5 py-1.5 min-h-[40px] ${podeMudar || podeEditar ? 'cursor-pointer' : ''} ${aberto ? 'border-accent' : ''}`}
         onClick={(e) => { if (!(e.target as HTMLElement).closest('button') || e.target === botao.current) { if (aberto) fechar(); else abrir(); } }}>
         {valor.map((n) => (
@@ -132,6 +149,7 @@ export function SeletorDeEtiquetas({ id, valor, catalogo, coresNovas = {}, onMud
           </button>
         )}
       </div>
+      )}
 
       {aberto && (
         <div ref={painel} role="dialog" aria-label={rotulo} id={`${id}-lista`}
@@ -189,7 +207,7 @@ export function SeletorDeEtiquetas({ id, valor, catalogo, coresNovas = {}, onMud
                 onVoltar={() => setModo({ tipo: 'lista' })}
                 onSalvar={async (d) => { onCriar(d.nome, d.cor); setBusca(''); setMarcado(0); setModo({ tipo: 'lista' }); }} />
             ) : (
-              <EditarNoSeletor nome={modo.nome} cor={cor(modo.nome)} local={modo.local} nomesOcupados={todas.filter((n) => !mesma(n, modo.nome))}
+              <EditarNoSeletor painelId={painelId} nome={modo.nome} cor={cor(modo.nome)} local={modo.local} nomesOcupados={todas.filter((n) => !mesma(n, modo.nome))}
                 onEditarLocal={onEditarLocal} onEditada={onEditada} onVoltar={() => setModo({ tipo: 'lista' })} />
             )}
           </div>
@@ -199,18 +217,18 @@ export function SeletorDeEtiquetas({ id, valor, catalogo, coresNovas = {}, onMud
   );
 }
 
-/** O editar de dentro do seletor: a que existe muda em todos os chamados (pelo servidor); a nova daqui, só aqui. */
-function EditarNoSeletor({ nome, cor, local, nomesOcupados, onEditarLocal, onEditada, onVoltar }: {
-  nome: string; cor: CorEtiqueta; local: boolean; nomesOcupados: string[];
+/** O editar de dentro do seletor: a que existe muda nos chamados do painel (pelo servidor); a nova daqui, só aqui. */
+function EditarNoSeletor({ painelId, nome, cor, local, nomesOcupados, onEditarLocal, onEditada, onVoltar }: {
+  painelId: string; nome: string; cor: CorEtiqueta; local: boolean; nomesOcupados: string[];
   onEditarLocal?: (de: string, nome: string, cor: CorEtiqueta) => void; onEditada?: (de: string, para: string) => void; onVoltar: () => void;
 }) {
   const qc = useQueryClient();
   return (
     <EditorDeEtiqueta titulo="Editar a etiqueta" botao="Salvar" inicial={{ nome, cor }} nomesOcupados={nomesOcupados} onVoltar={onVoltar}
-      dica={local ? 'Ela ainda é nova: nasce assim quando o chamado for aberto.' : 'O nome e a cor valem em todos os chamados que têm a etiqueta.'}
+      dica={local ? 'Ela ainda é nova: nasce assim quando o chamado for aberto.' : 'O nome e a cor valem em todos os chamados deste painel que têm a etiqueta.'}
       onSalvar={async (d) => {
         if (local) { onEditarLocal?.(nome, d.nome, d.cor); onVoltar(); return; }
-        await api.atendimento.editarEtiquetaPeloNome({ de: nome, nome: d.nome, cor: d.cor });
+        await api.atendimento.editarEtiquetaPeloNome({ painelId, de: nome, nome: d.nome, cor: d.cor });
         onEditada?.(nome, d.nome);
         // o nome novo aparece em todo lugar: nas opções, no quadro, na lista e nas fichas abertas
         await qc.invalidateQueries({ queryKey: ['atendimento'] });

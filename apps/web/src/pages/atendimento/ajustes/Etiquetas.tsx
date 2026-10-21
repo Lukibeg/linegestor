@@ -1,6 +1,8 @@
 /**
- * Painéis › Ajustes (Patch 2.0) — Etiquetas: as mesmas em todos os painéis, cada uma com a cor dela
- * (o pedido do Luan na prévia: "na hora de criar as etiquetas, seria legal poder escolher a cor também").
+ * Painéis › Ajustes (Patch 2.0) — Etiquetas, cada uma com a cor dela (o pedido do Luan na prévia: "na hora de
+ * criar as etiquetas, seria legal poder escolher a cor também"). Desde o 2.0.3, **cada painel tem as suas** (o
+ * pedido do Luan: "as etiquetas tem q ser por painel, cada painel vai ter suas etiquetas"): a tela escolhe o
+ * painel, como a dos campos, e tudo aqui vale só nele.
  *
  * A etiqueta nasce no chamado (no Abrir chamado e na ficha, com a cor escolhida ali; a do robô e da IA
  * nasce cinza) ou aqui. Aqui se edita — o nome e a cor (o pedido do Luan: "parecido com
@@ -8,19 +10,23 @@
  * (a escrita errada, a que caiu em desuso). O mesmo editar mora no seletor de etiquetas, no lápis.
  */
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plus, Search, Tags, Trash2 } from 'lucide-react';
 import { chaveDaEtiqueta, paraBusca, type CorEtiqueta, type EtiquetaDoCatalogo } from '@gestor/shared';
 import { api } from '../../../api/index.js';
-import { Carregando, Confirmar, Modal, Spinner, mensagemErro } from '../../../components/ui/index.js';
-import { ChipDaEtiqueta, CoresDaEtiqueta } from '../comum.js';
+import { Carregando, Confirmar, Modal, Spinner, Vazio, mensagemErro } from '../../../components/ui/index.js';
+import { ChipDaEtiqueta, CoresDaEtiqueta, useOpcoes } from '../comum.js';
 import { EditorDeEtiqueta } from '../SeletorDeEtiquetas.js';
 import { CartaoAjuste, Explicacao, erroLegivel } from './Avisos.js';
+import { EscolhaDoPainel } from './Campos.js';
 
 const CHAVE = ['atendimento', 'ajustes', 'etiquetas'];
 
 export function AjustesEtiquetas() {
   const q = useQuery({ queryKey: CHAVE, queryFn: () => api.atendimento.etiquetas() });
+  const opcoes = useOpcoes();
+  const [sp, setSp] = useSearchParams();
   const qc = useQueryClient();
   // o nome e a cor novos aparecem nos cartões, nas fichas e no Abrir chamado (as opções e os chamados do módulo)
   const recarregar = () => qc.invalidateQueries({ queryKey: ['atendimento'] });
@@ -35,9 +41,17 @@ export function AjustesEtiquetas() {
   const [tirando, setTirando] = useState(false);
   const [busca, setBusca] = useState('');
 
-  if (q.isLoading) return <Carregando />;
-  if (q.isError) return <p className="text-bad text-sm" role="alert">{mensagemErro(q.error)}</p>;
-  const lista = q.data ?? [];
+  if (q.isLoading || opcoes.isLoading) return <Carregando />;
+  if (q.isError || opcoes.isError || !opcoes.data) return <p className="text-bad text-sm" role="alert">{mensagemErro(q.error ?? opcoes.error)}</p>;
+  const { paineis } = opcoes.data;
+  // o painel fica no endereço (?painel=), o mesmo das abas dos campos e dos painéis
+  const painel = paineis.find((p) => p.id === sp.get('painel')) ?? paineis[0];
+  if (!painel) return <Vazio titulo="Nenhum painel" texto="Crie um painel em Painéis e etapas: as etiquetas são de cada painel." />;
+  const escolherPainel = (id: string) => {
+    setSp((x) => { const n = new URLSearchParams(x); n.set('painel', id); return n; }, { replace: true });
+    setNome(''); setErro(''); setBusca(''); setErros({});
+  };
+  const lista = (q.data ?? []).filter((e) => e.painelId === painel.id);
   const b = paraBusca(busca);
   const visiveis = b ? lista.filter((e) => paraBusca(e.nome).includes(b)) : lista;
   const escrito = nome.trim();
@@ -47,7 +61,7 @@ export function AjustesEtiquetas() {
     if (!escrito || igual) return;
     setCriando(true); setErro('');
     try {
-      await api.atendimento.criarEtiqueta({ nome: escrito, cor });
+      await api.atendimento.criarEtiqueta({ painelId: painel.id, nome: escrito, cor });
       await recarregar();
       setNome(''); setCor('neutral');
     } catch (e) { setErro(erroLegivel(e)); } finally { setCriando(false); }
@@ -64,13 +78,15 @@ export function AjustesEtiquetas() {
 
   return (
     <div className="flex flex-col gap-4 max-w-4xl">
-      <CartaoAjuste icone={<Tags size={18} />} titulo="Etiquetas" id="ajustes-etiquetas"
+      <EscolhaDoPainel paineis={paineis} atual={painel} onEscolher={escolherPainel} id="etiquetas-painel" rotulo="O painel das etiquetas" />
+      <CartaoAjuste icone={<Tags size={18} />} titulo={`Etiquetas do ${painel.nome}`} id="ajustes-etiquetas"
         situacao={lista.length > 0 && <span className="text-[12.5px] text-muted tnum">{lista.length} {lista.length === 1 ? 'etiqueta' : 'etiquetas'}</span>}>
         <Explicacao>
           <p>
-            As etiquetas são as mesmas em todos os painéis, cada uma com a cor dela. Quem trabalha nos chamados cria uma nova no Abrir
-            chamado ou na ficha, já escolhendo a cor (a que chega pelo robô ou pela IA nasce cinza). Aqui se edita o nome e a cor — valem
-            em todos os chamados que a têm — e se tira das sugestões a que nenhum chamado usa. O mesmo editar está no lápis da lista de etiquetas, no Abrir chamado e na ficha.
+            Cada painel tem as suas etiquetas, cada uma com a cor dela: as daqui só aparecem no {painel.nome}. Quem trabalha nele cria
+            uma nova no Abrir chamado ou na ficha, já escolhendo a cor (a que chega pelo robô ou pela IA nasce cinza). Aqui se edita o nome
+            e a cor — valem em todos os chamados deste painel que a têm — e se tira das sugestões a que nenhum chamado usa. O mesmo editar
+            está no lápis da lista de etiquetas, no Abrir chamado e na ficha.
           </p>
         </Explicacao>
 
@@ -92,8 +108,8 @@ export function AjustesEtiquetas() {
 
         {!lista.length ? (
           <div className="rounded-xl border border-dashed border-line-strong p-6 text-center mt-4" id="etiquetas-vazio">
-            <div className="font-display font-semibold">Nenhuma etiqueta ainda</div>
-            <p className="text-muted text-sm mt-1 max-w-md mx-auto">Elas nascem nos chamados, ou aqui em cima.</p>
+            <div className="font-display font-semibold">Nenhuma etiqueta no {painel.nome} ainda</div>
+            <p className="text-muted text-sm mt-1 max-w-md mx-auto">Elas nascem nos chamados deste painel, ou aqui em cima.</p>
           </div>
         ) : (
           <div className="mt-4 flex flex-col gap-2">
@@ -134,7 +150,7 @@ export function AjustesEtiquetas() {
           <EditorDeEtiqueta naJanela titulo="Editar a etiqueta" botao="Salvar" inicial={{ nome: editando.nome, cor: editando.cor }}
             nomesOcupados={lista.filter((x) => x.id !== editando.id).map((x) => x.nome)}
             dica={!editando.chamados ? 'Nenhum chamado tem a etiqueta ainda.'
-              : editando.chamados === 1 ? 'O nome e a cor valem no chamado que tem a etiqueta.' : `O nome e a cor valem nos ${editando.chamados} chamados que têm a etiqueta.`}
+              : editando.chamados === 1 ? `O nome e a cor valem no chamado do ${painel.nome} que tem a etiqueta.` : `O nome e a cor valem nos ${editando.chamados} chamados do ${painel.nome} que têm a etiqueta.`}
             onVoltar={() => setEditando(null)}
             onSalvar={async (d) => { await api.atendimento.editarEtiqueta(editando.id, d); await recarregar(); setEditando(null); }} />
         </Modal>

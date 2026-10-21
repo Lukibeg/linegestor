@@ -29,8 +29,9 @@ Suporte) fica com um papel sem o **Ver os chamados**.
 6. Em **As regras**, confira os **motivos de perda** (a lista que aparece ao marcar como perdida) e
    ponha a **meta do mês**, em R$ de mensalidades (vazia: sem meta).
 7. O painel já vem com os campos do Comercial: **CNPJ**, **Contatos principais**, **Origem de lead** e
-   **Indicação**. Para mudar o nome, as opções da Origem de lead ou a ordem, ou para incluir outro campo:
-   **Ajustes › Campos**, no painel do Comercial.
+   **Indicação** (uma lista que cresce na própria negociação: escreva quem indicou e clique em **Incluir**).
+   Para mudar o nome, as opções das listas ou a ordem, ou para incluir outro campo: **Ajustes › Campos**, no
+   painel do Comercial.
 
 ## 2. O dia a dia
 
@@ -49,15 +50,18 @@ Suporte) fica com um papel sem o **Ver os chamados**.
 
 **Nova negociação** (no alto da tela do painel):
 
-- **A empresa**: **Já é cliente** (escolha no cadastro) ou **Ainda não é cliente** (escreva o nome).
-  Quando ela entrar no cadastro de clientes, o **Virou cliente?** da ficha liga a negociação a ela.
+- **A empresa**: **Ainda não é cliente** (já vem marcado: escreva o nome) ou **Já é cliente** (escolha no
+  cadastro). Quando ela entrar no cadastro de clientes, o **Virou cliente?** da ficha liga a negociação a ela.
 - O **contato** e o WhatsApp.
-- **O que está sendo negociado** (uma frase: "PABX em nuvem com 40 ramais").
+- **O que está sendo negociado** (opcional: uma frase, como "PABX em nuvem com 40 ramais"). Em branco, a
+  negociação fica com o nome da empresa — e acompanha a empresa se ela mudar. No quadro, o cartão mostra a
+  empresa em destaque e, embaixo, esta frase.
 - O **valor** (pode vir depois: a **Proposta enviada** pede a mensalidade) — **Um valor só** ou **Por
   produto** (veja abaixo), com a **mensalidade** e a **ativação**.
 - **Sobre a negociação**: o que o cliente precisa, quem decide, a concorrência.
-- **Do painel Comercial**: o CNPJ, os contatos principais, a origem de lead e quem indicou (na ficha,
-  ficam em Detalhes; os contatos, junto do Sobre a negociação).
+- **Do painel Comercial**: o CNPJ, os contatos principais, a origem de lead e quem indicou — a **Indicação**
+  é uma lista: quem não está nela entra pelo **Incluir** (na ficha, ficam em Detalhes; os contatos, junto do
+  Sobre a negociação).
 - Os produtos e quem cuida.
 
 A negociação nasce no **Lead**.

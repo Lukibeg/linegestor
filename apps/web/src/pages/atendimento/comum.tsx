@@ -11,7 +11,7 @@ import { Link, NavLink, useLocation, useNavigate, type LinkProps, type Location 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, ThumbsDown, TriangleAlert, Trophy, X } from 'lucide-react';
 import {
-  CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, reaisInteiros, telefoneLegivel, textoDoPrazo,
+  CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, etiquetasDoPainel, paraBusca, reaisInteiros, telefoneLegivel, textoDoPrazo,
   type CartaoChamado, type CorEtiqueta, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type ResultadoDaVenda,
   type TipoEspera,
 } from '@gestor/shared';
@@ -29,6 +29,20 @@ export function useOpcoes() {
 }
 
 export const chaveDaFicha = (ref: string) => ['atendimento', 'chamado', ref.toUpperCase()];
+
+/**
+ * Incluir uma opção numa lista do painel ali mesmo, sem ir aos Ajustes (2.0.3, a Indicação: "eu tenho que
+ * conseguir criar por aqui mesmo se quiser") — só nas listas marcadas para isso. Devolve o id da opção nova,
+ * depois de as opções do módulo serem relidas (a caixa já mostra o nome dela).
+ */
+export function useIncluirOpcao() {
+  const qc = useQueryClient();
+  return async (campoId: string, nome: string): Promise<string> => {
+    const o = await api.atendimento.incluirOpcaoDoCampo(campoId, { nome });
+    await qc.invalidateQueries({ queryKey: ['atendimento', 'opcoes'] });
+    return o.id;
+  };
+}
 
 /** A ficha de um chamado (pelo código ou pelo id). */
 export function useFicha(ref: string | undefined) {
@@ -322,11 +336,11 @@ export function ChipDaEtiqueta({ nome, cor, onTirar, desligado = false }: { nome
   );
 }
 
-/** As etiquetas do chamado (o cartão do quadro, o Meu dia), cada uma na cor dela. */
-export function Etiquetas({ lista }: { lista: string[] }) {
+/** As etiquetas do chamado (o cartão do quadro, o Meu dia), cada uma na cor dela — a do painel do chamado (2.0.3). */
+export function Etiquetas({ lista, painelId }: { lista: string[]; painelId: string }) {
   const op = useOpcoes();
   if (!lista.length) return null;
-  const cores = op.data?.etiquetas ?? [];
+  const cores = etiquetasDoPainel(op.data?.etiquetas ?? [], painelId);
   return <span className="inline-flex flex-wrap gap-1">{lista.map((e) => <ChipDaEtiqueta key={e} nome={e} cor={corDaEtiqueta(cores, e)} />)}</span>;
 }
 
@@ -424,14 +438,17 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
         {c.anotacoes > 0 && <span className="text-[11.5px] text-muted inline-flex items-center gap-0.5" title={`${c.anotacoes} anotações`}><MessageSquare size={11} /> {c.anotacoes}</span>}
         <span className="ml-auto">{c.responsavel ? <Avatar nome={c.responsavel.nome} /> : <span className="text-[11.5px] text-muted italic">sem dono</span>}</span>
       </div>
-      {c.etiquetas.length > 0 && <Etiquetas lista={c.etiquetas} />}
+      {c.etiquetas.length > 0 && <Etiquetas lista={c.etiquetas} painelId={c.painelId} />}
     </div>
   );
 }
 
 /**
  * A negociação num cartão (o painel de Vendas, 2.0.1): o código (e, quando acabou, o Ganho ou o Perdido)
- * em cima; o título; a empresa e o contato; o valor em destaque; quem está com ela.
+ * em cima; a empresa, grande e em negrito, e embaixo dela o título numa linha só (o pedido do Luan, 2.0.3:
+ * "essa descrição tem q ficar bem sucinta abaixo do nome do cliente que tem q ta em negrito e maior") — o título
+ * que é o próprio nome da empresa (o título que ficou vazio) não se repete; o contato; o valor em destaque; quem
+ * está com ela.
  */
 function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: { c: CartaoChamado; cor?: CorPainel; mostrarEtapa?: boolean; nomeDaEtapa?: string; arrastavel: boolean }) {
   const empresa = c.cliente?.nome ?? c.empresa;
@@ -441,11 +458,13 @@ function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: {
         <CodigoChamado codigo={c.codigo} cor={cor} />
         {c.resultado && <span className="ml-auto"><ChipResultado r={c.resultado} motivo={c.motivoPerda} em={c.fechadoEm} /></span>}
       </div>
-      <LinkDoChamado codigo={c.codigo} className="font-semibold text-ink hover:text-accent line-clamp-2" onClick={(e) => e.stopPropagation()}>{c.titulo}</LinkDoChamado>
       <div className="min-w-0">
-        {empresa
-          ? <div className="font-semibold text-ink-2 truncate" title={c.cliente ? 'Já é cliente' : 'Ainda não é cliente'}>{empresa}</div>
-          : <div className="text-signal text-[12px] font-medium">sem empresa</div>}
+        <LinkDoChamado codigo={c.codigo} className="block font-display font-bold text-[15px] leading-tight text-ink hover:text-accent line-clamp-2" onClick={(e) => e.stopPropagation()}
+          title={empresa ? `${empresa} — ${c.cliente ? 'já é cliente' : 'ainda não é cliente'}` : undefined} data-empresa>
+          {empresa ?? c.titulo}
+        </LinkDoChamado>
+        {empresa && paraBusca(c.titulo) !== paraBusca(empresa) && <div className="text-[12.5px] text-ink-2 truncate mt-0.5" title={c.titulo} data-titulo>{c.titulo}</div>}
+        {!empresa && <div className="text-signal text-[12px] font-medium">sem empresa</div>}
         {c.contato && (c.contato.nome || c.contato.telefone) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? telefoneLegivel(c.contato.telefone)}</div>}
       </div>
       {/* o valor do cartão é a mensalidade (o que conta); a ativação fica na ficha */}
@@ -460,7 +479,7 @@ function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: {
         {c.anotacoes > 0 && <span className="text-[11.5px] text-muted inline-flex items-center gap-0.5" title={`${c.anotacoes} anotações`}><MessageSquare size={11} /> {c.anotacoes}</span>}
         <span className="ml-auto">{c.responsavel ? <Avatar nome={c.responsavel.nome} /> : <span className="text-[11.5px] text-muted italic">sem dono</span>}</span>
       </div>
-      {c.etiquetas.length > 0 && <Etiquetas lista={c.etiquetas} />}
+      {c.etiquetas.length > 0 && <Etiquetas lista={c.etiquetas} painelId={c.painelId} />}
     </div>
   );
 }

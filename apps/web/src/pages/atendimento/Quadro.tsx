@@ -231,13 +231,16 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
       {nenhum && escritos.length > 0 && <p className="text-[13px] text-muted mb-2">{vendas ? 'Nenhuma negociação neste painel com esses filtros.' : 'Nenhum chamado neste painel com esses filtros.'}</p>}
 
       {!colunas ? (quadro.isError ? <ErroComTentar erro={quadro.error} tentar={() => void quadro.refetch()} /> : <Carregando />) : (
-        // as colunas rolam para o lado dentro do quadro (a página não); no celular, uma por vez, com encaixe
+        // as colunas rolam para o lado dentro do quadro (a página não); no celular, uma por vez, com encaixe.
+        // No computador o quadro vai até o pé da janela (o pedido do Luan, 2.0.3: "essa barra de rolagem tem q
+        // ficar bem abaixo"): a barra de rolar para o lado fica no pé da tela, e não logo abaixo do cartão mais
+        // baixo — com poucos cartões ela ficava no meio da tela.
         <div
-          ref={quadroRef} id="quadro-colunas" className="overflow-x-auto -mx-4 sm:mx-0 pb-3 snap-x snap-mandatory scroll-pl-4 sm:snap-none sm:scroll-pl-0"
-          style={alturaDasColunas ? ({ '--altura-colunas': `${alturaDasColunas}px` } as CSSProperties) : undefined}
+          ref={quadroRef} id="quadro-colunas" className="overflow-x-auto -mx-4 sm:mx-0 pb-3 snap-x snap-mandatory scroll-pl-4 sm:snap-none sm:scroll-pl-0 sm:h-[var(--altura-quadro,auto)]"
+          style={alturaDasColunas ? ({ '--altura-quadro': `${alturaDasColunas}px` } as CSSProperties) : undefined}
         >
           {/* colunas finas (o pedido do Luan na prévia: mais colunas cabendo na tela) */}
-          <div className="flex items-start gap-2 w-max sm:w-auto px-4 sm:px-0">
+          <div className="flex items-start sm:items-stretch sm:h-full gap-2 w-max sm:w-auto px-4 sm:px-0">
             {colunas.map((col) => (
               <Coluna
                 key={col.etapa.id} col={col} painel={painel} filtros={filtros}
@@ -262,8 +265,9 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
 }
 
 /**
- * Quanto sobra da janela abaixo do quadro: no computador, as colunas ficam desta altura e rolam por
- * dentro — assim o quadro inteiro cabe na tela e a rolagem de lado fica à vista, sem descer a página.
+ * Quanto sobra da janela abaixo do topo do quadro: no computador, o quadro fica desta altura (até o pé da
+ * janela) e cada coluna rola por dentro — assim o quadro inteiro cabe na tela e a barra de rolar para o lado
+ * fica no pé da tela, sem descer a página.
  */
 function useAlturaQueSobra(ref: RefObject<HTMLElement>, mudancas: unknown[]): number | null {
   const [altura, setAltura] = useState<number | null>(null);
@@ -272,8 +276,10 @@ function useAlturaQueSobra(ref: RefObject<HTMLElement>, mudancas: unknown[]): nu
       const el = ref.current;
       if (!el) return;
       const topo = el.getBoundingClientRect().top + window.scrollY;
-      // o cabeçalho da coluna, as margens, o "e mais N fechados" e a barra de rolagem de lado
-      setAltura(Math.max(280, Math.round(window.innerHeight - topo - 96)));
+      // a folga do pé da página (o espaço embaixo do conteúdo, que a moldura põe): sem ela, a página inteira rolaria uns pixels
+      const moldura = el.closest('main');
+      const folga = moldura ? parseFloat(getComputedStyle(moldura).paddingBottom) || 0 : 16;
+      setAltura(Math.max(320, Math.floor(window.innerHeight - topo - folga - 1)));
     };
     medir();
     window.addEventListener('resize', medir);
@@ -309,7 +315,7 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
     <section
       aria-labelledby={idTitulo} data-etapa={etapa.id}
       onDragOver={onPassar} onDragLeave={onSair} onDrop={onSoltar}
-      className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_236px] sm:max-w-[290px] rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
+      className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_236px] sm:max-w-[290px] sm:min-h-0 rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
         sobre ? 'border-accent bg-accent-soft' : arrastando ? 'border-dashed border-line-strong bg-surface-2' : 'border-line bg-surface-2'}`}
     >
       <header className="flex items-center gap-1.5 px-1 pt-0.5 min-w-0" title={vendas ? undefined : DICA_TIPO_ETAPA[etapa.tipo]}>
@@ -328,7 +334,7 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
           {reaisInteiros(col.valor)}<span className="font-normal text-muted">/mês</span>
         </div>
       )}
-      <ul className="flex flex-col gap-1.5 sm:max-h-[var(--altura-colunas,70vh)] sm:overflow-y-auto sm:-mr-1 sm:pr-1" aria-label={`Chamados em ${etapa.nome}`}>
+      <ul className="flex flex-col gap-1.5 sm:flex-1 sm:min-h-0 sm:overflow-y-auto sm:-mr-1 sm:pr-1" aria-label={`Chamados em ${etapa.nome}`}>
         {chamados.map((c) => cartao(c))}
         {!chamados.length && <li className="rounded-lg border border-dashed border-line-strong text-muted text-[12.5px] text-center py-5">{vendas ? 'Nenhuma negociação' : 'Nenhum chamado'}</li>}
       </ul>

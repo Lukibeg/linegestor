@@ -317,6 +317,7 @@ export const realApi: Api = {
     salvarCamposDoSistema: (painelId, d) => http('PUT', `/atendimento/paineis/${painelId}/campos-do-sistema`, d),
     salvarCampo: (painelId, id, d) => (id ? http('PUT', `/atendimento/campos/${id}`, d) : http('POST', `/atendimento/paineis/${painelId}/campos`, d)),
     ordenarCampos: (painelId, ids) => http('PUT', `/atendimento/paineis/${painelId}/campos/ordem`, { ids }),
+    incluirOpcaoDoCampo: (campoId, d) => http('POST', `/atendimento/campos/${campoId}/opcoes`, d),
     etiquetas: () => http('GET', '/atendimento/etiquetas'),
     criarEtiqueta: (d) => http('POST', '/atendimento/etiquetas', d),
     editarEtiqueta: (id, d) => http('PUT', `/atendimento/etiquetas/${id}`, d),

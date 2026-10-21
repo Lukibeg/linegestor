@@ -15,11 +15,12 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
   AnotacaoSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema, LigarChamadoSchema,
-  ListarChamadosSchema, MoverSchema, ObservarSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
+  ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
 } from '@gestor/shared';
 import { BadRequest } from '../plugins/errors.js';
-import { atorDaPessoa } from '../services/atendimento/contexto.js';
+import { incluirOpcao } from '../services/atendimento/ajustes.js';
+import { atorDaPessoa, carregarContexto, podeVerPainel } from '../services/atendimento/contexto.js';
 import * as svc from '../services/atendimento/chamados.js';
 import * as leitura from '../services/atendimento/leitura.js';
 import { relatorioDoPainelDeVendas } from '../services/atendimento/vendas.js';
@@ -120,9 +121,22 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       const r = await svc.criarChamado(app, ator(req), req.body);
       await app.audit(req, {
         action: 'create', entityType: 'ticket', entityId: r.id,
-        summary: `Abriu ${r.codigo} "${req.body.titulo}"${r.aviso ? (r.aviso.ok ? ' e avisou o cliente pelo WhatsApp' : ' (o aviso ao cliente não foi)') : ''}`,
+        summary: `Abriu ${r.codigo} "${r.titulo}"${r.aviso ? (r.aviso.ok ? ' e avisou o cliente pelo WhatsApp' : ' (o aviso ao cliente não foi)') : ''}`,
       });
       return reply.status(201).send(r);
+    });
+
+  // a opção nova numa lista do painel, ali mesmo (2.0.3, a Indicação): só nas listas marcadas, por quem trabalha no painel
+  app.post('/campos/:id/opcoes', { ...trabalhar, schema: { tags, summary: 'Incluir uma opção numa lista do painel ali mesmo (só nas listas que permitem; a que já existe volta, a desativada é reativada)', params: Id, body: OpcaoIncluirSchema } },
+    async (req) => {
+      const quem = ator(req);
+      const ctx = await carregarContexto(app.db);
+      const r = await incluirOpcao(app.db, req.params.id, req.body.nome, (painelId) => {
+        const p = ctx.paineis.find((x) => x.id === painelId);
+        return !!p && podeVerPainel(p, quem);
+      });
+      if (r.depois) await app.audit(req, { action: 'update', entityType: 'ticket_field', entityId: req.params.id, summary: r.resumo, after: r.depois });
+      return r.valor;
     });
 
   app.patch('/chamados/:id', { ...trabalhar, schema: { tags, summary: 'Mudar o chamado (só os campos que vierem; trocar a prioridade sugerida pede o motivo)', params: Id, body: ChamadoAlterarSchema } },
