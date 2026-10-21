@@ -111,9 +111,9 @@ describe('a planilha da simulação', () => {
     expect(c.get('A4')!.v).toMatch(/^Exportada do Gestor em 20\/10\/2026 às 14:10, por Camila Duarte\./);
     // o que o cliente paga: os valores (as células amarelas)
     expect([c.get('B7')!.v, c.get('B8')!.v, c.get('B9')!.v, c.get('B10')!.v, c.get('B11')!.v, c.get('B12')!.v, c.get('B13')!.v]).toEqual(['1250', '1900', '3', '24', '40', '0.06', '0.35']);
-    // os custos em dois grupos, os fixos primeiro: o nome do grupo numa linha, e as linhas dele
+    // os custos em dois grupos, o investimento primeiro: o nome do grupo numa linha, e as linhas dele
     expect([17, 18, 19, 20, 21, 22, 23, 24, 25].map((r) => c.get(`A${r}`)!.v)).toEqual([
-      'Custos fixos · pagos uma vez, na assinatura', 'Telefone T31P', 'Headset', 'Telefone sem fio', 'Comissão da venda',
+      'Investimento · pago uma vez, na assinatura', 'Telefone T31P', 'Headset', 'Telefone sem fio', 'Comissão da venda',
       'Custos mensais · todo mês', 'Nuvem', 'Comissão recorrente', 'Total',
     ]);
     // o por ramal puxa os ramais; o vendido entra na ativação; o alugado, na mensalidade; a comissão sobre o mês
@@ -126,6 +126,9 @@ describe('a planilha da simulação', () => {
     expect([c.get('H18')!.v, c.get('H19')!.v, c.get('H20')!.v, c.get('H23')]).toEqual(['1', '1', '1', undefined]);
     // os números: os mesmos da tela
     expect(Number(aoLado(c, 'O cliente paga por mês')!.v)).toBe(k.mensalTotal / 100);
+    expect(Number(aoLado(c, 'O investimento')!.v)).toBe(k.totalInvestido / 100);
+    expect(Number(aoLado(c, 'O custo fixo do mês')!.v)).toBe(k.custoMensalFixo / 100);
+    expect(Number(aoLado(c, 'O custo variável do mês')!.v)).toBe((k.impostoMensal + k.comissaoMensal) / 100);
     expect(Number(aoLado(c, 'Sobra por mês')!.v)).toBeCloseTo(k.sobraMensal / 100, 2);
     expect(Number(aoLado(c, 'A margem')!.v)).toBeCloseTo(k.margem!, 6);
     expect(aoLado(c, 'O sinal')!.v).toBe('Verde');
@@ -133,17 +136,27 @@ describe('a planilha da simulação', () => {
     expect(aoLado(c, 'Se paga')!.v).toBe(textoDoSePagaEm(k.sePagaEm));
     expect(Number(aoLado(c, /^No contrato/)!.v)).toBeCloseTo(k.resultado / 100, 2);
     expect(Number(aoLado(c, 'A mensalidade mínima para a margem que você quer')!.v)).toBe(k.minima! / 100);
-    // a linha do tempo: o acumulado de cada mês e, depois do prazo, vazio
+    // o mês a mês: do 1º mês (o da assinatura) ao prazo, o faturamento, os custos, o lucro e o acumulado; depois, vazio
     const t0 = [...c].find(([ref, x]) => ref.startsWith('A') && x.v === 'Mês')![0];
     const primeiro = Number(t0.slice(1)) + 1;
-    expect(Number(c.get(`F${primeiro}`)!.v)).toBe(k.serie[0]! / 100);
-    expect(Number(c.get(`F${primeiro + 24}`)!.v)).toBe(k.serie[24]! / 100);
-    expect(c.get(`F${primeiro + 25}`)!.v).toBe('');
+    expect(['B', 'C', 'D', 'E'].map((x) => c.get(`${x}${Number(t0.slice(1))}`)!.v)).toEqual(['Faturamento', 'Custos', 'Lucro do mês', 'Acumulado']);
+    expect(c.get(`A${primeiro}`)!.v).toBe('1');
+    const m1 = k.meses[0]!;
+    expect([`B${primeiro}`, `C${primeiro}`, `D${primeiro}`, `E${primeiro}`].map((x) => Number(c.get(x)!.v))).toEqual([m1.faturamento / 100, m1.custos / 100, m1.lucro / 100, k.serie[0]! / 100]);
+    expect(c.get(`E${primeiro}`)!.f).toBe(`D${primeiro}`);
+    expect(Number(c.get(`E${primeiro + 23}`)!.v)).toBe(k.serie[23]! / 100);
+    expect(c.get(`E${primeiro + 24}`)!.v).toBe('');
     // a Lado a lado: a fórmula aponta a folha do cenário
     const l = celulas(texto('xl/worksheets/sheet1.xml'));
     expect(l.get('B5')!.v).toBe('Comodato, 24 meses (o principal)');
-    expect(l.get('C10')!.f).toMatch(/^'12 meses'!\$B\$\d+$/);
-    expect(Number(l.get('C10')!.v)).toBeCloseTo(contasDoCenario(b, A).sobraMensal / 100, 2);
+    expect(l.get('A13')!.v).toBe('Sobra por mês');
+    expect(l.get('C13')!.f).toMatch(/^'12 meses'!\$B\$\d+$/);
+    expect(Number(l.get('C13')!.v)).toBeCloseTo(contasDoCenario(b, A).sobraMensal / 100, 2);
+    // a diferença de cada cenário para o principal: os números; o sinal e o "se paga" (texto), sem
+    expect(l.get('D5')!.v).toBe('Diferença: 12 meses − Comodato, 24 meses');
+    expect(l.get('D8')).toEqual({ f: 'IF(AND(ISNUMBER(C8),ISNUMBER(B8)),C8-B8,"")', v: '-12' });
+    expect(l.get('A15')!.v).toBe('O sinal');
+    expect(l.get('D15')).toBeUndefined();
   });
 
   it('o preço por produto: a tabela ao lado, e a mensalidade e a ativação são as somas', () => {

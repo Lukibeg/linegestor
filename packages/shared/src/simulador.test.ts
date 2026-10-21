@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, ajustesDoSimulador, cenarioNovo, contasDoCenario,
   comPrecoPorProduto, custoPorFaixas, dividirEmParcelas, duplicarCenario, linhaDaTabela, linhasDoModelo, mudancasDaSimulacao, mudancasDosAjustes, normalizarPorProduto,
-  pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, resumoDoCenario,
+  pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario,
   sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, margemDasGanhas, textoDoValorUnitario, lerPercentual, textoDoPercentual,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario,
 } from './simulador.js';
@@ -35,7 +35,7 @@ function exemplo(): CenarioDaSimulacao {
 }
 
 describe('a conta do cenário', () => {
-  it('o exemplo da página de opções: sobram R$ 595,80 por mês (60,2%), saem R$ 3.720 antes, se paga em 7 meses, o contrato dá R$ 10.579,20', () => {
+  it('o exemplo da página de opções: sobram R$ 595,80 por mês (60,2%), saem R$ 3.124,20 antes, se paga em 7 meses, o contrato dá R$ 10.579,20', () => {
     const k = contasDoCenario(exemplo(), FAIXAS);
     expect(k.mensalTotal).toBe(99_000);
     expect(k.custoMensalFixo).toBe(31_500); // a nuvem por ramal (10 × R$ 9) + os números + o suporte
@@ -47,12 +47,14 @@ describe('a conta do cenário', () => {
     expect(k.custoUnico).toBe(498_000);
     expect(k.impostoDaEntrada).toBe(9_000);
     expect(k.comissaoDaEntrada).toBe(15_000);
-    expect(k.serie[0]).toBe(-372_000);
-    expect(k.investimento).toBe(372_000);
+    // o 1º mês é o da assinatura: a ativação líquida (R$ 1.260) e a 1ª sobra (R$ 595,80) menos o que é pago de uma vez (R$ 4.980)
+    expect(k.serie[0]).toBe(-372_000 + 59_580);
+    expect(k.investimento).toBe(312_420);
     expect(k.sePagaEm).toEqual({ tipo: 'mes', mes: 7, depoisDoPrazo: false });
     expect(textoDoSePagaEm(k.sePagaEm)).toBe('em 7 meses');
     expect(k.resultado).toBe(1_057_920);
-    expect(k.serie).toHaveLength(25);
+    expect(k.serie).toHaveLength(24);
+    expect(k.totalInvestido).toBe(498_000 + 15_000); // os aparelhos, a instalação e a comissão da venda
     expect(k.faltam).toEqual([]);
     // cada linha na conta: a nuvem usa os 10 ramais; a comissão recorrente, 2% da mensalidade
     expect(k.linhas.find((l) => l.id === 'nuvem')).toMatchObject({ qtd: 10, custo: 9_000, quando: 'por-mes' });
@@ -110,12 +112,12 @@ describe('a conta do cenário', () => {
     expect(dividirEmParcelas(150_000, 3)).toEqual([50_000, 50_000, 50_000]);
     expect(dividirEmParcelas(100_000, 3)).toEqual([33_334, 33_333, 33_333]);
     const k = contasDoCenario({ ...exemplo(), parcelas: 3 }, FAIXAS);
-    // mês 0: R$ 500 − 16% (imposto e comissão) − R$ 4.980 = −R$ 4.560
-    expect(k.serie[0]).toBe(-456_000);
-    // mês 1: + a sobra (R$ 595,80) + a 2ª parcela líquida (R$ 420)
-    expect(k.serie[1]).toBe(-456_000 + 59_580 + 42_000);
+    // 1º mês: R$ 500 − 16% (imposto e comissão) − R$ 4.980 + a 1ª sobra (R$ 595,80)
+    expect(k.serie[0]).toBe(-456_000 + 59_580);
+    // 2º mês: + a sobra (R$ 595,80) + a 2ª parcela líquida (R$ 420)
+    expect(k.serie[1]).toBe(k.serie[0]! + 59_580 + 42_000);
     expect(k.serie[3]).toBe(k.serie[2]! + 59_580);
-    expect(k.investimento).toBe(456_000);
+    expect(k.investimento).toBe(396_420);
     // o fim do contrato é o mesmo de à vista (a ativação chega toda, só mais tarde)
     expect(k.resultado).toBe(1_057_920);
     expect(k.sePagaEm).toEqual({ tipo: 'mes', mes: 7, depoisDoPrazo: false });
@@ -146,6 +148,54 @@ describe('a conta do cenário', () => {
     expect(textoDoSePagaEm(k4.sePagaEm)).toBe('desde o 1º mês');
     // com ativação e nada antes: a ativação entra como lucro, já na ativação
     expect(contasDoCenario({ ...sem, linhas: sem.linhas.filter((l) => l.tipo !== 'aparelho' && l.tipo !== 'unica') }, FAIXAS).sePagaEm).toEqual({ tipo: 'entrada' });
+    // sem ativação, a instalação (R$ 360) sai no 1º mês, e a 1ª sobra (R$ 595,80) já cobre: em 1 mês, nunca no vermelho
+    const k5 = contasDoCenario({ ...sem, ativacao: 0, linhas: sem.linhas.filter((l) => l.tipo !== 'aparelho') }, FAIXAS);
+    expect(k5.serie[0]).toBe(59_580 - 36_000);
+    expect(k5.investimento).toBe(0);
+    expect(k5.sePagaEm).toEqual({ tipo: 'mes', mes: 1, depoisDoPrazo: false });
+    expect(textoDoSePagaEm(k5.sePagaEm)).toBe('em 1 mês');
+  });
+
+  it('o mês a mês: o 1º mês é o da assinatura, com a 1ª mensalidade; o faturamento menos os custos é o lucro, e o detalhe fecha', () => {
+    const k = contasDoCenario({ ...exemplo(), parcelas: 3 }, FAIXAS);
+    expect(k.meses).toHaveLength(24);
+    const [m1, m2, , m4] = k.meses;
+    expect(m1).toEqual({
+      mes: 1,
+      entra: [{ rotulo: 'Mensalidade', valor: 99_000 }, { rotulo: 'Ativação (parcela 1 de 3)', valor: 50_000 }],
+      faturamento: 149_000,
+      sai: [
+        { rotulo: 'Telefone IP', valor: 390_000 }, { rotulo: 'Headset USB', valor: 72_000 }, { rotulo: 'Instalação', valor: 36_000 },
+        { rotulo: 'Custos mensais', valor: 31_500 }, { rotulo: 'Imposto', valor: 8_940 }, { rotulo: 'Comissão do vendedor', valor: 5_000 }, { rotulo: 'Comissão recorrente', valor: 1_980 },
+      ],
+      custos: 545_420,
+      lucro: 149_000 - 545_420,
+      acumulado: k.serie[0],
+    });
+    expect(m2).toMatchObject({ mes: 2, faturamento: 149_000, custos: 47_420, lucro: 101_580, acumulado: k.serie[1] });
+    // depois das parcelas da ativação: a mensalidade e os custos do mês
+    expect(m4).toMatchObject({ entra: [{ rotulo: 'Mensalidade', valor: 99_000 }], faturamento: 99_000, custos: 39_420, lucro: 59_580 });
+    for (const m of k.meses) {
+      expect(m.faturamento - m.custos).toBe(m.lucro);
+      expect(m.sai.reduce((s, x) => s + x.valor, 0)).toBe(m.custos);
+      expect(m.entra.reduce((s, x) => s + x.valor, 0)).toBe(m.faturamento);
+    }
+    expect(k.meses.reduce((s, m) => s + m.lucro, 0)).toBe(k.resultado);
+    // o aparelho comprado parcelado aparece em cada parcela; o vendido, na ativação
+    const c = exemplo();
+    c.linhas = c.linhas.map((l) => (l.id === 'tel' ? { ...l, parcelas: 10 } : l.id === 'head' ? { ...l, modalidade: 'venda' as const, preco: 30_000 } : l));
+    const kp = contasDoCenario(c, FAIXAS);
+    expect(kp.meses[0]!.entra).toEqual([{ rotulo: 'Mensalidade', valor: 99_000 }, { rotulo: 'Ativação', valor: 150_000 }, { rotulo: 'Aparelhos vendidos', valor: 120_000 }]);
+    expect(kp.meses[0]!.sai.slice(0, 3)).toEqual([{ rotulo: 'Telefone IP (parcela 1 de 10)', valor: 39_000 }, { rotulo: 'Headset USB', valor: 72_000 }, { rotulo: 'Instalação', valor: 36_000 }]);
+    expect(kp.meses[9]!.sai[0]).toEqual({ rotulo: 'Telefone IP (parcela 10 de 10)', valor: 39_000 });
+    expect(kp.meses[10]!.sai.map((x) => x.rotulo)).toEqual(['Custos mensais', 'Imposto', 'Comissão recorrente']);
+  });
+
+  it('repartir: as partes arredondadas somam o total (o centavo vai para quem mais perdeu no arredondamento)', () => {
+    expect(repartir(100, [33.4, 33.3, 33.3])).toEqual([34, 33, 33]);
+    expect(repartir(99, [33.4, 33.3, 33.3])).toEqual([33, 33, 33]);
+    expect(repartir(10, [2.5, 2.5, 5])).toEqual([3, 2, 5]);
+    expect(repartir(0, [])).toEqual([]);
   });
 
   it('o aparelho comprado parcelado: o custo se dilui (a primeira parcela na assinatura); a sobra e o fim do contrato não mudam', () => {
@@ -159,7 +209,9 @@ describe('a conta do cenário', () => {
     expect(k.custoUnico).toBe(498_000);
     expect(k.sobraMensal).toBe(base.sobraMensal);
     expect(k.serie[0]).toBe(base.serie[0]! + 351_000);
-    expect(k.investimento).toBe(21_000);
+    // no 1º mês, a ativação e a 1ª sobra já cobrem os headsets, a instalação e a 1ª parcela: nunca no vermelho
+    expect(k.investimento).toBe(0);
+    expect(k.sePagaEm).toEqual({ tipo: 'mes', mes: 1, depoisDoPrazo: false });
     expect(k.resultado).toBe(base.resultado);
     // à vista, nada muda: as saídas são o custo de uma vez na assinatura
     expect(base.saidas[0]).toBe(498_000);
@@ -236,7 +288,7 @@ describe('a conta do cenário', () => {
   it('o resumo do cenário (a lista e a negociação)', () => {
     expect(resumoDoCenario(exemplo(), FAIXAS)).toEqual({
       nome: 'Cenário A', prazo: 24, mensalTotal: 99_000, entradaTotal: 150_000, sobraMensal: 59_580, margem: 59_580 / 99_000, sinal: 'verde',
-      investimento: 372_000, sePagaEm: { tipo: 'mes', mes: 7, depoisDoPrazo: false }, resultado: 1_057_920, faltam: 0,
+      investimento: 312_420, sePagaEm: { tipo: 'mes', mes: 7, depoisDoPrazo: false }, resultado: 1_057_920, faltam: 0,
     });
   });
 });
@@ -262,11 +314,14 @@ describe('montar o cenário', () => {
     // o mesmo modelo duas vezes: as linhas não repetem
     expect(cenarioNovo(ajustes, { modelos: [ajustes.modelos[0]!, ajustes.modelos[0]!] }).linhas).toHaveLength(3);
     // dois produtos com o mesmo custo: cada um traz o seu (uma proposta por produto); a comissão, sobre o preço inteiro, uma vez só
+    // e sem produto
     const voicenet = { id: 'vn', nome: 'VoiceNet', produto: 'voicenet', linhas: [{ custoId: 'nuvem', qtd: 4, porRamal: false }, { custoId: 'rec', qtd: 1, porRamal: false }] };
     const juntos = cenarioNovo(ajustes, { modelos: [ajustes.modelos[0]!, voicenet] });
     expect(juntos.linhas.map((l) => [l.custoId, l.produto, l.porRamal ? 'ramal' : l.qtd])).toEqual([
-      ['yealink', 'linepbx', 'ramal'], ['nuvem', 'linepbx', 'ramal'], ['rec', 'linepbx', 1], ['nuvem', 'voicenet', 4],
+      ['yealink', 'linepbx', 'ramal'], ['nuvem', 'linepbx', 'ramal'], ['rec', null, 1], ['nuvem', 'voicenet', 4],
     ]);
+    // com um produto só, a comissão fica com o produto do modelo
+    expect(c.linhas.find((l) => l.custoId === 'rec')!.produto).toBe('linepbx');
     expect(juntos.produtos).toEqual(['linepbx', 'voicenet']);
     expect(c.linhas.map((l) => [l.nome, l.tipo, l.custoId, l.porRamal, l.valor])).toEqual([
       ['Yealink T31P', 'aparelho', 'yealink', true, null], // o aparelho sem valor: preenche em cada simulação

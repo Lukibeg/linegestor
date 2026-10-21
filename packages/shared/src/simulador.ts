@@ -32,11 +32,13 @@
  * As contas moram aqui: o servidor (a lista, a ficha da negociação) e a prévia contam igual. O dinheiro vai
  * em CENTAVOS; os percentuais, em pontos (6 = 6%), com até duas casas.
  *
- * A CONTA (`contasDoCenario`). O mês 0 é a assinatura: a Ingline paga o que é de uma vez (os aparelhos e o
- * resto) e recebe a ativação (ou a primeira parcela dela). Do mês 1 ao fim do prazo, cada mês traz a
+ * A CONTA (`contasDoCenario`). O 1º mês é o da assinatura (o Luan: "o primeiro mês de pagamento vai ser o
+ * primeiro mês de faturamento também"): nele a Ingline paga o que é de uma vez (os aparelhos e o resto) e
+ * recebe a ativação (ou a primeira parcela dela) e a primeira mensalidade. Cada mês, até o fim do prazo, traz a
  * mensalidade menos os custos do mês. O imposto sai de tudo o que o cliente paga; a comissão "% da
  * mensalidade", de cada mensalidade; a "% da ativação", de cada parcela da ativação. A mensalidade, nas
  * contas, é a do serviço mais o aluguel dos aparelhos; a ativação, a do serviço mais os aparelhos vendidos.
+ * O mês a mês (`MesDoContrato`) diz, em cada mês, o faturamento e os custos parte a parte.
  */
 import { z } from 'zod';
 
@@ -90,19 +92,23 @@ export const ehPercentual = (t: TipoDeCusto) => t === 'pct_mensalidade' || t ===
 
 /**
  * Os dois grupos de custo (o Luan, num comentário, 20/10: "quero que vc separe os custos fixos com custos
- * mensais"): os **fixos**, pagos uma vez, na assinatura (o aparelho, o "uma vez" e a comissão da venda), e os
- * **mensais**, todo mês (o "por mês" e a comissão recorrente). A simulação, os Ajustes e o Excel mostram os
- * dois separados, os fixos primeiro.
+ * mensais"): o **investimento**, pago uma vez, na assinatura (o aparelho, o "uma vez" e a comissão da venda), e os
+ * **custos mensais**, todo mês (o "por mês" e a comissão recorrente). A simulação, os Ajustes e o Excel mostram os
+ * dois separados, o investimento primeiro. O primeiro grupo se chamava "Custos fixos"; o Luan, depois: *"esse nome
+ * custo fixo não ficou legal, porque parece que vai ser todo mês"* — virou "Investimento", a palavra dele ("o total
+ * investido"). A chave continua `fixo` (as linhas guardam o tipo, não o grupo).
  */
 export const GRUPOS_DE_CUSTO = ['fixo', 'mensal'] as const;
 export type GrupoDeCusto = (typeof GRUPOS_DE_CUSTO)[number];
 export const GRUPO_DO_TIPO: Record<TipoDeCusto, GrupoDeCusto> = { aparelho: 'fixo', unica: 'fixo', pct_ativacao: 'fixo', mensal: 'mensal', pct_mensalidade: 'mensal' };
 export const TIPOS_DO_GRUPO: Record<GrupoDeCusto, readonly TipoDeCusto[]> = { fixo: ['aparelho', 'unica', 'pct_ativacao'], mensal: ['mensal', 'pct_mensalidade'] };
-export const NOME_DO_GRUPO: Record<GrupoDeCusto, string> = { fixo: 'Custos fixos', mensal: 'Custos mensais' };
+export const NOME_DO_GRUPO: Record<GrupoDeCusto, string> = { fixo: 'Investimento', mensal: 'Custos mensais' };
 export const AJUDA_DO_GRUPO: Record<GrupoDeCusto, string> = {
-  fixo: 'pagos uma vez, na assinatura: os aparelhos, a instalação, a comissão da venda',
+  fixo: 'pago uma vez, na assinatura: os aparelhos, a instalação, a comissão da venda',
   mensal: 'todo mês: a nuvem, os números, as licenças, a comissão recorrente',
 };
+/** Um custo do grupo, no singular ("Pôr um custo de investimento da tabela", "+ Custo mensal"). */
+export const UM_CUSTO_DO_GRUPO: Record<GrupoDeCusto, string> = { fixo: 'custo de investimento', mensal: 'custo mensal' };
 /** O tipo do custo novo de cada grupo (o "Digitar um custo" de cada um). */
 export const TIPO_NOVO_DO_GRUPO: Record<GrupoDeCusto, TipoDeCusto> = { fixo: 'unica', mensal: 'mensal' };
 /** Os itens em ordem de grupo (os fixos primeiro), cada grupo na ordem em que está. */
@@ -714,7 +720,9 @@ export function cenarioNovo(a: AjustesDoSimulador, o: { id?: string; nome?: stri
   // instalações): é uma proposta por produto. Só a comissão, que é sobre o preço inteiro, não repete.
   const comissoes = new Set<string>();
   const linhas = modelos.flatMap((m) => linhasDoModelo(a, m))
-    .filter((l) => !ehPercentual(l.tipo) || !l.custoId || (!comissoes.has(l.custoId) && !!comissoes.add(l.custoId)));
+    .filter((l) => !ehPercentual(l.tipo) || !l.custoId || (!comissoes.has(l.custoId) && !!comissoes.add(l.custoId)))
+    // com vários produtos, a comissão (sobre o preço inteiro) não é de um produto só
+    .map((l) => (modelos.length > 1 && ehPercentual(l.tipo) ? { ...l, produto: null } : l));
   const produtos = [...new Set([...(o.produtos ?? []), ...modelos.map((m) => m.produto).filter((x): x is string => !!x)])];
   return {
     id: o.id ?? idLocal(), nome: o.nome ?? 'Cenário A',
@@ -762,6 +770,29 @@ export type LinhaNaConta = {
   parcelas: number;
 };
 
+/** Uma parte do que entra ou sai num mês: "Mensalidade", "Ativação (parcela 1 de 3)", "Imposto", o nome do custo…
+ *  (com o produto da linha, quando ela tem um: a tela diz de qual produto é, com dois produtos ou mais) */
+export type ParteDoMes = { rotulo: string; valor: number; produto?: string | null };
+
+/**
+ * Um mês do contrato (o Luan, 20/10: "o primeiro mês de pagamento vai ser o primeiro mês de faturamento
+ * também"). O 1º é o da assinatura: nele entram a ativação (ou a 1ª parcela) e já a 1ª mensalidade, e saem o
+ * que é pago de uma vez e os custos do mês. Os valores fecham ao centavo: o faturamento menos os custos é o
+ * lucro do mês, o acumulado é a soma dos lucros e o detalhe soma o total (o centavo do arredondamento fica
+ * com a parte que mais perdeu nele).
+ */
+export type MesDoContrato = {
+  mes: number;
+  /** o que entra (o faturamento): a mensalidade, o aluguel dos aparelhos, a parcela da ativação */
+  entra: ParteDoMes[];
+  faturamento: number;
+  /** o que sai (os custos): o que é pago de uma vez (no 1º mês), as parcelas da compra, os custos mensais, o imposto e as comissões */
+  sai: ParteDoMes[];
+  custos: number;
+  lucro: number;
+  acumulado: number;
+};
+
 export type ContasDoCenario = {
   /** o aluguel dos aparelhos alugados, por mês */
   aluguel: number;
@@ -775,8 +806,11 @@ export type ContasDoCenario = {
   parcelas: number[];
   /** os custos que se pagam uma vez (os aparelhos e o resto), somados — os aparelhos parcelados, inteiros */
   custoUnico: number;
-  /** o que sai de cada mês, do mês 0 (a assinatura) ao fim do prazo, pelos custos de uma vez: na assinatura,
-   *  tudo menos as parcelas que ficam para depois; nos meses seguintes, as parcelas dos aparelhos comprados parcelado */
+  /** o total investido: o que é pago uma vez (os aparelhos, o "uma vez") e a comissão da venda (% da ativação) —
+   *  o total do grupo "Investimento" (não é o "Sai antes", que é o `investimento`) */
+  totalInvestido: number;
+  /** o que sai de cada mês pelos custos de uma vez, do 1º mês (o da assinatura) ao fim do prazo: no 1º, tudo menos
+   *  as parcelas que ficam para depois; nos seguintes, as parcelas dos aparelhos comprados parcelado */
   saidas: number[];
   /** os custos fixos do mês (as linhas "por mês") */
   custoMensalFixo: number;
@@ -793,9 +827,11 @@ export type ContasDoCenario = {
   /** a sobra sobre a mensalidade (fração; nulo sem mensalidade) */
   margem: number | null;
   sinal: Sinal | null;
-  /** o acumulado do contrato, do mês 0 (a assinatura) ao fim do prazo */
+  /** o acumulado do contrato, do 1º mês (o da assinatura) ao fim do prazo: `serie[0]` é o 1º mês */
   serie: number[];
-  /** o pior momento do acumulado: quanto a Ingline põe antes de a venda se pagar */
+  /** cada mês do contrato, com o que entra e o que sai (o mês a mês) */
+  meses: MesDoContrato[];
+  /** o pior momento do acumulado: quanto a Ingline põe antes de a venda se pagar (o "Sai antes") */
   investimento: number;
   sePagaEm: SePagaEm;
   /** o que fica no fim do contrato */
@@ -868,12 +904,33 @@ function mensalidadeMinima(alvo: number, fixo: number, aluguel: number, percentu
   return Math.max(0, Math.ceil(fixo / sobra - aluguel - 1e-6));
 }
 
+/**
+ * As partes arredondadas ao centavo somando exatamente o total: cada uma vai ao centavo mais perto, e o que
+ * sobra (ou falta) do total vai, um centavo por vez, para as partes que mais perderam (ou ganharam) no
+ * arredondamento.
+ */
+export function repartir(total: number, exatos: readonly number[]): number[] {
+  const r = exatos.map((v) => Math.round(v));
+  if (!r.length) return r;
+  let falta = total - r.reduce((s, v) => s + v, 0);
+  const ordem = exatos.map((_, i) => i).sort((a, b) => (exatos[b]! - r[b]!) - (exatos[a]! - r[a]!));
+  for (let k = 0; falta !== 0 && k < 10_000; k++) {
+    const i = falta > 0 ? ordem[k % r.length]! : ordem[r.length - 1 - (k % r.length)]!;
+    r[i]! += falta > 0 ? 1 : -1;
+    falta += falta > 0 ? -1 : 1;
+  }
+  return r;
+}
+
 export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): ContasDoCenario {
   const imposto = c.imposto / 100;
   let aluguel = 0; let vendaDeAparelhos = 0; let custoUnico = 0; let custoMensalFixo = 0; let pctMensalidade = 0; let pctAtivacao = 0;
   const faltam: string[] = [];
   // os aparelhos comprados parcelado: o custo de cada um se dilui nos meses (a primeira parcela na assinatura)
   const compras: Array<{ total: number; vezes: number }> = [];
+  // para o mês a mês: o que é pago de uma vez (cada linha, com as vezes da compra) e os percentuais (cada linha)
+  const deUmaVez: Array<{ nome: string; total: number; vezes: number; produto: string | null }> = [];
+  const dePercentual: Array<{ nome: string; pct: number; sobre: 'mensal' | 'entrada' }> = [];
   // as linhas de percentual só têm o custo depois de saber a mensalidade e a ativação (fica para o fim)
   const conta: Array<Omit<LinhaNaConta, 'custo'> & { custo: number; sobre: 'mensal' | 'entrada' | null; pct: number }> = [];
   for (const l of c.linhas) {
@@ -891,10 +948,12 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
       }
       const vezes = vezesDaCompra(l, c.prazo);
       if (vezes > 1) compras.push({ total: qtd * valor, vezes });
+      deUmaVez.push({ nome: l.nome, total: qtd * valor, vezes, produto: l.produto ?? null });
       conta.push({ id: l.id, qtd, custo: qtd * valor, quando: 'uma-vez', receita, falta, sobre: null, pct: 0, parcelas: vezes });
     } else if (l.tipo === 'unica') {
       const custo = faixas ? custoPorFaixas(qtd, faixas) : qtd * valor;
       custoUnico += custo;
+      deUmaVez.push({ nome: l.nome, total: custo, vezes: 1, produto: l.produto ?? null });
       conta.push({ id: l.id, qtd, custo, quando: 'uma-vez', receita: 0, falta, sobre: null, pct: 0, parcelas: 1 });
     } else if (l.tipo === 'mensal') {
       const custo = faixas ? custoPorFaixas(qtd, faixas) : qtd * valor;
@@ -902,9 +961,11 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
       conta.push({ id: l.id, qtd, custo, quando: 'por-mes', receita: 0, falta, sobre: null, pct: 0, parcelas: 1 });
     } else if (l.tipo === 'pct_mensalidade') {
       pctMensalidade += valor / 100;
+      dePercentual.push({ nome: l.nome, pct: valor / 100, sobre: 'mensal' });
       conta.push({ id: l.id, qtd: 1, custo: 0, quando: 'por-mes', receita: 0, falta, sobre: 'mensal', pct: valor / 100, parcelas: 1 });
     } else {
       pctAtivacao += valor / 100;
+      dePercentual.push({ nome: l.nome, pct: valor / 100, sobre: 'entrada' });
       conta.push({ id: l.id, qtd: 1, custo: 0, quando: 'uma-vez', receita: 0, falta, sobre: 'entrada', pct: valor / 100, parcelas: 1 });
     }
     if (falta) faltam.push(l.nome);
@@ -919,47 +980,93 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   const parcelas = dividirEmParcelas(entradaTotal, vezes);
   const retidoDaEntrada = imposto + pctAtivacao;
 
-  // o que sai em cada mês pelos custos de uma vez: tudo na assinatura, menos as parcelas dos aparelhos comprados
-  // parcelado, que saem nos meses seguintes (a primeira leva o resto da divisão, como na ativação)
-  const saidas = Array.from({ length: c.prazo + 1 }, (_, m) => (m === 0 ? custoUnico : 0));
+  // o que sai em cada mês pelos custos de uma vez (o 1º mês é o da assinatura): tudo no 1º, menos as parcelas dos
+  // aparelhos comprados parcelado, que saem nos meses seguintes (a primeira leva o resto da divisão, como na ativação)
+  const prazo = Math.max(1, Math.floor(c.prazo));
+  const saidas = Array.from({ length: prazo }, (_, i) => (i === 0 ? custoUnico : 0));
   for (const compra of compras) {
     saidas[0]! -= compra.total;
     dividirEmParcelas(Math.round(compra.total), compra.vezes).forEach((p, k) => { saidas[k]! += p; });
   }
-  // o acumulado: no mês 0, o que sai na assinatura e a primeira parcela da ativação; depois, a sobra de cada mês,
-  // as outras parcelas da ativação e as dos aparelhos
+  // o acumulado: cada mês soma a sobra (o 1º também: a 1ª mensalidade é paga no mês da assinatura) e a parcela da
+  // ativação daquele mês (sem o imposto e a comissão dela), e tira o que sai de uma vez naquele mês
   const serieExata: number[] = [];
   let acumulado = 0;
-  for (let m = 0; m <= c.prazo; m++) {
-    acumulado += (m === 0 ? 0 : sobraMensal) - saidas[m]!;
-    if (m < parcelas.length) acumulado += parcelas[m]! * (1 - retidoDaEntrada);
+  for (let i = 0; i < prazo; i++) {
+    acumulado += sobraMensal - saidas[i]!;
+    if (i < parcelas.length) acumulado += parcelas[i]! * (1 - retidoDaEntrada);
     serieExata.push(acumulado);
   }
   const serie = serieExata.map((v) => Math.round(v));
   const investimento = Math.max(0, -Math.min(...serie));
   let ultimoNegativo = -1;
-  for (let m = serie.length - 1; m >= 0; m--) if (serie[m]! < 0) { ultimoNegativo = m; break; }
+  for (let i = serie.length - 1; i >= 0; i--) if (serie[i]! < 0) { ultimoNegativo = i; break; }
   const sobra = Math.round(sobraMensal);
   let sePagaEm: SePagaEm;
-  if (ultimoNegativo === -1) sePagaEm = custoUnico > 0 || entradaTotal > 0 ? { tipo: 'entrada' } : { tipo: 'sem-custo' };
-  else if (ultimoNegativo < c.prazo) sePagaEm = { tipo: 'mes', mes: ultimoNegativo + 1, depoisDoPrazo: false };
-  else if (sobra > 0) sePagaEm = { tipo: 'mes', mes: c.prazo + Math.ceil(-serie[c.prazo]! / sobra), depoisDoPrazo: true };
+  if (ultimoNegativo === -1) {
+    // nunca no vermelho: sem nada de uma vez e sem ativação, desde o 1º mês; a ativação cobrindo sozinha o que sai
+    // na assinatura, já na ativação; senão, com a 1ª mensalidade, em 1 mês
+    sePagaEm = custoUnico === 0 && entradaTotal === 0 ? { tipo: 'sem-custo' }
+      : Math.round((parcelas[0] ?? 0) * (1 - retidoDaEntrada) - saidas[0]!) >= 0 ? { tipo: 'entrada' }
+        : { tipo: 'mes', mes: 1, depoisDoPrazo: false };
+  } else if (ultimoNegativo < prazo - 1) sePagaEm = { tipo: 'mes', mes: ultimoNegativo + 2, depoisDoPrazo: false };
+  else if (sobra > 0) sePagaEm = { tipo: 'mes', mes: prazo + Math.ceil(-serie[prazo - 1]! / sobra), depoisDoPrazo: true };
   else sePagaEm = { tipo: 'nunca' };
+
+  // cada mês, com o que entra e o que sai: o lucro é o que o acumulado andou (os números fecham com ele), e os
+  // custos são o faturamento menos o lucro, repartidos nas partes
+  const comprasDaLinha = deUmaVez.map((u) => (u.vezes > 1 ? dividirEmParcelas(Math.round(u.total), u.vezes) : null));
+  const meses: MesDoContrato[] = serie.map((acumuladoDoMes, i) => {
+    const parcela = i < parcelas.length ? parcelas[i]! : 0;
+    const deQual = parcelas.length > 1 ? ` (parcela ${i + 1} de ${parcelas.length})` : '';
+    const entra: ParteDoMes[] = [];
+    if (c.mensalidade) entra.push({ rotulo: 'Mensalidade', valor: c.mensalidade });
+    if (aluguel) entra.push({ rotulo: 'Aluguel dos aparelhos', valor: aluguel });
+    if (parcela) {
+      const doServico = vendaDeAparelhos ? Math.round((parcela * c.ativacao) / entradaTotal) : parcela;
+      if (doServico) entra.push({ rotulo: `Ativação${deQual}`, valor: doServico });
+      if (parcela - doServico) entra.push({ rotulo: `Aparelhos vendidos${deQual}`, valor: parcela - doServico });
+    }
+    const faturamento = entra.reduce((s, p) => s + p.valor, 0);
+    const sai: Array<{ rotulo: string; exato: number; produto?: string | null }> = [];
+    deUmaVez.forEach((u, j) => {
+      const partes = comprasDaLinha[j];
+      if (partes) { if (i < partes.length && partes[i]) sai.push({ rotulo: `${u.nome} (parcela ${i + 1} de ${partes.length})`, exato: partes[i]!, produto: u.produto }); }
+      else if (i === 0 && u.total) sai.push({ rotulo: u.nome, exato: u.total, produto: u.produto });
+    });
+    if (custoMensalFixo) sai.push({ rotulo: 'Custos mensais', exato: custoMensalFixo });
+    if (imposto && mensalTotal + parcela) sai.push({ rotulo: 'Imposto', exato: imposto * (mensalTotal + parcela) });
+    for (const p of dePercentual) {
+      const base = p.sobre === 'mensal' ? mensalTotal : parcela;
+      if (p.pct && base) sai.push({ rotulo: p.nome, exato: p.pct * base });
+    }
+    const lucro = acumuladoDoMes - (i ? serie[i - 1]! : 0);
+    const custos = faturamento - lucro;
+    if (!sai.length && custos) sai.push({ rotulo: 'Arredondamento', exato: custos });
+    const valores = repartir(custos, sai.map((x) => x.exato));
+    return {
+      mes: i + 1, entra, faturamento, custos, lucro, acumulado: acumuladoDoMes,
+      sai: sai.map((x, j) => ({ rotulo: x.rotulo, valor: valores[j]!, ...(x.produto ? { produto: x.produto } : {}) })),
+    };
+  });
 
   const margem = mensalTotal > 0 ? sobraMensal / mensalTotal : null;
   const minima = mensalidadeMinima(c.margemAlvo, custoMensalFixo, aluguel, imposto + pctMensalidade);
   const minimaVerde = mensalidadeMinima(faixas.verde, custoMensalFixo, aluguel, imposto + pctMensalidade);
+  const linhas = conta.map(({ sobre, pct, ...l }) => ({
+    ...l,
+    custo: sobre === 'mensal' ? Math.round(pct * mensalTotal) : sobre === 'entrada' ? Math.round(pct * entradaTotal) : Math.round(l.custo),
+  }));
   return {
-    aluguel, vendaDeAparelhos, mensalTotal, entradaTotal, parcelas, custoUnico: Math.round(custoUnico), saidas: saidas.map((v) => Math.round(v)), custoMensalFixo: Math.round(custoMensalFixo),
+    aluguel, vendaDeAparelhos, mensalTotal, entradaTotal, parcelas, custoUnico: Math.round(custoUnico),
+    totalInvestido: linhas.filter((l) => l.quando === 'uma-vez').reduce((s, l) => s + l.custo, 0),
+    saidas: saidas.map((v) => Math.round(v)), custoMensalFixo: Math.round(custoMensalFixo),
     impostoMensal: Math.round(impostoMensal), comissaoMensal: Math.round(comissaoMensal), custoMensal: Math.round(custoMensal),
     impostoDaEntrada: Math.round(imposto * entradaTotal), comissaoDaEntrada: Math.round(pctAtivacao * entradaTotal),
     sobraMensal: sobra, margem, sinal: margem == null ? null : sinalDaMargem(margem, faixas),
-    serie, investimento, sePagaEm, resultado: serie[serie.length - 1]!,
+    serie, meses, investimento, sePagaEm, resultado: serie[serie.length - 1]!,
     minima, minimaVerde, descontoMaximo: minimaVerde == null ? null : Math.max(0, c.mensalidade - minimaVerde),
-    linhas: conta.map(({ sobre, pct, ...l }) => ({
-      ...l,
-      custo: sobre === 'mensal' ? Math.round(pct * mensalTotal) : sobre === 'entrada' ? Math.round(pct * entradaTotal) : Math.round(l.custo),
-    })),
+    linhas,
     faltam,
   };
 }

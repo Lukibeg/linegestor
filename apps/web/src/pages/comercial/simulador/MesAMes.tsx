@@ -1,17 +1,21 @@
 /**
- * O mês a mês do contrato (o Simulador do Comercial, 2.0.2). O Luan, num comentário na prévia, sobre o gráfico
- * pequeno: "isso aqui ta bacana, quero esse gráfico mais detalhado mensalmente, por exemplo, com os valores
- * acumulado e lucro por mês; acho q vai ter q ficar maior".
+ * O mês a mês do contrato (o Simulador do Comercial, 2.0.2), no alto da simulação. O Luan, em três comentários na
+ * prévia: "quero esse gráfico mais detalhado mensalmente, com os valores acumulado e lucro por mês"; "seria legal
+ * um kpi com mês a mês custo e faturamento e, num hover na coluna de cada um, o detalhe: esse mês eu faturei
+ * 5.000 — 3 mil de ativação e 2 mil de mensalidade —, e a mesma coisa com os custos"; e "o primeiro mês de
+ * pagamento vai ser o primeiro mês de faturamento também; quero esse gráfico junto à tabela na parte de cima".
  *
- * Em cima, o acumulado (a linha; verde acima do zero, vermelho abaixo), com o pior momento e o mês em que a venda
- * se paga; embaixo, o lucro de cada mês (as barras, verdes ou vermelhas). Passar o mouse — ou tocar, no celular —
- * num mês mostra o lucro dele e o acumulado; a tabela tem todos os meses. O mês 0 é a assinatura: o que sai de uma
- * vez e a primeira parcela da ativação. A barra dele costuma ser bem maior que as outras: passando da escala, ela é
- * cortada e diz o valor.
+ * Em cima, os totais do contrato (o faturamento, os custos, o lucro e quando a venda se paga). No gráfico, uma
+ * coluna por mês: o faturamento para cima, os custos para baixo e um ponto no lucro do mês; embaixo, a linha do
+ * acumulado (verde acima do zero, vermelho abaixo), com o pior momento e o mês em que a venda se paga. Passar o
+ * mouse — ou tocar, no celular — num mês mostra o detalhe dele: cada parte do faturamento e dos custos, o lucro
+ * e o acumulado. A tabela tem todos os meses (passar o mouse numa linha marca o mês no gráfico). O 1º mês é o da
+ * assinatura: a ativação (ou a 1ª parcela), a 1ª mensalidade, o que é pago de uma vez e os custos do mês. As
+ * colunas dele costumam ser bem maiores que as outras: passando da escala, são cortadas e dizem o valor.
  */
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
-import type { ContasDoCenario } from '@gestor/shared';
+import { textoDoSePagaEm, type ContasDoCenario, type MesDoContrato } from '@gestor/shared';
 import { reaisLimpo } from './comum.js';
 
 /** "15,6 mil", "−840": os números dos eixos (o R$ fica no título). */
@@ -59,157 +63,259 @@ const HALO = { stroke: 'var(--surface)', strokeWidth: 3, paintOrder: 'stroke', s
 /** De quantos em quantos meses o eixo escreve o número. */
 const passoDoEixo = (n: number) => (n <= 13 ? 1 : n <= 25 ? 3 : n <= 49 ? 6 : 12);
 
-export function MesAMes({ k, prazo }: { k: ContasDoCenario; prazo: number }) {
+/** O 1º mês corta quando passa deste tanto das outras colunas (senão, entra na escala). */
+const CORTE = 1.8;
+
+/** O detalhe de um mês: o faturamento e os custos, parte a parte, o lucro e o acumulado. */
+function DetalheDoMes({ m, pagou, deQual }: { m: MesDoContrato; pagou: number | null; deQual: (p: { produto?: string | null }) => string }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="font-semibold text-ink flex flex-wrap items-baseline gap-x-2">
+        Mês {m.mes}{m.mes === 1 && <span className="font-normal text-muted">· o da assinatura</span>}
+        {m.mes === pagou && <span className="text-[11.5px] font-semibold text-ok">se paga</span>}
+      </div>
+      <div className="flex justify-between gap-4"><span className="text-ink-2 inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-accent" aria-hidden />Faturamento</span><b className="tabular-nums text-ink">{reaisLimpo(m.faturamento)}</b></div>
+      {m.entra.length > 0 && (
+        <ul className="text-[12px] text-muted pl-4 -mt-0.5">
+          {m.entra.map((p) => <li key={p.rotulo} className="flex justify-between gap-4"><span className="min-w-0">{p.rotulo}</span><span className="tabular-nums">{reaisLimpo(p.valor)}</span></li>)}
+        </ul>
+      )}
+      <div className="flex justify-between gap-4"><span className="text-ink-2 inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-signal" aria-hidden />Custos</span><b className="tabular-nums text-ink">{reaisLimpo(m.custos)}</b></div>
+      {m.sai.length > 0 && (
+        <ul className="text-[12px] text-muted pl-4 -mt-0.5">
+          {m.sai.map((p, i) => <li key={`${p.rotulo}${i}`} className="flex justify-between gap-4"><span className="min-w-0">{p.rotulo}{deQual(p)}</span><span className="tabular-nums">{reaisLimpo(p.valor)}</span></li>)}
+        </ul>
+      )}
+      <div className="flex justify-between gap-4 pt-1 border-t border-line"><span className="text-ink-2">Lucro do mês</span><b className={`tabular-nums ${m.lucro < 0 ? 'text-bad' : 'text-ok'}`}>{reaisLimpo(m.lucro)}</b></div>
+      <div className="flex justify-between gap-4"><span className="text-ink-2">Acumulado</span><b className={`tabular-nums ${m.acumulado < 0 ? 'text-bad' : 'text-ink'}`}>{reaisLimpo(m.acumulado)}</b></div>
+    </div>
+  );
+}
+
+/** `nomeDoProduto`: com dois produtos ou mais, o detalhe diz de qual produto é cada custo ("Configuração e instalação · LinePBX"). */
+export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo: number; nomeDoProduto?: (codigo: string) => string }) {
+  const deQual = (p: { produto?: string | null }) => (nomeDoProduto && p.produto ? ` · ${nomeDoProduto(p.produto)}` : '');
   const [caixa, W] = useLargura(720);
   const [mes, setMes] = useState<number | null>(null);
   const [tabela, setTabela] = useState(true);
-  const serie = k.serie;
-  const noMes = useMemo(() => serie.map((v, m) => (m === 0 ? v : v - serie[m - 1]!)), [serie]);
-  const n = serie.length;
-  const estreito = W < 520;
-  const esq = estreito ? 54 : 70;
+  const meses = k.meses;
+  const n = Math.max(1, meses.length);
+  const totais = useMemo(() => ({
+    faturamento: meses.reduce((s, m) => s + m.faturamento, 0),
+    custos: meses.reduce((s, m) => s + m.custos, 0),
+  }), [meses]);
+  const estreito = W < 560;
+  const esq = estreito ? 54 : 72;
   const dir = 12;
-  const topo = 20;
-  const H1 = estreito ? 150 : 190;
-  const meio = 30;
-  const H2 = estreito ? 74 : 92;
+  const topo = 24;
+  const H1 = estreito ? 170 : 210;
+  const meio = 36;
+  const H2 = estreito ? 120 : 150;
   const base = 26;
   const H = topo + H1 + meio + H2 + base;
   const banda = Math.max(1, W - esq - dir) / n;
-  const x = (m: number) => esq + (m + 0.5) * banda;
+  const x = (i: number) => esq + (i + 0.5) * banda;
+  const pagou = k.sePagaEm.tipo === 'mes' && !k.sePagaEm.depoisDoPrazo ? k.sePagaEm.mes : null;
+
+  // o faturamento (para cima) e os custos (para baixo): a escala é a dos outros meses quando o 1º passa muito deles
+  const fat = meses.map((m) => m.faturamento);
+  const cus = meses.map((m) => m.custos);
+  const outrosFat = n > 1 ? Math.max(0, ...fat.slice(1)) : fat[0] ?? 0;
+  const outrosCus = n > 1 ? Math.max(0, ...cus.slice(1)) : cus[0] ?? 0;
+  const cortaO1 = n > 1 && ((fat[0] ?? 0) > CORTE * Math.max(1, outrosFat) || (cus[0] ?? 0) > CORTE * Math.max(1, outrosCus));
+  const hi = Math.max(1, cortaO1 ? outrosFat : Math.max(outrosFat, fat[0] ?? 0));
+  const lo = -Math.max(1, cortaO1 ? outrosCus : Math.max(outrosCus, cus[0] ?? 0));
+  const y1 = (v: number) => topo + ((hi - v) / (hi - lo)) * H1;
+  const corta = (v: number) => v > hi || v < lo;
+  const dentro = (v: number) => Math.min(hi, Math.max(lo, v));
 
   // o acumulado
-  const max1 = Math.max(0, ...serie);
-  const min1 = Math.min(0, ...serie);
-  const y1 = (v: number) => topo + ((max1 - v) / (max1 - min1 || 1)) * H1;
-  const caminho = serie.map((v, m) => `${m ? 'L' : 'M'}${x(m).toFixed(1)},${y1(v).toFixed(1)}`).join(' ');
-  const area = `${caminho} L${x(n - 1).toFixed(1)},${y1(0).toFixed(1)} L${x(0).toFixed(1)},${y1(0).toFixed(1)} Z`;
-  const pagou = k.sePagaEm.tipo === 'mes' && !k.sePagaEm.depoisDoPrazo ? k.sePagaEm.mes : null;
-  const pior = serie.indexOf(min1 < 0 ? min1 : Number.NaN);
-
-  // o lucro de cada mês: a escala é a dos meses depois da assinatura (o mês 0, maior, é cortado)
-  const depois = noMes.slice(1);
-  let hi = Math.max(0, ...depois);
-  let lo = Math.min(0, ...depois);
-  const loDeVerdade = lo < 0;
-  if (hi === 0 && lo === 0) hi = Math.max(1, noMes[0]! > 0 ? noMes[0]! : 0);
-  if (noMes[0]! < lo) lo = Math.min(lo, -Math.max(hi, 1) * 0.45);
+  const serie = meses.map((m) => m.acumulado);
+  const max2 = Math.max(0, ...serie);
+  const min2 = Math.min(0, ...serie);
   const topo2 = topo + H1 + meio;
-  const y2 = (v: number) => topo2 + ((hi - v) / (hi - lo || 1)) * H2;
-  const corta = (v: number) => v > hi || v < lo;
+  const y2 = (v: number) => topo2 + ((max2 - v) / (max2 - min2 || 1)) * H2;
+  const caminho = serie.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y2(v).toFixed(1)}`).join(' ');
+  const area = `${caminho} L${x(n - 1).toFixed(1)},${y2(0).toFixed(1)} L${x(0).toFixed(1)},${y2(0).toFixed(1)} Z`;
+  const pior = min2 < 0 ? serie.indexOf(min2) : -1;
 
   const passo = passoDoEixo(n);
-  const eixo = Array.from({ length: n }, (_, m) => m).filter((m) => m % passo === 0);
-  // o último mês também, quando não fica colado no número de antes
+  // o eixo: o 1º mês, de passo em passo, e o último quando não fica colado no de antes
+  const eixo = Array.from({ length: n }, (_, i) => i).filter((i) => i === 0 || (i + 1) % passo === 0);
   if (eixo[eixo.length - 1] !== n - 1 && n - 1 - eixo[eixo.length - 1]! >= passo / 2) eixo.push(n - 1);
   const aponta = (e: PointerEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    const m = Math.floor((e.clientX - r.left - esq) / banda);
-    setMes(m >= 0 && m < n ? m : null);
+    const i = Math.floor((e.clientX - r.left - esq) / banda);
+    setMes(i >= 0 && i < n ? i : null);
   };
-  const fim = serie[n - 1]!;
-  const ponta = mes == null ? null : { esq: x(mes) > W - 200 };
+  const fim = serie[n - 1] ?? 0;
+  const escolhido = mes != null ? meses[mes] ?? null : null;
+  const w = Math.max(1.5, banda * (n > 40 ? 0.7 : 0.6));
 
   return (
     <section className="card p-4 min-w-0" aria-label="O mês a mês do contrato" id="simulador-mes-a-mes">
-      <header className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
-        <h2 className="font-display font-semibold text-[15px]">Mês a mês <span className="font-body font-normal text-[12.5px] text-muted">· o lucro de cada mês e o acumulado, do mês 0 (a assinatura) ao mês {prazo}</span></h2>
-        <span className="text-[12.5px] text-ink-2">
-          {pagou != null ? <>Se paga no <b>mês {pagou}</b> · </> : null}no fim: <b className={`tabular-nums ${fim < 0 ? 'text-bad' : 'text-ok'}`}>{reaisLimpo(fim)}</b>
-        </span>
+      <header className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+        <h2 className="font-display font-semibold text-[15px]">Mês a mês <span className="font-body font-normal text-[12.5px] text-muted">· o faturamento, os custos e o lucro de cada mês, do 1º (o da assinatura) ao {prazo}º</span></h2>
       </header>
+      {/* os totais do contrato */}
+      <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3" id="simulador-mes-a-mes-totais">
+        <div className="rounded-lg bg-surface-2 px-3 py-2" data-total-do-contrato="faturamento">
+          <dt className="text-[12px] text-ink-2 inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-accent" aria-hidden />Faturamento</dt>
+          <dd className="font-display text-[17px] font-semibold tabular-nums">{reaisLimpo(totais.faturamento)}</dd>
+          <dd className="text-[11.5px] text-muted">no contrato</dd>
+        </div>
+        <div className="rounded-lg bg-surface-2 px-3 py-2" data-total-do-contrato="custos">
+          <dt className="text-[12px] text-ink-2 inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-signal" aria-hidden />Custos</dt>
+          <dd className="font-display text-[17px] font-semibold tabular-nums">{reaisLimpo(totais.custos)}</dd>
+          <dd className="text-[11.5px] text-muted">no contrato</dd>
+        </div>
+        <div className="rounded-lg bg-surface-2 px-3 py-2" data-total-do-contrato="lucro">
+          <dt className="text-[12px] text-ink-2 inline-flex items-center gap-1.5"><span className={`w-2.5 h-2.5 rounded-full ${fim < 0 ? 'bg-bad' : 'bg-ok'}`} aria-hidden />Lucro</dt>
+          <dd className={`font-display text-[17px] font-semibold tabular-nums ${fim < 0 ? 'text-bad' : 'text-ok'}`}>{reaisLimpo(fim)}</dd>
+          <dd className="text-[11.5px] text-muted">no contrato</dd>
+        </div>
+        <div className="rounded-lg bg-surface-2 px-3 py-2" data-total-do-contrato="se-paga">
+          <dt className="text-[12px] text-ink-2">Se paga</dt>
+          <dd className={`font-display text-[17px] font-semibold ${k.sePagaEm.tipo === 'nunca' || (k.sePagaEm.tipo === 'mes' && k.sePagaEm.depoisDoPrazo) ? 'text-bad' : ''}`}>{textoDoSePagaEm(k.sePagaEm)}</dd>
+          <dd className="text-[11.5px] text-muted">{k.investimento ? `sai antes ${reaisLimpo(k.investimento)}` : 'nunca no vermelho'}</dd>
+        </div>
+      </dl>
       {/* no celular, o toque escolhe o mês e o valor fica (o dedo sair da tela não apaga) */}
       <div ref={caixa} className="relative select-none" onPointerLeave={(e) => { if (e.pointerType !== 'touch') setMes(null); }}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="block max-w-full touch-pan-y" role="img" id="simulador-mes-a-mes-grafico"
-          aria-label={`O acumulado começa em ${reaisLimpo(serie[0]!)} e termina em ${reaisLimpo(fim)}${pagou != null ? `; a venda se paga no mês ${pagou}` : ''}. Os valores de cada mês estão na tabela.`}
+          aria-label={`No contrato, o faturamento é ${reaisLimpo(totais.faturamento)}, os custos ${reaisLimpo(totais.custos)} e o lucro ${reaisLimpo(fim)}${pagou != null ? `; a venda se paga no mês ${pagou}` : ''}. Os valores de cada mês estão na tabela.`}
           onPointerMove={aponta} onPointerDown={aponta}>
           <defs>
-            <clipPath id="mam-acima"><rect x="0" y="0" width={W} height={Math.max(0, y1(0))} /></clipPath>
-            <clipPath id="mam-abaixo"><rect x="0" y={y1(0)} width={W} height={Math.max(0, H - y1(0))} /></clipPath>
+            <clipPath id="mam-acima"><rect x="0" y="0" width={W} height={Math.max(0, y2(0))} /></clipPath>
+            <clipPath id="mam-abaixo"><rect x="0" y={y2(0)} width={W} height={Math.max(0, H - y2(0))} /></clipPath>
           </defs>
-          {/* o acumulado */}
-          <text x={esq} y={12} fontSize="11.5" fontWeight="600" fill="var(--ink-2)">Acumulado (R$)</text>
-          {[max1, 0, min1].filter((v, i, a) => a.indexOf(v) === i).map((v) => (
-            <line key={`a${v}`} x1={esq} x2={W - dir} y1={y1(v)} y2={y1(v)} stroke={v === 0 ? 'var(--line-strong)' : 'var(--line)'} strokeDasharray={v === 0 ? '4 3' : undefined} />
-          ))}
-          {semEncostar([0, max1, min1], y1).map((v) => (
-            <text key={`ra${v}`} x={esq - 6} y={y1(v) + 4} fontSize="11" fill="var(--muted)" textAnchor="end">{noEixo(v)}</text>
-          ))}
-          <path d={area} fill="var(--ok-soft)" clipPath="url(#mam-acima)" />
-          <path d={area} fill="var(--bad-soft)" clipPath="url(#mam-abaixo)" />
-          <path d={caminho} fill="none" stroke="var(--accent)" strokeWidth="2.2" strokeLinejoin="round" />
-          {n <= 49 && serie.map((v, m) => <circle key={m} cx={x(m)} cy={y1(v)} r={mes === m ? 4.5 : 2.4} fill={v < 0 ? 'var(--bad)' : 'var(--ok)'} />)}
-          {/* o pior momento, quando há espaço entre ele e o zero (perto do zero, a tabela e o mouse dizem) */}
-          {pior >= 0 && pior !== mes && y1(min1) - y1(0) >= 24 && (
-            <text x={x(pior) + (x(pior) > W - 140 ? -8 : 8)} y={Math.max(topo + 12, y1(min1) - 8)} fontSize="11" fontWeight="600" fill="var(--bad)" {...HALO}
-              textAnchor={x(pior) > W - 140 ? 'end' : 'start'}>o pior momento: {curto(min1)}</text>
-          )}
-          {pagou != null && (
-            <g>
-              <line x1={x(pagou)} x2={x(pagou)} y1={topo} y2={topo + H1} stroke="var(--ok)" strokeDasharray="2 3" />
-              <text x={x(pagou) + (x(pagou) > W - 140 ? -6 : 6)} y={topo + 12} fontSize="11.5" fontWeight="600" fill="var(--ok)" {...HALO} textAnchor={x(pagou) > W - 140 ? 'end' : 'start'}>se paga no mês {pagou}</text>
+          {/* o mês escolhido, nos dois gráficos */}
+          {mes != null && <rect x={x(mes) - banda / 2} y={topo - 4} width={banda} height={topo2 + H2 - topo + 8} fill="var(--ink)" opacity="0.06" rx="3" />}
+
+          {/* o faturamento e os custos */}
+          <text x={esq} y={13} fontSize="11.5" fontWeight="600" fill="var(--ink-2)">Faturamento e custos de cada mês (R$)</text>
+          {!estreito && (
+            <g fontSize="11" fill="var(--ink-2)">
+              <rect x={W - dir - 252} y={4} width="10" height="10" rx="2" fill="var(--accent)" /><text x={W - dir - 238} y={13}>faturamento</text>
+              <rect x={W - dir - 162} y={4} width="10" height="10" rx="2" fill="var(--signal)" /><text x={W - dir - 148} y={13}>custos</text>
+              <circle cx={W - dir - 95} cy={9} r="4" fill="var(--ok)" stroke="var(--surface)" strokeWidth="1.5" /><text x={W - dir - 87} y={13}>lucro do mês</text>
             </g>
           )}
-          {/* o lucro de cada mês */}
-          <text x={esq} y={topo2 - 10} fontSize="11.5" fontWeight="600" fill="var(--ink-2)">Lucro do mês (R$)</text>
-          {[hi, 0, lo].filter((v, i, a) => a.indexOf(v) === i).map((v) => (
-            <line key={`b${v}`} x1={esq} x2={W - dir} y1={y2(v)} y2={y2(v)} stroke={v === 0 ? 'var(--line-strong)' : 'var(--line)'} />
+          {[hi, 0, lo].map((v) => (
+            <line key={`a${v}`} x1={esq} x2={W - dir} y1={y1(v)} y2={y1(v)} stroke={v === 0 ? 'var(--line-strong)' : 'var(--line)'} />
           ))}
-          {/* o espaço embaixo do zero, aberto só para a barra da assinatura, não ganha número */}
-          {semEncostar([0, hi, ...(loDeVerdade ? [lo] : [])], y2).map((v) => (
-            <text key={`rb${v}`} x={esq - 6} y={y2(v) + 4} fontSize="11" fill="var(--muted)" textAnchor="end">{noEixo(v)}</text>
+          {semEncostar([0, hi, lo], y1).map((v) => (
+            <text key={`ra${v}`} x={esq - 6} y={y1(v) + 4} fontSize="11" fill="var(--muted)" textAnchor="end">{noEixo(v)}</text>
           ))}
-          {noMes.map((v, m) => {
-            const alvo = Math.min(hi, Math.max(lo, v));
-            const a = y2(0); const b = y2(alvo);
-            const w = Math.max(1, banda * 0.66);
+          {meses.map((m, i) => {
+            const zero = y1(0);
+            const cimaV = dentro(m.faturamento); const baixoV = dentro(-m.custos);
+            const opacidade = mes == null || mes === i ? 1 : 0.5;
             return (
-              <g key={m}>
-                <rect x={x(m) - w / 2} y={Math.min(a, b)} width={w} height={Math.max(v === 0 ? 0 : 1, Math.abs(b - a))} rx={Math.min(2, w / 3)}
-                  fill={v < 0 ? 'var(--bad)' : 'var(--ok)'} opacity={mes == null || mes === m ? 1 : 0.55} />
-                {corta(v) && (
+              <g key={m.mes} opacity={opacidade}>
+                {m.faturamento > 0 && <rect x={x(i) - w / 2} y={y1(cimaV)} width={w} height={Math.max(1, zero - y1(cimaV))} rx={Math.min(2, w / 3)} fill="var(--accent)" />}
+                {m.custos > 0 && <rect x={x(i) - w / 2} y={zero} width={w} height={Math.max(1, y1(baixoV) - zero)} rx={Math.min(2, w / 3)} fill="var(--signal)" />}
+                {corta(m.faturamento) && (
                   <>
-                    <line x1={x(m) - w / 2 - 2} x2={x(m) + w / 2 + 2} y1={b + (v < 0 ? -5 : 5)} y2={b + (v < 0 ? -9 : 1)} stroke="var(--surface)" strokeWidth="2.5" />
-                    <text x={x(m) + w / 2 + 4} y={v < 0 ? b - 2 : b + 11} fontSize="11" fontWeight="600" fill={v < 0 ? 'var(--bad)' : 'var(--ok)'} {...HALO}>{curto(v)}</text>
+                    <line x1={x(i) - w / 2 - 2} x2={x(i) + w / 2 + 2} y1={y1(hi) + 6} y2={y1(hi) + 2} stroke="var(--surface)" strokeWidth="2.5" />
+                    <text x={x(i) + w / 2 + 4} y={y1(hi) + 11} fontSize="11" fontWeight="600" fill="var(--accent-ink)" {...HALO}>{curto(m.faturamento)}</text>
+                  </>
+                )}
+                {corta(-m.custos) && (
+                  <>
+                    <line x1={x(i) - w / 2 - 2} x2={x(i) + w / 2 + 2} y1={y1(lo) - 6} y2={y1(lo) - 2} stroke="var(--surface)" strokeWidth="2.5" />
+                    <text x={x(i) + w / 2 + 4} y={y1(lo) - 3} fontSize="11" fontWeight="600" fill="var(--signal)" {...HALO}>{curto(-m.custos)}</text>
                   </>
                 )}
               </g>
             );
           })}
-          {/* os meses */}
-          {eixo.map((m) => (
-            <text key={`m${m}`} x={x(m)} y={H - 8} fontSize="11" fill="var(--muted)" textAnchor="middle">{m}</text>
+          {/* o lucro de cada mês: o ponto (no 1º mês, quando passa da escala, fica na borda) */}
+          {meses.map((m, i) => (
+            <circle key={`l${m.mes}`} cx={x(i)} cy={y1(dentro(m.lucro))} r={mes === i ? 5 : n > 40 ? 2.6 : 3.6}
+              fill={m.lucro < 0 ? 'var(--bad)' : 'var(--ok)'} stroke="var(--surface)" strokeWidth="1.5" />
           ))}
-          {mes != null && <line x1={x(mes)} x2={x(mes)} y1={topo} y2={topo2 + H2} stroke="var(--ink-2)" strokeWidth="1" opacity="0.5" />}
+
+          {/* o acumulado */}
+          <text x={esq} y={topo2 - 12} fontSize="11.5" fontWeight="600" fill="var(--ink-2)">Acumulado (R$)</text>
+          {[max2, 0, min2].filter((v, i, a) => a.indexOf(v) === i).map((v) => (
+            <line key={`b${v}`} x1={esq} x2={W - dir} y1={y2(v)} y2={y2(v)} stroke={v === 0 ? 'var(--line-strong)' : 'var(--line)'} strokeDasharray={v === 0 ? '4 3' : undefined} />
+          ))}
+          {semEncostar([0, max2, min2], y2).map((v) => (
+            <text key={`rb${v}`} x={esq - 6} y={y2(v) + 4} fontSize="11" fill="var(--muted)" textAnchor="end">{noEixo(v)}</text>
+          ))}
+          <path d={area} fill="var(--ok-soft)" clipPath="url(#mam-acima)" />
+          <path d={area} fill="var(--bad-soft)" clipPath="url(#mam-abaixo)" />
+          <path d={caminho} fill="none" stroke="var(--accent)" strokeWidth="2.2" strokeLinejoin="round" />
+          {n <= 49 && serie.map((v, i) => <circle key={i} cx={x(i)} cy={y2(v)} r={mes === i ? 4.5 : 2.4} fill={v < 0 ? 'var(--bad)' : 'var(--ok)'} />)}
+          {/* o pior momento, quando há espaço entre ele e o zero (perto do zero, a tabela e o mouse dizem) */}
+          {pior >= 0 && pior !== mes && y2(min2) - y2(0) >= 24 && (
+            <text x={x(pior) + (x(pior) > W - 150 ? -8 : 8)} y={Math.min(topo2 + H2 - 2, y2(min2) + 4)} fontSize="11" fontWeight="600" fill="var(--bad)" {...HALO}
+              textAnchor={x(pior) > W - 150 ? 'end' : 'start'}>o pior momento: {curto(min2)}</text>
+          )}
+          {pagou != null && (
+            <g>
+              <line x1={x(pagou - 1)} x2={x(pagou - 1)} y1={topo2} y2={topo2 + H2} stroke="var(--ok)" strokeDasharray="2 3" />
+              <text x={x(pagou - 1) + (x(pagou - 1) > W - 140 ? -6 : 6)} y={topo2 + 12} fontSize="11.5" fontWeight="600" fill="var(--ok)" {...HALO} textAnchor={x(pagou - 1) > W - 140 ? 'end' : 'start'}>se paga no mês {pagou}</text>
+            </g>
+          )}
+          {/* os meses */}
+          {eixo.map((i) => (
+            <text key={`m${i}`} x={x(i)} y={H - 8} fontSize="11" fill="var(--muted)" textAnchor="middle">{i + 1}</text>
+          ))}
         </svg>
-        {mes != null && ponta && (
-          <div className="absolute top-1 pointer-events-none card shadow-lg px-3 py-2 text-[12.5px] min-w-[170px]" role="status" id="simulador-mes-a-mes-valor"
-            style={ponta.esq ? { right: Math.max(0, W - x(mes) + 10) } : { left: x(mes) + 10 }}>
-            <div className="font-semibold text-ink">{mes === 0 ? 'Mês 0 · a assinatura' : `Mês ${mes}`}</div>
-            <div className="flex justify-between gap-3"><span className="text-muted">Lucro do mês</span><b className={`tabular-nums ${noMes[mes]! < 0 ? 'text-bad' : 'text-ok'}`}>{reaisLimpo(noMes[mes]!)}</b></div>
-            <div className="flex justify-between gap-3"><span className="text-muted">Acumulado</span><b className={`tabular-nums ${serie[mes]! < 0 ? 'text-bad' : 'text-ink'}`}>{reaisLimpo(serie[mes]!)}</b></div>
+        {escolhido && !estreito && (
+          <div className="absolute top-1 pointer-events-none card shadow-lg px-3 py-2 text-[12.5px] w-[290px] max-w-[60%]" role="status" id="simulador-mes-a-mes-valor"
+            style={x(mes!) > W / 2 ? { right: Math.max(0, W - x(mes!) + banda / 2 + 8) } : { left: x(mes!) + banda / 2 + 8 }}>
+            <DetalheDoMes m={escolhido} pagou={pagou} deQual={deQual} />
           </div>
         )}
       </div>
-      <p className="text-[12px] text-muted mt-1">O mês 0 é a assinatura: o que sai de uma vez (os aparelhos à vista, a instalação) e a primeira parcela da ativação. Passe o mouse (ou toque) num mês para ver os valores.</p>
+      {estreito && (
+        <div className="mt-2 rounded-lg border border-line px-3 py-2 text-[12.5px]" role="status" id={escolhido ? 'simulador-mes-a-mes-valor' : undefined}>
+          {escolhido ? <DetalheDoMes m={escolhido} pagou={pagou} deQual={deQual} /> : <span className="text-muted">Toque num mês para ver o detalhe: o que entrou, o que saiu e o lucro.</span>}
+        </div>
+      )}
+      <p className="text-[12px] text-muted mt-2">
+        O 1º mês é o da assinatura: nele entram a ativação (ou a 1ª parcela) e a 1ª mensalidade, e saem o que é pago de uma vez (os aparelhos à vista, a instalação) e os custos do mês.
+        {cortaO1 && ' As colunas dele passam da escala: são cortadas e dizem o valor.'} {estreito ? '' : 'Passe o mouse num mês para ver o detalhe.'}
+      </p>
       <button type="button" className="btn-ghost btn-sm mt-2 -ml-2" onClick={() => setTabela((t) => !t)} aria-expanded={tabela} id="simulador-mes-a-mes-tabela-botao">
         {tabela ? <ChevronUp size={14} /> : <ChevronDown size={14} />} {tabela ? 'Esconder a tabela' : 'Ver a tabela mês a mês'}
       </button>
       {tabela && (
-        <div className="mt-1 max-h-[320px] overflow-y-auto border border-line rounded-lg" id="simulador-mes-a-mes-tabela">
+        <div className="mt-1 max-h-[340px] overflow-auto border border-line rounded-lg" id="simulador-mes-a-mes-tabela">
           <table className="w-full text-[13px]">
             <thead className="sticky top-0 bg-surface-2 text-[12px] text-muted">
-              <tr><th className="text-left font-semibold px-3 py-1.5">Mês</th><th className="text-right font-semibold px-3 py-1.5">Lucro do mês</th><th className="text-right font-semibold px-3 py-1.5">Acumulado</th></tr>
+              <tr>
+                <th className="text-left font-semibold px-3 py-1.5">Mês</th>
+                <th className="text-right font-semibold px-3 py-1.5">Faturamento</th>
+                <th className="text-right font-semibold px-3 py-1.5">Custos</th>
+                <th className="text-right font-semibold px-3 py-1.5">Lucro do mês</th>
+                <th className="text-right font-semibold px-3 py-1.5">Acumulado</th>
+              </tr>
             </thead>
             <tbody>
-              {serie.map((v, m) => (
-                <tr key={m} className={`border-t border-line ${mes === m ? 'bg-accent-soft' : ''}`} data-mes={m}>
-                  <td className="px-3 py-1.5 text-ink-2">{m === 0 ? '0 · a assinatura' : m}{m === pagou && <span className="ml-1.5 text-[11.5px] font-semibold text-ok">se paga</span>}</td>
-                  <td className={`px-3 py-1.5 text-right tabular-nums ${noMes[m]! < 0 ? 'text-bad' : ''}`}>{reaisLimpo(noMes[m]!)}</td>
-                  <td className={`px-3 py-1.5 text-right tabular-nums font-semibold ${v < 0 ? 'text-bad' : 'text-ink'}`}>{reaisLimpo(v)}</td>
+              {meses.map((m, i) => (
+                <tr key={m.mes} className={`border-t border-line cursor-default ${mes === i ? 'bg-accent-soft' : ''}`} data-mes={m.mes}
+                  onMouseEnter={() => setMes(i)} onClick={() => setMes(i)}>
+                  <td className="px-3 py-1.5 text-ink-2 whitespace-nowrap">{m.mes === 1 ? '1 · a assinatura' : m.mes}{m.mes === pagou && <span className="ml-1.5 text-[11.5px] font-semibold text-ok">se paga</span>}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{reaisLimpo(m.faturamento)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{reaisLimpo(m.custos)}</td>
+                  <td className={`px-3 py-1.5 text-right tabular-nums ${m.lucro < 0 ? 'text-bad' : ''}`}>{reaisLimpo(m.lucro)}</td>
+                  <td className={`px-3 py-1.5 text-right tabular-nums font-semibold ${m.acumulado < 0 ? 'text-bad' : 'text-ink'}`}>{reaisLimpo(m.acumulado)}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot className="sticky bottom-0 bg-surface-2">
+              <tr className="border-t border-line-strong font-semibold">
+                <td className="px-3 py-1.5">No contrato</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{reaisLimpo(totais.faturamento)}</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">{reaisLimpo(totais.custos)}</td>
+                <td className={`px-3 py-1.5 text-right tabular-nums ${fim < 0 ? 'text-bad' : 'text-ok'}`}>{reaisLimpo(fim)}</td>
+                <td className="px-3 py-1.5" />
+              </tr>
+            </tfoot>
           </table>
         </div>
       )}

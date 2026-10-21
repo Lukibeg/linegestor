@@ -5,22 +5,29 @@
  * faixas (os usuários do LineChat da Helena) mostra as faixas e calcula sozinho. Entram da tabela dos Ajustes
  * (com um clique), de um modelo ou digitados. As linhas guardam o valor de quando entraram.
  *
- * Em dois grupos (o Luan, 20/10: "separe os custos fixos com custos mensais"): os **custos fixos**, pagos uma
- * vez (o aparelho, o "uma vez", a comissão da venda), e os **custos mensais** (o "por mês", a comissão
- * recorrente), cada um com o total, a tabela e o "digitar" dele.
+ * Em dois grupos (o Luan, 20/10: "separe os custos fixos com custos mensais"): o **investimento**, pago uma vez
+ * (o aparelho, o "uma vez", a comissão da venda), e os **custos mensais** (o "por mês", a comissão recorrente),
+ * cada um num quadro com a cor, o total, a tabela e o "digitar" dele (o Luan: "tem que ter uma separação melhor
+ * visualmente"). O primeiro se chamava "Custos fixos" ("parece que vai ser todo mês").
  */
 import { useMemo, useState } from 'react';
-import { Layers, ListPlus, PackagePlus, Plus, Search, X } from 'lucide-react';
+import { Layers, ListPlus, PackagePlus, Plus, Repeat, Search, Wallet, X } from 'lucide-react';
 import {
   AJUDA_DA_MODALIDADE, AJUDA_DO_GRUPO, AJUDA_DO_TIPO_DE_CUSTO, GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_PARCELAS_DA_COMPRA, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE,
-  NOME_DO_GRUPO, NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, dividirEmParcelas, ehPercentual, linhaDaTabela, linhaNova, linhasDoModelo, paraBusca,
+  NOME_DO_GRUPO, NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, UM_CUSTO_DO_GRUPO, dividirEmParcelas, ehPercentual, linhaDaTabela, linhaNova, linhasDoModelo, paraBusca,
   percentual, precoDaUnidade, textoDasFaixasDePreco,
   type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario, type CustoDaTabela, type GrupoDeCusto, type LinhaDoCenario, type TipoDeCusto,
 } from '@gestor/shared';
 import { Popover } from '../../../components/ui/index.js';
 import { CampoDePercentual, CampoDeReais, CampoInteiro, plural, reais, reaisLimpo } from './comum.js';
 
-const COLUNAS = 'md:grid-cols-[minmax(0,1fr)_112px_124px_96px_28px]';
+const COLUNAS = 'md:grid-cols-[minmax(0,1fr)_104px_120px_96px_28px]';
+
+/** A cor e o ícone de cada grupo: o investimento (pago uma vez) e os custos mensais (todo mês). */
+export const VISUAL_DO_GRUPO = {
+  fixo: { Icone: Wallet, faixa: 'bg-signal-soft', borda: 'border-l-signal', cor: 'text-signal' },
+  mensal: { Icone: Repeat, faixa: 'bg-turquesa-soft', borda: 'border-l-turquesa', cor: 'text-turquesa' },
+} as const;
 
 /** O valor de um custo da tabela, curto: "R$ 9,00 por mês", "10% da ativação", "por faixas", "preencher". */
 export function valorDoCusto(c: Pick<CustoDaTabela, 'tipo' | 'valor' | 'faixas' | 'porRamal' | 'unidade'>): string {
@@ -31,8 +38,10 @@ export function valorDoCusto(c: Pick<CustoDaTabela, 'tipo' | 'valor' | 'faixas' 
   return `${precoDaUnidade(c.valor)} ${cada}${c.tipo === 'mensal' ? ' por mês' : c.tipo === 'unica' ? ', uma vez' : ''}`;
 }
 
-export function OsCustos({ c, k, ajustes, mudar, podeEditar }: {
+/** `nomeDoProduto`: com dois produtos ou mais, cada linha diz de qual produto veio (a instalação do LinePBX e a do LineChat). */
+export function OsCustos({ c, k, ajustes, mudar, podeEditar, nomeDoProduto }: {
   c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador; mudar: (m: Partial<CenarioDaSimulacao>) => void; podeEditar: boolean;
+  nomeDoProduto?: (codigo: string) => string;
 }) {
   const mudarLinha = (id: string, m: Partial<LinhaDoCenario>) => mudar({ linhas: c.linhas.map((l) => (l.id === id ? { ...l, ...m } : l)) });
   const tirar = (id: string) => mudar({ linhas: c.linhas.filter((l) => l.id !== id) });
@@ -51,66 +60,79 @@ export function OsCustos({ c, k, ajustes, mudar, podeEditar }: {
       {!c.linhas.length && podeEditar && (
         <p className="text-[12.5px] text-muted mt-1">Ponha os custos da tabela (os de sempre, com o valor de hoje), de um modelo pronto ou digitados.</p>
       )}
-      {GRUPOS_DE_CUSTO.map((g) => (
-        <GrupoDeCustos key={g} grupo={g} c={c} k={k} ajustes={ajustes} podeEditar={podeEditar}
-          mudarLinha={mudarLinha} tirar={tirar} incluir={incluir} />
-      ))}
+      <div className="mt-3 flex flex-col gap-4">
+        {GRUPOS_DE_CUSTO.map((g) => (
+          <GrupoDeCustos key={g} grupo={g} c={c} k={k} ajustes={ajustes} podeEditar={podeEditar} nomeDoProduto={c.produtos.length > 1 ? nomeDoProduto : undefined}
+            mudarLinha={mudarLinha} tirar={tirar} incluir={incluir} />
+        ))}
+      </div>
     </section>
   );
 }
 
-/** Um grupo de custos (os fixos ou os mensais): o nome, a tabela e o "digitar" dele, as linhas e o total. */
-function GrupoDeCustos({ grupo, c, k, ajustes, podeEditar, mudarLinha, tirar, incluir }: {
-  grupo: GrupoDeCusto; c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador; podeEditar: boolean;
+/**
+ * Um grupo de custos (o investimento ou os mensais), num quadro com a cor dele: a faixa do alto com o nome, o que
+ * entra nele e o total; a tabela e o "digitar" dele; as linhas.
+ */
+function GrupoDeCustos({ grupo, c, k, ajustes, podeEditar, nomeDoProduto, mudarLinha, tirar, incluir }: {
+  grupo: GrupoDeCusto; c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador; podeEditar: boolean; nomeDoProduto?: (codigo: string) => string;
   mudarLinha: (id: string, m: Partial<LinhaDoCenario>) => void; tirar: (id: string) => void; incluir: (novas: LinhaDoCenario[]) => void;
 }) {
   const linhas = c.linhas.filter((l) => GRUPO_DO_TIPO[l.tipo] === grupo);
-  const total = grupo === 'fixo'
-    ? k.linhas.filter((l) => l.quando === 'uma-vez').reduce((s, l) => s + l.custo, 0)
-    : k.custoMensalFixo + k.comissaoMensal;
-  // os aparelhos comprados parcelado: o custo deles sai nas parcelas (a linha do tempo mostra)
+  const total = grupo === 'fixo' ? k.totalInvestido : k.custoMensalFixo + k.comissaoMensal;
+  // os aparelhos comprados parcelado: o custo deles sai nas parcelas (o mês a mês mostra)
   const parcelado = grupo === 'fixo' ? k.linhas.filter((l) => l.parcelas > 1).reduce((s, l) => s + l.custo, 0) : 0;
+  const v = VISUAL_DO_GRUPO[grupo];
   return (
-    <div className="mt-4" data-grupo={grupo} id={`simulador-grupo-${grupo}`}>
-      <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-line">
-        <h3 className="text-[14px] font-semibold text-ink min-w-0">
-          {NOME_DO_GRUPO[grupo]} <span className="font-normal text-[12.5px] text-muted">· {AJUDA_DO_GRUPO[grupo]}</span>
+    <div className={`rounded-xl border border-line border-l-4 ${v.borda} overflow-hidden`} data-grupo={grupo} id={`simulador-grupo-${grupo}`}>
+      <div className={`${v.faixa} px-3 py-2.5 flex flex-wrap items-start justify-between gap-x-3 gap-y-1`}>
+        <h3 className="min-w-0 flex items-start gap-2">
+          <v.Icone size={17} className={`${v.cor} shrink-0 mt-0.5`} aria-hidden />
+          <span className="min-w-0">
+            <span className="block text-[14.5px] font-semibold text-ink">{NOME_DO_GRUPO[grupo]}</span>
+            <span className="block text-[12px] text-ink-2">{AJUDA_DO_GRUPO[grupo]}</span>
+          </span>
         </h3>
+        <div className="text-right" data-total={grupo}>
+          <b className="block tabular-nums text-[15px] text-ink">{reais(total)}{grupo === 'mensal' && <span className="font-normal text-[12px] text-ink-2"> por mês</span>}</b>
+          <span className="block text-[11.5px] text-ink-2">
+            {grupo === 'fixo' ? (parcelado > 0 ? `${reaisLimpo(parcelado)} na compra parcelada` : 'uma vez') : `mais o imposto (${percentual(c.imposto)})`}
+          </span>
+        </div>
+      </div>
+      <div className="px-2.5 pb-2">
         {podeEditar && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 pt-2 -ml-1.5">
             <DaTabela grupo={grupo} custos={ajustes.custos.filter((x) => GRUPO_DO_TIPO[x.tipo] === grupo)} incluir={(x) => incluir([linhaDaTabela(x)])} />
             <button type="button" className="btn-ghost btn-sm" onClick={() => incluir([linhaNova(TIPO_NOVO_DO_GRUPO[grupo])])} id={`simulador-digitar-${grupo}`}>
               <Plus size={14} /> Digitar um custo
             </button>
           </div>
         )}
-      </div>
-      {linhas.length ? (
-        <>
-          <div className={`hidden md:grid ${COLUNAS} gap-2 px-1 pt-1.5 pb-1 text-[11.5px] font-semibold text-muted`}>
-            <span>Custo e como entra</span><span className="text-right">Quantidade</span><span className="text-right">Valor de cada</span><span className="text-right">Total</span><span />
-          </div>
-          <ul className="flex flex-col divide-y divide-line" id={`simulador-linhas-${grupo}`}>
-            {linhas.map((l) => (
-              <LinhaDeCusto key={l.id} l={l} c={c} grupo={grupo} conta={k.linhas.find((x) => x.id === l.id)!} mudar={(m) => mudarLinha(l.id, m)} tirar={() => tirar(l.id)} podeEditar={podeEditar} />
-            ))}
-          </ul>
-        </>
-      ) : (
-        <p className="text-[12.5px] text-muted py-2.5">{grupo === 'fixo' ? 'Nenhum custo fixo.' : 'Nenhum custo mensal.'}</p>
-      )}
-      <div className="pt-2 border-t border-line flex flex-wrap justify-end items-baseline gap-x-1.5 text-[13px]" data-total={grupo}>
-        <span className="text-muted">{grupo === 'fixo' ? 'Os fixos, uma vez:' : 'Os mensais, por mês:'}</span>
-        <b className="tabular-nums">{reais(total)}</b>
-        {parcelado > 0 && <span className="text-muted text-[12px]">({reaisLimpo(parcelado)} na compra parcelada)</span>}
-        {grupo === 'mensal' && <span className="text-muted text-[12px]">mais o imposto ({percentual(c.imposto)})</span>}
+        {linhas.length ? (
+          <>
+            <div className={`hidden md:grid ${COLUNAS} gap-2 px-1 pt-1.5 pb-1 text-[11.5px] font-semibold text-muted`}>
+              <span>Custo e como entra</span><span className="text-right">Quantidade</span><span className="text-right">Valor de cada</span><span className="text-right">Total</span><span />
+            </div>
+            <ul className="flex flex-col divide-y divide-line" id={`simulador-linhas-${grupo}`}>
+              {linhas.map((l) => (
+                <LinhaDeCusto key={l.id} l={l} c={c} grupo={grupo} conta={k.linhas.find((x) => x.id === l.id)!} mudar={(m) => mudarLinha(l.id, m)} tirar={() => tirar(l.id)} podeEditar={podeEditar}
+                  produto={l.produto && nomeDoProduto ? nomeDoProduto(l.produto) : null} />
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="text-[12.5px] text-muted py-2.5">{grupo === 'fixo' ? 'Nenhum custo de investimento.' : 'Nenhum custo mensal.'}</p>
+        )}
       </div>
     </div>
   );
 }
 
-function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar }: {
+function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar, produto }: {
   l: LinhaDoCenario; c: CenarioDaSimulacao; grupo: GrupoDeCusto; conta: ContasDoCenario['linhas'][number]; mudar: (m: Partial<LinhaDoCenario>) => void; tirar: () => void; podeEditar: boolean;
+  /** o produto de onde a linha veio (com dois produtos ou mais) */
+  produto: string | null;
 }) {
   const pct = ehPercentual(l.tipo);
   const aparelho = l.tipo === 'aparelho';
@@ -136,6 +158,7 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar }: {
             <select className="input !w-auto !py-0.5 !pl-2 !text-[12.5px]" value={l.tipo} onChange={(e) => trocarTipo(e.target.value as TipoDeCusto)} aria-label="Como entra" title={AJUDA_DO_TIPO_DE_CUSTO[l.tipo]} disabled={!podeEditar} data-campo="tipo">
               {TIPOS_DO_GRUPO[grupo].map((x) => <option key={x} value={x}>{NOME_DO_TIPO_DE_CUSTO[x]}</option>)}
             </select>
+            {produto && <span className="chip bg-surface-2 text-ink-2 !text-[11px] !py-0" data-campo="produto">{produto}</span>}
             {l.custoId && <span className="text-[11px] text-muted">da tabela</span>}
           </div>
         </div>
@@ -167,7 +190,9 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar }: {
         <div className="min-w-0 md:text-right md:pt-2">
           <span className="md:hidden label">Total</span>
           <div className="tabular-nums font-semibold text-[13.5px]" data-campo="total">{reaisLimpo(conta.custo)}</div>
-          <div className="text-[11.5px] text-muted">{conta.quando === 'por-mes' ? 'por mês' : conta.parcelas > 1 ? `em ${conta.parcelas}x` : 'uma vez'}</div>
+          <div className="text-[11.5px] text-muted" data-campo="quando">
+            {conta.quando === 'por-mes' ? 'por mês' : compra ? <><b className="text-ink-2 font-semibold">{conta.parcelas}x de {reaisLimpo(compra[compra.length - 1]!)}</b></> : 'uma vez'}
+          </div>
         </div>
         <div className="flex items-start justify-end md:pt-1.5">
           {podeEditar && <button type="button" className="btn-ghost btn-sm px-1.5 text-muted" onClick={tirar} aria-label={`Tirar ${l.nome}`} title="Tirar este custo"><X size={15} /></button>}
@@ -189,11 +214,13 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar }: {
               </button>
             ))}
           </div>
-          <label className="flex items-center gap-2 text-[12.5px]" title="A Ingline pode comprar o aparelho parcelado: o custo se dilui nos meses (a primeira parcela na assinatura)">
+          <label className="flex items-center gap-2 text-[12.5px]" title="A Ingline pode comprar o aparelho parcelado: o custo se dilui nos meses (a primeira parcela no 1º mês, o da assinatura)">
             <span className="text-ink-2 whitespace-nowrap">A compra em</span>
             <select className="input !w-auto !py-1 !pl-2 !text-[12.5px]" value={Math.min(l.parcelas ?? 1, maxDaCompra)} disabled={!podeEditar} data-campo="parcelas"
               onChange={(e) => { const n = Number(e.target.value); mudar({ parcelas: n > 1 ? n : undefined }); }} aria-label="Em quantas vezes a Ingline compra o aparelho">
-              {Array.from({ length: maxDaCompra }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n === 1 ? 'à vista' : `${n}x`}</option>)}
+              {Array.from({ length: maxDaCompra }, (_, i) => i + 1).map((n) => (
+                <option key={n} value={n}>{n === 1 ? `à vista${conta.custo ? ` (${reaisLimpo(conta.custo)})` : ''}` : conta.custo ? `${n}x de ${reaisLimpo(Math.floor(Math.round(conta.custo) / n))}` : `${n}x`}</option>
+              ))}
             </select>
           </label>
           {l.modalidade && l.modalidade !== 'comodato' && (
@@ -205,7 +232,10 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar }: {
           <span className="text-[12px] text-muted">
             {l.modalidade ? AJUDA_DA_MODALIDADE[l.modalidade] : ''}
             {conta.receita > 0 && <> Entra <b className="text-ink-2">{reaisLimpo(conta.receita)}</b> {l.modalidade === 'venda' ? 'na ativação' : 'por mês'}.</>}
-            {compra && <> A compra sai em <b className="text-ink-2">{conta.parcelas}x</b>: {reaisLimpo(compra[0]!)} na assinatura e {conta.parcelas - 1} de {reaisLimpo(compra[1]!)} nos meses seguintes.</>}
+            {compra && (
+              <> A compra sai em <b className="text-ink-2">{conta.parcelas}x de {reaisLimpo(compra[compra.length - 1]!)}</b>
+                {compra[0] !== compra[compra.length - 1] ? ` (a 1ª de ${reaisLimpo(compra[0]!)})` : ''}: a 1ª no 1º mês, o da assinatura, e as outras nos {conta.parcelas - 1} meses seguintes.</>
+            )}
           </span>
         </div>
       )}
@@ -222,9 +252,9 @@ function DaTabela({ grupo, custos, incluir }: { grupo: GrupoDeCusto; custos: Cus
     return q ? custos.filter((c) => paraBusca(c.nome).includes(q)) : custos;
   }, [custos, busca]);
   return (
-    <Popover largura="w-[340px]" titulo={grupo === 'fixo' ? 'Pôr um custo fixo da tabela' : 'Pôr um custo mensal da tabela'}
+    <Popover largura="w-[340px]" titulo={`Pôr um ${UM_CUSTO_DO_GRUPO[grupo]} da tabela`}
       botao={() => <span className="inline-flex items-center gap-1.5" id={`simulador-da-tabela-${grupo}`}><ListPlus size={14} /> Da tabela</span>}>
-      {!custos.length ? <p className="text-sm text-muted">A tabela não tem {grupo === 'fixo' ? 'custos fixos' : 'custos mensais'}. Quem cuida dos painéis põe em Simulador › Ajustes.</p> : (
+      {!custos.length ? <p className="text-sm text-muted">A tabela não tem {grupo === 'fixo' ? 'custos de investimento' : 'custos mensais'}. Quem cuida dos painéis põe em Simulador › Ajustes.</p> : (
         <div className="flex flex-col gap-2" id={`simulador-tabela-lista-${grupo}`}>
           {custos.length > 6 && (
             <div className="relative">

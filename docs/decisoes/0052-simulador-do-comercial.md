@@ -32,30 +32,60 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   falta). Por isso também não entrou o aviso de "o custo mudou".
 - **Os custos em dois grupos.** Num comentário na página de opções, o Luan pediu: *"quero que vc separe os
   custos fixos com custos mensais e quero que sejam fixados porem configuráveis"*. A simulação, a tabela dos
-  Ajustes e o Excel mostram os custos em dois grupos, os **custos fixos** primeiro — pagos uma vez, na
+  Ajustes e o Excel mostram os custos em dois grupos, o **investimento** primeiro — pago uma vez, na
   assinatura: o aparelho, o "uma vez" e a comissão da venda (% da ativação) — e depois os **custos
   mensais** — o "por mês" e a comissão recorrente (% da mensalidade). Cada grupo tem o total dele, a tabela
   dele e o "digitar um custo" dele, e o "como entra" de cada linha só oferece os tipos do grupo. "Fixados,
   porém configuráveis" é o que a tabela já faz: os custos ficam fixos na tabela dos Ajustes (quem cuida dos
   painéis configura o nome, como entra, o valor e as faixas) e entram na simulação de lá, um a um ou pelo
-  modelo do produto; na simulação, o valor ainda pode mudar (a nota dele sobre os aparelhos).
+  modelo do produto; na simulação, o valor ainda pode mudar (a nota dele sobre os aparelhos). Depois, na
+  prévia: *"esse nome custo fixo não ficou legal, porque parece que vai ser todo mês; pense em outro nome"* —
+  o primeiro grupo virou **Investimento**, a palavra dele (*"o total investido, que seriam os custos
+  fixos"*); e *"tem que ter uma separação melhor visualmente"* — cada grupo é um quadro com a cor dele
+  (o investimento, laranja; os mensais, verde-água), o ícone e o total no alto. Com dois produtos ou mais,
+  cada linha diz de qual produto veio.
 - **Cada aparelho diz como vai:** **comodato** (a Ingline compra e empresta: só o custo, uma vez),
   **venda** (o preço de cada um entra na ativação) ou **locação** (o aluguel de cada um entra na
   mensalidade).
 - **A compra dos aparelhos parcelada.** O Luan, num comentário na prévia: *"no caso de equipamentos, tem q
   ter a opção tbm se eu vou querer parcelar essa compra, no caso o custo tbm seria diluído"*. Cada aparelho
   diz **"A compra em"**: à vista ou em até 24 vezes, e nunca mais que o prazo do contrato. A primeira parcela
-  sai na assinatura e as outras nos meses seguintes (a primeira leva o resto da divisão, como na ativação). O
-  custo se dilui na linha do tempo: mudam o "Sai antes", o "Se paga" e o mês a mês. A sobra por mês e a
+  sai no 1º mês (o da assinatura) e as outras nos meses seguintes (a primeira leva o resto da divisão, como
+  na ativação). O custo se dilui no mês a mês: mudam o "Sai antes" e o "Se paga". A sobra por mês e a
   margem não mudam (a compra parcelada não é custo de todo mês), e o fim do contrato também não (o aparelho
-  é pago inteiro dentro do prazo).
+  é pago inteiro dentro do prazo). O Luan, depois: *"já me dê aqui também o custo da parcela"* — cada opção
+  do "A compra em" diz a parcela ("10x de R$ 780"), e o total da linha também.
 - **O mês a mês.** O Luan, sobre o gráfico pequeno do acumulado: *"isso aqui ta bacana, quero esse gráfico
   mais detalhado mensalmente, por exemplo, com os valores acumulado e lucro por mês; acho q vai ter q ficar
-  maior"*. Embaixo dos custos entrou o quadro **Mês a mês**: em cima, o acumulado (a linha, com o pior
-  momento e o mês em que a venda se paga); embaixo, o lucro de cada mês (as barras; a da assinatura, muito
-  maior que as outras, é cortada e diz o valor). Passar o mouse num mês, ou tocar no celular, mostra o lucro
-  dele e o acumulado; a tabela embaixo tem todos os meses. O gráfico pequeno, nos números, ganhou o "Ver mês
-  a mês".
+  maior"*. Entrou o quadro **Mês a mês**, com o acumulado (a linha, com o pior momento e o mês em que a venda
+  se paga), o lucro de cada mês e a tabela de todos os meses. Depois, em mais dois comentários: *"seria legal
+  um kpi com mês a mês custo e faturamento, e um hover na coluna de cada um que vai falar o detalhe: esse mês
+  eu faturei 5.000 — 3 mil de ativação e 2 mil de mensalidade —, e a mesma coisa com os custos"* e *"não
+  entendi por que o primeiro mês ficou negativo; o primeiro mês de pagamento vai ser o primeiro mês de
+  faturamento também, e eu quero esse gráfico junto à tabela na parte de cima"*. O quadro foi para **o alto
+  da simulação**, antes do que o cliente paga, com os **totais do contrato** (o faturamento, os custos, o
+  lucro e quando se paga); no gráfico, uma coluna por mês — o **faturamento** para cima, os **custos** para
+  baixo e um ponto no **lucro do mês** — e, embaixo, a linha do acumulado. Passar o mouse numa coluna (ou
+  tocar, no celular) mostra **o detalhe do mês**: cada parte do faturamento (a mensalidade, o aluguel, a
+  parcela da ativação, os aparelhos vendidos) e dos custos (o que é pago de uma vez, cada parcela da compra,
+  os custos mensais, o imposto, cada comissão), o lucro e o acumulado; com dois produtos ou mais, o detalhe
+  diz de qual produto é cada custo. A tabela tem o faturamento, os custos, o lucro e o acumulado de cada mês
+  e o total do contrato; os números fecham ao centavo (o detalhe soma o total do mês, e o faturamento menos
+  os custos é o lucro). As colunas do 1º mês, quando passam muito das outras, são cortadas e dizem o valor.
+  O "mês 0" separado (a assinatura sozinha, sem mensalidade, que ficava negativa) foi escolha minha, e saiu:
+  o 1º mês é o da assinatura (abaixo, em "A conta"). O gráfico pequeno, nos números, ficou com o "Ver mês a
+  mês".
+- **Salva sozinha.** O Luan, num comentário na prévia: *"quero salvamento automático, sem ficar precisando
+  apertar em salvar"*. A simulação salva 2 segundos depois da última mudança (e antes do Levar, do Excel e
+  do Duplicar, e ao sair da tela); no lugar do botão Salvar, o aviso diz "Salvando…" e "Salvo às 08:42". A
+  nova é criada assim que tiver um nome. O que ainda não deixa salvar (um custo sem nome) o aviso diz, no
+  alto e embaixo, e a simulação salva assim que a pessoa completa; o Levar, o Excel e o Duplicar esperam.
+  Cada salvamento vai para a auditoria, com o que mudou (o mesmo "Mudou a simulação…" de antes). O
+  "Descartar" saiu: para testar uma ideia sem mexer na conta, o "+ Cenário". Os Ajustes continuam com o
+  Salvar deles (mudam todas as simulações novas).
+- **Os campos de valor.** O Luan: *"quando eu vou escrever, tem que tirar os 0 e já deixar apenas o que eu
+  escrevi"*. Ao entrar num campo com zero, ele fica vazio para escrever (o "0,00" vira só a dica); com um
+  valor, o campo fica todo marcado, e o que se escreve entra no lugar.
 - **Quem vê:** quem tem o Comercial (`sales.read`) vê tudo, com os custos e a margem. Criar, mudar,
   duplicar e mandar para a lixeira é de quem também trabalha nas negociações (`tickets.work`, como nelas);
   os **Ajustes do Simulador**, de quem cuida dos painéis (`tickets.manage`, como os do Comercial). Sem
@@ -70,7 +100,11 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
     lucro;
   - **os cenários lado a lado**: até 3 cenários por simulação (o novo é uma cópia do aberto, para mudar só
     o que difere), cada um com todos os números, e a tabela lado a lado; o **principal** é o que a lista e
-    a negociação mostram;
+    a negociação mostram. O Luan, depois: *"quero uma terceira coluna com a diferença, e uma linha com o
+    custo fixo e o custo variável também"* — ao lado de cada cenário, a **diferença** dele para o principal
+    (em verde quando é melhor para a Ingline, em vermelho quando é pior; no Excel, as colunas da diferença
+    na "Lado a lado"), e as linhas do **investimento**, do **custo fixo do mês** (as linhas por mês) e do
+    **custo variável do mês** (o imposto e a comissão, que andam com o que o cliente paga);
   - **a ativação parcelada**: em até 12 vezes (e não mais que o prazo), a primeira na assinatura e as
     outras com as mensalidades; o "se paga em" e o gráfico seguem as parcelas;
   - **a quantidade pelos ramais**: as linhas "por ramal" acompanham os ramais do cenário;
@@ -83,7 +117,8 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
     simulação** marca quantos modelos a pessoa quiser (no lugar dos modelos prontos com dois produtos, como o
     "LinePBX + LineChat" da prévia, que saiu). A simulação começa com os custos de todos: cada produto traz
     os dele (os canais de voz do VoiceNet e os do PABX; a instalação de cada um), e só a comissão, que é
-    sobre o preço inteiro, não repete; cada linha guarda o produto do modelo de onde veio. Com dois produtos
+    sobre o preço inteiro, não repete (e fica sem produto); cada linha guarda o produto do modelo de onde
+    veio. Com dois produtos
     ou mais, o preço é **um valor só** ou **por produto** (o mesmo "Um valor só | Por produto" da
     negociação): a mensalidade e a ativação de cada produto, e a do cenário é a soma — a conta e a margem
     são as da negociação inteira. Ao passar para "por produto", o valor de agora fica no primeiro; pôr um
@@ -98,7 +133,7 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
     os da negociação ficam). Antes do ok, a janela mostra o que a negociação tem hoje e o que fica; com os
     mesmos números, diz que não há o que levar. O valor por produto da negociação vira o valor único (a
     simulação não divide a mensalidade por produto). A mudança fica no histórico da negociação, como
-    qualquer outra; com a simulação não salva, o botão espera o Salvar;
+    qualquer outra; o que mudou na simulação é salvo antes;
   - **simular a partir da negociação**: a ficha da negociação ganhou a parte **Simulações** (as ligadas a
     ela, com a margem e o sinal) e o **Simular**, que abre uma simulação nova já ligada — o nome (a empresa
     e o título), os produtos dela, as linhas dos modelos desses produtos (sem repetir o custo que dois
@@ -120,19 +155,22 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   amarelas** (a mensalidade, a ativação, as vezes, o prazo, os ramais, o imposto, a margem que se quer, e
   em cada custo a quantidade, o valor de cada, o preço ou aluguel do aparelho e em quantas vezes ele é
   comprado); os custos linha a linha
-  (quando sai, quando entra, e a observação: as faixas, o que falta preencher); **os números**, **o preço**
-  e **a linha do tempo** mês a mês (até 120 meses: mudar o prazo na planilha também funciona). Cada número
+  (quando sai, quando entra, e a observação: as faixas, o que falta preencher); **os números** (com o custo
+  fixo e o variável do mês e o investimento), **o preço** e **o mês a mês** (o faturamento, os custos, o
+  lucro e o acumulado de cada mês, do 1º — o da assinatura — até 120 meses: mudar o prazo na planilha também
+  funciona). Cada número
   é uma fórmula que faz a conta do `contasDoCenario` — o preço por faixas vira uma fórmula com as faixas, a
   primeira parcela da ativação leva o resto da divisão, o sinal arredonda a margem como a tela —, e vai com
-  o valor que a tela mostra; o Excel refaz ao abrir. Sai do que está salvo (com mudança na tela, o botão
-  espera o Salvar), quem vê a simulação exporta, e a auditoria registra (*"Exportou a simulação "Padaria
+  o valor que a tela mostra; o Excel refaz ao abrir. Sai do que está salvo (o que mudou é salvo antes),
+  quem vê a simulação exporta, e a auditoria registra (*"Exportou a simulação "Padaria
   Estrela — 40 ramais" para o Excel"*). Imprime deitada, com a largura numa página. A planilha é montada
   pelo `@gestor/shared` (sem biblioteca: os XMLs do .xlsx num zip), a mesma no servidor e na prévia.
-  **Conferida no LibreOffice:** três planilhas de teste (os aparelhos em comodato, venda e locação, a
-  instalação, a nuvem por ramal, as comissões, um custo sem valor, a ativação em 3x, as faixas da Helena,
-  "depois do prazo", "não se paga" e "desde o 1º mês"), 4.423 fórmulas refeitas: nenhum erro e nenhuma
-  diferença da tela — também depois de mudar as células amarelas (a mensalidade, o prazo, as vezes, os
-  ramais e as quantidades por faixa).
+  **Conferida no LibreOffice:** quatro planilhas de teste (os aparelhos em comodato, venda e locação, a
+  compra parcelada, a instalação, a nuvem por ramal, as comissões, um custo sem valor, a ativação em 3x, as
+  faixas da Helena, "depois do prazo", "não se paga", "desde o 1º mês", "em 1 mês" e "já na ativação", e a
+  "Lado a lado" com a diferença), 5.361 fórmulas refeitas: nenhum erro e nenhuma diferença da tela — também
+  depois de mudar as células amarelas (a mensalidade, o prazo, as vezes, os ramais e as quantidades por
+  faixa).
 - **"Se paga desde o 1º mês".** Quando nada sai antes e não há ativação (só custos por mês), a venda se
   paga desde o primeiro mês; antes, a tela dizia "já na ativação", que é o caso de a ativação cobrir o que
   sai antes.
@@ -148,14 +186,17 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   **LineChat (Helena)**. O exemplo da planilha confere: a licença, 5 usuários e 5 conexões Z-API dão
   **R$ 539,20 por mês**. A conexão com o ASAAS (R$ 0 desde fevereiro) não entrou. Quando a Helena
   reajustar, muda nos Ajustes.
-- **A conta** (`contasDoCenario`, no `@gestor/shared/simulador.ts`, a mesma no servidor e na prévia). O mês
-  0 é a assinatura: a Ingline paga o que é de uma vez e recebe a ativação (ou a primeira parcela). Do mês 1
-  ao fim do prazo, cada mês soma a sobra (a mensalidade menos o custo do mês). O imposto sai de tudo o que
-  o cliente paga; a comissão "% da mensalidade", de cada mensalidade; a "% da ativação", de cada parcela.
-  Nas contas, a mensalidade é a do serviço mais o aluguel dos aparelhos, e a ativação, a do serviço mais
-  os aparelhos vendidos. Os números: a **sobra por mês** e a **margem** (a sobra sobre o que o cliente paga
-  por mês), o **custo do mês**, **o que sai antes** (o pior momento do acumulado), **quando se paga** (o
-  primeiro mês em que o acumulado fica positivo até o fim; depois do prazo, a conta continua e diz; se a
+- **A conta** (`contasDoCenario`, no `@gestor/shared/simulador.ts`, a mesma no servidor e na prévia). O 1º
+  mês é o da assinatura: a Ingline paga o que é de uma vez e recebe a ativação (ou a primeira parcela) e já
+  a primeira mensalidade. Cada mês, até o fim do prazo, soma a sobra (a mensalidade menos o custo do mês). O
+  imposto sai de tudo o que o cliente paga; a comissão "% da mensalidade", de cada mensalidade; a "% da
+  ativação", de cada parcela. Nas contas, a mensalidade é a do serviço mais o aluguel dos aparelhos, e a
+  ativação, a do serviço mais os aparelhos vendidos. Os números: a **sobra por mês** e a **margem** (a sobra
+  sobre o que o cliente paga por mês), o **custo do mês** (o fixo, das linhas por mês, e o variável, o
+  imposto e a comissão), o **investimento** (o total pago uma vez: os aparelhos, o "uma vez" e a comissão da
+  venda), **o que sai antes** (o pior momento do acumulado), **quando se paga** (o primeiro mês em que o
+  acumulado fica positivo até o fim; "já na ativação" quando a ativação sozinha cobre o que é pago de uma
+  vez; "em 1 mês" quando a primeira mensalidade completa; depois do prazo, a conta continua e diz; se a
   sobra não cobre o mês, "não se paga") e **o que fica no fim do contrato**. O dinheiro vai em centavos.
 - **A auditoria** conta o que mudou (*"Mudou a simulação "Padaria Estrela": no Comodato, a mensalidade de
   R$ 1.250,00 para R$ 1.400,00; incluiu o Cenário B"*) e, nos Ajustes, o que entrou, saiu e mudou na
@@ -168,8 +209,9 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   canais, a configuração e as comissões), os modelos LinePBX em nuvem, LineChat (Helena) e VoiceNet, e
   sete simulações: a **Padaria Estrela** com três cenários — comodato em 24 meses, os
   telefones vendidos em 12 meses com a ativação em 3x, e 10% de desconto em 36 meses —, o **Hotel Beira
-  Mar** (o LinePBX a R$ 1.190 e o LineChat a R$ 500, cada um com o seu preço; os telefones comprados em 10
-  vezes; a ativação em 3x; a conta refeita pede R$ 1.690, e a negociação ainda está com R$ 1.580, num valor
+  Mar** (o LinePBX a R$ 1.190 e o LineChat a R$ 500, cada um com o seu preço e a sua instalação; os
+  telefones comprados em 10 vezes; a ativação em 3x; o 1º mês já cobre o que é pago de uma vez: se paga em 1
+  mês, nunca no vermelho; a conta refeita pede R$ 1.690, e a negociação ainda está com R$ 1.580, num valor
   só: o Levar mostra a troca e põe o valor de cada produto), a **Clínica Vida** no amarelo (o LineChat, sem negociação), as três
   ganhas do mês para a margem no relatório — a **Ótica Visão Clara** e a **Construtora Horizonte** (da
   Camila) no verde e a **Academia Movimento** (do Diego, o LineChat com 12 usuários) no vermelho — e a

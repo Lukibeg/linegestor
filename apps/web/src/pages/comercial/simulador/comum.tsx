@@ -77,6 +77,10 @@ type Basico = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' |
 /**
  * O campo que lê enquanto a pessoa escreve: o texto fica como ela escreveu; o valor entra na conta assim
  * que dá para ler; ao sair do campo, o texto fica arrumado ("1250" → "1.250,00"). Vazio = nulo.
+ *
+ * Ao entrar no campo (o Luan: "quando eu vou escrever, tem que tirar os 0 e já deixar apenas o que eu
+ * escrevi"): com zero, o campo fica vazio para escrever; com um valor, ele fica todo marcado, e o que se
+ * escreve entra no lugar. Saindo sem escrever, o valor volta como estava.
  */
 function useCampo<T>(valor: T | null, ler: (t: string) => T | null, escrever: (v: T) => string, onChange: (v: T | null) => void) {
   const [texto, setTexto] = useState(valor == null ? '' : escrever(valor));
@@ -87,7 +91,13 @@ function useCampo<T>(valor: T | null, ler: (t: string) => T | null, escrever: (v
     texto, invalido,
     props: {
       value: texto,
-      onFocus: () => setFocado(true),
+      onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
+        setFocado(true);
+        if (ler(texto) === 0) { setTexto(''); return; }
+        // depois do clique (que põe o cursor), para a marcação ficar
+        const el = e.currentTarget;
+        window.requestAnimationFrame(() => { if (document.activeElement === el) el.select(); });
+      },
       onChange: (e: React.ChangeEvent<HTMLInputElement>) => {
         const t = e.target.value;
         setTexto(t);
@@ -111,7 +121,7 @@ export function CampoDeReais({ valor, onChange, unitario = false, className = ''
   return (
     <div className={`relative min-w-0 ${className}`}>
       <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted text-[12.5px] pointer-events-none" aria-hidden>R$</span>
-      <input {...resto} {...c.props} type="text" inputMode="decimal" autoComplete="off"
+      <input {...resto} {...c.props} type="text" inputMode="decimal" autoComplete="off" placeholder={resto.placeholder ?? '0,00'}
         className={`input pl-8 text-right tabular-nums ${c.invalido ? '!border-bad' : ''}`} title={c.invalido ? 'Escreva como 1.250,00' : resto.title} />
     </div>
   );
@@ -122,7 +132,7 @@ export function CampoDePercentual({ valor, onChange, className = '', ...resto }:
   const c = useCampo<number>(valor, lerPercentual, textoDoPercentual, onChange);
   return (
     <div className={`relative min-w-0 ${className}`}>
-      <input {...resto} {...c.props} type="text" inputMode="decimal" autoComplete="off"
+      <input {...resto} {...c.props} type="text" inputMode="decimal" autoComplete="off" placeholder={resto.placeholder ?? '0'}
         className={`input pr-7 text-right tabular-nums ${c.invalido ? '!border-bad' : ''}`} title={c.invalido ? 'Escreva como 6 ou 6,5' : resto.title} />
       <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted text-[12.5px] pointer-events-none" aria-hidden>%</span>
     </div>
@@ -137,7 +147,7 @@ export function CampoInteiro({ valor, onChange, vazio = 0, sufixo, className = '
   const c = useCampo<number>(valor, lerInteiro, escreverInteiro, (v) => onChange(v ?? vazio));
   return (
     <div className={`relative min-w-0 ${className}`}>
-      <input {...resto} {...c.props} type="text" inputMode="numeric" autoComplete="off"
+      <input {...resto} {...c.props} type="text" inputMode="numeric" autoComplete="off" placeholder={resto.placeholder ?? '0'}
         className={`input text-right tabular-nums ${sufixo ? 'pr-14' : ''} ${c.invalido ? '!border-bad' : ''}`} />
       {sufixo && <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted text-[12px] pointer-events-none" aria-hidden>{sufixo}</span>}
     </div>
