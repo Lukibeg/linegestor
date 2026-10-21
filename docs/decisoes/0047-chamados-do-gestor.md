@@ -285,6 +285,18 @@ Com o 2.0 no ar, o Luan passou pelas telas e pediu cinco mudanças:
   equipe põe no de-para). A entrada no formato do Gestor (`/entrada/chamado`) fica para o n8n e outros
   sistemas, rígida como era, e ganhou a descrição. As regras moram em `@gestor/shared` (`robo.ts`).
 
+  **A NIA no Gestor** (21/10, no 2.0.2; o prompt do Luan para ligar a NIA, a IA do suporte, ao Gestor pelo
+  n8n): a leitura do chamado pela chave (`GET /integracao/chamados/:ref`) passou a trazer a **sessão do
+  LineChat** (`sessaoId`, a coluna `tickets.session_id`: sem ela, o n8n não acha a conversa), e entrou o
+  **`GET /integracao/opcoes`**, com a mesma chave: só o que está ativo, no jeito que o `PATCH` aceita — os
+  assuntos (`id`, `nome`, `caminho`, `painelSigla`), os produtos e os clientes (`id`, `nome`), as opções do
+  Tipo de cada painel (`nome`, `painelSigla`), as gravidades e as prioridades (`id`, `nome`, `dica`). A NIA
+  monta com elas o enum do que o modelo de IA responde: o que no Helena a instrução em texto não resolveu
+  (a IA inventava assunto), o enum resolve. As listas são as mesmas da tela (`opcoes`, de `leitura.ts`, e os
+  clientes do seletor); o painel que desligou o assunto ou o tipo não traz o que escolher nele. Ler não vai
+  para a auditoria. O "tipos" são as opções do campo **Tipo** (Incidente, Requisição…), que é o que o
+  `PATCH` grava — e não o `TipoChamado` (chamado ou problema), que a integração não muda.
+
   Ajustado no mesmo dia, pelo que o Luan viu no bloco "Enviar webhook" do LineChat:
   - **A resposta é a do bloco**: sempre HTTP 200 (ele conta o 201 como falha), com
     `{"response":"CHAMADO_ABERTO","messages":[{"text":"Seu chamado foi registrado com o número *SUP-1*. Guarde este número caso precise falar sobre ele depois."}]}`

@@ -7,13 +7,15 @@
  *  - o robô abre: origem "robo", o código e o link de volta, o título de reserva, o painel pela sigla, o
  *    assunto pelo nome; a mesma conversa aberta não abre outro (nem com dois pedidos ao mesmo tempo)
  *  - a mensagem do cliente (o n8n repassando) saiu no 2.0.1: o endereço não existe mais
- *  - o n8n: lê o chamado, muda o assunto pelo caminho (ou pelo nome), move pelo nome da etapa e anota —
- *    pelas regras da tela, com a auditoria no nome da chave
+ *  - o n8n: lê o chamado (com a sessão do LineChat), muda o assunto pelo caminho (ou pelo nome), move pelo
+ *    nome da etapa e anota — pelas regras da tela, com a auditoria no nome da chave
+ *  - a NIA (pelo n8n): as opções de verdade, só as ativas (`/integracao/opcoes`), com a chave
  */
 import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { clients, newId, ticketApiKeys, ticketSubjects, tickets } from '@gestor/db';
+import { clients, newId, products, ticketApiKeys, ticketSubjects, tickets } from '@gestor/db';
+import { GRAVIDADES, PRIORIDADES, TIPOS_PADRAO } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 import { esperarSegundoPlano } from '../src/services/atendimento/avisos.js';
 import { trocarFerramentasWhatsApp } from '../src/services/atendimento/whatsapp.js';
@@ -237,8 +239,14 @@ describe('o n8n mexe no chamado', () => {
     expect(r.json()).toMatchObject({
       codigo: 'SUP-1', titulo: 'Atendimento de Joana', relato: 'Meu ramal parou', descricao: null, solucao: null,
       painel: { id: SUP, sigla: 'SUP' }, etapa: { id: E.n1, nome: 'N1' }, link: expect.stringMatching(/\/atendimento\/SUP-1$/),
+      // a sessão do LineChat (a conversa de onde veio): com ela, o n8n acha a conversa e lê o que o cliente disse
+      sessaoId: 'sessao-1',
     });
     expect((await pedido('GET', '/integracao/chamados/SUP-999')).statusCode).toBe(404);
+    // o chamado sem conversa: a sessão vem nula
+    const semConversa = await doRobo({ relato: 'Liguei e ninguém atendeu', telefone: '(71) 98888-1212' });
+    expect(semConversa.statusCode, semConversa.body).toBe(201);
+    expect((await pedido('GET', `/integracao/chamados/${semConversa.json().codigo}`)).json().sessaoId).toBeNull();
   });
 
   it('muda o assunto pelo caminho (ou pelo nome), e o resto pelas regras da tela', async () => {
@@ -332,5 +340,66 @@ describe('os campos de cada painel pela integração', () => {
     expect(eventos(depois, 'campo').at(-1)).toMatchObject({ texto: 'mudou Sistema de "LineChat" para "LinePBX"', porNome: 'n8n' });
     const auditoria = await auditoriaDe(depois.id);
     expect(auditoria.map((a: any) => a.summary).join('\n')).toContain('Campos do painel');
+  });
+});
+
+// =====================================================================
+
+describe('as opções para a NIA (/integracao/opcoes): só o que está ativo, do jeito que o PATCH aceita', () => {
+  it('com a chave: os assuntos com o caminho e a sigla, os produtos, os clientes, os tipos de cada painel, as gravidades e as prioridades', async () => {
+    // um cliente arquivado e um produto desativado não entram
+    const arquivado = newId();
+    await app.db.insert(clients).values({ id: arquivado, tradeName: 'Cliente Arquivado', legalName: 'Cliente Arquivado LTDA', cnpj: '44555666000177', archived: true });
+    const [desativado] = await app.db.update(products).set({ active: false }).where(eq(products.code, 'voicenet')).returning({ id: products.id });
+    const ultimaDaAuditoria = async () => (await s.get('/admin/audit?pageSize=1')).json().items[0]?.id;
+    const antes = await ultimaDaAuditoria();
+
+    const r = await pedido('GET', '/integracao/opcoes');
+    expect(r.statusCode, r.body).toBe(200);
+    // ler não vai para a auditoria
+    expect(await ultimaDaAuditoria()).toBe(antes);
+    const o = r.json();
+    expect(Object.keys(o).sort()).toEqual(['assuntos', 'clientes', 'gravidades', 'prioridades', 'produtos', 'tipos']);
+    // os assuntos: o caminho inteiro e a sigla do painel; o desativado fica de fora, e o painel que desligou o
+    // assunto (o Desenvolvimento, no teste de cima) não tem o que escolher
+    expect(o.assuntos).toEqual(expect.arrayContaining([
+      { id: ramal, nome: 'Ramal', caminho: 'Ramal', painelSigla: 'SUP' },
+      { id: semAudio, nome: 'Sem áudio', caminho: 'Ramal › Sem áudio', painelSigla: 'SUP' },
+      expect.objectContaining({ nome: 'Configuração', caminho: 'Ramal › Configuração', painelSigla: 'SUP' }),
+      expect.objectContaining({ nome: 'Configuração', caminho: 'Fila › Configuração', painelSigla: 'SUP' }),
+    ]));
+    expect(o.assuntos.find((a: any) => a.id === antigo)).toBeUndefined();
+    expect(o.assuntos.filter((a: any) => a.painelSigla === 'DEV')).toEqual([]);
+    // o caminho da lista é o que o PATCH aceita: a IA escolhe da lista, e o n8n grava sem traduzir
+    const escolhido = o.assuntos.find((a: any) => a.caminho === 'Fila › Configuração');
+    const gravado = await pedido('PATCH', '/integracao/chamados/SUP-1', { assunto: escolhido.caminho, tipo: o.tipos.find((t: any) => t.painelSigla === 'SUP').nome });
+    expect(gravado.statusCode, gravado.body).toBe(200);
+    expect(gravado.json()).toMatchObject({ assunto: { id: escolhido.id }, tipo: TIPOS_PADRAO[0] });
+
+    // os produtos e os clientes pelo id (como o PATCH guarda), sem o desativado e o arquivado
+    expect(o.produtos.length).toBeGreaterThan(0);
+    expect(o.produtos.every((p: any) => Object.keys(p).sort().join() === 'id,nome')).toBe(true);
+    expect(o.produtos.find((p: any) => p.id === desativado!.id)).toBeUndefined();
+    expect(o.clientes).toContainEqual({ id: aurora, nome: 'Clínica Aurora' });
+    expect(o.clientes.find((c: any) => c.id === arquivado)).toBeUndefined();
+    // os tipos: as opções do Tipo de cada painel que usa o Tipo
+    expect(o.tipos).toEqual(expect.arrayContaining(TIPOS_PADRAO.map((nome) => ({ nome, painelSigla: 'SUP' }))));
+    // a gravidade e a prioridade pela chave, com o nome e o "quando usar" da tela
+    expect(o.gravidades.map((g: any) => g.id)).toEqual([...GRAVIDADES]);
+    expect(o.gravidades[0]).toEqual({ id: 'inoperancia', nome: 'Inoperância', dica: 'Não funciona de jeito nenhum' });
+    expect(o.prioridades.map((p: any) => p.id)).toEqual([...PRIORIDADES]);
+    expect(o.prioridades[0]).toEqual({ id: 'critica', nome: 'Crítica', dica: 'Parou tudo, ou quase tudo, na empresa' });
+    await app.db.update(products).set({ active: true }).where(eq(products.id, desativado!.id));
+  });
+
+  it('sem chave, com a chave errada ou revogada: 401; a chave no endereço também vale', async () => {
+    for (const chave of [null, 'chave-que-nao-existe', revogada.valor]) {
+      const r = await pedido('GET', '/integracao/opcoes', undefined, { chave });
+      expect(r.statusCode).toBe(401);
+      expect(r.json().error).toBe('Chave de API inválida.');
+    }
+    // a sessão de uma pessoa não serve: é só pela chave
+    expect((await s.get('/atendimento/integracao/opcoes')).statusCode).toBe(401);
+    expect((await pedido('GET', '/integracao/opcoes', undefined, { naQuery: true })).statusCode).toBe(200);
   });
 });

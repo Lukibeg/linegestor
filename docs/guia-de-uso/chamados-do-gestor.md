@@ -311,6 +311,13 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
    alterado, movido, anotação, resolvido, fechado). O **segredo** aparece uma vez: cada aviso vai
    assinado no cabeçalho `X-Gestor-Assinatura` (HMAC-SHA256 do corpo). **Testar** manda um aviso de
    teste.
+   - Avisado, o n8n (a **NIA**, a IA do suporte) usa a chave de API para ler o chamado em
+     `/api/atendimento/integracao/chamados/SUP-12` — com a **sessão do LineChat** (`sessaoId`), que leva
+     à conversa — e as **opções de verdade** em `/api/atendimento/integracao/opcoes`: os assuntos ativos
+     (com o caminho, como "Ramal › Configuração", e a sigla do painel), os produtos, os clientes, as opções
+     do Tipo de cada painel, as gravidades e as prioridades. É com elas que a NIA monta o que a IA pode
+     escolher (e a IA não inventa um assunto que não existe); depois grava de volta pelo `PATCH` do chamado
+     e pelas anotações. Ler não vai para a auditoria.
 6. **O Gestor dentro do LineChat**: inclua o endereço do LineChat em **Sites que podem abrir o Gestor**
    e crie, no LineChat, um **menu personalizado** (página interna) com o endereço `/atendimento`. Lá
    dentro, cada pessoa entra uma vez com o login do Gestor. O Safari (e navegador que bloqueia cookie de
