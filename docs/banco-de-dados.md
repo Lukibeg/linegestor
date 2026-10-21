@@ -12,6 +12,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [client_logos](#client_logos) — A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo).
 - [client_units](#client_units) — As UNIDADES de um cliente: matriz, filiais, lojas, andares.
 - [client_contacts](#client_contacts) — OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor).
+- [contact_roles](#contact_roles) — Catálogo: OS CARGOS DOS CONTATOS (2.0.2, o pedido do Luan: "eu quero que esses cargos sejam pré-seleção").
 - [client_device_logins](#client_device_logins) — LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente entram com o mesmo login e senha; os DP722, com outro.
 - [client_network_settings](#client_network_settings) — CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita nos telefones na hora de configurar (IP, máscara, gateway, DNS) e a senha do ramal sem fio.
 - [products](#products) — Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
@@ -150,11 +151,21 @@ OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia): as pessoas do cliente
 | `name` | texto | — | obrigatório |
 | `phone` | texto | Só os dígitos, com o 55 | — |
 | `email` | texto | — | — |
-| `role` | texto | O cargo ou o setor: "Recepção", "TI", "Financeiro" | — |
+| `role` | texto | O cargo ou o setor: "Recepção", "TI", "Financeiro". Desde o 2.0.2, um dos cargos da lista (`contact_roles`), guardado pelo nome; o de antes, fora da lista, fica até alguém trocar. | — |
 | `active` | sim/não | — | obrigatório · padrão: true |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
+
+## contact_roles
+
+Catálogo: OS CARGOS DOS CONTATOS (2.0.2, o pedido do Luan: "eu quero que esses cargos sejam pré-seleção"). A janela do contato oferece os ativos; fica em Administração › Catálogos, como as operadoras. O contato guarda o nome do cargo: renomear aqui muda o dos contatos que o têm.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | — | obrigatório · único |
+| `active` | sim/não | — | obrigatório · padrão: true |
 
 ## client_device_logins
 
@@ -1419,7 +1430,7 @@ Uma SIMULAÇÃO do Comercial: o nome, os cenários e a negociação ligada.
 | `id` | texto | Identificador único da linha | chave primária |
 | `name` | texto | O nome (o cliente, a proposta: "Clínica Aurora — 10 ramais") | obrigatório |
 | `ticket_id` | texto | A negociação ligada (um chamado de um painel de Vendas), quando a pessoa liga | liga com **tickets** |
-| `scenarios` | JSON | Os cenários (1 a 3), cada um com todos os números: a mensalidade e a ativação em centavos, as parcelas, o prazo, os ramais, o imposto, a margem que se quer e as linhas de custo — o formato de `CenarioDaSimulacao` (`@gestor/shared`). As linhas guardam o valor de quando entraram: mudar a tabela de custos não muda a simulação já feita. | obrigatório · padrão: [] |
+| `scenarios` | JSON | Os cenários (1 a 3), cada um com todos os números: a mensalidade e a ativação em centavos, as parcelas, o prazo, o imposto, os produtos (e o preço de cada um) e as linhas de custo — o formato de `CenarioDaSimulacao` (`@gestor/shared`; os guardados antes de 21/10, com os ramais e a margem que se queria, são lidos pelo `semOQueSaiu`). As linhas guardam o valor de quando entraram: mudar a tabela de custos não muda a simulação já feita. | obrigatório · padrão: [] |
 | `principal` | texto | O id do cenário principal: o que a lista e a negociação mostram | obrigatório |
 | `created_by_id` | texto | — | liga com **users** |
 | `updated_by_id` | texto | — | liga com **users** |

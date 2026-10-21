@@ -49,6 +49,8 @@ export type Api = {
     removeUnit(id: string, unitId: string): Promise<{ ok: boolean }>;
     /** Os contatos do cliente (2.0): os ativos primeiro, com quantos chamados cada WhatsApp tem */
     contatos(id: string): Promise<ContatoDoCliente[]>;
+    /** Os cargos que o contato pode ter (2.0.2): os ativos do catálogo Cargos dos contatos, em ordem alfabética */
+    cargos(): Promise<string[]>;
     /** Incluir (contatoId nulo) ou editar, desativar e reativar um contato */
     salvarContato(id: string, contatoId: string | null, d: ContatoGravarEntrada): Promise<ContatoDoCliente>;
     /** Login e senha padrão dos aparelhos, por modelo (um por modelo; gravar de novo atualiza) */

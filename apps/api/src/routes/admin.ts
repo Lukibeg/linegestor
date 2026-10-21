@@ -16,7 +16,7 @@ import * as novidades from '../services/releaseNotes.js';
 import { BadRequest, Forbidden } from '../plugins/errors.js';
 
 const Id = z.object({ id: z.string() });
-const CatalogType = z.enum(['carriers', 'hostings', 'categories']);
+const CatalogType = z.enum(['carriers', 'hostings', 'categories', 'cargos']);
 
 const routes: FastifyPluginAsyncZod = async (app) => {
   // ---- usuários ----
@@ -37,11 +37,20 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => { const row = await svc.deleteRole(app.db, req.params.id); await app.audit(req, { action: 'delete', entityType: 'role', entityId: row.id, summary: `Apagou o papel ${row.name}` }); return { ok: true }; });
 
   // ---- catálogos ----
-  app.get('/catalogs/:type', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Administração'], summary: 'Itens de um catálogo (operadoras, hospedagens, categorias)', params: z.object({ type: CatalogType }) } }, async (req) => svc.listCatalog(app.db, req.params.type));
+  app.get('/catalogs/:type', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Administração'], summary: 'Itens de um catálogo (operadoras, hospedagens, categorias, cargos dos contatos)', params: z.object({ type: CatalogType }) } }, async (req) => svc.listCatalog(app.db, req.params.type));
   app.post('/catalogs/:type', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Adicionar item ao catálogo', params: z.object({ type: CatalogType }), body: CatalogoItemSchema } },
-    async (req, reply) => { const row = await svc.createCatalogItem(app.db, req.params.type, req.body.name); await app.audit(req, { action: 'create', entityType: `catalog:${req.params.type}`, entityId: row.id, summary: `Adicionou "${row.name}" ao catálogo ${req.params.type}` }); return reply.status(201).send(row); });
+    async (req, reply) => { const row = await svc.createCatalogItem(app.db, req.params.type, req.body.name); await app.audit(req, { action: 'create', entityType: `catalog:${req.params.type}`, entityId: row.id, summary: `Adicionou "${row.name}" ao catálogo ${svc.NOME_DO_CATALOGO[req.params.type]}` }); return reply.status(201).send(row); });
   app.patch('/catalogs/:type/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Renomear/ativar/desativar item', params: z.object({ type: CatalogType, id: z.string() }), body: CatalogoItemSchema.partial() } },
-    async (req) => { const row = await svc.updateCatalogItem(app.db, req.params.type, req.params.id, req.body); await app.audit(req, { action: 'update', entityType: `catalog:${req.params.type}`, entityId: row.id, summary: `Alterou "${row.name}" no catálogo ${req.params.type}` }); return row; });
+    async (req) => {
+      const { row, antes, contatos } = await svc.updateCatalogItem(app.db, req.params.type, req.params.id, req.body);
+      // "Cargos dos contatos: renomeou "Gerente" para "Gerência" (3 contatos passaram para o nome novo)"
+      const partes = [
+        antes.name !== row.name ? `renomeou "${antes.name}" para "${row.name}"${contatos ? ` (${contatos} ${contatos === 1 ? 'contato passou' : 'contatos passaram'} para o nome novo)` : ''}` : '',
+        antes.active !== row.active ? `${row.active ? 'reativou' : 'desativou'} "${row.name}"` : '',
+      ].filter(Boolean);
+      await app.audit(req, { action: 'update', entityType: `catalog:${req.params.type}`, entityId: row.id, summary: `${svc.NOME_DO_CATALOGO[req.params.type]}: ${partes.join('; ') || `alterou "${row.name}"`}` });
+      return row;
+    });
   app.get('/products', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Administração'], summary: 'Produtos do portfólio' } }, async () => svc.listProducts(app.db));
   app.patch('/products/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Editar produto (nome, cor, descrição, ativo, ordem)', params: Id, body: z.object({ name: z.string().min(1).optional(), color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), description: z.string().nullable().optional(), active: z.boolean().optional(), sortOrder: z.number().int().optional() }) } },
     async (req) => { const row = await svc.updateProduct(app.db, req.params.id, req.body); await app.audit(req, { action: 'update', entityType: 'product', entityId: row.id, summary: `Editou o produto ${row.name}` }); return row; });

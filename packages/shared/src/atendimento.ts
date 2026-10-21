@@ -869,6 +869,28 @@ export const ContatoGravarSchema = z.object({
 });
 export type ContatoGravar = z.infer<typeof ContatoGravarSchema>;
 export type ContatoGravarEntrada = z.input<typeof ContatoGravarSchema>;
+
+/**
+ * O CARGO DO CONTATO VEM DE UMA LISTA (2.0.2, decisão 0053; o Luan, 21/10: "eu quero que esses cargos sejam
+ * pré-seleção"). Os cargos ficam em Administração › Catálogos › Cargos dos contatos, e a janela do contato só
+ * oferece os ativos. O contato que já tinha um cargo fora da lista (de antes, ou que saiu dela) fica com ele
+ * até alguém trocar. Os de fábrica (a migração 0022 põe estes no banco):
+ */
+export const CARGOS_DE_FABRICA = [
+  'Administrativo', 'Atendimento', 'Comercial', 'Compras', 'Diretoria', 'Financeiro', 'Gerência', 'Pós-vendas',
+  'Proprietário ou sócio', 'Recepção', 'RH', 'TI',
+] as const;
+
+/**
+ * O cargo que o contato pode ter: nenhum, um dos ativos da lista (escrito como na lista, mesmo que tenha vindo
+ * em minúsculas) ou o que ele já tinha (`atual`). Fora disso, o erro.
+ */
+export function cargoDaLista(cargo: string | null, ativos: readonly string[], atual: string | null = null): { cargo: string | null } | { erro: string } {
+  if (!cargo) return { cargo: null };
+  if (cargo === atual) return { cargo };
+  const igual = ativos.find((x) => x.toLocaleLowerCase('pt-BR') === cargo.toLocaleLowerCase('pt-BR'));
+  return igual ? { cargo: igual } : { erro: `O cargo "${cargo}" não está na lista (Administração › Catálogos › Cargos dos contatos).` };
+}
 /** O contato pelo WhatsApp (os dígitos) ou, sem o WhatsApp, pelo nome (sem ligar para acento e maiúscula). */
 export function acharContato<T extends Pick<ContatoDoCliente, 'nome' | 'whatsapp'>>(contatos: T[], c: { nome?: string | null; telefone?: string | null }): T | undefined {
   const fone = c.telefone ? numeroWhatsApp(c.telefone) : null;

@@ -4,6 +4,10 @@
  * fala: o nome, o WhatsApp, o e-mail e o cargo (ou o setor). Quem mexe no cadastro e quem trabalha nos
  * chamados incluem e editam; nada se apaga — desativa (o desativado some do Abrir chamado).
  *
+ * O cargo é escolhido numa lista (2.0.2, decisão 0053; o Luan: "eu quero que esses cargos sejam
+ * pré-seleção"): os cargos ativos de Administração › Catálogos. O contato que já tinha um cargo fora da
+ * lista fica com ele ("Engenharia (fora da lista)") até alguém trocar.
+ *
  * A janela do contato (`JanelaContato`) é a mesma no Abrir chamado e na ficha do chamado.
  */
 import { useState } from 'react';
@@ -100,6 +104,9 @@ export function JanelaContato({ clienteId, clienteNome, contato, inicial, onFech
   onFechar: () => void; onSalvo: (c: ContatoDoCliente) => void;
 }) {
   const toast = useToast();
+  const { can } = useAuth();
+  const cargos = useQuery({ queryKey: ['cargos-dos-contatos'], queryFn: () => api.clients.cargos(), staleTime: 60_000 });
+  const lista = cargos.data ?? [];
   const depois = useDepoisDoContato(clienteId);
   const [f, setF] = useState({
     nome: contato?.nome ?? inicial?.nome ?? '',
@@ -138,7 +145,14 @@ export function JanelaContato({ clienteId, clienteNome, contato, inicial, onFech
         <Campo label="Nome *"><input className="input" id="contato-nome" autoFocus maxLength={120} value={f.nome} onChange={(e) => mudar({ nome: e.target.value })} placeholder="Ex.: Maria Souza" /></Campo>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Campo label="WhatsApp" dica="DDD + número"><input className="input tnum" id="contato-whatsapp" inputMode="tel" maxLength={40} value={f.whatsapp} onChange={(e) => mudar({ whatsapp: e.target.value })} placeholder="(71) 99999-0000" /></Campo>
-          <Campo label="Cargo ou setor"><input className="input" id="contato-cargo" maxLength={80} value={f.cargo} onChange={(e) => mudar({ cargo: e.target.value })} placeholder="Ex.: Recepção, TI, Financeiro" /></Campo>
+          <Campo label="Cargo ou setor" dica={can('admin.manage') ? 'A lista fica em Administração › Catálogos.' : undefined}>
+            <select className="input" id="contato-cargo" value={f.cargo} onChange={(e) => mudar({ cargo: e.target.value })}>
+              <option value="">Sem cargo</option>
+              {/* o cargo de antes, fora da lista, fica até alguém trocar */}
+              {f.cargo && !lista.includes(f.cargo) && <option value={f.cargo}>{cargos.isSuccess ? `${f.cargo} (fora da lista)` : f.cargo}</option>}
+              {lista.map((x) => <option key={x} value={x}>{x}</option>)}
+            </select>
+          </Campo>
         </div>
         <Campo label="E-mail"><input className="input" id="contato-email" type="email" maxLength={200} value={f.email} onChange={(e) => mudar({ email: e.target.value })} placeholder="nome@empresa.com.br" /></Campo>
         {contato && (

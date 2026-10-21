@@ -99,6 +99,12 @@ nome), **pelo robô** e **pelos agendados** (seção 5).
 As pessoas do cliente com quem a equipe fala: o **nome**, o **WhatsApp**, o **e-mail** e o **cargo ou
 setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; quem só lê, vê.
 
+- O **cargo ou setor** se escolhe numa lista (2.0.2): Proprietário ou sócio, Diretoria, Gerência,
+  Administrativo, Financeiro, Comercial, Compras, Atendimento, Pós-vendas, Recepção, RH e TI, ou **Sem
+  cargo**. A lista fica em **Administração › Catálogos › Cargos dos contatos**: lá a administração inclui um
+  cargo, renomeia (o nome novo vai para os contatos que o têm) e desativa (sai da lista; quem já tem fica
+  com ele). O contato que já tinha um cargo escrito à mão, fora da lista, continua com ele ("Engenharia
+  (fora da lista)") até alguém trocar.
 - O mesmo WhatsApp não se repete entre os contatos ativos de um cliente.
 - Nada se apaga: **desativar** tira o contato do Abrir chamado; os chamados que já têm o contato
   continuam com ele. **Ver os desativados** mostra os que saíram.

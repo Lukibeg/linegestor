@@ -122,7 +122,10 @@ export const clientContacts = pgTable(
     /** Só os dígitos, com o 55 */
     phone: text('phone'),
     email: text('email'),
-    /** O cargo ou o setor: "Recepção", "TI", "Financeiro" */
+    /**
+     * O cargo ou o setor: "Recepção", "TI", "Financeiro". Desde o 2.0.2, um dos cargos da lista
+     * (`contact_roles`), guardado pelo nome; o de antes, fora da lista, fica até alguém trocar.
+     */
     role: text('role'),
     active: boolean('active').notNull().default(true),
     createdById: text('created_by_id').references(() => users.id),
@@ -131,6 +134,17 @@ export const clientContacts = pgTable(
   },
   (t) => [index('client_contacts_client_idx').on(t.clientId), index('client_contacts_phone_idx').on(t.phone)],
 );
+
+/**
+ * Catálogo: OS CARGOS DOS CONTATOS (2.0.2, o pedido do Luan: "eu quero que esses cargos sejam
+ * pré-seleção"). A janela do contato oferece os ativos; fica em Administração › Catálogos, como as
+ * operadoras. O contato guarda o nome do cargo: renomear aqui muda o dos contatos que o têm.
+ */
+export const contactRoles = pgTable('contact_roles', {
+  id: id(),
+  name: text('name').notNull().unique(),
+  active: boolean('active').notNull().default(true),
+});
 
 /**
  * LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente

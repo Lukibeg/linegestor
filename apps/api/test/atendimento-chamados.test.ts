@@ -17,10 +17,10 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import {
-  circuits, clientUnits, clients, deviceModels, devices, dids, newId, subscriptions, ticketPanels, ticketSchedules, ticketStages,
+  circuits, clientContacts, clientUnits, clients, deviceModels, devices, dids, newId, subscriptions, ticketPanels, ticketSchedules, ticketStages,
   ticketSubjects, ticketWebhooks, tickets,
 } from '@gestor/db';
-import { AJUSTES_PAINEL_PADRAO, AVISOS_CHAMADOS_PADRAO, ChamadoCriarSchema, diaLocal, mensagemPreenchida } from '@gestor/shared';
+import { AJUSTES_PAINEL_PADRAO, AVISOS_CHAMADOS_PADRAO, CARGOS_DE_FABRICA, ChamadoCriarSchema, diaLocal, mensagemPreenchida } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 import * as integ from '../src/services/integracoes.js';
 import { esperarSegundoPlano } from '../src/services/atendimento/avisos.js';
@@ -1156,6 +1156,40 @@ describe('os contatos do cliente (a aba Contatos; o Abrir chamado puxa de lá e 
     expect(doHospital.contato).toEqual({ nome: 'Recepção do hospital', telefone: '5571966662222' });
     // a lista conta os chamados de cada WhatsApp no cliente
     expect((await s.get(`/clients/${aurora}/contatos`)).json().find((c: any) => c.nome === 'Maria Souza').chamados).toBe(1);
+  });
+
+  it('o cargo vem da lista (Administração › Catálogos): fora dela não entra; o de antes fica; renomear muda os contatos', async () => {
+    // os de fábrica (a migração 0022), em ordem alfabética; quem trabalha nos chamados e o Leitor veem a lista
+    expect((await operador.get('/clients/cargos')).json()).toEqual([...CARGOS_DE_FABRICA].sort((a, b) => a.localeCompare(b, 'pt-BR')));
+    expect((await leitor.get('/clients/cargos')).statusCode).toBe(200);
+    // fora da lista não entra; escrito de outro jeito, entra como está na lista
+    const fora = await operador.post(`/clients/${aurora}/contatos`, { nome: 'Pedro Alves', whatsapp: '(71) 95555-3333', cargo: 'Engenharia' });
+    expect(fora.statusCode).toBe(400);
+    expect(fora.json().error).toBe('O cargo "Engenharia" não está na lista (Administração › Catálogos › Cargos dos contatos).');
+    const pedro = (await operador.post(`/clients/${aurora}/contatos`, { nome: 'Pedro Alves', whatsapp: '(71) 95555-3333', cargo: 'pós-vendas' })).json();
+    expect(pedro.cargo).toBe('Pós-vendas');
+    // o cargo de antes (de quando era escrito à mão) fica ao mudar outra coisa; trocar por outro de fora, não
+    const [rita] = await app.db.insert(clientContacts).values({ id: newId(), clientId: aurora, name: 'Rita Lopes', phone: '5571944443333', role: 'Engenharia' }).returning();
+    const editada = await s.put(`/clients/${aurora}/contatos/${rita!.id}`, { nome: 'Rita Lopes Souza', whatsapp: '(71) 94444-3333', cargo: 'Engenharia' });
+    expect(editada.statusCode, editada.body).toBe(200);
+    expect(editada.json().cargo).toBe('Engenharia');
+    expect((await s.put(`/clients/${aurora}/contatos/${rita!.id}`, { nome: 'Rita Lopes Souza', cargo: 'Obras' })).statusCode).toBe(400);
+    // a administração inclui um cargo, e ele passa a valer; renomear muda o dos contatos que o têm
+    expect((await operador.post('/admin/catalogs/cargos', { name: 'Engenharia' })).statusCode).toBe(403);
+    const eng = (await s.post('/admin/catalogs/cargos', { name: 'Engenharia' })).json();
+    expect((await operador.get('/clients/cargos')).json()).toContain('Engenharia');
+    const ren = await s.patch(`/admin/catalogs/cargos/${eng.id}`, { name: 'Engenharia e obras' });
+    expect(ren.statusCode, ren.body).toBe(200);
+    expect((await s.get(`/clients/${aurora}/contatos`)).json().find((c: any) => c.id === rita!.id).cargo).toBe('Engenharia e obras');
+    const resumos = (await s.get('/admin/audit?pageSize=20')).json().items.map((i: any) => i.summary);
+    expect(resumos).toContain('Adicionou "Engenharia" ao catálogo Cargos dos contatos');
+    expect(resumos).toContain('Cargos dos contatos: renomeou "Engenharia" para "Engenharia e obras" (1 contato passou para o nome novo)');
+    // desativado, sai da lista; quem já tem fica com ele
+    const pos = (await s.get('/admin/catalogs/cargos')).json().find((x: any) => x.name === 'Pós-vendas');
+    expect((await s.patch(`/admin/catalogs/cargos/${pos.id}`, { active: false })).statusCode).toBe(200);
+    expect((await operador.get('/clients/cargos')).json()).not.toContain('Pós-vendas');
+    expect((await s.get(`/clients/${aurora}/contatos`)).json().find((c: any) => c.id === pedro.id).cargo).toBe('Pós-vendas');
+    expect((await s.get('/admin/audit?pageSize=5')).json().items[0].summary).toBe('Cargos dos contatos: desativou "Pós-vendas"');
   });
 });
 

@@ -152,7 +152,8 @@ sistema saíram do Caddy (abaixo). O Luan foi avisado das duas antes.
   **"Reabrir este em vez de abrir outro"** (o exemplo dele: o mesmo ramal à tarde reabre o da manhã).
 - **Os contatos do cliente** (o pedido dele na prévia: "uma aba de contatos dos clientes, aí ele já
   puxaria de lá; e criar um contato por aqui"): a ficha do cliente ganhou a aba **Contatos** (o nome,
-  o WhatsApp, o e-mail e o cargo ou setor). O Abrir chamado mostra os contatos do cliente escolhido —
+  o WhatsApp, o e-mail e o cargo ou setor — desde o 2.0.2, escolhido numa lista: decisão 0053). O Abrir
+  chamado mostra os contatos do cliente escolhido —
   um clique preenche o nome e o WhatsApp — e inclui um novo ali mesmo; a ficha do chamado troca o
   contato pela lista e guarda nela o que foi escrito à mão. O WhatsApp não se repete entre os
   contatos ativos de um cliente; nada se apaga (desativa, e some do Abrir chamado). O chamado que

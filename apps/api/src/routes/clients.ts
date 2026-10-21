@@ -155,6 +155,10 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     });
 
   // ---- os contatos (2.0): o cadastro mexe, e quem trabalha nos chamados também (o Abrir chamado cria contato) ----
+  // os cargos que a janela do contato oferece (2.0.2): os ativos do catálogo Cargos dos contatos
+  app.get('/cargos', { preHandler: app.requireAnyPermission('records.read', 'support.read', 'records.write', 'tickets.work'), schema: { tags: ['Clientes'], summary: 'Os cargos que o contato pode ter (os ativos do catálogo, em ordem alfabética)' } },
+    async () => clientsSvc.cargosDosContatos(app.db));
+
   app.get('/:id/contatos', { preHandler: app.requireAnyPermission('records.read', 'support.read'), schema: { tags: ['Clientes'], summary: 'Os contatos do cliente (os ativos primeiro), com quantos chamados cada WhatsApp tem', params: Id } },
     async (req) => clientsSvc.listarContatos(app.db, req.params.id));
 

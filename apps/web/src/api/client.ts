@@ -89,6 +89,7 @@ export const realApi: Api = {
     history: (id) => http('GET', `/clients/${id}/history`),
     units: (id) => http('GET', `/clients/${id}/units`),
     contatos: (id) => http('GET', `/clients/${id}/contatos`),
+    cargos: () => http('GET', '/clients/cargos'),
     salvarContato: (id, contatoId, d) => (contatoId ? http('PUT', `/clients/${id}/contatos/${contatoId}`, d) : http('POST', `/clients/${id}/contatos`, d)),
     createUnit: (id, d) => http('POST', `/clients/${id}/units`, d),
     updateUnit: (id, unitId, d) => http('PATCH', `/clients/${id}/units/${unitId}`, d),
