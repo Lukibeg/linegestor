@@ -159,7 +159,7 @@ describe('criar, mudar, duplicar e a lixeira (como o servidor)', () => {
 });
 
 describe('a margem no relatório do Comercial (a prévia)', () => {
-  it('as ganhas do mês com simulação: no total, por vendedor e por produto', async () => {
+  it('as ganhas do mês com simulação: no total e por produto', async () => {
     await entrar('camila');
     const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
     const r = await demoApi.atendimento.relatorioDeVendas({ painel: 'COM', de: `${hoje.slice(0, 7)}-01`, ate: hoje });
@@ -167,9 +167,11 @@ describe('a margem no relatório do Comercial (a prévia)', () => {
     const m = r.margem!;
     expect(m.comSimulacao).toBeGreaterThanOrEqual(1);
     expect(m.comSimulacao).toBeLessThanOrEqual(m.ganhas);
-    // a soma dos grupos por vendedor é o total
-    expect(m.porVendedor.reduce((s, g) => s + g.qtd, 0)).toBe(m.comSimulacao);
-    expect(m.geral.sobra).toBe(m.porVendedor.reduce((s, g) => s + g.sobra, 0));
+    expect(m.geral.qtd).toBe(m.comSimulacao);
+    // cada produto com as ganhas dele (a que tem dois produtos conta nos dois); sem o "por vendedor"
+    expect(m.porProduto.length).toBeGreaterThanOrEqual(1);
+    expect(m.porProduto.every((g) => g.qtd >= 1 && g.qtd <= m.comSimulacao)).toBe(true);
+    expect('porVendedor' in m).toBe(false);
   });
 });
 

@@ -132,7 +132,7 @@ botão **Relatório** no cartão do painel).
   sem ativação não entram). Clicar num mês mostra as negociações com a ativação de cada uma.
 - **A margem das ganhas** (2.0.2): das negociações ganhas no período, as que têm uma simulação ligada (o
   Simulador do Comercial): quanto sobra por mês e a **margem**, com o sinal (verde, amarelo, vermelho), no
-  total, **por vendedor** e **por produto** (a que tem dois produtos conta nos dois). Cada negociação entra
+  total e **por produto** (a que tem dois produtos conta nos dois). Cada negociação entra
   com o cenário principal da simulação dela; a margem do grupo é a sobra de todas sobre a mensalidade de
   todas. "2 de 3 com simulação" diz quantas das ganhas entraram. Veja o guia do
   [Simulador](simulador.md).

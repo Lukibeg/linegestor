@@ -140,7 +140,7 @@ A mesma venda em versões diferentes (comodato ou venda dos aparelhos, 12 ou 24 
   antes do **Levar**. Com um valor só na simulação, a negociação que tinha o valor por produto passa a ter
   um valor só. A mudança fica no histórico da negociação. O que mudou na simulação é salvo antes.
 - **A margem no relatório**: o relatório do Comercial (Comercial › Relatórios) tem **A margem das
-  ganhas**: das ganhas do período que têm simulação, a margem do total, por vendedor e por produto.
+  ganhas**: das ganhas do período que têm simulação, a margem do total e por produto.
 
 ## O Excel
 

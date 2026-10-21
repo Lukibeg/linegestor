@@ -151,10 +151,12 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
     modelos têm) e a mensalidade e a ativação que ela já tem;
   - **a margem no relatório do Comercial**: a parte **A margem das ganhas**, entre os meses e o funil — das
     ganhas do período, as que têm simulação ligada (cada uma com o cenário principal da simulação mexida
-    por último): a margem do total, **por vendedor** (o responsável) e **por produto** (o da negociação; a
-    que tem dois conta nos dois), com o sinal. A margem do grupo é a sobra de todas sobre a mensalidade de
-    todas (a venda grande pesa mais). O clique abre as negociações. Sem simulação nas ganhas, a parte diz
-    como ligar;
+    por último): a margem do total e **por produto** (o da negociação; a que tem dois conta nos dois), com
+    o sinal. A margem do grupo é a sobra de todas sobre a mensalidade de todas (a venda grande pesa mais). O
+    clique abre as negociações. Sem simulação nas ganhas, a parte diz como ligar. A margem **por vendedor**
+    (o responsável), que estava na ideia que ele marcou, entrou e **saiu**: o Luan, num comentário na
+    prévia: *"não precisa por vendedor"*; avisado de que desfazia parte de uma ideia marcada "agora",
+    respondeu *"tire"*;
   - **o Excel**: o botão **Excel** da simulação baixa uma planilha com as fórmulas (abaixo);
   - **a proposta em PDF**: espera o modelo dele (o Luan tem um projeto só para as propostas, *"luan -
     propostas"*, que não se abre daqui).

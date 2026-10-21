@@ -1081,8 +1081,9 @@ export const cenarioPrincipal = (s: Pick<Simulacao, 'cenarios' | 'principal'>) =
 
 /*
  * O pedido (a ideia marcada "agora", 20/10): "a margem média das negociações ganhas no período, por vendedor
- * e por produto". Cada ganha com simulação ligada entra com o cenário principal da simulação (a mais recente,
- * se houver mais de uma). A margem do grupo é a sobra de todas sobre a mensalidade de todas (a média pesada
+ * e por produto". O "por vendedor" saiu depois (o Luan, 21/10, num comentário na prévia: "não precisa por
+ * vendedor"): ficam o total e o por produto. Cada ganha com simulação ligada entra com o cenário principal da
+ * simulação (a mais recente, se houver mais de uma). A margem do grupo é a sobra de todas sobre a mensalidade de todas (a média pesada
  * pelo valor: a venda grande pesa mais que a pequena), com o sinal pelas faixas dos Ajustes.
  */
 
@@ -1090,11 +1091,11 @@ export const cenarioPrincipal = (s: Pick<Simulacao, 'cenarios' | 'principal'>) =
 export type MargemDaNegociacao = { simulacaoId: string; simulacao: string; mensalTotal: number; sobraMensal: number };
 /** Um grupo da margem: quantas ganhas (com simulação), a mensalidade e a sobra somadas e a margem (sobra ÷ mensalidade). */
 export type GrupoDaMargem = { nome: string; qtd: number; mensalidade: number; sobra: number; margem: number | null; sinal: Sinal | null; ids: string[] };
-/** A margem das ganhas do período: no total, por vendedor (quem cuida) e por produto. */
-export type MargemDasGanhas = { ganhas: number; comSimulacao: number; geral: GrupoDaMargem; porVendedor: GrupoDaMargem[]; porProduto: GrupoDaMargem[] };
+/** A margem das ganhas do período: no total e por produto. */
+export type MargemDasGanhas = { ganhas: number; comSimulacao: number; geral: GrupoDaMargem; porProduto: GrupoDaMargem[] };
 
 export function margemDasGanhas(
-  ganhas: ReadonlyArray<{ id: string; responsavel: string | null; produtos?: readonly string[] }>,
+  ganhas: ReadonlyArray<{ id: string; produtos?: readonly string[] }>,
   margens: ReadonlyMap<string, MargemDaNegociacao>,
   faixas: FaixasDoSinal,
 ): MargemDasGanhas {
@@ -1113,7 +1114,6 @@ export function margemDasGanhas(
   };
   return {
     ganhas: ganhas.length, comSimulacao: com.length, geral: grupo('Todas', com.map((g) => g.id)),
-    porVendedor: juntar((g) => [g.responsavel ?? 'Sem responsável']),
     porProduto: juntar((g) => (g.produtos?.length ? [...new Set(g.produtos)] : ['Sem produto'])),
   };
 }

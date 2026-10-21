@@ -511,7 +511,7 @@ describe('o que a pessoa escreve', () => {
 });
 
 describe('a margem das ganhas (o relatório do Comercial)', () => {
-  it('a sobra de todas sobre a mensalidade de todas, por vendedor e por produto; só as ganhas com simulação', () => {
+  it('a sobra de todas sobre a mensalidade de todas, no total e por produto; só as ganhas com simulação', () => {
     const margens = new Map([
       ['n1', { simulacaoId: 's1', simulacao: 'A', mensalTotal: 100_000, sobraMensal: 60_000 }],
       ['n2', { simulacaoId: 's2', simulacao: 'B', mensalTotal: 50_000, sobraMensal: 10_000 }],
@@ -527,7 +527,8 @@ describe('a margem das ganhas (o relatório do Comercial)', () => {
     expect([m.ganhas, m.comSimulacao]).toEqual([4, 3]);
     expect(m.geral).toMatchObject({ qtd: 3, mensalidade: 180_000, sobra: 82_000, sinal: 'verde' });
     expect(Math.round(m.geral.margem! * 1000) / 10).toBe(45.6);
-    expect(m.porVendedor.map((g) => [g.nome, g.qtd, Math.round(g.margem! * 100), g.sinal])).toEqual([['Camila', 2, 55, 'verde'], ['Diego', 1, 20, 'amarelo']]);
+    // sem o "por vendedor" (o Luan, 21/10: "não precisa por vendedor")
+    expect('porVendedor' in m).toBe(false);
     expect(m.porProduto.map((g) => [g.nome, g.qtd])).toEqual([['LinePBX', 2], ['VoiceNet', 1], ['LineChat', 1]]);
   });
 });

@@ -14,7 +14,8 @@
  *    os que tem hoje", "um gráfico desse mas sobre apenas ativação"): o número Ativação, ao lado do
  *    Ganho, e **As ativações mês a mês**, embaixo dos ganhos — o resto continua só com a mensalidade;
  *  - **A margem das ganhas** (2.0.2, o Simulador do Comercial: "a margem média das negociações ganhas no
- *    período, por vendedor e por produto"): as ganhas que têm simulação ligada, com a margem e o sinal;
+ *    período, por vendedor e por produto"; o "por vendedor" saiu, 21/10: "não precisa por vendedor"): as
+ *    ganhas que têm simulação ligada, com a margem e o sinal, no total e por produto;
  *  - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
  *    entraram), quantas se perderam em cada uma e quantas foram ganhas.
  *
@@ -123,7 +124,7 @@ function RelatorioDeVendasDoPainel({ painel, opcoes }: { painel: Painel; opcoes:
           <MesAMesDaAtivacao r={r} abrir={setAberta} />
           {r.margem && (
             <Secao id="relatorio-margem" titulo="A margem das ganhas" icone={Calculator}
-              pergunta={`As negociações ganhas ${nomeDoPeriodo} que têm simulação ligada: quanto sobra por mês, no total, por vendedor e por produto.`}
+              pergunta={`As negociações ganhas ${nomeDoPeriodo} que têm simulação ligada: quanto sobra por mês, no total e por produto.`}
               lado={r.margem.ganhas ? `${r.margem.comSimulacao} de ${r.margem.ganhas} com simulação` : undefined}
               rodape="A margem do grupo é a sobra de todas sobre a mensalidade de todas (a venda grande pesa mais). Cada negociação entra com o cenário principal da simulação ligada a ela (a mexida por último, se houver mais de uma); a que tem dois produtos conta nos dois. Clique para ver as negociações.">
               <MargemDasGanhas r={r} abrir={setAberta} />
@@ -342,7 +343,7 @@ function MudancaDoMes({ m, oQue }: { m: MesDeVendas; oQue: string }) {
   );
 }
 
-/** A margem das ganhas (2.0.2): o total, por vendedor e por produto; o clique mostra as negociações. */
+/** A margem das ganhas (2.0.2): o total e por produto; o clique mostra as negociações. */
 function MargemDasGanhas({ r, abrir }: { r: RelatorioDeVendas; abrir: (a: Aberta) => void }) {
   const m = r.margem!;
   if (!m.comSimulacao) {
@@ -371,15 +372,9 @@ function MargemDasGanhas({ r, abrir }: { r: RelatorioDeVendas; abrir: (a: Aberta
         <ChipDoSinal sinal={m.geral.sinal} margem={m.geral.margem} soOSinal />
         <span className="text-[13px] text-ink-2">sobram <b className="tnum">{reaisInteiros(m.geral.sobra)}</b> por mês de <b className="tnum">{reaisInteiros(m.geral.mensalidade)}</b> em mensalidades</span>
       </button>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="min-w-0">
-          <div className="eyebrow mb-1">Por vendedor</div>
-          <div className="divide-y divide-line -mx-2">{m.porVendedor.map((g) => <Grupo key={g.nome} g={g} titulo={`As ganhas de ${g.nome}`} />)}</div>
-        </div>
-        <div className="min-w-0">
-          <div className="eyebrow mb-1">Por produto</div>
-          <div className="divide-y divide-line -mx-2">{m.porProduto.map((g) => <Grupo key={g.nome} g={g} titulo={`As ganhas com ${g.nome}`} />)}</div>
-        </div>
+      <div className="min-w-0 max-w-2xl" id="relatorio-margem-por-produto">
+        <div className="eyebrow mb-1">Por produto</div>
+        <div className="divide-y divide-line -mx-2">{m.porProduto.map((g) => <Grupo key={g.nome} g={g} titulo={`As ganhas com ${g.nome}`} />)}</div>
       </div>
     </div>
   );

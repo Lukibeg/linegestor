@@ -118,8 +118,8 @@ export type RelatorioDeVendas = {
   /** as negociações por trás dos números (as que entraram, as ganhas e as perdidas do período, e as ganhas de cada mês) */
   negociacoes: NegociacaoDoRelatorio[];
   /**
-   * A margem das ganhas do período (2.0.2, o Simulador do Comercial): as que têm simulação ligada, no total,
-   * por vendedor e por produto. Nulo quando o relatório é montado sem as simulações.
+   * A margem das ganhas do período (2.0.2, o Simulador do Comercial): as que têm simulação ligada, no total e
+   * por produto. Nulo quando o relatório é montado sem as simulações.
    */
   margem: MargemDasGanhas | null;
 };

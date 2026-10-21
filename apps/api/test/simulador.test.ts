@@ -326,7 +326,7 @@ describe('o preço por produto ("uma proposta separada, porém uma negociação 
 });
 
 describe('a margem no relatório do Comercial', () => {
-  it('a ganha com simulação entra na margem das ganhas: no total, por vendedor e por produto', async () => {
+  it('a ganha com simulação entra na margem das ganhas: no total e por produto', async () => {
     const linepbx = ((await camila.get('/comercial/simulador/opcoes')).json().produtos as Array<{ id: string; codigo: string; nome: string }>).find((x) => x.codigo === 'linepbx')!;
     // quem cuida e o produto da negociação; depois, o Ganho
     const p = await camila.patch(`/atendimento/chamados/${negociacao.id}`, { responsavelId: ids.camila, produtos: [linepbx.id] });
@@ -342,8 +342,8 @@ describe('a margem no relatório do Comercial', () => {
     expect(r.json().margem).toMatchObject({
       ganhas: 1, comSimulacao: 1,
       geral: { qtd: 1, mensalidade: principal.mensalTotal, sobra: principal.sobraMensal, sinal: principal.sinal },
-      porVendedor: [{ nome: 'Camila Souza', qtd: 1 }],
       porProduto: [{ nome: linepbx.nome, qtd: 1 }],
     });
+    expect('porVendedor' in r.json().margem).toBe(false);
   });
 });
