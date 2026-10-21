@@ -18,11 +18,12 @@
  *  - cada APARELHO diz se é comodato (a Ingline compra e empresta: só custo, uma vez), venda (o preço entra
  *    na ativação) ou locação (o aluguel entra na mensalidade);
  *  - quem tem o Comercial vê tudo, com os custos e a margem;
- *  - e as ideias marcadas "agora": o preço mínimo pela margem, o sinal (verde, amarelo, vermelho), o
- *    desconto máximo sem sair do verde, a linha do tempo do contrato, os cenários lado a lado (até 3), a
- *    ativação parcelada e os modelos prontos por produto. A quantidade pelos ramais (as linhas "por ramal"
- *    acompanhando os ramais do cenário) também entrou, e depois saiu: o Luan, 21/10, *"é melhor eu sempre
- *    selecionar a quantidade dos produtos mesmo"* — cada custo tem a quantidade dele.
+ *  - e as ideias marcadas "agora": o sinal (verde, amarelo, vermelho), a linha do tempo do contrato, os
+ *    cenários lado a lado (até 3), a ativação parcelada e os modelos prontos por produto. Três entraram e
+ *    depois saíram, num comentário dele na prévia (21/10): a quantidade pelos ramais (as linhas "por ramal"
+ *    acompanhando os ramais do cenário) — *"é melhor eu sempre selecionar a quantidade dos produtos mesmo"*:
+ *    cada custo tem a quantidade dele —, e o preço mínimo pela margem que se quer e o desconto máximo sem sair
+ *    do verde (o quadro "O preço") — *"isso não precisa ter"*: a margem e o sinal ficam nos números.
  *
  * No mesmo dia ele mandou a tabela da Helena (o LineChat é a plataforma dela em white label: "Tabela de
  * Preços - WHITE LABEL helena - JAN.2026", revisão de 03/02/2026), a planilha com que ele calcula o custo do
@@ -203,8 +204,6 @@ export type CenarioDaSimulacao = {
   prazo: number;
   /** o imposto, % sobre tudo o que o cliente paga (vem dos Ajustes; muda aqui) */
   imposto: number;
-  /** a margem que se quer (%): a mensalidade mínima é a que dá esta margem */
-  margemAlvo: number;
   linhas: LinhaDoCenario[];
   /**
    * Os produtos do catálogo que a venda leva (os códigos: linepbx, linechat…): vêm do modelo ou da
@@ -477,13 +476,14 @@ const PrecoDoProdutoSchema = z.object({
 });
 
 /**
- * O cenário de antes da saída dos ramais (21/10): a linha "por ramal" fica com a quantidade dos ramais do
- * cenário (a conta não muda), e os ramais e o "por ramal" saem.
+ * O cenário guardado antes do que saiu em 21/10, do jeito de hoje: a linha "por ramal" fica com a quantidade
+ * dos ramais do cenário (a conta não muda), e saem os ramais, o "por ramal" e a margem que se queria (a do
+ * quadro "O preço").
  */
-export function semOsRamais(v: unknown): unknown {
+export function semOQueSaiu(v: unknown): unknown {
   if (!v || typeof v !== 'object' || Array.isArray(v)) return v;
-  const { ramais, ...c } = v as Record<string, unknown>;
-  if (!Array.isArray(c.linhas)) return ramais === undefined ? v : c;
+  const { ramais, margemAlvo, ...c } = v as Record<string, unknown>;
+  if (!Array.isArray(c.linhas)) return ramais === undefined && margemAlvo === undefined ? v : c;
   const n = typeof ramais === 'number' && Number.isFinite(ramais) ? Math.max(0, Math.floor(ramais)) : null;
   return {
     ...c,
@@ -496,7 +496,7 @@ export function semOsRamais(v: unknown): unknown {
   };
 }
 
-export const CenarioDaSimulacaoSchema = z.preprocess(semOsRamais, z.object({
+export const CenarioDaSimulacaoSchema = z.preprocess(semOQueSaiu, z.object({
   id: Id,
   nome: z.string({ invalid_type_error: 'Dê um nome ao cenário.' }).trim().min(1, 'Dê um nome ao cenário.').max(40, 'O nome do cenário vai até 40 letras.'),
   mensalidade: Centavos('A mensalidade'),
@@ -506,7 +506,6 @@ export const CenarioDaSimulacaoSchema = z.preprocess(semOsRamais, z.object({
   prazo: z.number({ invalid_type_error: 'O prazo vai em meses.' }).int('O prazo vai em meses inteiros.').min(1, 'O prazo é de pelo menos 1 mês.')
     .max(MAX_PRAZO, `O prazo vai até ${MAX_PRAZO} meses.`),
   imposto: Percentual('O imposto'),
-  margemAlvo: Percentual('A margem que você quer', 95),
   linhas: z.array(LinhaDoCenarioSchema).max(MAX_LINHAS_DO_CENARIO, `Até ${MAX_LINHAS_DO_CENARIO} custos por cenário.`),
   produtos: z.array(z.string().trim().min(1).max(40)).max(20, 'Até 20 produtos.').default([]).transform((xs) => [...new Set(xs)]),
   porProduto: z.array(PrecoDoProdutoSchema).max(20, 'Até 20 produtos.').nullable().optional(),
@@ -737,7 +736,7 @@ export function cenarioNovo(a: AjustesDoSimulador, o: { id?: string; nome?: stri
   return {
     id: o.id ?? idLocal(), nome: o.nome ?? 'Cenário A',
     mensalidade: 0, ativacao: 0, parcelas: 1, prazo: a.prazo,
-    imposto: a.imposto, margemAlvo: a.verde, linhas, produtos, porProduto: null,
+    imposto: a.imposto, linhas, produtos, porProduto: null,
   };
 }
 
@@ -846,12 +845,6 @@ export type ContasDoCenario = {
   sePagaEm: SePagaEm;
   /** o que fica no fim do contrato */
   resultado: number;
-  /** a mensalidade (do serviço) mínima para a margem que se quer; nulo = nenhuma dá */
-  minima: number | null;
-  /** a mensalidade mínima para ficar no verde */
-  minimaVerde: number | null;
-  /** quanto dá para baixar a mensalidade sem sair do verde (0 = já está no limite ou abaixo) */
-  descontoMaximo: number | null;
   /** cada linha na conta */
   linhas: LinhaNaConta[];
   /** os nomes das linhas que ainda não têm valor */
@@ -904,13 +897,6 @@ export function dividirEmParcelas(total: number, n: number): number[] {
   const partes = Array.from({ length: vezes }, () => cada);
   partes[0] = total - cada * (vezes - 1);
   return partes;
-}
-
-/** A mensalidade (do serviço) mínima para a margem `alvo` (%), em centavos; nulo = nenhuma dá (os percentuais já passam dela). */
-function mensalidadeMinima(alvo: number, fixo: number, aluguel: number, percentuais: number): number | null {
-  const sobra = 1 - percentuais - alvo / 100;
-  if (sobra <= 1e-9) return null;
-  return Math.max(0, Math.ceil(fixo / sobra - aluguel - 1e-6));
 }
 
 /**
@@ -1060,8 +1046,6 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   });
 
   const margem = mensalTotal > 0 ? sobraMensal / mensalTotal : null;
-  const minima = mensalidadeMinima(c.margemAlvo, custoMensalFixo, aluguel, imposto + pctMensalidade);
-  const minimaVerde = mensalidadeMinima(faixas.verde, custoMensalFixo, aluguel, imposto + pctMensalidade);
   const linhas = conta.map(({ sobre, pct, ...l }) => ({
     ...l,
     custo: sobre === 'mensal' ? Math.round(pct * mensalTotal) : sobre === 'entrada' ? Math.round(pct * entradaTotal) : Math.round(l.custo),
@@ -1074,7 +1058,6 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
     impostoDaEntrada: Math.round(imposto * entradaTotal), comissaoDaEntrada: Math.round(pctAtivacao * entradaTotal),
     sobraMensal: sobra, margem, sinal: margem == null ? null : sinalDaMargem(margem, faixas),
     serie, meses, investimento, sePagaEm, resultado: serie[serie.length - 1]!,
-    minima, minimaVerde, descontoMaximo: minimaVerde == null ? null : Math.max(0, c.mensalidade - minimaVerde),
     linhas,
     faltam,
   };
@@ -1149,7 +1132,7 @@ function iguais(a: unknown, b: unknown): boolean {
 const CAMPOS_DO_CENARIO: Array<[keyof CenarioDaSimulacao, string, (v: number) => string]> = [
   ['mensalidade', 'a mensalidade', reaisCurto], ['ativacao', 'a ativação', reaisCurto],
   ['parcelas', 'as parcelas da ativação', (v) => `${v}x`], ['prazo', 'o prazo', (v) => `${v} ${v === 1 ? 'mês' : 'meses'}`],
-  ['imposto', 'o imposto', percentual], ['margemAlvo', 'a margem que se quer', percentual],
+  ['imposto', 'o imposto', percentual],
 ];
 
 /** O que mudou na simulação, em frases curtas ("no Cenário A, a mensalidade de R$ 990,00 para R$ 1.090,00"). */

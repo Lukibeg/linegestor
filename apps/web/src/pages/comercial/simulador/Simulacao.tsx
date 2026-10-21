@@ -373,7 +373,7 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar }
           {r.cenarios.length > 1 && <LadoALado cenarios={r.cenarios} contas={contas} principal={r.principal} aberto={c.id} abrir={setAberto} />}
         </div>
         <div className="min-w-0 lg:sticky lg:top-4">
-          <OsNumeros c={c} k={k} ajustes={ajustes} mudar={mudarCenario} podeEditar={podeEditar} />
+          <OsNumeros c={c} k={k} ajustes={ajustes} />
         </div>
       </div>
 

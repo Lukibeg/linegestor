@@ -2,8 +2,9 @@
  * Os números do cenário (o Simulador do Comercial, 2.0.2): o que sobra por mês, a margem com o sinal, o custo
  * do mês (o fixo e o variável), o investimento (o total pago uma vez), o que sai antes, quando a venda se paga
  * e o que fica no contrato; a linha do tempo do contrato (o acumulado mês a mês, do 1º mês, o da assinatura, ao
- * fim); o preço (a mensalidade mínima pela margem que se quer e o desconto máximo sem sair do verde); e os
- * cenários lado a lado, com a diferença de cada um para o principal.
+ * fim); e os cenários lado a lado, com a diferença de cada um para o principal. O quadro "O preço" (a mensalidade
+ * mínima pela margem que se queria e o desconto máximo sem sair do verde) saiu: o Luan, 21/10, "isso não precisa
+ * ter"; a margem e o sinal ficam aqui.
  */
 import { useId, type ReactNode } from 'react';
 import { AlertTriangle, Star } from 'lucide-react';
@@ -11,7 +12,7 @@ import {
   percentual, percentualDaFracao, textoDasFaixas, textoDoSePagaEm,
   type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario,
 } from '@gestor/shared';
-import { CampoDePercentual, ChipDoSinal, reais, reaisLimpo } from './comum.js';
+import { ChipDoSinal, reais, reaisLimpo } from './comum.js';
 
 function Linha({ rotulo, valor, dica, tom, id }: { rotulo: ReactNode; valor: ReactNode; dica?: ReactNode; tom?: 'bad' | 'ok'; id?: string }) {
   return (
@@ -22,10 +23,8 @@ function Linha({ rotulo, valor, dica, tom, id }: { rotulo: ReactNode; valor: Rea
   );
 }
 
-/** Os números do cenário aberto. `mudar` muda a margem que se quer (o preço mínimo). */
-export function OsNumeros({ c, k, ajustes, mudar, podeEditar }: {
-  c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador; mudar: (m: Partial<CenarioDaSimulacao>) => void; podeEditar: boolean;
-}) {
+/** Os números do cenário aberto. */
+export function OsNumeros({ c, k, ajustes }: { c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador }) {
   const ruimDePagar = k.sePagaEm.tipo === 'nunca' || (k.sePagaEm.tipo === 'mes' && k.sePagaEm.depoisDoPrazo);
   // o custo do mês: o fixo (as linhas por mês) e o variável (o imposto e a comissão, que andam com o que o cliente paga)
   const variavel = k.impostoMensal + k.comissaoMensal;
@@ -41,6 +40,7 @@ export function OsNumeros({ c, k, ajustes, mudar, podeEditar }: {
         <div className="mt-3 text-[13px] text-ink-2">Sobra por mês</div>
         <div className={`font-display text-[30px] leading-tight font-semibold tabular-nums ${k.sobraMensal < 0 ? 'text-bad' : 'text-ink'}`} id="simulador-sobra">{reais(k.sobraMensal)}</div>
         <div className="text-[12.5px] text-muted">{k.margem == null ? 'Ponha a mensalidade para ver a margem.' : `${percentualDaFracao(k.margem)} do que o cliente paga por mês`}</div>
+        <div className="text-[12px] text-muted" id="simulador-faixas-do-sinal">O sinal: {textoDasFaixas(ajustes)} (os Ajustes do Simulador).</div>
         <dl className="mt-3 divide-y divide-line text-[13.5px] border-t border-line">
           <Linha rotulo="O cliente paga por mês" valor={reais(k.mensalTotal)} dica={k.aluguel ? `mensalidade ${reaisLimpo(c.mensalidade)} + aluguel dos aparelhos ${reaisLimpo(k.aluguel)}` : undefined} />
           <Linha rotulo="O custo do mês" valor={reais(k.custoMensal)} dica={partesDoCusto} id="simulador-custo-do-mes" />
@@ -57,29 +57,6 @@ export function OsNumeros({ c, k, ajustes, mudar, podeEditar }: {
           <Linha rotulo={`No contrato (${c.prazo} ${c.prazo === 1 ? 'mês' : 'meses'})`} valor={reais(k.resultado)} tom={k.resultado < 0 ? 'bad' : undefined} id="simulador-contrato" />
         </dl>
         <LinhaDoTempo k={k} prazo={c.prazo} />
-      </section>
-
-      <section className="card p-4" aria-label="O preço" id="simulador-preco">
-        <span className="eyebrow">O preço</span>
-        <label className="mt-2 flex items-center justify-between gap-3 text-[13.5px]">
-          <span className="text-ink-2">A margem que você quer</span>
-          <CampoDePercentual valor={c.margemAlvo} onChange={(v) => mudar({ margemAlvo: Math.min(95, v ?? 0) })} className="w-[88px] shrink-0" aria-label="A margem que você quer" disabled={!podeEditar} id="simulador-margem-alvo" />
-        </label>
-        <div className="mt-2 flex items-baseline justify-between gap-3">
-          <span className="text-[13.5px] text-ink-2">A mensalidade mínima para ela</span>
-          <span className="font-display text-xl font-semibold tabular-nums text-right" id="simulador-minima">{k.minima == null ? 'nenhuma dá' : reais(k.minima)}</span>
-        </div>
-        {k.minima == null && <p className="text-[12.5px] text-muted">O imposto e as comissões já passam dessa margem.</p>}
-        <div className="mt-3 pt-3 border-t border-line text-[13.5px] flex items-baseline justify-between gap-3">
-          <span className="text-ink-2">Desconto máximo sem sair do verde</span>
-          <span className="font-semibold tabular-nums text-right" id="simulador-desconto">
-            {k.descontoMaximo == null ? '—' : k.descontoMaximo === 0 ? 'nenhum' : `${reaisLimpo(k.descontoMaximo)} (${percentualDaFracao(k.descontoMaximo / Math.max(1, c.mensalidade))})`}
-          </span>
-        </div>
-        {k.minimaVerde != null && k.descontoMaximo === 0 && c.mensalidade > 0 && (
-          <p className="text-[12.5px] text-muted mt-1">Para o verde, a mensalidade vai a {reaisLimpo(k.minimaVerde)} ou mais.</p>
-        )}
-        <p className="text-[12px] text-muted mt-2">O sinal: {textoDasFaixas(ajustes)} (os Ajustes do Simulador).</p>
       </section>
 
       {k.faltam.length > 0 && (

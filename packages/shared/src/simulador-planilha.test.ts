@@ -110,10 +110,13 @@ describe('a planilha da simulação', () => {
     expect(c.get('A3')!.v).toBe('Negociação COM-12 · PABX em nuvem · Padaria Estrela');
     expect(c.get('A4')!.v).toMatch(/^Exportada do Gestor em 20\/10\/2026 às 14:10, por Camila Duarte\./);
     // o que o cliente paga: os valores (as células amarelas)
-    expect([c.get('B7')!.v, c.get('B8')!.v, c.get('B9')!.v, c.get('B10')!.v, c.get('B11')!.v, c.get('B12')!.v]).toEqual(['1250', '1900', '3', '24', '0.06', '0.35']);
+    expect([c.get('B7')!.v, c.get('B8')!.v, c.get('B9')!.v, c.get('B10')!.v, c.get('B11')!.v]).toEqual(['1250', '1900', '3', '24', '0.06']);
     expect(c.get('A11')!.v).toBe('Imposto');
-    // sem os ramais (o Luan, 21/10: "é melhor eu sempre selecionar a quantidade"): nem a linha nem a coluna
+    // sem os ramais (o Luan, 21/10: "é melhor eu sempre selecionar a quantidade"): nem a linha nem a coluna;
+    // e sem "O preço" (21/10: "isso não precisa ter"): nem a margem que se queria, nem a mensalidade mínima
     expect([...c].some(([, x]) => x.v === 'Ramais' || x.v === 'Por ramal')).toBe(false);
+    expect(c.get('A12')).toBeUndefined();
+    expect([...c].some(([, x]) => /O PREÇO|mínima|margem que você quer|Desconto máximo/.test(x.v))).toBe(false);
     expect(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].map((x) => c.get(`${x}16`)!.v)).toEqual([
       'Custo', 'Como entra', 'O aparelho vai em', 'Quantidade', 'Valor de cada', 'Preço ou aluguel de cada', 'A compra em (vezes)',
       'Sai uma vez', 'Sai por mês', 'Entra uma vez', 'Entra por mês', 'Observação',
@@ -143,7 +146,6 @@ describe('a planilha da simulação', () => {
     expect(Number(aoLado(c, 'Sai antes')!.v)).toBe(k.investimento / 100);
     expect(aoLado(c, 'Se paga')!.v).toBe(textoDoSePagaEm(k.sePagaEm));
     expect(Number(aoLado(c, /^No contrato/)!.v)).toBeCloseTo(k.resultado / 100, 2);
-    expect(Number(aoLado(c, 'A mensalidade mínima para a margem que você quer')!.v)).toBe(k.minima! / 100);
     // o mês a mês: do 1º mês (o da assinatura) ao prazo, o faturamento, os custos, o lucro e o acumulado; depois, vazio
     const t0 = [...c].find(([ref, x]) => ref.startsWith('A') && x.v === 'Mês')![0];
     const primeiro = Number(t0.slice(1)) + 1;

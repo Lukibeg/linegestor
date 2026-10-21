@@ -2034,9 +2034,10 @@ export const salesSimulations = pgTable(
     ticketId: text('ticket_id').references(() => tickets.id),
     /**
      * Os cenários (1 a 3), cada um com todos os números: a mensalidade e a ativação em centavos, as parcelas,
-     * o prazo, os ramais, o imposto, a margem que se quer e as linhas de custo — o formato de
-     * `CenarioDaSimulacao` (`@gestor/shared`). As linhas guardam o valor de quando entraram: mudar a tabela
-     * de custos não muda a simulação já feita.
+     * o prazo, o imposto, os produtos (e o preço de cada um) e as linhas de custo — o formato de
+     * `CenarioDaSimulacao` (`@gestor/shared`; os guardados antes de 21/10, com os ramais e a margem que se
+     * queria, são lidos pelo `semOQueSaiu`). As linhas guardam o valor de quando entraram: mudar a tabela de
+     * custos não muda a simulação já feita.
      */
     scenarios: jsonb('scenarios').notNull().default([]),
     /** O id do cenário principal: o que a lista e a negociação mostram */

@@ -84,7 +84,8 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
 À direita (no celular, um resumo em cima e o resto embaixo):
 
 - **Sobra por mês**: a mensalidade menos o custo do mês, e a **margem** (a sobra sobre o que o cliente paga
-  por mês) com o **sinal**: verde, amarelo ou vermelho, pelas faixas dos Ajustes.
+  por mês) com o **sinal**: verde, amarelo ou vermelho, pelas faixas dos Ajustes (escritas embaixo da
+  margem). Para "dá para fazer mais barato?", mude a mensalidade e veja a margem e o sinal na hora.
 - **O custo do mês**: o **fixo** (as linhas por mês) e o **variável** (o imposto e a comissão, que andam com o
   que o cliente paga).
 - **Investimento**: o total pago uma vez — os aparelhos, a instalação e a comissão da venda (e quanto disso
@@ -96,8 +97,6 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
   a sobra do mês não cobre).
 - **No contrato**: o que fica no fim do prazo.
 - **A linha do tempo**: o acumulado mês a mês, do 1º mês ao fim (o "Ver mês a mês" leva ao quadro grande).
-- **O preço**: escreva a margem que você quer e veja a mensalidade mínima para ela; e o **desconto máximo**
-  sem sair do verde — a resposta para "dá para fazer mais barato?".
 
 ## O mês a mês
 
@@ -151,12 +150,11 @@ pode baixar; a auditoria registra):
 - **uma folha por cenário** e, com dois ou mais, a folha **Lado a lado**, que puxa os números de cada um e
   a diferença de cada cenário para o principal;
 - na folha do cenário, **as células amarelas** são as que você muda: a mensalidade, a ativação, as vezes,
-  o prazo, o imposto, a margem que você quer e, em cada custo, a quantidade, o valor de cada, o preço ou o
-  aluguel do aparelho e em quantas vezes ele é comprado. O resto se refaz sozinho: **os custos** (quando
-  sai e quando entra), **os números** (o custo fixo e o variável do mês, a sobra, a margem, o sinal, o
-  investimento, o que sai antes, quando se paga, o que fica no contrato), **o preço** (a mensalidade mínima
-  e o desconto máximo) e **o mês a mês** (o faturamento, os custos, o lucro e o acumulado de cada mês, do
-  1º, o da assinatura, ao fim);
+  o prazo, o imposto e, em cada custo, a quantidade, o valor de cada, o preço ou o aluguel do aparelho e
+  em quantas vezes ele é comprado. O resto se refaz sozinho: **os custos** (quando sai e quando entra),
+  **os números** (o custo fixo e o variável do mês, a sobra, a margem, o sinal, o investimento, o que sai
+  antes, quando se paga, o que fica no contrato) e **o mês a mês** (o faturamento, os custos, o lucro e o
+  acumulado de cada mês, do 1º, o da assinatura, ao fim);
 - os custos por faixas (os usuários, os canais e os contatos da Helena) viram uma fórmula com as faixas: a
   quantidade nova dá o custo novo;
 - a planilha sai do que está **salvo** (o que mudou é salvo antes) e imprime deitada, com a largura numa

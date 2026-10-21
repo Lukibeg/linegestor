@@ -1,12 +1,13 @@
 /**
- * O Simulador do Comercial (2.0.2, decisão 0052): as contas, o sinal, a mensalidade mínima, o desconto, as
- * parcelas, os aparelhos (comodato, venda, locação), o cenário de antes com os ramais, a validação e o que mudou.
+ * O Simulador do Comercial (2.0.2, decisão 0052): as contas, o sinal, as parcelas, os aparelhos (comodato,
+ * venda, locação), o cenário de antes de 21/10 (com os ramais e a margem que se queria), a validação e o que
+ * mudou.
  */
 import { describe, expect, it } from 'vitest';
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, ajustesDoSimulador, cenarioNovo, contasDoCenario,
   comPrecoPorProduto, custoPorFaixas, dividirEmParcelas, duplicarCenario, linhaDaTabela, linhasDoModelo, mudancasDaSimulacao, mudancasDosAjustes, normalizarPorProduto,
-  pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOsRamais,
+  pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOQueSaiu,
   sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, margemDasGanhas, textoDoValorUnitario, lerPercentual, textoDoPercentual,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario,
 } from './simulador.js';
@@ -20,7 +21,7 @@ const custo = (c: Partial<CustoDaTabela> & Pick<CustoDaTabela, 'id' | 'nome' | '
 /** O exemplo da página de opções (20/10): R$ 990 por mês, R$ 1.500 de ativação, 24 meses. */
 function exemplo(): CenarioDaSimulacao {
   return {
-    id: 'a', nome: 'Cenário A', mensalidade: 99_000, ativacao: 150_000, parcelas: 1, prazo: 24, imposto: 6, margemAlvo: 30, produtos: ['linepbx'],
+    id: 'a', nome: 'Cenário A', mensalidade: 99_000, ativacao: 150_000, parcelas: 1, prazo: 24, imposto: 6, produtos: ['linepbx'],
     linhas: [
       linha({ id: 'tel', nome: 'Telefone IP', tipo: 'aparelho', qtd: 10, valor: 39_000 }),
       linha({ id: 'head', nome: 'Headset USB', tipo: 'aparelho', qtd: 4, valor: 18_000 }),
@@ -62,21 +63,6 @@ describe('a conta do cenário', () => {
     expect(k.linhas.find((l) => l.id === 'com')).toMatchObject({ custo: 15_000, quando: 'uma-vez' });
   });
 
-  it('a mensalidade mínima pela margem e o desconto máximo sem sair do verde', () => {
-    const k = contasDoCenario(exemplo(), FAIXAS);
-    // 30%: R$ 315 ÷ (1 − 6% − 2% − 30%) = R$ 508,06… → R$ 508,07 (para cima)
-    expect(k.minima).toBe(50_807);
-    // o verde (35%): R$ 315 ÷ 0,57 = R$ 552,63… → R$ 552,64; dá para baixar R$ 437,36
-    expect(k.minimaVerde).toBe(55_264);
-    expect(k.descontoMaximo).toBe(43_736);
-    // com a mínima do verde, o cenário fica no verde (no limite)
-    const noLimite = contasDoCenario({ ...exemplo(), mensalidade: k.minimaVerde! }, FAIXAS);
-    expect(noLimite.sinal).toBe('verde');
-    // nenhuma mensalidade dá 95% de margem com 8% de percentuais
-    expect(contasDoCenario({ ...exemplo(), margemAlvo: 95 }, FAIXAS).minima).toBeNull();
-    // abaixo do verde, não há desconto
-    expect(contasDoCenario({ ...exemplo(), mensalidade: 50_000 }, FAIXAS).descontoMaximo).toBe(0);
-  });
 
   it('o sinal pelas faixas: verde a partir de 35%, vermelho abaixo de 20%', () => {
     expect(sinalDaMargem(0.35, FAIXAS)).toBe('verde');
@@ -279,19 +265,24 @@ describe('a conta do cenário', () => {
     expect(r.success ? '' : r.error.issues[0]!.message).toBe('A compra do aparelho vai em até 24 vezes.');
   });
 
-  it('o cenário de antes, com os ramais: a linha "por ramal" fica com a quantidade dos ramais, e a conta não muda', () => {
-    const antes = { ...exemplo(), ramais: 15, linhas: exemplo().linhas.map((l) => (l.id === 'nuvem' ? { ...l, qtd: 1, porRamal: true } : l.id === 'rec' ? { ...l, porRamal: true } : { ...l, porRamal: false })) };
+  it('o cenário de antes de 21/10, com os ramais e a margem que se queria: a linha "por ramal" fica com a quantidade dos ramais, e a conta não muda', () => {
+    const antes = { ...exemplo(), ramais: 15, margemAlvo: 30, linhas: exemplo().linhas.map((l) => (l.id === 'nuvem' ? { ...l, qtd: 1, porRamal: true } : l.id === 'rec' ? { ...l, porRamal: true } : { ...l, porRamal: false })) };
+    // o servidor lê o guardado assim, sem passar pelo schema
+    const lido = semOQueSaiu(antes) as CenarioDaSimulacao;
+    expect('ramais' in lido || 'margemAlvo' in lido).toBe(false);
+    expect(lido.linhas.find((l) => l.id === 'nuvem')!.qtd).toBe(15);
     const s = SimulacaoGravarSchema.parse({ nome: 'Antes', negociacaoId: null, principal: 'a', cenarios: [antes] });
     const c = s.cenarios[0]!;
     expect('ramais' in c).toBe(false);
+    expect('margemAlvo' in c).toBe(false);
     expect(c.linhas.some((l) => 'porRamal' in l)).toBe(false);
     expect(c.linhas.find((l) => l.id === 'nuvem')!.qtd).toBe(15);
     expect(c.linhas.find((l) => l.id === 'tel')!.qtd).toBe(10);
     expect(c.linhas.find((l) => l.id === 'rec')!.qtd).toBe(1); // o percentual não tem quantidade
     expect(contasDoCenario(c, FAIXAS).linhas.find((l) => l.id === 'nuvem')).toMatchObject({ qtd: 15, custo: 13_500 });
     // o que não é cenário passa como está
-    expect(semOsRamais(null)).toBeNull();
-    expect(semOsRamais({ id: 'x', ramais: 3 })).toEqual({ id: 'x' });
+    expect(semOQueSaiu(null)).toBeNull();
+    expect(semOQueSaiu({ id: 'x', ramais: 3, margemAlvo: 30 })).toEqual({ id: 'x' });
   });
 
   it('o resumo do cenário (a lista e a negociação)', () => {
@@ -313,9 +304,9 @@ describe('montar o cenário', () => {
     modelos: [{ id: 'pbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [{ custoId: 'yealink', qtd: 10 }, { custoId: 'nuvem', qtd: 10 }, { custoId: 'rec', qtd: 1 }] }],
   };
 
-  it('o cenário novo traz o imposto, o prazo e o verde dos Ajustes; do modelo, as linhas da tabela', () => {
+  it('o cenário novo traz o imposto e o prazo dos Ajustes; do modelo, as linhas da tabela', () => {
     const c = cenarioNovo(ajustes, { modelo: ajustes.modelos[0] });
-    expect(c).toMatchObject({ nome: 'Cenário A', imposto: 8, prazo: 36, margemAlvo: 35, parcelas: 1, mensalidade: 0, produtos: ['linepbx'] });
+    expect(c).toMatchObject({ nome: 'Cenário A', imposto: 8, prazo: 36, parcelas: 1, mensalidade: 0, produtos: ['linepbx'] });
     // de vários modelos (a simulação a partir da negociação): as linhas de todos, e os produtos
     const dois = cenarioNovo({ ...ajustes, custos: [...ajustes.custos, ...CUSTOS_DA_HELENA] }, { modelos: [ajustes.modelos[0]!, MODELO_DA_HELENA] });
     expect(dois.produtos).toEqual(['linepbx', 'linechat']);

@@ -91,11 +91,15 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   os **Ajustes do Simulador**, de quem cuida dos painéis (`tickets.manage`, como os do Comercial). Sem
   permissão nova.
 - **As ideias marcadas "agora":**
-  - **o preço mínimo pela margem**: a margem que se quer (vem o verde dos Ajustes; muda na simulação) e a
-    mensalidade mínima para ela;
+  - **o preço mínimo pela margem** e **o desconto máximo** sem sair do verde — entraram e **saíram**: o
+    quadro **O preço** da simulação tinha a margem que se quer (vinha o verde dos Ajustes), a mensalidade
+    mínima para ela e quanto dava para baixar a mensalidade sem sair do verde. O Luan, num comentário na
+    prévia: *"isso não precisa ter"*; avisado de que desfazia duas ideias que ele tinha marcado "agora",
+    respondeu *"pode tirar"*. Saíram o quadro e a margem que se quer do cenário e, no Excel, a célula
+    amarela dela e a parte "O preço". A margem e o sinal ficam nos números, com as faixas do sinal escritas
+    embaixo da margem. As simulações feitas antes abrem iguais (a margem que se queria é deixada de lado);
   - **o sinal da margem**: verde, amarelo ou vermelho, pelas faixas dos Ajustes (de fábrica, verde a
     partir de 35%, vermelho abaixo de 20%); a lista, a simulação e a negociação mostram;
-  - **o desconto máximo** sem sair do verde;
   - **a linha do tempo do contrato**: o acumulado mês a mês, do vermelho dos aparelhos ao mês em que vira
     lucro;
   - **os cenários lado a lado**: até 3 cenários por simulação (o novo é uma cópia do aberto, para mudar só
@@ -159,11 +163,10 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   que podem entrar como um custo digitado), a aprovação abaixo da margem e a IA.
 - **A planilha do Excel.** Uma folha por cenário e, com dois cenários ou mais, a **Lado a lado** (os
   números de cada um, puxados da folha dele). Na folha do cenário: o que o cliente paga, nas **células
-  amarelas** (a mensalidade, a ativação, as vezes, o prazo, o imposto, a margem que se quer, e
-  em cada custo a quantidade, o valor de cada, o preço ou aluguel do aparelho e em quantas vezes ele é
-  comprado); os custos linha a linha
+  amarelas** (a mensalidade, a ativação, as vezes, o prazo, o imposto e, em cada custo, a quantidade, o
+  valor de cada, o preço ou aluguel do aparelho e em quantas vezes ele é comprado); os custos linha a linha
   (quando sai, quando entra, e a observação: as faixas, o que falta preencher); **os números** (com o custo
-  fixo e o variável do mês e o investimento), **o preço** e **o mês a mês** (o faturamento, os custos, o
+  fixo e o variável do mês e o investimento) e **o mês a mês** (o faturamento, os custos, o
   lucro e o acumulado de cada mês, do 1º — o da assinatura — até 120 meses: mudar o prazo na planilha também
   funciona). Cada número
   é uma fórmula que faz a conta do `contasDoCenario` — o preço por faixas vira uma fórmula com as faixas, a
@@ -175,7 +178,7 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   **Conferida no LibreOffice:** quatro planilhas de teste (os aparelhos em comodato, venda e locação, a
   compra parcelada, a instalação, a nuvem de 40 ramais, as comissões, um custo sem valor, a ativação em 3x,
   as faixas da Helena, "depois do prazo", "não se paga", "desde o 1º mês", "em 1 mês" e "já na ativação", e
-  a "Lado a lado" com a diferença), 5.355 fórmulas refeitas: nenhum erro e nenhuma diferença da tela —
+  a "Lado a lado" com a diferença), 5.322 fórmulas refeitas: nenhum erro e nenhuma diferença da tela —
   também depois de mudar as células amarelas (a mensalidade, o prazo, as vezes, as quantidades, também as
   por faixa, e em quantas vezes o aparelho é comprado).
 - **"Se paga desde o 1º mês".** Quando nada sai antes e não há ativação (só custos por mês), a venda se
@@ -226,7 +229,8 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   navegador pode não deixar baixar a planilha (o aviso diz); no Gestor, ela baixa.
 
 **Consequências.** O grupo Comercial do menu tem três itens. O vendedor responde na hora *"dá para fazer
-por R$ 1.100?"* (o sinal e o desconto máximo), leva a conta para a negociação com um clique e a gestão vê,
+por R$ 1.100?"* (escreve a mensalidade e vê a margem e o sinal), leva a conta para a negociação com um
+clique e a gestão vê,
 na negociação e no relatório, se a venda se paga e quanto sobra de cada vendedor e de cada produto. A tabela de
 custos e as faixas da Helena precisam de atualização quando os fornecedores reajustam; as simulações feitas
 ficam com os valores de quando foram feitas.

@@ -2,9 +2,10 @@
  * A simulação numa planilha do Excel, com as fórmulas (Patch 2.0.2, o Simulador do Comercial, a ideia "excel"
  * que o Luan marcou "agora"): uma folha por cenário — o que o cliente paga (as células amarelas, que a pessoa
  * muda), os custos linha a linha, os números (a sobra, a margem, o sinal, o que sai antes, quando se paga, o
- * que fica no contrato), o preço (a mensalidade mínima e o desconto máximo) e o mês a mês (o faturamento, os
- * custos, o lucro e o acumulado de cada mês; o 1º é o da assinatura) — e, com dois cenários ou mais, a folha
- * "Lado a lado", que puxa os números de cada um e a diferença de cada cenário para o principal.
+ * que fica no contrato) e o mês a mês (o faturamento, os custos, o lucro e o acumulado de cada mês; o 1º é o
+ * da assinatura) — e, com dois cenários ou mais, a folha "Lado a lado", que puxa os números de cada um e a
+ * diferença de cada cenário para o principal. A parte "O preço" (a mensalidade mínima pela margem que se
+ * queria e o desconto máximo) saiu com o quadro da tela (o Luan, 21/10: "isso não precisa ter").
  *
  * Cada conta é uma fórmula do Excel que faz o mesmo que o `contasDoCenario` (a mesma regra da tela e do
  * servidor): mudar a mensalidade na planilha refaz a sobra, a margem, o sinal e o mês a mês. A fórmula vai
@@ -58,7 +59,6 @@ const L_ATIVACAO = 8;
 const L_VEZES = 9;
 const L_PRAZO = 10;
 const L_IMPOSTO = 11;
-const L_ALVO = 12;
 const L_CABECALHO_DOS_CUSTOS = 16;
 const L_PRIMEIRO_CUSTO = 17;
 
@@ -146,7 +146,6 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   g.item(L_VEZES, 'A ativação em (vezes)', { v: c.parcelas, s: 'inteiroEntrada' }, 'à vista = 1; a primeira parcela entra no 1º mês, o da assinatura');
   g.item(L_PRAZO, 'O prazo do contrato (meses)', { v: c.prazo, s: 'inteiroEntrada' }, `até ${MAX_PRAZO} meses`);
   g.item(L_IMPOSTO, 'Imposto', { v: c.imposto / 100, s: 'pctEntrada' }, 'sobre tudo o que o cliente paga: a mensalidade, a ativação e os aparelhos');
-  g.item(L_ALVO, 'A margem que você quer', { v: c.margemAlvo / 100, s: 'pctEntrada' }, 'para a mensalidade mínima, em O PREÇO');
 
   // os custos, linha a linha
   g.por(15, 0, { v: 'OS CUSTOS', s: 'secao' });
@@ -169,18 +168,14 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
     margem: numeros + 7, sinal: numeros + 8, umaVez: numeros + 9, comissaoDaAtivacao: numeros + 10, investimento: numeros + 11, vezes: numeros + 12,
     saiAntes: numeros + 13, sePaga: numeros + 14, contrato: numeros + 15,
   };
-  const preco = numeros + 17;
-  const P = { fixos: preco + 1, comissaoDaMensalidade: preco + 2, minima: preco + 3, minimaVerde: preco + 4, desconto: preco + 5 };
-  const tempo = preco + 7;
+  const tempo = numeros + 17;
   // o mês a mês: do 1º mês (o da assinatura) ao prazo máximo (as linhas depois do prazo ficam vazias)
   const T0 = tempo + 2;
   const TN = T0 + MAX_PRAZO - 1;
 
   const refsMensais: string[] = [];
   const linhasDosAparelhos: number[] = [];
-  const refsPctMensalidade: string[] = [];
   const refsPctAtivacao: string[] = [];
-  let pctMensalidade = 0;
   let pctAtivacao = 0;
   if (!c.linhas.length) g.por(L_PRIMEIRO_CUSTO, 0, { v: 'Nenhum custo neste cenário.', s: 'nota' });
   for (const [r, nome] of nomesDosGrupos) g.por(r, 0, { v: nome, s: 'forte' });
@@ -215,8 +210,6 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
       refsMensais.push(`${SAI_POR_MES}${r}`);
     } else if (l.tipo === 'pct_mensalidade') {
       g.por(r, COL.saiPorMes, { f: `${VALOR}${r}*$B$${L.mensal}`, v: reais(conta.custo), s: 'reais' });
-      refsPctMensalidade.push(`${VALOR}${r}`);
-      pctMensalidade += (l.valor ?? 0) / 100;
       notas.push('sobre o que o cliente paga por mês');
     } else {
       refsPctAtivacao.push(`${VALOR}${r}`);
@@ -271,17 +264,6 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   g.item(L.contrato,
     { f: `"No contrato ("&B${L_PRAZO}&IF(B${L_PRAZO}=1," mês)"," meses)")`, v: `No contrato (${c.prazo} ${c.prazo === 1 ? 'mês' : 'meses'})`, s: 'forte' },
     { f: fimDoPrazo, v: reais(k.resultado), s: 'reaisForte' }, 'o que fica no fim do prazo');
-
-  // o preço
-  g.por(preco, 0, { v: 'O PREÇO', s: 'secao' });
-  g.item(P.fixos, 'Os custos fixos do mês', refsMensais.length ? { f: refsMensais.join('+'), v: reais(k.custoMensalFixo), s: 'reais' } : { v: 0, s: 'reais' }, 'sem o imposto e a comissão');
-  g.item(P.comissaoDaMensalidade, 'A comissão da mensalidade', refsPctMensalidade.length ? { f: refsPctMensalidade.join('+'), v: pctMensalidade, s: 'pct' } : { v: 0, s: 'pct' });
-  const minima = (alvo: string) => `IF(1-B${L_IMPOSTO}-B${P.comissaoDaMensalidade}-${alvo}<=0,"nenhuma dá",MAX(0,ROUNDUP(B${P.fixos}/(1-B${L_IMPOSTO}-B${P.comissaoDaMensalidade}-${alvo})-${ENTRA_POR_MES}${total}-0.00000001,2)))`;
-  g.item(P.minima, { v: 'A mensalidade mínima para a margem que você quer', s: 'forte' }, { f: minima(`B${L_ALVO}`), v: k.minima == null ? 'nenhuma dá' : reais(k.minima), s: 'reaisForte' });
-  g.item(P.minimaVerde, `A mensalidade mínima para o verde (${n(verde).replace('.', ',')}%)`, { f: minima(n(verde / 100)), v: k.minimaVerde == null ? 'nenhuma dá' : reais(k.minimaVerde), s: 'reais' });
-  g.item(P.desconto, 'Desconto máximo sem sair do verde', {
-    f: `IF(ISNUMBER(B${P.minimaVerde}),MAX(0,B${L_MENSALIDADE}-B${P.minimaVerde}),"—")`, v: k.descontoMaximo == null ? '—' : reais(k.descontoMaximo), s: 'reais',
-  }, 'a resposta para "dá para fazer mais barato?"');
 
   // o mês a mês: o 1º mês é o da assinatura (o Luan: "o primeiro mês de pagamento vai ser o primeiro mês de
   // faturamento também"); as linhas depois do prazo ficam vazias (até o prazo máximo)
