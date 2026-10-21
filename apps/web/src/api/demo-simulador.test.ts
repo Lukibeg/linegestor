@@ -5,7 +5,7 @@
  * não veem o Comercial.
  */
 import { describe, expect, it } from 'vitest';
-import { contasDoCenario, duplicarCenario, lerZipSemCompressao, linhaDaTabela, textoDoSePagaEm, type CenarioDaSimulacao } from '@gestor/shared';
+import { contasDoCenario, duplicarCenario, lerZipSemCompressao, linhaDaTabela, quadroDoLineChat, textoDoSePagaEm, type CenarioDaSimulacao } from '@gestor/shared';
 import { demoApi } from './demo.js';
 import { ApiError } from './types.js';
 import { AJUSTES_DO_SIMULADOR_DEMO } from './demo-simulador.js';
@@ -72,6 +72,29 @@ describe('os exemplos e quem vê', () => {
     expect(contas[1]!.vendaDeAparelhos).toBe(40 * 45_000);
     expect(contas[1]!.parcelas).toHaveLength(3);
     expect(textoDoSePagaEm(contas[0]!.sePagaEm)).toMatch(/^em \d+ meses$/);
+  });
+
+  it('o LineChat simples (2.0.3): o quadro das quatro quantidades e o total; os contatos de antes aparecem quando custam', async () => {
+    await entrar('camila');
+    const lista = await api.listar();
+    const quadro = async (inicio: string) => {
+      const s = await api.ler(lista.find((x) => x.nome.startsWith(inicio))!.id);
+      const c = s.cenarios[0]!;
+      return quadroDoLineChat(c, contasDoCenario(c, AJUSTES_DO_SIMULADOR_DEMO), AJUSTES_DO_SIMULADOR_DEMO)!;
+    };
+    // a Clínica Vida: 5 usuários, 2 canais oficiais e 1 não oficial = R$ 289,50 (com a licença)
+    const vida = await quadro('Clínica Vida');
+    expect(vida.campos.map((x) => [x.rotulo, x.qtd])).toEqual([['Usuários', 5], ['Canais oficiais', 2], ['Canais não oficiais', 1], ['Agentes de IA', 0]]);
+    expect(vida.total).toBe(28_950);
+    expect(vida.outros).toEqual([]);
+    // a Academia (de antes de 21/10): os 12.000 contatos custam R$ 315,00 e aparecem no quadro
+    const academia = await quadro('Academia');
+    expect(academia.outros.map((x) => [x.qtd, x.custo])).toEqual([[12_000, 31_500]]);
+    // o Hotel: o quadro só com o LineChat (o PABX fica na lista)
+    expect((await quadro('Hotel')).linhas.length).toBe(6);
+    // a Padaria Estrela, sem o LineChat: sem quadro
+    const estrela = await api.ler(lista.find((x) => x.nome.startsWith('Padaria'))!.id);
+    expect(quadroDoLineChat(estrela.cenarios[0]!, contasDoCenario(estrela.cenarios[0]!, AJUSTES_DO_SIMULADOR_DEMO))).toBeNull();
   });
 
   it('a negociação ligada aparece na ficha dela; quem não tem o Comercial não vê nada', async () => {

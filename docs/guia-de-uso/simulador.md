@@ -51,6 +51,14 @@ custo**:
 
 Com dois produtos ou mais, cada linha diz de qual produto veio (a instalação do LinePBX e a do LineChat).
 
+**O LineChat** (2.0.3): com o produto **LineChat** no cenário (em Produtos, ou pelo modelo), os Custos mensais
+abrem com o quadro do LineChat. É só pôr as quantidades — **Usuários**, **Canais oficiais** (WhatsApp oficial
+ou Instagram), **Canais não oficiais** (a conexão Z-API) e **Agentes de IA** —, e o quadro diz o custo de cada
+uma e o **total do mês**, como na planilha da Helena. A licença base entra sozinha (com 3 usuários e 1 canal
+oficial inclusos). As faixas de preço valem por trás, sem aparecer (mudam nos Ajustes). Tirar o LineChat dos
+produtos tira o quadro; pôr de novo traz o modelo do LineChat. Na simulação de antes de 21/10, os contatos
+ativos acima de 5.000 (e a transcrição de áudio) aparecem no quadro quando custam algo.
+
 Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o valor de cada um e o total:
 
 | Como entra | Para quê | A conta |
@@ -74,9 +82,8 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
   "Se paga" e o mês a mês; a sobra por mês e a margem não mudam.
 - **Os aparelhos vêm sem valor** da tabela (o preço muda de uma compra para outra): preencha o custo de
   cada um. Enquanto falta um valor, o campo fica marcado e os números avisam.
-- **Por faixas**: os custos do LineChat da Helena (os usuários, os canais, os contatos) têm o preço que
-  muda pela quantidade. Escreva a quantidade total (5 usuários) e o total sai sozinho; embaixo da linha
-  aparecem as faixas.
+- **Por faixas**: um custo pode ter o preço que muda pela quantidade (as faixas, dos Ajustes). Escreva a
+  quantidade total e o total sai sozinho; embaixo da linha aparecem as faixas.
 - A linha guarda o valor de quando entrou: mudar a tabela depois não muda a simulação feita.
 
 ## Os números
@@ -107,7 +114,8 @@ do mês.
 - Em cima, os totais do contrato: o **faturamento**, os **custos**, o **lucro** e quando a venda **se paga**.
 - No gráfico, cada mês é uma coluna: o faturamento (azul) para cima, os custos (laranja) para baixo e um
   ponto no lucro do mês. Embaixo, a linha do **acumulado**, com o pior momento e o mês em que a venda se
-  paga. As colunas do 1º mês, quando são bem maiores que as outras, aparecem cortadas, com o valor escrito.
+  paga. Os eixos vão em números redondos. As colunas do 1º mês, quando são bem maiores que as outras,
+  aparecem cortadas (um vão perto da ponta), com o valor escrito acima (ou abaixo) do gráfico.
 - **Passe o mouse num mês** (ou toque, no celular) para ver o detalhe: cada parte do faturamento (a
   mensalidade, a ativação, a parcela) e dos custos (os aparelhos e as parcelas da compra, a instalação, os
   custos mensais, o imposto, as comissões), o lucro e o acumulado.
@@ -184,7 +192,9 @@ Em **Comercial › Simulador › Ajustes**:
 - **Salvar os Ajustes** não muda as simulações já feitas.
 
 **A tabela da Helena** (o LineChat em white label, revisão de 03/02/2026) já vem na tabela, com o modelo
-**LineChat (Helena)**: a licença base (R$ 149,90, com 3 usuários e 1 canal), os usuários, os canais e os
-contatos ativos por faixas, a conexão Z-API (R$ 69,90), a transcrição de áudio (R$ 3,99 por usuário) e os
-agentes de IA (R$ 50). Confere com a planilha: a licença, 5 usuários e 5 conexões Z-API dão R$ 539,20 por
-mês. Quando a Helena reajustar, mude os valores e as faixas nos Ajustes.
+**LineChat (Helena)**: a licença base (R$ 149,90, com 3 usuários e 1 canal), os usuários e os canais oficiais
+por faixas, os canais não oficiais (a conexão Z-API, R$ 69,90) e os agentes de IA (R$ 50) — as quatro
+quantidades do quadro do LineChat. Os contatos ativos (por faixas, 5.000 inclusos) e a transcrição de áudio
+(R$ 3,99 por usuário) ficam na tabela, fora do modelo. Confere com a planilha: a licença, 5 usuários e 5
+canais não oficiais dão R$ 539,20 por mês. Quando a Helena reajustar, mude os valores e as faixas nos
+Ajustes.

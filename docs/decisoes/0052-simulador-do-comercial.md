@@ -236,3 +236,29 @@ clique e a gestão vê,
 na negociação e no relatório, se a venda se paga e quanto sobra de cada vendedor e de cada produto. A tabela de
 custos e as faixas da Helena precisam de atualização quando os fornecedores reajustam; as simulações feitas
 ficam com os valores de quando foram feitas.
+
+## Revisto no 2.0.3 (21/10/2026): o LineChat só com as quantidades e o gráfico do mês a mês
+
+No documento de 21/10 (o "pacote de melhorias"), com o 2.0.2 no ar. Avisado antes (revê a tabela da Helena
+por faixas na simulação).
+
+- **O LineChat, só as quantidades** (*"isso aqui que vc fez ficou complexo demais pelo caso do line chat, eu
+  só quero colocar quantidade de canais oficiais usuários, canais n oficiais, agentes de ia, e vc já me dar
+  o total como é na planilha deles, mais simples quando eu colocar que vai ter linechat ele já aparece lá nos
+  custos mensais para eu preencher essas quantidades"*): com o produto LineChat no cenário, os Custos
+  mensais mostram o **quadro do LineChat** — usuários, canais oficiais, canais não oficiais (a conexão Z-API)
+  e agentes de IA, o custo de cada um e o total do mês, com a licença base sozinha (*"inclui a licença base:
+  3 usuários e 1 canal oficial"*). As faixas valem por trás (nos Ajustes) e não aparecem na simulação. Por
+  baixo continuam as linhas da tabela da Helena (`LINECHAT_DO_SIMULADOR`, `quadroDoLineChat`): a conta, o
+  Excel e o que está guardado não mudam (conferido: as simulações da prévia dão os mesmos números de antes).
+  Pôr o LineChat nos produtos põe o modelo dele; tirar tira só o quadro. Os contatos ativos e a transcrição
+  saíram do modelo e ficam na tabela; numa simulação de antes, aparecem no quadro quando custam algo. Na
+  tabela de fábrica, os nomes viraram "Canais oficiais…" e "Canais não oficiais… conexão Z-API".
+- **O gráfico do mês a mês** (*"esse gráfico aqui ta meio bugado, dê uma melhorada"*): a escala em números
+  redondos (`escalaRedonda`: passo de 1, 2 ou 5 × 10ⁿ), nenhuma coluna encostando na borda; o valor da coluna
+  que passa da escala numa faixa própria, acima ou abaixo, desenhado por último (antes, a coluna do mês
+  seguinte cobria o texto); a marca de corte virou um vão reto na largura da coluna (eram as linhas brancas
+  atravessando a primeira coluna); o acumulado justo aos dados, com marcas redondas por dentro.
+- **Em aberto**: o "Uma vez (R$)" do Investimento (*"qual a diferença desses, acho q n tem necessidade desse
+  'uma vez'"*) — respondido (é o custo de investimento que não é aparelho: instalação, frete, configuração);
+  sai quando ele disser "pode tirar".

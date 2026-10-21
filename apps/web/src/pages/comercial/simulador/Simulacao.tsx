@@ -15,8 +15,8 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'reac
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, ArrowLeft, Check, Copy, FileSpreadsheet, Link2, Send, Star, Trash2, X } from 'lucide-react';
 import {
-  MAX_CENARIOS, MAX_PARCELAS, PRAZOS_COMUNS, SimulacaoGravarSchema, TIPO_DO_XLSX, cenarioNovo, cenarioPrincipal, comPrecoPorProduto, contasDoCenario, duplicarCenario, idLocal,
-  mesmoValorPorProduto, normalizarPorProduto, pagamentoPorProduto, percentual, proximoNomeDeCenario, textoDoSePagaEm,
+  LINECHAT_DO_SIMULADOR, MAX_CENARIOS, MAX_PARCELAS, PRAZOS_COMUNS, SimulacaoGravarSchema, TIPO_DO_XLSX, cenarioNovo, cenarioPrincipal, comPrecoPorProduto, contasDoCenario, duplicarCenario, idLocal,
+  linhasParaOLineChat, linhasSemOLineChat, mesmoValorPorProduto, normalizarPorProduto, pagamentoPorProduto, percentual, proximoNomeDeCenario, textoDoSePagaEm,
   type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario, type FichaChamado, type ModeloDeSimulacao, type NegociacaoDaSimulacao, type ProdutoDoSimulador,
   type Simulacao, type SimulacaoGravar,
 } from '@gestor/shared';
@@ -308,7 +308,7 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar }
                 </div>
               )}
             </div>
-            <ProdutosDoCenario c={c} produtos={produtos} mudar={mudarCenario} podeEditar={podeEditar} />
+            <ProdutosDoCenario c={c} produtos={produtos} ajustes={ajustes} mudar={mudarCenario} podeEditar={podeEditar} />
             {c.porProduto && <PrecoPorProduto c={c} k={k} produtos={produtos} mudar={mudarCenario} podeEditar={podeEditar} />}
             <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
               {!c.porProduto && (
@@ -502,13 +502,22 @@ function Negociacao({ r, mudar, podeEditar }: { r: Rascunho; mudar: (n: Negociac
  * Os produtos do catálogo que a venda leva (o "Levar para a negociação" põe estes nela). Pôr ou tirar um produto
  * refaz o preço por produto (o que entra começa com zero; o que sai leva o preço dele). Com dois produtos ou
  * mais, o preço é um só ou por produto (a proposta de cada um, numa negociação só).
+ *
+ * O LineChat (2.0.3; o Luan: "quando eu colocar que vai ter linechat ele já aparece lá nos custos mensais para eu
+ * preencher essas quantidades"): pôr o LineChat põe as linhas do modelo dele (o quadro do LineChat nos Custos
+ * mensais); tirar tira as linhas do quadro.
  */
-function ProdutosDoCenario({ c, produtos, mudar, podeEditar }: { c: CenarioDaSimulacao; produtos: ProdutoDoSimulador[]; mudar: (m: Partial<CenarioDaSimulacao>) => void; podeEditar: boolean }) {
+function ProdutosDoCenario({ c, produtos, ajustes, mudar, podeEditar }: {
+  c: CenarioDaSimulacao; produtos: ProdutoDoSimulador[]; ajustes: AjustesDoSimulador; mudar: (m: Partial<CenarioDaSimulacao>) => void; podeEditar: boolean;
+}) {
   const nome = (codigo: string) => produtos.find((p) => p.codigo === codigo)?.nome ?? codigo;
   const fora = produtos.filter((p) => !c.produtos.includes(p.codigo));
   const comProdutos = (lista: string[]) => {
     const n = normalizarPorProduto({ ...c, produtos: lista });
-    return { produtos: n.produtos, porProduto: n.porProduto, mensalidade: n.mensalidade, ativacao: n.ativacao };
+    const lc = LINECHAT_DO_SIMULADOR.produto;
+    const linhas = lista.includes(lc) && !c.produtos.includes(lc) ? [...c.linhas, ...linhasParaOLineChat(ajustes, c)]
+      : !lista.includes(lc) && c.produtos.includes(lc) ? linhasSemOLineChat(c) : c.linhas;
+    return { produtos: n.produtos, porProduto: n.porProduto, mensalidade: n.mensalidade, ativacao: n.ativacao, linhas };
   };
   return (
     <div className="mb-3 flex flex-wrap items-center gap-1.5 text-[12.5px]" id="simulador-produtos">
