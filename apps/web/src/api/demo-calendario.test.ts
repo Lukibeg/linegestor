@@ -26,13 +26,14 @@ const peloTitulo = async (t: string) => (await todos()).find((e) => e.titulo ===
 const gravavel = (e: EventoDoCalendario) => ({
   titulo: e.titulo, tipoId: e.tipoId, paineis: e.paineis, pessoas: e.pessoas, clienteId: e.clienteId, chamadoId: e.chamadoId, inicio: e.inicio, fim: e.fim,
   diaInteiro: e.diaInteiro, horaInicio: e.horaInicio, horaFim: e.horaFim, local: e.local, observacao: e.observacao, situacao: e.situacao,
+  lembretes: e.lembretes, lembrarQuem: e.lembrarQuem,
 });
 
 describe('os exemplos e quem vê o quê', () => {
   it('os exemplos nascem pelas regras do servidor (nenhum recusado)', async () => {
     const aviso = vi.spyOn(console, 'warn');
     await entrar('admin');
-    expect((await todos()).length).toBe(18);
+    expect((await todos()).length).toBe(19);
     expect(aviso.mock.calls.filter((c) => String(c[0]).includes('calendário'))).toEqual([]);
     aviso.mockRestore();
   });
@@ -54,7 +55,7 @@ describe('os exemplos e quem vê o quê', () => {
     expect(await titulos()).toContain('Visita comercial — Construtora Horizonte');
     expect(await titulos()).not.toContain('Fechamento do mês com o financeiro');
     await entrar('camila');
-    expect((await todos()).length).toBe(18);
+    expect((await todos()).length).toBe(19);
     // o Leitor vê, não mexe
     await entrar('leitor');
     const ol = await api.opcoes();
@@ -128,5 +129,62 @@ describe('mexer no calendário', () => {
     expect(r.tipos.find((t) => t.id === 'visita')?.ativo).toBe(false);
     expect((await erroDe(api.criar({ titulo: 'Visita', tipoId: 'visita', paineis: ['painel-suporte'], inicio: hoje, fim: hoje }))).message).toBe('O tipo Visita foi desativado: escolha outro.');
     await api.salvarTipos(tipos);
+  });
+});
+
+describe('os lembretes na prévia (2.0.2), como no servidor', () => {
+  const lembretesNoSininho = async () => (await demoApi.atendimento.avisos()).itens.filter((a) => a.tipo === 'lembrete');
+
+  it('os exemplos já trazem o lembrete que saiu (o Luan, do retorno da Clínica Aurora); os tipos, os lembretes deles', async () => {
+    await entrar('admin');
+    const ev = await peloTitulo('Retorno — Clínica Aurora (o ramal da recepção)');
+    expect([ev.lembretes, ev.lembrarQuem]).toEqual([[120, 15], 'pessoas']);
+    const [l] = (await lembretesNoSininho()).filter((a) => a.evento?.id === ev.id);
+    expect(l).toMatchObject({ lido: false, chamado: null, evento: { id: ev.id, inicio: ev.inicio }, texto: expect.stringMatching(/^Lembrete: Retorno — Clínica Aurora \(o ramal da recepção\), (hoje|amanhã), /) });
+    expect((await api.opcoes()).tipos.find((t) => t.id === 'visita')!.lembretes).toEqual(TIPOS_DE_EVENTO_PADRAO.find((t) => t.id === 'visita')!.lembretes);
+    // a visita dos exemplos veio com os lembretes do tipo
+    expect((await peloTitulo('Visita técnica — Hospital Vale Verde')).lembretes).toEqual([1440, 60]);
+  });
+
+  it('o relógio da prévia manda na hora, uma vez, para as pessoas do evento', async () => {
+    const luan = await entrar('admin');
+    const dia = somarDias(hoje, 10);
+    const e = await api.criar({ titulo: 'Reunião de teste dos lembretes', tipoId: 'reuniao', paineis: ['painel-suporte'], pessoas: [luan.id], inicio: dia, fim: dia, diaInteiro: false, horaInicio: '09:00', horaFim: '10:00', lembretes: [1440] });
+    expect(e.lembretes).toEqual([1440]);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      // um dia antes, às 09:01 (12:01 em UTC)
+      vi.setSystemTime(new Date(`${somarDias(dia, -1)}T12:01:00Z`));
+      const doEvento = async () => (await lembretesNoSininho()).filter((a) => a.evento?.id === e.id);
+      expect((await doEvento()).map((a) => a.texto)).toEqual([`Lembrete: Reunião de teste dos lembretes, amanhã, ${dia.slice(8, 10)}/${dia.slice(5, 7)}, às 09:00`]);
+      vi.setSystemTime(new Date(`${somarDias(dia, -1)}T12:05:00Z`));
+      expect(await doEvento()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+
+describe('o aviso de que o evento entrou na prévia (2.0.2), como no servidor', () => {
+  const doAviso = async (id: string) => (await demoApi.atendimento.avisos()).itens.filter((a) => a.tipo === 'evento_novo' && a.evento?.id === id);
+
+  it('as pessoas do evento recebem na hora; quem pôs, não; sem pedir, ninguém', async () => {
+    const luan = await entrar('admin');
+    const marina = (await api.opcoes()).pessoas.find((p) => p.nome.startsWith('Marina'))!;
+    const dia = somarDias(hoje, 12);
+    const com = await api.criar({ titulo: 'Visita com aviso', tipoId: 'visita', paineis: ['painel-suporte'], pessoas: [luan.id, marina.id], inicio: dia, fim: dia, lembretes: [], avisar: 'pessoas' });
+    const sem = await api.criar({ titulo: 'Visita sem aviso', tipoId: 'visita', paineis: ['painel-suporte'], pessoas: [luan.id, marina.id], inicio: dia, fim: dia, lembretes: [] });
+    expect(await doAviso(com.id)).toEqual([]);
+    await entrar('operador');
+    const [a] = await doAviso(com.id);
+    expect(a).toMatchObject({ lido: false, chamado: null, texto: expect.stringMatching(/^Luan França pôs no calendário: Visita com aviso, /), evento: { id: com.id, inicio: dia } });
+    expect(await doAviso(sem.id)).toEqual([]);
+    // todos que veem: o Desenvolvimento é de todos (o Lúcio recebe, o Luan não)
+    await entrar('admin');
+    const todos = await api.criar({ titulo: 'Reunião do Desenvolvimento', tipoId: 'reuniao', paineis: ['painel-desenvolvimento'], inicio: dia, fim: dia, lembretes: [], avisar: 'paineis' });
+    expect(await doAviso(todos.id)).toEqual([]);
+    await entrar('tecnico');
+    expect(await doAviso(todos.id)).toHaveLength(1);
   });
 });

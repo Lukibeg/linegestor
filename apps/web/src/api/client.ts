@@ -89,6 +89,7 @@ export const realApi: Api = {
     history: (id) => http('GET', `/clients/${id}/history`),
     units: (id) => http('GET', `/clients/${id}/units`),
     contatos: (id) => http('GET', `/clients/${id}/contatos`),
+    cargos: () => http('GET', '/clients/cargos'),
     salvarContato: (id, contatoId, d) => (contatoId ? http('PUT', `/clients/${id}/contatos/${contatoId}`, d) : http('POST', `/clients/${id}/contatos`, d)),
     createUnit: (id, d) => http('POST', `/clients/${id}/units`, d),
     updateUnit: (id, unitId, d) => http('PATCH', `/clients/${id}/units/${unitId}`, d),
@@ -352,6 +353,22 @@ export const realApi: Api = {
     situacao: (id, situacao) => http('POST', `/calendario/eventos/${encodeURIComponent(id)}/situacao`, { situacao }),
     remover: (id) => http('DELETE', `/calendario/eventos/${encodeURIComponent(id)}`),
     salvarTipos: (tipos) => http('PUT', '/calendario/tipos', { tipos }),
+  },
+  simulador: {
+    opcoes: () => http('GET', '/comercial/simulador/opcoes'),
+    listar: () => http('GET', '/comercial/simulador/simulacoes'),
+    ler: (id) => http('GET', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`),
+    daNegociacao: (negociacaoId) => http('GET', `/comercial/simulador/da-negociacao/${encodeURIComponent(negociacaoId)}`),
+    criar: (d) => http('POST', '/comercial/simulador/simulacoes', d),
+    alterar: (id, d) => http('PUT', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`, d),
+    duplicar: (id) => http('POST', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}/duplicar`),
+    remover: (id) => http('DELETE', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`),
+    planilha: async (id) => {
+      const r = await http<Response>('GET', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}/planilha`, undefined, true);
+      const nome = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') ?? '')?.[1] ?? 'simulacao.xlsx';
+      return { bytes: new Uint8Array(await r.arrayBuffer()), nome };
+    },
+    salvarAjustes: (a) => http('PUT', '/comercial/simulador/ajustes', a),
   },
   admin: {
     users: () => http('GET', '/admin/users'),

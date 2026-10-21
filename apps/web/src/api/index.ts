@@ -4,7 +4,8 @@
  */
 import type * as T from './types.js';
 import type {
-  CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoDoCalendario, EventoGravarEntrada, SituacaoDoEvento, TipoDeEvento,
+  AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
+  Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
 } from '@gestor/shared';
 import { API_BASE } from './base.js';
 
@@ -48,6 +49,8 @@ export type Api = {
     removeUnit(id: string, unitId: string): Promise<{ ok: boolean }>;
     /** Os contatos do cliente (2.0): os ativos primeiro, com quantos chamados cada WhatsApp tem */
     contatos(id: string): Promise<ContatoDoCliente[]>;
+    /** Os cargos que o contato pode ter (2.0.2): os ativos do catálogo Cargos dos contatos, em ordem alfabética */
+    cargos(): Promise<string[]>;
     /** Incluir (contatoId nulo) ou editar, desativar e reativar um contato */
     salvarContato(id: string, contatoId: string | null, d: ContatoGravarEntrada): Promise<ContatoDoCliente>;
     /** Login e senha padrão dos aparelhos, por modelo (um por modelo; gravar de novo atualiza) */
@@ -358,7 +361,8 @@ export type Api = {
     /** os modelos aprovados (templates) do número oficial, lidos do LineChat com a chave guardada */
     modelosDoLineChat(): Promise<T.ModelosDoLineChat>;
     /** manda uma mensagem de teste para uma pessoa da equipe (ou um número) */
-    testarAvisos(d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string }): Promise<{ ok: boolean; mensagem: string }>;
+    /** o teste do WhatsApp; com `evento`, o exemplo da mensagem daquele aviso (a `modelo` como está na tela), pelo número da equipe */
+    testarAvisos(d: { de?: 'cliente' | 'equipe'; userId?: string; numero?: string; evento?: EventoAviso; modelo?: string }): Promise<{ ok: boolean; mensagem: string }>;
     agendados(): Promise<T.Agendado[]>;
     salvarAgendado(id: string | null, d: T.AgendadoGravarEntrada): Promise<T.Agendado>;
     removerAgendado(id: string): Promise<{ ok: boolean }>;
@@ -404,6 +408,30 @@ export type Api = {
     remover(id: string): Promise<{ ok: boolean }>;
     /** só quem cuida dos chamados; o tipo com evento não sai: desativa */
     salvarTipos(tipos: TipoDeEvento[]): Promise<{ tipos: TipoDeEvento[] }>;
+  };
+  /**
+   * O Simulador do Comercial (Patch 2.0.2, decisão 0052): a conta de uma venda antes de fechar. Quem tem o
+   * Comercial vê tudo; quem também trabalha nas negociações cria e muda; os Ajustes, quem cuida dos painéis.
+   */
+  simulador: {
+    /** os Ajustes (a tabela de custos, os modelos, o imposto, o sinal, o prazo) e o que a pessoa pode fazer */
+    opcoes(): Promise<SimuladorOpcoes>;
+    /** as simulações, da mexida mais recente para a mais antiga, com o cenário principal resumido */
+    listar(): Promise<SimulacaoNaLista[]>;
+    ler(id: string): Promise<Simulacao>;
+    /** as simulações ligadas a uma negociação (a ficha dela) */
+    daNegociacao(negociacaoId: string): Promise<SimulacaoDaNegociacao[]>;
+    criar(d: SimulacaoGravarEntrada): Promise<Simulacao>;
+    /** a negociação que a pessoa não vê fica como estava (ela manda o mesmo id que leu) */
+    alterar(id: string, d: SimulacaoGravarEntrada): Promise<Simulacao>;
+    /** a cópia ("… (cópia)"), com os mesmos cenários */
+    duplicar(id: string): Promise<Simulacao>;
+    /** vai para a lixeira (volta pela Administração › Lixeira) */
+    remover(id: string): Promise<{ ok: boolean }>;
+    /** a planilha do Excel, com as fórmulas (o que está salvo); fica na auditoria */
+    planilha(id: string): Promise<{ bytes: Uint8Array; nome: string }>;
+    /** só quem cuida dos painéis; as simulações já feitas não mudam */
+    salvarAjustes(a: AjustesDoSimuladorEntrada): Promise<AjustesDoSimulador>;
   };
   admin: {
     users(): Promise<T.User[]>;

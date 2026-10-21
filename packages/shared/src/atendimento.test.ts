@@ -17,7 +17,21 @@ import {
   valorDaVariavel, valorSugeridoDaVariavel,
   EtapaGravarSchema, NIVEIS, PAINEIS_INICIAIS, rotuloDoNivel,
   citacaoDigitando, citadosNoTexto, emLista, pedacosComCitacoes,
+  CARGOS_DE_FABRICA, cargoDaLista,
 } from './atendimento.js';
+
+describe('o cargo do contato vem da lista (2.0.2, decisão 0053)', () => {
+  const ativos = [...CARGOS_DE_FABRICA];
+  it('nenhum, um da lista (escrito como na lista) ou o que o contato já tinha; fora disso, o erro', () => {
+    expect(CARGOS_DE_FABRICA).toHaveLength(12);
+    expect(cargoDaLista(null, ativos)).toEqual({ cargo: null });
+    expect(cargoDaLista('', ativos)).toEqual({ cargo: null });
+    expect(cargoDaLista('Financeiro', ativos)).toEqual({ cargo: 'Financeiro' });
+    expect(cargoDaLista('pós-vendas', ativos)).toEqual({ cargo: 'Pós-vendas' });
+    expect(cargoDaLista('Engenharia', ativos, 'Engenharia')).toEqual({ cargo: 'Engenharia' });
+    expect(cargoDaLista('Obras', ativos, 'Engenharia')).toEqual({ erro: 'O cargo "Obras" não está na lista (Administração › Catálogos › Cargos dos contatos).' });
+  });
+});
 
 const em = (dia: string, hora: string) => instanteLocal(dia, hora);
 const cal: Calendario = AJUSTES_PRAZOS_PADRAO.calendario;

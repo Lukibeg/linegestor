@@ -12,7 +12,7 @@
  */
 import argon2 from 'argon2';
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
-import { calendarEvents, carriers, circuits, clients, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, subscriptionModules, subscriptions, ticketEvents, tickets, users, type Db } from '@gestor/db';
+import { calendarEvents, carriers, circuits, clientContacts, clients, contactRoles, deviceCategories, deviceModels, devices, dids, hostingProviders, knowledgeArticles, newId, portalArticles, productModules, products, projects, releaseNotes, roles, salesSimulations, subscriptionModules, subscriptions, ticketEvents, tickets, users, type Db } from '@gestor/db';
 import { ALL_PERMISSIONS, macFormatado, PERMISSIONS, textoDoPeriodo, type ModuloCatalogo, type ProdutoCriar, type UsuarioCriar } from '@gestor/shared';
 import { BadRequest, NotFound } from '../plugins/errors.js';
 import { derrubarSessoesDaEquipe } from './portal.js';
@@ -124,8 +124,12 @@ export async function deleteRole(db: Db, id: string) {
 
 // ---------- Catálogos ----------
 
-const CATALOGS = { carriers, hostings: hostingProviders, categories: deviceCategories } as const;
+const CATALOGS = { carriers, hostings: hostingProviders, categories: deviceCategories, cargos: contactRoles } as const;
 export type CatalogType = keyof typeof CATALOGS;
+/** O nome de cada catálogo (a tela e a auditoria). Os cargos dos contatos entraram no 2.0.2 (decisão 0053). */
+export const NOME_DO_CATALOGO: Record<CatalogType, string> = {
+  carriers: 'Operadoras', hostings: 'Hospedagens', categories: 'Categorias de aparelho', cargos: 'Cargos dos contatos',
+};
 
 export async function listCatalog(db: Db, type: CatalogType) {
   const t = CATALOGS[type];
@@ -143,13 +147,24 @@ export async function createCatalogItem(db: Db, type: CatalogType, name: string)
   const [row] = await db.insert(t).values({ id: newId(), name }).returning();
   return row!;
 }
-/** Renomear vale para quem já usa o item: operadora, hospedagem e categoria são ligadas por id, então o nome novo aparece em todo lugar. */
+/**
+ * Renomear vale para quem já usa o item: operadora, hospedagem e categoria são ligadas por id, então o nome novo
+ * aparece em todo lugar; o contato guarda o nome do cargo, então renomear um cargo muda o dos contatos que o têm
+ * (`contatos`: quantos). Desativar tira o item das listas; quem já tem continua com ele.
+ */
 export async function updateCatalogItem(db: Db, type: CatalogType, id: string, data: { name?: string; active?: boolean }) {
   const t = CATALOGS[type];
   if (data.name) await nomeDeCatalogoLivre(db, type, data.name, id);
-  const [row] = await db.update(t).set(data).where(eq(t.id, id)).returning();
-  if (!row) throw new NotFound('Item');
-  return row;
+  return db.transaction(async (tx) => {
+    const [antes] = await tx.select().from(t).where(eq(t.id, id)).limit(1);
+    if (!antes) throw new NotFound('Item');
+    const [row] = await tx.update(t).set(data).where(eq(t.id, id)).returning();
+    let contatos = 0;
+    if (type === 'cargos' && data.name && data.name !== antes.name) {
+      contatos = (await tx.update(clientContacts).set({ role: data.name }).where(eq(clientContacts.role, antes.name)).returning({ id: clientContacts.id })).length;
+    }
+    return { row: row!, antes, contatos };
+  });
 }
 
 /** Produtos com seus módulos (o catálogo inteiro, para a Administração e para a ficha do cliente). Os da lixeira ficam de fora. */
@@ -273,7 +288,7 @@ export async function restoreTicket(db: Db, id: string, quem: { id: string }) {
 // ---------- Lixeira ----------
 
 export async function listTrash(db: Db) {
-  const [c, ci, d, dm, dv, pr, rn, pj, pm, ka, pa, tk, ev] = await Promise.all([
+  const [c, ci, d, dm, dv, pr, rn, pj, pm, ka, pa, tk, ev, sm] = await Promise.all([
     db.select({ id: clients.id, label: clients.tradeName, deletedAt: clients.deletedAt }).from(clients).where(isNotNull(clients.deletedAt)),
     db.select({ id: circuits.id, label: circuits.name, deletedAt: circuits.deletedAt }).from(circuits).where(isNotNull(circuits.deletedAt)),
     db.select({ id: dids.id, label: dids.number, deletedAt: dids.deletedAt }).from(dids).where(isNotNull(dids.deletedAt)),
@@ -287,6 +302,8 @@ export async function listTrash(db: Db) {
     db.select({ id: portalArticles.id, numero: portalArticles.number, titulo: portalArticles.title, deletedAt: portalArticles.deletedAt }).from(portalArticles).where(isNotNull(portalArticles.deletedAt)),
     db.select({ id: tickets.id, codigo: tickets.code, titulo: tickets.title, deletedAt: tickets.deletedAt }).from(tickets).where(isNotNull(tickets.deletedAt)),
     db.select({ id: calendarEvents.id, titulo: calendarEvents.title, inicio: calendarEvents.startsOn, fim: calendarEvents.endsOn, deletedAt: calendarEvents.deletedAt }).from(calendarEvents).where(isNotNull(calendarEvents.deletedAt)),
+    // as simulações do Comercial (2.0.2)
+    db.select({ id: salesSimulations.id, label: salesSimulations.name, deletedAt: salesSimulations.deletedAt }).from(salesSimulations).where(isNotNull(salesSimulations.deletedAt)),
   ]);
   return [
     ...c.map((x) => ({ type: 'client', ...x })), ...ci.map((x) => ({ type: 'circuit', ...x })), ...d.map((x) => ({ type: 'did', ...x })),
@@ -300,5 +317,6 @@ export async function listTrash(db: Db) {
     ...pa.map((x) => ({ type: 'portalArticle', id: x.id, label: `Tutorial ${x.numero} · ${x.titulo}`, deletedAt: x.deletedAt })),
     ...tk.map((x) => ({ type: 'ticket', id: x.id, label: `${x.codigo} · ${x.titulo}`, deletedAt: x.deletedAt })),
     ...ev.map((x) => ({ type: 'calendarEvent', id: x.id, label: `${textoDoPeriodo({ inicio: x.inicio, fim: x.fim })} · ${x.titulo}`, deletedAt: x.deletedAt })),
+    ...sm.map((x) => ({ type: 'salesSimulation', id: x.id, label: `Simulação · ${x.label}`, deletedAt: x.deletedAt })),
   ].sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
 }

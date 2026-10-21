@@ -12,6 +12,7 @@ import {
 } from '@gestor/shared';
 import { BadRequest, NotFound } from '../../plugins/errors.js';
 import { carregarContexto, podeVerPainel, type Ator } from './contexto.js';
+import { margensDasNegociacoes } from '../simulador.js';
 
 export async function relatorioDoPainelDeVendas(app: FastifyInstance, ator: Ator, filtro: FiltroDoRelatorioDeVendas): Promise<RelatorioDeVendas> {
   const db = app.db;
@@ -48,7 +49,10 @@ export async function relatorioDoPainelDeVendas(app: FastifyInstance, ator: Ator
       resultado: etapa?.resultado ?? null,
       motivoPerda: t.lostReason ?? null,
       passagens,
+      produtos: t.productIds.map((id) => ctx.produtos.get(id)?.nome ?? '?'),
     };
   });
-  return relatorioDeVendas(painel, negociacoes, filtro);
+  // a margem das ganhas (2.0.2): as simulações ligadas às negociações do painel
+  const { margens, ajustes } = await margensDasNegociacoes(db, linhas.map((t) => t.id));
+  return relatorioDeVendas(painel, negociacoes, filtro, { margens, faixas: ajustes });
 }

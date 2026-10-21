@@ -19,6 +19,7 @@ import {
   AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
   EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, ExperimentarRoboSchema,
   LinkConversaSchema, MapaDoRoboSchema, OrdemDosCamposSchema, PainelGravarSchema, parametrosDoEndereco, SitesIframeSchema, WebhookGravarSchema,
+  EVENTOS_AVISO, MAX_MODELO_DO_AVISO, NOME_EVENTO_AVISO,
 } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as ajustes from '../services/atendimento/ajustes.js';
@@ -36,6 +37,10 @@ const TestarAvisosSchema = z.object({
   /** para o WhatsApp guardado desta pessoa (sem pessoa nem número: o de quem pediu) */
   userId: z.string().min(1).optional(),
   numero: z.string().trim().max(30).optional(),
+  /** o exemplo da mensagem de um aviso (2.0.2), pelo número da equipe */
+  evento: z.enum(EVENTOS_AVISO).optional(),
+  /** a mensagem como está na tela (sem ela, a salva): vai com os valores de exemplo */
+  modelo: z.string().max(MAX_MODELO_DO_AVISO).optional(),
 }).default({});
 
 const routes: FastifyPluginAsyncZod = async (app) => {
@@ -224,7 +229,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     const r = await ajustes.testarAvisos(app, req.body, req.user!);
     await app.audit(req, {
       action: 'settings_atendimento_avisos_test', entityType: 'settings', entityId: 'atendimento-avisos',
-      summary: `Testou o WhatsApp dos chamados (${req.body.de === 'cliente' ? 'número do cliente' : 'número da equipe'} para ${r.para}): ${r.ok ? 'funcionou' : `falhou — ${r.mensagem}`}`,
+      summary: `Testou o WhatsApp dos chamados (${req.body.evento ? `o exemplo do aviso "${NOME_EVENTO_AVISO[req.body.evento].titulo}", pelo número da equipe` : req.body.de === 'cliente' ? 'número do cliente' : 'número da equipe'} para ${r.para}): ${r.ok ? 'funcionou' : `falhou — ${r.mensagem}`}`,
     });
     return { ok: r.ok, mensagem: r.mensagem };
   });

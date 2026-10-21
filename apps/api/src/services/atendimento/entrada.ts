@@ -25,16 +25,19 @@ import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { clients, ticketApiKeys, ticketStages, tickets, type Db } from '@gestor/db';
 import {
-  aplicarMapaDoRobo, apararPedido, campoLigado, ChamadoCriarSchema, EntradaChamadoSchema, IntegracaoAlterarSchema, mapaDeFabrica, MapaDoRoboSchema,
-  NOME_CAMPO, oQueNaoVeio, paraBusca, procurarAssunto, resolverPedidoDoRobo, respostaAoRobo, textoDoValor,
-  type Assunto, type CartaoChamado, type ChamadoAlterar, type DadosParaORobo, type MapaDoRobo, type Painel, type PedidoDoRobo, type PreviaDoRobo,
-  type RespostaAoRobo, type TipoCampo, type UltimoPedidoDoRobo, type ValorDoCampo,
+  aplicarMapaDoRobo, apararPedido, caminhoDoAssunto, campoLigado, ChamadoCriarSchema, DICA_GRAVIDADE, DICA_PRIORIDADE, EntradaChamadoSchema, GRAVIDADES,
+  IntegracaoAlterarSchema, mapaDeFabrica, MapaDoRoboSchema, NOME_CAMPO, NOME_GRAVIDADE, NOME_PRIORIDADE, oQueNaoVeio, paraBusca, PRIORIDADES,
+  procurarAssunto, resolverPedidoDoRobo, respostaAoRobo, textoDoValor,
+  type Assunto, type CartaoChamado, type ChamadoAlterar, type DadosParaORobo, type Gravidade, type MapaDoRobo, type Painel, type PedidoDoRobo,
+  type PreviaDoRobo, type Prioridade, type RespostaAoRobo, type TipoCampo, type UltimoPedidoDoRobo, type ValorDoCampo,
 } from '@gestor/shared';
 import { BadRequest, Unauthorized } from '../../plugins/errors.js';
+import { options as clientesAtivos } from '../clients.js';
 import * as integ from '../integracoes.js';
 import { linkDoChamado } from './avisos.js';
 import { alterarChamado, anotarChamado, criarChamado, moverChamado } from './chamados.js';
 import { camposDoPainel, carregarContexto, carregarPaineis, cartoesDe, chamadoOu404, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
+import { opcoes as opcoesDaTela } from './leitura.js';
 
 export type EntradaChamado = z.infer<typeof EntradaChamadoSchema>;
 export type IntegracaoAlterar = z.infer<typeof IntegracaoAlterarSchema>;
@@ -80,6 +83,11 @@ export type ChamadoParaIntegracao = CartaoChamado & {
   solucao: string | null;
   /** os campos do painel com valor, pelo nome (o `campos` do cartão vem pelo id do campo e da opção) */
   camposDoPainel: Array<{ id: string; nome: string; tipo: TipoCampo; valor: ValorDoCampo; texto: string }>;
+  /**
+   * a sessão (a conversa) do LineChat de onde o chamado veio, a mesma que a ficha mostra; nulo no chamado
+   * sem conversa. Com ela, o n8n acha a conversa e lê o que o cliente disse (a NIA)
+   */
+  sessaoId: string | null;
   /** o endereço do chamado no Gestor (o robô pode mandar ao cliente, o n8n pode pôr no aviso) */
   link: string;
 };
@@ -96,6 +104,7 @@ export async function paraIntegracao(app: FastifyInstance, t: LinhaChamado, ctx?
     relato: t.customerReport, descricao: t.description, solucao: t.solution,
     camposDoPainel: camposDoPainel(c, t.panelId, true).filter((x) => cartao.campos[x.id] !== undefined)
       .map((x) => ({ id: x.id, nome: x.nome, tipo: x.tipo, valor: cartao.campos[x.id]!, texto: textoDoValor(x, cartao.campos[x.id]) })),
+    sessaoId: t.sessionId ?? null,
     link: linkDoChamado(app, t.code),
   };
 }
@@ -103,6 +112,49 @@ export async function paraIntegracao(app: FastifyInstance, t: LinhaChamado, ctx?
 /** O chamado pelo código (SUP-12) ou pelo id; a integração vê todos os painéis. */
 export async function lerChamado(app: FastifyInstance, ref: string): Promise<ChamadoParaIntegracao> {
   return paraIntegracao(app, await chamadoOu404(app.db, ref));
+}
+
+// =====================================================================
+//  AS OPÇÕES (a NIA monta com elas o que a IA pode escolher)
+// =====================================================================
+
+/**
+ * As opções de verdade do Gestor, só o que está ativo, para quem preenche o chamado de fora — a NIA, pelo
+ * n8n, monta com elas o enum do que o modelo de IA pode responder, e assim ele não inventa um assunto que
+ * não existe. Cada uma vem no jeito que o PATCH de `/integracao/chamados/:ref` aceita: o assunto pelo caminho
+ * ("Ramal › Configuração"), o tipo pelo nome (as opções do Tipo de cada painel), o produto e o cliente pelo
+ * id, a gravidade e a prioridade pela chave (com o nome e o "quando usar" da tela).
+ */
+export type OpcoesParaIntegracao = {
+  assuntos: Array<{ id: string; nome: string; caminho: string; painelSigla: string }>;
+  produtos: Array<{ id: string; nome: string }>;
+  clientes: Array<{ id: string; nome: string }>;
+  tipos: Array<{ nome: string; painelSigla: string }>;
+  gravidades: Array<{ id: Gravidade; nome: string; dica: string }>;
+  prioridades: Array<{ id: Prioridade; nome: string; dica: string }>;
+};
+
+/**
+ * As mesmas listas da tela (`opcoes`, de leitura.ts: a integração vê todos os painéis) e os clientes do
+ * seletor (`options`, de clients.ts: sem os arquivados e os da lixeira). Dos painéis ativos, só o que cada um
+ * usa: o painel que desligou o assunto ou o tipo não tem o que escolher nele.
+ */
+export async function opcoesParaIntegracao(app: FastifyInstance, ator: Ator): Promise<OpcoesParaIntegracao> {
+  const [o, clientes] = await Promise.all([opcoesDaTela(app, ator), clientesAtivos(app.db, { includeInternal: true })]);
+  const paineis = o.paineis.filter((p) => p.ativo);
+  const sigla = new Map(paineis.map((p) => [p.id, p.sigla]));
+  const usam = (c: 'assunto' | 'tipo') => paineis.filter((p) => campoLigado(p.ajustes, c));
+  const comAssunto = new Set(usam('assunto').map((p) => p.id));
+  return {
+    // na ordem da árvore, painel por painel (a mesma da tela); o caminho passa pelos de cima
+    assuntos: o.assuntos.filter((a) => a.ativo && comAssunto.has(a.painelId))
+      .map((a) => ({ id: a.id, nome: a.nome, caminho: caminhoDoAssunto(a.id, o.assuntos), painelSigla: sigla.get(a.painelId)! })),
+    produtos: o.produtos.map((p) => ({ id: p.id, nome: p.nome })),
+    clientes: clientes.map((c) => ({ id: c.id, nome: c.name })),
+    tipos: usam('tipo').flatMap((p) => p.ajustes.tipos.map((nome) => ({ nome, painelSigla: p.sigla }))),
+    gravidades: GRAVIDADES.map((id) => ({ id, nome: NOME_GRAVIDADE[id], dica: DICA_GRAVIDADE[id] })),
+    prioridades: PRIORIDADES.map((id) => ({ id, nome: NOME_PRIORIDADE[id], dica: DICA_PRIORIDADE[id] })),
+  };
 }
 
 // =====================================================================

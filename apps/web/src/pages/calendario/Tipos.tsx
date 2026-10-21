@@ -1,20 +1,21 @@
 /**
  * Os tipos do calendário (quem cuida dos chamados): o nome, a cor, se é "da equipe" (a folga e o home
- * office: entram no "Hoje, fora do escritório" e pedem as pessoas) e se está ativo. O tipo que já tem
- * evento não sai: desativa (os eventos dele continuam com o nome e a cor) — o servidor confere.
+ * office: entram no "Hoje, fora do escritório" e pedem as pessoas), se está ativo e, desde o 2.0.2, os
+ * lembretes que o evento novo do tipo já traz (a Visita, 1 dia antes e 1 hora antes). O tipo que já tem evento
+ * não sai: desativa (os eventos dele continuam com o nome e a cor) — o servidor confere.
  */
 import { useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { TiposDoCalendarioSchema, type TipoDeEvento } from '@gestor/shared';
+import { textoDosLembretes, TiposDoCalendarioSchema, type TipoDeEvento } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Modal, Spinner, Toggle, useToast } from '../../components/ui/index.js';
 import { CoresDaEtiqueta } from '../atendimento/comum.js';
-import { ChipDoTipo, erroDoEvento, useRecarregarCalendario } from './comum.js';
+import { ChipDoTipo, EditorDeLembretes, erroDoEvento, useRecarregarCalendario } from './comum.js';
 
 type Linha = TipoDeEvento & { novo: boolean };
 
 export function JanelaDosTipos({ tipos, onFechar }: { tipos: TipoDeEvento[]; onFechar: () => void }) {
-  const [lista, setLista] = useState<Linha[]>(() => tipos.map((t) => ({ ...t, novo: false })));
+  const [lista, setLista] = useState<Linha[]>(() => tipos.map((t) => ({ ...t, lembretes: [...t.lembretes], novo: false })));
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
   const toast = useToast();
@@ -22,7 +23,7 @@ export function JanelaDosTipos({ tipos, onFechar }: { tipos: TipoDeEvento[]; onF
 
   const mudar = (i: number, m: Partial<Linha>) => { setLista((l) => l.map((t, j) => (j === i ? { ...t, ...m } : t))); setErro(''); };
   const incluir = () => {
-    setLista((l) => [...l, { id: `tipo-${Date.now().toString(36)}`, nome: '', cor: 'neutral', daEquipe: false, ativo: true, novo: true }]);
+    setLista((l) => [...l, { id: `tipo-${Date.now().toString(36)}`, nome: '', cor: 'neutral', daEquipe: false, ativo: true, lembretes: [], novo: true }]);
     // o nome do tipo novo já fica no foco
     window.setTimeout(() => [...document.querySelectorAll<HTMLInputElement>('[data-tipo-nome]')].at(-1)?.focus(), 0);
   };
@@ -53,7 +54,8 @@ export function JanelaDosTipos({ tipos, onFechar }: { tipos: TipoDeEvento[]; onF
     )}>
       <p className="text-[13px] text-muted mb-3">
         A cor do tipo é a do evento no calendário. <b className="text-ink-2">Da equipe</b> é o que fala da equipe e não de um cliente (a folga, o home
-        office): entra no "Hoje, fora do escritório". O tipo que já tem evento não sai da lista — desative.
+        office): entra no "Hoje, fora do escritório". Os <b className="text-ink-2">lembretes</b> são os que o evento novo do tipo já traz (no evento, dá
+        para mudar). O tipo que já tem evento não sai da lista — desative.
       </p>
       <ul className="flex flex-col gap-2" id="tipos-lista">
         {lista.map((t, i) => (
@@ -74,6 +76,14 @@ export function JanelaDosTipos({ tipos, onFechar }: { tipos: TipoDeEvento[]; onF
               <CoresDaEtiqueta valor={t.cor} onChange={(c) => mudar(i, { cor: c })} rotulo={`Cor do tipo ${t.nome}`} />
               {t.nome.trim() && <ChipDoTipo tipo={t} className="ml-auto" />}
             </div>
+            <details className="text-[13px]" data-tipo-lembretes>
+              <summary className="cursor-pointer text-ink-2 select-none">
+                Lembretes: <span className="text-muted">{textoDosLembretes(t.lembretes)}</span>
+              </summary>
+              <div className="mt-2">
+                <EditorDeLembretes valor={t.lembretes} onChange={(v) => mudar(i, { lembretes: v })} id={`tipo-${t.id}-lembretes`} rotulo={`Os lembretes do tipo ${t.nome}`} />
+              </div>
+            </details>
           </li>
         ))}
       </ul>

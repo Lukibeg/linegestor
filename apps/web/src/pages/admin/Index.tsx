@@ -154,16 +154,28 @@ function Papeis() {
 }
 
 function Catalogos() {
-  const tipos = [{ id: 'carriers', nome: 'Operadoras' }, { id: 'hostings', nome: 'Hospedagens' }, { id: 'categories', nome: 'Categorias de aparelho' }];
+  const geral = 'Renomear vale para todo lugar que usa o item (clientes, circuitos, modelos).';
+  const tipos = [
+    { id: 'carriers', nome: 'Operadoras', nota: geral }, { id: 'hostings', nome: 'Hospedagens', nota: geral }, { id: 'categories', nome: 'Categorias de aparelho', nota: geral },
+    // os cargos dos contatos (2.0.2, decisão 0053): a lista que a janela do contato oferece
+    { id: 'cargos', nome: 'Cargos dos contatos', nota: 'A lista do cargo na janela do contato. Renomear muda o cargo dos contatos que o têm; desativado, o cargo sai da lista, e quem já tem fica com ele.' },
+  ];
   const qc = useQueryClient(); const toast = useToast();
   const [novo, setNovo] = useState<Record<string, string>>({});
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      {tipos.map((t) => <Catalogo key={t.id} tipo={t.id} nome={t.nome} novo={novo[t.id] ?? ''} setNovo={(v) => setNovo({ ...novo, [t.id]: v })} onAdd={async () => { try { await api.admin.createCatalogItem(t.id, novo[t.id]!); setNovo({ ...novo, [t.id]: '' }); await qc.invalidateQueries({ queryKey: ['catalog', t.id] }); toast.push('ok', 'Adicionado'); } catch (e) { toast.push('erro', mensagemErro(e)); } }} />)}
+    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4" id="admin-catalogos">
+      {tipos.map((t) => <Catalogo key={t.id} tipo={t.id} nome={t.nome} nota={t.nota} novo={novo[t.id] ?? ''} setNovo={(v) => setNovo({ ...novo, [t.id]: v })} onAdd={async () => { try { await api.admin.createCatalogItem(t.id, novo[t.id]!); setNovo({ ...novo, [t.id]: '' }); await depoisDoCatalogo(qc, t.id); toast.push('ok', 'Adicionado'); } catch (e) { toast.push('erro', mensagemErro(e)); } }} />)}
     </div>
   );
 }
-function Catalogo({ tipo, nome, novo, setNovo, onAdd }: { tipo: string; nome: string; novo: string; setNovo: (v: string) => void; onAdd: () => void }) {
+/** Depois de mudar um catálogo: ele, e a lista da janela do contato quando são os cargos (e os contatos, quando um cargo é renomeado). */
+function depoisDoCatalogo(qc: ReturnType<typeof useQueryClient>, tipo: string) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: ['catalog', tipo] }),
+    ...(tipo === 'cargos' ? [qc.invalidateQueries({ queryKey: ['cargos-dos-contatos'] }), qc.invalidateQueries({ queryKey: ['client-contatos'] })] : []),
+  ]);
+}
+function Catalogo({ tipo, nome, nota, novo, setNovo, onAdd }: { tipo: string; nome: string; nota: string; novo: string; setNovo: (v: string) => void; onAdd: () => void }) {
   const q = useQuery({ queryKey: ['catalog', tipo], queryFn: () => api.admin.catalog(tipo) }); const qc = useQueryClient(); const toast = useToast();
   // renomear em linha: o lápis abre o campo no lugar do nome; Enter ou ✓ salva, Esc ou ✕ desiste
   const [editando, setEditando] = useState<{ id: string; nome: string } | null>(null);
@@ -171,11 +183,11 @@ function Catalogo({ tipo, nome, novo, setNovo, onAdd }: { tipo: string; nome: st
   const salvar = async () => {
     if (!editando || !editando.nome.trim()) return;
     setBusy(true);
-    try { await api.admin.updateCatalogItem(tipo, editando.id, { name: editando.nome.trim() }); setEditando(null); await qc.invalidateQueries({ queryKey: ['catalog', tipo] }); toast.push('ok', 'Renomeado'); }
+    try { await api.admin.updateCatalogItem(tipo, editando.id, { name: editando.nome.trim() }); setEditando(null); await depoisDoCatalogo(qc, tipo); toast.push('ok', 'Renomeado'); }
     catch (e) { toast.push('erro', mensagemErro(e)); } finally { setBusy(false); }
   };
   return (
-    <div className="card p-4"><div className="font-display font-semibold mb-2">{nome}</div>
+    <div className="card p-4" data-catalogo={tipo}><div className="font-display font-semibold mb-2">{nome}</div>
       <ul className="flex flex-col gap-1 mb-3">{q.data?.map((i) => (
         <li key={i.id} className="flex items-center justify-between gap-2 text-sm group">
           {editando?.id === i.id ? (
@@ -186,15 +198,15 @@ function Catalogo({ tipo, nome, novo, setNovo, onAdd }: { tipo: string; nome: st
             </span>
           ) : (
             <span className="flex items-center gap-1 min-w-0">
-              <span className={`truncate ${i.active ? '' : 'text-muted line-through'}`}>{i.name}</span>
+              <span className={`truncate ${i.active ? '' : 'text-muted line-through'}`} title={i.name}>{i.name}</span>
               <button className="btn-ghost btn-sm text-muted opacity-60 group-hover:opacity-100" onClick={() => setEditando({ id: i.id, nome: i.name })} title={`Renomear ${i.name}`} aria-label={`Renomear ${i.name}`}><Pencil size={12} /></button>
             </span>
           )}
-          <Toggle checked={i.active} onChange={async (v) => { await api.admin.updateCatalogItem(tipo, i.id, { active: v }); await qc.invalidateQueries({ queryKey: ['catalog', tipo] }); }} />
+          <Toggle checked={i.active} onChange={async (v) => { await api.admin.updateCatalogItem(tipo, i.id, { active: v }); await depoisDoCatalogo(qc, tipo); }} />
         </li>
       ))}</ul>
       <div className="flex gap-2"><input className="input" placeholder="novo item" autoComplete="off" value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && novo && onAdd()} /><button className="btn-secondary btn-sm" disabled={!novo} onClick={onAdd}>Adicionar</button></div>
-      <p className="text-[12px] text-muted mt-2">Renomear vale para todo lugar que usa o item (clientes, circuitos, modelos).</p>
+      <p className="text-[12px] text-muted mt-2">{nota}</p>
     </div>
   );
 }
@@ -382,7 +394,7 @@ function Auditoria() {
 
 function Lixeira() {
   const q = useQuery({ queryKey: ['trash'], queryFn: api.admin.trash }); const qc = useQueryClient(); const toast = useToast();
-  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', productModule: 'Módulo', releaseNote: 'Novidades', project: 'Projeto', knowledgeArticle: 'Artigo da base', portalArticle: 'Tutorial do portal', ticket: 'Chamado', calendarEvent: 'Evento do calendário' };
+  const nomes: Record<string, string> = { client: 'Cliente', circuit: 'Circuito', did: 'DID', deviceModel: 'Modelo', device: 'Aparelho', product: 'Produto', productModule: 'Módulo', releaseNote: 'Novidades', project: 'Projeto', knowledgeArticle: 'Artigo da base', portalArticle: 'Tutorial do portal', ticket: 'Chamado', calendarEvent: 'Evento do calendário', salesSimulation: 'Simulação do Comercial' };
   const o = useOrdenacaoLocal('deletedAt', 'desc');
   const restore = async (type: string, id: string) => { try { await api.admin.restore(type, id); await qc.invalidateQueries(); toast.push('ok', 'Restaurado'); } catch (e) { toast.push('erro', mensagemErro(e)); } };
   if (q.isLoading) return <Carregando />;

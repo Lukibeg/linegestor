@@ -17,7 +17,7 @@
  */
 import type { Db } from '@gestor/db';
 import {
-  AVISOS_CHAMADOS_PADRAO, TIPOS_ARQUIVO_DO_MODELO, faltaNoModeloAprovado, conversaEmTexto, lerMensagemDoLineChat, numeroWhatsApp, parametrosDoModelo,
+  AVISOS_CHAMADOS_PADRAO, TIPOS_ARQUIVO_DO_MODELO, faltaNoModeloAprovado, conversaEmTexto, lerMensagemDoLineChat, modelosParaGuardar, numeroWhatsApp, parametrosDoModelo,
   mensagemAoCliente, preencherModelo, telefoneLegivel, type AvisosChamadosTela, type OpcoesAtendimento, type ModeloAprovado, type ModeloDoLineChat, type ModelosDoLineChat, type TipoArquivoDoModelo,
   type ValoresDaMensagem,
 } from '@gestor/shared';
@@ -41,7 +41,11 @@ export const fetchDoWhatsApp = () => ferramentas.fetchFn;
 export async function lerAvisos(db: Db): Promise<{ valor: AvisosGuardados; temChavePropria: boolean }> {
   const { valor, temSegredo } = await integ.ler<AvisosGuardados>(db, 'atendimento-avisos');
   return {
-    valor: { ...AVISOS_CHAMADOS_PADRAO, ...valor, eventos: { ...AVISOS_CHAMADOS_PADRAO.eventos, ...(valor.eventos ?? {}) } },
+    valor: {
+      ...AVISOS_CHAMADOS_PADRAO, ...valor, eventos: { ...AVISOS_CHAMADOS_PADRAO.eventos, ...(valor.eventos ?? {}) },
+      // a mensagem de cada aviso (2.0.2): só as escritas; sem a do aviso, vale a padrão
+      modelos: modelosParaGuardar(valor.modelos),
+    },
     temChavePropria: temSegredo,
   };
 }

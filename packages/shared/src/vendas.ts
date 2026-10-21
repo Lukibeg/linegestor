@@ -23,6 +23,7 @@ import { diaLocal } from './atendimento-prazos.js';
 import type { EtapaPainel, Painel, ResultadoDaVenda } from './atendimento.js';
 import { diasEntre, somarDias } from './chamados.js';
 import { mesCurto, nomeDoMes, somarMeses } from './relatorios.js';
+import { margemDasGanhas, type FaixasDoSinal, type MargemDaNegociacao, type MargemDasGanhas } from './simulador.js';
 
 /** Uma negociação, com o que o relatório precisa (a trajetória pelas etapas já montada). */
 export type NegociacaoParaRelatorio = {
@@ -45,6 +46,8 @@ export type NegociacaoParaRelatorio = {
   motivoPerda: string | null;
   /** por onde passou: cada etapa, quando entrou e quando saiu (nulo = está nela) */
   passagens: Array<{ etapaId: string; desde: string; ate: string | null }>;
+  /** os nomes dos produtos da negociação (a margem por produto, 2.0.2) */
+  produtos?: string[];
 };
 
 /** O período (AAAA-MM-DD, os dois dias contam). */
@@ -114,6 +117,11 @@ export type RelatorioDeVendas = {
   mesesDaAtivacao: MesDeVendas[];
   /** as negociações por trás dos números (as que entraram, as ganhas e as perdidas do período, e as ganhas de cada mês) */
   negociacoes: NegociacaoDoRelatorio[];
+  /**
+   * A margem das ganhas do período (2.0.2, o Simulador do Comercial): as que têm simulação ligada, no total e
+   * por produto. Nulo quando o relatório é montado sem as simulações.
+   */
+  margem: MargemDasGanhas | null;
 };
 
 /** Um mês do mês a mês: quanto foi ganho nele (em centavos), quantas e quais, e quanto no mês anterior. */
@@ -201,6 +209,8 @@ export function relatorioDeVendas(
   painel: Pick<Painel, 'id' | 'etapas'>,
   negociacoes: readonly NegociacaoParaRelatorio[],
   filtro: Pick<FiltroDoRelatorioDeVendas, 'de' | 'ate'>,
+  /** as simulações das negociações (o cenário principal) e as faixas do sinal: a margem das ganhas */
+  simulacoes?: { margens: ReadonlyMap<string, MargemDaNegociacao>; faixas: FaixasDoSinal },
 ): RelatorioDeVendas {
   const { de, ate } = filtro;
   const ordem = new Map(painel.etapas.map((e, i) => [e.id, i]));
@@ -255,7 +265,10 @@ export function relatorioDeVendas(
     criadoEm: n.criadoEm, fechadoEm: n.fechadoEm,
   }));
 
-  return { painelId: painel.id, periodo: { de, ate }, numeros, anterior, funil, funilGanhas, meses, mesesDaAtivacao, negociacoes: lista };
+  // a margem das ganhas do período (as que têm simulação ligada)
+  const margem = simulacoes ? margemDasGanhas(numeros.ganhos.ids.map((id) => porId.get(id)!), simulacoes.margens, simulacoes.faixas) : null;
+  // as ganhas com simulação também abrem na janela (já estão na lista: são as ganhas do período)
+  return { painelId: painel.id, periodo: { de, ate }, numeros, anterior, funil, funilGanhas, meses, mesesDaAtivacao, negociacoes: lista, margem };
 }
 
 /** O período padrão do relatório: do primeiro dia do mês até hoje (Brasília). */

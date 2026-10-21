@@ -337,15 +337,16 @@ export const CORES_DAS_ETIQUETAS: Array<[string, CorEtiqueta]> = [
 export const CONTATOS_DOS_CLIENTES: Array<{ cliente: string; contato: Contato; cargo: string; email?: string; ativo?: boolean }> = [
   { cliente: AURORA, contato: MARIA, cargo: 'Recepção', email: 'recepcao@aurora.exemplo.com.br' },
   { cliente: AURORA, contato: JULIANA, cargo: 'Gerência' },
-  { cliente: AURORA, contato: ['Lúcia Ramos', '(71) 99999-2099'], cargo: 'Recepção (saiu em agosto)', ativo: false },
+  { cliente: AURORA, contato: ['Lúcia Ramos', '(71) 99999-2099'], cargo: 'Recepção', ativo: false },
   { cliente: NORTE, contato: CARLOS, cargo: 'TI', email: 'carlos@norte.exemplo.com.br' },
   { cliente: HOSPITAL, contato: RENATA, cargo: 'TI' },
   { cliente: HOSPITAL, contato: FABIO, cargo: 'Diretoria' },
   { cliente: BOMPRECO, contato: FERNANDA, cargo: 'Administrativo' },
-  { cliente: BOMPRECO, contato: ANTONIO, cargo: 'Gerente da Loja Simões Filho' },
+  { cliente: BOMPRECO, contato: ANTONIO, cargo: 'Gerência' },
   { cliente: EXAME, contato: SERGIO, cargo: 'TI' },
+  // o cargo é um da lista (2.0.2, Administração › Catálogos); o do Paulo ficou fora dela, para a prévia mostrar o de antes
   { cliente: HORIZONTE, contato: PAULO, cargo: 'Engenharia' },
-  { cliente: VIVERBEM, contato: PATRICIA, cargo: 'Coordenação' },
+  { cliente: VIVERBEM, contato: PATRICIA, cargo: 'Gerência' },
 ];
 
 /**

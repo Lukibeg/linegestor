@@ -869,6 +869,28 @@ export const ContatoGravarSchema = z.object({
 });
 export type ContatoGravar = z.infer<typeof ContatoGravarSchema>;
 export type ContatoGravarEntrada = z.input<typeof ContatoGravarSchema>;
+
+/**
+ * O CARGO DO CONTATO VEM DE UMA LISTA (2.0.2, decisão 0053; o Luan, 21/10: "eu quero que esses cargos sejam
+ * pré-seleção"). Os cargos ficam em Administração › Catálogos › Cargos dos contatos, e a janela do contato só
+ * oferece os ativos. O contato que já tinha um cargo fora da lista (de antes, ou que saiu dela) fica com ele
+ * até alguém trocar. Os de fábrica (a migração 0022 põe estes no banco):
+ */
+export const CARGOS_DE_FABRICA = [
+  'Administrativo', 'Atendimento', 'Comercial', 'Compras', 'Diretoria', 'Financeiro', 'Gerência', 'Pós-vendas',
+  'Proprietário ou sócio', 'Recepção', 'RH', 'TI',
+] as const;
+
+/**
+ * O cargo que o contato pode ter: nenhum, um dos ativos da lista (escrito como na lista, mesmo que tenha vindo
+ * em minúsculas) ou o que ele já tinha (`atual`). Fora disso, o erro.
+ */
+export function cargoDaLista(cargo: string | null, ativos: readonly string[], atual: string | null = null): { cargo: string | null } | { erro: string } {
+  if (!cargo) return { cargo: null };
+  if (cargo === atual) return { cargo };
+  const igual = ativos.find((x) => x.toLocaleLowerCase('pt-BR') === cargo.toLocaleLowerCase('pt-BR'));
+  return igual ? { cargo: igual } : { erro: `O cargo "${cargo}" não está na lista (Administração › Catálogos › Cargos dos contatos).` };
+}
 /** O contato pelo WhatsApp (os dígitos) ou, sem o WhatsApp, pelo nome (sem ligar para acento e maiúscula). */
 export function acharContato<T extends Pick<ContatoDoCliente, 'nome' | 'whatsapp'>>(contatos: T[], c: { nome?: string | null; telefone?: string | null }): T | undefined {
   const fone = c.telefone ? numeroWhatsApp(c.telefone) : null;
@@ -1306,7 +1328,7 @@ export const AgendadoGravarSchema = z.object({
  * O "cliente respondeu" saiu da lista no 2.0.1 (o Gestor não ouve mais as mensagens do cliente pelo n8n); o
  * aviso antigo desse tipo continua aparecendo no sininho (`TIPOS_AVISO`).
  */
-export const EVENTOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'observador'] as const;
+export const EVENTOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'observador', 'lembrete', 'evento_novo'] as const;
 export type EventoAviso = (typeof EVENTOS_AVISO)[number];
 export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: string }> = {
   recebeu: { titulo: 'Recebeu um chamado (atribuído ou escalonado)', quem: 'quem recebeu' },
@@ -1319,15 +1341,183 @@ export const NOME_EVENTO_AVISO: Record<EventoAviso, { titulo: string; quem: stri
   critico: { titulo: 'Chegou um chamado Crítico', quem: 'os supervisores' },
   // como no Helena (o pedido do Luan na prévia): quem observa recebe toda atualização do chamado
   observador: { titulo: 'Novidade num chamado que a pessoa observa (anotação, etapa, responsável, espera, campos)', quem: 'os observadores' },
+  // o lembrete do calendário (2.0.2): "quanto tempo antes", escolhido no evento
+  lembrete: { titulo: 'Lembrete de um evento do calendário', quem: 'quem o evento lembra (as pessoas dele, ou todos que veem)' },
+  // o aviso de que o evento entrou (2.0.2, o pedido do Luan: "uma notificação de inclusão opcional"): quem põe o evento escolhe
+  evento_novo: { titulo: 'Um evento entrou no calendário (quando quem pôs pede o aviso)', quem: 'quem o evento avisa (as pessoas dele, ou todos que veem), menos quem pôs' },
 };
 export type CanaisDoAviso = { tela: boolean; whatsapp: boolean };
 /** O que o documento de prioridade sugeriu (a tabela "Alertas e escalonamento"). */
 export const EVENTOS_AVISO_PADRAO: Record<EventoAviso, CanaisDoAviso> = {
   recebeu: { tela: true, whatsapp: true }, citado: { tela: true, whatsapp: true }, etapa: { tela: true, whatsapp: true }, prazo_perto: { tela: true, whatsapp: true },
   prazo_vencido: { tela: true, whatsapp: true }, sem_dono: { tela: true, whatsapp: false }, critico: { tela: true, whatsapp: true },
-  observador: { tela: true, whatsapp: false },
+  observador: { tela: true, whatsapp: false }, lembrete: { tela: true, whatsapp: true }, evento_novo: { tela: true, whatsapp: true },
 };
 const CanaisSchema = z.object({ tela: z.boolean(), whatsapp: z.boolean() });
+
+// =====================================================================
+//  A MENSAGEM DE CADA AVISO NO WHATSAPP (2.0.2)
+// =====================================================================
+
+/**
+ * A mensagem de cada aviso no WhatsApp da equipe. O pedido do Luan, em 20/10: "a notificação dos
+ * observadores tbm n ficou legal, veja como tínhamos antes, era bem melhor, faça algo que dê para nós
+ * personalizarmos inclusive as variáveis". Cada aviso tem a sua mensagem, com as variáveis entre chaves
+ * ({painel}, {nota}…). A padrão segue a do fluxo antigo do n8n, o "Atualização de Card" (Painel, Card,
+ * Nota, Quem comentou, Cliente, Link), uma informação por linha. A linha em que todas as variáveis vêm
+ * vazias não é enviada: sem cliente, não chega "Cliente:" em branco. O sininho continua com a frase curta.
+ */
+export type VariavelDoAviso = { chave: string; dica: string };
+const variavel = (chave: string, dica: string): VariavelDoAviso => ({ chave, dica });
+
+/** As do chamado: valem em todos os avisos de chamado. */
+const VARIAVEIS_DO_CHAMADO: readonly VariavelDoAviso[] = [
+  variavel('painel', 'o painel'), variavel('etapa', 'a etapa em que ele está'), variavel('codigo', 'o código (SUP-12)'),
+  variavel('titulo', 'o título'), variavel('prioridade', 'a prioridade'), variavel('cliente', 'a empresa'),
+  variavel('contato', 'o nome do contato'), variavel('responsavel', 'o responsável'), variavel('assunto', 'o assunto'),
+  variavel('relato', 'o relato do cliente (o começo)'), variavel('link', 'o endereço do chamado no Gestor'),
+];
+const AVISO_NUMA_FRASE = variavel('aviso', 'o aviso numa frase, como no sininho');
+const QUEM_FEZ = variavel('quem', 'quem fez');
+const A_NOTA = variavel('nota', 'o texto da anotação');
+/** Só no do observador: o que mudou, sem quem fez ("Moveu para N2"). Na anotação fica vazia: a {nota} já diz. */
+const A_NOVIDADE = variavel('novidade', 'o que mudou ("Moveu para N2"; na anotação, vazio: vale a nota)');
+/** As do evento do calendário: valem no lembrete e no aviso de que o evento entrou. */
+const VARIAVEIS_DO_EVENTO: readonly VariavelDoAviso[] = [
+  variavel('evento', 'o que é (o título do evento)'),
+  variavel('tipo', 'o tipo (Visita, Reunião…)'), variavel('quando', 'o dia e a hora'), variavel('local', 'onde'),
+  variavel('cliente', 'a empresa'), variavel('chamado', 'o chamado ligado (SUP-12)'), variavel('pessoas', 'as pessoas do evento'),
+  variavel('paineis', 'os painéis do evento'), variavel('observacao', 'a observação'), variavel('link', 'o endereço do evento no Gestor'),
+];
+
+/** As variáveis de um aviso, na ordem dos botões: primeiro as do que aconteceu, depois as do chamado (ou do evento). */
+export function variaveisDoAviso(e: EventoAviso): readonly VariavelDoAviso[] {
+  if (e === 'lembrete') return [variavel('aviso', 'o lembrete numa frase, como no sininho'), ...VARIAVEIS_DO_EVENTO];
+  if (e === 'evento_novo') return [variavel('aviso', 'o aviso numa frase, como no sininho'), variavel('quem', 'quem pôs o evento'), ...VARIAVEIS_DO_EVENTO];
+  const doQueAconteceu = e === 'observador' ? [AVISO_NUMA_FRASE, A_NOVIDADE, QUEM_FEZ, A_NOTA]
+    : e === 'citado' ? [AVISO_NUMA_FRASE, QUEM_FEZ, A_NOTA]
+      // o relógio do Gestor avisa os prazos e o sem responsável: ninguém "fez"
+      : e === 'prazo_perto' || e === 'prazo_vencido' || e === 'sem_dono' ? [AVISO_NUMA_FRASE]
+        : [AVISO_NUMA_FRASE, QUEM_FEZ];
+  return [...doQueAconteceu, ...VARIAVEIS_DO_CHAMADO];
+}
+
+/** O fim de cada mensagem de chamado: o cliente e o link (como no fluxo antigo). */
+const FIM_DO_CHAMADO = '👨‍💼 *Cliente:* {cliente}\n🔗 *Link do Card:* {link}';
+/** As mensagens padrão: a do observador é a do fluxo antigo; as outras seguem o mesmo jeito. */
+export const MODELOS_DOS_AVISOS_PADRAO: Readonly<Record<EventoAviso, string>> = Object.freeze({
+  recebeu: `📥 *{aviso}*\n🔎 *Painel:* {painel} · {etapa}\n📌 *Card:* {codigo} · {titulo}\n⚡ *Prioridade:* {prioridade}\n👤 *Quem passou:* {quem}\n${FIM_DO_CHAMADO}`,
+  citado: `💬 *{quem} citou você*\n🔎 *Painel:* {painel}\n📌 *Card:* {codigo} · {titulo}\n📝 *Nota:* {nota}\n${FIM_DO_CHAMADO}`,
+  etapa: `📥 *{aviso}*\n🔎 *Painel:* {painel} · {etapa}\n📌 *Card:* {codigo} · {titulo}\n⚡ *Prioridade:* {prioridade}\n👤 *Responsável:* {responsavel}\n${FIM_DO_CHAMADO}`,
+  prazo_perto: `⏰ *{aviso}*\n🔎 *Painel:* {painel} · {etapa}\n📌 *Card:* {codigo} · {titulo}\n⚡ *Prioridade:* {prioridade}\n${FIM_DO_CHAMADO}`,
+  prazo_vencido: `🚨 *{aviso}*\n🔎 *Painel:* {painel} · {etapa}\n📌 *Card:* {codigo} · {titulo}\n⚡ *Prioridade:* {prioridade}\n👤 *Responsável:* {responsavel}\n${FIM_DO_CHAMADO}`,
+  sem_dono: `🙋 *{aviso}*\n🔎 *Painel:* {painel} · {etapa}\n📌 *Card:* {codigo} · {titulo}\n⚡ *Prioridade:* {prioridade}\n${FIM_DO_CHAMADO}`,
+  critico: `🔴 *{aviso}*\n🔎 *Painel:* {painel}\n📌 *Card:* {codigo} · {titulo}\n📝 *Relato:* {relato}\n👤 *Quem abriu:* {quem}\n${FIM_DO_CHAMADO}`,
+  observador: '🔎 *Painel:* {painel}\n📌 *Card:* {codigo} · {titulo}\n🔔 *Novidade:* {novidade}\n📝 *Nota:* {nota}\n👤 *Quem:* {quem}\n👨‍💼 *Cliente:* {cliente}\n🔗 *Link do Card/Painel:* {link}',
+  lembrete: '⏰ *Lembrete:* {evento}\n🗓️ *Quando:* {quando}\n📍 *Local:* {local}\n👨‍💼 *Cliente:* {cliente}\n📌 *Chamado:* {chamado}\n📝 *Observação:* {observacao}\n🔗 *Link:* {link}',
+  evento_novo: '🗓️ *Novo no calendário:* {evento}\n⏰ *Quando:* {quando}\n📍 *Local:* {local}\n👨‍💼 *Cliente:* {cliente}\n📌 *Chamado:* {chamado}\n👥 *Pessoas:* {pessoas}\n📝 *Observação:* {observacao}\n👤 *Quem pôs:* {quem}\n🔗 *Link:* {link}',
+});
+
+/** O tamanho de cada mensagem: até 2.000 letras escritas; a mensagem cheia vai até 4.000 (o WhatsApp aceita 4.096). */
+export const MAX_MODELO_DO_AVISO = 2000;
+const MAX_MENSAGEM_DO_AVISO = 4000;
+
+/** A mensagem que vale para o aviso: a escrita nos Ajustes ou, sem ela, a padrão. */
+export function modeloDoAviso(modelos: Partial<Record<EventoAviso, string>> | null | undefined, e: EventoAviso): string {
+  const escrito = modelos?.[e];
+  return escrito && escrito.trim() ? escrito : MODELOS_DOS_AVISOS_PADRAO[e];
+}
+
+/** As palavras entre chaves que parecem variável ({cotato}, {Cliente}…). */
+const PALAVRA_ENTRE_CHAVES = /\{([A-Za-zÀ-ÿ_]+)\}/g;
+
+/** As variáveis escritas que o aviso não conhece (o erro de digitação: "{cotato}" sairia assim no WhatsApp). */
+export function variaveisDesconhecidas(e: EventoAviso, modelo: string): string[] {
+  const conhecidas = new Set(variaveisDoAviso(e).map((v) => v.chave));
+  const fora = [...modelo.matchAll(PALAVRA_ENTRE_CHAVES)].map((m) => m[1]!).filter((k) => !conhecidas.has(k.toLowerCase()));
+  return [...new Set(fora)].map((k) => `{${k}}`);
+}
+
+export type ValoresDoAviso = Partial<Record<string, string | null>>;
+
+/**
+ * A mensagem pronta: cada variável troca pelo valor (sem distinguir maiúscula) e a linha em que todas as
+ * variáveis vieram vazias não vai. O que não é variável do aviso fica como foi escrito. Linhas em branco
+ * seguidas viram uma só.
+ */
+export function preencherAviso(e: EventoAviso, modelo: string, valores: ValoresDoAviso): string {
+  const conhecidas = new Set(variaveisDoAviso(e).map((v) => v.chave));
+  const linhas = modelo.replace(/\r\n?/g, '\n').split('\n').flatMap((linha) => {
+    let usadas = 0;
+    let cheias = 0;
+    const nova = linha.replace(PALAVRA_ENTRE_CHAVES, (todo, k: string) => {
+      const chave = k.toLowerCase();
+      if (!conhecidas.has(chave)) return todo;
+      usadas++;
+      const v = (valores[chave] ?? '').trim();
+      if (v) cheias++;
+      return v;
+    });
+    return usadas > 0 && cheias === 0 ? [] : [nova.trimEnd()];
+  });
+  const texto = linhas.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return texto.length > MAX_MENSAGEM_DO_AVISO ? `${texto.slice(0, MAX_MENSAGEM_DO_AVISO - 1).trimEnd()}…` : texto;
+}
+
+/** Os valores de exemplo de cada aviso: a prévia nos Ajustes e o "Mandar o exemplo". */
+const EXEMPLO_DO_CHAMADO: ValoresDoAviso = {
+  painel: 'Suporte', etapa: 'N1', codigo: 'SUP-12', titulo: 'LineChat - Labchecap - MarIA Espirometria', prioridade: 'Alta',
+  cliente: 'Labchecap', contato: 'Maria', responsavel: 'Luan França', assunto: 'LineChat › Robô',
+  relato: 'A MarIA parou de responder os pacientes desde ontem à noite.', link: 'https://gestao.inglinesystems.com.br/atendimento/SUP-12',
+};
+export const EXEMPLOS_DOS_AVISOS: Readonly<Record<EventoAviso, ValoresDoAviso>> = Object.freeze({
+  recebeu: { ...EXEMPLO_DO_CHAMADO, aviso: 'Você recebeu o chamado SUP-12', quem: 'Lúcio Andrade' },
+  citado: { ...EXEMPLO_DO_CHAMADO, aviso: 'Lúcio Andrade citou você no SUP-12', quem: 'Lúcio Andrade', nota: '@Luan França, consegue olhar o fluxo da MarIA hoje?' },
+  etapa: { ...EXEMPLO_DO_CHAMADO, etapa: 'N2', aviso: 'SUP-12 chegou em N2', quem: 'Lúcio Andrade' },
+  prazo_perto: { ...EXEMPLO_DO_CHAMADO, aviso: 'O prazo de solução do SUP-12 está perto de vencer: faltam 45 min úteis' },
+  prazo_vencido: { ...EXEMPLO_DO_CHAMADO, aviso: 'O prazo de solução do SUP-12 venceu' },
+  sem_dono: { ...EXEMPLO_DO_CHAMADO, etapa: 'Novo', responsavel: '', aviso: 'O SUP-12 está sem responsável há mais de 30 min' },
+  critico: { ...EXEMPLO_DO_CHAMADO, etapa: 'Novo', prioridade: 'Crítica', aviso: 'Chegou um chamado Crítico: SUP-12', quem: 'Lúcio Andrade' },
+  observador: { ...EXEMPLO_DO_CHAMADO, aviso: 'Lúcio Andrade anotou no SUP-12', novidade: '', quem: 'Lúcio Andrade', nota: 'Encaminhado para Luan' },
+  lembrete: {
+    aviso: 'Lembrete: Visita — Clínica Aurora, amanhã, 21/10, às 09:00', evento: 'Visita — Clínica Aurora', tipo: 'Visita',
+    quando: 'amanhã, 21/10, às 09:00', local: 'Av. Tancredo Neves, 1632 — Salvador', cliente: 'Clínica Aurora', chamado: 'SUP-12',
+    pessoas: 'Luan França, Lúcio Andrade', paineis: 'Suporte', observacao: 'Levar o aparelho reserva.',
+    link: 'https://gestao.inglinesystems.com.br/calendario?mes=2026-10&dia=2026-10-21',
+  },
+  evento_novo: {
+    aviso: 'Luan França pôs no calendário: Visita — Clínica Aurora, amanhã, 21/10, às 09:00', quem: 'Luan França', evento: 'Visita — Clínica Aurora',
+    tipo: 'Visita', quando: 'amanhã, 21/10, às 09:00', local: 'Av. Tancredo Neves, 1632 — Salvador', cliente: 'Clínica Aurora', chamado: 'SUP-12',
+    pessoas: 'Luan França, Lúcio Andrade', paineis: 'Suporte', observacao: 'Levar o aparelho reserva.',
+    link: 'https://gestao.inglinesystems.com.br/calendario?mes=2026-10&dia=2026-10-21',
+  },
+});
+
+/** As mensagens escritas nos Ajustes (sem a do aviso = a padrão). Cada uma até 2.000 letras e só com as variáveis do aviso. */
+export const ModelosDosAvisosSchema = z.object(
+  Object.fromEntries(EVENTOS_AVISO.map((e) => [e, z.string().max(MAX_MODELO_DO_AVISO, `A mensagem do aviso "${NOME_EVENTO_AVISO[e].titulo}" passou de 2.000 letras.`).optional()])) as
+    Record<EventoAviso, z.ZodOptional<z.ZodString>>,
+).superRefine((m, ctx) => {
+  for (const e of EVENTOS_AVISO) {
+    const fora = variaveisDesconhecidas(e, m[e] ?? '');
+    if (fora.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom, path: [e],
+        message: `Na mensagem do aviso "${NOME_EVENTO_AVISO[e].titulo}", ${fora.join(', ')} não ${fora.length === 1 ? 'é variável' : 'são variáveis'} dele: confira o nome (os botões põem certo).`,
+      });
+    }
+  }
+});
+export type ModelosDosAvisos = Partial<Record<EventoAviso, string>>;
+
+/** Para guardar: só as que mudaram da padrão (a vazia e a igual à padrão voltam a seguir a padrão). */
+export function modelosParaGuardar(m: ModelosDosAvisos | null | undefined): ModelosDosAvisos {
+  const fica = (e: EventoAviso) => {
+    const t = m?.[e]?.replace(/\r\n?/g, '\n').trim();
+    return t && t !== MODELOS_DOS_AVISOS_PADRAO[e] ? t : null;
+  };
+  return Object.fromEntries(EVENTOS_AVISO.flatMap((e) => { const t = fica(e); return t ? [[e, t]] : []; })) as ModelosDosAvisos;
+}
 
 /**
  * Como a mensagem ao cliente sai pelo número oficial (o pedido do Luan na prévia: "vou usar no meu
@@ -1390,6 +1580,8 @@ export const AvisosChamadosSchema = z.object({
   atribuirAQuemManda: z.boolean().default(false),
   // (o WhatsApp de cada pessoa saiu daqui no 2.0.1: mora no usuário, em Administração › Usuários)
   eventos: z.object(Object.fromEntries(EVENTOS_AVISO.map((e) => [e, CanaisSchema])) as Record<EventoAviso, typeof CanaisSchema>),
+  /** a mensagem de cada aviso no WhatsApp da equipe (2.0.2); sem a do aviso, vale a padrão */
+  modelos: ModelosDosAvisosSchema.default({}),
 });
 export type AvisosChamadosGravar = z.infer<typeof AvisosChamadosSchema>;
 
@@ -1615,9 +1807,16 @@ export type OpcoesAtendimento = {
 export type ColunaQuadro = { etapa: EtapaPainel; chamados: CartaoChamado[]; total: number; escondidos: number; valor: number };
 export type QuadroAtendimento = { painelId: string; colunas: ColunaQuadro[]; foraDoHorario: boolean; agora: string };
 
-export const TIPOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai', 'observador'] as const;
+export const TIPOS_AVISO = ['recebeu', 'citado', 'etapa', 'prazo_perto', 'prazo_vencido', 'sem_dono', 'critico', 'cliente_respondeu', 'pai', 'observador', 'lembrete', 'evento_novo'] as const;
 export type TipoAviso = (typeof TIPOS_AVISO)[number];
-export type AvisoNaTela = { id: string; tipo: TipoAviso; texto: string; chamado: { id: string; codigo: string; titulo: string } | null; em: string; lido: boolean };
+/** Um aviso do sininho: de um chamado, ou (2.0.2) o lembrete de um evento do calendário. */
+export type AvisoNaTela = {
+  id: string; tipo: TipoAviso; texto: string;
+  chamado: { id: string; codigo: string; titulo: string } | null;
+  /** o evento do calendário do lembrete (o primeiro dia, para abrir o calendário nele) */
+  evento: { id: string; titulo: string; inicio: string } | null;
+  em: string; lido: boolean;
+};
 export type AvisosNaTela = { naoLidos: number; itens: AvisoNaTela[] };
 
 /**
@@ -1679,7 +1878,7 @@ export const AVISOS_CHAMADOS_PADRAO: Omit<AvisosChamadosTela, 'pessoas' | 'temCh
   numeroCliente: '557130348350', numeroEquipe: '',
   envioCliente: 'modelo',
   modeloCliente: 'Olá, {contato}! Sobre o seu chamado {codigo} ({titulo}):\n\n{texto}\n\nEquipe de suporte Ingline',
-  template: null, equipeLineChat: '', atribuirAQuemManda: false, eventos: EVENTOS_AVISO_PADRAO,
+  template: null, equipeLineChat: '', atribuirAQuemManda: false, eventos: EVENTOS_AVISO_PADRAO, modelos: {},
   ultimoTesteEm: null, ultimoTesteOk: null, ultimoTesteMsg: null,
 };
 

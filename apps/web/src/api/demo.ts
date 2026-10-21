@@ -34,8 +34,9 @@ import {
 import type { Api } from './index.js';
 import { chamadosDoContatoDemo, criarAtendimentoDemo, lixeiraDosChamadosDemo, restaurarChamadoDaLixeiraDemo } from './demo-atendimento.js';
 import { criarCalendarioDemo } from './demo-calendario.js';
+import { criarSimuladorDemo } from './demo-simulador.js';
 import { CONTATOS_DOS_CLIENTES } from './demo-atendimento-exemplos.js';
-import { ContatoGravarSchema, MAX_CONTATOS_DO_CLIENTE, numeroWhatsApp as foneDoWhatsApp, type ContatoDoCliente } from '@gestor/shared';
+import { CARGOS_DE_FABRICA, ContatoGravarSchema, MAX_CONTATOS_DO_CLIENTE, cargoDaLista, numeroWhatsApp as foneDoWhatsApp, type ContatoDoCliente } from '@gestor/shared';
 import { NOTA_DEMO } from './novidades-demo.js';
 import { PDF_MANUAL_RAMAL, VIDEO_TRANSFERIR } from './portal-demo-midia.js';
 import { RECIBO_FOTO_DEMO, RECIBO_PDF_DEMO } from './recibo-demo-midia.js';
@@ -189,7 +190,7 @@ const S = {
     ordem: [] as string[], ocultos: [] as string[], favoritos: [] as string[],
     atualizadoEm: null as string | null, atualizadoPor: null as string | null,
   },
-  carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[],
+  carriers: [] as { id: string; name: string; active: boolean }[], hostings: [] as { id: string; name: string; active: boolean }[], categories: [] as { id: string; name: string; active: boolean }[], cargos: [] as { id: string; name: string; active: boolean }[],
   products: PRODUTOS_INICIAIS.map((p, i) => ({ id: 'p' + p.code, code: p.code as string, name: p.name as string, color: p.color as string, hasSettings: p.hasSettings as boolean, description: p.description as string | null, sortOrder: i, active: true, deletedAt: null as string | null })),
   modules: MODULOS_INICIAIS.map((m, i) => ({ id: 'm' + m.product + '_' + m.code, productId: 'p' + m.product, code: m.code, name: m.name, description: m.description as string | null, hasSettings: m.hasSettings, sortOrder: i, active: true })) as ModRow[],
   subMods: [] as SubMod[],
@@ -209,6 +210,11 @@ function contatoParaTela(x: ContatoRow): ContatoDoCliente {
     chamados: x.whatsapp ? chamadosDoContatoDemo(x.clientId, x.whatsapp) : 0, criadoEm: x.criadoEm, atualizadoEm: x.atualizadoEm,
   };
 }
+/** Os catálogos da Administração (os cargos dos contatos entraram no 2.0.2) e o nome de cada um, como o servidor. */
+const listaDoCatalogo = (type: string) => (type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : type === 'cargos' ? S.cargos : S.categories);
+const NOME_DO_CATALOGO: Record<string, string> = { carriers: 'Operadoras', hostings: 'Hospedagens', categories: 'Categorias de aparelho', cargos: 'Cargos dos contatos' };
+/** Os cargos que a janela do contato oferece: os ativos, em ordem alfabética. */
+const cargosAtivos = () => S.cargos.filter((x) => x.active).map((x) => x.name).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 /** A porta de quem tem pelo menos uma das permissões (como o `requireAnyPermission` do servidor). */
 function requireAnyPerm(...ps: string[]) {
   if (!S.me) throw new ApiError(401, 'Faça login para continuar');
@@ -386,6 +392,8 @@ function seed() {
   S.carriers = ['ALGAR', 'VC1', 'Vivo'].map((n) => ({ id: 'car' + n, name: n, active: true }));
   S.hostings = ['Local', 'Nuvem (Local)', 'Vultr', 'AWS', 'Contabo', 'Hetzner', 'Outro'].map((n) => ({ id: 'h' + n.replace(/\W/g, ''), name: n, active: true }));
   S.categories = ['Telefone IP', 'Periférico', 'ATA', 'Gateway', 'Switch', 'Outro'].map((n) => ({ id: 'cat' + n.replace(/\W/g, ''), name: n, active: true }));
+  // os cargos dos contatos (2.0.2): os de fábrica, os mesmos que a migração 0022 põe no banco
+  S.cargos = CARGOS_DE_FABRICA.map((n) => ({ id: 'cargo-' + n.normalize('NFD').replace(/[^\w]/g, '').toLowerCase(), name: n, active: true }));
   /** Logos fictícias da demonstração: um quadrado com as iniciais, desenhado em SVG. */
   const logoFake = (iniciais: string, cor: string) =>
     'data:image/svg+xml;base64,' + btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" rx="18" fill="${cor}"/><text x="48" y="62" font-family="Verdana,sans-serif" font-size="38" font-weight="bold" fill="#fff" text-anchor="middle">${iniciais}</text></svg>`);
@@ -2057,6 +2065,8 @@ function respostaDemo(pergunta: string): RespostaIa {
 
 /** O calendário (2.0.1): lê os painéis e quem vê cada um da prévia dos chamados (demo-calendario.ts). */
 const calendarioDemo = criarCalendarioDemo({ S, id, wait, audit, requirePerm, requireAnyPerm });
+/** O Simulador do Comercial (2.0.2): as negociações e quem vê cada painel vêm da prévia dos chamados (demo-simulador.ts). */
+const simuladorDemo = criarSimuladorDemo({ S, id, wait, audit, requirePerm });
 
 export const demoApi: Api = {
   auth: {
@@ -2262,6 +2272,10 @@ export const demoApi: Api = {
       return shapeUnit(u);
     },
     // os contatos (2.0): as mesmas regras do servidor (o cadastro mexe, e quem trabalha nos chamados também)
+    async cargos() {
+      await wait(30); requireAnyPerm('records.read', 'support.read', 'records.write', 'tickets.work');
+      return cargosAtivos();
+    },
     async contatos(idc) {
       await wait(60); requireAnyPerm('records.read', 'support.read');
       const c = S.clients.find((x) => x.id === idc && !x.deletedAt); if (!c) throw notFound('Cliente');
@@ -2281,6 +2295,10 @@ export const demoApi: Api = {
       // o mesmo WhatsApp não se repete entre os contatos ativos do cliente
       const outro = d.ativo && d.whatsapp ? S.contatos.find((x) => x.clientId === idc && x.ativo && x.whatsapp === d.whatsapp && x.id !== contatoId) : undefined;
       if (outro) throw new ApiError(409, `O contato ${outro.nome} já tem esse WhatsApp neste cliente.`);
+      // o cargo vem da lista (2.0.2); o que o contato já tinha pode ficar
+      const doCargo = cargoDaLista(d.cargo, cargosAtivos(), atual?.cargo ?? null);
+      if ('erro' in doCargo) throw bad(doCargo.erro);
+      d.cargo = doCargo.cargo;
       if (!atual) {
         const novo: ContatoRow = { id: id(), clientId: idc, nome: d.nome, whatsapp: d.whatsapp, email: d.email, cargo: d.cargo, ativo: d.ativo, criadoPorId: S.me?.id ?? null, criadoEm: now(), atualizadoEm: now() };
         S.contatos.push(novo);
@@ -3772,6 +3790,8 @@ export const demoApi: Api = {
   }),
   // o calendário (2.0.1): o módulo inteiro mora em demo-calendario.ts
   calendario: calendarioDemo,
+  // o Simulador do Comercial (2.0.2): o módulo inteiro mora em demo-simulador.ts
+  simulador: simuladorDemo,
   admin: {
     async users() { await wait(); requirePerm('admin.manage'); return S.users.map((u) => ({ id: u.id, name: u.name, email: u.email, active: u.active, roleId: u.roleId, roleName: S.roles.find((r) => r.id === u.roleId)?.name ?? '?', lastLoginAt: u.lastLoginAt, whatsapp: u.whatsapp ?? null, whatsappAvisos: u.whatsappAvisos !== false })); },
     async createUser(d) { await wait(); requirePerm('admin.manage'); if (S.users.some((u) => u.email === String(d.email).toLowerCase())) throw bad('Já existe um usuário com este e-mail'); const w = whatsappDoUsuario(d); const u: UserRow = { id: id(), name: String(d.name), email: String(d.email).toLowerCase(), password: String(d.password), roleId: String(d.roleId), active: d.active !== false, lastLoginAt: null, whatsapp: w.whatsapp ?? null, whatsappAvisos: w.whatsappAvisos ?? true }; S.users.push(u); audit('create', 'user', `Criou o usuário ${u.name} (${u.email})`, u.id); return (await demoApi.admin.users()).find((x) => x.id === u.id)!; },
@@ -3781,9 +3801,24 @@ export const demoApi: Api = {
     async createRole(d) { await wait(); requirePerm('admin.manage'); const r: RoleRow = { id: id(), key: null, name: String(d.name), description: (d.description as string) ?? null, permissions: (d.permissions as string[]) ?? [], isSystem: false }; S.roles.push(r); audit('create', 'role', `Criou o papel ${r.name}`, r.id); return { ...r, userCount: 0 }; },
     async updateRole(idr, d) { await wait(); requirePerm('admin.manage'); const r = S.roles.find((x) => x.id === idr); if (!r) throw notFound('Papel'); if (r.key === 'administrador' && d.permissions && (d.permissions as string[]).length !== ALL_PERMISSIONS.length) throw bad('O papel Administrador sempre tem todas as permissões'); if (d.name && !r.isSystem) r.name = String(d.name); if (d.description !== undefined) r.description = d.description as string; if (d.permissions) r.permissions = d.permissions as string[]; audit('update', 'role', `Editou o papel ${r.name}`, r.id); return { ...r, userCount: S.users.filter((u) => u.roleId === r.id).length }; },
     async removeRole(idr) { await wait(); requirePerm('admin.manage'); const r = S.roles.find((x) => x.id === idr); if (!r) throw notFound('Papel'); if (r.isSystem) throw bad('Papéis do sistema não podem ser apagados'); if (S.users.some((u) => u.roleId === idr)) throw bad('Há usuários com este papel. Mude o papel deles antes.'); S.roles = S.roles.filter((x) => x.id !== idr); return { ok: true }; },
-    async catalog(type) { await wait(40); return (type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories).slice().sort((a, b) => a.name.localeCompare(b.name)); },
-    async createCatalogItem(type, name) { await wait(); requirePerm('admin.manage'); const list = type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories; if (list.some((x) => x.name.toLowerCase() === name.toLowerCase())) throw bad('Já existe um item com esse nome'); const it = { id: id(), name, active: true }; list.push(it); audit('create', `catalog:${type}`, `Adicionou "${name}" ao catálogo ${type}`, it.id); return it; },
-    async updateCatalogItem(type, idi, d) { await wait(); requirePerm('admin.manage'); const list = type === 'carriers' ? S.carriers : type === 'hostings' ? S.hostings : S.categories; const it = list.find((x) => x.id === idi); if (!it) throw notFound('Item'); if (d.name !== undefined) { const nome = String(d.name).trim(); if (list.some((x) => x.id !== idi && x.name.toLowerCase() === nome.toLowerCase())) throw bad(`Já existe "${nome}" neste catálogo`); it.name = nome; } if (d.active !== undefined) it.active = Boolean(d.active); audit('update', `catalog:${type}`, `Alterou "${it.name}" no catálogo ${type}`, it.id); return it; },
+    async catalog(type) { await wait(40); return listaDoCatalogo(type).slice().sort((a, b) => a.name.localeCompare(b.name)); },
+    async createCatalogItem(type, name) { await wait(); requirePerm('admin.manage'); const list = listaDoCatalogo(type); if (list.some((x) => x.name.toLowerCase() === name.toLowerCase())) throw bad(`Já existe "${name}" neste catálogo`); const it = { id: id(), name, active: true }; list.push(it); audit('create', `catalog:${type}`, `Adicionou "${name}" ao catálogo ${NOME_DO_CATALOGO[type] ?? type}`, it.id); return it; },
+    async updateCatalogItem(type, idi, d) {
+      await wait(); requirePerm('admin.manage');
+      const list = listaDoCatalogo(type); const it = list.find((x) => x.id === idi); if (!it) throw notFound('Item');
+      const antes = { ...it };
+      if (d.name !== undefined) { const nome = String(d.name).trim(); if (list.some((x) => x.id !== idi && x.name.toLowerCase() === nome.toLowerCase())) throw bad(`Já existe "${nome}" neste catálogo`); it.name = nome; }
+      if (d.active !== undefined) it.active = Boolean(d.active);
+      // o contato guarda o nome do cargo: renomear muda o dos contatos que o têm (como o servidor)
+      let contatos = 0;
+      if (type === 'cargos' && antes.name !== it.name) for (const x of S.contatos) if (x.cargo === antes.name) { x.cargo = it.name; contatos++; }
+      const partes = [
+        antes.name !== it.name ? `renomeou "${antes.name}" para "${it.name}"${contatos ? ` (${contatos} ${contatos === 1 ? 'contato passou' : 'contatos passaram'} para o nome novo)` : ''}` : '',
+        antes.active !== it.active ? `${it.active ? 'reativou' : 'desativou'} "${it.name}"` : '',
+      ].filter(Boolean);
+      audit('update', `catalog:${type}`, `${NOME_DO_CATALOGO[type] ?? type}: ${partes.join('; ') || `alterou "${it.name}"`}`, it.id);
+      return it;
+    },
     async products() { await wait(40); return S.products.filter((p) => !p.deletedAt).sort((a, b) => a.sortOrder - b.sortOrder).map(shapeProduct); },
     async createProduct(d) {
       await wait(); requirePerm('admin.manage');
@@ -3834,12 +3869,14 @@ export const demoApi: Api = {
         ...S.tutoriais.filter((c) => c.deletedAt).map((c) => ({ type: 'portalArticle', id: c.id, label: `Tutorial ${c.numero} · ${c.titulo}`, deletedAt: c.deletedAt! })),
         ...lixeiraDosChamadosDemo(),
         ...calendarioDemo.lixeira(),
+        ...simuladorDemo.lixeira(),
       ].sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
     },
     async restore(type, idr) {
       await wait(); requirePerm('records.delete');
       if (type === 'ticket') return restaurarChamadoDaLixeiraDemo(idr);
       if (type === 'calendarEvent') return calendarioDemo.restaurarDaLixeira(idr);
+      if (type === 'salesSimulation') return simuladorDemo.restaurarDaLixeira(idr);
       const list: any[] = type === 'client' ? S.clients : type === 'circuit' ? S.circuits : type === 'did' ? S.dids : type === 'deviceModel' ? S.models : type === 'product' ? S.products : type === 'productModule' ? S.modules : type === 'releaseNote' ? S.notas : type === 'knowledgeArticle' ? S.artigos : type === 'portalArticle' ? S.tutoriais : S.devices;
       const it = list.find((x) => x.id === idr); if (!it) throw notFound();
       it.deletedAt = null;

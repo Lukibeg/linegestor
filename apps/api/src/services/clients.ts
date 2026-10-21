@@ -16,10 +16,10 @@
  */
 import { and, asc, desc, eq, ilike, inArray, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import {
-  clientContacts, clientDeviceLogins, clientLogos, clientNetworkSettings, clients, clientUnits, deviceModels, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, tickets, type Db,
+  clientContacts, clientDeviceLogins, contactRoles, clientLogos, clientNetworkSettings, clients, clientUnits, deviceModels, dids, devices, fop2Settings, hostingProviders, linepbxSettings, newId, omniboardSettings, productModules, products, subscriptionModules, subscriptions, szchatSettings, tickets, type Db,
 } from '@gestor/db';
 import {
-  MAX_CONTATOS_DO_CLIENTE, PRODUTOS_SEM_DATA_DE_ATIVACAO,
+  MAX_CONTATOS_DO_CLIENTE, PRODUTOS_SEM_DATA_DE_ATIVACAO, cargoDaLista,
   type AssinaturaGravar, type ClienteAtualizar, type ClienteCriar, type ClienteListar, type ContatoDoCliente, type ContatoGravar, type LoginModeloGravar, type ModuloGravar, type RedePadrao, type UnidadeGravar,
 } from '@gestor/shared';
 import { BadRequest, Conflict, NotFound } from '../plugins/errors.js';
@@ -749,6 +749,23 @@ export async function listarContatos(db: Db, clientId: string, opts: { soAtivos?
   return rows.map((r) => contatoDaLinha(r, r.phone ? porFone.get(r.phone) ?? 0 : 0));
 }
 
+/**
+ * Os cargos que a janela do contato oferece (2.0.2, decisão 0053): os ativos do catálogo Cargos dos contatos
+ * (Administração › Catálogos), em ordem alfabética.
+ */
+export async function cargosDosContatos(db: Db): Promise<string[]> {
+  const rows = await db.select({ nome: contactRoles.name }).from(contactRoles).where(eq(contactRoles.active, true));
+  return rows.map((r) => r.nome).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/** O cargo do contato vem da lista; o que ele já tinha (`atual`) pode ficar. */
+async function cargoValido(db: Db, cargo: string | null, atual: string | null = null) {
+  if (!cargo || cargo === atual) return cargo;
+  const r = cargoDaLista(cargo, await cargosDosContatos(db), atual);
+  if ('erro' in r) throw new BadRequest(r.erro);
+  return r.cargo;
+}
+
 /** O mesmo WhatsApp não se repete entre os contatos ativos de um cliente. */
 async function whatsappLivre(db: Db, clientId: string, fone: string | null, exceto?: string) {
   if (!fone) return;
@@ -763,8 +780,9 @@ export async function criarContato(db: Db, clientId: string, d: ContatoGravar, u
   const [n] = await db.select({ n: sql<number>`count(*)` }).from(clientContacts).where(eq(clientContacts.clientId, clientId));
   if (Number(n?.n ?? 0) >= MAX_CONTATOS_DO_CLIENTE) throw new BadRequest(`O cliente ${cliente.nome} já tem ${MAX_CONTATOS_DO_CLIENTE} contatos: desative ou edite um dos que existem.`);
   if (d.ativo) await whatsappLivre(db, clientId, d.whatsapp);
+  const cargo = await cargoValido(db, d.cargo);
   const [row] = await db.insert(clientContacts).values({
-    id: newId(), clientId, name: d.nome, phone: d.whatsapp, email: d.email, role: d.cargo, active: d.ativo, createdById: userId,
+    id: newId(), clientId, name: d.nome, phone: d.whatsapp, email: d.email, role: cargo, active: d.ativo, createdById: userId,
   }).returning();
   return { contato: contatoDaLinha(row!), cliente: cliente.nome };
 }
@@ -774,7 +792,8 @@ export async function alterarContato(db: Db, clientId: string, contatoId: string
   const [atual] = await db.select().from(clientContacts).where(and(eq(clientContacts.id, contatoId), eq(clientContacts.clientId, clientId))).limit(1);
   if (!atual) throw new NotFound('Contato');
   if (d.ativo) await whatsappLivre(db, clientId, d.whatsapp, contatoId);
-  const [row] = await db.update(clientContacts).set({ name: d.nome, phone: d.whatsapp, email: d.email, role: d.cargo, active: d.ativo, updatedAt: new Date() })
+  const cargo = await cargoValido(db, d.cargo, atual.role);
+  const [row] = await db.update(clientContacts).set({ name: d.nome, phone: d.whatsapp, email: d.email, role: cargo, active: d.ativo, updatedAt: new Date() })
     .where(eq(clientContacts.id, contatoId)).returning();
   return { antes: contatoDaLinha(atual), depois: contatoDaLinha(row!), cliente: cliente.nome };
 }

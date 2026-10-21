@@ -14,6 +14,10 @@
  * "Enviar webhook" entende: sempre 200 (ele conta o 201 como falha), com `{"response":"CHAMADO_ABERTO",
  * "messages":[{"text":…}]}` ou `{"response":"CHAMADO_FALHOU"}`. A chave errada continua 401: não é o
  * robô falando. A `/entrada/chamado` recebe o formato do Gestor (o n8n, outros sistemas).
+ *
+ * A NIA (a IA do suporte, pelo n8n) lê o chamado com a sessão do LineChat (`sessaoId`, para achar a
+ * conversa) e as opções de verdade (`/integracao/opcoes`), monta com elas o que a IA pode escolher e grava
+ * de volta pelo PATCH e pelas anotações. Ler não vai para a auditoria.
  */
 import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
@@ -101,11 +105,21 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     return reply.status(r.criado ? 201 : 200).send({ criado: r.criado, id: r.id, codigo: r.codigo, numero: r.numero, link: r.link });
   });
 
+  // ---------- as opções (a NIA, pelo n8n, monta com elas o que a IA pode escolher) ----------
+
+  app.get('/integracao/opcoes', {
+    ...comChave,
+    schema: {
+      tags, querystring: ChaveNoEndereco,
+      summary: 'As opções de verdade, só as ativas, para quem preenche o chamado de fora (a NIA, pelo n8n): os assuntos (com o caminho, como "Ramal › Configuração", e a sigla do painel), os produtos, os clientes, as opções do Tipo de cada painel, as gravidades e as prioridades — cada uma do jeito que o PATCH do chamado aceita',
+    },
+  }, async (req) => entrada.opcoesParaIntegracao(app, ator(req)));
+
   // ---------- o n8n mexendo num chamado ----------
 
   app.get('/integracao/chamados/:ref', {
     ...comChave,
-    schema: { tags, querystring: ChaveNoEndereco, params: Ref, summary: 'O chamado (pelo código, como SUP-12, ou pelo id): o cartão, o relato, a descrição e a solução' },
+    schema: { tags, querystring: ChaveNoEndereco, params: Ref, summary: 'O chamado (pelo código, como SUP-12, ou pelo id): o cartão, o relato, a descrição, a solução e a sessão do LineChat (sessaoId: a conversa de onde ele veio)' },
   }, async (req) => entrada.lerChamado(app, req.params.ref));
 
   app.patch('/integracao/chamados/:ref', {

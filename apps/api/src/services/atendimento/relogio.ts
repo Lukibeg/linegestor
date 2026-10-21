@@ -11,7 +11,8 @@
  *  3. o chamado que ficou na entrada sem responsável além do tempo combinado avisa os supervisores (uma
  *     vez). O tempo conta no horário de atendimento: o que chega no sábado à noite avisa na terça às
  *     8h15 (com a segunda feriado), quando há alguém para pegar — e não às 20h15 do sábado;
- *  4. o Resolvido sem resposta do cliente por N dias úteis (os ajustes do painel) fecha sozinho.
+ *  4. o Resolvido sem resposta do cliente por N dias úteis (os ajustes do painel) fecha sozinho;
+ *  5. os lembretes do calendário (2.0.2) que chegaram na hora saem (o sininho e o WhatsApp).
  *
  * Uma volta de cada vez (se uma demorar mais de um minuto, a seguinte não começa por cima). Um chamado
  * (ou um agendado) que dá erro não para os outros: vai para o log e a volta segue.
@@ -25,6 +26,7 @@ import {
 } from '@gestor/shared';
 import { AppError } from '../../plugins/errors.js';
 import * as audit from '../audit.js';
+import { mandarLembretes } from '../calendario.js';
 import { avisarEquipe, avisarObservadores } from './avisos.js';
 import { carregarContexto, cartaoDaLinha, lerPrazos, registrarEvento, type Ator, type Contexto, type LinhaChamado, type Parentes } from './contexto.js';
 import { filhosDoChamado } from './leitura.js';
@@ -44,6 +46,8 @@ export type VoltaDoRelogio = {
   semDono: number;
   /** os códigos dos que fecharam sozinhos */
   fechados: string[];
+  /** quantos lembretes do calendário saíram (2.0.2) */
+  lembretes: number;
   /** quantas coisas deram erro (cada uma foi para o log) */
   erros: number;
 };
@@ -64,16 +68,17 @@ let ocupado = false;
 export async function voltaDoRelogioDosChamados(app: FastifyInstance, agora: Date = new Date()): Promise<VoltaDoRelogio | null> {
   if (ocupado) return null;
   ocupado = true;
-  const volta: VoltaDoRelogio = { agendados: [], alertas: 0, semDono: 0, fechados: [], erros: 0 };
+  const volta: VoltaDoRelogio = { agendados: [], alertas: 0, semDono: 0, fechados: [], lembretes: 0, erros: 0 };
   try {
     // cada tarefa por conta própria: a que falhar inteira (o banco piscou) não segura as outras
     const tarefas: Array<[string, (app: FastifyInstance, agora: Date, volta: VoltaDoRelogio) => Promise<void>]> = [
       ['agendados', nascerAgendados], ['prazos e sem responsável', vigiarAbertos], ['fechar sozinho', fecharResolvidos],
+      ['lembretes do calendário', lembretesDoCalendario],
     ];
     for (const [nome, tarefa] of tarefas) {
       try { await tarefa(app, agora, volta); } catch (err) { volta.erros++; app.log.error({ err }, `chamados: o relógio falhou (${nome})`); }
     }
-    if (volta.agendados.length || volta.alertas || volta.semDono || volta.fechados.length || volta.erros) app.log.info({ ...volta }, 'chamados: volta do relógio');
+    if (volta.agendados.length || volta.alertas || volta.semDono || volta.fechados.length || volta.lembretes || volta.erros) app.log.info({ ...volta }, 'chamados: volta do relógio');
     return volta;
   } finally {
     ocupado = false;
@@ -82,7 +87,7 @@ export async function voltaDoRelogioDosChamados(app: FastifyInstance, agora: Dat
 
 /** A cada minuto (o primeiro, 40 segundos depois de ligar, para não disputar com a subida do servidor). */
 export function iniciarRelogioDosChamados(app: FastifyInstance) {
-  app.log.info('chamados: relógio ligado (agendados, prazos, sem responsável e fechar sozinho, a cada minuto)');
+  app.log.info('chamados: relógio ligado (agendados, prazos, sem responsável, fechar sozinho e os lembretes do calendário, a cada minuto)');
   setTimeout(() => void voltaDoRelogioDosChamados(app), 40_000);
   setInterval(() => void voltaDoRelogioDosChamados(app), 60_000);
 }
@@ -136,6 +141,16 @@ async function nascerAgendados(app: FastifyInstance, agora: Date, volta: VoltaDo
       app.log.error({ err, agendado: a.id }, 'chamados: o agendado falhou');
     }
   }
+}
+
+// =====================================================================
+//  5. OS LEMBRETES DO CALENDÁRIO (2.0.2; as contas em services/calendario.ts)
+// =====================================================================
+
+async function lembretesDoCalendario(app: FastifyInstance, agora: Date, volta: VoltaDoRelogio) {
+  const r = await mandarLembretes(app, agora);
+  volta.lembretes += r.lembretes;
+  volta.erros += r.erros;
 }
 
 // =====================================================================
@@ -267,9 +282,10 @@ async function fecharUm(app: FastifyInstance, ctx: Contexto, t: LinhaChamado, ag
   // depois de gravado, o que o mover também faz: quem a etapa avisa, o pai (quando um filho fecha) e os webhooks
   const chamado = { id: t.id, codigo: t.code, titulo: t.title };
   if (para.avisar.length) await avisarEquipe(app, { evento: 'etapa', para: para.avisar, chamado, texto: `${t.code} chegou em ${para.nome}` });
+  const porque = `${dias} ${dias === 1 ? 'dia útil' : 'dias úteis'} no ${de?.nome ?? 'Resolvido'} sem resposta do cliente`;
+  // no WhatsApp, sem o {quem}: foi o Gestor
   await avisarObservadores(app, {
-    chamado, observadores: t.watcherIds, jaAvisados: para.avisar,
-    texto: `O ${t.code} fechou sozinho: ${dias} ${dias === 1 ? 'dia útil' : 'dias úteis'} no ${de?.nome ?? 'Resolvido'} sem resposta do cliente`,
+    chamado, observadores: t.watcherIds, jaAvisados: para.avisar, texto: `O ${t.code} fechou sozinho: ${porque}`, novidade: `Fechou sozinho: ${porque}`,
   });
   if (t.parentId) {
     const [pai] = await app.db.select({ id: tickets.id, code: tickets.code, title: tickets.title, assigneeId: tickets.assigneeId }).from(tickets)

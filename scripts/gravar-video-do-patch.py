@@ -251,7 +251,7 @@ def roteiro(page):
     # o menu: os grupos (Suporte e Base de conhecimento) e, no rodapé, o sininho, o tema e o Sair (a barra de cima saiu)
     legenda(page, next(n), 'O menu mudou', 'Ganhou grupos: Suporte e Base de conhecimento. O sininho, o tema e o Sair ficam no rodapé.', 900)
     clicar(page, page.locator('button[data-grupo="base"]')); esperar(page, 1600)
-    clicar(page, page.get_by_role('button', name='Avisos dos chamados').first); esperar(page, 2200)
+    clicar(page, page.get_by_role('button', name='Avisos', exact=True).first); esperar(page, 2200)
     # o aviso que chega: o cartão perto do sininho (o Testar mostra), e a notificação do navegador
     legenda(page, next(n), 'O aviso que chega', 'Aparece num cartão perto do sininho, com Abrir o chamado. Ali embaixo, ligue também a notificação do navegador.', 600)
     apontar(page, page.get_by_role('switch', name='Notificação do navegador').first, 1400)

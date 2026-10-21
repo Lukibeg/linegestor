@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
+  CARGOS_DE_FABRICA, caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
   NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   type CartaoChamado,
 } from '@gestor/shared';
@@ -230,10 +230,16 @@ describe('os exemplos da prévia', () => {
     }
     expect(md.vencendo.length).toBeGreaterThan(0);
 
-    // o sininho do Luan: os cinco que ele precisa ver (um é a novidade de um chamado que ele observa)
+    // o sininho do Luan: os cinco dos chamados que ele precisa ver (um é a novidade de um chamado que ele
+    // observa) e, desde o 2.0.2, o lembrete do calendário (o retorno da Clínica Aurora, daqui a pouco). Os
+    // lembretes dos outros exemplos dependem da hora em que o teste roda: contam à parte.
     const av = await api.avisos();
-    expect(av.naoLidos).toBe(5);
-    expect(new Set(av.itens.filter((a) => !a.lido).map((a) => a.tipo))).toEqual(new Set(['critico', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
+    const naoLidos = av.itens.filter((a) => !a.lido);
+    expect(av.naoLidos).toBe(naoLidos.length);
+    const dosChamados = naoLidos.filter((a) => !a.evento);
+    expect(dosChamados).toHaveLength(5);
+    expect(new Set(dosChamados.map((a) => a.tipo))).toEqual(new Set(['critico', 'prazo_perto', 'recebeu', 'sem_dono', 'observador']));
+    expect(naoLidos.some((a) => a.tipo === 'lembrete' && !!a.evento && a.texto.includes('Retorno — Clínica Aurora'))).toBe(true);
     // quem fez a ação não é avisado: nenhum aviso do Luan sobre o que ele mesmo fez
     for (const a of av.itens.filter((x) => x.tipo === 'recebeu' && x.texto.startsWith('Você recebeu'))) {
       const f = await api.chamado(a.chamado!.codigo);
@@ -724,6 +730,25 @@ describe('as regras do servidor valem na prévia', () => {
     const historico = (await demoApi.clients.history(aurora.id)).items.map((a) => a.summary);
     expect(historico).toContain('Incluiu o contato Roberta Dias (Financeiro) em Clínica Aurora');
     expect(historico).toContain('Desativou o contato Roberta Dias de Clínica Aurora');
+  }, DEMORA);
+
+  it('o cargo do contato vem da lista dos Catálogos (como o servidor): fora dela não entra, o de antes fica, renomear muda os contatos', async () => {
+    await entrar('operador');
+    const horizonte = (await demoApi.clients.options()).find((c) => c.name === 'Construtora Horizonte')!;
+    expect(await demoApi.clients.cargos()).toEqual([...CARGOS_DE_FABRICA].sort((a, b) => a.localeCompare(b, 'pt-BR')));
+    const fora = await erroDe(demoApi.clients.salvarContato(horizonte.id, null, { nome: 'Pedro Alves', cargo: 'Obras' }));
+    expect([fora.status, fora.message]).toEqual([400, 'O cargo "Obras" não está na lista (Administração › Catálogos › Cargos dos contatos).']);
+    expect((await demoApi.clients.salvarContato(horizonte.id, null, { nome: 'Pedro Alves', cargo: 'ti' })).cargo).toBe('TI');
+    // o Paulo é o exemplo do cargo de antes, fora da lista: fica com ele ao mudar outra coisa
+    const paulo = (await demoApi.clients.contatos(horizonte.id)).find((c) => c.cargo === 'Engenharia')!;
+    expect((await demoApi.clients.salvarContato(horizonte.id, paulo.id, { ...paulo, email: 'paulo@horizonte.exemplo.com.br' })).cargo).toBe('Engenharia');
+    // a administração inclui e renomeia: o nome novo vai para os contatos que têm o cargo
+    await entrar('admin');
+    const eng = await demoApi.admin.createCatalogItem('cargos', 'Engenharia');
+    await demoApi.admin.updateCatalogItem('cargos', eng.id, { name: 'Engenharia e obras' });
+    expect((await demoApi.clients.contatos(horizonte.id)).find((c) => c.id === paulo.id)!.cargo).toBe('Engenharia e obras');
+    expect(await demoApi.clients.cargos()).toContain('Engenharia e obras');
+    expect((await demoApi.admin.audit({ pageSize: 5 })).items.map((a) => a.summary)).toContain('Cargos dos contatos: renomeou "Engenharia" para "Engenharia e obras" (1 contato passou para o nome novo)');
   }, DEMORA);
 
   it('as etiquetas com cor (como o servidor): a nova nasce com a cor escolhida, a que existe fica com a dela, e Ajustes › Etiquetas', async () => {

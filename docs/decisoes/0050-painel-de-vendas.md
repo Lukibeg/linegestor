@@ -141,7 +141,9 @@ nele (a regra do patch que ainda não subiu).
   Luan não quis (*"não precisa ser um botão para ele, ele vai ser um painel como o do suporte"*). Dentro
   do painel de Vendas, o botão do alto é **Nova negociação**. O item do menu se chamava **Chamados**; com
   o Comercial ali dentro, virou **Painéis** (17/10, nos comentários: *"isso aqui n é chamados, é
-  paineis"* — a revisão da decisão 0048).
+  paineis"* — a revisão da decisão 0048). No 2.0.2 (20/10), **Painéis** saiu do Suporte e virou um item
+  próprio no menu, e o atalho do grupo Comercial passou a se chamar **Painel do Comercial** (decisão 0048,
+  revista).
 - **O grupo Comercial no menu (19/10).** O Luan pediu *"uma aba lateral só para o comercial… onde vai ter
   um acesso direto ao painel do comercial e aos relatórios do comercial… isso tbm tem q ter um nível de
   permissão"*. Avisado de que mudava o *"não precisa ser um botão"* de 17/10, respondeu *"pode fazer"*.

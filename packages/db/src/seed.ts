@@ -2,7 +2,7 @@
  * Carga inicial do banco ("seed").
  *
  * Idempotente: pode rodar quantas vezes quiser — o que já existe não é duplicado.
- * Cria: os produtos e seus módulos, operadoras, hospedagens, categorias, os 4 papéis, as organizações
+ * Cria: os produtos e seus módulos, operadoras, hospedagens, categorias, os cargos dos contatos, os 4 papéis, as organizações
  * internas (Ingline Systems e VoiceNet) e o primeiro administrador.
  *
  * Com `--demo`, cria também clientes, circuitos, DIDs e aparelhos FICTÍCIOS para testar a interface.
@@ -13,7 +13,7 @@ import './env.js';
 import argon2 from 'argon2';
 import { eq, sql } from 'drizzle-orm';
 import {
-  CATEGORIAS_APARELHO_INICIAIS, DEFAULT_ROLES, HOSPEDAGENS_INICIAIS, MODULOS_INICIAIS, OPERADORAS_INICIAIS, ORGANIZACOES_INTERNAS, PAINEIS_INICIAIS, PRODUTOS_INICIAIS,
+  CARGOS_DE_FABRICA, CATEGORIAS_APARELHO_INICIAIS, DEFAULT_ROLES, HOSPEDAGENS_INICIAIS, MODULOS_INICIAIS, OPERADORAS_INICIAIS, ORGANIZACOES_INTERNAS, PAINEIS_INICIAIS, PRODUTOS_INICIAIS,
   gerarFaixaDids,
 } from '@gestor/shared';
 import { createDb } from './index.js';
@@ -28,7 +28,7 @@ if (!url) {
 const demo = process.argv.includes('--demo');
 const { db, pool } = createDb(url);
 
-type CatalogTable = typeof s.carriers | typeof s.hostingProviders | typeof s.deviceCategories;
+type CatalogTable = typeof s.carriers | typeof s.hostingProviders | typeof s.deviceCategories | typeof s.contactRoles;
 async function upsertByName(table: CatalogTable, name: string): Promise<{ id: string }> {
   const rows = (await db.select({ id: table.id }).from(table).where(eq(table.name, name)).limit(1)) as Array<{ id: string }>;
   if (rows[0]) return rows[0];
@@ -53,6 +53,8 @@ for (const [i, m] of MODULOS_INICIAIS.entries()) {
 for (const n of OPERADORAS_INICIAIS) await upsertByName(s.carriers, n);
 for (const n of HOSPEDAGENS_INICIAIS) await upsertByName(s.hostingProviders, n);
 for (const n of CATEGORIAS_APARELHO_INICIAIS) await upsertByName(s.deviceCategories, n);
+// os cargos dos contatos (2.0.2; a migração 0022 também põe estes, num banco que já existia)
+for (const n of CARGOS_DE_FABRICA) await upsertByName(s.contactRoles, n);
 
 // ---- papéis ----
 for (const r of DEFAULT_ROLES) {

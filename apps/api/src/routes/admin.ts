@@ -5,6 +5,7 @@ import { AuditoriaListarSchema, CatalogoItemSchema, ModuloCatalogoSchema, PapelG
 import * as svc from '../services/admin.js';
 import * as baseSvc from '../services/base.js';
 import * as calendarioSvc from '../services/calendario.js';
+import * as simuladorSvc from '../services/simulador.js';
 import * as portalSvc from '../services/portal.js';
 import * as audit from '../services/audit.js';
 import * as clientsSvc from '../services/clients.js';
@@ -15,7 +16,7 @@ import * as novidades from '../services/releaseNotes.js';
 import { BadRequest, Forbidden } from '../plugins/errors.js';
 
 const Id = z.object({ id: z.string() });
-const CatalogType = z.enum(['carriers', 'hostings', 'categories']);
+const CatalogType = z.enum(['carriers', 'hostings', 'categories', 'cargos']);
 
 const routes: FastifyPluginAsyncZod = async (app) => {
   // ---- usuários ----
@@ -36,11 +37,20 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     async (req) => { const row = await svc.deleteRole(app.db, req.params.id); await app.audit(req, { action: 'delete', entityType: 'role', entityId: row.id, summary: `Apagou o papel ${row.name}` }); return { ok: true }; });
 
   // ---- catálogos ----
-  app.get('/catalogs/:type', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Administração'], summary: 'Itens de um catálogo (operadoras, hospedagens, categorias)', params: z.object({ type: CatalogType }) } }, async (req) => svc.listCatalog(app.db, req.params.type));
+  app.get('/catalogs/:type', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Administração'], summary: 'Itens de um catálogo (operadoras, hospedagens, categorias, cargos dos contatos)', params: z.object({ type: CatalogType }) } }, async (req) => svc.listCatalog(app.db, req.params.type));
   app.post('/catalogs/:type', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Adicionar item ao catálogo', params: z.object({ type: CatalogType }), body: CatalogoItemSchema } },
-    async (req, reply) => { const row = await svc.createCatalogItem(app.db, req.params.type, req.body.name); await app.audit(req, { action: 'create', entityType: `catalog:${req.params.type}`, entityId: row.id, summary: `Adicionou "${row.name}" ao catálogo ${req.params.type}` }); return reply.status(201).send(row); });
+    async (req, reply) => { const row = await svc.createCatalogItem(app.db, req.params.type, req.body.name); await app.audit(req, { action: 'create', entityType: `catalog:${req.params.type}`, entityId: row.id, summary: `Adicionou "${row.name}" ao catálogo ${svc.NOME_DO_CATALOGO[req.params.type]}` }); return reply.status(201).send(row); });
   app.patch('/catalogs/:type/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Renomear/ativar/desativar item', params: z.object({ type: CatalogType, id: z.string() }), body: CatalogoItemSchema.partial() } },
-    async (req) => { const row = await svc.updateCatalogItem(app.db, req.params.type, req.params.id, req.body); await app.audit(req, { action: 'update', entityType: `catalog:${req.params.type}`, entityId: row.id, summary: `Alterou "${row.name}" no catálogo ${req.params.type}` }); return row; });
+    async (req) => {
+      const { row, antes, contatos } = await svc.updateCatalogItem(app.db, req.params.type, req.params.id, req.body);
+      // "Cargos dos contatos: renomeou "Gerente" para "Gerência" (3 contatos passaram para o nome novo)"
+      const partes = [
+        antes.name !== row.name ? `renomeou "${antes.name}" para "${row.name}"${contatos ? ` (${contatos} ${contatos === 1 ? 'contato passou' : 'contatos passaram'} para o nome novo)` : ''}` : '',
+        antes.active !== row.active ? `${row.active ? 'reativou' : 'desativou'} "${row.name}"` : '',
+      ].filter(Boolean);
+      await app.audit(req, { action: 'update', entityType: `catalog:${req.params.type}`, entityId: row.id, summary: `${svc.NOME_DO_CATALOGO[req.params.type]}: ${partes.join('; ') || `alterou "${row.name}"`}` });
+      return row;
+    });
   app.get('/products', { preHandler: app.requirePermission('records.read'), schema: { tags: ['Administração'], summary: 'Produtos do portfólio' } }, async () => svc.listProducts(app.db));
   app.patch('/products/:id', { preHandler: app.requirePermission('admin.manage'), schema: { tags: ['Administração'], summary: 'Editar produto (nome, cor, descrição, ativo, ordem)', params: Id, body: z.object({ name: z.string().min(1).optional(), color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(), description: z.string().nullable().optional(), active: z.boolean().optional(), sortOrder: z.number().int().optional() }) } },
     async (req) => { const row = await svc.updateProduct(app.db, req.params.id, req.body); await app.audit(req, { action: 'update', entityType: 'product', entityId: row.id, summary: `Editou o produto ${row.name}` }); return row; });
@@ -60,7 +70,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   // ---- lixeira ----
   app.get('/trash', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'O que está na lixeira' } }, async () => svc.listTrash(app.db));
-  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle', 'portalArticle', 'ticket', 'calendarEvent']), id: z.string() }) } },
+  app.post('/trash/:type/:id/restore', { preHandler: app.requirePermission('records.delete'), schema: { tags: ['Administração'], summary: 'Restaurar um item da lixeira', params: z.object({ type: z.enum(['client', 'circuit', 'did', 'deviceModel', 'device', 'product', 'productModule', 'releaseNote', 'project', 'knowledgeArticle', 'portalArticle', 'ticket', 'calendarEvent', 'salesSimulation']), id: z.string() }) } },
     async (req) => {
       const { type, id } = req.params;
       // o chamado do Gestor (2.0) é da lixeira de quem cuida dos chamados
@@ -79,9 +89,10 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       else if (type === 'portalArticle') { const t = await portalSvc.restaurarTutorial(app.db, id); label = `o tutorial ${t.number} "${t.title}" do portal`; }
       else if (type === 'ticket') { const t = await svc.restoreTicket(app.db, id, req.user!); label = `o chamado ${t.code} "${t.title}"`; }
       else if (type === 'calendarEvent') { const e = await calendarioSvc.restaurar(app.db, id); label = `o evento do calendário "${e.title}" (${textoDoPeriodo({ inicio: e.startsOn, fim: e.endsOn })})`; }
+      else if (type === 'salesSimulation') { const s = await simuladorSvc.restaurar(app.db, id); label = `a simulação "${s.name}" do Comercial`; }
       else throw new BadRequest('Tipo desconhecido');
-      // o evento do calendário fica na auditoria com o mesmo nome das outras ações dele (calendar_event)
-      await app.audit(req, { action: 'restore', entityType: type === 'calendarEvent' ? 'calendar_event' : type, entityId: id, summary: `Restaurou ${label} da lixeira` });
+      // o evento do calendário e a simulação ficam na auditoria com o mesmo nome das outras ações deles (calendar_event, sales_simulation)
+      await app.audit(req, { action: 'restore', entityType: type === 'calendarEvent' ? 'calendar_event' : type === 'salesSimulation' ? 'sales_simulation' : type, entityId: id, summary: `Restaurou ${label} da lixeira` });
       return { ok: true };
     });
 };

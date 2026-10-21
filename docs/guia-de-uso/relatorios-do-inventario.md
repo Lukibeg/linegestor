@@ -1,6 +1,6 @@
 # Relatórios do Inventário (Patch 1.9)
 
-Inventário › aba **Relatórios**. Três partes, escolhidas nos botões do alto. Todo mundo que vê o
+Técnico › Inventário › aba **Relatórios**. Três partes, escolhidas nos botões do alto. Todo mundo que vê o
 inventário vê os relatórios. **Clicar em qualquer número abre os aparelhos dele**, cada um com o link
 para a ficha — e o Voltar da ficha traz de volta para o relatório.
 
@@ -40,7 +40,7 @@ marcada como Inativo), por modelo e por cliente, quanto tempo ficou no cliente a
 |---|---|
 | MAC ou N/S escrito na anotação | ficha do aparelho › Editar: passar o código para o campo MAC ou N/S |
 | Sem MAC e sem N/S | ficha do aparelho › Editar (o modelo costuma ter: olhe a etiqueta) |
-| Modelo sem valor | Inventário › Modelos › o modelo › Editar modelo |
+| Modelo sem valor | Técnico › Inventário › Modelos › o modelo › Editar modelo |
 | Cliente sem o login padrão do modelo | ficha do cliente › Acessos › Rede padrão dos aparelhos |
 | Cliente sem a rede padrão | ficha do cliente › Acessos › Rede padrão dos aparelhos |
 | Valor diferente do modelo (conferir) | se foi engano: Editar modelo › "Usar este valor em todos" |

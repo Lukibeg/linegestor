@@ -3,9 +3,10 @@
 O Comercial acompanha as negociações num painel igual ao dos chamados — o quadro, a lista, a ficha, as
 anotações, os avisos —, com o que é de venda: o **valor** — a **mensalidade** e a **ativação**, cada uma
 de um valor só ou por produto, com o total —, o **Ganho** e o **Perdido** (com o motivo), a **empresa que
-ainda não é cliente** e a **meta do mês**. No menu, o grupo **Comercial** leva direto às **Negociações**
-e aos **Relatórios**; o painel também fica em **Suporte › Painéis**, como os outros (o Suporte, o
-Desenvolvimento). O Comercial tem permissão própria: **Ver o Comercial**. A decisão inteira está em
+ainda não é cliente** e a **meta do mês**. No menu, o grupo **Comercial** leva direto ao **Painel do
+Comercial** (até o 2.0.1, Negociações), aos **Relatórios** e ao **Simulador** (2.0.2: a conta de uma venda
+antes de fechar, no guia `simulador.md`); o painel também fica em **Painéis**, como
+os outros (o Suporte, o Desenvolvimento). O Comercial tem permissão própria: **Ver o Comercial**. A decisão inteira está em
 `docs/decisoes/0050-painel-de-vendas.md`.
 
 ---
@@ -19,7 +20,7 @@ Comercial em lugar nenhum** — nem o grupo do menu, nem o painel, nem os relat�
 seja de todos. O Administrador já vem com ela. Quem deve ver só o Comercial (e não os chamados do
 Suporte) fica com um papel sem o **Ver os chamados**.
 
-1. **Suporte › Painéis › Ajustes › Painéis › Novo painel** (ou o **Novo painel** da tela dos painéis).
+1. **Painéis › Ajustes › Painéis › Novo painel** (ou o **Novo painel** da tela dos painéis).
 2. Em **O painel é de**, escolha **Negociações (Vendas)**. Isso não muda depois.
 3. Dê o nome (Comercial) e a sigla (COM): as negociações ficam COM-1, COM-2…
 4. Em **Quem vê**, **Só as pessoas escolhidas**, e marque a equipe do Comercial.
@@ -33,8 +34,8 @@ Suporte) fica com um papel sem o **Ver os chamados**.
 
 ## 2. O dia a dia
 
-- **No menu, o grupo Comercial**: **Negociações** abre direto o quadro do Comercial, e **Relatórios**, o
-  relatório. Com mais de um painel de Vendas, abre o último que você usou (o **Trocar**, no alto do
+- **No menu, o grupo Comercial**: **Painel do Comercial** abre direto o quadro do Comercial, **Relatórios**, o
+  relatório, e **Simulador**, as simulações (a margem de cada venda; a negociação ligada a uma mostra o sinal). Com mais de um painel de Vendas, abre o último que você usou (o **Trocar**, no alto do
   quadro, leva aos outros).
 - **A tela dos painéis** mostra o cartão do Comercial: quanto está **em negociação** (e quantas), o
   **ganho no mês** (e quantas ganhas e perdidas), **sem dono**, as **suas** e a **barra da meta**.
@@ -92,6 +93,11 @@ Chrome e no Edge), ou arraste o arquivo, ou use o **Anexar**. Até 5 arquivos de
 Depois, clique no PDF na anotação: **ele abre na tela, página por página, sem baixar** (o **Baixar** fica
 embaixo). A imagem também abre grande; Word e Excel continuam baixando.
 
+Para fazer a conta da venda antes de mandar a proposta (os custos, a margem, quando se paga), use o
+**Simulador** (Comercial › Simulador): na ficha, a parte **Simulações** tem o **Simular**, que abre uma
+simulação já ligada à negociação, e a simulação tem o **Levar para a COM-x**, que traz a mensalidade, a
+ativação e os produtos para a negociação. Veja o guia do [Simulador](simulador.md).
+
 ## 5. Ganhou ou perdeu
 
 Na ficha, **Ganhou** ou **Perdeu** (ou arraste o cartão para a coluna Ganho ou Perdido):
@@ -124,6 +130,12 @@ botão **Relatório** no cartão do painel).
   é comparado com o mesmo pedaço do mês anterior. No celular, aparecem os 6 últimos.
 - **As ativações mês a mês**: o mesmo gráfico, só com a ativação das negociações ganhas em cada mês (as
   sem ativação não entram). Clicar num mês mostra as negociações com a ativação de cada uma.
+- **A margem das ganhas** (2.0.2): das negociações ganhas no período, as que têm uma simulação ligada (o
+  Simulador do Comercial): quanto sobra por mês e a **margem**, com o sinal (verde, amarelo, vermelho), no
+  total e **por produto** (a que tem dois produtos conta nos dois). Cada negociação entra
+  com o cenário principal da simulação dela; a margem do grupo é a sobra de todas sobre a mensalidade de
+  todas. "2 de 3 com simulação" diz quantas das ganhas entraram. Veja o guia do
+  [Simulador](simulador.md).
 - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
   entraram), quantas se perderam em cada uma e quantas foram ganhas.
 - **Clique em qualquer número** (o ganho, a ativação, as novas, o perdido, um mês, uma etapa do funil, as

@@ -6,11 +6,13 @@
  * de cima continua, porque é onde fica o botão que abre o menu (e o sininho, à mão). O aviso que chega
  * aparece num cartão perto do sininho (e na notificação do navegador, para quem ligou).
  *
- * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Suporte** (os
- * Painéis — os chamados e as negociações; até o 2.0.1 o item se chamava Chamados —, os Projetos e os
- * Relatórios, que abrem nos tickets do LineChat, na aba Hoje), **Comercial** (2.0.1: o atalho para o
- * painel de Vendas e o relatório dele, de quem tem a permissão do Comercial) e **Base de
- * conhecimento** (a interna e a dos clientes); o Importar / Exportar foi para dentro da Administração. O
+ * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Técnico** (2.0.2: os
+ * Circuitos e DIDs e o Inventário), **Suporte** (o Painel do Suporte — o atalho para o quadro dele, 2.0.2 —,
+ * o Meu dia, 2.0.2, os Projetos e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje),
+ * **Comercial** (2.0.1: o Painel do Comercial — o atalho para o painel de Vendas — e o relatório dele, de
+ * quem tem a permissão do Comercial; 2.0.2: o Simulador) e **Base de conhecimento** (a interna e a dos clientes); o Importar /
+ * Exportar foi para dentro da Administração. Os
+ * **Painéis** (todos: os chamados e as negociações) são um item próprio, abaixo do Calendário (2.0.2). O
  * grupo da tela aberta abre sozinho e cada um abre e fecha com um clique (o navegador lembra). Com o menu
  * recolhido, o ícone do grupo abre a lista dele do lado.
  */
@@ -18,16 +20,18 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BookLock, BookUser, Boxes, Building2, Cable, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, HandCoins, Handshake, Headset, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
-  Menu, Moon, Settings, Sparkles, SquareKanban, Sun, UserRound, X, type LucideIcon,
+  BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Handshake, Headset, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
+  Menu, Moon, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
 import { NovidadesPopup } from '../../pages/novidades/Index.js';
 import { SinoDeAvisos } from '../../pages/atendimento/Sino.js';
+import { fundoDaJanela } from '../../pages/atendimento/comum.js';
 import { AvisosQueChegam } from '../../pages/atendimento/AvisosQueChegam.js';
 import { useAuth } from '../../lib/auth.js';
 import { lembrarPainelDoComercial } from '../../lib/comercial.js';
+import { PAINEL_DO_SUPORTE } from '../../pages/atendimento/Suporte.js';
 import { IS_DEMO } from '../../api/index.js';
 import { Logotipo, Simbolo } from '../Marca.js';
 
@@ -37,35 +41,52 @@ type ItemDoMenu = { to: string; label: string; icon: LucideIcon; perm: string | 
 type GrupoDoMenu = { grupo: string; label: string; icon: LucideIcon; itens: ItemDoMenu[] };
 const ehGrupo = (x: ItemDoMenu | GrupoDoMenu): x is GrupoDoMenu => 'grupo' in x;
 
-const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
+export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   { to: '/', label: 'Painel', icon: LayoutDashboard, perm: 'records.read', end: true },
   { to: '/clientes', label: 'Clientes', icon: Building2, perm: 'records.read' },
-  { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
-  { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
+  // os Circuitos e DIDs e o Inventário moram no grupo Técnico (2.0.2), acima do Suporte
   // o calendário das equipes (2.0.1): as visitas, as viradas, as folgas… de todas as equipes (o Comercial e o
   // Administrativo também), por isso no alto do menu e não dentro do Suporte — lá ele ficava escondido no
   // grupo fechado (16/10, o Luan: "cadê, não tá na demo")
   { to: '/calendario', label: 'Calendário', icon: CalendarDays, perm: ['support.read', 'sales.read'] },
-  // o suporte: os painéis do Gestor (os chamados, 2.0, e as negociações do Comercial, 2.0.1 — "isso aqui n é
-  // chamados, é paineis", o Luan em 17/10), os projetos (as tarefas que percorrem vários clientes) e os
-  // Relatórios. O Relatórios abre nos tickets do LineChat (a cópia de leitura, 1.3), na aba Hoje; dali as abas
-  // levam ao Período e aos 20 relatórios (1.7), e o item fica marcado nas duas telas. (13/10, os pedidos do
-  // Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos Projetos, "pode ficar dentro de
-  // suporte também")
+  // os painéis do Gestor (os chamados, 2.0, e as negociações do Comercial, 2.0.1 — "isso aqui n é chamados, é
+  // paineis", o Luan em 17/10): um item próprio, como o Calendário (2.0.2, 20/10: "o paineis vai ter um campo
+  // próprio como o calendário"). Abre a tela de todos os painéis (Todos, Meu dia e Ajustes).
+  { to: '/atendimento', label: 'Painéis', icon: SquareKanban, perm: 'support.read' },
+  // o técnico (2.0.2, 20/10, num comentário na prévia: "quero q vc faça uma nova aba de técnico e esses 2
+  // pontos vao ficar dentro dele"): os circuitos com a numeração (0010) e o inventário dos aparelhos, que
+  // moravam no alto do menu. Logo acima do Suporte (no mesmo dia, outro comentário: "quero q o técnico fique
+  // acima de suporte"; a primeira versão o punha abaixo)
+  {
+    grupo: 'tecnico', label: 'Técnico', icon: Wrench, itens: [
+      { to: '/circuitos', label: 'Circuitos e DIDs', icon: Cable, perm: 'records.read' },
+      { to: '/inventario', label: 'Inventário', icon: Boxes, perm: 'records.read' },
+    ],
+  },
+  // o suporte: o Painel do Suporte (2.0.2, o atalho para o quadro do painel Suporte, "como fizemos no
+  // comercial"), o Meu dia (2.0.2: "o meu dia pode ter um botão aqui tbm"), os projetos (as tarefas que
+  // percorrem vários clientes) e os Relatórios. O Relatórios abre nos tickets do LineChat (a cópia de leitura,
+  // 1.3), na aba Hoje; dali as abas levam ao Período e aos 20 relatórios (1.7), e o item fica marcado nas duas
+  // telas. (13/10, os pedidos do Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos
+  // Projetos, "pode ficar dentro de suporte também")
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
-      { to: '/atendimento', label: 'Painéis', icon: SquareKanban, perm: 'support.read' },
+      { to: '/suporte', label: 'Painel do Suporte', icon: Kanban, perm: 'support.read' },
+      { to: '/atendimento/meu-dia', label: 'Meu dia', icon: SunMedium, perm: 'support.read' },
       { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
       { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
     ],
   },
   // o Comercial (2.0.1, 19/10: "uma aba lateral só para o comercial… com acesso direto ao painel do comercial
-  // e aos relatórios do comercial… tem q ter um nível de permissão"): o atalho para o painel de Vendas e o
-  // relatório dele, de quem tem a permissão do Comercial. O painel continua sendo um painel (também em Painéis).
+  // e aos relatórios do comercial… tem q ter um nível de permissão"): o atalho para o painel de Vendas (o
+  // Painel do Comercial; até o 2.0.1, Negociações) e o relatório dele, de quem tem a permissão do Comercial.
+  // O painel continua sendo um painel (também em Painéis).
   {
     grupo: 'comercial', label: 'Comercial', icon: Handshake, itens: [
-      { to: '/comercial', label: 'Negociações', icon: HandCoins, perm: 'sales.read' },
+      { to: '/comercial', label: 'Painel do Comercial', icon: Kanban, perm: 'sales.read' },
       { to: '/comercial/relatorio', label: 'Relatórios', icon: TrendingUp, perm: 'sales.read' },
+      // o Simulador (2.0.2, decisão 0052): a conta de uma venda antes de fechar — "dentro da aba de comercial"
+      { to: '/comercial/simulador', label: 'Simulador', icon: Calculator, perm: 'sales.read' },
     ],
   },
   // a base: a interna (o que a equipe aprendeu, 1.8) e a dos clientes (o portal: os tutoriais e quem entra, 1.8)
@@ -82,7 +103,23 @@ const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
 ];
 
 /** O item está aberto na tela? (as mesmas regras do NavLink) */
-const ehAtivo = (i: ItemDoMenu, pathname: string) => !!matchPath({ path: i.to, end: !!i.end }, pathname);
+const ehAtivo = (i: Pick<ItemDoMenu, 'to' | 'end'>, pathname: string) => !!matchPath({ path: i.to, end: !!i.end }, pathname);
+/** O Meu dia (o item mora dentro de /atendimento, como os Painéis). */
+const MEU_DIA: Pick<ItemDoMenu, 'to' | 'end'> = { to: '/atendimento/meu-dia' };
+
+/**
+ * A tela aberta é do painel do Suporte (2.0.2: o Painel do Suporte do menu fica marcado)? O quadro, a lista,
+ * o relatório e o Abrir chamado dizem o painel no endereço (?painel=); a ficha, pela sigla do código.
+ */
+export function eDoSuporte(pathname: string, search: string, sigla: string | null): boolean {
+  if (!pathname.startsWith('/atendimento')) return false;
+  if (/^\/atendimento\/(quadro|lista|relatorio|novo)\/?$/.test(pathname)) {
+    const ref = new URLSearchParams(search).get('painel');
+    return ref === PAINEL_DO_SUPORTE || (!!sigla && ref?.toUpperCase() === sigla);
+  }
+  const doCodigo = /^\/atendimento\/([A-Za-z0-9]+)-\d+\/?$/.exec(pathname)?.[1];
+  return !!sigla && doCodigo?.toUpperCase() === sigla;
+}
 /** Quem decide se o item está marcado (o do Comercial olha o painel aberto, não o endereço). */
 type Ativo = (i: ItemDoMenu) => boolean;
 
@@ -163,25 +200,34 @@ export function AppShell({ children }: { children: ReactNode }) {
     const itens = n.itens.filter(pode);
     return itens.length ? [{ ...n, itens }] : [];
   });
-  const { pathname, search } = useLocation();
+  const location = useLocation();
+  // com a ficha (ou o Abrir chamado) numa janela por cima da tela, quem diz o item marcado é a tela de baixo:
+  // o chamado aberto do Meu dia deixa o Meu dia marcado (2.0.2)
+  const { pathname, search } = fundoDaJanela(location) ?? location;
   // o Comercial (2.0.1): na tela de um painel de Vendas, o menu marca o Comercial (e não Painéis); os
   // painéis vêm das opções do módulo (a mesma consulta das telas dele), só para quem tem a permissão
   const comercial = can('sales.read');
-  const opcoes = useQuery({ queryKey: ['atendimento', 'opcoes'], queryFn: () => api.atendimento.opcoes(), enabled: !!user && comercial && pathname.startsWith('/atendimento'), staleTime: 60_000 });
+  const suporte = can('support.read');
+  const opcoes = useQuery({ queryKey: ['atendimento', 'opcoes'], queryFn: () => api.atendimento.opcoes(), enabled: !!user && (comercial || suporte) && pathname.startsWith('/atendimento'), staleTime: 60_000 });
   const vendas = useMemo(() => (opcoes.data?.paineis ?? []).filter((p) => p.tipo === 'vendas').map((p) => ({ id: p.id, sigla: p.sigla })), [opcoes.data]);
   const doComercial = comercial ? parteDoComercial(pathname, search, vendas) : null;
-  // o painel de Vendas aberto fica lembrado: o Negociações e o Relatórios do menu voltam para ele
+  // o painel do Suporte (2.0.2): na tela dele, o menu marca o Painel do Suporte (e não Painéis)
+  const siglaDoSuporte = opcoes.data?.paineis.find((p) => p.id === PAINEL_DO_SUPORTE)?.sigla ?? null;
+  const doSuporte = suporte && !doComercial && eDoSuporte(pathname, search, siglaDoSuporte);
+  // o painel de Vendas aberto fica lembrado: o Painel do Comercial e o Relatórios do menu voltam para ele
   useEffect(() => { if (doComercial) lembrarPainelDoComercial(doComercial.painelId); }, [doComercial?.painelId]);
   const ativo = useCallback<Ativo>((i) => {
     if (i.to === '/comercial') return doComercial?.parte === 'negociacoes';
     if (i.to === '/comercial/relatorio') return doComercial?.parte === 'relatorio';
-    if (i.to === '/atendimento') return !doComercial && ehAtivo(i, pathname);
+    if (i.to === '/suporte') return doSuporte;
+    // o Meu dia mora dentro de /atendimento: lá, o item marcado é o dele, e não Painéis
+    if (i.to === '/atendimento') return !doComercial && !doSuporte && ehAtivo(i, pathname) && !ehAtivo(MEU_DIA, pathname);
     return ehAtivo(i, pathname);
-  }, [doComercial?.parte, pathname]);
+  }, [doComercial?.parte, doSuporte, pathname]);
   const { abertos, alternar } = useGruposAbertos(items.filter(ehGrupo), ativo);
   const sair = async () => { await logout(); nav('/entrar'); };
   // nos chamados, a tela usa a largura toda e a margem é menor: o quadro e a ficha precisam de lugar
-  const largo = pathname.startsWith('/atendimento') || pathname.startsWith('/calendario');
+  const largo = pathname.startsWith('/atendimento') || pathname.startsWith('/calendario') || pathname.startsWith('/comercial/simulador');
   // o sininho dos avisos: de quem vê os chamados ou o Comercial (os avisos das negociações)
   const temSino = can('support.read') || comercial;
   // o número no menu: quantas notas de novidade esta pessoa ainda não leu

@@ -28,7 +28,7 @@ import { mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { secrets, settings, type Db } from '@gestor/db';
-import { AJUSTES_PRAZOS_PADRAO, AVISOS_CHAMADOS_PADRAO, MAPA_DO_ROBO_PADRAO, TIPOS_DE_EVENTO_PADRAO, type ItemPainel, type ProvedorIa } from '@gestor/shared';
+import { AJUSTES_DO_SIMULADOR_PADRAO, AJUSTES_PRAZOS_PADRAO, AVISOS_CHAMADOS_PADRAO, MAPA_DO_ROBO_PADRAO, TIPOS_DE_EVENTO_PADRAO, type ItemPainel, type ProvedorIa } from '@gestor/shared';
 import type { SecretsVault } from './secrets.js';
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? '/dados';
@@ -147,7 +147,7 @@ export const IA_PADRAO: AjustesIa = {
 
 type Assunto = 'backup' | 'avisos' | 'linechat' | 'chamados-painel' | 'chamados-relatorios' | 'chamados-relatorios-arrumacao'
   | 'envio-automatico' | 'envio-automatico-marcados' | 'base-ia' | 'atendimento-prazos' | 'atendimento-avisos' | 'atendimento-integracoes'
-  | 'atendimento-robo' | 'atendimento-robo-ultimo' | 'calendario';
+  | 'atendimento-robo' | 'atendimento-robo-ultimo' | 'calendario' | 'comercial-simulador';
 const PADROES: Record<Assunto, unknown> = {
   backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO, 'chamados-painel': { itens: [] },
   // os Relatórios dos Chamados (1.7): sem nada guardado, os campos são achados pelo nome e os clientes, ligados pelo nome
@@ -177,6 +177,8 @@ const PADROES: Record<Assunto, unknown> = {
   'atendimento-robo-ultimo': { ultimo: null },
   // o calendário (2.0.1): os tipos de evento (Visita, Folga…), com nome e cor; sem nada guardado, os de fábrica
   calendario: { tipos: TIPOS_DE_EVENTO_PADRAO },
+  // o Simulador do Comercial (2.0.2): o imposto, as faixas do sinal e o prazo de fábrica; a tabela e os modelos, vazios
+  'comercial-simulador': AJUSTES_DO_SIMULADOR_PADRAO,
 };
 
 export async function ler<T>(db: Db, assunto: Assunto): Promise<{ valor: T; secretId: string | null; temSegredo: boolean }> {

@@ -13,8 +13,8 @@
 import type { FastifyInstance } from 'fastify';
 import { and, arrayContains, asc, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import {
-  carriers, circuits, clientUnits, clients, deviceModels, devices, dids, linechatCards, products, subscriptions, ticketAttachments, ticketCarrierCases,
-  ticketEvents, ticketLinks, ticketNotes, ticketNotifications, ticketSchedules, ticketTimeEntries, tickets, users,
+  calendarEvents, carriers, circuits, clientUnits, clients, deviceModels, devices, dids, linechatCards, products, subscriptions, ticketAttachments,
+  ticketCarrierCases, ticketEvents, ticketLinks, ticketNotes, ticketNotifications, ticketSchedules, ticketTimeEntries, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
@@ -254,8 +254,11 @@ export async function meuDia(app: FastifyInstance, ator: Ator): Promise<MeuDia> 
 
 export async function avisosNaTela(db: Db, userId: string): Promise<AvisosNaTela> {
   const [linhas, [n]] = await Promise.all([
-    db.select({ a: ticketNotifications, codigo: tickets.code, titulo: tickets.title }).from(ticketNotifications)
+    db.select({ a: ticketNotifications, codigo: tickets.code, titulo: tickets.title, eventoTitulo: calendarEvents.title, eventoInicio: calendarEvents.startsOn })
+      .from(ticketNotifications)
       .leftJoin(tickets, eq(tickets.id, ticketNotifications.ticketId))
+      // o lembrete do calendário (2.0.2): o aviso é do evento
+      .leftJoin(calendarEvents, eq(calendarEvents.id, ticketNotifications.calendarEventId))
       .where(eq(ticketNotifications.userId, userId))
       .orderBy(desc(ticketNotifications.createdAt), desc(ticketNotifications.id))
       .limit(30),
@@ -263,9 +266,10 @@ export async function avisosNaTela(db: Db, userId: string): Promise<AvisosNaTela
   ]);
   return {
     naoLidos: Number(n?.n ?? 0),
-    itens: linhas.map(({ a, codigo, titulo }) => ({
+    itens: linhas.map(({ a, codigo, titulo, eventoTitulo, eventoInicio }) => ({
       id: a.id, tipo: a.kind as TipoAviso, texto: a.body,
       chamado: a.ticketId && codigo ? { id: a.ticketId, codigo, titulo: titulo ?? '' } : null,
+      evento: a.calendarEventId && eventoTitulo && eventoInicio ? { id: a.calendarEventId, titulo: eventoTitulo, inicio: eventoInicio } : null,
       em: a.createdAt.toISOString(), lido: !!a.readAt,
     })),
   };

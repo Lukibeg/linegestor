@@ -12,6 +12,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [client_logos](#client_logos) — A logo do cliente, guardada no próprio banco (uma linha por cliente que tem logo).
 - [client_units](#client_units) — As UNIDADES de um cliente: matriz, filiais, lojas, andares.
 - [client_contacts](#client_contacts) — OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia): as pessoas do cliente com quem a equipe fala — o nome, o WhatsApp, o e-mail e o cargo (ou o setor).
+- [contact_roles](#contact_roles) — Catálogo: OS CARGOS DOS CONTATOS (2.0.2, o pedido do Luan: "eu quero que esses cargos sejam pré-seleção").
 - [client_device_logins](#client_device_logins) — LOGIN E SENHA PADRÃO DOS APARELHOS do cliente, POR MODELO: todos os GXP1610 de um cliente entram com o mesmo login e senha; os DP722, com outro.
 - [client_network_settings](#client_network_settings) — CONFIGURAÇÃO DE REDE PADRÃO dos aparelhos do cliente: o que a equipe digita nos telefones na hora de configurar (IP, máscara, gateway, DNS) e a senha do ramal sem fio.
 - [products](#products) — Catálogo dos produtos vendidos (LinePBX, LineChat, LineReports, SZChat, VoiceNet, Equipamentos — gerenciável pela Administração).
@@ -85,6 +86,7 @@ Convenções: dinheiro em centavos inteiros · CNPJ, DID e MAC guardados só com
 - [ticket_webhooks](#ticket_webhooks) — Um AVISO PARA FORA (webhook): o Gestor manda o que aconteceu com os chamados para outro sistema (o n8n).
 - [ticket_api_keys](#ticket_api_keys) — Uma CHAVE DE API para o robô do LineChat e o n8n abrirem e mexerem nos chamados.
 - [calendar_events](#calendar_events) — Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual cliente e quando.
+- [sales_simulations](#sales_simulations) — Uma SIMULAÇÃO do Comercial: o nome, os cenários e a negociação ligada.
 
 
 ---
@@ -149,11 +151,21 @@ OS CONTATOS DO CLIENTE (2.0, o pedido do Luan na prévia): as pessoas do cliente
 | `name` | texto | — | obrigatório |
 | `phone` | texto | Só os dígitos, com o 55 | — |
 | `email` | texto | — | — |
-| `role` | texto | O cargo ou o setor: "Recepção", "TI", "Financeiro" | — |
+| `role` | texto | O cargo ou o setor: "Recepção", "TI", "Financeiro". Desde o 2.0.2, um dos cargos da lista (`contact_roles`), guardado pelo nome; o de antes, fora da lista, fica até alguém trocar. | — |
 | `active` | sim/não | — | obrigatório · padrão: true |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
+
+## contact_roles
+
+Catálogo: OS CARGOS DOS CONTATOS (2.0.2, o pedido do Luan: "eu quero que esses cargos sejam pré-seleção"). A janela do contato oferece os ativos; fica em Administração › Catálogos, como as operadoras. O contato guarda o nome do cargo: renomear aqui muda o dos contatos que o têm.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | — | obrigatório · único |
+| `active` | sim/não | — | obrigatório · padrão: true |
 
 ## client_device_logins
 
@@ -518,7 +530,7 @@ AJUSTES DO SISTEMA que a pessoa preenche na tela (Administração › Ajustes), 
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
-| `id` | texto | 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe e quais avisos vão por onde; a chave própria no cofre, 2.0 — o número de cada pessoa mora no usuário desde o 2.0.1) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) | 'atendimento-robo' (o mapa do robô do LineChat: de onde vem cada campo do chamado no JSON que o robô manda, 2.0.1) | 'atendimento-robo-ultimo' (o último pedido do robô, com o que aconteceu: a tela do mapa mostra as variáveis dele, 2.0.1) | chave primária |
+| `id` | texto | 'backup' | 'avisos' | 'linechat' | 'chamados-painel' (a arrumação da tela de Chamados) | 'chamados-relatorios' (os campos, a ligação dos clientes e o grupo de cada tipo dos Relatórios, 1.7) | 'chamados-relatorios-arrumacao' (a ordem, os escondidos e os favoritos da página de Relatórios, 1.7) | 'envio-automatico' (o envio diário do PDF pelo WhatsApp: horário, números e histórico; o token no cofre, 1.7) | 'envio-automatico-marcados' (os gráficos e relatórios que vão no PDF, 1.7) | 'base-ia' (a IA da Base de conhecimento: o provedor, o modelo, o endereço do compatível, o preço, o último teste e o uso do mês; a chave no cofre, 1.8) | 'atendimento-prazos' (o horário de atendimento, os feriados, os prazos por prioridade e a matriz gravidade × alcance, 2.0) | 'atendimento-avisos' (o WhatsApp dos chamados: o número do cliente e o da equipe e quais avisos vão por onde; a chave própria no cofre, 2.0 — o número de cada pessoa mora no usuário desde o 2.0.1) | 'atendimento-integracoes' (os sites que podem abrir o Gestor dentro deles e o link da conversa no LineChat, 2.0) | 'atendimento-robo' (o mapa do robô do LineChat: de onde vem cada campo do chamado no JSON que o robô manda, 2.0.1) | 'atendimento-robo-ultimo' (o último pedido do robô, com o que aconteceu: a tela do mapa mostra as variáveis dele, 2.0.1) | 'calendario' (os tipos de evento do calendário, 2.0.1) | 'comercial-simulador' (os Ajustes do Simulador do Comercial: o imposto, as faixas do sinal, o prazo, a tabela de custos e os modelos por produto, 2.0.2) | chave primária |
 | `value` | texto | — | obrigatório · padrão: '{}' |
 | `secret_id` | texto | — | liga com **secrets** |
 | `updated_at` | data e hora | Última alteração | — |
@@ -1156,7 +1168,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `schedule_id` | texto | O agendado que criou este chamado | — |
 | `value_cents` | bigint | A negociação (painel de Vendas, 2.0.1): o valor — a MENSALIDADE —, em centavos (até R$ 100 milhões: não cabe num integer). É o que conta no quadro, no relatório e na meta. | — |
 | `product_values` | JSON | A negociação: a mensalidade de cada produto ({id do produto: centavos}); com ela, value_cents é a soma | obrigatório · padrão: {} |
-| `setup_cents` | bigint | A negociação: a ATIVAÇÃO (paga uma vez), em centavos — à parte: não soma no quadro nem na meta; o relatório tem as contas dela (o número Ativação e As ativações mês a mês) | — |
+| `setup_cents` | bigint | A negociação: a ATIVAÇÃO (paga uma vez), em centavos — à parte: não soma no quadro nem na meta; o relatório tem as contas dela | — |
 | `product_setup` | JSON | A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma | obrigatório · padrão: {} |
 | `prospect` | texto | A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) | — |
 | `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |
@@ -1338,7 +1350,8 @@ Um AVISO NA TELA (o sininho): recebeu um chamado, o prazo está vencendo, o clie
 | `id` | texto | Identificador único da linha | chave primária |
 | `user_id` | texto | — | obrigatório · liga com **users** |
 | `ticket_id` | texto | — | liga com **tickets** |
-| `kind` | texto | recebeu | etapa | prazo_perto | prazo_vencido | sem_dono | critico | cliente_respondeu | pai | obrigatório |
+| `calendar_event_id` | texto | O evento do calendário do lembrete (2.0.2): o aviso é do calendário, e não de um chamado | liga com **calendarEvents** |
+| `kind` | texto | recebeu | etapa | prazo_perto | prazo_vencido | sem_dono | critico | cliente_respondeu | pai | observador | lembrete (o do calendário, 2.0.2) | obrigatório |
 | `body` | texto | — | obrigatório |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `read_at` | data e hora | — | — |
@@ -1399,6 +1412,26 @@ Um EVENTO do calendário: o que acontece, de que equipe, com quem, em qual clien
 | `location` | texto | Onde (o endereço da visita, "remoto") | — |
 | `notes` | texto | — | — |
 | `status` | texto | agendado | feito | cancelado (cancelar não apaga: fica riscado no calendário) | obrigatório · padrão: 'agendado' |
+| `reminders` | número inteiro | Os lembretes (2.0.2): quantos minutos antes do começo cada um sai (0 = na hora; o dia inteiro começa às 8h) | obrigatório · padrão: [] · lista |
+| `remind_who` | texto | Quem recebe o lembrete: pessoas (as do evento; sem pessoas, quem criou) | paineis (todos que veem o evento) | obrigatório · padrão: 'pessoas' |
+| `reminders_sent` | JSON | Os lembretes que já saíram (ou foram pulados): {"<minutos>@<começo>": quando}; mudar o dia ou a hora muda o começo, e o lembrete volta a valer | obrigatório · padrão: {} |
+| `created_by_id` | texto | — | liga com **users** |
+| `updated_by_id` | texto | — | liga com **users** |
+| `created_at` | data e hora | Quando a linha foi criada | — |
+| `updated_at` | data e hora | Última alteração | — |
+| `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
+
+## sales_simulations
+
+Uma SIMULAÇÃO do Comercial: o nome, os cenários e a negociação ligada.
+
+| Coluna | Tipo | O que guarda | Regras |
+|---|---|---|---|
+| `id` | texto | Identificador único da linha | chave primária |
+| `name` | texto | O nome (o cliente, a proposta: "Clínica Aurora — 10 ramais") | obrigatório |
+| `ticket_id` | texto | A negociação ligada (um chamado de um painel de Vendas), quando a pessoa liga | liga com **tickets** |
+| `scenarios` | JSON | Os cenários (1 a 3), cada um com todos os números: a mensalidade e a ativação em centavos, as parcelas, o prazo, o imposto, os produtos (e o preço de cada um) e as linhas de custo — o formato de `CenarioDaSimulacao` (`@gestor/shared`; os guardados antes de 21/10, com os ramais e a margem que se queria, são lidos pelo `semOQueSaiu`). As linhas guardam o valor de quando entraram: mudar a tabela de custos não muda a simulação já feita. | obrigatório · padrão: [] |
+| `principal` | texto | O id do cenário principal: o que a lista e a negociação mostram | obrigatório |
 | `created_by_id` | texto | — | liga com **users** |
 | `updated_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |

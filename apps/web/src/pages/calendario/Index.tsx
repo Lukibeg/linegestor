@@ -4,22 +4,26 @@
  *
  * Quem vê um evento é quem vê um dos painéis dele: o pedido do Luan — "se eu só sou participante do
  * painel do suporte eu só vou ver a do suporte; se eu sou do painel do adm, do suporte e do dev, vejo de
- * todos". Em cima, quem está fora do escritório hoje; os filtros (os painéis, só os meus, o cliente, a
- * busca e os tipos, que são também a legenda das cores) ficam no endereço, como nos chamados; a visão
- * Mês (a grade, com o dia escolhido ao lado ou embaixo) e a Lista (o mês dia a dia). O evento abre numa
- * janela (Janela.tsx); quem trabalha nos chamados cria e muda; quem cuida deles muda os tipos.
+ * todos". Em cima, quem está fora do escritório hoje; os filtros (os painéis — desde o 2.0.2, um botão
+ * com a lista de caixas de marcar —, só os meus, a busca e os tipos, que são também a legenda das cores)
+ * ficam no endereço, como nos chamados (o filtro de cliente saiu no 2.0.2: "n precisa de filtro por
+ * cliente"; a busca acha o cliente); a visão Mês (a grade, com o dia escolhido ao lado ou embaixo) e a
+ * Lista (o mês dia a dia). O evento abre numa janela (Janela.tsx); quem trabalha nos chamados cria e
+ * muda; quem cuida deles muda os tipos. O endereço com `?evento=` (o lembrete do sininho e do WhatsApp,
+ * 2.0.2) abre o calendário no dia, com a janela do evento.
  */
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, LayoutGrid, List, Plus, SlidersHorizontal, Tags, UserRoundCheck } from 'lucide-react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { CalendarDays, ChevronLeft, ChevronRight, LayoutGrid, List, Plus, SlidersHorizontal, SquareKanban, Tags, UserRoundCheck } from 'lucide-react';
 import {
   DIAS_DA_SEMANA, diaCurto, diaPorExtenso, diasDaGradeDoMes, diaValido, eventosDoDia, filtrarEventos, hojeNoCalendario, mesDoDia, ordemDoDia,
   somarDias, somarMeses, textoDoHorario, textoDoMes, textoDoPeriodo, tipoDoEvento,
   type CalendarioOpcoes, type CorPainel, type EventoDoCalendario, type FiltroDoCalendario,
 } from '@gestor/shared';
-import { Carregando, Chip, EscolherComBusca, mensagemErro } from '../../components/ui/index.js';
+import { Carregando, Chip, mensagemErro, useToast } from '../../components/ui/index.js';
 import { useAuth } from '../../lib/auth.js';
+import { FiltroEmBotao } from '../../lib/filtros.js';
 import { AMOSTRA_DA_COR } from '../atendimento/comum.js';
-import { CAIXA_FILTRO, CampoBusca, PontoDoPainel, useClientesParaFiltro, useFiltrosNoEndereco } from '../atendimento/quadro/filtros.js';
+import { CampoBusca, PONTO_DO_PAINEL, useFiltrosNoEndereco } from '../atendimento/quadro/filtros.js';
 import {
   BORDA_DO_TIPO, ForaDoEscritorio, FUNDO_DO_TIPO, LinhaDoEvento, useEventosDoPeriodo, useNomesDasPessoas, useOpcoesDoCalendario,
 } from './comum.js';
@@ -49,11 +53,22 @@ export function Calendario() {
 
   const filtro: FiltroDoCalendario = {
     paineis: listaDoEndereco(valor('painel')), tipos: listaDoEndereco(valor('tipo')), pessoa: valor('meus') === '1' ? user?.id ?? null : null,
-    cliente: valor('cliente') || null, cancelados: valor('cancelados') !== '0', busca: valor('q'),
+    cancelados: valor('cancelados') !== '0', busca: valor('q'),
   };
   const filtrados = filtrarEventos(eventos.data ?? [], filtro, nomes);
-  const ligados = [filtro.paineis.length > 0, filtro.tipos.length > 0, !!filtro.pessoa, !!filtro.cliente, !filtro.cancelados, !!filtro.busca].filter(Boolean).length;
+  const ligados = [filtro.paineis.length > 0, filtro.tipos.length > 0, !!filtro.pessoa, !filtro.cancelados, !!filtro.busca].filter(Boolean).length;
   const filtrando = ligados > 0;
+
+  // o endereço com o evento (o lembrete do sininho e do WhatsApp, 2.0.2): abre a janela dele quando o mês chega
+  const toast = useToast();
+  const doEndereco = valor('evento');
+  useEffect(() => {
+    if (!doEndereco || !eventos.data || eventos.isFetching) return;
+    const e = eventos.data.find((x) => x.id === doEndereco);
+    if (e) setJanela({ evento: e });
+    else toast.push('info', 'Esse evento não está mais no calendário (ou é de um painel que você não vê).');
+    mudar({ evento: null });
+  }, [doEndereco, eventos.data, eventos.isFetching]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // o dia escolhido (o do endereço; senão hoje, se o mês é o de hoje; senão o dia 1)
   const diaEscolhido = diaValido(valor('dia')) && grade.includes(valor('dia')) ? valor('dia') : mes === mesDoDia(hoje) ? hoje : `${mes}-01`;
@@ -144,30 +159,27 @@ function BotaoDeFiltro({ ativo, onClick, children, titulo, id }: { ativo: boolea
 function Filtros({ op, filtro, mudar, eventos, filtrando, aberto }: {
   op: CalendarioOpcoes; filtro: FiltroDoCalendario; mudar: (o: Record<string, string | null>) => void; eventos: EventoDoCalendario[]; filtrando: boolean; aberto: boolean;
 }) {
-  const clientes = useClientesParaFiltro();
-  // um clique num painel (ou num tipo) mostra só ele; outro clique soma ou tira
+  // um clique num tipo mostra só ele; outro clique soma ou tira
   const alternar = (atual: string[], id: string) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]).join(',') || null;
+  // os painéis: um botão que abre a lista com caixas de marcar (2.0.2, o pedido do Luan: "clicar em painéis e
+  // aparecer uma multisseleção para eu selecionar os que eu quero ver"); nada marcado = todos
+  const paineis = [{ opcoes: op.paineis.map((p) => ({ key: p.id, label: p.nome, classeDoPonto: PONTO_DO_PAINEL[p.cor as CorPainel] ?? 'bg-line-strong' })) }];
+  const nomesDosEscolhidos = op.paineis.filter((p) => filtro.paineis.includes(p.id)).map((p) => p.nome);
   // a legenda: os tipos ativos e os desativados que ainda aparecem no mês
   const tipos = op.tipos.filter((t) => t.ativo || eventos.some((e) => e.tipoId === t.id));
   return (
     <div className={`${aberto ? 'flex' : 'hidden'} sm:flex flex-col gap-2 mb-3`} id="calendario-filtros">
       <div className="flex flex-wrap items-center gap-2">
         {op.paineis.length > 1 && (
-          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Painéis">
-            <span className="text-[12.5px] font-semibold text-ink-2 mr-0.5">Painéis</span>
-            {op.paineis.map((p) => (
-              <BotaoDeFiltro key={p.id} ativo={filtro.paineis.includes(p.id)} onClick={() => mudar({ painel: alternar(filtro.paineis, p.id) })}
-                titulo={filtro.paineis.includes(p.id) ? `Tirar o ${p.nome} do filtro` : `Mostrar ${filtro.paineis.length ? 'também ' : 'só '}os eventos do ${p.nome}`}>
-                <PontoDoPainel cor={p.cor as CorPainel} />{p.nome}
-              </BotaoDeFiltro>
-            ))}
+          <div id="calendario-paineis" className="contents">
+            <FiltroEmBotao icone={SquareKanban} nome="Painéis" grupos={paineis} escolhidos={filtro.paineis} alinhar="esquerda" vazio="Nenhum marcado: aparecem os eventos de todos."
+              onChange={(v) => mudar({ painel: v.length && v.length < op.paineis.length ? v.join(',') : null })}
+              dica={nomesDosEscolhidos.length ? `Mostrando os eventos de: ${nomesDosEscolhidos.join(', ')}` : 'Mostrando os eventos de todos os painéis que você vê'} />
           </div>
         )}
         <BotaoDeFiltro ativo={!!filtro.pessoa} onClick={() => mudar({ meus: filtro.pessoa ? null : '1' })} titulo="Só os eventos de que você participa" id="calendario-so-meus">
           <UserRoundCheck size={13} aria-hidden /> Só os meus
         </BotaoDeFiltro>
-        <EscolherComBusca valor={filtro.cliente ?? ''} opcoes={clientes} onChange={(id) => mudar({ cliente: id || null })} vazio="Todos os clientes" placeholder="Todos os clientes"
-          className={CAIXA_FILTRO} rotulo="Filtrar por cliente" procurar="Procurar o cliente…" id="calendario-cliente" />
         <CampoBusca valor={filtro.busca} onChange={(v) => mudar({ q: v || null })} placeholder="Buscar no calendário" titulo="Busca no título, no cliente, no local, na observação, no chamado e nas pessoas"
           className="flex-1 min-w-[180px] max-w-[320px]" id="calendario-busca" />
         {filtrando && (

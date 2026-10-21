@@ -1,5 +1,5 @@
 /**
- * A PRÉVIA DO CALENDÁRIO (Patch 2.0.1, decisão 0049): o calendário sem servidor.
+ * A PRÉVIA DO CALENDÁRIO (Patch 2.0.1, decisão 0049; os lembretes no 2.0.2): o calendário sem servidor.
  *
  * Copia o servidor (`apps/api/src/services/calendario.ts` e a rota `routes/calendario.ts`): as mesmas
  * permissões, as mesmas mensagens de erro e as mesmas frases na auditoria. As regras (os tipos, a janela,
@@ -9,16 +9,20 @@
  * regra do pedido do Luan: cada um vê os eventos das equipes de que participa; o Luan, que cuida dos
  * chamados, vê todos.
  *
- * Os eventos de exemplo nascem em volta de hoje: o mês aberto sempre tem o que mostrar.
+ * Os eventos de exemplo nascem em volta de hoje: o mês aberto sempre tem o que mostrar. Os LEMBRETES
+ * (2.0.2) andam com o relógio da prévia dos chamados (a cada leitura, como o relógio do servidor) e chegam
+ * no sininho; os exemplos já trazem os lembretes que "saíram" antes de a prévia abrir, e um que chega logo.
  */
 import {
-  EventoGravarSchema, EventosDoPeriodoSchema, NOME_SITUACAO_DO_EVENTO, SituacaoDoEventoSchema, TIPOS_DE_EVENTO_PADRAO, TiposDoCalendarioSchema,
-  diaDaSemana, eventoVisivel, hojeNoCalendario, paineisDepoisDaEdicao, somarDias, textoDoPeriodo, tipoDoEvento,
-  type CalendarioOpcoes, type EventoDoCalendario, type EventoGravar, type Painel, type SituacaoDoEvento, type TipoDeEvento,
+  chaveDoLembrete, comecoDoEvento, EventoGravarSchema, EventosDoPeriodoSchema, lembretesAoGravar, lembretesDevidos, momentoDoLembrete,
+  NOME_SITUACAO_DO_EVENTO, quemRecebeOLembrete, SituacaoDoEventoSchema, TiposDoCalendarioSchema, diaDaSemana, diaEmBrasilia, eventoVisivel,
+  hojeNoCalendario, paineisDepoisDaEdicao, somarDias, textoDoLembrete, textoDoPeriodo, textoDosLembretes, tipoDoEvento, tiposDeFabrica,
+  NOME_QUEM_RECEBE_O_LEMBRETE, quemRecebeAInclusao, textoDaInclusao,
+  type CalendarioOpcoes, type EventoDoCalendario, type EventoGravar, type Painel, type QuemRecebeOLembrete, type SituacaoDoEvento, type TipoDeEvento,
 } from '@gestor/shared';
 import type { Api } from './index.js';
 import { ApiError, type TrashItem } from './types.js';
-import { acessoDoCalendarioDemo, type AtorDemo, type EstadoDaPrevia } from './demo-atendimento.js';
+import { acessoDoCalendarioDemo, aoVoltarORelogioDemo, type AtorDemo, type EstadoDaPrevia } from './demo-atendimento.js';
 import { EMAIL_DA_PESSOA, type Pessoa } from './demo-atendimento-exemplos.js';
 
 export type ContextoCalendarioDemo = {
@@ -38,6 +42,8 @@ type EventoRow = {
   id: string; titulo: string; tipoId: string; paineis: string[]; pessoas: string[]; clienteId: string | null; chamadoId: string | null;
   inicio: string; fim: string; diaInteiro: boolean; horaInicio: string | null; horaFim: string | null; local: string | null; observacao: string | null;
   situacao: SituacaoDoEvento; criadoPorId: string | null; alteradoPorId: string | null; criadoEm: string; alteradoEm: string; deletedAt: string | null;
+  /** os lembretes (2.0.2), quem recebe e os que já saíram (`reminders_sent`) */
+  lembretes: number[]; lembrarQuem: QuemRecebeOLembrete; enviados: Record<string, string>;
 };
 
 type Esquema<T> = { safeParse(v: unknown): { success: true; data: T } | { success: false; error: { issues: Array<{ path: Array<string | number>; message: string }> } } };
@@ -62,7 +68,7 @@ export type CalendarioDemo = Api['calendario'] & { lixeira: () => TrashItem[]; r
 export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo {
   const { S } = ctx;
   const agora = ctx.agora ?? (() => new Date());
-  const C = { semeado: false, tipos: TIPOS_DE_EVENTO_PADRAO.map((t) => ({ ...t })) as TipoDeEvento[], eventos: [] as EventoRow[] };
+  const C = { semeado: false, tipos: tiposDeFabrica() as TipoDeEvento[], eventos: [] as EventoRow[] };
   const x = () => acessoDoCalendarioDemo();
 
   function preparar() {
@@ -88,7 +94,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       clienteId: e.clienteId, clienteNome: e.clienteId ? S.clients.find((c) => c.id === e.clienteId)?.tradeName ?? null : null,
       chamadoId: e.chamadoId, chamadoCodigo: e.chamadoId ? x().chamados().find((t) => t.id === e.chamadoId)?.codigo ?? null : null,
       inicio: e.inicio, fim: e.fim, diaInteiro: e.diaInteiro, horaInicio: e.horaInicio, horaFim: e.horaFim,
-      local: e.local ?? '', observacao: e.observacao ?? '', situacao: e.situacao,
+      local: e.local ?? '', observacao: e.observacao ?? '', situacao: e.situacao, lembretes: [...e.lembretes], lembrarQuem: e.lembrarQuem,
       criadoPor: nomeDaPessoa(e.criadoPorId), criadoEm: e.criadoEm, alteradoPor: nomeDaPessoa(e.alteradoPorId), alteradoEm: e.alteradoEm,
     };
   }
@@ -146,12 +152,13 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
   const valores = (e: EventoGravar) => ({
     titulo: e.titulo, tipoId: e.tipoId, paineis: [...e.paineis], pessoas: [...e.pessoas], clienteId: e.clienteId, chamadoId: e.chamadoId,
     inicio: e.inicio, fim: e.fim, diaInteiro: e.diaInteiro, horaInicio: e.horaInicio, horaFim: e.horaFim,
-    local: e.local || null, observacao: e.observacao || null, situacao: e.situacao,
+    local: e.local || null, observacao: e.observacao || null, situacao: e.situacao, lembretes: [...e.lembretes], lembrarQuem: e.lembrarQuem,
   });
   /** O formato da auditoria do servidor (as colunas da tabela). */
   const paraAuditoria = (v: ReturnType<typeof valores>) => ({
     title: v.titulo, typeId: v.tipoId, panelIds: v.paineis, participantIds: v.pessoas, clientId: v.clienteId, ticketId: v.chamadoId,
     startsOn: v.inicio, endsOn: v.fim, allDay: v.diaInteiro, startTime: v.horaInicio, endTime: v.horaFim, location: v.local, notes: v.observacao, status: v.situacao,
+    reminders: v.lembretes, remindWho: v.lembrarQuem,
   });
 
   /** O que mudou, nas palavras da tela (para a auditoria). */
@@ -168,6 +175,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
     if ((a.local ?? null) !== d.local) out.push('Local');
     if ((a.observacao ?? null) !== d.observacao) out.push('Observação');
     if (a.situacao !== d.situacao) out.push(`Situação (${NOME_SITUACAO_DO_EVENTO[d.situacao]})`);
+    if (!igual(a.lembretes.map(String), d.lembretes.map(String)) || a.lembrarQuem !== d.lembrarQuem) out.push('Lembretes');
     return out;
   }
 
@@ -176,10 +184,69 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
     const { todos, visiveis } = paineisDe(a);
     const c = conferir(a, e, null, todos, visiveis);
     const quem = a.tipo === 'pessoa' ? a.id : null;
-    const linha: EventoRow = { id: ctx.id(), ...valores(e), criadoPorId: quem, alteradoPorId: quem, criadoEm: quando.toISOString(), alteradoEm: quando.toISOString(), deletedAt: null };
+    const v = valores(e);
+    const linha: EventoRow = {
+      id: ctx.id(), ...v, enviados: lembretesAoGravar(v, {}, quando),
+      criadoPorId: quem, alteradoPorId: quem, criadoEm: quando.toISOString(), alteradoEm: quando.toISOString(), deletedAt: null,
+    };
     C.eventos.push(linha);
     const onde = [textoDoPeriodo(e), c.paineis.map((p) => p.nome).join(', '), c.clienteNome].filter(Boolean).join(', ');
     return { linha, depois: paraAuditoria(valores(e)), resumo: `Pôs no calendário: "${e.titulo}" (${c.tipo.nome}, ${onde})` };
+  }
+
+  /** O aviso de que o evento entrou (2.0.2): o sininho de quem o evento avisa, menos quem pôs. Devolve quantas pessoas. */
+  function avisarDaInclusao(a: AtorDemo, e: EventoRow, quem: QuemRecebeOLembrete, quando = agora()): number {
+    const para = quemRecebeAInclusao({ paineis: e.paineis, pessoas: e.pessoas, avisar: quem }, quemVePorPainel(), a.tipo === 'pessoa' ? a.id : null);
+    if (!para.length) return 0;
+    return x().avisarDoCalendario({ qual: 'evento_novo', para, evento: { id: e.id, titulo: e.titulo, inicio: e.inicio }, texto: textoDaInclusao(a.nome, e, quando) }, quando);
+  }
+
+  // ---------- os lembretes (2.0.2): as mesmas contas do servidor ----------
+
+  /** Quem vê cada painel (as pessoas ativas). */
+  const quemVePorPainel = () => new Map(x().paineis().map((p) => [p.id, quemVe(p)] as [string, string[]]));
+  const textoDoEvento = (e: EventoRow, agora: Date) => textoDoLembrete(e, agora);
+
+  /** Uma volta do relógio: os lembretes que chegaram na hora (o sininho de quem o evento lembra). */
+  function mandarLembretes(agora: Date): number {
+    let n = 0;
+    let quemVeMapa: Map<string, string[]> | null = null;
+    for (const e of C.eventos) {
+      if (e.deletedAt || e.situacao !== 'agendado' || !e.lembretes.length) continue;
+      const devidos = lembretesDevidos(e, e.enviados, agora);
+      if (!devidos.length) continue;
+      const comeco = comecoDoEvento(e);
+      for (const m of devidos) e.enviados[chaveDoLembrete(m, comeco)] = agora.toISOString();
+      quemVeMapa ??= quemVePorPainel();
+      const para = quemRecebeOLembrete({ paineis: e.paineis, pessoas: e.pessoas, lembrarQuem: e.lembrarQuem, criadoPorId: e.criadoPorId }, quemVeMapa);
+      x().avisarDoCalendario({ para, evento: { id: e.id, titulo: e.titulo, inicio: e.inicio }, texto: textoDoEvento(e, agora) }, agora);
+      n += devidos.length;
+    }
+    return n;
+  }
+  // o relógio da prévia dos chamados chama a cada leitura (o sininho relê a cada 30 segundos)
+  aoVoltarORelogioDemo((agora) => { preparar(); mandarLembretes(agora); });
+
+  /**
+   * Os exemplos já nascem com o passado: os lembretes que "saíram" entre o dia em que o evento foi posto e
+   * agora chegam no sininho na hora deles (os de mais de 2 horas atrás, já lidos).
+   */
+  function lembretesDoPassado(agora: Date) {
+    const quemVeMapa = quemVePorPainel();
+    for (const e of C.eventos) {
+      if (e.deletedAt || e.situacao === 'cancelado' || !e.lembretes.length) continue;
+      const comeco = comecoDoEvento(e);
+      for (const m of e.lembretes) {
+        const chave = chaveDoLembrete(m, comeco);
+        const momento = momentoDoLembrete(comeco, m);
+        if (e.enviados[chave] || momento.getTime() > agora.getTime() || momento.getTime() >= comeco.getTime() + (m === 0 ? 5 * 60_000 : 0)) continue;
+        if (momento.toISOString() < e.criadoEm) continue;
+        e.enviados[chave] = momento.toISOString();
+        const para = quemRecebeOLembrete({ paineis: e.paineis, pessoas: e.pessoas, lembrarQuem: e.lembrarQuem, criadoPorId: e.criadoPorId }, quemVeMapa);
+        // o texto como saiu naquele dia ("amanhã", no dia anterior)
+        x().avisarDoCalendario({ para, evento: { id: e.id, titulo: e.titulo, inicio: e.inicio }, texto: textoDoEvento(e, momento) }, momento, agora.getTime() - momento.getTime() > 2 * 3_600_000);
+      }
+    }
   }
 
   // ---------- os exemplos (em volta de hoje) ----------
@@ -194,6 +261,14 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       return dia;
     };
     const pessoa = (p: Pessoa) => S.users.find((u) => u.email === EMAIL_DA_PESSOA[p])?.id ?? null;
+    /** o evento que começa daqui a 1h30 a 2h (na meia hora cheia): o lembrete de 2 horas antes já saiu */
+    const daquiAPouco = () => {
+      const comeco = new Date(Math.ceil((agora().getTime() + 90 * 60_000) / (30 * 60_000)) * 30 * 60_000);
+      const hora = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(comeco);
+      const fim = new Date(comeco.getTime() + 30 * 60_000);
+      const horaFim = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(fim);
+      return { inicio: diaEmBrasilia(comeco), fim: diaEmBrasilia(fim), diaInteiro: false, horaInicio: hora, horaFim };
+    };
     const cliente = (nome: string) => S.clients.find((c) => c.tradeName === nome && !c.deletedAt)?.id ?? null;
     const chamado = (titulo: string) => x().chamados().find((t) => t.titulo === titulo)?.id ?? null;
     const luan = pessoa('luan');
@@ -223,11 +298,16 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       { titulo: 'Folga — Camila Duarte', tipoId: 'folga', paineis: ['painel-administrativo', 'painel-comercial'], quem: ['camila'], inicio: util(9), fim: util(10) },
       { titulo: 'Fechamento do mês com o financeiro', tipoId: 'reuniao', paineis: ['painel-administrativo'], quem: ['marina', 'camila'], inicio: util(11), diaInteiro: false, horaInicio: '10:00', horaFim: '11:00', local: 'Sala de reuniões' },
       { titulo: 'Treinamento da recepção — Clínica Aurora', tipoId: 'visita', paineis: ['painel-suporte'], quem: ['marina'], inicio: util(12), diaInteiro: false, horaInicio: '08:30', horaFim: '10:00', clienteId: cliente('Clínica Aurora'), local: 'Av. Tancredo Neves, 1632 — Salvador' },
+      // o lembrete que chega com a prévia aberta (2.0.2): daqui a pouco, com o Luan; o de 2 horas antes já saiu
+      { titulo: 'Retorno — Clínica Aurora (o ramal da recepção)', tipoId: 'acao-cliente', paineis: ['painel-suporte'], quem: ['luan'], criadoHa: 2, ...daquiAPouco(),
+        clienteId: cliente('Clínica Aurora'), local: 'Por telefone', lembretes: [120, 15], observacao: 'Confirmar com a recepção se o ramal 2010 voltou a tocar.' },
     ];
     for (const ex of exemplos) {
       const { quem: pessoas = [], criadoHa = 6, chamado: doChamado, ...resto } = ex;
       const dados = EventoGravarSchema.safeParse({
-        fim: ex.inicio, ...resto, pessoas: pessoas.map(pessoa).filter(Boolean), chamadoId: doChamado ? chamado(doChamado) : null,
+        // os lembretes do tipo (a Visita, 1 dia antes e 1 hora antes), como a janela faz no evento novo
+        fim: ex.inicio, lembretes: tipoDoEvento(C.tipos, ex.tipoId).lembretes, ...resto,
+        pessoas: pessoas.map(pessoa).filter(Boolean), chamadoId: doChamado ? chamado(doChamado) : null,
       });
       if (!dados.success) { console.warn('[prévia do calendário] exemplo que não passou:', ex.titulo, dados.error.issues); continue; }
       try {
@@ -238,6 +318,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
         console.warn('[prévia do calendário] exemplo que não passou nas regras:', ex.titulo, err instanceof Error ? err.message : err);
       }
     }
+    lembretesDoPassado(agora());
   }
 
   // ---------- a API ----------
@@ -250,7 +331,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       const a = eu();
       const { visiveis } = paineisDe(a);
       return {
-        tipos: C.tipos.map((t) => ({ ...t })),
+        tipos: C.tipos.map((t) => ({ ...t, lembretes: [...t.lembretes] })),
         paineis: visiveis.map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, cor: p.cor, ativo: p.ativo, pessoas: quemVe(p) })),
         pessoas: pessoasAtivas().map((u) => ({ id: u.id, nome: u.name })),
         podeEditar: podeTrabalhar(a), podeCuidar: podeCuidar(a), hoje: hojeNoCalendario(agora()),
@@ -278,8 +359,14 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       await ctx.wait(200);
       const dados = ler(EventoGravarSchema, d);
       ctx.requirePerm('tickets.work'); preparar();
-      const r = criar(eu(), dados);
-      ctx.audit('create', 'calendar_event', r.resumo, r.linha.id, { after: r.depois });
+      const a = eu();
+      const r = criar(a, dados);
+      // o aviso de que o evento entrou (2.0.2, opcional), como o servidor: na hora, menos para quem pôs
+      const avisados = dados.avisar ? avisarDaInclusao(a, r.linha, dados.avisar) : null;
+      const resumo = dados.avisar
+        ? `${r.resumo} e ${avisados ? `avisou ${avisados === 1 ? '1 pessoa' : `${avisados} pessoas`}` : 'pediu o aviso, mas não havia quem avisar'} (${NOME_QUEM_RECEBE_O_LEMBRETE[dados.avisar].toLocaleLowerCase('pt-BR')})`
+        : r.resumo;
+      ctx.audit('create', 'calendar_event', resumo, r.linha.id, { after: r.depois });
       return paraTela(r.linha);
     },
     async alterar(id, d) {
@@ -295,7 +382,9 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       const v = valores(comPaineis);
       const mudou = oQueMudou(antes, v);
       const antesAuditoria = paraAuditoria(antes);
-      Object.assign(antes, v, { alteradoPorId: a.tipo === 'pessoa' ? a.id : null, alteradoEm: agora().toISOString() });
+      // os lembretes: o que já saiu para o mesmo começo continua; o que passou fica pulado; mudar o dia vale de novo
+      const enviados = lembretesAoGravar(v, antes.enviados, agora());
+      Object.assign(antes, v, { enviados, alteradoPorId: a.tipo === 'pessoa' ? a.id : null, alteradoEm: agora().toISOString() });
       ctx.audit('update', 'calendar_event', `Mudou no calendário "${v.titulo}": ${mudou.join(', ') || 'nada'}`, id, { before: antesAuditoria, after: paraAuditoria(v) });
       return paraTela(antes);
     },
@@ -307,7 +396,8 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       exigirTrabalhar(a);
       const e = linhaVisivel(id, paineisDe(a).visiveis);
       const antes = e.situacao;
-      Object.assign(e, { situacao: s, alteradoPorId: a.tipo === 'pessoa' ? a.id : null, alteradoEm: agora().toISOString() });
+      // o que voltou a agendado não lembra o que passou enquanto estava cancelado
+      Object.assign(e, { situacao: s, enviados: lembretesAoGravar({ ...e, situacao: s }, e.enviados, agora()), alteradoPorId: a.tipo === 'pessoa' ? a.id : null, alteradoEm: agora().toISOString() });
       const verbo = s === 'feito' ? 'Marcou como feito' : s === 'cancelado' ? 'Cancelou' : 'Voltou a agendado';
       ctx.audit('update', 'calendar_event', `${verbo} no calendário: "${e.titulo}" (${textoDoPeriodo(e)})`, id, { before: { status: antes }, after: { status: s } });
       return paraTela(e);
@@ -333,18 +423,20 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       const sairam = antes.filter((t) => !dados.tipos.some((n) => n.id === t.id));
       const comEvento = sairam.filter((t) => C.eventos.some((e) => !e.deletedAt && e.tipoId === t.id));
       if (comEvento.length) throw bad(`${comEvento.map((t) => t.nome).join(', ')} já ${comEvento.length === 1 ? 'tem' : 'têm'} eventos: desative em vez de tirar.`);
-      C.tipos = dados.tipos.map((t) => ({ ...t }));
+      C.tipos = dados.tipos.map((t) => ({ ...t, lembretes: [...t.lembretes] }));
       const mudou: string[] = [];
       for (const t of C.tipos) {
         const v = antes.find((y) => y.id === t.id);
         if (!v) mudou.push(`incluiu ${t.nome}`);
-        else if (v.nome !== t.nome || v.cor !== t.cor || v.daEquipe !== t.daEquipe || v.ativo !== t.ativo) {
-          mudou.push(v.ativo !== t.ativo ? `${t.ativo ? 'reativou' : 'desativou'} ${t.nome}` : `mudou ${v.nome === t.nome ? t.nome : `${v.nome} (agora ${t.nome})`}`);
+        else if (v.nome !== t.nome || v.cor !== t.cor || v.daEquipe !== t.daEquipe || v.ativo !== t.ativo || v.lembretes.join() !== t.lembretes.join()) {
+          mudou.push(v.ativo !== t.ativo ? `${t.ativo ? 'reativou' : 'desativou'} ${t.nome}`
+            : v.nome === t.nome && v.cor === t.cor && v.daEquipe === t.daEquipe ? `mudou os lembretes de ${t.nome} (${textoDosLembretes(t.lembretes)})`
+              : `mudou ${v.nome === t.nome ? t.nome : `${v.nome} (agora ${t.nome})`}`);
         }
       }
       for (const t of sairam) mudou.push(`tirou ${t.nome}`);
       ctx.audit('settings_calendario', 'settings', `Mudou os tipos do calendário: ${mudou.join(', ') || 'a ordem'}`, 'calendario', { before: { tipos: antes }, after: { tipos: C.tipos } });
-      return { tipos: C.tipos.map((t) => ({ ...t })) };
+      return { tipos: C.tipos.map((t) => ({ ...t, lembretes: [...t.lembretes] })) };
     },
     lixeira: () => {
       if (!C.semeado) return [];
@@ -354,6 +446,7 @@ export function criarCalendarioDemo(ctx: ContextoCalendarioDemo): CalendarioDemo
       const e = C.eventos.find((ev) => ev.id === id && ev.deletedAt);
       if (!e) throw erro(404, 'Evento não encontrado na lixeira');
       e.deletedAt = null;
+      e.enviados = lembretesAoGravar(e, e.enviados, agora());
       e.alteradoEm = agora().toISOString();
       ctx.audit('restore', 'calendar_event', `Restaurou o evento do calendário "${e.titulo}" (${textoDoPeriodo(e)}) da lixeira`, id);
       return { ok: true };
