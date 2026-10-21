@@ -51,14 +51,14 @@ const AJUSTES: AjustesDoSimulador = {
   ...AJUSTES_DO_SIMULADOR_PADRAO, imposto: 8,
   custos: [
     ...CUSTOS_DA_HELENA,
-    { id: 'yealink', nome: 'Yealink T31P', tipo: 'aparelho', valor: null, porRamal: true, modalidade: 'comodato', faixas: null, unidade: null },
-    { id: 'nuvem', nome: 'Nuvem do PABX', tipo: 'mensal', valor: 900, porRamal: true, modalidade: null, faixas: null, unidade: 'ramal' },
-    { id: 'dids', nome: 'Números da operadora', tipo: 'mensal', valor: 1_500, porRamal: false, modalidade: null, faixas: null, unidade: 'número' },
-    { id: 'comissao', nome: 'Comissão do vendedor', tipo: 'pct_ativacao', valor: 10, porRamal: false, modalidade: null, faixas: null, unidade: null },
+    { id: 'yealink', nome: 'Yealink T31P', tipo: 'aparelho', valor: null, modalidade: 'comodato', faixas: null, unidade: null },
+    { id: 'nuvem', nome: 'Nuvem do PABX', tipo: 'mensal', valor: 900, modalidade: null, faixas: null, unidade: 'ramal' },
+    { id: 'dids', nome: 'Números da operadora', tipo: 'mensal', valor: 1_500, modalidade: null, faixas: null, unidade: 'número' },
+    { id: 'comissao', nome: 'Comissão do vendedor', tipo: 'pct_ativacao', valor: 10, modalidade: null, faixas: null, unidade: null },
   ],
   modelos: [
     MODELO_DA_HELENA,
-    { id: 'pbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [{ custoId: 'yealink', qtd: 1, porRamal: true }, { custoId: 'nuvem', qtd: 1, porRamal: true }, { custoId: 'dids', qtd: 3, porRamal: false }, { custoId: 'comissao', qtd: 1, porRamal: false }] },
+    { id: 'pbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [{ custoId: 'yealink', qtd: 1 }, { custoId: 'nuvem', qtd: 1 }, { custoId: 'dids', qtd: 3 }, { custoId: 'comissao', qtd: 1 }] },
   ],
 };
 
@@ -66,8 +66,9 @@ const AJUSTES: AjustesDoSimulador = {
 function cenarioDaAurora(): CenarioDaSimulacao {
   const c = cenarioNovo(AJUSTES, { id: 'a', nome: 'Cenário A', modelo: AJUSTES.modelos.find((m) => m.id === 'pbx') });
   return {
-    ...c, mensalidade: 99_000, ativacao: 150_000, ramais: 10,
-    linhas: c.linhas.map((l) => (l.custoId === 'yealink' ? { ...l, valor: 39_000 } : l)),
+    ...c, mensalidade: 99_000, ativacao: 150_000,
+    // os 10 ramais: 10 telefones e a nuvem de 10 (a quantidade de cada custo)
+    linhas: c.linhas.map((l) => (l.custoId === 'yealink' ? { ...l, qtd: 10, valor: 39_000 } : l.custoId === 'nuvem' ? { ...l, qtd: 10 } : l)),
   };
 }
 
@@ -138,7 +139,7 @@ describe('os Ajustes do Simulador', () => {
     const r1 = await s.put('/comercial/simulador/ajustes', { ...AJUSTES, verde: 15, vermelho: 30 });
     expect(r1.statusCode).toBe(400);
     expect(r1.json().details[0].message).toContain('O vermelho começa abaixo do verde');
-    const r2 = await s.put('/comercial/simulador/ajustes', { ...AJUSTES, modelos: [{ id: 'x', nome: 'LineChat novo', linhas: [{ custoId: 'sumiu', qtd: 1, porRamal: false }] }] });
+    const r2 = await s.put('/comercial/simulador/ajustes', { ...AJUSTES, modelos: [{ id: 'x', nome: 'LineChat novo', linhas: [{ custoId: 'sumiu', qtd: 1 }] }] });
     expect(r2.statusCode).toBe(400);
     expect(r2.json().details[0].message).toContain('O modelo "LineChat novo" usa um custo que não está na tabela.');
     // a faixa de preço que não fecha
@@ -160,8 +161,8 @@ describe('a simulação', () => {
       nome: 'Clínica Aurora', negociacaoId: negociacao.id, principal: 'a', criadoPor: 'Camila Souza', alteradoPor: 'Camila Souza',
       negociacao: { id: negociacao.id, codigo: negociacao.codigo, titulo: 'PABX em nuvem, 10 ramais', empresa: 'Clínica Aurora', resultado: null },
     });
-    expect(aurora.cenarios[0]!.linhas.map((l) => [l.nome, l.valor, l.porRamal])).toEqual([
-      ['Yealink T31P', 39_000, true], ['Nuvem do PABX', 900, true], ['Números da operadora', 1_500, false], ['Comissão do vendedor', 10, false],
+    expect(aurora.cenarios[0]!.linhas.map((l) => [l.nome, l.valor, l.qtd])).toEqual([
+      ['Yealink T31P', 39_000, 10], ['Nuvem do PABX', 900, 10], ['Números da operadora', 1_500, 3], ['Comissão do vendedor', 10, 1],
     ]);
     expect(await auditoriaDe(aurora.id)).toEqual([`Criou a simulação "Clínica Aurora" (ligada à ${negociacao.codigo})`]);
   });
@@ -276,7 +277,7 @@ describe('a simulação', () => {
     // a folha do cenário: a mensalidade (amarela), a conta em fórmula e quem exportou; a Lado a lado puxa de lá
     const b = texto('xl/worksheets/sheet3.xml');
     expect(b).toContain('<c r="B7" s="11"><v>890</v></c>');
-    expect(b).toContain('<f>B7+L');
+    expect(b).toContain('<f>B7+K');
     expect(b).toContain('por Lia Rocha');
     expect(texto('xl/worksheets/sheet1.xml')).toContain(`'Cenário B'!$B$`);
     expect(await auditoriaDe(aurora.id)).toContain('Exportou a simulação "Clínica Aurora" para o Excel');

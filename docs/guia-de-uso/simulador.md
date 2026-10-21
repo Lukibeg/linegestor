@@ -32,7 +32,6 @@ entra no lugar.
 - **A ativação em**: à vista ou em até 12 vezes (e não mais que o prazo). A primeira parcela entra no 1º
   mês, o da assinatura; as outras, com as mensalidades seguintes.
 - **O prazo do contrato**, em meses (os atalhos 12, 24, 36, 48 e 60).
-- **Ramais**: as linhas marcadas "por ramal" (o telefone, a nuvem) acompanham este número.
 - **Imposto**: um percentual só, sobre tudo o que o cliente paga. A simulação nova vem com o dos Ajustes;
   quando os dois diferem, aparece "Nos Ajustes: 6% · usar".
 - **Produtos**: os produtos do catálogo que a venda leva (o modelo traz o dele; **+ produto** põe outro, o
@@ -65,7 +64,8 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
 - **Da tabela** põe um custo da tabela dos Ajustes, com o valor de hoje (o painel mostra os custos do
   grupo e fica aberto para pôr outros). **Do modelo**, no alto, põe as linhas de um modelo, cada uma no
   grupo dela. **Digitar um custo** abre uma linha em branco no grupo.
-- **Por ramal**: a quantidade passa a ser a dos ramais.
+- **A quantidade** é a de cada custo: 40 telefones, a nuvem de 40 ramais, 4 números. Embaixo dela, a
+  unidade ("40 ramais", "5 usuários").
 - **O aparelho** diz como vai: **Comodato** (a Ingline compra e empresta: só o custo), **Venda** (o
   preço de cada um entra na ativação) ou **Locação** (o aluguel de cada um entra na mensalidade).
 - **A compra em**: o aparelho que a Ingline compra parcelado (à vista ou em até 24 vezes, nunca mais que o
@@ -151,11 +151,12 @@ pode baixar; a auditoria registra):
 - **uma folha por cenário** e, com dois ou mais, a folha **Lado a lado**, que puxa os números de cada um e
   a diferença de cada cenário para o principal;
 - na folha do cenário, **as células amarelas** são as que você muda: a mensalidade, a ativação, as vezes,
-  o prazo, os ramais, o imposto, a margem que você quer e, em cada custo, a quantidade, o valor de cada e o
-  preço ou o aluguel do aparelho. O resto se refaz sozinho: **os custos** (quando sai e quando entra), **os
-  números** (o custo fixo e o variável do mês, a sobra, a margem, o sinal, o investimento, o que sai antes,
-  quando se paga, o que fica no contrato), **o preço** (a mensalidade mínima e o desconto máximo) e **o mês
-  a mês** (o faturamento, os custos, o lucro e o acumulado de cada mês, do 1º, o da assinatura, ao fim);
+  o prazo, o imposto, a margem que você quer e, em cada custo, a quantidade, o valor de cada, o preço ou o
+  aluguel do aparelho e em quantas vezes ele é comprado. O resto se refaz sozinho: **os custos** (quando
+  sai e quando entra), **os números** (o custo fixo e o variável do mês, a sobra, a margem, o sinal, o
+  investimento, o que sai antes, quando se paga, o que fica no contrato), **o preço** (a mensalidade mínima
+  e o desconto máximo) e **o mês a mês** (o faturamento, os custos, o lucro e o acumulado de cada mês, do
+  1º, o da assinatura, ao fim);
 - os custos por faixas (os usuários, os canais e os contatos da Helena) viram uma fórmula com as faixas: a
   quantidade nova dá o custo novo;
 - a planilha sai do que está **salvo** (o que mudou é salvo antes) e imprime deitada, com a largura numa
@@ -177,11 +178,11 @@ Em **Comercial › Simulador › Ajustes**:
   entre os dois, amarelo) e **o prazo** da simulação nova.
 - **A tabela de custos**, nos mesmos dois quadros (**+ Custo de investimento**, **+ Custo mensal**): o nome,
   como entra, o valor de hoje (deixe sem valor o que muda de uma venda para
-  outra, como os aparelhos), a **unidade** ("usuário", "canal": a tela escreve "5 usuários"), se entra
-  "por ramal" e, no aparelho, a modalidade que já vem. Marque **o preço muda pela quantidade** para pôr as
+  outra, como os aparelhos), a **unidade** ("usuário", "canal", "ramal": a tela escreve "5 usuários") e, no
+  aparelho, a modalidade que já vem. Marque **o preço muda pela quantidade** para pôr as
   faixas: cada faixa vai "até" uma quantidade, com o preço de cada unidade (0 = incluso), e a última vai
   "daí para cima".
-- **Os modelos**: um por produto, com os custos da tabela e a quantidade de cada um (ou por ramal).
+- **Os modelos**: um por produto, com os custos da tabela e a quantidade de cada um.
 - **Salvar os Ajustes** não muda as simulações já feitas.
 
 **A tabela da Helena** (o LineChat em white label, revisão de 03/02/2026) já vem na tabela, com o modelo

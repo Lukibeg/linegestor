@@ -1,31 +1,31 @@
 /**
  * O Simulador do Comercial (2.0.2, decisão 0052): as contas, o sinal, a mensalidade mínima, o desconto, as
- * parcelas, os aparelhos (comodato, venda, locação), os ramais, a validação e o que mudou.
+ * parcelas, os aparelhos (comodato, venda, locação), o cenário de antes com os ramais, a validação e o que mudou.
  */
 import { describe, expect, it } from 'vitest';
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, ajustesDoSimulador, cenarioNovo, contasDoCenario,
   comPrecoPorProduto, custoPorFaixas, dividirEmParcelas, duplicarCenario, linhaDaTabela, linhasDoModelo, mudancasDaSimulacao, mudancasDosAjustes, normalizarPorProduto,
-  pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario,
+  pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOsRamais,
   sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, margemDasGanhas, textoDoValorUnitario, lerPercentual, textoDoPercentual,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario,
 } from './simulador.js';
 
 const FAIXAS = { verde: 35, vermelho: 20 };
 const linha = (l: Partial<LinhaDoCenario> & Pick<LinhaDoCenario, 'id' | 'tipo'>): LinhaDoCenario => ({
-  nome: l.id, custoId: null, qtd: 1, porRamal: false, valor: 0, modalidade: l.tipo === 'aparelho' ? 'comodato' : null, preco: null, faixas: null, unidade: null, ...l,
+  nome: l.id, custoId: null, qtd: 1, valor: 0, modalidade: l.tipo === 'aparelho' ? 'comodato' : null, preco: null, faixas: null, unidade: null, ...l,
 }) as LinhaDoCenario;
-const custo = (c: Partial<CustoDaTabela> & Pick<CustoDaTabela, 'id' | 'nome' | 'tipo'>): CustoDaTabela => ({ valor: null, porRamal: false, modalidade: null, faixas: null, unidade: null, ...c }) as CustoDaTabela;
+const custo = (c: Partial<CustoDaTabela> & Pick<CustoDaTabela, 'id' | 'nome' | 'tipo'>): CustoDaTabela => ({ valor: null, modalidade: null, faixas: null, unidade: null, ...c }) as CustoDaTabela;
 
 /** O exemplo da página de opções (20/10): R$ 990 por mês, R$ 1.500 de ativação, 24 meses. */
 function exemplo(): CenarioDaSimulacao {
   return {
-    id: 'a', nome: 'Cenário A', mensalidade: 99_000, ativacao: 150_000, parcelas: 1, prazo: 24, ramais: 10, imposto: 6, margemAlvo: 30, produtos: ['linepbx'],
+    id: 'a', nome: 'Cenário A', mensalidade: 99_000, ativacao: 150_000, parcelas: 1, prazo: 24, imposto: 6, margemAlvo: 30, produtos: ['linepbx'],
     linhas: [
       linha({ id: 'tel', nome: 'Telefone IP', tipo: 'aparelho', qtd: 10, valor: 39_000 }),
       linha({ id: 'head', nome: 'Headset USB', tipo: 'aparelho', qtd: 4, valor: 18_000 }),
       linha({ id: 'inst', nome: 'Instalação', tipo: 'unica', qtd: 4, valor: 9_000 }),
-      linha({ id: 'nuvem', nome: 'Nuvem do PABX', tipo: 'mensal', porRamal: true, qtd: 1, valor: 900 }),
+      linha({ id: 'nuvem', nome: 'Nuvem do PABX', tipo: 'mensal', qtd: 10, valor: 900 }),
       linha({ id: 'dids', nome: 'Números', tipo: 'mensal', qtd: 3, valor: 1_500 }),
       linha({ id: 'sup', nome: 'Suporte', tipo: 'mensal', qtd: 3, valor: 6_000 }),
       linha({ id: 'com', nome: 'Comissão do vendedor', tipo: 'pct_ativacao', valor: 10 }),
@@ -38,7 +38,7 @@ describe('a conta do cenário', () => {
   it('o exemplo da página de opções: sobram R$ 595,80 por mês (60,2%), saem R$ 3.124,20 antes, se paga em 7 meses, o contrato dá R$ 10.579,20', () => {
     const k = contasDoCenario(exemplo(), FAIXAS);
     expect(k.mensalTotal).toBe(99_000);
-    expect(k.custoMensalFixo).toBe(31_500); // a nuvem por ramal (10 × R$ 9) + os números + o suporte
+    expect(k.custoMensalFixo).toBe(31_500); // a nuvem (10 × R$ 9) + os números + o suporte
     expect(k.impostoMensal).toBe(5_940);
     expect(k.comissaoMensal).toBe(1_980);
     expect(k.sobraMensal).toBe(59_580);
@@ -56,7 +56,7 @@ describe('a conta do cenário', () => {
     expect(k.serie).toHaveLength(24);
     expect(k.totalInvestido).toBe(498_000 + 15_000); // os aparelhos, a instalação e a comissão da venda
     expect(k.faltam).toEqual([]);
-    // cada linha na conta: a nuvem usa os 10 ramais; a comissão recorrente, 2% da mensalidade
+    // cada linha na conta: a nuvem, 10 × R$ 9; a comissão recorrente, 2% da mensalidade
     expect(k.linhas.find((l) => l.id === 'nuvem')).toMatchObject({ qtd: 10, custo: 9_000, quando: 'por-mes' });
     expect(k.linhas.find((l) => l.id === 'rec')).toMatchObject({ custo: 1_980, quando: 'por-mes' });
     expect(k.linhas.find((l) => l.id === 'com')).toMatchObject({ custo: 15_000, quando: 'uma-vez' });
@@ -279,10 +279,19 @@ describe('a conta do cenário', () => {
     expect(r.success ? '' : r.error.issues[0]!.message).toBe('A compra do aparelho vai em até 24 vezes.');
   });
 
-  it('os ramais: as linhas "por ramal" acompanham; as outras ficam com a quantidade delas', () => {
-    const k = contasDoCenario({ ...exemplo(), ramais: 15 }, FAIXAS);
-    expect(k.linhas.find((l) => l.id === 'nuvem')).toMatchObject({ qtd: 15, custo: 13_500 });
-    expect(k.linhas.find((l) => l.id === 'tel')).toMatchObject({ qtd: 10 });
+  it('o cenário de antes, com os ramais: a linha "por ramal" fica com a quantidade dos ramais, e a conta não muda', () => {
+    const antes = { ...exemplo(), ramais: 15, linhas: exemplo().linhas.map((l) => (l.id === 'nuvem' ? { ...l, qtd: 1, porRamal: true } : l.id === 'rec' ? { ...l, porRamal: true } : { ...l, porRamal: false })) };
+    const s = SimulacaoGravarSchema.parse({ nome: 'Antes', negociacaoId: null, principal: 'a', cenarios: [antes] });
+    const c = s.cenarios[0]!;
+    expect('ramais' in c).toBe(false);
+    expect(c.linhas.some((l) => 'porRamal' in l)).toBe(false);
+    expect(c.linhas.find((l) => l.id === 'nuvem')!.qtd).toBe(15);
+    expect(c.linhas.find((l) => l.id === 'tel')!.qtd).toBe(10);
+    expect(c.linhas.find((l) => l.id === 'rec')!.qtd).toBe(1); // o percentual não tem quantidade
+    expect(contasDoCenario(c, FAIXAS).linhas.find((l) => l.id === 'nuvem')).toMatchObject({ qtd: 15, custo: 13_500 });
+    // o que não é cenário passa como está
+    expect(semOsRamais(null)).toBeNull();
+    expect(semOsRamais({ id: 'x', ramais: 3 })).toEqual({ id: 'x' });
   });
 
   it('o resumo do cenário (a lista e a negociação)', () => {
@@ -297,11 +306,11 @@ describe('montar o cenário', () => {
   const ajustes: AjustesDoSimulador = {
     ...AJUSTES_DO_SIMULADOR_PADRAO, imposto: 8, prazo: 36,
     custos: [
-      custo({ id: 'yealink', nome: 'Yealink T31P', tipo: 'aparelho', valor: null, porRamal: true, modalidade: 'comodato' }),
-      custo({ id: 'nuvem', nome: 'Nuvem por ramal', tipo: 'mensal', valor: 900, porRamal: true }),
+      custo({ id: 'yealink', nome: 'Yealink T31P', tipo: 'aparelho', valor: null, modalidade: 'comodato' }),
+      custo({ id: 'nuvem', nome: 'Nuvem do PABX', tipo: 'mensal', valor: 900 }),
       custo({ id: 'rec', nome: 'Comissão recorrente', tipo: 'pct_mensalidade', valor: 2 }),
     ],
-    modelos: [{ id: 'pbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [{ custoId: 'yealink', qtd: 1, porRamal: true }, { custoId: 'nuvem', qtd: 1, porRamal: true }, { custoId: 'rec', qtd: 1, porRamal: false }] }],
+    modelos: [{ id: 'pbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [{ custoId: 'yealink', qtd: 10 }, { custoId: 'nuvem', qtd: 10 }, { custoId: 'rec', qtd: 1 }] }],
   };
 
   it('o cenário novo traz o imposto, o prazo e o verde dos Ajustes; do modelo, as linhas da tabela', () => {
@@ -315,18 +324,18 @@ describe('montar o cenário', () => {
     expect(cenarioNovo(ajustes, { modelos: [ajustes.modelos[0]!, ajustes.modelos[0]!] }).linhas).toHaveLength(3);
     // dois produtos com o mesmo custo: cada um traz o seu (uma proposta por produto); a comissão, sobre o preço inteiro, uma vez só
     // e sem produto
-    const voicenet = { id: 'vn', nome: 'VoiceNet', produto: 'voicenet', linhas: [{ custoId: 'nuvem', qtd: 4, porRamal: false }, { custoId: 'rec', qtd: 1, porRamal: false }] };
+    const voicenet = { id: 'vn', nome: 'VoiceNet', produto: 'voicenet', linhas: [{ custoId: 'nuvem', qtd: 4 }, { custoId: 'rec', qtd: 1 }] };
     const juntos = cenarioNovo(ajustes, { modelos: [ajustes.modelos[0]!, voicenet] });
-    expect(juntos.linhas.map((l) => [l.custoId, l.produto, l.porRamal ? 'ramal' : l.qtd])).toEqual([
-      ['yealink', 'linepbx', 'ramal'], ['nuvem', 'linepbx', 'ramal'], ['rec', null, 1], ['nuvem', 'voicenet', 4],
+    expect(juntos.linhas.map((l) => [l.custoId, l.produto, l.qtd])).toEqual([
+      ['yealink', 'linepbx', 10], ['nuvem', 'linepbx', 10], ['rec', null, 1], ['nuvem', 'voicenet', 4],
     ]);
     // com um produto só, a comissão fica com o produto do modelo
     expect(c.linhas.find((l) => l.custoId === 'rec')!.produto).toBe('linepbx');
     expect(juntos.produtos).toEqual(['linepbx', 'voicenet']);
-    expect(c.linhas.map((l) => [l.nome, l.tipo, l.custoId, l.porRamal, l.valor])).toEqual([
-      ['Yealink T31P', 'aparelho', 'yealink', true, null], // o aparelho sem valor: preenche em cada simulação
-      ['Nuvem por ramal', 'mensal', 'nuvem', true, 900],
-      ['Comissão recorrente', 'pct_mensalidade', 'rec', false, 2],
+    expect(c.linhas.map((l) => [l.nome, l.tipo, l.custoId, l.qtd, l.valor])).toEqual([
+      ['Yealink T31P', 'aparelho', 'yealink', 10, null], // o aparelho sem valor: preenche em cada simulação
+      ['Nuvem do PABX', 'mensal', 'nuvem', 10, 900],
+      ['Comissão recorrente', 'pct_mensalidade', 'rec', 1, 2],
     ]);
     expect(c.linhas[0]!.modalidade).toBe('comodato');
     expect(contasDoCenario(c, FAIXAS).faltam).toEqual(['Yealink T31P']);
@@ -334,8 +343,9 @@ describe('montar o cenário', () => {
   });
 
   it('a linha da tabela e o cenário duplicado (com ids novos nas linhas)', () => {
-    const l = linhaDaTabela(ajustes.custos[1]!, { qtd: 3, porRamal: false });
-    expect(l).toMatchObject({ nome: 'Nuvem por ramal', qtd: 3, porRamal: false, valor: 900, custoId: 'nuvem' });
+    const l = linhaDaTabela(ajustes.custos[1]!, { qtd: 3 });
+    expect(l).toMatchObject({ nome: 'Nuvem do PABX', qtd: 3, valor: 900, custoId: 'nuvem' });
+    expect('porRamal' in l).toBe(false);
     const a = cenarioNovo(ajustes, { modelo: ajustes.modelos[0], id: 'a' });
     const b = duplicarCenario(a, { id: 'b', nome: proximoNomeDeCenario([a]) });
     expect(b.nome).toBe('Cenário B');
@@ -349,8 +359,8 @@ describe('a validação', () => {
   const gravar = (mudar: (c: CenarioDaSimulacao) => CenarioDaSimulacao = (c) => c) => ({ nome: 'Clínica Aurora', negociacaoId: null, cenarios: [mudar(exemplo())], principal: 'a' });
 
   it('a simulação boa passa (e as linhas saem limpas)', () => {
-    const r = SimulacaoGravarSchema.parse(gravar((c) => ({ ...c, linhas: [...c.linhas, linha({ id: 'x', tipo: 'pct_mensalidade', qtd: 7, porRamal: true, valor: 1.234 })] })));
-    expect(r.cenarios[0]!.linhas.at(-1)).toMatchObject({ qtd: 1, porRamal: false, valor: 1.23 });
+    const r = SimulacaoGravarSchema.parse(gravar((c) => ({ ...c, linhas: [...c.linhas, linha({ id: 'x', tipo: 'pct_mensalidade', qtd: 7, valor: 1.234 })] })));
+    expect(r.cenarios[0]!.linhas.at(-1)).toMatchObject({ qtd: 1, valor: 1.23 });
   });
 
   it('recusa o que não fecha', () => {
@@ -368,11 +378,11 @@ describe('a validação', () => {
 
   it('os Ajustes: o vermelho abaixo do verde, sem custo repetido, e o modelo só com custos da tabela', () => {
     const erro = (x: unknown) => { const r = AjustesDoSimuladorSchema.safeParse(x); return r.success ? null : r.error.issues[0]!.message; };
-    const base = { ...AJUSTES_DO_SIMULADOR_PADRAO, custos: [{ id: 'n', nome: 'Nuvem', tipo: 'mensal', valor: 900, porRamal: true, modalidade: null }], modelos: [] };
+    const base = { ...AJUSTES_DO_SIMULADOR_PADRAO, custos: [{ id: 'n', nome: 'Nuvem', tipo: 'mensal', valor: 900, modalidade: null }], modelos: [] };
     expect(erro(base)).toBeNull();
     expect(erro({ ...base, verde: 20, vermelho: 30 })).toBe('O vermelho começa abaixo do verde: o amarelo fica entre os dois.');
     expect(erro({ ...base, custos: [...base.custos, { ...base.custos[0], id: 'n2', nome: 'nuvem' }] })).toBe('"nuvem" está duas vezes na tabela.');
-    expect(erro({ ...base, modelos: [{ id: 'm', nome: 'LinePBX', linhas: [{ custoId: 'x', qtd: 1, porRamal: false }] }] })).toBe('O modelo "LinePBX" usa um custo que não está na tabela.');
+    expect(erro({ ...base, modelos: [{ id: 'm', nome: 'LinePBX', linhas: [{ custoId: 'x', qtd: 1 }] }] })).toBe('O modelo "LinePBX" usa um custo que não está na tabela.');
   });
 
   it('os Ajustes guardados: o padrão no que falta; o que não vale sai', () => {
@@ -390,7 +400,11 @@ describe('a validação', () => {
     expect([a.verde, a.vermelho]).toEqual([35, 20]); // o vermelho acima do verde não vale: o padrão
     expect(a.prazo).toBe(36);
     expect(a.custos.map((c) => c.id)).toEqual(['n']);
-    expect(a.modelos[0]!.linhas).toEqual([{ custoId: 'n', qtd: 2, porRamal: false }]);
+    expect(a.modelos[0]!.linhas).toEqual([{ custoId: 'n', qtd: 2 }]);
+    // os Ajustes de antes, com o "por ramal": sai, e a quantidade fica
+    const antes = ajustesDoSimulador({ custos: [{ id: 'n', nome: 'Nuvem', tipo: 'mensal', valor: 900, porRamal: true }], modelos: [{ id: 'm', nome: 'LinePBX', linhas: [{ custoId: 'n', qtd: 1, porRamal: true }] }] });
+    expect('porRamal' in antes.custos[0]!).toBe(false);
+    expect(antes.modelos[0]!.linhas).toEqual([{ custoId: 'n', qtd: 1 }]);
   });
 });
 
@@ -425,8 +439,8 @@ describe('o que mudou (a auditoria)', () => {
   });
 
   it('nos Ajustes', () => {
-    const antes = { ...AJUSTES_DO_SIMULADOR_PADRAO, custos: [custo({ id: 'n', nome: 'Nuvem', tipo: 'mensal', valor: 900, porRamal: true })], modelos: [] };
-    const depois = { ...antes, imposto: 8, verde: 40, custos: [{ ...antes.custos[0]!, valor: 1_000 }, custo({ id: 'y', nome: 'Yealink', tipo: 'aparelho', porRamal: true, modalidade: 'comodato' })] };
+    const antes = { ...AJUSTES_DO_SIMULADOR_PADRAO, custos: [custo({ id: 'n', nome: 'Nuvem', tipo: 'mensal', valor: 900 })], modelos: [] };
+    const depois = { ...antes, imposto: 8, verde: 40, custos: [{ ...antes.custos[0]!, valor: 1_000 }, custo({ id: 'y', nome: 'Yealink', tipo: 'aparelho', modalidade: 'comodato' })] };
     expect(mudancasDosAjustes(antes, depois)).toEqual([
       'o imposto de 6% para 8%', 'o sinal (verde a partir de 40%, vermelho abaixo de 20%)', 'incluiu na tabela Yealink', 'mudou na tabela Nuvem',
     ]);

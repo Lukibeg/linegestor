@@ -142,7 +142,7 @@ export function CampoDePercentual({ valor, onChange, className = '', ...resto }:
 const lerInteiro = (t: string) => { const s = t.trim().replace(/\./g, ''); return /^\d{1,9}$/.test(s) ? Number(s) : null; };
 const escreverInteiro = (n: number) => n.toLocaleString('pt-BR');
 
-/** Número inteiro (a quantidade, os ramais, o prazo): vazio vale `vazio`. */
+/** Número inteiro (a quantidade, o prazo): vazio vale `vazio`. */
 export function CampoInteiro({ valor, onChange, vazio = 0, sufixo, className = '', ...resto }: { valor: number; onChange: (n: number) => void; vazio?: number; sufixo?: string } & Basico) {
   const c = useCampo<number>(valor, lerInteiro, escreverInteiro, (v) => onChange(v ?? vazio));
   return (

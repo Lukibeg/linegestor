@@ -38,17 +38,27 @@ export function nomeDaPlanilhaDaSimulacao(nome: string, quando: Date): string {
   return `simulacao-${base || 'sem-nome'}-${diaLocal(quando)}.xlsx`;
 }
 
-/** As colunas da folha do cenário (A a M). */
-const LARGURAS = [50, 18, 16, 12, 14, 18, 18, 14, 16, 16, 16, 16, 56];
+/** As colunas da folha do cenário (A a L). */
+const LARGURAS = [50, 18, 16, 14, 18, 18, 14, 16, 16, 16, 16, 56];
+/** Onde fica cada coisa nas linhas dos custos. */
+const COL = { qtd: 3, valor: 4, preco: 5, vezes: 6, saiUmaVez: 7, saiPorMes: 8, entraUmaVez: 9, entraPorMes: 10, obs: 11 } as const;
+const letra = (i: number) => String.fromCharCode(65 + i);
+const QTD = letra(COL.qtd);
+const VALOR = letra(COL.valor);
+const PRECO = letra(COL.preco);
+const VEZES = letra(COL.vezes);
+const SAI_UMA_VEZ = letra(COL.saiUmaVez);
+const SAI_POR_MES = letra(COL.saiPorMes);
+const ENTRA_UMA_VEZ = letra(COL.entraUmaVez);
+const ENTRA_POR_MES = letra(COL.entraPorMes);
 
 // as linhas fixas do alto: o que o cliente paga
 const L_MENSALIDADE = 7;
 const L_ATIVACAO = 8;
 const L_VEZES = 9;
 const L_PRAZO = 10;
-const L_RAMAIS = 11;
-const L_IMPOSTO = 12;
-const L_ALVO = 13;
+const L_IMPOSTO = 11;
+const L_ALVO = 12;
 const L_CABECALHO_DOS_CUSTOS = 16;
 const L_PRIMEIRO_CUSTO = 17;
 
@@ -135,13 +145,12 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   }
   g.item(L_VEZES, 'A ativação em (vezes)', { v: c.parcelas, s: 'inteiroEntrada' }, 'à vista = 1; a primeira parcela entra no 1º mês, o da assinatura');
   g.item(L_PRAZO, 'O prazo do contrato (meses)', { v: c.prazo, s: 'inteiroEntrada' }, `até ${MAX_PRAZO} meses`);
-  g.item(L_RAMAIS, 'Ramais', { v: c.ramais, s: 'inteiroEntrada' }, 'as linhas "por ramal" acompanham');
   g.item(L_IMPOSTO, 'Imposto', { v: c.imposto / 100, s: 'pctEntrada' }, 'sobre tudo o que o cliente paga: a mensalidade, a ativação e os aparelhos');
   g.item(L_ALVO, 'A margem que você quer', { v: c.margemAlvo / 100, s: 'pctEntrada' }, 'para a mensalidade mínima, em O PREÇO');
 
   // os custos, linha a linha
   g.por(15, 0, { v: 'OS CUSTOS', s: 'secao' });
-  ['Custo', 'Como entra', 'O aparelho vai em', 'Por ramal', 'Quantidade', 'Valor de cada', 'Preço ou aluguel de cada', 'A compra em (vezes)', 'Sai uma vez', 'Sai por mês', 'Entra uma vez', 'Entra por mês', 'Observação']
+  ['Custo', 'Como entra', 'O aparelho vai em', 'Quantidade', 'Valor de cada', 'Preço ou aluguel de cada', 'A compra em (vezes)', 'Sai uma vez', 'Sai por mês', 'Entra uma vez', 'Entra por mês', 'Observação']
     .forEach((t, i) => g.por(L_CABECALHO_DOS_CUSTOS, i, { v: t, s: 'cabecalho' }));
   // em dois grupos, como a tela: o investimento (pago uma vez) e os custos mensais, cada um com o nome numa linha
   const linhaDoCusto = new Map<number, number>();
@@ -183,59 +192,58 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
     g.por(r, 0, { v: l.nome });
     g.por(r, 1, { v: NOME_DO_TIPO_DE_CUSTO[l.tipo] });
     if (l.tipo === 'aparelho') g.por(r, 2, { v: NOME_DA_MODALIDADE[l.modalidade ?? 'comodato'] });
-    if (!ehPct(l) && l.porRamal) g.por(r, 3, { v: 'sim' });
-    if (!ehPct(l)) g.por(r, 4, l.porRamal ? { f: `$B$${L_RAMAIS}`, v: conta.qtd, s: 'inteiro' } : { v: l.qtd, s: 'inteiroEntrada' });
-    if (ehPct(l)) g.por(r, 5, { v: (l.valor ?? 0) / 100, s: 'pctEntrada' });
-    else if (faixas) g.por(r, 5, { v: 'por faixas' });
-    else g.por(r, 5, { v: l.valor == null ? null : reais(l.valor), s: 'reaisUnidadeEntrada' });
-    const qtd = `E${r}`;
+    if (!ehPct(l)) g.por(r, COL.qtd, { v: l.qtd, s: 'inteiroEntrada' });
+    if (ehPct(l)) g.por(r, COL.valor, { v: (l.valor ?? 0) / 100, s: 'pctEntrada' });
+    else if (faixas) g.por(r, COL.valor, { v: 'por faixas' });
+    else g.por(r, COL.valor, { v: l.valor == null ? null : reais(l.valor), s: 'reaisUnidadeEntrada' });
+    const qtd = `${QTD}${r}`;
     if (l.tipo === 'aparelho') {
       // a compra em (vezes): a célula amarela; o mês a mês dilui o custo nas parcelas
-      g.por(r, 7, { v: l.parcelas ?? 1, s: 'inteiroEntrada' });
-      g.por(r, 8, { f: `${qtd}*F${r}`, v: reais(conta.custo), s: 'reais' });
+      g.por(r, COL.vezes, { v: l.parcelas ?? 1, s: 'inteiroEntrada' });
+      g.por(r, COL.saiUmaVez, { f: `${qtd}*${VALOR}${r}`, v: reais(conta.custo), s: 'reais' });
       linhasDosAparelhos.push(r);
-      if (conta.parcelas > 1) notas.push(`a compra em ${conta.parcelas} vezes: o custo se dilui (a primeira parcela na assinatura)`);
+      if (conta.parcelas > 1) notas.push(`a compra em ${conta.parcelas} vezes: o custo se dilui (a primeira parcela no 1º mês, o da assinatura)`);
       if (l.modalidade === 'venda' || l.modalidade === 'locacao') {
-        g.por(r, 6, { v: l.preco == null ? null : reais(l.preco), s: 'reaisUnidadeEntrada' });
-        g.por(r, l.modalidade === 'venda' ? 10 : 11, { f: `${qtd}*G${r}`, v: reais(conta.receita), s: 'reais' });
+        g.por(r, COL.preco, { v: l.preco == null ? null : reais(l.preco), s: 'reaisUnidadeEntrada' });
+        g.por(r, l.modalidade === 'venda' ? COL.entraUmaVez : COL.entraPorMes, { f: `${qtd}*${PRECO}${r}`, v: reais(conta.receita), s: 'reais' });
         notas.push(l.modalidade === 'venda' ? 'o preço de cada um entra na ativação' : 'o aluguel de cada um entra na mensalidade');
       }
     } else if (l.tipo === 'unica') {
-      g.por(r, 8, { f: faixas ? formulaDasFaixas(qtd, faixas) : `${qtd}*F${r}`, v: reais(conta.custo), s: 'reais' });
+      g.por(r, COL.saiUmaVez, { f: faixas ? formulaDasFaixas(qtd, faixas) : `${qtd}*${VALOR}${r}`, v: reais(conta.custo), s: 'reais' });
     } else if (l.tipo === 'mensal') {
-      g.por(r, 9, { f: faixas ? formulaDasFaixas(qtd, faixas) : `${qtd}*F${r}`, v: reais(conta.custo), s: 'reais' });
-      refsMensais.push(`J${r}`);
+      g.por(r, COL.saiPorMes, { f: faixas ? formulaDasFaixas(qtd, faixas) : `${qtd}*${VALOR}${r}`, v: reais(conta.custo), s: 'reais' });
+      refsMensais.push(`${SAI_POR_MES}${r}`);
     } else if (l.tipo === 'pct_mensalidade') {
-      g.por(r, 9, { f: `F${r}*$B$${L.mensal}`, v: reais(conta.custo), s: 'reais' });
-      refsPctMensalidade.push(`F${r}`);
+      g.por(r, COL.saiPorMes, { f: `${VALOR}${r}*$B$${L.mensal}`, v: reais(conta.custo), s: 'reais' });
+      refsPctMensalidade.push(`${VALOR}${r}`);
       pctMensalidade += (l.valor ?? 0) / 100;
       notas.push('sobre o que o cliente paga por mês');
     } else {
-      refsPctAtivacao.push(`F${r}`);
+      refsPctAtivacao.push(`${VALOR}${r}`);
       pctAtivacao += (l.valor ?? 0) / 100;
       notas.push('tirada de cada parcela da ativação, como o imposto (em OS NÚMEROS)');
     }
     if (faixas) notas.push(`por faixas: ${textoDasFaixasDePreco(faixas)}`);
     if (conta.falta) notas.push('falta o valor: preencha a célula amarela');
-    if (notas.length) g.por(r, 12, { v: notas.join('; '), s: 'nota' });
+    if (notas.length) g.por(r, COL.obs, { v: notas.join('; '), s: 'nota' });
   });
   const ultimo = total - 1;
   g.por(total, 0, { v: 'Total', s: 'rotuloTotal' });
-  for (let col = 1; col <= 12; col++) g.por(total, col, { s: 'rotuloTotal' });
+  for (let col = 1; col <= COL.obs; col++) g.por(total, col, { s: 'rotuloTotal' });
   const soma = (col: string, v: number) => ({ f: `SUM(${col}${L_PRIMEIRO_CUSTO}:${col}${ultimo})`, v, s: 'reaisTotal' as const });
-  g.por(total, 8, soma('I', reais(k.custoUnico)));
-  g.por(total, 9, soma('J', reais(k.custoMensalFixo + k.comissaoMensal)));
-  g.por(total, 10, soma('K', reais(k.vendaDeAparelhos)));
-  g.por(total, 11, soma('L', reais(k.aluguel)));
+  g.por(total, COL.saiUmaVez, soma(SAI_UMA_VEZ, reais(k.custoUnico)));
+  g.por(total, COL.saiPorMes, soma(SAI_POR_MES, reais(k.custoMensalFixo + k.comissaoMensal)));
+  g.por(total, COL.entraUmaVez, soma(ENTRA_UMA_VEZ, reais(k.vendaDeAparelhos)));
+  g.por(total, COL.entraPorMes, soma(ENTRA_POR_MES, reais(k.aluguel)));
 
   // os números
   const B = (linha: number) => `$B$${linha}`;
   g.por(numeros, 0, { v: 'OS NÚMEROS', s: 'secao' });
-  g.item(L.mensal, 'O cliente paga por mês', { f: `B${L_MENSALIDADE}+L${total}`, v: reais(k.mensalTotal), s: 'reais' }, 'a mensalidade e o aluguel dos aparelhos');
-  g.item(L.ativacao, 'A ativação', { f: `B${L_ATIVACAO}+K${total}`, v: reais(k.entradaTotal), s: 'reais' }, 'com os aparelhos vendidos');
+  g.item(L.mensal, 'O cliente paga por mês', { f: `B${L_MENSALIDADE}+${ENTRA_POR_MES}${total}`, v: reais(k.mensalTotal), s: 'reais' }, 'a mensalidade e o aluguel dos aparelhos');
+  g.item(L.ativacao, 'A ativação', { f: `B${L_ATIVACAO}+${ENTRA_UMA_VEZ}${total}`, v: reais(k.entradaTotal), s: 'reais' }, 'com os aparelhos vendidos');
   const fixosDoMes = refsMensais.length ? refsMensais.join('+') : '0';
   g.item(L.fixo, 'O custo fixo do mês', { f: fixosDoMes, v: reais(k.custoMensalFixo), s: 'reais' }, 'as linhas por mês: a nuvem, os números, as licenças');
-  g.item(L.variavel, 'O custo variável do mês', { f: `J${total}-(${fixosDoMes})+B${L_IMPOSTO}*B${L.mensal}`, v: reais(k.impostoMensal + k.comissaoMensal), s: 'reais' },
+  g.item(L.variavel, 'O custo variável do mês', { f: `${SAI_POR_MES}${total}-(${fixosDoMes})+B${L_IMPOSTO}*B${L.mensal}`, v: reais(k.impostoMensal + k.comissaoMensal), s: 'reais' },
     'o imposto e a comissão da mensalidade: andam com o que o cliente paga');
   g.item(L.custoDoMes, 'O custo do mês', { f: `B${L.fixo}+B${L.variavel}`, v: reais(k.custoMensal), s: 'reais' });
   g.item(L.sobra, { v: 'Sobra por mês', s: 'forte' }, { f: `B${L.mensal}-B${L.custoDoMes}`, v: reais(k.sobraMensal), s: 'reaisForte' });
@@ -244,9 +252,9 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
     f: `IF(B${L.mensal}>0,IF(ROUND(B${L.margem}*100,2)>=${n(verde)},"${NOME_DO_SINAL.verde}",IF(ROUND(B${L.margem}*100,2)>=${n(vermelho)},"${NOME_DO_SINAL.amarelo}","${NOME_DO_SINAL.vermelho}")),"")`,
     v: k.sinal ? NOME_DO_SINAL[k.sinal] : '', s: 'forte',
   }, `${textoDasFaixas(p.faixas)} (os Ajustes do Simulador)`);
-  g.item(L.umaVez, 'Sai uma vez', { f: `I${total}`, v: reais(k.custoUnico), s: 'reais' }, 'os aparelhos e o resto (o aparelho comprado parcelado sai nas parcelas, no mês a mês)');
+  g.item(L.umaVez, 'Sai uma vez', { f: `${SAI_UMA_VEZ}${total}`, v: reais(k.custoUnico), s: 'reais' }, 'os aparelhos e o resto (o aparelho comprado parcelado sai nas parcelas, no mês a mês)');
   g.item(L.comissaoDaAtivacao, 'A comissão da ativação', refsPctAtivacao.length ? { f: refsPctAtivacao.join('+'), v: pctAtivacao, s: 'pct' } : { v: 0, s: 'pct' }, 'tirada de cada parcela, como o imposto');
-  g.item(L.investimento, { v: 'O investimento', s: 'forte' }, { f: `I${total}+B${L.comissaoDaAtivacao}*B${L.ativacao}`, v: reais(k.totalInvestido), s: 'reaisForte' },
+  g.item(L.investimento, { v: 'O investimento', s: 'forte' }, { f: `${SAI_UMA_VEZ}${total}+B${L.comissaoDaAtivacao}*B${L.ativacao}`, v: reais(k.totalInvestido), s: 'reaisForte' },
     'o total pago uma vez: os aparelhos, a instalação e a comissão da venda');
   g.item(L.vezes, 'A ativação em (vezes)', { f: `MIN(MAX(1,B${L_VEZES}),MAX(1,B${L_PRAZO}))`, v: k.parcelas.length, s: 'inteiro' }, 'não mais que o prazo');
   g.item(L.saiAntes, { v: 'Sai antes', s: 'forte' }, { f: `MAX(0,-ROUND(MIN(E${T0}:E${TN}),2))`, v: reais(k.investimento), s: 'reaisForte' }, 'o pior momento do contrato, antes de a venda se pagar (no mês a mês)');
@@ -255,7 +263,7 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   // nunca no vermelho: sem nada de uma vez e sem ativação, "desde o 1º mês"; a ativação cobrindo sozinha o que sai
   // na assinatura (o lucro do 1º mês sem a sobra), "já na ativação"; senão, "em 1 mês"
   g.item(L.sePaga, { v: 'Se paga', s: 'forte' }, {
-    f: `IF(${negativo}=-1,IF(AND($I$${total}=0,${B(L.ativacao)}=0),"desde o 1º mês",IF(ROUND($D$${T0}-${B(L.sobra)},2)>=0,"já na ativação","em 1 mês")),`
+    f: `IF(${negativo}=-1,IF(AND($${SAI_UMA_VEZ}$${total}=0,${B(L.ativacao)}=0),"desde o 1º mês",IF(ROUND($D$${T0}-${B(L.sobra)},2)>=0,"já na ativação","em 1 mês")),`
       + `IF(${negativo}<${B(L_PRAZO)},"em "&(${negativo}+1)&IF(${negativo}+1=1," mês"," meses"),`
       + `IF(ROUND(${B(L.sobra)},2)>0,"em "&(${B(L_PRAZO)}+ROUNDUP(-ROUND(${fimDoPrazo},2)/ROUND(${B(L.sobra)},2),0))&" meses (depois do prazo)","não se paga")))`,
     v: textoDoSePagaEm(k.sePagaEm), s: 'forte',
@@ -268,7 +276,7 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   g.por(preco, 0, { v: 'O PREÇO', s: 'secao' });
   g.item(P.fixos, 'Os custos fixos do mês', refsMensais.length ? { f: refsMensais.join('+'), v: reais(k.custoMensalFixo), s: 'reais' } : { v: 0, s: 'reais' }, 'sem o imposto e a comissão');
   g.item(P.comissaoDaMensalidade, 'A comissão da mensalidade', refsPctMensalidade.length ? { f: refsPctMensalidade.join('+'), v: pctMensalidade, s: 'pct' } : { v: 0, s: 'pct' });
-  const minima = (alvo: string) => `IF(1-B${L_IMPOSTO}-B${P.comissaoDaMensalidade}-${alvo}<=0,"nenhuma dá",MAX(0,ROUNDUP(B${P.fixos}/(1-B${L_IMPOSTO}-B${P.comissaoDaMensalidade}-${alvo})-L${total}-0.00000001,2)))`;
+  const minima = (alvo: string) => `IF(1-B${L_IMPOSTO}-B${P.comissaoDaMensalidade}-${alvo}<=0,"nenhuma dá",MAX(0,ROUNDUP(B${P.fixos}/(1-B${L_IMPOSTO}-B${P.comissaoDaMensalidade}-${alvo})-${ENTRA_POR_MES}${total}-0.00000001,2)))`;
   g.item(P.minima, { v: 'A mensalidade mínima para a margem que você quer', s: 'forte' }, { f: minima(`B${L_ALVO}`), v: k.minima == null ? 'nenhuma dá' : reais(k.minima), s: 'reaisForte' });
   g.item(P.minimaVerde, `A mensalidade mínima para o verde (${n(verde).replace('.', ',')}%)`, { f: minima(n(verde / 100)), v: k.minimaVerde == null ? 'nenhuma dá' : reais(k.minimaVerde), s: 'reais' });
   g.item(P.desconto, 'Desconto máximo sem sair do verde', {
@@ -287,15 +295,15 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
   const ativacaoEmCentavos = `ROUND(${B(L.ativacao)}*100,0)`;
   // o que sai pelos custos de uma vez: tudo no 1º mês, menos o que os aparelhos comprados parcelado deixam para os
   // meses seguintes (cada um em até 24 vezes e não mais que o prazo; a primeira leva o resto, como na ativação)
-  const vezes = (r: number) => `MIN(MAX(1,$H$${r}),${MAX_PARCELAS_DA_COMPRA},MAX(1,${B(L_PRAZO)}))`;
-  const emCentavos = (r: number) => `ROUND($I$${r}*100,0)`;
+  const vezes = (r: number) => `MIN(MAX(1,$${VEZES}$${r}),${MAX_PARCELAS_DA_COMPRA},MAX(1,${B(L_PRAZO)}))`;
+  const emCentavos = (r: number) => `ROUND($${SAI_UMA_VEZ}$${r}*100,0)`;
   const parcelaDoAparelho = (r: number, m: number) => `IF(${m}<=${vezes(r)},(${m === 1
     ? `${emCentavos(r)}-INT(${emCentavos(r)}/${vezes(r)})*(${vezes(r)}-1)`
     : `INT(${emCentavos(r)}/${vezes(r)})`})/100,0)`;
   const saiNoMes = (m: number) => {
-    if (!linhasDosAparelhos.length) return m === 1 ? `$I$${total}` : '0';
+    if (!linhasDosAparelhos.length) return m === 1 ? `$${SAI_UMA_VEZ}$${total}` : '0';
     const parcelas = linhasDosAparelhos.map((r) => parcelaDoAparelho(r, m)).join('+');
-    return m === 1 ? `$I$${total}-(${linhasDosAparelhos.map((r) => `$I$${r}`).join('+')})+${parcelas}` : parcelas;
+    return m === 1 ? `$${SAI_UMA_VEZ}$${total}-(${linhasDosAparelhos.map((r) => `$${SAI_UMA_VEZ}$${r}`).join('+')})+${parcelas}` : parcelas;
   };
   for (let m = 1; m <= MAX_PRAZO; m++) {
     const r = T0 + m - 1;

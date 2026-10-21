@@ -61,20 +61,20 @@ const copia = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const sem = { faixas: null, unidade: null } as const;
 /** Os custos do PABX e as comissões (a tabela da Helena, o LineChat, vem de fábrica). */
 const CUSTOS_DO_PABX: CustoDaTabela[] = [
-  { id: 't31p', nome: 'Telefone IP Yealink T31P', tipo: 'aparelho', valor: null, porRamal: true, modalidade: 'comodato', ...sem },
-  { id: 't43u', nome: 'Telefone IP Yealink T43U', tipo: 'aparelho', valor: null, porRamal: false, modalidade: 'comodato', ...sem },
-  { id: 'headset', nome: 'Headset USB', tipo: 'aparelho', valor: null, porRamal: false, modalidade: 'comodato', ...sem },
-  { id: 'nuvem', nome: 'Nuvem do PABX', tipo: 'mensal', valor: 900, porRamal: true, modalidade: null, faixas: null, unidade: 'ramal' },
-  { id: 'did', nome: 'Número (DID) da operadora', tipo: 'mensal', valor: 1_500, porRamal: false, modalidade: null, faixas: null, unidade: 'número' },
-  { id: 'canal', nome: 'Canal de voz da operadora', tipo: 'mensal', valor: 2_500, porRamal: false, modalidade: null, faixas: null, unidade: 'canal' },
-  { id: 'config', nome: 'Configuração e instalação', tipo: 'unica', valor: 36_000, porRamal: false, modalidade: null, ...sem },
-  { id: 'comissao', nome: 'Comissão do vendedor', tipo: 'pct_ativacao', valor: 10, porRamal: false, modalidade: null, ...sem },
-  { id: 'recorrente', nome: 'Comissão recorrente', tipo: 'pct_mensalidade', valor: 2, porRamal: false, modalidade: null, ...sem },
+  { id: 't31p', nome: 'Telefone IP Yealink T31P', tipo: 'aparelho', valor: null, modalidade: 'comodato', ...sem },
+  { id: 't43u', nome: 'Telefone IP Yealink T43U', tipo: 'aparelho', valor: null, modalidade: 'comodato', ...sem },
+  { id: 'headset', nome: 'Headset USB', tipo: 'aparelho', valor: null, modalidade: 'comodato', ...sem },
+  { id: 'nuvem', nome: 'Nuvem do PABX', tipo: 'mensal', valor: 900, modalidade: null, faixas: null, unidade: 'ramal' },
+  { id: 'did', nome: 'Número (DID) da operadora', tipo: 'mensal', valor: 1_500, modalidade: null, faixas: null, unidade: 'número' },
+  { id: 'canal', nome: 'Canal de voz da operadora', tipo: 'mensal', valor: 2_500, modalidade: null, faixas: null, unidade: 'canal' },
+  { id: 'config', nome: 'Configuração e instalação', tipo: 'unica', valor: 36_000, modalidade: null, ...sem },
+  { id: 'comissao', nome: 'Comissão do vendedor', tipo: 'pct_ativacao', valor: 10, modalidade: null, ...sem },
+  { id: 'recorrente', nome: 'Comissão recorrente', tipo: 'pct_mensalidade', valor: 2, modalidade: null, ...sem },
 ];
-const l = (custoId: string, qtd = 1, porRamal = false) => ({ custoId, qtd, porRamal });
+const l = (custoId: string, qtd = 1) => ({ custoId, qtd });
 const COMISSOES = [l('comissao'), l('recorrente')];
 const MODELOS_DE_EXEMPLO: ModeloDeSimulacao[] = [
-  { id: 'linepbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [l('t31p', 1, true), l('nuvem', 1, true), l('did', 2), l('canal', 2), l('config'), ...COMISSOES] },
+  { id: 'linepbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [l('t31p'), l('nuvem'), l('did', 2), l('canal', 2), l('config'), ...COMISSOES] },
   { ...MODELO_DA_HELENA, linhas: [...MODELO_DA_HELENA.linhas, l('config'), ...COMISSOES] },
   { id: 'voicenet', nome: 'VoiceNet (os canais de voz)', produto: 'voicenet', linhas: [l('canal', 10), l('did', 4), ...COMISSOES] },
 ];
@@ -165,18 +165,19 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       X.simulacoes.push({ ...r, id: ctx.id(), alteradoPorId: r.criadoPorId, alteradoEm: r.alteradoEm ?? r.criadoEm, deletedAt: null });
     };
 
-    // a Padaria Estrela: 40 ramais; a mesma venda em três versões
+    // a Padaria Estrela: 40 ramais (40 telefones e a nuvem de 40); a mesma venda em três versões
+    const quarenta = (x2: LinhaDoCenario) => quantidade(x2, { t31p: 40, nuvem: 40, did: 4, canal: 4 });
     nova({
       nome: 'Padaria Estrela — 40 ramais', negociacaoId: negociacao('PABX em nuvem — 40 ramais'), principal: 'a',
       criadoPorId: pessoa('camila'), criadoEm: dias(9), alteradoEm: dias(1, 16),
       cenarios: [
-        cenario('a', 'Comodato, 24 meses', 'linepbx', { mensalidade: 125_000, ativacao: 190_000, ramais: 40 }, (x2) => (x2.custoId === 'did' || x2.custoId === 'canal' ? { ...x2, qtd: 4 } : telefone(39_000)(x2))),
-        cenario('b', 'Telefones vendidos, 12 meses', 'linepbx', { mensalidade: 125_000, ativacao: 190_000, ramais: 40, prazo: 12, parcelas: 3 },
-          (x2) => (x2.custoId === 'did' || x2.custoId === 'canal' ? { ...x2, qtd: 4 } : telefone(39_000, { modalidade: 'venda', preco: 45_000 })(x2))),
-        cenario('c', '10% de desconto, 36 meses', 'linepbx', { mensalidade: 112_500, ativacao: 171_000, ramais: 40, prazo: 36 }, (x2) => (x2.custoId === 'did' || x2.custoId === 'canal' ? { ...x2, qtd: 4 } : telefone(39_000)(x2))),
+        cenario('a', 'Comodato, 24 meses', 'linepbx', { mensalidade: 125_000, ativacao: 190_000 }, (x2) => telefone(39_000)(quarenta(x2))),
+        cenario('b', 'Telefones vendidos, 12 meses', 'linepbx', { mensalidade: 125_000, ativacao: 190_000, prazo: 12, parcelas: 3 },
+          (x2) => telefone(39_000, { modalidade: 'venda', preco: 45_000 })(quarenta(x2))),
+        cenario('c', '10% de desconto, 36 meses', 'linepbx', { mensalidade: 112_500, ativacao: 171_000, prazo: 36 }, (x2) => telefone(39_000)(quarenta(x2))),
       ],
     });
-    // o Hotel Beira Mar: o PABX e o LineChat; 20 telefones para 30 ramais, comprados em 10 vezes (o custo se
+    // o Hotel Beira Mar: o PABX e o LineChat; 20 telefones e a nuvem de 30 ramais, os telefones comprados em 10 vezes (o custo se
     // dilui); a ativação em 3 vezes. A conta refeita pede R$ 1.690 (a negociação ainda está com R$ 1.580): o
     // Levar para a negociação mostra a troca
     nova({
@@ -185,10 +186,10 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       cenarios: [
         // os dois produtos, cada um com o seu preço (a proposta de cada um, numa negociação só): R$ 1.190 + R$ 500
         cenario('a', 'Cenário A', ['linepbx', 'linechat-helena'], {
-          mensalidade: 169_000, ativacao: 250_000, ramais: 30, prazo: 36, parcelas: 3, produtos: ['linepbx', 'linechat'],
+          mensalidade: 169_000, ativacao: 250_000, prazo: 36, parcelas: 3, produtos: ['linepbx', 'linechat'],
           porProduto: [{ produto: 'linepbx', mensalidade: 119_000, ativacao: 200_000 }, { produto: 'linechat', mensalidade: 50_000, ativacao: 50_000 }],
         },
-          (x2) => (x2.custoId === 't31p' ? { ...x2, porRamal: false, qtd: 20, valor: 39_000, parcelas: 10 } : quantidade(x2, { 'helena-usuarios': 4, 'helena-canais': 2, 'helena-zapi': 1, 'helena-contatos': 8_000 }))),
+          (x2) => (x2.custoId === 't31p' ? { ...x2, qtd: 20, valor: 39_000, parcelas: 10 } : quantidade(x2, { nuvem: 30, 'helena-usuarios': 4, 'helena-canais': 2, 'helena-zapi': 1, 'helena-contatos': 8_000 }))),
       ],
     });
     // a Clínica Vida: o LineChat, sem negociação ligada (a conta de antes de abrir o lead); no amarelo
@@ -203,7 +204,7 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
     nova({
       nome: 'Ótica Visão Clara — 15 ramais', negociacaoId: negociacao('PABX em nuvem — 15 ramais'), principal: 'a',
       criadoPorId: pessoa('camila'), criadoEm: dias(16, 11),
-      cenarios: [cenario('a', 'Cenário A', 'linepbx', { mensalidade: 61_000, ativacao: 110_000, ramais: 15, produtos: ['linepbx', 'voicenet'] }, telefone(39_000))],
+      cenarios: [cenario('a', 'Cenário A', 'linepbx', { mensalidade: 61_000, ativacao: 110_000, produtos: ['linepbx', 'voicenet'] }, (x2) => telefone(39_000)(quantidade(x2, { t31p: 15, nuvem: 15 })))],
     });
     nova({
       nome: 'Academia Movimento — LineChat, 12 atendentes', negociacaoId: negociacao('LineChat — 12 atendentes'), principal: 'a',
@@ -220,7 +221,7 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
     nova({
       nome: 'Escola Mundo Kids — contraproposta', negociacaoId: negociacao('PABX para a escola'), principal: 'a',
       criadoPorId: pessoa('diego'), criadoEm: dias(41, 9),
-      cenarios: [cenario('a', 'Cenário A', 'linepbx', { mensalidade: 39_000, ativacao: 0, ramais: 25 }, telefone(39_000))],
+      cenarios: [cenario('a', 'Cenário A', 'linepbx', { mensalidade: 39_000, ativacao: 0 }, (x2) => telefone(39_000)(quantidade(x2, { t31p: 25, nuvem: 25 })))],
     });
   }
 

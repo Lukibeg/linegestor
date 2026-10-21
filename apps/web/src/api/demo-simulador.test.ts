@@ -88,8 +88,8 @@ describe('criar, mudar, duplicar e a lixeira (como o servidor)', () => {
     const op = await api.opcoes();
     const modelo = op.ajustes.modelos.find((m) => m.nome === 'LineChat (Helena)')!;
     const estrela = (await api.listar()).find((s) => s.nome.startsWith('Padaria'))!;
-    const linhas = modelo.linhas.map((l, i) => linhaDaTabela(op.ajustes.custos.find((x) => x.id === l.custoId)!, { id: `l${i}`, qtd: l.qtd, porRamal: l.porRamal }));
-    const a: CenarioDaSimulacao = { id: 'a', nome: 'Cenário A', mensalidade: 50_000, ativacao: 45_000, parcelas: 1, prazo: 12, ramais: 0, imposto: 6, margemAlvo: 35, linhas, produtos: ['linechat'] };
+    const linhas = modelo.linhas.map((l, i) => linhaDaTabela(op.ajustes.custos.find((x) => x.id === l.custoId)!, { id: `l${i}`, qtd: l.qtd }));
+    const a: CenarioDaSimulacao = { id: 'a', nome: 'Cenário A', mensalidade: 50_000, ativacao: 45_000, parcelas: 1, prazo: 12, imposto: 6, margemAlvo: 35, linhas, produtos: ['linechat'] };
     const nova = await api.criar({ nome: 'Pousada Sol Nascente', negociacaoId: estrela.negociacao!.id, cenarios: [a], principal: 'a' });
     expect(nova).toMatchObject({ nome: 'Pousada Sol Nascente', criadoPor: 'Camila Duarte', negociacao: { codigo: estrela.negociacao!.codigo } });
     expect((await auditoria())[0]!.summary).toBe(`Criou a simulação "Pousada Sol Nascente" (ligada à ${estrela.negociacao!.codigo})`);

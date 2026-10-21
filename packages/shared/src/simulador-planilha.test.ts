@@ -15,17 +15,17 @@ const A = AJUSTES_DO_SIMULADOR_PADRAO;
 const QUANDO = new Date('2026-10-20T17:10:00Z');
 let seq = 0;
 const linha = (o: Partial<LinhaDoCenario> & Pick<LinhaDoCenario, 'nome' | 'tipo'>): LinhaDoCenario => ({
-  id: `l${++seq}`, custoId: null, qtd: 1, porRamal: false, valor: null, modalidade: null, preco: null, faixas: null, unidade: null, ...o,
+  id: `l${++seq}`, custoId: null, qtd: 1, valor: null, modalidade: null, preco: null, faixas: null, unidade: null, ...o,
 });
 function pbx(): CenarioDaSimulacao {
   return {
     ...cenarioNovo(A, { id: 'a', nome: 'Comodato, 24 meses' }),
-    mensalidade: 125_000, ativacao: 190_000, parcelas: 3, prazo: 24, ramais: 40,
+    mensalidade: 125_000, ativacao: 190_000, parcelas: 3, prazo: 24,
     linhas: [
       linha({ nome: 'Telefone T31P', tipo: 'aparelho', modalidade: 'comodato', qtd: 20, valor: 39_000 }),
       linha({ nome: 'Headset', tipo: 'aparelho', modalidade: 'venda', qtd: 5, valor: 12_000, preco: 18_000 }),
       linha({ nome: 'Telefone sem fio', tipo: 'aparelho', modalidade: 'locacao', qtd: 4, valor: 25_000, preco: 1_500 }),
-      linha({ nome: 'Nuvem', tipo: 'mensal', porRamal: true, valor: 890 }),
+      linha({ nome: 'Nuvem', tipo: 'mensal', qtd: 40, valor: 890 }),
       linha({ nome: 'Comissão recorrente', tipo: 'pct_mensalidade', valor: 5 }),
       linha({ nome: 'Comissão da venda', tipo: 'pct_ativacao', valor: 10 }),
     ],
@@ -110,20 +110,28 @@ describe('a planilha da simulação', () => {
     expect(c.get('A3')!.v).toBe('Negociação COM-12 · PABX em nuvem · Padaria Estrela');
     expect(c.get('A4')!.v).toMatch(/^Exportada do Gestor em 20\/10\/2026 às 14:10, por Camila Duarte\./);
     // o que o cliente paga: os valores (as células amarelas)
-    expect([c.get('B7')!.v, c.get('B8')!.v, c.get('B9')!.v, c.get('B10')!.v, c.get('B11')!.v, c.get('B12')!.v, c.get('B13')!.v]).toEqual(['1250', '1900', '3', '24', '40', '0.06', '0.35']);
+    expect([c.get('B7')!.v, c.get('B8')!.v, c.get('B9')!.v, c.get('B10')!.v, c.get('B11')!.v, c.get('B12')!.v]).toEqual(['1250', '1900', '3', '24', '0.06', '0.35']);
+    expect(c.get('A11')!.v).toBe('Imposto');
+    // sem os ramais (o Luan, 21/10: "é melhor eu sempre selecionar a quantidade"): nem a linha nem a coluna
+    expect([...c].some(([, x]) => x.v === 'Ramais' || x.v === 'Por ramal')).toBe(false);
+    expect(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].map((x) => c.get(`${x}16`)!.v)).toEqual([
+      'Custo', 'Como entra', 'O aparelho vai em', 'Quantidade', 'Valor de cada', 'Preço ou aluguel de cada', 'A compra em (vezes)',
+      'Sai uma vez', 'Sai por mês', 'Entra uma vez', 'Entra por mês', 'Observação',
+    ]);
     // os custos em dois grupos, o investimento primeiro: o nome do grupo numa linha, e as linhas dele
     expect([17, 18, 19, 20, 21, 22, 23, 24, 25].map((r) => c.get(`A${r}`)!.v)).toEqual([
       'Investimento · pago uma vez, na assinatura', 'Telefone T31P', 'Headset', 'Telefone sem fio', 'Comissão da venda',
       'Custos mensais · todo mês', 'Nuvem', 'Comissão recorrente', 'Total',
     ]);
-    // o por ramal puxa os ramais; o vendido entra na ativação; o alugado, na mensalidade; a comissão sobre o mês
-    expect(c.get('E23')).toEqual({ f: '$B$11', v: '40' });
-    expect(c.get('K19')).toEqual({ f: 'E19*G19', v: '900' });
-    expect(c.get('L20')).toEqual({ f: 'E20*G20', v: '60' });
-    expect(c.get('J24')!.f).toMatch(/^F24\*\$B\$\d+$/);
-    expect(c.get('I25')!.f).toBe('SUM(I17:I24)');
+    // a quantidade é a célula amarela; o vendido entra na ativação; o alugado, na mensalidade; a comissão sobre o mês
+    expect(c.get('D23')!.v).toBe('40');
+    expect(c.get('D23')!.f ?? null).toBeNull();
+    expect(c.get('J19')).toEqual({ f: 'D19*F19', v: '900' });
+    expect(c.get('K20')).toEqual({ f: 'D20*F20', v: '60' });
+    expect(c.get('I24')!.f).toMatch(/^E24\*\$B\$\d+$/);
+    expect(c.get('H25')!.f).toBe('SUM(H17:H24)');
     // a compra em (vezes): a célula amarela de cada aparelho (à vista = 1)
-    expect([c.get('H18')!.v, c.get('H19')!.v, c.get('H20')!.v, c.get('H23')]).toEqual(['1', '1', '1', undefined]);
+    expect([c.get('G18')!.v, c.get('G19')!.v, c.get('G20')!.v, c.get('G23')]).toEqual(['1', '1', '1', undefined]);
     // os números: os mesmos da tela
     expect(Number(aoLado(c, 'O cliente paga por mês')!.v)).toBe(k.mensalTotal / 100);
     expect(Number(aoLado(c, 'O investimento')!.v)).toBe(k.totalInvestido / 100);
@@ -180,8 +188,8 @@ describe('a planilha da simulação', () => {
     expect(cel.get('A4')!.v).not.toContain(', por');
     // o custo por faixas: a fórmula com as faixas, e a observação conta quais são
     const usuarios = [...cel].find(([ref, x]) => ref.startsWith('A') && x.v === 'Usuários do LineChat (Helena)')![0].slice(1);
-    expect(cel.get(`F${usuarios}`)!.v).toBe('por faixas');
-    expect(cel.get(`J${usuarios}`)!.f).toBe(`MAX(0,MIN(E${usuarios},20)-3)*19.9+MAX(0,MIN(E${usuarios},100)-20)*14.9+MAX(0,E${usuarios}-100)*12.9`);
-    expect(cel.get(`M${usuarios}`)!.v).toMatch(/^por faixas: até 3, incluso; de 4 a 20, R\$\s19,90 cada/);
+    expect(cel.get(`E${usuarios}`)!.v).toBe('por faixas');
+    expect(cel.get(`I${usuarios}`)!.f).toBe(`MAX(0,MIN(D${usuarios},20)-3)*19.9+MAX(0,MIN(D${usuarios},100)-20)*14.9+MAX(0,D${usuarios}-100)*12.9`);
+    expect(cel.get(`L${usuarios}`)!.v).toMatch(/^por faixas: até 3, incluso; de 4 a 20, R\$\s19,90 cada/);
   });
 });

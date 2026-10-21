@@ -13,7 +13,7 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { clients, newId, products, salesSimulations, ticketStages, tickets, users, type Db } from '@gestor/db';
 import {
-  AjustesDoSimuladorSchema, SimulacaoGravarSchema, ajustesDoSimulador, cenarioPrincipal, mudancasDaSimulacao, mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario,
+  AjustesDoSimuladorSchema, SimulacaoGravarSchema, ajustesDoSimulador, cenarioPrincipal, mudancasDaSimulacao, mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario, semOsRamais,
   type AjustesDoSimulador, type CenarioDaSimulacao, type MargemDaNegociacao, type NegociacaoDaSimulacao, type ProdutoDoSimulador, type Simulacao,
   type SimulacaoDaNegociacao, type SimulacaoGravar, type SimulacaoGravarEntrada, type SimulacaoNaLista, type SimuladorOpcoes,
 } from '@gestor/shared';
@@ -112,7 +112,8 @@ async function conferirNegociacao(db: Db, ator: Ator, id: string): Promise<Negoc
 //  LER
 // =====================================================================
 
-const cenariosDaLinha = (l: Linha) => (Array.isArray(l.scenarios) ? l.scenarios : []) as CenarioDaSimulacao[];
+/** Os cenários guardados (os de antes da saída dos ramais, convertidos: a linha "por ramal" com a quantidade dos ramais). */
+const cenariosDaLinha = (l: Linha) => (Array.isArray(l.scenarios) ? l.scenarios.map(semOsRamais) : []) as CenarioDaSimulacao[];
 const gravarDaLinha = (l: Linha): SimulacaoGravar => ({ nome: l.name, negociacaoId: l.ticketId, cenarios: cenariosDaLinha(l), principal: l.principal });
 
 async function nomesDasPessoas(db: Db, ids: Array<string | null>): Promise<Map<string, string>> {

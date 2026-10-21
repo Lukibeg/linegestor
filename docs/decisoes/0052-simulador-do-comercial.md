@@ -107,9 +107,16 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
     **custo variável do mês** (o imposto e a comissão, que andam com o que o cliente paga);
   - **a ativação parcelada**: em até 12 vezes (e não mais que o prazo), a primeira na assinatura e as
     outras com as mensalidades; o "se paga em" e o gráfico seguem as parcelas;
-  - **a quantidade pelos ramais**: as linhas "por ramal" acompanham os ramais do cenário;
+  - **a quantidade pelos ramais** — entrou e **saiu**: o cenário tinha os ramais, e as linhas marcadas "por
+    ramal" (o telefone, a nuvem) acompanhavam o número. O Luan, num comentário na prévia: *"não precisa
+    desse lance de por ramal, é melhor eu sempre selecionar a quantidade dos produtos mesmo"*; avisado de
+    que desfazia uma ideia que ele tinha marcado "agora", respondeu *"pode tirar"*. Saíram o campo
+    **Ramais** e o **"por ramal"** — na simulação, na tabela e nos modelos dos Ajustes e no Excel (a linha
+    dos ramais e a coluna "Por ramal"): cada custo tem a sua quantidade, e os modelos trazem a de cada um. As
+    simulações feitas antes abrem com a mesma conta: a linha que era "por ramal" fica com a quantidade dos
+    ramais do cenário;
   - **os modelos prontos por produto**: a simulação nova começa em branco ou com as linhas de um modelo
-    (os custos da tabela, com a quantidade de cada um ou "por ramal"). Cada modelo diz **o produto** do
+    (os custos da tabela, com a quantidade de cada um). Cada modelo diz **o produto** do
     catálogo (LinePBX, LineChat, VoiceNet…), e **cada cenário tem os produtos** da venda: o modelo traz o
     dele, e a pessoa põe e tira;
   - **vários produtos, cada um com o seu preço**: o Luan, num comentário na prévia: *"tem tbm a voicenet,
@@ -152,7 +159,7 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   que podem entrar como um custo digitado), a aprovação abaixo da margem e a IA.
 - **A planilha do Excel.** Uma folha por cenário e, com dois cenários ou mais, a **Lado a lado** (os
   números de cada um, puxados da folha dele). Na folha do cenário: o que o cliente paga, nas **células
-  amarelas** (a mensalidade, a ativação, as vezes, o prazo, os ramais, o imposto, a margem que se quer, e
+  amarelas** (a mensalidade, a ativação, as vezes, o prazo, o imposto, a margem que se quer, e
   em cada custo a quantidade, o valor de cada, o preço ou aluguel do aparelho e em quantas vezes ele é
   comprado); os custos linha a linha
   (quando sai, quando entra, e a observação: as faixas, o que falta preencher); **os números** (com o custo
@@ -166,11 +173,11 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
   Estrela — 40 ramais" para o Excel"*). Imprime deitada, com a largura numa página. A planilha é montada
   pelo `@gestor/shared` (sem biblioteca: os XMLs do .xlsx num zip), a mesma no servidor e na prévia.
   **Conferida no LibreOffice:** quatro planilhas de teste (os aparelhos em comodato, venda e locação, a
-  compra parcelada, a instalação, a nuvem por ramal, as comissões, um custo sem valor, a ativação em 3x, as
-  faixas da Helena, "depois do prazo", "não se paga", "desde o 1º mês", "em 1 mês" e "já na ativação", e a
-  "Lado a lado" com a diferença), 5.361 fórmulas refeitas: nenhum erro e nenhuma diferença da tela — também
-  depois de mudar as células amarelas (a mensalidade, o prazo, as vezes, os ramais e as quantidades por
-  faixa).
+  compra parcelada, a instalação, a nuvem de 40 ramais, as comissões, um custo sem valor, a ativação em 3x,
+  as faixas da Helena, "depois do prazo", "não se paga", "desde o 1º mês", "em 1 mês" e "já na ativação", e
+  a "Lado a lado" com a diferença), 5.355 fórmulas refeitas: nenhum erro e nenhuma diferença da tela —
+  também depois de mudar as células amarelas (a mensalidade, o prazo, as vezes, as quantidades, também as
+  por faixa, e em quantas vezes o aparelho é comprado).
 - **"Se paga desde o 1º mês".** Quando nada sai antes e não há ativação (só custos por mês), a venda se
   paga desde o primeiro mês; antes, a tela dizia "já na ativação", que é o caso de a ativação cobrir o que
   sai antes.
@@ -205,9 +212,9 @@ do LineChat. Como o 2.0.2 não subiu, o Simulador entrou nele.
 - **O banco.** A migração `0021_simulador`: a tabela `sales_simulations` (o nome, a negociação ligada —
   `ticket_id` —, os cenários num `jsonb`, o principal e a lixeira). Os Ajustes ficam em
   `settings.comercial-simulador`.
-- **A prévia.** A tabela da Helena e a do PABX (os telefones sem valor, a nuvem por ramal, os números, os
-  canais, a configuração e as comissões), os modelos LinePBX em nuvem, LineChat (Helena) e VoiceNet, e
-  sete simulações: a **Padaria Estrela** com três cenários — comodato em 24 meses, os
+- **A prévia.** A tabela da Helena e a do PABX (os telefones sem valor, a nuvem, os números, os canais, a
+  configuração e as comissões), os modelos LinePBX em nuvem, LineChat (Helena) e VoiceNet, e
+  sete simulações: a **Padaria Estrela** (40 telefones e a nuvem de 40 ramais) com três cenários — comodato em 24 meses, os
   telefones vendidos em 12 meses com a ativação em 3x, e 10% de desconto em 36 meses —, o **Hotel Beira
   Mar** (o LinePBX a R$ 1.190 e o LineChat a R$ 500, cada um com o seu preço e a sua instalação; os
   telefones comprados em 10 vezes; a ativação em 3x; o 1º mês já cobre o que é pago de uma vez: se paga em 1

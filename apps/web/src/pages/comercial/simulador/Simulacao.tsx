@@ -342,11 +342,6 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar }
                 )}
               </label>
               <label className="min-w-0">
-                <span className="label">Ramais</span>
-                <CampoInteiro valor={c.ramais} onChange={(v) => mudarCenario({ ramais: Math.min(10_000, v) })} disabled={!podeEditar} id="simulador-ramais" />
-                <span className="text-[11.5px] text-muted">os custos "por ramal" acompanham</span>
-              </label>
-              <label className="min-w-0">
                 <span className="label">Imposto (sobre tudo)</span>
                 <CampoDePercentual valor={c.imposto} onChange={(v) => mudarCenario({ imposto: Math.min(100, v ?? 0) })} disabled={!podeEditar} id="simulador-imposto" />
                 {c.imposto !== ajustes.imposto && (

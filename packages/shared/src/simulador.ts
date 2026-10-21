@@ -20,7 +20,9 @@
  *  - quem tem o Comercial vê tudo, com os custos e a margem;
  *  - e as ideias marcadas "agora": o preço mínimo pela margem, o sinal (verde, amarelo, vermelho), o
  *    desconto máximo sem sair do verde, a linha do tempo do contrato, os cenários lado a lado (até 3), a
- *    ativação parcelada, a quantidade pelos ramais e os modelos prontos por produto.
+ *    ativação parcelada e os modelos prontos por produto. A quantidade pelos ramais (as linhas "por ramal"
+ *    acompanhando os ramais do cenário) também entrou, e depois saiu: o Luan, 21/10, *"é melhor eu sempre
+ *    selecionar a quantidade dos produtos mesmo"* — cada custo tem a quantidade dele.
  *
  * No mesmo dia ele mandou a tabela da Helena (o LineChat é a plataforma dela em white label: "Tabela de
  * Preços - WHITE LABEL helena - JAN.2026", revisão de 03/02/2026), a planilha com que ele calcula o custo do
@@ -59,7 +61,6 @@ export const MAX_PARCELAS = 12;
 export const MAX_PARCELAS_DA_COMPRA = 24;
 /** O contrato vai até 10 anos. */
 export const MAX_PRAZO = 120;
-export const MAX_RAMAIS = 10_000;
 export const MAX_QUANTIDADE = 10_000_000;
 /** Até quantas faixas de preço um custo tem. */
 export const MAX_FAIXAS_DE_PRECO = 8;
@@ -155,9 +156,8 @@ export type LinhaDoCenario = {
   tipo: TipoDeCusto;
   /** o custo da tabela de onde a linha veio (nulo = digitada); a linha guarda o valor de quando entrou */
   custoId: string | null;
-  /** a quantidade (as linhas "por ramal" usam os ramais do cenário; os percentuais não têm quantidade) */
+  /** a quantidade (os percentuais não têm quantidade) */
   qtd: number;
-  porRamal: boolean;
   /** o valor de cada um, em centavos — ou, nos percentuais, o percentual; nulo = falta preencher */
   valor: number | null;
   /** o aparelho: comodato, venda ou locação (nas outras linhas, nulo) */
@@ -201,8 +201,6 @@ export type CenarioDaSimulacao = {
   parcelas: number;
   /** o prazo do contrato, em meses */
   prazo: number;
-  /** os ramais: as linhas "por ramal" usam este número */
-  ramais: number;
   /** o imposto, % sobre tudo o que o cliente paga (vem dos Ajustes; muda aqui) */
   imposto: number;
   /** a margem que se quer (%): a mensalidade mínima é a que dá esta margem */
@@ -231,8 +229,6 @@ export type CustoDaTabela = {
   tipo: TipoDeCusto;
   /** o valor de hoje (centavos, ou o percentual); nulo = preencher em cada simulação (os aparelhos) */
   valor: number | null;
-  /** a linha já entra "por ramal" */
-  porRamal: boolean;
   /** o aparelho: a modalidade que já vem (muda na simulação) */
   modalidade: ModalidadeDoAparelho | null;
   /** o preço por faixas (os custos "por mês" e "uma vez"); com elas, o valor fica nulo */
@@ -240,8 +236,8 @@ export type CustoDaTabela = {
   /** o nome de uma unidade ("usuário", "canal", "contato") */
   unidade: string | null;
 };
-/** Uma linha de um modelo: um custo da tabela, com a quantidade (ou por ramal). */
-export type LinhaDoModelo = { custoId: string; qtd: number; porRamal: boolean };
+/** Uma linha de um modelo: um custo da tabela, com a quantidade. */
+export type LinhaDoModelo = { custoId: string; qtd: number };
 /**
  * Um modelo pronto (por produto): a simulação nova começa com as linhas dele. `produto`: o código do
  * produto do catálogo (linepbx, linechat…) — a simulação feita a partir de uma negociação usa os modelos
@@ -265,25 +261,25 @@ export type AjustesDoSimulador = FaixasDoSinal & {
  * ASAAS (R$ 0 desde fev/2026) não entra.
  */
 export const CUSTOS_DA_HELENA: CustoDaTabela[] = [
-  { id: 'helena-licenca', nome: 'Licença base do LineChat (Helena): 3 usuários e 1 canal', tipo: 'mensal', valor: 14_990, porRamal: false, modalidade: null, faixas: null, unidade: 'conta' },
-  { id: 'helena-usuarios', nome: 'Usuários do LineChat (Helena)', tipo: 'mensal', valor: null, porRamal: false, modalidade: null, unidade: 'usuário',
+  { id: 'helena-licenca', nome: 'Licença base do LineChat (Helena): 3 usuários e 1 canal', tipo: 'mensal', valor: 14_990, modalidade: null, faixas: null, unidade: 'conta' },
+  { id: 'helena-usuarios', nome: 'Usuários do LineChat (Helena)', tipo: 'mensal', valor: null, modalidade: null, unidade: 'usuário',
     faixas: [{ ate: 3, valor: 0 }, { ate: 20, valor: 1_990 }, { ate: 100, valor: 1_490 }, { ate: null, valor: 1_290 }] },
-  { id: 'helena-canais', nome: 'Canais do LineChat (Helena): WhatsApp ou Instagram', tipo: 'mensal', valor: null, porRamal: false, modalidade: null, unidade: 'canal',
+  { id: 'helena-canais', nome: 'Canais do LineChat (Helena): WhatsApp ou Instagram', tipo: 'mensal', valor: null, modalidade: null, unidade: 'canal',
     faixas: [{ ate: 1, valor: 0 }, { ate: 5, valor: 2_990 }, { ate: null, valor: 1_990 }] },
-  { id: 'helena-zapi', nome: 'Conexão Z-API do LineChat (Helena)', tipo: 'mensal', valor: 6_990, porRamal: false, modalidade: null, faixas: null, unidade: 'conexão' },
-  { id: 'helena-contatos', nome: 'Contatos ativos no mês do LineChat (Helena)', tipo: 'mensal', valor: null, porRamal: false, modalidade: null, unidade: 'contato',
+  { id: 'helena-zapi', nome: 'Conexão Z-API do LineChat (Helena)', tipo: 'mensal', valor: 6_990, modalidade: null, faixas: null, unidade: 'conexão' },
+  { id: 'helena-contatos', nome: 'Contatos ativos no mês do LineChat (Helena)', tipo: 'mensal', valor: null, modalidade: null, unidade: 'contato',
     faixas: [{ ate: 5_000, valor: 0 }, { ate: 20_000, valor: 4.5 }, { ate: 100_000, valor: 3.5 }, { ate: null, valor: 2.5 }] },
-  { id: 'helena-transcricao', nome: 'Transcrição de áudio do LineChat (Helena), com IA', tipo: 'mensal', valor: 399, porRamal: false, modalidade: null, faixas: null, unidade: 'usuário' },
-  { id: 'helena-agentes', nome: 'Agentes de IA do LineChat (Helena)', tipo: 'mensal', valor: 5_000, porRamal: false, modalidade: null, faixas: null, unidade: 'agente' },
+  { id: 'helena-transcricao', nome: 'Transcrição de áudio do LineChat (Helena), com IA', tipo: 'mensal', valor: 399, modalidade: null, faixas: null, unidade: 'usuário' },
+  { id: 'helena-agentes', nome: 'Agentes de IA do LineChat (Helena)', tipo: 'mensal', valor: 5_000, modalidade: null, faixas: null, unidade: 'agente' },
 ];
 /** O modelo do LineChat: a planilha da Helena, com o que vem na licença (3 usuários, 1 canal, 5.000 contatos). */
 export const MODELO_DA_HELENA: ModeloDeSimulacao = {
   id: 'linechat-helena', nome: 'LineChat (Helena)', produto: 'linechat',
   linhas: [
-    { custoId: 'helena-licenca', qtd: 1, porRamal: false }, { custoId: 'helena-usuarios', qtd: 3, porRamal: false },
-    { custoId: 'helena-canais', qtd: 1, porRamal: false }, { custoId: 'helena-zapi', qtd: 0, porRamal: false },
-    { custoId: 'helena-contatos', qtd: 5_000, porRamal: false }, { custoId: 'helena-transcricao', qtd: 0, porRamal: false },
-    { custoId: 'helena-agentes', qtd: 0, porRamal: false },
+    { custoId: 'helena-licenca', qtd: 1 }, { custoId: 'helena-usuarios', qtd: 3 },
+    { custoId: 'helena-canais', qtd: 1 }, { custoId: 'helena-zapi', qtd: 0 },
+    { custoId: 'helena-contatos', qtd: 5_000 }, { custoId: 'helena-transcricao', qtd: 0 },
+    { custoId: 'helena-agentes', qtd: 0 },
   ],
 };
 
@@ -448,7 +444,6 @@ export const LinhaDoCenarioSchema = z.object({
   custoId: Id.nullable().default(null),
   qtd: z.number({ invalid_type_error: 'A quantidade vai em número.' }).int('A quantidade vai inteira.').min(0, 'A quantidade não é negativa.')
     .max(MAX_QUANTIDADE, `A quantidade vai até ${MAX_QUANTIDADE.toLocaleString('pt-BR')}.`).default(1),
-  porRamal: z.boolean().default(false),
   valor: z.number({ invalid_type_error: 'O valor vai em número.' }).min(0, 'O valor não é negativo.').nullable().default(null),
   modalidade: z.enum(MODALIDADES_DO_APARELHO).nullable().default(null),
   preco: Centavos('O preço do aparelho').nullable().default(null),
@@ -465,7 +460,6 @@ export const LinhaDoCenarioSchema = z.object({
   return {
     ...resto,
     qtd: pct ? 1 : l.qtd,
-    porRamal: pct ? false : l.porRamal,
     valor: faixas || l.valor == null ? null : pct ? duasCasas(l.valor) : l.valor,
     modalidade: aparelho ? l.modalidade : null,
     preco: aparelho && l.modalidade !== 'comodato' ? l.preco : null,
@@ -482,7 +476,27 @@ const PrecoDoProdutoSchema = z.object({
   ativacao: Centavos('A ativação do produto'),
 });
 
-export const CenarioDaSimulacaoSchema = z.object({
+/**
+ * O cenário de antes da saída dos ramais (21/10): a linha "por ramal" fica com a quantidade dos ramais do
+ * cenário (a conta não muda), e os ramais e o "por ramal" saem.
+ */
+export function semOsRamais(v: unknown): unknown {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return v;
+  const { ramais, ...c } = v as Record<string, unknown>;
+  if (!Array.isArray(c.linhas)) return ramais === undefined ? v : c;
+  const n = typeof ramais === 'number' && Number.isFinite(ramais) ? Math.max(0, Math.floor(ramais)) : null;
+  return {
+    ...c,
+    linhas: c.linhas.map((l) => {
+      if (!l || typeof l !== 'object') return l;
+      const { porRamal, ...linha } = l as Record<string, unknown>;
+      const pct = linha.tipo === 'pct_mensalidade' || linha.tipo === 'pct_ativacao';
+      return porRamal === true && n != null && !pct ? { ...linha, qtd: n } : linha;
+    }),
+  };
+}
+
+export const CenarioDaSimulacaoSchema = z.preprocess(semOsRamais, z.object({
   id: Id,
   nome: z.string({ invalid_type_error: 'Dê um nome ao cenário.' }).trim().min(1, 'Dê um nome ao cenário.').max(40, 'O nome do cenário vai até 40 letras.'),
   mensalidade: Centavos('A mensalidade'),
@@ -491,8 +505,6 @@ export const CenarioDaSimulacaoSchema = z.object({
     .max(MAX_PARCELAS, `A ativação vai em até ${MAX_PARCELAS} vezes.`).default(1),
   prazo: z.number({ invalid_type_error: 'O prazo vai em meses.' }).int('O prazo vai em meses inteiros.').min(1, 'O prazo é de pelo menos 1 mês.')
     .max(MAX_PRAZO, `O prazo vai até ${MAX_PRAZO} meses.`),
-  ramais: z.number({ invalid_type_error: 'Os ramais vão em número.' }).int('Os ramais vão inteiros.').min(0, 'Os ramais não são negativos.')
-    .max(MAX_RAMAIS, `Até ${MAX_RAMAIS.toLocaleString('pt-BR')} ramais.`).default(0),
   imposto: Percentual('O imposto'),
   margemAlvo: Percentual('A margem que você quer', 95),
   linhas: z.array(LinhaDoCenarioSchema).max(MAX_LINHAS_DO_CENARIO, `Até ${MAX_LINHAS_DO_CENARIO} custos por cenário.`),
@@ -509,7 +521,7 @@ export const CenarioDaSimulacaoSchema = z.object({
     const n = normalizarPorProduto(c);
     if (n.mensalidade > MAX_CENTAVOS || n.ativacao > MAX_CENTAVOS) ctx.addIssue({ code: 'custom', path: ['porProduto'], message: `${c.nome}: a soma dos produtos passa do máximo.` });
   }
-}).transform((c): CenarioDaSimulacao => normalizarPorProduto(c));
+}).transform((c): CenarioDaSimulacao => normalizarPorProduto(c)));
 
 export const SimulacaoGravarSchema = z.object({
   nome: z.string({ invalid_type_error: 'Dê um nome à simulação.' }).trim().min(1, 'Dê um nome à simulação (o cliente, a proposta).').max(120, 'O nome vai até 120 letras.'),
@@ -533,7 +545,6 @@ export const CustoDaTabelaSchema = z.object({
   nome: z.string({ invalid_type_error: 'Dê um nome a cada custo da tabela.' }).trim().min(1, 'Dê um nome a cada custo da tabela.').max(120, 'O nome do custo vai até 120 letras.'),
   tipo: z.enum(TIPOS_DE_CUSTO, { errorMap: () => ({ message: 'Escolha como o custo entra.' }) }),
   valor: z.number({ invalid_type_error: 'O valor vai em número.' }).min(0, 'O valor não é negativo.').nullable().default(null),
-  porRamal: z.boolean().default(false),
   modalidade: z.enum(MODALIDADES_DO_APARELHO).nullable().default(null),
   faixas: FaixasDePrecoSchema.nullable().default(null),
   unidade: UnidadeSchema,
@@ -541,7 +552,7 @@ export const CustoDaTabelaSchema = z.object({
   const pct = ehPercentual(c.tipo);
   const faixas = comFaixas(c.tipo, c.faixas);
   return {
-    ...c, valor: faixas || c.valor == null ? null : pct ? duasCasas(c.valor) : c.valor, porRamal: pct ? false : c.porRamal,
+    ...c, valor: faixas || c.valor == null ? null : pct ? duasCasas(c.valor) : c.valor,
     modalidade: c.tipo === 'aparelho' ? c.modalidade : null, faixas,
   };
 });
@@ -553,7 +564,6 @@ export const ModeloDeSimulacaoSchema = z.object({
   linhas: z.array(z.object({
     custoId: Id,
     qtd: z.number().int('A quantidade vai inteira.').min(0, 'A quantidade não é negativa.').max(MAX_QUANTIDADE).default(1),
-    porRamal: z.boolean().default(false),
   })).max(MAX_LINHAS_DO_CENARIO, `Até ${MAX_LINHAS_DO_CENARIO} custos por modelo.`),
 });
 
@@ -630,11 +640,11 @@ export function ajustesDoSimulador(valor: unknown): AjustesDoSimulador {
 // =====================================================================
 
 /** A linha que entra de um custo da tabela (com o valor de hoje). */
-export function linhaDaTabela(c: CustoDaTabela, o: { id?: string; qtd?: number; porRamal?: boolean } = {}): LinhaDoCenario {
+export function linhaDaTabela(c: CustoDaTabela, o: { id?: string; qtd?: number } = {}): LinhaDoCenario {
   const pct = ehPercentual(c.tipo);
   return {
     id: o.id ?? idLocal(), nome: c.nome, tipo: c.tipo, custoId: c.id,
-    qtd: pct ? 1 : (o.qtd ?? 1), porRamal: pct ? false : (o.porRamal ?? c.porRamal),
+    qtd: pct ? 1 : (o.qtd ?? 1),
     valor: c.valor, modalidade: c.tipo === 'aparelho' ? (c.modalidade ?? 'comodato') : null, preco: null,
     faixas: c.faixas ? c.faixas.map((f) => ({ ...f })) : null, unidade: c.unidade,
   };
@@ -642,7 +652,7 @@ export function linhaDaTabela(c: CustoDaTabela, o: { id?: string; qtd?: number; 
 
 /** Uma linha nova, digitada. */
 export function linhaNova(tipo: TipoDeCusto = 'mensal', id: string = idLocal()): LinhaDoCenario {
-  return { id, nome: tipo === 'aparelho' ? 'Aparelho' : 'Outro custo', tipo, custoId: null, qtd: 1, porRamal: false, valor: null, modalidade: tipo === 'aparelho' ? 'comodato' : null, preco: null, faixas: null, unidade: null };
+  return { id, nome: tipo === 'aparelho' ? 'Aparelho' : 'Outro custo', tipo, custoId: null, qtd: 1, valor: null, modalidade: tipo === 'aparelho' ? 'comodato' : null, preco: null, faixas: null, unidade: null };
 }
 
 /** O nome do próximo cenário: "Cenário A", "Cenário B"… (o primeiro que não está em uso). */
@@ -657,7 +667,7 @@ export function linhasDoModelo(a: Pick<AjustesDoSimulador, 'custos'>, m: ModeloD
   return m.linhas.flatMap((l) => {
     const c = a.custos.find((x) => x.id === l.custoId);
     // a linha guarda o produto do modelo (no preço por produto, o aparelho vendido ou alugado entra nele)
-    return c ? [{ ...linhaDaTabela(c, { qtd: l.qtd, porRamal: l.porRamal }), ...(m.produto ? { produto: m.produto } : {}) }] : [];
+    return c ? [{ ...linhaDaTabela(c, { qtd: l.qtd }), ...(m.produto ? { produto: m.produto } : {}) }] : [];
   });
 }
 
@@ -726,7 +736,7 @@ export function cenarioNovo(a: AjustesDoSimulador, o: { id?: string; nome?: stri
   const produtos = [...new Set([...(o.produtos ?? []), ...modelos.map((m) => m.produto).filter((x): x is string => !!x)])];
   return {
     id: o.id ?? idLocal(), nome: o.nome ?? 'Cenário A',
-    mensalidade: 0, ativacao: 0, parcelas: 1, prazo: a.prazo, ramais: 0,
+    mensalidade: 0, ativacao: 0, parcelas: 1, prazo: a.prazo,
     imposto: a.imposto, margemAlvo: a.verde, linhas, produtos, porProduto: null,
   };
 }
@@ -757,7 +767,7 @@ export function textoDoSePagaEm(s: SePagaEm): string {
 /** Uma linha na conta: quanto ela pesa (por mês ou uma vez) e quanto traz (o aparelho vendido ou alugado). */
 export type LinhaNaConta = {
   id: string;
-  /** a quantidade usada (a dos ramais, nas linhas "por ramal") */
+  /** a quantidade usada (1 nos percentuais) */
   qtd: number;
   /** o custo: uma vez (os aparelhos, "uma vez") ou por mês (os outros) */
   custo: number;
@@ -880,9 +890,8 @@ export function textoDasFaixasDePreco(faixas: readonly FaixaDePreco[]): string {
   }).join('; ');
 }
 
-/** A quantidade que a linha usa: os ramais, nas linhas "por ramal"; 1 nos percentuais. */
-export const quantidadeDaLinha = (l: Pick<LinhaDoCenario, 'tipo' | 'qtd' | 'porRamal'>, c: Pick<CenarioDaSimulacao, 'ramais'>) =>
-  (ehPercentual(l.tipo) ? 1 : l.porRamal ? c.ramais : l.qtd);
+/** A quantidade que a linha usa: a dela; 1 nos percentuais. */
+export const quantidadeDaLinha = (l: Pick<LinhaDoCenario, 'tipo' | 'qtd'>) => (ehPercentual(l.tipo) ? 1 : l.qtd);
 
 /** Em quantas vezes a compra do aparelho sai de verdade: de 1 ao máximo, e nunca mais que o prazo do contrato. */
 export const vezesDaCompra = (l: Pick<LinhaDoCenario, 'tipo' | 'parcelas'>, prazo: number) =>
@@ -934,7 +943,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   // as linhas de percentual só têm o custo depois de saber a mensalidade e a ativação (fica para o fim)
   const conta: Array<Omit<LinhaNaConta, 'custo'> & { custo: number; sobre: 'mensal' | 'entrada' | null; pct: number }> = [];
   for (const l of c.linhas) {
-    const qtd = quantidadeDaLinha(l, c);
+    const qtd = quantidadeDaLinha(l);
     const valor = l.valor ?? 0;
     const faixas = comFaixas(l.tipo, l.faixas);
     let falta = l.valor == null && !faixas;
@@ -1140,7 +1149,7 @@ function iguais(a: unknown, b: unknown): boolean {
 const CAMPOS_DO_CENARIO: Array<[keyof CenarioDaSimulacao, string, (v: number) => string]> = [
   ['mensalidade', 'a mensalidade', reaisCurto], ['ativacao', 'a ativação', reaisCurto],
   ['parcelas', 'as parcelas da ativação', (v) => `${v}x`], ['prazo', 'o prazo', (v) => `${v} ${v === 1 ? 'mês' : 'meses'}`],
-  ['ramais', 'os ramais', (v) => String(v)], ['imposto', 'o imposto', percentual], ['margemAlvo', 'a margem que se quer', percentual],
+  ['imposto', 'o imposto', percentual], ['margemAlvo', 'a margem que se quer', percentual],
 ];
 
 /** O que mudou na simulação, em frases curtas ("no Cenário A, a mensalidade de R$ 990,00 para R$ 1.090,00"). */

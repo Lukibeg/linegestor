@@ -1,7 +1,7 @@
 /**
  * Os custos do cenário (o Simulador do Comercial, 2.0.2): uma linha por custo — o nome, como entra (o
- * aparelho, uma vez, por mês, % da mensalidade, % da ativação), a quantidade (ou "por ramal": acompanha os
- * ramais), o valor de cada um e o total. O aparelho diz se vai em comodato, venda ou locação; o custo por
+ * aparelho, uma vez, por mês, % da mensalidade, % da ativação), a quantidade (a pessoa põe a de cada custo: o
+ * "por ramal" saiu em 21/10), o valor de cada um e o total. O aparelho diz se vai em comodato, venda ou locação; o custo por
  * faixas (os usuários do LineChat da Helena) mostra as faixas e calcula sozinho. Entram da tabela dos Ajustes
  * (com um clique), de um modelo ou digitados. As linhas guardam o valor de quando entraram.
  *
@@ -30,11 +30,11 @@ export const VISUAL_DO_GRUPO = {
 } as const;
 
 /** O valor de um custo da tabela, curto: "R$ 9,00 por mês", "10% da ativação", "por faixas", "preencher". */
-export function valorDoCusto(c: Pick<CustoDaTabela, 'tipo' | 'valor' | 'faixas' | 'porRamal' | 'unidade'>): string {
+export function valorDoCusto(c: Pick<CustoDaTabela, 'tipo' | 'valor' | 'faixas' | 'unidade'>): string {
   if (c.faixas?.length) return `por faixas (${textoDasFaixasDePreco(c.faixas)})`;
   if (c.valor == null) return 'o valor em cada simulação';
   if (ehPercentual(c.tipo)) return `${percentual(c.valor)} ${c.tipo === 'pct_mensalidade' ? 'da mensalidade' : 'da ativação'}`;
-  const cada = c.unidade ? `por ${c.unidade}` : c.porRamal ? 'por ramal' : 'cada';
+  const cada = c.unidade ? `por ${c.unidade}` : 'cada';
   return `${precoDaUnidade(c.valor)} ${cada}${c.tipo === 'mensal' ? ' por mês' : c.tipo === 'unica' ? ', uma vez' : ''}`;
 }
 
@@ -141,7 +141,7 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar, produto }:
     const mudou: Partial<LinhaDoCenario> = { tipo };
     if (tipo === 'aparelho') Object.assign(mudou, { modalidade: l.modalidade ?? 'comodato', faixas: null });
     else Object.assign(mudou, { modalidade: null, preco: null });
-    if (ehPercentual(tipo) !== pct) Object.assign(mudou, { valor: null, qtd: 1, porRamal: false, faixas: null });
+    if (ehPercentual(tipo) !== pct) Object.assign(mudou, { valor: null, qtd: 1, faixas: null });
     if (tipo !== 'mensal' && tipo !== 'unica') mudou.faixas = null;
     mudar(mudou);
   };
@@ -164,17 +164,10 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar, produto }:
         </div>
         <div className="min-w-0">
           <span className="md:hidden label">Quantidade</span>
-          {pct ? <div className="input bg-surface-2 text-muted text-right">—</div> : l.porRamal ? (
-            <div className="input bg-surface-2 text-right tabular-nums" title="Acompanha os ramais do cenário">{plural(c.ramais, l.unidade ?? 'ramal')}</div>
-          ) : (
+          {pct ? <div className="input bg-surface-2 text-muted text-right">—</div> : (
             <CampoInteiro valor={l.qtd} onChange={(qtd) => mudar({ qtd })} aria-label="Quantidade" disabled={!podeEditar} data-campo="qtd" />
           )}
-          {!pct && (
-            <label className="flex items-center gap-1.5 mt-1 text-[11.5px] text-muted cursor-pointer select-none">
-              <input type="checkbox" checked={l.porRamal} onChange={(e) => mudar({ porRamal: e.target.checked, qtd: e.target.checked ? l.qtd : c.ramais || l.qtd })} disabled={!podeEditar} data-campo="por-ramal" />
-              por ramal
-            </label>
-          )}
+          {!pct && l.unidade && <span className="block mt-1 text-[11.5px] text-muted text-right">{plural(l.qtd, l.unidade)}</span>}
         </div>
         <div className="min-w-0">
           <span className="md:hidden label">Valor de cada</span>

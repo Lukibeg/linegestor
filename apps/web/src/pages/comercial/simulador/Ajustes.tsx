@@ -120,7 +120,7 @@ function Formulario({ inicial, produtos }: { inicial: AjustesDoSimulador; produt
                     </span>
                   </h3>
                   <button type="button" className="btn-secondary btn-sm" id={`ajustes-novo-custo-${g}`}
-                    onClick={() => setA((x) => ({ ...x, custos: [...x.custos, { id: idLocal(), nome: '', tipo: TIPO_NOVO_DO_GRUPO[g], valor: null, porRamal: false, modalidade: null, faixas: null, unidade: null }] }))}>
+                    onClick={() => setA((x) => ({ ...x, custos: [...x.custos, { id: idLocal(), nome: '', tipo: TIPO_NOVO_DO_GRUPO[g], valor: null, modalidade: null, faixas: null, unidade: null }] }))}>
                     <Plus size={14} /> {um.charAt(0).toUpperCase() + um.slice(1)}
                   </button>
                 </div>
@@ -142,7 +142,7 @@ function Formulario({ inicial, produtos }: { inicial: AjustesDoSimulador; produt
             <Plus size={14} /> Modelo
           </button>
         </header>
-        <p className="text-[12.5px] text-muted mb-3">Um modelo por produto (LinePBX, LineChat…): a simulação nova começa com as linhas dele, com a quantidade de cada uma (ou por ramal). O produto do catálogo liga o modelo à negociação: o Simular da negociação usa os modelos dos produtos dela.</p>
+        <p className="text-[12.5px] text-muted mb-3">Um modelo por produto (LinePBX, LineChat…): a simulação nova começa com as linhas dele, com a quantidade de cada uma (e na simulação a pessoa põe a quantidade da venda). O produto do catálogo liga o modelo à negociação: o Simular da negociação usa os modelos dos produtos dela.</p>
         <div className="flex flex-col gap-3">
           {a.modelos.map((m) => (
             <Modelo key={m.id} m={m} custos={a.custos} produtos={produtos} mudar={(x) => mudarModelo(m.id, x)} tirar={() => setA((x) => ({ ...x, modelos: x.modelos.filter((y) => y.id !== m.id) }))} />
@@ -192,7 +192,7 @@ function CustoNaTabela({ c, grupo, mudar, tirar }: { c: CustoDaTabela; grupo: Gr
   const trocarTipo = (tipo: TipoDeCusto) => {
     const m: Partial<CustoDaTabela> = { tipo };
     m.modalidade = tipo === 'aparelho' ? c.modalidade ?? 'comodato' : null;
-    if (ehPercentual(tipo) !== pct) Object.assign(m, { valor: null, porRamal: false });
+    if (ehPercentual(tipo) !== pct) Object.assign(m, { valor: null });
     if (tipo !== 'mensal' && tipo !== 'unica') m.faixas = null;
     mudar(m);
   };
@@ -224,11 +224,6 @@ function CustoNaTabela({ c, grupo, mudar, tirar }: { c: CustoDaTabela; grupo: Gr
         </div>
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12.5px]">
-        {!pct && (
-          <label className="inline-flex items-center gap-1.5 cursor-pointer select-none">
-            <input type="checkbox" checked={c.porRamal} onChange={(e) => mudar({ porRamal: e.target.checked })} data-campo="por-ramal" /> entra "por ramal"
-          </label>
-        )}
         {c.tipo === 'aparelho' && (
           <label className="inline-flex items-center gap-1.5">
             <span className="text-ink-2">vai em</span>
@@ -312,13 +307,7 @@ function Modelo({ m, custos, produtos, mudar, tirar }: { m: ModeloDeSimulacao; c
             <li key={l.custoId} className="flex flex-wrap items-center gap-2 text-[13px]" data-linha={l.custoId}>
               <span className="min-w-0 flex-1 basis-[200px] truncate" title={c.nome}>{c.nome}</span>
               {pct ? <span className="text-muted text-[12px] w-[200px]">{NOME_DO_TIPO_DE_CUSTO[c.tipo]}</span> : (
-                <>
-                  {l.porRamal ? <span className="text-muted text-[12px] w-[92px] text-right">os ramais</span>
-                    : <CampoInteiro valor={l.qtd} onChange={(qtd) => mudarLinha(l.custoId, { qtd })} className="w-[92px]" aria-label={`A quantidade de ${c.nome}`} />}
-                  <label className="inline-flex items-center gap-1 text-[12px] text-muted cursor-pointer w-[100px]">
-                    <input type="checkbox" checked={l.porRamal} onChange={(e) => mudarLinha(l.custoId, { porRamal: e.target.checked })} /> por ramal
-                  </label>
-                </>
+                <CampoInteiro valor={l.qtd} onChange={(qtd) => mudarLinha(l.custoId, { qtd })} className="w-[92px]" aria-label={`A quantidade de ${c.nome}`} />
               )}
               <button type="button" className="btn-ghost btn-sm px-1 text-muted" onClick={() => mudar({ linhas: m.linhas.filter((x) => x.custoId !== l.custoId) })} aria-label={`Tirar ${c.nome} do modelo`}><X size={13} /></button>
             </li>
@@ -328,7 +317,7 @@ function Modelo({ m, custos, produtos, mudar, tirar }: { m: ModeloDeSimulacao; c
       </ul>
       {fora.length > 0 && (
         <select className="input mt-2 py-1.5 text-[13px] max-w-sm" value="" aria-label="Pôr um custo no modelo" data-campo="incluir"
-          onChange={(e) => { const c = custos.find((x) => x.id === e.target.value); if (c) mudar({ linhas: [...m.linhas, { custoId: c.id, qtd: 1, porRamal: c.porRamal }] }); }}>
+          onChange={(e) => { const c = custos.find((x) => x.id === e.target.value); if (c) mudar({ linhas: [...m.linhas, { custoId: c.id, qtd: 1 }] }); }}>
           <option value="">+ Pôr um custo da tabela…</option>
           {fora.map((c) => <option key={c.id} value={c.id}>{c.nome || '(sem nome)'}</option>)}
         </select>
