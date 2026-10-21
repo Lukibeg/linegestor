@@ -1,7 +1,8 @@
 /**
  * Importar (com prévia) e exportar CSV. Mora em Administração › Importar / Exportar (2.0, o pedido do
  * Luan: "a exportação também não precisa ter um ícone próprio, ela pode ficar dentro de configurações");
- * o endereço antigo (/dados) leva para lá.
+ * o endereço antigo (/dados) leva para lá. Desde o 2.0.3, com o Trazer do Helena (o painel de vendas de lá, com o
+ * histórico, num painel de Vendas).
  */
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -10,6 +11,7 @@ import { api, IS_DEMO } from '../../api/index.js';
 import type { ImportPlan } from '../../api/types.js';
 import { Can, useAuth } from '../../lib/auth.js';
 import { Campo, Chip, Modal, Spinner, mensagemErro, useToast } from '../../components/ui/index.js';
+import { TrazerDoHelena } from './TrazerDoHelena.js';
 
 const ENTIDADES = [
   { id: 'clients', nome: 'Clientes', colunas: 'cnpj; nome_fantasia; razao_social; produtos (separados por |); modulos (produto:modulo, ex.: linepbx:fop2); dominio; ip_servidor; usuario_ssh; porta_ssh; senha_ssh; hospedagem; observacoes', regra: 'CNPJ que já existe → atualiza. CNPJ novo → cria. Coluna de senha vazia → mantém a senha atual. "fop2" e "omniboard" na coluna produtos viram módulos do LinePBX.' },
@@ -48,6 +50,8 @@ export function ImportarExportar() {
       <p className="text-sm text-muted mb-3">CSV com ponto e vírgula por padrão. A importação mostra o que vai fazer antes de gravar.</p>
       {/* grid-cols-1 + min-w-0: o campo de arquivo não empurra a página para o lado no celular */}
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
+        {/* o Trazer do Helena (2.0.3): de quem importa e cuida dos painéis (cria etapas, campos e o painel) */}
+        {can('data.import') && can('tickets.manage') && <TrazerDoHelena />}
         <Can permission="data.import" fallback={<div className="card p-4 text-muted text-sm">Você não tem permissão para importar.</div>}>
           <section className="card p-4 flex flex-col gap-3 min-w-0">
             <h2 className="font-display font-semibold flex items-center gap-2"><FileUp size={17} /> Importar</h2>

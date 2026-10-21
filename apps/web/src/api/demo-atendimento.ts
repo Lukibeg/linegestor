@@ -43,6 +43,8 @@ import {
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNegociacoes, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
+  chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor,
+  type EstadoDoGestorParaHelena, type PainelDoGestorParaHelena, type PlanoDaImportacao,
   type NegociacaoParaRelatorio, type RelatorioDeVendas, type ResultadoDaVenda, type TipoDePainel, type MargemDaNegociacao, type FaixasDoSinal,
   type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
   type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoDoSistema, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista,
@@ -148,6 +150,8 @@ type ChamadoRow = {
   /** a negociação: a ativação (paga uma vez, à parte da mensalidade), única ou por produto */
   ativacao: number | null;
   ativacoesDosProdutos: ValoresDosProdutos;
+  /** de onde veio (2.0.3): "helena:<id do card>" — o Trazer do Helena atualiza em vez de criar outra */
+  externalRef?: string | null;
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
 type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null; citados: string[] };
@@ -270,7 +274,26 @@ type Instancia = {
   lixeira: () => TrashItem[]; restaurarDaLixeira: (id: string) => { ok: boolean }; diagnostico: () => { erros: string[]; chamados: number };
   chamadosDoContato: (clienteId: string, whatsapp: string) => number;
   calendario: AcessoDoCalendarioDemo;
+  helena: AcessoDoHelenaDemo;
 };
+
+/**
+ * O que a prévia do Trazer do Helena (demo-helena.ts, 2.0.3) usa dos chamados: os painéis de Vendas que podem
+ * receber, o Gestor como está (para o plano, como o `estadoDoGestor` do servidor) e a gravação do plano.
+ */
+export type AcessoDoHelenaDemo = {
+  eu: () => Ator;
+  destinos: () => Array<{ id: string; nome: string; sigla: string; negociacoes: number }>;
+  estado: (destino: string | null, siglaDoHelena: string | null, hoje: string) => EstadoDoGestorParaHelena;
+  /** o painel de Vendas novo (os ajustes e os campos de fábrica; as etapas vêm do plano) */
+  criarPainel: (nomeDoHelena: string, siglaDoHelena: string | null) => string;
+  gravar: (ator: Ator, painelId: string, plano: PlanoDaImportacao, agora: Date) => { nome: string; sigla: string };
+};
+/** O Trazer do Helena da prévia lê e grava os chamados por aqui. */
+export function acessoDoHelenaDemo(): AcessoDoHelenaDemo {
+  if (!instancia) throw naoAchado('Painel');
+  return instancia.helena;
+}
 
 /**
  * O que o calendário da prévia (demo-calendario.ts, 2.0.1) usa dos chamados: os painéis e quem vê cada
@@ -3751,6 +3774,147 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     },
   };
 
+  // ---------- o Trazer do Helena (2.0.3): o que a prévia dele usa daqui ----------
+
+  /** O Gestor como está, para o plano (como o `estadoDoGestor` do servidor). */
+  function estadoParaHelena(destino: string | null, siglaDoHelena: string | null, hoje: string): EstadoDoGestorParaHelena {
+    semear();
+    let painel: PainelDoGestorParaHelena | null = null;
+    if (destino) {
+      const p = A.paineis.find((x) => x.id === destino && !x.deletedAt);
+      if (!p) throw naoAchado('Painel');
+      if (p.tipo !== 'vendas') throw bad(`O painel ${p.nome} não é de Vendas: as negociações do Helena vão para um painel de Vendas.`);
+      painel = {
+        id: p.id, nome: p.nome, sigla: p.sigla,
+        etapas: A.etapas.filter((e) => e.painelId === p.id && !e.deletedAt).sort((x, y) => x.ordem - y.ordem).map((e) => ({
+          id: e.id, nome: e.nome, tipo: e.tipo, resultado: e.resultado, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar],
+          negociacoes: A.chamados.filter((t) => t.etapaId === e.id && !t.deletedAt).length,
+        })),
+        campos: camposDoPainel(p.id).map(campoParaTela),
+        motivosDePerda: [...(p.ajustes.motivosDePerda ?? [])],
+        camposDesligados: [...(p.ajustes.camposDesligados ?? AJUSTES_DO_PAINEL_DE_VENDAS.camposDesligados)],
+      };
+    }
+    const painelNovo = { nome: 'Comercial', sigla: siglaDoPainelNovo(siglaDoHelena, A.paineis.map((p) => p.sigla)) };
+    const sigla = painel?.sigla ?? painelNovo.sigla;
+    const importadas: EstadoDoGestorParaHelena['importadas'] = {};
+    for (const t of A.chamados) {
+      if (!t.externalRef?.startsWith('helena:')) continue;
+      // mexida no Gestor: tem histórico que não veio do Helena (alguém moveu, mudou um campo)
+      const mexida = A.eventos.some((e) => e.chamadoId === t.id && !('helena' in e.dados));
+      importadas[t.externalRef.slice('helena:'.length)] = { id: t.id, numero: t.numero, mexidaNoGestor: mexida, naLixeira: !!t.deletedAt };
+    }
+    const prefixo = new RegExp(`^${sigla}-(\\d+)$`);
+    return {
+      painel, painelNovo,
+      pessoas: S.users.map((u) => ({ id: u.id, nome: u.name, ativo: u.active })),
+      clientes: S.clients.filter((c) => !c.deletedAt && !c.isInternal).map((c) => ({ id: c.id, nomes: [c.tradeName], cnpj: null })),
+      produtos: S.products.filter((p) => !p.deletedAt).map((p) => ({ id: p.id, nome: p.name })),
+      // as etiquetas são de cada painel (2.0.3): só as do painel que recebe; o painel novo começa sem nenhuma
+      etiquetas: painel ? A.etiquetas.filter((e) => e.painelId === painel!.id).map((e) => e.nome) : [],
+      importadas,
+      numerosOcupados: A.chamados.map((t) => Number(prefixo.exec(t.codigo)?.[1] ?? 0)).filter((n) => n > 0),
+      hoje,
+    };
+  }
+
+  /** O painel de Vendas novo, como o servidor: os ajustes e os campos de fábrica (as etapas vêm do plano). */
+  function criarPainelParaHelena(nomeDoHelena: string, siglaDoHelena: string | null): string {
+    semear();
+    const id = novoId();
+    const f = AJUSTES_DO_PAINEL_DE_VENDAS;
+    A.paineis.push({
+      id, nome: 'Comercial', sigla: siglaDoPainelNovo(siglaDoHelena, A.paineis.map((p) => p.sigla)),
+      descricao: `As negociações do Comercial (trazidas do painel ${nomeDoHelena}, do Helena).`, cor: 'signal',
+      ordem: Math.max(-1, ...A.paineis.map((p) => p.ordem)) + 1, acesso: 'todos', pessoas: [],
+      ajustes: { ...f, tipos: [...f.tipos], obrigatoriosAoAbrir: [], supervisores: [], camposDesligados: [...f.camposDesligados], motivosDePerda: [...f.motivosDePerda] },
+      ativo: true, proximoNumero: 1, deletedAt: null, tipo: 'vendas',
+    });
+    camposDeFabricaDoPainel(id, 'vendas');
+    return id;
+  }
+
+  /** Grava o plano do Trazer, como o servidor: as etapas, os campos, os motivos de perda, as etiquetas e as negociações. */
+  function gravarDoHelena(ator: Ator, painelId: string, plano: PlanoDaImportacao, agora: Date): { nome: string; sigla: string } {
+    const p = linhaDoPainel(painelId);
+    // as etapas (a que sai só se vazia) e as que só o histórico cita, já fora do painel
+    const etapas = plano.etapas.etapas.map((e) => ({ ...(e.id ? { id: e.id } : {}), nome: e.nome, tipo: e.tipo, nivel: null, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado }));
+    aplicarEtapas(ator, planejarEtapas(painelId, etapas, {}, obrigatoriosValidos(p), 'vendas'), agora);
+    plano.etapas.historicas.forEach((nome, i) => {
+      if (A.etapas.some((e) => e.painelId === painelId && chaveDoNome(e.nome) === chaveDoNome(nome))) return;
+      A.etapas.push({ id: novoId(), painelId, nome, tipo: 'andamento', nivel: null, ordem: 100 + i, obrigatorios: [], avisar: [], resultado: null, deletedAt: iso(agora) });
+    });
+    const doPainel = A.etapas.filter((e) => e.painelId === painelId);
+    const idDaEtapa = (nome: string) => (doPainel.find((e) => !e.deletedAt && e.nome === nome) ?? doPainel.find((e) => !e.deletedAt && chaveDoNome(e.nome) === chaveDoNome(nome))
+      ?? doPainel.find((e) => chaveDoNome(e.nome) === chaveDoNome(nome)))?.id ?? null;
+    // os campos novos e as opções que faltavam
+    let ordem = camposDoPainel(painelId).reduce((m, c) => Math.max(m, c.ordem), -1) + 1;
+    for (const c of plano.campos) {
+      if (c.acao === 'cria') {
+        A.campos.push({ id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: 'Trazido do Helena.', ativo: true, ordem: ordem++, opcoes: c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true })), incluirNaHora: false });
+      } else if (c.acao === 'usa' && c.gestorId && c.opcoesNovas.length && ehLista(c.tipo)) {
+        const campo = A.campos.find((x) => x.id === c.gestorId);
+        if (campo) campo.opcoes = [...campo.opcoes, ...c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true }))];
+      }
+    }
+    const campos = camposDoPainel(painelId);
+    const campoDaChave = new Map<string, CampoPersonalizado>();
+    for (const c of plano.campos) {
+      if (c.acao === 'fora') continue;
+      const campo = c.gestorId ? campos.find((x) => x.id === c.gestorId) : campos.find((x) => chaveDoNome(x.nome) === chaveDoNome(c.nome));
+      if (campo) campoDaChave.set(c.chave, campo);
+    }
+    p.ajustes = { ...p.ajustes, motivosDePerda: [...plano.motivosDePerda] };
+    const doCatalogo = etiquetasDoCatalogo(painelId, [...new Set(plano.negociacoes.flatMap((n) => n.etiquetas))], plano.coresDasEtiquetas, pessoaDoAtor(ator), agora);
+    const etiquetaDe = (n: string) => doCatalogo.find((x) => chaveDaEtiqueta(x) === chaveDaEtiqueta(n)) ?? n;
+
+    let maior = 0;
+    for (const n of plano.negociacoes) {
+      maior = Math.max(maior, n.numero);
+      const etapaId = idDaEtapa(n.etapa);
+      if (!etapaId) throw erro(500, `A etapa ${n.etapa} não foi criada no painel ${p.nome}.`);
+      const valores: ValoresDosCampos = {};
+      for (const [chave, pre] of Object.entries(n.campos)) {
+        const campo = campoDaChave.get(chave);
+        const v = campo ? valorDoCampoNoGestor(campo, pre) : null;
+        if (campo && v !== null) valores[campo.id] = v;
+      }
+      const dados = {
+        painelId, etapaId, titulo: n.titulo, descricao: n.descricao, clienteId: n.clienteId, empresa: n.empresa, origem: 'helena' as Origem,
+        responsavelId: n.responsavelId, observadores: [...n.observadores], produtos: [...n.produtos], etiquetas: n.etiquetas.map(etiquetaDe),
+        valor: n.valor, valoresDosProdutos: { ...n.valoresDosProdutos }, ativacao: n.ativacao, ativacoesDosProdutos: { ...n.ativacoesDosProdutos },
+        motivoPerda: n.motivoPerda, resolvidoEm: n.fechadoEm, fechadoEm: n.fechadoEm, reaberto: n.reaberturas,
+        ultimaAtividadeEm: n.eventos.reduce((m, e) => (e.em > m ? e.em : m), n.alteradoEm), criadoEm: n.criadoEm, atualizadoEm: iso(agora),
+        externalRef: `helena:${n.helenaId}`,
+      };
+      let t = n.chamadoId ? A.chamados.find((x) => x.id === n.chamadoId) : undefined;
+      if (t) {
+        const id = t.id;
+        Object.assign(t, dados, { campos: { ...t.campos, ...valores } });
+        // o histórico que veio do Helena é refeito; o que a equipe fez no Gestor fica
+        A.eventos = A.eventos.filter((e) => !(e.chamadoId === id && 'helena' in e.dados));
+      } else {
+        t = {
+          id: novoId(), numero: n.numero, codigo: codigoDoChamado(p.sigla, n.numero), tipoChamado: 'chamado', relato: null, contatoNome: null, contatoTelefone: null,
+          sessaoId: null, assuntoId: null, tipo: null, gravidade: null, alcance: null, prioridade: null, motivoPrioridade: null, operadoras: [], paiId: null, problemaId: null,
+          checklist: [], solucao: null, causa: null, contorno: null, validacao: null, esperas: [], respondidoEm: null, alertas: {}, agendadoId: null,
+          criadoPorId: n.criadoPorId, deletedAt: null, campos: valores, ...dados,
+        };
+        A.chamados.push(t);
+      }
+      for (const e of n.eventos) {
+        const autor = e.usuarioId ? plano.autores[e.usuarioId] : undefined;
+        A.eventos.push({
+          id: novoId(), chamadoId: t.id, tipo: e.tipo, userId: autor?.pessoaId ?? null,
+          actorName: autor?.pessoaId ? null : autor ? `${autor.nome} (no Helena)` : 'Helena',
+          dados: ligarEtapasDoEvento(e.tipo, e.dados, idDaEtapa), em: e.em,
+        });
+      }
+    }
+    p.proximoNumero = Math.max(p.proximoNumero, maior + 1);
+    return { nome: p.nome, sigla: p.sigla };
+  }
+
   // a lixeira da Administração (o demo.ts chama pelas funções exportadas lá em cima)
   instancia = {
     chamadosDoContato: (clienteId, whatsapp) => {
@@ -3805,6 +3969,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         }
         return quem.length;
       },
+    },
+    helena: {
+      eu,
+      destinos: () => {
+        semear();
+        return A.paineis.filter((p) => !p.deletedAt && p.tipo === 'vendas').sort((a, b) => a.ordem - b.ordem)
+          .map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, negociacoes: A.chamados.filter((t) => t.painelId === p.id && !t.deletedAt).length }));
+      },
+      estado: estadoParaHelena,
+      criarPainel: criarPainelParaHelena,
+      gravar: gravarDoHelena,
     },
   };
 

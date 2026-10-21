@@ -7,7 +7,7 @@
  */
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, CalendarClock, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Bot, CalendarClock, History, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
 import { DICA_TIPO_ETAPA, NOME_ORIGEM, reaisInteiros, type Origem } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Chip, Spinner, type TomChip } from '../../../components/ui/index.js';
@@ -15,7 +15,7 @@ import { paraALista } from '../../../lib/voltar.js';
 import { ChipEspera, ChipPrioridade, ChipResultado, CodigoChamado, SeloPrazo, dataHoraCurta, haQuanto } from '../comum.js';
 import { ErroPerto, nomeComNivel, useAberta, useAcao } from './base.js';
 
-const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bot, botao: MessageSquare, agendado: CalendarClock, api: Plug };
+const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bot, botao: MessageSquare, agendado: CalendarClock, api: Plug, helena: History };
 const TOM_SITUACAO: Record<string, TomChip> = { aberto: 'accent', resolvido: 'ok', fechado: 'muted' };
 
 /** A data inteira, para o "passar o mouse". */

@@ -29,6 +29,8 @@ nele (a regra do patch que ainda não subiu).
   (até o print das colunas do Comercial do Helena, quando os nomes passam a ser os de lá). As finais
   são duas, **Ganho** e **Perdido**: o painel de Vendas tem uma de cada (o nome muda, a etapa não sai),
   nenhuma etapa Resolvido e nenhum nível. Dá para incluir etapas no funil, como em qualquer painel.
+  **No 2.0.3** (decisão 0054), o **Trazer do Helena** põe no painel as etapas do Helena, na ordem de lá
+  (StandBy, Lead Novo… Cliente na base), com o Ganho e o Perdido no fim.
 - **A negociação.** O que está sendo negociado (o título); a **empresa** — um cliente do cadastro ou
   uma que ainda não é (o nome escrito à mão; quando ela entra no cadastro, o **Virou cliente?** da
   ficha liga os dois); o contato e o WhatsApp; o **valor** — a **mensalidade** e a **ativação** (em R$);
@@ -231,3 +233,7 @@ No documento de 21/10 (o "pacote de melhorias"), com o 2.0.2 no ar:
   painel de Vendas nasce assim, e o de cada painel de hoje foi convertido pela migração `0023`.
 - As **etiquetas** do Comercial são só dele (a mesma revisão da 0047): na prévia, quente, concorrência,
   retornar e indicação.
+- **O Trazer do Helena** (a decisão 0054, no mesmo 2.0.3): o painel de vendas do Helena vem para o painel de
+  Vendas com o histórico, as etapas de lá e a mensalidade igual ao Valor atribuído. As etiquetas dos cards
+  entram nas do painel que recebe, e a Indicação do Helena cai na lista da Indicação, que ganha as opções
+  que não tinha.

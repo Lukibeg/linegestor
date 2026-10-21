@@ -42,6 +42,7 @@ import atendimentoEntradaRoutes from './routes/atendimentoEntrada.js';
 import atendimentoRotinaRoutes from './routes/atendimentoRotina.js';
 import calendarioRoutes from './routes/calendario.js';
 import simuladorRoutes from './routes/simulador.js';
+import helenaRoutes from './routes/helena.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -115,6 +116,8 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
     await api.register(calendarioRoutes, { prefix: '/calendario' });
     // o Simulador do Comercial (2.0.2): a conta de uma venda antes de fechar
     await api.register(simuladorRoutes, { prefix: '/comercial/simulador' });
+    // o Trazer do Helena (2.0.3): o painel de vendas do Helena, com o histórico, num painel de Vendas
+    await api.register(helenaRoutes, { prefix: '/comercial/helena' });
   }, { prefix: '/api' });
 
   // Em produção, a própria API serve a interface (apps/web/dist) e devolve o index.html para qualquer rota que não seja /api
