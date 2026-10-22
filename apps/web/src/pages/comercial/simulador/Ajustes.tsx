@@ -125,11 +125,12 @@ function Formulario({ inicial, produtos }: { inicial: AjustesDoSimulador; produt
                   </button>
                 </div>
                 <ul className="flex flex-col divide-y divide-line px-3" id={`ajustes-custos-${g}`}>
-                  {/* os nomes das colunas (no computador; no celular, cada campo tem o dele): sem eles, a "Unidade" parecia
-                      pedir um usuário ou uma quantidade (o Luan, 21/10: "esse usuário aqui seria referente a que?") */}
+                  {/* os nomes das colunas (no computador; no celular, cada campo tem o dele), no mesmo jeito do cabeçalho dos custos
+                      da simulação, com o texto alinhado ao de dentro dos campos (o Luan, 21/10: "n aparenta estar desalinhado, os
+                      nomes estão confusos") */}
                   {custos.length > 0 && (
-                    <li className={`hidden md:grid gap-2 ${COLUNAS} pt-2.5 pb-1 text-[11.5px] font-semibold uppercase tracking-wide text-muted`} aria-hidden>
-                      <span>Custo</span><span>Como entra</span><span>Valor de hoje</span><span>Unidade (opcional)</span><span />
+                    <li className={`hidden md:grid gap-2 ${COLUNAS} pt-2 pb-1.5 text-[11.5px] font-semibold text-muted`} aria-hidden>
+                      <span className="pl-3">Custo</span><span className="pl-3">Tipo</span><span className="pl-3">Valor</span><span />
                     </li>
                   )}
                   {custos.map((c) => <CustoNaTabela key={c.id} c={c} grupo={g} mudar={(m) => mudarCusto(c.id, m)} tirar={() => tirarCusto(c)} />)}
@@ -191,7 +192,12 @@ function BarraDoSinal({ verde, vermelho }: { verde: number; vermelho: number }) 
   );
 }
 
-const COLUNAS = 'md:grid-cols-[minmax(0,1fr)_150px_150px_110px_30px]';
+/**
+ * As colunas da tabela de custos: o custo, o tipo, o valor e o tirar. A coluna da unidade saiu (o Luan, 21/10: "ainda
+ * n entendi pra q serve essa ultima coluna"): ela só escrevia "40 ramais" embaixo da quantidade na simulação. O custo
+ * que já tem a unidade (os do LineChat, na tabela de fábrica) continua com ela.
+ */
+const COLUNAS = 'md:grid-cols-[minmax(0,1fr)_170px_150px_30px]';
 
 function CustoNaTabela({ c, grupo, mudar, tirar }: { c: CustoDaTabela; grupo: GrupoDeCusto; mudar: (m: Partial<CustoDaTabela>) => void; tirar: () => void }) {
   const pct = ehPercentual(c.tipo);
@@ -211,22 +217,18 @@ function CustoNaTabela({ c, grupo, mudar, tirar }: { c: CustoDaTabela; grupo: Gr
           <input className="input" value={c.nome} onChange={(e) => mudar({ nome: e.target.value })} placeholder="O nome (Telefone IP Yealink T31P)" aria-label="O nome do custo" maxLength={120} data-campo="nome" />
         </label>
         <label className="min-w-0">
-          <span className="md:hidden label">Como entra</span>
-          <select className="input" value={c.tipo} onChange={(e) => trocarTipo(e.target.value as TipoDeCusto)} aria-label="Como entra" title={AJUDA_DO_TIPO_DE_CUSTO[c.tipo]} data-campo="tipo">
+          <span className="md:hidden label">Tipo</span>
+          <select className="input" value={c.tipo} onChange={(e) => trocarTipo(e.target.value as TipoDeCusto)} aria-label="Tipo" title={AJUDA_DO_TIPO_DE_CUSTO[c.tipo]} data-campo="tipo">
             {tiposParaEscolher(grupo, c.tipo).map((t) => <option key={t} value={t}>{NOME_DO_TIPO_DE_CUSTO[t]}</option>)}
           </select>
         </label>
         <div className="min-w-0">
-          <span className="md:hidden label">Valor de hoje</span>
+          <span className="md:hidden label">Valor</span>
           {c.faixas ? <div className="input bg-surface-2 text-[12.5px] text-ink-2 flex items-center gap-1.5"><Layers size={13} aria-hidden /> por faixas</div>
             : pct ? <CampoDePercentual valor={c.valor} onChange={(valor) => mudar({ valor })} aria-label="O percentual" placeholder="0" data-campo="valor" />
-              : <CampoDeReais unitario valor={c.valor} onChange={(valor) => mudar({ valor })} aria-label="O valor de hoje" placeholder="na simulação" data-campo="valor" />}
+              : <CampoDeReais unitario valor={c.valor} onChange={(valor) => mudar({ valor })} aria-label="O valor" placeholder="a definir" data-campo="valor"
+                  title="Em branco, o valor é posto em cada simulação (os aparelhos, que mudam de uma venda para outra)." />}
         </div>
-        <label className="min-w-0">
-          <span className="md:hidden label">Unidade (opcional)</span>
-          <input className="input" value={c.unidade ?? ''} onChange={(e) => mudar({ unidade: e.target.value || null })} placeholder={pct ? '—' : 'ex.: ramal'} disabled={pct}
-            aria-label="A unidade: o nome de cada um (ramal, usuário, canal)" title="O nome de cada um, no singular. A simulação escreve embaixo da quantidade: 40 ramais, 5 usuários." maxLength={20} data-campo="unidade" />
-        </label>
         <div className="col-span-2 md:col-span-1 flex justify-end">
           <button type="button" className="btn-ghost btn-sm px-1.5 text-muted" onClick={tirar} aria-label={`Tirar ${c.nome || 'este custo'} da tabela`} title="Tirar da tabela"><Trash2 size={15} /></button>
         </div>

@@ -127,7 +127,7 @@ function GrupoDeCustos({ grupo, c, k, ajustes, podeEditar, nomeDoProduto, mudarL
         {linhas.length ? (
           <>
             <div className={`hidden md:grid ${COLUNAS} gap-2 px-1 pt-1.5 pb-1 text-[11.5px] font-semibold text-muted`}>
-              <span>Custo e como entra</span><span className="text-right">Quantidade</span><span className="text-right">Valor de cada</span><span className="text-right">Total</span><span />
+              <span>Custo e tipo</span><span className="text-right">Quantidade</span><span className="text-right">Valor de cada</span><span className="text-right">Total</span><span />
             </div>
             <ul className="flex flex-col divide-y divide-line" id={`simulador-linhas-${grupo}`}>
               {linhas.map((l) => (

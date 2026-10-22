@@ -270,7 +270,11 @@ por faixas na simulação).
   do mês" dos números mostram cada linha por mês pelo nome, o imposto e cada comissão — antes, as linhas por mês
   viravam uma só, "Custos mensais", e o custo do mês dizia só "fixo + variável". As partes somam o total ao centavo
   (`partesDoCustoMensal`, com o `repartir`).
-- **A unidade nos Ajustes** (*"esse usuário aqui seria referente a que? tipo quantidade?"*): não é a quantidade —
-  é o nome de cada um, no singular, para a simulação escrever "40 ramais" embaixo da quantidade. A tabela de custos
-  ganhou os nomes das colunas no computador (Custo, Como entra, Valor de hoje, **Unidade (opcional)**), e o campo
-  diz "ex.: ramal" (antes, "usuário", que parecia um campo a preencher).
+- **A tabela de custos dos Ajustes, mais simples** (*"esse usuário aqui seria referente a que? tipo quantidade?"*;
+  depois, com os nomes das colunas: *"isso n ficou legal n aparenta estar desalinhado, os nomes estão confusos e
+  ainda n entendi pra q serve essa ultima coluna"*): a coluna da **unidade saiu** — não era a quantidade, era só o
+  nome de cada um, para a simulação escrever "40 ramais" embaixo da quantidade. O custo que já a tem (os do LineChat,
+  na tabela de fábrica: "5 usuários") continua com ela. A tabela ficou com três colunas, com os nomes no alto (no
+  computador), no jeito do cabeçalho dos custos da simulação e alinhados ao texto dos campos: **Custo**, **Tipo** e
+  **Valor**; o valor em branco diz "a definir" (antes, "na simulação", embaixo de "Valor de hoje"). O "Como entra"
+  virou **Tipo** também no cabeçalho dos custos da simulação ("Custo e tipo").

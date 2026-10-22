@@ -118,7 +118,7 @@ describe('a planilha da simulação', () => {
     expect(c.get('A12')).toBeUndefined();
     expect([...c].some(([, x]) => /O PREÇO|mínima|margem que você quer|Desconto máximo/.test(x.v))).toBe(false);
     expect(['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'].map((x) => c.get(`${x}16`)!.v)).toEqual([
-      'Custo', 'Como entra', 'O aparelho vai em', 'Quantidade', 'Valor de cada', 'Preço ou aluguel de cada', 'A compra em (vezes)',
+      'Custo', 'Tipo', 'O aparelho vai em', 'Quantidade', 'Valor de cada', 'Preço ou aluguel de cada', 'A compra em (vezes)',
       'Sai uma vez', 'Sai por mês', 'Entra uma vez', 'Entra por mês', 'Observação',
     ]);
     // os custos em dois grupos, o investimento primeiro: o nome do grupo numa linha, e as linhas dele

@@ -59,9 +59,9 @@ oficial inclusos). As faixas de preço valem por trás, sem aparecer (mudam nos 
 produtos tira o quadro; pôr de novo traz o modelo do LineChat. Na simulação de antes de 21/10, os contatos
 ativos acima de 5.000 (e a transcrição de áudio) aparecem no quadro quando custam algo.
 
-Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o valor de cada um e o total:
+Cada linha tem o nome, o **tipo** (só os do grupo), a quantidade, o valor de cada um e o total:
 
-| Como entra | Para quê | A conta |
+| Tipo | Para quê | A conta |
 |---|---|---|
 | Aparelho | o telefone, o headset | o custo de cada um, uma vez (e a modalidade, abaixo) |
 | Por mês (R$) | a nuvem, os números, a licença | quantidade × valor, todo mês |
@@ -71,8 +71,7 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
 - **Da tabela** põe um custo da tabela dos Ajustes, com o valor de hoje (o painel mostra os custos do
   grupo e fica aberto para pôr outros). **Do modelo**, no alto, põe as linhas de um modelo, cada uma no
   grupo dela. **Digitar um custo** abre uma linha em branco no grupo.
-- **A quantidade** é a de cada custo: 40 telefones, a nuvem de 40 ramais, 4 números. Embaixo dela, a
-  unidade ("40 ramais", "5 usuários").
+- **A quantidade** é a de cada custo: 40 telefones, a nuvem de 40 ramais, 4 números.
 - **O aparelho** diz como vai: **Comodato** (a Ingline compra e empresta: só o custo), **Venda** (o
   preço de cada um entra na ativação) ou **Locação** (o aluguel de cada um entra na mensalidade).
 - **A compra em**: o aparelho que a Ingline compra parcelado (à vista ou em até 24 vezes, nunca mais que o
@@ -182,10 +181,10 @@ Em **Comercial › Simulador › Ajustes**:
 
 - **O imposto** que a simulação nova traz, **o sinal** (verde a partir de quanto, vermelho abaixo de quanto;
   entre os dois, amarelo) e **o prazo** da simulação nova.
-- **A tabela de custos**, nos mesmos dois quadros (**+ Custo de investimento**, **+ Custo mensal**): o nome,
-  como entra, o valor de hoje (deixe sem valor o que muda de uma venda para
-  outra, como os aparelhos), a **unidade** ("usuário", "canal", "ramal": a tela escreve "5 usuários") e, no
-  aparelho, a modalidade que já vem. Marque **o preço muda pela quantidade** para pôr as
+- **A tabela de custos**, nos mesmos dois quadros (**+ Custo de investimento**, **+ Custo mensal**), em três
+  colunas: o **custo** (o nome), o **tipo** e o **valor** de hoje — "a definir" quando fica em branco, para o que
+  muda de uma venda para outra, como os aparelhos: aí a simulação pede o valor. No aparelho, embaixo, a
+  modalidade que já vem. Marque **o preço muda pela quantidade** para pôr as
   faixas: cada faixa vai "até" uma quantidade, com o preço de cada unidade (0 = incluso), e a última vai
   "daí para cima".
 - **Os modelos**: um por produto, com os custos da tabela e a quantidade de cada um.
