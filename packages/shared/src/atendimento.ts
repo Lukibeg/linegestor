@@ -59,9 +59,10 @@ export const TIPOS_CHAMADO = ['chamado', 'problema'] as const;
 export type TipoChamado = (typeof TIPOS_CHAMADO)[number];
 export const NOME_TIPO_CHAMADO: Record<TipoChamado, string> = { chamado: 'Chamado', problema: 'Problema' };
 
-export const ORIGENS = ['manual', 'robo', 'botao', 'agendado', 'api'] as const;
+/** `helena`: a negociação trazida do painel de vendas do Helena (2.0.3, decisão 0054) */
+export const ORIGENS = ['manual', 'robo', 'botao', 'agendado', 'api', 'helena'] as const;
 export type Origem = (typeof ORIGENS)[number];
-export const NOME_ORIGEM: Record<Origem, string> = { manual: 'Aberto no Gestor', robo: 'O robô do LineChat', botao: 'O botão na conversa', agendado: 'Chamado agendado', api: 'Integração (n8n)' };
+export const NOME_ORIGEM: Record<Origem, string> = { manual: 'Aberto no Gestor', robo: 'O robô do LineChat', botao: 'O botão na conversa', agendado: 'Chamado agendado', api: 'Integração (n8n)', helena: 'Trazida do Helena' };
 
 /**
  * O tipo do painel (2.0.1, decisão 0050), como no Helena: **Gestão** (os chamados: prazos, níveis,
@@ -216,14 +217,16 @@ export const ETAPAS_DO_PAINEL_DE_VENDAS: Array<Pick<EtapaPainel, 'nome' | 'tipo'
  * São campos do painel como os outros: a equipe muda o nome, as opções e a ordem, desativa e inclui em
  * Ajustes › Campos.
  */
-export const CAMPOS_DO_PAINEL_DE_VENDAS: ReadonlyArray<{ nome: string; tipo: TipoCampo; dica: string; opcoes: string[] }> = [
+export const CAMPOS_DO_PAINEL_DE_VENDAS: ReadonlyArray<{ nome: string; tipo: TipoCampo; dica: string; opcoes: string[]; incluirNaHora?: boolean }> = [
   { nome: 'CNPJ', tipo: 'texto', dica: 'O CNPJ da empresa (o de quem já é cliente também está no cadastro).', opcoes: [] },
   { nome: 'Contatos principais', tipo: 'texto_longo', dica: 'Quem decide e quem vai usar: o nome, o cargo e o telefone de cada um.', opcoes: [] },
   {
     nome: 'Origem de lead', tipo: 'lista', dica: 'Por onde a empresa chegou até a Ingline.',
     opcoes: ['Indicação', 'Site', 'Instagram', 'Google', 'WhatsApp', 'Evento', 'Prospecção ativa', 'Cliente da base'],
   },
-  { nome: 'Indicação', tipo: 'texto', dica: 'Quem indicou: a pessoa ou a empresa.', opcoes: [] },
+  // a Indicação é uma lista que cresce no próprio formulário (2.0.3: "a indicação tem q ser predefinido e eu tenho que
+  // conseguir criar por aqui mesmo se quiser"); até o 2.0.2 era texto (a migração 0023 passou a de cada painel para lista)
+  { nome: 'Indicação', tipo: 'lista', dica: 'Quem indicou: a pessoa ou a empresa. Não está na lista? Escreva o nome e inclua.', opcoes: [], incluirNaHora: true },
 ];
 
 /** Os ajustes guardados podem ser de antes de um campo novo: completa com o padrão. */
@@ -370,6 +373,11 @@ export type CampoPersonalizado = {
   /** desativado, some da ficha e do Abrir chamado; o que já foi preenchido fica guardado */
   ativo: boolean;
   ordem: number;
+  /**
+   * Na lista de uma opção: quem trabalha no painel inclui uma opção nova ali mesmo, no Abrir chamado e na ficha
+   * (2.0.3, a Indicação: "a indicação tem q ser predefinido e eu tenho que conseguir criar por aqui mesmo").
+   */
+  incluirNaHora: boolean;
 };
 /** O valor de um campo no chamado: texto, número, sim/não, a data (AAAA-MM-DD) ou o id das opções. */
 export type ValorDoCampo = string | number | boolean | string[];
@@ -820,8 +828,8 @@ export const CorEtiquetaSchema = z.enum(CORES_ETIQUETA);
 /** A cor de cada etiqueta NOVA, pelo nome (a que já existe fica com a cor dela). */
 const CoresDasEtiquetasSchema = z.record(z.string().trim().min(1).max(40), CorEtiquetaSchema)
   .refine((r) => Object.keys(r).length <= 20, 'Etiquetas demais no pedido');
-/** Criar uma etiqueta em Ajustes › Etiquetas: o nome e a cor. */
-export const EtiquetaGravarSchema = z.object({ nome: EtiquetaSchema, cor: CorEtiquetaSchema.default('neutral') });
+/** Criar uma etiqueta em Ajustes › Etiquetas: o painel (cada painel tem as suas, 2.0.3), o nome e a cor. */
+export const EtiquetaGravarSchema = z.object({ painelId: z.string().trim().min(1, 'Escolha o painel da etiqueta').max(60), nome: EtiquetaSchema, cor: CorEtiquetaSchema.default('neutral') });
 export type EtiquetaGravar = z.infer<typeof EtiquetaGravarSchema>;
 export type EtiquetaGravarEntrada = z.input<typeof EtiquetaGravarSchema>;
 /**
@@ -832,7 +840,8 @@ export type EtiquetaGravarEntrada = z.input<typeof EtiquetaGravarSchema>;
 export const EtiquetaEditarSchema = z.object({ nome: EtiquetaSchema.optional(), cor: CorEtiquetaSchema });
 export type EtiquetaEditar = z.infer<typeof EtiquetaEditarSchema>;
 export type EtiquetaEditarEntrada = z.input<typeof EtiquetaEditarSchema>;
-export const EtiquetaEditarPeloNomeSchema = EtiquetaEditarSchema.extend({ de: EtiquetaSchema });
+/** Pelo nome (o seletor de etiquetas): o nome de agora e o painel do chamado (o mesmo nome pode estar em dois painéis). */
+export const EtiquetaEditarPeloNomeSchema = EtiquetaEditarSchema.extend({ painelId: z.string().trim().min(1).max(60), de: EtiquetaSchema });
 export type EtiquetaEditarPeloNomeEntrada = z.input<typeof EtiquetaEditarPeloNomeSchema>;
 const TelefoneSchema = z.string().trim().max(40).nullish().transform((v, ctx) => {
   if (!v) return null;
@@ -1132,9 +1141,12 @@ export const CampoGravarSchema = z.object({
   obrigatorioAoAbrir: z.boolean().default(false),
   /** as etapas (ids) em que ele é obrigatório para o chamado entrar */
   etapas: z.array(z.string().min(1).max(60)).max(MAX_ETAPAS_DO_PAINEL).default([]),
+  /** a lista de uma opção em que quem trabalha inclui a opção nova ali mesmo (2.0.3) */
+  incluirNaHora: z.boolean().default(false),
 }).superRefine((c, ctx) => {
   if (!ehLista(c.tipo)) return;
-  if (!c.opcoes.some((o) => o.ativa)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'A lista precisa de pelo menos uma opção' });
+  // a que se inclui na hora pode começar vazia: as opções nascem nos chamados
+  if (!c.opcoes.some((o) => o.ativa) && !(c.tipo === 'lista' && c.incluirNaHora)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'A lista precisa de pelo menos uma opção' });
   const vistas = new Set<string>();
   for (const o of c.opcoes) {
     const k = paraBusca(o.nome);
@@ -1161,7 +1173,12 @@ const ValoresEntradaSchema = z.record(z.string().trim().min(1).max(60), ValorEnt
 export const ChamadoCriarSchema = z.object({
   painelId: z.string().min(1),
   tipoChamado: z.enum(TIPOS_CHAMADO).default('chamado'),
-  titulo: z.string().trim().min(3, 'Escreva um título (pelo menos 3 letras)').max(200),
+  /**
+   * Pelo menos 3 letras; na negociação (o painel de Vendas) é opcional — vazio, ela fica com o nome da empresa
+   * (2.0.3, o pedido do Luan: "se eu n colocar nada vai ser o nome do cliente"). Quem confere é o servidor, que
+   * sabe o tipo do painel (`tituloQueFica`).
+   */
+  titulo: z.string().trim().max(200).default(''),
   relato: TextoOpcional(20_000),
   descricao: TextoOpcional(20_000),
   clienteId: z.string().nullish().transform((v) => v || null),
@@ -1206,7 +1223,8 @@ export type ChamadoCriar = z.infer<typeof ChamadoCriarSchema>;
 
 /** Mudar o chamado: só os campos que vierem. */
 export const ChamadoAlterarSchema = z.object({
-  titulo: z.string().trim().min(3).max(200).optional(),
+  /** pelo menos 3 letras; na negociação, vazio volta ao nome da empresa (o servidor confere: `tituloQueFica`) */
+  titulo: z.string().trim().max(200).optional(),
   relato: TextoOpcional(20_000).optional(),
   descricao: TextoOpcional(20_000).optional(),
   clienteId: z.string().nullish().transform((v) => v || null).optional(),
@@ -1697,6 +1715,8 @@ export const TIPOS_EVENTO = [
   'criado', 'etapa', 'responsavel', 'campo', 'prioridade', 'espera', 'ligacao', 'pai', 'filho', 'problema', 'incidente',
   'checklist', 'tempo', 'operadora', 'aviso_cliente', 'aviso_equipe', 'reaberto', 'painel', 'ia', 'resposta_pronta',
   'cliente_respondeu', 'prazo', 'fechou_sozinho', 'observador', 'lixeira',
+  // uma linha do histórico do Helena que não tem um jeito do Gestor ("A etiqueta X foi adicionada"): 2.0.3
+  'helena',
 ] as const;
 export type TipoEvento = (typeof TIPOS_EVENTO)[number];
 export type EventoChamado = {
@@ -1783,10 +1803,11 @@ export type OpcoesAtendimento = {
   produtos: Array<{ id: string; nome: string; cor: string }>;
   operadoras: Array<{ id: string; nome: string }>;
   /**
-   * as etiquetas, com a cor: as usadas nos painéis que a pessoa vê e as que ninguém usa ainda (para
-   * sugerir e desenhar; a de um painel que ela não vê não aparece)
+   * as etiquetas, com a cor, de cada painel que a pessoa vê (2.0.3: cada painel tem as suas) — as do catálogo
+   * do painel e as usadas nos chamados dele (para sugerir e desenhar; a de um painel que ela não vê não aparece).
+   * Para um painel, `etiquetasDoPainel`.
    */
-  etiquetas: EtiquetaComCor[];
+  etiquetas: EtiquetaNoPainel[];
   prazos: AjustesPrazos;
   /** o WhatsApp está pronto para mandar ao cliente? e à equipe? */
   whatsapp: {
@@ -1926,7 +1947,7 @@ const nomeNivel = (n: unknown) => (n ? ` (${rotuloDoNivel(n as number)})` : '');
 export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string {
   switch (tipo) {
     // a negociação (o painel de Vendas) é criada; o chamado é aberto
-    case 'criado': return `${d.venda ? 'criou a negociação' : 'abriu o chamado'}${d.origem && d.origem !== 'manual' ? ` (${NOME_ORIGEM[d.origem as Origem] ?? d.origem})` : ''}${d.etapa ? ` em ${d.etapa}` : ''}`;
+    case 'criado': return `${d.venda ? 'criou a negociação' : 'abriu o chamado'}${d.origem && d.origem !== 'manual' ? ` (${NOME_ORIGEM[d.origem as Origem] ?? d.origem}${d.noHelena ? `, era ${d.noHelena}` : ''})` : ''}${d.etapa ? ` em ${d.etapa}` : ''}`;
     case 'etapa': {
       // a negociação que acabou: "marcou como ganho (R$ 12.000,00/mês), estava em Negociação" (o valor é a mensalidade)
       if (d.resultado === 'ganho') return `marcou como ganho${typeof d.valor === 'number' ? ` (${reais(d.valor)}/mês)` : ''}, estava em ${d.de?.nome ?? '?'}${d.concluidoEm ? ` — fechou em ${diaComAno(d.concluidoEm)}` : ''}`;
@@ -1949,7 +1970,7 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     case 'operadora': return d.acao === 'abriu' ? `abriu chamado na ${d.operadora} (protocolo ${d.protocolo})` : d.acao === 'fechou' ? `a ${d.operadora} fechou o protocolo ${d.protocolo}${d.texto ? `: ${d.texto}` : ''}` : `cobrou a ${d.operadora} (protocolo ${d.protocolo})${d.texto ? `: ${d.texto}` : ''}`;
     case 'aviso_cliente': return d.ok ? `avisou o cliente pelo WhatsApp${d.modelo ? ' (com o modelo aprovado)' : ''}` : `tentou avisar o cliente pelo WhatsApp, mas não foi: ${d.erro ?? 'erro'}`;
     case 'aviso_equipe': return d.ok ? `o Gestor avisou ${d.para} pelo WhatsApp` : `o aviso para ${d.para} pelo WhatsApp não foi: ${d.erro ?? 'erro'}`;
-    case 'reaberto': return `reabriu o chamado${d.motivo ? `: ${d.motivo}` : ''}`;
+    case 'reaberto': return `reabriu ${d.venda ? 'a negociação' : 'o chamado'}${d.motivo ? `: ${d.motivo}` : ''}`;
     case 'painel': return `passou do painel ${d.de} para ${d.para}`;
     case 'ia': return `preencheu com a IA: ${(d.campos as string[] | undefined)?.join(', ') || 'nada mudou'}`;
     case 'resposta_pronta': return `usou a resposta pronta "${d.nome}"`;
@@ -1958,6 +1979,8 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     case 'fechou_sozinho': return `fechou sozinho: ${d.dias} ${d.dias === 1 ? 'dia útil' : 'dias úteis'} no ${d.etapa ?? 'Resolvido'} sem resposta do cliente`;
     case 'observador': return d.acao === 'saiu' ? `deixou de observar` : `passou a observar`;
     case 'lixeira': return d.acao === 'restaurou' ? 'restaurou da lixeira' : 'mandou para a lixeira';
+    // a linha do Helena como estava escrita lá ("A etiqueta P/R Ingline foi adicionada")
+    case 'helena': return `no Helena: ${d.texto ?? ''}`;
     default: return String(tipo);
   }
 }
@@ -2633,10 +2656,42 @@ export function renomearEtiqueta(lista: string[], deChave: string, para: string)
   return nova.length === lista.length && nova.every((e, i) => e === lista[i]) ? null : nova;
 }
 
+/**
+ * O título que fica (2.0.3): o chamado precisa de pelo menos 3 letras; a negociação, sem título, fica com o nome
+ * da empresa (o cliente ou a empresa que ainda não é cliente). Nulo = recusar, com `MENSAGEM_DO_TITULO`.
+ */
+export function tituloQueFica(titulo: string, o: { vendas: boolean; empresa: string | null }): string | null {
+  const t = titulo.trim().replace(/\s+/g, ' ');
+  if (t.length >= 3) return t;
+  if (!o.vendas || t.length) return null;
+  const empresa = (o.empresa ?? '').trim();
+  return empresa ? empresa.slice(0, 200) : null;
+}
+export const MENSAGEM_DO_TITULO = {
+  chamado: 'Escreva um título (pelo menos 3 letras)',
+  negociacao: 'Escreva o que está sendo negociado com pelo menos 3 letras, ou deixe vazio: fica o nome da empresa',
+  semEmpresa: 'Escreva o que está sendo negociado ou escolha a empresa: sem título, a negociação fica com o nome da empresa',
+} as const;
+/** A mensagem de quando o `tituloQueFica` recusa. */
+export function mensagemDoTitulo(titulo: string, vendas: boolean): string {
+  if (!vendas) return MENSAGEM_DO_TITULO.chamado;
+  return titulo.trim() ? MENSAGEM_DO_TITULO.negociacao : MENSAGEM_DO_TITULO.semEmpresa;
+}
+
 /** Uma etiqueta e a cor dela (o que a tela precisa para desenhar). */
 export type EtiquetaComCor = { nome: string; cor: CorEtiqueta };
-/** Uma etiqueta em Ajustes › Etiquetas: em quantos chamados ela está (fora da lixeira). */
-export type EtiquetaDoCatalogo = EtiquetaComCor & { id: string; chamados: number; criadaEm: string };
+/**
+ * Uma etiqueta de um painel (2.0.3, o pedido do Luan: "as etiquetas tem q ser por painel, cada painel vai ter suas
+ * etiquetas"): o mesmo nome pode estar em dois painéis, cada um com a sua cor.
+ */
+export type EtiquetaNoPainel = EtiquetaComCor & { painelId: string };
+/** Uma etiqueta em Ajustes › Etiquetas: o painel e em quantos chamados dele ela está (fora da lixeira). */
+export type EtiquetaDoCatalogo = EtiquetaNoPainel & { id: string; chamados: number; criadaEm: string };
+
+/** As etiquetas de um painel (o seletor, a cor dos cartões, o filtro da lista). */
+export function etiquetasDoPainel<E extends { painelId: string }>(lista: readonly E[], painelId: string): E[] {
+  return lista.filter((e) => e.painelId === painelId);
+}
 
 /**
  * A cor de uma etiqueta pelo nome (sem ligar para maiúscula e acento). A que não está na lista: a cor
@@ -2677,4 +2732,7 @@ export type AgendadoGravarEntrada = z.input<typeof AgendadoGravarSchema>;
 export type AvisosChamadosEntrada = z.input<typeof AvisosChamadosSchema>;
 export type WebhookGravarEntrada = z.input<typeof WebhookGravarSchema>;
 export type CampoGravarEntrada = z.input<typeof CampoGravarSchema>;
+/** Incluir uma opção numa lista do painel ali mesmo (só nas que permitem: `incluirNaHora`). */
+export const OpcaoIncluirSchema = z.object({ nome: z.string().trim().min(1, 'Escreva o nome da opção').max(60, 'O nome da opção vai até 60 letras').transform((s) => s.replace(/\s+/g, ' ')) });
+export type OpcaoIncluirEntrada = z.input<typeof OpcaoIncluirSchema>;
 export type CamposDoSistemaEntrada = z.input<typeof CamposDoSistemaSchema>;

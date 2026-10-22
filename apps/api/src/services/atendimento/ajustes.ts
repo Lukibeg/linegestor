@@ -20,7 +20,7 @@ import { newId, ticketFields, ticketPanels, ticketStages, ticketSubjects, ticket
 import {
   AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, ehLista,
   ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL, problemaNasEtapasDoTipo,
-  lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
+  lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
   obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
   EVENTOS_AVISO, EXEMPLOS_DOS_AVISOS, NOME_EVENTO_AVISO, modeloDoAviso, modelosParaGuardar, preencherAviso, variaveisDesconhecidas,
   type EventoAviso, type ResultadoDaVenda, type TipoDePainel,
@@ -35,11 +35,11 @@ import { gravarTeste, lerAvisos, mandarWhatsApp, type AvisosGuardados } from './
 
 type PainelGravar = z.infer<typeof PainelGravarSchema>;
 type EtapasGravar = z.infer<typeof EtapasGravarSchema>;
-type EtapaGravar = EtapasGravar['etapas'][number];
+export type EtapaGravar = EtapasGravar['etapas'][number];
 type AssuntoGravar = z.infer<typeof AssuntoGravarSchema>;
 type CampoGravar = z.infer<typeof CampoGravarSchema>;
 type CamposDoSistemaGravar = z.infer<typeof CamposDoSistemaSchema>;
-type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
+export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type LinhaDaEtapa = typeof ticketStages.$inferSelect;
 
 /** O resultado de uma mudança e o que vai para a auditoria. */
@@ -91,7 +91,7 @@ const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | nul
 const tipoDaLinha = (p: { kind: string }): TipoDePainel => (p.kind === 'vendas' ? 'vendas' : 'gestao');
 
 /** O que pode ser pedido no painel agora: os campos do sistema que ele usa e os campos ativos dele. */
-async function obrigatoriosValidos(db: Db, p: typeof ticketPanels.$inferSelect): Promise<Obrigatorio[]> {
+export async function obrigatoriosValidos(db: Db, p: typeof ticketPanels.$inferSelect): Promise<Obrigatorio[]> {
   return obrigatoriosDoPainel(ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>), await carregarCampos(db, p.id), tipoDaLinha(p));
 }
 
@@ -179,7 +179,7 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
       if (camposDeFabrica.length) {
         await tx.insert(ticketFields).values(camposDeFabrica.map((c, ordem) => ({
           id: newId(), panelId: novoId, name: c.nome, kind: c.tipo, help: c.dica, active: true, sortOrder: ordem,
-          options: c.opcoes.map((nome) => ({ id: newId(), nome, ativa: true })),
+          options: c.opcoes.map((nome) => ({ id: newId(), nome, ativa: true })), inlineOptions: !!c.incluirNaHora,
         })));
       }
     });
@@ -292,9 +292,9 @@ export async function salvarEtapas(app: FastifyInstance, ator: Ator, painelId: s
 }
 
 /** Os chamados que mudaram de etapa porque a etapa deles saiu (para a frase da auditoria). */
-type Movido = { de: string; para: string; n: number };
+export type Movido = { de: string; para: string; n: number };
 /** A lista de etapas já conferida contra o banco, pronta para gravar (nada foi gravado ainda). */
-type PlanoDasEtapas = {
+export type PlanoDasEtapas = {
   painelId: string;
   atuais: LinhaDaEtapa[];
   porId: Map<string, LinhaDaEtapa>;
@@ -310,7 +310,7 @@ type PlanoDasEtapas = {
  * as etapas e quantos chamados cada uma tem — a tela pergunta para onde vão). Num painel novo não há
  * etapa nenhuma: toda etapa com id é recusada.
  */
-async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], destino: Record<string, string>, validos: Obrigatorio[], tipo: TipoDePainel): Promise<PlanoDasEtapas> {
+export async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], destino: Record<string, string>, validos: Obrigatorio[], tipo: TipoDePainel): Promise<PlanoDasEtapas> {
   // o painel de Vendas acaba em Ganho e Perdido (uma de cada, as duas fechando); o de Gestão não tem resultado
   const problema = problemaNasEtapasDoTipo(tipo, etapas);
   if (problema) throw new BadRequest(problema);
@@ -354,7 +354,7 @@ async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGravar[], d
 }
 
 /** Grava o plano dentro da transação de quem chamou e devolve os chamados que mudaram de etapa. */
-async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, agora: Date): Promise<Movido[]> {
+export async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, agora: Date): Promise<Movido[]> {
   const { painelId, porId, novas, saem, destino } = plano;
   const finais = new Map(novas.map((e) => [e.id, e]));
   /** Sem destino escolhido (a etapa só tinha chamados na lixeira): uma do mesmo tipo, senão a de entrada. */
@@ -400,7 +400,7 @@ async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, agora: D
  * O que mudou nas etapas, em frase ("entrou X; saiu Y; renomeou A → B; mudou a ordem; ajustou N2"), e
  * o antes/depois da auditoria (onde está o detalhe de cada etapa).
  */
-function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
+export function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   const { atuais, porId, novas, saem } = plano;
   const entraram = novas.filter((e) => e.nova).map((e) => e.nome);
   const ficaram = novas.filter((e) => !e.nova);
@@ -573,7 +573,7 @@ export async function colarAssuntos(app: FastifyInstance, painelId: string, text
 //  OS CAMPOS DE CADA PAINEL (o pedido do Luan na prévia: o painel sem assuntos, com outros campos)
 // =====================================================================
 
-const campoParaAuditoria = (c: CampoPersonalizado) => ({ nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.opcoes, ativo: c.ativo });
+const campoParaAuditoria = (c: CampoPersonalizado) => ({ nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.opcoes, ativo: c.ativo, incluirNaHora: c.incluirNaHora });
 
 /**
  * Liga e desliga os campos do sistema no painel (o Assunto, o Tipo, a Gravidade, o Alcance, os
@@ -680,7 +680,7 @@ export async function criarCampo(app: FastifyInstance, painelId: string, d: Camp
   let pedido: string[] = [];
   await db.transaction(async (tx) => {
     await tx.insert(ticketFields).values({
-      id, panelId: painelId, name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo,
+      id, panelId: painelId, name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: d.tipo === 'lista' && d.incluirNaHora,
       sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1,
     });
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
@@ -704,7 +704,7 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
   const opcoes = conferirCampo(p, await carregarCampos(db, p.id), d, antes);
   let pedido: string[] = [];
   await db.transaction(async (tx) => {
-    await tx.update(ticketFields).set({ name: d.nome, help: d.dica, options: opcoes, active: d.ativo, updatedAt: new Date() }).where(eq(ticketFields.id, id));
+    await tx.update(ticketFields).set({ name: d.nome, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date() }).where(eq(ticketFields.id, id));
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
   const [nova] = await db.select().from(ticketFields).where(eq(ticketFields.id, id)).limit(1);
@@ -715,6 +715,35 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
     resumo: `${como} o campo ${c.nome} no painel ${p.name}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}`,
     antes: campoParaAuditoria(antes), depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
   };
+}
+
+/**
+ * Incluir uma opção numa lista do painel ali mesmo, no Abrir chamado e na ficha (2.0.3, a Indicação do Comercial:
+ * "a indicação tem q ser predefinido e eu tenho que conseguir criar por aqui mesmo se quiser"): quem trabalha no
+ * painel, só nas listas marcadas para isso. A opção que já existe (sem ligar para maiúscula e acento) volta, e a
+ * desativada é reativada — não se cria outra igual. Sem `podeVer`, é o próprio Gestor quem inclui (a opção
+ * escrita que chega pela API, pelo n8n ou pelo robô).
+ */
+export async function incluirOpcao(db: Db, campoId: string, nome: string, podeVer: (painelId: string) => boolean = () => true): Promise<Gravado<OpcaoDoCampo>> {
+  return db.transaction(async (tx) => {
+    // a linha do campo fica travada: duas pessoas incluindo ao mesmo tempo não perdem uma a opção da outra
+    const [linha] = await tx.select().from(ticketFields).where(eq(ticketFields.id, campoId)).for('update').limit(1);
+    if (!linha || !podeVer(linha.panelId)) throw new NotFound('Campo');
+    const c = campoDaLinha(linha);
+    if (!c.ativo) throw new BadRequest(`O campo ${c.nome} está desativado.`);
+    if (!c.incluirNaHora) throw new BadRequest(`As opções de ${c.nome} se mudam em Painéis › Ajustes › Campos.`);
+    const igual = c.opcoes.find((o) => paraBusca(o.nome) === paraBusca(nome));
+    if (igual?.ativa) return { valor: igual, resumo: `Escolheu ${igual.nome} em ${c.nome} (já existia)` };
+    if (!igual && c.opcoes.length >= MAX_OPCOES_DO_CAMPO) throw new BadRequest(`${c.nome} já tem ${MAX_OPCOES_DO_CAMPO} opções: desative as que não servem em Painéis › Ajustes › Campos.`);
+    const nova: OpcaoDoCampo = igual ? { ...igual, ativa: true } : { id: newId(), nome, ativa: true };
+    const opcoes = igual ? c.opcoes.map((o) => (o.id === igual.id ? nova : o)) : [...c.opcoes, nova];
+    await tx.update(ticketFields).set({ options: opcoes, updatedAt: new Date() }).where(eq(ticketFields.id, campoId));
+    return {
+      valor: nova,
+      resumo: `${igual ? 'Reativou' : 'Incluiu'} a opção ${nova.nome} em ${c.nome}`,
+      depois: { campo: c.nome, opcao: nova.nome },
+    };
+  });
 }
 
 /** A ordem dos campos do painel (na ficha e no Abrir chamado): todos os ids, na ordem nova. */

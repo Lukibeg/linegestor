@@ -33,7 +33,7 @@ import type { SecretsVault } from './secrets.js';
 
 // ---------- o que a API do LineChat devolve (só o que usamos) ----------
 
-type CardApi = {
+export type CardApi = {
   id: string;
   panelId?: string;
   number?: number | null;
@@ -52,14 +52,23 @@ type CardApi = {
   responsibleUserId?: string | null;
   responsibleUser?: { id?: string; name?: string } | null;
   customFields?: Record<string, unknown> | null;
+  /** o painel de vendas (o Trazer do Helena, 2.0.3): o "Valor atribuído", a Conclusão e o motivo */
+  monetaryAmount?: number | null;
+  resultChangedAt?: string | null;
+  resultDescription?: string | null;
+  createdByUserId?: string | null;
 };
+/** Uma linha do histórico do card ("Item movido de A para B"), como a API v1 devolve com os Logs. */
+export type LogApi = { id: string; createdAt: string; text: string; userId?: string | null; isAPI?: boolean; isMigration?: boolean };
+/** O card da API v1, com o histórico (conferido no painel Ingline - Comercial em 21/10). */
+export type CardComHistoricoApi = CardApi & { logs?: LogApi[] | null; customFieldValues?: Record<string, unknown> | null };
 type PaginaApi<T> = { items: T[]; hasMorePages?: boolean; totalItems?: number; pageNumber?: number };
-type PainelApi = {
+export type PainelApi = {
   id: string; title: string; key?: string; type?: string; archived?: boolean;
   steps?: Array<{ id: string; title: string; position?: number; isInitial?: boolean; isFinal?: boolean; archived?: boolean }> | null;
   tags?: Array<{ id: string; name: string; bgColor?: string | null; archived?: boolean }> | null;
 };
-type CampoApi = { key: string; name?: string; type?: string; position?: number; options?: Array<{ name: string }> | null };
+export type CampoApi = { key: string; name?: string; type?: string; position?: number; options?: Array<{ name: string }> | null };
 
 /** Tudo que a API diz que existe num card (incluir menos que isso faz o card vir sem os campos). */
 const DETALHES = ['CustomFields', 'StepTitle', 'StepPhase', 'ResponsibleUser'];
@@ -119,6 +128,30 @@ export class LineChatApi {
 
   campos(id: string) {
     return this.get<CampoApi[]>(`crm/v1/panel/${encodeURIComponent(id)}/custom-fields`);
+  }
+
+  /**
+   * Um card com o histórico (a API v1, com os Logs): o Trazer do Helena (2.0.3). Os detalhes vão numa
+   * linha só, separados por vírgula — o jeito que o próprio Helena pede (conferido em 21/10).
+   */
+  card(id: string) {
+    return this.get<CardComHistoricoApi>(`crm/v1/panel/card/${encodeURIComponent(id)}`, { IncludeDetails: 'Logs,Key,ResultDescription,Step' });
+  }
+
+  /**
+   * Quem é quem na conta (o id → o nome), para dizer quem fez cada linha do histórico. Nem toda chave pode
+   * ler a lista: sem ela, fica o que os cards dizem (o responsável e quem criou).
+   */
+  async usuarios(): Promise<Array<{ id: string; nome: string }>> {
+    const r = await this.get<unknown>('core/v1/agent', { PageSize: POR_PAGINA });
+    const itens = Array.isArray(r) ? r : r && typeof r === 'object' && Array.isArray((r as { items?: unknown }).items) ? (r as { items: unknown[] }).items : [];
+    return itens.flatMap((x) => {
+      if (!x || typeof x !== 'object') return [];
+      const o = x as Record<string, unknown>;
+      const id = typeof o.id === 'string' ? o.id : typeof o.userId === 'string' ? o.userId : null;
+      const nome = typeof o.name === 'string' ? o.name : typeof o.nome === 'string' ? o.nome : null;
+      return id && nome ? [{ id, nome }] : [];
+    });
   }
 
   /** Lê cards página a página até acabar. `desde` = só os alterados depois dessa hora. */

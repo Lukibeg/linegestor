@@ -7,7 +7,8 @@ import { describe, expect, it } from 'vitest';
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, ajustesDoSimulador, cenarioNovo, contasDoCenario,
   comPrecoPorProduto, custoPorFaixas, dividirEmParcelas, duplicarCenario, linhaDaTabela, linhasDoModelo, mudancasDaSimulacao, mudancasDosAjustes, normalizarPorProduto,
-  pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOQueSaiu,
+  TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, tiposParaEscolher, pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOQueSaiu,
+  LINECHAT_DO_SIMULADOR, ehLinhaDoLineChat, linhasParaOLineChat, linhasSemOLineChat, mudarQuantidadeDoLineChat, quadroDoLineChat, textoDosInclusos,
   sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, margemDasGanhas, textoDoValorUnitario, lerPercentual, textoDoPercentual,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario,
 } from './simulador.js';
@@ -152,7 +153,8 @@ describe('a conta do cenário', () => {
       faturamento: 149_000,
       sai: [
         { rotulo: 'Telefone IP', valor: 390_000 }, { rotulo: 'Headset USB', valor: 72_000 }, { rotulo: 'Instalação', valor: 36_000 },
-        { rotulo: 'Custos mensais', valor: 31_500 }, { rotulo: 'Imposto', valor: 8_940 }, { rotulo: 'Comissão do vendedor', valor: 5_000 }, { rotulo: 'Comissão recorrente', valor: 1_980 },
+        // cada custo por mês pelo nome, sem agrupar (2.0.3: "eu quero q ele sempre coloque detalhado todos os custos")
+        { rotulo: 'Nuvem do PABX', valor: 9_000 }, { rotulo: 'Números', valor: 4_500 }, { rotulo: 'Suporte', valor: 18_000 }, { rotulo: 'Imposto', valor: 8_940 }, { rotulo: 'Comissão do vendedor', valor: 5_000 }, { rotulo: 'Comissão recorrente', valor: 1_980 },
       ],
       custos: 545_420,
       lucro: 149_000 - 545_420,
@@ -174,7 +176,21 @@ describe('a conta do cenário', () => {
     expect(kp.meses[0]!.entra).toEqual([{ rotulo: 'Mensalidade', valor: 99_000 }, { rotulo: 'Ativação', valor: 150_000 }, { rotulo: 'Aparelhos vendidos', valor: 120_000 }]);
     expect(kp.meses[0]!.sai.slice(0, 3)).toEqual([{ rotulo: 'Telefone IP (parcela 1 de 10)', valor: 39_000 }, { rotulo: 'Headset USB', valor: 72_000 }, { rotulo: 'Instalação', valor: 36_000 }]);
     expect(kp.meses[9]!.sai[0]).toEqual({ rotulo: 'Telefone IP (parcela 10 de 10)', valor: 39_000 });
-    expect(kp.meses[10]!.sai.map((x) => x.rotulo)).toEqual(['Custos mensais', 'Imposto', 'Comissão recorrente']);
+    expect(kp.meses[10]!.sai.map((x) => x.rotulo)).toEqual(['Nuvem do PABX', 'Números', 'Suporte', 'Imposto', 'Comissão recorrente']);
+    // o custo do mês, parte a parte: cada custo por mês, o imposto e a comissão recorrente, somando o custo do mês
+    expect(k.partesDoCustoMensal).toEqual([
+      { rotulo: 'Nuvem do PABX', valor: 9_000 }, { rotulo: 'Números', valor: 4_500 }, { rotulo: 'Suporte', valor: 18_000 },
+      { rotulo: 'Imposto', valor: 5_940 }, { rotulo: 'Comissão recorrente', valor: 1_980 },
+    ]);
+    expect(k.partesDoCustoMensal.reduce((s, p) => s + p.valor, 0)).toBe(k.custoMensal);
+  });
+
+  it('o "Uma vez" não é mais oferecido (2.0.3); a linha gravada assim continua valendo e mostra o tipo dela', () => {
+    expect(TIPOS_DO_GRUPO.fixo).toEqual(['aparelho', 'pct_ativacao']);
+    expect(TIPO_NOVO_DO_GRUPO.fixo).toBe('aparelho');
+    expect(tiposParaEscolher('fixo', 'aparelho')).toEqual(['aparelho', 'pct_ativacao']);
+    expect(tiposParaEscolher('fixo', 'unica')).toEqual(['aparelho', 'pct_ativacao', 'unica']);
+    expect(contasDoCenario(exemplo(), FAIXAS).totalInvestido).toBeGreaterThan(0);
   });
 
   it('repartir: as partes arredondadas somam o total (o centavo vai para quem mais perdeu no arredondamento)', () => {
@@ -467,9 +483,10 @@ describe('o custo por faixas e a tabela da Helena (20/10)', () => {
     const k = contasDoCenario(c, a);
     expect(k.custoMensalFixo).toBe(53_920);
     expect(k.faltam).toEqual([]);
-    expect(k.linhas.map((l) => l.custo)).toEqual([14_990, 3_980, 0, 34_950, 0, 0, 0]);
-    // com 8.000 contatos ativos: 3.000 × R$ 0,045 = R$ 135,00 a mais
-    c.linhas = c.linhas.map((l) => (l.custoId === 'helena-contatos' ? { ...l, qtd: 8_000 } : l));
+    // o modelo (21/10): a licença, os usuários, os canais oficiais, os não oficiais (a Z-API) e os agentes de IA
+    expect(k.linhas.map((l) => l.custo)).toEqual([14_990, 3_980, 0, 34_950, 0]);
+    // com 8.000 contatos ativos (o custo da tabela, fora do modelo desde 21/10): 3.000 × R$ 0,045 = R$ 135,00 a mais
+    c.linhas = [...c.linhas, linhaDaTabela(a.custos.find((x) => x.id === 'helena-contatos')!, { qtd: 8_000 })];
     expect(contasDoCenario(c, a).custoMensalFixo).toBe(53_920 + 13_500);
     // a linha que entra da tabela leva as faixas e a unidade
     expect(c.linhas.find((l) => l.custoId === 'helena-usuarios')).toMatchObject({ faixas: usuarios, unidade: 'usuário', valor: null });
@@ -530,5 +547,95 @@ describe('a margem das ganhas (o relatório do Comercial)', () => {
     // sem o "por vendedor" (o Luan, 21/10: "não precisa por vendedor")
     expect('porVendedor' in m).toBe(false);
     expect(m.porProduto.map((g) => [g.nome, g.qtd])).toEqual([['LinePBX', 2], ['VoiceNet', 1], ['LineChat', 1]]);
+  });
+});
+
+describe('o LineChat simples: as quatro quantidades e o total (21/10)', () => {
+  const a = AJUSTES_DO_SIMULADOR_PADRAO;
+  const qtd = (c: CenarioDaSimulacao, q: Record<string, number>) => ({ ...c, linhas: c.linhas.map((l) => (l.custoId && q[l.custoId] !== undefined ? { ...l, qtd: q[l.custoId]! } : l)) });
+
+  it('o quadro: a licença entra sozinha, cada quantidade com o custo dela e o total como na planilha (R$ 539,20)', () => {
+    const c = qtd({ ...cenarioNovo(a, { modelo: MODELO_DA_HELENA }), mensalidade: 99_000 }, { 'helena-usuarios': 5, 'helena-zapi': 5 });
+    const k = contasDoCenario(c, a);
+    const q = quadroDoLineChat(c, k, a)!;
+    expect(q.licenca?.custo).toBe(14_990);
+    expect(q.campos.map((x) => [x.rotulo, x.qtd, x.custo, x.incluso])).toEqual([
+      ['Usuários', 5, 3_980, false], ['Canais oficiais', 1, 0, true], ['Canais não oficiais', 5, 34_950, false], ['Agentes de IA', 0, 0, false],
+    ]);
+    expect(q.total).toBe(53_920);
+    // o total do quadro é o que ele soma nos custos mensais
+    expect(q.total).toBe(k.custoMensalFixo);
+    expect(q.linhas).toHaveLength(5);
+    expect(q.outros).toEqual([]);
+  });
+
+  it('sem o produto LineChat, não há quadro; os outros da Helena só aparecem quando custam algo', () => {
+    const c = cenarioNovo(a, { modelo: MODELO_DA_HELENA });
+    expect(quadroDoLineChat({ ...c, produtos: [] }, contasDoCenario(c, a))).toBeNull();
+    // a simulação de antes de 21/10: os contatos (5.000, inclusos) e a transcrição (nenhuma) não aparecem…
+    const contatos = linhaDaTabela(a.custos.find((x) => x.id === 'helena-contatos')!, { qtd: 5_000 });
+    const transcricao = linhaDaTabela(a.custos.find((x) => x.id === 'helena-transcricao')!, { qtd: 0 });
+    const antes = { ...c, linhas: [...c.linhas, contatos, transcricao] };
+    let q = quadroDoLineChat(antes, contasDoCenario(antes, a))!;
+    expect(q.outros).toEqual([]);
+    expect(q.linhas).toHaveLength(7);
+    // …e com 8.000 contatos, sim (R$ 135,00), somando no total
+    const mais = { ...antes, linhas: antes.linhas.map((l) => (l.id === contatos.id ? { ...l, qtd: 8_000 } : l)) };
+    q = quadroDoLineChat(mais, contasDoCenario(mais, a))!;
+    expect(q.outros.map((x) => [x.qtd, x.custo])).toEqual([[8_000, 13_500]]);
+    expect(q.total).toBe(14_990 + 13_500);
+  });
+
+  it('a quantidade que ainda não tem linha; o custo que saiu da tabela', () => {
+    const c = { ...cenarioNovo(a, {}), produtos: ['linechat'] };
+    const q = quadroDoLineChat(c, contasDoCenario(c, a), a)!;
+    expect(q.licenca).toBeNull();
+    expect(q.campos.every((x) => x.linhaId === null && !x.foraDaTabela)).toBe(true);
+    const semAgentes = { ...a, custos: a.custos.filter((x) => x.id !== 'helena-agentes') };
+    expect(quadroDoLineChat(c, contasDoCenario(c, a), semAgentes)!.campos.find((x) => x.custoId === 'helena-agentes')!.foraDaTabela).toBe(true);
+  });
+
+  it('pôr o LineChat põe as linhas do modelo dele (sem repetir); tirar tira as do quadro', () => {
+    const vazio = cenarioNovo(a, {});
+    const linhas = linhasParaOLineChat(a, vazio);
+    expect(linhas.map((l) => [l.custoId, l.qtd, l.produto])).toEqual([
+      ['helena-licenca', 1, 'linechat'], ['helena-usuarios', 3, 'linechat'], ['helena-canais', 1, 'linechat'], ['helena-zapi', 0, 'linechat'], ['helena-agentes', 0, 'linechat'],
+    ]);
+    // já com o LineChat: nada repete
+    expect(linhasParaOLineChat(a, { linhas })).toEqual([]);
+    // o modelo do LineChat dos Ajustes manda (com a instalação e a comissão); a comissão que já está não repete
+    const inst = custo({ id: 'inst', nome: 'Instalação', tipo: 'unica', valor: 30_000 });
+    const com = custo({ id: 'com', nome: 'Comissão', tipo: 'pct_ativacao', valor: 10 });
+    const ajustes: AjustesDoSimulador = { ...a, custos: [...a.custos, inst, com], modelos: [{ ...MODELO_DA_HELENA, linhas: [...MODELO_DA_HELENA.linhas, { custoId: 'inst', qtd: 1 }, { custoId: 'com', qtd: 1 }] }] };
+    const jaTem = [linhaDaTabela(inst), linhaDaTabela(com)];
+    expect(linhasParaOLineChat(ajustes, { linhas: jaTem }).map((l) => l.custoId)).toEqual(['helena-licenca', 'helena-usuarios', 'helena-canais', 'helena-zapi', 'helena-agentes', 'inst']);
+    // tirar: só as do quadro saem
+    expect(linhasSemOLineChat({ linhas: [...linhas, ...jaTem] }).map((l) => l.custoId)).toEqual(['inst', 'com']);
+    expect(LINECHAT_DO_SIMULADOR.campos.every((x) => ehLinhaDoLineChat({ custoId: x.custoId }))).toBe(true);
+    expect(ehLinhaDoLineChat({ custoId: null })).toBe(false);
+  });
+});
+
+describe('o LineChat simples: mudar as quantidades (21/10)', () => {
+  const a = AJUSTES_DO_SIMULADOR_PADRAO;
+  it('a quantidade muda na linha; a repetida sai; sem linha, entra da tabela com a licença', () => {
+    const c = cenarioNovo(a, { modelo: MODELO_DA_HELENA });
+    const usuarios = c.linhas.find((l) => l.custoId === 'helena-usuarios')!;
+    let linhas = mudarQuantidadeDoLineChat(c, a, 'helena-usuarios', 12);
+    expect(linhas.find((l) => l.id === usuarios.id)!.qtd).toBe(12);
+    expect(linhas).toHaveLength(c.linhas.length);
+    // posta duas vezes da tabela: fica uma, com a quantidade
+    const dupla = { ...c, linhas: [...c.linhas, linhaDaTabela(a.custos.find((x) => x.id === 'helena-usuarios')!, { qtd: 4 })] };
+    linhas = mudarQuantidadeDoLineChat(dupla, a, 'helena-usuarios', 7);
+    expect(linhas.filter((l) => l.custoId === 'helena-usuarios').map((l) => l.qtd)).toEqual([7]);
+    // o cenário sem as linhas: entra a do custo e a licença, com o produto LineChat
+    const vazio = { ...cenarioNovo(a, {}), produtos: ['linechat'] };
+    linhas = mudarQuantidadeDoLineChat(vazio, a, 'helena-agentes', 2);
+    expect(linhas.map((l) => [l.custoId, l.qtd, l.produto])).toEqual([['helena-licenca', 1, 'linechat'], ['helena-agentes', 2, 'linechat']]);
+    // zero sem linha: nada muda
+    expect(mudarQuantidadeDoLineChat(vazio, a, 'helena-agentes', 0)).toBe(vazio.linhas);
+    // o que vem na licença, numa frase
+    const q = quadroDoLineChat(c, contasDoCenario(c, a), a)!;
+    expect(textoDosInclusos(q)).toBe('3 usuários e 1 canal oficial');
   });
 });

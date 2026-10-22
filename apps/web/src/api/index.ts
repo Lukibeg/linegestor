@@ -5,6 +5,7 @@
 import type * as T from './types.js';
 import type {
   AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
+  LeituraDoHelenaNaTela, OpcoesDoTrazerDoHelena, PreviaDoHelena, ResultadoDoTrazerDoHelena,
   Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
 } from '@gestor/shared';
 import { API_BASE } from './base.js';
@@ -347,11 +348,13 @@ export type Api = {
     salvarCampo(painelId: string, id: string | null, d: T.CampoGravarEntrada): Promise<T.CampoPersonalizado>;
     /** a ordem dos campos do painel (todos os ids) */
     ordenarCampos(painelId: string, ids: string[]): Promise<T.CampoPersonalizado[]>;
-    /** as etiquetas com a cor (Ajustes › Etiquetas): criar, editar (o nome e a cor) e tirar a que nenhum chamado usa */
+    /** incluir uma opção numa lista do painel ali mesmo (2.0.3, só nas listas que incluem na hora: a Indicação) */
+    incluirOpcaoDoCampo(campoId: string, d: T.OpcaoIncluirEntrada): Promise<T.OpcaoDoCampo>;
+    /** as etiquetas de cada painel, com a cor (Ajustes › Etiquetas): criar, editar (o nome e a cor) e tirar a que nenhum chamado do painel usa */
     etiquetas(): Promise<T.EtiquetaDoCatalogo[]>;
     criarEtiqueta(d: T.EtiquetaGravarEntrada): Promise<T.EtiquetaDoCatalogo>;
     editarEtiqueta(id: string, d: T.EtiquetaEditarEntrada): Promise<T.EtiquetaDoCatalogo>;
-    /** o seletor de etiquetas edita pelo nome de agora (`de`): as opções da tela não levam o id */
+    /** o seletor de etiquetas edita pelo painel e o nome de agora (`de`): as opções da tela não levam o id */
     editarEtiquetaPeloNome(d: T.EtiquetaEditarPeloNomeEntrada): Promise<T.EtiquetaDoCatalogo>;
     removerEtiqueta(id: string): Promise<{ ok: true }>;
     ajustesPrazos(): Promise<T.AjustesPrazos>;
@@ -432,6 +435,21 @@ export type Api = {
     planilha(id: string): Promise<{ bytes: Uint8Array; nome: string }>;
     /** só quem cuida dos painéis; as simulações já feitas não mudam */
     salvarAjustes(a: AjustesDoSimuladorEntrada): Promise<AjustesDoSimulador>;
+  };
+  /**
+   * Trazer do Helena (Patch 2.0.3, decisão 0054): o painel de vendas do Helena, com o histórico, num painel de
+   * Vendas do Gestor. Só quem importa e cuida dos painéis.
+   */
+  helena: {
+    /** os painéis do Helena (pela chave do LineChat) e os painéis de Vendas do Gestor que podem receber */
+    opcoes(): Promise<OpcoesDoTrazerDoHelena>;
+    /** começa a ler (os cards e o histórico de cada um): roda por fora, e a tela acompanha */
+    ler(painelId: string): Promise<LeituraDoHelenaNaTela>;
+    leitura(id: string): Promise<LeituraDoHelenaNaTela>;
+    /** o que vai acontecer (`destino` nulo = um painel de Vendas novo): nada é gravado */
+    previa(id: string, destino: string | null): Promise<PreviaDoHelena>;
+    /** grava o que a prévia mostrou; de novo, atualiza o que já veio */
+    trazer(id: string, destino: string | null): Promise<ResultadoDoTrazerDoHelena>;
   };
   admin: {
     users(): Promise<T.User[]>;

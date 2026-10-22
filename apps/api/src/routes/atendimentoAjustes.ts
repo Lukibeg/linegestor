@@ -126,20 +126,20 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   });
 
   // =====================================================================
-  //  AS ETIQUETAS (com a cor; as mesmas em todos os painéis)
+  //  AS ETIQUETAS (com a cor; cada painel tem as suas, desde o 2.0.3)
   // =====================================================================
 
-  app.get('/etiquetas', { ...cuidar, schema: { tags, summary: 'As etiquetas, com a cor e em quantos chamados cada uma está (Ajustes › Etiquetas)' } },
+  app.get('/etiquetas', { ...cuidar, schema: { tags, summary: 'As etiquetas de todos os painéis, com o painel, a cor e em quantos chamados dele cada uma está (Ajustes › Etiquetas)' } },
     async () => etiquetas.listarEtiquetas(app.db));
 
-  app.post('/etiquetas', { ...cuidar, schema: { tags, summary: 'Criar uma etiqueta com a cor (o nome não se repete, sem ligar para maiúscula e acento)', body: EtiquetaGravarSchema } },
+  app.post('/etiquetas', { ...cuidar, schema: { tags, summary: 'Criar uma etiqueta num painel, com a cor (o nome não se repete no painel, sem ligar para maiúscula e acento)', body: EtiquetaGravarSchema } },
     async (req, reply) => {
       const r = await etiquetas.criarEtiqueta(app.db, req.body, req.user!.id);
       await app.audit(req, { action: 'create', entityType: 'ticket_tag', entityId: r.valor.id, summary: r.resumo, after: r.depois });
       return reply.status(201).send(r.valor);
     });
 
-  app.put('/etiquetas/:id', { ...cuidar, schema: { tags, summary: 'Editar uma etiqueta: o nome e a cor (valem em todos os chamados que a têm)', params: Id, body: EtiquetaEditarSchema } },
+  app.put('/etiquetas/:id', { ...cuidar, schema: { tags, summary: 'Editar uma etiqueta: o nome e a cor (valem nos chamados do painel que a têm)', params: Id, body: EtiquetaEditarSchema } },
     async (req) => {
       const r = await etiquetas.editarEtiqueta(app.db, { id: req.params.id }, req.body, req.user!.id);
       await app.audit(req, { action: 'update', entityType: 'ticket_tag', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
@@ -147,10 +147,10 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     });
 
   // o seletor de etiquetas (no Abrir chamado e na ficha) edita pelo nome: as opções da tela não levam o id
-  app.put('/etiquetas', { ...cuidar, schema: { tags, summary: 'Editar uma etiqueta pelo nome de agora (`de`): o nome e a cor', body: EtiquetaEditarPeloNomeSchema } },
+  app.put('/etiquetas', { ...cuidar, schema: { tags, summary: 'Editar uma etiqueta pelo painel e o nome de agora (`de`): o nome e a cor', body: EtiquetaEditarPeloNomeSchema } },
     async (req) => {
-      const { de, ...d } = req.body;
-      const r = await etiquetas.editarEtiqueta(app.db, { nome: de }, d, req.user!.id);
+      const { de, painelId, ...d } = req.body;
+      const r = await etiquetas.editarEtiqueta(app.db, { painelId, nome: de }, d, req.user!.id);
       await app.audit(req, { action: 'update', entityType: 'ticket_tag', entityId: r.valor.id, summary: r.resumo, before: r.antes, after: r.depois });
       return r.valor;
     });

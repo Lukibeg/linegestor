@@ -821,7 +821,7 @@ function ChamadoDaPrevia({ previa }: { previa: PreviaDoRobo }) {
         <Item rotulo="Contato">{contato || '—'}</Item>
         <Item rotulo="Cliente">{c.cliente ? c.cliente.nome : <span className="text-muted">{c.telefone ? 'pelo WhatsApp, se o Gestor já conhecer o número' : '—'}</span>}</Item>
         {c.assunto && <Item rotulo="Assunto">{c.assunto.caminho}</Item>}
-        {c.etiquetas.length > 0 && <Item rotulo="Etiquetas"><Etiquetas lista={c.etiquetas} /></Item>}
+        {c.etiquetas.length > 0 && <Item rotulo="Etiquetas"><Etiquetas lista={c.etiquetas} painelId={c.painel.id} /></Item>}
         {c.campos.map((x) => <Item key={x.id} rotulo={x.nome}>{x.texto}</Item>)}
         <Item rotulo="Conversa">{c.sessaoId ? <span className="font-mono text-[12px] break-all">{c.sessaoId}</span> : '—'}</Item>
         {c.relato && <Item rotulo="Relato"><span className="whitespace-pre-wrap line-clamp-4">{c.relato}</span></Item>}

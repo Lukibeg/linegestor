@@ -6,7 +6,7 @@ import {
 import {
   AJUSTES_PAINEL_PADRAO, CampoGravarSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ETAPAS_DO_PAINEL_NOVO, EtapasGravarSchema, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL,
   PainelGravarSchema, acharCampo, ajustesDoPainelCompletos, chaveDoCampo, faltaParaAbrir, limparObrigatorios, normalizarValorDoCampo, obrigatoriosDoPainel,
-  prioridadeSugeridaDoPainel, textoDoValor, textosDosCampos,
+  prioridadeSugeridaDoPainel, textoDoValor, textosDosCampos, etiquetasDoPainel, OpcaoIncluirSchema, CAMPOS_DO_PAINEL_DE_VENDAS, tituloQueFica, mensagemDoTitulo, MENSAGEM_DO_TITULO,
   valoresVisiveis, type CampoPersonalizado,
   caminhoDoAssunto, csvDosChamados, emOrdemDeArvore, etapaAoAssumir, etapaDeEntrada, faltaParaEtapa, filhosQueTravam, filtrarCartoes, grafoDeLigacoes,
   lerCodigo, lerListaDeAssuntos, lerMensagemDoLineChat, lerSugestaoDaIa, mensagemDoQueFalta, movimentoDeNivel, ordenarCartoes,
@@ -217,7 +217,7 @@ describe('as etapas', () => {
 
 describe('os campos de cada painel', () => {
   const lista: CampoPersonalizado = {
-    id: 'sis', painelId: 'dev', nome: 'Sistema', tipo: 'lista', dica: null, ativo: true, ordem: 0,
+    id: 'sis', painelId: 'dev', nome: 'Sistema', tipo: 'lista', dica: null, ativo: true, ordem: 0, incluirNaHora: false,
     opcoes: [{ id: 'o1', nome: 'LinePBX', ativa: true }, { id: 'o2', nome: 'LineChat', ativa: true }, { id: 'o3', nome: 'Fortics', ativa: false }],
   };
   const varios: CampoPersonalizado = { ...lista, id: 'mods', nome: 'Módulos', tipo: 'lista_varios' };
@@ -515,7 +515,9 @@ describe('as etiquetas com cor (2.0, o pedido do Luan na prévia)', () => {
     expect(renomearEtiqueta(['VIP'], 'vip', 'VIP')).toBeNull();
     expect(renomearEtiqueta(['Peça'], 'vip', 'VIP')).toBeNull();
     // o pedido de editar pelo nome: o nome novo é opcional (sem ele, troca só a cor)
-    expect(EtiquetaEditarPeloNomeSchema.parse({ de: ' Cliente   VIP ', cor: 'bad' })).toEqual({ de: 'Cliente VIP', cor: 'bad' });
+    // (desde o 2.0.3, com o painel: o mesmo nome pode estar em dois painéis)
+    expect(EtiquetaEditarPeloNomeSchema.parse({ painelId: 'p-sup', de: ' Cliente   VIP ', cor: 'bad' })).toEqual({ painelId: 'p-sup', de: 'Cliente VIP', cor: 'bad' });
+    expect(EtiquetaEditarPeloNomeSchema.safeParse({ de: 'Cliente VIP', cor: 'bad' }).success).toBe(false);
   });
 
   it('o pedido leva a cor das novas (só as cores que existem); o nome fica com um espaço só', () => {
@@ -610,5 +612,45 @@ describe('as citações nas anotações (@, o pedido do Luan na prévia)', () =>
     expect(citacaoDigitando('@Bruno Teixeira? Pode', 21)).toBeNull();
     expect(citacaoDigitando('oi @d\'avila', 11)).toEqual({ inicio: 3, busca: "d'avila" });
     expect(emLista(['Bruno', 'Marina', 'Lúcio'])).toBe('Bruno, Marina e Lúcio');
+  });
+});
+
+describe('o 2.0.3: as etiquetas de cada painel, a lista que inclui na hora e o título opcional da negociação', () => {
+  it('as etiquetas de um painel (o mesmo nome em dois painéis, cada um com a sua cor)', () => {
+    const lista = [
+      { painelId: 'sup', nome: 'Urgente', cor: 'bad' as const },
+      { painelId: 'dev', nome: 'urgente', cor: 'roxo' as const },
+      { painelId: 'sup', nome: 'VIP', cor: 'amarelo' as const },
+    ];
+    expect(etiquetasDoPainel(lista, 'sup').map((e) => e.nome)).toEqual(['Urgente', 'VIP']);
+    expect(corDaEtiqueta(etiquetasDoPainel(lista, 'dev'), 'URGENTE')).toBe('roxo');
+    expect(corDaEtiqueta(etiquetasDoPainel(lista, 'dev'), 'VIP')).toBe('neutral');
+  });
+
+  it('a lista que inclui na hora pode nascer sem opções; a lista comum, não', () => {
+    expect(CampoGravarSchema.safeParse({ nome: 'Indicação', tipo: 'lista', opcoes: [], incluirNaHora: true }).success).toBe(true);
+    expect(CampoGravarSchema.safeParse({ nome: 'Origem', tipo: 'lista', opcoes: [] }).success).toBe(false);
+    expect(CampoGravarSchema.parse({ nome: 'Sistema', tipo: 'texto' }).incluirNaHora).toBe(false);
+    expect(OpcaoIncluirSchema.parse({ nome: '  G5   Telecom ' })).toEqual({ nome: 'G5 Telecom' });
+    expect(OpcaoIncluirSchema.safeParse({ nome: '   ' }).success).toBe(false);
+    // a Indicação do painel de Vendas nasce assim
+    expect(CAMPOS_DO_PAINEL_DE_VENDAS.find((c) => c.nome === 'Indicação')).toMatchObject({ tipo: 'lista', opcoes: [], incluirNaHora: true });
+  });
+
+  it('o título: o chamado pede 3 letras; a negociação sem título fica com o nome da empresa', () => {
+    expect(tituloQueFica('  Ramal   mudo ', { vendas: false, empresa: null })).toBe('Ramal mudo');
+    expect(tituloQueFica('', { vendas: false, empresa: 'Clínica Aurora' })).toBeNull();
+    expect(mensagemDoTitulo('', false)).toBe(MENSAGEM_DO_TITULO.chamado);
+    expect(tituloQueFica('', { vendas: true, empresa: 'Hospital São Matheus' })).toBe('Hospital São Matheus');
+    expect(tituloQueFica('   ', { vendas: true, empresa: ' Padaria Estrela ' })).toBe('Padaria Estrela');
+    // escrito, vale o escrito; curto demais, não (nem na negociação)
+    expect(tituloQueFica('PABX com 40 ramais', { vendas: true, empresa: 'Padaria Estrela' })).toBe('PABX com 40 ramais');
+    expect(tituloQueFica('ab', { vendas: true, empresa: 'Padaria Estrela' })).toBeNull();
+    expect(mensagemDoTitulo('ab', true)).toBe(MENSAGEM_DO_TITULO.negociacao);
+    // sem título e sem empresa, não há o que pôr
+    expect(tituloQueFica('', { vendas: true, empresa: null })).toBeNull();
+    expect(mensagemDoTitulo('', true)).toBe(MENSAGEM_DO_TITULO.semEmpresa);
+    // o formato aceita o vazio (quem decide é o tipo do painel)
+    expect(ChamadoCriarSchema.parse({ painelId: 'p' }).titulo).toBe('');
   });
 });

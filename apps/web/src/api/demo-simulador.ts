@@ -14,9 +14,13 @@
  * um com o seu preço; os telefones comprados em 10 vezes; a ativação em 3 vezes), a Clínica Vida no amarelo
  * (sem negociação), as três ganhas do mês (a margem no relatório) e a contraproposta da Escola Mundo Kids no
  * vermelho (a negociação perdida).
+ *
+ * O LineChat (2.0.3): as simulações com o LineChat mostram o quadro das quatro quantidades nos Custos mensais. A
+ * Clínica Vida é o quadro limpo; o Hotel e a Academia são como as de antes de 21/10, com os contatos ativos acima
+ * de 5.000 (que aparecem no quadro porque custam algo).
  */
 import {
-  AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, cenarioNovo, cenarioPrincipal, mudancasDaSimulacao,
+  AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, cenarioNovo, cenarioPrincipal, linhaDaTabela, mudancasDaSimulacao,
   mudancasDosAjustes, planilhaDaSimulacao, resumoDoCenario,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario, type MargemDaNegociacao, type ModeloDeSimulacao, type NegociacaoDaSimulacao,
   type Simulacao, type SimulacaoGravar,
@@ -67,15 +71,14 @@ const CUSTOS_DO_PABX: CustoDaTabela[] = [
   { id: 'nuvem', nome: 'Nuvem do PABX', tipo: 'mensal', valor: 900, modalidade: null, faixas: null, unidade: 'ramal' },
   { id: 'did', nome: 'Número (DID) da operadora', tipo: 'mensal', valor: 1_500, modalidade: null, faixas: null, unidade: 'número' },
   { id: 'canal', nome: 'Canal de voz da operadora', tipo: 'mensal', valor: 2_500, modalidade: null, faixas: null, unidade: 'canal' },
-  { id: 'config', nome: 'Configuração e instalação', tipo: 'unica', valor: 36_000, modalidade: null, ...sem },
   { id: 'comissao', nome: 'Comissão do vendedor', tipo: 'pct_ativacao', valor: 10, modalidade: null, ...sem },
   { id: 'recorrente', nome: 'Comissão recorrente', tipo: 'pct_mensalidade', valor: 2, modalidade: null, ...sem },
 ];
 const l = (custoId: string, qtd = 1) => ({ custoId, qtd });
 const COMISSOES = [l('comissao'), l('recorrente')];
 const MODELOS_DE_EXEMPLO: ModeloDeSimulacao[] = [
-  { id: 'linepbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [l('t31p'), l('nuvem'), l('did', 2), l('canal', 2), l('config'), ...COMISSOES] },
-  { ...MODELO_DA_HELENA, linhas: [...MODELO_DA_HELENA.linhas, l('config'), ...COMISSOES] },
+  { id: 'linepbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [l('t31p'), l('nuvem'), l('did', 2), l('canal', 2), ...COMISSOES] },
+  { ...MODELO_DA_HELENA, linhas: [...MODELO_DA_HELENA.linhas, ...COMISSOES] },
   { id: 'voicenet', nome: 'VoiceNet (os canais de voz)', produto: 'voicenet', linhas: [l('canal', 10), l('did', 4), ...COMISSOES] },
 ];
 export const AJUSTES_DO_SIMULADOR_DEMO: AjustesDoSimulador = { ...AJUSTES_DO_SIMULADOR_PADRAO, custos: [...CUSTOS_DA_HELENA, ...CUSTOS_DO_PABX], modelos: MODELOS_DE_EXEMPLO };
@@ -159,6 +162,9 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
     const telefone = (valor: number, extra: Partial<LinhaDoCenario> = {}) => (x2: LinhaDoCenario) => (x2.custoId === 't31p' ? { ...x2, valor, ...extra } : x2);
     /** A quantidade de cada linha (pelo custo da tabela de onde veio). */
     const quantidade = (x2: LinhaDoCenario, q: Record<string, number>) => (x2.custoId && q[x2.custoId] !== undefined ? { ...x2, qtd: q[x2.custoId]! } : x2);
+    /** Os contatos ativos no mês (fora do modelo do LineChat desde 21/10): as simulações de antes os tinham. */
+    const comContatos = (c: CenarioDaSimulacao, qtd: number): CenarioDaSimulacao =>
+      ({ ...c, linhas: [...c.linhas, { ...linhaDaTabela(a.custos.find((y) => y.id === 'helena-contatos')!, { id: `${c.id}-contatos`, qtd }), produto: 'linechat' }] });
     const negociacao = (titulo: string) => x().chamados().find((t) => t.titulo === titulo && x().paineis().find((p) => p.id === t.painelId)?.tipo === 'vendas')?.id ?? null;
     const dias = (n: number, hora = 10) => { const d = new Date(agora()); d.setDate(d.getDate() - n); d.setHours(hora, 15, 0, 0); return d.toISOString(); };
     const nova = (r: Omit<SimulacaoRow, 'id' | 'deletedAt' | 'alteradoPorId' | 'alteradoEm'> & { alteradoEm?: string }) => {
@@ -185,11 +191,11 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       criadoPorId: pessoa('diego'), criadoEm: dias(12), alteradoEm: dias(4, 11),
       cenarios: [
         // os dois produtos, cada um com o seu preço (a proposta de cada um, numa negociação só): R$ 1.190 + R$ 500
-        cenario('a', 'Cenário A', ['linepbx', 'linechat-helena'], {
+        comContatos(cenario('a', 'Cenário A', ['linepbx', 'linechat-helena'], {
           mensalidade: 169_000, ativacao: 250_000, prazo: 36, parcelas: 3, produtos: ['linepbx', 'linechat'],
           porProduto: [{ produto: 'linepbx', mensalidade: 119_000, ativacao: 200_000 }, { produto: 'linechat', mensalidade: 50_000, ativacao: 50_000 }],
         },
-          (x2) => (x2.custoId === 't31p' ? { ...x2, qtd: 20, valor: 39_000, parcelas: 10 } : quantidade(x2, { nuvem: 30, 'helena-usuarios': 4, 'helena-canais': 2, 'helena-zapi': 1, 'helena-contatos': 8_000 }))),
+          (x2) => (x2.custoId === 't31p' ? { ...x2, qtd: 20, valor: 39_000, parcelas: 10 } : quantidade(x2, { nuvem: 30, 'helena-usuarios': 4, 'helena-canais': 2, 'helena-zapi': 1 }))), 8_000),
       ],
     });
     // a Clínica Vida: o LineChat, sem negociação ligada (a conta de antes de abrir o lead); no amarelo
@@ -197,7 +203,7 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       nome: 'Clínica Vida — LineChat, 5 atendentes', negociacaoId: null, principal: 'a',
       criadoPorId: pessoa('camila'), criadoEm: dias(6, 15),
       cenarios: [cenario('a', 'Cenário A', 'linechat-helena', { mensalidade: 49_000, ativacao: 0, prazo: 12 },
-        (x2) => (x2.custoId === 'config' ? null : quantidade(x2, { 'helena-usuarios': 5, 'helena-canais': 2, 'helena-zapi': 1 })))],
+        (x2) => quantidade(x2, { 'helena-usuarios': 5, 'helena-canais': 2, 'helena-zapi': 1 }))],
     });
     // as ganhas do mês (a margem no relatório do Comercial): a Ótica (Camila) e a Construtora (Camila) no verde, a
     // Academia (Diego, o LineChat com 12 usuários) no vermelho
@@ -209,8 +215,8 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
     nova({
       nome: 'Academia Movimento — LineChat, 12 atendentes', negociacaoId: negociacao('LineChat — 12 atendentes'), principal: 'a',
       criadoPorId: pessoa('diego'), criadoEm: dias(6, 14),
-      cenarios: [cenario('a', 'Cenário A', 'linechat-helena', { mensalidade: 99_000, ativacao: 90_000, prazo: 12 },
-        (x2) => quantidade(x2, { 'helena-usuarios': 12, 'helena-canais': 2, 'helena-zapi': 1, 'helena-contatos': 12_000 }))],
+      cenarios: [comContatos(cenario('a', 'Cenário A', 'linechat-helena', { mensalidade: 99_000, ativacao: 90_000, prazo: 12 },
+        (x2) => quantidade(x2, { 'helena-usuarios': 12, 'helena-canais': 2, 'helena-zapi': 1 })), 12_000)],
     });
     nova({
       nome: 'Construtora Horizonte — renovação da telefonia', negociacaoId: negociacao('Renovação do contrato de telefonia'), principal: 'a',

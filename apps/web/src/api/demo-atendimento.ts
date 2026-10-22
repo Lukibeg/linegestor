@@ -36,17 +36,19 @@ import {
   textoDoValor, textosDosCampos, valoresVisiveis,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
-  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, type ValoresDosProdutos,
+  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, type ValoresDosProdutos, tituloQueFica, mensagemDoTitulo, acharCampo, OpcaoIncluirSchema, MAX_OPCOES_DO_CAMPO,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca,
   preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNegociacoes, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
+  chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor,
+  type EstadoDoGestorParaHelena, type PainelDoGestorParaHelena, type PlanoDaImportacao,
   type NegociacaoParaRelatorio, type RelatorioDeVendas, type ResultadoDaVenda, type TipoDePainel, type MargemDaNegociacao, type FaixasDoSinal,
   type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
   type Assunto, type AvisosChamadosTela, type AvisosNaTela, type CadastroDoCliente, type CampoDoSistema, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista,
-  type Obrigatorio, type OpcaoDoCampo, type ValoresDosCampos, type CorEtiqueta, type EtiquetaComCor, type EtiquetaDoCatalogo,
+  type Obrigatorio, type OpcaoDoCampo, type ValoresDosCampos, type CorEtiqueta, type EtiquetaNoPainel, type EtiquetaDoCatalogo,
   type CasoOperadora, type ChamadoAlterar, type ChamadoCriar, type ChaveApiTela, type CorPainel, type DadosObrigatorios, type Espera, type EstadoPrazo,
   type EtapaPainel, type EventoAviso, type EventoChamado, type EventoWebhook, type FichaChamado, type FiltrosAtendimento, type Gravidade,
   type IntegracoesTela, type ItemChecklist, type MeuDia, type Nivel, type NoParaGrafo, type OpcoesAtendimento, type Origem, type Painel,
@@ -58,7 +60,7 @@ import { ApiError, type Page, type TrashItem } from './types.js';
 import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import { PROPOSTA_PDF_DEMO } from './proposta-demo-midia.js';
 import {
-  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, META_DO_COMERCIAL, NEGOCIACOES_DE_EXEMPLO, CORES_DAS_ETIQUETAS, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
+  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, META_DO_COMERCIAL, NEGOCIACOES_DE_EXEMPLO, CORES_DAS_ETIQUETAS, CORES_DAS_ETIQUETAS_DO_COMERCIAL, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, WHATSAPP_DA_EQUIPE,
   type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
@@ -148,6 +150,8 @@ type ChamadoRow = {
   /** a negociação: a ativação (paga uma vez, à parte da mensalidade), única ou por produto */
   ativacao: number | null;
   ativacoesDosProdutos: ValoresDosProdutos;
+  /** de onde veio (2.0.3): "helena:<id do card>" — o Trazer do Helena atualiza em vez de criar outra */
+  externalRef?: string | null;
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
 type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null; citados: string[] };
@@ -165,7 +169,8 @@ type AgendadoRow = {
   ultimoCodigo: string | null; criadoEm: string; deletedAt: string | null;
 };
 /** Uma etiqueta e a cor dela (o catálogo, como o `ticket_tags` do servidor). */
-type EtiquetaRow = { id: string; nome: string; chave: string; cor: CorEtiqueta; criadoPorId: string | null; criadoEm: string; atualizadoEm: string };
+/** Uma etiqueta do catálogo de um painel (desde o 2.0.3, cada painel tem as suas). */
+type EtiquetaRow = { id: string; painelId: string; nome: string; chave: string; cor: CorEtiqueta; criadoPorId: string | null; criadoEm: string; atualizadoEm: string };
 /** Um aviso do sininho: de um chamado ou (2.0.2) o lembrete de um evento do calendário (o evento vai junto: a prévia não tem a junção do banco). */
 type AvisoRow = {
   id: string; userId: string; chamadoId: string | null; evento?: { id: string; titulo: string; inicio: string } | null;
@@ -269,7 +274,26 @@ type Instancia = {
   lixeira: () => TrashItem[]; restaurarDaLixeira: (id: string) => { ok: boolean }; diagnostico: () => { erros: string[]; chamados: number };
   chamadosDoContato: (clienteId: string, whatsapp: string) => number;
   calendario: AcessoDoCalendarioDemo;
+  helena: AcessoDoHelenaDemo;
 };
+
+/**
+ * O que a prévia do Trazer do Helena (demo-helena.ts, 2.0.3) usa dos chamados: os painéis de Vendas que podem
+ * receber, o Gestor como está (para o plano, como o `estadoDoGestor` do servidor) e a gravação do plano.
+ */
+export type AcessoDoHelenaDemo = {
+  eu: () => Ator;
+  destinos: () => Array<{ id: string; nome: string; sigla: string; negociacoes: number }>;
+  estado: (destino: string | null, siglaDoHelena: string | null, hoje: string) => EstadoDoGestorParaHelena;
+  /** o painel de Vendas novo (os ajustes e os campos de fábrica; as etapas vêm do plano) */
+  criarPainel: (nomeDoHelena: string, siglaDoHelena: string | null) => string;
+  gravar: (ator: Ator, painelId: string, plano: PlanoDaImportacao, agora: Date) => { nome: string; sigla: string };
+};
+/** O Trazer do Helena da prévia lê e grava os chamados por aqui. */
+export function acessoDoHelenaDemo(): AcessoDoHelenaDemo {
+  if (!instancia) throw naoAchado('Painel');
+  return instancia.helena;
+}
 
 /**
  * O que o calendário da prévia (demo-calendario.ts, 2.0.1) usa dos chamados: os painéis e quem vê cada
@@ -795,6 +819,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const alcance = usa('alcance') ? d.alcance ?? null : null;
     const checklist = [...(assunto?.checklist ?? []).map((x) => itemNovo(x, true)), ...(opts.checklistExtra ?? []).map((x) => itemNovo(x, false))];
     const campos: ValoresDosCampos = {};
+    incluirOpcoesEscritas(painel, d.campos ?? {});
     for (const i of lerCampos(painel, d.campos ?? {})) if (i.valor !== null) campos[i.campo.id] = i.valor;
     // a negociação (só no painel de Vendas): o valor e a empresa que ainda não é cliente; sem prioridade
     const vendas = painel.tipo === 'vendas';
@@ -817,6 +842,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const ativacao = contaAtivacao?.ok ? contaAtivacao.valor : null;
     const ativacoesDosProdutos = contaAtivacao?.ok ? contaAtivacao.valores : {};
     const empresa = vendas && !clienteId ? d.empresa ?? null : null;
+    // o título: o chamado pede pelo menos 3 letras; a negociação sem título fica com o nome da empresa (2.0.3)
+    const titulo = tituloQueFica(d.titulo ?? '', { vendas, empresa: vendas ? (clienteId ? nomeCliente(clienteId) : empresa) : null });
+    if (!titulo) throw bad(mensagemDoTitulo(d.titulo ?? '', vendas));
 
     const dados: DadosObrigatorios = {
       tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
@@ -860,10 +888,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const codigo = codigoDoChamado(painel.sigla, numero);
     const id = novoId();
     const t: ChamadoRow = {
-      id, painelId: painel.id, etapaId: etapa.id, numero, codigo, tipoChamado, titulo: d.titulo,
+      id, painelId: painel.id, etapaId: etapa.id, numero, codigo, tipoChamado, titulo,
       relato: dados.relato, descricao: dados.descricao, clienteId, contatoNome, contatoTelefone: telefone, sessaoId: d.sessaoId ?? null, origem,
       responsavelId: d.responsavelId ?? null, assuntoId: assunto?.id ?? null, tipo, gravidade, alcance,
-      prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasDoCatalogo(d.etiquetas ?? [], d.coresDasEtiquetas ?? {}, pessoa, agora),
+      prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasDoCatalogo(painel.id, d.etiquetas ?? [], d.coresDasEtiquetas ?? {}, pessoa, agora),
       paiId: pai?.id ?? null, problemaId: problema?.id ?? null, checklist, campos,
       solucao: null, causa: null, contorno: null, validacao: null, esperas: [], observadores,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
@@ -894,7 +922,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     aprenderTelefone(telefone, clienteId, contatoNome);
 
-    const chamado = { id, codigo, titulo: d.titulo };
+    const chamado = { id, codigo, titulo };
     if (d.responsavelId) avisarEquipe({ evento: 'recebeu', para: [d.responsavelId], chamado, texto: `Você recebeu o chamado ${codigo}`, menos: pessoa }, agora);
     if (prioridade === 'critica') avisarEquipe({ evento: 'critico', para: painel.ajustes.supervisores, chamado, texto: `Chegou um chamado Crítico: ${codigo}`, menos: pessoa }, agora);
     avisarObservadores({ chamado, observadores, texto: `${ator.nome} pôs você como observador do ${codigo}`, menos: pessoa, jaAvisados: [d.responsavelId] }, agora);
@@ -932,7 +960,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const longo = (chave: string, nome: string, valorAntes: unknown) => { eventos.push(['campo', { campo: nome, longo: true }]); mudou(chave, nome, valorAntes); };
 
     // (na ordem do formulário: o histórico e a auditoria leem como a ficha)
-    if (d.titulo !== undefined && d.titulo !== t.titulo) { set.titulo = d.titulo; campo('titulo', 'Título', t.titulo, d.titulo, t.titulo); }
+    // o título: como o servidor (2.0.3) — a negociação sem título fica com o nome da empresa, e o título que era o nome
+    // da empresa acompanha a empresa quando ela muda (o nome de depois sai do cliente e da empresa, mais abaixo)
+    const vendasAqui = painel.tipo === 'vendas';
+    const empresaDe = (clienteId: string | null, empresa: string | null) => (clienteId ? nomeCliente(clienteId) : empresa);
+    const empresaAntes = vendasAqui ? empresaDe(t.clienteId, t.empresa) : null;
+    const posTitulo = eventos.length;
     if (d.clienteId !== undefined && d.clienteId !== t.clienteId) {
       if (d.clienteId) conferirCliente(d.clienteId);
       set.clienteId = d.clienteId;
@@ -947,6 +980,24 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // (que só a perdida tem)
     if (painel.tipo === 'vendas') {
       if (d.empresa !== undefined && d.empresa !== t.empresa) { set.empresa = d.empresa; campo('empresa', 'Empresa', t.empresa, d.empresa, t.empresa); }
+    }
+    {
+      const empresaDepois = vendasAqui ? empresaDe(set.clienteId !== undefined ? set.clienteId : t.clienteId, set.empresa !== undefined ? set.empresa : t.empresa) : null;
+      let novo: string | undefined;
+      if (d.titulo !== undefined) {
+        const tf = tituloQueFica(d.titulo, { vendas: vendasAqui, empresa: empresaDepois });
+        if (!tf) throw bad(mensagemDoTitulo(d.titulo, vendasAqui));
+        novo = tf;
+      } else if (vendasAqui && empresaAntes && empresaDepois && empresaDepois !== empresaAntes && paraBusca(t.titulo) === paraBusca(empresaAntes)) {
+        novo = empresaDepois.slice(0, 200);
+      }
+      if (novo !== undefined && novo !== t.titulo) {
+        set.titulo = novo;
+        eventos.splice(posTitulo, 0, ['campo', { campo: 'Título', de: t.titulo, para: novo }]);
+        mudancas.unshift('titulo'); nomes.unshift('Título'); antes.titulo = t.titulo;
+      }
+    }
+    if (painel.tipo === 'vendas') {
       if (d.motivoPerda !== undefined && d.motivoPerda !== t.motivoPerda) {
         if (e.etapa?.resultado !== 'perdido') throw bad('O motivo da perda é só da negociação perdida.');
         if (!d.motivoPerda) throw bad('A negociação perdida precisa do motivo.');
@@ -1038,6 +1089,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (d.campos !== undefined) {
       const novos: ValoresDosCampos = { ...t.campos };
       let mexeu = false;
+      incluirOpcoesEscritas(painel, d.campos);
       for (const { campo: c, valor } of lerCampos(painel, d.campos, t.campos)) {
         const antes = t.campos[c.id] ?? null;
         if (mesmoValorDoCampo(antes, valor)) continue;
@@ -1061,7 +1113,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     if (d.etiquetas !== undefined) {
       // como estão no catálogo; a nova entra nele com a cor escolhida na tela (ou cinza)
-      const novas = etiquetasDoCatalogo(d.etiquetas, d.coresDasEtiquetas ?? {}, pessoaDoAtor(ator), agora);
+      const novas = etiquetasDoCatalogo(t.painelId, d.etiquetas, d.coresDasEtiquetas ?? {}, pessoaDoAtor(ator), agora);
       if (novas.join('\n') !== t.etiquetas.join('\n')) { set.etiquetas = novas; campo('etiquetas', 'Etiquetas', juntar(t.etiquetas), juntar(novas), t.etiquetas); }
     }
     let observadoresNovos: string[] = [];
@@ -1337,7 +1389,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     registrarEvento(t.id, 'painel', ator, { de: painel.nome, para: novo.nome }, e.quando());
     if (t.assuntoId) registrarEvento(t.id, 'campo', ator, { campo: NOME_CAMPO.assunto, de: caminho(t.assuntoId), para: null }, e.quando());
     if (t.tipo && tipoNovo !== t.tipo) registrarEvento(t.id, 'campo', ator, { campo: NOME_CAMPO.tipo, de: t.tipo, para: tipoNovo }, e.quando());
-    const m = gravarMovimento(e, ator, para, { motivo: null, sentido: null, extra: { painelId: novo.id, assuntoId: null, tipo: tipoNovo } });
+    // as etiquetas vão junto (2.0.3: cada painel tem as suas): as que faltam no painel novo entram lá com a mesma cor
+    const etiquetas = levarEtiquetas(t.etiquetas, painel.id, novo.id, pessoaDoAtor(ator), agora);
+    const m = gravarMovimento(e, ator, para, { motivo: null, sentido: null, extra: { painelId: novo.id, assuntoId: null, tipo: tipoNovo, ...(etiquetas.join('\n') !== t.etiquetas.join('\n') ? { etiquetas } : {}) } });
     depoisDoMovimento(ator, t, m, agora, { painelNovo: novo.nome });
     return { ...nada(t), resumo: `Passou ${t.codigo} do painel ${painel.nome} para ${novo.nome} (${para.nome})` };
   }
@@ -1844,25 +1898,34 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   // =====================================================================
-  //  AS ETIQUETAS COM COR (o catálogo; as mesmas regras do servidor)
+  //  AS ETIQUETAS COM COR (o catálogo de cada painel, desde o 2.0.3; as mesmas regras do servidor)
   // =====================================================================
 
-  /** Os nomes como estão no catálogo, sem repetir; a que falta entra nele com a cor escolhida na tela (ou cinza). */
-  function etiquetasDoCatalogo(nomes: string[], cores: Record<string, CorEtiqueta>, pessoa: string | null, quando: Date): string[] {
+  /** Os nomes como estão no catálogo do painel, sem repetir; a que falta entra nele com a cor escolhida na tela (ou cinza). */
+  function etiquetasDoCatalogo(painelId: string, nomes: string[], cores: Record<string, CorEtiqueta>, pessoa: string | null, quando: Date): string[] {
     const corDa = new Map(Object.entries(cores).map(([n, c]) => [chaveDaEtiqueta(n), c]));
     return etiquetasUnicas(etiquetasUnicas(nomes).map((n) => {
       const k = chaveDaEtiqueta(n);
-      const ja = A.etiquetas.find((e) => e.chave === k);
+      const ja = A.etiquetas.find((e) => e.painelId === painelId && e.chave === k);
       if (ja) return ja.nome;
-      A.etiquetas.push({ id: novoId(), nome: n, chave: k, cor: corDa.get(k) ?? 'neutral', criadoPorId: pessoa, criadoEm: iso(quando), atualizadoEm: iso(quando) });
+      A.etiquetas.push({ id: novoId(), painelId, nome: n, chave: k, cor: corDa.get(k) ?? 'neutral', criadoPorId: pessoa, criadoEm: iso(quando), atualizadoEm: iso(quando) });
       return n;
     }));
   }
-  /** As etiquetas usadas nos chamados (fora da lixeira), pela chave: o nome e em quantos chamados está. */
-  function usosDasEtiquetas(paineis?: string[]) {
+  /** O chamado que troca de painel leva as etiquetas: as que faltam no painel novo entram lá com a cor do antigo. */
+  function levarEtiquetas(nomes: string[], de: string, para: string, pessoa: string | null, quando: Date): string[] {
+    const cores: Record<string, CorEtiqueta> = {};
+    for (const n of nomes) {
+      const e = A.etiquetas.find((x) => x.painelId === de && x.chave === chaveDaEtiqueta(n));
+      if (e) cores[n] = e.cor;
+    }
+    return etiquetasDoCatalogo(para, nomes, cores, pessoa, quando);
+  }
+  /** As etiquetas usadas nos chamados de um painel (fora da lixeira), pela chave: o nome e em quantos chamados está. */
+  function usosDasEtiquetas(painelId: string) {
     const n = new Map<string, { nome: string; chamados: number }>();
     for (const t of A.chamados) {
-      if (t.deletedAt || (paineis && !paineis.includes(t.painelId))) continue;
+      if (t.deletedAt || t.painelId !== painelId) continue;
       for (const nome of etiquetasUnicas(t.etiquetas)) {
         const u = n.get(chaveDaEtiqueta(nome));
         if (u) u.chamados += 1; else n.set(chaveDaEtiqueta(nome), { nome, chamados: 1 });
@@ -1871,57 +1934,61 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return n;
   }
   const ordemDoNome = (a: { nome: string }, b: { nome: string }) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
-  /** As que a pessoa vê: as usadas nos painéis dela e as que nenhum chamado usa (a de um painel que ela não vê não aparece). */
-  function etiquetasParaAPessoa(paineis: string[]): EtiquetaComCor[] {
-    const aqui = usosDasEtiquetas(paineis);
-    const emTodos = usosDasEtiquetas();
-    const lista: EtiquetaComCor[] = A.etiquetas.filter((e) => aqui.has(e.chave) || !emTodos.has(e.chave)).map((e) => ({ nome: e.nome, cor: e.cor }));
-    for (const [k, u] of aqui) if (!A.etiquetas.some((e) => e.chave === k)) lista.push({ nome: u.nome, cor: 'neutral' });
-    return lista.sort(ordemDoNome);
+  const nomeDoPainel = (id: string) => A.paineis.find((p) => p.id === id)?.nome ?? 'que saiu';
+  /** As que a pessoa vê, painel por painel: as do catálogo de cada painel dela e as usadas nos chamados dele (fora do catálogo, cinza). */
+  function etiquetasParaAPessoa(paineis: string[]): EtiquetaNoPainel[] {
+    return paineis.flatMap((painelId) => {
+      const lista: EtiquetaNoPainel[] = A.etiquetas.filter((e) => e.painelId === painelId).map((e) => ({ painelId, nome: e.nome, cor: e.cor }));
+      for (const [k, u] of usosDasEtiquetas(painelId)) if (!A.etiquetas.some((e) => e.painelId === painelId && e.chave === k)) lista.push({ painelId, nome: u.nome, cor: 'neutral' });
+      return lista.sort(ordemDoNome);
+    });
   }
-  const etiquetaParaTela = (e: EtiquetaRow): EtiquetaDoCatalogo => ({ id: e.id, nome: e.nome, cor: e.cor, chamados: usosDasEtiquetas().get(e.chave)?.chamados ?? 0, criadaEm: e.criadoEm });
+  const etiquetaParaTela = (e: EtiquetaRow): EtiquetaDoCatalogo => ({ id: e.id, painelId: e.painelId, nome: e.nome, cor: e.cor, chamados: usosDasEtiquetas(e.painelId).get(e.chave)?.chamados ?? 0, criadaEm: e.criadoEm });
   const etiquetaPorId = (id: string) => {
     const e = A.etiquetas.find((x) => x.id === id);
     if (!e) throw erro(404, 'Etiqueta não encontrada');
     return e;
   };
   /**
-   * Editar uma etiqueta — o nome e a cor —, como o servidor: a que só está nos chamados entra no catálogo;
-   * o nome de outra não vale; o nome novo vale nos chamados (os da lixeira também).
+   * Editar uma etiqueta — o nome e a cor —, como o servidor: a que só está nos chamados do painel entra no
+   * catálogo dele; o nome de outra do painel não vale; o nome novo vale nos chamados do painel (os da lixeira também).
    */
-  function editarEtiqueta(alvo: EtiquetaRow | { nome: string }, d: { nome?: string; cor: CorEtiqueta }) {
-    let e = 'id' in alvo ? alvo : A.etiquetas.find((x) => x.chave === chaveDaEtiqueta(alvo.nome));
+  function editarEtiqueta(alvo: EtiquetaRow | { painelId: string; nome: string }, d: { nome?: string; cor: CorEtiqueta }) {
+    let e = 'id' in alvo ? alvo : A.etiquetas.find((x) => x.painelId === alvo.painelId && x.chave === chaveDaEtiqueta(alvo.nome));
     if (!e && !('id' in alvo)) {
-      const usada = usosDasEtiquetas().get(chaveDaEtiqueta(alvo.nome));
+      const usada = usosDasEtiquetas(alvo.painelId).get(chaveDaEtiqueta(alvo.nome));
       if (usada) {
         const agora = iso(agoraReal());
-        e = { id: novoId(), nome: usada.nome, chave: chaveDaEtiqueta(usada.nome), cor: 'neutral', criadoPorId: S.me?.id ?? null, criadoEm: agora, atualizadoEm: agora };
+        e = { id: novoId(), painelId: alvo.painelId, nome: usada.nome, chave: chaveDaEtiqueta(usada.nome), cor: 'neutral', criadoPorId: S.me?.id ?? null, criadoEm: agora, atualizadoEm: agora };
         A.etiquetas.push(e);
       }
     }
     if (!e) throw erro(404, 'Etiqueta não encontrada');
+    const painelId = e.painelId;
     const antes = { nome: e.nome, chave: e.chave, cor: e.cor };
     const nome = d.nome ?? e.nome;
     const chave = chaveDaEtiqueta(nome);
     if (chave !== e.chave) {
-      const outra = A.etiquetas.find((x) => x.chave === chave);
-      if (outra) throw conflito(`A etiqueta ${outra.nome} já existe: escolha outro nome.`);
+      const outra = A.etiquetas.find((x) => x.painelId === painelId && x.chave === chave);
+      if (outra) throw conflito(`A etiqueta ${outra.nome} já existe neste painel: escolha outro nome.`);
     }
     e.nome = nome; e.chave = chave; e.cor = d.cor; e.atualizadoEm = iso(agoraReal());
     let chamados = 0;
     if (nome !== antes.nome) {
       for (const t of A.chamados) {
+        if (t.painelId !== painelId) continue;
         const nova = renomearEtiqueta(t.etiquetas, antes.chave, nome);
         if (nova) { t.etiquetas = nova; chamados += 1; }
       }
     }
+    const painel = nomeDoPainel(painelId);
     const nos = chamados ? ` (em ${chamados} ${chamados === 1 ? 'chamado' : 'chamados'})` : '';
     const renomeou = nome !== antes.nome;
-    const resumo = renomeou && antes.cor !== d.cor ? `Editou a etiqueta ${antes.nome}: agora ${nome}, ${NOME_COR_ETIQUETA[d.cor].toLowerCase()}${nos}`
-      : renomeou ? `Renomeou a etiqueta ${antes.nome} para ${nome}${nos}`
-        : antes.cor !== d.cor ? `Trocou a cor da etiqueta ${nome}: ${NOME_COR_ETIQUETA[antes.cor]} → ${NOME_COR_ETIQUETA[d.cor]}`
-          : `Salvou a etiqueta ${nome} sem mudanças`;
-    auditar('update', 'ticket_tag', resumo, e.id, { before: { nome: antes.nome, cor: antes.cor }, after: { nome, cor: d.cor } });
+    const resumo = renomeou && antes.cor !== d.cor ? `Editou a etiqueta ${antes.nome} do painel ${painel}: agora ${nome}, ${NOME_COR_ETIQUETA[d.cor].toLowerCase()}${nos}`
+      : renomeou ? `Renomeou a etiqueta ${antes.nome} do painel ${painel} para ${nome}${nos}`
+        : antes.cor !== d.cor ? `Trocou a cor da etiqueta ${nome} do painel ${painel}: ${NOME_COR_ETIQUETA[antes.cor]} → ${NOME_COR_ETIQUETA[d.cor]}`
+          : `Salvou a etiqueta ${nome} do painel ${painel} sem mudanças`;
+    auditar('update', 'ticket_tag', resumo, e.id, { before: { painel, nome: antes.nome, cor: antes.cor }, after: { painel, nome, cor: d.cor } });
     return etiquetaParaTela(e);
   }
 
@@ -2615,7 +2682,35 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   // ---------- os campos de cada painel ----------
 
-  const campoParaAuditoria = (c: CampoPersonalizado) => ({ nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.opcoes.map((o) => ({ ...o })), ativo: c.ativo });
+  const campoParaAuditoria = (c: CampoPersonalizado) => ({ nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.opcoes.map((o) => ({ ...o })), ativo: c.ativo, incluirNaHora: c.incluirNaHora });
+  /**
+   * Incluir uma opção numa lista do painel ali mesmo (2.0.3, a Indicação), como o servidor: só nas listas marcadas;
+   * a que já existe volta, a desativada é reativada. Sem `podeVer`, é o próprio Gestor (a API, o n8n, o robô).
+   */
+  function incluirOpcao(campoId: string, nome: string, podeVer: (painelId: string) => boolean = () => true): { valor: OpcaoDoCampo; resumo: string | null } {
+    const c = A.campos.find((x) => x.id === campoId);
+    if (!c || !podeVer(c.painelId)) throw naoAchado('Campo');
+    if (!c.ativo) throw bad(`O campo ${c.nome} está desativado.`);
+    if (!(c.tipo === 'lista' && c.incluirNaHora)) throw bad(`As opções de ${c.nome} se mudam em Painéis › Ajustes › Campos.`);
+    const igual = c.opcoes.find((o) => paraBusca(o.nome) === paraBusca(nome));
+    if (igual?.ativa) return { valor: { ...igual }, resumo: null };
+    if (!igual && c.opcoes.length >= MAX_OPCOES_DO_CAMPO) throw bad(`${c.nome} já tem ${MAX_OPCOES_DO_CAMPO} opções: desative as que não servem em Painéis › Ajustes › Campos.`);
+    const nova: OpcaoDoCampo = igual ? { ...igual, ativa: true } : { id: novoId(), nome, ativa: true };
+    c.opcoes = igual ? c.opcoes.map((o) => (o.id === igual.id ? nova : o)) : [...c.opcoes, nova];
+    return { valor: { ...nova }, resumo: `${igual ? 'Reativou' : 'Incluiu'} a opção ${nova.nome} em ${c.nome}` };
+  }
+  /** A opção escrita que ainda não existe numa lista que inclui na hora entra nela antes de os campos serem lidos (como o servidor). */
+  function incluirOpcoesEscritas(painel: Painel, pedidos: Record<string, unknown>) {
+    for (const [chave, v] of Object.entries(pedidos)) {
+      if (typeof v !== 'string' || !v.trim()) continue;
+      const campo = acharCampo(camposDoPainel(painel.id), chave);
+      if (!campo?.ativo || !(campo.tipo === 'lista' && campo.incluirNaHora)) continue;
+      const nome = v.trim().replace(/\s+/g, ' ');
+      if (nome.length > 60 || campo.opcoes.some((o) => o.id === nome || (o.ativa && paraBusca(o.nome) === paraBusca(nome)))) continue;
+      const r = incluirOpcao(campo.id, nome);
+      if (r.resumo) auditar('update', 'ticket_field', r.resumo, campo.id);
+    }
+  }
   /** Liga e desliga os campos do sistema e grava as opções do Tipo (o que sai do painel sai das regras). */
   function salvarCamposDoSistema(painelId: string, d: ReturnType<typeof CamposDoSistemaSchema.parse>) {
     const p = linhaDoPainel(painelId);
@@ -2686,7 +2781,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (tipo !== 'vendas') return [];
     CAMPOS_DO_PAINEL_DE_VENDAS.forEach((c, ordem) => A.campos.push({
       id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: c.dica, ativo: true, ordem,
-      opcoes: c.opcoes.map((nome) => ({ id: novoId(), nome, ativa: true })),
+      opcoes: c.opcoes.map((nome) => ({ id: novoId(), nome, ativa: true })), incluirNaHora: !!c.incluirNaHora,
     }));
     return CAMPOS_DO_PAINEL_DE_VENDAS.map((c) => c.nome);
   }
@@ -2695,7 +2790,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const outros = camposDoPainel(painelId);
     if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw bad(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos (os desativados contam).`);
     const opcoes = conferirCampo(p, d, null);
-    const c: CampoPersonalizado = { id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1 };
+    const c: CampoPersonalizado = { id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, incluirNaHora: d.tipo === 'lista' && d.incluirNaHora };
     A.campos.push(c);
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     return {
@@ -2711,7 +2806,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!p) throw naoAchado('Campo');
     const antes = campoParaTela(c);
     const opcoes = conferirCampo(p, d, antes);
-    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo });
+    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora });
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
     return {
@@ -2909,10 +3004,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     A.webhooks.push(webhook);
     A.integ = { sites: ['https://inglinechat.com.br'], linkConversa: 'https://inglinechat.com.br/chat/{sessao}' };
 
-    // ---- as etiquetas com cor (a equipe já pintou algumas; as outras nascem cinza nos chamados) ----
-    for (const [nome, cor] of CORES_DAS_ETIQUETAS) {
-      const quando = iso(voltarUteis(agora, 20 * 600));
-      A.etiquetas.push({ id: novoId(), nome, chave: chaveDaEtiqueta(nome), cor, criadoPorId: luan, criadoEm: quando, atualizadoEm: quando });
+    // ---- as etiquetas com cor (a equipe já pintou algumas; as outras nascem cinza nos chamados) — nos dois painéis de
+    // chamados, como a migração 0023 fez com as de antes (2.0.3: cada painel tem as suas) ----
+    for (const painelId of ['painel-suporte', 'painel-desenvolvimento']) {
+      for (const [nome, cor] of CORES_DAS_ETIQUETAS) {
+        const quando = iso(voltarUteis(agora, 20 * 600));
+        A.etiquetas.push({ id: novoId(), painelId, nome, chave: chaveDaEtiqueta(nome), cor, criadoPorId: luan, criadoEm: quando, atualizadoEm: quando });
+      }
     }
 
     // ---- a etapa de exemplo pela chave (os campos, os agendados e as histórias) ----
@@ -3100,6 +3198,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const hojeAqui = diaLocal(agora);
     // o dia (dias corridos antes de hoje) na hora dita, de Brasília — nunca depois de agora
     const noDia = (dias: number, hora: string) => new Date(Math.min(instanteLocal(somarDias(hojeAqui, -dias), hora).getTime(), agora.getTime() - (dias + 1) * MINUTO));
+    // as etiquetas do Comercial, pintadas (2.0.3: cada painel tem as suas)
+    for (const [nome, cor] of CORES_DAS_ETIQUETAS_DO_COMERCIAL) {
+      const quando = iso(noDia(60, '09:00'));
+      A.etiquetas.push({ id: novoId(), painelId: com.id, nome, chave: chaveDaEtiqueta(nome), cor, criadoPorId: idDa('camila'), criadoEm: quando, atualizadoEm: quando });
+    }
     for (const n of [...NEGOCIACOES_DE_EXEMPLO].sort((a, b) => b.abriu - a.abriu)) {
       try {
         const dono = atorDaPessoa(idDa(n.responsavel ?? n.por));
@@ -3112,6 +3215,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           ...(n.ativacaoPorProduto ? { ativacoesDosProdutos: Object.fromEntries(Object.entries(n.ativacaoPorProduto).map(([codigo, v]) => [produtoDo(codigo), Math.round(v * 100)])) } : {}),
           // os campos do painel, pelo nome (como o robô e o n8n mandam)
           ...(n.campos ? { campos: n.campos } : {}),
+          ...(n.etiquetas ? { etiquetas: n.etiquetas } : {}),
           produtos: (n.produtos ?? []).map(produtoDo), responsavelId: n.responsavel ? idDa(n.responsavel) : null, descricao: n.descricao ?? null,
         }), { origem: 'manual' }, noDia(n.abriu, '09:30'));
         for (const p of n.passos ?? []) mover(dono, r.id, { etapaId: etapaDoComercial(p.para) }, noDia(p.dias, '11:00'));
@@ -3334,6 +3438,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       auditar(id ? 'update' : 'create', 'ticket_field', r.resumo, r.valor.id, { before: 'antes' in r ? r.antes : undefined, after: r.depois });
       return r.valor;
     },
+    async incluirOpcaoDoCampo(campoId, d) {
+      await ctx.wait(140);
+      const dados = ler(OpcaoIncluirSchema, d);
+      ctx.requirePerm('tickets.work'); preparar();
+      const ator = eu();
+      const r = incluirOpcao(campoId, dados.nome, (painelId) => { const p = paineis().find((x) => x.id === painelId); return !!p && podeVerPainel(p, ator); });
+      if (r.resumo) auditar('update', 'ticket_field', r.resumo, campoId);
+      return r.valor;
+    },
     async ordenarCampos(painelId, ids) {
       await ctx.wait(120);
       const dados = ler(OrdemDosCamposSchema, { ids });
@@ -3342,7 +3455,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       auditar('update', 'ticket_panel', r.resumo, painelId);
       return r.valor;
     },
-    // as etiquetas com a cor (Ajustes › Etiquetas): as mesmas regras e frases do servidor
+    // as etiquetas de cada painel, com a cor (Ajustes › Etiquetas): as mesmas regras e frases do servidor
     async etiquetas() {
       await ctx.wait(80);
       ctx.requirePerm('tickets.manage'); preparar();
@@ -3352,13 +3465,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       await ctx.wait(150);
       const dados = ler(EtiquetaGravarSchema, d);
       ctx.requirePerm('tickets.manage'); preparar();
+      const painel = A.paineis.find((p) => p.id === dados.painelId);
+      if (!painel) throw bad('Esse painel não existe.');
       const chave = chaveDaEtiqueta(dados.nome);
-      const igual = A.etiquetas.find((e) => e.chave === chave);
-      if (igual) throw conflito(`A etiqueta ${igual.nome} já existe.`);
+      const igual = A.etiquetas.find((e) => e.painelId === painel.id && e.chave === chave);
+      if (igual) throw conflito(`A etiqueta ${igual.nome} já existe no ${painel.nome}.`);
       const agora = iso(agoraReal());
-      const e: EtiquetaRow = { id: novoId(), nome: dados.nome, chave, cor: dados.cor, criadoPorId: S.me?.id ?? null, criadoEm: agora, atualizadoEm: agora };
+      const e: EtiquetaRow = { id: novoId(), painelId: painel.id, nome: dados.nome, chave, cor: dados.cor, criadoPorId: S.me?.id ?? null, criadoEm: agora, atualizadoEm: agora };
       A.etiquetas.push(e);
-      auditar('create', 'ticket_tag', `Criou a etiqueta ${e.nome} (${NOME_COR_ETIQUETA[e.cor]})`, e.id, { after: { nome: e.nome, cor: e.cor } });
+      auditar('create', 'ticket_tag', `Criou a etiqueta ${e.nome} (${NOME_COR_ETIQUETA[e.cor]}) no painel ${painel.nome}`, e.id, { after: { painel: painel.nome, nome: e.nome, cor: e.cor } });
       return etiquetaParaTela(e);
     },
     async editarEtiqueta(id, d) {
@@ -3369,18 +3484,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     },
     async editarEtiquetaPeloNome(d) {
       await ctx.wait(140);
-      const { de, ...dados } = ler(EtiquetaEditarPeloNomeSchema, d);
+      const { de, painelId, ...dados } = ler(EtiquetaEditarPeloNomeSchema, d);
       ctx.requirePerm('tickets.manage'); preparar();
-      return editarEtiqueta({ nome: de }, dados);
+      return editarEtiqueta({ painelId, nome: de }, dados);
     },
     async removerEtiqueta(id) {
       await ctx.wait(120);
       ctx.requirePerm('tickets.manage'); preparar();
       const e = etiquetaPorId(id);
-      const n = usosDasEtiquetas().get(e.chave)?.chamados ?? 0;
+      const n = usosDasEtiquetas(e.painelId).get(e.chave)?.chamados ?? 0;
       if (n) throw conflito(`A etiqueta ${e.nome} está em ${n} ${n === 1 ? 'chamado' : 'chamados'}: tire dos chamados antes.`);
       A.etiquetas = A.etiquetas.filter((x) => x.id !== e.id);
-      auditar('delete', 'ticket_tag', `Tirou a etiqueta ${e.nome} das sugestões`, e.id, { before: { nome: e.nome, cor: e.cor } });
+      const painel = nomeDoPainel(e.painelId);
+      auditar('delete', 'ticket_tag', `Tirou a etiqueta ${e.nome} das sugestões do painel ${painel}`, e.id, { before: { painel, nome: e.nome, cor: e.cor } });
       return { ok: true as const };
     },
     async ajustesPrazos() { await ctx.wait(80); ctx.requirePerm('tickets.manage'); preparar(); return JSON.parse(JSON.stringify(A.prazos)) as AjustesPrazos; },
@@ -3658,6 +3774,147 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     },
   };
 
+  // ---------- o Trazer do Helena (2.0.3): o que a prévia dele usa daqui ----------
+
+  /** O Gestor como está, para o plano (como o `estadoDoGestor` do servidor). */
+  function estadoParaHelena(destino: string | null, siglaDoHelena: string | null, hoje: string): EstadoDoGestorParaHelena {
+    semear();
+    let painel: PainelDoGestorParaHelena | null = null;
+    if (destino) {
+      const p = A.paineis.find((x) => x.id === destino && !x.deletedAt);
+      if (!p) throw naoAchado('Painel');
+      if (p.tipo !== 'vendas') throw bad(`O painel ${p.nome} não é de Vendas: as negociações do Helena vão para um painel de Vendas.`);
+      painel = {
+        id: p.id, nome: p.nome, sigla: p.sigla,
+        etapas: A.etapas.filter((e) => e.painelId === p.id && !e.deletedAt).sort((x, y) => x.ordem - y.ordem).map((e) => ({
+          id: e.id, nome: e.nome, tipo: e.tipo, resultado: e.resultado, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar],
+          negociacoes: A.chamados.filter((t) => t.etapaId === e.id && !t.deletedAt).length,
+        })),
+        campos: camposDoPainel(p.id).map(campoParaTela),
+        motivosDePerda: [...(p.ajustes.motivosDePerda ?? [])],
+        camposDesligados: [...(p.ajustes.camposDesligados ?? AJUSTES_DO_PAINEL_DE_VENDAS.camposDesligados)],
+      };
+    }
+    const painelNovo = { nome: 'Comercial', sigla: siglaDoPainelNovo(siglaDoHelena, A.paineis.map((p) => p.sigla)) };
+    const sigla = painel?.sigla ?? painelNovo.sigla;
+    const importadas: EstadoDoGestorParaHelena['importadas'] = {};
+    for (const t of A.chamados) {
+      if (!t.externalRef?.startsWith('helena:')) continue;
+      // mexida no Gestor: tem histórico que não veio do Helena (alguém moveu, mudou um campo)
+      const mexida = A.eventos.some((e) => e.chamadoId === t.id && !('helena' in e.dados));
+      importadas[t.externalRef.slice('helena:'.length)] = { id: t.id, numero: t.numero, mexidaNoGestor: mexida, naLixeira: !!t.deletedAt };
+    }
+    const prefixo = new RegExp(`^${sigla}-(\\d+)$`);
+    return {
+      painel, painelNovo,
+      pessoas: S.users.map((u) => ({ id: u.id, nome: u.name, ativo: u.active })),
+      clientes: S.clients.filter((c) => !c.deletedAt && !c.isInternal).map((c) => ({ id: c.id, nomes: [c.tradeName], cnpj: null })),
+      produtos: S.products.filter((p) => !p.deletedAt).map((p) => ({ id: p.id, nome: p.name })),
+      // as etiquetas são de cada painel (2.0.3): só as do painel que recebe; o painel novo começa sem nenhuma
+      etiquetas: painel ? A.etiquetas.filter((e) => e.painelId === painel!.id).map((e) => e.nome) : [],
+      importadas,
+      numerosOcupados: A.chamados.map((t) => Number(prefixo.exec(t.codigo)?.[1] ?? 0)).filter((n) => n > 0),
+      hoje,
+    };
+  }
+
+  /** O painel de Vendas novo, como o servidor: os ajustes e os campos de fábrica (as etapas vêm do plano). */
+  function criarPainelParaHelena(nomeDoHelena: string, siglaDoHelena: string | null): string {
+    semear();
+    const id = novoId();
+    const f = AJUSTES_DO_PAINEL_DE_VENDAS;
+    A.paineis.push({
+      id, nome: 'Comercial', sigla: siglaDoPainelNovo(siglaDoHelena, A.paineis.map((p) => p.sigla)),
+      descricao: `As negociações do Comercial (trazidas do painel ${nomeDoHelena}, do Helena).`, cor: 'signal',
+      ordem: Math.max(-1, ...A.paineis.map((p) => p.ordem)) + 1, acesso: 'todos', pessoas: [],
+      ajustes: { ...f, tipos: [...f.tipos], obrigatoriosAoAbrir: [], supervisores: [], camposDesligados: [...f.camposDesligados], motivosDePerda: [...f.motivosDePerda] },
+      ativo: true, proximoNumero: 1, deletedAt: null, tipo: 'vendas',
+    });
+    camposDeFabricaDoPainel(id, 'vendas');
+    return id;
+  }
+
+  /** Grava o plano do Trazer, como o servidor: as etapas, os campos, os motivos de perda, as etiquetas e as negociações. */
+  function gravarDoHelena(ator: Ator, painelId: string, plano: PlanoDaImportacao, agora: Date): { nome: string; sigla: string } {
+    const p = linhaDoPainel(painelId);
+    // as etapas (a que sai só se vazia) e as que só o histórico cita, já fora do painel
+    const etapas = plano.etapas.etapas.map((e) => ({ ...(e.id ? { id: e.id } : {}), nome: e.nome, tipo: e.tipo, nivel: null, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado }));
+    aplicarEtapas(ator, planejarEtapas(painelId, etapas, {}, obrigatoriosValidos(p), 'vendas'), agora);
+    plano.etapas.historicas.forEach((nome, i) => {
+      if (A.etapas.some((e) => e.painelId === painelId && chaveDoNome(e.nome) === chaveDoNome(nome))) return;
+      A.etapas.push({ id: novoId(), painelId, nome, tipo: 'andamento', nivel: null, ordem: 100 + i, obrigatorios: [], avisar: [], resultado: null, deletedAt: iso(agora) });
+    });
+    const doPainel = A.etapas.filter((e) => e.painelId === painelId);
+    const idDaEtapa = (nome: string) => (doPainel.find((e) => !e.deletedAt && e.nome === nome) ?? doPainel.find((e) => !e.deletedAt && chaveDoNome(e.nome) === chaveDoNome(nome))
+      ?? doPainel.find((e) => chaveDoNome(e.nome) === chaveDoNome(nome)))?.id ?? null;
+    // os campos novos e as opções que faltavam
+    let ordem = camposDoPainel(painelId).reduce((m, c) => Math.max(m, c.ordem), -1) + 1;
+    for (const c of plano.campos) {
+      if (c.acao === 'cria') {
+        A.campos.push({ id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: 'Trazido do Helena.', ativo: true, ordem: ordem++, opcoes: c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true })), incluirNaHora: false });
+      } else if (c.acao === 'usa' && c.gestorId && c.opcoesNovas.length && ehLista(c.tipo)) {
+        const campo = A.campos.find((x) => x.id === c.gestorId);
+        if (campo) campo.opcoes = [...campo.opcoes, ...c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true }))];
+      }
+    }
+    const campos = camposDoPainel(painelId);
+    const campoDaChave = new Map<string, CampoPersonalizado>();
+    for (const c of plano.campos) {
+      if (c.acao === 'fora') continue;
+      const campo = c.gestorId ? campos.find((x) => x.id === c.gestorId) : campos.find((x) => chaveDoNome(x.nome) === chaveDoNome(c.nome));
+      if (campo) campoDaChave.set(c.chave, campo);
+    }
+    p.ajustes = { ...p.ajustes, motivosDePerda: [...plano.motivosDePerda] };
+    const doCatalogo = etiquetasDoCatalogo(painelId, [...new Set(plano.negociacoes.flatMap((n) => n.etiquetas))], plano.coresDasEtiquetas, pessoaDoAtor(ator), agora);
+    const etiquetaDe = (n: string) => doCatalogo.find((x) => chaveDaEtiqueta(x) === chaveDaEtiqueta(n)) ?? n;
+
+    let maior = 0;
+    for (const n of plano.negociacoes) {
+      maior = Math.max(maior, n.numero);
+      const etapaId = idDaEtapa(n.etapa);
+      if (!etapaId) throw erro(500, `A etapa ${n.etapa} não foi criada no painel ${p.nome}.`);
+      const valores: ValoresDosCampos = {};
+      for (const [chave, pre] of Object.entries(n.campos)) {
+        const campo = campoDaChave.get(chave);
+        const v = campo ? valorDoCampoNoGestor(campo, pre) : null;
+        if (campo && v !== null) valores[campo.id] = v;
+      }
+      const dados = {
+        painelId, etapaId, titulo: n.titulo, descricao: n.descricao, clienteId: n.clienteId, empresa: n.empresa, origem: 'helena' as Origem,
+        responsavelId: n.responsavelId, observadores: [...n.observadores], produtos: [...n.produtos], etiquetas: n.etiquetas.map(etiquetaDe),
+        valor: n.valor, valoresDosProdutos: { ...n.valoresDosProdutos }, ativacao: n.ativacao, ativacoesDosProdutos: { ...n.ativacoesDosProdutos },
+        motivoPerda: n.motivoPerda, resolvidoEm: n.fechadoEm, fechadoEm: n.fechadoEm, reaberto: n.reaberturas,
+        ultimaAtividadeEm: n.eventos.reduce((m, e) => (e.em > m ? e.em : m), n.alteradoEm), criadoEm: n.criadoEm, atualizadoEm: iso(agora),
+        externalRef: `helena:${n.helenaId}`,
+      };
+      let t = n.chamadoId ? A.chamados.find((x) => x.id === n.chamadoId) : undefined;
+      if (t) {
+        const id = t.id;
+        Object.assign(t, dados, { campos: { ...t.campos, ...valores } });
+        // o histórico que veio do Helena é refeito; o que a equipe fez no Gestor fica
+        A.eventos = A.eventos.filter((e) => !(e.chamadoId === id && 'helena' in e.dados));
+      } else {
+        t = {
+          id: novoId(), numero: n.numero, codigo: codigoDoChamado(p.sigla, n.numero), tipoChamado: 'chamado', relato: null, contatoNome: null, contatoTelefone: null,
+          sessaoId: null, assuntoId: null, tipo: null, gravidade: null, alcance: null, prioridade: null, motivoPrioridade: null, operadoras: [], paiId: null, problemaId: null,
+          checklist: [], solucao: null, causa: null, contorno: null, validacao: null, esperas: [], respondidoEm: null, alertas: {}, agendadoId: null,
+          criadoPorId: n.criadoPorId, deletedAt: null, campos: valores, ...dados,
+        };
+        A.chamados.push(t);
+      }
+      for (const e of n.eventos) {
+        const autor = e.usuarioId ? plano.autores[e.usuarioId] : undefined;
+        A.eventos.push({
+          id: novoId(), chamadoId: t.id, tipo: e.tipo, userId: autor?.pessoaId ?? null,
+          actorName: autor?.pessoaId ? null : autor ? `${autor.nome} (no Helena)` : 'Helena',
+          dados: ligarEtapasDoEvento(e.tipo, e.dados, idDaEtapa), em: e.em,
+        });
+      }
+    }
+    p.proximoNumero = Math.max(p.proximoNumero, maior + 1);
+    return { nome: p.nome, sigla: p.sigla };
+  }
+
   // a lixeira da Administração (o demo.ts chama pelas funções exportadas lá em cima)
   instancia = {
     chamadosDoContato: (clienteId, whatsapp) => {
@@ -3712,6 +3969,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         }
         return quem.length;
       },
+    },
+    helena: {
+      eu,
+      destinos: () => {
+        semear();
+        return A.paineis.filter((p) => !p.deletedAt && p.tipo === 'vendas').sort((a, b) => a.ordem - b.ordem)
+          .map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, negociacoes: A.chamados.filter((t) => t.painelId === p.id && !t.deletedAt).length }));
+      },
+      estado: estadoParaHelena,
+      criarPainel: criarPainelParaHelena,
+      gravar: gravarDoHelena,
     },
   };
 

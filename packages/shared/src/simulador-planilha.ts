@@ -149,7 +149,7 @@ function folhaDoCenario(p: PedidoDaPlanilha, c: CenarioDaSimulacao, k: ContasDoC
 
   // os custos, linha a linha
   g.por(15, 0, { v: 'OS CUSTOS', s: 'secao' });
-  ['Custo', 'Como entra', 'O aparelho vai em', 'Quantidade', 'Valor de cada', 'Preço ou aluguel de cada', 'A compra em (vezes)', 'Sai uma vez', 'Sai por mês', 'Entra uma vez', 'Entra por mês', 'Observação']
+  ['Custo', 'Tipo', 'O aparelho vai em', 'Quantidade', 'Valor de cada', 'Preço ou aluguel de cada', 'A compra em (vezes)', 'Sai uma vez', 'Sai por mês', 'Entra uma vez', 'Entra por mês', 'Observação']
     .forEach((t, i) => g.por(L_CABECALHO_DOS_CUSTOS, i, { v: t, s: 'cabecalho' }));
   // em dois grupos, como a tela: o investimento (pago uma vez) e os custos mensais, cada um com o nome numa linha
   const linhaDoCusto = new Map<number, number>();

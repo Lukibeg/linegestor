@@ -17,7 +17,7 @@ import { Link } from 'react-router-dom';
 import { keepPreviousData, useQueries, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Clock, Download, Filter, Hourglass, Layers, RotateCcw, TriangleAlert, User, UserX, type LucideIcon } from 'lucide-react';
 import {
-  NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, csvDosChamados, diaLocal, reaisInteiros,
+  NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, csvDosChamados, diaLocal, etiquetasDoPainel, etiquetasUnicas, reaisInteiros,
   type CartaoChamado, type OpcoesAtendimento, type Painel, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -179,6 +179,8 @@ function TopoDaLista({ opcoes, situacao, painel, totais }: { opcoes: OpcoesAtend
   const clientes = useClientesParaFiltro();
   const pessoas = useMemo(() => opcoes.pessoas.filter((p) => p.ativo), [opcoes.pessoas]);
   const assuntos = useMemo(() => opcoesDeAssunto(opcoes, painel?.id), [opcoes, painel?.id]);
+  const etiquetasDoFiltro = useMemo(() => etiquetasUnicas((painel ? etiquetasDoPainel(opcoes.etiquetas, painel.id) : opcoes.etiquetas).map((e) => e.nome))
+    .sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })), [opcoes.etiquetas, painel?.id]);
   const ligados = FILTROS.filter((k) => k !== 'q' && !(painel && k === 'painel') && valor(k)).length;
   const doPainel = Object.fromEntries(FILTROS_DO_PAINEL.map((k) => [k, valor(k)]).filter(([, v]) => v)) as FiltrosDoPainel;
   const trocarPainel = (id: string) => {
@@ -263,8 +265,9 @@ function TopoDaLista({ opcoes, situacao, painel, totais }: { opcoes: OpcoesAtend
           <EscolherComBusca className={CAIXA_FILTRO} largura="w-[400px]" rotulo="Assunto" valor={valor('assunto')} vazio="Todos os assuntos" opcoes={assuntos} procurar="Procurar assunto…" onChange={(v) => mudar({ assunto: v })} />
         )}
         <EscolherComBusca className={CAIXA_FILTRO} rotulo="Cliente" valor={valor('cliente')} vazio="Todos os clientes" opcoes={clientes} procurar="Procurar cliente…" onChange={(v) => mudar({ cliente: v })} />
-        {(opcoes.etiquetas.length > 0 || valor('etiqueta')) && (
-          <EscolherComBusca className={CAIXA_FILTRO} rotulo="Etiqueta" valor={valor('etiqueta')} vazio="Todas as etiquetas" opcoes={opcoes.etiquetas.map((e) => ({ id: e.nome, nome: e.nome }))} procurar="Procurar etiqueta…" onChange={(v) => mudar({ etiqueta: v })} />
+        {/* as etiquetas do painel aberto; em Todos, as de todos os painéis, sem repetir o nome (2.0.3: cada painel tem as suas) */}
+        {(etiquetasDoFiltro.length > 0 || valor('etiqueta')) && (
+          <EscolherComBusca className={CAIXA_FILTRO} rotulo="Etiqueta" valor={valor('etiqueta')} vazio="Todas as etiquetas" opcoes={etiquetasDoFiltro.map((nome) => ({ id: nome, nome }))} procurar="Procurar etiqueta…" onChange={(v) => mudar({ etiqueta: v })} />
         )}
         <span className="inline-flex flex-wrap items-center gap-1.5 text-[12.5px] text-muted">
           {vendas ? 'Criada de' : 'Aberto de'}

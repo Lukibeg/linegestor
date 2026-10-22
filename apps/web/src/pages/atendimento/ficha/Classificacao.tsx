@@ -12,13 +12,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Plus, Tags, UserRound, X } from 'lucide-react';
 import {
-  ALCANCES, caminhoDoAssunto, campoLigado, chaveDoCampo, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasUnicas, GRAVIDADES,
+  ALCANCES, caminhoDoAssunto, campoLigado, chaveDoCampo, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, GRAVIDADES,
   MAX_LETRAS_DO_CAMPO, mesmoValorDoCampo, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, paraBusca, PRIORIDADES, textoDoValor,
   type Alcance, type CampoDoSistema, type CorEtiqueta, type CampoPersonalizado, type ChamadoAlterarEntrada, type Gravidade, type Prioridade, type ValorDoCampo,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Chip, EscolherComBusca, Modal, Spinner } from '../../../components/ui/index.js';
-import { Avatar, usePode } from '../comum.js';
+import { Avatar, useIncluirOpcao, usePode } from '../comum.js';
 import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { ErroPerto, MarcaFalta, Secao, useAberta, useAcao, usePosicaoFlutuante } from './base.js';
 
@@ -299,6 +299,7 @@ function CamposDoPainel() {
 function CampoNaFicha({ c }: { c: CampoPersonalizado }) {
   const { f, pode } = useAberta();
   const acao = useAcao();
+  const incluirOpcao = useIncluirOpcao();
   const valor: ValorDoCampo | null = f.campos[c.id] ?? null;
   const gravar = async (v: ValorDoCampo | null) => {
     if (mesmoValorDoCampo(valor, v)) return true;
@@ -308,7 +309,16 @@ function CampoNaFicha({ c }: { c: CampoPersonalizado }) {
   let controle: ReactNode;
   let extra: ReactNode = null;
   if (!pode) controle = <p className="text-[14px] break-words">{textoDoValor(c, valor) || <span className="text-muted">—</span>}</p>;
-  else if (c.tipo === 'lista') {
+  else if (c.tipo === 'lista' && c.incluirNaHora) {
+    // a lista em que se inclui na hora (a Indicação, 2.0.3): a caixa de escolher, com o "Incluir" no fim
+    const atual = typeof valor === 'string' ? valor : '';
+    const fora = atual && !opcao(atual)?.ativa ? opcao(atual) : undefined;
+    controle = (
+      <EscolherComBusca valor={atual} onChange={(v) => void gravar(v || null)} vazio="—" placeholder="Escolha ou inclua…" procurar="Procurar ou incluir…"
+        className="input w-full" id={`ficha-campo-${c.id}`} rotulo={c.nome} criar={{ rotulo: 'Incluir', fazer: (nome) => incluirOpcao(c.id, nome) }}
+        opcoes={[...c.opcoes.filter((o) => o.ativa).map((o) => ({ id: o.id, nome: o.nome })), ...(fora ? [{ id: fora.id, nome: `${fora.nome} (desativada)` }] : [])]} />
+    );
+  } else if (c.tipo === 'lista') {
     const atual = typeof valor === 'string' ? valor : '';
     const fora = atual && !opcao(atual)?.ativa ? opcao(atual) : undefined;
     controle = (
@@ -374,7 +384,7 @@ function Etiquetas() {
     void acao.rodar(() => api.atendimento.alterar(f.id, { etiquetas, ...(cores ? { coresDasEtiquetas: cores } : {}) }));
   return (
     <Linha id="campo-etiquetas" campo="etiquetas" rotulo="Etiquetas" ocupado={acao.ocupado} erro={acao.erro}>
-      <SeletorDeEtiquetas id="ficha-etiquetas" valor={f.etiquetas} catalogo={opcoes.etiquetas} podeMudar={pode} podeEditar={pode && podeCuidar} ocupado={acao.ocupado}
+      <SeletorDeEtiquetas id="ficha-etiquetas" painelId={f.painelId} valor={f.etiquetas} catalogo={etiquetasDoPainel(opcoes.etiquetas, f.painelId)} podeMudar={pode} podeEditar={pode && podeCuidar} ocupado={acao.ocupado}
         onMudar={(v) => mudar(v)} onCriar={(nome, cor) => mudar(etiquetasUnicas([...f.etiquetas, nome]), { [nome]: cor })} />
     </Linha>
   );

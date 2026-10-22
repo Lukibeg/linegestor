@@ -31,7 +31,7 @@ import {
   trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
   NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
-  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA,
+  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, tituloQueFica, mensagemDoTitulo, acharCampo,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos,
@@ -39,8 +39,9 @@ import {
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
 import { lerConteudo } from '../projects.js';
 import { tipoDaImagem } from '../portal.js';
+import { incluirOpcao } from './ajustes.js';
 import { avisarEquipe, avisarObservadores, trecho } from './avisos.js';
-import { etiquetasDoCatalogo } from './etiquetas.js';
+import { etiquetasDoCatalogo, levarEtiquetas } from './etiquetas.js';
 import {
   camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, exigirTrabalhar, integracaoDoAtor, pessoaCurta, pessoaDoAtor, podeCuidar, podeVerPainel,
   quemVeOPainel, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
@@ -169,6 +170,23 @@ async function outroChamado(db: Db, ref: string, ator: Ator, ctx: Contexto): Pro
 const itemNovo = (texto: string, doAssunto: boolean): ItemChecklist => ({ id: newId(), texto, feito: false, porId: null, em: null, doAssunto });
 
 /** Os campos do painel que vieram no pedido, conferidos (as mesmas mensagens da prévia). */
+/**
+ * A opção escrita que ainda não existe numa lista que inclui na hora (a Indicação, 2.0.3) entra nela antes de os
+ * campos serem lidos: o n8n, o robô e a API mandam o nome (a tela inclui pelo "Incluir" da caixa). Muda o contexto
+ * desta leitura, para o `lerCampos` achar a opção nova.
+ */
+async function incluirOpcoesEscritas(db: Db, ctx: Contexto, painel: Painel, pedidos: Record<string, unknown>) {
+  for (const [chave, v] of Object.entries(pedidos)) {
+    if (typeof v !== 'string' || !v.trim()) continue;
+    const campo = acharCampo(camposDoPainel(ctx, painel.id), chave);
+    if (!campo?.ativo || !campo.incluirNaHora) continue;
+    const nome = v.trim().replace(/\s+/g, ' ');
+    if (nome.length > 60 || campo.opcoes.some((o) => o.id === nome || (o.ativa && paraBusca(o.nome) === paraBusca(nome)))) continue;
+    const r = await incluirOpcao(db, campo.id, nome);
+    campo.opcoes = [...campo.opcoes.filter((o) => o.id !== r.valor.id), r.valor];
+  }
+}
+
 function lerCampos(ctx: Contexto, painel: Painel, pedidos: Record<string, unknown>, atuais: ValoresDosCampos = {}) {
   const r = lerCamposDoPedido(camposDoPainel(ctx, painel.id), painel.nome, pedidos, atuais);
   if (!r.ok) throw new BadRequest(r.erro);
@@ -224,7 +242,7 @@ async function mandarAoCliente(
 export async function criarChamado(
   app: FastifyInstance, ator: Ator, d: ChamadoCriar,
   opts: { origem?: Origem; agendadoId?: string | null; checklistExtra?: string[] } = {},
-): Promise<{ id: string; codigo: string; aviso?: { ok: boolean; mensagem: string } }> {
+): Promise<{ id: string; codigo: string; titulo: string; aviso?: { ok: boolean; mensagem: string } }> {
   exigirTrabalhar(ator);
   const db = app.db;
   const agora = new Date();
@@ -272,6 +290,7 @@ export async function criarChamado(
   const alcance = usa('alcance') ? d.alcance ?? null : null;
   const checklist = [...(assunto?.checklist ?? []).map((x) => itemNovo(x, true)), ...(opts.checklistExtra ?? []).map((x) => itemNovo(x, false))];
   const campos: ValoresDosCampos = {};
+  await incluirOpcoesEscritas(db, ctx, painel, d.campos ?? {});
   for (const i of lerCampos(ctx, painel, d.campos ?? {})) if (i.valor !== null) campos[i.campo.id] = i.valor;
 
   // a negociação (só no painel de Vendas): o valor e a empresa que ainda não é cliente; a venda não tem
@@ -298,6 +317,9 @@ export async function criarChamado(
   const ativacao = contaAtivacao?.ok ? contaAtivacao.valor : null;
   const ativacoesDosProdutos = contaAtivacao?.ok ? contaAtivacao.valores : {};
   const empresa = vendas && !clienteId ? d.empresa ?? null : null;
+  // o título: o chamado pede pelo menos 3 letras; a negociação sem título fica com o nome da empresa (2.0.3)
+  const titulo = tituloQueFica(d.titulo ?? '', { vendas, empresa: vendas ? (clienteId ? ctx.clientes.get(clienteId) ?? null : empresa) : null });
+  if (!titulo) throw new BadRequest(mensagemDoTitulo(d.titulo ?? '', vendas));
 
   // 3. o que o painel pede para abrir
   const dados: DadosObrigatorios = {
@@ -349,9 +371,9 @@ export async function criarChamado(
     const codigo = codigoDoChamado(painel.sigla, numero);
     const id = newId();
     // as etiquetas como estão no catálogo; a nova entra nele com a cor escolhida na tela (ou cinza)
-    const etiquetas = await etiquetasDoCatalogo(tx, d.etiquetas ?? [], d.coresDasEtiquetas ?? {}, pessoa);
+    const etiquetas = await etiquetasDoCatalogo(tx, painel.id, d.etiquetas ?? [], d.coresDasEtiquetas ?? {}, pessoa);
     await tx.insert(tickets).values({
-      id, panelId: painel.id, stageId: etapa.id, number: numero, code: codigo, kind: tipoChamado, title: d.titulo,
+      id, panelId: painel.id, stageId: etapa.id, number: numero, code: codigo, kind: tipoChamado, title: titulo,
       customerReport: dados.relato, description: dados.descricao, clientId: clienteId, contactName: contatoNome, contactPhone: telefone,
       sessionId: d.sessaoId ?? null, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
@@ -385,7 +407,7 @@ export async function criarChamado(
   });
 
   // 11. os avisos: quem recebeu (menos quem abriu) e, se chegou Crítico, os supervisores do painel
-  const chamado = { id: criado.id, codigo: criado.codigo, titulo: d.titulo };
+  const chamado = { id: criado.id, codigo: criado.codigo, titulo };
   if (d.responsavelId) await avisarEquipe(app, { evento: 'recebeu', para: [d.responsavelId], chamado, texto: `Você recebeu o chamado ${criado.codigo}`, menos: pessoa, quem: ator.nome });
   if (prioridade === 'critica') await avisarEquipe(app, { evento: 'critico', para: painel.ajustes.supervisores, chamado, texto: `Chegou um chamado Crítico: ${criado.codigo}`, menos: pessoa, quem: ator.nome });
   // quem foi posto como observador fica sabendo (e, dali em diante, recebe toda atualização)
@@ -397,13 +419,13 @@ export async function criarChamado(
   // 12. o número do chamado ao cliente (o chamado fica criado mesmo se o WhatsApp não for)
   let aviso: { ok: boolean; mensagem: string } | undefined;
   if (d.avisarCliente) {
-    aviso = await mandarAoCliente(app, ator, { id: criado.id, code: criado.codigo, title: d.titulo, contactName: contatoNome, contactPhone: telefone, clientId: clienteId, assigneeId: d.responsavelId ?? null },
+    aviso = await mandarAoCliente(app, ator, { id: criado.id, code: criado.codigo, title: titulo, contactName: contatoNome, contactPhone: telefone, clientId: clienteId, assigneeId: d.responsavelId ?? null },
       'Abrimos este chamado para o seu atendimento. Qualquer novidade, avisamos por aqui.', quando());
   }
 
   // 13. para fora
   emitir(app, 'chamado.criado', criado.id);
-  return { id: criado.id, codigo: criado.codigo, ...(aviso ? { aviso } : {}) };
+  return { id: criado.id, codigo: criado.codigo, titulo, ...(aviso ? { aviso } : {}) };
 }
 
 // =====================================================================
@@ -445,7 +467,13 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   };
 
   // (na ordem do formulário: o histórico e a auditoria leem como a ficha)
-  if (d.titulo !== undefined && d.titulo !== t.title) { set.title = d.titulo; campo('titulo', NOME_TITULO, t.title, d.titulo, t.title); }
+  // o título: o chamado pede pelo menos 3 letras; a negociação sem título fica com o nome da empresa, e o título que
+  // era o nome da empresa acompanha a empresa quando ela muda (2.0.3: "se eu n colocar nada vai ser o nome do
+  // cliente") — o nome da empresa de depois é conhecido só depois do cliente e da empresa, mais abaixo
+  const vendas = painel.tipo === 'vendas';
+  const empresaDe = (clienteId: string | null, prospect: string | null) => (clienteId ? ctx.clientes.get(clienteId) ?? null : prospect);
+  const empresaAntes = vendas ? empresaDe(t.clientId, t.prospect) : null;
+  const posTitulo = eventos.length;
 
   // o cliente e o contato
   if (d.clienteId !== undefined && d.clienteId !== t.clientId) {
@@ -466,6 +494,25 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   // (que só a perdida tem)
   if (painel.tipo === 'vendas') {
     if (d.empresa !== undefined && d.empresa !== t.prospect) { set.prospect = d.empresa; campo('empresa', NOME_EMPRESA, t.prospect, d.empresa, t.prospect); }
+  }
+  {
+    const empresaDepois = vendas ? empresaDe(set.clientId !== undefined ? set.clientId : t.clientId, set.prospect !== undefined ? set.prospect : t.prospect) : null;
+    let novo: string | undefined;
+    if (d.titulo !== undefined) {
+      const tf = tituloQueFica(d.titulo, { vendas, empresa: empresaDepois });
+      if (!tf) throw new BadRequest(mensagemDoTitulo(d.titulo, vendas));
+      novo = tf;
+    } else if (vendas && empresaAntes && empresaDepois && empresaDepois !== empresaAntes && paraBusca(t.title) === paraBusca(empresaAntes)) {
+      novo = empresaDepois.slice(0, 200);
+    }
+    if (novo !== undefined && novo !== t.title) {
+      set.title = novo;
+      // no histórico, o título vem primeiro (a ordem da ficha)
+      eventos.splice(posTitulo, 0, ['campo', { campo: NOME_TITULO, de: t.title, para: novo }]);
+      mudancas.unshift('titulo'); nomes.unshift(NOME_TITULO); antes.titulo = t.title;
+    }
+  }
+  if (painel.tipo === 'vendas') {
     if (d.motivoPerda !== undefined && d.motivoPerda !== t.lostReason) {
       if (e.etapa?.resultado !== 'perdido') throw new BadRequest('O motivo da perda é só da negociação perdida.');
       if (!d.motivoPerda) throw new BadRequest('A negociação perdida precisa do motivo.');
@@ -574,6 +621,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     const atuais = (t.customFields as ValoresDosCampos | null) ?? {};
     const novos: ValoresDosCampos = { ...atuais };
     let mexeu = false;
+    await incluirOpcoesEscritas(db, ctx, painel, d.campos);
     for (const { campo: c, valor } of lerCampos(ctx, painel, d.campos, atuais)) {
       const antes = atuais[c.id] ?? null;
       if (mesmoValorDoCampo(antes, valor)) continue;
@@ -598,7 +646,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   }
   if (d.etiquetas !== undefined) {
     // como estão no catálogo; a nova entra nele com a cor escolhida na tela (ou cinza)
-    const novas = await etiquetasDoCatalogo(db, d.etiquetas, d.coresDasEtiquetas ?? {}, pessoaDoAtor(ator));
+    const novas = await etiquetasDoCatalogo(db, t.panelId, d.etiquetas, d.coresDasEtiquetas ?? {}, pessoaDoAtor(ator));
     if (novas.join('\n') !== t.tags.join('\n')) { set.tags = novas; campo('etiquetas', NOME_ETIQUETAS, juntar(t.tags), juntar(novas), t.tags); }
   }
   let observadoresNovos: string[] = [];
@@ -950,9 +998,11 @@ export async function trocarPainel(app: FastifyInstance, ator: Ator, ref: string
   await conferirMovimento(app.db, semOQueSai, para, { painel: novo, motivo: null, nivel: false });
   const m = await app.db.transaction(async (tx) => {
     await registrarEvento(tx, t.id, 'painel', ator, { de: painel.nome, para: novo.nome }, e.quando());
+    // as etiquetas vão junto (2.0.3: cada painel tem as suas): as que faltam no painel novo entram lá com a mesma cor
+    const etiquetas = await levarEtiquetas(tx as unknown as Db, t.tags, painel.id, novo.id, pessoaDoAtor(ator));
     if (t.subjectId) await registrarEvento(tx, t.id, 'campo', ator, { campo: NOME_CAMPO.assunto, de: caminho(ctx, t.subjectId), para: null }, e.quando());
     if (t.type && tipoNovo !== t.type) await registrarEvento(tx, t.id, 'campo', ator, { campo: NOME_CAMPO.tipo, de: t.type, para: tipoNovo }, e.quando());
-    return gravarMovimento(tx, e, ator, para, { motivo: null, sentido: null, extra: { panelId: novo.id, subjectId: null, type: tipoNovo } });
+    return gravarMovimento(tx, e, ator, para, { motivo: null, sentido: null, extra: { panelId: novo.id, subjectId: null, type: tipoNovo, ...(etiquetas.join('\n') !== t.tags.join('\n') ? { tags: etiquetas } : {}) } });
   });
   await depoisDoMovimento(app, ator, t, m, { painel: { de: { id: painel.id, nome: painel.nome }, para: { id: novo.id, nome: novo.nome } } });
   return { ...nada(t), resumo: `Passou ${t.code} do painel ${painel.nome} para ${novo.nome} (${para.nome})` };

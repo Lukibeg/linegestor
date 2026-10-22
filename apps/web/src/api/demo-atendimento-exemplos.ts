@@ -1314,6 +1314,8 @@ export type NegociacaoDeExemplo = {
   ativacaoPorProduto?: Record<string, number>;
   /** os campos do painel (os do Comercial do Helena), pelo nome do campo */
   campos?: Record<string, string>;
+  /** as etiquetas (as do Comercial: cada painel tem as suas, 2.0.3) */
+  etiquetas?: string[];
   por: Pessoa; responsavel: Pessoa | null;
   abriu: number;
   /** as etapas do funil por onde passou, com o dia */
@@ -1327,6 +1329,9 @@ export type NegociacaoDeExemplo = {
 
 /** A meta do mês do Comercial, em reais de mensalidade (a ativação não conta). */
 export const META_DO_COMERCIAL = 4_000;
+
+/** As etiquetas do Comercial (2.0.3: cada painel tem as suas; as do Suporte não aparecem aqui). */
+export const CORES_DAS_ETIQUETAS_DO_COMERCIAL: Array<[string, CorEtiqueta]> = [['quente', 'bad'], ['concorrência', 'signal'], ['retornar', 'accent'], ['indicação', 'ok']];
 
 export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
   // ---- o ano que passou (os ganhos mês a mês do relatório) ----
@@ -1407,11 +1412,11 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     por: 'diego', responsavel: 'diego', abriu: 12, passos: [{ para: 'Qualificação', dias: 11 }, { para: 'Proposta enviada', dias: 7 }, { para: 'Negociação', dias: 4 }],
     fim: { resultado: 'ganho', dias: 1 } },
   // ---- o funil de agora ----
-  { chave: 'beira-mar', titulo: 'Atendimento com URA e filas', empresa: 'Hotel Beira Mar', contato: ['Vânia', '5571999990213'], valor: 1_580, ativacao: 2_500, produtos: ['linepbx', 'linechat'],
+  { chave: 'beira-mar', etiquetas: ['concorrência', 'retornar'], titulo: 'Atendimento com URA e filas', empresa: 'Hotel Beira Mar', contato: ['Vânia', '5571999990213'], valor: 1_580, ativacao: 2_500, produtos: ['linepbx', 'linechat'],
     campos: { 'Origem de lead': 'Site' },
     por: 'diego', responsavel: 'diego', abriu: 33, passos: [{ para: 'Qualificação', dias: 31 }, { para: 'Proposta enviada', dias: 23 }, { para: 'Negociação', dias: 14 }],
     descricao: 'Hotel com 60 apartamentos, recepção 24h e central de reservas. Hoje usam uma central analógica alugada.' },
-  { chave: 'estrela', titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214'], valor: 1_250, produtos: ['linepbx', 'voicenet'],
+  { chave: 'estrela', etiquetas: ['quente'], titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214'], valor: 1_250, produtos: ['linepbx', 'voicenet'],
     porProduto: { linepbx: 980, voicenet: 270 }, ativacaoPorProduto: { linepbx: 1_500, voicenet: 400 },
     campos: { 'Origem de lead': 'Instagram', 'Contatos principais': 'Rosa (sócia): decide e assina, (71) 99999-0214\nCarlos (gerente da fábrica): vai usar a central e a fila do delivery' },
     por: 'camila', responsavel: 'camila', abriu: 18, passos: [{ para: 'Qualificação', dias: 16 }, { para: 'Proposta enviada', dias: 10 }, { para: 'Negociação', dias: 3 }],
@@ -1419,7 +1424,7 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     anotacao: { dias: 1, por: 'camila', texto: 'Mandei a proposta revisada com 10% de desconto na ativação. A Rosa vai falar com o sócio e responde até sexta.', proposta: 'Proposta Padaria Estrela - revisão 2.pdf' } },
   { chave: 'horizonte-canteiro', titulo: 'Central telefônica para o canteiro', cliente: 'Construtora Horizonte', contato: ['Edson', '5571999990211'], valor: 940, ativacao: 1_800, produtos: ['linepbx', 'equipamentos'],
     por: 'diego', responsavel: 'diego', abriu: 13, passos: [{ para: 'Qualificação', dias: 12 }, { para: 'Proposta enviada', dias: 6 }] },
-  { chave: 'bompreco-chat', titulo: 'LineChat com 8 atendentes', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 680, produtos: ['linechat'],
+  { chave: 'bompreco-chat', etiquetas: ['indicação'], titulo: 'LineChat com 8 atendentes', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 680, produtos: ['linechat'],
     campos: { 'Origem de lead': 'Cliente da base' },
     por: 'camila', responsavel: 'diego', abriu: 9, passos: [{ para: 'Qualificação', dias: 8 }, { para: 'Proposta enviada', dias: 4 }] },
   { chave: 'farma-mais', titulo: 'Migração das filiais para a nuvem', empresa: 'Rede Farma Mais', contato: ['Gustavo', '5571999990215'], valor: 3_000, produtos: ['linepbx', 'voicenet', 'linechat'],

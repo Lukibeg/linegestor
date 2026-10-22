@@ -20,7 +20,7 @@ import {
   circuits, clientContacts, clientUnits, clients, deviceModels, devices, dids, newId, subscriptions, ticketPanels, ticketSchedules, ticketStages,
   ticketSubjects, ticketWebhooks, tickets,
 } from '@gestor/db';
-import { AJUSTES_PAINEL_PADRAO, AVISOS_CHAMADOS_PADRAO, CARGOS_DE_FABRICA, ChamadoCriarSchema, diaLocal, mensagemPreenchida } from '@gestor/shared';
+import { AJUSTES_PAINEL_PADRAO, AVISOS_CHAMADOS_PADRAO, CARGOS_DE_FABRICA, ChamadoCriarSchema, diaLocal, mensagemPreenchida, paraBusca } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
 import * as integ from '../src/services/integracoes.js';
 import { esperarSegundoPlano } from '../src/services/atendimento/avisos.js';
@@ -1336,11 +1336,11 @@ describe('as opções da tela', () => {
     expect(op.assuntos.filter((a: any) => a.painelId === SUP).map((a: any) => a.nome)).toEqual(['Ramal', 'Sem áudio']);
     expect(op.produtos.map((p: any) => p.id)).toContain(linepbx);
     expect(op.operadoras.map((o: any) => o.id)).toEqual(expect.arrayContaining([operadoraA, operadoraB]));
-    // as etiquetas vêm com a cor (a que ninguém escolheu, cinza), em ordem de nome
-    const nomes = op.etiquetas.map((e: any) => e.nome);
+    // as etiquetas vêm com o painel e a cor (a que ninguém escolheu, cinza), painel por painel, em ordem de nome
+    const nomes = op.etiquetas.filter((e: any) => e.painelId === SUP).map((e: any) => e.nome);
     expect(nomes).toEqual(expect.arrayContaining(['audio', 'vip']));
     expect([...nomes].sort((a: string, b: string) => a.localeCompare(b, 'pt-BR'))).toEqual(nomes);
-    expect(op.etiquetas.find((e: any) => e.nome === 'vip')).toEqual({ nome: 'vip', cor: 'neutral' });
+    expect(op.etiquetas.find((e: any) => e.nome === 'vip')).toEqual({ painelId: SUP, nome: 'vip', cor: 'neutral' });
     expect(op.prazos.matriz.inoperancia.empresa).toBe('critica');
     expect(op.whatsapp).toEqual({ cliente: false, equipe: false, mensagemCliente: null });
     expect(op.ia).toEqual({ ativa: false, modelo: null });
@@ -1354,8 +1354,9 @@ describe('as opções da tela', () => {
 
 // =====================================================================
 
-describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao criar)', () => {
-  const cor = async (sess: Session, nome: string) => (await sess.get('/atendimento/opcoes')).json().etiquetas.find((e: any) => e.nome === nome)?.cor;
+describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao criar), cada painel com as suas (2.0.3)', () => {
+  const cor = async (sess: Session, nome: string, painel = SUP) =>
+    (await sess.get('/atendimento/opcoes')).json().etiquetas.find((e: any) => e.nome === nome && e.painelId === painel)?.cor;
   let ficha = { id: '', codigo: '' };
 
   it('a nova nasce com a cor escolhida; a que já existe fica com a dela; o chamado segue o nome do catálogo', async () => {
@@ -1372,27 +1373,31 @@ describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao c
     expect((await operador.patch(`/atendimento/chamados/${ficha.id}`, { etiquetas: ['x'], coresDasEtiquetas: { x: 'dourado' } })).statusCode).toBe(400);
   });
 
-  it('Ajustes › Etiquetas: quem cuida cria, troca a cor (vale em todos os chamados) e tira a que nenhum chamado usa', async () => {
+  it('Ajustes › Etiquetas: quem cuida cria (num painel), troca a cor (vale nos chamados do painel) e tira a que nenhum chamado usa', async () => {
     expect((await operador.get('/atendimento/etiquetas')).statusCode).toBe(403);
-    expect((await operador.post('/atendimento/etiquetas', { nome: 'Teste', cor: 'ok' })).statusCode).toBe(403);
+    expect((await operador.post('/atendimento/etiquetas', { painelId: SUP, nome: 'Teste', cor: 'ok' })).statusCode).toBe(403);
     const lista = (await s.get('/atendimento/etiquetas')).json();
     const vip = lista.find((e: any) => e.nome === 'Cliente VIP');
-    expect(vip).toMatchObject({ cor: 'bad', chamados: 1 });
-    const nova = await s.post('/atendimento/etiquetas', { nome: 'Aguardando peça', cor: 'signal' });
+    expect(vip).toMatchObject({ painelId: SUP, cor: 'bad', chamados: 1 });
+    // sem o painel, não cria
+    expect((await s.post('/atendimento/etiquetas', { nome: 'Sem painel', cor: 'ok' })).statusCode).toBe(400);
+    expect((await s.post('/atendimento/etiquetas', { painelId: 'nao-existe', nome: 'Sem painel', cor: 'ok' })).json().error).toBe('Esse painel não existe.');
+    const nova = await s.post('/atendimento/etiquetas', { painelId: SUP, nome: 'Aguardando peça', cor: 'signal' });
     expect(nova.statusCode, nova.body).toBe(201);
-    expect(nova.json()).toMatchObject({ nome: 'Aguardando peça', cor: 'signal', chamados: 0 });
-    const dup = await s.post('/atendimento/etiquetas', { nome: 'aguardando  PECA' });
+    expect(nova.json()).toMatchObject({ painelId: SUP, nome: 'Aguardando peça', cor: 'signal', chamados: 0 });
+    const dup = await s.post('/atendimento/etiquetas', { painelId: SUP, nome: 'aguardando  PECA' });
     expect(dup.statusCode).toBe(409);
-    expect(dup.json().error).toBe('A etiqueta Aguardando peça já existe.');
-    // a que ninguém usa já aparece para todos (para sugerir)
+    expect(dup.json().error).toBe('A etiqueta Aguardando peça já existe no Suporte.');
+    // a que ninguém usa já aparece para quem vê o painel (para sugerir) — e só nele
     expect(await cor(tecnico, 'Aguardando peça')).toBe('signal');
+    expect(await cor(tecnico, 'Aguardando peça', DEV)).toBeUndefined();
 
     const r = await s.put(`/atendimento/etiquetas/${vip.id}`, { cor: 'rosa' });
     expect(r.statusCode, r.body).toBe(200);
     expect(r.json()).toMatchObject({ nome: 'Cliente VIP', cor: 'rosa', chamados: 1 });
     expect(await cor(operador, 'Cliente VIP')).toBe('rosa');
     const resumos = (await s.get('/admin/audit?entityType=ticket_tag&pageSize=50')).json().items.map((i: any) => i.summary);
-    expect(resumos).toEqual(expect.arrayContaining(['Criou a etiqueta Aguardando peça (Laranja)', 'Trocou a cor da etiqueta Cliente VIP: Vermelho → Rosa']));
+    expect(resumos).toEqual(expect.arrayContaining(['Criou a etiqueta Aguardando peça (Laranja) no painel Suporte', 'Trocou a cor da etiqueta Cliente VIP do painel Suporte: Vermelho → Rosa']));
 
     // a que está num chamado não sai das sugestões; a que ninguém usa sai
     const usada = await s.del(`/atendimento/etiquetas/${vip.id}`);
@@ -1420,22 +1425,24 @@ describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao c
     // o nome de outra etiqueta (sem ligar para maiúscula e acento) não vale
     const dup = await s.put(`/atendimento/etiquetas/${retorno.id}`, { nome: 'peca', cor: 'ok' });
     expect(dup.statusCode).toBe(409);
-    expect(dup.json().error).toBe('A etiqueta Peça já existe: escolha outro nome.');
+    expect(dup.json().error).toBe('A etiqueta Peça já existe neste painel: escolha outro nome.');
     // pelo nome de agora (o seletor da ficha e do Abrir chamado), escrito de qualquer jeito; só a maiúscula também conta
-    const p = await s.put('/atendimento/etiquetas', { de: 'LIGAR amanha', nome: 'Ligar Amanhã', cor: 'turquesa' });
+    const p = await s.put('/atendimento/etiquetas', { painelId: SUP, de: 'LIGAR amanha', nome: 'Ligar Amanhã', cor: 'turquesa' });
     expect(p.statusCode, p.body).toBe(200);
     expect((await s.get(`/atendimento/chamados/${outro.id}`)).json().etiquetas).toEqual(['Ligar Amanhã']);
-    expect((await s.put('/atendimento/etiquetas', { de: 'não existe', cor: 'ok' })).json().error).toBe('Etiqueta não encontrada');
+    expect((await s.put('/atendimento/etiquetas', { painelId: SUP, de: 'não existe', cor: 'ok' })).json().error).toBe('Etiqueta não encontrada');
+    // no painel errado, também não acha
+    expect((await s.put('/atendimento/etiquetas', { painelId: DEV, de: 'Ligar Amanhã', cor: 'ok' })).json().error).toBe('Etiqueta não encontrada');
     // a etiqueta que só está nos chamados (escrita antes do catálogo) entra nele ao editar
     await app.db.update(tickets).set({ tags: ['Antiga do Helena'] }).where(eq(tickets.id, outro.id));
-    const antiga = await s.put('/atendimento/etiquetas', { de: 'antiga do helena', nome: 'Do Helena', cor: 'amarelo' });
+    const antiga = await s.put('/atendimento/etiquetas', { painelId: SUP, de: 'antiga do helena', nome: 'Do Helena', cor: 'amarelo' });
     expect(antiga.statusCode, antiga.body).toBe(200);
     expect(antiga.json()).toMatchObject({ nome: 'Do Helena', cor: 'amarelo', chamados: 1 });
     expect((await s.get(`/atendimento/chamados/${outro.id}`)).json().etiquetas).toEqual(['Do Helena']);
     const resumos = (await s.get('/admin/audit?entityType=ticket_tag&pageSize=50')).json().items.map((i: any) => i.summary);
     expect(resumos).toEqual(expect.arrayContaining([
-      'Editou a etiqueta Retorno amanhã: agora Ligar amanhã, turquesa (em 2 chamados)', 'Renomeou a etiqueta Ligar amanhã para Ligar Amanhã (em 2 chamados)',
-      'Editou a etiqueta Antiga do Helena: agora Do Helena, amarelo (em 1 chamado)',
+      'Editou a etiqueta Retorno amanhã do painel Suporte: agora Ligar amanhã, turquesa (em 2 chamados)', 'Renomeou a etiqueta Ligar amanhã do painel Suporte para Ligar Amanhã (em 2 chamados)',
+      'Editou a etiqueta Antiga do Helena do painel Suporte: agora Do Helena, amarelo (em 1 chamado)',
     ]));
   });
 
@@ -1443,11 +1450,38 @@ describe('as etiquetas com cor (o pedido do Luan na prévia: escolher a cor ao c
     await app.db.update(ticketPanels).set({ access: 'escolhidos', memberIds: [marinaId] }).where(eq(ticketPanels.id, DEV));
     try {
       await abrir(s, { painelId: DEV, titulo: 'Pedido reservado', etiquetas: ['Só da diretoria'], coresDasEtiquetas: { 'Só da diretoria': 'roxo' } });
-      expect(await cor(operador, 'Só da diretoria')).toBe('roxo');
-      expect(await cor(tecnico, 'Só da diretoria')).toBeUndefined();
+      expect(await cor(operador, 'Só da diretoria', DEV)).toBe('roxo');
+      expect(await cor(tecnico, 'Só da diretoria', DEV)).toBeUndefined();
     } finally {
       await app.db.update(ticketPanels).set({ access: 'todos', memberIds: [] }).where(eq(ticketPanels.id, DEV));
     }
+  });
+
+  it('cada painel tem as suas (2.0.3): o mesmo nome em dois painéis, cada um com a cor dele; editar num não mexe no outro', async () => {
+    const sup = await abrir(operador, { titulo: 'Urgente no suporte', etiquetas: ['Urgente agora'], coresDasEtiquetas: { 'Urgente agora': 'bad' } });
+    const dev = await abrir(operador, { painelId: DEV, titulo: 'Urgente no desenvolvimento', etiquetas: ['urgente  AGORA'], coresDasEtiquetas: { 'urgente  AGORA': 'roxo' } });
+    // no Desenvolvimento ela nasce como foi escrita lá, com a cor de lá
+    expect((await s.get(`/atendimento/chamados/${dev.id}`)).json().etiquetas).toEqual(['urgente AGORA']);
+    expect(await cor(operador, 'Urgente agora')).toBe('bad');
+    expect(await cor(operador, 'urgente AGORA', DEV)).toBe('roxo');
+    const lista = (await s.get('/atendimento/etiquetas')).json().filter((e: any) => paraBusca(e.nome) === 'urgente agora');
+    expect(lista.map((e: any) => [e.painelId, e.cor, e.chamados]).sort()).toEqual([[DEV, 'roxo', 1], [SUP, 'bad', 1]]);
+    // renomear a do Suporte muda os chamados do Suporte, e só eles
+    const doSup = lista.find((e: any) => e.painelId === SUP);
+    expect((await s.put(`/atendimento/etiquetas/${doSup.id}`, { nome: 'Prioridade máxima', cor: 'bad' })).statusCode).toBe(200);
+    expect((await s.get(`/atendimento/chamados/${sup.id}`)).json().etiquetas).toEqual(['Prioridade máxima']);
+    expect((await s.get(`/atendimento/chamados/${dev.id}`)).json().etiquetas).toEqual(['urgente AGORA']);
+  });
+
+  it('o chamado que troca de painel leva as etiquetas: as que faltam lá entram com a mesma cor', async () => {
+    const c = await abrir(operador, { titulo: 'Vai para o desenvolvimento', etiquetas: ['Integração ERP'], coresDasEtiquetas: { 'Integração ERP': 'turquesa' } });
+    expect(await cor(operador, 'Integração ERP', DEV)).toBeUndefined();
+    const r = await operador.post(`/atendimento/chamados/${c.id}/painel`, { painelId: DEV });
+    expect(r.statusCode, r.body).toBe(200);
+    expect((await s.get(`/atendimento/chamados/${c.id}`)).json().etiquetas).toEqual(['Integração ERP']);
+    expect(await cor(operador, 'Integração ERP', DEV)).toBe('turquesa');
+    // a do Suporte continua lá (outro chamado pode usar)
+    expect(await cor(operador, 'Integração ERP')).toBe('turquesa');
   });
 });
 

@@ -39,7 +39,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, UserRoundPlus, X } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
-  acharContato, caminhoDoAssunto, campoLigado, chaveDaEtiqueta, chaveDoCampo, emOrdemDeArvore, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
+  acharContato, caminhoDoAssunto, campoLigado, chaveDaEtiqueta, chaveDoCampo, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
   paraBusca, prioridadeSugeridaDoPainel, valorPreenchido,
   type CorEtiqueta,
   type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
@@ -54,7 +54,7 @@ import { SeletorDeEtiquetas } from './SeletorDeEtiquetas.js';
 import { PontoDoPainel } from './quadro/filtros.js';
 import {
   CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
-  painelDe, telefoneLegivel, useAbrirChamado, useDepoisDeMudar, useFecharJanela, useFicha, useOpcoes, usePode,
+  painelDe, telefoneLegivel, useAbrirChamado, useDepoisDeMudar, useFecharJanela, useFicha, useIncluirOpcao, useOpcoes, usePode,
 } from './comum.js';
 import { ValorDaNegociacao, type ModoDoValor } from './venda.js';
 
@@ -254,7 +254,9 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       coresNovas: {},
       avisarCliente: false,
       campos: {},
-      jaECliente: true, empresa: '', valor: null, valorValido: true,
+      // a negociação nasce em "Ainda não é cliente" (o pedido do Luan, 2.0.3: "o padrão aqui tem q ser que ainda n
+      // é cliente pq a maioria dos casos vão ser assim"); nos chamados a escolha não aparece
+      jaECliente: false, empresa: '', valor: null, valorValido: true,
       modoValor: 'unico', valores: {}, valoresInvalidos: [], ativacao: null, ativacaoValida: true, ativacoes: {}, ativacoesInvalidas: [],
     };
   });
@@ -367,7 +369,14 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
 
   const abrir = async () => {
     setErro('');
-    if (f.titulo.trim().length < 3) { setErro('Escreva um título (pelo menos 3 letras).'); document.getElementById('novo-titulo')?.focus(); return; }
+    // na negociação o título é opcional (o pedido do Luan, 2.0.3): vazio, ela fica com o nome da empresa
+    const tituloCurto = vendas ? f.titulo.trim().length > 0 && f.titulo.trim().length < 3 : f.titulo.trim().length < 3;
+    if (tituloCurto) { setErro(vendas ? 'Escreva o que está sendo negociado com pelo menos 3 letras, ou deixe vazio: fica o nome da empresa.' : 'Escreva um título (pelo menos 3 letras).'); document.getElementById('novo-titulo')?.focus(); return; }
+    if (vendas && !f.titulo.trim() && !(f.jaECliente ? f.clienteId : f.empresa.trim())) {
+      setErro('Escreva o que está sendo negociado ou a empresa: sem título, a negociação fica com o nome da empresa.');
+      document.getElementById(f.jaECliente ? 'novo-cliente' : 'novo-empresa')?.focus();
+      return;
+    }
     if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
     if (precisaMotivo && !f.motivoPrioridade.trim()) { setErro('Trocar a prioridade sugerida pede o motivo.'); document.getElementById('novo-motivo-prioridade')?.focus(); return; }
     if (vendas && !porProduto && !f.valorValido) { setErro('Escreva a mensalidade como 1.200,00.'); document.getElementById('novo-valor-unico')?.focus(); return; }
@@ -411,7 +420,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       etiquetas: f.etiquetas,
       // a cor das novas (a que já existe fica com a dela)
       coresDasEtiquetas: Object.fromEntries(f.etiquetas
-        .filter((e) => !opcoes.etiquetas.some((x) => chaveDaEtiqueta(x.nome) === chaveDaEtiqueta(e)))
+        .filter((e) => !etiquetasDoPainel(opcoes.etiquetas, painel.id).some((x) => chaveDaEtiqueta(x.nome) === chaveDaEtiqueta(e)))
         .map((e) => [e, f.coresNovas[chaveDaEtiqueta(e)] ?? 'neutral'])),
       responsavelId: f.responsavelId || null,
       observadores: f.observadores,
@@ -590,8 +599,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         {/* ---------- o que aconteceu (na venda, a negociação) ---------- */}
         <Secao titulo={vendas ? 'A negociação' : 'O que aconteceu'}>
           <div className="grid grid-cols-1 gap-3">
-            <Rotulado rotulo={vendas ? 'O que está sendo negociado' : 'Título'} id="novo-titulo" obrigatorio
-              dica={vendas ? 'Uma frase, como a equipe vai achar depois (a empresa já aparece à parte).' : 'Uma frase, como alguém procuraria depois (o cliente já aparece à parte).'}>
+            <Rotulado rotulo={vendas ? 'O que está sendo negociado' : 'Título'} id="novo-titulo" obrigatorio={!vendas}
+              dica={vendas ? 'Opcional: uma frase curta. Vazio, a negociação fica com o nome da empresa.' : 'Uma frase, como alguém procuraria depois (o cliente já aparece à parte).'}>
               <input className="input" id="novo-titulo" value={f.titulo} maxLength={200} placeholder={vendas ? 'Ex.: PABX em nuvem com 40 ramais' : 'Ex.: Ramal 203 sem áudio desde a manhã'}
                 onChange={(e) => mudar({ titulo: e.target.value })} />
             </Rotulado>
@@ -775,7 +784,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             </Rotulado>
             {/* o seletor de etiquetas (o pedido do Luan: no padrão das outras listas, e com o editar: o nome e a cor) */}
             <Rotulado rotulo="Etiquetas" id="novo-etiquetas" className="sm:col-span-2">
-              <SeletorDeEtiquetas id="novo-etiquetas" valor={f.etiquetas} catalogo={opcoes.etiquetas} coresNovas={f.coresNovas} podeMudar podeEditar={pode.cuidar}
+              <SeletorDeEtiquetas id="novo-etiquetas" painelId={painel.id} valor={f.etiquetas} catalogo={etiquetasDoPainel(opcoes.etiquetas, painel.id)} coresNovas={f.coresNovas} podeMudar podeEditar={pode.cuidar}
                 onMudar={(v) => mudar({ etiquetas: v })}
                 onCriar={(nome, cor) => mudar({ etiquetas: etiquetasUnicas([...f.etiquetas, nome]).slice(0, 20), coresNovas: { ...f.coresNovas, [chaveDaEtiqueta(nome)]: cor } })}
                 onEditarLocal={(de, nome, cor) => {
@@ -856,6 +865,7 @@ function CampoDoPainel({ c, valor, obrigatorio, falta, onChange }: {
   c: CampoPersonalizado; valor: ValorDoCampo | null; obrigatorio: boolean; falta: boolean; onChange: (v: ValorDoCampo | null) => void;
 }) {
   const id = `novo-campo-${c.id}`;
+  const incluirOpcao = useIncluirOpcao();
   const ativas = c.opcoes.filter((o) => o.ativa);
   const texto = typeof valor === 'string' ? valor : typeof valor === 'number' ? String(valor) : '';
   const comum = { rotulo: c.nome, id, obrigatorio, falta, dica: c.dica ?? undefined };
@@ -878,6 +888,16 @@ function CampoDoPainel({ c, valor, obrigatorio, falta, onChange }: {
         </Rotulado>
       );
     case 'lista':
+      // a lista em que se inclui na hora (a Indicação, 2.0.3): a caixa de escolher, com o "Incluir" no fim
+      if (c.incluirNaHora) {
+        return (
+          <Rotulado {...comum}>
+            <EscolherComBusca valor={texto} onChange={(v) => onChange(v || null)} opcoes={ativas.map((o) => ({ id: o.id, nome: o.nome }))} vazio="—"
+              placeholder="Escolha ou inclua…" procurar="Procurar ou incluir…" className="input w-full" id={id} rotulo={c.nome}
+              criar={{ rotulo: 'Incluir', fazer: (nome) => incluirOpcao(c.id, nome) }} />
+          </Rotulado>
+        );
+      }
       return ativas.length <= 8 ? (
         <Rotulado {...comum} grupo className={ativas.length > 3 ? 'sm:col-span-2' : ''}>
           <Segmentos id={id} rotulo={c.nome} valor={texto} desmarcavel opcoes={ativas.map((o) => ({ id: o.id, nome: o.nome }))} onChange={(v) => onChange(v || null)} />

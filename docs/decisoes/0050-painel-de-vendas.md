@@ -29,6 +29,8 @@ nele (a regra do patch que ainda não subiu).
   (até o print das colunas do Comercial do Helena, quando os nomes passam a ser os de lá). As finais
   são duas, **Ganho** e **Perdido**: o painel de Vendas tem uma de cada (o nome muda, a etapa não sai),
   nenhuma etapa Resolvido e nenhum nível. Dá para incluir etapas no funil, como em qualquer painel.
+  **No 2.0.3** (decisão 0054), o **Trazer do Helena** põe no painel as etapas do Helena, na ordem de lá
+  (StandBy, Lead Novo… Cliente na base), com o Ganho e o Perdido no fim.
 - **A negociação.** O que está sendo negociado (o título); a **empresa** — um cliente do cadastro ou
   uma que ainda não é (o nome escrito à mão; quando ela entra no cadastro, o **Virou cliente?** da
   ficha liga os dois); o contato e o WhatsApp; o **valor** — a **mensalidade** e a **ativação** (em R$);
@@ -210,3 +212,28 @@ nele (a regra do patch que ainda não subiu).
 - **Ganho e Perdido como uma marca do cartão** (e não como etapas): no Helena é assim, mas como etapas
   eles aparecem no quadro (as colunas somam o ganho e a perda), seguem as regras de etapa que o Gestor
   já tem (o que falta para entrar, o aviso, o arrastar) e o Reabrir funciona igual ao dos chamados.
+
+## Revisto no 2.0.3 (21/10/2026): o cartão, o título opcional e a negociação nova
+
+No documento de 21/10 (o "pacote de melhorias"), com o 2.0.2 no ar:
+
+- **O cartão da negociação** mostra a **empresa grande e em negrito**, e embaixo dela, numa linha só, o
+  título (*"essa descrição tem q ficar bem sucinta abaixo do nome do cliente que tem q ta em negrito e
+  maior"*). O título que é o próprio nome da empresa não se repete. Só no painel de Vendas: no chamado, o
+  título é o problema e continua em cima.
+- **O título é opcional** (*"isso tem q ser opcional, se eu n colocar nada vai ser o nome do cliente"*): na
+  Nova negociação e na ficha, vazio, ela fica com o nome da empresa (o cliente ou a que ainda não é); escrito,
+  pede 3 letras, como antes. O título que era o nome da empresa **acompanha a empresa** quando ela muda (o
+  nome corrigido, o Virou cliente). Sem título e sem empresa, não abre. O formato aceita o vazio e quem decide
+  é o servidor, que sabe o tipo do painel (`tituloQueFica`, `mensagemDoTitulo`); os chamados continuam pedindo
+  o título.
+- **A negociação nova nasce em "Ainda não é cliente"** (*"o padrão aqui tem q ser que ainda n é cliente pq a
+  maioria dos casos vão ser assim"*).
+- **A Indicação** virou uma lista que se inclui ali mesmo (a revisão de 2.0.3 da 0047): o campo de fábrica do
+  painel de Vendas nasce assim, e o de cada painel de hoje foi convertido pela migração `0023`.
+- As **etiquetas** do Comercial são só dele (a mesma revisão da 0047): na prévia, quente, concorrência,
+  retornar e indicação.
+- **O Trazer do Helena** (a decisão 0054, no mesmo 2.0.3): o painel de vendas do Helena vem para o painel de
+  Vendas com o histórico, as etapas de lá e a mensalidade igual ao Valor atribuído. As etiquetas dos cards
+  entram nas do painel que recebe, e a Indicação do Helena cai na lista da Indicação, que ganha as opções
+  que não tinha.

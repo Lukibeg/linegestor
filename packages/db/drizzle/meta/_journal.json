@@ -162,6 +162,20 @@
       "when": 1792592833180,
       "tag": "0022_cargos_dos_contatos",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1792617475815,
+      "tag": "0023_etiquetas_por_painel_e_indicacao",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1792624257961,
+      "tag": "0024_trazer_do_helena",
+      "breakpoints": true
     }
   ]
 }

@@ -1581,6 +1581,11 @@ export const ticketFields = pgTable(
     help: text('help'),
     /** As opções das listas: [{id, nome, ativa}] (a que sai fica desativada: o chamado que a tem continua com ela) */
     options: jsonb('options').notNull().default([]),
+    /**
+     * Na lista de uma opção: quem trabalha no painel inclui a opção nova ali mesmo, no Abrir chamado e na ficha
+     * (2.0.3, a Indicação do Comercial: "eu tenho que conseguir criar por aqui mesmo se quiser")
+     */
+    inlineOptions: boolean('inline_options').notNull().default(false),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
@@ -1683,6 +1688,11 @@ export const tickets = pgTable(
     prospect: text('prospect'),
     /** Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) */
     lostReason: text('lost_reason'),
+    /**
+     * De onde veio, quando veio de outro sistema (2.0.3, decisão 0054): "helena:<id do card>" — o Trazer do
+     * Helena acha por aqui a negociação que já trouxe (atualiza em vez de criar outra). Único.
+     */
+    externalRef: text('external_ref'),
     createdById: text('created_by_id').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1697,6 +1707,7 @@ export const tickets = pgTable(
     index('tickets_problem_idx').on(t.problemId),
     index('tickets_session_idx').on(t.sessionId),
     index('tickets_phone_idx').on(t.contactPhone),
+    uniqueIndex('tickets_external_ref_uq').on(t.externalRef),
   ],
 );
 
@@ -1873,12 +1884,16 @@ export const ticketMacros = pgTable('ticket_macros', {
  * Uma ETIQUETA e a COR dela (2.0, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher
  * a cor"). O chamado guarda os nomes (`tickets.tags`), sempre escritos como aqui. A etiqueta nova nasce
  * com a cor escolhida na tela, ou cinza (o robô, a IA, a resposta pronta); quem cuida dos chamados troca
- * a cor em Ajustes › Etiquetas.
+ * a cor em Ajustes › Etiquetas. Desde o 2.0.3 cada PAINEL tem as suas (o pedido do Luan: "as etiquetas tem q
+ * ser por painel, cada painel vai ter suas etiquetas"): o mesmo nome pode estar em dois painéis, cada um com a
+ * sua cor (a migração 0023 pôs cada etiqueta nos painéis em que estava em uso).
  */
 export const ticketTags = pgTable(
   'ticket_tags',
   {
     id: id(),
+    /** O painel da etiqueta: ela só é sugerida e só tem esta cor nos chamados dele */
+    panelId: text('panel_id').notNull().references(() => ticketPanels.id, { onDelete: 'cascade' }),
     /** O nome como a equipe escreveu ("Cliente VIP") */
     name: text('name').notNull(),
     /** O nome para comparar (minúsculo, sem acento, um espaço só): não se repete */
@@ -1889,7 +1904,7 @@ export const ticketTags = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex('ticket_tags_name_key_uq').on(t.nameKey)],
+  (t) => [uniqueIndex('ticket_tags_painel_nome_uq').on(t.panelId, t.nameKey)],
 );
 
 /**

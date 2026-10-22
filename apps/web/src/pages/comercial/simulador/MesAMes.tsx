@@ -12,6 +12,13 @@
  * e o acumulado. A tabela tem todos os meses (passar o mouse numa linha marca o mês no gráfico). O 1º mês é o da
  * assinatura: a ativação (ou a 1ª parcela), a 1ª mensalidade, o que é pago de uma vez e os custos do mês. As
  * colunas dele costumam ser bem maiores que as outras: passando da escala, são cortadas e dizem o valor.
+ *
+ * O conserto do 2.0.3 (o Luan, 21/10: "esse gráfico aqui ta meio bugado, dê uma melhorada"): a escala era o maior e o
+ * menor valor dos meses ("4,9 mil", "−6 mil"), com as colunas grudadas na borda — agora vai em números redondos
+ * (`escalaRedonda`), com as marcas no meio; o valor da coluna cortada ficava ao lado dela, e a coluna do mês seguinte,
+ * desenhada depois, o cobria ("R$ 9," e "−R$ 1") — agora fica numa faixa só dele, acima (ou abaixo) do gráfico,
+ * desenhado por último; e a marca do corte, um traço branco inclinado que passava da coluna, virou um vão reto na
+ * largura da coluna.
  */
 import { useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
@@ -59,6 +66,41 @@ function useLargura(padrao: number) {
 
 /** O contorno da cor do fundo nos textos sobre o gráfico: a linha que passa por trás não atrapalha a leitura. */
 const HALO = { stroke: 'var(--surface)', strokeWidth: 3, paintOrder: 'stroke', strokeLinejoin: 'round' } as const;
+
+/**
+ * Um passo redondo — 1, 2 ou 5 vezes uma potência de 10, o mais perto de dividir a amplitude em `alvo` partes (a
+ * fronteira entre um e outro é a média geométrica: 1,41, 3,16 e 7,07).
+ */
+function passoRedondo(amplitude: number, alvo: number): number {
+  const bruto = amplitude / Math.max(1, alvo);
+  const pot = 10 ** Math.floor(Math.log10(bruto));
+  const m = bruto / pot;
+  return (m >= 7.07 ? 10 : m >= 3.16 ? 5 : m >= 1.41 ? 2 : 1) * pot;
+}
+
+/**
+ * A escala de um gráfico que passa pelo zero (`max` ≥ 0 ≥ `min`, em centavos), com as marcas em números redondos (o
+ * zero é uma delas). `justa`: o gráfico vai do menor ao maior valor, com uma folga, e as marcas ficam dentro (o
+ * acumulado: arredondar o lado pequeno ao passo deixaria um vão grande); sem ela, os dois lados vão até a marca
+ * redonda seguinte (as colunas: nenhuma encosta na borda sem uma marca ali). Sem nada, R$ 1 para cada lado.
+ */
+export function escalaRedonda(max: number, min: number, alvo: number, justa = false): { hi: number; lo: number; marcas: number[] } {
+  const amp = Math.max(100, max - min);
+  const passo = passoRedondo(amp, alvo);
+  let hi: number; let lo: number;
+  if (justa) {
+    const folga = amp * 0.06;
+    hi = max > 0 ? max + folga : 0;
+    lo = min < 0 ? min - folga : 0;
+  } else {
+    hi = Math.max(0, Math.ceil(max / passo - 1e-9) * passo);
+    lo = Math.min(0, Math.floor(min / passo + 1e-9) * passo);
+  }
+  if (!hi && !lo) { hi = 100; lo = -100; }
+  const marcas: number[] = [];
+  for (let v = Math.ceil(lo / passo - 1e-9) * passo; v <= hi + 1e-9; v += passo) marcas.push(Math.round(v / passo) * passo);
+  return { hi, lo, marcas: marcas.includes(0) ? marcas : [...marcas, 0] };
+}
 
 /** De quantos em quantos meses o eixo escreve o número. */
 const passoDoEixo = (n: number) => (n <= 13 ? 1 : n <= 25 ? 3 : n <= 49 ? 6 : 12);
@@ -109,32 +151,42 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
   const dir = 12;
   const topo = 24;
   const H1 = estreito ? 170 : 210;
-  const meio = 36;
+  const meio = 34;
   const H2 = estreito ? 120 : 150;
   const base = 26;
-  const H = topo + H1 + meio + H2 + base;
   const banda = Math.max(1, W - esq - dir) / n;
   const x = (i: number) => esq + (i + 0.5) * banda;
   const pagou = k.sePagaEm.tipo === 'mes' && !k.sePagaEm.depoisDoPrazo ? k.sePagaEm.mes : null;
 
-  // o faturamento (para cima) e os custos (para baixo): a escala é a dos outros meses quando o 1º passa muito deles
+  // o faturamento (para cima) e os custos (para baixo): a escala é a dos outros meses quando o 1º passa muito deles,
+  // em números redondos (antes eram o maior e o menor valor, e as colunas encostavam na borda)
   const fat = meses.map((m) => m.faturamento);
   const cus = meses.map((m) => m.custos);
   const outrosFat = n > 1 ? Math.max(0, ...fat.slice(1)) : fat[0] ?? 0;
   const outrosCus = n > 1 ? Math.max(0, ...cus.slice(1)) : cus[0] ?? 0;
   const cortaO1 = n > 1 && ((fat[0] ?? 0) > CORTE * Math.max(1, outrosFat) || (cus[0] ?? 0) > CORTE * Math.max(1, outrosCus));
-  const hi = Math.max(1, cortaO1 ? outrosFat : Math.max(outrosFat, fat[0] ?? 0));
-  const lo = -Math.max(1, cortaO1 ? outrosCus : Math.max(outrosCus, cus[0] ?? 0));
-  const y1 = (v: number) => topo + ((hi - v) / (hi - lo)) * H1;
+  const e1 = escalaRedonda(cortaO1 ? outrosFat : Math.max(outrosFat, fat[0] ?? 0), -(cortaO1 ? outrosCus : Math.max(outrosCus, cus[0] ?? 0)), estreito ? 4 : 5);
+  const { hi, lo } = e1;
   const corta = (v: number) => v > hi || v < lo;
   const dentro = (v: number) => Math.min(hi, Math.max(lo, v));
+  // o valor da coluna cortada vai numa faixa só dele, acima (o faturamento) ou abaixo (os custos) do gráfico: lá
+  // nenhuma coluna o cobre (antes ficava ao lado da coluna, e a do mês seguinte, desenhada depois, cobria o texto)
+  const cortaCima = meses.some((m) => corta(m.faturamento));
+  const cortaBaixo = meses.some((m) => corta(-m.custos));
+  const FAIXA_DO_CORTE = 18;
+  const ar = 6;
+  const p1 = topo + (cortaCima ? FAIXA_DO_CORTE : ar);
+  const y1 = (v: number) => p1 + ((hi - v) / (hi - lo)) * H1;
+  const fim1 = p1 + H1;
 
-  // o acumulado
+  // o acumulado, também em números redondos
   const serie = meses.map((m) => m.acumulado);
   const max2 = Math.max(0, ...serie);
   const min2 = Math.min(0, ...serie);
-  const topo2 = topo + H1 + meio;
-  const y2 = (v: number) => topo2 + ((max2 - v) / (max2 - min2 || 1)) * H2;
+  const e2 = escalaRedonda(max2, min2, estreito ? 3 : 4, true);
+  const topo2 = fim1 + (cortaBaixo ? FAIXA_DO_CORTE : ar) + meio;
+  const y2 = (v: number) => topo2 + ((e2.hi - v) / (e2.hi - e2.lo || 1)) * H2;
+  const H = topo2 + H2 + base;
   const caminho = serie.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y2(v).toFixed(1)}`).join(' ');
   const area = `${caminho} L${x(n - 1).toFixed(1)},${y2(0).toFixed(1)} L${x(0).toFixed(1)},${y2(0).toFixed(1)} Z`;
   const pior = min2 < 0 ? serie.indexOf(min2) : -1;
@@ -190,7 +242,7 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
             <clipPath id="mam-abaixo"><rect x="0" y={y2(0)} width={W} height={Math.max(0, H - y2(0))} /></clipPath>
           </defs>
           {/* o mês escolhido, nos dois gráficos */}
-          {mes != null && <rect x={x(mes) - banda / 2} y={topo - 4} width={banda} height={topo2 + H2 - topo + 8} fill="var(--ink)" opacity="0.06" rx="3" />}
+          {mes != null && <rect x={x(mes) - banda / 2} y={p1 - 4} width={banda} height={topo2 + H2 - p1 + 8} fill="var(--ink)" opacity="0.06" rx="3" />}
 
           {/* o faturamento e os custos */}
           <text x={esq} y={13} fontSize="11.5" fontWeight="600" fill="var(--ink-2)">Faturamento e custos de cada mês (R$)</text>
@@ -201,10 +253,10 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
               <circle cx={W - dir - 95} cy={9} r="4" fill="var(--ok)" stroke="var(--surface)" strokeWidth="1.5" /><text x={W - dir - 87} y={13}>lucro do mês</text>
             </g>
           )}
-          {[hi, 0, lo].map((v) => (
+          {e1.marcas.map((v) => (
             <line key={`a${v}`} x1={esq} x2={W - dir} y1={y1(v)} y2={y1(v)} stroke={v === 0 ? 'var(--line-strong)' : 'var(--line)'} />
           ))}
-          {semEncostar([0, hi, lo], y1).map((v) => (
+          {semEncostar([0, ...e1.marcas], y1).map((v) => (
             <text key={`ra${v}`} x={esq - 6} y={y1(v) + 4} fontSize="11" fill="var(--muted)" textAnchor="end">{noEixo(v)}</text>
           ))}
           {meses.map((m, i) => {
@@ -215,18 +267,9 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
               <g key={m.mes} opacity={opacidade}>
                 {m.faturamento > 0 && <rect x={x(i) - w / 2} y={y1(cimaV)} width={w} height={Math.max(1, zero - y1(cimaV))} rx={Math.min(2, w / 3)} fill="var(--accent)" />}
                 {m.custos > 0 && <rect x={x(i) - w / 2} y={zero} width={w} height={Math.max(1, y1(baixoV) - zero)} rx={Math.min(2, w / 3)} fill="var(--signal)" />}
-                {corta(m.faturamento) && (
-                  <>
-                    <line x1={x(i) - w / 2 - 2} x2={x(i) + w / 2 + 2} y1={y1(hi) + 6} y2={y1(hi) + 2} stroke="var(--surface)" strokeWidth="2.5" />
-                    <text x={x(i) + w / 2 + 4} y={y1(hi) + 11} fontSize="11" fontWeight="600" fill="var(--accent-ink)" {...HALO}>{curto(m.faturamento)}</text>
-                  </>
-                )}
-                {corta(-m.custos) && (
-                  <>
-                    <line x1={x(i) - w / 2 - 2} x2={x(i) + w / 2 + 2} y1={y1(lo) - 6} y2={y1(lo) - 2} stroke="var(--surface)" strokeWidth="2.5" />
-                    <text x={x(i) + w / 2 + 4} y={y1(lo) - 3} fontSize="11" fontWeight="600" fill="var(--signal)" {...HALO}>{curto(-m.custos)}</text>
-                  </>
-                )}
+                {/* a marca do corte: um vão reto na largura da coluna, perto da ponta */}
+                {corta(m.faturamento) && <rect x={x(i) - w / 2} y={y1(hi) + 5} width={w} height={2.5} fill="var(--surface)" />}
+                {corta(-m.custos) && <rect x={x(i) - w / 2} y={y1(lo) - 7.5} width={w} height={2.5} fill="var(--surface)" />}
               </g>
             );
           })}
@@ -235,13 +278,20 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
             <circle key={`l${m.mes}`} cx={x(i)} cy={y1(dentro(m.lucro))} r={mes === i ? 5 : n > 40 ? 2.6 : 3.6}
               fill={m.lucro < 0 ? 'var(--bad)' : 'var(--ok)'} stroke="var(--surface)" strokeWidth="1.5" />
           ))}
+          {/* o valor da coluna cortada, na faixa dele (por último: nada o cobre); começa na coluna e corre para a direita */}
+          {meses.map((m, i) => (
+            <g key={`c${m.mes}`} fontSize="11" fontWeight="600" opacity={mes == null || mes === i ? 1 : 0.5}>
+              {corta(m.faturamento) && <text x={x(i) - w / 2} y={p1 - 5} fill="var(--accent-ink)">{curto(m.faturamento)}</text>}
+              {corta(-m.custos) && <text x={x(i) - w / 2} y={fim1 + 13} fill="var(--signal)">{curto(-m.custos)}</text>}
+            </g>
+          ))}
 
           {/* o acumulado */}
           <text x={esq} y={topo2 - 12} fontSize="11.5" fontWeight="600" fill="var(--ink-2)">Acumulado (R$)</text>
-          {[max2, 0, min2].filter((v, i, a) => a.indexOf(v) === i).map((v) => (
+          {e2.marcas.map((v) => (
             <line key={`b${v}`} x1={esq} x2={W - dir} y1={y2(v)} y2={y2(v)} stroke={v === 0 ? 'var(--line-strong)' : 'var(--line)'} strokeDasharray={v === 0 ? '4 3' : undefined} />
           ))}
-          {semEncostar([0, max2, min2], y2).map((v) => (
+          {semEncostar([0, ...e2.marcas], y2).map((v) => (
             <text key={`rb${v}`} x={esq - 6} y={y2(v) + 4} fontSize="11" fill="var(--muted)" textAnchor="end">{noEixo(v)}</text>
           ))}
           <path d={area} fill="var(--ok-soft)" clipPath="url(#mam-acima)" />
@@ -277,7 +327,7 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
         </div>
       )}
       <p className="text-[12px] text-muted mt-2">
-        O 1º mês é o da assinatura: nele entram a ativação (ou a 1ª parcela) e a 1ª mensalidade, e saem o que é pago de uma vez (os aparelhos à vista, a instalação) e os custos do mês.
+        O 1º mês é o da assinatura: nele entram a ativação (ou a 1ª parcela) e a 1ª mensalidade, e saem o que é pago de uma vez (os aparelhos à vista, a comissão da venda) e os custos do mês.
         {cortaO1 && ' As colunas dele passam da escala: são cortadas e dizem o valor.'} {estreito ? '' : 'Passe o mouse num mês para ver o detalhe.'}
       </p>
       <button type="button" className="btn-ghost btn-sm mt-2 -ml-2" onClick={() => setTabela((t) => !t)} aria-expanded={tabela} id="simulador-mes-a-mes-tabela-botao">

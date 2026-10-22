@@ -317,6 +317,7 @@ export const realApi: Api = {
     salvarCamposDoSistema: (painelId, d) => http('PUT', `/atendimento/paineis/${painelId}/campos-do-sistema`, d),
     salvarCampo: (painelId, id, d) => (id ? http('PUT', `/atendimento/campos/${id}`, d) : http('POST', `/atendimento/paineis/${painelId}/campos`, d)),
     ordenarCampos: (painelId, ids) => http('PUT', `/atendimento/paineis/${painelId}/campos/ordem`, { ids }),
+    incluirOpcaoDoCampo: (campoId, d) => http('POST', `/atendimento/campos/${campoId}/opcoes`, d),
     etiquetas: () => http('GET', '/atendimento/etiquetas'),
     criarEtiqueta: (d) => http('POST', '/atendimento/etiquetas', d),
     editarEtiqueta: (id, d) => http('PUT', `/atendimento/etiquetas/${id}`, d),
@@ -369,6 +370,13 @@ export const realApi: Api = {
       return { bytes: new Uint8Array(await r.arrayBuffer()), nome };
     },
     salvarAjustes: (a) => http('PUT', '/comercial/simulador/ajustes', a),
+  },
+  helena: {
+    opcoes: () => http('GET', '/comercial/helena/opcoes'),
+    ler: (painelId) => http('POST', '/comercial/helena/leituras', { painelId }),
+    leitura: (id) => http('GET', `/comercial/helena/leituras/${encodeURIComponent(id)}`),
+    previa: (id, destino) => http('GET', `/comercial/helena/leituras/${encodeURIComponent(id)}/previa${destino ? `?destino=${encodeURIComponent(destino)}` : ''}`),
+    trazer: (id, destino) => http('POST', `/comercial/helena/leituras/${encodeURIComponent(id)}/trazer`, { destino }),
   },
   admin: {
     users: () => http('GET', '/admin/users'),

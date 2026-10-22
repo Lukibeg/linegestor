@@ -236,3 +236,45 @@ clique e a gestão vê,
 na negociação e no relatório, se a venda se paga e quanto sobra de cada vendedor e de cada produto. A tabela de
 custos e as faixas da Helena precisam de atualização quando os fornecedores reajustam; as simulações feitas
 ficam com os valores de quando foram feitas.
+
+## Revisto no 2.0.3 (21/10/2026): o LineChat só com as quantidades, o gráfico do mês a mês, os custos um a um e o "Uma vez" que saiu
+
+No documento de 21/10 (o "pacote de melhorias"), com o 2.0.2 no ar. Avisado antes (revê a tabela da Helena
+por faixas na simulação).
+
+- **O LineChat, só as quantidades** (*"isso aqui que vc fez ficou complexo demais pelo caso do line chat, eu
+  só quero colocar quantidade de canais oficiais usuários, canais n oficiais, agentes de ia, e vc já me dar
+  o total como é na planilha deles, mais simples quando eu colocar que vai ter linechat ele já aparece lá nos
+  custos mensais para eu preencher essas quantidades"*): com o produto LineChat no cenário, os Custos
+  mensais mostram o **quadro do LineChat** — usuários, canais oficiais, canais não oficiais (a conexão Z-API)
+  e agentes de IA, o custo de cada um e o total do mês, com a licença base sozinha (*"inclui a licença base:
+  3 usuários e 1 canal oficial"*). As faixas valem por trás (nos Ajustes) e não aparecem na simulação. Por
+  baixo continuam as linhas da tabela da Helena (`LINECHAT_DO_SIMULADOR`, `quadroDoLineChat`): a conta, o
+  Excel e o que está guardado não mudam (conferido: as simulações da prévia dão os mesmos números de antes).
+  Pôr o LineChat nos produtos põe o modelo dele; tirar tira só o quadro. Os contatos ativos e a transcrição
+  saíram do modelo e ficam na tabela; numa simulação de antes, aparecem no quadro quando custam algo. Na
+  tabela de fábrica, os nomes viraram "Canais oficiais…" e "Canais não oficiais… conexão Z-API".
+- **O gráfico do mês a mês** (*"esse gráfico aqui ta meio bugado, dê uma melhorada"*): a escala em números
+  redondos (`escalaRedonda`: passo de 1, 2 ou 5 × 10ⁿ), nenhuma coluna encostando na borda; o valor da coluna
+  que passa da escala numa faixa própria, acima ou abaixo, desenhado por último (antes, a coluna do mês
+  seguinte cobria o texto); a marca de corte virou um vão reto na largura da coluna (eram as linhas brancas
+  atravessando a primeira coluna); o acumulado justo aos dados, com marcas redondas por dentro.
+- **O "Uma vez (R$)" saiu** do Investimento (*"qual a diferença desses, acho q n tem necessidade desse
+  'uma vez'"* — respondido: é o custo de investimento que não é aparelho, como a instalação e o frete; e ele:
+  *"pode tirar"*). O Investimento oferece o Aparelho e o % da ativação, e o "Digitar um custo" dele abre um
+  aparelho (em comodato). O tipo `unica` continua no modelo, para o que já está gravado assim (a conta é a mesma, e
+  a linha mostra o tipo dela, para trocar: `tiposParaEscolher`); na prévia, a "Configuração e instalação" saiu da
+  tabela e dos modelos.
+- **Os custos do mês, um a um** (*"ele ta juntando meus custos mensais eu quero q ele sempre coloque detalhado
+  todos os custos n agrupe"*, com o print de uma simulação real): o detalhe de cada mês do mês a mês e o "O custo
+  do mês" dos números mostram cada linha por mês pelo nome, o imposto e cada comissão — antes, as linhas por mês
+  viravam uma só, "Custos mensais", e o custo do mês dizia só "fixo + variável". As partes somam o total ao centavo
+  (`partesDoCustoMensal`, com o `repartir`).
+- **A tabela de custos dos Ajustes, mais simples** (*"esse usuário aqui seria referente a que? tipo quantidade?"*;
+  depois, com os nomes das colunas: *"isso n ficou legal n aparenta estar desalinhado, os nomes estão confusos e
+  ainda n entendi pra q serve essa ultima coluna"*): a coluna da **unidade saiu** — não era a quantidade, era só o
+  nome de cada um, para a simulação escrever "40 ramais" embaixo da quantidade. O custo que já a tem (os do LineChat,
+  na tabela de fábrica: "5 usuários") continua com ela. A tabela ficou com três colunas, com os nomes no alto (no
+  computador), no jeito do cabeçalho dos custos da simulação e alinhados ao texto dos campos: **Custo**, **Tipo** e
+  **Valor**; o valor em branco diz "a definir" (antes, "na simulação", embaixo de "Valor de hoje"). O "Como entra"
+  virou **Tipo** também no cabeçalho dos custos da simulação ("Custo e tipo").

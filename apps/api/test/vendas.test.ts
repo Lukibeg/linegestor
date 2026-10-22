@@ -28,7 +28,7 @@ import {
   AJUSTES_DO_PAINEL_DE_VENDAS, diaLocal, instanteLocal, MOTIVOS_DE_PERDA_PADRAO, reais, somarDias, textoDoEvento, TROCA_ENTRA_NO_FUNIL,
   NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEIncidente, negociacaoNaoEPai, VALOR_E_A_SOMA, VALOR_SO_DOS_PRODUTOS, CAMPOS_DO_PAINEL_DE_VENDAS,
   NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
-  ATIVACAO_E_A_SOMA,
+  ATIVACAO_E_A_SOMA, MENSAGEM_DO_TITULO,
   type CampoPersonalizado,
   type EtapaPainel, type Painel, type RelatorioDeVendas,
 } from '@gestor/shared';
@@ -115,7 +115,10 @@ describe('o painel de Vendas', () => {
     expect(await auditoriaDe(com.id)).toEqual([expect.stringContaining('Criou o painel Comercial (COM, de Vendas)')]);
     // os campos do Comercial do Helena (o print do Luan, 17/10), menos a Área de atuação
     const campos = ((await s.get('/atendimento/opcoes')).json().campos as CampoPersonalizado[]).filter((c) => c.painelId === com.id);
-    expect(campos.map((c) => `${c.nome}:${c.tipo}`)).toEqual(['CNPJ:texto', 'Contatos principais:texto_longo', 'Origem de lead:lista', 'Indicação:texto']);
+    expect(campos.map((c) => `${c.nome}:${c.tipo}`)).toEqual(['CNPJ:texto', 'Contatos principais:texto_longo', 'Origem de lead:lista', 'Indicação:lista']);
+    // a Indicação é a lista que cresce no próprio formulário (2.0.3): nasce vazia, e se inclui na hora
+    expect(campos.find((c) => c.nome === 'Indicação')).toMatchObject({ opcoes: [], incluirNaHora: true });
+    expect(campos.find((c) => c.nome === 'Origem de lead')!.incluirNaHora).toBe(false);
     expect(campos.find((c) => c.nome === 'Origem de lead')!.opcoes.map((o) => o.nome)).toEqual(CAMPOS_DO_PAINEL_DE_VENDAS[2]!.opcoes);
     expect(await auditoriaDe(com.id)).toEqual([expect.stringContaining('e os campos CNPJ, Contatos principais, Origem de lead e Indicação')]);
   });
@@ -392,10 +395,66 @@ describe('o histórico e a troca de painel', () => {
     const campos = ((await s.get('/atendimento/opcoes')).json().campos as CampoPersonalizado[]).filter((c) => c.painelId === com.id);
     const id = (nome: string) => campos.find((c) => c.nome === nome)!.id;
     const origem = campos.find((c) => c.nome === 'Origem de lead')!.opcoes.find((o) => o.nome === 'Indicação')!.id;
-    expect(f.campos).toEqual({ [id('CNPJ')]: '11.444.777/0001-61', [id('Origem de lead')]: origem, [id('Indicação')]: 'Dra. Lívia, do Prado & Lima' });
+    // a Indicação escrita (o robô e o n8n mandam o nome) entra na lista dela (2.0.3) e a negociação fica com a opção
+    const indicacao = campos.find((c) => c.nome === 'Indicação')!.opcoes.find((o) => o.nome === 'Dra. Lívia, do Prado & Lima')!.id;
+    expect(f.campos).toEqual({ [id('CNPJ')]: '11.444.777/0001-61', [id('Origem de lead')]: origem, [id('Indicação')]: indicacao });
     const errada = await camila.post('/atendimento/chamados', { painelId: com.id, titulo: 'Outra', empresa: 'X', campos: { 'Origem de lead': 'Rádio' } });
     expect(errada.statusCode).toBe(400);
     expect(errada.json().error).toContain('"Rádio" não é uma das opções');
+  });
+
+  it('a Indicação: a opção se inclui ali mesmo, por quem trabalha no painel; a mesma (escrita de outro jeito) não se repete', async () => {
+    const campos = ((await s.get('/atendimento/opcoes')).json().campos as CampoPersonalizado[]).filter((c) => c.painelId === com.id);
+    const indicacao = campos.find((c) => c.nome === 'Indicação')!;
+    const origem = campos.find((c) => c.nome === 'Origem de lead')!;
+    const g5 = await camila.post(`/atendimento/campos/${indicacao.id}/opcoes`, { nome: '  G5  Telecom ' });
+    expect(g5.statusCode, g5.body).toBe(200);
+    expect(g5.json()).toMatchObject({ nome: 'G5 Telecom', ativa: true });
+    // escrita de outro jeito, é a mesma (e não vai de novo para a auditoria)
+    expect((await camila.post(`/atendimento/campos/${indicacao.id}/opcoes`, { nome: 'g5 telecom' })).json().id).toBe(g5.json().id);
+    expect(await auditoriaDe(indicacao.id)).toEqual(['Incluiu a opção G5 Telecom em Indicação']);
+    // a lista que não inclui na hora muda só nos Ajustes
+    const origemNova = await camila.post(`/atendimento/campos/${origem.id}/opcoes`, { nome: 'Rádio' });
+    expect(origemNova.statusCode).toBe(400);
+    expect(origemNova.json().error).toBe('As opções de Origem de lead se mudam em Painéis › Ajustes › Campos.');
+    // quem não vê o painel não acha o campo; quem só lê não inclui
+    expect((await marina.post(`/atendimento/campos/${indicacao.id}/opcoes`, { nome: 'Outro' })).statusCode).toBe(404);
+    expect((await lia.post(`/atendimento/campos/${indicacao.id}/opcoes`, { nome: 'Outro' })).statusCode).toBe(403);
+    // e a negociação escolhe a opção pelo id
+    const n = await abrir(camila, { titulo: 'Indicada pela G5', empresa: 'Mercado Bom Preço', campos: { [indicacao.id]: g5.json().id } });
+    expect((await ficha(n.codigo)).campos[indicacao.id]).toBe(g5.json().id);
+  });
+
+  it('o título é opcional (2.0.3): vazio, fica o nome da empresa — e acompanha a empresa quando ela muda', async () => {
+    const n = await abrir(camila, { titulo: '', empresa: 'Hospital São Matheus' });
+    expect((await ficha(n.codigo)).titulo).toBe('Hospital São Matheus');
+    // a empresa mudou: o título que era o nome dela vai junto
+    const r = await camila.patch(`/atendimento/chamados/${n.id}`, { empresa: 'Hospital São Mateus' });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().titulo).toBe('Hospital São Mateus');
+    // virou cliente: o título passa a ser o nome do cliente
+    const cliente = await s.post('/clients', { tradeName: 'Hospital São Matheus', legalName: 'Hospital São Matheus LTDA', cnpj: '22.333.444/0001-81' });
+    expect(cliente.statusCode, cliente.body).toBe(201);
+    const v = await camila.patch(`/atendimento/chamados/${n.id}`, { clienteId: cliente.json().id, empresa: null });
+    expect(v.statusCode, v.body).toBe(200);
+    expect(v.json().titulo).toBe('Hospital São Matheus');
+    // o título escrito não muda com a empresa
+    const escrito = await abrir(camila, { titulo: 'PABX com 40 ramais', empresa: 'Padaria Estrela' });
+    const e = await camila.patch(`/atendimento/chamados/${escrito.id}`, { empresa: 'Padaria Estrela Ltda' });
+    expect(e.json().titulo).toBe('PABX com 40 ramais');
+    // limpar o título na ficha volta ao nome da empresa; curto demais, não
+    expect((await camila.patch(`/atendimento/chamados/${escrito.id}`, { titulo: '' })).json().titulo).toBe('Padaria Estrela Ltda');
+    const curto = await camila.patch(`/atendimento/chamados/${escrito.id}`, { titulo: 'ab' });
+    expect(curto.statusCode).toBe(400);
+    expect(curto.json().error).toBe(MENSAGEM_DO_TITULO.negociacao);
+    // sem título e sem empresa, não abre
+    const sem = await camila.post('/atendimento/chamados', { painelId: com.id, titulo: '' });
+    expect(sem.statusCode).toBe(400);
+    expect(sem.json().error).toBe(MENSAGEM_DO_TITULO.semEmpresa);
+    // o chamado continua pedindo o título
+    const chamado = await s.post('/atendimento/chamados', { painelId: SUP, titulo: '' });
+    expect(chamado.statusCode).toBe(400);
+    expect(chamado.json().error).toBe(MENSAGEM_DO_TITULO.chamado);
   });
 
   it('a negociação não tem pai nem filhos, nem entra num problema', async () => {

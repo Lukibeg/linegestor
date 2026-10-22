@@ -14,11 +14,15 @@ import {
 } from '@gestor/shared';
 import { ChipDoSinal, reais, reaisLimpo } from './comum.js';
 
-function Linha({ rotulo, valor, dica, tom, id }: { rotulo: ReactNode; valor: ReactNode; dica?: ReactNode; tom?: 'bad' | 'ok'; id?: string }) {
+/** `abaixo`: o que vem embaixo da linha, na largura toda (as partes do custo do mês, com os valores alinhados ao total). */
+function Linha({ rotulo, valor, dica, tom, id, abaixo }: { rotulo: ReactNode; valor: ReactNode; dica?: ReactNode; tom?: 'bad' | 'ok'; id?: string; abaixo?: ReactNode }) {
   return (
-    <div className="py-2 flex items-baseline justify-between gap-3" id={id}>
-      <dt className="text-ink-2 min-w-0">{rotulo}{dica && <span className="block text-[12px] text-muted">{dica}</span>}</dt>
-      <dd className={`tabular-nums font-semibold text-right whitespace-nowrap ${tom === 'bad' ? 'text-bad' : tom === 'ok' ? 'text-ok' : 'text-ink'}`}>{valor}</dd>
+    <div className="py-2" id={id}>
+      <div className="flex items-baseline justify-between gap-3">
+        <dt className="text-ink-2 min-w-0">{rotulo}{dica && <span className="block text-[12px] text-muted">{dica}</span>}</dt>
+        <dd className={`tabular-nums font-semibold text-right whitespace-nowrap ${tom === 'bad' ? 'text-bad' : tom === 'ok' ? 'text-ok' : 'text-ink'}`}>{valor}</dd>
+      </div>
+      {abaixo}
     </div>
   );
 }
@@ -26,9 +30,15 @@ function Linha({ rotulo, valor, dica, tom, id }: { rotulo: ReactNode; valor: Rea
 /** Os números do cenário aberto. */
 export function OsNumeros({ c, k, ajustes }: { c: CenarioDaSimulacao; k: ContasDoCenario; ajustes: AjustesDoSimulador }) {
   const ruimDePagar = k.sePagaEm.tipo === 'nunca' || (k.sePagaEm.tipo === 'mes' && k.sePagaEm.depoisDoPrazo);
-  // o custo do mês: o fixo (as linhas por mês) e o variável (o imposto e a comissão, que andam com o que o cliente paga)
-  const variavel = k.impostoMensal + k.comissaoMensal;
-  const partesDoCusto = `fixo ${reaisLimpo(k.custoMensalFixo)} + variável ${reaisLimpo(variavel)} (o imposto${k.comissaoMensal ? ' e a comissão' : ''})`;
+  // o custo do mês, parte a parte e sem agrupar (o Luan, 21/10: "eu quero q ele sempre coloque detalhado todos os
+  // custos n agrupe"): cada custo por mês pelo nome, o imposto e cada comissão
+  const partesDoCusto = k.partesDoCustoMensal.length > 0 ? (
+    <ul className="mt-0.5 flex flex-col text-[12px] text-muted" id="simulador-partes-do-custo">
+      {k.partesDoCustoMensal.map((p, i) => (
+        <li key={`${p.rotulo}${i}`} className="flex justify-between gap-3"><span className="min-w-0">{p.rotulo}</span><span className="tabular-nums whitespace-nowrap">{reaisLimpo(p.valor)}</span></li>
+      ))}
+    </ul>
+  ) : undefined;
   const parcelado = k.linhas.filter((l) => l.parcelas > 1).reduce((s, l) => s + l.custo, 0);
   return (
     <div className="flex flex-col gap-4" id="simulador-numeros">
@@ -43,11 +53,11 @@ export function OsNumeros({ c, k, ajustes }: { c: CenarioDaSimulacao; k: ContasD
         <div className="text-[12px] text-muted" id="simulador-faixas-do-sinal">O sinal: {textoDasFaixas(ajustes)} (os Ajustes do Simulador).</div>
         <dl className="mt-3 divide-y divide-line text-[13.5px] border-t border-line">
           <Linha rotulo="O cliente paga por mês" valor={reais(k.mensalTotal)} dica={k.aluguel ? `mensalidade ${reaisLimpo(c.mensalidade)} + aluguel dos aparelhos ${reaisLimpo(k.aluguel)}` : undefined} />
-          <Linha rotulo="O custo do mês" valor={reais(k.custoMensal)} dica={partesDoCusto} id="simulador-custo-do-mes" />
+          <Linha rotulo="O custo do mês" valor={reais(k.custoMensal)} abaixo={partesDoCusto} id="simulador-custo-do-mes" />
           <Linha rotulo="A ativação" valor={reais(k.entradaTotal)}
             dica={[k.vendaDeAparelhos ? `ativação ${reaisLimpo(c.ativacao)} + aparelhos vendidos ${reaisLimpo(k.vendaDeAparelhos)}` : '', k.parcelas.length > 1 ? `em ${k.parcelas.length}x de ${reaisLimpo(k.parcelas[k.parcelas.length - 1]!)}` : ''].filter(Boolean).join(' · ') || undefined} />
           <Linha rotulo="Investimento" valor={reais(k.totalInvestido)} id="simulador-total-investido"
-            dica={`o total pago uma vez: os aparelhos, a instalação e a comissão da venda${parcelado ? ` (${reaisLimpo(parcelado)} na compra parcelada)` : ''}`} />
+            dica={`o total pago uma vez: os aparelhos e a comissão da venda${parcelado ? ` (${reaisLimpo(parcelado)} na compra parcelada)` : ''}`} />
           <Linha rotulo="Sai antes" valor={k.investimento ? reais(k.investimento) : 'nada'} id="simulador-investimento"
             dica={k.investimento ? 'o pior momento do contrato: o que a Ingline põe antes de a venda se pagar'
               : k.sePagaEm.tipo === 'sem-custo' ? 'nada é pago de uma vez'

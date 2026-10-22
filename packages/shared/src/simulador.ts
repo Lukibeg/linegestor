@@ -103,16 +103,24 @@ export const ehPercentual = (t: TipoDeCusto) => t === 'pct_mensalidade' || t ===
 export const GRUPOS_DE_CUSTO = ['fixo', 'mensal'] as const;
 export type GrupoDeCusto = (typeof GRUPOS_DE_CUSTO)[number];
 export const GRUPO_DO_TIPO: Record<TipoDeCusto, GrupoDeCusto> = { aparelho: 'fixo', unica: 'fixo', pct_ativacao: 'fixo', mensal: 'mensal', pct_mensalidade: 'mensal' };
-export const TIPOS_DO_GRUPO: Record<GrupoDeCusto, readonly TipoDeCusto[]> = { fixo: ['aparelho', 'unica', 'pct_ativacao'], mensal: ['mensal', 'pct_mensalidade'] };
+/**
+ * Os tipos que a tela oferece em cada grupo. O "Uma vez (R$)" saiu no 2.0.3 (o Luan: "acho q n tem necessidade
+ * desse 'uma vez'" — "pode tirar"): não é mais oferecido; o custo ou a linha que já está gravada assim continua
+ * valendo (a conta é a mesma) e a tela ainda mostra o tipo dela, para trocar.
+ */
+export const TIPOS_DO_GRUPO: Record<GrupoDeCusto, readonly TipoDeCusto[]> = { fixo: ['aparelho', 'pct_ativacao'], mensal: ['mensal', 'pct_mensalidade'] };
+/** Os tipos de uma linha que a tela mostra: os do grupo e, se for o caso, o dela (o "Uma vez" de antes do 2.0.3). */
+export const tiposParaEscolher = (grupo: GrupoDeCusto, atual: TipoDeCusto): readonly TipoDeCusto[] =>
+  TIPOS_DO_GRUPO[grupo].includes(atual) ? TIPOS_DO_GRUPO[grupo] : [...TIPOS_DO_GRUPO[grupo], atual];
 export const NOME_DO_GRUPO: Record<GrupoDeCusto, string> = { fixo: 'Investimento', mensal: 'Custos mensais' };
 export const AJUDA_DO_GRUPO: Record<GrupoDeCusto, string> = {
-  fixo: 'pago uma vez, na assinatura: os aparelhos, a instalação, a comissão da venda',
+  fixo: 'pago uma vez, na assinatura: os aparelhos e a comissão da venda',
   mensal: 'todo mês: a nuvem, os números, as licenças, a comissão recorrente',
 };
 /** Um custo do grupo, no singular ("Pôr um custo de investimento da tabela", "+ Custo mensal"). */
 export const UM_CUSTO_DO_GRUPO: Record<GrupoDeCusto, string> = { fixo: 'custo de investimento', mensal: 'custo mensal' };
 /** O tipo do custo novo de cada grupo (o "Digitar um custo" de cada um). */
-export const TIPO_NOVO_DO_GRUPO: Record<GrupoDeCusto, TipoDeCusto> = { fixo: 'unica', mensal: 'mensal' };
+export const TIPO_NOVO_DO_GRUPO: Record<GrupoDeCusto, TipoDeCusto> = { fixo: 'aparelho', mensal: 'mensal' };
 /** Os itens em ordem de grupo (os fixos primeiro), cada grupo na ordem em que está. */
 export function emOrdemDeGrupo<T extends { tipo: TipoDeCusto }>(itens: readonly T[]): T[] {
   return GRUPOS_DE_CUSTO.flatMap((g) => itens.filter((x) => GRUPO_DO_TIPO[x.tipo] === g));
@@ -263,24 +271,172 @@ export const CUSTOS_DA_HELENA: CustoDaTabela[] = [
   { id: 'helena-licenca', nome: 'Licença base do LineChat (Helena): 3 usuários e 1 canal', tipo: 'mensal', valor: 14_990, modalidade: null, faixas: null, unidade: 'conta' },
   { id: 'helena-usuarios', nome: 'Usuários do LineChat (Helena)', tipo: 'mensal', valor: null, modalidade: null, unidade: 'usuário',
     faixas: [{ ate: 3, valor: 0 }, { ate: 20, valor: 1_990 }, { ate: 100, valor: 1_490 }, { ate: null, valor: 1_290 }] },
-  { id: 'helena-canais', nome: 'Canais do LineChat (Helena): WhatsApp ou Instagram', tipo: 'mensal', valor: null, modalidade: null, unidade: 'canal',
+  { id: 'helena-canais', nome: 'Canais oficiais do LineChat (Helena): WhatsApp oficial ou Instagram', tipo: 'mensal', valor: null, modalidade: null, unidade: 'canal',
     faixas: [{ ate: 1, valor: 0 }, { ate: 5, valor: 2_990 }, { ate: null, valor: 1_990 }] },
-  { id: 'helena-zapi', nome: 'Conexão Z-API do LineChat (Helena)', tipo: 'mensal', valor: 6_990, modalidade: null, faixas: null, unidade: 'conexão' },
+  { id: 'helena-zapi', nome: 'Canais não oficiais do LineChat (Helena): conexão Z-API', tipo: 'mensal', valor: 6_990, modalidade: null, faixas: null, unidade: 'canal' },
   { id: 'helena-contatos', nome: 'Contatos ativos no mês do LineChat (Helena)', tipo: 'mensal', valor: null, modalidade: null, unidade: 'contato',
     faixas: [{ ate: 5_000, valor: 0 }, { ate: 20_000, valor: 4.5 }, { ate: 100_000, valor: 3.5 }, { ate: null, valor: 2.5 }] },
   { id: 'helena-transcricao', nome: 'Transcrição de áudio do LineChat (Helena), com IA', tipo: 'mensal', valor: 399, modalidade: null, faixas: null, unidade: 'usuário' },
   { id: 'helena-agentes', nome: 'Agentes de IA do LineChat (Helena)', tipo: 'mensal', valor: 5_000, modalidade: null, faixas: null, unidade: 'agente' },
 ];
-/** O modelo do LineChat: a planilha da Helena, com o que vem na licença (3 usuários, 1 canal, 5.000 contatos). */
+/**
+ * O modelo do LineChat: a licença e as quatro quantidades do quadro do LineChat (`LINECHAT_DO_SIMULADOR`), com o que
+ * vem na licença (3 usuários e 1 canal oficial). Os contatos ativos e a transcrição saíram do modelo em 21/10 (o
+ * Luan só quer as quatro quantidades) e ficam na tabela.
+ */
 export const MODELO_DA_HELENA: ModeloDeSimulacao = {
   id: 'linechat-helena', nome: 'LineChat (Helena)', produto: 'linechat',
   linhas: [
     { custoId: 'helena-licenca', qtd: 1 }, { custoId: 'helena-usuarios', qtd: 3 },
     { custoId: 'helena-canais', qtd: 1 }, { custoId: 'helena-zapi', qtd: 0 },
-    { custoId: 'helena-contatos', qtd: 5_000 }, { custoId: 'helena-transcricao', qtd: 0 },
     { custoId: 'helena-agentes', qtd: 0 },
   ],
 };
+
+/**
+ * O LINECHAT NO SIMULADOR, SIMPLES (Patch 2.0.3). O Luan, 21/10, vendo as faixas da Helena abertas na simulação:
+ * *"isso aqui que vc fez ficou complexo demais pelo caso do line chat, eu só quero colocar quantidade de canais
+ * oficiais, usuários, canais n oficiais, agentes de ia, e vc já me dar o total como é na planilha deles… quando eu
+ * colocar que vai ter linechat ele já aparece lá nos custos mensais para eu preencher essas quantidades"*.
+ *
+ * Com o produto LineChat no cenário, os Custos mensais mostram o quadro do LineChat: as quatro quantidades, o custo
+ * de cada uma e o total do mês (a licença base entra sozinha). Por baixo continuam as linhas de custo da tabela da
+ * Helena (os `custoId` daqui): a conta, a planilha do Excel e o que está guardado não mudam, e as faixas continuam
+ * valendo — só não aparecem na simulação (mudam nos Ajustes do Simulador).
+ */
+export const LINECHAT_DO_SIMULADOR = {
+  /** o código do produto que liga o quadro */
+  produto: 'linechat',
+  /** a licença base: entra sozinha, com 1 */
+  licenca: 'helena-licenca',
+  /** as quatro quantidades, na ordem do quadro */
+  campos: [
+    { custoId: 'helena-usuarios', rotulo: 'Usuários', um: 'usuário', varios: 'usuários' },
+    { custoId: 'helena-canais', rotulo: 'Canais oficiais', um: 'canal oficial', varios: 'canais oficiais' },
+    { custoId: 'helena-zapi', rotulo: 'Canais não oficiais', um: 'canal não oficial', varios: 'canais não oficiais' },
+    { custoId: 'helena-agentes', rotulo: 'Agentes de IA', um: 'agente de IA', varios: 'agentes de IA' },
+  ],
+  /** as outras linhas da tabela da Helena: no quadro só quando custam algo (as simulações de antes de 21/10) */
+  outros: [
+    { custoId: 'helena-contatos', rotulo: 'Contatos ativos no mês' },
+    { custoId: 'helena-transcricao', rotulo: 'Transcrição de áudio' },
+  ],
+} as const;
+
+const IDS_DO_LINECHAT: readonly string[] = [LINECHAT_DO_SIMULADOR.licenca, ...LINECHAT_DO_SIMULADOR.campos.map((x) => x.custoId), ...LINECHAT_DO_SIMULADOR.outros.map((x) => x.custoId)];
+/** A linha é do quadro do LineChat (um custo da tabela da Helena)? */
+export const ehLinhaDoLineChat = (l: Pick<LinhaDoCenario, 'custoId'>) => !!l.custoId && IDS_DO_LINECHAT.includes(l.custoId);
+/** O cenário leva o LineChat (o quadro aparece)? */
+export const temLineChat = (c: Pick<CenarioDaSimulacao, 'produtos'>) => c.produtos.includes(LINECHAT_DO_SIMULADOR.produto);
+
+/** Uma das quatro quantidades do quadro: a linha dela (nula = ainda não está no cenário), a quantidade e o custo do mês. */
+export type CampoDoLineChat = {
+  custoId: string;
+  rotulo: string;
+  /** o nome de um e de vários ("canal oficial", "canais oficiais"), para a frase do que vem na licença */
+  um: string;
+  varios: string;
+  /** quantos vêm inclusos (a primeira faixa, quando é de preço zero: os 3 usuários e o 1 canal oficial da licença) */
+  inclusos: number;
+  /** a linha do cenário (a primeira com o custo); nula = entra quando a pessoa puser uma quantidade */
+  linhaId: string | null;
+  qtd: number;
+  /** o custo do mês, pelas faixas da tabela (centavos) */
+  custo: number;
+  /** a quantidade cabe no que vem incluso (custo zero com quantidade) */
+  incluso: boolean;
+  /** a linha ainda sem valor (o custo da tabela sem valor) */
+  falta: boolean;
+  /** o custo não está na tabela de custos (quem cuida tirou): o campo fica parado */
+  foraDaTabela: boolean;
+};
+/** O quadro do LineChat de um cenário. */
+export type QuadroDoLineChat = {
+  /** a licença base, quando está no cenário */
+  licenca: { linhaId: string; custo: number } | null;
+  campos: CampoDoLineChat[];
+  /** as outras linhas da Helena que custam algo (os contatos acima de 5.000, a transcrição) */
+  outros: Array<{ linhaId: string; rotulo: string; nome: string; qtd: number; unidade: string | null; custo: number }>;
+  /** as linhas que o quadro mostra ou soma: saem da lista dos custos mensais */
+  linhas: string[];
+  /** o total do LineChat no mês (centavos): a licença, as quantidades e os outros */
+  total: number;
+};
+
+/**
+ * O quadro do LineChat (nulo se o cenário não leva o LineChat). O custo de cada linha é o da conta
+ * (`contasDoCenario`): o total fecha com os custos mensais. Duas linhas do mesmo custo (posta duas vezes da tabela)
+ * somam no campo; a quantidade muda na primeira.
+ */
+export function quadroDoLineChat(c: CenarioDaSimulacao, k: Pick<ContasDoCenario, 'linhas'>, a?: Pick<AjustesDoSimulador, 'custos'>): QuadroDoLineChat | null {
+  if (!temLineChat(c)) return null;
+  const custoDa = new Map(k.linhas.map((x) => [x.id, x]));
+  const doLineChat = c.linhas.filter((l) => ehLinhaDoLineChat(l) && GRUPO_DO_TIPO[l.tipo] === 'mensal');
+  const custo = (ls: LinhaDoCenario[]) => ls.reduce((s, l) => s + (custoDa.get(l.id)?.custo ?? 0), 0);
+  const de = (id: string) => doLineChat.filter((l) => l.custoId === id);
+  const lic = de(LINECHAT_DO_SIMULADOR.licenca);
+  const campos = LINECHAT_DO_SIMULADOR.campos.map((x): CampoDoLineChat => {
+    const ls = de(x.custoId);
+    const qtd = ls.reduce((s, l) => s + l.qtd, 0);
+    const v = custo(ls);
+    // o incluso vem das faixas da linha (a que está no cenário) ou, sem ela, da tabela
+    const faixas = ls[0]?.faixas ?? a?.custos.find((y) => y.id === x.custoId)?.faixas ?? null;
+    const inclusos = faixas?.[0] && faixas[0].valor === 0 ? faixas[0].ate ?? 0 : 0;
+    return {
+      custoId: x.custoId, rotulo: x.rotulo, um: x.um, varios: x.varios, inclusos, linhaId: ls[0]?.id ?? null, qtd, custo: v, incluso: qtd > 0 && v === 0,
+      falta: ls.some((l) => custoDa.get(l.id)?.falta), foraDaTabela: !ls.length && !!a && !a.custos.some((y) => y.id === x.custoId),
+    };
+  });
+  const outros = LINECHAT_DO_SIMULADOR.outros.flatMap((x) => de(x.custoId).map((l) => ({ l, rotulo: x.rotulo })))
+    .map(({ l, rotulo }) => ({ linhaId: l.id, rotulo, nome: l.nome, qtd: l.qtd, unidade: l.unidade, custo: custoDa.get(l.id)?.custo ?? 0 }))
+    .filter((x) => x.custo > 0);
+  return {
+    licenca: lic.length ? { linhaId: lic[0]!.id, custo: custo(lic) } : null,
+    campos, outros,
+    linhas: doLineChat.map((l) => l.id),
+    total: custo(doLineChat),
+  };
+}
+
+/**
+ * As linhas que entram ao pôr o LineChat no cenário: as do modelo do produto LineChat dos Ajustes (ou, sem ele, as do
+ * modelo de fábrica, com os custos que a tabela tiver). A linha do quadro que o cenário já tem não repete, nem a
+ * comissão (sobre o preço inteiro) que já está nele.
+ */
+export function linhasParaOLineChat(a: Pick<AjustesDoSimulador, 'custos' | 'modelos'>, c: Pick<CenarioDaSimulacao, 'linhas'>): LinhaDoCenario[] {
+  const modelo = a.modelos.find((m) => m.produto === LINECHAT_DO_SIMULADOR.produto) ?? MODELO_DA_HELENA;
+  const ja = new Set(c.linhas.map((l) => l.custoId).filter((x): x is string => !!x));
+  return linhasDoModelo(a, modelo).filter((l) => !l.custoId || !ja.has(l.custoId) || (!ehLinhaDoLineChat(l) && !ehPercentual(l.tipo)));
+}
+
+/** O que vem na licença base, numa frase: "3 usuários e 1 canal oficial" (vazio, se nada vem incluso). */
+export function textoDosInclusos(q: Pick<QuadroDoLineChat, 'campos'>): string {
+  const partes = q.campos.filter((x) => x.inclusos > 0).map((x) => `${x.inclusos.toLocaleString('pt-BR')} ${x.inclusos === 1 ? x.um : x.varios}`);
+  return partes.length > 1 ? `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}` : partes[0] ?? '';
+}
+
+/**
+ * Mudar uma quantidade do quadro: a linha do custo fica com a quantidade (as repetidas do mesmo custo saem: o
+ * LineChat é uma conta só, e as faixas contam do 1º ao último); sem a linha, ela entra da tabela — e, junto, a
+ * licença base, se o cenário ainda não tem. Devolve as linhas novas do cenário.
+ */
+export function mudarQuantidadeDoLineChat(c: Pick<CenarioDaSimulacao, 'linhas'>, a: Pick<AjustesDoSimulador, 'custos'>, custoId: string, qtd: number): LinhaDoCenario[] {
+  const primeira = c.linhas.find((l) => l.custoId === custoId && GRUPO_DO_TIPO[l.tipo] === 'mensal');
+  if (primeira) return c.linhas.filter((l) => l.id === primeira.id || l.custoId !== custoId || GRUPO_DO_TIPO[l.tipo] !== 'mensal').map((l) => (l.id === primeira.id ? { ...l, qtd } : l));
+  const daTabela = a.custos.find((x) => x.id === custoId);
+  if (!daTabela || qtd <= 0) return c.linhas;
+  const licenca = a.custos.find((x) => x.id === LINECHAT_DO_SIMULADOR.licenca);
+  const semLicenca = licenca && !c.linhas.some((l) => l.custoId === licenca.id);
+  const produto = LINECHAT_DO_SIMULADOR.produto;
+  return [
+    ...c.linhas,
+    ...(semLicenca ? [{ ...linhaDaTabela(licenca, { qtd: 1 }), produto }] : []),
+    { ...linhaDaTabela(daTabela, { qtd }), produto },
+  ];
+}
+
+/** O cenário sem o LineChat: as linhas do quadro saem (as outras do modelo, como a instalação, ficam). */
+export const linhasSemOLineChat = (c: Pick<CenarioDaSimulacao, 'linhas'>) => c.linhas.filter((l) => !ehLinhaDoLineChat(l));
 
 export const AJUSTES_DO_SIMULADOR_PADRAO: AjustesDoSimulador = { imposto: 6, verde: 35, vermelho: 20, prazo: 24, custos: CUSTOS_DA_HELENA, modelos: [MODELO_DA_HELENA] };
 
@@ -828,6 +984,9 @@ export type ContasDoCenario = {
   comissaoMensal: number;
   /** tudo o que sai por mês */
   custoMensal: number;
+  /** o custo do mês parte a parte, sem agrupar (2.0.3): cada linha por mês pelo nome, o imposto e cada comissão
+   *  recorrente; soma o `custoMensal` ao centavo */
+  partesDoCustoMensal: ParteDoMes[];
   /** o imposto e a comissão sobre a ativação inteira */
   impostoDaEntrada: number;
   comissaoDaEntrada: number;
@@ -926,6 +1085,9 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   // para o mês a mês: o que é pago de uma vez (cada linha, com as vezes da compra) e os percentuais (cada linha)
   const deUmaVez: Array<{ nome: string; total: number; vezes: number; produto: string | null }> = [];
   const dePercentual: Array<{ nome: string; pct: number; sobre: 'mensal' | 'entrada' }> = [];
+  // os custos por mês, cada linha com o nome dela (o Luan, 21/10: "eu quero q ele sempre coloque detalhado todos os
+  // custos n agrupe" — antes o mês a mês e o custo do mês juntavam tudo em "Custos mensais")
+  const mensais: Array<{ nome: string; custo: number; produto: string | null }> = [];
   // as linhas de percentual só têm o custo depois de saber a mensalidade e a ativação (fica para o fim)
   const conta: Array<Omit<LinhaNaConta, 'custo'> & { custo: number; sobre: 'mensal' | 'entrada' | null; pct: number }> = [];
   for (const l of c.linhas) {
@@ -953,6 +1115,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
     } else if (l.tipo === 'mensal') {
       const custo = faixas ? custoPorFaixas(qtd, faixas) : qtd * valor;
       custoMensalFixo += custo;
+      if (custo) mensais.push({ nome: l.nome || 'Custo sem nome', custo, produto: l.produto ?? null });
       conta.push({ id: l.id, qtd, custo, quando: 'por-mes', receita: 0, falta, sobre: null, pct: 0, parcelas: 1 });
     } else if (l.tipo === 'pct_mensalidade') {
       pctMensalidade += valor / 100;
@@ -1029,7 +1192,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
       if (partes) { if (i < partes.length && partes[i]) sai.push({ rotulo: `${u.nome} (parcela ${i + 1} de ${partes.length})`, exato: partes[i]!, produto: u.produto }); }
       else if (i === 0 && u.total) sai.push({ rotulo: u.nome, exato: u.total, produto: u.produto });
     });
-    if (custoMensalFixo) sai.push({ rotulo: 'Custos mensais', exato: custoMensalFixo });
+    for (const m of mensais) sai.push({ rotulo: m.nome, exato: m.custo, produto: m.produto });
     if (imposto && mensalTotal + parcela) sai.push({ rotulo: 'Imposto', exato: imposto * (mensalTotal + parcela) });
     for (const p of dePercentual) {
       const base = p.sobre === 'mensal' ? mensalTotal : parcela;
@@ -1046,6 +1209,14 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   });
 
   const margem = mensalTotal > 0 ? sobraMensal / mensalTotal : null;
+  // o custo do mês, parte a parte (cada linha por mês, o imposto e cada comissão), somando o custo do mês ao centavo
+  const partes: Array<{ rotulo: string; exato: number; produto?: string | null }> = [
+    ...mensais.map((m) => ({ rotulo: m.nome, exato: m.custo, produto: m.produto })),
+    ...(impostoMensal ? [{ rotulo: 'Imposto', exato: impostoMensal }] : []),
+    ...dePercentual.filter((p) => p.sobre === 'mensal' && p.pct && mensalTotal).map((p) => ({ rotulo: p.nome, exato: p.pct * mensalTotal })),
+  ];
+  const valoresDasPartes = repartir(Math.round(custoMensal), partes.map((x) => x.exato));
+  const partesDoCustoMensal: ParteDoMes[] = partes.map((x, j) => ({ rotulo: x.rotulo, valor: valoresDasPartes[j]!, ...(x.produto ? { produto: x.produto } : {}) }));
   const linhas = conta.map(({ sobre, pct, ...l }) => ({
     ...l,
     custo: sobre === 'mensal' ? Math.round(pct * mensalTotal) : sobre === 'entrada' ? Math.round(pct * entradaTotal) : Math.round(l.custo),
@@ -1054,7 +1225,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
     aluguel, vendaDeAparelhos, mensalTotal, entradaTotal, parcelas, custoUnico: Math.round(custoUnico),
     totalInvestido: linhas.filter((l) => l.quando === 'uma-vez').reduce((s, l) => s + l.custo, 0),
     saidas: saidas.map((v) => Math.round(v)), custoMensalFixo: Math.round(custoMensalFixo),
-    impostoMensal: Math.round(impostoMensal), comissaoMensal: Math.round(comissaoMensal), custoMensal: Math.round(custoMensal),
+    impostoMensal: Math.round(impostoMensal), comissaoMensal: Math.round(comissaoMensal), custoMensal: Math.round(custoMensal), partesDoCustoMensal,
     impostoDaEntrada: Math.round(imposto * entradaTotal), comissaoDaEntrada: Math.round(pctAtivacao * entradaTotal),
     sobraMensal: sobra, margem, sinal: margem == null ? null : sinalDaMargem(margem, faixas),
     serie, meses, investimento, sePagaEm, resultado: serie[serie.length - 1]!,

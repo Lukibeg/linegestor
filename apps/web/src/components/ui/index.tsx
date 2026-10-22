@@ -3,7 +3,7 @@
  * Todas usam as cores do tema (styles.css), então funcionam no claro e no escuro.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
-import { AlertTriangle, Check, ChevronDown, Copy, Eye, EyeOff, Info, Loader2, Search, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Copy, Eye, EyeOff, Info, Loader2, Plus, Search, X } from 'lucide-react';
 import { formatarIp, formatarIpOuEndereco, paraBusca, SEM_LIMITE } from '@gestor/shared';
 import { ApiError } from '../../api/types.js';
 
@@ -500,7 +500,7 @@ export type OpcaoBusca = { id: string; nome: string; dica?: string };
  * Sem `vazio`, não há essa opção. `gatilho` troca o botão padrão (que parece um campo) por outro —
  * o lápis da linha do DID, por exemplo.
  */
-export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder = 'Escolha…', procurar = 'Procurar…', gatilho, className = 'input', largura = 'w-[320px]', id, rotulo, autoFocus, desativado }: {
+export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder = 'Escolha…', procurar = 'Procurar…', gatilho, className = 'input', largura = 'w-[320px]', id, rotulo, autoFocus, desativado, criar }: {
   valor: string;
   opcoes: OpcaoBusca[];
   onChange: (id: string) => void;
@@ -514,9 +514,17 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
   rotulo?: string;
   autoFocus?: boolean;
   desativado?: boolean;
+  /**
+   * Incluir uma opção nova ali mesmo (2.0.3, a Indicação: "tenho que conseguir criar por aqui mesmo se quiser"): o
+   * que foi escrito na busca e não é nenhuma opção vira "+ Incluir …"; `fazer` grava e devolve o id da opção nova,
+   * que já fica escolhida.
+   */
+  criar?: { fazer: (nome: string) => Promise<string>; rotulo?: string };
 }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
+  const [criando, setCriando] = useState(false);
+  const [erroCriar, setErroCriar] = useState('');
   const [marcado, setMarcado] = useState(0);
   const caixa = useRef<HTMLDivElement>(null);
   const painel = useRef<HTMLDivElement>(null);
@@ -533,7 +541,19 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
     return b ? todas.filter((o) => o.id !== '' && paraBusca(`${o.nome} ${o.dica ?? ''}`).includes(b)) : todas;
   }, [todas, busca]);
   const escolhida = todas.find((o) => o.id === valor);
-  const abrir = () => { if (desativado) return; setBusca(''); setMarcado(Math.max(0, todas.findIndex((o) => o.id === valor))); setAberto(true); };
+  const escrito = busca.trim().replace(/\s+/g, ' ');
+  // o "+ Incluir" aparece quando o escrito não é o nome de nenhuma opção (sem ligar para maiúscula e acento)
+  const podeCriar = !!criar && escrito.length > 0 && !opcoes.some((o) => paraBusca(o.nome) === paraBusca(escrito));
+  const incluir = async () => {
+    if (!criar || !podeCriar || criando) return;
+    setCriando(true); setErroCriar('');
+    try {
+      const novo = await criar.fazer(escrito);
+      fechar();
+      if (novo !== valor) onChange(novo);
+    } catch (e) { setErroCriar(mensagemErro(e)); } finally { setCriando(false); }
+  };
+  const abrir = () => { if (desativado) return; setBusca(''); setErroCriar(''); setMarcado(Math.max(0, todas.findIndex((o) => o.id === valor))); setAberto(true); };
   const fechar = (devolverFoco = true) => { setAberto(false); if (devolverFoco) botao.current?.focus(); };
   const escolher = (o: OpcaoBusca) => { fechar(); if (o.id !== valor) onChange(o.id); };
   useEffect(() => {
@@ -546,9 +566,9 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
   // o item marcado fica sempre à vista quando se anda com as setas
   useEffect(() => { lista.current?.querySelector<HTMLElement>(`[data-i="${marcado}"]`)?.scrollIntoView({ block: 'nearest' }); }, [marcado, aberto]);
   const tecla = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setMarcado((m) => Math.min(achadas.length - 1, m + 1)); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setMarcado((m) => Math.min(achadas.length - (podeCriar ? 0 : 1), m + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setMarcado((m) => Math.max(0, m - 1)); }
-    else if (e.key === 'Enter') { e.preventDefault(); const o = achadas[marcado]; if (o) escolher(o); }
+    else if (e.key === 'Enter') { e.preventDefault(); const o = achadas[marcado]; if (o) escolher(o); else if (podeCriar && marcado === achadas.length) void incluir(); }
     // o Esc fecha só o painel, não a janela em volta
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(); }
     else if (e.key === 'Tab') fechar(false);
@@ -593,8 +613,18 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
                   {o.id === valor && <Check size={14} className="shrink-0 text-accent" />}
                 </li>
               ))}
-              {!achadas.length && <li className="px-2 py-2 text-[13px] text-muted">Nada com "{busca}".</li>}
+              {podeCriar && (
+                <li data-i={achadas.length} role="option" aria-selected={false} id={id ? `${id}-incluir` : undefined}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded text-[13.5px] cursor-pointer text-accent-ink ${marcado === achadas.length ? 'bg-surface-2' : ''}`}
+                  onMouseEnter={() => setMarcado(achadas.length)} onMouseDown={(e) => e.preventDefault()} onClick={() => void incluir()}>
+                  {criando ? <Spinner className="w-3.5 h-3.5" /> : <Plus size={15} className="shrink-0" />}
+                  <span className="min-w-0 break-words">{criar?.rotulo ?? 'Incluir'} <b>{escrito}</b></span>
+                </li>
+              )}
+              {!achadas.length && !podeCriar && <li className="px-2 py-2 text-[13px] text-muted">Nada com "{busca}".</li>}
             </ul>
+            {criar && !escrito && <p className="text-[12px] text-muted px-2 pt-1.5 border-t border-line mt-1">Não está na lista? Escreva o nome para incluir.</p>}
+            {erroCriar && <p className="text-bad text-[12.5px] px-2 pt-1" role="alert">{erroCriar}</p>}
           </div>
         </div>
       )}

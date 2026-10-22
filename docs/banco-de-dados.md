@@ -1114,6 +1114,7 @@ Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, en
 | `kind` | texto | texto | texto_longo | numero | data | sim_nao | lista | lista_varios | obrigatório |
 | `help` | texto | A explicação que aparece embaixo do campo (na ficha e no Abrir chamado) | — |
 | `options` | JSON | As opções das listas: [{id, nome, ativa}] (a que sai fica desativada: o chamado que a tem continua com ela) | obrigatório · padrão: [] |
+| `inline_options` | sim/não | Na lista de uma opção: quem trabalha no painel inclui a opção nova ali mesmo, no Abrir chamado e na ficha (2.0.3, a Indicação do Comercial: "eu tenho que conseguir criar por aqui mesmo se quiser") | obrigatório · padrão: false |
 | `active` | sim/não | — | obrigatório · padrão: true |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `created_at` | data e hora | Quando a linha foi criada | — |
@@ -1172,6 +1173,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `product_setup` | JSON | A negociação: a ativação de cada produto ({id do produto: centavos}); com ela, setup_cents é a soma | obrigatório · padrão: {} |
 | `prospect` | texto | A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) | — |
 | `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |
+| `external_ref` | texto | De onde veio, quando veio de outro sistema (2.0.3, decisão 0054): "helena:<id do card>" — o Trazer do Helena acha por aqui a negociação que já trouxe (atualiza em vez de criar outra). Único. | — |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |
@@ -1317,11 +1319,12 @@ Uma RESPOSTA PRONTA: um clique manda a mensagem e muda o chamado ("Pedir teste a
 
 ## ticket_tags
 
-Uma ETIQUETA e a COR dela (2.0, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor"). O chamado guarda os nomes (`tickets.tags`), sempre escritos como aqui. A etiqueta nova nasce com a cor escolhida na tela, ou cinza (o robô, a IA, a resposta pronta); quem cuida dos chamados troca a cor em Ajustes › Etiquetas.
+Uma ETIQUETA e a COR dela (2.0, o pedido do Luan na prévia: "na hora de criar as etiquetas, escolher a cor"). O chamado guarda os nomes (`tickets.tags`), sempre escritos como aqui. A etiqueta nova nasce com a cor escolhida na tela, ou cinza (o robô, a IA, a resposta pronta); quem cuida dos chamados troca a cor em Ajustes › Etiquetas. Desde o 2.0.3 cada PAINEL tem as suas (o pedido do Luan: "as etiquetas tem q ser por painel, cada painel vai ter suas etiquetas"): o mesmo nome pode estar em dois painéis, cada um com a sua cor (a migração 0023 pôs cada etiqueta nos painéis em que estava em uso).
 
 | Coluna | Tipo | O que guarda | Regras |
 |---|---|---|---|
 | `id` | texto | Identificador único da linha | chave primária |
+| `panel_id` | texto | O painel da etiqueta: ela só é sugerida e só tem esta cor nos chamados dele | obrigatório · liga com **ticketPanels** |
 | `name` | texto | O nome como a equipe escreveu ("Cliente VIP") | obrigatório |
 | `name_key` | texto | O nome para comparar (minúsculo, sem acento, um espaço só): não se repete | obrigatório |
 | `color` | texto | A cor: neutral (cinza), accent (azul), roxo, turquesa, ok (verde), amarelo, signal (laranja), bad (vermelho), rosa | obrigatório · padrão: 'neutral' |

@@ -13,7 +13,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layers, Plus, Trash2, X } from 'lucide-react';
 import {
   AJUDA_DO_GRUPO, AJUDA_DO_TIPO_DE_CUSTO, GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_FAIXAS_DE_PRECO, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE, NOME_DO_GRUPO,
-  NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, UM_CUSTO_DO_GRUPO, ehPercentual, idLocal, textoDasFaixasDePreco,
+  NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, tiposParaEscolher, UM_CUSTO_DO_GRUPO, ehPercentual, idLocal, textoDasFaixasDePreco,
   type AjustesDoSimulador, type CustoDaTabela, type FaixaDePreco, type GrupoDeCusto, type ModeloDeSimulacao, type ProdutoDoSimulador, type TipoDeCusto,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -120,11 +120,19 @@ function Formulario({ inicial, produtos }: { inicial: AjustesDoSimulador; produt
                     </span>
                   </h3>
                   <button type="button" className="btn-secondary btn-sm" id={`ajustes-novo-custo-${g}`}
-                    onClick={() => setA((x) => ({ ...x, custos: [...x.custos, { id: idLocal(), nome: '', tipo: TIPO_NOVO_DO_GRUPO[g], valor: null, modalidade: null, faixas: null, unidade: null }] }))}>
+                    onClick={() => setA((x) => ({ ...x, custos: [...x.custos, { id: idLocal(), nome: '', tipo: TIPO_NOVO_DO_GRUPO[g], valor: null, modalidade: TIPO_NOVO_DO_GRUPO[g] === 'aparelho' ? 'comodato' : null, faixas: null, unidade: null }] }))}>
                     <Plus size={14} /> {um.charAt(0).toUpperCase() + um.slice(1)}
                   </button>
                 </div>
                 <ul className="flex flex-col divide-y divide-line px-3" id={`ajustes-custos-${g}`}>
+                  {/* os nomes das colunas (no computador; no celular, cada campo tem o dele), no mesmo jeito do cabeçalho dos custos
+                      da simulação, com o texto alinhado ao de dentro dos campos (o Luan, 21/10: "n aparenta estar desalinhado, os
+                      nomes estão confusos") */}
+                  {custos.length > 0 && (
+                    <li className={`hidden md:grid gap-2 ${COLUNAS} pt-2 pb-1.5 text-[11.5px] font-semibold text-muted`} aria-hidden>
+                      <span className="pl-3">Custo</span><span className="pl-3">Tipo</span><span className="pl-3">Valor</span><span />
+                    </li>
+                  )}
                   {custos.map((c) => <CustoNaTabela key={c.id} c={c} grupo={g} mudar={(m) => mudarCusto(c.id, m)} tirar={() => tirarCusto(c)} />)}
                   {!custos.length && <li className="text-[12.5px] text-muted py-2.5">{g === 'fixo' ? 'Nenhum custo de investimento.' : 'Nenhum custo mensal.'}</li>}
                 </ul>
@@ -184,7 +192,12 @@ function BarraDoSinal({ verde, vermelho }: { verde: number; vermelho: number }) 
   );
 }
 
-const COLUNAS = 'md:grid-cols-[minmax(0,1fr)_150px_150px_110px_30px]';
+/**
+ * As colunas da tabela de custos: o custo, o tipo, o valor e o tirar. A coluna da unidade saiu (o Luan, 21/10: "ainda
+ * n entendi pra q serve essa ultima coluna"): ela só escrevia "40 ramais" embaixo da quantidade na simulação. O custo
+ * que já tem a unidade (os do LineChat, na tabela de fábrica) continua com ela.
+ */
+const COLUNAS = 'md:grid-cols-[minmax(0,1fr)_170px_150px_30px]';
 
 function CustoNaTabela({ c, grupo, mudar, tirar }: { c: CustoDaTabela; grupo: GrupoDeCusto; mudar: (m: Partial<CustoDaTabela>) => void; tirar: () => void }) {
   const pct = ehPercentual(c.tipo);
@@ -204,21 +217,18 @@ function CustoNaTabela({ c, grupo, mudar, tirar }: { c: CustoDaTabela; grupo: Gr
           <input className="input" value={c.nome} onChange={(e) => mudar({ nome: e.target.value })} placeholder="O nome (Telefone IP Yealink T31P)" aria-label="O nome do custo" maxLength={120} data-campo="nome" />
         </label>
         <label className="min-w-0">
-          <span className="md:hidden label">Como entra</span>
-          <select className="input" value={c.tipo} onChange={(e) => trocarTipo(e.target.value as TipoDeCusto)} aria-label="Como entra" title={AJUDA_DO_TIPO_DE_CUSTO[c.tipo]} data-campo="tipo">
-            {TIPOS_DO_GRUPO[grupo].map((t) => <option key={t} value={t}>{NOME_DO_TIPO_DE_CUSTO[t]}</option>)}
+          <span className="md:hidden label">Tipo</span>
+          <select className="input" value={c.tipo} onChange={(e) => trocarTipo(e.target.value as TipoDeCusto)} aria-label="Tipo" title={AJUDA_DO_TIPO_DE_CUSTO[c.tipo]} data-campo="tipo">
+            {tiposParaEscolher(grupo, c.tipo).map((t) => <option key={t} value={t}>{NOME_DO_TIPO_DE_CUSTO[t]}</option>)}
           </select>
         </label>
         <div className="min-w-0">
-          <span className="md:hidden label">Valor de hoje</span>
+          <span className="md:hidden label">Valor</span>
           {c.faixas ? <div className="input bg-surface-2 text-[12.5px] text-ink-2 flex items-center gap-1.5"><Layers size={13} aria-hidden /> por faixas</div>
             : pct ? <CampoDePercentual valor={c.valor} onChange={(valor) => mudar({ valor })} aria-label="O percentual" placeholder="0" data-campo="valor" />
-              : <CampoDeReais unitario valor={c.valor} onChange={(valor) => mudar({ valor })} aria-label="O valor de hoje" placeholder="na simulação" data-campo="valor" />}
+              : <CampoDeReais unitario valor={c.valor} onChange={(valor) => mudar({ valor })} aria-label="O valor" placeholder="a definir" data-campo="valor"
+                  title="Em branco, o valor é posto em cada simulação (os aparelhos, que mudam de uma venda para outra)." />}
         </div>
-        <label className="min-w-0">
-          <span className="md:hidden label">Unidade</span>
-          <input className="input" value={c.unidade ?? ''} onChange={(e) => mudar({ unidade: e.target.value || null })} placeholder={pct ? '—' : 'usuário'} disabled={pct} aria-label="A unidade (usuário, canal)" maxLength={20} data-campo="unidade" />
-        </label>
         <div className="col-span-2 md:col-span-1 flex justify-end">
           <button type="button" className="btn-ghost btn-sm px-1.5 text-muted" onClick={tirar} aria-label={`Tirar ${c.nome || 'este custo'} da tabela`} title="Tirar da tabela"><Trash2 size={15} /></button>
         </div>

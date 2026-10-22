@@ -41,7 +41,7 @@ const assunto = (id: string, nome: string, extra: Partial<Assunto> = {}): Assunt
   id, painelId: 'p-sup', paiId: null, nome, descricao: null, ativo: true, ordem: 0, checklist: [], dePara: [], ...extra,
 });
 const campo = (id: string, nome: string, extra: Partial<CampoPersonalizado> = {}): CampoPersonalizado => ({
-  id, painelId: 'p-sup', nome, tipo: 'texto', dica: null, opcoes: [], ativo: true, ordem: 0, ...extra,
+  id, painelId: 'p-sup', nome, tipo: 'texto', dica: null, opcoes: [], ativo: true, ordem: 0, incluirNaHora: false, ...extra,
 });
 
 const DADOS: DadosParaORobo = {
