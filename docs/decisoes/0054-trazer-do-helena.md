@@ -68,7 +68,11 @@ e 21 em andamento (R$ 28.495); e os ganhos mês a mês iguais ao gráfico *Meta 
   Gestor fica lá. O que é novo no Helena entra.
 - **Sem o histórico.** Se a chave não lê o card (o histórico), a leitura acaba assim mesmo: a negociação nasce
   na etapa de agora e acaba na Conclusão, e a prévia diz quantas e por quê. Se os cinco primeiros cards não
-  vêm, a leitura não pede mais (a chave não lê).
+  vêm, a leitura não pede mais (a chave não lê). **Corrigido no 2.0.4** (22/10, o primeiro uso no ar): o
+  LineChat recusava o pedido do card (500, *"The value 'Logs,Key,ResultDescription,Step' is not valid"*) porque
+  a vírgula ia escrita como `%2C`; o Helena manda a vírgula como vírgula (`includeDetails=Logs,Notes,…`,
+  conferido na tela do card). O Gestor passou a mandar igual, e o Helena falso dos testes recusa o `%2C`, como o
+  de verdade. Sem o histórico, a Conclusão também não vinha, e os ganhos caíam nos meses errados.
 - **Auditoria.** O Trazer vai para a auditoria (`import`, no painel): *"Trouxe do Helena o painel Ingline -
   Comercial para o painel novo Comercial (IC): 55 negociações (55 novas)"*, com as etapas, os campos criados,
   os motivos novos e os avisos.

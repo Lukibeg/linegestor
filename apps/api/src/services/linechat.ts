@@ -91,7 +91,9 @@ export class LineChatApi {
       if (v === undefined) continue;
       if (Array.isArray(v)) v.forEach((x) => q.append(k, x)); else q.set(k, String(v));
     }
-    const busca = q.toString();
+    // a vírgula vai como vírgula: o LineChat separa os detalhes ("Logs,Key,…") pela vírgula escrita, e com o
+    // %2C do URLSearchParams ele recusa o valor inteiro (500 "The value '…' is not valid", visto no ar em 22/10)
+    const busca = q.toString().replace(/%2C/gi, ',');
     const url = `${this.base.replace(/\/+$/, '')}/${caminho.replace(/^\/+/, '')}${busca ? `?${busca}` : ''}`;
     // a chave do LineChat vem como "pn_…"; se alguém colar já com "Bearer ", respeitamos
     const auth = /^bearer\s/i.test(this.token) ? this.token : `Bearer ${this.token}`;
@@ -132,7 +134,8 @@ export class LineChatApi {
 
   /**
    * Um card com o histórico (a API v1, com os Logs): o Trazer do Helena (2.0.3). Os detalhes vão numa
-   * linha só, separados por vírgula — o jeito que o próprio Helena pede (conferido em 21/10).
+   * linha só, separados por vírgula escrita (sem o %2C) — o jeito que o próprio Helena pede (conferido em 21/10
+   * e de novo em 22/10, na tela do card: `includeDetails=Logs,Notes,…`).
    */
   card(id: string) {
     return this.get<CardComHistoricoApi>(`crm/v1/panel/card/${encodeURIComponent(id)}`, { IncludeDetails: 'Logs,Key,ResultDescription,Step' });

@@ -112,7 +112,13 @@ const servidor = http.createServer((req, res) => {
   }
   const m = /^\/crm\/v1\/panel\/card\/([^/]+)$/.exec(url.pathname);
   if (m) {
-    pedidosDeHistorico.push(url.searchParams.get('IncludeDetails') ?? '');
+    // como o LineChat de verdade (visto no ar em 22/10): os detalhes separados pela vírgula escrita; com o %2C,
+    // ele recusa o valor inteiro
+    const bruto = (req.url!.split('?')[1] ?? '').split('&').find((p) => /^includedetails=/i.test(p))?.split('=')[1] ?? '';
+    pedidosDeHistorico.push(bruto);
+    if (/%2C/i.test(bruto)) {
+      return json(500, { customData: null, httpStatusCode: 'INTERNALSERVERERROR', error: true, key: 'FORM_ERROR', text: `The value '${decodeURIComponent(bruto)}' is not valid.` });
+    }
     if (historicoRecusado) return json(403, { message: 'Forbidden' });
     const c = cards.find((x) => x.id === m[1]);
     if (!c) return json(404, { message: 'card' });
@@ -191,7 +197,7 @@ describe('trazer do Helena', () => {
     const l = await ler();
     expect(l).toMatchObject({ estado: 'pronta', lidos: 5, total: 5, painelNome: 'Ingline - Comercial', erro: null });
     // o histórico pedido como o Helena pede (os detalhes numa linha só)
-    expect(pedidosDeHistorico[0]).toContain('Logs');
+    expect(pedidosDeHistorico[0]).toBe('Logs,Key,ResultDescription,Step');
     const r = await s.get(`/comercial/helena/leituras/${l.id}/previa`);
     expect(r.statusCode, r.body).toBe(200);
     const p: PreviaDoHelena = r.json();
