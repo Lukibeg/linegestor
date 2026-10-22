@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, ajustesDoSimulador, cenarioNovo, contasDoCenario,
   comPrecoPorProduto, custoPorFaixas, dividirEmParcelas, duplicarCenario, linhaDaTabela, linhasDoModelo, mudancasDaSimulacao, mudancasDosAjustes, normalizarPorProduto,
-  pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOQueSaiu,
+  TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, tiposParaEscolher, pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOQueSaiu,
   LINECHAT_DO_SIMULADOR, ehLinhaDoLineChat, linhasParaOLineChat, linhasSemOLineChat, mudarQuantidadeDoLineChat, quadroDoLineChat, textoDosInclusos,
   sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, margemDasGanhas, textoDoValorUnitario, lerPercentual, textoDoPercentual,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario,
@@ -153,7 +153,8 @@ describe('a conta do cenário', () => {
       faturamento: 149_000,
       sai: [
         { rotulo: 'Telefone IP', valor: 390_000 }, { rotulo: 'Headset USB', valor: 72_000 }, { rotulo: 'Instalação', valor: 36_000 },
-        { rotulo: 'Custos mensais', valor: 31_500 }, { rotulo: 'Imposto', valor: 8_940 }, { rotulo: 'Comissão do vendedor', valor: 5_000 }, { rotulo: 'Comissão recorrente', valor: 1_980 },
+        // cada custo por mês pelo nome, sem agrupar (2.0.3: "eu quero q ele sempre coloque detalhado todos os custos")
+        { rotulo: 'Nuvem do PABX', valor: 9_000 }, { rotulo: 'Números', valor: 4_500 }, { rotulo: 'Suporte', valor: 18_000 }, { rotulo: 'Imposto', valor: 8_940 }, { rotulo: 'Comissão do vendedor', valor: 5_000 }, { rotulo: 'Comissão recorrente', valor: 1_980 },
       ],
       custos: 545_420,
       lucro: 149_000 - 545_420,
@@ -175,7 +176,21 @@ describe('a conta do cenário', () => {
     expect(kp.meses[0]!.entra).toEqual([{ rotulo: 'Mensalidade', valor: 99_000 }, { rotulo: 'Ativação', valor: 150_000 }, { rotulo: 'Aparelhos vendidos', valor: 120_000 }]);
     expect(kp.meses[0]!.sai.slice(0, 3)).toEqual([{ rotulo: 'Telefone IP (parcela 1 de 10)', valor: 39_000 }, { rotulo: 'Headset USB', valor: 72_000 }, { rotulo: 'Instalação', valor: 36_000 }]);
     expect(kp.meses[9]!.sai[0]).toEqual({ rotulo: 'Telefone IP (parcela 10 de 10)', valor: 39_000 });
-    expect(kp.meses[10]!.sai.map((x) => x.rotulo)).toEqual(['Custos mensais', 'Imposto', 'Comissão recorrente']);
+    expect(kp.meses[10]!.sai.map((x) => x.rotulo)).toEqual(['Nuvem do PABX', 'Números', 'Suporte', 'Imposto', 'Comissão recorrente']);
+    // o custo do mês, parte a parte: cada custo por mês, o imposto e a comissão recorrente, somando o custo do mês
+    expect(k.partesDoCustoMensal).toEqual([
+      { rotulo: 'Nuvem do PABX', valor: 9_000 }, { rotulo: 'Números', valor: 4_500 }, { rotulo: 'Suporte', valor: 18_000 },
+      { rotulo: 'Imposto', valor: 5_940 }, { rotulo: 'Comissão recorrente', valor: 1_980 },
+    ]);
+    expect(k.partesDoCustoMensal.reduce((s, p) => s + p.valor, 0)).toBe(k.custoMensal);
+  });
+
+  it('o "Uma vez" não é mais oferecido (2.0.3); a linha gravada assim continua valendo e mostra o tipo dela', () => {
+    expect(TIPOS_DO_GRUPO.fixo).toEqual(['aparelho', 'pct_ativacao']);
+    expect(TIPO_NOVO_DO_GRUPO.fixo).toBe('aparelho');
+    expect(tiposParaEscolher('fixo', 'aparelho')).toEqual(['aparelho', 'pct_ativacao']);
+    expect(tiposParaEscolher('fixo', 'unica')).toEqual(['aparelho', 'pct_ativacao', 'unica']);
+    expect(contasDoCenario(exemplo(), FAIXAS).totalInvestido).toBeGreaterThan(0);
   });
 
   it('repartir: as partes arredondadas somam o total (o centavo vai para quem mais perdeu no arredondamento)', () => {

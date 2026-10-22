@@ -46,7 +46,7 @@ entra no lugar.
 Os custos ficam em dois quadros, cada um com a cor dele, o total no alto, o **Da tabela** e o **Digitar um
 custo**:
 
-- **Investimento** (laranja): pago uma vez, na assinatura — os aparelhos, a instalação, a comissão da venda;
+- **Investimento** (laranja): pago uma vez, na assinatura — os aparelhos e a comissão da venda;
 - **Custos mensais** (verde-água): todo mês — a nuvem, os números, as licenças, a comissão recorrente.
 
 Com dois produtos ou mais, cada linha diz de qual produto veio (a instalação do LinePBX e a do LineChat).
@@ -64,7 +64,6 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
 | Como entra | Para quê | A conta |
 |---|---|---|
 | Aparelho | o telefone, o headset | o custo de cada um, uma vez (e a modalidade, abaixo) |
-| Uma vez (R$) | a instalação, a configuração | quantidade × valor, na assinatura |
 | Por mês (R$) | a nuvem, os números, a licença | quantidade × valor, todo mês |
 | % da mensalidade | a comissão recorrente | o percentual de cada mensalidade |
 | % da ativação | a comissão da venda | o percentual da ativação |
@@ -93,9 +92,9 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
 - **Sobra por mês**: a mensalidade menos o custo do mês, e a **margem** (a sobra sobre o que o cliente paga
   por mês) com o **sinal**: verde, amarelo ou vermelho, pelas faixas dos Ajustes (escritas embaixo da
   margem). Para "dá para fazer mais barato?", mude a mensalidade e veja a margem e o sinal na hora.
-- **O custo do mês**: o **fixo** (as linhas por mês) e o **variável** (o imposto e a comissão, que andam com o
-  que o cliente paga).
-- **Investimento**: o total pago uma vez — os aparelhos, a instalação e a comissão da venda (e quanto disso
+- **O custo do mês**: embaixo do total, **cada custo pelo nome**, sem agrupar — cada linha por mês (a nuvem,
+  os números, a licença), o **imposto** e cada **comissão** recorrente (2.0.3).
+- **Investimento**: o total pago uma vez — os aparelhos e a comissão da venda (e quanto disso
   é da compra parcelada).
 - **Sai antes**: o pior momento do contrato — o que a Ingline põe antes de a venda se pagar ("nada" quando
   o 1º mês já cobre).
@@ -109,7 +108,8 @@ Cada linha tem o nome, **como entra** (só os tipos do grupo), a quantidade, o v
 
 No alto da simulação, o quadro **Mês a mês**, do 1º mês ao fim do contrato. **O 1º mês é o da assinatura**:
 nele entram a ativação (ou a 1ª parcela) e já a 1ª mensalidade, e saem o que é pago de uma vez e os custos
-do mês.
+do mês. No detalhe de cada mês, os custos vêm **um a um, pelo nome** (a "Máquina em nuvem", o imposto, a
+comissão…), sem juntar os custos mensais numa linha só.
 
 - Em cima, os totais do contrato: o **faturamento**, os **custos**, o **lucro** e quando a venda **se paga**.
 - No gráfico, cada mês é uma coluna: o faturamento (azul) para cima, os custos (laranja) para baixo e um

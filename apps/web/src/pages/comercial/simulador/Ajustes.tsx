@@ -13,7 +13,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Layers, Plus, Trash2, X } from 'lucide-react';
 import {
   AJUDA_DO_GRUPO, AJUDA_DO_TIPO_DE_CUSTO, GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_FAIXAS_DE_PRECO, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE, NOME_DO_GRUPO,
-  NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, UM_CUSTO_DO_GRUPO, ehPercentual, idLocal, textoDasFaixasDePreco,
+  NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, tiposParaEscolher, UM_CUSTO_DO_GRUPO, ehPercentual, idLocal, textoDasFaixasDePreco,
   type AjustesDoSimulador, type CustoDaTabela, type FaixaDePreco, type GrupoDeCusto, type ModeloDeSimulacao, type ProdutoDoSimulador, type TipoDeCusto,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -120,7 +120,7 @@ function Formulario({ inicial, produtos }: { inicial: AjustesDoSimulador; produt
                     </span>
                   </h3>
                   <button type="button" className="btn-secondary btn-sm" id={`ajustes-novo-custo-${g}`}
-                    onClick={() => setA((x) => ({ ...x, custos: [...x.custos, { id: idLocal(), nome: '', tipo: TIPO_NOVO_DO_GRUPO[g], valor: null, modalidade: null, faixas: null, unidade: null }] }))}>
+                    onClick={() => setA((x) => ({ ...x, custos: [...x.custos, { id: idLocal(), nome: '', tipo: TIPO_NOVO_DO_GRUPO[g], valor: null, modalidade: TIPO_NOVO_DO_GRUPO[g] === 'aparelho' ? 'comodato' : null, faixas: null, unidade: null }] }))}>
                     <Plus size={14} /> {um.charAt(0).toUpperCase() + um.slice(1)}
                   </button>
                 </div>
@@ -206,7 +206,7 @@ function CustoNaTabela({ c, grupo, mudar, tirar }: { c: CustoDaTabela; grupo: Gr
         <label className="min-w-0">
           <span className="md:hidden label">Como entra</span>
           <select className="input" value={c.tipo} onChange={(e) => trocarTipo(e.target.value as TipoDeCusto)} aria-label="Como entra" title={AJUDA_DO_TIPO_DE_CUSTO[c.tipo]} data-campo="tipo">
-            {TIPOS_DO_GRUPO[grupo].map((t) => <option key={t} value={t}>{NOME_DO_TIPO_DE_CUSTO[t]}</option>)}
+            {tiposParaEscolher(grupo, c.tipo).map((t) => <option key={t} value={t}>{NOME_DO_TIPO_DE_CUSTO[t]}</option>)}
           </select>
         </label>
         <div className="min-w-0">

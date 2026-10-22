@@ -327,7 +327,7 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
         </div>
       )}
       <p className="text-[12px] text-muted mt-2">
-        O 1º mês é o da assinatura: nele entram a ativação (ou a 1ª parcela) e a 1ª mensalidade, e saem o que é pago de uma vez (os aparelhos à vista, a instalação) e os custos do mês.
+        O 1º mês é o da assinatura: nele entram a ativação (ou a 1ª parcela) e a 1ª mensalidade, e saem o que é pago de uma vez (os aparelhos à vista, a comissão da venda) e os custos do mês.
         {cortaO1 && ' As colunas dele passam da escala: são cortadas e dizem o valor.'} {estreito ? '' : 'Passe o mouse num mês para ver o detalhe.'}
       </p>
       <button type="button" className="btn-ghost btn-sm mt-2 -ml-2" onClick={() => setTabela((t) => !t)} aria-expanded={tabela} id="simulador-mes-a-mes-tabela-botao">

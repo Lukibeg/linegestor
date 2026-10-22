@@ -71,15 +71,14 @@ const CUSTOS_DO_PABX: CustoDaTabela[] = [
   { id: 'nuvem', nome: 'Nuvem do PABX', tipo: 'mensal', valor: 900, modalidade: null, faixas: null, unidade: 'ramal' },
   { id: 'did', nome: 'Número (DID) da operadora', tipo: 'mensal', valor: 1_500, modalidade: null, faixas: null, unidade: 'número' },
   { id: 'canal', nome: 'Canal de voz da operadora', tipo: 'mensal', valor: 2_500, modalidade: null, faixas: null, unidade: 'canal' },
-  { id: 'config', nome: 'Configuração e instalação', tipo: 'unica', valor: 36_000, modalidade: null, ...sem },
   { id: 'comissao', nome: 'Comissão do vendedor', tipo: 'pct_ativacao', valor: 10, modalidade: null, ...sem },
   { id: 'recorrente', nome: 'Comissão recorrente', tipo: 'pct_mensalidade', valor: 2, modalidade: null, ...sem },
 ];
 const l = (custoId: string, qtd = 1) => ({ custoId, qtd });
 const COMISSOES = [l('comissao'), l('recorrente')];
 const MODELOS_DE_EXEMPLO: ModeloDeSimulacao[] = [
-  { id: 'linepbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [l('t31p'), l('nuvem'), l('did', 2), l('canal', 2), l('config'), ...COMISSOES] },
-  { ...MODELO_DA_HELENA, linhas: [...MODELO_DA_HELENA.linhas, l('config'), ...COMISSOES] },
+  { id: 'linepbx', nome: 'LinePBX em nuvem', produto: 'linepbx', linhas: [l('t31p'), l('nuvem'), l('did', 2), l('canal', 2), ...COMISSOES] },
+  { ...MODELO_DA_HELENA, linhas: [...MODELO_DA_HELENA.linhas, ...COMISSOES] },
   { id: 'voicenet', nome: 'VoiceNet (os canais de voz)', produto: 'voicenet', linhas: [l('canal', 10), l('did', 4), ...COMISSOES] },
 ];
 export const AJUSTES_DO_SIMULADOR_DEMO: AjustesDoSimulador = { ...AJUSTES_DO_SIMULADOR_PADRAO, custos: [...CUSTOS_DA_HELENA, ...CUSTOS_DO_PABX], modelos: MODELOS_DE_EXEMPLO };
@@ -204,7 +203,7 @@ export function criarSimuladorDemo(ctx: ContextoSimuladorDemo): SimuladorDemo {
       nome: 'Clínica Vida — LineChat, 5 atendentes', negociacaoId: null, principal: 'a',
       criadoPorId: pessoa('camila'), criadoEm: dias(6, 15),
       cenarios: [cenario('a', 'Cenário A', 'linechat-helena', { mensalidade: 49_000, ativacao: 0, prazo: 12 },
-        (x2) => (x2.custoId === 'config' ? null : quantidade(x2, { 'helena-usuarios': 5, 'helena-canais': 2, 'helena-zapi': 1 })))],
+        (x2) => quantidade(x2, { 'helena-usuarios': 5, 'helena-canais': 2, 'helena-zapi': 1 }))],
     });
     // as ganhas do mês (a margem no relatório do Comercial): a Ótica (Camila) e a Construtora (Camila) no verde, a
     // Academia (Diego, o LineChat com 12 usuários) no vermelho

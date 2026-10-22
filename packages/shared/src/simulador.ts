@@ -103,16 +103,24 @@ export const ehPercentual = (t: TipoDeCusto) => t === 'pct_mensalidade' || t ===
 export const GRUPOS_DE_CUSTO = ['fixo', 'mensal'] as const;
 export type GrupoDeCusto = (typeof GRUPOS_DE_CUSTO)[number];
 export const GRUPO_DO_TIPO: Record<TipoDeCusto, GrupoDeCusto> = { aparelho: 'fixo', unica: 'fixo', pct_ativacao: 'fixo', mensal: 'mensal', pct_mensalidade: 'mensal' };
-export const TIPOS_DO_GRUPO: Record<GrupoDeCusto, readonly TipoDeCusto[]> = { fixo: ['aparelho', 'unica', 'pct_ativacao'], mensal: ['mensal', 'pct_mensalidade'] };
+/**
+ * Os tipos que a tela oferece em cada grupo. O "Uma vez (R$)" saiu no 2.0.3 (o Luan: "acho q n tem necessidade
+ * desse 'uma vez'" — "pode tirar"): não é mais oferecido; o custo ou a linha que já está gravada assim continua
+ * valendo (a conta é a mesma) e a tela ainda mostra o tipo dela, para trocar.
+ */
+export const TIPOS_DO_GRUPO: Record<GrupoDeCusto, readonly TipoDeCusto[]> = { fixo: ['aparelho', 'pct_ativacao'], mensal: ['mensal', 'pct_mensalidade'] };
+/** Os tipos de uma linha que a tela mostra: os do grupo e, se for o caso, o dela (o "Uma vez" de antes do 2.0.3). */
+export const tiposParaEscolher = (grupo: GrupoDeCusto, atual: TipoDeCusto): readonly TipoDeCusto[] =>
+  TIPOS_DO_GRUPO[grupo].includes(atual) ? TIPOS_DO_GRUPO[grupo] : [...TIPOS_DO_GRUPO[grupo], atual];
 export const NOME_DO_GRUPO: Record<GrupoDeCusto, string> = { fixo: 'Investimento', mensal: 'Custos mensais' };
 export const AJUDA_DO_GRUPO: Record<GrupoDeCusto, string> = {
-  fixo: 'pago uma vez, na assinatura: os aparelhos, a instalação, a comissão da venda',
+  fixo: 'pago uma vez, na assinatura: os aparelhos e a comissão da venda',
   mensal: 'todo mês: a nuvem, os números, as licenças, a comissão recorrente',
 };
 /** Um custo do grupo, no singular ("Pôr um custo de investimento da tabela", "+ Custo mensal"). */
 export const UM_CUSTO_DO_GRUPO: Record<GrupoDeCusto, string> = { fixo: 'custo de investimento', mensal: 'custo mensal' };
 /** O tipo do custo novo de cada grupo (o "Digitar um custo" de cada um). */
-export const TIPO_NOVO_DO_GRUPO: Record<GrupoDeCusto, TipoDeCusto> = { fixo: 'unica', mensal: 'mensal' };
+export const TIPO_NOVO_DO_GRUPO: Record<GrupoDeCusto, TipoDeCusto> = { fixo: 'aparelho', mensal: 'mensal' };
 /** Os itens em ordem de grupo (os fixos primeiro), cada grupo na ordem em que está. */
 export function emOrdemDeGrupo<T extends { tipo: TipoDeCusto }>(itens: readonly T[]): T[] {
   return GRUPOS_DE_CUSTO.flatMap((g) => itens.filter((x) => GRUPO_DO_TIPO[x.tipo] === g));
@@ -976,6 +984,9 @@ export type ContasDoCenario = {
   comissaoMensal: number;
   /** tudo o que sai por mês */
   custoMensal: number;
+  /** o custo do mês parte a parte, sem agrupar (2.0.3): cada linha por mês pelo nome, o imposto e cada comissão
+   *  recorrente; soma o `custoMensal` ao centavo */
+  partesDoCustoMensal: ParteDoMes[];
   /** o imposto e a comissão sobre a ativação inteira */
   impostoDaEntrada: number;
   comissaoDaEntrada: number;
@@ -1074,6 +1085,9 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   // para o mês a mês: o que é pago de uma vez (cada linha, com as vezes da compra) e os percentuais (cada linha)
   const deUmaVez: Array<{ nome: string; total: number; vezes: number; produto: string | null }> = [];
   const dePercentual: Array<{ nome: string; pct: number; sobre: 'mensal' | 'entrada' }> = [];
+  // os custos por mês, cada linha com o nome dela (o Luan, 21/10: "eu quero q ele sempre coloque detalhado todos os
+  // custos n agrupe" — antes o mês a mês e o custo do mês juntavam tudo em "Custos mensais")
+  const mensais: Array<{ nome: string; custo: number; produto: string | null }> = [];
   // as linhas de percentual só têm o custo depois de saber a mensalidade e a ativação (fica para o fim)
   const conta: Array<Omit<LinhaNaConta, 'custo'> & { custo: number; sobre: 'mensal' | 'entrada' | null; pct: number }> = [];
   for (const l of c.linhas) {
@@ -1101,6 +1115,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
     } else if (l.tipo === 'mensal') {
       const custo = faixas ? custoPorFaixas(qtd, faixas) : qtd * valor;
       custoMensalFixo += custo;
+      if (custo) mensais.push({ nome: l.nome || 'Custo sem nome', custo, produto: l.produto ?? null });
       conta.push({ id: l.id, qtd, custo, quando: 'por-mes', receita: 0, falta, sobre: null, pct: 0, parcelas: 1 });
     } else if (l.tipo === 'pct_mensalidade') {
       pctMensalidade += valor / 100;
@@ -1177,7 +1192,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
       if (partes) { if (i < partes.length && partes[i]) sai.push({ rotulo: `${u.nome} (parcela ${i + 1} de ${partes.length})`, exato: partes[i]!, produto: u.produto }); }
       else if (i === 0 && u.total) sai.push({ rotulo: u.nome, exato: u.total, produto: u.produto });
     });
-    if (custoMensalFixo) sai.push({ rotulo: 'Custos mensais', exato: custoMensalFixo });
+    for (const m of mensais) sai.push({ rotulo: m.nome, exato: m.custo, produto: m.produto });
     if (imposto && mensalTotal + parcela) sai.push({ rotulo: 'Imposto', exato: imposto * (mensalTotal + parcela) });
     for (const p of dePercentual) {
       const base = p.sobre === 'mensal' ? mensalTotal : parcela;
@@ -1194,6 +1209,14 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
   });
 
   const margem = mensalTotal > 0 ? sobraMensal / mensalTotal : null;
+  // o custo do mês, parte a parte (cada linha por mês, o imposto e cada comissão), somando o custo do mês ao centavo
+  const partes: Array<{ rotulo: string; exato: number; produto?: string | null }> = [
+    ...mensais.map((m) => ({ rotulo: m.nome, exato: m.custo, produto: m.produto })),
+    ...(impostoMensal ? [{ rotulo: 'Imposto', exato: impostoMensal }] : []),
+    ...dePercentual.filter((p) => p.sobre === 'mensal' && p.pct && mensalTotal).map((p) => ({ rotulo: p.nome, exato: p.pct * mensalTotal })),
+  ];
+  const valoresDasPartes = repartir(Math.round(custoMensal), partes.map((x) => x.exato));
+  const partesDoCustoMensal: ParteDoMes[] = partes.map((x, j) => ({ rotulo: x.rotulo, valor: valoresDasPartes[j]!, ...(x.produto ? { produto: x.produto } : {}) }));
   const linhas = conta.map(({ sobre, pct, ...l }) => ({
     ...l,
     custo: sobre === 'mensal' ? Math.round(pct * mensalTotal) : sobre === 'entrada' ? Math.round(pct * entradaTotal) : Math.round(l.custo),
@@ -1202,7 +1225,7 @@ export function contasDoCenario(c: CenarioDaSimulacao, faixas: FaixasDoSinal): C
     aluguel, vendaDeAparelhos, mensalTotal, entradaTotal, parcelas, custoUnico: Math.round(custoUnico),
     totalInvestido: linhas.filter((l) => l.quando === 'uma-vez').reduce((s, l) => s + l.custo, 0),
     saidas: saidas.map((v) => Math.round(v)), custoMensalFixo: Math.round(custoMensalFixo),
-    impostoMensal: Math.round(impostoMensal), comissaoMensal: Math.round(comissaoMensal), custoMensal: Math.round(custoMensal),
+    impostoMensal: Math.round(impostoMensal), comissaoMensal: Math.round(comissaoMensal), custoMensal: Math.round(custoMensal), partesDoCustoMensal,
     impostoDaEntrada: Math.round(imposto * entradaTotal), comissaoDaEntrada: Math.round(pctAtivacao * entradaTotal),
     sobraMensal: sobra, margem, sinal: margem == null ? null : sinalDaMargem(margem, faixas),
     serie, meses, investimento, sePagaEm, resultado: serie[serie.length - 1]!,

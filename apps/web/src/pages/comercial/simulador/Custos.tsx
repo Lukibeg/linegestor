@@ -19,7 +19,7 @@ import { useMemo, useState } from 'react';
 import { Layers, ListPlus, MessagesSquare, PackagePlus, Plus, Repeat, Search, Wallet, X } from 'lucide-react';
 import {
   AJUDA_DA_MODALIDADE, AJUDA_DO_GRUPO, AJUDA_DO_TIPO_DE_CUSTO, GRUPOS_DE_CUSTO, GRUPO_DO_TIPO, MAX_PARCELAS_DA_COMPRA, MODALIDADES_DO_APARELHO, NOME_DA_MODALIDADE,
-  NOME_DO_GRUPO, NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, UM_CUSTO_DO_GRUPO, dividirEmParcelas, ehLinhaDoLineChat, ehPercentual, linhaDaTabela, linhaNova, linhasDoModelo,
+  NOME_DO_GRUPO, NOME_DO_TIPO_DE_CUSTO, TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, tiposParaEscolher, UM_CUSTO_DO_GRUPO, dividirEmParcelas, ehLinhaDoLineChat, ehPercentual, linhaDaTabela, linhaNova, linhasDoModelo,
   mudarQuantidadeDoLineChat, paraBusca, percentual, precoDaUnidade, quadroDoLineChat, textoDasFaixasDePreco, textoDosInclusos,
   type AjustesDoSimulador, type CenarioDaSimulacao, type ContasDoCenario, type CustoDaTabela, type GrupoDeCusto, type LinhaDoCenario, type QuadroDoLineChat, type TipoDeCusto,
 } from '@gestor/shared';
@@ -222,7 +222,7 @@ function LinhaDeCusto({ l, c, grupo, conta, mudar, tirar, podeEditar, produto }:
           <input className="input" value={l.nome} onChange={(e) => mudar({ nome: e.target.value })} aria-label="O custo" title={l.nome} disabled={!podeEditar} data-campo="nome" />
           <div className="flex flex-wrap items-center gap-2 mt-1">
             <select className="input !w-auto !py-0.5 !pl-2 !text-[12.5px]" value={l.tipo} onChange={(e) => trocarTipo(e.target.value as TipoDeCusto)} aria-label="Como entra" title={AJUDA_DO_TIPO_DE_CUSTO[l.tipo]} disabled={!podeEditar} data-campo="tipo">
-              {TIPOS_DO_GRUPO[grupo].map((x) => <option key={x} value={x}>{NOME_DO_TIPO_DE_CUSTO[x]}</option>)}
+              {tiposParaEscolher(grupo, l.tipo).map((x) => <option key={x} value={x}>{NOME_DO_TIPO_DE_CUSTO[x]}</option>)}
             </select>
             {produto && <span className="chip bg-surface-2 text-ink-2 !text-[11px] !py-0" data-campo="produto">{produto}</span>}
             {l.custoId && <span className="text-[11px] text-muted">da tabela</span>}

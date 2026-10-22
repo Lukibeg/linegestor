@@ -237,7 +237,7 @@ na negociação e no relatório, se a venda se paga e quanto sobra de cada vende
 custos e as faixas da Helena precisam de atualização quando os fornecedores reajustam; as simulações feitas
 ficam com os valores de quando foram feitas.
 
-## Revisto no 2.0.3 (21/10/2026): o LineChat só com as quantidades e o gráfico do mês a mês
+## Revisto no 2.0.3 (21/10/2026): o LineChat só com as quantidades, o gráfico do mês a mês, os custos um a um e o "Uma vez" que saiu
 
 No documento de 21/10 (o "pacote de melhorias"), com o 2.0.2 no ar. Avisado antes (revê a tabela da Helena
 por faixas na simulação).
@@ -259,6 +259,14 @@ por faixas na simulação).
   que passa da escala numa faixa própria, acima ou abaixo, desenhado por último (antes, a coluna do mês
   seguinte cobria o texto); a marca de corte virou um vão reto na largura da coluna (eram as linhas brancas
   atravessando a primeira coluna); o acumulado justo aos dados, com marcas redondas por dentro.
-- **Em aberto**: o "Uma vez (R$)" do Investimento (*"qual a diferença desses, acho q n tem necessidade desse
-  'uma vez'"*) — respondido (é o custo de investimento que não é aparelho: instalação, frete, configuração);
-  sai quando ele disser "pode tirar".
+- **O "Uma vez (R$)" saiu** do Investimento (*"qual a diferença desses, acho q n tem necessidade desse
+  'uma vez'"* — respondido: é o custo de investimento que não é aparelho, como a instalação e o frete; e ele:
+  *"pode tirar"*). O Investimento oferece o Aparelho e o % da ativação, e o "Digitar um custo" dele abre um
+  aparelho (em comodato). O tipo `unica` continua no modelo, para o que já está gravado assim (a conta é a mesma, e
+  a linha mostra o tipo dela, para trocar: `tiposParaEscolher`); na prévia, a "Configuração e instalação" saiu da
+  tabela e dos modelos.
+- **Os custos do mês, um a um** (*"ele ta juntando meus custos mensais eu quero q ele sempre coloque detalhado
+  todos os custos n agrupe"*, com o print de uma simulação real): o detalhe de cada mês do mês a mês e o "O custo
+  do mês" dos números mostram cada linha por mês pelo nome, o imposto e cada comissão — antes, as linhas por mês
+  viravam uma só, "Custos mensais", e o custo do mês dizia só "fixo + variável". As partes somam o total ao centavo
+  (`partesDoCustoMensal`, com o `repartir`).
