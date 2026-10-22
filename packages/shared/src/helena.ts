@@ -427,9 +427,12 @@ export function historicoDoCard(card: CardDoHelena, o: OpcoesDoHistorico): Histo
   for (const ev of eventos) ev.dados = { ...ev.dados, helena: ev.chave };
 
   const etapaFinal = resultado ? doResultado(resultado).nome : etapaHelena ? o.etapaDoGestor(etapaHelena) : inicial.nome;
+  // quando acabou: a Conclusão; sem ela (o card não veio inteiro), o dia em que foi marcado no histórico, que a
+  // última mudança do card (uma etiqueta, um título) não empurra para depois (2.0.4.1)
+  const marcadoEm = !card.concluidoEm && ultimoResultado >= 0 ? eventos[ultimoResultado]!.em : null;
   return {
     eventos, etapaInicial: inicial.nome, etapa: etapaFinal, resultado,
-    fechadoEm: resultado ? fim : null,
+    fechadoEm: resultado ? marcadoEm ?? fim : null,
     reaberturas, movimentos, semHistorico: card.logs === null, completado: completado && card.logs !== null,
   };
 }
@@ -965,7 +968,8 @@ export type PreviaDoHelena = {
   produtos: { ligados: Array<{ helena: string; gestor: string }>; semCadastro: string[]; comValorPorProduto: number; valorUnico: number };
   etiquetas: { total: number; novas: string[] };
   motivosNovos: string[];
-  historico: { eventos: number; movimentos: number; semHistorico: number; completados: number; semCopia: number };
+  /** `semConclusao`: as ganhas e as perdidas sem a Conclusão do Helena (acabam no dia em que foram marcadas) */
+  historico: { eventos: number; movimentos: number; semHistorico: number; semConclusao: number; completados: number; semCopia: number };
   /** as que já vieram e a equipe mexeu no Gestor: voltam a ficar como no Helena */
   mexidasNoGestor: number;
   avisos: string[];
@@ -1076,7 +1080,7 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
   const numeros = numerarNegociacoes(cards.map((c) => ({ id: c.id, numero: c.numero, jaTem: estado.importadas[c.id]?.numero ?? null })), estado.numerosOcupados);
 
   const negociacoes: NegociacaoNoPlano[] = [];
-  let valoresRecusados = 0, completados = 0, semHistorico = 0, movimentos = 0, totalEventos = 0, semCopia = 0;
+  let valoresRecusados = 0, completados = 0, semHistorico = 0, semConclusao = 0, movimentos = 0, totalEventos = 0, semCopia = 0;
   let comValorPorProduto = 0, valorUnico = 0;
   const empresas: PreviaDoHelena['empresas']['lista'] = [];
   const produtosLigados = new Map<string, string>();
@@ -1131,6 +1135,9 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
     }
 
     if (card.logs === null) semHistorico++;
+    // ganha ou perdida sem a Conclusão: acaba no dia em que foi marcada (ou no da última mudança do card), e o mês
+    // pode não ser o do Helena
+    if (h.resultado && !card.concluidoEm) semConclusao++;
     if (h.completado) completados++;
     movimentos += h.movimentos;
     totalEventos += h.eventos.length;
@@ -1183,6 +1190,7 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
   if (naLixeira.length) avisos.push(`${naLixeira.length === 1 ? '1 negociação que já veio está' : `${naLixeira.length} negociações que já vieram estão`} na lixeira do Gestor: ${naLixeira.length === 1 ? 'fica' : 'ficam'} lá (para trazer de novo, restaure em Administração › Lixeira).`);
   if (arquivados.length) avisos.push(`${arquivados.length === 1 ? '1 card arquivado' : `${arquivados.length} cards arquivados`} no Helena ${arquivados.length === 1 ? 'fica' : 'ficam'} de fora (lá, não ${arquivados.length === 1 ? 'aparece' : 'aparecem'} mais no quadro).`);
   if (semHistorico) avisos.push(`${semHistorico === 1 ? '1 negociação veio' : `${semHistorico} negociações vieram`} sem o histórico (o Helena não devolveu): ${semHistorico === 1 ? 'nasce' : 'nascem'} na etapa de agora e ${semHistorico === 1 ? 'acaba' : 'acabam'} na Conclusão.`);
+  if (semConclusao) avisos.push(`${semConclusao === 1 ? '1 negociação ganha ou perdida veio' : `${semConclusao} negociações ganhas ou perdidas vieram`} sem a Conclusão do Helena: ${semConclusao === 1 ? 'acaba no dia em que foi marcada' : 'acabam no dia em que foram marcadas'} (ou no da última mudança do card), e os ganhos mês a mês podem não bater com o relatório de lá.`);
   if (completados) avisos.push(`${completados === 1 ? '1 histórico não chegava' : `${completados} históricos não chegavam`} aonde o card está: o fim foi completado pelo próprio card.`);
   if (valorUnico) avisos.push(`${valorUnico === 1 ? '1 negociação tem' : `${valorUnico} negociações têm`} a mensalidade por produto que não soma o Valor atribuído: ${valorUnico === 1 ? 'fica' : 'ficam'} com o valor único (o Valor atribuído, como no relatório do Helena), e os números de lá vão para o histórico.`);
   if (semCadastro.size) avisos.push(`Os produtos ${[...semCadastro].join(', ')} não estão no cadastro do Gestor: ficam fora dos produtos da negociação.`);
@@ -1213,7 +1221,7 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
     produtos: { ligados: [...produtosLigados].map(([helena, gestor]) => ({ helena, gestor })), semCadastro: [...semCadastro], comValorPorProduto, valorUnico },
     etiquetas: { total: etiquetasTodas.length, novas: etiquetasTodas.filter((t) => !catalogo.has(chaveDaEtiqueta(t))) },
     motivosNovos,
-    historico: { eventos: totalEventos, movimentos, semHistorico, completados, semCopia },
+    historico: { eventos: totalEventos, movimentos, semHistorico, semConclusao, completados, semCopia },
     mexidasNoGestor: mexidas,
     avisos,
     erro,

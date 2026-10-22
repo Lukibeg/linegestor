@@ -51,9 +51,18 @@ const LUAN = { id: 'u-luan', name: 'Luan França' };
 
 type CardFalso = Record<string, any>;
 let cards: CardFalso[] = [];
-const pedidosDeHistorico: string[] = [];
+/** os detalhes de cada pedido do card, na ordem (um parâmetro por detalhe) */
+const pedidosDeHistorico: string[][] = [];
 /** a chave que lê a lista mas não o card (o histórico) */
 let historicoRecusado = false;
+/**
+ * Os detalhes que o card v1 conhece (os que a tela do Helena pede). Como o LineChat de verdade (ASP.NET), cada
+ * valor de `IncludeDetails` é um detalhe: a lista numa linha só ("Logs,Key,…") é um valor que ele não conhece e
+ * leva 500 FORM_ERROR — o que se viu no ar em 22/10, antes e depois do 2.0.4 (a vírgula escrita ou o %2C dá no
+ * mesmo). `detalhesRecusados` faz de conta que este LineChat não conhece algum.
+ */
+const DETALHES_DO_CARD_NO_HELENA = new Set(['Logs', 'Notes', 'CustomFieldValues', 'Key', 'ResultDescription', 'PanelTitle', 'PanelType', 'Step']);
+let detalhesRecusados = new Set<string>();
 const log = (id: string, createdAt: string, text: string, userId = LUAN.id) => ({ id, createdAt, cardId: '', text, color: '#008A00', userId, isAPI: false, isMigration: false, details: null });
 
 function novosCards(): CardFalso[] {
@@ -106,24 +115,29 @@ const servidor = http.createServer((req, res) => {
   if (url.pathname === `/crm/v1/panel/${PAINEL}`) return json(200, { id: PAINEL, title: 'Ingline - Comercial', key: 'IC', type: 'SALE', steps: ETAPAS, tags: TAGS });
   if (url.pathname === `/crm/v1/panel/${PAINEL}/custom-fields`) return json(200, CAMPOS);
   if (url.pathname === '/crm/v2/panel/card') {
-    // a lista não traz o histórico (no Helena, os logs vêm só no card)
-    const lista = cards.filter((c) => c.panelId === url.searchParams.get('PanelId')).map(({ logs: _, ...c }) => c);
+    // a lista não traz o histórico (no Helena, os logs vêm só no card) nem a Conclusão: sem o card, os ganhos
+    // caíram no dia da última mudança (o primeiro uso no ar, 22/10)
+    const lista = cards.filter((c) => c.panelId === url.searchParams.get('PanelId')).map(({ logs: _, resultChangedAt: __, ...c }) => c);
     return json(200, { pageNumber: 1, pageSize: 100, items: lista, totalItems: lista.length, hasMorePages: false });
   }
   const m = /^\/crm\/v1\/panel\/card\/([^/]+)$/.exec(url.pathname);
   if (m) {
-    // como o LineChat de verdade (visto no ar em 22/10): os detalhes separados pela vírgula escrita; com o %2C,
-    // ele recusa o valor inteiro
-    const bruto = (req.url!.split('?')[1] ?? '').split('&').find((p) => /^includedetails=/i.test(p))?.split('=')[1] ?? '';
-    pedidosDeHistorico.push(bruto);
-    if (/%2C/i.test(bruto)) {
-      return json(500, { customData: null, httpStatusCode: 'INTERNALSERVERERROR', error: true, key: 'FORM_ERROR', text: `The value '${decodeURIComponent(bruto)}' is not valid.` });
+    // os detalhes, um por parâmetro (o nome do parâmetro sem caixa, como no ASP.NET); o %2C chega como vírgula
+    const detalhes = [...url.searchParams].filter(([k]) => k.toLowerCase() === 'includedetails').map(([, v]) => v);
+    pedidosDeHistorico.push(detalhes);
+    const recusado = detalhes.find((d) => !DETALHES_DO_CARD_NO_HELENA.has(d) || detalhesRecusados.has(d));
+    if (recusado !== undefined) {
+      return json(500, { customData: null, httpStatusCode: 'INTERNALSERVERERROR', error: true, key: 'FORM_ERROR', text: `The value '${recusado}' is not valid.` });
     }
     if (historicoRecusado) return json(403, { message: 'Forbidden' });
     const c = cards.find((x) => x.id === m[1]);
     if (!c) return json(404, { message: 'card' });
     const { customFields: _, ...semCampos } = c;
-    return json(200, { ...semCampos, customFieldValues: {}, notes: [{ id: 'n1', text: 'uma anotação (fica no Helena)' }], logs: c.logs.map((l: any) => ({ ...l, cardId: c.id })) });
+    // a Conclusão vem sempre no card; o motivo, com o detalhe ResultDescription; o histórico, com o Logs
+    return json(200, {
+      ...semCampos, resultDescription: detalhes.includes('ResultDescription') ? c.resultDescription : null, customFieldValues: {},
+      notes: [{ id: 'n1', text: 'uma anotação (fica no Helena)' }], logs: detalhes.includes('Logs') ? c.logs.map((l: any) => ({ ...l, cardId: c.id })) : null,
+    });
   }
   // a lista de usuários da conta: esta chave não pode ler (fica o que os cards dizem)
   if (url.pathname === '/core/v1/agent') return json(403, { message: 'Forbidden' });
@@ -196,8 +210,9 @@ describe('trazer do Helena', () => {
   it('a leitura conta os cards e traz o histórico; a prévia não grava nada', async () => {
     const l = await ler();
     expect(l).toMatchObject({ estado: 'pronta', lidos: 5, total: 5, painelNome: 'Ingline - Comercial', erro: null });
-    // o histórico pedido como o Helena pede (os detalhes numa linha só)
-    expect(pedidosDeHistorico[0]).toBe('Logs,Key,ResultDescription,Step');
+    // o card pedido com um detalhe por parâmetro (2.0.4.1): o histórico e o motivo, num pedido só por card
+    expect(pedidosDeHistorico[0]).toEqual(['Logs', 'ResultDescription']);
+    expect(pedidosDeHistorico).toHaveLength(5);
     const r = await s.get(`/comercial/helena/leituras/${l.id}/previa`);
     expect(r.statusCode, r.body).toBe(200);
     const p: PreviaDoHelena = r.json();
@@ -348,7 +363,51 @@ describe('trazer do Helena', () => {
       const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
       expect(p.historico.semHistorico).toBe(5);
       expect(p.avisos[0]).toContain('O Helena não devolveu o histórico de 6 cards: O LineChat recusou o token (403)');
+      // sem o card, sem a Conclusão: as ganhas e as perdidas acabam no dia da última mudança, e a prévia avisa
+      expect(p.historico.semConclusao).toBe(4);
+      expect(p.avisos).toContain('4 negociações ganhas ou perdidas vieram sem a Conclusão do Helena: acabam no dia em que foram marcadas (ou no da última mudança do card), e os ganhos mês a mês podem não bater com o relatório de lá.');
     } finally { historicoRecusado = false; }
+  });
+
+  it('a lista dos detalhes numa linha só (o jeito do 2.0.4) leva o 500 que se viu no ar', async () => {
+    // o pedido que o 2.0.4 fazia, direto no Helena de mentira
+    const base = `http://127.0.0.1:${(servidor.address() as AddressInfo).port}`;
+    const r = await fetch(`${base}/crm/v1/panel/card/card-34?IncludeDetails=Logs,Key,ResultDescription,Step`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+    expect(r.status).toBe(500);
+    expect((await r.json()).text).toBe("The value 'Logs,Key,ResultDescription,Step' is not valid.");
+  });
+
+  it('o detalhe que o LineChat não conhece sai do pedido, e o resto vem (o histórico e a Conclusão)', async () => {
+    detalhesRecusados = new Set(['ResultDescription']);
+    pedidosDeHistorico.length = 0;
+    try {
+      const l = await ler();
+      expect(l).toMatchObject({ estado: 'pronta', lidos: 6, total: 6 });
+      // o primeiro card acha os detalhes que servem; os outros já vão com eles
+      expect(pedidosDeHistorico.slice(0, 3)).toEqual([['Logs', 'ResultDescription'], ['Logs'], ['Logs']]);
+      expect(pedidosDeHistorico).toHaveLength(7);
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
+      expect(p.avisos[0]).toBe('O LineChat recusou "ResultDescription" no pedido do card; o resto veio.');
+      expect(p.historico).toMatchObject({ semHistorico: 0, semConclusao: 0 });
+      // a Conclusão do card duplicado: o ganho de fevereiro fica em fevereiro
+      expect(p.ganhosPorMes.find((m) => m.mes === '2026-02')).toMatchObject({ qtd: 1, valor: 190_000 });
+    } finally { detalhesRecusados = new Set(); }
+  });
+
+  it('sem o histórico, mas com a Conclusão: o card vai sem detalhe nenhum e os ganhos ficam no mês certo', async () => {
+    detalhesRecusados = new Set(['Logs', 'ResultDescription']);
+    pedidosDeHistorico.length = 0;
+    try {
+      const l = await ler();
+      expect(l).toMatchObject({ estado: 'pronta', lidos: 6, total: 6 });
+      expect(pedidosDeHistorico.slice(0, 4)).toEqual([['Logs', 'ResultDescription'], ['ResultDescription'], [], []]);
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
+      expect(p.avisos[0]).toBe('O LineChat não aceitou pedir o histórico junto do card (recusou "Logs", "ResultDescription"): as negociações vêm sem o histórico, com a Conclusão de cada card.');
+      expect(p.historico).toMatchObject({ semHistorico: 5, semConclusao: 0 });
+      expect(p.ganhosPorMes.find((m) => m.mes === '2026-02')).toMatchObject({ qtd: 1, valor: 190_000 });
+    } finally { detalhesRecusados = new Set(); }
   });
 
   it('a leitura que não existe mais pede para ler de novo; sem a chave, a tela diz o porquê', async () => {
