@@ -156,7 +156,8 @@ export function cardDoHelena(c: CardApi, d: CardComHistoricoApi | null): CardDoH
     criadoPorId: d?.createdByUserId ?? c.createdByUserId ?? null,
     etiquetas: c.tagIds ?? d?.tagIds ?? [],
     campos: c.customFields ?? d?.customFieldValues ?? {},
-    logs: d ? (d.logs ?? []).filter((l) => l && l.id && typeof l.text === 'string').map((l) => ({ id: l.id, em: l.createdAt, texto: l.text, usuarioId: l.userId ?? null })) : null,
+    // nulo: o card não veio, ou veio sem o histórico (o LineChat não aceitou o detalhe Logs)
+    logs: d && Array.isArray(d.logs) ? d.logs.filter((l) => l && l.id && typeof l.text === 'string').map((l) => ({ id: l.id, em: l.createdAt, texto: l.text, usuarioId: l.userId ?? null })) : null,
   };
 }
 
@@ -173,9 +174,18 @@ async function lerOHelena(db: Db, vault: SecretsVault, l: Leitura): Promise<Leit
   try { for (const u of await api.usuarios()) usuarios.set(u.id, u.nome); } catch { /* sem a lista, ficam os nomes dos cards */ }
   for (const c of cards) if (c.responsibleUser?.id && c.responsibleUser.name && !usuarios.has(c.responsibleUser.id)) usuarios.set(c.responsibleUser.id, c.responsibleUser.name);
   const semHistorico = cards.filter((c) => !detalhes.get(c.id)).length;
+  const avisos: string[] = [];
+  if (semHistorico && falha) avisos.push(`O Helena não devolveu o histórico de ${semHistorico === 1 ? '1 card' : `${semHistorico} cards`}: ${falha}`);
+  // o que o LineChat recusou no pedido do card (2.0.4.1): o detalhe sai e o resto vem
+  if (api.recusasDoCard.length) {
+    const recusas = [...new Set(api.recusasDoCard)].map((r) => `"${r}"`).join(', ');
+    avisos.push(api.cardComHistorico === false
+      ? `O LineChat não aceitou pedir o histórico junto do card (recusou ${recusas}): as negociações vêm sem o histórico, com a Conclusão de cada card.`
+      : api.cardComHistorico ? `O LineChat recusou ${recusas} no pedido do card; o resto veio.` : `O LineChat recusou ${recusas} no pedido do card.`);
+  }
   return {
     lidaEm: new Date().toISOString(),
-    avisos: semHistorico && falha ? [`O Helena não devolveu o histórico de ${semHistorico === 1 ? '1 card' : `${semHistorico} cards`}: ${falha}`] : [],
+    avisos,
     usuarios: [...usuarios].map(([id, nome]) => ({ id, nome })),
     painel: {
       id: painel.id, nome: painel.title, sigla: painel.key ?? null,
