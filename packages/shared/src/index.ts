@@ -20,3 +20,4 @@ export * from './simulador.js';
 export * from './xlsx.js';
 export * from './simulador-planilha.js';
 export * from './helena.js';
+export * from './atendimento-relatorios.js';

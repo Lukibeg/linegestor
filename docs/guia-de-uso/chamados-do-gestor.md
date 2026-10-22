@@ -3,8 +3,10 @@
 Desde o Patch 2.0 os chamados nascem e andam no **Gestor**, em **Painéis** (no menu lateral, logo abaixo
 do Calendário desde o 2.0.2; antes ficava dentro do Suporte e, até o 2.0.1, se chamava Chamados — o
 Comercial também mora ali). O atalho **Suporte › Painel do Suporte** abre direto o quadro do Suporte. Os
-chamados antigos continuam no LineChat; para consultar, **Suporte › Relatórios** abre neles,
-na aba **Hoje** (as abas levam ao Período e aos relatórios).
+chamados antigos continuam no LineChat; para consultar, **Suporte › Legado do Helena** abre neles,
+na aba **Hoje** (as abas levam ao Período e aos relatórios). Os relatórios dos chamados do Gestor ficam na
+vista **Relatórios** de cada painel (**Suporte › Relatórios** abre a do Suporte, desde o 2.0.5): veja
+[Os Relatórios dos painéis](relatorios-dos-paineis.md).
 A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho e o Perdido): veja
 [Vendas: o painel do Comercial](vendas.md).

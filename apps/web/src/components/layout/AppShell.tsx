@@ -8,7 +8,8 @@
  *
  * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Técnico** (2.0.2: os
  * Circuitos e DIDs e o Inventário), **Suporte** (o Painel do Suporte — o atalho para o quadro dele, 2.0.2 —,
- * o Meu dia, 2.0.2, os Projetos e os Relatórios, que abrem nos tickets do LineChat, na aba Hoje),
+ * o Meu dia, 2.0.2, os Projetos, os Relatórios — desde o 2.0.5, os do painel Suporte, sobre os chamados do
+ * Gestor — e o Legado do Helena, os relatórios dos tickets do LineChat, que eram os Relatórios até o 2.0.4),
  * **Comercial** (2.0.1: o Painel do Comercial — o atalho para o painel de Vendas — e o relatório dele, de
  * quem tem a permissão do Comercial; 2.0.2: o Simulador) e **Base de conhecimento** (a interna e a dos clientes); o Importar /
  * Exportar foi para dentro da Administração. Os
@@ -20,7 +21,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { createPortal } from 'react-dom';
 import { Link, NavLink, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import {
-  BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Handshake, Headset, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
+  BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Handshake, Headset, History, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
   Menu, Moon, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
@@ -65,16 +66,19 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   },
   // o suporte: o Painel do Suporte (2.0.2, o atalho para o quadro do painel Suporte, "como fizemos no
   // comercial"), o Meu dia (2.0.2: "o meu dia pode ter um botão aqui tbm"), os projetos (as tarefas que
-  // percorrem vários clientes) e os Relatórios. O Relatórios abre nos tickets do LineChat (a cópia de leitura,
-  // 1.3), na aba Hoje; dali as abas levam ao Período e aos 20 relatórios (1.7), e o item fica marcado nas duas
-  // telas. (13/10, os pedidos do Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos
-  // Projetos, "pode ficar dentro de suporte também")
+  // percorrem vários clientes), os Relatórios e o Legado do Helena. Desde o 2.0.5 (decisão 0055), os Relatórios
+  // são os do painel Suporte, sobre os chamados do Gestor (a vista Relatórios do painel); os do Helena — os
+  // tickets do LineChat, a cópia de leitura do 1.3, com a aba Hoje, o Período e os 20 relatórios do 1.7 — viraram
+  // o Legado do Helena (o pedido do Luan, 22/10: "vai ter um legado, que vai ser o antigo, e vai ter um novo").
+  // (13/10, os pedidos do Luan: "não precisa ter tickets do LineChat, apenas relatórios" e, dos Projetos, "pode
+  // ficar dentro de suporte também")
   {
     grupo: 'suporte', label: 'Suporte', icon: Headset, itens: [
       { to: '/suporte', label: 'Painel do Suporte', icon: Kanban, perm: 'support.read' },
       { to: '/atendimento/meu-dia', label: 'Meu dia', icon: SunMedium, perm: 'support.read' },
       { to: '/projetos', label: 'Projetos', icon: ListChecks, perm: 'records.read' },
-      { to: '/chamados', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
+      { to: '/suporte/relatorios', label: 'Relatórios', icon: ChartColumn, perm: 'support.read' },
+      { to: '/chamados', label: 'Legado do Helena', icon: History, perm: 'support.read' },
     ],
   },
   // o Comercial (2.0.1, 19/10: "uma aba lateral só para o comercial… com acesso direto ao painel do comercial
@@ -108,18 +112,23 @@ const ehAtivo = (i: Pick<ItemDoMenu, 'to' | 'end'>, pathname: string) => !!match
 const MEU_DIA: Pick<ItemDoMenu, 'to' | 'end'> = { to: '/atendimento/meu-dia' };
 
 /**
- * A tela aberta é do painel do Suporte (2.0.2: o Painel do Suporte do menu fica marcado)? O quadro, a lista,
- * o relatório e o Abrir chamado dizem o painel no endereço (?painel=); a ficha, pela sigla do código.
+ * A tela aberta é do painel do Suporte? O quadro, a lista, os relatórios e o Abrir chamado dizem o painel no
+ * endereço (?painel=); a ficha, pela sigla do código. Devolve a parte (2.0.5): os Relatórios do menu ficam
+ * marcados na vista Relatórios do painel; o Painel do Suporte (2.0.2), nas outras.
  */
-export function eDoSuporte(pathname: string, search: string, sigla: string | null): boolean {
-  if (!pathname.startsWith('/atendimento')) return false;
-  if (/^\/atendimento\/(quadro|lista|relatorio|novo)\/?$/.test(pathname)) {
+export function parteDoSuporte(pathname: string, search: string, sigla: string | null): 'painel' | 'relatorios' | null {
+  if (!pathname.startsWith('/atendimento')) return null;
+  const tela = /^\/atendimento\/(quadro|lista|relatorio|novo)\/?$/.exec(pathname)?.[1];
+  if (tela) {
     const ref = new URLSearchParams(search).get('painel');
-    return ref === PAINEL_DO_SUPORTE || (!!sigla && ref?.toUpperCase() === sigla);
+    const doSuporte = ref === PAINEL_DO_SUPORTE || (!!sigla && ref?.toUpperCase() === sigla);
+    return doSuporte ? (tela === 'relatorio' ? 'relatorios' : 'painel') : null;
   }
   const doCodigo = /^\/atendimento\/([A-Za-z0-9]+)-\d+\/?$/.exec(pathname)?.[1];
-  return !!sigla && doCodigo?.toUpperCase() === sigla;
+  return !!sigla && doCodigo?.toUpperCase() === sigla ? 'painel' : null;
 }
+/** A tela aberta é do painel do Suporte (qualquer parte)? */
+export const eDoSuporte = (pathname: string, search: string, sigla: string | null): boolean => parteDoSuporte(pathname, search, sigla) !== null;
 /** Quem decide se o item está marcado (o do Comercial olha o painel aberto, não o endereço). */
 type Ativo = (i: ItemDoMenu) => boolean;
 
@@ -213,13 +222,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   const doComercial = comercial ? parteDoComercial(pathname, search, vendas) : null;
   // o painel do Suporte (2.0.2): na tela dele, o menu marca o Painel do Suporte (e não Painéis)
   const siglaDoSuporte = opcoes.data?.paineis.find((p) => p.id === PAINEL_DO_SUPORTE)?.sigla ?? null;
-  const doSuporte = suporte && !doComercial && eDoSuporte(pathname, search, siglaDoSuporte);
+  const doSuporte = suporte && !doComercial ? parteDoSuporte(pathname, search, siglaDoSuporte) : null;
   // o painel de Vendas aberto fica lembrado: o Painel do Comercial e o Relatórios do menu voltam para ele
   useEffect(() => { if (doComercial) lembrarPainelDoComercial(doComercial.painelId); }, [doComercial?.painelId]);
   const ativo = useCallback<Ativo>((i) => {
     if (i.to === '/comercial') return doComercial?.parte === 'negociacoes';
     if (i.to === '/comercial/relatorio') return doComercial?.parte === 'relatorio';
-    if (i.to === '/suporte') return doSuporte;
+    if (i.to === '/suporte') return doSuporte === 'painel';
+    if (i.to === '/suporte/relatorios') return doSuporte === 'relatorios';
     // o Meu dia mora dentro de /atendimento: lá, o item marcado é o dele, e não Painéis
     if (i.to === '/atendimento') return !doComercial && !doSuporte && ehAtivo(i, pathname) && !ehAtivo(MEU_DIA, pathname);
     return ehAtivo(i, pathname);

@@ -528,4 +528,5 @@ export type {
   ModelosDoLineChat, ModeloDoLineChat, ModeloAprovado, EnvioAoCliente, TipoArquivoDoModelo,
   RoboTela, MapaDoRobo, MapaDoRoboEntrada, PreviaDoRobo, UltimoPedidoDoRobo,
   TipoDePainel, ResultadoDaVenda, RelatorioDeVendas, FiltroDoRelatorioDeVendas,
+  RelatoriosDoPainel, FiltroDosRelatorios, ArrumacaoDosRelatorios, ArrumacaoDosRelatoriosLida, ChamadoDoRelatorio,
 } from '@gestor/shared';

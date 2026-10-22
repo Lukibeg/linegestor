@@ -296,6 +296,12 @@ export type Api = {
     resumoDosPaineis(): Promise<T.ResumoDoPainel[]>;
     /** o relatório de um painel de Vendas no período (painel, de e ate) */
     relatorioDeVendas(q: T.FiltroDoRelatorioDeVendas): Promise<T.RelatorioDeVendas>;
+    /** os Relatórios de um painel de chamados (2.0.5): os 25 de uma vez, com o período e os filtros */
+    relatorios(q: T.FiltroDosRelatorios): Promise<T.RelatoriosDoPainel>;
+    /** a arrumação dos Relatórios de um painel (a ordem, os escondidos, os favoritos, o campo da falha) */
+    arrumacaoDosRelatorios(painel: string): Promise<T.ArrumacaoDosRelatoriosLida>;
+    /** arrumar para a equipe toda (quem cuida dos chamados) */
+    salvarArrumacaoDosRelatorios(painel: string, a: T.ArrumacaoDosRelatorios): Promise<T.ArrumacaoDosRelatoriosLida>;
     avisos(): Promise<T.AvisosNaTela>;
     /** sem ids = todos */
     marcarAvisosLidos(ids?: string[]): Promise<{ ok: boolean }>;

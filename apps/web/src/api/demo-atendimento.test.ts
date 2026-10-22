@@ -75,12 +75,15 @@ describe('os exemplos da prévia', () => {
     const diag = diagnosticoDosChamadosDemo();
     expect(diag?.erros).toEqual([]);
     const todos = await todosOsChamados();
-    const sup = todos.filter((c) => c.painelId === painel(op, 'SUP').id);
+    // os meses de antes do Suporte (2.0.5, para os Relatórios) moram à parte: aqui contam só os exemplos
+    const doHistorico = new Set(diag!.historico);
+    const supInteiro = todos.filter((c) => c.painelId === painel(op, 'SUP').id);
+    const sup = supInteiro.filter((c) => !doHistorico.has(c.codigo));
     const dev = todos.filter((c) => c.painelId === painel(op, 'DEV').id);
     expect(sup).toHaveLength(45);
     expect(dev).toHaveLength(7);
-    // os números de cada painel: 1, 2, 3… sem buraco
-    expect(sup.map((c) => c.numero).sort((a, b) => a - b)).toEqual(Array.from({ length: 45 }, (_, i) => i + 1));
+    // os números de cada painel: 1, 2, 3… sem buraco (no Suporte, com o histórico misturado na ordem de chegada)
+    expect(supInteiro.map((c) => c.numero).sort((a, b) => a - b)).toEqual(Array.from({ length: 45 + doHistorico.size }, (_, i) => i + 1));
     expect(dev.map((c) => c.codigo).sort()).toEqual(Array.from({ length: 7 }, (_, i) => `DEV-${i + 1}`));
 
     // todas as etapas dos dois painéis têm chamado

@@ -14,7 +14,8 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AnotacaoSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema, LigarChamadoSchema,
+  AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
+  FiltroDosRelatoriosSchema, LigarChamadoSchema,
   ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
 } from '@gestor/shared';
@@ -24,6 +25,7 @@ import { atorDaPessoa, carregarContexto, podeVerPainel } from '../services/atend
 import * as svc from '../services/atendimento/chamados.js';
 import * as leitura from '../services/atendimento/leitura.js';
 import { relatorioDoPainelDeVendas } from '../services/atendimento/vendas.js';
+import * as relatorios from '../services/atendimento/relatorios.js';
 
 const tags = ['Chamados do Gestor'];
 const Id = z.object({ id: z.string().min(1) });
@@ -86,6 +88,36 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       summary: 'O relatório de um painel de Vendas no período: os números, o funil, o tempo em cada etapa, os meses × a meta, os vendedores e os motivos de perda',
     },
   }, async (req) => relatorioDoPainelDeVendas(app, ator(req), req.query));
+
+  // os Relatórios dos painéis de chamados (2.0.5): os 25 relatórios de uma vez e a arrumação de cada painel
+  app.get('/relatorios', {
+    ...ler,
+    schema: {
+      tags, querystring: FiltroDosRelatoriosSchema,
+      summary: 'Os relatórios de um painel de chamados no período (tempo, volume, assuntos, clientes, equipe e o mês), com os filtros; cada número traz os chamados por trás dele',
+    },
+  }, async (req) => relatorios.relatoriosDoPainelDeChamados(app, ator(req), req.query));
+
+  const PainelDaArrumacao = z.object({ painel: z.string().trim().min(1, 'Escolha o painel').max(100) });
+  app.get('/relatorios/arrumacao', {
+    ...ler,
+    schema: { tags, querystring: PainelDaArrumacao, summary: 'A arrumação dos Relatórios de um painel: a ordem, os escondidos, os favoritos e o campo da falha (a mesma para a equipe toda)' },
+  }, async (req) => relatorios.lerArrumacao(app, ator(req), req.query.painel));
+
+  app.put('/relatorios/arrumacao', {
+    ...cuidar,
+    schema: { tags, querystring: PainelDaArrumacao, body: ArrumacaoDosRelatoriosSchema, summary: 'Arrumar os Relatórios de um painel para a equipe toda (quem cuida dos chamados)' },
+  }, async (req) => {
+    const a = ator(req);
+    if (a.tipo !== 'pessoa') throw new BadRequest('Só uma pessoa arruma os relatórios.');
+    const r = await relatorios.gravarArrumacao(app, a, req.query.painel, req.body);
+    await app.audit(req, {
+      action: 'atendimento_relatorios_arrumacao', entityType: 'settings', entityId: 'atendimento-relatorios', summary: r.resumo,
+      before: { ordem: r.antes.ordem, ocultos: r.antes.ocultos, favoritos: r.antes.favoritos, campoDaFalha: r.antes.campoDaFalha },
+      after: { ordem: r.depois.ordem, ocultos: r.depois.ocultos, favoritos: r.depois.favoritos, campoDaFalha: r.depois.campoDaFalha },
+    });
+    return r.depois;
+  });
 
   app.get('/meu-dia', { ...ler, schema: { tags, summary: 'Os meus, os que vencem, os sem dono, os esperando o cliente, os que acompanho e os agendados de hoje' } },
     async (req) => leitura.meuDia(app, ator(req)));

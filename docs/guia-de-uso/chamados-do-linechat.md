@@ -1,7 +1,9 @@
 # Chamados do LineChat — como ligar e conferir
 
-A tela **Tickets do LineChat** mostra os chamados de suporte que a equipe abre no LineChat. No menu,
-ela fica em **Suporte › Relatórios**, que abre nela, na aba **Hoje**. O Gestor guarda uma cópia do
+A tela **Legado do Helena** (até o 2.0.4, Tickets do LineChat) mostra os chamados de suporte que a equipe
+abre no LineChat. No menu, ela fica em **Suporte › Legado do Helena**, que abre nela, na aba **Hoje**. Os
+chamados do Gestor têm os relatórios deles em **Suporte › Relatórios** ([Os Relatórios dos
+painéis](relatorios-dos-paineis.md)). O Gestor guarda uma cópia do
 painel e a atualiza sozinho. Ligar é coisa de uma vez, feita por quem administra.
 
 ## Ligar (uma vez)
@@ -15,7 +17,7 @@ painel e a atualiza sozinho. Ligar é coisa de uma vez, feita por quem administr
 6. Clique em **Sincronizar agora**. A primeira vez lê o painel inteiro: cerca de um minuto.
    No fim aparece algo como *"Leitura completa: 3.194 cards lidos, 3.194 novos."*
 
-Pronto: **Suporte › Relatórios** já mostra os números de hoje (e a aba **Relatórios**, os relatórios), e o Gestor passa a buscar sozinho, a cada minuto,
+Pronto: **Suporte › Legado do Helena** já mostra os números de hoje (e a aba **Relatórios**, os relatórios), e o Gestor passa a buscar sozinho, a cada minuto,
 o que mudou. A cada 10 minutos ele confere os chamados da última semana e, à meia-noite, relê o
 painel inteiro: é assim que o card **excluído no LineChat** sai da tela (excluir não conta como
 mudança para a leitura de minuto em minuto).
@@ -74,7 +76,7 @@ avisos do sistema (o WhatsApp, se estiver configurado em Ajustes › Avisos).
 
 ## Organizar a tela (quem administra)
 
-A arrumação vale para **a equipe toda**. Em **Suporte › Relatórios** (abas Hoje e Período), clique em **Organizar**:
+A arrumação vale para **a equipe toda**. Em **Suporte › Legado do Helena** (abas Hoje e Período), clique em **Organizar**:
 
 1. **Arraste** cada gráfico pela alça (⠿) para trocar de lugar — ou use as setas ‹ ›. Esc, no meio
    do arrasto, devolve o gráfico para onde estava.

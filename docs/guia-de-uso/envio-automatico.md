@@ -11,7 +11,7 @@ tickets do LineChat, e os relatórios com o período de hoje (o Fechamento do m�
 
 ## 1. Marcar o que vai no PDF
 
-Em **Suporte › Relatórios** (cada gráfico das abas Hoje e Período, e cada relatório da aba Relatórios), quem administra vê um
+Em **Suporte › Legado do Helena** (cada gráfico das abas Hoje e Período, e cada relatório da aba Relatórios), quem administra vê um
 **aviãozinho** discreto no canto do cartão (passe o mouse: "Envio diário"):
 
 - clicou, ele fica **azul e cheio**, e o item entra no PDF;

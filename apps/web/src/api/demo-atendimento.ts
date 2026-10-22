@@ -43,6 +43,8 @@ import {
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNegociacoes, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
+  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel,
+  type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type RelatoriosDoPainel,
   chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor,
   type EstadoDoGestorParaHelena, type PainelDoGestorParaHelena, type PlanoDaImportacao,
   type NegociacaoParaRelatorio, type RelatorioDeVendas, type ResultadoDaVenda, type TipoDePainel, type MargemDaNegociacao, type FaixasDoSinal,
@@ -58,6 +60,7 @@ import {
 import type { Api } from './index.js';
 import { ApiError, type Page, type TrashItem } from './types.js';
 import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
+import { planoDoHistorico, type ChamadoDoHistorico } from './demo-atendimento-historico.js';
 import { PROPOSTA_PDF_DEMO } from './proposta-demo-midia.js';
 import {
   AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, META_DO_COMERCIAL, NEGOCIACOES_DE_EXEMPLO, CORES_DAS_ETIQUETAS, CORES_DAS_ETIQUETAS_DO_COMERCIAL, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
@@ -271,7 +274,7 @@ function ipInterno(ip: string): boolean {
 // =====================================================================
 
 type Instancia = {
-  lixeira: () => TrashItem[]; restaurarDaLixeira: (id: string) => { ok: boolean }; diagnostico: () => { erros: string[]; chamados: number };
+  lixeira: () => TrashItem[]; restaurarDaLixeira: (id: string) => { ok: boolean }; diagnostico: () => { erros: string[]; chamados: number; historico: string[] };
   chamadosDoContato: (clienteId: string, whatsapp: string) => number;
   calendario: AcessoDoCalendarioDemo;
   helena: AcessoDoHelenaDemo;
@@ -397,6 +400,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     robo: null as Ator | null,
     /** o que a IA "leu" na conversa dos chamados do robô (a prévia não tem a conversa nem IA de verdade) */
     iaExemplos: new Map<string, IaDoExemplo>(),
+    /** a arrumação dos Relatórios de cada painel (2.0.5; o `atendimento-relatorios` dos Ajustes do servidor) */
+    relatorios: {} as Record<string, ArrumacaoDosRelatorios & { atualizadoEm: string | null; atualizadoPor: string | null }>,
+    /** os chamados de meses atrás do Suporte (2.0.5: para os Relatórios terem o que mostrar na prévia) */
+    historico: new Set<string>(),
   };
 
   // ---------- quem está agindo ----------
@@ -1824,32 +1831,34 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   /** O Resolvido sem resposta por N dias úteis vai para a primeira etapa "fechado" (sem conferir os obrigatórios; respeita o pai que espera os filhos). */
   function fecharResolvidos(agora: Date) {
-    for (const t of A.chamados) {
-      if (t.deletedAt || !t.resolvidoEm || etapaPorId(t.etapaId)?.tipo !== 'resolvido') continue;
-      const painel = painelPorId(t.painelId);
-      const dias = painel?.ajustes.fecharSozinhoDias;
-      if (!painel || !dias) continue;
-      if (somarDiasUteis(t.resolvidoEm, dias, A.prazos.calendario).getTime() > agora.getTime()) continue;
-      const para = painel.etapas.find((e) => e.tipo === 'fechado');
-      if (!para) continue;
-      if (filhosQueTravam(filhosDoChamado(t.id), para, painel.ajustes.paiEsperaFilhos).length) continue;
-      const de = etapaDe(t.etapaId);
-      const quando = relogio(agora);
-      t.etapaId = para.id; t.fechadoEm = iso(agora); tocar(t, agora);
-      registrarEvento(t.id, 'etapa', null, { de: etapaCurta(de), para: etapaCurta(para), motivo: null, sentido: null }, quando());
-      registrarEvento(t.id, 'fechou_sozinho', null, { dias, etapa: de?.nome ?? 'Resolvido' }, quando());
-      if (para.avisar.length) avisarEquipe({ evento: 'etapa', para: para.avisar, chamado: curto(t), texto: `${t.codigo} chegou em ${para.nome}` }, agora);
-      avisarObservadores({
-        chamado: curto(t), observadores: t.observadores, jaAvisados: para.avisar,
-        texto: `O ${t.codigo} fechou sozinho: ${dias} ${dias === 1 ? 'dia útil' : 'dias úteis'} no ${de?.nome ?? 'Resolvido'} sem resposta do cliente`,
-      }, agora);
-      if (t.paiId) {
-        const pai = A.chamados.find((x) => x.id === t.paiId && !x.deletedAt);
-        if (pai?.responsavelId) avisarEquipe({ evento: 'etapa', tipo: 'pai', para: [pai.responsavelId], chamado: curto(pai), texto: `O filho ${t.codigo} do ${pai.codigo} foi fechado` }, agora);
-      }
-      emitir('chamado.movido', t.id); emitir('chamado.fechado', t.id);
-      auditarSistema('update', 'ticket', `${t.codigo} fechou sozinho: ${dias} ${dias === 1 ? 'dia útil' : 'dias úteis'} no ${de?.nome ?? 'Resolvido'} sem resposta do cliente`, t.id);
+    for (const t of A.chamados) fecharSeJaDeu(t, agora);
+  }
+  /** O Resolvido que passou dos dias do painel fecha sozinho (o histórico da prévia chama na hora certa de cada um). */
+  function fecharSeJaDeu(t: ChamadoRow, agora: Date) {
+    if (t.deletedAt || !t.resolvidoEm || etapaPorId(t.etapaId)?.tipo !== 'resolvido') return;
+    const painel = painelPorId(t.painelId);
+    const dias = painel?.ajustes.fecharSozinhoDias;
+    if (!painel || !dias) return;
+    if (somarDiasUteis(t.resolvidoEm, dias, A.prazos.calendario).getTime() > agora.getTime()) return;
+    const para = painel.etapas.find((e) => e.tipo === 'fechado');
+    if (!para) return;
+    if (filhosQueTravam(filhosDoChamado(t.id), para, painel.ajustes.paiEsperaFilhos).length) return;
+    const de = etapaDe(t.etapaId);
+    const quando = relogio(agora);
+    t.etapaId = para.id; t.fechadoEm = iso(agora); tocar(t, agora);
+    registrarEvento(t.id, 'etapa', null, { de: etapaCurta(de), para: etapaCurta(para), motivo: null, sentido: null }, quando());
+    registrarEvento(t.id, 'fechou_sozinho', null, { dias, etapa: de?.nome ?? 'Resolvido' }, quando());
+    if (para.avisar.length) avisarEquipe({ evento: 'etapa', para: para.avisar, chamado: curto(t), texto: `${t.codigo} chegou em ${para.nome}` }, agora);
+    avisarObservadores({
+      chamado: curto(t), observadores: t.observadores, jaAvisados: para.avisar,
+      texto: `O ${t.codigo} fechou sozinho: ${dias} ${dias === 1 ? 'dia útil' : 'dias úteis'} no ${de?.nome ?? 'Resolvido'} sem resposta do cliente`,
+    }, agora);
+    if (t.paiId) {
+      const pai = A.chamados.find((x) => x.id === t.paiId && !x.deletedAt);
+      if (pai?.responsavelId) avisarEquipe({ evento: 'etapa', tipo: 'pai', para: [pai.responsavelId], chamado: curto(pai), texto: `O filho ${t.codigo} do ${pai.codigo} foi fechado` }, agora);
     }
+    emitir('chamado.movido', t.id); emitir('chamado.fechado', t.id);
+    auditarSistema('update', 'ticket', `${t.codigo} fechou sozinho: ${dias} ${dias === 1 ? 'dia útil' : 'dias úteis'} no ${de?.nome ?? 'Resolvido'} sem resposta do cliente`, t.id);
   }
 
   /** Uma volta do relógio. Um erro numa parte não segura as outras (como no servidor). */
@@ -2070,6 +2079,117 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     });
     // a margem das ganhas (2.0.2): as simulações da prévia do Simulador
     return relatorioDeVendas(painel, negociacoes, f, fonteDasMargens?.() ?? undefined);
+  }
+
+  // =====================================================================
+  //  OS RELATÓRIOS DOS PAINÉIS DE CHAMADOS (2.0.5, decisão 0055): a base, como o servidor monta
+  //  (services/atendimento/relatorios.ts), e as contas do shared
+  // =====================================================================
+
+  /** O painel de Gestão pelo id ou pela sigla, conferindo se a pessoa o vê. */
+  function painelDosRelatorios(ator: Ator, ref: string): Painel {
+    const todos = paineis();
+    const painel = todos.find((p) => p.id === ref) ?? todos.find((p) => p.sigla === ref.trim().toUpperCase());
+    if (!painel || !podeVerPainel(painel, ator)) throw naoAchado('Painel');
+    if (painel.tipo === 'vendas') throw bad(`O painel ${painel.nome} é de vendas: ele tem o relatório de vendas.`);
+    return painel;
+  }
+  const camposDeListaDo = (painelId: string) => A.campos.filter((c) => c.painelId === painelId && (c.tipo === 'lista' || c.tipo === 'lista_varios'));
+  function arrumacaoGuardada(painelId: string) {
+    const g = A.relatorios[painelId];
+    const ok = ArrumacaoDosRelatoriosSchema.safeParse(g ?? {});
+    return { ...arrumacaoCompleta(ok.success ? ok.data : null), atualizadoEm: g?.atualizadoEm ?? null, atualizadoPor: g?.atualizadoPor ?? null };
+  }
+  function arrumacaoLida(painel: Painel): ArrumacaoDosRelatoriosLida {
+    return { ...arrumacaoGuardada(painel.id), campos: camposDeListaDo(painel.id).map((c) => ({ id: c.id, nome: c.nome, ativo: c.ativo })) };
+  }
+
+  function relatoriosDoPainelDeChamados(ator: Ator, f: ReturnType<typeof FiltroDosRelatoriosSchema.parse>): RelatoriosDoPainel {
+    const painel = painelDosRelatorios(ator, f.painel);
+    const linhas = A.chamados.filter((t) => !t.deletedAt && t.painelId === painel.id);
+    const ids = new Set(linhas.map((t) => t.id));
+    const eventosDe = new Map<string, Array<{ tipo: string; em: string; dados: Record<string, any>; porId: string | null }>>();
+    for (const ev of A.eventos) {
+      if (!ids.has(ev.chamadoId) || (ev.tipo !== 'criado' && ev.tipo !== 'etapa')) continue;
+      eventosDe.set(ev.chamadoId, [...(eventosDe.get(ev.chamadoId) ?? []), { tipo: ev.tipo, em: ev.em, dados: ev.dados, porId: ev.userId }]);
+    }
+    const doPainel = new Set(A.etapas.filter((e) => e.painelId === painel.id).map((e) => e.id));
+    const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
+    const camposDeLista = camposDeListaDo(painel.id);
+    const nomeDaOperadora = (id: string | null) => (id ? S.carriers.find((x) => x.id === id)?.name ?? null : null);
+    const chamados: ChamadoParaRelatorios[] = linhas.map((t) => {
+      const evs = eventosDe.get(t.id) ?? [];
+      return {
+        id: t.id, codigo: t.codigo, titulo: t.titulo, tipoChamado: t.tipoChamado,
+        etapaId: t.etapaId, situacao: situacaoDaEtapa(etapaPorId(t.etapaId)?.tipo ?? 'andamento'),
+        criadoEm: t.criadoEm, respondidoEm: t.respondidoEm, resolvidoEm: t.resolvidoEm ?? t.fechadoEm, fechadoEm: t.fechadoEm, ultimaAtividadeEm: t.ultimaAtividadeEm,
+        responsavelId: t.responsavelId, clienteId: t.clienteId,
+        // o campo do sistema que o painel desligou não entra (o valor fica guardado no chamado, como na tela)
+        assuntoId: usa('assunto') ? t.assuntoId : null, tipo: usa('tipo') ? t.tipo : null,
+        gravidade: usa('gravidade') ? t.gravidade : null, alcance: usa('alcance') ? t.alcance : null,
+        prioridade: t.prioridade, prioridadeTrocada: !!t.motivoPrioridade,
+        produtos: usa('produtos') ? [...t.produtos] : [], operadoras: usa('operadoras') ? [...t.operadoras] : [], etiquetas: [...t.etiquetas],
+        campos: Object.fromEntries(camposDeLista.filter((c) => t.campos[c.id] !== undefined).map((c) => [c.id, t.campos[c.id]!])),
+        temSolucao: !!t.solucao?.trim(), temCausa: !!t.causa?.trim(),
+        esperas: t.esperas.map((e) => ({ ...e })),
+        passagens: passagensNoPainel(passagensDosEventos(t.criadoEm, t.etapaId, evs), doPainel),
+        subidas: evs.filter((e) => e.tipo === 'etapa' && (e.dados.sentido === 'sobe' || e.dados.sentido === 'desce')).sort((a, b) => a.em.localeCompare(b.em)).map((e) => ({
+          em: e.em, de: (e.dados.de?.nivel as Nivel | null | undefined) ?? null, para: (e.dados.para?.nivel as Nivel | null | undefined) ?? null,
+          sentido: e.dados.sentido as 'sobe' | 'desce', motivo: (e.dados.motivo as string | null | undefined) ?? null, porId: e.porId,
+        })),
+        reaberto: t.reaberto, origem: t.origem, problemaId: t.problemaId,
+        repete: A.ligacoes.filter((l) => !l.deletedAt && l.de === t.id && l.tipo === 'repete').map((l) => l.para),
+        casos: A.casos.filter((c) => c.chamadoId === t.id).map((c) => ({ operadora: nomeDaOperadora(c.operadoraId) ?? c.operadoraNome, abertoEm: c.abertoEm, prometidoPara: c.prometidoPara, fechadoEm: c.fechadoEm })),
+        tempos: A.tempos.filter((x) => x.chamadoId === t.id && !x.deletedAt).map((x) => ({ minutos: x.minutos, dia: x.dia, pessoaId: x.userId })),
+      };
+    });
+    // o tamanho de cada cliente no Gestor, como na ficha: os DIDs, os aparelhos com ele e o que ele assina
+    const clientes = new Map<string, ClienteParaRelatorio>();
+    for (const id of new Set(linhas.map((t) => t.clienteId).filter((x): x is string => !!x))) {
+      clientes.set(id, {
+        nome: nomeCliente(id) ?? '(cliente removido)',
+        dids: S.dids.filter((d) => d.clientId === id && !d.deletedAt).length,
+        aparelhos: S.devices.filter((d) => d.clientId === id && !d.deletedAt).length,
+        produtos: [...new Set(S.subs.filter((x) => x.clientId === id && !x.deactivatedAt).map((x) => S.products.find((p) => p.code === x.productCode)?.name).filter((n): n is string => !!n))],
+      });
+    }
+    const contexto: ContextoDosRelatorios = {
+      painel: {
+        id: painel.id, nome: painel.nome, sigla: painel.sigla, contaPrazo: painel.ajustes.contaPrazo,
+        usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras') },
+      },
+      etapas: A.etapas.filter((e) => e.painelId === painel.id).map((e) => ({ id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: e.ordem, ativa: !e.deletedAt })),
+      assuntos: A.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo })),
+      campos: camposDeLista.map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo })),
+      pessoas: new Map(S.users.map((u) => [u.id, u.name])),
+      clientes,
+      produtos: new Map(S.products.map((p) => [p.id, p.name])),
+      operadoras: new Map(S.carriers.map((o) => [o.id, o.name])),
+      prazos: A.prazos,
+      campoDaFalha: arrumacaoGuardada(painel.id).campoDaFalha,
+    };
+    return relatoriosDoPainel(chamados, contexto, f, agoraReal());
+  }
+
+  function gravarArrumacaoDosRelatorios(ator: Ator, ref: string, nova: ArrumacaoDosRelatorios): ArrumacaoDosRelatoriosLida {
+    const painel = painelDosRelatorios(ator, ref);
+    if (ator.tipo !== 'pessoa') throw bad('Só uma pessoa arruma os relatórios.');
+    const limpa = arrumacaoCompleta(nova);
+    if (limpa.campoDaFalha && !camposDeListaDo(painel.id).some((c) => c.id === limpa.campoDaFalha)) {
+      throw bad('O campo escolhido para "De quem é a falha?" não é um campo de lista deste painel.');
+    }
+    const antes = arrumacaoLida(painel);
+    A.relatorios[painel.id] = { ...limpa, atualizadoEm: iso(agoraReal()), atualizadoPor: ator.nome };
+    const depois = arrumacaoLida(painel);
+    const total = CATALOGO_DOS_RELATORIOS.length;
+    const campo = depois.campoDaFalha ? depois.campos.find((c) => c.id === depois.campoDaFalha)?.nome ?? null : null;
+    auditar('atendimento_relatorios_arrumacao', 'settings',
+      `${ator.nome} arrumou os Relatórios do painel ${painel.nome} para a equipe (${total - depois.ocultos.length} à vista, ${plural(depois.ocultos.length, 'escondido', 'escondidos')}, ${plural(depois.favoritos.length, 'favorito', 'favoritos')}${campo ? `; a falha sai do campo ${campo}` : ''})`,
+      'atendimento-relatorios', {
+        before: { ordem: antes.ordem, ocultos: antes.ocultos, favoritos: antes.favoritos, campoDaFalha: antes.campoDaFalha },
+        after: { ordem: depois.ordem, ocultos: depois.ocultos, favoritos: depois.favoritos, campoDaFalha: depois.campoDaFalha },
+      });
+    return depois;
   }
 
   function ordemDasEtapas(): Map<string, number> {
@@ -2913,6 +3033,68 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
   }
 
+  /** O que o histórico da prévia usa dos exemplos (as pessoas, os clientes, os assuntos, as etapas pelo nome). */
+  type AjudaDoHistorico = {
+    ator: (p: Pessoa) => Ator; cliente: (nome: string) => string; assunto: (caminho: string) => string;
+    produto: (codigo: string) => string; operadora: (nome: string) => string; etapa: (chave: string) => string;
+  };
+  /**
+   * Um chamado dos meses de antes do Suporte (2.0.5, `demo-atendimento-historico.ts`), vivido pelas funções da
+   * tela, como os exemplos — abrir, pegar, subir com o motivo, esperar, o protocolo na operadora, o tempo,
+   * resolver — e fechado sozinho na hora em que o relógio fecharia. A vida inteira de uma vez, na hora em que
+   * ele chega (o relógio nunca o vê aberto: é passado).
+   */
+  function viverDoHistorico(c: ChamadoDoHistorico, h: AjudaDoHistorico, idDo: Map<string, string>) {
+    const sup = 'painel-suporte';
+    const cal = A.prazos.calendario;
+    const r = criarChamado(c.robo ? A.robo! : h.ator(c.por), ChamadoCriarSchema.parse({
+      painelId: sup, titulo: c.titulo, relato: c.relato, clienteId: h.cliente(c.cliente),
+      ...(c.contato ? { contatoNome: c.contato[0], contatoTelefone: c.contato[1] } : {}),
+      assuntoId: h.assunto(c.assunto), tipo: c.tipo, gravidade: c.gravidade,
+      ...(c.prioridade ? { prioridade: c.prioridade, motivoPrioridade: c.motivoPrioridade } : {}),
+      produtos: c.produtos.map(h.produto), operadoras: c.operadoras.map(h.operadora),
+    }), { origem: c.robo ? 'robo' : 'manual' }, c.abre);
+    A.historico.add(r.id);
+    idDo.set(c.chave, r.id);
+    for (const p of c.passos) {
+      const ator = h.ator(p.por);
+      switch (p.faz) {
+        case 'assumir': assumir(ator, r.id, {}, p.em); break;
+        case 'subir': mover(ator, r.id, { etapaId: h.etapa(p.para), motivo: p.motivo, responsavelId: h.ator(p.responsavel).id }, p.em); break;
+        case 'descer': mover(ator, r.id, { etapaId: h.etapa('n1'), motivo: p.motivo, responsavelId: h.ator(p.responsavel).id }, p.em); break;
+        case 'esperarCliente': esperar(ator, r.id, { tipo: 'cliente', motivo: p.motivo }, p.em); break;
+        case 'clienteVoltou': esperar(ator, r.id, { tipo: null }, p.em); break;
+        case 'operadora':
+          abrirNaOperadora(ator, r.id, { operadoraId: h.operadora(p.operadora), protocolo: p.protocolo, prometidoPara: iso(p.prometidoPara), cobrarACadaHoras: null, nota: null }, p.em);
+          break;
+        case 'fecharProtocolo': {
+          const caso = [...A.casos].reverse().find((x) => x.chamadoId === r.id && x.situacao === 'aberto');
+          if (caso) andamentoNaOperadora(ator, r.id, caso.id, { acao: 'fechar', texto: p.texto }, p.em);
+          break;
+        }
+        case 'tempo': registrarTempo(ator, r.id, { minutos: p.minutos, nota: p.nota, dia: diaLocal(p.em) }, p.em); break;
+        case 'observacao':
+          alterar(ator, r.id, ChamadoAlterarSchema.parse({ solucao: p.solucao }), p.em);
+          mover(ator, r.id, { etapaId: h.etapa('observacao') }, new Date(p.em.getTime() + 1000));
+          break;
+        case 'resolver':
+          alterar(ator, r.id, ChamadoAlterarSchema.parse({ solucao: p.solucao, causa: p.causa, ...(p.responsabilidade ? { campos: { Responsabilidade: p.responsabilidade } } : {}) }), p.em);
+          mover(ator, r.id, { etapaId: h.etapa('resolvido') }, new Date(p.em.getTime() + 1000));
+          break;
+        case 'reabrir': reabrir(ator, r.id, { motivo: p.motivo }, p.em); break;
+        case 'repete': {
+          const outro = A.chamados.find((x) => x.id === idDo.get(p.com));
+          if (outro) ligar(ator, r.id, { para: outro.codigo, tipo: 'repete' }, p.em);
+          break;
+        }
+      }
+    }
+    // o Resolvido fecha sozinho depois dos dias do painel (na hora em que o relógio fecharia)
+    const t = A.chamados.find((x) => x.id === r.id)!;
+    const dias = A.paineis.find((x) => x.id === sup)?.ajustes.fecharSozinhoDias;
+    if (t.resolvidoEm && dias) fecharSeJaDeu(t, new Date(somarDiasUteis(t.resolvidoEm, dias, cal).getTime() + 5 * MINUTO));
+  }
+
   function montarExemplos() {
     const agora = agoraReal();
     const idDa = (p: Pessoa) => {
@@ -3160,9 +3342,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // a hora de abertura de cada um e a hora de cada passo (em minutos de atendimento depois da abertura)
     const cal = A.prazos.calendario;
     const tarefas: Array<{ em: number; ordem: number; chave: string; fazer: () => void }> = [];
+    const porDia = new Map<string, number>();
     EXEMPLOS.forEach((ex, i) => {
       const t0 = typeof ex.idade === 'number' ? voltarUteis(agora, ex.idade) : rodadas.get(ex.idade.agendado);
       if (!t0) return;
+      if (ex.painel === 'SUP') porDia.set(diaLocal(t0), (porDia.get(diaLocal(t0)) ?? 0) + 1);
       tarefas.push({ em: t0.getTime(), ordem: i * 1000, chave: ex.chave, fazer: () => abrirExemplo(ex, t0) });
       (ex.passos ?? []).forEach((p, j) => {
         const quando = somarMinutosUteis(t0, Math.max(1, p.aos), cal);
@@ -3171,11 +3355,26 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         tarefas.push({ em: quando.getTime(), ordem: i * 1000 + j + 1, chave: ex.chave, fazer: () => fazerPasso(ex, p, quando) });
       });
     });
+    const primeiroExemplo = tarefas.length ? Math.min(...tarefas.map((t) => t.em)) : agora.getTime();
+
+    // ---- os meses de antes (2.0.5): o volume do Suporte, para os Relatórios terem o que mostrar. Cada chamado
+    //      entra na fila na hora em que chega (a numeração segue a ordem de chegada, misturada com os exemplos) e
+    //      completa os dias dos exemplos até o normal; o que ainda não estaria fechado agora fica de fora ----
+    const hojeDaPrevia = diaLocal(agora);
+    const ajuda: AjudaDoHistorico = {
+      ator: (p) => atorDaPessoa(idDa(p)), cliente: idDoCliente, assunto: (c) => assuntoDoCaminho('painel-suporte', c)!, produto: produtoDo, operadora: operadoraDa,
+      etapa: (k) => etapaId('SUP', k),
+    };
+    const idDoHistorico = new Map<string, string>();
+    for (const c of planoDoHistorico({ de: somarDias(hojeDaPrevia, -7 * 22), ate: hojeDaPrevia, cal, limite: agora, exemplosPorDia: porDia })) {
+      tarefas.push({ em: c.abre.getTime(), ordem: -1, chave: c.chave, fazer: () => viverDoHistorico(c, ajuda, idDoHistorico) });
+    }
     tarefas.sort((a, b) => a.em - b.em || a.ordem - b.ordem);
 
-    // o relógio a cada 15 minutos entre os passos (fora do horário de atendimento nada muda nos prazos)
+    // o relógio a cada 15 minutos entre os passos (fora do horário de atendimento nada muda nos prazos), desde o
+    // primeiro exemplo (o histórico chega já vivido: o relógio nunca o vê aberto)
     const QUINZE = 15 * MINUTO;
-    let tique = tarefas.length ? Math.ceil(tarefas[0]!.em / QUINZE) * QUINZE : agora.getTime();
+    let tique = Math.ceil(primeiroExemplo / QUINZE) * QUINZE;
     const andarRelogioAte = (ate: number) => {
       for (; tique <= ate; tique += QUINZE) if (dentroDoHorario(tique, cal)) volta(new Date(tique));
     };
@@ -3185,6 +3384,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     andarRelogioAte(agora.getTime());
     volta(agora);
+    // o histórico é passado: nenhum aviso dele fica no sininho de ninguém
+    A.avisos = A.avisos.filter((a) => !a.chamadoId || !A.historico.has(a.chamadoId));
 
     // ---- o Comercial (2.0.1, o painel de Vendas): as negociações dos últimos meses, ganhas e perdidas,
     //      e o funil de agora — cada uma vivida pelas funções da tela (abrir, mover, marcar o resultado) ----
@@ -3299,6 +3500,25 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const f = ler(FiltroDoRelatorioDeVendasSchema, limparQuery(q));
       ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       return relatorioDoPainelDeVendas(eu(), f);
+    },
+    async relatorios(q) {
+      await ctx.wait();
+      const f = ler(FiltroDosRelatoriosSchema, limparQuery(q));
+      ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
+      return relatoriosDoPainelDeChamados(eu(), f);
+    },
+    async arrumacaoDosRelatorios(painel) {
+      await ctx.wait(60);
+      if (!painel) throw new ApiError(400, 'Dados inválidos', [{ field: 'painel', message: 'Escolha o painel' }]);
+      ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
+      return arrumacaoLida(painelDosRelatorios(eu(), painel));
+    },
+    async salvarArrumacaoDosRelatorios(painel, a) {
+      await ctx.wait();
+      if (!painel) throw new ApiError(400, 'Dados inválidos', [{ field: 'painel', message: 'Escolha o painel' }]);
+      const d = ler(ArrumacaoDosRelatoriosSchema, a);
+      ctx.requirePerm('tickets.manage'); preparar();
+      return gravarArrumacaoDosRelatorios(eu(), painel, d);
     },
     async avisos() { await ctx.wait(60); ctx.requireAnyPerm('support.read', 'sales.read'); preparar(); return avisosNaTela(S.me!.id); },
     async marcarAvisosLidos(ids) {
@@ -3937,7 +4157,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       auditar('restore', 'ticket', `Restaurou o chamado ${t.codigo} "${t.titulo}" da lixeira`, t.id);
       return { ok: true };
     },
-    diagnostico: () => { semear(); return { erros: [...A.erros], chamados: A.chamados.length }; },
+    diagnostico: () => {
+      semear();
+      return { erros: [...A.erros], chamados: A.chamados.length, historico: A.chamados.filter((t) => A.historico.has(t.id)).map((t) => t.codigo) };
+    },
     calendario: {
       preparar, eu, atorDaPessoa, paineis, podeVerPainel,
       chamado: (id) => {

@@ -147,7 +147,7 @@ export const IA_PADRAO: AjustesIa = {
 
 type Assunto = 'backup' | 'avisos' | 'linechat' | 'chamados-painel' | 'chamados-relatorios' | 'chamados-relatorios-arrumacao'
   | 'envio-automatico' | 'envio-automatico-marcados' | 'base-ia' | 'atendimento-prazos' | 'atendimento-avisos' | 'atendimento-integracoes'
-  | 'atendimento-robo' | 'atendimento-robo-ultimo' | 'calendario' | 'comercial-simulador';
+  | 'atendimento-robo' | 'atendimento-robo-ultimo' | 'atendimento-relatorios' | 'calendario' | 'comercial-simulador';
 const PADROES: Record<Assunto, unknown> = {
   backup: BACKUP_PADRAO, avisos: AVISOS_PADRAO, linechat: LINECHAT_PADRAO, 'chamados-painel': { itens: [] },
   // os Relatórios dos Chamados (1.7): sem nada guardado, os campos são achados pelo nome e os clientes, ligados pelo nome
@@ -175,6 +175,9 @@ const PADROES: Record<Assunto, unknown> = {
   // o último pedido do robô (2.0.1), com o que aconteceu: a tela do mapa mostra as variáveis dele. Fica
   // separado do mapa: o robô grava aqui a cada pedido, e o mapa só muda quando alguém salva
   'atendimento-robo-ultimo': { ultimo: null },
+  // os Relatórios dos painéis de chamados (2.0.5): a arrumação de cada painel (a ordem, os escondidos, os
+  // favoritos e o campo da falha); sem nada guardado, a ordem de fábrica
+  'atendimento-relatorios': { paineis: {} },
   // o calendário (2.0.1): os tipos de evento (Visita, Folga…), com nome e cor; sem nada guardado, os de fábrica
   calendario: { tipos: TIPOS_DE_EVENTO_PADRAO },
   // o Simulador do Comercial (2.0.2): o imposto, as faixas do sinal e o prazo de fábrica; a tabela e os modelos, vazios
