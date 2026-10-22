@@ -270,3 +270,7 @@ por faixas na simulação).
   do mês" dos números mostram cada linha por mês pelo nome, o imposto e cada comissão — antes, as linhas por mês
   viravam uma só, "Custos mensais", e o custo do mês dizia só "fixo + variável". As partes somam o total ao centavo
   (`partesDoCustoMensal`, com o `repartir`).
+- **A unidade nos Ajustes** (*"esse usuário aqui seria referente a que? tipo quantidade?"*): não é a quantidade —
+  é o nome de cada um, no singular, para a simulação escrever "40 ramais" embaixo da quantidade. A tabela de custos
+  ganhou os nomes das colunas no computador (Custo, Como entra, Valor de hoje, **Unidade (opcional)**), e o campo
+  diz "ex.: ramal" (antes, "usuário", que parecia um campo a preencher).

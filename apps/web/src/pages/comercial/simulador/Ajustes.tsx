@@ -125,6 +125,13 @@ function Formulario({ inicial, produtos }: { inicial: AjustesDoSimulador; produt
                   </button>
                 </div>
                 <ul className="flex flex-col divide-y divide-line px-3" id={`ajustes-custos-${g}`}>
+                  {/* os nomes das colunas (no computador; no celular, cada campo tem o dele): sem eles, a "Unidade" parecia
+                      pedir um usuário ou uma quantidade (o Luan, 21/10: "esse usuário aqui seria referente a que?") */}
+                  {custos.length > 0 && (
+                    <li className={`hidden md:grid gap-2 ${COLUNAS} pt-2.5 pb-1 text-[11.5px] font-semibold uppercase tracking-wide text-muted`} aria-hidden>
+                      <span>Custo</span><span>Como entra</span><span>Valor de hoje</span><span>Unidade (opcional)</span><span />
+                    </li>
+                  )}
                   {custos.map((c) => <CustoNaTabela key={c.id} c={c} grupo={g} mudar={(m) => mudarCusto(c.id, m)} tirar={() => tirarCusto(c)} />)}
                   {!custos.length && <li className="text-[12.5px] text-muted py-2.5">{g === 'fixo' ? 'Nenhum custo de investimento.' : 'Nenhum custo mensal.'}</li>}
                 </ul>
@@ -216,8 +223,9 @@ function CustoNaTabela({ c, grupo, mudar, tirar }: { c: CustoDaTabela; grupo: Gr
               : <CampoDeReais unitario valor={c.valor} onChange={(valor) => mudar({ valor })} aria-label="O valor de hoje" placeholder="na simulação" data-campo="valor" />}
         </div>
         <label className="min-w-0">
-          <span className="md:hidden label">Unidade</span>
-          <input className="input" value={c.unidade ?? ''} onChange={(e) => mudar({ unidade: e.target.value || null })} placeholder={pct ? '—' : 'usuário'} disabled={pct} aria-label="A unidade (usuário, canal)" maxLength={20} data-campo="unidade" />
+          <span className="md:hidden label">Unidade (opcional)</span>
+          <input className="input" value={c.unidade ?? ''} onChange={(e) => mudar({ unidade: e.target.value || null })} placeholder={pct ? '—' : 'ex.: ramal'} disabled={pct}
+            aria-label="A unidade: o nome de cada um (ramal, usuário, canal)" title="O nome de cada um, no singular. A simulação escreve embaixo da quantidade: 40 ramais, 5 usuários." maxLength={20} data-campo="unidade" />
         </label>
         <div className="col-span-2 md:col-span-1 flex justify-end">
           <button type="button" className="btn-ghost btn-sm px-1.5 text-muted" onClick={tirar} aria-label={`Tirar ${c.nome || 'este custo'} da tabela`} title="Tirar da tabela"><Trash2 size={15} /></button>
