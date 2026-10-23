@@ -8,7 +8,7 @@ export type VideoDemo = { url: string; nome: string; tamanho: number; tipo: stri
 export const NOTA_DEMO: { version: string; title: string; summary: string; items: ItemDemo[]; video?: VideoDemo } = {
   "version": "2.0.4.1",
   "title": "O botão da NIA, a conversa do chamado ativo e a ordem do quadro do Comercial",
-  "summary": "Na ficha, o botão Preencher com a NIA no lugar de etiquetar, que diz quando ela já preencheu; e a conversa do LineChat ligada à mão no chamado ativo, para a NIA ler. O Trazer do Helena pede cada card do jeito que o LineChat aceita, e os ganhos vão para o mês da Conclusão, como no Helena. E os pedidos de 23/10: no quadro do Comercial, arrastar para mudar a ordem e as colunas da mesma largura; a simulação abre numa janela por cima da ficha, a negociação abre numa janela por cima do Simulador, e os tipos do calendário viraram uma lista, como os painéis.",
+  "summary": "Na ficha, o botão Preencher com a NIA no lugar de etiquetar, que diz quando ela já preencheu, e a conversa do LineChat ligada à mão no chamado ativo. O Trazer do Helena pede cada card do jeito que o LineChat aceita, e os ganhos vão para o mês da Conclusão. No quadro do Comercial, arrastar muda a ordem e as colunas têm a mesma largura; a simulação e a negociação abrem em janelas, sem sair da tela; e os tipos do calendário viraram uma lista.",
   "items": [
     {
       "kind": "novo",
