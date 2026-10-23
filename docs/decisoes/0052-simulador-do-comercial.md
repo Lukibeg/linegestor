@@ -279,7 +279,7 @@ por faixas na simulação).
   **Valor**; o valor em branco diz "a definir" (antes, "na simulação", embaixo de "Valor de hoje"). O "Como entra"
   virou **Tipo** também no cabeçalho dos custos da simulação ("Custo e tipo").
 
-## Revisto no 2.0.4.1 (23/10/2026): a simulação e a negociação em janelas
+## Revisto no 2.1 (23/10/2026): a simulação e a negociação em janelas
 
 No documento de 23/10:
 

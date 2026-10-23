@@ -35,7 +35,7 @@ type WebhookGravar = z.infer<typeof WebhookGravarSchema>;
 type LinhaWebhook = typeof ticketWebhooks.$inferSelect;
 type LinhaChave = typeof ticketApiKeys.$inferSelect;
 
-/** O que fica em `settings.atendimento-integracoes` (a NIA desde o 2.0.4.1: o botão da ficha e as etiquetas dela). */
+/** O que fica em `settings.atendimento-integracoes` (a NIA desde o 2.1: o botão da ficha e as etiquetas dela). */
 export type ConfigIntegracoes = { sites: string[]; linkConversa: string; nia: AjustesDaNia };
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
@@ -193,7 +193,7 @@ export async function gravarLinkConversa(app: FastifyInstance, linkConversa: str
 }
 
 /**
- * Os ajustes da NIA (2.0.4.1): o botão da ficha que pede à NIA (a IA do suporte, no n8n) para preencher o chamado, e
+ * Os ajustes da NIA (2.1): o botão da ficha que pede à NIA (a IA do suporte, no n8n) para preencher o chamado, e
  * as três etiquetas do combinado com o fluxo dela (a de pedir, a de pronto e a de erro).
  */
 export async function gravarNia(app: FastifyInstance, nia: AjustesDaNia, userId: string): Promise<{ nia: AjustesDaNia; antes: AjustesDaNia }> {

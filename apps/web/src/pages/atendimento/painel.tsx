@@ -6,7 +6,7 @@
  *
  * O quadro e a lista usam os mesmos nomes de filtro: trocar de vista leva a busca e os filtros junto.
  * A terceira vista é a dos números: o **Relatório** de vendas, no painel de Vendas (2.0.1), e os
- * **Relatórios** dos chamados, nos painéis de Gestão (2.0.5, decisão 0055).
+ * **Relatórios** dos chamados, nos painéis de Gestão (2.1, decisão 0055).
  */
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ChartColumn, ChevronsUpDown, Kanban, List, Settings2 } from 'lucide-react';

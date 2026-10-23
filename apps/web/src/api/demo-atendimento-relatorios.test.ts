@@ -1,5 +1,5 @@
 /**
- * Os Relatórios dos painéis de chamados na prévia (2.0.5, decisão 0055): as mesmas contas do servidor (o
+ * Os Relatórios dos painéis de chamados na prévia (2.1, decisão 0055): as mesmas contas do servidor (o
  * `relatoriosDoPainel` do shared) sobre a base montada como o servidor monta, os meses de antes do Suporte (o
  * histórico da prévia, para os relatórios terem o que mostrar) e a arrumação de cada painel.
  */

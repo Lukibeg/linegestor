@@ -238,7 +238,7 @@ afetados.
   LineChat.
 - **Ficaram para depois do 2.0** (o Luan mandou subir em 14/10): os 20 relatórios e o envio diário
   lendo os chamados novos (por ora leem a cópia do LineChat, em Suporte › Relatórios) e a Base de
-  conhecimento ligada aos chamados novos (o livrinho e o "Registrar na base"). **Revisto no 2.0.5
+  conhecimento ligada aos chamados novos (o livrinho e o "Registrar na base"). **Revisto no 2.1
   (decisão 0055):** os chamados novos ganharam um módulo de relatórios próprio (a vista Relatórios de cada
   painel, Suporte › Relatórios), e os 20 ficaram como **Suporte › Legado do Helena**, sobre a cópia do
   LineChat; o envio diário continua lendo a cópia até a virada.
@@ -461,7 +461,7 @@ eram as mesmas em todos os painéis; o campo não mudava de tipo), e as palavras
   (sem repetir, sem ligar para maiúscula) e cada negociação ficou com a sua; o id do campo não muda. Na tela,
   o tipo continua sem mudar.
 
-## Revisto no 2.0.4.1 (23/10/2026): o botão da NIA na ficha e a conversa ligada à mão
+## Revisto no 2.1 (23/10/2026): o botão da NIA na ficha e a conversa ligada à mão
 
 Dois pedidos do Luan no mesmo dia, com o 2.0.4 no ar.
 

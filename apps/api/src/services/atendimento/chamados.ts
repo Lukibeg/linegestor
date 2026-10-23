@@ -110,7 +110,7 @@ const etapaCurta = (e: EtapaPainel | null) => (e ? { id: e.id, nome: e.nome, niv
 const NOME_TITULO = 'Título';
 const NOME_CONTORNO = 'Solução de contorno';
 const NOME_TELEFONE = 'WhatsApp do contato';
-// o nome que o histórico usa para a troca de etiquetas (o resumo da NIA, 2.0.4.1, procura por ele)
+// o nome que o histórico usa para a troca de etiquetas (o resumo da NIA, 2.1, procura por ele)
 const NOME_ETIQUETAS = CAMPO_DAS_ETIQUETAS;
 const NOME_OBSERVADORES = 'Observadores';
 const NOME_EMPRESA = 'Empresa';
@@ -262,7 +262,7 @@ export async function criarChamado(
   const tipoChamado = d.tipoChamado ?? 'chamado';
   const naTela = origem === 'manual' || origem === 'botao';
 
-  // a conversa do LineChat: na tela, o link colado (o chamado ativo, 2.0.4.1) ou o código que o botão da
+  // a conversa do LineChat: na tela, o link colado (o chamado ativo, 2.1) ou o código que o botão da
   // conversa trouxe — o que não dá para ler é recusado; o robô, o n8n e o agendado mandam o código da sessão
   // como o LineChat deu, e ele fica como veio (o robô acha por ele o chamado aberto da mesma conversa)
   let sessaoId = d.sessaoId ?? null;
@@ -503,7 +503,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     const fone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone : null;
     if (fone !== t.contactPhone) { set.contactPhone = fone; campo('contatoTelefone', NOME_TELEFONE, t.contactPhone, fone, t.contactPhone); }
   }
-  // a conversa do LineChat (2.0.4.1, o chamado ativo): o link colado ou o código da sessão; vazio tira. Com
+  // a conversa do LineChat (2.1, o chamado ativo): o link colado ou o código da sessão; vazio tira. Com
   // ela, a ficha mostra o link e a NIA (e o Preencher com IA) lê o que foi dito
   if (d.sessaoId !== undefined) {
     const lida = sessaoDaConversa(d.sessaoId, await lerModeloDaConversa(db));
@@ -800,7 +800,7 @@ async function gravarMovimento(
   const antes = situacaoDaEtapa(deTipo);
   const depois = situacaoDaEtapa(para.tipo);
   const reabriu = antes !== 'aberto' && depois === 'aberto';
-  // mudar de etapa apaga o lugar que a equipe tinha escolhido no quadro (2.0.4.1): chega no alto da etapa nova
+  // mudar de etapa apaga o lugar que a equipe tinha escolhido no quadro (2.1): chega no alto da etapa nova
   const set: SetChamado = { ...(o.extra ?? {}), stageId: para.id, boardPosition: null, updatedAt: agora, lastActivityAt: agora };
   if (para.tipo === 'resolvido') { set.resolvedAt = t.resolvedAt ?? agora; set.closedAt = null; }
   if (para.tipo === 'fechado') { set.closedAt = antes === 'fechado' ? t.closedAt ?? agora : agora; set.resolvedAt = t.resolvedAt ?? agora; }
@@ -885,7 +885,7 @@ export async function mover(
   const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true, venda });
   const m = await app.db.transaction(async (tx) => {
     const feito = await gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda });
-    // arrastada para um lugar da coluna (2.0.4.1): a etapa se arruma com ela ali (se a de cima saiu da etapa
+    // arrastada para um lugar da coluna (2.1): a etapa se arruma com ela ali (se a de cima saiu da etapa
     // enquanto a pessoa arrastava, ela fica no alto, como quem chega sem lugar)
     if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) await arrumarNaEtapa(tx, para.id, e.t.id, d.depoisDe);
     return feito;
@@ -895,7 +895,7 @@ export async function mover(
 }
 
 // =====================================================================
-//  A ORDEM À MÃO NO QUADRO (2.0.4.1)
+//  A ORDEM À MÃO NO QUADRO (2.1)
 // =====================================================================
 
 /**
@@ -921,7 +921,7 @@ async function arrumarNaEtapa(tx: Db, etapaId: string, id: string, depoisDe: str
 }
 
 /**
- * Muda o lugar da negociação na coluna do quadro, arrastando (2.0.4.1, o pedido do Luan: "quero poder trocar a
+ * Muda o lugar da negociação na coluna do quadro, arrastando (2.1, o pedido do Luan: "quero poder trocar a
  * ordem aqui, pra cima ou pra baixo da mesma forma que mudo de fase arrastando"): logo abaixo de `depoisDe`
  * (nulo: no alto). Só no painel de Vendas, nas etapas abertas (no Suporte, o quadro põe o mais urgente primeiro;
  * no Ganho e no Perdido, o mais recente). É a arrumação do quadro, não uma mudança na negociação: não mexe na
@@ -943,7 +943,7 @@ export async function posicionar(app: FastifyInstance, ator: Ator, ref: string, 
 }
 
 // =====================================================================
-//  A NIA (2.0.4.1): o botão da ficha pede à IA do n8n para preencher
+//  A NIA (2.1): o botão da ficha pede à IA do n8n para preencher
 // =====================================================================
 
 /**

@@ -428,7 +428,7 @@ export function historicoDoCard(card: CardDoHelena, o: OpcoesDoHistorico): Histo
 
   const etapaFinal = resultado ? doResultado(resultado).nome : etapaHelena ? o.etapaDoGestor(etapaHelena) : inicial.nome;
   // quando acabou: a Conclusão; sem ela (o card não veio inteiro), o dia em que foi marcado no histórico, que a
-  // última mudança do card (uma etiqueta, um título) não empurra para depois (2.0.4.1)
+  // última mudança do card (uma etiqueta, um título) não empurra para depois (2.1)
   const marcadoEm = !card.concluidoEm && ultimoResultado >= 0 ? eventos[ultimoResultado]!.em : null;
   return {
     eventos, etapaInicial: inicial.nome, etapa: etapaFinal, resultado,

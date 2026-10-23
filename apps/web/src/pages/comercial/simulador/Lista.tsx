@@ -65,7 +65,7 @@ export function NovaSimulacao({ modelos }: { modelos: ModeloDeSimulacao[] }) {
   );
 }
 
-/** A negociação ligada, curta: "COM-31 · Padaria Estrela" (com o ganho ou a perda). Abre a ficha numa janela, por cima da lista (2.0.4.1). */
+/** A negociação ligada, curta: "COM-31 · Padaria Estrela" (com o ganho ou a perda). Abre a ficha numa janela, por cima da lista (2.1). */
 export function ChipDaNegociacao({ s }: { s: Pick<SimulacaoNaLista, 'negociacao' | 'negociacaoOculta'> }) {
   if (s.negociacaoOculta) return <span className="chip bg-surface-2 text-muted" title="Ligada a uma negociação de um painel que você não vê"><Link2 size={12} aria-hidden /> negociação de outro painel</span>;
   if (!s.negociacao) return null;

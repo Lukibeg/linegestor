@@ -1,5 +1,5 @@
 /**
- * Relatórios › Equipe (2.0.5): o **Quadro da equipe** (a carga de cada pessoa agora e o que ela resolveu),
+ * Relatórios › Equipe (2.1): o **Quadro da equipe** (a carga de cada pessoa agora e o que ela resolveu),
  * o **Tempo gasto** (novo: o tempo lançado nos chamados) e o **Chamado bem preenchido** (os resolvidos com os
  * campos completos, por campo e por pessoa).
  */

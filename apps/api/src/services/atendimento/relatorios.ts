@@ -1,5 +1,5 @@
 /**
- * OS RELATÓRIOS DOS PAINÉIS DE CHAMADOS (Patch 2.0.5, decisão 0055): o módulo novo de relatórios, sobre os
+ * OS RELATÓRIOS DOS PAINÉIS DE CHAMADOS (Patch 2.1, decisão 0055): o módulo novo de relatórios, sobre os
  * chamados do Gestor (os do Helena ficam no Legado, em `services/chamados.ts`). As contas moram no
  * `@gestor/shared` (as mesmas da prévia); aqui fica o que é do servidor: montar a base de cada chamado do
  * painel (a trajetória pelas etapas e as subidas de nível, dos eventos; os protocolos na operadora; o tempo

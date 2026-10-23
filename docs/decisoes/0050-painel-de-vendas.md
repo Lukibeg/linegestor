@@ -238,7 +238,7 @@ No documento de 21/10 (o "pacote de melhorias"), com o 2.0.2 no ar:
   entram nas do painel que recebe, e a Indicação do Helena cai na lista da Indicação, que ganha as opções
   que não tinha.
 
-## Revisto no 2.0.4.1 (23/10/2026): a ordem à mão no quadro e as colunas iguais
+## Revisto no 2.1 (23/10/2026): a ordem à mão no quadro e as colunas iguais
 
 No documento de 23/10 (os pedidos com os prints do quadro do Comercial):
 

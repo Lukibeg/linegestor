@@ -6,7 +6,7 @@
  * provedor só e o uso do mês contado junto. Duas configurações dariam duas contas para pagar e duas
  * chaves para trocar.
  *
- * E a NIA (2.0.4.1): o botão da ficha que pede à IA do suporte (o fluxo do n8n) para preencher o chamado. Por
+ * E a NIA (2.1): o botão da ficha que pede à IA do suporte (o fluxo do n8n) para preencher o chamado. Por
  * baixo, ele põe a etiqueta de pedir — o combinado com o fluxo —, e a ficha diz se ela já preencheu pela etiqueta de
  * pronto ou de erro. Aqui se liga e desliga o botão e se escrevem as três etiquetas (as do fluxo de vocês).
  */

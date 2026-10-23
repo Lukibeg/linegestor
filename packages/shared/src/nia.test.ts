@@ -21,7 +21,7 @@ const nota = (em: string, quem: 'luan' | 'n8n' = 'n8n'): AnotacaoChamado => ({
 const P = NIA_PADRAO.pedir; const C = NIA_PADRAO.pronto; const E = NIA_PADRAO.erro;
 const AGORA = new Date('2026-10-23T13:30:00.000Z');
 
-describe('a NIA na ficha (2.0.4.1)', () => {
+describe('a NIA na ficha (2.1)', () => {
   it('os ajustes: o padrão são as etiquetas do Helena; as três precisam ser diferentes', () => {
     expect(NIA_PADRAO).toEqual({ ligada: true, pedir: 'NIA - PREENCHER', pronto: 'NIA - CONCLUIDO', erro: 'NIA - ERRO' });
     expect(ajustesDaNiaCompletos(undefined)).toEqual(NIA_PADRAO);

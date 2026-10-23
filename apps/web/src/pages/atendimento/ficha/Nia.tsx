@@ -1,5 +1,5 @@
 /**
- * O botão da NIA na barra de ações da ficha (2.0.4.1). O pedido do Luan (23/10): "para eu fazer a ia preencher o
+ * O botão da NIA na barra de ações da ficha (2.1). O pedido do Luan (23/10): "para eu fazer a ia preencher o
  * chamado hoje eu tenho que etiquetar, só que isso eu acho meio gambiarra, devíamos ter um botão aqui para mandar ela
  * preencher e se já tiver sido feito ele fica com alguma marcação dizendo que já foi feito e se eu clicar ele me
  * mostra algumas informações como data".

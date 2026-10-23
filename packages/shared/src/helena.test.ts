@@ -164,7 +164,7 @@ describe('o histórico de um card vira o da negociação', () => {
     expect(h.eventos[1]!.dados.valor).toBe(99_000);
   });
 
-  it('sem a Conclusão (o card não veio inteiro), o ganho fica no dia em que foi marcado, não na última mudança do card (2.0.4.1)', () => {
+  it('sem a Conclusão (o card não veio inteiro), o ganho fica no dia em que foi marcado, não na última mudança do card (2.1)', () => {
     const h = historicoDoCard(card({
       id: 'sc', situacao: 'WON', etapa: 'Cliente na base', valor: 99_000, concluidoEm: null, alteradoEm: '2026-09-20T12:00:00Z',
       logs: [log('2026-03-01T10:00:00Z', 'Item criado por Luan em Lead Novo'), log('2026-03-10T15:00:00Z', 'Item marcado como "Ganho"'), log('2026-09-20T12:00:00Z', 'A etiqueta P/R Cliente foi adicionada')],

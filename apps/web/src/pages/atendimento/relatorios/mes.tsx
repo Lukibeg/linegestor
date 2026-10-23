@@ -1,5 +1,5 @@
 /**
- * Relatórios › Mês (2.0.5): o **Fechamento do mês** — o mês escolhido contra o anterior, em números, em
+ * Relatórios › Mês (2.1): o **Fechamento do mês** — o mês escolhido contra o anterior, em números, em
  * frases e dia a dia, com os assuntos, os clientes e os tipos que mais apareceram.
  */
 import { TrendingDown, TrendingUp } from 'lucide-react';

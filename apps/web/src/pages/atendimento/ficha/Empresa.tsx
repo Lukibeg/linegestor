@@ -2,7 +2,7 @@
  * A empresa e o contato, em destaque no topo da coluna do lado (o pedido do Eider, com o nome do
  * contato que o Luan pediu): o nome grande com o link para a ficha do cliente, os produtos e as
  * operadoras do cadastro dele, quantos circuitos, DIDs e aparelhos; o contato com o WhatsApp legível
- * e o link "Conversa no LineChat" (que se liga, troca e tira à mão desde o 2.0.4.1: `Conversa.tsx`). Dá para
+ * e o link "Conversa no LineChat" (que se liga, troca e tira à mão desde o 2.1: `Conversa.tsx`). Dá para
  * trocar o cliente, o nome do contato e o WhatsApp — e o
  * contato sai da lista do cliente (a aba Contatos, 2.0): um clique troca; o que não está na lista se
  * salva lá com um clique.
@@ -163,7 +163,7 @@ function Contato() {
             if (c.nome !== f.contato?.nome || (c.whatsapp ?? null) !== (f.contato?.telefone ?? null)) void usar(c);
           }} />
       )}
-      {/* a conversa do LineChat: o link e a sessão; ligar, trocar e tirar à mão (2.0.4.1, o chamado ativo) */}
+      {/* a conversa do LineChat: o link e a sessão; ligar, trocar e tirar à mão (2.1, o chamado ativo) */}
       {!editando && <ConversaDoChamado />}
     </div>
   );

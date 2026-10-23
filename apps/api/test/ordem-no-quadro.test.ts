@@ -1,5 +1,5 @@
 /**
- * Patch 2.0.4.1 — A ORDEM À MÃO NO QUADRO. O pedido do Luan (23/10), no quadro do Comercial: "quero poder
+ * Patch 2.1 — A ORDEM À MÃO NO QUADRO. O pedido do Luan (23/10), no quadro do Comercial: "quero poder
  * trocar a ordem aqui, pra cima ou pra baixo da mesma forma que mudo de fase arrastando".
  *
  *  - no painel de Vendas, nas etapas abertas: arrastar muda o lugar (logo abaixo de outra, ou no alto); a etapa

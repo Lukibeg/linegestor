@@ -1186,7 +1186,7 @@ export const ChamadoCriarSchema = z.object({
   contatoTelefone: TelefoneSchema,
   /**
    * a conversa do LineChat: o código da sessão (o robô, o botão da conversa) ou o link colado na tela (o
-   * chamado ativo, 2.0.4.1); quem lê o link é o servidor (`sessaoDaConversa`)
+   * chamado ativo, 2.1); quem lê o link é o servidor (`sessaoDaConversa`)
    */
   sessaoId: TextoOpcional(500),
   assuntoId: z.string().nullish().transform((v) => v || null),
@@ -1235,7 +1235,7 @@ export const ChamadoAlterarSchema = z.object({
   contatoNome: TextoOpcional(120).optional(),
   contatoTelefone: TelefoneSchema.optional(),
   /**
-   * ligar (ou trocar) a conversa do LineChat (2.0.4.1): o link da conversa ou o código da sessão; nulo ou
+   * ligar (ou trocar) a conversa do LineChat (2.1): o link da conversa ou o código da sessão; nulo ou
    * vazio tira. O servidor acha a sessão no que veio (`sessaoDaConversa`)
    */
   sessaoId: TextoOpcional(500).optional(),
@@ -1280,12 +1280,12 @@ export const MoverSchema = z.object({
   /** Ganho e Perdido: o dia em que a negociação acabou (hoje ou antes; sem ele, agora) */
   concluidoEm: DiaSchema.nullish().transform((v) => v || null),
   /**
-   * Arrastada para um lugar da coluna (2.0.4.1, só onde vale a ordem à mão): o cartão que fica logo acima (nulo:
+   * Arrastada para um lugar da coluna (2.1, só onde vale a ordem à mão): o cartão que fica logo acima (nulo:
    * o alto). Sem ele, ela chega no alto da etapa, pela regra de sempre.
    */
   depoisDe: z.string().min(1).nullish(),
 });
-/** Mudar o lugar na coluna do quadro, arrastando (2.0.4.1): o cartão que fica logo acima; nulo, o alto. */
+/** Mudar o lugar na coluna do quadro, arrastando (2.1): o cartão que fica logo acima; nulo, o alto. */
 export const PosicaoNoQuadroSchema = z.object({ depoisDe: z.string().min(1).nullable() });
 export const EsperarSchema = z.object({ tipo: z.enum(['cliente', 'operadora']).nullable(), motivo: TextoOpcional(300) });
 export const ReabrirSchema = z.object({ motivo: TextoOpcional(500), etapaId: z.string().nullish() });
@@ -1726,7 +1726,7 @@ export type CartaoChamado = {
   resultado: ResultadoDaVenda | null;
   motivoPerda: string | null;
   /**
-   * O lugar na coluna do quadro que a equipe escolheu arrastando (2.0.4.1, só nas etapas abertas do painel de
+   * O lugar na coluna do quadro que a equipe escolheu arrastando (2.1, só nas etapas abertas do painel de
    * Vendas: `ordemAMao`): 1 é o primeiro. Nulo: ninguém arrumou depois que ela chegou na etapa (mudar de etapa
    * apaga), e ela vai pela regra de sempre, antes das arrumadas.
    */
@@ -1842,7 +1842,7 @@ export type OpcoesAtendimento = {
   };
   ia: { ativa: boolean; modelo: string | null };
   /**
-   * A NIA (2.0.4.1, a IA do suporte no n8n): as etiquetas do combinado com o fluxo dela, para o botão da ficha
+   * A NIA (2.1, a IA do suporte no n8n): as etiquetas do combinado com o fluxo dela, para o botão da ficha
    * (`resumoDaNia`). Nula quando o botão está desligado nos Ajustes › IA.
    */
   nia: { pedir: string; pronto: string; erro: string } | null;
@@ -1850,7 +1850,7 @@ export type OpcoesAtendimento = {
   linechatUrl: string | null;
   /**
    * o modelo do link da conversa (Painéis › Ajustes › Integrações, "https://…/{sessao}"), para a tela achar a
-   * sessão no link colado e mostrar o link antes de salvar (2.0.4.1); nulo sem modelo
+   * sessão no link colado e mostrar o link antes de salvar (2.1); nulo sem modelo
    */
   linkConversa: string | null;
   pode: { trabalhar: boolean; cuidar: boolean; integrar: boolean };
@@ -2487,7 +2487,7 @@ export function compararNegociacoes(a: Pick<CartaoChamado, 'valor' | 'criadoEm'>
 }
 
 // ---------------------------------------------------------------------
-//  A ORDEM À MÃO NO QUADRO (2.0.4.1)
+//  A ORDEM À MÃO NO QUADRO (2.1)
 // ---------------------------------------------------------------------
 //  O pedido do Luan (23/10), no quadro do Comercial: "quero poder trocar a ordem aqui, pra cima ou pra baixo da
 //  mesma forma que mudo de fase arrastando". Só no painel de Vendas e nas etapas abertas: no Suporte, o quadro
@@ -2800,7 +2800,7 @@ const escaparRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 export type ConversaLida = { ok: true; sessaoId: string | null } | { ok: false; erro: string };
 
 /**
- * A sessão (a conversa do LineChat) do que a pessoa colou (2.0.4.1, o pedido do Luan: o chamado ativo —
+ * A sessão (a conversa do LineChat) do que a pessoa colou (2.1, o pedido do Luan: o chamado ativo —
  * a equipe chamou o cliente — não vem do robô, e a conversa entra à mão, para a ficha ter o link e a NIA
  * ler o que foi dito). Vale:
  *  - o link da conversa: pelo modelo das Integrações ("https://…/{sessao}": o que está no lugar do

@@ -1,6 +1,6 @@
 /**
  * A conversa do LineChat na ficha (no cartão do contato): o link "Conversa no LineChat" e a sessão — e, desde o
- * 2.0.4.1, ligar, trocar e tirar a conversa à mão. O pedido do Luan (23/10): "mais de 99% são receptivos, mas
+ * 2.1, ligar, trocar e tirar a conversa à mão. O pedido do Luan (23/10): "mais de 99% são receptivos, mas
  * alguns são ativos ... tem que ter a possibilidade de associar uma sessão ... para que a IA consiga ler ... Eu
  * posso editar ou colocar o link de alguma outra conversa."
  *

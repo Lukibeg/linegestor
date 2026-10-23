@@ -380,7 +380,7 @@ export async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, a
     const linhas = await tx.select({ id: tickets.id, deletedAt: tickets.deletedAt }).from(tickets).where(eq(tickets.stageId, e.id));
     if (linhas.length) {
       const mudaSituacao = situacaoDaEtapa(e.kind as TipoEtapa) !== situacaoDaEtapa(para.tipo);
-      // chegam no destino sem lugar escolhido (2.0.4.1: mudar de etapa apaga o lugar no quadro)
+      // chegam no destino sem lugar escolhido (2.1: mudar de etapa apaga o lugar no quadro)
       await tx.update(tickets).set({ stageId: para.id, boardPosition: null, updatedAt: agora, ...(mudaSituacao ? datasDaSituacao(para.tipo, agora) : {}) })
         .where(eq(tickets.stageId, e.id));
       for (const t of linhas) {

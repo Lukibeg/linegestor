@@ -743,7 +743,7 @@ function CartaoLinkConversa({ inicial }: { inicial: string }) {
       const r = await api.atendimento.salvarLinkConversa(t);
       setModelo(r.linkConversa);
       qc.setQueryData<IntegracoesTela>(CHAVE, (x) => (x ? { ...x, linkConversa: r.linkConversa } : x));
-      // a ficha e o Abrir chamado leem o modelo das opções (o link colado à mão, 2.0.4.1)
+      // a ficha e o Abrir chamado leem o modelo das opções (o link colado à mão, 2.1)
       void qc.invalidateQueries({ queryKey: ['atendimento', 'opcoes'] });
       toast.push('ok', r.linkConversa ? 'Link salvo: a ficha do chamado já mostra a conversa no LineChat.' : 'Link tirado: a ficha não mostra mais a conversa.');
     } catch (e) { setErro(erroLegivel(e)); } finally { setSalvando(false); }

@@ -4,7 +4,7 @@
  * Suporte — o que veio com o sistema (`painel-suporte`, a sigla SUP), mesmo que o nome dele mude. Quem não
  * vê esse painel (ou com ele desativado) vai para a tela dos Painéis.
  *
- * Os Relatórios do menu (2.0.5, decisão 0055) são o mesmo atalho para a vista Relatórios do painel Suporte;
+ * Os Relatórios do menu (2.1, decisão 0055) são o mesmo atalho para a vista Relatórios do painel Suporte;
  * os do Helena ficam no item Legado do Helena.
  */
 import { Navigate } from 'react-router-dom';

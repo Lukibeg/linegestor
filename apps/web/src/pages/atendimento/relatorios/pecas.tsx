@@ -1,5 +1,5 @@
 /**
- * As peças dos Relatórios dos painéis de chamados (Patch 2.0.5, decisão 0055): o cartão de cada relatório,
+ * As peças dos Relatórios dos painéis de chamados (Patch 2.1, decisão 0055): o cartão de cada relatório,
  * os números de destaque, a seta do "melhorou ou piorou", as barras e a janela com os chamados de uma peça.
  *
  * As regras dos gráficos do sistema valem aqui também: o número sempre escrito, uma cor por gráfico (a não

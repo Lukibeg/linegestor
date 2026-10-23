@@ -492,7 +492,7 @@ describe('a IA e o histórico', () => {
   });
 });
 
-describe('a conversa ligada à mão (2.0.4.1, o chamado ativo)', () => {
+describe('a conversa ligada à mão (2.1, o chamado ativo)', () => {
   const U = '83858976-9930-4a4e-8f0e-1c2d3e4f5a6b';
   const MODELO = 'https://app.inglinechat.com.br/chat/{sessao}';
   const ok = (sessaoId: string | null) => ({ ok: true, sessaoId });
@@ -701,7 +701,7 @@ describe('o 2.0.3: as etiquetas de cada painel, a lista que inclui na hora e o t
   });
 });
 
-describe('a ordem à mão no quadro (2.0.4.1)', () => {
+describe('a ordem à mão no quadro (2.1)', () => {
   it('só no painel de Vendas, nas etapas abertas', () => {
     expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'entrada' })).toBe(true);
     expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'andamento' })).toBe(true);

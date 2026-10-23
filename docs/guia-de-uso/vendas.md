@@ -41,7 +41,7 @@ Suporte) fica com um papel sem o **Ver os chamados**.
 - **A tela dos painéis** mostra o cartão do Comercial: quanto está **em negociação** (e quantas), o
   **ganho no mês** (e quantas ganhas e perdidas), **sem dono**, as **suas** e a **barra da meta**.
 - **O quadro**: cada coluna soma as mensalidades das negociações dela. Arraste o cartão para mudar de etapa.
-- **A ordem de cada coluna é sua (2.0.4.1)**: arraste a negociação para cima ou para baixo na coluna, como
+- **A ordem de cada coluna é sua (2.1)**: arraste a negociação para cima ou para baixo na coluna, como
   arrasta para outra etapa — uma linha azul mostra onde ela vai cair, e a ordem fica guardada para todo mundo.
   Arrastando para outra etapa, ela cai onde a linha mostra. No celular (que não arrasta), o **Mover** do cartão
   tem **Subir** e **Descer**. A negociação que chega numa etapa sem lugar escolhido (pelo Mover, pela ficha, pelo

@@ -16,7 +16,7 @@
  *  - a prioridade vem sugerida pela gravidade e pelo alcance (a matriz dos Ajustes › Prazos); trocar a
  *    sugerida pede o motivo, que fica no histórico;
  *  - o cliente só recebe aviso quando o atendente marca (desmarcado por padrão);
- *  - a conversa do LineChat (2.0.4.1): o chamado ativo (a equipe chamou o cliente) não vem do robô — cola-se o
+ *  - a conversa do LineChat (2.1): o chamado ativo (a equipe chamou o cliente) não vem do robô — cola-se o
  *    link da conversa (ou o código da sessão), a ficha mostra o link e a NIA lê o que foi conversado.
  *
  * As regras (o que o painel pede para abrir, a prioridade sugerida, o caminho do assunto) vêm do
@@ -81,7 +81,7 @@ type Form = {
   clienteId: string;
   contatoNome: string;
   contatoTelefone: string;
-  /** a conversa do LineChat: o link colado (o chamado ativo, 2.0.4.1) ou o código que o botão da conversa trouxe */
+  /** a conversa do LineChat: o link colado (o chamado ativo, 2.1) ou o código que o botão da conversa trouxe */
   conversa: string;
   titulo: string;
   relato: string;
@@ -335,7 +335,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   };
   const foneInvalido = !!f.contatoTelefone.trim() && !foneValido;
   const podeAvisar = !vendas && opcoes.whatsapp.cliente && !!foneValido;
-  // a conversa do LineChat colada (2.0.4.1): a mesma leitura do servidor, para dizer logo a sessão (ou o que está errado)
+  // a conversa do LineChat colada (2.1): a mesma leitura do servidor, para dizer logo a sessão (ou o que está errado)
   const conversa = f.conversa.trim() ? sessaoDaConversa(f.conversa, opcoes.linkConversa) : null;
 
   // o que o painel pede e o formulário não tem (uma regra mal escolhida nos Ajustes): diz logo, em vez de travar no fim
@@ -587,7 +587,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
               <input className="input tnum" id="novo-whatsapp" inputMode="tel" value={f.contatoTelefone} maxLength={40} placeholder="(71) 99999-0000"
                 onChange={(e) => { mudar({ contatoTelefone: e.target.value }); tirarFalta('contato'); }} />
             </Rotulado>
-            {/* a conversa do LineChat (2.0.4.1, o pedido do Luan): o chamado ativo — a equipe chamou o cliente — não vem do
+            {/* a conversa do LineChat (2.1, o pedido do Luan): o chamado ativo — a equipe chamou o cliente — não vem do
                 robô; com o link colado, a ficha mostra a conversa e a NIA lê o que foi dito */}
             <Rotulado rotulo="Conversa no LineChat" id="novo-conversa" className="sm:col-span-2" erro={conversa && !conversa.ok ? conversa.erro : undefined}
               dica={conversa?.ok && conversa.sessaoId ? `Sessão ${conversa.sessaoId}: a ficha mostra a conversa, e a NIA lê o que foi conversado.`

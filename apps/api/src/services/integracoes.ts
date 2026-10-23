@@ -175,7 +175,7 @@ const PADROES: Record<Assunto, unknown> = {
   // o último pedido do robô (2.0.1), com o que aconteceu: a tela do mapa mostra as variáveis dele. Fica
   // separado do mapa: o robô grava aqui a cada pedido, e o mapa só muda quando alguém salva
   'atendimento-robo-ultimo': { ultimo: null },
-  // os Relatórios dos painéis de chamados (2.0.5): a arrumação de cada painel (a ordem, os escondidos, os
+  // os Relatórios dos painéis de chamados (2.1): a arrumação de cada painel (a ordem, os escondidos, os
   // favoritos e o campo da falha); sem nada guardado, a ordem de fábrica
   'atendimento-relatorios': { paineis: {} },
   // o calendário (2.0.1): os tipos de evento (Visita, Folga…), com nome e cor; sem nada guardado, os de fábrica

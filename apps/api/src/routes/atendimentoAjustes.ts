@@ -355,7 +355,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     return { linkConversa: r.linkConversa };
   });
 
-  // ---------- a NIA (2.0.4.1): o botão da ficha e as etiquetas do combinado com o fluxo do n8n ----------
+  // ---------- a NIA (2.1): o botão da ficha e as etiquetas do combinado com o fluxo do n8n ----------
 
   app.get('/integracoes/nia', {
     ...integrar,

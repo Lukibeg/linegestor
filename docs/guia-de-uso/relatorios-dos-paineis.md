@@ -1,4 +1,4 @@
-# Os Relatórios dos painéis (2.0.5)
+# Os Relatórios dos painéis (2.1)
 
 Os relatórios dos chamados do Gestor ficam na vista **Relatórios** de cada painel — a mesma troca **Quadro ·
 Lista · Relatórios** do alto do painel. No menu, **Suporte › Relatórios** abre a do painel Suporte. Os

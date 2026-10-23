@@ -296,7 +296,7 @@ export type Api = {
     resumoDosPaineis(): Promise<T.ResumoDoPainel[]>;
     /** o relatório de um painel de Vendas no período (painel, de e ate) */
     relatorioDeVendas(q: T.FiltroDoRelatorioDeVendas): Promise<T.RelatorioDeVendas>;
-    /** os Relatórios de um painel de chamados (2.0.5): os 25 de uma vez, com o período e os filtros */
+    /** os Relatórios de um painel de chamados (2.1): os 25 de uma vez, com o período e os filtros */
     relatorios(q: T.FiltroDosRelatorios): Promise<T.RelatoriosDoPainel>;
     /** a arrumação dos Relatórios de um painel (a ordem, os escondidos, os favoritos, o campo da falha) */
     arrumacaoDosRelatorios(painel: string): Promise<T.ArrumacaoDosRelatoriosLida>;
@@ -318,12 +318,12 @@ export type Api = {
     /** escalonar (subir de nível) e voltar de nível pedem o motivo */
     mover(id: string, d: T.MoverEntrada): Promise<T.FichaChamado>;
     /**
-     * O lugar na coluna do quadro (2.0.4.1, nas etapas abertas do painel de Vendas): logo abaixo de `depoisDe`
+     * O lugar na coluna do quadro (2.1, nas etapas abertas do painel de Vendas): logo abaixo de `depoisDe`
      * (nulo: no alto). 409 quando o `depoisDe` saiu da etapa.
      */
     posicionar(id: string, d: { depoisDe: string | null }): Promise<{ codigo: string; posicao: number }>;
     /**
-     * Pede à NIA (2.0.4.1, a IA do suporte no n8n) para preencher: a etiqueta de pedir entra (a de pronto e a de erro
+     * Pede à NIA (2.1, a IA do suporte no n8n) para preencher: a etiqueta de pedir entra (a de pronto e a de erro
      * saem), e o aviso do chamado alterado vai para o n8n, como quando a equipe etiquetava.
      */
     pedirANia(id: string): Promise<T.FichaChamado>;
@@ -398,7 +398,7 @@ export type Api = {
     revogarChave(id: string): Promise<{ ok: boolean }>;
     salvarSites(sites: string[]): Promise<{ sites: string[] }>;
     salvarLinkConversa(linkConversa: string): Promise<{ linkConversa: string }>;
-    /** os ajustes da NIA (2.0.4.1): o botão da ficha e as etiquetas de pedir, de pronto e de erro */
+    /** os ajustes da NIA (2.1): o botão da ficha e as etiquetas de pedir, de pronto e de erro */
     niaAjustes(): Promise<T.AjustesDaNia>;
     salvarNia(d: T.AjustesDaNiaEntrada): Promise<T.AjustesDaNia>;
     /** o mapa do robô do LineChat (2.0.1) e o último pedido dele */

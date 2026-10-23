@@ -54,7 +54,7 @@ export function comemorar() {
 
 /**
  * O hook do mover: `mover(chamado, etapaId)` faz tudo (pede o motivo quando é escalonar, mostra o que
- * falta, comemora o fechado); `janelas` vai uma vez na tela que usa. `depoisDe` (2.0.4.1): o quadro arrastou
+ * falta, comemora o fechado); `janelas` vai uma vez na tela que usa. `depoisDe` (2.1): o quadro arrastou
  * para um lugar da coluna (onde vale a ordem à mão) — o cartão que fica logo acima; nulo, o alto.
  */
 export function useMover(): { mover: (c: Movivel, etapaId: string, opcoes?: { depoisDe?: string | null }) => Promise<FichaChamado | null>; janelas: ReactNode; ocupado: string | null } {

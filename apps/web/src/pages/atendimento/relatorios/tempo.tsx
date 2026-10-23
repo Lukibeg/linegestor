@@ -1,5 +1,5 @@
 /**
- * Relatórios › Tempo (2.0.5): o **Prazo cumprido**, o **Relógio do chamado**, a **Primeira resposta**, **A
+ * Relatórios › Tempo (2.1): o **Prazo cumprido**, o **Relógio do chamado**, a **Primeira resposta**, **A
  * escada N1 → N2 → N3 → DEV**, **Onde o chamado empaca**, **A prioridade faz diferença?** e **Esperando a
  * operadora** (novo). Tudo em horas úteis, pelo horário de atendimento e os feriados dos Ajustes.
  */

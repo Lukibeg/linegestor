@@ -5,7 +5,7 @@
  * ideia "simular a partir da negociação") abre uma simulação nova já ligada, com a empresa, os produtos e os
  * valores da negociação. Sem simulação e sem poder simular, a parte não aparece.
  *
- * Desde o 2.0.4.1, a simulação (a que existe e a nova do Simular) abre numa janela por cima da ficha — o pedido
+ * Desde o 2.1, a simulação (a que existe e a nova do Simular) abre numa janela por cima da ficha — o pedido
  * do Luan: "as simulações aqui quero que abra via pop up pra n precisar sair da página". É o editor do Simulador
  * inteiro; fechar a janela salva o que faltava e volta para a ficha, com a lista e a margem já atualizadas.
  */

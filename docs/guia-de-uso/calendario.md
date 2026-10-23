@@ -31,7 +31,7 @@ use os chamados.
 - **Só os meus**: os eventos de que você participa.
 - A **busca** acha o título, o cliente, o local, a observação, o chamado e as pessoas. (O filtro de
   cliente saiu no 2.0.2: para achar os eventos de um cliente, escreva o nome dele na busca.)
-- **Tipos** (2.0.4.1): o botão abre a lista dos tipos (Visita, Folga…), cada um com a bolinha da cor dele (é
+- **Tipos** (2.1): o botão abre a lista dos tipos (Visita, Folga…), cada um com a bolinha da cor dele (é
   a legenda das cores); marque os que quer ver. Como no **Painéis**, o botão mostra quantos estão marcados, e
   nenhum marcado (ou todos) mostra os eventos de todos os tipos.
 - **Mostrar os cancelados**: desmarcado, os cancelados somem.

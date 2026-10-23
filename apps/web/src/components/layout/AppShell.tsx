@@ -8,7 +8,7 @@
  *
  * O menu tem grupos (2.0, o pedido do Luan: "está ficando muitas abas laterais"): **Técnico** (2.0.2: os
  * Circuitos e DIDs e o Inventário), **Suporte** (o Painel do Suporte — o atalho para o quadro dele, 2.0.2 —,
- * o Meu dia, 2.0.2, os Projetos, os Relatórios — desde o 2.0.5, os do painel Suporte, sobre os chamados do
+ * o Meu dia, 2.0.2, os Projetos, os Relatórios — desde o 2.1, os do painel Suporte, sobre os chamados do
  * Gestor — e o Legado do Helena, os relatórios dos tickets do LineChat, que eram os Relatórios até o 2.0.4),
  * **Comercial** (2.0.1: o Painel do Comercial — o atalho para o painel de Vendas — e o relatório dele, de
  * quem tem a permissão do Comercial; 2.0.2: o Simulador) e **Base de conhecimento** (a interna e a dos clientes); o Importar /
@@ -66,7 +66,7 @@ export const NAV: Array<ItemDoMenu | GrupoDoMenu> = [
   },
   // o suporte: o Painel do Suporte (2.0.2, o atalho para o quadro do painel Suporte, "como fizemos no
   // comercial"), o Meu dia (2.0.2: "o meu dia pode ter um botão aqui tbm"), os projetos (as tarefas que
-  // percorrem vários clientes), os Relatórios e o Legado do Helena. Desde o 2.0.5 (decisão 0055), os Relatórios
+  // percorrem vários clientes), os Relatórios e o Legado do Helena. Desde o 2.1 (decisão 0055), os Relatórios
   // são os do painel Suporte, sobre os chamados do Gestor (a vista Relatórios do painel); os do Helena — os
   // tickets do LineChat, a cópia de leitura do 1.3, com a aba Hoje, o Período e os 20 relatórios do 1.7 — viraram
   // o Legado do Helena (o pedido do Luan, 22/10: "vai ter um legado, que vai ser o antigo, e vai ter um novo").
@@ -113,7 +113,7 @@ const MEU_DIA: Pick<ItemDoMenu, 'to' | 'end'> = { to: '/atendimento/meu-dia' };
 
 /**
  * A tela aberta é do painel do Suporte? O quadro, a lista, os relatórios e o Abrir chamado dizem o painel no
- * endereço (?painel=); a ficha, pela sigla do código. Devolve a parte (2.0.5): os Relatórios do menu ficam
+ * endereço (?painel=); a ficha, pela sigla do código. Devolve a parte (2.1): os Relatórios do menu ficam
  * marcados na vista Relatórios do painel; o Painel do Suporte (2.0.2), nas outras.
  */
 export function parteDoSuporte(pathname: string, search: string, sigla: string | null): 'painel' | 'relatorios' | null {

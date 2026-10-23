@@ -1,5 +1,5 @@
 /**
- * Relatórios › Assuntos (2.0.5): **Os assuntos** (novo: a árvore do painel, clicando para descer), **Sobe e
+ * Relatórios › Assuntos (2.1): **Os assuntos** (novo: a árvore do painel, clicando para descer), **Sobe e
  * desce dos assuntos** (no nível escolhido), **Onde está a gravidade** (novo: assunto × gravidade), **Os poucos
  * que pesam muito** (o 80/20) e **Os problemas** (novo: os problemas abertos e os incidentes de cada um).
  */

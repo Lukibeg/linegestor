@@ -1,5 +1,5 @@
 /**
- * Relatórios › Clientes (2.0.5): o **Raio-X do cliente**, os **Chamados pelo tamanho do cliente**, **Voltou
+ * Relatórios › Clientes (2.1): o **Raio-X do cliente**, os **Chamados pelo tamanho do cliente**, **Voltou
  * com o mesmo problema** e **De quem é a falha?** (pelo campo de lista do painel que a equipe escolheu).
  */
 import { Link } from 'react-router-dom';

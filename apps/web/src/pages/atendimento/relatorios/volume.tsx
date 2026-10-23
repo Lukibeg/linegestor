@@ -1,5 +1,5 @@
 /**
- * Relatórios › Volume (2.0.5): **Entrada × saída**, **Idade da fila**, **Mapa de calor da semana**, **Dias
+ * Relatórios › Volume (2.1): **Entrada × saída**, **Idade da fila**, **Mapa de calor da semana**, **Dias
  * fora da curva** e **Previsão da semana** — quanto chega, quanto sai e quando.
  */
 import { DIAS_DA_SEMANA } from '@gestor/shared';

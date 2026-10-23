@@ -73,7 +73,7 @@ export type CampoApi = { key: string; name?: string; type?: string; position?: n
 /** Tudo que a API diz que existe num card (incluir menos que isso faz o card vir sem os campos). */
 const DETALHES = ['CustomFields', 'StepTitle', 'StepPhase', 'ResponsibleUser'];
 /**
- * O que o Trazer do Helena pede de cada card (2.0.4.1): o histórico e o motivo do resultado. O resto (a chave,
+ * O que o Trazer do Helena pede de cada card (2.1): o histórico e o motivo do resultado. O resto (a chave,
  * a etapa, os campos) já vem na lista, e a Conclusão vem no próprio card.
  */
 export const DETALHES_DO_CARD = ['Logs', 'ResultDescription'] as const;
@@ -131,7 +131,7 @@ export class LineChatApi {
       if (Array.isArray(v)) v.forEach((x) => q.append(k, x)); else q.set(k, String(v));
     }
     // a vírgula vai como vírgula (2.0.4). Não era essa a causa do 500 "The value '…' is not valid" do card (o
-    // LineChat lê o %2C como vírgula): ele quer um detalhe por parâmetro, como a lista e o painel (2.0.4.1)
+    // LineChat lê o %2C como vírgula): ele quer um detalhe por parâmetro, como a lista e o painel (2.1)
     const busca = q.toString().replace(/%2C/gi, ',');
     const url = `${this.base.replace(/\/+$/, '')}/${caminho.replace(/^\/+/, '')}${busca ? `?${busca}` : ''}`;
     // a chave do LineChat vem como "pn_…"; se alguém colar já com "Bearer ", respeitamos

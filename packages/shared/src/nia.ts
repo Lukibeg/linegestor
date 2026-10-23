@@ -1,5 +1,5 @@
 /**
- * A NIA NA FICHA (Patch 2.0.4.1): o botão que pede à NIA — a IA do suporte, que mora no n8n — para preencher o
+ * A NIA NA FICHA (Patch 2.1): o botão que pede à NIA — a IA do suporte, que mora no n8n — para preencher o
  * chamado. O pedido do Luan (23/10): "para eu fazer a ia preencher o chamado hoje eu tenho que etiquetar, só que
  * isso eu acho meio gambiarra, devíamos ter um botão aqui para mandar ela preencher e se já tiver sido feito ele
  * fica com alguma marcação dizendo que já foi feito e se eu clicar ele me mostra algumas informações como data".

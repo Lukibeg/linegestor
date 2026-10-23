@@ -144,3 +144,10 @@ arrumacao` (`routes/atendimento.ts`); o assunto `atendimento-relatorios` nos Aju
 (`services/integracoes.ts`). A tela: `apps/web/src/pages/atendimento/relatorios/` (`index.tsx`, as peças e
 uma página por aba), ligada em `Relatorio.tsx`; o menu em `AppShell.tsx`. A prévia:
 `apps/web/src/api/demo-atendimento.ts` e `demo-atendimento-historico.ts`. Sem migração.
+
+## O número do patch (23/10/2026)
+
+Os Relatórios foram feitos como **2.0.5**; a correção do Trazer do Helena, os pedidos de 23/10, o botão da NIA e a
+conversa do chamado ativo, como **2.0.4.1** (para poder subir antes). Em 23/10 o Luan pediu *"eu quero subir como 2.1"*:
+os dois sobem juntos como **2.1** (a branch `patch-2.1-2026-10-23`, com uma nota só). Os commits de antes continuam com o
+nome de quando foram feitos ("Patch 2.0.4.1: …", "Patch 2.0.5: …"); o texto, os comentários e as notas dizem 2.1.

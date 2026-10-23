@@ -176,7 +176,7 @@ async function lerOHelena(db: Db, vault: SecretsVault, l: Leitura): Promise<Leit
   const semHistorico = cards.filter((c) => !detalhes.get(c.id)).length;
   const avisos: string[] = [];
   if (semHistorico && falha) avisos.push(`O Helena não devolveu o histórico de ${semHistorico === 1 ? '1 card' : `${semHistorico} cards`}: ${falha}`);
-  // o que o LineChat recusou no pedido do card (2.0.4.1): o detalhe sai e o resto vem
+  // o que o LineChat recusou no pedido do card (2.1): o detalhe sai e o resto vem
   if (api.recusasDoCard.length) {
     const recusas = [...new Set(api.recusasDoCard)].map((r) => `"${r}"`).join(', ');
     avisos.push(api.cardComHistorico === false
@@ -354,7 +354,7 @@ export async function trazer(app: FastifyInstance, ator: Ator, leituraId: string
         const [antes] = await db.select({ campos: tickets.customFields, etapa: tickets.stageId }).from(tickets).where(eq(tickets.id, ticketId)).limit(1);
         await db.update(tickets).set({
           ...linhaDoChamado, customFields: { ...((antes?.campos as ValoresDosCampos | null) ?? {}), ...valores },
-          // a que mudou de etapa no Helena perde o lugar que tinha no quadro de cá (2.0.4.1); a que ficou, fica nele
+          // a que mudou de etapa no Helena perde o lugar que tinha no quadro de cá (2.1); a que ficou, fica nele
           ...(antes?.etapa !== stageId ? { boardPosition: null } : {}),
         }).where(eq(tickets.id, ticketId));
         // o histórico que veio do Helena é refeito; o que a equipe fez no Gestor fica

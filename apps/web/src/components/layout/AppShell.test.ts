@@ -17,7 +17,7 @@ describe('o grupo Técnico (2.0.2)', () => {
   });
 });
 
-describe('os Relatórios e o Legado do Helena (2.0.5)', () => {
+describe('os Relatórios e o Legado do Helena (2.1)', () => {
   it('o Suporte tem os Relatórios novos (os do painel) e, à parte, o Legado do Helena (os do LineChat)', () => {
     const suporte = NAV.find((x) => 'grupo' in x && x.grupo === 'suporte');
     expect(suporte && 'itens' in suporte ? suporte.itens.map((i) => [i.label, i.to]) : null).toEqual([

@@ -1,5 +1,5 @@
 /**
- * OS RELATÓRIOS DOS PAINÉIS DE CHAMADOS (Patch 2.0.5, decisão 0055): o módulo novo de relatórios, sobre os
+ * OS RELATÓRIOS DOS PAINÉIS DE CHAMADOS (Patch 2.1, decisão 0055): o módulo novo de relatórios, sobre os
  * chamados do próprio Gestor. Os do Helena ficam no **Legado do Helena** (os 20 relatórios do 1.7, em
  * `relatorios.ts`, sobre a cópia do LineChat): os assuntos mudaram por completo, e quase tudo que os
  * relatórios medem mudou de régua (o tempo em horas úteis, o Resolvido antes do Fechado, o nível como

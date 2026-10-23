@@ -19,7 +19,7 @@
  *  - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
  *    entraram), quantas se perderam em cada uma e quantas foram ganhas.
  *
- * Os painéis de chamados (os de Gestão) têm, nesta mesma vista, os Relatórios deles (2.0.5, decisão 0055:
+ * Os painéis de chamados (os de Gestão) têm, nesta mesma vista, os Relatórios deles (2.1, decisão 0055:
  * `relatorios/index.tsx`).
  *
  * A regra dos gráficos do sistema vale aqui: o número sempre escrito, e clicar mostra as negociações por
@@ -67,7 +67,7 @@ export function RelatorioDoPainel() {
         <Vazio titulo="Painel não encontrado" texto="Ele pode ter saído, ou ser de acesso escolhido sem você na lista."
           acao={<Link to="/atendimento" className="btn-secondary"><ArrowLeft size={15} /> Ver os painéis</Link>} />
       ) : painel.tipo !== 'vendas' ? (
-        // os painéis de chamados têm os Relatórios deles (2.0.5, decisão 0055)
+        // os painéis de chamados têm os Relatórios deles (2.1, decisão 0055)
         <RelatoriosDoPainelDeChamados key={painel.id} painel={painel} opcoes={opcoes.data!} />
       ) : (
         <RelatorioDeVendasDoPainel key={painel.id} painel={painel} opcoes={opcoes.data!} />

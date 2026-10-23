@@ -140,10 +140,10 @@ export async function opcoes(app: FastifyInstance, ator: Ator): Promise<OpcoesAt
     prazos: ctx.prazos,
     whatsapp,
     ia: { ativa: ia.ativa, modelo: ia.modelo || null },
-    // o botão da NIA na ficha (2.0.4.1): as etiquetas do combinado com o fluxo do n8n; desligado, nada
+    // o botão da NIA na ficha (2.1): as etiquetas do combinado com o fluxo do n8n; desligado, nada
     nia: nia.ligada ? { pedir: nia.pedir, pronto: nia.pronto, erro: nia.erro } : null,
     linechatUrl: lc.valor.ativo && lc.valor.appUrl ? lc.valor.appUrl.replace(/\/+$/, '') : null,
-    // o modelo do link da conversa: a ficha e o Abrir chamado acham a sessão no link colado (2.0.4.1)
+    // o modelo do link da conversa: a ficha e o Abrir chamado acham a sessão no link colado (2.1)
     linkConversa: modeloDaConversa.includes('{sessao}') ? modeloDaConversa : null,
     pode: { trabalhar: podeTrabalhar(ator), cuidar: podeCuidar(ator), integrar: ator.tipo === 'pessoa' && ator.permissoes.includes('admin.manage') },
   };
@@ -160,7 +160,7 @@ const maisRecente = (a: string | null, b: string | null) => (b ?? '').localeComp
 
 /**
  * Uma coluna por etapa, na ordem do painel. Na entrada e no andamento, o mais urgente primeiro (no painel de
- * Vendas, a ordem que a equipe deixou arrastando — 2.0.4.1 —, com a que chegou agora no alto); no Resolvido, o
+ * Vendas, a ordem que a equipe deixou arrastando — 2.1 —, com a que chegou agora no alto); no Resolvido, o
  * mais recente; no Fechado, só os 30 fechados mais recentes (o resto conta como "escondidos": a tela leva para a
  * lista).
  */

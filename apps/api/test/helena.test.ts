@@ -210,7 +210,7 @@ describe('trazer do Helena', () => {
   it('a leitura conta os cards e traz o histórico; a prévia não grava nada', async () => {
     const l = await ler();
     expect(l).toMatchObject({ estado: 'pronta', lidos: 5, total: 5, painelNome: 'Ingline - Comercial', erro: null });
-    // o card pedido com um detalhe por parâmetro (2.0.4.1): o histórico e o motivo, num pedido só por card
+    // o card pedido com um detalhe por parâmetro (2.1): o histórico e o motivo, num pedido só por card
     expect(pedidosDeHistorico[0]).toEqual(['Logs', 'ResultDescription']);
     expect(pedidosDeHistorico).toHaveLength(5);
     const r = await s.get(`/comercial/helena/leituras/${l.id}/previa`);

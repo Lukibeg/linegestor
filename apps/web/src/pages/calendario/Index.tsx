@@ -5,7 +5,7 @@
  * Quem vê um evento é quem vê um dos painéis dele: o pedido do Luan — "se eu só sou participante do
  * painel do suporte eu só vou ver a do suporte; se eu sou do painel do adm, do suporte e do dev, vejo de
  * todos". Em cima, quem está fora do escritório hoje; os filtros (os painéis — desde o 2.0.2, um botão
- * com a lista de caixas de marcar —, os tipos — o mesmo botão desde o 2.0.4.1, com a cor de cada um —, só os
+ * com a lista de caixas de marcar —, os tipos — o mesmo botão desde o 2.1, com a cor de cada um —, só os
  * meus e a busca) ficam no endereço, como nos chamados (o filtro de cliente saiu no 2.0.2: "n precisa de filtro por
  * cliente"; a busca acha o cliente); a visão Mês (a grade, com o dia escolhido ao lado ou embaixo) e a
  * Lista (o mês dia a dia). O evento abre numa janela (Janela.tsx); quem trabalha nos chamados cria e
@@ -164,7 +164,7 @@ function Filtros({ op, filtro, mudar, eventos, filtrando, aberto }: {
   // aparecer uma multisseleção para eu selecionar os que eu quero ver"); nada marcado = todos
   const paineis = [{ opcoes: op.paineis.map((p) => ({ key: p.id, label: p.nome, classeDoPonto: PONTO_DO_PAINEL[p.cor as CorPainel] ?? 'bg-line-strong' })) }];
   const nomesDosEscolhidos = op.paineis.filter((p) => filtro.paineis.includes(p.id)).map((p) => p.nome);
-  // os tipos (2.0.4.1, o pedido do Luan: "esse filtro de tags tem q ser rolagem tipo o de paineis"): o mesmo botão
+  // os tipos (2.1, o pedido do Luan: "esse filtro de tags tem q ser rolagem tipo o de paineis"): o mesmo botão
   // com a lista, cada tipo com a bolinha da cor dele (a legenda das cores fica ali); os ativos e os desativados que
   // ainda aparecem no mês, e o marcado que saiu da lista (para dar para desmarcar)
   const tipos = op.tipos.filter((t) => t.ativo || eventos.some((e) => e.tipoId === t.id) || filtro.tipos.includes(t.id));

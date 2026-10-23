@@ -1,5 +1,5 @@
 /**
- * OS MESES DE ANTES DO SUPORTE NA PRÉVIA (Patch 2.0.5, decisão 0055).
+ * OS MESES DE ANTES DO SUPORTE NA PRÉVIA (Patch 2.1, decisão 0055).
  *
  * Os Relatórios dos painéis precisam de história para mostrar alguma coisa: a Entrada × saída por semana, a
  * Previsão da semana (8 semanas completas), o Sobe e desce (o período de antes), o Fechamento do mês (o mês de

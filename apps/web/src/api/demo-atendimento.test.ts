@@ -76,7 +76,7 @@ describe('os exemplos da prévia', () => {
     const diag = diagnosticoDosChamadosDemo();
     expect(diag?.erros).toEqual([]);
     const todos = await todosOsChamados();
-    // os meses de antes do Suporte (2.0.5, para os Relatórios) moram à parte: aqui contam só os exemplos
+    // os meses de antes do Suporte (2.1, para os Relatórios) moram à parte: aqui contam só os exemplos
     const doHistorico = new Set(diag!.historico);
     const supInteiro = todos.filter((c) => c.painelId === painel(op, 'SUP').id);
     const sup = supInteiro.filter((c) => !doHistorico.has(c.codigo));
@@ -608,7 +608,7 @@ describe('as regras do servidor valem na prévia', () => {
     if (s2.assuntoId) expect(caminhoDoAssunto(s2.assuntoId, op.assuntos)).toMatch(/^Ramal/);
   }, DEMORA);
 
-  it('a NIA na ficha (2.0.4.1, como o servidor): o botão põe a etiqueta, a NIA de exemplo responde, e o resumo diz quando e o que mudou', async () => {
+  it('a NIA na ficha (2.1, como o servidor): o botão põe a etiqueta, a NIA de exemplo responde, e o resumo diz quando e o que mudou', async () => {
     await entrar('operador');
     const op = await api.opcoes();
     expect(op.nia).toEqual({ pedir: NIA_PADRAO.pedir, pronto: NIA_PADRAO.pronto, erro: NIA_PADRAO.erro });
@@ -656,7 +656,7 @@ describe('as regras do servidor valem na prévia', () => {
     expect(await api.niaAjustes()).toEqual(NIA_PADRAO);
   }, DEMORA);
 
-  it('a conversa do LineChat ligada à mão (2.0.4.1, como o servidor): o link colado vira a sessão; trocar e tirar vão para o histórico', async () => {
+  it('a conversa do LineChat ligada à mão (2.1, como o servidor): o link colado vira a sessão; trocar e tirar vão para o histórico', async () => {
     const U1 = '83858976-9930-4a4e-8f0e-1c2d3e4f5a6b';
     const U2 = '1a2b3c4d-5e6f-4a1b-9c2d-3e4f5a6b7c8d';
     await entrar('operador');
@@ -1060,7 +1060,7 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect(doSuporte.message).toContain('não é de vendas');
   }, DEMORA);
 
-  it('a ordem à mão no quadro (2.0.4.1, como o servidor): arrastar muda o lugar, a que chega fica no alto; no Suporte e no Ganho, não', async () => {
+  it('a ordem à mão no quadro (2.1, como o servidor): arrastar muda o lugar, a que chega fica no alto; no Suporte e no Ganho, não', async () => {
     await entrar('admin');
     const ord = await api.salvarPainel(null, { nome: 'Ordem', sigla: 'ORD', cor: 'ok', tipo: 'vendas', acesso: 'todos', ajustes: {} });
     const lead = ord.etapas.find((e) => e.nome === 'Lead')!;

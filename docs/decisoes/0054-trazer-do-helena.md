@@ -73,7 +73,7 @@ e 21 em andamento (R$ 28.495); e os ganhos mês a mês iguais ao gráfico *Meta 
   a vírgula ia escrita como `%2C`; o Helena manda a vírgula como vírgula (`includeDetails=Logs,Notes,…`,
   conferido na tela do card). O Gestor passou a mandar igual, e o Helena falso dos testes recusa o `%2C`, como o
   de verdade. Sem o histórico, a Conclusão também não vinha, e os ganhos caíam nos meses errados.
-  **Revisto no 2.0.4.1** (22/10, à tarde): com o 2.0.4 no ar, o Luan trouxe de novo e os ganhos mês a mês
+  **Revisto no 2.1** (22/10, à tarde): com o 2.0.4 no ar, o Luan trouxe de novo e os ganhos mês a mês
   continuaram quase todos em setembro (o Gestor: jul R$ 990, ago R$ 4.640, set R$ 21.541,80, out R$ 990; o
   Helena: fev R$ 3.190, abr R$ 2.739,80, mai R$ 3.578,80, jun R$ 2.990, jul R$ 3.440, ago R$ 4.640, set
   R$ 6.593,20, out R$ 990) — os totais certos (R$ 28.161,80 em 21). A vírgula não era a causa: o próprio

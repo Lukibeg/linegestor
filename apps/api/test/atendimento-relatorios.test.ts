@@ -1,5 +1,5 @@
 /**
- * Patch 2.0.5 — os RELATÓRIOS DOS PAINÉIS DE CHAMADOS (decisão 0055): o módulo novo de relatórios, sobre os
+ * Patch 2.1 — os RELATÓRIOS DOS PAINÉIS DE CHAMADOS (decisão 0055): o módulo novo de relatórios, sobre os
  * chamados do Gestor (os do Helena ficam no Legado). As contas estão testadas em
  * `packages/shared/src/atendimento-relatorios.test.ts`; aqui fica o que é do servidor, com o banco de verdade:
  *  - a base montada do banco: a trajetória pelas etapas e o motivo da subida (dos eventos), o protocolo na

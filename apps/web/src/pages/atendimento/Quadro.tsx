@@ -5,7 +5,7 @@
  * fechar comemora (tudo isso mora no `useMover`, o mesmo da ficha). Quem está no celular ou usa o
  * teclado tem o botão "Mover" no pé do cartão.
  *
- * No painel de Vendas (2.0.4.1, o pedido do Luan: "quero poder trocar a ordem aqui, pra cima ou pra baixo da
+ * No painel de Vendas (2.1, o pedido do Luan: "quero poder trocar a ordem aqui, pra cima ou pra baixo da
  * mesma forma que mudo de fase arrastando"), as etapas abertas aceitam a ordem à mão: arrastar dentro da coluna
  * muda o lugar, e o arrasto para outra coluna cai onde a linha mostra. No "Mover", o Subir e o Descer.
  *
@@ -95,7 +95,7 @@ function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, vendas: boolean): 
       const sem = col.chamados.filter((x) => x.id !== f.id);
       const estava = !!antes;
       if (fica && col.etapa.id === f.etapaId) {
-        // onde a ordem é à mão (2.0.4.1), o que já está na coluna fica no lugar (inclusive o que a tela já pôs onde
+        // onde a ordem é à mão (2.1), o que já está na coluna fica no lugar (inclusive o que a tela já pôs onde
         // ele caiu, antes da resposta)
         if (estava && ordemAMao({ tipo: vendas ? 'vendas' : 'gestao' }, col.etapa)) {
           return { ...col, chamados: col.chamados.map((x) => (x.id === f.id ? f : x)), valor: col.valor - valorDe(antes) + valorDe(f) };
@@ -110,7 +110,7 @@ function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, vendas: boolean): 
 }
 
 /**
- * O cartão arrastado já onde caiu, antes da resposta do servidor (2.0.4.1): na coluna `etapaId`, no lugar `indice`
+ * O cartão arrastado já onde caiu, antes da resposta do servidor (2.1): na coluna `etapaId`, no lugar `indice`
  * (contado sem ele). Se o servidor não aceitar, o quadro relê e ele volta.
  */
 function comCartaoNoLugar(q: QuadroAtendimento, c: CartaoChamado, etapaId: string, indice: number): QuadroAtendimento {
@@ -172,7 +172,7 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
   const arrastado = useRef<CartaoChamado | null>(null);
   const [arrastando, setArrastando] = useState<{ id: string; etapaId: string } | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
-  // onde a ordem é à mão (2.0.4.1): o lugar onde o cartão vai cair na coluna (a linha), contado sem ele
+  // onde a ordem é à mão (2.1): o lugar onde o cartão vai cair na coluna (a linha), contado sem ele
   const [lugar, setLugar] = useState<{ etapaId: string; indice: number } | null>(null);
   const toast = useToast();
   const comecar = (c: CartaoChamado, e: DragEvent<HTMLDivElement>) => {
@@ -219,7 +219,7 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
     if (c.etapaId === etapa.id) void reordenar(c, col, indice);
     else void moverParaOLugar(c, col, indice);
   };
-  /** Dentro da coluna (2.0.4.1): o cartão vai para o lugar `indice` (contado sem ele) — a tela já mostra, o servidor guarda. */
+  /** Dentro da coluna (2.1): o cartão vai para o lugar `indice` (contado sem ele) — a tela já mostra, o servidor guarda. */
   const reordenar = async (c: CartaoChamado, col: ColunaQuadro, indice: number) => {
     const atual = col.chamados.findIndex((x) => x.id === c.id);
     if (atual < 0 || indice === atual) return; // caiu no mesmo lugar
@@ -234,7 +234,7 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
       void qc.invalidateQueries({ queryKey: ['atendimento', 'quadro'] });
     }
   };
-  /** Para outra coluna, já no lugar onde caiu (2.0.4.1); se não for (falta algo, o erro), o quadro relê e ele volta. */
+  /** Para outra coluna, já no lugar onde caiu (2.1); se não for (falta algo, o erro), o quadro relê e ele volta. */
   const moverParaOLugar = async (c: CartaoChamado, col: ColunaQuadro, indice: number) => {
     const sem = col.chamados.filter((x) => x.id !== c.id);
     const depoisDe = indice > 0 ? sem[indice - 1]?.id ?? null : null;
@@ -403,7 +403,7 @@ function IconeDaEtapa({ tipo, resultado }: { tipo: EtapaPainel['tipo']; resultad
 
 function Coluna({ col, painel, filtros, arrastando, sobre, linha, arrastado, onPassar, onSair, onSoltar, cartao }: {
   col: ColunaQuadro; painel: Painel; filtros: Filtros; arrastando: boolean; sobre: boolean;
-  /** onde a ordem é à mão (2.0.4.1): antes de qual cartão (contado sem o arrastado) vai a linha de onde ele cai */
+  /** onde a ordem é à mão (2.1): antes de qual cartão (contado sem o arrastado) vai a linha de onde ele cai */
   linha: number | null; arrastado: string | null;
   onPassar: (e: DragEvent<HTMLElement>) => void; onSair: (e: DragEvent<HTMLElement>) => void; onSoltar: (e: DragEvent<HTMLElement>) => void;
   cartao: (c: CartaoChamado) => ReactNode;
@@ -467,7 +467,7 @@ function Coluna({ col, painel, filtros, arrastando, sobre, linha, arrastado, onP
 }
 
 /**
- * A linha de onde o cartão arrastado vai cair (a ordem à mão, 2.0.4.1): sem altura, no meio do vão entre dois
+ * A linha de onde o cartão arrastado vai cair (a ordem à mão, 2.1): sem altura, no meio do vão entre dois
  * cartões, para a coluna não pular. No alto da coluna, ela desce um pouco (o vão de cima fica fora da rolagem).
  */
 function LinhaDoLugar({ noAlto }: { noAlto: boolean }) {
@@ -508,12 +508,12 @@ function CartaoNoQuadro({ c, painel, etapas, podeMover, ocupado, esmaecido, onCo
   );
 }
 
-/** O Subir e o Descer do cartão na coluna (a ordem à mão, 2.0.4.1): nulo onde não dá (o primeiro não sobe). */
+/** O Subir e o Descer do cartão na coluna (a ordem à mão, 2.1): nulo onde não dá (o primeiro não sobe). */
 type LugarNaColuna = { subir: (() => void) | null; descer: (() => void) | null };
 
 /**
  * O "Mover" do pé do cartão: a lista das etapas (para o celular, o teclado e quem prefere clicar). Onde a ordem é
- * à mão (2.0.4.1), em cima, o Subir e o Descer na coluna.
+ * à mão (2.1), em cima, o Subir e o Descer na coluna.
  */
 function MenuMover({ c, etapas, onMover, naColuna }: { c: CartaoChamado; etapas: EtapaPainel[]; onMover: (etapaId: string) => void; naColuna?: LugarNaColuna }) {
   // o Popover não fecha por fora: depois de escolher, a chave nova o remonta fechado

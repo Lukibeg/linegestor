@@ -10,7 +10,7 @@
  * criada assim que tiver um nome. O que ainda não dá para salvar (um custo sem nome) fica dito no aviso, e a
  * simulação salva assim que a pessoa completa. Cada salvamento vai para a auditoria, com o que mudou.
  *
- * Desde o 2.0.4.1, o mesmo editor abre numa janela por cima da ficha da negociação (`SimulacaoEmJanela`: "pra n
+ * Desde o 2.1, o mesmo editor abre numa janela por cima da ficha da negociação (`SimulacaoEmJanela`: "pra n
  * precisar sair da página"), e o chip da negociação ligada abre a ficha dela numa janela por cima da simulação.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -51,7 +51,7 @@ const oQueFalta = (e: { issues: Array<{ message: string }> }) => e.issues[0]?.me
 /** Quanto esperar depois da última mudança para salvar. */
 const ESPERA_PARA_SALVAR = 2_000;
 
-/** A simulação aberta numa janela por cima de outra tela (a ficha da negociação, 2.0.4.1): o que muda no editor. */
+/** A simulação aberta numa janela por cima de outra tela (a ficha da negociação, 2.1): o que muda no editor. */
 type NaJanela = {
   /** a negociação cuja ficha está atrás da janela: o chip dela não abre outra janela por cima */
   negociacaoDoFundo: string | null;
@@ -84,7 +84,7 @@ export function SimulacaoDoComercial() {
 }
 
 /**
- * A simulação numa janela, por cima da tela (2.0.4.1, o pedido do Luan na ficha da negociação: "as simulações aqui
+ * A simulação numa janela, por cima da tela (2.1, o pedido do Luan na ficha da negociação: "as simulações aqui
  * quero que abra via pop up pra n precisar sair da página"). É o mesmo editor da página — salva sozinho, e o que
  * falta salvar vai junto ao fechar. `id` nulo: uma simulação nova, já ligada à negociação (o Simular da ficha).
  */
@@ -264,7 +264,7 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar, 
   }, [assinaturaDeAgora, salvo, podeEditar, idAtual, mexeu, inicial.nome, salvarAgora]);
   // ao sair da tela, o que falta salvar vai junto
   useEffect(() => () => { void salvarAgora(); }, [salvarAgora]);
-  // a mesma simulação salva em outro lugar (2.0.4.1: a janela da ficha, aberta por cima desta página): sem nada
+  // a mesma simulação salva em outro lugar (2.1: a janela da ficha, aberta por cima desta página): sem nada
   // por salvar aqui, a tela fica com a versão nova — e não leva a antiga por cima depois; com algo por salvar
   // aqui, fica o daqui (é o que vai ser salvo)
   const pendenteRef = useRef(pendente); pendenteRef.current = pendente;
@@ -545,7 +545,7 @@ function BotaoDoExcel({ id, antes, falta }: { id: string; antes: () => Promise<b
 
 /**
  * A negociação ligada (o código, o título e a empresa) ou o campo para ligar uma, pelo código (COM-12). O chip abre a
- * ficha da negociação numa janela por cima da simulação (2.0.4.1, o pedido do Luan: "tem q ter uma opção aqui para
+ * ficha da negociação numa janela por cima da simulação (2.1, o pedido do Luan: "tem q ter uma opção aqui para
  * levar até o card que a simulação está atrelada mas tem q abrir por pop up e n direcionar"). Na janela aberta pela
  * ficha (`naFicha`: a negociação de trás), o chip dela não abre nada: ela já está ali, atrás.
  */

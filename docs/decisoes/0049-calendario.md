@@ -157,7 +157,7 @@ menu, está na decisão 0048). Como o 2.0.2 não subiu, entraram nele:
 **Fica para depois**, do que estava acima: repetir o evento, o arquivo .ics e a visão Semana. O lembrete
 no WhatsApp entrou.
 
-## Revisto no 2.0.4.1 (23/10/2026): os tipos numa lista
+## Revisto no 2.1 (23/10/2026): os tipos numa lista
 
 - **Os tipos numa lista, como os painéis** (*"esse filtro de tags tem q ser rolagem tipo o de paineis"*). A
   fila de botões dos tipos (que era também a legenda das cores) virou o botão **Tipos**, igual ao **Painéis**:
