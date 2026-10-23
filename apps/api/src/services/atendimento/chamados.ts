@@ -18,7 +18,7 @@
  * arquivo): as mesmas regras, sem o `Feito` (quem chama escreve a própria auditoria).
  */
 import type { FastifyInstance } from 'fastify';
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
   clientContacts, clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketEvents, ticketLinks, ticketNotes, ticketPanels,
   ticketTimeEntries, tickets, users,
@@ -31,7 +31,9 @@ import {
   trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
   NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
-  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, tituloQueFica, mensagemDoTitulo, acharCampo,
+  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, tituloQueFica, mensagemDoTitulo, acharCampo, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar,
+  CAMPO_DAS_ETIQUETAS, chaveDaEtiqueta, etiquetasAoPedirANia, horaLocal, NIA_PEDIR_DE_NOVO_MINUTOS, resumoDaNia, temAEtiqueta,
+  NOME_CONVERSA, sessaoDaConversa,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos,
@@ -43,8 +45,8 @@ import { incluirOpcao } from './ajustes.js';
 import { avisarEquipe, avisarObservadores, trecho } from './avisos.js';
 import { etiquetasDoCatalogo, levarEtiquetas } from './etiquetas.js';
 import {
-  camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, exigirTrabalhar, integracaoDoAtor, pessoaCurta, pessoaDoAtor, podeCuidar, podeVerPainel,
-  quemVeOPainel, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
+  camposDoPainel, carregarContexto, chamadoVisivel, esperaAberta, eventoParaTela, exigirTrabalhar, integracaoDoAtor, lerAjustesDaNia, lerModeloDaConversa, pessoaCurta, pessoaDoAtor,
+  podeCuidar, podeVerPainel, quemVeOPainel, registrarEvento, tocar, type Ator, type Contexto, type LinhaChamado,
 } from './contexto.js';
 import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, minutosGastos } from './leitura.js';
 import { emitir } from './webhooks.js';
@@ -108,7 +110,8 @@ const etapaCurta = (e: EtapaPainel | null) => (e ? { id: e.id, nome: e.nome, niv
 const NOME_TITULO = 'Título';
 const NOME_CONTORNO = 'Solução de contorno';
 const NOME_TELEFONE = 'WhatsApp do contato';
-const NOME_ETIQUETAS = 'Etiquetas';
+// o nome que o histórico usa para a troca de etiquetas (o resumo da NIA, 2.1, procura por ele)
+const NOME_ETIQUETAS = CAMPO_DAS_ETIQUETAS;
 const NOME_OBSERVADORES = 'Observadores';
 const NOME_EMPRESA = 'Empresa';
 const NOME_MOTIVO_PERDA = 'Motivo da perda';
@@ -257,6 +260,17 @@ export async function criarChamado(
   if (!etapa) throw new BadRequest(`O painel ${painel.nome} não tem etapas. Peça a quem cuida dos chamados para montar as etapas.`);
   const origem: Origem = opts.origem ?? d.origem ?? 'manual';
   const tipoChamado = d.tipoChamado ?? 'chamado';
+  const naTela = origem === 'manual' || origem === 'botao';
+
+  // a conversa do LineChat: na tela, o link colado (o chamado ativo, 2.1) ou o código que o botão da
+  // conversa trouxe — o que não dá para ler é recusado; o robô, o n8n e o agendado mandam o código da sessão
+  // como o LineChat deu, e ele fica como veio (o robô acha por ele o chamado aberto da mesma conversa)
+  let sessaoId = d.sessaoId ?? null;
+  if (sessaoId && naTela) {
+    const lida = sessaoDaConversa(sessaoId, await lerModeloDaConversa(db));
+    if (!lida.ok) throw new BadRequest(lida.erro);
+    sessaoId = lida.sessaoId;
+  }
 
   // 2. o telefone que o Gestor já conhece preenche o cliente (e o nome do contato, se faltou): primeiro os
   // contatos cadastrados dos clientes (a aba Contatos); depois, o que ele aprendeu dos chamados
@@ -331,7 +345,7 @@ export async function criarChamado(
   // o que o painel pede para abrir vale para quem abre na tela (e pelo botão da conversa); o robô e o
   // agendado abrem sempre — o pedido do cliente não se perde por falta de um campo, e o que faltar é
   // pedido para o chamado andar de etapa
-  const faltam = origem === 'manual' || origem === 'botao' ? faltaParaAbrir(dados, painel.ajustes) : [];
+  const faltam = naTela ? faltaParaAbrir(dados, painel.ajustes) : [];
   if (faltam.length) throw new BadRequest(mensagemDoQueFalta(faltam, undefined, ctx.campos), { faltam });
   if (prioridade && sugerida && prioridade !== sugerida && !d.motivoPrioridade) throw new BadRequest('Trocar a prioridade sugerida pede o motivo.');
 
@@ -375,13 +389,13 @@ export async function criarChamado(
     await tx.insert(tickets).values({
       id, panelId: painel.id, stageId: etapa.id, number: numero, code: codigo, kind: tipoChamado, title: titulo,
       customerReport: dados.relato, description: dados.descricao, clientId: clienteId, contactName: contatoNome, contactPhone: telefone,
-      sessionId: d.sessaoId ?? null, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
+      sessionId: sessaoId, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
       productIds: produtos, carrierIds: operadoras, tags: etiquetas, customFields: campos,
       valueCents: valor, productValues: valoresDosProdutos, setupCents: ativacao, productSetup: ativacoesDosProdutos, prospect: empresa,
       parentId: pai?.id ?? null, problemId: problema?.id ?? null, checklist, watcherIds: observadores,
       // a pessoa que abre na tela já está falando com o cliente: a abertura é a primeira resposta
-      firstResponseAt: ator.tipo === 'pessoa' && (origem === 'manual' || origem === 'botao') ? agora : null,
+      firstResponseAt: ator.tipo === 'pessoa' && naTela ? agora : null,
       lastActivityAt: agora, scheduleId: opts.agendadoId ?? null, createdById: pessoa, createdAt: agora, updatedAt: agora,
     });
     await registrarEvento(tx, id, 'criado', ator, { origem, etapa: etapa.nome, etapaId: etapa.id, painel: painel.nome, ...(vendas ? { venda: true } : {}) }, quando());
@@ -488,6 +502,13 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   if (d.contatoTelefone !== undefined) {
     const fone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone : null;
     if (fone !== t.contactPhone) { set.contactPhone = fone; campo('contatoTelefone', NOME_TELEFONE, t.contactPhone, fone, t.contactPhone); }
+  }
+  // a conversa do LineChat (2.1, o chamado ativo): o link colado ou o código da sessão; vazio tira. Com
+  // ela, a ficha mostra o link e a NIA (e o Preencher com IA) lê o que foi dito
+  if (d.sessaoId !== undefined) {
+    const lida = sessaoDaConversa(d.sessaoId, await lerModeloDaConversa(db));
+    if (!lida.ok) throw new BadRequest(lida.erro);
+    if (lida.sessaoId !== t.sessionId) { set.sessionId = lida.sessaoId; campo('sessaoId', NOME_CONVERSA, t.sessionId, lida.sessaoId, t.sessionId); }
   }
 
   // a negociação (só no painel de Vendas): a empresa que ainda não é cliente, o valor e o motivo da perda
@@ -779,7 +800,8 @@ async function gravarMovimento(
   const antes = situacaoDaEtapa(deTipo);
   const depois = situacaoDaEtapa(para.tipo);
   const reabriu = antes !== 'aberto' && depois === 'aberto';
-  const set: SetChamado = { ...(o.extra ?? {}), stageId: para.id, updatedAt: agora, lastActivityAt: agora };
+  // mudar de etapa apaga o lugar que a equipe tinha escolhido no quadro (2.1): chega no alto da etapa nova
+  const set: SetChamado = { ...(o.extra ?? {}), stageId: para.id, boardPosition: null, updatedAt: agora, lastActivityAt: agora };
   if (para.tipo === 'resolvido') { set.resolvedAt = t.resolvedAt ?? agora; set.closedAt = null; }
   if (para.tipo === 'fechado') { set.closedAt = antes === 'fechado' ? t.closedAt ?? agora : agora; set.resolvedAt = t.resolvedAt ?? agora; }
   if (reabriu) { set.resolvedAt = null; set.closedAt = null; set.reopenCount = t.reopenCount + 1; }
@@ -849,7 +871,7 @@ function frasesDoMovimento(codigo: string, m: Movimento, sentido: 'sobe' | 'desc
  */
 export async function mover(
   app: FastifyInstance, ator: Ator, ref: string,
-  d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null },
+  d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null },
 ): Promise<Feito> {
   exigirTrabalhar(ator);
   const e = await carregar(app, ator, ref);
@@ -861,9 +883,96 @@ export async function mover(
   if (responsavelId) conferirPessoa(e.ctx, responsavelId);
   const venda = conferirResultado(e, para, d);
   const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true, venda });
-  const m = await app.db.transaction((tx) => gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda }));
+  const m = await app.db.transaction(async (tx) => {
+    const feito = await gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda });
+    // arrastada para um lugar da coluna (2.1): a etapa se arruma com ela ali (se a de cima saiu da etapa
+    // enquanto a pessoa arrastava, ela fica no alto, como quem chega sem lugar)
+    if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) await arrumarNaEtapa(tx, para.id, e.t.id, d.depoisDe);
+    return feito;
+  });
   await depoisDoMovimento(app, ator, e.t, m);
   return { ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo, venda && { valor: e.t.valueCents, motivoPerda: venda.motivoPerda }) };
+}
+
+// =====================================================================
+//  A ORDEM À MÃO NO QUADRO (2.1)
+// =====================================================================
+
+/**
+ * Arruma a etapa com o chamado logo abaixo de `depoisDe` (nulo: no alto), dentro da transação de quem chama: a
+ * etapa inteira fica numerada (1, 2, 3…) na ordem que o quadro mostra — a que chegou sem lugar também ganha o
+ * dela. As linhas da etapa ficam presas até o fim (dois arrastos ao mesmo tempo, um depois do outro). Devolve o
+ * lugar (1 é o primeiro) e se algo mudou; nulo quando `depoisDe` não está na etapa.
+ */
+async function arrumarNaEtapa(tx: Db, etapaId: string, id: string, depoisDe: string | null): Promise<{ posicao: number; mudou: boolean } | null> {
+  const linhas = await tx.select({ id: tickets.id, valor: tickets.valueCents, criadoEm: tickets.createdAt, ordem: tickets.boardPosition })
+    .from(tickets).where(and(eq(tickets.stageId, etapaId), isNull(tickets.deletedAt))).for('update');
+  const agora = linhas.map((l) => ({ id: l.id, valor: l.valor ?? null, criadoEm: l.criadoEm.toISOString(), ordemNoQuadro: l.ordem ?? null }))
+    .sort(compararNoQuadroDeVendas);
+  const ids = agora.map((c) => c.id);
+  const nova = ordemDepoisDeArrastar(ids, id, depoisDe);
+  if (!nova) return null;
+  const antes = new Map(agora.map((c) => [c.id, c.ordemNoQuadro]));
+  for (const [i, x] of nova.entries()) {
+    if (antes.get(x) !== i + 1) await tx.update(tickets).set({ boardPosition: i + 1 }).where(eq(tickets.id, x));
+  }
+  // mudou para quem olha o quadro: o arrastado trocou de lugar (numerar a etapa sem mexer na ordem não conta)
+  return { posicao: nova.indexOf(id) + 1, mudou: nova.indexOf(id) !== ids.indexOf(id) };
+}
+
+/**
+ * Muda o lugar da negociação na coluna do quadro, arrastando (2.1, o pedido do Luan: "quero poder trocar a
+ * ordem aqui, pra cima ou pra baixo da mesma forma que mudo de fase arrastando"): logo abaixo de `depoisDe`
+ * (nulo: no alto). Só no painel de Vendas, nas etapas abertas (no Suporte, o quadro põe o mais urgente primeiro;
+ * no Ganho e no Perdido, o mais recente). É a arrumação do quadro, não uma mudança na negociação: não mexe na
+ * última atividade nem no histórico; vai para a auditoria.
+ */
+export async function posicionar(app: FastifyInstance, ator: Ator, ref: string, d: { depoisDe: string | null }): Promise<Feito & { posicao: number }> {
+  exigirTrabalhar(ator);
+  const e = await carregar(app, ator, ref);
+  const etapa = e.etapa;
+  if (!etapa || !ordemAMao(e.painel, etapa)) {
+    throw new BadRequest(e.painel.tipo !== 'vendas'
+      ? 'Arrumar a ordem à mão é no painel de Vendas: neste, o quadro põe o mais urgente primeiro.'
+      : `Em ${etapa?.nome ?? 'esta etapa'}, a ordem é a do mais recente: arrumar à mão é nas etapas abertas.`);
+  }
+  if (d.depoisDe === e.t.id) throw new BadRequest('A negociação não fica abaixo dela mesma.');
+  const r = await app.db.transaction((tx) => arrumarNaEtapa(tx, etapa.id, e.t.id, d.depoisDe));
+  if (!r) throw new Conflict('O quadro mudou enquanto você arrastava (a negociação de cima saiu desta etapa). Veja de novo e arraste outra vez.');
+  return { ...nada(e.t), posicao: r.posicao, resumo: r.mudou ? `Pôs ${e.t.code} em ${r.posicao}º lugar em ${etapa.nome} (a ordem do quadro)` : null };
+}
+
+// =====================================================================
+//  A NIA (2.1): o botão da ficha pede à IA do n8n para preencher
+// =====================================================================
+
+/**
+ * Pede à NIA (a IA do suporte, no n8n) para preencher o chamado — o botão da ficha, no lugar de pôr a etiqueta à mão
+ * (o Luan: "hoje eu tenho que etiquetar, só que isso eu acho meio gambiarra"). O combinado com o fluxo do n8n
+ * continua sendo a etiqueta: a de pedir entra (a de pronto e a de erro saem), e o aviso do chamado alterado vai para o
+ * n8n como ia quando a equipe etiquetava; o fluxo não muda. O pedido que ainda espera a resposta só se repete depois
+ * de uns minutos (`resumoDaNia`); repetido, a etiqueta sai e volta, para o n8n receber o aviso de novo.
+ */
+export async function pedirANia(app: FastifyInstance, ator: Ator, ref: string): Promise<Feito> {
+  exigirTrabalhar(ator);
+  const nia = await lerAjustesDaNia(app.db);
+  if (!nia.ligada) throw new BadRequest('O botão da NIA está desligado (Painéis › Ajustes › IA).');
+  const e = await carregar(app, ator, ref);
+  if (e.painel.tipo === 'vendas') throw new BadRequest('A NIA preenche os chamados: a negociação não tem a NIA.');
+  const eventos = await app.db.select().from(ticketEvents)
+    .where(and(eq(ticketEvents.ticketId, e.t.id), eq(ticketEvents.kind, 'campo'))).orderBy(asc(ticketEvents.createdAt));
+  const r = resumoDaNia({ etiquetas: e.t.tags, historico: eventos.map((x) => eventoParaTela(x, e.ctx)) }, nia, e.agora);
+  if (!r.podePedir) {
+    throw new BadRequest(`A NIA foi chamada às ${horaLocal(r.pedidaEm!)} e ainda está preenchendo. Se ela não responder em ${NIA_PEDIR_DE_NOVO_MINUTOS} minutos, dá para pedir de novo.`);
+  }
+  // o pedido parado (a etiqueta de pedir já está): ela sai e volta, para o n8n receber o aviso de novo
+  let etiquetas = e.t.tags;
+  if (temAEtiqueta(etiquetas, nia.pedir)) {
+    etiquetas = etiquetas.filter((x) => chaveDaEtiqueta(x) !== chaveDaEtiqueta(nia.pedir));
+    await alterar(app, ator, e.t.id, { etiquetas });
+  }
+  const feito = await alterar(app, ator, e.t.id, { etiquetas: etiquetasAoPedirANia(etiquetas, nia) });
+  return { ...feito, resumo: `Pediu à NIA para preencher ${e.t.code}${r.situacao === 'nunca' ? '' : ' de novo'}` };
 }
 
 // =====================================================================

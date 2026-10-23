@@ -5,15 +5,15 @@
  * Quem vê um evento é quem vê um dos painéis dele: o pedido do Luan — "se eu só sou participante do
  * painel do suporte eu só vou ver a do suporte; se eu sou do painel do adm, do suporte e do dev, vejo de
  * todos". Em cima, quem está fora do escritório hoje; os filtros (os painéis — desde o 2.0.2, um botão
- * com a lista de caixas de marcar —, só os meus, a busca e os tipos, que são também a legenda das cores)
- * ficam no endereço, como nos chamados (o filtro de cliente saiu no 2.0.2: "n precisa de filtro por
+ * com a lista de caixas de marcar —, os tipos — o mesmo botão desde o 2.1, com a cor de cada um —, só os
+ * meus e a busca) ficam no endereço, como nos chamados (o filtro de cliente saiu no 2.0.2: "n precisa de filtro por
  * cliente"; a busca acha o cliente); a visão Mês (a grade, com o dia escolhido ao lado ou embaixo) e a
  * Lista (o mês dia a dia). O evento abre numa janela (Janela.tsx); quem trabalha nos chamados cria e
  * muda; quem cuida deles muda os tipos. O endereço com `?evento=` (o lembrete do sininho e do WhatsApp,
  * 2.0.2) abre o calendário no dia, com a janela do evento.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, LayoutGrid, List, Plus, SlidersHorizontal, SquareKanban, Tags, UserRoundCheck } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, LayoutGrid, List, Plus, Shapes, SlidersHorizontal, SquareKanban, Tags, UserRoundCheck } from 'lucide-react';
 import {
   DIAS_DA_SEMANA, diaCurto, diaPorExtenso, diasDaGradeDoMes, diaValido, eventosDoDia, filtrarEventos, hojeNoCalendario, mesDoDia, ordemDoDia,
   somarDias, somarMeses, textoDoHorario, textoDoMes, textoDoPeriodo, tipoDoEvento,
@@ -110,7 +110,8 @@ export function Calendario() {
               </button>
             ))}
           </div>
-          {op.podeCuidar && <button type="button" className="btn-secondary btn-sm" onClick={() => setTipos(true)} id="calendario-tipos"><Tags size={15} /> Tipos</button>}
+          {/* cuidar dos tipos (o nome, a cor, os lembretes); o filtro dos tipos é o botão Tipos dos filtros */}
+          {op.podeCuidar && <button type="button" className="btn-secondary btn-sm" onClick={() => setTipos(true)} id="calendario-tipos" title="O nome, a cor e os lembretes de cada tipo"><Tags size={15} /> Editar tipos</button>}
           {op.podeEditar && <button type="button" className="btn-primary" onClick={() => novo(diaEscolhido)} id="calendario-novo"><Plus size={16} /> Novo evento</button>}
         </div>
       </div>
@@ -159,50 +160,42 @@ function BotaoDeFiltro({ ativo, onClick, children, titulo, id }: { ativo: boolea
 function Filtros({ op, filtro, mudar, eventos, filtrando, aberto }: {
   op: CalendarioOpcoes; filtro: FiltroDoCalendario; mudar: (o: Record<string, string | null>) => void; eventos: EventoDoCalendario[]; filtrando: boolean; aberto: boolean;
 }) {
-  // um clique num tipo mostra só ele; outro clique soma ou tira
-  const alternar = (atual: string[], id: string) => (atual.includes(id) ? atual.filter((x) => x !== id) : [...atual, id]).join(',') || null;
   // os painéis: um botão que abre a lista com caixas de marcar (2.0.2, o pedido do Luan: "clicar em painéis e
   // aparecer uma multisseleção para eu selecionar os que eu quero ver"); nada marcado = todos
   const paineis = [{ opcoes: op.paineis.map((p) => ({ key: p.id, label: p.nome, classeDoPonto: PONTO_DO_PAINEL[p.cor as CorPainel] ?? 'bg-line-strong' })) }];
   const nomesDosEscolhidos = op.paineis.filter((p) => filtro.paineis.includes(p.id)).map((p) => p.nome);
-  // a legenda: os tipos ativos e os desativados que ainda aparecem no mês
-  const tipos = op.tipos.filter((t) => t.ativo || eventos.some((e) => e.tipoId === t.id));
+  // os tipos (2.1, o pedido do Luan: "esse filtro de tags tem q ser rolagem tipo o de paineis"): o mesmo botão
+  // com a lista, cada tipo com a bolinha da cor dele (a legenda das cores fica ali); os ativos e os desativados que
+  // ainda aparecem no mês, e o marcado que saiu da lista (para dar para desmarcar)
+  const tipos = op.tipos.filter((t) => t.ativo || eventos.some((e) => e.tipoId === t.id) || filtro.tipos.includes(t.id));
+  const opcoesDosTipos = [{ opcoes: tipos.map((t) => ({ key: t.id, label: t.ativo ? t.nome : `${t.nome} (desativado)`, classeDoPonto: AMOSTRA_DA_COR[t.cor] })) }];
+  const tiposEscolhidos = tipos.filter((t) => filtro.tipos.includes(t.id)).map((t) => t.nome);
   return (
-    <div className={`${aberto ? 'flex' : 'hidden'} sm:flex flex-col gap-2 mb-3`} id="calendario-filtros">
-      <div className="flex flex-wrap items-center gap-2">
-        {op.paineis.length > 1 && (
-          <div id="calendario-paineis" className="contents">
-            <FiltroEmBotao icone={SquareKanban} nome="Painéis" grupos={paineis} escolhidos={filtro.paineis} alinhar="esquerda" vazio="Nenhum marcado: aparecem os eventos de todos."
-              onChange={(v) => mudar({ painel: v.length && v.length < op.paineis.length ? v.join(',') : null })}
-              dica={nomesDosEscolhidos.length ? `Mostrando os eventos de: ${nomesDosEscolhidos.join(', ')}` : 'Mostrando os eventos de todos os painéis que você vê'} />
-          </div>
-        )}
-        <BotaoDeFiltro ativo={!!filtro.pessoa} onClick={() => mudar({ meus: filtro.pessoa ? null : '1' })} titulo="Só os eventos de que você participa" id="calendario-so-meus">
-          <UserRoundCheck size={13} aria-hidden /> Só os meus
-        </BotaoDeFiltro>
-        <CampoBusca valor={filtro.busca} onChange={(v) => mudar({ q: v || null })} placeholder="Buscar no calendário" titulo="Busca no título, no cliente, no local, na observação, no chamado e nas pessoas"
-          className="flex-1 min-w-[180px] max-w-[320px]" id="calendario-busca" />
-        {filtrando && (
-          <button type="button" className="btn-ghost btn-sm text-muted" onClick={() => mudar({ painel: null, tipo: null, meus: null, cliente: null, q: null, cancelados: null })}>Limpar filtros</button>
-        )}
+    <div className={`${aberto ? 'flex' : 'hidden'} sm:flex flex-wrap items-center gap-2 mb-3`} id="calendario-filtros">
+      {op.paineis.length > 1 && (
+        <div id="calendario-paineis" className="contents">
+          <FiltroEmBotao icone={SquareKanban} nome="Painéis" grupos={paineis} escolhidos={filtro.paineis} alinhar="esquerda" vazio="Nenhum marcado: aparecem os eventos de todos."
+            onChange={(v) => mudar({ painel: v.length && v.length < op.paineis.length ? v.join(',') : null })}
+            dica={nomesDosEscolhidos.length ? `Mostrando os eventos de: ${nomesDosEscolhidos.join(', ')}` : 'Mostrando os eventos de todos os painéis que você vê'} />
+        </div>
+      )}
+      <div id="calendario-tipos-filtro" className="contents">
+        <FiltroEmBotao icone={Shapes} nome="Tipos" grupos={opcoesDosTipos} escolhidos={filtro.tipos} alinhar="esquerda" largura="w-[240px]" vazio="Nenhum marcado: aparecem os eventos de todos os tipos."
+          onChange={(v) => mudar({ tipo: v.length && v.length < tipos.length ? v.join(',') : null })}
+          dica={tiposEscolhidos.length ? `Mostrando só: ${tiposEscolhidos.join(', ')}` : 'Mostrando os eventos de todos os tipos (a lista tem a cor de cada um)'} />
       </div>
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Tipos (a legenda das cores)" id="calendario-legenda">
-        {tipos.map((t) => {
-          const ligado = filtro.tipos.includes(t.id);
-          const apagado = filtro.tipos.length > 0 && !ligado;
-          return (
-            <button key={t.id} type="button" aria-pressed={ligado} onClick={() => mudar({ tipo: alternar(filtro.tipos, t.id) })} data-tipo={t.id}
-              title={ligado ? `Tirar ${t.nome} do filtro` : `Mostrar ${filtro.tipos.length ? 'também ' : 'só '}${t.nome}`}
-              className={`chip rounded-full border pl-1.5 pr-2.5 py-0.5 text-[12px] ${apagado ? 'border-line bg-surface text-muted' : `${FUNDO_DO_TIPO[t.cor]} ${ligado ? BORDA_DO_TIPO[t.cor] : 'border-transparent'}`}`}>
-              <span className={`w-2 h-2 rounded-full ${AMOSTRA_DA_COR[t.cor]} ${apagado ? 'opacity-40' : ''}`} aria-hidden />{t.nome}
-            </button>
-          );
-        })}
-        <label className="ml-auto inline-flex items-center gap-1.5 text-[12.5px] text-ink-2 cursor-pointer select-none">
-          <input type="checkbox" className="w-4 h-4 accent-[var(--accent)]" checked={filtro.cancelados} onChange={(e) => mudar({ cancelados: e.target.checked ? null : '0' })} id="calendario-cancelados" />
-          Mostrar os cancelados
-        </label>
-      </div>
+      <BotaoDeFiltro ativo={!!filtro.pessoa} onClick={() => mudar({ meus: filtro.pessoa ? null : '1' })} titulo="Só os eventos de que você participa" id="calendario-so-meus">
+        <UserRoundCheck size={13} aria-hidden /> Só os meus
+      </BotaoDeFiltro>
+      <CampoBusca valor={filtro.busca} onChange={(v) => mudar({ q: v || null })} placeholder="Buscar no calendário" titulo="Busca no título, no cliente, no local, na observação, no chamado e nas pessoas"
+        className="basis-full sm:basis-auto sm:flex-1 sm:min-w-[180px] sm:max-w-[320px]" id="calendario-busca" />
+      <label className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-2 cursor-pointer select-none">
+        <input type="checkbox" className="w-4 h-4 accent-[var(--accent)]" checked={filtro.cancelados} onChange={(e) => mudar({ cancelados: e.target.checked ? null : '0' })} id="calendario-cancelados" />
+        Mostrar os cancelados
+      </label>
+      {filtrando && (
+        <button type="button" className="btn-ghost btn-sm text-muted" onClick={() => mudar({ painel: null, tipo: null, meus: null, cliente: null, q: null, cancelados: null })}>Limpar filtros</button>
+      )}
     </div>
   );
 }

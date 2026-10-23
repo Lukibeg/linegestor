@@ -40,8 +40,14 @@ Suporte) fica com um papel sem o **Ver os chamados**.
   quadro, leva aos outros).
 - **A tela dos painéis** mostra o cartão do Comercial: quanto está **em negociação** (e quantas), o
   **ganho no mês** (e quantas ganhas e perdidas), **sem dono**, as **suas** e a **barra da meta**.
-- **O quadro**: cada coluna soma as mensalidades das negociações dela, e a de maior mensalidade vem
-  primeiro. Arraste o cartão para mudar de etapa.
+- **O quadro**: cada coluna soma as mensalidades das negociações dela. Arraste o cartão para mudar de etapa.
+- **A ordem de cada coluna é sua (2.1)**: arraste a negociação para cima ou para baixo na coluna, como
+  arrasta para outra etapa — uma linha azul mostra onde ela vai cair, e a ordem fica guardada para todo mundo.
+  Arrastando para outra etapa, ela cai onde a linha mostra. No celular (que não arrasta), o **Mover** do cartão
+  tem **Subir** e **Descer**. A negociação que chega numa etapa sem lugar escolhido (pelo Mover, pela ficha, pelo
+  n8n) aparece no alto da coluna; sem ninguém arrumar, a de maior mensalidade vem primeiro. No Ganho e no
+  Perdido, a mais recente vem primeiro (lá a ordem não muda). Mudar a ordem não conta como atividade na
+  negociação nem entra no histórico dela; fica na auditoria.
 - **A lista**: a mensalidade no lugar da prioridade e do prazo; **Em aberto**, **Ganhas e perdidas** ou
   **Todas**; **Exportar (CSV)** leva a mensalidade, a ativação, o resultado e o motivo da perda.
 - **Meu dia**, **observar**, **citar** um colega (@) e os **avisos** funcionam como nos chamados.

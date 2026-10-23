@@ -100,6 +100,7 @@ function Rotas() {
         <Route path="/atendimento/:codigo" element={<Protegido><FichaDoChamado /></Protegido>} />
         {/* o Suporte no menu (2.0.2): o atalho para o quadro do painel Suporte */}
         <Route path="/suporte" element={<Protegido><IrParaOSuporte /></Protegido>} />
+        <Route path="/suporte/relatorios" element={<Protegido><IrParaOSuporte parte="relatorios" /></Protegido>} />
         {/* o Comercial no menu (2.0.1): o atalho para o quadro e o relatório do painel de Vendas */}
         <Route path="/comercial" element={<Protegido><IrParaOComercial parte="quadro" /></Protegido>} />
         <Route path="/comercial/relatorio" element={<Protegido><IrParaOComercial parte="relatorio" /></Protegido>} />

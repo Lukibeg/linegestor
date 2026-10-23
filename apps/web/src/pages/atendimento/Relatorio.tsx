@@ -19,6 +19,9 @@
  *  - **O funil**: das que entraram no período, quantas chegaram a cada etapa (e a porcentagem das que
  *    entraram), quantas se perderam em cada uma e quantas foram ganhas.
  *
+ * Os painéis de chamados (os de Gestão) têm, nesta mesma vista, os Relatórios deles (2.1, decisão 0055:
+ * `relatorios/index.tsx`).
+ *
  * A regra dos gráficos do sistema vale aqui: o número sempre escrito, e clicar mostra as negociações por
  * trás dele (numa janela; o código abre a negociação). As contas moram no `@gestor/shared` (`vendas.ts`):
  * o servidor e a prévia contam igual.
@@ -37,6 +40,7 @@ import { CabecalhoAtendimento, ChipResultado, LinkDoChamado, useOpcoes } from '.
 import { ChipDoSinal } from '../comercial/simulador/comum.js';
 import { CabecalhoDoPainel } from './painel.js';
 import { useFiltrosNoEndereco } from './quadro/filtros.js';
+import { RelatoriosDoPainelDeChamados } from './relatorios/index.js';
 
 const nf = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 const pct = (n: number | null) => (n === null ? '—' : `${nf(n)}%`);
@@ -63,8 +67,8 @@ export function RelatorioDoPainel() {
         <Vazio titulo="Painel não encontrado" texto="Ele pode ter saído, ou ser de acesso escolhido sem você na lista."
           acao={<Link to="/atendimento" className="btn-secondary"><ArrowLeft size={15} /> Ver os painéis</Link>} />
       ) : painel.tipo !== 'vendas' ? (
-        <Vazio titulo="O relatório de vendas é dos painéis de Vendas" texto={`O ${painel.nome} é um painel de chamados: os números dele estão nos Relatórios do Suporte.`}
-          acao={<Link to={`/atendimento/quadro?painel=${encodeURIComponent(painel.id)}`} className="btn-secondary"><ArrowLeft size={15} /> Voltar ao quadro</Link>} />
+        // os painéis de chamados têm os Relatórios deles (2.1, decisão 0055)
+        <RelatoriosDoPainelDeChamados key={painel.id} painel={painel} opcoes={opcoes.data!} />
       ) : (
         <RelatorioDeVendasDoPainel key={painel.id} painel={painel} opcoes={opcoes.data!} />
       )}

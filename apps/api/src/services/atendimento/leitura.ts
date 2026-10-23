@@ -18,7 +18,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  compararNegociacoes, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
+  compararNoQuadroDeVendas, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugeridaDoPainel,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
   type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
@@ -34,7 +34,7 @@ import { lerAjustes as lerAjustesLineChat } from '../linechat.js';
 import { tipoDaImagem } from '../portal.js';
 import { listarContatos } from '../clients.js';
 import {
-  carregarCartoes, carregarContexto, carregarPaineis, cartoesDe, chamadoVisivel, eventoParaTela, pessoaCurta, podeCuidar, podeTrabalhar, podeVerPainel,
+  carregarCartoes, carregarContexto, carregarPaineis, cartoesDe, chamadoVisivel, eventoParaTela, lerAjustesDaNia, lerModeloDaConversa, pessoaCurta, podeCuidar, podeTrabalhar, podeVerPainel,
   quemVeOPainel, type Ator, type Contexto, type LinhaChamado,
 } from './contexto.js';
 import { whatsAppPronto } from './whatsapp.js';
@@ -113,7 +113,7 @@ export async function opcoes(app: FastifyInstance, ator: Ator): Promise<OpcoesAt
   const ctx = await carregarContexto(db);
   const paineis = ctx.paineis.filter((p) => podeVerPainel(p, ator));
   const ids = paineis.map((p) => p.id);
-  const [pessoas, prods, ops, usadas, whatsapp, ia, lc] = await Promise.all([
+  const [pessoas, prods, ops, usadas, whatsapp, ia, lc, nia, modeloDaConversa] = await Promise.all([
     db.select({ id: users.id, nome: users.name }).from(users).where(eq(users.active, true)).orderBy(asc(users.name)),
     db.select({ id: products.id, nome: products.name, cor: products.color }).from(products)
       .where(and(isNull(products.deletedAt), eq(products.active, true))).orderBy(asc(products.sortOrder), asc(products.name)),
@@ -123,6 +123,8 @@ export async function opcoes(app: FastifyInstance, ator: Ator): Promise<OpcoesAt
     whatsAppPronto(db),
     situacaoIa(db),
     lerAjustesLineChat(db),
+    lerAjustesDaNia(db),
+    lerModeloDaConversa(db),
   ]);
   // os assuntos em ordem de árvore, painel por painel (a tela monta o "Ramal › Configuração")
   const assuntos: Assunto[] = paineis.flatMap((p) => emOrdemDeArvore(ctx.assuntos.filter((a) => a.painelId === p.id)).map(({ profundidade: _p, ...a }) => a));
@@ -138,7 +140,11 @@ export async function opcoes(app: FastifyInstance, ator: Ator): Promise<OpcoesAt
     prazos: ctx.prazos,
     whatsapp,
     ia: { ativa: ia.ativa, modelo: ia.modelo || null },
+    // o botão da NIA na ficha (2.1): as etiquetas do combinado com o fluxo do n8n; desligado, nada
+    nia: nia.ligada ? { pedir: nia.pedir, pronto: nia.pronto, erro: nia.erro } : null,
     linechatUrl: lc.valor.ativo && lc.valor.appUrl ? lc.valor.appUrl.replace(/\/+$/, '') : null,
+    // o modelo do link da conversa: a ficha e o Abrir chamado acham a sessão no link colado (2.1)
+    linkConversa: modeloDaConversa.includes('{sessao}') ? modeloDaConversa : null,
     pode: { trabalhar: podeTrabalhar(ator), cuidar: podeCuidar(ator), integrar: ator.tipo === 'pessoa' && ator.permissoes.includes('admin.manage') },
   };
 }
@@ -153,9 +159,10 @@ export type FiltrosQuadro = Pick<Partial<FiltrosAtendimento>, 'responsavel' | 'p
 const maisRecente = (a: string | null, b: string | null) => (b ?? '').localeCompare(a ?? '');
 
 /**
- * Uma coluna por etapa, na ordem do painel. Na entrada e no andamento, o mais urgente primeiro; no
- * Resolvido, o mais recente; no Fechado, só os 30 fechados mais recentes (o resto conta como
- * "escondidos": a tela leva para a lista).
+ * Uma coluna por etapa, na ordem do painel. Na entrada e no andamento, o mais urgente primeiro (no painel de
+ * Vendas, a ordem que a equipe deixou arrastando — 2.1 —, com a que chegou agora no alto); no Resolvido, o
+ * mais recente; no Fechado, só os 30 fechados mais recentes (o resto conta como "escondidos": a tela leva para a
+ * lista).
  */
 export async function quadro(app: FastifyInstance, ator: Ator, f: FiltrosQuadro): Promise<QuadroAtendimento> {
   const ctx = await carregarContexto(app.db);
@@ -164,12 +171,12 @@ export async function quadro(app: FastifyInstance, ator: Ator, f: FiltrosQuadro)
   const lista = filtrarCartoes(doPainel, { ...f, painel: painel.id, situacao: 'todos' }, { euId: ator.id, assuntos: ctx.assuntos });
   const colunas = painel.etapas.map((etapa) => {
     const daqui = lista.filter((c) => c.etapaId === etapa.id);
-    // a negociação (painel de Vendas) não tem prazo: a de maior valor primeiro
+    // a negociação (painel de Vendas) não tem prazo: a ordem que a equipe deixou (e, sem ela, a de maior valor primeiro)
     const ordenados = etapa.tipo === 'resolvido'
       ? [...daqui].sort((a, b) => maisRecente(a.resolvidoEm ?? a.ultimaAtividadeEm, b.resolvidoEm ?? b.ultimaAtividadeEm))
       : etapa.tipo === 'fechado'
         ? [...daqui].sort((a, b) => maisRecente(a.fechadoEm ?? a.ultimaAtividadeEm, b.fechadoEm ?? b.ultimaAtividadeEm))
-        : [...daqui].sort(painel.tipo === 'vendas' ? compararNegociacoes : compararUrgencia);
+        : [...daqui].sort(painel.tipo === 'vendas' ? compararNoQuadroDeVendas : compararUrgencia);
     const mostrados = etapa.tipo === 'fechado' ? ordenados.slice(0, FECHADOS_NO_QUADRO) : ordenados;
     return { etapa, chamados: mostrados.map(semBusca), total: daqui.length, escondidos: daqui.length - mostrados.length, valor: daqui.reduce((t, c) => t + (c.valor ?? 0), 0) };
   });

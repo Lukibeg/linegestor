@@ -145,7 +145,7 @@ export function RaioX({ clienteId, filtros, naFicha = false }: { clienteId: stri
       <div className="text-[12.5px] text-muted">
         {r.opcoes.length
           ? <>No LineChat, {r.campoCliente ?? 'Cliente'}: {r.opcoes.map((o) => <Chip key={o} tone="muted" className="mr-1 font-normal">{o}</Chip>)} · de {diaCurto(r.de)} a {diaCurto(r.ate)}</>
-          : <>Nenhuma opção do {r.campoCliente ?? 'Cliente'} no LineChat está ligada a este cliente. Quem administra liga em Suporte › Relatórios, na aba Relatórios › Clientes › Ligar clientes.</>}
+          : <>Nenhuma opção do {r.campoCliente ?? 'Cliente'} no LineChat está ligada a este cliente. Quem administra liga em Suporte › Legado do Helena, na aba Relatórios › Clientes › Ligar clientes.</>}
       </div>
       {!!r.opcoes.length && (
         <>

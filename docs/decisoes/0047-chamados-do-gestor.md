@@ -238,7 +238,10 @@ afetados.
   LineChat.
 - **Ficaram para depois do 2.0** (o Luan mandou subir em 14/10): os 20 relatórios e o envio diário
   lendo os chamados novos (por ora leem a cópia do LineChat, em Suporte › Relatórios) e a Base de
-  conhecimento ligada aos chamados novos (o livrinho e o "Registrar na base").
+  conhecimento ligada aos chamados novos (o livrinho e o "Registrar na base"). **Revisto no 2.1
+  (decisão 0055):** os chamados novos ganharam um módulo de relatórios próprio (a vista Relatórios de cada
+  painel, Suporte › Relatórios), e os 20 ficaram como **Suporte › Legado do Helena**, sobre a cópia do
+  LineChat; o envio diário continua lendo a cópia até a virada.
 - **O número do patch**: o trabalho foi feito e revisado na prévia como **1.10** (é o nome dos commits
   e da branch de trabalho) e subiu como **2.0** — o Luan, em 14/10: "pode subir tudo como versão 2.0".
 
@@ -457,3 +460,56 @@ eram as mesmas em todos os painéis; o campo não mudava de tipo), e as palavras
   **Indicação** (texto) de cada painel de Vendas para essa lista — o que já tinha sido escrito virou opção
   (sem repetir, sem ligar para maiúscula) e cada negociação ficou com a sua; o id do campo não muda. Na tela,
   o tipo continua sem mudar.
+
+## Revisto no 2.1 (23/10/2026): o botão da NIA na ficha e a conversa ligada à mão
+
+Dois pedidos do Luan no mesmo dia, com o 2.0.4 no ar.
+
+- **O botão da NIA** (*"para eu fazer a ia preencher o chamado hoje eu tenho que etiquetar, só que isso eu acho
+  meio gambiarra, devíamos ter um botão aqui para mandar ela preencher e se já tiver sido feito ele fica com
+  alguma marcação dizendo que já foi feito e se eu clicar ele me mostra algumas informações como data"*), na
+  barra de ações da ficha, ao lado do Preencher com IA:
+  - **Por baixo é a mesma etiqueta**: o botão põe a de pedir (NIA - PREENCHER) e tira a de pronto e a de erro
+    (`etiquetasAoPedirANia`); o `chamado.alterado` vai ao n8n com ela, como quando a equipe etiquetava — **o
+    fluxo da NIA não muda**. A rota é `POST /api/atendimento/chamados/:id/nia` (`tickets.work`): o histórico
+    mostra a troca das etiquetas por quem pediu, e a auditoria diz *"Pediu à NIA para preencher SUP-12"* (ou
+    *"… de novo"*). Escolhido assim para não tocar no fluxo do n8n, que roda em produção.
+  - **O botão diz em que pé está** (`resumoDaNia`, em `packages/shared/src/nia.ts`), lido das etiquetas e do
+    histórico — vale também para o chamado etiquetado à mão antes do botão: **Preencher com a NIA** (nunca
+    pedida), **NIA preenchendo…** (a ficha se relê de 5 em 5 segundos, por até 15 minutos), **NIA preencheu**
+    (verde) e **NIA não preencheu** (vermelho). O clique abre a janelinha: quando ela respondeu e por qual
+    chave, quando foi pedida e por quem, os campos que ela mudou (os que a chave dela mexeu entre o pedido e 2
+    minutos depois da resposta; as etiquetas só quando ela pôs outra além das do combinado), quantas
+    anotações fez (a Situação e o Diagnóstico) e quantas vezes já preencheu; e **Preencher de novo** (ou
+    **Tentar de novo**). Com a ficha aberta, a resposta chega com um aviso (*"A NIA preencheu o SUP-12: Título
+    e Descrição"*). A etiqueta sem a data no histórico (de antes do Gestor) mostra a situação sem as datas.
+  - **Pedir de novo, só depois de 10 minutos** sem resposta (`NIA_PEDIR_DE_NOVO_MINUTOS`): antes, o servidor
+    recusa (*"A NIA foi chamada às 10:41 e ainda está preenchendo…"*). O pedido parado sai e volta — dois
+    avisos ao n8n, e o fluxo age no segundo.
+  - **Sem a conversa do LineChat**, o botão avisa antes de pedir (a NIA lê só o título, o relato e a
+    descrição) e oferece **Ligar a conversa** (abaixo); com ela, o clique já pede.
+  - **Painéis › Ajustes › IA** ganhou o cartão **A NIA na ficha**: liga e desliga o botão e diz as três
+    etiquetas (pedir, pronto e erro; de fábrica, as do Helena; as três diferentes, sem contar maiúscula e
+    acento). Guardado em `settings.atendimento-integracoes` (`nia`), junto dos sites e do link da conversa;
+    só a administração (`admin.manage`) muda, e vai para a auditoria. As opções da tela trazem `nia` (nula
+    com o botão desligado). A negociação (o painel de Vendas) não tem a NIA.
+- **A conversa ligada à mão** (*"mais de 99% são receptivos, mas alguns são ativos ... a gente quer poder abrir
+  chamado manualmente, como já faz. Só que também tem que ter a possibilidade de associar uma sessão ... para
+  que a IA consiga ler ... Eu posso editar ou colocar o link de alguma outra conversa"*):
+  - No **Abrir chamado**, o campo **Conversa no LineChat** (opcional, junto do contato); na **ficha**, no
+    cartão do contato, **Ligar a conversa do LineChat** (o chamado sem conversa) e **Trocar** (com ela), com
+    **Tirar a conversa**. Cola-se o link da conversa (o endereço da conversa aberta no LineChat) ou o código
+    da sessão; a tela diz logo a sessão que achou ou o que está errado.
+  - **Quem acha a sessão no link é o servidor** (`sessaoDaConversa`, em `@gestor/shared`; a tela usa a mesma):
+    pelo modelo do link das Integrações ("https://…/{sessao}": o pedaço no lugar do {sessao}); sem modelo, ou
+    com outro endereço, pelo código de sessão do LineChat (um uuid) que estiver no link; o código sozinho
+    também vale (e o "sessão 8385…" copiado da ficha). O uuid fica em minúsculas, como o LineChat manda. O
+    link sem a sessão, o com dois códigos, o texto com espaço e o código curto demais são recusados, dizendo
+    o que colar. As opções da tela trazem o modelo (`linkConversa`).
+  - **Grava na mesma `tickets.session_id` do robô**: a ficha mostra o link; a NIA (o `sessaoId` do `GET
+    /integracao/chamados/:ref`) e o Preencher com IA leem a conversa; e **o robô acha o chamado ativo pela
+    conversa** — a resposta do cliente na mesma conversa vira anotação nele, sem abrir outro. O histórico diz
+    *"mudou Conversa no LineChat de … para …"*; a auditoria e o aviso ao n8n também (`mudancas:
+    ['sessaoId']`); o n8n liga pela chave (`PATCH … { sessaoId }`).
+  - **O robô, o n8n e o agendado, ao abrir, mandam o código como o LineChat deu**, e ele fica como veio: ler o
+    link é só para quem abre na tela (o robô acha o chamado aberto da conversa pelo código exato).

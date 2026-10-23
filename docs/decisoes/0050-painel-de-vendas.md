@@ -237,3 +237,35 @@ No documento de 21/10 (o "pacote de melhorias"), com o 2.0.2 no ar:
   Vendas com o histórico, as etapas de lá e a mensalidade igual ao Valor atribuído. As etiquetas dos cards
   entram nas do painel que recebe, e a Indicação do Helena cai na lista da Indicação, que ganha as opções
   que não tinha.
+
+## Revisto no 2.1 (23/10/2026): a ordem à mão no quadro e as colunas iguais
+
+No documento de 23/10 (os pedidos com os prints do quadro do Comercial):
+
+- **A ordem à mão** (*"quero poder trocar a ordem aqui, pra cima ou pra baixo da mesma forma que mudo de fase
+  arrastando"*). Nas etapas abertas do painel de Vendas (a entrada e o andamento), arrastar o cartão dentro da
+  coluna muda o lugar dele — uma linha mostra onde ele cai —, e o arrasto para outra etapa cai onde a linha
+  mostra. No **Mover** do cartão (o celular e o teclado não arrastam), **Subir** e **Descer**. O lugar fica
+  guardado na negociação (`tickets.board_position`, a migração `0025_ordem_no_quadro`) e vale para todo mundo.
+  A cada arrasto, a etapa inteira é numerada (1, 2, 3…) na ordem que o quadro mostra (`ordemDepoisDeArrastar`),
+  com as linhas da etapa presas até o fim (dois arrastos ao mesmo tempo vão um depois do outro).
+- **A que chega na etapa aparece no alto.** Mudar de etapa apaga o lugar: o mover, o Ganho e o Perdido, a
+  reabertura, a troca de painel, a etapa que sai do painel e o Trazer do Helena que muda a etapa. A negociação
+  chega no alto da etapa nova, pela regra de sempre (a de maior mensalidade, depois a mais antiga), antes das
+  arrumadas (`compararNoQuadroDeVendas`). Sem ninguém arrumar, o quadro fica como era. O mover leva o lugar
+  quando foi arrastado para ele (`depoisDe`); se a de cima saiu da etapa enquanto a pessoa arrastava, ela chega
+  no alto, e o mover não é recusado por isso.
+- **Só onde faz sentido.** No Suporte (e nos outros painéis de Gestão), o quadro continua pondo o mais urgente
+  primeiro: o prazo manda. No Ganho e no Perdido, o mais recente. O servidor recusa a ordem à mão fora das
+  etapas abertas do painel de Vendas (400, `ordemAMao`).
+- **É arrumação, não mudança na negociação.** Não mexe na última atividade nem no histórico dela; vai para a
+  auditoria (*"Pôs COM-12 em 2º lugar em Proposta enviada (a ordem do quadro)"*), só quando o lugar muda. Se a
+  negociação de cima saiu da etapa, o servidor diz que o quadro mudou (409), e a tela relê. A rota:
+  `POST /api/atendimento/chamados/:id/posicao` (`{ depoisDe }`, nulo é o alto), de quem trabalha nos chamados.
+- **As colunas da mesma largura** (*"as colunas aqui estão com a largura desigual"*). A coluna com um texto
+  comprido numa linha só (o título cortado com "…", o nome da etapa) alargava até o máximo, e as outras ficavam
+  no mínimo. Agora todas têm a mesma largura, em todos os painéis; o nome comprido da etapa quebra em duas linhas.
+
+**Escolhas que fiz.** A ordem à mão é só do painel de Vendas: no Suporte, arrumar à mão esconderia o que vence
+primeiro (dá para estender a um painel de Gestão, se quiser). A negociação que chega numa etapa fica no alto (é a
+novidade da coluna), e não no fim.

@@ -88,7 +88,7 @@ export function FechamentoDoMes({ r, primeiroDia, aoMes, abrir, filtrosEscritos 
 
         <footer className="text-[11.5px] text-muted border-t border-line pt-2 flex flex-wrap justify-between gap-2">
           <span>{filtrosEscritos.length ? `Filtros: ${filtrosEscritos.join(' · ')}` : 'Todos os chamados do painel de suporte (sem filtro).'}</span>
-          <span>Ingline Gestão · Suporte › Relatórios</span>
+          <span>Ingline Gestão · Suporte › Legado do Helena</span>
         </footer>
       </article>
     </div>

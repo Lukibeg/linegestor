@@ -164,6 +164,17 @@ describe('o histórico de um card vira o da negociação', () => {
     expect(h.eventos[1]!.dados.valor).toBe(99_000);
   });
 
+  it('sem a Conclusão (o card não veio inteiro), o ganho fica no dia em que foi marcado, não na última mudança do card (2.1)', () => {
+    const h = historicoDoCard(card({
+      id: 'sc', situacao: 'WON', etapa: 'Cliente na base', valor: 99_000, concluidoEm: null, alteradoEm: '2026-09-20T12:00:00Z',
+      logs: [log('2026-03-01T10:00:00Z', 'Item criado por Luan em Lead Novo'), log('2026-03-10T15:00:00Z', 'Item marcado como "Ganho"'), log('2026-09-20T12:00:00Z', 'A etiqueta P/R Cliente foi adicionada')],
+    }), opcoes);
+    expect(h).toMatchObject({ resultado: 'ganho', fechadoEm: '2026-03-10T15:00:00.000Z' });
+    // sem o histórico e sem a Conclusão, sobra a última mudança do card
+    const sem = historicoDoCard(card({ id: 'sd', situacao: 'WON', etapa: 'Cliente na base', concluidoEm: null, alteradoEm: '2026-09-20T12:00:00Z', logs: null }), opcoes);
+    expect(sem.fechadoEm).toBe('2026-09-20T12:00:00.000Z');
+  });
+
   it('o histórico que não chega aonde o card está é completado pelo próprio card', () => {
     // ganho no Helena, sem a linha do ganho
     const a = historicoDoCard(card({ id: 'x', situacao: 'WON', etapa: 'Cliente na base', concluidoEm: '2026-08-01T15:00:00Z', logs: [log('2026-07-01T10:00:00Z', 'Item criado por Luan em Lead Novo')] }), opcoes);

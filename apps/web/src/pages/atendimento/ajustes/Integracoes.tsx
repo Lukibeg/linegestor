@@ -743,6 +743,8 @@ function CartaoLinkConversa({ inicial }: { inicial: string }) {
       const r = await api.atendimento.salvarLinkConversa(t);
       setModelo(r.linkConversa);
       qc.setQueryData<IntegracoesTela>(CHAVE, (x) => (x ? { ...x, linkConversa: r.linkConversa } : x));
+      // a ficha e o Abrir chamado leem o modelo das opções (o link colado à mão, 2.1)
+      void qc.invalidateQueries({ queryKey: ['atendimento', 'opcoes'] });
       toast.push('ok', r.linkConversa ? 'Link salvo: a ficha do chamado já mostra a conversa no LineChat.' : 'Link tirado: a ficha não mostra mais a conversa.');
     } catch (e) { setErro(erroLegivel(e)); } finally { setSalvando(false); }
   };
@@ -752,9 +754,10 @@ function CartaoLinkConversa({ inicial }: { inicial: string }) {
       situacao={inicial ? <Chip tone="ok">a ficha mostra o link</Chip> : <Chip tone="muted">sem link</Chip>}>
       <Explicacao>
         <p>
-          É o que faz a ficha do chamado ter o link <b>"Conversa no LineChat"</b> (quando o chamado sabe a conversa: o robô, o botão).
-          Abra uma conversa no LineChat, copie o endereço da barra e troque o número da conversa por <span className="font-mono">{'{sessao}'}</span>.
-          Vazio, a ficha não mostra o link.
+          É o que faz a ficha do chamado ter o link <b>"Conversa no LineChat"</b> (quando o chamado sabe a conversa: o robô, o botão,
+          ou o link colado à mão no chamado ativo). Abra uma conversa no LineChat, copie o endereço da barra e troque o número da
+          conversa por <span className="font-mono">{'{sessao}'}</span>. Vazio, a ficha não mostra o link (o link colado continua
+          valendo pelo código da sessão que estiver nele).
         </p>
       </Explicacao>
       <form autoComplete="off" className="flex flex-col gap-2" onSubmit={(e) => { e.preventDefault(); void salvar(); }}>

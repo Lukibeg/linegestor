@@ -5,7 +5,8 @@
  * painel") —, "Trocar" (os outros painéis, com quantos estão em aberto) e "Configurar" (quem cuida).
  *
  * O quadro e a lista usam os mesmos nomes de filtro: trocar de vista leva a busca e os filtros junto.
- * O painel de Vendas (2.0.1) tem uma terceira vista, o **Relatório** de vendas.
+ * A terceira vista é a dos números: o **Relatório** de vendas, no painel de Vendas (2.0.1), e os
+ * **Relatórios** dos chamados, nos painéis de Gestão (2.1, decisão 0055).
  */
 import { Link } from 'react-router-dom';
 import { ArrowLeft, ChartColumn, ChevronsUpDown, Kanban, List, Settings2 } from 'lucide-react';
@@ -27,7 +28,7 @@ export function enderecoDaLista(painelId: string, filtros: FiltrosDoPainel, etap
   for (const [k, v] of Object.entries(filtros)) if (v) n.set(k, v);
   return `/atendimento/lista?${n}`;
 }
-/** O relatório de vendas do painel (o período, se vier). */
+/** O relatório do painel (o de vendas ou os dos chamados), com o período, se vier. */
 export function enderecoDoRelatorio(painelId: string, extra: Record<string, string | null | undefined> = {}) {
   const n = new URLSearchParams({ painel: painelId });
   for (const [k, v] of Object.entries(extra)) if (v) n.set(k, v);
@@ -52,8 +53,8 @@ export function CabecalhoDoPainel({ paineis, atual, vista, outraVista, className
   // o desativado só aparece se for o aberto (um link antigo)
   const outros = paineis.filter((p) => p.ativo || p.id === atual.id);
   const para = (p: Painel) => {
-    // o relatório é só dos painéis de Vendas: o de Gestão abre no quadro
-    if (vista === 'relatorio') return p.tipo === 'vendas' ? enderecoDoRelatorio(p.id, { de: sp.get('de'), ate: sp.get('ate') }) : `/atendimento/quadro?painel=${encodeURIComponent(p.id)}`;
+    // o relatório do outro painel, com o mesmo período (os filtros e as escolhas são de cada painel)
+    if (vista === 'relatorio') return enderecoDoRelatorio(p.id, { de: sp.get('de'), ate: sp.get('ate'), aba: p.tipo === atual.tipo ? sp.get('aba') : null });
     const n = new URLSearchParams(sp);
     n.set('painel', p.id);
     // o assunto e a etapa são de um painel só (no outro, não existem); a página volta para a primeira
@@ -91,12 +92,12 @@ export function CabecalhoDoPainel({ paineis, atual, vista, outraVista, className
       <nav className="inline-flex rounded-lg border border-line bg-surface p-0.5" aria-label="Ver o painel em" id="vista-do-painel">
         {opcao('quadro', Kanban, 'Quadro')}
         {opcao('lista', List, 'Lista')}
-        {vendas && opcao('relatorio', ChartColumn, 'Relatório')}
+        {opcao('relatorio', ChartColumn, vendas ? 'Relatório' : 'Relatórios')}
       </nav>
       {outros.length > 1 && (
         <Popover classe="btn-ghost btn-sm text-ink-2" alinhar="esquerda" largura="w-[290px]" titulo="Trocar de painel"
           botao={() => <><ChevronsUpDown size={14} aria-hidden /> <span className="sr-only 2xl:not-sr-only">Trocar</span></>}>
-          <p className="text-[12.5px] text-muted mb-1">Abrir {vista === 'quadro' ? 'o quadro' : vista === 'lista' ? 'a lista' : 'o relatório (ou o quadro)'} de:</p>
+          <p className="text-[12.5px] text-muted mb-1">Abrir {vista === 'quadro' ? 'o quadro' : vista === 'lista' ? 'a lista' : 'os relatórios'} de:</p>
           <ul className="flex flex-col" aria-label="Painéis">
             {outros.map((p) => {
               const aqui = p.id === atual.id;

@@ -54,9 +54,10 @@ export function comemorar() {
 
 /**
  * O hook do mover: `mover(chamado, etapaId)` faz tudo (pede o motivo quando é escalonar, mostra o que
- * falta, comemora o fechado); `janelas` vai uma vez na tela que usa.
+ * falta, comemora o fechado); `janelas` vai uma vez na tela que usa. `depoisDe` (2.1): o quadro arrastou
+ * para um lugar da coluna (onde vale a ordem à mão) — o cartão que fica logo acima; nulo, o alto.
  */
-export function useMover(): { mover: (c: Movivel, etapaId: string) => Promise<FichaChamado | null>; janelas: ReactNode; ocupado: string | null } {
+export function useMover(): { mover: (c: Movivel, etapaId: string, opcoes?: { depoisDe?: string | null }) => Promise<FichaChamado | null>; janelas: ReactNode; ocupado: string | null } {
   const opcoes = useOpcoes();
   const depois = useDepoisDeMudar();
   const toast = useToast();
@@ -67,7 +68,7 @@ export function useMover(): { mover: (c: Movivel, etapaId: string) => Promise<Fi
 
   const executar = useCallback(async (
     c: Movivel, para: EtapaPainel,
-    extra: { motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null } = {},
+    extra: { motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null } = {},
   ): Promise<FichaChamado | null> => {
     setOcupado(c.id);
     try {
@@ -88,7 +89,7 @@ export function useMover(): { mover: (c: Movivel, etapaId: string) => Promise<Fi
     }
   }, [depois, toast]);
 
-  const mover = useCallback(async (c: Movivel, etapaId: string) => {
+  const mover = useCallback(async (c: Movivel, etapaId: string, lugar: { depoisDe?: string | null } = {}) => {
     if (etapaId === c.etapaId) return null;
     const painel = painelDe(opcoes.data, c.painelId);
     const para = painel?.etapas.find((e) => e.id === etapaId);
@@ -98,7 +99,7 @@ export function useMover(): { mover: (c: Movivel, etapaId: string) => Promise<Fi
     if (para.resultado) { setMarcando({ c, para, painel }); return null; }
     const sentido = movimentoDeNivel(de, para);
     if (sentido) { setEscalonando({ c, para, de, sentido }); return null; }
-    return executar(c, para);
+    return executar(c, para, lugar.depoisDe !== undefined ? { depoisDe: lugar.depoisDe } : {});
   }, [opcoes.data, executar]);
 
   /** O resultado escolhido na janela: a mensalidade e a ativação que mudaram vão antes (ficam no histórico), depois o movimento. */

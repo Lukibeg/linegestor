@@ -3,8 +3,10 @@
 Desde o Patch 2.0 os chamados nascem e andam no **Gestor**, em **Painéis** (no menu lateral, logo abaixo
 do Calendário desde o 2.0.2; antes ficava dentro do Suporte e, até o 2.0.1, se chamava Chamados — o
 Comercial também mora ali). O atalho **Suporte › Painel do Suporte** abre direto o quadro do Suporte. Os
-chamados antigos continuam no LineChat; para consultar, **Suporte › Relatórios** abre neles,
-na aba **Hoje** (as abas levam ao Período e aos relatórios).
+chamados antigos continuam no LineChat; para consultar, **Suporte › Legado do Helena** abre neles,
+na aba **Hoje** (as abas levam ao Período e aos relatórios). Os relatórios dos chamados do Gestor ficam na
+vista **Relatórios** de cada painel (**Suporte › Relatórios** abre a do Suporte, desde o 2.1): veja
+[Os Relatórios dos painéis](relatorios-dos-paineis.md).
 A decisão inteira está em `docs/decisoes/0047-chamados-do-gestor.md`.
 O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho e o Perdido): veja
 [Vendas: o painel do Comercial](vendas.md).
@@ -92,9 +94,14 @@ navegador também fecha a janela.
   completa é a equipe, na ficha.)
 - **Avisar o cliente pelo WhatsApp** manda o número do chamado pelo número oficial. Vem desmarcado: o
   atendente decide.
+- **Conversa no LineChat** (2.1, opcional): no **chamado ativo** — a equipe chamou o cliente, e o
+  chamado não veio do robô —, cole o **link da conversa** (abra a conversa no LineChat e copie o endereço
+  da barra) ou só o **código da sessão**. A tela diz logo a sessão que achou (ou o que está errado). Com
+  ela, a ficha mostra o link da conversa e a **NIA lê o que foi conversado**. Também se liga depois, na
+  ficha.
 
-O chamado também nasce **pelo botão "Abrir chamado" na conversa do LineChat** (já com o telefone e o
-nome), **pelo robô** e **pelos agendados** (seção 5).
+O chamado também nasce **pelo botão "Abrir chamado" na conversa do LineChat** (já com o telefone, o
+nome e a conversa), **pelo robô** e **pelos agendados** (seção 5).
 
 ### Os contatos do cliente (Clientes › ficha do cliente › Contatos)
 
@@ -120,20 +127,31 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   que a próxima etapa pede e está vazio fica marcado ("falta para ir para Resolvido").
 - Um código citado no texto (SUP-12, ou um card antigo do LineChat como IS-4280) vira link.
 - Do lado: a **empresa** e o **contato** (em **Editar**, os contatos do cliente: um clique troca; o
-  contato escrito à mão ganha **Salvar nos contatos**), a **classificação** (os campos que o painel usa — assunto,
+  contato escrito à mão ganha **Salvar nos contatos**) com a **conversa no LineChat** — o link e a sessão;
+  desde o 2.1, **Ligar a conversa do LineChat** (o chamado sem conversa, como o ativo) e **Trocar**
+  (colar o link de outra conversa, ou **Tirar a conversa**); vai para o histórico —, a **classificação** (os campos que o painel usa — assunto,
   tipo, gravidade, alcance, prioridade, produtos, operadoras —, os campos do próprio painel e as
   etiquetas), o responsável e os **observadores**, os **prazos**, o **Na agenda** (a visita ou a virada
   ligada ao chamado, e o **Agendar**, que põe uma no [calendário](calendario.md) já com o chamado, o
   cliente e o painel — 2.0.1), o caso **na operadora** e o **tempo gasto**. O campo de texto longo do
   painel (ex.: "Como reproduzir") fica junto do relato.
 - A barra de cima: **Assumir**, **Mover**, **Escalonar** (pede o motivo), **Esperar** o cliente ou a
-  operadora (pede o motivo), **Avisar o cliente**, **Preencher com IA** e **Mais**
+  operadora (pede o motivo), **Avisar o cliente**, a **NIA** (abaixo), **Preencher com IA** e **Mais**
   (ligar a outro chamado, criar um filho, definir o pai, ligar a um problema, trocar de painel,
   reabrir, observar, lixeira). **Criar um filho** (e **Abrir um problema a partir deste**) abre o
   formulário do Abrir chamado numa janela por cima da ficha: aberto, a janela fecha e a ficha mostra o
   filho. **Avisar o cliente** mostra, antes de mandar, **como a mensagem chega**: dentro do modelo aprovado do WhatsApp oficial, com o
   nome do contato, o código e o seu texto (a quebra de linha vira " · ": o WhatsApp não aceita quebra
   dentro do modelo).
+- **A NIA** (2.1, no lugar de etiquetar à mão): **Preencher com a NIA** pede à NIA (a IA do suporte,
+  no n8n) para ler a conversa e preencher o chamado. Por baixo, o botão põe a etiqueta **NIA -
+  PREENCHER**, como antes — o fluxo da NIA não muda. O botão diz em que pé está: **NIA preenchendo…** (a
+  ficha se atualiza sozinha quando ela termina, com um aviso), **NIA preencheu** (verde) ou **NIA não
+  preencheu** (vermelho). O clique mostra **quando ela preencheu, quando foi pedida e por quem, o que
+  ela mudou e quantas anotações fez**, e o **Preencher de novo** (ou **Tentar de novo**). Vale também
+  para o chamado que foi etiquetado à mão antes do botão. Pedido sem resposta, dá para pedir de novo
+  depois de 10 minutos. **Sem a conversa do LineChat**, o botão avisa antes (a NIA lê só o que está
+  escrito no chamado) e oferece **Ligar a conversa**. A negociação não tem a NIA.
 - **Citar um colega**: na anotação, escreva **@** e o começo do nome — a lista de quem vê o painel abre
   ali mesmo; as setas andam, **Enter** (ou o clique) escolhe e **Esc** fecha só a lista. O botão
   **Citar**, ao lado de Anexar, faz o mesmo. Embaixo da caixa aparece quem vai receber o aviso. Quem for
@@ -171,7 +189,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 | **Avisos e WhatsApp** | No primeiro cartão, os dois números (o do cliente, oficial, e o da equipe), a chave e o **Testar**. **A mensagem ao cliente**: pelo **modelo aprovado** (o template do WhatsApp oficial — o único jeito de começar uma conversa) ou em texto livre (só até 24 horas da última mensagem do cliente; depois disso, vai o modelo). **Buscar os modelos no LineChat** traz os aprovados do número oficial; ao escolher um, o Gestor preenche o **id** (templateId) e as **variáveis**, e cada uma recebe um valor do chamado (o nome do contato, o código, o título, a empresa, o responsável, quem manda, **o que o atendente escreveu**) ou um texto fixo. O modelo com imagem, vídeo ou documento no cabeçalho pede o **endereço do arquivo** (https://). A prévia mostra a mensagem com um chamado de exemplo. **Quem fica com a conversa no LineChat**: a equipe (pelo nome) e, ligado, quem manda (pelo e-mail, o mesmo nos dois). Depois, quais avisos vão pela tela e pelo WhatsApp (inclusive o dos observadores: na tela, ligado; no WhatsApp, desligado de início), e **a mensagem de cada aviso no WhatsApp** (2.0.2; abaixo). O **WhatsApp de cada pessoa** fica em **Administração › Usuários** (no Editar usuário; o "Receber os avisos dos chamados no WhatsApp" pausa sem apagar o número): aqui aparece quantos recebem |
 | **Agendados** | O chamado que nasce sozinho (todo dia, toda semana, todo mês ou uma vez) |
 | **Integrações** | O robô do LineChat e o **mapa do robô** (os parâmetros que chegam no webhook, de onde vem cada campo do chamado e como deve chegar o webhook), as chaves de API, os webhooks, os sites que podem abrir o Gestor dentro deles e o link da conversa |
-| **IA** | O provedor e a chave do **Preencher com IA** (é a mesma IA da Base de conhecimento) |
+| **IA** | O provedor e a chave do **Preencher com IA** (é a mesma IA da Base de conhecimento) e, desde o 2.1, **A NIA na ficha**: liga e desliga o botão da NIA e diz as três etiquetas do combinado com o fluxo do n8n — a de pedir (que o botão põe), a de pronto e a de erro (que a NIA põe); de fábrica, as do Helena |
 
 Painéis, campos, etiquetas, prazos, avisos e agendados: quem **cuida dos chamados**. Integrações e
 IA: a **administração**.
@@ -320,12 +338,18 @@ A tela já mostra cada endereço pronto para copiar, com o endereço deste Gesto
      do Tipo de cada painel, as gravidades e as prioridades. É com elas que a NIA monta o que a IA pode
      escolher (e a IA não inventa um assunto que não existe); depois grava de volta pelo `PATCH` do chamado
      e pelas anotações. Ler não vai para a auditoria.
+   - O botão **Preencher com a NIA** da ficha (2.1) só põe a etiqueta de pedir: o aviso "chamado
+     alterado" chega ao n8n com ela, como quando a equipe etiquetava. A NIA responde trocando pela etiqueta
+     de pronto (ou de erro) — é por elas que o botão sabe que ela terminou. As etiquetas ficam em
+     **Painéis › Ajustes › IA**. A conversa ligada à mão na ficha também chega pelo `sessaoId` (e o
+     `PATCH` aceita `sessaoId`: o link da conversa ou o código da sessão).
 6. **O Gestor dentro do LineChat**: inclua o endereço do LineChat em **Sites que podem abrir o Gestor**
    e crie, no LineChat, um **menu personalizado** (página interna) com o endereço `/atendimento`. Lá
    dentro, cada pessoa entra uma vez com o login do Gestor. O Safari (e navegador que bloqueia cookie de
    outro site) pode pedir o login de novo.
 7. **O link da conversa**: o endereço da conversa no LineChat com `{sessao}` no lugar do número — é o
-   que põe o link "Conversa no LineChat" na ficha.
+   que põe o link "Conversa no LineChat" na ficha, e o que acha a sessão no link colado à mão (o
+   chamado ativo, 2.1). Sem ele, o link colado vale pelo código da sessão que estiver nele.
 
 **Na virada**, desligue (ou religue no Gestor) os dois fluxos do n8n que olham o Helena (IA Preenche
 Chamado e Atualização de Card), para ninguém receber aviso em dobro.

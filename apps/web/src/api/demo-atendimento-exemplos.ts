@@ -284,7 +284,9 @@ export type Passo =
   | { aos: number; faz: 'ligar'; por: Pessoa; com: string; tipo: TipoLigacaoChamado }
   | { aos: number; faz: 'observar'; por: Pessoa }
   /** o cliente escreveu no WhatsApp que não resolveu, e o atendente reabriu */
-  | { aos: number; faz: 'reabrir'; por: Pessoa; motivo: string };
+  | { aos: number; faz: 'reabrir'; por: Pessoa; motivo: string }
+  /** o botão da NIA (2.1): a pessoa pede, e a NIA de exemplo responde em seguida (o título, a descrição e as anotações) */
+  | { aos: number; faz: 'nia'; por: Pessoa };
 
 export type Exemplo = {
   chave: string;
@@ -332,6 +334,8 @@ const VIVERBEM = 'Home Care Viver Bem';
 export const CORES_DAS_ETIQUETAS: Array<[string, CorEtiqueta]> = [
   ['urgente', 'bad'], ['vip', 'amarelo'], ['algar', 'roxo'], ['reincidente', 'signal'], ['fop2', 'turquesa'], ['whatsapp', 'ok'], ['ramal', 'accent'],
   ['casa de apoio', 'rosa'],
+  // as da NIA (2.1), com as cores do Helena: o botão da ficha põe a de pedir; o fluxo do n8n troca pela de pronto ou de erro
+  ['NIA - PREENCHER', 'roxo'], ['NIA - CONCLUIDO', 'ok'], ['NIA - ERRO', 'bad'],
 ];
 
 export const CONTATOS_DOS_CLIENTES: Array<{ cliente: string; contato: Contato; cargo: string; email?: string; ativo?: boolean }> = [
@@ -1265,7 +1269,8 @@ export const EXEMPLOS: Exemplo[] = [
     },
   },
   {
-    // pelo robô, de um telefone que o Gestor não conhece: sem título, sem nome, sem cliente
+    // pelo robô, de um telefone que o Gestor não conhece: sem título, sem nome, sem cliente — a Marina pediu à NIA
+    // (2.1), e ela preencheu o título, a descrição e as anotações da Situação e do Diagnóstico
     chave: 'robo-whatsapp', painel: 'SUP', idade: 8, abre: 'robo',
     dados: {
       contato: [null, '(71) 99999-4321'], sessao: '5a9d3f7e-2c41-4b6e-8f05-d17c3e9a2b68',
@@ -1280,6 +1285,7 @@ export const EXEMPLOS: Exemplo[] = [
         letras: 980,
       },
     },
+    passos: [{ aos: 2, faz: 'nia', por: 'marina' }],
   },
   {
     // o chamado que o agendado abriu na última segunda (o checklist dele está pela metade)

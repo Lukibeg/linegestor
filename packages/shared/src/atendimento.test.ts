@@ -18,6 +18,8 @@ import {
   EtapaGravarSchema, NIVEIS, PAINEIS_INICIAIS, rotuloDoNivel,
   citacaoDigitando, citadosNoTexto, emLista, pedacosComCitacoes,
   CARGOS_DE_FABRICA, cargoDaLista,
+  compararNoQuadroDeVendas, MoverSchema, ordemAMao, ordemDepoisDeArrastar, PosicaoNoQuadroSchema,
+  NOME_CONVERSA, sessaoDaConversa,
 } from './atendimento.js';
 
 describe('o cargo do contato vem da lista (2.0.2, decisão 0053)', () => {
@@ -386,7 +388,7 @@ const cartao = (d: Partial<CartaoChamado> = {}, relato = 'o cliente disse que o 
     prazos: { resposta: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' }, solucao: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' } },
     pai: null, problema: null, filhos: { total: 0, abertos: 0 }, incidentes: 0, anotacoes: 0, origem: 'manual', reaberto: 0,
     criadoEm: '2026-10-13T12:00:00.000Z', atualizadoEm: '2026-10-13T12:00:00.000Z', ultimaAtividadeEm: '2026-10-13T12:00:00.000Z', resolvidoEm: null, fechadoEm: null,
-    valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ...d,
+    valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ordemNoQuadro: null, ...d,
   };
   return { ...c, busca: textoDeBusca(c, [relato]) };
 };
@@ -487,6 +489,50 @@ describe('a IA e o histórico', () => {
   it('o link da conversa só existe com o modelo das Integrações', () => {
     expect(linkDaConversa('https://app.exemplo.com.br/chat/{sessao}', 'abc 1')).toBe('https://app.exemplo.com.br/chat/abc%201');
     expect(linkDaConversa('', 'abc')).toBeNull();
+  });
+});
+
+describe('a conversa ligada à mão (2.1, o chamado ativo)', () => {
+  const U = '83858976-9930-4a4e-8f0e-1c2d3e4f5a6b';
+  const MODELO = 'https://app.inglinechat.com.br/chat/{sessao}';
+  const ok = (sessaoId: string | null) => ({ ok: true, sessaoId });
+  it('o link da conversa: pelo modelo, ou pelo uuid do LineChat que está nele', () => {
+    expect(sessaoDaConversa(`https://app.inglinechat.com.br/chat/${U}`, MODELO)).toEqual(ok(U));
+    // com o que vier depois, com http, em maiúsculas
+    expect(sessaoDaConversa(`  http://APP.inglinechat.com.br/chat/${U}?aba=notas#fim `, MODELO)).toEqual(ok(U));
+    // o modelo acha também o código que não é uuid
+    expect(sessaoDaConversa('https://app.inglinechat.com.br/chat/sessao-777_a', MODELO)).toEqual(ok('sessao-777_a'));
+    // outro endereço (ou sem modelo): o uuid no meio do link
+    expect(sessaoDaConversa(`https://outro.helena.app/chat2/sessions/${U.toUpperCase()}/messages`, MODELO)).toEqual(ok(U));
+    expect(sessaoDaConversa(`https://app.inglinechat.com.br/chat/${U}`, null)).toEqual(ok(U));
+    // o modelo com o {sessao} no meio do endereço
+    expect(sessaoDaConversa('https://x.com.br/s?id=ab12cd34&aba=1', 'https://x.com.br/s?id={sessao}&aba=1')).toEqual(ok('ab12cd34'));
+  });
+  it('o código sozinho, o "sessão …" copiado da ficha e o vazio (tira a conversa)', () => {
+    expect(sessaoDaConversa(U, MODELO)).toEqual(ok(U));
+    expect(sessaoDaConversa(`sessão ${U}`, null)).toEqual(ok(U));
+    expect(sessaoDaConversa('abc-123456', null)).toEqual(ok('abc-123456'));
+    expect(sessaoDaConversa('', MODELO)).toEqual(ok(null));
+    expect(sessaoDaConversa('   ', MODELO)).toEqual(ok(null));
+    expect(sessaoDaConversa(null)).toEqual(ok(null));
+  });
+  it('o que não dá para ler diz o que colar', () => {
+    const erro = (t: string, m?: string | null) => { const r = sessaoDaConversa(t, m); return r.ok ? null : r.erro; };
+    expect(erro('https://app.inglinechat.com.br/painel/clientes', MODELO)).toMatch(/^Não achei a sessão nesse link/);
+    expect(erro('https://app.inglinechat.com.br/chat/', MODELO)).toMatch(/^Não achei a sessão nesse link/);
+    expect(erro(`https://x.com.br/empresa/${U}/chat/${U.replace('8385', '1111')}`, null)).toMatch(/mais de um código/);
+    expect(erro('conversa da Maria', null)).toMatch(/não tem espaço/);
+    expect(erro('abc', null)).toMatch(/curto demais/);
+    expect(erro('{sessao}', null)).toMatch(/não parece/);
+    expect(erro(`https://x.com.br/${'a'.repeat(600)}`, null)).toMatch(/comprido demais/);
+  });
+  it('o formulário leva o link inteiro (até 500 letras); quem acha a sessão é o servidor', () => {
+    const link = `https://app.inglinechat.com.br/chat/${U}?${'x'.repeat(300)}`;
+    expect(ChamadoAlterarSchema.parse({ sessaoId: link }).sessaoId).toBe(link);
+    expect(ChamadoAlterarSchema.parse({ sessaoId: '  ' }).sessaoId).toBeNull();
+    expect(ChamadoAlterarSchema.parse({}).sessaoId).toBeUndefined();
+    expect(ChamadoCriarSchema.parse({ painelId: 'p', sessaoId: link }).sessaoId).toBe(link);
+    expect(NOME_CONVERSA).toBe('Conversa no LineChat');
   });
 });
 
@@ -652,5 +698,41 @@ describe('o 2.0.3: as etiquetas de cada painel, a lista que inclui na hora e o t
     expect(mensagemDoTitulo('', true)).toBe(MENSAGEM_DO_TITULO.semEmpresa);
     // o formato aceita o vazio (quem decide é o tipo do painel)
     expect(ChamadoCriarSchema.parse({ painelId: 'p' }).titulo).toBe('');
+  });
+});
+
+describe('a ordem à mão no quadro (2.1)', () => {
+  it('só no painel de Vendas, nas etapas abertas', () => {
+    expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'entrada' })).toBe(true);
+    expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'andamento' })).toBe(true);
+    expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'fechado' })).toBe(false);
+    expect(ordemAMao({ tipo: 'gestao' }, { tipo: 'andamento' })).toBe(false);
+  });
+
+  it('a que ninguém arrumou vem antes (a de maior valor, depois a mais antiga); as arrumadas, na ordem da equipe', () => {
+    const c = (id: string, valor: number | null, ordemNoQuadro: number | null, criadoEm = `2026-10-0${id.charCodeAt(0) - 64}T12:00:00Z`) => ({ id, valor, ordemNoQuadro, criadoEm });
+    const lista = [c('A', 100, 2), c('B', 900, null), c('C', 50, 1), c('D', null, null), c('E', 900, null), c('F', 10, 2)];
+    // no empate do lugar (dois arrastos ao mesmo tempo), a regra de sempre desempata
+    expect([...lista].sort(compararNoQuadroDeVendas).map((x) => x.id)).toEqual(['B', 'E', 'D', 'C', 'A', 'F']);
+  });
+
+  it('a ordem depois de arrastar: para o alto, logo abaixo de outra, no fim; nula quando a de cima saiu', () => {
+    const ordem = ['A', 'B', 'C', 'D'];
+    expect(ordemDepoisDeArrastar(ordem, 'C', null)).toEqual(['C', 'A', 'B', 'D']);
+    expect(ordemDepoisDeArrastar(ordem, 'A', 'C')).toEqual(['B', 'C', 'A', 'D']);
+    expect(ordemDepoisDeArrastar(ordem, 'B', 'D')).toEqual(['A', 'C', 'D', 'B']);
+    expect(ordemDepoisDeArrastar(ordem, 'B', 'A')).toEqual(ordem);
+    // a que chega de outra coluna entra no lugar
+    expect(ordemDepoisDeArrastar(ordem, 'X', 'B')).toEqual(['A', 'B', 'X', 'C', 'D']);
+    expect(ordemDepoisDeArrastar(ordem, 'A', 'Z')).toBeNull();
+    expect(ordemDepoisDeArrastar(ordem, 'A', 'A')).toBeNull();
+  });
+
+  it('o pedido: o lugar (nulo é o alto); o mover leva o lugar só quando foi arrastado para ele', () => {
+    expect(PosicaoNoQuadroSchema.parse({ depoisDe: null })).toEqual({ depoisDe: null });
+    expect(PosicaoNoQuadroSchema.safeParse({}).success).toBe(false);
+    expect(MoverSchema.parse({ etapaId: 'e' }).depoisDe).toBeUndefined();
+    expect(MoverSchema.parse({ etapaId: 'e', depoisDe: null }).depoisDe).toBeNull();
+    expect(MoverSchema.parse({ etapaId: 'e', depoisDe: 'x' }).depoisDe).toBe('x');
   });
 });

@@ -18,6 +18,7 @@ import { api } from '../../../api/index.js';
 import { Pagina } from '../../../components/layout/AppShell.js';
 import { Carregando, Popover, Vazio } from '../../../components/ui/index.js';
 import { useAuth } from '../../../lib/auth.js';
+import { LinkDoChamado } from '../../atendimento/comum.js';
 import { AbasDoSimulador, CHAVE_DO_SIMULADOR, ChipDoSinal, erroDoSimulador, reaisLimpo, useOpcoesDoSimulador } from './comum.js';
 
 const quando = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -64,17 +65,17 @@ export function NovaSimulacao({ modelos }: { modelos: ModeloDeSimulacao[] }) {
   );
 }
 
-/** A negociação ligada, curta: "COM-31 · Padaria Estrela" (com o ganho ou a perda). */
+/** A negociação ligada, curta: "COM-31 · Padaria Estrela" (com o ganho ou a perda). Abre a ficha numa janela, por cima da lista (2.1). */
 export function ChipDaNegociacao({ s }: { s: Pick<SimulacaoNaLista, 'negociacao' | 'negociacaoOculta'> }) {
   if (s.negociacaoOculta) return <span className="chip bg-surface-2 text-muted" title="Ligada a uma negociação de um painel que você não vê"><Link2 size={12} aria-hidden /> negociação de outro painel</span>;
   if (!s.negociacao) return null;
   const n = s.negociacao;
   return (
-    <Link to={`/atendimento/${encodeURIComponent(n.codigo)}`} className="chip bg-surface-2 text-ink-2 hover:text-accent max-w-full" title={`${n.codigo} · ${n.titulo}`} onClick={(e) => e.stopPropagation()}>
+    <LinkDoChamado codigo={n.codigo} className="chip bg-surface-2 text-ink-2 hover:text-accent max-w-full" title={`Abrir a ${n.codigo} · ${n.titulo} numa janela`} onClick={(e) => e.stopPropagation()}>
       <Link2 size={12} aria-hidden /><span className="font-mono">{n.codigo}</span>
       {n.empresa && <span className="truncate font-normal">· {n.empresa}</span>}
       {n.resultado && <span className={`font-semibold ${n.resultado === 'ganho' ? 'text-ok' : 'text-bad'}`}>· {n.resultado}</span>}
-    </Link>
+    </LinkDoChamado>
   );
 }
 

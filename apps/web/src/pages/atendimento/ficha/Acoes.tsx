@@ -2,7 +2,8 @@
  * A barra de ações da ficha: Assumir, Mover (o menu das etapas do painel, cada uma dizendo o que falta
  * para ir para ela e os filhos que travam), as Etiquetas e o Agendar (2.0.3, o pedido do Luan: "etiquetas tem q
  * ficar fácil ali do lado de mover e pra agendar tbm"), o atalho "Escalonar para N2", Esperar (o cliente ou a
- * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, Preencher com IA e o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
+ * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, a NIA (2.1: pedir, e ver se ela já preencheu — `Nia.tsx`),
+ * Preencher com IA e o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
  * Na negociação, o Mais não tem ligar, filho, pai nem problema (2.0.1, decisão 0050).
  * Na negociação (o painel de Vendas), o Mais não tem filho, pai nem problema: ela se liga pelo Ligar (o pedido do
  * Luan na prévia, em 17/10: "n precisa de pais e filhas aqui").
@@ -29,6 +30,7 @@ import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { useAgendar } from './Agenda.js';
 import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, linkDaFicha, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 import { JanelaIa, pedirSugestao } from './Ia.js';
+import { BotaoDaNia } from './Nia.js';
 import { JanelaAbrirLigado, JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaTrocarPainel } from './Janelas.js';
 
 type Janela =
@@ -230,6 +232,9 @@ export function BarraDeAcoes() {
             <MessageCircle size={14} /> Avisar o cliente
           </button>
         )}
+
+        {/* a NIA (2.1): o botão no lugar de etiquetar à mão; ele diz se ela já preencheu (some na negociação e desligado) */}
+        <BotaoDaNia />
 
         {opcoes.ia.ativa && !vendas && (
           <button type="button" className="btn-secondary btn-xs" disabled={lendo} onClick={() => void pedirIa()}

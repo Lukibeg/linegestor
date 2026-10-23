@@ -215,7 +215,7 @@ function Tela({ inicial }: { inicial: EnvioAjustesTela }) {
         <h2 className="font-display font-semibold text-lg">O que vai no PDF</h2>
         <p className="text-[13.5px] text-ink-2 mt-1">
           Sempre: os números de cima da aba Hoje. E o que estiver marcado com o aviãozinho <Send size={12} className="inline -mt-0.5 text-accent fill-current" aria-hidden /> nos gráficos de{' '}
-          <Link className="link" to="/chamados">Suporte › Relatórios</Link> e nos <Link className="link" to="/chamados/relatorios">relatórios da aba Relatórios</Link>, na ordem das telas.
+          <Link className="link" to="/chamados">Suporte › Legado do Helena</Link> e nos <Link className="link" to="/chamados/relatorios">relatórios da aba Relatórios</Link>, na ordem das telas.
         </p>
         {!nMarcados ? <p className="text-[13px] text-muted mt-3">Nada marcado ainda: o PDF sai só com os números do dia.</p> : (
           <div className="grid gap-4 sm:grid-cols-2 mt-3">

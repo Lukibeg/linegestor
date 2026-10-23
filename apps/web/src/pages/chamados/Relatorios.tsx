@@ -27,7 +27,7 @@
  */
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Archive, ArrowDown, ArrowDownUp, ArrowUp, Building2, CalendarCheck, ExternalLink, Eye, EyeOff, LayoutGrid, Star, Timer, Users } from 'lucide-react';
 import {
   CATALOGO_RELATORIOS, montarArrumacao, PARETO_POR, SECOES_RELATORIOS, SEPARAR_POR, type ParetoPor, type SecaoRelatorios, type SepararPor,
@@ -165,9 +165,9 @@ export function RelatoriosChamados() {
   const gruposSalvos = useMemo(() => new Map((painel.data?.itens ?? []).map((x) => [x.id, x.grupos ?? []])), [painel.data]);
   const temFiltro = MULTI.some((k) => sp.getAll(k).length) || !!sp.get('busca') || sp.get('arquivados') === '1';
 
-  if (opcoes.isLoading) return <Pagina titulo="Relatórios"><Carregando /></Pagina>;
+  if (opcoes.isLoading) return <Pagina titulo="Legado do Helena"><Carregando /></Pagina>;
   if (op && !op.configurado && op.totalCards === 0) {
-    return <Pagina titulo="Relatórios"><Vazio titulo="A leitura do LineChat ainda não foi ligada" texto="Os relatórios usam os chamados copiados do LineChat. A administração liga a leitura em Administração › Ajustes." /></Pagina>;
+    return <Pagina titulo="Legado do Helena"><Vazio titulo="A leitura do LineChat ainda não foi ligada" texto="Os relatórios usam os chamados copiados do LineChat. A administração liga a leitura em Administração › Ajustes." /></Pagina>;
   }
 
   /** Os filtros escritos, para o rodapé do Fechamento do mês (vai junto no PDF). */
@@ -225,8 +225,8 @@ export function RelatoriosChamados() {
 
   return (
     <Pagina
-      titulo="Relatórios"
-      sub={<>Os relatórios dos tickets do painel <b className="text-ink-2">{op?.painelNome || 'de suporte'}</b> do LineChat. Clique num número, numa faixa ou num quadrado para ver os chamados.</>}
+      titulo="Legado do Helena"
+      sub={<>Os relatórios dos tickets do painel <b className="text-ink-2">{op?.painelNome || 'de suporte'}</b> do LineChat (o Helena), com os assuntos de lá. Clique num número, numa faixa ou num quadrado para ver os chamados. Os chamados do Gestor estão nos <Link to="/suporte/relatorios" className="link">Relatórios do Suporte</Link>.</>}
       acoes={<>
         <Situacao op={op} />
         {op?.linkDoPainel && <a className="btn-secondary btn-sm" href={op.linkDoPainel} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Abrir no LineChat</a>}

@@ -14,8 +14,9 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AnotacaoSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema, LigarChamadoSchema,
-  ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
+  AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
+  FiltroDosRelatoriosSchema, LigarChamadoSchema,
+  ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PosicaoNoQuadroSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
 } from '@gestor/shared';
 import { BadRequest } from '../plugins/errors.js';
@@ -24,6 +25,7 @@ import { atorDaPessoa, carregarContexto, podeVerPainel } from '../services/atend
 import * as svc from '../services/atendimento/chamados.js';
 import * as leitura from '../services/atendimento/leitura.js';
 import { relatorioDoPainelDeVendas } from '../services/atendimento/vendas.js';
+import * as relatorios from '../services/atendimento/relatorios.js';
 
 const tags = ['Chamados do Gestor'];
 const Id = z.object({ id: z.string().min(1) });
@@ -87,6 +89,36 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     },
   }, async (req) => relatorioDoPainelDeVendas(app, ator(req), req.query));
 
+  // os Relatórios dos painéis de chamados (2.1): os 25 relatórios de uma vez e a arrumação de cada painel
+  app.get('/relatorios', {
+    ...ler,
+    schema: {
+      tags, querystring: FiltroDosRelatoriosSchema,
+      summary: 'Os relatórios de um painel de chamados no período (tempo, volume, assuntos, clientes, equipe e o mês), com os filtros; cada número traz os chamados por trás dele',
+    },
+  }, async (req) => relatorios.relatoriosDoPainelDeChamados(app, ator(req), req.query));
+
+  const PainelDaArrumacao = z.object({ painel: z.string().trim().min(1, 'Escolha o painel').max(100) });
+  app.get('/relatorios/arrumacao', {
+    ...ler,
+    schema: { tags, querystring: PainelDaArrumacao, summary: 'A arrumação dos Relatórios de um painel: a ordem, os escondidos, os favoritos e o campo da falha (a mesma para a equipe toda)' },
+  }, async (req) => relatorios.lerArrumacao(app, ator(req), req.query.painel));
+
+  app.put('/relatorios/arrumacao', {
+    ...cuidar,
+    schema: { tags, querystring: PainelDaArrumacao, body: ArrumacaoDosRelatoriosSchema, summary: 'Arrumar os Relatórios de um painel para a equipe toda (quem cuida dos chamados)' },
+  }, async (req) => {
+    const a = ator(req);
+    if (a.tipo !== 'pessoa') throw new BadRequest('Só uma pessoa arruma os relatórios.');
+    const r = await relatorios.gravarArrumacao(app, a, req.query.painel, req.body);
+    await app.audit(req, {
+      action: 'atendimento_relatorios_arrumacao', entityType: 'settings', entityId: 'atendimento-relatorios', summary: r.resumo,
+      before: { ordem: r.antes.ordem, ocultos: r.antes.ocultos, favoritos: r.antes.favoritos, campoDaFalha: r.antes.campoDaFalha },
+      after: { ordem: r.depois.ordem, ocultos: r.depois.ocultos, favoritos: r.depois.favoritos, campoDaFalha: r.depois.campoDaFalha },
+    });
+    return r.depois;
+  });
+
   app.get('/meu-dia', { ...ler, schema: { tags, summary: 'Os meus, os que vencem, os sem dono, os esperando o cliente, os que acompanho e os agendados de hoje' } },
     async (req) => leitura.meuDia(app, ator(req)));
 
@@ -144,6 +176,22 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/chamados/:id/mover', { ...trabalhar, schema: { tags, summary: 'Mover para outra etapa (escalonar e voltar de nível pedem o motivo)', params: Id, body: MoverSchema } },
     async (req) => fichaDepois(req, await svc.mover(app, ator(req), req.params.id, req.body)));
+
+  // a NIA (2.1): o botão da ficha pede à IA do n8n para preencher — põe a etiqueta de pedir, como a equipe fazia à mão
+  app.post('/chamados/:id/nia', {
+    ...trabalhar,
+    schema: { tags, summary: 'Pedir à NIA (a IA do suporte, no n8n) para preencher: a etiqueta de pedir entra (a de pronto e a de erro saem), e o aviso do chamado alterado vai para o n8n', params: Id },
+  }, async (req) => fichaDepois(req, await svc.pedirANia(app, ator(req), req.params.id)));
+
+  // a ordem à mão no quadro (2.1): devolve só o lugar (a tela já arrumou a coluna; o quadro relê depois)
+  app.post('/chamados/:id/posicao', {
+    ...trabalhar,
+    schema: { tags, summary: 'Mudar o lugar na coluna do quadro, arrastando (painel de Vendas, etapas abertas): logo abaixo de depoisDe (nulo: no alto); 409 se depoisDe saiu da etapa', params: Id, body: PosicaoNoQuadroSchema },
+  }, async (req) => {
+    const r = await svc.posicionar(app, ator(req), req.params.id, req.body);
+    if (r.resumo) await app.audit(req, { action: 'update', entityType: 'ticket', entityId: r.id, summary: r.resumo });
+    return { codigo: r.codigo, posicao: r.posicao };
+  });
 
   app.post('/chamados/:id/assumir', { ...trabalhar, schema: { tags, summary: 'Ficar com o chamado (na entrada, ele vai para a primeira etapa de andamento)', params: Id } },
     async (req) => fichaDepois(req, await svc.assumir(app, ator(req), req.params.id)));

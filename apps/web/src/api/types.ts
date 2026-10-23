@@ -527,5 +527,7 @@ export type {
   OpcaoDoCampo, OpcaoIncluirEntrada, EtiquetaNoPainel, ValorDoCampo, ValoresDosCampos, Obrigatorio, CorEtiqueta, EtiquetaComCor, EtiquetaDoCatalogo, EtiquetaGravarEntrada, EtiquetaEditarEntrada, EtiquetaEditarPeloNomeEntrada,
   ModelosDoLineChat, ModeloDoLineChat, ModeloAprovado, EnvioAoCliente, TipoArquivoDoModelo,
   RoboTela, MapaDoRobo, MapaDoRoboEntrada, PreviaDoRobo, UltimoPedidoDoRobo,
+  AjustesDaNia, AjustesDaNiaEntrada,
   TipoDePainel, ResultadoDaVenda, RelatorioDeVendas, FiltroDoRelatorioDeVendas,
+  RelatoriosDoPainel, FiltroDosRelatorios, ArrumacaoDosRelatorios, ArrumacaoDosRelatoriosLida, ChamadoDoRelatorio,
 } from '@gestor/shared';

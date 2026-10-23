@@ -236,6 +236,12 @@ function Previa({ p, onTrazer }: { p: PreviaDoHelena; onTrazer: () => void }) {
             ))}
           </div>
         </div>
+        {(p.historico.semConclusao ?? 0) > 0 && (
+          <p className="text-[12.5px] text-signal mt-1.5">
+            {plural(p.historico.semConclusao, 'negociação ganha ou perdida veio', 'negociações ganhas ou perdidas vieram')} sem a Conclusão do Helena:
+            {' '}{p.historico.semConclusao === 1 ? 'ela cai no mês em que foi marcada' : 'elas caem no mês em que foram marcadas'} (ou no da última mudança do card), e este gráfico pode não bater com o de lá.
+          </p>
+        )}
       </Bloco>
 
       <div className="grid gap-4 grid-cols-1 lg:grid-cols-2">
@@ -300,6 +306,7 @@ function Previa({ p, onTrazer }: { p: PreviaDoHelena; onTrazer: () => void }) {
           <p className="text-[13px]">
             {plural(p.historico.eventos, 'linha', 'linhas')}, com {plural(p.historico.movimentos, 'mudança de etapa', 'mudanças de etapa')} (a trajetória do relatório).
             {p.historico.semHistorico > 0 && <span className="text-signal"> {plural(p.historico.semHistorico, 'negociação veio', 'negociações vieram')} sem o histórico.</span>}
+            {(p.historico.semConclusao ?? 0) > 0 && <span className="text-signal"> {plural(p.historico.semConclusao, 'ganha ou perdida', 'ganhas ou perdidas')} sem a Conclusão.</span>}
           </p>
         </Bloco>
       </div>

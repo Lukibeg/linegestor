@@ -72,6 +72,38 @@ export type CampoApi = { key: string; name?: string; type?: string; position?: n
 
 /** Tudo que a API diz que existe num card (incluir menos que isso faz o card vir sem os campos). */
 const DETALHES = ['CustomFields', 'StepTitle', 'StepPhase', 'ResponsibleUser'];
+/**
+ * O que o Trazer do Helena pede de cada card (2.1): o histórico e o motivo do resultado. O resto (a chave,
+ * a etapa, os campos) já vem na lista, e a Conclusão vem no próprio card.
+ */
+export const DETALHES_DO_CARD = ['Logs', 'ResultDescription'] as const;
+
+/** O erro de uma resposta do LineChat, com o status e o corpo (a mensagem é a de sempre). */
+export class ErroDoLineChat extends Error {
+  constructor(mensagem: string, readonly status: number, readonly corpo: string) { super(mensagem); }
+}
+
+/**
+ * O valor que o LineChat recusou num parâmetro ("The value 'Logs,Key' is not valid."): é como ele responde a um
+ * valor que não conhece nos detalhes (a validação do formulário, 500 FORM_ERROR). Nulo: não foi isso.
+ */
+export function valorRecusado(e: unknown): string | null {
+  if (!(e instanceof ErroDoLineChat) || (e.status !== 400 && e.status !== 500)) return null;
+  const m = /The value '([^']*)' is not valid/i.exec(e.corpo);
+  return m ? m[1]! : null;
+}
+
+/**
+ * Os detalhes do próximo pedido do card, depois que o LineChat recusou `recusado`: o detalhe que ele não conhece
+ * sai; o que não der para entender vai sem detalhe nenhum (a Conclusão e o motivo vêm no card). Nulo: não há
+ * mais o que tentar.
+ */
+export function proximosDetalhesDoCard(detalhes: readonly string[], recusado: string): string[] | null {
+  const valor = recusado.trim().toLowerCase();
+  const qual = detalhes.find((d) => d.toLowerCase() === valor);
+  if (qual) return detalhes.filter((d) => d !== qual);
+  return detalhes.length ? [] : null;
+}
 /** Painel de "gestão" só tem OPEN e ARCHIVED; os outros dois são de painel de vendas. Pedimos todos. */
 const SITUACOES = ['OPEN', 'ARCHIVED', 'WON', 'LOST'];
 const POR_PAGINA = 100; // o máximo da API: 200 dá erro 500
@@ -85,14 +117,21 @@ const CONFERENCIA_A_CADA_MS = 10 * 60_000;
 export class LineChatApi {
   constructor(private base: string, private token: string, private fetchFn: typeof fetch = fetch) {}
 
+  /** Os detalhes do card que o LineChat aceitou (valem para os outros cards da mesma leitura). */
+  private detalhesDoCard: string[] | null = null;
+  /** Os detalhes que o LineChat recusou ao pedir o card (a prévia diz quais). */
+  readonly recusasDoCard: string[] = [];
+  /** Se o card vem com o histórico (o detalhe Logs foi aceito). Nulo: nenhum card veio ainda. */
+  get cardComHistorico(): boolean | null { return this.detalhesDoCard ? this.detalhesDoCard.includes('Logs') : null; }
+
   async get<T>(caminho: string, params: Record<string, string | number | string[] | undefined> = {}): Promise<T> {
     const q = new URLSearchParams();
     for (const [k, v] of Object.entries(params)) {
       if (v === undefined) continue;
       if (Array.isArray(v)) v.forEach((x) => q.append(k, x)); else q.set(k, String(v));
     }
-    // a vírgula vai como vírgula: o LineChat separa os detalhes ("Logs,Key,…") pela vírgula escrita, e com o
-    // %2C do URLSearchParams ele recusa o valor inteiro (500 "The value '…' is not valid", visto no ar em 22/10)
+    // a vírgula vai como vírgula (2.0.4). Não era essa a causa do 500 "The value '…' is not valid" do card (o
+    // LineChat lê o %2C como vírgula): ele quer um detalhe por parâmetro, como a lista e o painel (2.1)
     const busca = q.toString().replace(/%2C/gi, ',');
     const url = `${this.base.replace(/\/+$/, '')}/${caminho.replace(/^\/+/, '')}${busca ? `?${busca}` : ''}`;
     // a chave do LineChat vem como "pn_…"; se alguém colar já com "Bearer ", respeitamos
@@ -107,8 +146,9 @@ export class LineChatApi {
     if (r.status === 401 || r.status === 403) throw new Error(`O LineChat recusou o token (${r.status}). Gere um novo em LineChat › Integrações e salve aqui.`);
     if (r.status === 404) throw new Error('O LineChat não encontrou esse painel (404). Escolha o painel de novo.');
     if (!r.ok) {
-      const texto = (await r.text().catch(() => '')).slice(0, 200);
-      throw new Error(`O LineChat respondeu ${r.status}${texto ? `: ${texto}` : ''}`);
+      const corpo = await r.text().catch(() => '');
+      const texto = corpo.slice(0, 200);
+      throw new ErroDoLineChat(`O LineChat respondeu ${r.status}${texto ? `: ${texto}` : ''}`, r.status, corpo.slice(0, 2000));
     }
     return (await r.json()) as T;
   }
@@ -133,12 +173,38 @@ export class LineChatApi {
   }
 
   /**
-   * Um card com o histórico (a API v1, com os Logs): o Trazer do Helena (2.0.3). Os detalhes vão numa
-   * linha só, separados por vírgula escrita (sem o %2C) — o jeito que o próprio Helena pede (conferido em 21/10
-   * e de novo em 22/10, na tela do card: `includeDetails=Logs,Notes,…`).
+   * Um card com o histórico (a API v1, com os Logs): o Trazer do Helena (2.0.3). Os detalhes vão **um por
+   * parâmetro** (`IncludeDetails=Logs&IncludeDetails=ResultDescription`), como na lista e no painel, que o
+   * LineChat aceita: numa linha só, com vírgulas (o jeito da tela do Helena), a chave da API leva 500 — "The
+   * value 'Logs,Key,ResultDescription,Step' is not valid", no ar em 22/10, antes e depois do 2.0.4.
+   *
+   * O primeiro card acha os detalhes que o LineChat aceita: o que ele recusar sai (a prévia diz qual) e, no
+   * fim, o card vai sem detalhe nenhum (a Conclusão vem nele). Os que deram certo valem para os outros cards.
+   * `logs` volta nulo quando o histórico não foi pedido.
    */
-  card(id: string) {
-    return this.get<CardComHistoricoApi>(`crm/v1/panel/card/${encodeURIComponent(id)}`, { IncludeDetails: 'Logs,Key,ResultDescription,Step' });
+  async card(id: string): Promise<CardComHistoricoApi> {
+    const caminho = `crm/v1/panel/card/${encodeURIComponent(id)}`;
+    const pedir = async (detalhes: readonly string[]) => {
+      const c = await this.get<CardComHistoricoApi>(caminho, detalhes.length ? { IncludeDetails: [...detalhes] } : {});
+      return { ...c, logs: detalhes.includes('Logs') ? c.logs ?? [] : null };
+    };
+    if (this.detalhesDoCard) return pedir(this.detalhesDoCard);
+    let detalhes: string[] = [...DETALHES_DO_CARD];
+    for (;;) {
+      try {
+        const c = await pedir(detalhes);
+        this.detalhesDoCard = detalhes;
+        return c;
+      } catch (e) {
+        const recusado = valorRecusado(e);
+        // outro erro (a chave, o card que não existe, a rede): os detalhes não têm culpa
+        if (recusado === null) throw e;
+        this.recusasDoCard.push(recusado);
+        const proximos = proximosDetalhesDoCard(detalhes, recusado);
+        if (!proximos) throw e;
+        detalhes = proximos;
+      }
+    }
   }
 
   /**

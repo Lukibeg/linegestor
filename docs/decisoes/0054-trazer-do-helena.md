@@ -73,6 +73,20 @@ e 21 em andamento (R$ 28.495); e os ganhos mês a mês iguais ao gráfico *Meta 
   a vírgula ia escrita como `%2C`; o Helena manda a vírgula como vírgula (`includeDetails=Logs,Notes,…`,
   conferido na tela do card). O Gestor passou a mandar igual, e o Helena falso dos testes recusa o `%2C`, como o
   de verdade. Sem o histórico, a Conclusão também não vinha, e os ganhos caíam nos meses errados.
+  **Revisto no 2.1** (22/10, à tarde): com o 2.0.4 no ar, o Luan trouxe de novo e os ganhos mês a mês
+  continuaram quase todos em setembro (o Gestor: jul R$ 990, ago R$ 4.640, set R$ 21.541,80, out R$ 990; o
+  Helena: fev R$ 3.190, abr R$ 2.739,80, mai R$ 3.578,80, jun R$ 2.990, jul R$ 3.440, ago R$ 4.640, set
+  R$ 6.593,20, out R$ 990) — os totais certos (R$ 28.161,80 em 21). A vírgula não era a causa: o próprio
+  erro do 2.0.3 já mostrava a lista com vírgulas (o LineChat lê o `%2C` como vírgula), e a lista numa linha só é,
+  para ele, **um valor só** que ele não conhece. O LineChat valida cada valor de `IncludeDetails` (500
+  `FORM_ERROR`, *"The value 'X' is not valid"*, como num outro sistema que usa a mesma API) e quer **um detalhe
+  por parâmetro** — o jeito da lista dos cards e do painel, que o Gestor já pedia assim e funcionam no ar. O
+  card agora vai com `IncludeDetails=Logs&IncludeDetails=ResultDescription` (a chave, a etapa e os campos já
+  vêm na lista); o detalhe que o LineChat recusar sai do pedido (a prévia diz qual) e, no último caso, o card
+  vai sem detalhe nenhum — sem o histórico, mas com a Conclusão. A prévia avisa quando uma ganha ou perdida vem
+  sem a Conclusão (o gráfico do mês a mês não bateria), e, sem ela, o ganho fica no dia em que foi marcado no
+  histórico, não na última mudança do card. O Helena falso dos testes valida como o de verdade: o pedido do
+  2.0.3 e o do 2.0.4 levam o mesmo 500 que se viu no ar.
 - **Auditoria.** O Trazer vai para a auditoria (`import`, no painel): *"Trouxe do Helena o painel Ingline -
   Comercial para o painel novo Comercial (IC): 55 negociações (55 novas)"*, com as etapas, os campos criados,
   os motivos novos e os avisos.
