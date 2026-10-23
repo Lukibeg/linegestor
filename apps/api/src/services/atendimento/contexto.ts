@@ -13,9 +13,9 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, estadoDosPrazos, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
+  ajustesDaNiaCompletos, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, estadoDosPrazos, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
   valoresVisiveis,
-  type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
+  type AjustesDaNia, type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
   type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type PessoaCurta, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
   type Prioridade, type TipoChamado, type ValoresDosCampos,
 } from '@gestor/shared';
@@ -354,6 +354,24 @@ export async function registrarEvento(db: Banco, ticketId: string, tipo: TipoEve
     userId: ator ? pessoaDoAtor(ator) : null, actorName: ator ? integracaoDoAtor(ator) : null,
     data: dados, ...(em ? { createdAt: em } : {}),
   });
+}
+
+/**
+ * Os ajustes da NIA (2.0.4.1, o botão da ficha que pede à IA do n8n para preencher o chamado): ficam com as
+ * integrações (`settings.atendimento-integracoes`), o que falta com o padrão (as etiquetas do Helena).
+ */
+export async function lerAjustesDaNia(db: Db): Promise<AjustesDaNia> {
+  const { valor } = await integ.ler<{ nia?: unknown }>(db, 'atendimento-integracoes');
+  return ajustesDaNiaCompletos(valor.nia);
+}
+
+/**
+ * O modelo do link da conversa (Painéis › Ajustes › Integrações, "https://…/{sessao}"): monta o link da ficha
+ * e acha a sessão no link colado à mão (2.0.4.1, o chamado ativo). Vazio: sem modelo.
+ */
+export async function lerModeloDaConversa(db: Db): Promise<string> {
+  const { valor } = await integ.ler<{ linkConversa?: unknown }>(db, 'atendimento-integracoes');
+  return typeof valor.linkConversa === 'string' ? valor.linkConversa : '';
 }
 
 /** A última atividade do chamado (para achar o parado) e o "alterado em". */

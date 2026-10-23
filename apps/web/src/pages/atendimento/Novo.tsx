@@ -15,7 +15,9 @@
  *    outro": o cliente que volta à tarde com o mesmo ramal reabre o chamado da manhã;
  *  - a prioridade vem sugerida pela gravidade e pelo alcance (a matriz dos Ajustes › Prazos); trocar a
  *    sugerida pede o motivo, que fica no histórico;
- *  - o cliente só recebe aviso quando o atendente marca (desmarcado por padrão).
+ *  - o cliente só recebe aviso quando o atendente marca (desmarcado por padrão);
+ *  - a conversa do LineChat (2.0.4.1): o chamado ativo (a equipe chamou o cliente) não vem do robô — cola-se o
+ *    link da conversa (ou o código da sessão), a ficha mostra o link e a NIA lê o que foi conversado.
  *
  * As regras (o que o painel pede para abrir, a prioridade sugerida, o caminho do assunto) vêm do
  * `@gestor/shared`; quem decide é o servidor, e o erro dele aparece perto do botão.
@@ -36,11 +38,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, GitBranch, Layers, MessageCircle, Plus, RotateCcw, Siren, UserRoundPlus, X } from 'lucide-react';
+import { ChevronDown, GitBranch, Layers, MessageCircle, MessagesSquare, Plus, RotateCcw, Siren, UserRoundPlus, X } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
   acharContato, caminhoDoAssunto, campoLigado, chaveDaEtiqueta, chaveDoCampo, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
-  paraBusca, prioridadeSugeridaDoPainel, valorPreenchido,
+  paraBusca, prioridadeSugeridaDoPainel, valorPreenchido, MAX_LETRAS_DO_LINK_DA_CONVERSA, sessaoDaConversa,
   type CorEtiqueta,
   type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
   type FichaChamado, type Gravidade, type Obrigatorio, type OpcoesAtendimento, type Painel, type Prioridade, type TipoChamado, type ValorDoCampo, type ValoresDosProdutos,
@@ -79,6 +81,8 @@ type Form = {
   clienteId: string;
   contatoNome: string;
   contatoTelefone: string;
+  /** a conversa do LineChat: o link colado (o chamado ativo, 2.0.4.1) ou o código que o botão da conversa trouxe */
+  conversa: string;
   titulo: string;
   relato: string;
   descricao: string;
@@ -245,6 +249,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       contatoNome: doEndereco('nome') ?? '',
       // o LineChat manda só os dígitos (5571999990000): a caixa mostra do jeito que se lê
       contatoTelefone: fone ? telefoneLegivel(numeroWhatsApp(fone) ?? fone) : '',
+      conversa: sessao ?? '',
       titulo: '', relato: '', descricao: '',
       assuntoId: '', tipo: '', gravidade: null, alcance: null, prioridade: null, motivoPrioridade: '',
       produtos: [], operadoras: [],
@@ -330,6 +335,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   };
   const foneInvalido = !!f.contatoTelefone.trim() && !foneValido;
   const podeAvisar = !vendas && opcoes.whatsapp.cliente && !!foneValido;
+  // a conversa do LineChat colada (2.0.4.1): a mesma leitura do servidor, para dizer logo a sessão (ou o que está errado)
+  const conversa = f.conversa.trim() ? sessaoDaConversa(f.conversa, opcoes.linkConversa) : null;
 
   // o que o painel pede e o formulário não tem (uma regra mal escolhida nos Ajustes): diz logo, em vez de travar no fim
   const pedeForaDoFormulario = painel.ajustes.obrigatoriosAoAbrir.filter((c) => !idDaChave(c) && !CAMPOS_DO_FORMULARIO.includes(c as CampoObrigatorio));
@@ -378,6 +385,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       return;
     }
     if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
+    if (conversa && !conversa.ok) { setErro(`A conversa no LineChat: ${conversa.erro}`); document.getElementById('novo-conversa')?.focus(); return; }
     if (precisaMotivo && !f.motivoPrioridade.trim()) { setErro('Trocar a prioridade sugerida pede o motivo.'); document.getElementById('novo-motivo-prioridade')?.focus(); return; }
     if (vendas && !porProduto && !f.valorValido) { setErro('Escreva a mensalidade como 1.200,00.'); document.getElementById('novo-valor-unico')?.focus(); return; }
     if (vendas && !porProduto && !f.ativacaoValida) { setErro('Escreva a ativação como 1.500,00.'); document.getElementById('novo-valor-ativacao')?.focus(); return; }
@@ -406,7 +414,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       } : {}),
       contatoNome: f.contatoNome.trim() || null,
       contatoTelefone: f.contatoTelefone.trim() || null,
-      sessaoId: sessao,
+      // o que foi colado vai inteiro: quem acha a sessão no link é o servidor
+      sessaoId: f.conversa.trim() || null,
       // o que o painel desligou não vai (o servidor também não guardaria)
       assuntoId: usa('assunto') ? f.assuntoId || null : null,
       tipo: usa('tipo') ? f.tipo || null : null,
@@ -577,6 +586,19 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             <Rotulado rotulo="WhatsApp do contato" id="novo-whatsapp" erro={foneInvalido ? 'Use DDD + número, como (71) 99999-0000.' : undefined}>
               <input className="input tnum" id="novo-whatsapp" inputMode="tel" value={f.contatoTelefone} maxLength={40} placeholder="(71) 99999-0000"
                 onChange={(e) => { mudar({ contatoTelefone: e.target.value }); tirarFalta('contato'); }} />
+            </Rotulado>
+            {/* a conversa do LineChat (2.0.4.1, o pedido do Luan): o chamado ativo — a equipe chamou o cliente — não vem do
+                robô; com o link colado, a ficha mostra a conversa e a NIA lê o que foi dito */}
+            <Rotulado rotulo="Conversa no LineChat" id="novo-conversa" className="sm:col-span-2" erro={conversa && !conversa.ok ? conversa.erro : undefined}
+              dica={conversa?.ok && conversa.sessaoId ? `Sessão ${conversa.sessaoId}: a ficha mostra a conversa, e a NIA lê o que foi conversado.`
+                : vendas ? 'Opcional: o link da conversa com o contato no LineChat (ou o código da sessão).'
+                  : 'Opcional. No chamado ativo (a equipe chamou o cliente), cole o link da conversa no LineChat (ou o código da sessão): a ficha mostra a conversa, e a NIA lê o que foi conversado.'}>
+              <span className="relative block">
+                <MessagesSquare size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" aria-hidden />
+                <input className="input pl-9 font-mono text-[13px]" id="novo-conversa" value={f.conversa} maxLength={MAX_LETRAS_DO_LINK_DA_CONVERSA} inputMode="url" spellCheck={false}
+                  placeholder={opcoes.linkConversa ? opcoes.linkConversa.replace('{sessao}', '…') : 'Cole o link da conversa (ou o código da sessão)'}
+                  onChange={(e) => mudar({ conversa: e.target.value })} />
+              </span>
             </Rotulado>
             {/* escrito à mão (ou vindo da conversa do LineChat) e fora dos contatos do cliente: guardar com um clique */}
             {f.clienteId && (!vendas || f.jaECliente) && !contatoEscolhido && !cadastro.isLoading && podeContatos && f.contatoNome.trim().length >= 2 && !foneInvalido && (

@@ -19,6 +19,7 @@ import {
   citacaoDigitando, citadosNoTexto, emLista, pedacosComCitacoes,
   CARGOS_DE_FABRICA, cargoDaLista,
   compararNoQuadroDeVendas, MoverSchema, ordemAMao, ordemDepoisDeArrastar, PosicaoNoQuadroSchema,
+  NOME_CONVERSA, sessaoDaConversa,
 } from './atendimento.js';
 
 describe('o cargo do contato vem da lista (2.0.2, decisão 0053)', () => {
@@ -488,6 +489,50 @@ describe('a IA e o histórico', () => {
   it('o link da conversa só existe com o modelo das Integrações', () => {
     expect(linkDaConversa('https://app.exemplo.com.br/chat/{sessao}', 'abc 1')).toBe('https://app.exemplo.com.br/chat/abc%201');
     expect(linkDaConversa('', 'abc')).toBeNull();
+  });
+});
+
+describe('a conversa ligada à mão (2.0.4.1, o chamado ativo)', () => {
+  const U = '83858976-9930-4a4e-8f0e-1c2d3e4f5a6b';
+  const MODELO = 'https://app.inglinechat.com.br/chat/{sessao}';
+  const ok = (sessaoId: string | null) => ({ ok: true, sessaoId });
+  it('o link da conversa: pelo modelo, ou pelo uuid do LineChat que está nele', () => {
+    expect(sessaoDaConversa(`https://app.inglinechat.com.br/chat/${U}`, MODELO)).toEqual(ok(U));
+    // com o que vier depois, com http, em maiúsculas
+    expect(sessaoDaConversa(`  http://APP.inglinechat.com.br/chat/${U}?aba=notas#fim `, MODELO)).toEqual(ok(U));
+    // o modelo acha também o código que não é uuid
+    expect(sessaoDaConversa('https://app.inglinechat.com.br/chat/sessao-777_a', MODELO)).toEqual(ok('sessao-777_a'));
+    // outro endereço (ou sem modelo): o uuid no meio do link
+    expect(sessaoDaConversa(`https://outro.helena.app/chat2/sessions/${U.toUpperCase()}/messages`, MODELO)).toEqual(ok(U));
+    expect(sessaoDaConversa(`https://app.inglinechat.com.br/chat/${U}`, null)).toEqual(ok(U));
+    // o modelo com o {sessao} no meio do endereço
+    expect(sessaoDaConversa('https://x.com.br/s?id=ab12cd34&aba=1', 'https://x.com.br/s?id={sessao}&aba=1')).toEqual(ok('ab12cd34'));
+  });
+  it('o código sozinho, o "sessão …" copiado da ficha e o vazio (tira a conversa)', () => {
+    expect(sessaoDaConversa(U, MODELO)).toEqual(ok(U));
+    expect(sessaoDaConversa(`sessão ${U}`, null)).toEqual(ok(U));
+    expect(sessaoDaConversa('abc-123456', null)).toEqual(ok('abc-123456'));
+    expect(sessaoDaConversa('', MODELO)).toEqual(ok(null));
+    expect(sessaoDaConversa('   ', MODELO)).toEqual(ok(null));
+    expect(sessaoDaConversa(null)).toEqual(ok(null));
+  });
+  it('o que não dá para ler diz o que colar', () => {
+    const erro = (t: string, m?: string | null) => { const r = sessaoDaConversa(t, m); return r.ok ? null : r.erro; };
+    expect(erro('https://app.inglinechat.com.br/painel/clientes', MODELO)).toMatch(/^Não achei a sessão nesse link/);
+    expect(erro('https://app.inglinechat.com.br/chat/', MODELO)).toMatch(/^Não achei a sessão nesse link/);
+    expect(erro(`https://x.com.br/empresa/${U}/chat/${U.replace('8385', '1111')}`, null)).toMatch(/mais de um código/);
+    expect(erro('conversa da Maria', null)).toMatch(/não tem espaço/);
+    expect(erro('abc', null)).toMatch(/curto demais/);
+    expect(erro('{sessao}', null)).toMatch(/não parece/);
+    expect(erro(`https://x.com.br/${'a'.repeat(600)}`, null)).toMatch(/comprido demais/);
+  });
+  it('o formulário leva o link inteiro (até 500 letras); quem acha a sessão é o servidor', () => {
+    const link = `https://app.inglinechat.com.br/chat/${U}?${'x'.repeat(300)}`;
+    expect(ChamadoAlterarSchema.parse({ sessaoId: link }).sessaoId).toBe(link);
+    expect(ChamadoAlterarSchema.parse({ sessaoId: '  ' }).sessaoId).toBeNull();
+    expect(ChamadoAlterarSchema.parse({}).sessaoId).toBeUndefined();
+    expect(ChamadoCriarSchema.parse({ painelId: 'p', sessaoId: link }).sessaoId).toBe(link);
+    expect(NOME_CONVERSA).toBe('Conversa no LineChat');
   });
 });
 

@@ -322,6 +322,11 @@ export type Api = {
      * (nulo: no alto). 409 quando o `depoisDe` saiu da etapa.
      */
     posicionar(id: string, d: { depoisDe: string | null }): Promise<{ codigo: string; posicao: number }>;
+    /**
+     * Pede à NIA (2.0.4.1, a IA do suporte no n8n) para preencher: a etiqueta de pedir entra (a de pronto e a de erro
+     * saem), e o aviso do chamado alterado vai para o n8n, como quando a equipe etiquetava.
+     */
+    pedirANia(id: string): Promise<T.FichaChamado>;
     /** fica com o chamado; na entrada, ele vai para a primeira etapa de andamento */
     assumir(id: string): Promise<T.FichaChamado>;
     esperar(id: string, d: { tipo: 'cliente' | 'operadora' | null; motivo?: string | null }): Promise<T.FichaChamado>;
@@ -393,6 +398,9 @@ export type Api = {
     revogarChave(id: string): Promise<{ ok: boolean }>;
     salvarSites(sites: string[]): Promise<{ sites: string[] }>;
     salvarLinkConversa(linkConversa: string): Promise<{ linkConversa: string }>;
+    /** os ajustes da NIA (2.0.4.1): o botão da ficha e as etiquetas de pedir, de pronto e de erro */
+    niaAjustes(): Promise<T.AjustesDaNia>;
+    salvarNia(d: T.AjustesDaNiaEntrada): Promise<T.AjustesDaNia>;
     /** o mapa do robô do LineChat (2.0.1) e o último pedido dele */
     robo(): Promise<T.RoboTela>;
     salvarMapaDoRobo(mapa: T.MapaDoRoboEntrada): Promise<T.MapaDoRobo>;

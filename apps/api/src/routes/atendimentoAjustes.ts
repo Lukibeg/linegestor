@@ -16,7 +16,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
+  AjustesDaNiaSchema, AjustesPrazosSchema, AssuntoGravarSchema, AssuntosColarSchema, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, ChaveCriarSchema, EtapasGravarSchema,
   EtiquetaEditarPeloNomeSchema, EtiquetaEditarSchema, EtiquetaGravarSchema, ExperimentarRoboSchema,
   LinkConversaSchema, MapaDoRoboSchema, OrdemDosCamposSchema, PainelGravarSchema, parametrosDoEndereco, SitesIframeSchema, WebhookGravarSchema,
   EVENTOS_AVISO, MAX_MODELO_DO_AVISO, NOME_EVENTO_AVISO,
@@ -353,6 +353,28 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       before: { linkConversa: r.antes }, after: { linkConversa: r.linkConversa },
     });
     return { linkConversa: r.linkConversa };
+  });
+
+  // ---------- a NIA (2.0.4.1): o botão da ficha e as etiquetas do combinado com o fluxo do n8n ----------
+
+  app.get('/integracoes/nia', {
+    ...integrar,
+    schema: { tags: tagsIntegracoes, summary: 'Os ajustes da NIA: o botão na ficha e as etiquetas de pedir, de pronto e de erro (as do fluxo do n8n)' },
+  }, async () => (await integracoes.lerConfig(app.db)).nia);
+
+  app.put('/integracoes/nia', {
+    ...integrar,
+    schema: { tags: tagsIntegracoes, summary: 'Muda os ajustes da NIA (o botão na ficha e as três etiquetas, diferentes entre si)', body: AjustesDaNiaSchema },
+  }, async (req) => {
+    const r = await integracoes.gravarNia(app, req.body, req.user!.id);
+    await app.audit(req, {
+      action: 'settings_atendimento_nia', entityType: 'settings', entityId: 'atendimento-integracoes',
+      summary: r.nia.ligada
+        ? `Mudou o botão da NIA na ficha: ligado, com as etiquetas ${r.nia.pedir} (pedir), ${r.nia.pronto} (pronto) e ${r.nia.erro} (erro)`
+        : 'Desligou o botão da NIA na ficha',
+      before: { nia: r.antes }, after: { nia: r.nia },
+    });
+    return r.nia;
   });
 };
 

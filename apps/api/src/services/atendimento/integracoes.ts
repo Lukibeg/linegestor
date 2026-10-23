@@ -20,8 +20,8 @@ import type { z } from 'zod';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { newId, ticketApiKeys, ticketWebhooks, users, type Db } from '@gestor/db';
 import {
-  CAMPOS_DO_MAPA, NOME_CAMPO_DO_MAPA,
-  type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type MapaDoRobo, type RoboTela, type WebhookGravarSchema, type WebhookTela,
+  ajustesDaNiaCompletos, CAMPOS_DO_MAPA, NOME_CAMPO_DO_MAPA,
+  type AjustesDaNia, type ChaveApiTela, type EventoWebhook, type IntegracoesTela, type MapaDoRobo, type RoboTela, type WebhookGravarSchema, type WebhookTela,
 } from '@gestor/shared';
 import { BadRequest, NotFound } from '../../plugins/errors.js';
 import { esquecerSitesDoIframe } from '../../plugins/seguranca.js';
@@ -35,8 +35,8 @@ type WebhookGravar = z.infer<typeof WebhookGravarSchema>;
 type LinhaWebhook = typeof ticketWebhooks.$inferSelect;
 type LinhaChave = typeof ticketApiKeys.$inferSelect;
 
-/** O que fica em `settings.atendimento-integracoes`. */
-export type ConfigIntegracoes = { sites: string[]; linkConversa: string };
+/** O que fica em `settings.atendimento-integracoes` (a NIA desde o 2.0.4.1: o botão da ficha e as etiquetas dela). */
+export type ConfigIntegracoes = { sites: string[]; linkConversa: string; nia: AjustesDaNia };
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
@@ -48,6 +48,7 @@ export async function lerConfig(db: Db): Promise<ConfigIntegracoes> {
   return {
     sites: Array.isArray(valor.sites) ? valor.sites.filter((s): s is string => typeof s === 'string') : [],
     linkConversa: typeof valor.linkConversa === 'string' ? valor.linkConversa : '',
+    nia: ajustesDaNiaCompletos(valor.nia),
   };
 }
 
@@ -189,6 +190,16 @@ export async function gravarLinkConversa(app: FastifyInstance, linkConversa: str
   const atual = await lerConfig(app.db);
   await integ.gravar(app.db, 'atendimento-integracoes', { ...atual, linkConversa }, { userId });
   return { linkConversa, antes: atual.linkConversa };
+}
+
+/**
+ * Os ajustes da NIA (2.0.4.1): o botão da ficha que pede à NIA (a IA do suporte, no n8n) para preencher o chamado, e
+ * as três etiquetas do combinado com o fluxo dela (a de pedir, a de pronto e a de erro).
+ */
+export async function gravarNia(app: FastifyInstance, nia: AjustesDaNia, userId: string): Promise<{ nia: AjustesDaNia; antes: AjustesDaNia }> {
+  const atual = await lerConfig(app.db);
+  await integ.gravar(app.db, 'atendimento-integracoes', { ...atual, nia }, { userId });
+  return { nia, antes: atual.nia };
 }
 
 // =====================================================================
