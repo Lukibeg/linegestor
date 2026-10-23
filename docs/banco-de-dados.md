@@ -1174,6 +1174,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `prospect` | texto | A empresa da negociação que ainda não é cliente (o lead; o cliente do cadastro fica em client_id) | — |
 | `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |
 | `external_ref` | texto | De onde veio, quando veio de outro sistema (2.0.3, decisão 0054): "helena:<id do card>" — o Trazer do Helena acha por aqui a negociação que já trouxe (atualiza em vez de criar outra). Único. | — |
+| `board_position` | número inteiro | O lugar na coluna do quadro que a equipe escolheu arrastando (2.0.4.1, nas etapas abertas do painel de Vendas): 1 é o primeiro. Nulo: ninguém arrumou depois que o chamado chegou na etapa (mudar de etapa apaga), e ele vai pela regra de sempre, antes dos arrumados. | — |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |

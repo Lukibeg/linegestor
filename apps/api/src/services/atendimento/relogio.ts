@@ -269,7 +269,7 @@ async function fecharUm(app: FastifyInstance, ctx: Contexto, t: LinhaChamado, ag
   const quando = horas(agora);
   const fechou = await app.db.transaction(async (tx) => {
     // só se continua onde estava: alguém pode ter mexido no chamado no meio da volta
-    const r = await tx.update(tickets).set({ stageId: para.id, closedAt: agora, updatedAt: agora, lastActivityAt: agora })
+    const r = await tx.update(tickets).set({ stageId: para.id, boardPosition: null, closedAt: agora, updatedAt: agora, lastActivityAt: agora })
       .where(and(eq(tickets.id, t.id), eq(tickets.stageId, t.stageId), isNull(tickets.deletedAt))).returning({ id: tickets.id });
     if (!r.length) return false;
     // o movimento também vai como "etapa": a trajetória (e os relatórios) leem a mudança de etapa daí

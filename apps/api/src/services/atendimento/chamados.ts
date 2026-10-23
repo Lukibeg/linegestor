@@ -31,7 +31,7 @@ import {
   trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente,
   NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
-  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, tituloQueFica, mensagemDoTitulo, acharCampo,
+  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, tituloQueFica, mensagemDoTitulo, acharCampo, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos,
@@ -779,7 +779,8 @@ async function gravarMovimento(
   const antes = situacaoDaEtapa(deTipo);
   const depois = situacaoDaEtapa(para.tipo);
   const reabriu = antes !== 'aberto' && depois === 'aberto';
-  const set: SetChamado = { ...(o.extra ?? {}), stageId: para.id, updatedAt: agora, lastActivityAt: agora };
+  // mudar de etapa apaga o lugar que a equipe tinha escolhido no quadro (2.0.4.1): chega no alto da etapa nova
+  const set: SetChamado = { ...(o.extra ?? {}), stageId: para.id, boardPosition: null, updatedAt: agora, lastActivityAt: agora };
   if (para.tipo === 'resolvido') { set.resolvedAt = t.resolvedAt ?? agora; set.closedAt = null; }
   if (para.tipo === 'fechado') { set.closedAt = antes === 'fechado' ? t.closedAt ?? agora : agora; set.resolvedAt = t.resolvedAt ?? agora; }
   if (reabriu) { set.resolvedAt = null; set.closedAt = null; set.reopenCount = t.reopenCount + 1; }
@@ -849,7 +850,7 @@ function frasesDoMovimento(codigo: string, m: Movimento, sentido: 'sobe' | 'desc
  */
 export async function mover(
   app: FastifyInstance, ator: Ator, ref: string,
-  d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null },
+  d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null },
 ): Promise<Feito> {
   exigirTrabalhar(ator);
   const e = await carregar(app, ator, ref);
@@ -861,9 +862,63 @@ export async function mover(
   if (responsavelId) conferirPessoa(e.ctx, responsavelId);
   const venda = conferirResultado(e, para, d);
   const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true, venda });
-  const m = await app.db.transaction((tx) => gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda }));
+  const m = await app.db.transaction(async (tx) => {
+    const feito = await gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda });
+    // arrastada para um lugar da coluna (2.0.4.1): a etapa se arruma com ela ali (se a de cima saiu da etapa
+    // enquanto a pessoa arrastava, ela fica no alto, como quem chega sem lugar)
+    if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) await arrumarNaEtapa(tx, para.id, e.t.id, d.depoisDe);
+    return feito;
+  });
   await depoisDoMovimento(app, ator, e.t, m);
   return { ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo, venda && { valor: e.t.valueCents, motivoPerda: venda.motivoPerda }) };
+}
+
+// =====================================================================
+//  A ORDEM À MÃO NO QUADRO (2.0.4.1)
+// =====================================================================
+
+/**
+ * Arruma a etapa com o chamado logo abaixo de `depoisDe` (nulo: no alto), dentro da transação de quem chama: a
+ * etapa inteira fica numerada (1, 2, 3…) na ordem que o quadro mostra — a que chegou sem lugar também ganha o
+ * dela. As linhas da etapa ficam presas até o fim (dois arrastos ao mesmo tempo, um depois do outro). Devolve o
+ * lugar (1 é o primeiro) e se algo mudou; nulo quando `depoisDe` não está na etapa.
+ */
+async function arrumarNaEtapa(tx: Db, etapaId: string, id: string, depoisDe: string | null): Promise<{ posicao: number; mudou: boolean } | null> {
+  const linhas = await tx.select({ id: tickets.id, valor: tickets.valueCents, criadoEm: tickets.createdAt, ordem: tickets.boardPosition })
+    .from(tickets).where(and(eq(tickets.stageId, etapaId), isNull(tickets.deletedAt))).for('update');
+  const agora = linhas.map((l) => ({ id: l.id, valor: l.valor ?? null, criadoEm: l.criadoEm.toISOString(), ordemNoQuadro: l.ordem ?? null }))
+    .sort(compararNoQuadroDeVendas);
+  const ids = agora.map((c) => c.id);
+  const nova = ordemDepoisDeArrastar(ids, id, depoisDe);
+  if (!nova) return null;
+  const antes = new Map(agora.map((c) => [c.id, c.ordemNoQuadro]));
+  for (const [i, x] of nova.entries()) {
+    if (antes.get(x) !== i + 1) await tx.update(tickets).set({ boardPosition: i + 1 }).where(eq(tickets.id, x));
+  }
+  // mudou para quem olha o quadro: o arrastado trocou de lugar (numerar a etapa sem mexer na ordem não conta)
+  return { posicao: nova.indexOf(id) + 1, mudou: nova.indexOf(id) !== ids.indexOf(id) };
+}
+
+/**
+ * Muda o lugar da negociação na coluna do quadro, arrastando (2.0.4.1, o pedido do Luan: "quero poder trocar a
+ * ordem aqui, pra cima ou pra baixo da mesma forma que mudo de fase arrastando"): logo abaixo de `depoisDe`
+ * (nulo: no alto). Só no painel de Vendas, nas etapas abertas (no Suporte, o quadro põe o mais urgente primeiro;
+ * no Ganho e no Perdido, o mais recente). É a arrumação do quadro, não uma mudança na negociação: não mexe na
+ * última atividade nem no histórico; vai para a auditoria.
+ */
+export async function posicionar(app: FastifyInstance, ator: Ator, ref: string, d: { depoisDe: string | null }): Promise<Feito & { posicao: number }> {
+  exigirTrabalhar(ator);
+  const e = await carregar(app, ator, ref);
+  const etapa = e.etapa;
+  if (!etapa || !ordemAMao(e.painel, etapa)) {
+    throw new BadRequest(e.painel.tipo !== 'vendas'
+      ? 'Arrumar a ordem à mão é no painel de Vendas: neste, o quadro põe o mais urgente primeiro.'
+      : `Em ${etapa?.nome ?? 'esta etapa'}, a ordem é a do mais recente: arrumar à mão é nas etapas abertas.`);
+  }
+  if (d.depoisDe === e.t.id) throw new BadRequest('A negociação não fica abaixo dela mesma.');
+  const r = await app.db.transaction((tx) => arrumarNaEtapa(tx, etapa.id, e.t.id, d.depoisDe));
+  if (!r) throw new Conflict('O quadro mudou enquanto você arrastava (a negociação de cima saiu desta etapa). Veja de novo e arraste outra vez.');
+  return { ...nada(e.t), posicao: r.posicao, resumo: r.mudou ? `Pôs ${e.t.code} em ${r.posicao}º lugar em ${etapa.nome} (a ordem do quadro)` : null };
 }
 
 // =====================================================================

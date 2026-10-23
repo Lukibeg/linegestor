@@ -41,7 +41,7 @@ import {
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca,
   preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
-  AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNegociacoes, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
+  AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar, PosicaoNoQuadroSchema, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
   ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel,
   type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type RelatoriosDoPainel,
@@ -155,6 +155,8 @@ type ChamadoRow = {
   ativacoesDosProdutos: ValoresDosProdutos;
   /** de onde veio (2.0.3): "helena:<id do card>" — o Trazer do Helena atualiza em vez de criar outra */
   externalRef?: string | null;
+  /** o lugar na coluna do quadro que a equipe escolheu arrastando (2.0.4.1); mudar de etapa apaga */
+  ordemNoQuadro?: number | null;
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
 type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null; citados: string[] };
@@ -546,6 +548,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ativacao: t.ativacao,
       ativacoesDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.ativacoesDosProdutos).filter(([id]) => t.produtos.includes(id))) : {},
       resultado: e?.resultado ?? null, motivoPerda: e?.resultado === 'perdido' ? t.motivoPerda : null,
+      // o lugar que a equipe escolheu arrastando (2.0.4.1: só vale onde a ordem é à mão)
+      ordemNoQuadro: t.ordemNoQuadro ?? null,
     };
   }
 
@@ -1212,7 +1216,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const depois = situacaoDaEtapa(para.tipo);
     const reabriu = antes !== 'aberto' && depois === 'aberto';
     const responsavelAntes = t.responsavelId;
-    const set: Partial<ChamadoRow> = { ...(o.extra ?? {}), etapaId: para.id };
+    // mudar de etapa apaga o lugar que a equipe tinha escolhido no quadro (2.0.4.1): chega no alto da etapa nova
+    const set: Partial<ChamadoRow> = { ...(o.extra ?? {}), etapaId: para.id, ordemNoQuadro: null };
     if (para.tipo === 'resolvido') { set.resolvidoEm = t.resolvidoEm ?? iso(agora); set.fechadoEm = null; }
     if (para.tipo === 'fechado') { set.fechadoEm = antes === 'fechado' ? t.fechadoEm ?? iso(agora) : iso(agora); set.resolvidoEm = t.resolvidoEm ?? iso(agora); }
     if (reabriu) { set.resolvidoEm = null; set.fechadoEm = null; set.reaberto = t.reaberto + 1; }
@@ -1271,7 +1276,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   function mover(
-    ator: Ator, ref: string, d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null },
+    ator: Ator, ref: string, d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null },
     agora: Date = agoraReal(),
   ): Feito {
     exigirTrabalhar(ator);
@@ -1286,8 +1291,41 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const valor = e.t.valor;
     const sentido = conferirMovimento(e, para, { motivo, responsavelId, nivel: true, venda });
     const m = gravarMovimento(e, ator, para, { motivo, sentido, responsavelId, venda });
+    // arrastada para um lugar da coluna (2.0.4.1): a etapa se arruma com ela ali (se a de cima saiu da etapa, ela fica no alto)
+    if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) arrumarNaEtapa(para.id, e.t.id, d.depoisDe);
     depoisDoMovimento(ator, e.t, m, agora);
     return { ...nada(e.t), resumo: frasesDoMovimento(e.t.codigo, m, sentido, motivo, venda && { valor, motivoPerda: venda.motivoPerda }) };
+  }
+
+  // =====================================================================
+  //  A ORDEM À MÃO NO QUADRO (2.0.4.1) — a mesma regra do servidor
+  // =====================================================================
+
+  /** Arruma a etapa com o chamado logo abaixo de `depoisDe` (nulo: no alto), numerando a etapa inteira na ordem do quadro. */
+  function arrumarNaEtapa(etapaId: string, id: string, depoisDe: string | null): { posicao: number; mudou: boolean } | null {
+    const linhas = A.chamados.filter((t) => t.etapaId === etapaId && !t.deletedAt)
+      .map((t) => ({ t, valor: t.valor, criadoEm: t.criadoEm, ordemNoQuadro: t.ordemNoQuadro ?? null }))
+      .sort(compararNoQuadroDeVendas);
+    const ids = linhas.map((l) => l.t.id);
+    const nova = ordemDepoisDeArrastar(ids, id, depoisDe);
+    if (!nova) return null;
+    for (const [i, x] of nova.entries()) { const t = A.chamados.find((c) => c.id === x); if (t) t.ordemNoQuadro = i + 1; }
+    return { posicao: nova.indexOf(id) + 1, mudou: nova.indexOf(id) !== ids.indexOf(id) };
+  }
+
+  function posicionar(ator: Ator, ref: string, d: { depoisDe: string | null }): Feito & { posicao: number } {
+    exigirTrabalhar(ator);
+    const e = carregar(ator, ref, agoraReal());
+    const etapa = e.etapa;
+    if (!etapa || !ordemAMao(e.painel, etapa)) {
+      throw bad(e.painel.tipo !== 'vendas'
+        ? 'Arrumar a ordem à mão é no painel de Vendas: neste, o quadro põe o mais urgente primeiro.'
+        : `Em ${etapa?.nome ?? 'esta etapa'}, a ordem é a do mais recente: arrumar à mão é nas etapas abertas.`);
+    }
+    if (d.depoisDe === e.t.id) throw bad('A negociação não fica abaixo dela mesma.');
+    const r = arrumarNaEtapa(etapa.id, e.t.id, d.depoisDe);
+    if (!r) throw conflito('O quadro mudou enquanto você arrastava (a negociação de cima saiu desta etapa). Veja de novo e arraste outra vez.');
+    return { ...nada(e.t), posicao: r.posicao, resumo: r.mudou ? `Pôs ${e.t.codigo} em ${r.posicao}º lugar em ${etapa.nome} (a ordem do quadro)` : null };
   }
 
   // =====================================================================
@@ -1845,7 +1883,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (filhosQueTravam(filhosDoChamado(t.id), para, painel.ajustes.paiEsperaFilhos).length) return;
     const de = etapaDe(t.etapaId);
     const quando = relogio(agora);
-    t.etapaId = para.id; t.fechadoEm = iso(agora); tocar(t, agora);
+    t.etapaId = para.id; t.ordemNoQuadro = null; t.fechadoEm = iso(agora); tocar(t, agora);
     registrarEvento(t.id, 'etapa', null, { de: etapaCurta(de), para: etapaCurta(para), motivo: null, sentido: null }, quando());
     registrarEvento(t.id, 'fechou_sozinho', null, { dias, etapa: de?.nome ?? 'Resolvido' }, quando());
     if (para.avisar.length) avisarEquipe({ evento: 'etapa', para: para.avisar, chamado: curto(t), texto: `${t.codigo} chegou em ${para.nome}` }, agora);
@@ -2041,8 +2079,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         ? [...daqui].sort((a, b) => maisRecente(a.resolvidoEm ?? a.ultimaAtividadeEm, b.resolvidoEm ?? b.ultimaAtividadeEm))
         : etapa.tipo === 'fechado'
           ? [...daqui].sort((a, b) => maisRecente(a.fechadoEm ?? a.ultimaAtividadeEm, b.fechadoEm ?? b.ultimaAtividadeEm))
-          // a negociação (painel de Vendas) não tem prazo: a de maior valor primeiro
-          : [...daqui].sort(painel.tipo === 'vendas' ? compararNegociacoes : compararUrgencia);
+          // a negociação (painel de Vendas) não tem prazo: a ordem que a equipe deixou (e, sem ela, a de maior valor primeiro)
+          : [...daqui].sort(painel.tipo === 'vendas' ? compararNoQuadroDeVendas : compararUrgencia);
       const mostrados = etapa.tipo === 'fechado' ? ordenados.slice(0, FECHADOS_NO_QUADRO) : ordenados;
       return { etapa, chamados: mostrados.map(semBusca), total: daqui.length, escondidos: daqui.length - mostrados.length, valor: daqui.reduce((t, c) => t + (c.valor ?? 0), 0) };
     });
@@ -2673,7 +2711,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (linhas.length) {
         const mudaSituacao = situacaoDaEtapa(e.tipo) !== situacaoDaEtapa(para.tipo);
         for (const t of linhas) {
-          t.etapaId = para.id; t.atualizadoEm = iso(agora);
+          t.etapaId = para.id; t.ordemNoQuadro = null; t.atualizadoEm = iso(agora);
           if (mudaSituacao) datasDaSituacao(t, para.tipo);
           registrarEvento(t.id, 'etapa', ator, { de: { id: e.id, nome: e.nome, nivel: e.nivel }, para: { id: para.id, nome: para.nome, nivel: para.nivel }, motivo: `a etapa ${e.nome} saiu do painel`, sentido: null }, agora);
         }
@@ -3559,6 +3597,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     },
     async alterar(id, d) { await ctx.wait(150); const dados = ler(ChamadoAlterarSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(alterar(eu(), id, dados)); },
     async mover(id, d) { await ctx.wait(150); const dados = ler(MoverSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(mover(eu(), id, dados)); },
+    async posicionar(id, d) {
+      await ctx.wait(120); const dados = ler(PosicaoNoQuadroSchema, d); ctx.requirePerm('tickets.work'); preparar();
+      const r = posicionar(eu(), id, dados);
+      if (r.resumo) auditar('update', 'ticket', r.resumo, r.id);
+      return { codigo: r.codigo, posicao: r.posicao };
+    },
     async assumir(id) { await ctx.wait(150); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(assumir(eu(), id)); },
     async esperar(id, d) { await ctx.wait(150); const dados = ler(EsperarSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(esperar(eu(), id, dados)); },
     async reabrir(id, d) { await ctx.wait(150); const dados = ler(ReabrirSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(reabrir(eu(), id, dados)); },
@@ -4110,7 +4154,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       let t = n.chamadoId ? A.chamados.find((x) => x.id === n.chamadoId) : undefined;
       if (t) {
         const id = t.id;
-        Object.assign(t, dados, { campos: { ...t.campos, ...valores } });
+        // a que mudou de etapa no Helena perde o lugar que tinha no quadro de cá (2.0.4.1); a que ficou, fica nele
+        const mudouDeEtapa = t.etapaId !== etapaId;
+        Object.assign(t, dados, { campos: { ...t.campos, ...valores } }, mudouDeEtapa ? { ordemNoQuadro: null } : {});
         // o histórico que veio do Helena é refeito; o que a equipe fez no Gestor fica
         A.eventos = A.eventos.filter((e) => !(e.chamadoId === id && 'helena' in e.dados));
       } else {

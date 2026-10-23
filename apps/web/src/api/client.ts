@@ -293,6 +293,7 @@ export const realApi: Api = {
     criar: (d) => http('POST', '/atendimento/chamados', d),
     alterar: (id, d) => http('PATCH', `/atendimento/chamados/${id}`, d),
     mover: (id, d) => http('POST', `/atendimento/chamados/${id}/mover`, d),
+    posicionar: (id, d) => http('POST', `/atendimento/chamados/${id}/posicao`, d),
     assumir: (id) => http('POST', `/atendimento/chamados/${id}/assumir`, {}),
     esperar: (id, d) => http('POST', `/atendimento/chamados/${id}/esperar`, d),
     reabrir: (id, d) => http('POST', `/atendimento/chamados/${id}/reabrir`, d),

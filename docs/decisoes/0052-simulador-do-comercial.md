@@ -278,3 +278,20 @@ por faixas na simulação).
   computador), no jeito do cabeçalho dos custos da simulação e alinhados ao texto dos campos: **Custo**, **Tipo** e
   **Valor**; o valor em branco diz "a definir" (antes, "na simulação", embaixo de "Valor de hoje"). O "Como entra"
   virou **Tipo** também no cabeçalho dos custos da simulação ("Custo e tipo").
+
+## Revisto no 2.0.4.1 (23/10/2026): a simulação e a negociação em janelas
+
+No documento de 23/10:
+
+- **Na ficha da negociação, a simulação abre numa janela** (*"as simulações aqui quero que abra via pop up pra
+  n precisar sair da página"*). Clicar numa simulação em **Simulações** abre o editor inteiro numa janela por
+  cima da ficha (`SimulacaoEmJanela`), e o **Simular** abre a nova ali também. É o mesmo editor da página: salva
+  sozinho, e fechar a janela salva o que faltava; a lista e a margem da ficha se atualizam. **Duplicar** abre a
+  cópia na mesma janela; a **Lixeira** fecha a janela; **Página inteira** salva e leva para o Simulador. Na
+  janela, o chip da negociação não abre nada: ela é a ficha que está atrás.
+- **No Simulador, a negociação ligada abre numa janela** (*"tem q ter uma opção aqui para levar até o card que a
+  simulação está atrelada mas tem q abir por popo uo e n direcionar"*). O chip da negociação ganhou o **Abrir** e
+  abre a ficha numa janela grande por cima da simulação (a dos chamados), sem sair dela; fechar volta para a
+  simulação. O mesmo na lista das simulações.
+- **A mesma simulação em dois lugares** (a página e, por cima, a ficha com a simulação na janela): a página, sem
+  nada por salvar, fica com o que a janela salvou — e não leva a versão antiga por cima depois.

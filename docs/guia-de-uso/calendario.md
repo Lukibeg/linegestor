@@ -31,7 +31,9 @@ use os chamados.
 - **Só os meus**: os eventos de que você participa.
 - A **busca** acha o título, o cliente, o local, a observação, o chamado e as pessoas. (O filtro de
   cliente saiu no 2.0.2: para achar os eventos de um cliente, escreva o nome dele na busca.)
-- **Os tipos** (Visita, Folga…) são também a legenda das cores: um clique mostra só aquele tipo.
+- **Tipos** (2.0.4.1): o botão abre a lista dos tipos (Visita, Folga…), cada um com a bolinha da cor dele (é
+  a legenda das cores); marque os que quer ver. Como no **Painéis**, o botão mostra quantos estão marcados, e
+  nenhum marcado (ou todos) mostra os eventos de todos os tipos.
 - **Mostrar os cancelados**: desmarcado, os cancelados somem.
 
 Os filtros ficam no endereço da página: dá para mandar o link do jeito que está. No celular, eles ficam
@@ -112,7 +114,7 @@ Tudo o que muda fica na auditoria (Administração › Auditoria, tipo `calendar
 
 ## Os tipos
 
-Quem cuida dos chamados tem o botão **Tipos**: o nome, a cor, **Da equipe** (entra no "Hoje, fora do
+Quem cuida dos chamados tem o botão **Editar tipos** (até o 2.0.4, **Tipos**): o nome, a cor, **Da equipe** (entra no "Hoje, fora do
 escritório") e **Ativo**. **Incluir um tipo** cria outro (Treinamento, Plantão…). O tipo que já tem
 evento não sai da lista: desative, e os eventos dele continuam com o nome e a cor.
 

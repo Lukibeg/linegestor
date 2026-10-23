@@ -18,6 +18,7 @@ import {
   EtapaGravarSchema, NIVEIS, PAINEIS_INICIAIS, rotuloDoNivel,
   citacaoDigitando, citadosNoTexto, emLista, pedacosComCitacoes,
   CARGOS_DE_FABRICA, cargoDaLista,
+  compararNoQuadroDeVendas, MoverSchema, ordemAMao, ordemDepoisDeArrastar, PosicaoNoQuadroSchema,
 } from './atendimento.js';
 
 describe('o cargo do contato vem da lista (2.0.2, decisão 0053)', () => {
@@ -386,7 +387,7 @@ const cartao = (d: Partial<CartaoChamado> = {}, relato = 'o cliente disse que o 
     prazos: { resposta: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' }, solucao: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' } },
     pai: null, problema: null, filhos: { total: 0, abertos: 0 }, incidentes: 0, anotacoes: 0, origem: 'manual', reaberto: 0,
     criadoEm: '2026-10-13T12:00:00.000Z', atualizadoEm: '2026-10-13T12:00:00.000Z', ultimaAtividadeEm: '2026-10-13T12:00:00.000Z', resolvidoEm: null, fechadoEm: null,
-    valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ...d,
+    valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ordemNoQuadro: null, ...d,
   };
   return { ...c, busca: textoDeBusca(c, [relato]) };
 };
@@ -652,5 +653,41 @@ describe('o 2.0.3: as etiquetas de cada painel, a lista que inclui na hora e o t
     expect(mensagemDoTitulo('', true)).toBe(MENSAGEM_DO_TITULO.semEmpresa);
     // o formato aceita o vazio (quem decide é o tipo do painel)
     expect(ChamadoCriarSchema.parse({ painelId: 'p' }).titulo).toBe('');
+  });
+});
+
+describe('a ordem à mão no quadro (2.0.4.1)', () => {
+  it('só no painel de Vendas, nas etapas abertas', () => {
+    expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'entrada' })).toBe(true);
+    expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'andamento' })).toBe(true);
+    expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'fechado' })).toBe(false);
+    expect(ordemAMao({ tipo: 'gestao' }, { tipo: 'andamento' })).toBe(false);
+  });
+
+  it('a que ninguém arrumou vem antes (a de maior valor, depois a mais antiga); as arrumadas, na ordem da equipe', () => {
+    const c = (id: string, valor: number | null, ordemNoQuadro: number | null, criadoEm = `2026-10-0${id.charCodeAt(0) - 64}T12:00:00Z`) => ({ id, valor, ordemNoQuadro, criadoEm });
+    const lista = [c('A', 100, 2), c('B', 900, null), c('C', 50, 1), c('D', null, null), c('E', 900, null), c('F', 10, 2)];
+    // no empate do lugar (dois arrastos ao mesmo tempo), a regra de sempre desempata
+    expect([...lista].sort(compararNoQuadroDeVendas).map((x) => x.id)).toEqual(['B', 'E', 'D', 'C', 'A', 'F']);
+  });
+
+  it('a ordem depois de arrastar: para o alto, logo abaixo de outra, no fim; nula quando a de cima saiu', () => {
+    const ordem = ['A', 'B', 'C', 'D'];
+    expect(ordemDepoisDeArrastar(ordem, 'C', null)).toEqual(['C', 'A', 'B', 'D']);
+    expect(ordemDepoisDeArrastar(ordem, 'A', 'C')).toEqual(['B', 'C', 'A', 'D']);
+    expect(ordemDepoisDeArrastar(ordem, 'B', 'D')).toEqual(['A', 'C', 'D', 'B']);
+    expect(ordemDepoisDeArrastar(ordem, 'B', 'A')).toEqual(ordem);
+    // a que chega de outra coluna entra no lugar
+    expect(ordemDepoisDeArrastar(ordem, 'X', 'B')).toEqual(['A', 'B', 'X', 'C', 'D']);
+    expect(ordemDepoisDeArrastar(ordem, 'A', 'Z')).toBeNull();
+    expect(ordemDepoisDeArrastar(ordem, 'A', 'A')).toBeNull();
+  });
+
+  it('o pedido: o lugar (nulo é o alto); o mover leva o lugar só quando foi arrastado para ele', () => {
+    expect(PosicaoNoQuadroSchema.parse({ depoisDe: null })).toEqual({ depoisDe: null });
+    expect(PosicaoNoQuadroSchema.safeParse({}).success).toBe(false);
+    expect(MoverSchema.parse({ etapaId: 'e' }).depoisDe).toBeUndefined();
+    expect(MoverSchema.parse({ etapaId: 'e', depoisDe: null }).depoisDe).toBeNull();
+    expect(MoverSchema.parse({ etapaId: 'e', depoisDe: 'x' }).depoisDe).toBe('x');
   });
 });

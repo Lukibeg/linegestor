@@ -1270,7 +1270,14 @@ export const MoverSchema = z.object({
   motivoPerda: TextoOpcional(200),
   /** Ganho e Perdido: o dia em que a negociação acabou (hoje ou antes; sem ele, agora) */
   concluidoEm: DiaSchema.nullish().transform((v) => v || null),
+  /**
+   * Arrastada para um lugar da coluna (2.0.4.1, só onde vale a ordem à mão): o cartão que fica logo acima (nulo:
+   * o alto). Sem ele, ela chega no alto da etapa, pela regra de sempre.
+   */
+  depoisDe: z.string().min(1).nullish(),
 });
+/** Mudar o lugar na coluna do quadro, arrastando (2.0.4.1): o cartão que fica logo acima; nulo, o alto. */
+export const PosicaoNoQuadroSchema = z.object({ depoisDe: z.string().min(1).nullable() });
 export const EsperarSchema = z.object({ tipo: z.enum(['cliente', 'operadora']).nullable(), motivo: TextoOpcional(300) });
 export const ReabrirSchema = z.object({ motivo: TextoOpcional(500), etapaId: z.string().nullish() });
 export const TrocarPainelSchema = z.object({ painelId: z.string().min(1), etapaId: z.string().nullish() });
@@ -1709,6 +1716,12 @@ export type CartaoChamado = {
   /** como acabou (a etapa final do painel de Vendas: Ganho ou Perdido) e, no Perdido, o motivo */
   resultado: ResultadoDaVenda | null;
   motivoPerda: string | null;
+  /**
+   * O lugar na coluna do quadro que a equipe escolheu arrastando (2.0.4.1, só nas etapas abertas do painel de
+   * Vendas: `ordemAMao`): 1 é o primeiro. Nulo: ninguém arrumou depois que ela chegou na etapa (mudar de etapa
+   * apaga), e ela vai pela regra de sempre, antes das arrumadas.
+   */
+  ordemNoQuadro: number | null;
 };
 
 export const TIPOS_EVENTO = [
@@ -2448,10 +2461,49 @@ export function compararUrgencia(a: CartaoChamado, b: CartaoChamado): number {
  * A ordem das negociações abertas (o painel de Vendas não tem prazo): a de maior valor primeiro (a sem
  * valor no fim), depois a mais antiga.
  */
-export function compararNegociacoes(a: CartaoChamado, b: CartaoChamado): number {
+export function compararNegociacoes(a: Pick<CartaoChamado, 'valor' | 'criadoEm'>, b: Pick<CartaoChamado, 'valor' | 'criadoEm'>): number {
   const va = a.valor ?? -1; const vb = b.valor ?? -1;
   if (va !== vb) return vb - va;
   return a.criadoEm.localeCompare(b.criadoEm);
+}
+
+// ---------------------------------------------------------------------
+//  A ORDEM À MÃO NO QUADRO (2.0.4.1)
+// ---------------------------------------------------------------------
+//  O pedido do Luan (23/10), no quadro do Comercial: "quero poder trocar a ordem aqui, pra cima ou pra baixo da
+//  mesma forma que mudo de fase arrastando". Só no painel de Vendas e nas etapas abertas: no Suporte, o quadro
+//  põe o mais urgente primeiro (o prazo manda); no Ganho e no Perdido, o mais recente.
+
+/** A coluna aceita a ordem à mão? (o painel de Vendas, nas etapas abertas: a entrada e o andamento) */
+export function ordemAMao(painel: { tipo: TipoDePainel }, etapa: { tipo: TipoEtapa }): boolean {
+  return painel.tipo === 'vendas' && (etapa.tipo === 'entrada' || etapa.tipo === 'andamento');
+}
+
+type NoQuadro = Pick<CartaoChamado, 'valor' | 'criadoEm' | 'ordemNoQuadro'>;
+/**
+ * A ordem de uma etapa aberta do painel de Vendas: primeiro as que ninguém arrumou depois que chegaram (a regra
+ * de sempre: a de maior valor, depois a mais antiga) — a que acabou de chegar aparece no alto —, depois as
+ * arrumadas, na ordem que a equipe deixou.
+ */
+export function compararNoQuadroDeVendas(a: NoQuadro, b: NoQuadro): number {
+  const pa = a.ordemNoQuadro; const pb = b.ordemNoQuadro;
+  if (pa == null && pb == null) return compararNegociacoes(a, b);
+  if (pa == null) return -1;
+  if (pb == null) return 1;
+  return pa !== pb ? pa - pb : compararNegociacoes(a, b);
+}
+
+/**
+ * A ordem nova da etapa depois de arrastar: `ordem` é a etapa como o quadro mostra (os ids), `id` o que foi
+ * arrastado e `depoisDe` o cartão que fica logo acima dele (nulo: ele vai para o alto). Nula quando o
+ * `depoisDe` não está mais na etapa (o quadro mudou enquanto a pessoa arrastava).
+ */
+export function ordemDepoisDeArrastar(ordem: readonly string[], id: string, depoisDe: string | null): string[] | null {
+  const sem = ordem.filter((x) => x !== id);
+  if (depoisDe === null) return [id, ...sem];
+  const i = sem.indexOf(depoisDe);
+  if (i < 0) return null;
+  return [...sem.slice(0, i + 1), id, ...sem.slice(i + 1)];
 }
 
 export function ordenarCartoes<T extends CartaoChamado>(lista: T[], sort: string | undefined, dir: 'asc' | 'desc' | undefined, ordemDasEtapas: Map<string, number>): T[] {
