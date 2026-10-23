@@ -311,6 +311,11 @@ export type Api = {
     alterar(id: string, d: T.ChamadoAlterarEntrada): Promise<T.FichaChamado>;
     /** escalonar (subir de nível) e voltar de nível pedem o motivo */
     mover(id: string, d: T.MoverEntrada): Promise<T.FichaChamado>;
+    /**
+     * O lugar na coluna do quadro (2.0.4.1, nas etapas abertas do painel de Vendas): logo abaixo de `depoisDe`
+     * (nulo: no alto). 409 quando o `depoisDe` saiu da etapa.
+     */
+    posicionar(id: string, d: { depoisDe: string | null }): Promise<{ codigo: string; posicao: number }>;
     /** fica com o chamado; na entrada, ele vai para a primeira etapa de andamento */
     assumir(id: string): Promise<T.FichaChamado>;
     esperar(id: string, d: { tipo: 'cliente' | 'operadora' | null; motivo?: string | null }): Promise<T.FichaChamado>;

@@ -9,11 +9,14 @@
  * 2 segundos depois da última mudança, ou antes do Levar, do Excel e do Duplicar, ou ao sair da tela. A nova é
  * criada assim que tiver um nome. O que ainda não dá para salvar (um custo sem nome) fica dito no aviso, e a
  * simulação salva assim que a pessoa completa. Cada salvamento vai para a auditoria, com o que mudou.
+ *
+ * Desde o 2.0.4.1, o mesmo editor abre numa janela por cima da ficha da negociação (`SimulacaoEmJanela`: "pra n
+ * precisar sair da página"), e o chip da negociação ligada abre a ficha dela numa janela por cima da simulação.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, Check, Copy, FileSpreadsheet, Link2, Send, Star, Trash2, X } from 'lucide-react';
+import { AlertTriangle, AppWindow, ArrowLeft, Calculator, Check, Copy, FileSpreadsheet, Link2, Maximize2, Send, Star, Trash2, X } from 'lucide-react';
 import {
   LINECHAT_DO_SIMULADOR, MAX_CENARIOS, MAX_PARCELAS, PRAZOS_COMUNS, SimulacaoGravarSchema, TIPO_DO_XLSX, cenarioNovo, cenarioPrincipal, comPrecoPorProduto, contasDoCenario, duplicarCenario, idLocal,
   linhasParaOLineChat, linhasSemOLineChat, mesmoValorPorProduto, normalizarPorProduto, pagamentoPorProduto, percentual, proximoNomeDeCenario, textoDoSePagaEm,
@@ -24,6 +27,7 @@ import { IS_DEMO, api } from '../../../api/index.js';
 import { ApiError } from '../../../api/types.js';
 import { Carregando, Confirmar, Modal, Spinner, Vazio, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { useAuth } from '../../../lib/auth.js';
+import { LinkDoChamado } from '../../atendimento/comum.js';
 import { CHAVE_DO_SIMULADOR, CampoDePercentual, CampoDeReais, CampoInteiro, ChipDoSinal, PONTO_DO_SINAL, erroDoSimulador, reaisLimpo, useOpcoesDoSimulador } from './comum.js';
 import { OsCustos } from './Custos.js';
 import { SemOComercial } from './Lista.js';
@@ -47,32 +51,89 @@ const oQueFalta = (e: { issues: Array<{ message: string }> }) => e.issues[0]?.me
 /** Quanto esperar depois da última mudança para salvar. */
 const ESPERA_PARA_SALVAR = 2_000;
 
+/** A simulação aberta numa janela por cima de outra tela (a ficha da negociação, 2.0.4.1): o que muda no editor. */
+type NaJanela = {
+  /** a negociação cuja ficha está atrás da janela: o chip dela não abre outra janela por cima */
+  negociacaoDoFundo: string | null;
+  fechar: () => void;
+};
+/** Para onde a tela vai depois de criar, duplicar e mandar para a lixeira (a página do Simulador, ou a janela). */
+type DepoisDoEditor = {
+  /** a nova foi criada: a edição continua com ela (a mesma chave: o editor não recomeça) */
+  aoCriar: (s: Simulacao, chave: string) => void;
+  aoDuplicar: (s: Simulacao) => void;
+  aoTirar: () => void;
+};
+
+/** A página da simulação (/comercial/simulador/:id e /comercial/simulador/nova?modelo=…&negociacao=…). */
 export function SimulacaoDoComercial() {
-  const { can } = useAuth();
   const { id = 'nova' } = useParams();
-  const nova = id === 'nova';
   const [params] = useSearchParams();
   // a nova, quando é criada, troca o endereço sem trocar a tela (a chave vem junto e a edição continua)
   const { state } = useLocation();
+  const nav = useNavigate();
+  const nova = id === 'nova';
+  const daNegociacao = nova ? params.get('negociacao') : null;
+  const chave = (state as { chave?: string } | null)?.chave ?? (nova ? `nova-${params.get('modelo') ?? ''}-${daNegociacao ?? ''}` : id);
+  return (
+    <AbrirSimulacao id={id} modelo={nova ? params.get('modelo') : null} negociacao={daNegociacao} chave={chave}
+      aoCriar={(s, k) => nav(`/comercial/simulador/${s.id}`, { replace: true, state: { chave: k } })}
+      aoDuplicar={(s) => nav(`/comercial/simulador/${s.id}`)}
+      aoTirar={() => nav('/comercial/simulador')} />
+  );
+}
+
+/**
+ * A simulação numa janela, por cima da tela (2.0.4.1, o pedido do Luan na ficha da negociação: "as simulações aqui
+ * quero que abra via pop up pra n precisar sair da página"). É o mesmo editor da página — salva sozinho, e o que
+ * falta salvar vai junto ao fechar. `id` nulo: uma simulação nova, já ligada à negociação (o Simular da ficha).
+ */
+export function SimulacaoEmJanela({ id, negociacao, onFechar }: { id: string | null; negociacao: string; onFechar: () => void }) {
+  // a nova, quando é criada, continua na janela com a mesma chave (o editor não recomeça); a duplicada abre no lugar
+  const [atual, setAtual] = useState(() => ({ id: id ?? 'nova', chave: id ?? `nova-na-janela-${negociacao}` }));
+  return (
+    // um pouco menor que a janela da ficha: a beirada dela aparece atrás (dá para ver que ela continua ali)
+    <Modal open onClose={onFechar} largura="max-w-[1260px] h-[calc(100vh-72px)]" titulo={(
+      <span className="inline-flex items-center gap-2" id="janela-da-simulacao"><Calculator size={16} className="text-muted" aria-hidden /> Simulação</span>
+    )}>
+      <AbrirSimulacao id={atual.id} negociacao={atual.id === 'nova' ? negociacao : null} chave={atual.chave}
+        naJanela={{ negociacaoDoFundo: negociacao, fechar: onFechar }}
+        aoCriar={(s) => setAtual((a) => ({ id: s.id, chave: a.chave }))}
+        aoDuplicar={(s) => setAtual({ id: s.id, chave: s.id })}
+        aoTirar={onFechar} />
+    </Modal>
+  );
+}
+
+/** Lê a simulação (ou monta a nova: em branco, com os modelos ou a partir da negociação) e abre o editor. */
+function AbrirSimulacao({ id, modelo = null, negociacao = null, chave, naJanela, ...depois }: DepoisDoEditor & {
+  id: string; modelo?: string | null; negociacao?: string | null; chave: string; naJanela?: NaJanela;
+}) {
+  const { can } = useAuth();
+  const nova = id === 'nova';
   const op = useOpcoesDoSimulador();
   const lida = useQuery({ queryKey: [...CHAVE_DO_SIMULADOR, 'simulacao', id], queryFn: () => api.simulador.ler(id), enabled: !nova && can('sales.read') });
   // a simulação a partir de uma negociação (o Simular da ficha): a empresa, os produtos e os valores dela
-  const daNegociacao = nova ? params.get('negociacao') : null;
+  const daNegociacao = nova ? negociacao : null;
   const ficha = useQuery({ queryKey: ['simulador-ficha', daNegociacao], queryFn: () => api.atendimento.chamado(daNegociacao!), enabled: !!daNegociacao && can('sales.read'), staleTime: 0 });
   if (!can('sales.read')) return <SemOComercial />;
   if (op.isLoading || (!nova && lida.isLoading) || (daNegociacao && ficha.isLoading)) return <Carregando />;
   if (op.isError) return <p className="text-bad text-sm" role="alert">{erroDoSimulador(op.error)}</p>;
+  // na janela, o caminho de volta é fechar (a ficha continua atrás)
+  const voltar = naJanela
+    ? <button type="button" className="btn-secondary" onClick={naJanela.fechar}>Fechar</button>
+    : <Link to="/comercial/simulador" className="btn-secondary"><ArrowLeft size={15} /> Ver as simulações</Link>;
   if (daNegociacao && ficha.isError) {
     return (
       <Vazio titulo="Não deu para abrir a negociação" texto={ficha.error instanceof ApiError && ficha.error.status === 404 ? 'Ela pode ter ido para a lixeira, ou ser de um painel que você não vê.' : mensagemErro(ficha.error)}
-        acao={<Link to="/comercial/simulador" className="btn-secondary"><ArrowLeft size={15} /> Ver as simulações</Link>} />
+        acao={voltar} />
     );
   }
   if (!nova && lida.isError) {
     const sumiu = lida.error instanceof ApiError && lida.error.status === 404;
     return (
       <Vazio titulo={sumiu ? 'Simulação não encontrada' : 'Não deu para abrir a simulação'} texto={sumiu ? 'Ela pode ter ido para a lixeira.' : erroDoSimulador(lida.error)}
-        acao={<Link to="/comercial/simulador" className="btn-secondary"><ArrowLeft size={15} /> Ver as simulações</Link>} />
+        acao={voltar} />
     );
   }
   const ajustes = op.data!.ajustes;
@@ -80,12 +141,14 @@ export function SimulacaoDoComercial() {
   const inicial: Rascunho = nova ? (ficha.data ? daFicha(ficha.data, ajustes, produtos) : (() => {
     // os modelos marcados na Nova simulação (um ou mais, na ordem da lista); com dois produtos ou mais, cada um
     // com o seu preço ("uma proposta separada, porém uma negociação única")
-    const modelos = (params.get('modelo') ?? '').split(',').map((x) => ajustes.modelos.find((m) => m.id === x.trim())).filter((m): m is ModeloDeSimulacao => !!m);
+    const modelos = (modelo ?? '').split(',').map((x) => ajustes.modelos.find((m) => m.id === x.trim())).filter((m): m is ModeloDeSimulacao => !!m);
     const a = comPrecoPorProduto(cenarioNovo(ajustes, { id: idLocal(), nome: 'Cenário A', modelos }));
     return { nome: '', negociacaoId: null, negociacao: null, cenarios: [a], principal: a.id };
   })()) : doServidor(lida.data!);
-  const chave = (state as { chave?: string } | null)?.chave ?? (nova ? `nova-${params.get('modelo') ?? ''}-${daNegociacao ?? ''}` : id);
-  return <Editor key={chave} chave={chave} id={nova ? null : id} inicial={inicial} simulacao={nova ? null : lida.data!} ajustes={ajustes} produtos={produtos} podeEditar={op.data!.podeEditar} />;
+  return (
+    <Editor key={chave} chave={chave} id={nova ? null : id} inicial={inicial} simulacao={nova ? null : lida.data!} ajustes={ajustes} produtos={produtos} podeEditar={op.data!.podeEditar}
+      naJanela={naJanela} depois={depois} />
+  );
 }
 
 /**
@@ -112,10 +175,13 @@ function daFicha(f: FichaChamado, ajustes: AjustesDoSimulador, produtos: Produto
   };
 }
 
-function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar }: {
+function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar, naJanela, depois }: {
   chave: string; id: string | null; inicial: Rascunho; simulacao: Simulacao | null; ajustes: AjustesDoSimulador; produtos: ProdutoDoSimulador[]; podeEditar: boolean;
+  naJanela?: NaJanela; depois: DepoisDoEditor;
 }) {
   const nav = useNavigate();
+  // o que vem depois de criar, duplicar e tirar roda mais tarde (depois do salvar): sempre o que está valendo
+  const depoisRef = useRef(depois); depoisRef.current = depois;
   const qc = useQueryClient();
   const toast = useToast();
   const [r, setR] = useState<Rascunho>(inicial);
@@ -177,7 +243,7 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar }
           idRef.current = s.id;
           setIdAtual(s.id);
           toast.push('ok', `A simulação "${s.nome}" foi criada. Daqui em diante, ela salva sozinha.`);
-          nav(`/comercial/simulador/${s.id}`, { replace: true, state: { chave } });
+          depoisRef.current.aoCriar(s, chave);
         }
         return true;
       } catch (e) {
@@ -198,6 +264,21 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar }
   }, [assinaturaDeAgora, salvo, podeEditar, idAtual, mexeu, inicial.nome, salvarAgora]);
   // ao sair da tela, o que falta salvar vai junto
   useEffect(() => () => { void salvarAgora(); }, [salvarAgora]);
+  // a mesma simulação salva em outro lugar (2.0.4.1: a janela da ficha, aberta por cima desta página): sem nada
+  // por salvar aqui, a tela fica com a versão nova — e não leva a antiga por cima depois; com algo por salvar
+  // aqui, fica o daqui (é o que vai ser salvo)
+  const pendenteRef = useRef(pendente); pendenteRef.current = pendente;
+  useEffect(() => {
+    if (!simulacao) return;
+    const v = validar(doServidor(simulacao));
+    if (!v.success) return;
+    const assinatura = estavel(v.data);
+    if (assinatura === salvoRef.current || pendenteRef.current || voo.current) return;
+    salvoRef.current = assinatura;
+    setSalvo(assinatura);
+    setUltima(simulacao);
+    setR(doServidor(simulacao));
+  }, [simulacao]);
   // fechar a aba antes de salvar pede confirmação do navegador
   useEffect(() => {
     if (!pendente) return;
@@ -215,12 +296,12 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar }
 
   const duplicar = useMutation({
     mutationFn: async () => { if (!(await salvoAntes())) throw new Error('nao-salvou'); return api.simulador.duplicar(idAtual!); },
-    onSuccess: (s) => { invalidar(); toast.push('ok', `Duplicada: "${s.nome}".`); nav(`/comercial/simulador/${s.id}`); },
+    onSuccess: (s) => { invalidar(); toast.push('ok', `Duplicada: "${s.nome}".`); depoisRef.current.aoDuplicar(s); },
     onError: (e) => { if (!(e instanceof Error && e.message === 'nao-salvou')) toast.push('erro', erroDoSimulador(e)); },
   });
   const remover = useMutation({
     mutationFn: () => api.simulador.remover(idAtual!),
-    onSuccess: () => { salvoRef.current = estavel(paraGravar(rRef.current)); invalidar(); toast.push('ok', `"${r.nome}" foi para a lixeira (volta pela Administração › Lixeira).`); nav('/comercial/simulador'); },
+    onSuccess: () => { salvoRef.current = estavel(paraGravar(rRef.current)); invalidar(); toast.push('ok', `"${r.nome}" foi para a lixeira (volta pela Administração › Lixeira).`); depoisRef.current.aoTirar(); },
     onError: (e) => toast.push('erro', erroDoSimulador(e)),
   });
 
@@ -239,12 +320,20 @@ function Editor({ chave, id, inicial, simulacao, ajustes, produtos, podeEditar }
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
         <div className="min-w-0 flex-1 basis-[420px]">
-          <Link to="/comercial/simulador" className="link text-[13px] inline-flex items-center gap-1"><ArrowLeft size={14} /> Simulador</Link>
+          {naJanela ? (
+            // na janela, a página inteira do Simulador (salva antes: a página lê o que está salvo)
+            idAtual && (
+              <button type="button" className="link text-[13px] inline-flex items-center gap-1" id="simulador-pagina-inteira"
+                onClick={async () => { await salvarAgora(); nav(`/comercial/simulador/${idAtual}`); }} title="Abrir a simulação na página do Simulador (sai desta tela)">
+                <Maximize2 size={13} aria-hidden /> Página inteira
+              </button>
+            )
+          ) : <Link to="/comercial/simulador" className="link text-[13px] inline-flex items-center gap-1"><ArrowLeft size={14} /> Simulador</Link>}
           <input className="mt-1 w-full bg-transparent font-display text-xl font-semibold text-ink placeholder:text-muted placeholder:font-normal rounded-md px-1 -mx-1 border border-transparent hover:border-line focus:border-accent focus:outline-none"
             value={r.nome} onChange={(e) => setR((x) => ({ ...x, nome: e.target.value }))} placeholder="O nome da simulação (o cliente, a proposta)" aria-label="O nome da simulação"
             disabled={!podeEditar} id="simulador-nome" autoFocus={!id} maxLength={120} />
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[12.5px] text-muted">
-            <Negociacao r={r} mudar={(n) => setR((x) => ({ ...x, negociacaoId: n?.id ?? null, negociacao: n }))} podeEditar={podeEditar} />
+            <Negociacao r={r} mudar={(n) => setR((x) => ({ ...x, negociacaoId: n?.id ?? null, negociacao: n }))} podeEditar={podeEditar} naFicha={naJanela?.negociacaoDoFundo ?? null} />
             {ultima && <span>Mexida em {new Date(ultima.alteradoEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}{ultima.alteradoPor ? ` por ${ultima.alteradoPor}` : ''}</span>}
           </div>
         </div>
@@ -454,8 +543,13 @@ function BotaoDoExcel({ id, antes, falta }: { id: string; antes: () => Promise<b
   );
 }
 
-/** A negociação ligada (o código, o título e a empresa) ou o campo para ligar uma, pelo código (COM-12). */
-function Negociacao({ r, mudar, podeEditar }: { r: Rascunho; mudar: (n: NegociacaoDaSimulacao | null) => void; podeEditar: boolean }) {
+/**
+ * A negociação ligada (o código, o título e a empresa) ou o campo para ligar uma, pelo código (COM-12). O chip abre a
+ * ficha da negociação numa janela por cima da simulação (2.0.4.1, o pedido do Luan: "tem q ter uma opção aqui para
+ * levar até o card que a simulação está atrelada mas tem q abrir por pop up e n direcionar"). Na janela aberta pela
+ * ficha (`naFicha`: a negociação de trás), o chip dela não abre nada: ela já está ali, atrás.
+ */
+function Negociacao({ r, mudar, podeEditar, naFicha }: { r: Rascunho; mudar: (n: NegociacaoDaSimulacao | null) => void; podeEditar: boolean; naFicha: string | null }) {
   const [codigo, setCodigo] = useState('');
   const [erro, setErro] = useState('');
   const [buscando, setBuscando] = useState(false);
@@ -474,14 +568,24 @@ function Negociacao({ r, mudar, podeEditar }: { r: Rascunho; mudar: (n: Negociac
     } finally { setBuscando(false); }
   };
   if (r.negociacaoId) {
+    const n = r.negociacao;
+    const conteudo = n && (
+      <>
+        <Link2 size={12} aria-hidden className="shrink-0" /><span className="font-mono">{n.codigo}</span><span className="truncate font-normal">· {n.titulo}{n.empresa ? ` · ${n.empresa}` : ''}</span>
+        {n.resultado && <span className={n.resultado === 'ganho' ? 'text-ok' : 'text-bad'}>· {n.resultado}</span>}
+      </>
+    );
     return (
       <span className="inline-flex items-center gap-1.5 min-w-0" id="simulador-negociacao">
-        {r.negociacao ? (
-          <Link to={`/atendimento/${encodeURIComponent(r.negociacao.codigo)}`} className="chip bg-surface-2 text-ink-2 hover:text-accent max-w-full">
-            <Link2 size={12} aria-hidden /><span className="font-mono">{r.negociacao.codigo}</span><span className="truncate font-normal">· {r.negociacao.titulo}{r.negociacao.empresa ? ` · ${r.negociacao.empresa}` : ''}</span>
-            {r.negociacao.resultado && <span className={r.negociacao.resultado === 'ganho' ? 'text-ok' : 'text-bad'}>· {r.negociacao.resultado}</span>}
-          </Link>
-        ) : <span className="chip bg-surface-2 text-muted" title="Ligada a uma negociação de um painel que você não vê"><Link2 size={12} aria-hidden /> negociação de outro painel</span>}
+        {n ? (n.id === naFicha ? (
+          <span className="chip bg-surface-2 text-ink-2 max-w-full" title="A negociação desta simulação: a ficha dela está atrás desta janela">{conteudo}</span>
+        ) : (
+          <LinkDoChamado codigo={n.codigo} className="chip bg-surface-2 text-ink-2 hover:bg-accent-soft hover:text-accent-ink max-w-full" id="simulador-abrir-negociacao"
+            title={`Abrir a ${n.codigo} numa janela, por cima da simulação`}>
+            {conteudo}
+            <span className="shrink-0 inline-flex items-center gap-1 ml-0.5 pl-1.5 border-l border-line-strong text-accent font-semibold"><AppWindow size={12} aria-hidden /> Abrir</span>
+          </LinkDoChamado>
+        )) : <span className="chip bg-surface-2 text-muted" title="Ligada a uma negociação de um painel que você não vê"><Link2 size={12} aria-hidden /> negociação de outro painel</span>}
         {podeEditar && r.negociacao && <button type="button" className="btn-ghost btn-sm px-1 text-muted" onClick={() => mudar(null)} title="Desligar da negociação" aria-label="Desligar da negociação"><X size={13} /></button>}
       </span>
     );

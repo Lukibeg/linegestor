@@ -5,6 +5,10 @@
  * fechar comemora (tudo isso mora no `useMover`, o mesmo da ficha). Quem está no celular ou usa o
  * teclado tem o botão "Mover" no pé do cartão.
  *
+ * No painel de Vendas (2.0.4.1, o pedido do Luan: "quero poder trocar a ordem aqui, pra cima ou pra baixo da
+ * mesma forma que mudo de fase arrastando"), as etapas abertas aceitam a ordem à mão: arrastar dentro da coluna
+ * muda o lugar, e o arrasto para outra coluna cai onde a linha mostra. No "Mover", o Subir e o Descer.
+ *
  * O painel e os filtros ficam no endereço (?painel=…&responsavel=eu), e o quadro relê a cada minuto:
  * o prazo anda com o relógio. O Fechado mostra só os 30 mais recentes; o resto fica na lista. Em cima,
  * uma linha só (o painel, a busca e o botão Filtros), para sobrar altura para os cartões; clicar no
@@ -17,13 +21,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode, type RefObject } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive, ArrowLeft, ArrowRightLeft, CircleCheck, Clock, Filter, Inbox, Moon, ThumbsDown, Trophy } from 'lucide-react';
+import { Archive, ArrowDown, ArrowLeft, ArrowRightLeft, ArrowUp, CircleCheck, Clock, Filter, Inbox, Moon, ThumbsDown, Trophy } from 'lucide-react';
 import {
-  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararNegociacoes, compararUrgencia, movimentoDeNivel, reaisInteiros, rotuloDoNivel,
+  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararNoQuadroDeVendas, compararUrgencia, movimentoDeNivel, ordemAMao, reaisInteiros, rotuloDoNivel,
   type CartaoChamado, type ColunaQuadro, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type QuadroAtendimento, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
-import { Carregando, EscolherComBusca, Popover, Spinner, Vazio, mensagemErro } from '../../components/ui/index.js';
+import { Carregando, EscolherComBusca, Popover, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { CabecalhoDoPainel, FILTROS_DO_PAINEL, enderecoDaLista, type FiltrosDoPainel } from './painel.js';
 import { CabecalhoAtendimento, dataHoraCurta, haQuanto, useAbrirChamado, useOpcoes, usePode } from './comum.js';
 import { useMover } from './mover.js';
@@ -91,13 +95,49 @@ function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, vendas: boolean): 
       const sem = col.chamados.filter((x) => x.id !== f.id);
       const estava = !!antes;
       if (fica && col.etapa.id === f.etapaId) {
-        // no Resolvido e no Fechado, o mais recente primeiro; nas outras, o mais urgente (ou, na venda, a que fecha antes) primeiro
-        const chamados = col.etapa.tipo === 'resolvido' || col.etapa.tipo === 'fechado' ? [f, ...sem] : [...sem, f].sort(vendas ? compararNegociacoes : compararUrgencia);
+        // onde a ordem é à mão (2.0.4.1), o que já está na coluna fica no lugar (inclusive o que a tela já pôs onde
+        // ele caiu, antes da resposta)
+        if (estava && ordemAMao({ tipo: vendas ? 'vendas' : 'gestao' }, col.etapa)) {
+          return { ...col, chamados: col.chamados.map((x) => (x.id === f.id ? f : x)), valor: col.valor - valorDe(antes) + valorDe(f) };
+        }
+        // no Resolvido e no Fechado, o mais recente primeiro; nas outras, o mais urgente (ou, na venda, a ordem da equipe, com a que chegou no alto)
+        const chamados = col.etapa.tipo === 'resolvido' || col.etapa.tipo === 'fechado' ? [f, ...sem] : [...sem, f].sort(vendas ? compararNoQuadroDeVendas : compararUrgencia);
         return { ...col, chamados, total: col.total + (estava ? 0 : 1), valor: col.valor - valorDe(antes) + valorDe(f) };
       }
       return estava ? { ...col, chamados: sem, total: Math.max(0, col.total - 1), valor: col.valor - valorDe(antes) } : col;
     }),
   };
+}
+
+/**
+ * O cartão arrastado já onde caiu, antes da resposta do servidor (2.0.4.1): na coluna `etapaId`, no lugar `indice`
+ * (contado sem ele). Se o servidor não aceitar, o quadro relê e ele volta.
+ */
+function comCartaoNoLugar(q: QuadroAtendimento, c: CartaoChamado, etapaId: string, indice: number): QuadroAtendimento {
+  const valorDe = (x: CartaoChamado | undefined) => x?.valor ?? 0;
+  return {
+    ...q,
+    colunas: q.colunas.map((col): ColunaQuadro => {
+      const antes = col.chamados.find((x) => x.id === c.id);
+      const sem = col.chamados.filter((x) => x.id !== c.id);
+      if (col.etapa.id === etapaId) {
+        const chamados = [...sem.slice(0, indice), { ...c, etapaId }, ...sem.slice(indice)];
+        return { ...col, chamados, total: col.total + (antes ? 0 : 1), valor: col.valor - valorDe(antes) + valorDe(c) };
+      }
+      return antes ? { ...col, chamados: sem, total: Math.max(0, col.total - 1), valor: col.valor - valorDe(antes) } : col;
+    }),
+  };
+}
+
+/** Onde o cartão cai na coluna: quantos cartões (sem o arrastado) ficam acima do ponteiro. */
+function lugarNaColuna(coluna: HTMLElement, y: number, arrastado: string): number {
+  let n = 0;
+  for (const li of coluna.querySelectorAll<HTMLElement>('li[data-cartao]')) {
+    if (li.dataset.cartao === arrastado) continue;
+    const r = li.getBoundingClientRect();
+    if (y > r.top + r.height / 2) n += 1;
+  }
+  return n;
 }
 
 function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: OpcoesAtendimento; filtros: Filtros }) {
@@ -132,6 +172,9 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
   const arrastado = useRef<CartaoChamado | null>(null);
   const [arrastando, setArrastando] = useState<{ id: string; etapaId: string } | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
+  // onde a ordem é à mão (2.0.4.1): o lugar onde o cartão vai cair na coluna (a linha), contado sem ele
+  const [lugar, setLugar] = useState<{ etapaId: string; indice: number } | null>(null);
+  const toast = useToast();
   const comecar = (c: CartaoChamado, e: DragEvent<HTMLDivElement>) => {
     arrastado.current = c;
     e.dataTransfer.effectAllowed = 'move';
@@ -142,24 +185,69 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
     // esmaecer já agora sairia na própria imagem do arrasto (o navegador "fotografa" depois deste evento)
     requestAnimationFrame(() => setArrastando({ id: c.id, etapaId: c.etapaId }));
   };
-  const terminar = () => { arrastado.current = null; setArrastando(null); setSobre(null); };
+  const terminar = () => { arrastado.current = null; setArrastando(null); setSobre(null); setLugar(null); };
   const passar = (etapa: EtapaPainel, e: DragEvent<HTMLElement>) => {
     const c = arrastado.current;
-    // a coluna de onde ele saiu não recebe (e o que não é um cartão daqui também não)
-    if (!c || c.etapaId === etapa.id) return;
+    if (!c) return;
+    const aMao = ordemAMao(painel, etapa);
+    // a coluna de onde ele saiu só recebe onde a ordem é à mão (é mudar o lugar); o que não é um cartão daqui, nenhuma
+    if (c.etapaId === etapa.id && !aMao) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (sobre !== etapa.id) setSobre(etapa.id);
+    if (aMao) {
+      const indice = lugarNaColuna(e.currentTarget, e.clientY, c.id);
+      setLugar((l) => (l && l.etapaId === etapa.id && l.indice === indice ? l : { etapaId: etapa.id, indice }));
+    }
   };
   const sair = (etapa: EtapaPainel, e: DragEvent<HTMLElement>) => {
     if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
     setSobre((s) => (s === etapa.id ? null : s));
+    setLugar((l) => (l?.etapaId === etapa.id ? null : l));
   };
   const soltar = (etapa: EtapaPainel, e: DragEvent<HTMLElement>) => {
     e.preventDefault();
     const c = arrastado.current;
+    const indice = c ? lugarNaColuna(e.currentTarget, e.clientY, c.id) : 0;
     terminar();
-    if (c && c.etapaId !== etapa.id) void mover(c, etapa.id);
+    if (!c) return;
+    const col = colunas?.find((x) => x.etapa.id === etapa.id);
+    if (!ordemAMao(painel, etapa) || !col) {
+      if (c.etapaId !== etapa.id) void mover(c, etapa.id);
+      return;
+    }
+    if (c.etapaId === etapa.id) void reordenar(c, col, indice);
+    else void moverParaOLugar(c, col, indice);
+  };
+  /** Dentro da coluna (2.0.4.1): o cartão vai para o lugar `indice` (contado sem ele) — a tela já mostra, o servidor guarda. */
+  const reordenar = async (c: CartaoChamado, col: ColunaQuadro, indice: number) => {
+    const atual = col.chamados.findIndex((x) => x.id === c.id);
+    if (atual < 0 || indice === atual) return; // caiu no mesmo lugar
+    const sem = col.chamados.filter((x) => x.id !== c.id);
+    const depoisDe = indice > 0 ? sem[indice - 1]?.id ?? null : null;
+    qc.setQueryData<QuadroAtendimento>(chave, (q) => (q ? comCartaoNoLugar(q, c, col.etapa.id, indice) : q));
+    try {
+      await api.atendimento.posicionar(c.id, { depoisDe });
+    } catch (erro) {
+      toast.push('erro', mensagemErro(erro));
+    } finally {
+      void qc.invalidateQueries({ queryKey: ['atendimento', 'quadro'] });
+    }
+  };
+  /** Para outra coluna, já no lugar onde caiu (2.0.4.1); se não for (falta algo, o erro), o quadro relê e ele volta. */
+  const moverParaOLugar = async (c: CartaoChamado, col: ColunaQuadro, indice: number) => {
+    const sem = col.chamados.filter((x) => x.id !== c.id);
+    const depoisDe = indice > 0 ? sem[indice - 1]?.id ?? null : null;
+    qc.setQueryData<QuadroAtendimento>(chave, (q) => (q ? comCartaoNoLugar(q, c, col.etapa.id, indice) : q));
+    const f = await mover(c, col.etapa.id, { depoisDe });
+    if (!f) void qc.invalidateQueries({ queryKey: chave });
+  };
+  /** O Subir e o Descer do menu: depois, o foco volta para o "Mover" do cartão (no lugar novo). */
+  const reordenarPeloMenu = async (c: CartaoChamado, col: ColunaQuadro, indice: number) => {
+    await reordenar(c, col, indice);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>(`li[data-cartao="${c.id}"] button[aria-expanded]`)?.focus();
+    }));
   };
   /** Pelo menu (o teclado, o celular): depois de mover, o foco continua no cartão, já na coluna nova. */
   const moverPeloMenu = async (c: CartaoChamado, etapaId: string) => {
@@ -241,21 +329,36 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
         >
           {/* colunas finas (o pedido do Luan na prévia: mais colunas cabendo na tela) */}
           <div className="flex items-start sm:items-stretch sm:h-full gap-2 w-max sm:w-auto px-4 sm:px-0">
-            {colunas.map((col) => (
-              <Coluna
-                key={col.etapa.id} col={col} painel={painel} filtros={filtros}
-                // a coluna de onde o cartão saiu não é destino: só as outras ficam tracejadas
-                arrastando={!!arrastando && arrastando.etapaId !== col.etapa.id} sobre={sobre === col.etapa.id}
-                onPassar={(e) => passar(col.etapa, e)} onSair={(e) => sair(col.etapa, e)} onSoltar={(e) => soltar(col.etapa, e)}
-                cartao={(c) => (
-                  <CartaoNoQuadro
-                    key={c.id} c={c} painel={painel} etapas={etapas} podeMover={podeMover}
-                    ocupado={ocupado === c.id} esmaecido={arrastando?.id === c.id}
-                    onComecar={comecar} onTerminar={terminar} onMover={(etapaId) => void moverPeloMenu(c, etapaId)}
-                  />
-                )}
-              />
-            ))}
+            {colunas.map((col) => {
+              const aMao = podeMover && ordemAMao(painel, col.etapa);
+              const daqui = !!arrastando && arrastando.etapaId === col.etapa.id;
+              // a linha de onde o cartão vai cair (onde a ordem é à mão); no mesmo lugar de onde saiu, nenhuma
+              const linha = lugar?.etapaId === col.etapa.id && !(daqui && col.chamados.findIndex((x) => x.id === arrastando!.id) === lugar.indice) ? lugar.indice : null;
+              return (
+                <Coluna
+                  key={col.etapa.id} col={col} painel={painel} filtros={filtros}
+                  // a coluna de onde o cartão saiu não é destino (onde a ordem é à mão, ela só mostra a linha): só as outras ficam tracejadas
+                  arrastando={!!arrastando && !daqui} sobre={sobre === col.etapa.id && !daqui}
+                  linha={linha} arrastado={arrastando?.id ?? null}
+                  onPassar={(e) => passar(col.etapa, e)} onSair={(e) => sair(col.etapa, e)} onSoltar={(e) => soltar(col.etapa, e)}
+                  cartao={(c) => {
+                    const i = col.chamados.findIndex((x) => x.id === c.id);
+                    return (
+                      <CartaoNoQuadro
+                        key={c.id} c={c} painel={painel} etapas={etapas} podeMover={podeMover}
+                        ocupado={ocupado === c.id} esmaecido={arrastando?.id === c.id}
+                        onComecar={comecar} onTerminar={terminar} onMover={(etapaId) => void moverPeloMenu(c, etapaId)}
+                        // o Subir e o Descer do "Mover" (o celular e o teclado não arrastam)
+                        naColuna={aMao && col.chamados.length > 1 ? {
+                          subir: i > 0 ? () => void reordenarPeloMenu(c, col, i - 1) : null,
+                          descer: i < col.chamados.length - 1 ? () => void reordenarPeloMenu(c, col, i + 1) : null,
+                        } : undefined}
+                      />
+                    );
+                  }}
+                />
+              );
+            })}
           </div>
         </div>
       )}
@@ -298,8 +401,10 @@ function IconeDaEtapa({ tipo, resultado }: { tipo: EtapaPainel['tipo']; resultad
   return null;
 }
 
-function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onSoltar, cartao }: {
+function Coluna({ col, painel, filtros, arrastando, sobre, linha, arrastado, onPassar, onSair, onSoltar, cartao }: {
   col: ColunaQuadro; painel: Painel; filtros: Filtros; arrastando: boolean; sobre: boolean;
+  /** onde a ordem é à mão (2.0.4.1): antes de qual cartão (contado sem o arrastado) vai a linha de onde ele cai */
+  linha: number | null; arrastado: string | null;
   onPassar: (e: DragEvent<HTMLElement>) => void; onSair: (e: DragEvent<HTMLElement>) => void; onSoltar: (e: DragEvent<HTMLElement>) => void;
   cartao: (c: CartaoChamado) => ReactNode;
 }) {
@@ -315,14 +420,18 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
     <section
       aria-labelledby={idTitulo} data-etapa={etapa.id}
       onDragOver={onPassar} onDragLeave={onSair} onDrop={onSoltar}
-      className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_236px] sm:max-w-[290px] sm:min-h-0 rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
+      // todas da mesma largura (o pedido do Luan, 23/10: "as colunas aqui estão com a largura desigual"): sem o
+      // min-w-0, a coluna com um texto comprido numa linha só (o título cortado com "…", o nome da etapa)
+      // alargava até o máximo e as outras ficavam no mínimo
+      className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_236px] sm:min-w-0 sm:max-w-[290px] sm:min-h-0 rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
         sobre ? 'border-accent bg-accent-soft' : arrastando ? 'border-dashed border-line-strong bg-surface-2' : 'border-line bg-surface-2'}`}
     >
       <header className="flex items-center gap-1.5 px-1 pt-0.5 min-w-0" title={vendas ? undefined : DICA_TIPO_ETAPA[etapa.tipo]}>
         <IconeDaEtapa tipo={etapa.tipo} resultado={etapa.resultado} />
         {soNivel ? <h2 id={idTitulo} className={chipNivel} title={`Nível ${nivel}`}>{nivel}</h2> : (
           <>
-            <h2 id={idTitulo} className="font-display font-semibold text-[13.5px] truncate">{etapa.nome}</h2>
+            {/* o nome comprido quebra em duas linhas (a coluna não alarga mais por ele) */}
+            <h2 id={idTitulo} className="font-display font-semibold text-[13.5px] leading-tight min-w-0 line-clamp-2 break-words" title={etapa.nome}>{etapa.nome}</h2>
             {nivel && <span className={chipNivel} title={`Nível ${nivel}`}>{nivel}</span>}
           </>
         )}
@@ -335,8 +444,18 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
         </div>
       )}
       <ul className="flex flex-col gap-1.5 sm:flex-1 sm:min-h-0 sm:overflow-y-auto sm:-mr-1 sm:pr-1" aria-label={`Chamados em ${etapa.nome}`}>
-        {chamados.map((c) => cartao(c))}
-        {!chamados.length && <li className="rounded-lg border border-dashed border-line-strong text-muted text-[12.5px] text-center py-5">{vendas ? 'Nenhuma negociação' : 'Nenhum chamado'}</li>}
+        {(() => {
+          // a linha de onde o cartão vai cair: antes do cartão número `linha` (sem contar o arrastado), ou no fim
+          let n = 0;
+          const itens: ReactNode[] = [];
+          for (const c of chamados) {
+            if (c.id !== arrastado) { if (n === linha) itens.push(<LinhaDoLugar key="linha" noAlto={n === 0} />); n += 1; }
+            itens.push(cartao(c));
+          }
+          if (linha != null && linha >= n) itens.push(<LinhaDoLugar key="linha" noAlto={n === 0} />);
+          return itens;
+        })()}
+        {!chamados.length && linha == null && <li className="rounded-lg border border-dashed border-line-strong text-muted text-[12.5px] text-center py-5">{vendas ? 'Nenhuma negociação' : 'Nenhum chamado'}</li>}
       </ul>
       {escondidos > 0 && (
         <Link to={enderecoDaLista(painel.id, filtros, etapa.id)} className="link text-[12.5px] px-1 pb-0.5">
@@ -347,9 +466,22 @@ function Coluna({ col, painel, filtros, arrastando, sobre, onPassar, onSair, onS
   );
 }
 
-function CartaoNoQuadro({ c, painel, etapas, podeMover, ocupado, esmaecido, onComecar, onTerminar, onMover }: {
+/**
+ * A linha de onde o cartão arrastado vai cair (a ordem à mão, 2.0.4.1): sem altura, no meio do vão entre dois
+ * cartões, para a coluna não pular. No alto da coluna, ela desce um pouco (o vão de cima fica fora da rolagem).
+ */
+function LinhaDoLugar({ noAlto }: { noAlto: boolean }) {
+  return (
+    <li aria-hidden className="relative h-0 -my-[3px]" data-linha-do-lugar>
+      <span className={`absolute z-10 inset-x-0.5 h-[3px] rounded-full bg-accent shadow-[0_0_0_2px_var(--surface-2)] ${noAlto ? 'top-[3px]' : '-top-[1.5px]'}`} />
+    </li>
+  );
+}
+
+function CartaoNoQuadro({ c, painel, etapas, podeMover, ocupado, esmaecido, onComecar, onTerminar, onMover, naColuna }: {
   c: CartaoChamado; painel: Painel; etapas: EtapaPainel[]; podeMover: boolean; ocupado: boolean; esmaecido: boolean;
   onComecar: (c: CartaoChamado, e: DragEvent<HTMLDivElement>) => void; onTerminar: () => void; onMover: (etapaId: string) => void;
+  naColuna?: LugarNaColuna;
 }) {
   const abrirChamado = useAbrirChamado();
   const arrastavel = podeMover && !ocupado;
@@ -365,7 +497,7 @@ function CartaoNoQuadro({ c, painel, etapas, podeMover, ocupado, esmaecido, onCo
         rodape={(
           <>
             {ocupado ? <span className="inline-flex items-center gap-1.5 text-[12px] text-muted"><Spinner className="!w-3.5 !h-3.5" /> Movendo…</span>
-              : podeMover ? <MenuMover c={c} etapas={etapas} onMover={onMover} /> : null}
+              : podeMover ? <MenuMover c={c} etapas={etapas} onMover={onMover} naColuna={naColuna} /> : null}
             <span className="ml-auto inline-flex items-center gap-1 text-[11.5px] text-muted whitespace-nowrap" title={`Última atividade: ${dataHoraCurta(c.ultimaAtividadeEm)}`}>
               <Clock size={11} aria-hidden /> {haQuanto(c.ultimaAtividadeEm)}
             </span>
@@ -376,17 +508,31 @@ function CartaoNoQuadro({ c, painel, etapas, podeMover, ocupado, esmaecido, onCo
   );
 }
 
-/** O "Mover" do pé do cartão: a lista das etapas (para o celular, o teclado e quem prefere clicar). */
-function MenuMover({ c, etapas, onMover }: { c: CartaoChamado; etapas: EtapaPainel[]; onMover: (etapaId: string) => void }) {
+/** O Subir e o Descer do cartão na coluna (a ordem à mão, 2.0.4.1): nulo onde não dá (o primeiro não sobe). */
+type LugarNaColuna = { subir: (() => void) | null; descer: (() => void) | null };
+
+/**
+ * O "Mover" do pé do cartão: a lista das etapas (para o celular, o teclado e quem prefere clicar). Onde a ordem é
+ * à mão (2.0.4.1), em cima, o Subir e o Descer na coluna.
+ */
+function MenuMover({ c, etapas, onMover, naColuna }: { c: CartaoChamado; etapas: EtapaPainel[]; onMover: (etapaId: string) => void; naColuna?: LugarNaColuna }) {
   // o Popover não fecha por fora: depois de escolher, a chave nova o remonta fechado
   const [vez, setVez] = useState(0);
   const atual = etapas.find((e) => e.id === c.etapaId);
+  const fazer = (f: (() => void) | null) => () => { if (!f) return; setVez((v) => v + 1); f(); };
   return (
     <Popover
-      key={vez} largura="w-[250px]" alinhar="esquerda" titulo={`Mover ${c.codigo} para outra etapa`}
+      key={vez} largura="w-[250px]" alinhar="esquerda" titulo={naColuna ? `Mover ${c.codigo}: subir, descer ou outra etapa` : `Mover ${c.codigo} para outra etapa`}
       classe="btn-ghost btn-sm px-2 py-1 -ml-1.5 text-[12.5px] text-ink-2"
       botao={() => <><ArrowRightLeft size={13} aria-hidden /> Mover</>}
     >
+      {naColuna && (
+        <div className="flex items-center gap-1 mb-2 pb-2 border-b border-line" role="group" aria-label={`O lugar de ${c.codigo} nesta etapa`} data-lugar-na-coluna>
+          <span className="text-[12.5px] text-muted mr-auto">Nesta etapa:</span>
+          <button type="button" className="btn-ghost btn-sm px-2" disabled={!naColuna.subir} onClick={fazer(naColuna.subir)} data-subir><ArrowUp size={13} aria-hidden /> Subir</button>
+          <button type="button" className="btn-ghost btn-sm px-2" disabled={!naColuna.descer} onClick={fazer(naColuna.descer)} data-descer><ArrowDown size={13} aria-hidden /> Descer</button>
+        </div>
+      )}
       <p className="text-[12.5px] text-muted mb-1">Mover <span className="font-mono text-ink-2">{c.codigo}</span> para:</p>
       <ul className="flex flex-col">
         {etapas.map((e) => {

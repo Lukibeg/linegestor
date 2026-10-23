@@ -351,8 +351,12 @@ export async function trazer(app: FastifyInstance, ator: Ator, leituraId: string
       };
       let ticketId = n.chamadoId;
       if (ticketId) {
-        const [antes] = await db.select({ campos: tickets.customFields }).from(tickets).where(eq(tickets.id, ticketId)).limit(1);
-        await db.update(tickets).set({ ...linhaDoChamado, customFields: { ...((antes?.campos as ValoresDosCampos | null) ?? {}), ...valores } }).where(eq(tickets.id, ticketId));
+        const [antes] = await db.select({ campos: tickets.customFields, etapa: tickets.stageId }).from(tickets).where(eq(tickets.id, ticketId)).limit(1);
+        await db.update(tickets).set({
+          ...linhaDoChamado, customFields: { ...((antes?.campos as ValoresDosCampos | null) ?? {}), ...valores },
+          // a que mudou de etapa no Helena perde o lugar que tinha no quadro de cá (2.0.4.1); a que ficou, fica nele
+          ...(antes?.etapa !== stageId ? { boardPosition: null } : {}),
+        }).where(eq(tickets.id, ticketId));
         // o histórico que veio do Helena é refeito; o que a equipe fez no Gestor fica
         await db.delete(ticketEvents).where(and(eq(ticketEvents.ticketId, ticketId), sql`${ticketEvents.data} ? 'helena'`));
       } else {

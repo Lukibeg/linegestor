@@ -263,6 +263,8 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     ativacao: t.setupCents ?? null,
     ativacoesDosProdutos: usa('produtos') ? Object.fromEntries(Object.entries(t.productSetup ?? {}).filter(([id]) => t.productIds.includes(id))) : {},
     resultado: e?.etapa.resultado ?? null, motivoPerda: e?.etapa.resultado === 'perdido' ? t.lostReason ?? null : null,
+    // o lugar que a equipe escolheu arrastando (2.0.4.1: só vale onde a ordem é à mão)
+    ordemNoQuadro: t.boardPosition ?? null,
   };
 }
 

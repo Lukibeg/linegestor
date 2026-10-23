@@ -139,6 +139,13 @@ A mesma venda em versões diferentes (comodato ou venda dos aparelhos, 12 ou 24 
   nova já ligada, com o nome (a empresa e o título), os produtos da negociação, as linhas dos modelos
   desses produtos e a mensalidade e a ativação que ela já tem (com o valor por produto, o preço de cada
   produto). Ela é criada sozinha (já tem um nome); preencha o que falta.
+- **Sem sair da ficha (2.0.4.1)**: a simulação (a que você clica em **Simulações** e a nova do **Simular**)
+  abre numa janela por cima da ficha, com tudo o que a página do Simulador tem. Ela salva sozinha; feche a
+  janela (o X, o Esc ou um clique fora) e você volta para a ficha, com a lista e a margem atualizadas.
+  **Página inteira**, no alto da janela, leva para o Simulador.
+- **A negociação ligada, sem sair da simulação (2.0.4.1)**: na simulação, o chip da negociação (COM-12 · o
+  título · a empresa) tem o **Abrir**: a ficha dela abre numa janela por cima da simulação; fechando, você volta
+  para a simulação. Na lista do Simulador, o chip da negociação também abre a ficha numa janela.
 - **Levar para a negociação**: na simulação ligada a uma negociação em aberto, o **Levar para a COM-12**
   põe nela o que o cliente paga no cenário principal: a **mensalidade** (com o aluguel dos aparelhos), a
   **ativação** (com os aparelhos vendidos) e os **produtos** do cenário (sem produto no cenário, os da

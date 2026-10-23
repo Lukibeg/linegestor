@@ -15,7 +15,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
   AnotacaoSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema, LigarChamadoSchema,
-  ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
+  ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PosicaoNoQuadroSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
 } from '@gestor/shared';
 import { BadRequest } from '../plugins/errors.js';
@@ -144,6 +144,16 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.post('/chamados/:id/mover', { ...trabalhar, schema: { tags, summary: 'Mover para outra etapa (escalonar e voltar de nível pedem o motivo)', params: Id, body: MoverSchema } },
     async (req) => fichaDepois(req, await svc.mover(app, ator(req), req.params.id, req.body)));
+
+  // a ordem à mão no quadro (2.0.4.1): devolve só o lugar (a tela já arrumou a coluna; o quadro relê depois)
+  app.post('/chamados/:id/posicao', {
+    ...trabalhar,
+    schema: { tags, summary: 'Mudar o lugar na coluna do quadro, arrastando (painel de Vendas, etapas abertas): logo abaixo de depoisDe (nulo: no alto); 409 se depoisDe saiu da etapa', params: Id, body: PosicaoNoQuadroSchema },
+  }, async (req) => {
+    const r = await svc.posicionar(app, ator(req), req.params.id, req.body);
+    if (r.resumo) await app.audit(req, { action: 'update', entityType: 'ticket', entityId: r.id, summary: r.resumo });
+    return { codigo: r.codigo, posicao: r.posicao };
+  });
 
   app.post('/chamados/:id/assumir', { ...trabalhar, schema: { tags, summary: 'Ficar com o chamado (na entrada, ele vai para a primeira etapa de andamento)', params: Id } },
     async (req) => fichaDepois(req, await svc.assumir(app, ator(req), req.params.id)));

@@ -982,6 +982,44 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect(doSuporte.status).toBe(400);
     expect(doSuporte.message).toContain('não é de vendas');
   }, DEMORA);
+
+  it('a ordem à mão no quadro (2.0.4.1, como o servidor): arrastar muda o lugar, a que chega fica no alto; no Suporte e no Ganho, não', async () => {
+    await entrar('admin');
+    const ord = await api.salvarPainel(null, { nome: 'Ordem', sigla: 'ORD', cor: 'ok', tipo: 'vendas', acesso: 'todos', ajustes: {} });
+    const lead = ord.etapas.find((e) => e.nome === 'Lead')!;
+    const qualificacao = ord.etapas.find((e) => e.nome === 'Qualificação')!;
+    const ganho = ord.etapas.find((e) => e.resultado === 'ganho')!;
+    const n: Record<string, { id: string; codigo: string }> = {};
+    for (const [k, valor] of [['A', 100_000], ['B', 300_000], ['C', null], ['D', 200_000]] as const) {
+      n[k] = await api.criar({ painelId: ord.id, titulo: `Negociação ${k}`, empresa: `Empresa ${k}`, ...(valor != null ? { valor } : {}) });
+    }
+    const coluna = async (etapaId: string) => (await api.quadro({ painel: ord.id })).colunas.find((c) => c.etapa.id === etapaId)!
+      .chamados.map((c) => Object.keys(n).find((k) => n[k]!.id === c.id));
+    // sem ninguém arrumar, a de maior valor primeiro; arrastar para o alto e para logo abaixo de outra
+    expect(await coluna(lead.id)).toEqual(['B', 'D', 'A', 'C']);
+    expect(await api.posicionar(n.A!.id, { depoisDe: null })).toEqual({ codigo: n.A!.codigo, posicao: 1 });
+    expect(await coluna(lead.id)).toEqual(['A', 'B', 'D', 'C']);
+    expect((await api.posicionar(n.C!.id, { depoisDe: n.B!.id })).posicao).toBe(3);
+    expect(await coluna(lead.id)).toEqual(['A', 'B', 'C', 'D']);
+    // a que chega fica no alto; mudar de etapa apaga o lugar; o arrasto para outra coluna cai no lugar
+    n.E = await api.criar({ painelId: ord.id, titulo: 'Negociação E', empresa: 'Empresa E', valor: 500_000 });
+    expect(await coluna(lead.id)).toEqual(['E', 'A', 'B', 'C', 'D']);
+    expect((await api.mover(n.B!.id, { etapaId: qualificacao.id })).ordemNoQuadro).toBeNull();
+    expect((await api.mover(n.D!.id, { etapaId: qualificacao.id, depoisDe: n.B!.id })).ordemNoQuadro).toBe(2);
+    expect(await coluna(qualificacao.id)).toEqual(['B', 'D']);
+    expect(await coluna(lead.id)).toEqual(['E', 'A', 'C']);
+    // os erros, como no servidor
+    expect((await erroDe(api.posicionar(n.A!.id, { depoisDe: n.B!.id }))).status).toBe(409);
+    expect((await erroDe(api.posicionar(n.A!.id, { depoisDe: n.A!.id }))).status).toBe(400);
+    await api.mover(n.E!.id, { etapaId: ganho.id });
+    expect((await erroDe(api.posicionar(n.E!.id, { depoisDe: null }))).message).toMatch(/Em Ganho, a ordem é a do mais recente/);
+    const op = await api.opcoes();
+    const chamado = await api.criar(await baseDoSuporte(op, 'A ordem no Suporte (teste)'));
+    expect((await erroDe(api.posicionar(chamado.id, { depoisDe: null }))).message).toMatch(/painel de Vendas/);
+    // o Leitor não mexe
+    await entrar('leitor');
+    expect((await erroDe(api.posicionar(n.A!.id, { depoisDe: null }))).status).toBe(403);
+  }, DEMORA);
 });
 
 describe('o Comercial tem permissão própria na prévia (como no servidor)', () => {

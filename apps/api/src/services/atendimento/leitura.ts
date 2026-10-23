@@ -18,7 +18,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  compararNegociacoes, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
+  compararNoQuadroDeVendas, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugeridaDoPainel,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
   type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
@@ -153,9 +153,10 @@ export type FiltrosQuadro = Pick<Partial<FiltrosAtendimento>, 'responsavel' | 'p
 const maisRecente = (a: string | null, b: string | null) => (b ?? '').localeCompare(a ?? '');
 
 /**
- * Uma coluna por etapa, na ordem do painel. Na entrada e no andamento, o mais urgente primeiro; no
- * Resolvido, o mais recente; no Fechado, só os 30 fechados mais recentes (o resto conta como
- * "escondidos": a tela leva para a lista).
+ * Uma coluna por etapa, na ordem do painel. Na entrada e no andamento, o mais urgente primeiro (no painel de
+ * Vendas, a ordem que a equipe deixou arrastando — 2.0.4.1 —, com a que chegou agora no alto); no Resolvido, o
+ * mais recente; no Fechado, só os 30 fechados mais recentes (o resto conta como "escondidos": a tela leva para a
+ * lista).
  */
 export async function quadro(app: FastifyInstance, ator: Ator, f: FiltrosQuadro): Promise<QuadroAtendimento> {
   const ctx = await carregarContexto(app.db);
@@ -164,12 +165,12 @@ export async function quadro(app: FastifyInstance, ator: Ator, f: FiltrosQuadro)
   const lista = filtrarCartoes(doPainel, { ...f, painel: painel.id, situacao: 'todos' }, { euId: ator.id, assuntos: ctx.assuntos });
   const colunas = painel.etapas.map((etapa) => {
     const daqui = lista.filter((c) => c.etapaId === etapa.id);
-    // a negociação (painel de Vendas) não tem prazo: a de maior valor primeiro
+    // a negociação (painel de Vendas) não tem prazo: a ordem que a equipe deixou (e, sem ela, a de maior valor primeiro)
     const ordenados = etapa.tipo === 'resolvido'
       ? [...daqui].sort((a, b) => maisRecente(a.resolvidoEm ?? a.ultimaAtividadeEm, b.resolvidoEm ?? b.ultimaAtividadeEm))
       : etapa.tipo === 'fechado'
         ? [...daqui].sort((a, b) => maisRecente(a.fechadoEm ?? a.ultimaAtividadeEm, b.fechadoEm ?? b.ultimaAtividadeEm))
-        : [...daqui].sort(painel.tipo === 'vendas' ? compararNegociacoes : compararUrgencia);
+        : [...daqui].sort(painel.tipo === 'vendas' ? compararNoQuadroDeVendas : compararUrgencia);
     const mostrados = etapa.tipo === 'fechado' ? ordenados.slice(0, FECHADOS_NO_QUADRO) : ordenados;
     return { etapa, chamados: mostrados.map(semBusca), total: daqui.length, escondidos: daqui.length - mostrados.length, valor: daqui.reduce((t, c) => t + (c.valor ?? 0), 0) };
   });

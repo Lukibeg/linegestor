@@ -1693,6 +1693,12 @@ export const tickets = pgTable(
      * Helena acha por aqui a negociação que já trouxe (atualiza em vez de criar outra). Único.
      */
     externalRef: text('external_ref'),
+    /**
+     * O lugar na coluna do quadro que a equipe escolheu arrastando (2.0.4.1, nas etapas abertas do painel de
+     * Vendas): 1 é o primeiro. Nulo: ninguém arrumou depois que o chamado chegou na etapa (mudar de etapa
+     * apaga), e ele vai pela regra de sempre, antes dos arrumados.
+     */
+    boardPosition: integer('board_position'),
     createdById: text('created_by_id').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
