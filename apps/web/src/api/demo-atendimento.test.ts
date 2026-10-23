@@ -9,10 +9,11 @@ import { describe, expect, it } from 'vitest';
 import {
   MENSAGEM_DO_TITULO, CARGOS_DE_FABRICA, caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
   NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
+  NIA_PADRAO, resumoDaNia,
   type CartaoChamado,
 } from '@gestor/shared';
 import { demoApi } from './demo.js';
-import { diagnosticoDosChamadosDemo } from './demo-atendimento.js';
+import { diagnosticoDosChamadosDemo, trocarEsperaDaNiaDemo } from './demo-atendimento.js';
 import { ApiError, type ChamadoCriarEntrada, type OpcoesAtendimento } from './types.js';
 
 const api = demoApi.atendimento;
@@ -602,6 +603,79 @@ describe('as regras do servidor valem na prévia', () => {
     const s2 = await api.preencherComIa(manual.id);
     expect(s2.fonte).toBe('chamado');
     if (s2.assuntoId) expect(caminhoDoAssunto(s2.assuntoId, op.assuntos)).toMatch(/^Ramal/);
+  }, DEMORA);
+
+  it('a NIA na ficha (2.0.4.1, como o servidor): o botão põe a etiqueta, a NIA de exemplo responde, e o resumo diz quando e o que mudou', async () => {
+    await entrar('operador');
+    const op = await api.opcoes();
+    expect(op.nia).toEqual({ pedir: NIA_PADRAO.pedir, pronto: NIA_PADRAO.pronto, erro: NIA_PADRAO.erro });
+    // o exemplo: o robô abriu sem título e sem nome; a Marina pediu à NIA, e ela preencheu
+    const exemplo = await chamadoPeloTitulo('Não consegue entrar no LineReports');
+    expect(exemplo.etiquetas).toContain(NIA_PADRAO.pronto);
+    const r0 = resumoDaNia(exemplo, NIA_PADRAO);
+    expect(r0).toMatchObject({ situacao: 'pronta', pedidaPor: 'Marina Costa', respondidaPor: 'NIA no n8n', vezes: 1, anotacoes: 2 });
+    expect(r0.mudou).toEqual(expect.arrayContaining(['Título', 'Descrição']));
+    expect(exemplo.anotacoesLista.map((n) => n.texto.split(':')[0])).toEqual(expect.arrayContaining(['Situação', 'Diagnóstico']));
+
+    // um chamado novo: pedir → a etiqueta entra e a NIA ainda não respondeu (pedir de novo, logo, não dá)
+    trocarEsperaDaNiaDemo(60_000);
+    const novo = await api.criar({ ...(await baseDoSuporte(op, 'Pedir à NIA (teste)')), relato: 'O ramal 2040 da recepção não toca desde ontem.' });
+    const pedida = await api.pedirANia(novo.id);
+    expect(pedida.etiquetas).toContain(NIA_PADRAO.pedir);
+    expect(resumoDaNia(pedida, NIA_PADRAO)).toMatchObject({ situacao: 'pedida', pedidaPor: 'Marina Costa', podePedir: false });
+    expect((await erroDe(api.pedirANia(novo.id))).message).toMatch(/^A NIA foi chamada às \d\d:\d\d e ainda está preenchendo/);
+    // a NIA de exemplo responde (a ficha relida): a de pronto no lugar da de pedir, a Situação e o Diagnóstico
+    trocarEsperaDaNiaDemo(0);
+    const pronta = await api.chamado(novo.codigo);
+    expect(pronta.etiquetas).toContain(NIA_PADRAO.pronto);
+    expect(pronta.etiquetas).not.toContain(NIA_PADRAO.pedir);
+    expect(resumoDaNia(pronta, NIA_PADRAO)).toMatchObject({ situacao: 'pronta', respondidaPor: 'NIA no n8n', vezes: 1, anotacoes: 2, podePedir: true });
+    // de novo: a de pronto sai, a de pedir volta
+    const deNovo = await api.pedirANia(novo.id);
+    expect(deNovo.etiquetas).toContain(NIA_PADRAO.pedir);
+    expect(deNovo.etiquetas).not.toContain(NIA_PADRAO.pronto);
+    expect(resumoDaNia(deNovo, NIA_PADRAO)).toMatchObject({ situacao: 'pedida', vezes: 1 });
+    expect(resumoDaNia(await api.chamado(novo.codigo), NIA_PADRAO)).toMatchObject({ situacao: 'pronta', vezes: 2 });
+    trocarEsperaDaNiaDemo(4_000);
+
+    // a negociação não tem a NIA; o Leitor não pede; desligada, a ficha não mostra o botão
+    await entrar('camila');
+    const neg = await chamadoPeloTitulo('PABX em nuvem — 40 ramais');
+    expect((await erroDe(api.pedirANia(neg.id))).message).toBe('A NIA preenche os chamados: a negociação não tem a NIA.');
+    await entrar('leitor');
+    expect((await erroDe(api.pedirANia(novo.id))).status).toBe(403);
+    await entrar('admin');
+    expect((await erroDe(api.salvarNia({ ligada: true, pedir: 'IA', pronto: 'ia', erro: 'IA erro' }))).status).toBe(400);
+    await api.salvarNia({ ...NIA_PADRAO, ligada: false });
+    expect((await api.opcoes()).nia).toBeNull();
+    expect((await erroDe(api.pedirANia(novo.id))).message).toMatch(/desligado/);
+    expect(await api.salvarNia(NIA_PADRAO)).toEqual(NIA_PADRAO);
+    expect(await api.niaAjustes()).toEqual(NIA_PADRAO);
+  }, DEMORA);
+
+  it('a conversa do LineChat ligada à mão (2.0.4.1, como o servidor): o link colado vira a sessão; trocar e tirar vão para o histórico', async () => {
+    const U1 = '83858976-9930-4a4e-8f0e-1c2d3e4f5a6b';
+    const U2 = '1a2b3c4d-5e6f-4a1b-9c2d-3e4f5a6b7c8d';
+    await entrar('operador');
+    const op = await api.opcoes();
+    expect(op.linkConversa).toBe('https://inglinechat.com.br/chat/{sessao}');
+    // abrir à mão (o chamado ativo) com o link da conversa
+    expect((await erroDe(api.criar({ ...(await baseDoSuporte(op, 'Retorno ativo (teste)')), sessaoId: 'https://inglinechat.com.br/painel' }))).message).toMatch(/^Não achei a sessão nesse link/);
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Retorno ativo (teste)')), sessaoId: `https://inglinechat.com.br/chat/${U1}` });
+    let f = await api.chamado(r.codigo);
+    expect(f.sessaoId).toBe(U1);
+    expect(f.conversaUrl).toBe(`https://inglinechat.com.br/chat/${U1}`);
+    // trocar pelo link de outra conversa (outro endereço: vale o uuid), e tirar
+    f = await api.alterar(r.id, { sessaoId: `https://app.helena.app/chat2/sessions/${U2.toUpperCase()}` });
+    expect(f.sessaoId).toBe(U2);
+    expect(f.historico.at(-1)).toMatchObject({ tipo: 'campo', dados: { campo: 'Conversa no LineChat', de: U1, para: U2 } });
+    expect((await erroDe(api.alterar(r.id, { sessaoId: 'conversa da Maria' }))).message).toMatch(/não tem espaço/);
+    f = await api.alterar(r.id, { sessaoId: null });
+    expect(f.sessaoId).toBeNull();
+    expect(f.conversaUrl).toBeNull();
+    expect(f.historico.at(-1)).toMatchObject({ dados: { campo: 'Conversa no LineChat', de: U2, para: null } });
+    await entrar('leitor');
+    expect((await erroDe(api.alterar(r.id, { sessaoId: U1 }))).status).toBe(403);
   }, DEMORA);
 
   it('avisar o cliente e testar o WhatsApp conferem como o servidor, sem mandar nada', async () => {

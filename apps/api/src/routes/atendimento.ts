@@ -145,6 +145,12 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   app.post('/chamados/:id/mover', { ...trabalhar, schema: { tags, summary: 'Mover para outra etapa (escalonar e voltar de nível pedem o motivo)', params: Id, body: MoverSchema } },
     async (req) => fichaDepois(req, await svc.mover(app, ator(req), req.params.id, req.body)));
 
+  // a NIA (2.0.4.1): o botão da ficha pede à IA do n8n para preencher — põe a etiqueta de pedir, como a equipe fazia à mão
+  app.post('/chamados/:id/nia', {
+    ...trabalhar,
+    schema: { tags, summary: 'Pedir à NIA (a IA do suporte, no n8n) para preencher: a etiqueta de pedir entra (a de pronto e a de erro saem), e o aviso do chamado alterado vai para o n8n', params: Id },
+  }, async (req) => fichaDepois(req, await svc.pedirANia(app, ator(req), req.params.id)));
+
   // a ordem à mão no quadro (2.0.4.1): devolve só o lugar (a tela já arrumou a coluna; o quadro relê depois)
   app.post('/chamados/:id/posicao', {
     ...trabalhar,

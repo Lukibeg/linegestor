@@ -1184,7 +1184,11 @@ export const ChamadoCriarSchema = z.object({
   clienteId: z.string().nullish().transform((v) => v || null),
   contatoNome: TextoOpcional(120),
   contatoTelefone: TelefoneSchema,
-  sessaoId: TextoOpcional(120),
+  /**
+   * a conversa do LineChat: o código da sessão (o robô, o botão da conversa) ou o link colado na tela (o
+   * chamado ativo, 2.0.4.1); quem lê o link é o servidor (`sessaoDaConversa`)
+   */
+  sessaoId: TextoOpcional(500),
   assuntoId: z.string().nullish().transform((v) => v || null),
   tipo: TextoOpcional(40),
   gravidade: z.enum(GRAVIDADES).nullish().transform((v) => v ?? null),
@@ -1230,6 +1234,11 @@ export const ChamadoAlterarSchema = z.object({
   clienteId: z.string().nullish().transform((v) => v || null).optional(),
   contatoNome: TextoOpcional(120).optional(),
   contatoTelefone: TelefoneSchema.optional(),
+  /**
+   * ligar (ou trocar) a conversa do LineChat (2.0.4.1): o link da conversa ou o código da sessão; nulo ou
+   * vazio tira. O servidor acha a sessão no que veio (`sessaoDaConversa`)
+   */
+  sessaoId: TextoOpcional(500).optional(),
   assuntoId: z.string().nullish().transform((v) => v || null).optional(),
   tipo: TextoOpcional(40).optional(),
   gravidade: z.enum(GRAVIDADES).nullable().optional(),
@@ -1832,8 +1841,18 @@ export type OpcoesAtendimento = {
     mensagemCliente: MensagemAoCliente | null;
   };
   ia: { ativa: boolean; modelo: string | null };
+  /**
+   * A NIA (2.0.4.1, a IA do suporte no n8n): as etiquetas do combinado com o fluxo dela, para o botão da ficha
+   * (`resumoDaNia`). Nula quando o botão está desligado nos Ajustes › IA.
+   */
+  nia: { pedir: string; pronto: string; erro: string } | null;
   /** o endereço do LineChat (para abrir a conversa e o card antigo) */
   linechatUrl: string | null;
+  /**
+   * o modelo do link da conversa (Painéis › Ajustes › Integrações, "https://…/{sessao}"), para a tela achar a
+   * sessão no link colado e mostrar o link antes de salvar (2.0.4.1); nulo sem modelo
+   */
+  linkConversa: string | null;
   pode: { trabalhar: boolean; cuidar: boolean; integrar: boolean };
 };
 
@@ -2764,6 +2783,62 @@ export function corDaEtiqueta(lista: readonly EtiquetaComCor[], nome: string, no
 export function linkDaConversa(modelo: string | null | undefined, sessaoId: string | null | undefined): string | null {
   if (!modelo || !sessaoId || !modelo.includes('{sessao}')) return null;
   return modelo.replace('{sessao}', encodeURIComponent(sessaoId));
+}
+
+/** O nome que o histórico e a auditoria dão à conversa do LineChat ligada ao chamado. */
+export const NOME_CONVERSA = 'Conversa no LineChat';
+/** O código da sessão guardado no chamado: o do LineChat é um uuid (36 letras). */
+export const MAX_LETRAS_DA_SESSAO = 120;
+/** O que a pessoa cola (o link inteiro, com o que vier depois dele). */
+export const MAX_LETRAS_DO_LINK_DA_CONVERSA = 500;
+const UUID_NO_TEXTO = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+const SO_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PARECE_LINK = /^([a-z][a-z0-9+.-]*:\/\/|www\.)/i;
+const CODIGO_DA_SESSAO = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const escaparRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export type ConversaLida = { ok: true; sessaoId: string | null } | { ok: false; erro: string };
+
+/**
+ * A sessão (a conversa do LineChat) do que a pessoa colou (2.0.4.1, o pedido do Luan: o chamado ativo —
+ * a equipe chamou o cliente — não vem do robô, e a conversa entra à mão, para a ficha ter o link e a NIA
+ * ler o que foi dito). Vale:
+ *  - o link da conversa: pelo modelo das Integrações ("https://…/{sessao}": o que está no lugar do
+ *    {sessao}) ou, sem ele ou com outro endereço, pelo código de sessão do LineChat (um uuid) que estiver nele;
+ *  - o código da sessão sozinho (o "sessão 8385…" copiado da ficha também serve);
+ *  - vazio: o chamado fica sem conversa.
+ * O uuid volta em minúsculas, como o LineChat manda (o robô acha o chamado aberto da conversa por ele).
+ */
+export function sessaoDaConversa(texto: string | null | undefined, modelo?: string | null): ConversaLida {
+  const t = (texto ?? '').trim();
+  if (!t) return { ok: true, sessaoId: null };
+  if (t.length > MAX_LETRAS_DO_LINK_DA_CONVERSA) return { ok: false, erro: 'Esse texto é comprido demais para ser o link de uma conversa: cole só o link (ou o código da sessão).' };
+  const pronto = (s: string): ConversaLida => {
+    const v = SO_UUID.test(s) ? s.toLowerCase() : s;
+    if (v.length > MAX_LETRAS_DA_SESSAO) return { ok: false, erro: 'O código da sessão nesse link é comprido demais. Confira o link da conversa.' };
+    return { ok: true, sessaoId: v };
+  };
+  // 1. pelo modelo do link: o pedaço no lugar do {sessao}
+  if (modelo && modelo.includes('{sessao}')) {
+    const [antes] = modelo.split('{sessao}');
+    const m = new RegExp(`${escaparRegex(antes!).replace(/^https?:/i, 'https?:')}([^/?#&\\s]+)`, 'i').exec(t);
+    if (m) {
+      let s = m[1]!;
+      try { s = decodeURIComponent(s); } catch { /* fica como veio */ }
+      if (CODIGO_DA_SESSAO.test(s)) return pronto(s);
+    }
+  }
+  // 2. o código de sessão do LineChat (um uuid) no meio do link ou do texto
+  const uuids = [...new Set((t.match(UUID_NO_TEXTO) ?? []).map((u) => u.toLowerCase()))];
+  if (uuids.length === 1) return pronto(uuids[0]!);
+  if (uuids.length > 1) return { ok: false, erro: 'Esse link tem mais de um código: cole só o código da sessão (o que vem depois do último "/" do link da conversa).' };
+  // 3. outro link: não dá para saber onde está a sessão
+  if (PARECE_LINK.test(t)) return { ok: false, erro: 'Não achei a sessão nesse link. Cole o link da conversa no LineChat (o endereço da conversa aberta) ou só o código da sessão.' };
+  // 4. o código sozinho
+  if (/\s/.test(t)) return { ok: false, erro: 'O código da sessão não tem espaço: cole o link da conversa no LineChat ou só o código da sessão.' };
+  if (t.length < 6) return { ok: false, erro: 'Esse código é curto demais para ser uma sessão: cole o link da conversa no LineChat.' };
+  if (!CODIGO_DA_SESSAO.test(t)) return { ok: false, erro: 'Isso não parece o código de uma sessão: cole o link da conversa no LineChat.' };
+  return pronto(t);
 }
 
 

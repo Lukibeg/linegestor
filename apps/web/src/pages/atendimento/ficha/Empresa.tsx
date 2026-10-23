@@ -2,7 +2,8 @@
  * A empresa e o contato, em destaque no topo da coluna do lado (o pedido do Eider, com o nome do
  * contato que o Luan pediu): o nome grande com o link para a ficha do cliente, os produtos e as
  * operadoras do cadastro dele, quantos circuitos, DIDs e aparelhos; o contato com o WhatsApp legível
- * e o link "Conversa no LineChat". Dá para trocar o cliente, o nome do contato e o WhatsApp — e o
+ * e o link "Conversa no LineChat" (que se liga, troca e tira à mão desde o 2.0.4.1: `Conversa.tsx`). Dá para
+ * trocar o cliente, o nome do contato e o WhatsApp — e o
  * contato sai da lista do cliente (a aba Contatos, 2.0): um clique troca; o que não está na lista se
  * salva lá com um clique.
  *
@@ -12,12 +13,13 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, ExternalLink, MessagesSquare, Pencil, Phone, UserRound, UserRoundPlus } from 'lucide-react';
+import { Building2, Pencil, Phone, UserRound, UserRoundPlus } from 'lucide-react';
 import { acharContato, numeroWhatsApp, type ContatoDoCliente } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Chip, Copiar, EscolherComBusca, Spinner } from '../../../components/ui/index.js';
 import { telefoneLegivel } from '../comum.js';
 import { ErroPerto, MarcaFalta, useAberta, useAcao } from './base.js';
+import { ConversaDoChamado } from './Conversa.js';
 import { JanelaContato, usePodeMexerNosContatos } from '../../clientes/Contatos.js';
 
 export function Empresa() {
@@ -161,20 +163,8 @@ function Contato() {
             if (c.nome !== f.contato?.nome || (c.whatsapp ?? null) !== (f.contato?.telefone ?? null)) void usar(c);
           }} />
       )}
-      {!editando && (f.conversaUrl || f.sessaoId) && (
-        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
-          {f.conversaUrl && (
-            <a href={f.conversaUrl} target="_blank" rel="noreferrer noopener" className="link inline-flex items-center gap-1.5 font-semibold">
-              <MessagesSquare size={14} /> Conversa no LineChat <ExternalLink size={12} />
-            </a>
-          )}
-          {f.sessaoId && (
-            <span className="inline-flex items-center gap-1 text-muted min-w-0" title="A sessão da conversa no LineChat">
-              sessão <span className="font-mono text-ink-2 truncate max-w-[150px]">{f.sessaoId}</span><Copiar texto={f.sessaoId} titulo="Copiar a sessão" />
-            </span>
-          )}
-        </div>
-      )}
+      {/* a conversa do LineChat: o link e a sessão; ligar, trocar e tirar à mão (2.0.4.1, o chamado ativo) */}
+      {!editando && <ConversaDoChamado />}
     </div>
   );
 }
