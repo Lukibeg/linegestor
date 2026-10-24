@@ -14,6 +14,8 @@
  *  - o relatório do Gestor dá o mesmo que o do Helena (os ganhos pela Conclusão)
  *  - de novo: atualiza o que já veio (sem duplicar), refaz o histórico do Helena e guarda o que a equipe fez
  *  - vai para a auditoria
+ *  - 2.1.1: como a chave de API do ar (24/10) — sem o histórico, sem a Conclusão —, a Conclusão vem da planilha
+ *    do Helena (o link do Google Planilhas, que um Google de mentira serve, ou o .csv), e os meses ficam certos
  */
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -22,7 +24,7 @@ import { and, eq, like } from 'drizzle-orm';
 import { clients, newId, ticketEvents, ticketPanels, tickets } from '@gestor/db';
 import { textoDoEvento, type CampoPersonalizado, type Painel, type PreviaDoHelena, type RelatorioDeVendas } from '@gestor/shared';
 import { makeApp, Session, type App } from './helpers.js';
-import { esperarLeitura } from '../src/services/helena.js';
+import { esperarLeitura, trocarFerramentasHelena } from '../src/services/helena.js';
 
 // ---------- o Helena de mentira ----------
 
@@ -63,6 +65,15 @@ let historicoRecusado = false;
  */
 const DETALHES_DO_CARD_NO_HELENA = new Set(['Logs', 'Notes', 'CustomFieldValues', 'Key', 'ResultDescription', 'PanelTitle', 'PanelType', 'Step']);
 let detalhesRecusados = new Set<string>();
+/**
+ * Como a chave de API do ar (24/10, a prévia do Trazer no sistema): o card v1 só conhece os detalhes da API
+ * pública (recusa o "Logs" e o "ResultDescription") e vem sem a Conclusão, sem o motivo e sem o histórico; a
+ * lista traz o motivo da perda com o detalhe LostReason (o da API pública).
+ */
+let comoAChaveDoAr = false;
+const DETALHES_DA_API_PUBLICA = new Set(['PanelTitle', 'StepTitle', 'StepPhase', 'ResponsibleUser', 'Contacts', 'CustomFields', 'LostReason']);
+/** a lista que não conhece o LostReason (o Trazer pede de novo sem ele) */
+let listaRecusaOMotivo = false;
 const log = (id: string, createdAt: string, text: string, userId = LUAN.id) => ({ id, createdAt, cardId: '', text, color: '#008A00', userId, isAPI: false, isMigration: false, details: null });
 
 function novosCards(): CardFalso[] {
@@ -117,7 +128,12 @@ const servidor = http.createServer((req, res) => {
   if (url.pathname === '/crm/v2/panel/card') {
     // a lista não traz o histórico (no Helena, os logs vêm só no card) nem a Conclusão: sem o card, os ganhos
     // caíram no dia da última mudança (o primeiro uso no ar, 22/10)
-    const lista = cards.filter((c) => c.panelId === url.searchParams.get('PanelId')).map(({ logs: _, resultChangedAt: __, ...c }) => c);
+    const detalhes = url.searchParams.getAll('IncludeDetails');
+    if (listaRecusaOMotivo && detalhes.includes('LostReason')) {
+      return json(500, { customData: null, httpStatusCode: 'INTERNALSERVERERROR', error: true, key: 'FORM_ERROR', text: "The value 'LostReason' is not valid." });
+    }
+    const lista = cards.filter((c) => c.panelId === url.searchParams.get('PanelId'))
+      .map(({ logs: _, resultChangedAt: __, resultDescription: motivo, ...c }) => ({ ...c, ...(detalhes.includes('LostReason') ? { lostReason: motivo ? { id: `m-${c.id}`, name: motivo } : null } : {}) }));
     return json(200, { pageNumber: 1, pageSize: 100, items: lista, totalItems: lista.length, hasMorePages: false });
   }
   const m = /^\/crm\/v1\/panel\/card\/([^/]+)$/.exec(url.pathname);
@@ -125,7 +141,8 @@ const servidor = http.createServer((req, res) => {
     // os detalhes, um por parâmetro (o nome do parâmetro sem caixa, como no ASP.NET); o %2C chega como vírgula
     const detalhes = [...url.searchParams].filter(([k]) => k.toLowerCase() === 'includedetails').map(([, v]) => v);
     pedidosDeHistorico.push(detalhes);
-    const recusado = detalhes.find((d) => !DETALHES_DO_CARD_NO_HELENA.has(d) || detalhesRecusados.has(d));
+    const conhecidos = comoAChaveDoAr ? DETALHES_DA_API_PUBLICA : DETALHES_DO_CARD_NO_HELENA;
+    const recusado = detalhes.find((d) => !conhecidos.has(d) || detalhesRecusados.has(d));
     if (recusado !== undefined) {
       return json(500, { customData: null, httpStatusCode: 'INTERNALSERVERERROR', error: true, key: 'FORM_ERROR', text: `The value '${recusado}' is not valid.` });
     }
@@ -133,6 +150,11 @@ const servidor = http.createServer((req, res) => {
     const c = cards.find((x) => x.id === m[1]);
     if (!c) return json(404, { message: 'card' });
     const { customFields: _, ...semCampos } = c;
+    if (comoAChaveDoAr) {
+      // a chave do ar: o card sem a Conclusão, sem o motivo e sem o histórico
+      const { logs: __, resultChangedAt: ___, resultDescription: ____, ...publico } = semCampos;
+      return json(200, publico);
+    }
     // a Conclusão vem sempre no card; o motivo, com o detalhe ResultDescription; o histórico, com o Logs
     return json(200, {
       ...semCampos, resultDescription: detalhes.includes('ResultDescription') ? c.resultDescription : null, customFieldValues: {},
@@ -191,7 +213,7 @@ beforeAll(async () => {
   const r = await s.put('/settings/linechat', { ativo: false, url: base, appUrl: 'https://inglinechat.com.br', painelId: '', token: TOKEN });
   expect(r.statusCode, r.body).toBe(200);
 });
-afterAll(async () => { await app?.close(); servidor.close(); });
+afterAll(async () => { await app?.close(); servidor.close(); trocarFerramentasHelena({ fetchFn: (...a) => fetch(...a) }); });
 
 describe('trazer do Helena', () => {
   it('só quem importa e cuida dos painéis; os painéis do Helena vêm pela chave do LineChat', async () => {
@@ -365,7 +387,7 @@ describe('trazer do Helena', () => {
       expect(p.avisos[0]).toContain('O Helena não devolveu o histórico de 6 cards: O LineChat recusou o token (403)');
       // sem o card, sem a Conclusão: as ganhas e as perdidas acabam no dia da última mudança, e a prévia avisa
       expect(p.historico.semConclusao).toBe(4);
-      expect(p.avisos).toContain('4 negociações ganhas ou perdidas vieram sem a Conclusão do Helena: acabam no dia em que foram marcadas (ou no da última mudança do card), e os ganhos mês a mês podem não bater com o relatório de lá.');
+      expect(p.avisos).toContain('4 negociações ganhas ou perdidas vieram sem a Conclusão do Helena (a chave de API do LineChat não lê essa data): acabam no dia em que foram marcadas (ou no da última mudança do card), e os ganhos mês a mês não batem com o relatório de lá. Use a planilha do Helena: no painel, em Lista, o botão Exportar.');
     } finally { historicoRecusado = false; }
   });
 
@@ -404,10 +426,136 @@ describe('trazer do Helena', () => {
       expect(pedidosDeHistorico.slice(0, 4)).toEqual([['Logs', 'ResultDescription'], ['ResultDescription'], [], []]);
       const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
       const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
-      expect(p.avisos[0]).toBe('O LineChat não aceitou pedir o histórico junto do card (recusou "Logs", "ResultDescription"): as negociações vêm sem o histórico, com a Conclusão de cada card.');
+      expect(p.avisos[0]).toBe('A chave de API do LineChat não lê o histórico dos cards (recusou "Logs", "ResultDescription"): as negociações nascem na etapa em que estão.');
       expect(p.historico).toMatchObject({ semHistorico: 5, semConclusao: 0 });
       expect(p.ganhosPorMes.find((m) => m.mes === '2026-02')).toMatchObject({ qtd: 1, valor: 190_000 });
     } finally { detalhesRecusados = new Set(); }
+  });
+
+  // ---------- 2.1.1: a chave do ar e a planilha do Helena ----------
+
+  /** A planilha do "Exportar" do Helena, como o Google Planilhas baixa em CSV (as colunas de lá), feita dos cards de agora. */
+  function planilhaDosCards(): string {
+    const br = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
+    const situacao: Record<string, string> = { WON: 'Ganho', LOST: 'Perdido', OPEN: 'Em andamento' };
+    const linhas = cards.filter((c) => c.status !== 'ARCHIVED').map((c) => [
+      c.key, br(c.createdAt), c.stepTitle, `"${String(c.title).replace(/"/g, '""')}"`, '', c.monetaryAmount ? `"R$ ${c.monetaryAmount},00"` : '',
+      situacao[c.status] ?? '', c.status === 'WON' || c.status === 'LOST' ? br(c.resultChangedAt) : '', c.status === 'LOST' ? (c.resultDescription ?? '') : '',
+    ].join(','));
+    return ['Código,Data criação,Fase,Título,Descrição,Valor atribuído,Situação,Conclusão,Motivo da perda', ...linhas].join('\r\n');
+  }
+  const ABERTA = '1PlanilhaAbertaDoHelena_abcdefghijklmno';
+  const FECHADA = '1PlanilhaFechadaDoHelena_abcdefghijklmn';
+  const pedidosAoGoogle: string[] = [];
+  /** O Google de mentira: o CSV da planilha aberta vem por um desvio para os arquivos do Google; a fechada manda entrar. */
+  function usarGoogleDeMentira() {
+    trocarFerramentasHelena({
+      fetchFn: (async (entrada: any, init?: any) => {
+        const url = String(entrada);
+        if (!/^https:\/\/([a-z0-9-]+\.)*(google|googleusercontent)\.com\//.test(url)) return fetch(entrada, init);
+        pedidosAoGoogle.push(url);
+        if (url.startsWith(`https://docs.google.com/spreadsheets/d/${ABERTA}/export?format=csv`)) {
+          return new Response(null, { status: 307, headers: { location: 'https://doc-0s-sheets.googleusercontent.com/export/abc?dat=1' } });
+        }
+        if (url.startsWith('https://doc-0s-sheets.googleusercontent.com/export/abc')) {
+          return new Response(planilhaDosCards(), { status: 200, headers: { 'content-type': 'text/csv; charset=utf-8' } });
+        }
+        if (url.startsWith(`https://docs.google.com/spreadsheets/d/${FECHADA}/`)) {
+          return new Response(null, { status: 302, headers: { location: 'https://accounts.google.com/ServiceLogin?continue=x' } });
+        }
+        return new Response('não achei', { status: 404 });
+      }) as typeof fetch,
+    });
+  }
+
+  it('2.1.1: como a chave do ar, o card vem sem o histórico e sem a Conclusão; a prévia diz para usar a planilha', async () => {
+    comoAChaveDoAr = true;
+    try {
+      const l = await ler();
+      expect(l).toMatchObject({ estado: 'pronta', planilha: null });
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
+      expect(p.avisos[0]).toBe('A chave de API do LineChat não lê o histórico dos cards (recusou "Logs", "ResultDescription"): as negociações nascem na etapa em que estão.');
+      expect(p.historico).toMatchObject({ semHistorico: 5, semConclusao: 4 });
+      expect(p.planilha).toBeNull();
+      // o ganho de fevereiro caiu no mês da última mudança do card (julho): o que se viu no ar
+      expect(p.ganhosPorMes.find((m) => m.mes === '2026-02')!.valor).toBe(0);
+      expect(p.ganhosPorMes.find((m) => m.mes === '2026-07')).toMatchObject({ qtd: 1, valor: 190_000 });
+      expect(p.avisos.some((a) => a.includes('Use a planilha do Helena'))).toBe(true);
+    } finally { comoAChaveDoAr = false; }
+  });
+
+  it('2.1.1: o link da planilha do Helena completa a leitura, e os ganhos ficam no mês da Conclusão', async () => {
+    comoAChaveDoAr = true;
+    usarGoogleDeMentira();
+    try {
+      const l = await ler();
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const r = await s.post(`/comercial/helena/leituras/${l.id}/planilha`, { link: `https://docs.google.com/spreadsheets/d/${ABERTA}/edit#gid=0` });
+      expect(r.statusCode, r.body).toBe(200);
+      expect(r.json().planilha).toEqual({ origem: 'link', nome: null, linhas: 5, casadas: 5, conclusoes: 4, semConclusao: 0, foraDaLeitura: 0 });
+      // o servidor monta o endereço do CSV e segue o desvio só para o Google
+      expect(pedidosAoGoogle.slice(-2)).toEqual([`https://docs.google.com/spreadsheets/d/${ABERTA}/export?format=csv&gid=0`, 'https://doc-0s-sheets.googleusercontent.com/export/abc?dat=1']);
+      const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
+      expect(p.historico.semConclusao).toBe(0);
+      expect(p.planilha).toMatchObject({ origem: 'link', conclusoes: 4 });
+      expect(p.ganhosPorMes.find((m) => m.mes === '2026-02')).toMatchObject({ qtd: 1, valor: 190_000 });
+      expect(p.ganhosPorMes.find((m) => m.mes === '2026-07')!.valor).toBe(0);
+      expect(p.avisos).toContain('A Conclusão de 4 negociações veio da planilha do Helena, com 5 linhas (5 de cards lidos).');
+      // a leitura que a tela pergunta também diz qual planilha
+      expect((await s.get(`/comercial/helena/leituras/${l.id}`)).json().planilha).toMatchObject({ origem: 'link', linhas: 5 });
+
+      // o Trazer grava o dia da Conclusão e o motivo da perda (que veio na lista, pelo LostReason)
+      const t = await s.post(`/comercial/helena/leituras/${l.id}/trazer`, { destino: com.id });
+      expect(t.statusCode, t.body).toBe(200);
+      expect((await ficha('IC-12')).fechadoEm.slice(0, 10)).toBe('2026-02-15');
+      expect(await ficha('IC-5')).toMatchObject({ resultado: 'perdido', motivoPerda: 'Perfil fora do público-alvo' });
+      expect((await ficha('IC-5')).fechadoEm.slice(0, 10)).toBe('2026-06-18');
+      // o relatório do Comercial: o ganho de fevereiro em fevereiro, como no Helena
+      const rel: RelatorioDeVendas = (await s.get(`/atendimento/vendas?painel=${com.id}&de=2026-09-21&ate=2026-10-21`)).json();
+      expect(rel.meses.find((m) => m.mes === '2026-02')).toMatchObject({ qtd: 1, ganho: 190_000 });
+      expect(rel.meses.find((m) => m.mes === '2026-07')).toMatchObject({ qtd: 0 });
+    } finally { comoAChaveDoAr = false; }
+  });
+
+  it('2.1.1: o arquivo .csv também serve; o link que não é do Google, a planilha fechada e a de outro painel são recusados', async () => {
+    comoAChaveDoAr = true;
+    usarGoogleDeMentira();
+    try {
+      const l = await ler();
+      const url = `/comercial/helena/leituras/${l.id}/planilha`;
+      const r = await s.post(url, { csv: planilhaDosCards().replace(/,/g, ';'), nome: 'Exportação do Painel - Ingline - Comercial.csv' });
+      expect(r.statusCode, r.body).toBe(200);
+      expect(r.json().planilha).toMatchObject({ origem: 'arquivo', nome: 'Exportação do Painel - Ingline - Comercial.csv', conclusoes: 4 });
+      const erro = async (corpo: object) => { const x = await s.post(url, corpo); expect(x.statusCode, x.body).toBe(400); return x.json().error as string; };
+      expect(await erro({ link: 'https://exemplo.com/planilha.csv' })).toContain('não é de uma planilha do Google Planilhas');
+      expect(await erro({ link: `https://docs.google.com/spreadsheets/d/${FECHADA}/edit` })).toContain('não está aberta para quem tem o link');
+      expect(await erro({})).toBe('Mande o link da planilha do Helena ou o arquivo .csv dela (um dos dois).');
+      expect(await erro({ link: `https://docs.google.com/spreadsheets/d/${ABERTA}/edit`, csv: 'Código,Conclusão' })).toBe('Mande o link da planilha do Helena ou o arquivo .csv dela (um dos dois).');
+      expect(await erro({ csv: 'Código,Situação,Conclusão\nXX-1,Ganho,01/01/2026' })).toBe('Nenhuma linha da planilha é de um card do painel Ingline - Comercial (o código, como IC-34). É a planilha desse painel?');
+      expect(await erro({ csv: 'Título,Valor\nA,1' })).toContain('não tem as colunas Código e Conclusão');
+      // a planilha recusada não estraga a que valia
+      expect((await s.get(`/comercial/helena/leituras/${l.id}`)).json().planilha).toMatchObject({ origem: 'arquivo', conclusoes: 4 });
+      // só quem importa e cuida dos painéis
+      expect((await camila.post(url, { csv: planilhaDosCards() })).statusCode).toBe(403);
+    } finally { comoAChaveDoAr = false; }
+  });
+
+  it('2.1.1: a lista que não conhece o LostReason é lida de novo sem ele, e o motivo sai da planilha', async () => {
+    comoAChaveDoAr = true;
+    listaRecusaOMotivo = true;
+    try {
+      const l = await ler();
+      expect(l.estado).toBe('pronta');
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const sem: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
+      expect(sem.erro).toBeNull();
+      const r = await s.post(`/comercial/helena/leituras/${l.id}/planilha`, { csv: planilhaDosCards(), nome: 'helena.csv' });
+      expect(r.statusCode, r.body).toBe(200);
+      const t = await s.post(`/comercial/helena/leituras/${l.id}/trazer`, { destino: com.id });
+      expect(t.statusCode, t.body).toBe(200);
+      expect(await ficha('IC-5')).toMatchObject({ motivoPerda: 'Perfil fora do público-alvo' });
+    } finally { comoAChaveDoAr = false; listaRecusaOMotivo = false; }
   });
 
   it('a leitura que não existe mais pede para ler de novo; sem a chave, a tela diz o porquê', async () => {

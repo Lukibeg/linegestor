@@ -4,9 +4,11 @@
  *
  * É de quem importa (`data.import`) e cuida dos painéis (`tickets.manage`): o Trazer cria etapas, campos e o
  * painel. Ler e ver a prévia não grava nada; o "Trazer" grava numa transação só e vai para a auditoria.
+ * A planilha do Helena (2.1.1) completa a leitura com a Conclusão que a chave de API não lê: também não grava.
  */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { LIMITES_DA_PLANILHA_DO_HELENA } from '@gestor/shared';
 import { atorDaPessoa } from '../services/atendimento/contexto.js';
 import * as svc from '../services/helena.js';
 
@@ -27,6 +29,19 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.get('/leituras/:id', { ...pode, schema: { tags, summary: 'Como vai a leitura: quantos cards já vieram, de quantos', params: Id } },
     async (req) => svc.verLeitura(req.params.id));
+
+  app.post('/leituras/:id/planilha', {
+    ...pode,
+    schema: {
+      tags, params: Id,
+      summary: 'Completar a leitura com a planilha do Helena (o Exportar da Lista do painel): a Conclusão e o motivo que a chave de API não lê. O link do Google Planilhas ou o texto do .csv. Nada é gravado.',
+      body: z.object({
+        link: z.string().trim().max(2000).nullish(),
+        csv: z.string().max(LIMITES_DA_PLANILHA_DO_HELENA.letras).nullish(),
+        nome: z.string().trim().max(200).nullish(),
+      }),
+    },
+  }, async (req) => svc.usarPlanilha(req.params.id, req.body));
 
   app.get('/leituras/:id/previa', {
     ...pode,

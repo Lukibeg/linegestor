@@ -164,11 +164,12 @@ filhos e não se liga a chamados. Cada um fica no seu painel:
 
 **Trocar de painel** (em Mais) só leva a negociação para outro painel de Vendas.
 
-## 8. Trazer do Helena (2.0.3)
+## 8. Trazer do Helena (2.0.3; a planilha, 2.1.1)
 
-O painel de vendas do Helena (o **Ingline - Comercial**) vem para um painel de Vendas do Gestor, **com o
-histórico de cada negociação**: as etapas por onde passou, o ganho e a perda no dia da **Conclusão** de lá.
-Assim o relatório do Comercial já mostra os meses de antes da virada. É de quem importa e cuida dos painéis
+O painel de vendas do Helena (o **Ingline - Comercial**) vem para um painel de Vendas do Gestor: cada
+negociação com o valor, a empresa, os campos e o ganho e a perda no dia da **Conclusão** de lá. Assim o
+relatório do Comercial já mostra os meses de antes da virada. A chave de API do LineChat não lê a Conclusão
+(nem o histórico das etapas): a Conclusão vem da **planilha que o Helena exporta** (o passo 4). É de quem importa e cuida dos painéis
 (o Administrador). A decisão inteira está em `docs/decisoes/0054-trazer-do-helena.md`.
 
 1. **Administração › Importar / Exportar**, no cartão **Trazer do Helena**. A leitura usa a chave de API do
@@ -176,8 +177,13 @@ Assim o relatório do Comercial já mostra os meses de antes da virada. É de qu
 2. Em **O painel no Helena**, o **Ingline - Comercial**. Em **Vai para o painel de Vendas**, o painel do
    Comercial que já existe ou **Um painel de Vendas novo** (ele se chama Comercial e fica com a sigla IC: o
    IC-34 do Helena continua IC-34).
-3. **Ler o Helena**: a barra mostra quantos cards já vieram com o histórico (um pedido por card).
-4. Confira a **prévia** — nada foi gravado ainda:
+3. **Ler o Helena**: a barra mostra quantos cards já vieram (um pedido por card).
+4. **A planilha do Helena** (o quadro amarelo da prévia): no Helena, abra o painel em **Lista** e clique em
+   **Exportar**; quando o aviso disser que a exportação terminou, abra a planilha (o Google Planilhas), copie o
+   endereço dela, cole no quadro e clique em **Usar a planilha**. Se o Google não deixar baixar, na planilha,
+   **Arquivo › Fazer download › .csv**, e **escolha o arquivo**. O quadro fica verde e diz de quantas
+   negociações veio a Conclusão. Sem a planilha, cada ganho cai no mês da última mudança do card.
+5. Confira a **prévia** — nada foi gravado ainda:
    - os números de agora (em andamento, ganhas, perdidas) e **os ganhos mês a mês**: compare com o gráfico
      *Meta vs Ganho mensal* do relatório do Helena;
    - as **etapas** (as do Helena, na ordem de lá, com o Ganho e o Perdido no fim; no painel que já existe, a
@@ -186,16 +192,19 @@ Assim o relatório do Comercial já mostra os meses de antes da virada. É de qu
    - as **pessoas** (quem do Gestor fica com cada nome do Helena), as **empresas** (o cliente do cadastro, ou
      a empresa que ainda não é cliente), os produtos, as etiquetas e os motivos de perda;
    - os avisos (o "(Cópia)" que sai do título, a mensalidade por produto que não soma o Valor atribuído…).
-5. **Trazer N negociações** e confirme. No fim, **Abrir o painel** e **Ver o relatório**.
+6. **Trazer N negociações** e confirme. No fim, **Abrir o painel** e **Ver o relatório**.
 
 **O que fica igual ao Helena:** a mensalidade é o **Valor atribuído** do card (o número que o relatório de lá
 soma); o valor por produto entra quando os "Valor Mensalidade" de cada produto somam o Valor atribuído. A
-ativação é a soma dos "Valor Ativação". O ganho e a perda contam no dia da Conclusão, e a perda leva o motivo
-de lá.
+ativação é a soma dos "Valor Ativação". O ganho e a perda contam no dia da Conclusão (da planilha), e a perda
+leva o motivo de lá.
 
-**O que fica no Helena:** as anotações e os anexos, a Área de atuação e os cards arquivados.
+**O que fica no Helena:** as anotações e os anexos, a Área de atuação e os cards arquivados. E o **histórico
+das etapas**: a chave de API não lê, e a negociação nasce na etapa em que o card está (o funil das vendas de
+antes da virada mostra só onde cada uma estava).
 
 **Dá para trazer de novo até a virada:** o que já veio é atualizado (fica como está no Helena, e o histórico
-que veio de lá é refeito) e o que é novo entra. O que a equipe fez no Gestor fica no histórico; a prévia avisa
+que veio de lá é refeito) e o que é novo entra. A cada vez, exporte a planilha de novo (a Conclusão das que
+foram ganhas depois). O que a equipe fez no Gestor fica no histórico; a prévia avisa
 quantas negociações foram mexidas aqui (elas voltam a ficar como no Helena). A negociação que foi para a
 lixeira do Gestor fica lá.

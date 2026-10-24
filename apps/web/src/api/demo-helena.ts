@@ -9,10 +9,15 @@
  * depois de ganho, o arquivado. As empresas são de exemplo.
  *
  * A leitura anda a cada pergunta da tela (como a de verdade, que lê card a card), para a barra de progresso.
+ *
+ * Desde o 2.1.1, a leitura é a que a chave de API do LineChat faz no ar: os cards vêm sem o histórico e sem a
+ * Conclusão (o motivo da perda vem, pelo LostReason da lista). A Conclusão vem da planilha do Helena: na prévia,
+ * qualquer link do Google Planilhas usa a planilha de exemplo (a deste Helena), e o .csv escolhido é lido de
+ * verdade (as mesmas regras do servidor).
  */
 import {
-  planoDaImportacao, resumoDaImportacao,
-  type CampoDoHelena, type CardDoHelena, type LeituraDoHelena, type LeituraDoHelenaNaTela, type LogDoHelena, type OpcoesDoTrazerDoHelena,
+  MENSAGENS_DA_PLANILHA_DO_HELENA, csvDaPlanilhaDoHelena, diaLocal, leituraComAPlanilha, linkDoCsvDaPlanilha, planoDaImportacao, resumoDaImportacao,
+  type CampoDoHelena, type CardDoHelena, type LeituraDoHelena, type LeituraDoHelenaNaTela, type LinhaDaPlanilhaDoHelena, type LogDoHelena, type OpcoesDoTrazerDoHelena,
 } from '@gestor/shared';
 import type { Api } from './index.js';
 import { ApiError } from './types.js';
@@ -191,16 +196,40 @@ export function helenaDeExemplo(agora: Date): LeituraDoHelena {
   };
 }
 
+/**
+ * O que a chave de API do LineChat lê do painel de exemplo (como no ar, 24/10): sem o histórico e sem a
+ * Conclusão; o motivo da perda vem (o LostReason da lista).
+ */
+export function comoAChaveLe(helena: LeituraDoHelena): LeituraDoHelena {
+  return {
+    ...helena,
+    avisos: ['A chave de API do LineChat não lê o histórico dos cards (recusou "Logs", "ResultDescription"): as negociações nascem na etapa em que estão.'],
+    cards: helena.cards.map((c) => ({ ...c, logs: null, concluidoEm: null })),
+  };
+}
+
+/** A planilha que o "Exportar" do Helena de exemplo faz: o código, a situação, a Conclusão e o motivo (sem os arquivados). */
+export function planilhaDeExemplo(helena: LeituraDoHelena): LinhaDaPlanilhaDoHelena[] {
+  const situacao: Record<string, string> = { WON: 'Ganho', LOST: 'Perdido', OPEN: 'Em andamento' };
+  return helena.cards.filter((c) => c.situacao !== 'ARCHIVED' && c.codigo).map((c) => ({
+    codigo: c.codigo!, situacao: situacao[c.situacao] ?? null,
+    conclusao: (c.situacao === 'WON' || c.situacao === 'LOST') && c.concluidoEm ? diaLocal(c.concluidoEm) : null,
+    motivo: c.situacao === 'LOST' ? c.motivo : null,
+  }));
+}
+
 // =====================================================================
 //  O MÓDULO
 // =====================================================================
 
 export function criarHelenaDemo(ctx: ContextoHelenaDemo): Api['helena'] {
   const agora = () => ctx.agora?.() ?? new Date();
-  type Leitura = LeituraDoHelenaNaTela & { leitura: LeituraDoHelena };
+  /** `daApi`: o que a chave leu (sem a planilha); `exemplo`: o Helena inteiro (a planilha de exemplo sai dele); `leitura`: a que vale */
+  type Leitura = LeituraDoHelenaNaTela & { leitura: LeituraDoHelena; daApi: LeituraDoHelena; exemplo: LeituraDoHelena };
   const leituras = new Map<string, Leitura>();
   const naTela = (l: Leitura): LeituraDoHelenaNaTela => ({
     id: l.id, painelId: l.painelId, painelNome: l.painelNome, estado: l.estado, lidos: l.lidos, total: l.total, erro: l.erro, comecouEm: l.comecouEm, acabouEm: l.acabouEm,
+    planilha: l.leitura.planilha ?? null,
   });
   const exigir = () => { ctx.requirePerm('data.import'); ctx.requirePerm('tickets.manage'); };
   const pegar = (id: string) => {
@@ -232,10 +261,11 @@ export function criarHelenaDemo(ctx: ContextoHelenaDemo): Api['helena'] {
       await ctx.wait(200);
       exigir();
       if (painelId !== PAINEL) throw erro(400, 'Na prévia, só o painel Ingline - Comercial tem cards de exemplo.');
-      const leitura = helenaDeExemplo(agora());
+      const exemplo = helenaDeExemplo(agora());
+      const leitura = comoAChaveLe(exemplo);
       const l: Leitura = {
         id: ctx.id(), painelId, painelNome: leitura.painel.nome, estado: 'lendo', lidos: 0, total: leitura.cards.length, erro: null,
-        comecouEm: agora().toISOString(), acabouEm: null, leitura,
+        comecouEm: agora().toISOString(), acabouEm: null, leitura, daApi: leitura, exemplo,
       };
       leituras.set(l.id, l);
       return naTela(l);
@@ -249,6 +279,22 @@ export function criarHelenaDemo(ctx: ContextoHelenaDemo): Api['helena'] {
         l.lidos = Math.min(l.total ?? 0, l.lidos + POR_PERGUNTA);
         if (l.lidos >= (l.total ?? 0)) { l.estado = 'pronta'; l.acabouEm = agora().toISOString(); }
       }
+      return naTela(l);
+    },
+    async planilha(id, entrada) {
+      await ctx.wait(400);
+      exigir();
+      pronta(id);
+      const l = pegar(id);
+      const link = entrada.link?.trim() || null;
+      const csv = entrada.csv ?? null;
+      if (!!link === (csv !== null && csv.trim() !== '')) throw erro(400, MENSAGENS_DA_PLANILHA_DO_HELENA.umDosDois);
+      if (link && !linkDoCsvDaPlanilha(link)) throw erro(400, MENSAGENS_DA_PLANILHA_DO_HELENA.naoEGoogle);
+      // na prévia não se baixa nada do Google: o link usa a planilha do Helena de exemplo
+      const texto = link ? csvDaPlanilhaDoHelena(planilhaDeExemplo(l.exemplo)) : csv!;
+      const r = leituraComAPlanilha(l.daApi, texto, { origem: link ? 'link' : 'arquivo', nome: link ? null : entrada.nome ?? null });
+      if (r.erro !== null) throw erro(400, r.erro);
+      l.leitura = r.leitura;
       return naTela(l);
     },
     async previa(id, destino) {
