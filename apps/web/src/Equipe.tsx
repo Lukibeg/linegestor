@@ -2,7 +2,8 @@
  * As telas da equipe (o Gestor): o login da equipe e tudo o que fica atrás dele.
  * Carregadas à parte (lazy, em App.tsx): quem abre o portal do cliente não baixa estas telas.
  */
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { memo, useMemo, useRef } from 'react';
+import { Navigate, Route, Routes, UNSAFE_LocationContext as LocationContext, useLocation, useNavigationType, type Location } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth.js';
 import { Carregando } from './components/ui/index.js';
 import { AppShell } from './components/layout/AppShell.js';
@@ -69,10 +70,42 @@ export function Equipe() {
  */
 function Rotas() {
   const location = useLocation();
+  const tipo = useNavigationType();
   const fundo = fundoDaJanela(location);
+  // A tela de baixo fica parada enquanto a janela abre e fecha (2.1.2, "ta demorando muito pra abrir os cards e os
+  // paineis"): ela continua no mesmo endereço, e redesenhá-la inteira (o quadro com todos os cartões, o menu) a cada
+  // abrir e fechar era a maior parte da demora. O endereço dela vem por um contexto que só muda quando a tela muda;
+  // o que muda dentro dela (o quadro relido, um filtro) continua se desenhando sozinho.
+  const tela = useMesmaTela(fundo ?? location);
+  const valor = useMemo(() => ({ location: tela, navigationType: tipo }), [tela]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <>
-      <Routes location={fundo ?? location}>
+      <LocationContext.Provider value={valor}>
+        <TelaDeBaixo />
+      </LocationContext.Provider>
+      {fundo && (
+        <Routes>
+          {/* o Abrir chamado do alto das telas, numa janela por cima da tela (o pedido do Luan na prévia, em 14/10) */}
+          <Route path="/atendimento/novo" element={<JanelaAbrirChamado />} />
+          <Route path="/atendimento/:codigo" element={<ChamadoEmJanela />} />
+        </Routes>
+      )}
+    </>
+  );
+}
+
+/** O mesmo endereço (o mesmo passo do histórico, no mesmo caminho) devolve o mesmo objeto: a tela não se redesenha. */
+function useMesmaTela(l: Location): Location {
+  const ref = useRef(l);
+  const a = ref.current;
+  if (a !== l && !(a.key === l.key && a.pathname === l.pathname && a.search === l.search && a.hash === l.hash)) ref.current = l;
+  return ref.current;
+}
+
+/** As telas (a de baixo, quando há uma janela por cima). Só se redesenha quando o endereço dela muda. */
+const TelaDeBaixo = memo(function TelaDeBaixo() {
+  return (
+      <Routes>
         <Route path="/entrar" element={<Entrar />} />
         {/* a página que vira o PDF do envio diário: o robô entra com uma chave de uso único (1.7) */}
         <Route path="/envio-diario" element={<EnvioDiario />} />
@@ -127,13 +160,5 @@ function Rotas() {
         <Route path="/admin/*" element={<Protegido><Admin /></Protegido>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      {fundo && (
-        <Routes>
-          {/* o Abrir chamado do alto das telas, numa janela por cima da tela (o pedido do Luan na prévia, em 14/10) */}
-          <Route path="/atendimento/novo" element={<JanelaAbrirChamado />} />
-          <Route path="/atendimento/:codigo" element={<ChamadoEmJanela />} />
-        </Routes>
-      )}
-    </>
   );
-}
+});

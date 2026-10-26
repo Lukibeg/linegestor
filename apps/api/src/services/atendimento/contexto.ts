@@ -13,7 +13,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  ajustesDaNiaCompletos, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, estadoDosPrazos, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
+  ajustesDaNiaCompletos, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, painelContaPrazo, estadoDosPrazos, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
   valoresVisiveis,
   type AjustesDaNia, type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
   type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type PessoaCurta, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
@@ -226,17 +226,18 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
   const assunto = t.subjectId ? ctx.assuntos.find((a) => a.id === t.subjectId) : undefined;
   const filhos = par.filhos.get(t.id) ?? [];
   const prazos = estadoDosPrazos({
-    criadoEm: t.createdAt.toISOString(), prioridade: (t.priority as Prioridade | null) ?? null,
+    criadoEm: t.createdAt.toISOString(), prioridade: usa('prioridade') ? (t.priority as Prioridade | null) ?? null : null,
     respondidoEm: iso(t.firstResponseAt), resolvidoEm: iso(t.resolvedAt ?? t.closedAt), esperas: waits,
-    contaPrazo: painel?.ajustes.contaPrazo ?? true,
+    // sem a prioridade no painel (2.1.2), não há prazo
+    contaPrazo: painel ? painelContaPrazo(painel.ajustes) : true,
   }, ctx.prazos, ctx.agora);
   return {
     id: t.id, codigo: t.code, numero: t.number, tipoChamado: t.kind as TipoChamado, titulo: t.title,
     painelId: t.panelId, etapaId: t.stageId, situacao, nivel: e?.etapa.nivel ?? null,
-    cliente: t.clientId ? { id: t.clientId, nome: ctx.clientes.get(t.clientId) ?? '(cliente removido)' } : null,
-    contato: t.contactName || t.contactPhone ? { nome: t.contactName, telefone: t.contactPhone } : null,
+    cliente: t.clientId && usa('cliente') ? { id: t.clientId, nome: ctx.clientes.get(t.clientId) ?? '(cliente removido)' } : null,
+    contato: (t.contactName || t.contactPhone) && usa('cliente') ? { nome: t.contactName, telefone: t.contactPhone } : null,
     responsavel: pessoaCurta(ctx, t.assigneeId),
-    prioridade: (t.priority as Prioridade | null) ?? null,
+    prioridade: usa('prioridade') ? (t.priority as Prioridade | null) ?? null : null,
     gravidade: usa('gravidade') ? (t.severity as Gravidade | null) ?? null : null,
     alcance: usa('alcance') ? (t.reach as Alcance | null) ?? null : null,
     tipo: usa('tipo') ? t.type : null,

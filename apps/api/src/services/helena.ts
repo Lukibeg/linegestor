@@ -21,12 +21,12 @@ import { and, asc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { clients, newId, products, ticketEvents, ticketFields, ticketPanels, ticketStages, ticketTags, tickets, users, type Db } from '@gestor/db';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, LIMITES_DA_PLANILHA_DO_HELENA, MENSAGENS_DA_PLANILHA_DO_HELENA, ajustesDoPainelCompletos, chaveDaEtiqueta,
-  chaveDoNome, codigoDoChamado, ehLista, leituraComAPlanilha, ligarEtapasDoEvento, linkDoCsvDaPlanilha,
-  obrigatoriosDoPainel, planoDaImportacao, resumoDaImportacao, siglaDoPainelNovo, textoDoCard, valorDoCampoNoGestor,
+  AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA, AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, LIMITES_DA_PLANILHA_DO_HELENA, MENSAGENS_DA_PLANILHA_DO_HELENA,
+  ajustesDoPainelCompletos, chaveDaEtiqueta, chaveDoNome, codigoDoChamado, ehLista, leituraComAPlanilha, ligarEtapasDoEvento, linkDoCsvDaPlanilha,
+  nomeDoPainelDeGestaoNovo, obrigatoriosDoPainel, planoDaImportacao, resumoDaImportacao, siglaDoPainelNovo, textoDoCard, tipoParaOPainelDoHelena, valorDoCampoNoGestor,
   type AjustesDoPainel, type CardDoHelena, type EstadoDoGestorParaHelena, type LeituraDoHelena, type LeituraDoHelenaNaTela, type Obrigatorio,
   type OpcaoDoCampo, type OpcoesDoTrazerDoHelena, type PainelDoGestorParaHelena, type PlanilhaParaALeitura, type PlanoDaImportacao, type PreviaDoHelena,
-  type ResultadoDaVenda, type ResultadoDoTrazerDoHelena, type TipoEtapa, type ValoresDosCampos,
+  type ResultadoDaVenda, type ResultadoDoTrazerDoHelena, type TipoDePainel, type TipoEtapa, type ValoresDosCampos,
 } from '@gestor/shared';
 import { AppError, BadRequest, NotFound } from '../plugins/errors.js';
 import { ErroDoLineChat, clienteDaApi, type CardApi, type CardComHistoricoApi, type LineChatApi } from './linechat.js';
@@ -52,7 +52,10 @@ const DESISTE_DEPOIS_DE = 5;
 //  OS PAINÉIS PARA ESCOLHER
 // =====================================================================
 
-/** Os painéis do Helena (os de vendas primeiro) e os painéis de Vendas do Gestor que podem receber. */
+/**
+ * Os painéis do Helena (os de vendas primeiro) e os painéis do Gestor que podem receber: os de Vendas (para um painel
+ * de vendas do Helena) e, desde o 2.1.2, os de Gestão (para um que não é de vendas: as atividades, os chamados).
+ */
 export async function opcoes(db: Db, vault: SecretsVault): Promise<OpcoesDoTrazerDoHelena> {
   const destinos = await destinosDoGestor(db);
   try {
@@ -67,14 +70,14 @@ export async function opcoes(db: Db, vault: SecretsVault): Promise<OpcoesDoTraze
 }
 
 async function destinosDoGestor(db: Db) {
-  const paineis = await db.select({ id: ticketPanels.id, nome: ticketPanels.name, sigla: ticketPanels.key }).from(ticketPanels)
-    .where(and(eq(ticketPanels.kind, 'vendas'), isNull(ticketPanels.deletedAt))).orderBy(asc(ticketPanels.sortOrder));
+  const paineis = await db.select({ id: ticketPanels.id, nome: ticketPanels.name, sigla: ticketPanels.key, tipo: ticketPanels.kind }).from(ticketPanels)
+    .where(isNull(ticketPanels.deletedAt)).orderBy(asc(ticketPanels.sortOrder));
   const contagem = paineis.length
     ? await db.select({ panelId: tickets.panelId, n: sql<number>`count(*)::int` }).from(tickets)
       .where(and(inArray(tickets.panelId, paineis.map((p) => p.id)), isNull(tickets.deletedAt))).groupBy(tickets.panelId)
     : [];
   const n = new Map(contagem.map((c) => [c.panelId, Number(c.n)]));
-  return paineis.map((p) => ({ ...p, negociacoes: n.get(p.id) ?? 0 }));
+  return paineis.map((p) => ({ ...p, tipo: (p.tipo === 'vendas' ? 'vendas' : 'gestao') as TipoDePainel, negociacoes: n.get(p.id) ?? 0 }));
 }
 
 // =====================================================================
@@ -188,6 +191,8 @@ async function lerOHelena(db: Db, vault: SecretsVault, l: Leitura): Promise<Leit
   try { for (const u of await api.usuarios()) usuarios.set(u.id, u.nome); } catch { /* sem a lista, ficam os nomes dos cards */ }
   for (const c of cards) if (c.responsibleUser?.id && c.responsibleUser.name && !usuarios.has(c.responsibleUser.id)) usuarios.set(c.responsibleUser.id, c.responsibleUser.name);
   const semHistorico = cards.filter((c) => !detalhes.get(c.id)).length;
+  // o painel de vendas vira negociações; o que não é (2.1.2), chamados de um painel de Gestão
+  const vendas = /^sale/i.test(painel.type ?? '');
   const avisos: string[] = [];
   if (semHistorico && falha) avisos.push(`O Helena não devolveu o histórico de ${semHistorico === 1 ? '1 card' : `${semHistorico} cards`}: ${falha}`);
   // o que o LineChat recusou no pedido do card (2.1): o detalhe sai e o resto vem
@@ -195,7 +200,7 @@ async function lerOHelena(db: Db, vault: SecretsVault, l: Leitura): Promise<Leit
     const recusas = [...new Set(api.recusasDoCard)].map((r) => `"${r}"`).join(', ');
     // no ar (24/10), a chave recusou os dois, e o card veio sem a Conclusão: ela vem da planilha do Helena (2.1.1)
     avisos.push(api.cardComHistorico === false
-      ? `A chave de API do LineChat não lê o histórico dos cards (recusou ${recusas}): as negociações nascem na etapa em que estão.`
+      ? `A chave de API do LineChat não lê o histórico dos cards (recusou ${recusas}): ${vendas ? 'as negociações nascem' : 'os chamados nascem'} na etapa em que estão.`
       : api.cardComHistorico ? `O LineChat recusou ${recusas} no pedido do card; o resto veio.` : `O LineChat recusou ${recusas} no pedido do card.`);
   }
   return {
@@ -203,8 +208,8 @@ async function lerOHelena(db: Db, vault: SecretsVault, l: Leitura): Promise<Leit
     avisos,
     usuarios: [...usuarios].map(([id, nome]) => ({ id, nome })),
     painel: {
-      id: painel.id, nome: painel.title, sigla: painel.key ?? null,
-      etapas: (painel.steps ?? []).map((e, i) => ({ id: e.id, nome: e.title, posicao: e.position ?? i + 1, inicial: !!e.isInitial, arquivada: !!e.archived })),
+      id: painel.id, nome: painel.title, sigla: painel.key ?? null, vendas,
+      etapas: (painel.steps ?? []).map((e, i) => ({ id: e.id, nome: e.title, posicao: e.position ?? i + 1, inicial: !!e.isInitial, arquivada: !!e.archived, final: !!e.isFinal })),
       campos: (Array.isArray(campos) ? campos : []).filter((c) => c && c.key)
         .map((c) => ({ chave: c.key, nome: c.name || c.key, tipo: c.type ?? 'TEXT', posicao: c.position ?? 0, opcoes: (c.options ?? []).map((o) => o?.name).filter((x): x is string => !!x) })),
       etiquetas: (painel.tags ?? []).map((t) => ({ id: t.id, nome: t.name, cor: t.bgColor ?? null })),
@@ -300,18 +305,22 @@ async function baixarPlanilha(link: string): Promise<string> {
 //  O GESTOR COMO ESTÁ (o estado para o plano)
 // =====================================================================
 
-/** O painel de Vendas que recebe, como as regras querem (as etapas com quantas negociações têm). */
-async function painelQueRecebe(db: Db, id: string): Promise<PainelDoGestorParaHelena> {
+/**
+ * O painel que recebe, como as regras querem (as etapas com quantos registros têm). O painel de vendas do Helena vai
+ * para um de Vendas; o que não é (2.1.2), para um de Gestão.
+ */
+async function painelQueRecebe(db: Db, id: string, tipo: TipoDePainel): Promise<PainelDoGestorParaHelena> {
   const [p] = await db.select().from(ticketPanels).where(and(eq(ticketPanels.id, id), isNull(ticketPanels.deletedAt))).limit(1);
   if (!p) throw new NotFound('Painel');
-  if (p.kind !== 'vendas') throw new BadRequest(`O painel ${p.name} não é de Vendas: as negociações do Helena vão para um painel de Vendas.`);
+  if (tipo === 'vendas' && p.kind !== 'vendas') throw new BadRequest(`O painel ${p.name} não é de Vendas: as negociações do Helena vão para um painel de Vendas.`);
+  if (tipo === 'gestao' && p.kind === 'vendas') throw new BadRequest(`O painel ${p.name} é de Vendas: um painel do Helena que não é de vendas vai para um painel de Gestão (o de chamados).`);
   const ajustes = ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>);
   const etapas = await db.select().from(ticketStages).where(and(eq(ticketStages.panelId, p.id), isNull(ticketStages.deletedAt))).orderBy(asc(ticketStages.sortOrder));
   const contagem = await db.select({ stageId: tickets.stageId, n: sql<number>`count(*)::int` }).from(tickets)
     .where(and(eq(tickets.panelId, p.id), isNull(tickets.deletedAt))).groupBy(tickets.stageId);
   const n = new Map(contagem.map((c) => [c.stageId, Number(c.n)]));
   return {
-    id: p.id, nome: p.name, sigla: p.key,
+    id: p.id, nome: p.name, sigla: p.key, tipo,
     etapas: etapas.map((e) => ({
       id: e.id, nome: e.name, tipo: e.kind as TipoEtapa, resultado: (e.outcome as ResultadoDaVenda | null) ?? null,
       obrigatorios: e.requiredFields as Obrigatorio[], avisar: e.notifyUserIds, negociacoes: n.get(e.id) ?? 0,
@@ -323,9 +332,10 @@ async function painelQueRecebe(db: Db, id: string): Promise<PainelDoGestorParaHe
 }
 
 async function estadoDoGestor(db: Db, destino: string | null, leitura: LeituraDoHelena, agora = new Date()): Promise<EstadoDoGestorParaHelena> {
-  const painel = destino ? await painelQueRecebe(db, destino) : null;
+  const tipo = tipoParaOPainelDoHelena(leitura.painel);
+  const painel = destino ? await painelQueRecebe(db, destino, tipo) : null;
   const siglas = (await db.select({ key: ticketPanels.key }).from(ticketPanels)).map((x) => x.key);
-  const painelNovo = { nome: 'Comercial', sigla: siglaDoPainelNovo(leitura.painel.sigla, siglas) };
+  const painelNovo = { nome: nomeDoPainelNovo(leitura), sigla: siglaDoPainelNovo(leitura.painel.sigla, siglas, tipo), tipo };
   const sigla = painel?.sigla ?? painelNovo.sigla;
   // um pedido depois do outro: dentro da transação, a conexão é uma só
   const pessoas = await db.select({ id: users.id, nome: users.name, ativo: users.active }).from(users);
@@ -360,6 +370,9 @@ async function estadoDoGestor(db: Db, destino: string | null, leitura: LeituraDo
   };
 }
 
+/** O nome do painel novo: o de Vendas é o Comercial; o de Gestão (2.1.2), o do painel do Helena. */
+const nomeDoPainelNovo = (leitura: LeituraDoHelena) => (tipoParaOPainelDoHelena(leitura.painel) === 'gestao' ? nomeDoPainelDeGestaoNovo(leitura.painel.nome) : 'Comercial');
+
 /** O dia de hoje em Brasília (AAAA-MM-DD). */
 const diaDeHoje = (agora: Date) => new Date(agora.getTime() - 3 * 3_600_000).toISOString().slice(0, 10);
 
@@ -383,20 +396,29 @@ export async function trazer(app: FastifyInstance, ator: Ator, leituraId: string
   const pessoa = pessoaDoAtor(ator);
   return app.db.transaction(async (tx) => {
     const db = tx as unknown as Db;
+    const tipo = tipoParaOPainelDoHelena(leitura.painel);
+    const gestao = tipo === 'gestao';
     let painelId = destino;
     if (!painelId) painelId = await criarPainel(db, leitura, agora);
     const estado = await estadoDoGestor(db, painelId, leitura, agora);
     const plano = planoDaImportacao(leitura, estado);
     if (plano.previa.erro) throw new BadRequest(plano.previa.erro);
     const painel = estado.painel!;
+    // o painel de Gestão novo (2.1.2): quem vê são as pessoas dos cards e quem traz (as atividades de alguém não são de todos)
+    if (!destino && gestao) {
+      const membros = [...new Set([...plano.pessoasDoPainel, ...(pessoa ? [pessoa] : [])])];
+      await db.update(ticketPanels).set({ memberIds: membros }).where(eq(ticketPanels.id, painel.id));
+    }
     // a prévia de quem vê: o painel novo aparece como novo
     const previaFinal: PreviaDoHelena = destino ? plano.previa : { ...plano.previa, destino: { ...plano.previa.destino, novo: true } };
 
-    const idDaEtapa = await gravarEtapas(db, ator, painel, plano, agora);
+    const idDaEtapa = await gravarEtapas(db, ator, painel, plano, agora, tipo);
     const campoDaChave = await gravarCampos(db, painel, plano, agora);
-    // os motivos de perda do Helena entram na lista do painel
-    const [linha] = await db.select({ settings: ticketPanels.settings }).from(ticketPanels).where(eq(ticketPanels.id, painel.id)).limit(1);
-    await db.update(ticketPanels).set({ settings: { ...(linha?.settings as object ?? {}), motivosDePerda: plano.motivosDePerda }, updatedAt: agora }).where(eq(ticketPanels.id, painel.id));
+    // os motivos de perda do Helena entram na lista do painel (o de Vendas: o de Gestão não tem perda)
+    if (!gestao) {
+      const [linha] = await db.select({ settings: ticketPanels.settings }).from(ticketPanels).where(eq(ticketPanels.id, painel.id)).limit(1);
+      await db.update(ticketPanels).set({ settings: { ...(linha?.settings as object ?? {}), motivosDePerda: plano.motivosDePerda }, updatedAt: agora }).where(eq(ticketPanels.id, painel.id));
+    }
     // as etiquetas como estão no catálogo (a nova entra com a cor de lá)
     const etiquetas = new Map<string, string>();
     const todas = [...new Set(plano.negociacoes.flatMap((n) => n.etiquetas))];
@@ -417,12 +439,14 @@ export async function trazer(app: FastifyInstance, ator: Ator, leituraId: string
       }
       const ultimo = n.eventos.reduce((m, e) => (e.em > m ? e.em : m), n.alteradoEm);
       const fechado = n.fechadoEm ? new Date(n.fechadoEm) : null;
+      // o chamado (2.1.2) resolve no Resolvido e fecha no Fechado; a negociação acaba de uma vez no Ganho ou no Perdido
+      const resolvido = n.resolvidoEm ? new Date(n.resolvidoEm) : fechado;
       const linhaDoChamado = {
         panelId: painel.id, stageId, title: n.titulo, description: n.descricao, kind: 'chamado',
         clientId: n.clienteId, prospect: n.empresa, origin: 'helena', assigneeId: n.responsavelId, watcherIds: n.observadores,
         productIds: n.produtos, tags: n.etiquetas.map((t) => etiquetas.get(chaveDaEtiqueta(t)) ?? t),
         valueCents: n.valor, productValues: n.valoresDosProdutos, setupCents: n.ativacao, productSetup: n.ativacoesDosProdutos,
-        lostReason: n.motivoPerda, resolvedAt: fechado, closedAt: fechado, reopenCount: n.reaberturas,
+        lostReason: n.motivoPerda, resolvedAt: resolvido, closedAt: fechado, reopenCount: n.reaberturas,
         lastActivityAt: new Date(ultimo), createdAt: new Date(n.criadoEm), updatedAt: agora, externalRef: REF(n.helenaId),
       };
       let ticketId = n.chamadoId;
@@ -460,12 +484,25 @@ export async function trazer(app: FastifyInstance, ator: Ator, leituraId: string
   });
 }
 
-/** O painel de Vendas novo (como o "Novo painel" de Ajustes faz): os ajustes e os campos de fábrica; as etapas vêm do plano. */
+/**
+ * O painel novo (como o "Novo painel" de Ajustes faz); as etapas vêm do plano. O de Vendas: os ajustes e os campos de
+ * fábrica. O de Gestão (2.1.2): o nome e a sigla do Helena, sem prazo e sem campos; quem vê são as pessoas dos cards e
+ * quem traz (o `trazer` põe, depois do plano).
+ */
 async function criarPainel(db: Db, leitura: LeituraDoHelena, agora: Date): Promise<string> {
+  const tipo = tipoParaOPainelDoHelena(leitura.painel);
   const siglas = (await db.select({ key: ticketPanels.key }).from(ticketPanels)).map((x) => x.key);
-  const sigla = siglaDoPainelNovo(leitura.painel.sigla, siglas);
+  const sigla = siglaDoPainelNovo(leitura.painel.sigla, siglas, tipo);
   const id = newId();
   const [ultimo] = await db.select({ n: sql<number>`coalesce(max(${ticketPanels.sortOrder}), -1)::int` }).from(ticketPanels);
+  if (tipo === 'gestao') {
+    await db.insert(ticketPanels).values({
+      id, name: nomeDoPainelDeGestaoNovo(leitura.painel.nome), key: sigla, description: `Trazido do painel ${leitura.painel.nome}, do Helena.`,
+      color: 'roxo', kind: 'gestao', access: 'escolhidos', memberIds: [], settings: { ...AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA }, active: true,
+      sortOrder: Number(ultimo?.n ?? -1) + 1, createdAt: agora, updatedAt: agora,
+    });
+    return id;
+  }
   await db.insert(ticketPanels).values({
     id, name: 'Comercial', key: sigla, description: `As negociações do Comercial (trazidas do painel ${leitura.painel.nome}, do Helena).`,
     color: 'signal', kind: 'vendas', access: 'todos', memberIds: [], settings: { ...AJUSTES_DO_PAINEL_DE_VENDAS }, active: true,
@@ -479,12 +516,12 @@ async function criarPainel(db: Db, leitura: LeituraDoHelena, agora: Date): Promi
 }
 
 /** As etapas do plano no painel (as que saem só se vazias) e as do histórico, já fora; devolve o nome → id. */
-async function gravarEtapas(db: Db, ator: Ator, painel: PainelDoGestorParaHelena, plano: PlanoDaImportacao, agora: Date): Promise<(nome: string) => string | null> {
-  const validos = obrigatoriosDoPainel({ camposDesligados: painel.camposDesligados }, painel.campos, 'vendas');
+async function gravarEtapas(db: Db, ator: Ator, painel: PainelDoGestorParaHelena, plano: PlanoDaImportacao, agora: Date, tipo: TipoDePainel): Promise<(nome: string) => string | null> {
+  const validos = obrigatoriosDoPainel({ camposDesligados: painel.camposDesligados }, painel.campos, tipo);
   const etapas: EtapaGravar[] = plano.etapas.etapas.map((e) => ({
     ...(e.id ? { id: e.id } : {}), nome: e.nome, tipo: e.tipo, nivel: null, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado,
   }));
-  const planoDasEtapas = await planejarEtapas(db, painel.id, etapas, {}, validos, 'vendas');
+  const planoDasEtapas = await planejarEtapas(db, painel.id, etapas, {}, validos, tipo);
   await aplicarEtapas(db as unknown as Tx, ator, planoDasEtapas, agora);
   const existentes = await db.select({ id: ticketStages.id, nome: ticketStages.name, saiu: ticketStages.deletedAt }).from(ticketStages).where(eq(ticketStages.panelId, painel.id));
   // as etapas que só o histórico cita (saíram do Helena): entram já fora do painel (a trajetória precisa delas)

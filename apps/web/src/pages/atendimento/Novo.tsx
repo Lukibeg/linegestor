@@ -401,9 +401,9 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       painelId: painel.id,
       tipoChamado,
       titulo: f.titulo.trim(),
-      relato: vendas ? null : f.relato.trim() || null,
+      relato: vendas || !usa('relato') ? null : f.relato.trim() || null,
       descricao: f.descricao.trim() || null,
-      clienteId: clienteId || null,
+      clienteId: !vendas && !usa('cliente') ? null : clienteId || null,
       // por produto (com algum valor escrito), a mensalidade e a ativação são os totais; sem nenhum, valem as únicas
       ...(vendas ? {
         valor: porProduto && Object.keys(valoresQueVao).length ? null : f.valorValido ? f.valor : null,
@@ -412,8 +412,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         ...(porProduto ? { ativacoesDosProdutos: ativacoesQueVao } : {}),
         empresa: !f.jaECliente ? f.empresa.trim() || null : null,
       } : {}),
-      contatoNome: f.contatoNome.trim() || null,
-      contatoTelefone: f.contatoTelefone.trim() || null,
+      contatoNome: !vendas && !usa('cliente') ? null : f.contatoNome.trim() || null,
+      contatoTelefone: !vendas && !usa('cliente') ? null : f.contatoTelefone.trim() || null,
       // o que foi colado vai inteiro: quem acha a sessão no link é o servidor
       sessaoId: f.conversa.trim() || null,
       // o que o painel desligou não vai (o servidor também não guardaria)
@@ -421,7 +421,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       tipo: usa('tipo') ? f.tipo || null : null,
       gravidade: usa('gravidade') ? f.gravidade : null,
       alcance: usa('alcance') ? f.alcance : null,
-      prioridade: vendas ? null : f.prioridade,
+      prioridade: vendas || !usa('prioridade') ? null : f.prioridade,
       motivoPrioridade: precisaMotivo ? f.motivoPrioridade.trim() : null,
       produtos: usa('produtos') ? f.produtos : [],
       operadoras: usa('operadoras') ? f.operadoras : [],
@@ -551,8 +551,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
           {painel.descricao && <p className="text-[12.5px] text-muted mt-2">{painel.descricao}</p>}
         </Secao>
 
-        {/* ---------- quem ---------- */}
-        <Secao titulo={vendas ? 'Com quem' : 'Quem'}>
+        {/* ---------- quem (o painel sem o cliente e o contato não tem esta parte, 2.1.2) ---------- */}
+        {(vendas || usa('cliente')) && <Secao titulo={vendas ? 'Com quem' : 'Quem'}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {/* na venda: a empresa já é cliente (venda para a base) ou ainda não é (escrita à mão) */}
             {vendas && (
@@ -616,7 +616,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
           {f.clienteId && !vendas && <Recentes cadastro={cadastro.data} carregando={cadastro.isLoading} erroCarregar={cadastro.isError ? mensagemErro(cadastro.error) : ''}
             opcoes={opcoes} reabrindo={reabrindo} erro={erroReabrir} onReabrir={reabrir} levaRelato={!!f.relato.trim()}
             onAbrirOutro={naJanela ? (codigo) => naJanela.onReaberto(codigo) : undefined} />}
-        </Secao>
+        </Secao>}
 
         {/* ---------- o que aconteceu (na venda, a negociação) ---------- */}
         <Secao titulo={vendas ? 'A negociação' : 'O que aconteceu'}>
@@ -668,7 +668,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                   }} />
               </Rotulado>
             )}
-            {!vendas && <Rotulado rotulo="Relato do cliente" id="novo-relato" obrigatorio={pede('relato')} falta={falta('relato')} dica="O que o cliente disse, nas palavras dele.">
+            {!vendas && usa('relato') && <Rotulado rotulo="Relato do cliente" id="novo-relato" obrigatorio={pede('relato')} falta={falta('relato')} dica="O que o cliente disse, nas palavras dele.">
               <textarea className="input min-h-[96px]" id="novo-relato" value={f.relato} maxLength={20_000}
                 onChange={(e) => { mudar({ relato: e.target.value }); tirarFalta('relato'); }} />
             </Rotulado>}
@@ -682,7 +682,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
         </Secao>
 
         {/* ---------- a classificação e a prioridade (na venda, só o que o painel ligou) ---------- */}
-        {(!vendas || usa('assunto') || (usa('tipo') && painel.ajustes.tipos.length > 0) || usa('gravidade') || usa('alcance')) && <Secao titulo="Classificação">
+        {((!vendas && usa('prioridade')) || usa('assunto') || (usa('tipo') && painel.ajustes.tipos.length > 0) || usa('gravidade') || usa('alcance')) && <Secao titulo="Classificação">
           <div className="grid grid-cols-1 gap-4">
             {(usa('assunto') || (usa('tipo') && painel.ajustes.tipos.length > 0)) && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {usa('assunto') && <Rotulado rotulo="Assunto" id="novo-assunto" obrigatorio={pede('assunto')} falta={falta('assunto')} className="sm:col-span-2"
@@ -726,7 +726,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                 opcoes={ALCANCES.map((a) => ({ id: a, nome: NOME_ALCANCE[a] }))} />
             </Rotulado>}
 
-            {!vendas && <Rotulado rotulo="Prioridade" id="novo-prioridade" grupo obrigatorio={pede('prioridade')} falta={falta('prioridade')}>
+            {!vendas && usa('prioridade') && <Rotulado rotulo="Prioridade" id="novo-prioridade" grupo obrigatorio={pede('prioridade')} falta={falta('prioridade')}>
               <div className="rounded-lg border border-line bg-surface-2 p-3 flex flex-col gap-2" id="novo-prioridade">
                 <div className="text-[13px] text-ink-2" aria-live="polite">
                   {sugerida

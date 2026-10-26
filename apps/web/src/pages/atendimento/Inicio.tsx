@@ -15,10 +15,10 @@ import { useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, ChartColumn, Lock, Plus, Search, Settings2 } from 'lucide-react';
-import { paraBusca, reaisCurto, type Painel, type ResumoDoPainel } from '@gestor/shared';
+import { paraBusca, reaisInteiros, type Painel, type ResumoDoPainel } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, Chip, Vazio, mensagemErro } from '../../components/ui/index.js';
-import { CabecalhoAtendimento, useOpcoes, usePode } from './comum.js';
+import { CabecalhoAtendimento, useLerOQuadroAntes, useOpcoes, usePode } from './comum.js';
 import { enderecoDoRelatorio } from './painel.js';
 
 /** O fundo e a letra do quadradinho da sigla, na cor do painel (as classes inteiras, para o Tailwind achar). */
@@ -40,14 +40,15 @@ export function PaineisDeChamados() {
 
   const paineis = useMemo(() => {
     const todos = opcoes.data?.paineis ?? [];
-    // o desativado só aparece para quem cuida (para reativar); fica no fim
-    const vistos = todos.filter((p) => p.ativo || pode.cuidar);
+    // o desativado (arquivado) não aparece aqui (2.1.2, o Luan: "quando eu arquivar quero q ele n apareça aqui"): ele
+    // volta pela janela do painel, em Painéis › Ajustes
+    const vistos = todos.filter((p) => p.ativo);
     const termo = paraBusca(busca);
-    const achados = termo ? vistos.filter((p) => paraBusca(`${p.nome} ${p.sigla} ${p.descricao ?? ''}`).includes(termo)) : vistos;
-    return [...achados.filter((p) => p.ativo), ...achados.filter((p) => !p.ativo)];
-  }, [opcoes.data, pode.cuidar, busca]);
+    return termo ? vistos.filter((p) => paraBusca(`${p.nome} ${p.sigla} ${p.descricao ?? ''}`).includes(termo)) : vistos;
+  }, [opcoes.data, busca]);
+  const desativados = (opcoes.data?.paineis ?? []).filter((p) => !p.ativo).length;
   const porPainel = useMemo(() => new Map((resumo.data ?? []).map((r) => [r.painelId, r])), [resumo.data]);
-  const quantos = (opcoes.data?.paineis ?? []).filter((p) => p.ativo || pode.cuidar).length;
+  const quantos = (opcoes.data?.paineis ?? []).filter((p) => p.ativo).length;
 
   return (
     <div>
@@ -81,6 +82,12 @@ export function PaineisDeChamados() {
             )}
           </ul>
           {busca && !paineis.length && <p className="text-[13px] text-muted mt-2">Nenhum painel com “{busca}”.</p>}
+          {pode.cuidar && desativados > 0 && (
+            <p className="text-[12.5px] text-muted mt-3" id="paineis-desativados">
+              {desativados === 1 ? '1 painel desativado não aparece aqui' : `${desativados} painéis desativados não aparecem aqui`}:
+              {' '}<Link to="/atendimento/ajustes?aba=paineis" className="link">ver em Ajustes › Painéis</Link> (para reativar, Editar › Painel ativo).
+            </p>
+          )}
         </>
       )}
     </div>
@@ -90,6 +97,8 @@ export function PaineisDeChamados() {
 function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPainel | undefined; carregando: boolean; cuidar: boolean }) {
   const nav = useNavigate();
   const quadro = `/atendimento/quadro?painel=${encodeURIComponent(p.id)}`;
+  // o mouse parado no Abrir o quadro já lê o quadro (2.1.2)
+  const lerOQuadro = useLerOQuadroAntes();
   const lista = (extra: Record<string, string> = {}) => `/atendimento/lista?${new URLSearchParams({ painel: p.id, ...extra })}`;
   const etapas = p.etapas.filter((e) => e.tipo !== 'fechado');
   const naEtapa = new Map((r?.porEtapa ?? []).map((x) => [x.etapaId, x.total]));
@@ -147,7 +156,7 @@ function CartaoDoPainel({ p, r, carregando, cuidar }: { p: Painel; r: ResumoDoPa
               <Settings2 size={15} aria-hidden /> Configurar
             </Link>
           )}
-          <Link to={quadro} className="btn-primary btn-sm">Abrir o quadro <ArrowRight size={14} aria-hidden /></Link>
+          <Link to={quadro} className="btn-primary btn-sm" {...lerOQuadro(p.ativo ? p.id : null)}>Abrir o quadro <ArrowRight size={14} aria-hidden /></Link>
         </div>
       </footer>
     </article>
@@ -180,17 +189,17 @@ function NumerosDaVenda({ p, r, carregando, lista }: { p: Painel; r: ResumoDoPai
   return (
     <div className="flex flex-col gap-2" data-vendas>
       <div className="grid grid-cols-2 gap-1.5">
-        <Numero rotulo="Em negociação" valor={v ? reaisCurto(v.emAndamento) : undefined} carregando={carregando} para={lista()} titulo="A soma das mensalidades das negociações abertas (a ativação não soma)"
+        <Numero rotulo="Em negociação" valor={v ? reaisInteiros(v.emAndamento) : undefined} carregando={carregando} para={lista()} titulo="A soma das mensalidades das negociações abertas (a ativação não soma)"
           sub={v ? plural(v.emAndamentoQtd, 'aberta', 'abertas') : undefined} />
-        <Numero rotulo="Ganho no mês" valor={v ? reaisCurto(v.ganhoNoMes) : undefined} carregando={carregando} para={enderecoDoRelatorio(p.id)} tom={v?.ganhoNoMes ? 'ok' : undefined}
+        <Numero rotulo="Ganho no mês" valor={v ? reaisInteiros(v.ganhoNoMes) : undefined} carregando={carregando} para={enderecoDoRelatorio(p.id)} tom={v?.ganhoNoMes ? 'ok' : undefined}
           titulo="As mensalidades ganhas neste mês (pelo dia em que fechou; a ativação não soma)" sub={v ? `${plural(v.ganhosNoMes, 'ganha', 'ganhas')}, ${plural(v.perdidosNoMes, 'perdida', 'perdidas')}` : undefined} />
         <Numero rotulo="Sem dono" valor={r?.semDono} carregando={carregando} para={lista({ responsavel: 'ninguem' })} tom={r?.semDono ? 'signal' : undefined} titulo="Negociações sem responsável" />
         <Numero rotulo="Minhas" valor={r?.meus} carregando={carregando} para={lista({ responsavel: 'eu' })} titulo="As suas em aberto" />
       </div>
       {meta !== null && v && (
-        <div title={`Ganho no mês: ${reaisCurto(v.ganhoNoMes)} de ${reaisCurto(meta)}`}>
+        <div title={`Ganho no mês: ${reaisInteiros(v.ganhoNoMes)} de ${reaisInteiros(meta)}`}>
           <div className="flex items-baseline justify-between gap-2 text-[12px]">
-            <span className="text-muted">Meta do mês: <b className="text-ink-2 tnum">{reaisCurto(meta)}</b></span>
+            <span className="text-muted">Meta do mês: <b className="text-ink-2 tnum">{reaisInteiros(meta)}</b></span>
             <span className={`tnum font-semibold ${parte >= 100 ? 'text-ok' : 'text-ink-2'}`}>{Math.round(((v.ganhoNoMes) / meta) * 100)}%</span>
           </div>
           <div className="h-1.5 rounded-full bg-surface-2 mt-1 overflow-hidden" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={parte} aria-label="O ganho do mês contra a meta">

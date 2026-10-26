@@ -97,10 +97,11 @@ export function macValido(v: string): boolean {
 
 // ---------- Dinheiro ----------
 
+const FMT_REAIS = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 /** Centavos inteiros → "R$ 1.234,56". Guardamos dinheiro em centavos para não ter erro de arredondamento. */
 export function reais(centavos: number | null | undefined): string {
   if (centavos == null) return '—';
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(centavos / 100);
+  return FMT_REAIS.format(centavos / 100);
 }
 
 /** "1.234,56" ou "1234.56" → 123456 (centavos) */

@@ -131,3 +131,37 @@ etapas, o plano, a prévia e, desde o 2.1.1, a planilha do Helena). O servidor: 
 (`/api/comercial/helena`); a leitura do card com o histórico em `services/linechat.ts`. A tela:
 `apps/web/src/pages/dados/TrazerDoHelena.tsx`. A prévia clicável: `apps/web/src/api/demo-helena.ts` (um
 Helena de exemplo). A migração: `0024_trazer_do_helena.sql` (a coluna `tickets.external_ref`, única).
+
+## Revisto no 2.1.2 (26/10/2026): o painel que não é de vendas vira um painel de Gestão
+
+O Luan, no Trazer do Helena do ar: *"N necessariamente aqui eu vou trazer um painel do comercial, eu mesmo quero
+trazer um meu de atividades internas, veja pra mim isso"* — o **Luan - Atividades (LA)**: lido no ar só para
+ver (nada gravado), 22 cards (1 arquivado), 8 etapas (StandBy, Novos, Pendente Luan, Pendente Terceiros, Em
+andamento Luan, Em andamento longo Outros setores, Concluído, Validado), sem campos e sem etiquetas. Até aqui, o
+Trazer só criava painel de Vendas (com o Ganho, o Perdido e o valor).
+
+- **O tipo vem do painel do Helena** (`tipoParaOPainelDoHelena`): o de vendas ("sale") vai para um painel de
+  Vendas; o resto, para um de **Gestão**. A leitura guarda o tipo (`PainelDoHelena.vendas`) e a marca de fim de
+  cada etapa (`final`, o `isFinal` de lá). As opções da tela trazem os painéis do Gestor com o tipo
+  (`destinos[].tipo`), e a tela só oferece os do tipo certo; o servidor recusa o outro (400).
+- **O painel de Gestão novo**: o nome e a sigla do Helena (a sigla ocupada vira ATV, INT…), sem prazo e sem fechar
+  sozinho (`AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA`, como o Desenvolvimento), sem campos de fábrica e **só para
+  quem está nos cards** (os responsáveis e os observadores) **e quem traz** (`acesso: escolhidos`) — as
+  atividades de alguém não são de todos. Tudo isso se muda em Painéis › Ajustes.
+- **As etapas** (`planoDasEtapasDeGestao`): no painel novo, as do Helena na ordem de lá — a inicial é a entrada;
+  as de fim (`fimDaEtapaDoHelena`: "Validado", "Fechado", "Encerrado", "Cancelado", "Aprovado" fecham;
+  "Concluído", "Finalizado", "Resolvido", "Feito", "Entregue" e a marca de fim de lá resolvem) resolvem ou
+  fecham; sem nenhuma que feche, a última que resolve fecha; sem nenhuma de fim, entra o **Fechado** no fim. No
+  painel de Gestão que existe, **nenhuma etapa dele sai**: a do Helena com o mesmo nome é a mesma (com o tipo e as
+  regras de cá); as que faltam entram antes das de fim (as de andamento) ou no fim (as de fim).
+- **Cada card vira um chamado** (`planoDeGestao`, `historicoDoCardDeGestao`): o título (sem o "(Cópia)"), a
+  descrição, o responsável, os observadores, o cliente (pelo título ou pelo CNPJ; a empresa que não é cliente
+  não entra), as etiquetas, os produtos (o campo Produtos/Serviços), os campos (a mensalidade e a ativação de lá
+  viram campos como os outros) e o histórico, quando o Helena devolve: entrar numa etapa de fim resolve ou fecha
+  (`resolvidoEm`, `fechadoEm`), sair dela reabre; o "marcado como Ganho" fica como está escrito. Sem o
+  histórico (a chave do ar), o chamado nasce na etapa de agora e, numa etapa de fim, acaba na última mudança do
+  card. Sem valor, Ganho, Perdido, motivos de perda e planilha.
+- **A prévia** (`PreviaDoHelena.tipo`, `chamados`, `porEtapa`, `etapas.tipos`, `quemVe`): os chamados abertos,
+  resolvidos e fechados, o que cada etapa vira e quantos vão para ela, e quem vê o painel novo. A frase da
+  auditoria diz "chamados" (`resumoDaImportacao`).
+- De novo, como no de Vendas: o que já veio é atualizado (o `external_ref` do card), sem duplicar.

@@ -14,6 +14,9 @@
  * Conclusão (o motivo da perda vem, pelo LostReason da lista). A Conclusão vem da planilha do Helena: na prévia,
  * qualquer link do Google Planilhas usa a planilha de exemplo (a deste Helena), e o .csv escolhido é lido de
  * verdade (as mesmas regras do servidor).
+ *
+ * Desde o 2.1.2, um painel de atividades de exemplo (o "Luan - Atividades", que não é de vendas): ele vem para um
+ * painel de Gestão, e cada card vira um chamado.
  */
 import {
   MENSAGENS_DA_PLANILHA_DO_HELENA, csvDaPlanilhaDoHelena, diaLocal, leituraComAPlanilha, linkDoCsvDaPlanilha, planoDaImportacao, resumoDaImportacao,
@@ -33,6 +36,7 @@ export type ContextoHelenaDemo = {
 };
 
 const PAINEL = 'helena-comercial';
+const PAINEL_ATIVIDADES = 'helena-atividades';
 /** Quantos cards a leitura da prévia "lê" a cada pergunta da tela. */
 const POR_PERGUNTA = 3;
 
@@ -197,6 +201,37 @@ export function helenaDeExemplo(agora: Date): LeituraDoHelena {
 }
 
 /**
+ * O painel de atividades de exemplo (2.1.2): as etapas do Luan - Atividades do Helena (26/10) e sete cards, todos sem
+ * o histórico (como a chave de API lê no ar). Um é de um cliente do cadastro de exemplo (Clínica Aurora).
+ */
+export function atividadesDeExemplo(agora: Date): LeituraDoHelena {
+  const dia = (d: number) => new Date(agora.getTime() - d * 86_400_000).toISOString();
+  const etapas = ['StandBy', 'Novos', 'Pendente Luan', 'Pendente Terceiros', 'Em andamento Luan', 'Em andamento longo Outros setores', 'Concluído', 'Validado'];
+  const base = { descricao: null, responsavelId: 'hu-luan', criadoPorId: 'hu-luan', etiquetas: [] as string[], campos: {} as Record<string, unknown>, concluidoEm: null, motivo: null, valor: null, situacao: 'OPEN', logs: null };
+  const cards: CardDoHelena[] = [
+    { ...base, id: 'ha-3', numero: 3, codigo: 'LA-3', titulo: 'Interno - Portar DID Chapp', etapa: 'Pendente Terceiros', criadoEm: dia(40), alteradoEm: dia(6) },
+    { ...base, id: 'ha-5', numero: 5, codigo: 'LA-5', titulo: 'Interno - Verificar chamadas WhatsApp Helena', etapa: 'Em andamento Luan', criadoEm: dia(20), alteradoEm: dia(2), descricao: 'Ver por que algumas chamadas não chegam no WhatsApp.' },
+    { ...base, id: 'ha-8', numero: 8, codigo: 'LA-8', titulo: 'Clínica Aurora - Integração dos retornos', etapa: 'Pendente Luan', criadoEm: dia(15), alteradoEm: dia(3) },
+    { ...base, id: 'ha-9', numero: 9, codigo: 'LA-9', titulo: 'Interno - Revisão sites e portfólio', etapa: 'StandBy', criadoEm: dia(60), alteradoEm: dia(30) },
+    { ...base, id: 'ha-11', numero: 11, codigo: 'LA-11', titulo: 'Ingline Gestão - Controle de licenças', etapa: 'Novos', criadoEm: dia(4), alteradoEm: dia(4), responsavelId: 'hu-camila', criadoPorId: 'hu-camila' },
+    { ...base, id: 'ha-12', numero: 12, codigo: 'LA-12', titulo: 'Interno - Verificações ambientes Dev', etapa: 'Concluído', criadoEm: dia(25), alteradoEm: dia(5) },
+    { ...base, id: 'ha-14', numero: 14, codigo: 'LA-14', titulo: 'Interno - Definir divulgação do WebChat', etapa: 'Validado', criadoEm: dia(45), alteradoEm: dia(12) },
+    { ...base, id: 'ha-15', numero: 15, codigo: 'LA-15', titulo: 'Teste - não usar', etapa: 'StandBy', situacao: 'ARCHIVED', criadoEm: dia(90), alteradoEm: dia(89) },
+  ];
+  return {
+    lidaEm: agora.toISOString(),
+    usuarios: USUARIOS,
+    avisos: ['A chave de API do LineChat não lê o histórico dos cards (recusou "Logs", "ResultDescription"): os chamados nascem na etapa em que estão.'],
+    painel: {
+      id: PAINEL_ATIVIDADES, nome: 'Luan - Atividades', sigla: 'LA', vendas: false,
+      etapas: etapas.map((nome, i) => ({ id: `ha-e${i}`, nome, posicao: i + 1, inicial: nome === 'Novos', arquivada: false, final: nome === 'Concluído' || nome === 'Validado' })),
+      campos: [], etiquetas: [],
+    },
+    cards,
+  };
+}
+
+/**
  * O que a chave de API do LineChat lê do painel de exemplo (como no ar, 24/10): sem o histórico e sem a
  * Conclusão; o motivo da perda vem (o LostReason da lista).
  */
@@ -253,6 +288,7 @@ export function criarHelenaDemo(ctx: ContextoHelenaDemo): Api['helena'] {
         helena: [
           { id: PAINEL, nome: 'Ingline - Comercial', sigla: 'IC', vendas: true },
           { id: 'helena-suporte', nome: 'Ingline - Suporte', sigla: 'IS', vendas: false },
+          { id: PAINEL_ATIVIDADES, nome: 'Luan - Atividades', sigla: 'LA', vendas: false },
         ],
         destinos: acessoDoHelenaDemo().destinos(),
       };
@@ -260,9 +296,9 @@ export function criarHelenaDemo(ctx: ContextoHelenaDemo): Api['helena'] {
     async ler(painelId) {
       await ctx.wait(200);
       exigir();
-      if (painelId !== PAINEL) throw erro(400, 'Na prévia, só o painel Ingline - Comercial tem cards de exemplo.');
-      const exemplo = helenaDeExemplo(agora());
-      const leitura = comoAChaveLe(exemplo);
+      if (painelId !== PAINEL && painelId !== PAINEL_ATIVIDADES) throw erro(400, 'Na prévia, só os painéis Ingline - Comercial e Luan - Atividades têm cards de exemplo.');
+      const exemplo = painelId === PAINEL ? helenaDeExemplo(agora()) : atividadesDeExemplo(agora());
+      const leitura = painelId === PAINEL ? comoAChaveLe(exemplo) : exemplo;
       const l: Leitura = {
         id: ctx.id(), painelId, painelNome: leitura.painel.nome, estado: 'lendo', lidos: 0, total: leitura.cards.length, erro: null,
         comecouEm: agora().toISOString(), acabouEm: null, leitura, daApi: leitura, exemplo,
@@ -301,7 +337,7 @@ export function criarHelenaDemo(ctx: ContextoHelenaDemo): Api['helena'] {
       await ctx.wait(250);
       exigir();
       const leitura = pronta(id);
-      return planoDaImportacao(leitura, acessoDoHelenaDemo().estado(destino, leitura.painel.sigla, hoje())).previa;
+      return planoDaImportacao(leitura, acessoDoHelenaDemo().estado(destino, leitura.painel, hoje())).previa;
     },
     async trazer(id, destino) {
       await ctx.wait(500);
@@ -310,11 +346,11 @@ export function criarHelenaDemo(ctx: ContextoHelenaDemo): Api['helena'] {
       const g = acessoDoHelenaDemo();
       const ator = g.eu();
       // a conferência antes de gravar qualquer coisa (o servidor faz numa transação: tudo ou nada)
-      const antes = planoDaImportacao(leitura, g.estado(destino, leitura.painel.sigla, hoje()));
+      const antes = planoDaImportacao(leitura, g.estado(destino, leitura.painel, hoje()));
       if (antes.previa.erro) throw erro(400, antes.previa.erro);
-      const painelId = destino ?? g.criarPainel(leitura.painel.nome, leitura.painel.sigla);
-      const plano = planoDaImportacao(leitura, g.estado(painelId, leitura.painel.sigla, hoje()));
-      const { nome, sigla } = g.gravar(ator, painelId, plano, agora());
+      const painelId = destino ?? g.criarPainel(leitura.painel);
+      const plano = planoDaImportacao(leitura, g.estado(painelId, leitura.painel, hoje()));
+      const { nome, sigla } = g.gravar(ator, painelId, plano, agora(), !destino);
       const previa = destino ? plano.previa : { ...plano.previa, destino: { ...plano.previa.destino, novo: true } };
       const resumo = resumoDaImportacao(previa);
       ctx.audit('import', 'ticket_panel', resumo, painelId, {

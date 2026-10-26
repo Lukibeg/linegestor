@@ -274,7 +274,7 @@ export async function criarChamado(
 
   // 2. o telefone que o Gestor já conhece preenche o cliente (e o nome do contato, se faltou): primeiro os
   // contatos cadastrados dos clientes (a aba Contatos); depois, o que ele aprendeu dos chamados
-  const telefone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone.trim() : null;
+  let telefone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone.trim() : null;
   let clienteId = d.clienteId ?? null;
   let contatoNome = d.contatoNome ?? null;
   if (telefone) {
@@ -297,6 +297,8 @@ export async function criarChamado(
   // os campos do sistema que o painel desligou: o que vier para eles fica de fora (o robô, o n8n e o
   // agendado não travam por isso); os campos do painel são conferidos um a um
   const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
+  // o painel sem o cliente e o contato (2.1.2, um painel de atividades internas): o chamado é interno
+  if (!usa('cliente')) { clienteId = null; contatoNome = null; telefone = null; }
   // o assunto (do mesmo painel, ativo) traz o checklist dele; o tipo é uma opção do painel
   const assunto = d.assuntoId && usa('assunto') ? conferirAssunto(ctx, d.assuntoId, painel) : null;
   const tipo = usa('tipo') ? conferirTipo(d.tipo, painel) : null;
@@ -314,7 +316,7 @@ export async function criarChamado(
   // 4. a prioridade: sem escolha, a sugerida (gravidade × alcance; no painel sem o alcance, só a
   // gravidade); trocar a sugerida pede o motivo
   const sugerida = vendas ? null : prioridadeSugeridaDoPainel(painel.ajustes, gravidade, alcance, ctx.prazos);
-  const prioridade = vendas ? null : d.prioridade ?? sugerida;
+  const prioridade = vendas || !usa('prioridade') ? null : d.prioridade ?? sugerida;
   const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
   const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
   // o valor (a mensalidade) e a ativação: cada um único, ou o total por produto (a soma de cada produto)
@@ -337,7 +339,7 @@ export async function criarChamado(
 
   // 3. o que o painel pede para abrir
   const dados: DadosObrigatorios = {
-    tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
+    tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
     assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
     produtos, operadoras, responsavelId: d.responsavelId ?? null,
     solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, ativacao, empresa,
@@ -462,8 +464,12 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     ...(usa('assunto') ? {} : { assuntoId: undefined }), ...(usa('tipo') ? {} : { tipo: undefined }),
     ...(usa('gravidade') ? {} : { gravidade: undefined }), ...(usa('alcance') ? {} : { alcance: undefined }),
     ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
-    // a negociação não tem prioridade
-    ...(painel.tipo === 'vendas' ? { prioridade: undefined, motivoPrioridade: undefined } : {}),
+    // a negociação não tem prioridade; o painel de Gestão pode não ter (2.1.2), nem o cliente, o relato, a solução e a causa
+    ...(painel.tipo === 'vendas' || !usa('prioridade') ? { prioridade: undefined, motivoPrioridade: undefined } : {}),
+    ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined }),
+    ...(usa('relato') ? {} : { relato: undefined }),
+    // o problema (ITIL) sempre tem a solução e a causa
+    ...(usa('solucao') || t.kind === 'problema' ? {} : { solucao: undefined, causa: undefined }),
   };
   const set: SetChamado = {};
   const antes: Record<string, unknown> = {};

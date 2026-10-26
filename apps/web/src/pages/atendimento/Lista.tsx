@@ -27,7 +27,7 @@ import { Th, type Dir, type Ordenacao } from '../../lib/ordenacao.js';
 import { useLembrarFiltros } from '../../lib/voltar.js';
 import {
   Avatar, CabecalhoAtendimento, ChipEspera, ChipPrioridade, ChipResultado, CodigoChamado, LinkDoChamado, SeloPrazo, dataHoraCurta, haQuanto, painelDe, telefoneLegivel,
-  useAbrirChamado, useOpcoes,
+  useAbrirChamado, useLerAFichaAntes, useOpcoes,
 } from './comum.js';
 import { cliqueAbreAFicha } from './quadro/cartao.js';
 import { CabecalhoDoPainel, FILTROS_DO_PAINEL, enderecoDoQuadro, type FiltrosDoPainel } from './painel.js';
@@ -315,6 +315,8 @@ function Tabela({ itens, total, opcoes, ordem, mostrarPainel, vendas = false, pa
   page: number; tudo: boolean; carregando: boolean; setPage: (p: number) => void; setTudo: (v: boolean) => void;
 }) {
   const abrirChamado = useAbrirChamado();
+  // o mouse parado em cima da linha já lê a ficha (2.1.2): no clique, ela abre pronta
+  const lerAntes = useLerAFichaAntes();
   const numero = contarDe(tudo ? 1 : page, tudo ? TODOS : POR_PAGINA);
   const etapas = useMemo(() => new Map(opcoes.paineis.flatMap((p) => p.etapas.map((e) => [e.id, e] as const))), [opcoes.paineis]);
   const abrir = (e: MouseEvent<HTMLTableRowElement>, c: CartaoChamado) => {
@@ -361,7 +363,7 @@ function Tabela({ itens, total, opcoes, ordem, mostrarPainel, vendas = false, pa
               const painel = painelDe(opcoes, c.painelId);
               const etapa = etapas.get(c.etapaId);
               return (
-                <tr key={c.id} className="cursor-pointer" onClick={(e) => abrir(e, c)}>
+                <tr key={c.id} className="cursor-pointer" onClick={(e) => abrir(e, c)} {...lerAntes(c.codigo)}>
                   <TdN n={numero(i)} />
                   <td className="whitespace-nowrap"><CodigoChamado codigo={c.codigo} cor={painel?.cor} /></td>
                   <td className="min-w-[210px] max-w-[400px]">

@@ -18,7 +18,7 @@ import { useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ListTree, Pencil, Plus, Undo2, X } from 'lucide-react';
 import {
-  CAMPOS_DO_SISTEMA, DICA_CAMPO_DO_SISTEMA, DICA_TIPO_CAMPO, MAX_CAMPOS_DO_PAINEL, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO,
+  camposDoSistemaDoTipo, DICA_CAMPO_DO_SISTEMA, DICA_TIPO_CAMPO, MAX_CAMPOS_DO_PAINEL, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO,
   OBRIGATORIOS_DO_CAMPO, TIPOS_CAMPO, chaveDoCampo, ehLista, etiquetasUnicas, nomeDoSistemaIgual, paraBusca,
   type CampoDoSistema, type CampoGravarEntrada, type CampoPersonalizado, type Painel, type TipoCampo,
 } from '@gestor/shared';
@@ -129,11 +129,13 @@ function CamposDoSistema({ painel, nAssuntos, onAssuntos, onTipos }: { painel: P
       <header className="px-3 py-2.5 sm:px-4 border-b border-line">
         <h3 className="font-display font-semibold text-[15px]" id="campos-sistema-titulo">Os campos do sistema</h3>
         <p className="text-[12.5px] text-muted">
-          Todo chamado tem cliente, contato, título, relato, descrição, prioridade, responsável, solução, causa e etiquetas. Estes, cada painel usa ou não:
+          {painel.tipo === 'vendas'
+            ? 'Toda negociação tem a empresa, o título, o valor, o responsável e as etiquetas. Estes, cada painel usa ou não:'
+            : 'Todo chamado tem o título, a descrição, o responsável e as etiquetas. Estes, cada painel usa ou não (sem a prioridade, o painel não conta prazo):'}
         </p>
       </header>
       <ul className="divide-y divide-line">
-        {CAMPOS_DO_SISTEMA.map((c) => {
+        {camposDoSistemaDoTipo(painel.tipo).map((c) => {
           const ligado = !desligados.includes(c);
           const pede = ligado ? ondePede(painel, OBRIGATORIOS_DO_CAMPO[c]) : [];
           const nome = NOME_CAMPO_DO_SISTEMA[c];

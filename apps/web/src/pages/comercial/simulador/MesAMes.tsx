@@ -38,7 +38,12 @@ function semEncostar(valores: number[], y: (v: number) => number): number[] {
   return ficam;
 }
 
-/** "R$ 15,6 mil", "−R$ 840": os números curtos. */
+/** "−R$ 840,50": o valor de um mês, sem arredondar (2.1.2: "to vendo que ele arredonda os valores, n quero isso"). */
+function exato(centavos: number): string {
+  return `${centavos < 0 ? '−' : ''}${reaisLimpo(Math.abs(centavos))}`;
+}
+
+/** "R$ 15,6 mil", "−R$ 840": os números curtos — só nas marcas dos eixos (a escala), nunca no valor de um mês. */
 function curto(centavos: number): string {
   const r = centavos / 100;
   const a = Math.abs(r);
@@ -281,8 +286,8 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
           {/* o valor da coluna cortada, na faixa dele (por último: nada o cobre); começa na coluna e corre para a direita */}
           {meses.map((m, i) => (
             <g key={`c${m.mes}`} fontSize="11" fontWeight="600" opacity={mes == null || mes === i ? 1 : 0.5}>
-              {corta(m.faturamento) && <text x={x(i) - w / 2} y={p1 - 5} fill="var(--accent-ink)">{curto(m.faturamento)}</text>}
-              {corta(-m.custos) && <text x={x(i) - w / 2} y={fim1 + 13} fill="var(--signal)">{curto(-m.custos)}</text>}
+              {corta(m.faturamento) && <text x={x(i) - w / 2} y={p1 - 5} fill="var(--accent-ink)">{exato(m.faturamento)}</text>}
+              {corta(-m.custos) && <text x={x(i) - w / 2} y={fim1 + 13} fill="var(--signal)">{exato(-m.custos)}</text>}
             </g>
           ))}
 
@@ -301,7 +306,7 @@ export function MesAMes({ k, prazo, nomeDoProduto }: { k: ContasDoCenario; prazo
           {/* o pior momento, quando há espaço entre ele e o zero (perto do zero, a tabela e o mouse dizem) */}
           {pior >= 0 && pior !== mes && y2(min2) - y2(0) >= 24 && (
             <text x={x(pior) + (x(pior) > W - 150 ? -8 : 8)} y={Math.min(topo2 + H2 - 2, y2(min2) + 4)} fontSize="11" fontWeight="600" fill="var(--bad)" {...HALO}
-              textAnchor={x(pior) > W - 150 ? 'end' : 'start'}>o pior momento: {curto(min2)}</text>
+              textAnchor={x(pior) > W - 150 ? 'end' : 'start'}>o pior momento: {exato(min2)}</text>
           )}
           {pagou != null && (
             <g>

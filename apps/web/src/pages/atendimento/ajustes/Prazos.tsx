@@ -42,7 +42,8 @@ const semChave = ({ chave: _chave, ...f }: FeriadoNaTela): Feriado => f;
 
 const fmtData = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 const diaDaSemana = (iso: string) => NOMES_DOS_DIAS[new Date(`${iso}T12:00:00Z`).getUTCDay()] ?? '';
-const hojeEmBrasilia = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+const fmtDiaBrasil = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' });
+const hojeEmBrasilia = () => fmtDiaBrasil.format(new Date());
 /** HH:MM de 24 horas (o mesmo formato que o servidor aceita). */
 const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
 const horaValida = (t: string) => HORA.test(t);

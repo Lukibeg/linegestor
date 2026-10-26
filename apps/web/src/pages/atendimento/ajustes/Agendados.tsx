@@ -31,7 +31,8 @@ type Form = {
 };
 
 const novoId = () => Math.random().toString(36).slice(2, 10);
-const diaBrasil = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d);
+const fmtDiaBrasil = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' });
+const diaBrasil = (d: Date) => fmtDiaBrasil.format(d);
 const amanha = () => diaBrasil(new Date(Date.now() + 86_400_000));
 
 const REGRA_NOVA: RegraAgendado = { frequencia: 'diaria', hora: '08:00', dias: [1], diaDoMes: 1, data: null, soDiasDeAtendimento: true };

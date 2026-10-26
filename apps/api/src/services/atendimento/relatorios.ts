@@ -9,7 +9,7 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { devices, dids, products, subscriptions, ticketCarrierCases, ticketEvents, ticketLinks, ticketTimeEntries, tickets } from '@gestor/db';
 import {
-  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, arrumacaoCompleta, campoLigado, passagensDosEventos, passagensNoPainel, relatoriosDoPainel, situacaoDaEtapa,
+  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, arrumacaoCompleta, campoLigado, painelContaPrazo, passagensDosEventos, passagensNoPainel, relatoriosDoPainel, situacaoDaEtapa,
   type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type Espera, type FiltroDosRelatorios,
   type Gravidade, type Alcance, type Nivel, type Origem, type Painel, type Prioridade, type RelatoriosDoPainel, type TipoChamado, type ValoresDosCampos,
 } from '@gestor/shared';
@@ -110,7 +110,7 @@ function contextoDoPainel(ctx: Contexto, painel: Painel, campoDaFalha: string | 
   const usa = (c: Parameters<typeof campoLigado>[1]) => campoLigado(painel.ajustes, c);
   return {
     painel: {
-      id: painel.id, nome: painel.nome, sigla: painel.sigla, contaPrazo: painel.ajustes.contaPrazo,
+      id: painel.id, nome: painel.nome, sigla: painel.sigla, contaPrazo: painelContaPrazo(painel.ajustes),
       usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras') },
     },
     etapas: [...ctx.etapas].filter(([, v]) => v.painelId === painel.id).map(([id, v]) => ({ id, nome: v.etapa.nome, tipo: v.etapa.tipo, nivel: v.etapa.nivel, ordem: v.ordem, ativa: !v.saiu })),

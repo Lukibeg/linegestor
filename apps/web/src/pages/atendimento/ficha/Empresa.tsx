@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Building2, Pencil, Phone, UserRound, UserRoundPlus } from 'lucide-react';
-import { acharContato, numeroWhatsApp, type ContatoDoCliente } from '@gestor/shared';
+import { acharContato, campoLigado, numeroWhatsApp, type ContatoDoCliente } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Chip, Copiar, EscolherComBusca, Spinner } from '../../../components/ui/index.js';
 import { telefoneLegivel } from '../comum.js';
@@ -29,6 +29,9 @@ export function Empresa() {
   const clientes = useQuery({ queryKey: ['client-options'], queryFn: () => api.clients.options(), enabled: pode, staleTime: 5 * 60_000 });
   const opcoesClientes = (clientes.data ?? []).map((c) => ({ id: c.id, nome: c.name }));
   const escolher = (id: string) => void trocar.rodar(() => api.atendimento.alterar(f.id, { clienteId: id || null }), id ? 'Empresa trocada' : vendas ? 'A negociação ficou sem o cliente' : 'O chamado ficou sem empresa');
+
+  // o painel sem o cliente e o contato (2.1.2, um painel de atividades internas): o chamado é interno
+  if (!vendas && painel && !campoLigado(painel.ajustes, 'cliente')) return null;
 
   const contagem = cadastro ? [
     cadastro.circuitos.length ? `${cadastro.circuitos.length} ${cadastro.circuitos.length === 1 ? 'circuito' : 'circuitos'}` : null,

@@ -31,12 +31,12 @@ import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ArrowLeft, Calculator, CalendarRange, ChartColumn, Filter as Funnel, Info, Target, TrendingDown, TrendingUp, X } from 'lucide-react';
 import {
-  diaComAno, percentualDaFracao, periodosDoRelatorio, reaisCurto, reaisInteiros,
+  diaComAno, percentualDaFracao, periodosDoRelatorio, reaisInteiros,
   type GrupoDaMargem, type MesDeVendas, type NegociacaoDoRelatorio, type OpcoesAtendimento, type Painel, type RelatorioDeVendas,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { Carregando, Modal, Vazio, mensagemErro } from '../../components/ui/index.js';
-import { CabecalhoAtendimento, ChipResultado, LinkDoChamado, useOpcoes } from './comum.js';
+import { CabecalhoAtendimento, ChipResultado, LinkDoChamado, ValorDaColuna, useOpcoes } from './comum.js';
 import { ChipDoSinal } from '../comercial/simulador/comum.js';
 import { CabecalhoDoPainel } from './painel.js';
 import { useFiltrosNoEndereco } from './quadro/filtros.js';
@@ -165,7 +165,7 @@ function Secao({ id, titulo, pergunta, icone: Icone, lado, rodape, children }: {
   );
 }
 
-/** "▲ R$ 8 mil", "▼ 2", "= igual": o que mudou em relação ao período anterior (a cor diz se foi bom). */
+/** "▲ R$ 8.120", "▼ 2", "= igual": o que mudou em relação ao período anterior (a cor diz se foi bom). */
 function Diferenca({ agora, antes, formato, bomSubir, contra }: {
   agora: number | null; antes: number | null; formato: 'reais' | 'n' | 'pontos'; bomSubir?: boolean; contra: string;
 }) {
@@ -175,7 +175,7 @@ function Diferenca({ agora, antes, formato, bomSubir, contra }: {
   if (Math.abs(d) < 1e-9) return <span className="text-muted" title={`${contra}: ${antesEscrito}`}>= igual</span>;
   const sobe = d > 0;
   const cor = bomSubir === undefined ? 'text-ink-2' : sobe === bomSubir ? 'text-ok' : 'text-signal';
-  const texto = formato === 'reais' ? reaisInteiros(Math.round(Math.abs(d) / 100) * 100) : formato === 'pontos' ? `${nf(Math.abs(d))} ${Math.abs(d) === 1 ? 'ponto' : 'pontos'}` : nf(Math.abs(d));
+  const texto = formato === 'reais' ? reaisInteiros(Math.round(Math.abs(d))) : formato === 'pontos' ? `${nf(Math.abs(d))} ${Math.abs(d) === 1 ? 'ponto' : 'pontos'}` : nf(Math.abs(d));
   const Seta = sobe ? TrendingUp : TrendingDown;
   return (
     <span className={`inline-flex items-center gap-1 font-semibold ${cor}`} title={`${sobe ? 'Mais' : 'Menos'} que ${contra} (${antesEscrito})`}>
@@ -224,7 +224,7 @@ function Numeros({ r, nomeDoPeriodo, abrir }: { r: RelatorioDeVendas; nomeDoPeri
         sub={n.ativacoes.qtd ? plural(n.ativacoes.qtd, 'ganha com ativação', 'ganhas com ativação') : 'nenhuma ganha com ativação'}
         diferenca={<Diferenca agora={n.ativacoes.valor} antes={a.ativacoes.valor} formato="reais" bomSubir contra={contra} />} />
       <Tile rotulo="Novas" valor={n.novos.qtd.toLocaleString('pt-BR')} ids={n.novos.ids} janela={`Novas ${nomeDoPeriodo}`} abrir={abrir}
-        sub={`${reaisCurto(n.novos.valor)} em propostas`}
+        sub={`${reaisInteiros(n.novos.valor)} em propostas`}
         diferenca={<Diferenca agora={n.novos.qtd} antes={a.novos.qtd} formato="n" bomSubir contra={contra} />} />
       <Tile rotulo="Perdido" valor={reaisInteiros(n.perdidos.valor)} tom="bad" ids={n.perdidos.ids} janela={`Perdidas ${nomeDoPeriodo}`} abrir={abrir}
         sub={plural(n.perdidos.qtd, 'negociação perdida', 'negociações perdidas')}
@@ -232,7 +232,7 @@ function Numeros({ r, nomeDoPeriodo, abrir }: { r: RelatorioDeVendas; nomeDoPeri
       <Tile rotulo="Conversão" valor={pct(n.conversao)} titulo="Das que acabaram no período (ganhas e perdidas), quantas foram ganhas" abrir={abrir}
         sub={n.conversao === null ? 'nenhuma acabou no período' : `${n.ganhos.qtd} de ${n.ganhos.qtd + n.perdidos.qtd} que acabaram`}
         diferenca={<Diferenca agora={n.conversao} antes={a.conversao} formato="pontos" bomSubir contra={contra} />} />
-      <Tile rotulo="Ticket médio" valor={n.ticketMedio === null ? '—' : reaisInteiros(Math.round(n.ticketMedio / 100) * 100)} titulo="A mensalidade média do que foi ganho" abrir={abrir}
+      <Tile rotulo="Ticket médio" valor={n.ticketMedio === null ? '—' : reaisInteiros(Math.round(n.ticketMedio))} titulo="A mensalidade média do que foi ganho" abrir={abrir}
         sub="a mensalidade média do ganho"
         diferenca={<Diferenca agora={n.ticketMedio} antes={a.ticketMedio} formato="reais" contra={contra} />} />
     </div>
@@ -314,7 +314,7 @@ function ColunasDosMeses({ meses, medida, abrir }: { meses: MesDeVendas[]; medid
               title={`${nomeDoMes(m)}: ${reaisInteiros(m.ganho)} ${medida.emQuantas(m.qtd)}`}
               aria-label={`${nomeDoMes(m)}: ${reaisInteiros(m.ganho)}`}
               className={`${mostra(i)} flex-1 min-w-0 h-full flex-col justify-end items-center group enabled:cursor-pointer`}>
-              {m.ganho > 0 && <span className={`text-[10.5px] sm:text-[11px] tnum leading-none mb-1 whitespace-nowrap ${ultimo ? 'text-ink font-semibold' : 'text-ink-2'}`}>{reaisCurto(m.ganho)}</span>}
+              {m.ganho > 0 && <ValorDaColuna centavos={m.ganho} className={`text-[10px] sm:text-[11px] mb-1 ${ultimo ? 'text-ink font-semibold' : 'text-ink-2'}`} />}
               <span className={`block w-full max-w-[64px] rounded-t ${medida.cor} transition-opacity ${ultimo ? '' : 'opacity-55'} group-enabled:group-hover:opacity-100`}
                 style={{ height: m.ganho ? Math.max(3, (m.ganho / max) * util) : 0 }} />
             </button>

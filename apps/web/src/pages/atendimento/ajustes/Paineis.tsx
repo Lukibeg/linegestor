@@ -28,10 +28,10 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, HandCoins, Pencil, Plus, ThumbsDown, Ticket, Trash2, Trophy, Undo2, UserPlus, X } from 'lucide-react';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_SISTEMA, CORES_PAINEL, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema,
+  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CORES_PAINEL, DICA_CAMPO_DO_SISTEMA, camposDoSistemaDoTipo, painelContaPrazo, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema,
   MAX_ETAPAS_DO_PAINEL, MOTIVOS_DE_PERDA_PADRAO, NIVEIS, NOME_CAMPO_DO_SISTEMA, NOME_RESULTADO_DA_VENDA, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, etiquetasUnicas, idDaChave,
   limparObrigatorios, nomeDoObrigatorio, obrigatoriosDoPainel, paraBusca, problemaNasEtapasDoTipo, reaisInteiros, rotuloDoNivel,
-  type AjustesDoPainel, type CampoObrigatorio, type CampoPersonalizado, type CorPainel, type EtapaGravarEntrada, type EtapaPainel, type Nivel, type Obrigatorio,
+  type AjustesDoPainel, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CorPainel, type EtapaGravarEntrada, type EtapaPainel, type Nivel, type Obrigatorio,
   type Painel, type PainelGravarEntrada, type PessoaCurta, type ResultadoDaVenda, type TipoDePainel, type TipoEtapa,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -134,7 +134,7 @@ export function AjustesPaineis() {
 function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: PessoaCurta[]; campos: CampoPersonalizado[]; onEditar: () => void }) {
   const a = p.ajustes;
   const vendas = p.tipo === 'vendas';
-  const usados = [...CAMPOS_DO_SISTEMA.filter((c) => !a.camposDesligados.includes(c)).map((c) => NOME_CAMPO_DO_SISTEMA[c]), ...campos.filter((c) => c.ativo).map((c) => c.nome)];
+  const usados = [...camposDoSistemaDoTipo(p.tipo).filter((c) => !a.camposDesligados.includes(c)).map((c) => NOME_CAMPO_DO_SISTEMA[c]), ...campos.filter((c) => c.ativo).map((c) => c.nome)];
   const paraAbrir = limparObrigatorios(a.obrigatoriosAoAbrir, obrigatoriosDoPainel(a, campos, p.tipo)).map((k) => nomeDoObrigatorio(k, campos));
   const quemVe = p.acesso === 'todos'
     ? 'Todos que veem chamados'
@@ -148,7 +148,7 @@ function CartaoPainel({ p, pessoas, campos, onEditar }: { p: Painel; pessoas: Pe
     a.supervisores.length ? `Supervisão: ${listaDeNomes(a.supervisores.map((id) => nomeDaPessoa(pessoas, id)))}` : 'Sem supervisores',
   ] : [
     usados.length ? `Campos: ${usados.join(', ')}` : 'Sem campos além dos do chamado',
-    a.contaPrazo ? 'Conta prazo' : 'Não conta prazo',
+    painelContaPrazo(a) ? 'Conta prazo' : a.contaPrazo ? 'Não conta prazo (sem a prioridade)' : 'Não conta prazo',
     a.fecharSozinhoDias ? `O Resolvido fecha sozinho em ${a.fecharSozinhoDias} ${a.fecharSozinhoDias === 1 ? 'dia útil' : 'dias úteis'}` : 'O Resolvido não fecha sozinho',
     paraAbrir.length ? `Para abrir: ${paraAbrir.join(', ')}` : 'Abre sem exigir nenhum campo',
     a.paiEsperaFilhos ? 'O pai espera os filhos fecharem' : 'O pai fecha sem esperar os filhos',
@@ -198,6 +198,8 @@ type FormPainel = {
   nome: string; sigla: string; descricao: string; cor: CorPainel; acesso: 'todos' | 'escolhidos'; pessoas: string[]; ativo: boolean;
   tipos: string[]; contaPrazo: boolean; fecharSozinho: boolean; fecharSozinhoDias: string; obrigatoriosAoAbrir: Obrigatorio[];
   paiEsperaFilhos: boolean; supervisores: string[];
+  /** os campos do sistema que o painel não usa (2.1.2: escolhidos na própria janela, a aba Os campos) */
+  desligados: CampoDoSistema[];
   /** Gestão ou Vendas (só ao criar); no de Vendas, os motivos de perda e a meta do mês (centavos) */
   tipo: TipoDePainel; motivosDePerda: string[]; meta: number | null; metaValida: boolean;
 };
@@ -208,7 +210,7 @@ function formDoPainel(p: Painel | null, tipo: TipoDePainel = p?.tipo ?? 'gestao'
     nome: p?.nome ?? '', sigla: p?.sigla ?? '', descricao: p?.descricao ?? '', cor: p?.cor ?? 'accent', acesso: p?.acesso ?? 'todos', pessoas: p?.pessoas ?? [],
     ativo: p?.ativo ?? true, tipos: [...a.tipos], contaPrazo: a.contaPrazo, fecharSozinho: a.fecharSozinhoDias !== null,
     fecharSozinhoDias: String(a.fecharSozinhoDias ?? AJUSTES_PAINEL_PADRAO.fecharSozinhoDias ?? 3), obrigatoriosAoAbrir: [...a.obrigatoriosAoAbrir],
-    paiEsperaFilhos: a.paiEsperaFilhos, supervisores: [...a.supervisores],
+    paiEsperaFilhos: a.paiEsperaFilhos, supervisores: [...a.supervisores], desligados: [...a.camposDesligados],
     tipo, motivosDePerda: [...(a.motivosDePerda.length || p ? a.motivosDePerda : tipo === 'vendas' ? MOTIVOS_DE_PERDA_PADRAO : [])], meta: a.metaMensal ?? null, metaValida: true,
   };
 }
@@ -255,6 +257,7 @@ function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[], campos: CampoPe
 const PARTES = [
   { id: 'painel-geral', nome: 'O painel' },
   { id: 'painel-etapas', nome: 'As etapas' },
+  { id: 'painel-campos', nome: 'Os campos' },
   { id: 'painel-regras', nome: 'As regras' },
 ] as const;
 const irPara = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -270,7 +273,9 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   const [f, setF] = useState<FormPainel>(inicio.form);
   const vendas = f.tipo === 'vendas';
   // o que pode ser obrigatório neste painel (o painel novo usa os campos do sistema do tipo dele)
-  const validos = useMemo(() => obrigatoriosQueValem(painel?.ajustes ?? (vendas ? AJUSTES_DO_PAINEL_DE_VENDAS : AJUSTES_PAINEL_PADRAO), campos, f.tipo), [painel, campos, f.tipo, vendas]);
+  // (2.1.2) os campos desligados na própria janela já saem do que pode ser pedido
+  const validos = useMemo(() => obrigatoriosQueValem({ camposDesligados: f.desligados }, campos, f.tipo), [f.desligados, campos, f.tipo]);
+  const semPrioridade = f.desligados.includes('prioridade');
   const [erro, setErro] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [fechar, setFechar] = useState(false);
@@ -348,6 +353,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
       tipo: f.tipo,
       ajustes: {
         tipos: f.tipos, contaPrazo: vendas ? false : f.contaPrazo, fecharSozinhoDias: !vendas && f.fecharSozinho ? dias : null,
+        camposDesligados: f.desligados.filter((c) => camposDoSistemaDoTipo(f.tipo).includes(c) || (vendas ? AJUSTES_DO_PAINEL_DE_VENDAS : AJUSTES_PAINEL_PADRAO).camposDesligados.includes(c)),
         obrigatoriosAoAbrir: validos.abrir.filter((c) => f.obrigatoriosAoAbrir.includes(c)), paiEsperaFilhos: vendas ? false : f.paiEsperaFilhos, supervisores: f.supervisores,
         ...(vendas ? { motivosDePerda: motivos, metaMensal: f.meta } : {}),
       },
@@ -481,12 +487,38 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
             pessoas={pessoas} todasAsPessoas={todasAsPessoas} existe={!!painel} chamadosNa={chamadosNa} obrigatorios={validos.etapas} campos={campos} vendas={vendas} />
         </section>
 
+        {/* os campos do sistema que o painel usa (2.1.2, o Luan: "quero poder editar tbm os campos ... tem muitos que a depender do
+            painel que eu cria, n vou usar"): desligado, some da ficha, do Abrir chamado e do quadro e deixa de ser pedido */}
+        <section id="painel-campos" className="scroll-mt-14 border-t border-line pt-4 flex flex-col gap-2" aria-label="Os campos">
+          <h4 className="font-display font-semibold text-[14px]">Os campos</h4>
+          <p className="text-[12.5px] text-muted -mt-1">
+            O que {vendas ? 'a negociação' : 'o chamado'} deste painel usa. Desligado, o campo some da ficha, do {vendas ? 'Nova negociação' : 'Abrir chamado'} e do quadro e deixa de ser pedido nas etapas;
+            o que já estava preenchido fica guardado e volta se ligar de novo. {vendas ? '' : 'A descrição, o responsável e as etiquetas estão sempre.'}
+          </p>
+          <ul className="flex flex-col divide-y divide-line rounded-lg border border-line" id="painel-campos-lista">
+            {camposDoSistemaDoTipo(f.tipo).map((c) => {
+              const ligado = !f.desligados.includes(c);
+              return (
+                <li key={c} className="px-3 py-2">
+                  <label className="flex items-start gap-2.5 text-sm cursor-pointer" data-campo-do-painel={c}>
+                    <Toggle checked={ligado} onChange={(v) => mudar({ desligados: v ? f.desligados.filter((x) => x !== c) : [...f.desligados, c] })} />
+                    <span className="min-w-0">
+                      <span className={`font-medium ${ligado ? 'text-ink' : 'text-muted'}`}>{NOME_CAMPO_DO_SISTEMA[c]}</span>
+                      {!ligado && <span className="text-[12px] text-muted"> · desligado</span>}
+                      <span className="block text-[12.5px] text-muted leading-snug">{DICA_CAMPO_DO_SISTEMA[c]}</span>
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-[12.5px] text-muted" id="painel-onde-campos">
+            A árvore do Assunto, as opções do Tipo e os campos que a equipe cria ficam em Painéis › Ajustes › <b className="text-ink-2">Campos</b>{painel ? '' : ', depois de criar o painel'}.
+          </p>
+        </section>
+
         <section id="painel-regras" className="scroll-mt-14 border-t border-line pt-4 flex flex-col gap-4" aria-label="As regras">
           <h4 className="font-display font-semibold text-[14px]">As regras</h4>
-          <p className="text-[12.5px] text-muted rounded-lg bg-surface-2 px-3 py-2 -mt-1.5" id="painel-onde-campos">
-            Os campos {vendas ? 'da negociação' : 'do chamado'} neste painel — o Assunto e a árvore dele, o Tipo e as opções, os que a equipe cria — ficam na aba <b className="text-ink-2">Campos</b>
-            {painel ? '' : ', depois de criar o painel'}. Aqui eles aparecem no que pode ser obrigatório.
-          </p>
 
           {vendas && (
             <>
@@ -501,10 +533,10 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
             </>
           )}
 
-          {!vendas && <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-            <Toggle checked={f.contaPrazo} onChange={(v) => mudar({ contaPrazo: v })} />
+          {!vendas && <label className={`flex items-start gap-2.5 text-sm ${semPrioridade ? 'opacity-60' : 'cursor-pointer'}`}>
+            <Toggle checked={f.contaPrazo && !semPrioridade} disabled={semPrioridade} onChange={(v) => mudar({ contaPrazo: v })} />
             {/* 13/10, o Luan: "essa parte do conta prazo, não entendi para que serve" — a dica diz o que muda */}
-            <span>Conta prazo <span className="block text-[12.5px] text-muted">Ligado, cada chamado deste painel tem um prazo para a primeira resposta e outro para a solução, conforme a prioridade (os tempos ficam em Ajustes › Prazos). O cartão mostra quanto falta, e o Gestor avisa quando o prazo está perto de vencer e quando vence. Desligado, o painel não tem prazo, como o Desenvolvimento.</span></span>
+            <span>Conta prazo <span className="block text-[12.5px] text-muted">Ligado, cada chamado deste painel tem um prazo para a primeira resposta e outro para a solução, conforme a prioridade (os tempos ficam em Ajustes › Prazos). O cartão mostra quanto falta, e o Gestor avisa quando o prazo está perto de vencer e quando vence. Desligado, o painel não tem prazo, como o Desenvolvimento.{semPrioridade && <b className="block text-ink-2 font-medium">Sem a prioridade (em Os campos), o painel não conta prazo.</b>}</span></span>
           </label>}
 
           {!vendas && <div className="flex flex-col gap-1.5">

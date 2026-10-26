@@ -269,3 +269,17 @@ No documento de 23/10 (os pedidos com os prints do quadro do Comercial):
 **Escolhas que fiz.** A ordem à mão é só do painel de Vendas: no Suporte, arrumar à mão esconderia o que vence
 primeiro (dá para estender a um painel de Gestão, se quiser). A negociação que chega numa etapa fica no alto (é a
 novidade da coluna), e não no fim.
+
+## Revisto no 2.1.2 (26/10/2026): o valor nunca é arredondado
+
+O Luan, olhando o Comercial: *"to vendo que ele arredonda os valores, n quero isso"*.
+
+- **Um jeito só de escrever reais no Comercial: o `reaisInteiros`** (R$ 12.480; com centavos quando há, R$
+  2.739,80). O `reaisCurto` (R$ 12 mil, R$ 1,2 mi, R$ 2.740) saiu do `@gestor/shared`. Passaram para o valor
+  exato: o Em negociação, o Ganho no mês e a Meta do mês do cartão do painel (a tela dos painéis); o Novas (em
+  propostas), as diferenças e o Ticket médio do relatório; o rótulo de cada mês do gráfico do relatório e da
+  prévia do Trazer do Helena; e os rótulos do mês a mês do Simulador (o eixo do gráfico continua curto: é
+  régua, não valor).
+- **O rótulo do mês cabe na coluna** (`ValorDaColuna`): no celular, "R$" numa linha e o número na outra; do
+  `sm` para cima, numa linha só.
+- **A média e a diferença** são em centavos com fração: arredonda-se só o centavo (`Math.round`), nunca o real.

@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { instanteLocal } from './atendimento-prazos.js';
 import { AJUSTES_DO_PAINEL_DE_VENDAS, textoDoEvento, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
 import {
-  aplicarPlanilhaDoHelena, centavosDoHelena, chaveDoNome, corDaEtiquetaDoHelena, diaDaPlanilha, empresaDoCard, empresaDoTitulo, historicoDoCard, lerCsvSimples,
+  aplicarPlanilhaDoHelena, centavosDoHelena, chaveDoNome, corDaEtiquetaDoHelena, diaDaPlanilha, empresaDoCard, empresaDoTitulo, fimDaEtapaDoHelena, historicoDoCard,
+  historicoDoCardDeGestao, lerCsvSimples, planoDasEtapasDeGestao, tipoParaOPainelDoHelena,
   lerLinhaDoHelena, lerPlanilhaDoHelena, ligarEtapasDoEvento, linkDoCsvDaPlanilha,
   ligarPessoas, numerarNegociacoes, papelDoCampo, planoDaImportacao, planoDasEtapas, planoDosCampos, resumoDaImportacao, siglaDoPainelNovo,
   tipoDoCampoDoHelena, tituloDoHelena, valorDoCampoNoGestor, valorDoHelena, valorDoHelenaParaOCampo, valoresDoCard,
@@ -653,5 +654,137 @@ describe('a planilha do Helena: a Conclusão que a chave de API não lê (2.1.1)
     const p = planoDaImportacao(leitura, estado).previa;
     expect(p.historico.semConclusao).toBe(1);
     expect(p.avisos).toContain('1 negociação ganha ou perdida continua sem a Conclusão (não está na planilha, ou está sem a data): acaba no dia em que foi marcada (ou no da última mudança do card).');
+  });
+});
+
+describe('o painel que não é de vendas vira um painel de Gestão (2.1.2: "eu mesmo quero trazer um meu de atividades internas")', () => {
+  // as etapas do Luan - Atividades (LA), como estão no Helena (26/10)
+  const ETAPAS_LA = ['StandBy', 'Novos', 'Pendente Luan', 'Pendente Terceiros', 'Em andamento Luan', 'Em andamento longo Outros setores', 'Concluído', 'Validado'];
+  const etapasLA: EtapaDoHelena[] = ETAPAS_LA.map((nome, i) => ({ id: `la${i}`, nome, posicao: i + 1, inicial: nome === 'Novos', arquivada: false }));
+  const tipos = (xs: Array<{ nome: string; tipo: string }>) => Object.fromEntries(xs.map((e) => [e.nome, e.tipo]));
+
+  it('o tipo vem do painel do Helena; as etapas de fim resolvem ou fecham pelo nome (ou pela marca de lá)', () => {
+    expect(tipoParaOPainelDoHelena({ vendas: false })).toBe('gestao');
+    expect(tipoParaOPainelDoHelena({ vendas: true })).toBe('vendas');
+    expect(tipoParaOPainelDoHelena({})).toBe('vendas');
+    expect(fimDaEtapaDoHelena({ nome: 'Concluído' })).toBe('resolvido');
+    expect(fimDaEtapaDoHelena({ nome: 'Finalizados' })).toBe('resolvido');
+    expect(fimDaEtapaDoHelena({ nome: 'Validado' })).toBe('fechado');
+    expect(fimDaEtapaDoHelena({ nome: 'Cancelado' })).toBe('fechado');
+    expect(fimDaEtapaDoHelena({ nome: 'Em andamento Luan' })).toBeNull();
+    expect(fimDaEtapaDoHelena({ nome: 'Arquivo morto', final: true })).toBe('resolvido');
+  });
+
+  it('o painel novo: as etapas do Helena na ordem de lá; o Concluído resolve e o Validado fecha', () => {
+    const e = planoDasEtapasDeGestao(etapasLA, [], ['Novos']);
+    expect(e.etapas.map((x) => x.nome)).toEqual(ETAPAS_LA);
+    expect(tipos(e.etapas)).toMatchObject({ StandBy: 'andamento', Novos: 'entrada', 'Pendente Luan': 'andamento', 'Concluído': 'resolvido', Validado: 'fechado' });
+    expect(e.etapas.every((x) => x.resultado === null)).toBe(true);
+    expect(e.fechadoAMais).toBeNull();
+    // só o Concluído: ele fecha
+    const so = planoDasEtapasDeGestao(etapasLA.filter((x) => x.nome !== 'Validado'), [], []);
+    expect(tipos(so.etapas)['Concluído']).toBe('fechado');
+    // nenhuma de fim: entra o Fechado no fim
+    const sem = planoDasEtapasDeGestao(etapasLA.slice(0, 6), [], []);
+    expect(sem.etapas.at(-1)).toMatchObject({ nome: 'Fechado', tipo: 'fechado', helena: null });
+    expect(sem.fechadoAMais).toBe('Fechado');
+  });
+
+  it('o painel de Gestão que existe: as etapas dele ficam todas; a do Helena que falta entra antes das de fim (ou no fim)', () => {
+    const gestor = [
+      { id: 'g-novo', nome: 'Novo', tipo: 'entrada' as const, resultado: null, obrigatorios: [], avisar: [], negociacoes: 0 },
+      { id: 'g-and', nome: 'Pendente Luan', tipo: 'andamento' as const, resultado: null, obrigatorios: ['relato' as const], avisar: [], negociacoes: 2 },
+      { id: 'g-res', nome: 'Resolvido', tipo: 'resolvido' as const, resultado: null, obrigatorios: [], avisar: [], negociacoes: 0 },
+      { id: 'g-fec', nome: 'Fechado', tipo: 'fechado' as const, resultado: null, obrigatorios: [], avisar: [], negociacoes: 0 },
+    ];
+    const e = planoDasEtapasDeGestao(etapasLA, gestor, []);
+    expect(e.saem).toEqual([]);
+    expect(e.etapas.map((x) => x.nome)).toEqual([
+      'Novo', 'Pendente Luan', 'StandBy', 'Novos', 'Pendente Terceiros', 'Em andamento Luan', 'Em andamento longo Outros setores', 'Resolvido', 'Fechado', 'Concluído', 'Validado',
+    ]);
+    // a que já existe fica com o id, o tipo e as regras; a entrada do Helena entra como andamento (o painel tem a dele)
+    expect(e.etapas.find((x) => x.nome === 'Pendente Luan')).toMatchObject({ id: 'g-and', obrigatorios: ['relato'], helena: 'Pendente Luan' });
+    expect(tipos(e.etapas)).toMatchObject({ Novo: 'entrada', Novos: 'andamento', 'Concluído': 'resolvido', Validado: 'fechado' });
+  });
+
+  const tipoLA: Record<string, 'entrada' | 'andamento' | 'resolvido' | 'fechado'> = { Novos: 'entrada', 'Concluído': 'resolvido', Validado: 'fechado' };
+  const op = { etapaDoGestor: (n: string) => n, primeira: 'Novos', conhecidas: new Set(ETAPAS_LA.map(chaveDoNome)), painel: 'Luan - Atividades', tipoDe: (n: string) => tipoLA[n] ?? 'andamento' };
+
+  it('o histórico do chamado: entrar no Concluído resolve, no Validado fecha, e sair do fim reabre', () => {
+    const h = historicoDoCardDeGestao(card({
+      id: 'a1', etapa: 'Validado', criadoEm: '2026-09-01T12:00:00Z', alteradoEm: '2026-10-20T12:00:00Z',
+      logs: [
+        log('2026-09-01T12:00:01Z', 'Item criado por Luan França em Novos'),
+        log('2026-09-05T12:00:00Z', 'Item movido de Novos para Concluído'),
+        log('2026-09-06T12:00:00Z', 'Item movido de Concluído para Em andamento Luan'),
+        log('2026-10-01T12:00:00Z', 'Item movido de Em andamento Luan para Concluído'),
+        log('2026-10-03T12:00:00Z', 'Item movido de Concluído para Validado'),
+        log('2026-10-04T12:00:00Z', 'Item marcado como "Ganho"'),
+      ],
+    }), op);
+    expect(passos(h as never)).toEqual([
+      'criado em Novos', 'Novos → Concluído', 'Concluído → Em andamento Luan', 'reaberto', 'Em andamento Luan → Concluído', 'Concluído → Validado', 'helena: Item marcado como "Ganho"',
+    ]);
+    expect(h).toMatchObject({ etapa: 'Validado', resolvidoEm: '2026-10-01T12:00:00.000Z', fechadoEm: '2026-10-03T12:00:00.000Z', reaberturas: 1, movimentos: 4 });
+    expect(h.eventos[0]!.dados).toMatchObject({ origem: 'helena', etapa: 'Novos', painel: 'Luan - Atividades' });
+    expect(h.eventos[0]!.dados.venda).toBeUndefined();
+  });
+
+  it('sem o histórico (a chave de API não lê): nasce na etapa de agora; no Concluído, resolvido na última mudança do card', () => {
+    const h = historicoDoCardDeGestao(card({ id: 'a2', etapa: 'Concluído', criadoEm: '2026-08-01T12:00:00Z', alteradoEm: '2026-10-10T15:00:00Z', logs: null }), op);
+    expect(passos(h as never)).toEqual(['criado em Concluído']);
+    expect(h).toMatchObject({ etapa: 'Concluído', resolvidoEm: '2026-10-10T15:00:00.000Z', fechadoEm: null, semHistorico: true });
+    const aberto = historicoDoCardDeGestao(card({ id: 'a3', etapa: 'Pendente Luan', logs: null }), op);
+    expect(aberto).toMatchObject({ etapa: 'Pendente Luan', resolvidoEm: null, fechadoEm: null });
+  });
+
+  const leituraLA: LeituraDoHelena = {
+    lidaEm: '2026-10-26T13:00:00Z',
+    usuarios: [{ id: 'u-luan', nome: 'Luan França' }, { id: 'u-carla', nome: 'Carla Exemplo' }],
+    avisos: ['A chave de API do LineChat não lê o histórico dos cards (recusou "Logs", "ResultDescription"): os chamados nascem na etapa em que estão.'],
+    painel: { id: 'painel-la', nome: 'Luan - Atividades', sigla: 'LA', vendas: false, etapas: etapasLA, campos: [], etiquetas: [] },
+    cards: [
+      card({ id: 'l1', numero: 3, codigo: 'LA-3', titulo: 'Interno - Portar DID Chapp', etapa: 'Pendente Terceiros', logs: null }),
+      card({ id: 'l2', numero: 7, codigo: 'LA-7', titulo: 'Hotel Mar - Integração', etapa: 'Concluído', alteradoEm: '2026-10-10T15:00:00Z', logs: null, responsavelId: 'u-carla' }),
+      card({ id: 'l3', numero: 9, codigo: 'LA-9', titulo: 'Interno - Revisão Sites', etapa: 'Validado', alteradoEm: '2026-10-12T15:00:00Z', logs: null, valor: 50_000, situacao: 'WON' }),
+      card({ id: 'l4', numero: 10, titulo: 'Velho', situacao: 'ARCHIVED', logs: null }),
+    ],
+  };
+  const estadoLA: EstadoDoGestorParaHelena = {
+    painel: null, painelNovo: { nome: 'Luan - Atividades', sigla: 'LA', tipo: 'gestao' },
+    pessoas: [{ id: 'p-luan', nome: 'Luan França' }, { id: 'p-carla', nome: 'Carla Exemplo' }, { id: 'p-outro', nome: 'Outra Pessoa' }],
+    clientes: [{ id: 'cli-hotel', nomes: ['Hotel Mar'], cnpj: null }],
+    produtos: PRODUTOS, etiquetas: [], importadas: {}, numerosOcupados: [], hoje: '2026-10-26',
+  };
+
+  it('o plano: cada card vira um chamado, sem valor, Ganho nem Perdido; a prévia conta os abertos, os resolvidos e os fechados', () => {
+    const p = planoDaImportacao(leituraLA, estadoLA);
+    expect(p.previa.tipo).toBe('gestao');
+    expect(p.previa.erro).toBeNull();
+    expect(p.previa.destino).toEqual({ id: null, nome: 'Luan - Atividades', sigla: 'LA', novo: true });
+    expect(p.previa.negociacoes).toMatchObject({ total: 3, novas: 3, arquivadasFora: 1 });
+    expect(p.previa.chamados).toEqual({ abertos: 1, resolvidos: 1, fechados: 1 });
+    expect(p.previa.etapas.ordem).toEqual(ETAPAS_LA);
+    expect(p.previa.etapas.tipos).toMatchObject({ 'Concluído': 'resolvido', Validado: 'fechado' });
+    expect(p.previa.porEtapa.filter((x) => x.qtd)).toEqual([{ nome: 'Pendente Terceiros', qtd: 1 }, { nome: 'Concluído', qtd: 1 }, { nome: 'Validado', qtd: 1 }]);
+    expect(p.previa.ganhosPorMes).toEqual([]);
+    // quem vê o painel novo: as pessoas dos cards (o servidor junta quem traz)
+    expect(p.pessoasDoPainel.sort()).toEqual(['p-carla', 'p-luan']);
+    expect([...(p.previa.quemVe ?? [])].sort()).toEqual(['Carla Exemplo', 'Luan França']);
+    expect(p.previa.avisos.some((a) => a.includes('não conta prazo'))).toBe(true);
+    expect(p.previa.avisos.some((a) => a.includes('marcado como ganho ou perdido'))).toBe(true);
+    expect(p.previa.avisos.some((a) => a.includes('arquivado'))).toBe(true);
+    expect(p.motivosDePerda).toEqual([]);
+    const n = (id: string) => p.negociacoes.find((x) => x.helenaId === id)!;
+    expect(n('l1')).toMatchObject({ numero: 3, etapa: 'Pendente Terceiros', resultado: null, resolvidoEm: null, fechadoEm: null, valor: null, empresa: null, clienteId: null, responsavelId: 'p-luan' });
+    expect(n('l2')).toMatchObject({ etapa: 'Concluído', resolvidoEm: '2026-10-10T15:00:00.000Z', fechadoEm: null, clienteId: 'cli-hotel', empresa: null, responsavelId: 'p-carla' });
+    expect(n('l3')).toMatchObject({ etapa: 'Validado', resolvidoEm: '2026-10-12T15:00:00.000Z', fechadoEm: '2026-10-12T15:00:00.000Z', valor: null, resultado: null });
+    expect(resumoDaImportacao(p.previa)).toBe('Trouxe do Helena o painel Luan - Atividades para o painel novo Luan - Atividades (LA): 3 chamados (3 novos)');
+  });
+
+  it('a sigla do painel de Gestão novo: a do Helena; ocupada, uma das atividades', () => {
+    expect(siglaDoPainelNovo('LA', ['SUP', 'DEV'], 'gestao')).toBe('LA');
+    expect(siglaDoPainelNovo('LA', ['LA'], 'gestao')).toBe('ATV');
+    expect(siglaDoPainelNovo('IC', ['IC'])).toBe('COM');
   });
 });

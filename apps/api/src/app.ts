@@ -53,6 +53,9 @@ declare module 'fastify' {
   }
 }
 
+/** A partir de quanto um pedido vai para o log como lento (2.1.2). */
+const PEDIDO_LENTO_MS = 1500;
+
 export async function buildApp(overrides: Partial<Record<keyof Config, string>> = {}) {
   const config = loadConfig(overrides);
   const app = Fastify({
@@ -76,6 +79,17 @@ export async function buildApp(overrides: Partial<Record<keyof Config, string>> 
   app.decorate('vault', new SecretsVault(config.SECRETS_MASTER_KEY));
   app.decorate('audit', (req, e) => audit.record(db, { ...e, userId: req.user?.id ?? null, ip: req.ip }, app.log));
   app.addHook('onClose', async () => { await pool.end(); });
+
+  // Quanto o servidor levou em cada pedido (2.1.2, "ta demorando muito pra abrir os cards"): o navegador mostra no
+  // Server-Timing (separa a demora do servidor da demora da rede e da tela), e o pedido lento fica no log. No log vai
+  // a rota (o molde, sem o que vem depois do "?": a chave do robô nunca aparece) e não o endereço.
+  app.addHook('onSend', async (_req, reply, payload) => {
+    if (!reply.sent) reply.header('Server-Timing', `app;dur=${reply.elapsedTime.toFixed(1)}`);
+    return payload;
+  });
+  app.addHook('onResponse', async (req, reply) => {
+    if (reply.elapsedTime >= PEDIDO_LENTO_MS) req.log.warn({ metodo: req.method, rota: req.routeOptions.url ?? null, status: reply.statusCode, ms: Math.round(reply.elapsedTime) }, 'pedido lento');
+  });
 
   await app.register(cookie, { secret: config.SESSION_SECRET });
   await app.register(cors, { origin: config.WEB_ORIGIN.split(',').map((s) => s.trim()), credentials: true });

@@ -1010,3 +1010,43 @@ describe('quem pode', () => {
     expect((await s.get('/atendimento/integracoes')).json().chaves.map((c: any) => c.nome)).not.toContain('minha');
   });
 });
+
+// =====================================================================
+
+describe('2.1.2: o painel desliga o cliente, o relato, a solução e a prioridade ("tem muitos que ... n vou usar")', () => {
+  it('na própria janela do painel: as regras não pedem, o chamado não guarda, o cartão não mostra e não conta prazo', async () => {
+    const r = await s.post('/atendimento/paineis', painel({
+      nome: 'Atividades', sigla: 'ATVI',
+      ajustes: { camposDesligados: ['cliente', 'relato', 'solucao', 'prioridade', 'alcance'], obrigatoriosAoAbrir: ['cliente', 'relato', 'descricao'], contaPrazo: true },
+      etapas: [
+        { nome: 'Novo', tipo: 'entrada' }, { nome: 'Fazendo', tipo: 'andamento', obrigatorios: ['cliente', 'contato', 'solucao', 'descricao'] },
+        { nome: 'Feito', tipo: 'fechado', obrigatorios: ['causa', 'prioridade'] },
+      ],
+    }));
+    expect(r.statusCode, r.body).toBe(201);
+    const p = r.json();
+    expect(p.ajustes.camposDesligados).toEqual(['alcance', 'cliente', 'relato', 'solucao', 'prioridade']);
+    expect(p.ajustes.obrigatoriosAoAbrir).toEqual(['descricao']);
+    expect(p.etapas.map((e: any) => e.obrigatorios)).toEqual([[], ['descricao'], []]);
+    const c = await s.post('/atendimento/chamados', {
+      painelId: p.id, titulo: 'Revisar o site', descricao: 'As páginas antigas', relato: 'não vale aqui', prioridade: 'alta',
+      contatoNome: 'Ninguém', contatoTelefone: '71999990000',
+    });
+    expect(c.statusCode, c.body).toBe(201);
+    const [linha] = await app.db.select().from(tickets).where(eq(tickets.id, c.json().id));
+    expect(linha).toMatchObject({ customerReport: null, priority: null, contactName: null, contactPhone: null, clientId: null });
+    const f = await ficha(c.json().codigo);
+    expect(f).toMatchObject({ prioridade: null, cliente: null, contato: null });
+    expect(f.prazos.resposta.situacao).toBe('sem');
+    // mudar o que o painel não usa não grava
+    const m = await s.patch(`/atendimento/chamados/${c.json().id}`, { relato: 'outro', prioridade: 'baixa', solucao: 'feito' });
+    expect(m.statusCode, m.body).toBe(200);
+    const [depois] = await app.db.select().from(tickets).where(eq(tickets.id, c.json().id));
+    expect(depois).toMatchObject({ customerReport: null, priority: null, solution: null });
+    // ligar de novo a prioridade: o prazo volta a contar (o "conta prazo" ficou guardado)
+    const ligou = await s.put(`/atendimento/paineis/${p.id}/campos-do-sistema`, { desligados: ['cliente', 'relato', 'solucao', 'alcance'], tipos: [] });
+    expect(ligou.statusCode, ligou.body).toBe(200);
+    await s.patch(`/atendimento/chamados/${c.json().id}`, { prioridade: 'baixa' });
+    expect((await ficha(c.json().codigo)).prazos.resposta.situacao).not.toBe('sem');
+  });
+});

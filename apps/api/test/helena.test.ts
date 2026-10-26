@@ -113,6 +113,42 @@ function novosCards(): CardFalso[] {
       logs: [log('l11', '2026-10-01T12:00:00.100Z', 'Item criado por Luan França em Aguardando Envio Proposta')],
     },
     { ...base, id: 'card-61', number: 61, key: 'IC-61', title: 'Arquivado - LinePBX', stepTitle: 'StandBy', status: 'ARCHIVED', createdAt: '2026-03-01T12:00:00Z', updatedAt: '2026-03-02T12:00:00Z', logs: [] },
+    // 2.1.2: o painel de atividades do Luan (não é de vendas)
+    ...cardsDasAtividades(base),
+  ];
+}
+
+/** O painel que não é de vendas (2.1.2): as atividades do Luan, com o Concluído e o Validado marcados como fim. */
+const PAINEL_LA = 'painel-la';
+const ETAPAS_LA = [
+  { id: 'la-novos', title: 'Novos', position: 1, isInitial: true, isFinal: false },
+  { id: 'la-pendente', title: 'Pendente Luan', position: 2, isInitial: false, isFinal: false },
+  { id: 'la-concluido', title: 'Concluído', position: 3, isInitial: false, isFinal: true },
+  { id: 'la-validado', title: 'Validado', position: 4, isInitial: false, isFinal: true },
+];
+function cardsDasAtividades(base: Record<string, unknown>): CardFalso[] {
+  const b = { ...base, panelId: PAINEL_LA };
+  return [
+    {
+      ...b, id: 'la-1', number: 1, key: 'LA-1', title: 'Interno - Portar DID', stepTitle: 'Pendente Luan', status: 'OPEN',
+      createdAt: '2026-10-01T12:00:00Z', updatedAt: '2026-10-02T12:00:00Z',
+      logs: [log('la1', '2026-10-01T12:00:00.100Z', 'Item criado por Luan França em Novos'), log('la2', '2026-10-02T12:00:00Z', 'Item movido de Novos para Pendente Luan')],
+    },
+    {
+      ...b, id: 'la-2', number: 2, key: 'LA-2', title: 'Hotel Mar - Integração', stepTitle: 'Concluído', status: 'OPEN', responsibleUserId: 'u-camila', responsibleUser: { id: 'u-camila', name: 'Camila Souza' },
+      createdAt: '2026-10-03T12:00:00Z', updatedAt: '2026-10-08T12:00:00Z',
+      logs: [log('la3', '2026-10-03T12:00:00.100Z', 'Item criado por Luan França em Novos'), log('la4', '2026-10-08T12:00:00Z', 'Item movido de Novos para Concluído')],
+    },
+    {
+      ...b, id: 'la-3', number: 3, key: 'LA-3', title: 'Interno - Revisão dos sites', stepTitle: 'Validado', status: 'OPEN',
+      createdAt: '2026-10-04T12:00:00Z', updatedAt: '2026-10-10T12:00:00Z',
+      logs: [
+        log('la5', '2026-10-04T12:00:00.100Z', 'Item criado por Luan França em Pendente Luan'),
+        log('la6', '2026-10-09T12:00:00Z', 'Item movido de Pendente Luan para Concluído'),
+        log('la7', '2026-10-10T12:00:00Z', 'Item movido de Concluído para Validado'),
+      ],
+    },
+    { ...b, id: 'la-4', number: 4, key: 'LA-4', title: 'Velho', stepTitle: 'Novos', status: 'ARCHIVED', createdAt: '2026-03-01T12:00:00Z', updatedAt: '2026-03-02T12:00:00Z', logs: [] },
   ];
 }
 
@@ -121,10 +157,15 @@ const servidor = http.createServer((req, res) => {
   const json = (status: number, corpo: unknown) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(corpo)); };
   if (req.headers.authorization !== `Bearer ${TOKEN}`) return json(401, { message: 'Unauthorized' });
   if (url.pathname === '/crm/v2/panel') {
-    return json(200, { items: [{ id: 'painel-sup', title: 'Ingline - Suporte', key: 'IS', type: 'MANAGEMENT' }, { id: PAINEL, title: 'Ingline - Comercial', key: 'IC', type: 'SALE' }], hasMorePages: false });
+    return json(200, {
+      items: [{ id: 'painel-sup', title: 'Ingline - Suporte', key: 'IS', type: 'MANAGEMENT' }, { id: PAINEL, title: 'Ingline - Comercial', key: 'IC', type: 'SALE' }, { id: PAINEL_LA, title: 'Luan - Atividades', key: 'LA', type: 'MANAGEMENT' }],
+      hasMorePages: false,
+    });
   }
   if (url.pathname === `/crm/v1/panel/${PAINEL}`) return json(200, { id: PAINEL, title: 'Ingline - Comercial', key: 'IC', type: 'SALE', steps: ETAPAS, tags: TAGS });
   if (url.pathname === `/crm/v1/panel/${PAINEL}/custom-fields`) return json(200, CAMPOS);
+  if (url.pathname === `/crm/v1/panel/${PAINEL_LA}`) return json(200, { id: PAINEL_LA, title: 'Luan - Atividades', key: 'LA', type: 'MANAGEMENT', steps: ETAPAS_LA, tags: [] });
+  if (url.pathname === `/crm/v1/panel/${PAINEL_LA}/custom-fields`) return json(200, []);
   if (url.pathname === '/crm/v2/panel/card') {
     // a lista não traz o histórico (no Helena, os logs vêm só no card) nem a Conclusão: sem o card, os ganhos
     // caíram no dia da última mudança (o primeiro uso no ar, 22/10)
@@ -225,8 +266,11 @@ describe('trazer do Helena', () => {
     expect(o.helena).toEqual([
       { id: PAINEL, nome: 'Ingline - Comercial', sigla: 'IC', vendas: true },
       { id: 'painel-sup', nome: 'Ingline - Suporte', sigla: 'IS', vendas: false },
+      { id: PAINEL_LA, nome: 'Luan - Atividades', sigla: 'LA', vendas: false },
     ]);
-    expect(o.destinos).toEqual([]);
+    // nenhum painel de Vendas ainda; os de Gestão (2.1.2) recebem o que não é de vendas
+    expect(o.destinos.filter((d: any) => d.tipo === 'vendas')).toEqual([]);
+    expect(o.destinos.find((d: any) => d.sigla === 'SUP')).toMatchObject({ nome: 'Suporte', tipo: 'gestao' });
   });
 
   it('a leitura conta os cards e traz o histórico; a prévia não grava nada', async () => {
@@ -320,7 +364,7 @@ describe('trazer do Helena', () => {
   });
 
   it('o relatório do Gestor dá o mesmo que o do Helena (os ganhos pela Conclusão)', async () => {
-    const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+    const com = (await s.get('/comercial/helena/opcoes')).json().destinos.find((d: any) => d.tipo === 'vendas');
     const r = await s.get(`/atendimento/vendas?painel=${com.id}&de=2026-09-21&ate=2026-10-21`);
     expect(r.statusCode, r.body).toBe(200);
     const rel: RelatorioDeVendas = r.json();
@@ -333,7 +377,7 @@ describe('trazer do Helena', () => {
   });
 
   it('de novo: atualiza o que já veio, sem duplicar, refaz o histórico do Helena e guarda o que a equipe fez', async () => {
-    const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+    const com = (await s.get('/comercial/helena/opcoes')).json().destinos.find((d: any) => d.tipo === 'vendas');
     const sol = await ficha('IC-60');
     // a equipe anda com a negociação no Gestor
     const etapas: Painel['etapas'] = (await s.get('/atendimento/opcoes')).json().paineis.find((x: Painel) => x.id === com.id).etapas;
@@ -381,7 +425,7 @@ describe('trazer do Helena', () => {
       expect(l).toMatchObject({ estado: 'pronta', lidos: 6, total: 6 });
       // os cinco primeiros não vieram: não adianta pedir o sexto
       expect(pedidosDeHistorico).toHaveLength(5);
-      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos.find((d: any) => d.tipo === 'vendas');
       const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
       expect(p.historico.semHistorico).toBe(5);
       expect(p.avisos[0]).toContain('O Helena não devolveu o histórico de 6 cards: O LineChat recusou o token (403)');
@@ -408,7 +452,7 @@ describe('trazer do Helena', () => {
       // o primeiro card acha os detalhes que servem; os outros já vão com eles
       expect(pedidosDeHistorico.slice(0, 3)).toEqual([['Logs', 'ResultDescription'], ['Logs'], ['Logs']]);
       expect(pedidosDeHistorico).toHaveLength(7);
-      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos.find((d: any) => d.tipo === 'vendas');
       const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
       expect(p.avisos[0]).toBe('O LineChat recusou "ResultDescription" no pedido do card; o resto veio.');
       expect(p.historico).toMatchObject({ semHistorico: 0, semConclusao: 0 });
@@ -424,7 +468,7 @@ describe('trazer do Helena', () => {
       const l = await ler();
       expect(l).toMatchObject({ estado: 'pronta', lidos: 6, total: 6 });
       expect(pedidosDeHistorico.slice(0, 4)).toEqual([['Logs', 'ResultDescription'], ['ResultDescription'], [], []]);
-      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos.find((d: any) => d.tipo === 'vendas');
       const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
       expect(p.avisos[0]).toBe('A chave de API do LineChat não lê o histórico dos cards (recusou "Logs", "ResultDescription"): as negociações nascem na etapa em que estão.');
       expect(p.historico).toMatchObject({ semHistorico: 5, semConclusao: 0 });
@@ -438,7 +482,7 @@ describe('trazer do Helena', () => {
   function planilhaDosCards(): string {
     const br = (iso: string | null) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : '');
     const situacao: Record<string, string> = { WON: 'Ganho', LOST: 'Perdido', OPEN: 'Em andamento' };
-    const linhas = cards.filter((c) => c.status !== 'ARCHIVED').map((c) => [
+    const linhas = cards.filter((c) => c.status !== 'ARCHIVED' && c.panelId === PAINEL).map((c) => [
       c.key, br(c.createdAt), c.stepTitle, `"${String(c.title).replace(/"/g, '""')}"`, '', c.monetaryAmount ? `"R$ ${c.monetaryAmount},00"` : '',
       situacao[c.status] ?? '', c.status === 'WON' || c.status === 'LOST' ? br(c.resultChangedAt) : '', c.status === 'LOST' ? (c.resultDescription ?? '') : '',
     ].join(','));
@@ -473,7 +517,7 @@ describe('trazer do Helena', () => {
     try {
       const l = await ler();
       expect(l).toMatchObject({ estado: 'pronta', planilha: null });
-      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos.find((d: any) => d.tipo === 'vendas');
       const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
       expect(p.avisos[0]).toBe('A chave de API do LineChat não lê o histórico dos cards (recusou "Logs", "ResultDescription"): as negociações nascem na etapa em que estão.');
       expect(p.historico).toMatchObject({ semHistorico: 5, semConclusao: 4 });
@@ -490,7 +534,7 @@ describe('trazer do Helena', () => {
     usarGoogleDeMentira();
     try {
       const l = await ler();
-      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos.find((d: any) => d.tipo === 'vendas');
       const r = await s.post(`/comercial/helena/leituras/${l.id}/planilha`, { link: `https://docs.google.com/spreadsheets/d/${ABERTA}/edit#gid=0` });
       expect(r.statusCode, r.body).toBe(200);
       expect(r.json().planilha).toEqual({ origem: 'link', nome: null, linhas: 5, casadas: 5, conclusoes: 4, semConclusao: 0, foraDaLeitura: 0 });
@@ -547,7 +591,7 @@ describe('trazer do Helena', () => {
     try {
       const l = await ler();
       expect(l.estado).toBe('pronta');
-      const com = (await s.get('/comercial/helena/opcoes')).json().destinos[0];
+      const com = (await s.get('/comercial/helena/opcoes')).json().destinos.find((d: any) => d.tipo === 'vendas');
       const sem: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`)).json();
       expect(sem.erro).toBeNull();
       const r = await s.post(`/comercial/helena/leituras/${l.id}/planilha`, { csv: planilhaDosCards(), nome: 'helena.csv' });
@@ -556,6 +600,58 @@ describe('trazer do Helena', () => {
       expect(t.statusCode, t.body).toBe(200);
       expect(await ficha('IC-5')).toMatchObject({ motivoPerda: 'Perfil fora do público-alvo' });
     } finally { comoAChaveDoAr = false; listaRecusaOMotivo = false; }
+  });
+
+  it('2.1.2: o painel que não é de vendas vira um painel de Gestão; a prévia conta os abertos, os resolvidos e os fechados', async () => {
+    const l = await ler(PAINEL_LA);
+    expect(l).toMatchObject({ estado: 'pronta', total: 4, painelNome: 'Luan - Atividades' });
+    const p: PreviaDoHelena = (await s.get(`/comercial/helena/leituras/${l.id}/previa`)).json();
+    expect(p.tipo).toBe('gestao');
+    expect(p.erro).toBeNull();
+    expect(p.destino).toEqual({ id: null, nome: 'Luan - Atividades', sigla: 'LA', novo: true });
+    expect(p.negociacoes).toMatchObject({ total: 3, novas: 3, arquivadasFora: 1 });
+    expect(p.chamados).toEqual({ abertos: 1, resolvidos: 1, fechados: 1 });
+    expect(p.etapas.ordem).toEqual(['Novos', 'Pendente Luan', 'Concluído', 'Validado']);
+    expect(p.etapas.tipos).toEqual({ Novos: 'entrada', 'Pendente Luan': 'andamento', 'Concluído': 'resolvido', Validado: 'fechado' });
+    expect([...(p.quemVe ?? [])].sort()).toEqual(['Camila Souza', 'Luan França']);
+    // o painel de Vendas não recebe o que não é de vendas
+    const com = (await s.get('/comercial/helena/opcoes')).json().destinos.find((d: any) => d.tipo === 'vendas');
+    const recusa = await s.get(`/comercial/helena/leituras/${l.id}/previa?destino=${com.id}`);
+    expect(recusa.statusCode).toBe(400);
+    expect(recusa.json().error).toContain('é de Vendas');
+    // nada foi gravado
+    expect((await s.get('/atendimento/opcoes')).json().paineis.some((x: Painel) => x.sigla === 'LA')).toBe(false);
+  });
+
+  it('2.1.2: o Trazer cria o painel de Gestão (só quem está nos cards e quem traz veem) e cada card vira um chamado', async () => {
+    const l = await ler(PAINEL_LA);
+    const r = await s.post(`/comercial/helena/leituras/${l.id}/trazer`, { destino: null });
+    expect(r.statusCode, r.body).toBe(200);
+    const feito = r.json();
+    expect(feito.resumo).toBe('Trouxe do Helena o painel Luan - Atividades para o painel novo Luan - Atividades (LA): 3 chamados (3 novos)');
+    const eu = (await s.get('/auth/me')).json();
+    const la: Painel = (await s.get('/atendimento/opcoes')).json().paineis.find((x: Painel) => x.id === feito.painelId);
+    expect(la).toMatchObject({ nome: 'Luan - Atividades', sigla: 'LA', tipo: 'gestao', acesso: 'escolhidos' });
+    expect([...la.pessoas].sort()).toEqual([ids.luan, ids.camila, eu.user?.id ?? eu.id].sort());
+    expect(la.ajustes).toMatchObject({ contaPrazo: false, fecharSozinhoDias: null });
+    expect(la.etapas.map((e) => `${e.nome}:${e.tipo}`)).toEqual(['Novos:entrada', 'Pendente Luan:andamento', 'Concluído:resolvido', 'Validado:fechado']);
+    const a1 = await ficha('LA-1');
+    expect(a1).toMatchObject({ titulo: 'Interno - Portar DID', situacao: 'aberto', valor: null, empresa: null, resolvidoEm: null, fechadoEm: null });
+    expect(a1.responsavel?.id).toBe(ids.luan);
+    expect(await etapaDe(a1)).toBe('Pendente Luan');
+    const a2 = await ficha('LA-2');
+    expect(a2).toMatchObject({ situacao: 'resolvido', resolvidoEm: '2026-10-08T12:00:00.000Z', fechadoEm: null });
+    expect(a2.cliente?.id).toBe(ids.hotel);
+    expect(a2.responsavel?.id).toBe(ids.camila);
+    const a3 = await ficha('LA-3');
+    expect(a3).toMatchObject({ situacao: 'fechado', resolvidoEm: '2026-10-09T12:00:00.000Z', fechadoEm: '2026-10-10T12:00:00.000Z' });
+    expect(textos(a3).some((t) => t.includes('Concluído') && t.includes('Validado'))).toBe(true);
+    // de novo: atualiza, sem duplicar
+    const l2 = await ler(PAINEL_LA);
+    const r2 = await s.post(`/comercial/helena/leituras/${l2.id}/trazer`, { destino: feito.painelId });
+    expect(r2.statusCode, r2.body).toBe(200);
+    expect(r2.json().resumo).toBe('Trouxe do Helena o painel Luan - Atividades para o painel Luan - Atividades (LA): 3 chamados (3 atualizados)');
+    expect(await app.db.select().from(tickets).where(eq(tickets.panelId, feito.painelId))).toHaveLength(3);
   });
 
   it('a leitura que não existe mais pede para ler de novo; sem a chave, a tela diz o porquê', async () => {

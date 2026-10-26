@@ -52,6 +52,8 @@ describe('o CSP (quem pode abrir o Gestor dentro de um iframe)', () => {
     ]) {
       expect(r.headers['content-security-policy']).toBe(CSP_DE_ANTES("'self'"));
       expect(r.headers['x-frame-options']).toBeUndefined();
+      // 2.1.2: quanto o servidor levou, para o navegador separar a demora do servidor da demora da rede
+      expect(String(r.headers['server-timing'])).toMatch(/^app;dur=\d+(\.\d)?$/);
     }
   });
 

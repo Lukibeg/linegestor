@@ -517,7 +517,8 @@ export type ProdutoDoSimulador = { id: string; codigo: string; nome: string };
 export const percentual = (pontos: number) => `${pontos.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
 /** Uma fração (0,6018) como percentual com uma casa: "60,2%". */
 export const percentualDaFracao = (f: number) => `${(Math.round(f * 1000) / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
-const reaisCurto = (centavos: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(centavos / 100);
+const FMT_REAIS_CURTO = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+const reaisCurto = (centavos: number) => FMT_REAIS_CURTO.format(centavos / 100);
 /** Duas casas, no máximo (o percentual digitado). */
 const duasCasas = (v: number) => Math.round(v * 100) / 100;
 
@@ -1026,9 +1027,9 @@ export function custoPorFaixas(qtd: number, faixas: readonly FaixaDePreco[]): nu
   return total;
 }
 
+const FMT_PRECO_DA_UNIDADE = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 });
 /** O preço por unidade, em reais, com as casas que ele tiver (R$ 19,90; R$ 0,045). */
-export const precoDaUnidade = (centavos: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(centavos / 100);
+export const precoDaUnidade = (centavos: number) => FMT_PRECO_DA_UNIDADE.format(centavos / 100);
 
 /** As faixas numa frase: "até 3, incluso; de 4 a 20, R$ 19,90 cada; de 21 a 100, R$ 14,90 cada; acima de 100, R$ 12,90 cada". */
 export function textoDasFaixasDePreco(faixas: readonly FaixaDePreco[]): string {
