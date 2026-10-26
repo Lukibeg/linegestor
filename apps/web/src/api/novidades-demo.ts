@@ -34,6 +34,11 @@ export const NOTA_DEMO: { version: string; title: string; summary: string; items
       "kind": "novo",
       "title": "Cada painel escolhe os campos que usa",
       "text": "Na janela do painel (Painéis › Ajustes › Painéis, ao criar ou em Editar), a aba Os campos liga e desliga o que o chamado daquele painel usa. Além do Assunto, do Tipo, da Gravidade, do Alcance, dos Produtos e das Operadoras, agora também o Cliente e o contato, o Relato do cliente, a Solução e a causa e a Prioridade: num painel de atividades internas, eles só atrapalham. Desligado, o campo some da ficha, do Abrir chamado e do quadro e deixa de ser pedido nas etapas; o que já estava preenchido volta se ligar de novo. Sem a prioridade, o painel não conta prazo."
+    },
+    {
+      "kind": "melhorou",
+      "title": "O painel desativado sai da tela dos painéis",
+      "text": "O painel desativado (arquivado) não aparece mais em Painéis, ao lado dos que estão em uso. Embaixo, uma linha diz quantos estão desativados, com o caminho para reativar: Painéis › Ajustes › Painéis, em Editar, Painel ativo."
     }
   ]
 };

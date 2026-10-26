@@ -40,14 +40,15 @@ export function PaineisDeChamados() {
 
   const paineis = useMemo(() => {
     const todos = opcoes.data?.paineis ?? [];
-    // o desativado só aparece para quem cuida (para reativar); fica no fim
-    const vistos = todos.filter((p) => p.ativo || pode.cuidar);
+    // o desativado (arquivado) não aparece aqui (2.1.2, o Luan: "quando eu arquivar quero q ele n apareça aqui"): ele
+    // volta pela janela do painel, em Painéis › Ajustes
+    const vistos = todos.filter((p) => p.ativo);
     const termo = paraBusca(busca);
-    const achados = termo ? vistos.filter((p) => paraBusca(`${p.nome} ${p.sigla} ${p.descricao ?? ''}`).includes(termo)) : vistos;
-    return [...achados.filter((p) => p.ativo), ...achados.filter((p) => !p.ativo)];
-  }, [opcoes.data, pode.cuidar, busca]);
+    return termo ? vistos.filter((p) => paraBusca(`${p.nome} ${p.sigla} ${p.descricao ?? ''}`).includes(termo)) : vistos;
+  }, [opcoes.data, busca]);
+  const desativados = (opcoes.data?.paineis ?? []).filter((p) => !p.ativo).length;
   const porPainel = useMemo(() => new Map((resumo.data ?? []).map((r) => [r.painelId, r])), [resumo.data]);
-  const quantos = (opcoes.data?.paineis ?? []).filter((p) => p.ativo || pode.cuidar).length;
+  const quantos = (opcoes.data?.paineis ?? []).filter((p) => p.ativo).length;
 
   return (
     <div>
@@ -81,6 +82,12 @@ export function PaineisDeChamados() {
             )}
           </ul>
           {busca && !paineis.length && <p className="text-[13px] text-muted mt-2">Nenhum painel com “{busca}”.</p>}
+          {pode.cuidar && desativados > 0 && (
+            <p className="text-[12.5px] text-muted mt-3" id="paineis-desativados">
+              {desativados === 1 ? '1 painel desativado não aparece aqui' : `${desativados} painéis desativados não aparecem aqui`}:
+              {' '}<Link to="/atendimento/ajustes?aba=paineis" className="link">ver em Ajustes › Painéis</Link> (para reativar, Editar › Painel ativo).
+            </p>
+          )}
         </>
       )}
     </div>
