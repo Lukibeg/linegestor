@@ -10,7 +10,7 @@
  */
 import { useState } from 'react';
 import { CircleAlert, Pencil } from 'lucide-react';
-import { chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
+import { campoLigado, chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
 import { ErroPerto, MarcaFalta, TextoComReferencias, useAberta, useAcao } from './base.js';
@@ -90,7 +90,9 @@ export function Textos() {
   const { f, opcoes, painel } = useAberta();
   const blocos = painel?.tipo === 'vendas'
     ? [...(f.relato ? [{ ...DO_CHAMADO[0]!, titulo: 'O que o cliente pediu', dica: 'como chegou (o robô, a conversa)' }] : []), ...DA_NEGOCIACAO]
-    : f.tipoChamado === 'problema' ? DO_PROBLEMA : DO_CHAMADO;
+    : f.tipoChamado === 'problema' ? DO_PROBLEMA
+      // o painel que não usa o relato, a solução e a causa (2.1.2): eles saem da ficha (o problema continua com os dele)
+      : DO_CHAMADO.filter((b) => !painel || ((b.campo !== 'relato' || campoLigado(painel.ajustes, 'relato')) && ((b.campo !== 'solucao' && b.campo !== 'causa') || campoLigado(painel.ajustes, 'solucao'))));
   // os campos de texto longo do painel (os ativos), na ordem dos Ajustes
   const longos = opcoes.campos.filter((c) => c.painelId === f.painelId && c.ativo && c.tipo === 'texto_longo');
   return (

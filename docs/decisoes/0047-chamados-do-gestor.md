@@ -542,3 +542,23 @@ formatadores de data com fuso a cada desenho (50 a 80 ms por redesenho com uns 6
 - Na prévia (CPU normal / 4x mais lenta): abrir a ficha 324 → 223 ms / 1.123 → 782 ms; fechar 118 → 42 ms /
   401 → 218 ms (a prévia espera 120 ms em cada leitura, de propósito). Com a leitura antes do clique, a ficha
   abre em ~0,1 s.
+
+## Revisto no 2.1.2 (26/10/2026): o painel escolhe os campos que usa, na própria janela
+
+O Luan, no editor do painel "Luan - Pessoal": *"quero poder editar tbm os campos personalizados do painel pq tem
+muitos que a depender do painel que eu cria, n vou usar"*. Perguntado, escolheu poder desligar também o Cliente e
+o Contato, o Relato do cliente, a Solução e a Causa e a Prioridade, numa aba da janela do painel.
+
+- **Os campos do sistema** (`CAMPOS_DO_SISTEMA`) ganham `cliente` (o cliente e o contato), `relato`, `solucao` (a
+  solução e a causa) e `prioridade`, só no painel de Gestão (`camposDoSistemaDoTipo`: o de Vendas continua com os
+  seis de antes). Desligado, o que vale para os outros vale para eles: some da ficha, do Abrir chamado e do
+  cartão, sai das regras (para abrir e das etapas, `OBRIGATORIOS_DO_CAMPO`), o que vier pela API, pelo robô ou pelo
+  agendado fica de fora (`criar`, `alterar`) e o que já estava guardado volta ao ligar de novo.
+- **Sem a prioridade, não há prazo** (`painelContaPrazo`: o "conta prazo" e a prioridade ligada; nenhuma
+  prioridade sugerida). O "conta prazo" fica guardado e volta junto com a prioridade.
+- **O problema (ITIL)** continua com a solução e a causa (e pedindo as duas para fechar), mesmo no painel que as
+  desligou.
+- **A aba "Os campos"** na janela do painel (novo ou editar), entre As etapas e As regras: um botão por campo, com
+  a dica. As caixinhas do que cada etapa pede já seguem o que está ligado na janela, antes de salvar. A árvore do
+  Assunto, as opções do Tipo e os campos que a equipe cria continuam em Painéis › Ajustes › Campos (que também
+  liga e desliga os quatro novos).

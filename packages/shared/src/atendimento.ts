@@ -305,14 +305,25 @@ export function movimentoDeNivel(de: Pick<EtapaPainel, 'nivel'> | null | undefin
 /**
  * Os campos que já vêm com o módulo e que cada painel liga ou desliga. Desligado, o campo some da
  * ficha, do Abrir chamado, do cartão e da lista daquele painel e deixa de ser pedido nas regras; o que
- * já estava preenchido fica guardado (volta se o campo for ligado de novo). O resto do chamado (cliente,
- * contato, relato, descrição, prioridade, responsável, solução, causa, etiquetas) está em todo painel:
- * é o próprio chamado.
+ * já estava preenchido fica guardado (volta se o campo for ligado de novo). O resto do chamado (a
+ * descrição, o responsável, as etiquetas) está em todo painel: é o próprio chamado.
+ *
+ * Desde o 2.1.2 (o Luan: "quero poder editar tbm os campos personalizados do painel pq tem muitos que a depender
+ * do painel que eu cria, n vou usar"), o painel de Gestão também desliga o cliente e o contato, o relato do
+ * cliente, a solução e a causa e a prioridade — um painel de atividades internas não tem cliente nem prazo. Sem a
+ * prioridade, o painel não conta prazo. O problema (ITIL) continua pedindo a solução e a causa para fechar.
  */
-export const CAMPOS_DO_SISTEMA = ['assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras'] as const;
+export const CAMPOS_DO_SISTEMA = ['assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras', 'cliente', 'relato', 'solucao', 'prioridade'] as const;
 export type CampoDoSistema = (typeof CAMPOS_DO_SISTEMA)[number];
+/** Os que o painel de Vendas liga e desliga (a negociação sempre tem a empresa e não tem relato, solução nem prioridade). */
+export const CAMPOS_DO_SISTEMA_DE_VENDAS: readonly CampoDoSistema[] = ['assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras'];
+/** Os campos do sistema que o painel liga e desliga, na ordem da tela (os do chamado primeiro). */
+export const camposDoSistemaDoTipo = (tipo: TipoDePainel): readonly CampoDoSistema[] => (tipo === 'vendas'
+  ? CAMPOS_DO_SISTEMA_DE_VENDAS
+  : ['cliente', 'relato', 'prioridade', 'solucao', 'assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras']);
 export const NOME_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   assunto: 'Assunto', tipo: 'Tipo', gravidade: 'Gravidade', alcance: 'Alcance', produtos: 'Produtos', operadoras: 'Operadoras',
+  cliente: 'Cliente e contato', relato: 'Relato do cliente', solucao: 'Solução e causa', prioridade: 'Prioridade',
 };
 export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   assunto: 'A árvore de assuntos (até 3 níveis), com a descrição, o checklist e o de-para de cada um.',
@@ -321,10 +332,15 @@ export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   alcance: 'Quantos o problema atinge no cliente (a empresa toda, um setor, uma pessoa). Com a gravidade, sugere a prioridade.',
   produtos: 'Os do cliente aparecem primeiro; os outros vêm do catálogo.',
   operadoras: 'As dos circuitos do cliente aparecem primeiro.',
+  cliente: 'A empresa do cadastro e quem pediu (o nome e o WhatsApp). Desligado, o chamado é interno: não tem cliente nem aviso ao cliente.',
+  relato: 'O que o cliente contou, com as palavras dele.',
+  solucao: 'Como foi resolvido e por que aconteceu. O problema (ITIL) continua pedindo os dois para fechar.',
+  prioridade: 'Baixa, Média, Alta ou Crítica. Desligada, o painel não conta prazo (SLA).',
 };
 /** O que deixa de ser pedido quando o campo é desligado. */
 export const OBRIGATORIOS_DO_CAMPO: Record<CampoDoSistema, CampoObrigatorio[]> = {
   assunto: ['assunto'], tipo: ['tipo'], gravidade: ['gravidade'], alcance: ['alcance'], produtos: ['produto'], operadoras: ['operadora'],
+  cliente: ['cliente', 'contato'], relato: ['relato'], solucao: ['solucao', 'causa'], prioridade: ['prioridade'],
 };
 export const campoLigado = (ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, c: CampoDoSistema) => !ajustes.camposDesligados.includes(c);
 /**
@@ -335,8 +351,12 @@ export function prioridadeSugeridaDoPainel(
   ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, gravidade: Gravidade | null | undefined, alcance: Alcance | null | undefined,
   prazos: Pick<AjustesPrazos, 'matriz'> & Partial<Pick<AjustesPrazos, 'semAlcance'>>,
 ): Prioridade | null {
+  // sem a prioridade no painel (2.1.2), nenhuma
+  if (!campoLigado(ajustes, 'prioridade')) return null;
   return sugestaoPelosCampos({ gravidade: campoLigado(ajustes, 'gravidade'), alcance: campoLigado(ajustes, 'alcance') }, gravidade, alcance, prazos);
 }
+/** O painel conta prazo? Só com o prazo ligado e a prioridade (2.1.2: sem prioridade, não há prazo). */
+export const painelContaPrazo = (ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'>) => ajustes.contaPrazo && campoLigado(ajustes, 'prioridade');
 
 /** Os campos que quem cuida dos chamados cria em cada painel. O tipo não muda depois de criado. */
 export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios'] as const;

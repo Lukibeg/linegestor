@@ -47,7 +47,7 @@ import {
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
   ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel,
   type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type RelatoriosDoPainel,
-  chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor, AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA, nomeDoPainelDeGestaoNovo, tipoParaOPainelDoHelena,
+  chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor, painelContaPrazo, AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA, nomeDoPainelDeGestaoNovo, tipoParaOPainelDoHelena,
   type EstadoDoGestorParaHelena, type PainelDoGestorParaHelena, type PlanoDaImportacao,
   type NegociacaoParaRelatorio, type RelatorioDeVendas, type ResultadoDaVenda, type TipoDePainel, type MargemDaNegociacao, type FaixasDoSinal,
   type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
@@ -497,8 +497,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   function prazosDe(t: ChamadoRow, agora: Date) {
     const painel = A.paineis.find((p) => p.id === t.painelId);
     return estadoDosPrazos({
-      criadoEm: t.criadoEm, prioridade: t.prioridade, respondidoEm: t.respondidoEm, resolvidoEm: t.resolvidoEm ?? t.fechadoEm, esperas: t.esperas,
-      contaPrazo: painel?.ajustes.contaPrazo ?? true,
+      criadoEm: t.criadoEm, prioridade: !painel || campoLigado(painel.ajustes, 'prioridade') ? t.prioridade : null, respondidoEm: t.respondidoEm, resolvidoEm: t.resolvidoEm ?? t.fechadoEm, esperas: t.esperas,
+      // sem a prioridade no painel (2.1.2), não há prazo
+      contaPrazo: painel ? painelContaPrazo(painel.ajustes) : true,
     }, A.prazos, agora);
   }
 
@@ -533,10 +534,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return {
       id: t.id, codigo: t.codigo, numero: t.numero, tipoChamado: t.tipoChamado, titulo: t.titulo,
       painelId: t.painelId, etapaId: t.etapaId, situacao: situacaoDaEtapa(e?.tipo ?? 'andamento'), nivel: e?.nivel ?? null,
-      cliente: t.clienteId ? { id: t.clienteId, nome: nomeCliente(t.clienteId)! } : null,
-      contato: t.contatoNome || t.contatoTelefone ? { nome: t.contatoNome, telefone: t.contatoTelefone } : null,
+      cliente: t.clienteId && usa('cliente') ? { id: t.clienteId, nome: nomeCliente(t.clienteId)! } : null,
+      contato: (t.contatoNome || t.contatoTelefone) && usa('cliente') ? { nome: t.contatoNome, telefone: t.contatoTelefone } : null,
       responsavel: pessoaCurta(t.responsavelId),
-      prioridade: t.prioridade, gravidade: usa('gravidade') ? t.gravidade : null, alcance: usa('alcance') ? t.alcance : null, tipo: usa('tipo') ? t.tipo : null,
+      prioridade: usa('prioridade') ? t.prioridade : null, gravidade: usa('gravidade') ? t.gravidade : null, alcance: usa('alcance') ? t.alcance : null, tipo: usa('tipo') ? t.tipo : null,
       assunto: assunto ? { id: assunto.id, nome: assunto.nome, caminho: caminhoDoAssunto(assunto.id, A.assuntos), ativo: assunto.ativo } : null,
       produtos: usa('produtos') ? t.produtos.map((id) => { const x = S.products.find((y) => y.id === id); return { id, nome: x?.name ?? '?', cor: x?.color ?? '#888888' }; }) : [],
       operadoras: usa('operadoras') ? t.operadoras.map((id) => ({ id, nome: S.carriers.find((x) => x.id === id)?.name ?? '?' })) : [],
@@ -816,7 +817,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const tipoChamado = d.tipoChamado ?? 'chamado';
 
     // o telefone que o Gestor já conhece preenche o cliente (e o nome do contato, se faltou)
-    const telefone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone.trim() : null;
+    let telefone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone.trim() : null;
     let clienteId = d.clienteId ?? null;
     let contatoNome = d.contatoNome ?? null;
     if (telefone) {
@@ -835,6 +836,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     // os campos do sistema que o painel desligou: o que vier para eles fica de fora (como no servidor)
     const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
+    // o painel sem o cliente e o contato (2.1.2): o chamado é interno
+    if (!usa('cliente')) { clienteId = null; contatoNome = null; telefone = null; }
     const assunto = d.assuntoId && usa('assunto') ? conferirAssunto(d.assuntoId, painel) : null;
     const tipo = usa('tipo') ? conferirTipo(d.tipo, painel) : null;
     const gravidade = usa('gravidade') ? d.gravidade ?? null : null;
@@ -847,7 +850,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const vendas = painel.tipo === 'vendas';
     // pelos campos do painel: sem o alcance, só a gravidade (como no servidor)
     const sugerida = vendas ? null : prioridadeSugeridaDoPainel(painel.ajustes, gravidade, alcance, A.prazos);
-    const prioridade = vendas ? null : d.prioridade ?? sugerida;
+    const prioridade = vendas || !usa('prioridade') ? null : d.prioridade ?? sugerida;
     const produtos = usa('produtos') ? unicos(d.produtos ?? []) : [];
     const operadoras = usa('operadoras') ? unicos(d.operadoras ?? []) : [];
     // o valor: um só, ou o total do valor por produto (como no servidor)
@@ -869,7 +872,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!titulo) throw bad(mensagemDoTitulo(d.titulo ?? '', vendas));
 
     const dados: DadosObrigatorios = {
-      tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: d.relato ?? null, descricao: d.descricao ?? null,
+      tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
       assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
       produtos, operadoras, responsavelId: d.responsavelId ?? null,
       solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, ativacao, empresa,
@@ -977,8 +980,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ...(usa('assunto') ? {} : { assuntoId: undefined }), ...(usa('tipo') ? {} : { tipo: undefined }),
       ...(usa('gravidade') ? {} : { gravidade: undefined }), ...(usa('alcance') ? {} : { alcance: undefined }),
       ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
-      // a negociação não tem prioridade
-      ...(painel.tipo === 'vendas' ? { prioridade: undefined, motivoPrioridade: undefined } : {}),
+      // a negociação não tem prioridade; o painel de Gestão pode não ter (2.1.2), nem o cliente, o relato, a solução e a causa
+      ...(painel.tipo === 'vendas' || !usa('prioridade') ? { prioridade: undefined, motivoPrioridade: undefined } : {}),
+      ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined }),
+      ...(usa('relato') ? {} : { relato: undefined }),
+      ...(usa('solucao') || t.tipoChamado === 'problema' ? {} : { solucao: undefined, causa: undefined }),
     };
     const set: Partial<ChamadoRow> = {};
     const antes: Record<string, unknown> = {};
@@ -2299,7 +2305,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     const contexto: ContextoDosRelatorios = {
       painel: {
-        id: painel.id, nome: painel.nome, sigla: painel.sigla, contaPrazo: painel.ajustes.contaPrazo,
+        id: painel.id, nome: painel.nome, sigla: painel.sigla, contaPrazo: painelContaPrazo(painel.ajustes),
         usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras') },
       },
       etapas: A.etapas.filter((e) => e.painelId === painel.id).map((e) => ({ id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: e.ordem, ativa: !e.deletedAt })),

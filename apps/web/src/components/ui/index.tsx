@@ -91,10 +91,10 @@ export function Campo({ label, children, erro, dica, className = '' }: { label: 
   );
 }
 
-export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
+export function Toggle({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (v: boolean) => void; label?: string; disabled?: boolean }) {
   return (
-    <label className="inline-flex items-center gap-2 cursor-pointer select-none text-sm">
-      <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className={`w-10 h-6 rounded-full transition-colors relative ${checked ? 'bg-accent' : 'bg-line-strong'}`}>
+    <label className={`inline-flex items-center gap-2 select-none text-sm ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+      <button type="button" role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)} className={`w-10 h-6 rounded-full transition-colors relative disabled:opacity-60 ${checked ? 'bg-accent' : 'bg-line-strong'}`}>
         <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all ${checked ? 'left-[18px]' : 'left-0.5'}`} />
       </button>
       {label && <span>{label}</span>}

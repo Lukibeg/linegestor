@@ -114,7 +114,7 @@ export function Classificacao() {
         </Linha>}
 
         {/* a negociação não tem prioridade (nem prazo) */}
-        {!vendas && <Linha id="campo-prioridade" campo="prioridade" rotulo="Prioridade" ocupado={prio.ocupado} erro={prio.erro}
+        {!vendas && usa('prioridade') && <Linha id="campo-prioridade" campo="prioridade" rotulo="Prioridade" ocupado={prio.ocupado} erro={prio.erro}
           extra={pode && sugerida && f.prioridade !== sugerida && (
             <button type="button" className="btn-ghost btn-sm -my-1 text-[12px]" onClick={() => escolherPrioridade(sugerida)}>Usar a sugerida</button>
           )}>

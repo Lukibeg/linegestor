@@ -22,7 +22,7 @@ import { useEffect, useMemo } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Maximize2, RotateCcw } from 'lucide-react';
-import { lerCodigo } from '@gestor/shared';
+import { campoLigado, lerCodigo } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
 import { Carregando, Modal, Vazio, mensagemErro } from '../../components/ui/index.js';
@@ -170,7 +170,8 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
             <SimulacoesDaNegociacao />
             <Classificacao />
             <Responsavel />
-            {aberta.painel?.tipo !== 'vendas' && <Prazos />}
+            {/* sem a prioridade no painel (2.1.2), não há prazo: o bloco sai */}
+            {aberta.painel?.tipo !== 'vendas' && (!aberta.painel || campoLigado(aberta.painel.ajustes, 'prioridade')) && <Prazos />}
             <NaAgenda />
             <Operadora />
             {aberta.painel?.tipo !== 'vendas' && <Tempo />}

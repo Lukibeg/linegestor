@@ -7,8 +7,8 @@ export type ItemDemo = { kind: 'novo' | 'melhorou' | 'corrigido' | 'atencao'; ti
 export type VideoDemo = { url: string; nome: string; tamanho: number; tipo: string };
 export const NOTA_DEMO: { version: string; title: string; summary: string; items: ItemDemo[]; video?: VideoDemo } = {
   "version": "2.1.2",
-  "title": "Valores exatos no Comercial, cartões mais rápidos e o Trazer do Helena para atividades",
-  "summary": "O Comercial não arredonda mais nenhum valor (R$ 2.739,80, e não R$ 2.740). A ficha de um cartão e o quadro de um painel abrem mais rápido: a tela de baixo não se redesenha a cada abrir e fechar, e a ficha começa a carregar quando o mouse para em cima do cartão. E o Trazer do Helena traz também um painel que não é de vendas, como o de atividades: ele vira um painel de Gestão, e cada card, um chamado.",
+  "title": "Valores exatos, cartões mais rápidos, painéis de atividades e os campos de cada painel",
+  "summary": "O Comercial não arredonda mais nenhum valor. A ficha e o quadro abrem mais rápido, e a ficha carrega quando o mouse para em cima do cartão. O Trazer do Helena traz também um painel que não é de vendas, como o de atividades, para um painel de Gestão. E cada painel escolhe os campos que usa, na própria janela: dá para desligar até o cliente, o relato, a solução e a prioridade.",
   "items": [
     {
       "kind": "corrigido",
@@ -29,6 +29,11 @@ export const NOTA_DEMO: { version: string; title: string; summary: string; items
       "kind": "novo",
       "title": "Trazer do Helena: o painel de atividades vira um painel de Gestão",
       "text": "Em Administração › Importar / Exportar › Trazer do Helena, o painel do Helena que não é de vendas (as suas atividades, os chamados internos) vai para um painel de Gestão: um novo, com o nome e a sigla de lá, ou um que já existe. Cada card vira um chamado, nas etapas de lá: \"Concluído\" resolve e \"Validado\" fecha. O painel novo não conta prazo e só quem está nos cards e quem traz veem. A prévia mostra quantos ficam abertos, resolvidos e fechados antes de gravar."
+    },
+    {
+      "kind": "novo",
+      "title": "Cada painel escolhe os campos que usa",
+      "text": "Na janela do painel (Painéis › Ajustes › Painéis, ao criar ou em Editar), a aba Os campos liga e desliga o que o chamado daquele painel usa. Além do Assunto, do Tipo, da Gravidade, do Alcance, dos Produtos e das Operadoras, agora também o Cliente e o contato, o Relato do cliente, a Solução e a causa e a Prioridade: num painel de atividades internas, eles só atrapalham. Desligado, o campo some da ficha, do Abrir chamado e do quadro e deixa de ser pedido nas etapas; o que já estava preenchido volta se ligar de novo. Sem a prioridade, o painel não conta prazo."
     }
   ]
 };
