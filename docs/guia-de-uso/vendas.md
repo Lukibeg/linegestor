@@ -164,7 +164,7 @@ filhos e não se liga a chamados. Cada um fica no seu painel:
 
 **Trocar de painel** (em Mais) só leva a negociação para outro painel de Vendas.
 
-## 8. Trazer do Helena (2.0.3; a planilha, 2.1.1)
+## 8. Trazer do Helena (2.0.3; a planilha, 2.1.1; o painel que não é de vendas, 2.1.2)
 
 O painel de vendas do Helena (o **Ingline - Comercial**) vem para um painel de Vendas do Gestor: cada
 negociação com o valor, a empresa, os campos e o ganho e a perda no dia da **Conclusão** de lá. Assim o
@@ -208,3 +208,14 @@ que veio de lá é refeito) e o que é novo entra. A cada vez, exporte a planilh
 foram ganhas depois). O que a equipe fez no Gestor fica no histórico; a prévia avisa
 quantas negociações foram mexidas aqui (elas voltam a ficar como no Helena). A negociação que foi para a
 lixeira do Gestor fica lá.
+
+**Um painel que não é de vendas (2.1.2)** — as suas atividades, os chamados internos: em **O painel no Helena**,
+escolha o painel (ele aparece com "vira painel de Gestão"). Ele vai para um **painel de Gestão** (o de
+chamados): **Um painel de Gestão novo**, com o nome e a sigla de lá (o LA-3 do Helena vira LA-3), ou um painel
+de Gestão que já existe. Cada card vira um chamado, com o título, a descrição, o responsável e o cliente (quando o
+título começa com o nome de um). As etapas são as de lá, na mesma ordem: a de entrada do Helena é a entrada, as
+de fim resolvem ou fecham o chamado ("Concluído" resolve, "Validado" fecha; sem nenhuma de fim, entra a
+"Fechado"). O painel novo não conta prazo nem fecha sozinho, e quem vê são só as pessoas dos cards e quem
+traz; dá para mudar em **Painéis › Ajustes**. Não tem valor, ganhos nem a planilha: a prévia mostra quantos
+chamados ficam abertos, resolvidos e fechados e o que cada etapa vira. No painel de Gestão que já existe,
+nenhuma etapa dele sai: as do Helena que faltam entram antes das de fim.

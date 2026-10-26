@@ -135,3 +135,53 @@ describe('a planilha do Helena na prévia (2.1.1)', () => {
     expect((await erroDe(api.planilha(l.id, { csv }))).status).toBe(403);
   });
 });
+
+describe('o painel de atividades vira um painel de Gestão (2.1.2)', () => {
+  async function lerAtividades(): Promise<LeituraDoHelenaNaTela> {
+    let l = await api.ler('helena-atividades');
+    for (let i = 0; i < 20 && l.estado === 'lendo'; i++) l = await api.leitura(l.id);
+    return l;
+  }
+
+  it('a prévia: um painel de Gestão novo com as etapas de lá; o Concluído resolve e o Validado fecha', async () => {
+    await entrar('admin');
+    const o = await api.opcoes();
+    expect(o.helena.find((h) => h.id === 'helena-atividades')).toMatchObject({ nome: 'Luan - Atividades', vendas: false });
+    expect(o.destinos.find((d) => d.sigla === 'SUP')).toMatchObject({ tipo: 'gestao' });
+    const l = await lerAtividades();
+    expect(l.estado).toBe('pronta');
+    const p = await api.previa(l.id, null);
+    expect(p).toMatchObject({ tipo: 'gestao', erro: null, destino: { novo: true, nome: 'Luan - Atividades', sigla: 'LA' } });
+    expect(p.negociacoes).toMatchObject({ total: 7, novas: 7, arquivadasFora: 1 });
+    expect(p.chamados).toEqual({ abertos: 5, resolvidos: 1, fechados: 1 });
+    expect(p.etapas.tipos).toMatchObject({ Novos: 'entrada', 'Concluído': 'resolvido', Validado: 'fechado' });
+    expect(p.empresas.lista.find((e) => e.titulo.startsWith('Clínica Aurora'))).toMatchObject({ cliente: 'Clínica Aurora' });
+    expect(p.quemVe).toContain('Luan França');
+    // o painel de Vendas não recebe
+    const com = o.destinos.find((d) => d.sigla === 'COM')!;
+    expect((await erroDe(api.previa(l.id, com.id))).status).toBe(400);
+  });
+
+  it('o Trazer cria o painel LA (só para quem está nos cards e quem traz) e cada card vira um chamado', async () => {
+    const eu = await entrar('admin');
+    const l = await lerAtividades();
+    const r = await api.trazer(l.id, null);
+    expect(r.resumo).toBe('Trouxe do Helena o painel Luan - Atividades para o painel novo Luan - Atividades (LA): 7 chamados (7 novos)');
+    const op = await demoApi.atendimento.opcoes();
+    const la = op.paineis.find((x) => x.id === r.painelId)!;
+    expect(la).toMatchObject({ tipo: 'gestao', sigla: 'LA', acesso: 'escolhidos' });
+    expect(la.pessoas).toContain(eu.id);
+    expect(la.ajustes).toMatchObject({ contaPrazo: false, fecharSozinhoDias: null });
+    const concluido = await demoApi.atendimento.chamado('LA-12');
+    expect(concluido).toMatchObject({ situacao: 'resolvido', valor: null, origem: 'helena' });
+    expect(textos(concluido)[0]).toContain('Concluído');
+    const validado = await demoApi.atendimento.chamado('LA-14');
+    expect(validado.situacao).toBe('fechado');
+    const aurora = await demoApi.atendimento.chamado('LA-8');
+    expect(aurora.cliente?.nome).toBe('Clínica Aurora');
+    // de novo: atualiza sem duplicar
+    const l2 = await lerAtividades();
+    const r2 = await api.trazer(l2.id, r.painelId);
+    expect(r2.resumo).toBe('Trouxe do Helena o painel Luan - Atividades para o painel Luan - Atividades (LA): 7 chamados (7 atualizados)');
+  }, 20_000);
+});

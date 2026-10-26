@@ -47,7 +47,7 @@ import {
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
   ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel,
   type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type RelatoriosDoPainel,
-  chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor,
+  chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor, AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA, nomeDoPainelDeGestaoNovo, tipoParaOPainelDoHelena,
   type EstadoDoGestorParaHelena, type PainelDoGestorParaHelena, type PlanoDaImportacao,
   type NegociacaoParaRelatorio, type RelatorioDeVendas, type ResultadoDaVenda, type TipoDePainel, type MargemDaNegociacao, type FaixasDoSinal,
   type Agendado, type AjustesDoPainel, type AjustesPrazos, type Alcance, type AlertaPrazo, type AnotacaoChamado,
@@ -288,13 +288,15 @@ type Instancia = {
  * O que a prévia do Trazer do Helena (demo-helena.ts, 2.0.3) usa dos chamados: os painéis de Vendas que podem
  * receber, o Gestor como está (para o plano, como o `estadoDoGestor` do servidor) e a gravação do plano.
  */
+/** O painel do Helena que vem (o nome, a sigla e se é de vendas: o que não é vai para um painel de Gestão, 2.1.2). */
+export type PainelDoHelenaParaDemo = { nome: string; sigla: string | null; vendas?: boolean };
 export type AcessoDoHelenaDemo = {
   eu: () => Ator;
-  destinos: () => Array<{ id: string; nome: string; sigla: string; negociacoes: number }>;
-  estado: (destino: string | null, siglaDoHelena: string | null, hoje: string) => EstadoDoGestorParaHelena;
-  /** o painel de Vendas novo (os ajustes e os campos de fábrica; as etapas vêm do plano) */
-  criarPainel: (nomeDoHelena: string, siglaDoHelena: string | null) => string;
-  gravar: (ator: Ator, painelId: string, plano: PlanoDaImportacao, agora: Date) => { nome: string; sigla: string };
+  destinos: () => Array<{ id: string; nome: string; sigla: string; negociacoes: number; tipo: TipoDePainel }>;
+  estado: (destino: string | null, doHelena: PainelDoHelenaParaDemo, hoje: string) => EstadoDoGestorParaHelena;
+  /** o painel novo: o de Vendas (os ajustes e os campos de fábrica) ou o de Gestão (2.1.2); as etapas vêm do plano */
+  criarPainel: (doHelena: PainelDoHelenaParaDemo) => string;
+  gravar: (ator: Ator, painelId: string, plano: PlanoDaImportacao, agora: Date, novo: boolean) => { nome: string; sigla: string };
 };
 /** O Trazer do Helena da prévia lê e grava os chamados por aqui. */
 export function acessoDoHelenaDemo(): AcessoDoHelenaDemo {
@@ -4171,15 +4173,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   // ---------- o Trazer do Helena (2.0.3): o que a prévia dele usa daqui ----------
 
   /** O Gestor como está, para o plano (como o `estadoDoGestor` do servidor). */
-  function estadoParaHelena(destino: string | null, siglaDoHelena: string | null, hoje: string): EstadoDoGestorParaHelena {
+  function estadoParaHelena(destino: string | null, doHelena: PainelDoHelenaParaDemo, hoje: string): EstadoDoGestorParaHelena {
     semear();
+    const tipo = tipoParaOPainelDoHelena(doHelena);
     let painel: PainelDoGestorParaHelena | null = null;
     if (destino) {
       const p = A.paineis.find((x) => x.id === destino && !x.deletedAt);
       if (!p) throw naoAchado('Painel');
-      if (p.tipo !== 'vendas') throw bad(`O painel ${p.nome} não é de Vendas: as negociações do Helena vão para um painel de Vendas.`);
+      if (tipo === 'vendas' && p.tipo !== 'vendas') throw bad(`O painel ${p.nome} não é de Vendas: as negociações do Helena vão para um painel de Vendas.`);
+      if (tipo === 'gestao' && p.tipo === 'vendas') throw bad(`O painel ${p.nome} é de Vendas: um painel do Helena que não é de vendas vai para um painel de Gestão (o de chamados).`);
       painel = {
-        id: p.id, nome: p.nome, sigla: p.sigla,
+        id: p.id, nome: p.nome, sigla: p.sigla, tipo,
         etapas: A.etapas.filter((e) => e.painelId === p.id && !e.deletedAt).sort((x, y) => x.ordem - y.ordem).map((e) => ({
           id: e.id, nome: e.nome, tipo: e.tipo, resultado: e.resultado, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar],
           negociacoes: A.chamados.filter((t) => t.etapaId === e.id && !t.deletedAt).length,
@@ -4189,7 +4193,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         camposDesligados: [...(p.ajustes.camposDesligados ?? AJUSTES_DO_PAINEL_DE_VENDAS.camposDesligados)],
       };
     }
-    const painelNovo = { nome: 'Comercial', sigla: siglaDoPainelNovo(siglaDoHelena, A.paineis.map((p) => p.sigla)) };
+    const painelNovo = {
+      nome: tipo === 'gestao' ? nomeDoPainelDeGestaoNovo(doHelena.nome) : 'Comercial', sigla: siglaDoPainelNovo(doHelena.sigla, A.paineis.map((p) => p.sigla), tipo), tipo,
+    };
     const sigla = painel?.sigla ?? painelNovo.sigla;
     const importadas: EstadoDoGestorParaHelena['importadas'] = {};
     for (const t of A.chamados) {
@@ -4212,14 +4218,29 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     };
   }
 
-  /** O painel de Vendas novo, como o servidor: os ajustes e os campos de fábrica (as etapas vêm do plano). */
-  function criarPainelParaHelena(nomeDoHelena: string, siglaDoHelena: string | null): string {
+  /**
+   * O painel novo, como o servidor: o de Vendas, com os ajustes e os campos de fábrica; o de Gestão (2.1.2), com o nome e a
+   * sigla do Helena, sem prazo e só para as pessoas dos cards e quem traz (o `gravar` põe). As etapas vêm do plano.
+   */
+  function criarPainelParaHelena(doHelena: PainelDoHelenaParaDemo): string {
     semear();
     const id = novoId();
+    const tipo = tipoParaOPainelDoHelena(doHelena);
+    if (tipo === 'gestao') {
+      const g = AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA;
+      A.paineis.push({
+        id, nome: nomeDoPainelDeGestaoNovo(doHelena.nome), sigla: siglaDoPainelNovo(doHelena.sigla, A.paineis.map((p) => p.sigla), 'gestao'),
+        descricao: `Trazido do painel ${doHelena.nome}, do Helena.`, cor: 'roxo',
+        ordem: Math.max(-1, ...A.paineis.map((p) => p.ordem)) + 1, acesso: 'escolhidos', pessoas: [],
+        ajustes: { ...g, tipos: [...g.tipos], obrigatoriosAoAbrir: [], supervisores: [], camposDesligados: [...g.camposDesligados], motivosDePerda: [] },
+        ativo: true, proximoNumero: 1, deletedAt: null, tipo: 'gestao',
+      });
+      return id;
+    }
     const f = AJUSTES_DO_PAINEL_DE_VENDAS;
     A.paineis.push({
-      id, nome: 'Comercial', sigla: siglaDoPainelNovo(siglaDoHelena, A.paineis.map((p) => p.sigla)),
-      descricao: `As negociações do Comercial (trazidas do painel ${nomeDoHelena}, do Helena).`, cor: 'signal',
+      id, nome: 'Comercial', sigla: siglaDoPainelNovo(doHelena.sigla, A.paineis.map((p) => p.sigla)),
+      descricao: `As negociações do Comercial (trazidas do painel ${doHelena.nome}, do Helena).`, cor: 'signal',
       ordem: Math.max(-1, ...A.paineis.map((p) => p.ordem)) + 1, acesso: 'todos', pessoas: [],
       ajustes: { ...f, tipos: [...f.tipos], obrigatoriosAoAbrir: [], supervisores: [], camposDesligados: [...f.camposDesligados], motivosDePerda: [...f.motivosDePerda] },
       ativo: true, proximoNumero: 1, deletedAt: null, tipo: 'vendas',
@@ -4229,11 +4250,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   /** Grava o plano do Trazer, como o servidor: as etapas, os campos, os motivos de perda, as etiquetas e as negociações. */
-  function gravarDoHelena(ator: Ator, painelId: string, plano: PlanoDaImportacao, agora: Date): { nome: string; sigla: string } {
+  function gravarDoHelena(ator: Ator, painelId: string, plano: PlanoDaImportacao, agora: Date, novo: boolean): { nome: string; sigla: string } {
     const p = linhaDoPainel(painelId);
+    const gestao = p.tipo !== 'vendas';
+    // o painel de Gestão novo (2.1.2): quem vê são as pessoas dos cards e quem traz
+    if (novo && gestao) p.pessoas = [...new Set([...plano.pessoasDoPainel, ...(pessoaDoAtor(ator) ? [pessoaDoAtor(ator)!] : [])])];
     // as etapas (a que sai só se vazia) e as que só o histórico cita, já fora do painel
     const etapas = plano.etapas.etapas.map((e) => ({ ...(e.id ? { id: e.id } : {}), nome: e.nome, tipo: e.tipo, nivel: null, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado }));
-    aplicarEtapas(ator, planejarEtapas(painelId, etapas, {}, obrigatoriosValidos(p), 'vendas'), agora);
+    aplicarEtapas(ator, planejarEtapas(painelId, etapas, {}, obrigatoriosValidos(p), p.tipo), agora);
     plano.etapas.historicas.forEach((nome, i) => {
       if (A.etapas.some((e) => e.painelId === painelId && chaveDoNome(e.nome) === chaveDoNome(nome))) return;
       A.etapas.push({ id: novoId(), painelId, nome, tipo: 'andamento', nivel: null, ordem: 100 + i, obrigatorios: [], avisar: [], resultado: null, deletedAt: iso(agora) });
@@ -4258,7 +4282,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const campo = c.gestorId ? campos.find((x) => x.id === c.gestorId) : campos.find((x) => chaveDoNome(x.nome) === chaveDoNome(c.nome));
       if (campo) campoDaChave.set(c.chave, campo);
     }
-    p.ajustes = { ...p.ajustes, motivosDePerda: [...plano.motivosDePerda] };
+    if (!gestao) p.ajustes = { ...p.ajustes, motivosDePerda: [...plano.motivosDePerda] };
     const doCatalogo = etiquetasDoCatalogo(painelId, [...new Set(plano.negociacoes.flatMap((n) => n.etiquetas))], plano.coresDasEtiquetas, pessoaDoAtor(ator), agora);
     const etiquetaDe = (n: string) => doCatalogo.find((x) => chaveDaEtiqueta(x) === chaveDaEtiqueta(n)) ?? n;
 
@@ -4277,7 +4301,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         painelId, etapaId, titulo: n.titulo, descricao: n.descricao, clienteId: n.clienteId, empresa: n.empresa, origem: 'helena' as Origem,
         responsavelId: n.responsavelId, observadores: [...n.observadores], produtos: [...n.produtos], etiquetas: n.etiquetas.map(etiquetaDe),
         valor: n.valor, valoresDosProdutos: { ...n.valoresDosProdutos }, ativacao: n.ativacao, ativacoesDosProdutos: { ...n.ativacoesDosProdutos },
-        motivoPerda: n.motivoPerda, resolvidoEm: n.fechadoEm, fechadoEm: n.fechadoEm, reaberto: n.reaberturas,
+        motivoPerda: n.motivoPerda, resolvidoEm: n.resolvidoEm ?? n.fechadoEm, fechadoEm: n.fechadoEm, reaberto: n.reaberturas,
         ultimaAtividadeEm: n.eventos.reduce((m, e) => (e.em > m ? e.em : m), n.alteradoEm), criadoEm: n.criadoEm, atualizadoEm: iso(agora),
         externalRef: `helena:${n.helenaId}`,
       };
@@ -4373,8 +4397,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       eu,
       destinos: () => {
         semear();
-        return A.paineis.filter((p) => !p.deletedAt && p.tipo === 'vendas').sort((a, b) => a.ordem - b.ordem)
-          .map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, negociacoes: A.chamados.filter((t) => t.painelId === p.id && !t.deletedAt).length }));
+        // os de Vendas e (2.1.2) os de Gestão: o painel do Helena que não é de vendas vai para um de Gestão
+        return A.paineis.filter((p) => !p.deletedAt).sort((a, b) => a.ordem - b.ordem)
+          .map((p) => ({ id: p.id, nome: p.nome, sigla: p.sigla, tipo: p.tipo, negociacoes: A.chamados.filter((t) => t.painelId === p.id && !t.deletedAt).length }));
       },
       estado: estadoParaHelena,
       criarPainel: criarPainelParaHelena,

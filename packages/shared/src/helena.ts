@@ -31,10 +31,10 @@
  */
 import { diaLocal } from './atendimento-prazos.js';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, MAX_CAMPOS_DO_PAINEL, MAX_ETAPAS_DO_PAINEL, MAX_LETRAS_DO_CAMPO, MAX_OPCOES_DO_CAMPO,
+  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, MAX_CAMPOS_DO_PAINEL, MAX_ETAPAS_DO_PAINEL, MAX_LETRAS_DO_CAMPO, MAX_OPCOES_DO_CAMPO,
   chaveDaEtiqueta, ehLista, etiquetasUnicas, lerReais, nomeDoSistemaIgual, normalizarValorDoCampo,
-  type CampoDoSistema, type CampoPersonalizado, type CorEtiqueta, type Obrigatorio, type OpcaoDoCampo, type ResultadoDaVenda,
-  type TipoCampo, type TipoEtapa, type TipoEvento, type ValorDoCampo,
+  type AjustesDoPainel, type CampoDoSistema, type CampoPersonalizado, type CorEtiqueta, type Obrigatorio, type OpcaoDoCampo, type ResultadoDaVenda,
+  type TipoCampo, type TipoDePainel, type TipoEtapa, type TipoEvento, type ValorDoCampo,
 } from './atendimento.js';
 import { paraBusca, reais } from './formatos.js';
 import { ligarClientes, mesCurto, nomeDoMes, somarMeses } from './relatorios.js';
@@ -76,11 +76,16 @@ export type CardDoHelena = {
   logs: LogDoHelena[] | null;
 };
 
-export type EtapaDoHelena = { id: string; nome: string; posicao: number; inicial: boolean; arquivada: boolean };
+/** `final`: o Helena marca a etapa como de fim (2.1.2: num painel que não é de vendas, ela fecha o chamado) */
+export type EtapaDoHelena = { id: string; nome: string; posicao: number; inicial: boolean; arquivada: boolean; final?: boolean };
 export type CampoDoHelena = { chave: string; nome: string; tipo: string; posicao: number; opcoes: string[] };
 export type EtiquetaDoHelena = { id: string; nome: string; cor: string | null };
 export type UsuarioDoHelena = { id: string; nome: string };
-export type PainelDoHelena = { id: string; nome: string; sigla: string | null; etapas: EtapaDoHelena[]; campos: CampoDoHelena[]; etiquetas: EtiquetaDoHelena[] };
+/**
+ * `vendas`: o painel do Helena é de vendas (o tipo "sale" de lá). Desde o 2.1.2, o que não é de vendas (as atividades,
+ * os chamados) vem para um painel de Gestão; sem a marca (as leituras de antes), é de vendas.
+ */
+export type PainelDoHelena = { id: string; nome: string; sigla: string | null; etapas: EtapaDoHelena[]; campos: CampoDoHelena[]; etiquetas: EtiquetaDoHelena[]; vendas?: boolean };
 
 export type LeituraDoHelena = {
   painel: PainelDoHelena;
@@ -123,8 +128,11 @@ export type OpcoesDoTrazerDoHelena = {
   /** por que não deu para falar com o Helena (a chave, o endereço) */
   erro: string | null;
   helena: PainelDoHelenaNaLista[];
-  /** os painéis de Vendas do Gestor (com quantas negociações cada um tem) */
-  destinos: Array<{ id: string; nome: string; sigla: string; negociacoes: number }>;
+  /**
+   * os painéis do Gestor que podem receber (com quantos registros cada um tem): os de Vendas recebem um painel de
+   * vendas do Helena; os de Gestão (2.1.2), um que não é de vendas
+   */
+  destinos: Array<{ id: string; nome: string; sigla: string; negociacoes: number; tipo: TipoDePainel }>;
 };
 
 /** A leitura do Helena na tela: ela demora (um pedido por card, para o histórico), e a tela acompanha. */
@@ -874,21 +882,25 @@ const MOTIVO_SEM_USO = 'nenhuma negociação usa';
  */
 export function planoDosCampos(
   helena: readonly CampoDoHelena[], gestor: readonly CampoPersonalizado[], cards: readonly Pick<CardDoHelena, 'campos'>[],
-  camposDesligados: readonly CampoDoSistema[] = AJUSTES_DO_PAINEL_DE_VENDAS.camposDesligados,
+  camposDesligados: readonly CampoDoSistema[] = AJUSTES_DO_PAINEL_DE_VENDAS.camposDesligados, tipo: TipoDePainel = 'vendas',
 ): CampoNoPlano[] {
   const porNome = new Map(gestor.map((c) => [chaveDoNome(c.nome), c]));
   // o campo com o nome de um do sistema (o "Título", a "Empresa", os "Produtos"): não vira campo do painel
-  const doSistema = (nome: string) => nomeDoSistemaIgual(nome, { camposDesligados: [...camposDesligados] }, 'vendas') !== null;
+  const doSistema = (nome: string) => nomeDoSistemaIgual(nome, { camposDesligados: [...camposDesligados] }, tipo) !== null;
+  const gestao = tipo === 'gestao';
   let livres = MAX_CAMPOS_DO_PAINEL - gestor.length;
   const out: CampoNoPlano[] = [];
   for (const c of [...helena].sort((a, b) => a.posicao - b.posicao)) {
     const nome = c.nome.replace(/\s+/g, ' ').trim().slice(0, 40) || c.chave;
     const base = { chave: c.chave, nome, gestorId: null, nomeNoGestor: nome, opcoesNovas: [] as string[], motivo: null as string | null };
     const p = papelDoCampo(c);
-    if (p.papel !== 'campo') {
+    const grupo = p.papel === 'fora' && /group|grupo/i.test(c.tipo);
+    // no painel de Gestão (2.1.2), a mensalidade, a ativação e a área de atuação são campos como os outros
+    const virouCampo = gestao && !grupo && (p.papel === 'mensalidade' || p.papel === 'ativacao' || p.papel === 'fora');
+    if (p.papel !== 'campo' && !virouCampo) {
       // o grupo só junta os campos na tela do Helena: não guarda valor, e a prévia nem cita
-      const grupo = p.papel === 'fora' && /group|grupo/i.test(c.tipo);
-      const motivo = grupo ? null : p.papel === 'fora' ? p.motivo : p.papel === 'mensalidade' ? 'vira a mensalidade de cada produto' : p.papel === 'ativacao' ? 'vira a ativação de cada produto' : p.papel === 'produtos' ? 'vira os produtos da negociação' : 'vira os observadores da negociação';
+      const doQue = gestao ? 'do chamado' : 'da negociação';
+      const motivo = grupo ? null : p.papel === 'fora' ? p.motivo : p.papel === 'mensalidade' ? 'vira a mensalidade de cada produto' : p.papel === 'ativacao' ? 'vira a ativação de cada produto' : p.papel === 'produtos' ? `vira os produtos ${doQue}` : `vira os observadores ${doQue}`;
       out.push({ ...base, acao: 'fora', tipo: 'texto', motivo });
       continue;
     }
@@ -1099,9 +1111,9 @@ export function planoDasEtapas(helena: readonly EtapaDoHelena[], gestor: readonl
 //  O PLANO INTEIRO E A PRÉVIA
 // =====================================================================
 
-/** O painel do Gestor que recebe (nulo = vai ser criado). */
+/** O painel do Gestor que recebe (nulo = vai ser criado). `tipo`: Vendas (sem ele, também) ou Gestão (2.1.2). */
 export type PainelDoGestorParaHelena = {
-  id: string; nome: string; sigla: string;
+  id: string; nome: string; sigla: string; tipo?: TipoDePainel;
   etapas: EtapaDoGestorParaHelena[];
   campos: CampoPersonalizado[];
   motivosDePerda: string[];
@@ -1111,8 +1123,8 @@ export type PainelDoGestorParaHelena = {
 
 export type EstadoDoGestorParaHelena = {
   painel: PainelDoGestorParaHelena | null;
-  /** o painel que a importação cria quando não há painel de Vendas escolhido */
-  painelNovo: { nome: string; sigla: string };
+  /** o painel que a importação cria quando não há painel escolhido (`tipo`: o do painel do Helena; sem ele, Vendas) */
+  painelNovo: { nome: string; sigla: string; tipo?: TipoDePainel };
   pessoas: PessoaParaHelena[];
   clientes: ClienteParaHelena[];
   produtos: ProdutoParaHelena[];
@@ -1143,6 +1155,8 @@ export type NegociacaoNoPlano = {
   criadoEm: string;
   alteradoEm: string;
   fechadoEm: string | null;
+  /** quando foi resolvido (o chamado no Resolvido ou no Fechado, 2.1.2; na negociação, o mesmo do fim) */
+  resolvidoEm: string | null;
   responsavelId: string | null;
   criadoPorId: string | null;
   observadores: string[];
@@ -1163,6 +1177,8 @@ export type NegociacaoNoPlano = {
 };
 
 export type PreviaDoHelena = {
+  /** o painel do Gestor que recebe é de Vendas (as negociações) ou de Gestão (os chamados, 2.1.2) */
+  tipo: TipoDePainel;
   painelHelena: { id: string; nome: string; sigla: string | null };
   destino: { id: string | null; nome: string; sigla: string; novo: boolean };
   negociacoes: { total: number; novas: number; atualizadas: number; arquivadasFora: number; naLixeira: number };
@@ -1170,7 +1186,17 @@ export type PreviaDoHelena = {
   numeros: { emAndamento: { qtd: number; valor: number }; ganhas: { qtd: number; valor: number }; perdidas: { qtd: number } };
   /** os ganhos mês a mês (pela Conclusão), dos 12 meses até hoje: o gráfico "Meta vs Ganho mensal" do Helena */
   ganhosPorMes: Array<{ mes: string; nome: string; curto: string; qtd: number; valor: number }>;
-  etapas: { entram: string[]; jaExistem: string[]; ficam: string[]; saem: string[]; historicas: string[]; ganho: string; perdido: string; ordem: string[] };
+  etapas: {
+    entram: string[]; jaExistem: string[]; ficam: string[]; saem: string[]; historicas: string[]; ganho: string; perdido: string; ordem: string[];
+    /** o tipo de cada etapa (o nome → entrada, andamento, resolvido ou fechado) */
+    tipos: Record<string, TipoEtapa>;
+  };
+  /** quantos registros vão para cada etapa, na ordem do painel */
+  porEtapa: Array<{ nome: string; qtd: number }>;
+  /** os chamados abertos, resolvidos e fechados (no painel de Gestão; no de Vendas, os fechados são as ganhas e as perdidas) */
+  chamados: { abertos: number; resolvidos: number; fechados: number };
+  /** quem vê o painel de Gestão novo (os nomes; quem traz também vê); nulo: o painel que existe, ou o de Vendas (todos veem) */
+  quemVe: string[] | null;
   campos: { usa: string[]; cria: Array<{ nome: string; tipo: TipoCampo }>; fora: Array<{ nome: string; motivo: string }>; opcoesNovas: number; valoresRecusados: number };
   pessoas: Array<{ nome: string; pessoa: string | null; como: LigacaoDePessoa['como']; negociacoes: number }>;
   empresas: { clientes: number; leads: number; lista: Array<{ titulo: string; empresa: string; cliente: string | null; como: EmpresaDoCard['como'] }> };
@@ -1198,6 +1224,8 @@ export type PlanoDaImportacao = {
   negociacoes: NegociacaoNoPlano[];
   /** o nome do Helena de cada id (para quem fez cada linha do histórico) e a pessoa do Gestor dele */
   autores: Record<string, { nome: string; pessoaId: string | null }>;
+  /** quem vê o painel de Gestão novo (2.1.2): os responsáveis e os observadores dos cards (o servidor junta quem traz) */
+  pessoasDoPainel: string[];
   previa: PreviaDoHelena;
 };
 
@@ -1249,6 +1277,8 @@ function etapasCitadas(cards: readonly CardDoHelena[], conhecidas: ReadonlySet<s
  * prévia. O servidor grava o plano numa transação; a prévia clicável faz o mesmo na memória.
  */
 export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGestorParaHelena): PlanoDaImportacao {
+  // o painel que não é de vendas vira um painel de Gestão (2.1.2): os cards viram chamados
+  if (tipoDoDestino(estado) === 'gestao') return planoDeGestao(leitura, estado);
   const avisos: string[] = [...(leitura.avisos ?? [])];
   const painel = estado.painel;
   const destino = painel
@@ -1361,7 +1391,7 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
       numero: numeros.get(card.id)!,
       titulo: titulo.slice(0, 200), descricao: card.descricao?.trim() || null,
       etapa: h.etapa, resultado: h.resultado,
-      criadoEm: iso(card.criadoEm), alteradoEm: iso(card.alteradoEm), fechadoEm: h.fechadoEm,
+      criadoEm: iso(card.criadoEm), alteradoEm: iso(card.alteradoEm), fechadoEm: h.fechadoEm, resolvidoEm: h.fechadoEm,
       responsavelId: pessoaDoUsuario(card.responsavelId), criadoPorId: pessoaDoUsuario(card.criadoPorId),
       observadores,
       clienteId: emp.clienteId, empresa: emp.clienteId ? null : emp.empresa || null,
@@ -1424,6 +1454,7 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
 
   const erro = etapas.erro ?? (cards.length ? null : arquivados.length ? 'O painel do Helena só tem cards arquivados: não há o que trazer.' : 'O painel do Helena não tem nenhum card.');
   const previa: PreviaDoHelena = {
+    tipo: 'vendas',
     painelHelena: { id: leitura.painel.id, nome: leitura.painel.nome, sigla: leitura.painel.sigla },
     destino,
     negociacoes: { total: negociacoes.length, novas: negociacoes.filter((n) => !n.chamadoId).length, atualizadas: negociacoes.filter((n) => n.chamadoId).length, arquivadasFora: arquivados.length, naLixeira: naLixeira.length },
@@ -1431,8 +1462,11 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
     ganhosPorMes,
     etapas: {
       entram, jaExistem, ficam, saem: etapas.saem.map((e) => e.nome), historicas: etapas.historicas, ganho: etapas.ganho, perdido: etapas.perdido,
-      ordem: etapas.etapas.map((e) => e.nome),
+      ordem: etapas.etapas.map((e) => e.nome), tipos: Object.fromEntries(etapas.etapas.map((e) => [e.nome, e.tipo])),
     },
+    porEtapa: contarPorEtapa(etapas.etapas, negociacoes),
+    chamados: { abertos: andamento.length, resolvidos: 0, fechados: ganhas.length + perdidas.length },
+    quemVe: null,
     campos: {
       usa: campos.filter((c) => c.acao === 'usa').map((c) => c.nomeNoGestor),
       cria: campos.filter((c) => c.acao === 'cria').map((c) => ({ nome: c.nome, tipo: c.tipo })),
@@ -1451,27 +1485,441 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
     avisos,
     erro,
   };
-  return { destino, etapas, campos, motivosDePerda, coresDasEtiquetas, negociacoes, autores, previa };
+  return { destino, etapas, campos, motivosDePerda, coresDasEtiquetas, negociacoes, autores, pessoasDoPainel: [], previa };
 }
 
-/** A frase da auditoria e do aviso no fim: "Trouxe do Helena o painel X para Y: 55 negociações (55 novas)". */
-export function resumoDaImportacao(p: Pick<PreviaDoHelena, 'painelHelena' | 'destino' | 'negociacoes'>): string {
+/** Quantos registros vão para cada etapa, na ordem do painel. */
+function contarPorEtapa(etapas: ReadonlyArray<{ nome: string }>, registros: ReadonlyArray<{ etapa: string }>): PreviaDoHelena['porEtapa'] {
+  return etapas.map((e) => ({ nome: e.nome, qtd: registros.filter((n) => n.etapa === e.nome).length }));
+}
+
+/**
+ * A frase da auditoria e do aviso no fim: "Trouxe do Helena o painel X para Y: 55 negociações (55 novas)"; no painel
+ * de Gestão (2.1.2), "21 chamados (21 novos)".
+ */
+export function resumoDaImportacao(p: Pick<PreviaDoHelena, 'painelHelena' | 'destino' | 'negociacoes'> & { tipo?: TipoDePainel }): string {
   const n = p.negociacoes;
-  const partes = [n.novas ? `${n.novas} ${n.novas === 1 ? 'nova' : 'novas'}` : '', n.atualizadas ? `${n.atualizadas} ${n.atualizadas === 1 ? 'atualizada' : 'atualizadas'}` : ''].filter(Boolean);
-  return `Trouxe do Helena o painel ${p.painelHelena.nome} para ${p.destino.novo ? 'o painel novo ' : 'o painel '}${p.destino.nome} (${p.destino.sigla}): ${n.total} ${n.total === 1 ? 'negociação' : 'negociações'}${partes.length ? ` (${partes.join(', ')})` : ''}`;
+  const gestao = p.tipo === 'gestao';
+  const [um, varios, nova, novas, atualizada, atualizadas] = gestao
+    ? ['chamado', 'chamados', 'novo', 'novos', 'atualizado', 'atualizados']
+    : ['negociação', 'negociações', 'nova', 'novas', 'atualizada', 'atualizadas'];
+  const partes = [n.novas ? `${n.novas} ${n.novas === 1 ? nova : novas}` : '', n.atualizadas ? `${n.atualizadas} ${n.atualizadas === 1 ? atualizada : atualizadas}` : ''].filter(Boolean);
+  return `Trouxe do Helena o painel ${p.painelHelena.nome} para ${p.destino.novo ? 'o painel novo ' : 'o painel '}${p.destino.nome} (${p.destino.sigla}): ${n.total} ${n.total === 1 ? um : varios}${partes.length ? ` (${partes.join(', ')})` : ''}`;
 }
 
 /**
  * A sigla do painel novo: a do Helena (IC) quando está livre — o IC-34 continua IC-34 —; senão, COM, VEN…
  * (a sigla é de 2 a 5 letras e não se repete, nem a de um painel que saiu).
  */
-export function siglaDoPainelNovo(doHelena: string | null, ocupadas: Iterable<string>): string {
+export function siglaDoPainelNovo(doHelena: string | null, ocupadas: Iterable<string>, tipo: TipoDePainel = 'vendas'): string {
   const usadas = new Set([...ocupadas].map((s) => s.toUpperCase()));
   const da = (doHelena ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z]/g, '');
-  for (const x of [da, 'IC', 'COM', 'VEN', 'VND', 'CML', 'HEL']) {
+  // o painel de Gestão (2.1.2): a sigla de lá (LA) e, ocupada, uma das atividades
+  const outras = tipo === 'gestao' ? ['ATV', 'ATIV', 'INT', 'TAR', 'HEL'] : ['IC', 'COM', 'VEN', 'VND', 'CML', 'HEL'];
+  for (const x of [da, ...outras]) {
     if (x.length >= 2 && x.length <= 5 && !usadas.has(x)) return x;
   }
   const letras = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  for (const a of letras) for (const b of letras) if (!usadas.has(`V${a}${b}`)) return `V${a}${b}`;
-  return 'VZZZZ';
+  const l = tipo === 'gestao' ? 'A' : 'V';
+  for (const a of letras) for (const b of letras) if (!usadas.has(`${l}${a}${b}`)) return `${l}${a}${b}`;
+  return `${l}ZZZZ`;
+}
+
+// =====================================================================
+//  O PAINEL QUE NÃO É DE VENDAS (2.1.2): os cards viram chamados num painel de Gestão
+// =====================================================================
+//
+// O pedido do Luan, em 26/10: "N necessariamente aqui eu vou trazer um painel do comercial, eu mesmo quero trazer
+// um meu de atividades internas" (o Luan - Atividades, LA). O painel do Helena que não é de vendas vem para um
+// painel de Gestão (o de chamados): o novo, com o nome e a sigla de lá, ou um que já existe. Cada card vira um
+// chamado — o título, a descrição, o responsável, os observadores, o cliente (pelo título ou pelo CNPJ), as
+// etiquetas, os campos e o histórico, quando o Helena devolve. Não há valor, Ganho nem Perdido: as etapas de fim
+// do Helena ("Concluído", "Validado") resolvem e fecham o chamado.
+
+/** O tipo do painel que recebe: o escolhido; sem painel escolhido, o do painel novo (sem a marca, Vendas). */
+export function tipoDoDestino(estado: Pick<EstadoDoGestorParaHelena, 'painel' | 'painelNovo'>): TipoDePainel {
+  return estado.painel ? estado.painel.tipo ?? 'vendas' : estado.painelNovo.tipo ?? 'vendas';
+}
+
+/** O tipo do painel do Gestor que recebe um painel do Helena: o de vendas vai para Vendas; o resto, para Gestão. */
+export const tipoParaOPainelDoHelena = (p: Pick<PainelDoHelena, 'vendas'>): TipoDePainel => (p.vendas === false ? 'gestao' : 'vendas');
+
+/**
+ * Os ajustes do painel de Gestão novo: sem prazo (o SLA é do suporte aos clientes) e sem fechar sozinho, como o
+ * Desenvolvimento. Dá para mudar em Painéis › Ajustes.
+ */
+export const AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA: AjustesDoPainel = { ...AJUSTES_PAINEL_PADRAO, contaPrazo: false, fecharSozinhoDias: null };
+
+/** O nome do painel de Gestão novo: o do Helena (o painel vai até 40 letras). */
+export const nomeDoPainelDeGestaoNovo = (doHelena: string) => doHelena.replace(/\s+/g, ' ').trim().slice(0, 40) || 'Atividades';
+
+const FECHA_O_CHAMADO = /\b(validad[oa]s?|fechad[oa]s?|encerrad[oa]s?|cancelad[oa]s?|arquivad[oa]s?|aprovad[oa]s?)\b/;
+const RESOLVE_O_CHAMADO = /\b(conclu\w*|finaliz\w*|resolvid[oa]s?|feit[oa]s?|entregu\w*|done)\b/;
+
+/**
+ * Onde a etapa do Helena acaba o chamado: "Validado", "Fechado", "Encerrado", "Cancelado" e "Aprovado" fecham;
+ * "Concluído", "Finalizado", "Resolvido", "Feito" e "Entregue" resolvem; a marca de fim do Helena, sem um desses
+ * nomes, resolve. As outras são do andamento.
+ */
+export function fimDaEtapaDoHelena(e: Pick<EtapaDoHelena, 'nome' | 'final'>): 'resolvido' | 'fechado' | null {
+  const n = paraBusca(e.nome);
+  if (FECHA_O_CHAMADO.test(n)) return 'fechado';
+  if (RESOLVE_O_CHAMADO.test(n)) return 'resolvido';
+  return e.final ? 'resolvido' : null;
+}
+
+/** As etapas do painel de Gestão; `fechadoAMais`: o Helena não tinha etapa de fim, e entra o "Fechado". */
+export type PlanoDasEtapasDeGestao = PlanoDasEtapasDoHelena & { fechadoAMais: string | null };
+
+/**
+ * As etapas do painel de Gestão depois de trazer o Helena.
+ *  - No painel novo: as do Helena, na ordem de lá — a inicial é a entrada; as de fim resolvem ou fecham
+ *    (`fimDaEtapaDoHelena`); sem nenhuma que feche, a última que resolve fecha; sem nenhuma de fim, entra o
+ *    "Fechado" no fim (o painel de Gestão precisa de uma etapa que fecha).
+ *  - No painel que existe: as dele ficam todas, como estão (nenhuma sai); a do Helena com o mesmo nome é a mesma; a
+ *    que falta entra antes das de fim (as de andamento) ou no fim (as de fim).
+ */
+export function planoDasEtapasDeGestao(helena: readonly EtapaDoHelena[], gestor: readonly EtapaDoGestorParaHelena[], usadas: Iterable<string>): PlanoDasEtapasDeGestao {
+  const ativas = [...helena].filter((e) => !e.arquivada).sort((a, b) => a.posicao - b.posicao);
+  const temInicial = ativas.some((e) => e.inicial);
+  const fins = ativas.map(fimDaEtapaDoHelena);
+  if (!fins.includes('fechado')) { const i = fins.lastIndexOf('resolvido'); if (i >= 0) fins[i] = 'fechado'; }
+  const porNome = new Map(gestor.map((e) => [chaveDoNome(e.nome), e]));
+  const doHelena: Record<string, string> = {};
+  const daHelena: EtapaNoPlano[] = [];
+  ativas.forEach((e, i) => {
+    const nome = nomeDeEtapa(e.nome);
+    const k = chaveDoNome(nome);
+    if (!k || daHelena.some((x) => chaveDoNome(x.nome) === k)) { doHelena[e.nome] = daHelena.find((x) => chaveDoNome(x.nome) === k)?.nome ?? nome; return; }
+    const existe = porNome.get(k);
+    const tipo: TipoEtapa = existe?.tipo ?? fins[i] ?? ((temInicial ? e.inicial : i === 0) ? 'entrada' : 'andamento');
+    daHelena.push({ id: existe?.id ?? null, nome: existe?.nome ?? nome, tipo, resultado: null, obrigatorios: existe?.obrigatorios ?? [], avisar: existe?.avisar ?? [], helena: e.nome });
+    doHelena[e.nome] = existe?.nome ?? nome;
+  });
+
+  let etapas: EtapaNoPlano[];
+  if (!gestor.length) etapas = daHelena;
+  else {
+    const doHelenaPorId = new Map(daHelena.filter((x) => x.id).map((x) => [x.id!, x.helena]));
+    const existentes: EtapaNoPlano[] = gestor.map((e) => ({ id: e.id, nome: e.nome, tipo: e.tipo, resultado: null, obrigatorios: e.obrigatorios, avisar: e.avisar, helena: doHelenaPorId.get(e.id) ?? null }));
+    const ehFim = (t: TipoEtapa) => t === 'resolvido' || t === 'fechado';
+    // a de entrada do Helena entra como andamento: o painel já tem a dele
+    const novasAbertas = daHelena.filter((x) => !x.id && !ehFim(x.tipo)).map((x) => ({ ...x, tipo: 'andamento' as TipoEtapa }));
+    const novasDeFim = daHelena.filter((x) => !x.id && ehFim(x.tipo));
+    const i = existentes.findIndex((e) => ehFim(e.tipo));
+    etapas = i < 0 ? [...existentes, ...novasAbertas, ...novasDeFim] : [...existentes.slice(0, i), ...novasAbertas, ...existentes.slice(i), ...novasDeFim];
+  }
+  let fechadoAMais: string | null = null;
+  if (!etapas.some((e) => e.tipo === 'fechado')) {
+    fechadoAMais = etapas.some((e) => chaveDoNome(e.nome) === chaveDoNome('Fechado')) ? 'Fechado (Gestor)' : 'Fechado';
+    etapas.push({ id: null, nome: fechadoAMais, tipo: 'fechado', resultado: null, obrigatorios: [], avisar: [], helena: null });
+  }
+  if (!etapas.some((e) => e.tipo === 'entrada') && etapas[0]?.tipo === 'andamento') etapas[0] = { ...etapas[0], tipo: 'entrada' };
+
+  // os nomes que só o histórico cita: a etapa que já saiu do Helena (ou foi arquivada lá)
+  const historicas: string[] = [];
+  for (const n of usadas) {
+    if (!n?.trim() || doHelena[n] !== undefined) continue;
+    const k = chaveDoNome(n);
+    const mesma = etapas.find((e) => chaveDoNome(e.nome) === k) ?? gestor.find((e) => chaveDoNome(e.nome) === k);
+    if (mesma) { doHelena[n] = mesma.nome; continue; }
+    const nome = nomeDeEtapa(n);
+    if (!historicas.some((h) => chaveDoNome(h) === chaveDoNome(nome))) historicas.push(nome);
+    doHelena[n] = nome;
+  }
+  const erro = etapas.length > MAX_ETAPAS_DO_PAINEL
+    ? `O painel do Gestor vai até ${MAX_ETAPAS_DO_PAINEL} etapas, e com as do Helena ficariam ${etapas.length}. Tire etapas vazias do painel do Gestor (Ajustes › Painéis) e leia de novo.`
+    : null;
+  return { etapas, saem: [], historicas, doHelena, ganho: '', perdido: '', erro, fechadoAMais };
+}
+
+export type OpcoesDoHistoricoDeGestao = Omit<OpcoesDoHistorico, 'ganho' | 'perdido'> & {
+  /** o tipo de uma etapa do Gestor (pelo nome); a que só o histórico cita é do andamento */
+  tipoDe: (nomeNoGestor: string) => TipoEtapa;
+};
+
+export type HistoricoDoChamado = Omit<HistoricoDoCard, 'resultado'> & {
+  /** quando foi resolvido (está no Resolvido ou no Fechado) e quando foi fechado (nulo: não está) */
+  resolvidoEm: string | null;
+};
+
+/**
+ * O histórico de um card do Helena num painel de Gestão: a criação, cada mudança de etapa (entrar numa etapa de fim
+ * resolve ou fecha; sair dela reabre), o título e a descrição; o resto como está escrito lá (o "marcado como Ganho"
+ * também: num painel de Gestão não há Ganho). No fim, o histórico tem de chegar aonde o card está. Sem o histórico,
+ * o chamado nasce na etapa de agora e, numa etapa de fim, acaba na última mudança do card.
+ */
+export function historicoDoCardDeGestao(card: CardDoHelena, o: OpcoesDoHistoricoDeGestao): HistoricoDoChamado {
+  const linhas = [...(card.logs ?? [])]
+    .map((l, i) => ({ l, i, linha: lerLinhaDoHelena(l.texto, o.conhecidas) }))
+    .sort((a, b) => a.l.em.localeCompare(b.l.em) || a.i - b.i);
+  const etapa = (nomeHelena: string): EtapaNoEvento => ({ nome: o.etapaDoGestor(nomeHelena), nivel: null });
+  const eventos: EventoDoHelena[] = [];
+  const criado = linhas.find((x) => x.linha.tipo === 'criado');
+  const primeiroMovimento = linhas.find((x) => x.linha.tipo === 'movido');
+  const nascimento = criado?.linha.tipo === 'criado' ? criado.linha.etapa
+    : primeiroMovimento?.linha.tipo === 'movido' ? primeiroMovimento.linha.de
+      : card.etapa ?? null;
+  const inicial: EtapaNoEvento = nascimento ? etapa(nascimento) : { nome: o.primeira, nivel: null };
+  eventos.push({
+    chave: `${card.id}:criado`, tipo: 'criado', em: iso(card.criadoEm), usuarioId: criado?.l.usuarioId ?? card.criadoPorId,
+    dados: { origem: 'helena', etapa: inicial.nome, painel: o.painel, ...(card.codigo ? { noHelena: card.codigo } : {}) },
+  });
+
+  const ehFim = (nome: string) => { const t = o.tipoDe(nome); return t === 'resolvido' || t === 'fechado'; };
+  // sem o histórico, o que acabou acabou na última mudança do card (a Conclusão, quando houver); com ele, quando entrou
+  const fimSemHistorico = iso(card.concluidoEm ?? card.alteradoEm);
+  let atual = inicial.nome;
+  let resolvidoEm: string | null = ehFim(atual) ? (card.logs ? iso(card.criadoEm) : fimSemHistorico) : null;
+  let fechadoEm: string | null = o.tipoDe(atual) === 'fechado' ? resolvidoEm : null;
+  let reaberturas = 0;
+  let movimentos = 0;
+  const texto = (x: { l: LogDoHelena }) => ({ texto: x.l.texto.replace(/\s+/g, ' ').trim() });
+  const andar = (base: { chave: string; em: string; usuarioId: string | null }, para: EtapaNoEvento) => {
+    const de: EtapaNoEvento = { nome: atual, nivel: null };
+    const antes = o.tipoDe(atual);
+    const depois = o.tipoDe(para.nome);
+    eventos.push({ ...base, tipo: 'etapa', dados: { de, para, motivo: null, sentido: null } });
+    movimentos++;
+    if (depois === 'resolvido' || depois === 'fechado') {
+      if (!ehFim(atual) || !resolvidoEm) resolvidoEm = base.em;
+      fechadoEm = depois === 'fechado' ? (antes === 'fechado' && fechadoEm ? fechadoEm : base.em) : null;
+    } else if (ehFim(atual)) {
+      // saiu do fim: o chamado foi reaberto
+      eventos.push({ ...base, chave: `${base.chave}:reaberto`, tipo: 'reaberto', dados: { motivo: null } });
+      reaberturas++;
+      resolvidoEm = null;
+      fechadoEm = null;
+    }
+    atual = para.nome;
+  };
+
+  for (const x of linhas) {
+    const base = { chave: x.l.id, em: iso(x.l.em), usuarioId: x.l.usuarioId };
+    const l = x.linha;
+    switch (l.tipo) {
+      case 'criado':
+        break;
+      case 'movido': {
+        const para = etapa(l.para);
+        if (chaveDoNome(para.nome) !== chaveDoNome(atual)) andar(base, para);
+        break;
+      }
+      case 'titulo':
+        if (l.de !== l.para) eventos.push({ ...base, tipo: 'campo', dados: { campo: 'Título', de: l.de, para: l.para } });
+        break;
+      case 'descricao':
+        eventos.push({ ...base, tipo: 'campo', dados: { campo: 'Descrição', longo: true } });
+        break;
+      default:
+        eventos.push({ ...base, tipo: 'helena', dados: texto(x) });
+    }
+  }
+
+  // o fim tem de ser o do card: a etapa que faltou (a linha que o Helena não devolveu) é completada por ele
+  let completado = false;
+  if (card.etapa && chaveDoNome(o.etapaDoGestor(card.etapa)) !== chaveDoNome(atual)) {
+    completado = true;
+    andar({ chave: `${card.id}:etapa`, em: iso(card.alteradoEm), usuarioId: null }, etapa(card.etapa));
+  }
+
+  for (let i = 2; i < eventos.length; i++) {
+    const antes = eventos[i - 1]!.em;
+    if (eventos[i]!.em <= antes && eventos[i - 1]!.tipo !== 'criado') eventos[i]!.em = MAIS_UM_MS(antes);
+  }
+  for (const ev of eventos) ev.dados = { ...ev.dados, helena: ev.chave };
+  return {
+    eventos, etapaInicial: inicial.nome, etapa: atual, resolvidoEm, fechadoEm,
+    reaberturas, movimentos, semHistorico: card.logs === null, completado: completado && card.logs !== null,
+  };
+}
+
+/** Os produtos do card (os campos "Produtos" e "Serviços ofertados" do Helena), pelos nomes do cadastro do Gestor. */
+function produtosDoCard(card: Pick<CardDoHelena, 'campos'>, campos: readonly CampoDoHelena[], produtos: readonly ProdutoParaHelena[]): { ids: string[]; semCadastro: string[]; ligados: Array<[string, string]> } {
+  const ids: string[] = [];
+  const semCadastro: string[] = [];
+  const ligados: Array<[string, string]> = [];
+  for (const c of campos) {
+    if (papelDoCampo(c).papel !== 'produtos') continue;
+    for (const n of nomesDoHelena(card.campos[c.chave])) {
+      const p = produtoPeloNome(n, produtos);
+      if (p) { if (!ids.includes(p.id)) ids.push(p.id); ligados.push([n, p.nome]); } else if (!semCadastro.some((s) => chaveDoNome(s) === chaveDoNome(n))) semCadastro.push(n);
+    }
+  }
+  return { ids, semCadastro, ligados };
+}
+
+/** O plano de trazer um painel do Helena que não é de vendas para um painel de Gestão (2.1.2). */
+function planoDeGestao(leitura: LeituraDoHelena, estado: EstadoDoGestorParaHelena): PlanoDaImportacao {
+  const avisos: string[] = [...(leitura.avisos ?? [])];
+  const painel = estado.painel;
+  const destino = painel
+    ? { id: painel.id, nome: painel.nome, sigla: painel.sigla, novo: false }
+    : { id: null, nome: estado.painelNovo.nome, sigla: estado.painelNovo.sigla, novo: true };
+  const arquivados = leitura.cards.filter((c) => c.situacao === 'ARCHIVED');
+  const naLixeira = leitura.cards.filter((c) => c.situacao !== 'ARCHIVED' && estado.importadas[c.id]?.naLixeira);
+  const cards = leitura.cards.filter((c) => c.situacao !== 'ARCHIVED' && !estado.importadas[c.id]?.naLixeira);
+
+  // 1. as etapas (com o tipo de cada uma)
+  const conhecidas = new Set(leitura.painel.etapas.map((e) => chaveDoNome(e.nome)));
+  const etapas = planoDasEtapasDeGestao(leitura.painel.etapas, painel?.etapas ?? [], etapasCitadas(cards, conhecidas));
+  const etapaDoGestor = (n: string) => etapas.doHelena[n] ?? etapas.doHelena[Object.keys(etapas.doHelena).find((k) => chaveDoNome(k) === chaveDoNome(n)) ?? ''] ?? nomeDeEtapa(n);
+  const primeira = etapas.etapas.find((e) => e.tipo === 'entrada')?.nome ?? etapas.etapas[0]?.nome ?? 'Novo';
+  const tipoPorNome = new Map(etapas.etapas.map((e) => [chaveDoNome(e.nome), e.tipo]));
+  const tipoDe = (nome: string): TipoEtapa => tipoPorNome.get(chaveDoNome(nome)) ?? 'andamento';
+
+  // 2. os campos (o painel novo nasce sem campos) e os valores de cada card
+  const camposDoGestor = painel?.campos ?? [];
+  const campos = planoDosCampos(leitura.painel.campos, camposDoGestor, cards, painel?.camposDesligados ?? AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA.camposDesligados, 'gestao');
+  const finais = new Map(campos.filter((c) => c.acao !== 'fora').map((c) => [c.chave, campoDoPlano(c, camposDoGestor)]));
+  const campoObservador = leitura.painel.campos.find((c) => papelDoCampo(c).papel === 'observadores');
+  const campoCnpj = leitura.painel.campos.find((c) => chaveDoNome(c.nome) === 'cnpj');
+
+  // 3. as pessoas
+  const nomeDoUsuario = new Map(leitura.usuarios.map((u) => [u.id, u.nome]));
+  for (const c of cards) for (const l of c.logs ?? []) {
+    const x = lerLinhaDoHelena(l.texto, conhecidas);
+    if (x.tipo === 'criado' && l.usuarioId && !nomeDoUsuario.has(l.usuarioId)) nomeDoUsuario.set(l.usuarioId, x.por);
+  }
+  const ligadas = ligarPessoas([...new Set(nomeDoUsuario.values())], estado.pessoas);
+  const pessoaDoUsuario = (id: string | null) => (id ? ligadas[nomeDoUsuario.get(id) ?? '']?.pessoaId ?? null : null);
+  const autores: PlanoDaImportacao['autores'] = {};
+  for (const [id, nome] of nomeDoUsuario) autores[id] = { nome, pessoaId: ligadas[nome]?.pessoaId ?? null };
+
+  // 4. as etiquetas e os números
+  const etiquetaDoId = new Map(leitura.painel.etiquetas.map((t) => [t.id, t]));
+  const catalogo = new Set(estado.etiquetas.map(chaveDaEtiqueta));
+  const coresDasEtiquetas: Record<string, CorEtiqueta> = {};
+  const numeros = numerarNegociacoes(cards.map((c) => ({ id: c.id, numero: c.numero, jaTem: estado.importadas[c.id]?.numero ?? null })), estado.numerosOcupados);
+
+  const chamados: NegociacaoNoPlano[] = [];
+  let valoresRecusados = 0, completados = 0, semHistorico = 0, movimentos = 0, totalEventos = 0, semCopia = 0, marcados = 0;
+  const empresas: PreviaDoHelena['empresas']['lista'] = [];
+  const produtosLigados = new Map<string, string>();
+  const semCadastro = new Set<string>();
+  const responsaveis = new Map<string, number>();
+  const nomeDoCliente = new Map(estado.clientes.map((c) => [c.id, c.nomes[0] ?? '']));
+
+  for (const card of cards) {
+    const h = historicoDoCardDeGestao(card, { etapaDoGestor, primeira, conhecidas, painel: destino.nome, tipoDe });
+    const pr = produtosDoCard(card, leitura.painel.campos, estado.produtos);
+    for (const n of pr.semCadastro) semCadastro.add(n);
+    for (const [helena, gestor] of pr.ligados) produtosLigados.set(helena, gestor);
+
+    const valores: Record<string, unknown> = {};
+    for (const [chave, campo] of finais) {
+      const bruto = card.campos[chave];
+      if (valorDoHelena(bruto) === null) continue;
+      const pre = valorDoHelenaParaOCampo(campo.tipo, bruto);
+      if (valorDoCampoNoGestor(campo, pre) === null) { valoresRecusados++; continue; }
+      valores[chave] = pre;
+    }
+    const observadores = campoObservador
+      ? [...new Set(nomesDoHelena(card.campos[campoObservador.chave]).map((n) => {
+        const nome = nomeDoUsuario.get(n) ?? n;
+        return ligadas[nome]?.pessoaId ?? ligarPessoas([nome], estado.pessoas)[nome]?.pessoaId ?? null;
+      }).filter((x): x is string => !!x))]
+      : [];
+
+    const titulo = tituloDoHelena(card.titulo);
+    if (titulo !== card.titulo.trim()) semCopia++;
+    const emp = empresaDoCard(card.titulo, campoCnpj ? String(valorDoHelena(card.campos[campoCnpj.chave]) ?? '') : null, estado.clientes);
+    empresas.push({ titulo, empresa: emp.empresa, cliente: emp.clienteId ? nomeDoCliente.get(emp.clienteId) ?? null : null, como: emp.como });
+
+    const etiquetas = etiquetasUnicas(card.etiquetas.map((id) => etiquetaDoId.get(id)?.nome ?? '').filter(Boolean));
+    for (const t of etiquetas) {
+      const tag = leitura.painel.etiquetas.find((x) => x.nome === t);
+      if (!catalogo.has(chaveDaEtiqueta(t))) coresDasEtiquetas[t] = corDaEtiquetaDoHelena(tag?.cor);
+    }
+
+    if (card.logs === null) semHistorico++;
+    if (h.completado) completados++;
+    if (card.situacao === 'WON' || card.situacao === 'LOST') marcados++;
+    movimentos += h.movimentos;
+    totalEventos += h.eventos.length;
+    const responsavelNome = card.responsavelId ? nomeDoUsuario.get(card.responsavelId) ?? null : null;
+    if (responsavelNome) responsaveis.set(responsavelNome, (responsaveis.get(responsavelNome) ?? 0) + 1);
+
+    chamados.push({
+      helenaId: card.id, codigoNoHelena: card.codigo,
+      chamadoId: estado.importadas[card.id]?.id ?? null,
+      numero: numeros.get(card.id)!,
+      titulo: titulo.slice(0, 200), descricao: card.descricao?.trim() || null,
+      etapa: h.etapa, resultado: null,
+      criadoEm: iso(card.criadoEm), alteradoEm: iso(card.alteradoEm), fechadoEm: h.fechadoEm, resolvidoEm: h.resolvidoEm,
+      responsavelId: pessoaDoUsuario(card.responsavelId), criadoPorId: pessoaDoUsuario(card.criadoPorId),
+      observadores,
+      clienteId: emp.clienteId, empresa: null,
+      produtos: pr.ids, valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {},
+      etiquetas, campos: valores, motivoPerda: null,
+      reaberturas: h.reaberturas,
+      eventos: h.eventos,
+    });
+  }
+
+  // quem vê o painel novo: os responsáveis e os observadores dos cards (o servidor junta quem traz)
+  const pessoasDoPainel = [...new Set(chamados.flatMap((n) => [n.responsavelId, ...n.observadores]).filter((x): x is string => !!x))];
+  const situacao = (n: NegociacaoNoPlano) => tipoDe(n.etapa);
+  const abertos = chamados.filter((n) => situacao(n) !== 'resolvido' && situacao(n) !== 'fechado').length;
+  const resolvidos = chamados.filter((n) => situacao(n) === 'resolvido').length;
+  const fechados = chamados.filter((n) => situacao(n) === 'fechado').length;
+  const entram = etapas.etapas.filter((e) => !e.id).map((e) => e.nome);
+  const jaExistem = etapas.etapas.filter((e) => e.id && e.helena).map((e) => e.nome);
+  const ficam = etapas.etapas.filter((e) => e.id && !e.helena).map((e) => e.nome);
+  const pessoas = Object.entries(ligadas).map(([nome, l]) => ({
+    nome, pessoa: l.pessoaId ? estado.pessoas.find((p) => p.id === l.pessoaId)?.nome ?? null : null, como: l.como, negociacoes: responsaveis.get(nome) ?? 0,
+  })).sort((a, b) => b.negociacoes - a.negociacoes || a.nome.localeCompare(b.nome, 'pt-BR'));
+  const etiquetasTodas = etiquetasUnicas(chamados.flatMap((n) => n.etiquetas));
+  const mexidas = cards.filter((c) => estado.importadas[c.id]?.mexidaNoGestor).length;
+  const um = (n: number, s: string, p: string) => (n === 1 ? s : p);
+
+  if (naLixeira.length) avisos.push(`${um(naLixeira.length, '1 chamado que já veio está', `${naLixeira.length} chamados que já vieram estão`)} na lixeira do Gestor: ${um(naLixeira.length, 'fica', 'ficam')} lá (para trazer de novo, restaure em Administração › Lixeira).`);
+  if (arquivados.length) avisos.push(`${um(arquivados.length, '1 card arquivado', `${arquivados.length} cards arquivados`)} no Helena ${um(arquivados.length, 'fica', 'ficam')} de fora (lá, não ${um(arquivados.length, 'aparece', 'aparecem')} mais no quadro).`);
+  if (semHistorico) avisos.push(`${um(semHistorico, '1 chamado veio', `${semHistorico} chamados vieram`)} sem o histórico (o Helena não devolveu): ${um(semHistorico, 'nasce', 'nascem')} na etapa de agora; ${um(semHistorico, 'o que está', 'os que estão')} numa etapa de fim ${um(semHistorico, 'acaba', 'acabam')} na última mudança do card.`);
+  if (etapas.fechadoAMais) avisos.push(`O painel ${leitura.painel.nome} não tem etapa de fim (Concluído, Validado…): entra a etapa ${etapas.fechadoAMais} no fim, para fechar o chamado.`);
+  if (destino.novo) avisos.push('O painel novo não conta prazo (SLA) nem fecha o resolvido sozinho, como o Desenvolvimento: dá para mudar em Painéis › Ajustes.');
+  if (marcados) avisos.push(`${um(marcados, '1 card está marcado', `${marcados} cards estão marcados`)} como ganho ou perdido no Helena: num painel de Gestão não há Ganho nem Perdido, e ${um(marcados, 'ele fica', 'eles ficam')} na etapa em que ${um(marcados, 'está', 'estão')}.`);
+  if (completados) avisos.push(`${um(completados, '1 histórico não chegava', `${completados} históricos não chegavam`)} aonde o card está: o fim foi completado pelo próprio card.`);
+  if (semCadastro.size) avisos.push(`Os produtos ${[...semCadastro].join(', ')} não estão no cadastro do Gestor: ficam fora dos produtos do chamado.`);
+  if (valoresRecusados) avisos.push(`${um(valoresRecusados, '1 valor de campo não serviu', `${valoresRecusados} valores de campo não serviram`)} no campo do Gestor e ${um(valoresRecusados, 'ficou', 'ficaram')} de fora.`);
+  if (mexidas) avisos.push(`${um(mexidas, '1 chamado que já veio foi mexido', `${mexidas} chamados que já vieram foram mexidos`)} no Gestor: ${um(mexidas, 'volta', 'voltam')} a ficar como no Helena (o que a equipe fez no Gestor continua no histórico).`);
+  if (semCopia) avisos.push(`O "(Cópia)" que o Helena põe no card duplicado sai do título (${um(semCopia, '1 chamado', `${semCopia} chamados`)}).`);
+
+  const erro = etapas.erro ?? (cards.length ? null : arquivados.length ? 'O painel do Helena só tem cards arquivados: não há o que trazer.' : 'O painel do Helena não tem nenhum card.');
+  const nomeDaPessoa = new Map(estado.pessoas.map((p) => [p.id, p.nome]));
+  const previa: PreviaDoHelena = {
+    tipo: 'gestao',
+    painelHelena: { id: leitura.painel.id, nome: leitura.painel.nome, sigla: leitura.painel.sigla },
+    destino,
+    negociacoes: { total: chamados.length, novas: chamados.filter((n) => !n.chamadoId).length, atualizadas: chamados.filter((n) => n.chamadoId).length, arquivadasFora: arquivados.length, naLixeira: naLixeira.length },
+    numeros: { emAndamento: { qtd: abertos, valor: 0 }, ganhas: { qtd: 0, valor: 0 }, perdidas: { qtd: 0 } },
+    ganhosPorMes: [],
+    etapas: {
+      entram, jaExistem, ficam, saem: [], historicas: etapas.historicas, ganho: '', perdido: '',
+      ordem: etapas.etapas.map((e) => e.nome), tipos: Object.fromEntries(etapas.etapas.map((e) => [e.nome, e.tipo])),
+    },
+    porEtapa: contarPorEtapa(etapas.etapas, chamados),
+    chamados: { abertos, resolvidos, fechados },
+    quemVe: destino.novo ? pessoasDoPainel.map((id) => nomeDaPessoa.get(id) ?? '').filter(Boolean) : null,
+    campos: {
+      usa: campos.filter((c) => c.acao === 'usa').map((c) => c.nomeNoGestor),
+      cria: campos.filter((c) => c.acao === 'cria').map((c) => ({ nome: c.nome, tipo: c.tipo })),
+      fora: campos.filter((c) => c.acao === 'fora' && c.motivo).map((c) => ({ nome: c.nome, motivo: c.motivo! })),
+      opcoesNovas: campos.reduce((t, c) => t + (c.acao === 'usa' ? c.opcoesNovas.length : 0), 0),
+      valoresRecusados,
+    },
+    pessoas,
+    empresas: { clientes: empresas.filter((e) => e.cliente).length, leads: empresas.filter((e) => !e.cliente).length, lista: empresas },
+    produtos: { ligados: [...produtosLigados].map(([helena, gestor]) => ({ helena, gestor })), semCadastro: [...semCadastro], comValorPorProduto: 0, valorUnico: 0 },
+    etiquetas: { total: etiquetasTodas.length, novas: etiquetasTodas.filter((t) => !catalogo.has(chaveDaEtiqueta(t))) },
+    motivosNovos: [],
+    historico: { eventos: totalEventos, movimentos, semHistorico, semConclusao: 0, completados, semCopia },
+    planilha: null,
+    mexidasNoGestor: mexidas,
+    avisos,
+    erro,
+  };
+  return {
+    destino, etapas, campos, motivosDePerda: painel?.motivosDePerda ?? [], coresDasEtiquetas, negociacoes: chamados, autores, pessoasDoPainel, previa,
+  };
 }

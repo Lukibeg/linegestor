@@ -7,8 +7,8 @@ export type ItemDemo = { kind: 'novo' | 'melhorou' | 'corrigido' | 'atencao'; ti
 export type VideoDemo = { url: string; nome: string; tamanho: number; tipo: string };
 export const NOTA_DEMO: { version: string; title: string; summary: string; items: ItemDemo[]; video?: VideoDemo } = {
   "version": "2.1.2",
-  "title": "Valores exatos no Comercial, e os cartões e os painéis abrem mais rápido",
-  "summary": "O Comercial não arredonda mais nenhum valor: o que era R$ 12 mil ou R$ 2.740 aparece como R$ 12.480 ou R$ 2.739,80, com os centavos quando há. E a ficha de um cartão e o quadro de um painel abrem mais rápido: a tela de baixo não se redesenha a cada abrir e fechar, e a ficha começa a carregar quando o mouse para em cima do cartão.",
+  "title": "Valores exatos no Comercial, cartões mais rápidos e o Trazer do Helena para atividades",
+  "summary": "O Comercial não arredonda mais nenhum valor (R$ 2.739,80, e não R$ 2.740). A ficha de um cartão e o quadro de um painel abrem mais rápido: a tela de baixo não se redesenha a cada abrir e fechar, e a ficha começa a carregar quando o mouse para em cima do cartão. E o Trazer do Helena traz também um painel que não é de vendas, como o de atividades: ele vira um painel de Gestão, e cada card, um chamado.",
   "items": [
     {
       "kind": "corrigido",
@@ -24,6 +24,11 @@ export const NOTA_DEMO: { version: string; title: string; summary: string; items
       "kind": "novo",
       "title": "A ficha carrega antes do clique",
       "text": "Com o mouse parado em cima de um cartão do quadro ou de uma linha da lista, a ficha já começa a carregar: no clique, ela abre pronta. O mesmo no Abrir o quadro da tela dos painéis e no Painel do Suporte e no Painel do Comercial do menu."
+    },
+    {
+      "kind": "novo",
+      "title": "Trazer do Helena: o painel de atividades vira um painel de Gestão",
+      "text": "Em Administração › Importar / Exportar › Trazer do Helena, o painel do Helena que não é de vendas (as suas atividades, os chamados internos) vai para um painel de Gestão: um novo, com o nome e a sigla de lá, ou um que já existe. Cada card vira um chamado, nas etapas de lá: \"Concluído\" resolve e \"Validado\" fecha. O painel novo não conta prazo e só quem está nos cards e quem traz veem. A prévia mostra quantos ficam abertos, resolvidos e fechados antes de gravar."
     }
   ]
 };
