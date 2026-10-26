@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { instanteLocal } from './atendimento-prazos.js';
 import { AJUSTES_DO_PAINEL_DE_VENDAS, textoDoEvento, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
 import {
-  centavosDoHelena, chaveDoNome, corDaEtiquetaDoHelena, empresaDoCard, empresaDoTitulo, historicoDoCard, lerLinhaDoHelena, ligarEtapasDoEvento,
+  aplicarPlanilhaDoHelena, centavosDoHelena, chaveDoNome, corDaEtiquetaDoHelena, diaDaPlanilha, empresaDoCard, empresaDoTitulo, historicoDoCard, lerCsvSimples,
+  lerLinhaDoHelena, lerPlanilhaDoHelena, ligarEtapasDoEvento, linkDoCsvDaPlanilha,
   ligarPessoas, numerarNegociacoes, papelDoCampo, planoDaImportacao, planoDasEtapas, planoDosCampos, resumoDaImportacao, siglaDoPainelNovo,
   tipoDoCampoDoHelena, tituloDoHelena, valorDoCampoNoGestor, valorDoHelena, valorDoHelenaParaOCampo, valoresDoCard,
   type CampoDoHelena, type CardDoHelena, type EstadoDoGestorParaHelena, type EtapaDoHelena, type LeituraDoHelena, type LogDoHelena, type OpcoesDoHistorico,
@@ -540,5 +541,117 @@ describe('o plano inteiro: a prévia e o relatório do Gestor igual ao do Helena
     expect(p.previa.campos.usa).toEqual(['CNPJ', 'Origem de lead', 'Indicação']);
     expect(p.campos.find((c) => c.chave === 'origem-de-lead-1')!.opcoesNovas).toEqual(['Prospecção ativa', 'Feira']);
     expect(p.motivosDePerda).toEqual(['Preço', 'Perfil fora do público-alvo']);
+  });
+});
+
+describe('a planilha do Helena: a Conclusão que a chave de API não lê (2.1.1)', () => {
+  // como a chave de API leu no ar (24/10): sem o histórico, sem a Conclusão e sem o motivo
+  const daApi: LeituraDoHelena = {
+    lidaEm: '2026-10-24T13:00:00Z',
+    usuarios: [{ id: 'u-luan', nome: 'Luan França' }],
+    painel: { id: 'painel-h', nome: 'Ingline - Comercial', sigla: 'IC', etapas: etapasDoHelena, campos: CAMPOS_H, etiquetas: [] },
+    cards: [
+      card({ id: 'c1', numero: 34, codigo: 'IC-34', titulo: 'Padaria Estrela - LinePBX', situacao: 'WON', etapa: 'Cliente na base', valor: 99_000, criadoEm: '2026-09-01T12:00:00Z', alteradoEm: '2026-10-02T13:00:00Z', logs: null }),
+      card({ id: 'c2', numero: 12, codigo: 'IC-12', titulo: 'Loja Nova (Cópia)', situacao: 'WON', etapa: 'Cliente na base', valor: 190_000, criadoEm: '2026-02-10T12:00:00Z', alteradoEm: '2026-09-14T17:56:10Z', logs: null }),
+      card({ id: 'c3', numero: 5, codigo: 'IC-5', titulo: 'Hotel Mar - WhatsApp', situacao: 'LOST', etapa: 'StandBy', criadoEm: '2026-02-16T13:31:35Z', alteradoEm: '2026-09-14T18:00:00Z', logs: null }),
+      card({ id: 'c4', numero: 60, codigo: 'IC-60', titulo: 'Clínica Sol - LineChat', situacao: 'OPEN', etapa: 'Aguardando Envio Proposta', valor: 145_000, logs: null }),
+      // a Conclusão que a API mandou continua valendo (outra conta do Helena pode mandar)
+      card({ id: 'c5', numero: 70, codigo: 'IC-70', titulo: 'Mercado Bom - LinePBX', situacao: 'WON', etapa: 'Cliente na base', valor: 50_000, criadoEm: '2026-07-01T12:00:00Z', alteradoEm: '2026-09-20T12:00:00Z', concluidoEm: '2026-07-20T15:00:00Z', logs: null }),
+    ],
+  };
+  const estado: EstadoDoGestorParaHelena = {
+    painel: null, painelNovo: { nome: 'Comercial', sigla: 'IC' }, pessoas: [{ id: 'p-luan', nome: 'Luan França' }],
+    clientes: [], produtos: PRODUTOS, etiquetas: [], importadas: {}, numerosOcupados: [], hoje: '2026-10-24',
+  };
+  // a planilha do "Exportar" do Helena, baixada do Google Planilhas como CSV (as colunas de lá, na ordem de lá)
+  const CSV = [
+    'Código,Data criação,Fase,Título,Descrição,Valor atribuído,Situação,Conclusão,Motivo da perda,Informações Lead - CNPJ',
+    'IC-34,01/09/2026 09:00,Cliente na base,Padaria Estrela - LinePBX,,"R$ 990,00",Ganho,02/10/2026,,',
+    'IC-12,10/02/2026 09:00,Cliente na base,Loja Nova (Cópia),"Duas linhas,\nna descrição","R$ 1.900,00",Ganho,15/02/2026,,',
+    'IC-5,16/02/2026 10:31,StandBy,Hotel Mar - WhatsApp,,,Perdido,18/06/2026,Perfil fora do público-alvo,',
+    'IC-60,01/10/2026 09:00,Aguardando Envio Proposta,Clínica Sol - LineChat,,"R$ 1.450,00",Em andamento,,,',
+    'IC-70,01/07/2026 09:00,Cliente na base,Mercado Bom - LinePBX,,"R$ 500,00",Ganho,25/07/2026,,',
+    'IC-99,01/03/2026 09:00,StandBy,De outro painel,,,Perdido,02/03/2026,Preço,',
+  ].join('\r\n');
+
+  it('lê o CSV do Google Planilhas, o do Excel (ponto e vírgula) e o que se copia e cola (tabulação)', () => {
+    expect(lerCsvSimples('a,"b, c","d ""e"""\r\n1,2,3')).toEqual([['a', 'b, c', 'd "e"'], ['1', '2', '3']]);
+    expect(lerCsvSimples('﻿Código;Conclusão\nIC-1;05/05/2026\n\n')).toEqual([['Código', 'Conclusão'], ['IC-1', '05/05/2026']]);
+    expect(lerCsvSimples('Código\tConclusão\nIC-1\t05/05/2026')).toEqual([['Código', 'Conclusão'], ['IC-1', '05/05/2026']]);
+    expect(lerCsvSimples('a,"linha 1\nlinha 2",b')).toEqual([['a', 'linha 1\nlinha 2', 'b']]);
+    expect(diaDaPlanilha('05/05/2026')).toBe('2026-05-05');
+    expect(diaDaPlanilha('5/5/2026 12:00')).toBe('2026-05-05');
+    expect(diaDaPlanilha('2026-05-05')).toBe('2026-05-05');
+    expect(diaDaPlanilha('31/02/2026')).toBeNull();
+    expect(diaDaPlanilha('')).toBeNull();
+  });
+
+  it('a planilha do Helena: o código, a situação, a Conclusão e o motivo; sem as colunas, diz o que falta', () => {
+    const r = lerPlanilhaDoHelena(CSV);
+    expect(r.erro).toBeNull();
+    expect(r.linhas).toHaveLength(6);
+    expect(r.linhas![1]).toEqual({ codigo: 'IC-12', situacao: 'Ganho', conclusao: '2026-02-15', motivo: null });
+    expect(r.linhas![2]).toEqual({ codigo: 'IC-5', situacao: 'Perdido', conclusao: '2026-06-18', motivo: 'Perfil fora do público-alvo' });
+    expect(r.linhas![3]!.conclusao).toBeNull();
+    expect(lerPlanilhaDoHelena('Título,Valor\nA,1').erro).toBe('A planilha não tem as colunas Código e Conclusão. Use a do Helena: no painel, em Lista, o botão Exportar.');
+    expect(lerPlanilhaDoHelena('   ').erro).toBe('A planilha veio vazia.');
+    expect(lerPlanilhaDoHelena('<!DOCTYPE html><html>').erro).toContain('Isto é uma página');
+    expect(lerPlanilhaDoHelena('Código,Conclusão\n,').erro).toBe('A planilha não tem nenhum card (nenhuma linha com o Código).');
+  });
+
+  it('o link do Google Planilhas vira o do CSV; outro endereço, não', () => {
+    const id = '1AbCdEfGhIjKlMnOpQrStUvWxYz_0123456789-ab';
+    expect(linkDoCsvDaPlanilha(`https://docs.google.com/spreadsheets/d/${id}/edit#gid=0`)).toBe(`https://docs.google.com/spreadsheets/d/${id}/export?format=csv&gid=0`);
+    expect(linkDoCsvDaPlanilha(`https://docs.google.com/spreadsheets/u/0/d/${id}/edit?usp=sharing`)).toBe(`https://docs.google.com/spreadsheets/d/${id}/export?format=csv`);
+    expect(linkDoCsvDaPlanilha(`http://docs.google.com/spreadsheets/d/${id}/edit`)).toBeNull();
+    expect(linkDoCsvDaPlanilha(`https://docs.google.com.exemplo.com/spreadsheets/d/${id}`)).toBeNull();
+    expect(linkDoCsvDaPlanilha('https://docs.google.com/document/d/abc/edit')).toBeNull();
+    expect(linkDoCsvDaPlanilha('não é link')).toBeNull();
+  });
+
+  it('sem a planilha, os ganhos caem no mês da última mudança (o que se viu no ar), e a prévia diz o que fazer', () => {
+    const p = planoDaImportacao(daApi, estado).previa;
+    expect(p.ganhosPorMes.filter((m) => m.qtd).map((m) => [m.mes, m.valor])).toEqual([['2026-07', 50_000], ['2026-09', 190_000], ['2026-10', 99_000]]);
+    expect(p.historico.semConclusao).toBe(3);
+    expect(p.planilha).toBeNull();
+    expect(p.avisos).toContain('3 negociações ganhas ou perdidas vieram sem a Conclusão do Helena (a chave de API do LineChat não lê essa data): acabam no dia em que foram marcadas (ou no da última mudança do card), e os ganhos mês a mês não batem com o relatório de lá. Use a planilha do Helena: no painel, em Lista, o botão Exportar.');
+  });
+
+  it('com a planilha, cada ganho cai no mês da Conclusão, como no relatório do Helena; a perda leva o motivo', () => {
+    const lida = lerPlanilhaDoHelena(CSV);
+    const leitura = aplicarPlanilhaDoHelena(daApi, lida.linhas!, { origem: 'arquivo', nome: 'Exportação do Painel.csv' });
+    expect(leitura.planilha).toEqual({ origem: 'arquivo', nome: 'Exportação do Painel.csv', linhas: 6, casadas: 5, conclusoes: 3, semConclusao: 0, foraDaLeitura: 1 });
+    // a leitura da API não muda (trocar a planilha refaz a partir dela)
+    expect(daApi.cards[0]!.concluidoEm).toBeNull();
+    const c = (id: string) => leitura.cards.find((x) => x.id === id)!;
+    expect(c('c1').concluidoEm).toBe('2026-10-02T15:00:00.000Z');
+    expect(c('c3')).toMatchObject({ concluidoEm: '2026-06-18T15:00:00.000Z', motivo: 'Perfil fora do público-alvo' });
+    // a em andamento fica sem; a que a API já mandou com a Conclusão fica com a dela
+    expect(c('c4').concluidoEm).toBeNull();
+    expect(c('c5').concluidoEm).toBe('2026-07-20T15:00:00Z');
+
+    const plano = planoDaImportacao(leitura, estado);
+    const p = plano.previa;
+    expect(p.ganhosPorMes.filter((m) => m.qtd).map((m) => [m.mes, m.valor])).toEqual([['2026-02', 190_000], ['2026-07', 50_000], ['2026-10', 99_000]]);
+    expect(p.historico.semConclusao).toBe(0);
+    expect(p.planilha).toEqual(leitura.planilha);
+    expect(p.avisos).toContain('A Conclusão de 3 negociações veio da planilha do Helena (Exportação do Painel.csv), com 6 linhas (5 de cards lidos).');
+    expect(p.avisos).toContain('1 linha da planilha não é de nenhum card lido (o card arquivado, ou de outro painel): fica de fora.');
+    expect(p.avisos.some((a) => a.includes('sem a Conclusão'))).toBe(false);
+    const n = (id: string) => plano.negociacoes.find((x) => x.helenaId === id)!;
+    expect(n('c2')).toMatchObject({ resultado: 'ganho', fechadoEm: '2026-02-15T15:00:00.000Z' });
+    expect(n('c3')).toMatchObject({ resultado: 'perdido', fechadoEm: '2026-06-18T15:00:00.000Z', motivoPerda: 'Perfil fora do público-alvo' });
+    // o ganho cai no dia da Conclusão também no histórico (o "fechou em" da ficha)
+    const ganho = n('c2').eventos.find((e) => e.dados.resultado === 'ganho')!;
+    expect(ganho.em.slice(0, 10)).toBe('2026-02-15');
+  });
+
+  it('a ganha que a planilha não tem continua sem a Conclusão, e a prévia diz quantas', () => {
+    const so = lerPlanilhaDoHelena(CSV.split('\r\n').filter((l) => !l.startsWith('IC-12')).join('\n'));
+    const leitura = aplicarPlanilhaDoHelena(daApi, so.linhas!, { origem: 'link' });
+    expect(leitura.planilha).toMatchObject({ origem: 'link', nome: null, conclusoes: 2, semConclusao: 1 });
+    const p = planoDaImportacao(leitura, estado).previa;
+    expect(p.historico.semConclusao).toBe(1);
+    expect(p.avisos).toContain('1 negociação ganha ou perdida continua sem a Conclusão (não está na planilha, ou está sem a data): acaba no dia em que foi marcada (ou no da última mudança do card).');
   });
 });

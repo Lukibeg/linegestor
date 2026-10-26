@@ -7,6 +7,10 @@
  * acompanha ("lendo 23 de 55"). Ela fica guardada aqui por duas horas: a prévia e o "Trazer" usam o que foi
  * lido, sem ler o Helena de novo (o que a pessoa viu é o que é gravado).
  *
+ * A planilha do Helena (2.1.1): a chave de API não lê a Conclusão (nem o histórico), e a leitura se completa com
+ * a planilha que o "Exportar" do Helena faz — pelo link do Google Planilhas (o servidor baixa o CSV dela) ou pelo
+ * arquivo .csv. Trocar a planilha refaz a partir da leitura da API.
+ *
  * O que o "Trazer" grava, numa transação só: o painel (o novo, quando nenhum painel de Vendas foi escolhido),
  * as etapas, os campos, os motivos de perda, as etiquetas no catálogo e cada negociação com o histórico. A
  * negociação guarda o card de lá (`tickets.external_ref`): trazendo de novo, ela é atualizada e o histórico
@@ -17,14 +21,15 @@ import { and, asc, eq, inArray, isNull, like, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { clients, newId, products, ticketEvents, ticketFields, ticketPanels, ticketStages, ticketTags, tickets, users, type Db } from '@gestor/db';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, chaveDaEtiqueta, chaveDoNome, codigoDoChamado, ehLista, ligarEtapasDoEvento,
+  AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, LIMITES_DA_PLANILHA_DO_HELENA, MENSAGENS_DA_PLANILHA_DO_HELENA, ajustesDoPainelCompletos, chaveDaEtiqueta,
+  chaveDoNome, codigoDoChamado, ehLista, leituraComAPlanilha, ligarEtapasDoEvento, linkDoCsvDaPlanilha,
   obrigatoriosDoPainel, planoDaImportacao, resumoDaImportacao, siglaDoPainelNovo, textoDoCard, valorDoCampoNoGestor,
   type AjustesDoPainel, type CardDoHelena, type EstadoDoGestorParaHelena, type LeituraDoHelena, type LeituraDoHelenaNaTela, type Obrigatorio,
-  type OpcaoDoCampo, type OpcoesDoTrazerDoHelena, type PainelDoGestorParaHelena, type PlanoDaImportacao, type PreviaDoHelena,
+  type OpcaoDoCampo, type OpcoesDoTrazerDoHelena, type PainelDoGestorParaHelena, type PlanilhaParaALeitura, type PlanoDaImportacao, type PreviaDoHelena,
   type ResultadoDaVenda, type ResultadoDoTrazerDoHelena, type TipoEtapa, type ValoresDosCampos,
 } from '@gestor/shared';
 import { AppError, BadRequest, NotFound } from '../plugins/errors.js';
-import { clienteDaApi, type CardApi, type CardComHistoricoApi, type LineChatApi } from './linechat.js';
+import { ErroDoLineChat, clienteDaApi, type CardApi, type CardComHistoricoApi, type LineChatApi } from './linechat.js';
 import type { SecretsVault } from './secrets.js';
 import { aplicarEtapas, planejarEtapas, type EtapaGravar, type Tx } from './atendimento/ajustes.js';
 import { carregarCampos, pessoaDoAtor, type Ator } from './atendimento/contexto.js';
@@ -76,11 +81,13 @@ async function destinosDoGestor(db: Db) {
 //  A LEITURA (por fora do pedido da tela)
 // =====================================================================
 
-type Leitura = LeituraDoHelenaNaTela & { porId: string | null; leitura: LeituraDoHelena | null; criadaEm: number };
+/** `daApi`: o que veio da API, sem a planilha (trocar a planilha refaz a partir dela); `leitura`: a que vale. */
+type Leitura = LeituraDoHelenaNaTela & { porId: string | null; daApi: LeituraDoHelena | null; leitura: LeituraDoHelena | null; criadaEm: number };
 const leituras = new Map<string, Leitura>();
 
 const naTela = (l: Leitura): LeituraDoHelenaNaTela => ({
   id: l.id, painelId: l.painelId, painelNome: l.painelNome, estado: l.estado, lidos: l.lidos, total: l.total, erro: l.erro, comecouEm: l.comecouEm, acabouEm: l.acabouEm,
+  planilha: l.leitura?.planilha ?? null,
 });
 
 function limparLeituras(agora = Date.now()) {
@@ -97,11 +104,11 @@ export function comecarLeitura(app: FastifyInstance, ator: Ator, painelId: strin
   const agora = new Date();
   const l: Leitura = {
     id: newId(), painelId, painelNome: null, estado: 'lendo', lidos: 0, total: null, erro: null,
-    comecouEm: agora.toISOString(), acabouEm: null, porId: pessoaDoAtor(ator), leitura: null, criadaEm: agora.getTime(),
+    comecouEm: agora.toISOString(), acabouEm: null, porId: pessoaDoAtor(ator), daApi: null, leitura: null, criadaEm: agora.getTime(),
   };
   leituras.set(l.id, l);
   void lerOHelena(app.db, app.vault, l).then((leitura) => {
-    l.leitura = leitura; l.estado = 'pronta';
+    l.daApi = leitura; l.leitura = leitura; l.estado = 'pronta';
   }).catch((e: unknown) => {
     l.erro = e instanceof Error ? e.message : String(e); l.estado = 'erro';
     app.log.warn({ err: e, painelId }, 'Trazer do Helena: a leitura falhou');
@@ -150,7 +157,8 @@ export function cardDoHelena(c: CardApi, d: CardComHistoricoApi | null): CardDoH
     criadoEm: c.createdAt ?? d?.createdAt,
     alteradoEm: c.updatedAt ?? d?.updatedAt ?? c.createdAt,
     concluidoEm: d?.resultChangedAt ?? c.resultChangedAt ?? null,
-    motivo: d?.resultDescription ?? c.resultDescription ?? null,
+    // o motivo da perda: o do card (a v1), ou o da lista (o LostReason da API pública, 2.1.1)
+    motivo: d?.resultDescription ?? c.resultDescription ?? c.lostReason?.name ?? d?.lostReason?.name ?? null,
     valor: typeof valor === 'number' && Number.isFinite(valor) && valor > 0 ? Math.round(valor * 100) : null,
     responsavelId: c.responsibleUserId ?? d?.responsibleUserId ?? null,
     criadoPorId: d?.createdByUserId ?? c.createdByUserId ?? null,
@@ -166,7 +174,13 @@ async function lerOHelena(db: Db, vault: SecretsVault, l: Leitura): Promise<Leit
   const { api } = await clienteDaApi(db, vault, ferramentas.fetchFn);
   const [painel, campos] = await Promise.all([api.painel(l.painelId), api.campos(l.painelId)]);
   l.painelNome = painel.title;
-  const cards = await api.cards(l.painelId);
+  // o motivo da perda vem na lista (o LostReason da API pública, 2.1.1); se o LineChat recusar o detalhe, a lista
+  // vem sem ele (o motivo sai da planilha do Helena)
+  let cards: CardApi[];
+  try { cards = await api.cards(l.painelId, undefined, ['LostReason']); } catch (e) {
+    if (!(e instanceof ErroDoLineChat)) throw e;
+    cards = await api.cards(l.painelId);
+  }
   l.total = cards.length;
   const { detalhes, falha } = await historicos(api, cards, l);
   // quem é quem: a lista da conta (quando a chave pode ler) e o que os cards dizem
@@ -179,8 +193,9 @@ async function lerOHelena(db: Db, vault: SecretsVault, l: Leitura): Promise<Leit
   // o que o LineChat recusou no pedido do card (2.1): o detalhe sai e o resto vem
   if (api.recusasDoCard.length) {
     const recusas = [...new Set(api.recusasDoCard)].map((r) => `"${r}"`).join(', ');
+    // no ar (24/10), a chave recusou os dois, e o card veio sem a Conclusão: ela vem da planilha do Helena (2.1.1)
     avisos.push(api.cardComHistorico === false
-      ? `O LineChat não aceitou pedir o histórico junto do card (recusou ${recusas}): as negociações vêm sem o histórico, com a Conclusão de cada card.`
+      ? `A chave de API do LineChat não lê o histórico dos cards (recusou ${recusas}): as negociações nascem na etapa em que estão.`
       : api.cardComHistorico ? `O LineChat recusou ${recusas} no pedido do card; o resto veio.` : `O LineChat recusou ${recusas} no pedido do card.`);
   }
   return {
@@ -218,6 +233,67 @@ async function historicos(api: LineChatApi, cards: CardApi[], l: Leitura): Promi
     l.lidos++;
   }
   return { detalhes, falha };
+}
+
+// =====================================================================
+//  A PLANILHA DO HELENA (2.1.1)
+// =====================================================================
+
+/**
+ * Completa a leitura com a planilha do Helena (o link do Google Planilhas ou o texto do .csv): a Conclusão e o
+ * motivo que a chave de API não lê. Sempre a partir da leitura da API: trocar a planilha refaz.
+ */
+export async function usarPlanilha(id: string, entrada: PlanilhaParaALeitura): Promise<LeituraDoHelenaNaTela> {
+  const l = pegar(id);
+  pronta(id);
+  const link = entrada.link?.trim() || null;
+  const csv = entrada.csv ?? null;
+  if (!!link === (csv !== null && csv.trim() !== '')) throw new BadRequest(MENSAGENS_DA_PLANILHA_DO_HELENA.umDosDois);
+  const texto = link ? await baixarPlanilha(link) : csv!;
+  const r = leituraComAPlanilha(l.daApi!, texto, { origem: link ? 'link' : 'arquivo', nome: link ? null : entrada.nome ?? null });
+  if (r.erro !== null) throw new BadRequest(r.erro);
+  l.leitura = r.leitura;
+  return naTela(l);
+}
+
+/** Os endereços para onde o Google manda baixar o CSV (o próprio Google e os arquivos dele). */
+const hostDoGoogle = (h: string) => h === 'docs.google.com' || h.endsWith('.googleusercontent.com');
+
+/**
+ * Baixa o CSV da planilha pelo link. Só o Google Planilhas: o endereço do CSV é montado aqui (o link só dá o
+ * id da planilha), e o desvio só é seguido para o próprio Google. A planilha precisa estar aberta para quem
+ * tem o link (a do "Exportar" do Helena está).
+ */
+async function baixarPlanilha(link: string): Promise<string> {
+  let url = linkDoCsvDaPlanilha(link);
+  if (!url) throw new BadRequest(MENSAGENS_DA_PLANILHA_DO_HELENA.naoEGoogle);
+  const fechada = MENSAGENS_DA_PLANILHA_DO_HELENA.fechada;
+  for (let desvios = 0; ; desvios++) {
+    let r: Response;
+    try {
+      r = await ferramentas.fetchFn(url, { redirect: 'manual', headers: { accept: 'text/csv,*/*' }, signal: AbortSignal.timeout(30_000) });
+    } catch (e) {
+      const motivo = e instanceof Error ? (e.name === 'TimeoutError' ? 'não respondeu em 30 segundos' : e.message) : String(e);
+      throw new AppError(502, `Não consegui baixar a planilha do Google (${motivo}). Tente de novo, ou baixe ela como .csv e escolha o arquivo.`);
+    }
+    if (r.status >= 300 && r.status < 400) {
+      const para = r.headers.get('location');
+      let destino: URL | null = null;
+      try { destino = para ? new URL(para, url) : null; } catch { destino = null; }
+      // o desvio para a tela de entrar do Google: a planilha não está aberta para quem tem o link
+      if (!destino || desvios >= 3 || destino.protocol !== 'https:' || !hostDoGoogle(destino.hostname)) throw new BadRequest(fechada);
+      url = destino.toString();
+      continue;
+    }
+    if (r.status === 401 || r.status === 403 || r.status === 404) throw new BadRequest(fechada);
+    if (!r.ok) throw new AppError(502, `O Google respondeu ${r.status} ao baixar a planilha. Tente de novo, ou baixe ela como .csv e escolha o arquivo.`);
+    const tamanho = Number(r.headers.get('content-length') ?? 0);
+    if (tamanho > LIMITES_DA_PLANILHA_DO_HELENA.letras) throw new BadRequest(MENSAGENS_DA_PLANILHA_DO_HELENA.grande);
+    const texto = await r.text();
+    // a página de entrar do Google (200, em HTML) também é planilha fechada
+    if (/text\/html/i.test(r.headers.get('content-type') ?? '') || /^\s*<(!doctype|html)/i.test(texto)) throw new BadRequest(fechada);
+    return texto;
+  }
 }
 
 // =====================================================================

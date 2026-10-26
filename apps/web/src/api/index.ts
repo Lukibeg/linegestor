@@ -5,7 +5,7 @@
 import type * as T from './types.js';
 import type {
   AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
-  LeituraDoHelenaNaTela, OpcoesDoTrazerDoHelena, PreviaDoHelena, ResultadoDoTrazerDoHelena,
+  LeituraDoHelenaNaTela, OpcoesDoTrazerDoHelena, PlanilhaParaALeitura, PreviaDoHelena, ResultadoDoTrazerDoHelena,
   Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
 } from '@gestor/shared';
 import { API_BASE } from './base.js';
@@ -465,6 +465,11 @@ export type Api = {
     /** começa a ler (os cards e o histórico de cada um): roda por fora, e a tela acompanha */
     ler(painelId: string): Promise<LeituraDoHelenaNaTela>;
     leitura(id: string): Promise<LeituraDoHelenaNaTela>;
+    /**
+     * completa a leitura com a planilha do Helena (2.1.1): a Conclusão que a chave de API não lê. O link do
+     * Google Planilhas ou o texto do .csv; nada é gravado
+     */
+    planilha(id: string, entrada: PlanilhaParaALeitura): Promise<LeituraDoHelenaNaTela>;
     /** o que vai acontecer (`destino` nulo = um painel de Vendas novo): nada é gravado */
     previa(id: string, destino: string | null): Promise<PreviaDoHelena>;
     /** grava o que a prévia mostrou; de novo, atualiza o que já veio */

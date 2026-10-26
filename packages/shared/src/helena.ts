@@ -24,6 +24,10 @@
  *    cards ARQUIVADOS também (no Helena, não aparecem mais no quadro);
  *  - pode rodar de novo até a virada: o que já veio é atualizado (a negociação fica como está no Helena e o
  *    histórico que veio de lá é refeito), o que é novo entra.
+ *
+ * Revisto no 2.1.1 (24/10): no ar, a chave de API do LineChat não lê o histórico nem a Conclusão (a API pública
+ * não tem essa data). A Conclusão vem da PLANILHA que o "Exportar" do Helena faz (a seção abaixo): o link do
+ * Google Planilhas ou o .csv baixado dela. Sem a planilha, cada ganho cai no dia da última mudança do card.
  */
 import { diaLocal } from './atendimento-prazos.js';
 import {
@@ -86,6 +90,27 @@ export type LeituraDoHelena = {
   lidaEm: string;
   /** o que a leitura tem a dizer (por que o histórico não veio, por exemplo): entra nos avisos da prévia */
   avisos?: string[];
+  /** a planilha do Helena que completou a leitura (2.1.1): a Conclusão que a chave de API não lê */
+  planilha?: ResumoDaPlanilhaDoHelena | null;
+};
+
+/**
+ * A planilha do Helena usada na leitura (2.1.1): de onde veio, quantas linhas tinha, quantas são de um card lido
+ * e quantas ganhas e perdidas ganharam a Conclusão por ela.
+ */
+export type ResumoDaPlanilhaDoHelena = {
+  origem: 'link' | 'arquivo';
+  /** o nome do arquivo (nulo: veio pelo link) */
+  nome: string | null;
+  linhas: number;
+  /** as linhas de um card lido (pelo código, IC-34) */
+  casadas: number;
+  /** as ganhas e as perdidas que ficaram com a Conclusão da planilha */
+  conclusoes: number;
+  /** as ganhas e as perdidas que continuam sem a Conclusão (não estão na planilha, ou estão sem a data) */
+  semConclusao: number;
+  /** as linhas que não são de nenhum card lido (outro painel, ou o card arquivado) */
+  foraDaLeitura: number;
 };
 
 /** Os painéis do Helena para escolher (só os de vendas trazem negociações). */
@@ -114,7 +139,15 @@ export type LeituraDoHelenaNaTela = {
   erro: string | null;
   comecouEm: string;
   acabouEm: string | null;
+  /** a planilha do Helena que completou a leitura (2.1.1) */
+  planilha?: ResumoDaPlanilhaDoHelena | null;
 };
+
+/**
+ * A planilha para completar a leitura (2.1.1): o link do Google Planilhas que o "Exportar" do Helena abre, ou o
+ * arquivo .csv baixado dela (o texto, com o nome). Um dos dois.
+ */
+export type PlanilhaParaALeitura = { link?: string | null; csv?: string | null; nome?: string | null };
 
 /** O que voltou do "Trazer": a frase, o painel que recebeu e a prévia do que foi feito. */
 export type ResultadoDoTrazerDoHelena = { resumo: string; painelId: string; painelNome: string; sigla: string; previa: PreviaDoHelena };
@@ -443,6 +476,182 @@ export function ligarEtapasDoEvento(tipo: TipoEvento, dados: Record<string, any>
   if (tipo === 'criado') return { ...dados, etapaId: idDaEtapa(dados.etapa) };
   if (tipo === 'etapa') return { ...dados, de: com(dados.de), para: com(dados.para) };
   return dados;
+}
+
+// =====================================================================
+//  A PLANILHA DO HELENA: a Conclusão que a chave de API não lê (2.1.1)
+// =====================================================================
+//
+// No ar (24/10), a chave de API do LineChat recusou o histórico e o motivo no pedido do card ("Logs" e
+// "ResultDescription") e o card veio sem a Conclusão: a API pública não tem essa data (a documentação do Helena
+// confirma), e cada ganho caía no dia da última mudança do card — quase tudo em setembro, quando as vendas
+// antigas foram lançadas lá. A tela do Helena tem a Conclusão, e o "Exportar" da Lista do painel a põe numa
+// planilha (o Google Planilhas): somando os ganhos por ela, dá o gráfico "Meta vs Ganho mensal" de lá, mês a mês.
+
+/** Uma linha da planilha do Helena: o card (pelo código) e o que a chave não lê. */
+export type LinhaDaPlanilhaDoHelena = {
+  /** "IC-34" */
+  codigo: string;
+  /** "Ganho", "Perdido", "Em andamento" */
+  situacao: string | null;
+  /** o dia da Conclusão (AAAA-MM-DD) */
+  conclusao: string | null;
+  motivo: string | null;
+};
+
+/** Os limites da planilha: o arquivo (o texto) e as linhas. */
+export const LIMITES_DA_PLANILHA_DO_HELENA = { letras: 5_000_000, linhas: 20_000 } as const;
+
+/**
+ * Lê um CSV (a vírgula do Google Planilhas, o ponto e vírgula do Excel ou a tabulação de quem copia e cola): o
+ * separador é o que mais aparece na primeira linha, fora das aspas. As aspas seguem o jeito de sempre ("" é uma
+ * aspa, e a quebra de linha entre aspas fica dentro da célula).
+ */
+export function lerCsvSimples(texto: string): string[][] {
+  const t = texto.replace(/^﻿/, '');
+  const fim = t.search(/\r?\n/);
+  const primeira = fim > 0 ? t.slice(0, fim) : t;
+  const contar = (s: string) => { let n = 0, aspas = false; for (const ch of primeira) { if (ch === '"') aspas = !aspas; else if (!aspas && ch === s) n++; } return n; };
+  const [maisVisto] = ['\t', ';', ','].map((s) => [s, contar(s)] as const).sort((a, b) => b[1] - a[1]);
+  const sep = maisVisto![1] > 0 ? maisVisto![0] : ',';
+  const linhas: string[][] = [];
+  let linha: string[] = [];
+  let celula = '';
+  let dentro = false;
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i]!;
+    if (dentro) {
+      if (ch === '"') {
+        if (t[i + 1] === '"') { celula += '"'; i++; } else dentro = false;
+      } else celula += ch;
+      continue;
+    }
+    if (ch === '"' && celula === '') { dentro = true; continue; }
+    if (ch === sep) { linha.push(celula); celula = ''; continue; }
+    if (ch === '\r' && t[i + 1] === '\n') continue;
+    if (ch === '\n' || ch === '\r') { linha.push(celula); linhas.push(linha); linha = []; celula = ''; continue; }
+    celula += ch;
+  }
+  if (celula !== '' || linha.length) { linha.push(celula); linhas.push(linha); }
+  return linhas.filter((l) => l.some((c) => c.trim() !== ''));
+}
+
+/** "05/05/2026", "05/05/2026 12:00" ou "2026-05-05" → "2026-05-05"; o que não for um dia de verdade, nulo. */
+export function diaDaPlanilha(s: string | null | undefined): string | null {
+  const t = (s ?? '').trim();
+  let m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T].*)?$/.exec(t);
+  let a: number, mes: number, d: number;
+  if (m) { d = Number(m[1]); mes = Number(m[2]); a = Number(m[3]); } else {
+    m = /^(\d{4})-(\d{2})-(\d{2})(?:[ T].*)?$/.exec(t);
+    if (!m) return null;
+    a = Number(m[1]); mes = Number(m[2]); d = Number(m[3]);
+  }
+  const data = new Date(Date.UTC(a, mes - 1, d));
+  if (data.getUTCFullYear() !== a || data.getUTCMonth() !== mes - 1 || data.getUTCDate() !== d || a < 2000 || a > 2100) return null;
+  return data.toISOString().slice(0, 10);
+}
+
+/** O que se diz da planilha (o servidor e a prévia dizem igual). */
+export const MENSAGENS_DA_PLANILHA_DO_HELENA = {
+  umDosDois: 'Mande o link da planilha do Helena ou o arquivo .csv dela (um dos dois).',
+  naoEGoogle: 'Esse link não é de uma planilha do Google Planilhas. Use o link da planilha que o Exportar do Helena abre (docs.google.com/spreadsheets/…), ou baixe ela como .csv e escolha o arquivo.',
+  fechada: 'O Google não deixou baixar a planilha: ela não está aberta para quem tem o link. Na planilha, baixe como .csv (Arquivo › Fazer download) e escolha o arquivo.',
+  grande: 'A planilha é grande demais (mais de 5 MB): é a do painel de vendas do Helena?',
+  nenhumaDoPainel: (painel: string, exemplo: string | null) => `Nenhuma linha da planilha é de um card do painel ${painel} (o código, como ${exemplo ?? 'IC-34'}). É a planilha desse painel?`,
+} as const;
+
+/** O código como o Helena escreve, para comparar ("ic-34 " = "IC-34"). */
+const chaveDoCodigo = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, '').toUpperCase();
+
+/**
+ * Lê a planilha que o "Exportar" do Helena faz (as colunas Código, Situação, Conclusão e Motivo da perda; as
+ * outras ficam). O cabeçalho é a primeira linha que tem o Código e a Conclusão. Sem eles, diz o que falta.
+ */
+export function lerPlanilhaDoHelena(texto: string): { linhas: LinhaDaPlanilhaDoHelena[]; erro: null } | { linhas: null; erro: string } {
+  if (!texto.trim()) return { linhas: null, erro: 'A planilha veio vazia.' };
+  if (texto.length > LIMITES_DA_PLANILHA_DO_HELENA.letras) return { linhas: null, erro: MENSAGENS_DA_PLANILHA_DO_HELENA.grande };
+  if (/^\s*<(!doctype|html)/i.test(texto)) return { linhas: null, erro: 'Isto é uma página, não a planilha: use o link da planilha do Helena (o Google Planilhas) ou o arquivo .csv baixado dela.' };
+  const tabela = lerCsvSimples(texto);
+  const k = (s: string) => chaveDoNome(s);
+  const iCab = tabela.findIndex((l) => l.some((c) => k(c) === 'codigo') && l.some((c) => k(c) === 'conclusao'));
+  if (iCab < 0) {
+    return { linhas: null, erro: 'A planilha não tem as colunas Código e Conclusão. Use a do Helena: no painel, em Lista, o botão Exportar.' };
+  }
+  const cab = tabela[iCab]!.map(k);
+  const col = (nome: string) => cab.indexOf(nome);
+  const [cCodigo, cConclusao, cSituacao, cMotivo] = [col('codigo'), col('conclusao'), col('situacao'), cab.findIndex((c) => c === 'motivo da perda' || c === 'motivo de perda' || c === 'motivo')];
+  const linhas: LinhaDaPlanilhaDoHelena[] = [];
+  for (const l of tabela.slice(iCab + 1, iCab + 1 + LIMITES_DA_PLANILHA_DO_HELENA.linhas)) {
+    const codigo = (l[cCodigo] ?? '').trim();
+    if (!codigo) continue;
+    const valor = (i: number) => (i >= 0 ? (l[i] ?? '').trim() || null : null);
+    linhas.push({ codigo, situacao: valor(cSituacao), conclusao: diaDaPlanilha(l[cConclusao]), motivo: valor(cMotivo) });
+  }
+  if (!linhas.length) return { linhas: null, erro: 'A planilha não tem nenhum card (nenhuma linha com o Código).' };
+  return { linhas, erro: null };
+}
+
+/** O dia da Conclusão como hora: o meio-dia em Brasília (o dia fica o mesmo em qualquer conta de dia). */
+const meioDiaDe = (dia: string) => `${dia}T15:00:00.000Z`;
+
+/**
+ * Completa a leitura com a planilha do Helena: a ganha ou a perdida sem a Conclusão fica com a da planilha (a
+ * do card, quando a API manda, continua valendo); o motivo da perda que faltou, também. A situação é a do card
+ * (a planilha pode ser de antes). Sempre a partir da leitura que veio da API: trocar a planilha refaz tudo.
+ */
+export function aplicarPlanilhaDoHelena(leitura: LeituraDoHelena, linhas: readonly LinhaDaPlanilhaDoHelena[], origem: { origem: 'link' | 'arquivo'; nome?: string | null }): LeituraDoHelena {
+  const porCodigo = new Map<string, LinhaDaPlanilhaDoHelena>();
+  for (const l of linhas) porCodigo.set(chaveDoCodigo(l.codigo), l);
+  const codigosLidos = new Set(leitura.cards.map((c) => chaveDoCodigo(c.codigo)).filter(Boolean));
+  let casadas = 0, conclusoes = 0, semConclusao = 0;
+  const cards = leitura.cards.map((c) => {
+    const l = c.codigo ? porCodigo.get(chaveDoCodigo(c.codigo)) : undefined;
+    if (l) casadas++;
+    const fechada = c.situacao === 'WON' || c.situacao === 'LOST';
+    let concluidoEm = c.concluidoEm;
+    if (fechada && !concluidoEm && l?.conclusao) { concluidoEm = meioDiaDe(l.conclusao); conclusoes++; }
+    if (fechada && !concluidoEm) semConclusao++;
+    const motivo = c.motivo?.trim() ? c.motivo : c.situacao === 'LOST' && l?.motivo ? l.motivo : c.motivo;
+    return concluidoEm === c.concluidoEm && motivo === c.motivo ? c : { ...c, concluidoEm, motivo };
+  });
+  const foraDaLeitura = [...porCodigo.keys()].filter((k) => !codigosLidos.has(k)).length;
+  return {
+    ...leitura, cards,
+    planilha: { origem: origem.origem, nome: origem.nome?.trim() || null, linhas: linhas.length, casadas, conclusoes, semConclusao, foraDaLeitura },
+  };
+}
+
+/**
+ * Lê o texto da planilha e completa a leitura da API (o servidor e a prévia): o erro de leitura, ou a planilha que
+ * não tem nenhum card do painel, voltam como `erro`.
+ */
+export function leituraComAPlanilha(daApi: LeituraDoHelena, texto: string, origem: { origem: 'link' | 'arquivo'; nome?: string | null }): { leitura: LeituraDoHelena; erro: null } | { leitura: null; erro: string } {
+  const lida = lerPlanilhaDoHelena(texto);
+  if (lida.erro !== null) return { leitura: null, erro: lida.erro };
+  const leitura = aplicarPlanilhaDoHelena(daApi, lida.linhas, origem);
+  if (!leitura.planilha?.casadas) return { leitura: null, erro: MENSAGENS_DA_PLANILHA_DO_HELENA.nenhumaDoPainel(daApi.painel.nome, daApi.cards.find((c) => c.codigo)?.codigo ?? null) };
+  return { leitura, erro: null };
+}
+
+/** A planilha em CSV (o jeito do Google Planilhas): a prévia faz a de exemplo assim. */
+export function csvDaPlanilhaDoHelena(linhas: readonly LinhaDaPlanilhaDoHelena[]): string {
+  const cel = (v: string | null) => (v && /[",\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v ?? '');
+  const br = (dia: string | null) => (dia ? `${dia.slice(8, 10)}/${dia.slice(5, 7)}/${dia.slice(0, 4)}` : '');
+  return ['Código,Situação,Conclusão,Motivo da perda', ...linhas.map((l) => [cel(l.codigo), cel(l.situacao), br(l.conclusao), cel(l.motivo)].join(','))].join('\r\n');
+}
+
+/**
+ * O link da planilha do Helena (o Google Planilhas que o "Exportar" abre) → o endereço do CSV dela. Nulo: não é
+ * um link do Google Planilhas. A planilha precisa estar aberta para quem tem o link (a do Helena está).
+ */
+export function linkDoCsvDaPlanilha(link: string): string | null {
+  let u: URL;
+  try { u = new URL(link.trim()); } catch { return null; }
+  if (u.protocol !== 'https:' || u.hostname !== 'docs.google.com') return null;
+  const m = /^\/spreadsheets\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]{20,})(?:\/|$)/.exec(u.pathname);
+  if (!m) return null;
+  const gid = /(?:^|[#&?])gid=(\d+)/.exec(`${u.search}${u.hash}`)?.[1];
+  return `https://docs.google.com/spreadsheets/d/${m[1]}/export?format=csv${gid ? `&gid=${gid}` : ''}`;
 }
 
 // =====================================================================
@@ -970,6 +1179,8 @@ export type PreviaDoHelena = {
   motivosNovos: string[];
   /** `semConclusao`: as ganhas e as perdidas sem a Conclusão do Helena (acabam no dia em que foram marcadas) */
   historico: { eventos: number; movimentos: number; semHistorico: number; semConclusao: number; completados: number; semCopia: number };
+  /** a planilha do Helena que deu a Conclusão (2.1.1); nula: a leitura é só a da API */
+  planilha: ResumoDaPlanilhaDoHelena | null;
   /** as que já vieram e a equipe mexeu no Gestor: voltam a ficar como no Helena */
   mexidasNoGestor: number;
   avisos: string[];
@@ -1190,7 +1401,20 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
   if (naLixeira.length) avisos.push(`${naLixeira.length === 1 ? '1 negociação que já veio está' : `${naLixeira.length} negociações que já vieram estão`} na lixeira do Gestor: ${naLixeira.length === 1 ? 'fica' : 'ficam'} lá (para trazer de novo, restaure em Administração › Lixeira).`);
   if (arquivados.length) avisos.push(`${arquivados.length === 1 ? '1 card arquivado' : `${arquivados.length} cards arquivados`} no Helena ${arquivados.length === 1 ? 'fica' : 'ficam'} de fora (lá, não ${arquivados.length === 1 ? 'aparece' : 'aparecem'} mais no quadro).`);
   if (semHistorico) avisos.push(`${semHistorico === 1 ? '1 negociação veio' : `${semHistorico} negociações vieram`} sem o histórico (o Helena não devolveu): ${semHistorico === 1 ? 'nasce' : 'nascem'} na etapa de agora e ${semHistorico === 1 ? 'acaba' : 'acabam'} na Conclusão.`);
-  if (semConclusao) avisos.push(`${semConclusao === 1 ? '1 negociação ganha ou perdida veio' : `${semConclusao} negociações ganhas ou perdidas vieram`} sem a Conclusão do Helena: ${semConclusao === 1 ? 'acaba no dia em que foi marcada' : 'acabam no dia em que foram marcadas'} (ou no da última mudança do card), e os ganhos mês a mês podem não bater com o relatório de lá.`);
+  const pl = leitura.planilha ?? null;
+  if (pl) {
+    const daPlanilha = `da planilha do Helena${pl.nome ? ` (${pl.nome})` : ''}, com ${pl.linhas === 1 ? '1 linha' : `${pl.linhas} linhas`} (${pl.casadas === 1 ? '1 de um card lido' : `${pl.casadas} de cards lidos`})`;
+    avisos.push(pl.conclusoes
+      ? `A Conclusão de ${pl.conclusoes === 1 ? '1 negociação' : `${pl.conclusoes} negociações`} veio ${daPlanilha}.`
+      : `Nenhuma Conclusão veio ${daPlanilha}: as ganhas e as perdidas já tinham a data, ou a planilha não tem nenhuma.`);
+    if (pl.foraDaLeitura) avisos.push(`${pl.foraDaLeitura === 1 ? '1 linha da planilha não é' : `${pl.foraDaLeitura} linhas da planilha não são`} de nenhum card lido (o card arquivado, ou de outro painel): ${pl.foraDaLeitura === 1 ? 'fica' : 'ficam'} de fora.`);
+  }
+  const acaba = semConclusao === 1 ? 'acaba no dia em que foi marcada' : 'acabam no dia em que foram marcadas';
+  if (semConclusao && pl) {
+    avisos.push(`${semConclusao === 1 ? '1 negociação ganha ou perdida continua' : `${semConclusao} negociações ganhas ou perdidas continuam`} sem a Conclusão (não ${semConclusao === 1 ? 'está' : 'estão'} na planilha, ou ${semConclusao === 1 ? 'está' : 'estão'} sem a data): ${acaba} (ou no da última mudança do card).`);
+  } else if (semConclusao) {
+    avisos.push(`${semConclusao === 1 ? '1 negociação ganha ou perdida veio' : `${semConclusao} negociações ganhas ou perdidas vieram`} sem a Conclusão do Helena (a chave de API do LineChat não lê essa data): ${acaba} (ou no da última mudança do card), e os ganhos mês a mês não batem com o relatório de lá. Use a planilha do Helena: no painel, em Lista, o botão Exportar.`);
+  }
   if (completados) avisos.push(`${completados === 1 ? '1 histórico não chegava' : `${completados} históricos não chegavam`} aonde o card está: o fim foi completado pelo próprio card.`);
   if (valorUnico) avisos.push(`${valorUnico === 1 ? '1 negociação tem' : `${valorUnico} negociações têm`} a mensalidade por produto que não soma o Valor atribuído: ${valorUnico === 1 ? 'fica' : 'ficam'} com o valor único (o Valor atribuído, como no relatório do Helena), e os números de lá vão para o histórico.`);
   if (semCadastro.size) avisos.push(`Os produtos ${[...semCadastro].join(', ')} não estão no cadastro do Gestor: ficam fora dos produtos da negociação.`);
@@ -1222,6 +1446,7 @@ export function planoDaImportacao(leitura: LeituraDoHelena, estado: EstadoDoGest
     etiquetas: { total: etiquetasTodas.length, novas: etiquetasTodas.filter((t) => !catalogo.has(chaveDaEtiqueta(t))) },
     motivosNovos,
     historico: { eventos: totalEventos, movimentos, semHistorico, semConclusao, completados, semCopia },
+    planilha: pl,
     mexidasNoGestor: mexidas,
     avisos,
     erro,

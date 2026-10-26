@@ -382,6 +382,7 @@ export const realApi: Api = {
     opcoes: () => http('GET', '/comercial/helena/opcoes'),
     ler: (painelId) => http('POST', '/comercial/helena/leituras', { painelId }),
     leitura: (id) => http('GET', `/comercial/helena/leituras/${encodeURIComponent(id)}`),
+    planilha: (id, entrada) => http('POST', `/comercial/helena/leituras/${encodeURIComponent(id)}/planilha`, entrada),
     previa: (id, destino) => http('GET', `/comercial/helena/leituras/${encodeURIComponent(id)}/previa${destino ? `?destino=${encodeURIComponent(destino)}` : ''}`),
     trazer: (id, destino) => http('POST', `/comercial/helena/leituras/${encodeURIComponent(id)}/trazer`, { destino }),
   },

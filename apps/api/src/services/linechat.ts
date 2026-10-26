@@ -56,6 +56,8 @@ export type CardApi = {
   monetaryAmount?: number | null;
   resultChangedAt?: string | null;
   resultDescription?: string | null;
+  /** o motivo da perda, na lista (o detalhe LostReason da API pública, 2.1.1) */
+  lostReason?: { id?: string | null; name?: string | null } | null;
   createdByUserId?: string | null;
 };
 /** Uma linha do histórico do card ("Item movido de A para B"), como a API v1 devolve com os Logs. */
@@ -223,8 +225,11 @@ export class LineChatApi {
     });
   }
 
-  /** Lê cards página a página até acabar. `desde` = só os alterados depois dessa hora. */
-  async cards(painelId: string, desde?: Date): Promise<CardApi[]> {
+  /**
+   * Lê cards página a página até acabar. `desde` = só os alterados depois dessa hora. `extras`: os detalhes a
+   * mais (o Trazer do Helena pede o LostReason, 2.1.1); a leitura dos chamados não pede nenhum.
+   */
+  async cards(painelId: string, desde?: Date, extras: readonly string[] = []): Promise<CardApi[]> {
     const todos: CardApi[] = [];
     for (let pagina = 1; ; pagina++) {
       const r = await this.get<PaginaApi<CardApi>>('crm/v2/panel/card', {
@@ -234,7 +239,7 @@ export class LineChatApi {
         // ordem pela abertura: card novo entra no fim, então nenhuma página "escorrega" durante a leitura
         OrderBy: desde ? 'UpdatedAt' : 'CreatedAt',
         OrderDirection: 'ASCENDING',
-        IncludeDetails: DETALHES,
+        IncludeDetails: [...DETALHES, ...extras],
         Statuses: SITUACOES,
         'UpdatedAt.After': desde?.toISOString(),
       });

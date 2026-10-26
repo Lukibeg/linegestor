@@ -87,6 +87,33 @@ e 21 em andamento (R$ 28.495); e os ganhos mês a mês iguais ao gráfico *Meta 
   sem a Conclusão (o gráfico do mês a mês não bateria), e, sem ela, o ganho fica no dia em que foi marcado no
   histórico, não na última mudança do card. O Helena falso dos testes valida como o de verdade: o pedido do
   2.0.3 e o do 2.0.4 levam o mesmo 500 que se viu no ar.
+  **Revisto no 2.1.1** (24/10; com o 2.1 no ar, o Luan: *"acho q a importação ainda assim depois da nossa ultima
+  atualização n está puxando o relatório de forma correta"*, e depois *"faça o que achar melhor e faça tudo
+  sozinho"*). Desta vez a causa foi vista no ar antes de mudar o código: a prévia do sistema disse que a chave
+  recusou o `Logs` **e** o `ResultDescription`, e que as 34 ganhas e perdidas vieram sem a Conclusão. O card
+  que a chave lê sem detalhe nenhum **não tem a Conclusão**: a API pública do Helena não tem essa data (a
+  documentação de `GET /crm/v2/panel/card/{id}` e da lista confirma: os detalhes são PanelTitle, StepTitle,
+  StepPhase, ResponsibleUser, Contacts, CustomFields e LostReason; a lista filtra só pela criação e pela última
+  mudança). A Conclusão é o `resultChangedAt` que só a tela do Helena (com o login da pessoa) vê: somando os 21
+  ganhos por ela, dá o *Meta vs Ganho mensal* de lá mês a mês; pela última mudança do card (o `updatedAt`), dá
+  exatamente o que o Gestor mostrava. As duas correções de antes (a vírgula, um detalhe por parâmetro) mexiam
+  no jeito de pedir uma coisa que a chave não entrega. **A Conclusão passa a vir da planilha que o "Exportar"
+  da Lista do painel faz** (o Google Planilhas, com as colunas Código, Situação, Conclusão e Motivo da perda —
+  conferida no painel dele: somando pela Conclusão dela, dá o gráfico de lá): na prévia, o quadro **A Conclusão
+  de cada card vem da planilha do Helena** aceita o link (o servidor monta o endereço do CSV pelo id da
+  planilha e só segue o desvio para o próprio Google; a planilha do Helena é aberta para quem tem o link) ou o
+  `.csv` baixado dela (vírgula, ponto e vírgula ou tabulação; UTF-8 ou o jeito antigo do Windows). Cada card é
+  achado pelo código (IC-34); a ganha ou a perdida sem a Conclusão fica com a da planilha, ao meio-dia de
+  Brasília (o dia fica o mesmo em toda conta); a Conclusão que a API mandar continua valendo; a situação é a do
+  card; o motivo que faltou vem também. Trocar a planilha refaz a partir da leitura da API, e nada é gravado
+  antes do Trazer. O motivo da perda passa a vir também na lista (o detalhe `LostReason` da API pública; se o
+  LineChat recusar, a lista é lida de novo sem ele). O **histórico das etapas** a chave não lê, e a planilha não
+  tem: a negociação nasce na etapa em que o card está (escolha minha, em vez de ler a tela do Helena com o login
+  dele, que dependeria de mim a cada vez). Rota `POST /api/comercial/helena/leituras/:id/planilha`; as regras em
+  `lerPlanilhaDoHelena`, `aplicarPlanilhaDoHelena`, `leituraComAPlanilha` e `linkDoCsvDaPlanilha`
+  (`@gestor/shared/helena.ts`), as mesmas na prévia (onde qualquer link do Google Planilhas usa a planilha de
+  exemplo). O Helena falso dos testes ganhou o jeito da chave do ar (os detalhes da API pública, o card sem a
+  Conclusão) e um Google falso.
 - **Auditoria.** O Trazer vai para a auditoria (`import`, no painel): *"Trouxe do Helena o painel Ingline -
   Comercial para o painel novo Comercial (IC): 55 negociações (55 novas)"*, com as etapas, os campos criados,
   os motivos novos e os avisos.
@@ -100,7 +127,7 @@ e 21 em andamento (R$ 28.495); e os ganhos mês a mês iguais ao gráfico *Meta 
 - Uma negociação por card, mesmo trazendo de novo: o card de lá fica guardado na negociação.
 
 **Arquivos.** As regras: `packages/shared/src/helena.ts` (o histórico, os valores, os campos, as pessoas, as
-etapas, o plano e a prévia). O servidor: `apps/api/src/services/helena.ts` e `routes/helena.ts`
+etapas, o plano, a prévia e, desde o 2.1.1, a planilha do Helena). O servidor: `apps/api/src/services/helena.ts` e `routes/helena.ts`
 (`/api/comercial/helena`); a leitura do card com o histórico em `services/linechat.ts`. A tela:
 `apps/web/src/pages/dados/TrazerDoHelena.tsx`. A prévia clicável: `apps/web/src/api/demo-helena.ts` (um
 Helena de exemplo). A migração: `0024_trazer_do_helena.sql` (a coluna `tickets.external_ref`, única).
