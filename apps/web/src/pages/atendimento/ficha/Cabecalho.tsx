@@ -19,7 +19,8 @@ const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bo
 const TOM_SITUACAO: Record<string, TomChip> = { aberto: 'accent', resolvido: 'ok', fechado: 'muted' };
 
 /** A data inteira, para o "passar o mouse". */
-export const dataCompleta = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' }) : '');
+const fmtDataCompleta = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' });
+export const dataCompleta = (iso: string | null | undefined) => (iso ? fmtDataCompleta.format(new Date(iso)) : '');
 /** "hoje 14:32", "ontem 09:10", "em 08/10 17:45". */
 export const emQuando = (iso: string | null | undefined) => {
   const t = dataHoraCurta(iso);

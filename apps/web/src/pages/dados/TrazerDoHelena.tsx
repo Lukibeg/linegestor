@@ -17,11 +17,12 @@ import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, CheckCircle2, FileSpreadsheet, History, RefreshCw, TriangleAlert, Upload } from 'lucide-react';
 import {
-  LIMITES_DA_PLANILHA_DO_HELENA, NOME_TIPO_CAMPO, reaisCurto, reaisInteiros,
+  LIMITES_DA_PLANILHA_DO_HELENA, NOME_TIPO_CAMPO, reaisInteiros,
   type LeituraDoHelenaNaTela, type PlanilhaParaALeitura, type PreviaDoHelena, type ResultadoDoTrazerDoHelena,
 } from '@gestor/shared';
 import { IS_DEMO } from '../../api/index.js';
 import { api } from '../../api/index.js';
+import { ValorDaColuna } from '../atendimento/comum.js';
 import { Campo, Chip, Confirmar, Kpi, Spinner, mensagemErro, useToast } from '../../components/ui/index.js';
 
 /** O valor "nenhum painel": a importação cria um painel de Vendas novo. */
@@ -326,10 +327,10 @@ function Previa({ p, leituraId, onPlanilha, onTrazer }: { p: PreviaDoHelena; lei
 
       <Bloco titulo="Ganhos mês a mês" sub="pela Conclusão do Helena: compare com o Meta vs Ganho mensal de lá">
         <div className="overflow-x-auto">
-          <div className="flex items-end gap-1.5 min-w-[560px] h-36 pt-5">
+          <div className="flex items-end gap-1.5 min-w-[560px] h-40 pt-5">
             {p.ganhosPorMes.map((m) => (
               <div key={m.mes} className="flex-1 flex flex-col items-center justify-end h-full gap-1" title={`${m.nome}: ${plural(m.qtd, 'ganha', 'ganhas')} · ${reaisInteiros(m.valor)}`}>
-                <span className="text-[10.5px] text-muted tnum whitespace-nowrap">{m.valor ? reaisCurto(m.valor) : ''}</span>
+                {m.valor ? <ValorDaColuna centavos={m.valor} className="text-[10.5px] text-muted" /> : <span />}
                 <div className={`w-full rounded-t ${m.valor ? 'bg-ok' : 'bg-line'}`} style={{ height: `${m.valor ? Math.max(4, Math.round((m.valor / maior) * 100)) : 2}%` }} />
                 <span className="text-[10.5px] text-ink-2 whitespace-nowrap">{m.curto}</span>
               </div>

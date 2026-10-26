@@ -29,7 +29,7 @@ import {
 import { api } from '../../api/index.js';
 import { Carregando, EscolherComBusca, Popover, Spinner, Vazio, mensagemErro, useToast } from '../../components/ui/index.js';
 import { CabecalhoDoPainel, FILTROS_DO_PAINEL, enderecoDaLista, type FiltrosDoPainel } from './painel.js';
-import { CabecalhoAtendimento, dataHoraCurta, haQuanto, useAbrirChamado, useOpcoes, usePode } from './comum.js';
+import { CabecalhoAtendimento, dataHoraCurta, haQuanto, useAbrirChamado, useLerAFichaAntes, useOpcoes, usePode } from './comum.js';
 import { useMover } from './mover.js';
 import { CartaoComRodape, cliqueAbreAFicha } from './quadro/cartao.js';
 import {
@@ -110,6 +110,14 @@ function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, vendas: boolean): 
 }
 
 /**
+ * A ficha lida é o mesmo cartão que o quadro já mostra (2.1.2)? Toda mudança no chamado mexe no `atualizadoEm` ou na
+ * última atividade; o que escapar daqui, a releitura do quadro depois de mudar (o `useDepoisDeMudar`) acerta.
+ */
+function mesmoCartao(x: CartaoChamado, f: FichaChamado): boolean {
+  return x.atualizadoEm === f.atualizadoEm && x.ultimaAtividadeEm === f.ultimaAtividadeEm && x.etapaId === f.etapaId && x.painelId === f.painelId;
+}
+
+/**
  * O cartão arrastado já onde caiu, antes da resposta do servidor (2.1): na coluna `etapaId`, no lugar `indice`
  * (contado sem ele). Se o servidor não aceitar, o quadro relê e ele volta.
  */
@@ -164,8 +172,13 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
     if (k[0] !== 'atendimento' || k[1] !== 'chamado') return;
     const f = ev.query.state.data as FichaChamado | undefined;
     if (!f || typeof f !== 'object' || !('etapaId' in f)) return;
-    // só o que já está no quadro: um chamado de fora dos filtros não entra por aqui
-    qc.setQueryData<QuadroAtendimento>(chave, (q) => (q && q.colunas.some((c) => c.chamados.some((x) => x.id === f.id)) ? comCartaoNovo(q, f, vendas) : q));
+    // só o que já está no quadro: um chamado de fora dos filtros não entra por aqui. E só o que mudou (2.1.2): abrir
+    // a ficha também lê o chamado, e trocar o cartão por ele mesmo redesenhava o quadro inteiro a cada abertura
+    qc.setQueryData<QuadroAtendimento>(chave, (q) => {
+      const x = q?.colunas.flatMap((c) => c.chamados).find((y) => y.id === f.id);
+      if (!q || !x || mesmoCartao(x, f)) return q;
+      return comCartaoNovo(q, f, vendas);
+    });
   }), [qc, chave, vendas]);
 
   // ---------- arrastar (HTML5): o cartão vai, a coluna recebe ----------
@@ -484,9 +497,11 @@ function CartaoNoQuadro({ c, painel, etapas, podeMover, ocupado, esmaecido, onCo
   naColuna?: LugarNaColuna;
 }) {
   const abrirChamado = useAbrirChamado();
+  // o mouse parado em cima já lê a ficha (2.1.2): no clique, ela abre pronta
+  const lerAntes = useLerAFichaAntes();
   const arrastavel = podeMover && !ocupado;
   return (
-    <li data-cartao={c.id} data-codigo={c.codigo}>
+    <li data-cartao={c.id} data-codigo={c.codigo} {...lerAntes(c.codigo)}>
       <CartaoComRodape
         c={c} cor={painel.cor} arrastavel={arrastavel} draggable={arrastavel}
         onDragStart={(e) => onComecar(c, e)} onDragEnd={onTerminar}

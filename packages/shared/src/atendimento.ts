@@ -2017,16 +2017,16 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
   }
 }
 
-/** "R$ 12 mil", "R$ 1,2 mi" — o valor curto, para o alto das colunas e os números grandes. */
-export function reaisCurto(centavos: number): string {
-  const r = centavos / 100;
-  if (Math.abs(r) >= 1_000_000) return `R$ ${(r / 1_000_000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`;
-  if (Math.abs(r) >= 10_000) return `R$ ${Math.round(r / 1000).toLocaleString('pt-BR')} mil`;
-  return r.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-}
-/** "R$ 12.500" (os centavos só quando há: "R$ 12.500,50") — o valor no cartão, na coluna e nos números. */
+// criados uma vez só (2.1.2): o quadro do Comercial escreve um valor por cartão e por coluna a cada desenho
+const REAIS_COM_CENTAVOS = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const REAIS_SEM_CENTAVOS = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 2 });
+/**
+ * "R$ 12.500" (os centavos só quando há: "R$ 12.500,50") — o valor no cartão, na coluna e nos números. Desde o 2.1.2,
+ * é o único jeito de escrever reais nas telas do Comercial: o valor nunca é arredondado (o Luan, 26/10: "to vendo que
+ * ele arredonda os valores, n quero isso"; o "R$ 12 mil" e o "R$ 2.740" do reaisCurto saíram).
+ */
 export function reaisInteiros(centavos: number): string {
-  return (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: centavos % 100 ? 2 : 0, maximumFractionDigits: 2 });
+  return (centavos % 100 ? REAIS_COM_CENTAVOS : REAIS_SEM_CENTAVOS).format(centavos / 100);
 }
 /**
  * O valor escrito pela pessoa ("12.000", "12000,50", "R$ 1.234,56", "1,5 mil") em centavos; nulo se não

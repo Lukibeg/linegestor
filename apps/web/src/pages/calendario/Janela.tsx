@@ -31,6 +31,9 @@ import { AMOSTRA_DA_COR, LinkDoChamado } from '../atendimento/comum.js';
 import { PontoDoPainel, useClientesParaFiltro } from '../atendimento/quadro/filtros.js';
 import { BORDA_DO_TIPO, EditorDeLembretes, erroDoEvento, FUNDO_DO_TIPO, MarcaDaSituacao, nomesDe, useNomesDasPessoas, useRecarregarCalendario } from './comum.js';
 
+// criado uma vez só (2.1.2): um formatador com fuso custa caro para criar
+const fmtDataCurta = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
 /** O que a janela edita (as horas como texto, o chamado com o código para mostrar). */
 type Rascunho = {
   tipoId: string; titulo: string; tituloMexido: boolean;
@@ -244,7 +247,7 @@ function Detalhe({ e, opcoes, nomes }: { e: EventoDoCalendario; opcoes: Calendar
   const escondidos = e.paineis.length - paineis.length;
   const quando = e.inicio === e.fim ? diaPorExtenso(e.inicio) : `de ${diaPorExtenso(e.inicio)} a ${diaPorExtenso(e.fim)}`;
   const pessoas = nomesDe(e.pessoas, nomes);
-  const dataCurta = (iso: string) => new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(iso));
+  const dataCurta = (iso: string) => fmtDataCurta.format(new Date(iso));
   return (
     <div className="flex flex-col gap-3" id="evento-detalhe" data-evento={e.id}>
       {(e.situacao !== 'agendado' || (!tipo.ativo && tipo.nome !== 'Outro')) && (

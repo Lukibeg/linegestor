@@ -2,11 +2,14 @@
 export { cnpjFormatado, didFormatado, macFormatado, reais, paraCentavos, cnpjValido, macValido, didValido, diaParaIso, lerLista, macLimpo, serieLimpa } from '@gestor/shared';
 export { MODALIDADES, CONDICOES_APARELHO } from '@gestor/shared';
 
+// criados uma vez só (2.1.2): a tabela chamava um formatador novo a cada linha
+const fmtDataHora = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fmtData = new Intl.DateTimeFormat('pt-BR');
 export function data(iso: string | null | undefined, comHora = false): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return comHora ? d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('pt-BR');
+  return comHora ? fmtDataHora.format(d) : fmtData.format(d);
 }
 
 export function relativo(iso: string): string {

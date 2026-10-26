@@ -513,3 +513,32 @@ Dois pedidos do Luan no mesmo dia, com o 2.0.4 no ar.
     ['sessaoId']`); o n8n liga pela chave (`PATCH … { sessaoId }`).
   - **O robô, o n8n e o agendado, ao abrir, mandam o código como o LineChat deu**, e ele fica como veio: ler o
     link é só para quem abre na tela (o robô acha o chamado aberto da conversa pelo código exato).
+
+## Revisto no 2.1.2 (26/10/2026): abrir a ficha e o quadro sem esperar
+
+O Luan: *"ta demorando muito pra abrir os cards e os paineis, isso ta acontecendo constantemente"* (o print da
+janela parada no "Abrindo…"). Medido no Chrome dele: o servidor responde a ficha em ~0,2 s e o quadro em ~0,25 s;
+o resto era a tela. Abrir um cartão redesenhava o quadro inteiro três vezes, e cada cartão criava quatro
+formatadores de data com fuso a cada desenho (50 a 80 ms por redesenho com uns 60 cartões; 4x isso num PC lento).
+
+- **Os formatadores de data e de dinheiro são criados uma vez só** (`diaBrasil` do `dataHoraCurta`, o
+  `dataCompleta` da ficha, o `data` das tabelas, o `reaisInteiros`, o `reais` e os do Simulador). Criar um
+  `Intl.DateTimeFormat` com fuso custa ~0,3 ms; formatar com um pronto, microssegundos.
+- **A tela de baixo fica parada enquanto a janela abre e fecha** (`Equipe.tsx`): as rotas da tela moram num
+  componente memorizado (`TelaDeBaixo`), e o endereço dela vem por um `LocationContext` que só muda quando a tela
+  muda (`useMesmaTela`: o mesmo passo do histórico, no mesmo caminho, é o mesmo objeto). O que muda dentro dela
+  (o quadro relido, um filtro, um aviso) continua se desenhando sozinho, pelas consultas e pelos contextos.
+- **Abrir a ficha não mexe mais no quadro** (`mesmoCartao`): a ficha lida que é o mesmo cartão do quadro (o
+  mesmo `atualizadoEm`, a mesma última atividade, a mesma etapa e o mesmo painel) não troca o cartão — antes,
+  trocava pelo igual e o quadro inteiro se redesenhava. O que escapar, a releitura do quadro depois de mudar
+  (`useDepoisDeMudar`) acerta.
+- **Ler antes do clique** (`useLerAFichaAntes`, `useLerOQuadroAntes`): o mouse parado 90 ms em cima do cartão do
+  quadro, da linha da lista, do Abrir o quadro ou do Painel do Suporte / do Comercial do menu já busca (o dedo
+  encostando e o Tab chegando, na hora). A busca é a mesma da tela (a mesma chave): no clique, a janela abre com
+  ela. Passar o mouse varrendo a tela não busca nada.
+- **O servidor diz quanto levou** (`Server-Timing: app;dur=…` em toda resposta) e o pedido de 1,5 s ou mais vai
+  para o log como *pedido lento* (o método, a rota — o molde, sem o que vem depois do "?" —, o status e os ms).
+  Da próxima vez, dá para separar a demora do servidor da demora da rede e da tela.
+- Na prévia (CPU normal / 4x mais lenta): abrir a ficha 324 → 223 ms / 1.123 → 782 ms; fechar 118 → 42 ms /
+  401 → 218 ms (a prévia espera 120 ms em cada leitura, de propósito). Com a leitura antes do clique, a ficha
+  abre em ~0,1 s.

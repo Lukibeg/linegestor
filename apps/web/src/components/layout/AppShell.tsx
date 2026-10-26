@@ -24,14 +24,14 @@ import {
   BookLock, BookUser, Boxes, Building2, Cable, Calculator, CalendarDays, ChartColumn, ChevronDown, ChevronsLeft, ChevronsRight, Handshake, Headset, History, Kanban, LayoutDashboard, Library, ListChecks, LogOut, TrendingUp,
   Menu, Moon, Settings, Sparkles, SquareKanban, Sun, SunMedium, UserRound, Wrench, X, type LucideIcon,
 } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api/index.js';
 import { NovidadesPopup } from '../../pages/novidades/Index.js';
 import { SinoDeAvisos } from '../../pages/atendimento/Sino.js';
-import { fundoDaJanela } from '../../pages/atendimento/comum.js';
+import { fundoDaJanela, useLerOQuadroAntes } from '../../pages/atendimento/comum.js';
 import { AvisosQueChegam } from '../../pages/atendimento/AvisosQueChegam.js';
 import { useAuth } from '../../lib/auth.js';
-import { lembrarPainelDoComercial } from '../../lib/comercial.js';
+import { lembrarPainelDoComercial, painelLembradoDoComercial } from '../../lib/comercial.js';
 import { PAINEL_DO_SUPORTE } from '../../pages/atendimento/Suporte.js';
 import { IS_DEMO } from '../../api/index.js';
 import { Logotipo, Simbolo } from '../Marca.js';
@@ -310,12 +310,27 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 type Contagem = (i: ItemDoMenu) => { n: number; tom: 'accent' | 'signal'; titulo: string } | null;
 
+/**
+ * O Painel do Suporte e o Painel do Comercial do menu (2.1.2): o mouse parado em cima já lê o quadro, que abre pronto.
+ * O do Comercial é o painel de Vendas lembrado (ou o primeiro, pelas opções já lidas); os outros itens, nada.
+ */
+function useQuadroDoAtalho(to: string) {
+  const qc = useQueryClient();
+  const lerOQuadro = useLerOQuadroAntes();
+  if (to === '/suporte') return lerOQuadro(PAINEL_DO_SUPORTE);
+  if (to !== '/comercial') return {};
+  const vendas = qc.getQueryData<{ paineis: Array<{ id: string; tipo: string; ativo: boolean }> }>(['atendimento', 'opcoes'])?.paineis.filter((p) => p.tipo === 'vendas' && p.ativo) ?? [];
+  const lembrado = painelLembradoDoComercial();
+  return lerOQuadro(vendas.find((p) => p.id === lembrado)?.id ?? vendas[0]?.id ?? lembrado);
+}
+
 /** Um item do menu (no grupo, `dentro`: menor e recuado). `marcado`: a tela aberta é dele (quem decide é o menu). */
 function ItemNoMenu({ i, recolhido, contagem, aoNavegar, marcado, dentro = false }: { i: ItemDoMenu; recolhido: boolean; contagem: Contagem; aoNavegar: () => void; marcado: boolean; dentro?: boolean }) {
   const c = contagem(i);
   const hide = recolhido && !dentro ? 'md:hidden' : '';
+  const lerAntes = useQuadroDoAtalho(i.to);
   return (
-    <Link to={i.to} onClick={aoNavegar} title={recolhido && !dentro ? i.label : undefined} aria-current={marcado ? 'page' : undefined}
+    <Link to={i.to} onClick={aoNavegar} title={recolhido && !dentro ? i.label : undefined} aria-current={marcado ? 'page' : undefined} {...lerAntes}
       className={`relative flex items-center rounded-lg font-medium ${dentro ? 'gap-2 px-2.5 py-1.5 text-[13.5px]' : 'gap-2.5 px-3 py-2 text-sm'} ${recolhido && !dentro ? 'md:justify-center md:px-0' : ''} ${marcado ? 'bg-accent-soft text-accent-ink' : 'text-ink-2 hover:bg-surface-2 hover:text-ink'}`}>
       {/* o número: do lado; com o menu recolhido, no canto do ícone, como nos grupos. Só existe quando há número:
           a caixa vazia entrava na fila e tirava o ícone do eixo (13/10, o Luan: "o Novidades ficou meio desalinhado") */}

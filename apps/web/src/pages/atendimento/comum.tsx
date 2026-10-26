@@ -6,7 +6,7 @@
  * As contas (o prazo em palavras, a prioridade sugerida, o que falta) vêm do `@gestor/shared` — as
  * mesmas do servidor e da prévia.
  */
-import { useCallback, useMemo, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Link, NavLink, useLocation, useNavigate, type LinkProps, type Location } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, ThumbsDown, TriangleAlert, Trophy, X } from 'lucide-react';
@@ -46,7 +46,55 @@ export function useIncluirOpcao() {
 
 /** A ficha de um chamado (pelo código ou pelo id). */
 export function useFicha(ref: string | undefined) {
-  return useQuery<FichaChamado>({ queryKey: chaveDaFicha(ref ?? ''), queryFn: () => api.atendimento.chamado(ref!), enabled: !!ref, staleTime: 15_000 });
+  return useQuery<FichaChamado>({ queryKey: chaveDaFicha(ref ?? ''), queryFn: () => api.atendimento.chamado(ref!), enabled: !!ref, staleTime: FICHA_FRESCA });
+}
+const FICHA_FRESCA = 15_000;
+
+/** Quanto o mouse fica parado em cima antes de começar a ler (passar o mouse varrendo a tela não lê nada). */
+const INTENCAO_MS = 90;
+type AoPassar = {
+  onPointerEnter: (e: ReactPointerEvent) => void; onPointerLeave: () => void; onPointerDown: (e: ReactPointerEvent) => void; onFocus: () => void;
+};
+/**
+ * Ler antes do clique (2.1.2, "ta demorando muito pra abrir os cards e os paineis"): o mouse parado em cima (ou o
+ * dedo encostando, ou o Tab chegando) já começa a buscar. Até o clique, a resposta quase sempre já chegou, e a
+ * janela abre pronta. Devolve os eventos para pôr no elemento; `ler` é a busca (a do cache, se já está fresca).
+ */
+function useAoPassar(ler: (alvo: string) => void): (alvo: string | null | undefined) => Partial<AoPassar> {
+  const espera = useRef<number>();
+  const lerAgora = useRef(ler);
+  lerAgora.current = ler;
+  useEffect(() => () => window.clearTimeout(espera.current), []);
+  return useMemo(() => (alvo): Partial<AoPassar> => {
+    if (!alvo) return {};
+    return {
+      onPointerEnter: (e) => {
+        if (e.pointerType !== 'mouse') return;
+        window.clearTimeout(espera.current);
+        espera.current = window.setTimeout(() => lerAgora.current(alvo), INTENCAO_MS);
+      },
+      onPointerLeave: () => window.clearTimeout(espera.current),
+      // o pé do cartão (o Mover) não abre a ficha: lá, não precisa ler
+      onPointerDown: (e) => { if (!(e.target as HTMLElement | null)?.closest?.('[data-sem-abrir]')) lerAgora.current(alvo); },
+      onFocus: () => lerAgora.current(alvo),
+    };
+  }, []);
+}
+
+/** A ficha lida antes do clique no cartão, na linha da lista… (pelo código do chamado). */
+export function useLerAFichaAntes() {
+  const qc = useQueryClient();
+  return useAoPassar(useCallback((codigo: string) => {
+    void qc.prefetchQuery({ queryKey: chaveDaFicha(codigo), queryFn: () => api.atendimento.chamado(codigo), staleTime: FICHA_FRESCA });
+  }, [qc]));
+}
+
+/** O quadro de um painel lido antes do clique (o Abrir o quadro, o menu): a mesma consulta do quadro sem filtros. */
+export function useLerOQuadroAntes() {
+  const qc = useQueryClient();
+  return useAoPassar(useCallback((painelId: string) => {
+    void qc.prefetchQuery({ queryKey: ['atendimento', 'quadro', painelId, {}], queryFn: () => api.atendimento.quadro({ painel: painelId }) });
+  }, [qc]));
 }
 
 /**
@@ -372,7 +420,10 @@ export function CoresDaEtiqueta({ valor, onChange, rotulo = 'Cor da etiqueta', i
 const fmtDataHora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 const fmtData = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' });
 const fmtHora = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
-const diaBrasil = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d);
+// criado uma vez só (2.1.2): criar um formatador com fuso é caro, e o cartão do quadro pedia quatro a cada
+// desenho — com 60 cartões, 50 a 80 ms toda vez que o quadro se redesenhava ("ta demorando muito pra abrir os cards")
+const fmtDiaBrasil = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' });
+const diaBrasil = (d: Date) => fmtDiaBrasil.format(d);
 
 /** "hoje 14:32", "ontem 09:10", "08/10 17:45". */
 export function dataHoraCurta(iso: string | null | undefined): string {
@@ -481,5 +532,18 @@ function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: {
       </div>
       {c.etiquetas.length > 0 && <Etiquetas lista={c.etiquetas} painelId={c.painelId} />}
     </div>
+  );
+}
+
+/**
+ * O valor no alto de uma coluna do gráfico, sem arredondar (2.1.2): "R$ 2.739,80" numa linha; no celular, onde a coluna
+ * é estreita, o "R$" em cima e o número embaixo, para não encostar no da coluna do lado.
+ */
+export function ValorDaColuna({ centavos, className = '' }: { centavos: number; className?: string }) {
+  const [moeda, ...resto] = reaisInteiros(centavos).split(/\s/);
+  return (
+    <span className={`flex flex-col sm:flex-row sm:gap-[0.25em] items-center tnum leading-tight whitespace-nowrap ${className}`}>
+      <span>{moeda}</span><span>{resto.join(' ')}</span>
+    </span>
   );
 }
