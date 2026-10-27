@@ -14,6 +14,15 @@
 			}
 		}
 	}
+
+	# Sem o HTTP/3 (o QUIC, por UDP) desde o 2.1.3: só HTTP/1.1 e HTTP/2, pelo TCP de sempre. O Luan (27/10): "do
+	# nada o gestão fica lento mesmo com a internet boa, ele fica carregando e n vai" — no Edge dele, a conexão
+	# HTTP/3 com o servidor ficava presa, sem erro (o servidor respondia em milissegundos; o "Flush socket pools"
+	# do Edge destravou na hora). O HTTP/2 é tão rápido quanto para o Gestor e não tem esse engasgo. Mudou este
+	# bloco? O Caddy só relê o arquivo recriado: `docker compose -f docker-compose.prod.yml up -d --force-recreate caddy`.
+	servers {
+		protocols h1 h2
+	}
 }
 
 {$DOMINIO} {

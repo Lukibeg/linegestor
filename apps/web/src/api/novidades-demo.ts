@@ -7,9 +7,14 @@ export type ItemDemo = { kind: 'novo' | 'melhorou' | 'corrigido' | 'atencao'; ti
 export type VideoDemo = { url: string; nome: string; tamanho: number; tipo: string };
 export const NOTA_DEMO: { version: string; title: string; summary: string; items: ItemDemo[]; video?: VideoDemo } = {
   "version": "2.1.3",
-  "title": "A ordem dos cartões à mão e as colunas mais largas",
-  "summary": "Nos painéis que não contam prazo (o Desenvolvimento, os trazidos do Helena e outros), dá para arrastar o cartão para cima ou para baixo dentro da etapa, como já era no Comercial. No Suporte, o mais urgente continua primeiro. E as colunas do quadro ficaram um pouco mais largas: o título do cartão quebra menos e as etiquetas do alto cabem numa linha só.",
+  "title": "Sem \"Carregando…\" para sempre, a ordem dos cartões à mão e as colunas mais largas",
+  "summary": "O Gestor não fica mais em \"Carregando…\" para sempre. Nos painéis que não contam prazo (o Desenvolvimento, os trazidos do Helena e outros), dá para arrastar o cartão para cima ou para baixo dentro da etapa, como já era no Comercial. No Suporte, o mais urgente continua primeiro. E as colunas do quadro ficaram um pouco mais largas: o título do cartão quebra menos e as etiquetas do alto cabem numa linha só.",
   "items": [
+    {
+      "kind": "corrigido",
+      "title": "O Gestor não fica mais em \"Carregando…\" para sempre",
+      "text": "Às vezes, com a internet boa, a tela ficava em \"Carregando…\" e não saía mais, em todas as abas do Gestor do mesmo navegador (num outro navegador, funcionava). Era a conexão do navegador com o sistema, que ficava presa. O sistema deixou de usar o tipo de conexão que prendia, e a tela que esperar mais de 30 segundos agora avisa (\"O servidor não respondeu…\") e tenta de novo, em vez de ficar carregando. Se aparecer o aviso, aperte F5."
+    },
     {
       "kind": "novo",
       "title": "Arrume a ordem dos cartões dentro da etapa",
