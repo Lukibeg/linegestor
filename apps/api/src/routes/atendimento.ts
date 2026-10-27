@@ -186,7 +186,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
   // a ordem à mão no quadro (2.1): devolve só o lugar (a tela já arrumou a coluna; o quadro relê depois)
   app.post('/chamados/:id/posicao', {
     ...trabalhar,
-    schema: { tags, summary: 'Mudar o lugar na coluna do quadro, arrastando (painel de Vendas, etapas abertas): logo abaixo de depoisDe (nulo: no alto); 409 se depoisDe saiu da etapa', params: Id, body: PosicaoNoQuadroSchema },
+    schema: { tags, summary: 'Mudar o lugar na coluna do quadro, arrastando (painel de Vendas e de Gestão sem prazo, etapas abertas): logo abaixo de depoisDe (nulo: no alto); 409 se depoisDe saiu da etapa', params: Id, body: PosicaoNoQuadroSchema },
   }, async (req) => {
     const r = await svc.posicionar(app, ator(req), req.params.id, req.body);
     if (r.resumo) await app.audit(req, { action: 'update', entityType: 'ticket', entityId: r.id, summary: r.resumo });

@@ -8,6 +8,9 @@
  *  - o arrasto para outra coluna cai no lugar (o mover com `depoisDe`); a de cima que saiu da etapa não impede o mover
  *  - não mexe na última atividade nem no histórico da negociação; vai para a auditoria, só quando o lugar muda
  *  - no Suporte (o mais urgente primeiro) e no Ganho e no Perdido (o mais recente): 400
+ *  - (2.1.3) no painel de Gestão que não conta prazo também — o pedido do Luan (27/10), no painel pessoal dele: "eu
+ *    quero tbm poder alterar a ordem dos cards dentro da etapa, hj ele ficam ordenados fixos" —, com o que chega no
+ *    alto pela regra de sempre (a prioridade, depois o mais antigo); no Resolvido e no Fechado, não
  *  - a de cima que saiu da etapa: 409; quem não trabalha nos chamados: 403; quem não vê o painel: 404
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -170,12 +173,93 @@ describe('a ordem à mão no quadro de Vendas', () => {
     expect(t.statusCode, t.body).toBe(201);
     const r = await s.post(`/atendimento/chamados/${t.json().id}/posicao`, { depoisDe: null });
     expect(r.statusCode).toBe(400);
-    expect(r.json().message ?? r.json().error).toMatch(/painel de Vendas/);
+    expect(r.json().message ?? r.json().error).toMatch(/que conta prazo, o quadro põe o mais urgente primeiro/);
   });
 
   it('quem não trabalha nos chamados: 403; quem não vê o painel: 404', async () => {
     expect((await posicao('G', null, leitor)).statusCode).toBe(403);
     expect((await posicao('G', null, diego)).statusCode).toBe(404);
     expect(await coluna('Qualificação')).toEqual(['C', 'B', 'H', 'A', 'G']);
+  });
+});
+
+describe('a ordem à mão no painel de Gestão que não conta prazo (2.1.3)', () => {
+  let ges: Painel;
+  const g: Record<string, { id: string; codigo: string }> = {};
+  const etapaG = (nome: string) => {
+    const e = ges.etapas.find((x) => x.nome === nome);
+    if (!e) throw new Error(`sem a etapa ${nome}`);
+    return e;
+  };
+  async function abrirG(chave: string, prioridade: string | null, emEtapa?: string) {
+    const r = await s.post('/atendimento/chamados', { painelId: ges.id, titulo: `Atividade ${chave}`, ...(prioridade ? { prioridade } : {}) });
+    expect(r.statusCode, r.body).toBe(201);
+    g[chave] = r.json();
+    if (emEtapa) expect((await moverG(chave, emEtapa)).statusCode).toBe(200);
+  }
+  const moverG = (chave: string, nome: string, extra: Record<string, unknown> = {}) =>
+    s.post(`/atendimento/chamados/${g[chave]!.id}/mover`, { etapaId: etapaG(nome).id, ...extra });
+  const posicaoG = (chave: string, depoisDe: string | null) =>
+    s.post(`/atendimento/chamados/${g[chave]!.id}/posicao`, { depoisDe: depoisDe ? g[depoisDe]!.id : null });
+  async function colunaG(nome: string): Promise<string[]> {
+    const r = await s.get(`/atendimento/quadro?painel=${ges.id}`);
+    expect(r.statusCode, r.body).toBe(200);
+    const codigos = (r.json() as QuadroAtendimento).colunas.find((c) => c.etapa.nome === nome)!.chamados.map((c) => c.codigo);
+    return codigos.map((c) => Object.keys(g).find((k) => g[k]!.codigo === c) ?? c);
+  }
+
+  beforeAll(async () => {
+    const r = await s.post('/atendimento/paineis', { nome: 'Luan Pessoal', sigla: 'lnp', descricao: 'As atividades', cor: 'turquesa', tipo: 'gestao', acesso: 'todos', pessoas: [], ajustes: { contaPrazo: false } });
+    expect(r.statusCode, r.body).toBe(201);
+    ges = r.json();
+    // no Novo: a prioridade primeiro (a sem prioridade no fim), depois o mais antigo
+    await abrirG('P', null);
+    await abrirG('Q', 'alta');
+    await abrirG('R', null);
+    await abrirG('S', 'critica');
+  });
+
+  it('sem ninguém arrumar, a regra de sempre; arrastar muda o lugar e o quadro mostra nessa ordem', async () => {
+    expect(await colunaG('Novo')).toEqual(['S', 'Q', 'P', 'R']);
+    // o R (sem prioridade, o último) vai para o alto; o S, para logo abaixo do P
+    expect((await posicaoG('R', null)).statusCode).toBe(200);
+    expect(await colunaG('Novo')).toEqual(['R', 'S', 'Q', 'P']);
+    const r = await posicaoG('S', 'P');
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().posicao).toBe(4);
+    expect(await colunaG('Novo')).toEqual(['R', 'Q', 'P', 'S']);
+    expect(await auditoria()).toContain(`Pôs ${g.S!.codigo} em 4º lugar em Novo (a ordem do quadro)`);
+  });
+
+  it('o que chega na etapa aparece no alto; arrastado de outra coluna, cai no lugar', async () => {
+    await abrirG('T', 'baixa');
+    expect(await colunaG('Novo')).toEqual(['T', 'R', 'Q', 'P', 'S']);
+    await abrirG('U', null, 'Em andamento');
+    await abrirG('V', null, 'Em andamento');
+    expect((await moverG('T', 'Em andamento', { depoisDe: g.U!.id })).statusCode).toBe(200);
+    expect(await colunaG('Em andamento')).toEqual(['U', 'T', 'V']);
+  });
+
+  it('no Resolvido e no Fechado, não: 400', async () => {
+    expect((await moverG('P', 'Resolvido')).statusCode).toBe(200);
+    const r = await posicaoG('P', null);
+    expect(r.statusCode).toBe(400);
+    expect(r.json().message ?? r.json().error).toMatch(/Em Resolvido, a ordem é a do mais recente/);
+    expect((await posicaoG('Q', 'Q')).statusCode).toBe(400);
+  });
+
+  it('o painel que passa a contar prazo volta ao mais urgente primeiro (o lugar fica guardado)', async () => {
+    const gravar = (contaPrazo: boolean) => s.put(`/atendimento/paineis/${ges.id}`, {
+      nome: ges.nome, sigla: ges.sigla, descricao: ges.descricao, cor: ges.cor, tipo: ges.tipo, acesso: ges.acesso, pessoas: ges.pessoas,
+      ajustes: { ...ges.ajustes, contaPrazo },
+    });
+    const r = await gravar(true);
+    expect(r.statusCode, r.body).toBe(200);
+    expect((await posicaoG('R', null)).statusCode).toBe(400);
+    // com prazo, o mais urgente primeiro: a crítica, a alta e, no fim, a sem prioridade (sem prazo)
+    expect(await colunaG('Novo')).toEqual(['S', 'Q', 'R']);
+    const volta = await gravar(false);
+    expect(volta.statusCode, volta.body).toBe(200);
+    expect(await colunaG('Novo')).toEqual(['R', 'Q', 'S']);
   });
 });

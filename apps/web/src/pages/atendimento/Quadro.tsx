@@ -23,7 +23,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ArrowDown, ArrowLeft, ArrowRightLeft, ArrowUp, CircleCheck, Clock, Filter, Inbox, Moon, ThumbsDown, Trophy } from 'lucide-react';
 import {
-  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararNoQuadroDeVendas, compararUrgencia, movimentoDeNivel, ordemAMao, reaisInteiros, rotuloDoNivel,
+  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararNoQuadro, movimentoDeNivel, ordemAMao, reaisInteiros, rotuloDoNivel,
   type CartaoChamado, type ColunaQuadro, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type QuadroAtendimento, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -84,7 +84,7 @@ function ErroComTentar({ erro, tentar }: { erro: unknown; tentar: () => void }) 
  * o quadro inteiro reler — senão, entre a resposta e a releitura, o cartão "voltava" um instante
  * para a coluna de onde saiu. A releitura que vem logo depois acerta a ordem e os filtros.
  */
-function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, vendas: boolean): QuadroAtendimento {
+function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, painel: Painel): QuadroAtendimento {
   const fica = f.painelId === q.painelId;
   // o valor da coluna acompanha o cartão que entra e o que sai (a releitura acerta o resto)
   const valorDe = (c: CartaoChamado | undefined) => c?.valor ?? 0;
@@ -95,13 +95,14 @@ function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, vendas: boolean): 
       const sem = col.chamados.filter((x) => x.id !== f.id);
       const estava = !!antes;
       if (fica && col.etapa.id === f.etapaId) {
-        // onde a ordem é à mão (2.1), o que já está na coluna fica no lugar (inclusive o que a tela já pôs onde
-        // ele caiu, antes da resposta)
-        if (estava && ordemAMao({ tipo: vendas ? 'vendas' : 'gestao' }, col.etapa)) {
+        // onde a ordem é à mão (2.1; desde o 2.1.3, também no painel de Gestão sem prazo), o que já está na coluna
+        // fica no lugar (inclusive o que a tela já pôs onde ele caiu, antes da resposta)
+        if (estava && ordemAMao(painel, col.etapa)) {
           return { ...col, chamados: col.chamados.map((x) => (x.id === f.id ? f : x)), valor: col.valor - valorDe(antes) + valorDe(f) };
         }
-        // no Resolvido e no Fechado, o mais recente primeiro; nas outras, o mais urgente (ou, na venda, a ordem da equipe, com a que chegou no alto)
-        const chamados = col.etapa.tipo === 'resolvido' || col.etapa.tipo === 'fechado' ? [f, ...sem] : [...sem, f].sort(vendas ? compararNoQuadroDeVendas : compararUrgencia);
+        // no Resolvido e no Fechado, o mais recente primeiro; nas outras, a ordem do quadro do painel (o mais urgente, ou
+        // a ordem da equipe, com o que chegou no alto)
+        const chamados = col.etapa.tipo === 'resolvido' || col.etapa.tipo === 'fechado' ? [f, ...sem] : [...sem, f].sort(compararNoQuadro(painel));
         return { ...col, chamados, total: col.total + (estava ? 0 : 1), valor: col.valor - valorDe(antes) + valorDe(f) };
       }
       return estava ? { ...col, chamados: sem, total: Math.max(0, col.total - 1), valor: col.valor - valorDe(antes) } : col;
@@ -177,9 +178,9 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
     qc.setQueryData<QuadroAtendimento>(chave, (q) => {
       const x = q?.colunas.flatMap((c) => c.chamados).find((y) => y.id === f.id);
       if (!q || !x || mesmoCartao(x, f)) return q;
-      return comCartaoNovo(q, f, vendas);
+      return comCartaoNovo(q, f, painel);
     });
-  }), [qc, chave, vendas]);
+  }), [qc, chave, painel]);
 
   // ---------- arrastar (HTML5): o cartão vai, a coluna recebe ----------
   const arrastado = useRef<CartaoChamado | null>(null);

@@ -1092,10 +1092,32 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect((await erroDe(api.posicionar(n.E!.id, { depoisDe: null }))).message).toMatch(/Em Ganho, a ordem é a do mais recente/);
     const op = await api.opcoes();
     const chamado = await api.criar(await baseDoSuporte(op, 'A ordem no Suporte (teste)'));
-    expect((await erroDe(api.posicionar(chamado.id, { depoisDe: null }))).message).toMatch(/painel de Vendas/);
+    expect((await erroDe(api.posicionar(chamado.id, { depoisDe: null }))).message).toMatch(/que conta prazo, o quadro põe o mais urgente primeiro/);
     // o Leitor não mexe
     await entrar('leitor');
     expect((await erroDe(api.posicionar(n.A!.id, { depoisDe: null }))).status).toBe(403);
+  }, DEMORA);
+
+  it('a ordem à mão no painel de Gestão que não conta prazo (2.1.3, como o servidor): a prioridade, o mais antigo, e a equipe arruma', async () => {
+    await entrar('admin');
+    const ges = await api.salvarPainel(null, { nome: 'Pessoal', sigla: 'PES', cor: 'turquesa', tipo: 'gestao', acesso: 'todos', ajustes: { contaPrazo: false } });
+    const novo = ges.etapas.find((e) => e.tipo === 'entrada')!;
+    const resolvido = ges.etapas.find((e) => e.tipo === 'resolvido')!;
+    const n: Record<string, { id: string; codigo: string }> = {};
+    for (const [k, prioridade] of [['P', null], ['Q', 'alta'], ['R', null], ['S', 'critica']] as const) {
+      n[k] = await api.criar({ painelId: ges.id, titulo: `Atividade ${k}`, ...(prioridade ? { prioridade } : {}) });
+    }
+    const coluna = async (etapaId: string) => (await api.quadro({ painel: ges.id })).colunas.find((c) => c.etapa.id === etapaId)!
+      .chamados.map((c) => Object.keys(n).find((k) => n[k]!.id === c.id));
+    expect(await coluna(novo.id)).toEqual(['S', 'Q', 'P', 'R']);
+    expect((await api.posicionar(n.R!.id, { depoisDe: null })).posicao).toBe(1);
+    expect((await api.posicionar(n.S!.id, { depoisDe: n.P!.id })).posicao).toBe(4);
+    expect(await coluna(novo.id)).toEqual(['R', 'Q', 'P', 'S']);
+    // o que chega fica no alto; no Resolvido, não arruma
+    n.T = await api.criar({ painelId: ges.id, titulo: 'Atividade T', prioridade: 'baixa' });
+    expect(await coluna(novo.id)).toEqual(['T', 'R', 'Q', 'P', 'S']);
+    await api.mover(n.P!.id, { etapaId: resolvido.id });
+    expect((await erroDe(api.posicionar(n.P!.id, { depoisDe: null }))).message).toMatch(/Em Resolvido, a ordem é a do mais recente/);
   }, DEMORA);
 });
 

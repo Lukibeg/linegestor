@@ -1746,9 +1746,10 @@ export type CartaoChamado = {
   resultado: ResultadoDaVenda | null;
   motivoPerda: string | null;
   /**
-   * O lugar na coluna do quadro que a equipe escolheu arrastando (2.1, só nas etapas abertas do painel de
-   * Vendas: `ordemAMao`): 1 é o primeiro. Nulo: ninguém arrumou depois que ela chegou na etapa (mudar de etapa
-   * apaga), e ela vai pela regra de sempre, antes das arrumadas.
+   * O lugar na coluna do quadro que a equipe escolheu arrastando (2.1, nas etapas abertas do painel de Vendas;
+   * desde o 2.1.3, também do painel de Gestão que não conta prazo: `ordemAMao`): 1 é o primeiro. Nulo: ninguém
+   * arrumou depois que ele chegou na etapa (mudar de etapa apaga), e ele vai pela regra de sempre, antes dos
+   * arrumados.
    */
   ordemNoQuadro: number | null;
 };
@@ -2510,12 +2511,56 @@ export function compararNegociacoes(a: Pick<CartaoChamado, 'valor' | 'criadoEm'>
 //  A ORDEM À MÃO NO QUADRO (2.1)
 // ---------------------------------------------------------------------
 //  O pedido do Luan (23/10), no quadro do Comercial: "quero poder trocar a ordem aqui, pra cima ou pra baixo da
-//  mesma forma que mudo de fase arrastando". Só no painel de Vendas e nas etapas abertas: no Suporte, o quadro
-//  põe o mais urgente primeiro (o prazo manda); no Ganho e no Perdido, o mais recente.
+//  mesma forma que mudo de fase arrastando". No 2.1.3, também no painel de Gestão que não conta prazo (o Luan,
+//  27/10, no painel pessoal dele: "eu quero tbm poder alterar a ordem dos cards dentro da etapa, hj ele ficam
+//  ordenados fixos"). Sempre nas etapas abertas. No painel que conta prazo (o Suporte), o quadro continua pondo o
+//  mais urgente primeiro (o prazo manda: arrumar à mão esconderia o que vence); no Resolvido, no Fechado, no Ganho
+//  e no Perdido, o mais recente.
 
-/** A coluna aceita a ordem à mão? (o painel de Vendas, nas etapas abertas: a entrada e o andamento) */
-export function ordemAMao(painel: { tipo: TipoDePainel }, etapa: { tipo: TipoEtapa }): boolean {
-  return painel.tipo === 'vendas' && (etapa.tipo === 'entrada' || etapa.tipo === 'andamento');
+type PainelDaOrdem = { tipo: TipoDePainel; ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'> };
+
+/** O painel aceita a ordem à mão? O de Vendas e o de Gestão que não conta prazo (2.1.3). */
+export function painelComOrdemAMao(painel: PainelDaOrdem): boolean {
+  return painel.tipo === 'vendas' || !painelContaPrazo(painel.ajustes);
+}
+
+/** A coluna aceita a ordem à mão? (o painel que aceita, nas etapas abertas: a entrada e o andamento) */
+export function ordemAMao(painel: PainelDaOrdem, etapa: { tipo: TipoEtapa }): boolean {
+  return painelComOrdemAMao(painel) && (etapa.tipo === 'entrada' || etapa.tipo === 'andamento');
+}
+
+/**
+ * A ordem de uma etapa aberta do quadro do painel: no de Vendas, `compararNoQuadroDeVendas`; no de Gestão que não
+ * conta prazo, `compararNoQuadroDeGestao`; no que conta prazo, o mais urgente primeiro. O servidor, a prévia e a
+ * tela usam a mesma, para o cartão arrastado cair onde a linha mostrou.
+ */
+export function compararNoQuadro(painel: PainelDaOrdem): (a: CartaoChamado, b: CartaoChamado) => number {
+  if (painel.tipo === 'vendas') return compararNoQuadroDeVendas;
+  return painelComOrdemAMao(painel) ? compararNoQuadroDeGestao : compararUrgencia;
+}
+
+/**
+ * A regra de sempre do painel de Gestão sem prazo, sem precisar dos prazos (o servidor arruma a etapa só com o que
+ * está no banco): a prioridade (a sem prioridade no fim), depois o mais antigo. É a mesma do `compararUrgencia`
+ * quando nenhum chamado tem prazo.
+ */
+function compararSemPrazo(a: Pick<CartaoChamado, 'prioridade' | 'criadoEm'>, b: Pick<CartaoChamado, 'prioridade' | 'criadoEm'>): number {
+  const pa = a.prioridade ? PESO_PRIORIDADE[a.prioridade] : 9; const pb = b.prioridade ? PESO_PRIORIDADE[b.prioridade] : 9;
+  if (pa !== pb) return pa - pb;
+  return a.criadoEm.localeCompare(b.criadoEm);
+}
+
+/**
+ * A ordem de uma etapa aberta do painel de Gestão sem prazo (2.1.3), como a do painel de Vendas: primeiro os que
+ * ninguém arrumou depois que chegaram (pela regra de sempre: a prioridade, depois o mais antigo) — o que acabou de
+ * chegar aparece no alto —, depois os arrumados, na ordem que a equipe deixou.
+ */
+export function compararNoQuadroDeGestao(a: Pick<CartaoChamado, 'prioridade' | 'criadoEm' | 'ordemNoQuadro'>, b: Pick<CartaoChamado, 'prioridade' | 'criadoEm' | 'ordemNoQuadro'>): number {
+  const pa = a.ordemNoQuadro; const pb = b.ordemNoQuadro;
+  if (pa == null && pb == null) return compararSemPrazo(a, b);
+  if (pa == null) return -1;
+  if (pb == null) return 1;
+  return pa !== pb ? pa - pb : compararSemPrazo(a, b);
 }
 
 type NoQuadro = Pick<CartaoChamado, 'valor' | 'criadoEm' | 'ordemNoQuadro'>;
