@@ -19,7 +19,7 @@ O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho 
   os números de agora (em aberto, vencidos, sem dono, os seus) e quantos estão em cada etapa. Clique no
   painel para abrir o **quadro**; cada número abre a lista já filtrada; **Configurar** (quem cuida dos
   chamados) abre a janela daquele painel, com as etapas e as regras; **Novo painel** cria outro.
-- **Quadro**: o de um painel, uma coluna por etapa (colunas finas: cabem mais na tela). **Arraste** o
+- **Quadro**: o de um painel, uma coluna por etapa, lado a lado (as que não cabem, rolando para o lado). **Arraste** o
   cartão para mover; no celular ou pelo teclado, use **Mover** no pé do cartão. Em cima, numa linha
   só: a seta (volta aos painéis), **Quadro | Lista** (as duas vistas do painel, com os mesmos filtros),
   **Trocar** (outro painel), **Configurar**, a busca e **Filtros** (as caixas dos filtros aparecem
