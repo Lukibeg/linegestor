@@ -85,7 +85,7 @@ export function PaineisDeChamados() {
           {pode.cuidar && desativados > 0 && (
             <p className="text-[12.5px] text-muted mt-3" id="paineis-desativados">
               {desativados === 1 ? '1 painel desativado não aparece aqui' : `${desativados} painéis desativados não aparecem aqui`}:
-              {' '}<Link to="/atendimento/ajustes?aba=paineis" className="link">ver em Ajustes › Painéis</Link> (para reativar, Editar › Painel ativo).
+              {' '}<Link to="/atendimento/ajustes?aba=paineis&desativados=1" className="link">ver em Ajustes › Painéis</Link> (para reativar, Editar › Painel ativo).
             </p>
           )}
         </>

@@ -71,6 +71,8 @@ export function AjustesPaineis() {
   const [sp, setSp] = useSearchParams();
   /** a janela do painel: um painel (editar), 'novo', ou fechada */
   const [janela, setJanela] = useState<Painel | 'novo' | null>(null);
+  // os desativados (2.1.3) começam fechados; abertos quando se chega pelo "ver em Ajustes › Painéis" da tela dos painéis
+  const [verDesativados, setVerDesativados] = useState(() => sp.get('desativados') === '1');
   const chegou = useRef(false);
   /** o painel em que se mexeu fica no endereço (?painel=): a aba Assuntos abre no mesmo */
   const lembrar = useCallback((id: string | null, tirar?: string) => setSp((s) => {
@@ -101,6 +103,13 @@ export function AjustesPaineis() {
   if (opcoes.isError || !opcoes.data) return <p className="text-bad text-sm" role="alert">{mensagemErro(opcoes.error)}</p>;
   const { paineis } = opcoes.data;
   const pessoas = opcoes.data.pessoas.filter((p) => p.ativo);
+  // o desativado não fica no meio dos que estão em uso (2.1.3, o Luan: "esse painel comercial foi desabilitado e mesmo
+  // assim ta aparecendo aqui"): vai para o fim, fechado em "Desativados (N)" — é aqui que se reativa (Editar › Painel ativo)
+  const emUso = paineis.filter((p) => p.ativo);
+  const desativados = paineis.filter((p) => !p.ativo);
+  const cartao = (p: Painel) => (
+    <CartaoPainel key={p.id} p={p} pessoas={opcoes.data!.pessoas} campos={opcoes.data!.campos.filter((c) => c.painelId === p.id)} onEditar={() => { setJanela(p); lembrar(p.id); }} />
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -113,10 +122,25 @@ export function AjustesPaineis() {
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" id="paineis-ajustes">
-        {paineis.map((p) => (
-          <CartaoPainel key={p.id} p={p} pessoas={opcoes.data.pessoas} campos={opcoes.data.campos.filter((c) => c.painelId === p.id)} onEditar={() => { setJanela(p); lembrar(p.id); }} />
-        ))}
+        {emUso.map(cartao)}
       </div>
+
+      {desativados.length > 0 && (
+        <section className="flex flex-col gap-3" id="paineis-desativados-ajustes" aria-label="Painéis desativados">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <button type="button" className="btn-ghost btn-sm -ml-2 text-ink-2" aria-expanded={verDesativados} aria-controls="paineis-desativados-lista"
+              onClick={() => setVerDesativados((v) => !v)}>
+              {verDesativados ? <ChevronUp size={15} aria-hidden /> : <ChevronDown size={15} aria-hidden />} Desativados ({desativados.length})
+            </button>
+            <span className="text-[12.5px] text-muted">Não aparecem na tela Painéis nem recebem chamado novo. Para reativar: Editar › Painel ativo.</span>
+          </div>
+          {verDesativados && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" id="paineis-desativados-lista">
+              {desativados.map(cartao)}
+            </div>
+          )}
+        </section>
+      )}
 
       {janela && (
         <JanelaPainel key={janela === 'novo' ? 'novo' : janela.id} painel={janela === 'novo' ? null : janela} paineis={paineis}

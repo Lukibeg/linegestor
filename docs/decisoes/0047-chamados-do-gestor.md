@@ -562,3 +562,16 @@ o Contato, o Relato do cliente, a Solução e a Causa e a Prioridade, numa aba d
   a dica. As caixinhas do que cada etapa pede já seguem o que está ligado na janela, antes de salvar. A árvore do
   Assunto, as opções do Tipo e os campos que a equipe cria continuam em Painéis › Ajustes › Campos (que também
   liga e desliga os quatro novos).
+
+## Revisto no 2.1.4 (27/10/2026): o painel desativado também sai do meio dos Ajustes
+
+O 2.1.2 tirou o painel desativado da tela **Painéis** e deixou a linha "N painéis desativados não aparecem aqui", com o
+caminho para reativar em **Painéis › Ajustes › Painéis**. Ali ele continuava na grade, ao lado dos que estão em uso, só
+com o chip "desativado". O Luan, 27/10: *"esse painel comercial foi desabilitado e mesmo assim ta aparecendo aqui, n
+tinhamos visto isso pra n aparecer mais?"*.
+
+- **Nos Ajustes › Painéis, só os que estão em uso na grade.** Os desativados vão para o fim, numa parte fechada
+  **Desativados (N)**, com a linha *"Não aparecem na tela Painéis nem recebem chamado novo. Para reativar: Editar › Painel
+  ativo."* Clicar abre os cartões deles, com o Editar de sempre.
+- **Vindo pelo "ver em Ajustes › Painéis"** da tela dos painéis (`?desativados=1`), a parte já abre aberta.
+- Continua nos Ajustes (e não some de vez) porque é ali que se reativa, e porque os chamados do painel continuam lá.
