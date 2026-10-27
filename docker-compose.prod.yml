@@ -49,6 +49,8 @@ services:
     depends_on: [app]
     environment:
       DOMINIO: ${DOMINIO}
+    # o 443/udp era do HTTP/3, desligado no Caddyfile desde o 2.1.3; fica aberto (sem nada ouvindo, o navegador
+    # que ainda lembra do HTTP/3 recebe a recusa na hora e vai pelo TCP)
     ports: ['80:80', '443:443', '443:443/udp']
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

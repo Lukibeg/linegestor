@@ -190,12 +190,19 @@ function Opcoes({ opcoes, onMudar }: { opcoes: Opcao[]; onMudar: (o: Opcao[]) =>
         <button className="btn-ghost btn-sm" onClick={() => onMudar([...opcoes, { label: '', tone: 'neutral', conclui: false }])}><Plus size={12} /> opção</button>
       </div>
       {opcoes.map((o, i) => (
-        <div key={o.id ?? i} className="flex flex-wrap items-center gap-1.5">
-          <input className="input flex-1 min-w-[120px]" value={o.label} onChange={(e) => mexer(i, { label: e.target.value })} placeholder="Pendente envio de mensagem" />
-          <select className="input w-[124px] shrink-0" value={o.tone} onChange={(e) => mexer(i, { tone: e.target.value as CorOpcao })} aria-label="Cor">
+        // As colunas fixas (2.1.3, o print do Luan: o nome comprido "dava uma bugada na quebra"): com a linha em
+        // flex, o rótulo de exemplo crescia com o nome, a lixeira caía para a linha de baixo e cada linha ficava de
+        // um jeito. Na grade, todas as linhas se alinham e o exemplo comprido é cortado com "…" (o nome inteiro no
+        // passar do mouse). No celular, a linha quebra como antes.
+        <div key={o.id ?? i} className="flex flex-wrap items-center gap-1.5 sm:grid sm:grid-cols-[minmax(0,1fr)_116px_124px_auto_auto_auto_auto]">
+          <input className="input flex-1 min-w-[120px] sm:min-w-0" value={o.label} onChange={(e) => mexer(i, { label: e.target.value })} placeholder="Pendente envio de mensagem" />
+          <select className="input w-[116px] shrink-0" value={o.tone} onChange={(e) => mexer(i, { tone: e.target.value as CorOpcao })} aria-label="Cor">
             {CORES.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
           </select>
-          <Chip tone={o.tone} className="shrink-0 max-w-[140px] truncate">{o.label.trim() || 'assim'}</Chip>
+          {/* o texto dentro de um span: o `truncate` no próprio chip (inline-flex) não põe o "…" */}
+          <span className="flex min-w-0 max-w-[124px] shrink-0">
+            <Chip tone={o.tone} className="max-w-full" title={o.label.trim() || undefined}><span className="truncate min-w-0">{o.label.trim() || 'assim'}</span></Chip>
+          </span>
           <label className="flex items-center gap-1.5 text-[12.5px] cursor-pointer shrink-0" title="Escolher esta opção fecha a etapa">
             <input type="checkbox" checked={o.conclui} onChange={(e) => mexer(i, { conclui: e.target.checked })} /> resolve
           </label>

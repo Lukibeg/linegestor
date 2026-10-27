@@ -23,7 +23,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Archive, ArrowDown, ArrowLeft, ArrowRightLeft, ArrowUp, CircleCheck, Clock, Filter, Inbox, Moon, ThumbsDown, Trophy } from 'lucide-react';
 import {
-  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararNoQuadroDeVendas, compararUrgencia, movimentoDeNivel, ordemAMao, reaisInteiros, rotuloDoNivel,
+  DICA_TIPO_ETAPA, NOME_ESPERA, NOME_PRIORIDADE, PRIORIDADES, compararNoQuadro, movimentoDeNivel, ordemAMao, reaisInteiros, rotuloDoNivel,
   type CartaoChamado, type ColunaQuadro, type EtapaPainel, type FichaChamado, type OpcoesAtendimento, type Painel, type QuadroAtendimento, type TipoEspera,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -84,7 +84,7 @@ function ErroComTentar({ erro, tentar }: { erro: unknown; tentar: () => void }) 
  * o quadro inteiro reler — senão, entre a resposta e a releitura, o cartão "voltava" um instante
  * para a coluna de onde saiu. A releitura que vem logo depois acerta a ordem e os filtros.
  */
-function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, vendas: boolean): QuadroAtendimento {
+function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, painel: Painel): QuadroAtendimento {
   const fica = f.painelId === q.painelId;
   // o valor da coluna acompanha o cartão que entra e o que sai (a releitura acerta o resto)
   const valorDe = (c: CartaoChamado | undefined) => c?.valor ?? 0;
@@ -95,13 +95,14 @@ function comCartaoNovo(q: QuadroAtendimento, f: FichaChamado, vendas: boolean): 
       const sem = col.chamados.filter((x) => x.id !== f.id);
       const estava = !!antes;
       if (fica && col.etapa.id === f.etapaId) {
-        // onde a ordem é à mão (2.1), o que já está na coluna fica no lugar (inclusive o que a tela já pôs onde
-        // ele caiu, antes da resposta)
-        if (estava && ordemAMao({ tipo: vendas ? 'vendas' : 'gestao' }, col.etapa)) {
+        // onde a ordem é à mão (2.1; desde o 2.1.3, também no painel de Gestão sem prazo), o que já está na coluna
+        // fica no lugar (inclusive o que a tela já pôs onde ele caiu, antes da resposta)
+        if (estava && ordemAMao(painel, col.etapa)) {
           return { ...col, chamados: col.chamados.map((x) => (x.id === f.id ? f : x)), valor: col.valor - valorDe(antes) + valorDe(f) };
         }
-        // no Resolvido e no Fechado, o mais recente primeiro; nas outras, o mais urgente (ou, na venda, a ordem da equipe, com a que chegou no alto)
-        const chamados = col.etapa.tipo === 'resolvido' || col.etapa.tipo === 'fechado' ? [f, ...sem] : [...sem, f].sort(vendas ? compararNoQuadroDeVendas : compararUrgencia);
+        // no Resolvido e no Fechado, o mais recente primeiro; nas outras, a ordem do quadro do painel (o mais urgente, ou
+        // a ordem da equipe, com o que chegou no alto)
+        const chamados = col.etapa.tipo === 'resolvido' || col.etapa.tipo === 'fechado' ? [f, ...sem] : [...sem, f].sort(compararNoQuadro(painel));
         return { ...col, chamados, total: col.total + (estava ? 0 : 1), valor: col.valor - valorDe(antes) + valorDe(f) };
       }
       return estava ? { ...col, chamados: sem, total: Math.max(0, col.total - 1), valor: col.valor - valorDe(antes) } : col;
@@ -177,9 +178,9 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
     qc.setQueryData<QuadroAtendimento>(chave, (q) => {
       const x = q?.colunas.flatMap((c) => c.chamados).find((y) => y.id === f.id);
       if (!q || !x || mesmoCartao(x, f)) return q;
-      return comCartaoNovo(q, f, vendas);
+      return comCartaoNovo(q, f, painel);
     });
-  }), [qc, chave, vendas]);
+  }), [qc, chave, painel]);
 
   // ---------- arrastar (HTML5): o cartão vai, a coluna recebe ----------
   const arrastado = useRef<CartaoChamado | null>(null);
@@ -340,7 +341,8 @@ function QuadroDoPainel({ painel, opcoes, filtros }: { painel: Painel; opcoes: O
           ref={quadroRef} id="quadro-colunas" className="overflow-x-auto -mx-4 sm:mx-0 pb-3 snap-x snap-mandatory scroll-pl-4 sm:snap-none sm:scroll-pl-0 sm:h-[var(--altura-quadro,auto)]"
           style={alturaDasColunas ? ({ '--altura-quadro': `${alturaDasColunas}px` } as CSSProperties) : undefined}
         >
-          {/* colunas finas (o pedido do Luan na prévia: mais colunas cabendo na tela) */}
+          {/* colunas lado a lado: as que não cabem, rolando para o lado (no 2.0 eram finas, para caber mais na tela;
+              no 2.1.3 ficaram um pouco mais largas, para o cartão respirar) */}
           <div className="flex items-start sm:items-stretch sm:h-full gap-2 w-max sm:w-auto px-4 sm:px-0">
             {colunas.map((col) => {
               const aMao = podeMover && ordemAMao(painel, col.etapa);
@@ -435,8 +437,10 @@ function Coluna({ col, painel, filtros, arrastando, sobre, linha, arrastado, onP
       onDragOver={onPassar} onDragLeave={onSair} onDrop={onSoltar}
       // todas da mesma largura (o pedido do Luan, 23/10: "as colunas aqui estão com a largura desigual"): sem o
       // min-w-0, a coluna com um texto comprido numa linha só (o título cortado com "…", o nome da etapa)
-      // alargava até o máximo e as outras ficavam no mínimo
-      className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_236px] sm:min-w-0 sm:max-w-[290px] sm:min-h-0 rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
+      // alargava até o máximo e as outras ficavam no mínimo. A largura subiu no 2.1.3 (o Luan, 27/10: "to achando
+      // muito estreito os cards, deixe um pouco mais largo"): com 236 px, o título do cartão quebrava cedo e era
+      // cortado com "…" na segunda linha; com 272 px, cabem umas cinco letras a mais por linha
+      className={`snap-start shrink-0 w-[85vw] sm:w-auto sm:flex-[1_0_272px] sm:min-w-0 sm:max-w-[340px] sm:min-h-0 rounded-lg border p-1.5 flex flex-col gap-1.5 transition-colors ${
         sobre ? 'border-accent bg-accent-soft' : arrastando ? 'border-dashed border-line-strong bg-surface-2' : 'border-line bg-surface-2'}`}
     >
       <header className="flex items-center gap-1.5 px-1 pt-0.5 min-w-0" title={vendas ? undefined : DICA_TIPO_ETAPA[etapa.tipo]}>

@@ -283,3 +283,25 @@ O Luan, olhando o Comercial: *"to vendo que ele arredonda os valores, n quero is
 - **O rótulo do mês cabe na coluna** (`ValorDaColuna`): no celular, "R$" numa linha e o número na outra; do
   `sm` para cima, numa linha só.
 - **A média e a diferença** são em centavos com fração: arredonda-se só o centavo (`Math.round`), nunca o real.
+
+## Revisto no 2.1.3 (27/10/2026): a ordem à mão também no painel de Gestão sem prazo
+
+O Luan, no painel pessoal dele (um painel de Gestão trazido do Helena, sem prazo): *"eu quero tbm poder alterar a
+ordem dos cards dentro da etapa, hj ele ficam ordenados fixos"*. É a extensão que a escolha do 2.1 deixava em aberto.
+
+- **Onde vale** (`painelComOrdemAMao`, `ordemAMao`): no painel de Vendas e no painel de Gestão que **não conta
+  prazo** — o prazo desligado, ou o painel sem o campo prioridade (`painelContaPrazo`) —, sempre nas etapas abertas
+  (a entrada e o andamento). No painel que conta prazo (o Suporte), o quadro continua pondo o mais urgente primeiro:
+  ali, arrumar à mão esconderia o que vence. No Resolvido e no Fechado, o mais recente, como antes.
+- **O mesmo jeito do Comercial**: arrastar dentro da coluna (a linha mostra onde cai), o arrasto para outra etapa
+  cai onde a linha mostra, **Subir** e **Descer** no Mover, o lugar em `tickets.board_position` (sem migração: a
+  coluna já existia), a auditoria só quando o lugar muda.
+- **O que chega na etapa aparece no alto**, pela regra de sempre do painel sem prazo: a prioridade (a sem
+  prioridade no fim), depois o mais antigo (`compararNoQuadroDeGestao`; é a mesma ordem do `compararUrgencia`
+  quando ninguém tem prazo — o quadro de antes, sem ninguém arrumar, não muda). O servidor, a prévia e a tela
+  escolhem a ordem da coluna pela mesma função (`compararNoQuadro(painel)`).
+- **O painel que passa a contar prazo** volta ao mais urgente primeiro; o lugar fica guardado e volta a valer se o
+  prazo for desligado de novo.
+
+**Escolha que fiz.** O Suporte (e todo painel que conta prazo) ficou de fora, pelo motivo do 2.1. Se o Luan quiser a
+ordem à mão também lá, é trocar o `painelComOrdemAMao`.

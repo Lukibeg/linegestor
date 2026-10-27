@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AJUSTES_PRAZOS_PADRAO, ajustesPrazosCompletos, alertasDevidos, estadoDosPrazos, instanteLocal, minutosUteisEntre, NOME_SITUACAO_PRAZO, prioridadeSugerida, proximaExecucao,
   somarDiasUteis, somarMinutosUteis, textoDaRegra, textoDoPrazo, type AjustesPrazos, type Calendario, type RegraAgendado,
+  type Prioridade,
 } from './atendimento-prazos.js';
 import {
   AJUSTES_PAINEL_PADRAO, CampoGravarSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ETAPAS_DO_PAINEL_NOVO, EtapasGravarSchema, ListaDeEtapasSchema, MAX_ETAPAS_DO_PAINEL,
@@ -18,7 +19,8 @@ import {
   EtapaGravarSchema, NIVEIS, PAINEIS_INICIAIS, rotuloDoNivel,
   citacaoDigitando, citadosNoTexto, emLista, pedacosComCitacoes,
   CARGOS_DE_FABRICA, cargoDaLista,
-  compararNoQuadroDeVendas, MoverSchema, ordemAMao, ordemDepoisDeArrastar, PosicaoNoQuadroSchema,
+  compararNoQuadro, compararNoQuadroDeGestao, compararNoQuadroDeVendas, compararUrgencia, MoverSchema, ordemAMao, ordemDepoisDeArrastar, painelComOrdemAMao, PosicaoNoQuadroSchema,
+  AJUSTES_DO_PAINEL_DE_VENDAS, type CampoDoSistema,
   NOME_CONVERSA, sessaoDaConversa,
 } from './atendimento.js';
 
@@ -701,12 +703,36 @@ describe('o 2.0.3: as etiquetas de cada painel, a lista que inclui na hora e o t
   });
 });
 
-describe('a ordem à mão no quadro (2.1)', () => {
-  it('só no painel de Vendas, nas etapas abertas', () => {
-    expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'entrada' })).toBe(true);
-    expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'andamento' })).toBe(true);
-    expect(ordemAMao({ tipo: 'vendas' }, { tipo: 'fechado' })).toBe(false);
-    expect(ordemAMao({ tipo: 'gestao' }, { tipo: 'andamento' })).toBe(false);
+describe('a ordem à mão no quadro (2.1; no painel de Gestão sem prazo, 2.1.3)', () => {
+  const vendas = { tipo: 'vendas' as const, ajustes: AJUSTES_DO_PAINEL_DE_VENDAS };
+  const suporte = { tipo: 'gestao' as const, ajustes: AJUSTES_PAINEL_PADRAO };
+  const semPrazo = { tipo: 'gestao' as const, ajustes: { ...AJUSTES_PAINEL_PADRAO, contaPrazo: false } };
+  const semPrioridade = { tipo: 'gestao' as const, ajustes: { ...AJUSTES_PAINEL_PADRAO, camposDesligados: ['alcance', 'prioridade'] as CampoDoSistema[] } };
+
+  it('no painel de Vendas e no de Gestão que não conta prazo, nas etapas abertas', () => {
+    expect(ordemAMao(vendas, { tipo: 'entrada' })).toBe(true);
+    expect(ordemAMao(vendas, { tipo: 'andamento' })).toBe(true);
+    expect(ordemAMao(vendas, { tipo: 'fechado' })).toBe(false);
+    // o que conta prazo (o Suporte): o mais urgente primeiro
+    expect(ordemAMao(suporte, { tipo: 'andamento' })).toBe(false);
+    expect(painelComOrdemAMao(suporte)).toBe(false);
+    expect(compararNoQuadro(suporte)).toBe(compararUrgencia);
+    // o que não conta prazo (desligado, ou sem a prioridade no painel)
+    for (const p of [semPrazo, semPrioridade]) {
+      expect(ordemAMao(p, { tipo: 'entrada' })).toBe(true);
+      expect(ordemAMao(p, { tipo: 'andamento' })).toBe(true);
+      expect(ordemAMao(p, { tipo: 'resolvido' })).toBe(false);
+      expect(ordemAMao(p, { tipo: 'fechado' })).toBe(false);
+      expect(compararNoQuadro(p)).toBe(compararNoQuadroDeGestao);
+    }
+    expect(compararNoQuadro(vendas)).toBe(compararNoQuadroDeVendas);
+  });
+
+  it('no painel de Gestão sem prazo: o que ninguém arrumou vem antes (a prioridade, depois o mais antigo); os arrumados, na ordem da equipe', () => {
+    const c = (id: string, prioridade: Prioridade | null, ordemNoQuadro: number | null) => ({ id, prioridade, ordemNoQuadro, criadoEm: `2026-10-0${id.charCodeAt(0) - 64}T12:00:00Z` });
+    const lista = [c('A', 'baixa', 2), c('B', null, null), c('C', 'alta', 1), c('D', 'critica', null), c('E', null, null), c('F', 'media', 2)];
+    // sem ninguém arrumar, B e E (sem prioridade) depois de D; no empate do lugar, a regra de sempre desempata
+    expect([...lista].sort(compararNoQuadroDeGestao).map((x) => x.id)).toEqual(['D', 'B', 'E', 'C', 'F', 'A']);
   });
 
   it('a que ninguém arrumou vem antes (a de maior valor, depois a mais antiga); as arrumadas, na ordem da equipe', () => {

@@ -7,20 +7,43 @@ import { ApiError } from './types.js';
 import { API_BASE as BASE } from './base.js';
 import type { Api } from './index.js';
 
+/**
+ * Quanto uma leitura (GET) espera a resposta antes de desistir (2.1.3). O Luan, 27/10: "do nada o gestão fica lento
+ * mesmo com a internet boa, ele fica carregando e n vai" — no Edge dele, a conexão com o servidor ficava presa (o
+ * "Flush socket pools" destravou na hora), e o fetch sem prazo deixava a tela em "Carregando…" para sempre, sem erro.
+ * Com o prazo, a leitura presa vira um erro na tela (e o react-query tenta de novo uma vez). O servidor responde
+ * em milissegundos (o Server-Timing): 30 s é folga de sobra. Gravar (POST, PUT…) e baixar arquivo não têm prazo — um
+ * gravar que desiste no meio pode ter gravado do mesmo jeito. Com AbortController e setTimeout, e não com o
+ * AbortSignal.timeout, que o Safari dos iPhones antes do iOS 16 não tem.
+ */
+const PRAZO_DA_LEITURA_MS = 30_000;
+
 async function http<T>(method: string, path: string, body?: unknown, raw = false): Promise<T> {
-  const res = await fetch(BASE + path, {
-    method, credentials: 'include',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    let msg = `Erro ${res.status}`; let details = null;
-    try { const j = await res.json(); msg = j.error ?? msg; details = j.details ?? null; } catch { /* sem corpo */ }
-    throw new ApiError(res.status, msg, details);
+  const leitura = method === 'GET' && !raw;
+  const parar = leitura ? new AbortController() : null;
+  // o prazo vale até o corpo chegar inteiro (a resposta pode prender no meio, depois do cabeçalho)
+  const prazo = parar ? setTimeout(() => parar.abort(), PRAZO_DA_LEITURA_MS) : undefined;
+  try {
+    const res = await fetch(BASE + path, {
+      method, credentials: 'include',
+      headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: parar?.signal,
+    });
+    if (!res.ok) {
+      let msg = `Erro ${res.status}`; let details = null;
+      try { const j = await res.json(); msg = j.error ?? msg; details = j.details ?? null; } catch { /* sem corpo */ }
+      throw new ApiError(res.status, msg, details);
+    }
+    if (raw) return res as unknown as T;
+    if (res.status === 204) return undefined as T;
+    return (await res.json()) as T;
+  } catch (erro) {
+    if (parar?.signal.aborted) throw new ApiError(0, 'O servidor não respondeu em 30 segundos. Confira a internet e tente de novo (no navegador, F5).');
+    throw erro;
+  } finally {
+    clearTimeout(prazo);
   }
-  if (raw) return res as unknown as T;
-  if (res.status === 204) return undefined as T;
-  return res.json() as Promise<T>;
 }
 
 /**

@@ -43,7 +43,7 @@ import {
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   AjustesDaNiaSchema, CAMPO_DAS_ETIQUETAS, etiquetasAoPedirANia, NIA_PADRAO, NIA_PEDIR_DE_NOVO_MINUTOS, resumoDaNia, temAEtiqueta, type AjustesDaNia,
   NOME_CONVERSA, sessaoDaConversa,
-  AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar, PosicaoNoQuadroSchema, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
+  AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNoQuadro, compararNoQuadroDeGestao, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar, painelComOrdemAMao, PosicaoNoQuadroSchema, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
   ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel,
   type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type RelatoriosDoPainel,
@@ -1322,8 +1322,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const valor = e.t.valor;
     const sentido = conferirMovimento(e, para, { motivo, responsavelId, nivel: true, venda });
     const m = gravarMovimento(e, ator, para, { motivo, sentido, responsavelId, venda });
-    // arrastada para um lugar da coluna (2.1): a etapa se arruma com ela ali (se a de cima saiu da etapa, ela fica no alto)
-    if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) arrumarNaEtapa(para.id, e.t.id, d.depoisDe);
+    // arrastado para um lugar da coluna (2.1): a etapa se arruma com ele ali (se o de cima saiu da etapa, ele fica no alto)
+    if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) arrumarNaEtapa(e.painel, para.id, e.t.id, d.depoisDe);
     depoisDoMovimento(ator, e.t, m, agora);
     return { ...nada(e.t), resumo: frasesDoMovimento(e.t.codigo, m, sentido, motivo, venda && { valor, motivoPerda: venda.motivoPerda }) };
   }
@@ -1333,10 +1333,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   // =====================================================================
 
   /** Arruma a etapa com o chamado logo abaixo de `depoisDe` (nulo: no alto), numerando a etapa inteira na ordem do quadro. */
-  function arrumarNaEtapa(etapaId: string, id: string, depoisDe: string | null): { posicao: number; mudou: boolean } | null {
+  function arrumarNaEtapa(painel: Painel, etapaId: string, id: string, depoisDe: string | null): { posicao: number; mudou: boolean } | null {
+    // a prioridade só conta se o painel usa o campo (2.1.3, o painel de Gestão sem prazo), como no quadro
+    const usaPrioridade = campoLigado(painel.ajustes, 'prioridade');
     const linhas = A.chamados.filter((t) => t.etapaId === etapaId && !t.deletedAt)
-      .map((t) => ({ t, valor: t.valor, criadoEm: t.criadoEm, ordemNoQuadro: t.ordemNoQuadro ?? null }))
-      .sort(compararNoQuadroDeVendas);
+      .map((t) => ({ t, valor: t.valor, criadoEm: t.criadoEm, ordemNoQuadro: t.ordemNoQuadro ?? null, prioridade: usaPrioridade ? t.prioridade : null }))
+      .sort(painel.tipo === 'vendas' ? compararNoQuadroDeVendas : compararNoQuadroDeGestao);
     const ids = linhas.map((l) => l.t.id);
     const nova = ordemDepoisDeArrastar(ids, id, depoisDe);
     if (!nova) return null;
@@ -1349,13 +1351,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const e = carregar(ator, ref, agoraReal());
     const etapa = e.etapa;
     if (!etapa || !ordemAMao(e.painel, etapa)) {
-      throw bad(e.painel.tipo !== 'vendas'
-        ? 'Arrumar a ordem à mão é no painel de Vendas: neste, o quadro põe o mais urgente primeiro.'
+      throw bad(!painelComOrdemAMao(e.painel)
+        ? 'Neste painel, que conta prazo, o quadro põe o mais urgente primeiro: a ordem à mão é nos painéis sem prazo e no de Vendas.'
         : `Em ${etapa?.nome ?? 'esta etapa'}, a ordem é a do mais recente: arrumar à mão é nas etapas abertas.`);
     }
-    if (d.depoisDe === e.t.id) throw bad('A negociação não fica abaixo dela mesma.');
-    const r = arrumarNaEtapa(etapa.id, e.t.id, d.depoisDe);
-    if (!r) throw conflito('O quadro mudou enquanto você arrastava (a negociação de cima saiu desta etapa). Veja de novo e arraste outra vez.');
+    const venda = e.painel.tipo === 'vendas';
+    if (d.depoisDe === e.t.id) throw bad(venda ? 'A negociação não fica abaixo dela mesma.' : 'O chamado não fica abaixo dele mesmo.');
+    const r = arrumarNaEtapa(e.painel, etapa.id, e.t.id, d.depoisDe);
+    if (!r) throw conflito(`O quadro mudou enquanto você arrastava (${venda ? 'a negociação de cima saiu' : 'o chamado de cima saiu'} desta etapa). Veja de novo e arraste outra vez.`);
     return { ...nada(e.t), posicao: r.posicao, resumo: r.mudou ? `Pôs ${e.t.codigo} em ${r.posicao}º lugar em ${etapa.nome} (a ordem do quadro)` : null };
   }
 
@@ -2191,8 +2194,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         ? [...daqui].sort((a, b) => maisRecente(a.resolvidoEm ?? a.ultimaAtividadeEm, b.resolvidoEm ?? b.ultimaAtividadeEm))
         : etapa.tipo === 'fechado'
           ? [...daqui].sort((a, b) => maisRecente(a.fechadoEm ?? a.ultimaAtividadeEm, b.fechadoEm ?? b.ultimaAtividadeEm))
-          // a negociação (painel de Vendas) não tem prazo: a ordem que a equipe deixou (e, sem ela, a de maior valor primeiro)
-          : [...daqui].sort(painel.tipo === 'vendas' ? compararNoQuadroDeVendas : compararUrgencia);
+          // onde a ordem é à mão (Vendas e, desde o 2.1.3, Gestão sem prazo): a que a equipe deixou; senão, o mais urgente
+          : [...daqui].sort(compararNoQuadro(painel));
       const mostrados = etapa.tipo === 'fechado' ? ordenados.slice(0, FECHADOS_NO_QUADRO) : ordenados;
       return { etapa, chamados: mostrados.map(semBusca), total: daqui.length, escondidos: daqui.length - mostrados.length, valor: daqui.reduce((t, c) => t + (c.valor ?? 0), 0) };
     });
