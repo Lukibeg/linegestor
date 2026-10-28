@@ -58,7 +58,9 @@ function FilhosELigacoes() {
     </button>
   );
 
-  if (vazio && !pode && !temDesenho) return null;
+  // sem pai, filho, problema, ligação nem chamado citado, a parte sai da ficha (2.2, o Luan: "retirar … filhos e ligações da
+  // aba principal … quando for adicionado … uma ligação ele vai aparecer novamente"): o botão Ligações da barra faz tudo
+  if (vazio && !temDesenho) return null;
 
   return (
     <Secao titulo="Filhos e ligações" icone={<Waypoints size={16} />}
@@ -68,7 +70,7 @@ function FilhosELigacoes() {
           <button type="button" className="btn-secondary btn-sm" onClick={() => setLigando(true)}><Link2 size={14} /> Ligar a outro chamado</button>
         </>
       )}>
-      {vazio && <p className="text-[13px] text-muted">Nenhum pai, filho, problema ou ligação. Os chamados citados no texto aparecem no desenho.</p>}
+      {vazio && <p className="text-[13px] text-muted">Nenhum pai, filho, problema ou ligação: o desenho mostra os chamados citados no texto.</p>}
 
       {(f.pai || f.problema) && (
         <ul className="flex flex-col divide-y divide-line">

@@ -3,7 +3,7 @@
  * Todas usam as cores do tema (styles.css), então funcionam no claro e no escuro.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
-import { AlertTriangle, Check, ChevronDown, Copy, Eye, EyeOff, Info, Loader2, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Copy, Eye, EyeOff, Folder, Info, Loader2, Plus, Search, X } from 'lucide-react';
 import { formatarIp, formatarIpOuEndereco, paraBusca, SEM_LIMITE } from '@gestor/shared';
 import { ApiError } from '../../api/types.js';
 
@@ -489,7 +489,19 @@ export function usePosicaoDoPainel(aberto: boolean, ancora: React.RefObject<HTML
   return pos;
 }
 
-export type OpcaoBusca = { id: string; nome: string; dica?: string };
+export type OpcaoBusca = {
+  id: string; nome: string; dica?: string;
+  /**
+   * Uma pasta (2.2, o assunto: "Operadora e operadora vc1 aqui deveria ser apenas para facilitar a visualização e n ser
+   * uma opção… como se fossem pastas"): aparece como título do grupo, com o que vem dentro dela embaixo, e não se escolhe.
+   * Na busca, as pastas saem e cada opção aparece com o caminho inteiro (o `nome`).
+   */
+  pasta?: boolean;
+  /** o recuo na lista sem busca (0 é a raiz) */
+  nivel?: number;
+  /** o nome na lista sem busca, dentro da pasta (o último pedaço do caminho); sem ele, o `nome` */
+  rotulo?: string;
+};
 
 /**
  * Escolher um item de uma lista longa digitando — no lugar da lista suspensa com 60 clientes
@@ -538,8 +550,17 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
   const todas = useMemo(() => (vazio !== undefined ? [{ id: '', nome: vazio }, ...opcoes] : opcoes), [opcoes, vazio]);
   const achadas = useMemo(() => {
     const b = paraBusca(busca);
-    return b ? todas.filter((o) => o.id !== '' && paraBusca(`${o.nome} ${o.dica ?? ''}`).includes(b)) : todas;
+    // na busca, as pastas saem (cada opção vem com o caminho inteiro)
+    return b ? todas.filter((o) => o.id !== '' && !o.pasta && paraBusca(`${o.nome} ${o.dica ?? ''}`).includes(b)) : todas;
   }, [todas, busca]);
+  const emArvore = !paraBusca(busca) && todas.some((o) => o.pasta || o.nivel);
+  /** A próxima opção que se escolhe, andando com as setas (as pastas ficam de fora). */
+  const andar = (m: number, passo: 1 | -1) => {
+    let i = m + passo;
+    while (i >= 0 && i < achadas.length && achadas[i]!.pasta) i += passo;
+    if (i < 0) return m;
+    return Math.min(i, achadas.length - (podeCriar ? 0 : 1));
+  };
   const escolhida = todas.find((o) => o.id === valor);
   const escrito = busca.trim().replace(/\s+/g, ' ');
   // o "+ Incluir" aparece quando o escrito não é o nome de nenhuma opção (sem ligar para maiúscula e acento)
@@ -553,9 +574,16 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
       if (novo !== valor) onChange(novo);
     } catch (e) { setErroCriar(mensagemErro(e)); } finally { setCriando(false); }
   };
-  const abrir = () => { if (desativado) return; setBusca(''); setErroCriar(''); setMarcado(Math.max(0, todas.findIndex((o) => o.id === valor))); setAberto(true); };
+  const abrir = () => {
+    if (desativado) return;
+    setBusca(''); setErroCriar('');
+    // o marcado começa na escolhida (ou na primeira que se escolhe, se ela for uma pasta ou não houver)
+    const i = todas.findIndex((o) => o.id === valor && !o.pasta);
+    setMarcado(i >= 0 ? i : Math.max(0, todas.findIndex((o) => !o.pasta)));
+    setAberto(true);
+  };
   const fechar = (devolverFoco = true) => { setAberto(false); if (devolverFoco) botao.current?.focus(); };
-  const escolher = (o: OpcaoBusca) => { fechar(); if (o.id !== valor) onChange(o.id); };
+  const escolher = (o: OpcaoBusca) => { if (o.pasta) return; fechar(); if (o.id !== valor) onChange(o.id); };
   useEffect(() => {
     if (!aberto) return;
     const fora = (e: MouseEvent) => { if (caixa.current && !caixa.current.contains(e.target as Node)) fechar(false); };
@@ -566,8 +594,8 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
   // o item marcado fica sempre à vista quando se anda com as setas
   useEffect(() => { lista.current?.querySelector<HTMLElement>(`[data-i="${marcado}"]`)?.scrollIntoView({ block: 'nearest' }); }, [marcado, aberto]);
   const tecla = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setMarcado((m) => Math.min(achadas.length - (podeCriar ? 0 : 1), m + 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setMarcado((m) => Math.max(0, m - 1)); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setMarcado((m) => andar(m, 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setMarcado((m) => andar(m, -1)); }
     else if (e.key === 'Enter') { e.preventDefault(); const o = achadas[marcado]; if (o) escolher(o); else if (podeCriar && marcado === achadas.length) void incluir(); }
     // o Esc fecha só o painel, não a janela em volta
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(); }
@@ -603,16 +631,31 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
               />
             </label>
             <ul ref={lista} role="listbox" id={id ? `${id}-lista` : undefined} className="overflow-y-auto min-h-0 flex-1">
-              {achadas.map((o, i) => (
-                <li
-                  key={o.id || '__vazio__'} data-i={i} role="option" aria-selected={o.id === valor}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded text-[13.5px] cursor-pointer ${i === marcado ? 'bg-surface-2' : ''} ${o.id === '' ? 'text-muted italic' : ''}`}
-                  onMouseEnter={() => setMarcado(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => escolher(o)}
-                >
-                  <span className="flex-1 min-w-0 truncate">{o.nome}{o.dica && <span className="text-muted"> · {o.dica}</span>}</span>
-                  {o.id === valor && <Check size={14} className="shrink-0 text-accent" />}
-                </li>
-              ))}
+              {achadas.map((o, i) => {
+                // sem busca, a lista em pastas: o recuo do nível e o nome curto; a pasta é o título do grupo e não se escolhe
+                const recuo = emArvore ? { paddingLeft: 8 + (o.nivel ?? 0) * 16 } : undefined;
+                const texto = emArvore ? o.rotulo ?? o.nome : o.nome;
+                if (o.pasta) {
+                  return (
+                    <li key={o.id} data-i={i} role="presentation" title={o.nome} style={recuo}
+                      className={`flex items-center gap-1.5 px-2 pt-2 pb-1 text-[12.5px] font-semibold text-muted select-none ${o.id === valor ? 'italic' : ''}`}
+                      onMouseDown={(e) => e.preventDefault()}>
+                      <Folder size={13} className="shrink-0" aria-hidden />
+                      <span className="flex-1 min-w-0 truncate">{texto}{o.id === valor && <span className="font-normal"> (o de agora: escolha um de dentro)</span>}</span>
+                    </li>
+                  );
+                }
+                return (
+                  <li
+                    key={o.id || '__vazio__'} data-i={i} role="option" aria-selected={o.id === valor} title={emArvore && o.rotulo ? o.nome : undefined} style={recuo}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded text-[13.5px] cursor-pointer ${i === marcado ? 'bg-surface-2' : ''} ${o.id === '' ? 'text-muted italic' : ''}`}
+                    onMouseEnter={() => setMarcado(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => escolher(o)}
+                  >
+                    <span className="flex-1 min-w-0 truncate">{texto}{o.dica && <span className="text-muted"> · {o.dica}</span>}</span>
+                    {o.id === valor && <Check size={14} className="shrink-0 text-accent" />}
+                  </li>
+                );
+              })}
               {podeCriar && (
                 <li data-i={achadas.length} role="option" aria-selected={false} id={id ? `${id}-incluir` : undefined}
                   className={`flex items-center gap-2 px-2 py-1.5 rounded text-[13.5px] cursor-pointer text-accent-ink ${marcado === achadas.length ? 'bg-surface-2' : ''}`}

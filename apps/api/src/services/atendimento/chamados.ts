@@ -33,7 +33,7 @@ import {
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
   VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, tituloQueFica, mensagemDoTitulo, acharCampo, compararNoQuadroDeGestao, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar, painelComOrdemAMao,
   CAMPO_DAS_ETIQUETAS, chaveDaEtiqueta, etiquetasAoPedirANia, horaLocal, NIA_PEDIR_DE_NOVO_MINUTOS, resumoDaNia, temAEtiqueta,
-  NOME_CONVERSA, sessaoDaConversa,
+  NOME_CONVERSA, NOME_OUTRAS_CONVERSAS, NOME_OUTROS_CONTATOS, outrosContatosLimpos, sessaoDaConversa, textoDoOutroContato,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
   type ValoresDosCampos,
@@ -349,7 +349,7 @@ export async function criarChamado(
   // pedido para o chamado andar de etapa
   const faltam = naTela ? faltaParaAbrir(dados, painel.ajustes) : [];
   if (faltam.length) throw new BadRequest(mensagemDoQueFalta(faltam, undefined, ctx.campos), { faltam });
-  if (prioridade && sugerida && prioridade !== sugerida && !d.motivoPrioridade) throw new BadRequest('Trocar a prioridade sugerida pede o motivo.');
+  // trocar a sugerida não pede mais o motivo (2.2, o Luan: "quando formos trocar a prioridade, n precisar justificar"); o que vier fica guardado
 
   // 5. o que foi citado existe
   if (clienteId) await conferirCliente(db, clienteId);
@@ -516,6 +516,32 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     if (!lida.ok) throw new BadRequest(lida.erro);
     if (lida.sessaoId !== t.sessionId) { set.sessionId = lida.sessaoId; campo('sessaoId', NOME_CONVERSA, t.sessionId, lida.sessaoId, t.sessionId); }
   }
+  // os outros contatos e as outras conversas (2.2): a lista inteira toma o lugar da de antes. Sem os vazios, sem
+  // repetir e sem o principal (o contato e a conversa de cima continuam os do aviso ao cliente, do robô e da NIA)
+  if (d.outrosContatos !== undefined) {
+    const principal = { nome: set.contactName !== undefined ? set.contactName : t.contactName, telefone: set.contactPhone !== undefined ? set.contactPhone : t.contactPhone };
+    const novos = outrosContatosLimpos(d.outrosContatos, principal);
+    const velhos = t.otherContacts ?? [];
+    if (JSON.stringify(novos) !== JSON.stringify(velhos)) {
+      set.otherContacts = novos;
+      campo('outrosContatos', NOME_OUTROS_CONTATOS, velhos.map(textoDoOutroContato).join(', ') || null, novos.map(textoDoOutroContato).join(', ') || null, velhos);
+    }
+  }
+  if (d.outrasConversas !== undefined) {
+    const modelo = await lerModeloDaConversa(db);
+    const principal = set.sessionId !== undefined ? set.sessionId : t.sessionId;
+    const lidas: string[] = [];
+    for (const texto of d.outrasConversas) {
+      const lida = sessaoDaConversa(texto, modelo);
+      if (!lida.ok) throw new BadRequest(`Uma das conversas: ${lida.erro}`);
+      if (lida.sessaoId && lida.sessaoId !== principal && !lidas.includes(lida.sessaoId)) lidas.push(lida.sessaoId);
+    }
+    const velhas = t.otherSessions ?? [];
+    if (JSON.stringify(lidas) !== JSON.stringify(velhas)) {
+      set.otherSessions = lidas;
+      campo('outrasConversas', NOME_OUTRAS_CONVERSAS, velhas.join(', ') || null, lidas.join(', ') || null, velhas);
+    }
+  }
 
   // a negociação (só no painel de Vendas): a empresa que ainda não é cliente, o valor e o motivo da perda
   // (que só a perdida tem)
@@ -580,7 +606,6 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   let motivo: string | null = t.priorityReason;
   if (d.prioridade !== undefined && d.prioridade !== p0) {
     p1 = d.prioridade;
-    if (p1 && sug1 && p1 !== sug1 && !d.motivoPrioridade) throw new BadRequest('Trocar a prioridade sugerida pede o motivo.');
     motivo = p1 && sug1 && p1 !== sug1 ? d.motivoPrioridade ?? null : null;
   } else if ((g1 !== g0 || a1 !== a0) && (p0 === null || p0 === sug0) && sug1 && sug1 !== p0) {
     // a prioridade seguia a sugestão: vai junto para a nova (a escolhida à mão fica como está)
@@ -773,7 +798,7 @@ const momentoDoDia = (dia: string, agora: Date) => (dia === diaLocal(agora) ? ag
  */
 async function conferirMovimento(
   db: Db, e: Estado, para: EtapaPainel,
-  o: { painel?: Painel; motivo: string | null; responsavelId?: string | null; nivel: boolean; venda?: Resultado | null },
+  o: { painel?: Painel; motivo: string | null; responsavelId?: string | null; nivel: boolean; venda?: Resultado | null; ator?: Ator },
 ): Promise<'sobe' | 'desce' | null> {
   const painel = o.painel ?? e.painel;
   const dados = {
@@ -782,7 +807,10 @@ async function conferirMovimento(
     // o motivo da perda vem junto com o marcar como perdido (o de antes, de uma perda desfeita, não vale)
     ...(para.resultado === 'perdido' ? { motivoPerda: o.venda?.motivoPerda ?? null } : {}),
   };
-  const faltam = faltaParaEtapa(dados, para);
+  // dentro do mesmo painel, sair da entrada pede o responsável (2.2) — de quem trabalha na tela; a integração (o n8n, a
+  // NIA) não tem como ser responsável e segue como antes, para nenhum fluxo automático parar. Trocar de painel não conta
+  const pedeResponsavel = !o.painel && o.ator?.tipo === 'pessoa';
+  const faltam = faltaParaEtapa(dados, para, pedeResponsavel ? { de: e.etapa, painel } : undefined);
   if (faltam.length) throw new BadRequest(mensagemDoQueFalta(faltam, para.nome, e.ctx.campos), { faltam });
   const travam = filhosQueTravam(await filhosDoChamado(db, e.ctx, e.t.id), para, painel.ajustes.paiEsperaFilhos);
   if (travam.length) throw new BadRequest(`O ${e.t.code} tem filhos em aberto: ${travam.join(', ')}. Feche os filhos antes.`, { filhos: travam });
@@ -888,7 +916,7 @@ export async function mover(
   const responsavelId = d.responsavelId === undefined ? undefined : d.responsavelId || null;
   if (responsavelId) conferirPessoa(e.ctx, responsavelId);
   const venda = conferirResultado(e, para, d);
-  const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true, venda });
+  const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true, venda, ator });
   const m = await app.db.transaction(async (tx) => {
     const feito = await gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda });
     // arrastado para um lugar da coluna (2.1): a etapa se arruma com ele ali (se o de cima saiu da etapa
@@ -1010,7 +1038,7 @@ export async function assumir(app: FastifyInstance, ator: Ator, ref: string, opt
     const alvo = etapaAoAssumir(e.painel.etapas, t.stageId);
     if (alvo) {
       const dados = { ...dadosDaLinha(t, await minutosGastos(app.db, t.id)), responsavelId: ator.id };
-      if (!faltaParaEtapa(dados, alvo).length) para = alvo;
+      if (!faltaParaEtapa(dados, alvo, { de: e.etapa, painel: e.painel }).length) para = alvo;
     }
   }
   const trocaResponsavel = t.assigneeId !== ator.id;

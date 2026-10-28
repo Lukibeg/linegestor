@@ -7,13 +7,13 @@
  */
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, CalendarClock, History, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Bot, CalendarClock, Check, Copy, History, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
 import { DICA_TIPO_ETAPA, NOME_ORIGEM, reaisInteiros, type Origem } from '@gestor/shared';
 import { api } from '../../../api/index.js';
-import { Chip, Spinner, type TomChip } from '../../../components/ui/index.js';
+import { Chip, Spinner, useToast, type TomChip } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
 import { ChipEspera, ChipPrioridade, ChipResultado, CodigoChamado, SeloPrazo, dataHoraCurta, haQuanto } from '../comum.js';
-import { ErroPerto, nomeComNivel, useAberta, useAcao } from './base.js';
+import { ErroPerto, linkDaFicha, nomeComNivel, useAberta, useAcao } from './base.js';
 
 const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bot, botao: MessageSquare, agendado: CalendarClock, api: Plug, helena: History };
 const TOM_SITUACAO: Record<string, TomChip> = { aberto: 'accent', resolvido: 'ok', fechado: 'muted' };
@@ -56,6 +56,7 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
 
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
         <CodigoChamado codigo={f.codigo} cor={painel?.cor} link={false} className="!text-[16px] !leading-6 !px-2.5 !py-1" />
+        <CopiarOLink codigo={f.codigo} />
         <span className="text-[13px] text-muted font-medium">{painel?.nome ?? 'Painel'}</span>
         {etapa && !etapa.resultado && (
           <Chip tone={TOM_SITUACAO[f.situacao] ?? 'neutral'} title={vendas ? `Etapa ${etapa.nome}` : `Etapa ${etapa.nome}: ${DICA_TIPO_ETAPA[etapa.tipo]}`}>{nomeComNivel(etapa)}</Chip>
@@ -84,6 +85,31 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
         {f.fechadoEm ? <span>{f.resultado === 'ganho' ? 'ganha' : f.resultado === 'perdido' ? 'perdida' : 'fechado'} {emQuando(f.fechadoEm)}</span> : f.resolvidoEm ? <span>resolvido {emQuando(f.resolvidoEm)}</span> : null}
       </div>
     </header>
+  );
+}
+
+/**
+ * Copiar o link do chamado, ao lado do código (2.2, o Luan: "copiar link, poderia ser um botão sucinto na tela inicial
+ * mesmo"; antes ficava no Mais). Para todo mundo, inclusive quem só lê: o link é para colar na conversa ou no WhatsApp.
+ */
+function CopiarOLink({ codigo }: { codigo: string }) {
+  const toast = useToast();
+  const [copiado, setCopiado] = useState(false);
+  const copiar = async () => {
+    try {
+      await navigator.clipboard.writeText(linkDaFicha(codigo));
+      setCopiado(true);
+      window.setTimeout(() => setCopiado(false), 1800);
+      toast.push('ok', `Link do ${codigo} copiado`);
+    } catch {
+      toast.push('erro', `Não deu para copiar: o código é ${codigo}`);
+    }
+  };
+  return (
+    <button type="button" id="ficha-copiar-link" className="btn-ghost btn-xs text-muted -ml-1" onClick={() => void copiar()}
+      title={`Copiar o link do ${codigo} (para colar na conversa ou no WhatsApp)`} aria-label={`Copiar o link do ${codigo}`}>
+      {copiado ? <Check size={14} className="text-ok" aria-hidden /> : <Copy size={14} aria-hidden />}
+    </button>
   );
 }
 

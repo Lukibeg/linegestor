@@ -1623,6 +1623,13 @@ export const tickets = pgTable(
     contactPhone: text('contact_phone'),
     /** A sessão (conversa) do LineChat de onde o chamado veio (o robô, o botão) ou ligada à mão — o chamado ativo, 2.1 */
     sessionId: text('session_id'),
+    /**
+     * Os outros contatos do chamado (2.2, o Luan: "os cards permitem adicionar apenas um contato"): o nome e o WhatsApp de
+     * cada um, além do principal (contact_name e contact_phone, que o aviso ao cliente, o robô e a NIA usam)
+     */
+    otherContacts: jsonb('other_contacts').$type<Array<{ nome: string | null; telefone: string | null }>>().notNull().default([]),
+    /** As outras conversas (sessões) do LineChat ligadas ao chamado (2.2: "permitir colocar mais de uma sessão"), além da principal (session_id) */
+    otherSessions: jsonb('other_sessions').$type<string[]>().notNull().default([]),
     /** manual | robo | botao | agendado | api */
     origin: text('origin').notNull().default('manual'),
     assigneeId: text('assignee_id').references(() => users.id),

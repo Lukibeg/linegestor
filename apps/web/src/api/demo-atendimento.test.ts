@@ -55,6 +55,8 @@ async function baseDoSuporte(op: OpcoesAtendimento, titulo: string): Promise<Cha
   const cliente = (await todosOsChamados()).find((c) => c.cliente?.nome === 'Clínica Aurora')!.cliente!;
   return { painelId: painel(op, 'SUP').id, titulo, relato: 'O cliente ligou relatando o problema (chamado de teste).', clienteId: cliente.id };
 }
+/** Quem entrou (para pôr como responsável: sair do Novo pede um, 2.2). */
+const eu = async () => (await demoApi.auth.me()).id;
 /** Um assunto do Suporte sem checklist (para o teste não depender do checklist do assunto). */
 const assuntoSimples = (op: OpcoesAtendimento) => op.assuntos.find((a) => a.painelId === painel(op, 'SUP').id && a.ativo && !a.checklist.length && a.paiId)!;
 
@@ -286,13 +288,13 @@ describe('as regras do servidor valem na prévia', () => {
     // (o aviso da etapa pelo WhatsApp da equipe também entra no histórico; aqui só interessa o resto)
     expect(f.historico.map((e) => e.tipo).filter((t) => t !== 'aviso_equipe')).toEqual(['criado']);
 
-    // trocar a sugerida pede o motivo (e o pedido recusado não gasta número)
+    // trocar a sugerida não pede mais o motivo (2.2); o que vier fica guardado
     const outra = sugerida === 'baixa' ? 'alta' : 'baixa';
-    const semMotivo = await erroDe(api.criar({ ...base, gravidade: 'inoperancia', alcance: 'empresa', prioridade: outra }));
-    expect(semMotivo.status).toBe(400);
-    expect(semMotivo.message).toBe('Trocar a prioridade sugerida pede o motivo.');
+    const semMotivo = await api.criar({ ...base, gravidade: 'inoperancia', alcance: 'empresa', prioridade: outra });
+    expect(semMotivo.codigo).toBe(`SUP-${maior + 2}`);
+    expect((await api.chamado(semMotivo.id)).prioridade).toBe(outra);
     const r2 = await api.criar({ ...base, gravidade: 'inoperancia', alcance: 'empresa', prioridade: outra, motivoPrioridade: 'O cliente tem o contorno pelo celular' });
-    expect(r2.codigo).toBe(`SUP-${maior + 2}`);
+    expect(r2.codigo).toBe(`SUP-${maior + 3}`);
     const f2 = await api.chamado(r2.id);
     expect(f2.prioridade).toBe(outra);
     expect(f2.motivoPrioridade).toBe('O cliente tem o contorno pelo celular');
@@ -313,7 +315,13 @@ describe('as regras do servidor valem na prévia', () => {
     const op = await api.opcoes();
     const n1 = etapa(op, 'SUP', 'N1'); const n2 = etapa(op, 'SUP', 'N2');
     const r = await api.criar(await baseDoSuporte(op, 'Ramal sem registro (teste de mover)'));
-    expect((await api.mover(r.id, { etapaId: n1.id })).etapaId).toBe(n1.id);
+    // sair do Novo pede o responsável (2.2, como o servidor); no próprio mover (a janela do quadro), vai
+    const semDono = await erroDe(api.mover(r.id, { etapaId: n1.id }));
+    expect(semDono.status).toBe(400);
+    expect(semDono.details).toEqual({ faltam: ['responsavel'] });
+    expect(semDono.message).toBe('Para ir para N1, falta preencher: Responsável.');
+    expect((await api.chamado(r.id)).faltam[n1.id]).toEqual(['responsavel']);
+    expect((await api.mover(r.id, { etapaId: n1.id, responsavelId: await eu() })).etapaId).toBe(n1.id);
 
     const falta = await erroDe(api.mover(r.id, { etapaId: n2.id, motivo: 'Precisa de acesso ao SBC' }));
     expect(falta.status).toBe(400);
@@ -342,19 +350,38 @@ describe('as regras do servidor valem na prévia', () => {
     expect(av.itens[0]).toEqual(expect.objectContaining({ tipo: 'etapa', texto: `${r.codigo} chegou em N2`, lido: false }));
   }, DEMORA);
 
+  it('os outros contatos e as outras conversas (2.2, como o servidor): a lista inteira, sem o vazio, o repetido e o principal', async () => {
+    await entrar('operador');
+    const op = await api.opcoes();
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Teste dos contatos a mais')), contatoNome: 'Sandra', contatoTelefone: '(75) 3604-9000', sessaoId: 'sessao-principal' });
+    const f = await api.alterar(r.id, {
+      outrosContatos: [{ nome: 'João do financeiro', telefone: '(71) 98888-7777' }, { nome: 'Sandra', telefone: '75 3604-9000' }, { nome: 'Rita' }],
+      outrasConversas: ['sessao-extra', 'sessao-principal', 'sessao-extra'],
+    });
+    expect(f.outrosContatos).toEqual([{ nome: 'João do financeiro', telefone: '5571988887777' }, { nome: 'Rita', telefone: null }]);
+    expect(f.outrasConversas.map((c) => c.sessaoId)).toEqual(['sessao-extra']);
+    expect(f.historico.filter((e) => e.tipo === 'campo').map((e) => e.texto)).toEqual(expect.arrayContaining([
+      'mudou Outros contatos para "João do financeiro (71) 98888-7777, Rita"', 'mudou Outras conversas no LineChat para "sessao-extra"',
+    ]));
+    // a busca acha pelo outro contato
+    expect((await api.lista({ q: 'financeiro', situacao: 'todos' })).items.map((c) => c.id)).toContain(r.id);
+    expect((await api.alterar(r.id, { outrosContatos: [], outrasConversas: [] })).outrosContatos).toEqual([]);
+  }, DEMORA);
+
   it('o pai com filho aberto não resolve nem fecha', async () => {
     await entrar('tecnico');
     const op = await api.opcoes();
     const assunto = assuntoSimples(op);
     const pai = await api.criar({
       ...(await baseDoSuporte(op, 'Relatório errado em todas as filas (teste de pai)')), assuntoId: assunto.id, tipo: 'Incidente', gravidade: 'disfuncional', alcance: 'setor',
+      responsavelId: await eu(),
     });
     await api.mover(pai.id, { etapaId: etapa(op, 'SUP', 'N1').id });
     await api.alterar(pai.id, { solucao: 'Corrigido no Desenvolvimento.', causa: 'Erro na conta do relatório.' });
     // o Desenvolvimento pede o Sistema para abrir (um campo do painel)
     const semSistema = await erroDe(api.criar({ painelId: painel(op, 'DEV').id, titulo: 'Corrigir a conta do relatório (teste de filho)', relato: 'Vem do suporte.', paiId: pai.codigo }));
     expect(semSistema.message).toBe('Falta preencher: Sistema.');
-    const filho = await api.criar({ painelId: painel(op, 'DEV').id, titulo: 'Corrigir a conta do relatório (teste de filho)', relato: 'Vem do suporte.', paiId: pai.codigo, campos: { Sistema: 'LineReports' } });
+    const filho = await api.criar({ painelId: painel(op, 'DEV').id, titulo: 'Corrigir a conta do relatório (teste de filho)', relato: 'Vem do suporte.', paiId: pai.codigo, campos: { Sistema: 'LineReports' }, responsavelId: await eu() });
     expect(filho.codigo).toMatch(/^DEV-/);
 
     for (const nome of ['Resolvido', 'Fechado']) {
@@ -383,7 +410,7 @@ describe('as regras do servidor valem na prévia', () => {
     const resolvido = etapa(op, 'SUP', 'Resolvido');
     const p = await api.criar({
       ...(await baseDoSuporte(op, 'Quedas no tronco (teste de problema)')), tipoChamado: 'problema',
-      assuntoId: assuntoSimples(op).id, tipo: 'Incidente', gravidade: 'intermitencia', alcance: 'empresa',
+      assuntoId: assuntoSimples(op).id, tipo: 'Incidente', gravidade: 'intermitencia', alcance: 'empresa', responsavelId: await eu(),
     });
     await api.mover(p.id, { etapaId: etapa(op, 'SUP', 'N1').id });
     const e1 = await erroDe(api.mover(p.id, { etapaId: resolvido.id }));
@@ -398,7 +425,7 @@ describe('as regras do servidor valem na prévia', () => {
     await api.alterar(p.id, { validacao: 'Dois dias sem queda nos três clientes.' });
     expect((await api.mover(p.id, { etapaId: resolvido.id })).situacao).toBe('resolvido');
     // um chamado comum com o mesmo preenchimento não precisa da validação
-    const c = await api.criar({ ...(await baseDoSuporte(op, 'Queda isolada (teste de chamado comum)')), assuntoId: assuntoSimples(op).id, tipo: 'Incidente', gravidade: 'intermitencia', alcance: 'pessoa' });
+    const c = await api.criar({ ...(await baseDoSuporte(op, 'Queda isolada (teste de chamado comum)')), assuntoId: assuntoSimples(op).id, tipo: 'Incidente', gravidade: 'intermitencia', alcance: 'pessoa', responsavelId: await eu() });
     await api.alterar(c.id, { causa: 'Cabo solto.', solucao: 'Cabo trocado.' });
     expect((await api.mover(c.id, { etapaId: resolvido.id })).situacao).toBe('resolvido');
   }, DEMORA);
@@ -541,7 +568,7 @@ describe('as regras do servidor valem na prévia', () => {
     expect((await erroDe(api.salvarCampo(sup.id, null, { nome: 'ramal AFETADO', tipo: 'texto' }))).message).toBe('O painel Suporte já tem o campo Ramal afetado.');
     expect((await erroDe(api.salvarCampo(sup.id, null, { nome: 'Assunto', tipo: 'texto' }))).message).toBe('Todo chamado do painel Suporte já tem o campo Assunto: escolha outro nome.');
 
-    const t = await api.criar({ ...(await baseDoSuporte(op, 'Ramal sem áudio (teste dos campos)')), assuntoId: assuntoSimples(op).id });
+    const t = await api.criar({ ...(await baseDoSuporte(op, 'Ramal sem áudio (teste dos campos)')), assuntoId: assuntoSimples(op).id, responsavelId: await eu() });
     await api.mover(t.id, { etapaId: etapa(op, 'SUP', 'N1').id });
     const falta = await erroDe(api.mover(t.id, { etapaId: n2.id, motivo: 'Precisa do N2' }));
     expect([falta.message, falta.details]).toEqual(['Para ir para N2, falta preencher: Ramal afetado.', { faltam: [`campo:${campo.id}`] }]);
@@ -725,7 +752,7 @@ describe('as regras do servidor valem na prévia', () => {
     await entrar('admin');
     const op = await api.opcoes();
     const lucio = op.pessoas.find((p) => p.nome === 'Lúcio Andrade')!;
-    const r = await api.criar({ ...(await baseDoSuporte(op, 'Teste dos observadores')), observadores: [lucio.id] });
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Teste dos observadores')), observadores: [lucio.id], responsavelId: await eu() });
     const f = await api.chamado(r.codigo);
     expect(f.observadores.map((o) => o.id)).toEqual([lucio.id]);
     await api.anotar(f.id, { texto: 'Conferi o cabo:\n está bom', anexos: [] });
@@ -1105,7 +1132,7 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     const resolvido = ges.etapas.find((e) => e.tipo === 'resolvido')!;
     const n: Record<string, { id: string; codigo: string }> = {};
     for (const [k, prioridade] of [['P', null], ['Q', 'alta'], ['R', null], ['S', 'critica']] as const) {
-      n[k] = await api.criar({ painelId: ges.id, titulo: `Atividade ${k}`, ...(prioridade ? { prioridade } : {}) });
+      n[k] = await api.criar({ painelId: ges.id, titulo: `Atividade ${k}`, responsavelId: await eu(), ...(prioridade ? { prioridade } : {}) });
     }
     const coluna = async (etapaId: string) => (await api.quadro({ painel: ges.id })).colunas.find((c) => c.etapa.id === etapaId)!
       .chamados.map((c) => Object.keys(n).find((k) => n[k]!.id === c.id));
@@ -1114,7 +1141,7 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect((await api.posicionar(n.S!.id, { depoisDe: n.P!.id })).posicao).toBe(4);
     expect(await coluna(novo.id)).toEqual(['R', 'Q', 'P', 'S']);
     // o que chega fica no alto; no Resolvido, não arruma
-    n.T = await api.criar({ painelId: ges.id, titulo: 'Atividade T', prioridade: 'baixa' });
+    n.T = await api.criar({ painelId: ges.id, titulo: 'Atividade T', prioridade: 'baixa', responsavelId: await eu() });
     expect(await coluna(novo.id)).toEqual(['T', 'R', 'Q', 'P', 'S']);
     await api.mover(n.P!.id, { etapaId: resolvido.id });
     expect((await erroDe(api.posicionar(n.P!.id, { depoisDe: null }))).message).toMatch(/Em Resolvido, a ordem é a do mais recente/);

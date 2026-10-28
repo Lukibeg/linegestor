@@ -187,6 +187,20 @@ describe('o robô abre o chamado', () => {
     expect((await s.get('/atendimento/chamados?situacao=todos')).json().total).toBe(1);
   });
 
+  it('as outras conversas do chamado (2.2): o robô acha o chamado aberto por qualquer uma delas', async () => {
+    const f0 = await ficha('SUP-1');
+    // a tela liga mais uma conversa (o código, ou o link) ao SUP-1; a principal e a repetida ficam de fora
+    const r = await s.patch(`/atendimento/chamados/${f0.id}`, { outrasConversas: ['sessao-extra', 'sessao-1', 'sessao-extra'] });
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json().outrasConversas).toEqual([{ sessaoId: 'sessao-extra', url: null }]);
+    const pelaOutra = await doRobo({ relato: 'Escrevi pelo outro número', sessaoId: 'sessao-extra' });
+    expect(pelaOutra.statusCode, pelaOutra.body).toBe(200);
+    expect(pelaOutra.json()).toMatchObject({ criado: false, codigo: 'SUP-1' });
+    expect((await ficha('SUP-1')).anotacoesLista.at(-1).texto).toBe('Escrevi pelo outro número');
+    // tirar todas: a lista vazia
+    expect((await s.patch(`/atendimento/chamados/${f0.id}`, { outrasConversas: [] })).json().outrasConversas).toEqual([]);
+  });
+
   it('dois pedidos da mesma conversa ao mesmo tempo: um chamado só', async () => {
     const [a, b] = await Promise.all([doRobo({ relato: 'Primeira mensagem', sessaoId: 'sessao-2' }), doRobo({ relato: 'Segunda mensagem', sessaoId: 'sessao-2' })]);
     expect([a.json().criado, b.json().criado].sort()).toEqual([false, true]);
@@ -269,10 +283,10 @@ describe('o n8n mexe no chamado', () => {
     expect(r.json().assunto).toMatchObject({ caminho: 'Fila › Configuração' });
     expect((await pedido('PATCH', '/integracao/chamados/SUP-1', { assunto: 'Antigo' })).json().error).toBe('O assunto "Antigo" foi desativado no painel Suporte.');
     expect((await pedido('PATCH', '/integracao/chamados/SUP-1', { assunto: 'Correção de tela' })).json().error).toBe('Não achei o assunto "Correção de tela" no painel Suporte.');
-    // as regras da tela: trocar a prioridade sugerida pede o motivo
+    // as regras da tela: trocar a prioridade sugerida não pede mais o motivo (2.2)
     r = await pedido('PATCH', '/integracao/chamados/SUP-1', { gravidade: 'inoperancia', alcance: 'empresa', prioridade: 'baixa' });
-    expect(r.statusCode).toBe(400);
-    expect(r.json().error).toBe('Trocar a prioridade sugerida pede o motivo.');
+    expect(r.statusCode, r.body).toBe(200);
+    expect(r.json()).toMatchObject({ prioridade: 'baixa' });
     // o assunto vazio tira o assunto
     expect((await pedido('PATCH', '/integracao/chamados/SUP-1', { assunto: '' })).json().assunto).toBeNull();
     await pedido('PATCH', '/integracao/chamados/SUP-1', { assunto: 'Ramal' });

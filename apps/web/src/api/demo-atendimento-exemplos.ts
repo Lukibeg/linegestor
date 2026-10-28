@@ -243,6 +243,8 @@ export type Contato = [nome: string | null, telefone: string];
 /** Os campos do chamado pelos nomes que a pessoa vê (o cliente, o caminho do assunto, o código do produto…). */
 export type DadosDoExemplo = {
   titulo?: string; tipoChamado?: TipoChamado; relato?: string; descricao?: string; cliente?: string; contato?: Contato; sessao?: string;
+  /** os outros contatos e as outras conversas (2.2) */
+  outrosContatos?: Contato[]; outrasSessoes?: string[];
   assunto?: string; tipo?: string; gravidade?: Gravidade; alcance?: Alcance; prioridade?: Prioridade; motivoPrioridade?: string;
   produtos?: string[]; operadoras?: string[]; etiquetas?: string[]; responsavel?: Pessoa;
   /** os campos do painel, pelo nome do campo e da opção ({ Sistema: 'LineReports' }) */
@@ -1255,6 +1257,8 @@ export const EXEMPLOS: Exemplo[] = [
     chave: 'robo-critico', painel: 'SUP', idade: 35, abre: 'robo',
     dados: {
       titulo: 'Nenhuma ligação entra na central', contato: ['Carlos Menezes', '(71) 99999-3321'], sessao: 'e3b0c442-98fc-4c14-9afb-f4c8996fb924',
+      // o gerente também escreveu, por outro número (2.2: mais de um contato e de uma conversa)
+      outrosContatos: [['Patrícia Lopes', '(71) 98877-4410']], outrasSessoes: ['7f9a2c10-4e5b-4d3a-8c21-0b6e5f4a9d77'],
       relato: 'Cliente pelo WhatsApp: "URGENTE: ninguém consegue ligar para a distribuidora desde agora há pouco, dá número inexistente!"',
       prioridade: 'critica', etiquetas: ['urgente'],
       ia: {

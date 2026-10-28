@@ -1,8 +1,8 @@
 /**
- * A linha do tempo do chamado, em abas: Tudo (as anotações e o histórico juntos, pela data),
- * Anotações, Histórico (cada mudança numa frase, com quem e quando) e Trajetória — o pedido do Miguel:
- * por quais etapas e níveis o chamado passou, desde quando, quanto tempo ficou em cada uma, quem
- * moveu e por quê.
+ * A linha do tempo do chamado, em abas, nesta ordem desde o 2.2 (o Luan: "a ordem das opções aqui tem q ser
+ * anotações histórico tragetóra e tudo"), abrindo nas Anotações: Anotações, Histórico (cada mudança numa frase, com
+ * quem e quando), Trajetória — o pedido do Miguel: por quais etapas e níveis o chamado passou, desde quando, quanto
+ * tempo ficou em cada uma, quem moveu e por quê — e Tudo (as anotações e o histórico juntos, pela data).
  *
  * A caixa de anotar aceita até 5 arquivos de até 10 MB cada; o que for colado com Ctrl+V (o print, ou o
  * arquivo copiado da pasta, como o PDF da proposta) vira anexo. A imagem aparece em miniatura e abre
@@ -44,7 +44,7 @@ function ordemGuardada(): 'novos' | 'antigos' {
 
 export function LinhaDoTempo() {
   const { f, pode } = useAberta();
-  const [aba, setAba] = useState<Aba>('tudo');
+  const [aba, setAba] = useState<Aba>('anotacoes');
   const [ordem, setOrdemEstado] = useState<'novos' | 'antigos'>(ordemGuardada);
   const setOrdem = (o: 'novos' | 'antigos') => { setOrdemEstado(o); try { localStorage.setItem(CHAVE_ORDEM, o); } catch { /* sem storage: só não lembra */ } };
 
@@ -64,10 +64,10 @@ export function LinhaDoTempo() {
         </button>
       )}>
       <Abas<Aba> atual={aba} onChange={setAba} abas={[
-        { id: 'tudo', label: 'Tudo' },
         { id: 'anotacoes', label: <>Anotações <span className="text-muted font-normal tnum">({f.anotacoesLista.length})</span></> },
         { id: 'historico', label: <>Histórico <span className="text-muted font-normal tnum">({f.historico.length})</span></> },
         { id: 'trajetoria', label: <>Trajetória <span className="text-muted font-normal tnum">({f.trajetoria.length})</span></> },
+        { id: 'tudo', label: 'Tudo' },
       ]} />
       {pode && (aba === 'tudo' || aba === 'anotacoes') && <Anotar />}
       {aba === 'trajetoria' ? <Trajetoria /> : <Itens itens={itens} vazio={aba === 'anotacoes' ? 'Nenhuma anotação ainda.' : 'Nada por aqui ainda.'} />}

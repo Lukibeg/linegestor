@@ -563,7 +563,7 @@ o Contato, o Relato do cliente, a Solução e a Causa e a Prioridade, numa aba d
   Assunto, as opções do Tipo e os campos que a equipe cria continuam em Painéis › Ajustes › Campos (que também
   liga e desliga os quatro novos).
 
-## Revisto no 2.1.4 (27/10/2026): o painel desativado também sai do meio dos Ajustes
+## Revisto no 2.2 (27/10/2026): o painel desativado também sai do meio dos Ajustes
 
 O 2.1.2 tirou o painel desativado da tela **Painéis** e deixou a linha "N painéis desativados não aparecem aqui", com o
 caminho para reativar em **Painéis › Ajustes › Painéis**. Ali ele continuava na grade, ao lado dos que estão em uso, só
@@ -575,3 +575,53 @@ tinhamos visto isso pra n aparecer mais?"*.
   ativo."* Clicar abre os cartões deles, com o Editar de sempre.
 - **Vindo pelo "ver em Ajustes › Painéis"** da tela dos painéis (`?desativados=1`), a parte já abre aberta.
 - Continua nos Ajustes (e não some de vez) porque é ali que se reativa, e porque os chamados do painel continuam lá.
+
+## Revisto no 2.2 (28/10/2026): a ficha mais enxuta, o responsável para sair do Novo e os contatos a mais
+
+O documento do Luan de 27/10 ("melhorias2710pendentes", doze pedidos com prints). O que mudou:
+
+- **As partes vazias saem da ficha** (*"retirar checklist e filhos e ligações da aba principal e tentar colocar em botões mais
+  resumidos, mas no caso quando for adicionado um checklist ou uma ligação ele vai aparecer novamente"*). O Checklist sem
+  itens, os Filhos e ligações sem nada (nem chamado citado no texto) e o Na agenda sem evento não aparecem. Voltam sozinhos
+  com o primeiro item, a primeira ligação ou o primeiro evento. O checklist também volta pelo botão **Checklist** da barra
+  (o cursor já na caixa de incluir) e quando a próxima etapa pede o checklist.
+- **A barra de ações** ganhou o **Responsável** (*"colocar responsável como botão"*: diz quem está com o chamado e troca ali
+  mesmo; a parte do lado ficou com os Observadores — quem só lê vê ali o responsável), o **Checklist** e as **Ligações**
+  (*"essas 3 opções tem q ficar em um botão próprio como o de esperar"*: ligar a outro chamado, criar um filho, definir, trocar
+  e tirar o pai). O Mais ficou com o problema, trocar de painel, reabrir, observar e a lixeira. O **Copiar o link** foi para
+  o lado do código, no alto da ficha (*"poderia ser um botão sucinto na tela inicial mesmo"*), para todo mundo.
+- **Sair do Novo pede o responsável** (*"e ser obrigatório para tirar de novos"*): `saidaDaEntradaPedeResponsavel` e o terceiro
+  parâmetro de `faltaParaEtapa` (de onde sai e o painel). Vale no painel de Gestão, para qualquer etapa fora da entrada,
+  pelo mover de quem trabalha na tela; a ficha mostra o "falta: Responsável" de cada etapa e marca o botão. **A integração (o
+  n8n, a NIA) segue como antes** — não tem como ser responsável, e nenhum fluxo automático para —, e trocar de painel não
+  conta. O painel de Vendas fica de fora (o Lead anda sem vendedor). Quando só falta o responsável, a janela do quadro
+  pergunta quem fica com o chamado e já move (o `responsavelId` vai no próprio mover).
+- **A linha do tempo**: Anotações, Histórico, Trajetória e Tudo, nesta ordem, abrindo nas Anotações (*"a ordem das opções aqui
+  tem q ser anotações histórico tragetóra e tudo"*).
+- **O assunto em pastas** (*"Operadora e operadora vc1 aqui deveria ser apenas para facilitar a visualização e n ser uma opção,
+  ele poderia fazer como se fossem pastas"*): na escolha do assunto do chamado (a ficha e o Abrir chamado), o assunto que tem
+  outros dentro é o título do grupo e não se escolhe (`assuntosEmPastas`; o `EscolherComBusca` aceita `pasta`, `nivel` e
+  `rotulo`). Na busca, as pastas saem e cada assunto vem com o caminho inteiro. O chamado que já estava numa pasta continua
+  com ela. Nos filtros do quadro e da lista, a pasta continua escolhível (filtra ela e o que está dentro). O servidor não
+  recusa a pasta: o n8n e a NIA mandam o assunto pelo nome e seguem como antes.
+- **Fechar um chamado aberto de dentro de outro volta para o primeiro** (*"ele vai pra tela inicial do painel e n voltar pra o
+  chamado que eu vi primeiro"*): dentro da janela, o chamado novo entra no histórico por cima do outro (`useIrParaOChamado`
+  sem o `replace`), com a mesma tela embaixo; o X e o Voltar voltam para o de antes. O chamado criado no Abrir chamado
+  continua tomando o lugar do formulário (`useAbrirChamado({ noLugar: true })`).
+- **Trocar a prioridade não pede o motivo** (*"quando formos trocar a prioridade, n precisar justificar"*): a janela do motivo
+  saiu da ficha, e o campo saiu do Abrir chamado. O servidor não recusa mais; o motivo que vier (a API) continua guardado e no
+  histórico.
+- **Vários contatos e várias conversas** (*"os cards permitem adicionar apenas um contato"*, *"permitir colocar mais de uma
+  sessão"*): `tickets.other_contacts` e `tickets.other_sessions` (a migração `0026_varios_contatos_e_conversas`, jsonb, vazias
+  por padrão). O contato e a conversa de antes continuam os **principais** — o aviso ao cliente, o robô e a NIA usam eles —, e
+  os outros ficam numa lista embaixo, no cartão do contato (`AMais.tsx`), com **Mais um contato** (o nome e o WhatsApp, ou um
+  clique num contato do cliente) e **Mais uma conversa** (o link ou o código, lido pelo `sessaoDaConversa`). O
+  `PATCH` leva a lista inteira (`outrosContatos`, `outrasConversas`, até 10 cada); o servidor tira os vazios, os repetidos e
+  o principal (`outrosContatosLimpos`), e o histórico diz a lista de antes e a de depois. O robô acha o chamado aberto por
+  qualquer uma das conversas (`abertoDaSessao`), e a busca acha o chamado pelos outros contatos.
+- **O "Ligar a um problema"** ficou como estava; a pergunta *"para q serve"* foi respondida na conversa (o problema junta os
+  incidentes de várias empresas com a mesma falha).
+
+**Ficou esperando o ok dele:** ver a senha dos acessos (telefones, SZChat) sem confirmar a própria senha contraria a decisão
+0003 (*"Revelar exige a permissão `secrets.reveal`, confirmação da própria senha, e gera registro na auditoria"*); foi
+perguntado antes de mexer.

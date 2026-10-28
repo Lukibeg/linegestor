@@ -18,7 +18,7 @@ import {
   type Db,
 } from '@gestor/db';
 import {
-  compararNoQuadro, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
+  campoLigado, compararNoQuadro, compararUrgencia, csvDosChamados, dentroDoHorario, diaLocal, didFormatado, emOrdemDeArvore, faltaParaEtapa,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, linkDaConversa, macFormatado, NOME_LIGACAO, ordenarCartoes, prioridadeSugeridaDoPainel,
   referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, trajetoria,
   type Alcance, type AnotacaoChamado, type Assunto, type AvisosNaTela, type CadastroDoCliente, type CartaoChamado,
@@ -476,7 +476,9 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
   // o que falta para cada etapa e os filhos que travam
   const totalMinutos = tempo.reduce((s, i) => s + i.minutes, 0);
   const dados = dadosDaLinha(t, totalMinutos);
-  const faltam = Object.fromEntries(painel.etapas.map((e) => [e.id, faltaParaEtapa(dados, e)]));
+  // de onde ele está (2.2: sair da entrada pede o responsável)
+  const aqui = painel.etapas.find((e) => e.id === t.stageId);
+  const faltam = Object.fromEntries(painel.etapas.map((e) => [e.id, faltaParaEtapa(dados, e, { de: aqui, painel })]));
   const filhosTravam = Object.fromEntries(painel.etapas.map((e) => [e.id, filhosQueTravam(filhos, e, painel.ajustes.paiEsperaFilhos)]));
 
   const cuida = podeCuidar(ator);
@@ -511,6 +513,9 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     prioridadeSugerida: prioridadeSugeridaDoPainel(painel.ajustes, t.severity as Gravidade | null, t.reach as Alcance | null, ctx.prazos),
     sessaoId: t.sessionId,
     conversaUrl: linkDaConversa(integracoes.valor.linkConversa, t.sessionId),
+    // os outros contatos e as outras conversas (2.2); no painel sem o cliente e o contato, nenhum
+    outrosContatos: campoLigado(painel.ajustes, 'cliente') ? (t.otherContacts ?? []) : [],
+    outrasConversas: (t.otherSessions ?? []).map((sessaoId) => ({ sessaoId, url: linkDaConversa(integracoes.valor.linkConversa, sessaoId) })),
     checklist: (t.checklist as ItemChecklist[] | null) ?? [],
     observadores: t.watcherIds.map((id) => pessoaCurta(ctx, id)!),
     citaveis,

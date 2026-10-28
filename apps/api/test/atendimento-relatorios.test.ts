@@ -27,12 +27,14 @@ let configuracao = '';
 let operadora = '';
 const campo = { id: '', ingline: 'opc-ingline', cliente: 'opc-cliente' };
 const SUP = 'painel-suporte';
+let adminId = '';
 const DEV = 'painel-desenvolvimento';
 const E = { n1: 'etapa-suporte-n1', n2: 'etapa-suporte-n2', resolvido: 'etapa-suporte-resolvido' };
 const t: Record<'um' | 'dois' | 'tres', { id: string; codigo: string }> = { um: { id: '', codigo: '' }, dois: { id: '', codigo: '' }, tres: { id: '', codigo: '' } };
 
 async function abrir(d: Record<string, unknown>) {
-  const r = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Ramal sem configuração', relato: 'O ramal novo não registra', clienteId: aurora, assuntoId: configuracao, ...d });
+  // com responsável: sair do Novo pede um (2.2)
+  const r = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Ramal sem configuração', relato: 'O ramal novo não registra', clienteId: aurora, assuntoId: configuracao, responsavelId: adminId, ...d });
   expect(r.statusCode, r.body).toBe(201);
   return r.json() as { id: string; codigo: string };
 }
@@ -46,7 +48,7 @@ const relatorios = async (qs = '', quem: Session = s) => {
 beforeAll(async () => {
   app = await makeApp();
   s = new Session(app);
-  await s.login();
+  adminId = (await s.login()).id;
   const papeis = (await s.get('/admin/roles')).json();
   const idDe = (key: string) => papeis.find((r: any) => r.key === key).id;
   await s.post('/admin/users', { name: 'Marina Costa', email: 'marina@gestor.local', password: 'SenhaDeTeste!123', roleId: idDe('operador') });

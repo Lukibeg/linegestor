@@ -25,6 +25,7 @@ let s: Session;       // a administração
 let leitor: Session;  // vê o Comercial, sem trabalhar nos chamados
 let diego: Session;   // Comercial, fora da lista do painel
 let com: Painel;
+let adminId = '';
 const n: Record<string, { id: string; codigo: string }> = {};
 
 const etapa = (nome: string): EtapaPainel => {
@@ -61,7 +62,7 @@ const auditoria = async () => ((await s.get('/admin/audit?pageSize=200')).json()
 beforeAll(async () => {
   app = await makeApp();
   s = new Session(app);
-  await s.login();
+  adminId = (await s.login()).id;
   const papel = await s.post('/admin/roles', { name: 'Leitor do Comercial', description: 'só lê', permissions: ['records.read', 'support.read', 'sales.read'] });
   expect(papel.statusCode, papel.body).toBe(201);
   const l = await pessoa('Lia Rocha', 'lia@gestor.local', 'Leitor do Comercial');
@@ -192,7 +193,8 @@ describe('a ordem à mão no painel de Gestão que não conta prazo (2.1.3)', ()
     return e;
   };
   async function abrirG(chave: string, prioridade: string | null, emEtapa?: string) {
-    const r = await s.post('/atendimento/chamados', { painelId: ges.id, titulo: `Atividade ${chave}`, ...(prioridade ? { prioridade } : {}) });
+    // com responsável: sair da entrada pede um (2.2)
+    const r = await s.post('/atendimento/chamados', { painelId: ges.id, titulo: `Atividade ${chave}`, responsavelId: adminId, ...(prioridade ? { prioridade } : {}) });
     expect(r.statusCode, r.body).toBe(201);
     g[chave] = r.json();
     if (emEtapa) expect((await moverG(chave, emEtapa)).statusCode).toBe(200);

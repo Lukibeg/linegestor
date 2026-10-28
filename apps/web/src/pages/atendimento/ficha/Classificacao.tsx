@@ -1,7 +1,7 @@
 /**
  * A classificação do chamado, na coluna do lado: o assunto (o caminho inteiro, só os ativos do
  * painel), o tipo (as opções do painel), a gravidade (com a dica de cada uma), o alcance e a
- * prioridade — com a sugerida ao lado; escolher outra pede o motivo, que vai junto e fica à vista.
+ * prioridade — com a sugerida ao lado; escolher outra grava na hora (desde o 2.2, sem pedir o motivo).
  * Depois, os produtos e as operadoras (os do cliente primeiro, e os outros do catálogo), os campos do
  * painel e as etiquetas, inteiras. ("O que foi afetado" saiu na prévia: "não precisa desse campo", o
  * Luan.) O que o painel desligou na aba Campos não aparece; os campos que ele criou entram aqui (o
@@ -18,7 +18,7 @@ import {
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Chip, EscolherComBusca, Modal, Spinner } from '../../../components/ui/index.js';
-import { Avatar, useIncluirOpcao, usePode } from '../comum.js';
+import { Avatar, assuntosEmPastas, useIncluirOpcao, usePode } from '../comum.js';
 import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { ErroPerto, MarcaFalta, Secao, useAberta, useAcao, usePosicaoFlutuante } from './base.js';
 
@@ -46,13 +46,13 @@ export function Classificacao() {
   const grav = useAcao();
   const alc = useAcao();
   const prio = useAcao();
-  const [trocando, setTrocando] = useState<Prioridade | null>(null);
 
   const mudar = (a: ReturnType<typeof useAcao>, d: ChamadoAlterarEntrada) => void a.rodar(() => api.atendimento.alterar(f.id, d));
 
   const assuntos = useMemo(() => {
     const doPainel = opcoes.assuntos.filter((a) => a.painelId === f.painelId && (a.ativo || a.id === f.assunto?.id));
-    return emOrdemDeArvore(doPainel).map((a) => ({ id: a.id, nome: caminhoDoAssunto(a.id, opcoes.assuntos), dica: a.descricao ?? undefined }));
+    // em pastas (2.2): o assunto com outros dentro é o título do grupo, e escolhe-se o de dentro
+    return assuntosEmPastas(doPainel, opcoes.assuntos);
   }, [opcoes.assuntos, f.painelId, f.assunto?.id]);
   const descricaoDoAssunto = f.assunto ? opcoes.assuntos.find((a) => a.id === f.assunto!.id)?.descricao : null;
   const tipos = painel?.ajustes.tipos ?? [];
@@ -62,8 +62,7 @@ export function Classificacao() {
 
   const escolherPrioridade = (p: Prioridade | null) => {
     if (p === f.prioridade) return;
-    // trocar a sugerida pede o motivo (vai junto e fica no histórico)
-    if (p && sugerida && p !== sugerida) { setTrocando(p); return; }
+    // trocar a sugerida grava na hora (2.2, o Luan: "quando formos trocar a prioridade, n precisar justificar")
     mudar(prio, { prioridade: p });
   };
 
@@ -141,39 +140,7 @@ export function Classificacao() {
         <CamposDoPainel />
         <Etiquetas />
       </div>
-      {trocando && <JanelaMotivoPrioridade para={trocando} onFechar={() => setTrocando(null)} />}
     </Secao>
-  );
-}
-
-/** Trocar a prioridade sugerida pede o motivo: ele vai junto no pedido e fica embaixo da prioridade. */
-function JanelaMotivoPrioridade({ para, onFechar }: { para: Prioridade; onFechar: () => void }) {
-  const { f, painel } = useAberta();
-  const comAlcance = !painel || campoLigado(painel.ajustes, 'alcance');
-  const acao = useAcao();
-  const [motivo, setMotivo] = useState('');
-  const texto = useRef<HTMLTextAreaElement>(null);
-  const trocar = async () => {
-    if (!motivo.trim()) { acao.setErro('Diga por que trocar a prioridade sugerida.'); texto.current?.focus(); return; }
-    const r = await acao.rodar(() => api.atendimento.alterar(f.id, { prioridade: para, motivoPrioridade: motivo.trim() }), `Prioridade: ${NOME_PRIORIDADE[para]}`);
-    if (r.ok) onFechar();
-  };
-  return (
-    <Modal open onClose={onFechar} titulo={`Prioridade ${NOME_PRIORIDADE[para]} no lugar da sugerida`}
-      rodape={<>
-        <button type="button" className="btn-secondary" onClick={onFechar}>Cancelar</button>
-        <button type="button" className="btn-primary" disabled={acao.ocupado} onClick={() => void trocar()}>{acao.ocupado ? <Spinner className="text-white" /> : 'Trocar a prioridade'}</button>
-      </>}>
-      <p className="text-sm text-ink-2 mb-3">
-        {comAlcance ? 'Pela gravidade e pelo alcance' : 'Pela gravidade'}, o Gestor sugere <b>{f.prioridadeSugerida ? NOME_PRIORIDADE[f.prioridadeSugerida] : '—'}</b>. A prioridade muda o prazo do chamado; o motivo fica no histórico e embaixo da prioridade.
-      </p>
-      <Campo label="Por que outra prioridade?">
-        <textarea ref={texto} className="input min-h-[80px]" autoFocus maxLength={300} value={motivo} onChange={(e) => setMotivo(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void trocar(); }}
-          placeholder="Ex.: é a recepção do hospital: parada, ninguém marca consulta" />
-      </Campo>
-      <ErroPerto erro={acao.erro} />
-    </Modal>
   );
 }
 
@@ -401,25 +368,22 @@ export function Responsavel() {
   const resp = useAcao();
   const obs = useAcao();
   const ativas = opcoes.pessoas.filter((p) => p.ativo);
-  const opcoesPessoas = ativas.map((p) => ({ id: p.id, nome: p.nome }));
   const fora = ativas.filter((p) => !f.observadores.some((o) => o.id === p.id)).map((p) => ({ id: p.id, nome: p.nome }));
   const observar = (ids: string[], ok: string) => void obs.rodar(() => api.atendimento.alterar(f.id, { observadores: ids }), ok);
   return (
-    <Secao titulo="Responsável" icone={<UserRound size={16} />}>
-      <Linha id="campo-responsavel" campo="responsavel" rotulo={vendas ? 'Quem cuida da negociação' : 'Quem está com o chamado'} ocupado={resp.ocupado} erro={resp.erro}>
-        {pode ? (
-          <EscolherComBusca valor={f.responsavel?.id ?? ''} opcoes={opcoesPessoas} vazio={vendas ? 'Ninguém (sem vendedor)' : 'Ninguém (fica na fila da etapa)'} className="input w-full" rotulo="Responsável" procurar="Procurar pessoa…"
-            onChange={(id) => void resp.rodar(() => api.atendimento.alterar(f.id, { responsavelId: id || null }), id ? `Responsável: ${ativas.find((p) => p.id === id)?.nome ?? ''}` : vendas ? 'A negociação ficou sem responsável' : 'O chamado ficou sem responsável')} />
-        ) : f.responsavel ? (
-          <p className="flex items-center gap-2 text-[14px]"><Avatar nome={f.responsavel.nome} /> {f.responsavel.nome}</p>
-        ) : <p className="text-[13px] text-muted italic">{vendas ? 'Sem vendedor' : 'Sem dono (na fila da etapa)'}</p>}
-        {pode && eu && f.responsavel?.id !== eu.id && (
-          <p className="text-[12px] text-muted mt-1">Para ficar com {vendas ? 'ela' : 'ele'}, use <b>Assumir</b> na barra de cima.</p>
-        )}
-      </Linha>
+    // o responsável foi para um botão na barra de cima (2.2, "colocar responsável como botão"): aqui ficam os observadores; quem
+    // só lê (sem a barra) vê aqui quem está com o chamado
+    <Secao titulo={pode ? 'Observadores' : 'Responsável'} icone={<UserRound size={16} />}>
+      {!pode && (
+        <Linha id="campo-responsavel" campo="responsavel" rotulo={vendas ? 'Quem cuida da negociação' : 'Quem está com o chamado'} ocupado={resp.ocupado} erro={resp.erro}>
+          {f.responsavel ? (
+            <p className="flex items-center gap-2 text-[14px]"><Avatar nome={f.responsavel.nome} /> {f.responsavel.nome}</p>
+          ) : <p className="text-[13px] text-muted italic">{vendas ? 'Sem vendedor' : 'Sem dono (na fila da etapa)'}</p>}
+        </Linha>
+      )}
 
-      <div className="mt-3.5">
-        <Linha id="campo-observadores" campo="observadores" rotulo="Observadores" ocupado={obs.ocupado} erro={obs.erro}
+      <div className={pode ? '' : 'mt-3.5'}>
+        <Linha id="campo-observadores" campo="observadores" rotulo={pode ? 'Quem recebe os avisos' : 'Observadores'} ocupado={obs.ocupado} erro={obs.erro}
           extra={pode && fora.length > 0 && (
             <EscolherComBusca valor="" opcoes={fora} rotulo="Incluir observador" procurar="Procurar pessoa…"
               onChange={(id) => { const p = ativas.find((x) => x.id === id); if (p) observar([...f.observadores.map((o) => o.id), id], `${p.nome} passou a observar`); }}

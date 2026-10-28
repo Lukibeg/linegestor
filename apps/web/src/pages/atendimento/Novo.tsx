@@ -14,7 +14,7 @@
  *  - ao escolher o cliente, os chamados recentes dele aparecem com "Reabrir este em vez de abrir
  *    outro": o cliente que volta à tarde com o mesmo ramal reabre o chamado da manhã;
  *  - a prioridade vem sugerida pela gravidade e pelo alcance (a matriz dos Ajustes › Prazos); trocar a
- *    sugerida pede o motivo, que fica no histórico;
+ *    sugerida grava sem pedir o motivo (2.2);
  *  - o cliente só recebe aviso quando o atendente marca (desmarcado por padrão);
  *  - a conversa do LineChat (2.1): o chamado ativo (a equipe chamou o cliente) não vem do robô — cola-se o
  *    link da conversa (ou o código da sessão), a ficha mostra o link e a NIA lê o que foi conversado.
@@ -55,7 +55,7 @@ import { JanelaContato, usePodeMexerNosContatos } from '../clientes/Contatos.js'
 import { SeletorDeEtiquetas } from './SeletorDeEtiquetas.js';
 import { PontoDoPainel } from './quadro/filtros.js';
 import {
-  CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
+  assuntosEmPastas, CabecalhoAtendimento, ChipSituacao, CodigoChamado, LinkDoChamado, TOM_DO_PAINEL, dataHoraCurta, etapaDe, haQuanto,
   painelDe, telefoneLegivel, useAbrirChamado, useDepoisDeMudar, useFecharJanela, useFicha, useIncluirOpcao, useOpcoes, usePode,
 } from './comum.js';
 import { ValorDaNegociacao, type ModoDoValor } from './venda.js';
@@ -163,7 +163,8 @@ export function JanelaAbrirChamado() {
   const [sp] = useSearchParams();
   const opcoes = useOpcoes();
   const fecharJanela = useFecharJanela();
-  const abrirChamado = useAbrirChamado();
+  // o chamado criado toma o lugar do formulário na janela (fechar volta para a tela, 2.2)
+  const abrirChamado = useAbrirChamado({ noLugar: true });
   const [escreveu, setEscreveu] = useState(false);
   const [descartar, setDescartar] = useState(false);
   const fechar = () => (escreveu ? setDescartar(true) : fecharJanela());
@@ -311,9 +312,8 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
 
   // ---------- os assuntos do painel (o caminho inteiro; os ativos) ----------
   const assuntosDoPainel = useMemo(() => opcoes.assuntos.filter((a) => a.painelId === painel.id), [opcoes.assuntos, painel.id]);
-  const opcoesAssunto = useMemo<OpcaoBusca[]>(() => emOrdemDeArvore(assuntosDoPainel)
-    .filter((a) => a.ativo)
-    .map((a) => ({ id: a.id, nome: caminhoDoAssunto(a.id, assuntosDoPainel), dica: a.descricao ?? undefined })), [assuntosDoPainel]);
+  // em pastas (2.2): o assunto com outros dentro é o título do grupo, e escolhe-se o de dentro
+  const opcoesAssunto = useMemo<OpcaoBusca[]>(() => assuntosEmPastas(assuntosDoPainel.filter((a) => a.ativo), assuntosDoPainel), [assuntosDoPainel]);
   const assunto = assuntosDoPainel.find((a) => a.id === f.assuntoId);
 
   // ---------- a prioridade sugerida ----------
@@ -367,7 +367,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const trocarCliente = (id: string) => { mudar({ clienteId: id }); tirarFalta('cliente'); };
   const tirarFalta = (c: string) => setFaltando((s) => { if (!s.has(c)) return s; const n = new Set(s); n.delete(c); return n; });
 
-  /** Escolher a prioridade: a sugerida volta a "seguir a sugestão"; outra pede o motivo. */
+  /** Escolher a prioridade: a sugerida volta a "seguir a sugestão"; outra fica como escolhida (sem pedir o motivo, 2.2). */
   const escolherPrioridade = (p: Prioridade) => {
     if (sugerida) mudar({ prioridade: p === sugerida ? null : p });
     else mudar({ prioridade: f.prioridade === p ? null : p });
@@ -386,7 +386,6 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     }
     if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
     if (conversa && !conversa.ok) { setErro(`A conversa no LineChat: ${conversa.erro}`); document.getElementById('novo-conversa')?.focus(); return; }
-    if (precisaMotivo && !f.motivoPrioridade.trim()) { setErro('Trocar a prioridade sugerida pede o motivo.'); document.getElementById('novo-motivo-prioridade')?.focus(); return; }
     if (vendas && !porProduto && !f.valorValido) { setErro('Escreva a mensalidade como 1.200,00.'); document.getElementById('novo-valor-unico')?.focus(); return; }
     if (vendas && !porProduto && !f.ativacaoValida) { setErro('Escreva a ativação como 1.500,00.'); document.getElementById('novo-valor-ativacao')?.focus(); return; }
     const errado = porProduto ? f.produtos.find((id) => f.valoresInvalidos.includes(id) || f.ativacoesInvalidas.includes(id)) : undefined;
@@ -422,7 +421,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       gravidade: usa('gravidade') ? f.gravidade : null,
       alcance: usa('alcance') ? f.alcance : null,
       prioridade: vendas || !usa('prioridade') ? null : f.prioridade,
-      motivoPrioridade: precisaMotivo ? f.motivoPrioridade.trim() : null,
+      motivoPrioridade: null,
       produtos: usa('produtos') ? f.produtos : [],
       operadoras: usa('operadoras') ? f.operadoras : [],
       campos: Object.fromEntries(camposDoPainel.filter((c) => valorPreenchido(f.campos[c.id])).map((c) => [c.id, f.campos[c.id]!])),
@@ -747,13 +746,9 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
                   })}
                 </div>
                 {prioridadeFinal && <p className="text-[12px] text-muted">{NOME_PRIORIDADE[prioridadeFinal]}: {DICA_PRIORIDADE[prioridadeFinal].toLowerCase()}.</p>}
+                {/* outra que não a sugerida não pede mais o motivo (2.2: "quando formos trocar a prioridade, n precisar justificar") */}
                 {precisaMotivo && (
-                  <div>
-                    <label className="label" htmlFor="novo-motivo-prioridade">Por que {NOME_PRIORIDADE[f.prioridade!]} e não {NOME_PRIORIDADE[sugerida!]}? <span className="text-bad">*</span></label>
-                    <textarea className="input min-h-[60px]" id="novo-motivo-prioridade" value={f.motivoPrioridade} maxLength={300}
-                      placeholder="Ex.: o cliente tem um evento hoje à tarde" onChange={(e) => mudar({ motivoPrioridade: e.target.value })} />
-                    <button type="button" className="link text-[12.5px] mt-1" onClick={() => mudar({ prioridade: null, motivoPrioridade: '' })}>Usar a sugerida ({NOME_PRIORIDADE[sugerida!]})</button>
-                  </div>
+                  <button type="button" className="link text-[12.5px] self-start" onClick={() => mudar({ prioridade: null, motivoPrioridade: '' })}>Usar a sugerida ({NOME_PRIORIDADE[sugerida!]})</button>
                 )}
               </div>
             </Rotulado>}
