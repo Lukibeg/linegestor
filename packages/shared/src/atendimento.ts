@@ -138,10 +138,15 @@ export type EtapaPainel = {
    */
   abreImplantacao?: string | null;
   /**
-   * No painel de Gestão (2.3, o Validado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos
+   * No painel de Gestão (2.3, o Implantado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos
    * dele (com a data de ativação) e os módulos marcados nos campos "Módulos do produto".
    */
   ligaNoCadastro?: boolean;
+  /**
+   * No painel de Vendas (2.3, o Implantado do Comercial): a negociação vem para esta etapa sozinha quando o card da
+   * implantação dela chega na etapa que liga no cadastro. Uma por painel.
+   */
+  recebeImplantacao?: boolean;
 };
 
 export type AjustesDoPainel = {
@@ -323,17 +328,17 @@ export function movimentoDeNivel(de: Pick<EtapaPainel, 'nivel'> | null | undefin
  * cliente, a solução e a causa e a prioridade — um painel de atividades internas não tem cliente nem prazo. Sem a
  * prioridade, o painel não conta prazo. O problema (ITIL) continua pedindo a solução e a causa para fechar.
  */
-export const CAMPOS_DO_SISTEMA = ['assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras', 'cliente', 'relato', 'solucao', 'prioridade'] as const;
+export const CAMPOS_DO_SISTEMA = ['assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras', 'cliente', 'relato', 'solucao', 'prioridade', 'tempo'] as const;
 export type CampoDoSistema = (typeof CAMPOS_DO_SISTEMA)[number];
 /** Os que o painel de Vendas liga e desliga (a negociação sempre tem a empresa e não tem relato, solução nem prioridade). */
 export const CAMPOS_DO_SISTEMA_DE_VENDAS: readonly CampoDoSistema[] = ['assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras'];
 /** Os campos do sistema que o painel liga e desliga, na ordem da tela (os do chamado primeiro). */
 export const camposDoSistemaDoTipo = (tipo: TipoDePainel): readonly CampoDoSistema[] => (tipo === 'vendas'
   ? CAMPOS_DO_SISTEMA_DE_VENDAS
-  : ['cliente', 'relato', 'prioridade', 'solucao', 'assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras']);
+  : ['cliente', 'relato', 'prioridade', 'solucao', 'assunto', 'tipo', 'gravidade', 'alcance', 'produtos', 'operadoras', 'tempo']);
 export const NOME_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   assunto: 'Assunto', tipo: 'Tipo', gravidade: 'Gravidade', alcance: 'Alcance', produtos: 'Produtos', operadoras: 'Operadoras',
-  cliente: 'Cliente e contato', relato: 'Relato do cliente', solucao: 'Solução e causa', prioridade: 'Prioridade',
+  cliente: 'Cliente e contato', relato: 'Relato do cliente', solucao: 'Solução e causa', prioridade: 'Prioridade', tempo: 'Tempo gasto',
 };
 export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   assunto: 'A árvore de assuntos (até 3 níveis), com a descrição, o checklist e o de-para de cada um.',
@@ -346,11 +351,13 @@ export const DICA_CAMPO_DO_SISTEMA: Record<CampoDoSistema, string> = {
   relato: 'O que o cliente contou, com as palavras dele.',
   solucao: 'Como foi resolvido e por que aconteceu. O problema (ITIL) continua pedindo os dois para fechar.',
   prioridade: 'Baixa, Média, Alta ou Crítica. Desligada, o painel não conta prazo (SLA).',
+  // 2.3, o Luan no card da implantação: "n precisa disso"
+  tempo: 'Os minutos de trabalho de cada um no chamado (o relatório Tempo gasto). Desligado, a ficha não mostra o Registrar tempo; o que já foi registrado fica guardado.',
 };
 /** O que deixa de ser pedido quando o campo é desligado. */
 export const OBRIGATORIOS_DO_CAMPO: Record<CampoDoSistema, CampoObrigatorio[]> = {
   assunto: ['assunto'], tipo: ['tipo'], gravidade: ['gravidade'], alcance: ['alcance'], produtos: ['produto'], operadoras: ['operadora'],
-  cliente: ['cliente', 'contato'], relato: ['relato'], solucao: ['solucao', 'causa'], prioridade: ['prioridade'],
+  cliente: ['cliente', 'contato'], relato: ['relato'], solucao: ['solucao', 'causa'], prioridade: ['prioridade'], tempo: ['tempo'],
 };
 export const campoLigado = (ajustes: Pick<AjustesDoPainel, 'camposDesligados'>, c: CampoDoSistema) => !ajustes.camposDesligados.includes(c);
 /**
@@ -1038,6 +1045,8 @@ export const EtapaGravarSchema = z.object({
   abreImplantacao: z.string().trim().max(60).nullish().transform((v) => v || null),
   /** no painel de Gestão (2.3): o chamado que chega aqui liga os produtos e os módulos no cadastro do cliente */
   ligaNoCadastro: z.boolean().default(false),
+  /** no painel de Vendas (2.3): a negociação vem para cá quando a implantação termina (o card chega no Implantado) */
+  recebeImplantacao: z.boolean().default(false),
 });
 /** A meta e o valor: em centavos (R$ 1.234,56 = 123456), até R$ 100 milhões. */
 export const MAX_VALOR_EM_CENTAVOS = 10_000_000_000;
@@ -2202,13 +2211,15 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
         const extras = [d.clienteNovo ? `criou o cliente ${d.cliente}` : d.cliente ? `o cliente ${d.cliente}` : '', (d.produtos as string[] | undefined)?.length ? `${emLista(d.produtos as string[])} no cadastro` : ''].filter(Boolean);
         return `abriu a implantação ${d.codigo}${d.painel ? ` no painel ${d.painel}` : ''}${extras.length ? ` (${extras.join('; ')})` : ''}`;
       }
+      // no card, no fim: "a negociação COM-12 foi para Implantado"
+      if (d.acao === 'negociacao') return `a negociação ${d.codigo} foi para ${d.etapa ?? '?'}`;
       // no card: "veio da negociação CIG-12"
       return `veio da negociação ${d.codigo}${d.titulo ? ` (${d.titulo})` : ''}`;
     }
     case 'cadastro': {
       const p = (d.produtos as string[] | undefined) ?? [];
       const m = (d.modulos as string[] | undefined) ?? [];
-      if (!p.length && !m.length) return `chegou em ${d.etapa ?? 'Validado'}: o cadastro de ${d.cliente ?? 'cliente'} já estava em dia`;
+      if (!p.length && !m.length) return `chegou em ${d.etapa ?? 'Implantado'}: o cadastro de ${d.cliente ?? 'cliente'} já estava em dia`;
       return `ligou no cadastro de ${d.cliente ?? 'cliente'}${p.length ? ` ${p.length === 1 ? 'o produto' : 'os produtos'} ${emLista(p)}` : ''}${m.length ? `${p.length ? ' e' : ''} ${m.length === 1 ? 'o módulo' : 'os módulos'} ${emLista(m)}` : ''}${d.dia ? `, desde ${diaComAno(d.dia)}` : ''}`;
     }
     default: return String(tipo);

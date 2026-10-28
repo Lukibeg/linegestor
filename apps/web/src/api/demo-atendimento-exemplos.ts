@@ -1472,12 +1472,12 @@ export type CampoDaImplantacaoDeExemplo = { produto: 'linechat' | 'linepbx'; nom
 export type PassoDaImplantacao = {
   dias: number; hora: string; por: Pessoa;
   campos?: CampoDaImplantacaoDeExemplo[];
-  para?: 'Configuração' | 'Testes' | 'Validado';
+  para?: 'Configuração' | 'Testes' | 'Concluído' | 'Implantado';
   /** quem fica com o card ao sair da Curadoria (sair da entrada pede o responsável) */
   responsavel?: Pessoa;
 };
 export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoDaImplantacao[] }> = [
-  // a Ótica Visão Clara: cliente novo (criado pelo CNPJ da negociação), já validada — o LinePBX e o VoiceNet ativos, com os módulos
+  // a Ótica Visão Clara: cliente novo (criado pelo CNPJ da negociação), já implantada — o LinePBX e o VoiceNet ativos, com os módulos
   {
     negociacao: 'visao-clara',
     passos: [
@@ -1505,9 +1505,11 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
         ],
       },
       {
-        dias: 10, hora: '11:00', por: 'marina', para: 'Validado',
+        dias: 10, hora: '11:00', por: 'marina', para: 'Concluído',
         campos: [{ produto: 'linepbx', nome: 'Testes realizados', valor: ['Registro do ramal no ambiente do cliente', 'Login nos acessos do LinePBX Web', 'Ligações ativas e receptivas', 'IP do ambiente estável'] }],
       },
+      // a implantação feita junto com o cliente: o cliente ativo
+      { dias: 10, hora: '15:30', por: 'luan', para: 'Implantado' },
     ],
   },
   // a Construtora Horizonte (já cliente): o canteiro novo, nos testes

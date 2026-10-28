@@ -1,5 +1,5 @@
 {
-  "id": "67b5bde0-b7ce-4456-94f5-546b97fb83dc",
+  "id": "c5f3fe37-6cae-4337-9a45-ab5098cd2c6c",
   "prevId": "a77b0ed5-110d-44e4-b861-c9f13f39250c",
   "version": "7",
   "dialect": "postgresql",
@@ -8104,6 +8104,13 @@
         },
         "activates_products": {
           "name": "activates_products",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "receives_implementation": {
+          "name": "receives_implementation",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

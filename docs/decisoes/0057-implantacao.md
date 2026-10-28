@@ -1,4 +1,4 @@
-# 0057 — A implantação: o card que a negociação abre, as partes da ficha e o Validado que liga no cadastro
+# 0057 — A implantação: o card que a negociação abre, as partes da ficha e o Implantado que liga no cadastro
 
 **Data:** 28/10/2026 · **Patch:** 2.3 · **Situação:** aceita
 
@@ -14,14 +14,19 @@ E, sobre o Comercial: *"tem que ser quando mover para a parte de em processo de 
 ganho de fato quando eu começar a faturar para o relatório ficar certinho"*; *"já tenho que abrir o card no painel de
 implantação e já tenho que também que criar o cliente … automaticamente com os produtos"*; e *"No Validado, os módulos
 marcados viram os módulos ativos na ficha do cliente, com a data"*. Por fim: *"vamos fazer o caminho completo"* e *"n
-precisa limitar nada disso"*.
+precisa limitar nada disso"*. Depois, olhando a prévia: *"tem q ter uma parte de concluído depois de testes afirmando que
+todos os testes foram concluídos e a ultima tem q ser 'implantado' indicando que o cliente já está ativo"* e *"o painel do
+comercial tem q ter uma fase antes do ganho, implantado, que vai mover de em processo de implantação para implantado quando
+a gente concluir a implantação no painel de implantação"*.
 
 ## O que foi decidido
 
 1. **Um painel de Gestão para a implantação, com um card por cliente** — não um módulo à parte. O card é um chamado:
    tem quadro, ficha, responsável, observadores, anotações, histórico e relatórios, como os outros. O painel nasce do
    **modelo Implantação** (Painéis › Ajustes › Novo painel): as etapas Stand By, Curadoria (a entrada), Configuração,
-   Testes e Validado; sem prazo, sem prioridade, sem assunto, tipo, gravidade, alcance, operadora, relato e solução; e os
+   Testes, Concluído (os testes acabaram: o tipo Resolvido) e Implantado (o cliente ativo: o tipo Fechado, que liga no
+   cadastro); sem prazo, sem prioridade, sem assunto, tipo, gravidade, alcance, operadora, relato, solução e tempo
+   gasto (o Tempo gasto virou um campo do sistema que cada painel liga e desliga: "n precisa disso", no card); e os
    18 campos do Ingline - Ativações, arrumados em três partes, com o LineChat ganhando os testes que lá não tinha.
 2. **Os campos ganham a parte e o produto** (`ticket_fields.section`, `ticket_fields.product_id`, migração 0027):
    - com a **parte**, o campo sai da classificação e vai para o meio da ficha, num cartão por parte, com um bloco por
@@ -47,16 +52,22 @@ precisa limitar nada disso"*.
      contato, os produtos e quem cuida da negociação (e quem a observa) como observadores, ligado à negociação
      (`tickets.source_ticket_id`, um card por negociação fora da lixeira: voltar e ir de novo não abre outro).
    O **Ganho continua à parte**, marcado quando começa a faturar — o Relatório de Vendas fica certo.
-5. **A etapa de Gestão que liga no cadastro** (`ticket_stages.activates_products`, o Validado): o card que chega nela
+5. **A etapa de Gestão que liga no cadastro** (`ticket_stages.activates_products`, o Implantado): o card que chega nela
    dá a data de hoje aos produtos que estavam sem data, põe ativo o que o cliente não tinha (o Equipamentos, que não tem
    data de ativação, entra sem ela — decisão 0034) e liga, desde hoje, os módulos marcados nos campos Módulos do produto.
    O produto encerrado fica como está (reativar é na ficha do cliente). O que já estava em dia não muda nada.
-6. **A janela mostra antes o que vai acontecer** (`GET /atendimento/chamados/:id/ao-mover`): o cliente, os produtos e o
-   card (na negociação), ou o que fica ativo no cadastro (no Validado). A negociação que já abriu o card e o Validado
+6. **A negociação vai para o Implantado do Comercial** (`ticket_stages.receives_implementation`, uma etapa por painel de
+   Vendas, fora do Ganho e do Perdido): quando o card chega no Implantado, a negociação de onde ele veio vai sozinha para a
+   etapa do painel dela que recebe a implantação terminada ("Implantado", antes do Ganho), sem as regras de entrar na
+   etapa — quem moveu foi o card. O histórico da negociação diz "a implantação IMP-3 terminou"; o do card, "a negociação
+   COM-12 foi para Implantado". A negociação que já está no Ganho ou no Perdido fica onde está.
+7. **A janela mostra antes o que vai acontecer** (`GET /atendimento/chamados/:id/ao-mover`): o cliente, os produtos e o
+   card (na negociação), ou o que fica ativo no cadastro e a negociação que vai junto (no Implantado). A negociação que já abriu o card e o
+   Implantado
    que não muda nada vão direto, sem janela. Fora isso, nada trava: a regra de sair da entrada com um responsável (2.2)
    continua valendo na Curadoria, e a própria janela pergunta quem fica com o card.
-7. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
-   cadastro)"; no card, "veio da negociação COM-12"; no Validado, "ligou no cadastro de X o produto … e os módulos …,
+8. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
+   cadastro)"; no card, "veio da negociação COM-12"; no Implantado, "ligou no cadastro de X o produto … e os módulos …,
    desde …"; a auditoria ganha as linhas do cliente criado, do card aberto e do que ligou no cadastro.
 
 ## Por que assim
@@ -66,7 +77,7 @@ precisa limitar nada disso"*.
 - A parte e o produto no campo resolvem os dois grupos do Helena sem um "grupo de campos" novo: o mesmo painel serve
   para o cliente que leva só o LineChat, só o LinePBX ou os dois.
 - O cliente nasce na hora certa (quando a implantação começa), e não no Ganho, que o Luan marca quando fatura.
-- A data de ativação vem do Validado — o dia em que o cliente passou a usar —, e não do dia da venda.
+- A data de ativação vem do Implantado — o dia em que o cliente passou a usar —, e não do dia da venda.
 
 ## Fica para depois
 

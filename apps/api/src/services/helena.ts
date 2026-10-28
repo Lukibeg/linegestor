@@ -519,11 +519,11 @@ async function criarPainel(db: Db, leitura: LeituraDoHelena, agora: Date): Promi
 async function gravarEtapas(db: Db, ator: Ator, painel: PainelDoGestorParaHelena, plano: PlanoDaImportacao, agora: Date, tipo: TipoDePainel): Promise<(nome: string) => string | null> {
   const validos = obrigatoriosDoPainel({ camposDesligados: painel.camposDesligados }, painel.campos, tipo);
   // o que a etapa que fica já fazia (2.3: abrir a implantação, ligar no cadastro) continua: o Trazer não mexe nisso
-  const antes = new Map((await db.select({ id: ticketStages.id, abre: ticketStages.opensPanelId, liga: ticketStages.activatesProducts }).from(ticketStages)
+  const antes = new Map((await db.select({ id: ticketStages.id, abre: ticketStages.opensPanelId, liga: ticketStages.activatesProducts, recebe: ticketStages.receivesImplementation }).from(ticketStages)
     .where(eq(ticketStages.panelId, painel.id))).map((e) => [e.id, e]));
   const etapas: EtapaGravar[] = plano.etapas.etapas.map((e) => ({
     ...(e.id ? { id: e.id } : {}), nome: e.nome, tipo: e.tipo, nivel: null, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado,
-    abreImplantacao: (e.id && antes.get(e.id)?.abre) || null, ligaNoCadastro: !!(e.id && antes.get(e.id)?.liga),
+    abreImplantacao: (e.id && antes.get(e.id)?.abre) || null, ligaNoCadastro: !!(e.id && antes.get(e.id)?.liga), recebeImplantacao: !!(e.id && antes.get(e.id)?.recebe),
   }));
   const planoDasEtapas = await planejarEtapas(db, painel.id, etapas, {}, validos, tipo);
   await aplicarEtapas(db as unknown as Tx, ator, planoDasEtapas, agora);

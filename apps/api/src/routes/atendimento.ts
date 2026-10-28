@@ -193,7 +193,7 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     ...trabalhar,
     schema: {
       tags, params: Id, querystring: AoMoverSchema,
-      summary: 'O que a etapa vai fazer ao chegar (a implantação: o cliente, os produtos e o card; o Validado: o que liga no cadastro). Não grava nada.',
+      summary: 'O que a etapa vai fazer ao chegar (a implantação: o cliente, os produtos e o card; o Implantado: o que liga no cadastro). Não grava nada.',
     },
   }, async (req) => svc.oQueAEtapaFaz(app, ator(req), req.params.id, req.query));
 

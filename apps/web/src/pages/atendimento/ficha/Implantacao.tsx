@@ -23,7 +23,7 @@ export function PartesDoChamado() {
   const partes = useMemo(() => partesDoChamado(opcoes.campos.filter((c) => c.painelId === f.painelId), produtos, f.campos), [opcoes.campos, f.painelId, produtos, f.campos]);
   if (!partes.length) return null;
   const daEtapa = etapa ? partes.find((p) => paraBusca(p.nome) === paraBusca(etapa.nome)) : undefined;
-  // fora das etapas com o nome de uma parte (o Stand By, o Validado), todas abertas; o que a próxima etapa pede, também
+  // fora das etapas com o nome de uma parte (o Stand By, o Concluído, o Implantado), todas abertas; o que a próxima etapa pede, também
   const temFalta = (p: ParteDoChamado) => p.blocos.some((b) => b.campos.some((c) => faltando.has(chaveDoCampo(c.id))));
   return (
     <>

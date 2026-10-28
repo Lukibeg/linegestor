@@ -50,7 +50,7 @@ import {
 } from './contexto.js';
 import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, minutosGastos } from './leitura.js';
 import { emitir } from './webhooks.js';
-import { abrirAImplantacao, aoMover, ligarNoCadastro, type AoMover, type AuditoriaExtra } from './implantacao.js';
+import { abrirAImplantacao, aoMover, ligarNoCadastro, negociacaoNoFim, type AoMover, type AuditoriaExtra, type FimNaNegociacao } from './implantacao.js';
 import { mandarWhatsApp } from './whatsapp.js';
 
 export { fichaDoChamado } from './leitura.js';
@@ -936,10 +936,12 @@ export async function mover(
   if (responsavelId) conferirPessoa(e.ctx, responsavelId);
   const venda = conferirResultado(e, para, d);
   const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true, venda, ator });
-  // o que a etapa faz ao chegar (2.3): abrir a implantação (a negociação) ou ligar no cadastro (o card do Validado). O
+  // o que a etapa faz ao chegar (2.3): abrir a implantação (a negociação) ou ligar no cadastro (o card do Implantado). O
   // cliente novo precisa do CNPJ (o cadastro exige): sem ele, a negociação não vai, e a tela abre a janela para pedir
   const vai = await aoMover(app.db, e.ctx, e.t, e.painel, para, d.implantacao);
   if (vai.implantacao?.falta) throw new BadRequest(vai.implantacao.falta, { implantacao: vai.implantacao });
+  // o fim da implantação (2.3): a negociação de onde o card veio vai para o Implantado do Comercial
+  const fim = vai.negociacao ? await negociacaoNoFim(app.db, e.ctx, e.t, e.painel, para) : null;
   const r = await app.db.transaction(async (tx) => {
     const feito = await gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda });
     // arrastado para um lugar da coluna (2.1): a etapa se arruma com ele ali (se o de cima saiu da etapa
@@ -947,19 +949,36 @@ export async function mover(
     if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) await arrumarNaEtapa(tx, e.painel, para.id, e.t.id, d.depoisDe);
     const implantacao = vai.implantacao ? await abrirAImplantacao(tx, e, ator, vai.implantacao) : null;
     const cadastro = vai.cadastro ? await ligarNoCadastro(tx, e, ator, vai.cadastro) : null;
-    return { feito, implantacao, cadastro };
+    const naNegociacao = fim ? await levarANegociacao(tx, e, ator, fim) : null;
+    return { feito, implantacao, cadastro, naNegociacao };
   });
   const m = r.feito;
   await depoisDoMovimento(app, ator, e.t, m);
   if (r.implantacao) emitir(app, 'chamado.criado', r.implantacao.id);
+  if (fim && r.naNegociacao) await depoisDoMovimento(app, ator, fim.linha, r.naNegociacao);
   const extra = [
     r.implantacao ? `; abriu a implantação ${r.implantacao.codigo}${r.implantacao.clienteNovo ? ` e criou o cliente ${r.implantacao.clienteNovo.nome}` : ''}` : '',
     r.cadastro && (r.cadastro.produtos.length || r.cadastro.modulos.length) ? `; ligou no cadastro ${[...r.cadastro.produtos, ...r.cadastro.modulos].join(', ')}` : '',
+    fim ? `; a negociação ${fim.linha.code} foi para ${fim.para.nome}` : '',
   ].join('');
   return {
     ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo, venda && { valor: e.t.valueCents, motivoPerda: venda.motivoPerda }) + extra,
-    auditoriaExtra: [...(r.implantacao?.auditoria ?? []), ...(r.cadastro?.auditoria ?? [])],
+    auditoriaExtra: [
+      ...(r.implantacao?.auditoria ?? []), ...(r.cadastro?.auditoria ?? []),
+      ...(fim ? [{ action: 'update' as const, entityType: 'ticket', entityId: fim.linha.id, summary: `Moveu ${fim.linha.code} de ${fim.de.nome} para ${fim.para.nome}: a implantação ${e.t.code} terminou` }] : []),
+    ],
   };
+}
+
+/**
+ * A negociação vai para a etapa que recebe a implantação terminada, dentro da transação do mover do card: o movimento
+ * de sempre (o histórico diz o porquê), sem as regras de entrar na etapa — quem moveu foi o card, e nada trava.
+ */
+async function levarANegociacao(tx: Db, e: Estado, ator: Ator, fim: FimNaNegociacao): Promise<Movimento> {
+  const daNegociacao: Estado = { ctx: e.ctx, t: fim.linha, painel: fim.painel, etapa: fim.de, agora: e.agora, quando: e.quando };
+  const m = await gravarMovimento(tx, daNegociacao, ator, fim.para, { motivo: `a implantação ${e.t.code} terminou`, sentido: null });
+  await registrarEvento(tx, e.t.id, 'implantacao', ator, { acao: 'negociacao', codigo: fim.linha.code, etapa: fim.para.nome }, e.quando());
+  return m;
 }
 
 /**

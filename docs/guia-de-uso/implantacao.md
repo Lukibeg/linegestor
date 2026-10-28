@@ -1,21 +1,24 @@
 # A implantação dos clientes (Patch 2.3)
 
 Um card por cliente novo, com a curadoria, a configuração e os testes de cada produto. O card nasce sozinho quando a
-negociação do Comercial entra na etapa que abre a implantação, já com o cliente e os produtos; e, no Validado, os
+negociação do Comercial entra na etapa que abre a implantação, já com o cliente e os produtos; e, no Implantado, os
 produtos e os módulos ficam ativos na ficha do cliente, com a data.
 
 ## 1. Montar uma vez
 
 1. **O painel.** Painéis › Ajustes › Painéis e etapas › **Novo painel** › **Implantação (Gestão)**. Ele já vem com:
-   - as etapas **Stand By**, **Curadoria** (onde o card cai), **Configuração**, **Testes** e **Validado** (o Validado
+   - as etapas **Stand By**, **Curadoria** (onde o card cai), **Configuração**, **Testes**, **Concluído** (todos os testes
+     feitos) e **Implantado** (o cliente ativo; o Implantado
      liga no cadastro);
    - os **18 campos** do Ingline - Ativações, em três partes (Curadoria, Configuração, Testes), um bloco para o LineChat
      e outro para o LinePBX;
-   - sem prazo e sem prioridade (a implantação leva o tempo dela).
+   - sem prazo, sem prioridade e sem o Tempo gasto (a implantação leva o tempo dela). O Tempo gasto liga e desliga em
+     Painéis › Ajustes › Campos, em cada painel.
    Escolha quem vê (todos, ou só as pessoas da implantação) e **Criar painel**.
 2. **O Comercial.** Painéis › Ajustes › Painéis e etapas › Comercial › Editar › abra a etapa que começa a implantação
    (a **Em processo de Implantação**; se ela não existe, **Incluir etapa**) › **Ao chegar aqui, abre a implantação** ›
-   **No painel Implantação** › Salvar.
+   **No painel Implantação**. Depois, inclua a etapa **Implantado** antes do Ganho e ligue **A negociação vem para cá
+   quando a implantação termina** › Salvar.
 3. **Os módulos.** Os Módulos a ativar de cada produto são os do catálogo: Administração › Produtos. O que entrar ou sair
    ali aparece no card sozinho. (No catálogo de hoje, faltam para o LinePBX: Callback, WebRTC, NPS - WhatsApp e Filas -
    Dashboard.)
@@ -44,18 +47,22 @@ Voltar a negociação e mover de novo não abre outro card.
 - **Os Testes.** O suporte marca o que já testou com o cliente.
 - Cada parte mostra a conta (**3 de 5**); a parte da etapa em que o card está fica aberta, e as outras abrem com um
   clique. O cartão do quadro mostra a barrinha da parte da etapa.
-- Nada trava: dá para ir para a Configuração com a curadoria pela metade, e para o Validado com teste faltando.
+- Nada trava: dá para ir para a Configuração com a curadoria pela metade, e para o Implantado com teste faltando.
 
-## 4. O Validado liga no cadastro
+## 4. O Implantado liga no cadastro e leva a negociação
 
-Mova o card para **Validado**. A janela mostra como a ficha do cliente vai ficar, desde hoje:
+Quando os testes acabarem, mova o card para **Concluído**. Feita a implantação junto com o cliente, mova para
+**Implantado**. A janela mostra como a ficha do cliente vai ficar, desde hoje:
 
 - os produtos sem data ganham a data de hoje (o que o cliente não tinha entra ativo; o Equipamentos, que não tem data,
   entra sem ela; o que estava encerrado fica como está);
 - os módulos marcados em Módulos a ativar ficam ligados.
 
 **Mover e ligar no cadastro.** Na ficha do cliente (Clientes › o cliente › Produtos), o produto que ainda está em
-implantação aparece como **em implantação**; depois do Validado, **ativo desde** o dia.
+implantação aparece como **em implantação**; depois do Implantado, **ativo desde** o dia.
+
+E a negociação vai sozinha, no Comercial, de **Em processo de Implantação** para **Implantado**. O Ganho você marca
+quando começar a faturar.
 
 ## 5. Os campos (Painéis › Ajustes › Campos)
 

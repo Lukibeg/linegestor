@@ -167,14 +167,18 @@ export const MODELO_DA_IMPLANTACAO: {
   // cliente, os produtos e as partes
   ajustes: {
     ...AJUSTES_PAINEL_PADRAO, tipos: [], contaPrazo: false, fecharSozinhoDias: null, paiEsperaFilhos: true,
-    camposDesligados: ['assunto', 'tipo', 'gravidade', 'alcance', 'operadoras', 'relato', 'solucao', 'prioridade'],
+    // nem o tempo gasto (2.3, o Luan: "n precisa disso")
+    camposDesligados: ['assunto', 'tipo', 'gravidade', 'alcance', 'operadoras', 'relato', 'solucao', 'prioridade', 'tempo'],
   },
   etapas: [
     { nome: 'Stand By', tipo: 'andamento', nivel: null, obrigatorios: [] },
     { nome: CURADORIA, tipo: 'entrada', nivel: null, obrigatorios: [] },
     { nome: CONFIGURACAO, tipo: 'andamento', nivel: null, obrigatorios: [] },
     { nome: TESTES, tipo: 'andamento', nivel: null, obrigatorios: [] },
-    { nome: 'Validado', tipo: 'fechado', nivel: null, obrigatorios: [], ligaNoCadastro: true },
+    // 2.3, o Luan: "uma parte de concluído depois de testes afirmando que todos os testes foram concluídos e a ultima tem q
+    // ser 'implantado' indicando que o cliente já está ativo e já realizamos a implantação junto ao cliente"
+    { nome: 'Concluído', tipo: 'resolvido', nivel: null, obrigatorios: [] },
+    { nome: 'Implantado', tipo: 'fechado', nivel: null, obrigatorios: [], ligaNoCadastro: true },
   ],
   campos: [
     // a curadoria do LineChat
@@ -196,7 +200,7 @@ export const MODELO_DA_IMPLANTACAO: {
       nome: 'Configuração do ambiente', tipo: 'caixinhas', parte: CONFIGURACAO, produto: 'linechat', dica: 'Marque o que já foi feito.',
       opcoes: ['Criação dos usuários', 'Criação das equipes', 'Configuração dos chatbots', 'Configuração do horário de atendimento', 'Ativação dos números'],
     },
-    { nome: 'Módulos a ativar', tipo: 'modulos', parte: CONFIGURACAO, produto: 'linechat', dica: 'Os módulos que o cliente contratou. No Validado, ficam ligados na ficha dele.', opcoes: [] },
+    { nome: 'Módulos a ativar', tipo: 'modulos', parte: CONFIGURACAO, produto: 'linechat', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
     {
       nome: 'Configuração do ambiente', tipo: 'caixinhas', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Marque o que já foi feito.',
       opcoes: [
@@ -205,7 +209,7 @@ export const MODELO_DA_IMPLANTACAO: {
         'LineReports - Instalação', 'Configuração dos telefones',
       ],
     },
-    { nome: 'Módulos a ativar', tipo: 'modulos', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Os módulos que o cliente contratou. No Validado, ficam ligados na ficha dele.', opcoes: [] },
+    { nome: 'Módulos a ativar', tipo: 'modulos', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
     // os testes (o suporte confere antes de validar)
     {
       nome: 'Testes realizados', tipo: 'caixinhas', parte: TESTES, produto: 'linechat', dica: 'Marque o que já foi testado com o cliente.',
@@ -294,7 +298,7 @@ export function planoDaImplantacao(e: {
 }
 
 // =====================================================================
-//  O CARD QUE LIGA NO CADASTRO (o Validado)
+//  O CARD QUE LIGA NO CADASTRO (o Implantado)
 // =====================================================================
 
 /** O que o cliente já tem de um produto no cadastro: a data de ativação, se foi encerrado e os módulos ligados. */
@@ -354,8 +358,26 @@ export function planoDoCadastro(e: {
   return { etapa: e.etapa, dia: e.dia, cliente: e.cliente, produtos, modulos };
 }
 
-/** O que a etapa faz ao chegar (a janela de antes de mover): abrir a implantação, ligar no cadastro, ou nada (os dois nulos). */
-export type OQueAEtapaFaz = { implantacao: PlanoDaImplantacao | null; cadastro: PlanoDoCadastro | null };
+/** A negociação que vai sozinha para a etapa que recebe a implantação terminada (o Implantado do Comercial). */
+export type NegociacaoNoFim = { id: string; codigo: string; titulo: string; de: string; para: string };
+
+/**
+ * O que a etapa faz ao chegar (a janela de antes de mover): abrir a implantação, ligar no cadastro e levar a negociação
+ * para o Implantado do Comercial; ou nada (os três nulos).
+ */
+export type OQueAEtapaFaz = { implantacao: PlanoDaImplantacao | null; cadastro: PlanoDoCadastro | null; negociacao: NegociacaoNoFim | null };
+
+/**
+ * Para onde a negociação vai quando o card da implantação dela chega no fim (a etapa que liga no cadastro): a etapa do
+ * painel dela que recebe a implantação terminada. Nada quando o painel não tem essa etapa, quando a negociação já está
+ * nela, ou quando ela já acabou (o Ganho ou o Perdido: o faturamento já começou, ou a venda caiu — nada volta).
+ */
+export function etapaDoFimDaImplantacao(etapas: readonly EtapaPainel[], atualId: string): EtapaPainel | null {
+  const para = etapas.find((e) => e.recebeImplantacao && !e.resultado);
+  const atual = etapas.find((e) => e.id === atualId);
+  if (!para || !atual || atual.id === para.id || atual.resultado) return null;
+  return para;
+}
 
 /** O plano muda alguma coisa no cadastro? */
 export const cadastroMuda = (p: PlanoDoCadastro) => p.produtos.some((x) => x.acao === 'novo' || x.acao === 'ativa') || p.modulos.some((m) => m.acao === 'liga');

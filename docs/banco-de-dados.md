@@ -1082,7 +1082,8 @@ Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela signif
 | `notify_user_ids` | texto | Quem recebe o aviso quando um chamado chega nesta etapa (ids de pessoas) | obrigatório · padrão: [] · lista |
 | `outcome` | texto | No painel de Vendas: ganho ou perdido (a etapa final que diz como a negociação acabou); nas outras, nulo | — |
 | `opens_panel_id` | texto | No painel de Vendas (2.3): a negociação que chega aqui abre a implantação no painel com este id — cria o cliente (se ainda não é), põe os produtos no cadastro e abre o card. Nulo: nada. | — |
-| `activates_products` | sim/não | No painel de Gestão (2.3, o Validado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos dele (com a data de ativação) e os módulos marcados nos campos "Módulos do produto". | obrigatório · padrão: false |
+| `activates_products` | sim/não | No painel de Gestão (2.3, o Implantado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos dele (com a data de ativação) e os módulos marcados nos campos "Módulos do produto". | obrigatório · padrão: false |
+| `receives_implementation` | sim/não | No painel de Vendas (2.3): a negociação vem para esta etapa sozinha quando o card da implantação chega na etapa que liga no cadastro (o Implantado). Uma por painel. | obrigatório · padrão: false |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 

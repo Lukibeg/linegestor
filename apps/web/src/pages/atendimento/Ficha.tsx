@@ -183,7 +183,8 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
             {aberta.painel?.tipo !== 'vendas' && (!aberta.painel || campoLigado(aberta.painel.ajustes, 'prioridade')) && <Prazos />}
             <NaAgenda />
             <Operadora />
-            {aberta.painel?.tipo !== 'vendas' && <Tempo />}
+            {/* o tempo gasto: o painel pode desligar (2.3, a Implantação não usa) */}
+            {aberta.painel?.tipo !== 'vendas' && (!aberta.painel || campoLigado(aberta.painel.ajustes, 'tempo')) && <Tempo />}
           </div>
         </div>
       </div>

@@ -2,13 +2,13 @@
  * Patch 2.3 — A IMPLANTAÇÃO. O pedido do Luan (28/10), mostrando o painel Ingline - Ativações do Helena: os campos da
  * curadoria, a configuração que a equipe técnica marca e os testes do suporte, um grupo para o LineChat e outro para o
  * LinePBX; e, do Comercial, "quando mover para … em processo de implantação" abrir o card e "já criar o cliente…
- * automaticamente com os produtos"; no Validado, os módulos marcados "viram os módulos ativos na ficha do cliente".
+ * automaticamente com os produtos"; no Implantado, os módulos marcados "viram os módulos ativos na ficha do cliente".
  *
  *  - o modelo Implantação: as etapas, os 18 campos (com a parte e o produto), os módulos vindos do catálogo
  *  - os campos: os módulos pedem o produto (que não muda); o mesmo nome em produtos diferentes; as caixinhas guardam quem e quando
  *  - a negociação na etapa que abre a implantação: sem CNPJ, 400 (e a janela pede); com ele, o cliente (com a Matriz), os
  *    produtos sem a data, o card ligado, o histórico dos dois e a auditoria; de novo, nada se repete; o CNPJ que já existe liga
- *  - o card no Validado: a data de ativação dos produtos, os módulos marcados ligados, o histórico e a auditoria
+ *  - o card no Implantado: a data de ativação dos produtos, os módulos marcados ligados, o histórico e a auditoria
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq } from 'drizzle-orm';
@@ -58,8 +58,8 @@ describe('o modelo Implantação', () => {
     const r = await s.post('/atendimento/paineis', { nome: 'Implantação', sigla: 'imp', descricao: '', cor: 'turquesa', tipo: 'gestao', ajustes: {}, modelo: 'implantacao' });
     expect(r.statusCode, r.body).toBe(201);
     imp = r.json();
-    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Validado']);
-    expect(imp.etapas.find((e) => e.ligaNoCadastro)?.nome).toBe('Validado');
+    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
+    expect(imp.etapas.find((e) => e.ligaNoCadastro)?.nome).toBe('Implantado');
     expect(imp.ajustes.contaPrazo).toBe(false);
     expect(imp.ajustes.camposDesligados).toEqual(expect.arrayContaining(['assunto', 'prioridade', 'relato', 'solucao']));
     const o: OpcoesAtendimento = (await s.get('/atendimento/opcoes')).json();
@@ -107,6 +107,8 @@ describe('o modelo Implantação', () => {
       nome: 'Comercial', sigla: 'cig', descricao: '', cor: 'signal', tipo: 'vendas', ajustes: {},
       etapas: etapas([
         ['Lead', 'entrada'], ['Proposta', 'andamento'], ['Em processo de Implantação', 'andamento', { abreImplantacao: imp.id }],
+        // a que recebe a negociação quando a implantação termina (o card no Implantado)
+        ['Implantado', 'andamento', { recebeImplantacao: true }],
         ['Ganho', 'fechado', { resultado: 'ganho' }], ['Perdido', 'fechado', { resultado: 'perdido' }],
       ]),
     });
@@ -115,6 +117,13 @@ describe('o modelo Implantação', () => {
     expect(etapaDe(com, 'Em processo de Implantação').abreImplantacao).toBe(imp.id);
     // o Ganho não abre (a etapa que fecha fica sem)
     expect(etapaDe(com, 'Ganho').abreImplantacao ?? null).toBeNull();
+    expect(com.etapas.filter((e) => e.recebeImplantacao).map((e) => e.nome)).toEqual(['Implantado']);
+    // uma etapa só recebe a negociação no fim da implantação
+    const duas = await s.put(`/atendimento/paineis/${com.id}/etapas`, {
+      etapas: com.etapas.map((e) => ({ ...e, recebeImplantacao: e.nome === 'Implantado' || e.nome === 'Proposta' })),
+    });
+    expect(duas.statusCode).toBe(400);
+    expect(duas.json().error).toMatch(/Só uma etapa recebe a negociação/);
   });
 });
 
@@ -254,20 +263,22 @@ describe('o card da implantação', () => {
     expect(c.partes[2]).toEqual({ parte: 'Testes', feitos: 0, total: 8 });
   });
 
-  it('no Validado: os produtos ganham a data e os módulos marcados ficam ligados', async () => {
+  it('no Implantado: os produtos ganham a data e os módulos marcados ficam ligados', async () => {
     const mods = campo('Módulos a ativar', 'linechat');
     const modulo = mods.opcoes.find((o) => o.ativa)!;
     expect((await s.patch(`/atendimento/chamados/${card.id}`, { campos: { [mods.id]: [modulo.id] } })).statusCode).toBe(200);
     // sair da Curadoria (a entrada) pede o responsável
     expect((await s.post(`/atendimento/chamados/${card.id}/mover`, { etapaId: etapaDe(imp, 'Configuração').id, responsavelId: adminId })).statusCode).toBe(200);
-    const validado = etapaDe(imp, 'Validado');
+    const validado = etapaDe(imp, 'Implantado');
     const plano = (await s.get(`/atendimento/chamados/${card.id}/ao-mover?etapaId=${validado.id}`)).json();
     expect(plano.implantacao).toBeNull();
     expect(plano.cadastro).toMatchObject({
-      etapa: 'Validado', dia: diaLocal(new Date()), cliente: { id: clienteId, nome: 'Padaria Sol' },
+      etapa: 'Implantado', dia: diaLocal(new Date()), cliente: { id: clienteId, nome: 'Padaria Sol' },
       modulos: [{ id: modulo.id, acao: 'liga', produto: 'LineChat' }],
     });
     expect(plano.cadastro.produtos.map((p: { acao: string }) => p.acao)).toEqual(['ativa', 'ativa']);
+    // a negociação vai junto para o Implantado do Comercial
+    expect(plano.negociacao).toEqual({ id: neg.id, codigo: neg.codigo, titulo: 'Padaria Sol', de: 'Em processo de Implantação', para: 'Implantado' });
     const r = await s.post(`/atendimento/chamados/${card.id}/mover`, { etapaId: validado.id });
     expect(r.statusCode, r.body).toBe(200);
     const subs = await app.db.select().from(subscriptions).where(eq(subscriptions.clientId, clienteId));
@@ -277,18 +288,27 @@ describe('o card da implantação', () => {
     const ligados = await app.db.select().from(subscriptionModules).where(eq(subscriptionModules.subscriptionId, chat.id));
     expect(ligados.map((x) => [x.moduleId, x.deactivatedAt])).toEqual([[modulo.id, null]]);
     const f: FichaChamado = r.json();
-    expect(f.historico.at(-1)!.texto).toBe(`ligou no cadastro de Padaria Sol os produtos LineChat e LinePBX e o módulo ${modulo.nome} (LineChat), desde ${dia.split('-').reverse().join('/')}`);
+    expect(f.historico.map((x) => x.texto)).toEqual(expect.arrayContaining([
+      `ligou no cadastro de Padaria Sol os produtos LineChat e LinePBX e o módulo ${modulo.nome} (LineChat), desde ${dia.split('-').reverse().join('/')}`,
+      `a negociação ${neg.codigo} foi para Implantado`,
+    ]));
+    const n = await ficha(neg.id);
+    expect(n.etapaId).toBe(etapaDe(com, 'Implantado').id);
+    expect(n.historico.at(-1)!.texto).toMatch(new RegExp(`Implantado: a implantação ${card.codigo} terminou`));
     const auds = await auditoria();
     expect(auds.some((a) => a.entityType === 'client' && a.summary.startsWith('Ligou no cadastro de Padaria Sol LineChat, LinePBX e os módulos'))).toBe(true);
+    expect(auds.some((a) => a.summary === `Moveu ${neg.codigo} de Em processo de Implantação para Implantado: a implantação ${card.codigo} terminou`)).toBe(true);
     // a ficha do cliente mostra o produto ativo, com a data
     const cli = (await s.get(`/clients/${clienteId}`)).json();
     expect(JSON.stringify(cli)).toContain(modulo.nome);
   });
 
-  it('de novo no Validado (reaberto e validado outra vez): o cadastro já estava em dia', async () => {
+  it('de novo no Implantado (reaberto e implantado outra vez): o cadastro já estava em dia', async () => {
     expect((await s.post(`/atendimento/chamados/${card.id}/mover`, { etapaId: etapaDe(imp, 'Testes').id })).statusCode).toBe(200);
-    const r = await s.post(`/atendimento/chamados/${card.id}/mover`, { etapaId: etapaDe(imp, 'Validado').id });
+    // a negociação já está no Implantado: nada a levar
+    expect((await s.get(`/atendimento/chamados/${card.id}/ao-mover?etapaId=${etapaDe(imp, 'Implantado').id}`)).json().negociacao).toBeNull();
+    const r = await s.post(`/atendimento/chamados/${card.id}/mover`, { etapaId: etapaDe(imp, 'Implantado').id });
     expect(r.statusCode, r.body).toBe(200);
-    expect((r.json() as FichaChamado).historico.at(-1)!.texto).toBe('chegou em Validado: o cadastro de Padaria Sol já estava em dia');
+    expect((r.json() as FichaChamado).historico.at(-1)!.texto).toBe('chegou em Implantado: o cadastro de Padaria Sol já estava em dia');
   });
 });

@@ -5,7 +5,7 @@
  *    marca o Ganho quando começa a faturar, para o relatório ficar certo): a empresa vira cliente (se ainda não é), os
  *    produtos dela entram no cadastro (sem a data de ativação: estão em implantação) e o card nasce no painel da
  *    implantação, ligado à negociação;
- *  - o card (o painel de Gestão) chega na etapa que **liga no cadastro** (o Validado): os produtos ganham a data de
+ *  - o card (o painel de Gestão) chega na etapa que **liga no cadastro** (o Implantado): os produtos ganham a data de
  *    ativação e os módulos marcados nos campos "Módulos do produto" ficam ligados na ficha do cliente.
  *
  * As contas (o que vai acontecer) são as do `@gestor/shared/implantacao.ts`, as mesmas da prévia e da janela que a tela
@@ -17,8 +17,8 @@ import {
   clientUnits, clients, newId, productModules, subscriptionModules, subscriptions, ticketPanels, tickets, type Db,
 } from '@gestor/db';
 import {
-  cadastroMuda, codigoDoChamado, diaLocal, etapaDeEntrada, modulosMarcados, paraBusca, planoDaImplantacao, planoDoCadastro, temDataDeAtivacao,
-  type AssinaturaNoCadastro, type EtapaPainel, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PlanoDaImplantacao, type PlanoDoCadastro, type ValoresDosCampos,
+  cadastroMuda, codigoDoChamado, diaLocal, etapaDeEntrada, etapaDoFimDaImplantacao, modulosMarcados, paraBusca, planoDaImplantacao, planoDoCadastro, temDataDeAtivacao,
+  type AssinaturaNoCadastro, type EtapaPainel, type NegociacaoNoFim, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PlanoDaImplantacao, type PlanoDoCadastro, type ValoresDosCampos,
 } from '@gestor/shared';
 import { camposDoPainel, pessoaDoAtor, registrarEvento, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
 
@@ -95,11 +95,32 @@ export async function planoDoCadastroDoChamado(db: Banco, ctx: Contexto, t: Linh
   return planoDoCadastro({ etapa: para.nome, dia, cliente, produtos, modulosMarcados: mods, assinaturas: cliente ? await assinaturasDoCliente(db, cliente.id) : new Map() });
 }
 
-/** O que a janela mostra antes de mover para a etapa (as duas coisas que uma etapa pode fazer). */
+/** A negociação do card que chega no fim da implantação, de onde ela sai e para onde vai (o Implantado do Comercial). */
+export type FimNaNegociacao = { linha: LinhaChamado; painel: Painel; de: EtapaPainel; para: EtapaPainel; mostra: NegociacaoNoFim };
+
+/**
+ * O card que chega na etapa que liga no cadastro (o Implantado) leva a negociação de onde veio para a etapa do painel dela
+ * que recebe a implantação terminada (o pedido do Luan: "vai mover de em processo de implantação para implantado quando a
+ * gente concluir a implantação"). Nulo: o card não veio de uma negociação, ela saiu, o painel dela não tem essa etapa, ela
+ * já está lá ou já acabou (o Ganho ou o Perdido).
+ */
+export async function negociacaoNoFim(db: Banco, ctx: Contexto, t: LinhaChamado, painel: Painel, para: EtapaPainel): Promise<FimNaNegociacao | null> {
+  if (painel.tipo !== 'gestao' || !para.ligaNoCadastro || !t.sourceTicketId) return null;
+  const [linha] = await db.select().from(tickets).where(and(eq(tickets.id, t.sourceTicketId), isNull(tickets.deletedAt))).limit(1);
+  const dela = linha ? ctx.paineis.find((p) => p.id === linha.panelId && p.tipo === 'vendas') : undefined;
+  if (!linha || !dela) return null;
+  const alvo = etapaDoFimDaImplantacao(dela.etapas, linha.stageId);
+  const de = dela.etapas.find((x) => x.id === linha.stageId);
+  if (!alvo || !de) return null;
+  return { linha, painel: dela, de, para: alvo, mostra: { id: linha.id, codigo: linha.code, titulo: linha.title, de: de.nome, para: alvo.nome } };
+}
+
+/** O que a janela mostra antes de mover para a etapa (as três coisas que uma etapa pode fazer). */
 export async function aoMover(db: Banco, ctx: Contexto, t: LinhaChamado, painel: Painel, para: EtapaPainel, pedido?: PedidoDoCliente): Promise<AoMover> {
   return {
     implantacao: await planoDaImplantacaoDaNegociacao(db, ctx, t, painel, para, pedido),
     cadastro: await planoDoCadastroDoChamado(db, ctx, t, painel, para),
+    negociacao: (await negociacaoNoFim(db, ctx, t, painel, para))?.mostra ?? null,
   };
 }
 
@@ -112,7 +133,7 @@ export type ImplantacaoAberta = { id: string; codigo: string; titulo: string; cl
 /**
  * Abre a implantação, dentro da transação do mover: o cliente (o que vai ser criado entra no cadastro, com a Matriz; a
  * negociação passa a ser dele, e o título que era o nome da empresa acompanha), os produtos que ele não tem (sem a data
- * de ativação: a data vem no Validado) e o card, na entrada do painel da implantação, com o cliente, o contato, os
+ * de ativação: a data vem no Implantado) e o card, na entrada do painel da implantação, com o cliente, o contato, os
  * produtos e quem cuidava da negociação como observador. O histórico dos dois diz de onde veio e para onde foi.
  */
 export async function abrirAImplantacao(
@@ -149,7 +170,8 @@ export async function abrirAImplantacao(
     const titulo = t.prospect && paraBusca(t.title) === paraBusca(t.prospect) ? cliente.nome.slice(0, 200) : t.title;
     await tx.update(tickets).set({ clientId: cliente.id, prospect: null, title: titulo, updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
     if (titulo !== t.title) await registrarEvento(tx, t.id, 'campo', ator, { campo: 'Título', de: t.title, para: titulo }, e.quando());
-    await registrarEvento(tx, t.id, 'campo', ator, { campo: 'Cliente', de: t.prospect ?? (t.clientId ? ctx.clientes.get(t.clientId) ?? null : null), para: cliente.nome }, e.quando());
+    // o cliente de antes (a empresa que ainda não era cliente não conta: o histórico diria "de X para X")
+    await registrarEvento(tx, t.id, 'campo', ator, { campo: 'Cliente', de: t.clientId ? ctx.clientes.get(t.clientId) ?? null : null, para: cliente.nome }, e.quando());
   }
 
   // 2. os produtos que o cliente não tem: entram sem a data de ativação (estão em implantação)
@@ -193,7 +215,7 @@ export async function abrirAImplantacao(
   return { id, codigo, titulo, clienteNovo, cliente, produtosNovos, auditoria };
 }
 
-/** O que o Validado ligou no cadastro (para a frase do mover e a auditoria). */
+/** O que o Implantado ligou no cadastro (para a frase do mover e a auditoria). */
 export type CadastroLigado = { produtos: string[]; modulos: string[]; auditoria: AuditoriaExtra[] };
 
 /**

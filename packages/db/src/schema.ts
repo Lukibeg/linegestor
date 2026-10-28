@@ -1536,10 +1536,15 @@ export const ticketStages = pgTable(
      */
     opensPanelId: text('opens_panel_id').references((): AnyPgColumn => ticketPanels.id),
     /**
-     * No painel de Gestão (2.3, o Validado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos
+     * No painel de Gestão (2.3, o Implantado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos
      * dele (com a data de ativação) e os módulos marcados nos campos "Módulos do produto".
      */
     activatesProducts: boolean('activates_products').notNull().default(false),
+    /**
+     * No painel de Vendas (2.3): a negociação vem para esta etapa sozinha quando o card da implantação chega na etapa que
+     * liga no cadastro (o Implantado). Uma por painel.
+     */
+    receivesImplementation: boolean('receives_implementation').notNull().default(false),
     createdAt: createdAt(),
     deletedAt: deletedAt(),
   },

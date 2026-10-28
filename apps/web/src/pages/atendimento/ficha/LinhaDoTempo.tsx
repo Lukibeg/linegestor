@@ -94,7 +94,7 @@ const ICONE: Partial<Record<TipoEvento, typeof CircleDot>> = {
   problema: Layers, incidente: Layers, checklist: ListChecks, tempo: Timer, operadora: RadioTower, aviso_cliente: MessageCircle, aviso_equipe: Bell,
   reaberto: RotateCcw, painel: Columns3, ia: Sparkles, resposta_pronta: Zap, cliente_respondeu: MessageSquareReply, prazo: AlarmClock, fechou_sozinho: Lock,
   observador: Eye, lixeira: Trash2,
-  // a implantação (2.3): o card que a negociação abriu, e o Validado que ligou no cadastro
+  // a implantação (2.3): o card que a negociação abriu, e o Implantado que ligou no cadastro
   implantacao: Rocket, cadastro: BadgeCheck,
 };
 /** Frases que já dizem quem foi ("o cliente respondeu", "fechou sozinho"): sem o nome na frente. */

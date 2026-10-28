@@ -982,6 +982,8 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
       ['Lead', 12, 0], ['Qualificação', 10, 0], ['Proposta enviada', 8, 1], ['Negociação', 6, 1],
       // a etapa que abre a implantação (2.3): as que já estão sendo implantadas
       ['Em processo de Implantação', 4, 0],
+      // e a que recebe a negociação quando o card da implantação chega no fim
+      ['Implantado', 3, 0],
     ]);
     expect(r.funilGanhas).toHaveLength(3);
     // a janela dos números: as negociações por trás, com a empresa e quem cuida
@@ -1180,12 +1182,12 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
   const campoDe = (op: OpcoesAtendimento, painelId: string, nome: string, produtoId: string) => op.campos.find((c) => c.painelId === painelId && c.nome === nome && c.produtoId === produtoId)!;
   const opcao = (c: { opcoes: Array<{ id: string; nome: string }> }, nome: string) => c.opcoes.find((o) => o.nome === nome)!.id;
 
-  it('os exemplos: o Comercial abriu os cards, o cliente novo entrou no cadastro e o Validado ligou os produtos e os módulos', async () => {
+  it('os exemplos: o Comercial abriu os cards, o cliente novo entrou no cadastro e o Implantado ligou os produtos e os módulos', async () => {
     await entrar('admin');
     const op = await api.opcoes();
     const imp = painel(op, 'IMP');
-    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Validado']);
-    expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Validado']);
+    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
+    expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado']);
     expect(etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).abreImplantacao).toBe(imp.id);
     // os 18 campos do modelo, em três partes, de dois produtos
     const campos = op.campos.filter((c) => c.painelId === imp.id);
@@ -1194,18 +1196,22 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
 
     const q = await api.quadro({ painel: imp.id });
     const naEtapa = Object.fromEntries(q.colunas.map((c) => [c.etapa.nome, c.chamados.map((x) => x.cliente?.nome)]));
-    expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], Validado: ['Ótica Visão Clara'] });
+    expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], Implantado: ['Ótica Visão Clara'] });
     // o cartão mostra a conta da parte da etapa (a Configuração do LineChat: 3 de 5)
     const movimento = q.colunas.find((c) => c.etapa.nome === 'Configuração')!.chamados[0]!;
     expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 3, total: 5 });
 
-    const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Validado')!.chamados[0]!.codigo);
+    const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Implantado')!.chamados[0]!.codigo);
     expect(vc.origem).toBe('comercial');
     expect(vc.daNegociacao?.codigo).toMatch(/^COM-/);
     expect(vc.historico.some((ev) => ev.tipo === 'cadastro' && /Line Reports/.test(ev.texto))).toBe(true);
     const negociacao = await api.chamado(vc.daNegociacao!.codigo);
-    expect(negociacao.implantacoes).toMatchObject([{ codigo: vc.codigo, etapa: 'Validado', situacao: 'fechado', podeAbrir: true }]);
-    // o cliente novo (o CNPJ da negociação), com o LinePBX e o VoiceNet ativos desde o Validado, e os módulos marcados
+    expect(negociacao.implantacoes).toMatchObject([{ codigo: vc.codigo, etapa: 'Implantado', situacao: 'fechado', podeAbrir: true }]);
+    // o card no Implantado levou a negociação ao Implantado do Comercial; depois, o Ganho (começou a faturar)
+    expect(etapa(op, 'COM', 'Implantado').recebeImplantacao).toBe(true);
+    expect(negociacao.historico.some((ev) => ev.tipo === 'etapa' && ev.texto.includes(`a implantação ${vc.codigo} terminou`))).toBe(true);
+    expect(negociacao.resultado).toBe('ganho');
+    // o cliente novo (o CNPJ da negociação), com o LinePBX e o VoiceNet ativos desde o Implantado, e os módulos marcados
     const cliente = await demoApi.clients.get(vc.cliente!.id);
     expect(cliente.cnpj).toBe('45812033000174');
     const pbx = cliente.subscriptions.find((s) => s.productCode === 'linepbx')!;
@@ -1252,7 +1258,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(deNovo.implantacoes).toHaveLength(1);
   });
 
-  it('o card: as caixinhas guardam quem marcou e quando; o Validado liga os produtos e os módulos marcados', async () => {
+  it('o card: as caixinhas guardam quem marcou e quando; o Implantado liga os produtos e os módulos marcados', async () => {
     const luan = await entrar('admin');
     const op = await api.opcoes();
     const imp = painel(op, 'IMP');
@@ -1269,15 +1275,20 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     const menos = await api.alterar(card.id, { campos: { [config.id]: [opcao(config, 'Criação das equipes')] } });
     expect(Object.keys(menos.marcas[config.id]!)).toEqual([opcao(config, 'Criação das equipes')]);
 
-    // a janela do Validado: o LineChat ganha a data, o WebChat liga
-    const validado = imp.etapas.find((e) => e.nome === 'Validado')!;
+    // a janela do Implantado: o LineChat ganha a data, o WebChat liga
+    const validado = imp.etapas.find((e) => e.nome === 'Implantado')!;
     const plano = (await api.aoMover(card.id, { etapaId: validado.id })).cadastro!;
     expect(plano.produtos).toEqual([{ id: chat, nome: 'LineChat', acao: 'ativa' }]);
     expect(plano.modulos.map((m) => [m.nome, m.acao])).toEqual([['WebChat', 'liga']]);
+    expect((await api.aoMover(card.id, { etapaId: validado.id })).negociacao).toMatchObject({ de: 'Em processo de Implantação', para: 'Implantado' });
     // sair da Curadoria pede quem fica com o card; nada mais trava
     const fim = await api.mover(card.id, { etapaId: validado.id, responsavelId: luan.id });
     expect(fim.situacao).toBe('fechado');
     expect(fim.historico.some((ev) => ev.tipo === 'cadastro' && /WebChat/.test(ev.texto))).toBe(true);
+    // a negociação foi junto para o Implantado do Comercial
+    const neg = await api.chamado(fim.daNegociacao!.codigo);
+    expect(neg.etapaId).toBe(etapa(op, 'COM', 'Implantado').id);
+    expect(fim.historico.some((ev) => ev.texto === `a negociação ${neg.codigo} foi para Implantado`)).toBe(true);
     const cliente = await demoApi.clients.get(card.cliente!.id);
     const sub = cliente.subscriptions.find((s) => s.productCode === 'linechat')!;
     expect(sub.activatedAt?.slice(0, 10)).toBe(diaLocal(new Date()));
@@ -1287,7 +1298,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
   it('o painel pelo modelo e as regras dos campos (o produto dos módulos, o mesmo nome em produtos diferentes)', async () => {
     await entrar('admin');
     const novo = await api.salvarPainel(null, { nome: 'Implantação Filiais', sigla: 'IMF', cor: 'roxo', acesso: 'todos', tipo: 'gestao', modelo: 'implantacao', ajustes: {} });
-    expect(novo.etapas.map((e) => [e.nome, !!e.ligaNoCadastro])).toEqual([['Stand By', false], ['Curadoria', false], ['Configuração', false], ['Testes', false], ['Validado', true]]);
+    expect(novo.etapas.map((e) => [e.nome, !!e.ligaNoCadastro])).toEqual([['Stand By', false], ['Curadoria', false], ['Configuração', false], ['Testes', false], ['Concluído', false], ['Implantado', true]]);
     expect(novo.ajustes.contaPrazo).toBe(false);
     const op = await api.opcoes();
     expect(op.campos.filter((c) => c.painelId === novo.id)).toHaveLength(18);

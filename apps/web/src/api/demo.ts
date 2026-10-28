@@ -1056,7 +1056,7 @@ const modMeta = (mid: string) => S.modules.find((m) => m.id === mid)!;
 /**
  * O cadastro dos clientes que a implantação dos chamados (2.3) usa — as mesmas regras do servidor
  * (services/atendimento/implantacao.ts): o cliente novo com a Matriz, o produto sem a data (em implantação), a data e
- * os módulos do Validado.
+ * os módulos do Implantado.
  */
 const assinaturaDe = (clienteId: string, code: string) =>
   S.subs.find((x) => x.clientId === clienteId && x.productCode === code && !x.deactivatedAt) ?? S.subs.find((x) => x.clientId === clienteId && x.productCode === code);

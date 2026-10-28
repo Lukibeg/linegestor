@@ -2,6 +2,7 @@ ALTER TABLE "ticket_fields" ADD COLUMN "section" text;--> statement-breakpoint
 ALTER TABLE "ticket_fields" ADD COLUMN "product_id" text;--> statement-breakpoint
 ALTER TABLE "ticket_stages" ADD COLUMN "opens_panel_id" text;--> statement-breakpoint
 ALTER TABLE "ticket_stages" ADD COLUMN "activates_products" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "ticket_stages" ADD COLUMN "receives_implementation" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "tickets" ADD COLUMN "field_marks" jsonb DEFAULT '{}'::jsonb NOT NULL;--> statement-breakpoint
 ALTER TABLE "tickets" ADD COLUMN "source_ticket_id" text;--> statement-breakpoint
 ALTER TABLE "ticket_fields" ADD CONSTRAINT "ticket_fields_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint

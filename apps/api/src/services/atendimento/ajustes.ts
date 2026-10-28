@@ -85,10 +85,11 @@ async function conferirPessoas(db: Db, ids: string[]) {
 const painelParaAuditoria = (p: Painel) => ({
   nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, tipo: p.tipo, acesso: p.acesso, pessoas: p.pessoas, ajustes: p.ajustes, ativo: p.ativo,
 });
-const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[]; resultado?: string | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean }) =>
+const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[]; resultado?: string | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean }) =>
   ({
     nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar, ...(e.resultado ? { resultado: e.resultado } : {}),
     ...(e.abreImplantacao ? { abreImplantacao: e.abreImplantacao } : {}), ...(e.ligaNoCadastro ? { ligaNoCadastro: true } : {}),
+    ...(e.recebeImplantacao ? { recebeImplantacao: true } : {}),
   });
 /** O tipo do painel guardado (Gestão, se for de antes do 2.0.1). */
 const tipoDaLinha = (p: { kind: string }): TipoDePainel => (p.kind === 'vendas' ? 'vendas' : 'gestao');
@@ -176,9 +177,9 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
     const novoId = newId();
     // as etapas da janela (todas novas: um painel novo não tem etapa nenhuma ainda) ou as de fábrica do tipo
     const etapas: EtapaGravar[] = d.etapas ?? (
-      modelo ? modelo.etapas.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro }))
-        : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS.map((e) => ({ ...e, abreImplantacao: null, ligaNoCadastro: false }))
-          : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: false }))
+      modelo ? modelo.etapas.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: false }))
+        : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS.map((e) => ({ ...e, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false }))
+          : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: false, recebeImplantacao: false }))
     ).map((e) => ({ ...e, avisar: [] }));
     const plano = await planejarEtapas(db, novoId, etapas, {}, validos, tipo);
     // o painel de Vendas nasce com os campos do Comercial do Helena (CNPJ, contatos, origem, indicação); o da
@@ -317,7 +318,7 @@ export type PlanoDasEtapas = {
   atuais: LinhaDaEtapa[];
   porId: Map<string, LinhaDaEtapa>;
   /** a lista final, na ordem: as novas já com o id que vão ter */
-  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[]; resultado: ResultadoDaVenda | null; abreImplantacao: string | null; ligaNoCadastro: boolean }>;
+  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[]; resultado: ResultadoDaVenda | null; abreImplantacao: string | null; ligaNoCadastro: boolean; recebeImplantacao: boolean }>;
   saem: LinhaDaEtapa[];
   destino: Record<string, string>;
 };
@@ -353,7 +354,10 @@ export async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGrav
     // chamado (o painel de Gestão)
     abreImplantacao: tipo === 'vendas' && !e.resultado ? e.abreImplantacao ?? null : null,
     ligaNoCadastro: tipo === 'gestao' && !!e.ligaNoCadastro,
+    // e a de Vendas, fora do Ganho e do Perdido, que recebe a negociação quando a implantação termina
+    recebeImplantacao: tipo === 'vendas' && !e.resultado && !!e.recebeImplantacao,
   }));
+  if (novas.filter((e) => e.recebeImplantacao).length > 1) throw new BadRequest('Só uma etapa recebe a negociação quando a implantação termina: escolha uma.');
   await conferirPessoas(db, novas.flatMap((e) => e.avisar));
   const destinos = [...new Set(novas.map((e) => e.abreImplantacao).filter((x): x is string => !!x))];
   if (destinos.length) {
@@ -397,7 +401,7 @@ export async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, a
   for (const e of novas) {
     const campos = {
       name: e.nome, kind: e.tipo, level: e.nivel, sortOrder: e.ordem, requiredFields: e.obrigatorios, notifyUserIds: e.avisar, outcome: e.resultado,
-      opensPanelId: e.abreImplantacao, activatesProducts: e.ligaNoCadastro,
+      opensPanelId: e.abreImplantacao, activatesProducts: e.ligaNoCadastro, receivesImplementation: e.recebeImplantacao,
     };
     if (e.nova) await tx.insert(ticketStages).values({ id: e.id, panelId: painelId, ...campos });
     else await tx.update(ticketStages).set(campos).where(eq(ticketStages.id, e.id));
@@ -445,7 +449,7 @@ export function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   const ajustadas = ficaram.filter((e) => {
     const a = porId.get(e.id)!;
     return a.kind !== e.tipo || (a.level ?? null) !== e.nivel || (a.outcome ?? null) !== e.resultado || !mesmaLista(a.requiredFields, e.obrigatorios) || !mesmaLista(a.notifyUserIds, e.avisar)
-      || (a.opensPanelId ?? null) !== e.abreImplantacao || a.activatesProducts !== e.ligaNoCadastro;
+      || (a.opensPanelId ?? null) !== e.abreImplantacao || a.activatesProducts !== e.ligaNoCadastro || a.receivesImplementation !== e.recebeImplantacao;
   }).map((e) => e.nome);
   const ordemAntes = atuais.filter((e) => ficaram.some((x) => x.id === e.id)).map((e) => e.id).join();
   const partes = [
@@ -458,7 +462,7 @@ export function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   ].filter(Boolean);
   return {
     partes,
-    antes: atuais.map((e) => etapaParaAuditoria({ nome: e.name, tipo: e.kind, nivel: e.level, obrigatorios: e.requiredFields, avisar: e.notifyUserIds, resultado: e.outcome, abreImplantacao: e.opensPanelId, ligaNoCadastro: e.activatesProducts })),
+    antes: atuais.map((e) => etapaParaAuditoria({ nome: e.name, tipo: e.kind, nivel: e.level, obrigatorios: e.requiredFields, avisar: e.notifyUserIds, resultado: e.outcome, abreImplantacao: e.opensPanelId, ligaNoCadastro: e.activatesProducts, recebeImplantacao: e.receivesImplementation })),
     depois: novas.map(etapaParaAuditoria),
   };
 }

@@ -236,12 +236,12 @@ function Produtos({ c }: { c: ClientFull }) {
         {prods.data?.filter((p) => p.active).map((p) => {
           const s = c.subscriptions.find((x) => x.productCode === p.code);
           const on = !!s?.active;
-          // o produto que entrou pela implantação (2.3): sem a data de ativação até o Validado
+          // o produto que entrou pela implantação (2.3): sem a data de ativação até o Implantado
           const implantando = on && !!s && temDataDeAtivacao(p.code) && !s.activatedAt;
           const modulos = p.modules.filter((m) => m.active);
           return (
             <div key={p.code} className={`card p-4 flex flex-col gap-2 ${on ? '' : 'opacity-70'}`} style={on ? { borderColor: p.color } : undefined}>
-              <div className="flex items-center justify-between gap-2"><Chip color={p.color}>{p.name}</Chip>{implantando ? <span className="text-signal text-[12px] font-semibold" title="Entrou pela implantação: a data de ativação vem no Validado">em implantação</span> : on ? <span className="text-ok text-[12px] font-semibold">ativo</span> : s ? (
+              <div className="flex items-center justify-between gap-2"><Chip color={p.color}>{p.name}</Chip>{implantando ? <span className="text-signal text-[12px] font-semibold" title="Entrou pela implantação: a data de ativação vem no Implantado">em implantação</span> : on ? <span className="text-ok text-[12px] font-semibold">ativo</span> : s ? (
                 <span className="text-muted text-[12px] inline-flex items-center gap-0.5">encerrado em {data(s.deactivatedAt)}
                   {can('records.write') && <button className="btn-ghost btn-sm px-1 text-muted" onClick={() => setEncerramento({ product: p, quando: s.deactivatedAt, desde: s.activatedAt })} title="Corrigir a data do encerramento" aria-label={`Corrigir a data do encerramento de ${p.name}`}><Pencil size={12} /></button>}
                 </span>
@@ -249,7 +249,7 @@ function Produtos({ c }: { c: ClientFull }) {
               <div className="text-[12.5px] text-muted">{p.description}</div>
               {on && s && temDataDeAtivacao(p.code) && (s.activatedAt
                 ? <div className="text-[12.5px]">desde {data(s.activatedAt)}</div>
-                : <div className="text-[12.5px] text-muted">Sem a data de ativação: ela vem quando o card da implantação chega no Validado (ou à mão, no Ajustar).</div>)}
+                : <div className="text-[12.5px] text-muted">Sem a data de ativação: ela vem quando o card da implantação chega no Implantado (ou à mão, no Ajustar).</div>)}
               {on && s?.notes && <div className="text-[12.5px] text-ink-2 italic truncate" title={s.notes}>{s.notes}</div>}
               {modulos.length > 0 && (
                 <div className="mt-1 border-t border-line pt-2">

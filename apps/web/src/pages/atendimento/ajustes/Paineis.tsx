@@ -246,6 +246,8 @@ type EtapaRascunho = EtapaGravarEntrada & {
   /** a implantação (2.3): a etapa de Vendas que abre o card no painel escolhido; a de Gestão que liga no cadastro */
   abreImplantacao: string | null;
   ligaNoCadastro: boolean;
+  /** e a de Vendas que recebe a negociação quando a implantação termina (o Implantado do Comercial) */
+  recebeImplantacao: boolean;
 };
 type Saindo = { etapa: EtapaRascunho; posicao: number };
 type EtapaComChamados = { id: string; nome: string; chamados: number };
@@ -253,13 +255,13 @@ type EtapaComChamados = { id: string; nome: string; chamados: number };
 let sequencia = 0;
 const daEtapa = (e: EtapaPainel): EtapaRascunho => ({
   chave: e.id, id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar], resultado: e.resultado ?? null,
-  abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro,
+  abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: !!e.recebeImplantacao,
 });
 /** Uma etapa que ainda não existe (sem id): a do painel novo, a copiada de outro painel ou a incluída agora. */
-const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean }): EtapaRascunho =>
+const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean }): EtapaRascunho =>
   ({
     chave: `nova-${++sequencia}`, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...(e.avisar ?? [])], resultado: e.resultado ?? null,
-    abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro,
+    abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro, recebeImplantacao: !!e.recebeImplantacao,
   });
 const paraGravar = ({ chave: _chave, ...e }: EtapaRascunho): EtapaGravarEntrada => ({ ...e, nome: e.nome.trim() });
 const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
@@ -268,7 +270,7 @@ const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
  * ou as básicas. Os campos do painel de origem não vão junto nas regras: são daquele painel.
  */
 function etapasDoModelo(modelo: Painel | undefined, tipo: TipoDePainel = 'gestao'): EtapaRascunho[] {
-  const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean }> = modelo
+  const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean; recebeImplantacao?: boolean }> = modelo
     ? modelo.etapas : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS : ETAPAS_DO_PAINEL_NOVO;
   return fonte.map((e) => etapaNova({ ...e, obrigatorios: e.obrigatorios.filter((k) => !idDaChave(k)) }));
 }
@@ -283,6 +285,7 @@ function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[], campos: CampoPe
     e.avisar.length ? `avisa: ${listaDeNomes(e.avisar.map((id) => nomeDaPessoa(pessoas, id)))}` : '',
     e.abreImplantacao ? `abre a implantação em ${paineis.find((p) => p.id === e.abreImplantacao)?.nome ?? 'um painel que saiu'}` : '',
     e.ligaNoCadastro ? 'liga no cadastro do cliente' : '',
+    e.recebeImplantacao ? 'recebe a negociação quando a implantação termina' : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -465,7 +468,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
                 <OpcaoDoTipo ativo={vendas} onClick={() => trocarTipo('vendas')} icone={<HandCoins size={17} aria-hidden />} titulo="Negociações (Vendas)"
                   texto="O funil, o valor, o Ganho e o Perdido (com o motivo) e o relatório de vendas. O Comercial." />
                 <OpcaoDoTipo ativo={implantacao} onClick={usarImplantacao} icone={<Rocket size={17} aria-hidden />} titulo="Implantação (Gestão)"
-                  texto="Um card por cliente novo: a curadoria, a configuração e os testes de cada produto. O Validado liga os produtos e os módulos no cadastro." />
+                  texto="Um card por cliente novo: a curadoria, a configuração e os testes de cada produto. O Implantado liga os produtos e os módulos no cadastro." />
               </div>
               {implantacao && (
                 <p className="text-[12.5px] text-ink-2 rounded-lg bg-surface-2 px-3 py-2 mt-2" id="painel-modelo-implantacao">
@@ -748,6 +751,7 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
                       )}
                       {e.abreImplantacao && <Chip tone="accent" title="A negociação que chega aqui abre o card da implantação"><Rocket size={11} aria-hidden /> abre a implantação</Chip>}
                       {e.ligaNoCadastro && <Chip tone="ok" title="O card que chega aqui liga os produtos e os módulos no cadastro do cliente">liga no cadastro</Chip>}
+                      {e.recebeImplantacao && <Chip tone="ok" title="A negociação vem para cá sozinha quando o card da implantação chega no fim">fim da implantação</Chip>}
                       {existe && !e.id && <Chip tone="ok">nova</Chip>}
                     </span>
                   </button>
@@ -865,11 +869,20 @@ function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar
           </select>
         </CampoRotulo>
       )}
+      {/* o fim da implantação (2.3): o Luan, "uma fase antes do ganho, implantado, que vai mover de em processo de implantação" */}
+      {vendas && !e.resultado && (
+        <label className="flex items-start gap-2.5 text-sm cursor-pointer sm:col-span-2" id={`${base}-fim-implantacao`}>
+          <Toggle checked={e.recebeImplantacao} onChange={(v) => onMudar({ recebeImplantacao: v })} />
+          <span>A negociação vem para cá quando a implantação termina
+            <span className="block text-[12.5px] text-muted">Quando o card da implantação chega no fim (a etapa que liga no cadastro, o Implantado), a negociação vem sozinha para esta etapa. A que já está no Ganho ou no Perdido fica onde está. Uma etapa por painel.</span>
+          </span>
+        </label>
+      )}
       {!vendas && (
         <label className="flex items-start gap-2.5 text-sm cursor-pointer sm:col-span-2" id={`${base}-cadastro`}>
           <Toggle checked={e.ligaNoCadastro} onChange={(v) => onMudar({ ligaNoCadastro: v })} />
           <span>Ao chegar aqui, liga no cadastro do cliente
-            <span className="block text-[12.5px] text-muted">Os produtos do chamado ganham a data de ativação (o dia) e os módulos marcados (o campo Módulos do produto) ficam ligados na ficha do cliente. A janela mostra antes o que muda. É o Validado da implantação.</span>
+            <span className="block text-[12.5px] text-muted">Os produtos do chamado ganham a data de ativação (o dia) e os módulos marcados (o campo Módulos do produto) ficam ligados na ficha do cliente. A janela mostra antes o que muda. É o Implantado da implantação.</span>
           </span>
         </label>
       )}

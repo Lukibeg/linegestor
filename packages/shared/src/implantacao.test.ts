@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { CampoGravarSchema, EtapaGravarSchema, normalizarValorDoCampo, textoDoEvento, textoDoValor, type CampoPersonalizado } from './atendimento.js';
+import { CampoGravarSchema, EtapaGravarSchema, normalizarValorDoCampo, textoDoEvento, textoDoValor, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
 import {
+  etapaDoFimDaImplantacao,
   MODELO_DA_IMPLANTACAO, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
   planoDaImplantacao, planoDoCadastro, progressoDasPartes, tituloDaImplantacao,
 } from './implantacao.js';
@@ -98,15 +99,16 @@ describe('o campo e a etapa nos Ajustes', () => {
   it('a etapa guarda o painel da implantação e o ligar no cadastro', () => {
     const e = EtapaGravarSchema.parse({ nome: 'Em implantação', tipo: 'andamento', abreImplantacao: 'p-imp' });
     expect(e).toMatchObject({ abreImplantacao: 'p-imp', ligaNoCadastro: false });
-    expect(EtapaGravarSchema.parse({ nome: 'Validado', tipo: 'fechado', ligaNoCadastro: true, abreImplantacao: '' })).toMatchObject({ abreImplantacao: null, ligaNoCadastro: true });
+    expect(EtapaGravarSchema.parse({ nome: 'Implantado', tipo: 'fechado', ligaNoCadastro: true, abreImplantacao: '' })).toMatchObject({ abreImplantacao: null, ligaNoCadastro: true });
   });
 });
 
 describe('o modelo do painel Implantação', () => {
-  it('tem as etapas das partes, o Validado que liga no cadastro e os campos dos dois produtos', () => {
-    expect(MODELO_DA_IMPLANTACAO.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Validado']);
+  it('tem as etapas das partes, o Implantado que liga no cadastro e os campos dos dois produtos', () => {
+    expect(MODELO_DA_IMPLANTACAO.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
+    expect(MODELO_DA_IMPLANTACAO.etapas.map((e) => e.tipo)).toEqual(['andamento', 'entrada', 'andamento', 'andamento', 'resolvido', 'fechado']);
     expect(MODELO_DA_IMPLANTACAO.etapas.filter((e) => e.tipo === 'entrada').map((e) => e.nome)).toEqual(['Curadoria']);
-    expect(MODELO_DA_IMPLANTACAO.etapas.find((e) => e.ligaNoCadastro)?.nome).toBe('Validado');
+    expect(MODELO_DA_IMPLANTACAO.etapas.find((e) => e.ligaNoCadastro)?.nome).toBe('Implantado');
     const partes = [...new Set(MODELO_DA_IMPLANTACAO.campos.map((c) => c.parte))];
     expect(partes).toEqual(['Curadoria', 'Configuração', 'Testes']);
     // cada campo passa no formulário dos Ajustes (com o produto escolhido), e nenhum nome se repete no mesmo produto
@@ -174,7 +176,7 @@ describe('o card que liga no cadastro', () => {
   const produtos = [{ id: 'chat', nome: 'LineChat' }, { id: 'pbx', nome: 'LinePBX' }, { id: 'sz', nome: 'SZChat' }];
   it('o produto sem data ganha a de hoje, o novo entra, o ativo e o encerrado ficam; os módulos ligam com o produto ativo', () => {
     const p = planoDoCadastro({
-      etapa: 'Validado', dia: '2026-10-28', cliente: { id: 'c1', nome: 'Aurora' }, produtos,
+      etapa: 'Implantado', dia: '2026-10-28', cliente: { id: 'c1', nome: 'Aurora' }, produtos,
       modulosMarcados: [
         { id: 'nps', nome: 'NPS', produtoId: 'chat', produto: 'LineChat' },
         { id: 'omni', nome: 'Omniboard', produtoId: 'pbx', produto: 'LinePBX' },
@@ -201,11 +203,22 @@ describe('o card que liga no cadastro', () => {
     expect(p.produtos).toEqual([{ id: 'eq', nome: 'Equipamentos', acao: 'ja_ativo', semData: true }, { id: 'eq2', nome: 'Outro', acao: 'novo', semData: true }]);
   });
 
+  it('o fim da implantação leva a negociação ao Implantado do Comercial (a que acabou fica)', () => {
+    const e = (id: string, extra: Partial<EtapaPainel> = {}): EtapaPainel => ({ id, nome: id, tipo: 'andamento', nivel: null, obrigatorios: [], avisar: [], resultado: null, ...extra });
+    const etapas = [e('lead', { tipo: 'entrada' }), e('processo', { abreImplantacao: 'imp' }), e('implantado', { recebeImplantacao: true }), e('ganho', { tipo: 'fechado', resultado: 'ganho' })];
+    expect(etapaDoFimDaImplantacao(etapas, 'processo')?.id).toBe('implantado');
+    expect(etapaDoFimDaImplantacao(etapas, 'lead')?.id).toBe('implantado');
+    expect(etapaDoFimDaImplantacao(etapas, 'implantado')).toBeNull();
+    expect(etapaDoFimDaImplantacao(etapas, 'ganho')).toBeNull();
+    expect(etapaDoFimDaImplantacao(etapas.map((x) => ({ ...x, recebeImplantacao: false })), 'processo')).toBeNull();
+    expect(textoDoEvento('implantacao', { acao: 'negociacao', codigo: 'COM-12', etapa: 'Implantado' })).toBe('a negociação COM-12 foi para Implantado');
+  });
+
   it('sem cliente, nada; com tudo em dia, nada muda', () => {
     expect(planoDoCadastro({ etapa: 'V', dia: 'd', cliente: null, produtos, modulosMarcados: [], assinaturas: new Map() }).produtos).toEqual([]);
     const emDia = planoDoCadastro({ etapa: 'V', dia: 'd', cliente: { id: 'c', nome: 'C' }, produtos: [produtos[0]!], modulosMarcados: [], assinaturas: new Map([['chat', { ativadoEm: 'x', encerrado: false, modulosLigados: new Set<string>() }]]) });
     expect(cadastroMuda(emDia)).toBe(false);
-    expect(textoDoEvento('cadastro', { cliente: 'C', produtos: [], modulos: [], etapa: 'Validado' })).toMatch(/já estava em dia/);
+    expect(textoDoEvento('cadastro', { cliente: 'C', produtos: [], modulos: [], etapa: 'Implantado' })).toMatch(/já estava em dia/);
     expect(textoDoEvento('cadastro', { cliente: 'Aurora', produtos: ['LineChat'], modulos: ['NPS', 'Omniboard'], dia: '2026-10-28' })).toBe('ligou no cadastro de Aurora o produto LineChat e os módulos NPS e Omniboard, desde 28/10/2026');
   });
 

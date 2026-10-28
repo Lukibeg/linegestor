@@ -64,6 +64,8 @@ export function etapaDaLinha(e: LinhaEtapa): EtapaPainel {
     resultado: e.outcome === 'ganho' || e.outcome === 'perdido' ? e.outcome : null,
     // a implantação (2.3): a etapa de Vendas que abre o card, a de Gestão que liga no cadastro
     abreImplantacao: e.opensPanelId ?? null, ligaNoCadastro: e.activatesProducts,
+    // e a de Vendas que recebe a negociação quando a implantação termina
+    recebeImplantacao: e.receivesImplementation,
   };
 }
 

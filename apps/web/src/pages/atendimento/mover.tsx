@@ -9,15 +9,15 @@
  *  - no painel de Vendas (2.0.1), o Ganho e o Perdido abrem a janela do resultado: o valor e o dia em
  *    que fechou, ou o motivo da perda — e o confete é do Ganho;
  *  - a implantação (2.3): a etapa que abre a implantação (a negociação) mostra antes o cliente (o do cadastro, ou o
- *    novo, com o CNPJ), os produtos e o card; a que liga no cadastro (o Validado) mostra o que fica ativo na ficha
+ *    novo, com o CNPJ), os produtos e o card; a que liga no cadastro (o Implantado) mostra o que fica ativo na ficha
  *    do cliente. Nada trava além do CNPJ do cliente novo.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, CheckCircle2, CircleDashed, KanbanSquare, Package } from 'lucide-react';
+import { Building2, CheckCircle2, CircleDashed, Handshake, KanbanSquare, Package } from 'lucide-react';
 import {
   FRASE_DO_MODULO, FRASE_DO_PRODUTO, cadastroMuda, cnpjEnquantoDigita, cnpjLimpo, movimentoDeNivel, nomeDoObrigatorio,
-  type EtapaPainel, type FichaChamado, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PessoaCurta, type PlanoDaImplantacao, type PlanoDoCadastro, type ValoresDosProdutos,
+  type EtapaPainel, type FichaChamado, type NegociacaoNoFim, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PessoaCurta, type PlanoDaImplantacao, type PlanoDoCadastro, type ValoresDosProdutos,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { ApiError } from '../../api/types.js';
@@ -119,14 +119,15 @@ export function useMover(): { mover: (c: Movivel, etapaId: string, opcoes?: { de
     if (para.resultado) { setMarcando({ c, para, painel }); return null; }
     const ondeSoltou = lugar.depoisDe !== undefined ? { depoisDe: lugar.depoisDe } : {};
     // a etapa que abre a implantação ou liga no cadastro (2.3): a janela mostra antes o que vai acontecer (a negociação que já
-    // abriu o card, e o Validado que não muda nada no cadastro, vão direto)
+    // abriu o card, e o Implantado que não muda nada no cadastro, vão direto)
     if (painel && ((painel.tipo === 'vendas' && para.abreImplantacao) || (painel.tipo !== 'vendas' && para.ligaNoCadastro))) {
       setOcupado(c.id);
       let plano: OQueAEtapaFaz;
       try { plano = await api.atendimento.aoMover(c.id, { etapaId: para.id }); } catch (e) { toast.push('erro', mensagemErro(e)); setOcupado(null); return null; }
       setOcupado(null);
       const abre = !!plano.implantacao && !plano.implantacao.jaAberta;
-      const liga = !!plano.cadastro && (!plano.cadastro.cliente || cadastroMuda(plano.cadastro));
+      // o Implantado que leva a negociação para o Implantado do Comercial também mostra antes
+      const liga = !!plano.cadastro && (!plano.cadastro.cliente || cadastroMuda(plano.cadastro) || !!plano.negociacao);
       if (abre || liga) { setEtapando({ c, para, lugar: ondeSoltou, plano }); return null; }
     }
     const sentido = movimentoDeNivel(de, para);
@@ -157,7 +158,7 @@ export function useMover(): { mover: (c: Movivel, etapaId: string, opcoes?: { de
           const f = await executar(e.c, e.para, { ...e.lugar, implantacao: pedido }, naoFoi);
           if (f) setEtapando(null);
         }} />}
-      {etapando?.plano.cadastro && !etapando.plano.implantacao && <JanelaDoCadastro e={etapando} plano={etapando.plano.cadastro} onFechar={() => setEtapando(null)}
+      {etapando?.plano.cadastro && !etapando.plano.implantacao && <JanelaDoCadastro e={etapando} plano={etapando.plano.cadastro} negociacao={etapando.plano.negociacao} onFechar={() => setEtapando(null)}
         onConfirmar={async () => { const e = etapando; setEtapando(null); await executar(e.c, e.para, e.lugar); }} />}
       {marcando && <JanelaResultado codigo={marcando.c.codigo} valor={marcando.c.valor} para={marcando.para} painel={marcando.painel}
         ativacao={marcando.c.ativacao ?? null} porProduto={linhasDoValor(marcando.c.produtos ?? [], marcando.c.valoresDosProdutos, marcando.c.ativacoesDosProdutos)}
@@ -348,7 +349,7 @@ function JanelaDaImplantacao({ e, plano: inicial, onFechar, onConfirmar }: {
           {plano.produtos.length ? (
             <ul className="flex flex-col gap-1 text-[13.5px]">
               {plano.produtos.map((p) => (
-                <li key={p.id}><b>{p.nome}</b> <span className="text-muted">— {p.jaNoCadastro ? 'já está no cadastro do cliente: fica como está' : 'entra no cadastro do cliente, em implantação (a data de ativação vem no Validado)'}</span></li>
+                <li key={p.id}><b>{p.nome}</b> <span className="text-muted">— {p.jaNoCadastro ? 'já está no cadastro do cliente: fica como está' : 'entra no cadastro do cliente, em implantação (a data de ativação vem no Implantado)'}</span></li>
               ))}
             </ul>
           ) : <p className="text-[13px] text-muted">A negociação não tem produtos: o card abre sem as partes de cada produto (dá para pôr os produtos nele depois).</p>}
@@ -362,8 +363,10 @@ function JanelaDaImplantacao({ e, plano: inicial, onFechar, onConfirmar }: {
   );
 }
 
-/** O card que vai para a etapa que liga no cadastro (o Validado): o que fica ativo na ficha do cliente, desde hoje. */
-function JanelaDoCadastro({ e, plano, onFechar, onConfirmar }: { e: Etapando; plano: PlanoDoCadastro; onFechar: () => void; onConfirmar: () => Promise<void> }) {
+/** O card que vai para a etapa que liga no cadastro (o Implantado): o que fica ativo na ficha do cliente, desde hoje. */
+function JanelaDoCadastro({ e, plano, negociacao, onFechar, onConfirmar }: {
+  e: Etapando; plano: PlanoDoCadastro; negociacao: NegociacaoNoFim | null; onFechar: () => void; onConfirmar: () => Promise<void>;
+}) {
   const [indo, setIndo] = useState(false);
   const confirmar = async () => { setIndo(true); try { await onConfirmar(); } finally { setIndo(false); } };
   const icone = (muda: boolean) => (muda ? <CheckCircle2 size={14} className="text-ok shrink-0 mt-0.5" aria-hidden /> : <CircleDashed size={14} className="text-muted shrink-0 mt-0.5" aria-hidden />);
@@ -372,7 +375,7 @@ function JanelaDoCadastro({ e, plano, onFechar, onConfirmar }: { e: Etapando; pl
       rodape={<>
         <button className="btn-secondary" onClick={onFechar}>Cancelar</button>
         <button className="btn-primary" id="mover-ligar-cadastro" disabled={indo} onClick={() => void confirmar()}>
-          {indo ? <Spinner className="text-white" /> : plano.cliente ? 'Mover e ligar no cadastro' : 'Mover mesmo assim'}
+          {indo ? <Spinner className="text-white" /> : plano.cliente ? (cadastroMuda(plano) ? 'Mover e ligar no cadastro' : `Mover para ${e.para.nome}`) : 'Mover mesmo assim'}
         </button>
       </>}>
       {!plano.cliente ? (
@@ -397,6 +400,13 @@ function JanelaDoCadastro({ e, plano, onFechar, onConfirmar }: { e: Etapando; pl
             </LinhaDoPlano>
           </div>
         </>
+      )}
+      {negociacao && (
+        <div className="mt-3 pt-3 border-t border-line">
+          <LinhaDoPlano icone={<Handshake size={16} />} titulo="A negociação">
+            <p className="text-[13.5px] flex items-start gap-1.5">{icone(true)}<span><b className="font-mono">{negociacao.codigo}</b> <span className="text-muted">— vai de {negociacao.de} para <b className="text-ink-2">{negociacao.para}</b>, no Comercial. O Ganho continua à parte, quando começar a faturar.</span></span></p>
+          </LinhaDoPlano>
+        </div>
       )}
     </Modal>
   );
