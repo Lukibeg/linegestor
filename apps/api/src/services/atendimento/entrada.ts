@@ -21,7 +21,7 @@
  */
 import { createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { clients, ticketApiKeys, ticketStages, tickets, type Db } from '@gestor/db';
 import {
@@ -191,10 +191,13 @@ async function umDeCadaVez<T>(chave: string, tarefa: () => Promise<T>): Promise<
 
 const ABERTAS = ['entrada', 'andamento'];
 
-/** O chamado aberto (entrada ou andamento) desta conversa, o mais novo. */
+/** O chamado aberto (entrada ou andamento) desta conversa, o mais novo — a principal ou uma das outras ligadas a ele (2.2). */
 async function abertoDaSessao(db: Db, sessaoId: string): Promise<LinhaChamado | null> {
   const [r] = await db.select({ t: tickets }).from(tickets).innerJoin(ticketStages, eq(ticketStages.id, tickets.stageId))
-    .where(and(eq(tickets.sessionId, sessaoId), isNull(tickets.deletedAt), inArray(ticketStages.kind, ABERTAS)))
+    .where(and(
+      or(eq(tickets.sessionId, sessaoId), sql`${tickets.otherSessions} @> ${JSON.stringify([sessaoId])}::jsonb`),
+      isNull(tickets.deletedAt), inArray(ticketStages.kind, ABERTAS),
+    ))
     .orderBy(desc(tickets.createdAt)).limit(1);
   return r?.t ?? null;
 }

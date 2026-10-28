@@ -1,4 +1,4 @@
-# Os Relatórios dos painéis (2.1)
+# Os Relatórios dos painéis (2.1; a Visão geral, 2.2)
 
 Os relatórios dos chamados do Gestor ficam na vista **Relatórios** de cada painel — a mesma troca **Quadro ·
 Lista · Relatórios** do alto do painel. No menu, **Suporte › Relatórios** abre a do painel Suporte. Os
@@ -6,7 +6,29 @@ relatórios dos chamados do Helena (o LineChat) continuam em **Suporte › Legad
 de lá: os dois não se misturam, porque quase tudo mudou de régua (o tempo, o Resolvido, o nível, os
 assuntos). A decisão inteira está em `docs/decisoes/0055-relatorios-dos-paineis.md`.
 
-## 1. As abas
+## 1. Hoje, Período e Relatórios (2.2)
+
+Em cima, as três partes, como no Legado do Helena:
+
+- **Hoje** (é a que abre): os chamados que chegaram hoje. Os números de cima (Chegaram hoje, Resolvidos hoje, Em
+  aberto agora e Prazo vencido — no painel sem prazo, Sem responsável), os chamados por hora e os gráficos: por
+  assunto, cliente, tipo, etapa, produto, canal (como chegou), responsável, prioridade, gravidade, operadora, etiqueta
+  e cada campo de lista do painel. No fim, a tabela dos chamados.
+- **Período**: o mesmo para um período (o padrão são os 30 dias; os atalhos vão de 7 dias a Tudo), com os chamados por
+  dia (ou por mês, num período longo).
+- **só em aberto**: liga só os que ainda não chegaram no Resolvido. Período + Tudo + só em aberto é a fila inteira, com
+  os vencidos, os parados há 7 dias e os sem responsável.
+- **Clicar filtra a tela toda**: clique numa fatia, numa barra, numa coluna do tempo ou num número. O gráfico clicado
+  continua inteiro, com o escolhido em destaque; clique de novo para desfazer. O "não preenchido" também se clica. Os
+  filtros aparecem escritos embaixo do período, com o X, e são os mesmos dos Relatórios (vão junto para lá).
+- **Pizza ou barras**: os dois botões no canto de cada gráfico, só para você. No assunto, o **Agrupar** junta pelas
+  pastas (Ramal, Operadora…); clicar numa pasta filtra ela e o que está dentro.
+- **Organizar** (quem cuida dos chamados): arraste os gráficos pela alça (ou use as setas), escolha metade ou a linha
+  inteira, esconda o que não usa e escolha como cada um abre (pizza ou barras, o assunto agrupado). Nada muda antes do
+  **Salvar para todos**.
+- **Relatórios**: os 25 relatórios, nas abas abaixo.
+
+## 1.1. As abas dos Relatórios
 
 São 25 relatórios em seis abas, e cada um responde a uma pergunta (escrita embaixo do nome):
 

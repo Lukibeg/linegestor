@@ -91,6 +91,21 @@ export const ITEM_DO_CATALOGO: ReadonlyMap<string, ItemDoCatalogo> = new Map(CAT
 //  A ARRUMAÇÃO (o Organizar: a mesma para a equipe toda, por painel)
 // =====================================================================
 
+/**
+ * Um gráfico da Visão geral (2.2, a tela principal dos Relatórios: Hoje e Período, como no Legado do Helena) na arrumação
+ * da equipe: o lugar (a ordem da lista), metade ou a linha inteira, escondido, pizza ou barras e, no assunto, se abre com
+ * as pastas juntas. Os ids: `serie`, `etapa`, `responsavel`, `assunto`, `cliente`, `tipo`, `gravidade`, `prioridade`,
+ * `produto`, `operadora`, `etiqueta`, `origem` e `campo:<id do campo>`.
+ */
+export const ItemDaVisaoSchema = z.object({
+  id: z.string().trim().min(1).max(120),
+  largura: z.enum(['metade', 'inteira']),
+  oculto: z.boolean().default(false),
+  forma: z.enum(['barras', 'pizza']).optional(),
+  agrupar: z.boolean().optional(),
+});
+export type ItemDaVisao = z.infer<typeof ItemDaVisaoSchema>;
+
 /** O que fica guardado de cada painel (Ajustes, `atendimento-relatorios`): a ordem, os escondidos, os favoritos e o campo da falha. */
 export const ArrumacaoDosRelatoriosSchema = z.object({
   ordem: z.array(z.string().max(40)).max(80).default([]),
@@ -98,6 +113,8 @@ export const ArrumacaoDosRelatoriosSchema = z.object({
   favoritos: z.array(z.string().max(40)).max(80).default([]),
   /** o campo de lista do painel que diz de quem é a falha (nulo = o Gestor escolhe pelo nome) */
   campoDaFalha: z.string().max(100).nullable().default(null),
+  /** a arrumação dos gráficos da Visão geral (2.2); sem ela, a de fábrica. Quem salva sem mandar fica com a guardada */
+  visao: z.array(ItemDaVisaoSchema).max(80).optional(),
 });
 export type ArrumacaoDosRelatorios = z.infer<typeof ArrumacaoDosRelatoriosSchema>;
 
@@ -115,7 +132,8 @@ export function arrumacaoCompleta(guardada: Partial<ArrumacaoDosRelatorios> | nu
   const validos = (xs: readonly string[] | undefined) => [...new Set((xs ?? []).filter((id) => ITEM_DO_CATALOGO.has(id)))];
   const ordem = validos(guardada?.ordem);
   for (const r of CATALOGO_DOS_RELATORIOS) if (!ordem.includes(r.id)) ordem.push(r.id);
-  return { ordem, ocultos: validos(guardada?.ocultos), favoritos: validos(guardada?.favoritos), campoDaFalha: guardada?.campoDaFalha ?? null };
+  const visao = guardada?.visao ? guardada.visao.filter((x, i, xs) => xs.findIndex((y) => y.id === x.id) === i) : undefined;
+  return { ordem, ocultos: validos(guardada?.ocultos), favoritos: validos(guardada?.favoritos), campoDaFalha: guardada?.campoDaFalha ?? null, ...(visao ? { visao } : {}) };
 }
 
 /** Os relatórios de uma aba, na ordem da equipe. */
@@ -162,11 +180,11 @@ export type ChamadoParaRelatorios = {
 export type EtapaParaRelatorio = { id: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; ordem: number; ativa: boolean };
 export type AssuntoParaRelatorio = { id: string; paiId: string | null; nome: string; ordem: number; ativo: boolean };
 /** Um campo de lista do painel; o chamado guarda o id da opção (a que saiu continua no chamado que a tem). */
-export type CampoParaRelatorio = { id: string; nome: string; opcoes: Array<{ id: string; nome: string }>; ativo: boolean };
+export type CampoParaRelatorio = { id: string; nome: string; opcoes: Array<{ id: string; nome: string }>; ativo: boolean; /** a lista de várias opções (2.2, a Visão geral) */ varios?: boolean };
 export type ClienteParaRelatorio = { nome: string; dids: number; aparelhos: number; produtos: string[] };
 
 export type ContextoDosRelatorios = {
-  painel: { id: string; nome: string; sigla: string; contaPrazo: boolean; usa: { assunto: boolean; tipo: boolean; gravidade: boolean; produtos: boolean; operadoras: boolean } };
+  painel: { id: string; nome: string; sigla: string; contaPrazo: boolean; usa: { assunto: boolean; tipo: boolean; gravidade: boolean; produtos: boolean; operadoras: boolean; /** sem dizer, usa */ prioridade?: boolean } };
   /** todas as etapas do painel, inclusive as que saíram (o chamado que passou por uma delas continua aqui) */
   etapas: EtapaParaRelatorio[];
   assuntos: AssuntoParaRelatorio[];
@@ -1499,6 +1517,31 @@ function fechamento(p: Preparo): MesDoPainel {
     filaNoFim: { agora: a.naFila, antes: b.naFila },
     prazo: { agora: a.prazo, antes: b.temDado ? b.prazo : null },
     porDia, assuntos, clientes: clientesDoMes, tipos, destaques,
+  };
+}
+
+// =====================================================================
+//  PARA A VISÃO GERAL (2.2: `atendimento-visao.ts` usa as mesmas contas de base)
+// =====================================================================
+
+export type ChamadoDerivado = Derivado;
+/** O chamado com o que as contas usam: o dia em que chegou e em que foi resolvido, os prazos, o nível e o caminho do assunto. */
+export const derivarChamado = (c: ChamadoParaRelatorios, ctx: ContextoDosRelatorios, agora: Date): Derivado =>
+  derivar(c, ctx, new Map(ctx.etapas.map((e) => [e.id, e])), new Map(ctx.assuntos.map((a) => [a.id, a])), agora);
+/** O assunto e os de baixo dele (o filtro do assunto vale para a pasta inteira). */
+export const assuntoComOsDeBaixo = (id: string, assuntos: readonly AssuntoParaRelatorio[]) => descendentes(id, assuntos);
+/** O valor de um campo do painel no chamado, como lista. */
+export const valoresDoCampoDoChamado = (c: ChamadoParaRelatorios, campoId: string) => valoresDoCampo(c, campoId);
+/** O prazo de resposta ou de solução venceu (e o chamado ainda não respondeu ou resolveu). */
+export const chamadoComPrazoVencido = (d: Derivado) => prazoVencido(d);
+/** A linha curta de um chamado (a janela e a tabela). */
+export function linhaDoChamadoDoRelatorio(c: ChamadoParaRelatorios, ctx: ContextoDosRelatorios): ChamadoDoRelatorio {
+  const assuntos = new Map(ctx.assuntos.map((a) => [a.id, a]));
+  const caminho = caminhoDoAssuntoIds(c.assuntoId, assuntos).map((id) => assuntos.get(id)?.nome ?? '?');
+  return {
+    id: c.id, codigo: c.codigo, titulo: c.titulo, situacao: c.situacao, etapa: ctx.etapas.find((e) => e.id === c.etapaId)?.nome ?? '—',
+    cliente: c.clienteId ? ctx.clientes.get(c.clienteId)?.nome ?? 'Cliente fora da base' : null, responsavel: c.responsavelId ? ctx.pessoas.get(c.responsavelId) ?? 'Alguém que saiu' : null,
+    prioridade: c.prioridade, assunto: caminho.length ? caminho.join(' › ') : null, criadoEm: c.criadoEm, resolvidoEm: c.resolvidoEm,
   };
 }
 

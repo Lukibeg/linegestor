@@ -38,7 +38,16 @@ export type Aberta = {
   faltando: Set<string>;
   /** relê a ficha (quando a mudança foi em outro chamado: o incidente, o filho) */
   recarregar: () => void;
+  /**
+   * As partes vazias que a pessoa abriu pelo botão da barra (2.2: o checklist vazio sai da ficha e volta pelo botão
+   * Checklist). Fecham sozinhas quando a ficha troca de chamado.
+   */
+  partesAbertas: ReadonlySet<ParteDaFicha>;
+  abrirParte: (p: ParteDaFicha) => void;
 };
+
+/** As partes da ficha que somem vazias e voltam pelo botão da barra (2.2). */
+export type ParteDaFicha = 'checklist';
 
 const Contexto = createContext<Aberta | null>(null);
 export const FichaAberta = Contexto.Provider;

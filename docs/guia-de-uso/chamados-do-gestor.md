@@ -78,8 +78,8 @@ navegador também fecha a janela.
   "Reabrir este em vez de abrir outro"**: o cliente que volta à tarde com o mesmo ramal reabre o
   chamado da manhã.
 - A **gravidade** sugere a **prioridade** (pela tela de Prazos). No painel que usa o **alcance** — ele
-  nasce desligado, "por enquanto"; liga em Ajustes › Campos —, os dois juntos, pela matriz. Trocar a
-  sugerida pede o motivo.
+  nasce desligado, "por enquanto"; liga em Ajustes › Campos —, os dois juntos, pela matriz. Dá para
+  escolher outra que não a sugerida, sem precisar dizer o motivo (2.2).
 - **Observadores** (como no Helena): as pessoas que recebem o aviso de tudo o que acontece no chamado —
   a anotação, a mudança de etapa e de responsável, a espera, os campos (estes,
   juntos num aviso só enquanto não for lido). Põe ao abrir ou na ficha.
@@ -95,8 +95,8 @@ navegador também fecha a janela.
   **"Do painel …"**, os campos que a equipe criou para ele. O que é obrigatório para abrir vem com `*`;
   faltando, a tela diz o quê. (O robô, os agendados e as integrações abrem mesmo sem eles: quem
   completa é a equipe, na ficha.)
-- **Avisar o cliente pelo WhatsApp** manda o número do chamado pelo número oficial. Vem desmarcado: o
-  atendente decide.
+- O **Avisar o cliente pelo WhatsApp** saiu no 2.2 (a pedido do Luan), aqui e na ficha. O robô do LineChat continua
+  mandando o número do chamado na conversa.
 - **Conversa no LineChat** (2.1, opcional): no **chamado ativo** — a equipe chamou o cliente, e o
   chamado não veio do robô —, cole o **link da conversa** (abra a conversa no LineChat e copie o endereço
   da barra) ou só o **código da sessão**. A tela diz logo a sessão que achou (ou o que está errado). Com
@@ -134,18 +134,30 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   desde o 2.1, **Ligar a conversa do LineChat** (o chamado sem conversa, como o ativo) e **Trocar**
   (colar o link de outra conversa, ou **Tirar a conversa**); vai para o histórico —, a **classificação** (os campos que o painel usa — assunto,
   tipo, gravidade, alcance, prioridade, produtos, operadoras —, os campos do próprio painel e as
-  etiquetas), o responsável e os **observadores**, os **prazos**, o **Na agenda** (a visita ou a virada
+  etiquetas), os **prazos**, o **Na agenda** (a visita ou a virada
   ligada ao chamado, e o **Agendar**, que põe uma no [calendário](calendario.md) já com o chamado, o
   cliente e o painel — 2.0.1), o caso **na operadora** e o **tempo gasto**. O campo de texto longo do
   painel (ex.: "Como reproduzir") fica junto do relato.
-- A barra de cima: **Assumir**, **Mover**, **Escalonar** (pede o motivo), **Esperar** o cliente ou a
-  operadora (pede o motivo), **Avisar o cliente**, a **NIA** (abaixo), **Preencher com IA** e **Mais**
-  (ligar a outro chamado, criar um filho, definir o pai, ligar a um problema, trocar de painel,
-  reabrir, observar, lixeira). **Criar um filho** (e **Abrir um problema a partir deste**) abre o
+- A barra de cima: **Assumir**, o **Responsável** (quem está com o chamado; troca ali mesmo) e, colado nele, os
+  **Observadores** (quem recebe os avisos; incluir, tirar com o X e o **Eu observo também** — 2.2), **Mover**,
+  **Etiquetas**, **Agendar**, **Checklist** (quando ainda não tem), **Ligações** (ligar a outro chamado, criar um
+  filho, definir o pai), **Escalonar** (pede o motivo), **Esperar** o cliente ou a operadora (pede o motivo),
+  a **NIA** (abaixo), **Preencher com IA** e **Mais** (ligar a um problema, trocar de painel,
+  reabrir, lixeira). O **Copiar o link** fica ao lado do código, no alto (2.2). Quem só lê o chamado (sem a barra)
+  vê o responsável e os observadores num cartão, ao lado.
+- **Para sair do Novo, o chamado precisa de um responsável** (2.2): sem ninguém, o Mover diz "falta:
+  Responsável", e a janela do quadro pergunta quem fica com ele. O Assumir faz tudo de uma vez.
+- **A ficha mostra só o que tem** (2.2): o checklist, os filhos e ligações e a agenda vazios não aparecem; voltam
+  com o primeiro item, ligação ou evento. A linha do tempo abre nas **Anotações** (depois Histórico, Trajetória
+  e Tudo).
+- **Mais de um contato e de uma conversa** (2.2): no cartão do contato, **Mais um contato** e **Mais uma
+  conversa**. Os de cima continuam os principais (o aviso ao cliente e a NIA usam eles); o robô acha o chamado
+  por qualquer conversa ligada a ele.
+- **O assunto em pastas** (2.2): o assunto com outros dentro (Operadora, Operadora › VC1) é só o título do grupo;
+  escolhe-se o de dentro. Nos filtros, a pasta filtra tudo o que está nela.
+- Abrir um chamado de dentro de outro (o desenho, um código no texto) e fechar no **X** volta para o de antes. **Criar um filho** (e **Abrir um problema a partir deste**) abre o
   formulário do Abrir chamado numa janela por cima da ficha: aberto, a janela fecha e a ficha mostra o
-  filho. **Avisar o cliente** mostra, antes de mandar, **como a mensagem chega**: dentro do modelo aprovado do WhatsApp oficial, com o
-  nome do contato, o código e o seu texto (a quebra de linha vira " · ": o WhatsApp não aceita quebra
-  dentro do modelo).
+  filho.
 - **A NIA** (2.1, no lugar de etiquetar à mão): **Preencher com a NIA** pede à NIA (a IA do suporte,
   no n8n) para ler a conversa e preencher o chamado. Por baixo, o botão põe a etiqueta **NIA -
   PREENCHER**, como antes — o fluxo da NIA não muda. O botão diz em que pé está: **NIA preenchendo…** (a

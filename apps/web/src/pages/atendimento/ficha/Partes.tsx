@@ -17,9 +17,12 @@ import { JanelaEscolherChamado } from './Janelas.js';
 // =====================================================================
 
 export function Checklist() {
-  const { f, pode, painel } = useAberta();
-  // sem itens, o checklist só aparece para quem pode incluir — e no chamado ainda aberto
-  if (!f.checklist.length && (!pode || f.situacao !== 'aberto')) return null;
+  const { f, pode, painel, partesAbertas, faltando } = useAberta();
+  // sem itens, o checklist sai da ficha (2.2, o Luan: "retirar checklist e filhos e ligações da aba principal e tentar colocar
+  // em botões mais resumidos, mas no caso quando for adicionado um checklist ou uma ligação ele vai aparecer novamente"):
+  // volta pelo botão Checklist da barra, ou quando a próxima etapa pede o checklist
+  const pedido = faltando.has('checklist');
+  if (!f.checklist.length && !(pode && f.situacao === 'aberto' && (partesAbertas.has('checklist') || pedido))) return null;
   const feitos = f.checklist.filter((i) => i.feito).length;
   return (
     <Secao id="campo-checklist" titulo="Checklist" icone={<ListChecks size={16} />}
@@ -40,7 +43,7 @@ export function Checklist() {
             : 'Nenhum item. Os itens do assunto entram sozinhos quando o assunto é escolhido.'}
         </p>
       )}
-      {pode && <IncluirNoChecklist />}
+      {pode && <IncluirNoChecklist foco={!f.checklist.length && partesAbertas.has('checklist')} />}
     </Secao>
   );
 }
@@ -81,7 +84,7 @@ function ItemDoChecklist({ i }: { i: ItemChecklist }) {
   );
 }
 
-function IncluirNoChecklist() {
+function IncluirNoChecklist({ foco = false }: { foco?: boolean }) {
   const { f } = useAberta();
   const acao = useAcao();
   const [texto, setTexto] = useState('');
@@ -93,7 +96,9 @@ function IncluirNoChecklist() {
   return (
     <div className="mt-2">
       <form className="flex gap-2" autoComplete="off" onSubmit={(e) => { e.preventDefault(); void incluir(); }}>
-        <input className="input py-1.5 text-[13.5px] min-w-0" maxLength={160} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Incluir um item (ex.: testar com o cliente)" aria-label="Novo item do checklist" />
+        {/* aberto pelo botão da barra (2.2): o cursor já vem na caixa */}
+        <input className="input py-1.5 text-[13.5px] min-w-0" maxLength={160} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Incluir um item (ex.: testar com o cliente)" aria-label="Novo item do checklist"
+          id="ficha-checklist-incluir" autoFocus={foco} />
         <button type="submit" className="btn-secondary btn-sm shrink-0" disabled={!texto.trim() || acao.ocupado}>{acao.ocupado ? <Spinner /> : <Plus size={14} />} Incluir</button>
       </form>
       <ErroPerto erro={acao.erro} />

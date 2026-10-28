@@ -60,7 +60,7 @@ export type Api = {
     /** Rede padrão dos aparelhos (IP, máscara, gateway, DNS, senha do ramal sem fio) */
     saveNetwork(id: string, d: Record<string, unknown>): Promise<T.ClientFull>;
   };
-  secrets: { reveal(id: string, password: string): Promise<{ label: string; value: string; visibleForSeconds: number }> };
+  secrets: { reveal(id: string): Promise<{ label: string; value: string; visibleForSeconds: number }> };
   circuits: {
     list(q: Record<string, unknown>): Promise<T.Page<T.Circuit>>;
     summary(q?: Record<string, unknown>): Promise<T.CircuitSummary>;
@@ -299,6 +299,8 @@ export type Api = {
     /** os Relatórios de um painel de chamados (2.1): os 25 de uma vez, com o período e os filtros */
     relatorios(q: T.FiltroDosRelatorios): Promise<T.RelatoriosDoPainel>;
     /** a arrumação dos Relatórios de um painel (a ordem, os escondidos, os favoritos, o campo da falha) */
+    /** a Visão geral de um painel de chamados (2.2): Hoje ou o Período, os números, o tempo, os gráficos e a tabela */
+    visao(q: Record<string, string>): Promise<import('@gestor/shared').VisaoDoPainel>;
     arrumacaoDosRelatorios(painel: string): Promise<T.ArrumacaoDosRelatoriosLida>;
     /** arrumar para a equipe toda (quem cuida dos chamados) */
     salvarArrumacaoDosRelatorios(painel: string, a: T.ArrumacaoDosRelatorios): Promise<T.ArrumacaoDosRelatoriosLida>;

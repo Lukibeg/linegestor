@@ -1,23 +1,22 @@
 /**
- * As janelas das ações da ficha: esperar (o cliente ou a operadora, com o motivo), avisar o cliente
- * pelo WhatsApp, ligar a outro chamado, escolher o pai, o problema ou um incidente, trocar de painel e
- * reabrir. (A resposta pronta saiu no 2.0.1: o LineChat já tem as respostas rápidas.)
+ * As janelas das ações da ficha: esperar (o cliente ou a operadora, com o motivo), ligar a outro chamado,
+ * escolher o pai, o problema ou um incidente, trocar de painel e reabrir. (A resposta pronta saiu no 2.0.1: o
+ * LineChat já tem as respostas rápidas; o Avisar o cliente saiu no 2.2, a pedido do Luan.)
  *
  * Cada janela só existe enquanto está aberta (o estado nasce no `useState`), e o erro aparece ali
  * dentro, perto do botão que confirma.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { MessageCircle, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import {
-  etapaAoReabrir, etapaDeEntrada, lerCodigo, mensagemPreenchida, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO,
+  etapaAoReabrir, etapaDeEntrada, lerCodigo, NOME_ESPERA, NOME_LIGACAO, NOME_SITUACAO_CHAMADO,
   type CartaoChamado, type FichaChamado, type TipoEspera, type TipoLigacaoChamado,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Campo, Confirmar, Modal, Spinner } from '../../../components/ui/index.js';
-import { painelDe, telefoneLegivel, useAbrirChamado } from '../comum.js';
+import { painelDe, useAbrirChamado } from '../comum.js';
 import { NovoChamadoNaJanela } from '../Novo.js';
-import { BalaoDeMensagem } from '../ajustes/Avisos.js';
 import { ErroPerto, nomeComNivel, useAberta, useAcao } from './base.js';
 
 /** Os botões do rodapé: Cancelar e o que confirma (com a rodinha enquanto vai). */
@@ -59,64 +58,6 @@ export function JanelaEsperar({ tipo, onFechar }: { tipo: TipoEspera; onFechar: 
       </Campo>
       <ErroPerto erro={acao.erro} />
     </Modal>
-  );
-}
-
-// =====================================================================
-//  AVISAR O CLIENTE (WhatsApp)
-// =====================================================================
-
-export function JanelaAvisar({ onFechar }: { onFechar: () => void }) {
-  const { f, recarregar } = useAberta();
-  const acao = useAcao();
-  const [texto, setTexto] = useState('');
-  const mandar = async () => {
-    if (!texto.trim()) { acao.setErro('Escreva a mensagem.'); return; }
-    const r = await acao.rodar(() => api.atendimento.avisarCliente(f.id, texto.trim()), 'Mensagem enviada ao cliente');
-    // a tentativa que falhou também fica no histórico: a ficha relê para mostrar
-    if (r.ok) onFechar(); else recarregar();
-  };
-  return (
-    <Modal open onClose={onFechar} titulo="Avisar o cliente pelo WhatsApp" largura="max-w-xl"
-      rodape={<Rodape onFechar={onFechar} ocupado={acao.ocupado} botao={<><MessageCircle size={15} /> Mandar</>} onConfirmar={mandar} />}>
-      <p className="text-sm text-ink-2 mb-3">
-        Para <b>{f.contato?.nome ?? 'o contato'}</b> · <span className="font-mono tnum">{telefoneLegivel(f.contato?.telefone)}</span>
-      </p>
-      <Campo label="Mensagem" dica="Sai pelo número oficial do suporte e fica no histórico do chamado.">
-        <textarea className="input min-h-[110px]" autoFocus maxLength={3000} value={texto} onChange={(e) => setTexto(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) void mandar(); }}
-          placeholder="Ex.: Ajustamos a rota de saída. Pode testar uma ligação para celular e nos dizer se melhorou?" />
-      </Campo>
-      <div className="text-right text-[11.5px] text-muted tnum mt-0.5">{texto.length}/3000</div>
-      <ComoChegaAoCliente texto={texto} />
-      <ErroPerto erro={acao.erro} />
-    </Modal>
-  );
-}
-
-/**
- * A mensagem como chega ao cliente: o texto do atendente dentro do que os Ajustes mandam — o modelo
- * aprovado do WhatsApp oficial (cada variável como vai para a API: sem quebra de linha) ou o texto livre.
- */
-function ComoChegaAoCliente({ texto }: { texto: string }) {
-  const { f, opcoes, eu } = useAberta();
-  const m = opcoes.whatsapp.mensagemCliente;
-  if (!m) return null;
-  const previa = mensagemPreenchida(m, {
-    contato: f.contato?.nome ?? null, codigo: f.codigo, cliente: f.cliente?.nome ?? null, titulo: f.titulo,
-    responsavel: f.responsavel?.nome ?? null, eu: eu?.nome ?? null, texto: texto.trim() || '(a sua mensagem)',
-  });
-  const levaOTexto = m.peloModelo ? m.variaveis.some((v) => v.valor.includes('{texto}')) : m.texto.includes('{texto}');
-  return (
-    <div className="mt-2" id="ficha-como-chega">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1.5">
-        <span className="eyebrow">Como chega ao cliente</span>
-        {m.peloModelo && <span className="chip bg-ok-soft text-ok" title="O modelo aprovado do WhatsApp oficial (Painéis › Ajustes › Avisos e WhatsApp)">pelo modelo <span className="font-mono font-normal">{m.nomeDoModelo ?? 'aprovado'}</span></span>}
-      </div>
-      <BalaoDeMensagem texto={previa} />
-      {m.peloModelo && /\n/.test(texto.trim()) && levaOTexto && <p className="text-[12px] text-muted mt-1.5">No modelo aprovado, a quebra de linha vira " · " (o WhatsApp não aceita quebra dentro da variável).</p>}
-      {!levaOTexto && <p className="text-[12.5px] text-signal mt-1.5">O modelo não tem lugar para o seu texto: o cliente recebe só o que está acima, e o seu texto fica no histórico do chamado.</p>}
-    </div>
   );
 }
 

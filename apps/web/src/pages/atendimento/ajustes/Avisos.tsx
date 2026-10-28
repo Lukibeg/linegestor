@@ -800,7 +800,7 @@ function CartaoMensagemAoCliente({ f, mudar }: { f: Form; mudar: (m: Partial<For
       situacao={peloModelo ? (t.id ? <Chip tone="ok">pelo modelo {t.nome || 'aprovado'}</Chip> : <Chip tone="signal">falta escolher o modelo</Chip>) : <Chip tone="muted">texto livre</Chip>}>
       <Explicacao>
         <p>
-          O que chega ao cliente quando o atendente manda: no "Avisar o cliente" da ficha e no número do chamado ao abrir. O WhatsApp oficial só começa uma conversa com um <b>modelo aprovado</b> pela Meta — o template, que fica no
+          O que chegava ao cliente quando o atendente mandava, pelo "Avisar o cliente" da ficha e do Abrir chamado. <b>Desde o 2.2, esses dois botões saíram</b> (a pedido do Luan): o ajuste fica guardado, para se um dia voltar. O WhatsApp oficial só começa uma conversa com um <b>modelo aprovado</b> pela Meta — o template, que fica no
           LineChat (Ajustes › Modelos de mensagem). Cada variável do modelo recebe um valor do chamado; a do <i>o que o atendente escreveu</i> leva a mensagem dele.
         </p>
       </Explicacao>

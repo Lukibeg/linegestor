@@ -3,7 +3,7 @@
  * Todas usam as cores do tema (styles.css), então funcionam no claro e no escuro.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type ReactNode } from 'react';
-import { AlertTriangle, Check, ChevronDown, Copy, Eye, EyeOff, Info, Loader2, Plus, Search, X } from 'lucide-react';
+import { AlertTriangle, Check, ChevronDown, Copy, Eye, EyeOff, Folder, Info, Loader2, Plus, Search, X } from 'lucide-react';
 import { formatarIp, formatarIpOuEndereco, paraBusca, SEM_LIMITE } from '@gestor/shared';
 import { ApiError } from '../../api/types.js';
 
@@ -168,10 +168,8 @@ export function Confirmar({ open, onClose, onConfirm, titulo, texto, botao = 'Co
  * os pontinhos e trocar é digitar ali mesmo; deixar como está mantém a atual. Revelada, a senha
  * aparece na própria caixa por 30 s, e dá para corrigi-la ali.
  */
-export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onChangeNovo, placeholder = 'digite para trocar' }: { secretId: string | null; hasSecret: boolean; onReveal: (id: string, password: string) => Promise<{ value: string; visibleForSeconds: number }>; podeRevelar: boolean; onChangeNovo?: (v: string) => void; placeholder?: string }) {
+export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onChangeNovo, placeholder = 'digite para trocar' }: { secretId: string | null; hasSecret: boolean; onReveal: (id: string) => Promise<{ value: string; visibleForSeconds: number }>; podeRevelar: boolean; onChangeNovo?: (v: string) => void; placeholder?: string }) {
   const [shown, setShown] = useState<string | null>(null);
-  const [asking, setAsking] = useState(false);
-  const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   /** o que foi digitado no formulário; null = não mexeu (mantém a senha guardada) */
@@ -179,27 +177,24 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
   const timer = useRef<number | null>(null);
   const toast = useToast();
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+  // o olho revela na hora, por 30 s (2.2: sem confirmar a própria senha, a pedido do Luan); continua na auditoria
   const reveal = async () => {
     setBusy(true); setErr('');
     try {
-      const r = await onReveal(secretId!, pw);
-      setShown(r.value); setAsking(false); setPw('');
+      const r = await onReveal(secretId!);
+      setShown(r.value);
+      if (timer.current) window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => setShown(null), r.visibleForSeconds * 1000);
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
   const botoes = hasSecret && (
     <span className="flex items-center gap-1">
       {shown && <button type="button" className="btn-ghost btn-sm" title="Copiar" onClick={() => { navigator.clipboard.writeText(shown); toast.push('ok', 'Copiado'); }}><Copy size={14} /></button>}
-      {podeRevelar && (shown ? <button type="button" className="btn-ghost btn-sm" onClick={() => setShown(null)} title="Ocultar"><EyeOff size={14} /></button> : <button type="button" className="btn-ghost btn-sm" onClick={() => setAsking(true)} title="Revelar (fica registrado)"><Eye size={14} /></button>)}
+      {podeRevelar && (shown ? <button type="button" className="btn-ghost btn-sm" onClick={() => setShown(null)} title="Ocultar"><EyeOff size={14} /></button> : <button type="button" className="btn-ghost btn-sm" disabled={busy} onClick={() => void reveal()} title="Revelar por 30 s (fica registrado)">{busy ? <Spinner /> : <Eye size={14} />}</button>)}
     </span>
   );
-  const janelaRevelar = (
-    <Modal open={asking} onClose={() => setAsking(false)} titulo="Revelar senha" rodape={<><button className="btn-secondary" onClick={() => setAsking(false)}>Cancelar</button><button className="btn-primary" disabled={!pw || busy} onClick={reveal}>{busy ? <Spinner className="text-white" /> : 'Revelar por 30 s'}</button></>}>
-      <p className="text-sm text-ink-2 mb-3">Confirme a <b>sua</b> senha. A revelação fica registrada na auditoria com seu nome, data e hora.</p>
-      <input type="password" className="input" placeholder="sua senha" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && reveal()} autoFocus />
-      {err && <div className="text-bad text-sm mt-2">{err}</div>}
-    </Modal>
-  );
+  // o erro da revelação (sem a permissão, o segredo sumiu) fica embaixo da caixa
+  const erroRevelar = err ? <div className="text-bad text-[12.5px] mt-1">{err}</div> : null;
 
   // ---------- no formulário: uma caixa só ----------
   if (onChangeNovo) {
@@ -216,7 +211,7 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
           />
           {botoes && <span className="absolute right-1.5 top-1/2 -translate-y-1/2">{botoes}</span>}
         </div>
-        {janelaRevelar}
+        {erroRevelar}
       </div>
     );
   }
@@ -232,7 +227,7 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
           </div>
         ) : <span className="text-muted text-sm">não cadastrada</span>}
       </div>
-      {janelaRevelar}
+      {erroRevelar}
     </div>
   );
 }
@@ -489,7 +484,19 @@ export function usePosicaoDoPainel(aberto: boolean, ancora: React.RefObject<HTML
   return pos;
 }
 
-export type OpcaoBusca = { id: string; nome: string; dica?: string };
+export type OpcaoBusca = {
+  id: string; nome: string; dica?: string;
+  /**
+   * Uma pasta (2.2, o assunto: "Operadora e operadora vc1 aqui deveria ser apenas para facilitar a visualização e n ser
+   * uma opção… como se fossem pastas"): aparece como título do grupo, com o que vem dentro dela embaixo, e não se escolhe.
+   * Na busca, as pastas saem e cada opção aparece com o caminho inteiro (o `nome`).
+   */
+  pasta?: boolean;
+  /** o recuo na lista sem busca (0 é a raiz) */
+  nivel?: number;
+  /** o nome na lista sem busca, dentro da pasta (o último pedaço do caminho); sem ele, o `nome` */
+  rotulo?: string;
+};
 
 /**
  * Escolher um item de uma lista longa digitando — no lugar da lista suspensa com 60 clientes
@@ -538,8 +545,17 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
   const todas = useMemo(() => (vazio !== undefined ? [{ id: '', nome: vazio }, ...opcoes] : opcoes), [opcoes, vazio]);
   const achadas = useMemo(() => {
     const b = paraBusca(busca);
-    return b ? todas.filter((o) => o.id !== '' && paraBusca(`${o.nome} ${o.dica ?? ''}`).includes(b)) : todas;
+    // na busca, as pastas saem (cada opção vem com o caminho inteiro)
+    return b ? todas.filter((o) => o.id !== '' && !o.pasta && paraBusca(`${o.nome} ${o.dica ?? ''}`).includes(b)) : todas;
   }, [todas, busca]);
+  const emArvore = !paraBusca(busca) && todas.some((o) => o.pasta || o.nivel);
+  /** A próxima opção que se escolhe, andando com as setas (as pastas ficam de fora). */
+  const andar = (m: number, passo: 1 | -1) => {
+    let i = m + passo;
+    while (i >= 0 && i < achadas.length && achadas[i]!.pasta) i += passo;
+    if (i < 0) return m;
+    return Math.min(i, achadas.length - (podeCriar ? 0 : 1));
+  };
   const escolhida = todas.find((o) => o.id === valor);
   const escrito = busca.trim().replace(/\s+/g, ' ');
   // o "+ Incluir" aparece quando o escrito não é o nome de nenhuma opção (sem ligar para maiúscula e acento)
@@ -553,9 +569,16 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
       if (novo !== valor) onChange(novo);
     } catch (e) { setErroCriar(mensagemErro(e)); } finally { setCriando(false); }
   };
-  const abrir = () => { if (desativado) return; setBusca(''); setErroCriar(''); setMarcado(Math.max(0, todas.findIndex((o) => o.id === valor))); setAberto(true); };
+  const abrir = () => {
+    if (desativado) return;
+    setBusca(''); setErroCriar('');
+    // o marcado começa na escolhida (ou na primeira que se escolhe, se ela for uma pasta ou não houver)
+    const i = todas.findIndex((o) => o.id === valor && !o.pasta);
+    setMarcado(i >= 0 ? i : Math.max(0, todas.findIndex((o) => !o.pasta)));
+    setAberto(true);
+  };
   const fechar = (devolverFoco = true) => { setAberto(false); if (devolverFoco) botao.current?.focus(); };
-  const escolher = (o: OpcaoBusca) => { fechar(); if (o.id !== valor) onChange(o.id); };
+  const escolher = (o: OpcaoBusca) => { if (o.pasta) return; fechar(); if (o.id !== valor) onChange(o.id); };
   useEffect(() => {
     if (!aberto) return;
     const fora = (e: MouseEvent) => { if (caixa.current && !caixa.current.contains(e.target as Node)) fechar(false); };
@@ -566,8 +589,8 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
   // o item marcado fica sempre à vista quando se anda com as setas
   useEffect(() => { lista.current?.querySelector<HTMLElement>(`[data-i="${marcado}"]`)?.scrollIntoView({ block: 'nearest' }); }, [marcado, aberto]);
   const tecla = (e: React.KeyboardEvent) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setMarcado((m) => Math.min(achadas.length - (podeCriar ? 0 : 1), m + 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setMarcado((m) => Math.max(0, m - 1)); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setMarcado((m) => andar(m, 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setMarcado((m) => andar(m, -1)); }
     else if (e.key === 'Enter') { e.preventDefault(); const o = achadas[marcado]; if (o) escolher(o); else if (podeCriar && marcado === achadas.length) void incluir(); }
     // o Esc fecha só o painel, não a janela em volta
     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); fechar(); }
@@ -603,16 +626,31 @@ export function EscolherComBusca({ valor, opcoes, onChange, vazio, placeholder =
               />
             </label>
             <ul ref={lista} role="listbox" id={id ? `${id}-lista` : undefined} className="overflow-y-auto min-h-0 flex-1">
-              {achadas.map((o, i) => (
-                <li
-                  key={o.id || '__vazio__'} data-i={i} role="option" aria-selected={o.id === valor}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded text-[13.5px] cursor-pointer ${i === marcado ? 'bg-surface-2' : ''} ${o.id === '' ? 'text-muted italic' : ''}`}
-                  onMouseEnter={() => setMarcado(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => escolher(o)}
-                >
-                  <span className="flex-1 min-w-0 truncate">{o.nome}{o.dica && <span className="text-muted"> · {o.dica}</span>}</span>
-                  {o.id === valor && <Check size={14} className="shrink-0 text-accent" />}
-                </li>
-              ))}
+              {achadas.map((o, i) => {
+                // sem busca, a lista em pastas: o recuo do nível e o nome curto; a pasta é o título do grupo e não se escolhe
+                const recuo = emArvore ? { paddingLeft: 8 + (o.nivel ?? 0) * 16 } : undefined;
+                const texto = emArvore ? o.rotulo ?? o.nome : o.nome;
+                if (o.pasta) {
+                  return (
+                    <li key={o.id} data-i={i} role="presentation" title={o.nome} style={recuo}
+                      className={`flex items-center gap-1.5 px-2 pt-2 pb-1 text-[12.5px] font-semibold text-muted select-none ${o.id === valor ? 'italic' : ''}`}
+                      onMouseDown={(e) => e.preventDefault()}>
+                      <Folder size={13} className="shrink-0" aria-hidden />
+                      <span className="flex-1 min-w-0 truncate">{texto}{o.id === valor && <span className="font-normal"> (o de agora: escolha um de dentro)</span>}</span>
+                    </li>
+                  );
+                }
+                return (
+                  <li
+                    key={o.id || '__vazio__'} data-i={i} role="option" aria-selected={o.id === valor} title={emArvore && o.rotulo ? o.nome : undefined} style={recuo}
+                    className={`flex items-center gap-2 px-2 py-1.5 rounded text-[13.5px] cursor-pointer ${i === marcado ? 'bg-surface-2' : ''} ${o.id === '' ? 'text-muted italic' : ''}`}
+                    onMouseEnter={() => setMarcado(i)} onMouseDown={(e) => e.preventDefault()} onClick={() => escolher(o)}
+                  >
+                    <span className="flex-1 min-w-0 truncate">{texto}{o.dica && <span className="text-muted"> · {o.dica}</span>}</span>
+                    {o.id === valor && <Check size={14} className="shrink-0 text-accent" />}
+                  </li>
+                );
+              })}
               {podeCriar && (
                 <li data-i={achadas.length} role="option" aria-selected={false} id={id ? `${id}-incluir` : undefined}
                   className={`flex items-center gap-2 px-2 py-1.5 rounded text-[13.5px] cursor-pointer text-accent-ink ${marcado === achadas.length ? 'bg-surface-2' : ''}`}

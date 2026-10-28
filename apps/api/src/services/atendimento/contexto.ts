@@ -285,7 +285,9 @@ export async function carregarCartoes(db: Db, ator: Ator, ctx: Contexto, opts: {
     .filter((t) => visiveis.includes(t.panelId))
     .map((t) => {
       const c = cartaoDaLinha(t, ctx, par);
-      return { ...c, busca: textoDeBusca(c, [t.customerReport, t.description, t.solution, t.cause, ...textosDosCampos(camposDoPainel(ctx, t.panelId, true), c.campos)]) };
+      // os outros contatos (2.2) também acham o chamado: o nome e o WhatsApp de cada um
+      const outros = (t.otherContacts ?? []).flatMap((o) => [o.nome, o.telefone]);
+      return { ...c, busca: textoDeBusca(c, [t.customerReport, t.description, t.solution, t.cause, ...outros, ...textosDosCampos(camposDoPainel(ctx, t.panelId, true), c.campos)]) };
     });
 }
 

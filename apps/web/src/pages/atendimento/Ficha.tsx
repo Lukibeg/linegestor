@@ -18,7 +18,7 @@
  * janela grande por cima da tela, que continua lá embaixo do jeito que estava — o pedido do Luan na
  * prévia. O link direto (/atendimento/SUP-12) abre em página inteira, e a janela tem o botão para ela.
  */
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Maximize2, RotateCcw } from 'lucide-react';
@@ -31,7 +31,7 @@ import { paraALista } from '../../lib/voltar.js';
 import { PontoDoPainel } from './quadro/filtros.js';
 import { chaveDaFicha, enderecoDoChamado, painelDe, useFecharJanela, useFicha, useOpcoes } from './comum.js';
 import { useMover } from './mover.js';
-import { FichaAberta, proximaEtapa, type Aberta } from './ficha/base.js';
+import { FichaAberta, proximaEtapa, type Aberta, type ParteDaFicha } from './ficha/base.js';
 import { Cabecalho } from './ficha/Cabecalho.js';
 import { BarraDeAcoes } from './ficha/Acoes.js';
 import { AvisoDoQueFalta, Textos } from './ficha/Textos.js';
@@ -50,7 +50,7 @@ import { Negociacao } from './ficha/Negociacao.js';
 /**
  * A rota. O código escrito de qualquer jeito (sup-12, SUP 12) vira o do sistema; ir de um chamado
  * para outro (o link no texto, o nó do desenho) usa a mesma rota, e a chave faz a ficha começar do
- * zero (nenhuma caixa aberta, a aba Tudo).
+ * zero (nenhuma caixa aberta, a aba Anotações).
  */
 export function FichaDoChamado() {
   const referencia = useReferencia();
@@ -102,6 +102,9 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
   const location = useLocation();
   const qc = useQueryClient();
   const clienteId = f?.cliente?.id ?? null;
+  // as partes vazias que a pessoa abriu pela barra (o checklist, 2.2); a ficha nova (outro chamado) começa sem nenhuma
+  const [partesAbertas, setPartesAbertas] = useState<ReadonlySet<ParteDaFicha>>(() => new Set());
+  const abrirParte = useCallback((p: ParteDaFicha) => setPartesAbertas((s) => (s.has(p) ? s : new Set([...s, p]))), []);
   const cadastro = useQuery({
     queryKey: ['atendimento', 'cadastro', clienteId],
     queryFn: () => api.atendimento.cadastroDoCliente(clienteId!),
@@ -138,8 +141,9 @@ function Ficha({ referencia, emJanela = false }: { referencia: string; emJanela?
       // o que falta preencher só se destaca para quem pode preencher
       proxima, faltando: new Set<string>(proxima && f.pode.trabalhar ? f.faltam[proxima.id] ?? [] : []),
       recarregar: () => { void qc.invalidateQueries({ queryKey: chaveDaFicha(f.codigo) }); },
+      partesAbertas, abrirParte,
     };
-  }, [f, opcoes.data, user, mover, cadastro.data, qc]);
+  }, [f, opcoes.data, user, mover, cadastro.data, qc, partesAbertas, abrirParte]);
 
   if (q.isLoading || opcoes.isLoading) return <Carregando texto="Abrindo…" />;
   if (q.isError || !f) return <NaoAbriu codigo={referencia} erro={q.error} tentar={() => void q.refetch()} />;

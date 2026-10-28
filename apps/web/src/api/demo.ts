@@ -2374,7 +2374,7 @@ export const demoApi: Api = {
     },
   },
   secrets: {
-    async reveal(sid, password) { await wait(250); requirePerm('secrets.reveal'); if (password !== S.me!.password) throw new ApiError(401, 'Senha incorreta'); const s = S.secrets.get(sid); if (!s) throw notFound('Segredo'); audit('reveal_secret', 'secret', `${S.me!.name} revelou "${s.label}"`, sid); return { label: s.label, value: s.value, visibleForSeconds: 30 }; },
+    async reveal(sid) { await wait(250); requirePerm('secrets.reveal'); const s = S.secrets.get(sid); if (!s) throw notFound('Segredo'); audit('reveal_secret', 'secret', `${S.me!.name} revelou "${s.label}"`, sid); return { label: s.label, value: s.value, visibleForSeconds: 30 }; },
   },
   circuits: {
     async list(q) {

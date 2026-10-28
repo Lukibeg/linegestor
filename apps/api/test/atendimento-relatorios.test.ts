@@ -27,12 +27,14 @@ let configuracao = '';
 let operadora = '';
 const campo = { id: '', ingline: 'opc-ingline', cliente: 'opc-cliente' };
 const SUP = 'painel-suporte';
+let adminId = '';
 const DEV = 'painel-desenvolvimento';
 const E = { n1: 'etapa-suporte-n1', n2: 'etapa-suporte-n2', resolvido: 'etapa-suporte-resolvido' };
 const t: Record<'um' | 'dois' | 'tres', { id: string; codigo: string }> = { um: { id: '', codigo: '' }, dois: { id: '', codigo: '' }, tres: { id: '', codigo: '' } };
 
 async function abrir(d: Record<string, unknown>) {
-  const r = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Ramal sem configuração', relato: 'O ramal novo não registra', clienteId: aurora, assuntoId: configuracao, ...d });
+  // com responsável: sair do Novo pede um (2.2)
+  const r = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Ramal sem configuração', relato: 'O ramal novo não registra', clienteId: aurora, assuntoId: configuracao, responsavelId: adminId, ...d });
   expect(r.statusCode, r.body).toBe(201);
   return r.json() as { id: string; codigo: string };
 }
@@ -46,7 +48,7 @@ const relatorios = async (qs = '', quem: Session = s) => {
 beforeAll(async () => {
   app = await makeApp();
   s = new Session(app);
-  await s.login();
+  adminId = (await s.login()).id;
   const papeis = (await s.get('/admin/roles')).json();
   const idDe = (key: string) => papeis.find((r: any) => r.key === key).id;
   await s.post('/admin/users', { name: 'Marina Costa', email: 'marina@gestor.local', password: 'SenhaDeTeste!123', roleId: idDe('operador') });
@@ -178,5 +180,35 @@ describe('a arrumação de cada painel', () => {
     const r = await s.put('/atendimento/relatorios/arrumacao?painel=SUP', { ordem: [], ocultos: [], favoritos: [], campoDaFalha: 'campo-que-nao-existe' });
     expect(r.statusCode).toBe(400);
     expect(r.json().error).toContain('não é um campo de lista deste painel');
+  });
+});
+
+describe('a Visão geral (2.2: Hoje e Período, como no Legado)', () => {
+  it('conta os chamados de hoje do painel, com os gráficos do que o painel usa; o filtro de um gráfico não o recorta', async () => {
+    const r = await ok(s.get('/atendimento/relatorios/visao?painel=SUP'));
+    const v = r.json();
+    expect(v.parte).toBe('hoje');
+    expect(v.kpis.map((k: any) => k.id)).toEqual(['chegaram-hoje', 'resolvidos-hoje', 'em-aberto', 'vencidos']);
+    const ids = v.graficos.map((g: any) => g.id);
+    expect(ids).toEqual(expect.arrayContaining(['etapa', 'responsavel', 'assunto', 'cliente', 'origem', `campo:${campo.id}`]));
+    const cli = v.graficos.find((g: any) => g.id === 'cliente');
+    const porCliente = (await ok(s.get(`/atendimento/relatorios/visao?painel=SUP&parte=periodo&cliente=${aurora}`))).json();
+    expect(porCliente.graficos.find((g: any) => g.id === 'cliente').itens.find((x: any) => x.valor === aurora).selecionado).toBe(true);
+    expect(cli.itens.length).toBeGreaterThan(0);
+    // quem não vê o painel não o acha (como nos 25); o filtro estragado é recusado
+    expect((await soVendas.get('/atendimento/relatorios/visao?painel=SUP')).statusCode).toBe(404);
+    expect((await s.get('/atendimento/relatorios/visao?painel=SUP&situacao=xyz')).statusCode).toBe(400);
+  });
+
+  it('a arrumação dos gráficos fica junto com a dos 25, e salvar os 25 sem ela não a apaga', async () => {
+    const atual = (await ok(s.get('/atendimento/relatorios/arrumacao?painel=SUP'))).json();
+    const visao = [{ id: 'cliente', largura: 'inteira', oculto: false, forma: 'barras' }, { id: 'serie', largura: 'inteira', oculto: true }];
+    const a = (await ok(s.put('/atendimento/relatorios/arrumacao?painel=SUP', { ordem: atual.ordem, ocultos: atual.ocultos, favoritos: atual.favoritos, campoDaFalha: atual.campoDaFalha, visao }))).json();
+    expect(a.visao).toEqual(visao);
+    const auditoria = (await s.get('/admin/audit?entityId=atendimento-relatorios&pageSize=1')).json().items as Array<{ summary: string }>;
+    expect(auditoria[0]!.summary).toContain('na Visão geral, 1 gráfico à vista');
+    const b = (await ok(s.put('/atendimento/relatorios/arrumacao?painel=SUP', { ordem: atual.ordem, ocultos: [], favoritos: ['prazo'], campoDaFalha: atual.campoDaFalha }))).json();
+    expect(b.favoritos).toEqual(['prazo']);
+    expect(b.visao).toEqual(visao);
   });
 });

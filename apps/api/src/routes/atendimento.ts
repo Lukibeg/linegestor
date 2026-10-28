@@ -15,7 +15,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
   AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
-  FiltroDosRelatoriosSchema, LigarChamadoSchema,
+  FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, LigarChamadoSchema,
   ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PosicaoNoQuadroSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
 } from '@gestor/shared';
@@ -98,6 +98,15 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     },
   }, async (req) => relatorios.relatoriosDoPainelDeChamados(app, ator(req), req.query));
 
+  // a Visão geral (2.2): Hoje e Período, como no Legado do Helena, sobre os chamados do Gestor
+  app.get('/relatorios/visao', {
+    ...ler,
+    schema: {
+      tags, querystring: FiltroDaVisaoSchema,
+      summary: 'A Visão geral de um painel de chamados (hoje ou no período): os números de cima, os chamados no tempo, os gráficos por etapa, assunto, cliente, tipo… e a tabela; cada gráfico é contado sem o próprio filtro',
+    },
+  }, async (req) => relatorios.visaoDoPainelDeChamados(app, ator(req), req.query));
+
   const PainelDaArrumacao = z.object({ painel: z.string().trim().min(1, 'Escolha o painel').max(100) });
   app.get('/relatorios/arrumacao', {
     ...ler,
@@ -113,8 +122,8 @@ const routes: FastifyPluginAsyncZod = async (app) => {
     const r = await relatorios.gravarArrumacao(app, a, req.query.painel, req.body);
     await app.audit(req, {
       action: 'atendimento_relatorios_arrumacao', entityType: 'settings', entityId: 'atendimento-relatorios', summary: r.resumo,
-      before: { ordem: r.antes.ordem, ocultos: r.antes.ocultos, favoritos: r.antes.favoritos, campoDaFalha: r.antes.campoDaFalha },
-      after: { ordem: r.depois.ordem, ocultos: r.depois.ocultos, favoritos: r.depois.favoritos, campoDaFalha: r.depois.campoDaFalha },
+      before: { ordem: r.antes.ordem, ocultos: r.antes.ocultos, favoritos: r.antes.favoritos, campoDaFalha: r.antes.campoDaFalha, visao: r.antes.visao ?? null },
+      after: { ordem: r.depois.ordem, ocultos: r.depois.ocultos, favoritos: r.depois.favoritos, campoDaFalha: r.depois.campoDaFalha, visao: r.depois.visao ?? null },
     });
     return r.depois;
   });

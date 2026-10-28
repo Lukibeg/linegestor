@@ -54,7 +54,8 @@ export function NaAgenda() {
   const eventos = useQuery({ queryKey: [...CHAVE_DO_CALENDARIO, 'do-chamado', f.id], queryFn: () => api.calendario.doChamado(f.id), staleTime: 30_000 });
   const nomes = useNomesDasPessoas(op);
   const lista = eventos.data ?? [];
-  if (!op || (!lista.length && !podeAgendar)) return null;
+  // sem nenhum evento, a parte sai da ficha (2.2): o Agendar fica na barra de cima, e o evento marcado traz a parte de volta
+  if (!op || !lista.length) return null;
 
   return (
     <Secao id="campo-agenda" titulo="Na agenda" icone={<CalendarDays size={16} />} dica={lista.length ? `${lista.length} ${lista.length === 1 ? 'evento' : 'eventos'}` : undefined}

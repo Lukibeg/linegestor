@@ -3,7 +3,8 @@
  *  - subir de nível (N1 → N2) é **escalonar**: pede o motivo e para quem (ou ninguém: fica na fila
  *    do nível); descer é **voltar de nível**, também com o motivo (o pedido do Miguel);
  *  - faltou o que a etapa pede (a solução, a causa…) ou o pai tem filhos em aberto: a janela diz o
- *    quê, e leva à ficha para preencher;
+ *    quê, e leva à ficha para preencher; quando só falta o responsável (sair do Novo sem ninguém, 2.2), a própria
+ *    janela pergunta quem fica com o chamado e já move;
  *  - fechou: a comemoração (confete), que some sozinha e respeita quem pede menos movimento;
  *  - no painel de Vendas (2.0.1), o Ganho e o Perdido abrem a janela do resultado: o valor e o dia em
  *    que fechou, ou o motivo da perda — e o confete é do Ganho.
@@ -117,7 +118,8 @@ export function useMover(): { mover: (c: Movivel, etapaId: string, opcoes?: { de
     <>
       {escalonando && <JanelaEscalonar e={escalonando} pessoas={opcoes.data?.pessoas.filter((p) => p.ativo) ?? []} onFechar={() => setEscalonando(null)}
         onConfirmar={async (motivo, responsavelId) => { const e = escalonando; setEscalonando(null); await executar(e.c, e.para, { motivo, responsavelId }); }} />}
-      {travado && <JanelaTravado t={travado} onFechar={() => setTravado(null)} />}
+      {travado && <JanelaTravado t={travado} onFechar={() => setTravado(null)} pessoas={opcoes.data?.pessoas.filter((p) => p.ativo) ?? []}
+        onComResponsavel={async (responsavelId) => { const t = travado; setTravado(null); await executar(t.c, t.para, { responsavelId }); }} />}
       {marcando && <JanelaResultado codigo={marcando.c.codigo} valor={marcando.c.valor} para={marcando.para} painel={marcando.painel}
         ativacao={marcando.c.ativacao ?? null} porProduto={linhasDoValor(marcando.c.produtos ?? [], marcando.c.valoresDosProdutos, marcando.c.ativacoesDosProdutos)}
         onFechar={() => setMarcando(null)} onConfirmar={(r) => marcar(marcando, r)} />}
@@ -151,13 +153,27 @@ function JanelaEscalonar({ e, pessoas, onFechar, onConfirmar }: { e: Escalonando
   );
 }
 
-function JanelaTravado({ t, onFechar }: { t: Travado; onFechar: () => void }) {
+function JanelaTravado({ t, onFechar, pessoas, onComResponsavel }: { t: Travado; onFechar: () => void; pessoas: PessoaCurta[]; onComResponsavel: (id: string) => void }) {
   const opcoes = useOpcoes();
   const vendas = ehDeVendas(opcoes.data, t.c.painelId);
+  // só falta o responsável (sair do Novo sem ninguém, 2.2): escolher aqui mesmo e mover de uma vez
+  const soOResponsavel = t.faltam.length === 1 && t.faltam[0] === 'responsavel' && !t.filhos.length;
+  const [quem, setQuem] = useState('');
   return (
     <Modal open onClose={onFechar} titulo={`${t.c.codigo} ainda não pode ir para ${t.para.nome}`}
-      rodape={<><button className="btn-secondary" onClick={onFechar}>Entendi</button><LinkDoChamado codigo={t.c.codigo} className="btn-primary" onClick={onFechar}>{vendas ? 'Abrir a negociação' : 'Abrir o chamado'}</LinkDoChamado></>}>
-      {t.faltam.length > 0 && (
+      rodape={soOResponsavel ? (
+        <><button className="btn-secondary" onClick={onFechar}>Cancelar</button>
+          <button className="btn-primary" id="travado-com-responsavel" disabled={!quem} onClick={() => onComResponsavel(quem)}>Mover para {t.para.nome}</button></>
+      ) : <><button className="btn-secondary" onClick={onFechar}>Entendi</button><LinkDoChamado codigo={t.c.codigo} className="btn-primary" onClick={onFechar}>{vendas ? 'Abrir a negociação' : 'Abrir o chamado'}</LinkDoChamado></>}>
+      {soOResponsavel && (
+        <div className="mb-1">
+          <p className="text-sm text-ink-2 mb-3">Para sair de <b>{opcoes.data && painelDe(opcoes.data, t.c.painelId)?.etapas.find((e) => e.id === t.c.etapaId)?.nome || 'Novo'}</b>, o chamado precisa de um responsável.</p>
+          <Campo label="Quem fica com o chamado?">
+            <EscolherComBusca valor={quem} onChange={setQuem} placeholder="Escolha a pessoa…" opcoes={pessoas.map((p) => ({ id: p.id, nome: p.nome }))} className="input w-full" rotulo="Quem fica com o chamado" procurar="Procurar pessoa…" autoFocus />
+          </Campo>
+        </div>
+      )}
+      {t.faltam.length > 0 && !soOResponsavel && (
         <div className="mb-3">
           <p className="text-sm text-ink-2 mb-2">Para ir para <b>{t.para.nome}</b>, falta preencher:</p>
           <ul className="flex flex-wrap gap-1.5">{t.faltam.map((f) => <li key={f} className="chip bg-signal-soft text-signal">{nomeDoObrigatorio(f, opcoes.data?.campos)}</li>)}</ul>

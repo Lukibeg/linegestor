@@ -13,7 +13,7 @@
  * cliente, as ligações num desenho, a busca e a ordem da lista. Mudou a regra, muda aqui (e o teste).
  */
 import { z } from 'zod';
-import { numeroWhatsApp, paraBusca, reais } from './formatos.js';
+import { numeroWhatsApp, paraBusca, reais, telefoneLegivel } from './formatos.js';
 import {
   ALCANCES, ESPERA_PARA_O_PRAZO, GRAVIDADES, NOME_ALCANCE, NOME_ESPERA, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_PRAZO, PESO_PRIORIDADE, PRIORIDADES, RegraAgendadoSchema,
   diaLocal, sugestaoPelosCampos,
@@ -778,8 +778,25 @@ function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
  * O que falta para o chamado entrar na etapa (na ordem da lista de campos). O problema (ITIL) só
  * resolve e fecha com a causa, a solução e a validação, em qualquer painel — o pedido do Eider.
  */
-export function faltaParaEtapa(c: DadosObrigatorios, etapa: Pick<EtapaPainel, 'tipo' | 'obrigatorios'> & { resultado?: ResultadoDaVenda | null }): Array<Obrigatorio | 'validacao' | 'motivoPerda'> {
+/**
+ * Para sair da entrada (o Novo) do painel de Gestão, o chamado precisa de um responsável (2.2, o Luan: "colocar
+ * responsável como botão, e ser obrigatório para tirar de novos"): o que sai da fila tem alguém com ele. Vale para
+ * qualquer etapa fora da entrada (o andamento, o Resolvido, o Fechado), pelo mover de dentro do painel; trocar de
+ * painel não conta. Na negociação (o painel de Vendas), não: o Lead anda sem vendedor, como antes.
+ */
+export function saidaDaEntradaPedeResponsavel(
+  de: Pick<EtapaPainel, 'tipo'> | null | undefined, para: Pick<EtapaPainel, 'tipo'>, painel: { tipo: TipoDePainel },
+): boolean {
+  return painel.tipo !== 'vendas' && de?.tipo === 'entrada' && para.tipo !== 'entrada';
+}
+
+export function faltaParaEtapa(
+  c: DadosObrigatorios, etapa: Pick<EtapaPainel, 'tipo' | 'obrigatorios'> & { resultado?: ResultadoDaVenda | null },
+  /** de onde o chamado sai e o painel (2.2): sair da entrada do painel de Gestão pede o responsável */
+  saida?: { de: Pick<EtapaPainel, 'tipo'> | null | undefined; painel: { tipo: TipoDePainel } },
+): Array<Obrigatorio | 'validacao' | 'motivoPerda'> {
   const campos = new Set<Obrigatorio>(etapa.obrigatorios);
+  if (saida && saidaDaEntradaPedeResponsavel(saida.de, etapa, saida.painel)) campos.add('responsavel');
   const fechando = etapa.tipo === 'resolvido' || etapa.tipo === 'fechado';
   if (c.tipoChamado === 'problema' && fechando) { campos.add('causa'); campos.add('solucao'); }
   // os do sistema na ordem da lista de campos; os do painel na ordem em que a etapa os pede
@@ -869,6 +886,41 @@ const TelefoneSchema = z.string().trim().max(40).nullish().transform((v, ctx) =>
   if (!n) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Telefone inválido: use DDD + número, como (71) 99999-0000.' }); return z.NEVER; }
   return n;
 });
+
+// ---------------------------------------------------------------------
+//  OS OUTROS CONTATOS E AS OUTRAS CONVERSAS (2.2)
+// ---------------------------------------------------------------------
+//  O documento do Luan de 27/10: "os cards permitem adicionar apenas um contato" e "permitir colocar mais de uma sessão".
+//  O contato e a conversa de antes continuam os principais (o aviso ao cliente, o robô e a NIA usam eles); os outros ficam
+//  numa lista à parte, que a ficha mostra embaixo do principal.
+
+/** Um contato a mais no chamado: o nome e o WhatsApp (só dígitos, com o 55). */
+export type OutroContato = { nome: string | null; telefone: string | null };
+/** Quantos contatos e conversas a mais cabem num chamado. */
+export const MAX_A_MAIS_NO_CHAMADO = 10;
+export const OutroContatoSchema = z.object({ nome: TextoOpcional(120), telefone: TelefoneSchema })
+  .refine((c) => !!(c.nome || c.telefone), 'Escreva o nome ou o WhatsApp do contato.');
+/** O contato numa frase (o histórico): "Maria (71) 99999-0000". */
+export function textoDoOutroContato(c: OutroContato): string {
+  const fone = c.telefone ? telefoneLegivel(c.telefone) : null;
+  return [c.nome, fone].filter(Boolean).join(' ') || '(sem nome)';
+}
+/** A lista de contatos a mais limpa: sem os vazios, sem repetir (o mesmo WhatsApp ou, sem ele, o mesmo nome) nem o principal. */
+export function outrosContatosLimpos(lista: readonly OutroContato[], principal: OutroContato): OutroContato[] {
+  const chave = (c: OutroContato) => (c.telefone ? `f:${c.telefone}` : `n:${paraBusca(c.nome ?? '')}`);
+  const vistos = new Set<string>();
+  if (principal.nome || principal.telefone) vistos.add(chave(principal));
+  const out: OutroContato[] = [];
+  for (const c of lista) {
+    const n = { nome: c.nome?.trim() || null, telefone: c.telefone || null };
+    if (!n.nome && !n.telefone) continue;
+    const k = chave(n);
+    if (vistos.has(k)) continue;
+    vistos.add(k);
+    out.push(n);
+  }
+  return out;
+}
 
 // ---------- os contatos do cliente (o pedido do Luan na prévia: "uma aba de contatos dos clientes, aí
 // ele já puxaria de lá; e criar um contato por aqui") ----------
@@ -1259,12 +1311,16 @@ export const ChamadoAlterarSchema = z.object({
    * vazio tira. O servidor acha a sessão no que veio (`sessaoDaConversa`)
    */
   sessaoId: TextoOpcional(500).optional(),
+  /** os outros contatos, a lista inteira (2.2): a que vier toma o lugar da de antes; vazia tira todos */
+  outrosContatos: z.array(OutroContatoSchema).max(MAX_A_MAIS_NO_CHAMADO, `Até ${MAX_A_MAIS_NO_CHAMADO} contatos a mais.`).optional(),
+  /** as outras conversas do LineChat, a lista inteira (2.2): o link ou o código de cada uma (`sessaoDaConversa`) */
+  outrasConversas: z.array(z.string().trim().min(1).max(500)).max(MAX_A_MAIS_NO_CHAMADO, `Até ${MAX_A_MAIS_NO_CHAMADO} conversas a mais.`).optional(),
   assuntoId: z.string().nullish().transform((v) => v || null).optional(),
   tipo: TextoOpcional(40).optional(),
   gravidade: z.enum(GRAVIDADES).nullable().optional(),
   alcance: z.enum(ALCANCES).nullable().optional(),
   prioridade: z.enum(PRIORIDADES).nullable().optional(),
-  /** trocar a prioridade sugerida pede o motivo */
+  /** por que outra prioridade que não a sugerida (opcional desde o 2.2: trocar não pede mais o motivo) */
   motivoPrioridade: TextoOpcional(300).optional(),
   produtos: Lista().optional(),
   operadoras: Lista().optional(),
@@ -1803,6 +1859,10 @@ export type FichaChamado = CartaoChamado & {
   sessaoId: string | null;
   /** o link da conversa no LineChat (com a sessão) */
   conversaUrl: string | null;
+  /** os outros contatos (2.2), além do principal (`contato`) */
+  outrosContatos: OutroContato[];
+  /** as outras conversas do LineChat (2.2), além da principal (`sessaoId`): a sessão e o link */
+  outrasConversas: Array<{ sessaoId: string; url: string | null }>;
   checklist: ItemChecklist[];
   observadores: PessoaCurta[];
   /** quem pode ser citado com @ nas anotações: as pessoas ativas que veem o painel */
@@ -2852,6 +2912,9 @@ export function linkDaConversa(modelo: string | null | undefined, sessaoId: stri
 
 /** O nome que o histórico e a auditoria dão à conversa do LineChat ligada ao chamado. */
 export const NOME_CONVERSA = 'Conversa no LineChat';
+/** E às listas a mais (2.2). */
+export const NOME_OUTRAS_CONVERSAS = 'Outras conversas no LineChat';
+export const NOME_OUTROS_CONTATOS = 'Outros contatos';
 /** O código da sessão guardado no chamado: o do LineChat é um uuid (36 letras). */
 export const MAX_LETRAS_DA_SESSAO = 120;
 /** O que a pessoa cola (o link inteiro, com o que vier depois dele). */

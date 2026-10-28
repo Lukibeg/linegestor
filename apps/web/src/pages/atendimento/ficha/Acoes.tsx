@@ -2,8 +2,13 @@
  * A barra de ações da ficha: Assumir, Mover (o menu das etapas do painel, cada uma dizendo o que falta
  * para ir para ela e os filhos que travam), as Etiquetas e o Agendar (2.0.3, o pedido do Luan: "etiquetas tem q
  * ficar fácil ali do lado de mover e pra agendar tbm"), o atalho "Escalonar para N2", Esperar (o cliente ou a
- * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, a NIA (2.1: pedir, e ver se ela já preencheu — `Nia.tsx`),
- * Preencher com IA e o menu Mais (ligar, filho, pai, problema, trocar de painel, reabrir, observar, lixeira).
+ * operadora) ou Parar de esperar, a NIA (2.1: pedir, e ver se ela já preencheu — `Nia.tsx`),
+ * Preencher com IA e o menu Mais (problema, trocar de painel, reabrir, lixeira). Desde o 2.2 (o documento do Luan
+ * de 27/10), também o **Responsável** (o botão diz quem está com o chamado e troca ali mesmo: "colocar responsável como
+ * botão"), o **Checklist** (o vazio sai da ficha e volta por aqui) e as **Ligações** (ligar a outro chamado, criar um
+ * filho e o pai, num botão próprio como o Esperar: "essas 3 opções tem q ficar em um botão próprio"). O Copiar o link foi
+ * para o lado do código, no alto da ficha. E, colado no Responsável, o botão dos **Observadores** (incluir, tirar e o "Observar"
+ * de quem está vendo, que saiu do Mais): o cartão Observadores saiu do meio da ficha ("coloque observadores juntos com responsável").
  * Na negociação, o Mais não tem ligar, filho, pai nem problema (2.0.1, decisão 0050).
  * Na negociação (o painel de Vendas), o Mais não tem filho, pai nem problema: ela se liga pelo Ligar (o pedido do
  * Luan na prévia, em 17/10: "n precisa de pais e filhas aqui").
@@ -19,23 +24,22 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowRightLeft, ArrowUpRight, CalendarPlus, Columns3, Copy, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, MessageCircle, MoreHorizontal, RotateCcw, Sparkles, Tag, ThumbsDown, Trash2, Trophy, Unlink, UserCheck,
+  ArrowRightLeft, ArrowUpRight, CalendarPlus, Columns3, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, ListChecks, MoreHorizontal, Plus, RotateCcw, Sparkles, Tag, ThumbsDown, Trash2, Trophy, Unlink, UserCheck, UserRound, Waypoints, X,
 } from 'lucide-react';
 import { etapaAoAssumir, etiquetasDoPainel, etiquetasUnicas, movimentoDeNivel, nomeDoObrigatorio, type CorEtiqueta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
 import { api } from '../../../api/index.js';
-import { Confirmar, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
+import { Confirmar, EscolherComBusca, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
-import { chaveDaFicha, fundoDaJanela } from '../comum.js';
+import { Avatar, chaveDaFicha, fundoDaJanela } from '../comum.js';
 import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { useAgendar } from './Agenda.js';
-import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, linkDaFicha, lista, nomeComNivel, useAberta, useAcao } from './base.js';
+import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 import { JanelaIa, pedirSugestao } from './Ia.js';
 import { BotaoDaNia } from './Nia.js';
-import { JanelaAbrirLigado, JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaTrocarPainel } from './Janelas.js';
+import { JanelaAbrirLigado, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaTrocarPainel } from './Janelas.js';
 
 type Janela =
   | { tipo: 'esperar'; espera: TipoEspera }
-  | { tipo: 'avisar' }
   | { tipo: 'ia'; s: SugestaoIa }
   | { tipo: 'ligar' }
   | { tipo: 'pai' }
@@ -48,7 +52,7 @@ type Janela =
   | { tipo: 'novoProblema' };
 
 export function BarraDeAcoes() {
-  const { f, opcoes, painel, etapa, cuida, eu, mover, pode } = useAberta();
+  const { f, opcoes, painel, etapa, cuida, eu, mover, pode, faltando, partesAbertas, abrirParte } = useAberta();
   const agenda = useAgendar();
   const navigate = useNavigate();
   const location = useLocation();
@@ -70,7 +74,6 @@ export function BarraDeAcoes() {
   const perdido = vendas ? etapas.find((e) => e.resultado === 'perdido') : undefined;
   // o atalho: o próximo nível acima (N1 → N2), quando o chamado está numa etapa com nível
   const acima = aberto && etapa?.nivel ? etapas.filter((e) => e.nivel && e.nivel > etapa.nivel!).sort((a, b) => a.nivel! - b.nivel!)[0] : undefined;
-  const podeAvisar = !vendas && opcoes.whatsapp.cliente && !!f.contato?.telefone;
 
   /** Uma ação direta: o erro fica embaixo da barra, com o nome dela. */
   const direta = async <T,>(nome: string, fazer: () => Promise<T>, ok?: string) => {
@@ -98,10 +101,6 @@ export function BarraDeAcoes() {
     else acao.setErro(r.erro);
   };
 
-  const copiarLink = async () => {
-    try { await navigator.clipboard.writeText(linkDaFicha(f.codigo)); toast.push('ok', `Link do ${f.codigo} copiado`); } catch { toast.push('erro', `Não deu para copiar: o código é ${f.codigo}`); }
-  };
-
   const mandarParaLixeira = async () => {
     setApagando(true);
     try {
@@ -127,6 +126,7 @@ export function BarraDeAcoes() {
   };
 
   const ocupadoMover = mover.ocupado === f.id;
+  const pessoasAtivas = opcoes.pessoas.filter((p) => p.ativo);
   // as etiquetas pelo botão: cada clique grava (a lista fica aberta para marcar outra); a nova nasce com a cor escolhida
   const mudarEtiquetas = (etiquetas: string[], cores?: Record<string, CorEtiqueta>) =>
     void direta('Etiquetas', () => api.atendimento.alterar(f.id, { etiquetas, ...(cores ? { coresDasEtiquetas: cores } : {}) }));
@@ -139,6 +139,26 @@ export function BarraDeAcoes() {
             {acao.ocupado && qual === 'Assumir' ? <Spinner className="text-white" /> : <UserCheck size={14} />} Assumir
           </button>
         )}
+
+        {/* o responsável num botão (2.2): diz quem está com o chamado e troca ali mesmo; o que falta para sair do Novo marca o botão.
+            Colado nele, os Observadores (2.2, na prévia: "coloque observadores juntos com responsável") */}
+        <div className="inline-flex items-stretch" role="group" aria-label={vendas ? 'Responsável e observadores da negociação' : 'Responsável e observadores do chamado'}>
+        <EscolherComBusca valor={f.responsavel?.id ?? ''} opcoes={pessoasAtivas.map((p) => ({ id: p.id, nome: p.nome }))}
+          vazio={vendas ? 'Ninguém (sem vendedor)' : 'Ninguém (fica na fila da etapa)'} rotulo="Responsável" procurar="Procurar pessoa…" largura="w-[300px]"
+          onChange={(id) => void direta('Responsável', () => api.atendimento.alterar(f.id, { responsavelId: id || null }),
+            id ? `Responsável: ${pessoasAtivas.find((p) => p.id === id)?.nome ?? ''}` : vendas ? 'A negociação ficou sem responsável' : 'O chamado ficou sem responsável')}
+          gatilho={(abrir) => (
+            <button type="button" id="campo-responsavel" onClick={abrir}
+              className={`btn-secondary btn-xs rounded-r-none max-w-[220px] ${faltando.has('responsavel') ? '!border-signal relative z-[1]' : ''}`}
+              title={faltando.has('responsavel') ? `Para sair de ${etapa?.nome ?? 'Novo'}, ${vendas ? 'a negociação' : 'o chamado'} precisa de um responsável` : vendas ? 'Quem cuida da negociação (clique para trocar)' : 'Quem está com o chamado (clique para trocar)'}>
+              {acao.ocupado && qual === 'Responsável' ? <Spinner /> : <UserRound size={14} />}
+              <span className="truncate">{f.responsavel ? f.responsavel.nome : <span className={faltando.has('responsavel') ? 'text-signal' : 'text-muted'}>Sem responsável</span>}</span>
+            </button>
+          )} />
+        <Observadores vendas={vendas} ocupado={acao.ocupado && (qual === 'Observadores' || qual === 'Observar' || qual === 'Deixar de observar')}
+          mudar={(ids, ok) => void direta('Observadores', () => api.atendimento.alterar(f.id, { observadores: ids }), ok)}
+          eu={(quer) => void direta(quer ? 'Observar' : 'Deixar de observar', () => api.atendimento.observar(f.id, quer), quer ? 'Você passou a observar: recebe os avisos dele e o vê no seu Meu dia' : 'Você deixou de observar')} />
+        </div>
 
         <MenuSuspenso classe="btn-secondary btn-xs" largura="w-[320px]" titulo="Mover para outra etapa (ou escalonar)"
           rotulo={<>{ocupadoMover ? <Spinner /> : <ArrowRightLeft size={14} />} Mover</>}>
@@ -185,6 +205,31 @@ export function BarraDeAcoes() {
           </button>
         )}
 
+        {/* o checklist vazio saiu da ficha (2.2): o botão traz a parte de volta, com o cursor na caixa de incluir */}
+        {aberto && !f.checklist.length && !partesAbertas.has('checklist') && !faltando.has('checklist') && (
+          <button type="button" className="btn-secondary btn-xs" id="acao-checklist" onClick={() => abrirParte('checklist')}
+            title={vendas ? 'Incluir o que falta para fechar (ex.: mandar a proposta)' : 'Incluir um checklist (ex.: testar com o cliente)'}>
+            <ListChecks size={14} /> Checklist
+          </button>
+        )}
+
+        {/* ligar a outro chamado, o filho e o pai num botão próprio (2.2); a parte Filhos e ligações aparece quando houver algum */}
+        {!vendas && (
+          <MenuSuspenso classe="btn-secondary btn-xs" largura="w-[300px]" titulo="Ligar a outro chamado, criar um filho ou definir o pai" rotulo={<><Waypoints size={14} /> Ligações</>}>
+            {(fecharMenu) => {
+              const ir = (fazer: () => void) => () => { fecharMenu(); fazer(); };
+              return (
+                <>
+                  <ItemMenu icone={<Link2 size={14} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica="relacionado, duplicado de, repete">Ligar a outro chamado…</ItemMenu>
+                  <ItemMenu icone={<GitBranch size={14} />} onClick={ir(() => setJanela({ tipo: 'filho' }))} dica="pode ser em outro painel (o Desenvolvimento)">Criar um filho…</ItemMenu>
+                  <ItemMenu icone={<GitBranch size={14} className="rotate-180" />} onClick={ir(() => setJanela({ tipo: 'pai' }))}>{f.pai ? `Trocar o pai (${f.pai.codigo})…` : 'Definir o pai…'}</ItemMenu>
+                  {f.pai && <ItemMenu icone={<Unlink size={14} />} onClick={ir(() => void direta('Tirar o pai', () => api.atendimento.definirPai(f.id, null), `${f.codigo} não é mais filho de ${f.pai!.codigo}`))}>Tirar o pai ({f.pai.codigo})</ItemMenu>}
+                </>
+              );
+            }}
+          </MenuSuspenso>
+        )}
+
         {/* a negociação aberta: o resultado à mão (a janela pede o valor e o dia, ou o motivo da perda) */}
         {vendas && aberto && ganho && (
           <button type="button" className="btn-secondary btn-xs text-ok" disabled={ocupadoMover} onClick={() => void mover.mover(f, ganho.id)} id="acao-ganhou" title="Marcar como ganho: o valor e o dia em que fechou">
@@ -227,11 +272,7 @@ export function BarraDeAcoes() {
           )
         ))}
 
-        {podeAvisar && (
-          <button type="button" className="btn-secondary btn-xs" onClick={() => setJanela({ tipo: 'avisar' })} title="Mandar uma mensagem ao contato pelo WhatsApp oficial">
-            <MessageCircle size={14} /> Avisar o cliente
-          </button>
-        )}
+        {/* o Avisar o cliente saiu no 2.2 (na prévia, 28/10: "a função de avisar o cliente… pode tirar") */}
 
         {/* a NIA (2.1): o botão no lugar de etiquetar à mão; ele diz se ela já preencheu (some na negociação e desligado) */}
         <BotaoDaNia />
@@ -252,34 +293,20 @@ export function BarraDeAcoes() {
             const ir = (fazer: () => void) => () => { fecharMenu(); fazer(); };
             return (
               <>
-                {/* a negociação não se liga a nada nem tem pai e filhos (2.0.1, decisão 0050) */}
-                {!vendas && (
-                  <>
-                    <ItemMenu icone={<Link2 size={14} />} onClick={ir(() => setJanela({ tipo: 'ligar' }))} dica="relacionado, duplicado de, repete">Ligar a outro chamado…</ItemMenu>
-                    <ItemMenu icone={<GitBranch size={14} />} onClick={ir(() => setJanela({ tipo: 'filho' }))} dica="pode ser em outro painel (o Desenvolvimento)">Criar um filho…</ItemMenu>
-                    <ItemMenu icone={<GitBranch size={14} className="rotate-180" />} onClick={ir(() => setJanela({ tipo: 'pai' }))}>{f.pai ? `Trocar o pai (${f.pai.codigo})…` : 'Definir o pai…'}</ItemMenu>
-                  </>
-                )}
-                {f.pai && <ItemMenu icone={<Unlink size={14} />} onClick={ir(() => void direta('Tirar o pai', () => api.atendimento.definirPai(f.id, null), `${f.codigo} não é mais filho de ${f.pai!.codigo}`))}>Tirar o pai ({f.pai.codigo})</ItemMenu>}
+                {/* ligar, o filho e o pai foram para o botão Ligações (2.2); a negociação não se liga a nada (decisão 0050) */}
                 {f.tipoChamado === 'chamado' && !vendas && (
                   <>
-                    <SeparadorMenu />
                     <ItemMenu icone={<Layers size={14} />} onClick={ir(() => setJanela({ tipo: 'problema' }))} dica="o problema junta os incidentes iguais de várias empresas">
                       {f.problema ? `Trocar o problema (${f.problema.codigo})…` : 'Ligar a um problema…'}
                     </ItemMenu>
                     {f.problema && <ItemMenu icone={<Unlink size={14} />} onClick={ir(() => void direta('Tirar do problema', () => api.atendimento.definirProblema(f.id, null), `${f.codigo} saiu do problema ${f.problema!.codigo}`))}>Tirar do problema ({f.problema.codigo})</ItemMenu>}
                     <ItemMenu icone={<Layers size={14} />} onClick={ir(() => setJanela({ tipo: 'novoProblema' }))} dica="este chamado vira o primeiro incidente dele">Abrir um problema a partir deste…</ItemMenu>
+                    <SeparadorMenu />
                   </>
                 )}
-                {!vendas && <SeparadorMenu />}
                 <ItemMenu icone={<Columns3 size={14} />} onClick={ir(() => setJanela({ tipo: 'painel' }))} dica="o código não muda">Trocar de painel…</ItemMenu>
                 {!aberto && <ItemMenu icone={<RotateCcw size={14} />} onClick={ir(() => setJanela({ tipo: 'reabrir' }))}>Reabrir…</ItemMenu>}
-                <ItemMenu icone={f.observando ? <EyeOff size={14} /> : <Eye size={14} />}
-                  onClick={ir(() => void direta(f.observando ? 'Deixar de observar' : 'Observar', () => api.atendimento.observar(f.id, !f.observando), f.observando ? 'Você deixou de observar' : 'Você passou a observar: recebe os avisos dele e o vê no seu Meu dia'))}
-                  dica={f.observando ? undefined : 'aparece no seu Meu dia'}>
-                  {f.observando ? 'Deixar de observar' : 'Observar'}
-                </ItemMenu>
-                <ItemMenu icone={<Copy size={14} />} onClick={ir(() => void copiarLink())} dica="para colar na conversa ou no WhatsApp">Copiar o link</ItemMenu>
+                {/* o Observar foi para o botão dos Observadores, colado no Responsável (2.2) */}
                 {cuida && (
                   <>
                     <SeparadorMenu />
@@ -295,7 +322,6 @@ export function BarraDeAcoes() {
 
       {agenda.janela}
       {janela?.tipo === 'esperar' && <JanelaEsperar tipo={janela.espera} onFechar={fechar} />}
-      {janela?.tipo === 'avisar' && <JanelaAvisar onFechar={fechar} />}
       {janela?.tipo === 'ia' && <JanelaIa s={janela.s} onFechar={fechar} />}
       {janela?.tipo === 'ligar' && <JanelaLigar onFechar={fechar} />}
       {janela?.tipo === 'pai' && (
@@ -318,5 +344,64 @@ export function BarraDeAcoes() {
           ? <>A negociação <b>{f.titulo}</b> sai do quadro, da lista e do relatório de vendas para todo mundo. O número {f.codigo} não volta a ser usado. Dá para restaurar em Administração › Lixeira.</>
           : <>O chamado <b>{f.titulo}</b> sai do quadro e da lista para todo mundo. O número {f.codigo} não volta a ser usado. Dá para restaurar em Administração › Lixeira.</>} />}
     </div>
+  );
+}
+
+
+/**
+ * Os Observadores, colados no botão do Responsável (2.2): quem recebe os avisos de tudo o que acontece no chamado e o vê no Meu
+ * dia. O menu mostra quem observa (com o X para tirar), o Incluir (a busca das pessoas) e o Observar de quem está vendo.
+ */
+function Observadores({ vendas, ocupado, mudar, eu: euQuer }: {
+  vendas: boolean;
+  ocupado: boolean;
+  mudar: (ids: string[], ok: string) => void;
+  eu: (quer: boolean) => void;
+}) {
+  const { f, opcoes, eu } = useAberta();
+  const ativas = opcoes.pessoas.filter((p) => p.ativo);
+  const fora = ativas.filter((p) => !f.observadores.some((o) => o.id === p.id)).map((p) => ({ id: p.id, nome: p.nome }));
+  const n = f.observadores.length;
+  return (
+    <MenuSuspenso classe="btn-secondary btn-xs rounded-l-none -ml-px" largura="w-[300px]"
+      titulo={n ? `Observadores: ${f.observadores.map((o) => o.nome).join(', ')}` : `Ninguém observa ${vendas ? 'a negociação' : 'o chamado'} (clique para incluir)`}
+      rotuloAcessivel={`Observadores${n ? ` (${n})` : ''}`}
+      rotulo={<span id="acao-observadores" className="inline-flex items-center gap-1.5">{ocupado ? <Spinner /> : <Eye size={14} />} Observadores{n > 0 && <span className="tnum text-muted font-normal">{n}</span>}</span>}>
+      {(fecharMenu) => (
+        <>
+          <div className="px-2.5 pt-1 pb-1.5 eyebrow">Observadores</div>
+          {n ? (
+            <ul className="flex flex-col" id="ficha-observadores">
+              {f.observadores.map((o) => (
+                <li key={o.id} className="flex items-center gap-2 px-2.5 py-1 text-[13.5px]">
+                  <Avatar nome={o.nome} tamanho={18} />
+                  <span className="truncate flex-1 min-w-0">{o.nome}{eu?.id === o.id ? ' (você)' : ''}</span>
+                  <button type="button" className="text-muted hover:text-bad p-0.5 rounded" disabled={ocupado} aria-label={`Tirar ${o.nome} dos observadores`} title="Tirar dos observadores"
+                    onClick={() => mudar(f.observadores.filter((x) => x.id !== o.id).map((x) => x.id), `${o.nome} deixou de observar`)}><X size={13} /></button>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="px-2.5 pb-1 text-[13px] text-muted italic">Ninguém ainda.</p>}
+          <p className="px-2.5 pt-1 pb-1.5 text-[12px] text-muted">Recebem os avisos de tudo o que acontece {vendas ? 'na negociação' : 'no chamado'} (anotação, etapa, responsável, espera) e {vendas ? 'a veem' : 'o veem'} no Meu dia.</p>
+          <SeparadorMenu />
+          {/* as setas e o Tab da busca são dela, não do menu de fora */}
+          {fora.length > 0 && <div onKeyDown={(e) => { if (e.key !== 'Escape') e.stopPropagation(); }}>
+            <EscolherComBusca valor="" opcoes={fora} rotulo="Incluir observador" procurar="Procurar pessoa…" largura="w-[280px]"
+              onChange={(id) => { const p = ativas.find((x) => x.id === id); if (p) { fecharMenu(); mudar([...f.observadores.map((o) => o.id), id], `${p.nome} passou a observar`); } }}
+              gatilho={(abrir) => (
+                <button type="button" id="ficha-observador-incluir" className="w-full text-left rounded-lg px-2.5 py-1.5 flex items-center gap-2 text-[13.5px] hover:bg-surface-2" onClick={abrir}>
+                  <Plus size={14} className="text-muted" /> Incluir observador
+                </button>
+              )} />
+          </div>}
+          {eu && (
+            <ItemMenu icone={f.observando ? <EyeOff size={14} /> : <Eye size={14} />} onClick={() => { fecharMenu(); euQuer(!f.observando); }}
+              dica={f.observando ? undefined : 'aparece no seu Meu dia'}>
+              {f.observando ? 'Deixar de observar' : 'Eu observo também'}
+            </ItemMenu>
+          )}
+        </>
+      )}
+    </MenuSuspenso>
   );
 }

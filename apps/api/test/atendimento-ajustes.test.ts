@@ -320,7 +320,8 @@ describe('os campos de cada painel (o painel sem assuntos, com os campos dele)',
   let prazo: any;
   const opcoesDoServidor = async () => (await s.get('/atendimento/opcoes')).json();
   const painelAgora = async () => (await opcoesDoServidor()).paineis.find((x: any) => x.id === p.id);
-  const abrirCom = (d: Record<string, unknown>) => s.post('/atendimento/chamados', { painelId: p.id, titulo: 'Exportação travando', ...d });
+  // com responsável: estes testes mexem nos campos, não no "sair do Novo pede o responsável" (2.2)
+  const abrirCom = (d: Record<string, unknown>) => s.post('/atendimento/chamados', { painelId: p.id, titulo: 'Exportação travando', responsavelId: adminId, ...d });
   const linha = async (codigo: string) => (await app.db.select().from(tickets).where(eq(tickets.code, codigo)))[0]!;
 
   it('desligar o Assunto e as Operadoras: somem das regras (para abrir e das etapas) e do chamado', async () => {

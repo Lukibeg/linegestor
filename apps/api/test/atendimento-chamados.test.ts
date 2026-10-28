@@ -81,6 +81,11 @@ async function classificar(sess: Session, id: string, extra: Record<string, unkn
   return r.json();
 }
 const eventos = (f: any, tipo: string) => (f.historico as any[]).filter((e) => e.tipo === tipo);
+/**
+ * Põe um responsável direto no banco (sem aviso nem histórico), para o teste que não é sobre o responsável poder tirar o
+ * chamado do Novo (2.2: sair da entrada pede o responsável).
+ */
+const comResponsavel = (id: string, quem = adminId) => app.db.update(tickets).set({ assigneeId: quem }).where(eq(tickets.id, id));
 async function lerPainel(id: string) {
   const [p] = await app.db.select().from(ticketPanels).where(eq(ticketPanels.id, id));
   return p!;
@@ -167,10 +172,10 @@ describe('abrir', () => {
     expect(f).toMatchObject({ prioridade: 'alta', prioridadeSugerida: 'alta', motivoPrioridade: null });
   });
 
-  it('trocar a prioridade sugerida pede o motivo', async () => {
+  it('trocar a prioridade sugerida não pede mais o motivo (2.2); o que vier fica guardado', async () => {
     const r = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Queda geral', gravidade: 'inoperancia', alcance: 'empresa', prioridade: 'alta' });
-    expect(r.statusCode).toBe(400);
-    expect(r.json().error).toBe('Trocar a prioridade sugerida pede o motivo.');
+    expect(r.statusCode, r.body).toBe(201);
+    expect(await ficha(s, r.json().codigo)).toMatchObject({ prioridade: 'alta', prioridadeSugerida: 'critica', motivoPrioridade: null });
     const { codigo } = await abrir(s, { titulo: 'Queda geral', gravidade: 'inoperancia', alcance: 'empresa', prioridade: 'alta', motivoPrioridade: 'só um ramal de teste caiu' });
     expect(await ficha(s, codigo)).toMatchObject({ prioridade: 'alta', prioridadeSugerida: 'critica', motivoPrioridade: 'só um ramal de teste caiu' });
     // sem gravidade e alcance não há sugestão: escolher não pede motivo
@@ -184,9 +189,9 @@ describe('abrir', () => {
     expect(await ficha(s, codigo)).toMatchObject({ prioridade: 'alta', prioridadeSugerida: 'alta', alcance: null, motivoPrioridade: null });
     const [t] = await app.db.select().from(tickets).where(eq(tickets.code, codigo));
     expect(t!.reach).toBeNull();
-    // trocar a sugerida (só pela gravidade) também pede o motivo
+    // trocar a sugerida (só pela gravidade) também não pede o motivo (2.2)
     const r = await s.post('/atendimento/chamados', { painelId: SUP, titulo: 'Queda geral', gravidade: 'inoperancia', prioridade: 'critica' });
-    expect(r.json().error).toBe('Trocar a prioridade sugerida pede o motivo.');
+    expect(r.statusCode, r.body).toBe(201);
     // a coluna "só a gravidade" é dos Ajustes › Prazos
     const prazos = (await s.get('/atendimento/ajustes/prazos')).json();
     expect(prazos.semAlcance.inoperancia).toBe('alta');
@@ -264,13 +269,15 @@ describe('alterar', () => {
     expect(eventos(f, 'prioridade').at(-1).dados).toEqual({ de: 'media', para: 'critica', sugerida: 'critica', motivo: null });
   });
 
-  it('trocar a prioridade sugerida pede o motivo; a escolhida à mão não segue mais a sugestão', async () => {
+  it('trocar a prioridade sugerida não pede mais o motivo (2.2); a escolhida à mão não segue mais a sugestão', async () => {
     const sem = await operador.patch(`/atendimento/chamados/${id}`, { prioridade: 'baixa' });
-    expect(sem.statusCode).toBe(400);
-    expect(sem.json().error).toBe('Trocar a prioridade sugerida pede o motivo.');
+    expect(sem.statusCode, sem.body).toBe(200);
+    expect(sem.json()).toMatchObject({ prioridade: 'baixa', motivoPrioridade: null });
+    expect(eventos(sem.json(), 'prioridade').at(-1).texto).toBe('mudou a prioridade de Crítica para Baixa (a sugerida era Crítica)');
+    // o motivo, se vier, continua guardado
     const f = (await operador.patch(`/atendimento/chamados/${id}`, { prioridade: 'alta', motivoPrioridade: 'o cliente tem um ramal reserva' })).json();
     expect(f).toMatchObject({ prioridade: 'alta', motivoPrioridade: 'o cliente tem um ramal reserva' });
-    expect(eventos(f, 'prioridade').at(-1).texto).toBe('mudou a prioridade de Crítica para Alta (a sugerida era Crítica): o cliente tem um ramal reserva');
+    expect(eventos(f, 'prioridade').at(-1).texto).toBe('mudou a prioridade de Baixa para Alta (a sugerida era Crítica): o cliente tem um ramal reserva');
     const g = (await operador.patch(`/atendimento/chamados/${id}`, { gravidade: 'performance' })).json();
     expect(g).toMatchObject({ prioridade: 'alta', prioridadeSugerida: 'alta', motivoPrioridade: null });
   });
@@ -299,6 +306,29 @@ describe('alterar', () => {
     expect(f.historico.length).toBe(antes);
   });
 
+  it('os outros contatos (2.2): a lista inteira; o WhatsApp vira o do sistema; o vazio, o repetido e o principal ficam de fora; a busca acha', async () => {
+    await operador.patch(`/atendimento/chamados/${id}`, { contatoNome: 'Sandra', contatoTelefone: '(75) 3604-9000' });
+    const r = await operador.patch(`/atendimento/chamados/${id}`, { outrosContatos: [
+      { nome: 'João do financeiro', telefone: '(71) 98888-7777' }, { nome: 'Sandra', telefone: '75 3604-9000' }, { nome: 'Outro João', telefone: '71988887777' }, { nome: 'Rita' },
+    ] });
+    expect(r.statusCode, r.body).toBe(200);
+    const f = r.json();
+    expect(f.outrosContatos).toEqual([{ nome: 'João do financeiro', telefone: '5571988887777' }, { nome: 'Rita', telefone: null }]);
+    expect(eventos(f, 'campo').at(-1).texto).toBe('mudou Outros contatos para "João do financeiro (71) 98888-7777, Rita"');
+    // o vazio é recusado; o telefone ruim também
+    expect((await operador.patch(`/atendimento/chamados/${id}`, { outrosContatos: [{ nome: '' }] })).statusCode).toBe(400);
+    expect((await operador.patch(`/atendimento/chamados/${id}`, { outrosContatos: [{ telefone: '123' }] })).statusCode).toBe(400);
+    // a busca acha pelo outro contato
+    const lista = (await s.get('/atendimento/chamados?situacao=todos&q=financeiro')).json();
+    expect(lista.items.map((c: any) => c.id)).toContain(id);
+    // mandar a mesma lista não vira histórico; a vazia tira todos
+    const antes = f.historico.length;
+    expect((await operador.patch(`/atendimento/chamados/${id}`, { outrosContatos: f.outrosContatos })).json().historico.length).toBe(antes);
+    const sem = (await operador.patch(`/atendimento/chamados/${id}`, { outrosContatos: [] })).json();
+    expect(sem.outrosContatos).toEqual([]);
+    expect(eventos(sem, 'campo').at(-1).texto).toBe('mudou Outros contatos de "João do financeiro (71) 98888-7777, Rita" para (vazio)');
+  });
+
   it('passar para alguém registra o responsável e avisa quem recebeu', async () => {
     const f = (await operador.patch(`/atendimento/chamados/${id}`, { responsavelId: brunoId, etiquetas: ['audio', 'Áudio', 'vip'] })).json();
     expect(f.responsavel).toEqual({ id: brunoId, nome: 'Bruno Técnico' });
@@ -314,7 +344,27 @@ describe('alterar', () => {
 describe('mover', () => {
   let id = '';
   let codigo = '';
-  beforeAll(async () => { ({ id, codigo } = await abrir(operador, { titulo: 'Ramal sem registro' })); });
+  beforeAll(async () => { ({ id, codigo } = await abrir(operador, { titulo: 'Ramal sem registro' })); await comResponsavel(id, marinaId); });
+
+  it('sair do Novo pede o responsável (2.2): a ficha diz, o mover recusa, e com o responsável no mover, vai', async () => {
+    const { id: outro } = await abrir(operador, { titulo: 'Fila sem música', clienteId: aurora });
+    const f = await ficha(s, outro);
+    // todas as etapas fora da entrada pedem; a própria entrada, não
+    expect(f.faltam[E.n1]).toEqual(['responsavel']);
+    expect(f.faltam[E.fechado]).toContain('responsavel');
+    expect(f.faltam[E.novo]).toEqual([]);
+    const r = await mover(operador, outro, E.n1);
+    expect(r.statusCode).toBe(400);
+    expect(r.json()).toMatchObject({ error: 'Para ir para N1, falta preencher: Responsável.', details: { faltam: ['responsavel'] } });
+    // o responsável no próprio mover (a janela do quadro): vai
+    const ok = await mover(operador, outro, E.n1, { responsavelId: brunoId });
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect(ok.json()).toMatchObject({ etapaId: E.n1, responsavel: { id: brunoId } });
+    // fora da entrada, sem responsável anda como antes (voltar para a fila do N2 é normal)
+    expect((await operador.patch(`/atendimento/chamados/${outro}`, { responsavelId: null, assuntoId: ramal })).statusCode).toBe(200);
+    const n2 = await mover(operador, outro, E.n2, { motivo: 'acesso ao SBC' });
+    expect(n2.statusCode, n2.body).toBe(200);
+  });
 
   it('o que falta para a etapa: 400 com a lista', async () => {
     const r = await mover(operador, id, E.n1);
@@ -392,6 +442,7 @@ describe('mover', () => {
 
   it('o nível DEV, depois do N3 (13/10, o Luan): escalonar para ele pede o motivo, e voltar dele também', async () => {
     const { id: outro, codigo: cod } = await abrir(operador, { clienteId: aurora, assuntoId: ramal });
+    await comResponsavel(outro, marinaId);
     expect((await mover(operador, outro, E.n3)).statusCode).toBe(200);
     const sem = await mover(operador, outro, E.dev);
     expect(sem.statusCode).toBe(400);
@@ -448,6 +499,7 @@ describe('pai e filhos (inclusive em outro painel)', () => {
 
   it('fechado o filho, o responsável do pai fica sabendo, e o pai fecha', async () => {
     await s.patch(`/atendimento/chamados/${filho.id}`, { solucao: 'Corrigido na versão 2.3' });
+    await comResponsavel(filho.id);
     const r = await mover(s, filho.id, E.devFechado);
     expect(r.statusCode, r.body).toBe(200);
     const avisos = (await operador.get('/atendimento/avisos')).json();
@@ -502,6 +554,7 @@ describe('o problema e os incidentes', () => {
 
   it('o problema só resolve com a causa, a solução e a validação', async () => {
     await classificar(s, p.id);
+    await comResponsavel(p.id);
     const r = await mover(s, p.id, E.resolvido);
     expect(r.statusCode).toBe(400);
     expect(r.json()).toMatchObject({ error: 'Para ir para Resolvido, falta preencher: A validação (problema).', details: { faltam: ['validacao'] } });
@@ -882,6 +935,7 @@ describe('os avisos na tela (o sininho)', () => {
     await ajustarPainel(SUP, { supervisores: [brunoId] });
     await app.db.update(ticketStages).set({ notifyUserIds: [brunoId] }).where(eq(ticketStages.id, E.n2));
     const { id, codigo } = await abrir(operador, { gravidade: 'inoperancia', alcance: 'empresa', clienteId: aurora, assuntoId: ramal });
+    await comResponsavel(id, marinaId);
     let bruno = (await tecnico.get('/atendimento/avisos')).json();
     expect(bruno.itens[0]).toMatchObject({ tipo: 'critico', texto: `Chegou um chamado Crítico: ${codigo}` });
     await mover(operador, id, E.n1);
@@ -921,6 +975,7 @@ describe('os observadores (como no Helena: recebem toda atualização do chamado
   it('a anotação, a etapa e o responsável chegam para quem observa (menos para quem fez)', async () => {
     const { id, codigo } = await abrir(s, { titulo: 'Ramal 210 mudo', clienteId: aurora, observadores: [marinaId, brunoId] });
     criados.push(id);
+    await comResponsavel(id);
     await operador.post(`/atendimento/chamados/${id}/anotacoes`, { texto: 'Liguei para o cliente:\n o cabo estava solto' });
     expect((await avisos(tecnico))[0].texto).toBe(`Marina Costa anotou no ${codigo}: "Liguei para o cliente: o cabo estava solto"`);
     expect((await avisos(operador)).some((a: any) => a.texto.startsWith('Marina Costa anotou'))).toBe(false);
@@ -987,6 +1042,7 @@ describe('os webhooks', () => {
     // o corpo é montado em segundo plano, com o chamado como está na hora: espera cada evento sair antes do próximo
     const { id, codigo } = await abrir(s, { clienteId: aurora });
     await esperarSegundoPlano();
+    await comResponsavel(id);
     await mover(s, id, E.n1);
     await esperarSegundoPlano();
     const criado = recebidos.find((r) => r.headers['X-Gestor-Evento'] === 'chamado.criado' && JSON.parse(r.corpo).chamado?.codigo === codigo)!;

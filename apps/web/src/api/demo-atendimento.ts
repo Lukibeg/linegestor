@@ -42,10 +42,11 @@ import {
   preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
   textoDeBusca, textoDoEvento, textoDoPrazo, trajetoria,
   AjustesDaNiaSchema, CAMPO_DAS_ETIQUETAS, etiquetasAoPedirANia, NIA_PADRAO, NIA_PEDIR_DE_NOVO_MINUTOS, resumoDaNia, temAEtiqueta, type AjustesDaNia,
-  NOME_CONVERSA, sessaoDaConversa,
+  NOME_CONVERSA, NOME_OUTRAS_CONVERSAS, NOME_OUTROS_CONTATOS, outrosContatosLimpos, sessaoDaConversa, textoDoOutroContato, type OutroContato,
   AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNoQuadro, compararNoQuadroDeGestao, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar, painelComOrdemAMao, PosicaoNoQuadroSchema, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
-  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel,
+  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel, visaoDoPainel,
+  type FiltroDaVisao, type VisaoDoPainel,
   type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type RelatoriosDoPainel,
   chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor, painelContaPrazo, AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA, nomeDoPainelDeGestaoNovo, tipoParaOPainelDoHelena,
   type EstadoDoGestorParaHelena, type PainelDoGestorParaHelena, type PlanoDaImportacao,
@@ -138,6 +139,8 @@ type EtapaRow = {
 type ChamadoRow = {
   id: string; painelId: string; etapaId: string; numero: number; codigo: string; tipoChamado: TipoChamado; titulo: string;
   relato: string | null; descricao: string | null; clienteId: string | null; contatoNome: string | null; contatoTelefone: string | null; sessaoId: string | null;
+  /** os outros contatos e as outras conversas (2.2, como o servidor) */
+  outrosContatos?: OutroContato[]; outrasSessoes?: string[];
   origem: Origem; responsavelId: string | null; assuntoId: string | null; tipo: string | null; gravidade: Gravidade | null; alcance: Alcance | null;
   prioridade: Prioridade | null; motivoPrioridade: string | null; produtos: string[]; operadoras: string[]; etiquetas: string[];
   paiId: string | null; problemaId: string | null; checklist: ItemChecklist[];
@@ -571,7 +574,9 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const par = parentes();
     return A.chamados.filter((t) => !t.deletedAt && vis.has(t.painelId)).map((t) => {
       const c = cartao(t, par, agora);
-      return { ...c, busca: textoDeBusca(c, [t.relato, t.descricao, t.solucao, t.causa, ...textosDosCampos(camposDoPainel(t.painelId, true), c.campos)]) };
+      // os outros contatos (2.2) também acham o chamado, como no servidor
+      const outros = (t.outrosContatos ?? []).flatMap((o) => [o.nome, o.telefone]);
+      return { ...c, busca: textoDeBusca(c, [t.relato, t.descricao, t.solucao, t.causa, ...outros, ...textosDosCampos(camposDoPainel(t.painelId, true), c.campos)]) };
     });
   }
   const semBusca = (c: CartaoParaLista): CartaoChamado => { const { busca: _b, ...resto } = c; return resto; };
@@ -881,7 +886,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const naTela = origem === 'manual' || origem === 'botao';
     const faltam = naTela ? faltaParaAbrir(dados, painel.ajustes) : [];
     if (faltam.length) throw bad(mensagemDoQueFalta(faltam, undefined, A.campos), { faltam });
-    if (prioridade && sugerida && prioridade !== sugerida && !d.motivoPrioridade) throw bad('Trocar a prioridade sugerida pede o motivo.');
+    // trocar a sugerida não pede mais o motivo (2.2, como o servidor)
     // a conversa do LineChat: na tela, o link colado (o chamado ativo, 2.1); o robô manda o código como veio
     let sessaoId = d.sessaoId ?? null;
     if (sessaoId && naTela) {
@@ -1018,6 +1023,30 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (!lida.ok) throw bad(lida.erro);
       if (lida.sessaoId !== t.sessaoId) { set.sessaoId = lida.sessaoId; campo('sessaoId', NOME_CONVERSA, t.sessaoId, lida.sessaoId, t.sessaoId); }
     }
+    // os outros contatos e as outras conversas (2.2, como o servidor): a lista inteira toma o lugar da de antes
+    if (d.outrosContatos !== undefined) {
+      const principal = { nome: set.contatoNome !== undefined ? set.contatoNome : t.contatoNome, telefone: set.contatoTelefone !== undefined ? set.contatoTelefone : t.contatoTelefone };
+      const novos = outrosContatosLimpos(d.outrosContatos, principal);
+      const velhos = t.outrosContatos ?? [];
+      if (JSON.stringify(novos) !== JSON.stringify(velhos)) {
+        set.outrosContatos = novos;
+        campo('outrosContatos', NOME_OUTROS_CONTATOS, velhos.map(textoDoOutroContato).join(', ') || null, novos.map(textoDoOutroContato).join(', ') || null, velhos);
+      }
+    }
+    if (d.outrasConversas !== undefined) {
+      const principal = set.sessaoId !== undefined ? set.sessaoId : t.sessaoId;
+      const lidas: string[] = [];
+      for (const texto of d.outrasConversas) {
+        const lida = sessaoDaConversa(texto, A.integ.linkConversa);
+        if (!lida.ok) throw bad(`Uma das conversas: ${lida.erro}`);
+        if (lida.sessaoId && lida.sessaoId !== principal && !lidas.includes(lida.sessaoId)) lidas.push(lida.sessaoId);
+      }
+      const velhas = t.outrasSessoes ?? [];
+      if (JSON.stringify(lidas) !== JSON.stringify(velhas)) {
+        set.outrasSessoes = lidas;
+        campo('outrasConversas', NOME_OUTRAS_CONVERSAS, velhas.join(', ') || null, lidas.join(', ') || null, velhas);
+      }
+    }
     // a negociação (só no painel de Vendas): a empresa que ainda não é cliente, o valor e o motivo da perda
     // (que só a perdida tem)
     if (painel.tipo === 'vendas') {
@@ -1074,7 +1103,6 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     let motivo: string | null = t.motivoPrioridade;
     if (d.prioridade !== undefined && d.prioridade !== p0) {
       p1 = d.prioridade;
-      if (p1 && sug1 && p1 !== sug1 && !d.motivoPrioridade) throw bad('Trocar a prioridade sugerida pede o motivo.');
       motivo = p1 && sug1 && p1 !== sug1 ? d.motivoPrioridade ?? null : null;
     } else if ((g1 !== g0 || a1 !== a0) && (p0 === null || p0 === sug0) && sug1 && sug1 !== p0) {
       // a prioridade seguia a sugestão: vai junto para a nova (a escolhida à mão fica como está)
@@ -1219,14 +1247,16 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const momentoDoDia = (dia: string, agora: Date) => (dia === diaLocal(agora) ? agora : instanteLocal(dia, '12:00'));
 
   /** O que falta preencher, os filhos que travam e, quando é escalonar ou voltar de nível, o motivo. */
-  function conferirMovimento(e: Estado, para: EtapaPainel, o: { painel?: Painel; motivo: string | null; responsavelId?: string | null; nivel: boolean; venda?: Resultado | null }): 'sobe' | 'desce' | null {
+  function conferirMovimento(e: Estado, para: EtapaPainel, o: { painel?: Painel; motivo: string | null; responsavelId?: string | null; nivel: boolean; venda?: Resultado | null; ator?: Ator }): 'sobe' | 'desce' | null {
     const painel = o.painel ?? e.painel;
     const dados = {
       ...dadosDoChamado(e.t), ...(o.responsavelId !== undefined ? { responsavelId: o.responsavelId } : {}),
       // o motivo da perda vem junto com o marcar como perdido (o de antes, de uma perda desfeita, não vale)
       ...(para.resultado === 'perdido' ? { motivoPerda: o.venda?.motivoPerda ?? null } : {}),
     };
-    const faltam = faltaParaEtapa(dados, para);
+    // dentro do mesmo painel, sair da entrada pede o responsável (2.2, como o servidor) — de quem trabalha na tela; a
+    // integração segue como antes; trocar de painel não conta
+    const faltam = faltaParaEtapa(dados, para, !o.painel && o.ator?.tipo === 'pessoa' ? { de: e.etapa, painel } : undefined);
     if (faltam.length) throw bad(mensagemDoQueFalta(faltam, para.nome, A.campos), { faltam });
     const travam = filhosQueTravam(filhosDoChamado(e.t.id), para, painel.ajustes.paiEsperaFilhos);
     if (travam.length) throw bad(`O ${e.t.codigo} tem filhos em aberto: ${travam.join(', ')}. Feche os filhos antes.`, { filhos: travam });
@@ -1320,7 +1350,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (responsavelId) conferirPessoa(responsavelId);
     const venda = conferirResultado(e, para, d);
     const valor = e.t.valor;
-    const sentido = conferirMovimento(e, para, { motivo, responsavelId, nivel: true, venda });
+    const sentido = conferirMovimento(e, para, { motivo, responsavelId, nivel: true, venda, ator });
     const m = gravarMovimento(e, ator, para, { motivo, sentido, responsavelId, venda });
     // arrastado para um lugar da coluna (2.1): a etapa se arruma com ele ali (se o de cima saiu da etapa, ele fica no alto)
     if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) arrumarNaEtapa(e.painel, para.id, e.t.id, d.depoisDe);
@@ -1453,7 +1483,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // na negociação, assumir é só ficar com ela: o lead não passa sozinho para a etapa seguinte
     if (opts.mover !== false && e.painel.tipo !== 'vendas' && e.etapa?.tipo === 'entrada') {
       const alvo = etapaAoAssumir(e.painel.etapas, t.etapaId);
-      if (alvo && !faltaParaEtapa({ ...dadosDoChamado(t), responsavelId: ator.id }, alvo).length) para = alvo;
+      if (alvo && !faltaParaEtapa({ ...dadosDoChamado(t), responsavelId: ator.id }, alvo, { de: e.etapa, painel: e.painel }).length) para = alvo;
     }
     const trocaResponsavel = t.responsavelId !== ator.id;
     if (!trocaResponsavel && !para) return nada(t);
@@ -2258,7 +2288,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   function relatoriosDoPainelDeChamados(ator: Ator, f: ReturnType<typeof FiltroDosRelatoriosSchema.parse>): RelatoriosDoPainel {
-    const painel = painelDosRelatorios(ator, f.painel);
+    const { chamados, contexto } = baseDosRelatoriosDemo(painelDosRelatorios(ator, f.painel));
+    return relatoriosDoPainel(chamados, contexto, f, agoraReal());
+  }
+  /** A Visão geral (2.2): Hoje e Período, como no Legado do Helena, sobre a mesma base dos 25 relatórios. */
+  function visaoDoPainelDeChamados(ator: Ator, f: FiltroDaVisao): VisaoDoPainel {
+    const { chamados, contexto } = baseDosRelatoriosDemo(painelDosRelatorios(ator, f.painel));
+    return visaoDoPainel(chamados, contexto, f, agoraReal());
+  }
+
+  /** A base dos relatórios de um painel, como o servidor monta (`baseDosRelatorios`). */
+  function baseDosRelatoriosDemo(painel: Painel): { chamados: ChamadoParaRelatorios[]; contexto: ContextoDosRelatorios } {
     const linhas = A.chamados.filter((t) => !t.deletedAt && t.painelId === painel.id);
     const ids = new Set(linhas.map((t) => t.id));
     const eventosDe = new Map<string, Array<{ tipo: string; em: string; dados: Record<string, any>; porId: string | null }>>();
@@ -2309,11 +2349,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const contexto: ContextoDosRelatorios = {
       painel: {
         id: painel.id, nome: painel.nome, sigla: painel.sigla, contaPrazo: painelContaPrazo(painel.ajustes),
-        usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras') },
+        usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras'), prioridade: usa('prioridade') },
       },
       etapas: A.etapas.filter((e) => e.painelId === painel.id).map((e) => ({ id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: e.ordem, ativa: !e.deletedAt })),
       assuntos: A.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo })),
-      campos: camposDeLista.map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo })),
+      campos: camposDeLista.map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo, varios: c.tipo === 'lista_varios' })),
       pessoas: new Map(S.users.map((u) => [u.id, u.name])),
       clientes,
       produtos: new Map(S.products.map((p) => [p.id, p.name])),
@@ -2321,7 +2361,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       prazos: A.prazos,
       campoDaFalha: arrumacaoGuardada(painel.id).campoDaFalha,
     };
-    return relatoriosDoPainel(chamados, contexto, f, agoraReal());
+    return { chamados, contexto };
   }
 
   function gravarArrumacaoDosRelatorios(ator: Ator, ref: string, nova: ArrumacaoDosRelatorios): ArrumacaoDosRelatoriosLida {
@@ -2332,15 +2372,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       throw bad('O campo escolhido para "De quem é a falha?" não é um campo de lista deste painel.');
     }
     const antes = arrumacaoLida(painel);
-    A.relatorios[painel.id] = { ...limpa, atualizadoEm: iso(agoraReal()), atualizadoPor: ator.nome };
+    // quem salva os 25 relatórios sem mandar a Visão geral fica com a dela guardada (como no servidor)
+    const visao = limpa.visao ?? antes.visao;
+    A.relatorios[painel.id] = { ...limpa, ...(visao ? { visao } : {}), atualizadoEm: iso(agoraReal()), atualizadoPor: ator.nome };
     const depois = arrumacaoLida(painel);
     const total = CATALOGO_DOS_RELATORIOS.length;
     const campo = depois.campoDaFalha ? depois.campos.find((c) => c.id === depois.campoDaFalha)?.nome ?? null : null;
+    const mudouAVisao = JSON.stringify(antes.visao ?? null) !== JSON.stringify(depois.visao ?? null);
+    const graficos = depois.visao ? `; na Visão geral, ${plural(depois.visao.filter((x) => !x.oculto).length, 'gráfico à vista', 'gráficos à vista')}` : '';
     auditar('atendimento_relatorios_arrumacao', 'settings',
-      `${ator.nome} arrumou os Relatórios do painel ${painel.nome} para a equipe (${total - depois.ocultos.length} à vista, ${plural(depois.ocultos.length, 'escondido', 'escondidos')}, ${plural(depois.favoritos.length, 'favorito', 'favoritos')}${campo ? `; a falha sai do campo ${campo}` : ''})`,
+      `${ator.nome} arrumou os Relatórios do painel ${painel.nome} para a equipe (${total - depois.ocultos.length} à vista, ${plural(depois.ocultos.length, 'escondido', 'escondidos')}, ${plural(depois.favoritos.length, 'favorito', 'favoritos')}${campo ? `; a falha sai do campo ${campo}` : ''}${mudouAVisao ? graficos : ''})`,
       'atendimento-relatorios', {
-        before: { ordem: antes.ordem, ocultos: antes.ocultos, favoritos: antes.favoritos, campoDaFalha: antes.campoDaFalha },
-        after: { ordem: depois.ordem, ocultos: depois.ocultos, favoritos: depois.favoritos, campoDaFalha: depois.campoDaFalha },
+        before: { ordem: antes.ordem, ocultos: antes.ocultos, favoritos: antes.favoritos, campoDaFalha: antes.campoDaFalha, visao: antes.visao ?? null },
+        after: { ordem: depois.ordem, ocultos: depois.ocultos, favoritos: depois.favoritos, campoDaFalha: depois.campoDaFalha, visao: depois.visao ?? null },
       });
     return depois;
   }
@@ -2551,6 +2595,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       prioridadeSugerida: prioridadeSugeridaDoPainel(painel.ajustes, t.gravidade, t.alcance, A.prazos),
       sessaoId: t.sessaoId,
       conversaUrl: linkDaConversa(A.integ.linkConversa, t.sessaoId),
+      outrosContatos: campoLigado(painel.ajustes, 'cliente') ? t.outrosContatos ?? [] : [],
+      outrasConversas: (t.outrasSessoes ?? []).map((sessaoId) => ({ sessaoId, url: linkDaConversa(A.integ.linkConversa, sessaoId) })),
       checklist: t.checklist.map((i) => ({ ...i })),
       observadores: t.observadores.map((id) => pessoaCurta(id)!),
       citaveis: quemVeOPainel(painel),
@@ -2572,7 +2618,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       },
       operadora,
       trajetoria: passos,
-      faltam: Object.fromEntries(painel.etapas.map((e) => [e.id, faltaParaEtapa(dados, e)])),
+      faltam: Object.fromEntries(painel.etapas.map((e) => [e.id, faltaParaEtapa(dados, e, { de: painel.etapas.find((x) => x.id === t.etapaId), painel })])),
       filhosTravam: Object.fromEntries(painel.etapas.map((e) => [e.id, filhosQueTravam(filhos, e, painel.ajustes.paiEsperaFilhos)])),
       grafo,
       observando: ator.tipo === 'pessoa' && t.observadores.includes(ator.id),
@@ -3452,6 +3498,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       });
       const r = criarChamado(atorDe(ex.abre), pedido, { origem: robo ? 'robo' : 'manual' }, quando);
       if (d.ia) A.iaExemplos.set(r.id, d.ia);
+      // os outros contatos e as outras conversas do exemplo (2.2): direto na linha, sem histórico
+      if (d.outrosContatos || d.outrasSessoes) {
+        const linha = A.chamados.find((x) => x.id === r.id)!;
+        linha.outrosContatos = (d.outrosContatos ?? []).map(([nome, fone]) => ({ nome, telefone: fone ? numeroWhatsApp(fone) : null }));
+        linha.outrasSessoes = d.outrasSessoes ?? [];
+      }
       if (robo) { const k = A.chaves.find((x) => x.id === A.robo!.id)!; k.usadaEm = iso(quando); webhook.ultimoEm = iso(quando); webhook.ultimoOk = true; webhook.ultimaMsg = 'chamado.criado: recebido (200)'; }
       codigoDa.set(ex.chave, r.codigo); idDoExemplo.set(ex.chave, r.id);
     };
@@ -3667,6 +3719,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const f = ler(FiltroDosRelatoriosSchema, limparQuery(q));
       ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       return relatoriosDoPainelDeChamados(eu(), f);
+    },
+    async visao(q) {
+      await ctx.wait();
+      const f = ler(FiltroDaVisaoSchema, limparQuery(q));
+      ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
+      return visaoDoPainelDeChamados(eu(), f);
     },
     async arrumacaoDosRelatorios(painel) {
       await ctx.wait(60);
@@ -4172,7 +4230,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       });
       // a conversa já tem um chamado aberto (entrada ou andamento)? um pedido dela agora viraria anotação nele
       const aberto = p.sessaoId
-        ? A.chamados.filter((t) => !t.deletedAt && t.sessaoId === p.sessaoId && ['entrada', 'andamento'].includes(etapaPorId(t.etapaId)?.tipo ?? ''))
+        ? A.chamados.filter((t) => !t.deletedAt && (t.sessaoId === p.sessaoId || (t.outrasSessoes ?? []).includes(p.sessaoId!)) && ['entrada', 'andamento'].includes(etapaPorId(t.etapaId)?.tipo ?? ''))
           .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))[0]
         : undefined;
       return { resolvido, aberto: aberto ? { codigo: aberto.codigo, titulo: aberto.titulo } : null } satisfies PreviaDoRobo;

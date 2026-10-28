@@ -9,8 +9,8 @@ import type { FastifyInstance } from 'fastify';
 import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { devices, dids, products, subscriptions, ticketCarrierCases, ticketEvents, ticketLinks, ticketTimeEntries, tickets } from '@gestor/db';
 import {
-  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, arrumacaoCompleta, campoLigado, painelContaPrazo, passagensDosEventos, passagensNoPainel, relatoriosDoPainel, situacaoDaEtapa,
-  type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type Espera, type FiltroDosRelatorios,
+  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, arrumacaoCompleta, campoLigado, painelContaPrazo, passagensDosEventos, passagensNoPainel, relatoriosDoPainel, situacaoDaEtapa, visaoDoPainel,
+  type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type Espera, type FiltroDaVisao, type FiltroDosRelatorios, type VisaoDoPainel,
   type Gravidade, type Alcance, type Nivel, type Origem, type Painel, type Prioridade, type RelatoriosDoPainel, type TipoChamado, type ValoresDosCampos,
 } from '@gestor/shared';
 import { BadRequest, NotFound } from '../../plugins/errors.js';
@@ -111,12 +111,12 @@ function contextoDoPainel(ctx: Contexto, painel: Painel, campoDaFalha: string | 
   return {
     painel: {
       id: painel.id, nome: painel.nome, sigla: painel.sigla, contaPrazo: painelContaPrazo(painel.ajustes),
-      usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras') },
+      usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras'), prioridade: usa('prioridade') },
     },
     etapas: [...ctx.etapas].filter(([, v]) => v.painelId === painel.id).map(([id, v]) => ({ id, nome: v.etapa.nome, tipo: v.etapa.tipo, nivel: v.etapa.nivel, ordem: v.ordem, ativa: !v.saiu })),
     assuntos: ctx.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo })),
     campos: ctx.campos.filter((c) => c.painelId === painel.id && (c.tipo === 'lista' || c.tipo === 'lista_varios'))
-      .map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo })),
+      .map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo, varios: c.tipo === 'lista_varios' })),
     pessoas: new Map([...ctx.pessoas].map(([id, p]) => [id, p.nome])),
     produtos: new Map([...ctx.produtos].map(([id, p]) => [id, p.nome])),
     operadoras: ctx.operadoras,
@@ -163,6 +163,14 @@ export async function relatoriosDoPainelDeChamados(app: FastifyInstance, ator: A
   return relatoriosDoPainel(chamados, contexto, filtro, ctx.agora);
 }
 
+/** A Visão geral de um painel (2.2: Hoje e Período, como no Legado do Helena), com os filtros da tela. */
+export async function visaoDoPainelDeChamados(app: FastifyInstance, ator: Ator, filtro: FiltroDaVisao): Promise<VisaoDoPainel> {
+  const ctx = await carregarContexto(app.db);
+  const painel = painelDosRelatorios(ctx, ator, filtro.painel);
+  const { chamados, contexto } = await baseDosRelatorios(app, ctx, painel, null);
+  return visaoDoPainel(chamados, contexto, filtro, ctx.agora);
+}
+
 // =====================================================================
 //  A ARRUMAÇÃO (o Organizar): por painel, a mesma para a equipe toda
 // =====================================================================
@@ -185,7 +193,7 @@ export async function lerArrumacao(app: FastifyInstance, ator: Ator, painelRef: 
   const painel = painelDosRelatorios(ctx, ator, painelRef);
   const a = await lerArrumacaoGuardada(app, painel.id);
   return {
-    ordem: a.ordem, ocultos: a.ocultos, favoritos: a.favoritos, campoDaFalha: a.campoDaFalha,
+    ordem: a.ordem, ocultos: a.ocultos, favoritos: a.favoritos, campoDaFalha: a.campoDaFalha, ...(a.visao ? { visao: a.visao } : {}),
     atualizadoEm: a.atualizadoEm ?? null, atualizadoPor: a.atualizadoPor ?? null,
     campos: ctx.campos.filter((c) => c.painelId === painel.id && (c.tipo === 'lista' || c.tipo === 'lista_varios')).map((c) => ({ id: c.id, nome: c.nome, ativo: c.ativo })),
   };
@@ -200,12 +208,16 @@ export async function gravarArrumacao(app: FastifyInstance, ator: Ator & { tipo:
   }
   const antes = await lerArrumacao(app, ator, painel.id);
   const { valor } = await integ.ler<AjustesDosRelatorios>(app.db, 'atendimento-relatorios');
-  const paineis = { ...(valor?.paineis ?? {}), [painel.id]: { ...limpa, atualizadoEm: new Date().toISOString(), atualizadoPor: ator.nome } };
+  // quem salva os 25 relatórios sem mandar a Visão geral fica com a dela guardada (e o contrário não existe: a tela manda tudo)
+  const visao = limpa.visao ?? antes.visao;
+  const paineis = { ...(valor?.paineis ?? {}), [painel.id]: { ...limpa, ...(visao ? { visao } : {}), atualizadoEm: new Date().toISOString(), atualizadoPor: ator.nome } };
   await integ.gravar(app.db, 'atendimento-relatorios', { paineis }, { userId: ator.id });
   const depois = await lerArrumacao(app, ator, painel.id);
   const total = CATALOGO_DOS_RELATORIOS.length;
   const plural = (n: number, um: string, varios: string) => `${n} ${n === 1 ? um : varios}`;
   const campo = depois.campoDaFalha ? depois.campos.find((c) => c.id === depois.campoDaFalha)?.nome ?? null : null;
-  const resumo = `${ator.nome} arrumou os Relatórios do painel ${painel.nome} para a equipe (${total - depois.ocultos.length} à vista, ${plural(depois.ocultos.length, 'escondido', 'escondidos')}, ${plural(depois.favoritos.length, 'favorito', 'favoritos')}${campo ? `; a falha sai do campo ${campo}` : ''})`;
+  const mudouAVisao = JSON.stringify(antes.visao ?? null) !== JSON.stringify(depois.visao ?? null);
+  const graficos = depois.visao ? `; na Visão geral, ${plural(depois.visao.filter((x) => !x.oculto).length, 'gráfico à vista', 'gráficos à vista')}` : '';
+  const resumo = `${ator.nome} arrumou os Relatórios do painel ${painel.nome} para a equipe (${total - depois.ocultos.length} à vista, ${plural(depois.ocultos.length, 'escondido', 'escondidos')}, ${plural(depois.favoritos.length, 'favorito', 'favoritos')}${campo ? `; a falha sai do campo ${campo}` : ''}${mudouAVisao ? graficos : ''})`;
   return { antes, depois, resumo };
 }

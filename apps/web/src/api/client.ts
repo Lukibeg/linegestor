@@ -121,7 +121,7 @@ export const realApi: Api = {
     removeDeviceLogin: (id, loginId) => http('DELETE', `/clients/${id}/device-logins/${loginId}`),
     saveNetwork: (id, d) => http('PUT', `/clients/${id}/network`, d),
   },
-  secrets: { reveal: (id, password) => http('POST', `/secrets/${id}/reveal`, { password }) },
+  secrets: { reveal: (id) => http('POST', `/secrets/${id}/reveal`, {}) },
   circuits: {
     list: (q) => http('GET', `/circuits${qs(q)}`),
     summary: (q) => http('GET', `/circuits/summary${qs(q ?? {})}`),
@@ -305,6 +305,7 @@ export const realApi: Api = {
     resumoDosPaineis: () => http('GET', '/atendimento/paineis/resumo'),
     relatorioDeVendas: (q) => http('GET', `/atendimento/vendas${qs(q)}`),
     relatorios: (q) => http('GET', `/atendimento/relatorios${qs(q)}`),
+    visao: (q) => http('GET', `/atendimento/relatorios/visao${qs(q)}`),
     arrumacaoDosRelatorios: (painel) => http('GET', `/atendimento/relatorios/arrumacao${qs({ painel })}`),
     salvarArrumacaoDosRelatorios: (painel, a) => http('PUT', `/atendimento/relatorios/arrumacao${qs({ painel })}`, a),
     avisos: () => http('GET', '/atendimento/avisos'),

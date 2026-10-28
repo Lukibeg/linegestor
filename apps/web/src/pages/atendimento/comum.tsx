@@ -13,11 +13,11 @@ import { GitBranch, Hourglass, Layers, MessageSquare, Plus, RotateCcw, Siren, Th
 import {
   CORES_ETIQUETA, NOME_COR_ETIQUETA, NOME_ESPERA, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, corDaEtiqueta, etiquetasDoPainel, paraBusca, reaisInteiros, telefoneLegivel, textoDoPrazo,
   type CartaoChamado, type CorEtiqueta, type CorPainel, type EstadoPrazo, type FichaChamado, type OpcoesAtendimento, type Painel, type Prioridade, type ResultadoDaVenda,
-  type TipoEspera,
+  type TipoEspera, caminhoDoAssunto, emOrdemDeArvore, type Assunto,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
 import { useAuth } from '../../lib/auth.js';
-import { Chip, classeAba, useToast, type TomChip } from '../../components/ui/index.js';
+import { Chip, classeAba, useToast, type OpcaoBusca, type TomChip } from '../../components/ui/index.js';
 
 // =====================================================================
 //  OS DADOS DO MÓDULO
@@ -171,24 +171,31 @@ export function useFecharJanela() {
  * central ocupando boa parte da tela, porém não direcionando para outra tela".
  *  - de qualquer tela: a janela grande por cima, com a tela de baixo do jeito que estava (o quadro
  *    com os filtros, a lista na mesma página);
- *  - dentro da janela (a de um chamado ou a do Abrir chamado): troca o que a janela mostra, sem
- *    empilhar (o Voltar e o X voltam para a tela);
+ *  - dentro da janela (a de um chamado ou a do Abrir chamado): troca o que a janela mostra, com a mesma tela
+ *    embaixo; desde o 2.2 o chamado novo entra no histórico por cima do outro (o Luan: "se eu clicar em um chamado
+ *    para visualizar ele e clicar no x novamente pra voltar, ele vai pra tela inicial do painel e n voltar pra o
+ *    chamado que eu vi primeiro"): o X e o Voltar voltam para o chamado de antes, e dele para a tela;
  *  - na ficha aberta pelo link direto (página inteira): continua página.
  */
 export function useIrParaOChamado(): { state?: ComFundo; replace?: boolean } {
   const location = useLocation();
   return useMemo(() => {
     const fundo = fundoDaJanela(location);
-    if (fundo) return { state: { fundo }, replace: true };
+    if (fundo) return { state: { fundo } };
     if (ehFichaDoChamado(location.pathname)) return {};
     return { state: { fundo: location } };
   }, [location]);
 }
-/** Abrir o chamado por código (o clique no cartão, no aviso do sininho, no desenho das ligações). */
-export function useAbrirChamado() {
+/**
+ * Abrir o chamado por código (o clique no cartão, no aviso do sininho, no desenho das ligações). `noLugar`: a janela
+ * troca de vez pelo chamado (o Abrir chamado que acabou de criar: fechar a ficha nova volta para a tela, e não para o
+ * formulário já usado).
+ */
+export function useAbrirChamado(o: { noLugar?: boolean } = {}) {
   const navigate = useNavigate();
   const ir = useIrParaOChamado();
-  return useCallback((codigo: string) => navigate(enderecoDoChamado(codigo), ir), [navigate, ir]);
+  const noLugar = !!o.noLugar;
+  return useCallback((codigo: string) => navigate(enderecoDoChamado(codigo), noLugar && ir.state ? { ...ir, replace: true } : ir), [navigate, ir, noLugar]);
 }
 /** O link de um chamado: abre na janela grande (as mesmas regras do `useIrParaOChamado`). */
 export function LinkDoChamado({ codigo, ...props }: Omit<LinkProps, 'to' | 'state' | 'replace'> & { codigo: string }) {
@@ -197,6 +204,21 @@ export function LinkDoChamado({ codigo, ...props }: Omit<LinkProps, 'to' | 'stat
 }
 
 export const painelDe = (opcoes: OpcoesAtendimento | undefined, id: string | null | undefined): Painel | undefined => opcoes?.paineis.find((p) => p.id === id);
+
+/**
+ * Os assuntos para escolher no chamado, em pastas (2.2, o Luan: "Operadora e operadora vc1 aqui deveria ser apenas para
+ * facilitar a visualização e n ser uma opção, ele poderia fazer como se fossem pastas"): o assunto que tem outros dentro
+ * vira o título do grupo e não se escolhe; escolhe-se o de dentro. `lista`: os que aparecem (os ativos do painel e o de
+ * agora); `todos`: para escrever o caminho inteiro. O de agora que é uma pasta (escolhido antes do 2.2) continua escrito
+ * na caixa. Nos filtros (o quadro, a lista), a pasta continua escolhível: filtra ela e o que está dentro.
+ */
+export function assuntosEmPastas(lista: Assunto[], todos: Assunto[]): OpcaoBusca[] {
+  const comFilho = new Set(lista.map((a) => a.paiId).filter((x): x is string => !!x));
+  return emOrdemDeArvore(lista).map((a) => ({
+    id: a.id, nome: caminhoDoAssunto(a.id, todos), rotulo: a.nome, nivel: a.profundidade - 1,
+    pasta: comFilho.has(a.id), dica: comFilho.has(a.id) ? undefined : a.descricao ?? undefined,
+  }));
+}
 /** O painel é de Vendas (2.0.1, decisão 0050)? A negociação tem o valor, o Ganho e o Perdido no lugar do prazo e dos níveis. */
 export const ehDeVendas = (opcoes: OpcoesAtendimento | undefined, painelId: string | null | undefined) => painelDe(opcoes, painelId)?.tipo === 'vendas';
 export const etapaDe = (opcoes: OpcoesAtendimento | undefined, painelId: string, etapaId: string) => painelDe(opcoes, painelId)?.etapas.find((e) => e.id === etapaId);
