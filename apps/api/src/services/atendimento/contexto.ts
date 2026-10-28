@@ -9,11 +9,11 @@
  */
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
-  carriers, clients, newId, products, roles, ticketEvents, ticketFields, ticketNotes, ticketPanels, ticketStages, ticketSubjects, tickets, users,
+  carriers, clients, newId, productModules, products, roles, ticketEvents, ticketFields, ticketNotes, ticketPanels, ticketStages, ticketSubjects, tickets, users,
   type Db,
 } from '@gestor/db';
 import {
-  ajustesDaNiaCompletos, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, painelContaPrazo, estadoDosPrazos, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
+  ajustesDaNiaCompletos, ajustesDoPainelCompletos, ajustesPrazosCompletos, caminhoDoAssunto, campoLigado, painelContaPrazo, estadoDosPrazos, progressoDasPartes, situacaoDaEtapa, textoDeBusca, textoDoEvento, textosDosCampos,
   valoresVisiveis,
   type AjustesDaNia, type AjustesPrazos, type Assunto, type CampoPersonalizado, type CartaoChamado, type CartaoParaLista, type CorPainel, type Espera, type EtapaPainel,
   type EventoChamado, type Nivel, type Obrigatorio, type OpcaoDoCampo, type Origem, type Painel, type PessoaCurta, type TipoCampo, type TipoEvento, type Gravidade, type Alcance,
@@ -62,6 +62,8 @@ export function etapaDaLinha(e: LinhaEtapa): EtapaPainel {
     id: e.id, nome: e.name, tipo: e.kind as EtapaPainel['tipo'], nivel: (e.level as Nivel | null) ?? null,
     obrigatorios: e.requiredFields as Obrigatorio[], avisar: e.notifyUserIds,
     resultado: e.outcome === 'ganho' || e.outcome === 'perdido' ? e.outcome : null,
+    // a implantação (2.3): a etapa de Vendas que abre o card, a de Gestão que liga no cadastro
+    abreImplantacao: e.opensPanelId ?? null, ligaNoCadastro: e.activatesProducts,
   };
 }
 
@@ -131,7 +133,7 @@ export type Contexto = {
   etapas: Map<string, { etapa: EtapaPainel; painelId: string; ordem: number; saiu: boolean }>;
   pessoas: Map<string, { nome: string; ativo: boolean }>;
   clientes: Map<string, string>;
-  produtos: Map<string, { nome: string; cor: string }>;
+  produtos: Map<string, { nome: string; cor: string; codigo?: string }>;
   operadoras: Map<string, string>;
   assuntos: Assunto[];
   prazos: AjustesPrazos;
@@ -153,12 +155,22 @@ export function campoDaLinha(c: typeof ticketFields.$inferSelect): CampoPersonal
     ativo: c.active, ordem: c.sortOrder,
     // só a lista de uma opção inclui na hora (o tipo não muda, mas a marca guardada vale só para ela)
     incluirNaHora: c.kind === 'lista' && c.inlineOptions,
+    parte: c.section?.trim() || null, produtoId: c.productId ?? null,
   };
 }
-/** Os campos dos painéis, na ordem de cada painel (o painel que saiu leva os dele). */
+/**
+ * Os campos dos painéis, na ordem de cada painel (o painel que saiu leva os dele). Os módulos do produto (2.3) ganham as
+ * opções do catálogo: os módulos do produto do campo (o da lixeira fica desativado — quem já o marcou continua com ele).
+ */
 export async function carregarCampos(db: Db, painelId?: string): Promise<CampoPersonalizado[]> {
   const linhas = await db.select().from(ticketFields).where(painelId ? eq(ticketFields.panelId, painelId) : sql`true`);
-  return linhas.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR')).map(campoDaLinha);
+  const campos = linhas.sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'pt-BR')).map(campoDaLinha);
+  if (!campos.some((c) => c.tipo === 'modulos')) return campos;
+  const mods = await db.select({ id: productModules.id, nome: productModules.name, produtoId: productModules.productId, ativo: productModules.active, saiu: productModules.deletedAt })
+    .from(productModules).orderBy(asc(productModules.sortOrder), asc(productModules.name));
+  return campos.map((c) => (c.tipo !== 'modulos' ? c : {
+    ...c, opcoes: mods.filter((m) => m.produtoId === c.produtoId).map((m) => ({ id: m.id, nome: m.nome, ativa: m.ativo && !m.saiu })),
+  }));
 }
 /** Os campos de um painel (todos, ou só os ativos). */
 export const camposDoPainel = (ctx: Pick<Contexto, 'campos'>, painelId: string, soAtivos = false) =>
@@ -170,7 +182,7 @@ export async function carregarContexto(db: Db, agora: Date = new Date()): Promis
     carregarCampos(db),
     db.select({ id: users.id, name: users.name, active: users.active }).from(users),
     db.select({ id: clients.id, nome: clients.tradeName }).from(clients),
-    db.select({ id: products.id, nome: products.name, cor: products.color }).from(products),
+    db.select({ id: products.id, nome: products.name, cor: products.color, codigo: products.code }).from(products),
     db.select({ id: carriers.id, nome: carriers.name }).from(carriers),
     db.select().from(ticketSubjects),
     lerPrazos(db),
@@ -180,7 +192,7 @@ export async function carregarContexto(db: Db, agora: Date = new Date()): Promis
     etapas: new Map(todasAsEtapas.map((e) => [e.id, { etapa: etapaDaLinha(e), painelId: e.panelId, ordem: e.sortOrder, saiu: !!e.deletedAt }])),
     pessoas: new Map(ps.map((p) => [p.id, { nome: p.name, ativo: p.active }])),
     clientes: new Map(cs.map((c) => [c.id, c.nome])),
-    produtos: new Map(prs.map((p) => [p.id, { nome: p.nome, cor: p.cor }])),
+    produtos: new Map(prs.map((p) => [p.id, { nome: p.nome, cor: p.cor, codigo: p.codigo }])),
     operadoras: new Map(ops.map((o) => [o.id, o.nome])),
     assuntos: as.map(assuntoDaLinha),
     prazos,
@@ -266,6 +278,8 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     resultado: e?.etapa.resultado ?? null, motivoPerda: e?.etapa.resultado === 'perdido' ? t.lostReason ?? null : null,
     // o lugar que a equipe escolheu arrastando (2.1: só vale onde a ordem é à mão)
     ordemNoQuadro: t.boardPosition ?? null,
+    // as partes da ficha (2.3, a implantação), com a conta de cada uma: só dos campos do produto que o chamado tem
+    partes: progressoDasPartes(camposDoPainel(ctx, t.panelId, true), usa('produtos') ? t.productIds : [], t.customFields as ValoresDosCampos | null),
   };
 }
 

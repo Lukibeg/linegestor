@@ -263,7 +263,7 @@ describe('os valores: a mensalidade é o Valor atribuído', () => {
   });
 });
 
-const campoDoGestor = (c: Partial<CampoPersonalizado> & Pick<CampoPersonalizado, 'id' | 'nome' | 'tipo'>): CampoPersonalizado => ({ painelId: 'com', dica: null, opcoes: [], ativo: true, ordem: 0, incluirNaHora: false, ...c });
+const campoDoGestor = (c: Partial<CampoPersonalizado> & Pick<CampoPersonalizado, 'id' | 'nome' | 'tipo'>): CampoPersonalizado => ({ painelId: 'com', dica: null, opcoes: [], ativo: true, ordem: 0, incluirNaHora: false, parte: null, produtoId: null, ...c });
 const GESTOR_CAMPOS: CampoPersonalizado[] = [
   campoDoGestor({ id: 'f-cnpj', nome: 'CNPJ', tipo: 'texto' }),
   campoDoGestor({ id: 'f-origem', nome: 'Origem de lead', tipo: 'lista', opcoes: [{ id: 'o1', nome: 'Indicação', ativa: true }, { id: 'o2', nome: 'Site', ativa: true }] }),

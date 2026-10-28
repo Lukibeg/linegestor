@@ -41,7 +41,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, GitBranch, Layers, MessageCircle, MessagesSquare, Plus, RotateCcw, Siren, UserRoundPlus, X } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
-  acharContato, caminhoDoAssunto, campoLigado, chaveDaEtiqueta, chaveDoCampo, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
+  acharContato, caminhoDoAssunto, campoAparece, campoLigado, chaveDaEtiqueta, chaveDoCampo, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
   paraBusca, prioridadeSugeridaDoPainel, valorPreenchido, MAX_LETRAS_DO_LINK_DA_CONVERSA, sessaoDaConversa,
   type CorEtiqueta,
   type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
@@ -278,8 +278,14 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const falta = (c: string) => faltando.has(c);
   /** o painel usa este campo do sistema? (desligado em Ajustes › Campos, ele não aparece aqui) */
   const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
-  /** os campos que o painel criou (os ativos), na ordem dos Ajustes */
-  const camposDoPainel = useMemo(() => opcoes.campos.filter((c) => c.painelId === painel.id && c.ativo), [opcoes.campos, painel.id]);
+  /**
+   * os campos que o painel criou (os ativos), na ordem dos Ajustes — o de um produto só com o produto escolhido; os de uma
+   * parte (2.3: a curadoria, a configuração) são preenchidos depois, na ficha (a não ser o que o painel pede para abrir)
+   */
+  const camposDoPainel = useMemo(
+    () => opcoes.campos.filter((c) => c.painelId === painel.id && campoAparece(c, f.produtos) && (!c.parte || painel.ajustes.obrigatoriosAoAbrir.includes(chaveDoCampo(c.id)))),
+    [opcoes.campos, painel.id, painel.ajustes.obrigatoriosAoAbrir, f.produtos],
+  );
 
   // ---------- o pai e o incidente (pelo código, do endereço) ----------
   const pai = useFicha(refPai);
@@ -914,7 +920,9 @@ function CampoDoPainel({ c, valor, obrigatorio, falta, onChange }: {
           </select>
         </Rotulado>
       );
-    case 'lista_varios': {
+    case 'lista_varios':
+    case 'caixinhas':
+    case 'modulos': {
       const marcados = Array.isArray(valor) ? valor : [];
       return (
         <Rotulado {...comum} grupo className="sm:col-span-2">

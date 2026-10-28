@@ -317,6 +317,7 @@ export const realApi: Api = {
     criar: (d) => http('POST', '/atendimento/chamados', d),
     alterar: (id, d) => http('PATCH', `/atendimento/chamados/${id}`, d),
     mover: (id, d) => http('POST', `/atendimento/chamados/${id}/mover`, d),
+    aoMover: (id, d) => http('GET', `/atendimento/chamados/${id}/ao-mover${qs(d)}`),
     posicionar: (id, d) => http('POST', `/atendimento/chamados/${id}/posicao`, d),
     pedirANia: (id) => http('POST', `/atendimento/chamados/${id}/nia`, {}),
     assumir: (id) => http('POST', `/atendimento/chamados/${id}/assumir`, {}),

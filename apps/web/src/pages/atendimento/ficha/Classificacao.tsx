@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Tags, UserRound } from 'lucide-react';
 import {
-  ALCANCES, caminhoDoAssunto, campoLigado, chaveDoCampo, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, GRAVIDADES,
+  ALCANCES, campoAparece, caminhoDoAssunto, campoLigado, ehCaixinhas, chaveDoCampo, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, GRAVIDADES,
   MAX_LETRAS_DO_CAMPO, mesmoValorDoCampo, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, paraBusca, PRIORIDADES, textoDoValor,
   type Alcance, type CampoDoSistema, type CorEtiqueta, type CampoPersonalizado, type ChamadoAlterarEntrada, type Gravidade, type Prioridade, type ValorDoCampo,
 } from '@gestor/shared';
@@ -21,6 +21,7 @@ import { Campo, Chip, EscolherComBusca, Modal, Spinner } from '../../../componen
 import { Avatar, assuntosEmPastas, useIncluirOpcao, usePode } from '../comum.js';
 import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { ErroPerto, MarcaFalta, Secao, useAberta, useAcao, usePosicaoFlutuante } from './base.js';
+import { Caixinhas } from './Caixinhas.js';
 
 /** Um campo da classificação: o rótulo (com a marca do que falta e a rodinha), o controle e o erro. */
 function Linha({ id, campo, rotulo, ocupado, erro, children, extra }: { id: string; campo: string; rotulo: string; ocupado?: boolean; erro?: string | null; children: ReactNode; extra?: ReactNode }) {
@@ -259,11 +260,14 @@ function ProdutosEOperadoras() {
  */
 function CamposDoPainel() {
   const { f, opcoes } = useAberta();
-  const campos = opcoes.campos.filter((c) => c.painelId === f.painelId && c.ativo && c.tipo !== 'texto_longo');
-  return <>{campos.map((c) => <CampoNaFicha key={c.id} c={c} />)}</>;
+  // os de uma parte (2.3) ficam no meio da ficha (as partes); o de um produto, só no chamado que tem o produto
+  const produtos = f.produtos.map((p) => p.id);
+  const campos = opcoes.campos.filter((c) => c.painelId === f.painelId && !c.parte && campoAparece(c, produtos) && c.tipo !== 'texto_longo');
+  return <>{campos.map((c) => (ehCaixinhas(c.tipo) ? <Caixinhas key={c.id} c={c} /> : <CampoNaFicha key={c.id} c={c} />))}</>;
 }
 
-function CampoNaFicha({ c }: { c: CampoPersonalizado }) {
+/** Um campo do painel na ficha (na classificação, ou numa parte da implantação). */
+export function CampoNaFicha({ c }: { c: CampoPersonalizado }) {
   const { f, pode } = useAberta();
   const acao = useAcao();
   const incluirOpcao = useIncluirOpcao();

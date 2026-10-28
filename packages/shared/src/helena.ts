@@ -1237,7 +1237,7 @@ export function camposDeFabrica(): CampoPersonalizado[] {
   return CAMPOS_DO_PAINEL_DE_VENDAS.map((c, i) => ({
     id: `fabrica:${c.nome}`, painelId: '', nome: c.nome, tipo: c.tipo, dica: c.dica, ativo: true, ordem: i,
     opcoes: c.opcoes.map((nome) => ({ id: `fabrica:${c.nome}:${nome}`, nome, ativa: true })),
-    incluirNaHora: c.tipo === 'lista' && !!c.incluirNaHora,
+    incluirNaHora: c.tipo === 'lista' && !!c.incluirNaHora, parte: null, produtoId: null,
   }));
 }
 

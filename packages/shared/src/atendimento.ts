@@ -60,9 +60,9 @@ export type TipoChamado = (typeof TIPOS_CHAMADO)[number];
 export const NOME_TIPO_CHAMADO: Record<TipoChamado, string> = { chamado: 'Chamado', problema: 'Problema' };
 
 /** `helena`: a negociação trazida do painel de vendas do Helena (2.0.3, decisão 0054) */
-export const ORIGENS = ['manual', 'robo', 'botao', 'agendado', 'api', 'helena'] as const;
+export const ORIGENS = ['manual', 'robo', 'botao', 'agendado', 'api', 'helena', 'comercial'] as const;
 export type Origem = (typeof ORIGENS)[number];
-export const NOME_ORIGEM: Record<Origem, string> = { manual: 'Aberto no Gestor', robo: 'O robô do LineChat', botao: 'O botão na conversa', agendado: 'Chamado agendado', api: 'Integração (n8n)', helena: 'Trazida do Helena' };
+export const NOME_ORIGEM: Record<Origem, string> = { manual: 'Aberto no Gestor', robo: 'O robô do LineChat', botao: 'O botão na conversa', agendado: 'Chamado agendado', api: 'Integração (n8n)', helena: 'Trazida do Helena', comercial: 'Aberta pelo Comercial' };
 
 /**
  * O tipo do painel (2.0.1, decisão 0050), como no Helena: **Gestão** (os chamados: prazos, níveis,
@@ -132,6 +132,16 @@ export type EtapaPainel = {
   avisar: string[];
   /** no painel de Vendas: a etapa final que diz como a negociação acabou (Ganho ou Perdido); nas outras, nulo */
   resultado: ResultadoDaVenda | null;
+  /**
+   * No painel de Vendas (2.3): a negociação que chega aqui abre a implantação no painel com este id (cria o cliente, se
+   * ainda não é, põe os produtos no cadastro e abre o card). Nulo: nada.
+   */
+  abreImplantacao?: string | null;
+  /**
+   * No painel de Gestão (2.3, o Validado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos
+   * dele (com a data de ativação) e os módulos marcados nos campos "Módulos do produto".
+   */
+  ligaNoCadastro?: boolean;
 };
 
 export type AjustesDoPainel = {
@@ -359,11 +369,12 @@ export function prioridadeSugeridaDoPainel(
 export const painelContaPrazo = (ajustes: Pick<AjustesDoPainel, 'contaPrazo' | 'camposDesligados'>) => ajustes.contaPrazo && campoLigado(ajustes, 'prioridade');
 
 /** Os campos que quem cuida dos chamados cria em cada painel. O tipo não muda depois de criado. */
-export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios'] as const;
+export const TIPOS_CAMPO = ['texto', 'texto_longo', 'numero', 'data', 'sim_nao', 'lista', 'lista_varios', 'caixinhas', 'modulos'] as const;
 export type TipoCampo = (typeof TIPOS_CAMPO)[number];
 export const NOME_TIPO_CAMPO: Record<TipoCampo, string> = {
   texto: 'Texto curto', texto_longo: 'Texto longo', numero: 'Número', data: 'Data', sim_nao: 'Sim ou não',
   lista: 'Lista (escolhe uma opção)', lista_varios: 'Lista (escolhe várias)',
+  caixinhas: 'Caixinhas (o que já foi feito)', modulos: 'Módulos do produto',
 };
 export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   texto: 'Uma linha (até 300 letras): um protocolo, uma versão, um número de série.',
@@ -373,8 +384,19 @@ export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   sim_nao: 'Sim ou não (fica vazio até alguém responder).',
   lista: 'Uma das opções que você escrever.',
   lista_varios: 'Uma ou mais das opções que você escrever.',
+  caixinhas: 'Uma lista de tarefas: cada opção é uma caixinha, e a ficha mostra quem marcou e quando (a configuração, os testes).',
+  modulos: 'Os módulos do produto escolhido abaixo (Administração › Produtos), para marcar os que o cliente vai usar. Na etapa que liga no cadastro, os marcados ficam ativos na ficha do cliente.',
 };
 export const ehLista = (t: TipoCampo) => t === 'lista' || t === 'lista_varios';
+/**
+ * As caixinhas (2.3): cada opção marcada guarda quem marcou e quando (`marcas` do chamado). Os módulos do produto são
+ * caixinhas cujas opções vêm do catálogo (Administração › Produtos), não escritas no campo.
+ */
+export const ehCaixinhas = (t: TipoCampo) => t === 'caixinhas' || t === 'modulos';
+/** O campo tem opções escritas pela equipe nos Ajustes (as listas e as caixinhas; os módulos vêm do catálogo). */
+export const temOpcoesEscritas = (t: TipoCampo) => ehLista(t) || t === 'caixinhas';
+/** O valor do campo é uma lista de opções marcadas (a lista de várias e as caixinhas). */
+export const marcaVarias = (t: TipoCampo) => t === 'lista_varios' || ehCaixinhas(t);
 export const MAX_CAMPOS_DO_PAINEL = 30;
 export const MAX_OPCOES_DO_CAMPO = 50;
 /** Até quantas letras cabem no texto curto e no longo. */
@@ -398,7 +420,20 @@ export type CampoPersonalizado = {
    * (2.0.3, a Indicação: "a indicação tem q ser predefinido e eu tenho que conseguir criar por aqui mesmo").
    */
   incluirNaHora: boolean;
+  /**
+   * A parte da ficha (2.3, a implantação: "Curadoria", "Configuração", "Testes"): com ela, o campo sai da classificação e
+   * vai para o meio da ficha, junto dos outros da mesma parte. Nulo: onde sempre ficou.
+   */
+  parte: string | null;
+  /** Só aparece quando o chamado tem este produto (2.3: o bloco do LineChat, o do LinePBX). Nulo: sempre. */
+  produtoId: string | null;
 };
+/**
+ * Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção. O valor do campo continua a lista das marcadas; isto
+ * é o que a ficha escreve ao lado ("Luan, 28/10 14:32"). Desmarcar tira a marca.
+ */
+export type MarcaDaCaixinha = { porId: string | null; porNome: string | null; em: string };
+export type MarcasDosCampos = Record<string, Record<string, MarcaDaCaixinha>>;
 /** O valor de um campo no chamado: texto, número, sim/não, a data (AAAA-MM-DD) ou o id das opções. */
 export type ValorDoCampo = string | number | boolean | string[];
 /** Os valores dos campos do painel num chamado, pelo id do campo. */
@@ -511,8 +546,10 @@ export function normalizarValorDoCampo(campo: Pick<CampoPersonalizado, 'nome' | 
       return erro('responda sim ou não');
     }
     case 'lista':
-    case 'lista_varios': {
-      const pedidos: unknown[] | null = Array.isArray(v) ? v : typeof v === 'string' ? (campo.tipo === 'lista_varios' ? v.split(/[;\n]/) : [v]) : null;
+    case 'lista_varios':
+    case 'caixinhas':
+    case 'modulos': {
+      const pedidos: unknown[] | null = Array.isArray(v) ? v : typeof v === 'string' ? (marcaVarias(campo.tipo) ? v.split(/[;\n]/) : [v]) : null;
       if (!pedidos || pedidos.some((x) => typeof x !== 'string')) return erro('escolha uma das opções');
       const ja = new Set(Array.isArray(atual) ? atual : typeof atual === 'string' ? [atual] : []);
       const ids: string[] = [];
@@ -543,7 +580,9 @@ export function textoDoValor(campo: Pick<CampoPersonalizado, 'tipo' | 'opcoes'>,
     case 'data': { const m = DATA_ISO.exec(String(v)); return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v); }
     case 'sim_nao': return v === true ? 'Sim' : v === false ? 'Não' : String(v);
     case 'lista':
-    case 'lista_varios': {
+    case 'lista_varios':
+    case 'caixinhas':
+    case 'modulos': {
       const ids = Array.isArray(v) ? v : [String(v)];
       return ids.map((id) => campo.opcoes.find((o) => o.id === id)?.nome ?? '(opção que saiu)').join(', ');
     }
@@ -995,6 +1034,10 @@ export const EtapaGravarSchema = z.object({
   avisar: z.array(z.string()).max(50).default([]),
   /** no painel de Vendas: Ganho ou Perdido (só numa etapa que fecha) */
   resultado: z.enum(RESULTADOS_DA_VENDA).nullable().default(null),
+  /** no painel de Vendas (2.3): a negociação que chega aqui abre a implantação neste painel (de Gestão); nulo, nada */
+  abreImplantacao: z.string().trim().max(60).nullish().transform((v) => v || null),
+  /** no painel de Gestão (2.3): o chamado que chega aqui liga os produtos e os módulos no cadastro do cliente */
+  ligaNoCadastro: z.boolean().default(false),
 });
 /** A meta e o valor: em centavos (R$ 1.234,56 = 123456), até R$ 100 milhões. */
 export const MAX_VALOR_EM_CENTAVOS = 10_000_000_000;
@@ -1130,6 +1173,11 @@ export const PainelGravarSchema = z.object({
    */
   etapas: ListaDeEtapasSchema.optional(),
   destino: DestinoDosChamadosSchema,
+  /**
+   * O modelo do painel novo (2.3): 'implantacao' cria o painel de Gestão com as etapas, os campos e os ajustes da
+   * implantação (MODELO_DA_IMPLANTACAO). Vale só ao criar.
+   */
+  modelo: z.enum(['implantacao']).nullish(),
 });
 /**
  * As etapas de um painel de Vendas: uma etapa Ganho e uma Perdido, as duas finais (que fecham a
@@ -1215,10 +1263,20 @@ export const CampoGravarSchema = z.object({
   etapas: z.array(z.string().min(1).max(60)).max(MAX_ETAPAS_DO_PAINEL).default([]),
   /** a lista de uma opção em que quem trabalha inclui a opção nova ali mesmo (2.0.3) */
   incluirNaHora: z.boolean().default(false),
+  /**
+   * A parte da ficha (2.3: "Curadoria", "Configuração", "Testes"): com ela, o campo vai para o meio da ficha, junto dos
+   * outros da mesma parte. Vazio: na classificação (ou junto do relato, o texto longo), como sempre.
+   */
+  parte: z.string().trim().max(40, 'O nome da parte vai até 40 letras').nullish().transform((v) => v || null),
+  /** Só aparece no chamado que tem este produto (2.3). Os módulos do produto precisam dele. */
+  produtoId: z.string().trim().max(60).nullish().transform((v) => v || null),
 }).superRefine((c, ctx) => {
-  if (!ehLista(c.tipo)) return;
+  if (c.tipo === 'modulos' && !c.produtoId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['produtoId'], message: 'Escolha o produto: os módulos são os dele' });
+  if (!temOpcoesEscritas(c.tipo)) return;
   // a que se inclui na hora pode começar vazia: as opções nascem nos chamados
-  if (!c.opcoes.some((o) => o.ativa) && !(c.tipo === 'lista' && c.incluirNaHora)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'A lista precisa de pelo menos uma opção' });
+  if (!c.opcoes.some((o) => o.ativa) && !(c.tipo === 'lista' && c.incluirNaHora)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: c.tipo === 'caixinhas' ? 'As caixinhas precisam de pelo menos uma opção' : 'A lista precisa de pelo menos uma opção' });
+  }
   const vistas = new Set<string>();
   for (const o of c.opcoes) {
     const k = paraBusca(o.nome);
@@ -1360,6 +1418,24 @@ export const MoverSchema = z.object({
    * o alto). Sem ele, ela chega no alto da etapa, pela regra de sempre.
    */
   depoisDe: z.string().min(1).nullish(),
+  /**
+   * A negociação que chega na etapa que abre a implantação (2.3): o cliente — um que já está no cadastro, ou o que vai ser
+   * criado (o nome fantasia, a razão social e o CNPJ). Sem isto, vale o que a negociação tem (a empresa e o campo CNPJ).
+   */
+  implantacao: z.object({
+    clienteId: z.string().min(1).max(60).nullish(),
+    nomeFantasia: TextoOpcional(120),
+    razaoSocial: TextoOpcional(200),
+    cnpj: z.string().trim().max(30).nullish(),
+  }).optional(),
+});
+/** O que a etapa faz ao chegar (2.3): a etapa e, na implantação, o cliente escolhido ou o CNPJ escrito na janela. */
+export const AoMoverSchema = z.object({
+  etapaId: z.string().min(1).max(60),
+  clienteId: z.string().max(60).nullish(),
+  cnpj: z.string().trim().max(30).nullish(),
+  nomeFantasia: z.string().trim().max(120).nullish(),
+  razaoSocial: z.string().trim().max(200).nullish(),
 });
 /** Mudar o lugar na coluna do quadro, arrastando (2.1): o cartão que fica logo acima; nulo, o alto. */
 export const PosicaoNoQuadroSchema = z.object({ depoisDe: z.string().min(1).nullable() });
@@ -1808,7 +1884,17 @@ export type CartaoChamado = {
    * arrumados.
    */
   ordemNoQuadro: number | null;
+  /**
+   * As partes da ficha (2.3, a implantação: a Curadoria, a Configuração, os Testes), com quanto já foi feito em cada uma —
+   * só dos campos que o chamado mostra (os do produto que ele tem). Vazio no painel sem partes.
+   */
+  partes: ProgressoDaParte[];
 };
+/** Uma parte da ficha e quanto já foi feito: os campos preenchidos e as caixinhas marcadas (os módulos não contam). */
+export type ProgressoDaParte = { parte: string; feitos: number; total: number };
+/** O card da implantação, visto da negociação (2.3): onde ele está. */
+/** Um card que a negociação abriu na implantação (2.3). `podeAbrir`: quem olha vê o painel dele. */
+export type ImplantacaoDaNegociacao = { id: string; codigo: string; titulo: string; painelId: string; painel: string; etapa: string; situacao: SituacaoDoChamado; podeAbrir: boolean };
 
 export const TIPOS_EVENTO = [
   'criado', 'etapa', 'responsavel', 'campo', 'prioridade', 'espera', 'ligacao', 'pai', 'filho', 'problema', 'incidente',
@@ -1816,6 +1902,8 @@ export const TIPOS_EVENTO = [
   'cliente_respondeu', 'prazo', 'fechou_sozinho', 'observador', 'lixeira',
   // uma linha do histórico do Helena que não tem um jeito do Gestor ("A etiqueta X foi adicionada"): 2.0.3
   'helena',
+  // a implantação (2.3): a negociação que abriu o card na Implantação (e o cliente criado); o card que ligou no cadastro
+  'implantacao', 'cadastro',
 ] as const;
 export type TipoEvento = (typeof TIPOS_EVENTO)[number];
 export type EventoChamado = {
@@ -1878,6 +1966,11 @@ export type FichaChamado = CartaoChamado & {
   tempo: { total: number; itens: TempoGasto[] };
   operadora: CasoOperadora[];
   trajetoria: PassoTrajetoria[];
+  /** quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção */
+  marcas: MarcasDosCampos;
+  /** a implantação (2.3): no card, a negociação de onde ele veio; na negociação, os cards que ela abriu */
+  daNegociacao: { id: string; codigo: string; titulo: string; podeAbrir: boolean } | null;
+  implantacoes: ImplantacaoDaNegociacao[];
   /** etapa (id) → o que falta para entrar nela */
   faltam: Record<string, Array<Obrigatorio | 'validacao' | 'motivoPerda'>>;
   /** etapa (id) → os filhos que travam (vazio = nada trava) */
@@ -2070,7 +2163,16 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     }
     case 'responsavel': return d.para ? (d.de ? `passou de ${d.de.nome} para ${d.para.nome}` : `ficou com ${d.para.nome}`) : `tirou o responsável${d.de ? ` (${d.de.nome})` : ''}`;
     // texto longo (relato, descrição, solução): o histórico diz só que mudou (o texto está no chamado)
-    case 'campo': return d.longo ? `editou ${d.campo}` : `mudou ${d.campo}${d.de ? ` de "${d.de}"` : ''} para ${d.para ? `"${d.para}"` : '(vazio)'}`;
+    case 'campo': {
+      if (d.longo) return `editou ${d.campo}`;
+      // as caixinhas (2.3): o que foi marcado e desmarcado, e não a lista inteira de antes e de depois
+      if (d.marcou || d.desmarcou) {
+        const m = (d.marcou as string[] | undefined) ?? [];
+        const x = (d.desmarcou as string[] | undefined) ?? [];
+        return [m.length ? `marcou em ${d.campo}: ${m.join(', ')}` : '', x.length ? `${m.length ? 'e desmarcou' : `desmarcou em ${d.campo}:`} ${x.join(', ')}` : ''].filter(Boolean).join(' ');
+      }
+      return `mudou ${d.campo}${d.de ? ` de "${d.de}"` : ''} para ${d.para ? `"${d.para}"` : '(vazio)'}`;
+    }
     case 'prioridade': return `mudou a prioridade${d.de ? ` de ${NOME_PRIORIDADE[d.de as Prioridade] ?? d.de}` : ''} para ${d.para ? NOME_PRIORIDADE[d.para as Prioridade] ?? d.para : '(vazio)'}${d.sugerida && d.para !== d.sugerida ? ` (a sugerida era ${NOME_PRIORIDADE[d.sugerida as Prioridade]})` : ''}${d.motivo ? `: ${d.motivo}` : ''}`;
     case 'espera': return d.tipo ? `marcou: ${NOME_ESPERA[d.tipo as TipoEspera]}${d.motivo ? ` (${d.motivo})` : ''}` : `tirou a marca de espera${d.antes ? ` (${NOME_ESPERA[d.antes as TipoEspera]})` : ''}${d.minutos ? `, depois de ${d.duracao ?? ''}` : ''}`;
     case 'ligacao': return `${d.acao === 'desligou' ? 'desligou' : 'ligou'} ${d.texto ?? NOME_LIGACAO[d.tipo as TipoLigacaoChamado]?.de ?? d.tipo} ${d.com}`;
@@ -2094,6 +2196,21 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
     case 'lixeira': return d.acao === 'restaurou' ? 'restaurou da lixeira' : 'mandou para a lixeira';
     // a linha do Helena como estava escrita lá ("A etiqueta P/R Ingline foi adicionada")
     case 'helena': return `no Helena: ${d.texto ?? ''}`;
+    case 'implantacao': {
+      // na negociação: "abriu a implantação IMP-3 (criou o cliente Clínica Aurora; LinePBX e LineChat no cadastro)"
+      if (d.acao === 'abriu') {
+        const extras = [d.clienteNovo ? `criou o cliente ${d.cliente}` : d.cliente ? `o cliente ${d.cliente}` : '', (d.produtos as string[] | undefined)?.length ? `${emLista(d.produtos as string[])} no cadastro` : ''].filter(Boolean);
+        return `abriu a implantação ${d.codigo}${d.painel ? ` no painel ${d.painel}` : ''}${extras.length ? ` (${extras.join('; ')})` : ''}`;
+      }
+      // no card: "veio da negociação CIG-12"
+      return `veio da negociação ${d.codigo}${d.titulo ? ` (${d.titulo})` : ''}`;
+    }
+    case 'cadastro': {
+      const p = (d.produtos as string[] | undefined) ?? [];
+      const m = (d.modulos as string[] | undefined) ?? [];
+      if (!p.length && !m.length) return `chegou em ${d.etapa ?? 'Validado'}: o cadastro de ${d.cliente ?? 'cliente'} já estava em dia`;
+      return `ligou no cadastro de ${d.cliente ?? 'cliente'}${p.length ? ` ${p.length === 1 ? 'o produto' : 'os produtos'} ${emLista(p)}` : ''}${m.length ? `${p.length ? ' e' : ''} ${m.length === 1 ? 'o módulo' : 'os módulos'} ${emLista(m)}` : ''}${d.dia ? `, desde ${diaComAno(d.dia)}` : ''}`;
+    }
     default: return String(tipo);
   }
 }
@@ -2977,6 +3094,7 @@ export function sessaoDaConversa(texto: string | null | undefined, modelo?: stri
 export type ChamadoCriarEntrada = z.input<typeof ChamadoCriarSchema>;
 export type ChamadoAlterarEntrada = z.input<typeof ChamadoAlterarSchema>;
 export type MoverEntrada = z.input<typeof MoverSchema>;
+export type AoMoverEntrada = z.input<typeof AoMoverSchema>;
 export type ChecklistEntrada = z.input<typeof ChecklistSchema>;
 export type TempoEntrada = z.input<typeof TempoSchema>;
 export type OperadoraCasoEntrada = z.input<typeof OperadoraCasoSchema>;

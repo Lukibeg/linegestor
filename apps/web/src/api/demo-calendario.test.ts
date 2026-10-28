@@ -38,20 +38,20 @@ describe('os exemplos e quem vê o quê', () => {
     aviso.mockRestore();
   });
 
-  it('cada um vê os painéis de que participa; o Luan (cuida dos chamados) vê todos', async () => {
+  it('cada um vê os painéis de que participa (a Implantação, 2.3, é de todos); o Luan (cuida dos chamados) vê todos', async () => {
     const nomes = async () => (await api.opcoes()).paineis.map((p) => p.sigla);
     await entrar('admin');
-    expect(await nomes()).toEqual(['SUP', 'DEV', 'ADM', 'COM']);
+    expect(await nomes()).toEqual(['SUP', 'DEV', 'ADM', 'COM', 'IMP']);
     await entrar('tecnico');
-    expect(await nomes()).toEqual(['SUP', 'DEV']);
+    expect(await nomes()).toEqual(['SUP', 'DEV', 'IMP']);
     expect(await titulos()).not.toContain('Folga — Diego Farias');
     expect(await titulos()).not.toContain('Home office — Marina Costa');
     await entrar('operador');
-    expect(await nomes()).toEqual(['SUP', 'DEV', 'ADM']);
+    expect(await nomes()).toEqual(['SUP', 'DEV', 'ADM', 'IMP']);
     expect(await titulos()).toContain('Home office — Marina Costa');
     expect(await titulos()).not.toContain('Visita comercial — Construtora Horizonte');
     await entrar('diego');
-    expect(await nomes()).toEqual(['SUP', 'DEV', 'COM']);
+    expect(await nomes()).toEqual(['SUP', 'DEV', 'COM', 'IMP']);
     expect(await titulos()).toContain('Visita comercial — Construtora Horizonte');
     expect(await titulos()).not.toContain('Fechamento do mês com o financeiro');
     await entrar('camila');
@@ -59,7 +59,7 @@ describe('os exemplos e quem vê o quê', () => {
     // o Leitor vê, não mexe
     await entrar('leitor');
     const ol = await api.opcoes();
-    expect([ol.paineis.map((p) => p.sigla), ol.podeEditar, ol.podeCuidar]).toEqual([['SUP', 'DEV'], false, false]);
+    expect([ol.paineis.map((p) => p.sigla), ol.podeEditar, ol.podeCuidar]).toEqual([['SUP', 'DEV', 'IMP'], false, false]);
   });
 
   it('hoje, fora do escritório: cada um vê quem está fora nas equipes que vê', async () => {

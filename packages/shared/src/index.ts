@@ -23,3 +23,4 @@ export * from './helena.js';
 export * from './atendimento-relatorios.js';
 export * from './atendimento-visao.js';
 export * from './nia.js';
+export * from './implantacao.js';

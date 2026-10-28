@@ -16,9 +16,9 @@
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
 import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
-import { newId, ticketFields, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
+import { newId, products, ticketFields, ticketPanels, ticketStages, ticketSubjects, tickets, users, type Db } from '@gestor/db';
 import {
-  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, ehLista,
+  AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CAMPOS_DO_PAINEL_DE_VENDAS, ajustesDoPainelCompletos, assuntoEDescendentes, caminhoDoAssunto, chaveDoCampo, CAMPOS_DO_SISTEMA, MODELO_DA_IMPLANTACAO, temOpcoesEscritas,
   ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, etiquetasUnicas, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL, problemaNasEtapasDoTipo,
   lerListaDeAssuntos, limparObrigatorios, MAX_CAMPOS_DO_PAINEL, MAX_NIVEL_ASSUNTO, MAX_OPCOES_DO_CAMPO, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, nivelDoAssunto, nomeDoSistemaIgual,
   obrigatoriosDoPainel, paraBusca, situacaoDaEtapa,
@@ -85,8 +85,11 @@ async function conferirPessoas(db: Db, ids: string[]) {
 const painelParaAuditoria = (p: Painel) => ({
   nome: p.nome, sigla: p.sigla, descricao: p.descricao, cor: p.cor, tipo: p.tipo, acesso: p.acesso, pessoas: p.pessoas, ajustes: p.ajustes, ativo: p.ativo,
 });
-const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[]; resultado?: string | null }) =>
-  ({ nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar, ...(e.resultado ? { resultado: e.resultado } : {}) });
+const etapaParaAuditoria = (e: { nome: string; tipo: string; nivel: number | null; obrigatorios: string[]; avisar: string[]; resultado?: string | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean }) =>
+  ({
+    nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar, ...(e.resultado ? { resultado: e.resultado } : {}),
+    ...(e.abreImplantacao ? { abreImplantacao: e.abreImplantacao } : {}), ...(e.ligaNoCadastro ? { ligaNoCadastro: true } : {}),
+  });
 /** O tipo do painel guardado (Gestão, se for de antes do 2.0.1). */
 const tipoDaLinha = (p: { kind: string }): TipoDePainel => (p.kind === 'vendas' ? 'vendas' : 'gestao');
 
@@ -139,11 +142,13 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
   const pessoas = unicos(d.pessoas);
   // o tipo (Gestão ou Vendas) é escolhido ao criar e não muda depois (o pedido de mudar fica de fora)
   const tipo: TipoDePainel = atual ? tipoDaLinha(atual) : d.tipo;
+  // o modelo Implantação (2.3): só ao criar, num painel de Gestão — as etapas, os campos e os ajustes dele
+  const modelo = !atual && tipo === 'gestao' && d.modelo === 'implantacao' ? MODELO_DA_IMPLANTACAO : null;
   const guardados = atual ? ajustesDoPainelCompletos(atual.settings as Partial<AjustesDoPainel>) : null;
   const deFabrica = tipo === 'vendas' ? AJUSTES_DO_PAINEL_DE_VENDAS : AJUSTES_PAINEL_PADRAO;
   // os campos do sistema que o painel usa: sem a lista no pedido, ficam como estão (quem muda é a aba
   // Campos); o painel novo nasce com o padrão (sem o alcance, "por enquanto"; o de Vendas, só com os produtos)
-  const camposDesligados = d.ajustes.camposDesligados ?? guardados?.camposDesligados ?? deFabrica.camposDesligados;
+  const camposDesligados = d.ajustes.camposDesligados ?? guardados?.camposDesligados ?? (modelo ?? { ajustes: deFabrica }).ajustes.camposDesligados;
   // o que pode ser pedido neste painel (os campos do sistema ligados e os campos dele): o resto sai das regras
   const validos = obrigatoriosDoPainel({ camposDesligados }, atual ? await carregarCampos(db, atual.id) : [], tipo);
   const ajustes: AjustesDoPainel = {
@@ -159,6 +164,8 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
     metaMensal: d.ajustes.metaMensal !== undefined ? d.ajustes.metaMensal : guardados?.metaMensal ?? null,
     // a negociação não tem prazo nem fecha sozinha
     ...(tipo === 'vendas' ? { contaPrazo: false, fecharSozinhoDias: null } : {}),
+    // a implantação também não (2.3: leva o tempo dela)
+    ...(modelo ? { contaPrazo: modelo.ajustes.contaPrazo, fecharSozinhoDias: modelo.ajustes.fecharSozinhoDias } : {}),
   };
   if (tipo === 'vendas' && !ajustes.motivosDePerda.length) throw new BadRequest('O painel de Vendas precisa de pelo menos um motivo de perda.');
   await conferirPessoas(db, [...pessoas, ...ajustes.supervisores]);
@@ -168,10 +175,20 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
   if (!atual) {
     const novoId = newId();
     // as etapas da janela (todas novas: um painel novo não tem etapa nenhuma ainda) ou as de fábrica do tipo
-    const etapas = d.etapas ?? (tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null }))).map((e) => ({ ...e, avisar: [] }));
+    const etapas: EtapaGravar[] = d.etapas ?? (
+      modelo ? modelo.etapas.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: !!e.ligaNoCadastro }))
+        : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS.map((e) => ({ ...e, abreImplantacao: null, ligaNoCadastro: false }))
+          : ETAPAS_DO_PAINEL_NOVO.map((e) => ({ ...e, resultado: null, abreImplantacao: null, ligaNoCadastro: false }))
+    ).map((e) => ({ ...e, avisar: [] }));
     const plano = await planejarEtapas(db, novoId, etapas, {}, validos, tipo);
-    // o painel de Vendas nasce com os campos do Comercial do Helena (CNPJ, contatos, origem, indicação)
-    const camposDeFabrica = tipo === 'vendas' ? CAMPOS_DO_PAINEL_DE_VENDAS : [];
+    // o painel de Vendas nasce com os campos do Comercial do Helena (CNPJ, contatos, origem, indicação); o da
+    // implantação (2.3), com os do Ingline - Ativações (a curadoria, a configuração e os testes de cada produto)
+    const doCatalogo = modelo ? await db.select({ id: products.id, code: products.code }).from(products).where(isNull(products.deletedAt)) : [];
+    const produtoDoCodigo = (code: string | null) => (code ? doCatalogo.find((x) => x.code === code)?.id ?? null : null);
+    const camposDeFabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: string[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null }> = modelo
+      // o campo de um produto que não está no catálogo fica de fora (os módulos não teriam de onde vir)
+      ? modelo.campos.filter((c) => !c.produto || produtoDoCodigo(c.produto)).map((c) => ({ ...c, produtoId: produtoDoCodigo(c.produto) }))
+      : tipo === 'vendas' ? [...CAMPOS_DO_PAINEL_DE_VENDAS] : [];
     await db.transaction(async (tx) => {
       const [ultimo] = await tx.select({ n: sql<number>`coalesce(max(${ticketPanels.sortOrder}), -1)::int` }).from(ticketPanels);
       await tx.insert(ticketPanels).values({ id: novoId, ...campos, kind: tipo, sortOrder: Number(ultimo?.n ?? -1) + 1 });
@@ -180,14 +197,15 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
         await tx.insert(ticketFields).values(camposDeFabrica.map((c, ordem) => ({
           id: newId(), panelId: novoId, name: c.nome, kind: c.tipo, help: c.dica, active: true, sortOrder: ordem,
           options: c.opcoes.map((nome) => ({ id: newId(), nome, ativa: true })), inlineOptions: !!c.incluirNaHora,
+          section: c.parte ?? null, productId: c.produtoId ?? null,
         })));
       }
     });
     const painel = await painelPronto(db, novoId);
     return {
       valor: painel,
-      resumo: `Criou o painel ${painel.nome} (${painel.sigla}${tipo === 'vendas' ? `, de ${NOME_TIPO_DE_PAINEL.vendas}` : ''}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`
-        + (camposDeFabrica.length ? ` e os campos ${lista(camposDeFabrica.map((c) => c.nome))}` : ''),
+      resumo: `Criou o painel ${painel.nome} (${painel.sigla}${tipo === 'vendas' ? `, de ${NOME_TIPO_DE_PAINEL.vendas}` : modelo ? ', pelo modelo Implantação' : ''}), com as etapas ${lista(painel.etapas.map((e) => e.nome))}`
+        + (camposDeFabrica.length ? (modelo ? ` e ${camposDeFabrica.length} campos (a curadoria, a configuração e os testes)` : ` e os campos ${lista(camposDeFabrica.map((c) => c.nome))}`) : ''),
       depois: { ...painelParaAuditoria(painel), etapas: painel.etapas.map(etapaParaAuditoria), ...(camposDeFabrica.length ? { campos: camposDeFabrica.map((c) => c.nome) } : {}) },
     };
   }
@@ -299,7 +317,7 @@ export type PlanoDasEtapas = {
   atuais: LinhaDaEtapa[];
   porId: Map<string, LinhaDaEtapa>;
   /** a lista final, na ordem: as novas já com o id que vão ter */
-  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[]; resultado: ResultadoDaVenda | null }>;
+  novas: Array<{ id: string; nova: boolean; ordem: number; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[]; resultado: ResultadoDaVenda | null; abreImplantacao: string | null; ligaNoCadastro: boolean }>;
   saem: LinhaDaEtapa[];
   destino: Record<string, string>;
 };
@@ -331,8 +349,22 @@ export async function planejarEtapas(db: Db, painelId: string, etapas: EtapaGrav
   const novas = etapas.map((e, ordem) => ({
     id: e.id ?? newId(), nova: !e.id, ordem, nome: e.nome, tipo: e.tipo, nivel: e.nivel,
     obrigatorios: limparObrigatorios(e.obrigatorios, validos), avisar: unicos(e.avisar), resultado: e.resultado ?? null,
+    // a implantação (2.3): abrir é da negociação (o painel de Vendas), numa etapa que não fecha; ligar no cadastro é do
+    // chamado (o painel de Gestão)
+    abreImplantacao: tipo === 'vendas' && !e.resultado ? e.abreImplantacao ?? null : null,
+    ligaNoCadastro: tipo === 'gestao' && !!e.ligaNoCadastro,
   }));
   await conferirPessoas(db, novas.flatMap((e) => e.avisar));
+  const destinos = [...new Set(novas.map((e) => e.abreImplantacao).filter((x): x is string => !!x))];
+  if (destinos.length) {
+    const achados = await db.select({ id: ticketPanels.id, nome: ticketPanels.name, kind: ticketPanels.kind }).from(ticketPanels)
+      .where(and(inArray(ticketPanels.id, destinos), isNull(ticketPanels.deletedAt)));
+    for (const id of destinos) {
+      const p = achados.find((x) => x.id === id);
+      if (!p || id === painelId) throw new BadRequest('O painel da implantação escolhido numa etapa não existe mais. Recarregue a tela e escolha de novo.');
+      if (p.kind === 'vendas') throw new BadRequest(`A implantação abre num painel de chamados (Gestão): o ${p.nome} é de Vendas.`);
+    }
+  }
 
   // as que saem: com chamados (fora da lixeira, que é o que a equipe vê), precisam de destino
   const saem = atuais.filter((e) => !ficam.has(e.id));
@@ -363,7 +395,10 @@ export async function aplicarEtapas(tx: Tx, ator: Ator, plano: PlanoDasEtapas, a
   const movidos: Movido[] = [];
 
   for (const e of novas) {
-    const campos = { name: e.nome, kind: e.tipo, level: e.nivel, sortOrder: e.ordem, requiredFields: e.obrigatorios, notifyUserIds: e.avisar, outcome: e.resultado };
+    const campos = {
+      name: e.nome, kind: e.tipo, level: e.nivel, sortOrder: e.ordem, requiredFields: e.obrigatorios, notifyUserIds: e.avisar, outcome: e.resultado,
+      opensPanelId: e.abreImplantacao, activatesProducts: e.ligaNoCadastro,
+    };
     if (e.nova) await tx.insert(ticketStages).values({ id: e.id, panelId: painelId, ...campos });
     else await tx.update(ticketStages).set(campos).where(eq(ticketStages.id, e.id));
   }
@@ -409,7 +444,8 @@ export function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   const mesmaLista = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((x, i) => x === [...b].sort()[i]);
   const ajustadas = ficaram.filter((e) => {
     const a = porId.get(e.id)!;
-    return a.kind !== e.tipo || (a.level ?? null) !== e.nivel || (a.outcome ?? null) !== e.resultado || !mesmaLista(a.requiredFields, e.obrigatorios) || !mesmaLista(a.notifyUserIds, e.avisar);
+    return a.kind !== e.tipo || (a.level ?? null) !== e.nivel || (a.outcome ?? null) !== e.resultado || !mesmaLista(a.requiredFields, e.obrigatorios) || !mesmaLista(a.notifyUserIds, e.avisar)
+      || (a.opensPanelId ?? null) !== e.abreImplantacao || a.activatesProducts !== e.ligaNoCadastro;
   }).map((e) => e.nome);
   const ordemAntes = atuais.filter((e) => ficaram.some((x) => x.id === e.id)).map((e) => e.id).join();
   const partes = [
@@ -422,7 +458,7 @@ export function resumoDasEtapas(plano: PlanoDasEtapas, movidos: Movido[]) {
   ].filter(Boolean);
   return {
     partes,
-    antes: atuais.map((e) => etapaParaAuditoria({ nome: e.name, tipo: e.kind, nivel: e.level, obrigatorios: e.requiredFields, avisar: e.notifyUserIds, resultado: e.outcome })),
+    antes: atuais.map((e) => etapaParaAuditoria({ nome: e.name, tipo: e.kind, nivel: e.level, obrigatorios: e.requiredFields, avisar: e.notifyUserIds, resultado: e.outcome, abreImplantacao: e.opensPanelId, ligaNoCadastro: e.activatesProducts })),
     depois: novas.map(etapaParaAuditoria),
   };
 }
@@ -574,7 +610,10 @@ export async function colarAssuntos(app: FastifyInstance, painelId: string, text
 //  OS CAMPOS DE CADA PAINEL (o pedido do Luan na prévia: o painel sem assuntos, com outros campos)
 // =====================================================================
 
-const campoParaAuditoria = (c: CampoPersonalizado) => ({ nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.opcoes, ativo: c.ativo, incluirNaHora: c.incluirNaHora });
+const campoParaAuditoria = (c: CampoPersonalizado) => ({
+  nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes, ativo: c.ativo, incluirNaHora: c.incluirNaHora,
+  ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}),
+});
 
 /**
  * Liga e desliga os campos do sistema no painel (o Assunto, o Tipo, a Gravidade, o Alcance, os
@@ -630,10 +669,13 @@ function conferirCampo(p: typeof ticketPanels.$inferSelect, outros: CampoPersona
   const ajustes = ajustesDoPainelCompletos(p.settings as Partial<AjustesDoPainel>);
   const doSistema = nomeDoSistemaIgual(d.nome, ajustes);
   if (doSistema) throw new Conflict(`Todo chamado do painel ${p.name} já tem o campo ${doSistema}: escolha outro nome.`);
-  const igual = outros.find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome));
-  if (igual) throw new Conflict(`O painel ${p.name} já tem o campo ${igual.nome}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
+  // os módulos são os do produto: trocar o produto trocaria as opções do que já foi marcado
+  if (atual?.tipo === 'modulos' && atual.produtoId !== d.produtoId) throw new BadRequest(`O produto dos módulos não muda depois de criado (${atual.nome}). Crie outro campo e desative este.`);
+  // o mesmo nome pode estar em produtos diferentes (2.3: o Horário de atendimento do LineChat e o do LinePBX)
+  const igual = outros.find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome) && (c.produtoId ?? null) === (d.produtoId ?? null));
+  if (igual) throw new Conflict(`O painel ${p.name} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
   if (atual && atual.tipo !== d.tipo) throw new BadRequest(`O tipo do campo não muda depois de criado (${atual.nome} é ${NOME_TIPO_CAMPO[atual.tipo]}). Crie outro campo e desative este.`);
-  if (!ehLista(d.tipo)) return [];
+  if (!temOpcoesEscritas(d.tipo)) return [];
   const existentes = atual?.opcoes ?? [];
   const opcoes: OpcaoDoCampo[] = d.opcoes.map((o) => {
     if (!o.id) return { id: newId(), nome: o.nome, ativa: o.ativa };
@@ -671,9 +713,17 @@ async function gravarOndeEPedido(tx: Tx, p: typeof ticketPanels.$inferSelect, ca
   return [...(abrir ? ['para abrir'] : []), ...etapas.filter((e) => pedidas.has(e.id)).map((e) => e.name)];
 }
 
+/** O produto do campo (2.3) existe no catálogo (fora da lixeira)? */
+async function conferirProdutoDoCampo(db: Db, produtoId: string | null) {
+  if (!produtoId) return;
+  const [p] = await db.select({ id: products.id }).from(products).where(and(eq(products.id, produtoId), isNull(products.deletedAt))).limit(1);
+  if (!p) throw new BadRequest('O produto escolhido para o campo não existe mais. Recarregue a tela e escolha de novo.');
+}
+
 export async function criarCampo(app: FastifyInstance, painelId: string, d: CampoGravar): Promise<Gravado<CampoPersonalizado>> {
   const db = app.db;
   const p = await linhaDoPainel(db, painelId);
+  await conferirProdutoDoCampo(db, d.produtoId);
   const outros = await carregarCampos(db, painelId);
   if (outros.length >= MAX_CAMPOS_DO_PAINEL) throw new BadRequest(`Um painel vai até ${MAX_CAMPOS_DO_PAINEL} campos (os desativados contam).`);
   const opcoes = conferirCampo(p, outros, d, null);
@@ -682,12 +732,11 @@ export async function criarCampo(app: FastifyInstance, painelId: string, d: Camp
   await db.transaction(async (tx) => {
     await tx.insert(ticketFields).values({
       id, panelId: painelId, name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: d.tipo === 'lista' && d.incluirNaHora,
-      sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1,
+      sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, section: d.parte, productId: d.produtoId,
     });
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
-  const [linha] = await db.select().from(ticketFields).where(eq(ticketFields.id, id)).limit(1);
-  const c = campoDaLinha(linha!);
+  const c = (await carregarCampos(db, painelId)).find((x) => x.id === id)!;
   return {
     valor: c,
     resumo: `Criou o campo ${c.nome} (${NOME_TIPO_CAMPO[c.tipo]}) no painel ${p.name}${pedido.length ? `, obrigatório ${lista(pedido.map((x) => (x === 'para abrir' ? x : `em ${x}`)))}` : ''}`,
@@ -701,15 +750,18 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
   if (!linha) throw new NotFound('Campo');
   // o campo de um painel que saiu saiu junto
   const p = await linhaDoPainel(db, linha.panelId).catch(() => { throw new NotFound('Campo'); });
-  const antes = campoDaLinha(linha);
+  const antes = (await carregarCampos(db, p.id)).find((x) => x.id === id) ?? campoDaLinha(linha);
+  await conferirProdutoDoCampo(db, d.produtoId);
   const opcoes = conferirCampo(p, await carregarCampos(db, p.id), d, antes);
   let pedido: string[] = [];
   await db.transaction(async (tx) => {
-    await tx.update(ticketFields).set({ name: d.nome, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date() }).where(eq(ticketFields.id, id));
+    await tx.update(ticketFields).set({
+      name: d.nome, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date(),
+      section: d.parte, productId: d.produtoId,
+    }).where(eq(ticketFields.id, id));
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
-  const [nova] = await db.select().from(ticketFields).where(eq(ticketFields.id, id)).limit(1);
-  const c = campoDaLinha(nova!);
+  const c = (await carregarCampos(db, p.id)).find((x) => x.id === id)!;
   const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';
   return {
     valor: c,

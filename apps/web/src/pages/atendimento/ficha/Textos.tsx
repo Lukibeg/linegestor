@@ -10,7 +10,7 @@
  */
 import { useState } from 'react';
 import { CircleAlert, Pencil } from 'lucide-react';
-import { campoLigado, chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
+import { campoAparece, campoLigado, chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO, nomeDoObrigatorio, type CampoPersonalizado, type ChamadoAlterarEntrada } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
 import { ErroPerto, MarcaFalta, TextoComReferencias, useAberta, useAcao } from './base.js';
@@ -93,8 +93,10 @@ export function Textos() {
     : f.tipoChamado === 'problema' ? DO_PROBLEMA
       // o painel que não usa o relato, a solução e a causa (2.1.2): eles saem da ficha (o problema continua com os dele)
       : DO_CHAMADO.filter((b) => !painel || ((b.campo !== 'relato' || campoLigado(painel.ajustes, 'relato')) && ((b.campo !== 'solucao' && b.campo !== 'causa') || campoLigado(painel.ajustes, 'solucao'))));
-  // os campos de texto longo do painel (os ativos), na ordem dos Ajustes
-  const longos = opcoes.campos.filter((c) => c.painelId === f.painelId && c.ativo && c.tipo === 'texto_longo');
+  // os campos de texto longo do painel (os ativos), na ordem dos Ajustes — os de uma parte (2.3) ficam nas partes, e o de um
+  // produto só aparece no chamado que tem o produto
+  const produtos = f.produtos.map((p) => p.id);
+  const longos = opcoes.campos.filter((c) => c.painelId === f.painelId && !c.parte && campoAparece(c, produtos) && c.tipo === 'texto_longo');
   return (
     <section className="card p-4 flex flex-col divide-y divide-line min-w-0" aria-label="Os textos do chamado">
       {blocos.map((b) => <BlocoDeTexto key={b.campo} b={b} />)}
@@ -112,7 +114,7 @@ function BlocoDeTexto({ b }: { b: Bloco }) {
 }
 
 /** Um campo de texto longo do painel (a "Passos para reproduzir" do Desenvolvimento, por exemplo). */
-function BlocoDoCampo({ c }: { c: CampoPersonalizado }) {
+export function BlocoDoCampo({ c }: { c: CampoPersonalizado }) {
   const { f } = useAberta();
   const v = f.campos[c.id];
   return (

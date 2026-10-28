@@ -1328,14 +1328,20 @@ export type NegociacaoDeExemplo = {
   etiquetas?: string[];
   por: Pessoa; responsavel: Pessoa | null;
   abriu: number;
-  /** as etapas do funil por onde passou, com o dia */
-  passos?: Array<{ para: 'Qualificação' | 'Proposta enviada' | 'Negociação'; dias: number }>;
+  /** as etapas do funil por onde passou, com o dia (a "Em processo de Implantação", 2.3, abre o card da implantação) */
+  passos?: Array<{ para: 'Qualificação' | 'Proposta enviada' | 'Negociação' | typeof ETAPA_QUE_ABRE_A_IMPLANTACAO; dias: number }>;
   /** como acabou: o dia em que foi marcada e, se for outro, o dia em que fechou de verdade */
   fim?: { resultado: 'ganho' | 'perdido'; dias: number; motivo?: string; fechouHaDias?: number };
   descricao?: string;
   /** a anotação, e o arquivo anexado nela (só a proposta de exemplo: o PDF que abre no leitor do Gestor) */
   anotacao?: { dias: number; por: Pessoa; texto: string; proposta?: string };
 };
+
+/**
+ * A etapa do Comercial que abre a implantação (2.3, decisão 0057): o Luan só marca o Ganho quando começa a faturar, e a
+ * implantação começa antes (na prévia, depois da Negociação).
+ */
+export const ETAPA_QUE_ABRE_A_IMPLANTACAO = 'Em processo de Implantação';
 
 /** A meta do mês do Comercial, em reais de mensalidade (a ativação não conta). */
 export const META_DO_COMERCIAL = 4_000;
@@ -1407,7 +1413,9 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     fim: { resultado: 'ganho', dias: 27 } },
   // ---- as que acabaram neste mês ----
   { chave: 'visao-clara', titulo: 'PABX em nuvem — 15 ramais', empresa: 'Ótica Visão Clara', contato: ['Fernanda', '5571999990209'], valor: 610, ativacao: 1_100, produtos: ['linepbx', 'voicenet'],
-    por: 'camila', responsavel: 'camila', abriu: 24, passos: [{ para: 'Qualificação', dias: 22 }, { para: 'Proposta enviada', dias: 17 }, { para: 'Negociação', dias: 13 }],
+    campos: { CNPJ: '45.812.033/0001-74' },
+    por: 'camila', responsavel: 'camila', abriu: 24,
+    passos: [{ para: 'Qualificação', dias: 22 }, { para: 'Proposta enviada', dias: 17 }, { para: 'Negociação', dias: 13 }, { para: ETAPA_QUE_ABRE_A_IMPLANTACAO, dias: 12 }],
     fim: { resultado: 'ganho', dias: 9 } },
   { chave: 'rota-sul', titulo: 'URA para o SAC', empresa: 'Transportadora Rota Sul', contato: ['Marcos', '5571999990210'], valor: 750, produtos: ['linepbx'],
     por: 'diego', responsavel: 'diego', abriu: 26, passos: [{ para: 'Qualificação', dias: 25 }, { para: 'Proposta enviada', dias: 19 }, { para: 'Negociação', dias: 12 }],
@@ -1419,12 +1427,15 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     por: 'diego', responsavel: 'diego', abriu: 15, passos: [{ para: 'Qualificação', dias: 14 }, { para: 'Proposta enviada', dias: 10 }],
     fim: { resultado: 'perdido', dias: 2, motivo: 'Adiou a decisão' } },
   { chave: 'movimento', titulo: 'LineChat — 12 atendentes', empresa: 'Academia Movimento', contato: ['Tiago', '5571999990212'], valor: 990, ativacao: 900, produtos: ['linechat'],
-    por: 'diego', responsavel: 'diego', abriu: 12, passos: [{ para: 'Qualificação', dias: 11 }, { para: 'Proposta enviada', dias: 7 }, { para: 'Negociação', dias: 4 }],
+    campos: { CNPJ: '37.654.012/0001-40' },
+    por: 'diego', responsavel: 'diego', abriu: 12,
+    passos: [{ para: 'Qualificação', dias: 11 }, { para: 'Proposta enviada', dias: 7 }, { para: 'Negociação', dias: 5 }, { para: ETAPA_QUE_ABRE_A_IMPLANTACAO, dias: 4 }],
     fim: { resultado: 'ganho', dias: 1 } },
   // ---- o funil de agora ----
   { chave: 'beira-mar', etiquetas: ['concorrência', 'retornar'], titulo: 'Atendimento com URA e filas', empresa: 'Hotel Beira Mar', contato: ['Vânia', '5571999990213'], valor: 1_580, ativacao: 2_500, produtos: ['linepbx', 'linechat'],
-    campos: { 'Origem de lead': 'Site' },
-    por: 'diego', responsavel: 'diego', abriu: 33, passos: [{ para: 'Qualificação', dias: 31 }, { para: 'Proposta enviada', dias: 23 }, { para: 'Negociação', dias: 14 }],
+    campos: { 'Origem de lead': 'Site', CNPJ: '29.184.765/0001-00' },
+    por: 'diego', responsavel: 'diego', abriu: 33,
+    passos: [{ para: 'Qualificação', dias: 31 }, { para: 'Proposta enviada', dias: 23 }, { para: 'Negociação', dias: 14 }, { para: ETAPA_QUE_ABRE_A_IMPLANTACAO, dias: 2 }],
     descricao: 'Hotel com 60 apartamentos, recepção 24h e central de reservas. Hoje usam uma central analógica alugada.' },
   { chave: 'estrela', etiquetas: ['quente'], titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214'], valor: 1_250, produtos: ['linepbx', 'voicenet'],
     porProduto: { linepbx: 980, voicenet: 270 }, ativacaoPorProduto: { linepbx: 1_500, voicenet: 400 },
@@ -1433,7 +1444,8 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     descricao: 'Três lojas e a fábrica. Querem o mesmo número para todas as lojas e a fila do delivery.',
     anotacao: { dias: 1, por: 'camila', texto: 'Mandei a proposta revisada com 10% de desconto na ativação. A Rosa vai falar com o sócio e responde até sexta.', proposta: 'Proposta Padaria Estrela - revisão 2.pdf' } },
   { chave: 'horizonte-canteiro', titulo: 'Central telefônica para o canteiro', cliente: 'Construtora Horizonte', contato: ['Edson', '5571999990211'], valor: 940, ativacao: 1_800, produtos: ['linepbx', 'equipamentos'],
-    por: 'diego', responsavel: 'diego', abriu: 13, passos: [{ para: 'Qualificação', dias: 12 }, { para: 'Proposta enviada', dias: 6 }] },
+    por: 'diego', responsavel: 'diego', abriu: 13,
+    passos: [{ para: 'Qualificação', dias: 12 }, { para: 'Proposta enviada', dias: 6 }, { para: 'Negociação', dias: 5 }, { para: ETAPA_QUE_ABRE_A_IMPLANTACAO, dias: 4 }] },
   { chave: 'bompreco-chat', etiquetas: ['indicação'], titulo: 'LineChat com 8 atendentes', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 680, produtos: ['linechat'],
     campos: { 'Origem de lead': 'Cliente da base' },
     por: 'camila', responsavel: 'diego', abriu: 9, passos: [{ para: 'Qualificação', dias: 8 }, { para: 'Proposta enviada', dias: 4 }] },
@@ -1448,4 +1460,123 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     por: 'camila', responsavel: 'camila', abriu: 3 },
   { chave: 'prado-remoto', titulo: 'Ramais para o home office', cliente: 'Escritório Prado & Lima', contato: ['Dra. Lívia', '5571999990218'], produtos: ['linepbx'],
     por: 'luan', responsavel: null, abriu: 1, descricao: 'Pediram pelo WhatsApp: 6 advogados trabalhando de casa, com o ramal no celular.' },
+];
+
+// =====================================================================
+//  A IMPLANTAÇÃO (Patch 2.3): os cards que as negociações abriram, cada um vivido pelas funções da tela
+// =====================================================================
+
+/** Um campo do card da implantação: pelo nome e pelo produto (o mesmo nome existe no LineChat e no LinePBX). */
+export type CampoDaImplantacaoDeExemplo = { produto: 'linechat' | 'linepbx'; nome: string; valor: string | boolean | string[] };
+/** Um passo do card: quem mexe, quando, o que preenche (e as caixinhas que marca, pelos nomes) e para onde vai. */
+export type PassoDaImplantacao = {
+  dias: number; hora: string; por: Pessoa;
+  campos?: CampoDaImplantacaoDeExemplo[];
+  para?: 'Configuração' | 'Testes' | 'Validado';
+  /** quem fica com o card ao sair da Curadoria (sair da entrada pede o responsável) */
+  responsavel?: Pessoa;
+};
+export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoDaImplantacao[] }> = [
+  // a Ótica Visão Clara: cliente novo (criado pelo CNPJ da negociação), já validada — o LinePBX e o VoiceNet ativos, com os módulos
+  {
+    negociacao: 'visao-clara',
+    passos: [
+      {
+        dias: 12, hora: '14:00', por: 'luan', responsavel: 'bruno', para: 'Configuração',
+        campos: [
+          { produto: 'linepbx', nome: 'IP do cliente', valor: '177.38.90.14' },
+          { produto: 'linepbx', nome: 'Lista de ramais', valor: '200 Recepção (loja do centro)\n201 Laboratório de lentes\n202 Gerência (Fernanda)\n210 a 221 Vendedores' },
+          { produto: 'linepbx', nome: 'Horário de atendimento', valor: 'Seg a sex, 9h às 19h; sáb, 9h às 13h. Fora do horário: a mensagem com o horário e o WhatsApp da loja.' },
+          { produto: 'linepbx', nome: 'Números da rota de entrada', valor: '(71) 3322-1500 → URA\n(71) 3322-1501 → direto no laboratório' },
+          { produto: 'linepbx', nome: 'Estrutura da URA', valor: '"Bem-vindo à Ótica Visão Clara."\n1 Vendas → fila Vendedores\n2 Óculos prontos e consertos → Laboratório\n3 Falar com a gerência → 202' },
+        ],
+      },
+      {
+        dias: 11, hora: '16:30', por: 'bruno', responsavel: 'marina', para: 'Testes',
+        campos: [
+          {
+            produto: 'linepbx', nome: 'Configuração do ambiente', valor: [
+              'Criação do ambiente', 'Asterisk - Configuração dos ramais', 'Asterisk - Configuração da rota de entrada', 'Asterisk - Configuração das URAs e filas',
+              'Asterisk - Configuração do FHA', 'Asterisk - Alinhamento do tronco', 'LinePBX Web - Configuração dos usuários', 'LinePBX Web - Configuração das equipes',
+              'LineReports - Instalação', 'Configuração dos telefones',
+            ],
+          },
+          { produto: 'linepbx', nome: 'Módulos a ativar', valor: ['Line Reports', 'NPS'] },
+        ],
+      },
+      {
+        dias: 10, hora: '11:00', por: 'marina', para: 'Validado',
+        campos: [{ produto: 'linepbx', nome: 'Testes realizados', valor: ['Registro do ramal no ambiente do cliente', 'Login nos acessos do LinePBX Web', 'Ligações ativas e receptivas', 'IP do ambiente estável'] }],
+      },
+    ],
+  },
+  // a Construtora Horizonte (já cliente): o canteiro novo, nos testes
+  {
+    negociacao: 'horizonte-canteiro',
+    passos: [
+      {
+        dias: 4, hora: '15:00', por: 'luan', responsavel: 'lucio', para: 'Configuração',
+        campos: [
+          { produto: 'linepbx', nome: 'IP do cliente', valor: '200.165.33.7 (o link do canteiro)' },
+          { produto: 'linepbx', nome: 'Lista de ramais', valor: '300 Portaria do canteiro\n301 Engenheiro residente (Edson)\n302 Almoxarifado\n303 a 310 Mestres de obra (sem fio)' },
+          { produto: 'linepbx', nome: 'Horário de atendimento', valor: 'Seg a sáb, 7h às 17h. Fora do horário: a portaria (300) toca sempre.' },
+        ],
+      },
+      {
+        dias: 3, hora: '10:00', por: 'lucio', responsavel: 'marina', para: 'Testes',
+        campos: [
+          {
+            produto: 'linepbx', nome: 'Configuração do ambiente', valor: [
+              'Criação do ambiente', 'Asterisk - Configuração dos ramais', 'Asterisk - Configuração da rota de entrada', 'Asterisk - Configuração das URAs e filas',
+              'Asterisk - Alinhamento do tronco', 'LinePBX Web - Configuração dos usuários', 'Configuração dos telefones',
+            ],
+          },
+          { produto: 'linepbx', nome: 'Módulos a ativar', valor: ['FOP2'] },
+        ],
+      },
+      {
+        dias: 1, hora: '17:00', por: 'marina',
+        campos: [{ produto: 'linepbx', nome: 'Testes realizados', valor: ['Registro do ramal no ambiente do cliente', 'Ligações ativas e receptivas'] }],
+      },
+    ],
+  },
+  // a Academia Movimento: cliente novo, na configuração do LineChat
+  {
+    negociacao: 'movimento',
+    passos: [
+      {
+        dias: 4, hora: '16:00', por: 'luan', responsavel: 'lucio', para: 'Configuração',
+        campos: [
+          { produto: 'linechat', nome: 'Lista de usuários', valor: 'Tiago (gerente): tiago@academiamovimento.com.br, equipe Gerência\nAna, Bia e Caio (recepção): equipe Recepção\nDuda (vendas de planos): equipe Planos' },
+          { produto: 'linechat', nome: 'Números', valor: '(71) 3555-0012 — o WhatsApp da academia (hoje no celular da recepção)' },
+          { produto: 'linechat', nome: 'Estrutura do chatbot', valor: '1 Planos e preços → equipe Planos\n2 Horário das aulas → a tabela de horários\n3 Falar com a recepção → equipe Recepção' },
+          { produto: 'linechat', nome: 'Horário de atendimento', valor: 'Seg a sex, 6h às 22h; sáb, 8h às 14h. Fora do horário: "Voltamos às 6h" e a tabela de horários.' },
+          { produto: 'linechat', nome: 'Acesso à BM', valor: true },
+          { produto: 'linechat', nome: 'CRM usado', valor: 'Nenhum (uma planilha dos alunos)' },
+        ],
+      },
+      {
+        dias: 2, hora: '11:30', por: 'lucio',
+        campos: [
+          { produto: 'linechat', nome: 'Configuração do ambiente', valor: ['Criação dos usuários', 'Criação das equipes', 'Configuração dos chatbots'] },
+          { produto: 'linechat', nome: 'Módulos a ativar', valor: ['WebChat', 'Dashboard de filas'] },
+        ],
+      },
+    ],
+  },
+  // o Hotel Beira Mar: cliente novo, na curadoria (os dois produtos)
+  {
+    negociacao: 'beira-mar',
+    passos: [
+      {
+        dias: 1, hora: '10:00', por: 'luan',
+        campos: [
+          { produto: 'linepbx', nome: 'IP do cliente', valor: '189.45.12.90' },
+          { produto: 'linepbx', nome: 'Lista de ramais', valor: '200 Recepção (24h)\n201 Reservas\n202 Governança\n210 a 269 Apartamentos' },
+          { produto: 'linechat', nome: 'Números', valor: '(71) 3333-4400 — reservas (WhatsApp Business)' },
+          { produto: 'linechat', nome: 'Acesso à BM', valor: false },
+        ],
+      },
+    ],
+  },
 ];

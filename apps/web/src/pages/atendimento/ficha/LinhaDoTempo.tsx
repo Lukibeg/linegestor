@@ -11,10 +11,7 @@
  * observar o chamado.
  */
 import { lazy, Suspense, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type SyntheticEvent } from 'react';
-import {
-  AlarmClock, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, AtSign, Bell, CircleDot, Columns3, Eye, Flag, GitBranch, Hourglass, Layers, Link2, ListChecks, Lock, MessageCircle,
-  MessageSquareReply, Paperclip, Pencil, Plus, RotateCcw, Sparkles, Timer, Trash2, UserRound, X, Zap, History, RadioTower, Download, ExternalLink, FileText,
-} from 'lucide-react';
+import { AlarmClock, ArrowDown, ArrowDownUp, ArrowRight, ArrowUp, AtSign, BadgeCheck, Bell, CircleDot, Columns3, Download, ExternalLink, Eye, FileText, Flag, GitBranch, History, Hourglass, Layers, Link2, ListChecks, Lock, MessageCircle, MessageSquareReply, Paperclip, Pencil, Plus, RadioTower, Rocket, RotateCcw, Sparkles, Timer, Trash2, UserRound, X, Zap } from 'lucide-react';
 import {
   NIVEIS, citacaoDigitando, citadosNoTexto, duracaoDoPrazo, emLista, paraBusca, rotuloDoNivel,
   type AnexoChamado, type AnotacaoChamado, type EventoChamado, type PessoaCurta, type TipoEvento,
@@ -97,6 +94,8 @@ const ICONE: Partial<Record<TipoEvento, typeof CircleDot>> = {
   problema: Layers, incidente: Layers, checklist: ListChecks, tempo: Timer, operadora: RadioTower, aviso_cliente: MessageCircle, aviso_equipe: Bell,
   reaberto: RotateCcw, painel: Columns3, ia: Sparkles, resposta_pronta: Zap, cliente_respondeu: MessageSquareReply, prazo: AlarmClock, fechou_sozinho: Lock,
   observador: Eye, lixeira: Trash2,
+  // a implantação (2.3): o card que a negociação abriu, e o Validado que ligou no cadastro
+  implantacao: Rocket, cadastro: BadgeCheck,
 };
 /** Frases que já dizem quem foi ("o cliente respondeu", "fechou sozinho"): sem o nome na frente. */
 const SEM_AUTOR = new Set<TipoEvento>(['cliente_respondeu', 'prazo', 'fechou_sozinho', 'aviso_equipe']);

@@ -7,15 +7,15 @@
  */
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, CalendarClock, Check, Copy, History, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
-import { DICA_TIPO_ETAPA, NOME_ORIGEM, reaisInteiros, type Origem } from '@gestor/shared';
+import { ArrowLeft, Bot, CalendarClock, Check, Copy, Handshake, History, Kanban, Layers, List, MessageSquare, Monitor, Pencil, Plug, RotateCcw } from 'lucide-react';
+import { DICA_TIPO_ETAPA, NOME_ORIGEM, campoLigado, reaisInteiros, type Origem } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Chip, Spinner, useToast, type TomChip } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
-import { ChipEspera, ChipPrioridade, ChipResultado, CodigoChamado, SeloPrazo, dataHoraCurta, haQuanto } from '../comum.js';
+import { ChipEspera, ChipPrioridade, ChipResultado, CodigoChamado, LinkDoChamado, SeloPrazo, dataHoraCurta, haQuanto } from '../comum.js';
 import { ErroPerto, linkDaFicha, nomeComNivel, useAberta, useAcao } from './base.js';
 
-const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bot, botao: MessageSquare, agendado: CalendarClock, api: Plug, helena: History };
+const ICONE_ORIGEM: Record<Origem, typeof Monitor> = { manual: Monitor, robo: Bot, botao: MessageSquare, agendado: CalendarClock, api: Plug, helena: History, comercial: Handshake };
 const TOM_SITUACAO: Record<string, TomChip> = { aberto: 'accent', resolvido: 'ok', fechado: 'muted' };
 
 /** A data inteira, para o "passar o mouse". */
@@ -66,7 +66,7 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
             <ChipResultado r={f.resultado} motivo={f.motivoPerda} />
             {f.valor !== null && <Chip tone="neutral" className="tnum font-semibold" title="A mensalidade da negociação (o que conta no relatório e na meta)">{reaisInteiros(f.valor)}/mês</Chip>}
           </>
-        ) : <ChipPrioridade p={f.prioridade} />}
+        ) : (!painel || campoLigado(painel.ajustes, 'prioridade')) && <ChipPrioridade p={f.prioridade} />}
         {f.tipoChamado === 'problema' && <Chip tone="rosa" title="Problema: junta os incidentes de várias empresas"><Layers size={12} /> Problema</Chip>}
         {f.reaberto > 0 && <Chip tone="signal" title={`Reaberto ${f.reaberto} ${f.reaberto === 1 ? 'vez' : 'vezes'}`}><RotateCcw size={11} /> Reaberto {f.reaberto === 1 ? '1 vez' : `${f.reaberto} vezes`}</Chip>}
         <ChipEspera e={f.espera} mostrarDesde />
@@ -81,6 +81,14 @@ export function Cabecalho({ emJanela = false }: { emJanela?: boolean }) {
           <time dateTime={f.criadoEm} title={dataCompleta(f.criadoEm)}>{emQuando(f.criadoEm)}</time>
         </span>
         <span className="inline-flex items-center gap-1" title="De onde o chamado veio"><Icone size={13} aria-hidden /> {NOME_ORIGEM[f.origem] ?? f.origem}</span>
+        {/* o card da implantação (2.3): a negociação de onde ele veio */}
+        {f.daNegociacao && (
+          <span className="inline-flex items-center gap-1" id="ficha-da-negociacao">
+            da negociação {f.daNegociacao.podeAbrir
+              ? <LinkDoChamado codigo={f.daNegociacao.codigo} className="font-mono font-semibold text-ink-2 hover:text-accent" title={f.daNegociacao.titulo}>{f.daNegociacao.codigo}</LinkDoChamado>
+              : <b className="font-mono text-ink-2" title={f.daNegociacao.titulo}>{f.daNegociacao.codigo}</b>}
+          </span>
+        )}
         <span title={`Última atividade: ${dataCompleta(f.ultimaAtividadeEm)}`}>mexido {haQuanto(f.ultimaAtividadeEm)}</span>
         {f.fechadoEm ? <span>{f.resultado === 'ganho' ? 'ganha' : f.resultado === 'perdido' ? 'perdida' : 'fechado'} {emQuando(f.fechadoEm)}</span> : f.resolvidoEm ? <span>resolvido {emQuando(f.resolvidoEm)}</span> : null}
       </div>

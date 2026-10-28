@@ -202,8 +202,8 @@ describe('as etapas', () => {
     expect(ETAPAS_DO_PAINEL_NOVO.map((e) => e.nome)).toEqual(['Novo', 'Em andamento', 'Resolvido', 'Fechado']);
     const ok = PainelGravarSchema.parse({ ...painel, etapas: [{ nome: ' Pedido ', tipo: 'entrada' }, { nome: 'Encerrado', tipo: 'fechado' }] });
     expect(ok.etapas).toEqual([
-      { nome: 'Pedido', tipo: 'entrada', nivel: null, obrigatorios: [], resultado: null, avisar: [] },
-      { nome: 'Encerrado', tipo: 'fechado', nivel: null, obrigatorios: [], resultado: null, avisar: [] },
+      { nome: 'Pedido', tipo: 'entrada', nivel: null, obrigatorios: [], resultado: null, avisar: [], abreImplantacao: null, ligaNoCadastro: false },
+      { nome: 'Encerrado', tipo: 'fechado', nivel: null, obrigatorios: [], resultado: null, avisar: [], abreImplantacao: null, ligaNoCadastro: false },
     ]);
     expect(mensagem(PainelGravarSchema.safeParse({ ...painel, etapas: [{ nome: 'Pedido', tipo: 'entrada' }, { nome: 'Fazendo', tipo: 'andamento' }] })))
       .toBe('Pelo menos uma etapa precisa fechar o chamado');
@@ -221,7 +221,7 @@ describe('as etapas', () => {
 
 describe('os campos de cada painel', () => {
   const lista: CampoPersonalizado = {
-    id: 'sis', painelId: 'dev', nome: 'Sistema', tipo: 'lista', dica: null, ativo: true, ordem: 0, incluirNaHora: false,
+    id: 'sis', painelId: 'dev', nome: 'Sistema', tipo: 'lista', dica: null, ativo: true, ordem: 0, incluirNaHora: false, parte: null, produtoId: null,
     opcoes: [{ id: 'o1', nome: 'LinePBX', ativa: true }, { id: 'o2', nome: 'LineChat', ativa: true }, { id: 'o3', nome: 'Fortics', ativa: false }],
   };
   const varios: CampoPersonalizado = { ...lista, id: 'mods', nome: 'Módulos', tipo: 'lista_varios' };
@@ -390,7 +390,7 @@ const cartao = (d: Partial<CartaoChamado> = {}, relato = 'o cliente disse que o 
     prazos: { resposta: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' }, solucao: { situacao: 'sem', limite: 0, usado: 0, percentual: 0, venceEm: null, cumpridoEm: null, conta: 'uteis' } },
     pai: null, problema: null, filhos: { total: 0, abertos: 0 }, incidentes: 0, anotacoes: 0, origem: 'manual', reaberto: 0,
     criadoEm: '2026-10-13T12:00:00.000Z', atualizadoEm: '2026-10-13T12:00:00.000Z', ultimaAtividadeEm: '2026-10-13T12:00:00.000Z', resolvidoEm: null, fechadoEm: null,
-    valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ordemNoQuadro: null, ...d,
+    valor: null, valoresDosProdutos: {}, ativacao: null, ativacoesDosProdutos: {}, empresa: null, resultado: null, motivoPerda: null, ordemNoQuadro: null, partes: [], ...d,
   };
   return { ...c, busca: textoDeBusca(c, [relato]) };
 };

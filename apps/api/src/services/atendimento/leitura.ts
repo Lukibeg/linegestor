@@ -402,6 +402,14 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     // quem pode ser citado com @ nas anotações: quem vê o painel
     quemVeOPainel(db, painel),
   ]);
+  // a implantação (2.3): a negociação de onde o card veio, e os cards que a negociação abriu
+  const [daNegociacao, abertas] = await Promise.all([
+    t.sourceTicketId
+      ? db.select({ id: tickets.id, code: tickets.code, title: tickets.title, panelId: tickets.panelId }).from(tickets).where(eq(tickets.id, t.sourceTicketId)).limit(1)
+      : Promise.resolve([]),
+    db.select({ id: tickets.id, code: tickets.code, title: tickets.title, panelId: tickets.panelId, stageId: tickets.stageId }).from(tickets)
+      .where(and(eq(tickets.sourceTicketId, t.id), isNull(tickets.deletedAt))).orderBy(asc(tickets.createdAt)),
+  ]);
 
   const mapa = new Map<string, NoParaGrafo>();
   for (const n of nos) {
@@ -541,6 +549,15 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     faltam,
     filhosTravam,
     grafo,
+    marcas: (t.fieldMarks as FichaChamado['marcas'] | null) ?? {},
+    daNegociacao: daNegociacao[0] ? { id: daNegociacao[0].id, codigo: daNegociacao[0].code, titulo: daNegociacao[0].title, podeAbrir: visiveis.has(daNegociacao[0].panelId) } : null,
+    implantacoes: abertas.map((x) => {
+      const e = ctx.etapas.get(x.stageId)?.etapa;
+      return {
+        id: x.id, codigo: x.code, titulo: x.title, painelId: x.panelId, painel: ctx.paineis.find((p) => p.id === x.panelId)?.nome ?? '?', etapa: e?.nome ?? '?',
+        situacao: situacaoDaEtapa(e?.tipo ?? 'andamento'), podeAbrir: visiveis.has(x.panelId),
+      };
+    }),
     observando: ator.tipo === 'pessoa' && t.watcherIds.includes(ator.id),
     pode: { trabalhar: podeTrabalhar(ator), cuidar: cuida },
   };

@@ -979,7 +979,9 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
       conversao: 66.7, ticketMedio: 74_500,
     });
     expect(r.funil.map((f) => [f.nome, f.chegaram.length, f.perdidas.length])).toEqual([
-      ['Lead', 12, 0], ['Qualificação', 10, 0], ['Proposta enviada', 8, 1], ['Negociação', 5, 1],
+      ['Lead', 12, 0], ['Qualificação', 10, 0], ['Proposta enviada', 8, 1], ['Negociação', 6, 1],
+      // a etapa que abre a implantação (2.3): as que já estão sendo implantadas
+      ['Em processo de Implantação', 4, 0],
     ]);
     expect(r.funilGanhas).toHaveLength(3);
     // a janela dos números: as negociações por trás, com a empresa e quem cuida
@@ -1170,4 +1172,151 @@ describe('o Comercial tem permissão própria na prévia (como no servidor)', ()
     expect((await erroDe(api.quadro({ painel: 'painel-suporte' }))).status).toBe(404);
     expect(Array.isArray((await api.meuDia()).meus)).toBe(true);
   }, DEMORA);
+});
+
+describe('a implantação na prévia (2.3, como o servidor)', () => {
+  const ETAPA_DA_IMPLANTACAO = 'Em processo de Implantação';
+  const produto = (op: OpcoesAtendimento, nome: string) => op.produtos.find((p) => p.nome === nome)!.id;
+  const campoDe = (op: OpcoesAtendimento, painelId: string, nome: string, produtoId: string) => op.campos.find((c) => c.painelId === painelId && c.nome === nome && c.produtoId === produtoId)!;
+  const opcao = (c: { opcoes: Array<{ id: string; nome: string }> }, nome: string) => c.opcoes.find((o) => o.nome === nome)!.id;
+
+  it('os exemplos: o Comercial abriu os cards, o cliente novo entrou no cadastro e o Validado ligou os produtos e os módulos', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Validado']);
+    expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Validado']);
+    expect(etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).abreImplantacao).toBe(imp.id);
+    // os 18 campos do modelo, em três partes, de dois produtos
+    const campos = op.campos.filter((c) => c.painelId === imp.id);
+    expect(campos).toHaveLength(18);
+    expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes']);
+
+    const q = await api.quadro({ painel: imp.id });
+    const naEtapa = Object.fromEntries(q.colunas.map((c) => [c.etapa.nome, c.chamados.map((x) => x.cliente?.nome)]));
+    expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], Validado: ['Ótica Visão Clara'] });
+    // o cartão mostra a conta da parte da etapa (a Configuração do LineChat: 3 de 5)
+    const movimento = q.colunas.find((c) => c.etapa.nome === 'Configuração')!.chamados[0]!;
+    expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 3, total: 5 });
+
+    const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Validado')!.chamados[0]!.codigo);
+    expect(vc.origem).toBe('comercial');
+    expect(vc.daNegociacao?.codigo).toMatch(/^COM-/);
+    expect(vc.historico.some((ev) => ev.tipo === 'cadastro' && /Line Reports/.test(ev.texto))).toBe(true);
+    const negociacao = await api.chamado(vc.daNegociacao!.codigo);
+    expect(negociacao.implantacoes).toMatchObject([{ codigo: vc.codigo, etapa: 'Validado', situacao: 'fechado', podeAbrir: true }]);
+    // o cliente novo (o CNPJ da negociação), com o LinePBX e o VoiceNet ativos desde o Validado, e os módulos marcados
+    const cliente = await demoApi.clients.get(vc.cliente!.id);
+    expect(cliente.cnpj).toBe('45812033000174');
+    const pbx = cliente.subscriptions.find((s) => s.productCode === 'linepbx')!;
+    expect(pbx.activatedAt).toBeTruthy();
+    expect(pbx.modules.filter((m) => m.active).map((m) => m.moduleName).sort()).toEqual(['Line Reports', 'NPS']);
+    expect(cliente.subscriptions.find((s) => s.productCode === 'voicenet')!.activatedAt).toBe(pbx.activatedAt);
+    // o da curadoria: em implantação, sem a data
+    const beira = q.colunas.find((c) => c.etapa.nome === 'Curadoria')!.chamados[0]!;
+    const hotel = await demoApi.clients.get(beira.cliente!.id);
+    expect(hotel.subscriptions.map((s) => [s.productCode, s.activatedAt]).sort()).toEqual([['linechat', null], ['linepbx', null]]);
+  });
+
+  it('mover a negociação: sem o CNPJ não vai (400 com o plano); com ele, cria o cliente e abre o card — uma vez só', async () => {
+    const luan = await entrar('admin');
+    const op = await api.opcoes();
+    const com = painel(op, 'COM');
+    const chat = produto(op, 'LineChat');
+    const r = await api.criar({ painelId: com.id, titulo: 'LineChat — teste da implantação', empresa: 'Padaria Pão Quente', produtos: [chat], responsavelId: luan.id });
+    const para = etapa(op, 'COM', ETAPA_DA_IMPLANTACAO);
+    const e = await erroDe(api.mover(r.id, { etapaId: para.id }));
+    expect(e.status).toBe(400);
+    expect(e.message).toBe('Para criar o cliente, falta o CNPJ.');
+    expect((e.details as unknown as { implantacao: { cliente: { tipo: string } } }).implantacao.cliente.tipo).toBe('novo');
+    // a janela: o CNPJ com o dígito errado; e o de um cliente que já existe (o card abre para ele)
+    expect((await api.aoMover(r.id, { etapaId: para.id, cnpj: '11.111.111/1111-11' })).implantacao!.falta).toMatch(/dígito/);
+    const aurora = (await api.aoMover(r.id, { etapaId: para.id, cnpj: '11.222.333/0001-81' })).implantacao!;
+    expect(aurora.cliente).toMatchObject({ tipo: 'cadastro', nome: 'Clínica Aurora', peloCnpj: true });
+    expect(aurora.falta).toBeNull();
+
+    const f = await api.mover(r.id, { etapaId: para.id, implantacao: { nomeFantasia: 'Padaria Pão Quente', razaoSocial: 'Pão Quente Panificadora LTDA', cnpj: '58.901.234/0001-90' } });
+    expect(f.cliente?.nome).toBe('Padaria Pão Quente');
+    expect(f.implantacoes).toHaveLength(1);
+    const card = await api.chamado(f.implantacoes[0]!.codigo);
+    expect(card).toMatchObject({ titulo: 'Implantação — Padaria Pão Quente', origem: 'comercial', etapaId: painel(op, 'IMP').etapas.find((x) => x.nome === 'Curadoria')!.id });
+    expect(card.produtos.map((p) => p.id)).toEqual([chat]);
+    expect(card.observadores.map((o) => o.id)).toContain(luan.id);
+    const cliente = await demoApi.clients.get(card.cliente!.id);
+    expect(cliente.legalName).toBe('Pão Quente Panificadora LTDA');
+    expect(cliente.subscriptions.map((s) => [s.productCode, s.activatedAt])).toEqual([['linechat', null]]);
+    // voltar e ir de novo não abre outro card
+    await api.mover(r.id, { etapaId: etapa(op, 'COM', 'Lead').id });
+    expect((await api.aoMover(r.id, { etapaId: para.id })).implantacao!.jaAberta).toEqual({ codigo: card.codigo });
+    const deNovo = await api.mover(r.id, { etapaId: para.id });
+    expect(deNovo.implantacoes).toHaveLength(1);
+  });
+
+  it('o card: as caixinhas guardam quem marcou e quando; o Validado liga os produtos e os módulos marcados', async () => {
+    const luan = await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const chat = produto(op, 'LineChat');
+    const lista = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items;
+    const card = await api.chamado(lista.find((c) => c.cliente?.nome === 'Padaria Pão Quente')!.codigo);
+    const config = campoDe(op, imp.id, 'Configuração do ambiente', chat);
+    const modulos = campoDe(op, imp.id, 'Módulos a ativar', chat);
+    expect(modulos.opcoes.map((o) => o.nome)).toEqual(expect.arrayContaining(['Dashboard de filas', 'NPS', 'WebChat']));
+    const marcado = await api.alterar(card.id, { campos: { [config.id]: [opcao(config, 'Criação dos usuários'), opcao(config, 'Criação das equipes')], [modulos.id]: [opcao(modulos, 'WebChat')] } });
+    expect(marcado.marcas[config.id]![opcao(config, 'Criação dos usuários')]).toMatchObject({ porId: luan.id, porNome: null });
+    expect(marcado.historico.some((ev) => ev.tipo === 'campo' && /Configuração do ambiente \(LineChat\)/.test(ev.texto))).toBe(true);
+    // desmarcar uma: a marca dela sai, a outra fica
+    const menos = await api.alterar(card.id, { campos: { [config.id]: [opcao(config, 'Criação das equipes')] } });
+    expect(Object.keys(menos.marcas[config.id]!)).toEqual([opcao(config, 'Criação das equipes')]);
+
+    // a janela do Validado: o LineChat ganha a data, o WebChat liga
+    const validado = imp.etapas.find((e) => e.nome === 'Validado')!;
+    const plano = (await api.aoMover(card.id, { etapaId: validado.id })).cadastro!;
+    expect(plano.produtos).toEqual([{ id: chat, nome: 'LineChat', acao: 'ativa' }]);
+    expect(plano.modulos.map((m) => [m.nome, m.acao])).toEqual([['WebChat', 'liga']]);
+    // sair da Curadoria pede quem fica com o card; nada mais trava
+    const fim = await api.mover(card.id, { etapaId: validado.id, responsavelId: luan.id });
+    expect(fim.situacao).toBe('fechado');
+    expect(fim.historico.some((ev) => ev.tipo === 'cadastro' && /WebChat/.test(ev.texto))).toBe(true);
+    const cliente = await demoApi.clients.get(card.cliente!.id);
+    const sub = cliente.subscriptions.find((s) => s.productCode === 'linechat')!;
+    expect(sub.activatedAt?.slice(0, 10)).toBe(diaLocal(new Date()));
+    expect(sub.modules.filter((m) => m.active).map((m) => m.moduleName)).toEqual(['WebChat']);
+  });
+
+  it('o painel pelo modelo e as regras dos campos (o produto dos módulos, o mesmo nome em produtos diferentes)', async () => {
+    await entrar('admin');
+    const novo = await api.salvarPainel(null, { nome: 'Implantação Filiais', sigla: 'IMF', cor: 'roxo', acesso: 'todos', tipo: 'gestao', modelo: 'implantacao', ajustes: {} });
+    expect(novo.etapas.map((e) => [e.nome, !!e.ligaNoCadastro])).toEqual([['Stand By', false], ['Curadoria', false], ['Configuração', false], ['Testes', false], ['Validado', true]]);
+    expect(novo.ajustes.contaPrazo).toBe(false);
+    const op = await api.opcoes();
+    expect(op.campos.filter((c) => c.painelId === novo.id)).toHaveLength(18);
+    const pbx = produto(op, 'LinePBX');
+    const chat = produto(op, 'LineChat');
+    // os módulos precisam do produto
+    expect((await erroDe(api.salvarCampo(novo.id, null, { nome: 'Módulos extras', tipo: 'modulos' }))).status).toBe(400);
+    // o mesmo nome, em outro produto, pode; no mesmo produto, não
+    const outro = await api.salvarCampo(novo.id, null, { nome: 'Observações', tipo: 'texto', produtoId: chat, parte: 'Curadoria' });
+    await api.salvarCampo(novo.id, null, { nome: 'Observações', tipo: 'texto', produtoId: pbx, parte: 'Curadoria' });
+    expect((await erroDe(api.salvarCampo(novo.id, null, { nome: 'Observações', tipo: 'texto', produtoId: chat }))).status).toBe(409);
+    expect(outro).toMatchObject({ parte: 'Curadoria', produtoId: chat });
+    // o produto dos módulos não muda depois de criado
+    const mods = (await api.opcoes()).campos.find((c) => c.painelId === novo.id && c.tipo === 'modulos' && c.produtoId === chat)!;
+    expect((await erroDe(api.salvarCampo(novo.id, mods.id, { nome: mods.nome, tipo: 'modulos', produtoId: pbx }))).status).toBe(400);
+    // a etapa de Vendas só abre a implantação num painel de Gestão
+    const com = painel(op, 'COM');
+    const etapas = com.etapas.map((e) => ({ id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: e.obrigatorios, avisar: e.avisar, resultado: e.resultado ?? null, abreImplantacao: e.abreImplantacao ?? null }));
+    const errado = etapas.map((e) => (e.nome === 'Qualificação' ? { ...e, abreImplantacao: com.id } : e));
+    expect((await erroDe(api.salvarEtapas(com.id, { etapas: errado, destino: {} }))).status).toBe(400);
+  });
+
+  it('o CNPJ de um cliente que está na lixeira: a negociação não cria outro (restaurar antes)', async () => {
+    const luan = await entrar('admin');
+    const op = await api.opcoes();
+    const lixo = await demoApi.clients.create({ tradeName: 'Empresa da Lixeira', legalName: 'Lixeira LTDA', cnpj: '34.567.890/0001-30' });
+    await demoApi.clients.remove(lixo.id);
+    const r = await api.criar({ painelId: painel(op, 'COM').id, titulo: 'Volta da Lixeira', empresa: 'Empresa da Lixeira', produtos: [produto(op, 'LinePBX')], responsavelId: luan.id });
+    const e = await erroDe(api.mover(r.id, { etapaId: etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).id, implantacao: { nomeFantasia: 'Empresa da Lixeira', razaoSocial: 'Lixeira LTDA', cnpj: '34567890000130' } }));
+    expect(e.message).toMatch(/está na lixeira/);
+  });
 });

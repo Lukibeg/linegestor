@@ -1,0 +1,75 @@
+# 0057 — A implantação: o card que a negociação abre, as partes da ficha e o Validado que liga no cadastro
+
+**Data:** 28/10/2026 · **Patch:** 2.3 · **Situação:** aceita
+
+## O pedido
+
+O Luan, 28/10, mostrando o painel Ingline - Ativações do Helena (o card IA-82): *"Para administrar as ativações, eu usava
+um painel só para isso … eu criei dois grupos de campos personalizados … um é para o line chat e outro para o line PBX.
+Nesses campos eu já tramitava toda a curadoria do cliente … lista de números, de usuários, estrutura chatbot, horário de
+atendimento, acesso a BM … os passos de configuração de ambiente para a equipe técnica já colocar o que ela já fez … e
+também um campo personalizado para … o teste, onde a equipe de suporte já fazia os testes"*.
+
+E, sobre o Comercial: *"tem que ser quando mover para a parte de em processo de implantação, porque eu só marco como
+ganho de fato quando eu começar a faturar para o relatório ficar certinho"*; *"já tenho que abrir o card no painel de
+implantação e já tenho que também que criar o cliente … automaticamente com os produtos"*; e *"No Validado, os módulos
+marcados viram os módulos ativos na ficha do cliente, com a data"*. Por fim: *"vamos fazer o caminho completo"* e *"n
+precisa limitar nada disso"*.
+
+## O que foi decidido
+
+1. **Um painel de Gestão para a implantação, com um card por cliente** — não um módulo à parte. O card é um chamado:
+   tem quadro, ficha, responsável, observadores, anotações, histórico e relatórios, como os outros. O painel nasce do
+   **modelo Implantação** (Painéis › Ajustes › Novo painel): as etapas Stand By, Curadoria (a entrada), Configuração,
+   Testes e Validado; sem prazo, sem prioridade, sem assunto, tipo, gravidade, alcance, operadora, relato e solução; e os
+   18 campos do Ingline - Ativações, arrumados em três partes, com o LineChat ganhando os testes que lá não tinha.
+2. **Os campos ganham a parte e o produto** (`ticket_fields.section`, `ticket_fields.product_id`, migração 0027):
+   - com a **parte**, o campo sai da classificação e vai para o meio da ficha, num cartão por parte, com um bloco por
+     produto do card e a conta "N de M" (o cartão do quadro mostra a conta da parte que tem o nome da etapa);
+   - com o **produto**, o campo só aparece no card que tem o produto. O mesmo nome pode existir em produtos diferentes
+     (o Horário de atendimento do LineChat e o do LinePBX); fora da ficha (o histórico, a auditoria) o nome vem com o
+     produto entre parênteses.
+3. **Dois tipos de campo novos:**
+   - **Caixinhas**: a lista do que já foi feito; cada caixinha marcada guarda **quem marcou e quando**
+     (`tickets.field_marks`). Desmarcar tira a marca; a que continua marcada fica com quem marcou primeiro.
+   - **Módulos do produto**: as caixinhas são os módulos do catálogo (Administração › Produtos) do produto escolhido,
+     que não muda depois de criado. O módulo que vai para a lixeira fica desativado (quem já o marcou continua com ele).
+     Não entram na conta da parte (é a escolha do que o cliente vai usar, não uma tarefa).
+4. **A etapa de Vendas que abre a implantação** (`ticket_stages.opens_panel_id`): escolhida em cada etapa do funil (não
+   no Ganho nem no Perdido), apontando para um painel de Gestão. A negociação que chega nela:
+   - vira cliente, se ainda não é: o cliente da negociação; senão, o do cadastro com o CNPJ (o da janela ou o campo
+     CNPJ da negociação); senão, um **cliente novo**, com a unidade Matriz — e para criar é preciso o **CNPJ** (o
+     cadastro exige). É a única coisa que trava: sem ele, a janela pede. O CNPJ de um cliente que está na lixeira não
+     cria outro (o CNPJ não repete): a janela diz para restaurar;
+   - passa a ser do cliente (o "Virou cliente?" de uma vez; o título que era o nome da empresa acompanha);
+   - põe no cadastro do cliente os produtos que ele não tem, **sem a data de ativação** (estão em implantação);
+   - abre o card na entrada do painel da implantação ("Implantação — Cliente", origem **Aberta pelo Comercial**), com o
+     contato, os produtos e quem cuida da negociação (e quem a observa) como observadores, ligado à negociação
+     (`tickets.source_ticket_id`, um card por negociação fora da lixeira: voltar e ir de novo não abre outro).
+   O **Ganho continua à parte**, marcado quando começa a faturar — o Relatório de Vendas fica certo.
+5. **A etapa de Gestão que liga no cadastro** (`ticket_stages.activates_products`, o Validado): o card que chega nela
+   dá a data de hoje aos produtos que estavam sem data, põe ativo o que o cliente não tinha (o Equipamentos, que não tem
+   data de ativação, entra sem ela — decisão 0034) e liga, desde hoje, os módulos marcados nos campos Módulos do produto.
+   O produto encerrado fica como está (reativar é na ficha do cliente). O que já estava em dia não muda nada.
+6. **A janela mostra antes o que vai acontecer** (`GET /atendimento/chamados/:id/ao-mover`): o cliente, os produtos e o
+   card (na negociação), ou o que fica ativo no cadastro (no Validado). A negociação que já abriu o card e o Validado
+   que não muda nada vão direto, sem janela. Fora isso, nada trava: a regra de sair da entrada com um responsável (2.2)
+   continua valendo na Curadoria, e a própria janela pergunta quem fica com o card.
+7. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
+   cadastro)"; no card, "veio da negociação COM-12"; no Validado, "ligou no cadastro de X o produto … e os módulos …,
+   desde …"; a auditoria ganha as linhas do cliente criado, do card aberto e do que ligou no cadastro.
+
+## Por que assim
+
+- O card como chamado reaproveita tudo o que o 2.0 a 2.2 construíram (o quadro, a ficha, os avisos, os relatórios) e
+  não cria uma segunda tela para aprender.
+- A parte e o produto no campo resolvem os dois grupos do Helena sem um "grupo de campos" novo: o mesmo painel serve
+  para o cliente que leva só o LineChat, só o LinePBX ou os dois.
+- O cliente nasce na hora certa (quando a implantação começa), e não no Ganho, que o Luan marca quando fatura.
+- A data de ativação vem do Validado — o dia em que o cliente passou a usar —, e não do dia da venda.
+
+## Fica para depois
+
+- Os módulos que faltam no catálogo de verdade para o LinePBX (Callback, WebRTC, NPS - WhatsApp e Filas - Dashboard): o
+  Luan inclui em Administração › Produtos, e o campo Módulos a ativar acompanha sozinho.
+- Trazer os cards antigos do Ingline - Ativações pelo Trazer do Helena (os campos do Helena não têm a parte nem o produto).

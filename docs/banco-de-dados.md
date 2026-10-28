@@ -1081,6 +1081,8 @@ Uma ETAPA (coluna) de um painel, na ordem do quadro. O tipo diz o que ela signif
 | `required_fields` | texto | O que precisa estar preenchido para o chamado entrar aqui (lista de campos) | obrigatório · padrão: [] · lista |
 | `notify_user_ids` | texto | Quem recebe o aviso quando um chamado chega nesta etapa (ids de pessoas) | obrigatório · padrão: [] · lista |
 | `outcome` | texto | No painel de Vendas: ganho ou perdido (a etapa final que diz como a negociação acabou); nas outras, nulo | — |
+| `opens_panel_id` | texto | No painel de Vendas (2.3): a negociação que chega aqui abre a implantação no painel com este id — cria o cliente (se ainda não é), põe os produtos no cadastro e abre o card. Nulo: nada. | — |
+| `activates_products` | sim/não | No painel de Gestão (2.3, o Validado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos dele (com a data de ativação) e os módulos marcados nos campos "Módulos do produto". | obrigatório · padrão: false |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `deleted_at` | data e hora | Preenchido quando está na lixeira | — |
 
@@ -1111,10 +1113,12 @@ Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, en
 | `id` | texto | Identificador único da linha | chave primária |
 | `panel_id` | texto | — | obrigatório · liga com **ticketPanels** |
 | `name` | texto | — | obrigatório |
-| `kind` | texto | texto | texto_longo | numero | data | sim_nao | lista | lista_varios | obrigatório |
+| `kind` | texto | texto | texto_longo | numero | data | sim_nao | lista | lista_varios | caixinhas | modulos (2.3) | obrigatório |
 | `help` | texto | A explicação que aparece embaixo do campo (na ficha e no Abrir chamado) | — |
 | `options` | JSON | As opções das listas: [{id, nome, ativa}] (a que sai fica desativada: o chamado que a tem continua com ela) | obrigatório · padrão: [] |
 | `inline_options` | sim/não | Na lista de uma opção: quem trabalha no painel inclui a opção nova ali mesmo, no Abrir chamado e na ficha (2.0.3, a Indicação do Comercial: "eu tenho que conseguir criar por aqui mesmo se quiser") | obrigatório · padrão: false |
+| `section` | texto | A parte da ficha (2.3, a implantação: "Curadoria", "Configuração", "Testes"): com ela, o campo vai para o meio da ficha, junto dos outros da mesma parte. Nulo: na classificação (ou junto do relato, o texto longo), como sempre. | — |
+| `product_id` | texto | Só aparece quando o chamado tem este produto (2.3: o bloco do LineChat, o do LinePBX); os módulos são os dele | liga com **products** |
 | `active` | sim/não | — | obrigatório · padrão: true |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `created_at` | data e hora | Quando a linha foi criada | — |
@@ -1177,6 +1181,8 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `lost_reason` | texto | Por que a negociação foi perdida (um dos motivos do painel, ou outro escrito) | — |
 | `external_ref` | texto | De onde veio, quando veio de outro sistema (2.0.3, decisão 0054): "helena:<id do card>" — o Trazer do Helena acha por aqui a negociação que já trouxe (atualiza em vez de criar outra). Único. | — |
 | `board_position` | número inteiro | O lugar na coluna do quadro que a equipe escolheu arrastando (2.1, nas etapas abertas do painel de Vendas): 1 é o primeiro. Nulo: ninguém arrumou depois que o chamado chegou na etapa (mudar de etapa apaga), e ele vai pela regra de sempre, antes dos arrumados. | — |
+| `field_marks` | JSON | Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção: {campo: {opção: {porId, porNome, em}}}. O valor do campo (as marcadas) continua em `custom_fields`; desmarcar tira a marca. | obrigatório · padrão: {} |
+| `source_ticket_id` | texto | A negociação que abriu este card na implantação (2.3, a etapa que abre a implantação no painel de Vendas). Uma negociação abre um card só (fora da lixeira). | — |
 | `created_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |
 | `updated_at` | data e hora | Última alteração | — |

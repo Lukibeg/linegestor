@@ -26,10 +26,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, HandCoins, Pencil, Plus, ThumbsDown, Ticket, Trash2, Trophy, Undo2, UserPlus, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronDown, ChevronUp, GripVertical, HandCoins, Pencil, Plus, Rocket, ThumbsDown, Ticket, Trash2, Trophy, Undo2, UserPlus, X } from 'lucide-react';
 import {
   AJUSTES_DO_PAINEL_DE_VENDAS, AJUSTES_PAINEL_PADRAO, CORES_PAINEL, DICA_CAMPO_DO_SISTEMA, camposDoSistemaDoTipo, painelContaPrazo, DICA_TIPO_ETAPA, ETAPAS_DO_PAINEL_DE_VENDAS, ETAPAS_DO_PAINEL_NOVO, ListaDeEtapasSchema,
-  MAX_ETAPAS_DO_PAINEL, MOTIVOS_DE_PERDA_PADRAO, NIVEIS, NOME_CAMPO_DO_SISTEMA, NOME_RESULTADO_DA_VENDA, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, etiquetasUnicas, idDaChave,
+  MAX_ETAPAS_DO_PAINEL, MODELO_DA_IMPLANTACAO, MOTIVOS_DE_PERDA_PADRAO, NIVEIS, NOME_CAMPO_DO_SISTEMA, NOME_RESULTADO_DA_VENDA, NOME_TIPO_ETAPA, SiglaSchema, TIPOS_ETAPA, etiquetasUnicas, idDaChave,
   limparObrigatorios, nomeDoObrigatorio, obrigatoriosDoPainel, paraBusca, problemaNasEtapasDoTipo, reaisInteiros, rotuloDoNivel,
   type AjustesDoPainel, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CorPainel, type EtapaGravarEntrada, type EtapaPainel, type Nivel, type Obrigatorio,
   type Painel, type PainelGravarEntrada, type PessoaCurta, type ResultadoDaVenda, type TipoDePainel, type TipoEtapa,
@@ -243,6 +243,9 @@ type EtapaRascunho = EtapaGravarEntrada & {
   chave: string; nome: string; tipo: TipoEtapa; nivel: Nivel | null; obrigatorios: Obrigatorio[]; avisar: string[];
   /** no painel de Vendas: o Ganho e o Perdido (as finais, que não saem) */
   resultado: ResultadoDaVenda | null;
+  /** a implantação (2.3): a etapa de Vendas que abre o card no painel escolhido; a de Gestão que liga no cadastro */
+  abreImplantacao: string | null;
+  ligaNoCadastro: boolean;
 };
 type Saindo = { etapa: EtapaRascunho; posicao: number };
 type EtapaComChamados = { id: string; nome: string; chamados: number };
@@ -250,10 +253,14 @@ type EtapaComChamados = { id: string; nome: string; chamados: number };
 let sequencia = 0;
 const daEtapa = (e: EtapaPainel): EtapaRascunho => ({
   chave: e.id, id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...e.avisar], resultado: e.resultado ?? null,
+  abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro,
 });
 /** Uma etapa que ainda não existe (sem id): a do painel novo, a copiada de outro painel ou a incluída agora. */
-const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null }): EtapaRascunho =>
-  ({ chave: `nova-${++sequencia}`, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...(e.avisar ?? [])], resultado: e.resultado ?? null });
+const etapaNova = (e: Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean }): EtapaRascunho =>
+  ({
+    chave: `nova-${++sequencia}`, nome: e.nome, tipo: e.tipo, nivel: e.nivel, obrigatorios: [...e.obrigatorios], avisar: [...(e.avisar ?? [])], resultado: e.resultado ?? null,
+    abreImplantacao: e.abreImplantacao ?? null, ligaNoCadastro: !!e.ligaNoCadastro,
+  });
 const paraGravar = ({ chave: _chave, ...e }: EtapaRascunho): EtapaGravarEntrada => ({ ...e, nome: e.nome.trim() });
 const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
 /**
@@ -261,19 +268,21 @@ const assinatura = (xs: EtapaRascunho[]) => JSON.stringify(xs.map(paraGravar));
  * ou as básicas. Os campos do painel de origem não vão junto nas regras: são daquele painel.
  */
 function etapasDoModelo(modelo: Painel | undefined, tipo: TipoDePainel = 'gestao'): EtapaRascunho[] {
-  const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null }> = modelo
+  const fonte: Array<Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { avisar?: string[]; resultado?: ResultadoDaVenda | null; abreImplantacao?: string | null; ligaNoCadastro?: boolean }> = modelo
     ? modelo.etapas : tipo === 'vendas' ? ETAPAS_DO_PAINEL_DE_VENDAS : ETAPAS_DO_PAINEL_NOVO;
   return fonte.map((e) => etapaNova({ ...e, obrigatorios: e.obrigatorios.filter((k) => !idDaChave(k)) }));
 }
 
 /** "Andamento · N2 · pede: Cliente, Relato do cliente, Assunto · avisa: Pedro". */
-function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[], campos: CampoPersonalizado[]): string {
+function resumoDaEtapa(e: EtapaRascunho, pessoas: PessoaCurta[], campos: CampoPersonalizado[], paineis: Painel[] = []): string {
   const pede = [...e.obrigatorios.map((k) => nomeDoObrigatorio(k, campos)), ...(e.resultado === 'perdido' ? ['o motivo da perda (sempre)'] : [])];
   return [
     e.resultado ? `Final: ${NOME_RESULTADO_DA_VENDA[e.resultado]}` : TIPO_CURTO[e.tipo],
     rotuloDoNivel(e.nivel),
     pede.length ? `pede: ${pede.join(', ')}` : 'não pede nada',
     e.avisar.length ? `avisa: ${listaDeNomes(e.avisar.map((id) => nomeDaPessoa(pessoas, id)))}` : '',
+    e.abreImplantacao ? `abre a implantação em ${paineis.find((p) => p.id === e.abreImplantacao)?.nome ?? 'um painel que saiu'}` : '',
+    e.ligaNoCadastro ? 'liga no cadastro do cliente' : '',
   ].filter(Boolean).join(' · ');
 }
 
@@ -296,6 +305,10 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   const [inicio] = useState(() => ({ form: formDoPainel(painel), etapas: painel ? painel.etapas.map(daEtapa) : etapasDoModelo(undefined) }));
   const [f, setF] = useState<FormPainel>(inicio.form);
   const vendas = f.tipo === 'vendas';
+  /** o painel novo pelo modelo Implantação (2.3): as etapas, os campos (a curadoria, a configuração, os testes) e as regras */
+  const [implantacao, setImplantacao] = useState(false);
+  /** os painéis de Gestão (para onde a etapa de Vendas abre a implantação) */
+  const paineisDeGestao = useMemo(() => paineis.filter((p) => p.tipo === 'gestao' && p.id !== painel?.id), [paineis, painel?.id]);
   // o que pode ser obrigatório neste painel (o painel novo usa os campos do sistema do tipo dele)
   // (2.1.2) os campos desligados na própria janela já saem do que pode ser pedido
   const validos = useMemo(() => obrigatoriosQueValem({ camposDesligados: f.desligados }, campos, f.tipo), [f.desligados, campos, f.tipo]);
@@ -340,11 +353,31 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   };
   /** O painel novo: Gestão ou Vendas. Trocar recomeça as etapas e as regras do tipo (o nome, a sigla, a cor e quem vê ficam). */
   const trocarTipo = (tipo: TipoDePainel) => {
-    if (tipo === f.tipo) return;
+    if (tipo === f.tipo && !implantacao) return;
     const base = formDoPainel(null, tipo);
-    setF((x) => ({ ...base, nome: x.nome, sigla: x.sigla, descricao: x.descricao, cor: x.cor, acesso: x.acesso, pessoas: x.pessoas, ativo: x.ativo }));
+    const doModelo = implantacao ? MODELO_DA_IMPLANTACAO : null;
+    // saindo do modelo Implantação, o nome, a sigla e a descrição dele não ficam
+    setF((x) => ({
+      ...base, nome: doModelo && x.nome === doModelo.nome ? '' : x.nome, sigla: doModelo && x.sigla === doModelo.sigla ? '' : x.sigla,
+      descricao: doModelo && x.descricao === doModelo.descricao ? '' : x.descricao, cor: x.cor, acesso: x.acesso, pessoas: x.pessoas, ativo: x.ativo,
+    }));
+    setImplantacao(false);
     setModelo('');
     setRascunho(etapasDoModelo(undefined, tipo));
+    setAbertas(new Set()); setErro('');
+  };
+  /** O modelo Implantação: um painel de Gestão com as etapas, as regras e (ao criar) os campos do modelo. */
+  const usarImplantacao = () => {
+    if (implantacao) return;
+    const m = MODELO_DA_IMPLANTACAO;
+    const base = formDoPainel(null, 'gestao');
+    setF((x) => ({
+      ...base, nome: x.nome || m.nome, sigla: x.sigla || m.sigla, descricao: x.descricao || m.descricao, cor: m.cor, acesso: x.acesso, pessoas: x.pessoas, ativo: x.ativo,
+      tipos: [...m.ajustes.tipos], contaPrazo: false, fecharSozinho: false, desligados: [...m.ajustes.camposDesligados], paiEsperaFilhos: m.ajustes.paiEsperaFilhos,
+    }));
+    setImplantacao(true);
+    setModelo('');
+    setRascunho(m.etapas.map((e) => etapaNova(e)));
     setAbertas(new Set()); setErro('');
   };
 
@@ -382,6 +415,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
         ...(vendas ? { motivosDePerda: motivos, metaMensal: f.meta } : {}),
       },
       ...(etapasMudaram ? { etapas, destino } : {}),
+      ...(!painel && implantacao ? { modelo: 'implantacao' as const } : {}),
     };
     setSalvando(true); setErro('');
     try {
@@ -402,7 +436,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
   const pedirParaFechar = () => { if (mudouAlgo) setFechar(true); else onFechar(); };
 
   return (
-    <Modal open onClose={pedirParaFechar} largura="max-w-3xl" titulo={painel ? `Editar o painel ${painel.nome}` : vendas ? 'Novo painel de Vendas' : 'Novo painel'}
+    <Modal open onClose={pedirParaFechar} largura="max-w-3xl" titulo={painel ? `Editar o painel ${painel.nome}` : vendas ? 'Novo painel de Vendas' : implantacao ? 'Novo painel de Implantação' : 'Novo painel'}
       rodape={<>
         {erro && <p className="text-bad text-[13px] mr-auto basis-full sm:basis-auto sm:flex-1" role="alert" id="painel-erro">{erro}</p>}
         <button type="button" className="btn-secondary" onClick={pedirParaFechar}>Cancelar</button>
@@ -425,12 +459,21 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
           {/* Gestão ou Vendas: escolhido ao criar (o de Vendas é o funil do Comercial); depois não muda */}
           {!painel ? (
             <CampoRotulo rotulo="O painel é de" id="painel-tipo" grupo>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="radiogroup" aria-label="O painel é de" id="painel-tipo">
-                <OpcaoDoTipo ativo={!vendas} onClick={() => trocarTipo('gestao')} icone={<Ticket size={17} aria-hidden />} titulo="Chamados (Gestão)"
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="O painel é de" id="painel-tipo">
+                <OpcaoDoTipo ativo={!vendas && !implantacao} onClick={() => trocarTipo('gestao')} icone={<Ticket size={17} aria-hidden />} titulo="Chamados (Gestão)"
                   texto="As etapas, os níveis (N1, N2…), o prazo e o Resolvido. O Suporte, o Desenvolvimento, o Administrativo." />
                 <OpcaoDoTipo ativo={vendas} onClick={() => trocarTipo('vendas')} icone={<HandCoins size={17} aria-hidden />} titulo="Negociações (Vendas)"
                   texto="O funil, o valor, o Ganho e o Perdido (com o motivo) e o relatório de vendas. O Comercial." />
+                <OpcaoDoTipo ativo={implantacao} onClick={usarImplantacao} icone={<Rocket size={17} aria-hidden />} titulo="Implantação (Gestão)"
+                  texto="Um card por cliente novo: a curadoria, a configuração e os testes de cada produto. O Validado liga os produtos e os módulos no cadastro." />
               </div>
+              {implantacao && (
+                <p className="text-[12.5px] text-ink-2 rounded-lg bg-surface-2 px-3 py-2 mt-2" id="painel-modelo-implantacao">
+                  Já vem com as etapas ({MODELO_DA_IMPLANTACAO.etapas.map((e) => e.nome).join(', ')}) e os {MODELO_DA_IMPLANTACAO.campos.length} campos da curadoria, da configuração e
+                  dos testes do LineChat e do LinePBX (dá para mudar tudo depois, em Ajustes › Campos). Para a negociação abrir o card sozinha, escolha no painel do
+                  Comercial a etapa que <b>abre a implantação</b> neste painel.
+                </p>
+              )}
             </CampoRotulo>
           ) : vendas && (
             <p className="text-[12.5px] text-ink-2 rounded-lg bg-surface-2 px-3 py-2 flex items-center gap-2" id="painel-tipo">
@@ -498,7 +541,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
               chamado novo cai na primeira etapa de <b>Entrada</b>; mover para um nível acima (N1 → N2) é escalonar e pede o motivo.
             </p>
           )}
-          {!painel && paineis.some((p) => p.tipo === f.tipo) && (
+          {!painel && !implantacao && paineis.some((p) => p.tipo === f.tipo) && (
             <label className="flex flex-wrap items-center gap-2 text-[13px] text-ink-2" htmlFor="painel-modelo">
               Começar com as etapas
               <select className="input w-auto max-w-full py-1.5" id="painel-modelo" value={modelo} onChange={(e) => usarModelo(e.target.value)}>
@@ -507,7 +550,7 @@ function JanelaPainel({ painel, paineis, pessoas, todasAsPessoas, campos, onFech
               </select>
             </label>
           )}
-          <ListaDeEtapas rascunho={rascunho} mexer={mexer} saindo={saindo} setSaindo={setSaindo} abertas={abertas} setAbertas={setAbertas}
+          <ListaDeEtapas paineisDeGestao={paineisDeGestao} rascunho={rascunho} mexer={mexer} saindo={saindo} setSaindo={setSaindo} abertas={abertas} setAbertas={setAbertas}
             pessoas={pessoas} todasAsPessoas={todasAsPessoas} existe={!!painel} chamadosNa={chamadosNa} obrigatorios={validos.etapas} campos={campos} vendas={vendas} />
         </section>
 
@@ -619,7 +662,9 @@ function etapasDoModeloAtual(modelo: string, paineis: Painel[], inicio: EtapaRas
 //  AS ETAPAS (dentro da janela do painel)
 // =====================================================================
 
-function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas, pessoas, todasAsPessoas, existe, chamadosNa, obrigatorios, campos, vendas = false }: {
+function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas, pessoas, todasAsPessoas, existe, chamadosNa, obrigatorios, campos, vendas = false, paineisDeGestao }: {
+  /** os painéis de Gestão (a etapa de Vendas que abre a implantação escolhe um) */
+  paineisDeGestao: Painel[];
   rascunho: EtapaRascunho[]; mexer: (fn: (xs: EtapaRascunho[]) => EtapaRascunho[]) => void;
   saindo: Saindo[]; setSaindo: (fn: (xs: Saindo[]) => Saindo[]) => void;
   abertas: Set<string>; setAbertas: (fn: (s: Set<string>) => Set<string>) => void;
@@ -701,6 +746,8 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
                           {' '}{paraBusca(e.nome) === paraBusca(NOME_RESULTADO_DA_VENDA[e.resultado]) ? 'final' : NOME_RESULTADO_DA_VENDA[e.resultado]}
                         </Chip>
                       )}
+                      {e.abreImplantacao && <Chip tone="accent" title="A negociação que chega aqui abre o card da implantação"><Rocket size={11} aria-hidden /> abre a implantação</Chip>}
+                      {e.ligaNoCadastro && <Chip tone="ok" title="O card que chega aqui liga os produtos e os módulos no cadastro do cliente">liga no cadastro</Chip>}
                       {existe && !e.id && <Chip tone="ok">nova</Chip>}
                     </span>
                   </button>
@@ -714,11 +761,12 @@ function ListaDeEtapas({ rascunho, mexer, saindo, setSaindo, abertas, setAbertas
                 </div>
                 {/* o resumo na largura toda (no celular, ao lado dos botões, ficava espremido) */}
                 <p className="text-[12.5px] text-muted leading-snug pl-[52px] pr-1 break-words cursor-pointer" onClick={() => alternar(e.chave)}>
-                  {resumoDaEtapa(e, todasAsPessoas, campos)}
+                  {resumoDaEtapa(e, todasAsPessoas, campos, paineisDeGestao)}
                   {n !== null && n > 0 && e.id && <> · <span className="font-semibold text-ink-2 tnum">{n} {vendas ? (n === 1 ? 'negociação' : 'negociações') : n === 1 ? 'chamado' : 'chamados'}</span></>}
                 </p>
               </div>
-              {aberta && <EditarEtapa e={e} pessoas={pessoas} todasAsPessoas={todasAsPessoas} obrigatorios={obrigatorios} campos={campos} vendas={vendas} onMudar={(o) => mudarEtapa(e.chave, o)} />}
+              {aberta && <EditarEtapa e={e} pessoas={pessoas} todasAsPessoas={todasAsPessoas} obrigatorios={obrigatorios} campos={campos} vendas={vendas} paineisDeGestao={paineisDeGestao}
+                onMudar={(o) => mudarEtapa(e.chave, o)} />}
             </li>
           );
         })}
@@ -768,9 +816,9 @@ function BotaoIcone({ rotulo, onClick, desativado, perigo, children }: { rotulo:
 }
 
 /** Os detalhes de uma etapa: o nome, o tipo (com a dica), o nível, o que pede para entrar e quem avisa. */
-function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar, vendas = false }: {
+function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar, vendas = false, paineisDeGestao }: {
   e: EtapaRascunho; pessoas: PessoaCurta[]; todasAsPessoas: PessoaCurta[]; obrigatorios: Obrigatorio[]; campos: CampoPersonalizado[]; onMudar: (o: Partial<EtapaRascunho>) => void;
-  vendas?: boolean;
+  vendas?: boolean; paineisDeGestao: Painel[];
 }) {
   const base = `etapa-${e.chave}`;
   const fecha = e.tipo === 'resolvido' || e.tipo === 'fechado';
@@ -804,6 +852,27 @@ function EditarEtapa({ e, pessoas, todasAsPessoas, obrigatorios, campos, onMudar
           : fecha ? 'O problema (ITIL) sempre pede a causa, a solução e a validação para resolver e fechar, em qualquer painel.' : 'Sem o que está marcado, o chamado não entra: a tela diz o que falta.'}>
         <Caixinhas id={`${base}-obrigatorios`} campos={obrigatorios} valor={e.obrigatorios} nome={(k) => nomeDoObrigatorio(k, campos)} onChange={(v) => onMudar({ obrigatorios: v })} />
       </CampoRotulo>
+      {/* a implantação (2.3): o Luan só marca o Ganho quando começa a faturar — é a etapa de antes que abre o card */}
+      {vendas && !e.resultado && (
+        <CampoRotulo rotulo="Ao chegar aqui, abre a implantação" id={`${base}-implantacao`} className="sm:col-span-2"
+          dica={e.abreImplantacao
+            ? 'A empresa vira cliente (se ainda não é: a janela pede o CNPJ), os produtos entram no cadastro sem a data de ativação e o card nasce na entrada do painel escolhido. O Ganho continua à parte.'
+            : 'Escolha o painel da implantação para a negociação que chega aqui abrir o card sozinha (com o cliente e os produtos).'}>
+          <select className="input" id={`${base}-implantacao`} value={e.abreImplantacao ?? ''} onChange={(ev) => onMudar({ abreImplantacao: ev.target.value || null })}>
+            <option value="">Não abre</option>
+            {paineisDeGestao.map((p) => <option key={p.id} value={p.id}>No painel {p.nome} ({p.sigla})</option>)}
+            {e.abreImplantacao && !paineisDeGestao.some((p) => p.id === e.abreImplantacao) && <option value={e.abreImplantacao}>(um painel que saiu)</option>}
+          </select>
+        </CampoRotulo>
+      )}
+      {!vendas && (
+        <label className="flex items-start gap-2.5 text-sm cursor-pointer sm:col-span-2" id={`${base}-cadastro`}>
+          <Toggle checked={e.ligaNoCadastro} onChange={(v) => onMudar({ ligaNoCadastro: v })} />
+          <span>Ao chegar aqui, liga no cadastro do cliente
+            <span className="block text-[12.5px] text-muted">Os produtos do chamado ganham a data de ativação (o dia) e os módulos marcados (o campo Módulos do produto) ficam ligados na ficha do cliente. A janela mostra antes o que muda. É o Validado da implantação.</span>
+          </span>
+        </label>
+      )}
     </div>
   );
 }

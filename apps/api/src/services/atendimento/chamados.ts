@@ -36,7 +36,7 @@ import {
   NOME_CONVERSA, NOME_OUTRAS_CONVERSAS, NOME_OUTROS_CONTATOS, outrosContatosLimpos, sessaoDaConversa, textoDoOutroContato,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
-  type ValoresDosCampos,
+  type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo,
 } from '@gestor/shared';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
 import { lerConteudo } from '../projects.js';
@@ -50,6 +50,7 @@ import {
 } from './contexto.js';
 import { dadosDaLinha, filhosDoChamado, IMAGENS_NA_TELA, minutosGastos } from './leitura.js';
 import { emitir } from './webhooks.js';
+import { abrirAImplantacao, aoMover, ligarNoCadastro, type AoMover, type AuditoriaExtra } from './implantacao.js';
 import { mandarWhatsApp } from './whatsapp.js';
 
 export { fichaDoChamado } from './leitura.js';
@@ -65,6 +66,8 @@ export type Feito = {
   depois?: unknown;
   /** a ação ficou registrada, mas não deu certo (o WhatsApp recusou): a rota audita e devolve 400 com isto */
   erro?: string;
+  /** as outras linhas da auditoria (2.3, a implantação: o cliente criado, o card aberto, o que ligou no cadastro) */
+  auditoriaExtra?: AuditoriaExtra[];
 };
 
 type SetChamado = Partial<typeof tickets.$inferInsert>;
@@ -674,15 +677,28 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     const novos: ValoresDosCampos = { ...atuais };
     let mexeu = false;
     await incluirOpcoesEscritas(db, ctx, painel, d.campos);
+    let marcas = (t.fieldMarks as MarcasDosCampos | null) ?? {};
+    let mexeuNasMarcas = false;
     for (const { campo: c, valor } of lerCampos(ctx, painel, d.campos, atuais)) {
       const antes = atuais[c.id] ?? null;
       if (mesmoValorDoCampo(antes, valor)) continue;
       mexeu = true;
       if (valor === null) delete novos[c.id]; else novos[c.id] = valor;
-      if (c.tipo === 'texto_longo') longo(chaveDoCampo(c.id), c.nome, antes);
-      else campo(chaveDoCampo(c.id), c.nome, textoDoValor(c, antes) || null, textoDoValor(c, valor) || null, antes);
+      // o campo de um produto leva o nome dele no histórico ("Testes realizados (LinePBX)", 2.3)
+      const nome = nomeCompletoDoCampo(c, ctx.produtos);
+      if (c.tipo === 'texto_longo') longo(chaveDoCampo(c.id), nome, antes);
+      else if (ehCaixinhas(c.tipo)) {
+        // as caixinhas (2.3): quem marcou e quando; o histórico diz o que foi marcado e desmarcado
+        const r = marcasDepois(marcas, c, antes, valor, { porId: pessoaDoAtor(ator), porNome: integracaoDoAtor(ator) }, agora.toISOString());
+        marcas = r.marcas;
+        mexeuNasMarcas = true;
+        const nomes = (ids: string[]) => ids.map((id) => c.opcoes.find((o) => o.id === id)?.nome ?? '(opção que saiu)');
+        eventos.push(['campo', { campo: nome, marcou: nomes(r.marcou), desmarcou: nomes(r.desmarcou) }]);
+        mudou(chaveDoCampo(c.id), nome, antes);
+      } else campo(chaveDoCampo(c.id), nome, textoDoValor(c, antes) || null, textoDoValor(c, valor) || null, antes);
     }
     if (mexeu) set.customFields = novos;
+    if (mexeuNasMarcas) set.fieldMarks = marcas;
   }
 
   // os textos longos: o histórico diz só que mudou (o texto está no chamado; a auditoria guarda o de antes)
@@ -905,7 +921,10 @@ function frasesDoMovimento(codigo: string, m: Movimento, sentido: 'sobe' | 'desc
  */
 export async function mover(
   app: FastifyInstance, ator: Ator, ref: string,
-  d: { etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null },
+  d: {
+    etapaId: string; motivo?: string | null; responsavelId?: string | null; motivoPerda?: string | null; concluidoEm?: string | null; depoisDe?: string | null;
+    implantacao?: { clienteId?: string | null; nomeFantasia?: string | null; razaoSocial?: string | null; cnpj?: string | null };
+  },
 ): Promise<Feito> {
   exigirTrabalhar(ator);
   const e = await carregar(app, ator, ref);
@@ -917,15 +936,41 @@ export async function mover(
   if (responsavelId) conferirPessoa(e.ctx, responsavelId);
   const venda = conferirResultado(e, para, d);
   const sentido = await conferirMovimento(app.db, e, para, { motivo, responsavelId, nivel: true, venda, ator });
-  const m = await app.db.transaction(async (tx) => {
+  // o que a etapa faz ao chegar (2.3): abrir a implantação (a negociação) ou ligar no cadastro (o card do Validado). O
+  // cliente novo precisa do CNPJ (o cadastro exige): sem ele, a negociação não vai, e a tela abre a janela para pedir
+  const vai = await aoMover(app.db, e.ctx, e.t, e.painel, para, d.implantacao);
+  if (vai.implantacao?.falta) throw new BadRequest(vai.implantacao.falta, { implantacao: vai.implantacao });
+  const r = await app.db.transaction(async (tx) => {
     const feito = await gravarMovimento(tx, e, ator, para, { motivo, sentido, responsavelId, venda });
     // arrastado para um lugar da coluna (2.1): a etapa se arruma com ele ali (se o de cima saiu da etapa
     // enquanto a pessoa arrastava, ele fica no alto, como quem chega sem lugar)
     if (d.depoisDe !== undefined && ordemAMao(e.painel, para)) await arrumarNaEtapa(tx, e.painel, para.id, e.t.id, d.depoisDe);
-    return feito;
+    const implantacao = vai.implantacao ? await abrirAImplantacao(tx, e, ator, vai.implantacao) : null;
+    const cadastro = vai.cadastro ? await ligarNoCadastro(tx, e, ator, vai.cadastro) : null;
+    return { feito, implantacao, cadastro };
   });
+  const m = r.feito;
   await depoisDoMovimento(app, ator, e.t, m);
-  return { ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo, venda && { valor: e.t.valueCents, motivoPerda: venda.motivoPerda }) };
+  if (r.implantacao) emitir(app, 'chamado.criado', r.implantacao.id);
+  const extra = [
+    r.implantacao ? `; abriu a implantação ${r.implantacao.codigo}${r.implantacao.clienteNovo ? ` e criou o cliente ${r.implantacao.clienteNovo.nome}` : ''}` : '',
+    r.cadastro && (r.cadastro.produtos.length || r.cadastro.modulos.length) ? `; ligou no cadastro ${[...r.cadastro.produtos, ...r.cadastro.modulos].join(', ')}` : '',
+  ].join('');
+  return {
+    ...nada(e.t), resumo: frasesDoMovimento(e.t.code, m, sentido, motivo, venda && { valor: e.t.valueCents, motivoPerda: venda.motivoPerda }) + extra,
+    auditoriaExtra: [...(r.implantacao?.auditoria ?? []), ...(r.cadastro?.auditoria ?? [])],
+  };
+}
+
+/**
+ * O que a etapa vai fazer, para a janela da tela antes de mover (2.3): o plano da implantação (o cliente, os produtos, o
+ * card) e o do cadastro (os produtos com a data, os módulos). Não grava nada.
+ */
+export async function oQueAEtapaFaz(app: FastifyInstance, ator: Ator, ref: string, d: { etapaId: string; clienteId?: string | null; cnpj?: string | null; nomeFantasia?: string | null; razaoSocial?: string | null }): Promise<AoMover> {
+  const e = await carregar(app, ator, ref);
+  const para = e.painel.etapas.find((x) => x.id === d.etapaId);
+  if (!para) throw new BadRequest('Essa etapa não é do painel deste chamado.');
+  return aoMover(app.db, e.ctx, e.t, e.painel, para, { clienteId: d.clienteId, cnpj: d.cnpj, nomeFantasia: d.nomeFantasia, razaoSocial: d.razaoSocial });
 }
 
 // =====================================================================

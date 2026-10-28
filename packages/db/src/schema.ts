@@ -1530,6 +1530,16 @@ export const ticketStages = pgTable(
     notifyUserIds: text('notify_user_ids').array().notNull().default([]),
     /** No painel de Vendas: ganho ou perdido (a etapa final que diz como a negociação acabou); nas outras, nulo */
     outcome: text('outcome'),
+    /**
+     * No painel de Vendas (2.3): a negociação que chega aqui abre a implantação no painel com este id — cria o cliente (se
+     * ainda não é), põe os produtos no cadastro e abre o card. Nulo: nada.
+     */
+    opensPanelId: text('opens_panel_id').references((): AnyPgColumn => ticketPanels.id),
+    /**
+     * No painel de Gestão (2.3, o Validado da implantação): o chamado que chega aqui liga no cadastro do cliente os produtos
+     * dele (com a data de ativação) e os módulos marcados nos campos "Módulos do produto".
+     */
+    activatesProducts: boolean('activates_products').notNull().default(false),
     createdAt: createdAt(),
     deletedAt: deletedAt(),
   },
@@ -1575,7 +1585,7 @@ export const ticketFields = pgTable(
     id: id(),
     panelId: text('panel_id').notNull().references(() => ticketPanels.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    /** texto | texto_longo | numero | data | sim_nao | lista | lista_varios */
+    /** texto | texto_longo | numero | data | sim_nao | lista | lista_varios | caixinhas | modulos (2.3) */
     kind: text('kind').notNull(),
     /** A explicação que aparece embaixo do campo (na ficha e no Abrir chamado) */
     help: text('help'),
@@ -1586,6 +1596,13 @@ export const ticketFields = pgTable(
      * (2.0.3, a Indicação do Comercial: "eu tenho que conseguir criar por aqui mesmo se quiser")
      */
     inlineOptions: boolean('inline_options').notNull().default(false),
+    /**
+     * A parte da ficha (2.3, a implantação: "Curadoria", "Configuração", "Testes"): com ela, o campo vai para o meio da ficha,
+     * junto dos outros da mesma parte. Nulo: na classificação (ou junto do relato, o texto longo), como sempre.
+     */
+    section: text('section'),
+    /** Só aparece quando o chamado tem este produto (2.3: o bloco do LineChat, o do LinePBX); os módulos são os dele */
+    productId: text('product_id').references(() => products.id),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),
@@ -1706,6 +1723,16 @@ export const tickets = pgTable(
      * apaga), e ele vai pela regra de sempre, antes dos arrumados.
      */
     boardPosition: integer('board_position'),
+    /**
+     * Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção: {campo: {opção: {porId, porNome, em}}}. O valor
+     * do campo (as marcadas) continua em `custom_fields`; desmarcar tira a marca.
+     */
+    fieldMarks: jsonb('field_marks').$type<Record<string, Record<string, { porId: string | null; porNome: string | null; em: string }>>>().notNull().default({}),
+    /**
+     * A negociação que abriu este card na implantação (2.3, a etapa que abre a implantação no painel de Vendas). Uma
+     * negociação abre um card só (fora da lixeira).
+     */
+    sourceTicketId: text('source_ticket_id').references((): AnyPgColumn => tickets.id),
     createdById: text('created_by_id').references(() => users.id),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1721,6 +1748,7 @@ export const tickets = pgTable(
     index('tickets_session_idx').on(t.sessionId),
     index('tickets_phone_idx').on(t.contactPhone),
     uniqueIndex('tickets_external_ref_uq').on(t.externalRef),
+    uniqueIndex('tickets_source_ticket_uq').on(t.sourceTicketId).where(sql`deleted_at is null`),
   ],
 );
 

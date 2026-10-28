@@ -5,7 +5,7 @@
 import type * as T from './types.js';
 import type {
   AjustesDoSimulador, AjustesDoSimuladorEntrada, CalendarioOpcoes, ContatoDoCliente, ContatoGravarEntrada, EventoAviso, EventoDoCalendario, EventoGravarEntrada,
-  LeituraDoHelenaNaTela, OpcoesDoTrazerDoHelena, PlanilhaParaALeitura, PreviaDoHelena, ResultadoDoTrazerDoHelena,
+  AoMoverEntrada, LeituraDoHelenaNaTela, OQueAEtapaFaz, OpcoesDoTrazerDoHelena, PlanilhaParaALeitura, PreviaDoHelena, ResultadoDoTrazerDoHelena,
   Simulacao, SimulacaoDaNegociacao, SimulacaoGravarEntrada, SimulacaoNaLista, SimuladorOpcoes, SituacaoDoEvento, TipoDeEvento,
 } from '@gestor/shared';
 import { API_BASE } from './base.js';
@@ -319,6 +319,11 @@ export type Api = {
     alterar(id: string, d: T.ChamadoAlterarEntrada): Promise<T.FichaChamado>;
     /** escalonar (subir de nível) e voltar de nível pedem o motivo */
     mover(id: string, d: T.MoverEntrada): Promise<T.FichaChamado>;
+    /**
+     * O que a etapa vai fazer ao chegar (2.3), para a janela de antes de mover: abrir a implantação (o cliente, os produtos e
+     * o card) ou ligar no cadastro (os produtos com a data e os módulos). Não grava nada.
+     */
+    aoMover(id: string, d: AoMoverEntrada): Promise<OQueAEtapaFaz>;
     /**
      * O lugar na coluna do quadro (2.1, nas etapas abertas do painel de Vendas): logo abaixo de `depoisDe`
      * (nulo: no alto). 409 quando o `depoisDe` saiu da etapa.
