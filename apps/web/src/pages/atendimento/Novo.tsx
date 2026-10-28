@@ -102,7 +102,6 @@ type Form = {
   etiquetas: string[];
   /** a cor de cada etiqueta NOVA (pela chave do nome); a que já existe tem a dela */
   coresNovas: Record<string, CorEtiqueta>;
-  avisarCliente: boolean;
   /** os campos do painel (pelo id do campo) */
   campos: Record<string, ValorDoCampo>;
   /** a negociação (painel de Vendas): a empresa que ainda não é cliente e o valor (centavos) */
@@ -258,7 +257,6 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       observadores: [],
       etiquetas: [],
       coresNovas: {},
-      avisarCliente: false,
       campos: {},
       // a negociação nasce em "Ainda não é cliente" (o pedido do Luan, 2.0.3: "o padrão aqui tem q ser que ainda n
       // é cliente pq a maioria dos casos vão ser assim"); nos chamados a escolha não aparece
@@ -334,7 +332,6 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
     tirarFalta('contato');
   };
   const foneInvalido = !!f.contatoTelefone.trim() && !foneValido;
-  const podeAvisar = !vendas && opcoes.whatsapp.cliente && !!foneValido;
   // a conversa do LineChat colada (2.1): a mesma leitura do servidor, para dizer logo a sessão (ou o que está errado)
   const conversa = f.conversa.trim() ? sessaoDaConversa(f.conversa, opcoes.linkConversa) : null;
 
@@ -434,7 +431,6 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       observadores: f.observadores,
       paiId: pai.data?.id ?? null,
       incidentes: tipoChamado === 'problema' && incidente.data ? [incidente.data.id] : [],
-      avisarCliente: podeAvisar && f.avisarCliente,
       origem: sessao ? 'botao' : 'manual',
     };
     setEnviando(true);
@@ -815,15 +811,6 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
 
         {/* ---------- abrir (na janela, o botão fica sempre à vista, embaixo) ---------- */}
         <div className={`card p-4 flex flex-col gap-3 ${naJanela ? 'sticky -bottom-4 z-10' : ''}`} style={naJanela ? { boxShadow: '0 -8px 20px rgba(0,0,0,.08)' } : undefined}>
-          {podeAvisar && (
-            <label className="flex items-start gap-2.5 text-sm cursor-pointer">
-              <input type="checkbox" className="mt-1 accent-[var(--accent)]" id="novo-avisar" checked={f.avisarCliente} onChange={(e) => mudar({ avisarCliente: e.target.checked })} />
-              <span>
-                Avisar o cliente pelo WhatsApp com o número do chamado
-                <span className="block text-[12.5px] text-muted">Vai para {telefoneLegivel(foneValido)}{f.contatoNome.trim() ? ` (${f.contatoNome.trim()})` : ''}, pelo número oficial, com o modelo de mensagem dos Ajustes.</span>
-              </span>
-            </label>
-          )}
           <div className="flex flex-wrap items-center gap-2">
             <button type="submit" className="btn-primary" id="novo-abrir" disabled={enviando}>{enviando ? <Spinner className="text-white" /> : <Plus size={16} />} {vendas ? 'Criar a negociação' : 'Abrir chamado'}</button>
             <button type="button" className="btn-ghost" onClick={cancelar}>Cancelar</button>

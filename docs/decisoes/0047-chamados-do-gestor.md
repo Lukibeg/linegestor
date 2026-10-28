@@ -626,6 +626,13 @@ O documento do Luan de 27/10 ("melhorias2710pendentes", doze pedidos com prints)
 `secrets.reveal`, confirmação da própria senha, e gera registro na auditoria"*): foi perguntado antes de mexer, e a resposta,
 em 28/10, foi *"pode fazer"*. A 0003 foi revista (o olho revela na hora; a permissão e a auditoria continuam).
 
+**O Avisar o cliente saiu** (na prévia do 2.2, em 28/10: *"n precisa dessa função"* — *"a função de avisar o cliente"*;
+avisado de que desfazia o combinado no 2.0 — o cliente só recebe quando o atendente manda, pelo WhatsApp oficial, no modelo
+aprovado —, a resposta foi *"pode tirar"*): saíram o botão **Avisar o cliente** da barra da ficha e a caixa **Avisar o
+cliente pelo WhatsApp** do Abrir chamado. O robô do LineChat continua mandando o número do chamado na conversa, e o aviso da
+equipe pelo WhatsApp não muda. O servidor continua sabendo mandar (a rota e o ajuste "A mensagem ao cliente", guardado), para
+se um dia voltar; a tela de Ajustes diz que os botões saíram.
+
 **Na prévia do 2.2, em 28/10:** *"coloque observadores juntos com responsável"*: os **Observadores** viraram um botão colado
 no do Responsável, na barra da ficha (quem observa, com o X para tirar, o Incluir e o "Eu observo também", que saiu do
 Mais); o cartão Observadores saiu do meio da ficha (quem só lê continua vendo o responsável e os observadores num cartão).

@@ -2,7 +2,7 @@
  * A barra de ações da ficha: Assumir, Mover (o menu das etapas do painel, cada uma dizendo o que falta
  * para ir para ela e os filhos que travam), as Etiquetas e o Agendar (2.0.3, o pedido do Luan: "etiquetas tem q
  * ficar fácil ali do lado de mover e pra agendar tbm"), o atalho "Escalonar para N2", Esperar (o cliente ou a
- * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, a NIA (2.1: pedir, e ver se ela já preencheu — `Nia.tsx`),
+ * operadora) ou Parar de esperar, a NIA (2.1: pedir, e ver se ela já preencheu — `Nia.tsx`),
  * Preencher com IA e o menu Mais (problema, trocar de painel, reabrir, lixeira). Desde o 2.2 (o documento do Luan
  * de 27/10), também o **Responsável** (o botão diz quem está com o chamado e troca ali mesmo: "colocar responsável como
  * botão"), o **Checklist** (o vazio sai da ficha e volta por aqui) e as **Ligações** (ligar a outro chamado, criar um
@@ -24,7 +24,7 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowRightLeft, ArrowUpRight, CalendarPlus, Columns3, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, ListChecks, MessageCircle, MoreHorizontal, Plus, RotateCcw, Sparkles, Tag, ThumbsDown, Trash2, Trophy, Unlink, UserCheck, UserRound, Waypoints, X,
+  ArrowRightLeft, ArrowUpRight, CalendarPlus, Columns3, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, ListChecks, MoreHorizontal, Plus, RotateCcw, Sparkles, Tag, ThumbsDown, Trash2, Trophy, Unlink, UserCheck, UserRound, Waypoints, X,
 } from 'lucide-react';
 import { etapaAoAssumir, etiquetasDoPainel, etiquetasUnicas, movimentoDeNivel, nomeDoObrigatorio, type CorEtiqueta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
 import { api } from '../../../api/index.js';
@@ -36,11 +36,10 @@ import { useAgendar } from './Agenda.js';
 import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, lista, nomeComNivel, useAberta, useAcao } from './base.js';
 import { JanelaIa, pedirSugestao } from './Ia.js';
 import { BotaoDaNia } from './Nia.js';
-import { JanelaAbrirLigado, JanelaAvisar, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaTrocarPainel } from './Janelas.js';
+import { JanelaAbrirLigado, JanelaEscolherChamado, JanelaEsperar, JanelaLigar, JanelaReabrir, JanelaTrocarPainel } from './Janelas.js';
 
 type Janela =
   | { tipo: 'esperar'; espera: TipoEspera }
-  | { tipo: 'avisar' }
   | { tipo: 'ia'; s: SugestaoIa }
   | { tipo: 'ligar' }
   | { tipo: 'pai' }
@@ -75,7 +74,6 @@ export function BarraDeAcoes() {
   const perdido = vendas ? etapas.find((e) => e.resultado === 'perdido') : undefined;
   // o atalho: o próximo nível acima (N1 → N2), quando o chamado está numa etapa com nível
   const acima = aberto && etapa?.nivel ? etapas.filter((e) => e.nivel && e.nivel > etapa.nivel!).sort((a, b) => a.nivel! - b.nivel!)[0] : undefined;
-  const podeAvisar = !vendas && opcoes.whatsapp.cliente && !!f.contato?.telefone;
 
   /** Uma ação direta: o erro fica embaixo da barra, com o nome dela. */
   const direta = async <T,>(nome: string, fazer: () => Promise<T>, ok?: string) => {
@@ -274,11 +272,7 @@ export function BarraDeAcoes() {
           )
         ))}
 
-        {podeAvisar && (
-          <button type="button" className="btn-secondary btn-xs" onClick={() => setJanela({ tipo: 'avisar' })} title="Mandar uma mensagem ao contato pelo WhatsApp oficial">
-            <MessageCircle size={14} /> Avisar o cliente
-          </button>
-        )}
+        {/* o Avisar o cliente saiu no 2.2 (na prévia, 28/10: "a função de avisar o cliente… pode tirar") */}
 
         {/* a NIA (2.1): o botão no lugar de etiquetar à mão; ele diz se ela já preencheu (some na negociação e desligado) */}
         <BotaoDaNia />
@@ -328,7 +322,6 @@ export function BarraDeAcoes() {
 
       {agenda.janela}
       {janela?.tipo === 'esperar' && <JanelaEsperar tipo={janela.espera} onFechar={fechar} />}
-      {janela?.tipo === 'avisar' && <JanelaAvisar onFechar={fechar} />}
       {janela?.tipo === 'ia' && <JanelaIa s={janela.s} onFechar={fechar} />}
       {janela?.tipo === 'ligar' && <JanelaLigar onFechar={fechar} />}
       {janela?.tipo === 'pai' && (

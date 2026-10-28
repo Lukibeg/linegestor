@@ -58,6 +58,11 @@ export const NOTA_DEMO: { version: string; title: string; summary: string; items
     },
     {
       "kind": "atencao",
+      "title": "O Avisar o cliente saiu",
+      "text": "O botão Avisar o cliente da ficha e a caixa Avisar o cliente pelo WhatsApp do Abrir chamado saíram. O robô do LineChat continua mandando o número do chamado na conversa, e os avisos da equipe pelo WhatsApp não mudam."
+    },
+    {
+      "kind": "atencao",
       "title": "Ver a senha guardada não pede mais a sua senha",
       "text": "O olho das senhas guardadas (os acessos, o tronco, os ramais) mostra a senha na hora, por 30 segundos, sem digitar a sua senha antes. Só quem tem a permissão de ver senhas vê o olho, e cada vez que alguém vê fica na auditoria, com o nome, a data e a hora. Exportar com senhas continua pedindo a sua senha."
     },

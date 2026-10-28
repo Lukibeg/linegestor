@@ -95,8 +95,8 @@ navegador também fecha a janela.
   **"Do painel …"**, os campos que a equipe criou para ele. O que é obrigatório para abrir vem com `*`;
   faltando, a tela diz o quê. (O robô, os agendados e as integrações abrem mesmo sem eles: quem
   completa é a equipe, na ficha.)
-- **Avisar o cliente pelo WhatsApp** manda o número do chamado pelo número oficial. Vem desmarcado: o
-  atendente decide.
+- O **Avisar o cliente pelo WhatsApp** saiu no 2.2 (a pedido do Luan), aqui e na ficha. O robô do LineChat continua
+  mandando o número do chamado na conversa.
 - **Conversa no LineChat** (2.1, opcional): no **chamado ativo** — a equipe chamou o cliente, e o
   chamado não veio do robô —, cole o **link da conversa** (abra a conversa no LineChat e copie o endereço
   da barra) ou só o **código da sessão**. A tela diz logo a sessão que achou (ou o que está errado). Com
@@ -142,7 +142,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   **Observadores** (quem recebe os avisos; incluir, tirar com o X e o **Eu observo também** — 2.2), **Mover**,
   **Etiquetas**, **Agendar**, **Checklist** (quando ainda não tem), **Ligações** (ligar a outro chamado, criar um
   filho, definir o pai), **Escalonar** (pede o motivo), **Esperar** o cliente ou a operadora (pede o motivo),
-  **Avisar o cliente**, a **NIA** (abaixo), **Preencher com IA** e **Mais** (ligar a um problema, trocar de painel,
+  a **NIA** (abaixo), **Preencher com IA** e **Mais** (ligar a um problema, trocar de painel,
   reabrir, lixeira). O **Copiar o link** fica ao lado do código, no alto (2.2). Quem só lê o chamado (sem a barra)
   vê o responsável e os observadores num cartão, ao lado.
 - **Para sair do Novo, o chamado precisa de um responsável** (2.2): sem ninguém, o Mover diz "falta:
@@ -157,9 +157,7 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   escolhe-se o de dentro. Nos filtros, a pasta filtra tudo o que está nela.
 - Abrir um chamado de dentro de outro (o desenho, um código no texto) e fechar no **X** volta para o de antes. **Criar um filho** (e **Abrir um problema a partir deste**) abre o
   formulário do Abrir chamado numa janela por cima da ficha: aberto, a janela fecha e a ficha mostra o
-  filho. **Avisar o cliente** mostra, antes de mandar, **como a mensagem chega**: dentro do modelo aprovado do WhatsApp oficial, com o
-  nome do contato, o código e o seu texto (a quebra de linha vira " · ": o WhatsApp não aceita quebra
-  dentro do modelo).
+  filho.
 - **A NIA** (2.1, no lugar de etiquetar à mão): **Preencher com a NIA** pede à NIA (a IA do suporte,
   no n8n) para ler a conversa e preencher o chamado. Por baixo, o botão põe a etiqueta **NIA -
   PREENCHER**, como antes — o fluxo da NIA não muda. O botão diz em que pé está: **NIA preenchendo…** (a
