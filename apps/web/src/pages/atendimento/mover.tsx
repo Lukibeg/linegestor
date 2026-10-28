@@ -16,7 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useQuery } from '@tanstack/react-query';
 import { Building2, CheckCircle2, CircleDashed, KanbanSquare, Package } from 'lucide-react';
 import {
-  FRASE_DO_MODULO, FRASE_DO_PRODUTO, cadastroMuda, cnpjFormatado, cnpjLimpo, movimentoDeNivel, nomeDoObrigatorio,
+  FRASE_DO_MODULO, FRASE_DO_PRODUTO, cadastroMuda, cnpjEnquantoDigita, cnpjLimpo, movimentoDeNivel, nomeDoObrigatorio,
   type EtapaPainel, type FichaChamado, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PessoaCurta, type PlanoDaImplantacao, type PlanoDoCadastro, type ValoresDosProdutos,
 } from '@gestor/shared';
 import { api } from '../../api/index.js';
@@ -265,7 +265,7 @@ function JanelaDaImplantacao({ e, plano: inicial, onFechar, onConfirmar }: {
   const [modo, setModo] = useState<'novo' | 'escolher' | 'achado'>(inicial.cliente.tipo === 'cadastro' ? 'achado' : 'novo');
   const [nomeFantasia, setNomeFantasia] = useState(novo?.nomeFantasia ?? '');
   const [razaoSocial, setRazaoSocial] = useState(novo?.razaoSocial ?? '');
-  const [cnpj, setCnpj] = useState(novo?.cnpj ? cnpjFormatado(novo.cnpj) : '');
+  const [cnpj, setCnpj] = useState(novo?.cnpj ? cnpjEnquantoDigita(novo.cnpj) : '');
   const [clienteId, setClienteId] = useState('');
   const [erro, setErro] = useState<string | null>(null);
   const [indo, setIndo] = useState(false);
@@ -289,7 +289,11 @@ function JanelaDaImplantacao({ e, plano: inicial, onFechar, onConfirmar }: {
   }, [chave, semCliente, e.c.id, e.para.id]);
 
   const escolhendo = semCliente && modo === 'escolher';
-  const falta = escolhendo && !clienteId ? 'Escolha o cliente do cadastro.' : plano.falta;
+  // o CNPJ pela metade (ainda digitando): só diz quantos números faltam, sem o vermelho
+  const digitos = cnpjLimpo(cnpj).length;
+  const digitando = semCliente && modo === 'novo' && digitos > 0 && digitos < 14;
+  const falta = escolhendo && !clienteId ? 'Escolha o cliente do cadastro.'
+    : digitando ? `${14 - digitos === 1 ? 'Falta 1 número' : `Faltam ${14 - digitos} números`} no CNPJ.` : plano.falta;
   const confirmar = async () => {
     if (falta) return;
     setIndo(true); setErro(null);
@@ -326,7 +330,7 @@ function JanelaDaImplantacao({ e, plano: inicial, onFechar, onConfirmar }: {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <Campo label="Nome fantasia"><input className="input" id="implantacao-nome" value={nomeFantasia} maxLength={120} onChange={(ev) => setNomeFantasia(ev.target.value)} /></Campo>
                   <Campo label="CNPJ"><input className="input font-mono" id="implantacao-cnpj" value={cnpj} inputMode="numeric" maxLength={18} placeholder="00.000.000/0000-00"
-                    onChange={(ev) => setCnpj(ev.target.value)} onBlur={() => { if (cnpjLimpo(cnpj).length === 14) setCnpj(cnpjFormatado(cnpj)); }} /></Campo>
+                    onChange={(ev) => setCnpj(cnpjEnquantoDigita(ev.target.value))} /></Campo>
                   <Campo label="Razão social" className="sm:col-span-2"><input className="input" id="implantacao-razao" value={razaoSocial} maxLength={200} onChange={(ev) => setRazaoSocial(ev.target.value)} /></Campo>
                 </div>
               ) : (
@@ -353,7 +357,7 @@ function JanelaDaImplantacao({ e, plano: inicial, onFechar, onConfirmar }: {
           <p className="text-[13.5px]"><b>{plano.titulo}</b> <span className="text-muted">— em {plano.painel.nome} › {plano.etapa}, com o contato da negociação. Quem cuida da negociação acompanha o card como observador.</span></p>
         </LinhaDoPlano>
       </div>
-      {(falta || erro) && <p role="alert" className="text-bad text-[13px] mt-3">{falta ?? erro}</p>}
+      {(falta || erro) && <p role={digitando ? undefined : 'alert'} className={`${digitando ? 'text-muted' : 'text-bad'} text-[13px] mt-3`}>{falta ?? erro}</p>}
     </Modal>
   );
 }
