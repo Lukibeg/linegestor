@@ -3,11 +3,12 @@
  * para ir para ela e os filhos que travam), as Etiquetas e o Agendar (2.0.3, o pedido do Luan: "etiquetas tem q
  * ficar fácil ali do lado de mover e pra agendar tbm"), o atalho "Escalonar para N2", Esperar (o cliente ou a
  * operadora) ou Parar de esperar, Avisar o cliente pelo WhatsApp, a NIA (2.1: pedir, e ver se ela já preencheu — `Nia.tsx`),
- * Preencher com IA e o menu Mais (problema, trocar de painel, reabrir, observar, lixeira). Desde o 2.2 (o documento do Luan
+ * Preencher com IA e o menu Mais (problema, trocar de painel, reabrir, lixeira). Desde o 2.2 (o documento do Luan
  * de 27/10), também o **Responsável** (o botão diz quem está com o chamado e troca ali mesmo: "colocar responsável como
  * botão"), o **Checklist** (o vazio sai da ficha e volta por aqui) e as **Ligações** (ligar a outro chamado, criar um
  * filho e o pai, num botão próprio como o Esperar: "essas 3 opções tem q ficar em um botão próprio"). O Copiar o link foi
- * para o lado do código, no alto da ficha.
+ * para o lado do código, no alto da ficha. E, colado no Responsável, o botão dos **Observadores** (incluir, tirar e o "Observar"
+ * de quem está vendo, que saiu do Mais): o cartão Observadores saiu do meio da ficha ("coloque observadores juntos com responsável").
  * Na negociação, o Mais não tem ligar, filho, pai nem problema (2.0.1, decisão 0050).
  * Na negociação (o painel de Vendas), o Mais não tem filho, pai nem problema: ela se liga pelo Ligar (o pedido do
  * Luan na prévia, em 17/10: "n precisa de pais e filhas aqui").
@@ -23,13 +24,13 @@ import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowRightLeft, ArrowUpRight, CalendarPlus, Columns3, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, ListChecks, MessageCircle, MoreHorizontal, RotateCcw, Sparkles, Tag, ThumbsDown, Trash2, Trophy, Unlink, UserCheck, UserRound, Waypoints,
+  ArrowRightLeft, ArrowUpRight, CalendarPlus, Columns3, Eye, EyeOff, GitBranch, Hourglass, Layers, Link2, ListChecks, MessageCircle, MoreHorizontal, Plus, RotateCcw, Sparkles, Tag, ThumbsDown, Trash2, Trophy, Unlink, UserCheck, UserRound, Waypoints, X,
 } from 'lucide-react';
 import { etapaAoAssumir, etiquetasDoPainel, etiquetasUnicas, movimentoDeNivel, nomeDoObrigatorio, type CorEtiqueta, type SugestaoIa, type TipoEspera } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Confirmar, EscolherComBusca, Spinner, mensagemErro, useToast } from '../../../components/ui/index.js';
 import { paraALista } from '../../../lib/voltar.js';
-import { chaveDaFicha, fundoDaJanela } from '../comum.js';
+import { Avatar, chaveDaFicha, fundoDaJanela } from '../comum.js';
 import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { useAgendar } from './Agenda.js';
 import { ErroPerto, ItemMenu, MenuSuspenso, SeparadorMenu, lista, nomeComNivel, useAberta, useAcao } from './base.js';
@@ -141,19 +142,25 @@ export function BarraDeAcoes() {
           </button>
         )}
 
-        {/* o responsável num botão (2.2): diz quem está com o chamado e troca ali mesmo; o que falta para sair do Novo marca o botão */}
+        {/* o responsável num botão (2.2): diz quem está com o chamado e troca ali mesmo; o que falta para sair do Novo marca o botão.
+            Colado nele, os Observadores (2.2, na prévia: "coloque observadores juntos com responsável") */}
+        <div className="inline-flex items-stretch" role="group" aria-label={vendas ? 'Responsável e observadores da negociação' : 'Responsável e observadores do chamado'}>
         <EscolherComBusca valor={f.responsavel?.id ?? ''} opcoes={pessoasAtivas.map((p) => ({ id: p.id, nome: p.nome }))}
           vazio={vendas ? 'Ninguém (sem vendedor)' : 'Ninguém (fica na fila da etapa)'} rotulo="Responsável" procurar="Procurar pessoa…" largura="w-[300px]"
           onChange={(id) => void direta('Responsável', () => api.atendimento.alterar(f.id, { responsavelId: id || null }),
             id ? `Responsável: ${pessoasAtivas.find((p) => p.id === id)?.nome ?? ''}` : vendas ? 'A negociação ficou sem responsável' : 'O chamado ficou sem responsável')}
           gatilho={(abrir) => (
             <button type="button" id="campo-responsavel" onClick={abrir}
-              className={`btn-secondary btn-xs max-w-[220px] ${faltando.has('responsavel') ? '!border-signal' : ''}`}
+              className={`btn-secondary btn-xs rounded-r-none max-w-[220px] ${faltando.has('responsavel') ? '!border-signal relative z-[1]' : ''}`}
               title={faltando.has('responsavel') ? `Para sair de ${etapa?.nome ?? 'Novo'}, ${vendas ? 'a negociação' : 'o chamado'} precisa de um responsável` : vendas ? 'Quem cuida da negociação (clique para trocar)' : 'Quem está com o chamado (clique para trocar)'}>
               {acao.ocupado && qual === 'Responsável' ? <Spinner /> : <UserRound size={14} />}
               <span className="truncate">{f.responsavel ? f.responsavel.nome : <span className={faltando.has('responsavel') ? 'text-signal' : 'text-muted'}>Sem responsável</span>}</span>
             </button>
           )} />
+        <Observadores vendas={vendas} ocupado={acao.ocupado && (qual === 'Observadores' || qual === 'Observar' || qual === 'Deixar de observar')}
+          mudar={(ids, ok) => void direta('Observadores', () => api.atendimento.alterar(f.id, { observadores: ids }), ok)}
+          eu={(quer) => void direta(quer ? 'Observar' : 'Deixar de observar', () => api.atendimento.observar(f.id, quer), quer ? 'Você passou a observar: recebe os avisos dele e o vê no seu Meu dia' : 'Você deixou de observar')} />
+        </div>
 
         <MenuSuspenso classe="btn-secondary btn-xs" largura="w-[320px]" titulo="Mover para outra etapa (ou escalonar)"
           rotulo={<>{ocupadoMover ? <Spinner /> : <ArrowRightLeft size={14} />} Mover</>}>
@@ -305,11 +312,7 @@ export function BarraDeAcoes() {
                 )}
                 <ItemMenu icone={<Columns3 size={14} />} onClick={ir(() => setJanela({ tipo: 'painel' }))} dica="o código não muda">Trocar de painel…</ItemMenu>
                 {!aberto && <ItemMenu icone={<RotateCcw size={14} />} onClick={ir(() => setJanela({ tipo: 'reabrir' }))}>Reabrir…</ItemMenu>}
-                <ItemMenu icone={f.observando ? <EyeOff size={14} /> : <Eye size={14} />}
-                  onClick={ir(() => void direta(f.observando ? 'Deixar de observar' : 'Observar', () => api.atendimento.observar(f.id, !f.observando), f.observando ? 'Você deixou de observar' : 'Você passou a observar: recebe os avisos dele e o vê no seu Meu dia'))}
-                  dica={f.observando ? undefined : 'aparece no seu Meu dia'}>
-                  {f.observando ? 'Deixar de observar' : 'Observar'}
-                </ItemMenu>
+                {/* o Observar foi para o botão dos Observadores, colado no Responsável (2.2) */}
                 {cuida && (
                   <>
                     <SeparadorMenu />
@@ -348,5 +351,64 @@ export function BarraDeAcoes() {
           ? <>A negociação <b>{f.titulo}</b> sai do quadro, da lista e do relatório de vendas para todo mundo. O número {f.codigo} não volta a ser usado. Dá para restaurar em Administração › Lixeira.</>
           : <>O chamado <b>{f.titulo}</b> sai do quadro e da lista para todo mundo. O número {f.codigo} não volta a ser usado. Dá para restaurar em Administração › Lixeira.</>} />}
     </div>
+  );
+}
+
+
+/**
+ * Os Observadores, colados no botão do Responsável (2.2): quem recebe os avisos de tudo o que acontece no chamado e o vê no Meu
+ * dia. O menu mostra quem observa (com o X para tirar), o Incluir (a busca das pessoas) e o Observar de quem está vendo.
+ */
+function Observadores({ vendas, ocupado, mudar, eu: euQuer }: {
+  vendas: boolean;
+  ocupado: boolean;
+  mudar: (ids: string[], ok: string) => void;
+  eu: (quer: boolean) => void;
+}) {
+  const { f, opcoes, eu } = useAberta();
+  const ativas = opcoes.pessoas.filter((p) => p.ativo);
+  const fora = ativas.filter((p) => !f.observadores.some((o) => o.id === p.id)).map((p) => ({ id: p.id, nome: p.nome }));
+  const n = f.observadores.length;
+  return (
+    <MenuSuspenso classe="btn-secondary btn-xs rounded-l-none -ml-px" largura="w-[300px]"
+      titulo={n ? `Observadores: ${f.observadores.map((o) => o.nome).join(', ')}` : `Ninguém observa ${vendas ? 'a negociação' : 'o chamado'} (clique para incluir)`}
+      rotuloAcessivel={`Observadores${n ? ` (${n})` : ''}`}
+      rotulo={<span id="acao-observadores" className="inline-flex items-center gap-1.5">{ocupado ? <Spinner /> : <Eye size={14} />} Observadores{n > 0 && <span className="tnum text-muted font-normal">{n}</span>}</span>}>
+      {(fecharMenu) => (
+        <>
+          <div className="px-2.5 pt-1 pb-1.5 eyebrow">Observadores</div>
+          {n ? (
+            <ul className="flex flex-col" id="ficha-observadores">
+              {f.observadores.map((o) => (
+                <li key={o.id} className="flex items-center gap-2 px-2.5 py-1 text-[13.5px]">
+                  <Avatar nome={o.nome} tamanho={18} />
+                  <span className="truncate flex-1 min-w-0">{o.nome}{eu?.id === o.id ? ' (você)' : ''}</span>
+                  <button type="button" className="text-muted hover:text-bad p-0.5 rounded" disabled={ocupado} aria-label={`Tirar ${o.nome} dos observadores`} title="Tirar dos observadores"
+                    onClick={() => mudar(f.observadores.filter((x) => x.id !== o.id).map((x) => x.id), `${o.nome} deixou de observar`)}><X size={13} /></button>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="px-2.5 pb-1 text-[13px] text-muted italic">Ninguém ainda.</p>}
+          <p className="px-2.5 pt-1 pb-1.5 text-[12px] text-muted">Recebem os avisos de tudo o que acontece {vendas ? 'na negociação' : 'no chamado'} (anotação, etapa, responsável, espera) e {vendas ? 'a veem' : 'o veem'} no Meu dia.</p>
+          <SeparadorMenu />
+          {/* as setas e o Tab da busca são dela, não do menu de fora */}
+          {fora.length > 0 && <div onKeyDown={(e) => { if (e.key !== 'Escape') e.stopPropagation(); }}>
+            <EscolherComBusca valor="" opcoes={fora} rotulo="Incluir observador" procurar="Procurar pessoa…" largura="w-[280px]"
+              onChange={(id) => { const p = ativas.find((x) => x.id === id); if (p) { fecharMenu(); mudar([...f.observadores.map((o) => o.id), id], `${p.nome} passou a observar`); } }}
+              gatilho={(abrir) => (
+                <button type="button" id="ficha-observador-incluir" className="w-full text-left rounded-lg px-2.5 py-1.5 flex items-center gap-2 text-[13.5px] hover:bg-surface-2" onClick={abrir}>
+                  <Plus size={14} className="text-muted" /> Incluir observador
+                </button>
+              )} />
+          </div>}
+          {eu && (
+            <ItemMenu icone={f.observando ? <EyeOff size={14} /> : <Eye size={14} />} onClick={() => { fecharMenu(); euQuer(!f.observando); }}
+              dica={f.observando ? undefined : 'aparece no seu Meu dia'}>
+              {f.observando ? 'Deixar de observar' : 'Eu observo também'}
+            </ItemMenu>
+          )}
+        </>
+      )}
+    </MenuSuspenso>
   );
 }

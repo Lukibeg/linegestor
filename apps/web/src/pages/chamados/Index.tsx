@@ -631,6 +631,10 @@ export type Moldura = {
   aoMudar: (m: Partial<ItemPainel>) => void;
   /** abre a janela dos grupos deste gráfico */
   aoAbrirGrupos: () => void;
+  /** sem o aviãozinho do envio diário (a Visão geral dos Relatórios novos, 2.2: o envio ainda lê o Legado) */
+  semEnvio?: boolean;
+  /** sem o botão Grupos no Organizar (na Visão geral, as pastas do assunto são os grupos) */
+  semGrupos?: boolean;
 };
 
 /**
@@ -648,7 +652,7 @@ export function Cartao({ m, titulo, sub, extra, children, comGrupos = false }: {
         {sub && <span className="text-[12px] text-muted">{sub}</span>}
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
-        {!m.organizando && <BotaoEnvio tipo="grafico" id={item.id} titulo={titulo} />}
+        {!m.organizando && !m.semEnvio && <BotaoEnvio tipo="grafico" id={item.id} titulo={titulo} />}
         {extra && <div className="so-tela">{extra}</div>}
       </div>
     </div>
@@ -683,7 +687,7 @@ export function Cartao({ m, titulo, sub, extra, children, comGrupos = false }: {
           <button type="button" className={botao} data-foco={`${item.id}:depois`} disabled={m.ultimo} onClick={() => m.aoMover(1, 'depois')} aria-label={`${titulo}: mover para depois`} title="Mover para depois"><ChevronRight size={16} /></button>
         </span>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
-          {comGrupos && !item.oculto && (
+          {comGrupos && !m.semGrupos && !item.oculto && (
             <button type="button" className="btn-ghost btn-sm" onClick={m.aoAbrirGrupos} title="Juntar várias opções num ponto só do gráfico (para a equipe toda)">
               <Layers size={14} /> Grupos{nGrupos ? <span className="tnum text-muted">({nGrupos})</span> : null}
             </button>

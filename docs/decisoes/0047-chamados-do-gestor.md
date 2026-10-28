@@ -622,6 +622,10 @@ O documento do Luan de 27/10 ("melhorias2710pendentes", doze pedidos com prints)
 - **O "Ligar a um problema"** ficou como estava; a pergunta *"para q serve"* foi respondida na conversa (o problema junta os
   incidentes de várias empresas com a mesma falha).
 
-**Ficou esperando o ok dele:** ver a senha dos acessos (telefones, SZChat) sem confirmar a própria senha contraria a decisão
-0003 (*"Revelar exige a permissão `secrets.reveal`, confirmação da própria senha, e gera registro na auditoria"*); foi
-perguntado antes de mexer.
+**Ver a senha dos acessos sem confirmar a própria senha** contrariava a decisão 0003 (*"Revelar exige a permissão
+`secrets.reveal`, confirmação da própria senha, e gera registro na auditoria"*): foi perguntado antes de mexer, e a resposta,
+em 28/10, foi *"pode fazer"*. A 0003 foi revista (o olho revela na hora; a permissão e a auditoria continuam).
+
+**Na prévia do 2.2, em 28/10:** *"coloque observadores juntos com responsável"*: os **Observadores** viraram um botão colado
+no do Responsável, na barra da ficha (quem observa, com o X para tirar, o Incluir e o "Eu observo também", que saiu do
+Mais); o cartão Observadores saiu do meio da ficha (quem só lê continua vendo o responsável e os observadores num cartão).

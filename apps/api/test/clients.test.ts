@@ -49,15 +49,15 @@ describe('clientes', () => {
     expect(item.server.serverIp).toBe('203.0.113.10');
     expect(item.products.find((p: any) => p.code === 'linepbx').modules[0].name).toBe('FOP2');
 
-    // revelar exige confirmar a senha e fica na auditoria
+    // revelar não pede mais a própria senha (2.2, revendo a 0003), mas fica na auditoria
     const sid = lp.settings.sshPassword.secretId;
-    const bad = await s.post(`/secrets/${sid}/reveal`, { password: 'errada' });
-    expect(bad.statusCode).toBe(401);
-    const ok = await s.post(`/secrets/${sid}/reveal`, { password: 'SenhaDeTeste!123' });
+    const ok = await s.post(`/secrets/${sid}/reveal`, {});
     expect(ok.statusCode).toBe(200);
     expect(ok.json().value).toBe('segredo-muito-secreto');
+    // quem ainda manda a senha (qualquer uma) continua sendo atendido
+    expect((await s.post(`/secrets/${sid}/reveal`, { password: 'qualquer' })).statusCode).toBe(200);
     const audit = (await s.get('/admin/audit?action=reveal_secret')).json();
-    expect(audit.total).toBe(1);
+    expect(audit.total).toBe(2);
     expect(audit.items[0].summary).toContain('revelou');
 
     // gravar de novo sem senha mantém a atual

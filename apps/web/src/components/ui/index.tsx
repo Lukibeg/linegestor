@@ -168,10 +168,8 @@ export function Confirmar({ open, onClose, onConfirm, titulo, texto, botao = 'Co
  * os pontinhos e trocar é digitar ali mesmo; deixar como está mantém a atual. Revelada, a senha
  * aparece na própria caixa por 30 s, e dá para corrigi-la ali.
  */
-export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onChangeNovo, placeholder = 'digite para trocar' }: { secretId: string | null; hasSecret: boolean; onReveal: (id: string, password: string) => Promise<{ value: string; visibleForSeconds: number }>; podeRevelar: boolean; onChangeNovo?: (v: string) => void; placeholder?: string }) {
+export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onChangeNovo, placeholder = 'digite para trocar' }: { secretId: string | null; hasSecret: boolean; onReveal: (id: string) => Promise<{ value: string; visibleForSeconds: number }>; podeRevelar: boolean; onChangeNovo?: (v: string) => void; placeholder?: string }) {
   const [shown, setShown] = useState<string | null>(null);
-  const [asking, setAsking] = useState(false);
-  const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   /** o que foi digitado no formulário; null = não mexeu (mantém a senha guardada) */
@@ -179,27 +177,24 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
   const timer = useRef<number | null>(null);
   const toast = useToast();
   useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+  // o olho revela na hora, por 30 s (2.2: sem confirmar a própria senha, a pedido do Luan); continua na auditoria
   const reveal = async () => {
     setBusy(true); setErr('');
     try {
-      const r = await onReveal(secretId!, pw);
-      setShown(r.value); setAsking(false); setPw('');
+      const r = await onReveal(secretId!);
+      setShown(r.value);
+      if (timer.current) window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => setShown(null), r.visibleForSeconds * 1000);
     } catch (e) { setErr(mensagemErro(e)); } finally { setBusy(false); }
   };
   const botoes = hasSecret && (
     <span className="flex items-center gap-1">
       {shown && <button type="button" className="btn-ghost btn-sm" title="Copiar" onClick={() => { navigator.clipboard.writeText(shown); toast.push('ok', 'Copiado'); }}><Copy size={14} /></button>}
-      {podeRevelar && (shown ? <button type="button" className="btn-ghost btn-sm" onClick={() => setShown(null)} title="Ocultar"><EyeOff size={14} /></button> : <button type="button" className="btn-ghost btn-sm" onClick={() => setAsking(true)} title="Revelar (fica registrado)"><Eye size={14} /></button>)}
+      {podeRevelar && (shown ? <button type="button" className="btn-ghost btn-sm" onClick={() => setShown(null)} title="Ocultar"><EyeOff size={14} /></button> : <button type="button" className="btn-ghost btn-sm" disabled={busy} onClick={() => void reveal()} title="Revelar por 30 s (fica registrado)">{busy ? <Spinner /> : <Eye size={14} />}</button>)}
     </span>
   );
-  const janelaRevelar = (
-    <Modal open={asking} onClose={() => setAsking(false)} titulo="Revelar senha" rodape={<><button className="btn-secondary" onClick={() => setAsking(false)}>Cancelar</button><button className="btn-primary" disabled={!pw || busy} onClick={reveal}>{busy ? <Spinner className="text-white" /> : 'Revelar por 30 s'}</button></>}>
-      <p className="text-sm text-ink-2 mb-3">Confirme a <b>sua</b> senha. A revelação fica registrada na auditoria com seu nome, data e hora.</p>
-      <input type="password" className="input" placeholder="sua senha" value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && pw && reveal()} autoFocus />
-      {err && <div className="text-bad text-sm mt-2">{err}</div>}
-    </Modal>
-  );
+  // o erro da revelação (sem a permissão, o segredo sumiu) fica embaixo da caixa
+  const erroRevelar = err ? <div className="text-bad text-[12.5px] mt-1">{err}</div> : null;
 
   // ---------- no formulário: uma caixa só ----------
   if (onChangeNovo) {
@@ -216,7 +211,7 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
           />
           {botoes && <span className="absolute right-1.5 top-1/2 -translate-y-1/2">{botoes}</span>}
         </div>
-        {janelaRevelar}
+        {erroRevelar}
       </div>
     );
   }
@@ -232,7 +227,7 @@ export function CampoSegredo({ secretId, hasSecret, onReveal, podeRevelar, onCha
           </div>
         ) : <span className="text-muted text-sm">não cadastrada</span>}
       </div>
-      {janelaRevelar}
+      {erroRevelar}
     </div>
   );
 }

@@ -45,7 +45,8 @@ import {
   NOME_CONVERSA, NOME_OUTRAS_CONVERSAS, NOME_OUTROS_CONTATOS, outrosContatosLimpos, sessaoDaConversa, textoDoOutroContato, type OutroContato,
   AJUSTES_DO_PAINEL_DE_VENDAS, CAMPOS_DO_PAINEL_DE_VENDAS, compararNoQuadro, compararNoQuadroDeGestao, compararNoQuadroDeVendas, ordemAMao, ordemDepoisDeArrastar, painelComOrdemAMao, PosicaoNoQuadroSchema, diaComAno, ETAPAS_DO_PAINEL_DE_VENDAS, FiltroDoRelatorioDeVendasSchema, MOTIVOS_DE_PERDA_PADRAO, NOME_TIPO_DE_PAINEL,
   passagensDosEventos, passagensNoPainel, problemaNasEtapasDoTipo, reais, relatorioDeVendas, somarDias,
-  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel,
+  ArrumacaoDosRelatoriosSchema, CATALOGO_DOS_RELATORIOS, FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, arrumacaoCompleta, relatoriosDoPainel, visaoDoPainel,
+  type FiltroDaVisao, type VisaoDoPainel,
   type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type ChamadoParaRelatorios, type ClienteParaRelatorio, type ContextoDosRelatorios, type RelatoriosDoPainel,
   chaveDoNome, ligarEtapasDoEvento, siglaDoPainelNovo, valorDoCampoNoGestor, painelContaPrazo, AJUSTES_DO_PAINEL_DE_GESTAO_DO_HELENA, nomeDoPainelDeGestaoNovo, tipoParaOPainelDoHelena,
   type EstadoDoGestorParaHelena, type PainelDoGestorParaHelena, type PlanoDaImportacao,
@@ -2287,7 +2288,17 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   function relatoriosDoPainelDeChamados(ator: Ator, f: ReturnType<typeof FiltroDosRelatoriosSchema.parse>): RelatoriosDoPainel {
-    const painel = painelDosRelatorios(ator, f.painel);
+    const { chamados, contexto } = baseDosRelatoriosDemo(painelDosRelatorios(ator, f.painel));
+    return relatoriosDoPainel(chamados, contexto, f, agoraReal());
+  }
+  /** A Visão geral (2.2): Hoje e Período, como no Legado do Helena, sobre a mesma base dos 25 relatórios. */
+  function visaoDoPainelDeChamados(ator: Ator, f: FiltroDaVisao): VisaoDoPainel {
+    const { chamados, contexto } = baseDosRelatoriosDemo(painelDosRelatorios(ator, f.painel));
+    return visaoDoPainel(chamados, contexto, f, agoraReal());
+  }
+
+  /** A base dos relatórios de um painel, como o servidor monta (`baseDosRelatorios`). */
+  function baseDosRelatoriosDemo(painel: Painel): { chamados: ChamadoParaRelatorios[]; contexto: ContextoDosRelatorios } {
     const linhas = A.chamados.filter((t) => !t.deletedAt && t.painelId === painel.id);
     const ids = new Set(linhas.map((t) => t.id));
     const eventosDe = new Map<string, Array<{ tipo: string; em: string; dados: Record<string, any>; porId: string | null }>>();
@@ -2338,11 +2349,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const contexto: ContextoDosRelatorios = {
       painel: {
         id: painel.id, nome: painel.nome, sigla: painel.sigla, contaPrazo: painelContaPrazo(painel.ajustes),
-        usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras') },
+        usa: { assunto: usa('assunto'), tipo: usa('tipo'), gravidade: usa('gravidade'), produtos: usa('produtos'), operadoras: usa('operadoras'), prioridade: usa('prioridade') },
       },
       etapas: A.etapas.filter((e) => e.painelId === painel.id).map((e) => ({ id: e.id, nome: e.nome, tipo: e.tipo, nivel: e.nivel, ordem: e.ordem, ativa: !e.deletedAt })),
       assuntos: A.assuntos.filter((a) => a.painelId === painel.id).map((a) => ({ id: a.id, paiId: a.paiId, nome: a.nome, ordem: a.ordem, ativo: a.ativo })),
-      campos: camposDeLista.map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo })),
+      campos: camposDeLista.map((c) => ({ id: c.id, nome: c.nome, opcoes: c.opcoes.map((o) => ({ id: o.id, nome: o.nome })), ativo: c.ativo, varios: c.tipo === 'lista_varios' })),
       pessoas: new Map(S.users.map((u) => [u.id, u.name])),
       clientes,
       produtos: new Map(S.products.map((p) => [p.id, p.name])),
@@ -2350,7 +2361,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       prazos: A.prazos,
       campoDaFalha: arrumacaoGuardada(painel.id).campoDaFalha,
     };
-    return relatoriosDoPainel(chamados, contexto, f, agoraReal());
+    return { chamados, contexto };
   }
 
   function gravarArrumacaoDosRelatorios(ator: Ator, ref: string, nova: ArrumacaoDosRelatorios): ArrumacaoDosRelatoriosLida {
@@ -2361,15 +2372,19 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       throw bad('O campo escolhido para "De quem é a falha?" não é um campo de lista deste painel.');
     }
     const antes = arrumacaoLida(painel);
-    A.relatorios[painel.id] = { ...limpa, atualizadoEm: iso(agoraReal()), atualizadoPor: ator.nome };
+    // quem salva os 25 relatórios sem mandar a Visão geral fica com a dela guardada (como no servidor)
+    const visao = limpa.visao ?? antes.visao;
+    A.relatorios[painel.id] = { ...limpa, ...(visao ? { visao } : {}), atualizadoEm: iso(agoraReal()), atualizadoPor: ator.nome };
     const depois = arrumacaoLida(painel);
     const total = CATALOGO_DOS_RELATORIOS.length;
     const campo = depois.campoDaFalha ? depois.campos.find((c) => c.id === depois.campoDaFalha)?.nome ?? null : null;
+    const mudouAVisao = JSON.stringify(antes.visao ?? null) !== JSON.stringify(depois.visao ?? null);
+    const graficos = depois.visao ? `; na Visão geral, ${plural(depois.visao.filter((x) => !x.oculto).length, 'gráfico à vista', 'gráficos à vista')}` : '';
     auditar('atendimento_relatorios_arrumacao', 'settings',
-      `${ator.nome} arrumou os Relatórios do painel ${painel.nome} para a equipe (${total - depois.ocultos.length} à vista, ${plural(depois.ocultos.length, 'escondido', 'escondidos')}, ${plural(depois.favoritos.length, 'favorito', 'favoritos')}${campo ? `; a falha sai do campo ${campo}` : ''})`,
+      `${ator.nome} arrumou os Relatórios do painel ${painel.nome} para a equipe (${total - depois.ocultos.length} à vista, ${plural(depois.ocultos.length, 'escondido', 'escondidos')}, ${plural(depois.favoritos.length, 'favorito', 'favoritos')}${campo ? `; a falha sai do campo ${campo}` : ''}${mudouAVisao ? graficos : ''})`,
       'atendimento-relatorios', {
-        before: { ordem: antes.ordem, ocultos: antes.ocultos, favoritos: antes.favoritos, campoDaFalha: antes.campoDaFalha },
-        after: { ordem: depois.ordem, ocultos: depois.ocultos, favoritos: depois.favoritos, campoDaFalha: depois.campoDaFalha },
+        before: { ordem: antes.ordem, ocultos: antes.ocultos, favoritos: antes.favoritos, campoDaFalha: antes.campoDaFalha, visao: antes.visao ?? null },
+        after: { ordem: depois.ordem, ocultos: depois.ocultos, favoritos: depois.favoritos, campoDaFalha: depois.campoDaFalha, visao: depois.visao ?? null },
       });
     return depois;
   }
@@ -3704,6 +3719,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const f = ler(FiltroDosRelatoriosSchema, limparQuery(q));
       ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
       return relatoriosDoPainelDeChamados(eu(), f);
+    },
+    async visao(q) {
+      await ctx.wait();
+      const f = ler(FiltroDaVisaoSchema, limparQuery(q));
+      ctx.requireAnyPerm('support.read', 'sales.read'); preparar();
+      return visaoDoPainelDeChamados(eu(), f);
     },
     async arrumacaoDosRelatorios(painel) {
       await ctx.wait(60);

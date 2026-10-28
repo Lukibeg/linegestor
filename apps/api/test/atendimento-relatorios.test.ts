@@ -182,3 +182,33 @@ describe('a arrumação de cada painel', () => {
     expect(r.json().error).toContain('não é um campo de lista deste painel');
   });
 });
+
+describe('a Visão geral (2.2: Hoje e Período, como no Legado)', () => {
+  it('conta os chamados de hoje do painel, com os gráficos do que o painel usa; o filtro de um gráfico não o recorta', async () => {
+    const r = await ok(s.get('/atendimento/relatorios/visao?painel=SUP'));
+    const v = r.json();
+    expect(v.parte).toBe('hoje');
+    expect(v.kpis.map((k: any) => k.id)).toEqual(['chegaram-hoje', 'resolvidos-hoje', 'em-aberto', 'vencidos']);
+    const ids = v.graficos.map((g: any) => g.id);
+    expect(ids).toEqual(expect.arrayContaining(['etapa', 'responsavel', 'assunto', 'cliente', 'origem', `campo:${campo.id}`]));
+    const cli = v.graficos.find((g: any) => g.id === 'cliente');
+    const porCliente = (await ok(s.get(`/atendimento/relatorios/visao?painel=SUP&parte=periodo&cliente=${aurora}`))).json();
+    expect(porCliente.graficos.find((g: any) => g.id === 'cliente').itens.find((x: any) => x.valor === aurora).selecionado).toBe(true);
+    expect(cli.itens.length).toBeGreaterThan(0);
+    // quem não vê o painel não o acha (como nos 25); o filtro estragado é recusado
+    expect((await soVendas.get('/atendimento/relatorios/visao?painel=SUP')).statusCode).toBe(404);
+    expect((await s.get('/atendimento/relatorios/visao?painel=SUP&situacao=xyz')).statusCode).toBe(400);
+  });
+
+  it('a arrumação dos gráficos fica junto com a dos 25, e salvar os 25 sem ela não a apaga', async () => {
+    const atual = (await ok(s.get('/atendimento/relatorios/arrumacao?painel=SUP'))).json();
+    const visao = [{ id: 'cliente', largura: 'inteira', oculto: false, forma: 'barras' }, { id: 'serie', largura: 'inteira', oculto: true }];
+    const a = (await ok(s.put('/atendimento/relatorios/arrumacao?painel=SUP', { ordem: atual.ordem, ocultos: atual.ocultos, favoritos: atual.favoritos, campoDaFalha: atual.campoDaFalha, visao }))).json();
+    expect(a.visao).toEqual(visao);
+    const auditoria = (await s.get('/admin/audit?entityId=atendimento-relatorios&pageSize=1')).json().items as Array<{ summary: string }>;
+    expect(auditoria[0]!.summary).toContain('na Visão geral, 1 gráfico à vista');
+    const b = (await ok(s.put('/atendimento/relatorios/arrumacao?painel=SUP', { ordem: atual.ordem, ocultos: [], favoritos: ['prazo'], campoDaFalha: atual.campoDaFalha }))).json();
+    expect(b.favoritos).toEqual(['prazo']);
+    expect(b.visao).toEqual(visao);
+  });
+});

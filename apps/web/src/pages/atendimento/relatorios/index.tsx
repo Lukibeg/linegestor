@@ -20,23 +20,24 @@ import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowDown, ArrowDownUp, ArrowUp, Building2, CalendarCheck, CalendarRange, Eye, EyeOff, Filter, History, LayoutGrid, Star, Tags, Timer, Users,
+  ArrowDown, ArrowDownUp, ArrowUp, Building2, CalendarCheck, CalendarRange, Eye, EyeOff, FileBarChart, Filter, History, LayoutGrid, Star, Tags, Timer, Users,
 } from 'lucide-react';
 import {
   ABAS_DOS_RELATORIOS, CATALOGO_DOS_RELATORIOS, GRAVIDADES, ITEM_DO_CATALOGO, NAO_VALE_PORQUE, NOME_DA_ABA, NOME_DO_NIVEL, NOME_GRAVIDADE, NOME_PRIORIDADE, PRIORIDADES,
-  arrumacaoCompleta, atalhosDosRelatorios, campoLigado, etiquetasDoPainel,
+  FILTROS_SO_DA_VISAO, RESPONSAVEL_NINGUEM, SEM_VALOR_NA_VISAO, arrumacaoCompleta, atalhosDosRelatorios, campoLigado, etiquetasDoPainel,
   type AbaDosRelatorios, type ArrumacaoDosRelatorios, type ArrumacaoDosRelatoriosLida, type Nivel, type OpcoesAtendimento, type Painel, type ParetoDoPainel,
   type RelatoriosDoPainel, type SepararORelogio,
 } from '@gestor/shared';
 import { api } from '../../../api/index.js';
-import { Carregando, Chip, EscolherComBusca, mensagemErro, useToast, Vazio } from '../../../components/ui/index.js';
+import { Abas, Carregando, Chip, EscolherComBusca, mensagemErro, useToast, Vazio } from '../../../components/ui/index.js';
 import { data } from '../../../lib/format.js';
 import { usePode } from '../comum.js';
 import { CabecalhoDoPainel } from '../painel.js';
 import { PAINEL_DO_SUPORTE } from '../Suporte.js';
 import {
-  CAIXA_FILTRO, FiltrosEscritos, RESPONSAVEL_NINGUEM, SelectFiltro, nomeDoAssunto, opcoesDeAssunto, useClientesParaFiltro, useFiltrosNoEndereco, type FiltroEscrito,
+  CAIXA_FILTRO, FiltrosEscritos, SelectFiltro, nomeDoAssunto, opcoesDeAssunto, useClientesParaFiltro, useFiltrosNoEndereco, type FiltroEscrito,
 } from '../quadro/filtros.js';
+import { VisaoDoPainel } from './visao.js';
 import { JanelaDosChamados, type Aberta } from './pecas.js';
 import { Empaca, Escada, Operadora, Prazo, PrioridadeFaz, Relogio, Resposta } from './tempo.js';
 import { Calor, Curva, Fila, Idade, Previsao } from './volume.js';
@@ -61,14 +62,66 @@ function daAba(aba: Aba, a: Arrumacao, aplicaveis: readonly string[]): string[] 
   return a.ordem.filter((id) => ITEM_DO_CATALOGO.get(id)?.aba === aba && vale(id));
 }
 
+/**
+ * A página dos Relatórios de um painel (2.2): em cima, as três partes, como no Legado do Helena — **Hoje** e **Período** (a
+ * Visão geral: os números, o tempo e os gráficos de pizza) e **Relatórios** (os 25, nas seis abas e nos Favoritos). Os
+ * filtros de valor são os mesmos nas três (o endereço é um só): o que se escolhe na Visão vai junto para os Relatórios.
+ */
 export function RelatoriosDoPainelDeChamados({ painel, opcoes }: { painel: Painel; opcoes: OpcoesAtendimento }) {
+  const { valor, mudar } = useFiltrosNoEndereco();
+  const pedida = valor('parte');
+  // o endereço de antes do 2.2 (com a aba dos relatórios) continua abrindo os Relatórios
+  const parte: Parte = pedida === 'relatorios' || pedida === 'hoje' || pedida === 'periodo' ? pedida : valor('aba') ? 'relatorios' : 'hoje';
+  const doSuporte = painel.id === PAINEL_DO_SUPORTE;
+  const irPara = (a: Parte) => {
+    if (a === parte) return;
+    if (a === 'relatorios') {
+      // o que só a Visão tem fica para trás; o "não preenchido" dela também (os Relatórios não filtram por ele)
+      const o: Record<string, string | null> = { parte: 'relatorios', p: null };
+      for (const k of FILTROS_SO_DA_VISAO) o[k] = null;
+      for (const k of FILTROS) if (valor(k) === SEM_VALOR_NA_VISAO && k !== 'prioridade') o[k] = null;
+      if (parte !== 'periodo') { o.de = null; o.ate = null; }
+      mudar(o);
+    } else {
+      mudar({ parte: a, aba: null, quando: null, situacao: null, p: null, ...(a === 'hoje' ? { de: null, ate: null } : {}) });
+    }
+  };
+  return (
+    <div className="flex flex-col gap-3" id="relatorios-do-painel">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <CabecalhoDoPainel paineis={opcoes.paineis} atual={painel} vista="relatorio" className="min-w-0" />
+        {doSuporte && (
+          <Link to="/chamados" className="btn-ghost btn-sm text-ink-2 md:ml-auto" title="Os relatórios dos chamados do Helena (o LineChat), com os assuntos de lá">
+            <History size={14} aria-hidden /> Legado do Helena
+          </Link>
+        )}
+      </div>
+      <p className="text-[13px] text-ink-2 -mt-1">
+        Os chamados do painel <b>{painel.nome}</b>. {parte === 'relatorios' ? 'Clique num número, numa faixa ou num degrau para ver os chamados.' : 'Os números de hoje ou do período e os gráficos de cada campo; os 25 relatórios estão em Relatórios.'}
+        {doSuporte && <> Os chamados do Helena continuam no <Link to="/chamados" className="link">Legado do Helena</Link>, com os assuntos de lá.</>}
+      </p>
+      <Abas<Parte> atual={parte} onChange={irPara} abas={[
+        { id: 'hoje', label: 'Hoje' },
+        { id: 'periodo', label: 'Período' },
+        { id: 'relatorios', label: <span className="inline-flex items-center gap-1.5"><FileBarChart size={14} aria-hidden /> Relatórios</span> },
+      ]} />
+      {parte === 'relatorios'
+        ? <OsRelatorios painel={painel} opcoes={opcoes} />
+        : <VisaoDoPainel key={parte} painel={painel} opcoes={opcoes} parte={parte} />}
+    </div>
+  );
+}
+type Parte = 'hoje' | 'periodo' | 'relatorios';
+
+/** Os 25 relatórios, nas seis abas e nos Favoritos (a parte Relatórios). */
+function OsRelatorios({ painel, opcoes }: { painel: Painel; opcoes: OpcoesAtendimento }) {
   const { valor, mudar } = useFiltrosNoEndereco();
   const pode = usePode();
   const qc = useQueryClient();
   const toast = useToast();
-  const clientes = useClientesParaFiltro();
   const usa = (c: Parameters<typeof campoLigado>[1]) => campoLigado(painel.ajustes, c);
   const [aberta, setAberta] = useState<Aberta | null>(null);
+  const filtros = useFiltrosDoPainel(painel, opcoes);
   const [filtrosAbertos, setFiltrosAbertos] = useState(() => FILTROS.some((k) => !!valor(k)));
 
   // o pedido: tudo o que está no endereço (o "por" do 80/20 e o "separar" do relógio caem num que o painel usa)
@@ -91,7 +144,7 @@ export function RelatoriosDoPainelDeChamados({ painel, opcoes }: { painel: Paine
   // ---- a arrumação (da equipe) e o rascunho do Organizar
   const salvo: Arrumacao = useMemo(() => {
     const a = arrumacao.data ?? arrumacaoCompleta(null);
-    return { ordem: a.ordem, ocultos: a.ocultos, favoritos: a.favoritos, campoDaFalha: a.campoDaFalha };
+    return { ordem: a.ordem, ocultos: a.ocultos, favoritos: a.favoritos, campoDaFalha: a.campoDaFalha, ...(a.visao ? { visao: a.visao } : {}) };
   }, [arrumacao.data]);
   const [rascunho, setRascunho] = useState<Arrumacao | null>(null);
   const organizando = rascunho !== null;
@@ -149,29 +202,7 @@ export function RelatoriosDoPainelDeChamados({ painel, opcoes }: { painel: Paine
   const naAba = daAba(aba, salvo, aplicaveis);
   const comPeriodo = !naAba.length || naAba.some((id) => id !== 'fechamento');
 
-  // ---- os filtros escritos
-  const pessoas = opcoes.pessoas.filter((p) => p.ativo);
-  const camposDeLista = opcoes.campos.filter((c) => c.painelId === painel.id && c.ativo && (c.tipo === 'lista' || c.tipo === 'lista_varios'));
-  const niveis = [...new Set(painel.etapas.map((e) => e.nivel).filter((n): n is Nivel => n !== null))].sort();
-  const etiquetas = etiquetasDoPainel(opcoes.etiquetas, painel.id);
-  const assuntos = usa('assunto') ? opcoesDeAssunto(opcoes, painel.id) : [];
-  const tirar = (k: string) => () => mudar({ [k]: null }, true);
-  const escritos: FiltroEscrito[] = [];
-  if (valor('assunto')) escritos.push({ chave: 'assunto', nome: 'Assunto', valor: nomeDoAssunto(valor('assunto'), opcoes), tirar: tirar('assunto') });
-  if (valor('tipo')) escritos.push({ chave: 'tipo', nome: 'Tipo', valor: valor('tipo'), tirar: tirar('tipo') });
-  if (valor('gravidade')) escritos.push({ chave: 'gravidade', nome: 'Gravidade', valor: NOME_GRAVIDADE[valor('gravidade') as keyof typeof NOME_GRAVIDADE] ?? valor('gravidade'), tirar: tirar('gravidade') });
-  if (valor('prioridade')) escritos.push({ chave: 'prioridade', nome: 'Prioridade', valor: valor('prioridade') === 'sem' ? 'sem prioridade' : NOME_PRIORIDADE[valor('prioridade') as keyof typeof NOME_PRIORIDADE] ?? valor('prioridade'), tirar: tirar('prioridade') });
-  if (valor('nivel')) escritos.push({ chave: 'nivel', nome: 'Subiu até', valor: NOME_DO_NIVEL[Number(valor('nivel')) as Nivel] ?? valor('nivel'), tirar: tirar('nivel') });
-  if (valor('responsavel')) escritos.push({ chave: 'responsavel', nome: 'Responsável', valor: valor('responsavel') === RESPONSAVEL_NINGUEM ? 'sem dono' : opcoes.pessoas.find((p) => p.id === valor('responsavel'))?.nome ?? 'uma pessoa que saiu', tirar: tirar('responsavel') });
-  if (valor('cliente')) escritos.push({ chave: 'cliente', nome: 'Cliente', valor: clientes.find((c) => c.id === valor('cliente'))?.nome ?? '…', tirar: tirar('cliente') });
-  if (valor('produto')) escritos.push({ chave: 'produto', nome: 'Produto', valor: opcoes.produtos.find((p) => p.id === valor('produto'))?.nome ?? '?', tirar: tirar('produto') });
-  if (valor('operadora')) escritos.push({ chave: 'operadora', nome: 'Operadora', valor: opcoes.operadoras.find((o) => o.id === valor('operadora'))?.nome ?? '?', tirar: tirar('operadora') });
-  if (valor('etiqueta')) escritos.push({ chave: 'etiqueta', nome: 'Etiqueta', valor: valor('etiqueta'), tirar: tirar('etiqueta') });
-  if (valor('campo')) {
-    const [cid, oid] = valor('campo').split(':');
-    const campo = opcoes.campos.find((c) => c.id === cid);
-    escritos.push({ chave: 'campo', nome: campo?.nome ?? 'Campo', valor: oid ? campo?.opcoes.find((o) => o.id === oid)?.nome ?? '?' : 'não preenchido', tirar: tirar('campo') });
-  }
+  const escritos = filtros.escritos;
 
   /** Um relatório pelo id do catálogo. */
   const relatorio = (id: string, rr: RelatoriosDoPainel): ReactNode => {
@@ -212,33 +243,13 @@ export function RelatoriosDoPainelDeChamados({ painel, opcoes }: { painel: Paine
     }
   };
 
-  const doSuporte = painel.id === PAINEL_DO_SUPORTE;
   const escondidosDaAba = aba === 'favoritos' ? [] : salvo.ordem.filter((id) => ITEM_DO_CATALOGO.get(id)?.aba === aba && salvo.ocultos.includes(id) && aplicaveis.includes(id));
 
   return (
-    <div className="flex flex-col gap-3" id="relatorios-do-painel">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <CabecalhoDoPainel paineis={opcoes.paineis} atual={painel} vista="relatorio" className="min-w-0" />
-        <div className="flex items-center gap-2 md:ml-auto">
-          {doSuporte && (
-            <Link to="/chamados" className="btn-ghost btn-sm text-ink-2" title="Os relatórios dos chamados do Helena (o LineChat), com os assuntos de lá">
-              <History size={14} aria-hidden /> Legado do Helena
-            </Link>
-          )}
-          {pode.cuidar && !organizando && (
-            <button type="button" className="btn-secondary btn-sm" onClick={() => setRascunho(salvo)} title={`Mudar a ordem, esconder, escolher os favoritos e o campo da falha — para a equipe toda. ${ultimaArrumacao}`}>
-              <LayoutGrid size={14} aria-hidden /> Organizar
-            </button>
-          )}
-        </div>
-      </div>
-      <p className="text-[13px] text-ink-2 -mt-1">
-        Os chamados do painel <b>{painel.nome}</b>{r?.primeiroDia ? <>, desde {data(r.primeiroDia)}</> : ''}. Clique num número, numa faixa ou num degrau para ver os chamados.
-        {doSuporte && <> Os chamados do Helena continuam no <Link to="/chamados" className="link">Legado do Helena</Link>, com os assuntos de lá.</>}
-      </p>
-
+    <div className="flex flex-col gap-3">
       {/* as abas: os Favoritos primeiro */}
-      <nav aria-label="Abas dos relatórios" className="flex gap-1.5 overflow-x-auto sem-barra pb-1" id="relatorios-abas">
+      <div className="flex flex-wrap items-center gap-2">
+      <nav aria-label="Abas dos relatórios" className="flex gap-1.5 overflow-x-auto sem-barra pb-1 min-w-0" id="relatorios-abas">
         {(['favoritos', ...ABAS_DOS_RELATORIOS] as Aba[]).map((id) => {
           const nomes = daAba(id, atual, aplicaveis).map((x) => ITEM_DO_CATALOGO.get(x)!.titulo);
           const Icone = ICONE_DA_ABA[id];
@@ -252,6 +263,12 @@ export function RelatoriosDoPainelDeChamados({ painel, opcoes }: { painel: Paine
           );
         })}
       </nav>
+        {pode.cuidar && !organizando && (
+          <button type="button" className="btn-secondary btn-sm md:ml-auto" onClick={() => setRascunho(salvo)} title={`Mudar a ordem, esconder, escolher os favoritos e o campo da falha — para a equipe toda. ${ultimaArrumacao}`}>
+            <LayoutGrid size={14} aria-hidden /> Organizar
+          </button>
+        )}
+      </div>
 
       {!organizando && (
         <>
@@ -286,27 +303,8 @@ export function RelatoriosDoPainelDeChamados({ painel, opcoes }: { painel: Paine
               <Filter size={14} aria-hidden /> Filtros{escritos.length > 0 && <span className="text-accent tnum">({escritos.length})</span>}
             </button>
           </div>
-          <div id="relatorios-filtros" className={`${filtrosAbertos ? 'flex' : 'hidden'} flex-wrap items-center gap-2`}>
-            {(assuntos.length > 0 || valor('assunto')) && (
-              <EscolherComBusca className={CAIXA_FILTRO} largura="w-[380px]" rotulo="Assunto (com os de baixo)" valor={valor('assunto')} vazio="Todos os assuntos" opcoes={assuntos} procurar="Procurar assunto…" onChange={(v) => mudar({ assunto: v }, true)} />
-            )}
-            {usa('tipo') && painel.ajustes.tipos.length > 0 && <SelectFiltro rotulo="Tipo" valor={valor('tipo')} vazio="Todos os tipos" opcoes={painel.ajustes.tipos.map((t) => ({ id: t, nome: t }))} onChange={(v) => mudar({ tipo: v }, true)} />}
-            {usa('gravidade') && <SelectFiltro rotulo="Gravidade" valor={valor('gravidade')} vazio="Todas as gravidades" opcoes={GRAVIDADES.map((g) => ({ id: g, nome: NOME_GRAVIDADE[g] }))} onChange={(v) => mudar({ gravidade: v }, true)} />}
-            <SelectFiltro rotulo="Prioridade" valor={valor('prioridade')} vazio="Todas as prioridades" opcoes={[...PRIORIDADES.map((p) => ({ id: p, nome: NOME_PRIORIDADE[p] })), { id: 'sem', nome: 'Sem prioridade' }]} onChange={(v) => mudar({ prioridade: v }, true)} />
-            {niveis.length > 0 && <SelectFiltro rotulo="Subiu até o nível" valor={valor('nivel')} vazio="Todos os níveis" opcoes={niveis.map((n) => ({ id: String(n), nome: `Subiu até o ${NOME_DO_NIVEL[n]}` }))} onChange={(v) => mudar({ nivel: v }, true)} />}
-            <EscolherComBusca className={CAIXA_FILTRO} rotulo="Responsável" valor={valor('responsavel')} vazio="Todos os responsáveis" procurar="Procurar pessoa…" onChange={(v) => mudar({ responsavel: v }, true)}
-              opcoes={[{ id: RESPONSAVEL_NINGUEM, nome: 'Sem dono', dica: 'sem responsável' }, ...pessoas.map((p) => ({ id: p.id, nome: p.nome }))]} />
-            <EscolherComBusca className={CAIXA_FILTRO} rotulo="Cliente" valor={valor('cliente')} vazio="Todos os clientes" opcoes={clientes} procurar="Procurar cliente…" onChange={(v) => mudar({ cliente: v }, true)} />
-            {usa('produtos') && <SelectFiltro rotulo="Produto" valor={valor('produto')} vazio="Todos os produtos" opcoes={opcoes.produtos} onChange={(v) => mudar({ produto: v }, true)} />}
-            {usa('operadoras') && <SelectFiltro rotulo="Operadora" valor={valor('operadora')} vazio="Todas as operadoras" opcoes={opcoes.operadoras} onChange={(v) => mudar({ operadora: v }, true)} />}
-            {etiquetas.length > 0 && <SelectFiltro rotulo="Etiqueta" valor={valor('etiqueta')} vazio="Todas as etiquetas" opcoes={etiquetas.map((e) => ({ id: e.nome, nome: e.nome }))} onChange={(v) => mudar({ etiqueta: v }, true)} />}
-            {camposDeLista.map((c) => (
-              <SelectFiltro key={c.id} rotulo={c.nome} valor={valor('campo').startsWith(`${c.id}:`) ? valor('campo') : ''} vazio={`${c.nome}: todos`}
-                opcoes={[...c.opcoes.filter((o) => o.ativa).map((o) => ({ id: `${c.id}:${o.id}`, nome: o.nome })), { id: `${c.id}:`, nome: 'Não preenchido' }]}
-                onChange={(v) => mudar({ campo: v }, true)} />
-            ))}
-          </div>
-          <FiltrosEscritos itens={escritos} onLimpar={() => mudar(Object.fromEntries(FILTROS.map((k) => [k, null])), true)} />
+          <div id="relatorios-filtros" className={`${filtrosAbertos ? 'flex' : 'hidden'} flex-wrap items-center gap-2`}>{filtros.caixas}</div>
+          <FiltrosEscritos itens={escritos} onLimpar={filtros.limpar} />
         </>
       )}
 
@@ -338,6 +336,63 @@ export function RelatoriosDoPainelDeChamados({ painel, opcoes }: { painel: Paine
       {aberta && r && <JanelaDosChamados aberta={aberta} r={r} onFechar={() => setAberta(null)} />}
     </div>
   );
+}
+
+/**
+ * Os filtros de valor de um painel (os Relatórios e a Visão geral usam os mesmos, no mesmo endereço): as caixas e o que
+ * está escrito, com o X de cada um. O "não preenchido" que se escolhe clicando na Visão (`sem`) aparece escrito também.
+ */
+export function useFiltrosDoPainel(painel: Painel, opcoes: OpcoesAtendimento) {
+  const { valor, mudar } = useFiltrosNoEndereco();
+  const clientes = useClientesParaFiltro();
+  const usa = (c: Parameters<typeof campoLigado>[1]) => campoLigado(painel.ajustes, c);
+  const S = SEM_VALOR_NA_VISAO;
+  const pessoas = opcoes.pessoas.filter((p) => p.ativo);
+  const camposDeLista = opcoes.campos.filter((c) => c.painelId === painel.id && c.ativo && (c.tipo === 'lista' || c.tipo === 'lista_varios'));
+  const niveis = [...new Set(painel.etapas.map((e) => e.nivel).filter((n): n is Nivel => n !== null))].sort();
+  const etiquetas = etiquetasDoPainel(opcoes.etiquetas, painel.id);
+  const assuntos = usa('assunto') ? opcoesDeAssunto(opcoes, painel.id) : [];
+  const tirar = (k: string) => () => mudar({ [k]: null });
+  const ou = (v: string, sem: string, nome: () => string) => (v === S ? sem : nome());
+  const escritos: FiltroEscrito[] = [];
+  if (valor('assunto')) escritos.push({ chave: 'assunto', nome: 'Assunto', valor: ou(valor('assunto'), 'sem assunto', () => nomeDoAssunto(valor('assunto'), opcoes)), tirar: tirar('assunto') });
+  if (valor('tipo')) escritos.push({ chave: 'tipo', nome: 'Tipo', valor: ou(valor('tipo'), 'não preenchido', () => valor('tipo')), tirar: tirar('tipo') });
+  if (valor('gravidade')) escritos.push({ chave: 'gravidade', nome: 'Gravidade', valor: ou(valor('gravidade'), 'não preenchida', () => NOME_GRAVIDADE[valor('gravidade') as keyof typeof NOME_GRAVIDADE] ?? valor('gravidade')), tirar: tirar('gravidade') });
+  if (valor('prioridade')) escritos.push({ chave: 'prioridade', nome: 'Prioridade', valor: valor('prioridade') === 'sem' ? 'sem prioridade' : NOME_PRIORIDADE[valor('prioridade') as keyof typeof NOME_PRIORIDADE] ?? valor('prioridade'), tirar: tirar('prioridade') });
+  if (valor('nivel')) escritos.push({ chave: 'nivel', nome: 'Subiu até', valor: NOME_DO_NIVEL[Number(valor('nivel')) as Nivel] ?? valor('nivel'), tirar: tirar('nivel') });
+  if (valor('responsavel')) escritos.push({ chave: 'responsavel', nome: 'Responsável', valor: valor('responsavel') === RESPONSAVEL_NINGUEM || valor('responsavel') === S ? 'sem dono' : opcoes.pessoas.find((p) => p.id === valor('responsavel'))?.nome ?? 'uma pessoa que saiu', tirar: tirar('responsavel') });
+  if (valor('cliente')) escritos.push({ chave: 'cliente', nome: 'Cliente', valor: ou(valor('cliente'), 'sem cliente', () => clientes.find((c) => c.id === valor('cliente'))?.nome ?? '…'), tirar: tirar('cliente') });
+  if (valor('produto')) escritos.push({ chave: 'produto', nome: 'Produto', valor: ou(valor('produto'), 'nenhum', () => opcoes.produtos.find((p) => p.id === valor('produto'))?.nome ?? '?'), tirar: tirar('produto') });
+  if (valor('operadora')) escritos.push({ chave: 'operadora', nome: 'Operadora', valor: ou(valor('operadora'), 'nenhuma', () => opcoes.operadoras.find((o) => o.id === valor('operadora'))?.nome ?? '?'), tirar: tirar('operadora') });
+  if (valor('etiqueta')) escritos.push({ chave: 'etiqueta', nome: 'Etiqueta', valor: ou(valor('etiqueta'), 'sem etiqueta', () => valor('etiqueta')), tirar: tirar('etiqueta') });
+  if (valor('campo')) {
+    const [cid, oid] = valor('campo').split(':');
+    const campo = opcoes.campos.find((c) => c.id === cid);
+    escritos.push({ chave: 'campo', nome: campo?.nome ?? 'Campo', valor: oid ? campo?.opcoes.find((o) => o.id === oid)?.nome ?? '?' : 'não preenchido', tirar: tirar('campo') });
+  }
+  const caixas = (
+    <>
+      {(assuntos.length > 0 || valor('assunto')) && (
+        <EscolherComBusca className={CAIXA_FILTRO} largura="w-[380px]" rotulo="Assunto (com os de baixo)" valor={valor('assunto') === S ? '' : valor('assunto')} vazio="Todos os assuntos" opcoes={assuntos} procurar="Procurar assunto…" onChange={(v) => mudar({ assunto: v })} />
+      )}
+      {usa('tipo') && painel.ajustes.tipos.length > 0 && <SelectFiltro rotulo="Tipo" valor={valor('tipo')} vazio="Todos os tipos" opcoes={painel.ajustes.tipos.map((t) => ({ id: t, nome: t }))} onChange={(v) => mudar({ tipo: v })} />}
+      {usa('gravidade') && <SelectFiltro rotulo="Gravidade" valor={valor('gravidade')} vazio="Todas as gravidades" opcoes={GRAVIDADES.map((g) => ({ id: g, nome: NOME_GRAVIDADE[g] }))} onChange={(v) => mudar({ gravidade: v })} />}
+      <SelectFiltro rotulo="Prioridade" valor={valor('prioridade')} vazio="Todas as prioridades" opcoes={[...PRIORIDADES.map((p) => ({ id: p, nome: NOME_PRIORIDADE[p] })), { id: 'sem', nome: 'Sem prioridade' }]} onChange={(v) => mudar({ prioridade: v })} />
+      {niveis.length > 0 && <SelectFiltro rotulo="Subiu até o nível" valor={valor('nivel')} vazio="Todos os níveis" opcoes={niveis.map((n) => ({ id: String(n), nome: `Subiu até o ${NOME_DO_NIVEL[n]}` }))} onChange={(v) => mudar({ nivel: v })} />}
+      <EscolherComBusca className={CAIXA_FILTRO} rotulo="Responsável" valor={valor('responsavel') === S ? RESPONSAVEL_NINGUEM : valor('responsavel')} vazio="Todos os responsáveis" procurar="Procurar pessoa…" onChange={(v) => mudar({ responsavel: v })}
+        opcoes={[{ id: RESPONSAVEL_NINGUEM, nome: 'Sem dono', dica: 'sem responsável' }, ...pessoas.map((p) => ({ id: p.id, nome: p.nome }))]} />
+      <EscolherComBusca className={CAIXA_FILTRO} rotulo="Cliente" valor={valor('cliente') === S ? '' : valor('cliente')} vazio="Todos os clientes" opcoes={clientes} procurar="Procurar cliente…" onChange={(v) => mudar({ cliente: v })} />
+      {usa('produtos') && <SelectFiltro rotulo="Produto" valor={valor('produto')} vazio="Todos os produtos" opcoes={opcoes.produtos} onChange={(v) => mudar({ produto: v })} />}
+      {usa('operadoras') && <SelectFiltro rotulo="Operadora" valor={valor('operadora')} vazio="Todas as operadoras" opcoes={opcoes.operadoras} onChange={(v) => mudar({ operadora: v })} />}
+      {etiquetas.length > 0 && <SelectFiltro rotulo="Etiqueta" valor={valor('etiqueta')} vazio="Todas as etiquetas" opcoes={etiquetas.map((e) => ({ id: e.nome, nome: e.nome }))} onChange={(v) => mudar({ etiqueta: v })} />}
+      {camposDeLista.map((c) => (
+        <SelectFiltro key={c.id} rotulo={c.nome} valor={valor('campo').startsWith(`${c.id}:`) ? valor('campo') : ''} vazio={`${c.nome}: todos`}
+          opcoes={[...c.opcoes.filter((o) => o.ativa).map((o) => ({ id: `${c.id}:${o.id}`, nome: o.nome })), { id: `${c.id}:`, nome: 'Não preenchido' }]}
+          onChange={(v) => mudar({ campo: v })} />
+      ))}
+    </>
+  );
+  return { escritos, caixas, limpar: () => mudar(Object.fromEntries(FILTROS.map((k) => [k, null]))) };
 }
 
 /**

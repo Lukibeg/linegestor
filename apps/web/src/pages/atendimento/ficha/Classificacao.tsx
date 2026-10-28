@@ -7,10 +7,10 @@
  * Luan.) O que o painel desligou na aba Campos não aparece; os campos que ele criou entram aqui (o
  * texto longo fica junto do relato).
  *
- * E o cartão do responsável e dos observadores (como no Helena: recebem os avisos de toda atualização).
+ * E o cartão do responsável e dos observadores, só para quem lê (quem mexe tem os dois juntos na barra de cima, desde o 2.2).
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, Plus, Tags, UserRound, X } from 'lucide-react';
+import { Check, Tags, UserRound } from 'lucide-react';
 import {
   ALCANCES, caminhoDoAssunto, campoLigado, chaveDoCampo, DICA_GRAVIDADE, DICA_PRIORIDADE, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, GRAVIDADES,
   MAX_LETRAS_DO_CAMPO, mesmoValorDoCampo, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, paraBusca, PRIORIDADES, textoDoValor,
@@ -362,40 +362,26 @@ function Etiquetas() {
 // =====================================================================
 
 export function Responsavel() {
-  const { f, opcoes, pode, eu, painel } = useAberta();
+  const { f, pode, eu, painel } = useAberta();
   // a negociação (o painel de Vendas): quem cuida dela é o vendedor; não há fila de etapa para atender
   const vendas = painel?.tipo === 'vendas';
-  const resp = useAcao();
-  const obs = useAcao();
-  const ativas = opcoes.pessoas.filter((p) => p.ativo);
-  const fora = ativas.filter((p) => !f.observadores.some((o) => o.id === p.id)).map((p) => ({ id: p.id, nome: p.nome }));
-  const observar = (ids: string[], ok: string) => void obs.rodar(() => api.atendimento.alterar(f.id, { observadores: ids }), ok);
+  // quem mexe no chamado tem o Responsável e os Observadores juntos, na barra de cima (2.2: "colocar responsável como botão" e
+  // "coloque observadores juntos com responsável"); quem só lê (sem a barra) vê aqui quem está com ele e quem observa
+  if (pode) return null;
   return (
-    // o responsável foi para um botão na barra de cima (2.2, "colocar responsável como botão"): aqui ficam os observadores; quem
-    // só lê (sem a barra) vê aqui quem está com o chamado
-    <Secao titulo={pode ? 'Observadores' : 'Responsável'} icone={<UserRound size={16} />}>
-      {!pode && (
-        <Linha id="campo-responsavel" campo="responsavel" rotulo={vendas ? 'Quem cuida da negociação' : 'Quem está com o chamado'} ocupado={resp.ocupado} erro={resp.erro}>
-          {f.responsavel ? (
-            <p className="flex items-center gap-2 text-[14px]"><Avatar nome={f.responsavel.nome} /> {f.responsavel.nome}</p>
-          ) : <p className="text-[13px] text-muted italic">{vendas ? 'Sem vendedor' : 'Sem dono (na fila da etapa)'}</p>}
-        </Linha>
-      )}
-
-      <div className={pode ? '' : 'mt-3.5'}>
-        <Linha id="campo-observadores" campo="observadores" rotulo={pode ? 'Quem recebe os avisos' : 'Observadores'} ocupado={obs.ocupado} erro={obs.erro}
-          extra={pode && fora.length > 0 && (
-            <EscolherComBusca valor="" opcoes={fora} rotulo="Incluir observador" procurar="Procurar pessoa…"
-              onChange={(id) => { const p = ativas.find((x) => x.id === id); if (p) observar([...f.observadores.map((o) => o.id), id], `${p.nome} passou a observar`); }}
-              gatilho={(abrir) => <button type="button" className="btn-ghost btn-sm -my-1 text-[12.5px]" onClick={abrir}><Plus size={13} /> Incluir</button>} />
-          )}>
+    <Secao titulo="Responsável" icone={<UserRound size={16} />}>
+      <Linha id="campo-responsavel" campo="responsavel" rotulo={vendas ? 'Quem cuida da negociação' : 'Quem está com o chamado'}>
+        {f.responsavel ? (
+          <p className="flex items-center gap-2 text-[14px]"><Avatar nome={f.responsavel.nome} /> {f.responsavel.nome}</p>
+        ) : <p className="text-[13px] text-muted italic">{vendas ? 'Sem vendedor' : 'Sem dono (na fila da etapa)'}</p>}
+      </Linha>
+      <div className="mt-3.5">
+        <Linha id="campo-observadores" campo="observadores" rotulo="Observadores">
           {f.observadores.length ? (
             <ul className="flex flex-wrap gap-1.5">
               {f.observadores.map((o) => (
                 <li key={o.id} className="chip bg-surface-2 text-ink-2 font-medium">
                   <Avatar nome={o.nome} tamanho={16} /> {o.nome}{eu?.id === o.id ? ' (você)' : ''}
-                  {pode && <button type="button" className="text-muted hover:text-bad -mr-0.5" disabled={obs.ocupado} aria-label={`Tirar ${o.nome} dos observadores`}
-                    onClick={() => observar(f.observadores.filter((x) => x.id !== o.id).map((x) => x.id), `${o.nome} deixou de observar`)}><X size={12} /></button>}
                 </li>
               ))}
             </ul>

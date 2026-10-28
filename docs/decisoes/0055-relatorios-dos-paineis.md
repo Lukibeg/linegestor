@@ -151,3 +151,37 @@ Os Relatórios foram feitos como **2.0.5**; a correção do Trazer do Helena, os
 conversa do chamado ativo, como **2.0.4.1** (para poder subir antes). Em 23/10 o Luan pediu *"eu quero subir como 2.1"*:
 os dois sobem juntos como **2.1** (a branch `patch-2.1-2026-10-23`, com uma nota só). Os commits de antes continuam com o
 nome de quando foram feitos ("Patch 2.0.4.1: …", "Patch 2.0.5: …"); o texto, os comentários e as notas dizem 2.1.
+
+**Revista no 2.2** (28/10, na prévia, comentando a tela do Legado com os gráficos de pizza: *"eu quero esse tipo de kpi tbm
+para os relatórios new facilita o entendimento esses graficos de pizza"*, e depois: *"eu preciso desse tipo de kpi mais
+simples para os novos relatórios tbm, faça igual ao legado, coloque esse como principal e todos os outros vão entrar como
+'relatórios' basicamente pode seguir o mesmo modelo de construção do legado, mas com os kpis e relatórios atualizados aos
+campos novos claro"*): a vista Relatórios de cada painel ganhou, em cima, as três partes do Legado — **Hoje · Período ·
+Relatórios**. Hoje é a que abre.
+
+- **Hoje e Período (a Visão geral)**: a tela do Legado, lendo os chamados do Gestor. Os quatro números de cima (no Hoje:
+  Chegaram hoje, Resolvidos hoje, Em aberto agora e Prazo vencido; no Período: Chegaram, Resolvidos, Ainda em aberto e
+  Prazo vencido; com o **só em aberto**, os em aberto, os vencidos, os parados há 7 dias e os sem responsável), os
+  chamados no tempo (por hora; no Período, por dia até 3 meses e por mês acima disso), os gráficos de **pizza ou barras**
+  e a tabela dos chamados, de 50 em 50. Os gráficos, dos campos de cá: a etapa (na ordem do quadro), o responsável, o
+  **assunto** (o caminho inteiro; o **Agrupar** junta pelas pastas do 1º nível da árvore, e abre agrupado), o cliente, o
+  tipo, a gravidade, a prioridade, os produtos, as operadoras, as etiquetas, **como o chamado chegou** (o canal: o robô do
+  LineChat, o botão na conversa, aberto no Gestor…) e cada campo de lista do painel (como a Responsabilidade). O que o
+  painel não usa não aparece.
+- **Clicar filtra a tela toda**, como no Legado: a fatia, a barra, a coluna do tempo ou o número; o gráfico clicado
+  continua inteiro, com o escolhido em destaque; clicar de novo desfaz. Diferente do Legado, cada filtro é de um valor só
+  (sem o Ctrl+clique): são os mesmos filtros dos Relatórios, no mesmo endereço, e o que se escolhe na Visão vai junto
+  para os 25. O "não preenchido" também se clica (sem assunto, sem dono, o campo vazio). "Resolvidos" troca a régua para o
+  dia em que o chamado foi resolvido.
+- **O que muda de régua**: o "fechado" do Legado é o **Resolvido**; o vencido é o **prazo** do painel (a resposta ou a
+  solução vencida, em horas úteis), e o painel que não conta prazo mostra, no lugar, os sem responsável (ou os parados);
+  o problema (ITIL) fica de fora, como nos 25.
+- **Organizar**: na Visão, o mesmo do Legado (arrastar ou as setas, metade ou a linha inteira, esconder, pizza ou
+  barras e, no assunto, abrir agrupado), para a equipe toda, guardado junto com a arrumação dos 25 do painel (`visao`, em
+  `settings.atendimento-relatorios`); salvar os 25 sem mandar a Visão não a apaga. Sem o botão Grupos: as pastas do
+  assunto já são os grupos. Sem o aviãozinho: o envio diário continua lendo o Legado até a virada.
+- **Relatórios**: os 25, nas seis abas e nos Favoritos, como estavam; o endereço antigo (com a aba) continua abrindo lá.
+
+As contas em `packages/shared/src/atendimento-visao.ts` (`visaoDoPainel`, as mesmas no servidor e na prévia), a rota
+`GET /api/atendimento/relatorios/visao` e a tela em `apps/web/src/pages/atendimento/relatorios/visao.tsx`, com as peças
+dos gráficos do Legado.

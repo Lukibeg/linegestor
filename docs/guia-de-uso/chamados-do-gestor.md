@@ -134,15 +134,17 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
   desde o 2.1, **Ligar a conversa do LineChat** (o chamado sem conversa, como o ativo) e **Trocar**
   (colar o link de outra conversa, ou **Tirar a conversa**); vai para o histórico —, a **classificação** (os campos que o painel usa — assunto,
   tipo, gravidade, alcance, prioridade, produtos, operadoras —, os campos do próprio painel e as
-  etiquetas), o responsável e os **observadores**, os **prazos**, o **Na agenda** (a visita ou a virada
+  etiquetas), os **prazos**, o **Na agenda** (a visita ou a virada
   ligada ao chamado, e o **Agendar**, que põe uma no [calendário](calendario.md) já com o chamado, o
   cliente e o painel — 2.0.1), o caso **na operadora** e o **tempo gasto**. O campo de texto longo do
   painel (ex.: "Como reproduzir") fica junto do relato.
-- A barra de cima: **Assumir**, o **Responsável** (quem está com o chamado; troca ali mesmo), **Mover**,
+- A barra de cima: **Assumir**, o **Responsável** (quem está com o chamado; troca ali mesmo) e, colado nele, os
+  **Observadores** (quem recebe os avisos; incluir, tirar com o X e o **Eu observo também** — 2.2), **Mover**,
   **Etiquetas**, **Agendar**, **Checklist** (quando ainda não tem), **Ligações** (ligar a outro chamado, criar um
   filho, definir o pai), **Escalonar** (pede o motivo), **Esperar** o cliente ou a operadora (pede o motivo),
   **Avisar o cliente**, a **NIA** (abaixo), **Preencher com IA** e **Mais** (ligar a um problema, trocar de painel,
-  reabrir, observar, lixeira). O **Copiar o link** fica ao lado do código, no alto (2.2).
+  reabrir, lixeira). O **Copiar o link** fica ao lado do código, no alto (2.2). Quem só lê o chamado (sem a barra)
+  vê o responsável e os observadores num cartão, ao lado.
 - **Para sair do Novo, o chamado precisa de um responsável** (2.2): sem ninguém, o Mover diz "falta:
   Responsável", e a janela do quadro pergunta quem fica com ele. O Assumir faz tudo de uma vez.
 - **A ficha mostra só o que tem** (2.2): o checklist, os filhos e ligações e a agenda vazios não aparecem; voltam
