@@ -25,6 +25,7 @@ import {
   ajustesDoPainelCompletos, chaveDaEtiqueta, chaveDoNome, codigoDoChamado, ehLista, leituraComAPlanilha, ligarEtapasDoEvento, linkDoCsvDaPlanilha,
   nomeDoPainelDeGestaoNovo, obrigatoriosDoPainel, planoDaImportacao, resumoDaImportacao, siglaDoPainelNovo, textoDoCard, tipoParaOPainelDoHelena, valorDoCampoNoGestor,
   type AjustesDoPainel, type CardDoHelena, type EstadoDoGestorParaHelena, type LeituraDoHelena, type LeituraDoHelenaNaTela, type Obrigatorio,
+  DICA_DO_CAMPO_DO_HELENA, PARTE_DOS_CAMPOS_DO_HELENA,
   type OpcaoDoCampo, type OpcoesDoTrazerDoHelena, type PainelDoGestorParaHelena, type PlanilhaParaALeitura, type PlanoDaImportacao, type PreviaDoHelena,
   type ResultadoDaVenda, type ResultadoDoTrazerDoHelena, type TipoDePainel, type TipoEtapa, type ValoresDosCampos,
 } from '@gestor/shared';
@@ -546,7 +547,9 @@ async function gravarCampos(db: Db, painel: PainelDoGestorParaHelena, plano: Pla
   for (const c of plano.campos) {
     if (c.acao === 'cria') {
       await db.insert(ticketFields).values({
-        id: newId(), panelId: painel.id, name: c.nome, kind: c.tipo, help: 'Trazido do Helena.', active: true, sortOrder: ordem++,
+        id: newId(), panelId: painel.id, name: c.nome, kind: c.tipo, help: DICA_DO_CAMPO_DO_HELENA, active: true, sortOrder: ordem++,
+        // na negociação, os campos do Helena vão para os Detalhes da proposta (2.3)
+        section: painel.tipo === 'vendas' ? PARTE_DOS_CAMPOS_DO_HELENA : null,
         options: c.opcoesNovas.map((nome) => ({ id: newId(), nome, ativa: true })), createdAt: agora, updatedAt: agora,
       });
     } else if (c.acao === 'usa' && c.gestorId && c.opcoesNovas.length && ehLista(c.tipo)) {

@@ -251,6 +251,15 @@ export function lerLinhaDoHelena(texto: string, etapas?: ReadonlySet<string>): L
 /** O nome para comparar ("Visita/Apresentação Marcada" = "visita apresentacao marcada"). */
 export const chaveDoNome = (s: string) => paraBusca(s).replace(/[^a-z0-9]+/g, ' ').trim();
 
+/** A explicação do campo que o Trazer cria no painel (2.0.3). */
+export const DICA_DO_CAMPO_DO_HELENA = 'Trazido do Helena.';
+/**
+ * A parte da ficha dos campos que vieram do Helena num painel de Vendas (2.3, o Luan: "esses pontos aqui que vieram do
+ * helena eles são importantes, quero que eles fiquem … só pra eles, chamado detalhes da proposta, e … no painel
+ * principal"): as licenças, os canais, a faixa numérica… num cartão no meio da ficha da negociação.
+ */
+export const PARTE_DOS_CAMPOS_DO_HELENA = 'Detalhes da proposta';
+
 /** O título sem o "(Cópia)" que o Helena põe no card duplicado. */
 export function tituloDoHelena(titulo: string): string {
   return titulo.replace(/\s*\((?:c[óo]pia|copy)\)/gi, ' ').replace(/\s+/g, ' ').trim() || titulo.trim();

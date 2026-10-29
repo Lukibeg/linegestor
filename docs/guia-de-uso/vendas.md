@@ -194,6 +194,11 @@ relatório do Comercial já mostra os meses de antes da virada. A chave de API d
    - os avisos (o "(Cópia)" que sai do título, a mensalidade por produto que não soma o Valor atribuído…).
 6. **Trazer N negociações** e confirme. No fim, **Abrir o painel** e **Ver o relatório**.
 
+**Os campos que vêm do Helena (2.3)** — as licenças, os canais simultâneos, a faixa numérica… — ficam no cartão
+**Detalhes da proposta**, no meio da ficha da negociação, com os números lado a lado. Os que já tinham vindo antes
+da 2.3 vão para lá na atualização. Para tirar um campo do cartão, ou levar outro para ele: Painéis › Ajustes › Campos ›
+o campo › **Parte da ficha** (vazia: volta para o Detalhes do lado).
+
 **O que fica igual ao Helena:** a mensalidade é o **Valor atribuído** do card (o número que o relatório de lá
 soma); o valor por produto entra quando os "Valor Mensalidade" de cada produto somam o Valor atribuído. A
 ativação é a soma dos "Valor Ativação". O ganho e a perda contam no dia da Conclusão (da planilha), e a perda

@@ -1037,7 +1037,15 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     // os campos do Comercial do Helena (menos a Área de atuação), com a origem da Padaria Estrela
     const op = await api.opcoes();
     const campos = op.campos.filter((c) => c.painelId === painel(op, 'COM').id);
-    expect(campos.map((c) => c.nome)).toEqual(['CNPJ', 'Contatos principais', 'Origem de lead', 'Indicação']);
+    expect(campos.map((c) => c.nome)).toEqual([
+      'CNPJ', 'Contatos principais', 'Origem de lead', 'Indicação',
+      // os que vieram do Helena (2.3), nos Detalhes da proposta
+      'Licenças Coorporativas Voz', 'Licenças Callcenter Voz', 'Canais Simultâneos', 'Faixa Numérica', 'Licenças WhatsApp', 'Licenças Números Oficiais',
+    ]);
+    expect(campos.filter((c) => c.parte === 'Detalhes da proposta').map((c) => c.nome)).toHaveLength(6);
+    expect(campos.find((c) => c.nome === 'CNPJ')!.parte).toBeNull();
+    // a Padaria Estrela com os números da proposta
+    expect(estrela.campos[campos.find((c) => c.nome === 'Licenças Coorporativas Voz')!.id]).toBe(32);
     const origem = campos.find((c) => c.nome === 'Origem de lead')!;
     expect(estrela.campos[origem.id]).toBe(origem.opcoes.find((o) => o.nome === 'Instagram')!.id);
     const mudou = await api.alterar(estrela.id, { valoresDosProdutos: { [pbx.id]: 90_000, [tronco.id]: 27_000 }, ativacoesDosProdutos: { [pbx.id]: 120_000, [tronco.id]: 40_000 } });

@@ -77,10 +77,27 @@ function Bloco({ b }: { b: BlocoDaParte }) {
         </p>
       )}
       <div className="rounded-lg border border-line px-3.5 py-3 flex flex-col divide-y divide-line">
-        {b.campos.map((c) => <div key={c.id} className="py-3 first:pt-0 last:pb-0 min-w-0"><CampoDaParte c={c} /></div>)}
+        {gruposDoBloco(b.campos).map((g) => (g.curtos ? (
+          // os campos curtos seguidos (os números, os textos curtos, as datas): lado a lado (2.3, os Detalhes da proposta)
+          <div key={g.campos[0]!.id} className="py-3 first:pt-0 last:pb-0 min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-x-5 gap-y-3">
+            {g.campos.map((c) => <div key={c.id} className="min-w-0"><CampoDaParte c={c} /></div>)}
+          </div>
+        ) : <div key={g.campos[0]!.id} className="py-3 first:pt-0 last:pb-0 min-w-0"><CampoDaParte c={g.campos[0]!} /></div>))}
       </div>
     </div>
   );
+}
+
+/** Os campos do bloco em grupos: os curtos seguidos juntos (vão lado a lado); o texto longo e as caixinhas, um a um. */
+function gruposDoBloco(campos: readonly CampoPersonalizado[]): Array<{ curtos: boolean; campos: CampoPersonalizado[] }> {
+  const grupos: Array<{ curtos: boolean; campos: CampoPersonalizado[] }> = [];
+  for (const c of campos) {
+    const curto = c.tipo !== 'texto_longo' && !ehCaixinhas(c.tipo);
+    const ultimo = grupos[grupos.length - 1];
+    if (curto && ultimo?.curtos) ultimo.campos.push(c);
+    else grupos.push({ curtos: curto, campos: [c] });
+  }
+  return grupos;
 }
 
 function CampoDaParte({ c }: { c: CampoPersonalizado }) {

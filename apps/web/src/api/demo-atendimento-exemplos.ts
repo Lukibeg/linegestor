@@ -1349,6 +1349,19 @@ export const META_DO_COMERCIAL = 4_000;
 /** As etiquetas do Comercial (2.0.3: cada painel tem as suas; as do Suporte não aparecem aqui). */
 export const CORES_DAS_ETIQUETAS_DO_COMERCIAL: Array<[string, CorEtiqueta]> = [['quente', 'bad'], ['concorrência', 'signal'], ['retornar', 'accent'], ['indicação', 'ok']];
 
+/**
+ * Os campos que vieram do Helena no Comercial (os do Ingline - Comercial, com os nomes de lá): na prévia, como se o
+ * Trazer já tivesse passado. Ficam nos Detalhes da proposta (2.3).
+ */
+export const CAMPOS_DO_HELENA_NO_COMERCIAL: Array<{ nome: string; tipo: 'numero' | 'texto' }> = [
+  { nome: 'Licenças Coorporativas Voz', tipo: 'numero' },
+  { nome: 'Licenças Callcenter Voz', tipo: 'numero' },
+  { nome: 'Canais Simultâneos', tipo: 'numero' },
+  { nome: 'Faixa Numérica', tipo: 'texto' },
+  { nome: 'Licenças WhatsApp', tipo: 'numero' },
+  { nome: 'Licenças Números Oficiais', tipo: 'texto' },
+];
+
 export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
   // ---- o ano que passou (os ganhos mês a mês do relatório) ----
   { chave: 'norte-pabx', titulo: 'PABX em nuvem — 12 ramais', cliente: 'Distribuidora Norte', contato: ['Paulo', '5571999990202'], valor: 650, ativacao: 900, produtos: ['linepbx'],
@@ -1433,13 +1446,20 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     fim: { resultado: 'ganho', dias: 1 } },
   // ---- o funil de agora ----
   { chave: 'beira-mar', etiquetas: ['concorrência', 'retornar'], titulo: 'Atendimento com URA e filas', empresa: 'Hotel Beira Mar', contato: ['Vânia', '5571999990213'], valor: 1_580, ativacao: 2_500, produtos: ['linepbx', 'linechat'],
-    campos: { 'Origem de lead': 'Site', CNPJ: '29.184.765/0001-00' },
+    campos: {
+      'Origem de lead': 'Site', CNPJ: '29.184.765/0001-00',
+      'Licenças Coorporativas Voz': '14', 'Licenças Callcenter Voz': '6', 'Canais Simultâneos': '12', 'Faixa Numérica': '(71) 3333-4400 a 4419',
+      'Licenças WhatsApp': '4', 'Licenças Números Oficiais': '1 (o das reservas)',
+    },
     por: 'diego', responsavel: 'diego', abriu: 33,
     passos: [{ para: 'Qualificação', dias: 31 }, { para: 'Proposta enviada', dias: 23 }, { para: 'Negociação', dias: 14 }, { para: ETAPA_QUE_ABRE_A_IMPLANTACAO, dias: 2 }],
     descricao: 'Hotel com 60 apartamentos, recepção 24h e central de reservas. Hoje usam uma central analógica alugada.' },
   { chave: 'estrela', etiquetas: ['quente'], titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214'], valor: 1_250, produtos: ['linepbx', 'voicenet'],
     porProduto: { linepbx: 980, voicenet: 270 }, ativacaoPorProduto: { linepbx: 1_500, voicenet: 400 },
-    campos: { 'Origem de lead': 'Instagram', 'Contatos principais': 'Rosa (sócia): decide e assina, (71) 99999-0214\nCarlos (gerente da fábrica): vai usar a central e a fila do delivery' },
+    campos: {
+      'Origem de lead': 'Instagram', 'Contatos principais': 'Rosa (sócia): decide e assina, (71) 99999-0214\nCarlos (gerente da fábrica): vai usar a central e a fila do delivery',
+      'Licenças Coorporativas Voz': '32', 'Licenças Callcenter Voz': '8', 'Canais Simultâneos': '10', 'Faixa Numérica': '(71) 3022-4000 a 4049',
+    },
     por: 'camila', responsavel: 'camila', abriu: 18, passos: [{ para: 'Qualificação', dias: 16 }, { para: 'Proposta enviada', dias: 10 }, { para: 'Negociação', dias: 3 }],
     descricao: 'Três lojas e a fábrica. Querem o mesmo número para todas as lojas e a fila do delivery.',
     anotacao: { dias: 1, por: 'camila', texto: 'Mandei a proposta revisada com 10% de desconto na ativação. A Rosa vai falar com o sócio e responde até sexta.', proposta: 'Proposta Padaria Estrela - revisão 2.pdf' } },
@@ -1451,7 +1471,10 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     por: 'camila', responsavel: 'diego', abriu: 9, passos: [{ para: 'Qualificação', dias: 8 }, { para: 'Proposta enviada', dias: 4 }] },
   { chave: 'farma-mais', titulo: 'Migração das filiais para a nuvem', empresa: 'Rede Farma Mais', contato: ['Gustavo', '5571999990215'], valor: 3_000, produtos: ['linepbx', 'voicenet', 'linechat'],
     porProduto: { linepbx: 1_600, voicenet: 850, linechat: 550 }, ativacaoPorProduto: { linepbx: 4_200, voicenet: 1_800 },
-    campos: { 'Origem de lead': 'Indicação', 'Indicação': 'Anderson, do Supermercado Bom Preço', 'Contatos principais': 'Gustavo (diretor de operações): decide\nPatrícia (TI): cuida da migração das lojas' },
+    campos: {
+      'Origem de lead': 'Indicação', 'Indicação': 'Anderson, do Supermercado Bom Preço', 'Contatos principais': 'Gustavo (diretor de operações): decide\nPatrícia (TI): cuida da migração das lojas',
+      'Licenças Coorporativas Voz': '84', 'Licenças Callcenter Voz': '14', 'Canais Simultâneos': '30', 'Licenças WhatsApp': '14', 'Licenças Números Oficiais': '14 (um por loja)',
+    },
     por: 'camila', responsavel: 'camila', abriu: 7, passos: [{ para: 'Qualificação', dias: 5 }],
     descricao: '14 farmácias com central própria em cada uma. Querem uma só central e o atendimento do WhatsApp das lojas junto.' },
   { chave: 'exame-gravacao', titulo: 'Gravação de chamadas', cliente: 'Laboratório Exame Certo', contato: ['Beatriz', '5571999990216'], valor: 360, produtos: ['linepbx'],

@@ -104,7 +104,13 @@ a gente concluir a implantação no painel de implantação"*.
    do Suporte, abre o quadro do painel da implantação — o de Gestão que a etapa do Comercial abre; sem ela, o de Gestão
    com a etapa que liga no cadastro. Na tela dele (o quadro, a lista, a ficha IMP-…), o item fica marcado. Sem um painel
    assim que a pessoa veja, a tela diz como criar.
-13. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
+13. **Os Detalhes da proposta** (29/10, mostrando os campos da negociação: *"tem esses pontos aqui que vieram do helena
+   eles são importantes, quero que eles fiquem … só pra eles, chamado detalhes da proposta, e … no painel principal"*):
+   o campo que o Trazer do Helena cria num painel de Vendas ganha a parte **Detalhes da proposta** (vai para o meio da
+   ficha, num cartão); os que já vieram antes vão para lá na migração 0028 (os de explicação "Trazido do Helena.", em
+   painel de Vendas, ainda sem parte). Num cartão de parte, os campos curtos seguidos (os números, os textos curtos, as
+   datas) ficam lado a lado. Tirar ou pôr um campo no cartão: Painéis › Ajustes › Campos › Parte da ficha.
+14. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
    cadastro)"; no card, "veio da negociação COM-12"; no Implantado, "ligou no cadastro de X o produto … e os módulos …,
    desde …"; a auditoria ganha as linhas do cliente criado, do card aberto e do que ligou no cadastro.
 

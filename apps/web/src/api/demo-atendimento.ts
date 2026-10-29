@@ -21,7 +21,7 @@
  */
 import {
   AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AssuntoGravarSchema,
-  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, AnexosDoCampoSchema, CaixinhasGravarSchema, CampoGravarSchema, MAX_ANEXOS_DO_CAMPO, CamposDoSistemaSchema, mudancasDasCaixinhas, opcaoDoModelo, type OpcaoDoModelo, CAMPOS_DO_SISTEMA,
+  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, AnexosDoCampoSchema, DICA_DO_CAMPO_DO_HELENA, PARTE_DOS_CAMPOS_DO_HELENA, CaixinhasGravarSchema, CampoGravarSchema, MAX_ANEXOS_DO_CAMPO, CamposDoSistemaSchema, mudancasDasCaixinhas, opcaoDoModelo, type OpcaoDoModelo, CAMPOS_DO_SISTEMA,
   ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema, MAX_CAMPOS_DO_PAINEL, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, OrdemDosCamposSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
@@ -68,7 +68,7 @@ import { RECIBO_FOTO_DEMO } from './recibo-demo-midia.js';
 import { planoDoHistorico, type ChamadoDoHistorico } from './demo-atendimento-historico.js';
 import { PROPOSTA_PDF_DEMO } from './proposta-demo-midia.js';
 import {
-  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, ETAPA_QUE_ABRE_A_IMPLANTACAO, IMPLANTACOES_DE_EXEMPLO, META_DO_COMERCIAL, NEGOCIACOES_DE_EXEMPLO, CORES_DAS_ETIQUETAS, CORES_DAS_ETIQUETAS_DO_COMERCIAL, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
+  AGENDADOS_DE_EXEMPLO, CAMPOS_DE_EXEMPLO, CAMPOS_DO_HELENA_NO_COMERCIAL, ETAPA_QUE_ABRE_A_IMPLANTACAO, IMPLANTACOES_DE_EXEMPLO, META_DO_COMERCIAL, NEGOCIACOES_DE_EXEMPLO, CORES_DAS_ETIQUETAS, CORES_DAS_ETIQUETAS_DO_COMERCIAL, DESLIGADOS_NO_DESENVOLVIMENTO, MODELO_ESCOLHIDO, MODELOS_DO_LINECHAT, DESLIGADOS_NO_SUPORTE, DETALHES_DOS_ASSUNTOS, EMAIL_DA_PESSOA, EQUIPE_NOVA, EXEMPLOS, LISTA_DE_ASSUNTOS_DO_SUPORTE,
   NUMERO_DA_EQUIPE, WHATSAPP_DA_EQUIPE,
   type DadosAlterarExemplo, type Exemplo, type IaDoExemplo, type Passo, type Pessoa,
 } from './demo-atendimento-exemplos.js';
@@ -4048,6 +4048,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // ---- o Comercial (2.0.1, o painel de Vendas): as negociações dos últimos meses, ganhas e perdidas,
     //      e o funil de agora — cada uma vivida pelas funções da tela (abrir, mover, marcar o resultado) ----
     const com = A.paineis.find((p) => p.id === 'painel-comercial')!;
+    // os campos que vieram do Helena (2.3): nos Detalhes da proposta, no meio da ficha
+    let ordemNoComercial = camposDoPainel(com.id).reduce((m, c) => Math.max(m, c.ordem), -1) + 1;
+    for (const c of CAMPOS_DO_HELENA_NO_COMERCIAL) {
+      A.campos.push({ id: novoId(), painelId: com.id, nome: c.nome, tipo: c.tipo, dica: DICA_DO_CAMPO_DO_HELENA, ativo: true, ordem: ordemNoComercial++, opcoes: [], incluirNaHora: false, parte: PARTE_DOS_CAMPOS_DO_HELENA, produtoId: null });
+    }
     const etapaDoComercial = (nome: string) => {
       const e = A.etapas.find((x) => x.painelId === com.id && !x.deletedAt && x.nome === nome);
       if (!e) throw new Error(`a etapa ${nome} não é do Comercial`);
@@ -4867,7 +4872,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     let ordem = camposDoPainel(painelId).reduce((m, c) => Math.max(m, c.ordem), -1) + 1;
     for (const c of plano.campos) {
       if (c.acao === 'cria') {
-        A.campos.push({ id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: 'Trazido do Helena.', ativo: true, ordem: ordem++, opcoes: c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true })), incluirNaHora: false, parte: null, produtoId: null });
+        // na negociação, os campos do Helena vão para os Detalhes da proposta (2.3)
+        A.campos.push({ id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: DICA_DO_CAMPO_DO_HELENA, ativo: true, ordem: ordem++, opcoes: c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true })), incluirNaHora: false, parte: gestao ? null : PARTE_DOS_CAMPOS_DO_HELENA, produtoId: null });
       } else if (c.acao === 'usa' && c.gestorId && c.opcoesNovas.length && ehLista(c.tipo)) {
         const campo = A.campos.find((x) => x.id === c.gestorId);
         if (campo) campo.opcoes = [...campo.opcoes, ...c.opcoesNovas.map((nome) => ({ id: novoId(), nome, ativa: true }))];

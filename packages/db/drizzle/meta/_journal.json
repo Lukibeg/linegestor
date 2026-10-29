@@ -197,6 +197,13 @@
       "when": 1793299945732,
       "tag": "0027_implantacao",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1793302300023,
+      "tag": "0028_detalhes_da_proposta",
+      "breakpoints": true
     }
   ]
 }
