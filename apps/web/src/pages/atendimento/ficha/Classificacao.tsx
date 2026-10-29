@@ -21,6 +21,7 @@ import { Campo, Chip, EscolherComBusca, Modal, Spinner } from '../../../componen
 import { Avatar, assuntosEmPastas, useIncluirOpcao, usePode } from '../comum.js';
 import { SeletorDeEtiquetas } from '../SeletorDeEtiquetas.js';
 import { ErroPerto, MarcaFalta, Secao, useAberta, useAcao, usePosicaoFlutuante } from './base.js';
+import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
 import { Caixinhas } from './Caixinhas.js';
 
 /** Um campo da classificação: o rótulo (com a marca do que falta e a rodinha), o controle e o erro. */
@@ -272,6 +273,7 @@ export function CampoNaFicha({ c }: { c: CampoPersonalizado }) {
   const acao = useAcao();
   const incluirOpcao = useIncluirOpcao();
   const valor: ValorDoCampo | null = f.campos[c.id] ?? null;
+  const anexos = useAnexosDe(c.id);
   const gravar = async (v: ValorDoCampo | null) => {
     if (mesmoValorDoCampo(valor, v)) return true;
     return (await acao.rodar(() => api.atendimento.alterar(f.id, { campos: { [c.id]: v } }))).ok;
@@ -320,10 +322,13 @@ export function CampoNaFicha({ c }: { c: CampoPersonalizado }) {
     const inicial = valor === null ? '' : c.tipo === 'numero' && typeof valor === 'number' ? String(valor).replace('.', ',') : String(valor);
     controle = <CaixaDoCampo key={inicial} inicial={inicial} numero={c.tipo === 'numero'} rotulo={c.nome} onGravar={(t) => void gravar(t.trim() ? t : null)} />;
   }
+  // o Anexar de cada campo (2.3): o clipe no fim da linha, as miniaturas embaixo
   return (
-    <Linha id={`campo-c-${c.id}`} campo={chaveDoCampo(c.id)} rotulo={c.nome} ocupado={acao.ocupado} erro={acao.erro} extra={pode ? extra : null}>
+    <Linha id={`campo-c-${c.id}`} campo={chaveDoCampo(c.id)} rotulo={c.nome} ocupado={acao.ocupado} erro={acao.erro}
+      extra={pode ? <span className="flex items-center gap-1">{extra}<BotaoAnexar campoId={c.id} rotulo={`Anexar em ${c.nome}`} soIcone /></span> : null}>
       {controle}
       {c.dica && <p className="text-[12px] text-muted mt-1">{c.dica}</p>}
+      <ListaDeAnexos anexos={anexos} pequeno />
     </Linha>
   );
 }

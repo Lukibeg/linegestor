@@ -29,8 +29,9 @@ No Comercial, mova a negociação para **Em processo de Implantação** (arrasta
 janela mostra antes:
 
 - **O cliente.** O da negociação; ou o do cadastro com o mesmo CNPJ; ou o novo — o nome fantasia, a razão social e o
-  **CNPJ** (o cadastro exige: sem ele a negociação não vai). Se a empresa já é cliente com outro nome, **Já está no
-  cadastro** escolhe o cliente.
+  **CNPJ** (o cadastro exige: sem ele a negociação não vai). Basta digitar os 14 números: o formato entra sozinho, e a
+  janela não confere o dígito verificador. Se a empresa já é cliente com outro nome, **Já está no cadastro** escolhe o
+  cliente.
 - **Os produtos.** Os que o cliente ainda não tem entram no cadastro **sem a data de ativação** (em implantação).
 - **O card.** "Implantação — Cliente", na Curadoria, com o contato da negociação. Quem cuida da negociação acompanha o
   card como observador.
@@ -45,6 +46,13 @@ Voltar a negociação e mover de novo não abre outro card.
 - **A Configuração.** A equipe técnica marca as caixinhas do que já fez e os **Módulos a ativar** que o cliente
   contratou. Cada caixinha marcada mostra quem marcou e quando.
 - **Os Testes.** O suporte marca o que já testou com o cliente.
+- **As pastas.** A Configuração do LinePBX vem em pastas (Servidor, Asterisk, LinePBX Web, Módulos, Telefones), cada uma
+  com a conta. Quem cuida dos chamados muda ali mesmo: **Editar as caixinhas** › Nova pasta, Incluir caixinha, as setas
+  (levam a caixinha de uma pasta para a outra), o × (a caixinha que um card já marcou fica desativada, e ele continua
+  com ela) › Salvar. Vale para todos os cards do painel.
+- **Os anexos.** Cada campo tem o **Anexar**, e cada caixinha, o clipe (ao lado do nome): imagens, PDF, Word, Excel, até
+  10 MB cada. A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
+  Sai do card quem anexou ou quem cuida dos chamados (o histórico guarda).
 - Cada parte mostra a conta (**3 de 5**); a parte da etapa em que o card está fica aberta, e as outras abrem com um
   clique. O cartão do quadro mostra a barrinha da parte da etapa.
 - Nada trava: dá para ir para a Configuração com a curadoria pela metade, e para o Implantado com teste faltando.
@@ -72,5 +80,7 @@ Todo campo de qualquer painel ganhou duas opções:
 - **Produto**: com ele, o campo só aparece no chamado que tem o produto. O mesmo nome pode existir em produtos
   diferentes.
 
-E dois tipos novos: **Caixinhas** (o que já foi feito, com quem marcou e quando) e **Módulos do produto** (os módulos do
-catálogo; o produto não muda depois de criado).
+E dois tipos novos: **Caixinhas** (o que já foi feito, com quem marcou e quando; em pastas, se quiser: **Nova pasta** na
+janela do campo) e **Módulos do produto** (os módulos do catálogo; o produto não muda depois de criado).
+
+Em qualquer painel, os campos do card ganharam o **Anexar** (veja acima).

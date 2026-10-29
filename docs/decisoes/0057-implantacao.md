@@ -66,7 +66,26 @@ a gente concluir a implantação no painel de implantação"*.
    Implantado
    que não muda nada vão direto, sem janela. Fora isso, nada trava: a regra de sair da entrada com um responsável (2.2)
    continua valendo na Curadoria, e a própria janela pergunta quem fica com o card.
-8. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
+8. **O CNPJ da janela sem o dígito verificador** (29/10, no card: *"n quero mais q verifique os números, vc dizer que o
+   cnpj n confere"*): para criar o cliente pela implantação, a janela pede só os 14 números (que entram no formato
+   enquanto se digita) e que não sejam de um cliente da lixeira. Em Clientes › Novo cliente, a conferência continua; em
+   Editar, o CNPJ é conferido só quando muda (o cliente criado pela implantação edita o resto sem travar).
+9. **As caixinhas em pastas** (29/10: *"eu quero poder fazer como se fosse pastas das configurações, por exemplo
+   configurações do servidor, configuirações do asterisk, do linepbx web, dos módulos, e eu tenho que poder criar e editar
+   facilmente"*): cada caixinha pode ter a pasta (`pasta`, guardada nas opções do campo, `ticket_fields.options`); a
+   ficha junta por pasta, com a conta de cada uma. O modelo traz a Configuração do LinePBX em Servidor, Asterisk,
+   LinePBX Web, Módulos e Telefones (os nomes sem o "Asterisk - " na frente). Quem cuida dos chamados muda as caixinhas e
+   as pastas no próprio card (**Editar as caixinhas**, `PUT /atendimento/campos/:id/caixinhas`, só as opções: o resto do
+   campo não muda) ou em Painéis › Ajustes › Campos; vale para todos os cards do painel, e a caixinha que um card marcou
+   fica desativada, com ele.
+10. **Anexar em cada campo e em cada caixinha** (29/10: *"em todas as opções eu quero poder anexar imagens ou docs que vão
+   ter pré visualização"*): o anexo ganha o campo e a caixinha (`ticket_attachments.field_id` e `option_id`, na migração
+   0027); `POST /atendimento/chamados/:id/campos/:campoId/anexos` (até 5 arquivos de 10 MB por vez, até 20 em cada campo
+   ou caixinha) e `DELETE /atendimento/chamados/:id/anexos/:anexoId` (quem anexou ou quem cuida). A imagem em miniatura,
+   o PDF no leitor do Gestor, o Word e o Excel com o nome e o ícone (baixam). O histórico diz "anexou print.png em
+   Configuração do ambiente (LinePBX) › Configuração dos ramais" e "tirou …". Vale para os campos de todos os painéis
+   (não para os do sistema, como o Assunto).
+11. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
    cadastro)"; no card, "veio da negociação COM-12"; no Implantado, "ligou no cadastro de X o produto … e os módulos …,
    desde …"; a auditoria ganha as linhas do cliente criado, do card aberto e do que ligou no cadastro.
 

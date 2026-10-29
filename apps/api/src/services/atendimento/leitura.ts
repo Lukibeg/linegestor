@@ -386,7 +386,10 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
   const [eventos, notas, anexos, tempo, casos, filhos, todasLigacoes, nos, integracoes, lc, citaveis] = await Promise.all([
     db.select().from(ticketEvents).where(eq(ticketEvents.ticketId, t.id)).orderBy(asc(ticketEvents.createdAt), asc(ticketEvents.id)),
     db.select().from(ticketNotes).where(and(eq(ticketNotes.ticketId, t.id), isNull(ticketNotes.deletedAt))).orderBy(asc(ticketNotes.createdAt), asc(ticketNotes.id)),
-    db.select({ id: ticketAttachments.id, noteId: ticketAttachments.noteId, fileName: ticketAttachments.fileName, mimeType: ticketAttachments.mimeType, sizeBytes: ticketAttachments.sizeBytes })
+    db.select({
+      id: ticketAttachments.id, noteId: ticketAttachments.noteId, fileName: ticketAttachments.fileName, mimeType: ticketAttachments.mimeType, sizeBytes: ticketAttachments.sizeBytes,
+      fieldId: ticketAttachments.fieldId, optionId: ticketAttachments.optionId, uploadedById: ticketAttachments.uploadedById, createdAt: ticketAttachments.createdAt,
+    })
       .from(ticketAttachments).where(and(eq(ticketAttachments.ticketId, t.id), isNull(ticketAttachments.deletedAt))).orderBy(asc(ticketAttachments.createdAt)),
     db.select().from(ticketTimeEntries).where(and(eq(ticketTimeEntries.ticketId, t.id), isNull(ticketTimeEntries.deletedAt)))
       .orderBy(asc(ticketTimeEntries.workedOn), asc(ticketTimeEntries.createdAt)),
@@ -550,6 +553,11 @@ export async function fichaDoChamado(app: FastifyInstance, ator: Ator, ref: stri
     filhosTravam,
     grafo,
     marcas: (t.fieldMarks as FichaChamado['marcas'] | null) ?? {},
+    // os anexos dos campos e das caixinhas (2.3): sai quem anexou ou quem cuida
+    anexosDosCampos: anexos.filter((a) => !a.noteId && a.fieldId).map((a) => ({
+      id: a.id, nome: a.fileName, tipo: a.mimeType, tamanho: a.sizeBytes, imagem: IMAGENS_NA_TELA.includes(a.mimeType), url: `atendimento/anexos/${a.id}`,
+      campoId: a.fieldId!, opcaoId: a.optionId, por: pessoaCurta(ctx, a.uploadedById), em: a.createdAt.toISOString(), podeTirar: cuida || meu(a.uploadedById),
+    })),
     daNegociacao: daNegociacao[0] ? { id: daNegociacao[0].id, codigo: daNegociacao[0].code, titulo: daNegociacao[0].title, podeAbrir: visiveis.has(daNegociacao[0].panelId) } : null,
     implantacoes: abertas.map((x) => {
       const e = ctx.etapas.get(x.stageId)?.etapa;

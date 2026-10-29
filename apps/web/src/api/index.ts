@@ -340,6 +340,10 @@ export type Api = {
     reabrir(id: string, d: { motivo?: string | null; etapaId?: string | null }): Promise<T.FichaChamado>;
     trocarPainel(id: string, d: { painelId: string; etapaId?: string | null }): Promise<T.FichaChamado>;
     anotar(id: string, d: { texto: string; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<T.FichaChamado>;
+    /** anexar num campo do card ou numa caixinha (2.3): até 5 arquivos de 10 MB por vez */
+    anexarNoCampo(id: string, campoId: string, d: { opcaoId?: string | null; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<T.FichaChamado>;
+    /** tirar o anexo de um campo (o seu, ou qualquer um se cuida dos chamados) */
+    tirarAnexoDoCampo(id: string, anexoId: string): Promise<T.FichaChamado>;
     apagarAnotacao(id: string, notaId: string): Promise<T.FichaChamado>;
     ligar(id: string, d: { para: string; tipo: T.TipoLigacaoChamado }): Promise<T.FichaChamado>;
     desligar(id: string, ligacaoId: string): Promise<T.FichaChamado>;

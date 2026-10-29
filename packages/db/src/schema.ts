@@ -1804,6 +1804,10 @@ export const ticketAttachments = pgTable(
     id: id(),
     ticketId: text('ticket_id').notNull().references(() => tickets.id, { onDelete: 'cascade' }),
     noteId: text('note_id').references(() => ticketNotes.id, { onDelete: 'cascade' }),
+    /** o campo do card a que o anexo pertence (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs"); nulo: o da anotação */
+    fieldId: text('field_id').references(() => ticketFields.id, { onDelete: 'cascade' }),
+    /** a caixinha do campo (o id da opção, que vive no campo); nulo: o campo todo */
+    optionId: text('option_id'),
     fileName: text('file_name').notNull(),
     mimeType: text('mime_type').notNull(),
     sizeBytes: integer('size_bytes').notNull().default(0),

@@ -14,7 +14,7 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import {
-  AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
+  AnexosDoCampoSchema, AnotacaoSchema, ArrumacaoDosRelatoriosSchema, AvisarClienteSchema, ChamadoAlterarSchema, ChamadoCriarSchema, ChecklistSchema, EsperarSchema, FiltroDoRelatorioDeVendasSchema,
   FiltroDaVisaoSchema, FiltroDosRelatoriosSchema, LigarChamadoSchema,
   AoMoverSchema, ListarChamadosSchema, MoverSchema, ObservarSchema, OpcaoIncluirSchema, OperadoraAndamentoSchema, OperadoraCasoSchema, PaiSchema, PosicaoNoQuadroSchema, PRIORIDADES, ProblemaSchema, ReabrirSchema,
   TempoSchema, TrocarPainelSchema,
@@ -230,6 +230,15 @@ const routes: FastifyPluginAsyncZod = async (app) => {
 
   app.delete('/chamados/:id/anotacoes/:notaId', { ...trabalhar, schema: { tags, summary: 'Apagar uma anotação (a sua, ou qualquer uma se você cuida dos chamados)', params: Id.extend({ notaId: z.string().min(1) }) } },
     async (req) => fichaDepois(req, await svc.apagarAnotacao(app, ator(req), req.params.id, req.params.notaId), 'delete'));
+
+  // 2.3: os anexos dos campos do card e das caixinhas
+  app.post('/chamados/:id/campos/:campoId/anexos', {
+    ...trabalhar, schema: { tags, summary: 'Anexar num campo do card ou numa caixinha (opcaoId): até 5 arquivos de 10 MB por vez, até 20 em cada', params: Id.extend({ campoId: z.string().min(1) }), body: AnexosDoCampoSchema },
+  }, async (req) => fichaDepois(req, await svc.anexarNoCampo(app, ator(req), req.params.id, req.params.campoId, req.body)));
+
+  app.delete('/chamados/:id/anexos/:anexoId', {
+    ...trabalhar, schema: { tags, summary: 'Tirar o anexo de um campo (o seu, ou qualquer um se você cuida dos chamados)', params: Id.extend({ anexoId: z.string().min(1) }) },
+  }, async (req) => fichaDepois(req, await svc.tirarAnexoDoCampo(app, ator(req), req.params.id, req.params.anexoId), 'delete'));
 
   app.post('/chamados/:id/ligacoes', { ...trabalhar, schema: { tags, summary: 'Ligar a outro chamado (relacionado, duplicado, repete)', params: Id, body: LigarChamadoSchema } },
     async (req) => fichaDepois(req, await svc.ligar(app, ator(req), req.params.id, req.body)));

@@ -366,3 +366,79 @@ describe('as caixinhas em pastas (2.3)', () => {
     expect((await operador.put(`/atendimento/campos/${conf.id}/caixinhas`, { opcoes: [{ nome: 'X' }] })).statusCode).toBe(403);
   });
 });
+
+describe('os anexos dos campos e das caixinhas (2.3)', () => {
+  // um PNG de 1 pixel e um PDF mínimo
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const PDF = `data:application/pdf;base64,${Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF').toString('base64')}`;
+  const anexar = (ss: Session, campoId: string, opcaoId: string | null, nome: string, conteudo = PNG) =>
+    ss.post(`/atendimento/chamados/${card.id}/campos/${campoId}/anexos`, { opcaoId, anexos: [{ fileName: nome, conteudo }] });
+
+  it('anexa no campo todo e numa caixinha; a ficha mostra, o histórico conta e o arquivo abre', async () => {
+    const conf = (await s.get('/atendimento/opcoes')).json().campos.find((c: CampoPersonalizado) => c.id === campo('Configuração do ambiente', 'linepbx').id) as CampoPersonalizado;
+    const ramais = conf.opcoes.find((o) => o.nome === 'Ramais')!;
+    const r = await anexar(s, conf.id, ramais.id, 'print dos ramais.png');
+    expect(r.statusCode, r.body).toBe(200);
+    const f: FichaChamado = r.json();
+    expect(f.anexosDosCampos).toHaveLength(1);
+    expect(f.anexosDosCampos[0]).toMatchObject({ campoId: conf.id, opcaoId: ramais.id, nome: 'print dos ramais.png', imagem: true, podeTirar: true, por: { id: adminId } });
+    expect(f.historico.at(-1)!.texto).toBe('anexou print dos ramais.png em Configuração do ambiente (LinePBX) › Ramais');
+    const lista = campo('Lista de ramais', 'linepbx');
+    const r2 = await anexar(s, lista.id, null, 'ramais.pdf', PDF);
+    expect(r2.statusCode, r2.body).toBe(200);
+    const pdf = (r2.json() as FichaChamado).anexosDosCampos.find((a) => a.nome === 'ramais.pdf')!;
+    expect(pdf).toMatchObject({ campoId: lista.id, opcaoId: null, imagem: false, tipo: 'application/pdf' });
+    // o anexo do campo não vira anotação
+    expect((r2.json() as FichaChamado).anotacoesLista.flatMap((n) => n.anexos)).toHaveLength(0);
+    const arquivo = await s.get(`/atendimento/anexos/${f.anexosDosCampos[0]!.id}`);
+    expect(arquivo.statusCode).toBe(200);
+    expect(arquivo.headers['content-type']).toMatch(/image\/png/);
+    expect((await auditoria()).map((a) => a.summary)).toContain(`Anexou print dos ramais.png em Configuração do ambiente (LinePBX) › Ramais (${card.codigo})`);
+  });
+
+  it('a caixinha de outro campo, o campo desativado ou de outro painel não recebem; até 20 em cada', async () => {
+    const conf = campo('Configuração do ambiente', 'linepbx');
+    const outra = campo('Configuração do ambiente', 'linechat').opcoes[1]!;
+    expect((await anexar(s, conf.id, outra.id, 'x.png')).statusCode).toBe(400);
+    const desativado = (await s.get('/atendimento/opcoes')).json().campos.find((c: CampoPersonalizado) => c.painelId === imp.id && !c.ativo) as CampoPersonalizado;
+    expect((await anexar(s, desativado.id, null, 'x.png')).statusCode).toBe(400);
+    const doComercial = (await s.get('/atendimento/opcoes')).json().campos.find((c: CampoPersonalizado) => c.painelId === com.id);
+    if (doComercial) expect((await anexar(s, doComercial.id, null, 'x.png')).statusCode).toBe(404);
+    // o limite: a caixinha dos testes recebe 20, a 21ª não
+    const testes = campo('Testes realizados', 'linechat');
+    const op = testes.opcoes[0]!;
+    for (let i = 0; i < 4; i++) {
+      const lote = await s.post(`/atendimento/chamados/${card.id}/campos/${testes.id}/anexos`, { opcaoId: op.id, anexos: Array.from({ length: 5 }, (_, j) => ({ fileName: `t${i}-${j}.png`, conteudo: PNG })) });
+      expect(lote.statusCode, lote.body).toBe(200);
+    }
+    const demais = await anexar(s, testes.id, op.id, 'a mais.png');
+    expect(demais.statusCode).toBe(400);
+    expect(demais.json().error).toMatch(/cabem até 20/);
+    // o campo todo tem o limite dele (a caixinha não conta)
+    expect((await anexar(s, testes.id, null, 'do campo.png')).statusCode).toBe(200);
+  });
+
+  it('tirar: o seu, ou qualquer um se cuida dos chamados; o arquivo deixa de abrir', async () => {
+    const papeis = (await s.get('/admin/roles')).json() as Array<{ id: string; key: string }>;
+    await s.post('/admin/users', { name: 'Bruno Técnico', email: 'bruno.imp@gestor.local', password: 'SenhaDeTeste!123', roleId: papeis.find((x) => x.key === 'operador')!.id });
+    const bruno = new Session(app);
+    await bruno.login('bruno.imp@gestor.local', 'SenhaDeTeste!123');
+    const lista = campo('Lista de ramais', 'linepbx');
+    const dele = await anexar(bruno, lista.id, null, 'do bruno.png');
+    expect(dele.statusCode, dele.body).toBe(200);
+    const f: FichaChamado = dele.json();
+    const doBruno = f.anexosDosCampos.find((a) => a.nome === 'do bruno.png')!;
+    const doAdmin = f.anexosDosCampos.find((a) => a.nome === 'ramais.pdf')!;
+    expect(doBruno.podeTirar).toBe(true);
+    expect(doAdmin.podeTirar).toBe(false);
+    expect((await bruno.del(`/atendimento/chamados/${card.id}/anexos/${doAdmin.id}`)).statusCode).toBe(403);
+    // quem cuida tira o do Bruno
+    const r = await s.del(`/atendimento/chamados/${card.id}/anexos/${doBruno.id}`);
+    expect(r.statusCode, r.body).toBe(200);
+    const depois: FichaChamado = r.json();
+    expect(depois.anexosDosCampos.some((a) => a.id === doBruno.id)).toBe(false);
+    expect(depois.historico.at(-1)!.texto).toBe('tirou do bruno.png de Lista de ramais (LinePBX)');
+    expect((await s.get(`/atendimento/anexos/${doBruno.id}`)).statusCode).toBe(404);
+    expect((await s.del(`/atendimento/chamados/${card.id}/anexos/${doBruno.id}`)).statusCode).toBe(404);
+  });
+});

@@ -1321,6 +1321,32 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect((await erroDe(api.salvarCaixinhas(conf.id, { opcoes: [{ nome: 'X' }] }))).status).toBe(403);
   });
 
+  it('os anexos dos campos e das caixinhas: anexar, ver na ficha e no histórico, tirar (o seu, ou quem cuida)', async () => {
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const pbx = produto(op, 'LinePBX');
+    const conf = campoDe(op, imp.id, 'Configuração do ambiente', pbx);
+    const ramais = conf.opcoes.find((o) => o.nome === 'Configuração dos ramais')!;
+    const horizonte = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Construtora Horizonte')!;
+    const f = await api.anexarNoCampo(horizonte.id, conf.id, { opcaoId: ramais.id, anexos: [{ fileName: 'ramais.png', conteudo: PNG }] });
+    expect(f.anexosDosCampos.find((a) => a.nome === 'ramais.png')).toMatchObject({ campoId: conf.id, opcaoId: ramais.id, imagem: true, podeTirar: true });
+    expect(f.historico.at(-1)!.texto).toBe('anexou ramais.png em Configuração do ambiente (LinePBX) › Configuração dos ramais');
+    expect((await erroDe(api.anexarNoCampo(horizonte.id, conf.id, { opcaoId: 'nao-existe', anexos: [{ fileName: 'x.png', conteudo: PNG }] }))).status).toBe(400);
+    // o do operador: ele tira o dele, não o do Luan
+    await entrar('operador');
+    const doOp = await api.anexarNoCampo(horizonte.id, conf.id, { anexos: [{ fileName: 'do operador.png', conteudo: PNG }] });
+    const meu = doOp.anexosDosCampos.find((a) => a.nome === 'do operador.png')!;
+    const doLuan = doOp.anexosDosCampos.find((a) => a.nome === 'ramais.png')!;
+    expect(meu.opcaoId).toBeNull();
+    expect(doLuan.podeTirar).toBe(false);
+    expect((await erroDe(api.tirarAnexoDoCampo(horizonte.id, doLuan.id))).status).toBe(403);
+    const sem = await api.tirarAnexoDoCampo(horizonte.id, meu.id);
+    expect(sem.anexosDosCampos.some((a) => a.id === meu.id)).toBe(false);
+    expect(sem.historico.at(-1)!.texto).toBe('tirou do operador.png de Configuração do ambiente (LinePBX)');
+  });
+
   it('o painel pelo modelo e as regras dos campos (o produto dos módulos, o mesmo nome em produtos diferentes)', async () => {
     await entrar('admin');
     const novo = await api.salvarPainel(null, { nome: 'Implantação Filiais', sigla: 'IMF', cor: 'roxo', acesso: 'todos', tipo: 'gestao', modelo: 'implantacao', ajustes: {} });

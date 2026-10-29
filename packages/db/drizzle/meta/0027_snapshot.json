@@ -1,5 +1,5 @@
 {
-  "id": "c5f3fe37-6cae-4337-9a45-ab5098cd2c6c",
+  "id": "01ea5055-4a10-41f4-a313-adaa0ff786d0",
   "prevId": "a77b0ed5-110d-44e4-b861-c9f13f39250c",
   "version": "7",
   "dialect": "postgresql",
@@ -6665,6 +6665,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "field_id": {
+          "name": "field_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "option_id": {
+          "name": "option_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "file_name": {
           "name": "file_name",
           "type": "text",
@@ -6747,6 +6759,19 @@
           "tableTo": "ticket_notes",
           "columnsFrom": [
             "note_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ticket_attachments_field_id_ticket_fields_id_fk": {
+          "name": "ticket_attachments_field_id_ticket_fields_id_fk",
+          "tableFrom": "ticket_attachments",
+          "tableTo": "ticket_fields",
+          "columnsFrom": [
+            "field_id"
           ],
           "columnsTo": [
             "id"

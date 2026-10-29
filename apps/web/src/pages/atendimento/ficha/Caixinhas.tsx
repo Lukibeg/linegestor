@@ -13,6 +13,7 @@ import { api } from '../../../api/index.js';
 import { Modal, Spinner, mensagemErro } from '../../../components/ui/index.js';
 import { useDepoisDeMudar } from '../comum.js';
 import { caixinhasParaGravar, EditorDasCaixinhas, pastasDoEditor, problemaNasPastas, type PastaRascunho } from '../ajustes/EditorDasCaixinhas.js';
+import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
 import { ErroPerto, MarcaFalta, useAberta, useAcao } from './base.js';
 import { dataCompleta, emQuando } from './Cabecalho.js';
 
@@ -56,6 +57,7 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
 
   const feitos = opcoes.filter((o) => marcados.includes(o.id)).length;
   const podeEditar = cuida && c.tipo === 'caixinhas' && c.ativo;
+  const anexosDoCampo = useAnexosDe(c.id);
   return (
     <div id={`campo-c-${c.id}`} className="min-w-0 scroll-mt-24">
       {comTitulo && (
@@ -64,10 +66,15 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
           {c.tipo === 'caixinhas' && opcoes.length > 0 && <span className="text-[12px] text-muted">{feitos} de {opcoes.length}</span>}
           <MarcaFalta campo={`campo:${c.id}`} />
           {acao.ocupado && <Spinner className="!w-3.5 !h-3.5" />}
-          {podeEditar && (
-            <button type="button" className="btn-ghost btn-sm ml-auto text-[12.5px]" onClick={() => setEditando(true)} title="Criar, renomear e tirar caixinhas e pastas (vale para todos os cards do painel)">
-              <ListChecks size={14} /> Editar as caixinhas
-            </button>
+          {pode && (
+            <span className="ml-auto flex items-start gap-1">
+              <BotaoAnexar campoId={c.id} rotulo={`Anexar em ${c.nome}`} />
+              {podeEditar && (
+                <button type="button" className="btn-ghost btn-sm -my-1 text-[12.5px]" onClick={() => setEditando(true)} title="Criar, renomear e tirar caixinhas e pastas (vale para todos os cards do painel)">
+                  <ListChecks size={14} /> Editar as caixinhas
+                </button>
+              )}
+            </span>
           )}
         </div>
       )}
@@ -83,6 +90,7 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
       ) : (
         <ListaDeCaixinhas c={c} opcoes={opcoes} marcados={marcados} onTrocar={trocar} />
       )}
+      <ListaDeAnexos anexos={anexosDoCampo} />
       <ErroPerto erro={acao.erro} />
       {editando && <JanelaDasCaixinhas c={c} onFechar={() => setEditando(false)} />}
     </div>
@@ -114,32 +122,44 @@ function ListaDeCaixinhas({ c, opcoes, marcados, onTrocar }: { c: CampoPersonali
   const marcas = f.marcas[c.id] ?? {};
   return (
     <ul className={c.tipo === 'modulos' ? 'grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5' : 'flex flex-col gap-0.5'}>
-      {opcoes.map((o) => {
-        const marcado = marcados.includes(o.id);
-        const m = marcas[o.id];
-        return (
-          <li key={o.id}>
-            <label className={`flex items-start gap-2.5 rounded-md px-1.5 py-1 -mx-1.5 ${pode ? 'cursor-pointer hover:bg-surface-2' : ''}`}>
-              <input type="checkbox" className="sr-only peer" checked={marcado} disabled={!pode} onChange={() => onTrocar(o.id)} />
-              <span aria-hidden className={`mt-[2px] grid place-items-center w-[17px] h-[17px] rounded-[5px] border shrink-0 peer-focus-visible:ring-2 peer-focus-visible:ring-accent transition-colors ${
-                marcado ? 'bg-ok border-ok text-white' : 'border-line-strong bg-surface'}`}>
-                {marcado && <Check size={12} strokeWidth={3} />}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className={`text-[13.5px] leading-snug ${marcado && c.tipo === 'caixinhas' ? 'text-ink-2' : 'text-ink'}`}>
-                  {o.nome}{!o.ativa && <span className="text-muted"> (desativada)</span>}
-                </span>
-                {marcado && m && (
-                  <span className="block text-[11.5px] text-muted leading-tight mt-0.5" title={dataCompleta(m.em)}>
-                    {quem(m)} · {emQuando(m.em)}
-                  </span>
-                )}
-              </span>
-            </label>
-          </li>
-        );
-      })}
+      {opcoes.map((o) => <Caixinha key={o.id} c={c} o={o} marcado={marcados.includes(o.id)} m={marcas[o.id]} quem={quem} onTrocar={onTrocar} />)}
     </ul>
+  );
+}
+
+/** Uma caixinha: marcar (com quem marcou e quando) e, ao lado, o clipe dos anexos dela (2.3). */
+function Caixinha({ c, o, marcado, m, quem, onTrocar }: {
+  c: CampoPersonalizado; o: OpcaoDoCampo; marcado: boolean; m: { porId: string | null; porNome: string | null; em: string } | undefined;
+  quem: (m: { porId: string | null; porNome: string | null }) => string; onTrocar: (id: string) => void;
+}) {
+  const { pode } = useAberta();
+  const anexos = useAnexosDe(c.id, o.id);
+  return (
+    <li className="group min-w-0">
+      <div className="flex items-start gap-1">
+        <label className={`flex flex-1 min-w-0 items-start gap-2.5 rounded-md px-1.5 py-1 -ml-1.5 ${pode ? 'cursor-pointer hover:bg-surface-2' : ''}`}>
+          <input type="checkbox" className="sr-only peer" checked={marcado} disabled={!pode} onChange={() => onTrocar(o.id)} />
+          <span aria-hidden className={`mt-[2px] grid place-items-center w-[17px] h-[17px] rounded-[5px] border shrink-0 peer-focus-visible:ring-2 peer-focus-visible:ring-accent transition-colors ${
+            marcado ? 'bg-ok border-ok text-white' : 'border-line-strong bg-surface'}`}>
+            {marcado && <Check size={12} strokeWidth={3} />}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className={`text-[13.5px] leading-snug ${marcado && c.tipo === 'caixinhas' ? 'text-ink-2' : 'text-ink'}`}>
+              {o.nome}{!o.ativa && <span className="text-muted"> (desativada)</span>}
+            </span>
+            {marcado && m && (
+              <span className="block text-[11.5px] text-muted leading-tight mt-0.5" title={dataCompleta(m.em)}>
+                {quem(m)} · {emQuando(m.em)}
+              </span>
+            )}
+          </span>
+        </label>
+        {/* o clipe fica claro até passar o mouse (ou quando a caixinha já tem anexo) */}
+        <BotaoAnexar campoId={c.id} opcaoId={o.id} rotulo={`Anexar em ${o.nome}`} soIcone
+          className={`mt-0.5 shrink-0 ${anexos.length ? '' : 'opacity-50 group-hover:opacity-100 focus-within:opacity-100'}`} />
+      </div>
+      {anexos.length > 0 && <div className="pl-[26px] pb-1"><ListaDeAnexos anexos={anexos} pequeno /></div>}
+    </li>
   );
 }
 

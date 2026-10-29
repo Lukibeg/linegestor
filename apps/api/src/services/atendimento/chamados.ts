@@ -18,7 +18,7 @@
  * arquivo): as mesmas regras, sem o `Feito` (quem chama escreve a própria auditoria).
  */
 import type { FastifyInstance } from 'fastify';
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import {
   clientContacts, clients, newId, products, ticketAttachments, ticketCarrierCases, ticketContacts, ticketEvents, ticketLinks, ticketNotes, ticketPanels,
   ticketTimeEntries, tickets, users,
@@ -36,7 +36,7 @@ import {
   NOME_CONVERSA, NOME_OUTRAS_CONVERSAS, NOME_OUTROS_CONTATOS, outrosContatosLimpos, sessaoDaConversa, textoDoOutroContato,
   type Alcance, type CampoDoSistema, type ChamadoAlterar, type ChamadoCriar, type DadosObrigatorios, type Espera, type EtapaPainel, type Gravidade,
   type ItemChecklist, type Origem, type Painel, type Prioridade, type SituacaoDoChamado, type TipoEspera, type TipoEvento, type TipoLigacaoChamado,
-  type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo,
+  type ValoresDosCampos, type MarcasDosCampos, ehCaixinhas, marcasDepois, nomeCompletoDoCampo, MAX_ANEXOS_DO_CAMPO,
 } from '@gestor/shared';
 import { BadRequest, Conflict, Forbidden, NotFound } from '../../plugins/errors.js';
 import { lerConteudo } from '../projects.js';
@@ -1308,6 +1308,91 @@ export async function apagarAnotacao(app: FastifyInstance, ator: Ator, ref: stri
     ...nada(t),
     resumo: `Apagou uma anotação${autor && !minha ? ` de ${autor}` : ''} em ${t.code}`,
     antes: { texto: n.body, escritaEm: n.createdAt.toISOString(), por: autor },
+  };
+}
+
+// =====================================================================
+//  OS ANEXOS DOS CAMPOS (2.3)
+// =====================================================================
+
+/**
+ * O campo do card que recebe o anexo (do painel do card, ativo e de um produto que o card tem) e a caixinha, se veio. O
+ * nome é o que a ficha mostra fora dela (com o produto entre parênteses: "Configuração do ambiente (LinePBX)").
+ */
+function campoParaAnexo(e: Estado, campoId: string, opcaoId: string | null) {
+  const c = camposDoPainel(e.ctx, e.painel.id).find((x) => x.id === campoId);
+  if (!c) throw new NotFound('Campo');
+  if (!c.ativo) throw new BadRequest(`O campo ${c.nome} está desativado.`);
+  if (c.produtoId && !e.t.productIds.includes(c.produtoId)) throw new BadRequest(`O campo ${c.nome} é de um produto que ${e.painel.tipo === 'vendas' ? 'a negociação' : 'o chamado'} não tem.`);
+  const opcao = opcaoId ? c.opcoes.find((o) => o.id === opcaoId) ?? null : null;
+  if (opcaoId && (!opcao || !ehCaixinhas(c.tipo))) throw new BadRequest('A caixinha não é deste campo. Recarregue a tela e tente de novo.');
+  return { c, opcao, nome: nomeCompletoDoCampo(c, e.ctx.produtos) };
+}
+
+/**
+ * Anexar num campo do card ou numa caixinha (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs que
+ * vão ter pré visualização"): até 5 arquivos de 10 MB por vez, até 20 em cada campo (ou caixinha). O histórico conta.
+ */
+export async function anexarNoCampo(app: FastifyInstance, ator: Ator, ref: string, campoId: string, d: { opcaoId: string | null; anexos: Array<{ fileName: string; conteudo: string }> }): Promise<Feito> {
+  exigirTrabalhar(ator);
+  if (!d.anexos.length) throw new BadRequest('Escolha o arquivo.');
+  if (d.anexos.length > 5) throw new BadRequest('Até 5 arquivos de uma vez.');
+  const guardar = d.anexos.map(anexoParaGuardar);
+  const e = await carregar(app, ator, ref);
+  const { t, agora } = e;
+  const { c, opcao, nome } = campoParaAnexo(e, campoId, d.opcaoId);
+  const onde = `${nome}${opcao ? ` › ${opcao.nome}` : ''}`;
+  const pessoa = pessoaDoAtor(ator);
+  await app.db.transaction(async (tx) => {
+    // a linha do chamado fica travada: dois envios ao mesmo tempo não passam do limite juntos
+    await tx.select({ id: tickets.id }).from(tickets).where(eq(tickets.id, t.id)).for('update');
+    const [ja] = await tx.select({ n: count() }).from(ticketAttachments).where(and(
+      eq(ticketAttachments.ticketId, t.id), eq(ticketAttachments.fieldId, c.id), opcao ? eq(ticketAttachments.optionId, opcao.id) : isNull(ticketAttachments.optionId),
+      isNull(ticketAttachments.deletedAt),
+    ));
+    const n = Number(ja?.n ?? 0);
+    if (n + guardar.length > MAX_ANEXOS_DO_CAMPO) {
+      throw new BadRequest(`${opcao ? `A caixinha ${opcao.nome}` : `O campo ${nome}`} já tem ${plural(n, 'anexo', 'anexos')}: cabem até ${MAX_ANEXOS_DO_CAMPO}. Tire um antes de anexar outro.`);
+    }
+    // um milésimo entre um anexo e o outro: a ficha mostra na ordem em que foram escolhidos
+    await tx.insert(ticketAttachments).values(guardar.map((a, i) => ({
+      id: newId(), ticketId: t.id, noteId: null, fieldId: c.id, optionId: opcao?.id ?? null, ...a, uploadedById: pessoa, createdAt: new Date(agora.getTime() + i),
+    })));
+    await registrarEvento(tx, t.id, 'anexo', ator, { acao: 'anexou', campo: nome, opcao: opcao?.nome ?? null, arquivos: guardar.map((a) => a.fileName) }, e.quando());
+    await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
+  });
+  await camposAosObservadores(app, ator, t, [nome]);
+  return {
+    ...nada(t),
+    resumo: `Anexou ${guardar.length === 1 ? guardar[0]!.fileName : plural(guardar.length, 'arquivo', 'arquivos')} em ${onde} (${t.code})`,
+    depois: { campo: nome, opcao: opcao?.nome ?? null, anexos: guardar.map((a) => a.fileName) },
+  };
+}
+
+/** Tirar o anexo de um campo: o seu, ou qualquer um se cuida dos chamados (a auditoria guarda o nome do arquivo e quem anexou). */
+export async function tirarAnexoDoCampo(app: FastifyInstance, ator: Ator, ref: string, anexoId: string): Promise<Feito> {
+  exigirTrabalhar(ator);
+  const e = await carregar(app, ator, ref);
+  const { t, agora } = e;
+  const [a] = await app.db.select({ id: ticketAttachments.id, fileName: ticketAttachments.fileName, fieldId: ticketAttachments.fieldId, optionId: ticketAttachments.optionId, uploadedById: ticketAttachments.uploadedById, createdAt: ticketAttachments.createdAt })
+    .from(ticketAttachments)
+    .where(and(eq(ticketAttachments.id, anexoId), eq(ticketAttachments.ticketId, t.id), isNotNull(ticketAttachments.fieldId), isNull(ticketAttachments.deletedAt))).limit(1);
+  if (!a) throw new NotFound('Anexo');
+  const meu = ator.tipo === 'pessoa' && a.uploadedById === ator.id;
+  if (!meu && !podeCuidar(ator)) throw new Forbidden('Só quem anexou (ou quem cuida dos chamados) pode tirar este anexo.');
+  const c = camposDoPainel(e.ctx, e.painel.id).find((x) => x.id === a.fieldId);
+  const nome = c ? nomeCompletoDoCampo(c, e.ctx.produtos) : 'um campo';
+  const opcao = c && a.optionId ? c.opcoes.find((o) => o.id === a.optionId)?.nome ?? null : null;
+  await app.db.transaction(async (tx) => {
+    await tx.update(ticketAttachments).set({ deletedAt: agora }).where(eq(ticketAttachments.id, a.id));
+    await registrarEvento(tx, t.id, 'anexo', ator, { acao: 'tirou', campo: nome, opcao, arquivos: [a.fileName] }, e.quando());
+    await tx.update(tickets).set({ updatedAt: agora, lastActivityAt: agora }).where(eq(tickets.id, t.id));
+  });
+  const autor = a.uploadedById ? pessoaCurta(e.ctx, a.uploadedById)?.nome ?? null : null;
+  return {
+    ...nada(t),
+    resumo: `Tirou o anexo ${a.fileName} de ${nome}${opcao ? ` › ${opcao}` : ''} (${t.code})`,
+    antes: { arquivo: a.fileName, anexadoEm: a.createdAt.toISOString(), por: autor },
   };
 }
 

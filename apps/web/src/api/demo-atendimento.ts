@@ -21,7 +21,7 @@
  */
 import {
   AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AssuntoGravarSchema,
-  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, CaixinhasGravarSchema, CampoGravarSchema, CamposDoSistemaSchema, mudancasDasCaixinhas, opcaoDoModelo, type OpcaoDoModelo, CAMPOS_DO_SISTEMA,
+  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, AnexosDoCampoSchema, CaixinhasGravarSchema, CampoGravarSchema, MAX_ANEXOS_DO_CAMPO, CamposDoSistemaSchema, mudancasDasCaixinhas, opcaoDoModelo, type OpcaoDoModelo, CAMPOS_DO_SISTEMA,
   ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema, MAX_CAMPOS_DO_PAINEL, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, OrdemDosCamposSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
@@ -195,7 +195,11 @@ type ChamadoRow = {
 };
 type EventoRow = { id: string; chamadoId: string; tipo: TipoEvento; userId: string | null; actorName: string | null; dados: Record<string, any>; em: string };
 type NotaRow = { id: string; chamadoId: string; userId: string | null; actorName: string | null; texto: string; em: string; deletedAt: string | null; citados: string[] };
-type AnexoRow = { id: string; chamadoId: string; notaId: string; nome: string; tipo: string; tamanho: number; url: string; porId: string | null; em: string; deletedAt: string | null };
+/** O anexo: o de uma anotação (`notaId`) ou o de um campo do card e de uma caixinha (2.3: `campoId`, `opcaoId`). */
+type AnexoRow = {
+  id: string; chamadoId: string; notaId: string | null; campoId?: string | null; opcaoId?: string | null; nome: string; tipo: string; tamanho: number; url: string;
+  porId: string | null; em: string; deletedAt: string | null;
+};
 type LigacaoRow = { id: string; de: string; para: string; tipo: TipoLigacaoChamado; porId: string | null; em: string; deletedAt: string | null };
 type TempoRow = { id: string; chamadoId: string; userId: string | null; minutos: number; nota: string | null; dia: string; em: string; deletedAt: string | null };
 type Andamento = { em: string; porId: string | null; porNome: string | null; acao: 'abriu' | 'cobrou' | 'fechou'; texto: string | null };
@@ -1906,6 +1910,63 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   }
 
   // =====================================================================
+  //  OS ANEXOS DOS CAMPOS (2.3, como o servidor)
+  // =====================================================================
+
+  function campoParaAnexo(e: Estado, campoId: string, opcaoId: string | null) {
+    const c = camposDoPainel(e.painel.id).find((x) => x.id === campoId);
+    if (!c) throw naoAchado('Campo');
+    if (!c.ativo) throw bad(`O campo ${c.nome} está desativado.`);
+    if (c.produtoId && !e.t.produtos.includes(c.produtoId)) throw bad(`O campo ${c.nome} é de um produto que ${e.painel.tipo === 'vendas' ? 'a negociação' : 'o chamado'} não tem.`);
+    const opcao = opcaoId ? c.opcoes.find((o) => o.id === opcaoId) ?? null : null;
+    if (opcaoId && (!opcao || !ehCaixinhas(c.tipo))) throw bad('A caixinha não é deste campo. Recarregue a tela e tente de novo.');
+    return { c, opcao, nome: nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name }))) };
+  }
+  function anexarNoCampo(ator: Ator, ref: string, campoId: string, d: { opcaoId: string | null; anexos: Array<{ fileName: string; conteudo: string }> }, agora: Date = agoraReal()): Feito {
+    exigirTrabalhar(ator);
+    if (!d.anexos.length) throw bad('Escolha o arquivo.');
+    if (d.anexos.length > 5) throw bad('Até 5 arquivos de uma vez.');
+    const guardar = d.anexos.map(anexoParaGuardar);
+    const e = carregar(ator, ref, agora);
+    const { t } = e;
+    const { c, opcao, nome } = campoParaAnexo(e, campoId, d.opcaoId);
+    const n = A.anexos.filter((a) => a.chamadoId === t.id && a.campoId === c.id && (a.opcaoId ?? null) === (opcao?.id ?? null) && !a.deletedAt).length;
+    if (n + guardar.length > MAX_ANEXOS_DO_CAMPO) {
+      throw bad(`${opcao ? `A caixinha ${opcao.nome}` : `O campo ${nome}`} já tem ${plural(n, 'anexo', 'anexos')}: cabem até ${MAX_ANEXOS_DO_CAMPO}. Tire um antes de anexar outro.`);
+    }
+    const pessoa = pessoaDoAtor(ator);
+    guardar.forEach((a, i) => A.anexos.push({ id: novoId(), chamadoId: t.id, notaId: null, campoId: c.id, opcaoId: opcao?.id ?? null, ...a, porId: pessoa, em: iso(new Date(agora.getTime() + i)), deletedAt: null }));
+    registrarEvento(t.id, 'anexo', ator, { acao: 'anexou', campo: nome, opcao: opcao?.nome ?? null, arquivos: guardar.map((a) => a.nome) }, e.quando());
+    tocar(t, agora);
+    camposAosObservadores(ator, t, [nome], agora);
+    return {
+      ...nada(t),
+      resumo: `Anexou ${guardar.length === 1 ? guardar[0]!.nome : plural(guardar.length, 'arquivo', 'arquivos')} em ${nome}${opcao ? ` › ${opcao.nome}` : ''} (${t.codigo})`,
+      depois: { campo: nome, opcao: opcao?.nome ?? null, anexos: guardar.map((a) => a.nome) },
+    };
+  }
+  function tirarAnexoDoCampo(ator: Ator, ref: string, anexoId: string, agora: Date = agoraReal()): Feito {
+    exigirTrabalhar(ator);
+    const e = carregar(ator, ref, agora);
+    const { t } = e;
+    const a = A.anexos.find((x) => x.id === anexoId && x.chamadoId === t.id && x.campoId && !x.deletedAt);
+    if (!a) throw naoAchado('Anexo');
+    const meu = ator.tipo === 'pessoa' && a.porId === ator.id;
+    if (!meu && !podeCuidar(ator)) throw proibido('Só quem anexou (ou quem cuida dos chamados) pode tirar este anexo.');
+    const c = camposDoPainel(e.painel.id).find((x) => x.id === a.campoId);
+    const nome = c ? nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name }))) : 'um campo';
+    const opcao = c && a.opcaoId ? c.opcoes.find((o) => o.id === a.opcaoId)?.nome ?? null : null;
+    a.deletedAt = iso(agora);
+    registrarEvento(t.id, 'anexo', ator, { acao: 'tirou', campo: nome, opcao, arquivos: [a.nome] }, e.quando());
+    tocar(t, agora);
+    return {
+      ...nada(t),
+      resumo: `Tirou o anexo ${a.nome} de ${nome}${opcao ? ` › ${opcao}` : ''} (${t.codigo})`,
+      antes: { arquivo: a.nome, anexadoEm: a.em, por: a.porId ? pessoaCurta(a.porId)?.nome ?? null : null },
+    };
+  }
+
+  // =====================================================================
   //  LIGAÇÕES, PAI E PROBLEMA
   // =====================================================================
 
@@ -2880,6 +2941,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       grafo,
       // a implantação (2.3): quem marcou cada caixinha; a negociação de onde o card veio; os cards que a negociação abriu
       marcas: JSON.parse(JSON.stringify(t.marcas ?? {})),
+      anexosDosCampos: anexos.filter((a) => !a.notaId && a.campoId).map((a) => ({
+        id: a.id, nome: a.nome, tipo: a.tipo, tamanho: a.tamanho, imagem: IMAGENS_NA_TELA.includes(a.tipo), url: a.url,
+        campoId: a.campoId!, opcaoId: a.opcaoId ?? null, por: a.porId ? pessoaCurta(a.porId) : null, em: a.em, podeTirar: podeCuidar(ator) || (ator.tipo === 'pessoa' && a.porId === ator.id),
+      })),
       daNegociacao: (() => {
         const n = t.daNegociacaoId ? A.chamados.find((x) => x.id === t.daNegociacaoId) : undefined;
         return n ? { id: n.id, codigo: n.codigo, titulo: n.titulo, podeAbrir: visiveis(ator).has(n.painelId) } : null;
@@ -4222,6 +4287,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     async reabrir(id, d) { await ctx.wait(150); const dados = ler(ReabrirSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(reabrir(eu(), id, dados)); },
     async trocarPainel(id, d) { await ctx.wait(150); const dados = ler(TrocarPainelSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(trocarPainel(eu(), id, dados)); },
     async anotar(id, d) { await ctx.wait(200); const dados = ler(AnotacaoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(anotar(eu(), id, dados)); },
+    async anexarNoCampo(id, campoId, d) { await ctx.wait(250); const dados = ler(AnexosDoCampoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(anexarNoCampo(eu(), id, campoId, dados)); },
+    async tirarAnexoDoCampo(id, anexoId) { await ctx.wait(150); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(tirarAnexoDoCampo(eu(), id, anexoId), 'delete'); },
     async apagarAnotacao(id, notaId) { await ctx.wait(150); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(apagarAnotacao(eu(), id, notaId), 'delete'); },
     async ligar(id, d) { await ctx.wait(150); const dados = ler(LigarChamadoSchema, d); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(ligar(eu(), id, dados)); },
     async desligar(id, ligacaoId) { await ctx.wait(150); ctx.requirePerm('tickets.work'); preparar(); return fichaDepois(desligar(eu(), id, ligacaoId)); },

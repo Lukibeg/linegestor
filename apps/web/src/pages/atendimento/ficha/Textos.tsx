@@ -14,6 +14,7 @@ import { campoAparece, campoLigado, chaveDoCampo, idDaChave, MAX_LETRAS_DO_CAMPO
 import { api } from '../../../api/index.js';
 import { Spinner } from '../../../components/ui/index.js';
 import { ErroPerto, MarcaFalta, TextoComReferencias, useAberta, useAcao } from './base.js';
+import { BotaoAnexar, ListaDeAnexos, useAnexosDe } from './AnexosDoCampo.js';
 
 type CampoTexto = 'relato' | 'descricao' | 'solucao' | 'causa' | 'contorno' | 'validacao';
 type Bloco = { campo: CampoTexto; titulo: string; dica: string; max: number; exemplo: string };
@@ -119,12 +120,14 @@ export function BlocoDoCampo({ c }: { c: CampoPersonalizado }) {
   const v = f.campos[c.id];
   return (
     <TextoEditavel id={`campo-c-${c.id}`} chave={chaveDoCampo(c.id)} titulo={c.nome} dica={c.dica ?? ''} max={MAX_LETRAS_DO_CAMPO.texto_longo} exemplo=""
-      valor={typeof v === 'string' ? v : ''} dados={(texto) => ({ campos: { [c.id]: texto.trim() ? texto : null } })} />
+      valor={typeof v === 'string' ? v : ''} dados={(texto) => ({ campos: { [c.id]: texto.trim() ? texto : null } })} campoId={c.id} />
   );
 }
 
-function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados }: {
+function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados, campoId }: {
   id: string;
+  /** o campo do painel (2.3): com ele, o Anexar e as miniaturas */
+  campoId?: string;
   /** a chave do que falta ("solucao", "campo:<id>") */
   chave: string;
   titulo: string; dica: string; max: number; exemplo: string; valor: string;
@@ -152,9 +155,12 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados }: 
         {dica && <span className="text-[12px] text-muted">{dica}</span>}
         <MarcaFalta campo={chave} />
         {pode && !editando && (
-          <button type="button" className="btn-ghost btn-sm ml-auto -my-1" onClick={abrir} aria-label={`${valor ? 'Editar' : 'Escrever'}: ${titulo}`}>
-            <Pencil size={13} /> {valor ? 'Editar' : 'Escrever'}
-          </button>
+          <span className="ml-auto flex items-start gap-1">
+            {campoId && <BotaoAnexar campoId={campoId} rotulo={`Anexar em ${titulo}`} />}
+            <button type="button" className="btn-ghost btn-sm -my-1" onClick={abrir} aria-label={`${valor ? 'Editar' : 'Escrever'}: ${titulo}`}>
+              <Pencil size={13} /> {valor ? 'Editar' : 'Escrever'}
+            </button>
+          </span>
         )}
       </div>
       {editando ? (
@@ -182,6 +188,11 @@ function TextoEditavel({ id, chave, titulo, dica, max, exemplo, valor, dados }: 
       ) : (
         <p className="text-[13px] text-muted italic">Ainda não escrito.</p>
       )}
+      {campoId && <AnexosDoTexto campoId={campoId} />}
     </div>
   );
+}
+
+function AnexosDoTexto({ campoId }: { campoId: string }) {
+  return <ListaDeAnexos anexos={useAnexosDe(campoId)} />;
 }

@@ -1227,6 +1227,8 @@ Um ANEXO de anotação (print, PDF, planilha, áudio), no próprio banco como os
 | `id` | texto | Identificador único da linha | chave primária |
 | `ticket_id` | texto | — | obrigatório · liga com **tickets** |
 | `note_id` | texto | — | liga com **ticketNotes** |
+| `field_id` | texto | o campo do card a que o anexo pertence (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs"); nulo: o da anotação | liga com **ticketFields** |
+| `option_id` | texto | a caixinha do campo (o id da opção, que vive no campo); nulo: o campo todo | — |
 | `file_name` | texto | — | obrigatório |
 | `mime_type` | texto | — | obrigatório |
 | `size_bytes` | número inteiro | — | obrigatório · padrão: 0 |

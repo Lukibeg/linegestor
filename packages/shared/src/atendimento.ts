@@ -1510,10 +1510,17 @@ export const PosicaoNoQuadroSchema = z.object({ depoisDe: z.string().min(1).null
 export const EsperarSchema = z.object({ tipo: z.enum(['cliente', 'operadora']).nullable(), motivo: TextoOpcional(300) });
 export const ReabrirSchema = z.object({ motivo: TextoOpcional(500), etapaId: z.string().nullish() });
 export const TrocarPainelSchema = z.object({ painelId: z.string().min(1), etapaId: z.string().nullish() });
+/** Um arquivo que chega (o nome e o conteúdo em data URL ou base64): até 10 MB, conferido no servidor. */
+const ArquivoQueChegaSchema = z.object({ fileName: z.string().trim().min(1).max(200), conteudo: z.string().min(1).max(15_000_000) });
 export const AnotacaoSchema = z.object({
   texto: Texto(20_000).transform((s) => s.trim()),
-  anexos: z.array(z.object({ fileName: z.string().trim().min(1).max(200), conteudo: z.string().min(1).max(15_000_000) })).max(5).default([]),
+  anexos: z.array(ArquivoQueChegaSchema).max(5).default([]),
 }).refine((a) => a.texto.length > 0 || a.anexos.length > 0, 'Escreva a anotação ou anexe um arquivo');
+/** Anexar num campo do card (2.3): no campo todo ou numa caixinha (`opcaoId`); até 5 arquivos de uma vez. */
+export const AnexosDoCampoSchema = z.object({
+  opcaoId: z.string().trim().max(60).nullish().transform((v) => v || null),
+  anexos: z.array(ArquivoQueChegaSchema).min(1, 'Escolha o arquivo').max(5, 'Até 5 arquivos de uma vez'),
+});
 export const LigarChamadoSchema = z.object({ para: z.string().trim().min(1).max(40), tipo: z.enum(TIPOS_LIGACAO_CHAMADO) });
 export const PaiSchema = z.object({ pai: z.string().trim().max(40).nullable() });
 export const ProblemaSchema = z.object({ problema: z.string().trim().max(40).nullable() });
@@ -1972,6 +1979,8 @@ export const TIPOS_EVENTO = [
   'helena',
   // a implantação (2.3): a negociação que abriu o card na Implantação (e o cliente criado); o card que ligou no cadastro
   'implantacao', 'cadastro',
+  // o anexo de um campo do card ou de uma caixinha (2.3)
+  'anexo',
 ] as const;
 export type TipoEvento = (typeof TIPOS_EVENTO)[number];
 export type EventoChamado = {
@@ -1987,6 +1996,13 @@ export type EventoChamado = {
 };
 
 export type AnexoChamado = { id: string; nome: string; tipo: string; tamanho: number; imagem: boolean; url: string };
+/**
+ * O anexo de um campo do card (2.3, o Luan: "em todas as opções eu quero poder anexar imagens ou docs que vão ter pré
+ * visualização"): do campo todo (`opcaoId` nulo) ou de uma caixinha. Sai do card quem anexou ou quem cuida dos chamados.
+ */
+export type AnexoDoCampo = AnexoChamado & { campoId: string; opcaoId: string | null; por: PessoaCurta | null; em: string; podeTirar: boolean };
+/** Até quantos anexos cabem em cada campo (ou em cada caixinha). */
+export const MAX_ANEXOS_DO_CAMPO = 20;
 export type AnotacaoChamado = {
   id: string; texto: string; por: PessoaCurta | null; porNome: string | null; em: string; anexos: AnexoChamado[]; podeApagar: boolean;
   /** quem a anotação citou com @ (e recebeu o aviso) */
@@ -2036,6 +2052,8 @@ export type FichaChamado = CartaoChamado & {
   trajetoria: PassoTrajetoria[];
   /** quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção */
   marcas: MarcasDosCampos;
+  /** os anexos dos campos e das caixinhas (2.3), na ordem em que chegaram */
+  anexosDosCampos: AnexoDoCampo[];
   /** a implantação (2.3): no card, a negociação de onde ele veio; na negociação, os cards que ela abriu */
   daNegociacao: { id: string; codigo: string; titulo: string; podeAbrir: boolean } | null;
   implantacoes: ImplantacaoDaNegociacao[];
@@ -2274,6 +2292,12 @@ export function textoDoEvento(tipo: TipoEvento, d: Record<string, any>): string 
       if (d.acao === 'negociacao') return `a negociação ${d.codigo} foi para ${d.etapa ?? '?'}`;
       // no card: "veio da negociação CIG-12"
       return `veio da negociação ${d.codigo}${d.titulo ? ` (${d.titulo})` : ''}`;
+    }
+    // "anexou print.png em Configuração do ambiente (LinePBX) › Configuração dos ramais"
+    case 'anexo': {
+      const arquivos = emLista((d.arquivos as string[] | undefined) ?? []) || 'um arquivo';
+      const onde = `${d.campo ?? 'um campo'}${d.opcao ? ` › ${d.opcao}` : ''}`;
+      return d.acao === 'tirou' ? `tirou ${arquivos} de ${onde}` : `anexou ${arquivos} em ${onde}`;
     }
     case 'cadastro': {
       const p = (d.produtos as string[] | undefined) ?? [];
