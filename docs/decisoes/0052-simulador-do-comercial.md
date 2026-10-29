@@ -335,3 +335,9 @@ continua a marcada com principal"* (sobre duas simulações na mesma negociaçã
   COM-12"). Não muda: a negociação ganha, perdida ou na lixeira, nem a de um painel que a pessoa não vê. O que
   alguém mudar à mão no card é trocado no próximo salvamento da principal.
 - **O botão Levar saiu**, com a janela dele. No alto da simulação, o chip **principal · preenche o card**.
+- **O Helena numa linha só** (29/10, no mesmo dia: *"aqui sobre o helena vc pode colocar só o valor total do helena n
+  precisava colocar o pacote base + os usuários abaixo, vc poderia colocar só helena"*; avisado de que mexia nos
+  "custos um a um" do 2.0.3: *"esse especifico vc pode agrupar"*): no custo do mês (Os números) e no detalhe de cada
+  mês (o Mês a mês), as linhas do LineChat (a licença, os usuários, os canais, os agentes, os contatos e a
+  transcrição) viram uma, **Helena**, com o total, no lugar da primeira. Os outros custos continuam um a um; o quadro
+  do LineChat nos Custos mensais e o Excel continuam linha a linha.

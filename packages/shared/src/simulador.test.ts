@@ -579,6 +579,20 @@ describe('o LineChat simples: as quatro quantidades e o total (21/10)', () => {
     expect(q.outros).toEqual([]);
   });
 
+  it('o custo do mês e o mês a mês juntam o Helena numa linha só, "Helena", com o total (2.3); o resto continua um a um', () => {
+    const c = qtd({ ...cenarioNovo(a, { modelo: MODELO_DA_HELENA }), mensalidade: 99_000 }, { 'helena-usuarios': 5, 'helena-zapi': 5 });
+    const comNuvem: CenarioDaSimulacao = { ...c, linhas: [...c.linhas, linha({ id: 'nuvem', nome: 'Máquina em nuvem', tipo: 'mensal', qtd: 1, valor: 25_000 })] };
+    const k = contasDoCenario(comNuvem, a);
+    expect(k.partesDoCustoMensal.map((p) => p.rotulo)).toEqual(['Helena', 'Máquina em nuvem', 'Imposto']);
+    expect(k.partesDoCustoMensal[0]).toMatchObject({ rotulo: 'Helena', valor: 53_920 });
+    expect(k.partesDoCustoMensal.reduce((t, p) => t + p.valor, 0)).toBe(k.custoMensal);
+    const mes2 = k.meses[1]!;
+    expect(mes2.sai.map((x) => x.rotulo)).toEqual(['Helena', 'Máquina em nuvem', 'Imposto']);
+    expect(mes2.sai.reduce((t, x) => t + x.valor, 0)).toBe(mes2.custos);
+    // as linhas do cenário (o quadro do LineChat, o Excel) continuam separadas
+    expect(k.linhas.length).toBe(comNuvem.linhas.length);
+  });
+
   it('sem o produto LineChat, não há quadro; os outros da Helena só aparecem quando custam algo', () => {
     const c = cenarioNovo(a, { modelo: MODELO_DA_HELENA });
     expect(quadroDoLineChat({ ...c, produtos: [] }, contasDoCenario(c, a))).toBeNull();

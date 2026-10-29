@@ -92,7 +92,8 @@ Cada linha tem o nome, o **tipo** (só os do grupo), a quantidade, o valor de ca
   por mês) com o **sinal**: verde, amarelo ou vermelho, pelas faixas dos Ajustes (escritas embaixo da
   margem). Para "dá para fazer mais barato?", mude a mensalidade e veja a margem e o sinal na hora.
 - **O custo do mês**: embaixo do total, **cada custo pelo nome**, sem agrupar — cada linha por mês (a nuvem,
-  os números, a licença), o **imposto** e cada **comissão** recorrente (2.0.3).
+  os números), o **imposto** e cada **comissão** recorrente (2.0.3). Os custos do LineChat (a licença, os
+  usuários, os canais, os agentes) aparecem juntos, numa linha **Helena** com o total (2.3).
 - **Investimento**: o total pago uma vez — os aparelhos e a comissão da venda (e quanto disso
   é da compra parcelada).
 - **Sai antes**: o pior momento do contrato — o que a Ingline põe antes de a venda se pagar ("nada" quando
@@ -108,7 +109,8 @@ Cada linha tem o nome, o **tipo** (só os do grupo), a quantidade, o valor de ca
 No alto da simulação, o quadro **Mês a mês**, do 1º mês ao fim do contrato. **O 1º mês é o da assinatura**:
 nele entram a ativação (ou a 1ª parcela) e já a 1ª mensalidade, e saem o que é pago de uma vez e os custos
 do mês. No detalhe de cada mês, os custos vêm **um a um, pelo nome** (a "Máquina em nuvem", o imposto, a
-comissão…), sem juntar os custos mensais numa linha só.
+comissão…), sem juntar os custos mensais numa linha só. Só os do LineChat ficam juntos, numa linha **Helena** com o
+total (2.3).
 
 - Em cima, os totais do contrato: o **faturamento**, os **custos**, o **lucro** e quando a venda **se paga**.
 - No gráfico, a linha do **acumulado**, com o pior momento e o mês em que a venda se paga (o gráfico de
