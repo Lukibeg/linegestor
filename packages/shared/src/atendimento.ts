@@ -230,11 +230,11 @@ export const ETAPAS_DO_PAINEL_DE_VENDAS: Array<Pick<EtapaPainel, 'nome' | 'tipo'
  * Os campos com que o painel de Vendas nasce: os do painel Ingline - Comercial do Helena (o print do Luan,
  * em 17/10: "vc n colocou esses campos personalizados aqui, só n precisa colocar o do área de atuação").
  * São campos do painel como os outros: a equipe muda o nome, as opções e a ordem, desativa e inclui em
- * Ajustes › Campos.
+ * Ajustes › Campos. Sem os Contatos principais desde o 2.3 (29/10, o Luan: "já tem essa parte de contatos na
+ * lateral, ent n precisa dessa"): o contato da negociação é o da lateral (o principal e o Mais um contato).
  */
 export const CAMPOS_DO_PAINEL_DE_VENDAS: ReadonlyArray<{ nome: string; tipo: TipoCampo; dica: string; opcoes: string[]; incluirNaHora?: boolean }> = [
   { nome: 'CNPJ', tipo: 'texto', dica: 'O CNPJ da empresa (o de quem já é cliente também está no cadastro).', opcoes: [] },
-  { nome: 'Contatos principais', tipo: 'texto_longo', dica: 'Quem decide e quem vai usar: o nome, o cargo e o telefone de cada um.', opcoes: [] },
   {
     nome: 'Origem de lead', tipo: 'lista', dica: 'Por onde a empresa chegou até a Ingline.',
     opcoes: ['Indicação', 'Site', 'Instagram', 'Google', 'WhatsApp', 'Evento', 'Prospecção ativa', 'Cliente da base'],

@@ -1457,7 +1457,7 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
   { chave: 'estrela', etiquetas: ['quente'], titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214'], valor: 1_250, produtos: ['linepbx', 'voicenet'],
     porProduto: { linepbx: 980, voicenet: 270 }, ativacaoPorProduto: { linepbx: 1_500, voicenet: 400 },
     campos: {
-      'Origem de lead': 'Instagram', 'Contatos principais': 'Rosa (sócia): decide e assina, (71) 99999-0214\nCarlos (gerente da fábrica): vai usar a central e a fila do delivery',
+      'Origem de lead': 'Instagram',
       'Licenças Coorporativas Voz': '32', 'Licenças Callcenter Voz': '8', 'Canais Simultâneos': '10', 'Faixa Numérica': '(71) 3022-4000 a 4049',
     },
     por: 'camila', responsavel: 'camila', abriu: 18, passos: [{ para: 'Qualificação', dias: 16 }, { para: 'Proposta enviada', dias: 10 }, { para: 'Negociação', dias: 3 }],
@@ -1472,7 +1472,7 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
   { chave: 'farma-mais', titulo: 'Migração das filiais para a nuvem', empresa: 'Rede Farma Mais', contato: ['Gustavo', '5571999990215'], valor: 3_000, produtos: ['linepbx', 'voicenet', 'linechat'],
     porProduto: { linepbx: 1_600, voicenet: 850, linechat: 550 }, ativacaoPorProduto: { linepbx: 4_200, voicenet: 1_800 },
     campos: {
-      'Origem de lead': 'Indicação', 'Indicação': 'Anderson, do Supermercado Bom Preço', 'Contatos principais': 'Gustavo (diretor de operações): decide\nPatrícia (TI): cuida da migração das lojas',
+      'Origem de lead': 'Indicação', 'Indicação': 'Anderson, do Supermercado Bom Preço',
       'Licenças Coorporativas Voz': '84', 'Licenças Callcenter Voz': '14', 'Canais Simultâneos': '30', 'Licenças Callcenter WhatsApp': '14', 'Licenças Números Oficiais': '14 (um por loja)',
     },
     por: 'camila', responsavel: 'camila', abriu: 7, passos: [{ para: 'Qualificação', dias: 5 }],

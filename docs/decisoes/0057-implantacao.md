@@ -110,7 +110,13 @@ a gente concluir a implantação no painel de implantação"*.
    ficha, num cartão); os que já vieram antes vão para lá na migração 0028 (os de explicação "Trazido do Helena.", em
    painel de Vendas, ainda sem parte). Num cartão de parte, os campos curtos seguidos (os números, os textos curtos, as
    datas) ficam lado a lado. Tirar ou pôr um campo no cartão: Painéis › Ajustes › Campos › Parte da ficha.
-14. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
+14. **Os Contatos principais saem do Comercial** (29/10, no card: *"já tem essa parte de contatos na lateral, ent n
+   precisa dessa"*, e, depois do aviso de que desfazia a decisão 0050, *"pode fazer"*): o painel de Vendas novo nasce sem
+   ele (`CAMPOS_DO_PAINEL_DE_VENDAS`); o que já existe fica desativado na migração 0028 (o que foi escrito continua
+   guardado e volta se o campo for ligado de novo) e deixa de ser pedido para abrir e nas etapas. O Trazer do Helena não
+   o cria mais num painel de Vendas (o contato é o da lateral); no painel que ainda o tem, desativado, continua levando o
+   que vem de lá. O cargo de cada um, quando importa, vai no Sobre a negociação.
+15. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
    cadastro)"; no card, "veio da negociação COM-12"; no Implantado, "ligou no cadastro de X o produto … e os módulos …,
    desde …"; a auditoria ganha as linhas do cliente criado, do card aberto e do que ligou no cadastro.
 

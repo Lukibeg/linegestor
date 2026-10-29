@@ -305,6 +305,17 @@ describe('os campos do painel', () => {
     expect(p[2]!.motivo).toBe('tem o nome de um campo do sistema');
   });
 
+  it('os Contatos principais (2.3: "já tem essa parte de contatos na lateral"): não são criados; o campo que ainda existe (desativado) recebe', () => {
+    const helena: CampoDoHelena[] = [{ chave: 'contatos', nome: 'Contatos principais', tipo: 'TEXT', posicao: 1, opcoes: [] }];
+    const cards = [{ campos: { contatos: 'Rosa (sócia)' } }];
+    const novo = planoDosCampos(helena, [], cards);
+    expect(novo.map((c) => [c.acao, c.motivo])).toEqual([['fora', 'o contato da negociação é o da lateral (o principal e o Mais um contato)']]);
+    const antigo = planoDosCampos(helena, [campoDoGestor({ id: 'fc', nome: 'Contatos principais', tipo: 'texto_longo', ativo: false })], cards);
+    expect(antigo.map((c) => [c.acao, c.gestorId])).toEqual([['usa', 'fc']]);
+    // no painel de Gestão, é um campo como os outros
+    expect(planoDosCampos(helena, [], cards, [], 'gestao').map((c) => c.acao)).toEqual(['cria']);
+  });
+
   it('o valor no jeito do campo do Gestor', () => {
     expect(tipoDoCampoDoHelena('SINGLESELECT', true)).toBe('lista');
     expect(tipoDoCampoDoHelena('MULTISELECT', true)).toBe('lista_varios');
@@ -458,7 +469,7 @@ describe('o plano inteiro: a prévia e o relatório do Gestor igual ao do Helena
     expect(p.previa.ganhosPorMes.filter((m) => m.qtd).map((m) => [m.mes, m.qtd, m.valor])).toEqual([['2026-02', 1, 319_000], ['2026-10', 1, 99_000]]);
     expect(p.previa.ganhosPorMes).toHaveLength(12);
     expect(p.previa.etapas.entram).toHaveLength(11);
-    // o painel novo nasce com os campos de fábrica (CNPJ, Contatos principais, Origem de lead, Indicação)
+    // o painel novo nasce com os campos de fábrica (CNPJ, Origem de lead, Indicação; sem os Contatos principais desde o 2.3)
     expect(p.previa.campos.usa).toEqual(['CNPJ', 'Origem de lead', 'Indicação']);
     expect(p.previa.campos.cria.map((c) => c.nome)).toEqual(['Licenças WhatsApp']);
     expect(p.campos.find((c) => c.chave === 'origem-de-lead-1')!.opcoesNovas).toEqual(['Feira']);

@@ -28,8 +28,9 @@ Suporte) fica com um papel sem o **Ver os chamados**.
    Perdido. Mude os nomes e inclua etapas como quiser; o Ganho e o Perdido mudam de nome, mas não saem.
 6. Em **As regras**, confira os **motivos de perda** (a lista que aparece ao marcar como perdida) e
    ponha a **meta do mês**, em R$ de mensalidades (vazia: sem meta).
-7. O painel já vem com os campos do Comercial: **CNPJ**, **Contatos principais**, **Origem de lead** e
-   **Indicação** (uma lista que cresce na própria negociação: escreva quem indicou e clique em **Incluir**).
+7. O painel já vem com os campos do Comercial: **CNPJ**, **Origem de lead** e **Indicação** (uma lista que
+   cresce na própria negociação: escreva quem indicou e clique em **Incluir**). Os contatos ficam na lateral da
+   negociação (o principal e o **Mais um contato**); os **Contatos principais** saíram no 2.3.
    Para mudar o nome, as opções das listas ou a ordem, ou para incluir outro campo: **Ajustes › Campos**, no
    painel do Comercial.
 

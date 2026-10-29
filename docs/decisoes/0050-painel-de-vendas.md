@@ -39,7 +39,8 @@ nele (a regra do patch que ainda não subiu).
 - **Os campos do Comercial.** O painel de Vendas nasce com os campos do painel Ingline - Comercial do
   Helena (17/10, no print do Luan: *"vc n colocou esses campos personalizados aqui, só n precisa colocar o
   do área de atuação"*): **CNPJ** (texto curto), **Contatos principais** (texto longo: na ficha, fica junto
-  do Sobre a negociação), **Origem de lead** (lista: Indicação, Site, Instagram, Google, WhatsApp, Evento,
+  do Sobre a negociação; **saiu no 2.3**, decisão 0057: *"já tem essa parte de contatos na lateral, ent n precisa
+  dessa"*), **Origem de lead** (lista: Indicação, Site, Instagram, Google, WhatsApp, Evento,
   Prospecção ativa e Cliente da base) e **Indicação** (texto curto: quem indicou). A **Área de atuação**
   ficou de fora. São campos do painel como os outros (`CAMPOS_DO_PAINEL_DE_VENDAS`, no `@gestor/shared`):
   a equipe muda o nome, as opções e a ordem, desativa e inclui em Ajustes › Campos; na nova negociação,

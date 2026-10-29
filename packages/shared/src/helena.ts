@@ -259,6 +259,11 @@ export const DICA_DO_CAMPO_DO_HELENA = 'Trazido do Helena.';
  * principal"): as licenças, os canais, a faixa numérica… num cartão no meio da ficha da negociação.
  */
 export const PARTE_DOS_CAMPOS_DO_HELENA = 'Detalhes da proposta';
+/**
+ * O campo do Comercial do Helena que o Gestor deixou de usar (2.3, o Luan: "já tem essa parte de contatos na lateral,
+ * ent n precisa dessa"): no painel de Vendas que não o tem, o Trazer não cria; no que ainda o tem (desativado), usa.
+ */
+export const CAMPO_QUE_SAIU_DO_COMERCIAL = 'Contatos principais';
 
 /** O título sem o "(Cópia)" que o Helena põe no card duplicado. */
 export function tituloDoHelena(titulo: string): string {
@@ -931,6 +936,10 @@ export function planoDosCampos(
       continue;
     }
     if (doSistema(nome)) { out.push({ ...base, acao: 'fora', tipo: 'texto', motivo: 'tem o nome de um campo do sistema' }); continue; }
+    if (!gestao && chaveDoNome(nome) === chaveDoNome(CAMPO_QUE_SAIU_DO_COMERCIAL)) {
+      out.push({ ...base, acao: 'fora', tipo: 'texto', motivo: 'o contato da negociação é o da lateral (o principal e o Mais um contato)' });
+      continue;
+    }
     if (!usado) { out.push({ ...base, acao: 'fora', tipo: 'texto', motivo: MOTIVO_SEM_USO }); continue; }
     if (livres <= 0) { out.push({ ...base, acao: 'fora', tipo: 'texto', motivo: `o painel chegou a ${MAX_CAMPOS_DO_PAINEL} campos` }); continue; }
     livres--;

@@ -1038,7 +1038,8 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     const op = await api.opcoes();
     const campos = op.campos.filter((c) => c.painelId === painel(op, 'COM').id);
     expect(campos.map((c) => c.nome)).toEqual([
-      'CNPJ', 'Contatos principais', 'Origem de lead', 'Indicação',
+      // sem os Contatos principais (2.3: "já tem essa parte de contatos na lateral")
+      'CNPJ', 'Origem de lead', 'Indicação',
       // os que vieram do Helena (2.3), nos Detalhes da proposta
       'Licenças Coorporativas Voz', 'Licenças Callcenter Voz', 'Canais Simultâneos', 'Faixa Numérica', 'Licenças Callcenter WhatsApp', 'Licenças Números Oficiais',
     ]);
