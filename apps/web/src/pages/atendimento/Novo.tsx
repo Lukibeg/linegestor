@@ -41,7 +41,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, GitBranch, Layers, MessageCircle, MessagesSquare, Plus, RotateCcw, Siren, UserRoundPlus, X } from 'lucide-react';
 import {
   ALCANCES, DICA_GRAVIDADE, DICA_PRIORIDADE, GRAVIDADES, MAX_LETRAS_DO_CAMPO, NOME_ALCANCE, NOME_GRAVIDADE, NOME_PRIORIDADE, NOME_SITUACAO_CHAMADO, PRIORIDADES,
-  acharContato, caminhoDoAssunto, campoAparece, campoLigado, chaveDaEtiqueta, chaveDoCampo, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
+  acharContato, caminhoDoAssunto, emailValido, campoAparece, campoLigado, chaveDaEtiqueta, chaveDoCampo, emOrdemDeArvore, etiquetasDoPainel, etiquetasUnicas, idDaChave, nomeDoObrigatorio, numeroWhatsApp,
   paraBusca, prioridadeSugeridaDoPainel, valorPreenchido, MAX_LETRAS_DO_LINK_DA_CONVERSA, sessaoDaConversa,
   type CorEtiqueta,
   type Alcance, type CadastroDoCliente, type ContatoDoCliente, type CampoDoSistema, type CampoObrigatorio, type CampoPersonalizado, type CartaoChamado, type ChamadoCriarEntrada,
@@ -81,6 +81,8 @@ type Form = {
   clienteId: string;
   contatoNome: string;
   contatoTelefone: string;
+  /** o e-mail do contato (2.3, opcional como o WhatsApp) */
+  contatoEmail: string;
   /** a conversa do LineChat: o link colado (o chamado ativo, 2.1) ou o código que o botão da conversa trouxe */
   conversa: string;
   titulo: string;
@@ -249,6 +251,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       contatoNome: doEndereco('nome') ?? '',
       // o LineChat manda só os dígitos (5571999990000): a caixa mostra do jeito que se lê
       contatoTelefone: fone ? telefoneLegivel(numeroWhatsApp(fone) ?? fone) : '',
+      contatoEmail: '',
       conversa: sessao ?? '',
       titulo: '', relato: '', descricao: '',
       assuntoId: '', tipo: '', gravidade: null, alcance: null, prioridade: null, motivoPrioridade: '',
@@ -332,12 +335,14 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
   const contatoEscolhido = f.clienteId ? acharContato(contatosDoCliente, { nome: f.contatoNome, telefone: f.contatoTelefone }) : undefined;
   const nomeDoCliente = opcoesClientes.find((o) => o.id === f.clienteId)?.nome ?? 'o cliente';
   const podeContatos = usePodeMexerNosContatos();
-  const [janelaContato, setJanelaContato] = useState<{ inicial?: { nome?: string; whatsapp?: string } } | null>(null);
+  const [janelaContato, setJanelaContato] = useState<{ inicial?: { nome?: string; whatsapp?: string; email?: string } } | null>(null);
   const escolherContato = (c: ContatoDoCliente) => {
-    mudar({ contatoNome: c.nome, contatoTelefone: c.whatsapp ? telefoneLegivel(c.whatsapp) : '' });
+    // o e-mail do cadastro vem junto (2.3)
+    mudar({ contatoNome: c.nome, contatoTelefone: c.whatsapp ? telefoneLegivel(c.whatsapp) : '', contatoEmail: c.email ?? '' });
     tirarFalta('contato');
   };
   const foneInvalido = !!f.contatoTelefone.trim() && !foneValido;
+  const emailInvalido = !!f.contatoEmail.trim() && !emailValido(f.contatoEmail);
   // a conversa do LineChat colada (2.1): a mesma leitura do servidor, para dizer logo a sessão (ou o que está errado)
   const conversa = f.conversa.trim() ? sessaoDaConversa(f.conversa, opcoes.linkConversa) : null;
 
@@ -388,6 +393,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       return;
     }
     if (foneInvalido) { setErro('O WhatsApp do contato está incompleto: use DDD + número, como (71) 99999-0000.'); document.getElementById('novo-whatsapp')?.focus(); return; }
+    if (emailInvalido) { setErro('O e-mail do contato está errado: use o jeito nome@empresa.com.br.'); document.getElementById('novo-email')?.focus(); return; }
     if (conversa && !conversa.ok) { setErro(`A conversa no LineChat: ${conversa.erro}`); document.getElementById('novo-conversa')?.focus(); return; }
     if (vendas && !porProduto && !f.valorValido) { setErro('Escreva a mensalidade como 1.200,00.'); document.getElementById('novo-valor-unico')?.focus(); return; }
     if (vendas && !porProduto && !f.ativacaoValida) { setErro('Escreva a ativação como 1.500,00.'); document.getElementById('novo-valor-ativacao')?.focus(); return; }
@@ -416,6 +422,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
       } : {}),
       contatoNome: !vendas && !usa('cliente') ? null : f.contatoNome.trim() || null,
       contatoTelefone: !vendas && !usa('cliente') ? null : f.contatoTelefone.trim() || null,
+      contatoEmail: !vendas && !usa('cliente') ? null : f.contatoEmail.trim() || null,
       // o que foi colado vai inteiro: quem acha a sessão no link é o servidor
       sessaoId: f.conversa.trim() || null,
       // o que o painel desligou não vai (o servidor também não guardaria)
@@ -578,15 +585,20 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             {f.clienteId && (!vendas || f.jaECliente) && (
               <ContatosParaEscolher className="sm:col-span-2" cliente={nomeDoCliente} contatos={contatosDoCliente} carregando={cadastro.isLoading}
                 escolhido={contatoEscolhido?.id ?? null} onEscolher={escolherContato} podeIncluir={podeContatos}
-                onNovo={() => setJanelaContato({ inicial: contatoEscolhido ? {} : { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim() } })} />
+                onNovo={() => setJanelaContato({ inicial: contatoEscolhido ? {} : { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim(), email: f.contatoEmail.trim() } })} />
             )}
-            <Rotulado rotulo="Contato (nome)" id="novo-contato" obrigatorio={pede('contato')} falta={falta('contato')} dica={pede('contato') ? 'o nome ou o WhatsApp' : undefined}>
+            <Rotulado rotulo="Contato (nome)" id="novo-contato" obrigatorio={pede('contato')} falta={falta('contato')} dica={pede('contato') ? 'o nome, o WhatsApp ou o e-mail' : undefined}>
               <input className="input" id="novo-contato" value={f.contatoNome} maxLength={120} placeholder={vendas ? 'Com quem você fala (ex.: Rosa, a sócia)' : 'Quem pediu (ex.: Maria, da recepção)'}
                 onChange={(e) => { mudar({ contatoNome: e.target.value }); tirarFalta('contato'); }} />
             </Rotulado>
             <Rotulado rotulo="WhatsApp do contato" id="novo-whatsapp" erro={foneInvalido ? 'Use DDD + número, como (71) 99999-0000.' : undefined}>
               <input className="input tnum" id="novo-whatsapp" inputMode="tel" value={f.contatoTelefone} maxLength={40} placeholder="(71) 99999-0000"
                 onChange={(e) => { mudar({ contatoTelefone: e.target.value }); tirarFalta('contato'); }} />
+            </Rotulado>
+            {/* o e-mail do contato (2.3, o Luan: "todos os contatos … a opção de eu colocar o email dele tbm"); opcional */}
+            <Rotulado rotulo="E-mail do contato" id="novo-email" className="sm:col-span-2" erro={emailInvalido ? 'Use o jeito nome@empresa.com.br.' : undefined}>
+              <input className="input" id="novo-email" type="email" inputMode="email" autoComplete="off" spellCheck={false} value={f.contatoEmail} maxLength={200} placeholder="nome@empresa.com.br"
+                onChange={(e) => { mudar({ contatoEmail: e.target.value }); tirarFalta('contato'); }} />
             </Rotulado>
             {/* a conversa do LineChat (2.1, o pedido do Luan): o chamado ativo — a equipe chamou o cliente — não vem do
                 robô; com o link colado, a ficha mostra a conversa e a NIA lê o que foi dito */}
@@ -605,7 +617,7 @@ function Formulario({ opcoes, paineis, naJanela }: { opcoes: OpcoesAtendimento; 
             {f.clienteId && (!vendas || f.jaECliente) && !contatoEscolhido && !cadastro.isLoading && podeContatos && f.contatoNome.trim().length >= 2 && !foneInvalido && (
               <p className="sm:col-span-2 text-[12.5px] text-muted -mt-1" id="novo-contato-fora">
                 {f.contatoNome.trim()} não está nos contatos de {nomeDoCliente}.{' '}
-                <button type="button" className="link" onClick={() => setJanelaContato({ inicial: { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim() } })}>Salvar nos contatos</button>
+                <button type="button" className="link" onClick={() => setJanelaContato({ inicial: { nome: f.contatoNome.trim(), whatsapp: f.contatoTelefone.trim(), email: f.contatoEmail.trim() } })}>Salvar nos contatos</button>
               </p>
             )}
           </div>

@@ -1,0 +1,1 @@
+ALTER TABLE "tickets" ADD COLUMN "contact_email" text;

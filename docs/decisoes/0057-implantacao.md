@@ -116,7 +116,15 @@ a gente concluir a implantação no painel de implantação"*.
    guardado e volta se o campo for ligado de novo) e deixa de ser pedido para abrir e nas etapas. O Trazer do Helena não
    o cria mais num painel de Vendas (o contato é o da lateral); no painel que ainda o tem, desativado, continua levando o
    que vem de lá. O cargo de cada um, quando importa, vai no Sobre a negociação.
-15. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
+15. **O e-mail de todos os contatos** (29/10, no card: *"todos os contados da plataforma quero que tenha a opção de eu
+   colocar o email dele tbm"*): o contato do chamado e da negociação ganha o e-mail (a migração 0029, opcional como o
+   WhatsApp, guardado em minúsculas e conferido no jeito nome@empresa.com.br); cada um do Mais um contato também. Ele se
+   escreve no Abrir chamado e no Abrir negociação e no Editar do contato da lateral da ficha, onde aparece com o link para
+   escrever. Escolher um contato do cadastro do cliente (que já tinha o e-mail desde o 2.0) traz o e-mail dele; o chamado
+   que chega com o WhatsApp de um contato do cadastro também. O contato pedido para abrir vale com o nome, o WhatsApp ou o
+   e-mail; o mesmo e-mail não se repete nos outros contatos; a busca acha pelo e-mail; o histórico conta a troca; o card da
+   implantação leva o e-mail do contato da negociação.
+16. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
    cadastro)"; no card, "veio da negociação COM-12"; no Implantado, "ligou no cadastro de X o produto … e os módulos …,
    desde …"; a auditoria ganha as linhas do cliente criado, do card aberto e do que ligou no cadastro.
 

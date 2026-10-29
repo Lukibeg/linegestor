@@ -3,7 +3,7 @@
  * apenas um contato" e "permitir colocar mais de uma sessão"). Ficam no cartão do contato, embaixo do principal: o
  * contato e a conversa de cima continuam os principais (o aviso ao cliente, o robô e a NIA usam eles).
  *
- *  - **Mais um contato**: o nome e o WhatsApp (ou um clique num contato do cliente); cada um com o X para tirar;
+ *  - **Mais um contato**: o nome, o WhatsApp e o e-mail (2.3) — ou um clique num contato do cliente; cada um com o X para tirar;
  *  - **Mais uma conversa**: o link da conversa no LineChat (ou o código da sessão), lido como o da principal
  *    (`sessaoDaConversa`); cada uma com o link e o X. O robô acha o chamado aberto por qualquer uma delas.
  *
@@ -11,8 +11,8 @@
  * principal, e o histórico diz a lista de antes e a de depois.
  */
 import { useState } from 'react';
-import { CheckCircle2, ExternalLink, MessagesSquare, Phone, Plus, UserRound, X } from 'lucide-react';
-import { acharContato, linkDaConversa, MAX_A_MAIS_NO_CHAMADO, MAX_LETRAS_DO_LINK_DA_CONVERSA, numeroWhatsApp, sessaoDaConversa, type OutroContato } from '@gestor/shared';
+import { CheckCircle2, ExternalLink, Mail, MessagesSquare, Phone, Plus, UserRound, X } from 'lucide-react';
+import { acharContato, emailValido, linkDaConversa, MAX_A_MAIS_NO_CHAMADO, MAX_LETRAS_DO_LINK_DA_CONVERSA, numeroWhatsApp, sessaoDaConversa, type OutroContato } from '@gestor/shared';
 import { api } from '../../../api/index.js';
 import { Copiar, Spinner } from '../../../components/ui/index.js';
 import { telefoneLegivel } from '../comum.js';
@@ -25,6 +25,7 @@ export function OutrosContatos() {
   const [incluindo, setIncluindo] = useState(false);
   const [nome, setNome] = useState('');
   const [fone, setFone] = useState('');
+  const [email, setEmail] = useState('');
   const lista = f.outrosContatos;
   // os contatos do cliente que ainda não estão no chamado: um clique inclui
   const doCliente = (f.cliente ? cadastro?.contatos ?? [] : []).filter((c) =>
@@ -32,12 +33,13 @@ export function OutrosContatos() {
 
   const gravar = async (nova: OutroContato[], ok: string) => {
     const r = await acao.rodar(() => api.atendimento.alterar(f.id, { outrosContatos: nova }), ok);
-    if (r.ok) { setIncluindo(false); setNome(''); setFone(''); }
+    if (r.ok) { setIncluindo(false); setNome(''); setFone(''); setEmail(''); }
   };
   const incluir = async () => {
-    if (!nome.trim() && !fone.trim()) { acao.setErro('Escreva o nome ou o WhatsApp do contato.'); return; }
+    if (!nome.trim() && !fone.trim() && !email.trim()) { acao.setErro('Escreva o nome, o WhatsApp ou o e-mail do contato.'); return; }
     if (fone.trim() && !numeroWhatsApp(fone)) { acao.setErro('Telefone inválido: use DDD + número, como (71) 99999-0000.'); return; }
-    await gravar([...lista, { nome: nome.trim() || null, telefone: fone.trim() || null }], 'Contato incluído');
+    if (email.trim() && !emailValido(email)) { acao.setErro('E-mail inválido: use o jeito nome@empresa.com.br.'); return; }
+    await gravar([...lista, { nome: nome.trim() || null, telefone: fone.trim() || null, email: email.trim() || null }], 'Contato incluído');
   };
 
   if (!lista.length && !pode) return null;
@@ -46,7 +48,7 @@ export function OutrosContatos() {
       {lista.length > 0 && (
         <ul className="flex flex-col gap-1.5 border-t border-line pt-2" aria-label="Outros contatos">
           {lista.map((c, i) => (
-            <li key={`${c.telefone ?? ''}-${c.nome ?? ''}-${i}`} className="flex items-start gap-2 min-w-0 group">
+            <li key={`${c.telefone ?? ''}-${c.email ?? ''}-${c.nome ?? ''}-${i}`} className="flex items-start gap-2 min-w-0 group">
               <UserRound size={13} className="text-muted shrink-0 mt-1" aria-hidden />
               <div className="min-w-0 flex-1">
                 {c.nome && <div className="text-[14px] font-semibold text-ink break-words leading-tight">{c.nome}</div>}
@@ -57,17 +59,24 @@ export function OutrosContatos() {
                     <Copiar texto={c.telefone} titulo="Copiar o número" />
                   </div>
                 )}
+                {c.email && (
+                  <div className="flex items-center gap-1 text-[13px] text-ink-2 min-w-0">
+                    <Mail size={12} className="text-muted shrink-0" aria-hidden />
+                    <a href={`mailto:${c.email}`} className="link truncate" title={`Escrever para ${c.email}`}>{c.email}</a>
+                    <Copiar texto={c.email} titulo="Copiar o e-mail" />
+                  </div>
+                )}
               </div>
               {pode && (
                 <button type="button" className="btn-ghost btn-sm text-muted -my-0.5 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100" disabled={acao.ocupado}
-                  aria-label={`Tirar o contato ${c.nome ?? telefoneLegivel(c.telefone)}`} title="Tirar este contato do chamado"
+                  aria-label={`Tirar o contato ${c.nome ?? (c.telefone ? telefoneLegivel(c.telefone) : c.email ?? '')}`} title="Tirar este contato do chamado"
                   onClick={() => void gravar(lista.filter((_, k) => k !== i), 'O contato saiu do chamado')}><X size={13} /></button>
               )}
             </li>
           ))}
         </ul>
       )}
-      {pode && !incluindo && lista.length < MAX_A_MAIS_NO_CHAMADO && (f.contato?.nome || f.contato?.telefone || lista.length > 0) && (
+      {pode && !incluindo && lista.length < MAX_A_MAIS_NO_CHAMADO && (f.contato?.nome || f.contato?.telefone || f.contato?.email || lista.length > 0) && (
         <button type="button" className="link text-[12.5px] mt-1.5 inline-flex items-center gap-1" id="ficha-contato-mais" onClick={() => { acao.limpar(); setIncluindo(true); }}>
           <Plus size={13} /> Mais um contato
         </button>
@@ -80,7 +89,7 @@ export function OutrosContatos() {
               <div className="flex flex-wrap gap-1.5">
                 {doCliente.map((c) => (
                   <button key={c.id} type="button" disabled={acao.ocupado} title={c.whatsapp ? telefoneLegivel(c.whatsapp) : 'sem WhatsApp'}
-                    onClick={() => void gravar([...lista, { nome: c.nome, telefone: c.whatsapp ?? null }], `Contato incluído: ${c.nome}`)}
+                    onClick={() => void gravar([...lista, { nome: c.nome, telefone: c.whatsapp ?? null, email: c.email ?? null }], `Contato incluído: ${c.nome}`)}
                     className="text-left rounded-lg border border-line px-2.5 py-1 text-[13px] text-ink-2 hover:bg-surface-2">
                     {c.nome}{c.cargo && <span className="text-[12px] text-muted"> · {c.cargo}</span>}
                   </button>
@@ -91,6 +100,7 @@ export function OutrosContatos() {
           )}
           <input className="input py-1.5 text-[13.5px]" autoFocus maxLength={120} value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome (ex.: João, do financeiro)" aria-label="Nome do contato" id="ficha-contato-mais-nome" />
           <input className="input py-1.5 text-[13.5px] font-mono" inputMode="tel" maxLength={40} value={fone} onChange={(e) => setFone(e.target.value)} placeholder="WhatsApp: (71) 99999-0000" aria-label="WhatsApp do contato" id="ficha-contato-mais-fone" />
+          <input className="input py-1.5 text-[13.5px]" type="email" inputMode="email" spellCheck={false} maxLength={200} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-mail: nome@empresa.com.br" aria-label="E-mail do contato" id="ficha-contato-mais-email" />
           <div className="flex gap-2">
             <button type="submit" className="btn-primary btn-sm" disabled={acao.ocupado} id="ficha-contato-mais-salvar">{acao.ocupado ? <Spinner className="text-white" /> : 'Incluir'}</button>
             <button type="button" className="btn-secondary btn-sm" onClick={() => setIncluindo(false)}>Cancelar</button>

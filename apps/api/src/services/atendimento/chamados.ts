@@ -113,6 +113,7 @@ const etapaCurta = (e: EtapaPainel | null) => (e ? { id: e.id, nome: e.nome, niv
 const NOME_TITULO = 'Título';
 const NOME_CONTORNO = 'Solução de contorno';
 const NOME_TELEFONE = 'WhatsApp do contato';
+const NOME_EMAIL = 'E-mail do contato';
 // o nome que o histórico usa para a troca de etiquetas (o resumo da NIA, 2.1, procura por ele)
 const NOME_ETIQUETAS = CAMPO_DAS_ETIQUETAS;
 const NOME_OBSERVADORES = 'Observadores';
@@ -280,8 +281,10 @@ export async function criarChamado(
   let telefone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone.trim() : null;
   let clienteId = d.clienteId ?? null;
   let contatoNome = d.contatoNome ?? null;
+  // o e-mail do contato (2.3): o escrito, ou o do contato do cadastro com o mesmo WhatsApp
+  let contatoEmail = d.contatoEmail?.trim().toLowerCase() || null;
   if (telefone) {
-    const cadastrados = await db.select({ clientId: clientContacts.clientId, nome: clientContacts.name }).from(clientContacts)
+    const cadastrados = await db.select({ clientId: clientContacts.clientId, nome: clientContacts.name, email: clientContacts.email }).from(clientContacts)
       .innerJoin(clients, eq(clients.id, clientContacts.clientId))
       .where(and(eq(clientContacts.phone, telefone), eq(clientContacts.active, true), isNull(clients.deletedAt)));
     // o mesmo número em dois clientes: o cliente não é adivinhado (vale o aprendido, ou a pessoa escolhe)
@@ -289,6 +292,7 @@ export async function criarChamado(
     if (doCadastro) {
       if (!clienteId) clienteId = doCadastro.clientId;
       if (!contatoNome) contatoNome = doCadastro.nome;
+      if (!contatoEmail && doCadastro.email) contatoEmail = doCadastro.email.toLowerCase();
     }
     const [conhecido] = await db.select().from(ticketContacts).where(eq(ticketContacts.phone, telefone)).limit(1);
     if (conhecido) {
@@ -342,7 +346,7 @@ export async function criarChamado(
 
   // 3. o que o painel pede para abrir
   const dados: DadosObrigatorios = {
-    tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
+    tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, contatoEmail, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
     assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
     produtos, operadoras, responsavelId: d.responsavelId ?? null,
     solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, ativacao, empresa,
@@ -394,6 +398,7 @@ export async function criarChamado(
     await tx.insert(tickets).values({
       id, panelId: painel.id, stageId: etapa.id, number: numero, code: codigo, kind: tipoChamado, title: titulo,
       customerReport: dados.relato, description: dados.descricao, clientId: clienteId, contactName: contatoNome, contactPhone: telefone,
+      contactEmail: usa('cliente') ? contatoEmail : null,
       sessionId: sessaoId, origin: origem, assigneeId: d.responsavelId ?? null, subjectId: assunto?.id ?? null, type: tipo,
       severity: gravidade, reach: alcance, priority: prioridade, priorityReason: motivoPrioridade,
       productIds: produtos, carrierIds: operadoras, tags: etiquetas, customFields: campos,
@@ -469,7 +474,7 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
     // a negociação não tem prioridade; o painel de Gestão pode não ter (2.1.2), nem o cliente, o relato, a solução e a causa
     ...(painel.tipo === 'vendas' || !usa('prioridade') ? { prioridade: undefined, motivoPrioridade: undefined } : {}),
-    ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined }),
+    ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined, contatoEmail: undefined }),
     ...(usa('relato') ? {} : { relato: undefined }),
     // o problema (ITIL) sempre tem a solução e a causa
     ...(usa('solucao') || t.kind === 'problema' ? {} : { solucao: undefined, causa: undefined }),
@@ -512,6 +517,11 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
     const fone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone : null;
     if (fone !== t.contactPhone) { set.contactPhone = fone; campo('contatoTelefone', NOME_TELEFONE, t.contactPhone, fone, t.contactPhone); }
   }
+  // o e-mail do contato (2.3)
+  if (d.contatoEmail !== undefined) {
+    const email = d.contatoEmail?.trim().toLowerCase() || null;
+    if (email !== (t.contactEmail ?? null)) { set.contactEmail = email; campo('contatoEmail', NOME_EMAIL, t.contactEmail, email, t.contactEmail); }
+  }
   // a conversa do LineChat (2.1, o chamado ativo): o link colado ou o código da sessão; vazio tira. Com
   // ela, a ficha mostra o link e a NIA (e o Preencher com IA) lê o que foi dito
   if (d.sessaoId !== undefined) {
@@ -522,7 +532,10 @@ export async function alterar(app: FastifyInstance, ator: Ator, ref: string, ped
   // os outros contatos e as outras conversas (2.2): a lista inteira toma o lugar da de antes. Sem os vazios, sem
   // repetir e sem o principal (o contato e a conversa de cima continuam os do aviso ao cliente, do robô e da NIA)
   if (d.outrosContatos !== undefined) {
-    const principal = { nome: set.contactName !== undefined ? set.contactName : t.contactName, telefone: set.contactPhone !== undefined ? set.contactPhone : t.contactPhone };
+    const principal = {
+      nome: set.contactName !== undefined ? set.contactName : t.contactName, telefone: set.contactPhone !== undefined ? set.contactPhone : t.contactPhone,
+      email: set.contactEmail !== undefined ? set.contactEmail : t.contactEmail,
+    };
     const novos = outrosContatosLimpos(d.outrosContatos, principal);
     const velhos = t.otherContacts ?? [];
     if (JSON.stringify(novos) !== JSON.stringify(velhos)) {

@@ -202,7 +202,7 @@ export async function abrirAImplantacao(
   const descricao = [`Da negociação ${t.code}.`, t.description?.trim() ? `\n${t.description.trim()}` : ''].join('');
   await tx.insert(tickets).values({
     id, panelId: destino.id, stageId: entrada.id, number: numero, code: codigo, kind: 'chamado', title: titulo,
-    description: descricao, clientId: cliente.id, contactName: t.contactName, contactPhone: t.contactPhone, otherContacts: t.otherContacts ?? [],
+    description: descricao, clientId: cliente.id, contactName: t.contactName, contactPhone: t.contactPhone, contactEmail: t.contactEmail, otherContacts: t.otherContacts ?? [],
     origin: 'comercial', productIds: [...t.productIds], watcherIds: observadores, sourceTicketId: t.id,
     lastActivityAt: agora, createdById: pessoa, createdAt: agora, updatedAt: agora,
   });

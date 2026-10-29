@@ -1145,6 +1145,7 @@ Um CHAMADO. O código (SUP-12) é o do painel em que nasceu e não muda, nem se 
 | `client_id` | texto | — | liga com **clients** |
 | `contact_name` | texto | O nome de quem procurou o suporte (a pessoa do cliente) | — |
 | `contact_phone` | texto | O WhatsApp do contato, só dígitos com o 55 (para avisar o cliente) | — |
+| `contact_email` | texto | O e-mail do contato (2.3, o Luan: "todos os contatos da plataforma quero que tenha a opção de eu colocar o email dele tbm") | — |
 | `session_id` | texto | A sessão (conversa) do LineChat de onde o chamado veio (o robô, o botão) ou ligada à mão — o chamado ativo, 2.1 | — |
 | `other_contacts` | JSON | Os outros contatos do chamado (2.2, o Luan: "os cards permitem adicionar apenas um contato"): o nome e o WhatsApp de cada um, além do principal (contact_name e contact_phone, que o aviso ao cliente, o robô e a NIA usam) | obrigatório · padrão: [] |
 | `other_sessions` | JSON | As outras conversas (sessões) do LineChat ligadas ao chamado (2.2: "permitir colocar mais de uma sessão"), além da principal (session_id) | obrigatório · padrão: [] |

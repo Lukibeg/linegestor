@@ -238,7 +238,8 @@ export const AGENDADOS_DE_EXEMPLO: AgendadoDeExemplo[] = [
 //  OS CHAMADOS
 // =====================================================================
 
-export type Contato = [nome: string | null, telefone: string];
+/** o nome, o WhatsApp e (2.3, opcional) o e-mail */
+export type Contato = [nome: string | null, telefone: string, email?: string];
 
 /** Os campos do chamado pelos nomes que a pessoa vê (o cliente, o caminho do assunto, o código do produto…). */
 export type DadosDoExemplo = {
@@ -1258,7 +1259,7 @@ export const EXEMPLOS: Exemplo[] = [
     dados: {
       titulo: 'Nenhuma ligação entra na central', contato: ['Carlos Menezes', '(71) 99999-3321'], sessao: 'e3b0c442-98fc-4c14-9afb-f4c8996fb924',
       // o gerente também escreveu, por outro número (2.2: mais de um contato e de uma conversa)
-      outrosContatos: [['Patrícia Lopes', '(71) 98877-4410']], outrasSessoes: ['7f9a2c10-4e5b-4d3a-8c21-0b6e5f4a9d77'],
+      outrosContatos: [['Patrícia Lopes', '(71) 98877-4410', 'patricia@norte.exemplo.com.br']], outrasSessoes: ['7f9a2c10-4e5b-4d3a-8c21-0b6e5f4a9d77'],
       relato: 'Cliente pelo WhatsApp: "URGENTE: ninguém consegue ligar para a distribuidora desde agora há pouco, dá número inexistente!"',
       prioridade: 'critica', etiquetas: ['urgente'],
       ia: {
@@ -1445,7 +1446,7 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     passos: [{ para: 'Qualificação', dias: 11 }, { para: 'Proposta enviada', dias: 7 }, { para: 'Negociação', dias: 5 }, { para: ETAPA_QUE_ABRE_A_IMPLANTACAO, dias: 4 }],
     fim: { resultado: 'ganho', dias: 1 } },
   // ---- o funil de agora ----
-  { chave: 'beira-mar', etiquetas: ['concorrência', 'retornar'], titulo: 'Atendimento com URA e filas', empresa: 'Hotel Beira Mar', contato: ['Vânia', '5571999990213'], valor: 1_580, ativacao: 2_500, produtos: ['linepbx', 'linechat'],
+  { chave: 'beira-mar', etiquetas: ['concorrência', 'retornar'], titulo: 'Atendimento com URA e filas', empresa: 'Hotel Beira Mar', contato: ['Vânia', '5571999990213', 'vania@hotelbeiramar.exemplo.com.br'], valor: 1_580, ativacao: 2_500, produtos: ['linepbx', 'linechat'],
     campos: {
       'Origem de lead': 'Site', CNPJ: '29.184.765/0001-00',
       'Licenças Coorporativas Voz': '14', 'Licenças Callcenter Voz': '6', 'Canais Simultâneos': '12', 'Faixa Numérica': '(71) 3333-4400 a 4419',
@@ -1454,7 +1455,7 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     por: 'diego', responsavel: 'diego', abriu: 33,
     passos: [{ para: 'Qualificação', dias: 31 }, { para: 'Proposta enviada', dias: 23 }, { para: 'Negociação', dias: 14 }, { para: ETAPA_QUE_ABRE_A_IMPLANTACAO, dias: 2 }],
     descricao: 'Hotel com 60 apartamentos, recepção 24h e central de reservas. Hoje usam uma central analógica alugada.' },
-  { chave: 'estrela', etiquetas: ['quente'], titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214'], valor: 1_250, produtos: ['linepbx', 'voicenet'],
+  { chave: 'estrela', etiquetas: ['quente'], titulo: 'PABX em nuvem — 40 ramais', empresa: 'Padaria Estrela', contato: ['Rosa', '5571999990214', 'rosa@padariaestrela.exemplo.com.br'], valor: 1_250, produtos: ['linepbx', 'voicenet'],
     porProduto: { linepbx: 980, voicenet: 270 }, ativacaoPorProduto: { linepbx: 1_500, voicenet: 400 },
     campos: {
       'Origem de lead': 'Instagram',
@@ -1469,7 +1470,7 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
   { chave: 'bompreco-chat', etiquetas: ['indicação'], titulo: 'LineChat com 8 atendentes', cliente: 'Supermercado Bom Preço', contato: ['Anderson', '5571999990206'], valor: 680, produtos: ['linechat'],
     campos: { 'Origem de lead': 'Cliente da base' },
     por: 'camila', responsavel: 'diego', abriu: 9, passos: [{ para: 'Qualificação', dias: 8 }, { para: 'Proposta enviada', dias: 4 }] },
-  { chave: 'farma-mais', titulo: 'Migração das filiais para a nuvem', empresa: 'Rede Farma Mais', contato: ['Gustavo', '5571999990215'], valor: 3_000, produtos: ['linepbx', 'voicenet', 'linechat'],
+  { chave: 'farma-mais', titulo: 'Migração das filiais para a nuvem', empresa: 'Rede Farma Mais', contato: ['Gustavo', '5571999990215', 'gustavo@farmamais.exemplo.com.br'], valor: 3_000, produtos: ['linepbx', 'voicenet', 'linechat'],
     porProduto: { linepbx: 1_600, voicenet: 850, linechat: 550 }, ativacaoPorProduto: { linepbx: 4_200, voicenet: 1_800 },
     campos: {
       'Origem de lead': 'Indicação', 'Indicação': 'Anderson, do Supermercado Bom Preço',

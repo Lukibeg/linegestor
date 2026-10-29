@@ -156,6 +156,7 @@ describe('a negociação que abre a implantação', () => {
   it('sem o CNPJ, não vai (a janela pede); o plano diz o cliente, os produtos e o card', async () => {
     const r = await s.post('/atendimento/chamados', {
       painelId: com.id, titulo: '', empresa: 'Padaria Sol', produtos: [produto.linechat, produto.linepbx], responsavelId: adminId, descricao: 'Duas lojas e o delivery.',
+      contatoNome: 'Sol', contatoTelefone: '(71) 93333-1000', contatoEmail: 'sol@padariasol.com.br',
     });
     expect(r.statusCode, r.body).toBe(201);
     neg = r.json();
@@ -204,6 +205,8 @@ describe('a negociação que abre a implantação', () => {
 
     const c = await ficha(card.id);
     expect(c).toMatchObject({ titulo: 'Implantação — Padaria Sol', origem: 'comercial', cliente: { id: clienteId } });
+    // o contato da negociação vai junto, com o e-mail (2.3)
+    expect(c.contato).toEqual({ nome: 'Sol', telefone: '5571933331000', email: 'sol@padariasol.com.br' });
     expect(c.produtos.map((p) => p.id).sort()).toEqual([produto.linechat, produto.linepbx].sort());
     expect(c.descricao).toBe(`Da negociação ${neg.codigo}.\nDuas lojas e o delivery.`);
     expect(c.observadores.map((p) => p.id)).toEqual([adminId]);

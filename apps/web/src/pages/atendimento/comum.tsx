@@ -497,7 +497,7 @@ export function CartaoDoChamado({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel 
       {(c.cliente || c.contato) && (
         <div className="min-w-0">
           {c.cliente ? <div className="font-semibold text-ink-2 truncate">{c.cliente.nome}</div> : <div className="text-signal text-[12px] font-medium">sem cliente</div>}
-          {c.contato && (c.contato.nome || c.contato.telefone) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? telefoneLegivel(c.contato.telefone)}</div>}
+          {c.contato && (c.contato.nome || c.contato.telefone || c.contato.email) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? (c.contato.telefone ? telefoneLegivel(c.contato.telefone) : c.contato.email)}</div>}
         </div>
       )}
       {c.assunto && <div className="text-[12px] text-muted truncate" title={c.assunto.caminho}>{c.assunto.caminho}</div>}
@@ -560,7 +560,7 @@ function CartaoDaNegociacao({ c, cor, mostrarEtapa, nomeDaEtapa, arrastavel }: {
         </LinkDoChamado>
         {empresa && paraBusca(c.titulo) !== paraBusca(empresa) && <div className="text-[12.5px] text-ink-2 truncate mt-0.5" title={c.titulo} data-titulo>{c.titulo}</div>}
         {!empresa && <div className="text-signal text-[12px] font-medium">sem empresa</div>}
-        {c.contato && (c.contato.nome || c.contato.telefone) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? telefoneLegivel(c.contato.telefone)}</div>}
+        {c.contato && (c.contato.nome || c.contato.telefone || c.contato.email) && <div className="text-muted text-[12px] truncate">{c.contato.nome ?? (c.contato.telefone ? telefoneLegivel(c.contato.telefone) : c.contato.email)}</div>}
       </div>
       {/* o valor do cartão é a mensalidade (o que conta); a ativação fica na ficha */}
       <div className={c.valor === null ? 'text-[12px] text-muted' : 'font-display font-semibold text-[15px] tnum text-ink'} data-valor>

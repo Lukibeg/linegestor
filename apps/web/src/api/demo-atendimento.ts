@@ -165,6 +165,8 @@ type EtapaRow = {
 type ChamadoRow = {
   id: string; painelId: string; etapaId: string; numero: number; codigo: string; tipoChamado: TipoChamado; titulo: string;
   relato: string | null; descricao: string | null; clienteId: string | null; contatoNome: string | null; contatoTelefone: string | null; sessaoId: string | null;
+  /** o e-mail do contato (2.3) */
+  contatoEmail?: string | null;
   /** os outros contatos e as outras conversas (2.2, como o servidor) */
   outrosContatos?: OutroContato[]; outrasSessoes?: string[];
   origem: Origem; responsavelId: string | null; assuntoId: string | null; tipo: string | null; gravidade: Gravidade | null; alcance: Alcance | null;
@@ -589,7 +591,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       id: t.id, codigo: t.codigo, numero: t.numero, tipoChamado: t.tipoChamado, titulo: t.titulo,
       painelId: t.painelId, etapaId: t.etapaId, situacao: situacaoDaEtapa(e?.tipo ?? 'andamento'), nivel: e?.nivel ?? null,
       cliente: t.clienteId && usa('cliente') ? { id: t.clienteId, nome: nomeCliente(t.clienteId)! } : null,
-      contato: (t.contatoNome || t.contatoTelefone) && usa('cliente') ? { nome: t.contatoNome, telefone: t.contatoTelefone } : null,
+      contato: (t.contatoNome || t.contatoTelefone || t.contatoEmail) && usa('cliente') ? { nome: t.contatoNome, telefone: t.contatoTelefone, email: t.contatoEmail ?? null } : null,
       responsavel: pessoaCurta(t.responsavelId),
       prioridade: usa('prioridade') ? t.prioridade : null, gravidade: usa('gravidade') ? t.gravidade : null, alcance: usa('alcance') ? t.alcance : null, tipo: usa('tipo') ? t.tipo : null,
       assunto: assunto ? { id: assunto.id, nome: assunto.nome, caminho: caminhoDoAssunto(assunto.id, A.assuntos), ativo: assunto.ativo } : null,
@@ -628,7 +630,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     return A.chamados.filter((t) => !t.deletedAt && vis.has(t.painelId)).map((t) => {
       const c = cartao(t, par, agora);
       // os outros contatos (2.2) também acham o chamado, como no servidor
-      const outros = (t.outrosContatos ?? []).flatMap((o) => [o.nome, o.telefone]);
+      const outros = (t.outrosContatos ?? []).flatMap((o) => [o.nome, o.telefone, o.email ?? null]);
       return { ...c, busca: textoDeBusca(c, [t.relato, t.descricao, t.solucao, t.causa, ...outros, ...textosDosCampos(camposDoPainel(t.painelId, true), c.campos)]) };
     });
   }
@@ -778,7 +780,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
   const minutosGastos = (id: string) => A.tempos.filter((x) => x.chamadoId === id && !x.deletedAt).reduce((s, x) => s + x.minutos, 0);
   function dadosDoChamado(t: ChamadoRow): DadosObrigatorios {
     return {
-      tipoChamado: t.tipoChamado, clienteId: t.clienteId, contatoNome: t.contatoNome, contatoTelefone: t.contatoTelefone,
+      tipoChamado: t.tipoChamado, clienteId: t.clienteId, contatoNome: t.contatoNome, contatoTelefone: t.contatoTelefone, contatoEmail: t.contatoEmail ?? null,
       relato: t.relato, descricao: t.descricao, assuntoId: t.assuntoId, tipo: t.tipo, gravidade: t.gravidade, alcance: t.alcance, prioridade: t.prioridade,
       produtos: t.produtos, operadoras: t.operadoras, responsavelId: t.responsavelId,
       solucao: t.solucao, causa: t.causa, validacao: t.validacao, checklist: t.checklist, tempoMinutos: minutosGastos(t.id), campos: t.campos,
@@ -878,6 +880,8 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     let telefone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone.trim() : null;
     let clienteId = d.clienteId ?? null;
     let contatoNome = d.contatoNome ?? null;
+    // o e-mail do contato (2.3): o escrito, ou o do contato do cadastro com o mesmo WhatsApp (como o servidor)
+    let contatoEmail = d.contatoEmail?.trim().toLowerCase() || null;
     if (telefone) {
       // primeiro os contatos cadastrados dos clientes (a aba Contatos); o mesmo número em dois clientes não adivinha o cliente
       const cadastrados = S.contatos.filter((c) => c.whatsapp === telefone && c.ativo && clienteVivo(c.clientId));
@@ -885,6 +889,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       if (doCadastro) {
         if (!clienteId) clienteId = doCadastro.clientId;
         if (!contatoNome) contatoNome = doCadastro.nome;
+        if (!contatoEmail && doCadastro.email) contatoEmail = doCadastro.email.toLowerCase();
       }
       const conhecido = A.contatos.get(telefone);
       if (conhecido) {
@@ -895,7 +900,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     // os campos do sistema que o painel desligou: o que vier para eles fica de fora (como no servidor)
     const usa = (c: CampoDoSistema) => campoLigado(painel.ajustes, c);
     // o painel sem o cliente e o contato (2.1.2): o chamado é interno
-    if (!usa('cliente')) { clienteId = null; contatoNome = null; telefone = null; }
+    if (!usa('cliente')) { clienteId = null; contatoNome = null; telefone = null; contatoEmail = null; }
     const assunto = d.assuntoId && usa('assunto') ? conferirAssunto(d.assuntoId, painel) : null;
     const tipo = usa('tipo') ? conferirTipo(d.tipo, painel) : null;
     const gravidade = usa('gravidade') ? d.gravidade ?? null : null;
@@ -930,7 +935,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (!titulo) throw bad(mensagemDoTitulo(d.titulo ?? '', vendas));
 
     const dados: DadosObrigatorios = {
-      tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
+      tipoChamado, clienteId, contatoNome, contatoTelefone: telefone, contatoEmail, relato: usa('relato') ? d.relato ?? null : null, descricao: d.descricao ?? null,
       assuntoId: assunto?.id ?? null, tipo, gravidade, alcance, prioridade,
       produtos, operadoras, responsavelId: d.responsavelId ?? null,
       solucao: null, causa: null, validacao: null, checklist, tempoMinutos: 0, campos, valor, ativacao, empresa,
@@ -980,7 +985,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const id = novoId();
     const t: ChamadoRow = {
       id, painelId: painel.id, etapaId: etapa.id, numero, codigo, tipoChamado, titulo,
-      relato: dados.relato, descricao: dados.descricao, clienteId, contatoNome, contatoTelefone: telefone, sessaoId, origem,
+      relato: dados.relato, descricao: dados.descricao, clienteId, contatoNome, contatoTelefone: telefone, contatoEmail, sessaoId, origem,
       responsavelId: d.responsavelId ?? null, assuntoId: assunto?.id ?? null, tipo, gravidade, alcance,
       prioridade, motivoPrioridade, produtos, operadoras, etiquetas: etiquetasDoCatalogo(painel.id, d.etiquetas ?? [], d.coresDasEtiquetas ?? {}, pessoa, agora),
       paiId: pai?.id ?? null, problemaId: problema?.id ?? null, checklist, campos,
@@ -1040,7 +1045,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ...(usa('produtos') ? {} : { produtos: undefined }), ...(usa('operadoras') ? {} : { operadoras: undefined }),
       // a negociação não tem prioridade; o painel de Gestão pode não ter (2.1.2), nem o cliente, o relato, a solução e a causa
       ...(painel.tipo === 'vendas' || !usa('prioridade') ? { prioridade: undefined, motivoPrioridade: undefined } : {}),
-      ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined }),
+      ...(usa('cliente') ? {} : { clienteId: undefined, contatoNome: undefined, contatoTelefone: undefined, contatoEmail: undefined }),
       ...(usa('relato') ? {} : { relato: undefined }),
       ...(usa('solucao') || t.tipoChamado === 'problema' ? {} : { solucao: undefined, causa: undefined }),
     };
@@ -1070,6 +1075,11 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       const fone = d.contatoTelefone ? numeroWhatsApp(d.contatoTelefone) ?? d.contatoTelefone : null;
       if (fone !== t.contatoTelefone) { set.contatoTelefone = fone; campo('contatoTelefone', 'WhatsApp do contato', t.contatoTelefone, fone, t.contatoTelefone); }
     }
+    // o e-mail do contato (2.3, como o servidor)
+    if (d.contatoEmail !== undefined) {
+      const email = d.contatoEmail?.trim().toLowerCase() || null;
+      if (email !== (t.contatoEmail ?? null)) { set.contatoEmail = email; campo('contatoEmail', 'E-mail do contato', t.contatoEmail ?? null, email, t.contatoEmail ?? null); }
+    }
     // a conversa do LineChat (2.1, o chamado ativo): o link colado ou o código da sessão; vazio tira (como o servidor)
     if (d.sessaoId !== undefined) {
       const lida = sessaoDaConversa(d.sessaoId, A.integ.linkConversa);
@@ -1078,7 +1088,10 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     }
     // os outros contatos e as outras conversas (2.2, como o servidor): a lista inteira toma o lugar da de antes
     if (d.outrosContatos !== undefined) {
-      const principal = { nome: set.contatoNome !== undefined ? set.contatoNome : t.contatoNome, telefone: set.contatoTelefone !== undefined ? set.contatoTelefone : t.contatoTelefone };
+      const principal = {
+        nome: set.contatoNome !== undefined ? set.contatoNome : t.contatoNome, telefone: set.contatoTelefone !== undefined ? set.contatoTelefone : t.contatoTelefone,
+        email: set.contatoEmail !== undefined ? set.contatoEmail : t.contatoEmail ?? null,
+      };
       const novos = outrosContatosLimpos(d.outrosContatos, principal);
       const velhos = t.outrosContatos ?? [];
       if (JSON.stringify(novos) !== JSON.stringify(velhos)) {
@@ -1575,7 +1588,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const descricao = [`Da negociação ${t.codigo}.`, t.descricao?.trim() ? `\n${t.descricao.trim()}` : ''].join('');
     A.chamados.push({
       id, painelId: destino.id, etapaId: entrada.id, numero, codigo, tipoChamado: 'chamado', titulo: plano.titulo,
-      relato: null, descricao, clienteId: cliente.id, contatoNome: t.contatoNome, contatoTelefone: t.contatoTelefone, sessaoId: null,
+      relato: null, descricao, clienteId: cliente.id, contatoNome: t.contatoNome, contatoTelefone: t.contatoTelefone, contatoEmail: t.contatoEmail ?? null, sessaoId: null,
       outrosContatos: (t.outrosContatos ?? []).map((x) => ({ ...x })), outrasSessoes: [],
       origem: 'comercial', responsavelId: null, assuntoId: null, tipo: null, gravidade: null, alcance: null, prioridade: null, motivoPrioridade: null,
       produtos: [...t.produtos], operadoras: [], etiquetas: [], paiId: null, problemaId: null, checklist: [], campos: {},
@@ -3911,7 +3924,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         ...(d.relato !== undefined ? { relato: textoCom(d.relato, chave) } : {}),
         ...(d.descricao !== undefined ? { descricao: textoCom(d.descricao, chave) } : {}),
         ...(d.cliente ? { clienteId } : {}),
-        ...(d.contato ? { contatoNome: d.contato[0], contatoTelefone: d.contato[1] } : {}),
+        ...(d.contato ? { contatoNome: d.contato[0], contatoTelefone: d.contato[1], contatoEmail: d.contato[2] ?? null } : {}),
         ...(d.assunto ? { assuntoId: assuntoDoCaminho(painelId, d.assunto) } : {}),
         ...(d.tipo ? { tipo: d.tipo } : {}), ...(d.gravidade ? { gravidade: d.gravidade } : {}), ...(d.alcance ? { alcance: d.alcance } : {}),
         ...(d.prioridade ? { prioridade: d.prioridade } : {}), ...(d.motivoPrioridade ? { motivoPrioridade: d.motivoPrioridade } : {}),
@@ -3948,7 +3961,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       // os outros contatos e as outras conversas do exemplo (2.2): direto na linha, sem histórico
       if (d.outrosContatos || d.outrasSessoes) {
         const linha = A.chamados.find((x) => x.id === r.id)!;
-        linha.outrosContatos = (d.outrosContatos ?? []).map(([nome, fone]) => ({ nome, telefone: fone ? numeroWhatsApp(fone) : null }));
+        linha.outrosContatos = (d.outrosContatos ?? []).map(([nome, fone, email]) => ({ nome, telefone: fone ? numeroWhatsApp(fone) : null, email: email ?? null }));
         linha.outrasSessoes = d.outrasSessoes ?? [];
       }
       if (robo) { const k = A.chaves.find((x) => x.id === A.robo!.id)!; k.usadaEm = iso(quando); webhook.ultimoEm = iso(quando); webhook.ultimoOk = true; webhook.ultimaMsg = 'chamado.criado: recebido (200)'; }
@@ -4077,7 +4090,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
         const dono = atorDaPessoa(idDa(n.responsavel ?? n.por));
         const r = criarChamado(atorDaPessoa(idDa(n.por)), ChamadoCriarSchema.parse({
           painelId: com.id, titulo: n.titulo, ...(n.cliente ? { clienteId: idDoCliente(n.cliente) } : { empresa: n.empresa }),
-          ...(n.contato ? { contatoNome: n.contato[0], contatoTelefone: n.contato[1] } : {}),
+          ...(n.contato ? { contatoNome: n.contato[0], contatoTelefone: n.contato[1], contatoEmail: n.contato[2] ?? null } : {}),
           valor: n.valor !== undefined ? Math.round(n.valor * 100) : null,
           ...(n.porProduto ? { valoresDosProdutos: Object.fromEntries(Object.entries(n.porProduto).map(([codigo, v]) => [produtoDo(codigo), Math.round(v * 100)])) } : {}),
           ativacao: n.ativacao !== undefined ? Math.round(n.ativacao * 100) : null,

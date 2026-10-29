@@ -368,6 +368,24 @@ describe('as regras do servidor valem na prévia', () => {
     expect((await api.alterar(r.id, { outrosContatos: [], outrasConversas: [] })).outrosContatos).toEqual([]);
   }, DEMORA);
 
+  it('o e-mail dos contatos (2.3, como o servidor): o principal e os outros; minúsculo; o errado é recusado; a busca acha', async () => {
+    await entrar('operador');
+    const op = await api.opcoes();
+    const r = await api.criar({ ...(await baseDoSuporte(op, 'Teste do e-mail do contato')), contatoNome: 'Sandra', contatoEmail: 'Sandra@Clinica.com.br' });
+    const f0 = await api.chamado(r.codigo);
+    expect(f0.contato).toEqual({ nome: 'Sandra', telefone: null, email: 'sandra@clinica.com.br' });
+    const errado = await erroDe(api.alterar(r.id, { contatoEmail: 'sandra@clinica' }));
+    expect(errado.status).toBe(400);
+    const f = await api.alterar(r.id, { contatoEmail: 'sandra.lima@clinica.com.br', outrosContatos: [{ nome: 'Contabilidade', email: 'Contas@Clinica.com.br' }, { nome: 'Sandra de novo', email: 'sandra.lima@clinica.com.br' }] });
+    expect(f.contato?.email).toBe('sandra.lima@clinica.com.br');
+    expect(f.outrosContatos).toEqual([{ nome: 'Contabilidade', telefone: null, email: 'contas@clinica.com.br' }]);
+    expect(f.historico.filter((e) => e.tipo === 'campo').map((e) => e.texto)).toEqual(expect.arrayContaining([
+      'mudou E-mail do contato de "sandra@clinica.com.br" para "sandra.lima@clinica.com.br"', 'mudou Outros contatos para "Contabilidade contas@clinica.com.br"',
+    ]));
+    for (const q of ['sandra.lima@clinica', 'contas@clinica']) expect((await api.lista({ q, situacao: 'todos' })).items.map((c) => c.id)).toContain(r.id);
+    expect((await api.alterar(r.id, { contatoEmail: null })).contato?.email).toBeNull();
+  }, DEMORA);
+
   it('o pai com filho aberto não resolve nem fecha', async () => {
     await entrar('tecnico');
     const op = await api.opcoes();
@@ -819,14 +837,14 @@ describe('as regras do servidor valem na prévia', () => {
     const base = { painelId: sup.id, relato: 'O cliente ligou relatando o problema (chamado de teste).' };
     const f = await api.chamado((await api.criar({ ...base, titulo: 'Ligou do celular (teste)', contatoTelefone: '71 98123-4567' })).codigo);
     expect(f.cliente).toEqual({ id: aurora.id, nome: 'Clínica Aurora' });
-    expect(f.contato).toEqual({ nome: 'Roberta Dias', telefone: '5571981234567' });
+    expect(f.contato).toEqual({ nome: 'Roberta Dias', telefone: '5571981234567', email: null });
     expect((await demoApi.clients.contatos(aurora.id)).find((c) => c.nome === 'Roberta Dias')!.chamados).toBe(1);
     // o mesmo número em dois clientes: o cliente não é adivinhado; com o cliente escolhido, o nome vem do contato dele
     await demoApi.clients.salvarContato(hospital.id, null, { nome: 'Recepção do hospital', whatsapp: '(71) 96666-2222' });
     await demoApi.clients.salvarContato(aurora.id, null, { nome: 'Recepção da clínica', whatsapp: '(71) 96666-2222' });
     expect((await api.chamado((await api.criar({ ...base, titulo: 'Número dividido (teste)', contatoTelefone: '71 96666-2222' })).codigo)).cliente).toBeNull();
     const doHospital = await api.chamado((await api.criar({ ...base, titulo: 'Do hospital (teste)', clienteId: hospital.id, contatoTelefone: '71 96666-2222' })).codigo);
-    expect(doHospital.contato).toEqual({ nome: 'Recepção do hospital', telefone: '5571966662222' });
+    expect(doHospital.contato).toEqual({ nome: 'Recepção do hospital', telefone: '5571966662222', email: null });
 
     // desativar: some do Abrir chamado (o cadastro do cliente) e libera o WhatsApp
     await demoApi.clients.salvarContato(aurora.id, roberta.id, { ...roberta, ativo: false });
@@ -1232,6 +1250,8 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     const beira = q.colunas.find((c) => c.etapa.nome === 'Curadoria')!.chamados[0]!;
     const hotel = await demoApi.clients.get(beira.cliente!.id);
     expect(hotel.subscriptions.map((s) => [s.productCode, s.activatedAt]).sort()).toEqual([['linechat', null], ['linepbx', null]]);
+    // o contato da negociação foi junto para o card, com o e-mail (2.3)
+    expect(beira.contato).toEqual({ nome: 'Vânia', telefone: '5571999990213', email: 'vania@hotelbeiramar.exemplo.com.br' });
   });
 
   it('mover a negociação: sem o CNPJ não vai (400 com o plano); com ele, cria o cliente e abre o card — uma vez só', async () => {

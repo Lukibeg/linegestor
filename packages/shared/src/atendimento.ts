@@ -827,6 +827,8 @@ export function citacaoDigitando(texto: string, cursor: number): { inicio: numbe
 export type DadosObrigatorios = {
   tipoChamado: TipoChamado;
   clienteId: string | null; contatoNome: string | null; contatoTelefone: string | null;
+  /** o e-mail do contato (2.3): também conta como o contato */
+  contatoEmail?: string | null;
   relato: string | null; descricao: string | null;
   assuntoId: string | null; tipo: string | null; gravidade: Gravidade | null; alcance: Alcance | null; prioridade: Prioridade | null;
   produtos: string[]; operadoras: string[];
@@ -851,7 +853,7 @@ function falta(c: DadosObrigatorios, campo: Obrigatorio): boolean {
   switch (campo as CampoObrigatorio) {
     // na negociação, a empresa que ainda não é cliente (escrita à mão) também conta como o cliente
     case 'cliente': return !c.clienteId && !preenchido(c.empresa);
-    case 'contato': return !preenchido(c.contatoNome) && !preenchido(c.contatoTelefone);
+    case 'contato': return !preenchido(c.contatoNome) && !preenchido(c.contatoTelefone) && !preenchido(c.contatoEmail ?? null);
     // o valor que a etapa pede é a mensalidade: não há venda só de ativação (o Luan, em 19/10: "n temos caso
     // de ter só venda, no caso ativação") — a ativação sozinha não basta
     case 'valor': return (c.valor ?? null) === null;
@@ -986,6 +988,15 @@ const TelefoneSchema = z.string().trim().max(40).nullish().transform((v, ctx) =>
   if (!n) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Telefone inválido: use DDD + número, como (71) 99999-0000.' }); return z.NEVER; }
   return n;
 });
+/** O e-mail do contato (2.3), opcional: minúsculo, no jeito nome@empresa.com.br. */
+export const EmailDoContatoSchema = z.string().trim().max(200, 'O e-mail vai até 200 letras').nullish().transform((v, ctx) => {
+  if (!v) return null;
+  const e = v.toLowerCase();
+  if (!emailValido(e)) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'E-mail inválido: use o jeito nome@empresa.com.br.' }); return z.NEVER; }
+  return e;
+});
+/** O e-mail tem o jeito de e-mail (nome@empresa.com.br)? */
+export const emailValido = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v.trim());
 
 // ---------------------------------------------------------------------
 //  OS OUTROS CONTATOS E AS OUTRAS CONVERSAS (2.2)
@@ -994,29 +1005,38 @@ const TelefoneSchema = z.string().trim().max(40).nullish().transform((v, ctx) =>
 //  O contato e a conversa de antes continuam os principais (o aviso ao cliente, o robô e a NIA usam eles); os outros ficam
 //  numa lista à parte, que a ficha mostra embaixo do principal.
 
-/** Um contato a mais no chamado: o nome e o WhatsApp (só dígitos, com o 55). */
-export type OutroContato = { nome: string | null; telefone: string | null };
+/** Um contato a mais no chamado: o nome, o WhatsApp (só dígitos, com o 55) e o e-mail (2.3). */
+export type OutroContato = { nome: string | null; telefone: string | null; email?: string | null };
 /** Quantos contatos e conversas a mais cabem num chamado. */
 export const MAX_A_MAIS_NO_CHAMADO = 10;
-export const OutroContatoSchema = z.object({ nome: TextoOpcional(120), telefone: TelefoneSchema })
-  .refine((c) => !!(c.nome || c.telefone), 'Escreva o nome ou o WhatsApp do contato.');
-/** O contato numa frase (o histórico): "Maria (71) 99999-0000". */
+export const OutroContatoSchema = z.object({ nome: TextoOpcional(120), telefone: TelefoneSchema, email: EmailDoContatoSchema })
+  .refine((c) => !!(c.nome || c.telefone || c.email), 'Escreva o nome, o WhatsApp ou o e-mail do contato.');
+/** O contato numa frase (o histórico): "Maria (71) 99999-0000 maria@empresa.com.br". */
 export function textoDoOutroContato(c: OutroContato): string {
   const fone = c.telefone ? telefoneLegivel(c.telefone) : null;
-  return [c.nome, fone].filter(Boolean).join(' ') || '(sem nome)';
+  return [c.nome, fone, c.email].filter(Boolean).join(' ') || '(sem nome)';
 }
-/** A lista de contatos a mais limpa: sem os vazios, sem repetir (o mesmo WhatsApp ou, sem ele, o mesmo nome) nem o principal. */
+/**
+ * A lista de contatos a mais limpa: sem os vazios, sem repetir (o mesmo WhatsApp ou o mesmo e-mail; sem os dois, o mesmo
+ * nome) nem o principal.
+ */
 export function outrosContatosLimpos(lista: readonly OutroContato[], principal: OutroContato): OutroContato[] {
-  const chave = (c: OutroContato) => (c.telefone ? `f:${c.telefone}` : `n:${paraBusca(c.nome ?? '')}`);
+  // o mesmo WhatsApp ou o mesmo e-mail (2.3) é o mesmo contato; sem os dois, vale o nome
+  const chaves = (c: OutroContato) => {
+    const ks = [c.telefone ? `f:${c.telefone}` : null, c.email ? `e:${c.email.toLowerCase()}` : null].filter((k): k is string => !!k);
+    return ks.length ? ks : [`n:${paraBusca(c.nome ?? '')}`];
+  };
   const vistos = new Set<string>();
-  if (principal.nome || principal.telefone) vistos.add(chave(principal));
+  if (principal.nome || principal.telefone || principal.email) for (const k of chaves(principal)) vistos.add(k);
   const out: OutroContato[] = [];
   for (const c of lista) {
-    const n = { nome: c.nome?.trim() || null, telefone: c.telefone || null };
-    if (!n.nome && !n.telefone) continue;
-    const k = chave(n);
-    if (vistos.has(k)) continue;
-    vistos.add(k);
+    // o e-mail (2.3) só entra quando tem: a lista de antes (sem ele) continua a mesma
+    const email = c.email?.trim().toLowerCase() || null;
+    const n: OutroContato = { nome: c.nome?.trim() || null, telefone: c.telefone || null, ...(email ? { email } : {}) };
+    if (!n.nome && !n.telefone && !n.email) continue;
+    const ks = chaves(n);
+    if (ks.some((k) => vistos.has(k))) continue;
+    for (const k of ks) vistos.add(k);
     out.push(n);
   }
   return out;
@@ -1398,6 +1418,8 @@ export const ChamadoCriarSchema = z.object({
   clienteId: z.string().nullish().transform((v) => v || null),
   contatoNome: TextoOpcional(120),
   contatoTelefone: TelefoneSchema,
+  /** o e-mail do contato (2.3) */
+  contatoEmail: EmailDoContatoSchema,
   /**
    * a conversa do LineChat: o código da sessão (o robô, o botão da conversa) ou o link colado na tela (o
    * chamado ativo, 2.1); quem lê o link é o servidor (`sessaoDaConversa`)
@@ -1448,6 +1470,8 @@ export const ChamadoAlterarSchema = z.object({
   clienteId: z.string().nullish().transform((v) => v || null).optional(),
   contatoNome: TextoOpcional(120).optional(),
   contatoTelefone: TelefoneSchema.optional(),
+  /** o e-mail do contato (2.3); nulo ou vazio tira */
+  contatoEmail: EmailDoContatoSchema.optional(),
   /**
    * ligar (ou trocar) a conversa do LineChat (2.1): o link da conversa ou o código da sessão; nulo ou
    * vazio tira. O servidor acha a sessão no que veio (`sessaoDaConversa`)
@@ -1929,7 +1953,8 @@ export type CartaoChamado = {
   situacao: SituacaoDoChamado;
   nivel: Nivel | null;
   cliente: { id: string; nome: string } | null;
-  contato: { nome: string | null; telefone: string | null } | null;
+  /** o contato (o e-mail, 2.3: "todos os contatos da plataforma quero que tenha a opção de eu colocar o email dele tbm") */
+  contato: { nome: string | null; telefone: string | null; email?: string | null } | null;
   responsavel: PessoaCurta | null;
   prioridade: Prioridade | null;
   gravidade: Gravidade | null;
@@ -2686,7 +2711,7 @@ export type CartaoParaLista = CartaoChamado & { busca: string };
 /** O texto de busca de um chamado: código, título, cliente, contato, telefone, assunto, etiquetas e os textos. */
 export function textoDeBusca(c: CartaoChamado, textos: Array<string | null | undefined> = []): string {
   return paraBusca([
-    c.codigo, c.titulo, c.cliente?.nome, c.empresa, c.contato?.nome, c.contato?.telefone, c.assunto?.caminho, c.tipo,
+    c.codigo, c.titulo, c.cliente?.nome, c.empresa, c.contato?.nome, c.contato?.telefone, c.contato?.email, c.assunto?.caminho, c.tipo,
     ...c.etiquetas, ...c.produtos.map((p) => p.nome), ...c.operadoras.map((o) => o.nome), ...textos,
   ].filter(Boolean).join(' \n '));
 }

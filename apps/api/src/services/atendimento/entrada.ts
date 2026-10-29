@@ -360,7 +360,7 @@ export async function experimentarRobo(app: FastifyInstance, mapa: MapaDoRobo, c
 /** As colunas que a integração pode mudar, com o nome que a auditoria mostra. */
 const CAMPOS_NA_AUDITORIA: Array<[keyof LinhaChamado, string]> = [
   ['title', 'Título'], ['customerReport', NOME_CAMPO.relato], ['description', NOME_CAMPO.descricao], ['clientId', NOME_CAMPO.cliente],
-  ['contactName', NOME_CAMPO.contato], ['contactPhone', 'WhatsApp do contato'], ['sessionId', NOME_CONVERSA], ['subjectId', NOME_CAMPO.assunto], ['type', NOME_CAMPO.tipo],
+  ['contactName', NOME_CAMPO.contato], ['contactPhone', 'WhatsApp do contato'], ['contactEmail', 'E-mail do contato'], ['sessionId', NOME_CONVERSA], ['subjectId', NOME_CAMPO.assunto], ['type', NOME_CAMPO.tipo],
   ['severity', NOME_CAMPO.gravidade], ['reach', NOME_CAMPO.alcance], ['priority', NOME_CAMPO.prioridade], ['priorityReason', 'Motivo da prioridade'],
   ['productIds', NOME_CAMPO.produto], ['carrierIds', NOME_CAMPO.operadora], ['tags', 'Etiquetas'],
   ['solution', NOME_CAMPO.solucao], ['cause', NOME_CAMPO.causa], ['workaround', 'Solução de contorno'], ['validation', NOME_CAMPO.validacao],

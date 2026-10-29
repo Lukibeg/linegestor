@@ -54,7 +54,7 @@ const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 export function dadosDaLinha(t: LinhaChamado, tempoMinutos: number): DadosObrigatorios {
   return {
     tipoChamado: t.kind as TipoChamado,
-    clienteId: t.clientId, contatoNome: t.contactName, contatoTelefone: t.contactPhone,
+    clienteId: t.clientId, contatoNome: t.contactName, contatoTelefone: t.contactPhone, contatoEmail: t.contactEmail,
     relato: t.customerReport, descricao: t.description,
     assuntoId: t.subjectId, tipo: t.type,
     gravidade: (t.severity as Gravidade | null) ?? null, alcance: (t.reach as Alcance | null) ?? null, prioridade: (t.priority as Prioridade | null) ?? null,

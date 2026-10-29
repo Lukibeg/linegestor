@@ -204,6 +204,13 @@
       "when": 1793302300023,
       "tag": "0028_detalhes_da_proposta",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1793306499819,
+      "tag": "0029_email_do_contato",
+      "breakpoints": true
     }
   ]
 }

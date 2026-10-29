@@ -59,16 +59,15 @@ Suporte) fica com um papel sem o **Ver os chamados**.
 
 - **A empresa**: **Ainda não é cliente** (já vem marcado: escreva o nome) ou **Já é cliente** (escolha no
   cadastro). Quando ela entrar no cadastro de clientes, o **Virou cliente?** da ficha liga a negociação a ela.
-- O **contato** e o WhatsApp.
+- O **contato**, o WhatsApp e o e-mail (2.3).
 - **O que está sendo negociado** (opcional: uma frase, como "PABX em nuvem com 40 ramais"). Em branco, a
   negociação fica com o nome da empresa — e acompanha a empresa se ela mudar. No quadro, o cartão mostra a
   empresa em destaque e, embaixo, esta frase.
 - O **valor** (pode vir depois: a **Proposta enviada** pede a mensalidade) — **Um valor só** ou **Por
   produto** (veja abaixo), com a **mensalidade** e a **ativação**.
 - **Sobre a negociação**: o que o cliente precisa, quem decide, a concorrência.
-- **Do painel Comercial**: o CNPJ, os contatos principais, a origem de lead e quem indicou — a **Indicação**
-  é uma lista: quem não está nela entra pelo **Incluir** (na ficha, ficam em Detalhes; os contatos, junto do
-  Sobre a negociação).
+- **Do painel Comercial**: o CNPJ, a origem de lead e quem indicou — a **Indicação** é uma lista: quem não está
+  nela entra pelo **Incluir** (na ficha, ficam em Detalhes).
 - Os produtos e quem cuida.
 
 A negociação nasce no **Lead**.

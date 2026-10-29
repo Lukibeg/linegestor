@@ -253,7 +253,7 @@ export function cartaoDaLinha(t: LinhaChamado, ctx: Contexto, par: Parentes): Ca
     id: t.id, codigo: t.code, numero: t.number, tipoChamado: t.kind as TipoChamado, titulo: t.title,
     painelId: t.panelId, etapaId: t.stageId, situacao, nivel: e?.etapa.nivel ?? null,
     cliente: t.clientId && usa('cliente') ? { id: t.clientId, nome: ctx.clientes.get(t.clientId) ?? '(cliente removido)' } : null,
-    contato: (t.contactName || t.contactPhone) && usa('cliente') ? { nome: t.contactName, telefone: t.contactPhone } : null,
+    contato: (t.contactName || t.contactPhone || t.contactEmail) && usa('cliente') ? { nome: t.contactName, telefone: t.contactPhone, email: t.contactEmail ?? null } : null,
     responsavel: pessoaCurta(ctx, t.assigneeId),
     prioridade: usa('prioridade') ? (t.priority as Prioridade | null) ?? null : null,
     gravidade: usa('gravidade') ? (t.severity as Gravidade | null) ?? null : null,
@@ -305,8 +305,8 @@ export async function carregarCartoes(db: Db, ator: Ator, ctx: Contexto, opts: {
     .filter((t) => visiveis.includes(t.panelId))
     .map((t) => {
       const c = cartaoDaLinha(t, ctx, par);
-      // os outros contatos (2.2) também acham o chamado: o nome e o WhatsApp de cada um
-      const outros = (t.otherContacts ?? []).flatMap((o) => [o.nome, o.telefone]);
+      // os outros contatos (2.2) também acham o chamado: o nome, o WhatsApp e o e-mail (2.3) de cada um
+      const outros = (t.otherContacts ?? []).flatMap((o) => [o.nome, o.telefone, o.email ?? null]);
       return { ...c, busca: textoDeBusca(c, [t.customerReport, t.description, t.solution, t.cause, ...outros, ...textosDosCampos(camposDoPainel(ctx, t.panelId, true), c.campos)]) };
     });
 }

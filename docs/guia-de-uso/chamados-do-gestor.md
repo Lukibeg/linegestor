@@ -38,7 +38,7 @@ O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho 
   hoje. Cada número leva para a lista já filtrada. Desde o 2.0.2, o Meu dia também está no menu, no
   grupo Suporte, logo abaixo do Painel do Suporte.
 - **Lista** (dentro do painel, em **Quadro | Lista**): a busca (código, título, cliente, contato,
-  telefone, o que o cliente disse — sem acento), os atalhos (Meus, Vencidos, Perto de vencer, Sem dono,
+  telefone, e-mail, o que o cliente disse — sem acento), os atalhos (Meus, Vencidos, Perto de vencer, Sem dono,
   Esperando o cliente), a situação, **Filtros** (etapa, responsável, prioridade, prazo, cliente,
   assunto, etiqueta e as datas), as colunas que ordenam e **Exportar (CSV)**. Os números do Meu dia
   abrem a lista de todos os painéis.
@@ -60,7 +60,7 @@ O Comercial usa um painel de **Vendas** (as negociações, com o valor, o Ganho 
 **Abrir chamado** (no alto de qualquer tela do módulo) abre o formulário **numa janela por cima da
 tela**, que fica como estava (o quadro com os filtros, a lista na mesma página). **Dentro de um
 painel** (no quadro ou na lista), o chamado já nasce nele, sem escolher outro; fora (Painéis, Meu
-dia), escolha o painel. Depois: o cliente, o contato (nome e WhatsApp), o título, o **relato do
+dia), escolha o painel. Depois: o cliente, o contato (nome, WhatsApp e e-mail), o título, o **relato do
 cliente** — o que ele disse, nas palavras dele — e a **descrição** (o andamento e os dados técnicos).
 Aberto, a janela vira a **ficha do chamado novo**; fechar volta para a tela. Com algo escrito, fechar
 a janela (o X, o Esc, o clique fora ou **Cancelar**) pergunta antes de descartar. O Voltar do
@@ -71,7 +71,7 @@ navegador também fecha a janela.
   **Mais › Abrir um problema a partir deste…**, e esse chamado vira o primeiro incidente. O problema
   junta os incidentes, que fecham sem esperar por ele, e só resolve com a causa, a solução e a
   validação. (O **Registro**, Chamado ou Problema, saiu do Abrir chamado no 2.0.1.)
-- Ao escolher o cliente, aparecem **os contatos dele**: um clique preenche o nome e o WhatsApp. **Novo
+- Ao escolher o cliente, aparecem **os contatos dele**: um clique preenche o nome, o WhatsApp e o e-mail. **Novo
   contato** inclui ali mesmo (e já escolhe); o nome escrito à mão que não está na lista mostra
   **Salvar nos contatos**.
 - Aparecem também os chamados recentes dele. **Se é o mesmo problema de antes, use
@@ -129,8 +129,8 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 - **Relato do cliente**, **Descrição** (o andamento e os dados técnicos), **Solução** e **Causa**. O
   que a próxima etapa pede e está vazio fica marcado ("falta para ir para Resolvido").
 - Um código citado no texto (SUP-12, ou um card antigo do LineChat como IS-4280) vira link.
-- Do lado: a **empresa** e o **contato** (em **Editar**, os contatos do cliente: um clique troca; o
-  contato escrito à mão ganha **Salvar nos contatos**) com a **conversa no LineChat** — o link e a sessão;
+- Do lado: a **empresa** e o **contato** (o e-mail, desde o 2.3, com o link para escrever; em **Editar**, o nome, o
+  WhatsApp e o e-mail, e os contatos do cliente: um clique troca; o contato escrito à mão ganha **Salvar nos contatos**) com a **conversa no LineChat** — o link e a sessão;
   desde o 2.1, **Ligar a conversa do LineChat** (o chamado sem conversa, como o ativo) e **Trocar**
   (colar o link de outra conversa, ou **Tirar a conversa**); vai para o histórico —, a **classificação** (os campos que o painel usa — assunto,
   tipo, gravidade, alcance, prioridade, produtos, operadoras —, os campos do próprio painel e as
@@ -150,8 +150,8 @@ setor**. Quem cuida do cadastro e quem trabalha nos chamados inclui e edita; que
 - **A ficha mostra só o que tem** (2.2): o checklist, os filhos e ligações e a agenda vazios não aparecem; voltam
   com o primeiro item, ligação ou evento. A linha do tempo abre nas **Anotações** (depois Histórico, Trajetória
   e Tudo).
-- **Mais de um contato e de uma conversa** (2.2): no cartão do contato, **Mais um contato** e **Mais uma
-  conversa**. Os de cima continuam os principais (o aviso ao cliente e a NIA usam eles); o robô acha o chamado
+- **Mais de um contato e de uma conversa** (2.2): no cartão do contato, **Mais um contato** (o nome, o WhatsApp e,
+  desde o 2.3, o e-mail) e **Mais uma conversa**. Os de cima continuam os principais (o aviso ao cliente e a NIA usam eles); o robô acha o chamado
   por qualquer conversa ligada a ele.
 - **O assunto em pastas** (2.2): o assunto com outros dentro (Operadora, Operadora › VC1) é só o título do grupo;
   escolhe-se o de dentro. Nos filtros, a pasta filtra tudo o que está nela.

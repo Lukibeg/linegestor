@@ -206,7 +206,7 @@ function TopoDaLista({ opcoes, situacao, painel, totais }: { opcoes: OpcoesAtend
         <div className="flex items-center gap-2 w-full md:w-auto md:flex-1 md:min-w-[220px] md:max-w-[420px] md:ml-auto">
           <CampoBusca className="flex-1" id="lista-busca" valor={valor('q')} onChange={(v) => mudar({ q: v })}
             placeholder={vendas ? 'Código, título, empresa, telefone…' : 'Código, título, cliente, telefone…'}
-            titulo={vendas ? 'Acha pelo código, o que está sendo negociado, a empresa, o contato, o telefone e o “Sobre a negociação” (sem acento)' : 'Acha pelo código, título, cliente, contato, telefone, relato e descrição (sem acento)'} />
+            titulo={vendas ? 'Acha pelo código, o que está sendo negociado, a empresa, o contato, o telefone, o e-mail e o “Sobre a negociação” (sem acento)' : 'Acha pelo código, título, cliente, contato, telefone, e-mail, relato e descrição (sem acento)'} />
           <button type="button" className={`btn-secondary ${abertos ? 'border-accent text-accent-ink bg-accent-soft' : ''}`} aria-expanded={abertos} aria-controls="lista-filtros"
             id="lista-botao-filtros" onClick={() => setAbertos((v) => !v)} title={abertos ? 'Esconder as caixas dos filtros' : vendas ? 'Filtrar por etapa, responsável, cliente, etiqueta e data' : 'Filtrar por etapa, responsável, prioridade, prazo, cliente, assunto, etiqueta e data'}>
             <Filter size={15} /> Filtros{ligados > 0 && <span className="text-accent tnum">({ligados})</span>}
@@ -374,8 +374,8 @@ function Tabela({ itens, total, opcoes, ordem, mostrarPainel, vendas = false, pa
                     {c.cliente ? <div className="font-semibold text-ink-2 leading-snug">{c.cliente.nome}</div>
                       : c.empresa ? <div className="font-semibold text-ink-2 leading-snug" title="Ainda não é cliente">{c.empresa}</div>
                         : <div className="text-signal text-[12.5px] font-medium">{vendas ? 'sem empresa' : 'sem cliente'}</div>}
-                    {c.contato && (c.contato.nome || c.contato.telefone) && (
-                      <div className="text-[12px] text-muted leading-snug">{c.contato.nome ?? telefoneLegivel(c.contato.telefone)}</div>
+                    {c.contato && (c.contato.nome || c.contato.telefone || c.contato.email) && (
+                      <div className="text-[12px] text-muted leading-snug">{c.contato.nome ?? (c.contato.telefone ? telefoneLegivel(c.contato.telefone) : c.contato.email)}</div>
                     )}
                   </td>
                   <td className="whitespace-nowrap">
