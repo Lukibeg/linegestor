@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { CampoGravarSchema, EtapaGravarSchema, normalizarValorDoCampo, textoDoEvento, textoDoValor, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
+import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
 import {
   etapaDoFimDaImplantacao,
-  MODELO_DA_IMPLANTACAO, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
+  MODELO_DA_IMPLANTACAO, opcaoDoModelo, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
   planoDaImplantacao, planoDoCadastro, progressoDasPartes, tituloDaImplantacao,
 } from './implantacao.js';
 
@@ -113,7 +113,7 @@ describe('o modelo do painel Implantação', () => {
     expect(partes).toEqual(['Curadoria', 'Configuração', 'Testes']);
     // cada campo passa no formulário dos Ajustes (com o produto escolhido), e nenhum nome se repete no mesmo produto
     for (const c of MODELO_DA_IMPLANTACAO.campos) {
-      const r = CampoGravarSchema.safeParse({ nome: c.nome, tipo: c.tipo, dica: c.dica, parte: c.parte, produtoId: c.produto ?? null, opcoes: c.opcoes.map((nome) => ({ nome })) });
+      const r = CampoGravarSchema.safeParse({ nome: c.nome, tipo: c.tipo, dica: c.dica, parte: c.parte, produtoId: c.produto ?? null, opcoes: c.opcoes.map(opcaoDoModelo) });
       expect(r.success, c.nome).toBe(true);
     }
     const chaves = MODELO_DA_IMPLANTACAO.campos.map((c) => `${c.produto}:${c.nome}`);
@@ -121,6 +121,38 @@ describe('o modelo do painel Implantação', () => {
     expect(MODELO_DA_IMPLANTACAO.campos.length).toBeLessThanOrEqual(30);
     // os testes do LineChat (que o Helena não tinha)
     expect(MODELO_DA_IMPLANTACAO.campos.some((c) => c.produto === 'linechat' && c.parte === 'Testes')).toBe(true);
+  });
+
+  it('a Configuração do ambiente do LinePBX vem em pastas: Servidor, Asterisk, LinePBX Web, Módulos e Telefones', () => {
+    const c = MODELO_DA_IMPLANTACAO.campos.find((x) => x.produto === 'linepbx' && x.nome === 'Configuração do ambiente')!;
+    const pastas = pastasDasCaixinhas(c.opcoes.map(opcaoDoModelo).map((o, i) => ({ id: `o${i}`, ativa: true, ...o })));
+    expect(pastas.map((p) => [p.pasta, p.opcoes.length])).toEqual([['Servidor', 1], ['Asterisk', 5], ['LinePBX Web', 2], ['Módulos', 1], ['Telefones', 1]]);
+    // o nome sem o prefixo de antes ("Asterisk - …"): a pasta já diz
+    expect(pastas[1]!.opcoes.map((o) => o.nome)).toContain('Configuração dos ramais');
+    expect(c.opcoes.map(opcaoDoModelo).every((o) => !o.nome.includes(' - '))).toBe(true);
+  });
+});
+
+describe('as pastas das caixinhas (2.3)', () => {
+  const o = (id: string, nome: string, pasta?: string | null, ativa = true) => ({ id, nome, ativa, pasta });
+  it('junta pela pasta (sem ligar para maiúscula e acento), as sem pasta primeiro, as pastas na ordem em que aparecem', () => {
+    const r = pastasDasCaixinhas([o('a', 'Ramais', 'Asterisk'), o('b', 'Sem pasta'), o('c', 'Usuários', 'LinePBX Web'), o('d', 'Tronco', 'asterisk'), o('e', 'Outra', '  ')]);
+    expect(r.map((p) => [p.pasta, p.opcoes.map((x) => x.id)])).toEqual([[null, ['b', 'e']], ['Asterisk', ['a', 'd']], ['LinePBX Web', ['c']]]);
+    expect(pastasDasCaixinhas([])).toEqual([]);
+  });
+  it('diz o que mudou: incluiu, renomeou, levou de pasta, desativou, reativou; ou só a ordem', () => {
+    const antes = [o('a', 'Ramais', 'Asterisk'), o('b', 'Tronco', 'Asterisk'), o('c', 'Telefones'), o('d', 'Velha', null, false)];
+    expect(mudancasDasCaixinhas(antes, [o('a', 'Configuração dos ramais', 'Asterisk'), o('b', 'Tronco', 'Servidor'), o('c', 'Telefones', null, false), o('d', 'Velha'), o('n', 'FHA', 'Asterisk')]))
+      .toEqual(['incluiu FHA (Asterisk)', 'renomeou Ramais para Configuração dos ramais', 'levou Tronco para a pasta Servidor', 'desativou Telefones', 'reativou Velha']);
+    expect(mudancasDasCaixinhas(antes, [antes[1]!, antes[0]!, antes[2]!, antes[3]!])).toEqual(['mudou a ordem']);
+    expect(mudancasDasCaixinhas(antes, antes)).toEqual([]);
+  });
+  it('o Editar as caixinhas: pelo menos uma ativa, sem nome repetido, a pasta até 40 letras', () => {
+    expect(CaixinhasGravarSchema.safeParse({ opcoes: [{ nome: 'Ramais', pasta: 'Asterisk' }] }).success).toBe(true);
+    expect(CaixinhasGravarSchema.parse({ opcoes: [{ nome: 'Ramais', pasta: '' }] }).opcoes[0]!.pasta).toBeNull();
+    expect(CaixinhasGravarSchema.safeParse({ opcoes: [{ nome: 'Ramais', ativa: false }] }).success).toBe(false);
+    expect(CaixinhasGravarSchema.safeParse({ opcoes: [{ nome: 'Ramais' }, { nome: 'ramais' }] }).success).toBe(false);
+    expect(CaixinhasGravarSchema.safeParse({ opcoes: [{ nome: 'Ramais', pasta: 'x'.repeat(41) }] }).success).toBe(false);
   });
 });
 
@@ -143,7 +175,11 @@ describe('a negociação que abre a implantação', () => {
     expect(p.cliente).toEqual({ tipo: 'novo', nomeFantasia: 'Padaria Sol', razaoSocial: 'Padaria Sol', cnpj: '11222333000181', erro: null });
     expect(p.falta).toBeNull();
     expect(planoDaImplantacao({ ...base, negociacao: { ...neg, cnpjDoCampo: null } }).falta).toBe('Para criar o cliente, falta o CNPJ.');
-    expect(planoDaImplantacao({ ...base, negociacao: { ...neg, cnpjDoCampo: '11.222.333/0001-80' } }).falta).toMatch(/dígito verificador/);
+    // só os 14 números: o dígito verificador não é conferido
+    expect(planoDaImplantacao({ ...base, negociacao: { ...neg, cnpjDoCampo: '11.222.333/0001-80' } }).falta).toBeNull();
+    expect(planoDaImplantacao({ ...base, negociacao: { ...neg, cnpjDoCampo: '11.222.333/0001-8' } }).falta).toBe('O CNPJ tem 14 números: falta 1.');
+    expect(planoDaImplantacao({ ...base, negociacao: { ...neg, cnpjDoCampo: '11.222.333/0001' } }).falta).toBe('O CNPJ tem 14 números: faltam 2.');
+    expect(planoDaImplantacao({ ...base, negociacao: { ...neg, cnpjDoCampo: '11.222.333/0001-801' } }).falta).toBe('O CNPJ tem 14 números: tem número a mais.');
     // o da janela vale mais que o da negociação
     const j = planoDaImplantacao({ ...base, negociacao: { ...neg, cnpjDoCampo: null }, pedido: { nomeFantasia: 'Sol', razaoSocial: 'Sol Pães Ltda', cnpj: '11222333000181' } });
     expect(j.cliente).toMatchObject({ tipo: 'novo', nomeFantasia: 'Sol', razaoSocial: 'Sol Pães Ltda' });

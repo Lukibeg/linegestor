@@ -1235,8 +1235,9 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(e.status).toBe(400);
     expect(e.message).toBe('Para criar o cliente, falta o CNPJ.');
     expect((e.details as unknown as { implantacao: { cliente: { tipo: string } } }).implantacao.cliente.tipo).toBe('novo');
-    // a janela: o CNPJ com o dígito errado; e o de um cliente que já existe (o card abre para ele)
-    expect((await api.aoMover(r.id, { etapaId: para.id, cnpj: '11.111.111/1111-11' })).implantacao!.falta).toMatch(/dígito/);
+    // a janela: o CNPJ pela metade; o dígito verificador não é conferido; e o de um cliente que já existe (o card abre para ele)
+    expect((await api.aoMover(r.id, { etapaId: para.id, cnpj: '11.111.111/1111' })).implantacao!.falta).toBe('O CNPJ tem 14 números: faltam 2.');
+    expect((await api.aoMover(r.id, { etapaId: para.id, cnpj: '11.111.111/1111-11' })).implantacao!.falta).toBeNull();
     const aurora = (await api.aoMover(r.id, { etapaId: para.id, cnpj: '11.222.333/0001-81' })).implantacao!;
     expect(aurora.cliente).toMatchObject({ tipo: 'cadastro', nome: 'Clínica Aurora', peloCnpj: true });
     expect(aurora.falta).toBeNull();
@@ -1293,6 +1294,31 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     const sub = cliente.subscriptions.find((s) => s.productCode === 'linechat')!;
     expect(sub.activatedAt?.slice(0, 10)).toBe(diaLocal(new Date()));
     expect(sub.modules.filter((m) => m.active).map((m) => m.moduleName)).toEqual(['WebChat']);
+  });
+
+  it('as caixinhas em pastas: o LinePBX vem em pastas; o Editar as caixinhas muda as caixinhas e as pastas (só quem cuida)', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const pbx = produto(op, 'LinePBX');
+    const conf = campoDe(op, imp.id, 'Configuração do ambiente', pbx);
+    expect([...new Set(conf.opcoes.map((o) => o.pasta))]).toEqual(['Servidor', 'Asterisk', 'LinePBX Web', 'Módulos', 'Telefones']);
+    // os exemplos marcaram pelos nomes novos (sem o "Asterisk - " na frente)
+    const visao = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Ótica Visão Clara')!;
+    expect((await api.chamado(visao.codigo)).campos[conf.id]).toHaveLength(10);
+    const novo = await api.salvarCaixinhas(conf.id, {
+      opcoes: [...conf.opcoes.map((o) => ({ id: o.id, nome: o.nome, ativa: o.ativa, pasta: o.pasta ?? null })), { nome: 'Configuração do Callback', ativa: true, pasta: 'Asterisk' }],
+    });
+    expect(novo.opcoes.at(-1)).toMatchObject({ nome: 'Configuração do Callback', pasta: 'Asterisk', ativa: true });
+    expect(novo).toMatchObject({ nome: conf.nome, parte: conf.parte, produtoId: conf.produtoId });
+    // a que não veio fica desativada; o card que a marcou continua com ela
+    const semTelefones = await api.salvarCaixinhas(conf.id, { opcoes: novo.opcoes.filter((o) => o.nome !== 'Configuração dos telefones').map((o) => ({ id: o.id, nome: o.nome, pasta: o.pasta ?? null })) });
+    const telefones = semTelefones.opcoes.find((o) => o.nome === 'Configuração dos telefones')!;
+    expect(telefones.ativa).toBe(false);
+    expect((await api.chamado(visao.codigo)).campos[conf.id]).toContain(telefones.id);
+    expect((await erroDe(api.salvarCaixinhas(campoDe(op, imp.id, 'Módulos a ativar', pbx).id, { opcoes: [{ nome: 'X' }] }))).status).toBe(400);
+    await entrar('operador');
+    expect((await erroDe(api.salvarCaixinhas(conf.id, { opcoes: [{ nome: 'X' }] }))).status).toBe(403);
   });
 
   it('o painel pelo modelo e as regras dos campos (o produto dos módulos, o mesmo nome em produtos diferentes)', async () => {

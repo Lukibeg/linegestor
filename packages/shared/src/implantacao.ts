@@ -16,7 +16,7 @@
  * "n precisa limitar nada disso": nada trava. O card anda com coisa faltando; quem quiser travar usa o "obrigatório" da
  * etapa, como em qualquer campo.
  */
-import { cnpjLimpo, cnpjValido, paraBusca } from './formatos.js';
+import { cnpjLimpo, paraBusca } from './formatos.js';
 import {
   valorPreenchido,
   type AjustesDoPainel, type CampoPersonalizado, type CorPainel, type EtapaPainel, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
@@ -145,7 +145,12 @@ export function marcasDepois(
 // =====================================================================
 
 /** O produto de um campo do modelo, pelo código do catálogo (o id muda de uma instalação para outra). */
-export type CampoDoModelo = { nome: string; tipo: TipoCampo; parte: string; produto: 'linechat' | 'linepbx' | null; dica: string; opcoes: string[] };
+/** Uma opção do modelo: o nome, ou o nome e a pasta (as caixinhas da Configuração do LinePBX, 2.3). */
+export type OpcaoDoModelo = string | { nome: string; pasta: string };
+export type CampoDoModelo = { nome: string; tipo: TipoCampo; parte: string; produto: 'linechat' | 'linepbx' | null; dica: string; opcoes: OpcaoDoModelo[] };
+/** A opção do modelo com a pasta (nula quando não tem). */
+export const opcaoDoModelo = (o: OpcaoDoModelo): { nome: string; pasta: string | null } => (typeof o === 'string' ? { nome: o, pasta: null } : o);
+const naPasta = (pasta: string, ...nomes: string[]) => nomes.map((nome) => ({ nome, pasta }));
 type EtapaDoModelo = Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { ligaNoCadastro?: boolean };
 
 const CURADORIA = 'Curadoria';
@@ -203,10 +208,13 @@ export const MODELO_DA_IMPLANTACAO: {
     { nome: 'Módulos a ativar', tipo: 'modulos', parte: CONFIGURACAO, produto: 'linechat', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
     {
       nome: 'Configuração do ambiente', tipo: 'caixinhas', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Marque o que já foi feito.',
+      // em pastas (2.3, o Luan: "configurações do servidor, configuirações do asterisk, do linepbx web, dos módulos")
       opcoes: [
-        'Criação do ambiente', 'Asterisk - Configuração dos ramais', 'Asterisk - Configuração da rota de entrada', 'Asterisk - Configuração das URAs e filas',
-        'Asterisk - Configuração do FHA', 'Asterisk - Alinhamento do tronco', 'LinePBX Web - Configuração dos usuários', 'LinePBX Web - Configuração das equipes',
-        'LineReports - Instalação', 'Configuração dos telefones',
+        ...naPasta('Servidor', 'Criação do ambiente'),
+        ...naPasta('Asterisk', 'Configuração dos ramais', 'Configuração da rota de entrada', 'Configuração das URAs e filas', 'Configuração do FHA', 'Alinhamento do tronco'),
+        ...naPasta('LinePBX Web', 'Configuração dos usuários', 'Configuração das equipes'),
+        ...naPasta('Módulos', 'Instalação do LineReports'),
+        ...naPasta('Telefones', 'Configuração dos telefones'),
       ],
     },
     { nome: 'Módulos a ativar', tipo: 'modulos', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
@@ -282,7 +290,9 @@ export function planoDaImplantacao(e: {
     const cnpj = bruto ? cnpjLimpo(bruto) : null;
     const erro = nomeFantasia.length < 2 ? 'Escreva o nome do cliente.'
       : !cnpj ? 'Para criar o cliente, falta o CNPJ.'
-        : !cnpjValido(cnpj) ? 'O CNPJ não confere (o dígito verificador): confira os números.'
+        // sem conferir o dígito verificador ("n quero mais q verifique os números"): só os 14 números
+        : cnpj.length < 14 ? `O CNPJ tem 14 números: ${14 - cnpj.length === 1 ? 'falta 1' : `faltam ${14 - cnpj.length}`}.`
+          : cnpj.length > 14 ? 'O CNPJ tem 14 números: tem número a mais.'
           : e.clienteNaLixeira ? `Este CNPJ é do cliente ${e.clienteNaLixeira.nome}, que está na lixeira: restaure o cliente (Administração › Lixeira) e mova de novo.`
             : razaoSocial.length < 2 ? 'Escreva a razão social.'
               : null;

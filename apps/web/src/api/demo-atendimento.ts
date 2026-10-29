@@ -21,7 +21,7 @@
  */
 import {
   AgendadoGravarSchema, AJUSTES_PAINEL_PADRAO, AJUSTES_PRAZOS_PADRAO, AjustesPrazosSchema, AnotacaoSchema, AssuntoGravarSchema,
-  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, CampoGravarSchema, CamposDoSistemaSchema, CAMPOS_DO_SISTEMA,
+  AssuntosColarSchema, AvisarClienteSchema, AVISOS_CHAMADOS_PADRAO, AvisosChamadosSchema, CaixinhasGravarSchema, CampoGravarSchema, CamposDoSistemaSchema, mudancasDasCaixinhas, opcaoDoModelo, type OpcaoDoModelo, CAMPOS_DO_SISTEMA,
   ChamadoAlterarSchema, ChamadoCriarSchema, ChaveCriarSchema, MAX_CAMPOS_DO_PAINEL, NOME_CAMPO_DO_SISTEMA, NOME_TIPO_CAMPO, OrdemDosCamposSchema,
   ChecklistSchema, ETAPAS_DO_PAINEL_NOVO, EsperarSchema, EtapasGravarSchema, INFO_PROVEDORES, LigarChamadoSchema, LinkConversaSchema, ListarChamadosSchema, MAX_NIVEL_ASSUNTO,
   MoverSchema, NOME_ALCANCE, NOME_CAMPO, NOME_ESPERA, NOME_GRAVIDADE, NOME_LIGACAO, ObservarSchema, OperadoraAndamentoSchema,
@@ -3366,11 +3366,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (igual) throw conflito(`O painel ${p.nome} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
     if (atual && atual.tipo !== d.tipo) throw bad(`O tipo do campo não muda depois de criado (${atual.nome} é ${NOME_TIPO_CAMPO[atual.tipo]}). Crie outro campo e desative este.`);
     if (!temOpcoesEscritas(d.tipo)) return [];
-    const existentes = atual?.opcoes ?? [];
-    const opcoes: OpcaoDoCampo[] = d.opcoes.map((o) => {
-      if (!o.id) return { id: novoId(), nome: o.nome, ativa: o.ativa };
+    return opcoesConferidas(d.tipo, d.opcoes, atual?.opcoes ?? []);
+  }
+  /** As opções gravadas (como o servidor): a sem id é nova; a que não veio fica desativada; a pasta (2.3) só nas caixinhas. */
+  function opcoesConferidas(tipo: CampoPersonalizado['tipo'], vindas: ReturnType<typeof CampoGravarSchema.parse>['opcoes'], existentes: OpcaoDoCampo[]): OpcaoDoCampo[] {
+    const pasta = (p: string | null | undefined) => (tipo === 'caixinhas' && p ? { pasta: p } : {});
+    const opcoes: OpcaoDoCampo[] = vindas.map((o) => {
+      if (!o.id) return { id: novoId(), nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
       if (!existentes.some((x) => x.id === o.id)) throw bad(`A opção ${o.nome} não é deste campo. Recarregue a tela e tente de novo.`);
-      return { id: o.id, nome: o.nome, ativa: o.ativa };
+      return { id: o.id, nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
     });
     for (const x of existentes) if (!opcoes.some((o) => o.id === x.id)) opcoes.push({ ...x, ativa: false });
     const vistas = new Set<string>();
@@ -3401,12 +3405,12 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
    */
   function camposDeFabricaDoPainel(painelId: string, tipo: TipoDePainel, implantacao = false): string[] {
     const produtoDoCodigo = (code: string | null) => (code ? S.products.find((x) => x.code === code && !x.deletedAt)?.id ?? null : null);
-    const fabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly string[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null }> = implantacao
+    const fabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null }> = implantacao
       ? MODELO_DA_IMPLANTACAO.campos.filter((c) => !c.produto || produtoDoCodigo(c.produto)).map((c) => ({ ...c, produtoId: produtoDoCodigo(c.produto) }))
       : tipo === 'vendas' ? [...CAMPOS_DO_PAINEL_DE_VENDAS] : [];
     fabrica.forEach((c, ordem) => A.campos.push({
       id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: c.dica, ativo: true, ordem,
-      opcoes: c.opcoes.map((nome) => ({ id: novoId(), nome, ativa: true })), incluirNaHora: !!c.incluirNaHora,
+      opcoes: c.opcoes.map(opcaoDoModelo).map((o) => ({ id: novoId(), nome: o.nome, ativa: true, ...(o.pasta ? { pasta: o.pasta } : {}) })), incluirNaHora: !!c.incluirNaHora,
       parte: c.parte ?? null, produtoId: c.produtoId ?? null,
     }));
     if (implantacao) sincronizarModulos();
@@ -3450,6 +3454,23 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       valor: campoParaTela(c),
       resumo: `${como} o campo ${c.nome} no painel ${p.nome}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}`,
       antes: campoParaAuditoria(antes), depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
+    };
+  }
+  /** Só as caixinhas do campo (2.3, o "Editar as caixinhas" do card), como o servidor. */
+  function alterarCaixinhas(id: string, d: ReturnType<typeof CaixinhasGravarSchema.parse>) {
+    const c = A.campos.find((x) => x.id === id);
+    if (!c) throw naoAchado('Campo');
+    const p = A.paineis.find((x) => x.id === c.painelId && !x.deletedAt);
+    if (!p) throw naoAchado('Campo');
+    if (c.tipo !== 'caixinhas') throw bad(`${c.nome} não é de caixinhas: as opções dele se mudam em Painéis › Ajustes › Campos.`);
+    if (!c.ativo) throw bad(`O campo ${c.nome} está desativado.`);
+    const antes = campoParaTela(c);
+    c.opcoes = opcoesConferidas('caixinhas', d.opcoes, antes.opcoes);
+    const mudou = mudancasDasCaixinhas(antes.opcoes, c.opcoes);
+    return {
+      valor: campoParaTela(c),
+      resumo: `Mudou as caixinhas de ${nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name })))} no painel ${p.nome}${mudou.length ? `: ${mudou.join('; ')}` : ' (nada mudou)'}`,
+      antes: { opcoes: antes.opcoes }, depois: { opcoes: c.opcoes.map((o) => ({ ...o })) },
     };
   }
   function ordenarCampos(painelId: string, ids: string[]) {
@@ -4293,6 +4314,14 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       ctx.requirePerm('tickets.manage'); preparar();
       const r = id ? alterarCampo(id, dados) : criarCampo(painelId, dados);
       auditar(id ? 'update' : 'create', 'ticket_field', r.resumo, r.valor.id, { before: 'antes' in r ? r.antes : undefined, after: r.depois });
+      return r.valor;
+    },
+    async salvarCaixinhas(campoId, d) {
+      await ctx.wait(150);
+      const dados = ler(CaixinhasGravarSchema, d);
+      ctx.requirePerm('tickets.manage'); preparar();
+      const r = alterarCaixinhas(campoId, dados);
+      auditar('update', 'ticket_field', r.resumo, r.valor.id, { before: r.antes, after: r.depois });
       return r.valor;
     },
     async incluirOpcaoDoCampo(campoId, d) {

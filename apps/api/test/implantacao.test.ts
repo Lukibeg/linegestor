@@ -151,9 +151,12 @@ describe('a negociação que abre a implantação', () => {
     expect(m.json().details.implantacao.falta).toMatch(/CNPJ/);
     // nada mudou: a negociação continua no Lead
     expect((await ficha(neg.id)).etapaId).toBe(etapaDe(com, 'Lead').id);
-    const errado = await s.post(`/atendimento/chamados/${neg.id}/mover`, { etapaId: para.id, implantacao: { cnpj: '11.222.333/0001-80' } });
+    const errado = await s.post(`/atendimento/chamados/${neg.id}/mover`, { etapaId: para.id, implantacao: { cnpj: '11.222.333/0001' } });
     expect(errado.statusCode).toBe(400);
-    expect(errado.json().error).toMatch(/dígito verificador/);
+    expect(errado.json().error).toBe('O CNPJ tem 14 números: faltam 2.');
+    // o dígito verificador não é conferido na janela: os 14 números bastam
+    const semConferir = await s.get(`/atendimento/chamados/${neg.id}/ao-mover?etapaId=${para.id}&cnpj=${encodeURIComponent('11.222.333/0001-80')}`);
+    expect(semConferir.json().implantacao).toMatchObject({ cliente: { tipo: 'novo', cnpj: '11222333000180', erro: null }, falta: null });
   });
 
   it('com o CNPJ: o cliente (com a Matriz), os produtos sem a data, o card ligado e o histórico dos dois', async () => {
@@ -310,5 +313,56 @@ describe('o card da implantação', () => {
     const r = await s.post(`/atendimento/chamados/${card.id}/mover`, { etapaId: etapaDe(imp, 'Implantado').id });
     expect(r.statusCode, r.body).toBe(200);
     expect((r.json() as FichaChamado).historico.at(-1)!.texto).toBe('chegou em Implantado: o cadastro de Padaria Sol já estava em dia');
+  });
+});
+
+describe('as caixinhas em pastas (2.3)', () => {
+  it('o modelo traz a Configuração do LinePBX em pastas; o Editar as caixinhas muda as caixinhas e as pastas, e só elas', async () => {
+    const conf = campo('Configuração do ambiente', 'linepbx');
+    const pasta = (nome: string) => conf.opcoes.filter((o) => o.pasta === nome).map((o) => o.nome);
+    expect([...new Set(conf.opcoes.map((o) => o.pasta))]).toEqual(['Servidor', 'Asterisk', 'LinePBX Web', 'Módulos', 'Telefones']);
+    expect(pasta('Asterisk')).toEqual(['Configuração dos ramais', 'Configuração da rota de entrada', 'Configuração das URAs e filas', 'Configuração do FHA', 'Alinhamento do tronco']);
+    expect(pasta('Módulos')).toEqual(['Instalação do LineReports']);
+    // renomeia uma, leva outra para uma pasta nova, inclui uma no Asterisk e tira a dos telefones
+    const id = (nome: string) => conf.opcoes.find((o) => o.nome === nome)!.id;
+    const opcoes = conf.opcoes.filter((o) => o.nome !== 'Configuração dos telefones').map((o) => ({
+      id: o.id, nome: o.nome === 'Configuração dos ramais' ? 'Ramais' : o.nome, ativa: true, pasta: o.nome === 'Alinhamento do tronco' ? 'Operadora' : o.pasta,
+    }));
+    opcoes.splice(6, 0, { nome: 'Configuração do Callback', ativa: true, pasta: 'Asterisk' } as (typeof opcoes)[number]);
+    const r = await s.put(`/atendimento/campos/${conf.id}/caixinhas`, { opcoes });
+    expect(r.statusCode, r.body).toBe(200);
+    const depois: CampoPersonalizado = r.json();
+    expect(depois.opcoes.find((o) => o.id === id('Configuração dos ramais'))).toMatchObject({ nome: 'Ramais', pasta: 'Asterisk', ativa: true });
+    expect(depois.opcoes.find((o) => o.id === id('Alinhamento do tronco'))!.pasta).toBe('Operadora');
+    expect(depois.opcoes.find((o) => o.nome === 'Configuração do Callback')).toMatchObject({ pasta: 'Asterisk', ativa: true });
+    expect(depois.opcoes.find((o) => o.id === id('Configuração dos telefones'))).toMatchObject({ ativa: false, pasta: 'Telefones' });
+    // o resto do campo fica como estava
+    expect(depois).toMatchObject({ nome: conf.nome, parte: conf.parte, produtoId: conf.produtoId, dica: conf.dica, ativo: true });
+    const auds = await auditoria();
+    expect(auds.map((a) => a.summary)).toContain(
+      'Mudou as caixinhas de Configuração do ambiente (LinePBX) no painel Implantação: incluiu Configuração do Callback (Asterisk); renomeou Configuração dos ramais para Ramais; '
+      + 'levou Alinhamento do tronco para a pasta Operadora; desativou Configuração dos telefones',
+    );
+  });
+
+  it('a caixinha que o card já marcou continua marcada nele, desativada; os outros campos e quem não cuida, não', async () => {
+    const conf = campo('Configuração do ambiente', 'linechat');
+    const marcada = conf.opcoes[0]!;
+    expect((await ficha(card.id)).campos[conf.id]).toContain(marcada.id);
+    const r = await s.put(`/atendimento/campos/${conf.id}/caixinhas`, { opcoes: conf.opcoes.slice(1).map((o) => ({ id: o.id, nome: o.nome })) });
+    expect(r.statusCode, r.body).toBe(200);
+    expect((r.json() as CampoPersonalizado).opcoes.find((o) => o.id === marcada.id)!.ativa).toBe(false);
+    expect((await ficha(card.id)).campos[conf.id]).toContain(marcada.id);
+    // só as caixinhas
+    const mods = campo('Módulos a ativar', 'linechat');
+    expect((await s.put(`/atendimento/campos/${mods.id}/caixinhas`, { opcoes: [{ nome: 'X' }] })).statusCode).toBe(400);
+    expect((await s.put(`/atendimento/campos/${conf.id}/caixinhas`, { opcoes: [{ id: marcada.id, nome: marcada.nome, ativa: false }] })).statusCode).toBe(400);
+    expect((await s.put(`/atendimento/campos/${conf.id}/caixinhas`, { opcoes: [{ nome: 'A' }, { nome: 'a' }] })).statusCode).toBe(400);
+    // quem só trabalha nos chamados não muda as caixinhas
+    const papeis = (await s.get('/admin/roles')).json() as Array<{ id: string; key: string }>;
+    await s.post('/admin/users', { name: 'Marina Costa', email: 'marina.imp@gestor.local', password: 'SenhaDeTeste!123', roleId: papeis.find((x) => x.key === 'operador')!.id });
+    const operador = new Session(app);
+    await operador.login('marina.imp@gestor.local', 'SenhaDeTeste!123');
+    expect((await operador.put(`/atendimento/campos/${conf.id}/caixinhas`, { opcoes: [{ nome: 'X' }] })).statusCode).toBe(403);
   });
 });

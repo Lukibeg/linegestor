@@ -346,6 +346,7 @@ export const realApi: Api = {
     colarAssuntos: (painelId, texto) => http('POST', `/atendimento/paineis/${painelId}/assuntos/colar`, { texto }),
     salvarCamposDoSistema: (painelId, d) => http('PUT', `/atendimento/paineis/${painelId}/campos-do-sistema`, d),
     salvarCampo: (painelId, id, d) => (id ? http('PUT', `/atendimento/campos/${id}`, d) : http('POST', `/atendimento/paineis/${painelId}/campos`, d)),
+    salvarCaixinhas: (campoId, d) => http('PUT', `/atendimento/campos/${campoId}/caixinhas`, d),
     ordenarCampos: (painelId, ids) => http('PUT', `/atendimento/paineis/${painelId}/campos/ordem`, { ids }),
     incluirOpcaoDoCampo: (campoId, d) => http('POST', `/atendimento/campos/${campoId}/opcoes`, d),
     etiquetas: () => http('GET', '/atendimento/etiquetas'),

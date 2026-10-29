@@ -27,6 +27,7 @@ import {
   type AjustesDoPainel, type AjustesPrazos, type Assunto, type AssuntoGravarSchema, type AvisosChamadosGravar, type AvisosChamadosTela, type CampoDoSistema,
   type CampoGravarSchema, type CampoPersonalizado, type CamposDoSistemaSchema, type EtapasGravarSchema, type Nivel, type Obrigatorio, type OpcaoDoCampo,
   type Painel, type PainelGravarSchema, type TipoEtapa,
+  mudancasDasCaixinhas, nomeCompletoDoCampo, opcaoDoModelo, type CaixinhasGravarSchema, type OpcaoDoModelo,
 } from '@gestor/shared';
 import { BadRequest, Conflict, NotFound } from '../../plugins/errors.js';
 import * as integ from '../integracoes.js';
@@ -38,6 +39,7 @@ type EtapasGravar = z.infer<typeof EtapasGravarSchema>;
 export type EtapaGravar = EtapasGravar['etapas'][number];
 type AssuntoGravar = z.infer<typeof AssuntoGravarSchema>;
 type CampoGravar = z.infer<typeof CampoGravarSchema>;
+type CaixinhasGravar = z.infer<typeof CaixinhasGravarSchema>;
 type CamposDoSistemaGravar = z.infer<typeof CamposDoSistemaSchema>;
 export type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 type LinhaDaEtapa = typeof ticketStages.$inferSelect;
@@ -186,7 +188,7 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
     // implantação (2.3), com os do Ingline - Ativações (a curadoria, a configuração e os testes de cada produto)
     const doCatalogo = modelo ? await db.select({ id: products.id, code: products.code }).from(products).where(isNull(products.deletedAt)) : [];
     const produtoDoCodigo = (code: string | null) => (code ? doCatalogo.find((x) => x.code === code)?.id ?? null : null);
-    const camposDeFabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: string[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null }> = modelo
+    const camposDeFabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null }> = modelo
       // o campo de um produto que não está no catálogo fica de fora (os módulos não teriam de onde vir)
       ? modelo.campos.filter((c) => !c.produto || produtoDoCodigo(c.produto)).map((c) => ({ ...c, produtoId: produtoDoCodigo(c.produto) }))
       : tipo === 'vendas' ? [...CAMPOS_DO_PAINEL_DE_VENDAS] : [];
@@ -197,7 +199,7 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
       if (camposDeFabrica.length) {
         await tx.insert(ticketFields).values(camposDeFabrica.map((c, ordem) => ({
           id: newId(), panelId: novoId, name: c.nome, kind: c.tipo, help: c.dica, active: true, sortOrder: ordem,
-          options: c.opcoes.map((nome) => ({ id: newId(), nome, ativa: true })), inlineOptions: !!c.incluirNaHora,
+          options: c.opcoes.map(opcaoDoModelo).map((o) => ({ id: newId(), nome: o.nome, ativa: true, ...(o.pasta ? { pasta: o.pasta } : {}) })), inlineOptions: !!c.incluirNaHora,
           section: c.parte ?? null, productId: c.produtoId ?? null,
         })));
       }
@@ -680,11 +682,19 @@ function conferirCampo(p: typeof ticketPanels.$inferSelect, outros: CampoPersona
   if (igual) throw new Conflict(`O painel ${p.name} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
   if (atual && atual.tipo !== d.tipo) throw new BadRequest(`O tipo do campo não muda depois de criado (${atual.nome} é ${NOME_TIPO_CAMPO[atual.tipo]}). Crie outro campo e desative este.`);
   if (!temOpcoesEscritas(d.tipo)) return [];
-  const existentes = atual?.opcoes ?? [];
-  const opcoes: OpcaoDoCampo[] = d.opcoes.map((o) => {
-    if (!o.id) return { id: newId(), nome: o.nome, ativa: o.ativa };
+  return opcoesConferidas(d.tipo, d.opcoes, atual?.opcoes ?? []);
+}
+
+/**
+ * As opções gravadas: a que vem com id é do campo; a sem id é nova; a que não veio fica desativada (o chamado que já a tem
+ * continua com ela). A pasta (2.3) só nas caixinhas. O nome não repete (a desativada conta).
+ */
+function opcoesConferidas(tipo: CampoPersonalizado['tipo'], vindas: CampoGravar['opcoes'], existentes: OpcaoDoCampo[]): OpcaoDoCampo[] {
+  const pasta = (p: string | null | undefined) => (tipo === 'caixinhas' && p ? { pasta: p } : {});
+  const opcoes: OpcaoDoCampo[] = vindas.map((o) => {
+    if (!o.id) return { id: newId(), nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
     if (!existentes.some((x) => x.id === o.id)) throw new BadRequest(`A opção ${o.nome} não é deste campo. Recarregue a tela e tente de novo.`);
-    return { id: o.id, nome: o.nome, ativa: o.ativa };
+    return { id: o.id, nome: o.nome, ativa: o.ativa, ...pasta(o.pasta) };
   });
   for (const x of existentes) if (!opcoes.some((o) => o.id === x.id)) opcoes.push({ ...x, ativa: false });
   const vistas = new Set<string>();
@@ -771,6 +781,35 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
     valor: c,
     resumo: `${como} o campo ${c.nome} no painel ${p.name}${antes.nome !== c.nome ? ` (antes: ${antes.nome})` : ''}`,
     antes: campoParaAuditoria(antes), depois: { ...campoParaAuditoria(c), obrigatorio: pedido },
+  };
+}
+
+/**
+ * Só as caixinhas de um campo (2.3, o "Editar as caixinhas" do card: "eu tenho que poder criar e editar facilmente"): criar,
+ * renomear, tirar, mudar a ordem e as pastas, sem mexer no resto do campo (o nome, a parte, onde é obrigatório). Vale para
+ * todos os cards do painel; a que sai fica desativada (o card que já a marcou continua com ela). Quem cuida dos chamados.
+ */
+export async function alterarCaixinhas(db: Db, campoId: string, d: CaixinhasGravar): Promise<Gravado<CampoPersonalizado>> {
+  const r = await db.transaction(async (tx) => {
+    // a linha do campo fica travada: duas pessoas editando ao mesmo tempo não perdem uma a mudança da outra
+    const [linha] = await tx.select().from(ticketFields).where(eq(ticketFields.id, campoId)).for('update').limit(1);
+    if (!linha) throw new NotFound('Campo');
+    const [p] = await tx.select().from(ticketPanels).where(and(eq(ticketPanels.id, linha.panelId), isNull(ticketPanels.deletedAt))).limit(1);
+    if (!p) throw new NotFound('Campo');
+    const antes = campoDaLinha(linha);
+    if (antes.tipo !== 'caixinhas') throw new BadRequest(`${antes.nome} não é de caixinhas: as opções dele se mudam em Painéis › Ajustes › Campos.`);
+    if (!antes.ativo) throw new BadRequest(`O campo ${antes.nome} está desativado.`);
+    const opcoes = opcoesConferidas('caixinhas', d.opcoes, antes.opcoes);
+    await tx.update(ticketFields).set({ options: opcoes, updatedAt: new Date() }).where(eq(ticketFields.id, campoId));
+    return { p, antes, opcoes };
+  });
+  const c = (await carregarCampos(db, r.p.id)).find((x) => x.id === campoId)!;
+  const doCatalogo = await db.select({ id: products.id, nome: products.name }).from(products);
+  const mudou = mudancasDasCaixinhas(r.antes.opcoes, r.opcoes);
+  return {
+    valor: c,
+    resumo: `Mudou as caixinhas de ${nomeCompletoDoCampo(c, doCatalogo)} no painel ${r.p.name}${mudou.length ? `: ${mudou.join('; ')}` : ' (nada mudou)'}`,
+    antes: { opcoes: r.antes.opcoes }, depois: { opcoes: c.opcoes },
   };
 }
 

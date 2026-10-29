@@ -1496,9 +1496,9 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
         campos: [
           {
             produto: 'linepbx', nome: 'Configuração do ambiente', valor: [
-              'Criação do ambiente', 'Asterisk - Configuração dos ramais', 'Asterisk - Configuração da rota de entrada', 'Asterisk - Configuração das URAs e filas',
-              'Asterisk - Configuração do FHA', 'Asterisk - Alinhamento do tronco', 'LinePBX Web - Configuração dos usuários', 'LinePBX Web - Configuração das equipes',
-              'LineReports - Instalação', 'Configuração dos telefones',
+              'Criação do ambiente', 'Configuração dos ramais', 'Configuração da rota de entrada', 'Configuração das URAs e filas',
+              'Configuração do FHA', 'Alinhamento do tronco', 'Configuração dos usuários', 'Configuração das equipes',
+              'Instalação do LineReports', 'Configuração dos telefones',
             ],
           },
           { produto: 'linepbx', nome: 'Módulos a ativar', valor: ['Line Reports', 'NPS'] },
@@ -1529,8 +1529,8 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
         campos: [
           {
             produto: 'linepbx', nome: 'Configuração do ambiente', valor: [
-              'Criação do ambiente', 'Asterisk - Configuração dos ramais', 'Asterisk - Configuração da rota de entrada', 'Asterisk - Configuração das URAs e filas',
-              'Asterisk - Alinhamento do tronco', 'LinePBX Web - Configuração dos usuários', 'Configuração dos telefones',
+              'Criação do ambiente', 'Configuração dos ramais', 'Configuração da rota de entrada', 'Configuração das URAs e filas',
+              'Alinhamento do tronco', 'Configuração dos usuários', 'Configuração dos telefones',
             ],
           },
           { produto: 'linepbx', nome: 'Módulos a ativar', valor: ['FOP2'] },

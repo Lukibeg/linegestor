@@ -153,7 +153,8 @@ export function assuntoDaLinha(s: typeof ticketSubjects.$inferSelect): Assunto {
 export function campoDaLinha(c: typeof ticketFields.$inferSelect): CampoPersonalizado {
   return {
     id: c.id, painelId: c.panelId, nome: c.name, tipo: c.kind as TipoCampo, dica: c.help,
-    opcoes: ((c.options as OpcaoDoCampo[] | null) ?? []).map((o) => ({ id: o.id, nome: o.nome, ativa: o.ativa !== false })),
+    // a pasta (2.3) só nas caixinhas
+    opcoes: ((c.options as OpcaoDoCampo[] | null) ?? []).map((o) => ({ id: o.id, nome: o.nome, ativa: o.ativa !== false, ...(c.kind === 'caixinhas' && o.pasta ? { pasta: o.pasta } : {}) })),
     ativo: c.active, ordem: c.sortOrder,
     // só a lista de uma opção inclui na hora (o tipo não muda, mas a marca guardada vale só para ela)
     incluirNaHora: c.kind === 'lista' && c.inlineOptions,

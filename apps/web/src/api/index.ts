@@ -369,6 +369,8 @@ export type Api = {
     salvarCamposDoSistema(painelId: string, d: T.CamposDoSistemaEntrada): Promise<T.Painel>;
     /** criar (sem id) ou mudar um campo do painel; obrigatório para abrir e nas etapas escolhidas */
     salvarCampo(painelId: string, id: string | null, d: T.CampoGravarEntrada): Promise<T.CampoPersonalizado>;
+    /** só as caixinhas de um campo de caixinhas (2.3, o "Editar as caixinhas" do card: os nomes, a ordem e as pastas) */
+    salvarCaixinhas(campoId: string, d: T.CaixinhasGravarEntrada): Promise<T.CampoPersonalizado>;
     /** a ordem dos campos do painel (todos os ids) */
     ordenarCampos(painelId: string, ids: string[]): Promise<T.CampoPersonalizado[]>;
     /** incluir uma opção numa lista do painel ali mesmo (2.0.3, só nas listas que incluem na hora: a Indicação) */

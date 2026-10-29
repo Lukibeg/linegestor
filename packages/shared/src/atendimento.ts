@@ -409,7 +409,50 @@ export const MAX_OPCOES_DO_CAMPO = 50;
 /** Até quantas letras cabem no texto curto e no longo. */
 export const MAX_LETRAS_DO_CAMPO = { texto: 300, texto_longo: 5000 } as const;
 
-export type OpcaoDoCampo = { id: string; nome: string; ativa: boolean };
+/**
+ * Uma opção do campo. A `pasta` (2.3, só nas caixinhas: "como se fosse pastas das configurações … do servidor, do asterisk,
+ * do linepbx web, dos módulos"): as caixinhas da mesma pasta ficam juntas na ficha, com a conta de cada uma.
+ */
+export type OpcaoDoCampo = { id: string; nome: string; ativa: boolean; pasta?: string | null };
+/** As caixinhas em pastas, na ordem: primeiro as sem pasta, depois cada pasta na ordem em que aparece. */
+export type PastaDasCaixinhas = { pasta: string | null; opcoes: OpcaoDoCampo[] };
+export function pastasDasCaixinhas(opcoes: readonly OpcaoDoCampo[]): PastaDasCaixinhas[] {
+  const sem: OpcaoDoCampo[] = [];
+  const pastas = new Map<string, PastaDasCaixinhas>();
+  for (const o of opcoes) {
+    const nome = o.pasta?.trim();
+    if (!nome) { sem.push(o); continue; }
+    const k = paraBusca(nome);
+    const p = pastas.get(k) ?? { pasta: nome, opcoes: [] };
+    p.opcoes.push(o);
+    pastas.set(k, p);
+  }
+  return [...(sem.length ? [{ pasta: null, opcoes: sem }] : []), ...pastas.values()];
+}
+/**
+ * O que mudou nas caixinhas (2.3, o "Editar as caixinhas" do card), para a auditoria: as incluídas, as renomeadas, as que
+ * mudaram de pasta, as desativadas e as reativadas; só a ordem, quando nada disso mudou.
+ */
+export function mudancasDasCaixinhas(antes: readonly OpcaoDoCampo[], depois: readonly OpcaoDoCampo[]): string[] {
+  const e = (xs: string[]) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`);
+  const pasta = (o: OpcaoDoCampo) => o.pasta?.trim() || null;
+  const velha = new Map(antes.map((o) => [o.id, o]));
+  const incluiu: string[] = []; const renomeou: string[] = []; const mudouDePasta: string[] = []; const desativou: string[] = []; const reativou: string[] = [];
+  for (const o of depois) {
+    const v = velha.get(o.id);
+    if (!v) { if (o.ativa) incluiu.push(pasta(o) ? `${o.nome} (${pasta(o)})` : o.nome); continue; }
+    if (v.nome !== o.nome) renomeou.push(`${v.nome} para ${o.nome}`);
+    if (pasta(v) !== pasta(o) && o.ativa) mudouDePasta.push(`${o.nome} ${pasta(o) ? `para a pasta ${pasta(o)}` : 'para fora das pastas'}`);
+    if (v.ativa && !o.ativa) desativou.push(o.nome);
+    if (!v.ativa && o.ativa) reativou.push(o.nome);
+  }
+  const partes = [
+    incluiu.length ? `incluiu ${e(incluiu)}` : '', renomeou.length ? `renomeou ${e(renomeou)}` : '', mudouDePasta.length ? `levou ${e(mudouDePasta)}` : '',
+    desativou.length ? `desativou ${e(desativou)}` : '', reativou.length ? `reativou ${e(reativou)}` : '',
+  ].filter(Boolean);
+  if (!partes.length && antes.map((o) => o.id).join() !== depois.map((o) => o.id).join()) partes.push('mudou a ordem');
+  return partes;
+}
 export type CampoPersonalizado = {
   id: string;
   painelId: string;
@@ -1255,16 +1298,29 @@ export const AssuntoGravarSchema = z.object({
 });
 export const AssuntosColarSchema = z.object({ texto: Texto(50_000) });
 
+const OpcoesGravarSchema = z.array(z.object({
+  id: z.string().min(1).max(60).optional(),
+  nome: z.string().trim().min(1, 'Dê um nome à opção').max(60, 'O nome da opção vai até 60 letras'),
+  ativa: z.boolean().default(true),
+  /** a pasta da caixinha (2.3); nas listas, não vale */
+  pasta: z.string().trim().max(40, 'O nome da pasta vai até 40 letras').nullish().transform((v) => v || null),
+})).max(MAX_OPCOES_DO_CAMPO, `Uma lista vai até ${MAX_OPCOES_DO_CAMPO} opções`);
+/** As opções não repetem o nome (a desativada conta). */
+function opcoesSemRepetir(opcoes: ReadonlyArray<{ nome: string }>, ctx: z.RefinementCtx) {
+  const vistas = new Set<string>();
+  for (const o of opcoes) {
+    const k = paraBusca(o.nome);
+    if (vistas.has(k)) { ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: `Duas opções com o nome ${o.nome}` }); return; }
+    vistas.add(k);
+  }
+}
+
 /** Criar ou mudar um campo do painel. Sem `id` na opção = opção nova; a opção que não vier fica desativada. */
 export const CampoGravarSchema = z.object({
   nome: z.string().trim().min(1, 'Dê um nome ao campo').max(40, 'O nome do campo vai até 40 letras'),
   tipo: z.enum(TIPOS_CAMPO),
   dica: TextoOpcional(200),
-  opcoes: z.array(z.object({
-    id: z.string().min(1).max(60).optional(),
-    nome: z.string().trim().min(1, 'Dê um nome à opção').max(60, 'O nome da opção vai até 60 letras'),
-    ativa: z.boolean().default(true),
-  })).max(MAX_OPCOES_DO_CAMPO, `Uma lista vai até ${MAX_OPCOES_DO_CAMPO} opções`).default([]),
+  opcoes: OpcoesGravarSchema.default([]),
   ativo: z.boolean().default(true),
   /** o chamado só abre com ele preenchido */
   obrigatorioAoAbrir: z.boolean().default(false),
@@ -1286,12 +1342,15 @@ export const CampoGravarSchema = z.object({
   if (!c.opcoes.some((o) => o.ativa) && !(c.tipo === 'lista' && c.incluirNaHora)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: c.tipo === 'caixinhas' ? 'As caixinhas precisam de pelo menos uma opção' : 'A lista precisa de pelo menos uma opção' });
   }
-  const vistas = new Set<string>();
-  for (const o of c.opcoes) {
-    const k = paraBusca(o.nome);
-    if (vistas.has(k)) { ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: `Duas opções com o nome ${o.nome}` }); break; }
-    vistas.add(k);
-  }
+  opcoesSemRepetir(c.opcoes, ctx);
+});
+/**
+ * Só as caixinhas do campo (2.3, o "Editar as caixinhas" do card: criar, renomear, tirar, mudar a ordem e as pastas), sem
+ * mexer no resto do campo. Vale para todos os cards do painel; a que sai fica desativada (o card que a marcou continua com ela).
+ */
+export const CaixinhasGravarSchema = z.object({ opcoes: OpcoesGravarSchema }).superRefine((c, ctx) => {
+  if (!c.opcoes.some((o) => o.ativa)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['opcoes'], message: 'As caixinhas precisam de pelo menos uma opção' });
+  opcoesSemRepetir(c.opcoes, ctx);
 });
 /** Os campos do sistema que o painel usa (desligados) e as opções do Tipo. */
 export const CamposDoSistemaSchema = z.object({
@@ -3116,6 +3175,7 @@ export type AgendadoGravarEntrada = z.input<typeof AgendadoGravarSchema>;
 export type AvisosChamadosEntrada = z.input<typeof AvisosChamadosSchema>;
 export type WebhookGravarEntrada = z.input<typeof WebhookGravarSchema>;
 export type CampoGravarEntrada = z.input<typeof CampoGravarSchema>;
+export type CaixinhasGravarEntrada = z.input<typeof CaixinhasGravarSchema>;
 /** Incluir uma opção numa lista do painel ali mesmo (só nas que permitem: `incluirNaHora`). */
 export const OpcaoIncluirSchema = z.object({ nome: z.string().trim().min(1, 'Escreva o nome da opção').max(60, 'O nome da opção vai até 60 letras').transform((s) => s.replace(/\s+/g, ' ')) });
 export type OpcaoIncluirEntrada = z.input<typeof OpcaoIncluirSchema>;
