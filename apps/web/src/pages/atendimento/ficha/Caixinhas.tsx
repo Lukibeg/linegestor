@@ -3,6 +3,8 @@
  * o cliente vai usar. Cada caixinha marcada mostra quem marcou e quando. Marcar grava na hora; os cliques seguidos vão um
  * depois do outro (a caixinha muda na tela antes, e volta se o servidor recusar).
  *
+ * O anexo vai na caixinha (o clipe ao lado do nome); o campo das caixinhas não tem o Anexar do campo todo.
+ *
  * As caixinhas em pastas (o Servidor, o Asterisk, o LinePBX Web…) ficam juntas, com a conta de cada pasta; quem cuida dos
  * chamados muda as caixinhas e as pastas ali mesmo, no "Editar as caixinhas" (vale para todos os cards do painel).
  */
@@ -57,7 +59,6 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
 
   const feitos = opcoes.filter((o) => marcados.includes(o.id)).length;
   const podeEditar = cuida && c.tipo === 'caixinhas' && c.ativo;
-  const anexosDoCampo = useAnexosDe(c.id);
   return (
     <div id={`campo-c-${c.id}`} className="min-w-0 scroll-mt-24">
       {comTitulo && (
@@ -66,15 +67,11 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
           {c.tipo === 'caixinhas' && opcoes.length > 0 && <span className="text-[12px] text-muted">{feitos} de {opcoes.length}</span>}
           <MarcaFalta campo={`campo:${c.id}`} />
           {acao.ocupado && <Spinner className="!w-3.5 !h-3.5" />}
-          {pode && (
-            <span className="ml-auto flex items-start gap-1">
-              <BotaoAnexar campoId={c.id} rotulo={`Anexar em ${c.nome}`} />
-              {podeEditar && (
-                <button type="button" className="btn-ghost btn-sm -my-1 text-[12.5px]" onClick={() => setEditando(true)} title="Criar, renomear e tirar caixinhas e pastas (vale para todos os cards do painel)">
-                  <ListChecks size={14} /> Editar as caixinhas
-                </button>
-              )}
-            </span>
+          {/* sem o Anexar do campo todo (2.3, o Luan: "nas configurações n precisa de ter anexar"): o anexo vai no clipe de cada caixinha */}
+          {podeEditar && (
+            <button type="button" className="btn-ghost btn-sm -my-1 ml-auto text-[12.5px]" onClick={() => setEditando(true)} title="Criar, renomear e tirar caixinhas e pastas (vale para todos os cards do painel)">
+              <ListChecks size={14} /> Editar as caixinhas
+            </button>
           )}
         </div>
       )}
@@ -90,7 +87,6 @@ export function Caixinhas({ c, comTitulo = true }: { c: CampoPersonalizado; comT
       ) : (
         <ListaDeCaixinhas c={c} opcoes={opcoes} marcados={marcados} onTrocar={trocar} />
       )}
-      <ListaDeAnexos anexos={anexosDoCampo} />
       <ErroPerto erro={acao.erro} />
       {editando && <JanelaDasCaixinhas c={c} onFechar={() => setEditando(false)} />}
     </div>

@@ -1920,6 +1920,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (c.produtoId && !e.t.produtos.includes(c.produtoId)) throw bad(`O campo ${c.nome} é de um produto que ${e.painel.tipo === 'vendas' ? 'a negociação' : 'o chamado'} não tem.`);
     const opcao = opcaoId ? c.opcoes.find((o) => o.id === opcaoId) ?? null : null;
     if (opcaoId && (!opcao || !ehCaixinhas(c.tipo))) throw bad('A caixinha não é deste campo. Recarregue a tela e tente de novo.');
+    if (!opcao && ehCaixinhas(c.tipo)) throw bad('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');
     return { c, opcao, nome: nomeCompletoDoCampo(c, S.products.map((x) => ({ id: x.id, nome: x.name }))) };
   }
   function anexarNoCampo(ator: Ator, ref: string, campoId: string, d: { opcaoId: string | null; anexos: Array<{ fileName: string; conteudo: string }> }, agora: Date = agoraReal()): Feito {

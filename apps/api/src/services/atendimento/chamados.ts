@@ -1326,6 +1326,8 @@ function campoParaAnexo(e: Estado, campoId: string, opcaoId: string | null) {
   if (c.produtoId && !e.t.productIds.includes(c.produtoId)) throw new BadRequest(`O campo ${c.nome} é de um produto que ${e.painel.tipo === 'vendas' ? 'a negociação' : 'o chamado'} não tem.`);
   const opcao = opcaoId ? c.opcoes.find((o) => o.id === opcaoId) ?? null : null;
   if (opcaoId && (!opcao || !ehCaixinhas(c.tipo))) throw new BadRequest('A caixinha não é deste campo. Recarregue a tela e tente de novo.');
+  // o campo das caixinhas não recebe anexo no campo todo (o Luan: "nas configurações n precisa de ter anexar")
+  if (!opcao && ehCaixinhas(c.tipo)) throw new BadRequest('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');
   return { c, opcao, nome: nomeCompletoDoCampo(c, e.ctx.produtos) };
 }
 

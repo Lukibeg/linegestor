@@ -51,7 +51,7 @@ Voltar a negociação e mover de novo não abre outro card.
   (levam a caixinha de uma pasta para a outra), o × (a caixinha que um card já marcou fica desativada, e ele continua
   com ela) › Salvar. Vale para todos os cards do painel.
 - **Os anexos.** Cada campo tem o **Anexar**, e cada caixinha, o clipe (ao lado do nome): imagens, PDF, Word, Excel, até
-  10 MB cada. A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
+  10 MB cada. Nos campos de caixinhas (a Configuração do ambiente, os Testes, os Módulos), o anexo vai só na caixinha. A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
   Sai do card quem anexou ou quem cuida dos chamados (o histórico guarda).
 - Cada parte mostra a conta (**3 de 5**); a parte da etapa em que o card está fica aberta, e as outras abrem com um
   clique. O cartão do quadro mostra a barrinha da parte da etapa.

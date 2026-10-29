@@ -84,7 +84,8 @@ a gente concluir a implantação no painel de implantação"*.
    ou caixinha) e `DELETE /atendimento/chamados/:id/anexos/:anexoId` (quem anexou ou quem cuida). A imagem em miniatura,
    o PDF no leitor do Gestor, o Word e o Excel com o nome e o ícone (baixam). O histórico diz "anexou print.png em
    Configuração do ambiente (LinePBX) › Configuração dos ramais" e "tirou …". Vale para os campos de todos os painéis
-   (não para os do sistema, como o Assunto).
+   (não para os do sistema, como o Assunto). Nos campos de caixinhas (e de módulos), o anexo vai só na caixinha: o campo
+   todo não tem o Anexar (29/10, no card: *"nas configurações n precisa de ter anexar"*), e o servidor recusa.
 11. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
    cadastro)"; no card, "veio da negociação COM-12"; no Implantado, "ligou no cadastro de X o produto … e os módulos …,
    desde …"; a auditoria ganha as linhas do cliente criado, do card aberto e do que ligou no cadastro.

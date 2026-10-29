@@ -1334,9 +1334,12 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(f.anexosDosCampos.find((a) => a.nome === 'ramais.png')).toMatchObject({ campoId: conf.id, opcaoId: ramais.id, imagem: true, podeTirar: true });
     expect(f.historico.at(-1)!.texto).toBe('anexou ramais.png em Configuração do ambiente (LinePBX) › Configuração dos ramais');
     expect((await erroDe(api.anexarNoCampo(horizonte.id, conf.id, { opcaoId: 'nao-existe', anexos: [{ fileName: 'x.png', conteudo: PNG }] }))).status).toBe(400);
-    // o do operador: ele tira o dele, não o do Luan
+    // nas caixinhas, o anexo vai na caixinha (o campo todo não recebe)
+    expect((await erroDe(api.anexarNoCampo(horizonte.id, conf.id, { anexos: [{ fileName: 'x.png', conteudo: PNG }] }))).message).toBe('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');
+    // o do operador (no campo da Lista de ramais): ele tira o dele, não o do Luan
+    const lista = campoDe(op, imp.id, 'Lista de ramais', pbx);
     await entrar('operador');
-    const doOp = await api.anexarNoCampo(horizonte.id, conf.id, { anexos: [{ fileName: 'do operador.png', conteudo: PNG }] });
+    const doOp = await api.anexarNoCampo(horizonte.id, lista.id, { anexos: [{ fileName: 'do operador.png', conteudo: PNG }] });
     const meu = doOp.anexosDosCampos.find((a) => a.nome === 'do operador.png')!;
     const doLuan = doOp.anexosDosCampos.find((a) => a.nome === 'ramais.png')!;
     expect(meu.opcaoId).toBeNull();
@@ -1344,7 +1347,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect((await erroDe(api.tirarAnexoDoCampo(horizonte.id, doLuan.id))).status).toBe(403);
     const sem = await api.tirarAnexoDoCampo(horizonte.id, meu.id);
     expect(sem.anexosDosCampos.some((a) => a.id === meu.id)).toBe(false);
-    expect(sem.historico.at(-1)!.texto).toBe('tirou do operador.png de Configuração do ambiente (LinePBX)');
+    expect(sem.historico.at(-1)!.texto).toBe('tirou do operador.png de Lista de ramais (LinePBX)');
   });
 
   it('o painel pelo modelo e as regras dos campos (o produto dos módulos, o mesmo nome em produtos diferentes)', async () => {

@@ -414,8 +414,10 @@ describe('os anexos dos campos e das caixinhas (2.3)', () => {
     const demais = await anexar(s, testes.id, op.id, 'a mais.png');
     expect(demais.statusCode).toBe(400);
     expect(demais.json().error).toMatch(/cabem até 20/);
-    // o campo todo tem o limite dele (a caixinha não conta)
-    expect((await anexar(s, testes.id, null, 'do campo.png')).statusCode).toBe(200);
+    // nas caixinhas, o anexo vai na caixinha: o campo todo não recebe ("nas configurações n precisa de ter anexar")
+    const noCampo = await anexar(s, testes.id, null, 'do campo.png');
+    expect(noCampo.statusCode).toBe(400);
+    expect(noCampo.json().error).toBe('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');
   });
 
   it('tirar: o seu, ou qualquer um se cuida dos chamados; o arquivo deixa de abrir', async () => {
