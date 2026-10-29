@@ -295,3 +295,19 @@ No documento de 23/10:
   simulação. O mesmo na lista das simulações.
 - **A mesma simulação em dois lugares** (a página e, por cima, a ficha com a simulação na janela): a página, sem
   nada por salvar, fica com o que a janela salvou — e não leva a versão antiga por cima depois.
+
+## Revisto no 2.3 (29/10/2026): o mês a mês sem as colunas
+
+Num comentário na prévia, sobre o gráfico do mês a mês: *"n quero mais esse gráfico em barras n"*. Avisado antes
+(desfaz as colunas do 2.0.2, pedidas por ele, e o conserto do 2.0.3), com a pergunta sobre a linha do acumulado, que
+fica embaixo: *"pode tirar e vc vai tirar apenas o de coluna, o de linha abaixo vai ficar"*.
+
+- **Saiu o gráfico de colunas** (o faturamento para cima, os custos para baixo e o ponto do lucro de cada mês) e,
+  com ele, o corte das colunas do 1º mês. O quadro Mês a mês fica com os totais do contrato, a **linha do
+  acumulado** (o pior momento e o mês em que a venda se paga, com a escala redonda de antes) e a tabela.
+- **O detalhe de cada mês** (cada parte do faturamento e dos custos, o lucro e o acumulado) continua no mouse sobre
+  a linha (ou no toque, no celular) e ganhou a tabela: **um clique na linha do mês abre o detalhe embaixo dela**;
+  outro clique fecha. Passar o mouse na linha da tabela marca o mês no gráfico.
+- **A tabela fica sempre aberta** (saiu o "Esconder a tabela"). No celular, a tabela corre para o lado e o detalhe
+  fica parado, na largura da tela.
+- A conta (`MesDoContrato`, o Excel) não muda.

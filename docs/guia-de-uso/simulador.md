@@ -111,15 +111,14 @@ do mês. No detalhe de cada mês, os custos vêm **um a um, pelo nome** (a "Máq
 comissão…), sem juntar os custos mensais numa linha só.
 
 - Em cima, os totais do contrato: o **faturamento**, os **custos**, o **lucro** e quando a venda **se paga**.
-- No gráfico, cada mês é uma coluna: o faturamento (azul) para cima, os custos (laranja) para baixo e um
-  ponto no lucro do mês. Embaixo, a linha do **acumulado**, com o pior momento e o mês em que a venda se
-  paga. Os eixos vão em números redondos. As colunas do 1º mês, quando são bem maiores que as outras,
-  aparecem cortadas (um vão perto da ponta), com o valor escrito acima (ou abaixo) do gráfico.
-- **Passe o mouse num mês** (ou toque, no celular) para ver o detalhe: cada parte do faturamento (a
-  mensalidade, a ativação, a parcela) e dos custos (os aparelhos e as parcelas da compra, a instalação, os
+- No gráfico, a linha do **acumulado**, com o pior momento e o mês em que a venda se paga (o gráfico de
+  colunas saiu no 2.3). O eixo vai em números redondos.
+- **Passe o mouse num mês** do gráfico (ou toque, no celular) para ver o detalhe: cada parte do faturamento
+  (a mensalidade, a ativação, a parcela) e dos custos (os aparelhos e as parcelas da compra, a instalação, os
   custos mensais, o imposto, as comissões), o lucro e o acumulado.
-- **A tabela** tem todos os meses (o faturamento, os custos, o lucro e o acumulado) e o total do contrato;
-  passar o mouse numa linha marca o mês no gráfico.
+- **A tabela**, sempre aberta, tem todos os meses (o faturamento, os custos, o lucro e o acumulado) e o total
+  do contrato. **Um clique na linha do mês abre o detalhe** embaixo dela (outro clique fecha); passar o mouse
+  numa linha marca o mês no gráfico.
 
 ## Cenários
 
