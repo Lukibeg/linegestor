@@ -12,8 +12,8 @@ visível, uma legenda numerada para cada mudança e uma capa no começo e no fim
 
 Precisa do Playwright (Python) e do ffmpeg. **Cada patch tem o seu roteiro**: troque a função
 `roteiro()` (e o `antes_do_roteiro()`, o que roda atrás da capa), a `PRIMEIRA_TELA` e os textos da
-capa pelos do patch novo — o roteiro do 1.9 fica como
-exemplo (`roteiro_1_9`). O jeito do vídeo
+capa pelos do patch novo — os roteiros do 1.9 e do 2.0 ficam como
+exemplo (`roteiro_1_9`, `roteiro_2_0`). O jeito do vídeo
 (o que o Luan aprovou em 10/10): uns 2 minutos, sem som (o que importa vai na legenda), os dados de
 exemplo da prévia, e a capa e o fim falando com a equipe — nada de "prévia" nem de "quando você der
 o ok": quem assiste é a equipe, no login, depois de publicado.
@@ -44,13 +44,16 @@ URL = os.environ.get('PREVIA_URL', 'http://localhost:4174/')
 SAIDA = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(RAIZ, 'o-que-mudou.mp4')
 
 # ---------- os textos do patch (troque a cada patch) ----------
-CAPA = ('Patch 2.0 — os chamados agora são do Gestor', 'Ingline Gestão · o módulo novo em 2 minutos, com dados de exemplo')
+CAPA = ('Patch 2.3 — a implantação dos clientes', 'Ingline Gestão · do Comercial ao Implantado, em 2 minutos, com dados de exemplo')
 FIM = ('Os detalhes estão em Novidades', 'Cada mudança, com o texto e o print, fica no menu Novidades')
 # a tela que fica atrás da capa (o roteiro começa nela)
-PRIMEIRA_TELA = '/atendimento'
+PRIMEIRA_TELA = '/painel'
 # quanto da capa fica no começo do vídeo, em segundos (a gravação começa com uns 0 a 2 s de
 # diferença do relógio daqui: na prática a capa fica entre 2,5 e 4,5 s)
 CAPA_NO_COMECO = 2.5
+# o cartão de aviso que chega no meio (o "Chamado sem responsável") fecha a cada tela e legenda (2.3: ele cobria a tela;
+# o roteiro do 2.0 mostra o aviso de propósito)
+AVISOS_FECHADOS = True
 
 ASSETS = os.path.join(RAIZ, 'apps/web/dist-demo/assets')
 SIMBOLO = next(n for n in os.listdir(ASSETS) if n.startswith('ingline-simbolo'))
@@ -113,10 +116,17 @@ def esperar(page, ms):
     page.wait_for_timeout(ms)
 
 
+def sem_avisos(page):
+    """Fecha o cartão de aviso que chega no meio da gravação (o "Chamado sem responsável" dos exemplos), sem mexer o cursor."""
+    page.evaluate("""() => document.querySelectorAll('button[aria-label="Fechar o aviso"]').forEach((b) => b.click())""")
+
+
 def ir(page, h, ms=1200):
     # a tela nova começa do alto (a prévia mantém a rolagem da tela anterior)
     page.evaluate(f"location.hash = {json.dumps(h)}; window.scrollTo(0, 0)")
     esperar(page, ms)
+    if AVISOS_FECHADOS:
+        sem_avisos(page)
 
 
 def apontar(page, loc, ms=350):
@@ -141,6 +151,8 @@ def digitar(page, loc, texto):
 
 
 def legenda(page, n, t, s, ms=900):
+    if AVISOS_FECHADOS:
+        sem_avisos(page)
     page.evaluate('([n, t, s]) => window.__legenda(n, t, s)', [str(n), t, s])
     esperar(page, ms)
 
@@ -203,22 +215,148 @@ def entrar_atras_da_capa(page):
             esperar(page, 900)
 
 
-# ---------- o roteiro do Patch 2.0 (troque pelo do patch novo) ----------
+# ---------- o roteiro do Patch 2.3 (troque pelo do patch novo) ----------
 
-# Os chamados do roteiro, pelo título: na prévia, os números depois do SUP-16 mudam conforme o dia
+# Os cards e as negociações do roteiro, pelo título (o código sai do quadro e da lista, atrás da capa)
+CARDS = {
+    'curadoria': 'Implantação — Hotel Beira Mar',
+    'testes': 'Implantação — Construtora Horizonte',
+}
+NEGOCIACOES = {
+    'hotel': 'Atendimento com URA e filas',
+    'farma': 'Migração das filiais para a nuvem',
+    'saber': 'Troca de operadora — 30 linhas',
+}
+COD = {}
+# a imagem que o roteiro anexa na Curadoria (um print da própria nota)
+IMAGEM_PARA_ANEXAR = os.path.join(RAIZ, 'docs/novidades/2.3/pastas.jpg')
+
+
+def antes_do_roteiro(page):
+    ir(page, '/atendimento/quadro?painel=painel-implantacao', 1800)
+    COD.update(page.evaluate("""(titulos) => Object.fromEntries(Object.entries(titulos).map(([k, t]) => {
+        const li = [...document.querySelectorAll('li[data-codigo]')].find((x) => x.innerText.includes(t));
+        return [k, li ? li.getAttribute('data-codigo') : null];
+    }))""", CARDS))
+    ir(page, '/atendimento/lista?painel=painel-comercial', 1800)
+    COD.update(page.evaluate("""(titulos) => Object.fromEntries(Object.entries(titulos).map(([k, t]) => {
+        const a = [...document.querySelectorAll('a[href^="#/atendimento/COM-"]')].find((x) => x.textContent.includes(t));
+        return [k, a ? a.getAttribute('href').split('/').pop() : null];
+    }))""", NEGOCIACOES))
+    faltam = [k for k, v in COD.items() if not v]
+    if faltam:
+        raise SystemExit(f'Não achei no quadro da Implantação ou na lista do Comercial: {faltam}')
+    print('os cards e as negociações do roteiro:', COD)
+
+
+def abrir_a_parte(page, id_):
+    """A parte recolhida abre (o cartão da parte começa fechado quando o card está em outra etapa)."""
+    b = page.locator(f'#{id_} > button[aria-expanded="false"]')
+    if b.count():
+        clicar(page, b.first); esperar(page, 600)
+
+
+def roteiro(page):
+    n = iter(range(1, 100))
+    # 1. o menu: Suporte › Painel da Implantação, e o quadro
+    legenda(page, next(n), 'O painel de Implantação', 'Um card por cliente novo. No menu, Suporte › Painel da Implantação.', 900)
+    grupo = page.locator('button[data-grupo="suporte"]').first
+    if grupo.get_attribute('aria-expanded') != 'true':
+        clicar(page, grupo); esperar(page, 900)
+    else:
+        apontar(page, grupo, 700)
+    clicar(page, page.get_by_role('link', name='Painel da Implantação')); esperar(page, 1800)
+    legenda(page, next(n), 'Da Curadoria ao Implantado', 'Curadoria, Configuração, Testes, Concluído e Implantado. O cartão mostra quanto da parte da etapa já foi feito.', 900)
+    apontar(page, page.locator(f'li[data-codigo="{COD["curadoria"]}"]').first, 1800)
+    apontar(page, page.locator(f'li[data-codigo="{COD["testes"]}"]').first, 1600)
+
+    # 2. a ficha em partes: a Curadoria escolhe os módulos; o Anexar nos campos dela
+    ir(page, f'/atendimento/{COD["curadoria"]}', 1800)
+    abrir_a_parte(page, 'parte-curadoria')
+    legenda(page, next(n), 'A ficha em partes', 'Um cartão por parte, com um bloco para cada produto. A Curadoria escolhe os módulos a ativar.', 600)
+    modulos = page.locator('#parte-curadoria [id^="campo-c-"]:has(h3:has-text("Módulos a ativar"))').first
+    apontar(page, modulos, 2200)
+    bloco = page.locator('#parte-curadoria [id^="campo-c-"]:has([data-anexar])').first
+    legenda(page, next(n), 'Anexar na Curadoria', 'A lista de ramais em PDF, o print do chatbot: a imagem aparece em miniatura e abre grande.', 600)
+    apontar(page, bloco.locator('[data-anexar]').first, 900)
+    bloco.locator('input[type=file]').first.set_input_files(IMAGEM_PARA_ANEXAR); esperar(page, 2200)
+    apontar(page, bloco.locator('[data-anexos] img').first, 1600)
+
+    # 3. a Configuração em pastas, com quem marcou; o checklist dos módulos
+    ir(page, f'/atendimento/{COD["testes"]}', 1800)
+    abrir_a_parte(page, 'parte-configuracao')
+    pasta = page.locator('[role="group"][aria-label="A pasta Asterisk"]').first
+    pasta.scroll_into_view_if_needed(); esperar(page, 400)
+    legenda(page, next(n), 'As caixinhas em pastas', 'Servidor, Asterisk, LinePBX Web, Módulos e Telefones. Cada caixinha diz quem marcou e quando.', 600)
+    caixa = pasta.locator('input[type=checkbox]:not(:checked)').first
+    if caixa.count():
+        clicar(page, caixa); esperar(page, 1600)
+    apontar(page, pasta, 1600)
+    checklist = page.locator('#parte-configuracao [id^="campo-c-"]:has(h3:has-text("Ativação dos módulos"))').first
+    legenda(page, next(n), 'A ativação dos módulos', 'Na Configuração, o checklist só dos módulos que a Curadoria escolheu.', 600)
+    apontar(page, checklist, 2400)
+
+    # 4. o Implantado: a janela mostra o que vai para a ficha do cliente (aqui, só mostra: o Cancelar fecha)
+    topo(page)
+    legenda(page, next(n), 'O Implantado liga no cadastro', 'Os produtos ganham a data e os módulos ficam ativos na ficha do cliente. A negociação vai junto.', 600)
+    clicar(page, page.locator('button:has-text("Mover")').first); esperar(page, 700)
+    clicar(page, page.get_by_role('menuitem', name=re.compile('^Implantado')).last); esperar(page, 2600)
+    page.keyboard.press('Escape'); esperar(page, 700)
+
+    # 5. a negociação que abre o card: a janela pede só o CNPJ (aqui, só mostra)
+    ir(page, f'/atendimento/{COD["saber"]}', 1800)
+    legenda(page, next(n), 'A negociação abre o card sozinha', 'Em Em processo de Implantação, a janela mostra o cliente, os produtos e o card. Só pede o CNPJ.', 600)
+    clicar(page, page.locator('button:has-text("Mover")').first); esperar(page, 700)
+    clicar(page, page.get_by_role('menuitem', name=re.compile('^Em processo de Implantação')).last); esperar(page, 1500)
+    digitar(page, page.locator('#implantacao-cnpj'), '11222333000181'); esperar(page, 1800)
+    page.keyboard.press('Escape'); esperar(page, 700)
+
+    # 6. os Detalhes da proposta e o e-mail do contato
+    ir(page, f'/atendimento/{COD["farma"]}', 1800)
+    proposta = page.locator('section[aria-label="A parte Detalhes da proposta"]').first
+    legenda(page, next(n), 'Os Detalhes da proposta', 'Os campos que vieram do Helena num cartão só, no meio da ficha, com os números lado a lado.', 600)
+    apontar(page, proposta, 2400)
+    legenda(page, next(n), 'O e-mail dos contatos', 'O contato de cada chamado e negociação tem o e-mail, com o link para escrever. O Mais um contato também.', 600)
+    apontar(page, page.locator('#ficha-contato-email'), 2200)
+
+    # 7. a simulação preenche o card; o Mês a mês sem as colunas; o Helena numa linha só
+    ir(page, f'/atendimento/{COD["hotel"]}', 1800)
+    clicar(page, page.locator('#ficha-simulacoes button[data-simulacao]').first); esperar(page, 2200)
+    legenda(page, next(n), 'A simulação preenche o card', 'A principal da negociação leva a mensalidade, a ativação e o valor de cada produto, sozinha, a cada salvamento.', 600)
+    apontar(page, page.locator('#simulador-principal-da-negociacao'), 1200)
+    mensal = page.locator('[data-produto-preco="linepbx"] [data-campo="mensalidade-do-produto"]').first
+    clicar(page, mensal); page.keyboard.press('Control+a'); page.keyboard.type('1.250,00', delay=80); esperar(page, 3200)
+    apontar(page, page.locator('#simulador-salvo'), 900)
+    mes = page.locator('#simulador-mes-a-mes').first
+    mes.scroll_into_view_if_needed(); esperar(page, 500)
+    legenda(page, next(n), 'O Mês a mês', 'Sem as colunas: a linha do acumulado e a tabela. Um clique no mês abre o que entrou e o que saiu.', 600)
+    clicar(page, page.locator('#simulador-mes-a-mes-tabela tr[data-mes="2"]')); esperar(page, 2000)
+    custo = page.locator('#simulador-partes-do-custo')
+    legenda(page, next(n), 'O Helena numa linha só', 'No custo do mês, o LineChat aparece como Helena, com o total. Os outros custos, um a um.', 600)
+    apontar(page, custo, 2200)
+    # fechar a janela: o card atrás já está com o valor novo
+    page.keyboard.press('Escape'); esperar(page, 1400)
+    legenda(page, next(n), 'E o card já está com os valores', 'O LinePBX e o LineChat, cada um no seu campo. Sem precisar levar nada.', 600)
+    apontar(page, page.locator('#campo-valor'), 2600)
+
+
+# ---------- o roteiro do Patch 2.0 (o exemplo de antes) ----------
+
+# (o 2.0) Os chamados do roteiro, pelo título: na prévia, os números depois do SUP-16 mudam conforme o dia
 # em que ela abre (o agendado de toda segunda troca de lugar com os mais novos). O código de cada um
 # sai do quadro do Suporte, atrás da capa (`antes_do_roteiro`).
-CHAMADOS = {
+CHAMADOS_2_0 = {
     'mover': 'Fila do SAC sem música de espera',
     'ficha': 'Ligações para o hospital caindo e às vezes sem completar',
     'problema': 'Quedas no tronco da Algar em Salvador',
     'esperar': 'Firewall bloqueando o IP novo do CD de Feira de Santana',
     'ia': 'Chamado pelo WhatsApp',
 }
-COD = {}
+COD_2_0 = {}
 
 
-def antes_do_roteiro(page):
+def antes_do_roteiro_2_0(page):
+    CHAMADOS, COD = CHAMADOS_2_0, COD_2_0
     ir(page, '/atendimento/quadro?painel=painel-suporte', 1800)
     COD.update(page.evaluate("""(titulos) => Object.fromEntries(Object.entries(titulos).map(([k, t]) => {
         const li = [...document.querySelectorAll('li[data-codigo]')].find((x) => x.querySelector('a.line-clamp-2')?.textContent.trim() === t);
@@ -230,7 +368,8 @@ def antes_do_roteiro(page):
     print('os chamados do roteiro:', COD)
 
 
-def roteiro(page):
+def roteiro_2_0(page):
+    COD = COD_2_0
     n = iter(range(1, 100))
     # o módulo novo: a tela dos painéis (a que já está aberta atrás da capa)
     legenda(page, next(n), 'Os chamados agora são do Gestor', 'Em Suporte › Chamados: nascem, andam e fecham aqui. Os antigos ficam em Suporte › Relatórios.', 1400)
@@ -540,7 +679,7 @@ if __name__ == '__main__':
         os.makedirs(os.path.dirname(SAIDA), exist_ok=True)
         # corta o começo (entrar e a janela do login, atrás da capa), deixando ~3 s de capa
         subprocess.run(['ffmpeg', '-y', '-loglevel', 'error', '-ss', f'{max(0, capa_sai - CAPA_NO_COMECO):.2f}', '-i', gravado,
-                        '-c:v', 'libx264', '-preset', 'slow', '-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', SAIDA],
+                        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-an', SAIDA],
                        check=True)
         duracao = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', SAIDA],
                                  check=True, capture_output=True, text=True).stdout.strip()
