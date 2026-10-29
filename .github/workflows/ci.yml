@@ -14,8 +14,9 @@ jobs:
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+      # a versão do pnpm vem do "packageManager" do package.json (2.3: com ela escrita aqui também, o passo
+      # recusava as duas e a rotina reprovava antes de testar qualquer coisa)
       - uses: pnpm/action-setup@v4
-        with: { version: 10 }
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
