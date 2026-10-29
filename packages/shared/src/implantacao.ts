@@ -170,7 +170,7 @@ export function marcasDepois(
 /** Uma opção do modelo: o nome, ou o nome e a pasta (as caixinhas da Configuração do LinePBX, 2.3). */
 export type OpcaoDoModelo = string | { nome: string; pasta: string };
 /** `escolhidosEm`: no checklist dos módulos, o nome do campo de módulos do mesmo produto de onde vêm as opções. */
-export type CampoDoModelo = { nome: string; tipo: TipoCampo; parte: string; produto: 'linechat' | 'linepbx' | null; dica: string; opcoes: OpcaoDoModelo[]; escolhidosEm?: string };
+export type CampoDoModelo = { nome: string; tipo: TipoCampo; parte: string; produto: 'linechat' | 'linepbx' | null; dica: string; opcoes: OpcaoDoModelo[]; escolhidosEm?: string; anexos?: boolean };
 /** A opção do modelo com a pasta (nula quando não tem). */
 export const opcaoDoModelo = (o: OpcaoDoModelo): { nome: string; pasta: string | null } => (typeof o === 'string' ? { nome: o, pasta: null } : o);
 const naPasta = (pasta: string, ...nomes: string[]) => nomes.map((nome) => ({ nome, pasta }));
@@ -210,7 +210,7 @@ export const MODELO_DA_IMPLANTACAO: {
     { nome: 'Concluído', tipo: 'resolvido', nivel: null, obrigatorios: [] },
     { nome: 'Implantado', tipo: 'fechado', nivel: null, obrigatorios: [], ligaNoCadastro: true },
   ],
-  campos: [
+  campos: ([
     // a curadoria do LineChat
     { nome: 'Lista de usuários', tipo: 'texto_longo', parte: CURADORIA, produto: 'linechat', dica: 'Quem vai usar: o nome, o e-mail e a equipe de cada um.', opcoes: [] },
     { nome: 'Números', tipo: 'texto_longo', parte: CURADORIA, produto: 'linechat', dica: 'Os números do WhatsApp que entram no LineChat.', opcoes: [] },
@@ -256,7 +256,9 @@ export const MODELO_DA_IMPLANTACAO: {
       nome: 'Testes realizados', tipo: 'caixinhas', parte: TESTES, produto: 'linepbx', dica: 'Marque o que já foi testado com o cliente.',
       opcoes: ['Registro do ramal no ambiente do cliente', 'Login nos acessos do LinePBX Web', 'Ligações ativas e receptivas', 'IP do ambiente estável'],
     },
-  ],
+  // os anexos só na Curadoria (29/10, o Luan: "eu quis dizer todas as opções de curadoria, de configuração n precisa n"); a
+  // escolha dos módulos fica sem
+  ] satisfies CampoDoModelo[]).map((c): CampoDoModelo => (c.parte === CURADORIA && c.tipo !== 'modulos' ? { ...c, anexos: true } : c)),
 };
 
 // =====================================================================

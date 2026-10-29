@@ -161,6 +161,7 @@ export function campoDaLinha(c: typeof ticketFields.$inferSelect): CampoPersonal
     parte: c.section?.trim() || null, produtoId: c.productId ?? null,
     // o checklist dos módulos (2.3): só nos módulos
     escolhidosEm: c.kind === 'modulos' ? c.followsFieldId ?? null : null,
+    anexos: c.acceptsAttachments,
   };
 }
 /**

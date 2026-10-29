@@ -1,5 +1,5 @@
 {
-  "id": "ce8f946a-6b09-40db-80ee-b1689303e147",
+  "id": "89069736-dbf9-4f15-a79d-3917c449f221",
   "prevId": "a77b0ed5-110d-44e4-b861-c9f13f39250c",
   "version": "7",
   "dialect": "postgresql",
@@ -7195,6 +7195,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "accepts_attachments": {
+          "name": "accepts_attachments",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "active": {
           "name": "active",

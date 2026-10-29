@@ -1918,6 +1918,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const c = camposDoPainel(e.painel.id).find((x) => x.id === campoId);
     if (!c) throw naoAchado('Campo');
     if (!c.ativo) throw bad(`O campo ${c.nome} está desativado.`);
+    if (!c.anexos) throw bad(`O campo ${c.nome} não recebe anexos. Quem cuida dos chamados liga em Painéis › Ajustes › Campos › Recebe anexos.`);
     if (c.produtoId && !e.t.produtos.includes(c.produtoId)) throw bad(`O campo ${c.nome} é de um produto que ${e.painel.tipo === 'vendas' ? 'a negociação' : 'o chamado'} não tem.`);
     const opcao = opcaoId ? c.opcoes.find((o) => o.id === opcaoId) ?? null : null;
     if (opcaoId && (!opcao || !ehCaixinhas(c.tipo))) throw bad('A caixinha não é deste campo. Recarregue a tela e tente de novo.');
@@ -3364,7 +3365,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   const campoParaAuditoria = (c: CampoPersonalizado) => ({
     nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes.map((o) => ({ ...o })), ativo: c.ativo, incluirNaHora: c.incluirNaHora,
-    ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}),
+    ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}), ...(c.anexos ? { anexos: true } : {}),
   });
   /**
    * Incluir uma opção numa lista do painel ali mesmo (2.0.3, a Indicação), como o servidor: só nas listas marcadas;
@@ -3481,13 +3482,13 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
    */
   function camposDeFabricaDoPainel(painelId: string, tipo: TipoDePainel, implantacao = false): string[] {
     const produtoDoCodigo = (code: string | null) => (code ? S.products.find((x) => x.code === code && !x.deletedAt)?.id ?? null : null);
-    const fabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null; escolhidosEm?: string }> = implantacao
+    const fabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null; escolhidosEm?: string; anexos?: boolean }> = implantacao
       ? MODELO_DA_IMPLANTACAO.campos.filter((c) => !c.produto || produtoDoCodigo(c.produto)).map((c) => ({ ...c, produtoId: produtoDoCodigo(c.produto) }))
       : tipo === 'vendas' ? [...CAMPOS_DO_PAINEL_DE_VENDAS] : [];
     fabrica.forEach((c, ordem) => A.campos.push({
       id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: c.dica, ativo: true, ordem,
       opcoes: c.opcoes.map(opcaoDoModelo).map((o) => ({ id: novoId(), nome: o.nome, ativa: true, ...(o.pasta ? { pasta: o.pasta } : {}) })), incluirNaHora: !!c.incluirNaHora,
-      parte: c.parte ?? null, produtoId: c.produtoId ?? null, escolhidosEm: null,
+      parte: c.parte ?? null, produtoId: c.produtoId ?? null, escolhidosEm: null, anexos: !!c.anexos,
     }));
     // o checklist dos módulos segue o campo de módulos do mesmo produto com o nome do modelo (o da Curadoria)
     const criados = A.campos.filter((c) => c.painelId === painelId);
@@ -3511,7 +3512,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const opcoes = conferirCampo(p, d, null);
     const c: CampoPersonalizado = {
       id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, incluirNaHora: d.tipo === 'lista' && d.incluirNaHora,
-      parte: d.parte, produtoId: d.produtoId, escolhidosEm: d.tipo === 'modulos' ? d.escolhidosEm : null,
+      parte: d.parte, produtoId: d.produtoId, escolhidosEm: d.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos,
     };
     A.campos.push(c);
     sincronizarModulos();
@@ -3530,7 +3531,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const antes = campoParaTela(c);
     conferirProdutoDoCampo(d.produtoId);
     const opcoes = conferirCampo(p, d, antes);
-    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null });
+    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null, anexos: d.anexos });
     sincronizarModulos();
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';

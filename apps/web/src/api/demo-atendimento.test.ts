@@ -1346,21 +1346,21 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     const op = await api.opcoes();
     const imp = painel(op, 'IMP');
     const pbx = produto(op, 'LinePBX');
+    // só os campos da Curadoria recebem ("eu quis dizer todas as opções de curadoria, de configuração n precisa n")
     const conf = campoDe(op, imp.id, 'Configuração do ambiente', pbx);
-    const ramais = conf.opcoes.find((o) => o.nome === 'Configuração dos ramais')!;
+    const ip = campoDe(op, imp.id, 'IP do cliente', pbx);
+    expect([conf.anexos, ip.anexos, campoDe(op, imp.id, 'Módulos a ativar', pbx).anexos]).toEqual([false, true, false]);
     const horizonte = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Construtora Horizonte')!;
-    const f = await api.anexarNoCampo(horizonte.id, conf.id, { opcaoId: ramais.id, anexos: [{ fileName: 'ramais.png', conteudo: PNG }] });
-    expect(f.anexosDosCampos.find((a) => a.nome === 'ramais.png')).toMatchObject({ campoId: conf.id, opcaoId: ramais.id, imagem: true, podeTirar: true });
-    expect(f.historico.at(-1)!.texto).toBe('anexou ramais.png em Configuração do ambiente (LinePBX) › Configuração dos ramais');
-    expect((await erroDe(api.anexarNoCampo(horizonte.id, conf.id, { opcaoId: 'nao-existe', anexos: [{ fileName: 'x.png', conteudo: PNG }] }))).status).toBe(400);
-    // nas caixinhas, o anexo vai na caixinha (o campo todo não recebe)
-    expect((await erroDe(api.anexarNoCampo(horizonte.id, conf.id, { anexos: [{ fileName: 'x.png', conteudo: PNG }] }))).message).toBe('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');
+    expect((await erroDe(api.anexarNoCampo(horizonte.id, conf.id, { opcaoId: conf.opcoes[0]!.id, anexos: [{ fileName: 'x.png', conteudo: PNG }] }))).message).toMatch(/não recebe anexos/);
+    const f = await api.anexarNoCampo(horizonte.id, ip.id, { anexos: [{ fileName: 'ip.png', conteudo: PNG }] });
+    expect(f.anexosDosCampos.find((a) => a.nome === 'ip.png')).toMatchObject({ campoId: ip.id, opcaoId: null, imagem: true, podeTirar: true });
+    expect(f.historico.at(-1)!.texto).toBe('anexou ip.png em IP do cliente (LinePBX)');
     // o do operador (no campo da Lista de ramais): ele tira o dele, não o do Luan
     const lista = campoDe(op, imp.id, 'Lista de ramais', pbx);
     await entrar('operador');
     const doOp = await api.anexarNoCampo(horizonte.id, lista.id, { anexos: [{ fileName: 'do operador.png', conteudo: PNG }] });
     const meu = doOp.anexosDosCampos.find((a) => a.nome === 'do operador.png')!;
-    const doLuan = doOp.anexosDosCampos.find((a) => a.nome === 'ramais.png')!;
+    const doLuan = doOp.anexosDosCampos.find((a) => a.nome === 'ip.png')!;
     expect(meu.opcaoId).toBeNull();
     expect(doLuan.podeTirar).toBe(false);
     expect((await erroDe(api.tirarAnexoDoCampo(horizonte.id, doLuan.id))).status).toBe(403);

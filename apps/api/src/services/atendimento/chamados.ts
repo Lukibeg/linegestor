@@ -1323,10 +1323,12 @@ function campoParaAnexo(e: Estado, campoId: string, opcaoId: string | null) {
   const c = camposDoPainel(e.ctx, e.painel.id).find((x) => x.id === campoId);
   if (!c) throw new NotFound('Campo');
   if (!c.ativo) throw new BadRequest(`O campo ${c.nome} está desativado.`);
+  // só o campo que recebe anexos (2.3: no modelo Implantação, os da Curadoria)
+  if (!c.anexos) throw new BadRequest(`O campo ${c.nome} não recebe anexos. Quem cuida dos chamados liga em Painéis › Ajustes › Campos › Recebe anexos.`);
   if (c.produtoId && !e.t.productIds.includes(c.produtoId)) throw new BadRequest(`O campo ${c.nome} é de um produto que ${e.painel.tipo === 'vendas' ? 'a negociação' : 'o chamado'} não tem.`);
   const opcao = opcaoId ? c.opcoes.find((o) => o.id === opcaoId) ?? null : null;
   if (opcaoId && (!opcao || !ehCaixinhas(c.tipo))) throw new BadRequest('A caixinha não é deste campo. Recarregue a tela e tente de novo.');
-  // o campo das caixinhas não recebe anexo no campo todo (o Luan: "nas configurações n precisa de ter anexar")
+  // o campo das caixinhas que recebe anexos recebe na caixinha, não no campo todo
   if (!opcao && ehCaixinhas(c.tipo)) throw new BadRequest('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');
   return { c, opcao, nome: nomeCompletoDoCampo(c, e.ctx.produtos) };
 }

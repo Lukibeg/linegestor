@@ -6,7 +6,9 @@
  *    para o servidor (um que falha não derruba os outros);
  *  - a imagem aparece em miniatura e abre grande com um clique; o PDF abre no leitor do Gestor, sem baixar; o Word, o Excel
  *    e o resto aparecem com o nome e o ícone e baixam com um clique;
- *  - sai do card quem anexou ou quem cuida dos chamados (o histórico guarda).
+ *  - sai do card quem anexou ou quem cuida dos chamados (o histórico guarda);
+ *  - só nos campos que recebem anexos ("eu quis dizer todas as opções de curadoria, de configuração n precisa n"): o que
+ *    já foi anexado num campo que deixou de receber continua aparecendo (e saindo).
  */
 import { lazy, Suspense, useRef, useState } from 'react';
 import { Download, ExternalLink, FileSpreadsheet, FileText, Paperclip, X } from 'lucide-react';
@@ -35,12 +37,13 @@ export function useAnexosDe(campoId: string, opcaoId: string | null = null): Ane
  * ("Anexar em Configuração dos ramais").
  */
 export function BotaoAnexar({ campoId, opcaoId = null, rotulo, soIcone = false, className = '' }: { campoId: string; opcaoId?: string | null; rotulo: string; soIcone?: boolean; className?: string }) {
-  const { f, pode } = useAberta();
+  const { f, pode, opcoes } = useAberta();
   const depois = useDepoisDeMudar();
   const entrada = useRef<HTMLInputElement>(null);
   const [indo, setIndo] = useState<{ feitos: number; total: number } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  if (!pode) return null;
+  // só o campo que recebe anexos (Painéis › Ajustes › Campos; no modelo Implantação, os da Curadoria)
+  if (!pode || !opcoes.campos.find((c) => c.id === campoId)?.anexos) return null;
   const enviar = async (arquivos: File[]) => {
     setErro(null);
     if (!arquivos.length) return;

@@ -483,6 +483,11 @@ export type CampoPersonalizado = {
    * opções — só os módulos marcados lá aparecem aqui, e a conta da parte é deles. Nulo: o campo é a escolha.
    */
   escolhidosEm?: string | null;
+  /**
+   * Recebe anexos (2.3, o Luan: "no caso eu quis dizer todas as opções de curadoria, de configuração n precisa n"): o Anexar
+   * do campo (e o clipe de cada caixinha). Desligado, o campo não recebe; o que já foi anexado continua lá.
+   */
+  anexos?: boolean;
 };
 /**
  * Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção. O valor do campo continua a lista das marcadas; isto
@@ -1343,6 +1348,8 @@ export const CampoGravarSchema = z.object({
   produtoId: z.string().trim().max(60).nullish().transform((v) => v || null),
   /** Nos módulos (2.3): o campo de módulos de onde vêm as opções (o checklist do que foi escolhido na Curadoria) */
   escolhidosEm: z.string().trim().max(60).nullish().transform((v) => v || null),
+  /** recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha */
+  anexos: z.boolean().default(false),
 }).superRefine((c, ctx) => {
   if (c.tipo === 'modulos' && !c.produtoId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['produtoId'], message: 'Escolha o produto: os módulos são os dele' });
   if (c.escolhidosEm && c.tipo !== 'modulos') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['escolhidosEm'], message: 'Só os módulos do produto seguem outro campo' });

@@ -52,8 +52,9 @@ Voltar a negociação e mover de novo não abre outro card.
   com a conta. Quem cuida dos chamados muda ali mesmo: **Editar as caixinhas** › Nova pasta, Incluir caixinha, as setas
   (levam a caixinha de uma pasta para a outra), o × (a caixinha que um card já marcou fica desativada, e ele continua
   com ela) › Salvar. Vale para todos os cards do painel.
-- **Os anexos.** Cada campo tem o **Anexar**, e cada caixinha, o clipe (ao lado do nome): imagens, PDF, Word, Excel, até
-  10 MB cada. Nos campos de caixinhas (a Configuração do ambiente, os Testes, os Módulos), o anexo vai só na caixinha. A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
+- **Os anexos.** Cada campo da Curadoria tem o **Anexar**: imagens, PDF, Word, Excel, até 10 MB cada. A Configuração e os
+  Testes ficam sem (o Recebe anexos, em Painéis › Ajustes › Campos, liga em qualquer campo; nas caixinhas, o anexo vai
+  no clipe de cada uma). A imagem aparece em miniatura e abre grande; o PDF abre no leitor, sem baixar; o resto baixa com um clique.
   Sai do card quem anexou ou quem cuida dos chamados (o histórico guarda).
 - Cada parte mostra a conta (**3 de 5**); a parte da etapa em que o card está fica aberta, e as outras abrem com um
   clique. O cartão do quadro mostra a barrinha da parte da etapa.
@@ -88,4 +89,5 @@ janela do campo) e **Módulos do produto** (os módulos do catálogo; o produto 
 módulos, **Os módulos que aparecem** › **Só os marcados em …** faz dele o checklist de outro campo de módulos do mesmo
 produto (como a Ativação dos módulos segue o Módulos a ativar).
 
-Em qualquer painel, os campos do card ganharam o **Anexar** (veja acima).
+E a opção **Recebe anexos**: com ela, o campo ganha o Anexar na ficha (nas caixinhas, o clipe de cada uma). No modelo
+Implantação, vem ligada nos campos da Curadoria.

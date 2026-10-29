@@ -1613,6 +1613,8 @@ export const ticketFields = pgTable(
      * aqui (a Configuração). Nulo: o campo é a escolha.
      */
     followsFieldId: text('follows_field_id').references((): AnyPgColumn => ticketFields.id, { onDelete: 'set null' }),
+    /** Recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha (os do modelo Implantação: os da Curadoria) */
+    acceptsAttachments: boolean('accepts_attachments').notNull().default(false),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),

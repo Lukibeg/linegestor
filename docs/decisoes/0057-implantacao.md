@@ -79,14 +79,18 @@ a gente concluir a implantação no painel de implantação"*.
    as pastas no próprio card (**Editar as caixinhas**, `PUT /atendimento/campos/:id/caixinhas`, só as opções: o resto do
    campo não muda) ou em Painéis › Ajustes › Campos; vale para todos os cards do painel, e a caixinha que um card marcou
    fica desativada, com ele.
-10. **Anexar em cada campo e em cada caixinha** (29/10: *"em todas as opções eu quero poder anexar imagens ou docs que vão
-   ter pré visualização"*): o anexo ganha o campo e a caixinha (`ticket_attachments.field_id` e `option_id`, na migração
+10. **Anexar nos campos** (29/10: *"em todas as opções eu quero poder anexar imagens ou docs que vão ter pré
+   visualização"* e, depois, *"no caso eu quis dizer todas as opções de curadoria, de configuração n precisa n"*): o campo
+   ganha o **Recebe anexos** (`ticket_fields.accepts_attachments`, na migração 0027), ligado no modelo Implantação nos
+   campos da Curadoria (menos a escolha dos módulos) e desligado nos outros; o servidor recusa o anexo no campo que não
+   recebe. O anexo ganha o campo e a caixinha (`ticket_attachments.field_id` e `option_id`, na migração
    0027); `POST /atendimento/chamados/:id/campos/:campoId/anexos` (até 5 arquivos de 10 MB por vez, até 20 em cada campo
    ou caixinha) e `DELETE /atendimento/chamados/:id/anexos/:anexoId` (quem anexou ou quem cuida). A imagem em miniatura,
    o PDF no leitor do Gestor, o Word e o Excel com o nome e o ícone (baixam). O histórico diz "anexou print.png em
-   Configuração do ambiente (LinePBX) › Configuração dos ramais" e "tirou …". Vale para os campos de todos os painéis
-   (não para os do sistema, como o Assunto). Nos campos de caixinhas (e de módulos), o anexo vai só na caixinha: o campo
-   todo não tem o Anexar (29/10, no card: *"nas configurações n precisa de ter anexar"*), e o servidor recusa.
+   Lista de ramais (LinePBX)" e "tirou …". Qualquer campo de qualquer painel pode receber (não os do sistema, como o
+   Assunto). Nos campos de caixinhas (e de módulos) que recebem, o anexo vai na caixinha: o campo todo não tem o Anexar
+   (29/10, no card: *"nas configurações n precisa de ter anexar"*). O que já foi anexado num campo que deixou de receber
+   continua aparecendo.
 11. **Os módulos: a Curadoria escolhe, a Configuração ativa** (29/10, no card: *"esse módulos a ativar tem q ser na
    curadoria … é a curadoria que define quais módulos devem ser ativos, aqui é só um checklist do que foi solicitado na
    curadoria"*): o Módulos a ativar foi para a Curadoria (a escolha: não entra na conta da parte); na Configuração, a

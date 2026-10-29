@@ -188,7 +188,7 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
     // implantação (2.3), com os do Ingline - Ativações (a curadoria, a configuração e os testes de cada produto)
     const doCatalogo = modelo ? await db.select({ id: products.id, code: products.code }).from(products).where(isNull(products.deletedAt)) : [];
     const produtoDoCodigo = (code: string | null) => (code ? doCatalogo.find((x) => x.code === code)?.id ?? null : null);
-    const camposDeFabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null; escolhidosEm?: string }> = modelo
+    const camposDeFabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null; escolhidosEm?: string; anexos?: boolean }> = modelo
       // o campo de um produto que não está no catálogo fica de fora (os módulos não teriam de onde vir)
       ? modelo.campos.filter((c) => !c.produto || produtoDoCodigo(c.produto)).map((c) => ({ ...c, produtoId: produtoDoCodigo(c.produto) }))
       : tipo === 'vendas' ? [...CAMPOS_DO_PAINEL_DE_VENDAS] : [];
@@ -201,7 +201,7 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
         await tx.insert(ticketFields).values(camposDeFabrica.map((c, ordem) => ({
           id: ids[ordem]!, panelId: novoId, name: c.nome, kind: c.tipo, help: c.dica, active: true, sortOrder: ordem,
           options: c.opcoes.map(opcaoDoModelo).map((o) => ({ id: newId(), nome: o.nome, ativa: true, ...(o.pasta ? { pasta: o.pasta } : {}) })), inlineOptions: !!c.incluirNaHora,
-          section: c.parte ?? null, productId: c.produtoId ?? null,
+          section: c.parte ?? null, productId: c.produtoId ?? null, acceptsAttachments: !!c.anexos,
         })));
         // o checklist dos módulos (2.3) segue o campo de módulos do mesmo produto com o nome do modelo (o da Curadoria)
         for (const [i, c] of camposDeFabrica.entries()) {
@@ -625,7 +625,7 @@ export async function colarAssuntos(app: FastifyInstance, painelId: string, text
 
 const campoParaAuditoria = (c: CampoPersonalizado) => ({
   nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes, ativo: c.ativo, incluirNaHora: c.incluirNaHora,
-  ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}),
+  ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}), ...(c.anexos ? { anexos: true } : {}),
 });
 
 /**
@@ -768,7 +768,7 @@ export async function criarCampo(app: FastifyInstance, painelId: string, d: Camp
   await db.transaction(async (tx) => {
     await tx.insert(ticketFields).values({
       id, panelId: painelId, name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: d.tipo === 'lista' && d.incluirNaHora,
-      sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, section: d.parte, productId: d.produtoId, followsFieldId: d.tipo === 'modulos' ? d.escolhidosEm : null,
+      sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, section: d.parte, productId: d.produtoId, followsFieldId: d.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos,
     });
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
@@ -793,7 +793,7 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
   await db.transaction(async (tx) => {
     await tx.update(ticketFields).set({
       name: d.nome, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date(),
-      section: d.parte, productId: d.produtoId, followsFieldId: antes.tipo === 'modulos' ? d.escolhidosEm : null,
+      section: d.parte, productId: d.produtoId, followsFieldId: antes.tipo === 'modulos' ? d.escolhidosEm : null, acceptsAttachments: d.anexos,
     }).where(eq(ticketFields.id, id));
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });

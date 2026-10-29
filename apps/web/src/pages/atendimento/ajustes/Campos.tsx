@@ -318,6 +318,7 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
     parte: campo?.parte ?? '',
     produtoId: campo?.produtoId ?? '',
     escolhidosEm: campo?.escolhidosEm ?? '',
+    anexos: campo?.anexos ?? false,
   }));
   // as caixinhas, em pastas (2.3)
   const [pastas, setPastas] = useState<PastaRascunho[]>(() => pastasDoEditor(campo?.opcoes ?? []));
@@ -363,6 +364,7 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
     const d: CampoGravarEntrada = {
       nome, tipo: f.tipo, dica: f.dica.trim() || null, ativo: f.ativo, parte: f.parte.trim() || null, produtoId: f.produtoId || null,
       escolhidosEm: f.tipo === 'modulos' && fontes.some((c) => c.id === f.escolhidosEm) ? f.escolhidosEm : null,
+      anexos: f.anexos,
       opcoes: f.tipo === 'caixinhas' ? caixinhasParaGravar(pastas) : lista_ ? opcoes.map((o) => ({ ...(o.id ? { id: o.id } : {}), nome: o.nome, ativa: o.ativa })) : [],
       obrigatorioAoAbrir: f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
     };
@@ -452,6 +454,14 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
         <Rotulo rotulo="Explicação (opcional)" id="campo-dica" dica="Aparece embaixo do campo, na ficha e no Abrir chamado.">
           <input className="input" id="campo-dica" value={f.dica} maxLength={200} placeholder="Ex.: o sistema em que o problema aparece" onChange={(e) => mudar({ dica: e.target.value })} />
         </Rotulo>
+
+        {/* 2.3: o Anexar do campo (o Luan: "eu quis dizer todas as opções de curadoria") */}
+        <label className="flex items-start gap-2.5 text-sm cursor-pointer" id="campo-anexos">
+          <Toggle checked={f.anexos} onChange={(v) => mudar({ anexos: v })} />
+          <span>Recebe anexos
+            <span className="block text-[12.5px] text-muted">Na ficha, o Anexar do campo{f.tipo === 'caixinhas' || f.tipo === 'modulos' ? ' (nas caixinhas, o clipe de cada uma)' : ''}: imagens, PDF, Word e Excel, de até 10 MB. Desligado, o que já foi anexado continua lá.</span>
+          </span>
+        </label>
 
         <fieldset className={`flex flex-col gap-2.5 rounded-lg border border-line p-3 ${f.ativo ? '' : 'opacity-60'}`} disabled={!f.ativo}>
           <legend className="label px-1 mb-0">Quando é obrigatório</legend>

@@ -3,6 +3,7 @@ ALTER TABLE "ticket_attachments" ADD COLUMN "option_id" text;--> statement-break
 ALTER TABLE "ticket_fields" ADD COLUMN "section" text;--> statement-breakpoint
 ALTER TABLE "ticket_fields" ADD COLUMN "product_id" text;--> statement-breakpoint
 ALTER TABLE "ticket_fields" ADD COLUMN "follows_field_id" text;--> statement-breakpoint
+ALTER TABLE "ticket_fields" ADD COLUMN "accepts_attachments" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "ticket_stages" ADD COLUMN "opens_panel_id" text;--> statement-breakpoint
 ALTER TABLE "ticket_stages" ADD COLUMN "activates_products" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "ticket_stages" ADD COLUMN "receives_implementation" boolean DEFAULT false NOT NULL;--> statement-breakpoint

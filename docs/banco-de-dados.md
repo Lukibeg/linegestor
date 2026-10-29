@@ -1121,6 +1121,7 @@ Um CAMPO de um painel (o pedido do Luan na prévia: "vou ter outros painéis, en
 | `section` | texto | A parte da ficha (2.3, a implantação: "Curadoria", "Configuração", "Testes"): com ela, o campo vai para o meio da ficha, junto dos outros da mesma parte. Nulo: na classificação (ou junto do relato, o texto longo), como sempre. | — |
 | `product_id` | texto | Só aparece quando o chamado tem este produto (2.3: o bloco do LineChat, o do LinePBX); os módulos são os dele | liga com **products** |
 | `follows_field_id` | texto | O checklist dos módulos (2.3): o campo de módulos de onde vêm as opções — só os marcados lá (a Curadoria) aparecem aqui (a Configuração). Nulo: o campo é a escolha. | — |
+| `accepts_attachments` | sim/não | Recebe anexos (2.3): o Anexar do campo e o clipe de cada caixinha (os do modelo Implantação: os da Curadoria) | obrigatório · padrão: false |
 | `active` | sim/não | — | obrigatório · padrão: true |
 | `sort_order` | número inteiro | — | obrigatório · padrão: 0 |
 | `created_at` | data e hora | Quando a linha foi criada | — |

@@ -398,15 +398,26 @@ describe('os anexos dos campos e das caixinhas (2.3)', () => {
   const anexar = (ss: Session, campoId: string, opcaoId: string | null, nome: string, conteudo = PNG) =>
     ss.post(`/atendimento/chamados/${card.id}/campos/${campoId}/anexos`, { opcaoId, anexos: [{ fileName: nome, conteudo }] });
 
-  it('anexa no campo todo e numa caixinha; a ficha mostra, o histórico conta e o arquivo abre', async () => {
-    const conf = (await s.get('/atendimento/opcoes')).json().campos.find((c: CampoPersonalizado) => c.id === campo('Configuração do ambiente', 'linepbx').id) as CampoPersonalizado;
-    const ramais = conf.opcoes.find((o) => o.nome === 'Ramais')!;
-    const r = await anexar(s, conf.id, ramais.id, 'print dos ramais.png');
+  it('só os campos que recebem anexos (no modelo, os da Curadoria); a ficha mostra, o histórico conta e o arquivo abre', async () => {
+    const o: OpcoesAtendimento = (await s.get('/atendimento/opcoes')).json();
+    const doCard = (nome: string, codigo: 'linechat' | 'linepbx') => o.campos.find((c) => c.id === campo(nome, codigo).id)!;
+    // "eu quis dizer todas as opções de curadoria, de configuração n precisa n"
+    expect(doCard('IP do cliente', 'linepbx').anexos).toBe(true);
+    expect(doCard('Lista de ramais', 'linepbx').anexos).toBe(true);
+    expect(doCard('Módulos a ativar', 'linepbx').anexos).toBe(false);
+    expect(doCard('Configuração do ambiente', 'linepbx').anexos).toBe(false);
+    expect(doCard('Testes realizados', 'linepbx').anexos).toBe(false);
+    const conf = doCard('Configuração do ambiente', 'linepbx');
+    const naConfiguracao = await anexar(s, conf.id, conf.opcoes[0]!.id, 'x.png');
+    expect(naConfiguracao.statusCode).toBe(400);
+    expect(naConfiguracao.json().error).toMatch(/não recebe anexos/);
+    const ip = doCard('IP do cliente', 'linepbx');
+    const r = await anexar(s, ip.id, null, 'print do ip.png');
     expect(r.statusCode, r.body).toBe(200);
     const f: FichaChamado = r.json();
     expect(f.anexosDosCampos).toHaveLength(1);
-    expect(f.anexosDosCampos[0]).toMatchObject({ campoId: conf.id, opcaoId: ramais.id, nome: 'print dos ramais.png', imagem: true, podeTirar: true, por: { id: adminId } });
-    expect(f.historico.at(-1)!.texto).toBe('anexou print dos ramais.png em Configuração do ambiente (LinePBX) › Ramais');
+    expect(f.anexosDosCampos[0]).toMatchObject({ campoId: ip.id, opcaoId: null, nome: 'print do ip.png', imagem: true, podeTirar: true, por: { id: adminId } });
+    expect(f.historico.at(-1)!.texto).toBe('anexou print do ip.png em IP do cliente (LinePBX)');
     const lista = campo('Lista de ramais', 'linepbx');
     const r2 = await anexar(s, lista.id, null, 'ramais.pdf', PDF);
     expect(r2.statusCode, r2.body).toBe(200);
@@ -417,20 +428,25 @@ describe('os anexos dos campos e das caixinhas (2.3)', () => {
     const arquivo = await s.get(`/atendimento/anexos/${f.anexosDosCampos[0]!.id}`);
     expect(arquivo.statusCode).toBe(200);
     expect(arquivo.headers['content-type']).toMatch(/image\/png/);
-    expect((await auditoria()).map((a) => a.summary)).toContain(`Anexou print dos ramais.png em Configuração do ambiente (LinePBX) › Ramais (${card.codigo})`);
+    expect((await auditoria()).map((a) => a.summary)).toContain(`Anexou print do ip.png em IP do cliente (LinePBX) (${card.codigo})`);
   });
 
-  it('a caixinha de outro campo, o campo desativado ou de outro painel não recebem; até 20 em cada', async () => {
-    const conf = campo('Configuração do ambiente', 'linepbx');
-    const outra = campo('Configuração do ambiente', 'linechat').opcoes[1]!;
-    expect((await anexar(s, conf.id, outra.id, 'x.png')).statusCode).toBe(400);
+  it('o Recebe anexos liga em qualquer campo; nas caixinhas, vai na caixinha; até 20 em cada', async () => {
+    const testes = campo('Testes realizados', 'linechat');
+    const ligar = await s.put(`/atendimento/campos/${testes.id}`, {
+      nome: testes.nome, tipo: 'caixinhas', dica: testes.dica, parte: testes.parte, produtoId: testes.produtoId,
+      opcoes: testes.opcoes.map((x) => ({ id: x.id, nome: x.nome, ativa: x.ativa })), anexos: true,
+    });
+    expect(ligar.statusCode, ligar.body).toBe(200);
+    expect(ligar.json()).toMatchObject({ anexos: true, opcoes: testes.opcoes.map((x) => ({ id: x.id, nome: x.nome })) });
+    const op = testes.opcoes[0]!;
+    // a caixinha de outro campo, o campo desativado ou de outro painel não recebem
+    expect((await anexar(s, testes.id, campo('Configuração do ambiente', 'linechat').opcoes[0]!.id, 'x.png')).statusCode).toBe(400);
     const desativado = (await s.get('/atendimento/opcoes')).json().campos.find((c: CampoPersonalizado) => c.painelId === imp.id && !c.ativo) as CampoPersonalizado;
     expect((await anexar(s, desativado.id, null, 'x.png')).statusCode).toBe(400);
     const doComercial = (await s.get('/atendimento/opcoes')).json().campos.find((c: CampoPersonalizado) => c.painelId === com.id);
     if (doComercial) expect((await anexar(s, doComercial.id, null, 'x.png')).statusCode).toBe(404);
-    // o limite: a caixinha dos testes recebe 20, a 21ª não
-    const testes = campo('Testes realizados', 'linechat');
-    const op = testes.opcoes[0]!;
+    // o limite: a caixinha recebe 20, a 21ª não
     for (let i = 0; i < 4; i++) {
       const lote = await s.post(`/atendimento/chamados/${card.id}/campos/${testes.id}/anexos`, { opcaoId: op.id, anexos: Array.from({ length: 5 }, (_, j) => ({ fileName: `t${i}-${j}.png`, conteudo: PNG })) });
       expect(lote.statusCode, lote.body).toBe(200);
@@ -438,7 +454,7 @@ describe('os anexos dos campos e das caixinhas (2.3)', () => {
     const demais = await anexar(s, testes.id, op.id, 'a mais.png');
     expect(demais.statusCode).toBe(400);
     expect(demais.json().error).toMatch(/cabem até 20/);
-    // nas caixinhas, o anexo vai na caixinha: o campo todo não recebe ("nas configurações n precisa de ter anexar")
+    // nas caixinhas, o anexo vai na caixinha: o campo todo não recebe
     const noCampo = await anexar(s, testes.id, null, 'do campo.png');
     expect(noCampo.statusCode).toBe(400);
     expect(noCampo.json().error).toBe('Nas caixinhas, o anexo vai na caixinha: use o clipe ao lado dela.');

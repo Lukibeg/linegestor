@@ -159,6 +159,8 @@ describe('o modelo do painel Implantação', () => {
     expect(MODELO_DA_IMPLANTACAO.campos.length).toBeLessThanOrEqual(30);
     // os testes do LineChat (que o Helena não tinha)
     expect(MODELO_DA_IMPLANTACAO.campos.some((c) => c.produto === 'linechat' && c.parte === 'Testes')).toBe(true);
+    // os anexos só na Curadoria, menos a escolha dos módulos ("eu quis dizer todas as opções de curadoria")
+    for (const c of MODELO_DA_IMPLANTACAO.campos) expect(!!c.anexos, c.nome).toBe(c.parte === 'Curadoria' && c.tipo !== 'modulos');
     // sem o CRM usado ("n precisa disso n")
     expect(MODELO_DA_IMPLANTACAO.campos.some((c) => c.nome === 'CRM usado')).toBe(false);
     // os módulos: escolhidos na Curadoria, o checklist na Configuração (de cada produto)
