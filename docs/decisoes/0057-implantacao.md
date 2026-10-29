@@ -99,7 +99,12 @@ a gente concluir a implantação no painel de implantação"*.
    que liga no cadastro é a escolha da Curadoria; o escolhido que o checklist ainda não marcou vira um aviso na janela
    (nada trava). O checklist segue um campo de módulos do mesmo painel e do mesmo produto que seja a escolha (não outro
    checklist); em Painéis › Ajustes › Campos, **Os módulos que aparecem** › **Só os marcados em …**.
-12. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
+12. **O Painel da Implantação no menu Suporte** (29/10: *"eu quero q o painel de implantação tenha um botão dentro do menu
+   suporte como o painel do suporte"*): Suporte › Painel da Implantação (`/suporte/implantacao`), logo abaixo do Painel
+   do Suporte, abre o quadro do painel da implantação — o de Gestão que a etapa do Comercial abre; sem ela, o de Gestão
+   com a etapa que liga no cadastro. Na tela dele (o quadro, a lista, a ficha IMP-…), o item fica marcado. Sem um painel
+   assim que a pessoa veja, a tela diz como criar.
+13. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
    cadastro)"; no card, "veio da negociação COM-12"; no Implantado, "ligou no cadastro de X o produto … e os módulos …,
    desde …"; a auditoria ganha as linhas do cliente criado, do card aberto e do que ligou no cadastro.
 

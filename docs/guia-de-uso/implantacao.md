@@ -23,6 +23,9 @@ produtos e os módulos ficam ativos na ficha do cliente, com a data.
    ali aparece no card sozinho. (No catálogo de hoje, faltam para o LinePBX: Callback, WebRTC, NPS - WhatsApp e Filas -
    Dashboard.)
 
+O atalho: **Suporte › Painel da Implantação**, no menu, abre o quadro do painel (o painel de Gestão que a etapa do
+Comercial abre).
+
 ## 2. A negociação abre o card
 
 No Comercial, mova a negociação para **Em processo de Implantação** (arrastando no quadro ou pelo Mover da ficha). A
