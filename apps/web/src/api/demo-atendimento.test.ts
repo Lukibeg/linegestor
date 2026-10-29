@@ -1040,7 +1040,7 @@ describe('o painel de Vendas na prévia (como o servidor)', () => {
     expect(campos.map((c) => c.nome)).toEqual([
       'CNPJ', 'Contatos principais', 'Origem de lead', 'Indicação',
       // os que vieram do Helena (2.3), nos Detalhes da proposta
-      'Licenças Coorporativas Voz', 'Licenças Callcenter Voz', 'Canais Simultâneos', 'Faixa Numérica', 'Licenças WhatsApp', 'Licenças Números Oficiais',
+      'Licenças Coorporativas Voz', 'Licenças Callcenter Voz', 'Canais Simultâneos', 'Faixa Numérica', 'Licenças Callcenter WhatsApp', 'Licenças Números Oficiais',
     ]);
     expect(campos.filter((c) => c.parte === 'Detalhes da proposta').map((c) => c.nome)).toHaveLength(6);
     expect(campos.find((c) => c.nome === 'CNPJ')!.parte).toBeNull();

@@ -1358,7 +1358,7 @@ export const CAMPOS_DO_HELENA_NO_COMERCIAL: Array<{ nome: string; tipo: 'numero'
   { nome: 'Licenças Callcenter Voz', tipo: 'numero' },
   { nome: 'Canais Simultâneos', tipo: 'numero' },
   { nome: 'Faixa Numérica', tipo: 'texto' },
-  { nome: 'Licenças WhatsApp', tipo: 'numero' },
+  { nome: 'Licenças Callcenter WhatsApp', tipo: 'numero' },
   { nome: 'Licenças Números Oficiais', tipo: 'texto' },
 ];
 
@@ -1449,7 +1449,7 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     campos: {
       'Origem de lead': 'Site', CNPJ: '29.184.765/0001-00',
       'Licenças Coorporativas Voz': '14', 'Licenças Callcenter Voz': '6', 'Canais Simultâneos': '12', 'Faixa Numérica': '(71) 3333-4400 a 4419',
-      'Licenças WhatsApp': '4', 'Licenças Números Oficiais': '1 (o das reservas)',
+      'Licenças Callcenter WhatsApp': '4', 'Licenças Números Oficiais': '1 (o das reservas)',
     },
     por: 'diego', responsavel: 'diego', abriu: 33,
     passos: [{ para: 'Qualificação', dias: 31 }, { para: 'Proposta enviada', dias: 23 }, { para: 'Negociação', dias: 14 }, { para: ETAPA_QUE_ABRE_A_IMPLANTACAO, dias: 2 }],
@@ -1473,7 +1473,7 @@ export const NEGOCIACOES_DE_EXEMPLO: NegociacaoDeExemplo[] = [
     porProduto: { linepbx: 1_600, voicenet: 850, linechat: 550 }, ativacaoPorProduto: { linepbx: 4_200, voicenet: 1_800 },
     campos: {
       'Origem de lead': 'Indicação', 'Indicação': 'Anderson, do Supermercado Bom Preço', 'Contatos principais': 'Gustavo (diretor de operações): decide\nPatrícia (TI): cuida da migração das lojas',
-      'Licenças Coorporativas Voz': '84', 'Licenças Callcenter Voz': '14', 'Canais Simultâneos': '30', 'Licenças WhatsApp': '14', 'Licenças Números Oficiais': '14 (um por loja)',
+      'Licenças Coorporativas Voz': '84', 'Licenças Callcenter Voz': '14', 'Canais Simultâneos': '30', 'Licenças Callcenter WhatsApp': '14', 'Licenças Números Oficiais': '14 (um por loja)',
     },
     por: 'camila', responsavel: 'camila', abriu: 7, passos: [{ para: 'Qualificação', dias: 5 }],
     descricao: '14 farmácias com central própria em cada uma. Querem uma só central e o atendimento do WhatsApp das lojas junto.' },
