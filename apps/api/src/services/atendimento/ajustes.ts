@@ -188,7 +188,7 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
     // implantação (2.3), com os do Ingline - Ativações (a curadoria, a configuração e os testes de cada produto)
     const doCatalogo = modelo ? await db.select({ id: products.id, code: products.code }).from(products).where(isNull(products.deletedAt)) : [];
     const produtoDoCodigo = (code: string | null) => (code ? doCatalogo.find((x) => x.code === code)?.id ?? null : null);
-    const camposDeFabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null }> = modelo
+    const camposDeFabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null; escolhidosEm?: string }> = modelo
       // o campo de um produto que não está no catálogo fica de fora (os módulos não teriam de onde vir)
       ? modelo.campos.filter((c) => !c.produto || produtoDoCodigo(c.produto)).map((c) => ({ ...c, produtoId: produtoDoCodigo(c.produto) }))
       : tipo === 'vendas' ? [...CAMPOS_DO_PAINEL_DE_VENDAS] : [];
@@ -197,11 +197,18 @@ export async function gravarPainel(app: FastifyInstance, ator: Ator, id: string 
       await tx.insert(ticketPanels).values({ id: novoId, ...campos, kind: tipo, sortOrder: Number(ultimo?.n ?? -1) + 1 });
       await aplicarEtapas(tx, ator, plano, agora);
       if (camposDeFabrica.length) {
+        const ids = camposDeFabrica.map(() => newId());
         await tx.insert(ticketFields).values(camposDeFabrica.map((c, ordem) => ({
-          id: newId(), panelId: novoId, name: c.nome, kind: c.tipo, help: c.dica, active: true, sortOrder: ordem,
+          id: ids[ordem]!, panelId: novoId, name: c.nome, kind: c.tipo, help: c.dica, active: true, sortOrder: ordem,
           options: c.opcoes.map(opcaoDoModelo).map((o) => ({ id: newId(), nome: o.nome, ativa: true, ...(o.pasta ? { pasta: o.pasta } : {}) })), inlineOptions: !!c.incluirNaHora,
           section: c.parte ?? null, productId: c.produtoId ?? null,
         })));
+        // o checklist dos módulos (2.3) segue o campo de módulos do mesmo produto com o nome do modelo (o da Curadoria)
+        for (const [i, c] of camposDeFabrica.entries()) {
+          if (!c.escolhidosEm) continue;
+          const j = camposDeFabrica.findIndex((x) => x.nome === c.escolhidosEm && (x.produtoId ?? null) === (c.produtoId ?? null));
+          if (j >= 0) await tx.update(ticketFields).set({ followsFieldId: ids[j]! }).where(eq(ticketFields.id, ids[i]!));
+        }
       }
     });
     const painel = await painelPronto(db, novoId);
@@ -618,7 +625,7 @@ export async function colarAssuntos(app: FastifyInstance, painelId: string, text
 
 const campoParaAuditoria = (c: CampoPersonalizado) => ({
   nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes, ativo: c.ativo, incluirNaHora: c.incluirNaHora,
-  ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}),
+  ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}),
 });
 
 /**
@@ -677,12 +684,27 @@ function conferirCampo(p: typeof ticketPanels.$inferSelect, outros: CampoPersona
   if (doSistema) throw new Conflict(`Todo chamado do painel ${p.name} já tem o campo ${doSistema}: escolha outro nome.`);
   // os módulos são os do produto: trocar o produto trocaria as opções do que já foi marcado
   if (atual?.tipo === 'modulos' && atual.produtoId !== d.produtoId) throw new BadRequest(`O produto dos módulos não muda depois de criado (${atual.nome}). Crie outro campo e desative este.`);
+  conferirEscolhidosEm(outros, d, atual?.id ?? null);
   // o mesmo nome pode estar em produtos diferentes (2.3: o Horário de atendimento do LineChat e o do LinePBX)
   const igual = outros.find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome) && (c.produtoId ?? null) === (d.produtoId ?? null));
   if (igual) throw new Conflict(`O painel ${p.name} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
   if (atual && atual.tipo !== d.tipo) throw new BadRequest(`O tipo do campo não muda depois de criado (${atual.nome} é ${NOME_TIPO_CAMPO[atual.tipo]}). Crie outro campo e desative este.`);
   if (!temOpcoesEscritas(d.tipo)) return [];
   return opcoesConferidas(d.tipo, d.opcoes, atual?.opcoes ?? []);
+}
+
+/**
+ * O checklist dos módulos (2.3): segue um campo de módulos deste painel e do mesmo produto, que seja a escolha (não
+ * outro checklist); e o campo que alguém segue continua sendo a escolha.
+ */
+function conferirEscolhidosEm(outros: CampoPersonalizado[], d: CampoGravar, atualId: string | null) {
+  if (!d.escolhidosEm) return;
+  if (d.tipo !== 'modulos') throw new BadRequest('Só os módulos do produto seguem outro campo.');
+  const fonte = outros.find((c) => c.id === d.escolhidosEm);
+  if (!fonte || fonte.id === atualId || fonte.tipo !== 'modulos' || (fonte.produtoId ?? null) !== (d.produtoId ?? null) || fonte.escolhidosEm) {
+    throw new BadRequest('O checklist dos módulos segue um campo de módulos deste painel, do mesmo produto, em que os módulos são escolhidos.');
+  }
+  if (atualId && outros.some((c) => c.escolhidosEm === atualId)) throw new BadRequest(`Outro campo segue ${d.nome}: ele continua sendo a escolha dos módulos.`);
 }
 
 /**
@@ -746,7 +768,7 @@ export async function criarCampo(app: FastifyInstance, painelId: string, d: Camp
   await db.transaction(async (tx) => {
     await tx.insert(ticketFields).values({
       id, panelId: painelId, name: d.nome, kind: d.tipo, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: d.tipo === 'lista' && d.incluirNaHora,
-      sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, section: d.parte, productId: d.produtoId,
+      sortOrder: Math.max(-1, ...outros.map((c) => c.ordem)) + 1, section: d.parte, productId: d.produtoId, followsFieldId: d.tipo === 'modulos' ? d.escolhidosEm : null,
     });
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });
@@ -771,7 +793,7 @@ export async function alterarCampo(app: FastifyInstance, id: string, d: CampoGra
   await db.transaction(async (tx) => {
     await tx.update(ticketFields).set({
       name: d.nome, help: d.dica, options: opcoes, active: d.ativo, inlineOptions: antes.tipo === 'lista' && d.incluirNaHora, updatedAt: new Date(),
-      section: d.parte, productId: d.produtoId,
+      section: d.parte, productId: d.produtoId, followsFieldId: antes.tipo === 'modulos' ? d.escolhidosEm : null,
     }).where(eq(ticketFields.id, id));
     pedido = await gravarOndeEPedido(tx, p, id, d.ativo, d);
   });

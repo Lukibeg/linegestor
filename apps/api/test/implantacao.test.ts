@@ -4,7 +4,8 @@
  * LinePBX; e, do Comercial, "quando mover para … em processo de implantação" abrir o card e "já criar o cliente…
  * automaticamente com os produtos"; no Implantado, os módulos marcados "viram os módulos ativos na ficha do cliente".
  *
- *  - o modelo Implantação: as etapas, os 18 campos (com a parte e o produto), os módulos vindos do catálogo
+ *  - o modelo Implantação: as etapas, os 19 campos (com a parte e o produto), os módulos vindos do catálogo (escolhidos na
+ *    Curadoria, o checklist na Configuração)
  *  - os campos: os módulos pedem o produto (que não muda); o mesmo nome em produtos diferentes; as caixinhas guardam quem e quando
  *  - a negociação na etapa que abre a implantação: sem CNPJ, 400 (e a janela pede); com ele, o cliente (com a Matriz), os
  *    produtos sem a data, o card ligado, o histórico dos dois e a auditoria; de novo, nada se repete; o CNPJ que já existe liga
@@ -64,7 +65,14 @@ describe('o modelo Implantação', () => {
     expect(imp.ajustes.camposDesligados).toEqual(expect.arrayContaining(['assunto', 'prioridade', 'relato', 'solucao']));
     const o: OpcoesAtendimento = (await s.get('/atendimento/opcoes')).json();
     campos = o.campos.filter((c) => c.painelId === imp.id);
-    expect(campos).toHaveLength(18);
+    expect(campos).toHaveLength(19);
+    // os módulos: escolhidos na Curadoria; o checklist da Configuração segue a escolha do mesmo produto
+    for (const codigo of ['linechat', 'linepbx'] as const) {
+      const escolha = campo('Módulos a ativar', codigo);
+      expect(escolha).toMatchObject({ parte: 'Curadoria', escolhidosEm: null });
+      expect(campo('Ativação dos módulos', codigo)).toMatchObject({ parte: 'Configuração', escolhidosEm: escolha.id });
+    }
+    expect(campos.some((c) => c.nome === 'CRM usado')).toBe(false);
     expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes']);
     // o mesmo nome nos dois produtos
     expect(campos.filter((c) => c.nome === 'Horário de atendimento').map((c) => c.produtoId).sort()).toEqual([produto.linechat, produto.linepbx].sort());
@@ -87,7 +95,20 @@ describe('o modelo Implantação', () => {
     const troca = await s.put(`/atendimento/campos/${m.id}`, { nome: m.nome, tipo: 'modulos', parte: m.parte, produtoId: produto.linechat });
     expect(troca.statusCode).toBe(400);
     expect(troca.json().error).toMatch(/produto dos módulos não muda/);
-    // desativa o de teste (o painel volta aos 18)
+    // o checklist dos módulos segue um campo de módulos do mesmo produto, que seja a escolha
+    const base = { tipo: 'modulos', parte: 'Configuração', produtoId: produto.linepbx };
+    expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Módulos a ativar', 'linechat').id })).statusCode).toBe(400);
+    expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Configuração do ambiente', 'linepbx').id })).statusCode).toBe(400);
+    expect((await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Ativação dos módulos', 'linepbx').id })).statusCode).toBe(400);
+    const checklist = await s.post(`/atendimento/paineis/${imp.id}/campos`, { ...base, nome: 'Checklist X', escolhidosEm: campo('Módulos a ativar', 'linepbx').id });
+    expect(checklist.statusCode, checklist.body).toBe(201);
+    expect(checklist.json().escolhidosEm).toBe(campo('Módulos a ativar', 'linepbx').id);
+    // a escolha que alguém segue não vira checklist
+    const escolha = campo('Módulos a ativar', 'linepbx');
+    const vira = await s.put(`/atendimento/campos/${escolha.id}`, { nome: escolha.nome, tipo: 'modulos', parte: escolha.parte, produtoId: produto.linepbx, escolhidosEm: checklist.json().id });
+    expect(vira.statusCode).toBe(400);
+    await s.put(`/atendimento/campos/${checklist.json().id}`, { ...base, nome: 'Checklist X', escolhidosEm: escolha.id, ativo: false });
+    // desativa o de teste (o painel volta aos 19)
     await s.put(`/atendimento/campos/${noOutro.json().id}`, { nome: 'Lista de usuários', tipo: 'texto', parte: 'Curadoria', produtoId: produto.voicenet, ativo: false });
   });
 
@@ -260,8 +281,9 @@ describe('o card da implantação', () => {
     const q: QuadroAtendimento = (await s.get(`/atendimento/quadro?painel=${imp.id}`)).json();
     const c = q.colunas.flatMap((x) => x.chamados).find((x) => x.id === card.id)!;
     expect(c.partes.map((p) => p.parte)).toEqual(['Curadoria', 'Configuração', 'Testes']);
-    // a curadoria: 6 do LineChat + 6 do LinePBX, com a lista de usuários escrita; a configuração: 5 + 10 caixinhas, 1 marcada
-    expect(c.partes[0]).toEqual({ parte: 'Curadoria', feitos: 1, total: 12 });
+    // a curadoria: 5 do LineChat + 6 do LinePBX (os módulos escolhidos não contam), com a lista de usuários escrita; a
+    // configuração: 5 + 10 caixinhas, 1 marcada (o checklist dos módulos, sem módulo escolhido, não conta nada)
+    expect(c.partes[0]).toEqual({ parte: 'Curadoria', feitos: 1, total: 11 });
     expect(c.partes[1]).toEqual({ parte: 'Configuração', feitos: 1, total: 15 });
     expect(c.partes[2]).toEqual({ parte: 'Testes', feitos: 0, total: 8 });
   });
@@ -280,6 +302,8 @@ describe('o card da implantação', () => {
       modulos: [{ id: modulo.id, acao: 'liga', produto: 'LineChat' }],
     });
     expect(plano.cadastro.produtos.map((p: { acao: string }) => p.acao)).toEqual(['ativa', 'ativa']);
+    // o escolhido na Curadoria que o checklist da Configuração ainda não marcou: a janela avisa (não trava)
+    expect(plano.cadastro.semMarcar).toEqual([{ id: modulo.id, nome: modulo.nome, produto: 'LineChat', campo: 'Ativação dos módulos' }]);
     // a negociação vai junto para o Implantado do Comercial
     expect(plano.negociacao).toEqual({ id: neg.id, codigo: neg.codigo, titulo: 'Padaria Sol', de: 'Em processo de Implantação', para: 'Implantado' });
     const r = await s.post(`/atendimento/chamados/${card.id}/mover`, { etapaId: validado.id });

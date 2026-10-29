@@ -1608,6 +1608,11 @@ export const ticketFields = pgTable(
     section: text('section'),
     /** Só aparece quando o chamado tem este produto (2.3: o bloco do LineChat, o do LinePBX); os módulos são os dele */
     productId: text('product_id').references(() => products.id),
+    /**
+     * O checklist dos módulos (2.3): o campo de módulos de onde vêm as opções — só os marcados lá (a Curadoria) aparecem
+     * aqui (a Configuração). Nulo: o campo é a escolha.
+     */
+    followsFieldId: text('follows_field_id').references((): AnyPgColumn => ticketFields.id, { onDelete: 'set null' }),
     active: boolean('active').notNull().default(true),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: createdAt(),

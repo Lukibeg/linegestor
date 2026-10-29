@@ -317,6 +317,7 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
     incluirNaHora: campo?.incluirNaHora ?? false,
     parte: campo?.parte ?? '',
     produtoId: campo?.produtoId ?? '',
+    escolhidosEm: campo?.escolhidosEm ?? '',
   }));
   // as caixinhas, em pastas (2.3)
   const [pastas, setPastas] = useState<PastaRascunho[]>(() => pastasDoEditor(campo?.opcoes ?? []));
@@ -332,6 +333,9 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
   const lista_ = temOpcoesEscritas(f.tipo);
   // os módulos são os do produto: o produto não muda depois de criado
   const produtoTravado = !!campo && campo.tipo === 'modulos';
+  // o checklist dos módulos (2.3) segue um campo de módulos do mesmo produto, que seja a escolha
+  const fontes = (opcoesDoModulo.data?.campos ?? []).filter((c) => c.painelId === painel.id && c.tipo === 'modulos' && !c.escolhidosEm && c.id !== campo?.id && (c.produtoId ?? '') === f.produtoId);
+  const seguido = !!campo && (opcoesDoModulo.data?.campos ?? []).some((c) => c.escolhidosEm === campo.id);
 
   const salvar = async () => {
     const nome = f.nome.trim();
@@ -358,6 +362,7 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
     if (f.tipo === 'modulos' && !f.produtoId) { setErro('Escolha o produto: os módulos são os dele.'); document.getElementById('campo-produto')?.focus(); return; }
     const d: CampoGravarEntrada = {
       nome, tipo: f.tipo, dica: f.dica.trim() || null, ativo: f.ativo, parte: f.parte.trim() || null, produtoId: f.produtoId || null,
+      escolhidosEm: f.tipo === 'modulos' && fontes.some((c) => c.id === f.escolhidosEm) ? f.escolhidosEm : null,
       opcoes: f.tipo === 'caixinhas' ? caixinhasParaGravar(pastas) : lista_ ? opcoes.map((o) => ({ ...(o.id ? { id: o.id } : {}), nome: o.nome, ativa: o.ativa })) : [],
       obrigatorioAoAbrir: f.obrigatorioAoAbrir, etapas: f.etapas, incluirNaHora: f.tipo === 'lista' && f.incluirNaHora,
     };
@@ -433,6 +438,16 @@ function JanelaCampo({ painel, campo, onFechar }: { painel: Painel; campo: Campo
             </select>
           </Rotulo>
         </div>
+
+        {f.tipo === 'modulos' && f.produtoId && !seguido && (
+          <Rotulo rotulo="Os módulos que aparecem" id="campo-escolhidos-em"
+            dica="Com um campo escolhido, este vira o checklist: só os módulos marcados lá aparecem aqui e entram na conta da parte. Ex.: a Ativação dos módulos (Configuração) segue o Módulos a ativar (Curadoria).">
+            <select className="input" id="campo-escolhidos-em" value={f.escolhidosEm} onChange={(e) => mudar({ escolhidosEm: e.target.value })}>
+              <option value="">Todos os do produto (aqui se escolhe)</option>
+              {fontes.map((c) => <option key={c.id} value={c.id}>Só os marcados em {c.nome}{c.parte ? ` (${c.parte})` : ''}</option>)}
+            </select>
+          </Rotulo>
+        )}
 
         <Rotulo rotulo="Explicação (opcional)" id="campo-dica" dica="Aparece embaixo do campo, na ficha e no Abrir chamado.">
           <input className="input" id="campo-dica" value={f.dica} maxLength={200} placeholder="Ex.: o sistema em que o problema aparece" onChange={(e) => mudar({ dica: e.target.value })} />

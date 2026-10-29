@@ -10,7 +10,7 @@ produtos e os módulos ficam ativos na ficha do cliente, com a data.
    - as etapas **Stand By**, **Curadoria** (onde o card cai), **Configuração**, **Testes**, **Concluído** (todos os testes
      feitos) e **Implantado** (o cliente ativo; o Implantado
      liga no cadastro);
-   - os **18 campos** do Ingline - Ativações, em três partes (Curadoria, Configuração, Testes), um bloco para o LineChat
+   - os **19 campos** do Ingline - Ativações, em três partes (Curadoria, Configuração, Testes), um bloco para o LineChat
      e outro para o LinePBX;
    - sem prazo, sem prioridade e sem o Tempo gasto (a implantação leva o tempo dela). O Tempo gasto liga e desliga em
      Painéis › Ajustes › Campos, em cada painel.
@@ -42,9 +42,11 @@ Voltar a negociação e mover de novo não abre outro card.
 ## 3. O card no dia a dia
 
 - **A Curadoria.** Quem cuida da curadoria preenche os dados do cliente (os usuários, os números, o chatbot, o horário, o
-  acesso à BM, os ramais, a URA). Para o card sair da Curadoria, alguém precisa ser o responsável (a janela pergunta).
-- **A Configuração.** A equipe técnica marca as caixinhas do que já fez e os **Módulos a ativar** que o cliente
-  contratou. Cada caixinha marcada mostra quem marcou e quando.
+  acesso à BM, os ramais, a URA) e marca os **Módulos a ativar**: os que o cliente contratou. Para o card sair da
+  Curadoria, alguém precisa ser o responsável (a janela pergunta).
+- **A Configuração.** A equipe técnica marca as caixinhas do que já fez. A **Ativação dos módulos** é o checklist dos
+  módulos marcados na Curadoria (só eles aparecem): marque cada um conforme ativar. Cada caixinha marcada mostra quem
+  marcou e quando.
 - **Os Testes.** O suporte marca o que já testou com o cliente.
 - **As pastas.** A Configuração do LinePBX vem em pastas (Servidor, Asterisk, LinePBX Web, Módulos, Telefones), cada uma
   com a conta. Quem cuida dos chamados muda ali mesmo: **Editar as caixinhas** › Nova pasta, Incluir caixinha, as setas
@@ -64,7 +66,8 @@ Quando os testes acabarem, mova o card para **Concluído**. Feita a implantaçã
 
 - os produtos sem data ganham a data de hoje (o que o cliente não tinha entra ativo; o Equipamentos, que não tem data,
   entra sem ela; o que estava encerrado fica como está);
-- os módulos marcados em Módulos a ativar ficam ligados.
+- os módulos marcados em Módulos a ativar (a Curadoria) ficam ligados. Se algum ainda não foi marcado na Ativação dos
+  módulos (a Configuração), a janela avisa, mas não trava.
 
 **Mover e ligar no cadastro.** Na ficha do cliente (Clientes › o cliente › Produtos), o produto que ainda está em
 implantação aparece como **em implantação**; depois do Implantado, **ativo desde** o dia.
@@ -81,6 +84,8 @@ Todo campo de qualquer painel ganhou duas opções:
   diferentes.
 
 E dois tipos novos: **Caixinhas** (o que já foi feito, com quem marcou e quando; em pastas, se quiser: **Nova pasta** na
-janela do campo) e **Módulos do produto** (os módulos do catálogo; o produto não muda depois de criado).
+janela do campo) e **Módulos do produto** (os módulos do catálogo; o produto não muda depois de criado). Num campo de
+módulos, **Os módulos que aparecem** › **Só os marcados em …** faz dele o checklist de outro campo de módulos do mesmo
+produto (como a Ativação dos módulos segue o Módulos a ativar).
 
 Em qualquer painel, os campos do card ganharam o **Anexar** (veja acima).

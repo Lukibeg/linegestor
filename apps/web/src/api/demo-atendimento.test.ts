@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MENSAGEM_DO_TITULO, CARGOS_DE_FABRICA, caminhoDoAssunto, diaLocal, EXEMPLO_DO_LINECHAT, MAPA_DO_ROBO_PADRAO, mensagemDoQueFalta, mensagemPreenchida, prioridadeSugeridaDoPainel, reais, somarDias, TROCA_ENTRA_NO_FUNIL,
   NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
-  NIA_PADRAO, resumoDaNia,
+  NIA_PADRAO, resumoDaNia, contaDoCampo,
   type CartaoChamado,
 } from '@gestor/shared';
 import { demoApi } from './demo.js';
@@ -1189,9 +1189,9 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(imp.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
     expect(imp.etapas.filter((e) => e.ligaNoCadastro).map((e) => e.nome)).toEqual(['Implantado']);
     expect(etapa(op, 'COM', ETAPA_DA_IMPLANTACAO).abreImplantacao).toBe(imp.id);
-    // os 18 campos do modelo, em três partes, de dois produtos
+    // os 19 campos do modelo, em três partes, de dois produtos
     const campos = op.campos.filter((c) => c.painelId === imp.id);
-    expect(campos).toHaveLength(18);
+    expect(campos).toHaveLength(19);
     expect([...new Set(campos.map((c) => c.parte))]).toEqual(['Curadoria', 'Configuração', 'Testes']);
 
     const q = await api.quadro({ painel: imp.id });
@@ -1199,7 +1199,8 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(naEtapa).toMatchObject({ Curadoria: ['Hotel Beira Mar'], Configuração: ['Academia Movimento'], Testes: ['Construtora Horizonte'], Implantado: ['Ótica Visão Clara'] });
     // o cartão mostra a conta da parte da etapa (a Configuração do LineChat: 3 de 5)
     const movimento = q.colunas.find((c) => c.etapa.nome === 'Configuração')!.chamados[0]!;
-    expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 3, total: 5 });
+    // 3 de 5 caixinhas + 1 de 2 módulos escolhidos na Curadoria (o checklist conta)
+    expect(movimento.partes.find((p) => p.parte === 'Configuração')).toMatchObject({ feitos: 4, total: 7 });
 
     const vc = await api.chamado(q.colunas.find((c) => c.etapa.nome === 'Implantado')!.chamados[0]!.codigo);
     expect(vc.origem).toBe('comercial');
@@ -1321,6 +1322,24 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect((await erroDe(api.salvarCaixinhas(conf.id, { opcoes: [{ nome: 'X' }] }))).status).toBe(403);
   });
 
+  it('os módulos: a Curadoria escolhe, o checklist da Configuração mostra só os escolhidos, o Implantado avisa o que falta', async () => {
+    await entrar('admin');
+    const op = await api.opcoes();
+    const imp = painel(op, 'IMP');
+    const pbx = produto(op, 'LinePBX');
+    const escolha = campoDe(op, imp.id, 'Módulos a ativar', pbx);
+    const checklist = campoDe(op, imp.id, 'Ativação dos módulos', pbx);
+    expect(escolha.parte).toBe('Curadoria');
+    expect(checklist).toMatchObject({ parte: 'Configuração', escolhidosEm: escolha.id });
+    const horizonte = (await api.lista({ painel: imp.id, situacao: 'todos', pageSize: 100 })).items.find((c) => c.cliente?.nome === 'Construtora Horizonte')!;
+    // o checklist conta os escolhidos: o FOP2 marcado, o Callback faltando
+    const ficha = await api.chamado(horizonte.codigo);
+    expect(contaDoCampo(checklist, ficha.campos[checklist.id], ficha.campos)).toEqual({ feitos: 1, total: 2 });
+    const plano = (await api.aoMover(horizonte.id, { etapaId: imp.etapas.find((e) => e.nome === 'Implantado')!.id })).cadastro!;
+    expect(plano.modulos.map((m) => m.nome)).toEqual(['FOP2', 'Callback']);
+    expect(plano.semMarcar).toEqual([expect.objectContaining({ nome: 'Callback', produto: 'LinePBX', campo: 'Ativação dos módulos' })]);
+  });
+
   it('os anexos dos campos e das caixinhas: anexar, ver na ficha e no histórico, tirar (o seu, ou quem cuida)', async () => {
     const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
     await entrar('admin');
@@ -1356,7 +1375,7 @@ describe('a implantação na prévia (2.3, como o servidor)', () => {
     expect(novo.etapas.map((e) => [e.nome, !!e.ligaNoCadastro])).toEqual([['Stand By', false], ['Curadoria', false], ['Configuração', false], ['Testes', false], ['Concluído', false], ['Implantado', true]]);
     expect(novo.ajustes.contaPrazo).toBe(false);
     const op = await api.opcoes();
-    expect(op.campos.filter((c) => c.painelId === novo.id)).toHaveLength(18);
+    expect(op.campos.filter((c) => c.painelId === novo.id)).toHaveLength(19);
     const pbx = produto(op, 'LinePBX');
     const chat = produto(op, 'LineChat');
     // os módulos precisam do produto

@@ -1,5 +1,5 @@
 {
-  "id": "01ea5055-4a10-41f4-a313-adaa0ff786d0",
+  "id": "ce8f946a-6b09-40db-80ee-b1689303e147",
   "prevId": "a77b0ed5-110d-44e4-b861-c9f13f39250c",
   "version": "7",
   "dialect": "postgresql",
@@ -7190,6 +7190,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "follows_field_id": {
+          "name": "follows_field_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "active": {
           "name": "active",
           "type": "boolean",
@@ -7261,6 +7267,19 @@
             "id"
           ],
           "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "ticket_fields_follows_field_id_ticket_fields_id_fk": {
+          "name": "ticket_fields_follows_field_id_ticket_fields_id_fk",
+          "tableFrom": "ticket_fields",
+          "tableTo": "ticket_fields",
+          "columnsFrom": [
+            "follows_field_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },

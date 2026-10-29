@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CaixinhasGravarSchema, CampoGravarSchema, EtapaGravarSchema, mudancasDasCaixinhas, normalizarValorDoCampo, pastasDasCaixinhas, textoDoEvento, textoDoValor, type CampoPersonalizado, type EtapaPainel } from './atendimento.js';
 import {
   etapaDoFimDaImplantacao,
-  MODELO_DA_IMPLANTACAO, opcaoDoModelo, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
+  MODELO_DA_IMPLANTACAO, opcaoDoModelo, modulosDoChecklist, modulosSemMarcar, cadastroMuda, contaDoCampo, marcasDepois, modulosMarcados, nomeCompletoDoCampo, parteDaEtapa, partesDoChamado, partesDoPainel,
   planoDaImplantacao, planoDoCadastro, progressoDasPartes, tituloDaImplantacao,
 } from './implantacao.js';
 
@@ -103,6 +103,44 @@ describe('o campo e a etapa nos Ajustes', () => {
   });
 });
 
+describe('o checklist dos módulos (2.3: a Curadoria escolhe, a Configuração ativa)', () => {
+  const mods = [op('fop'), op('nps'), op('cb'), op('velho', false)];
+  const escolha = campo('escolha', { tipo: 'modulos', parte: 'Curadoria', produtoId: 'pbx', opcoes: mods, nome: 'Módulos a ativar' });
+  const lista = campo('lista', { tipo: 'modulos', parte: 'Configuração', produtoId: 'pbx', opcoes: mods, nome: 'Ativação dos módulos', escolhidosEm: 'escolha' });
+  const valores = { escolha: ['fop', 'cb'], lista: ['fop', 'nps'] };
+
+  it('mostra só os escolhidos (e o marcado que saiu da escolha); a conta é dos escolhidos', () => {
+    const r = modulosDoChecklist(lista, valores);
+    expect(r.opcoes.map((o) => o.id)).toEqual(['fop', 'nps', 'cb']);
+    expect([...r.foraDaEscolha]).toEqual(['nps']);
+    expect(contaDoCampo(lista, valores.lista, valores)).toEqual({ feitos: 1, total: 2 });
+    // a escolha não conta (é a escolha, não uma tarefa)
+    expect(contaDoCampo(escolha, valores.escolha, valores)).toEqual({ feitos: 0, total: 0 });
+    expect(modulosDoChecklist(lista, {}).opcoes).toEqual([]);
+    const partes = progressoDasPartes([escolha, lista], ['pbx'], valores);
+    expect(partes).toEqual([{ parte: 'Curadoria', feitos: 0, total: 0 }, { parte: 'Configuração', feitos: 1, total: 2 }]);
+  });
+
+  it('o Implantado liga o que a Curadoria escolheu; o checklist só avisa o que falta marcar', () => {
+    const produtos = [{ id: 'pbx', nome: 'LinePBX' }];
+    expect(modulosMarcados([escolha, lista], ['pbx'], valores, produtos).map((m) => m.id)).toEqual(['fop', 'cb']);
+    expect(modulosSemMarcar([escolha, lista], ['pbx'], valores, produtos)).toEqual([{ id: 'cb', nome: 'CB', produto: 'LinePBX', campo: 'Ativação dos módulos' }]);
+    // sem o produto no card, nada
+    expect(modulosSemMarcar([escolha, lista], [], valores, produtos)).toEqual([]);
+    const plano = planoDoCadastro({
+      etapa: 'Implantado', dia: '2026-10-29', cliente: { id: 'c1', nome: 'Cliente' }, produtos: [{ id: 'pbx', nome: 'LinePBX' }],
+      modulosMarcados: modulosMarcados([escolha, lista], ['pbx'], valores, produtos), semMarcar: modulosSemMarcar([escolha, lista], ['pbx'], valores, produtos), assinaturas: new Map(),
+    });
+    expect(plano.modulos.map((m) => [m.id, m.acao])).toEqual([['fop', 'liga'], ['cb', 'liga']]);
+    expect(plano.semMarcar?.map((m) => m.nome)).toEqual(['CB']);
+  });
+
+  it('só os módulos seguem outro campo', () => {
+    expect(CampoGravarSchema.safeParse({ nome: 'X', tipo: 'caixinhas', opcoes: [{ nome: 'a' }], escolhidosEm: 'escolha' }).success).toBe(false);
+    expect(CampoGravarSchema.safeParse({ nome: 'X', tipo: 'modulos', produtoId: 'pbx', escolhidosEm: 'escolha' }).success).toBe(true);
+  });
+});
+
 describe('o modelo do painel Implantação', () => {
   it('tem as etapas das partes, o Implantado que liga no cadastro e os campos dos dois produtos', () => {
     expect(MODELO_DA_IMPLANTACAO.etapas.map((e) => e.nome)).toEqual(['Stand By', 'Curadoria', 'Configuração', 'Testes', 'Concluído', 'Implantado']);
@@ -121,6 +159,15 @@ describe('o modelo do painel Implantação', () => {
     expect(MODELO_DA_IMPLANTACAO.campos.length).toBeLessThanOrEqual(30);
     // os testes do LineChat (que o Helena não tinha)
     expect(MODELO_DA_IMPLANTACAO.campos.some((c) => c.produto === 'linechat' && c.parte === 'Testes')).toBe(true);
+    // sem o CRM usado ("n precisa disso n")
+    expect(MODELO_DA_IMPLANTACAO.campos.some((c) => c.nome === 'CRM usado')).toBe(false);
+    // os módulos: escolhidos na Curadoria, o checklist na Configuração (de cada produto)
+    for (const produto of ['linechat', 'linepbx'] as const) {
+      const doProduto = MODELO_DA_IMPLANTACAO.campos.filter((c) => c.produto === produto && c.tipo === 'modulos');
+      expect(doProduto.map((c) => [c.nome, c.parte, c.escolhidosEm ?? null])).toEqual([
+        ['Módulos a ativar', 'Curadoria', null], ['Ativação dos módulos', 'Configuração', 'Módulos a ativar'],
+      ]);
+    }
   });
 
   it('a Configuração do ambiente do LinePBX vem em pastas: Servidor, Asterisk, LinePBX Web, Módulos e Telefones', () => {

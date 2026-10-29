@@ -27,7 +27,8 @@ a gente concluir a implantação no painel de implantação"*.
    Testes, Concluído (os testes acabaram: o tipo Resolvido) e Implantado (o cliente ativo: o tipo Fechado, que liga no
    cadastro); sem prazo, sem prioridade, sem assunto, tipo, gravidade, alcance, operadora, relato, solução e tempo
    gasto (o Tempo gasto virou um campo do sistema que cada painel liga e desliga: "n precisa disso", no card); e os
-   18 campos do Ingline - Ativações, arrumados em três partes, com o LineChat ganhando os testes que lá não tinha.
+   campos do Ingline - Ativações, arrumados em três partes, com o LineChat ganhando os testes que lá não tinha (19 campos:
+   sem o CRM usado, 29/10: *"n precisa disso n"*; com a Ativação dos módulos, item 11).
 2. **Os campos ganham a parte e o produto** (`ticket_fields.section`, `ticket_fields.product_id`, migração 0027):
    - com a **parte**, o campo sai da classificação e vai para o meio da ficha, num cartão por parte, com um bloco por
      produto do card e a conta "N de M" (o cartão do quadro mostra a conta da parte que tem o nome da etapa);
@@ -86,7 +87,15 @@ a gente concluir a implantação no painel de implantação"*.
    Configuração do ambiente (LinePBX) › Configuração dos ramais" e "tirou …". Vale para os campos de todos os painéis
    (não para os do sistema, como o Assunto). Nos campos de caixinhas (e de módulos), o anexo vai só na caixinha: o campo
    todo não tem o Anexar (29/10, no card: *"nas configurações n precisa de ter anexar"*), e o servidor recusa.
-11. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
+11. **Os módulos: a Curadoria escolhe, a Configuração ativa** (29/10, no card: *"esse módulos a ativar tem q ser na
+   curadoria … é a curadoria que define quais módulos devem ser ativos, aqui é só um checklist do que foi solicitado na
+   curadoria"*): o Módulos a ativar foi para a Curadoria (a escolha: não entra na conta da parte); na Configuração, a
+   **Ativação dos módulos** é um campo de módulos que segue o da escolha (`escolhidosEm`, `ticket_fields.follows_field_id`,
+   na migração 0027): só os módulos escolhidos aparecem nele, e eles entram na conta da Configuração. No Implantado, o
+   que liga no cadastro é a escolha da Curadoria; o escolhido que o checklist ainda não marcou vira um aviso na janela
+   (nada trava). O checklist segue um campo de módulos do mesmo painel e do mesmo produto que seja a escolha (não outro
+   checklist); em Painéis › Ajustes › Campos, **Os módulos que aparecem** › **Só os marcados em …**.
+12. **O histórico e a auditoria contam tudo**: na negociação, "abriu a implantação IMP-3 … (criou o cliente X; LinePBX no
    cadastro)"; no card, "veio da negociação COM-12"; no Implantado, "ligou no cadastro de X o produto … e os módulos …,
    desde …"; a auditoria ganha as linhas do cliente criado, do card aberto e do que ligou no cadastro.
 

@@ -392,7 +392,7 @@ export const DICA_TIPO_CAMPO: Record<TipoCampo, string> = {
   lista: 'Uma das opções que você escrever.',
   lista_varios: 'Uma ou mais das opções que você escrever.',
   caixinhas: 'Uma lista de tarefas: cada opção é uma caixinha, e a ficha mostra quem marcou e quando (a configuração, os testes).',
-  modulos: 'Os módulos do produto escolhido abaixo (Administração › Produtos), para marcar os que o cliente vai usar. Na etapa que liga no cadastro, os marcados ficam ativos na ficha do cliente.',
+  modulos: 'Os módulos do produto escolhido abaixo (Administração › Produtos), para marcar os que o cliente vai usar. Na etapa que liga no cadastro, os marcados ficam ativos na ficha do cliente (o checklist, que segue outro campo de módulos, só confere o que foi ativado).',
 };
 export const ehLista = (t: TipoCampo) => t === 'lista' || t === 'lista_varios';
 /**
@@ -477,6 +477,12 @@ export type CampoPersonalizado = {
   parte: string | null;
   /** Só aparece quando o chamado tem este produto (2.3: o bloco do LineChat, o do LinePBX). Nulo: sempre. */
   produtoId: string | null;
+  /**
+   * O checklist dos módulos (2.3, o Luan: "é a curadoria que define quais módulos devem ser ativos, aqui é só um checklist
+   * do que foi solicitado na curadoria"): num campo de módulos, o outro campo de módulos do mesmo produto de onde vêm as
+   * opções — só os módulos marcados lá aparecem aqui, e a conta da parte é deles. Nulo: o campo é a escolha.
+   */
+  escolhidosEm?: string | null;
 };
 /**
  * Quem marcou cada caixinha e quando (2.3), pelo id do campo e da opção. O valor do campo continua a lista das marcadas; isto
@@ -1335,8 +1341,11 @@ export const CampoGravarSchema = z.object({
   parte: z.string().trim().max(40, 'O nome da parte vai até 40 letras').nullish().transform((v) => v || null),
   /** Só aparece no chamado que tem este produto (2.3). Os módulos do produto precisam dele. */
   produtoId: z.string().trim().max(60).nullish().transform((v) => v || null),
+  /** Nos módulos (2.3): o campo de módulos de onde vêm as opções (o checklist do que foi escolhido na Curadoria) */
+  escolhidosEm: z.string().trim().max(60).nullish().transform((v) => v || null),
 }).superRefine((c, ctx) => {
   if (c.tipo === 'modulos' && !c.produtoId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['produtoId'], message: 'Escolha o produto: os módulos são os dele' });
+  if (c.escolhidosEm && c.tipo !== 'modulos') ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['escolhidosEm'], message: 'Só os módulos do produto seguem outro campo' });
   if (!temOpcoesEscritas(c.tipo)) return;
   // a que se inclui na hora pode começar vazia: as opções nascem nos chamados
   if (!c.opcoes.some((o) => o.ativa) && !(c.tipo === 'lista' && c.incluirNaHora)) {

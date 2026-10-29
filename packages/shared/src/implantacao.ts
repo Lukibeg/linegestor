@@ -20,7 +20,7 @@ import { cnpjLimpo, paraBusca } from './formatos.js';
 import {
   valorPreenchido,
   type AjustesDoPainel, type CampoPersonalizado, type CorPainel, type EtapaPainel, type MarcaDaCaixinha, type MarcasDosCampos, type ProgressoDaParte,
-  type TipoCampo, type ValorDoCampo, type ValoresDosCampos, AJUSTES_PAINEL_PADRAO,
+  type OpcaoDoCampo, type TipoCampo, type ValorDoCampo, type ValoresDosCampos, AJUSTES_PAINEL_PADRAO,
 } from './atendimento.js';
 
 // =====================================================================
@@ -41,11 +41,33 @@ export function campoAparece(c: Pick<CampoPersonalizado, 'ativo' | 'produtoId'>,
 }
 
 /**
+ * O checklist dos módulos (2.3): as opções que aparecem — os módulos escolhidos no campo de onde ele vem (a Curadoria),
+ * na ordem do catálogo, e os que ficaram marcados aqui depois de saírem da escolha (`foraDaEscolha`).
+ */
+export function modulosDoChecklist(c: Pick<CampoPersonalizado, 'opcoes' | 'escolhidosEm' | 'id'>, valores: ValoresDosCampos | null | undefined): { opcoes: OpcaoDoCampo[]; foraDaEscolha: Set<string> } {
+  const lista = (v: unknown) => new Set(Array.isArray(v) ? (v as unknown[]).filter((x): x is string => typeof x === 'string') : []);
+  const escolhidos = lista(c.escolhidosEm ? valores?.[c.escolhidosEm] : null);
+  const marcados = lista(valores?.[c.id]);
+  const opcoes = c.opcoes.filter((o) => escolhidos.has(o.id) || marcados.has(o.id));
+  return { opcoes, foraDaEscolha: new Set(opcoes.filter((o) => !escolhidos.has(o.id)).map((o) => o.id)) };
+}
+
+/**
  * Quanto um campo conta na parte: as caixinhas, cada opção (as marcadas e as que faltam, das ativas — a desativada que
  * ficou marcada conta como feita); os módulos do produto não contam (é a escolha do que o cliente vai usar, e não uma
- * tarefa); o resto, um item, feito quando preenchido.
+ * tarefa), menos o checklist dos módulos (os escolhidos na Curadoria: cada um, feito quando marcado); o resto, um item,
+ * feito quando preenchido.
  */
-export function contaDoCampo(c: Pick<CampoPersonalizado, 'tipo' | 'opcoes'>, v: ValorDoCampo | null | undefined): { feitos: number; total: number } {
+export function contaDoCampo(
+  c: Pick<CampoPersonalizado, 'tipo' | 'opcoes'> & Partial<Pick<CampoPersonalizado, 'id' | 'escolhidosEm'>>, v: ValorDoCampo | null | undefined,
+  valores?: ValoresDosCampos | null,
+): { feitos: number; total: number } {
+  if (c.tipo === 'modulos' && c.escolhidosEm && c.id) {
+    const marcadas = new Set(Array.isArray(v) ? v : []);
+    const { opcoes, foraDaEscolha } = modulosDoChecklist({ id: c.id, opcoes: c.opcoes, escolhidosEm: c.escolhidosEm }, valores);
+    const conta = opcoes.filter((o) => !foraDaEscolha.has(o.id));
+    return { feitos: conta.filter((o) => marcadas.has(o.id)).length, total: conta.length };
+  }
   if (c.tipo === 'modulos') return { feitos: 0, total: 0 };
   if (c.tipo === 'caixinhas') {
     const marcadas = new Set(Array.isArray(v) ? v : []);
@@ -73,7 +95,7 @@ export function partesDoChamado(
     let b = p.blocos.find((x) => x.produtoId === c.produtoId);
     if (!b) { b = { produtoId: c.produtoId, campos: [] }; p.blocos.push(b); }
     b.campos.push(c);
-    const conta = contaDoCampo(c, valores?.[c.id]);
+    const conta = contaDoCampo(c, valores?.[c.id], valores);
     p.feitos += conta.feitos;
     p.total += conta.total;
   }
@@ -147,13 +169,16 @@ export function marcasDepois(
 /** O produto de um campo do modelo, pelo código do catálogo (o id muda de uma instalação para outra). */
 /** Uma opção do modelo: o nome, ou o nome e a pasta (as caixinhas da Configuração do LinePBX, 2.3). */
 export type OpcaoDoModelo = string | { nome: string; pasta: string };
-export type CampoDoModelo = { nome: string; tipo: TipoCampo; parte: string; produto: 'linechat' | 'linepbx' | null; dica: string; opcoes: OpcaoDoModelo[] };
+/** `escolhidosEm`: no checklist dos módulos, o nome do campo de módulos do mesmo produto de onde vêm as opções. */
+export type CampoDoModelo = { nome: string; tipo: TipoCampo; parte: string; produto: 'linechat' | 'linepbx' | null; dica: string; opcoes: OpcaoDoModelo[]; escolhidosEm?: string };
 /** A opção do modelo com a pasta (nula quando não tem). */
 export const opcaoDoModelo = (o: OpcaoDoModelo): { nome: string; pasta: string | null } => (typeof o === 'string' ? { nome: o, pasta: null } : o);
 const naPasta = (pasta: string, ...nomes: string[]) => nomes.map((nome) => ({ nome, pasta }));
 type EtapaDoModelo = Pick<EtapaPainel, 'nome' | 'tipo' | 'nivel' | 'obrigatorios'> & { ligaNoCadastro?: boolean };
 
 const CURADORIA = 'Curadoria';
+const MODULOS_A_ATIVAR = 'Módulos a ativar';
+const ATIVACAO_DOS_MODULOS = 'Ativação dos módulos';
 const CONFIGURACAO = 'Configuração';
 const TESTES = 'Testes';
 
@@ -192,7 +217,10 @@ export const MODELO_DA_IMPLANTACAO: {
     { nome: 'Estrutura do chatbot', tipo: 'texto_longo', parte: CURADORIA, produto: 'linechat', dica: 'O menu, as perguntas e para onde vai cada resposta.', opcoes: [] },
     { nome: 'Horário de atendimento', tipo: 'texto_longo', parte: CURADORIA, produto: 'linechat', dica: 'Os dias e as horas, e o que responder fora do horário.', opcoes: [] },
     { nome: 'Acesso à BM', tipo: 'sim_nao', parte: CURADORIA, produto: 'linechat', dica: 'O cliente já deu o acesso ao Business Manager da Meta?', opcoes: [] },
-    { nome: 'CRM usado', tipo: 'texto', parte: CURADORIA, produto: 'linechat', dica: 'O CRM que o cliente usa hoje (se usa).', opcoes: [] },
+    // sem o CRM usado (29/10, o Luan: "n precisa disso n")
+    // os módulos: a curadoria escolhe, a configuração ativa (29/10, o Luan: "é a curadoria que define quais módulos devem
+    // ser ativos, aqui é só um checklist do que foi solicitado na curadoria")
+    { nome: MODULOS_A_ATIVAR, tipo: 'modulos', parte: CURADORIA, produto: 'linechat', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
     // a curadoria do LinePBX
     { nome: 'IP do cliente', tipo: 'texto', parte: CURADORIA, produto: 'linepbx', dica: 'O IP fixo de saída da rede do cliente.', opcoes: [] },
     { nome: 'Lista de ramais', tipo: 'texto_longo', parte: CURADORIA, produto: 'linepbx', dica: 'O ramal, o nome e o setor de cada um.', opcoes: [] },
@@ -200,12 +228,13 @@ export const MODELO_DA_IMPLANTACAO: {
     { nome: 'Horário de atendimento', tipo: 'texto_longo', parte: CURADORIA, produto: 'linepbx', dica: 'Os dias e as horas, e o que tocar fora do horário.', opcoes: [] },
     { nome: 'Números da rota de entrada', tipo: 'texto_longo', parte: CURADORIA, produto: 'linepbx', dica: 'Os números que entram e para onde vai cada um.', opcoes: [] },
     { nome: 'Estrutura da URA', tipo: 'texto_longo', parte: CURADORIA, produto: 'linepbx', dica: 'As mensagens e as opções de cada menu.', opcoes: [] },
+    { nome: MODULOS_A_ATIVAR, tipo: 'modulos', parte: CURADORIA, produto: 'linepbx', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
     // a configuração (a equipe técnica marca o que já fez)
     {
       nome: 'Configuração do ambiente', tipo: 'caixinhas', parte: CONFIGURACAO, produto: 'linechat', dica: 'Marque o que já foi feito.',
       opcoes: ['Criação dos usuários', 'Criação das equipes', 'Configuração dos chatbots', 'Configuração do horário de atendimento', 'Ativação dos números'],
     },
-    { nome: 'Módulos a ativar', tipo: 'modulos', parte: CONFIGURACAO, produto: 'linechat', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
+    { nome: ATIVACAO_DOS_MODULOS, tipo: 'modulos', parte: CONFIGURACAO, produto: 'linechat', dica: 'Os módulos escolhidos na Curadoria: marque conforme ativar.', opcoes: [], escolhidosEm: MODULOS_A_ATIVAR },
     {
       nome: 'Configuração do ambiente', tipo: 'caixinhas', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Marque o que já foi feito.',
       // em pastas (2.3, o Luan: "configurações do servidor, configuirações do asterisk, do linepbx web, dos módulos")
@@ -217,7 +246,7 @@ export const MODELO_DA_IMPLANTACAO: {
         ...naPasta('Telefones', 'Configuração dos telefones'),
       ],
     },
-    { nome: 'Módulos a ativar', tipo: 'modulos', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Os módulos que o cliente contratou. No Implantado, ficam ligados na ficha dele.', opcoes: [] },
+    { nome: ATIVACAO_DOS_MODULOS, tipo: 'modulos', parte: CONFIGURACAO, produto: 'linepbx', dica: 'Os módulos escolhidos na Curadoria: marque conforme ativar.', opcoes: [], escolhidosEm: MODULOS_A_ATIVAR },
     // os testes (o suporte confere antes de validar)
     {
       nome: 'Testes realizados', tipo: 'caixinhas', parte: TESTES, produto: 'linechat', dica: 'Marque o que já foi testado com o cliente.',
@@ -325,6 +354,8 @@ export type PlanoDoCadastro = {
   /** `semData`: o produto não tem data de ativação (o Equipamentos: a data é a de cada aparelho) */
   produtos: Array<{ id: string; nome: string; acao: AcaoNoProduto; semData?: boolean }>;
   modulos: Array<{ id: string; nome: string; produtoId: string; produto: string; acao: AcaoNoModulo }>;
+  /** os módulos escolhidos que o checklist (a Ativação dos módulos) ainda não marcou: a janela avisa, sem travar */
+  semMarcar?: Array<{ id: string; nome: string; produto: string; campo: string }>;
 };
 
 export const FRASE_DO_PRODUTO: Record<AcaoNoProduto, string> = {
@@ -350,6 +381,7 @@ export function planoDoCadastro(e: {
   produtos: Array<{ id: string; nome: string; semData?: boolean }>;
   modulosMarcados: Array<{ id: string; nome: string; produtoId: string; produto: string }>;
   assinaturas: ReadonlyMap<string, AssinaturaNoCadastro>;
+  semMarcar?: Array<{ id: string; nome: string; produto: string; campo: string }>;
 }): PlanoDoCadastro {
   if (!e.cliente) return { etapa: e.etapa, dia: e.dia, cliente: null, produtos: [], modulos: [] };
   const produtos = e.produtos.map((p) => {
@@ -365,7 +397,7 @@ export function planoDoCadastro(e: {
     const acao: AcaoNoModulo = !ativosDepois.has(m.produtoId) ? 'sem_produto' : e.assinaturas.get(m.produtoId)?.modulosLigados.has(m.id) ? 'ja_ligado' : 'liga';
     return { ...m, acao };
   });
-  return { etapa: e.etapa, dia: e.dia, cliente: e.cliente, produtos, modulos };
+  return { etapa: e.etapa, dia: e.dia, cliente: e.cliente, produtos, modulos, ...(e.semMarcar?.length ? { semMarcar: e.semMarcar } : {}) };
 }
 
 /** A negociação que vai sozinha para a etapa que recebe a implantação terminada (o Implantado do Comercial). */
@@ -392,14 +424,37 @@ export function etapaDoFimDaImplantacao(etapas: readonly EtapaPainel[], atualId:
 /** O plano muda alguma coisa no cadastro? */
 export const cadastroMuda = (p: PlanoDoCadastro) => p.produtos.some((x) => x.acao === 'novo' || x.acao === 'ativa') || p.modulos.some((m) => m.acao === 'liga');
 
-/** Os módulos marcados no chamado: os campos "Módulos do produto" que aparecem nele, com as opções marcadas. */
+/**
+ * Os módulos escolhidos que o checklist ainda não marcou (2.3): em cada checklist dos módulos que aparece no chamado, os
+ * escolhidos no campo de onde ele vem que não estão marcados nele. O nome do campo vai junto ("Ativação dos módulos").
+ */
+export function modulosSemMarcar(
+  campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], valores: ValoresDosCampos | null | undefined,
+  produtos: ReadonlyArray<{ id: string; nome: string }>,
+): Array<{ id: string; nome: string; produto: string; campo: string }> {
+  const out: Array<{ id: string; nome: string; produto: string; campo: string }> = [];
+  for (const c of campos) {
+    if (c.tipo !== 'modulos' || !c.escolhidosEm || !c.produtoId || !campoAparece(c, produtosDoChamado)) continue;
+    const marcados = new Set(Array.isArray(valores?.[c.id]) ? (valores![c.id] as string[]) : []);
+    const { opcoes, foraDaEscolha } = modulosDoChecklist(c, valores);
+    for (const o of opcoes) {
+      if (!foraDaEscolha.has(o.id) && !marcados.has(o.id)) out.push({ id: o.id, nome: o.nome, produto: produtos.find((p) => p.id === c.produtoId)?.nome ?? '?', campo: c.nome });
+    }
+  }
+  return out;
+}
+
+/**
+ * Os módulos marcados no chamado: os campos "Módulos do produto" que aparecem nele, com as opções marcadas. O checklist
+ * (2.3) não conta: o que liga no cadastro é a escolha (a Curadoria), "é a curadoria que define quais módulos devem ser ativos".
+ */
 export function modulosMarcados(
   campos: readonly CampoPersonalizado[], produtosDoChamado: readonly string[], valores: ValoresDosCampos | null | undefined,
   produtos: ReadonlyArray<{ id: string; nome: string }>,
 ): Array<{ id: string; nome: string; produtoId: string; produto: string }> {
   const out: Array<{ id: string; nome: string; produtoId: string; produto: string }> = [];
   for (const c of campos) {
-    if (c.tipo !== 'modulos' || !c.produtoId || !campoAparece(c, produtosDoChamado)) continue;
+    if (c.tipo !== 'modulos' || c.escolhidosEm || !c.produtoId || !campoAparece(c, produtosDoChamado)) continue;
     const v = valores?.[c.id];
     for (const id of Array.isArray(v) ? v : []) {
       const o = c.opcoes.find((x) => x.id === id);

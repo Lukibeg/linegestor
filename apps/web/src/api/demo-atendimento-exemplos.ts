@@ -1489,6 +1489,8 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
           { produto: 'linepbx', nome: 'Horário de atendimento', valor: 'Seg a sex, 9h às 19h; sáb, 9h às 13h. Fora do horário: a mensagem com o horário e o WhatsApp da loja.' },
           { produto: 'linepbx', nome: 'Números da rota de entrada', valor: '(71) 3322-1500 → URA\n(71) 3322-1501 → direto no laboratório' },
           { produto: 'linepbx', nome: 'Estrutura da URA', valor: '"Bem-vindo à Ótica Visão Clara."\n1 Vendas → fila Vendedores\n2 Óculos prontos e consertos → Laboratório\n3 Falar com a gerência → 202' },
+          // a curadoria escolhe os módulos; a configuração marca conforme ativa
+          { produto: 'linepbx', nome: 'Módulos a ativar', valor: ['Line Reports', 'NPS'] },
         ],
       },
       {
@@ -1501,7 +1503,7 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
               'Instalação do LineReports', 'Configuração dos telefones',
             ],
           },
-          { produto: 'linepbx', nome: 'Módulos a ativar', valor: ['Line Reports', 'NPS'] },
+          { produto: 'linepbx', nome: 'Ativação dos módulos', valor: ['Line Reports', 'NPS'] },
         ],
       },
       {
@@ -1522,6 +1524,7 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
           { produto: 'linepbx', nome: 'IP do cliente', valor: '200.165.33.7 (o link do canteiro)' },
           { produto: 'linepbx', nome: 'Lista de ramais', valor: '300 Portaria do canteiro\n301 Engenheiro residente (Edson)\n302 Almoxarifado\n303 a 310 Mestres de obra (sem fio)' },
           { produto: 'linepbx', nome: 'Horário de atendimento', valor: 'Seg a sáb, 7h às 17h. Fora do horário: a portaria (300) toca sempre.' },
+          { produto: 'linepbx', nome: 'Módulos a ativar', valor: ['FOP2', 'Callback'] },
         ],
       },
       {
@@ -1533,7 +1536,8 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
               'Alinhamento do tronco', 'Configuração dos usuários', 'Configuração dos telefones',
             ],
           },
-          { produto: 'linepbx', nome: 'Módulos a ativar', valor: ['FOP2'] },
+          // o Callback ainda falta ativar
+          { produto: 'linepbx', nome: 'Ativação dos módulos', valor: ['FOP2'] },
         ],
       },
       {
@@ -1554,14 +1558,14 @@ export const IMPLANTACOES_DE_EXEMPLO: Array<{ negociacao: string; passos: PassoD
           { produto: 'linechat', nome: 'Estrutura do chatbot', valor: '1 Planos e preços → equipe Planos\n2 Horário das aulas → a tabela de horários\n3 Falar com a recepção → equipe Recepção' },
           { produto: 'linechat', nome: 'Horário de atendimento', valor: 'Seg a sex, 6h às 22h; sáb, 8h às 14h. Fora do horário: "Voltamos às 6h" e a tabela de horários.' },
           { produto: 'linechat', nome: 'Acesso à BM', valor: true },
-          { produto: 'linechat', nome: 'CRM usado', valor: 'Nenhum (uma planilha dos alunos)' },
+          { produto: 'linechat', nome: 'Módulos a ativar', valor: ['WebChat', 'Dashboard de filas'] },
         ],
       },
       {
         dias: 2, hora: '11:30', por: 'lucio',
         campos: [
           { produto: 'linechat', nome: 'Configuração do ambiente', valor: ['Criação dos usuários', 'Criação das equipes', 'Configuração dos chatbots'] },
-          { produto: 'linechat', nome: 'Módulos a ativar', valor: ['WebChat', 'Dashboard de filas'] },
+          { produto: 'linechat', nome: 'Ativação dos módulos', valor: ['WebChat'] },
         ],
       },
     ],

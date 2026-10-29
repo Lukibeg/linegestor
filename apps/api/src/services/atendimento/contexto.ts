@@ -159,6 +159,8 @@ export function campoDaLinha(c: typeof ticketFields.$inferSelect): CampoPersonal
     // só a lista de uma opção inclui na hora (o tipo não muda, mas a marca guardada vale só para ela)
     incluirNaHora: c.kind === 'lista' && c.inlineOptions,
     parte: c.section?.trim() || null, produtoId: c.productId ?? null,
+    // o checklist dos módulos (2.3): só nos módulos
+    escolhidosEm: c.kind === 'modulos' ? c.followsFieldId ?? null : null,
   };
 }
 /**

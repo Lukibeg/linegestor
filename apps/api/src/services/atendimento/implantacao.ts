@@ -17,7 +17,7 @@ import {
   clientUnits, clients, newId, productModules, subscriptionModules, subscriptions, ticketPanels, tickets, type Db,
 } from '@gestor/db';
 import {
-  cadastroMuda, codigoDoChamado, diaLocal, etapaDeEntrada, etapaDoFimDaImplantacao, modulosMarcados, paraBusca, planoDaImplantacao, planoDoCadastro, temDataDeAtivacao,
+  cadastroMuda, codigoDoChamado, diaLocal, etapaDeEntrada, etapaDoFimDaImplantacao, modulosMarcados, modulosSemMarcar, paraBusca, planoDaImplantacao, planoDoCadastro, temDataDeAtivacao,
   type AssinaturaNoCadastro, type EtapaPainel, type NegociacaoNoFim, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PlanoDaImplantacao, type PlanoDoCadastro, type ValoresDosCampos,
 } from '@gestor/shared';
 import { camposDoPainel, pessoaDoAtor, registrarEvento, type Ator, type Contexto, type LinhaChamado } from './contexto.js';
@@ -91,8 +91,12 @@ export async function planoDoCadastroDoChamado(db: Banco, ctx: Contexto, t: Linh
   const dia = diaLocal(ctx.agora);
   const cliente = t.clientId ? { id: t.clientId, nome: ctx.clientes.get(t.clientId) ?? '(cliente)' } : null;
   const produtos = t.productIds.map((id) => ({ id, nome: ctx.produtos.get(id)?.nome ?? '?', semData: !temDataDeAtivacao(ctx.produtos.get(id)?.codigo ?? '') }));
-  const mods = modulosMarcados(camposDoPainel(ctx, painel.id), t.productIds, t.customFields as ValoresDosCampos | null, produtos);
-  return planoDoCadastro({ etapa: para.nome, dia, cliente, produtos, modulosMarcados: mods, assinaturas: cliente ? await assinaturasDoCliente(db, cliente.id) : new Map() });
+  const campos = camposDoPainel(ctx, painel.id);
+  const valores = t.customFields as ValoresDosCampos | null;
+  const mods = modulosMarcados(campos, t.productIds, valores, produtos);
+  // os escolhidos na Curadoria que o checklist da Configuração ainda não marcou: a janela avisa (nada trava)
+  const semMarcar = modulosSemMarcar(campos, t.productIds, valores, produtos);
+  return planoDoCadastro({ etapa: para.nome, dia, cliente, produtos, modulosMarcados: mods, semMarcar, assinaturas: cliente ? await assinaturasDoCliente(db, cliente.id) : new Map() });
 }
 
 /** A negociação do card que chega no fim da implantação, de onde ela sai e para onde vai (o Implantado do Comercial). */

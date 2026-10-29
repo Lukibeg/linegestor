@@ -34,7 +34,7 @@ import {
   alertasDevidos, assuntoEDescendentes, caminhoDoAssunto, campoLigado, chaveDoCampo, citadosNoTexto, codigoDoChamado, emLista, compararUrgencia, custoEstimado, dentroDoHorario, diaLocal,
   didFormatado, ehLista, lerCamposDoPedido, limparObrigatorios, mesmoValorDoCampo, nomeDoSistemaIgual, obrigatoriosDoPainel, sugestaoDoQueOPainelUsa,
   textoDoValor, textosDosCampos, valoresVisiveis,
-  ehCaixinhas, etapaDoFimDaImplantacao, marcasDepois, nomeCompletoDoCampo, progressoDasPartes, temDataDeAtivacao, MODELO_DA_IMPLANTACAO, temOpcoesEscritas, planoDaImplantacao, planoDoCadastro, modulosMarcados, AoMoverSchema,
+  ehCaixinhas, etapaDoFimDaImplantacao, marcasDepois, nomeCompletoDoCampo, progressoDasPartes, temDataDeAtivacao, MODELO_DA_IMPLANTACAO, temOpcoesEscritas, planoDaImplantacao, planoDoCadastro, modulosMarcados, modulosSemMarcar, AoMoverSchema,
   type AssinaturaNoCadastro, type MarcasDosCampos, type NegociacaoNoFim, type OQueAEtapaFaz, type PlanoDaImplantacao, type PlanoDoCadastro, type PedidoDoCliente,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
@@ -1496,6 +1496,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
       cadastro = planoDoCadastro({
         etapa: para.nome, dia: diaLocal(agora), cliente, produtos,
         modulosMarcados: modulosMarcados(camposDoPainel(painel.id), t.produtos, t.campos, produtos),
+        semMarcar: modulosSemMarcar(camposDoPainel(painel.id), t.produtos, t.campos, produtos),
         assinaturas: cliente ? cad.assinaturas(cliente.id) : new Map(),
       });
     }
@@ -3363,7 +3364,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
 
   const campoParaAuditoria = (c: CampoPersonalizado) => ({
     nome: c.nome, tipo: c.tipo, dica: c.dica, opcoes: c.tipo === 'modulos' ? [] : c.opcoes.map((o) => ({ ...o })), ativo: c.ativo, incluirNaHora: c.incluirNaHora,
-    ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}),
+    ...(c.parte ? { parte: c.parte } : {}), ...(c.produtoId ? { produtoId: c.produtoId } : {}), ...(c.escolhidosEm ? { escolhidosEm: c.escolhidosEm } : {}),
   });
   /**
    * Incluir uma opção numa lista do painel ali mesmo (2.0.3, a Indicação), como o servidor: só nas listas marcadas;
@@ -3427,6 +3428,15 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     if (doSistema) throw conflito(`Todo chamado do painel ${p.nome} já tem o campo ${doSistema}: escolha outro nome.`);
     // os módulos são os do produto: trocar o produto trocaria as opções do que já foi marcado
     if (atual?.tipo === 'modulos' && atual.produtoId !== d.produtoId) throw bad(`O produto dos módulos não muda depois de criado (${atual.nome}). Crie outro campo e desative este.`);
+    // o checklist dos módulos (2.3): segue um campo de módulos deste painel, do mesmo produto, que seja a escolha
+    if (d.escolhidosEm) {
+      if (d.tipo !== 'modulos') throw bad('Só os módulos do produto seguem outro campo.');
+      const fonte = camposDoPainel(p.id).find((c) => c.id === d.escolhidosEm);
+      if (!fonte || fonte.id === atual?.id || fonte.tipo !== 'modulos' || (fonte.produtoId ?? null) !== (d.produtoId ?? null) || fonte.escolhidosEm) {
+        throw bad('O checklist dos módulos segue um campo de módulos deste painel, do mesmo produto, em que os módulos são escolhidos.');
+      }
+      if (atual && camposDoPainel(p.id).some((c) => c.escolhidosEm === atual.id)) throw bad(`Outro campo segue ${d.nome}: ele continua sendo a escolha dos módulos.`);
+    }
     // o mesmo nome pode estar em produtos diferentes (2.3: o Horário de atendimento do LineChat e o do LinePBX)
     const igual = camposDoPainel(p.id).find((c) => c.id !== atual?.id && paraBusca(c.nome) === paraBusca(d.nome) && (c.produtoId ?? null) === (d.produtoId ?? null));
     if (igual) throw conflito(`O painel ${p.nome} já tem o campo ${igual.nome}${igual.produtoId ? ' neste produto' : ''}${igual.ativo ? '' : ' (desativado: reative em vez de criar outro)'}.`);
@@ -3471,14 +3481,22 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
    */
   function camposDeFabricaDoPainel(painelId: string, tipo: TipoDePainel, implantacao = false): string[] {
     const produtoDoCodigo = (code: string | null) => (code ? S.products.find((x) => x.code === code && !x.deletedAt)?.id ?? null : null);
-    const fabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null }> = implantacao
+    const fabrica: Array<{ nome: string; tipo: CampoPersonalizado['tipo']; dica: string; opcoes: readonly OpcaoDoModelo[]; incluirNaHora?: boolean; parte?: string; produtoId?: string | null; escolhidosEm?: string }> = implantacao
       ? MODELO_DA_IMPLANTACAO.campos.filter((c) => !c.produto || produtoDoCodigo(c.produto)).map((c) => ({ ...c, produtoId: produtoDoCodigo(c.produto) }))
       : tipo === 'vendas' ? [...CAMPOS_DO_PAINEL_DE_VENDAS] : [];
     fabrica.forEach((c, ordem) => A.campos.push({
       id: novoId(), painelId, nome: c.nome, tipo: c.tipo, dica: c.dica, ativo: true, ordem,
       opcoes: c.opcoes.map(opcaoDoModelo).map((o) => ({ id: novoId(), nome: o.nome, ativa: true, ...(o.pasta ? { pasta: o.pasta } : {}) })), incluirNaHora: !!c.incluirNaHora,
-      parte: c.parte ?? null, produtoId: c.produtoId ?? null,
+      parte: c.parte ?? null, produtoId: c.produtoId ?? null, escolhidosEm: null,
     }));
+    // o checklist dos módulos segue o campo de módulos do mesmo produto com o nome do modelo (o da Curadoria)
+    const criados = A.campos.filter((c) => c.painelId === painelId);
+    fabrica.forEach((c, i) => {
+      if (!c.escolhidosEm) return;
+      const fonte = criados.find((x) => x.nome === c.escolhidosEm && (x.produtoId ?? null) === (c.produtoId ?? null));
+      const eu = criados.find((x) => x.ordem === i);
+      if (fonte && eu) eu.escolhidosEm = fonte.id;
+    });
     if (implantacao) sincronizarModulos();
     return fabrica.map((c) => c.nome);
   }
@@ -3493,7 +3511,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const opcoes = conferirCampo(p, d, null);
     const c: CampoPersonalizado = {
       id: novoId(), painelId, nome: d.nome, tipo: d.tipo, dica: d.dica ?? null, opcoes, ativo: d.ativo, ordem: Math.max(-1, ...outros.map((x) => x.ordem)) + 1, incluirNaHora: d.tipo === 'lista' && d.incluirNaHora,
-      parte: d.parte, produtoId: d.produtoId,
+      parte: d.parte, produtoId: d.produtoId, escolhidosEm: d.tipo === 'modulos' ? d.escolhidosEm : null,
     };
     A.campos.push(c);
     sincronizarModulos();
@@ -3512,7 +3530,7 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
     const antes = campoParaTela(c);
     conferirProdutoDoCampo(d.produtoId);
     const opcoes = conferirCampo(p, d, antes);
-    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId });
+    Object.assign(c, { nome: d.nome, dica: d.dica ?? null, opcoes, ativo: d.ativo, incluirNaHora: c.tipo === 'lista' && d.incluirNaHora, parte: d.parte, produtoId: d.produtoId, escolhidosEm: c.tipo === 'modulos' ? d.escolhidosEm : null });
     sincronizarModulos();
     const pedido = gravarOndeEPedido(p, c.id, c.ativo, d);
     const como = antes.ativo !== c.ativo ? (c.ativo ? 'Reativou' : 'Desativou') : 'Alterou';

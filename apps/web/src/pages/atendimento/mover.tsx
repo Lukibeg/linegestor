@@ -14,7 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, CheckCircle2, CircleDashed, Handshake, KanbanSquare, Package } from 'lucide-react';
+import { AlertTriangle, Building2, CheckCircle2, CircleDashed, Handshake, KanbanSquare, Package } from 'lucide-react';
 import {
   FRASE_DO_MODULO, FRASE_DO_PRODUTO, cadastroMuda, cnpjEnquantoDigita, cnpjLimpo, movimentoDeNivel, nomeDoObrigatorio,
   type EtapaPainel, type FichaChamado, type NegociacaoNoFim, type OQueAEtapaFaz, type Painel, type PedidoDoCliente, type PessoaCurta, type PlanoDaImplantacao, type PlanoDoCadastro, type ValoresDosProdutos,
@@ -396,7 +396,14 @@ function JanelaDoCadastro({ e, plano, negociacao, onFechar, onConfirmar }: {
                 <ul className="flex flex-col gap-1 text-[13.5px]">
                   {plano.modulos.map((m) => <li key={m.id} className="flex items-start gap-1.5">{icone(m.acao === 'liga')}<span><b>{m.nome}</b> <span className="text-muted">({m.produto}) — {FRASE_DO_MODULO[m.acao]}</span></span></li>)}
                 </ul>
-              ) : <p className="text-[13px] text-muted">Nenhum módulo marcado no card (o campo Módulos a ativar).</p>}
+              ) : <p className="text-[13px] text-muted">Nenhum módulo marcado no card (o campo Módulos a ativar, da Curadoria).</p>}
+              {/* 2.3: os escolhidos que o checklist da Configuração ainda não marcou (avisa, não trava) */}
+              {!!plano.semMarcar?.length && (
+                <p className="text-[12.5px] text-signal mt-1.5 flex items-start gap-1.5" id="cadastro-sem-marcar">
+                  <AlertTriangle size={14} className="shrink-0 mt-0.5" aria-hidden />
+                  <span>Ainda sem marcar em {plano.semMarcar[0]!.campo}: {plano.semMarcar.map((m) => `${m.nome} (${m.produto})`).join(', ')}. Fica{plano.semMarcar.length === 1 ? '' : 'm'} ativo{plano.semMarcar.length === 1 ? '' : 's'} na ficha mesmo assim.</span>
+                </p>
+              )}
             </LinhaDoPlano>
           </div>
         </>
