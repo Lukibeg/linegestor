@@ -1450,6 +1450,7 @@ Uma SIMULAÇÃO do Comercial: o nome, os cenários e a negociação ligada.
 | `ticket_id` | texto | A negociação ligada (um chamado de um painel de Vendas), quando a pessoa liga | liga com **tickets** |
 | `scenarios` | JSON | Os cenários (1 a 3), cada um com todos os números: a mensalidade e a ativação em centavos, as parcelas, o prazo, o imposto, os produtos (e o preço de cada um) e as linhas de custo — o formato de `CenarioDaSimulacao` (`@gestor/shared`; os guardados antes de 21/10, com os ramais e a margem que se queria, são lidos pelo `semOQueSaiu`). As linhas guardam o valor de quando entraram: mudar a tabela de custos não muda a simulação já feita. | obrigatório · padrão: [] |
 | `principal` | texto | O id do cenário principal: o que a lista e a negociação mostram | obrigatório |
+| `is_main` | sim/não | A principal da negociação ligada (2.3, migração 0030): a que preenche os valores do card, sozinha, a cada salvamento. Uma por negociação (a primeira ligada, até a pessoa marcar outra; sem ela, a mexida por último) | obrigatório · padrão: false |
 | `created_by_id` | texto | — | liga com **users** |
 | `updated_by_id` | texto | — | liga com **users** |
 | `created_at` | data e hora | Quando a linha foi criada | — |

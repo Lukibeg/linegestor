@@ -215,7 +215,7 @@ export type CenarioDaSimulacao = {
   linhas: LinhaDoCenario[];
   /**
    * Os produtos do catálogo que a venda leva (os códigos: linepbx, linechat…): vêm do modelo ou da
-   * negociação, e o "Levar para a negociação" põe estes produtos nela.
+   * negociação, e a principal da negociação põe estes produtos no card (2.3; antes, o "Levar para a negociação").
    */
   produtos: string[];
   /**
@@ -454,6 +454,13 @@ export type Simulacao = {
   cenarios: CenarioDaSimulacao[];
   /** o id do cenário principal: o que a lista e a negociação mostram */
   principal: string;
+  /**
+   * a principal da negociação ligada (2.3): a que preenche os valores do card dela, sozinha, a cada salvamento.
+   * Uma negociação com simulações tem sempre uma principal (a primeira ligada, até a pessoa marcar outra)
+   */
+  principalDaNegociacao: boolean;
+  /** no salvamento (2.3): os valores do cenário principal foram para o card da negociação (mudaram lá) */
+  levouParaANegociacao?: boolean;
   criadoPor: string | null;
   criadoEm: string;
   alteradoPor: string | null;
@@ -493,8 +500,8 @@ export type SimulacaoNaLista = {
   alteradoEm: string;
 };
 
-/** Uma simulação ligada a uma negociação (a ficha da negociação). */
-export type SimulacaoDaNegociacao = { id: string; nome: string; cenarios: number; principal: ResumoDoCenario };
+/** Uma simulação ligada a uma negociação (a ficha da negociação). `principalDaNegociacao`: a que preenche o card (2.3). */
+export type SimulacaoDaNegociacao = { id: string; nome: string; cenarios: number; principal: ResumoDoCenario; principalDaNegociacao: boolean };
 
 /** O que a tela do Simulador precisa saber antes de tudo. */
 export type SimuladorOpcoes = {
@@ -859,7 +866,7 @@ export function comPrecoPorProduto<C extends Pick<CenarioDaSimulacao, 'produtos'
 }
 
 /**
- * O que o cliente paga em cada produto (o preço por produto e o "Levar para a negociação"): o preço do produto e,
+ * O que o cliente paga em cada produto (o preço por produto e o que vai para o card da negociação): o preço do produto e,
  * dos aparelhos vendidos ou alugados, o que entra no produto deles — o do modelo de onde a linha veio; a linha
  * sem produto (ou de um produto que saiu), no primeiro. As somas são o que o cliente paga no cenário.
  */
@@ -874,6 +881,40 @@ export function pagamentoPorProduto(c: CenarioDaSimulacao, k: Pick<ContasDoCenar
     if (l.modalidade === 'venda') alvo.venda += receita; else alvo.aluguel += receita;
   });
   return r;
+}
+
+/** O que a simulação principal põe no card da negociação (2.3): a mensalidade, a ativação, cada produto e os produtos. */
+export type ValoresParaANegociacao = {
+  /** a mensalidade (com o aluguel dos aparelhos); nula quando é zero e não há valor por produto */
+  valor: number | null;
+  /** o valor de cada produto (pelo id do produto do catálogo): vazio quando o cenário tem um preço só */
+  valoresDosProdutos: Record<string, number>;
+  /** a ativação (com os aparelhos vendidos); nula quando é zero e não há valor por produto */
+  ativacao: number | null;
+  ativacoesDosProdutos: Record<string, number>;
+  /** os produtos do cenário (os ids do catálogo); nulo: os da negociação ficam (o cenário sem produto, ou o painel sem produtos) */
+  produtos: string[] | null;
+};
+
+/**
+ * O que vai para a negociação (o que era o "Levar para a COM-x"; desde o 2.3, sozinho, a cada salvamento da
+ * principal): o que o cliente paga no cenário principal — a mensalidade (com o aluguel), a ativação (com a venda
+ * dos aparelhos) e, com o preço por produto, o de cada produto (o aparelho vendido ou alugado no produto dele);
+ * os produtos do cenário entram no lugar dos da negociação. `usaProdutos`: o painel da negociação tem o campo
+ * Produtos (sem ele, só o valor único). O cenário com um produto fora do catálogo leva um valor só.
+ */
+export function valoresParaANegociacao(c: CenarioDaSimulacao, faixas: FaixasDoSinal, catalogo: readonly ProdutoDoSimulador[], usaProdutos = true): ValoresParaANegociacao {
+  const k = contasDoCenario(c, faixas);
+  const idDe = (cod: string) => catalogo.find((p) => p.codigo === cod)?.id;
+  const ids = usaProdutos ? c.produtos.map(idDe).filter((x): x is string => !!x) : [];
+  const pagamento = usaProdutos && ids.length && ids.length === c.produtos.length ? pagamentoPorProduto(c, k) : null;
+  const valoresDosProdutos = pagamento ? Object.fromEntries(pagamento.map((x) => [idDe(x.produto)!, x.mensalidade + x.aluguel])) : {};
+  const ativacoesDosProdutos = pagamento && pagamento.some((x) => x.ativacao + x.venda > 0) ? Object.fromEntries(pagamento.map((x) => [idDe(x.produto)!, x.ativacao + x.venda])) : {};
+  return {
+    valor: pagamento ? k.mensalTotal : k.mensalTotal || null, valoresDosProdutos,
+    ativacao: Object.keys(ativacoesDosProdutos).length ? k.entradaTotal : k.entradaTotal || null, ativacoesDosProdutos,
+    produtos: ids.length ? ids : null,
+  };
 }
 
 /**

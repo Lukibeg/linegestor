@@ -38,7 +38,7 @@ import {
   type AssinaturaNoCadastro, type MarcasDosCampos, type NegociacaoNoFim, type OQueAEtapaFaz, type PlanoDaImplantacao, type PlanoDoCadastro, type PedidoDoCliente,
   duracaoDoPrazo, emOrdemDeArvore, estadoDosPrazos, etapaAoAssumir, etapaAoReabrir, etapaDeEntrada, etiquetasUnicas, faltaParaAbrir, faltaParaEtapa, trocaEntreTiposDePainel, TROCA_ENTRA_NO_FUNIL, NEGOCIACAO_SEM_PAI, NEGOCIACAO_SEM_PROBLEMA, negociacaoNaoEPai, negociacaoNaoEIncidente, NEGOCIACAO_SEM_LIGACAO, negociacaoNaoSeLiga,
   valorPorProduto, mesmoValorPorProduto, textoDoValorPorProduto, NOME_VALOR_POR_PRODUTO, NOME_ATIVACAO_POR_PRODUTO, NOME_MENSALIDADE, NOME_ATIVACAO,
-  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, type ValoresDosProdutos, tituloQueFica, mensagemDoTitulo, acharCampo, OpcaoIncluirSchema, MAX_OPCOES_DO_CAMPO,
+  VALOR_E_A_SOMA, ATIVACAO_E_A_SOMA, type ValoresDosProdutos, type ValoresParaANegociacao, tituloQueFica, mensagemDoTitulo, acharCampo, OpcaoIncluirSchema, MAX_OPCOES_DO_CAMPO,
   filhosQueTravam, filtrarCartoes, grafoDeLigacoes, horaLocal, hostDoEndereco, instanteLocal, lerListaDeAssuntos, lerSugestaoDaIa, linkDaConversa, macFormatado,
   mensagemDoQueFalta, minutosUteisEntre, movimentoDeNivel, nivelDoAssunto, numeroWhatsApp, ordenarCartoes, paraBusca,
   preencherModelo, prioridadeSugeridaDoPainel, proximaExecucao, referenciasNoTexto, resumoDosPaineis, situacaoDaEtapa, somarDiasUteis, somarMinutosUteis, textoDaRegra,
@@ -375,6 +375,12 @@ export type AcessoDoCalendarioDemo = {
    * O lembrete de um evento (2.0.2): o sininho de cada pessoa ativa, conforme os Ajustes dos avisos (o WhatsApp,
    * na prévia, não aparece em lugar nenhum). `lido`: o lembrete antigo dos exemplos já foi visto. Devolve quantos receberam.
    */
+  /**
+   * A simulação principal preenche o card da negociação (2.3, como o `levarParaANegociacao` do servidor): os valores
+   * que `calcular` dá (com o painel tendo ou não o campo Produtos), sem a linha no histórico. Não muda a negociação
+   * ganha, perdida ou na lixeira. Devolve se o card mudou.
+   */
+  levarDaSimulacao: (id: string, calcular: (usaProdutos: boolean) => ValoresParaANegociacao) => boolean;
   /** o lembrete (padrão) ou o aviso de que o evento entrou (`qual`, 2.0.2) */
   avisarDoCalendario: (a: { qual?: 'lembrete' | 'evento_novo'; para: string[]; evento: { id: string; titulo: string; inicio: string }; texto: string }, em: Date, lido?: boolean) => number;
 };
@@ -4999,6 +5005,24 @@ export function criarAtendimentoDemo(ctx: ContextoAtendimentoDemo): Api['atendim
           id: t.id, codigo: t.codigo, titulo: t.titulo, painelId: t.painelId, empresa: nomeCliente(t.clienteId) ?? t.empresa,
           resultado: r === 'ganho' || r === 'perdido' ? r : null,
         };
+      },
+      levarDaSimulacao: (id, calcular) => {
+        semear();
+        const t = A.chamados.find((x) => x.id === id && !x.deletedAt);
+        if (!t) return false;
+        const painel = painelPorId(t.painelId);
+        const r = etapaPorId(t.etapaId)?.resultado ?? null;
+        if (!painel || painel.tipo !== 'vendas' || r === 'ganho' || r === 'perdido') return false;
+        const v = calcular(campoLigado(painel.ajustes, 'produtos'));
+        const produtos = v.produtos ?? t.produtos;
+        const mesmos = produtos.length === t.produtos.length && produtos.every((x) => t.produtos.includes(x));
+        if (v.valor === t.valor && v.ativacao === t.ativacao && mesmos
+          && mesmoValorPorProduto(v.valoresDosProdutos, t.valoresDosProdutos) && mesmoValorPorProduto(v.ativacoesDosProdutos, t.ativacoesDosProdutos)) return false;
+        Object.assign(t, {
+          valor: v.valor, valoresDosProdutos: { ...v.valoresDosProdutos }, ativacao: v.ativacao, ativacoesDosProdutos: { ...v.ativacoesDosProdutos },
+          produtos: [...produtos], atualizadoEm: iso(agoraReal()),
+        });
+        return true;
       },
       avisarDoCalendario: (a, em, lido = false) => {
         const qual = a.qual ?? 'lembrete';

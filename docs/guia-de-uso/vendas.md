@@ -105,8 +105,8 @@ embaixo). A imagem também abre grande; Word e Excel continuam baixando.
 
 Para fazer a conta da venda antes de mandar a proposta (os custos, a margem, quando se paga), use o
 **Simulador** (Comercial › Simulador): na ficha, a parte **Simulações** tem o **Simular**, que abre uma
-simulação já ligada à negociação, e a simulação tem o **Levar para a COM-x**, que traz a mensalidade, a
-ativação e os produtos para a negociação. Veja o guia do [Simulador](simulador.md).
+simulação já ligada à negociação. Desde o 2.3, a simulação principal da negociação preenche sozinha a mensalidade,
+a ativação (e o valor de cada produto) e os produtos do card a cada salvamento. Veja o guia do [Simulador](simulador.md).
 
 ## 5. Ganhou ou perdeu
 

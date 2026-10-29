@@ -398,6 +398,7 @@ export const realApi: Api = {
     criar: (d) => http('POST', '/comercial/simulador/simulacoes', d),
     alterar: (id, d) => http('PUT', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`, d),
     duplicar: (id) => http('POST', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}/duplicar`),
+    tornarPrincipal: (id) => http('POST', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}/principal`),
     remover: (id) => http('DELETE', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}`),
     planilha: async (id) => {
       const r = await http<Response>('GET', `/comercial/simulador/simulacoes/${encodeURIComponent(id)}/planilha`, undefined, true);

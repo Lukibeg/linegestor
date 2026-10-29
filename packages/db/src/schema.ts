@@ -2130,6 +2130,11 @@ export const salesSimulations = pgTable(
     scenarios: jsonb('scenarios').notNull().default([]),
     /** O id do cenário principal: o que a lista e a negociação mostram */
     principal: text('principal').notNull(),
+    /**
+     * A principal da negociação ligada (2.3, migração 0030): a que preenche os valores do card, sozinha, a cada
+     * salvamento. Uma por negociação (a primeira ligada, até a pessoa marcar outra; sem ela, a mexida por último)
+     */
+    isMain: boolean('is_main').notNull().default(false),
     createdById: text('created_by_id').references(() => users.id),
     updatedById: text('updated_by_id').references(() => users.id),
     createdAt: createdAt(),

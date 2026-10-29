@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AJUSTES_DO_SIMULADOR_PADRAO, AjustesDoSimuladorSchema, CUSTOS_DA_HELENA, MODELO_DA_HELENA, SimulacaoGravarSchema, ajustesDoSimulador, cenarioNovo, contasDoCenario,
   comPrecoPorProduto, custoPorFaixas, dividirEmParcelas, duplicarCenario, linhaDaTabela, linhasDoModelo, mudancasDaSimulacao, mudancasDosAjustes, normalizarPorProduto,
-  TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, tiposParaEscolher, pagamentoPorProduto, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOQueSaiu,
+  TIPOS_DO_GRUPO, TIPO_NOVO_DO_GRUPO, tiposParaEscolher, pagamentoPorProduto, valoresParaANegociacao, precoDaUnidade, proximoNomeDeCenario, repartir, resumoDoCenario, semOQueSaiu,
   LINECHAT_DO_SIMULADOR, ehLinhaDoLineChat, linhasParaOLineChat, linhasSemOLineChat, mudarQuantidadeDoLineChat, quadroDoLineChat, textoDosInclusos,
   sinalDaMargem, textoDasFaixasDePreco, textoDoSePagaEm, lerValorUnitario, margemDasGanhas, textoDoValorUnitario, lerPercentual, textoDoPercentual,
   type AjustesDoSimulador, type CenarioDaSimulacao, type CustoDaTabela, type LinhaDoCenario,
@@ -267,6 +267,16 @@ describe('a conta do cenário', () => {
     expect(r.reduce((s, x) => s + x.mensalidade + x.aluguel, 0)).toBe(k.mensalTotal);
     expect(r.reduce((s, x) => s + x.ativacao + x.venda, 0)).toBe(k.entradaTotal);
     expect(pagamentoPorProduto({ ...c, porProduto: null }, k)).toBeNull();
+    // o que vai para o card da negociação (2.3): o valor de cada produto pelo id do catálogo, e os produtos
+    const catalogo = [{ id: 'p1', codigo: 'linepbx', nome: 'LinePBX' }, { id: 'p2', codigo: 'linechat', nome: 'LineChat' }];
+    expect(valoresParaANegociacao(c, FAIXAS, catalogo)).toEqual({
+      valor: k.mensalTotal, valoresDosProdutos: { p1: 84_000, p2: 22_000 }, ativacao: k.entradaTotal, ativacoesDosProdutos: { p1: 550_000, p2: 50_000 }, produtos: ['p1', 'p2'],
+    });
+    // o painel sem o campo Produtos, ou um produto fora do catálogo: um valor só (e, sem o campo, os produtos ficam)
+    expect(valoresParaANegociacao(c, FAIXAS, catalogo, false)).toEqual({ valor: k.mensalTotal, valoresDosProdutos: {}, ativacao: k.entradaTotal, ativacoesDosProdutos: {}, produtos: null });
+    expect(valoresParaANegociacao(c, FAIXAS, catalogo.slice(0, 1))).toMatchObject({ valoresDosProdutos: {}, produtos: ['p1'] });
+    // um preço só, sem ativação: a ativação vazia
+    expect(valoresParaANegociacao({ ...exemplo(), ativacao: 0 }, FAIXAS, catalogo)).toMatchObject({ valor: 99_000, ativacao: null, valoresDosProdutos: {} });
   });
 
   it('a compra parcelada só no aparelho: à vista não guarda nada; até 24 vezes', () => {

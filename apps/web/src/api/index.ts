@@ -461,6 +461,8 @@ export type Api = {
     alterar(id: string, d: SimulacaoGravarEntrada): Promise<Simulacao>;
     /** a cópia ("… (cópia)"), com os mesmos cenários */
     duplicar(id: string): Promise<Simulacao>;
+    /** Marcar como a principal da negociação dela: a que preenche os valores do card (2.3) */
+    tornarPrincipal(id: string): Promise<Simulacao>;
     /** vai para a lixeira (volta pela Administração › Lixeira) */
     remover(id: string): Promise<{ ok: boolean }>;
     /** a planilha do Excel, com as fórmulas (o que está salvo); fica na auditoria */

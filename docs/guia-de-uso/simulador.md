@@ -35,7 +35,7 @@ entra no lugar.
 - **Imposto**: um percentual só, sobre tudo o que o cliente paga. A simulação nova vem com o dos Ajustes;
   quando os dois diferem, aparece "Nos Ajustes: 6% · usar".
 - **Produtos**: os produtos do catálogo que a venda leva (o modelo traz o dele; **+ produto** põe outro, o
-  **×** tira). O **Levar para a negociação** põe estes na negociação.
+  **×** tira). A simulação principal da negociação põe estes no card dela (2.3).
 - **Um valor só | Por produto** (com dois produtos ou mais): cada produto é uma proposta, numa negociação só.
   **Por produto**, cada um tem a sua mensalidade e a sua ativação, e o total é o do cenário (a conta e a
   margem são as da negociação inteira). Ao passar para por produto, o valor de agora fica no primeiro; o
@@ -145,13 +145,18 @@ A mesma venda em versões diferentes (comodato ou venda dos aparelhos, 12 ou 24 
 - **A negociação ligada, sem sair da simulação (2.1)**: na simulação, o chip da negociação (COM-12 · o
   título · a empresa) tem o **Abrir**: a ficha dela abre numa janela por cima da simulação; fechando, você volta
   para a simulação. Na lista do Simulador, o chip da negociação também abre a ficha numa janela.
-- **Levar para a negociação**: na simulação ligada a uma negociação em aberto, o **Levar para a COM-12**
-  põe nela o que o cliente paga no cenário principal: a **mensalidade** (com o aluguel dos aparelhos), a
-  **ativação** (com os aparelhos vendidos) e os **produtos** do cenário (sem produto no cenário, os da
-  negociação ficam). Com o preço por produto, a negociação recebe o valor de cada produto (o aluguel e a
-  venda dos aparelhos entram no produto deles). A janela mostra o que a negociação tem hoje e o que fica,
-  antes do **Levar**. Com um valor só na simulação, a negociação que tinha o valor por produto passa a ter
-  um valor só. A mudança fica no histórico da negociação. O que mudou na simulação é salvo antes.
+- **Os valores vão para o card sozinhos (2.3)**: a simulação ligada a uma negociação em aberto é a
+  **principal** dela (ao lado do chip da negociação, **principal · preenche o card**). A cada salvamento (uns
+  2 segundos depois que você para de digitar), o card da negociação fica com o que o cliente paga no cenário
+  principal: a **mensalidade** (com o aluguel dos aparelhos), a **ativação** (com os aparelhos vendidos) e os
+  **produtos** do cenário (sem produto no cenário, os da negociação ficam). Com o **Por produto**, o card
+  recebe o valor de cada produto (o aluguel e a venda dos aparelhos entram no produto deles); com **Um valor
+  só**, um valor só. O histórico da negociação não ganha linha por isso. O que alguém mudar à mão no card é
+  trocado no próximo salvamento da simulação. O antigo botão **Levar para a COM-x** saiu.
+- **Mais de uma simulação na mesma negociação**: a primeira é a principal; as outras não mexem no card. Para
+  trocar, **Tornar a principal da COM-12** (no alto da simulação) ou **Tornar a principal** (na ficha, em
+  **Simulações**): os valores dela vão para o card na hora. A principal que vai para a lixeira passa o lugar
+  para a mexida por último, e o card fica com os valores que tem. A negociação ganha ou perdida não muda mais.
 - **A margem no relatório**: o relatório do Comercial (Comercial › Relatórios) tem **A margem das
   ganhas**: das ganhas do período que têm simulação, a margem do total e por produto.
 

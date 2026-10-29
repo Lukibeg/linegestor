@@ -5,7 +5,8 @@
  * margem, e exportar para o Excel; criar, mudar, duplicar e mandar para a lixeira, de quem também trabalha nas negociações
  * (`tickets.work`); os Ajustes do Simulador (a tabela de custos, os modelos, o imposto, o sinal), de quem
  * cuida dos painéis (`tickets.manage`). Tudo o que muda vai para a auditoria (`sales_simulation`; os
- * Ajustes, `settings`).
+ * Ajustes, `settings`). A principal da negociação (2.3) preenche o card sozinha a cada salvamento, sem a linha no
+ * histórico da negociação.
  */
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
@@ -60,6 +61,13 @@ const routes: FastifyPluginAsyncZod = async (app) => {
       const r = await svc.duplicar(app.db, ator(req), req.params.id);
       await app.audit(req, { action: 'create', entityType: 'sales_simulation', entityId: r.simulacao.id, summary: r.resumo, after: r.depois });
       return reply.status(201).send(r.simulacao);
+    });
+
+  app.post('/simulacoes/:id/principal', { ...trabalhar, schema: { tags, summary: 'Marcar a simulação como a principal da negociação dela: a que preenche os valores do card (2.3)', params: Id } },
+    async (req) => {
+      const r = await svc.tornarPrincipal(app.db, ator(req), req.params.id);
+      await app.audit(req, { action: 'update', entityType: 'sales_simulation', entityId: req.params.id, summary: r.resumo });
+      return r.simulacao;
     });
 
   app.delete('/simulacoes/:id', { ...trabalhar, schema: { tags, summary: 'Mandar a simulação para a lixeira (volta pela Administração › Lixeira)', params: Id } },
